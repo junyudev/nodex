@@ -1,3 +1,4 @@
+import { residentConversationTurns } from "../../shared/codex-conversation-state/codex-turn-mutation";
 import { randomUUID } from "node:crypto";
 import * as Context from "effect/Context";
 import * as Data from "effect/Data";
@@ -20,7 +21,6 @@ import { CodexConversationFork } from "./CodexConversationFork";
 import { CodexConversationProjection } from "./CodexConversationProjection";
 import { CodexForkSidePanelTransfer } from "./CodexForkSidePanelTransferRuntime";
 import { CodexForkTitlePolicy } from "./CodexForkTitlePolicy";
-import { CodexOwnerNotificationDrainRuntime } from "./CodexOwnerNotificationDrainRuntime";
 import { CodexPendingWorktreeRuntime } from "./CodexPendingWorktreeRuntime";
 import { CodexThreadDirectory, type CodexThreadDirectoryEntry } from "./CodexThreadDirectory";
 import { CodexThreadSettingsRuntime } from "./CodexThreadSettingsRuntime";
@@ -65,7 +65,6 @@ export const make: Effect.Effect<
   | CodexForkSidePanelTransfer
   | CodexForkTitlePolicy
   | CodexGateway
-  | CodexOwnerNotificationDrainRuntime
   | CodexPendingWorktreeRuntime
   | CodexThreadDirectory
   | CodexThreadSettingsRuntime
@@ -78,7 +77,6 @@ export const make: Effect.Effect<
   const projection = yield* CodexConversationProjection;
   const sidePanelTransfers = yield* CodexForkSidePanelTransfer;
   const forkTitles = yield* CodexForkTitlePolicy;
-  const notificationDrain = yield* CodexOwnerNotificationDrainRuntime;
   const pendingWorktrees = yield* CodexPendingWorktreeRuntime;
   const directory = yield* CodexThreadDirectory;
   const threadSettings = yield* CodexThreadSettingsRuntime;
@@ -228,10 +226,10 @@ export const make: Effect.Effect<
         );
       }
       if (parsed.turnId) {
-        const turn = full.canonical.turns.find(
-          (candidate) => candidate.protocol.id === parsed.turnId,
+        const turn = residentConversationTurns(full.canonical).find(
+          (candidate) => candidate.turnId === parsed.turnId,
         );
-        if (!turn || turn.protocol.status === "inProgress") {
+        if (!turn || turn.status === "inProgress") {
           return yield* error(
             "pending",
             sessionId,
@@ -354,9 +352,6 @@ export const make: Effect.Effect<
     return yield* conversations.runCommand(
       source.threadId,
       Effect.gen(function* () {
-        yield* notificationDrain
-          .awaitCurrent(source.threadId)
-          .pipe(Effect.mapError((cause) => error("pending", sessionId, cause)));
         const current = yield* projection
           .read(source.threadId)
           .pipe(Effect.mapError((cause) => error("pending", sessionId, cause)));

@@ -1,5 +1,6 @@
 import type { CodexThreadSummary } from "@/lib/types";
 import { resolveThreadStatusDisplayLabel } from "@/lib/thread-status-display";
+import { resolveCodexElectronDisplayThreadTitle } from "../../../shared/codex-thread-title";
 
 export type ThreadMentionTone = "normal" | "muted" | "error";
 
@@ -25,15 +26,6 @@ export function formatThreadMentionShortUuid(uuid: string): string {
   return `${trimmed.slice(0, 8)}...${trimmed.slice(-4)}`;
 }
 
-function firstPreviewLine(thread: CodexThreadSummary): string {
-  return (
-    thread.threadPreview
-      .split("\n")
-      .map((line) => line.trim())
-      .find((line) => line.length > 0) ?? ""
-  );
-}
-
 function resolveThreadStateLabel(
   thread: CodexThreadSummary | null,
   resolving: boolean,
@@ -54,9 +46,11 @@ export function resolveThreadMentionDisplay(
   const missing = input.missing === true;
   const label = missing
     ? "Missing thread"
-    : thread?.threadName?.trim() ||
-      (thread ? firstPreviewLine(thread) : "") ||
-      formatThreadMentionShortUuid(uuid);
+    : resolveCodexElectronDisplayThreadTitle({
+        threadName: thread?.threadName,
+        threadPreview: thread?.threadPreview,
+        fallback: formatThreadMentionShortUuid(uuid),
+      });
   const stateLabel = resolveThreadStateLabel(thread, resolving, missing);
   const shortUuid = formatThreadMentionShortUuid(uuid);
   const detail = [stateLabel, shortUuid].filter((value) => value.trim().length > 0).join(" · ");

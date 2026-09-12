@@ -55,6 +55,7 @@ it.effect("routes native click, visibility, and avatar events through their sema
         }).pipe(Effect.andThen(Deferred.succeed(iabFocus, input)), Effect.as(true)),
       promoteRoute: () => Effect.void,
       releaseSession: () => Effect.void,
+      endSessionActivity: () => Effect.void,
       turnEnded: () => Effect.void,
       turnStarted: () => Effect.void,
     });

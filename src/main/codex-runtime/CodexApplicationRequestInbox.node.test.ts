@@ -65,6 +65,37 @@ it.effect("keeps exact request occurrences lossless and settles each at most onc
   }),
 );
 
+it.effect("retains response trace metadata through request settlement", () =>
+  Effect.gen(function* () {
+    const rootScope = yield* Scope.make();
+    const generationScope = yield* Scope.make();
+    const inbox = yield* make.pipe(Effect.provideService(Scope.Scope, rootScope));
+    const generation = yield* inbox
+      .openGeneration("local", 1)
+      .pipe(Effect.provideService(Scope.Scope, generationScope));
+    const occurrence = yield* generation.admit({
+      requestId: 11,
+      protocol: "extension",
+      method: "item/tool/requestUserInput",
+      params: {},
+    });
+    const trace = {
+      traceparent: "00-0123456789abcdef0123456789abcdef-0123456789abcdef-01",
+      tracestate: "vendor=value",
+    };
+
+    assert.isTrue(
+      yield* inbox.settle(occurrence, { kind: "result", value: { answers: {} } }, trace),
+    );
+    const settlement = yield* generation.settlements.pipe(Stream.runHead);
+    assert.isTrue(settlement._tag === "Some");
+    if (settlement._tag === "Some") assert.deepEqual(settlement.value.trace, trace);
+
+    yield* Scope.close(generationScope, Exit.void);
+    yield* Scope.close(rootScope, Exit.void);
+  }),
+);
+
 it.effect("namespaces durable occurrence identities across Inbox lifetimes", () =>
   Effect.gen(function* () {
     const admitFirst = (rootScope: Scope.Scope, generationScope: Scope.Scope) =>
@@ -513,4 +544,29 @@ it.effect(
         assert.strictEqual(retired.reason, "revoked");
       }),
     ),
+);
+
+it.effect("resolves renderer response identities only while the exact occurrence is retained", () =>
+  Effect.gen(function* () {
+    const inbox = yield* make;
+    const generation = yield* inbox.openGeneration("local", 1);
+    const occurrence = yield* generation.admit({
+      requestId: 7,
+      protocol: "extension",
+      method: "currentTime/read",
+      params: {},
+    });
+    assert.strictEqual(yield* inbox.resolveOccurrence(occurrence), occurrence);
+    for (const wrong of [
+      { hostId: "remote" },
+      { generation: 2 },
+      { requestId: "7" },
+      { method: "item/tool/call" },
+      { occurrenceToken: occurrence.occurrenceToken + 1 },
+    ]) {
+      assert.isNull(yield* inbox.resolveOccurrence({ ...occurrence, ...wrong }));
+    }
+    assert.isTrue(yield* inbox.settle(occurrence, { kind: "result", value: {} }));
+    assert.isNull(yield* inbox.resolveOccurrence(occurrence));
+  }).pipe(Effect.scoped),
 );

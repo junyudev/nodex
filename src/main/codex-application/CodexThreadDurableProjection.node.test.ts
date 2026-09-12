@@ -175,6 +175,8 @@ it.effect(
         Effect.provideService(
           ConversationEntityMap,
           ConversationEntityMap.of({
+            registerThreadMetadata: () => {},
+            readThreadMetadata: () => null,
             current: () => null,
           } as unknown as ConversationEntityMap["Service"]),
         ),
@@ -249,6 +251,8 @@ it.effect("serially commits archive and delete observations before scheduling si
       Effect.provideService(
         ConversationEntityMap,
         ConversationEntityMap.of({
+          registerThreadMetadata: () => {},
+          readThreadMetadata: () => null,
           current: () => null,
         } as unknown as ConversationEntityMap["Service"]),
       ),
@@ -347,6 +351,8 @@ it.effect("invalidates the durable root after deleting a nested Subagent", () =>
       Effect.provideService(
         ConversationEntityMap,
         ConversationEntityMap.of({
+          registerThreadMetadata: () => {},
+          readThreadMetadata: () => null,
           current: () => null,
         } as unknown as ConversationEntityMap["Service"]),
       ),
@@ -419,6 +425,8 @@ it.effect("never treats thread/started as a history transport", () =>
       Effect.provideService(
         ConversationEntityMap,
         ConversationEntityMap.of({
+          registerThreadMetadata: () => {},
+          readThreadMetadata: () => null,
           current: () => null,
         } as unknown as ConversationEntityMap["Service"]),
       ),
@@ -463,7 +471,13 @@ it.effect("never treats thread/started as a history transport", () =>
     assert.isFalse(hydrated[0]?.pagination.hasLoadedOldest);
     assert.strictEqual(hydrated[0]?.pagination.itemsView, "notLoaded");
     assert.deepEqual(addedTitleInputs, [
-      { threadId: "thread-a", prompt: "notification preview", cwd: "/repo", serviceName: null },
+      {
+        hostId: "local",
+        threadId: "thread-a",
+        prompt: "notification preview",
+        cwd: "/repo",
+        serviceName: null,
+      },
     ]);
   }),
 );

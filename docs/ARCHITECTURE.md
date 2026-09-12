@@ -42,6 +42,11 @@ and execution-path contracts live in [the workspace runtime documentation](../re
 
 The principal dependency rule is inward ownership:
 
+Trusted desktop windows can acquire a dedicated bidirectional conversation peer service.
+Its Profile-scoped socket router routes client messages without owning conversation documents;
+the port, client identity and request lifetimes are specified in
+[Conversation Peer Service](product-specs/conversation-peer-service.md).
+
 ```text
 Renderer -> Preload -> Electron Main adapters -> Core protocol -> Core Modules
 Native CLI -------------------------------> Core protocol -> Core Modules
@@ -142,14 +147,14 @@ nor content-retention roots. See [ADR 0059](adr/0059-complete-view-order-and-sem
 | --------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | Blocks, Pages, Library Files, Databases, Documents, search, schedules, history                | Rust Core Library/Database/Document Modules                                  | Core protocol, authenticated blob streams, Electron adapters, CLI, renderer read models                                                                               |
 | Page-key namespaces, prefix history, counters, assignments                                    | Rust Core Database Module                                                    | Contextual Core projections; CLI/Agent resolve to canonical Page IDs                                                                                                  |
-| Projects, Sessions, durable Thread metadata and queued follow-up ledgers, execution context   | Rust Core Workspace Module                                                   | Electron Codex/Workspace services and renderer queries                                                                                                                |
+| Projects, Sessions, durable Thread metadata, queued-message state and execution context       | Rust Core Workspace Module                                                   | Electron Codex/Workspace services and renderer queries                                                                                                                |
 | Explicit Thread backend binding and ACP protocol-session recovery identity                    | Rust Core Workspace Module                                                   | Main backend registry and scoped ACP session manager; renderer sees typed canonical projections only                                                                  |
 | Sidebar Section identities, root order, mixed Project/Session placement, host links           | Rust Core Workspace Module                                                   | Main bounded adapters, renderer projections, agent tools, per-host app-server ThreadSection synchronization                                                           |
 | Page–Project Session Linked chat edges and Page Chat activity                                 | Rust Core Workspace Module                                                   | Effect Main Workspace Adapter; renderer joins bounded Workspace activity with Database Page windows                                                                   |
 | Project access to Library resources                                                           | Rust Core Library authorization and resource-grant boundary                  | Workspace supplies Project identity; Electron and CLI bind access context                                                                                             |
 | Automation definitions, runs, occurrences, reminder leases and receipts                       | Rust Core Automation Module                                                  | Electron scheduler/executor and renderer queries                                                                                                                      |
 | Backups, restore, bounded operational journals, Store maintenance                             | Rust Core Administration Module                                              | Electron administration adapter, background backup jobs, and controlled relaunch                                                                                      |
-| Active Codex conversation document                                                            | Current renderer owner, seeded from app-server state                         | Main holds a validated relay/recovery replica; followers render validated copies                                                                                      |
+| Active Codex conversation document                                                            | Current conversation owner peer, seeded from app-server state                | Main and window managers are ordinary peers; followers apply canonical snapshots and patches                                                                          |
 | Codex wire protocol and remote Thread observations                                            | Pinned Codex-compatible app-server                                           | Main validates and routes generated protocol envelopes                                                                                                                |
 | Live ACP process, negotiated capabilities, prompt/cancel lifecycle, and bounded transcript    | Electron Main ACP backend Module                                             | Core supplies durable Thread/workspace authority; renderer invokes Thread-scoped lifecycle APIs                                                                       |
 | Subagent positive descendant, causal status, discovery-completeness, and lifecycle projection | Rust Core Workspace Module                                                   | Main `CodexSubagentDirectory` reconciles app-server observations into bounded root overview and selected-detail interfaces; Core is not the execution graph authority |
@@ -170,7 +175,11 @@ output; export never changes recovery authority or acknowledgement. Recovery
 resolution and any restored/copied content share one LocalCommit. Product actions
 and retention are specified in [Document Sync and Recovery](product-specs/document-sync-and-recovery-behavior.md).
 
-Authority and presentation are intentionally different. A Scene can present a Page without owning it; a renderer cache can display a Database window without authorizing it; Main can relay a Codex document without becoming its visible writer.
+Authority and presentation are intentionally different. A Scene can present a Page without owning it; a renderer cache can display a Database window without authorizing it; Main can follow a Codex document without becoming its writer.
+
+The native Codex app-server owns autonomous goal execution. Conversation managers observe runtime
+status and expose explicit goal commands; an idle observation does not create a second execution
+authority in Main or a window.
 
 Page discovery is one Core-owned capability across Page references, Command Palette search, Agent search, and transport clients. Core maintains the durable projection, applies lifecycle, scope, authorization, and typed filters before the result bound, and returns complete ordering plus typed match evidence. Interactive renderers may hold only a commit-fenced, Core-authored metadata projection and query it synchronously with the same Rust search kernel compiled to WASM; Store-epoch or authorization-scope changes revoke that projection immediately. Body evidence and historical-key resolution remain asynchronous Core enrichment. Adapters translate contracts mechanically, and renderers do not define a second normalization, fuzzy, ranking, or highlighting policy. User-visible policy belongs to [Command Palette Behavior](product-specs/command-palette-behavior.md) and [NFM Editor Page Connection Behavior](product-specs/nfm-editor-page-reference-behavior.md).
 
@@ -216,7 +225,7 @@ Store formats and migration sequences are implementation/recovery contracts, not
 
 Main is an Adapter, coordinator, and runtime host. It may bind Profile/Library/Project/Session identity, perform host preflight, and coordinate external effects around a Core command. It must not open SQLite, reconstruct a semantic transaction, infer authorization from renderer state, or provide a fallback data authority when Core is unavailable.
 
-Electron Main is one Effect 4 application kernel. [`MainEntry`](../src/main/app/MainEntry.ts) is the Main-process Node runtime root; [`MainApp`](../src/main/app/MainApp.ts) owns ready, bootstrap handoff, shutdown admission, and the process Scope; [`MainApplicationLive`](../src/main/app/MainApplicationLive.ts) declaratively composes the pre-Core window state, Core, native Codex and ACP backend operations, post-Core Window activation, renderer-ingress, and host Layer clusters. Pre-Core state creates the canonical BrowserWindow and Window Session, installs only bootstrap IPC and deny-by-default navigation/guest guards, and keeps that outer Scope alive while the full authority graph acquires. Post-Core activation attaches capabilities to the same WebContents and opens its renderer gate; it never replaces the physical window. `MainApp` acquires that graph with one `Effect.provide`, so startup rollback and every normal or authority-driven quit close the same Scope. Physical Core generations, Codex app-server sessions, ACP Agent sessions, windows, workers, PTYs, file watchers, and callback fibers are subordinate scoped resources rather than parallel lifecycle owners. Worker and standalone script processes have their own explicitly allowlisted `NodeRuntime.runMain` entries and never share Main's runtime.
+Electron Main is one Effect 4 application kernel. [`MainEntry`](../src/main/app/MainEntry.ts) is the Main-process Node runtime root; [`MainApp`](../src/main/app/MainApp.ts) owns ready, bootstrap handoff, shutdown admission, and the process Scope; [`MainApplicationLive`](../src/main/app/MainApplicationLive.ts) declaratively composes the pre-Core window state, Core, native Codex and ACP backend operations, post-Core Window activation, renderer-ingress, and host Layer clusters. Pre-Core state creates the canonical BrowserWindow and Window Session, installs only bootstrap IPC and deny-by-default navigation/guest guards, and keeps that outer Scope alive while the full authority graph acquires. Post-Core activation attaches capabilities to the same WebContents and opens its renderer gate; it never replaces the physical window. `MainApp` acquires that graph with one `Effect.provide`, so startup rollback and every normal or authority-driven quit close the same Scope. The acquired application owns an inner consumer Scope that completes bounded renderer persistence and window closure before its provided IPC and persistence Layers release; window cleanup remains one shared scoped operation. Physical Core generations, Codex app-server sessions, ACP Agent sessions, windows, workers, PTYs, file watchers, and callback fibers are subordinate scoped resources rather than parallel lifecycle owners. Worker and standalone script processes have their own explicitly allowlisted `NodeRuntime.runMain` entries and never share Main's runtime.
 
 Structural clipboard coordination belongs to one application-scoped Main
 runtime because native clipboard ownership and cross-window rendezvous outlive
@@ -700,29 +709,26 @@ Codex has four distinct authorities that must not collapse into one another:
 - Rust Core Workspace owns durable Nodex Project, Session, and Thread identity, parentage, recency,
   status, archive state, sidebar placement, and execution location. It does not persist a second
   transcript.
-- One Main-owned private Conversation Entity holds the accepted application view of a live Thread
-  generation:
-  canonical protocol state, Nodex sidecars, request lifecycle, resume and pagination fences, and
-  renderer replication checkpoints. All commands and protocol consequences for that Thread pass
-  through one causal lane.
-- The active renderer owner is the sole visible conversation writer. Renderer-local editing and
-  presentation remain renderer concerns; Main retains only a validated relay and recovery replica,
-  and followers render validated copies. Asynchronous question drafts and panel selection belong
-  to that host-scoped renderer conversation manager; accepted canonical messages remain the answer
-  authority. Questions steer the existing Turn through the ordinary command lane and never acquire
-  a blocking request or durable follow-up lifecycle. See [Request User Input](product-specs/codex-thread-transcript-behavior.md#request-user-input).
+- Each authenticated execution host, account context and Endpoint identity has an ordinary
+  conversation manager in Main and participating windows. Physical native generations fence
+  asynchronous work independently of the retained manager lifetime. One peer owns each canonical conversation document; followers
+  receive its actual Immer draft patches and snapshots. Main's Conversation Entity belongs to
+  that Main manager, not to a second authority over window-owned documents. Canonical history,
+  requests, local context and unread state belong to that document independently of loaded Turns.
+- Renderer presentation derives from its manager's canonical state. Asynchronous question drafts
+  and panel selection remain local to that manager; accepted canonical messages remain the answer
+  authority. Questions steer the existing Turn without acquiring a blocking request or durable
+  follow-up lifecycle. See [Request User Input](product-specs/codex-thread-transcript-behavior.md#request-user-input).
 
-Main's Thread-history feature Module derives optional persisted-history availability from that
-canonical Entity's concrete history mode together with the exact current endpoint-generation
-capabilities. Optional consumers receive typed availability data and degrade to resident history;
-they do not infer support from renderer state or turn absence. Durable Thread creation instead
-requires an explicit paginated start contract and validates its empty metadata shell from the exact
-current endpoint generation before Core Session/Thread identity is committed. The concrete mutation
-response proves that storage contract; version-derived flags only authorize separate history RPCs.
-On resume, a generation without those optional RPCs bootstraps history from a bounded inline
-resume page, or retains existing resident history when that page is unavailable. Metadata alone
-never proves an empty transcript. The visible fallback and first-submit guarantees are defined by
-[Codex Thread Transcript Behavior](product-specs/codex-thread-transcript-behavior.md).
+Native history capabilities are bound to the concrete Thread history mode and current endpoint
+generation. The owning manager adopts native history and mutation responses into its own document.
+Durable Project/Session/Thread acceptance does not install a second canonical owner state. Main
+retains filesystem, attachment and product transaction authority while a renderer performs its
+native conversation operations. The request adapter preserves caller identity, native errors and
+outcomes across queueing, timeout, cancellation and manager retirement. Owner selection and
+operation-specific preconditions belong to the conversation manager; generated native request
+routing does not repeat owner election. See [Owner/Followers](product-specs/codex-thread-owner-follower-streaming.md)
+and [Transcript Behavior](product-specs/codex-thread-transcript-behavior.md).
 
 Sidebar Sections are a Profile-wide organization projection owned by Core Workspace, independent
 of Project execution ownership. Direct placement uses stable Project or Session identities; a
@@ -735,10 +741,11 @@ root order. See [ADR 0054](adr/0054-core-authoritative-sidebar-sections.md) and 
 The app-server transport has one physical owner per endpoint generation. The Gateway exposes typed
 requests and generation-fenced observations without duplicating reconnect, timeout, request
 correlation, or event buffering. A process-scoped request Inbox exists before endpoint attachment,
-so startup and replacement cannot lose an accepted occurrence. The application protocol decodes
-each request or notification once, routes it to its semantic family, and enters the target Thread's
-causal lane. Different Threads may progress concurrently; events for one Thread cannot overtake its
-own accepted command or projection consequence.
+so startup and replacement cannot lose an accepted occurrence. The application protocol validates native
+occurrences, gives Main's manager its own resume/start ingress buffers, and forwards original
+native envelopes to participating windows. Each manager applies ingress according to its own
+role and captured lifetime. Durable product consequences enter Main's Thread causal lane; that
+lane does not serialize or authorize another peer's local canonical mutations.
 
 A Thread causal lane is intentionally non-reentrant. Admission capabilities that can materialize
 or resolve a Thread—and therefore may enter that lane themselves—run before a command acquires the
@@ -762,6 +769,14 @@ Core idempotency identity also includes a process-unique Inbox namespace in addi
 monotonic occurrence token; restarting Main therefore cannot alias a new notification to an old
 persisted operation receipt.
 
+Transport-owned server requests are claimed at the Endpoint before application Inbox admission.
+Their handlers belong to the stable Endpoint lifetime rather than one physical generation: a
+successful completion waits for the currently ready physical session, while a handler failure
+attempts its error response against the session that is current at that moment. Ordinary
+application-owned server requests continue through the generation-scoped Inbox and settlement
+queue, so replacement still revokes every pending application occurrence from the retired
+generation.
+
 ```mermaid
 flowchart LR
     Server["Codex app-server"] --> Endpoint["Endpoint generation"]
@@ -777,8 +792,11 @@ flowchart LR
     Lane --> Entity["Private Conversation Entity state"]
     Entity --> Events["Application event hub"]
     Events --> Projection["Renderer and native projections"]
-    Renderer["Renderer owner/followers"] <--> Coordinator["Renderer conversation coordinator"]
-    Coordinator <--> Entity
+    Gateway --> NativeIngress["Native occurrence delivery"]
+    NativeIngress --> Renderer["Window conversation managers"]
+    Renderer <--> Peers["Conversation peer service"]
+    Peers <--> MainManager["Main conversation manager"]
+    MainManager <--> Entity
 ```
 
 A Thread directory joins durable identity and execution metadata with explicit metadata,
@@ -786,7 +804,7 @@ bounded-tail, and live app-server reads. It exposes no generic complete-history 
 Hydration, resume, and fresh launch seed durable facts first, buffer concurrent protocol
 occurrences behind a generation fence, and publish only a complete accepted resident state. Endpoint
 replacement, Thread removal, or failed hydration invalidates that generation's pending requests,
-buffers, command fibers, and renderer checkpoint. Recovery rebuilds from Core plus a fresh
+buffers, command fibers, and captured native request receipts. Recovery rebuilds from Core plus a fresh
 bounded app-server tail; it never merges two generations or treats a sidebar summary as transcript
 authority. Explicit full-history export is a separate cancellable iterator and never expands the
 resident entity.
@@ -809,12 +827,12 @@ lock across unrelated preparation I/O. The same handoff owner projects revisione
 through a trusted renderer observation Adapter; transcript consumers select their operation rather
 than authoring progress or polling from individual rows. See [Managed Worktree Lifecycle](product-specs/codex-managed-worktree-lifecycle-behavior.md).
 
-Queued follow-ups have one deep live owner. Core persists the ordered exact-revision ledger and
-content-addressed payload evidence; Main's scoped queue Module owns hydration, terminal recovery,
-manual and automatic delivery, and generation fencing. The active renderer owner remains the sole
-visible conversation writer by applying Main-authored full queue projections fenced by Thread
-generation, owner epoch, and projection revision. Followers render those owner publications and
-never acquire queue mutation or transport authority.
+Queued follow-ups are captured submissions independent of transcript residency. Core persists
+their document; each host or window manager uses the shared queue coordinator with its actual
+stream role. Queue updates and execution are routed through the conversation peer service.
+The executing manager owns delivery locks, settings waits, terminal recovery and native start
+or steer. Main provides durable storage and admitted input capabilities without owning a second
+renderer queue projection. See [Thread Owner/Follower Streaming](product-specs/codex-thread-owner-follower-streaming.md).
 
 App-server approval, elicitation, permission, and user-input requests have one canonical pending
 request lifecycle. Admission records the exact endpoint and Thread generation before presentation;
@@ -829,32 +847,33 @@ Thread, Turn, Store epoch, and requester lifetime. Core remains the only durable
 authority and revalidates access at the semantic operation. Renderer presence or approval can never
 broaden a Core resource boundary, and Scope close clears every transient grant.
 
-Renderer client identity and Electron delivery belong to the scoped renderer client runtime. A
-conversation registry records presence and role without owning projection policy; the conversation
-coordinator atomically owns adoption, owner replacement, following, targeted request delivery, and
-client disposal consequences. First-owner adoption converts the entity's already-hydrated
-canonical snapshot into the initial accepted renderer replica; it never requires that replica to
-exist before adoption and fails closed when no canonical snapshot exists. One observable renderer
-attachment lifecycle spans resume, fresh launch, background-detail materialization, and ephemeral
-side chat. Role and accepted checkpoint install before the matching conversation snapshot notifies
-subscribers; post-adoption activation completes buffer release, owner publication, and pending-request
-replay. A settled failure exits the loading phase and may retain a truthful cached transcript, but
-it never retains a visible loading state or an unusable owner role. An explicit retry or a
-subsequently accepted owner snapshot may attach the surface again. A follower
-acknowledges an exact owner snapshot barrier and then
-accepts only contiguous patches from the same owner epoch. A revision gap, owner replacement,
-or transport reset requests a fresh barrier instead of merging competing documents. The event hub
-fans accepted application changes to renderer projection and native notification consumers; those
-consumers own their subscriptions and cannot mutate canonical state.
+Each authenticated execution host has ordinary conversation managers in Main and its windows.
+Their shared stream owns role selection, follow intent, canonical snapshots, patches and revision
+waiters. Main owns the native app-server connection and product authorization; its entity is a
+canonical writer only while its manager owns that conversation. A window-owned document installs
+in Main as follower state without a second publication or terminal-state rewrite.
 
-Conversation history inside the private Entity is a sparse topology of islands, entities, and
-explicit boundaries. Turn pages and per-Turn item pages merge atomically under host-generation and
-cursor fences. The renderer owner serializes visible history commits with its publication stream;
-Main prepares history proposals without advancing the owned document's cursors, then mirrors the
-accepted owner revision without substituting its recovery projection. Loaded entities remain resident for the owner lifetime; viewport geometry is not a retention authority.
-Unproven boundaries remain inert rather than inventing a cursor. Renderer gaps request one page
-through the current owner, and persisted search hydrates only a bounded island around the selected
-occurrence.
+Native notifications and requests retain physical occurrence identity into each manager. A
+manager's canonical document is the input to its derived presentation. The conversation peer
+service routes owner discovery, broadcasts and typed actions without a central accepted replica,
+checkpoint barrier or notification ACK. Renderer presence and request presentation are separate
+capabilities of the scoped window runtime. Native large-message delivery owns its own chunk ACKs.
+Attachment is one observable lifecycle across resume, fresh launch and selected background
+conversations. A failure settles that lifecycle and explicit retry starts a new attempt. The
+ownership and recovery contract lives in
+[Thread Owner/Follower Streaming](product-specs/codex-thread-owner-follower-streaming.md).
+
+Conversation history belongs to the owning manager's canonical document. Sparse islands reference
+stable entity keys whose values are direct Turns; display overlays do not become mutation targets.
+Turn and item loads execute through the manager's native client. Boundary requests revalidate the
+captured cursor after I/O, and item requests belong to the exact pagination object and manager
+generation. Ordinary history pages install in the requesting manager, including a follower,
+without acquiring execution ownership. Complete-history operations execute in the owner and
+publish through its stream. Main and window managers share these loaders; no separate Main proposal or history ACK
+advances their cursors. Persisted search hydrates a Turn neighborhood and continues the selected
+Turn until its occurrence is found or the native cursor is exhausted. Whole-history release retires
+all islands while retaining metadata and pending requests. The lifecycle contract lives in
+[Thread Transcript Behavior](product-specs/codex-thread-transcript-behavior.md#ordering-and-identity).
 
 Subagent projection belongs to one Main `CodexSubagentDirectory` deep Module. The app-server remains
 the execution graph and transcript authority. The Directory generation-fences spawn, status,
@@ -871,7 +890,7 @@ to child conversations. Multi-page expansion pins one Core projection revision a
 whole bounded scan on mutation, so Main never publishes a mixed-revision tree. Main validates one
 selected descendant before delegating its sparse attach to the existing Thread history and
 owner/follower Modules; the route becomes ready only after the requesting renderer has installed
-the role, checkpoint, attachment state, and conversation snapshot. Ordinary collaboration notifications
+the role, attachment state, and canonical conversation state. Ordinary collaboration notifications
 admit status/topology evidence without waiting for remote metadata, while discovery, metadata
 enrichment, interruption skeletons, and lifecycle postconditions share the existing root-scoped
 request scheduler lanes. Root interruption, archive, and permanent deletion compose the Directory's typed subtree result;
@@ -885,7 +904,11 @@ automation, fork, handoff, archive, and restore use the same execution-location 
 capabilities, so a Thread cannot acquire a parallel filesystem owner or silently adopt stale
 app-server cwd metadata.
 
-All Codex application observation uses typed Streams or the application event hub. Promise,
+Codex application observation uses typed Streams, the application event hub, or a session-owned
+Effect delivery capability. Authenticated read-state sessions deliver accepted changes directly
+to their observer or RPC Adapter; a second application queue does not own their lifetime. See
+[Authenticated read state](product-specs/codex-thread-owner-follower-streaming.md#authenticated-read-state).
+Promise,
 callback, child-process, worker, and generated JSON-RPC shapes are converted once at the external
 adapter that requires them; downstream capabilities remain Effect-native. Per-Thread generations,
 endpoint generations, request deadlines, renderer clients, workers, and background fibers are
@@ -1038,8 +1061,8 @@ These invariants cross subsystem boundaries. Narrower domain and feature invaria
 15. Exact Document live sync is a resource boundary with canonical repair, not a second global ledger reader.
 16. Store epoch, Core generation, Document generation, Document head, state vector, and semantic revision are distinct and must not be conflated.
 17. Window Session Scenes own presentation only. Durable content, Codex conversation state, Browser guests, Terminals, and collaborative sessions retain their deeper owners across React unmounts.
-18. Generated app-server protocol types are the raw Codex contract. Local conversation models are explicit canonical sidecars or derived projections, never parallel guesses at protocol fields.
-19. An active Codex renderer owner is the sole visible conversation writer. Main may validate, relay, and recover its accepted document but cannot emit a competing visible state at the same revision.
+18. Generated app-server protocol types are the raw Codex contract. Local conversation models are explicit canonical extensions or derived projections, never parallel guesses at protocol fields.
+19. Each Codex conversation has one effective owner peer. Main and window managers publish canonical mutations only while they own that stream; derived presentations and follower-local history reads cannot become competing publications.
 20. Browser and MCP App guests are sandboxed Main-owned runtimes. Renderer-authored preferences, DOM attributes, or URLs cannot create or broaden guest authority.
 21. There is no catch-all persistence or generic mutation boundary. New durable semantics enter an owning deep Module and its typed Interface.
 22. The Library owns File identity. Pages own relationships and paths; structural moves and copies preserve File IDs without changing shared content or global metadata. File grants and Page presentation authority remain separate.

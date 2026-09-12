@@ -6,21 +6,26 @@ import * as Semaphore from "effect/Semaphore";
 import type * as Scope from "effect/Scope";
 import { cappedApproximateValueBytes } from "../../shared/codex-bounded-value-size";
 import {
-  createCodexCanonicalHydratedConversationState,
+  hydrateCodexCanonicalTurns,
+  canonicalHistoryPermissionContext,
+  mergeCodexCanonicalTurnStates,
   type CodexCanonicalHydrationContext,
+  type CodexCanonicalPermissionContext,
+  type CodexCanonicalTurnState,
   type CreateCodexCanonicalHydratedConversationStateOptions,
 } from "../../shared/codex-conversation-state/codex-conversation-state";
+import { hasCompleteCanonicalConversationHistory } from "../../shared/codex-conversation-state/codex-complete-history-loader";
+import { residentConversationTurns } from "../../shared/codex-conversation-state/codex-turn-mutation";
 import type {
   CodexConversationHistoryExportNextResult,
   CodexConversationHistoryExportStartResult,
-  CodexConversationSnapshot,
   CodexConversationTurn,
 } from "../../shared/types";
 import {
   CodexAppServerCapabilities,
   type CodexAppServerCapabilitySnapshot,
 } from "../codex-runtime/CodexAppServerCapabilities";
-import { projectCodexConversationSnapshot } from "./CodexConversationSnapshotProjection";
+import { projectCodexConversationTurn } from "./CodexConversationSnapshotProjection";
 import { CODEX_HISTORY_ITEM_PAGE_SIZE, CodexHistoryPageAdapter } from "./CodexHistoryPageAdapter";
 import { ConversationEntityMap } from "./internal/ConversationEntityMap";
 
@@ -37,8 +42,7 @@ interface ExportJobBase {
   readonly threadId: string;
   readonly mode: ExportMode;
   readonly capability: CodexAppServerCapabilitySnapshot | null;
-  readonly baseSnapshot: CodexConversationSnapshot;
-  readonly hydration: CodexCanonicalHydrationContext;
+  readonly hostId: string;
   completedTurnCount: number;
   lastTouchedAtMs: number;
   busy: boolean;
@@ -47,13 +51,15 @@ interface ExportJobBase {
 interface PaginatedExportJob extends ExportJobBase {
   readonly mode: "paginated";
   readonly capability: CodexAppServerCapabilitySnapshot;
+  readonly hydration: CodexCanonicalHydrationContext;
+  readonly permissions: CodexCanonicalPermissionContext;
   turnCursor: string | null;
 }
 
 interface ResidentExportJob extends ExportJobBase {
   readonly mode: "resident";
   readonly capability: null;
-  readonly residentTurns: readonly CodexConversationTurn[];
+  readonly residentTurns: readonly CodexCanonicalTurnState[];
   residentIndex: number;
 }
 
@@ -146,9 +152,10 @@ const assertTurnBudget = (
 
 const hydrationOptions = (
   context: CodexCanonicalHydrationContext,
-): CreateCodexCanonicalHydratedConversationStateOptions => {
+  currentPermissions: CodexCanonicalPermissionContext,
+): Omit<CreateCodexCanonicalHydratedConversationStateOptions, "hostId"> => {
   const settings = context.latestThreadSettings;
-  const permissions = context.currentPermissions;
+  const permissions = canonicalHistoryPermissionContext(currentPermissions);
   return {
     model: settings?.model ?? context.latestModel ?? context.model,
     reasoningEffort: (settings?.effort ??
@@ -167,33 +174,27 @@ const hydrationOptions = (
 };
 
 const projectExportTurn = (input: {
-  readonly snapshot: CodexConversationSnapshot;
+  readonly threadId: string;
+  readonly hostId: string;
+  readonly turnIndex: number;
   readonly hydration: CodexCanonicalHydrationContext;
+  readonly permissions: CodexCanonicalPermissionContext;
   readonly turn: Turn;
 }): CodexConversationTurn => {
-  const canonical = input.snapshot.canonicalState;
-  if (!canonical) {
-    throw new Error(`Thread '${input.snapshot.threadId}' has no canonical export context`);
-  }
-  const pageState = createCodexCanonicalHydratedConversationState(
-    { ...canonical.protocol, turns: [input.turn] },
-    hydrationOptions(input.hydration),
-  );
-  const projected = projectCodexConversationSnapshot({
-    conversation: {
-      ...input.snapshot,
-      turns: [],
-      requests: [],
-      canonicalRequests: [],
-      canonicalState: null,
-    },
-    before: null,
-    after: pageState,
+  const turn = hydrateCodexCanonicalTurns(input.threadId, [input.turn], {
+    ...hydrationOptions(input.hydration, input.permissions),
+    hostId: input.hostId,
+  })[0];
+  if (!turn) throw new Error(`Thread '${input.threadId}' export page was empty`);
+  // Project this page's Turn directly. Resident islands belong to the live document.
+  return projectCodexConversationTurn({
+    threadId: input.threadId,
+    turnIndex: input.turnIndex,
+    beforeTurn: null,
+    afterTurn: turn,
+    current: null,
     observedAtMs: Date.now(),
   });
-  const turn = projected.turns[0];
-  if (!turn) throw new Error(`Thread '${input.snapshot.threadId}' export page was empty`);
-  return turn;
 };
 
 export const make: Effect.Effect<
@@ -420,8 +421,11 @@ export const make: Effect.Effect<
     const projected = yield* Effect.try({
       try: () =>
         projectExportTurn({
-          snapshot: job.baseSnapshot,
+          threadId: job.threadId,
+          hostId: job.hostId,
+          turnIndex: job.completedTurnCount,
           hydration: job.hydration,
+          permissions: job.permissions,
           turn: completeTurn,
         }),
       catch: (cause) =>
@@ -452,7 +456,17 @@ export const make: Effect.Effect<
   });
 
   const nextResident = (job: ResidentExportJob): CodexConversationHistoryExportNextResult => {
-    const turn = job.residentTurns[job.residentIndex] ?? null;
+    const canonicalTurn = job.residentTurns[job.residentIndex];
+    const turn = canonicalTurn
+      ? projectCodexConversationTurn({
+          threadId: job.threadId,
+          turnIndex: job.residentIndex,
+          beforeTurn: null,
+          afterTurn: canonicalTurn,
+          current: null,
+          observedAtMs: Date.now(),
+        })
+      : null;
     if (turn) {
       job.residentIndex += 1;
       job.completedTurnCount += 1;
@@ -485,10 +499,8 @@ export const make: Effect.Effect<
           });
         }
         const aggregate = conversations.current(input.threadId);
-        const snapshot = aggregate?.readSnapshot() ?? null;
         const canonical = aggregate?.readCanonicalState() ?? null;
-        const hydration = canonical?.sidecar.hydrationContext ?? null;
-        if (!snapshot || !canonical || !hydration) {
+        if (!canonical) {
           return yield* exportError("history-unavailable", {
             threadId: input.threadId,
             cause: new Error("Thread must be resumed before exporting its history"),
@@ -496,72 +508,79 @@ export const make: Effect.Effect<
         }
 
         const jobId = `history-export:${now}:${nextJobSequence++}`;
-        const isPaginated = canonical.protocol.historyMode === "paginated";
-        if (isPaginated) {
-          const capability = yield* capabilities
-            .forThread(input.threadId)
-            .pipe(
-              Effect.mapError((cause) =>
-                exportError("history-unavailable", { threadId: input.threadId, jobId, cause }),
-              ),
-            );
-          if (!capability.flags.paginatedHistory) {
-            return yield* exportError("unsupported-history", {
-              threadId: input.threadId,
-              jobId,
-              cause: new Error("This Codex host cannot stream paginated history"),
-            });
-          }
+        if (hasCompleteCanonicalConversationHistory(canonical)) {
+          const residentTurns = canonical.turnHistory
+            ? mergeCodexCanonicalTurnStates(residentConversationTurns(canonical), canonical.turns)
+            : canonical.turns;
           jobs.set(jobId, {
             jobId,
             consumerId: input.consumerId,
             threadId: input.threadId,
-            mode: "paginated",
-            capability,
-            baseSnapshot: snapshot,
-            hydration,
-            turnCursor: null,
+            mode: "resident",
+            capability: null,
+            hostId: canonical.hostId,
+            residentTurns,
+            residentIndex: 0,
             completedTurnCount: 0,
             lastTouchedAtMs: now,
             busy: false,
           });
           return {
             jobId,
-            mode: "paginated",
+            mode: "resident",
             completedTurnCount: 0,
-            totalTurnCount: null,
+            totalTurnCount: residentTurns.length,
           } satisfies CodexConversationHistoryExportStartResult;
         }
 
-        const hasPartialItems = Object.values(snapshot.turnItemsPaginationById ?? {}).some(
-          (pagination) => !pagination.hasLoadedOldest,
-        );
-        if (snapshot.turnPagination?.hasLoadedOldest === false || hasPartialItems) {
+        if (canonical.historyMode !== "paginated") {
           return yield* exportError("unsupported-history", {
             threadId: input.threadId,
             jobId,
             cause: new Error("Legacy history is not fully resident and cannot be exported safely"),
           });
         }
+        const hydration = canonical.hydrationContext;
+        const permissions = canonical.currentPermissions;
+        if (!hydration || !permissions)
+          return yield* exportError("history-unavailable", {
+            threadId: input.threadId,
+            jobId,
+            cause: new Error("Thread has no history hydration context"),
+          });
+        const capability = yield* capabilities
+          .forThread(input.threadId)
+          .pipe(
+            Effect.mapError((cause) =>
+              exportError("history-unavailable", { threadId: input.threadId, jobId, cause }),
+            ),
+          );
+        if (!capability.flags.paginatedHistory) {
+          return yield* exportError("unsupported-history", {
+            threadId: input.threadId,
+            jobId,
+            cause: new Error("This Codex host cannot stream paginated history"),
+          });
+        }
         jobs.set(jobId, {
           jobId,
           consumerId: input.consumerId,
           threadId: input.threadId,
-          mode: "resident",
-          capability: null,
-          baseSnapshot: snapshot,
+          mode: "paginated",
+          capability,
+          hostId: canonical.hostId,
           hydration,
-          residentTurns: snapshot.turns,
-          residentIndex: 0,
+          permissions,
+          turnCursor: null,
           completedTurnCount: 0,
           lastTouchedAtMs: now,
           busy: false,
         });
         return {
           jobId,
-          mode: "resident",
+          mode: "paginated",
           completedTurnCount: 0,
-          totalTurnCount: snapshot.turns.length,
+          totalTurnCount: null,
         } satisfies CodexConversationHistoryExportStartResult;
       }),
     );

@@ -8,8 +8,14 @@ import {
   listCodexBackgroundTerminalTurnIds,
   reduceCodexBackgroundTerminalCleanup,
 } from "./codex-background-terminal-cleanup";
-
-const command = (id: string): Extract<ThreadItem, { type: "commandExecution" }> => ({
+const command = (
+  id: string,
+): Extract<
+  ThreadItem,
+  {
+    type: "commandExecution";
+  }
+> => ({
   type: "commandExecution",
   id,
   command: id,
@@ -81,7 +87,10 @@ const state = (turns: readonly Turn[]) => {
     turns: [...turns],
   };
   return createCodexCanonicalConversationState(thread, {
-    turnParamsById: Object.fromEntries(turns.map((turn) => [turn.id, params(threadId)])),
+    hostId: "local",
+    ...{
+      turnParamsById: Object.fromEntries(turns.map((turn) => [turn.id, params(threadId)])),
+    },
   });
 };
 
@@ -97,13 +106,13 @@ const turn = (id: string, status: Turn["status"]): Turn => ({
 });
 
 describe("background terminal canonical semantics", () => {
-  test("excludes only the latest foreground Turn", () => {
+  test("lists only background turns but records cleanup across all resident commands", () => {
     const before = state([turn("older", "inProgress"), turn("latest", "inProgress")]);
 
     expect(listCodexBackgroundTerminalTurnIds(before)).toEqual(["older"]);
     const after = reduceCodexBackgroundTerminalCleanup(before);
-    expect(after.turns[0]?.sidecar.interruptedCommandExecutionItemIds).toEqual(["command-older"]);
-    expect(after.turns[1]?.sidecar.interruptedCommandExecutionItemIds).toBeUndefined();
+    expect(after.turns[0]?.interruptedCommandExecutionItemIds).toEqual(["command-older"]);
+    expect(after.turns[1]?.interruptedCommandExecutionItemIds).toEqual(["command-latest"]);
   });
 
   test("includes a detached command on the latest completed Turn", () => {
@@ -111,8 +120,7 @@ describe("background terminal canonical semantics", () => {
 
     expect(listCodexBackgroundTerminalTurnIds(before)).toEqual(["completed"]);
     expect(
-      reduceCodexBackgroundTerminalCleanup(before).turns[0]?.sidecar
-        .interruptedCommandExecutionItemIds,
+      reduceCodexBackgroundTerminalCleanup(before).turns[0]?.interruptedCommandExecutionItemIds,
     ).toEqual(["command-completed"]);
   });
 
@@ -122,10 +130,7 @@ describe("background terminal canonical semantics", () => {
       ...before,
       turns: before.turns.map((entry) => ({
         ...entry,
-        sidecar: {
-          ...entry.sidecar,
-          interruptedCommandExecutionItemIds: ["command-completed"],
-        },
+        interruptedCommandExecutionItemIds: ["command-completed"],
       })),
     };
 

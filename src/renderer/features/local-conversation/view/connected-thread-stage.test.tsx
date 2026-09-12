@@ -1,6 +1,9 @@
+import type { ThreadReadStateChange } from "../../../../shared/codex-thread-read-state";
+import type { ThreadResumeResponse } from "@nodex/codex-app-server-protocol/v2";
+import { buildAgentActivityV2CorpusThread } from "../../../../shared/codex-conversation-state/test-fixtures/agent-activity-v2-corpus-provenance";
 import { createCommandKeymapState } from "../../../../shared/command-keybindings";
 import { useState, type ReactNode } from "react";
-import { describe, expect, vi, test } from "vite-plus/test";
+import { beforeEach, describe, expect, vi, test } from "vite-plus/test";
 import { act, fireEvent, waitFor } from "@testing-library/react";
 import { NodexTooltipProvider as TooltipProvider } from "../../../components/ui/tooltip";
 import { installAsyncRequestAnimationFrame, installWindowApi } from "../../../test/browser-globals";
@@ -16,8 +19,9 @@ import type {
   CodexHostMessage,
   CodexThreadSummary,
 } from "../../../lib/types";
-import { buildCodexThreadStreamCheckpoint } from "../../../../shared/codex-owner-follower-replication";
-import type { CodexThreadStreamStateChangedEvent } from "../app-server-message-bus";
+import { withCanonicalState } from "../../../test/canonical-conversation-fixture";
+import type { ConversationCoordinationHost } from "../../../../shared/codex-client-coordination";
+import type { CodexAppServerManager } from "../local-conversation-store";
 import type { ThreadStageActions, ThreadStageRouteInput } from "../thread-stage-types";
 import type { RightPanelComposerOverlayVisibility } from "./right-panel-composer-overlay";
 import { sessionFirstSubmissionOwner } from "../../conversation-launch/session-first-submission-owner";
@@ -29,7 +33,70 @@ let invokeCalls: Array<{
   active?: boolean;
   presented?: boolean;
 }> = [];
+let readStateWrites: ThreadReadStateChange[] = [];
+beforeEach(() => {
+  readStateWrites = [];
+  coordination.resumeError = null;
+  coordination.generation = 1;
+  coordination.hostAvailable = true;
+});
+
+vi.mock("../renderer-thread-read-state", () => ({
+  connectRendererThreadReadState: () => ({
+    async set(change: ThreadReadStateChange) {
+      readStateWrites.push(change);
+      return { status: "ok" as const };
+    },
+    [Symbol.dispose]() {},
+  }),
+}));
+
 let hostMessageListener: ((message: CodexHostMessage) => void) | null = null;
+
+const coordination = vi.hoisted(() => ({
+  getManager: null as ((hostId: string) => CodexAppServerManager) | null,
+  resumeError: null as Error | null,
+  generation: 1,
+  hostAvailable: true,
+}));
+
+vi.mock("../conversation-coordination-connection", () => ({
+  connectConversationCoordination: (getManager: (hostId: string) => CodexAppServerManager) => {
+    coordination.getManager = getManager;
+    const host: ConversationCoordinationHost = {
+      findThreadOwner: async (input) => {
+        invokeCalls.push({
+          channel: "peer:findThreadOwner",
+          args: [input],
+          threadId: input.conversationId,
+        });
+        return "test-owner";
+      },
+      setThreadOwnership: async () => {},
+      threadArchived: async () => {},
+      threadUnarchived: async () => {},
+      threadQueuedFollowUpsChanged: async () => {},
+      threadStreamStateChanged: async () => {},
+      threadStreamFollowingChanged: async (input) => {
+        invokeCalls.push({
+          channel: "peer:threadStreamFollowingChanged",
+          args: [input],
+          threadId: input.params.conversationId,
+          active: input.params.following,
+        });
+      },
+      threadStreamFollowingStatusRequested: async () => {},
+      requestThreadFollower: async () => {
+        throw new Error("Unexpected follower mutation");
+      },
+    };
+    return {
+      ready: Promise.resolve(host),
+      readStateReady: Promise.resolve(undefined),
+      [Symbol.dispose]: () => {},
+    };
+  },
+}));
 
 function createConnectedThreadStageQueryClient() {
   const client = createTestQueryClient();
@@ -120,8 +187,63 @@ vi.mock("../local-conversation-deps", () => ({
       } satisfies CodexConnectionState;
     }
 
-    if (channel === "codex:model:list") {
-      return [];
+    if (channel === "codex:app-server:host-context") {
+      if (!coordination.hostAvailable) throw new Error("Native host is not ready");
+      return {
+        hostId: "local",
+        generation: coordination.generation,
+        sourceEpoch: "stage-fixture",
+        supportsPaginatedHistory: true,
+        supportsTurnApprovalsReviewer: false,
+        supportsThreadRevert: false,
+        accountContext: { identity: { kind: "loggedOut" }, executionHostKey: "local" },
+      };
+    }
+
+    if (channel === "codex:thread:history-hydration:prepare") {
+      const response = buildResumeResponse(firstArg as string);
+      return {
+        summary: { ...buildThreadSummary(false), threadId: firstArg },
+        context: {
+          hostId: "local",
+          model: response.model,
+          reasoningEffort: response.reasoningEffort,
+          cwd: response.cwd,
+          approvalPolicy: response.approvalPolicy,
+          approvalsReviewer: response.approvalsReviewer,
+          sandboxPolicy: response.sandbox,
+          activePermissionProfile: response.activePermissionProfile,
+          runtimeWorkspaceRoots: response.runtimeWorkspaceRoots,
+        },
+      };
+    }
+    if (channel === "codex:thread:resume:prepare") {
+      if (coordination.resumeError) throw coordination.resumeError;
+      return {
+        receiptId: `resume:${firstArg}`,
+        nativeRequestId: `native-resume:${firstArg}`,
+        hostId: "local",
+        generation: coordination.generation,
+        supportsPaginatedHistory: true,
+        requestedCwd: null,
+        params: { threadId: firstArg },
+        summary: { ...buildThreadSummary(false), threadId: firstArg },
+      };
+    }
+
+    if (channel === "codex:app-server:request") {
+      const { method, params } = (
+        args[0] as { request: { method: string; params: { threadId?: string } } }
+      ).request;
+      if (method === "model/list")
+        return { type: "result", result: { data: [], nextCursor: null } };
+      if (method === "thread/read")
+        return { type: "result", result: { thread: buildResumeResponse(params.threadId!).thread } };
+      if (method === "thread/resume")
+        return { type: "result", result: buildResumeResponse(params.threadId!) };
+      if (method === "thread/goal/get") return { type: "result", result: { goal: null } };
+      if (method === "thread/unsubscribe") return { type: "result", result: {} };
+      return { type: "result", result: await window.api?.invoke(channel, ...args) };
     }
 
     return null;
@@ -136,7 +258,36 @@ vi.mock("../local-conversation-deps", () => ({
   },
   subscribeCodexEvents: () => () => undefined,
   subscribeCodexRendererClientRequests: () => () => {},
+  subscribeWindowFocusChanges: () => () => {},
 }));
+
+function buildResumeResponse(threadId: string): ThreadResumeResponse {
+  const thread = {
+    ...buildAgentActivityV2CorpusThread(),
+    id: threadId,
+    cwd: "/tmp/project",
+    status: { type: "idle" as const },
+    turns: [],
+  };
+  return {
+    thread,
+    model: "model-one",
+    modelProvider: "openai",
+    serviceTier: null,
+    cwd: thread.cwd,
+    runtimeWorkspaceRoots: [thread.cwd],
+    instructionSources: [],
+    approvalPolicy: "on-request",
+    approvalsReviewer: "user",
+    sandbox: { type: "readOnly", networkAccess: false },
+    activePermissionProfile: null,
+    reasoningEffort: "high",
+    multiAgentMode: "explicitRequestOnly",
+    initialTurnsPage: { data: [], nextCursor: null, backwardsCursor: null },
+    turnsBackwardsCursor: null,
+    itemsBackwardsCursor: null,
+  };
+}
 
 function buildThreadSummary(archived: boolean): CodexThreadSummary {
   return {
@@ -219,25 +370,28 @@ function buildConversation(
   };
 }
 
-type TestThreadStreamDispatch = (
-  type: "thread-stream-state-changed",
-  event: CodexThreadStreamStateChangedEvent,
-) => void;
-
 function dispatchTestThreadStreamSnapshot(
-  dispatch: TestThreadStreamDispatch,
-  event: Omit<CodexThreadStreamStateChangedEvent, "checkpoint" | "baseCheckpoint">,
+  _dispatch: unknown,
+  event: {
+    hostId: string;
+    conversationId: string;
+    sourceClientId?: string | null;
+    version?: number;
+    change: { type: "snapshot"; revision: number; conversationState: CodexConversationSnapshot };
+  },
 ): void {
-  if (event.change.type !== "snapshot") {
-    throw new Error("Expected a snapshot stream fixture");
-  }
-  dispatch("thread-stream-state-changed", {
-    ...event,
-    checkpoint: buildCodexThreadStreamCheckpoint({
-      ownerEpoch: 1,
-      revision: event.change.revision,
-    }),
-    baseCheckpoint: null,
+  const manager = coordination.getManager?.(event.hostId);
+  if (!manager) throw new Error("Conversation coordination has not connected");
+  void manager.setThreadStreamFollowing(event.conversationId, true);
+  const conversationState = withCanonicalState(event.change.conversationState).canonicalState;
+  if (!conversationState) throw new Error("Canonical conversation fixture missing");
+  manager.receiveCoordination("threadStreamStateChanged", {
+    sourceClientId: event.sourceClientId ?? "test-owner",
+    params: {
+      hostId: event.hostId,
+      conversationId: event.conversationId,
+      change: { ...event.change, conversationState },
+    },
   });
 }
 
@@ -400,7 +554,7 @@ async function renderPrimaryAndAuxiliaryThread(auxiliaryMode: "background-detail
     await settleAsyncRender();
     for (const threadId of [rootSummary.threadId, childSummary.threadId]) {
       dispatchTestThreadStreamSnapshot(dispatchCodexAppServerMessage, {
-        hostId: "default",
+        hostId: "local",
         conversationId: threadId,
         version: 1,
         sourceClientId: "test-owner",
@@ -424,7 +578,7 @@ async function renderNewThreadHome(overrides?: {
   const { ConnectedThreadStage } = await import("./connected-thread-stage");
   __resetLocalConversationStoreForTests();
   installWindowApi({
-    invoke: async (channel: string) => {
+    invoke: async (channel: string, ...args: unknown[]) => {
       if (channel === "codex-command-keymap-state") return createCommandKeymapState({}, "macOS");
       if (channel === "branch-metadata") {
         return {
@@ -446,19 +600,29 @@ async function renderNewThreadHome(overrides?: {
           configTarget: null,
         };
       }
-      if (channel === "codex:composer-plugins:list") {
-        return [
-          {
-            id: "browser@openai-bundled",
-            name: "Browser",
-            displayName: "Browser",
-            description: "Control the in-app browser with ChatGPT",
-            path: "plugin://browser@openai-bundled",
-            iconUrl: null,
-            iconUrlDark: null,
-            brandColor: "#4b8df8",
-          },
-        ];
+      if (
+        channel === "codex:app-server:request" &&
+        (args[0] as { request?: { method?: string } }).request?.method === "plugin/installed"
+      ) {
+        return {
+          marketplaces: [
+            {
+              plugins: [
+                {
+                  id: "browser@openai-bundled",
+                  name: "browser",
+                  installed: true,
+                  enabled: true,
+                  interface: {
+                    displayName: "Browser",
+                    shortDescription: "Control the in-app browser with ChatGPT",
+                    brandColor: "#4b8df8",
+                  },
+                },
+              ],
+            },
+          ],
+        };
       }
       if (channel === "codex:composer-skills:list") return [];
       if (channel === "codex:composer-sites:list") {
@@ -590,7 +754,7 @@ async function renderNewThreadHome(overrides?: {
 }
 
 describe("ConnectedThreadStage archived resume behavior", () => {
-  test("reports active thread view mount and unmount to main", async () => {
+  test("follows the conversation while its view is retained and releases it on unmount", async () => {
     installAsyncRequestAnimationFrame();
     invokeCalls = [];
     hostMessageListener = null;
@@ -603,7 +767,7 @@ describe("ConnectedThreadStage archived resume behavior", () => {
     expect(
       invokeCalls.some(
         (call) =>
-          call.channel === "codex:thread:view-active:set" &&
+          call.channel === "peer:threadStreamFollowingChanged" &&
           call.threadId === "thread_active" &&
           call.active === true,
       ),
@@ -625,7 +789,7 @@ describe("ConnectedThreadStage archived resume behavior", () => {
     expect(
       invokeCalls.some(
         (call) =>
-          call.channel === "codex:thread:view-active:set" &&
+          call.channel === "peer:threadStreamFollowingChanged" &&
           call.threadId === "thread_active" &&
           call.active === false,
       ),
@@ -657,7 +821,7 @@ describe("ConnectedThreadStage archived resume behavior", () => {
     expect(
       invokeCalls.some(
         (call) =>
-          call.channel === "codex:thread:view-active:set" &&
+          call.channel === "peer:threadStreamFollowingChanged" &&
           call.threadId === "thread_active" &&
           call.active === true,
       ),
@@ -750,7 +914,7 @@ describe("ConnectedThreadStage archived resume behavior", () => {
 
     await act(async () => {
       dispatchTestThreadStreamSnapshot(dispatchCodexAppServerMessage, {
-        hostId: "default",
+        hostId: "local",
         conversationId: "thread_child",
         version: 1,
         sourceClientId: "test-owner",
@@ -771,11 +935,34 @@ describe("ConnectedThreadStage archived resume behavior", () => {
                 createdAt: 3,
               },
             ],
+            canonicalRequests: [
+              {
+                method: "item/commandExecution/requestApproval",
+                id: "background-approval",
+                params: {
+                  threadId: "thread_child",
+                  turnId: "turn_ready",
+                  itemId: "command-background",
+                  kind: "command",
+                  startedAtMs: 3,
+                  environmentId: null,
+                  command: "git status",
+                  cwd: "/tmp/project",
+                  reason: null,
+                  commandActions: [],
+                  availableDecisions: null,
+                  proposedExecpolicyAmendment: null,
+                  proposedNetworkPolicyAmendments: null,
+                  networkApprovalContext: null,
+                  additionalPermissions: null,
+                },
+              },
+            ],
           }),
         },
       });
       dispatchTestThreadStreamSnapshot(dispatchCodexAppServerMessage, {
-        hostId: "default",
+        hostId: "local",
         conversationId: "thread_active",
         version: 1,
         sourceClientId: "test-owner",
@@ -786,7 +973,7 @@ describe("ConnectedThreadStage archived resume behavior", () => {
         },
       });
       dispatchCodexAppServerMessage("shared-object-updated", {
-        hostId: "default",
+        hostId: "local",
         object: {
           objectType: "conversationChildMemberships",
           objectId: "thread_active",
@@ -859,7 +1046,7 @@ describe("ConnectedThreadStage archived resume behavior", () => {
       await settleAsyncRender();
     });
 
-    expect(invokeCalls.some((call) => call.channel === "codex:thread:resume:request")).toBe(false);
+    expect(invokeCalls.some((call) => call.channel === "codex:thread:resume:prepare")).toBe(false);
   });
 
   test("auto-resumes non-archived active thread summaries", async () => {
@@ -875,15 +1062,78 @@ describe("ConnectedThreadStage archived resume behavior", () => {
     expect(
       invokeCalls.some(
         (call) =>
-          call.channel === "codex:thread:resume:request" && call.threadId === "thread_active",
+          call.channel === "codex:thread:resume:prepare" && call.threadId === "thread_active",
       ),
     ).toBe(true);
   });
+
+  test.each(["websocket", "stdio"] as const)(
+    "the retained foreground view resumes after %s reconnect without attempting offline hydration",
+    async (transportKind) => {
+      installAsyncRequestAnimationFrame();
+      invokeCalls = [];
+      const view = await renderStage(buildThreadSummary(false));
+      const manager = coordination.getManager!("local");
+      const { dispatchCodexAppServerMessage } = await import("../app-server-message-bus");
+      const resumes = () =>
+        invokeCalls.filter(
+          (call) =>
+            call.channel === "codex:app-server:request" &&
+            (call.args[0] as { request: { method: string } }).request.method === "thread/resume",
+        );
+      const connection = (status: "connected" | "disconnected", generation: number) =>
+        dispatchCodexAppServerMessage("shared-object-updated", {
+          hostId: "local",
+          object: {
+            objectType: "connection",
+            objectId: "connection",
+            value: {
+              status,
+              retries: 1,
+              native: { generation, sourceEpoch: "stage-fixture", transportKind },
+            },
+          },
+        });
+      await waitFor(() =>
+        expect(manager.readConversation("thread_active")?.resumeState).toBe("resumed"),
+      );
+      const initialResumes = resumes().length;
+      await act(async () => {
+        connection("connected", 1);
+      });
+      await act(async () => {
+        coordination.hostAvailable = false;
+        connection("disconnected", 1);
+      });
+      expect(manager.getStreamRole("thread_active")?.role ?? null).toBe(
+        transportKind === "websocket" ? "owner" : null,
+      );
+      coordination.generation = 2;
+      await act(async () => {
+        coordination.hostAvailable = true;
+        connection("connected", 2);
+      });
+      // The foreground recovery fallback waits ten seconds. The mounted view must resume first.
+      await waitFor(
+        () => {
+          expect(resumes()).toHaveLength(initialResumes + 1);
+          expect(manager.readConversation("thread_active")?.resumeState).toBe("resumed");
+        },
+        { timeout: 1_000 },
+      );
+      expect(resumes().at(-1)?.args[0]).toMatchObject({ scheduling: { priority: "critical" } });
+      expect(manager.getStreamRole("thread_active")?.role).toBe("owner");
+      await act(async () => {
+        view.unmount();
+      });
+    },
+  );
 
   test("settles a failed resume visibly without retrying in a render loop", async () => {
     installAsyncRequestAnimationFrame();
     invokeCalls = [];
     hostMessageListener = null;
+    coordination.resumeError = new Error("Thread could not be restored");
 
     const view = await renderStage(buildThreadSummary(false));
     await act(async () => {
@@ -894,7 +1144,7 @@ describe("ConnectedThreadStage archived resume behavior", () => {
     const resumeCount = () =>
       invokeCalls.filter(
         (call) =>
-          call.channel === "codex:thread:resume:request" && call.threadId === "thread_active",
+          call.channel === "codex:thread:resume:prepare" && call.threadId === "thread_active",
       ).length;
     expect(resumeCount()).toBe(1);
     expect(textContent(await view.findByRole("alert"))).toContain("Thread could not be restored");
@@ -922,8 +1172,10 @@ describe("ConnectedThreadStage archived resume behavior", () => {
       await settleAsyncRender();
     });
 
-    expect(invokeCalls.some((call) => call.channel === "codex:thread:view-active:set")).toBe(false);
-    expect(invokeCalls.some((call) => call.channel === "codex:thread:resume:request")).toBe(false);
+    expect(invokeCalls.some((call) => call.channel === "peer:threadStreamFollowingChanged")).toBe(
+      false,
+    );
+    expect(invokeCalls.some((call) => call.channel === "codex:thread:resume:prepare")).toBe(false);
   });
 
   test("keeps resume and view-active behavior for hidden active threads", async () => {
@@ -946,7 +1198,7 @@ describe("ConnectedThreadStage archived resume behavior", () => {
     expect(
       invokeCalls.some(
         (call) =>
-          call.channel === "codex:thread:view-active:set" &&
+          call.channel === "peer:threadStreamFollowingChanged" &&
           call.threadId === "thread_active" &&
           call.active === true,
       ),
@@ -954,7 +1206,7 @@ describe("ConnectedThreadStage archived resume behavior", () => {
     expect(
       invokeCalls.some(
         (call) =>
-          call.channel === "codex:thread:resume:request" && call.threadId === "thread_active",
+          call.channel === "codex:thread:resume:prepare" && call.threadId === "thread_active",
       ),
     ).toBe(true);
   });
@@ -977,7 +1229,7 @@ describe("ConnectedThreadStage archived resume behavior", () => {
     expect(
       invokeCalls.some(
         (call) =>
-          call.channel === "codex:thread:view-active:set" &&
+          call.channel === "peer:threadStreamFollowingChanged" &&
           call.threadId === "thread_active" &&
           call.active === true,
       ),
@@ -989,6 +1241,7 @@ describe("ConnectedThreadStage read-state control plane", () => {
   test("marks newly active unread work as read while the thread viewport is focused", async () => {
     installAsyncRequestAnimationFrame();
     invokeCalls = [];
+    readStateWrites = [];
     hostMessageListener = null;
     const hasFocusDescriptor = Object.getOwnPropertyDescriptor(document, "hasFocus");
     Object.defineProperty(document, "hasFocus", {
@@ -1000,9 +1253,10 @@ describe("ConnectedThreadStage read-state control plane", () => {
 
     try {
       invokeCalls = [];
+      readStateWrites = [];
       await act(async () => {
         dispatchTestThreadStreamSnapshot(dispatchCodexAppServerMessage, {
-          hostId: "default",
+          hostId: "local",
           conversationId: "thread_active",
           version: 1,
           sourceClientId: "test-owner",
@@ -1019,10 +1273,11 @@ describe("ConnectedThreadStage read-state control plane", () => {
 
       await waitFor(() => {
         if (
-          !invokeCalls.some(
-            (call) =>
-              call.channel === "codex:conversation-unread:set" &&
-              JSON.stringify(call.args) === JSON.stringify(["thread_active", false]),
+          !readStateWrites.some(
+            (change) =>
+              change.hostId === "local" &&
+              change.threadId === "thread_active" &&
+              !change.hasUnreadTurn,
           )
         ) {
           throw new Error("Expected focused unread thread to be marked read.");
@@ -1041,6 +1296,7 @@ describe("ConnectedThreadStage read-state control plane", () => {
   test("does not immediately clear an explicit mark-unread state without new thread activity", async () => {
     installAsyncRequestAnimationFrame();
     invokeCalls = [];
+    readStateWrites = [];
     hostMessageListener = null;
     const hasFocusDescriptor = Object.getOwnPropertyDescriptor(document, "hasFocus");
     Object.defineProperty(document, "hasFocus", {
@@ -1053,7 +1309,7 @@ describe("ConnectedThreadStage read-state control plane", () => {
     try {
       await act(async () => {
         dispatchTestThreadStreamSnapshot(dispatchCodexAppServerMessage, {
-          hostId: "default",
+          hostId: "local",
           conversationId: "thread_active",
           version: 1,
           sourceClientId: "test-owner",
@@ -1068,19 +1324,18 @@ describe("ConnectedThreadStage read-state control plane", () => {
         await settleAsyncRender();
       });
       invokeCalls = [];
+      readStateWrites = [];
 
       await act(async () => {
         dispatchCodexAppServerMessage("thread-read-state-changed", {
-          hostId: "default",
+          hostId: "local",
           conversationId: "thread_active",
           hasUnreadTurn: true,
         });
         await settleAsyncRender();
       });
 
-      expect(invokeCalls.some((call) => call.channel === "codex:conversation-unread:set")).toBe(
-        false,
-      );
+      expect(readStateWrites.length > 0).toBe(false);
     } finally {
       view.unmount();
       if (hasFocusDescriptor) {
@@ -1094,6 +1349,7 @@ describe("ConnectedThreadStage read-state control plane", () => {
   test("marks unread work as read on pointer, keyboard, and wheel interactions even before focus settles", async () => {
     installAsyncRequestAnimationFrame();
     invokeCalls = [];
+    readStateWrites = [];
     hostMessageListener = null;
     const hasFocusDescriptor = Object.getOwnPropertyDescriptor(document, "hasFocus");
     Object.defineProperty(document, "hasFocus", {
@@ -1106,7 +1362,7 @@ describe("ConnectedThreadStage read-state control plane", () => {
     try {
       await act(async () => {
         dispatchTestThreadStreamSnapshot(dispatchCodexAppServerMessage, {
-          hostId: "default",
+          hostId: "local",
           conversationId: "thread_active",
           version: 1,
           sourceClientId: "test-owner",
@@ -1120,9 +1376,7 @@ describe("ConnectedThreadStage read-state control plane", () => {
         });
         await settleAsyncRender();
       });
-      expect(invokeCalls.some((call) => call.channel === "codex:conversation-unread:set")).toBe(
-        false,
-      );
+      expect(readStateWrites.length > 0).toBe(false);
 
       const stage = view.container.firstElementChild;
       if (!(stage instanceof HTMLElement)) {
@@ -1136,9 +1390,10 @@ describe("ConnectedThreadStage read-state control plane", () => {
 
       for (const interact of interactions) {
         invokeCalls = [];
+        readStateWrites = [];
         await act(async () => {
           dispatchCodexAppServerMessage("thread-read-state-changed", {
-            hostId: "default",
+            hostId: "local",
             conversationId: "thread_active",
             hasUnreadTurn: true,
           });
@@ -1149,10 +1404,11 @@ describe("ConnectedThreadStage read-state control plane", () => {
           await settleAsyncRender();
         });
         expect(
-          invokeCalls.some(
-            (call) =>
-              call.channel === "codex:conversation-unread:set" &&
-              JSON.stringify(call.args) === JSON.stringify(["thread_active", false]),
+          readStateWrites.some(
+            (change) =>
+              change.hostId === "local" &&
+              change.threadId === "thread_active" &&
+              !change.hasUnreadTurn,
           ),
         ).toBe(true);
       }
@@ -1215,7 +1471,7 @@ describe("ConnectedThreadStage new-chat home", () => {
       if (!canonicalUserItem) throw new Error("Expected canonical user item fixture.");
       await act(async () => {
         dispatchTestThreadStreamSnapshot(dispatchCodexAppServerMessage, {
-          hostId: "default",
+          hostId: "local",
           conversationId: "thread_active",
           version: 1,
           sourceClientId: "test-owner",
@@ -1235,7 +1491,13 @@ describe("ConnectedThreadStage new-chat home", () => {
                         id: canonicalUserItem.itemId,
                         type: "userMessage",
                         clientId: submission.clientUserMessageId,
-                        content: [],
+                        content: [
+                          {
+                            type: "text",
+                            text: "Canonical first submission is visible.",
+                            text_elements: [],
+                          },
+                        ],
                       },
                     },
                   ],
@@ -1364,6 +1626,7 @@ describe("ConnectedThreadStage new-chat home", () => {
   test("uses ready thread start progress to render the materialized first turn", async () => {
     installAsyncRequestAnimationFrame();
     invokeCalls = [];
+    readStateWrites = [];
     hostMessageListener = null;
     const threadId = "thread_ready";
     const view = await renderNewThreadHome({
@@ -1381,7 +1644,7 @@ describe("ConnectedThreadStage new-chat home", () => {
 
     await act(async () => {
       dispatchTestThreadStreamSnapshot(dispatchCodexAppServerMessage, {
-        hostId: "default",
+        hostId: "local",
         conversationId: threadId,
         version: 1,
         sourceClientId: "test-owner",
@@ -1406,7 +1669,7 @@ describe("ConnectedThreadStage new-chat home", () => {
     expect(
       invokeCalls.some(
         (call) =>
-          call.channel === "codex:thread:view-active:set" &&
+          call.channel === "peer:threadStreamFollowingChanged" &&
           call.threadId === threadId &&
           call.active === true,
       ),

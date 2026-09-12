@@ -11,6 +11,7 @@ import * as ChildProcessSpawner from "effect/unstable/process/ChildProcessSpawne
 import * as CodexRpc from "./_generated/meta.gen.ts";
 import * as CodexError from "./errors.ts";
 import * as CodexProtocol from "./protocol.ts";
+import { copyCodexTransportMetadata, materializeCodexJson } from "./transport-values.ts";
 import {
   decodeNotificationPayload,
   decodeOptionalPayload,
@@ -19,6 +20,10 @@ import {
 import { makeChildStdio, makeTerminationError } from "./_internal/stdio.ts";
 
 export interface CodexAppServerClientOptions {
+  readonly receiveMetrics?: CodexProtocol.CodexAppServerReceiveMetrics;
+  readonly messageFrames?: CodexProtocol.CodexAppServerPatchedProtocolOptions["messageFrames"];
+  readonly decodedMessages?: CodexProtocol.CodexAppServerPatchedProtocolOptions["decodedMessages"];
+  readonly framing?: "jsonl" | "message";
   readonly logIncoming?: boolean;
   readonly logOutgoing?: boolean;
   readonly logger?: (event: CodexProtocol.CodexAppServerProtocolLogEvent) => Effect.Effect<void>;
@@ -64,6 +69,24 @@ export interface CodexAppServerExtensionRequest {
 
 export type CodexAppServerRequest = CodexAppServerGeneratedRequest | CodexAppServerExtensionRequest;
 
+function isPrivateMcpUserVerificationRequest(
+  request: CodexProtocol.CodexAppServerIncomingRequest,
+): boolean {
+  return (
+    request.method === "mcpServer/elicitation/request" &&
+    typeof request.params === "object" &&
+    request.params !== null &&
+    !Array.isArray(request.params) &&
+    (request.params as Record<string, unknown>).mode === "openai/userVerification"
+  );
+}
+
+function shouldOfferRawServerRequest(
+  request: CodexProtocol.CodexAppServerIncomingRequest,
+): boolean {
+  return request.method === "attestation/generate" || isPrivateMcpUserVerificationRequest(request);
+}
+
 interface CodexAppServerClientRaw {
   readonly request: CodexProtocol.CodexAppServerPatchedProtocol["request"];
   readonly notify: CodexProtocol.CodexAppServerPatchedProtocol["notify"];
@@ -87,6 +110,7 @@ export class CodexAppServerClient extends Context.Service<
     readonly request: <M extends CodexRpc.ClientRequestMethod>(
       method: M,
       payload: CodexRpc.ClientRequestParamsByMethod[M],
+      options?: CodexProtocol.CodexAppServerRequestOptions,
     ) => Effect.Effect<CodexRpc.ClientRequestResponsesByMethod[M], CodexError.CodexAppServerError>;
     readonly notify: <M extends CodexRpc.ClientNotificationMethod>(
       method: M,
@@ -106,7 +130,7 @@ export const make = Effect.fn("effect-codex-app-server/CodexAppServerClient.make
   options: CodexAppServerClientOptions = {},
   terminationError?: Effect.Effect<CodexError.CodexAppServerError>,
 ): Effect.fn.Return<CodexAppServerClient["Service"], never, Scope.Scope> {
-  const incomingCapacity = Math.max(1, Math.floor(options.incomingCapacity ?? 4_096));
+  const incomingCapacity = Math.max(1, Math.floor(options.incomingCapacity ?? Infinity));
   const notifications = yield* Queue.dropping<
     CodexAppServerNotification,
     CodexError.CodexAppServerError
@@ -179,6 +203,9 @@ export const make = Effect.fn("effect-codex-app-server/CodexAppServerClient.make
     const method = notification.method as CodexRpc.ServerNotificationMethod;
     const schema = CodexRpc.SERVER_NOTIFICATION_PARAMS[method] as Schema.Codec<unknown, unknown>;
     return decodeNotificationPayload(method, schema, notification.params).pipe(
+      Effect.tap((params) =>
+        Effect.sync(() => copyCodexTransportMetadata(notification.params, params)),
+      ),
       Effect.flatMap((params) =>
         offerNotification({ protocol: "generated", method, params } as CodexAppServerNotification),
       ),
@@ -191,7 +218,10 @@ export const make = Effect.fn("effect-codex-app-server/CodexAppServerClient.make
     typeof CodexProtocol.CodexAppServerNoResponse,
     CodexError.CodexAppServerError
   > => {
-    if (!(request.method in CodexRpc.SERVER_REQUEST_PARAMS)) {
+    if (
+      !(request.method in CodexRpc.SERVER_REQUEST_PARAMS) ||
+      shouldOfferRawServerRequest(request)
+    ) {
       return offerRequest({
         protocol: "extension",
         id: request.id,
@@ -202,6 +232,7 @@ export const make = Effect.fn("effect-codex-app-server/CodexAppServerClient.make
 
     const method = request.method as CodexRpc.ServerRequestMethod;
     return decodeOptionalPayload(method, getServerRequestParamSchema(method), request.params).pipe(
+      Effect.tap((params) => Effect.sync(() => copyCodexTransportMetadata(request.params, params))),
       Effect.mapError((error) =>
         CodexError.CodexAppServerProtocolParseError.fromRequestError(
           "decode-request-payload",
@@ -222,6 +253,10 @@ export const make = Effect.fn("effect-codex-app-server/CodexAppServerClient.make
 
   const transport = yield* CodexProtocol.makeCodexAppServerPatchedProtocol({
     stdio,
+    ...(options.receiveMetrics === undefined ? {} : { receiveMetrics: options.receiveMetrics }),
+    ...(options.messageFrames === undefined ? {} : { messageFrames: options.messageFrames }),
+    ...(options.decodedMessages === undefined ? {} : { decodedMessages: options.decodedMessages }),
+    ...(options.framing === undefined ? {} : { framing: options.framing }),
     ...(terminationError ? { terminationError } : {}),
     ...(options.logIncoming !== undefined ? { logIncoming: options.logIncoming } : {}),
     ...(options.logOutgoing !== undefined ? { logOutgoing: options.logOutgoing } : {}),
@@ -241,12 +276,22 @@ export const make = Effect.fn("effect-codex-app-server/CodexAppServerClient.make
   const request = <M extends CodexRpc.ClientRequestMethod>(
     method: M,
     payload: CodexRpc.ClientRequestParamsByMethod[M],
+    options?: CodexProtocol.CodexAppServerRequestOptions,
   ): Effect.Effect<CodexRpc.ClientRequestResponsesByMethod[M], CodexError.CodexAppServerError> =>
     encodeOptionalPayload(method, getClientRequestParamSchema(method), payload).pipe(
-      Effect.flatMap((encoded) => transport.request(method, encoded)),
-      Effect.flatMap((raw) =>
-        decodeOptionalPayload(method, getClientRequestResponseSchema(method), raw),
-      ),
+      Effect.flatMap((encoded) => transport.request(method, encoded, options)),
+      Effect.flatMap((raw) => {
+        const materialized = materializeCodexJson(raw);
+        return decodeOptionalPayload(
+          method,
+          getClientRequestResponseSchema(method),
+          materialized,
+        ).pipe(
+          Effect.tap((result) =>
+            Effect.sync(() => copyCodexTransportMetadata(materialized, result)),
+          ),
+        );
+      }),
     );
 
   const notify = <M extends CodexRpc.ClientNotificationMethod>(

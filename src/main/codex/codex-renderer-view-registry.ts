@@ -1,6 +1,6 @@
-interface ActiveRendererView {
+interface PresentedRendererView {
   readonly clientId: string;
-  readonly activationOrder: number;
+  readonly presentationOrder: number;
 }
 
 /**
@@ -11,43 +11,16 @@ interface ActiveRendererView {
  * as a Nodex authorization request without becoming the canonical state owner.
  */
 export class CodexRendererViewRegistry {
-  private activationOrder = 0;
   private presentationOrder = 0;
   private readonly foregroundClientIds = new Set<string>();
   private readonly presentedSurfaceIdsByConversationAndClient = new Map<
     string,
     Map<string, Set<string>>
   >();
-  private readonly viewsByConversationId = new Map<string, Map<string, ActiveRendererView>>();
   private readonly presentedViewsByConversationId = new Map<
     string,
-    Map<string, ActiveRendererView>
+    Map<string, PresentedRendererView>
   >();
-
-  setActive(conversationId: string, clientId: string, active: boolean): void {
-    const normalizedConversationId = conversationId.trim();
-    const normalizedClientId = clientId.trim();
-    if (!normalizedConversationId || !normalizedClientId) return;
-
-    if (!active) {
-      this.removeView(normalizedConversationId, normalizedClientId);
-      return;
-    }
-
-    const views =
-      this.viewsByConversationId.get(normalizedConversationId) ??
-      new Map<string, ActiveRendererView>();
-    this.activationOrder += 1;
-    views.set(normalizedClientId, {
-      clientId: normalizedClientId,
-      activationOrder: this.activationOrder,
-    });
-    this.viewsByConversationId.set(normalizedConversationId, views);
-  }
-
-  hasActiveView(conversationId: string): boolean {
-    return (this.viewsByConversationId.get(conversationId.trim())?.size ?? 0) > 0;
-  }
 
   isClientPresenting(conversationId: string, clientId: string): boolean {
     return (
@@ -94,11 +67,11 @@ export class CodexRendererViewRegistry {
     if (!wasClientPresented) {
       const presentedViews =
         this.presentedViewsByConversationId.get(normalizedConversationId) ??
-        new Map<string, ActiveRendererView>();
+        new Map<string, PresentedRendererView>();
       this.presentationOrder += 1;
       presentedViews.set(normalizedClientId, {
         clientId: normalizedClientId,
-        activationOrder: this.presentationOrder,
+        presentationOrder: this.presentationOrder,
       });
       this.presentedViewsByConversationId.set(normalizedConversationId, presentedViews);
     }
@@ -139,26 +112,13 @@ export class CodexRendererViewRegistry {
     return this.foregroundClientIds.size > 0;
   }
 
-  resolvePresentationClient(conversationId: string): string | null {
-    const views = this.viewsByConversationId.get(conversationId.trim());
-    if (!views) return null;
-
-    let latest: ActiveRendererView | null = null;
-    for (const view of views.values()) {
-      if (!latest || view.activationOrder > latest.activationOrder) {
-        latest = view;
-      }
-    }
-    return latest?.clientId ?? null;
-  }
-
   resolvePresentedSurfaceClient(conversationId: string): string | null {
     const views = this.presentedViewsByConversationId.get(conversationId.trim());
     if (!views) return null;
 
-    let latest: ActiveRendererView | null = null;
+    let latest: PresentedRendererView | null = null;
     for (const view of views.values()) {
-      if (!latest || view.activationOrder > latest.activationOrder) {
+      if (!latest || view.presentationOrder > latest.presentationOrder) {
         latest = view;
       }
     }
@@ -171,10 +131,6 @@ export class CodexRendererViewRegistry {
     this.foregroundClientIds.delete(normalizedClientId);
 
     const affectedConversationIds = new Set<string>();
-    for (const conversationId of this.viewsByConversationId.keys()) {
-      if (!this.removeView(conversationId, normalizedClientId)) continue;
-      affectedConversationIds.add(conversationId);
-    }
     for (const [conversationId, surfacesByClient] of this
       .presentedSurfaceIdsByConversationAndClient) {
       if (!surfacesByClient.delete(normalizedClientId)) continue;
@@ -189,25 +145,15 @@ export class CodexRendererViewRegistry {
 
   clearConversation(conversationId: string): void {
     const normalizedConversationId = conversationId.trim();
-    this.viewsByConversationId.delete(normalizedConversationId);
     this.presentedSurfaceIdsByConversationAndClient.delete(normalizedConversationId);
     this.presentedViewsByConversationId.delete(normalizedConversationId);
   }
 
   reset(): void {
-    this.activationOrder = 0;
     this.presentationOrder = 0;
     this.foregroundClientIds.clear();
     this.presentedSurfaceIdsByConversationAndClient.clear();
-    this.viewsByConversationId.clear();
     this.presentedViewsByConversationId.clear();
-  }
-
-  private removeView(conversationId: string, clientId: string): boolean {
-    const views = this.viewsByConversationId.get(conversationId);
-    if (!views?.delete(clientId)) return false;
-    if (views.size === 0) this.viewsByConversationId.delete(conversationId);
-    return true;
   }
 
   private removePresentedView(conversationId: string, clientId: string): void {

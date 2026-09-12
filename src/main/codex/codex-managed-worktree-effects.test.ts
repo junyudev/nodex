@@ -20,7 +20,16 @@ const execFileAsync = promisify(execFile);
 const roots: string[] = [];
 
 afterEach(async () => {
-  await Promise.all(roots.splice(0).map((root) => rm(root, { recursive: true, force: true })));
+  await Promise.all(
+    roots.splice(0).map((root) =>
+      rm(root, {
+        force: true,
+        maxRetries: 10,
+        recursive: true,
+        retryDelay: 100,
+      }),
+    ),
+  );
 });
 
 async function git(cwd: string, args: readonly string[]): Promise<string> {

@@ -7,6 +7,7 @@ import * as Fiber from "effect/Fiber";
 import * as Option from "effect/Option";
 import * as Scope from "effect/Scope";
 import * as Semaphore from "effect/Semaphore";
+import { randomUUID } from "node:crypto";
 import {
   CodexSidebarThreadMoveInputSchema,
   readCodexSidebarThreadContainerLocation,
@@ -15,6 +16,7 @@ import {
 } from "../../shared/codex-sidebar-thread-move";
 import { cappedApproximateValueBytes } from "../../shared/codex-bounded-value-size";
 import { CODEX_AGENT_BACKEND_BINDING } from "../../shared/agent-backend";
+import { resolveCodexElectronDisplayThreadTitle } from "../../shared/codex-thread-title";
 import type {
   CodexSidebarSnapshot,
   CodexThreadSummary,
@@ -44,7 +46,6 @@ import { CodexInternalThreadRegistry } from "./CodexInternalThreadRegistry";
 import { CodexSidebarSyncRuntime } from "./CodexSidebarSyncRuntime";
 import { CodexThreadDirectory } from "./CodexThreadDirectory";
 import { projectCoreWorkspaceThread } from "./CodexThreadDirectoryProjection";
-import { CodexThreadExecution } from "./CodexThreadExecution";
 import {
   buildCoreWorkspaceTaskThreadSummary,
   hasSidebarThreadSummaryChanged,
@@ -52,7 +53,7 @@ import {
   parseThreadStatus,
   projectCoreWorkspaceProject,
   resolveSidebarProjectIdForCwd,
-  resolveSidebarThreadTitle,
+  resolveThreadSearchResultTitle,
 } from "./CodexThreadCatalogProjection";
 
 export class CodexThreadCatalogError extends Data.TaggedError("CodexThreadCatalogError")<{
@@ -148,7 +149,6 @@ export const make = (
   | CodexInternalThreadRegistry
   | CodexSidebarSyncRuntime
   | CodexThreadDirectory
-  | CodexThreadExecution
   | CoreModules
   | Scope.Scope
 > =>
@@ -158,7 +158,6 @@ export const make = (
     const internalThreads = yield* CodexInternalThreadRegistry;
     const sidebar = yield* CodexSidebarSyncRuntime;
     const directory = yield* CodexThreadDirectory;
-    const execution = yield* CodexThreadExecution;
     const core = yield* CoreModules;
     const mutations = yield* Semaphore.make(1);
     const error = (operation: CodexThreadCatalogError["operation"], cause: unknown) =>
@@ -453,7 +452,11 @@ export const make = (
                   resolveCodexProjectThreadWorkspaceMove({
                     current: currentWorkspace,
                     targetProject: targetForMove,
-                    threadTitle: current.threadName ?? current.threadPreview ?? input.threadId,
+                    threadTitle: resolveCodexElectronDisplayThreadTitle({
+                      threadName: current.threadName,
+                      threadPreview: current.threadPreview,
+                      fallback: input.threadId,
+                    }),
                     createProjectlessWorkspace: (workspaceInput) =>
                       createCodexProjectlessWorkspace(workspaceInput),
                   }),
@@ -464,6 +467,19 @@ export const make = (
                 persistedRuntimeWorkspaceRoots: currentRaw.writable_roots,
               });
       const operationId = createOperationId("thread-catalog.move");
+      const crossProject = current.projectId !== target.projectId;
+      const pendingWorkspace = targetForMove
+        ? workspaceMove.next.cwd
+          ? {
+              project_sources: targetForMove.sources.map((source) => source.root),
+              cwd: workspaceMove.next.cwd,
+              runtime_workspace_roots: [...workspaceMove.runtimeWorkspaceRoots],
+            }
+          : null
+        : null;
+      if (crossProject && targetForMove && pendingWorkspace === null) {
+        return yield* error("move", new Error("Target Project has no executable workspace"));
+      }
       const applied = yield* core.workspace.apply({
         operationId,
         intent: {
@@ -478,19 +494,15 @@ export const make = (
               ? { kind: "projectless" }
               : { kind: "project", project_id: target.projectId },
           placement: placement(input),
-          metadata:
-            current.projectId === target.projectId
-              ? {}
-              : {
-                  cwd: workspaceMove.next.cwd,
-                  managed_worktree_path: workspaceMove.next.managedWorktreePath,
-                  projectless_output_directory: workspaceMove.next.projectlessOutputDirectory,
-                  projectless_workspace_browser_root:
-                    workspaceMove.next.projectlessWorkspaceBrowserRoot,
+          metadata: {},
+          ...(crossProject
+            ? {
+                workspace_transition: {
+                  revision: randomUUID(),
+                  pending: pendingWorkspace,
                 },
-          ...(current.projectId === target.projectId
-            ? {}
-            : { runtime_workspace_roots: workspaceMove.runtimeWorkspaceRoots }),
+              }
+            : {}),
           ...(projectAccessGrant ? { project_access_grant: projectAccessGrant } : {}),
         },
       });
@@ -515,23 +527,6 @@ export const make = (
       const movedRaw = yield* readCoreThread(input.threadId);
       if (!movedRaw) {
         return yield* error("move", new Error("Moved Task disappeared from Core"));
-      }
-      if (current.projectId !== target.projectId && workspaceMove.next.cwd) {
-        yield* execution
-          .relocate({
-            threadId: input.threadId,
-            loaded: current.statusType !== "notLoaded",
-            location: {
-              hostId: movedRaw.execution_host_id,
-              cwd: workspaceMove.next.cwd,
-              workspaceRoots: workspaceMove.runtimeWorkspaceRoots,
-              managedWorktreePath: workspaceMove.next.managedWorktreePath,
-              projectId: target.projectId,
-              projectlessOutputDirectory: workspaceMove.next.projectlessOutputDirectory,
-              projectlessWorkspaceBrowserRoot: workspaceMove.next.projectlessWorkspaceBrowserRoot,
-            },
-          })
-          .pipe(Effect.mapError((cause) => error("move", cause)));
       }
       yield* publish({
         projectIds: [current.projectId, target.projectId].filter(
@@ -757,9 +752,11 @@ export const make = (
                     projectName: projectId
                       ? (projectNames.get(projectId) ?? persisted?.projectName ?? null)
                       : null,
-                    title: resolveSidebarThreadTitle({
+                    title: resolveThreadSearchResultTitle({
                       threadName: thread.name,
                       threadPreview: thread.preview,
+                      cwd: thread.cwd,
+                      threadId: thread.id,
                     }),
                     preview: thread.preview,
                     cwd: thread.cwd,

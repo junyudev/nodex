@@ -1,7 +1,29 @@
+import {
+  mutateCodexTurnStartRejection,
+  type CodexPreparedTurnExecution,
+  type CodexTurnStartRejection,
+} from "../../../shared/codex-conversation-state/codex-turn-execution";
+import { acceptCodexPreparedEnvironmentSelection } from "../../../shared/codex-conversation-state/codex-environment-selection";
+import { castDraft, type Draft, type Patch } from "immer";
+import {
+  residentConversationTurns,
+  residentConversationTurnEntries,
+  conversationTurnDraft,
+} from "../../../shared/codex-conversation-state/codex-turn-mutation";
+
+import { CodexConversationPresentation } from "../CodexConversationPresentation";
+
+import { CodexConversationEntityDocument } from "../../../shared/codex-conversation-entity-document";
+import {
+  releaseCanonicalConversationHistoryDraft,
+  completeCanonicalConversationUnsubscribeDraft,
+  selectCanonicalRetentionRequestKind,
+  type CanonicalRetentionRequestKind,
+} from "../../../shared/codex-canonical-retention";
 import type {
   CodexCanonicalWorktreeInitItem,
   CodexCanonicalLiveTurnParams,
-  CodexCanonicalHydratedPermissionContext,
+  CodexCanonicalPermissionContext,
   CodexCanonicalConversationState,
   CodexConversationThreadSettings,
   CodexThreadStatusType,
@@ -9,19 +31,16 @@ import type {
   CodexConversationTurnPagination,
   CodexConversationResumeState,
   CodexConversationSnapshot,
-  CodexConversationItem,
   CodexQueuedFollowUpProjection,
-  CodexThreadStreamCheckpoint,
 } from "../../../shared/types";
 import { EMPTY_CODEX_QUEUED_FOLLOW_UP_PROJECTION } from "../../../shared/codex-queued-follow-up-state";
 import * as Data from "effect/Data";
 import {
-  appendCodexCanonicalWorktreeInitItem,
-  appendCodexCanonicalInProgressSyntheticItem,
-  removeCodexCanonicalLocalSyntheticItem,
+  mergeCodexCanonicalTurnState,
+  mutateCodexCanonicalWorktreeInitItem,
+  mutateCodexCanonicalInProgressSyntheticItem,
+  mutateCodexCanonicalLocalSyntheticItemRemoval,
   type CodexCanonicalContextCompactionItem,
-  type CodexCanonicalSteeringUserMessageItem,
-  type CodexCanonicalItem,
   type CodexCanonicalTurnState,
 } from "../../../shared/codex-conversation-state/codex-conversation-state";
 import {
@@ -30,89 +49,53 @@ import {
   createEmptyCodexHistoryTopology,
   exhaustedCodexHistoryBoundary,
   flattenCodexHistoryTopology,
-  insertCodexHistoryIsland,
-  mergeCodexHistoryBoundaryPage,
-  replaceCodexHistoryEntity,
   type CodexCanonicalHistoryTopology,
-  type CodexHistoryBoundary,
   type CodexHistoryEntity,
 } from "../../../shared/codex-conversation-state/codex-history-topology";
-import {
-  buildCodexConversationHistoryMutation,
-  advanceCodexConversationHistoryItemWindowSnapshot,
-  codexConversationHistoryPageRequestKey,
-  codexConversationHistoryTurnItemsProgressKey,
-  restoreCodexConversationHistoryItemWindow,
-  seedCodexConversationHistoryItemWindow,
-  snapshotCodexConversationHistoryItemWindow,
-  type CodexConversationHistoryMutation,
-  type CodexConversationHistoryItemWindowSnapshot,
-  type CodexConversationHistoryPageRequest,
-  type CodexConversationHistoryTurnItemsMutation,
-} from "../../../shared/codex-conversation-history-page";
-import {
-  appendCodexHistoryItemPage,
-  prependCodexHistoryItemPage,
-  type CodexHistoryItemWindow,
-} from "../../../shared/codex-conversation-state/codex-history-item-window";
-import type { ThreadGoal, Turn } from "@nodex/codex-app-server-protocol/v2";
+import type { Thread, ThreadGoal, Turn } from "@nodex/codex-app-server-protocol/v2";
 import {
   CODEX_PENDING_MANUAL_CONTEXT_COMPACTION_ITEM_ID,
-  reduceCodexConversationEventWithEffects,
+  mutateCodexConversationEvent,
   type CodexConversationReducerContext,
   type CodexConversationReducerEffect,
 } from "../../../shared/codex-conversation-state/codex-conversation-reducer";
 import {
-  appendCodexCanonicalOptimisticTurn,
-  bindCodexCanonicalOptimisticTurn,
-  failCodexCanonicalOptimisticTurn,
+  mutateCodexCanonicalOptimisticTurn,
+  mutateCodexCanonicalOptimisticTurnBinding,
 } from "../../../shared/codex-conversation-state/codex-optimistic-turn";
 import {
-  retargetCodexCanonicalSteeringItem,
-  removeCodexCanonicalSteeringItem,
-  upsertCodexCanonicalSteeringItem,
-} from "../../../shared/codex-conversation-state/codex-steering-state";
-import {
   listCodexBackgroundTerminalTurnIds,
-  reduceCodexBackgroundTerminalCleanup,
+  mutateCodexBackgroundTerminalCleanup,
 } from "../../../shared/codex-conversation-state/codex-background-terminal-cleanup";
 import type {
   CodexServerRequestLifecycleResult,
   CodexServerRequestRawLifecycleResult,
   CodexServerRequestRawState,
 } from "../../../shared/codex-conversation-state/codex-server-request-lifecycle";
-import { completeCodexCanonicalPlanImplementationState } from "../../../shared/codex-conversation-state/codex-server-request-lifecycle";
 import {
-  reduceCodexConversationFrameTextDeltas,
+  mutateCodexConversationFrameTextDeltas,
   type CodexFrameTextDeltaOutcome,
 } from "../../../shared/codex-conversation-state/codex-frame-text-delta";
 import type { CodexFrameTextDeltaUpdate } from "../../../shared/codex-conversation-state/codex-frame-text-delta-queue";
 import {
-  reduceCodexConversationCommandOutput,
-  reduceCodexConversationTerminalCommands,
+  mutateCodexConversationCommandOutput,
+  mutateCodexConversationTerminalCommands,
   type CodexCommandExecutionMutationDisposition,
   type CodexTerminalCommandUpdate,
 } from "../../../shared/codex-conversation-state/codex-command-execution-stream";
 import type { CodexCommandOutputUpdate } from "../../../shared/codex-conversation-state/codex-command-output-queue";
 import {
-  buildCodexThreadStreamCheckpoint,
-  type CodexThreadStreamReplica,
-} from "../../../shared/codex-owner-follower-replication";
-import {
-  reduceCodexConversationThreadGoalResumeConfirmationDismissed,
-  reduceCodexConversationThreadGoalUpdated,
-  reduceCodexConversationThreadName,
+  mutateCodexConversationThreadGoalResumeConfirmationDismissed,
+  mutateCodexConversationThreadName,
+  mutateCodexConversationThreadMetadata,
 } from "../../../shared/codex-conversation-state/codex-thread-metadata";
-import { appendCodexCanonicalThreadGoalTranscriptTurn } from "../../../shared/codex-conversation-state/codex-thread-goal-transcript";
+import { mutateCodexCanonicalThreadGoalTranscriptTurn } from "../../../shared/codex-conversation-state/codex-thread-goal-transcript";
 import {
   projectCodexConversationRawServerRequestLifecycle,
-  projectCodexConversationPlanImplementationCompleted,
   projectCodexConversationServerRequestLifecycle,
 } from "../CodexConversationServerRequestProjection";
 import { projectCodexConversationSnapshot } from "../CodexConversationSnapshotProjection";
-import { projectCodexConversationDocument } from "../../../shared/codex-conversation-document";
-import { projectCodexConversationHistoryItemWindows } from "../CodexConversationHistoryProjection";
-import type { CodexHydratedHistoryItemSegment } from "../CodexHistoryPageAdapter";
+
 import { cappedApproximateValueBytes } from "../../../shared/codex-bounded-value-size";
 import type { CodexServerNotification } from "../../codex-runtime/CodexApplicationProtocol";
 import type { CodexApplicationProtocolOccurrence } from "../../codex-runtime/CodexApplicationRequestInbox";
@@ -151,13 +134,10 @@ export interface CodexConversationProtocolEventCommitResult {
 export interface ConversationEntitySnapshot {
   readonly generation: number;
   readonly canonicalState: CodexCanonicalConversationState | null;
-  readonly preHydrationServerRequests: readonly CodexCanonicalServerRequest[];
-  readonly preHydrationHasUnreadTurn: boolean;
+  readonly serverRequests: readonly CodexCanonicalServerRequest[];
+  readonly hasUnreadTurn: boolean;
   readonly streamRole: CodexConversationStreamRole;
-  readonly acceptedReplica: CodexThreadStreamReplica | null;
   readonly version: number;
-  readonly revision: number;
-  readonly checkpoint: CodexThreadStreamCheckpoint | null;
   readonly snapshot: CodexConversationSnapshot | null;
   readonly resumeState: CodexConversationResumeState;
   readonly turnPagination: CodexConversationTurnPagination;
@@ -167,63 +147,85 @@ export interface ConversationEntitySnapshot {
   readonly isStreaming: boolean;
 }
 
-export interface CodexConversationHistoryFence {
-  readonly generation: number;
-  readonly olderCursor: string;
-  readonly oldestLoadedTurnId: string | null;
+export interface ConversationCanonicalMutation {
+  readonly threadId: string;
+  readonly before: CodexCanonicalConversationState | null;
+  readonly after: CodexCanonicalConversationState | null;
+  readonly patches?: readonly Patch[];
+  readonly origin: "local" | "follower";
+  readonly broadcast: boolean;
 }
 
-export interface CodexConversationTurnItemsHistoryFence {
-  readonly generation: number;
-  readonly turnId: string;
-  readonly olderCursor: string;
-}
-
-export type CodexConversationHistoryIslandCommitResult =
-  | {
-      readonly status: "committed";
-      readonly topologyGeneration: number;
-      readonly mutation: CodexConversationHistoryMutation;
+class MutableConversationEntityState {
+  readonly generation!: number;
+  private currentDocument!: CodexConversationEntityDocument;
+  onCanonicalChange?: (change: Omit<ConversationCanonicalMutation, "threadId">) => void;
+  mutationOrigin: "local" | "follower" = "local";
+  mutationBroadcast = true;
+  get document(): CodexConversationEntityDocument {
+    return this.currentDocument;
+  }
+  set document(document: CodexConversationEntityDocument) {
+    const before = this.currentDocument?.canonicalState ?? null;
+    this.currentDocument = document;
+    const after = document.canonicalState;
+    if (before === after) return;
+    this.onCanonicalChange?.({
+      before,
+      after,
+      patches: document.patchesFrom(before),
+      origin: this.mutationOrigin,
+      broadcast: this.mutationBroadcast,
+    });
+  }
+  streamRole!: CodexConversationStreamRole;
+  version!: number;
+  private presentation = new CodexConversationPresentation();
+  get snapshot(): CodexConversationSnapshot | null {
+    return this.presentation.read(this.document);
+  }
+  set snapshot(value: CodexConversationSnapshot | null) {
+    this.presentation = this.presentation.withSnapshot(value, this.document);
+  }
+  forkPresentation(): void {
+    this.presentation = this.presentation.fork();
+  }
+  constructor(generation: number) {
+    Object.assign(this, initialAggregateFields(generation));
+  }
+  resumeStateBeforeHydration!: CodexConversationResumeState;
+  get resumeState(): CodexConversationResumeState {
+    return this.document.canonicalState?.resumeState ?? this.resumeStateBeforeHydration;
+  }
+  turnPagination!: CodexConversationTurnPagination;
+  get turnItemsPaginationById(): Record<string, CodexHistoryTurnItemsPagination> {
+    return Object.fromEntries(
+      residentConversationTurns(this.document.canonicalState).flatMap((turn) =>
+        turn.turnId !== null && turn.itemsPagination ? [[turn.turnId, turn.itemsPagination]] : [],
+      ),
+    );
+  }
+  private unmaterializedHistory = createEmptyCodexHistoryTopology<CodexCanonicalTurnState>(0);
+  get historyTopology(): CodexCanonicalHistoryTopology<CodexCanonicalTurnState> {
+    return this.document.canonicalState?.turnHistory?.history ?? this.unmaterializedHistory;
+  }
+  set historyTopology(history: CodexCanonicalHistoryTopology<CodexCanonicalTurnState>) {
+    const canonical = this.document.canonicalState;
+    if (!canonical) {
+      this.unmaterializedHistory = history;
+      return;
     }
-  | { readonly status: "staleGeneration" }
-  | { readonly status: "rejected"; readonly reason: string };
-
-export type CodexConversationHistoryPageCommitResult =
-  | { readonly status: "committed"; readonly mutation: CodexConversationHistoryMutation }
-  | { readonly status: "staleGeneration" | "staleTarget" }
-  | { readonly status: "rejected"; readonly reason: string };
-
-interface MutableConversationEntityState {
-  readonly generation: number;
-  canonicalState: CodexCanonicalConversationState | null;
-  preHydrationServerRequests: readonly CodexCanonicalServerRequest[];
-  preHydrationHasUnreadTurn: boolean;
-  streamRole: CodexConversationStreamRole;
-  acceptedReplica: CodexThreadStreamReplica | null;
-  version: number;
-  revision: number;
-  checkpoint: CodexThreadStreamCheckpoint | null;
-  snapshot: CodexConversationSnapshot | null;
-  resumeState: CodexConversationResumeState;
-  turnPagination: CodexConversationTurnPagination;
-  turnItemsPaginationById: Record<string, CodexHistoryTurnItemsPagination>;
-  historyItemWindowsByTurnId: Map<
-    string,
-    CodexHistoryItemWindow<CodexCanonicalItem, CodexConversationItem>
-  >;
-  historyTopology: CodexCanonicalHistoryTopology<CodexCanonicalTurnState>;
-  isStreaming: boolean;
-  historyGeneration: number;
-  historyEntityRevision: number;
-  historyMutationRevision: number;
-  historyPageLoadLeases: Set<string>;
-  resumeEventBuffer: CodexApplicationProtocolOccurrence[] | null;
-  resumeEventBufferBytes: number;
-  threadStartEventBuffer: CodexApplicationProtocolOccurrence[] | null;
-  threadStartEventBufferBytes: number;
-  threadStartEventBufferFence: CodexThreadStartEventBufferFence | null;
-  threadStartDeferred: boolean;
-  queuedFollowUps: CodexQueuedFollowUpProjection;
+    this.document = this.document.withCanonicalState(installCanonicalHistory(canonical, history));
+  }
+  isStreaming!: boolean;
+  historyGeneration!: number;
+  historyMutationRevision!: number;
+  historyPageLoadLeases!: Set<string>;
+  threadStartEventBuffer!: CodexApplicationProtocolOccurrence[] | null;
+  threadStartEventBufferBytes!: number;
+  threadStartEventBufferFence!: CodexThreadStartEventBufferFence | null;
+  threadStartDeferred!: boolean;
+  queuedFollowUps!: CodexQueuedFollowUpProjection;
 }
 
 export interface CodexThreadStartEventBufferFence {
@@ -263,6 +265,12 @@ export const conversationIngressOverflow = (threadId: string) =>
   });
 
 export interface ConversationEntityState {
+  readonly mutateCanonicalState: (
+    recipe: (draft: Draft<CodexCanonicalConversationState>) => void,
+    observedAtMs: number,
+    broadcast?: boolean,
+  ) => boolean;
+  readonly installFollowerCanonicalState: (state: CodexCanonicalConversationState) => void;
   readonly threadId: string;
   readonly generation: number;
   readonly read: () => ConversationEntitySnapshot;
@@ -271,12 +279,19 @@ export interface ConversationEntityState {
   readonly readServerRequestState: () => CodexConversationServerRequestState;
   readonly readHasUnreadTurn: () => boolean;
   readonly readSnapshot: () => CodexConversationSnapshot | null;
+  readonly readRetentionState: () => {
+    primaryRequest: CanonicalRetentionRequestKind;
+    ephemeralSide: boolean;
+  };
+  readonly releasePassiveHistory: () => void;
+
+  readonly completeHistoryUnsubscribe: (retainHistory: boolean) => void;
   /** Installs the canonical application snapshot without implying renderer ownership. */
   readonly installSnapshot: (snapshot: CodexConversationSnapshot) => void;
   /** Seeds durable Workspace state before canonical app-server hydration. */
   readonly seedHasUnreadTurn: (hasUnreadTurn: boolean) => void;
   /** Applies the canonical read-state transition to every loaded conversation projection. */
-  readonly setHasUnreadTurn: (hasUnreadTurn: boolean, projectReplica: boolean) => boolean;
+  readonly setHasUnreadTurn: (hasUnreadTurn: boolean) => boolean;
   readonly readResumeState: () => CodexConversationResumeState;
   readonly setResumeState: (state: CodexConversationResumeState) => void;
   readonly isStreaming: () => boolean;
@@ -286,52 +301,13 @@ export interface ConversationEntityState {
   readonly readAllTurnItemsPagination: () => Readonly<
     Record<string, CodexHistoryTurnItemsPagination>
   >;
-  readonly readHistoryItemPageCursor: (
-    turnId: string,
-    edge: "older" | "newer",
-  ) => string | null | undefined;
   readonly readHistoryTopology: () => CodexCanonicalHistoryTopology<CodexCanonicalTurnState>;
   /** Atomically installs one bounded, cursor-independent search window into canonical history. */
-  readonly insertHistoryIsland: (input: {
-    readonly mutationId: string;
-    readonly expectedTopologyGeneration: number;
-    readonly index: number;
-    readonly islandId: string;
-    readonly state: CodexCanonicalConversationState;
-    readonly turnIds: readonly string[];
-    readonly positionsByEntityKey?: Readonly<Record<string, number>>;
-    readonly itemsPaginationByTurnId: Readonly<Record<string, CodexHistoryTurnItemsPagination>>;
-    readonly olderBoundary: CodexHistoryBoundary;
-    readonly newerBoundary: CodexHistoryBoundary;
-    readonly observedAtMs: number;
-    readonly projectReplica: boolean;
-  }) => CodexConversationHistoryIslandCommitResult;
+
   /** Atomically commits one exact boundary or Turn-item page and returns its bounded mutation. */
-  readonly commitHistoryPage: (input: {
-    readonly request: CodexConversationHistoryPageRequest;
-    readonly state: CodexCanonicalConversationState;
-    readonly turnIds: readonly string[];
-    readonly itemsPaginationByTurnId: Readonly<Record<string, CodexHistoryTurnItemsPagination>>;
-    readonly itemSegmentsByTurnId?: Readonly<
-      Record<string, readonly CodexHydratedHistoryItemSegment[]>
-    >;
-    readonly continuation?: CodexHistoryBoundary;
-    readonly itemPage?: {
-      readonly direction: "older" | "newer";
-      readonly segmentId: string;
-      readonly canonicalItems: readonly CodexCanonicalItem[];
-      readonly rendererItems: readonly CodexConversationItem[];
-      readonly itemIds: readonly string[];
-      readonly approximateBytes: number;
-      readonly nextCursor: string | null;
-      readonly backwardsCursor: string | null;
-    };
-    readonly observedAtMs: number;
-    readonly projectReplica: boolean;
-  }) => CodexConversationHistoryPageCommitResult;
+
   /** Admits one exact target while its physical page is outside the causal lane. */
-  readonly beginHistoryPageLoad: (request: CodexConversationHistoryPageRequest) => boolean;
-  readonly endHistoryPageLoad: (request: CodexConversationHistoryPageRequest) => void;
+
   /** Replaces pagination when a canonical hydration installs a new history window. */
   readonly initializeHistory: (
     pagination: CodexConversationTurnPagination,
@@ -339,193 +315,113 @@ export interface ConversationEntityState {
     itemsPaginationByTurnId?: Readonly<Record<string, CodexHistoryTurnItemsPagination>>,
   ) => void;
   /** Opens one cursor-fenced physical history load. */
-  readonly beginHistoryLoad: (loadedTurnCount: number) => CodexConversationHistoryFence | null;
-  readonly isHistoryLoadCurrent: (fence: CodexConversationHistoryFence) => boolean;
-  readonly commitHistoryLoad: (
-    fence: CodexConversationHistoryFence,
-    pagination: CodexConversationTurnPagination,
-    loadedTurnCount: number,
-  ) => boolean;
-  readonly commitHistoryProjection: (input: {
-    readonly fence: CodexConversationHistoryFence;
-    readonly state: CodexCanonicalConversationState;
-    readonly pagination: CodexConversationTurnPagination;
-    readonly loadedTurnCount: number;
-    readonly itemsPaginationByTurnId?: Readonly<Record<string, CodexHistoryTurnItemsPagination>>;
-    readonly observedAtMs: number;
-    readonly projectReplica: boolean;
-  }) => boolean;
-  readonly failHistoryLoad: (fence: CodexConversationHistoryFence) => boolean;
-  readonly beginTurnItemsHistoryLoad: (
-    turnId: string,
-  ) => CodexConversationTurnItemsHistoryFence | null;
-  readonly isTurnItemsHistoryLoadCurrent: (
-    fence: CodexConversationTurnItemsHistoryFence,
-  ) => boolean;
-  readonly commitTurnItemsHistoryProjection: (input: {
-    readonly fence: CodexConversationTurnItemsHistoryFence;
-    readonly state: CodexCanonicalConversationState;
-    readonly pagination: CodexHistoryTurnItemsPagination;
-    readonly observedAtMs: number;
-    readonly projectReplica: boolean;
-  }) => boolean;
-  readonly failTurnItemsHistoryLoad: (fence: CodexConversationTurnItemsHistoryFence) => boolean;
-  readonly beginResumeEventBuffer: () => boolean;
-  readonly hasResumeEventBuffer: () => boolean;
+
   readonly offerProtocolOccurrence: (input: {
     readonly occurrence: CodexApplicationProtocolOccurrence;
-    readonly bypassResume: boolean;
     readonly startsThread: boolean;
     readonly deferThreadStart: CodexThreadStartEventBufferFence | null;
   }) => CodexProtocolOccurrenceAdmission;
-  readonly takeResumeEventBuffer: () => readonly CodexApplicationProtocolOccurrence[] | null;
   readonly takeThreadStartEventBuffer: (
     fence: CodexThreadStartEventBufferFence,
   ) => CodexThreadStartEventBufferTake | null;
-  readonly discardResumeEventBuffer: () => readonly CodexApplicationProtocolOccurrence[];
   readonly clearBufferedEvents: () => readonly CodexApplicationProtocolOccurrence[];
   readonly commitFrameTextDeltas: (input: {
     readonly updates: readonly CodexFrameTextDeltaUpdate[];
     readonly observedAtMs: number;
-    readonly projectReplica: boolean;
   }) => readonly CodexFrameTextDeltaOutcome[];
   readonly commitCommandOutputDeltas: (input: {
     readonly updates: readonly CodexCommandOutputUpdate[];
     readonly observedAtMs: number;
-    readonly projectReplica: boolean;
   }) => readonly CodexCommandExecutionMutationDisposition[];
   readonly commitTerminalCommands: (input: {
     readonly update: CodexTerminalCommandUpdate;
     readonly observedAtMs: number;
-    readonly projectReplica: boolean;
   }) => CodexCommandExecutionMutationDisposition;
   readonly commitServerRequestLifecycle: (
     input: CodexConversationServerRequestLifecycleCommit & {
       readonly observedAtMs: number;
-      readonly projectReplica: boolean;
     },
   ) => CodexConversationServerRequestCommitResult;
   /** Applies one transport-ordered notification to canonical state and accepted projections. */
   readonly commitProtocolNotification: (input: {
     readonly notification: CodexServerNotification;
     readonly observedAtMs: number;
-    readonly projectReplica: boolean;
     readonly createId: () => `${string}-${string}-${string}-${string}-${string}`;
     readonly reducerContext?: Pick<
       CodexConversationReducerContext,
       "consumeContextCompactionSource" | "resolveCollabReceiverThread"
     >;
   }) => CodexConversationProtocolEventCommitResult;
-  readonly completePlanImplementation: (turnId: string, projectReplica: boolean) => boolean;
-  /** Revision-fences and projects the goal observed after one completed Thread resume. */
-  readonly commitPostResumeGoalHydration: (input: {
-    readonly expectedRevision: number;
-    readonly goal: ThreadGoal | null;
-  }) => boolean;
   /** Admits one optimistic Main-owned turn into canonical state and every accepted projection. */
   readonly admitOptimisticTurn: (input: {
+    readonly execution?: CodexPreparedTurnExecution;
     readonly params: CodexCanonicalLiveTurnParams;
+    readonly localMetadata?: unknown;
+    readonly mcpAppModelContextAttachments?: unknown;
     readonly worktreeInit?: CodexCanonicalWorktreeInitItem;
-    readonly currentCollaborationModel?: string;
     readonly startedAtMs: number;
-    readonly projectReplica: boolean;
   }) => boolean;
   /** Binds an accepted app-server Turn to its exact optimistic client message. */
   readonly acceptOptimisticTurn: (input: {
+    readonly permissions?: CodexCanonicalPermissionContext;
+    readonly execution?: CodexPreparedTurnExecution;
+    readonly environmentSelectionEvidence?: CodexPreparedTurnExecution["environmentSelectionEvidence"];
     readonly clientUserMessageId: string;
     readonly turn: Turn;
     readonly recovery?: {
       readonly params: CodexCanonicalLiveTurnParams;
-      readonly currentCollaborationModel?: string;
+      readonly localMetadata?: unknown;
+      readonly mcpAppModelContextAttachments?: unknown;
       readonly startedAtMs: number;
     };
     readonly observedAtMs: number;
-    readonly projectReplica: boolean;
   }) => boolean;
   /** Converts an unaccepted optimistic Turn into its canonical failed outcome. */
-  readonly rejectOptimisticTurn: (input: {
-    readonly clientUserMessageId: string;
-    readonly failureItemId: `${string}-${string}-${string}-${string}-${string}`;
-    readonly observedAtMs: number;
-    readonly projectReplica: boolean;
-  }) => boolean;
-  /** Admits a steering user message only when its exact target Turn exists. */
-  readonly admitSteeringItem: (input: {
-    readonly turnId: string;
-    readonly item: CodexCanonicalSteeringUserMessageItem;
-    readonly observedAtMs: number;
-    readonly projectReplica: boolean;
-  }) => boolean;
-  /** Corrects the active Turn identity while preserving its pending message. */
-  readonly retargetSteeringItem: (input: {
-    readonly fromTurnId: string;
-    readonly toTurnId: string;
-    readonly itemId: string;
-    readonly observedAtMs: number;
-    readonly projectReplica: boolean;
-  }) => boolean;
-  /** Removes one unaccepted steering message by its exact target and correlation id. */
-  readonly rejectSteeringItem: (input: {
-    readonly turnId: string;
-    readonly itemId: string;
-    readonly observedAtMs: number;
-    readonly projectReplica: boolean;
-  }) => boolean;
+  readonly rejectOptimisticTurn: (
+    input: CodexTurnStartRejection & {
+      readonly observedAtMs: number;
+    },
+  ) => boolean;
   /** Returns the requested Turn when known, otherwise the latest in-progress Turn. */
   readonly resolveInterruptTurnId: (requestedTurnId?: string) => string | null;
   /** Commits the accepted local interrupt outcome for one exact in-progress Turn. */
   readonly interruptTurn: (input: {
     readonly turnId: string;
     readonly observedAtMs: number;
-    readonly projectReplica: boolean;
   }) => boolean;
   /** Derives the Turns which still own running background terminal rows. */
   readonly backgroundTerminalTurnIds: () => readonly string[] | null;
   /** Marks every running background terminal row interrupted across canonical projections. */
-  readonly cleanBackgroundTerminals: (input: {
-    readonly observedAtMs: number;
-    readonly projectReplica: boolean;
-  }) => boolean;
+  readonly cleanBackgroundTerminals: (input: { readonly observedAtMs: number }) => boolean;
   readonly applyTurnConfiguration: (input: {
     readonly settings: CodexConversationThreadSettings;
-    readonly permissions: CodexCanonicalHydratedPermissionContext;
-    readonly projectReplica: boolean;
+    readonly permissions: CodexCanonicalPermissionContext;
   }) => boolean;
+  readonly refreshThreadMetadata: (threadId: string) => boolean;
   readonly renameThread: (input: {
     readonly name: string;
     readonly observedAtMs: number;
-    readonly projectReplica: boolean;
+    readonly generated?: boolean;
   }) => boolean;
   readonly acceptThreadGoal: (input: {
-    readonly goal: ThreadGoal;
+    readonly goal: ThreadGoal | null;
     readonly appendTranscriptItem: boolean;
     readonly dismissResumeConfirmation: boolean;
-    readonly projectReplica: boolean;
   }) => boolean;
-  readonly admitManualCompaction: (input: {
-    readonly observedAtMs: number;
-    readonly projectReplica: boolean;
-  }) => string | null;
-  readonly rollbackManualCompaction: (input: {
-    readonly observedAtMs: number;
-    readonly projectReplica: boolean;
-  }) => boolean;
+  readonly admitManualCompaction: (input: { readonly observedAtMs: number }) => string | null;
+  readonly rollbackManualCompaction: (input: { readonly observedAtMs: number }) => boolean;
   readonly relocateExecution: (input: {
     readonly cwd: string;
     readonly managedWorktreePath: string | null;
     readonly projectId: string | null;
     readonly projectlessOutputDirectory: string | null;
     readonly projectlessWorkspaceBrowserRoot: string | null;
-    readonly permissions: CodexCanonicalHydratedPermissionContext;
-    readonly projectReplica: boolean;
+    readonly permissions: CodexCanonicalPermissionContext;
   }) => boolean;
-  readonly setThreadStatus: (statusType: CodexThreadStatusType, projectReplica: boolean) => boolean;
+  readonly setThreadStatus: (statusType: CodexThreadStatusType) => boolean;
   readonly readQueuedFollowUpProjection: () => CodexQueuedFollowUpProjection;
   /** Installs an exact Main/Core-authored projection without synthesizing revisions. */
-  readonly installQueuedFollowUpProjection: (
-    projection: CodexQueuedFollowUpProjection,
-    projectReplica: boolean,
-  ) => boolean;
+  readonly installQueuedFollowUpProjection: (projection: CodexQueuedFollowUpProjection) => boolean;
   readonly readStreamRole: () => CodexConversationStreamRole;
   readonly setStreamRole: (role: CodexConversationStreamRole) => void;
   readonly acceptCanonicalState: (
@@ -533,29 +429,21 @@ export interface ConversationEntityState {
   ) => CodexCanonicalConversationState;
   readonly replaceServerRequests: (requests: readonly CodexCanonicalServerRequest[]) => void;
   readonly incrementVersion: () => number;
-  readonly acceptReplica: (input: {
-    readonly conversation: CodexConversationSnapshot;
-    readonly revision: number;
-    readonly ownerEpoch: number;
-  }) => CodexThreadStreamReplica;
-  /** Mirrors an owner publication exactly; host recovery state cannot rewrite its revision. */
-  readonly acceptOwnerReplica: (input: {
-    readonly conversation: CodexConversationSnapshot;
-    readonly checkpoint: CodexThreadStreamCheckpoint;
-  }) => CodexThreadStreamReplica;
-  readonly advanceReplica: (input: {
-    readonly conversation: CodexConversationSnapshot;
-    readonly ownerEpoch: number;
-  }) => {
-    readonly baseRevision: number;
-    readonly replica: CodexThreadStreamReplica;
-  };
-  readonly clearReplica: () => void;
   /** Clears semantic state while retaining the current live runtime generation. */
   readonly reset: () => void;
 }
 
 export interface ConversationEntityStateRegistry {
+  readonly subscribeRetired: (
+    listener: (threadId: string, generation: number) => void,
+  ) => Disposable;
+  readonly subscribeCanonicalMutations: (
+    listener: (mutation: ConversationCanonicalMutation) => void,
+  ) => Disposable;
+  readonly forHost: (hostId: string) => readonly ConversationEntityState[];
+  readonly registerThreadMetadata: (thread: Thread) => void;
+  readonly readThreadMetadata: (threadId: string) => Thread | null;
+  readonly removeThreadMetadata: (threadId: string) => void;
   /** Pure query: an unknown or released Thread never creates a new generation. */
   readonly current: (threadId: string) => ConversationEntityState | null;
   /** Binds a semantic aggregate generation to a caller or keyed runtime Scope. */
@@ -574,140 +462,53 @@ const pendingManualCompaction: CodexCanonicalContextCompactionItem = {
   completed: false,
   source: "manual",
 };
-
-const MAX_BUFFERED_PROTOCOL_OCCURRENCES = 1_024;
+const MAX_BUFFERED_PROTOCOL_OCCURRENCES = 1024;
 const MAX_BUFFERED_PROTOCOL_BYTES = 16 * 1024 * 1024;
 
 /** Avoid a payload-sized JSON string while deciding whether a deferred occurrence fits. */
 const protocolOccurrenceBytes = (occurrence: CodexApplicationProtocolOccurrence): number =>
   cappedApproximateValueBytes(occurrence, MAX_BUFFERED_PROTOCOL_BYTES);
 
-const canonicalTurnBytes = (turn: CodexCanonicalTurnState): number =>
-  cappedApproximateValueBytes(turn, Number.MAX_SAFE_INTEGER);
-
-const canonicalTurnMetadataBytes = (turn: CodexCanonicalTurnState): number =>
-  cappedApproximateValueBytes({ ...turn, items: [] }, Number.MAX_SAFE_INTEGER);
-
 type PersistedCanonicalTurn = CodexCanonicalTurnState & {
-  readonly protocol: CodexCanonicalTurnState["protocol"] & { readonly id: string };
+  readonly turnId: string;
 };
 
 const persistedCanonicalTurns = (
   canonical: CodexCanonicalConversationState | null,
 ): readonly PersistedCanonicalTurn[] =>
-  (canonical?.turns ?? []).filter(
-    (turn): turn is PersistedCanonicalTurn => turn.protocol.id !== null,
+  residentConversationTurns(canonical).filter(
+    (turn): turn is PersistedCanonicalTurn => turn.turnId !== null,
   );
-
-/** Owner publications can trail the transport-ordered Main reducer by one or more notifications. */
-const hasTerminalTurnRegression = (
-  authoritative: CodexCanonicalConversationState | null,
-  candidate: CodexCanonicalConversationState | null | undefined,
-): boolean => {
-  if (!authoritative || !candidate) return false;
-  const candidateStatusByTurnId = new Map(
-    candidate.turns.flatMap((turn) =>
-      turn.protocol.id === null ? [] : [[turn.protocol.id, turn.protocol.status] as const],
-    ),
-  );
-  return authoritative.turns.some(
-    (turn) =>
-      turn.protocol.id !== null &&
-      turn.protocol.status !== "inProgress" &&
-      candidateStatusByTurnId.get(turn.protocol.id) === "inProgress",
-  );
-};
 
 const defaultTurnItemsPagination = (
   turn: CodexCanonicalTurnState,
 ): CodexHistoryTurnItemsPagination => ({
   olderCursor: null,
   isLoadingOlder: false,
-  hasLoadedOldest: turn.protocol.itemsView === "full",
+  hasLoadedOldest: turn.itemsView === "full",
   oldestUserInput: null,
   openingUserMessageId: null,
-  itemsView: turn.protocol.itemsView ?? "full",
+  itemsView: turn.itemsView ?? "full",
 });
 
 const historyEntity = (input: {
   readonly turn: PersistedCanonicalTurn;
-  readonly current: CodexHistoryEntity<CodexCanonicalTurnState> | undefined;
+  readonly current: CodexCanonicalTurnState | undefined;
   readonly itemsPagination: CodexHistoryTurnItemsPagination | undefined;
-  readonly authority: CodexHistoryEntity<CodexCanonicalTurnState>["authority"];
-  readonly revision: number;
-  readonly approximateBytes?: number;
+  readonly authority: "history" | "live";
 }): CodexHistoryEntity<CodexCanonicalTurnState> => {
-  const preserveLive = input.current?.authority === "live" && input.authority === "history";
-  const turn = preserveLive ? input.current.turn : input.turn;
+  const turn =
+    input.current && input.authority === "history"
+      ? mergeCodexCanonicalTurnState(input.current, input.turn)
+      : input.turn;
   return {
-    key: input.turn.protocol.id,
-    turn,
-    itemCount: turn.items.length,
-    approximateBytes: input.approximateBytes ?? canonicalTurnBytes(turn),
-    itemsPagination:
-      input.itemsPagination ?? input.current?.itemsPagination ?? defaultTurnItemsPagination(turn),
-    authority: preserveLive ? "live" : input.authority,
-    revision: preserveLive ? input.current.revision : input.revision,
+    key: input.turn.turnId,
+    turn: {
+      ...turn,
+      itemsPagination:
+        input.itemsPagination ?? turn.itemsPagination ?? defaultTurnItemsPagination(turn),
+    },
   };
-};
-
-const paginationBoundary = (input: {
-  readonly current: CodexHistoryBoundary;
-  readonly pagination: CodexConversationTurnPagination;
-}): CodexHistoryBoundary => {
-  if (input.current.status === "opaque") return input.current;
-  if (input.pagination.olderCursor === null) {
-    return exhaustedCodexHistoryBoundary(input.current.boundaryId);
-  }
-  return availableCodexHistoryBoundary(input.current.boundaryId, {
-    cursor: input.pagination.olderCursor,
-    oldestLoadedTurnId: input.pagination.oldestLoadedTurnId,
-  });
-};
-
-const assembleHistoryTopology = (input: {
-  readonly generation: number;
-  readonly islands: readonly {
-    readonly id: string;
-    readonly turns: readonly PersistedCanonicalTurn[];
-    readonly olderBoundary: CodexHistoryBoundary;
-    readonly newerBoundary: CodexHistoryBoundary;
-  }[];
-  readonly current: CodexCanonicalHistoryTopology<CodexCanonicalTurnState>;
-  readonly itemsPaginationByTurnId: Readonly<Record<string, CodexHistoryTurnItemsPagination>>;
-  readonly authority: CodexHistoryEntity<CodexCanonicalTurnState>["authority"];
-  readonly liveTurnIds?: ReadonlySet<string>;
-  readonly revision: number;
-}): CodexCanonicalHistoryTopology<CodexCanonicalTurnState> => {
-  let topology = createEmptyCodexHistoryTopology<CodexCanonicalTurnState>(input.generation);
-  for (const island of input.islands) {
-    if (island.turns.length === 0) continue;
-    const entities = island.turns.map((turn) => {
-      const current = input.current.entitiesByKey[turn.protocol.id];
-      const authority =
-        input.authority === "live" && input.liveTurnIds && !input.liveTurnIds.has(turn.protocol.id)
-          ? (current?.authority ?? "history")
-          : input.authority;
-      return historyEntity({
-        turn,
-        current,
-        itemsPagination: input.itemsPaginationByTurnId[turn.protocol.id],
-        authority,
-        revision: input.revision,
-      });
-    });
-    const inserted = insertCodexHistoryIsland(topology, {
-      index: topology.islands.length,
-      islandId: island.id,
-      entries: entities.map((entity) => ({ key: entity.key, entityKey: entity.key })),
-      entities,
-      olderBoundary: island.olderBoundary,
-      newerBoundary: island.newerBoundary,
-    });
-    if (!inserted.ok) throw new Error(inserted.error.message);
-    topology = inserted.topology;
-  }
-  return topology;
 };
 
 const rebuildHistoryTopology = (input: {
@@ -715,25 +516,25 @@ const rebuildHistoryTopology = (input: {
   readonly canonical: CodexCanonicalConversationState | null;
   readonly pagination: CodexConversationTurnPagination;
   readonly itemsPaginationByTurnId: Readonly<Record<string, CodexHistoryTurnItemsPagination>>;
-  readonly authority: CodexHistoryEntity<CodexCanonicalTurnState>["authority"];
-  readonly revision?: number;
+  readonly authority: "history" | "live";
 }): CodexCanonicalHistoryTopology<CodexCanonicalTurnState> => {
-  const turns = persistedCanonicalTurns(input.canonical);
-  if (turns.length === 0) return createEmptyCodexHistoryTopology(input.generation);
-  const entities = turns.map((turn): CodexHistoryEntity<CodexCanonicalTurnState> => {
-    const turnId = turn.protocol.id;
+  const turns = residentConversationTurns(input.canonical);
+  const entities = turns.map((turn, index): CodexHistoryEntity<CodexCanonicalTurnState> => {
+    if (turn.turnId === null)
+      return { key: turn.entityKey ?? `tail:${input.generation}:local:${index}`, turn };
+    const turnId = turn.turnId;
     return historyEntity({
-      turn,
+      turn: { ...turn, turnId },
       current: undefined,
       itemsPagination: input.itemsPaginationByTurnId[turnId],
       authority: input.authority,
-      revision: input.revision ?? input.generation,
     });
   });
   const topology = createCodexHistoryIslandTopology({
     generation: input.generation,
+    isComplete: input.pagination.hasLoadedOldest,
     islandId: `tail:${input.generation}`,
-    entries: entities.map((entity) => ({ key: entity.key, entityKey: entity.key })),
+    entries: entities.map((entity) => ({ key: entity.key, value: entity.key })),
     entities,
     olderBoundary:
       input.pagination.olderCursor === null
@@ -748,160 +549,95 @@ const rebuildHistoryTopology = (input: {
   return topology.topology;
 };
 
-const reconcileHistoryTopology = (input: {
-  readonly topology: CodexCanonicalHistoryTopology<CodexCanonicalTurnState>;
-  readonly canonical: CodexCanonicalConversationState;
-  readonly pagination: CodexConversationTurnPagination;
-  readonly itemsPaginationByTurnId: Readonly<Record<string, CodexHistoryTurnItemsPagination>>;
-  readonly authority: CodexHistoryEntity<CodexCanonicalTurnState>["authority"];
-  readonly liveTurnIds?: ReadonlySet<string>;
-  readonly revision: number;
-}): CodexCanonicalHistoryTopology<CodexCanonicalTurnState> => {
-  const turns = persistedCanonicalTurns(input.canonical);
-  if (input.topology.islands.length === 0) {
-    return rebuildHistoryTopology({
-      generation: input.topology.generation,
-      canonical: input.canonical,
-      pagination: input.pagination,
-      itemsPaginationByTurnId: input.itemsPaginationByTurnId,
-      authority: input.authority,
-      revision: input.revision,
-    });
-  }
-
-  const turnsById = new Map(turns.map((turn) => [turn.protocol.id, turn] as const));
-  const tailIndex = input.topology.islands.findLastIndex(
-    (island) => island.newerBoundary.status === "exhausted",
-  );
-  const nonTailEntityKeys = new Set(
-    input.topology.islands.flatMap((island, index) =>
-      index === tailIndex ? [] : island.entries.map((entry) => entry.entityKey),
-    ),
-  );
-  const islands = input.topology.islands.flatMap((island, index) => {
-    const islandTurns =
-      index === tailIndex
-        ? turns.filter((turn) => !nonTailEntityKeys.has(turn.protocol.id))
-        : island.entries.flatMap((entry) => {
-            const turn =
-              turnsById.get(entry.entityKey) ?? input.topology.entitiesByKey[entry.entityKey]?.turn;
-            return turn?.protocol.id === null ? [] : [turn as PersistedCanonicalTurn];
-          });
-    if (islandTurns.length === 0) return [];
-    return [
-      {
-        id: island.id,
-        turns: islandTurns,
-        olderBoundary:
-          index === tailIndex
-            ? paginationBoundary({
-                current: island.olderBoundary,
-                pagination: input.pagination,
-              })
-            : island.olderBoundary,
-        newerBoundary: island.newerBoundary,
-      },
-    ];
-  });
-  if (tailIndex < 0) {
-    const unreferencedTurns = turns.filter((turn) => !nonTailEntityKeys.has(turn.protocol.id));
-    if (unreferencedTurns.length > 0) {
-      islands.push({
-        id: `tail:${input.topology.generation}`,
-        turns: unreferencedTurns,
-        olderBoundary:
-          input.pagination.olderCursor === null
-            ? exhaustedCodexHistoryBoundary(`older:${input.topology.generation}`)
-            : availableCodexHistoryBoundary(`older:${input.topology.generation}`, {
-                cursor: input.pagination.olderCursor,
-                oldestLoadedTurnId: input.pagination.oldestLoadedTurnId,
-              }),
-        newerBoundary: exhaustedCodexHistoryBoundary(`newer:${input.topology.generation}`),
-      });
-    }
-  }
-  return assembleHistoryTopology({
-    generation: input.topology.generation,
-    islands,
-    current: input.topology,
-    itemsPaginationByTurnId: input.itemsPaginationByTurnId,
-    authority: input.authority,
-    liveTurnIds: input.liveTurnIds,
-    revision: input.revision,
-  });
-};
-
-const paginationForHistoryTopology = (input: {
-  readonly current: CodexConversationTurnPagination;
-  readonly topology: CodexCanonicalHistoryTopology<CodexCanonicalTurnState>;
-}): CodexConversationTurnPagination => {
-  const tailIsland =
-    input.topology.islands.find((island) => island.id.startsWith("tail:")) ??
-    input.topology.islands.findLast((island) => island.newerBoundary.status === "exhausted");
-  const olderBoundary = tailIsland?.olderBoundary ?? null;
-  const newerBoundary = tailIsland?.newerBoundary ?? null;
-  const entities = Object.values(input.topology.entitiesByKey);
-  return {
-    olderCursor: olderBoundary?.status === "available" ? olderBoundary.handle.cursor : null,
-    backwardsCursor:
-      newerBoundary?.status === "available"
-        ? newerBoundary.handle.cursor
-        : input.current.backwardsCursor,
-    oldestLoadedTurnId: tailIsland?.entries[0]?.entityKey ?? null,
-    isLoadingOlder: false,
-    hasLoadedOldest: olderBoundary?.status === "exhausted",
-    loadedTurnCount: input.topology.residency.turnCount,
-    itemsView: entities.every(
-      (entity) =>
-        entity.itemsPagination.itemsView === "full" && entity.itemsPagination.hasLoadedOldest,
-    )
-      ? "full"
-      : "summary",
-  };
-};
-
 const preserveResidentHistoryTurns = (
   state: CodexCanonicalConversationState,
   topology: CodexCanonicalHistoryTopology<CodexCanonicalTurnState>,
 ): CodexCanonicalConversationState => {
-  const incomingById = new Map(
-    persistedCanonicalTurns(state).map((turn) => [turn.protocol.id, turn] as const),
-  );
-  const topologyTurns = topology.islands.flatMap((island) =>
-    island.entries.flatMap((entry) => {
-      const incoming = incomingById.get(entry.entityKey);
-      if (incoming) return [incoming];
-      const resident = topology.entitiesByKey[entry.entityKey]?.turn;
-      return resident?.protocol.id === null ? [] : [resident as PersistedCanonicalTurn];
-    }),
-  );
-  const represented = new Set(topologyTurns.map((turn) => turn.protocol.id));
-  const unrepresentedIncoming = persistedCanonicalTurns(state).filter(
-    (turn) => !represented.has(turn.protocol.id),
-  );
-  const syntheticTurns = state.turns.filter((turn) => turn.protocol.id === null);
-  const turns = [...topologyTurns, ...unrepresentedIncoming, ...syntheticTurns];
-  if (
-    turns.length === state.turns.length &&
-    turns.every((turn, index) => turn === state.turns[index])
-  ) {
-    return state;
+  if (state.turnHistory || topology.islands.length === 0) return state;
+  const incoming = new Map(persistedCanonicalTurns(state).map((turn) => [turn.turnId, turn]));
+  const entitiesByKey = { ...topology.entitiesByKey };
+  const represented = new Set<string>();
+  for (const [key, resident] of Object.entries(entitiesByKey)) {
+    if (resident.turnId === null) continue;
+    represented.add(resident.turnId);
+    const next = incoming.get(resident.turnId);
+    entitiesByKey[key] = next ? mergeCodexCanonicalTurnState(resident, next) : resident;
   }
-  return { ...state, turns };
+  const additional = persistedCanonicalTurns(state).filter((turn) => !represented.has(turn.turnId));
+  let history = { ...topology, entitiesByKey };
+  if (additional.length > 0) {
+    const tail = history.islands.findLast((island) => island.newerBoundary.status === "exhausted");
+    const id = tail?.id ?? `tail:${history.generation}`;
+    const nextTail = {
+      id,
+      entries: [
+        ...(tail?.entries ?? []),
+        ...additional.map((turn) => ({ key: turn.turnId, value: turn.turnId })),
+      ],
+      olderBoundary: tail?.olderBoundary ?? exhaustedCodexHistoryBoundary(`${id}:older`),
+      newerBoundary: tail?.newerBoundary ?? exhaustedCodexHistoryBoundary(`${id}:newer`),
+    };
+    for (const turn of additional)
+      entitiesByKey[turn.turnId] = {
+        ...turn,
+        itemsPagination: turn.itemsPagination ?? defaultTurnItemsPagination(turn),
+      };
+    history = {
+      ...history,
+      islands: tail
+        ? history.islands.map((island) => (island === tail ? nextTail : island))
+        : [...history.islands, nextTail],
+    };
+  }
+  return installCanonicalHistory(state, history);
 };
 
-const initialAggregate = (generation: number): MutableConversationEntityState => ({
+const installCanonicalHistory = (
+  state: CodexCanonicalConversationState,
+  history: CodexCanonicalHistoryTopology<CodexCanonicalTurnState>,
+): CodexCanonicalConversationState => {
+  if (state.turnHistory?.history === history && state.turns.length === 0) return state;
+  const localTurns = state.turnHistory ? [] : state.turns.filter((turn) => turn.turnId === null);
+  if (localTurns.length === 0)
+    return { ...state, turnHistory: { kind: "canonical", history }, turns: [] };
+  const tail = history.islands.findLast((island) => island.newerBoundary.status === "exhausted");
+  const tailId = tail?.id ?? `local-live-tail:${history.generation}`;
+  const entities = localTurns.map((turn, index) => ({
+    key: turn.entityKey ?? `${tailId}:local:${index}`,
+    turn,
+  }));
+  const nextTail = {
+    id: tailId,
+    entries: [...(tail?.entries ?? []), ...entities.map(({ key }) => ({ key, value: key }))],
+    olderBoundary: tail?.olderBoundary ?? exhaustedCodexHistoryBoundary(`${tailId}:older`),
+    newerBoundary: tail?.newerBoundary ?? exhaustedCodexHistoryBoundary(`${tailId}:newer`),
+  };
+  return {
+    ...state,
+    turns: [],
+    turnHistory: {
+      kind: "canonical",
+      history: {
+        ...history,
+        isComplete: tail ? history.isComplete : false,
+        islands: tail
+          ? history.islands.map((island) => (island === tail ? nextTail : island))
+          : [...history.islands, nextTail],
+        entitiesByKey: {
+          ...history.entitiesByKey,
+          ...Object.fromEntries(entities.map(({ key, turn }) => [key, turn])),
+        },
+      },
+    },
+  };
+};
+
+const initialAggregateFields = (generation: number) => ({
   generation,
-  canonicalState: null,
-  preHydrationServerRequests: [],
-  preHydrationHasUnreadTurn: false,
+  document: new CodexConversationEntityDocument(),
   streamRole: null,
-  acceptedReplica: null,
   version: 0,
-  revision: 0,
-  checkpoint: null,
-  snapshot: null,
-  resumeState: "resumed",
+  resumeStateBeforeHydration: "needs_resume",
   turnPagination: {
     olderCursor: null,
     backwardsCursor: null,
@@ -911,16 +647,11 @@ const initialAggregate = (generation: number): MutableConversationEntityState =>
     loadedTurnCount: 0,
     itemsView: "full",
   },
-  turnItemsPaginationById: {},
-  historyItemWindowsByTurnId: new Map(),
   historyTopology: createEmptyCodexHistoryTopology(0),
   isStreaming: false,
   historyGeneration: 0,
-  historyEntityRevision: 0,
   historyMutationRevision: 0,
   historyPageLoadLeases: new Set(),
-  resumeEventBuffer: null,
-  resumeEventBufferBytes: 0,
   threadStartEventBuffer: null,
   threadStartEventBufferBytes: 0,
   threadStartEventBufferFence: null,
@@ -928,38 +659,18 @@ const initialAggregate = (generation: number): MutableConversationEntityState =>
   queuedFollowUps: EMPTY_CODEX_QUEUED_FOLLOW_UP_PROJECTION,
 });
 
+const initialAggregate = (generation: number): MutableConversationEntityState =>
+  new MutableConversationEntityState(generation);
+
 /** Mutable transaction containers are isolated; immutable transcript graphs remain shared. */
-const cloneHistoryTransaction = (
-  aggregate: MutableConversationEntityState,
-): MutableConversationEntityState => ({
-  ...aggregate,
-  turnPagination: { ...aggregate.turnPagination },
-  turnItemsPaginationById: { ...aggregate.turnItemsPaginationById },
-  historyItemWindowsByTurnId: new Map(aggregate.historyItemWindowsByTurnId),
-  historyPageLoadLeases: new Set(aggregate.historyPageLoadLeases),
-  preHydrationServerRequests: [...aggregate.preHydrationServerRequests],
-  resumeEventBuffer: aggregate.resumeEventBuffer ? [...aggregate.resumeEventBuffer] : null,
-  threadStartEventBuffer: aggregate.threadStartEventBuffer
-    ? [...aggregate.threadStartEventBuffer]
-    : null,
-});
 
 const snapshot = (aggregate: MutableConversationEntityState): ConversationEntitySnapshot => ({
   generation: aggregate.generation,
-  canonicalState: aggregate.canonicalState,
-  preHydrationServerRequests: [...aggregate.preHydrationServerRequests],
-  preHydrationHasUnreadTurn: aggregate.preHydrationHasUnreadTurn,
+  canonicalState: aggregate.document.canonicalState,
+  serverRequests: aggregate.document.requests,
+  hasUnreadTurn: aggregate.document.hasUnreadTurn,
   streamRole: aggregate.streamRole,
-  acceptedReplica:
-    aggregate.acceptedReplica === null
-      ? null
-      : {
-          checkpoint: aggregate.acceptedReplica.checkpoint,
-          conversation: aggregate.acceptedReplica.conversation,
-        },
   version: aggregate.version,
-  revision: aggregate.revision,
-  checkpoint: aggregate.checkpoint,
   snapshot: aggregate.snapshot,
   resumeState: aggregate.resumeState,
   turnPagination: { ...aggregate.turnPagination },
@@ -974,40 +685,36 @@ const snapshot = (aggregate: MutableConversationEntityState): ConversationEntity
  * Its interface exposes semantic state transitions rather than mutable records or generic reducers.
  */
 export function makeConversationEntityStateRegistry(): ConversationEntityStateRegistry {
+  const threadsById = new Map<string, Thread>();
   const aggregates = new Map<string, MutableConversationEntityState>();
   const capabilities = new Map<string, ConversationEntityState>();
+  const mutationListeners = new Set<(mutation: ConversationCanonicalMutation) => void>();
   let nextGeneration = 1;
 
   const ensureState = (threadId: string): MutableConversationEntityState => {
     const existing = aggregates.get(threadId);
     if (existing) return existing;
     const created = initialAggregate(nextGeneration++);
+    created.onCanonicalChange = (change) => {
+      for (const listener of mutationListeners) listener({ threadId, ...change });
+    };
     aggregates.set(threadId, created);
     return created;
   };
 
   const resetAggregate = (aggregate: MutableConversationEntityState): void => {
-    aggregate.canonicalState = null;
-    aggregate.preHydrationServerRequests = [];
-    aggregate.preHydrationHasUnreadTurn = false;
+    aggregate.document = aggregate.document.withCanonicalState(null);
+
     aggregate.streamRole = null;
-    aggregate.acceptedReplica = null;
     aggregate.version = 0;
-    aggregate.revision = 0;
-    aggregate.checkpoint = null;
     aggregate.snapshot = null;
-    aggregate.resumeState = "resumed";
+    aggregate.resumeStateBeforeHydration = "needs_resume";
     aggregate.turnPagination = initialAggregate(aggregate.generation).turnPagination;
-    aggregate.turnItemsPaginationById = {};
-    aggregate.historyItemWindowsByTurnId.clear();
     aggregate.historyTopology = createEmptyCodexHistoryTopology(0);
     aggregate.isStreaming = false;
     aggregate.historyGeneration = 0;
-    aggregate.historyEntityRevision = 0;
     aggregate.historyMutationRevision = 0;
     aggregate.historyPageLoadLeases.clear();
-    aggregate.resumeEventBuffer = null;
-    aggregate.resumeEventBufferBytes = 0;
     aggregate.threadStartEventBuffer = null;
     aggregate.threadStartEventBufferBytes = 0;
     aggregate.threadStartEventBufferFence = null;
@@ -1019,172 +726,38 @@ export function makeConversationEntityStateRegistry(): ConversationEntityStateRe
     threadId: string,
     aggregate: MutableConversationEntityState,
   ): ConversationEntityState => {
-    let pendingHistoryTransaction: {
-      readonly state: MutableConversationEntityState;
-      readonly baseline: CodexCanonicalConversationState | null;
-    } | null = null;
-    const acceptReplica = (
-      input: {
-        readonly conversation: CodexConversationSnapshot;
-        readonly revision: number;
-        readonly ownerEpoch: number;
-      },
-      state: MutableConversationEntityState = aggregate,
-    ): CodexThreadStreamReplica => {
-      const mustReconcileTerminalAuthority = hasTerminalTurnRegression(
-        state.canonicalState,
-        input.conversation.canonicalState,
+    const mutateCanonicalState = (
+      recipe: (draft: Draft<CodexCanonicalConversationState>) => void,
+      observedAtMs: number,
+    ): boolean => {
+      const mutation = aggregate.document.mutate(recipe);
+      return (
+        mutation !== null && projectCanonicalState(mutation.after, observedAtMs, mutation.document)
       );
-      let conversation: CodexConversationSnapshot = {
-        ...input.conversation,
-        conversationEntityGeneration: state.generation,
-        historyMutationRevision: state.historyMutationRevision,
-        queuedFollowUps: {
-          ...state.queuedFollowUps,
-          entries: [...state.queuedFollowUps.entries],
-        },
-      };
-      if (mustReconcileTerminalAuthority && state.canonicalState) {
-        // Main observes protocol notifications before the renderer can publish their reduced
-        // document. Rebase a lagging owner publication onto Main's terminal lifecycle authority.
-        // Its checkpoint then intentionally differs from the submitted one, causing the
-        // coordinator to return this reconciled replica as recovery instead of acknowledging a
-        // document that would put the renderer back into a permanently running state.
-        conversation = projectCodexConversationSnapshot({
-          conversation,
-          before: conversation.canonicalState ?? null,
-          after: state.canonicalState,
-          observedAtMs: Date.now(),
-        });
-      }
-      conversation = projectCodexConversationDocument(conversation);
-      const checkpoint = buildCodexThreadStreamCheckpoint({
-        ownerEpoch: input.ownerEpoch,
-        revision: input.revision,
-      });
-      const replica = { checkpoint, conversation };
-      state.acceptedReplica = replica;
-      state.snapshot = conversation;
-      state.revision = input.revision;
-      state.checkpoint = checkpoint;
-      return replica;
-    };
-
-    const readOrSeedHistoryItemWindow = (
-      turnId: string,
-      state: MutableConversationEntityState = aggregate,
-    ): CodexHistoryItemWindow<CodexCanonicalItem, CodexConversationItem> | null => {
-      const existing = state.historyItemWindowsByTurnId.get(turnId);
-      if (existing) return existing;
-      const snapshotWindow = state.snapshot?.historyItemWindowsByTurnId?.[turnId];
-      if (snapshotWindow) {
-        const restored = restoreCodexConversationHistoryItemWindow(snapshotWindow);
-        if (restored) {
-          state.historyItemWindowsByTurnId.set(turnId, restored);
-          return restored;
-        }
-      }
-      const canonicalTurn = persistedCanonicalTurns(state.canonicalState).find(
-        (turn) => turn.protocol.id === turnId,
-      );
-      const rendererTurn = state.snapshot?.turns.find((turn) => turn.turnId === turnId);
-      const pagination = state.turnItemsPaginationById[turnId];
-      if (!canonicalTurn || !rendererTurn || !pagination) return null;
-      const seeded = seedCodexConversationHistoryItemWindow({
-        turnId,
-        canonicalItems: canonicalTurn.items,
-        rendererItems: rendererTurn.items,
-        pagination,
-      });
-      if (!seeded) return null;
-      state.historyItemWindowsByTurnId.set(turnId, seeded);
-      return seeded;
-    };
-
-    const historyItemProgressKey = (
-      turnId: string,
-      edge: "older" | "newer",
-      state: MutableConversationEntityState = aggregate,
-    ): string | null => {
-      const pagination = state.turnItemsPaginationById[turnId];
-      if (!pagination) return null;
-      const snapshotWindow = state.snapshot?.historyItemWindowsByTurnId?.[turnId] ?? null;
-      if (edge === "newer" && snapshotWindow?.newerBoundary.status !== "available") return null;
-      return codexConversationHistoryTurnItemsProgressKey(pagination, edge, snapshotWindow);
     };
 
     const projectCanonicalState = (
       state: CodexCanonicalConversationState,
       observedAtMs: number,
-      projectReplica: boolean,
+      document?: CodexConversationEntityDocument,
     ): boolean => {
-      const before = aggregate.canonicalState;
+      const before = aggregate.document.canonicalState;
       if (!before || state === before) return false;
-      const beforeTurnsById = new Map(
-        persistedCanonicalTurns(before).map((turn) => [turn.protocol.id, turn] as const),
-      );
-      const liveTurnIds = new Set(
-        persistedCanonicalTurns(state)
-          .filter((turn) => beforeTurnsById.get(turn.protocol.id) !== turn)
-          .map((turn) => turn.protocol.id),
-      );
-      for (const turnId of liveTurnIds) aggregate.historyItemWindowsByTurnId.delete(turnId);
-      const withoutChangedItemWindows = (
-        conversation: CodexConversationSnapshot,
-      ): CodexConversationSnapshot => ({
-        ...conversation,
-        historyItemWindowsByTurnId: Object.fromEntries(
-          Object.entries(conversation.historyItemWindowsByTurnId ?? {}).filter(
-            ([turnId]) => !liveTurnIds.has(turnId),
-          ),
-        ),
-      });
-      aggregate.canonicalState = state;
+      aggregate.document = document ?? aggregate.document.withCanonicalState(state);
       if (aggregate.snapshot) {
         aggregate.snapshot = projectCodexConversationSnapshot({
-          conversation: withoutChangedItemWindows(aggregate.snapshot),
+          conversation: aggregate.snapshot,
           before,
           after: state,
           observedAtMs,
         });
       }
-      if (projectReplica && aggregate.acceptedReplica) {
-        acceptReplica({
-          conversation: projectCodexConversationSnapshot({
-            conversation: withoutChangedItemWindows(aggregate.acceptedReplica.conversation),
-            before,
-            after: state,
-            observedAtMs,
-          }),
-          ownerEpoch: aggregate.acceptedReplica.checkpoint.ownerEpoch,
-          revision: aggregate.revision + 1,
-        });
-      }
-      reconcileCanonicalHistory("live", liveTurnIds);
-      return true;
-    };
 
-    const reconcileCanonicalHistory = (
-      authority: CodexHistoryEntity<CodexCanonicalTurnState>["authority"],
-      liveTurnIds?: ReadonlySet<string>,
-    ): void => {
-      const canonical = aggregate.canonicalState;
-      if (!canonical) return;
-      aggregate.historyEntityRevision += 1;
-      aggregate.historyTopology = reconcileHistoryTopology({
-        topology: aggregate.historyTopology,
-        canonical,
-        pagination: aggregate.turnPagination,
-        itemsPaginationByTurnId: aggregate.turnItemsPaginationById,
-        authority,
-        liveTurnIds,
-        revision: aggregate.historyEntityRevision,
-      });
+      return true;
     };
 
     const installQueuedFollowUpProjection = (
       projection: CodexQueuedFollowUpProjection,
-      projectReplica: boolean,
     ): boolean => {
       const previous = aggregate.queuedFollowUps;
       if (
@@ -1206,517 +779,81 @@ export function makeConversationEntityStateRegistry(): ConversationEntityStateRe
       if (aggregate.snapshot) {
         aggregate.snapshot = { ...aggregate.snapshot, queuedFollowUps: aggregate.queuedFollowUps };
       }
-      if (projectReplica && aggregate.acceptedReplica) {
-        acceptReplica({
-          conversation: {
-            ...aggregate.acceptedReplica.conversation,
-            queuedFollowUps: aggregate.queuedFollowUps,
-          },
-          ownerEpoch: aggregate.acceptedReplica.checkpoint.ownerEpoch,
-          revision: aggregate.revision + 1,
-        });
-      }
       return true;
     };
 
-    const commitHistoryPage = (
-      input: Parameters<ConversationEntityState["commitHistoryPage"]>[0],
-      state: MutableConversationEntityState,
-    ): CodexConversationHistoryPageCommitResult => {
-      if (
-        input.request.threadId !== threadId ||
-        input.request.expectedConversationGeneration !== state.generation
-      ) {
-        return { status: "staleGeneration" };
-      }
-      const before = state.canonicalState;
-      const beforeSnapshot = state.snapshot;
-      if (!before || !beforeSnapshot) {
-        return { status: "rejected", reason: "Canonical history is not installed" };
-      }
-      const target = input.request.target;
-      const expectedTopologyGeneration =
-        target.kind === "turnBoundary"
-          ? target.boundary.generation
-          : target.items.expectedTopologyGeneration;
-      if (state.historyTopology.generation !== expectedTopologyGeneration) {
-        return { status: "staleGeneration" };
-      }
-
-      const staged = preserveResidentHistoryTurns(input.state, state.historyTopology);
-      const stagedById = new Map(
-        persistedCanonicalTurns(staged).map((turn) => [turn.protocol.id, turn] as const),
-      );
-      const revision = state.historyEntityRevision + 1;
-      let nextTopology: CodexCanonicalHistoryTopology<CodexCanonicalTurnState>;
-      let turnItemsMutation: readonly CodexConversationHistoryTurnItemsMutation[] = [];
-      let itemRendererProjection: {
-        readonly turnId: string;
-        readonly itemIds: readonly string[];
-        readonly items: readonly CodexConversationItem[];
-      } | null = null;
-      let itemWindowSnapshotBefore:
-        | import("../../../shared/codex-conversation-history-page").CodexConversationHistoryItemWindowSnapshot
-        | null = null;
-      if (target.kind === "turnBoundary") {
-        if (
-          !input.continuation ||
-          (input.turnIds.length === 0 && input.continuation.status !== "exhausted")
-        ) {
-          return { status: "rejected", reason: "Boundary page is empty without exhaustion" };
-        }
-        const entities: CodexHistoryEntity<CodexCanonicalTurnState>[] = [];
-        for (const turnId of input.turnIds) {
-          const turn = stagedById.get(turnId);
-          const pagination = input.itemsPaginationByTurnId[turnId];
-          if (!turn || !pagination) {
-            return { status: "rejected", reason: `Boundary page is missing Turn ${turnId}` };
-          }
-          entities.push(
-            historyEntity({
-              turn,
-              current: state.historyTopology.entitiesByKey[turnId],
-              itemsPagination: pagination,
-              authority: "history",
-              revision,
-            }),
-          );
-        }
-        const merged = mergeCodexHistoryBoundaryPage(state.historyTopology, {
-          boundary: target.boundary,
-          entries: entities.map((entity) => ({ key: entity.key, entityKey: entity.key })),
-          entities,
-          continuation: input.continuation,
-        });
-        if (!merged.ok) {
-          return merged.error.code === "staleGeneration"
-            ? { status: "staleGeneration" }
-            : merged.error.code === "boundaryMissing" ||
-                merged.error.code === "staleBoundary" ||
-                merged.error.code === "cursorStalled"
-              ? { status: "staleTarget" }
-              : { status: "rejected", reason: merged.error.message };
-        }
-        nextTopology = merged.topology;
-      } else {
-        const currentPagination = state.turnItemsPaginationById[target.items.turnId];
-        const itemPage = input.itemPage;
-        if (
-          !currentPagination ||
-          historyItemProgressKey(target.items.turnId, target.items.edge, state) !==
-            target.items.progressKey ||
-          !itemPage ||
-          itemPage.direction !== target.items.edge
-        ) {
-          return { status: "staleTarget" };
-        }
-        const turn = stagedById.get(target.items.turnId);
-        const currentEntity = state.historyTopology.entitiesByKey[target.items.turnId];
-        const currentRendererTurn = beforeSnapshot.turns.find(
-          (candidate) => candidate.turnId === target.items.turnId,
-        );
-        const window = readOrSeedHistoryItemWindow(target.items.turnId, state);
-        if (!turn || !currentEntity || !currentRendererTurn || !window) {
-          return { status: "staleTarget" };
-        }
-        itemWindowSnapshotBefore =
-          beforeSnapshot.historyItemWindowsByTurnId?.[target.items.turnId] ??
-          snapshotCodexConversationHistoryItemWindow(window);
-        if (
-          itemPage.itemIds.length !== itemPage.canonicalItems.length ||
-          itemPage.itemIds.some((itemId, index) => itemPage.canonicalItems[index]?.id !== itemId)
-        ) {
-          return { status: "rejected", reason: "Item page projection identities diverged" };
-        }
-        const transitioned =
-          target.items.edge === "older"
-            ? prependCodexHistoryItemPage(window, {
-                turnId: target.items.turnId,
-                segmentId: itemPage.segmentId,
-                items: {
-                  itemIds: itemPage.itemIds,
-                  canonicalItems: itemPage.canonicalItems,
-                  rendererItems: itemPage.rendererItems,
-                },
-                approximateBytes: itemPage.approximateBytes,
-                olderCursorAfter: itemPage.nextCursor,
-                newerCursor: itemPage.backwardsCursor,
-              })
-            : appendCodexHistoryItemPage(window, {
-                turnId: target.items.turnId,
-                segmentId: itemPage.segmentId,
-                items: {
-                  itemIds: itemPage.itemIds,
-                  canonicalItems: itemPage.canonicalItems,
-                  rendererItems: itemPage.rendererItems,
-                },
-                approximateBytes: itemPage.approximateBytes,
-                newerCursorAfter: itemPage.nextCursor,
-                olderCursor: itemPage.backwardsCursor,
-              });
-        if (!transitioned.ok) {
-          return transitioned.error.code === "staleBoundary" ||
-            transitioned.error.code === "cursorStalled" ||
-            transitioned.error.code === "duplicateItem"
-            ? { status: "staleTarget" }
-            : { status: "rejected", reason: transitioned.error.message };
-        }
-        const retainedCanonical = turn.items;
-        const retainedRenderer = currentRendererTurn.items;
-        const canonicalItems =
-          target.items.edge === "older"
-            ? [...itemPage.canonicalItems, ...retainedCanonical]
-            : [...retainedCanonical, ...itemPage.canonicalItems];
-        const rendererItems =
-          target.items.edge === "older"
-            ? [...itemPage.rendererItems, ...retainedRenderer]
-            : [...retainedRenderer, ...itemPage.rendererItems];
-        const hasLoadedOldest = transitioned.window.olderBoundary.status === "exhausted";
-        const hasLoadedNewest = transitioned.window.newerBoundary.status === "exhausted";
-        const pagination: CodexHistoryTurnItemsPagination = {
-          ...currentPagination,
-          olderCursor:
-            transitioned.window.olderBoundary.status === "available"
-              ? transitioned.window.olderBoundary.cursor
-              : null,
-          isLoadingOlder: false,
-          hasLoadedOldest,
-          itemsView: hasLoadedOldest && hasLoadedNewest ? "full" : "summary",
-        };
-        const nextTurn: PersistedCanonicalTurn = {
-          ...turn,
-          protocol: { ...turn.protocol, itemsView: pagination.itemsView },
-          items: canonicalItems,
-        };
-        state.historyItemWindowsByTurnId.set(target.items.turnId, transitioned.window);
-        turnItemsMutation = [
-          {
-            turnId: target.items.turnId,
-            itemsView: pagination.itemsView,
-            windowMutation: {
-              wireSegment: transitioned.wireSegment,
-            },
-          },
-        ];
-        itemRendererProjection = {
-          turnId: target.items.turnId,
-          itemIds: canonicalItems.map((item) => item.id),
-          items: rendererItems,
-        };
-        const replaced = replaceCodexHistoryEntity(state.historyTopology, {
-          expectedGeneration: target.items.expectedTopologyGeneration,
-          entity: historyEntity({
-            turn: nextTurn,
-            current: currentEntity,
-            itemsPagination: pagination,
-            authority: currentEntity.authority,
-            revision,
-            approximateBytes:
-              canonicalTurnMetadataBytes(nextTurn) + transitioned.window.residency.approximateBytes,
-          }),
-        });
-        if (!replaced.ok) {
-          return replaced.error.code === "staleGeneration"
-            ? { status: "staleGeneration" }
-            : { status: "staleTarget" };
-        }
-        nextTopology = replaced.topology;
-      }
-
-      const canonicalTurns = nextTopology.islands.flatMap((island) =>
-        island.entries.map((entry) => nextTopology.entitiesByKey[entry.entityKey]!.turn),
-      );
-      const committedState: CodexCanonicalConversationState = {
-        ...staged,
-        turns: [...canonicalTurns, ...staged.turns.filter((turn) => turn.protocol.id === null)],
-      };
-      state.historyEntityRevision = revision;
-      state.historyTopology = nextTopology;
-      state.canonicalState = committedState;
-      state.turnItemsPaginationById = Object.fromEntries(
-        Object.entries(nextTopology.entitiesByKey).map(([turnId, entity]) => [
-          turnId,
-          entity.itemsPagination,
-        ]),
-      );
-      state.turnPagination = paginationForHistoryTopology({
-        current: state.turnPagination,
-        topology: nextTopology,
-      });
-      const previousTurnIds = new Set(
-        persistedCanonicalTurns(before).map((turn) => turn.protocol.id),
-      );
-      const historyRows = flattenCodexHistoryTopology(nextTopology);
-      state.historyMutationRevision += 1;
-      let boundaryItemWindowSnapshots: Readonly<
-        Record<string, CodexConversationHistoryItemWindowSnapshot>
-      > | null = null;
-      const projectCommittedSnapshot = (
-        conversation: CodexConversationSnapshot,
-      ): CodexConversationSnapshot => {
-        if (
-          target.kind === "turnItems" &&
-          itemRendererProjection &&
-          itemWindowSnapshotBefore &&
-          turnItemsMutation.length === 1
-        ) {
-          const window = state.historyItemWindowsByTurnId.get(target.items.turnId);
-          const windowMutation = turnItemsMutation[0]?.windowMutation;
-          const currentTurn = conversation.turns.find(
-            (turn) => turn.turnId === itemRendererProjection.turnId,
-          );
-          if (!window || !windowMutation || !currentTurn) {
-            throw new TypeError("Turn-item page projection lost its resident window");
-          }
-          const itemWindowSnapshot = advanceCodexConversationHistoryItemWindowSnapshot({
-            before:
-              conversation.historyItemWindowsByTurnId?.[target.items.turnId] ??
-              itemWindowSnapshotBefore,
-            mutation: windowMutation,
-            after: window,
-          });
-          return {
-            ...conversation,
-            canonicalState: committedState,
-            historyItemWindowsByTurnId: {
-              ...(conversation.historyItemWindowsByTurnId ?? {}),
-              [target.items.turnId]: itemWindowSnapshot,
-            },
-            turns: conversation.turns.map((turn) =>
-              turn === currentTurn
-                ? {
-                    ...turn,
-                    itemIds: [...itemRendererProjection.itemIds],
-                    items: [...itemRendererProjection.items],
-                  }
-                : turn,
-            ),
-          };
-        }
-        const projected = projectCodexConversationSnapshot({
-          conversation,
-          before,
-          after: committedState,
-          observedAtMs: input.observedAtMs,
-        });
-        if (target.kind === "turnBoundary" && input.itemSegmentsByTurnId) {
-          if (boundaryItemWindowSnapshots === null) {
-            const newlyResidentSegments = Object.fromEntries(
-              Object.entries(input.itemSegmentsByTurnId).filter(
-                ([turnId]) => !previousTurnIds.has(turnId),
-              ),
-            );
-            boundaryItemWindowSnapshots = projectCodexConversationHistoryItemWindows({
-              canonical: committedState,
-              snapshot: projected,
-              itemsPaginationByTurnId: state.turnItemsPaginationById,
-              itemSegmentsByTurnId: newlyResidentSegments,
-            });
-          }
-          return {
-            ...projected,
-            historyItemWindowsByTurnId: {
-              ...(conversation.historyItemWindowsByTurnId ?? {}),
-              ...boundaryItemWindowSnapshots,
-            },
-          };
-        }
-        return projected;
-      };
-      state.snapshot = {
-        ...projectCommittedSnapshot(beforeSnapshot),
-        turnPagination: { ...state.turnPagination },
-        turnItemsPaginationById: { ...state.turnItemsPaginationById },
-        historyRows,
-        historyTopologyGeneration: nextTopology.generation,
-        historyMutationRevision: state.historyMutationRevision,
-      };
-      for (const [
-        turnId,
-        itemWindowSnapshot,
-      ] of Object.entries<CodexConversationHistoryItemWindowSnapshot>(
-        boundaryItemWindowSnapshots ?? {},
-      )) {
-        const restored = restoreCodexConversationHistoryItemWindow(itemWindowSnapshot);
-        if (restored) state.historyItemWindowsByTurnId.set(turnId, restored);
-      }
-      if (input.projectReplica && state.acceptedReplica) {
-        acceptReplica(
-          {
-            conversation: {
-              ...projectCommittedSnapshot(state.acceptedReplica.conversation),
-              turnPagination: { ...state.turnPagination },
-              turnItemsPaginationById: { ...state.turnItemsPaginationById },
-              historyRows,
-              historyTopologyGeneration: nextTopology.generation,
-              historyMutationRevision: state.historyMutationRevision,
-            },
-            ownerEpoch: state.acceptedReplica.checkpoint.ownerEpoch,
-            revision: state.revision + 1,
-          },
-          state,
-        );
-      }
-      const afterSnapshot = state.snapshot;
-      if (!afterSnapshot) {
-        return { status: "rejected", reason: "History snapshot disappeared during commit" };
-      }
-      return {
-        status: "committed",
-        mutation: buildCodexConversationHistoryMutation({
-          before: beforeSnapshot,
-          after: afterSnapshot,
-          origin: { kind: "page", request: input.request },
-          turnItems: turnItemsMutation,
-        }),
-      };
+    const clearUnsubscribedBookkeeping = (): void => {
+      aggregate.streamRole = null;
+      aggregate.isStreaming = false;
+      aggregate.historyGeneration += 1;
+      aggregate.historyPageLoadLeases.clear();
     };
-
-    const insertHistoryIsland = (
-      input: Parameters<ConversationEntityState["insertHistoryIsland"]>[0],
-      targetState: MutableConversationEntityState,
-    ): CodexConversationHistoryIslandCommitResult => {
-      if (targetState.historyTopology.generation !== input.expectedTopologyGeneration) {
-        return { status: "staleGeneration" };
-      }
-      const before = targetState.canonicalState;
-      const beforeSnapshot = targetState.snapshot;
-      if (!before || !beforeSnapshot) {
-        return { status: "rejected", reason: "Canonical history is not installed" };
-      }
-      if (input.turnIds.length === 0 || new Set(input.turnIds).size !== input.turnIds.length) {
-        return { status: "rejected", reason: "History island turn identities are invalid" };
-      }
-
-      const state = preserveResidentHistoryTurns(input.state, targetState.historyTopology);
-      const turnsById = new Map(
-        persistedCanonicalTurns(state).map((turn) => [turn.protocol.id, turn] as const),
-      );
-      const revision = targetState.historyEntityRevision + 1;
-      const entities: CodexHistoryEntity<CodexCanonicalTurnState>[] = [];
-      for (const turnId of input.turnIds) {
-        const turn = turnsById.get(turnId);
-        if (!turn) {
-          return { status: "rejected", reason: `History island is missing Turn ${turnId}` };
-        }
-        entities.push(
-          historyEntity({
-            turn,
-            current: targetState.historyTopology.entitiesByKey[turnId],
-            itemsPagination: input.itemsPaginationByTurnId[turnId],
-            authority: "history",
-            revision,
-          }),
-        );
-      }
-      const inserted = insertCodexHistoryIsland(targetState.historyTopology, {
-        index: input.index,
-        islandId: input.islandId,
-        entries: entities.map((entity) => ({ key: entity.key, entityKey: entity.key })),
-        entities,
-        olderBoundary: input.olderBoundary,
-        newerBoundary: input.newerBoundary,
-        ...(input.positionsByEntityKey ? { positionsByEntityKey: input.positionsByEntityKey } : {}),
-      });
-      if (!inserted.ok) {
-        return { status: "rejected", reason: inserted.error.message };
-      }
-      const canonicalTurns = inserted.topology.islands.flatMap((island) =>
-        island.entries.map((entry) => inserted.topology.entitiesByKey[entry.entityKey]!.turn),
-      );
-      const committedState: CodexCanonicalConversationState = {
-        ...state,
-        turns: [...canonicalTurns, ...state.turns.filter((turn) => turn.protocol.id === null)],
-      };
-      targetState.historyEntityRevision = revision;
-      targetState.canonicalState = committedState;
-      targetState.turnItemsPaginationById = {
-        ...targetState.turnItemsPaginationById,
-        ...input.itemsPaginationByTurnId,
-      };
-      targetState.historyTopology = inserted.topology;
-      const historyRows = flattenCodexHistoryTopology(targetState.historyTopology);
-      targetState.historyMutationRevision += 1;
-      if (targetState.snapshot) {
-        targetState.snapshot = {
-          ...projectCodexConversationSnapshot({
-            conversation: targetState.snapshot,
-            before,
-            after: committedState,
-            observedAtMs: input.observedAtMs,
-          }),
-          turnItemsPaginationById: { ...targetState.turnItemsPaginationById },
-          historyRows,
-          historyTopologyGeneration: targetState.historyTopology.generation,
-          historyMutationRevision: targetState.historyMutationRevision,
-        };
-      }
-      if (input.projectReplica && targetState.acceptedReplica) {
-        acceptReplica(
-          {
-            conversation: {
-              ...projectCodexConversationSnapshot({
-                conversation: targetState.acceptedReplica.conversation,
-                before,
-                after: committedState,
-                observedAtMs: input.observedAtMs,
-              }),
-              turnItemsPaginationById: { ...targetState.turnItemsPaginationById },
-              historyRows,
-              historyTopologyGeneration: targetState.historyTopology.generation,
-              historyMutationRevision: targetState.historyMutationRevision,
-            },
-            ownerEpoch: targetState.acceptedReplica.checkpoint.ownerEpoch,
-            revision: targetState.revision + 1,
-          },
-          targetState,
-        );
-      }
-      const afterSnapshot = targetState.snapshot;
-      if (!afterSnapshot) {
-        return { status: "rejected", reason: "History snapshot disappeared during commit" };
-      }
+    const readRetentionState = () => {
+      const state = aggregate.document.canonicalState;
       return {
-        status: "committed",
-        topologyGeneration: targetState.historyTopology.generation,
-        mutation: buildCodexConversationHistoryMutation({
-          before: beforeSnapshot,
-          after: afterSnapshot,
-          origin: {
-            kind: "island",
-            threadId,
-            mutationId: input.mutationId,
-            expectedConversationGeneration: targetState.generation,
-            expectedTopologyGeneration: input.expectedTopologyGeneration,
-          },
-        }),
+        primaryRequest: selectCanonicalRetentionRequestKind(state),
+        ephemeralSide: state?.ephemeral === true && state.sideConversation === true,
       };
-    };
-
-    const runHistoryTransaction = <T extends { readonly status: string }>(
-      projectReplica: boolean,
-      operation: (state: MutableConversationEntityState) => T,
-    ): T => {
-      if (projectReplica) return operation(aggregate);
-      const proposed = cloneHistoryTransaction(aggregate);
-      const result = operation(proposed);
-      if ("mutation" in result && result.mutation) {
-        pendingHistoryTransaction = { state: proposed, baseline: aggregate.canonicalState };
-        return result;
-      }
-      return result;
     };
 
     return {
+      mutateCanonicalState: (recipe, observedAtMs, broadcast = true) => {
+        const previous = aggregate.mutationBroadcast;
+        aggregate.mutationBroadcast = broadcast;
+        try {
+          return mutateCanonicalState(recipe, observedAtMs);
+        } finally {
+          aggregate.mutationBroadcast = previous;
+        }
+      },
+      installFollowerCanonicalState: (state) => {
+        if (state.id !== threadId)
+          throw new TypeError("Follower document belongs to another conversation");
+        const before = aggregate.document.canonicalState;
+        aggregate.mutationOrigin = "follower";
+        try {
+          aggregate.document = aggregate.document.withCanonicalState(state);
+          if (aggregate.snapshot)
+            aggregate.snapshot = projectCodexConversationSnapshot({
+              conversation: aggregate.snapshot,
+              before,
+              after: state,
+              observedAtMs: state.updatedAt,
+            });
+        } finally {
+          aggregate.mutationOrigin = "local";
+        }
+      },
       threadId,
       generation: aggregate.generation,
       read: () => snapshot(aggregate),
-      readCanonicalState: () => aggregate.canonicalState,
-      readServerRequests: () =>
-        aggregate.canonicalState?.requests ?? aggregate.preHydrationServerRequests,
-      readHasUnreadTurn: () =>
-        aggregate.canonicalState?.sidecar.hasUnreadTurn ?? aggregate.preHydrationHasUnreadTurn,
+      readCanonicalState: () => aggregate.document.canonicalState,
+      readServerRequests: () => aggregate.document.requests,
+      readHasUnreadTurn: () => aggregate.document.hasUnreadTurn,
       readSnapshot: () => aggregate.snapshot,
+
+      readRetentionState,
+      releasePassiveHistory: () => {
+        const state = aggregate.document.canonicalState;
+        if (!state || aggregate.streamRole !== null) return;
+        mutateCanonicalState(releaseCanonicalConversationHistoryDraft, state.updatedAt);
+        clearUnsubscribedBookkeeping();
+      },
+      completeHistoryUnsubscribe: (retainHistory) => {
+        const state = aggregate.document.canonicalState;
+        if (!state) return;
+        const { primaryRequest, ephemeralSide } = readRetentionState();
+        mutateCanonicalState(
+          (draft) =>
+            completeCanonicalConversationUnsubscribeDraft(draft, {
+              retainHistory,
+              ephemeral: ephemeralSide,
+              primaryRequest,
+            }),
+          state.updatedAt,
+        );
+        clearUnsubscribedBookkeeping();
+      },
       installSnapshot: (conversation) => {
         aggregate.snapshot = {
           ...conversation,
@@ -1724,70 +861,47 @@ export function makeConversationEntityStateRegistry(): ConversationEntityStateRe
           historyMutationRevision: aggregate.historyMutationRevision,
           queuedFollowUps: aggregate.queuedFollowUps,
         };
+        if (conversation.source?.sideConversation !== undefined) {
+          mutateCanonicalState((draft) => {
+            draft.sideConversation = conversation.source!.sideConversation;
+          }, conversation.updatedAt);
+        }
       },
       seedHasUnreadTurn: (hasUnreadTurn) => {
-        if (aggregate.canonicalState) return;
-        aggregate.preHydrationHasUnreadTurn = hasUnreadTurn;
+        if (aggregate.document.canonicalState) return;
+        aggregate.document = aggregate.document.withUnreadState(hasUnreadTurn);
         if (aggregate.snapshot) {
           aggregate.snapshot = { ...aggregate.snapshot, hasUnreadTurn };
         }
       },
-      setHasUnreadTurn: (hasUnreadTurn, projectReplica) => {
-        const previous =
-          aggregate.canonicalState?.sidecar.hasUnreadTurn ?? aggregate.preHydrationHasUnreadTurn;
-        const replicaChanged =
-          aggregate.acceptedReplica !== null &&
-          aggregate.acceptedReplica.conversation.hasUnreadTurn !== hasUnreadTurn;
-        if (previous !== hasUnreadTurn) {
-          if (aggregate.canonicalState) {
-            aggregate.canonicalState = {
-              ...aggregate.canonicalState,
-              sidecar: {
-                ...aggregate.canonicalState.sidecar,
-                hasUnreadTurn,
-              },
-            };
-          } else {
-            aggregate.preHydrationHasUnreadTurn = hasUnreadTurn;
-          }
-          if (aggregate.snapshot) {
-            aggregate.snapshot = {
-              ...aggregate.snapshot,
-              hasUnreadTurn,
-              ...(hasUnreadTurn ? {} : { unreadMessageCount: 0 }),
-            };
-          }
-        }
-        if (projectReplica && replicaChanged && aggregate.acceptedReplica) {
-          const conversation = {
-            ...aggregate.acceptedReplica.conversation,
+      setHasUnreadTurn: (hasUnreadTurn) => {
+        const previous = aggregate.document.hasUnreadTurn;
+        if (previous === hasUnreadTurn) return false;
+        aggregate.document = aggregate.document.withUnreadState(hasUnreadTurn);
+        if (aggregate.snapshot) {
+          aggregate.snapshot = {
+            ...aggregate.snapshot,
             hasUnreadTurn,
             ...(hasUnreadTurn ? {} : { unreadMessageCount: 0 }),
           };
-          acceptReplica({
-            conversation,
-            ownerEpoch: aggregate.acceptedReplica.checkpoint.ownerEpoch,
-            revision: aggregate.revision + 1,
-          });
         }
-        return previous !== hasUnreadTurn || (projectReplica && replicaChanged);
+        return true;
       },
       readResumeState: () => aggregate.resumeState,
       setResumeState: (state) => {
-        const replicaChanged =
-          aggregate.acceptedReplica !== null &&
-          aggregate.acceptedReplica.conversation.resumeState !== state;
-        if (aggregate.resumeState === state && !replicaChanged) return;
-        aggregate.resumeState = state;
-        if (aggregate.snapshot) {
-          aggregate.snapshot = { ...aggregate.snapshot, resumeState: state };
-        }
-        if (!replicaChanged || !aggregate.acceptedReplica) return;
-        acceptReplica({
-          conversation: { ...aggregate.acceptedReplica.conversation, resumeState: state },
-          ownerEpoch: aggregate.acceptedReplica.checkpoint.ownerEpoch,
-          revision: aggregate.revision + 1,
-        });
+        const canonical = aggregate.document.canonicalState;
+        if (
+          aggregate.resumeState === state &&
+          (!aggregate.snapshot || aggregate.snapshot.resumeState === state)
+        )
+          return;
+        if (!canonical) aggregate.resumeStateBeforeHydration = state;
+        if (canonical)
+          aggregate.document = aggregate.document.withCanonicalState({
+            ...canonical,
+            resumeState: state,
+          });
+        if (aggregate.snapshot) aggregate.snapshot = { ...aggregate.snapshot, resumeState: state };
       },
       isStreaming: () => aggregate.isStreaming,
       setStreaming: (isStreaming) => {
@@ -1799,78 +913,19 @@ export function makeConversationEntityStateRegistry(): ConversationEntityStateRe
         return pagination ? { ...pagination } : null;
       },
       readAllTurnItemsPagination: () => ({ ...aggregate.turnItemsPaginationById }),
-      readHistoryItemPageCursor: (turnId, edge) => {
-        const window = readOrSeedHistoryItemWindow(turnId);
-        if (!window) return undefined;
-        const boundary = edge === "older" ? window.olderBoundary : window.newerBoundary;
-        return boundary.status === "available" ? boundary.cursor : undefined;
-      },
       readHistoryTopology: () => aggregate.historyTopology,
-      insertHistoryIsland: (input) =>
-        runHistoryTransaction(input.projectReplica, (state) => insertHistoryIsland(input, state)),
-      beginHistoryPageLoad: (request) => {
-        if (
-          request.threadId !== threadId ||
-          request.expectedConversationGeneration !== aggregate.generation
-        ) {
-          return false;
-        }
-        const target = request.target;
-        const expectedTopologyGeneration =
-          target.kind === "turnBoundary"
-            ? target.boundary.generation
-            : target.items.expectedTopologyGeneration;
-        if (expectedTopologyGeneration !== aggregate.historyTopology.generation) return false;
-        const key = codexConversationHistoryPageRequestKey(request);
-        if (aggregate.historyPageLoadLeases.has(key)) return true;
-        if (target.kind === "turnItems") {
-          const pagination = aggregate.turnItemsPaginationById[target.items.turnId];
-          if (
-            !aggregate.historyTopology.entitiesByKey[target.items.turnId] ||
-            !pagination ||
-            historyItemProgressKey(target.items.turnId, target.items.edge) !==
-              target.items.progressKey
-          ) {
-            return false;
-          }
-          aggregate.historyPageLoadLeases.add(key);
-          return true;
-        }
-        const island = aggregate.historyTopology.islands.find(
-          (candidate) => candidate.id === target.boundary.islandId,
-        );
-        const boundary =
-          target.boundary.edge === "older" ? island?.olderBoundary : island?.newerBoundary;
-        if (
-          boundary?.status !== "available" ||
-          boundary.boundaryId !== target.boundary.boundaryId ||
-          boundary.progressKey !== target.boundary.progressKey
-        ) {
-          return false;
-        }
-        aggregate.historyPageLoadLeases.add(key);
-        return true;
-      },
-      endHistoryPageLoad: (request) => {
-        aggregate.historyPageLoadLeases.delete(codexConversationHistoryPageRequestKey(request));
-      },
-      commitHistoryPage: (input) =>
-        runHistoryTransaction(input.projectReplica, (state) => commitHistoryPage(input, state)),
+
       initializeHistory: (pagination, loadedTurnCount, itemsPaginationByTurnId = {}) => {
         aggregate.historyGeneration += 1;
-        aggregate.historyEntityRevision += 1;
         aggregate.historyMutationRevision += 1;
         aggregate.historyPageLoadLeases.clear();
-        aggregate.historyItemWindowsByTurnId.clear();
         aggregate.turnPagination = { ...pagination, loadedTurnCount };
-        aggregate.turnItemsPaginationById = { ...itemsPaginationByTurnId };
         aggregate.historyTopology = rebuildHistoryTopology({
           generation: aggregate.historyGeneration,
-          canonical: aggregate.canonicalState,
+          canonical: aggregate.document.canonicalState,
           pagination: aggregate.turnPagination,
-          itemsPaginationByTurnId: aggregate.turnItemsPaginationById,
+          itemsPaginationByTurnId,
           authority: "history",
-          revision: aggregate.historyEntityRevision,
         });
         if (aggregate.snapshot) {
           aggregate.snapshot = {
@@ -1883,282 +938,9 @@ export function makeConversationEntityStateRegistry(): ConversationEntityStateRe
           };
         }
       },
-      beginHistoryLoad: (loadedTurnCount) => {
-        const pagination = aggregate.turnPagination;
-        if (
-          pagination.isLoadingOlder ||
-          pagination.hasLoadedOldest ||
-          pagination.olderCursor === null
-        ) {
-          return null;
-        }
-        aggregate.historyGeneration += 1;
-        const fence = {
-          generation: aggregate.historyGeneration,
-          olderCursor: pagination.olderCursor,
-          oldestLoadedTurnId: pagination.oldestLoadedTurnId,
-        };
-        aggregate.turnPagination = {
-          ...pagination,
-          isLoadingOlder: true,
-          hasLoadedOldest: false,
-          loadedTurnCount,
-        };
-        if (aggregate.snapshot) {
-          aggregate.snapshot = {
-            ...aggregate.snapshot,
-            turnPagination: { ...aggregate.turnPagination },
-            turnItemsPaginationById: { ...aggregate.turnItemsPaginationById },
-          };
-        }
-        return fence;
-      },
-      isHistoryLoadCurrent: (fence) =>
-        aggregate.historyGeneration === fence.generation &&
-        aggregate.turnPagination.isLoadingOlder &&
-        aggregate.turnPagination.olderCursor === fence.olderCursor,
-      commitHistoryLoad: (fence, pagination, loadedTurnCount) => {
-        if (
-          !aggregate.turnPagination.isLoadingOlder ||
-          aggregate.historyGeneration !== fence.generation ||
-          aggregate.turnPagination.olderCursor !== fence.olderCursor
-        ) {
-          return false;
-        }
-        aggregate.turnPagination = { ...pagination, loadedTurnCount, isLoadingOlder: false };
-        if (aggregate.snapshot) {
-          aggregate.snapshot = {
-            ...aggregate.snapshot,
-            turnPagination: { ...aggregate.turnPagination },
-            turnItemsPaginationById: { ...aggregate.turnItemsPaginationById },
-          };
-        }
-        return true;
-      },
-      commitHistoryProjection: ({
-        fence,
-        state,
-        pagination,
-        loadedTurnCount,
-        itemsPaginationByTurnId,
-        observedAtMs,
-        projectReplica,
-      }) => {
-        if (
-          !aggregate.turnPagination.isLoadingOlder ||
-          aggregate.historyGeneration !== fence.generation ||
-          aggregate.turnPagination.olderCursor !== fence.olderCursor
-        ) {
-          return false;
-        }
-        const before = aggregate.canonicalState;
-        if (!before) return false;
-        aggregate.canonicalState = state;
-        if (aggregate.snapshot) {
-          aggregate.snapshot = projectCodexConversationSnapshot({
-            conversation: aggregate.snapshot,
-            before,
-            after: state,
-            observedAtMs,
-          });
-        }
-        aggregate.turnPagination = { ...pagination, loadedTurnCount, isLoadingOlder: false };
-        if (itemsPaginationByTurnId) {
-          aggregate.turnItemsPaginationById = {
-            ...aggregate.turnItemsPaginationById,
-            ...itemsPaginationByTurnId,
-          };
-        }
-        reconcileCanonicalHistory("history");
-        if (aggregate.snapshot) {
-          aggregate.snapshot = {
-            ...aggregate.snapshot,
-            turnPagination: { ...aggregate.turnPagination },
-            turnItemsPaginationById: { ...aggregate.turnItemsPaginationById },
-            historyRows: flattenCodexHistoryTopology(aggregate.historyTopology),
-            historyTopologyGeneration: aggregate.historyTopology.generation,
-          };
-        }
-        if (projectReplica && aggregate.acceptedReplica) {
-          acceptReplica({
-            conversation: {
-              ...projectCodexConversationSnapshot({
-                conversation: aggregate.acceptedReplica.conversation,
-                before,
-                after: state,
-                observedAtMs,
-              }),
-              turnPagination: { ...aggregate.turnPagination },
-              turnItemsPaginationById: { ...aggregate.turnItemsPaginationById },
-            },
-            ownerEpoch: aggregate.acceptedReplica.checkpoint.ownerEpoch,
-            revision: aggregate.revision + 1,
-          });
-        }
-        return true;
-      },
-      failHistoryLoad: (fence) => {
-        if (
-          !aggregate.turnPagination.isLoadingOlder ||
-          aggregate.historyGeneration !== fence.generation ||
-          aggregate.turnPagination.olderCursor !== fence.olderCursor
-        ) {
-          return false;
-        }
-        aggregate.turnPagination = {
-          ...aggregate.turnPagination,
-          olderCursor: fence.olderCursor,
-          oldestLoadedTurnId: fence.oldestLoadedTurnId,
-          isLoadingOlder: false,
-          hasLoadedOldest: false,
-        };
-        if (aggregate.snapshot) {
-          aggregate.snapshot = {
-            ...aggregate.snapshot,
-            turnPagination: { ...aggregate.turnPagination },
-          };
-        }
-        return true;
-      },
-      beginTurnItemsHistoryLoad: (turnId) => {
-        const pagination = aggregate.turnItemsPaginationById[turnId];
-        if (
-          !pagination ||
-          pagination.isLoadingOlder ||
-          pagination.hasLoadedOldest ||
-          pagination.olderCursor === null
-        ) {
-          return null;
-        }
-        aggregate.historyGeneration += 1;
-        const fence = {
-          generation: aggregate.historyGeneration,
-          turnId,
-          olderCursor: pagination.olderCursor,
-        };
-        aggregate.turnItemsPaginationById = {
-          ...aggregate.turnItemsPaginationById,
-          [turnId]: { ...pagination, isLoadingOlder: true },
-        };
-        reconcileCanonicalHistory("history");
-        if (aggregate.snapshot) {
-          aggregate.snapshot = {
-            ...aggregate.snapshot,
-            turnItemsPaginationById: { ...aggregate.turnItemsPaginationById },
-            historyRows: flattenCodexHistoryTopology(aggregate.historyTopology),
-            historyTopologyGeneration: aggregate.historyTopology.generation,
-          };
-        }
-        return fence;
-      },
-      isTurnItemsHistoryLoadCurrent: (fence) => {
-        const pagination = aggregate.turnItemsPaginationById[fence.turnId];
-        return (
-          aggregate.historyGeneration === fence.generation &&
-          pagination?.isLoadingOlder === true &&
-          pagination.olderCursor === fence.olderCursor
-        );
-      },
-      commitTurnItemsHistoryProjection: ({
-        fence,
-        state,
-        pagination,
-        observedAtMs,
-        projectReplica,
-      }) => {
-        const currentPagination = aggregate.turnItemsPaginationById[fence.turnId];
-        if (
-          aggregate.historyGeneration !== fence.generation ||
-          currentPagination?.isLoadingOlder !== true ||
-          currentPagination.olderCursor !== fence.olderCursor
-        ) {
-          return false;
-        }
-        const before = aggregate.canonicalState;
-        if (!before) return false;
-        aggregate.canonicalState = state;
-        if (aggregate.snapshot) {
-          aggregate.snapshot = projectCodexConversationSnapshot({
-            conversation: aggregate.snapshot,
-            before,
-            after: state,
-            observedAtMs,
-          });
-        }
-        aggregate.turnItemsPaginationById = {
-          ...aggregate.turnItemsPaginationById,
-          [fence.turnId]: { ...pagination, isLoadingOlder: false },
-        };
-        reconcileCanonicalHistory("history");
-        if (aggregate.snapshot) {
-          aggregate.snapshot = {
-            ...aggregate.snapshot,
-            turnItemsPaginationById: { ...aggregate.turnItemsPaginationById },
-            historyRows: flattenCodexHistoryTopology(aggregate.historyTopology),
-            historyTopologyGeneration: aggregate.historyTopology.generation,
-          };
-        }
-        if (projectReplica && aggregate.acceptedReplica) {
-          acceptReplica({
-            conversation: {
-              ...projectCodexConversationSnapshot({
-                conversation: aggregate.acceptedReplica.conversation,
-                before,
-                after: state,
-                observedAtMs,
-              }),
-              turnItemsPaginationById: { ...aggregate.turnItemsPaginationById },
-            },
-            ownerEpoch: aggregate.acceptedReplica.checkpoint.ownerEpoch,
-            revision: aggregate.revision + 1,
-          });
-        }
-        return true;
-      },
-      failTurnItemsHistoryLoad: (fence) => {
-        const pagination = aggregate.turnItemsPaginationById[fence.turnId];
-        if (
-          aggregate.historyGeneration !== fence.generation ||
-          pagination?.isLoadingOlder !== true ||
-          pagination.olderCursor !== fence.olderCursor
-        ) {
-          return false;
-        }
-        aggregate.turnItemsPaginationById = {
-          ...aggregate.turnItemsPaginationById,
-          [fence.turnId]: { ...pagination, isLoadingOlder: false },
-        };
-        reconcileCanonicalHistory("history");
-        if (aggregate.snapshot) {
-          aggregate.snapshot = {
-            ...aggregate.snapshot,
-            turnItemsPaginationById: { ...aggregate.turnItemsPaginationById },
-            historyRows: flattenCodexHistoryTopology(aggregate.historyTopology),
-            historyTopologyGeneration: aggregate.historyTopology.generation,
-          };
-        }
-        return true;
-      },
-      beginResumeEventBuffer: () => {
-        if (aggregate.resumeEventBuffer !== null) return false;
-        aggregate.resumeEventBuffer = [];
-        aggregate.resumeEventBufferBytes = 0;
-        return true;
-      },
-      hasResumeEventBuffer: () => aggregate.resumeEventBuffer !== null,
-      offerProtocolOccurrence: ({ occurrence, bypassResume, startsThread, deferThreadStart }) => {
+
+      offerProtocolOccurrence: ({ occurrence, startsThread, deferThreadStart }) => {
         const bytes = protocolOccurrenceBytes(occurrence);
-        if (!bypassResume && aggregate.resumeEventBuffer !== null) {
-          if (
-            aggregate.resumeEventBuffer.length >= MAX_BUFFERED_PROTOCOL_OCCURRENCES ||
-            aggregate.resumeEventBufferBytes + bytes > MAX_BUFFERED_PROTOCOL_BYTES
-          ) {
-            return "overflow";
-          }
-          aggregate.resumeEventBuffer.push(occurrence);
-          aggregate.resumeEventBufferBytes += bytes;
-          return "buffered";
-        }
         if (aggregate.threadStartEventBuffer !== null) {
           const fence = aggregate.threadStartEventBufferFence;
           if (
@@ -2192,12 +974,6 @@ export function makeConversationEntityStateRegistry(): ConversationEntityStateRe
         aggregate.threadStartEventBufferFence = deferThreadStart;
         return "buffered";
       },
-      takeResumeEventBuffer: () => {
-        const buffered = aggregate.resumeEventBuffer;
-        aggregate.resumeEventBuffer = null;
-        aggregate.resumeEventBufferBytes = 0;
-        return buffered;
-      },
       takeThreadStartEventBuffer: (fence) => {
         if (!aggregate.threadStartDeferred) return null;
         const activeFence = aggregate.threadStartEventBufferFence;
@@ -2212,227 +988,138 @@ export function makeConversationEntityStateRegistry(): ConversationEntityStateRe
         aggregate.threadStartDeferred = false;
         return { kind: matched ? "matched" : "generation-mismatch", events };
       },
-      discardResumeEventBuffer: () => {
-        const buffered = aggregate.resumeEventBuffer ?? [];
-        aggregate.resumeEventBuffer = null;
-        aggregate.resumeEventBufferBytes = 0;
-        return buffered;
-      },
       clearBufferedEvents: () => {
-        const buffered = [
-          ...(aggregate.resumeEventBuffer ?? []),
-          ...(aggregate.threadStartEventBuffer ?? []),
-        ];
-        aggregate.resumeEventBuffer = null;
-        aggregate.resumeEventBufferBytes = 0;
+        const buffered = [...(aggregate.threadStartEventBuffer ?? [])];
         aggregate.threadStartEventBuffer = null;
         aggregate.threadStartEventBufferBytes = 0;
         aggregate.threadStartEventBufferFence = null;
         aggregate.threadStartDeferred = false;
         return buffered;
       },
-      commitFrameTextDeltas: ({ updates, observedAtMs, projectReplica }) => {
-        const before = aggregate.canonicalState;
-        if (!before || updates.length === 0) return [];
-        const result = reduceCodexConversationFrameTextDeltas(before, updates, {
-          now: () => observedAtMs,
-        });
-        projectCanonicalState(result.state, observedAtMs, projectReplica);
-        return result.outcomes;
+      commitFrameTextDeltas: ({ updates, observedAtMs }) => {
+        if (updates.length === 0) return [];
+        const mutation = aggregate.document.mutate((draft) =>
+          mutateCodexConversationFrameTextDeltas(draft, updates, { now: () => observedAtMs }),
+        );
+        if (!mutation) return [];
+        projectCanonicalState(mutation.after, observedAtMs, mutation.document);
+        return mutation.result;
       },
-      commitCommandOutputDeltas: ({ updates, observedAtMs, projectReplica }) => {
-        const before = aggregate.canonicalState;
-        if (!before || updates.length === 0) return [];
-        let state = before;
-        const dispositions: CodexCommandExecutionMutationDisposition[] = [];
-        for (const update of updates) {
-          const result = reduceCodexConversationCommandOutput(state, update);
-          state = result.state;
-          dispositions.push(result.disposition);
-        }
-        projectCanonicalState(state, observedAtMs, projectReplica);
-        return dispositions;
+      commitCommandOutputDeltas: ({ updates, observedAtMs }) => {
+        if (updates.length === 0) return [];
+        const mutation = aggregate.document.mutate((draft) =>
+          updates.map((update) => mutateCodexConversationCommandOutput(draft, update).disposition),
+        );
+        if (!mutation) return [];
+        projectCanonicalState(mutation.after, observedAtMs, mutation.document);
+        return mutation.result;
       },
-      commitTerminalCommands: ({ update, observedAtMs, projectReplica }) => {
-        const before = aggregate.canonicalState;
-        if (!before) return "noTurns";
-        const result = reduceCodexConversationTerminalCommands(before, update);
-        if (!result.stateChanged) return result.disposition;
-        projectCanonicalState(result.state, observedAtMs, projectReplica);
-        return result.disposition;
+      commitTerminalCommands: ({ update, observedAtMs }) => {
+        const mutation = aggregate.document.mutate((draft) =>
+          mutateCodexConversationTerminalCommands(draft, update),
+        );
+        if (!mutation) return "noTurns";
+        projectCanonicalState(mutation.after, observedAtMs, mutation.document);
+        return mutation.result.disposition;
       },
       readServerRequestState: () => {
-        const canonicalState = aggregate.canonicalState;
+        const canonicalState = aggregate.document.canonicalState;
         return {
           canonicalState,
           rawState: canonicalState
             ? {
                 threadId,
-                turns: canonicalState.turns.map((turn) => ({
-                  turnId: turn.protocol.id,
-                  status: turn.protocol.status,
-                  hasError: turn.protocol.error !== null,
+                turns: residentConversationTurns(canonicalState).map((turn) => ({
+                  turnId: turn.turnId,
+                  status: turn.status,
+                  hasError: turn.error !== null,
                   items: turn.items,
-                  hookRuns: turn.sidecar.hookRuns,
-                  turnStartedAtMs: turn.sidecar.turnStartedAtMs,
+                  hookRuns: turn.hookRuns,
+                  turnStartedAtMs: turn.turnStartedAtMs,
                 })),
                 requests: canonicalState.requests,
-                hasUnreadTurn: canonicalState.sidecar.hasUnreadTurn,
+                hasUnreadTurn: canonicalState.hasUnreadTurn,
               }
             : {
                 threadId,
                 turns: [],
-                requests: aggregate.preHydrationServerRequests,
-                hasUnreadTurn: aggregate.preHydrationHasUnreadTurn,
+                requests: aggregate.document.requests,
+                hasUnreadTurn: aggregate.document.hasUnreadTurn,
               },
           streamRole: aggregate.streamRole,
         };
       },
       commitServerRequestLifecycle: (input) => {
-        const previousHasUnreadTurn =
-          aggregate.canonicalState?.sidecar.hasUnreadTurn ?? aggregate.preHydrationHasUnreadTurn;
-        if (!input.lifecycle.stateChanged) {
+        const previousHasUnreadTurn = aggregate.document.hasUnreadTurn;
+        if (!input.lifecycle.stateChanged)
           return {
             stateChanged: false,
             unreadChanged: false,
             hasUnreadTurn: previousHasUnreadTurn,
           };
-        }
+        const previousSnapshot = aggregate.snapshot;
         if (input.kind === "canonical") {
-          aggregate.canonicalState = input.lifecycle.state;
-          aggregate.preHydrationServerRequests = [];
-          aggregate.preHydrationHasUnreadTurn = false;
-          if (input.projectReplica && aggregate.acceptedReplica) {
-            const conversation = projectCodexConversationServerRequestLifecycle({
+          aggregate.document = aggregate.document.withCanonicalState(input.lifecycle.state);
+          if (previousSnapshot)
+            aggregate.snapshot = projectCodexConversationServerRequestLifecycle({
               before: input.before,
-              conversation: aggregate.acceptedReplica.conversation,
+              conversation: previousSnapshot,
               lifecycle: input.lifecycle,
               observedAtMs: input.observedAtMs,
             });
-            acceptReplica({
-              conversation,
-              ownerEpoch: aggregate.acceptedReplica.checkpoint.ownerEpoch,
-              revision: aggregate.revision + 1,
-            });
-          }
         } else {
-          aggregate.preHydrationServerRequests = [...input.lifecycle.state.requests];
-          aggregate.preHydrationHasUnreadTurn = input.lifecycle.state.hasUnreadTurn;
-          if (input.projectReplica && aggregate.acceptedReplica) {
-            const conversation = projectCodexConversationRawServerRequestLifecycle({
-              conversation: aggregate.acceptedReplica.conversation,
+          aggregate.document = aggregate.document.withRequests(input.lifecycle.state.requests);
+          aggregate.document = aggregate.document.withUnreadState(
+            input.lifecycle.state.hasUnreadTurn,
+          );
+          if (previousSnapshot)
+            aggregate.snapshot = projectCodexConversationRawServerRequestLifecycle({
+              conversation: previousSnapshot,
               lifecycle: input.lifecycle,
             });
-            acceptReplica({
-              conversation,
-              ownerEpoch: aggregate.acceptedReplica.checkpoint.ownerEpoch,
-              revision: aggregate.revision + 1,
-            });
-          }
         }
-        const hasUnreadTurn =
-          aggregate.canonicalState?.sidecar.hasUnreadTurn ?? aggregate.preHydrationHasUnreadTurn;
+        const hasUnreadTurn = aggregate.document.hasUnreadTurn;
         return {
           stateChanged: true,
           unreadChanged: hasUnreadTurn !== previousHasUnreadTurn,
           hasUnreadTurn,
         };
       },
-      commitProtocolNotification: ({
-        notification,
-        observedAtMs,
-        projectReplica,
-        createId,
-        reducerContext,
-      }) => {
-        const before = aggregate.canonicalState;
+      commitProtocolNotification: ({ notification, observedAtMs, createId, reducerContext }) => {
+        const before = aggregate.document.canonicalState;
         if (!before) return { effects: [], stateChanged: false };
-        const reduced = reduceCodexConversationEventWithEffects(
-          before,
-          { type: "notification", notification },
-          { now: () => observedAtMs, createId, ...reducerContext },
-        );
+        const mutation = aggregate.document.mutate((draft) =>
+          mutateCodexConversationEvent(
+            draft,
+            { type: "notification", notification },
+            { now: () => observedAtMs, createId, ...reducerContext },
+          ),
+        )!;
         return {
-          effects: reduced.effects,
-          stateChanged: projectCanonicalState(reduced.state, observedAtMs, projectReplica),
+          effects: mutation.result,
+          stateChanged: projectCanonicalState(mutation.after, observedAtMs, mutation.document),
         };
       },
-      completePlanImplementation: (turnId, projectReplica) => {
-        const before = aggregate.canonicalState;
-        if (!before) return false;
-        const state = completeCodexCanonicalPlanImplementationState(before, turnId);
-        if (state === before) return false;
-        aggregate.canonicalState = state;
-        if (projectReplica && aggregate.acceptedReplica) {
-          const conversation = projectCodexConversationPlanImplementationCompleted({
-            conversation: aggregate.acceptedReplica.conversation,
-            state,
-            turnId,
-          });
-          acceptReplica({
-            conversation,
-            ownerEpoch: aggregate.acceptedReplica.checkpoint.ownerEpoch,
-            revision: aggregate.revision + 1,
-          });
-        }
-        return true;
-      },
-      commitPostResumeGoalHydration: ({ expectedRevision, goal }) => {
-        if (aggregate.revision !== expectedRevision) return false;
-
-        const project = (conversation: CodexConversationSnapshot): CodexConversationSnapshot => ({
-          ...conversation,
-          threadGoal: goal,
-          completedThreadGoal: goal?.status === "complete" ? goal : null,
-          threadGoalResumeConfirmation: null,
-        });
-        if (aggregate.canonicalState) {
-          aggregate.canonicalState = {
-            ...aggregate.canonicalState,
-            sidecar: {
-              ...aggregate.canonicalState.sidecar,
-              threadGoal: goal,
-              completedThreadGoal: goal?.status === "complete" ? goal : null,
-              threadGoalResumeConfirmation: null,
-            },
-          };
-        }
-        if (aggregate.snapshot) {
-          aggregate.snapshot = {
-            ...project(aggregate.snapshot),
-            canonicalState: aggregate.canonicalState,
-          };
-        }
-        if (aggregate.acceptedReplica) {
-          acceptReplica({
-            conversation: {
-              ...project(aggregate.acceptedReplica.conversation),
-              canonicalState: aggregate.canonicalState,
-            },
-            ownerEpoch: aggregate.acceptedReplica.checkpoint.ownerEpoch,
-            revision: aggregate.revision,
-          });
-        }
-        return true;
-      },
       admitOptimisticTurn: ({
+        execution,
         params,
+        localMetadata,
+        mcpAppModelContextAttachments,
         worktreeInit,
-        currentCollaborationModel,
         startedAtMs,
-        projectReplica,
       }) => {
-        const before = aggregate.canonicalState;
+        const before = aggregate.document.canonicalState;
         if (!before) return false;
-        const optimistic = appendCodexCanonicalOptimisticTurn(before, {
-          params,
-          ...(currentCollaborationModel ? { currentCollaborationModel } : {}),
-          startedAtMs,
-        });
-        const after = worktreeInit
-          ? appendCodexCanonicalWorktreeInitItem(optimistic, worktreeInit)
-          : optimistic;
-        const changed = projectCanonicalState(after, startedAtMs, projectReplica);
+        const changed = mutateCanonicalState((draft) => {
+          mutateCodexCanonicalOptimisticTurn(draft, {
+            execution,
+            params,
+            localMetadata,
+            mcpAppModelContextAttachments,
+            startedAtMs,
+          });
+          if (worktreeInit) mutateCodexCanonicalWorktreeInitItem(draft, worktreeInit);
+        }, startedAtMs);
         if (changed) aggregate.isStreaming = true;
         return changed;
       },
@@ -2441,143 +1128,151 @@ export function makeConversationEntityStateRegistry(): ConversationEntityStateRe
         turn,
         recovery,
         observedAtMs,
-        projectReplica,
+        permissions,
+        execution,
+        environmentSelectionEvidence,
       }) => {
-        const before = aggregate.canonicalState;
+        const before = aggregate.document.canonicalState;
         if (!before) return false;
-        if (before.turns.some((candidate) => candidate.protocol.id === turn.id)) return true;
-        const hasOptimisticTurn = before.turns.some(
-          (candidate) => candidate.sidecar.params.clientUserMessageId === clientUserMessageId,
+        const hasBoundTurn = residentConversationTurns(before).some(
+          (candidate) => candidate.turnId === turn.id,
         );
-        const admitted =
-          !hasOptimisticTurn && recovery
-            ? appendCodexCanonicalOptimisticTurn(before, {
-                params: recovery.params,
-                ...(recovery.currentCollaborationModel
-                  ? { currentCollaborationModel: recovery.currentCollaborationModel }
-                  : {}),
-                startedAtMs: recovery.startedAtMs,
-              })
-            : before;
-        const accepted = bindCodexCanonicalOptimisticTurn(admitted, clientUserMessageId, turn);
-        if (!accepted.turns.some((candidate) => candidate.protocol.id === turn.id)) return false;
-        projectCanonicalState(accepted, observedAtMs, projectReplica);
+        const hasOptimisticTurn = residentConversationTurns(before).some(
+          (candidate) => candidate.params.clientUserMessageId === clientUserMessageId,
+        );
+        const mutation = aggregate.document.mutate((draft) => {
+          if (!hasBoundTurn && !hasOptimisticTurn && recovery)
+            mutateCodexCanonicalOptimisticTurn(draft, {
+              params: recovery.params,
+              localMetadata: recovery.localMetadata,
+              mcpAppModelContextAttachments: recovery.mcpAppModelContextAttachments,
+              startedAtMs: recovery.startedAtMs,
+            });
+          mutateCodexCanonicalOptimisticTurnBinding(draft, clientUserMessageId, turn);
+          const environmentSelection = acceptCodexPreparedEnvironmentSelection(
+            draft,
+            execution?.environments,
+            environmentSelectionEvidence,
+            (recovery?.startedAtMs ?? observedAtMs) / 1_000,
+          );
+          draft.environments = castDraft(environmentSelection.environments);
+          draft.environmentSelectionEvidence = castDraft(
+            environmentSelection.environmentSelectionEvidence,
+          );
+          if (execution?.pendingWorkspace) {
+            draft.workspaceBrowserRoot = null;
+            draft.cwd = execution.pendingWorkspace.cwd;
+          }
+          const acceptedPermissions = execution?.permissions ?? permissions;
+          if (acceptedPermissions) draft.currentPermissions = castDraft(acceptedPermissions);
+        });
+        if (!mutation) return hasBoundTurn;
+        if (
+          !mutation ||
+          !residentConversationTurns(mutation.after).some(
+            (candidate) => candidate.turnId === turn.id,
+          )
+        )
+          return false;
+        projectCanonicalState(mutation.after, observedAtMs, mutation.document);
         return true;
       },
-      rejectOptimisticTurn: ({
-        clientUserMessageId,
-        failureItemId,
-        observedAtMs,
-        projectReplica,
-      }) => {
-        const before = aggregate.canonicalState;
+      rejectOptimisticTurn: ({ observedAtMs, ...rejection }) => {
+        const before = aggregate.document.canonicalState;
         if (!before) return false;
-        return projectCanonicalState(
-          failCodexCanonicalOptimisticTurn(before, clientUserMessageId, failureItemId),
+        return mutateCanonicalState(
+          (draft) => mutateCodexTurnStartRejection(draft, rejection),
           observedAtMs,
-          projectReplica,
-        );
-      },
-      admitSteeringItem: ({ turnId, item, observedAtMs, projectReplica }) => {
-        const before = aggregate.canonicalState;
-        if (!before) return false;
-        return projectCanonicalState(
-          upsertCodexCanonicalSteeringItem(before, turnId, item),
-          observedAtMs,
-          projectReplica,
-        );
-      },
-      retargetSteeringItem: ({ fromTurnId, toTurnId, itemId, observedAtMs, projectReplica }) => {
-        const before = aggregate.canonicalState;
-        if (!before) return false;
-        return projectCanonicalState(
-          retargetCodexCanonicalSteeringItem(before, fromTurnId, toTurnId, itemId),
-          observedAtMs,
-          projectReplica,
-        );
-      },
-      rejectSteeringItem: ({ turnId, itemId, observedAtMs, projectReplica }) => {
-        const before = aggregate.canonicalState;
-        if (!before) return false;
-        return projectCanonicalState(
-          removeCodexCanonicalSteeringItem(before, turnId, itemId),
-          observedAtMs,
-          projectReplica,
         );
       },
       resolveInterruptTurnId: (requestedTurnId) => {
-        const turns = aggregate.canonicalState?.turns ?? [];
-        if (requestedTurnId && turns.some((turn) => turn.protocol.id === requestedTurnId)) {
+        const turns = residentConversationTurns(aggregate.document.canonicalState);
+        if (requestedTurnId && turns.some((turn) => turn.turnId === requestedTurnId)) {
           return requestedTurnId;
         }
         return (
-          turns.findLast(
-            (turn) => turn.protocol.status === "inProgress" && turn.protocol.id !== null,
-          )?.protocol.id ?? null
+          turns.findLast((turn) => turn.status === "inProgress" && turn.turnId !== null)?.turnId ??
+          null
         );
       },
-      interruptTurn: ({ turnId, observedAtMs, projectReplica }) => {
-        const before = aggregate.canonicalState;
+      interruptTurn: ({ turnId, observedAtMs }) => {
+        const before = aggregate.document.canonicalState;
         if (!before) return false;
-        const turnIndex = before.turns.findIndex((turn) => turn.protocol.id === turnId);
-        const turn = before.turns[turnIndex];
-        if (!turn || turn.protocol.status !== "inProgress") return false;
+        const entry = residentConversationTurnEntries(before).find(
+          ({ turn }) => turn.turnId === turnId,
+        );
+        if (!entry || entry.turn.status !== "inProgress") return false;
+        const { turn } = entry;
         const interruptedCommandExecutionItemIds = [
           ...new Set([
-            ...(turn.sidecar.interruptedCommandExecutionItemIds ?? []),
+            ...(turn.interruptedCommandExecutionItemIds ?? []),
             ...turn.items.flatMap((item) =>
               item.type === "commandExecution" && item.status === "inProgress" ? [item.id] : [],
             ),
           ]),
         ];
-        const turns = [...before.turns];
-        turns[turnIndex] = {
-          ...turn,
-          protocol: { ...turn.protocol, status: "interrupted" },
-          sidecar: { ...turn.sidecar, interruptedCommandExecutionItemIds },
-        };
-        return projectCanonicalState({ ...before, turns }, observedAtMs, projectReplica);
+        return mutateCanonicalState((draft) => {
+          const target = conversationTurnDraft(draft, entry.address);
+          if (!target) return;
+          target.status = "interrupted";
+          target.interruptedCommandExecutionItemIds = interruptedCommandExecutionItemIds;
+        }, observedAtMs);
       },
       backgroundTerminalTurnIds: () => {
-        const conversation = aggregate.canonicalState;
+        const conversation = aggregate.document.canonicalState;
         if (!conversation) return null;
         return listCodexBackgroundTerminalTurnIds(conversation);
       },
-      cleanBackgroundTerminals: ({ observedAtMs, projectReplica }) => {
-        const before = aggregate.canonicalState;
+      cleanBackgroundTerminals: ({ observedAtMs }) => {
+        const before = aggregate.document.canonicalState;
         if (!before) return false;
-        return projectCanonicalState(
-          reduceCodexBackgroundTerminalCleanup(before),
+        return mutateCanonicalState(
+          (draft) => mutateCodexBackgroundTerminalCleanup(draft),
           observedAtMs,
-          projectReplica,
         );
       },
-      applyTurnConfiguration: ({ settings, permissions, projectReplica }) => {
-        const before = aggregate.canonicalState;
-        const hydration = before?.sidecar.hydrationContext;
+      applyTurnConfiguration: ({ settings, permissions }) => {
+        const before = aggregate.document.canonicalState;
+        const hydration = before?.hydrationContext;
         if (!before || !hydration) return false;
         const canonical = {
           ...before,
-          sidecar: {
-            ...before.sidecar,
-            hydrationContext: {
-              ...hydration,
-              latestModel: settings.model ?? hydration.latestModel,
-              latestReasoningEffort: settings.reasoningEffort,
-              latestThreadSettings: {
-                ...(hydration.latestThreadSettings ?? {}),
-                model: settings.model ?? hydration.latestModel,
-                serviceTier: settings.serviceTier ?? null,
-                effort: settings.reasoningEffort,
-                summary: settings.summary ?? null,
-                personality: settings.personality,
-                collaborationMode: settings.collaborationMode,
-              },
-              currentPermissions: permissions,
+          modelProvider: settings.modelProvider ?? before.modelProvider,
+          currentPermissions: permissions,
+          latestModel: settings.model ?? before.latestModel,
+          latestReasoningEffort: settings.reasoningEffort,
+          latestCollaborationMode: settings.collaborationMode ?? before.latestCollaborationMode,
+          latestThreadSettings: {
+            cwd: before.cwd,
+            approvalPolicy: permissions.approvalPolicy,
+            approvalsReviewer: permissions.approvalsReviewer,
+            sandboxPolicy: permissions.sandboxPolicy,
+            activePermissionProfile: permissions.activePermissionProfile,
+            model: settings.model ?? before.latestModel,
+            modelProvider: settings.modelProvider ?? before.modelProvider,
+            serviceTier: settings.serviceTier ?? null,
+            effort: settings.reasoningEffort,
+            summary: settings.summary ?? null,
+            personality: settings.personality ?? null,
+            collaborationMode: settings.collaborationMode ?? before.latestCollaborationMode,
+            multiAgentMode: "explicitRequestOnly" as const,
+          },
+          hydrationContext: {
+            ...hydration,
+            latestModel: settings.model ?? hydration.latestModel,
+            latestReasoningEffort: settings.reasoningEffort,
+            latestThreadSettings: {
+              ...(hydration.latestThreadSettings ?? {}),
+              model: settings.model ?? hydration.latestModel,
+              serviceTier: settings.serviceTier ?? null,
+              effort: settings.reasoningEffort,
+              summary: settings.summary ?? null,
+              personality: settings.personality,
+              collaborationMode: settings.collaborationMode,
             },
           },
         };
-        aggregate.canonicalState = canonical;
+        aggregate.document = aggregate.document.withCanonicalState(canonical);
         const project = (conversation: CodexConversationSnapshot): CodexConversationSnapshot => ({
           ...conversation,
           latestCollaborationMode: settings.collaborationMode ?? undefined,
@@ -2588,62 +1283,62 @@ export function makeConversationEntityStateRegistry(): ConversationEntityStateRe
           canonicalState: canonical,
         });
         if (aggregate.snapshot) aggregate.snapshot = project(aggregate.snapshot);
-        if (projectReplica && aggregate.acceptedReplica) {
-          acceptReplica({
-            conversation: project(aggregate.acceptedReplica.conversation),
-            ownerEpoch: aggregate.acceptedReplica.checkpoint.ownerEpoch,
-            revision: aggregate.revision + 1,
-          });
-        }
         return true;
       },
-      renameThread: ({ name, observedAtMs, projectReplica }) => {
-        const before = aggregate.canonicalState;
+      refreshThreadMetadata: (metadataThreadId) => {
+        const before = aggregate.document.canonicalState;
         if (!before) return false;
-        return projectCanonicalState(
-          reduceCodexConversationThreadName(before, threadId, name),
-          observedAtMs,
-          projectReplica,
+        return mutateCanonicalState((draft) => {
+          mutateCodexConversationThreadMetadata(
+            draft,
+            metadataThreadId,
+            (id) => threadsById.get(id) ?? null,
+          );
+        }, Date.now());
+      },
+      renameThread: ({ name, observedAtMs, generated }) => {
+        const before = aggregate.document.canonicalState;
+        if (!before) return false;
+        return mutateCanonicalState((draft) => {
+          mutateCodexConversationThreadName(draft, threadId, name, generated);
+        }, observedAtMs);
+      },
+      acceptThreadGoal: ({ goal, appendTranscriptItem, dismissResumeConfirmation }) => {
+        const before = aggregate.document.canonicalState;
+        if (!before) return false;
+        return mutateCanonicalState(
+          (draft) => {
+            // Command acceptance leaves completion bookkeeping to native notifications.
+            draft.threadGoal = goal;
+            if (dismissResumeConfirmation)
+              mutateCodexConversationThreadGoalResumeConfirmationDismissed(draft, threadId);
+            if (goal && appendTranscriptItem)
+              mutateCodexCanonicalThreadGoalTranscriptTurn(draft, goal);
+          },
+          goal ? goal.updatedAt * 1000 : Date.now(),
         );
       },
-      acceptThreadGoal: ({
-        goal,
-        appendTranscriptItem,
-        dismissResumeConfirmation,
-        projectReplica,
-      }) => {
-        const before = aggregate.canonicalState;
-        if (!before) return false;
-        const updated = reduceCodexConversationThreadGoalUpdated(before, threadId, goal).state;
-        const dismissed = dismissResumeConfirmation
-          ? reduceCodexConversationThreadGoalResumeConfirmationDismissed(updated, threadId)
-          : updated;
-        const after = appendTranscriptItem
-          ? appendCodexCanonicalThreadGoalTranscriptTurn(dismissed, goal)
-          : dismissed;
-        return projectCanonicalState(after, goal.updatedAt * 1_000, projectReplica);
-      },
-      admitManualCompaction: ({ observedAtMs, projectReplica }) => {
-        const before = aggregate.canonicalState;
+      admitManualCompaction: ({ observedAtMs }) => {
+        const before = aggregate.document.canonicalState;
         if (!before) return null;
-        const after = appendCodexCanonicalInProgressSyntheticItem(
-          before,
-          pendingManualCompaction,
-          observedAtMs,
+        const mutation = aggregate.document.mutate((draft) =>
+          mutateCodexCanonicalInProgressSyntheticItem(draft, pendingManualCompaction, observedAtMs),
         );
-        projectCanonicalState(after, observedAtMs, projectReplica);
-        const turnIndex = after.turns.findLastIndex((turn) =>
+        if (!mutation) return null;
+        const after = mutation.after;
+        projectCanonicalState(after, observedAtMs, mutation.document);
+        const turnIndex = residentConversationTurns(after).findLastIndex((turn) =>
           turn.items.some((item) => item.id === pendingManualCompaction.id),
         );
-        return after.turns[turnIndex]?.protocol.id ?? null;
+        return residentConversationTurns(after)[turnIndex]?.turnId ?? null;
       },
-      rollbackManualCompaction: ({ observedAtMs, projectReplica }) => {
-        const before = aggregate.canonicalState;
+      rollbackManualCompaction: ({ observedAtMs }) => {
+        const before = aggregate.document.canonicalState;
         if (!before) return false;
-        return projectCanonicalState(
-          removeCodexCanonicalLocalSyntheticItem(before, pendingManualCompaction.id),
+        return mutateCanonicalState(
+          (draft) =>
+            mutateCodexCanonicalLocalSyntheticItemRemoval(draft, pendingManualCompaction.id),
           observedAtMs,
-          projectReplica,
         );
       },
       relocateExecution: ({
@@ -2653,27 +1348,31 @@ export function makeConversationEntityStateRegistry(): ConversationEntityStateRe
         projectlessOutputDirectory,
         projectlessWorkspaceBrowserRoot,
         permissions,
-        projectReplica,
       }) => {
-        const before = aggregate.canonicalState;
-        const hydration = before?.sidecar.hydrationContext;
+        const before = aggregate.document.canonicalState;
+        const hydration = before?.hydrationContext;
         if (!before || !hydration) return false;
         const canonical = {
           ...before,
-          sidecar: {
-            ...before.sidecar,
-            hydrationContext: {
-              ...hydration,
+          cwd,
+          currentPermissions: permissions,
+          workspaceKind: projectId === null ? ("projectless" as const) : ("project" as const),
+          workspaceBrowserRoot: projectlessWorkspaceBrowserRoot,
+          ...(before.latestThreadSettings
+            ? {
+                latestThreadSettings: { ...before.latestThreadSettings, cwd },
+              }
+            : {}),
+          hydrationContext: {
+            ...hydration,
+            cwd,
+            latestThreadSettings: {
+              ...(hydration.latestThreadSettings ?? {}),
               cwd,
-              latestThreadSettings: {
-                ...(hydration.latestThreadSettings ?? {}),
-                cwd,
-              },
-              currentPermissions: permissions,
             },
           },
         };
-        aggregate.canonicalState = canonical;
+        aggregate.document = aggregate.document.withCanonicalState(canonical);
         const project = (conversation: CodexConversationSnapshot): CodexConversationSnapshot => ({
           ...conversation,
           projectId,
@@ -2687,49 +1386,27 @@ export function makeConversationEntityStateRegistry(): ConversationEntityStateRe
           canonicalState: canonical,
         });
         if (aggregate.snapshot) aggregate.snapshot = project(aggregate.snapshot);
-        if (projectReplica && aggregate.acceptedReplica) {
-          acceptReplica({
-            conversation: project(aggregate.acceptedReplica.conversation),
-            ownerEpoch: aggregate.acceptedReplica.checkpoint.ownerEpoch,
-            revision: aggregate.revision + 1,
-          });
-        }
         return true;
       },
-      setThreadStatus: (statusType, projectReplica) => {
-        const beforeStatus = aggregate.canonicalState?.protocol.status.type ?? null;
-        if (aggregate.canonicalState && beforeStatus !== statusType) {
-          aggregate.canonicalState = {
-            ...aggregate.canonicalState,
-            protocol: {
-              ...aggregate.canonicalState.protocol,
-              status: { type: statusType, activeFlags: [] },
-            },
-          };
-        }
-        const snapshotChanged = aggregate.snapshot?.statusType !== statusType;
-        if (aggregate.snapshot && snapshotChanged) {
+      setThreadStatus: (statusType) => {
+        const canonical = aggregate.document.canonicalState;
+        const current = aggregate.snapshot;
+        const canonicalChanged =
+          canonical !== null && canonical.threadRuntimeStatus.type !== statusType;
+        const snapshotChanged = current !== null && current.statusType !== statusType;
+        if (canonicalChanged)
+          aggregate.document = aggregate.document.withCanonicalState({
+            ...canonical,
+            threadRuntimeStatus: { type: statusType, activeFlags: [] },
+          });
+        if (current && (canonicalChanged || snapshotChanged))
           aggregate.snapshot = {
-            ...aggregate.snapshot,
+            ...current,
             statusType,
             statusActiveFlags: [],
-            canonicalState: aggregate.canonicalState,
+            canonicalState: aggregate.document.canonicalState,
           };
-        }
-        const replicaChanged = aggregate.acceptedReplica?.conversation.statusType !== statusType;
-        if (projectReplica && aggregate.acceptedReplica && replicaChanged) {
-          acceptReplica({
-            conversation: {
-              ...aggregate.acceptedReplica.conversation,
-              statusType,
-              statusActiveFlags: [],
-              canonicalState: aggregate.canonicalState,
-            },
-            ownerEpoch: aggregate.acceptedReplica.checkpoint.ownerEpoch,
-            revision: aggregate.revision + 1,
-          });
-        }
-        return beforeStatus !== statusType || snapshotChanged || (projectReplica && replicaChanged);
+        return canonicalChanged || snapshotChanged;
       },
       readQueuedFollowUpProjection: () => ({
         ...aggregate.queuedFollowUps,
@@ -2741,21 +1418,10 @@ export function makeConversationEntityStateRegistry(): ConversationEntityStateRe
         aggregate.streamRole = role;
       },
       acceptCanonicalState: (state) => {
-        const before = aggregate.canonicalState;
-        const incomingTurns = persistedCanonicalTurns(state);
-        const beforeTurnsById = new Map(
-          persistedCanonicalTurns(before).map((turn) => [turn.protocol.id, turn] as const),
-        );
-        const liveTurnIds = new Set(
-          incomingTurns
-            .filter((turn) => beforeTurnsById.get(turn.protocol.id) !== turn)
-            .map((turn) => turn.protocol.id),
-        );
+        const before = aggregate.document.canonicalState;
         const acceptedState = preserveResidentHistoryTurns(state, aggregate.historyTopology);
-        aggregate.canonicalState = acceptedState;
-        reconcileCanonicalHistory("live", liveTurnIds);
-        aggregate.preHydrationServerRequests = [];
-        aggregate.preHydrationHasUnreadTurn = false;
+        aggregate.document = aggregate.document.withCanonicalState(acceptedState);
+
         if (aggregate.snapshot && before !== acceptedState) {
           aggregate.snapshot = projectCodexConversationSnapshot({
             conversation: aggregate.snapshot,
@@ -2769,128 +1435,16 @@ export function makeConversationEntityStateRegistry(): ConversationEntityStateRe
             historyTopologyGeneration: aggregate.historyTopology.generation,
           };
         }
-        return aggregate.canonicalState ?? acceptedState;
+        return aggregate.document.canonicalState ?? acceptedState;
       },
       replaceServerRequests: (requests) => {
-        if (!aggregate.canonicalState) {
-          aggregate.preHydrationServerRequests = [...requests];
-          return;
-        }
-        aggregate.canonicalState = {
-          ...aggregate.canonicalState,
-          requests: [...requests],
-        };
-        aggregate.preHydrationServerRequests = [];
+        aggregate.document = aggregate.document.withRequests([...requests]);
       },
       incrementVersion: () => {
         aggregate.version += 1;
         return aggregate.version;
       },
-      acceptReplica: (input) => {
-        const accepted = acceptReplica(input);
-        return aggregate.acceptedReplica ?? accepted;
-      },
-      acceptOwnerReplica: ({ conversation, checkpoint }) => {
-        const pending = pendingHistoryTransaction;
-        if (
-          pending &&
-          conversation.historyMutationRevision === pending.state.historyMutationRevision &&
-          conversation.conversationEntityGeneration === aggregate.generation &&
-          conversation.canonicalState
-        ) {
-          const proposed = pending.state;
-          const current = aggregate.canonicalState;
-          const baselineById = new Map(
-            persistedCanonicalTurns(pending.baseline).map((turn) => [turn.protocol.id, turn]),
-          );
-          const currentById = new Map(
-            persistedCanonicalTurns(current).map((turn) => [turn.protocol.id, turn]),
-          );
-          const ownerIds = new Set(
-            conversation.canonicalState.turns.map((turn) => turn.protocol.id),
-          );
-          const ownerTurns = conversation.canonicalState.turns.map((turn) => {
-            const live = turn.protocol.id === null ? undefined : currentById.get(turn.protocol.id);
-            if (!live || live === baselineById.get(turn.protocol.id!)) return turn;
-            const liveItems = new Map(live.items.map((item) => [item.id, item]));
-            const ownerItemIds = new Set(turn.items.map((item) => item.id));
-            return {
-              ...live,
-              protocol: { ...live.protocol, itemsView: turn.protocol.itemsView },
-              items: [
-                ...turn.items.map((item) => liveItems.get(item.id) ?? item),
-                ...live.items.filter((item) => !ownerItemIds.has(item.id)),
-              ],
-            };
-          });
-          aggregate.canonicalState = {
-            ...(current ?? conversation.canonicalState),
-            turns: [
-              ...ownerTurns,
-              ...(current?.turns.filter(
-                (turn) => !ownerIds.has(turn.protocol.id) && !baselineById.has(turn.protocol.id!),
-              ) ?? []),
-            ],
-          };
-          aggregate.turnPagination = { ...conversation.turnPagination! };
-          aggregate.turnItemsPaginationById = { ...conversation.turnItemsPaginationById };
-          aggregate.historyMutationRevision = proposed.historyMutationRevision;
-          aggregate.historyEntityRevision = proposed.historyEntityRevision;
-          aggregate.historyTopology = proposed.historyTopology;
-          aggregate.historyItemWindowsByTurnId = new Map(
-            Object.entries(conversation.historyItemWindowsByTurnId ?? {}).flatMap(
-              ([turnId, window]) => {
-                const restored = restoreCodexConversationHistoryItemWindow(window);
-                return restored ? [[turnId, restored] as const] : [];
-              },
-            ),
-          );
-          aggregate.snapshot = projectCodexConversationSnapshot({
-            conversation,
-            before: conversation.canonicalState,
-            after: aggregate.canonicalState,
-            observedAtMs: Date.now(),
-          });
-          const changedLiveTurns = new Set(
-            [...currentById].flatMap(([turnId, turn]) =>
-              turn !== baselineById.get(turnId) ? [turnId] : [],
-            ),
-          );
-          reconcileCanonicalHistory("live", changedLiveTurns);
-          aggregate.turnPagination = paginationForHistoryTopology({
-            current: aggregate.turnPagination,
-            topology: aggregate.historyTopology,
-          });
-          aggregate.snapshot = {
-            ...aggregate.snapshot,
-            historyRows: flattenCodexHistoryTopology(aggregate.historyTopology),
-            turnPagination: aggregate.turnPagination,
-          };
-          pendingHistoryTransaction = null;
-        }
-        const replica = {
-          conversation: projectCodexConversationDocument(conversation),
-          checkpoint,
-        };
-        pendingHistoryTransaction = null;
-        aggregate.acceptedReplica = replica;
-        aggregate.revision = checkpoint.revision;
-        aggregate.checkpoint = checkpoint;
-        return replica;
-      },
-      advanceReplica: (input) => {
-        const baseRevision = aggregate.revision;
-        const accepted = acceptReplica({ ...input, revision: baseRevision + 1 });
-        return { baseRevision, replica: aggregate.acceptedReplica ?? accepted };
-      },
-      clearReplica: () => {
-        pendingHistoryTransaction = null;
-        aggregate.acceptedReplica = null;
-        aggregate.revision = 0;
-        aggregate.checkpoint = null;
-      },
       reset: () => {
-        pendingHistoryTransaction = null;
         resetAggregate(aggregate);
       },
     };
@@ -2904,26 +1458,55 @@ export function makeConversationEntityStateRegistry(): ConversationEntityStateRe
     return capability;
   };
 
+  const retirementListeners = new Set<(threadId: string, generation: number) => void>();
+  const releaseGeneration = (threadId: string, generation: number): void => {
+    const aggregate = aggregates.get(threadId);
+    if (aggregate?.generation !== generation) return;
+    aggregates.delete(threadId);
+    capabilities.delete(threadId);
+    threadsById.delete(threadId);
+    for (const listener of retirementListeners) listener(threadId, generation);
+  };
+
   return {
+    subscribeRetired: (listener) => {
+      retirementListeners.add(listener);
+      return {
+        [Symbol.dispose]: () => {
+          retirementListeners.delete(listener);
+        },
+      };
+    },
+    subscribeCanonicalMutations: (listener) => {
+      mutationListeners.add(listener);
+      return {
+        [Symbol.dispose]: () => {
+          mutationListeners.delete(listener);
+        },
+      };
+    },
+    forHost: (hostId) =>
+      [...capabilities.values()].filter((entity) => entity.readCanonicalState()?.hostId === hostId),
+    registerThreadMetadata: (thread) => {
+      threadsById.set(thread.id, { ...thread, turns: [] });
+      for (const capability of capabilities.values()) capability.refreshThreadMetadata(thread.id);
+    },
+    readThreadMetadata: (threadId) => threadsById.get(threadId) ?? null,
+    removeThreadMetadata: (threadId) => {
+      threadsById.delete(threadId);
+    },
     current: (threadId) => capabilities.get(threadId) ?? null,
     acquire,
-    releaseGeneration: (threadId, generation) => {
-      const aggregate = aggregates.get(threadId);
-      if (aggregate?.generation !== generation) return;
-      aggregates.delete(threadId);
-      capabilities.delete(threadId);
-    },
+    releaseGeneration,
     releaseAll: () => {
-      aggregates.clear();
-      capabilities.clear();
+      for (const [threadId, aggregate] of [...aggregates])
+        releaseGeneration(threadId, aggregate.generation);
+      threadsById.clear();
+      retirementListeners.clear();
     },
     markAllNeedsResume: () => {
       const affectedThreadIds = [...capabilities.keys()];
       for (const conversation of capabilities.values()) {
-        // Renderer replicas are generation-bound recovery checkpoints. Renderers retain their
-        // visible document, but Main must seed the next accepted checkpoint from fresh canonical
-        // hydration instead of pairing a stale checkpoint with replacement-generation history.
-        conversation.clearReplica();
         conversation.setResumeState("needs_resume");
         conversation.setStreamRole(null);
         conversation.setStreaming(false);

@@ -1,3 +1,4 @@
+import { CodexMainConversationManagers } from "./CodexMainConversationManagers";
 import { assert, it } from "@effect/vitest";
 import type { TurnStartResponse } from "@nodex/codex-app-server-protocol/v2/TurnStartResponse";
 import * as Deferred from "effect/Deferred";
@@ -5,21 +6,19 @@ import * as Effect from "effect/Effect";
 import * as Exit from "effect/Exit";
 import * as Fiber from "effect/Fiber";
 import * as Scope from "effect/Scope";
-import type { CodexConversationSnapshot } from "../../shared/types";
-import { makeConversationEntityStateRegistry } from "./internal/ConversationEntityState";
+import { CodexTurnPresentation } from "./CodexTurnPresentation";
 import { CodexAutoThreadTitle } from "./CodexAutoThreadTitle";
 import {
   make,
   type CodexFreshThreadLaunch,
   type CodexFreshThreadLaunchIdentity,
 } from "./CodexFreshThreadLaunchRuntime";
-import { CodexRendererConversationCoordinator } from "./CodexRendererConversationCoordinator";
-import { makeCodexRendererConversationRegistryState } from "./CodexRendererConversationRegistry";
 import { CodexThreadLaunchCompletion } from "./CodexThreadLaunchCompletion";
 import { CodexTurnCommands } from "./CodexTurnCommands";
 
 const launch = (): CodexFreshThreadLaunch =>
   ({
+    nativeStart: { hostId: "local", generation: 1, response: { thread: { id: "thread-1" } } },
     launchId: "launch-1",
     rendererClientId: "renderer-1",
     projectId: "project-1",
@@ -28,10 +27,7 @@ const launch = (): CodexFreshThreadLaunch =>
     runInTarget: "localProject",
     startedAt: 1,
     clientUserMessageId: "message-1",
-    canonicalParams: {},
-    turnStartParams: { threadId: "thread-1", input: [], attachments: [] },
-    verifiedBuiltinFullAccess: false,
-    executionReadOnly: false,
+    firstTurn: { prompt: "Hello", overrides: { clientUserMessageId: "message-1" } },
     goalObjective: "",
     rawGoalDraft: null,
     heartbeatAutomation: null,
@@ -43,6 +39,8 @@ const identity: CodexFreshThreadLaunchIdentity = {
   threadId: "thread-1",
 };
 
+const request = { threadId: "thread-1", input: [], clientUserMessageId: "message-1" };
+
 const turnStart = (): TurnStartResponse =>
   ({ turn: { id: "turn-1", status: "inProgress", items: [] } }) as unknown as TurnStartResponse;
 
@@ -53,77 +51,24 @@ interface HarnessOptions {
 }
 
 const makeHarness = (options: HarnessOptions = {}) => {
-  const aggregates = makeConversationEntityStateRegistry();
-  const registry = makeCodexRendererConversationRegistryState();
-  const snapshot = {
-    threadId: identity.threadId,
-    resumeState: "resumed",
-    requests: [],
-    queuedFollowUps: {
-      status: "ready",
-      ledgerRevision: 0,
-      projectionRevision: 0,
-      entries: [],
-      inFlightFollowUpId: null,
-      editingFollowUpId: null,
-      error: null,
-    },
-  } as unknown as CodexConversationSnapshot;
-  aggregates.acquire(identity.threadId).installSnapshot(snapshot);
   let adoptionCalls = 0;
   const failures: string[] = [];
-  const coordinator = CodexRendererConversationCoordinator.of({
-    readRendererState: (threadId) => {
-      const state = aggregates.current(threadId)?.read();
-      return {
-        acceptedConversation: state?.acceptedReplica?.conversation ?? null,
-        checkpoint: state?.acceptedReplica?.checkpoint ?? null,
-        ownerClientId: registry.getOwnerClientId(threadId),
-        resumeState: state?.acceptedReplica?.conversation.resumeState ?? null,
-        revision: state?.revision ?? 0,
-      };
-    },
-    adoptRendererOwner: (input) =>
-      (options.beforeAdopt ?? Effect.void).pipe(
-        Effect.map(() => {
-          adoptionCalls += 1;
-          const owner = registry.setOwner(input.conversationId, input.ownerClientId);
-          const aggregate = aggregates.acquire(input.conversationId);
-          const state = aggregate.read();
-          if (owner && !state.acceptedReplica) {
-            const canonical = aggregate.readSnapshot();
-            if (canonical) {
-              aggregate.acceptReplica({
-                conversation: canonical,
-                revision: state.revision,
-                ownerEpoch: owner.ownerEpoch,
-              });
-            }
-          }
-          const adopted = aggregate.read();
-          return {
-            checkpoint: adopted.acceptedReplica?.checkpoint ?? null,
-            ownerClientId: registry.getOwnerClientId(input.conversationId),
-            revision: adopted.revision,
-          };
-        }),
-      ),
-  } as CodexRendererConversationCoordinator["Service"]);
-  const acceptedPlans: Parameters<CodexTurnCommands["Service"]["acceptPreparedRendererTurn"]>[0][] =
-    [];
+  const retired = new Set<() => void>();
+  const released: unknown[] = [];
+  const managers = CodexMainConversationManagers.of({ get: () => (options.beforeAdopt ?? Effect.void).pipe(Effect.map(() => {
+    adoptionCalls++;
+    return { hostId: "local", generation: 1, assertCurrent: () => {}, onDispose: (callback: () => void) => { retired.add(callback); return { [Symbol.dispose]: () => retired.delete(callback) }; }, findOwner: async () => "renderer-1" };
+  })) } as unknown as CodexMainConversationManagers["Service"]);
+  const acceptedPlans: Parameters<CodexTurnCommands["Service"]["prepareNativeStart"]>[2][] = [];
   const turns = CodexTurnCommands.of({
-    acceptPreparedRendererTurn: (
-      plan: Parameters<CodexTurnCommands["Service"]["acceptPreparedRendererTurn"]>[0],
-    ) =>
-      Effect.sync(() => acceptedPlans.push(plan)).pipe(
-        Effect.andThen(
-          (options.start ?? Effect.succeed(turnStart())).pipe(
-            Effect.onExit((exit) =>
-              Exit.isFailure(exit) ? Effect.sync(() => options.rollback?.()) : Effect.void,
-            ),
-          ),
-        ),
-      ),
+    prepareNativeStart: (_threadId: string, _prompt: string, overrides: Parameters<CodexTurnCommands["Service"]["prepareNativeStart"]>[2]) => Effect.sync(() => {
+      acceptedPlans.push(overrides);
+      return { request, context: {} };
+    }),
+    releasePreparedNativeStart: () => {},
+    executePreparedNativeStart: () => (options.start ?? Effect.succeed(turnStart())).pipe(
+      Effect.onExit((exit) => Exit.isFailure(exit) ? Effect.sync(() => options.rollback?.()) : Effect.void),
+    ),
   } as unknown as CodexTurnCommands["Service"]);
   const completion = CodexThreadLaunchCompletion.of({
     accepted: () => Effect.void,
@@ -132,9 +77,10 @@ const makeHarness = (options: HarnessOptions = {}) => {
     },
   });
   const runtime = make.pipe(
-    Effect.provideService(CodexRendererConversationCoordinator, coordinator),
+    Effect.provideService(CodexMainConversationManagers, managers),
     Effect.provideService(CodexThreadLaunchCompletion, completion),
     Effect.provideService(CodexTurnCommands, turns),
+    Effect.provideService(CodexTurnPresentation, CodexTurnPresentation.of({ releaseClaim: (claim: unknown) => released.push(claim) } as never)),
     Effect.provideService(
       CodexAutoThreadTitle,
       CodexAutoThreadTitle.of({
@@ -143,7 +89,7 @@ const makeHarness = (options: HarnessOptions = {}) => {
       }),
     ),
   );
-  return { adoptionCalls: () => adoptionCalls, failures, runtime, acceptedPlans };
+  return { adoptionCalls: () => adoptionCalls, failures, runtime, acceptedPlans, released, retire: () => { for (const callback of [...retired]) callback(); } };
 };
 
 it.effect("single-flights renderer adoption and the first Turn start", () =>
@@ -171,8 +117,9 @@ it.effect("single-flights renderer adoption and the first Turn start", () =>
     yield* Fiber.join(secondAdoption);
     assert.strictEqual(harness.adoptionCalls(), 1);
 
-    const firstStart = yield* Effect.forkChild(service.start(identity), { startImmediately: true });
-    const secondStart = yield* Effect.forkChild(service.start(identity), {
+    yield* service.prepare(identity);
+    const firstStart = yield* Effect.forkChild(service.start(identity, request), { startImmediately: true });
+    const secondStart = yield* Effect.forkChild(service.start(identity, request), {
       startImmediately: true,
     });
     yield* Effect.yieldNow;
@@ -198,7 +145,8 @@ it.effect("interrupts an active first Turn when the owning Scope closes", () =>
     const service = yield* harness.runtime.pipe(Effect.provideService(Scope.Scope, ownerScope));
     service.register(launch());
     yield* service.adopt(identity);
-    const fiber = yield* Effect.forkChild(service.start(identity), { startImmediately: true });
+    yield* service.prepare(identity);
+    const fiber = yield* Effect.forkChild(service.start(identity, request), { startImmediately: true });
     yield* Deferred.await(started);
     yield* Scope.close(ownerScope, Exit.void);
     assert.strictEqual((yield* Fiber.await(fiber))._tag, "Failure");
@@ -227,8 +175,21 @@ it.effect("carries the Main origin claim through fresh renderer ownership adopti
       const presentationClaim = { ticketId: "origin-ticket", submissionId: "message-1" };
       runtime.register({ ...launch(), presentationClaim });
       yield* runtime.adopt(identity);
-      yield* runtime.start(identity);
+      yield* runtime.prepare(identity);
+      yield* runtime.start(identity, request);
       assert.strictEqual(harness.acceptedPlans[0]?.presentationClaim, presentationClaim);
     }),
   ),
 );
+
+it.effect("retires an adopted launch and its unclaimed presentation with the host manager", () => Effect.gen(function* () {
+  const harness = makeHarness();
+  const runtime = yield* harness.runtime;
+  const presentationClaim = { ticketId: "ticket", submissionId: "message-1" };
+  runtime.register({ ...launch(), presentationClaim });
+  yield* runtime.adopt(identity);
+  harness.retire();
+  assert.isNull(runtime.reservation(identity.threadId));
+  assert.deepEqual(harness.released, [presentationClaim]);
+  assert.isTrue(Exit.isFailure(yield* Effect.exit(runtime.prepare(identity))));
+}));

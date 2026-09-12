@@ -13,7 +13,7 @@ import {
   CodexApplicationEventHub,
   type CodexApplicationEvent,
 } from "../codex-application/CodexApplicationEventHub";
-import { CodexRendererConversationRegistry } from "../codex-application/CodexRendererConversationRegistry";
+import { CodexRendererPresentationRegistry } from "../codex-application/CodexRendererPresentationRegistry";
 import { WindowRuntime } from "../window-runtime/WindowRuntime";
 import { DesktopNotificationRuntime } from "./DesktopNotificationRuntime";
 import { RendererClientRuntime } from "./RendererClientRuntime";
@@ -48,7 +48,7 @@ it.effect("releases every Codex notification listener with the Main Scope", () =
               },
             } as never),
             Layer.succeed(ApplicationSettings, settings),
-            Layer.succeed(CodexRendererConversationRegistry, {
+            Layer.succeed(CodexRendererPresentationRegistry, {
               hasForegroundClient: () => false,
               isPresentedInForeground: () => false,
               resolvePresentedSurfaceClient: () => "renderer-1",
@@ -91,7 +91,7 @@ it.effect("releases every Codex notification listener with the Main Scope", () =
       kind: "threadNotification",
       value: {
         type: "user-input-requested",
-        hostId: "default",
+        hostId: "local",
         conversation: {
           conversationId: "thread-1",
           title: "Question",

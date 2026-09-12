@@ -12,6 +12,7 @@ import {
   developmentFeatureEnvironment,
   resolveDevelopmentFeatureOverrides,
 } from "../../../src/shared/development-features";
+import type { IpcApi } from "../../../src/shared/ipc-api";
 import { cleanupIsolatedCore } from "../../isolated-core-cleanup";
 import type { ScenarioFacts, ScenarioManifest, ScenarioSeedPort } from "../contracts";
 import { RendererIpcSeedAdapter } from "../adapters/renderer-ipc-seed-adapter";
@@ -28,6 +29,17 @@ import { inspectScenario, materializeScenario } from "../seed/scenario-seed";
 const repositoryRoot = process.cwd();
 const DEFAULT_RUNTIME_LOG_CHARS = 32_768;
 const APPLICATION_WINDOW_DISCOVERY_TIMEOUT_MS = 60_000;
+const DEFAULT_TEST_CODEX_EXECUTION_ASSIGNMENTS = JSON.stringify({
+  permissionRefresh: false,
+  threadQueue: true,
+});
+
+type ScenarioPreloadApi = {
+  invoke<Channel extends keyof IpcApi>(
+    channel: Channel,
+    ...args: IpcApi[Channel]["args"]
+  ): Promise<IpcApi[Channel]["result"]>;
+};
 
 const delay = async (durationMs: number): Promise<void> =>
   await new Promise((resolvePromise) => setTimeout(resolvePromise, durationMs));
@@ -205,6 +217,8 @@ export const stopNodexElectronApplication = async (
 export interface ElectronHarnessInput {
   readonly label: string;
   readonly codex?: IsolatedCodexPolicy;
+  /** Explicitly authenticate the isolated Codex runtime through its public account contract. */
+  readonly codexApiKey?: string;
   readonly retention?: IsolatedProfileRetention;
   readonly sourceCodexHome?: string;
   readonly cwd?: string;
@@ -217,6 +231,7 @@ export interface ElectronHarnessInput {
 export class ElectronScenarioHarness {
   readonly profile: IsolatedProfile;
   readonly #cwd: string;
+  readonly #codexApiKey: string | undefined;
   readonly #environment: NodeJS.ProcessEnv;
   readonly #executablePath: string | undefined;
   readonly #lease: IsolatedRunLease;
@@ -227,12 +242,14 @@ export class ElectronScenarioHarness {
   private constructor(
     profile: IsolatedProfile,
     cwd: string,
+    codexApiKey: string | undefined,
     environment: NodeJS.ProcessEnv,
     lease: IsolatedRunLease,
     executablePath?: string,
   ) {
     this.profile = profile;
     this.#cwd = cwd;
+    this.#codexApiKey = codexApiKey;
     this.#environment = environment;
     this.#executablePath = executablePath;
     this.#lease = lease;
@@ -258,10 +275,12 @@ export class ElectronScenarioHarness {
       return new ElectronScenarioHarness(
         profile,
         cwd,
+        input.codexApiKey ?? input.environment?.OPENAI_API_KEY,
         {
           ...(input.prepareAgentRuntime !== false && cwd === profile.runRoot
             ? { NODEX_TEST_AGENT_RUNTIME_PROJECT_ROOT: "." }
             : {}),
+          NODEX_TEST_CODEX_EXECUTION_ASSIGNMENTS: DEFAULT_TEST_CODEX_EXECUTION_ASSIGNMENTS,
           ...input.environment,
           ...developmentFeatureEnvironment(
             resolveDevelopmentFeatureOverrides(input.enabledFeatures ?? []),
@@ -316,7 +335,37 @@ export class ElectronScenarioHarness {
     this.#page = page;
     if (options?.phase === "first-window") return page;
     await this.waitForApplicationReady();
+    await this.ensureCodexApiKeyLogin(page);
     return page;
+  }
+
+  private async ensureCodexApiKeyLogin(page: Page): Promise<void> {
+    const apiKey = this.#codexApiKey?.trim();
+    if (!apiKey) return;
+    const account = await page.evaluate(async () => {
+      const api = (window as unknown as { api?: ScenarioPreloadApi }).api;
+      return await api?.invoke("codex:account:read");
+    });
+    if (account?.account?.type !== "apiKey") {
+      await page.evaluate(async (key) => {
+        const api = (window as unknown as { api?: ScenarioPreloadApi }).api;
+        return await api?.invoke("codex:account:login:start", { type: "apiKey", apiKey: key });
+      }, apiKey);
+    }
+    const deadline = Date.now() + 15_000;
+    while (Date.now() < deadline) {
+      const ready = await page.evaluate(async () => {
+        const api = (window as unknown as { api?: ScenarioPreloadApi }).api;
+        const [currentAccount, connection] = await Promise.all([
+          api?.invoke("codex:account:read"),
+          api?.invoke("codex:connection:status"),
+        ]);
+        return currentAccount?.account?.type === "apiKey" && connection?.status === "connected";
+      });
+      if (ready) return;
+      await delay(25);
+    }
+    throw new Error("Isolated Codex API-key login did not converge before the startup deadline");
   }
 
   async waitForApplicationReady(): Promise<Page> {

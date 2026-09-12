@@ -26,17 +26,17 @@ function createArchive(root: string, target: string, version: string): string {
   writeFileSync(
     path.join(packageRoot, "codex-package.json"),
     `${JSON.stringify({
-      entrypoint: "bin/codex-app-server",
+      entrypoint: "bin/codex",
       layoutVersion: 1,
       pathDir: "codex-path",
       resourcesDir: "codex-resources",
       target,
-      variant: "codex-app-server",
+      variant: "codex",
       version,
     })}\n`,
   );
   for (const artifact of [
-    "bin/codex-app-server",
+    "bin/codex",
     "bin/codex-code-mode-host",
     "codex-path/rg",
     "codex-resources/zsh/bin/zsh",
@@ -46,7 +46,7 @@ function createArchive(root: string, target: string, version: string): string {
     writeFileSync(filePath, "#!/bin/sh\nexit 0\n");
     chmodSync(filePath, 0o755);
   }
-  const archivePath = path.join(root, `codex-app-server-package-${target}.tar.gz`);
+  const archivePath = path.join(root, `codex-package-${target}.tar.gz`);
   execFileSync("/usr/bin/tar", [
     "-czf",
     archivePath,

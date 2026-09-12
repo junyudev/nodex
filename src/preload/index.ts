@@ -49,11 +49,16 @@ import {
 } from "../shared/git-worker-protocol";
 import type { McpAppSandboxHostMessageChannel } from "../shared/mcp-app/mcp-app-sandbox-contract";
 import {
-  RENDERER_DELIVERY_ACK_CHANNEL,
-  RENDERER_DELIVERY_DATA_CHANNEL,
-} from "../shared/renderer-delivery-transport";
-import { createRendererDeliveryPreloadBridge } from "../shared/renderer-delivery-preload-bridge";
+  CODEX_HOST_CHUNK_ACK_CHANNEL,
+  CodexHostMessageReceiver,
+} from "../shared/codex-host-chunked-message";
 import type { IpcApi } from "../shared/ipc-api";
+import {
+  CodexNativeIpcClient,
+  isCodexNativeIpcChannel,
+  type CodexNativeIpcChannel,
+} from "../shared/codex-native-ipc";
+import type { CodexHostMessage } from "../shared/types";
 
 // Sandboxed Electron preloads cannot require Rollup's local shared chunks.
 // Keep the wire literal type-checked without creating a runtime dependency on
@@ -64,6 +69,18 @@ const APP_INITIALIZATION_STEP_CHANNEL: typeof import("../shared/app-startup").AP
   "app:init-step";
 const APP_RESTART_CHANNEL: typeof import("../shared/app-startup").APP_RESTART_CHANNEL =
   "app:restart";
+const CONVERSATION_SERVICE_CHANNEL: typeof import("../shared/codex-client-coordination").CODEX_CONVERSATION_SERVICE_CHANNEL =
+  "codex:conversation-service:connect";
+const CONVERSATION_SERVICE_CONNECT: typeof import("../shared/codex-client-coordination").CODEX_CONVERSATION_SERVICE_CONNECT =
+  "connect-conversation-host";
+
+window.addEventListener("message", (event: MessageEvent<unknown>) => {
+  if (event.source !== window || event.data === null || typeof event.data !== "object") return;
+  if (!("type" in event.data) || event.data.type !== CONVERSATION_SERVICE_CONNECT) return;
+  if (event.ports.length !== 1) return;
+  const port = event.ports[0];
+  if (port) ipcRenderer.postMessage(CONVERSATION_SERVICE_CHANNEL, undefined, [port]);
+});
 
 ipcRenderer.on(MCP_APP_SANDBOX_HOST_MESSAGE_CHANNEL, (event, message) => {
   const targetOrigin = window.location.origin;
@@ -83,31 +100,76 @@ function resolveManagedBlobPath(contentHash: string): string | null {
 // board-changed via useBoard, easily exceeding the default limit of 10.
 ipcRenderer.setMaxListeners(50);
 
-const rendererDelivery = createRendererDeliveryPreloadBridge({
-  acknowledge: (acknowledgment) => ipcRenderer.send(RENDERER_DELIVERY_ACK_CHANNEL, acknowledgment),
-  reportError: (message, cause) => console.error(message, cause),
-});
+const chunkedMessageReceiver = new CodexHostMessageReceiver();
+const nativeRequestClient = new CodexNativeIpcClient();
+const hostMessageListeners = new Set<(message: CodexHostMessage) => void>();
 
-ipcRenderer.on(RENDERER_DELIVERY_DATA_CHANNEL, (_event, input: unknown) => {
-  rendererDelivery.receive(input);
+// One receiver owns chunk assembly and acknowledgements, independently of renderer subscriptions.
+ipcRenderer.on("codex:host-message", (_event, payload: unknown) => {
+  const received = chunkedMessageReceiver.receive(payload);
+  if (received.type !== "passthrough" && received.acknowledgement)
+    ipcRenderer.send(
+      CODEX_HOST_CHUNK_ACK_CHANNEL,
+      received.acknowledgement.transferId,
+      received.acknowledgement.sequence,
+    );
+  if (received.type !== "passthrough" && received.type !== "complete") return;
+  const message = received.message as CodexHostMessage;
+  if (message.type === "mcp-response" || message.type === "mcp-request-delivery")
+    nativeRequestClient.receive(message);
+  for (const listener of hostMessageListeners) listener(message);
 });
+window.addEventListener("beforeunload", () => nativeRequestClient[Symbol.dispose]());
 
 const invokeIpc = <Channel extends keyof IpcApi>(
   channel: Channel,
   ...args: IpcApi[Channel]["args"]
-): Promise<IpcApi[Channel]["result"]> =>
-  ipcRenderer.invoke(channel, ...args) as Promise<IpcApi[Channel]["result"]>;
+): Promise<IpcApi[Channel]["result"]> => {
+  if (isCodexNativeIpcChannel(channel))
+    return nativeRequestClient.invoke<CodexNativeIpcChannel>(
+      channel,
+      args as IpcApi[CodexNativeIpcChannel]["args"],
+      () => ipcRenderer.invoke(channel, ...args),
+    ) as Promise<IpcApi[Channel]["result"]>;
+  if (channel === "codex:app-server:request:abandon") {
+    const input = args[0] as IpcApi["codex:app-server:request:abandon"]["args"][0];
+    if (input.reason === "disposed") nativeRequestClient.abandon(input.requestId);
+  }
+  return ipcRenderer.invoke(channel, ...args) as Promise<IpcApi[Channel]["result"]>;
+};
 
 contextBridge.exposeInMainWorld("api", {
   invoke: invokeIpc,
 
   on: (event: string, callback: (...args: unknown[]) => void) => {
-    const listener = (_event: Electron.IpcRendererEvent, ...args: unknown[]) => callback(...args);
-    const unsubscribeDelivery = rendererDelivery.subscribe(event, callback);
+    if (event === "codex:host-message") {
+      hostMessageListeners.add(callback);
+      return () => {
+        hostMessageListeners.delete(callback);
+      };
+    }
+    const listener = (_event: Electron.IpcRendererEvent, ...args: unknown[]) => {
+      if (args.length !== 1) {
+        callback(...args);
+        return;
+      }
+      const received = chunkedMessageReceiver.receive(args[0]);
+      if (received.type === "passthrough") {
+        callback(received.message);
+        return;
+      }
+      if (received.acknowledgement) {
+        ipcRenderer.send(
+          CODEX_HOST_CHUNK_ACK_CHANNEL,
+          received.acknowledgement.transferId,
+          received.acknowledgement.sequence,
+        );
+      }
+      if (received.type === "complete") callback(received.message);
+    };
     ipcRenderer.on(event, listener);
     return () => {
       ipcRenderer.removeListener(event, listener);
-      unsubscribeDelivery();
     };
   },
   awaitInitialization: () => ipcRenderer.invoke("app:await-initialization"),

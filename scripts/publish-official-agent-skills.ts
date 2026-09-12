@@ -21,6 +21,12 @@ import {
 
 const DEFAULT_REMOTE = "https://github.com/NodexApp/skills.git";
 const MANAGED_ROOTS = ["README.md", "LICENSE", "release-manifest.json", "skills"] as const;
+const TEMPORARY_REMOVAL_OPTIONS = {
+  force: true,
+  maxRetries: 10,
+  recursive: true,
+  retryDelay: 100,
+} as const;
 
 interface PublishOptions {
   readonly artifactDirectory: string;
@@ -294,7 +300,7 @@ const replaceManagedPaths = (worktree: string, artifactDirectory: string): void 
     }
     inspectOfficialAgentSkillsArtifact(stagedArtifact);
   } finally {
-    rmSync(stagedArtifact, { recursive: true, force: true });
+    rmSync(stagedArtifact, TEMPORARY_REMOVAL_OPTIONS);
   }
 };
 
@@ -377,7 +383,7 @@ export function publishOfficialAgentSkills(options: PublishOptions): PublishResu
       version: artifact.releaseVersion,
     };
   } finally {
-    rmSync(temporaryRoot, { recursive: true, force: true });
+    rmSync(temporaryRoot, TEMPORARY_REMOVAL_OPTIONS);
   }
 }
 

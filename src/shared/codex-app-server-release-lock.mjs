@@ -1,6 +1,6 @@
 export const CODEX_APP_SERVER_REQUIRED_ARTIFACTS = Object.freeze([
   "codex-package.json",
-  "bin/codex-app-server",
+  "bin/codex",
   "bin/codex-code-mode-host",
   "codex-path/rg",
   "codex-resources/zsh/bin/zsh",
@@ -83,7 +83,7 @@ export function parseCodexAppServerReleaseLock(value) {
   if (
     !isObject(value) ||
     value.schemaVersion !== 1 ||
-    value.runtimeFamily !== "codex-app-server" ||
+    value.runtimeFamily !== "codex" ||
     !hasExactKeys(value, [
       "appServerRuntimeVersion",
       "builds",
@@ -174,7 +174,7 @@ export function parseCodexAppServerReleaseLock(value) {
     if (targetTriple !== TARGET_TRIPLES[key]) {
       throw new Error(`Invalid Codex app-server release lock ${label}.targetTriple`);
     }
-    if (asset.assetName !== `codex-app-server-package-${targetTriple}.tar.gz`) {
+    if (asset.assetName !== `codex-package-${targetTriple}.tar.gz`) {
       throw new Error(`Codex app-server release asset name differs from runtime build ${key}`);
     }
     return {
@@ -237,7 +237,7 @@ export function parseCodexAppServerReleaseLock(value) {
 
   if (
     !isObject(value.packageManifest) ||
-    value.packageManifest.variant !== "codex-app-server" ||
+    value.packageManifest.variant !== "codex" ||
     !hasExactKeys(value.packageManifest, [
       "entrypoint",
       "layoutVersion",
@@ -254,8 +254,8 @@ export function parseCodexAppServerReleaseLock(value) {
     throw new Error("Codex runtime and package versions differ");
   }
   const entrypoint = relativePath(value.packageManifest.entrypoint, "packageManifest.entrypoint");
-  if (entrypoint !== "bin/codex-app-server") {
-    throw new Error("Codex package entrypoint must be bin/codex-app-server");
+  if (entrypoint !== "bin/codex") {
+    throw new Error("Codex package entrypoint must be bin/codex");
   }
   const packageLayoutVersion = positiveInteger(
     value.packageManifest.layoutVersion,
@@ -312,7 +312,7 @@ export function parseCodexAppServerReleaseLock(value) {
       layoutVersion: packageLayoutVersion,
       pathDir: packagePathDir,
       resourcesDir: packageResourcesDir,
-      variant: "codex-app-server",
+      variant: "codex",
       version: packageVersion,
     },
     protocolSchema: {
@@ -321,7 +321,7 @@ export function parseCodexAppServerReleaseLock(value) {
       tools: schemaTools,
     },
     requiredArtifacts,
-    runtimeFamily: "codex-app-server",
+    runtimeFamily: "codex",
     schemaVersion: 1,
     upstream: {
       checksumManifest: {

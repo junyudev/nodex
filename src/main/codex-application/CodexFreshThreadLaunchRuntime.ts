@@ -1,3 +1,7 @@
+import type { ConversationFollowerTurnStart } from "../../shared/codex-thread-follower-request";
+import type { CodexTurnStartOverrides } from "./CodexTurnCommands";
+import type { CodexNativeFreshLaunchAdoption } from "../../shared/codex-native-thread-start";
+import { CodexMainConversationManagers, type MainConversationManager } from "./CodexMainConversationManagers";
 import * as Context from "effect/Context";
 import * as Effect from "effect/Effect";
 import * as Exit from "effect/Exit";
@@ -9,25 +13,16 @@ import type * as Scope from "effect/Scope";
 import type { TurnStartParams } from "@nodex/codex-app-server-protocol/v2/TurnStartParams";
 import type { TurnStartResponse } from "@nodex/codex-app-server-protocol/v2/TurnStartResponse";
 import type {
-  CodexCanonicalLiveTurnParams,
-  CodexLiveFileAttachment,
-  CodexPromptTextAttachmentInput,
-  CodexRendererConversationResumeResult,
-  CodexReviewDiffCommentAttachment,
   CodexThreadGoalDraftInput,
   CodexThreadStartForSessionInput,
   PageRunInTarget,
 } from "../../shared/types";
-import { CodexRendererConversationCoordinator } from "./CodexRendererConversationCoordinator";
 import { CodexThreadLaunchCompletion } from "./CodexThreadLaunchCompletion";
 import { CodexTurnCommands } from "./CodexTurnCommands";
-import type { CodexTurnPresentationClaim } from "./CodexTurnPresentation";
-
-export type CodexFreshThreadLaunchTurnStartParams = TurnStartParams & {
-  readonly attachments: readonly CodexLiveFileAttachment[];
-};
+import { CodexTurnPresentation, type CodexTurnPresentationClaim } from "./CodexTurnPresentation";
 
 export interface CodexFreshThreadLaunch {
+  readonly nativeStart: CodexNativeFreshLaunchAdoption;
   readonly presentationClaim?: CodexTurnPresentationClaim;
   readonly launchId: string;
   readonly rendererClientId: string;
@@ -37,17 +32,7 @@ export interface CodexFreshThreadLaunch {
   readonly runInTarget: PageRunInTarget;
   readonly startedAt: number;
   readonly clientUserMessageId: string;
-  readonly canonicalParams: CodexCanonicalLiveTurnParams<
-    CodexLiveFileAttachment,
-    CodexReviewDiffCommentAttachment
-  >;
-  readonly turnStartParams: CodexFreshThreadLaunchTurnStartParams;
-  readonly autoTitlePrompt: string;
-  readonly autoTitleServiceName?: string | null;
-  readonly autoTitlePastedTextAttachments?: readonly CodexPromptTextAttachmentInput[];
-  readonly skipAutoTitleGeneration: boolean;
-  readonly verifiedBuiltinFullAccess: boolean;
-  readonly executionReadOnly: boolean;
+  readonly firstTurn: { readonly prompt: string; readonly overrides: CodexTurnStartOverrides };
   readonly goalObjective: string;
   readonly rawGoalDraft: CodexThreadGoalDraftInput | null;
   readonly heartbeatAutomation: CodexThreadStartForSessionInput["heartbeatAutomation"];
@@ -64,7 +49,7 @@ export interface CodexFreshThreadLaunchReservation {
   readonly state: "prepared" | "adopting" | "adopted" | "starting";
 }
 
-type AdoptionResult = Extract<CodexRendererConversationResumeResult, { readonly role: "owner" }>;
+type AdoptionResult = CodexNativeFreshLaunchAdoption;
 
 type FreshLaunchErrorReason =
   | "duplicate"
@@ -105,8 +90,10 @@ export interface CodexFreshThreadLaunchRuntimeService {
   readonly adopt: (
     identity: CodexFreshThreadLaunchIdentity,
   ) => Effect.Effect<AdoptionResult, CodexFreshThreadLaunchError>;
+  readonly prepare: (identity: CodexFreshThreadLaunchIdentity) => Effect.Effect<ConversationFollowerTurnStart, CodexFreshThreadLaunchError>;
   readonly start: (
     identity: CodexFreshThreadLaunchIdentity,
+    request: TurnStartParams,
   ) => Effect.Effect<TurnStartResponse, CodexFreshThreadLaunchError>;
   readonly releaseRenderer: (rendererClientId: string, reason: unknown) => void;
   readonly clear: (threadId: string) => void;
@@ -120,6 +107,9 @@ export class CodexFreshThreadLaunchRuntime extends Context.Service<
 interface FreshLaunchEntry {
   readonly launch: CodexFreshThreadLaunch;
   state: CodexFreshThreadLaunchReservation["state"];
+  prepared?: ConversationFollowerTurnStart;
+  manager?: MainConversationManager;
+  retirement?: Disposable;
 }
 
 const operationError = (
@@ -133,14 +123,16 @@ const operationError = (
 export const make: Effect.Effect<
   CodexFreshThreadLaunchRuntimeService,
   never,
-  | CodexRendererConversationCoordinator
+  | CodexMainConversationManagers
   | CodexThreadLaunchCompletion
   | CodexTurnCommands
+  | CodexTurnPresentation
   | Scope.Scope
 > = Effect.gen(function* () {
-  const rendererConversations = yield* CodexRendererConversationCoordinator;
+  const managers = yield* CodexMainConversationManagers;
   const completion = yield* CodexThreadLaunchCompletion;
   const turns = yield* CodexTurnCommands;
+  const presentation = yield* CodexTurnPresentation;
   const adoptions = yield* FiberMap.make<string, AdoptionResult, CodexFreshThreadLaunchError>();
   const starts = yield* FiberMap.make<string, TurnStartResponse, CodexFreshThreadLaunchError>();
   const runAdoption = yield* FiberMap.runtime(adoptions)();
@@ -159,66 +151,34 @@ export const make: Effect.Effect<
       },
       { cause },
     );
-  const readAdopted = (launch: CodexFreshThreadLaunch) =>
-    Effect.try({
-      try: (): AdoptionResult => {
-        const state = rendererConversations.readRendererState(launch.threadId);
-        if (state.ownerClientId !== launch.rendererClientId || !state.acceptedConversation) {
-          throw new Error(`Fresh thread '${launch.threadId}' has no matching renderer owner`);
-        }
-        if (!state.checkpoint) {
-          throw new Error(`Fresh thread '${launch.threadId}' has no accepted owner replica`);
-        }
-        if (state.threadGeneration === null) {
-          throw new Error(`Fresh thread '${launch.threadId}' has no live Thread generation`);
-        }
-        return {
-          role: "owner",
-          conversation: state.acceptedConversation,
-          threadGeneration: state.threadGeneration,
-          revision: state.revision,
-          checkpoint: state.checkpoint,
-        };
-      },
-      catch: (cause) => adoptionError(launch, cause),
-    });
-  const adoptLaunch = (launch: CodexFreshThreadLaunch) => {
-    return rendererConversations
-      .adoptRendererOwner({
-        conversationId: launch.threadId,
-        ownerClientId: launch.rendererClientId,
-      })
-      .pipe(
-        Effect.flatMap(() => readAdopted(launch)),
-        Effect.mapError((cause) => adoptionError(launch, cause)),
-      );
-  };
-
-  const startFirstTurn = (launch: CodexFreshThreadLaunch) => {
-    const { attachments: _attachments, ...request } = launch.turnStartParams;
-    return Effect.gen(function* () {
-      const response = yield* turns.acceptPreparedRendererTurn({
-        ...(launch.presentationClaim ? { presentationClaim: launch.presentationClaim } : {}),
-        threadId: launch.threadId,
-        projectId: launch.projectId,
-        request,
-        clientUserMessageId: launch.clientUserMessageId,
-        verifiedBuiltinFullAccess: launch.verifiedBuiltinFullAccess,
-        executionReadOnly: launch.executionReadOnly,
-        startedAtMs: launch.startedAt,
-        autoTitlePrompt: launch.autoTitlePrompt,
-        serviceName: launch.autoTitleServiceName,
-        autoTitlePastedTextAttachments: launch.autoTitlePastedTextAttachments,
-        skipAutoTitleGeneration: launch.skipAutoTitleGeneration,
+  const readAdopted = (launch: CodexFreshThreadLaunch): Effect.Effect<AdoptionResult, CodexFreshThreadLaunchError> => Effect.gen(function* () {
+    const manager = yield* managers.get(launch.nativeStart.hostId).pipe(Effect.mapError((cause) => adoptionError(launch, cause)));
+    yield* Effect.try({ try: manager.assertCurrent, catch: (cause) => adoptionError(launch, cause) });
+    if (manager.generation !== launch.nativeStart.generation) return yield* Effect.fail(adoptionError(launch, new Error("Fresh native generation retired")));
+    const entry = entries.get(launch.threadId);
+    if (!entry || entry.launch !== launch || (entry.manager && entry.manager !== manager)) return yield* Effect.fail(adoptionError(launch, new Error("Fresh manager lifetime retired")));
+    if (!entry.manager) {
+      entry.manager = manager;
+      entry.retirement = manager.onDispose(() => {
+        if (entries.get(launch.threadId) !== entry) return;
+        entries.delete(launch.threadId);
+        turns.releasePreparedNativeStart(launch.clientUserMessageId);
+        presentation.releaseClaim(launch.presentationClaim);
+        interrupt(launch.threadId);
+        completion.failed(launch);
       });
-      yield* completion.accepted(launch);
-      return response;
-    }).pipe(
-      Effect.onExit((exit) =>
-        Exit.isFailure(exit) ? Effect.sync(() => completion.failed(launch)) : Effect.void,
-      ),
-    );
-  };
+    }
+    return launch.nativeStart;
+  });
+  const adoptLaunch = readAdopted;
+
+  const startFirstTurn = (launch: CodexFreshThreadLaunch, request: TurnStartParams) => Effect.gen(function* () {
+    const manager = yield* managers.get(launch.nativeStart.hostId);
+    if (manager.generation !== launch.nativeStart.generation) return yield* Effect.fail(adoptionError(launch, new Error("Fresh native generation retired")));
+    const response = yield* turns.executePreparedNativeStart(request, launch.rendererClientId);
+    yield* completion.accepted(launch);
+    return response;
+  }).pipe(Effect.onExit((exit) => Exit.isFailure(exit) ? Effect.sync(() => completion.failed(launch)) : Effect.void));
 
   const lookup = (
     identity: CodexFreshThreadLaunchIdentity,
@@ -273,7 +233,7 @@ export const make: Effect.Effect<
       );
     });
 
-  const acquireStart = (identity: CodexFreshThreadLaunchIdentity) =>
+  const acquireStart = (identity: CodexFreshThreadLaunchIdentity, request: TurnStartParams) =>
     admission.withPermits(1)(
       Effect.gen(function* () {
         const entry = yield* lookup(identity);
@@ -290,11 +250,11 @@ export const make: Effect.Effect<
         }
 
         entry.state = "starting";
-        const physical = startFirstTurn(entry.launch).pipe(
+        const physical = startFirstTurn(entry.launch, request).pipe(
           Effect.mapError((cause) => operationError(identity, cause)),
           Effect.ensuring(
             Effect.sync(() => {
-              if (entries.get(identity.threadId) === entry) entries.delete(identity.threadId);
+              if (entries.get(identity.threadId) === entry) { entries.delete(identity.threadId); entry.retirement?.[Symbol.dispose](); }
             }),
           ),
         );
@@ -307,10 +267,11 @@ export const make: Effect.Effect<
 
   const start = (
     identity: CodexFreshThreadLaunchIdentity,
+    request: TurnStartParams,
   ): Effect.Effect<TurnStartResponse, CodexFreshThreadLaunchError> =>
     Effect.gen(function* () {
       for (;;) {
-        const acquired = yield* acquireStart(identity);
+        const acquired = yield* acquireStart(identity, request);
         if (acquired._tag === "Start") return yield* Fiber.join(acquired.fiber);
         yield* Fiber.join(acquired.fiber);
       }
@@ -324,6 +285,7 @@ export const make: Effect.Effect<
   const release = Effect.gen(function* () {
     if (closed) return;
     closed = true;
+    for (const entry of entries.values()) { entry.retirement?.[Symbol.dispose](); turns.releasePreparedNativeStart(entry.launch.clientUserMessageId); presentation.releaseClaim(entry.launch.presentationClaim); }
     entries.clear();
     yield* FiberMap.clear(adoptions);
     yield* FiberMap.clear(starts);
@@ -349,6 +311,18 @@ export const make: Effect.Effect<
       return entry ? { rendererClientId: entry.launch.rendererClientId, state: entry.state } : null;
     },
     adopt,
+    prepare: (identity) => admission.withPermits(1)(Effect.gen(function* () {
+      const entry = yield* lookup(identity);
+      if (entry.prepared) return entry.prepared;
+      if (entry.state !== "adopted") return yield* Effect.fail(new CodexFreshThreadLaunchError("not-adopted", identity));
+      const operation = yield* turns.prepareNativeStart(entry.launch.threadId, entry.launch.firstTurn.prompt, { ...entry.launch.firstTurn.overrides, presentationClaim: entry.launch.presentationClaim }).pipe(Effect.mapError((cause) => adoptionError(entry.launch, cause)));
+      if (entries.get(identity.threadId) !== entry || closed) {
+        turns.releasePreparedNativeStart(entry.launch.clientUserMessageId);
+        return yield* Effect.fail(new CodexFreshThreadLaunchError("unavailable", identity));
+      }
+      entry.prepared = operation;
+      return operation;
+    })),
     start,
     releaseRenderer: (rendererClientId, _reason) => {
       for (const [threadId, entry] of entries) {
@@ -356,11 +330,16 @@ export const make: Effect.Effect<
           continue;
         }
         entries.delete(threadId);
+        turns.releasePreparedNativeStart(entry.launch.clientUserMessageId);
+        presentation.releaseClaim(entry.launch.presentationClaim);
+        entry.retirement?.[Symbol.dispose]();
         interrupt(threadId);
         completion.failed(entry.launch, "Message could not be sent because its window closed.");
       }
     },
     clear: (threadId) => {
+      const entry = entries.get(threadId);
+      if (entry) { turns.releasePreparedNativeStart(entry.launch.clientUserMessageId); presentation.releaseClaim(entry.launch.presentationClaim); entry.retirement?.[Symbol.dispose](); }
       entries.delete(threadId);
       interrupt(threadId);
     },

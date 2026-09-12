@@ -1,3 +1,4 @@
+import * as Exit from "effect/Exit";
 import * as Deferred from "effect/Deferred";
 import * as Effect from "effect/Effect";
 import * as Fiber from "effect/Fiber";
@@ -35,6 +36,185 @@ const decodeConsumeRateLimitResetCreditResponse = Schema.decodeUnknownEffect(
 );
 
 it.layer(NodeServices.layer)("effect-codex-app-server protocol", (it) => {
+  it.effect(
+    "reports a failed response to its requesting consumer without counting itself as competing traffic",
+    () =>
+      Effect.gen(function* () {
+        const { stdio, input, output } = yield* makeInMemoryStdio();
+        const protocol = yield* CodexProtocol.makeCodexAppServerPatchedProtocol({
+          stdio,
+          framing: "message",
+        });
+        const measured: CodexProtocol.CodexAppServerRequestMetrics[] = [];
+        const pending = yield* protocol
+          .request(
+            "custom/error",
+            { value: "中文" },
+            {
+              requestId: "measured-error",
+              onMetrics: (metrics) =>
+                Effect.sync(() => {
+                  measured.push(metrics);
+                }),
+            },
+          )
+          .pipe(Effect.exit, Effect.forkScoped);
+        const wire = yield* Queue.take(output);
+        const response = encodeUnknownJsonString({
+          id: "measured-error",
+          error: { code: -32000, message: "failed", data: "x".repeat(16 * 1024) },
+        });
+        yield* Queue.offer(input, encoder.encode(response));
+        assert.isTrue(Exit.isFailure(yield* Fiber.join(pending)));
+        assert.strictEqual(measured.length, 1);
+        assert.strictEqual(measured[0]!.requestBytes, encoder.encode(wire).length);
+        assert.strictEqual(measured[0]!.responseBytes, encoder.encode(response).length);
+        assert.strictEqual(measured[0]!.largeInboundCompletedMessageBytesWhilePending, 0);
+        assert.strictEqual(measured[0]!.responseReceiveDurationMs, undefined);
+      }),
+  );
+
+  it.effect("serializes W3C trace context on the JSON-RPC request envelope", () =>
+    Effect.gen(function* () {
+      const { stdio, input, output } = yield* makeInMemoryStdio();
+      const protocol = yield* CodexProtocol.makeCodexAppServerPatchedProtocol({ stdio });
+      const pending = yield* protocol
+        .request(
+          "thread/start",
+          { cwd: "/workspace" },
+          {
+            requestId: "traced-request",
+            wireTrace: {
+              traceparent: "00-0123456789abcdef0123456789abcdef-0123456789abcdef-01",
+              tracestate: "vendor=value",
+            },
+          },
+        )
+        .pipe(Effect.forkScoped);
+
+      assert.deepEqual(yield* decodeJson(yield* Queue.take(output)), {
+        id: "traced-request",
+        method: "thread/start",
+        params: { cwd: "/workspace" },
+        trace: {
+          traceparent: "00-0123456789abcdef0123456789abcdef-0123456789abcdef-01",
+          tracestate: "vendor=value",
+        },
+      });
+      yield* Queue.offer(input, encodeJsonl({ id: "traced-request", result: {} }));
+      assert.deepEqual(yield* Fiber.join(pending), {});
+    }),
+  );
+
+  it.effect("uses physical frame receipt time rather than dispatch time for notification lag", () =>
+    Effect.gen(function* () {
+      const { stdio, output } = yield* makeInMemoryStdio();
+      const frames = yield* Queue.unbounded<CodexProtocol.CodexAppServerMessageFrame>();
+      const protocol = yield* CodexProtocol.makeCodexAppServerPatchedProtocol({
+        stdio,
+        framing: "message",
+        messageFrames: Stream.fromQueue(frames),
+      });
+      const measured: CodexProtocol.CodexAppServerRequestMetrics[] = [];
+      const pending = yield* protocol
+        .request(
+          "custom/read",
+          {},
+          {
+            requestId: "timed",
+            onMetrics: (metrics) =>
+              Effect.sync(() => {
+                measured.push(metrics);
+              }),
+          },
+        )
+        .pipe(Effect.forkScoped);
+      yield* Queue.take(output);
+      yield* Queue.offer(frames, {
+        data: encoder.encode('{"method":"custom/event","emittedAtMs":100}'),
+        receivedAtMs: 130,
+      });
+      yield* Queue.offer(frames, {
+        data: encoder.encode('{"id":"timed","result":true}'),
+        receivedAtMs: 140,
+      });
+      assert.strictEqual(yield* Fiber.join(pending), true);
+      assert.strictEqual(measured[0]!.serverNotificationDeliveryLagMs, 30);
+      assert.strictEqual(measured[0]!.serverNotificationClockSkewBaselineMs, 30);
+    }),
+  );
+
+  it.effect("message transport accepts payloads above the stdio frame budget", () =>
+    Effect.gen(function* () {
+      const { stdio, input, output } = yield* makeInMemoryStdio();
+      const protocol = yield* CodexProtocol.makeCodexAppServerPatchedProtocol({
+        stdio,
+        framing: "message",
+      });
+      const content = "x".repeat(17 * 1024 * 1024);
+      const pending = yield* protocol
+        .request("custom/large", { content }, { requestId: "large-frame" })
+        .pipe(Effect.forkScoped);
+      const outgoing = yield* Queue.take(output);
+      assert.isAbove(outgoing.length, 16 * 1024 * 1024);
+      yield* Queue.offer(
+        input,
+        encoder.encode(encodeUnknownJsonString({ id: "large-frame", result: { content } })),
+      );
+      const response = yield* Fiber.join(pending);
+      assert.deepStrictEqual(response, { content });
+    }),
+  );
+  it.effect("preserves WebSocket message boundaries and sends one JSON envelope per frame", () =>
+    Effect.gen(function* () {
+      const { stdio, input, output } = yield* makeInMemoryStdio();
+      const protocol = yield* CodexProtocol.makeCodexAppServerPatchedProtocol({
+        stdio,
+        framing: "message",
+      });
+      const pending = yield* protocol
+        .request("custom/read", {}, { requestId: "websocket" })
+        .pipe(Effect.forkScoped);
+      const wire = yield* Queue.take(output);
+      assert.isFalse(wire.endsWith("\n"));
+      assert.deepStrictEqual(yield* decodeJson(wire), {
+        id: "websocket",
+        method: "custom/read",
+        params: {},
+      });
+      yield* Queue.offer(
+        input,
+        encoder.encode('{\n  "id": "websocket",\n  "result": {"text":"multi\\nline"}\n}'),
+      );
+      assert.deepStrictEqual(yield* Fiber.join(pending), { text: "multi\nline" });
+    }),
+  );
+  it.effect(
+    "preserves caller request identity and rejects collisions without replacing the pending result",
+    () =>
+      Effect.gen(function* () {
+        const { stdio, input, output } = yield* makeInMemoryStdio();
+        const protocol = yield* CodexProtocol.makeCodexAppServerPatchedProtocol({ stdio });
+        const pending = yield* protocol
+          .request("custom/read", { value: 1 }, { requestId: "window-request" })
+          .pipe(Effect.forkScoped);
+        const wire = yield* Queue.take(output);
+        assert.deepStrictEqual(yield* decodeJson(wire), {
+          id: "window-request",
+          method: "custom/read",
+          params: { value: 1 },
+        });
+        const collision = yield* protocol
+          .request("custom/read", { value: 2 }, { requestId: "window-request" })
+          .pipe(Effect.exit);
+        assert.isTrue(Exit.isFailure(collision));
+        yield* Queue.offer(
+          input,
+          encodeJsonl({ id: "window-request", result: { value: "first" } }),
+        );
+        assert.deepStrictEqual(yield* Fiber.join(pending), { value: "first" });
+      }),
+  );
   it.effect("does not answer a server request that the application reports as withdrawn", () =>
     Effect.gen(function* () {
       const { stdio, input, output } = yield* makeInMemoryStdio();
@@ -306,6 +486,31 @@ it.layer(NodeServices.layer)("effect-codex-app-server protocol", (it) => {
             message: "Method not found: x/test",
           },
         });
+
+        const trace = {
+          traceparent: "00-0123456789abcdef0123456789abcdef-0123456789abcdef-01",
+          tracestate: "vendor=value",
+        };
+        yield* transport.respond(79, { ok: true }, trace);
+        assert.deepEqual(yield* decodeJson(yield* Queue.take(output)), {
+          id: 79,
+          result: { ok: true },
+          trace,
+        });
+
+        yield* transport.respondError(
+          80,
+          CodexError.CodexAppServerRequestError.methodNotFound("x/traced"),
+          trace,
+        );
+        assert.deepEqual(yield* decodeJson(yield* Queue.take(output)), {
+          id: 80,
+          error: {
+            code: -32601,
+            message: "Method not found: x/traced",
+          },
+          trace,
+        });
       }),
   );
 
@@ -407,66 +612,73 @@ it.layer(NodeServices.layer)("effect-codex-app-server protocol", (it) => {
     }),
   );
 
-  it.effect("logs decode failures without copying the cause or wire payload", () =>
+  it.effect("logs a malformed line safely and continues with the next notification", () =>
     Effect.gen(function* () {
       const secret = "codex-wire-secret-sentinel";
       const { stdio, input } = yield* makeInMemoryStdio();
       const events: Array<CodexProtocol.CodexAppServerProtocolLogEvent> = [];
-      const termination = yield* Deferred.make<CodexError.CodexAppServerError>();
-      yield* CodexProtocol.makeCodexAppServerPatchedProtocol({
+      const protocol = yield* CodexProtocol.makeCodexAppServerPatchedProtocol({
         stdio,
         logIncoming: true,
         logger: (event) =>
           Effect.sync(() => {
             events.push(event);
           }),
-        onTermination: (error) => Deferred.succeed(termination, error).pipe(Effect.asVoid),
       });
-
+      const next = yield* protocol.incomingNotifications.pipe(
+        Stream.take(1),
+        Stream.runCollect,
+        Effect.forkScoped,
+      );
       yield* Queue.offer(input, encoder.encode(`{"secret":"${secret}"\n`));
-      yield* Deferred.await(termination);
-
+      yield* Queue.offer(input, encodeJsonl({ method: "custom/next", params: { value: "kept" } }));
+      assert.deepStrictEqual(yield* Fiber.join(next), [
+        { method: "custom/next", params: { value: "kept" } },
+      ]);
       const event = events.find(({ stage }) => stage === "decode_failed");
       assert.exists(event);
-      assert.equal(event.direction, "incoming");
       const payload = event.payload as Record<string, unknown>;
       assert.equal(payload.operation, "decode-wire-message");
       assert.isNumber(payload.issueCount);
       assert.isArray(payload.issueKinds);
       assert.isNumber(payload.maximumPathDepth);
-      assert.equal("cause" in payload, false);
-      assert.equal("detail" in payload, false);
+      assert.notProperty(payload, "cause");
       assert.notInclude(encodeUnknownJsonString(event), secret);
     }),
   );
 
-  it.effect("describes unroutable messages with safe structural diagnostics", () =>
+  it.effect("logs unroutable envelope structure without terminating pending requests", () =>
     Effect.gen(function* () {
       const secret = "codex-unroutable-secret-sentinel";
-      const { stdio, input } = yield* makeInMemoryStdio();
-      const termination = yield* Deferred.make<CodexError.CodexAppServerError>();
-      yield* CodexProtocol.makeCodexAppServerPatchedProtocol({
+      const { stdio, input, output } = yield* makeInMemoryStdio();
+      const events: Array<CodexProtocol.CodexAppServerProtocolLogEvent> = [];
+      const protocol = yield* CodexProtocol.makeCodexAppServerPatchedProtocol({
         stdio,
-        onTermination: (error) => Deferred.succeed(termination, error).pipe(Effect.asVoid),
+        logIncoming: true,
+        logger: (event) =>
+          Effect.sync(() => {
+            events.push(event);
+          }),
       });
-
+      const pending = yield* protocol
+        .request("custom/read", {}, { requestId: "after-invalid" })
+        .pipe(Effect.forkScoped);
+      yield* Queue.take(output);
       yield* Queue.offer(
         input,
         encodeJsonl({ id: true, method: "thread/start", params: { token: secret } }),
       );
-
-      const error = yield* Deferred.await(termination);
-      assert.instanceOf(error, CodexError.CodexAppServerProtocolParseError);
-      assert.deepInclude(error, {
+      yield* Queue.offer(input, encodeJsonl({ id: "after-invalid", result: { ok: true } }));
+      assert.deepStrictEqual(yield* Fiber.join(pending), { ok: true });
+      const event = events.find(({ stage }) => stage === "decode_failed");
+      assert.exists(event);
+      assert.deepInclude(event.payload, {
         operation: "route-wire-message",
         method: "thread/start",
         payloadKind: "object",
         presentFields: ["id", "method", "params"],
       });
-      assert.isUndefined(error.requestId);
-      assert.notProperty(error, "detail");
-      assert.notProperty(error, "cause");
-      assert.notInclude(error.message, secret);
+      assert.notInclude(encodeUnknownJsonString(event), secret);
     }),
   );
 

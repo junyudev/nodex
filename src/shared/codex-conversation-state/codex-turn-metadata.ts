@@ -1,3 +1,5 @@
+import { produce, type Draft } from "immer";
+import { residentConversationTurns, residentConversationTurnEntries, conversationTurnDraft, appendConversationTurnDraft } from "./codex-turn-mutation";
 import type { ServerNotification } from "@nodex/codex-app-server-protocol";
 import type {
   GuardianApprovalReviewAction,
@@ -12,7 +14,6 @@ import {
   type CodexCanonicalSafetyBufferingState,
   type CodexCanonicalTurnState,
 } from "./codex-conversation-state";
-import { ensureCodexCanonicalTurnCollections } from "./codex-turn-mutation";
 
 export interface CodexTurnMetadataResult {
   readonly state: CodexCanonicalConversationState;
@@ -21,24 +22,20 @@ export interface CodexTurnMetadataResult {
   readonly effects: readonly CodexTurnMetadataEffect[];
 }
 
-export type CodexTurnMetadataEffect =
-  | {
-      readonly type: "markConversationStreaming";
-      readonly threadId: string;
-    }
-  | {
-      readonly type: "touchConversationUpdatedAt";
-      readonly threadId: string;
-      readonly observedAtMs: number;
-    };
+export type CodexTurnMetadataEffect = {
+  readonly type: "markConversationStreaming";
+  readonly threadId: string;
+};
 
 type NotificationOf<TMethod extends ServerNotification["method"]> = Extract<
   ServerNotification,
-  { method: TMethod }
+  {
+    method: TMethod;
+  }
 >;
 
 function result(
-  state: CodexCanonicalConversationState,
+  state: Draft<CodexCanonicalConversationState>,
   disposition: CodexTurnMetadataResult["disposition"],
   stateChanged = false,
   effects: readonly CodexTurnMetadataEffect[] = [],
@@ -47,43 +44,76 @@ function result(
 }
 
 function replaceTurn(
-  state: CodexCanonicalConversationState,
+  state: Draft<CodexCanonicalConversationState>,
   index: number,
   turn: CodexCanonicalTurnState,
-): CodexCanonicalConversationState {
-  const turns = [...state.turns];
-  turns[index] = turn;
-  return { ...state, turns };
+): Draft<CodexCanonicalConversationState> {
+  const entry = residentConversationTurnEntries(state)[index];
+  if (!entry) return state;
+  const target = conversationTurnDraft(state, entry.address);
+  if (target) Object.assign(target, turn);
+  return state;
 }
 
 function resolveMetadataTurn(
-  state: CodexCanonicalConversationState,
+  state: Draft<CodexCanonicalConversationState>,
   turnId: string,
   observedAtMs: number,
-): { readonly state: CodexCanonicalConversationState; readonly index: number } | null {
-  const exactIndex = state.turns.findIndex((turn) => turn.protocol.id === turnId);
+): {
+  readonly state: Draft<CodexCanonicalConversationState>;
+  readonly index: number;
+} | null {
+  const exactIndex = residentConversationTurns(state).findIndex((turn) => turn.turnId === turnId);
   if (exactIndex >= 0) return { state, index: exactIndex };
-  const latest = state.turns.at(-1);
+  const latest = residentConversationTurns(state).at(-1);
   if (
-    state.turns.length !== 1 ||
+    residentConversationTurns(state).length !== 1 ||
     !latest ||
-    latest.protocol.id !== null ||
-    latest.protocol.status !== "completed" ||
-    latest.protocol.error !== null ||
+    latest.turnId !== null ||
+    latest.status !== "completed" ||
+    latest.error !== null ||
     latest.items.length !== 0
   )
     return null;
   return {
     state: replaceTurn(state, 0, {
       ...latest,
-      protocol: { ...latest.protocol, id: turnId, status: "inProgress" },
-      sidecar: {
-        ...latest.sidecar,
-        turnStartedAtMs: latest.sidecar.turnStartedAtMs ?? observedAtMs,
-      },
+      turnId: turnId,
+      status: "inProgress",
+      turnStartedAtMs: latest.turnStartedAtMs ?? observedAtMs,
     }),
     index: 0,
   };
+}
+
+function applyCodexConversationTurnDiff(
+  state: Draft<CodexCanonicalConversationState>,
+  conversationId: string,
+  turnId: string,
+  diff: string,
+  observedAtMs: number,
+): CodexTurnMetadataResult {
+  if (state.id !== conversationId) return result(state, "foreignConversation");
+  const resolved = resolveMetadataTurn(state, turnId, observedAtMs);
+  if (!resolved) return result(state, "missingTurn");
+  const turn = residentConversationTurns(resolved.state)[resolved.index]!;
+  if (turn.diff === diff) return result(resolved.state, "applied", resolved.state !== state);
+  const next = replaceTurn(resolved.state, resolved.index, {
+    ...turn,
+    diff,
+  });
+  return result(next, "applied", true);
+}
+
+export function mutateCodexConversationTurnDiff(
+  state: Draft<CodexCanonicalConversationState>,
+  conversationId: string,
+  turnId: string,
+  diff: string,
+  observedAtMs: number,
+): Omit<CodexTurnMetadataResult, "state" | "stateChanged"> {
+  const { disposition, effects } = applyCodexConversationTurnDiff(state, conversationId, turnId, diff, observedAtMs);
+  return { disposition, effects };
 }
 
 export function reduceCodexConversationTurnDiff(
@@ -93,17 +123,38 @@ export function reduceCodexConversationTurnDiff(
   diff: string,
   observedAtMs: number,
 ): CodexTurnMetadataResult {
-  if (state.protocol.id !== conversationId) return result(state, "foreignConversation");
+  let operation: Omit<CodexTurnMetadataResult, "state" | "stateChanged"> = { disposition: "missingTurn", effects: [] };
+  const next = produce(state, (draft) => { operation = mutateCodexConversationTurnDiff(draft, conversationId, turnId, diff, observedAtMs); });
+  return { ...operation, state: next, stateChanged: next !== state };
+}
+
+function applyCodexConversationSafetyBuffering(
+  state: Draft<CodexCanonicalConversationState>,
+  conversationId: string,
+  turnId: string,
+  safetyBuffering: CodexCanonicalSafetyBufferingState,
+  observedAtMs: number,
+): CodexTurnMetadataResult {
+  if (state.id !== conversationId) return result(state, "foreignConversation");
   const resolved = resolveMetadataTurn(state, turnId, observedAtMs);
   if (!resolved) return result(state, "missingTurn");
-  const turn = resolved.state.turns[resolved.index]!;
-  if (turn.sidecar.diff === diff)
-    return result(resolved.state, "applied", resolved.state !== state);
+  const turn = residentConversationTurns(resolved.state)[resolved.index]!;
   const next = replaceTurn(resolved.state, resolved.index, {
     ...turn,
-    sidecar: { ...turn.sidecar, diff },
+    safetyBuffering,
   });
   return result(next, "applied", true);
+}
+
+export function mutateCodexConversationSafetyBuffering(
+  state: Draft<CodexCanonicalConversationState>,
+  conversationId: string,
+  turnId: string,
+  safetyBuffering: CodexCanonicalSafetyBufferingState,
+  observedAtMs: number,
+): Omit<CodexTurnMetadataResult, "state" | "stateChanged"> {
+  const { disposition, effects } = applyCodexConversationSafetyBuffering(state, conversationId, turnId, safetyBuffering, observedAtMs);
+  return { disposition, effects };
 }
 
 export function reduceCodexConversationSafetyBuffering(
@@ -113,15 +164,9 @@ export function reduceCodexConversationSafetyBuffering(
   safetyBuffering: CodexCanonicalSafetyBufferingState,
   observedAtMs: number,
 ): CodexTurnMetadataResult {
-  if (state.protocol.id !== conversationId) return result(state, "foreignConversation");
-  const resolved = resolveMetadataTurn(state, turnId, observedAtMs);
-  if (!resolved) return result(state, "missingTurn");
-  const turn = resolved.state.turns[resolved.index]!;
-  const next = replaceTurn(resolved.state, resolved.index, {
-    ...turn,
-    sidecar: { ...turn.sidecar, safetyBuffering },
-  });
-  return result(next, "applied", true);
+  let operation: Omit<CodexTurnMetadataResult, "state" | "stateChanged"> = { disposition: "missingTurn", effects: [] };
+  const next = produce(state, (draft) => { operation = mutateCodexConversationSafetyBuffering(draft, conversationId, turnId, safetyBuffering, observedAtMs); });
+  return { ...operation, state: next, stateChanged: next !== state };
 }
 
 function findHookRunIndex(hooks: readonly CodexCanonicalHookRun[], run: HookRunSummary): number {
@@ -153,52 +198,56 @@ function upsertHookRun(
 }
 
 function synthesizeHookTurn(
-  state: CodexCanonicalConversationState,
+  state: Draft<CodexCanonicalConversationState>,
   turnId: string,
   observedAtMs: number,
-): { readonly state: CodexCanonicalConversationState; readonly index: number } {
-  const previous = state.turns.at(-1) ?? null;
+): {
+  readonly state: Draft<CodexCanonicalConversationState>;
+  readonly index: number;
+} {
+  const previous = residentConversationTurns(state).at(-1) ?? null;
   const turn: CodexCanonicalTurnState = {
-    protocol: {
-      id: turnId,
-      itemsView: "full",
-      status: "inProgress",
-      error: null,
-      durationMs: null,
-    },
+    turnId: turnId,
+    itemsView: "full",
+    status: "inProgress",
+    error: null,
+    durationMs: null,
     items: [],
-    sidecar: {
-      params: previous?.sidecar.params ?? buildCodexCanonicalSyntheticTurnParams(state, previous),
-      diff: null,
-      turnStartedAtMs: observedAtMs,
-      firstTurnWorkItemStartedAtMs: null,
-      finalAssistantStartedAtMs: null,
-      hookRuns: [],
-    },
+    params: previous?.params ?? buildCodexCanonicalSyntheticTurnParams(state, previous),
+    diff: null,
+    turnStartedAtMs: observedAtMs,
+    firstTurnWorkItemStartedAtMs: null,
+    finalAssistantStartedAtMs: null,
+    hookRuns: [],
   };
-  return { state: { ...state, turns: [...state.turns, turn] }, index: state.turns.length };
+  const index = residentConversationTurns(state).length;
+  appendConversationTurnDraft(state, turn, () => globalThis.crypto.randomUUID());
+  return { state, index };
 }
 
 function resolveHookTurn(
-  state: CodexCanonicalConversationState,
+  state: Draft<CodexCanonicalConversationState>,
   turnId: string | null,
   method: "hook/started" | "hook/completed",
   observedAtMs: number,
-): { readonly state: CodexCanonicalConversationState; readonly index: number } | null {
+): {
+  readonly state: Draft<CodexCanonicalConversationState>;
+  readonly index: number;
+} | null {
   if (turnId === null) {
-    const latestIndex = state.turns.length - 1;
+    const latestIndex = residentConversationTurns(state).length - 1;
     return latestIndex < 0 ? null : { state, index: latestIndex };
   }
-  const exactIndex = state.turns.findIndex((turn) => turn.protocol.id === turnId);
+  const exactIndex = residentConversationTurns(state).findIndex((turn) => turn.turnId === turnId);
   if (exactIndex >= 0) return { state, index: exactIndex };
   if (method === "hook/completed") return resolveMetadataTurn(state, turnId, observedAtMs);
-  const latestIndex = state.turns.length - 1;
-  const latest = state.turns[latestIndex];
-  if (latest?.protocol.id === null && latest.protocol.status === "inProgress") {
+  const latestIndex = residentConversationTurns(state).length - 1;
+  const latest = residentConversationTurns(state)[latestIndex];
+  if (latest?.turnId === null && latest.status === "inProgress") {
     return {
       state: replaceTurn(state, latestIndex, {
         ...latest,
-        protocol: { ...latest.protocol, id: turnId },
+        turnId: turnId,
       }),
       index: latestIndex,
     };
@@ -206,25 +255,22 @@ function resolveHookTurn(
   return synthesizeHookTurn(state, turnId, observedAtMs);
 }
 
-export function reduceCodexConversationHookRun(
-  state: CodexCanonicalConversationState,
+function applyCodexConversationHookRun(
+  state: Draft<CodexCanonicalConversationState>,
   conversationId: string,
   turnId: string | null,
   method: "hook/started" | "hook/completed",
   run: HookRunSummary,
   observedAtMs: number,
 ): CodexTurnMetadataResult {
-  if (state.protocol.id !== conversationId) return result(state, "foreignConversation");
+  if (state.id !== conversationId) return result(state, "foreignConversation");
   const resolved = resolveHookTurn(state, turnId, method, observedAtMs);
   if (!resolved) return result(state, "missingTurn");
-  const turn = resolved.state.turns[resolved.index]!;
-  const hooks = turn.sidecar.hookRuns ?? [];
+  const turn = residentConversationTurns(resolved.state)[resolved.index]!;
+  const hooks = turn.hookRuns ?? [];
   const next = replaceTurn(resolved.state, resolved.index, {
     ...turn,
-    sidecar: {
-      ...turn.sidecar,
-      hookRuns: upsertHookRun(hooks, run),
-    },
+    hookRuns: upsertHookRun(hooks, run),
   });
   return result(
     next,
@@ -236,25 +282,68 @@ export function reduceCodexConversationHookRun(
   );
 }
 
-function replaceResolvedTurnItem(
+export function mutateCodexConversationHookRun(
+  state: Draft<CodexCanonicalConversationState>,
+  conversationId: string,
+  turnId: string | null,
+  method: "hook/started" | "hook/completed",
+  run: HookRunSummary,
+  observedAtMs: number,
+): Omit<CodexTurnMetadataResult, "state" | "stateChanged"> {
+  const { disposition, effects } = applyCodexConversationHookRun(state, conversationId, turnId, method, run, observedAtMs);
+  return { disposition, effects };
+}
+
+export function reduceCodexConversationHookRun(
   state: CodexCanonicalConversationState,
+  conversationId: string,
+  turnId: string | null,
+  method: "hook/started" | "hook/completed",
+  run: HookRunSummary,
+  observedAtMs: number,
+): CodexTurnMetadataResult {
+  let operation: Omit<CodexTurnMetadataResult, "state" | "stateChanged"> = { disposition: "missingTurn", effects: [] };
+  const next = produce(state, (draft) => { operation = mutateCodexConversationHookRun(draft, conversationId, turnId, method, run, observedAtMs); });
+  return { ...operation, state: next, stateChanged: next !== state };
+}
+
+function replaceResolvedTurnItem(
+  state: Draft<CodexCanonicalConversationState>,
   conversationId: string,
   turnId: string,
   observedAtMs: number,
-  update: (items: readonly CodexCanonicalItem[]) => readonly CodexCanonicalItem[],
+  update: (items: Draft<CodexCanonicalItem>[]) => void,
 ): CodexTurnMetadataResult {
-  if (state.protocol.id !== conversationId) return result(state, "foreignConversation");
+  if (state.id !== conversationId) return result(state, "foreignConversation");
   const resolved = resolveMetadataTurn(state, turnId, observedAtMs);
   if (!resolved) return result(state, "missingTurn");
-  const turn = ensureCodexCanonicalTurnCollections(resolved.state.turns[resolved.index]!);
-  return result(
-    replaceTurn(resolved.state, resolved.index, {
-      ...turn,
-      items: update(turn.items),
-    }),
-    "applied",
-    true,
-  );
+  const entry = residentConversationTurnEntries(resolved.state)[resolved.index]!;
+  const turn = conversationTurnDraft(state, entry.address)!;
+  turn.hookRuns ??= [];
+  update(turn.items);
+  return result(state, "applied", true);
+}
+
+function applyCodexConversationTurnPlan(
+  state: Draft<CodexCanonicalConversationState>,
+  notification: NotificationOf<"turn/plan/updated">,
+  itemId: string,
+  observedAtMs: number,
+): CodexTurnMetadataResult {
+  const { threadId, turnId, explanation, plan } = notification.params;
+  return replaceResolvedTurnItem(state, threadId, turnId, observedAtMs, (items) => { items.push(
+    { id: itemId, type: "todo-list", explanation, plan },
+  ); });
+}
+
+export function mutateCodexConversationTurnPlan(
+  state: Draft<CodexCanonicalConversationState>,
+  notification: NotificationOf<"turn/plan/updated">,
+  itemId: string,
+  observedAtMs: number,
+): Omit<CodexTurnMetadataResult, "state" | "stateChanged"> {
+  const { disposition, effects } = applyCodexConversationTurnPlan(state, notification, itemId, observedAtMs);
+  return { disposition, effects };
 }
 
 export function reduceCodexConversationTurnPlan(
@@ -263,11 +352,31 @@ export function reduceCodexConversationTurnPlan(
   itemId: string,
   observedAtMs: number,
 ): CodexTurnMetadataResult {
-  const { threadId, turnId, explanation, plan } = notification.params;
-  return replaceResolvedTurnItem(state, threadId, turnId, observedAtMs, (items) => [
-    ...items,
-    { id: itemId, type: "todo-list", explanation, plan },
-  ]);
+  let operation: Omit<CodexTurnMetadataResult, "state" | "stateChanged"> = { disposition: "missingTurn", effects: [] };
+  const next = produce(state, (draft) => { operation = mutateCodexConversationTurnPlan(draft, notification, itemId, observedAtMs); });
+  return { ...operation, state: next, stateChanged: next !== state };
+}
+
+function applyCodexConversationModelRerouted(
+  state: Draft<CodexCanonicalConversationState>,
+  notification: NotificationOf<"model/rerouted">,
+  itemId: string,
+  observedAtMs: number,
+): CodexTurnMetadataResult {
+  const { threadId, turnId, fromModel, toModel, reason } = notification.params;
+  return replaceResolvedTurnItem(state, threadId, turnId, observedAtMs, (items) => { items.push(
+    { id: itemId, type: "modelRerouted", fromModel, toModel, reason },
+  ); });
+}
+
+export function mutateCodexConversationModelRerouted(
+  state: Draft<CodexCanonicalConversationState>,
+  notification: NotificationOf<"model/rerouted">,
+  itemId: string,
+  observedAtMs: number,
+): Omit<CodexTurnMetadataResult, "state" | "stateChanged"> {
+  const { disposition, effects } = applyCodexConversationModelRerouted(state, notification, itemId, observedAtMs);
+  return { disposition, effects };
 }
 
 export function reduceCodexConversationModelRerouted(
@@ -276,22 +385,19 @@ export function reduceCodexConversationModelRerouted(
   itemId: string,
   observedAtMs: number,
 ): CodexTurnMetadataResult {
-  const { threadId, turnId, fromModel, toModel, reason } = notification.params;
-  return replaceResolvedTurnItem(state, threadId, turnId, observedAtMs, (items) => [
-    ...items,
-    { id: itemId, type: "modelRerouted", fromModel, toModel, reason },
-  ]);
+  let operation: Omit<CodexTurnMetadataResult, "state" | "stateChanged"> = { disposition: "missingTurn", effects: [] };
+  const next = produce(state, (draft) => { operation = mutateCodexConversationModelRerouted(draft, notification, itemId, observedAtMs); });
+  return { ...operation, state: next, stateChanged: next !== state };
 }
 
-export function reduceCodexConversationError(
-  state: CodexCanonicalConversationState,
+function applyCodexConversationError(
+  state: Draft<CodexCanonicalConversationState>,
   notification: NotificationOf<"error">,
   itemId: string,
   observedAtMs: number,
 ): CodexTurnMetadataResult {
   const { threadId, turnId, error, willRetry } = notification.params;
-  return replaceResolvedTurnItem(state, threadId, turnId, observedAtMs, (items) => [
-    ...items,
+  return replaceResolvedTurnItem(state, threadId, turnId, observedAtMs, (items) => { items.push(
     {
       id: itemId,
       type: "error",
@@ -300,7 +406,28 @@ export function reduceCodexConversationError(
       errorInfo: error.codexErrorInfo,
       additionalDetails: error.additionalDetails,
     },
-  ]);
+  ); });
+}
+
+export function mutateCodexConversationError(
+  state: Draft<CodexCanonicalConversationState>,
+  notification: NotificationOf<"error">,
+  itemId: string,
+  observedAtMs: number,
+): Omit<CodexTurnMetadataResult, "state" | "stateChanged"> {
+  const { disposition, effects } = applyCodexConversationError(state, notification, itemId, observedAtMs);
+  return { disposition, effects };
+}
+
+export function reduceCodexConversationError(
+  state: CodexCanonicalConversationState,
+  notification: NotificationOf<"error">,
+  itemId: string,
+  observedAtMs: number,
+): CodexTurnMetadataResult {
+  let operation: Omit<CodexTurnMetadataResult, "state" | "stateChanged"> = { disposition: "missingTurn", effects: [] };
+  const next = produce(state, (draft) => { operation = mutateCodexConversationError(draft, notification, itemId, observedAtMs); });
+  return { ...operation, state: next, stateChanged: next !== state };
 }
 
 function projectGuardianAction(action: GuardianApprovalReviewAction): unknown {
@@ -383,8 +510,8 @@ function buildDeniedGuardianEvent(
   };
 }
 
-export function reduceCodexConversationAutomaticApprovalReview(
-  state: CodexCanonicalConversationState,
+function applyCodexConversationAutomaticApprovalReview(
+  state: Draft<CodexCanonicalConversationState>,
   notification:
     | NotificationOf<"item/autoApprovalReview/started">
     | NotificationOf<"item/autoApprovalReview/completed">,
@@ -413,23 +540,60 @@ export function reduceCodexConversationAutomaticApprovalReview(
         event: buildDeniedGuardianEvent(params),
         ...params.review,
       };
-      if (index < 0) return [...items, item];
-      const next = [...items];
-      next[index] = item;
-      return next;
+      if (index < 0) { items.push(item as Draft<CodexCanonicalItem>); return; }
+      items[index] = item as Draft<CodexCanonicalItem>;
     },
   );
   if (reduced.disposition !== "applied") return reduced;
-  return {
-    ...reduced,
-    effects: [
-      {
-        type: "touchConversationUpdatedAt",
-        threadId: params.threadId,
-        observedAtMs,
-      },
-    ],
-  };
+  state.updatedAt = observedAtMs;
+  return reduced;
+}
+
+export function mutateCodexConversationAutomaticApprovalReview(
+  state: Draft<CodexCanonicalConversationState>,
+  notification:
+    | NotificationOf<"item/autoApprovalReview/started">
+    | NotificationOf<"item/autoApprovalReview/completed">,
+  observedAtMs: number,
+): Omit<CodexTurnMetadataResult, "state" | "stateChanged"> {
+  const { disposition, effects } = applyCodexConversationAutomaticApprovalReview(state, notification, observedAtMs);
+  return { disposition, effects };
+}
+
+export function reduceCodexConversationAutomaticApprovalReview(
+  state: CodexCanonicalConversationState,
+  notification:
+    | NotificationOf<"item/autoApprovalReview/started">
+    | NotificationOf<"item/autoApprovalReview/completed">,
+  observedAtMs: number,
+): CodexTurnMetadataResult {
+  let operation: Omit<CodexTurnMetadataResult, "state" | "stateChanged"> = { disposition: "missingTurn", effects: [] };
+  const next = produce(state, (draft) => { operation = mutateCodexConversationAutomaticApprovalReview(draft, notification, observedAtMs); });
+  return { ...operation, state: next, stateChanged: next !== state };
+}
+
+function applyCodexConversationGuardianWarning(
+  state: Draft<CodexCanonicalConversationState>,
+  conversationId: string,
+  itemId: string,
+): CodexTurnMetadataResult {
+  if (state.id !== conversationId) return result(state, "foreignConversation");
+  const index = residentConversationTurns(state).length - 1;
+  if (index < 0) return result(state, "missingTurn");
+  const entry = residentConversationTurnEntries(state)[index]!;
+  const turn = conversationTurnDraft(state, entry.address)!;
+  turn.hookRuns ??= [];
+  turn.items.push({ id: itemId, type: "autoReviewInterruptionWarning" });
+  return result(state, "applied", true);
+}
+
+export function mutateCodexConversationGuardianWarning(
+  state: Draft<CodexCanonicalConversationState>,
+  conversationId: string,
+  itemId: string,
+): Omit<CodexTurnMetadataResult, "state" | "stateChanged"> {
+  const { disposition, effects } = applyCodexConversationGuardianWarning(state, conversationId, itemId);
+  return { disposition, effects };
 }
 
 export function reduceCodexConversationGuardianWarning(
@@ -437,16 +601,7 @@ export function reduceCodexConversationGuardianWarning(
   conversationId: string,
   itemId: string,
 ): CodexTurnMetadataResult {
-  if (state.protocol.id !== conversationId) return result(state, "foreignConversation");
-  const index = state.turns.length - 1;
-  if (index < 0) return result(state, "missingTurn");
-  const turn = ensureCodexCanonicalTurnCollections(state.turns[index]!);
-  return result(
-    replaceTurn(state, index, {
-      ...turn,
-      items: [...turn.items, { id: itemId, type: "autoReviewInterruptionWarning" }],
-    }),
-    "applied",
-    true,
-  );
+  let operation: Omit<CodexTurnMetadataResult, "state" | "stateChanged"> = { disposition: "missingTurn", effects: [] };
+  const next = produce(state, (draft) => { operation = mutateCodexConversationGuardianWarning(draft, conversationId, itemId); });
+  return { ...operation, state: next, stateChanged: next !== state };
 }

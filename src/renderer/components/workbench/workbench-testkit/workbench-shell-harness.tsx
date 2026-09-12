@@ -2325,6 +2325,13 @@ export function getThreadRow(container: HTMLElement, title: string): HTMLElement
   return row;
 }
 
+export async function waitForThreadRow(
+  container: HTMLElement,
+  title: string,
+): Promise<HTMLElement> {
+  return await waitFor(() => getThreadRow(container, title));
+}
+
 export function getSidebarSection(container: HTMLElement, heading: string): HTMLElement {
   const section = container.querySelector(`[data-app-action-sidebar-section-heading="${heading}"]`);
   if (!(section instanceof HTMLElement)) {
@@ -3098,8 +3105,17 @@ export function renderWorkbench({
         },
       } satisfies CodexAutomationRunsInboxResponse;
     }
-    if (channel === "codex:model:list") {
-      return codexModels;
+    if (
+      channel === "codex:app-server:request" &&
+      (args[0] as { request?: { method?: string } }).request?.method === "model/list"
+    ) {
+      return {
+        type: "result",
+        result: {
+          data: codexModels.map((model) => ({ ...model, model: model.id })),
+          nextCursor: null,
+        },
+      };
     }
     if (channel === "codex:automation-runs:archive") {
       const threadId = String((args[0] as { threadId?: string } | undefined)?.threadId ?? "");
@@ -4485,8 +4501,9 @@ afterEach(() => {
 });
 
 export async function openBottomPanel(screen: ReturnType<typeof renderWorkbench>): Promise<void> {
+  const toggle = await screen.findByRole("button", { name: "Toggle bottom panel" });
   await act(async () => {
-    fireEvent.click(screen.getByRole("button", { name: "Toggle bottom panel" }));
+    fireEvent.click(toggle);
     await Promise.resolve();
   });
   await settleAsyncRender();
@@ -4535,7 +4552,7 @@ export async function openPanelMenu(
   screen: ReturnType<typeof renderWorkbench>,
   label: "Open side panel tab" | "Open bottom panel tab",
 ): Promise<HTMLElement> {
-  await openNodexMenu(screen.getByRole("button", { name: label }));
+  await openNodexMenu(await screen.findByRole("button", { name: label }));
   await waitFor(() => {
     expect(screen.queryByRole("menu") !== null).toBe(true);
   });
@@ -4584,6 +4601,10 @@ export function getLastThreadStageActions(): Record<string, unknown> {
     throw new Error("Expected ConnectedThreadStage actions");
   }
   return actions as Record<string, unknown>;
+}
+
+export async function waitForLastThreadStageActions(): Promise<Record<string, unknown>> {
+  return await waitFor(() => getLastThreadStageActions());
 }
 
 export function getHeaderShellSlot(

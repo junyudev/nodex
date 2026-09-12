@@ -209,12 +209,40 @@ export class ScriptedModelRequest {
     return JSON.stringify(this.body.instructions ?? null).includes(text);
   }
 
+  clientMetadata(): JsonObject | null {
+    return isObject(this.body.client_metadata) ? this.body.client_metadata : null;
+  }
+
+  turnMetadata(): JsonObject | null {
+    const raw = this.clientMetadata()?.["x-codex-turn-metadata"];
+    if (isObject(raw)) return raw;
+    if (typeof raw !== "string") return null;
+    try {
+      const parsed: unknown = JSON.parse(raw);
+      return isObject(parsed) ? parsed : null;
+    } catch {
+      return null;
+    }
+  }
+
+  threadSource(): string | null {
+    const source = this.turnMetadata()?.thread_source;
+    return typeof source === "string" ? source : null;
+  }
+
+  isThreadSource(source: string): boolean {
+    return this.threadSource() === source;
+  }
+
+  subagentKind(): string | null {
+    const header = this.header("x-openai-subagent");
+    if (header !== null) return header;
+    const value = this.clientMetadata()?.["x-openai-subagent"];
+    return typeof value === "string" ? value : null;
+  }
+
   isSubagentRequest(): boolean {
-    const metadata = isObject(this.body.client_metadata) ? this.body.client_metadata : null;
-    return (
-      this.header("x-openai-subagent") !== null ||
-      (metadata !== null && typeof metadata["x-openai-subagent"] === "string")
-    );
+    return this.subagentKind() !== null;
   }
 
   hasFunctionCallOutput(callId: string): boolean {
@@ -480,6 +508,43 @@ export const responses = {
   },
 };
 
+/**
+ * Background model work that Codex can legitimately run beside a user Turn. These exchanges are
+ * deliberately narrow so an unrelated generation still fails scripted-model verification.
+ */
+export const standardCodexBackgroundExchanges = (): readonly ScriptedModelExchange[] => [
+  {
+    name: "automatic task title",
+    expectedCalls: 0,
+    maximumCalls: Number.POSITIVE_INFINITY,
+    match: (request) =>
+      request.isThreadSource("system") && request.hasUserInputText("Generate a concise UI title"),
+    respond: (_request, callIndex) => {
+      const id = `scripted-background-title-${callIndex}`;
+      return responses.stream([
+        responses.created(id),
+        responses.assistantMessage(`${id}-message`, '{"title":"Scripted task"}', "final_answer"),
+        responses.completed(id, true),
+      ]);
+    },
+  },
+  {
+    name: "automatic guardian approval review",
+    expectedCalls: 0,
+    maximumCalls: Number.POSITIVE_INFINITY,
+    match: (request) =>
+      request.isThreadSource("guardian_review") && request.subagentKind() === "guardian",
+    respond: (_request, callIndex) => {
+      const id = `scripted-background-guardian-${callIndex}`;
+      return responses.stream([
+        responses.created(id),
+        responses.assistantMessage(`${id}-message`, '{"outcome":"allow"}', "final_answer"),
+        responses.completed(id, true),
+      ]);
+    },
+  },
+];
+
 const validateExchange = (exchange: ScriptedModelExchange): ExchangeRuntime => {
   const expectedCalls = exchange.expectedCalls ?? 1;
   const maximumCalls = exchange.maximumCalls ?? expectedCalls;
@@ -561,7 +626,12 @@ export class ScriptedModelServer {
   }
 
   static async start(input: ScriptedModelServerInput): Promise<ScriptedModelServer> {
-    const exchanges = input.exchanges.map(validateExchange);
+    // Codex can start title-generation and approval-review Turns beside the user Turn. Handle
+    // those known background families before scenario exchanges because their prompts can quote
+    // the user's input and would otherwise satisfy broad scenario matchers accidentally.
+    const exchanges = [...standardCodexBackgroundExchanges(), ...input.exchanges].map(
+      validateExchange,
+    );
     const maximumRequestBytes = input.maximumRequestBytes ?? DEFAULT_MAXIMUM_REQUEST_BYTES;
     const maximumTranscriptCharacters =
       input.maximumTranscriptCharacters ?? DEFAULT_MAXIMUM_TRANSCRIPT_CHARACTERS;

@@ -100,6 +100,8 @@ import {
   projectWorkspaceThreadMoveMetadataToCore,
   projectWorkspaceThreadMovePlacementToCore,
   projectWorkspaceThreadPatchToCore,
+  projectWorkspaceThreadWorkspaceFromCore,
+  projectWorkspaceThreadWorkspaceToCore,
   type DesktopAppServerSweepReconcileResult,
   type DesktopInitialProjectCreateInput,
   type DesktopInitialProjectCreateResult,
@@ -113,6 +115,7 @@ import {
   type DesktopProjectWorkspaceThreadBackendSession,
   type DesktopProjectWorkspaceThreadMoveInput,
   type DesktopProjectWorkspaceThreadPatch,
+  type DesktopProjectWorkspaceThreadWorkspace,
 } from "../core-client/project-workspace-adapter";
 import {
   applyResultCursor,
@@ -142,6 +145,7 @@ export type {
   DesktopProjectWorkspaceThreadBackendSession,
   DesktopProjectWorkspaceThreadMoveInput,
   DesktopProjectWorkspaceThreadPatch,
+  DesktopProjectWorkspaceThreadWorkspace,
 } from "../core-client/project-workspace-adapter";
 
 export class ProjectWorkspaceError extends Schema.TaggedError<ProjectWorkspaceError>()(
@@ -341,6 +345,20 @@ export interface ProjectWorkspaceService {
     readonly operationId: string;
     readonly projectionRevision: number;
   }>;
+  readonly selectThreadReadStateIdentity: (
+    identityKey: string | null,
+    hostKeys: Record<string, string>,
+  ) => ProjectWorkspaceEffect<void>;
+  readonly readIdentityThreadReadState: (
+    identityKey: string,
+  ) => ProjectWorkspaceEffect<Record<string, string[]>>;
+  readonly setIdentityThreadUnread: (
+    identityKey: string,
+    executionHostKey: string,
+    threadId: string,
+    unread: boolean,
+  ) => ProjectWorkspaceEffect<void>;
+  readonly clearIdentityThreadReadState: (identityKey: string) => ProjectWorkspaceEffect<void>;
   readonly setThreadUnread: (
     threadId: string,
     unread: boolean,
@@ -376,6 +394,11 @@ export interface ProjectWorkspaceService {
     threadId: string,
     roots: readonly string[],
   ) => ProjectWorkspaceEffect<readonly string[]>;
+  readonly commitThreadWorkspaceTransition: (
+    threadId: string,
+    revision: string,
+    workspace: DesktopProjectWorkspaceThreadWorkspace,
+  ) => ProjectWorkspaceEffect<void>;
   readonly listBackgroundProcesses: (
     threadId?: string | null,
   ) => ProjectWorkspaceEffect<readonly CodexBackgroundProcessRecord[]>;
@@ -531,6 +554,17 @@ export const make: Effect.Effect<ProjectWorkspaceService, never, CoreModules | S
               toolsetRevision: catalog.toolset_revision,
             })),
             writableRoots: [...context.thread.writable_roots],
+            workspaceState: context.workspace_state
+              ? {
+                  revision: context.workspace_state.revision,
+                  applied: context.workspace_state.applied
+                    ? projectWorkspaceThreadWorkspaceFromCore(context.workspace_state.applied)
+                    : null,
+                  pending: context.workspace_state.pending
+                    ? projectWorkspaceThreadWorkspaceFromCore(context.workspace_state.pending)
+                    : null,
+                }
+              : null,
           } satisfies DesktopProjectWorkspaceExecutionContext;
         });
       },
@@ -1753,6 +1787,16 @@ export const make: Effect.Effect<ProjectWorkspaceService, never, CoreModules | S
           target: projectWorkspaceThreadLaneToCore(input.targetProjectId),
           placement: projectWorkspaceThreadMovePlacementToCore(input),
           metadata: projectWorkspaceThreadMoveMetadataToCore(input.metadata),
+          ...(input.workspaceTransition === undefined
+            ? {}
+            : {
+                workspace_transition: {
+                  revision: input.workspaceTransition.revision,
+                  pending: input.workspaceTransition.pending
+                    ? projectWorkspaceThreadWorkspaceToCore(input.workspaceTransition.pending)
+                    : null,
+                },
+              }),
           ...(input.runtimeWorkspaceRoots === undefined
             ? {}
             : { runtime_workspace_roots: [...input.runtimeWorkspaceRoots] }),
@@ -1776,6 +1820,44 @@ export const make: Effect.Effect<ProjectWorkspaceService, never, CoreModules | S
         }
         return { thread, operationId, projectionRevision: applyResultCursor(applied) };
       }),
+      selectThreadReadStateIdentity: (identityKey, hostKeys) =>
+        apply("thread.read-state.select", {
+          kind: "select_thread_read_state_identity",
+          identity_key: identityKey,
+          execution_host_keys: hostKeys,
+        }).pipe(Effect.asVoid),
+      readIdentityThreadReadState: Effect.fn("ProjectWorkspace.readIdentityThreadReadState")(
+        function* (identityKey) {
+          const result: Record<string, string[]> = {};
+          let after: string | null = null;
+          do {
+            const snapshot: ProjectWorkspaceReadSnapshot = yield* read("thread.read-state.read", {
+              kind: "thread_read_state",
+              identity_key: identityKey,
+              window: { after, first: 200 },
+            });
+            const { entries } = expectVariant(snapshot, "thread_read_state");
+            for (const entry of entries.items) {
+              (result[entry.execution_host_key] ??= []).push(entry.thread_id);
+            }
+            after = entries.next_cursor ?? null;
+          } while (after !== null);
+          return result;
+        },
+      ),
+      setIdentityThreadUnread: (identityKey, executionHostKey, threadId, unread) =>
+        apply("thread.read-state.set", {
+          kind: "set_identity_thread_unread",
+          identity_key: identityKey,
+          execution_host_key: executionHostKey,
+          thread_id: threadId,
+          unread,
+        }).pipe(Effect.asVoid),
+      clearIdentityThreadReadState: (identityKey) =>
+        apply("thread.read-state.clear", {
+          kind: "clear_identity_thread_read_state",
+          identity_key: identityKey,
+        }).pipe(Effect.asVoid),
       setThreadUnread: Effect.fn("ProjectWorkspace.setThreadUnread")(function* (threadId, unread) {
         const applied = yield* apply("thread.unread.set", {
           kind: "set_thread_unread",
@@ -1874,6 +1956,16 @@ export const make: Effect.Effect<ProjectWorkspaceService, never, CoreModules | S
           );
         },
       ),
+      commitThreadWorkspaceTransition: Effect.fn(
+        "ProjectWorkspace.commitThreadWorkspaceTransition",
+      )(function* (threadId, revision, workspace) {
+        yield* apply("thread.workspace-transition.commit", {
+          kind: "commit_thread_workspace_transition",
+          thread_id: threadId,
+          revision,
+          workspace: projectWorkspaceThreadWorkspaceToCore(workspace),
+        });
+      }),
       listBackgroundProcesses,
       listManagedWorktreeWindow,
       readManagedWorktreeLifecycleSnapshot,

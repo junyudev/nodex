@@ -285,6 +285,95 @@ describe("ScriptedModelServer", () => {
     expect(child.hasUserInputText("CHILD_PROMPT")).toBe(false);
   });
 
+  test("parses Codex turn metadata and distinguishes user, system, and guardian traffic", () => {
+    const request = (threadSource: string, subagent?: string): ScriptedModelRequest =>
+      new ScriptedModelRequest({
+        body: {
+          client_metadata: {
+            "x-codex-turn-metadata": JSON.stringify({
+              request_kind: "turn",
+              thread_source: threadSource,
+            }),
+            ...(subagent ? { "x-openai-subagent": subagent } : {}),
+          },
+        },
+        headers: {},
+        method: "POST",
+        path: "/v1/responses",
+      });
+
+    expect(request("user").isThreadSource("user")).toBe(true);
+    expect(request("system").threadSource()).toBe("system");
+    expect(request("guardian_review", "guardian").subagentKind()).toBe("guardian");
+  });
+
+  test("accepts only the known Codex title and guardian background request families", async () => {
+    await withScriptedModelServer({ exchanges: [] }, async (server) => {
+      const request = async (
+        threadSource: string,
+        input: readonly unknown[],
+        subagent?: string,
+      ): Promise<number> =>
+        (
+          await postJson(`${server.baseUrl}/v1/responses`, {
+            client_metadata: {
+              "x-codex-turn-metadata": JSON.stringify({ thread_source: threadSource }),
+              ...(subagent ? { "x-openai-subagent": subagent } : {}),
+            },
+            input,
+          })
+        ).status;
+
+      expect(
+        await request("system", [
+          {
+            type: "message",
+            role: "user",
+            content: "Generate a concise UI title for this task",
+          },
+        ]),
+      ).toBe(200);
+      expect(await request("guardian_review", [], "guardian")).toBe(200);
+    });
+  });
+
+  test("routes Codex background work before broad scenario matchers", async () => {
+    await withScriptedModelServer(
+      {
+        exchanges: [
+          {
+            name: "user turn",
+            match: (request) => request.hasUserInputText("USER_MARKER"),
+            respond: responses.stream([
+              responses.created("user-turn"),
+              responses.assistantMessage("user-answer", "USER_OK", "final_answer"),
+              responses.completed("user-turn", true),
+            ]),
+          },
+        ],
+      },
+      async (server) => {
+        const request = async (threadSource: string, content: string): Promise<string> =>
+          (
+            await postJson(`${server.baseUrl}/v1/responses`, {
+              client_metadata: {
+                "x-codex-turn-metadata": JSON.stringify({ thread_source: threadSource }),
+              },
+              input: [{ type: "message", role: "user", content }],
+            })
+          ).body;
+
+        expect(
+          await request(
+            "system",
+            "Generate a concise UI title for this task whose prompt contains USER_MARKER",
+          ),
+        ).toContain("Scripted task");
+        expect(await request("user", "USER_MARKER")).toContain("USER_OK");
+      },
+    );
+  });
+
   test("renders namespaced custom tool calls for code-mode execution", () => {
     expect(responses.customToolCall("call-exec", "exec", "text('ok')", "functions")).toEqual({
       type: "response.output_item.done",

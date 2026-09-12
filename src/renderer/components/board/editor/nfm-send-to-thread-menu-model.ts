@@ -4,6 +4,7 @@ import type { ChatDestinationTarget } from "@/lib/page-chat-actions";
 import { createCommandPaletteThreadSearchIndex } from "@/lib/command-palette-thread-search";
 import { normalizeSearchText } from "@/lib/search-text";
 import { formatThreadMentionShortUuid } from "@/lib/nfm/thread-mention-display";
+import { resolveCodexElectronDisplayThreadTitle } from "../../../../shared/codex-thread-title";
 
 export type NfmSendToThreadMode = "send" | "wrap-toggle";
 
@@ -50,21 +51,12 @@ export interface NfmSendToThreadRowsInput {
   projectNameById?: Readonly<Record<string, string>>;
 }
 
-function firstPreviewLine(thread: CodexThreadSummary): string {
-  return (
-    thread.threadPreview
-      .split(/\r?\n/)
-      .map((line) => line.trim())
-      .find((line) => line.length > 0) ?? ""
-  );
-}
-
 export function resolveNfmSendToThreadTitle(thread: CodexThreadSummary): string {
-  return (
-    thread.threadName?.trim() ||
-    firstPreviewLine(thread) ||
-    formatThreadMentionShortUuid(thread.threadId)
-  );
+  return resolveCodexElectronDisplayThreadTitle({
+    threadName: thread.threadName,
+    threadPreview: thread.threadPreview,
+    fallback: formatThreadMentionShortUuid(thread.threadId),
+  });
 }
 
 function resolveThreadStatusLabel(

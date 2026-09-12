@@ -1,11 +1,15 @@
-import type { RequestId } from "@nodex/codex-app-server-protocol";
+import type { RequestId, ServerRequest } from "@nodex/codex-app-server-protocol";
+import { CodexResumeIngress } from "./CodexResumeIngress";
 import { CodexAppServerRequestError } from "@nodex/effect-codex-app-server/errors";
 import { CodexAppServerNoResponse } from "@nodex/effect-codex-app-server/protocol";
+import { codexTransportValue } from "@nodex/effect-codex-app-server/transport-values";
 import * as Cause from "effect/Cause";
 import * as Clock from "effect/Clock";
 import * as Context from "effect/Context";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
+import * as Option from "effect/Option";
+import * as Schema from "effect/Schema";
 import type {
   CodexApprovalRequest,
   CodexMcpServerElicitationRequest,
@@ -20,10 +24,10 @@ import type { CodexCanonicalServerRequest } from "../../shared/codex-conversatio
 import {
   reduceCodexConversationServerRequest,
   reduceCodexServerRequestRawState,
+  shouldAutomaticallyAcceptCodexMcpElicitation,
   type CodexServerRequestLifecycleResult,
   type CodexServerRequestRawLifecycleResult,
 } from "../../shared/codex-conversation-state/codex-server-request-lifecycle";
-import { DEFAULT_CODEX_HOST_ID } from "../../shared/codex-host";
 import { toCodexThreadStartedMetadataNotification } from "../../shared/codex-thread-start-metadata";
 import { parseCodexAppServerMessage } from "../codex/codex-app-server-message-parser";
 import {
@@ -52,8 +56,7 @@ import {
   type CodexConversationDisposition,
   CodexProtocolNotificationEffects,
 } from "./CodexProtocolNotificationEffects";
-import { CodexRendererConversationCoordinator } from "./CodexRendererConversationCoordinator";
-import { CodexRendererConversationRegistry } from "./CodexRendererConversationRegistry";
+import { CodexMainConversationManagers } from "./CodexMainConversationManagers";
 import { CodexUserInputAutoResolution } from "./CodexUserInputAutoResolution";
 import { ConversationEntityMap } from "./internal/ConversationEntityMap";
 import { conversationIngressOverflow } from "./internal/ConversationEntityState";
@@ -68,6 +71,14 @@ import { NodexAgentProtocolTools } from "../nodex-agent-application/NodexAgentPr
 
 const ProtocolRequestPending = Symbol("CodexApplicationProtocol.ProtocolRequestPending");
 const ProtocolRequestBuffered = Symbol("CodexApplicationProtocol.ProtocolRequestBuffered");
+
+const McpAutoResolutionMeta = Schema.Struct({
+  autoResolutionMs: Schema.Int.check(Schema.isBetween({ minimum: 5_000, maximum: 300_000 })),
+});
+
+const mcpAutoResolutionMs = (meta: unknown): number | null =>
+  Option.getOrNull(Schema.decodeUnknownOption(McpAutoResolutionMeta)(meta))?.autoResolutionMs ??
+  null;
 
 export class CodexApplicationProtocol extends Context.Service<
   CodexApplicationProtocol,
@@ -293,7 +304,7 @@ const permissionPayload = (
 
 const mcpPayload = (
   conversations: ConversationEntityMap["Service"],
-  request: Extract<CodexServerRequest, { method: "mcpServer/elicitation/request" }>,
+  request: Extract<ServerRequest, { method: "mcpServer/elicitation/request" }>,
   observedAtMs: number,
 ): CodexMcpServerElicitationRequest => ({
   type: "mcpServerElicitation",
@@ -331,8 +342,8 @@ export const make: Effect.Effect<
   | CodexOneShotServerRequests
   | CodexPendingServerRequestRuntime
   | CodexProtocolNotificationEffects
-  | CodexRendererConversationCoordinator
-  | CodexRendererConversationRegistry
+  | CodexMainConversationManagers
+  | CodexResumeIngress
   | ThreadCreationRuntime
   | CodexUserInputAutoResolution
   | ConversationEntityMap
@@ -346,10 +357,10 @@ export const make: Effect.Effect<
   const oneShot = yield* CodexOneShotServerRequests;
   const pending = yield* CodexPendingServerRequestRuntime;
   const notificationEffects = yield* CodexProtocolNotificationEffects;
-  const renderer = yield* CodexRendererConversationCoordinator;
-  const rendererRegistry = yield* CodexRendererConversationRegistry;
+  const managers = yield* CodexMainConversationManagers;
   const threadStarts = yield* ThreadCreationRuntime;
   const autoResolution = yield* CodexUserInputAutoResolution;
+  const resumeIngress = yield* CodexResumeIngress;
   const conversations = yield* ConversationEntityMap;
   const nodexAgentTools = yield* NodexAgentProtocolTools;
 
@@ -357,6 +368,7 @@ export const make: Effect.Effect<
     threadId: string,
     request: CodexCanonicalServerRequest,
     observedAtMs: number,
+    projectLocal: boolean,
   ): Lifecycle => {
     const aggregate = conversations.entity(threadId);
     const state = aggregate.readServerRequestState();
@@ -367,22 +379,22 @@ export const make: Effect.Effect<
         request,
         context,
       );
-      aggregate.commitServerRequestLifecycle({
-        kind: "canonical",
-        before: state.canonicalState,
-        lifecycle,
-        observedAtMs,
-        projectReplica: !rendererRegistry.hasOwner(threadId),
-      });
+      if (projectLocal)
+        aggregate.commitServerRequestLifecycle({
+          kind: "canonical",
+          before: state.canonicalState,
+          lifecycle,
+          observedAtMs,
+        });
       return lifecycle;
     }
     const lifecycle = reduceCodexServerRequestRawState(state.rawState, request, context);
-    aggregate.commitServerRequestLifecycle({
-      kind: "raw",
-      lifecycle,
-      observedAtMs,
-      projectReplica: !rendererRegistry.hasOwner(threadId),
-    });
+    if (projectLocal)
+      aggregate.commitServerRequestLifecycle({
+        kind: "raw",
+        lifecycle,
+        observedAtMs,
+      });
     return lifecycle;
   };
 
@@ -392,6 +404,7 @@ export const make: Effect.Effect<
   };
 
   const publishRequestNotification = (
+    hostId: string,
     threadId: string,
     requestId: RequestId,
     turnId: string,
@@ -409,7 +422,7 @@ export const make: Effect.Effect<
         input.kind === "approval"
           ? {
               type: "approval-requested",
-              hostId: DEFAULT_CODEX_HOST_ID,
+              hostId,
               conversation: conversationFacts(conversations, threadId),
               requestId,
               turnId,
@@ -418,7 +431,7 @@ export const make: Effect.Effect<
             }
           : {
               type: "user-input-requested",
-              hostId: DEFAULT_CODEX_HOST_ID,
+              hostId,
               conversation: conversationFacts(conversations, threadId),
               requestId,
               turnId,
@@ -428,12 +441,19 @@ export const make: Effect.Effect<
   };
 
   const storeInteractiveRequest = Effect.fn("CodexApplicationProtocol.storeInteractiveRequest")(
-    function* (request: CodexServerRequest, observedAtMs: number) {
+    function* (
+      request: CodexServerRequest,
+      observedAtMs: number,
+      hostId: string,
+      generation: number,
+    ) {
       switch (request.method) {
         case "item/commandExecution/requestApproval":
         case "item/fileChange/requestApproval": {
           const payload = approvalPayload(conversations, request, observedAtMs);
           pending.register({
+            hostId,
+            generation,
             kind: "approval",
             request: payload,
             occurrenceToken: request[CODEX_SERVER_REQUEST_OCCURRENCE_TOKEN],
@@ -442,7 +462,7 @@ export const make: Effect.Effect<
             kind: "codex",
             value: { type: "approvalRequested", request: payload },
           });
-          publishRequestNotification(payload.threadId, payload.requestId, payload.turnId, {
+          publishRequestNotification(hostId, payload.threadId, payload.requestId, payload.turnId, {
             kind: "approval",
             approvalKind: payload.kind === "command" ? "commandExecution" : "fileChange",
             reason: payload.reason ?? null,
@@ -452,11 +472,13 @@ export const make: Effect.Effect<
         case "item/permissions/requestApproval": {
           const payload = permissionPayload(conversations, request);
           pending.register({
+            hostId,
+            generation,
             kind: "permission",
             request: payload,
             occurrenceToken: request[CODEX_SERVER_REQUEST_OCCURRENCE_TOKEN],
           });
-          publishRequestNotification(payload.threadId, payload.requestId, payload.turnId, {
+          publishRequestNotification(hostId, payload.threadId, payload.requestId, payload.turnId, {
             kind: "approval",
             approvalKind: "permissionRequest",
             reason: payload.reason,
@@ -466,34 +488,58 @@ export const make: Effect.Effect<
         case "item/tool/requestUserInput": {
           const payload = userInputPayload(conversations, request, observedAtMs);
           pending.register({
+            hostId,
+            generation,
             kind: "user-input",
             request: payload,
             occurrenceToken: request[CODEX_SERVER_REQUEST_OCCURRENCE_TOKEN],
           });
           if (payload.isBlocking) yield* autoResolution.clearConversation(payload.threadId);
-          else yield* autoResolution.observeRequest(payload.threadId, payload.requestId);
+          else
+            yield* autoResolution.observeRequest(payload.threadId, payload.requestId, {
+              hostId,
+              generation,
+            });
           applicationEvents.publish({
             kind: "codex",
             value: { type: "userInputRequested", request: payload },
           });
-          publishRequestNotification(payload.threadId, payload.requestId, payload.turnId, {
+          publishRequestNotification(hostId, payload.threadId, payload.requestId, payload.turnId, {
             kind: "user-input",
             questionCount: payload.questions.length,
           });
           break;
         }
         case "mcpServer/elicitation/request": {
-          const payload = mcpPayload(conversations, request, observedAtMs);
+          if (request.params.mode === "openai/userVerification") break;
+          const generatedRequest = request as Extract<
+            ServerRequest,
+            { method: "mcpServer/elicitation/request" }
+          >;
+          const payload = mcpPayload(conversations, generatedRequest, observedAtMs);
           pending.register({
+            hostId,
+            generation,
             kind: "mcp-elicitation",
             request: payload,
             occurrenceToken: request[CODEX_SERVER_REQUEST_OCCURRENCE_TOKEN],
           });
+          const autoResolutionMs = mcpAutoResolutionMs(generatedRequest.params._meta);
+          if (autoResolutionMs !== null) {
+            yield* autoResolution.observeRequest(
+              payload.threadId,
+              payload.requestId,
+              { hostId, generation },
+              { responseKind: "declineMcpElicitation", autoResolutionMs },
+            );
+          }
           break;
         }
         case "item/tool/requestOptionPicker":
         case "item/tool/requestSetupCodexContextPicker":
           pending.register({
+            hostId,
+            generation,
             kind: "private",
             request,
             occurrenceToken: request[CODEX_SERVER_REQUEST_OCCURRENCE_TOKEN],
@@ -501,6 +547,8 @@ export const make: Effect.Effect<
           break;
         case "item/tool/call":
           pending.register({
+            hostId,
+            generation,
             kind: "dynamic-tool",
             request,
             occurrenceToken: request[CODEX_SERVER_REQUEST_OCCURRENCE_TOKEN],
@@ -511,14 +559,13 @@ export const make: Effect.Effect<
         default:
           break;
       }
-      const routed = renderer.forwardServerRequest(request as never);
-      if (routed) renderer.reconcileOwnership(threadIdForRequest(request) ?? "");
     },
   );
 
   const handleRequest = Effect.fn("CodexApplicationProtocol.handleRequest")(function* (
     request: CodexServerRequest,
     hostId: string,
+    generation: number,
   ) {
     if (hostId === CODEX_APP_LOCAL_HOST_ID && request.method === "item/tool/call") {
       if (request.params.namespace === NODEX_APP_TOOL_NAMESPACE) {
@@ -540,6 +587,7 @@ export const make: Effect.Effect<
         );
       }
     }
+    if (request.method === "currentTime/read") return ProtocolRequestPending;
     if (isCodexOneShotServerRequest(request)) return yield* oneShot.handle(request);
     if (request.method === "inbox-items-create") {
       const occurrenceId = request[CODEX_SERVER_REQUEST_OCCURRENCE_ID];
@@ -554,33 +602,59 @@ export const make: Effect.Effect<
     const threadId = threadIdForRequest(request);
     const observedAtMs = yield* Clock.currentTimeMillis;
     if (!threadId) return CodexAppServerNoResponse;
-    const lifecycle = reduceRequest(threadId, request as CodexCanonicalServerRequest, observedAtMs);
+    const manager = managers.current(hostId);
+    if (request.method === "mcpServer/elicitation/request") {
+      if (request.params.mode === "openai/userVerification") {
+        return { action: "decline" as const, content: null, _meta: null };
+      }
+      const generatedRequest = request as Extract<
+        ServerRequest,
+        { readonly method: "mcpServer/elicitation/request" }
+      >;
+      const state = conversations.entity(threadId).readServerRequestState().canonicalState;
+      if (state && shouldAutomaticallyAcceptCodexMcpElicitation(state, generatedRequest)) {
+        const isFollower =
+          manager?.generation === generation &&
+          manager.stream.getRole(threadId)?.role === "follower";
+        return isFollower
+          ? CodexAppServerNoResponse
+          : { action: "accept" as const, content: {}, _meta: null };
+      }
+    }
+    const lifecycle = reduceRequest(
+      threadId,
+      request as CodexCanonicalServerRequest,
+      observedAtMs,
+      manager !== null &&
+        manager.generation === generation &&
+        manager.stream.getRole(threadId)?.role !== "follower",
+    );
     const response = responseEffect(lifecycle);
     if (response !== undefined) return response;
     if (lifecycle.disposition === "dispatched" && request.method === "item/tool/call") {
       if (request.params.namespace === NODEX_APP_TOOL_NAMESPACE) {
         return yield* nodexAgentTools.execute(request.params);
       }
-      if (!rendererRegistry.hasOwner(threadId)) {
+      if (
+        manager?.generation === generation &&
+        manager.stream.shouldHandleDynamicToolCall(threadId)
+      ) {
         return yield* codexAppTools.execute(request.params);
       }
-      const entry = pending.register({
+      pending.register({
+        hostId,
+        generation,
         kind: "dynamic-tool",
         request,
         occurrenceToken: request[CODEX_SERVER_REQUEST_OCCURRENCE_TOKEN],
         nodexAuthority: null,
         disposition: "dispatched",
       });
-      if (!renderer.forwardServerRequest(request)) {
-        pending.discard(entry);
-        return yield* codexAppTools.execute(request.params);
-      }
-      renderer.reconcileOwnership(threadId);
       return ProtocolRequestPending;
     }
     if (lifecycle.disposition !== "stored") return CodexAppServerNoResponse;
     if (request.method === "item/plan/requestImplementation") return CodexAppServerNoResponse;
-    yield* storeInteractiveRequest(request, observedAtMs);
+    yield* storeInteractiveRequest(request, observedAtMs, hostId, generation);
     return ProtocolRequestPending;
   });
 
@@ -682,9 +756,31 @@ export const make: Effect.Effect<
   const interpret: CodexApplicationProtocol["Service"]["interpret"] = (occurrence) =>
     parseRequest(occurrence).pipe(
       Effect.flatMap((request) => {
+        applicationEvents.publish({
+          kind: "hostMessage",
+          value: {
+            type: "nativeRequest",
+            hostId: occurrence.hostId,
+            generation: occurrence.generation,
+            occurrenceId: occurrence.occurrenceId,
+            occurrenceToken: occurrence.occurrenceToken,
+            request: request as CodexCanonicalServerRequest,
+          },
+        });
         const threadId = threadIdForRequest(request);
         if (!threadId)
-          return interpretOperation(occurrence, handleRequest(request, occurrence.hostId));
+          return interpretOperation(
+            occurrence,
+            handleRequest(request, occurrence.hostId, occurrence.generation),
+          );
+        if (
+          resumeIngress.offer(threadId, {
+            occurrence,
+            replay: replayOccurrence,
+            reject: (event, reason) => rejectBuffered([event], reason),
+          })
+        )
+          return interpretOperation(occurrence, Effect.succeed(ProtocolRequestBuffered));
         return interpretOperation(
           occurrence,
           conversations.runCommand(
@@ -692,7 +788,6 @@ export const make: Effect.Effect<
             Effect.sync(() =>
               conversations.entity(threadId).offerProtocolOccurrence({
                 occurrence,
-                bypassResume: false,
                 startsThread: false,
                 deferThreadStart: null,
               }),
@@ -713,7 +808,7 @@ export const make: Effect.Effect<
                 }
                 return admission === "buffered"
                   ? Effect.succeed(ProtocolRequestBuffered)
-                  : handleRequest(request, occurrence.hostId);
+                  : handleRequest(request, occurrence.hostId, occurrence.generation);
               }),
             ),
           ),
@@ -739,6 +834,21 @@ export const make: Effect.Effect<
   const observe: CodexApplicationProtocol["Service"]["observe"] = (occurrence) => {
     const parsedNotification = parseNotification(occurrence);
     if (!parsedNotification) return Effect.void;
+    applicationEvents.publish({
+      kind: "hostMessage",
+      value: {
+        type: "nativeNotification",
+        hostId: occurrence.hostId,
+        generation: occurrence.generation,
+        occurrenceId: occurrence.occurrenceId,
+        occurrenceToken: occurrence.occurrenceToken,
+        ...(occurrence.receivedAtMs === undefined ? {} : { receivedAtMs: occurrence.receivedAtMs }),
+        notification: {
+          ...parsedNotification,
+          params: codexTransportValue(parsedNotification.params),
+        } as CodexServerNotification,
+      },
+    });
     const notification = toCodexThreadStartedMetadataNotification(parsedNotification);
     const metadataOccurrence = toCodexSanitizedNotificationOccurrence(occurrence, notification);
     const threadId = codexProtocolNotificationThreadId(notification);
@@ -750,6 +860,16 @@ export const make: Effect.Effect<
         )
         .pipe(Effect.asVoid);
     }
+    if (
+      resumeIngress.offer(threadId, {
+        occurrence: metadataOccurrence,
+        replay: replayOccurrence,
+        reject: (event, reason) => rejectBuffered([event], reason),
+      })
+    )
+      return inbox
+        .interpretNotification(metadataOccurrence, Effect.succeed("retain" as const))
+        .pipe(Effect.asVoid);
     return inbox
       .interpretNotification(
         metadataOccurrence,
@@ -758,7 +878,6 @@ export const make: Effect.Effect<
           Effect.sync(() => {
             return conversations.entity(threadId).offerProtocolOccurrence({
               occurrence: metadataOccurrence,
-              bypassResume: false,
               startsThread: notification.method === "thread/started",
               deferThreadStart:
                 notification.method === "thread/started" &&
@@ -810,7 +929,10 @@ export const make: Effect.Effect<
     if (occurrence.kind === "request") {
       return parseRequest(occurrence).pipe(
         Effect.flatMap((request) =>
-          interpretOperation(occurrence, handleRequest(request, occurrence.hostId)),
+          interpretOperation(
+            occurrence,
+            handleRequest(request, occurrence.hostId, occurrence.generation),
+          ),
         ),
         Effect.catch((error) =>
           inbox
@@ -885,29 +1007,16 @@ export const make: Effect.Effect<
       { concurrency: "unbounded", discard: true },
     );
 
-  const releaseResume = (threadId: string): Effect.Effect<void> => {
-    const aggregate = conversations.current(threadId);
-    if (!aggregate) return Effect.void;
-    return conversations
+  const releaseResume = (threadId: string): Effect.Effect<void> =>
+    conversations
       .runCommand(
         threadId,
-        Effect.sync(() => {
-          const buffered = aggregate.takeResumeEventBuffer();
-          return buffered
-            ? compactCodexApplicationProtocolOccurrences({
-                threadId,
-                canonicalState: aggregate.readCanonicalState(),
-                events: buffered,
-              })
-            : null;
-        }).pipe(
-          Effect.flatMap((buffered) =>
-            buffered ? replayBuffered(buffered) : Effect.succeed(false),
-          ),
+        resumeIngress.release(
+          threadId,
+          conversations.current(threadId)?.readCanonicalState() ?? null,
         ),
       )
       .pipe(Effect.flatMap((retire) => (retire ? conversations.retire(threadId) : Effect.void)));
-  };
 
   const releaseThreadStart = (release: ThreadCreationRelease): Effect.Effect<void> => {
     const aggregate = conversations.current(release.threadId);
@@ -962,17 +1071,20 @@ export const make: Effect.Effect<
   const service = CodexApplicationProtocol.of({
     interpret,
     observe,
-    beginResume: (threadId) => conversations.entity(threadId).beginResumeEventBuffer(),
-    hasResume: (threadId) => conversations.current(threadId)?.hasResumeEventBuffer() ?? false,
+    beginResume: resumeIngress.begin,
+    hasResume: resumeIngress.has,
     releaseResume,
-    discardResume: (threadId, reason) => {
-      const aggregate = conversations.current(threadId);
-      return aggregate ? rejectBuffered(aggregate.discardResumeEventBuffer(), reason) : Effect.void;
-    },
+    discardResume: resumeIngress.discard,
     clearConversationBuffer: (threadId, reason) => {
       threadStarts.clear(threadId);
       const aggregate = conversations.current(threadId);
-      return aggregate ? rejectBuffered(aggregate.clearBufferedEvents(), reason) : Effect.void;
+      return resumeIngress
+        .discard(threadId, reason)
+        .pipe(
+          Effect.andThen(
+            aggregate ? rejectBuffered(aggregate.clearBufferedEvents(), reason) : Effect.void,
+          ),
+        );
     },
     releaseThreadStart,
   });
@@ -990,8 +1102,8 @@ export const live: Layer.Layer<
   | CodexOneShotServerRequests
   | CodexPendingServerRequestRuntime
   | CodexProtocolNotificationEffects
-  | CodexRendererConversationCoordinator
-  | CodexRendererConversationRegistry
+  | CodexMainConversationManagers
+  | CodexResumeIngress
   | ThreadCreationRuntime
   | CodexUserInputAutoResolution
   | ConversationEntityMap

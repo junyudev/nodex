@@ -6,7 +6,6 @@ import type {
 } from "../../../../shared/codex-conversation-state/codex-history-topology";
 import {
   CODEX_HISTORY_GAP_LOAD_PROXIMITY_PX,
-  createLocalConversationHistoryGapLoadControllerState,
   createLocalConversationHistoryGapRequestCoordinator,
   LocalConversationHistoryGap,
   projectLocalConversationLegacyHistoryRows,
@@ -26,6 +25,7 @@ function boundary(
     edge,
     boundaryId: `boundary:${edge}:${progressKey}`,
     progressKey,
+    handle: { cursor: progressKey, oldestLoadedTurnId: null },
   };
 }
 
@@ -48,22 +48,15 @@ function gapLayout(startPx: number, row: GapRow): LocalConversationHistoryGapLay
 }
 
 function select(input: {
-  readonly viewportRevision?: number;
   readonly viewportStartPx?: number;
   readonly viewportEndPx?: number;
   readonly gaps: readonly LocalConversationHistoryGapLayout[];
-  readonly activeProgressKeys?: ReadonlySet<string>;
 }) {
-  return selectLocalConversationHistoryGapBoundary(
-    createLocalConversationHistoryGapLoadControllerState(),
-    {
-      viewportRevision: input.viewportRevision ?? 1,
-      viewportStartPx: input.viewportStartPx ?? 1_000,
-      viewportEndPx: input.viewportEndPx ?? 1_200,
-      gaps: input.gaps,
-      activeProgressKeys: input.activeProgressKeys ?? new Set(),
-    },
-  );
+  return selectLocalConversationHistoryGapBoundary({
+    viewportStartPx: input.viewportStartPx ?? 1000,
+    viewportEndPx: input.viewportEndPx ?? 1200,
+    gaps: input.gaps,
+  });
 }
 
 describe("local conversation history gap controller", () => {
@@ -73,10 +66,10 @@ describe("local conversation history gap controller", () => {
     const result = select({ gaps: [gapLayout(56, row)] });
 
     expect(CODEX_HISTORY_GAP_LOAD_PROXIMITY_PX).toBe(800);
-    expect(result.boundary).toBe(newer);
+    expect(result).toBe(newer);
 
     const outside = select({ gaps: [gapLayout(55.5, row)] });
-    expect(outside.boundary).toBeNull();
+    expect(outside).toBeNull();
   });
 
   test("uses the viewport center to select the nearest available side of an internal gap", () => {
@@ -90,14 +83,14 @@ describe("local conversation history gap controller", () => {
       viewportEndPx: 1_020,
       gaps: [layout],
     });
-    expect(fromAbove.boundary).toBe(older);
+    expect(fromAbove).toBe(older);
 
     const fromBelow = select({
       viewportStartPx: 1_120,
       viewportEndPx: 1_340,
       gaps: [layout],
     });
-    expect(fromBelow.boundary).toBe(newer);
+    expect(fromBelow).toBe(newer);
   });
 
   test("selects only the nearest boundary across all eligible gaps", () => {
@@ -110,171 +103,117 @@ describe("local conversation history gap controller", () => {
       ],
     });
 
-    expect(result.boundary).toBe(near);
+    expect(result).toBe(near);
   });
 
-  test("deduplicates active progress and leaves an unconsumed revision retryable", () => {
-    const older = boundary("newer", "progress:active");
-    const newer = boundary("older", "progress:available");
-    const row = gapRow({ olderBoundary: older, newerBoundary: newer });
-    const first = select({
-      gaps: [gapLayout(1_000, row)],
-      activeProgressKeys: new Set([older.progressKey]),
-    });
-    expect(first.boundary).toBe(newer);
-
-    const initialState = createLocalConversationHistoryGapLoadControllerState();
-    const blocked = selectLocalConversationHistoryGapBoundary(initialState, {
-      viewportRevision: 5,
-      viewportStartPx: 900,
-      viewportEndPx: 1_200,
-      gaps: [gapLayout(1_000, row)],
-      activeProgressKeys: new Set([older.progressKey, newer.progressKey]),
-    });
-    expect(blocked).toEqual({ boundary: null, state: initialState });
-
-    const retry = selectLocalConversationHistoryGapBoundary(blocked.state, {
-      viewportRevision: 5,
-      viewportStartPx: 900,
-      viewportEndPx: 1_200,
-      gaps: [gapLayout(1_000, row)],
-      activeProgressKeys: new Set(),
-    });
-    expect(retry.boundary).toBe(older);
-  });
-
-  test("allows at most one request for a viewport revision and rejects stale revisions", () => {
-    const firstBoundary = boundary("older", "progress:first");
-    const secondBoundary = boundary("older", "progress:second");
-    const first = select({
-      viewportRevision: 9,
-      gaps: [gapLayout(900, gapRow({ newerBoundary: firstBoundary }))],
-    });
-    expect(first.boundary).toBe(firstBoundary);
-
-    const repeated = selectLocalConversationHistoryGapBoundary(first.state, {
-      viewportRevision: 9,
-      viewportStartPx: 1_000,
-      viewportEndPx: 1_200,
-      gaps: [gapLayout(900, gapRow({ newerBoundary: secondBoundary }))],
-      activeProgressKeys: new Set(),
-    });
-    expect(repeated.boundary).toBeNull();
-
-    const stale = selectLocalConversationHistoryGapBoundary(first.state, {
-      viewportRevision: 8,
-      viewportStartPx: 1_000,
-      viewportEndPx: 1_200,
-      gaps: [gapLayout(900, gapRow({ newerBoundary: secondBoundary }))],
-      activeProgressKeys: new Set(),
-    });
-    expect(stale.boundary).toBeNull();
-
-    const next = selectLocalConversationHistoryGapBoundary(first.state, {
-      viewportRevision: 10,
-      viewportStartPx: 1_000,
-      viewportEndPx: 1_200,
-      gaps: [gapLayout(900, gapRow({ newerBoundary: secondBoundary }))],
-      activeProgressKeys: new Set(),
-    });
-    expect(next.boundary).toBe(secondBoundary);
-  });
-
-  test("requests one nearby page, deduplicates active progress, and waits for a later revision", async () => {
+  test("serializes pending viewport changes and loads the newest boundary", async () => {
     const coordinator = createLocalConversationHistoryGapRequestCoordinator();
-    const progress = boundary("older", "progress:page-1");
-    const layout = gapLayout(1_000, gapRow({ newerBoundary: progress }));
-    const pending = { release: () => {} };
+    const first = boundary("older", "first");
+    const second = boundary("older", "second");
+    const view = (target: CodexHistoryBoundaryRef) => ({
+      viewportStartPx: 900,
+      viewportEndPx: 1200,
+      gaps: [gapLayout(1000, gapRow({ newerBoundary: target }))],
+    });
     const requests: CodexHistoryBoundaryRef[] = [];
-    const request = (requestedBoundary: CodexHistoryBoundaryRef) => {
-      requests.push(requestedBoundary);
-      return new Promise<void>((resolve) => {
-        pending.release = resolve;
-      });
+    let release = (_result: string) => {};
+    const load = (target: CodexHistoryBoundaryRef) => {
+      requests.push(target);
+      return requests.length === 1
+        ? new Promise<string>((resolve) => {
+            release = resolve;
+          })
+        : Promise.resolve("applied");
     };
-
-    coordinator.observeViewport(
-      { viewportRevision: 1, viewportStartPx: 900, viewportEndPx: 1_200, gaps: [layout] },
-      request,
-    );
-    coordinator.observeViewport(
-      { viewportRevision: 1, viewportStartPx: 900, viewportEndPx: 1_200, gaps: [layout] },
-      request,
-    );
+    const pending = coordinator.observeViewport(view(first), load);
     await Promise.resolve();
-
-    expect(requests).toEqual([progress]);
-    expect(coordinator.activeProgressKeys()).toEqual(new Set([progress.progressKey]));
-
-    coordinator.observeViewport(
-      { viewportRevision: 2, viewportStartPx: 900, viewportEndPx: 1_200, gaps: [layout] },
-      request,
-    );
-    expect(requests).toEqual([progress]);
-
-    pending.release();
-    await Promise.resolve();
-    await Promise.resolve();
-    coordinator.observeViewport(
-      { viewportRevision: 2, viewportStartPx: 900, viewportEndPx: 1_200, gaps: [layout] },
-      request,
-    );
-    await Promise.resolve();
-
-    expect(requests).toEqual([progress, progress]);
+    expect(coordinator.observeViewport(view(second), load)).toBe(pending);
+    expect(requests).toEqual([first]);
+    release("applied");
+    await pending;
+    expect(requests).toEqual([first, second]);
   });
 
-  test("stops a failed boundary across viewport changes and resumes only for a new cursor", async () => {
+  test("retries a failed boundary on a later observation even with unchanged bounds", async () => {
     const coordinator = createLocalConversationHistoryGapRequestCoordinator();
-    const progress = boundary("older", "progress:retry");
-    const layout = gapLayout(1_000, gapRow({ newerBoundary: progress }));
-    let requests = 0;
-    const request = async () => {
-      requests += 1;
+    const view = {
+      viewportStartPx: 900,
+      viewportEndPx: 1200,
+      gaps: [gapLayout(1000, gapRow({ newerBoundary: boundary("older", "retry") }))],
+    };
+    let calls = 0;
+    const load = async () => {
+      calls += 1;
       throw new Error("page failed");
     };
+    await coordinator.observeViewport(view, load);
+    await coordinator.observeViewport(view, load);
+    expect(calls).toBe(2);
+  });
 
-    coordinator.observeViewport(
-      { viewportRevision: 4, viewportStartPx: 900, viewportEndPx: 1_200, gaps: [layout] },
-      request,
-    );
-    await Promise.resolve();
-    await Promise.resolve();
-    await Promise.resolve();
-    coordinator.observeViewport(
-      { viewportRevision: 4, viewportStartPx: 900, viewportEndPx: 1_200, gaps: [layout] },
-      request,
-    );
-    coordinator.observeViewport(
-      { viewportRevision: 5, viewportStartPx: 900, viewportEndPx: 1_200, gaps: [layout] },
-      request,
-    );
-    await Promise.resolve();
+  test("suppresses an applied boundary within a run but permits it in a later run", async () => {
+    const coordinator = createLocalConversationHistoryGapRequestCoordinator();
+    const view = {
+      viewportStartPx: 900,
+      viewportEndPx: 1200,
+      gaps: [gapLayout(1000, gapRow({ newerBoundary: boundary("older", "same") }))],
+    };
+    let calls = 0;
+    const load = async () => {
+      calls += 1;
+      void coordinator.observeViewport(view);
+      return "applied";
+    };
+    await coordinator.observeViewport(view, load);
+    expect(calls).toBe(1);
+    await coordinator.observeViewport(view, load);
+    expect(calls).toBe(2);
+  });
 
-    expect(requests).toBe(1);
-    coordinator.observeViewport(
-      {
-        viewportRevision: 6,
-        viewportStartPx: 900,
-        viewportEndPx: 1_200,
-        gaps: [gapLayout(1_000, gapRow({ newerBoundary: boundary("older", "progress:new") }))],
-      },
-      request,
-    );
-    await Promise.resolve();
-    expect(requests).toBe(2);
+  test("stops following viewport changes when the view is cleared during a request", async () => {
+    const coordinator = createLocalConversationHistoryGapRequestCoordinator();
+    const view = {
+      viewportStartPx: 900,
+      viewportEndPx: 1200,
+      gaps: [gapLayout(1000, gapRow({ newerBoundary: boundary("older", "clear") }))],
+    };
+    let calls = 0;
+    await coordinator.observeViewport(view, async () => {
+      calls += 1;
+      void coordinator.observeViewport(null);
+      return "stale";
+    });
+    expect(calls).toBe(1);
+  });
+
+  test("consumes explicit scroll permission once per fetch when required", async () => {
+    const coordinator = createLocalConversationHistoryGapRequestCoordinator({
+      requireUserScroll: true,
+    });
+    const view = {
+      viewportStartPx: 900,
+      viewportEndPx: 1200,
+      gaps: [gapLayout(1000, gapRow({ newerBoundary: boundary("older", "scroll") }))],
+    };
+    let calls = 0;
+    const load = async () => {
+      calls += 1;
+      return "applied";
+    };
+    await coordinator.observeViewport(view, load);
+    expect(calls).toBe(0);
+    coordinator.allowNextFetch();
+    await coordinator.observeViewport(view, load);
+    await coordinator.observeViewport(view, load);
+    expect(calls).toBe(1);
   });
 
   test("does not request after the history gap is exhausted", async () => {
     const coordinator = createLocalConversationHistoryGapRequestCoordinator();
     let requests = 0;
-    coordinator.observeViewport(
-      { viewportRevision: 1, viewportStartPx: 0, viewportEndPx: 800, gaps: [] },
-      async () => {
-        requests += 1;
-      },
-    );
-    await Promise.resolve();
+    await coordinator.observeViewport({ viewportStartPx: 0, viewportEndPx: 800, gaps: [] }, async () => {
+      requests += 1;
+    });
     expect(requests).toBe(0);
   });
 });

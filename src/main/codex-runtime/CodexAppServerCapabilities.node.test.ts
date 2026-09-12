@@ -56,6 +56,7 @@ describe("Codex app-server capability policy", () => {
       below: "0.143.0-alpha.31",
       minimum: "0.143.0-alpha.32",
     },
+    { capability: "paginatedFork", below: "0.146.0-alpha.6", minimum: "0.146.0-alpha.7" },
     {
       capability: "paginatedHistory",
       below: "0.145.0-alpha.14",
@@ -145,12 +146,16 @@ describe("Codex app-server capability policy", () => {
     expect(snapshot.version).toBe("0.0.0");
     expect(snapshot.flags).toEqual(CODEX_APP_SERVER_DEVELOPMENT_CAPABILITY_FLAGS);
     expect(snapshot.flags).toEqual({
+      turnApprovalsReviewer: true,
+      turnToolOutput: true,
       forkLastTurnId: false,
+      paginatedFork: false,
       paginatedHistory: false,
       searchOccurrences: true,
       ephemeralFork: false,
       sideConversation: false,
       threadRevert: true,
+      threadQueue: false,
       subagentAncestorFilter: false,
       multiAgentV2Protocol: false,
     });
@@ -168,13 +173,18 @@ describe("Codex app-server capability policy", () => {
       generation: 42,
       userAgent: "mock-codex-app-server",
       version: null,
+      nativeAppTools: false,
       flags: {
+        turnApprovalsReviewer: false,
+        turnToolOutput: false,
         forkLastTurnId: false,
+        paginatedFork: false,
         paginatedHistory: false,
         searchOccurrences: false,
         ephemeralFork: false,
         sideConversation: false,
         threadRevert: false,
+        threadQueue: false,
         subagentAncestorFilter: false,
         multiAgentV2Protocol: false,
       },
@@ -204,6 +214,7 @@ describe("Codex app-server capability policy", () => {
     Effect.gen(function* () {
       let generation = 7;
       let userAgent = "Codex Desktop/0.147.0 (test)";
+      let nativeAppTools = false;
       const endpoint = CodexEndpoint.of({
         hostId: "remote-a",
         sourceEpoch: "endpoint-epoch-a",
@@ -213,6 +224,7 @@ describe("Codex app-server capability policy", () => {
               hostId: "remote-a",
               generation,
               pid: 42,
+              nativeAppTools,
               client: null,
               initialize: { userAgent },
               termination: Effect.never,
@@ -237,15 +249,22 @@ describe("Codex app-server capability policy", () => {
         generation: 7,
         sourceEpoch: "endpoint-epoch-a",
         version: "0.147.0",
+        nativeAppTools: false,
         flags: { paginatedHistory: true, threadRevert: false },
       });
       expect(yield* service.isCurrent(first)).toBe(true);
 
+      nativeAppTools = true;
+      expect(yield* service.isCurrent(first)).toBe(false);
+      const withAppTools = yield* service.forHost("remote-a");
+      expect(withAppTools.nativeAppTools).toBe(true);
+
       generation = 8;
       userAgent = "Codex Desktop/0.148.0-alpha.13 (test)";
-      expect(yield* service.isCurrent(first)).toBe(false);
+      expect(yield* service.isCurrent(withAppTools)).toBe(false);
       expect(yield* service.forHost("remote-a")).toMatchObject({
         generation: 8,
+        nativeAppTools: true,
         flags: { threadRevert: true },
       });
     }),

@@ -1,3 +1,4 @@
+import type { CodexCanonicalTurnHeader } from "../../shared/types";
 import type { Thread } from "@nodex/codex-app-server-protocol/v2";
 import { CodexAppServerRequestError } from "@nodex/effect-codex-app-server/errors";
 import { assert, it } from "@effect/vitest";
@@ -22,6 +23,9 @@ import { CodexConversations } from "./CodexConversations";
 import { CodexApplicationEventHub } from "./CodexApplicationEventHub";
 import { CodexThreadDirectory, type CodexThreadDirectoryEntry } from "./CodexThreadDirectory";
 import { make } from "./CodexSubagentDirectory";
+import { conversationFixture, turnFixture } from "./conversation-test-fixture";
+import { produce } from "immer";
+import { replaceCanonicalHistoryDraft } from "../../shared/codex-conversation-state/codex-canonical-history-loader";
 
 type RequestOnHost = CodexGateway["Service"]["requestOnHost"];
 type Overview = Extract<
@@ -38,13 +42,19 @@ const capability: CodexAppServerCapabilitySnapshot = {
   generation: 7,
   userAgent: "codex-app-server/0.150.0-alpha.12",
   version: "0.150.0-alpha.12",
+  nativeAppTools: false,
   flags: {
+    turnApprovalsReviewer: false,
+
+    turnToolOutput: false,
     forkLastTurnId: true,
+    paginatedFork: true,
     paginatedHistory: true,
     searchOccurrences: true,
     ephemeralFork: true,
     sideConversation: true,
     threadRevert: true,
+    threadQueue: true,
     subagentAncestorFilter: true,
     multiAgentV2Protocol: true,
   },
@@ -167,6 +177,8 @@ const buildDirectory = (input: {
   readonly observedSubagentThreadIds?: readonly string[];
   readonly observedSubagentThreadIdsByParent?: Readonly<Record<string, readonly string[]>>;
   readonly publish?: CodexApplicationEventHub["Service"]["publish"];
+  readonly readConversation?: CodexConversations["Service"]["read"];
+  readonly isCurrent?: CodexAppServerCapabilities["Service"]["isCurrent"];
 }) => {
   const unsupported = () => Effect.die(new Error("unused"));
   return make.pipe(
@@ -186,34 +198,36 @@ const buildDirectory = (input: {
     Effect.provideService(
       CodexConversations,
       CodexConversations.of({
-        read: (threadId: string) => {
-          const observedThreadIds =
-            input.observedSubagentThreadIdsByParent?.[threadId] ??
-            (threadId === "root-a" ? input.observedSubagentThreadIds : undefined);
-          if (!observedThreadIds?.length && !input.hasLiveRootTurn) return null;
-          return {
-            generation: 1,
-            snapshot: null,
-            canonicalState: {
-              protocol: { id: "root-a" },
-              turns: [
-                {
-                  protocol: {
-                    id: "turn-root",
-                    status: input.hasLiveRootTurn ? "inProgress" : "completed",
+        read:
+          input.readConversation ??
+          ((threadId: string) => {
+            const observedThreadIds =
+              input.observedSubagentThreadIdsByParent?.[threadId] ??
+              (threadId === "root-a" ? input.observedSubagentThreadIds : undefined);
+            if (!observedThreadIds?.length && !input.hasLiveRootTurn) return null;
+            return {
+              generation: 1,
+              snapshot: null,
+              canonicalState: {
+                ...{ id: "root-a" },
+                turns: [
+                  {
+                    ...({
+                      turnId: "turn-root",
+                      status: input.hasLiveRootTurn ? "inProgress" : "completed",
+                    } satisfies Pick<CodexCanonicalTurnHeader, "turnId" | "status">),
+                    items: [
+                      {
+                        type: "collabAgentToolCall",
+                        tool: "spawnAgent",
+                        receiverThreadIds: observedThreadIds ?? [],
+                      },
+                    ],
                   },
-                  items: [
-                    {
-                      type: "collabAgentToolCall",
-                      tool: "spawnAgent",
-                      receiverThreadIds: observedThreadIds ?? [],
-                    },
-                  ],
-                },
-              ],
-            },
-          } as never;
-        },
+                ],
+              },
+            } as never;
+          }),
       } as unknown as CodexConversations["Service"]),
     ),
     Effect.provideService(
@@ -240,7 +254,7 @@ const buildDirectory = (input: {
       CodexAppServerCapabilities.of({
         forHost: () => Effect.succeed(input.capability),
         forThread: () => Effect.succeed(input.capability),
-        isCurrent: () => Effect.succeed(true),
+        isCurrent: input.isCurrent ?? (() => Effect.succeed(true)),
       }),
     ),
     Effect.provideService(
@@ -254,6 +268,199 @@ const buildDirectory = (input: {
     ),
   );
 };
+
+for (const scenario of [
+  { name: "full resident", itemsView: "full", empty: false, attach: false },
+  { name: "summary resident", itemsView: "summary", empty: false, attach: false },
+  { name: "complete empty", itemsView: "full", empty: true, attach: false },
+  { name: "skeleton only", itemsView: "notLoaded", empty: false, attach: true },
+] as const) {
+  it.effect(`opens selected ${scenario.name} canonical history without a presentation`, () =>
+    Effect.scoped(
+      Effect.gen(function* () {
+        const tailReads: string[] = [];
+        const initial = produce(
+          conversationFixture(
+            child.id,
+            scenario.empty ? [] : [{ ...turnFixture("child-turn"), itemsView: scenario.itemsView }],
+          ),
+          (draft) => {
+            replaceCanonicalHistoryDraft(draft, draft.turns, true, null);
+          },
+        );
+        const attached = produce(
+          conversationFixture(child.id, [turnFixture("child-turn")]),
+          (draft) => {
+            replaceCanonicalHistoryDraft(draft, draft.turns, true, null);
+          },
+        );
+        let canonical = initial;
+        const selected = (): CodexThreadDirectoryEntry => ({
+          ...rootDirectoryEntry,
+          durable: { ...rootDirectoryEntry.durable, threadId: child.id, parentThreadId: "root-a" },
+          summary: { ...rootDirectoryEntry.summary, archived: false },
+          canonical,
+          snapshot: null,
+        });
+        const service = yield* buildDirectory({
+          capability,
+          read: (input) => {
+            assert.strictEqual(input.kind, "subagent_overview_item");
+            return Effect.succeed({
+              commit_head: 1,
+              value: {
+                kind: "subagent_overview_item",
+                projection_revision: 17,
+                item: { thread: { archived: false }, status: "done", evidence: null },
+              },
+            } as unknown as ProjectWorkspaceReadSnapshot);
+          },
+          apply: () => Effect.die("selected hydration must not mutate the overview"),
+          requestOnHost: (() =>
+            Effect.die("selected hydration delegates history reads")) as RequestOnHost,
+          resolve: ({ threadId, fidelity }) =>
+            Effect.sync(() => {
+              if (threadId === "root-a") return rootDirectoryEntry;
+              assert.strictEqual(threadId, child.id);
+              if (fidelity === "tail") {
+                tailReads.push(threadId);
+                canonical = attached;
+              }
+              return selected();
+            }),
+          readConversation: (id) =>
+            id === child.id
+              ? {
+                  generation: 8,
+                  historyCheckpoint: [8, canonical.turnHistory!.history.generation, 13],
+                  canonicalState: canonical,
+                  snapshot: null,
+                }
+              : null,
+        });
+        const result = yield* service.hydrateSelected({
+          rootThreadId: "root-a",
+          threadId: child.id,
+        });
+        assert.strictEqual(result.outcome, "ready");
+        assert.strictEqual(result.fidelity, scenario.attach ? "attachedSparse" : "residentSparse");
+        assert.isTrue(result.canInteract);
+        assert.strictEqual(
+          result.checkpoint,
+          JSON.stringify([8, canonical.turnHistory!.history.generation, 13]),
+        );
+        assert.deepEqual(tailReads, scenario.attach ? [child.id] : []);
+      }),
+    ),
+  );
+}
+
+for (const transition of [
+  "child replacement",
+  "child retirement",
+  "root replacement",
+  "history release",
+  "host reconnect",
+] as const) {
+  it.effect(`rejects selected history invalidated by ${transition} during authority lookup`, () =>
+    Effect.scoped(
+      Effect.gen(function* () {
+        const admitted = yield* Deferred.make<void>();
+        const release = yield* Deferred.make<void>();
+        const initial = produce(
+          conversationFixture(child.id, [turnFixture("child-turn")]),
+          (draft) => {
+            replaceCanonicalHistoryDraft(draft, draft.turns, true, null);
+          },
+        );
+        let canonical = initial;
+        let childGeneration: number | null = 8;
+        let rootGeneration = 3;
+        let hostCurrent = true;
+        const service = yield* buildDirectory({
+          capability,
+          isCurrent: () => Effect.succeed(hostCurrent),
+          read: (input) => {
+            assert.strictEqual(input.kind, "subagent_overview_item");
+            return Deferred.succeed(admitted, undefined).pipe(
+              Effect.andThen(Deferred.await(release)),
+              Effect.as({
+                commit_head: 1,
+                value: {
+                  kind: "subagent_overview_item",
+                  projection_revision: 17,
+                  item: { thread: { archived: false }, status: "done", evidence: null },
+                },
+              } as unknown as ProjectWorkspaceReadSnapshot),
+            );
+          },
+          apply: () => Effect.die("selected hydration must not mutate overview authority"),
+          requestOnHost: (() =>
+            Effect.die("resident history needs no native read")) as RequestOnHost,
+          resolve: ({ threadId, fidelity }) => {
+            assert.strictEqual(fidelity, "durable");
+            if (threadId === "root-a") return Effect.succeed(rootDirectoryEntry);
+            return Effect.succeed({
+              ...rootDirectoryEntry,
+              durable: {
+                ...rootDirectoryEntry.durable,
+                threadId: child.id,
+                parentThreadId: "root-a",
+              },
+              summary: { ...rootDirectoryEntry.summary, archived: false },
+              canonical,
+              snapshot: null,
+            });
+          },
+          readConversation: (id) => {
+            if (id === "root-a")
+              return {
+                generation: rootGeneration,
+                historyCheckpoint: [rootGeneration, 0, 0],
+                canonicalState: conversationFixture("root-a"),
+                snapshot: null,
+              };
+            if (id !== child.id || childGeneration === null) return null;
+            return {
+              generation: childGeneration,
+              historyCheckpoint: [childGeneration, 1, 13],
+              canonicalState: canonical,
+              snapshot: null,
+            };
+          },
+        });
+        const pending = yield* Effect.forkChild(
+          service.hydrateSelected({ rootThreadId: "root-a", threadId: child.id }),
+        );
+        yield* Deferred.await(admitted);
+        if (transition === "child replacement") childGeneration = 9;
+        if (transition === "child retirement") childGeneration = null;
+        if (transition === "root replacement") rootGeneration = 4;
+        if (transition === "history release")
+          canonical = {
+            ...initial,
+            turns: [],
+            turnHistory: undefined,
+            turnsPagination: undefined,
+            resumeState: "needs_resume",
+          };
+        if (transition === "host reconnect") hostCurrent = false;
+        yield* Deferred.succeed(release, undefined);
+        const result = yield* Fiber.join(pending);
+        assert.strictEqual(
+          result.outcome,
+          transition === "history release" ? "unavailable" : "failed",
+        );
+        assert.isFalse(result.canInteract);
+        assert.strictEqual(result.fidelity, "metadata");
+        if (transition !== "history release") {
+          assert.isNull(result.checkpoint);
+          assert.strictEqual(result.errorMessage, "Selected Thread changed while opening");
+        }
+      }),
+    ),
+  );
+}
 
 it.effect("rejects an ACP root before reading Codex capabilities or remote topology", () =>
   Effect.scoped(
@@ -286,6 +493,87 @@ it.effect("rejects an ACP root before reading Codex capabilities or remote topol
     }),
   ),
 );
+
+for (const kind of ["interacted", "interrupted", "completed"] as const) {
+  it.effect(`does not infer an undiscovered child from resident ${kind} activity`, () =>
+    Effect.scoped(
+      Effect.gen(function* () {
+        let complete = false;
+        let continuation: string | null = null;
+        const requests: string[] = [];
+        const canonicalState = produce(
+          conversationFixture("root-a", [
+            {
+              ...turnFixture("parent-turn"),
+              items: [
+                {
+                  type: "subAgentActivity",
+                  id: "activity",
+                  kind,
+                  agentThreadId: "unrelated",
+                  agentPath: "/root/unrelated",
+                },
+              ],
+            },
+          ]),
+          (draft) => {
+            replaceCanonicalHistoryDraft(draft, draft.turns, true, null);
+          },
+        );
+        const service = yield* buildDirectory({
+          capability,
+          readConversation: (id) =>
+            id === "root-a"
+              ? { generation: 1, historyCheckpoint: [1, 0, 0], canonicalState, snapshot: null }
+              : null,
+          read: () =>
+            Effect.succeed({
+              commit_head: 1,
+              contract_version: 1,
+              store_epoch: "test-store",
+              value: {
+                kind: "subagent_overview_window",
+                overview: {
+                  universe: {
+                    host_id: capability.hostId,
+                    source_epoch: `${capability.hostId}:${capability.userAgent}`,
+                    generation: capability.generation,
+                    root_thread_id: "root-a",
+                  },
+                  active: { items: [], next_cursor: null, authority: { projection_revision: 1 } },
+                  done: { items: [], next_cursor: null, authority: { projection_revision: 1 } },
+                  known_active_count: 0,
+                  known_done_count: 0,
+                  discovery_complete: complete,
+                  discovery_continuation: continuation,
+                  projection_revision: 1,
+                },
+              },
+            } satisfies ProjectWorkspaceReadSnapshot),
+          apply: (input) =>
+            Effect.sync(() => {
+              if (input.intent.kind === "observe_subagent_discovery_page") {
+                assert.deepEqual(input.intent.observations, []);
+                complete = input.intent.complete;
+                continuation = input.intent.continuation ?? null;
+              }
+              return {} as never;
+            }),
+          requestOnHost: ((_hostId: string, method: string) =>
+            Effect.sync(() => {
+              requests.push(method);
+              assert.strictEqual(method, "thread/list");
+              return { data: [], nextCursor: null, backwardsCursor: null };
+            })) as RequestOnHost,
+        });
+        const result = yield* service.readOverview({ rootThreadId: "root-a", mode: "expanded" });
+        assert.strictEqual(result.completeness, "complete");
+        assert.deepEqual(requests, ["thread/list"]);
+        assert.deepEqual(result.active.rows, []);
+      }),
+    ),
+  );
+}
 
 it.effect(
   "reconciles a terminal child after app-server replacement without a replayed notification",
@@ -541,7 +829,8 @@ it.effect("retains status-before-identity when Core buffering is temporarily una
         Effect.sync(() => {
           requests.push({ method, params, options });
           assert.strictEqual(hostId, "remote-a");
-          return { data: [], nextCursor: null, backwardsCursor: null };
+          assert.strictEqual(method, "thread/list");
+          return { data: [child], nextCursor: null, backwardsCursor: null };
         })) as RequestOnHost;
       const service = yield* buildDirectory({
         capability,
@@ -595,20 +884,24 @@ it.effect("retains status-before-identity when Core buffering is temporarily una
         "the stronger pending status must merge after identity",
       );
       assert.isFalse(complete, "a compact activity item must not claim complete discovery");
+      assert.deepEqual(requests, [], "notification admission does not wait for discovery");
 
       const result = yield* service.readOverview({ rootThreadId: "root-a", mode: "initial" });
 
-      assert.include(["incomplete", "complete"], result.completeness);
+      assert.strictEqual(result.completeness, "complete");
       assert.strictEqual(result.active.knownCount, 1);
       assert.deepEqual(
         result.active.rows.map((row) => row.threadId),
         ["child-a"],
       );
       assert.deepEqual(
-        requests,
-        [],
-        "the active Thread owner must not be duplicated for discovery",
+        requests.map((request) => request.method),
+        ["thread/list"],
       );
+      assert.containSubset(requests[0], {
+        params: { ancestorThreadId: "root-a", sourceKinds: ["subAgentThreadSpawn"] },
+        options: { expectedHostId: "remote-a", expectedGeneration: 7 },
+      });
     }),
   ),
 );
@@ -738,112 +1031,131 @@ it.effect("durably merges completion-before-row after a Directory restart", () =
   ),
 );
 
-it.effect("single-flights concurrent initial discovery for the same root universe", () =>
-  Effect.scoped(
-    Effect.gen(function* () {
-      let complete = false;
-      let observed = false;
-      let requestCount = 0;
-      const requestStarted = yield* Deferred.make<void>();
-      const releaseRequest = yield* Deferred.make<void>();
-      const overview = (): Overview =>
-        ({
-          universe: {
-            host_id: "remote-a",
-            source_epoch: "remote-a:codex-app-server/0.150.0-alpha.12",
-            generation: 7,
-            root_thread_id: "root-a",
-          },
-          active: {
-            items: observed
-              ? [
-                  {
-                    thread: {
-                      thread_id: child.id,
-                      parent_thread_id: "root-a",
-                      thread_name: child.name,
-                      thread_preview: child.preview,
-                      model_provider: child.modelProvider,
-                      model_id: "gpt-test",
-                      agent_nickname: child.agentNickname,
-                      agent_role: child.agentRole,
-                      agent_path: "root-a/Scout",
-                      archived: false,
-                      created_at: 100_000,
-                      updated_at: 120_000,
-                      recency_at: 120_000,
+it.effect.each(["overlapping", "delayed-snapshot"] as const)(
+  "single-flights initial discovery when a concurrent overview is %s",
+  (timing) =>
+    Effect.scoped(
+      Effect.gen(function* () {
+        let complete = false;
+        let observed = false;
+        let requestCount = 0;
+        const requestStarted = yield* Deferred.make<void>();
+        const releaseRequest = yield* Deferred.make<void>();
+        const overviewCaptured = yield* Deferred.make<void>();
+        const releaseOverview = yield* Deferred.make<void>();
+        let holdNextOverview = false;
+        const overview = (): Overview =>
+          ({
+            universe: {
+              host_id: "remote-a",
+              source_epoch: "remote-a:codex-app-server/0.150.0-alpha.12",
+              generation: 7,
+              root_thread_id: "root-a",
+            },
+            active: {
+              items: observed
+                ? [
+                    {
+                      thread: {
+                        thread_id: child.id,
+                        parent_thread_id: "root-a",
+                        thread_name: child.name,
+                        thread_preview: child.preview,
+                        model_provider: child.modelProvider,
+                        model_id: "gpt-test",
+                        agent_nickname: child.agentNickname,
+                        agent_role: child.agentRole,
+                        agent_path: "root-a/Scout",
+                        archived: false,
+                        created_at: 100_000,
+                        updated_at: 120_000,
+                        recency_at: 120_000,
+                      },
+                      status: "active",
+                      evidence: null,
                     },
-                    status: "active",
-                    evidence: null,
-                  },
-                ]
-              : [],
-            next_cursor: null,
-            authority: { projection_revision: observed ? 2 : 1 },
-          },
-          done: {
-            items: [],
-            next_cursor: null,
-            authority: { projection_revision: observed ? 2 : 1 },
-          },
-          known_active_count: observed ? 1 : 0,
-          known_done_count: 0,
-          discovery_complete: complete,
-          discovery_continuation: null,
-          projection_revision: observed ? 2 : 1,
-        }) as unknown as Overview;
-      const service = yield* buildDirectory({
-        capability,
-        read: () =>
-          Effect.succeed({
-            commit_head: observed ? 2 : 1,
-            value: { kind: "subagent_overview_window", overview: overview() },
-          } as unknown as ProjectWorkspaceReadSnapshot),
-        apply: (input) =>
-          Effect.sync(() => {
-            if (input.intent.kind === "observe_subagent_discovery_page") {
-              observed = input.intent.observations.some(
-                (observation) => observation.thread_id === child.id,
-              );
-              complete = input.intent.complete;
-            }
-            return {} as never;
-          }),
-        requestOnHost: ((_hostId: string, method: string) => {
-          assert.strictEqual(method, "thread/list");
-          return Effect.gen(function* () {
-            requestCount += 1;
-            yield* Deferred.succeed(requestStarted, undefined);
-            yield* Deferred.await(releaseRequest);
-            return { data: [child], nextCursor: null, backwardsCursor: null };
-          });
-        }) as RequestOnHost,
-      });
+                  ]
+                : [],
+              next_cursor: null,
+              authority: { projection_revision: observed ? 2 : 1 },
+            },
+            done: {
+              items: [],
+              next_cursor: null,
+              authority: { projection_revision: observed ? 2 : 1 },
+            },
+            known_active_count: observed ? 1 : 0,
+            known_done_count: 0,
+            discovery_complete: complete,
+            discovery_continuation: null,
+            projection_revision: observed ? 2 : 1,
+          }) as unknown as Overview;
+        const service = yield* buildDirectory({
+          capability,
+          read: () =>
+            Effect.gen(function* () {
+              const response = {
+                commit_head: observed ? 2 : 1,
+                value: { kind: "subagent_overview_window", overview: overview() },
+              } as unknown as ProjectWorkspaceReadSnapshot;
+              if (holdNextOverview) {
+                holdNextOverview = false;
+                yield* Deferred.succeed(overviewCaptured, undefined);
+                yield* Deferred.await(releaseOverview);
+              }
+              return response;
+            }),
+          apply: (input) =>
+            Effect.sync(() => {
+              if (input.intent.kind === "observe_subagent_discovery_page") {
+                observed = input.intent.observations.some(
+                  (observation) => observation.thread_id === child.id,
+                );
+                complete = input.intent.complete;
+              }
+              return {} as never;
+            }),
+          requestOnHost: ((_hostId: string, method: string) => {
+            assert.strictEqual(method, "thread/list");
+            return Effect.gen(function* () {
+              requestCount += 1;
+              yield* Deferred.succeed(requestStarted, undefined);
+              yield* Deferred.await(releaseRequest);
+              return { data: [child], nextCursor: null, backwardsCursor: null };
+            });
+          }) as RequestOnHost,
+        });
 
-      const first = yield* Effect.forkChild(
-        service.readOverview({ rootThreadId: "root-a", mode: "initial" }),
-      );
-      yield* Deferred.await(requestStarted);
-      const second = yield* Effect.forkChild(
-        service.readOverview({ rootThreadId: "root-a", mode: "initial" }),
-      );
-      yield* Effect.yieldNow;
-      assert.strictEqual(requestCount, 1);
-      yield* Deferred.succeed(releaseRequest, undefined);
-      const [firstResult, secondResult] = yield* Effect.all(
-        [Fiber.join(first), Fiber.join(second)],
-        { concurrency: "unbounded" },
-      );
-      assert.strictEqual(requestCount, 1);
-      for (const result of [firstResult, secondResult]) {
-        assert.strictEqual(result.completeness, "complete");
-        assert.deepEqual(
-          result.active.rows.map((row) => row.threadId),
-          [child.id],
+        const first = yield* Effect.forkChild(
+          service.readOverview({ rootThreadId: "root-a", mode: "initial" }),
         );
-      }
-    }),
-  ),
+        yield* Deferred.await(requestStarted);
+        holdNextOverview = timing === "delayed-snapshot";
+        const second = yield* Effect.forkChild(
+          service.readOverview({ rootThreadId: "root-a", mode: "initial" }),
+        );
+        if (timing === "delayed-snapshot") yield* Deferred.await(overviewCaptured);
+        else yield* Effect.yieldNow;
+        assert.strictEqual(requestCount, 1);
+        yield* Deferred.succeed(releaseRequest, undefined);
+        if (timing === "delayed-snapshot") {
+          yield* Fiber.join(first);
+          yield* Deferred.succeed(releaseOverview, undefined);
+        }
+        const [firstResult, secondResult] = yield* Effect.all(
+          [Fiber.join(first), Fiber.join(second)],
+          { concurrency: "unbounded" },
+        );
+        assert.strictEqual(requestCount, 1);
+        for (const result of [firstResult, secondResult]) {
+          assert.strictEqual(result.completeness, "complete");
+          assert.deepEqual(
+            result.active.rows.map((row) => row.threadId),
+            [child.id],
+          );
+        }
+      }),
+    ),
 );
 
 it.effect("recovers repeated ancestor and legacy cursors without poisoning page identity", () =>
@@ -1443,117 +1755,148 @@ it.effect("bounds child-before-parent spawn admission by count and bytes", () =>
   ),
 );
 
-it.effect("repairs a non-empty but stale state-db result before declaring discovery complete", () =>
-  Effect.scoped(
-    Effect.gen(function* () {
-      const staleChild = {
-        ...child,
-        id: "child-stale",
-        sessionId: "session-child-stale",
-        name: "Stale scout",
-      } satisfies Thread;
-      const observed = new Map<string, Thread>();
-      let complete = false;
-      const stateDbModes: boolean[] = [];
-      const overview = (): Overview =>
-        ({
-          universe: {
-            host_id: "remote-a",
-            source_epoch: "remote-a:codex-app-server/0.150.0-alpha.12",
-            generation: 7,
-            root_thread_id: "root-a",
-          },
-          active: {
-            items: [...observed.values()].map((thread) => ({
-              thread: {
-                thread_id: thread.id,
-                parent_thread_id: "root-a",
-                thread_name: thread.name,
-                thread_preview: thread.preview,
-                model_provider: thread.modelProvider,
-                model_id: "gpt-test",
-                agent_nickname: thread.agentNickname,
-                agent_role: thread.agentRole,
-                agent_path: null,
-                archived: false,
-                created_at: 100_000,
-                updated_at: 120_000,
-                recency_at: 120_000,
+for (const storage of ["resident", "overlay"] as const) {
+  it.effect(
+    `repairs a stale state-db result using ${storage} spawn evidence before completing discovery`,
+    () =>
+      Effect.scoped(
+        Effect.gen(function* () {
+          const staleChild = {
+            ...child,
+            id: "child-stale",
+            sessionId: "session-child-stale",
+            name: "Stale scout",
+          } satisfies Thread;
+          const observed = new Map<string, Thread>();
+          let complete = false;
+          const stateDbModes: boolean[] = [];
+          const overview = (): Overview =>
+            ({
+              universe: {
+                host_id: "remote-a",
+                source_epoch: "remote-a:codex-app-server/0.150.0-alpha.12",
+                generation: 7,
+                root_thread_id: "root-a",
               },
-              status: "unknown",
-              evidence: null,
-            })),
-            next_cursor: null,
-            authority: { projection_revision: observed.size + 1 },
-          },
-          done: {
-            items: [],
-            next_cursor: null,
-            authority: { projection_revision: observed.size + 1 },
-          },
-          known_active_count: observed.size,
-          known_done_count: 0,
-          discovery_complete: complete,
-          discovery_continuation: null,
-          projection_revision: observed.size + 1,
-        }) as unknown as Overview;
-      const read: CoreModuleClients["workspace"]["read"] = () =>
-        Effect.succeed({
-          commit_head: observed.size + 1,
-          value: { kind: "subagent_overview_window", overview: overview() },
-        } as unknown as ProjectWorkspaceReadSnapshot);
-      const apply: CoreModuleClients["workspace"]["apply"] = (input) =>
-        Effect.sync(() => {
-          if (input.intent.kind !== "observe_subagent_discovery_page") return {} as never;
-          for (const observation of input.intent.observations) {
-            observed.set(
-              observation.thread_id,
-              observation.thread_id === child.id ? child : staleChild,
+              active: {
+                items: [...observed.values()].map((thread) => ({
+                  thread: {
+                    thread_id: thread.id,
+                    parent_thread_id: "root-a",
+                    thread_name: thread.name,
+                    thread_preview: thread.preview,
+                    model_provider: thread.modelProvider,
+                    model_id: "gpt-test",
+                    agent_nickname: thread.agentNickname,
+                    agent_role: thread.agentRole,
+                    agent_path: null,
+                    archived: false,
+                    created_at: 100_000,
+                    updated_at: 120_000,
+                    recency_at: 120_000,
+                  },
+                  status: "unknown",
+                  evidence: null,
+                })),
+                next_cursor: null,
+                authority: { projection_revision: observed.size + 1 },
+              },
+              done: {
+                items: [],
+                next_cursor: null,
+                authority: { projection_revision: observed.size + 1 },
+              },
+              known_active_count: observed.size,
+              known_done_count: 0,
+              discovery_complete: complete,
+              discovery_continuation: null,
+              projection_revision: observed.size + 1,
+            }) as unknown as Overview;
+          const read: CoreModuleClients["workspace"]["read"] = () =>
+            Effect.succeed({
+              commit_head: observed.size + 1,
+              value: { kind: "subagent_overview_window", overview: overview() },
+            } as unknown as ProjectWorkspaceReadSnapshot);
+          const apply: CoreModuleClients["workspace"]["apply"] = (input) =>
+            Effect.sync(() => {
+              if (input.intent.kind !== "observe_subagent_discovery_page") return {} as never;
+              for (const observation of input.intent.observations) {
+                observed.set(
+                  observation.thread_id,
+                  observation.thread_id === child.id ? child : staleChild,
+                );
+              }
+              complete = input.intent.complete;
+              return {} as never;
+            });
+          const requestOnHost = ((_hostId: string, method: string, rawParams: unknown) =>
+            Effect.sync(() => {
+              const params = rawParams as {
+                readonly threadId?: string;
+                readonly useStateDbOnly?: boolean;
+              };
+              if (method === "thread/read") {
+                assert.strictEqual(params.threadId, child.id);
+                return { thread: child };
+              }
+              if (method === "thread/turns/list") {
+                return { data: [], nextCursor: null, backwardsCursor: null };
+              }
+              assert.strictEqual(method, "thread/list");
+              stateDbModes.push(params.useStateDbOnly === true);
+              return {
+                data: [staleChild],
+                nextCursor: null,
+                backwardsCursor: null,
+              };
+            })) as RequestOnHost;
+          const initial = conversationFixture("root-a", [
+            {
+              ...turnFixture("observed-spawn"),
+              items: [
+                {
+                  type: "subAgentActivity",
+                  id: "observed-spawn-item",
+                  kind: "started",
+                  agentThreadId: child.id,
+                  agentPath: "/root/scout",
+                },
+              ],
+            },
+          ]);
+          const resident = produce(initial, (draft) => {
+            replaceCanonicalHistoryDraft(
+              draft,
+              storage === "overlay" ? [] : draft.turns,
+              true,
+              null,
             );
-          }
-          complete = input.intent.complete;
-          return {} as never;
-        });
-      const requestOnHost = ((_hostId: string, method: string, rawParams: unknown) =>
-        Effect.sync(() => {
-          const params = rawParams as {
-            readonly threadId?: string;
-            readonly useStateDbOnly?: boolean;
-          };
-          if (method === "thread/read") {
-            assert.strictEqual(params.threadId, child.id);
-            return { thread: child };
-          }
-          if (method === "thread/turns/list") {
-            return { data: [], nextCursor: null, backwardsCursor: null };
-          }
-          assert.strictEqual(method, "thread/list");
-          stateDbModes.push(params.useStateDbOnly === true);
-          return {
-            data: [staleChild],
-            nextCursor: null,
-            backwardsCursor: null,
-          };
-        })) as RequestOnHost;
-      const service = yield* buildDirectory({
-        capability,
-        read,
-        apply,
-        requestOnHost,
-        observedSubagentThreadIds: [child.id],
-      });
+          });
+          const canonicalState =
+            storage === "overlay" ? { ...resident, turns: initial.turns } : resident;
+          const service = yield* buildDirectory({
+            capability,
+            read,
+            apply,
+            requestOnHost,
+            readConversation: (id) =>
+              id === "root-a"
+                ? { generation: 1, historyCheckpoint: [1, 0, 0], canonicalState, snapshot: null }
+                : null,
+          });
 
-      const result = yield* service.readOverview({ rootThreadId: "root-a", mode: "expanded" });
+          const result = yield* service.readOverview({ rootThreadId: "root-a", mode: "expanded" });
 
-      assert.deepEqual(stateDbModes, [true, false]);
-      assert.strictEqual(result.completeness, "complete");
-      assert.deepEqual(
-        result.active.rows.map((row) => row.threadId).sort(),
-        [child.id, staleChild.id].sort(),
-      );
-    }),
-  ),
-);
+          assert.deepEqual(stateDbModes, [true, false]);
+          assert.strictEqual(result.completeness, "complete");
+          assert.deepEqual(
+            result.active.rows.map((row) => row.threadId).sort(),
+            [child.id, staleChild.id].sort(),
+          );
+        }),
+      ),
+  );
+}
 
 it.effect(
   "repairs a nested edge from bounded parent history when state-db and started miss it",
@@ -1677,6 +2020,27 @@ it.effect(
                       model: null,
                       reasoningEffort: null,
                       agentsStates: {},
+                    },
+                    {
+                      type: "subAgentActivity",
+                      id: "unrelated-completed",
+                      kind: "completed",
+                      agentThreadId: "not-a-child",
+                      agentPath: "/other",
+                    },
+                    {
+                      type: "subAgentActivity",
+                      id: "unrelated-interacted",
+                      kind: "interacted",
+                      agentThreadId: "not-a-child",
+                      agentPath: "/other",
+                    },
+                    {
+                      type: "subAgentActivity",
+                      id: "unrelated-interrupted",
+                      kind: "interrupted",
+                      agentThreadId: "not-a-child",
+                      agentPath: "/other",
                     },
                   ],
                   error: null,
@@ -1862,11 +2226,7 @@ it.effect("resumes bounded direct-parent BFS when an older host lacks ancestor f
         ...capability,
         userAgent: "codex-app-server/0.149.0",
         version: "0.149.0",
-        flags: {
-          ...capability.flags,
-          subagentAncestorFilter: false,
-          multiAgentV2Protocol: false,
-        },
+        flags: { ...capability.flags, subagentAncestorFilter: false, multiAgentV2Protocol: false },
       };
       const nestedChild: Thread = {
         ...child,

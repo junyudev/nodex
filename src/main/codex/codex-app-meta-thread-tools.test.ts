@@ -39,6 +39,7 @@ describe("codex app meta thread tool specs", () => {
           "set_thread_archived",
           "set_thread_pinned",
           "set_thread_title",
+          "wait_threads",
         ].sort(),
       ),
     );

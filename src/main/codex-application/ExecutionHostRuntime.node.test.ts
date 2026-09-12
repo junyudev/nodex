@@ -111,6 +111,7 @@ const makeHarness = (
   const registered = new Map<string, CodexExecutionHostConfig>();
   const removed: string[] = [];
   const shutdowns: string[] = [];
+  const workerRequests: unknown[] = [];
   const failedHosts = new Set(failedHostId ? [failedHostId] : []);
   const unsupported = () => Effect.die(new Error("Unsupported test operation"));
   const gateway = CodexGateway.of({
@@ -168,7 +169,12 @@ const makeHarness = (
         Effect.succeed(
           WorktreeWorkerRuntime.of({
             hostId,
-            request: () => Effect.die("unused"),
+            request: ((request: { readonly operation: string }) =>
+              Effect.sync(() => {
+                workerRequests.push(request);
+                if (request.operation === "git-root") return { root: `/remote/${hostId}/repo` };
+                throw new Error(`Unsupported test operation: ${request.operation}`);
+              })) as WorktreeWorkerRuntime["Service"]["request"],
           }),
         ),
         () =>
@@ -208,7 +214,7 @@ const makeHarness = (
       ),
     ),
   );
-  return { failedHosts, layer, registered, removed, shutdowns };
+  return { failedHosts, layer, registered, removed, shutdowns, workerRequests };
 };
 
 it.effect("owns local and dynamic SSH host resources until its Scope closes", () =>
@@ -239,6 +245,31 @@ it.effect("owns local and dynamic SSH host resources until its Scope closes", ()
     assert.deepEqual(yield* hosts.hosts(), []);
     assert.deepEqual(harness.removed, ["alpha", "alpha"]);
     assert.deepEqual(harness.shutdowns, ["alpha", "alpha"]);
+  }),
+);
+
+it.effect("routes git-root through the selected execution host worker", () =>
+  Effect.gen(function* () {
+    const harness = makeHarness();
+    const scope = yield* Scope.make();
+    const context = yield* Layer.buildWithScope(harness.layer, scope);
+    const hosts = Context.get(context, ExecutionHostRuntime);
+
+    yield* hosts.updateSettings({ sshHosts: [sshHost("builder")] });
+    const host = yield* hosts.resolve("builder", "git-root");
+    const result = yield* host.request({
+      operation: "git-root",
+      input: { requestId: "git-root:1", hostId: "builder", cwd: "/remote/builder/workspace" },
+    });
+
+    assert.deepEqual(result, { root: "/remote/builder/repo" });
+    assert.deepEqual(harness.workerRequests, [
+      {
+        operation: "git-root",
+        input: { requestId: "git-root:1", hostId: "builder", cwd: "/remote/builder/workspace" },
+      },
+    ]);
+    yield* Scope.close(scope, Exit.void);
   }),
 );
 

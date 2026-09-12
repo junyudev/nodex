@@ -1,6 +1,7 @@
 import { assert, it } from "@effect/vitest";
 import * as Effect from "effect/Effect";
 import * as Stream from "effect/Stream";
+import * as PubSub from "effect/PubSub";
 import type { CodexConnectionState } from "../../shared/types";
 import { RemoteHostedPipRuntime } from "../host-runtime/RemoteHostedPipRuntime";
 import { CodexApplicationEventHub, type CodexApplicationEvent } from "./CodexApplicationEventHub";
@@ -8,7 +9,6 @@ import { CodexConnection } from "./CodexConnection";
 import { make } from "./CodexConnectionLifecycle";
 import { CodexPendingServerRequestRuntime } from "./CodexPendingServerRequestRuntime";
 import { CodexProtocolNotificationEffects } from "./CodexProtocolNotificationEffects";
-import { CodexRendererConversationCoordinator } from "./CodexRendererConversationCoordinator";
 import { CodexSidebarSyncRuntime } from "./CodexSidebarSyncRuntime";
 import { CodexSubagentDirectory } from "./CodexSubagentDirectory";
 import { CodexUserInputAutoResolution } from "./CodexUserInputAutoResolution";
@@ -18,11 +18,20 @@ it.effect("settles a lost generation and marks loaded conversations before recon
   Effect.gen(function* () {
     const trace: string[] = [];
     const published: CodexApplicationEvent[] = [];
+    const transitions = yield* PubSub.unbounded<ReadonlyMap<string, CodexConnectionState>>();
+    const native = { sourceEpoch: "endpoint", transportKind: "websocket" as const, generation: 1 };
+    const disconnected: Array<{ hostId: string; generation: number | undefined }> = [];
+    const resolved: Array<{ hostId: string; generation: number }> = [];
     const runtime = yield* make.pipe(
       Effect.provideService(
         CodexConnection,
         CodexConnection.of({
+          readAll: Effect.succeed(
+            new Map([["local", { status: "connected" as const, retries: 0, native }]]),
+          ),
+          allChanges: Stream.fromPubSub(transitions),
           read: Effect.succeed({ status: "connected", retries: 0, lastConnectedAt: 1 }),
+          readForHost: () => Effect.succeed({ status: "connected", retries: 0 }),
           changes: Stream.empty,
         }),
       ),
@@ -36,14 +45,18 @@ it.effect("settles a lost generation and marks loaded conversations before recon
       Effect.provideService(
         CodexPendingServerRequestRuntime,
         CodexPendingServerRequestRuntime.of({
-          disconnectIdentities: () => [{ threadId: "thread-1", requestId: 7 }],
+          disconnectIdentities: (hostId: string, generation?: number) => {
+            disconnected.push({ hostId, generation });
+            return [{ threadId: "thread-1", requestId: 7, generation: generation ?? 1 }];
+          },
         } as unknown as CodexPendingServerRequestRuntime["Service"]),
       ),
       Effect.provideService(
         CodexProtocolNotificationEffects,
         CodexProtocolNotificationEffects.of({
-          apply: ({ notification }) =>
+          apply: ({ notification, hostId, generation }) =>
             Effect.sync(() => {
+              resolved.push({ hostId, generation });
               assert.strictEqual(notification.method, "serverRequest/resolved");
               if (notification.method !== "serverRequest/resolved") return;
               trace.push(`${notification.method}:${notification.params.requestId}`);
@@ -53,7 +66,14 @@ it.effect("settles a lost generation and marks loaded conversations before recon
       Effect.provideService(
         CodexSidebarSyncRuntime,
         CodexSidebarSyncRuntime.of({
-          sync: () => Effect.sync(() => trace.push("sidebar")).pipe(Effect.as({} as never)),
+          sync: (input: Parameters<CodexSidebarSyncRuntime["Service"]["sync"]>[0]) =>
+            Effect.sync(() => {
+              assert.deepEqual(input, {
+                policy: "force",
+                reason: "app-server-reconnect",
+              });
+              trace.push("sidebar");
+            }).pipe(Effect.as({} as never)),
         } as unknown as CodexSidebarSyncRuntime["Service"]),
       ),
       Effect.provideService(
@@ -64,28 +84,28 @@ it.effect("settles a lost generation and marks loaded conversations before recon
         } as unknown as CodexSubagentDirectory["Service"]),
       ),
       Effect.provideService(
-        CodexRendererConversationCoordinator,
-        CodexRendererConversationCoordinator.of({
-          resetTransport: (threadIds: readonly string[]) =>
-            trace.push(`renderer-reset:${threadIds.join(",")}`),
-        } as unknown as CodexRendererConversationCoordinator["Service"]),
-      ),
-      Effect.provideService(
         CodexUserInputAutoResolution,
         CodexUserInputAutoResolution.of({
-          handleDisconnect: Effect.sync(() => trace.push("auto-resolution")),
+          handleDisconnect: (hostId: string, generation?: number) =>
+            Effect.sync(() => {
+              assert.strictEqual(generation, hostId === "local" ? 1 : 7);
+              trace.push("auto-resolution");
+            }),
         } as unknown as CodexUserInputAutoResolution["Service"]),
       ),
       Effect.provideService(
         ConversationEntityMap,
         ConversationEntityMap.of({
+          registerThreadMetadata: () => {},
+          readThreadMetadata: () => null,
           runCommand: (<A, E, R>(
             _threadId: string,
             operation: Effect.Effect<A, E, R>,
           ): Effect.Effect<A, E, R> => operation) as ConversationEntityMap["Service"]["runCommand"],
-          markAllNeedsResume: () => {
-            trace.push("mark-needs-resume");
-            return ["thread-1"];
+          forHost: (hostId: string) => {
+            assert.strictEqual(hostId, "local");
+            trace.push("read-local-threads");
+            return [{ threadId: "thread-1" }];
           },
         } as unknown as ConversationEntityMap["Service"]),
       ),
@@ -110,8 +130,7 @@ it.effect("settles a lost generation and marks loaded conversations before recon
       "pip-retire",
       "auto-resolution",
       "serverRequest/resolved:7",
-      "mark-needs-resume",
-      "renderer-reset:thread-1",
+      "read-local-threads",
       "sidebar",
       "subagents:thread-1",
     ]);
@@ -127,7 +146,45 @@ it.effect("settles a lost generation and marks loaded conversations before recon
           event.value.type === "sharedObjectUpdated" &&
           event.value.object.objectType === "connection",
       ).length,
-      2,
+      0,
     );
+    assert.deepEqual(disconnected, [{ hostId: "local", generation: 1 }]);
+    assert.deepEqual(resolved, [{ hostId: "local", generation: 1 }]);
+    trace.length = 0;
+    published.length = 0;
+    // Exercise the subscribed production host stream, including a new connection generation
+    // appearing in the starting event before the old generation's requests are retired.
+    yield* PubSub.publish(
+      transitions,
+      new Map([
+        [
+          "remote",
+          {
+            status: "connected",
+            retries: 0,
+            native: { ...native, generation: 7 },
+          },
+        ],
+      ]),
+    );
+    yield* Effect.yieldNow;
+    yield* PubSub.publish(
+      transitions,
+      new Map([
+        [
+          "remote",
+          {
+            status: "starting",
+            retries: 1,
+            native: { ...native, generation: 8 },
+          },
+        ],
+      ]),
+    );
+    for (let i = 0; i < 20 && resolved.length < 2; i++) yield* Effect.yieldNow;
+    assert.deepEqual(disconnected.at(-1), { hostId: "remote", generation: 7 });
+    assert.deepEqual(resolved.at(-1), { hostId: "remote", generation: 7 });
+    assert.deepEqual(trace, ["auto-resolution", "serverRequest/resolved:7"]);
+    assert.isEmpty(published);
   }),
 );

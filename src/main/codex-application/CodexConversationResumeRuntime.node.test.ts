@@ -1,3 +1,9 @@
+import {
+  CodexMainConversationResume,
+  MainConversationResumeError,
+} from "./CodexMainConversationResume";
+import type { ThreadResumeResponse } from "@nodex/codex-app-server-protocol/v2/ThreadResumeResponse";
+import { createCodexAppServerCapabilitySnapshot } from "../codex-runtime/CodexAppServerCapabilities";
 import { assert, it } from "@effect/vitest";
 import * as Context from "effect/Context";
 import * as Deferred from "effect/Deferred";
@@ -7,19 +13,11 @@ import * as Fiber from "effect/Fiber";
 import * as Layer from "effect/Layer";
 import * as Scope from "effect/Scope";
 import type { CodexConversationSnapshot } from "../../shared/types";
-import { CodexApplicationProtocol } from "./CodexApplicationProtocol";
-import { CodexConversationHistoryRuntime } from "./CodexConversationHistoryRuntime";
 import { CodexConversationRelationships } from "./CodexConversationRelationships";
+import { conversationFixture } from "./conversation-test-fixture";
+import { createCodexCanonicalWorkspacePermissionContext } from "../../shared/codex-conversation-state/codex-conversation-state";
 import { CodexFreshThreadLaunchRuntime } from "./CodexFreshThreadLaunchRuntime";
-import { CodexOwnerNotificationDrainRuntime } from "./CodexOwnerNotificationDrainRuntime";
-import { CodexPostResumeGoalRuntime } from "./CodexPostResumeGoalRuntime";
-import { CodexQueuedFollowUps } from "./CodexQueuedFollowUps";
 import { make } from "./CodexConversationResumeRuntime";
-import { CodexRendererConversationCoordinator } from "./CodexRendererConversationCoordinator";
-import {
-  CodexRendererConversationRegistry,
-  makeCodexRendererConversationRegistryState,
-} from "./CodexRendererConversationRegistry";
 import {
   CodexThreadDirectory,
   type CodexThreadDirectoryEntry,
@@ -31,6 +29,10 @@ import {
 } from "./internal/ConversationEntityMap";
 
 const threadId = "thread-resume";
+const permissionContext = {
+  requestedPermissions: createCodexCanonicalWorkspacePermissionContext([]),
+  runtimeWorkspaceRootCandidates: null,
+};
 const conversation = (): CodexConversationSnapshot =>
   ({
     threadId,
@@ -59,107 +61,36 @@ const entry = (
     snapshot,
   }) as CodexThreadDirectoryEntry;
 
-const emptyQueueProjection = () => ({
-  status: "ready" as const,
-  ledgerRevision: 0,
-  projectionRevision: 0,
-  entries: [],
-  inFlightFollowUpId: null,
-  editingFollowUpId: null,
-  error: null,
-});
-
 const build = Effect.fn("CodexConversationResumeRuntimeTest.build")(function* (
   scope: Scope.Scope,
   resolve: CodexThreadDirectory["Service"]["resolve"],
   relationships: CodexConversationRelationships["Service"] = CodexConversationRelationships.of({
     refresh: () => Effect.succeed([]),
   }),
-  readQueue: CodexQueuedFollowUps["Service"]["read"] = () => Effect.succeed(emptyQueueProjection()),
+  directoryMethods: Partial<CodexThreadDirectory["Service"]> = {},
 ) {
   const context = yield* Layer.buildWithScope(conversationRuntimeMapLive, scope);
   const conversations = Context.get(context, ConversationEntityMap);
-  const registry = makeCodexRendererConversationRegistryState();
-  const buffers = new Set<string>();
-  const directory = CodexThreadDirectory.of({ resolve } as CodexThreadDirectory["Service"]);
-  const protocol = CodexApplicationProtocol.of({
-    interpret: () => Effect.void,
-    observe: () => Effect.void,
-    beginResume: (id) => {
-      if (buffers.has(id)) return false;
-      buffers.add(id);
-      return true;
-    },
-    hasResume: (id) => buffers.has(id),
-    releaseResume: (id) => Effect.sync(() => void buffers.delete(id)),
-    discardResume: (id) => Effect.sync(() => void buffers.delete(id)),
-    clearConversationBuffer: () => Effect.void,
-    releaseThreadStart: () => Effect.void,
-  });
-  const coordinator = CodexRendererConversationCoordinator.of({
-    readRendererState: (id: string) => {
-      const state = conversations.current(id)?.read();
-      return {
-        acceptedConversation: state?.acceptedReplica?.conversation ?? null,
-        checkpoint: state?.acceptedReplica?.checkpoint ?? null,
-        ownerClientId: registry.getOwnerClientId(id),
-        resumeState: state?.resumeState ?? null,
-        revision: state?.revision ?? 0,
-      };
-    },
-    adoptRendererOwner: (
-      input: Parameters<CodexRendererConversationCoordinator["Service"]["adoptRendererOwner"]>[0],
-    ) =>
-      Effect.sync(() => {
-        const owner = registry.setOwner(input.conversationId, input.ownerClientId);
-        if (!owner) return { checkpoint: null, ownerClientId: null, revision: 0 };
-        const aggregate = conversations.entity(input.conversationId);
-        aggregate.setStreamRole("owner");
-        if (!aggregate.read().acceptedReplica) {
-          const conversation = aggregate.readSnapshot();
-          if (!conversation) return { checkpoint: null, ownerClientId: null, revision: 0 };
-          aggregate.acceptReplica({
-            conversation,
-            revision: aggregate.read().revision,
-            ownerEpoch: owner.ownerEpoch,
-          });
-        }
-        const state = aggregate.read();
-        return {
-          checkpoint: state.acceptedReplica?.checkpoint ?? null,
-          ownerClientId: registry.getOwnerClientId(input.conversationId),
-          revision: state.revision,
-        };
-      }),
-    reconcileOwnership: () => undefined,
-  } as unknown as CodexRendererConversationCoordinator["Service"]);
-  const queuedFollowUps = CodexQueuedFollowUps.of({
-    read: readQueue,
-    list: () => [],
-    enqueue: () => Effect.die("unused"),
-    remove: () => Effect.die("unused"),
-    replace: () => Effect.die("unused"),
-    reorder: () => Effect.die("unused"),
-    resumeInterrupted: () => Effect.die("unused"),
-    resolveAfterFreshStart: () => Effect.die("unused"),
-    requestDispatch: () => Effect.void,
-    sendNow: () => Effect.die("unused"),
-    acceptTerminalOutcomeInCurrentLane: () => Effect.die("unused"),
-    closeThread: () => Effect.void,
-  });
+  const directory = CodexThreadDirectory.of({
+    resolve,
+    ...directoryMethods,
+  } as CodexThreadDirectory["Service"]);
   const runtime = yield* make.pipe(
-    Effect.provideService(CodexApplicationProtocol, protocol),
-    Effect.provideService(
-      CodexConversationHistoryRuntime,
-      CodexConversationHistoryRuntime.of({
-        loadPage: () => Effect.die("unused"),
-        clear: () => undefined,
-      }),
-    ),
+    Effect.provideService(CodexMainConversationResume, {
+      resume: (id) =>
+        resolve({ threadId: id, fidelity: "live" }).pipe(
+          Effect.map((result) => ({
+            status: "ready" as const,
+            snapshot: result?.snapshot ?? null,
+          })),
+          Effect.mapError((cause) => new MainConversationResumeError({ threadId: id, cause })),
+        ),
+    }),
     Effect.provideService(CodexConversationRelationships, relationships),
     Effect.provideService(
       CodexFreshThreadLaunchRuntime,
       CodexFreshThreadLaunchRuntime.of({
+        prepare: () => Effect.die("unused native preparation"),
         register: () => undefined,
         reservation: () => null,
         adopt: () => Effect.die("unused"),
@@ -168,31 +99,6 @@ const build = Effect.fn("CodexConversationResumeRuntimeTest.build")(function* (
         clear: () => undefined,
       }),
     ),
-    Effect.provideService(
-      CodexOwnerNotificationDrainRuntime,
-      CodexOwnerNotificationDrainRuntime.of({
-        next: () => 1,
-        canAck: () => true,
-        ack: () => true,
-        awaitCurrent: () => Effect.void,
-        resetOwner: () => undefined,
-        release: () => undefined,
-        clear: () => undefined,
-      }),
-    ),
-    Effect.provideService(
-      CodexPostResumeGoalRuntime,
-      CodexPostResumeGoalRuntime.of({
-        hydrate: () => Effect.void,
-        request: () => undefined,
-        defer: () => undefined,
-        release: () => false,
-        clear: () => undefined,
-      }),
-    ),
-    Effect.provideService(CodexQueuedFollowUps, queuedFollowUps),
-    Effect.provideService(CodexRendererConversationCoordinator, coordinator),
-    Effect.provideService(CodexRendererConversationRegistry, registry),
     Effect.provideService(CodexThreadDirectory, directory),
     Effect.provideService(ConversationEntityMap, conversations),
     Effect.provideService(Scope.Scope, scope),
@@ -204,71 +110,23 @@ it.effect("coalesces identical canonical resume demand", () =>
   Effect.gen(function* () {
     const scope = yield* Scope.make();
     const release = yield* Deferred.make<void>();
+    const started = yield* Deferred.make<void>();
     let physicalRuns = 0;
     const harness = yield* build(scope, ({ fidelity }) => {
       if (fidelity === "durable") return Effect.succeed(null);
       physicalRuns += 1;
-      return Deferred.await(release).pipe(Effect.as(null));
+      return Deferred.succeed(started, undefined).pipe(
+        Effect.andThen(Deferred.await(release)),
+        Effect.as(null),
+      );
     });
     const first = yield* harness.runtime.resume({ threadId }).pipe(Effect.forkChild);
     const second = yield* harness.runtime.resume({ threadId }).pipe(Effect.forkChild);
-    yield* Effect.yieldNow;
+    yield* Deferred.await(started);
     assert.strictEqual(physicalRuns, 1);
     yield* Deferred.succeed(release, undefined);
     yield* Fiber.join(first);
     yield* Fiber.join(second);
-    yield* Scope.close(scope, Exit.void);
-  }),
-);
-
-it.effect("serializes renderer adoption so a racing client becomes a follower", () =>
-  Effect.gen(function* () {
-    const scope = yield* Scope.make();
-    const snapshot = conversation();
-    const harness = yield* build(scope, ({ fidelity }) =>
-      Effect.succeed(entry(snapshot, fidelity)),
-    );
-    harness.conversations
-      .entity(threadId)
-      .acceptReplica({ conversation: snapshot, revision: 1, ownerEpoch: 0 });
-    const first = yield* harness.runtime
-      .resumeForRenderer(threadId, "owner-a")
-      .pipe(Effect.forkChild);
-    const second = yield* harness.runtime
-      .resumeForRenderer(threadId, "owner-b")
-      .pipe(Effect.forkChild);
-    const owner = yield* Fiber.join(first);
-    const follower = yield* Fiber.join(second);
-    assert.strictEqual(owner?.role, "owner");
-    assert.strictEqual(follower?.role, "follower");
-    if (follower?.role === "follower") assert.strictEqual(follower.ownerClientId, "owner-a");
-    yield* Scope.close(scope, Exit.void);
-  }),
-);
-
-it.effect("hydrates queued follow-ups into the recovery replica before renderer adoption", () =>
-  Effect.gen(function* () {
-    const scope = yield* Scope.make();
-    const targets: Array<string | undefined> = [];
-    const snapshot = conversation();
-    const harness = yield* build(
-      scope,
-      ({ fidelity }) => Effect.succeed(entry(snapshot, fidelity)),
-      undefined,
-      (_threadId, options) =>
-        Effect.sync(() => {
-          targets.push(options?.projectionTarget);
-          return emptyQueueProjection();
-        }),
-    );
-    harness.conversations
-      .entity(threadId)
-      .acceptReplica({ conversation: snapshot, revision: 1, ownerEpoch: 0 });
-
-    const resumed = yield* harness.runtime.resumeForRenderer(threadId, "owner-a");
-
-    assert.strictEqual(resumed?.role, "owner");
-    assert.deepEqual(targets, ["replica"]);
     yield* Scope.close(scope, Exit.void);
   }),
 );
@@ -284,6 +142,29 @@ it.effect("returns a hydrated snapshot when relationship projection fails", () =
     );
 
     assert.strictEqual((yield* harness.runtime.snapshot(threadId))?.threadId, threadId);
+    yield* Scope.close(scope, Exit.void);
+  }),
+);
+
+it.effect("a passive snapshot read does not resume a window-owned canonical document", () =>
+  Effect.gen(function* () {
+    const scope = yield* Scope.make();
+    const reads: string[] = [];
+    const harness = yield* build(scope, ({ fidelity }) => {
+      reads.push(fidelity);
+      if (fidelity !== "durable") return Effect.die("A snapshot read must not resume native work");
+      return Effect.succeed(entry(null, fidelity));
+    });
+    const entity = harness.conversations.entity(threadId);
+    const document = conversationFixture(threadId);
+    entity.installFollowerCanonicalState(document);
+    entity.setStreamRole("follower");
+
+    assert.isNull(yield* harness.runtime.snapshot(threadId));
+    assert.deepEqual(reads, ["durable"]);
+    assert.strictEqual(entity.readCanonicalState(), document);
+    assert.strictEqual(entity.readResumeState(), "resumed");
+    assert.strictEqual(entity.read().streamRole, "follower");
     yield* Scope.close(scope, Exit.void);
   }),
 );
@@ -304,33 +185,266 @@ it.effect("interrupts physical resume work when the owning Scope closes", () =>
   }),
 );
 
-it.effect("seeds renderer adoption from replacement-generation hydration", () =>
-  Effect.gen(function* () {
-    const scope = yield* Scope.make();
-    const stale = { ...conversation(), threadPreview: "stale" };
-    const fresh = { ...conversation(), threadPreview: "fresh" };
-    let installFreshSnapshot = () => {};
-    const harness = yield* build(scope, ({ fidelity }) => {
-      if (fidelity === "live") installFreshSnapshot();
-      return Effect.succeed(entry(fidelity === "live" ? fresh : stale, fidelity));
-    });
-    const aggregate = harness.conversations.entity(threadId);
-    installFreshSnapshot = () => aggregate.installSnapshot(fresh);
-    aggregate.installSnapshot(stale);
-    aggregate.acceptReplica({ conversation: stale, revision: 4, ownerEpoch: 1 });
+it.effect(
+  "rotates resume request identity without changing preparation and ignores late attempts",
+  () =>
+    Effect.scoped(
+      Effect.gen(function* () {
+        const scope = yield* Scope.Scope;
+        const capability = createCodexAppServerCapabilitySnapshot({
+          hostId: "local",
+          generation: 1,
+          userAgent: "codex/0.148.0",
+        });
+        const summary = entry(null, "durable").summary;
+        const accepted: ThreadResumeResponse[] = [];
+        const requestedCwd = "/workspace/project/subdirectory";
+        const requestedOptions: unknown[] = [];
+        const options = {
+          serviceTier: "priority",
+          useAppServerPermissionDefault: true,
+          preserveServerConfiguration: false,
+        };
+        const { runtime } = yield* build(scope, () => Effect.succeed(null), undefined, {
+          prepareResume: (_id, _metadata, _overrides, options) => {
+            const serviceTier = options?.serviceTier;
+            requestedOptions.push(options);
+            return Effect.succeed({
+              params: { threadId, excludeTurns: true, serviceTier },
+              requestedCwd,
+              permissionContext,
+              summary,
+              capability,
+            });
+          },
+          acceptRendererResume: (input) =>
+            Effect.sync(() => {
+              assert.strictEqual(input.requestedCwd, requestedCwd);
+              accepted.push(input.response);
+              return summary;
+            }),
+        });
+        const prepared = yield* runtime.prepareRendererResume(
+          threadId,
+          10,
+          undefined,
+          undefined,
+          options,
+        );
+        assert.deepEqual(requestedOptions, [options]);
+        assert.strictEqual(prepared.params.serviceTier, "priority");
+        const response = { thread: { id: threadId } } as ThreadResumeResponse;
+        const observe = (requestId: string) =>
+          runtime.observeRendererResume({
+            senderId: 10,
+            hostId: "local",
+            requestId,
+            params: prepared.params,
+            response,
+          });
+        yield* observe(prepared.nativeRequestId);
+        assert.isTrue(
+          Exit.isFailure(yield* Effect.exit(runtime.retryRendererResume(prepared.receiptId, 11))),
+        );
+        const nextId = yield* runtime.retryRendererResume(prepared.receiptId, 10);
+        assert.notStrictEqual(nextId, prepared.nativeRequestId);
+        yield* observe(prepared.nativeRequestId);
+        assert.isTrue(
+          Exit.isFailure(yield* Effect.exit(runtime.acceptRendererResume(prepared.receiptId, 10))),
+        );
+        yield* observe(nextId);
+        yield* runtime.acceptRendererResume(prepared.receiptId, 10);
+        yield* runtime.acceptRendererResume(prepared.receiptId, 10);
+        assert.deepEqual(accepted, [response]);
+        assert.isTrue(
+          Exit.isFailure(yield* Effect.exit(runtime.retryRendererResume(prepared.receiptId, 10))),
+        );
 
-    const initial = yield* harness.runtime.resumeForRenderer(threadId, "owner-a");
-    assert.strictEqual(initial?.role, "owner");
-    assert.strictEqual(initial?.conversation.threadPreview, "stale");
+        const removed = yield* runtime.prepareRendererResume(threadId, 10);
+        runtime.clear(threadId);
+        yield* runtime.observeRendererResume({
+          senderId: 10,
+          hostId: "local",
+          requestId: removed.nativeRequestId,
+          params: removed.params,
+          response,
+        });
+        assert.isTrue(
+          Exit.isFailure(yield* Effect.exit(runtime.retryRendererResume(removed.receiptId, 10))),
+        );
+        assert.isTrue(
+          Exit.isFailure(yield* Effect.exit(runtime.acceptRendererResume(removed.receiptId, 10))),
+        );
+      }),
+    ),
+);
 
-    harness.conversations.markAllNeedsResume();
-    const replacement = yield* harness.runtime.resumeForRenderer(threadId, "owner-a");
-    assert.strictEqual(replacement?.role, "owner");
-    assert.strictEqual(replacement?.conversation.threadPreview, "fresh");
-    assert.strictEqual(
-      harness.conversations.current(threadId)?.read().acceptedReplica?.conversation.threadPreview,
-      "fresh",
-    );
-    yield* Scope.close(scope, Exit.void);
-  }),
+it.effect("does not renew a receipt while its observed response is being accepted", () =>
+  Effect.scoped(
+    Effect.gen(function* () {
+      const scope = yield* Scope.Scope;
+      const started = yield* Deferred.make<void>();
+      const finish = yield* Deferred.make<void>();
+      const summary = entry(null, "durable").summary;
+      const capability = createCodexAppServerCapabilitySnapshot({
+        hostId: "local",
+        generation: 1,
+        userAgent: "codex/0.148.0",
+      });
+      let accepted = 0;
+      const { runtime } = yield* build(scope, () => Effect.succeed(null), undefined, {
+        prepareResume: () =>
+          Effect.succeed({
+            params: { threadId, excludeTurns: true },
+            requestedCwd: null,
+            permissionContext,
+            summary,
+            capability,
+          }),
+        acceptRendererResume: () =>
+          Deferred.succeed(started, undefined).pipe(
+            Effect.andThen(Deferred.await(finish)),
+            Effect.andThen(
+              Effect.sync(() => {
+                accepted++;
+                return summary;
+              }),
+            ),
+          ),
+      });
+      const prepared = yield* runtime.prepareRendererResume(threadId, 10);
+      yield* runtime.observeRendererResume({
+        senderId: 10,
+        hostId: "local",
+        requestId: prepared.nativeRequestId,
+        params: prepared.params,
+        response: { thread: { id: threadId } } as ThreadResumeResponse,
+      });
+      const acceptance = yield* runtime
+        .acceptRendererResume(prepared.receiptId, 10)
+        .pipe(Effect.forkChild);
+      yield* Deferred.await(started);
+      assert.isTrue(
+        Exit.isFailure(yield* Effect.exit(runtime.retryRendererResume(prepared.receiptId, 10))),
+      );
+      yield* Fiber.interrupt(acceptance);
+      const nextId = yield* runtime.retryRendererResume(prepared.receiptId, 10);
+      assert.notStrictEqual(nextId, prepared.nativeRequestId);
+      yield* runtime.observeRendererResume({
+        senderId: 10,
+        hostId: "local",
+        requestId: nextId,
+        params: prepared.params,
+        response: { thread: { id: threadId } } as ThreadResumeResponse,
+      });
+      yield* Deferred.succeed(finish, undefined);
+      assert.strictEqual(yield* runtime.acceptRendererResume(prepared.receiptId, 10), summary);
+      assert.strictEqual(yield* runtime.acceptRendererResume(prepared.receiptId, 10), summary);
+      assert.strictEqual(accepted, 1);
+    }),
+  ),
+);
+
+it.effect("accepts matching resume values after transport key reordering and commits once", () =>
+  Effect.scoped(
+    Effect.gen(function* () {
+      const scope = yield* Scope.Scope;
+      let accepted = 0;
+      const summary = entry(null, "durable").summary;
+      const capability = createCodexAppServerCapabilitySnapshot({
+        hostId: "local",
+        generation: 1,
+        userAgent: "codex/0.140.0",
+      });
+      const { runtime } = yield* build(scope, () => Effect.die("no Main hydration"), undefined, {
+        prepareResume: () =>
+          Effect.succeed({
+            params: {
+              threadId,
+              excludeTurns: true,
+              config: { profiles: { selected: { model: "model", sandbox_mode: "read-only" } } },
+            },
+            requestedCwd: null,
+            permissionContext,
+            summary,
+            capability,
+          }),
+        acceptRendererResume: () =>
+          Effect.sync(() => {
+            accepted++;
+            return summary;
+          }),
+      });
+      const prepared = yield* runtime.prepareRendererResume(threadId, 10);
+      assert.isTrue(
+        Exit.isFailure(yield* Effect.exit(runtime.acceptRendererResume(prepared.receiptId, 10))),
+      );
+      const response = { thread: { id: threadId } } as ThreadResumeResponse;
+      assert.isTrue(
+        Exit.isFailure(
+          yield* Effect.exit(
+            runtime.observeRendererResume({
+              senderId: 11,
+              requestId: prepared.nativeRequestId,
+              hostId: "local",
+              params: prepared.params,
+              response,
+            }),
+          ),
+        ),
+      );
+      assert.isTrue(
+        Exit.isFailure(
+          yield* Effect.exit(
+            runtime.observeRendererResume({
+              senderId: 10,
+              requestId: prepared.nativeRequestId,
+              hostId: "local",
+              params: { ...prepared.params, excludeTurns: false },
+              response,
+            }),
+          ),
+        ),
+      );
+      assert.isTrue(
+        Exit.isFailure(
+          yield* Effect.exit(
+            runtime.observeRendererResume({
+              senderId: 10,
+              requestId: prepared.nativeRequestId,
+              hostId: "local",
+              params: {
+                ...prepared.params,
+                config: {
+                  profiles: { selected: { model: "model", sandbox_mode: "danger-full-access" } },
+                },
+              },
+              response,
+            }),
+          ),
+        ),
+      );
+      yield* runtime.observeRendererResume({
+        senderId: 10,
+        requestId: prepared.nativeRequestId,
+        hostId: "local",
+        params: {
+          config: { profiles: { selected: { sandbox_mode: "read-only", model: "model" } } },
+          excludeTurns: true,
+          threadId,
+        },
+        response,
+      });
+      assert.isTrue(
+        Exit.isFailure(yield* Effect.exit(runtime.acceptRendererResume(prepared.receiptId, 11))),
+      );
+      yield* runtime.acceptRendererResume(prepared.receiptId, 10);
+      yield* runtime.acceptRendererResume(prepared.receiptId, 10);
+      assert.strictEqual(accepted, 1);
+      runtime.releaseRendererResume(prepared.receiptId, 10);
+      assert.isTrue(
+        Exit.isFailure(yield* Effect.exit(runtime.acceptRendererResume(prepared.receiptId, 10))),
+      );
+    }),
+  ),
 );

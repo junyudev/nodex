@@ -285,7 +285,7 @@ describe("UserAttachmentImageEditorSurface", () => {
                     attachmentId: "composer-uploaded-image",
                     attachmentSrc: managedSource,
                     dataUrl: managedSource,
-                    hostId: "default",
+                    hostId: "local",
                     managedSource,
                     src: managedSource,
                   },
@@ -305,7 +305,7 @@ describe("UserAttachmentImageEditorSurface", () => {
           expect.objectContaining({
             id: "composer-uploaded-image",
             asset: {
-              hostId: "default",
+              hostId: "local",
               localPath: null,
               managedSource,
               src: managedSource,

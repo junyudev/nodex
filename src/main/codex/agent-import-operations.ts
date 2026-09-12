@@ -1367,7 +1367,7 @@ class AgentImportOperations {
             threadId: session.sourceThreadId,
             threadSource: "user",
             config: buildCodexThreadConfig({
-              nativeMcp: true,
+              nativeAppTools: capability.nativeAppTools,
             }) as ClientRequestParamsByMethod["thread/fork"]["config"],
           },
           codexGatewayGenerationFence(capability),

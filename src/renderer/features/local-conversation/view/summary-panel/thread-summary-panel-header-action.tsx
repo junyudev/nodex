@@ -1,4 +1,5 @@
 import { useMemo } from "react";
+import { resolveCodexElectronDisplayThreadTitle } from "../../../../../shared/codex-thread-title";
 import type {
   ThreadStageActions,
   ThreadSummaryPanelMode,
@@ -52,7 +53,12 @@ export function ThreadSummaryPanelHeaderAction({
   const contentProps = useMemo<ThreadSummaryPanelContentProps>(
     () => ({
       activeThreadId,
-      activeThreadTitle: summaryFields.threadName || summaryFields.threadPreview || null,
+      activeThreadTitle:
+        resolveCodexElectronDisplayThreadTitle({
+          threadName: summaryFields.threadName,
+          threadPreview: summaryFields.threadPreview,
+          fallback: "",
+        }) || null,
       activeThreadIsManagedWorktree:
         Boolean(summaryFields.managedWorktreePath) || activeThreadIsManagedWorktree,
       activeThreadProjectless,

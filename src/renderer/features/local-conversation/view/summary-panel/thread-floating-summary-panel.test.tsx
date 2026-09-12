@@ -44,6 +44,9 @@ async function invokeForTest(channel: string, ...args: unknown[]): Promise<unkno
   invokeCalls.push([channel, ...args]);
   if (mockInvokeImpl) {
     const result = await mockInvokeImpl(channel, ...args);
+    if (channel === "codex:app-server:request" && result == null) {
+      return { type: "result", result: undefined };
+    }
     if (
       result !== null ||
       !summaryPanelPendingDefaultsEnabled ||
@@ -54,6 +57,9 @@ async function invokeForTest(channel: string, ...args: unknown[]): Promise<unkno
   }
   if (summaryPanelPendingDefaultsEnabled && pendingByDefaultInvokeChannels.has(channel)) {
     return await new Promise(() => undefined);
+  }
+  if (channel === "codex:app-server:request") {
+    return { type: "result", result: undefined };
   }
   return null;
 }
@@ -356,7 +362,7 @@ describe("ThreadFloatingSummaryPanel", () => {
     mockInvokeImpl = null;
     Object.defineProperty(window, "api", {
       configurable: true,
-      value: { invoke: invokeForTest },
+      value: { invoke: invokeForTest, on: () => () => undefined },
     });
   });
 

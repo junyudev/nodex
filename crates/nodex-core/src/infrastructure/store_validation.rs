@@ -340,12 +340,6 @@ fn validate_store_semantics_for_view_contract(
     validate_document_version_retention_index(connection)?;
     validate_block_retention_state(connection)?;
     validate_document_materialization_derivation(connection)?;
-    if has_library_files {
-        crate::workspace::queued_follow_up::validate_all_stored_ledgers(
-            connection,
-            crate::workspace::queued_follow_up::QueuedAssetEvidenceMode::DatabaseOnly,
-        )?;
-    }
     tracing::info!(
         durationMs = duration_millis(started_at.elapsed()),
         "Semantic Store validation completed"

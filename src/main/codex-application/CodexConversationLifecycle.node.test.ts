@@ -6,13 +6,15 @@ import * as Layer from "effect/Layer";
 import * as Scope from "effect/Scope";
 import type { CodexConversationSnapshot } from "../../shared/types";
 import { BrowserUseRuntime, BrowserUseRuntimeError } from "../host-runtime/BrowserUseRuntime";
-import { CodexActiveGoalContinuation } from "./CodexActiveGoalContinuation";
 import { make as makeCodexConversationLifecycle } from "./CodexConversationLifecycle";
 import { CodexConversationDeltaBufferRuntime } from "./CodexConversationDeltaBufferRuntime";
 import { CodexManualCompactionRuntime } from "./CodexManualCompactionRuntime";
 import { CodexPendingServerRequestRuntime } from "./CodexPendingServerRequestRuntime";
-import { CodexQueuedFollowUps } from "./CodexQueuedFollowUps";
-import { CodexRendererConversationCoordinator } from "./CodexRendererConversationCoordinator";
+import { CodexMainConversationManagers } from "./CodexMainConversationManagers";
+import {
+  CodexRendererPresentationRegistry,
+  make as makePresentationRegistry,
+} from "./CodexRendererPresentationRegistry";
 import {
   ConversationEntityMap,
   live as conversationRuntimeMapLive,
@@ -65,24 +67,13 @@ it.effect("retires every conversation resource from inside its current causal la
     const manualCompaction = CodexManualCompactionRuntime.of({
       clear: (candidate: string) => calls.push(`compaction:${candidate}`),
     } as unknown as CodexManualCompactionRuntime["Service"]);
-    const queuedFollowUps = CodexQueuedFollowUps.of({
-      closeThread: (candidate: string) =>
-        Effect.sync(() => {
-          calls.push(`queue-cancel:${candidate}`);
-        }),
-    } as unknown as CodexQueuedFollowUps["Service"]);
-    const renderer = CodexRendererConversationCoordinator.of({
-      clearConversation: (candidate: string) =>
-        Effect.sync(() => {
-          calls.push(`renderer:${candidate}`);
-        }),
-    } as unknown as CodexRendererConversationCoordinator["Service"]);
-    const activeGoal = CodexActiveGoalContinuation.of({
-      clear: (candidate: string) =>
-        Effect.sync(() => {
-          calls.push(`goal:${candidate}`);
-        }),
-    } as unknown as CodexActiveGoalContinuation["Service"]);
+    const presentation = yield* makePresentationRegistry;
+    presentation.setPresented(threadId, "renderer-a", "surface-a", true);
+    const managers = CodexMainConversationManagers.of({
+      current: () => ({
+        stream: { removeConversation: (candidate: string) => calls.push(`peer:${candidate}`) },
+      }),
+    } as unknown as CodexMainConversationManagers["Service"]);
     const browserUse = BrowserUseRuntime.of({
       releaseSession: (candidate: string) =>
         Effect.sync(() => {
@@ -99,12 +90,11 @@ it.effect("retires every conversation resource from inside its current causal la
         ),
     } as unknown as BrowserUseRuntime["Service"]);
     const lifecycle = yield* makeCodexConversationLifecycle.pipe(
-      Effect.provideService(CodexActiveGoalContinuation, activeGoal),
       Effect.provideService(CodexConversationDeltaBufferRuntime, deltas),
       Effect.provideService(CodexManualCompactionRuntime, manualCompaction),
       Effect.provideService(CodexPendingServerRequestRuntime, pending),
-      Effect.provideService(CodexQueuedFollowUps, queuedFollowUps),
-      Effect.provideService(CodexRendererConversationCoordinator, renderer),
+      Effect.provideService(CodexMainConversationManagers, managers),
+      Effect.provideService(CodexRendererPresentationRegistry, presentation),
       Effect.provideService(ConversationEntityMap, conversations),
       Effect.provideService(BrowserUseRuntime, browserUse),
     );
@@ -121,15 +111,14 @@ it.effect("retires every conversation resource from inside its current causal la
       "pending-all:thread-a",
       "deltas:thread-a",
       "compaction:thread-a",
-      "queue-cancel:thread-a",
-      "renderer:thread-a",
-      "goal:thread-a",
+      "peer:thread-a",
       "browser:thread-a",
     ]);
     assert.strictEqual(conversations.current(threadId), aggregate);
     assert.isNull(aggregate.readSnapshot());
     assert.isFalse(aggregate.isStreaming());
     assert.deepEqual(aggregate.readQueuedFollowUpProjection().entries, []);
+    assert.isFalse(presentation.isClientPresenting(threadId, "renderer-a"));
 
     let laneRemainsUsable = false;
     yield* conversations.runCommand(

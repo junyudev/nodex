@@ -204,21 +204,10 @@ it.effect("projects models, plugins, and skills through one composer interface",
     assert.strictEqual(experimentalRequests.length, 2);
     assert.strictEqual((experimentalRequests[0] as { readonly limit?: number }).limit, 100);
     assert.isFalse(Object.hasOwn(experimentalRequests[0] as object, "threadId"));
-    assert.deepEqual(yield* catalog.listCollaborationModes, [
-      {
-        name: "Default",
-        mode: "default",
-        model: "model-a",
-        reasoningEffort: "medium",
-      },
-      { name: "Plan", mode: "plan", model: "model-a", reasoningEffort: null },
-    ]);
-    const plugins = yield* catalog.listPlugins({ hostId: "default", cwds: [" /repo ", "/repo"] });
-    assert.strictEqual(plugins[0]?.id, "browser@openai-bundled");
-    const skills = yield* catalog.listSkills({ hostId: "default", cwds: ["/repo"] });
+    const skills = yield* catalog.listSkills({ hostId: "local", cwds: ["/repo"] });
     assert.strictEqual(skills[0]?.path, "/skills/pdf/SKILL.md");
-    yield* catalog.listSkills({ hostId: "default", cwds: [] });
-    yield* catalog.listSkills({ hostId: "default", cwds: ["/repo"], forceReload: true });
+    yield* catalog.listSkills({ hostId: "local", cwds: [] });
+    yield* catalog.listSkills({ hostId: "local", cwds: ["/repo"], forceReload: true });
     assert.deepEqual(skillsRequests[2], { cwds: ["/repo"], forceReload: true });
     assert.deepEqual(skillsRequests.slice(0, 2), [{ cwds: ["/repo"] }, {}]);
     assert.isFalse(Object.hasOwn(skillsRequests[1] as object, "cwds"));
@@ -227,11 +216,11 @@ it.effect("projects models, plugins, and skills through one composer interface",
       id: "browser@openai-bundled",
       cwds: ["/repo"],
     });
-    assert.deepEqual(yield* catalog.listHooks({ hostId: "default", cwds: ["/repo"] }), {
+    assert.deepEqual(yield* catalog.listHooks({ hostId: "local", cwds: ["/repo"] }), {
       data: [],
     });
     yield* catalog.updateHooksState({
-      hostId: "default",
+      hostId: "local",
       patches: [{ key: "lint", enabled: true, trustedHash: "sha256:lint" }],
     });
     assert.deepEqual(hookWrites, [
@@ -250,7 +239,7 @@ it.effect("projects models, plugins, and skills through one composer interface",
     ]);
     const invalidHooks = yield* catalog
       .updateHooksState({
-        hostId: "default",
+        hostId: "local",
         patches: [
           { key: "lint", enabled: true },
           { key: "lint", enabled: false },

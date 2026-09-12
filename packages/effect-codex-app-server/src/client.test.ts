@@ -1,6 +1,7 @@
 import * as Exit from "effect/Exit";
 import * as Layer from "effect/Layer";
 import * as Path from "effect/Path";
+import * as Fiber from "effect/Fiber";
 import * as Effect from "effect/Effect";
 import * as Ref from "effect/Ref";
 import * as Queue from "effect/Queue";
@@ -13,7 +14,6 @@ import * as NodeServices from "@effect/platform-node/NodeServices";
 import { assert, it } from "@effect/vitest";
 
 import * as CodexClient from "./client.ts";
-import * as CodexError from "./errors.ts";
 import { makeInMemoryStdio } from "./_internal/stdio.ts";
 
 const encoder = new TextEncoder();
@@ -201,26 +201,100 @@ it.layer(NodeServices.layer)("effect-codex-app-server client", (it) => {
     }),
   );
 
-  it.effect("terminates the physical protocol when a known notification cannot be decoded", () =>
+  it.effect("a malformed notification does not retire the physical connection", () =>
     Effect.gen(function* () {
       const { stdio, input } = yield* makeInMemoryStdio();
       const client = yield* CodexClient.make(stdio);
+      const next = yield* client.notifications.pipe(
+        Stream.take(1),
+        Stream.runCollect,
+        Effect.forkScoped,
+      );
+      yield* Queue.offer(
+        input,
+        encoder.encode(
+          `${encodeJson({ method: "item/agentMessage/delta", params: { threadId: "thread-1", delta: 42 } })}\n`,
+        ),
+      );
+      yield* Queue.offer(
+        input,
+        encoder.encode(`${encodeJson({ method: "custom/next", params: { value: "kept" } })}\n`),
+      );
+      assert.deepStrictEqual(yield* Fiber.join(next), [
+        { protocol: "extension", method: "custom/next", params: { value: "kept" } },
+      ]);
+    }),
+  );
+
+  it.effect("preserves the private MCP user-verification mode as an extension request", () =>
+    Effect.gen(function* () {
+      const { stdio, input } = yield* makeInMemoryStdio();
+      const client = yield* CodexClient.make(stdio);
+      const next = yield* client.requests.pipe(
+        Stream.take(1),
+        Stream.runCollect,
+        Effect.forkScoped,
+      );
       yield* Queue.offer(
         input,
         encoder.encode(
           `${encodeJson({
-            method: "item/agentMessage/delta",
-            params: { threadId: "thread-1", delta: 42 },
+            id: 41,
+            method: "mcpServer/elicitation/request",
+            params: {
+              threadId: "thread-private",
+              turnId: "turn-private",
+              serverName: "browser-use",
+              mode: "openai/userVerification",
+              _meta: { value: "kept" },
+            },
           })}\n`,
         ),
       );
+      assert.deepStrictEqual(yield* Fiber.join(next), [
+        {
+          protocol: "extension",
+          id: 41,
+          method: "mcpServer/elicitation/request",
+          params: {
+            threadId: "thread-private",
+            turnId: "turn-private",
+            serverName: "browser-use",
+            mode: "openai/userVerification",
+            _meta: { value: "kept" },
+          },
+        },
+      ]);
+    }),
+  );
 
-      const error = yield* client.termination.pipe(Effect.flip);
-      assert.instanceOf(error, CodexError.CodexAppServerProtocolParseError);
-      assert.deepInclude(error, {
-        operation: "decode-notification-payload",
-        method: "item/agentMessage/delta",
-      });
+  it.effect("preserves attestation before generated payload decoding", () =>
+    Effect.gen(function* () {
+      const { stdio, input } = yield* makeInMemoryStdio();
+      const client = yield* CodexClient.make(stdio);
+      const next = yield* client.requests.pipe(
+        Stream.take(1),
+        Stream.runCollect,
+        Effect.forkScoped,
+      );
+      yield* Queue.offer(
+        input,
+        encoder.encode(
+          `${encodeJson({
+            id: 42,
+            method: "attestation/generate",
+            params: { ignoredByInternalHandler: true },
+          })}\n`,
+        ),
+      );
+      assert.deepStrictEqual(yield* Fiber.join(next), [
+        {
+          protocol: "extension",
+          id: 42,
+          method: "attestation/generate",
+          params: { ignoredByInternalHandler: true },
+        },
+      ]);
     }),
   );
 });

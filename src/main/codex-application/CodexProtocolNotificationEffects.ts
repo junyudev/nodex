@@ -1,3 +1,4 @@
+import { residentConversationTurns } from "../../shared/codex-conversation-state/codex-turn-mutation";
 import {
   expandCodexAsyncQuestions,
   readCodexAsyncQuestionReplies,
@@ -12,10 +13,6 @@ import * as Context from "effect/Context";
 import * as Data from "effect/Data";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
-import {
-  projectCodexCanonicalProtocolThread,
-  type CodexCanonicalConversationState,
-} from "../../shared/codex-conversation-state/codex-conversation-state";
 import type { CodexConversationReducerEffect } from "../../shared/codex-conversation-state/codex-conversation-reducer";
 import { extractCodexThreadSpawnMetadata } from "../../shared/codex-subagent-metadata";
 import type { CodexNotificationConversationFacts } from "../../shared/codex-thread-notification";
@@ -24,6 +21,7 @@ import {
   hasCodexPendingContinuation,
   parseCodexHeartbeatAssistantMessage,
 } from "../../shared/codex-turn-notification";
+import { resolveCodexForkSourceConversationTitle } from "../../shared/codex-thread-title";
 import {
   reduceCodexConversationServerRequestResolved,
   reduceCodexServerRequestResolvedRawState,
@@ -36,7 +34,6 @@ import {
   isCodexFrameTextDeltaNotification,
   toCodexFrameTextDelta,
 } from "../../shared/codex-conversation-state/codex-frame-text-delta";
-import { DEFAULT_CODEX_HOST_ID } from "../../shared/codex-host";
 import { CodexTerminalInteractionAccumulator } from "../../shared/codex-terminal-interaction";
 import { toCodexThreadStartedMetadataNotification } from "../../shared/codex-thread-start-metadata";
 import {
@@ -46,7 +43,6 @@ import {
 import type { CodexServerNotification } from "../codex-runtime/CodexApplicationProtocol";
 import { BrowserUseRuntime } from "../host-runtime/BrowserUseRuntime";
 import { RemoteHostedPipRuntime } from "../host-runtime/RemoteHostedPipRuntime";
-import { CodexActiveGoalContinuation } from "./CodexActiveGoalContinuation";
 import { CodexApplicationEventHub } from "./CodexApplicationEventHub";
 import { CodexAutomationTurnCompletion } from "./CodexAutomationTurnCompletion";
 import { CodexConversationLifecycle } from "./CodexConversationLifecycle";
@@ -56,7 +52,7 @@ import { CodexManualCompactionRuntime } from "./CodexManualCompactionRuntime";
 import { CodexPendingServerRequestRuntime } from "./CodexPendingServerRequestRuntime";
 import { CodexProtocolNotificationProjection } from "./CodexProtocolNotificationProjection";
 import { CodexQueuedFollowUps } from "./CodexQueuedFollowUps";
-import { CodexRendererConversationCoordinator } from "./CodexRendererConversationCoordinator";
+import { CodexMainConversationManagers } from "./CodexMainConversationManagers";
 import { buildCodexCanonicalTurnSummary } from "./CodexConversationServerRequestProjection";
 import { parseThreadStatus } from "./CodexThreadCatalogProjection";
 import {
@@ -65,6 +61,7 @@ import {
 } from "./CodexThreadDurableProjection";
 import { CodexSubagentDirectory } from "./CodexSubagentDirectory";
 import { CodexThreadGoalRuntime } from "./CodexThreadGoalRuntime";
+import { CodexThreadTitleReconsideration } from "./CodexThreadTitleReconsideration";
 import { CodexUserInputAutoResolution } from "./CodexUserInputAutoResolution";
 import { ConversationEntityMap } from "./internal/ConversationEntityMap";
 
@@ -129,7 +126,6 @@ export const codexProtocolNotificationThreadId = (
 export const make: Effect.Effect<
   CodexProtocolNotificationEffects["Service"],
   never,
-  | CodexActiveGoalContinuation
   | CodexApplicationEventHub
   | CodexAutomationTurnCompletion
   | CodexConversationDeltaBufferRuntime
@@ -139,16 +135,16 @@ export const make: Effect.Effect<
   | CodexPendingServerRequestRuntime
   | CodexProtocolNotificationProjection
   | CodexQueuedFollowUps
-  | CodexRendererConversationCoordinator
+  | CodexMainConversationManagers
   | CodexThreadDurableProjection
   | CodexSubagentDirectory
   | CodexThreadGoalRuntime
+  | CodexThreadTitleReconsideration
   | CodexUserInputAutoResolution
   | ConversationEntityMap
   | BrowserUseRuntime
   | RemoteHostedPipRuntime
 > = Effect.gen(function* () {
-  const activeGoalContinuation = yield* CodexActiveGoalContinuation;
   const events = yield* CodexApplicationEventHub;
   const automation = yield* CodexAutomationTurnCompletion;
   const deltas = yield* CodexConversationDeltaBufferRuntime;
@@ -158,10 +154,11 @@ export const make: Effect.Effect<
   const pending = yield* CodexPendingServerRequestRuntime;
   const globalProjection = yield* CodexProtocolNotificationProjection;
   const queued = yield* CodexQueuedFollowUps;
-  const renderer = yield* CodexRendererConversationCoordinator;
+  const managers = yield* CodexMainConversationManagers;
   const durableThreads = yield* CodexThreadDurableProjection;
   const subagents = yield* CodexSubagentDirectory;
   const threadGoals = yield* CodexThreadGoalRuntime;
+  const titleReconsideration = yield* CodexThreadTitleReconsideration;
   const autoResolution = yield* CodexUserInputAutoResolution;
   const conversations = yield* ConversationEntityMap;
   const browserUse = yield* BrowserUseRuntime;
@@ -173,17 +170,19 @@ export const make: Effect.Effect<
       Effect.annotateLogs({ method, threadId, cause }),
     );
 
-  const loadedProtocolThread = (state: CodexCanonicalConversationState | null): Thread | null => {
-    if (!state) return null;
-    return projectCodexCanonicalProtocolThread(state);
-  };
-
   const conversationFacts = (threadId: string): CodexNotificationConversationFacts => {
-    const snapshot = conversations.current(threadId)?.readSnapshot();
+    const aggregate = conversations.current(threadId);
+    const snapshot = aggregate?.readSnapshot();
+    const canonical = aggregate?.readCanonicalState();
+    const firstTurn = residentConversationTurns(canonical).at(0);
     const parentThreadId = extractCodexThreadSpawnMetadata(snapshot?.source).parentThreadId ?? null;
     return {
       conversationId: threadId,
-      title: snapshot?.threadName ?? null,
+      title: resolveCodexForkSourceConversationTitle({
+        explicitTitle: canonical?.title ?? snapshot?.threadName,
+        firstTurnInput: firstTurn?.params.input,
+        firstTurnCommentAttachments: firstTurn?.params.commentAttachments,
+      }),
       threadSource: snapshot?.threadSource ?? null,
       parentThreadId,
       source: snapshot?.source ?? null,
@@ -199,7 +198,9 @@ export const make: Effect.Effect<
 
   const lastAgentMessage = (threadId: string, turn: Thread["turns"][number]): string | null => {
     const canonical = conversations.current(threadId)?.readCanonicalState();
-    const canonicalTurn = canonical?.turns.find((candidate) => candidate.protocol.id === turn.id);
+    const canonicalTurn = residentConversationTurns(canonical).find(
+      (candidate) => candidate.turnId === turn.id,
+    );
     const canonicalMessage = [...(canonicalTurn?.items ?? [])]
       .reverse()
       .find((item) => item.type === "agentMessage")
@@ -215,6 +216,7 @@ export const make: Effect.Effect<
 
   const publishTurnCompleted = Effect.fn("CodexProtocolNotificationEffects.publishTurnCompleted")(
     function* (
+      hostId: string,
       threadId: string,
       turn: Extract<CodexServerNotification, { method: "turn/completed" }>["params"]["turn"],
       automationNotificationDecision: CodexHeartbeatDecision | null,
@@ -231,37 +233,46 @@ export const make: Effect.Effect<
           ),
         );
       const message = lastAgentMessage(threadId, turn);
-      const queuedHead = queued.list(threadId)[0];
+      const queuedHead = queued.readHead(threadId);
+      const hasPendingContinuation = hasCodexPendingContinuation({
+        terminalStatus: turn.status,
+        queuedResourceLoading: false,
+        queuedHeadPausedReason: queuedHead ? (queuedHead.pausedReason ?? null) : undefined,
+        threadGoalStatus: snapshot?.threadGoal?.status ?? null,
+        latestMergedTurnStatus: residentConversationTurns(canonical).at(-1)?.status ?? null,
+        hasRunningCollabAgent:
+          residentConversationTurns(canonical).some((candidate) =>
+            candidate.items.some(
+              (item) => item.type === "collabAgentToolCall" && item.status === "inProgress",
+            ),
+          ) ?? false,
+        hasActiveDescendant:
+          descendantOverview === null ||
+          descendantOverview.completeness === "incomplete" ||
+          descendantOverview.active.knownCount > 0,
+      });
       events.publish({
         kind: "threadNotification",
         value: {
           type: "turn-completed",
-          hostId: DEFAULT_CODEX_HOST_ID,
+          hostId,
           conversation: conversationFacts(threadId),
           turnId: turn.id,
           status: turn.status,
           lastAgentMessage: message,
           heartbeatAssistantMessage: parseCodexHeartbeatAssistantMessage(message),
           automationNotificationDecision,
-          hasPendingContinuation: hasCodexPendingContinuation({
-            terminalStatus: turn.status,
-            queuedResourceLoading: false,
-            queuedHeadPausedReason: queuedHead ? (queuedHead.pause?.reason ?? null) : undefined,
-            threadGoalStatus: snapshot?.threadGoal?.status ?? null,
-            latestMergedTurnStatus: canonical?.turns.at(-1)?.protocol.status ?? null,
-            hasRunningCollabAgent:
-              canonical?.turns.some((candidate) =>
-                candidate.items.some(
-                  (item) => item.type === "collabAgentToolCall" && item.status === "inProgress",
-                ),
-              ) ?? false,
-            hasActiveDescendant:
-              descendantOverview === null ||
-              descendantOverview.completeness === "incomplete" ||
-              descendantOverview.active.knownCount > 0,
-          }),
+          hasPendingContinuation,
         },
       });
+      if (turn.status === "completed") {
+        yield* titleReconsideration.observe({
+          hostId,
+          threadId,
+          lastAgentMessage: message,
+          hasPendingContinuation,
+        });
+      }
     },
   );
 
@@ -273,48 +284,44 @@ export const make: Effect.Effect<
       { method: "item/commandExecution/terminalInteraction" }
     >,
     observedAtMs: number,
-    projectReplica: boolean,
   ) {
     const { threadId, turnId, itemId, stdin } = notification.params;
-    const parsed = terminalInputBuffers.accept(
-      { conversationId: threadId, turnId, itemId },
-      stdin,
-      observedAtMs,
-    );
-    if (parsed.disposition === "overflow") {
-      yield* Effect.logWarning("Discarding overflowing terminal interaction input").pipe(
-        Effect.annotateLogs({ threadId, turnId, itemId, reason: parsed.reason }),
-      );
-      return;
-    }
+    const parsed = terminalInputBuffers.accept({ conversationId: threadId, itemId }, stdin);
     if (parsed.commands.length === 0) return;
-    conversations.current(threadId)?.commitTerminalCommands({
-      update: {
-        conversationId: threadId,
-        turnId,
-        itemId,
-        commands: parsed.commands,
-      },
-      observedAtMs,
-      projectReplica,
-    });
+    yield* Effect.sync(() =>
+      conversations.current(threadId)?.commitTerminalCommands({
+        update: {
+          conversationId: threadId,
+          turnId,
+          itemId,
+          commands: parsed.commands,
+        },
+        observedAtMs,
+      }),
+    );
   });
 
   const settleResolvedRequest = Effect.fn("CodexProtocolNotificationEffects.settleResolvedRequest")(
-    function* (threadId: string, requestId: RequestId) {
-      renderer.clearRequestDelivery(threadId, requestId);
-      yield* autoResolution.observeServerResolution(threadId, requestId);
+    function* (threadId: string, requestId: RequestId, hostId: string, generation: number) {
+      yield* autoResolution.observeServerResolution(threadId, requestId, { hostId, generation });
       events.publish({
         kind: "threadNotification",
         value: {
           type: "request-resolved",
-          hostId: DEFAULT_CODEX_HOST_ID,
+          hostId,
           conversationId: threadId,
           requestId,
         },
       });
       const complete = <Kind extends Parameters<typeof pending.takeAll>[0]>(kind: Kind) => {
-        const entries = pending.takeAll(kind, requestId, (entry) => entry.threadId === threadId);
+        const entries = pending.takeAll(
+          kind,
+          requestId,
+          (entry) =>
+            entry.threadId === threadId &&
+            entry.hostId === hostId &&
+            entry.generation === generation,
+        );
         for (const entry of entries) {
           pending.complete(entry as never, CodexAppServerNoResponse as never);
         }
@@ -339,14 +346,6 @@ export const make: Effect.Effect<
           conversations.current(threadId)?.setStreaming(true);
           continue;
         }
-        if (effect.type === "restoreUnacceptedSteers") {
-          yield* queued.acceptTerminalOutcomeInCurrentLane({
-            threadId,
-            rows: effect.rows,
-            interrupted: effect.terminalStatus === "interrupted",
-          });
-          continue;
-        }
         if (effect.type === "hydrateCollabThreads") {
           // Relationship projection owns bounded, keyed metadata repair. Publishing the durable
           // invalidation keeps the notification lane free of app-server reads. This consequence
@@ -359,10 +358,6 @@ export const make: Effect.Effect<
           continue;
         }
         if (ownerRouted) continue;
-        if (effect.type === "continueGoalIfIdle") {
-          yield* activeGoalContinuation.request(threadId);
-          continue;
-        }
         if (effect.type === "clearCompletedGoal") {
           yield* threadGoals
             .clear(threadId)
@@ -381,41 +376,51 @@ export const make: Effect.Effect<
     if (yield* globalProjection.observe(notification)) return;
     const threadId = codexProtocolNotificationThreadId(notification);
     if (!threadId) return;
-    const ownerRouted = isCodexThreadOwnerNotification(notification)
-      ? renderer.forwardNotificationForConversation(threadId, notification)
-      : false;
+    const manager = managers.current(input.hostId);
+    const ownerRouted = manager?.stream.getRole(threadId)?.role === "follower";
+    const projectLocal =
+      manager !== null && manager.generation === input.generation && !ownerRouted;
 
     if (isCodexFrameTextDeltaNotification(notification)) {
-      deltas.enqueueFrameText(toCodexFrameTextDelta(notification));
+      if (projectLocal) deltas.enqueueFrameText(toCodexFrameTextDelta(notification));
       return;
     }
     if (isCodexCommandOutputNotification(notification)) {
       const update = toCodexCommandOutputUpdate(notification);
-      deltas.enqueueCommandOutput(update);
+      if (projectLocal) deltas.enqueueCommandOutput(update);
       return;
     }
     if (notification.method === "item/commandExecution/terminalInteraction") {
       const observedAtMs = yield* Clock.currentTimeMillis;
-      yield* applyTerminalInteraction(notification, observedAtMs, !ownerRouted);
+      if (projectLocal) yield* applyTerminalInteraction(notification, observedAtMs);
       return;
     }
-    if (notification.method === "item/started" || notification.method === "item/completed") {
+    if (
+      notification.method === "item/completed" &&
+      notification.params.item.type === "commandExecution"
+    ) {
       terminalInputBuffers.clearItem({
         conversationId: threadId,
-        turnId: notification.params.turnId,
         itemId: notification.params.item.id,
       });
     }
     if (notification.method === "turn/completed") {
-      terminalInputBuffers.clearTurn(threadId, notification.params.turn.id);
+      const turn = conversations
+        .current(threadId)
+        ?.readCanonicalState()
+        ?.turns.findLast((candidate) => candidate.turnId === notification.params.turn.id);
+      terminalInputBuffers.clearItems(
+        threadId,
+        turn?.items.filter((item) => item.type === "commandExecution").map((item) => item.id) ?? [],
+      );
     }
     if (notification.method === "item/completed" || notification.method === "turn/completed") {
       const observedAtMs = yield* Clock.currentTimeMillis;
-      deltas.drainBeforeCompletion(threadId, observedAtMs);
+      if (projectLocal) deltas.drainBeforeCompletion(threadId, observedAtMs);
     }
 
     const observedAtMs = yield* Clock.currentTimeMillis;
-    const aggregate = conversations.current(threadId);
+    const aggregate = projectLocal ? conversations.current(threadId) : null;
     if (notification.method === "serverRequest/resolved") {
       if (aggregate) {
         const state = aggregate.readServerRequestState();
@@ -430,7 +435,6 @@ export const make: Effect.Effect<
             before: state.canonicalState,
             lifecycle,
             observedAtMs,
-            projectReplica: !ownerRouted,
           });
         } else {
           aggregate.commitServerRequestLifecycle({
@@ -439,11 +443,15 @@ export const make: Effect.Effect<
               now: () => observedAtMs,
             }),
             observedAtMs,
-            projectReplica: !ownerRouted,
           });
         }
       }
-      yield* settleResolvedRequest(threadId, notification.params.requestId);
+      yield* settleResolvedRequest(
+        threadId,
+        notification.params.requestId,
+        input.hostId,
+        input.generation,
+      );
       return;
     }
 
@@ -451,25 +459,20 @@ export const make: Effect.Effect<
     const committed = aggregate?.commitProtocolNotification({
       notification,
       observedAtMs,
-      projectReplica: !ownerRouted,
       createId: () => randomUUID(),
       reducerContext: {
         consumeContextCompactionSource: () => manualCompaction.consumeSource(threadId),
         resolveCollabReceiverThread: (receiverThreadId) =>
-          loadedProtocolThread(
-            conversations.current(receiverThreadId)?.readCanonicalState() ?? null,
-          ),
+          conversations.readThreadMetadata(receiverThreadId),
       },
     });
-    const hasTerminalQueueRecoveryEffect =
-      committed?.effects.some((effect) => effect.type === "restoreUnacceptedSteers") ?? false;
     if (committed) yield* consumeReducerEffects(threadId, ownerRouted, committed.effects);
     if (notification.method === "item/started" || notification.method === "item/completed") {
       yield* remoteHostedPip.observeCodexOccurrence({ ...input, notification });
     }
     if (notification.method === "item/started") {
       const firstQuestion = expandCodexAsyncQuestions(notification.params.item)[0];
-      const alreadyKnown = before?.turns.some((turn) =>
+      const alreadyKnown = residentConversationTurns(before).some((turn) =>
         turn.items.some((item) => item.id === notification.params.item.id),
       );
       if (firstQuestion && !alreadyKnown)
@@ -499,8 +502,8 @@ export const make: Effect.Effect<
       }
     }
     if (notification.method === "turn/completed") {
-      const turn = before?.turns.find(
-        (candidate) => candidate.protocol.id === notification.params.turn.id,
+      const turn = residentConversationTurns(before).find(
+        (candidate) => candidate.turnId === notification.params.turn.id,
       );
       for (const question of turn?.items.flatMap(expandCodexAsyncQuestions) ?? []) {
         events.publish({
@@ -517,8 +520,8 @@ export const make: Effect.Effect<
     }
     if (committed?.stateChanged && !ownerRouted) {
       const after = aggregate?.readCanonicalState();
-      for (const [turnIndex, turn] of after?.turns.entries() ?? []) {
-        if (turn === before?.turns[turnIndex]) continue;
+      for (const [turnIndex, turn] of residentConversationTurns(after).entries() ?? []) {
+        if (turn === residentConversationTurns(before)[turnIndex]) continue;
         events.publish({
           kind: "codex",
           value: {
@@ -565,18 +568,9 @@ export const make: Effect.Effect<
       yield* browserUse.turnEnded({ sessionId: threadId, turnId: notification.params.turn.id });
       yield* remoteHostedPip.observeCodexOccurrence({ ...input, notification });
       const decision = yield* automation.complete(threadId, notification.params.turn);
-      yield* publishTurnCompleted(threadId, notification.params.turn, decision);
-      if (notification.params.turn.status === "interrupted") {
-        if (!hasTerminalQueueRecoveryEffect) {
-          yield* queued.acceptTerminalOutcomeInCurrentLane({
-            threadId,
-            rows: [],
-            interrupted: true,
-          });
-        }
-      } else if (notification.params.turn.status !== "inProgress") {
-        yield* queued.requestDispatch(threadId);
-      }
+      yield* publishTurnCompleted(input.hostId, threadId, notification.params.turn, decision);
+      if (notification.params.turn.status === "interrupted")
+        yield* queued.acceptTerminalOutcomeInCurrentLane({ threadId, interrupted: true });
       yield* conversationProjection.reconcileThreadStatus(threadId);
     }
     if (durableNotification) {
@@ -627,6 +621,9 @@ export const make: Effect.Effect<
   return CodexProtocolNotificationEffects.of({
     apply: (input) =>
       Effect.gen(function* () {
+        if (input.notification.method === "thread/started") {
+          conversations.registerThreadMetadata(input.notification.params.thread);
+        }
         const method = input.notification.method;
         const threadId = codexProtocolNotificationThreadId(input.notification);
         const deferRootLifecycleNotification =

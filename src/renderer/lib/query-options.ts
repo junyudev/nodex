@@ -1,3 +1,8 @@
+import {
+  readModelCatalogForHost,
+  readPluginCatalogForHost,
+} from "../features/local-conversation/renderer-native-catalog";
+import { DEFAULT_CODEX_HOST_ID } from "../../shared/codex-host";
 import { infiniteQueryOptions, queryOptions } from "@tanstack/react-query";
 import { readDatabaseViewWindow } from "./api";
 import { invokeRendererQuery as invoke } from "./renderer-command";
@@ -6,10 +11,8 @@ import { preferNewestProjectSessionSummaryWindow } from "./project-session-summa
 import type {
   CodexAutomationRunsInboxResponse,
   CodexComposerChatGptConversationListResult,
-  CodexComposerPlugin,
   CodexComposerSiteListResult,
   CodexComposerSkill,
-  CodexModelOption,
   CodexScheduledAutomationListResponse,
   ProtocolMcpResourceReadResponse,
   ProtocolAppInfo,
@@ -202,27 +205,30 @@ export function codexAutomationRunsInboxQueryOptions(limit = 200) {
 export function codexModelsListQueryOptions() {
   return queryOptions({
     queryKey: queryKeys.codexModels.list(),
-    queryFn: () => invoke("codex:model:list") as Promise<CodexModelOption[]>,
+    queryFn: ({ signal }) => readModelCatalogForHost(DEFAULT_CODEX_HOST_ID, signal),
     staleTime: 60_000,
   });
 }
 
-export function codexComposerPluginsListQueryOptions(cwds: readonly string[], hostId = "default") {
+export function codexComposerPluginsListQueryOptions(
+  cwds: readonly string[],
+  hostId = DEFAULT_CODEX_HOST_ID,
+) {
   const normalizedCwds = Array.from(new Set(cwds.map((cwd) => cwd.trim()).filter(Boolean)));
 
   return queryOptions({
     queryKey: queryKeys.codexComposerPlugins.list(normalizedCwds, hostId),
-    queryFn: () =>
-      invoke("codex:composer-plugins:list", { hostId, cwds: normalizedCwds }) as Promise<
-        CodexComposerPlugin[]
-      >,
+    queryFn: ({ signal }) => readPluginCatalogForHost(hostId, normalizedCwds, signal),
     retry: false,
     staleTime: 60_000,
     refetchOnWindowFocus: true,
   });
 }
 
-export function codexComposerSkillsListQueryOptions(cwds: readonly string[], hostId = "default") {
+export function codexComposerSkillsListQueryOptions(
+  cwds: readonly string[],
+  hostId = DEFAULT_CODEX_HOST_ID,
+) {
   const normalizedCwds = Array.from(new Set(cwds.map((cwd) => cwd.trim()).filter(Boolean)));
 
   return queryOptions({

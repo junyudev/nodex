@@ -24,7 +24,6 @@ import {
   make as makeSidebarSync,
 } from "./CodexSidebarSyncRuntime";
 import { CodexThreadDirectory } from "./CodexThreadDirectory";
-import { CodexThreadExecution } from "./CodexThreadExecution";
 import { make as makeThreadCatalog } from "./CodexThreadCatalog";
 import { projectCoreWorkspaceTask } from "./CodexThreadCatalogProjection";
 
@@ -105,7 +104,6 @@ const catalogHarness = (input: {
 }) => {
   let current = thread("project:source");
   const applied: unknown[] = [];
-  const relocations: unknown[] = [];
   const source = project({ id: "project:source", bindingRevision: 1, roots: [input.sourceRoot] });
   const target = project({
     id: "project:target",
@@ -157,16 +155,8 @@ const catalogHarness = (input: {
     invalidate: () => undefined,
     scheduleNotification: () => undefined,
   });
-  const execution = CodexThreadExecution.of({
-    relocate: (relocation: Parameters<CodexThreadExecution["Service"]["relocate"]>[0]) =>
-      Effect.sync(() => {
-        relocations.push(relocation);
-      }),
-  } as unknown as CodexThreadExecution["Service"]);
-
   return {
     applied,
-    relocations,
     runtime: makeThreadCatalog().pipe(
       Effect.provideService(
         CodexGateway,
@@ -186,7 +176,6 @@ const catalogHarness = (input: {
         CodexThreadDirectory,
         CodexThreadDirectory.of({} as CodexThreadDirectory["Service"]),
       ),
-      Effect.provideService(CodexThreadExecution, execution),
       Effect.provideService(
         CoreModules,
         CoreModules.of({ workspace } as unknown as CoreModules["Service"]),
@@ -529,50 +518,54 @@ it.effect("requires a grant fenced by the target Project binding revision", () =
         targetProjectName: "project:target",
       });
       assert.strictEqual(harness.applied.length, 0);
-      assert.strictEqual(harness.relocations.length, 0);
     }),
   ),
 );
 
-it.effect(
-  "relocates a loaded Thread through the final execution capability after Core commits",
-  () =>
-    Effect.scoped(
-      Effect.gen(function* () {
-        const harness = catalogHarness({
-          sourceRoot: "/workspace/source",
-          targetRoot: "/workspace",
-          targetBindingRevision: 3,
-        });
-        const catalog = yield* harness.runtime;
-        const result = yield* catalog.move({
-          hostId: "local",
-          threadId: "thread:move",
-          sourceContainerId: "project:project:source",
-          targetContainerId: "project:project:target",
-          beforeThreadId: null,
-          useDefaultOrder: true,
-        });
+it.effect("stages a loaded Thread workspace transition in Core for turn-time adoption", () =>
+  Effect.scoped(
+    Effect.gen(function* () {
+      const harness = catalogHarness({
+        sourceRoot: "/workspace/source",
+        targetRoot: "/workspace",
+        targetBindingRevision: 3,
+      });
+      const catalog = yield* harness.runtime;
+      const result = yield* catalog.move({
+        hostId: "local",
+        threadId: "thread:move",
+        sourceContainerId: "project:project:source",
+        targetContainerId: "project:project:target",
+        beforeThreadId: null,
+        useDefaultOrder: true,
+      });
 
-        assert.strictEqual(result.status, "moved");
-        assert.strictEqual(harness.applied.length, 1);
-        assert.deepStrictEqual(harness.relocations, [
-          {
-            threadId: "thread:move",
-            loaded: true,
-            location: {
-              hostId: "local",
-              cwd: "/workspace",
-              workspaceRoots: ["/workspace"],
-              managedWorktreePath: null,
-              projectId: "project:target",
-              projectlessOutputDirectory: null,
-              projectlessWorkspaceBrowserRoot: null,
-            },
-          },
-        ]);
-      }),
-    ),
+      assert.strictEqual(result.status, "moved");
+      assert.strictEqual(harness.applied.length, 1);
+      const move = harness.applied[0] as {
+        readonly intent: {
+          readonly kind: string;
+          readonly metadata: unknown;
+          readonly workspace_transition?: {
+            readonly revision: string;
+            readonly pending: {
+              readonly project_sources: readonly string[];
+              readonly cwd: string;
+              readonly runtime_workspace_roots: readonly string[];
+            } | null;
+          };
+        };
+      };
+      assert.strictEqual(move.intent.kind, "move_thread");
+      assert.deepStrictEqual(move.intent.metadata, {});
+      assert.match(move.intent.workspace_transition?.revision ?? "", /^[0-9a-f-]{36}$/u);
+      assert.deepStrictEqual(move.intent.workspace_transition?.pending, {
+        project_sources: ["/workspace"],
+        cwd: "/workspace",
+        runtime_workspace_roots: ["/workspace"],
+      });
+    }),
+  ),
 );
 
 it.effect("classifies only protocol-authoritative internal roots, never child Threads", () =>

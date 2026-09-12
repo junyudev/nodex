@@ -13,7 +13,13 @@ export interface ThreadCreationRelease {
   readonly threadId: string;
 }
 
+export interface ThreadCreationAdmission {
+  readonly close: (threadId?: string) => Effect.Effect<void>;
+}
+
 export interface ThreadCreationRuntimeService {
+  /** Keeps native creation notifications deferred across a renderer response/acceptance boundary. */
+  readonly open: (hostId: string, generation: number) => ThreadCreationAdmission;
   /**
    * Fences one app-server operation until its returned Thread has been materialized locally, then
    * releases any notification that won the response race without delaying the committed caller.
@@ -154,20 +160,27 @@ export const makeWithCapacity = (
         );
       });
 
+    const open = (hostId: string, generation: number): ThreadCreationAdmission => {
+      const normalizedHostId = normalizeHostId(hostId);
+      const launchId = begin(normalizedHostId, generation);
+      let closed = false;
+      return { close: (threadId) => Effect.suspend(() => {
+        if (closed) return Effect.void;
+        closed = true;
+        return (threadId ? release(normalizedHostId, generation, threadId) : Effect.void).pipe(Effect.ensuring(end(launchId)));
+      }) };
+    };
+
     return ThreadCreationRuntime.of({
+      open,
       materialize: (hostId, generation, operation, threadId) =>
         Effect.uninterruptibleMask((restore) => {
           const normalizedHostId = normalizeHostId(hostId);
           if (!normalizedHostId) return restore(operation);
-          const launchId = begin(normalizedHostId, generation);
+          const admission = open(normalizedHostId, generation);
           const physical = operation.pipe(
-            Effect.tap((value) => {
-              const identified = threadId(value);
-              return identified === null
-                ? Effect.void
-                : release(normalizedHostId, generation, identified);
-            }),
-            Effect.ensuring(end(launchId)),
+            Effect.tap((value) => admission.close(threadId(value) ?? undefined)),
+            Effect.ensuring(admission.close()),
           );
           return physical.pipe(
             Effect.forkIn(ownerScope, { startImmediately: true }),

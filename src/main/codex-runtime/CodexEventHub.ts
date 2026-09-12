@@ -7,7 +7,13 @@ import type { CodexAppServerNotification } from "@nodex/effect-codex-app-server/
 import type { CodexRuntimeError } from "./CodexRuntimeError";
 import { MAIN_OBSERVATION_EVENT_CAPACITY } from "../runtime-limits";
 
-export type CodexEndpointConnection =
+export type CodexEndpointConnection = {
+  /** Production endpoints attach provenance; standalone semantic fixtures may omit it. */
+  readonly source?: {
+    readonly sourceEpoch: string;
+    readonly transportKind: "stdio" | "websocket";
+  };
+} & (
   | { readonly kind: "stopped"; readonly hostId: string }
   | { readonly kind: "connecting"; readonly hostId: string; readonly generation: number }
   | {
@@ -24,7 +30,8 @@ export type CodexEndpointConnection =
       readonly error: CodexRuntimeError;
     }
   | { readonly kind: "failed"; readonly hostId: string; readonly error: CodexRuntimeError }
-  | { readonly kind: "closing"; readonly hostId: string };
+  | { readonly kind: "closing"; readonly hostId: string }
+);
 
 export type CodexEndpointEvent =
   | {

@@ -4,10 +4,10 @@ import type { ReasoningSummary } from "@nodex/codex-app-server-protocol";
 export const CODEX_CONCURRENT_REASONING_SUMMARIES_FEATURE =
   "concurrent_reasoning_summaries" as const;
 
-/** Nodex enables the same Electron capability for every locally launched thread. */
+/** Readable reasoning summaries are enabled for locally launched Threads. */
 export const CODEX_CONCURRENT_REASONING_SUMMARIES_ENABLED = true as const;
 
-/** Electron resolves this feature to detailed summaries for ordinary turns. */
+/** Enabling readable reasoning selects detailed summaries for ordinary Turns. */
 export const CODEX_DEFAULT_REASONING_SUMMARY: ReasoningSummary = "detailed";
 
 const REASONING_SUMMARIES = new Set<ReasoningSummary>(["auto", "concise", "detailed", "none"]);
@@ -21,24 +21,24 @@ export function parseCodexReasoningSummary(value: unknown): ReasoningSummary | n
 }
 
 /**
- * Mirrors Electron's turn-start precedence:
- * persisted thread setting, concurrent-summary feature override, then an
- * explicit per-turn override. `null` is represented as the protocol's
- * `none` mode because the request must carry a concrete summary policy.
+ * Resolves retained Turn parameters, next settings, the capability override,
+ * then an explicit per-Turn value. A defined null remains a native value.
  */
 export function resolveCodexReasoningSummary(
   input: {
+    inheritedSummary?: ReasoningSummary | null;
     configuredSummary?: ReasoningSummary | null;
     explicitSummary?: ReasoningSummary | null;
     concurrentReasoningSummaries?: boolean;
   } = {},
-): ReasoningSummary {
-  let summary = input.configuredSummary ?? "none";
+): ReasoningSummary | null {
+  let summary: ReasoningSummary | null = input.inheritedSummary ?? "none";
+  if (input.configuredSummary !== undefined) summary = input.configuredSummary;
   if (input.concurrentReasoningSummaries ?? CODEX_CONCURRENT_REASONING_SUMMARIES_ENABLED) {
     summary = CODEX_DEFAULT_REASONING_SUMMARY;
   }
   if (input.explicitSummary !== undefined) {
-    summary = input.explicitSummary ?? "none";
+    summary = input.explicitSummary;
   }
   return summary;
 }

@@ -1,3 +1,6 @@
+import { CoreModuleResponseError } from "../core-client/core-client";
+import { coreRuntimeError } from "../core-runtime/CoreRuntimeError";
+import { CodexWaitThreads } from "./CodexWaitThreads";
 import { assert, it } from "@effect/vitest";
 import * as Effect from "effect/Effect";
 import { AutomationApplication } from "../automation-application/AutomationApplication";
@@ -15,7 +18,7 @@ import { CodexThreadDescriptionPersistence } from "./CodexThreadDescriptionPersi
 import { CodexThreadDirectory } from "./CodexThreadDirectory";
 import { CodexThreadHandoffRuntime } from "./CodexThreadHandoffRuntime";
 import { CodexThreadTitlePersistence } from "./CodexThreadTitlePersistence";
-import { CodexTurnCommands } from "./CodexTurnCommands";
+import { CodexDelegatedMessages } from "./CodexDelegatedMessages";
 import { ConversationCommands } from "./ConversationCommands";
 import { make } from "./CodexAppProtocolTools";
 
@@ -47,31 +50,45 @@ const makeCalls = (): Calls => ({
   handoffInputs: [],
 });
 
-const buildTools = (backend: "codex" | "acp", calls: Calls) =>
+const buildTools = (backend: "codex" | "acp", calls: Calls, missing = false) =>
   make.pipe(
     Effect.provideService(
       CoreModules,
       CoreModules.of({
         workspace: {
           read: () =>
-            Effect.sync(() => {
-              calls.coreReads += 1;
-              return {
-                value: {
-                  kind: "thread",
-                  thread: {
-                    backend_binding:
-                      backend === "codex"
-                        ? { kind: "codex" }
-                        : {
-                            kind: "acp",
-                            agent_definition_id: "claude-agent-acp",
-                            instance_config_id: "claude:default",
-                          },
-                  },
-                },
-              } as never;
-            }),
+            missing
+              ? Effect.fail(
+                  coreRuntimeError({
+                    operation: "workspace.read",
+                    reason: "operation",
+                    retryable: false,
+                    cause: new CoreModuleResponseError({
+                      code: "not_found",
+                      message: "Thread not found",
+                      retryable: false,
+                      recovery: { kind: "none" },
+                    }),
+                  }),
+                )
+              : Effect.sync(() => {
+                  calls.coreReads += 1;
+                  return {
+                    value: {
+                      kind: "thread",
+                      thread: {
+                        backend_binding:
+                          backend === "codex"
+                            ? { kind: "codex" }
+                            : {
+                                kind: "acp",
+                                agent_definition_id: "claude-agent-acp",
+                                instance_config_id: "claude:default",
+                              },
+                      },
+                    },
+                  } as never;
+                }),
         },
       } as never),
     ),
@@ -81,7 +98,10 @@ const buildTools = (backend: "codex" | "acp", calls: Calls) =>
           calls.directoryReads += 1;
           return {
             durable: { sessionId: "session-target" },
-            summary: { threadName: "Target task", threadPreview: "" },
+            summary: {
+              threadName: "**Target** [task](https://example.com)",
+              threadPreview: "",
+            },
           } as never;
         }),
     } as unknown as CodexThreadDirectory["Service"]),
@@ -107,12 +127,12 @@ const buildTools = (backend: "codex" | "acp", calls: Calls) =>
           return {} as never;
         }),
     } as unknown as CodexReadThreadHistory["Service"]),
-    Effect.provideService(CodexTurnCommands, {
-      start: () =>
+    Effect.provideService(CodexDelegatedMessages, {
+      send: () =>
         Effect.sync(() => {
           calls.turns += 1;
         }),
-    } as unknown as CodexTurnCommands["Service"]),
+    } as unknown as CodexDelegatedMessages["Service"]),
     Effect.provideService(CodexThreadTitlePersistence, {
       set: () =>
         Effect.sync(() => {
@@ -169,6 +189,7 @@ const buildTools = (backend: "codex" | "acp", calls: Calls) =>
     Effect.provideService(CodexSessionThreadLaunch, {} as CodexSessionThreadLaunch["Service"]),
     Effect.provideService(CodexSidebarSectionSync, {} as CodexSidebarSectionSync["Service"]),
     Effect.provideService(CodexThreadCatalog, {} as CodexThreadCatalog["Service"]),
+    Effect.provideService(CodexWaitThreads, { execute: () => Effect.die("unused wait tool") }),
     Effect.provideService(TerminalSessions, {} as TerminalSessions["Service"]),
   );
 
@@ -268,4 +289,17 @@ it.effect(
       assert.strictEqual(calls.handoffInputs[0]?.requestThreadId, request.threadId);
       assert.strictEqual(calls.handoffInputs[0]?.threadTitle, "Target task");
     }),
+);
+
+it.effect("read_thread can inspect a native task before durable workspace import", () =>
+  Effect.gen(function* () {
+    const calls = makeCalls();
+    const tools = yield* buildTools("codex", calls, true);
+    const response = yield* tools.execute(
+      call("read_thread", { threadId: "native-only" }) as never,
+    );
+    assert.isTrue(response.success);
+    assert.strictEqual(calls.historyReads, 1);
+    assert.strictEqual(calls.directoryReads, 0);
+  }),
 );

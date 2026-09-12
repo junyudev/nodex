@@ -25,6 +25,7 @@ import type {
   CodexExecutionHostSettings,
   UpdateManagedWorktreeSettingsInput,
 } from "@/lib/types";
+import { projectCodexMarkdownLabel } from "../../../shared/codex-markdown-text";
 
 export type { ManagedWorktreesSettingsService } from "@/lib/managed-worktree-runtime";
 
@@ -166,7 +167,7 @@ function WorktreeInventoryRow({
               >
                 <span className="truncate">
                   {conversation.sessionTitle?.trim() ||
-                    conversation.threadName?.trim() ||
+                    projectCodexMarkdownLabel(conversation.threadName) ||
                     "Untitled conversation"}
                 </span>
               </button>

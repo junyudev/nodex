@@ -17,6 +17,7 @@ import {
   type CodexCanonicalTurnState,
 } from "./codex-conversation-state/codex-conversation-state";
 import {
+  projectAssistantText,
   projectCodexCanonicalTurnItemViews,
   projectCodexCanonicalTurnViews,
 } from "./codex-canonical-item-projector";
@@ -38,7 +39,7 @@ function project(
     threadId: THREAD_ID,
     turnId: TURN_ID,
     items,
-    observedAtMs: 1_000,
+    observedAtMs: 1000,
     turnStatus: options.turnStatus ?? "inProgress",
     lifecycleStatusByItemId: options.lifecycleStatusByItemId,
     isBackgroundSubagentsEnabled: options.isBackgroundSubagentsEnabled,
@@ -167,46 +168,42 @@ function buildCanonicalTurn(
   } = {},
 ): CodexCanonicalTurnState {
   return {
-    protocol: {
-      id: TURN_ID,
-      itemsView: "full",
-      status: "inProgress",
-      error: null,
-      durationMs: null,
-    },
+    turnId: TURN_ID,
+    itemsView: "full",
+    status: "inProgress",
+    error: null,
+    durationMs: null,
     items: input.items ?? [],
-    sidecar: {
-      params: input.params ?? buildTurnParams(),
-      diff: null,
-      turnStartedAtMs: 900,
-      completedAtMs: null,
-      finalAssistantStartedAtMs: null,
-      ...(input.blocked
-        ? {
-            hookRuns: [
-              {
+    params: input.params ?? buildTurnParams(),
+    diff: null,
+    turnStartedAtMs: 900,
+    completedAtMs: null,
+    finalAssistantStartedAtMs: null,
+    ...(input.blocked
+      ? {
+          hookRuns: [
+            {
+              id: "blocked-hook",
+              run: {
                 id: "blocked-hook",
-                run: {
-                  id: "blocked-hook",
-                  eventName: "userPromptSubmit",
-                  handlerType: "command",
-                  executionMode: "sync",
-                  scope: "turn",
-                  sourcePath: "/workspace/project/.codex/hooks.json",
-                  source: "project",
-                  displayOrder: 0n,
-                  status: "blocked",
-                  statusMessage: "Prompt rejected",
-                  startedAt: 1n,
-                  completedAt: 2n,
-                  durationMs: 1n,
-                  entries: [],
-                },
+                eventName: "userPromptSubmit",
+                handlerType: "command",
+                executionMode: "sync",
+                scope: "turn",
+                sourcePath: "/workspace/project/.codex/hooks.json",
+                source: "project",
+                displayOrder: 0n,
+                status: "blocked",
+                statusMessage: "Prompt rejected",
+                startedAt: 1n,
+                completedAt: 2n,
+                durationMs: 1n,
+                entries: [],
               },
-            ],
-          }
-        : {}),
-    },
+            },
+          ],
+        }
+      : {}),
   };
 }
 
@@ -291,7 +288,11 @@ describe("projectCodexCanonicalTurnItemViews", () => {
     const views = project(items);
     const viewCount = (id: string) =>
       views.filter((view) => {
-        const rawItem = view.rawItem as { id?: string } | undefined;
+        const rawItem = view.rawItem as
+          | {
+              id?: string;
+            }
+          | undefined;
         return rawItem?.id === id;
       }).length;
 
@@ -629,7 +630,7 @@ describe("projectCodexCanonicalTurnViews", () => {
     const views = projectCodexCanonicalTurnViews({
       threadId: THREAD_ID,
       turn: buildCanonicalTurn({ params, blocked: true }),
-      observedAtMs: 1_000,
+      observedAtMs: 1000,
     });
 
     expect(views.length).toBe(1);
@@ -721,7 +722,7 @@ describe("projectCodexCanonicalTurnViews", () => {
         params: buildTurnParams({ input: [...promptInput] }),
         items: [...allowedMetadata, duplicate, assistant],
       }),
-      observedAtMs: 1_000,
+      observedAtMs: 1000,
     });
 
     expect(views[0]?.itemId).toBe(`${TURN_ID}:input`);
@@ -760,17 +761,17 @@ describe("projectCodexCanonicalTurnViews", () => {
         params: buildTurnParams({ clientUserMessageId: null }),
         items: [structurallyEqual],
       }),
-      observedAtMs: 1_000,
+      observedAtMs: 1000,
     });
     const activityViews = projectCodexCanonicalTurnViews({
       threadId: THREAD_ID,
       turn: buildCanonicalTurn({ items: [hook, laterMatch] }),
-      observedAtMs: 1_000,
+      observedAtMs: 1000,
     });
     const structuralActivityViews = projectCodexCanonicalTurnViews({
       threadId: THREAD_ID,
       turn: buildCanonicalTurn({ items: [hook, laterStructuralMatch] }),
-      observedAtMs: 1_000,
+      observedAtMs: 1000,
     });
 
     expect(equalViews.map((view) => view.itemId)).toEqual([`${TURN_ID}:input`]);
@@ -809,10 +810,18 @@ describe("projectCodexCanonicalTurnViews", () => {
         params: buildTurnParams({ input: [] }),
         items: [serverMessage],
       }),
-      observedAtMs: 1_000,
+      observedAtMs: 1000,
     });
 
     expect(views.map((view) => view.itemId)).toEqual(["server-only-user"]);
     expect(views[0]?.semanticKind).toBe("userMessage");
   });
+});
+
+test("assistant memory citations preserve literal markers in code but strip real and incomplete blocks", () => {
+  expect(projectAssistantText("Answer [oai-mem-citation]private</oai-mem-citation> suffix", false)).toBe("Answer  suffix");
+  expect(projectAssistantText("Use `<oai-mem-citation>` literally.", false)).toBe("Use `<oai-mem-citation>` literally.");
+  expect(projectAssistantText("Use `` [oai-mem-citation] `` literally. [oai-mem-citation]private", true)).toBe("Use `` [oai-mem-citation] `` literally.");
+  expect(projectAssistantText("Answer <oai-mem-citation>incomplete", false)).toBe("Answer");
+  expect(projectAssistantText("Answer <oai-mem-cit", true)).toBe("Answer");
 });

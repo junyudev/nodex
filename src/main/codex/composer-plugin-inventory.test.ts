@@ -8,7 +8,7 @@ import {
   buildComposerPluginInventory,
   hydrateComposerPluginInventoryIcons,
   resolveComposerPluginActivation,
-} from "./composer-plugin-inventory";
+} from "../../shared/codex-composer-plugin-inventory";
 
 function createPlugin(
   overrides: Partial<PluginSummary> & Pick<PluginSummary, "id" | "name">,

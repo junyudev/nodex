@@ -2,7 +2,7 @@ import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 import * as Stream from "effect/Stream";
 import { CodexApplicationEventHub } from "../codex-application/CodexApplicationEventHub";
-import { CodexRendererConversationRegistry } from "../codex-application/CodexRendererConversationRegistry";
+import { CodexRendererPresentationRegistry } from "../codex-application/CodexRendererPresentationRegistry";
 import { makeCodexThreadNotificationHandler } from "../codex/codex-thread-notification-handler";
 import { getLogger } from "../logging/logger";
 import { ApplicationSettings } from "../settings/ApplicationSettings";
@@ -18,7 +18,7 @@ export const live: Layer.Layer<
   never,
   | CodexApplicationEventHub
   | ApplicationSettings
-  | CodexRendererConversationRegistry
+  | CodexRendererPresentationRegistry
   | DesktopNotificationRuntime
   | RendererClientRuntime
   | WindowRuntime
@@ -26,7 +26,7 @@ export const live: Layer.Layer<
   Effect.gen(function* () {
     const events = yield* CodexApplicationEventHub;
     const applicationSettings = yield* ApplicationSettings;
-    const conversations = yield* CodexRendererConversationRegistry;
+    const conversations = yield* CodexRendererPresentationRegistry;
     const notifications = yield* DesktopNotificationRuntime;
     const rendererClients = yield* RendererClientRuntime;
     const windows = yield* WindowRuntime;
@@ -55,7 +55,7 @@ export const live: Layer.Layer<
       },
       dismissNotification: notifications.dismiss,
       dispatchAction: (targetClientId, action) =>
-        rendererClients.sendToClient(targetClientId, "desktop-notification:action", [action]),
+        rendererClients.sendToClient(targetClientId, "desktop-notification:action", action),
       focusTargetClient: (targetClientId) => {
         const webContentsId = rendererClients.getWebContentsIdForClientId(targetClientId);
         if (webContentsId === null) return;

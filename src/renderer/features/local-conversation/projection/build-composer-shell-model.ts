@@ -143,38 +143,9 @@ export function buildComposerShellModel(
     selectPrimaryConversationRequest({
       threadId: normalized.threadId,
       projectId: null,
-      source: null,
-      threadName: null,
-      threadPreview: "",
-      cwd: null,
-      statusType: normalized.statusType ?? "notLoaded",
-      statusActiveFlags: normalized.statusActiveFlags,
-      archived: false,
-      createdAt: 0,
-      updatedAt: 0,
-      linkedAt: "",
-      latestCollaborationMode: undefined,
-      resumeState: "resumed",
       turns: normalized.turns,
       canonicalRequests: normalized.canonicalRequests,
       requests: normalized.requests,
-      queuedFollowUps: {
-        status: "ready",
-        ledgerRevision: 0,
-        projectionRevision: 0,
-        entries: normalized.queuedFollowUps,
-        inFlightFollowUpId: null,
-        editingFollowUpId: null,
-        error: null,
-      },
-      pendingSteers: normalized.pendingSteers,
-      backgroundTerminalRows: normalized.backgroundTerminalRows,
-      capabilityFlags: {
-        canEditLastUserTurn: false,
-        canForkFromTurn: false,
-        canSearch: true,
-        canCollapseTurns: true,
-      },
     });
   const backgroundRequest = resolveBackgroundRequest(normalized, normalized.knownConversationsById);
 

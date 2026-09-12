@@ -92,12 +92,12 @@ class MockAudioContext {
 function buildModel(overrides?: Partial<ThreadFooterModel>): ThreadFooterModel {
   return {
     workspaceSearchContext: {
-      hostId: "default",
+      hostId: "local",
       roots: ["/tmp/project"],
       skillRoots: ["/tmp/project"],
     },
     projectId: "project_1",
-    hostId: "default",
+    hostId: "local",
     projectWorkspacePath: "/tmp/project",
     threadId: "thread_1",
     cwd: "/tmp/project",

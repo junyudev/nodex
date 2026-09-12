@@ -1,4 +1,20 @@
+import type { CodexRendererNativeRequestOrigin } from "./CodexRendererRequestOrigin";
+import { randomUUID } from "node:crypto";
+import {
+  codexHostRequestCanRetainOutcome,
+  type CodexRendererRequestCaller,
+} from "../../shared/codex-renderer-request";
+import { CodexTurnDeliveryError } from "../../shared/codex-conversation-state/codex-turn-delivery";
+import type { CodexEndpoint } from "./CodexEndpoint";
+import type { CodexAppServerSessionService } from "./CodexAppServerSession";
 import * as Context from "effect/Context";
+import * as Option from "effect/Option";
+import {
+  CodexRendererRequestOrigin,
+  CodexRendererDeliverySink,
+  CodexRendererDispatchState,
+  matchesRendererNativeRequest,
+} from "./CodexRendererRequestOrigin";
 import * as Duration from "effect/Duration";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
@@ -23,6 +39,18 @@ import {
   type CodexRuntimeError,
 } from "./CodexRuntimeError";
 import { CodexRequestScheduler, type CodexRequestScheduleOptions } from "./CodexRequestScheduler";
+import { defaultCodexRequestPriority } from "./CodexRequestSchedulerPolicy";
+import type { CodexAppServerRequestOptions } from "@nodex/effect-codex-app-server/protocol";
+import {
+  CodexScheduledRequestTrace,
+  CodexRendererResponseMetrics,
+} from "./CodexHostRequestMetrics";
+import { CodexExecutionHostAuthState } from "./CodexExecutionHostAuthState";
+import { isCodexCloudRequirementsAuthFailure } from "../../shared/codex-auth-failure";
+import type { CodexRequestTraceContext } from "../../shared/codex-request-lifecycle";
+import { codexRequestConversationId } from "../../shared/codex-request-lifecycle";
+import { runMainTraceSpan } from "../observability/sentry-main";
+import { codexRequestTraceCoordinator } from "./CodexRequestTraceCoordinator";
 
 export class CodexThreadHostResolver extends Context.Service<
   CodexThreadHostResolver,
@@ -32,7 +60,7 @@ export class CodexThreadHostResolver extends Context.Service<
 >()("nodex/main/codex-runtime/CodexThreadHostResolver") {}
 
 export interface CodexGatewayOptions {
-  readonly requestTimeout: Duration.Input | ((method: ClientRequestMethod) => Duration.Input);
+  readonly requestTimeout?: Duration.Input | ((method: ClientRequestMethod) => Duration.Input);
 }
 
 /**
@@ -40,9 +68,14 @@ export interface CodexGatewayOptions {
  * The scheduler still owns the final dispatch race: retiring that generation rejects the request
  * before its captured client Effect can run.
  */
-export interface CodexGatewayRequestOptions extends CodexRequestScheduleOptions {
+export interface CodexGatewayRequestOptions extends Omit<
+  CodexRequestScheduleOptions,
+  "coalesce" | "hostMetrics"
+> {
   readonly expectedHostId?: string;
   readonly expectedGeneration?: number;
+  /** W3C trace context written to the physical JSON-RPC request. */
+  readonly wireTrace?: CodexRequestTraceContext | null;
 }
 
 export const codexGatewayGenerationFence = (input: {
@@ -111,7 +144,7 @@ export class CodexGateway extends Context.Service<
 const timeoutFor = (options: CodexGatewayOptions, method: ClientRequestMethod): Duration.Input =>
   typeof options.requestTimeout === "function"
     ? options.requestTimeout(method)
-    : options.requestTimeout;
+    : (options.requestTimeout ?? (method === "plugin/list" ? 30_000 : 0));
 
 const OUTCOME_UNKNOWN_ON_TIMEOUT = new Set<string>([
   "thread/fork",
@@ -122,12 +155,69 @@ const OUTCOME_UNKNOWN_ON_TIMEOUT = new Set<string>([
   "turn/steer",
 ]);
 
+const requestWithTransportMetrics = Effect.fnUntraced(function* <Result, Error>(
+  method: string,
+  params: unknown,
+  scheduling: CodexGatewayRequestOptions | undefined,
+  transportKind: "stdio" | "websocket",
+  rendererCaller:
+    | (CodexRendererRequestCaller &
+        Partial<Pick<CodexRendererNativeRequestOrigin, "destinationId">>)
+    | null,
+  request: (options: CodexAppServerRequestOptions) => Effect.Effect<Result, Error>,
+  requestId?: string,
+) {
+  const trace = yield* CodexScheduledRequestTrace;
+  let wireTrace = scheduling?.wireTrace ?? null;
+  if (wireTrace) {
+    wireTrace = runMainTraceSpan(
+      {
+        name: "app_server.transport_send",
+        op: "codex.app_server.transport_send",
+        trace: wireTrace,
+        attributes: {
+          "app_server.method": method,
+          "transport.kind": transportKind,
+        },
+      },
+      (activeTrace) => activeTrace ?? wireTrace,
+    );
+    if (wireTrace) trace?.onWireTrace?.(wireTrace);
+  }
+  const webContentsId = Number(rendererCaller?.destinationId);
+  if (
+    rendererCaller?.destinationId &&
+    Number.isSafeInteger(webContentsId) &&
+    webContentsId > 0 &&
+    requestId
+  )
+    codexRequestTraceCoordinator.trackRequest({
+      method,
+      requestId,
+      threadId: codexRequestConversationId(params),
+      trace: wireTrace,
+      webContentsId,
+    });
+  return yield* request({
+    requestId,
+    trace: trace ?? undefined,
+    wireTrace,
+    metricsMode: trace ? "deferred" : "internal",
+    preserveResponse: requestId !== undefined,
+    observeTransport: defaultCodexRequestPriority(method, scheduling?.priority) !== "background",
+  });
+});
+
 export const live = (
   options: CodexGatewayOptions,
 ): Layer.Layer<
   CodexGateway,
   never,
-  CodexEndpointMap | CodexEventHub | CodexRequestScheduler | CodexThreadHostResolver
+  | CodexEndpointMap
+  | CodexEventHub
+  | CodexRequestScheduler
+  | CodexThreadHostResolver
+  | CodexExecutionHostAuthState
 > =>
   Layer.effect(
     CodexGateway,
@@ -136,21 +226,30 @@ export const live = (
       const eventHub = yield* CodexEventHub;
       const scheduler = yield* CodexRequestScheduler;
       const threadHosts = yield* CodexThreadHostResolver;
+      const authState = yield* CodexExecutionHostAuthState;
 
       const schedulingOptions = (
+        endpoint: CodexEndpoint["Service"],
         method: string,
         scheduling: CodexGatewayRequestOptions | undefined,
       ): CodexRequestScheduleOptions => ({
+        ...scheduling,
         priority: scheduling?.priority,
         source: scheduling?.source,
         expiresAtMs: scheduling?.expiresAtMs,
         conversationId: scheduling?.conversationId,
         widgetId: scheduling?.widgetId,
-        coalesce: scheduling?.coalesce,
+        // Main requests own independent response and cancellation lifetimes.
+        coalesce: false,
         queuedBytes: scheduling?.queuedBytes,
+        onResponseMetrics: scheduling?.onResponseMetrics,
         timeoutMs:
           scheduling?.timeoutMs === undefined
-            ? Duration.toMillis(timeoutFor(options, method as ClientRequestMethod))
+            ? method === "getAuthStatus"
+              ? endpoint.metrics.hostKind === "remote-control"
+                ? 90_000
+                : 30_000
+              : Duration.toMillis(timeoutFor(options, method as ClientRequestMethod))
             : scheduling.timeoutMs,
         outcomeOnTimeout:
           scheduling?.outcomeOnTimeout ??
@@ -205,44 +304,244 @@ export const live = (
         );
       };
 
+      const scheduleNativeRequest = <A>(
+        endpoint: CodexEndpoint["Service"],
+        hostId: string,
+        method: string,
+        params: unknown,
+        caller: CodexRendererRequestCaller &
+          Partial<Pick<CodexRendererNativeRequestOrigin, "destinationId" | "abandonment">>,
+        scheduling: CodexGatewayRequestOptions | undefined,
+        responseTimeoutOwner: "main" | "caller",
+        dispatchNative: (
+          session: CodexAppServerSessionService,
+        ) => Effect.Effect<A, CodexRuntimeError>,
+      ): Effect.Effect<A, CodexRuntimeError> =>
+        Effect.gen(function* () {
+          const responseMetrics =
+            responseTimeoutOwner === "caller" ? yield* CodexRendererResponseMetrics : null;
+          const deliverySink =
+            responseTimeoutOwner === "caller" ? yield* CodexRendererDeliverySink : null;
+          const dispatchState =
+            responseTimeoutOwner === "caller" ? yield* CodexRendererDispatchState : null;
+          if (responseMetrics?.hostId && responseMetrics.hostId !== hostId)
+            return yield* codexRuntimeError({
+              operation: "gateway.renderer-host",
+              reason: "host-unavailable",
+              retryable: false,
+              hostId,
+              method,
+              cause: new Error("Native request host does not match its prepared operation"),
+            });
+          if (responseMetrics) responseMetrics.hostId = hostId;
+          if (responseMetrics) responseMetrics.requestMethod = method;
+          const admissionAt = yield* Effect.clockWith((clock) => clock.currentTimeMillis);
+          const admissionBudget =
+            caller.expiresAtMs === null ? null : caller.expiresAtMs - admissionAt;
+          const admissionError = () =>
+            codexRuntimeError({
+              operation: "gateway.renderer-admission",
+              reason: "timeout",
+              retryable: false,
+              hostId,
+              method,
+              cause: new CodexTurnDeliveryError("App server request timed out while queued", {
+                requestId: caller.requestId,
+                method,
+                stage: "not-sent",
+              }),
+            });
+          if (admissionBudget !== null && admissionBudget <= 0) return yield* admissionError();
+          const generation =
+            admissionBudget === null
+              ? yield* endpoint.admission
+              : yield* endpoint.admission.pipe(
+                  Effect.timeoutOption(admissionBudget),
+                  Effect.flatMap((result) =>
+                    Option.isSome(result)
+                      ? Effect.succeed(result.value)
+                      : Effect.fail(admissionError()),
+                  ),
+                );
+          const awaitReady = Effect.gen(function* () {
+            const session = yield* endpoint.session;
+            yield* assertExpectedGeneration(hostId, session.generation, session.pid, method, {
+              ...scheduling,
+              expectedGeneration: scheduling?.expectedGeneration ?? generation,
+            });
+            return session;
+          });
+          const deadlineError = () =>
+            codexRuntimeError({
+              operation: "gateway.renderer-readiness",
+              reason: "timeout",
+              retryable: false,
+              hostId: hostId,
+              generation,
+              method,
+              cause: new CodexTurnDeliveryError(
+                "App server request timed out before native readiness",
+                {
+                  requestId: caller.requestId,
+                  method,
+                  stage: "not-sent",
+                },
+              ),
+            });
+          const dispatch = Effect.gen(function* () {
+            const now = yield* Effect.clockWith((clock) => clock.currentTimeMillis);
+            const remaining = caller.expiresAtMs === null ? null : caller.expiresAtMs - now;
+            if (remaining !== null && remaining <= 0) return yield* deadlineError();
+            const session =
+              remaining === null
+                ? yield* awaitReady
+                : yield* awaitReady.pipe(
+                    Effect.timeoutOption(remaining),
+                    Effect.flatMap((result) =>
+                      Option.isSome(result)
+                        ? Effect.succeed(result.value)
+                        : Effect.fail(deadlineError()),
+                    ),
+                  );
+            const dispatchedAt = yield* Effect.clockWith((clock) => clock.currentTimeMillis);
+            if (caller.expiresAtMs !== null && dispatchedAt >= caller.expiresAtMs)
+              return yield* deadlineError();
+            return yield* dispatchNative(session);
+          });
+          return yield* scheduler.schedule({
+            hostId: hostId,
+            generation,
+            method,
+            params,
+            dispatch,
+            options: {
+              ...scheduling,
+              requestId: caller.requestId,
+              retainResponse: caller.retainResponse,
+              onNativeDispatch: dispatchState
+                ? () => {
+                    dispatchState.dispatched = true;
+                    scheduling?.onNativeDispatch?.();
+                  }
+                : scheduling?.onNativeDispatch,
+              onRendererCoalescedRoleBound: dispatchState
+                ? (isFollower) => {
+                    dispatchState.isCoalescedFollower = isFollower;
+                  }
+                : undefined,
+              onDetachedPhysicalResponse: dispatchState?.onDetachedPhysicalResponse,
+              onOutcomeUnknown: deliverySink
+                ? (delivery) =>
+                    Effect.gen(function* () {
+                      yield* deliverySink({
+                        type: "mcp-request-delivery",
+                        hostId,
+                        update: { type: "outcome-unknown", delivery },
+                      });
+                      if (scheduling?.onOutcomeUnknown)
+                        yield* scheduling.onOutcomeUnknown(delivery);
+                    })
+                : scheduling?.onOutcomeUnknown,
+              hostMetrics: endpoint.metrics,
+              onResponseMetrics: (metrics) =>
+                Effect.gen(function* () {
+                  if (responseMetrics) responseMetrics.hostMetrics = metrics;
+                  if (scheduling?.onResponseMetrics) yield* scheduling.onResponseMetrics(metrics);
+                }),
+              onPhysicalResponse: (receivedAtMs) => {
+                if (responseMetrics) responseMetrics.responseReceivedAtMs = receivedAtMs;
+                scheduling?.onPhysicalResponse?.(receivedAtMs);
+              },
+              onWireTrace: (wireTrace) => {
+                if (responseMetrics) responseMetrics.wireTrace = wireTrace;
+                scheduling?.onWireTrace?.(wireTrace);
+              },
+              conversationId: scheduling?.conversationId,
+              timeoutMs: caller.timeoutMs,
+              expiresAtMs: caller.expiresAtMs,
+              coalesce: responseTimeoutOwner === "caller",
+              rendererCaller: caller.destinationId
+                ? { destinationId: caller.destinationId, abandonment: caller.abandonment }
+                : undefined,
+              responseTimeoutOwner,
+            },
+          });
+        });
+
+      const requestOnHostUsing = <A, E>(
+        hostId: string,
+        method: string,
+        params: unknown,
+        scheduling: CodexGatewayRequestOptions | undefined,
+        invoke: (
+          session: CodexAppServerSessionService,
+          options: CodexAppServerRequestOptions,
+        ) => Effect.Effect<A, E>,
+      ): Effect.Effect<A, CodexRuntimeError> =>
+        Effect.gen(function* () {
+          const enqueuedAtMs = yield* Effect.clockWith((clock) => clock.currentTimeMillis);
+          const normalizedHostId = hostId.trim();
+          yield* assertExpectedHost(normalizedHostId, method, scheduling);
+          const endpoint = yield* endpoints.endpoint(normalizedHostId);
+          const origin = yield* CodexRendererRequestOrigin;
+          const rendererCaller =
+            origin && matchesRendererNativeRequest(origin, method, params) ? origin : null;
+          const resolved = rendererCaller
+            ? { ...scheduling, wireTrace: rendererCaller.wireTrace }
+            : { ...scheduling, ...schedulingOptions(endpoint, method, scheduling) };
+          const timeoutMs = resolved?.timeoutMs ?? 0;
+          const caller = rendererCaller ?? {
+            requestId: `${method}:${randomUUID()}`,
+            timeoutMs,
+            expiresAtMs: resolved?.expiresAtMs ?? (timeoutMs > 0 ? enqueuedAtMs + timeoutMs : null),
+            retainResponse: codexHostRequestCanRetainOutcome(method),
+          };
+          return yield* scheduleNativeRequest(
+            endpoint,
+            normalizedHostId,
+            method,
+            params,
+            caller,
+            resolved,
+            rendererCaller ? "caller" : "main",
+            (session) =>
+              requestWithTransportMetrics(
+                method,
+                params,
+                resolved,
+                endpoint.metrics.transportKind,
+                rendererCaller,
+                (requestOptions) => invoke(session, requestOptions),
+                caller.requestId,
+              ).pipe(
+                Effect.tapError((cause) =>
+                  isCodexCloudRequirementsAuthFailure(cause)
+                    ? authState.markLoginRequired(normalizedHostId)
+                    : Effect.void,
+                ),
+                Effect.mapError((cause) =>
+                  classifyCodexClientError({
+                    operation: rendererCaller ? "gateway.renderer-request" : "gateway.request",
+                    cause,
+                    hostId: normalizedHostId,
+                    generation: session.generation,
+                    pid: session.pid,
+                    method,
+                  }),
+                ),
+              ),
+          );
+        });
+
       const requestOnHost = <M extends ClientRequestMethod>(
         hostId: string,
         method: M,
         params: ClientRequestParamsByMethod[M],
         scheduling?: CodexGatewayRequestOptions,
       ): Effect.Effect<ClientRequestResponsesByMethod[M], CodexRuntimeError> =>
-        Effect.gen(function* () {
-          const normalizedHostId = hostId.trim();
-          yield* assertExpectedHost(normalizedHostId, method, scheduling);
-          const endpoint = yield* endpoints.endpoint(normalizedHostId);
-          const session = yield* endpoint.session;
-          yield* assertExpectedGeneration(
-            normalizedHostId,
-            session.generation,
-            session.pid,
-            method,
-            scheduling,
-          );
-          return yield* scheduler.schedule({
-            hostId: normalizedHostId,
-            generation: session.generation,
-            method,
-            params,
-            options: schedulingOptions(method, scheduling),
-            dispatch: session.client.request(method, params).pipe(
-              Effect.mapError((cause) =>
-                classifyCodexClientError({
-                  operation: "gateway.request",
-                  cause,
-                  hostId: normalizedHostId,
-                  generation: session.generation,
-                  pid: session.pid,
-                  method,
-                }),
-              ),
-            ),
-          });
-        }).pipe(Effect.withSpan("CodexGateway.request", { attributes: { hostId, method } }));
+        requestOnHostUsing(hostId, method, params, scheduling, (session, options) =>
+          session.client.request(method, params, options),
+        ).pipe(Effect.withSpan("CodexGateway.request", { attributes: { hostId, method } }));
 
       const requestRawOnHost = (
         hostId: string,
@@ -250,38 +549,9 @@ export const live = (
         params: unknown,
         scheduling?: CodexGatewayRequestOptions,
       ) =>
-        Effect.gen(function* () {
-          const normalizedHostId = hostId.trim();
-          yield* assertExpectedHost(normalizedHostId, method, scheduling);
-          const endpoint = yield* endpoints.endpoint(normalizedHostId);
-          const session = yield* endpoint.session;
-          yield* assertExpectedGeneration(
-            normalizedHostId,
-            session.generation,
-            session.pid,
-            method,
-            scheduling,
-          );
-          return yield* scheduler.schedule({
-            hostId: normalizedHostId,
-            generation: session.generation,
-            method,
-            params,
-            options: schedulingOptions(method, scheduling),
-            dispatch: session.client.raw.request(method, params).pipe(
-              Effect.mapError((cause) =>
-                classifyCodexClientError({
-                  operation: "gateway.raw-request",
-                  cause,
-                  hostId: normalizedHostId,
-                  generation: session.generation,
-                  pid: session.pid,
-                  method,
-                }),
-              ),
-            ),
-          });
-        }).pipe(Effect.withSpan("CodexGateway.rawRequest", { attributes: { hostId, method } }));
+        requestOnHostUsing(hostId, method, params, scheduling, (session, options) =>
+          session.client.raw.request(method, params, options),
+        ).pipe(Effect.withSpan("CodexGateway.rawRequest", { attributes: { hostId, method } }));
 
       const events = eventHub.events.pipe(
         Stream.filterEffect((event) => {
@@ -354,7 +624,8 @@ export const live = (
             Effect.asVoid,
           ),
         reconcileHost: endpoints.register,
-        removeHost: endpoints.unregister,
+        removeHost: (hostId) =>
+          endpoints.unregister(hostId).pipe(Effect.andThen(authState.clearLoginRequired(hostId))),
         restartHost: endpoints.restart,
       });
     }),

@@ -137,6 +137,7 @@ export interface BrowserUseIabApi {
   readonly hasActiveControl: () => boolean;
   readonly notifyCursorArrived: (moveSequence: number) => void;
   readonly ping: () => string;
+  readonly releaseSessionControl: () => Promise<void>;
   readonly turnEnded: (rawParams: unknown) => Promise<void>;
 }
 
@@ -376,7 +377,7 @@ class BrowserUseIabApiState implements BrowserUseIabApi {
     return this.controlledTabs.size > 0;
   }
 
-  private async releaseSessionControl(): Promise<void> {
+  async releaseSessionControl(): Promise<void> {
     const failures: unknown[] = [];
     for (const tabId of [...this.cdpDisposers.keys()]) {
       try {

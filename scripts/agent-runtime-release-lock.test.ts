@@ -14,7 +14,7 @@ const releaseUrl = (assetName: string) =>
 
 function makeLock(): Record<string, unknown> {
   const build = (targetTriple: string) => {
-    const assetName = `codex-app-server-package-${targetTriple}.tar.gz`;
+    const assetName = `codex-package-${targetTriple}.tar.gz`;
     return {
       archiveSha256: HASH,
       archiveSize: 123,
@@ -49,11 +49,11 @@ function makeLock(): Record<string, unknown> {
       noticeSha256: HASH,
     },
     packageManifest: {
-      entrypoint: "bin/codex-app-server",
+      entrypoint: "bin/codex",
       layoutVersion: 1,
       pathDir: "codex-path",
       resourcesDir: "codex-resources",
-      variant: "codex-app-server",
+      variant: "codex",
       version: "0.152.0",
     },
     protocolSchema: {
@@ -65,7 +65,7 @@ function makeLock(): Record<string, unknown> {
       },
     },
     requiredArtifacts: [...CODEX_APP_SERVER_REQUIRED_ARTIFACTS],
-    runtimeFamily: "codex-app-server",
+    runtimeFamily: "codex",
     schemaVersion: 1,
     upstream: {
       checksumManifest: {
@@ -86,7 +86,7 @@ test("binds runtime archives, schema tools, and checksum manifest to one officia
   const lock = parseCodexAppServerReleaseLock(makeLock());
   expect(lock.upstream).toMatchObject({ commit: COMMIT, repository: "openai/codex", tag: TAG });
   expect(lock.builds["darwin-arm64"].url).toBe(
-    releaseUrl("codex-app-server-package-aarch64-apple-darwin.tar.gz"),
+    releaseUrl("codex-package-aarch64-apple-darwin.tar.gz"),
   );
   expect(lock.upstream.checksumManifest.url).toBe(releaseUrl("codex-package_SHA256SUMS"));
 });

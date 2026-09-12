@@ -11,6 +11,15 @@ import { ApplicationSettings } from "../settings/ApplicationSettings";
 import { TemporaryAssets } from "../local-store/TemporaryAssets";
 import { ChatGptDesktop, live as chatGptDesktopLive } from "../codex-application/ChatGptDesktop";
 import {
+  CodexAttachments,
+  live as codexAttachmentsLive,
+} from "../codex-application/CodexAttachments";
+import {
+  CodexExecutionAssignments,
+  live as codexExecutionAssignmentsLive,
+} from "../codex-application/CodexExecutionAssignments";
+import { CodexHttpFetch, live as codexHttpFetchLive } from "../codex-application/CodexHttpFetch";
+import {
   ComposerExternalSuggestions,
   live as composerExternalSuggestionsLive,
 } from "../codex-application/ComposerExternalSuggestions";
@@ -91,6 +100,8 @@ import { CodexPlatform } from "./CodexApplicationLive";
 const logger = getLogger({ subsystem: "app" });
 
 const chatGpt = chatGptDesktopLive.pipe(Layer.provideMerge(ElectronNet.live));
+const httpFetch = codexHttpFetchLive.pipe(Layer.provideMerge(chatGpt));
+const executionAssignments = codexExecutionAssignmentsLive.pipe(Layer.provideMerge(chatGpt));
 const browserSiteStatus = browserSiteStatusRuntimeLive.pipe(Layer.provideMerge(chatGpt));
 const browserApplication = Layer.unwrap(
   Effect.gen(function* () {
@@ -178,13 +189,17 @@ const remoteHostedPipNative = Layer.unwrap(
 );
 const desktopTools = Layer.unwrap(
   Effect.gen(function* () {
+    const config = yield* MainConfig;
     const codex = yield* CodexPlatform;
     return desktopToolRuntimeLive({
       browserRuntime: codex.runtime.browserRuntime,
+      isPackaged: config.isPackaged,
+      projectRootPath: config.projectRootPath,
+      resourcesPath: config.resourcesPath,
       runtimeStateHome: codex.runtimeStateHome,
     });
   }),
-).pipe(Layer.provideMerge(Layer.merge(browserPresentation, computerUse)));
+).pipe(Layer.provideMerge(Layer.mergeAll(browserPresentation, computerUse, executionAssignments)));
 
 const localWorktreeWorker = localWorktreeWorkerRuntimeLive({
   hostId: "local",
@@ -204,6 +219,7 @@ const executionHosts = Layer.unwrap(
     });
   }),
 ).pipe(Layer.provideMerge(Layer.mergeAll(localWorktreeWorker, executionHostConfigurationLive)));
+const attachments = codexAttachmentsLive.pipe(Layer.provideMerge(executionHosts));
 const managedWorktrees = managedWorktreeRuntimeLive.pipe(Layer.provideMerge(executionHosts));
 
 const gitWorker = gitWorkerRuntimeLive({
@@ -228,6 +244,8 @@ const gitActions = gitActionsLive.pipe(
 export const live: Layer.Layer<
   | ElectronNet.ElectronNet
   | ChatGptDesktop
+  | CodexHttpFetch
+  | CodexExecutionAssignments
   | ComposerExternalSuggestions
   | BrowserSiteStatusRuntime
   | BrowserApplication
@@ -242,6 +260,7 @@ export const live: Layer.Layer<
   | ExecutionHostConfiguration
   | ManagedWorktreeConfiguration
   | ExecutionHostRuntime
+  | CodexAttachments
   | ManagedWorktreeRuntime
   | GitWorkerRuntime
   | GitActionOperationRuntime
@@ -267,7 +286,10 @@ export const live: Layer.Layer<
   chromeControl,
   remoteHostedPipNative,
   desktopTools,
+  attachments,
   managedWorktrees,
   gitActions,
   externalSuggestions,
+  httpFetch,
+  executionAssignments,
 );

@@ -28,6 +28,10 @@ import {
 import { CodexAttachments } from "./CodexAttachments";
 import { CodexAgentConfigRuntime } from "./CodexAgentConfigRuntime";
 import { CodexAutoThreadTitle } from "./CodexAutoThreadTitle";
+import { CodexExecutionAssignments } from "./CodexExecutionAssignments";
+import { makeReadyCodexExecutionAssignments } from "./CodexExecutionAssignments.test-support";
+import { CodexGitProbe } from "./CodexGitProbe";
+import { makeTestCodexGitProbe } from "./CodexGitProbe.test-support";
 import { CodexFreshThreadLaunchRuntime } from "./CodexFreshThreadLaunchRuntime";
 import { CodexPendingWorktreeRuntime } from "./CodexPendingWorktreeRuntime";
 import { make, type CodexSessionThreadLaunchContext } from "./CodexSessionThreadLaunch";
@@ -84,6 +88,7 @@ const harness = (
     readonly prepareAgentConfig?: CodexAgentConfigRuntime["Service"]["prepare"];
     readonly projectLifecycle?: ProjectRuntimeLifecycleRuntime["Service"];
     readonly threadCreation?: ThreadCreationRuntime["Service"];
+    readonly executionFeatures?: Readonly<Record<string, unknown>>;
   } = {},
 ) => {
   const events: string[] = [];
@@ -101,6 +106,7 @@ const harness = (
     hostId: "local",
     generation: 19,
     userAgent: "codex-app-server/0.145.0-alpha.15",
+    nativeAppTools: true,
   });
   const gateway = CodexGateway.of({
     localHostId: "local",
@@ -166,7 +172,7 @@ const harness = (
             const conversation = snapshot(request.response.thread.id);
             return {
               summary: conversation,
-              snapshot: conversation,
+              snapshot: request.durableOnly ? null : conversation,
             } as never;
           }),
   } as unknown as CodexThreadDirectory["Service"]);
@@ -187,6 +193,7 @@ const harness = (
       }),
   } as unknown as CodexTurnCommands["Service"]);
   const preparation = CodexTurnPreparation.of({
+    prepareCaptured: () => Effect.die("unused"),
     start: (preparationInput: Parameters<CodexTurnPreparation["Service"]["start"]>[0]) =>
       Effect.sync(() => {
         preparationInputs.push(preparationInput);
@@ -228,6 +235,16 @@ const harness = (
         }),
       ),
       Effect.provideService(
+        CodexExecutionAssignments,
+        makeReadyCodexExecutionAssignments(
+          options.executionFeatures ?? {
+            concurrent_reasoning_summaries: true,
+            thread_tools: true,
+          },
+        ),
+      ),
+      Effect.provideService(CodexGitProbe, makeTestCodexGitProbe()),
+      Effect.provideService(
         CodexAgentConfigRuntime,
         CodexAgentConfigRuntime.of({
           prepare: options.prepareAgentConfig ?? (() => Effect.succeed({ hasConfig: false })),
@@ -261,7 +278,7 @@ const harness = (
       Effect.provideService(
         DesktopToolRuntime,
         DesktopToolRuntime.of({
-          threadConfig: Effect.succeed(options.desktopToolConfig ?? null),
+          threadConfig: () => Effect.succeed(options.desktopToolConfig ?? null),
         } as unknown as DesktopToolRuntime["Service"]),
       ),
       Effect.provideService(CodexThreadDirectory, directory),
@@ -295,6 +312,7 @@ const harness = (
       Effect.provideService(
         CodexFreshThreadLaunchRuntime,
         CodexFreshThreadLaunchRuntime.of({
+          prepare: () => Effect.die("unused native preparation"),
           register: (
             launch: Parameters<CodexFreshThreadLaunchRuntime["Service"]["register"]>[0],
           ) => {
@@ -432,27 +450,30 @@ it.effect("uses one execution profile for renderer-owned Thread and first-Turn p
     });
 
     assert.strictEqual(result.kind, "started");
-    assert.deepEqual(test.threadStartParams[0], {
+    const threadStart = test.threadStartParams[0]!;
+    const { developerInstructions, ...threadStartWithoutDeveloperInstructions } = threadStart;
+    assert.isString(developerInstructions);
+    assert.include(developerInstructions, "<app-context>");
+    assert.deepEqual(threadStartWithoutDeveloperInstructions, {
       cwd: "/workspace",
       runtimeWorkspaceRoots: ["/workspace"],
       model: "gpt-5.6-luna",
       serviceTier: null,
       baseInstructions: null,
-      developerInstructions: null,
+      personality: "friendly",
       threadSource: "user",
       historyMode: "paginated",
       dynamicTools: [],
       config: {
         "features.js_repl": false,
         "mcp_servers.node_repl": { command: "/runtime/node" },
-        "features.apply_patch_streaming_events": true,
         "features.concurrent_reasoning_summaries": true,
         "features.thread_tools": true,
         "mcp_servers.nodex_app.enabled_tools": appToolCatalog.map((tool) => tool.name),
         model_reasoning_effort: "max",
       },
     });
-    assert.deepEqual(test.preparationInputs[0]?.overrides, {
+    assert.deepEqual(test.freshLaunches[0]?.firstTurn.overrides, {
       clientUserMessageId: firstSubmission.clientUserMessageId,
       promptInput: undefined,
       model: "gpt-5.6-luna",
@@ -460,6 +481,7 @@ it.effect("uses one execution profile for renderer-owned Thread and first-Turn p
       permissionMode: undefined,
       reasoningEffort: "max",
       collaborationMode: undefined,
+      agentConfigPermissionMode: undefined,
     });
     assert.strictEqual(test.freshLaunches[0]?.launchId, firstSubmission.launchId);
     assert.strictEqual(
@@ -482,6 +504,7 @@ it.effect("uses the same execution profile for a Main-owned first Turn", () =>
     yield* service.start(conflictingLaunchInput(), context);
 
     assert.deepEqual(test.firstTurnOverrides[0], {
+      freshNativeThread: { hostId: "local", generation: 19 },
       clientUserMessageId: firstSubmission.clientUserMessageId,
       promptInput: undefined,
       model: "gpt-5.6-luna",
@@ -494,21 +517,25 @@ it.effect("uses the same execution profile for a Main-owned first Turn", () =>
   }),
 );
 
-it.effect("rejects a renderer-owned first Turn that changes its admitted message identity", () =>
-  Effect.gen(function* () {
-    const scope = yield* Scope.make();
-    const test = harness(scope, { preparedClientUserMessageId: "substituted-message-id" });
-    const service = yield* test.effect;
-
-    const result = yield* Effect.exit(
-      service.start(input(), { ...context, ownerClientId: "renderer-a" }),
-    );
-
-    assert.isTrue(Exit.isFailure(result));
-    assert.deepEqual(test.freshLaunches, []);
-    assert.deepEqual(test.events, ["start:1", "commit:thread-1"]);
-    yield* Scope.close(scope, Exit.void);
-  }),
+it.effect(
+  "returns raw fresh-thread adoption without preparing or projecting its renderer-owned first turn",
+  () =>
+    Effect.gen(function* () {
+      const scope = yield* Scope.make();
+      const test = harness(scope);
+      const service = yield* test.effect;
+      const result = yield* service.start(input(), { ...context, ownerClientId: "renderer-a" });
+      assert.strictEqual(result.kind, "started");
+      assert.deepEqual(test.preparationInputs, []);
+      assert.deepEqual(test.firstTurnOverrides, []);
+      assert.strictEqual(test.freshLaunches[0]?.nativeStart.response.thread.id, "thread-1");
+      assert.strictEqual(
+        test.freshLaunches[0]?.firstTurn.overrides.clientUserMessageId,
+        firstSubmission.clientUserMessageId,
+      );
+      assert.deepEqual(test.events, ["start:1", "commit:thread-1"]);
+      yield* Scope.close(scope, Exit.void);
+    }),
 );
 
 it.effect("deletes a provider-substituted Thread before admitting its first Turn", () =>
@@ -594,7 +621,7 @@ it.effect("preserves first-submission identity while consuming Agent config for 
       assert.strictEqual(test.threadStartParams[0]?.historyMode, "paginated");
       assert.strictEqual(test.acceptedCapabilities[0], test.capability);
       const overrides = ownerClientId
-        ? test.preparationInputs[0]?.overrides
+        ? test.freshLaunches[0]?.firstTurn.overrides
         : test.firstTurnOverrides[0];
       assert.deepInclude(overrides, {
         clientUserMessageId: firstSubmission.clientUserMessageId,
@@ -645,6 +672,7 @@ it.effect("freezes resolved Agent config into a pending worktree request", () =>
     assert.strictEqual(request?.launchMode, "start-conversation");
     if (request?.launchMode !== "start-conversation") return;
     assert.strictEqual(request.prompt, "Ship it");
+    assert.strictEqual(request.label, "Ship it");
     assert.deepStrictEqual(request.firstSubmission, firstSubmission);
     assert.deepStrictEqual(request.startConversationParamsInput.executionProfile, profile);
     assert.strictEqual(request.startConversationParamsInput.agentMode, "auto");
@@ -655,6 +683,28 @@ it.effect("freezes resolved Agent config into a pending worktree request", () =>
       projectId: "project-a",
       pendingCoreUpdate: false,
     });
+    yield* Scope.close(scope, Exit.void);
+  }),
+);
+
+it.effect("uses an explicit Thread title as the managed-worktree pending label", () =>
+  Effect.gen(function* () {
+    const scope = yield* Scope.make();
+    const test = harness(scope);
+    const service = yield* test.effect;
+
+    const result = yield* service.start(
+      {
+        ...input(),
+        prompt: "**Derived** label",
+        threadName: "Chosen title",
+        runInTarget: "newWorktree",
+      },
+      context,
+    );
+
+    assert.strictEqual(result.kind, "pending");
+    assert.strictEqual(test.pendingWorktreeRequests[0]?.label, "Chosen title");
     yield* Scope.close(scope, Exit.void);
   }),
 );
@@ -688,6 +738,31 @@ it.effect("freezes Project authority into managed-worktree launches", () =>
     assert.strictEqual(request.startConversationParamsInput.agentMode, "guardian-approvals");
     assert.strictEqual(request.startConversationParamsInput.model, "gpt-5.6-sol");
     assert.strictEqual(request.startConversationParamsInput.reasoningEffort, "high");
+    yield* Scope.close(scope, Exit.void);
+  }),
+);
+
+it.effect("routes managed-worktree setup through the selected execution host", () =>
+  Effect.gen(function* () {
+    const scope = yield* Scope.make();
+    const test = harness(scope);
+    const service = yield* test.effect;
+
+    const result = yield* service.start(
+      {
+        ...input(),
+        executionHostId: "ssh:builder",
+        runInTarget: "newWorktree",
+      },
+      context,
+    );
+
+    assert.strictEqual(result.kind, "pending");
+    const request = test.pendingWorktreeRequests[0];
+    assert.strictEqual(request?.hostId, "ssh:builder");
+    assert.strictEqual(request?.launchMode, "start-conversation");
+    if (request?.launchMode !== "start-conversation") return;
+    assert.strictEqual(request.threadStartHostId, "ssh:builder");
     yield* Scope.close(scope, Exit.void);
   }),
 );

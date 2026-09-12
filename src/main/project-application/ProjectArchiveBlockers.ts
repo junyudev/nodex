@@ -2,6 +2,7 @@ import * as Context from "effect/Context";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 import { isCodexAgentBackendBinding } from "../../shared/agent-backend";
+import { projectCodexMarkdownLabel } from "../../shared/codex-markdown-text";
 import type { ProjectArchiveBlocker, ProjectSessionSummary } from "../../shared/types";
 import {
   CodexBackgroundProcesses,
@@ -74,7 +75,7 @@ export const live: Layer.Layer<
           durable && isCodexAgentBackendBinding(durable.backendBinding)
             ? conversations.activity(threadId)
             : { active: false, pending: false, label: null };
-        const label = current.label || durable?.threadName?.trim() || null;
+        const label = current.label || projectCodexMarkdownLabel(durable?.threadName);
         const active = current.active || durable?.statusType === "active";
         const pending = current.pending || (durable?.statusActiveFlags.length ?? 0) > 0;
         return [

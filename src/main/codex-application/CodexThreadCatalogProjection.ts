@@ -8,7 +8,14 @@ import type {
   Project,
   ProjectSessionSummary,
 } from "../../shared/types";
-import { normalizeCodexManualThreadTitle } from "../../shared/codex-thread-title";
+import {
+  normalizeCodexManualThreadTitle,
+  resolveCodexElectronDisplayThreadTitle,
+} from "../../shared/codex-thread-title";
+import {
+  projectCodexMarkdownLabel,
+  projectCodexMarkdownToPlainText,
+} from "../../shared/codex-markdown-text";
 import { MAX_PROJECT_SESSION_TITLE_LENGTH } from "../../shared/schemas/project-sessions";
 import {
   projectAgentBackendBindingFromCore,
@@ -70,10 +77,27 @@ export const resolveSidebarProjectIdForCwd = (
 export const resolveSidebarThreadTitle = (thread: {
   readonly threadName?: string | null;
   readonly threadPreview?: string | null;
-}): string => {
-  const title = thread.threadName?.trim() || thread.threadPreview?.trim();
-  return title || "New thread";
-};
+}): string =>
+  resolveCodexElectronDisplayThreadTitle({
+    threadName: thread.threadName,
+    threadPreview: thread.threadPreview,
+    fallback: "New thread",
+  });
+
+export const resolveThreadSearchResultTitle = (thread: {
+  readonly threadName?: string | null;
+  readonly threadPreview?: string | null;
+  readonly cwd?: string | null;
+  readonly threadId: string;
+}): string =>
+  projectCodexMarkdownLabel(thread.threadName) ||
+  thread.threadPreview?.trim() ||
+  thread.cwd?.trim() ||
+  thread.threadId;
+
+/** Catalog entries keep their source fallback if compact Markdown has no visible text. */
+export const projectCodexCatalogDisplayTitle = (displayTitle: string): string =>
+  projectCodexMarkdownToPlainText(displayTitle) || displayTitle;
 
 export const normalizeSidebarSessionFallbackTitle = (thread: {
   readonly threadName?: string | null;
@@ -197,7 +221,10 @@ export const projectCoreWorkspaceTask = (task: CoreWorkspaceTask): ProjectSessio
   id: task.session.id,
   projectId: task.session.project_id ?? null,
   noThreadFallbackTitle: task.session.no_thread_fallback_title,
-  displayTitle: task.session.display_title,
+  displayTitle:
+    task.thread?.backend_binding.kind === "codex"
+      ? projectCodexCatalogDisplayTitle(task.session.display_title)
+      : task.session.display_title,
   order: task.session.order,
   pinned: task.session.pinned,
   pinnedOrder: task.session.pinned_order ?? null,
@@ -258,7 +285,7 @@ export const buildCoreWorkspaceTaskThreadSummary = (
   agentNickname: thread.agent_nickname ?? null,
   agentRole: thread.agent_role ?? null,
   agentPath: thread.agent_path ?? null,
-  threadName: thread.thread_name ?? null,
+  threadName: projectCodexMarkdownLabel(thread.thread_name),
   threadPreview: thread.thread_preview,
   executionProfile: thread.model_id
     ? {
@@ -296,7 +323,7 @@ export const buildCoreWorkspaceThreadSummary = (
   agentNickname: thread.agent_nickname ?? null,
   agentRole: thread.agent_role ?? null,
   agentPath: thread.agent_path ?? null,
-  threadName: thread.thread_name ?? null,
+  threadName: projectCodexMarkdownLabel(thread.thread_name),
   threadPreview: thread.thread_preview,
   executionProfile: thread.model_id
     ? {

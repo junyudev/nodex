@@ -90,6 +90,7 @@ function LocalConversationThreadBodyLayout({
             <LocalConversationThreadBodyOwner
               body={model.body}
               projectId={model.projectId}
+              hostId={model.hostId}
               threadId={model.threadId}
               isSideChat={model.isSideChat}
               cwd={model.cwd}
@@ -99,14 +100,12 @@ function LocalConversationThreadBodyLayout({
               conversationEntityGeneration={model.conversationEntityGeneration}
               historyTopologyGeneration={model.historyTopologyGeneration}
               historyMutationRevision={model.historyMutationRevision}
-              historyItemWindowsByTurnId={model.historyItemWindowsByTurnId}
               turnItemsPaginationById={model.turnItemsPaginationById}
               requests={model.requests}
               canonicalRequests={model.canonicalRequests ?? []}
               resumeState={model.resumeState}
               attachmentState={model.attachmentState}
               capabilityFlags={model.capabilityFlags}
-              statusType={model.statusType}
               parentTurns={model.parentTurns}
               childMemberships={model.childMemberships}
               backgroundAgentRows={model.backgroundAgentRows ?? []}
@@ -254,7 +253,6 @@ export const LocalConversationThreadBody = memo(
     left.model.conversationEntityGeneration === right.model.conversationEntityGeneration &&
     left.model.historyTopologyGeneration === right.model.historyTopologyGeneration &&
     left.model.historyMutationRevision === right.model.historyMutationRevision &&
-    left.model.historyItemWindowsByTurnId === right.model.historyItemWindowsByTurnId &&
     left.model.turnItemsPaginationById === right.model.turnItemsPaginationById &&
     left.model.requests === right.model.requests &&
     left.model.canonicalRequests === right.model.canonicalRequests &&

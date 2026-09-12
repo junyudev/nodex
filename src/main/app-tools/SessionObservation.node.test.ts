@@ -292,3 +292,43 @@ it.effect(
       );
     }),
 );
+
+it.effect("inspection requires canonical Turn completion after native runtime becomes idle", () =>
+  Effect.gen(function* () {
+    let canonicalStatus: "active" | "idle" = "active";
+    let turnStatus: "inProgress" | "completed" = "inProgress";
+    const observation = yield* setup({
+      read: () => Effect.succeed(snapshot()),
+      directoryRead: () =>
+        Effect.succeed({
+          canonical: {
+            threadRuntimeStatus: { type: canonicalStatus, activeFlags: [] },
+            turns: [{ turnId: "turn:accepted", status: turnStatus }],
+            requests: [],
+          },
+          snapshot: {
+            statusType: "idle",
+            statusActiveFlags: [],
+            turns: [{ turnId: "turn:accepted", status: turnStatus }],
+            requests: [],
+          },
+        } as never),
+    });
+
+    const active = yield* observation.inspect(input.sessionId, provenance);
+    assert.strictEqual(active.status, "active");
+    assert.strictEqual(active.disposition, "running");
+
+    canonicalStatus = "idle";
+    const nativeIdle = yield* observation.inspect(input.sessionId, provenance);
+    assert.strictEqual(nativeIdle.status, "idle");
+    assert.strictEqual(nativeIdle.disposition, "running");
+    assert.notStrictEqual(active.cursor, nativeIdle.cursor);
+
+    turnStatus = "completed";
+    const completed = yield* observation.inspect(input.sessionId, provenance);
+    assert.strictEqual(completed.status, "idle");
+    assert.strictEqual(completed.disposition, "complete");
+    assert.notStrictEqual(nativeIdle.cursor, completed.cursor);
+  }),
+);

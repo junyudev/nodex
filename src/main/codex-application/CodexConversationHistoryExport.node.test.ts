@@ -3,6 +3,8 @@ import { assert, it } from "@effect/vitest";
 import * as Deferred from "effect/Deferred";
 import * as Effect from "effect/Effect";
 import * as Fiber from "effect/Fiber";
+import { produce } from "immer";
+import { replaceCanonicalHistoryDraft } from "../../shared/codex-conversation-state/codex-canonical-history-loader";
 import { createCodexCanonicalHydratedConversationState } from "../../shared/codex-conversation-state/codex-conversation-state";
 import type { CodexConversationSnapshot } from "../../shared/types";
 import {
@@ -78,8 +80,13 @@ const capability: CodexAppServerCapabilitySnapshot = {
   generation: 7,
   userAgent: "codex-app-server/0.150.0-alpha.12",
   version: "0.150.0-alpha.12",
+  nativeAppTools: false,
   flags: {
+    turnApprovalsReviewer: false,
+
+    turnToolOutput: false,
     forkLastTurnId: true,
+    paginatedFork: true,
     paginatedHistory: true,
     searchOccurrences: true,
     ephemeralFork: true,
@@ -87,17 +94,46 @@ const capability: CodexAppServerCapabilitySnapshot = {
     sideConversation: true,
     subagentAncestorFilter: false,
     threadRevert: true,
+    threadQueue: true,
   },
 };
 
-const makeFixture = () => {
-  const canonical = createCodexCanonicalHydratedConversationState(
-    thread([turn("resident-tail")]),
-    hydration,
+const makeFixture = (
+  options: {
+    canonicalOnly?: boolean;
+    complete?: boolean;
+    historyMode?: Thread["historyMode"];
+  } = {},
+) => {
+  const canonical = produce(
+    createCodexCanonicalHydratedConversationState(
+      { ...thread([turn("resident-tail")]), historyMode: options.historyMode ?? "paginated" },
+      { hostId: "local", ...hydration },
+    ),
+    (draft) => {
+      const complete = options.complete === true;
+      replaceCanonicalHistoryDraft(
+        draft,
+        draft.turns,
+        complete,
+        complete
+          ? null
+          : {
+              cursor: "resident-older",
+              oldestLoadedTurnId: "resident-tail",
+            },
+      );
+      draft.turnsPagination = {
+        olderCursor: complete ? null : "resident-older",
+        oldestLoadedTurnId: "resident-tail",
+        isLoadingOlder: false,
+        hasLoadedOldest: complete,
+      };
+    },
   );
   const aggregates = makeConversationEntityStateRegistry();
   const aggregate = aggregates.acquire("thread-export");
-  aggregate.acceptCanonicalState(canonical);
+  aggregate.installFollowerCanonicalState(canonical);
   const snapshot = {
     threadId: "thread-export",
     cwd: "/workspace",
@@ -125,12 +161,14 @@ const makeFixture = () => {
     pendingSteers: [],
     backgroundTerminalRows: [],
   } as unknown as CodexConversationSnapshot;
-  aggregate.installSnapshot(snapshot);
+  if (!options.canonicalOnly) aggregate.installSnapshot(snapshot);
   return {
     aggregate,
     canonical,
     snapshot,
     conversations: ConversationEntityMap.of({
+      registerThreadMetadata: aggregates.registerThreadMetadata,
+      readThreadMetadata: aggregates.readThreadMetadata,
       entity: aggregates.acquire,
       current: aggregates.current,
     } as unknown as ConversationEntityMap["Service"]),
@@ -143,6 +181,207 @@ const capabilityService = (isCurrent: () => boolean = () => true) =>
     forThread: () => Effect.succeed(capability),
     isCurrent: () => Effect.succeed(isCurrent()),
   });
+
+it.effect.each([false, true])(
+  "exports the requested page independently of resident topology, canonical-only %s",
+  (canonicalOnly) =>
+    Effect.gen(function* () {
+      const fixture = makeFixture({ canonicalOnly });
+      const before = fixture.aggregate.readCanonicalState();
+      const presentation = fixture.aggregate.readSnapshot();
+      const pages = CodexHistoryPageAdapter.of({
+        loadTurnPage: () =>
+          Effect.succeed({
+            turns: [
+              turn("exported-page", [
+                {
+                  type: "agentMessage",
+                  id: "exported-answer",
+                  text: "Exported answer",
+                  questions: null,
+                  phase: "final_answer",
+                  memoryCitation: null,
+                  delivery: null,
+                },
+              ]),
+            ],
+            nextCursor: null,
+            backwardsCursor: null,
+            itemsPaginationByTurnId: {
+              "exported-page": {
+                olderCursor: null,
+                isLoadingOlder: false,
+                hasLoadedOldest: true,
+                itemsView: "full",
+              },
+            },
+            itemSegmentsByTurnId: {},
+            loadedItemCount: 1,
+          }),
+        loadTurnItemsPage: () => Effect.die("Complete export Turn must not load more items"),
+      });
+      const runtime = yield* make.pipe(
+        Effect.provideService(ConversationEntityMap, fixture.conversations),
+        Effect.provideService(CodexHistoryPageAdapter, pages),
+        Effect.provideService(CodexAppServerCapabilities, capabilityService()),
+      );
+      const started = yield* runtime.start({ consumerId: "reader", threadId: "thread-export" });
+      const result = yield* runtime.next({ consumerId: "reader", jobId: started.jobId });
+      assert.strictEqual(result.turn?.turnId, "exported-page");
+      assert.deepEqual(
+        result.turn?.items.map((item) => item.markdownText),
+        ["Exported answer"],
+      );
+      assert.isTrue(result.done);
+      assert.strictEqual(fixture.aggregate.readCanonicalState(), before);
+      assert.strictEqual(fixture.aggregate.readSnapshot(), presentation);
+    }),
+);
+
+it.effect.each(["legacy", "paginated"] as const)(
+  "exports complete canonical-only %s history without native access",
+  (historyMode) =>
+    Effect.gen(function* () {
+      const fixture = makeFixture({ canonicalOnly: true, complete: true, historyMode });
+      const runtime = yield* make.pipe(
+        Effect.provideService(ConversationEntityMap, fixture.conversations),
+        Effect.provideService(CodexHistoryPageAdapter, {
+          loadTurnPage: () => Effect.die("Complete resident history needs no native pages"),
+          loadTurnItemsPage: () => Effect.die("Complete resident history needs no native items"),
+        }),
+        Effect.provideService(CodexAppServerCapabilities, {
+          forHost: () => Effect.die("Resident export needs no native connection"),
+          forThread: () => Effect.die("Resident export needs no native connection"),
+          isCurrent: () => Effect.die("Resident export needs no native connection"),
+        }),
+      );
+      const before = fixture.aggregate.readCanonicalState();
+      const started = yield* runtime.start({ consumerId: "reader", threadId: "thread-export" });
+      assert.strictEqual(started.mode, "resident");
+      assert.strictEqual(started.totalTurnCount, 1);
+      const result = yield* runtime.next({ consumerId: "reader", jobId: started.jobId });
+      assert.strictEqual(result.turn?.turnId, "resident-tail");
+      assert.isTrue(result.done);
+      assert.strictEqual(fixture.aggregate.readCanonicalState(), before);
+      assert.isNull(fixture.aggregate.readSnapshot());
+    }),
+);
+
+it.effect("rejects incomplete legacy canonical history despite an unqualified presentation", () =>
+  Effect.gen(function* () {
+    const fixture = makeFixture({ historyMode: "legacy" });
+    const runtime = yield* make.pipe(
+      Effect.provideService(ConversationEntityMap, fixture.conversations),
+      Effect.provideService(CodexHistoryPageAdapter, {
+        loadTurnPage: () => Effect.die("Legacy export must not load paginated history"),
+        loadTurnItemsPage: () => Effect.die("Legacy export must not load paginated history"),
+      }),
+      Effect.provideService(CodexAppServerCapabilities, capabilityService()),
+    );
+    const failure = yield* runtime
+      .start({ consumerId: "reader", threadId: "thread-export" })
+      .pipe(Effect.flip);
+    assert.strictEqual(failure.reason, "unsupported-history");
+  }),
+);
+
+it.effect("exports resident history with updated and newly appended live Turns", () =>
+  Effect.gen(function* () {
+    const fixture = makeFixture({ canonicalOnly: true, complete: true });
+    const overlays = createCodexCanonicalHydratedConversationState(
+      thread([
+        turn("resident-tail", [
+          {
+            type: "agentMessage",
+            id: "updated-answer",
+            text: "Updated live answer",
+            questions: null,
+            phase: "final_answer",
+            memoryCitation: null,
+            delivery: null,
+          },
+        ]),
+        turn("live-follow-up", [
+          {
+            type: "agentMessage",
+            id: "follow-up-answer",
+            text: "Follow-up answer",
+            questions: null,
+            phase: "final_answer",
+            memoryCitation: null,
+            delivery: null,
+          },
+        ]),
+      ]),
+      { hostId: "local", ...hydration },
+    );
+    fixture.aggregate.installFollowerCanonicalState({
+      ...fixture.canonical,
+      turns: overlays.turns,
+    });
+    const before = fixture.aggregate.readCanonicalState();
+    const runtime = yield* make.pipe(
+      Effect.provideService(ConversationEntityMap, fixture.conversations),
+      Effect.provideService(CodexHistoryPageAdapter, {
+        loadTurnPage: () => Effect.die("Complete resident history needs no native pages"),
+        loadTurnItemsPage: () => Effect.die("Complete resident history needs no native items"),
+      }),
+      Effect.provideService(CodexAppServerCapabilities, {
+        forHost: () => Effect.die("Resident export needs no native connection"),
+        forThread: () => Effect.die("Resident export needs no native connection"),
+        isCurrent: () => Effect.die("Resident export needs no native connection"),
+      }),
+    );
+    const started = yield* runtime.start({ consumerId: "reader", threadId: "thread-export" });
+    assert.strictEqual(started.totalTurnCount, 2);
+    const first = yield* runtime.next({ consumerId: "reader", jobId: started.jobId });
+    const second = yield* runtime.next({ consumerId: "reader", jobId: started.jobId });
+    assert.strictEqual(first.turn?.turnId, "resident-tail");
+    assert.deepEqual(
+      first.turn?.items.map((item) => item.markdownText),
+      ["Updated live answer"],
+    );
+    assert.strictEqual(second.turn?.turnId, "live-follow-up");
+    assert.deepEqual(
+      second.turn?.items.map((item) => item.markdownText),
+      ["Follow-up answer"],
+    );
+    assert.isFalse(first.done);
+    assert.isTrue(second.done);
+    assert.strictEqual(fixture.aggregate.readCanonicalState(), before);
+    assert.isNull(fixture.aggregate.readSnapshot());
+  }),
+);
+
+it.effect("does not export an item-incomplete canonical island as fully resident history", () =>
+  Effect.gen(function* () {
+    const fixture = makeFixture({ canonicalOnly: true, complete: true });
+    fixture.aggregate.installFollowerCanonicalState(
+      produce(fixture.canonical, (draft) => {
+        const history = draft.turnHistory!.history;
+        const key = history.islands[0]!.entries[0]!.value;
+        history.entitiesByKey[key]!.itemsPagination = {
+          olderCursor: "items:older",
+          hasLoadedOldest: false,
+          isLoadingOlder: false,
+          itemsView: "summary",
+        };
+      }),
+    );
+    const runtime = yield* make.pipe(
+      Effect.provideService(ConversationEntityMap, fixture.conversations),
+      Effect.provideService(CodexHistoryPageAdapter, {
+        loadTurnPage: () => Effect.die("Export admission must not fetch a page"),
+        loadTurnItemsPage: () => Effect.die("Export admission must not fetch items"),
+      }),
+      Effect.provideService(CodexAppServerCapabilities, capabilityService()),
+    );
+    const started = yield* runtime.start({ consumerId: "reader", threadId: "thread-export" });
+    assert.strictEqual(started.mode, "paginated");
+    assert.isNull(started.totalTurnCount);
+    assert.isNull(fixture.aggregate.readSnapshot());
+  }),
+);
 
 it.effect("streams complete Turns oldest-first without installing them in resident state", () =>
   Effect.gen(function* () {

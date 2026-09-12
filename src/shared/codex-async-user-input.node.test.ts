@@ -71,7 +71,13 @@ describe("asynchronous user input contract", () => {
       expect(decodeCodexAsyncQuestionReplies(invalid)).toBeNull();
   });
   test("projects structured answer content without losing its canonical envelope", () => {
-    const replies = [{ questionItemId: "q", question: "Name?", answer: "Nodex" }];
+    const replies = [
+      {
+        questionItemId: "q",
+        question: "**Name** [this](https://example.com)?",
+        answer: "Nodex",
+      },
+    ];
     const text = encodeCodexAsyncQuestionReplies(replies);
     const views = projectCodexCanonicalTurnItemViews({
       threadId: "thread",
@@ -88,7 +94,7 @@ describe("asynchronous user input contract", () => {
       ],
     });
     expect(views[0]?.questionReplies).toEqual(replies);
-    expect(views[0]?.markdownText).toBe("**Name?**\nNodex");
+    expect(views[0]?.markdownText).toBe("**Name this?**\nNodex");
     expect(views[0]?.rawItem).toMatchObject({ content: [{ type: "text", text }] });
   });
 });

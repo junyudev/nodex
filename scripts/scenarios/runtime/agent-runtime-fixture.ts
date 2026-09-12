@@ -21,18 +21,18 @@ const writeScenarioAgentRuntime = (
   version: string,
 ): AgentRuntimeFixture => {
   const runtimeRoot = path.join(repositoryRoot, ".generated/codex-runtime/agent-runtime");
-  const executable = path.join(runtimeRoot, "bin/codex-app-server");
+  const executable = path.join(runtimeRoot, "bin/codex");
   const packagePath = path.join(runtimeRoot, "codex-package.json");
   fs.mkdirSync(path.dirname(executable), { recursive: true });
   fs.mkdirSync(path.join(runtimeRoot, "codex-path"), { recursive: true });
   fs.mkdirSync(path.join(runtimeRoot, "codex-resources"), { recursive: true });
   const packageBody = JSON.stringify({
-    entrypoint: "bin/codex-app-server",
+    entrypoint: "bin/codex",
     layoutVersion: 1,
     pathDir: "codex-path",
     resourcesDir: "codex-resources",
     target: `${process.arch}-${process.platform}`,
-    variant: "codex-app-server",
+    variant: "codex",
     version,
   });
   fs.writeFileSync(executable, executableBody, { mode: 0o755 });
@@ -40,14 +40,14 @@ const writeScenarioAgentRuntime = (
   fs.chmodSync(executable, 0o755);
 
   const artifacts = [
-    ["bin/codex-app-server", executableBody, true],
+    ["bin/codex", executableBody, true],
     ["codex-package.json", packageBody, false],
   ] as const;
   const metadata = {
     releaseAsset: {
       archiveSha256: "0".repeat(64),
       archiveSize: 1,
-      assetName: "codex-app-server-package-scenario.tar.gz",
+      assetName: "codex-package-scenario.tar.gz",
       entrypointSha256: createHash("sha256").update(executableBody).digest("hex"),
       repository: "openai/codex",
       tag: `rust-v${version}`,
@@ -59,11 +59,11 @@ const writeScenarioAgentRuntime = (
       size: Buffer.byteLength(body),
     })),
     appServerRuntimeVersion: version,
-    entrypoint: "bin/codex-app-server",
+    entrypoint: "bin/codex",
     layoutVersion: AGENT_RUNTIME_LAYOUT_VERSION,
     packageManifest: JSON.parse(packageBody) as object,
     protocolSchemaFingerprint: "0".repeat(64),
-    runtimeFamily: "codex-app-server",
+    runtimeFamily: "codex",
     searchPaths: ["codex-path"],
     sourceRevision: {
       commit: "0".repeat(40),

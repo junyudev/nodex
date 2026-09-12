@@ -29,6 +29,7 @@ import {
   reduceCodexServerRequestSetupCodexStepResponseRawState,
   reduceCodexServerRequestSetupContextPickerResponseRawState,
   reduceCodexServerRequestRawState,
+  shouldAutomaticallyAcceptCodexMcpElicitation,
   type CodexServerRequestRawState,
 } from "./codex-server-request-lifecycle";
 import {
@@ -47,9 +48,7 @@ import {
   agentActivityV2PermissionRequest,
   agentActivityV2UserInputRequest,
 } from "./test-fixtures/agent-activity-v2-request-family-corpus";
-
-const NOW = 1_234_567;
-
+const NOW = 1234567;
 function buildTurnParams(): CodexCanonicalTurnParams {
   return {
     threadId: THREAD_ID,
@@ -75,11 +74,16 @@ function buildTurnParams(): CodexCanonicalTurnParams {
 }
 
 function buildState(
-  options: { readonly hasUnreadTurn?: boolean } = {},
+  options: {
+    readonly hasUnreadTurn?: boolean;
+  } = {},
 ): CodexCanonicalConversationState {
   return createCodexCanonicalConversationState(buildAgentActivityV2CorpusThread([]), {
-    turnParamsById: { [TURN_ID]: buildTurnParams() },
-    hasUnreadTurn: options.hasUnreadTurn,
+    hostId: "local",
+    ...{
+      turnParamsById: { [TURN_ID]: buildTurnParams() },
+      hasUnreadTurn: options.hasUnreadTurn,
+    },
   });
 }
 
@@ -111,18 +115,18 @@ describe("Codex 30751 server-request lifecycle", () => {
       context(),
     );
 
-    expect(initial.sidecar.hasUnreadTurn).toBe(false);
+    expect(initial.hasUnreadTurn).toBe(false);
     expect(first.disposition).toBe("stored");
     expect(first.state.requests[0] === agentActivityV2CommandApprovalRequest).toBe(true);
     expect(second.state.requests.length).toBe(2);
     expect(second.state.requests[1] === agentActivityV2CommandApprovalRequest).toBe(true);
-    expect(second.state.sidecar.hasUnreadTurn).toBe(true);
+    expect(second.state.hasUnreadTurn).toBe(true);
     expect(second.state.turns[0]?.items.length).toBe(0);
     expect(first.effects[0]?.type).toBe("approvalRequestReceived");
 
     const hydratedUnread = buildState({ hasUnreadTurn: true });
     expect(hydratedUnread.requests.length).toBe(0);
-    expect(hydratedUnread.sidecar.hasUnreadTurn).toBe(true);
+    expect(hydratedUnread.hasUnreadTurn).toBe(true);
   });
 
   test("upserts exact permission synthetics, resolves all strict-ID requests, and never clears unread", () => {
@@ -162,7 +166,7 @@ describe("Codex 30751 server-request lifecycle", () => {
     const item = completed.state.turns[0]?.items[0];
 
     expect(pending.state.turns[0]?.items.length).toBe(1);
-    expect(pending.state.turns[0]?.sidecar.hookRuns?.length).toBe(0);
+    expect(pending.state.turns[0]?.hookRuns?.length).toBe(0);
     expect(item?.type).toBe("permissionRequest");
     expect(item && "completed" in item ? item.completed : null).toBe(true);
     expect(item && "reason" in item ? item.reason : null).toBe(
@@ -171,7 +175,7 @@ describe("Codex 30751 server-request lifecycle", () => {
     expect(item && "response" in item ? item.response : "missing").toBe(null);
     expect(completed.state.requests.length).toBe(0);
     expect(completed.selectedRequests[0] === agentActivityV2PermissionRequest).toBe(true);
-    expect(completed.state.sidecar.hasUnreadTurn).toBe(true);
+    expect(completed.state.hasUnreadTurn).toBe(true);
   });
 
   test("executes the five pending/resolved corpus rows through the shared reducer", () => {
@@ -186,7 +190,7 @@ describe("Codex 30751 server-request lifecycle", () => {
       expect(pending.disposition).toBe("stored");
       expect(pending.state.requests.length).toBe(1);
       expect(pending.state.requests[0] === requestCase.request).toBe(true);
-      expect(pending.state.sidecar.hasUnreadTurn).toBe(true);
+      expect(pending.state.hasUnreadTurn).toBe(true);
       expect(pendingItem?.type ?? "none").toBe(requestCase.effect.syntheticItem);
 
       const completed = reduceCodexConversationServerRequestResolved(
@@ -262,17 +266,11 @@ describe("Codex 30751 server-request lifecycle", () => {
       turns: [
         {
           ...initial.turns[0]!,
-          protocol: {
-            ...initial.turns[0]!.protocol,
-            id: null,
-            status: "completed",
-            error: null,
-          },
+          turnId: null,
+          status: "completed",
+          error: null,
           items: [],
-          sidecar: {
-            ...initial.turns[0]!.sidecar,
-            turnStartedAtMs: null,
-          },
+          turnStartedAtMs: null,
         },
       ],
     };
@@ -284,9 +282,9 @@ describe("Codex 30751 server-request lifecycle", () => {
     const item = pending.state.turns[0]?.items[0];
     const question = item?.type === "userInputResponse" ? item.questions[0] : undefined;
 
-    expect(pending.state.turns[0]?.protocol.id).toBe(TURN_ID);
-    expect(pending.state.turns[0]?.protocol.status).toBe("inProgress");
-    expect(pending.state.turns[0]?.sidecar.turnStartedAtMs).toBe(NOW);
+    expect(pending.state.turns[0]?.turnId).toBe(TURN_ID);
+    expect(pending.state.turns[0]?.status).toBe("inProgress");
+    expect(pending.state.turns[0]?.turnStartedAtMs).toBe(NOW);
     expect(item?.type).toBe("userInputResponse");
     expect(question?.options.length).toBe(2);
     expect(Object.prototype.hasOwnProperty.call(question ?? {}, "isOther")).toBe(false);
@@ -583,6 +581,88 @@ describe("Codex 30751 server-request lifecycle", () => {
         ? (invalidDisplayList.toolParamsDisplay ?? null)
         : "missing",
     ).toBe(null);
+  });
+
+  test("matches the two conditional MCP elicitation auto-accept paths", () => {
+    const browserState = createCodexCanonicalConversationState(
+      buildAgentActivityV2CorpusThread([]),
+      {
+        hostId: "local",
+        turnParamsById: {
+          [TURN_ID]: {
+            ...buildTurnParams(),
+            approvalPolicy: "never",
+            sandboxPolicy: { type: "dangerFullAccess" },
+          },
+        },
+      },
+    );
+    const browserRequest = {
+      id: "browser-origin-access",
+      method: "mcpServer/elicitation/request",
+      params: {
+        threadId: THREAD_ID,
+        turnId: TURN_ID,
+        serverName: "browser-use",
+        mode: "form",
+        _meta: {
+          codex_approval_kind: "mcp_tool_call",
+          connector_id: "browser-use",
+          tool_name: "access_browser_origin",
+          tool_params: { origin: "https://example.com" },
+        },
+        message: "Allow browser origin",
+        requestedSchema: { type: "object", properties: {} },
+      },
+    } satisfies ServerRequest;
+    expect(shouldAutomaticallyAcceptCodexMcpElicitation(browserState, browserRequest)).toBe(true);
+    expect(shouldAutomaticallyAcceptCodexMcpElicitation(buildState(), browserRequest)).toBe(false);
+
+    const messagesState = createCodexCanonicalConversationState(
+      buildAgentActivityV2CorpusThread([
+        {
+          type: "mcpToolCall",
+          id: "messages-send",
+          server: "messages",
+          tool: "send_message",
+          status: "inProgress",
+          arguments: {},
+          appContext: null,
+          pluginId: "messages@openai-bundled",
+          readOnlyHint: null,
+          result: null,
+          error: null,
+          durationMs: null,
+        },
+      ]),
+      {
+        hostId: "local",
+        turnParamsById: { [TURN_ID]: buildTurnParams() },
+      },
+    );
+    const messagesRequest = {
+      id: "messages-approval",
+      method: "mcpServer/elicitation/request",
+      params: {
+        threadId: THREAD_ID,
+        turnId: TURN_ID,
+        serverName: "messages",
+        mode: "form",
+        _meta: { codex_approval_kind: "mcp_tool_call" },
+        message: "Allow send",
+        requestedSchema: { type: "object", properties: {} },
+      },
+    } satisfies ServerRequest;
+    expect(shouldAutomaticallyAcceptCodexMcpElicitation(messagesState, messagesRequest)).toBe(true);
+    expect(
+      shouldAutomaticallyAcceptCodexMcpElicitation(
+        createCodexCanonicalConversationState(buildAgentActivityV2CorpusThread([]), {
+          hostId: "local",
+          turnParamsById: { [TURN_ID]: buildTurnParams() },
+        }),
+        messagesRequest,
+      ),
+    ).toBe(false);
   });
 
   test("matches OpenAI-form union degradation and image-picker scalar identity", () => {
@@ -1000,18 +1080,18 @@ describe("Codex 30751 server-request lifecycle", () => {
 
     expect(permission.state.requests.length).toBe(1);
     expect(permission.state.turns.length).toBe(0);
-    expect(permission.state.sidecar.hasUnreadTurn).toBe(true);
+    expect(permission.state.hasUnreadTurn).toBe(true);
     expect(
       currentTime.effects[0]?.type === "respond"
         ? "currentTimeAt" in currentTime.effects[0].response
           ? currentTime.effects[0].response.currentTimeAt
           : null
         : null,
-    ).toBe(1_234);
+    ).toBe(1234);
     expect(secondPlan.state.requests.length).toBe(1);
     expect(secondPlan.state.requests[0] === planTwo).toBe(true);
     expect(completedPlan.requests.length).toBe(0);
-    expect(completedPlan.sidecar.hasUnreadTurn).toBe(true);
+    expect(completedPlan.hasUnreadTurn).toBe(true);
     expect(classifyCodexCanonicalServerRequest(planTwo).source).toBe("private");
     expect(classifyCodexCanonicalServerRequest(agentActivityV2PermissionRequest).behavior).toBe(
       "storeAndSynthesize",
@@ -1068,17 +1148,17 @@ describe("Codex 30751 server-request lifecycle", () => {
       {
         ...buildState(),
         requests: replaced.state.requests,
-        sidecar: { ...buildState().sidecar, hasUnreadTurn: true },
+        hasUnreadTurn: true,
       },
       TURN_ID,
     );
     expect(JSON.stringify(canonicalTurnStarted.requests.map((request) => request.id))).toBe(
       JSON.stringify([unrelated.id, freshCurrent.id]),
     );
-    expect(canonicalTurnStarted.sidecar.hasUnreadTurn).toBe(true);
+    expect(canonicalTurnStarted.hasUnreadTurn).toBe(true);
   });
 
-  test("stores turnless MCP and exact private picker envelopes without synthetics", () => {
+  test("stores turnless MCP and option pickers while dismissing setup-context pickers", () => {
     const turnlessMcp = {
       ...agentActivityV2McpElicitationRequest,
       id: "turnless-mcp",
@@ -1125,12 +1205,19 @@ describe("Codex 30751 server-request lifecycle", () => {
 
     expect(mcpPending.state.requests[0] === turnlessMcp).toBe(true);
     expect(mcpPending.state.turns[0]?.items.length).toBe(0);
-    expect(mcpPending.state.sidecar.hasUnreadTurn).toBe(true);
+    expect(mcpPending.state.hasUnreadTurn).toBe(true);
     expect(mcpResolved.state.requests.length).toBe(0);
     expect(mcpResolved.state.turns[0]?.items.length).toBe(0);
-    expect(bothPickers.state.requests.length).toBe(2);
+    expect(bothPickers.state.requests.length).toBe(1);
     expect(bothPickers.state.requests[0] === optionPicker).toBe(true);
-    expect(bothPickers.state.requests[1] === setupPicker).toBe(true);
+    expect(bothPickers.effects).toEqual([
+      {
+        type: "respond",
+        method: setupPicker.method,
+        requestId: setupPicker.id,
+        response: { action: "dismiss", selectedSources: [] },
+      },
+    ]);
     expect(bothPickers.state.turns[0]?.items.length).toBe(0);
     expect(classifyCodexCanonicalServerRequest(optionPicker).source).toBe("private");
     expect(classifyCodexCanonicalServerRequest(setupPicker).source).toBe("private");
@@ -1221,7 +1308,7 @@ describe("Codex 30751 server-request lifecycle", () => {
     expect(JSON.stringify(canonicalOptionReply.state.requests.map((request) => request.id))).toBe(
       JSON.stringify([unrelated.id]),
     );
-    expect(canonicalOptionReply.state.sidecar.hasUnreadTurn).toBe(false);
+    expect(canonicalOptionReply.state.hasUnreadTurn).toBe(false);
 
     const setupReply = reduceCodexServerRequestSetupContextPickerResponseRawState(
       rawState([dynamicSetup, unrelated, directSetupDuplicate]),
@@ -1447,7 +1534,12 @@ describe("Codex 30751 server-request lifecycle", () => {
       id: string,
       scopes: string[],
       linkId: string,
-    ): Extract<ServerRequest, { method: "mcpServer/elicitation/request" }> {
+    ): Extract<
+      ServerRequest,
+      {
+        method: "mcpServer/elicitation/request";
+      }
+    > {
       return {
         id,
         method: "mcpServer/elicitation/request",
@@ -1556,7 +1648,7 @@ describe("Codex 30751 server-request lifecycle", () => {
     expect(next === pending).toBe(false);
     expect(next.requests === pending.requests).toBe(false);
     expect(JSON.stringify(next)).toBe(before);
-    expect(next.sidecar.hasUnreadTurn).toBe(true);
+    expect(next.hasUnreadTurn).toBe(true);
   });
 });
 

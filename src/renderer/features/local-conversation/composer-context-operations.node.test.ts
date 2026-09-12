@@ -20,9 +20,9 @@ describe("composer context operations", () => {
 
   test("bypasses the native skills cache for an explicit reload", async () => {
     transport.query.mockResolvedValue([]);
-    await composerContextOperations.reloadSkills("default", ["/repo"]);
+    await composerContextOperations.reloadSkills("local", ["/repo"]);
     expect(transport.query).toHaveBeenCalledWith("codex:composer-skills:list", {
-      hostId: "default",
+      hostId: "local",
       cwds: ["/repo"],
       forceReload: true,
     });
@@ -53,7 +53,7 @@ describe("composer context operations", () => {
     const cwds = ["/repo", "/repo/packages"] as const;
 
     await expect(
-      composerContextOperations.activatePlugin("plugin-id", "default", cwds),
+      composerContextOperations.activatePlugin("plugin-id", "local", cwds),
     ).resolves.toBeUndefined();
     expect(transport.command).toHaveBeenCalledWith(
       expect.objectContaining({
@@ -62,7 +62,7 @@ describe("composer context operations", () => {
         authority: "external",
         protocol: { kind: "pending_operation" },
       }),
-      { id: "plugin-id", hostId: "default", cwds: ["/repo", "/repo/packages"] },
+      { id: "plugin-id", hostId: "local", cwds: ["/repo", "/repo/packages"] },
     );
   });
 });

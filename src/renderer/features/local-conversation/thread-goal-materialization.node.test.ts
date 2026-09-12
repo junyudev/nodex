@@ -21,6 +21,8 @@ import {
 } from "./thread-goal-materialization";
 
 describe("thread goal materialization boundary", () => {
+  const hostId = "ssh:test";
+
   beforeEach(() => {
     vi.resetAllMocks();
   });
@@ -29,7 +31,7 @@ describe("thread goal materialization boundary", () => {
     let error: unknown = null;
 
     try {
-      await materializeThreadGoalDraft({
+      await materializeThreadGoalDraft(hostId, {
         objective: " \n ",
         pastedTextAttachments: [],
         imageAttachments: [],
@@ -43,7 +45,7 @@ describe("thread goal materialization boundary", () => {
 
   test("keeps short attachment-free goals local", async () => {
     await expect(
-      materializeThreadGoalDraft({
+      materializeThreadGoalDraft(hostId, {
         objective: "  Ship the causal contract  ",
         pastedTextAttachments: [],
         imageAttachments: [],
@@ -66,7 +68,7 @@ describe("thread goal materialization boundary", () => {
       attachmentDirectory: "/tmp/nodex-goal",
     });
 
-    await expect(materializeThreadGoalDraft(draft)).resolves.toEqual({
+    await expect(materializeThreadGoalDraft(hostId, draft)).resolves.toEqual({
       objective: "Use this screenshot\n\n[attached image]",
       attachmentDirectory: "/tmp/nodex-goal",
     });
@@ -77,6 +79,7 @@ describe("thread goal materialization boundary", () => {
         authority: "external",
         protocol: { kind: "pending_operation" },
       }),
+      hostId,
       draft,
     );
   });
@@ -85,13 +88,14 @@ describe("thread goal materialization boundary", () => {
     transport.control.mockRejectedValue(new Error("cleanup failed"));
 
     await expect(
-      cleanupMaterializedThreadGoalDraft({
+      cleanupMaterializedThreadGoalDraft(hostId, {
         objective: "Goal",
         attachmentDirectory: "/tmp/nodex-goal",
       }),
     ).resolves.toBeUndefined();
     expect(transport.control).toHaveBeenCalledWith(
       "codex:thread:goal:materialized-cleanup",
+      hostId,
       "/tmp/nodex-goal",
     );
   });
@@ -99,9 +103,12 @@ describe("thread goal materialization boundary", () => {
   test("reads editable objectives through the query boundary", async () => {
     transport.query.mockResolvedValue("Editable goal");
 
-    await expect(readThreadGoalEditableObjective("stored goal")).resolves.toBe("Editable goal");
+    await expect(readThreadGoalEditableObjective(hostId, "stored goal")).resolves.toBe(
+      "Editable goal",
+    );
     expect(transport.query).toHaveBeenCalledWith(
       "codex:thread:goal:editable-objective:read",
+      hostId,
       "stored goal",
     );
   });

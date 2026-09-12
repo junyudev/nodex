@@ -89,12 +89,15 @@ function buildState(
         error: null,
         startedAt: 1,
         completedAt: status === "completed" ? 2 : null,
-        durationMs: status === "completed" ? 1_000 : null,
+        durationMs: status === "completed" ? 1000 : null,
       },
     ],
   };
   return createCodexCanonicalConversationState(thread, {
-    turnParamsById: { [TURN_ID]: buildTurnParams() },
+    hostId: "local",
+    ...{
+      turnParamsById: { [TURN_ID]: buildTurnParams() },
+    },
   });
 }
 
@@ -187,10 +190,34 @@ describe("canonical frame-text delta reduction", () => {
 
     expect(result.disposition).toBe("applied");
     expect(result.itemIndex).toBe(2);
-    expect((nextItems[0] as { text?: string }).text).toBe("first");
-    expect((nextItems[1] as { text?: string }).text).toBe("plan");
-    expect((nextItems[2] as { text?: string }).text).toBe("last+delta");
-    expect((items[2] as { text?: string }).text).toBe("last");
+    expect(
+      (
+        nextItems[0] as {
+          text?: string;
+        }
+      ).text,
+    ).toBe("first");
+    expect(
+      (
+        nextItems[1] as {
+          text?: string;
+        }
+      ).text,
+    ).toBe("plan");
+    expect(
+      (
+        nextItems[2] as {
+          text?: string;
+        }
+      ).text,
+    ).toBe("last+delta");
+    expect(
+      (
+        items[2] as {
+          text?: string;
+        }
+      ).text,
+    ).toBe("last");
   });
 
   test("accepts only dense reasoning indexes and rejects gaps before allocating", () => {
@@ -204,7 +231,12 @@ describe("canonical frame-text delta reduction", () => {
       [reasoning],
       update({ type: "reasoningSummary", summaryIndex: 1 }, "one"),
     );
-    const appendedItem = appended.items[0] as Extract<ThreadItem, { type: "reasoning" }>;
+    const appendedItem = appended.items[0] as Extract<
+      ThreadItem,
+      {
+        type: "reasoning";
+      }
+    >;
     const invalidIndexes = [
       -1,
       0.5,
@@ -237,13 +269,23 @@ describe("canonical frame-text delta reduction", () => {
       [reasoning],
       update({ type: "reasoningContent", contentIndex: -0 }, "valid"),
     );
-    const negativeZeroItem = negativeZero.items[0] as Extract<ThreadItem, { type: "reasoning" }>;
+    const negativeZeroItem = negativeZero.items[0] as Extract<
+      ThreadItem,
+      {
+        type: "reasoning";
+      }
+    >;
     expect(negativeZero.disposition).toBe("applied");
     expect(negativeZeroItem.content[0]).toBe("valid");
   });
 
   test("preserves raw and canonical identity for empty deltas in existing reasoning slots", () => {
-    const reasoning: Extract<ThreadItem, { type: "reasoning" }> = {
+    const reasoning: Extract<
+      ThreadItem,
+      {
+        type: "reasoning";
+      }
+    > = {
       type: "reasoning",
       id: "shared-item",
       summary: ["existing summary"],
@@ -306,15 +348,9 @@ describe("canonical frame-text delta reduction", () => {
       turns: [
         {
           ...initial.turns[0]!,
-          protocol: {
-            ...initial.turns[0]!.protocol,
-            id: null,
-            status: "completed" as const,
-          },
-          sidecar: {
-            ...initial.turns[0]!.sidecar,
-            turnStartedAtMs: null,
-          },
+          turnId: null,
+          status: "completed" as const,
+          turnStartedAtMs: null,
         },
       ],
     };
@@ -330,14 +366,14 @@ describe("canonical frame-text delta reduction", () => {
       {
         now: () => {
           clockCalls += 1;
-          return 44_000;
+          return 44000;
         },
       },
     );
 
-    expect(result.state.turns[0]?.protocol.id).toBe("rebound-turn");
-    expect(result.state.turns[0]?.protocol.status).toBe("inProgress");
-    expect(result.state.turns[0]?.sidecar.turnStartedAtMs).toBe(44_000);
+    expect(result.state.turns[0]?.turnId).toBe("rebound-turn");
+    expect(result.state.turns[0]?.status).toBe("inProgress");
+    expect(result.state.turns[0]?.turnStartedAtMs).toBe(44000);
     expect(result.outcomes[0]?.disposition).toBe("missingItem");
     expect(result.outcomes[0]?.stateChanged).toBe(true);
     expect(clockCalls).toBe(1);
@@ -363,12 +399,9 @@ describe("canonical frame-text delta reduction", () => {
       turns: [
         {
           ...initialBase.turns[0]!,
-          sidecar: {
-            ...initialBase.turns[0]!.sidecar,
-            turnStartedAtMs: 10,
-            firstTurnWorkItemStartedAtMs: 20,
-            finalAssistantStartedAtMs: 30,
-          },
+          turnStartedAtMs: 10,
+          firstTurnWorkItemStartedAtMs: 20,
+          finalAssistantStartedAtMs: 30,
         },
       ],
     };
@@ -387,18 +420,32 @@ describe("canonical frame-text delta reduction", () => {
       },
     );
     const turn = result.state.turns[0]!;
-    const agent = turn.items[0] as Extract<ThreadItem, { type: "agentMessage" }>;
-    const plan = turn.items[1] as Extract<ThreadItem, { type: "plan" }>;
-    const reasoning = turn.items[2] as Extract<ThreadItem, { type: "reasoning" }>;
-
+    const agent = turn.items[0] as Extract<
+      ThreadItem,
+      {
+        type: "agentMessage";
+      }
+    >;
+    const plan = turn.items[1] as Extract<
+      ThreadItem,
+      {
+        type: "plan";
+      }
+    >;
+    const reasoning = turn.items[2] as Extract<
+      ThreadItem,
+      {
+        type: "reasoning";
+      }
+    >;
     expect(agent.text).toBe("agent");
     expect(plan.text).toBe("plan");
     expect(reasoning.summary.join("|")).toBe("summary");
     expect(reasoning.content.join("|")).toBe("content");
-    expect(turn.protocol.status).toBe("completed");
-    expect(turn.sidecar.turnStartedAtMs).toBe(10);
-    expect(turn.sidecar.firstTurnWorkItemStartedAtMs).toBe(20);
-    expect(turn.sidecar.finalAssistantStartedAtMs).toBe(30);
+    expect(turn.status).toBe("completed");
+    expect(turn.turnStartedAtMs).toBe(10);
+    expect(turn.firstTurnWorkItemStartedAtMs).toBe(20);
+    expect(turn.finalAssistantStartedAtMs).toBe(30);
   });
 
   test("uses summaryPartAdded for one bounded dense summary append", () => {
@@ -423,8 +470,12 @@ describe("canonical frame-text delta reduction", () => {
       }),
       { now: () => 1 },
     );
-
-    const reasoning = next.turns[0]?.items[0] as Extract<ThreadItem, { type: "reasoning" }>;
+    const reasoning = next.turns[0]?.items[0] as Extract<
+      ThreadItem,
+      {
+        type: "reasoning";
+      }
+    >;
     expect(reasoning.summary).toEqual([""]);
 
     const gap = reduceCodexConversationEvent(
@@ -458,7 +509,7 @@ describe("canonical frame-text delta reduction", () => {
         params: {
           threadId: THREAD_ID,
           turnId: TURN_ID,
-          completedAtMs: 2_000,
+          completedAtMs: 2000,
           item: {
             type: "reasoning",
             id: "reasoning-terminal",
@@ -467,9 +518,14 @@ describe("canonical frame-text delta reduction", () => {
           },
         },
       }),
-      { now: () => 3_000 },
+      { now: () => 3000 },
     );
-    const terminal = completed.turns[0]?.items[0] as Extract<ThreadItem, { type: "reasoning" }>;
+    const terminal = completed.turns[0]?.items[0] as Extract<
+      ThreadItem,
+      {
+        type: "reasoning";
+      }
+    >;
     expect(terminal.summary.length).toBe(CODEX_REASONING_MAX_PARTS);
     expect(terminal.content.length).toBe(CODEX_REASONING_MAX_PARTS);
     expect(terminal.summary.at(-1)).toBe(CODEX_REASONING_PARTS_TRUNCATION_MARKER);
@@ -491,18 +547,28 @@ describe("canonical frame-text delta reduction", () => {
           },
         }),
       ],
-      reduce: (state, event) => reduceCodexConversationEvent(state, event, { now: () => 4_000 }),
+      reduce: (state, event) => reduceCodexConversationEvent(state, event, { now: () => 4000 }),
     });
     expect(replayed).toBe(initial);
   });
 
   test("lets authoritative completion replace provisional delta text", () => {
-    const started: Extract<ThreadItem, { type: "plan" }> = {
+    const started: Extract<
+      ThreadItem,
+      {
+        type: "plan";
+      }
+    > = {
       type: "plan",
       id: "shared-item",
       text: "draft",
     };
-    const completed: Extract<ThreadItem, { type: "plan" }> = {
+    const completed: Extract<
+      ThreadItem,
+      {
+        type: "plan";
+      }
+    > = {
       type: "plan",
       id: "shared-item",
       text: "authoritative final",
@@ -528,16 +594,25 @@ describe("canonical frame-text delta reduction", () => {
           threadId: THREAD_ID,
           turnId: TURN_ID,
           item: completed,
-          completedAtMs: 2_000,
+          completedAtMs: 2000,
         },
       }),
-      { now: () => 3_000 },
+      { now: () => 3000 },
     );
-
-    expect((afterDelta.turns[0]?.items[0] as { text?: string }).text).toBe("draft provisional");
+    expect(
+      (
+        afterDelta.turns[0]?.items[0] as {
+          text?: string;
+        }
+      ).text,
+    ).toBe("draft provisional");
     expect(afterCompletion.turns[0]?.items[0] === completed).toBe(true);
-    expect((afterCompletion.turns[0]?.items[0] as { text?: string }).text).toBe(
-      "authoritative final",
-    );
+    expect(
+      (
+        afterCompletion.turns[0]?.items[0] as {
+          text?: string;
+        }
+      ).text,
+    ).toBe("authoritative final");
   });
 });

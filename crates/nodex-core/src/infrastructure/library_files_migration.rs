@@ -927,7 +927,6 @@ fn migrate_queued_follow_ups(
         }
         connection.execute("UPDATE codex_queued_follow_up_entries SET payload_sha256 = ?1 WHERE payload_sha256 = ?2", params![published.content_hash, old_hash])?;
     }
-    crate::workspace::queued_follow_up::refresh_migrated_queued_follow_up_ledgers(connection)?;
     Ok(manifests.len() as u64)
 }
 

@@ -61,6 +61,8 @@ import {
   setInvokeCalls,
   setSideChatConversationProjectId,
   setStartSideChatError,
+  waitForLastThreadStageActions,
+  waitForThreadRow,
 } from "./workbench-testkit/workbench-shell-harness";
 
 describe("workbench session shell / layout-panel-actions", () => {
@@ -1901,7 +1903,8 @@ describe("workbench session shell / layout-panel-actions", () => {
       },
     });
     await settleAsyncRender();
-    const openOutput = getLastThreadStageActions().onOpenSummaryOutputInSidePanel as (input: {
+    const openOutput = (await waitForLastThreadStageActions())
+      .onOpenSummaryOutputInSidePanel as (input: {
       path: string;
       title: string;
       cwd: string;
@@ -2116,7 +2119,7 @@ describe("workbench session shell / layout-panel-actions", () => {
     });
     await settleAsyncRender();
     await act(async () => {
-      fireEvent.click(getThreadRow(screen.container, "Projectless tools"));
+      fireEvent.click(await waitForThreadRow(screen.container, "Projectless tools"));
       await Promise.resolve();
     });
     await settleAsyncRender();

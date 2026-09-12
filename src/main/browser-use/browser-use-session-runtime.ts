@@ -103,6 +103,7 @@ export interface BrowserUseSessionRuntime {
   readonly releaseSession: (
     sessionId: string,
   ) => Effect.Effect<void, BrowserUseSessionRuntimeError>;
+  readonly endSessionActivity: (sessionId: string) => Effect.Effect<void, BrowserUseSessionRuntimeError>;
   readonly turnEnded: (
     input: BrowserUseTurnLifecycleInput,
   ) => Effect.Effect<void, BrowserUseSessionRuntimeError>;
@@ -128,6 +129,7 @@ interface BrowserUseSessionService {
   readonly focusPresentation: (
     tabId: number,
   ) => Effect.Effect<boolean, BrowserUseSessionRuntimeError>;
+  readonly endSessionActivity: Effect.Effect<boolean, BrowserUseSessionRuntimeError>;
   readonly hasActiveControl: Effect.Effect<boolean>;
   readonly markDisposeAfterSessionActivity: Effect.Effect<void>;
   readonly notifyCursorArrived: (moveSequence: number) => Effect.Effect<void>;
@@ -163,6 +165,8 @@ const sessionLayer = (
     BrowserUseSession,
     Effect.gen(function* () {
       const sessionId = key.route.codexSessionId;
+      const activityFibers = yield* FiberSet.make();
+      const runActivity = yield* FiberSet.runtime(activityFibers)();
       const runPromise = yield* FiberSet.makeRuntimePromise<
         never,
         unknown,
@@ -291,6 +295,11 @@ const sessionLayer = (
             try: () => api.focusControlledTab(tabId),
             catch: (cause) => runtimeError("focus-presentation", sessionId, cause),
           }),
+        endSessionActivity: Effect.sync(() => {
+          // Control release may await CDP. Temporary route retirement must not wait for it.
+          const release = api.releaseSessionControl();
+          runActivity(Effect.tryPromise({ try: () => release, catch: (cause) => runtimeError("session-activity-ended", sessionId, cause) }).pipe(Effect.catch((cause) => Effect.logWarning("Browser control release failed", cause))));
+        }).pipe(Effect.andThen(Ref.get(disposeAfterSessionActivity))),
         hasActiveControl: Effect.sync(() => api.hasActiveControl()),
         markDisposeAfterSessionActivity: Ref.set(disposeAfterSessionActivity, true),
         notifyCursorArrived: (moveSequence) =>
@@ -554,6 +563,13 @@ export const makeBrowserUseSessionRuntime = (
     );
 
     return {
+      endSessionActivity: (sessionId) => useSessionWithKey(sessionId, (session) => session.endSessionActivity).pipe(Effect.flatMap((entry) => {
+        if (entry?.value !== true) return record("session-activity-ended", sessionId);
+        return mutationLock.withPermits(1)(Ref.get(state).pipe(Effect.flatMap((current) => {
+          if (current.active.get(sessionId) !== entry.key) return Effect.void;
+          return removeKey(entry.key).pipe(Effect.andThen(record("session-activity-ended", sessionId)));
+        })));
+      })),
       availableBackends: () => (enabled ? ["iab"] : []),
       captureRoute,
       debugSnapshot: mutationLock.withPermits(1)(

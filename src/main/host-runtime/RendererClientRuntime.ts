@@ -3,18 +3,10 @@ import * as Context from "effect/Context";
 import * as Deferred from "effect/Deferred";
 import * as Effect from "effect/Effect";
 import * as FiberSet from "effect/FiberSet";
+import * as Fiber from "effect/Fiber";
 import * as Layer from "effect/Layer";
 import * as PubSub from "effect/PubSub";
 import * as Stream from "effect/Stream";
-import {
-  RENDERER_DELIVERY_DATA_CHANNEL,
-  type RendererDeliveryDataEnvelope,
-  type RendererDeliveryJsonValue,
-  type RendererDeliveryRoutedPayload,
-  type RendererDeliveryTarget,
-  type RendererDeliveryTransferAbortEnvelope,
-  type RendererDeliveryTransferAckEnvelope,
-} from "../../shared/renderer-delivery-transport";
 import type { CodexRendererClientRequestMessage } from "../../shared/types";
 import {
   DEFAULT_RENDERER_CLIENT_MAX_PENDING_REQUESTS,
@@ -22,7 +14,6 @@ import {
   DEFAULT_RENDERER_CLIENT_REQUEST_TIMEOUT_MS,
   RENDERER_CLIENT_REQUEST_CHANNEL,
   RendererClientRuntimeError,
-  THREAD_ROLE_RENDERER_CLIENT_REQUEST_METHOD,
   type RendererClientConnectedEvent,
   type RendererClientDisposedEvent,
   type RendererClientEvent,
@@ -31,18 +22,12 @@ import {
   type RendererClientRuntimeService,
   type RendererClientWebContents,
 } from "../codex/renderer-client-runtime-contracts";
-import { safeSendToWebContents } from "../ipc-safe-send";
 import { getLogger } from "../logging/logger";
 import { MAIN_OBSERVATION_EVENT_CAPACITY } from "../runtime-limits";
-import {
-  make as makeRendererDelivery,
-  RendererDeliveryAdapter,
-  RendererDeliveryAdapterError,
-} from "./RendererDelivery";
+import { CodexHostChunkedMessageSender } from "./CodexHostChunkedMessageSender";
 
 interface RegisteredRendererClient {
   readonly clientId: string;
-  readonly generation: number;
   readonly webContents: RendererClientWebContents;
   readonly destroyListener: () => void;
 }
@@ -55,37 +40,15 @@ interface PendingRendererClientRequest {
   readonly result: Deferred.Deferred<unknown, RendererClientRuntimeError>;
 }
 
-interface PendingRendererDeliveryAcknowledgment {
-  readonly targetWebContentsId: number;
-  readonly result: Deferred.Deferred<
-    RendererDeliveryTransferAckEnvelope,
-    RendererDeliveryAdapterError
-  >;
-}
-
 const runtimeLogger = getLogger({ subsystem: "codex", component: "renderer-client-runtime" });
 
 const createClientId = (): string => `renderer:${randomUUID()}`;
 const createRequestId = (): string => `renderer-request:${randomUUID()}`;
 
-const acknowledgmentKey = (acknowledgment: RendererDeliveryTransferAckEnvelope): string =>
-  JSON.stringify([
-    acknowledgment.targetId,
-    acknowledgment.generation,
-    acknowledgment.transferId,
-    acknowledgment.sequence,
-  ]);
-
-const targetOf = (client: RegisteredRendererClient): RendererDeliveryTarget => ({
-  targetId: client.clientId,
-  generation: client.generation,
-});
-
-const rendererDeliveryPayloadType = (channel: string, args: readonly unknown[]): string | null => {
+const rendererDeliveryPayloadType = (channel: string, payload: unknown): string | null => {
   if (channel !== "codex:event") return null;
-  const value = args[0];
-  if (typeof value !== "object" || value === null || Array.isArray(value)) return null;
-  const type = Reflect.get(value, "type");
+  if (typeof payload !== "object" || payload === null || Array.isArray(payload)) return null;
+  const type = Reflect.get(payload, "type");
   return typeof type === "string" ? type : null;
 };
 
@@ -131,94 +94,68 @@ export const live = (
       const logger = options.logger ?? runtimeLogger;
       const send =
         options.send ??
-        ((target: RendererClientWebContents, channel: string, args: readonly unknown[]) =>
-          safeSendToWebContents(target, channel, args, { logger }));
+        ((target: RendererClientWebContents, channel: string, payload: unknown) => {
+          if (target.isDestroyed()) return false;
+          target.send(channel, payload);
+          return true;
+        });
       const events = yield* PubSub.sliding<RendererClientEvent>(MAIN_OBSERVATION_EVENT_CAPACITY);
       const callbacks = yield* FiberSet.makeRuntime<never, void, never>();
       const clientsByWebContentsId = new Map<number, RegisteredRendererClient>();
       const webContentsIdByClientId = new Map<string, number>();
       const pendingRequests = new Map<string, PendingRendererClientRequest>();
       const pendingRequestCountByTargetClientId = new Map<string, number>();
-      const pendingDeliveryAcknowledgments = new Map<
-        string,
-        PendingRendererDeliveryAcknowledgment
-      >();
-      let nextGeneration = 1;
 
-      const deliveryAdapter = RendererDeliveryAdapter.of({
-        deliver: (envelope: RendererDeliveryDataEnvelope | RendererDeliveryTransferAbortEnvelope) =>
-          Effect.gen(function* () {
-            const webContentsId = webContentsIdByClientId.get(envelope.targetId);
-            const client =
-              webContentsId === undefined ? undefined : clientsByWebContentsId.get(webContentsId);
-            if (!client || client.generation !== envelope.generation) {
-              return yield* new RendererDeliveryAdapterError({
-                operation: `deliver.${envelope.kind}`,
-                reason: "unavailable",
-                cause: new Error("Renderer delivery target generation is unavailable"),
-              });
-            }
-            if (client.webContents.isDestroyed()) {
-              return yield* new RendererDeliveryAdapterError({
-                operation: `deliver.${envelope.kind}`,
-                reason: "destroyed",
-                cause: new Error("Renderer delivery target was destroyed"),
-              });
-            }
-
-            if (envelope.kind === "inline" || envelope.kind === "transferAbort") {
-              if (send(client.webContents, RENDERER_DELIVERY_DATA_CHANNEL, [envelope])) return null;
-              return yield* new RendererDeliveryAdapterError({
-                operation: `deliver.${envelope.kind}`,
-                reason: client.webContents.isDestroyed() ? "destroyed" : "send-failed",
-                cause: new Error("Electron rejected renderer delivery"),
-              });
-            }
-
-            const acknowledgment: RendererDeliveryTransferAckEnvelope = {
-              version: envelope.version,
-              kind: "transferAck",
-              targetId: envelope.targetId,
-              generation: envelope.generation,
-              transferId: envelope.transferId,
-              sequence: envelope.sequence,
-            };
-            const key = acknowledgmentKey(acknowledgment);
-            if (pendingDeliveryAcknowledgments.has(key)) {
-              return yield* new RendererDeliveryAdapterError({
-                operation: `deliver.${envelope.kind}`,
-                reason: "send-failed",
-                cause: new Error("Renderer delivery already awaits this acknowledgment"),
-              });
-            }
-            const result = yield* Deferred.make<
-              RendererDeliveryTransferAckEnvelope,
-              RendererDeliveryAdapterError
-            >();
-            const pending = { targetWebContentsId: client.webContents.id, result };
-            pendingDeliveryAcknowledgments.set(key, pending);
-            if (!send(client.webContents, RENDERER_DELIVERY_DATA_CHANNEL, [envelope])) {
-              pendingDeliveryAcknowledgments.delete(key);
-              return yield* new RendererDeliveryAdapterError({
-                operation: `deliver.${envelope.kind}`,
-                reason: client.webContents.isDestroyed() ? "destroyed" : "send-failed",
-                cause: new Error("Electron rejected renderer delivery"),
-              });
-            }
-            return yield* Deferred.await(result).pipe(
-              Effect.ensuring(
-                Effect.sync(() => {
-                  if (pendingDeliveryAcknowledgments.get(key) === pending) {
-                    pendingDeliveryAcknowledgments.delete(key);
-                  }
-                }),
-              ),
-            );
-          }),
+      type WindowMessage = { readonly channel: string; readonly payload: unknown };
+      type LoadingLifecycleTarget = RendererClientWebContents & {
+        readonly on?: (
+          event: "did-start-loading" | "did-stop-loading",
+          listener: () => void,
+        ) => unknown;
+        readonly removeListener?: (
+          event: "destroyed" | "did-start-loading" | "did-stop-loading",
+          listener: () => void,
+        ) => unknown;
+      };
+      const chunkedMessageSender = new CodexHostChunkedMessageSender<
+        RendererClientWebContents,
+        WindowMessage
+      >({
+        deliver: (target, message, part) => {
+          if (!send(target, message.channel, part ?? message.payload)) {
+            throw new Error("Renderer target is unavailable");
+          }
+        },
+        getPayload: (message) => message.payload,
+        isAvailable: (target) => !target.isDestroyed(),
+        isLoading: (target) => target.isLoading?.() === true,
+        onSendError: (target, cause) => {
+          logger.warn("Chunked renderer message send failed", {
+            webContentsId: target.id,
+            cause: rendererDeliveryCauseMessage(cause),
+          });
+        },
+        retryDelayMs: 1_000,
+        scheduleRetry: (callback, delayMs) => {
+          const fiber = callbacks(
+            Effect.sleep(delayMs).pipe(Effect.andThen(Effect.sync(callback))),
+          );
+          return () => {
+            callbacks(Fiber.interrupt(fiber).pipe(Effect.asVoid));
+          };
+        },
+        subscribe: (target, callbacks) => {
+          const lifecycleTarget = target as LoadingLifecycleTarget;
+          target.once?.("destroyed", callbacks.onDestroyed);
+          lifecycleTarget.on?.("did-start-loading", callbacks.onLoading);
+          lifecycleTarget.on?.("did-stop-loading", callbacks.onLoaded);
+          return () => {
+            lifecycleTarget.removeListener?.("destroyed", callbacks.onDestroyed);
+            lifecycleTarget.removeListener?.("did-start-loading", callbacks.onLoading);
+            lifecycleTarget.removeListener?.("did-stop-loading", callbacks.onLoaded);
+          };
+        },
       });
-      const rendererDelivery = yield* makeRendererDelivery().pipe(
-        Effect.provideService(RendererDeliveryAdapter, deliveryAdapter),
-      );
 
       const publish = (event: RendererClientEvent): Effect.Effect<void> =>
         PubSub.publish(events, event).pipe(Effect.asVoid);
@@ -258,7 +195,7 @@ export const live = (
             if (!removed) return;
 
             removed.client.webContents.off?.("destroyed", removed.client.destroyListener);
-            yield* rendererDelivery.releaseTarget(targetOf(removed.client));
+            chunkedMessageSender.dispose(removed.client.webContents);
             const error = makeError({
               message: `Renderer client ${removed.client.clientId} was ${reason}`,
               operation: "dispose-client",
@@ -306,11 +243,8 @@ export const live = (
         const destroyListener = () => {
           callbacks(disposeWebContents(webContents.id, "destroyed"));
         };
-        const generation = nextGeneration;
-        nextGeneration += 1;
         clientsByWebContentsId.set(webContents.id, {
           clientId,
-          generation,
           webContents,
           destroyListener,
         });
@@ -337,47 +271,27 @@ export const live = (
         return client;
       };
 
-      const deliverToRegistered = Effect.fn("RendererClientRuntime.deliverToRegistered")((
-        client: RegisteredRendererClient,
-        channel: string,
-        args: readonly unknown[],
-      ): Effect.Effect<void> => {
-        const payload: RendererDeliveryRoutedPayload = {
-          channel,
-          args: args as readonly RendererDeliveryJsonValue[],
-        };
-        return rendererDelivery.enqueue(targetOf(client), payload).pipe(
-          Effect.flatMap((receipt) => receipt.completion),
-          Effect.catch((error) =>
-            Effect.gen(function* () {
-              logger.warn("Renderer delivery failed", {
-                channel,
-                payloadType: rendererDeliveryPayloadType(channel, args),
-                clientId: client.clientId,
-                generation: client.generation,
-                reason: error.reason,
-                cause: rendererDeliveryCauseMessage(error.cause),
-              });
-
-              // A failed latest revision is not recoverable by waiting for a later message: there
-              // may never be one. Revoke this exact renderer generation so owner/follower state is
-              // re-elected now and the renderer obtains a fresh generation on its next IPC ingress.
-              // The identity fence prevents a late failure from disposing a replacement client.
-              if (clientsByWebContentsId.get(client.webContents.id) !== client) return;
-              yield* disposeWebContents(client.webContents.id, `delivery-failed:${error.reason}`);
-            }),
-          ),
-          Effect.asVoid,
-        );
-      });
-
       const enqueueToRegistered = (
         client: RegisteredRendererClient,
         channel: string,
-        args: readonly unknown[],
+        payload: unknown,
+        priority: "normal" | "critical" = "normal",
       ): boolean => {
-        callbacks(deliverToRegistered(client, channel, args));
-        return true;
+        try {
+          const message = { channel, payload } satisfies WindowMessage;
+          if (priority === "critical")
+            chunkedMessageSender.sendCritical(client.webContents, message);
+          else chunkedMessageSender.send(client.webContents, message);
+          return true;
+        } catch (cause) {
+          logger.warn("Renderer message send failed", {
+            channel,
+            payloadType: rendererDeliveryPayloadType(channel, payload),
+            clientId: client.clientId,
+            cause: rendererDeliveryCauseMessage(cause),
+          });
+          return false;
+        }
       };
 
       const request = Effect.fn("RendererClientRuntime.request")(
@@ -426,7 +340,7 @@ export const live = (
             const message: CodexRendererClientRequestMessage = { requestId, method, params };
             pendingRequests.set(requestId, pending);
             pendingRequestCountByTargetClientId.set(targetClientId, targetPendingCount + 1);
-            if (!send(target.webContents, RENDERER_CLIENT_REQUEST_CHANNEL, [message])) {
+            if (!enqueueToRegistered(target, RENDERER_CLIENT_REQUEST_CHANNEL, message)) {
               deletePending(requestId, pending);
               return yield* makeError({
                 message: `Renderer client ${targetClientId} is unavailable`,
@@ -501,47 +415,11 @@ export const live = (
         });
 
       const handleDeliveryAcknowledgment: RendererClientRuntimeService["handleDeliveryAcknowledgment"] =
-        (webContents, acknowledgment) =>
-          Effect.gen(function* () {
-            const webContentsId = webContentsIdByClientId.get(acknowledgment.targetId);
-            const client =
-              webContentsId === undefined ? undefined : clientsByWebContentsId.get(webContentsId);
-            if (
-              !client ||
-              client.webContents.id !== webContents.id ||
-              client.generation !== acknowledgment.generation
-            ) {
-              logger.warn("Ignored renderer delivery acknowledgment from a stale target", {
-                targetId: acknowledgment.targetId,
-                generation: acknowledgment.generation,
-                webContentsId: webContents.id,
-              });
-              return false;
-            }
-
-            const key = acknowledgmentKey(acknowledgment);
-            const pending = pendingDeliveryAcknowledgments.get(key);
-            if (!pending) {
-              logger.debug("Ignored unknown renderer delivery acknowledgment", {
-                targetId: acknowledgment.targetId,
-                generation: acknowledgment.generation,
-                transferId: acknowledgment.transferId,
-                sequence: acknowledgment.sequence,
-              });
-              return false;
-            }
-            if (pending.targetWebContentsId !== webContents.id) {
-              logger.warn("Ignored renderer delivery acknowledgment from non-target webContents", {
-                targetId: acknowledgment.targetId,
-                expectedWebContentsId: pending.targetWebContentsId,
-                actualWebContentsId: webContents.id,
-              });
-              return false;
-            }
-
-            pendingDeliveryAcknowledgments.delete(key);
-            yield* Deferred.succeed(pending.result, acknowledgment);
-            return true;
+        (webContents, transferId, sequence) =>
+          Effect.sync(() => {
+            const client = clientsByWebContentsId.get(webContents.id);
+            if (!client || client.webContents !== webContents) return;
+            chunkedMessageSender.acknowledge(webContents, transferId, sequence);
           });
 
       const disposeAll = Effect.fn("RendererClientRuntime.disposeAll")(() =>
@@ -587,12 +465,17 @@ export const live = (
           clientsByWebContentsId.get(webContentsId)?.clientId ?? null,
         getWebContentsIdForClientId: (clientId) => webContentsIdByClientId.get(clientId) ?? null,
         getClientCount: () => clientsByWebContentsId.size,
+        getClientIds: () => [...webContentsIdByClientId.keys()],
         getPendingRequestCount: () => pendingRequests.size,
-        sendToClient: (clientId, channel, args) => {
+        sendToClient: (clientId, channel, payload) => {
           const client = findClient(clientId);
-          return client ? enqueueToRegistered(client, channel, args) : false;
+          return client ? enqueueToRegistered(client, channel, payload) : false;
         },
-        sendToClients: (clientIds, channel, args, deliveryOptions = {}) => {
+        sendCriticalToClient: (clientId, channel, payload) => {
+          const client = findClient(clientId);
+          return client ? enqueueToRegistered(client, channel, payload, "critical") : false;
+        },
+        sendToClients: (clientIds, channel, payload, deliveryOptions = {}) => {
           const sentClientIds: string[] = [];
           const unavailableClientIds: string[] = [];
           const failedClientIds: string[] = [];
@@ -603,12 +486,12 @@ export const live = (
               unavailableClientIds.push(clientId);
               continue;
             }
-            if (enqueueToRegistered(client, channel, args)) sentClientIds.push(clientId);
+            if (enqueueToRegistered(client, channel, payload)) sentClientIds.push(clientId);
             else failedClientIds.push(clientId);
           }
           return { sentClientIds, unavailableClientIds, failedClientIds };
         },
-        broadcast: (channel, args, broadcastOptions = {}) => {
+        broadcast: (channel, payload, broadcastOptions = {}) => {
           let sentCount = 0;
           for (const client of clientsByWebContentsId.values()) {
             if (
@@ -617,43 +500,11 @@ export const live = (
             ) {
               continue;
             }
-            if (enqueueToRegistered(client, channel, args)) sentCount += 1;
+            if (enqueueToRegistered(client, channel, payload)) sentCount += 1;
           }
           return sentCount;
         },
         request,
-        queryThreadRole: (targetClientId, conversationId, requestOptions) =>
-          request(
-            targetClientId,
-            THREAD_ROLE_RENDERER_CLIENT_REQUEST_METHOD,
-            {
-              conversationId,
-            },
-            requestOptions,
-          ).pipe(Effect.map((result) => (result === "owner" ? "owner" : "follower"))),
-        requireThreadOwner: (targetClientId, conversationId, requestOptions) =>
-          request(
-            targetClientId,
-            THREAD_ROLE_RENDERER_CLIENT_REQUEST_METHOD,
-            {
-              conversationId,
-            },
-            requestOptions,
-          ).pipe(
-            Effect.flatMap((result) =>
-              result === "owner"
-                ? Effect.void
-                : Effect.fail(
-                    makeError({
-                      message: `no-client-found: renderer client ${targetClientId} is not owner for ${conversationId}`,
-                      operation: "require-thread-owner",
-                      reason: "not-owner",
-                      clientId: targetClientId,
-                      method: THREAD_ROLE_RENDERER_CLIENT_REQUEST_METHOD,
-                    }),
-                  ),
-            ),
-          ),
         handleResponse,
         handleDeliveryAcknowledgment,
         disposeClient: (clientId, reason = "disposed") => {

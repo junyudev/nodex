@@ -18,6 +18,7 @@ export const CONVERSATION_MARKDOWN_CLIPBOARD_MAX_BYTES = 16 * 1024 * 1_024;
 
 export interface CopyConversationMarkdownInput {
   conversationId: string;
+  executionHostId?: string | null;
   parentConversationId?: string | null;
   title: string;
 }
@@ -97,10 +98,13 @@ export async function runCopyConversationMarkdown(
   }
 }
 
-async function ensureConversationAvailable(conversationId: string): Promise<void> {
-  const current = readLocalConversation(conversationId);
+async function ensureConversationAvailable(
+  conversationId: string,
+  executionHostId?: string | null,
+): Promise<void> {
+  const current = readLocalConversation(conversationId, executionHostId);
   if (!current || current.resumeState !== "resumed") {
-    await requestLocalConversationResume(conversationId);
+    await requestLocalConversationResume(conversationId, executionHostId);
   }
 }
 
@@ -219,6 +223,7 @@ async function* streamConversationMarkdown(input: {
 
 export async function copyConversationMarkdown({
   conversationId,
+  executionHostId = null,
   parentConversationId = null,
   title,
 }: CopyConversationMarkdownInput): Promise<void> {
@@ -236,9 +241,10 @@ export async function copyConversationMarkdown({
   });
 
   try {
-    await ensureConversationAvailable(conversationId);
-    if (parentConversationId) await ensureConversationAvailable(parentConversationId);
-    const conversation = readLocalConversation(conversationId);
+    await ensureConversationAvailable(conversationId, executionHostId);
+    if (parentConversationId)
+      await ensureConversationAvailable(parentConversationId, executionHostId);
+    const conversation = readLocalConversation(conversationId, executionHostId);
     if (!conversation) throw new Error("Conversation is unavailable");
 
     await runCopyConversationMarkdown({

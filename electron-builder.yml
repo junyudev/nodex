@@ -42,6 +42,10 @@ extraResources:
     to: icon.png
   - from: resources/nodex-notification.aiff
     to: nodex-notification.aiff
+  - from: resources/artifact-template-picker
+    to: artifact-template-picker
+    filter:
+      - "server.mjs"
   - from: .generated/build-resources/THIRD_PARTY_NOTICES.txt
     to: THIRD_PARTY_NOTICES.txt
   - from: .generated/codex-runtime/bin
@@ -63,6 +67,8 @@ extraResources:
     to: native/sparkle-runtime.json
   - from: .generated/clipboard-runtime/${arch}/nodex-clipboard.node
     to: native/nodex-clipboard.node
+  - from: .generated/devicecheck-runtime/${arch}/nodex-devicecheck.node
+    to: native/nodex-devicecheck.node
 extraFiles:
   - from: resources/macos/app.jyu.nodex.background-service.core.plist
     to: Helpers/Nodex Service.app/Contents/Library/LaunchAgents/app.jyu.nodex.background-service.core.plist
@@ -93,6 +99,7 @@ mac:
   hardenedRuntime: true
   binaries:
     - Contents/Resources/native/nodex-clipboard.node
+    - Contents/Resources/native/nodex-devicecheck.node
     - Contents/Resources/bin/nodex
     - Contents/Resources/bin/nodex-appshot-helper
     - Contents/Resources/bin/nodex-dictation-helper

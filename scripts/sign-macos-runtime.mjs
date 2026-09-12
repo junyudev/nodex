@@ -27,7 +27,7 @@ const sparkleOwnedRelativePaths = [
 ];
 const browserRuntimeVendorRelativePath = path.join("Contents", "Resources", "browser-runtime");
 const codexRuntimeVendorRelativePaths = [
-  "Contents/Resources/bin/codex-app-server",
+  "Contents/Resources/bin/codex",
   "Contents/Resources/bin/codex-code-mode-host",
   "Contents/Resources/codex-path/rg",
   "Contents/Resources/codex-resources/zsh/bin/zsh",

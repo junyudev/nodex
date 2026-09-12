@@ -1,3 +1,4 @@
+import { DEFAULT_CODEX_HOST_ID } from "../../../../../shared/codex-host";
 import type { FileSearchScope } from "../../../../../shared/file-search";
 import { useDebouncedValue } from "@/lib/use-debounced-value";
 import type { FileSearchMatch } from "../../../../../shared/file-search";
@@ -791,7 +792,7 @@ const ComposerAddContextRootMenuContent = forwardRef<
       try {
         await composerContextOperations.activatePlugin(
           plugin.id,
-          fileSearchScope?.hostId ?? "default",
+          fileSearchScope?.hostId ?? DEFAULT_CODEX_HOST_ID,
           pluginCwds,
         );
         await onCapabilitiesChanged?.();

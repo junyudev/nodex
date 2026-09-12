@@ -1,8 +1,8 @@
+import type { CodexConversationRequestContext } from "./codex-conversation-request-context";
 import type {
   CodexApprovalRequest,
   CodexConversationLiveRequest,
   CodexConversationItem,
-  CodexConversationSnapshot,
   CodexConversationServerRequest,
   CodexCanonicalServerRequest,
   CodexConversationTurn,
@@ -46,6 +46,8 @@ interface DerivedConversationRequestSelection {
 }
 
 interface DerivedConversationRequestCacheEntry extends DerivedConversationRequestSelection {
+  projectId: CodexConversationRequestContext["projectId"];
+  threadId: CodexConversationRequestContext["threadId"];
   turnsRef: readonly CodexConversationTurn[];
   canonicalRequestsRef: readonly CodexCanonicalServerRequest[] | undefined;
   latestPlanItemRef: CodexConversationItem | null;
@@ -70,7 +72,7 @@ function isLivePlanImplementationItem(item: CodexConversationItem): boolean {
 }
 
 function selectLatestPlanImplementationItem(
-  conversation: CodexConversationSnapshot,
+  conversation: CodexConversationRequestContext,
 ): LatestPlanImplementationSelection | null {
   for (let turnIndex = conversation.turns.length - 1; turnIndex >= 0; turnIndex -= 1) {
     const turn = conversation.turns[turnIndex];
@@ -93,7 +95,7 @@ function selectLatestPlanImplementationItem(
 }
 
 function findMatchingPlanImplementationRequest(
-  conversation: CodexConversationSnapshot,
+  conversation: CodexConversationRequestContext,
   turnId: string,
   itemId: string,
 ): CodexPlanImplementationServerRequest | null {
@@ -198,7 +200,7 @@ function selectApprovalOrPermissionForTurn(
 }
 
 function selectSyntheticUserInputForTurn(
-  conversation: CodexConversationSnapshot,
+  conversation: CodexConversationRequestContext,
   turn: CodexConversationTurn,
 ): CodexUserInputRequest | null {
   if (turn.turnId === null) return null;
@@ -262,7 +264,7 @@ function freezeTurnRequestMap(
 }
 
 function deriveConversationRequestSelection(
-  conversation: CodexConversationSnapshot,
+  conversation: CodexConversationRequestContext,
 ): DerivedConversationRequestSelection {
   const latestPlanSelection = selectLatestPlanImplementationItem(conversation);
   const planRequest = latestPlanSelection
@@ -324,7 +326,7 @@ function deriveConversationRequestSelection(
 }
 
 function resolveDerivedConversationRequestSelection(
-  conversation: CodexConversationSnapshot,
+  conversation: CodexConversationRequestContext,
 ): DerivedConversationRequestSelection {
   const latestPlanSelection = selectLatestPlanImplementationItem(conversation);
   const latestPlanItemRef = latestPlanSelection?.item ?? null;
@@ -332,6 +334,8 @@ function resolveDerivedConversationRequestSelection(
   const cached = derivedRequestSelectionsByServerRequestRef.get(conversation.requests);
   if (
     cached?.turnsRef === conversation.turns &&
+    cached.projectId === conversation.projectId &&
+    cached.threadId === conversation.threadId &&
     cached.canonicalRequestsRef === conversation.canonicalRequests &&
     cached.latestPlanItemRef === latestPlanItemRef &&
     cached.latestPlanTurnId === latestPlanTurnId
@@ -342,6 +346,8 @@ function resolveDerivedConversationRequestSelection(
   const derived = deriveConversationRequestSelection(conversation);
   const entry: DerivedConversationRequestCacheEntry = {
     ...derived,
+    projectId: conversation.projectId,
+    threadId: conversation.threadId,
     turnsRef: conversation.turns,
     canonicalRequestsRef: conversation.canonicalRequests,
     latestPlanItemRef,
@@ -431,7 +437,7 @@ export function areConversationLiveRequestsEqual(
 }
 
 export function selectPlanImplementationRequest(
-  conversation: CodexConversationSnapshot | null,
+  conversation: CodexConversationRequestContext | null,
 ): CodexPlanImplementationRequest | null {
   if (!conversation) return null;
 
@@ -442,7 +448,7 @@ export function selectPlanImplementationRequest(
 }
 
 function buildPlanImplementationRequest(
-  conversation: CodexConversationSnapshot,
+  conversation: CodexConversationRequestContext,
   selected: LatestPlanImplementationSelection,
 ): CodexPlanImplementationRequest {
   const request = findMatchingPlanImplementationRequest(
@@ -465,28 +471,28 @@ function buildPlanImplementationRequest(
 }
 
 export function selectConversationLiveRequests(
-  conversation: CodexConversationSnapshot | null,
+  conversation: CodexConversationRequestContext | null,
 ): CodexConversationLiveRequest[] {
   if (!conversation) return EMPTY_LIVE_REQUESTS;
   return resolveDerivedConversationRequestSelection(conversation).liveRequests;
 }
 
 export function selectPrimaryConversationRequest(
-  conversation: CodexConversationSnapshot | null,
+  conversation: CodexConversationRequestContext | null,
 ): CodexConversationLiveRequest | null {
   if (!conversation) return null;
   return resolveDerivedConversationRequestSelection(conversation).primaryRequest;
 }
 
 export function selectPrimaryBackgroundConversationRequest(
-  conversation: CodexConversationSnapshot | null,
+  conversation: CodexConversationRequestContext | null,
 ): CodexApprovalRequest | CodexPermissionRequest | NodexAgentAuthorizationRequest | null {
   if (!conversation) return null;
   return resolveDerivedConversationRequestSelection(conversation).primaryBackgroundRequest;
 }
 
 export function selectConversationTurnRequestsByTurnId(
-  conversation: CodexConversationSnapshot | null,
+  conversation: CodexConversationRequestContext | null,
 ): Map<string, CodexTurnScopedConversationRequest[]> {
   if (!conversation) return EMPTY_TURN_REQUESTS_BY_TURN_ID;
   return resolveDerivedConversationRequestSelection(conversation).requestsByTurnId;

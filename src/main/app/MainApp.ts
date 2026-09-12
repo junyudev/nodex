@@ -33,9 +33,7 @@ const runApplication = <R, E>(
         const application = yield* MainApplication;
         onAcquired(application);
         yield* Effect.addFinalizer(() =>
-          Effect.sync(() => {
-            onAcquired(null);
-          }),
+          application.prepareShutdown.pipe(Effect.ensuring(Effect.sync(() => onAcquired(null)))),
         );
         if (application.readiness === "ready") {
           for (const event of options.initialEvents) yield* application.handleBootstrapEvent(event);
@@ -43,6 +41,8 @@ const runApplication = <R, E>(
         }
         return yield* shutdown.awaitRequest;
       }).pipe(
+        // Renderer flushes still need the application's IPC and persistence services.
+        Effect.scoped,
         // oxlint-disable-next-line effecttsgo/strict-effect-provide -- this is the application acquisition boundary inside the process Scope.
         Effect.provide(options.applicationLayer),
         Effect.mapError((cause) =>

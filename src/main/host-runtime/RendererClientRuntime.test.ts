@@ -8,14 +8,12 @@ import * as Layer from "effect/Layer";
 import * as Scope from "effect/Scope";
 import * as Stream from "effect/Stream";
 import * as TestClock from "effect/testing/TestClock";
-import type { CodexRendererClientRequestMessage } from "../../shared/types";
 import {
-  RENDERER_DELIVERY_DATA_CHANNEL,
-  RENDERER_DELIVERY_INLINE_MAX_BYTES,
-  parseRendererDeliveryEnvelope,
-  type RendererDeliveryDataEnvelope,
-  type RendererDeliveryTransferAckEnvelope,
-} from "../../shared/renderer-delivery-transport";
+  CODEX_HOST_CHUNKED_MESSAGE_MARKER,
+  CODEX_HOST_CHUNK_INLINE_THRESHOLD_BYTES,
+  type CodexHostMessagePart,
+} from "../../shared/codex-host-chunked-message";
+import type { CodexRendererClientRequestMessage } from "../../shared/types";
 import { RENDERER_CLIENT_REQUEST_CHANNEL } from "../codex/renderer-client-runtime-contracts";
 import { live, RendererClientRuntime } from "./RendererClientRuntime";
 
@@ -69,32 +67,17 @@ const waitUntil = (label: string, predicate: () => boolean): Effect.Effect<void>
     return yield* Effect.die(new Error(`Condition did not settle: ${label}`));
   });
 
-const rendererDeliveryEnvelope = (
+const rendererChunkedPart = (
   target: FakeWebContents,
   index: number,
-): RendererDeliveryDataEnvelope => {
+  expectedChannel = "codex:host-message",
+): CodexHostMessagePart => {
   const delivery = target.sent[index];
   if (!delivery) throw new Error(`Renderer delivery ${index} was not sent`);
-  assert.strictEqual(delivery.channel, RENDERER_DELIVERY_DATA_CHANNEL);
-  const envelope = parseRendererDeliveryEnvelope(delivery.args[0]);
-  if (envelope.kind === "transferAck" || envelope.kind === "transferAbort") {
-    throw new Error("Main sent a non-data renderer delivery envelope");
-  }
-  return envelope;
-};
-
-const acknowledgmentFor = (
-  envelope: RendererDeliveryDataEnvelope,
-): RendererDeliveryTransferAckEnvelope => {
-  if (envelope.kind === "inline") throw new Error("Inline delivery does not require an ACK");
-  return {
-    version: envelope.version,
-    kind: "transferAck",
-    targetId: envelope.targetId,
-    generation: envelope.generation,
-    transferId: envelope.transferId,
-    sequence: envelope.sequence,
-  };
+  assert.strictEqual(delivery.channel, expectedChannel);
+  const part = delivery.args[0] as CodexHostMessagePart;
+  assert.strictEqual(part.marker, CODEX_HOST_CHUNKED_MESSAGE_MARKER);
+  return part;
 };
 
 const rendererRequest = (target: FakeWebContents, index = 0): CodexRendererClientRequestMessage => {
@@ -117,7 +100,7 @@ it.effect("owns stable renderer registrations and targeted delivery", () =>
       runtime.sendToClients(
         [firstRegistration.clientId, secondRegistration.clientId, "client:missing"],
         "codex:test",
-        [{ value: 1 }],
+        { value: 1 },
       ),
       {
         sentClientIds: ["client:1", "client:2"],
@@ -129,13 +112,13 @@ it.effect("owns stable renderer registrations and targeted delivery", () =>
     assert.strictEqual(runtime.getClientIdForWebContentsId(10), "client:1");
     assert.strictEqual(runtime.getWebContentsIdForClientId("client:2"), 11);
     assert.strictEqual(
-      runtime.broadcast("codex:broadcast", [], {
+      runtime.broadcast("codex:broadcast", null, {
         sourceClientId: firstRegistration.clientId,
         includeSource: false,
       }),
       1,
     );
-    assert.deepEqual(runtime.sendToClients([], "codex:none", []), {
+    assert.deepEqual(runtime.sendToClients([], "codex:none", null), {
       sentClientIds: [],
       unavailableClientIds: [],
       failedClientIds: [],
@@ -151,42 +134,26 @@ it.effect("chunks large routed messages, waits for exact ACKs, and preserves tar
     const { runtime, scope } = yield* makeRuntime();
     const target = new FakeWebContents(12);
     const targetId = runtime.register(target).clientId;
-    const largeValue = "x".repeat(RENDERER_DELIVERY_INLINE_MAX_BYTES + 1);
+    const largeValue = "x".repeat(CODEX_HOST_CHUNK_INLINE_THRESHOLD_BYTES + 1);
 
-    assert.isTrue(runtime.sendToClient(targetId, "codex:host-message", [{ largeValue }]));
-    assert.isTrue(runtime.sendToClient(targetId, "codex:event", [{ type: "queued-after-large" }]));
+    assert.isTrue(runtime.sendToClient(targetId, "codex:host-message", { largeValue }));
+    assert.isTrue(runtime.sendToClient(targetId, "codex:event", { type: "queued-after-large" }));
     yield* waitUntil("transfer start", () => target.sent.length === 1);
 
     let index = 0;
     while (true) {
-      const envelope = rendererDeliveryEnvelope(target, index);
-      assert.notStrictEqual(envelope.kind, "inline");
-      const acknowledgment = acknowledgmentFor(envelope);
-      assert.isFalse(
-        yield* runtime.handleDeliveryAcknowledgment(target, {
-          ...acknowledgment,
-          sequence: acknowledgment.sequence + 1,
-        }),
-      );
+      const part = rendererChunkedPart(target, index);
+      yield* runtime.handleDeliveryAcknowledgment(target, part.transferId, part.sequence + 1);
       assert.strictEqual(target.sent.length, index + 1);
-      assert.isTrue(yield* runtime.handleDeliveryAcknowledgment(target, acknowledgment));
+      yield* runtime.handleDeliveryAcknowledgment(target, part.transferId, part.sequence);
       index += 1;
-      if (envelope.kind === "transferEnd") break;
+      if (part.kind === "end") break;
       yield* waitUntil(`transfer frame ${index}`, () => target.sent.length === index + 1);
     }
 
     yield* waitUntil("queued inline delivery", () => target.sent.length === index + 1);
-    const queued = rendererDeliveryEnvelope(target, index);
-    assert.strictEqual(queued.kind, "inline");
-    if (queued.kind !== "inline") return yield* Effect.die("Expected inline delivery");
-    const payload = JSON.parse(new TextDecoder().decode(queued.payloadUtf8)) as {
-      readonly channel: string;
-      readonly args: readonly unknown[];
-    };
-    assert.deepEqual(payload, {
-      channel: "codex:event",
-      args: [{ type: "queued-after-large" }],
-    });
+    assert.strictEqual(target.sent[index]?.channel, "codex:event");
+    assert.deepEqual(target.sent[index]?.args, [{ type: "queued-after-large" }]);
     yield* Scope.close(scope, Exit.void);
   }),
 );
@@ -196,22 +163,22 @@ it.effect("releases active and queued delivery when its target is destroyed", ()
     const { runtime, scope } = yield* makeRuntime();
     const target = new FakeWebContents(13);
     const targetId = runtime.register(target).clientId;
-    const largeValue = "x".repeat(RENDERER_DELIVERY_INLINE_MAX_BYTES + 1);
+    const largeValue = "x".repeat(CODEX_HOST_CHUNK_INLINE_THRESHOLD_BYTES + 1);
 
-    assert.isTrue(runtime.sendToClient(targetId, "codex:host-message", [{ largeValue }]));
-    assert.isTrue(runtime.sendToClient(targetId, "codex:event", [{ type: "must-not-send" }]));
+    assert.isTrue(runtime.sendToClient(targetId, "codex:host-message", { largeValue }));
+    assert.isTrue(runtime.sendToClient(targetId, "codex:event", { type: "must-not-send" }));
     yield* waitUntil("active transfer start", () => target.sent.length === 1);
     target.destroy();
     yield* waitUntil("client disposal", () => runtime.getClientCount() === 0);
     for (let attempt = 0; attempt < 20; attempt += 1) yield* Effect.yieldNow;
 
     assert.strictEqual(target.sent.length, 1);
-    assert.isFalse(runtime.sendToClient(targetId, "codex:event", []));
+    assert.isFalse(runtime.sendToClient(targetId, "codex:event", null));
     yield* Scope.close(scope, Exit.void);
   }),
 );
 
-it.effect("revokes a renderer generation when an admitted delivery ultimately fails", () =>
+it.effect("keeps renderer ownership stable when an immediate send is rejected", () =>
   Effect.gen(function* () {
     const scope = yield* Scope.make();
     const context = yield* Layer.buildWithScope(
@@ -226,26 +193,9 @@ it.effect("revokes a renderer generation when an admitted delivery ultimately fa
     const runtime = Context.get(context, RendererClientRuntime);
     const target = new FakeWebContents(14);
     const targetId = runtime.register(target).clientId;
-    const disposed = yield* Effect.forkChild(
-      runtime.events.pipe(
-        Stream.filter((event) => event.kind === "disposed"),
-        Stream.runHead,
-      ),
-    );
 
-    // The synchronous API reports admission. Failure is asynchronous and must revoke the exact
-    // generation instead of leaving a follower permanently parked on the missing revision.
-    assert.isTrue(runtime.sendToClient(targetId, "codex:host-message", [{ revision: 7 }]));
-    yield* TestClock.adjust("200 millis");
-
-    const event = yield* Fiber.join(disposed);
-    assert.strictEqual(event._tag, "Some");
-    if (event._tag === "Some") {
-      assert.strictEqual(event.value.clientId, targetId);
-      assert.match(event.value.reason, /^delivery-failed:/);
-    }
-    assert.strictEqual(runtime.getClientCount(), 0);
-    assert.isFalse(runtime.sendToClient(targetId, "codex:host-message", [{ revision: 8 }]));
+    assert.isFalse(runtime.sendToClient(targetId, "codex:host-message", { revision: 7 }));
+    assert.strictEqual(runtime.getClientCount(), 1);
     yield* Scope.close(scope, Exit.void);
   }),
 );
@@ -312,39 +262,17 @@ it.effect("completes a request exactly once from its target renderer", () =>
   }),
 );
 
-it.effect("maps renderer role and response failures into typed request failures", () =>
+it.effect("maps renderer response failures into typed request failures", () =>
   Effect.gen(function* () {
     const { runtime, scope } = yield* makeRuntime();
     const target = new FakeWebContents(25);
     const targetId = runtime.register(target).clientId;
 
-    const role = yield* Effect.forkChild(runtime.queryThreadRole(targetId, "thread-1"));
-    yield* Effect.yieldNow;
-    const roleRequest = rendererRequest(target);
-    yield* runtime.handleResponse(target, {
-      type: "success",
-      requestId: roleRequest.requestId,
-      result: "owner",
-    });
-    assert.strictEqual(yield* Fiber.join(role), "owner");
-
-    const ownerCheck = yield* Effect.forkChild(
-      runtime.requireThreadOwner(targetId, "thread-1").pipe(Effect.asVoid, Effect.flip),
-    );
-    yield* Effect.yieldNow;
-    const ownerRequest = rendererRequest(target, 1);
-    yield* runtime.handleResponse(target, {
-      type: "success",
-      requestId: ownerRequest.requestId,
-      result: "follower",
-    });
-    assert.strictEqual((yield* Fiber.join(ownerCheck)).reason, "not-owner");
-
     const failed = yield* Effect.forkChild(
       runtime.request(targetId, "snapshot", {}).pipe(Effect.asVoid, Effect.flip),
     );
     yield* Effect.yieldNow;
-    const failedRequest = rendererRequest(target, 2);
+    const failedRequest = rendererRequest(target);
     yield* runtime.handleResponse(target, {
       type: "error",
       requestId: failedRequest.requestId,

@@ -126,6 +126,8 @@ const conversationRuntimeMap = (events: string[] = []): ConversationEntityMap["S
       Effect.ensuring(Effect.sync(() => events.push(`lane:${threadId}:close`))),
     );
   return ConversationEntityMap.of({
+    registerThreadMetadata: () => {},
+    readThreadMetadata: () => null,
     runCommand,
   } as unknown as ConversationEntityMap["Service"]);
 };
@@ -267,7 +269,7 @@ it.effect("joins paged live terminals with the canonical Thread and durable cata
     const entry = directoryEntry({
       threadId: "thread-a",
       projectId: null,
-      title: "Build release",
+      title: "**Build** [release](https://example.com)",
       terminalItems: [
         { itemId: "item-b", processId: "process-b", turnId: "turn-b", createdAt: 42 },
       ],
@@ -323,7 +325,7 @@ it.effect("admits, persists, and launches a local terminal action as one semanti
     const entry = directoryEntry({
       threadId: "thread-a",
       projectId: "project-a",
-      title: "Projected title",
+      title: "**Projected** title",
     });
     const service = yield* makeService(scope, {
       core: coreModules({ records, events }),

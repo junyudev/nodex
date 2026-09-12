@@ -1,6 +1,5 @@
 import {
   buildCodexFrameTextDeltaKey,
-  CODEX_FRAME_TEXT_DELTA_MAX_BUFFERED_CODE_UNITS,
   type CodexFrameTextDeltaUpdate,
 } from "./codex-frame-text-delta-queue";
 
@@ -51,7 +50,7 @@ export class CodexFrameTextDeltaSequenceTracker {
     this.maxSegments = options.maxSegments ?? CODEX_FRAME_TEXT_DELTA_MAX_TRACKED_SEQUENCES;
     this.maxSegmentsPerKey =
       options.maxSegmentsPerKey ?? CODEX_FRAME_TEXT_DELTA_MAX_TRACKED_SEQUENCES_PER_KEY;
-    this.maxCodeUnits = options.maxCodeUnits ?? CODEX_FRAME_TEXT_DELTA_MAX_BUFFERED_CODE_UNITS;
+    this.maxCodeUnits = options.maxCodeUnits ?? 4 * 1_024 * 1_024;
   }
 
   track(

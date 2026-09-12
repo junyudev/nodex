@@ -23,7 +23,18 @@ export interface CodexInboxItemsCreateServerRequest {
   readonly params: unknown;
 }
 
+export interface CodexMcpUserVerificationServerRequest {
+  readonly id: RequestId;
+  readonly method: "mcpServer/elicitation/request";
+  readonly params: {
+    readonly threadId: string;
+    readonly mode: "openai/userVerification";
+    readonly [key: string]: unknown;
+  };
+}
+
 export type CodexPrivateServerRequest =
+  | CodexMcpUserVerificationServerRequest
   | CodexCanonicalOptionPickerRequest
   | CodexCanonicalPlanImplementationRequest
   | CodexCanonicalSetupContextPickerRequest
@@ -82,6 +93,16 @@ const RequestIdSchema = z.union([z.string(), z.number()]);
 const PrivateServerRequestSchema = z.discriminatedUnion("method", [
   z.object({
     id: RequestIdSchema,
+    method: z.literal("mcpServer/elicitation/request"),
+    params: z
+      .object({
+        threadId: z.string(),
+        mode: z.literal("openai/userVerification"),
+      })
+      .loose(),
+  }),
+  z.object({
+    id: RequestIdSchema,
     method: z.literal("item/tool/requestOptionPicker"),
     params: z.object({
       threadId: z.string(),
@@ -127,6 +148,7 @@ const PrivateServerRequestSchema = z.discriminatedUnion("method", [
 ]) satisfies z.ZodType<CodexPrivateServerRequest>;
 
 const privateServerRequestMethods = new Set<CodexPrivateServerRequest["method"]>([
+  "mcpServer/elicitation/request",
   "item/tool/requestOptionPicker",
   "item/tool/requestSetupCodexContextPicker",
   "item/plan/requestImplementation",

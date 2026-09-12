@@ -12,6 +12,7 @@ import { ManagedWorktreesSettingControl } from "./managed-worktrees-settings-con
 import { WorkbenchHooksSettingsPage } from "./workbench-hooks-settings-page";
 import { BrowserSettingsPage } from "@/features/browser-sidebar/browser-settings-pages";
 import { VoiceSettingsPage } from "@/features/dictation/voice-settings-page";
+import { CodexRequestDiagnostics } from "@/features/local-conversation/codex-request-diagnostics";
 import {
   FULL_ACCESS_PERMISSION_DESCRIPTION,
   PermissionModeDropdown,
@@ -213,6 +214,10 @@ export function GeneralSettingsPage({
             View
           </NodexButton>
         </SettingRow>
+      </SectionBlock>
+
+      <SectionBlock id="app-server-diagnostics" title="App server diagnostics">
+        <CodexRequestDiagnostics enabled={open} />
       </SectionBlock>
 
       <SectionBlock id="composer" title="Composer">

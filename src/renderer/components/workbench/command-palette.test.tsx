@@ -1496,7 +1496,7 @@ test("file search completes directories, opens the selected native path, and rel
       mode="files"
       initialQuery="sr"
       commands={[]}
-      fileSearchScope={{ hostId: "default", roots: ["/workspace"] }}
+      fileSearchScope={{ hostId: "local", roots: ["/workspace"] }}
       loading={false}
       pagesLoading={false}
       chatsLoading={false}

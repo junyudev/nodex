@@ -28,20 +28,9 @@ import {
 import { CodexGateway, codexGatewayGenerationFence } from "../codex-runtime/CodexGateway";
 
 export const CODEX_HISTORY_SEARCH_OCCURRENCE_LIMIT = 250;
-/** Renderer-visible query and occurrence indexes stay small enough to copy without RPC-sized spikes. */
-export const CODEX_HISTORY_SEARCH_TERM_MAX_BYTES = 16 * 1024;
-export const CODEX_HISTORY_SEARCH_OCCURRENCE_PAGE_MAX_BYTES = 2 * 1024 * 1024;
-export const CODEX_HISTORY_SEARCH_OCCURRENCE_MAX_BYTES = 128 * 1024;
-export const CODEX_HISTORY_SEARCH_OCCURRENCE_ID_MAX_LENGTH = 1_024;
-export const CODEX_HISTORY_SEARCH_OCCURRENCE_CURSOR_MAX_LENGTH = 4_096;
-export const CODEX_HISTORY_SEARCH_OCCURRENCE_SNIPPET_MAX_LENGTH = 64 * 1024;
 export const CODEX_HISTORY_SEARCH_TURN_RADIUS_PAGE_SIZE = 5;
 export const CODEX_HISTORY_SEARCH_ITEM_PAGE_SIZE = 100;
-export const CODEX_HISTORY_SEARCH_MAX_ITEM_PAGE_REQUESTS_PER_DIRECTION = 20;
 export const CODEX_HISTORY_SEARCH_DIRECTION_ITEM_LIMIT = 500;
-export const CODEX_HISTORY_SEARCH_DIRECTION_BYTE_LIMIT = 8 * 1024 * 1024;
-export const CODEX_HISTORY_SEARCH_SELECTED_ITEM_LIMIT = 2_000;
-export const CODEX_HISTORY_SEARCH_SELECTED_BYTE_LIMIT = 16 * 1024 * 1024;
 
 const SEARCH_SCHEDULING = {
   priority: "interactive",
@@ -54,10 +43,7 @@ const HYDRATION_SCHEDULING = {
 } as const;
 
 export interface CodexHistorySearchAdapterOptions {
-  readonly selectedItemLimit?: number;
-  readonly selectedByteLimit?: number;
   readonly directionItemLimit?: number;
-  readonly directionByteLimit?: number;
 }
 
 export interface CodexHistorySearchPage {
@@ -83,20 +69,12 @@ export interface CodexHistoryOccurrenceHydrationInput {
 
 export type CodexHistorySearchIslandInput = Omit<CreateCodexHistoryIslandInput<Turn>, "generation">;
 
-export type CodexHistorySelectedItemResolution =
-  | {
-      readonly status: "found";
-      readonly item: ThreadItem;
-      readonly inspectedItemCount: number;
-      readonly inspectedBytes: number;
-    }
-  | {
-      readonly status: "bounded-incomplete";
-      readonly reason: "item-count-limit" | "item-byte-limit";
-      readonly inspectedItemCount: number;
-      readonly inspectedBytes: number;
-      readonly nextCursor: string | null;
-    };
+export interface CodexHistorySelectedItemResolution {
+  readonly status: "found";
+  readonly item: ThreadItem;
+  readonly inspectedItemCount: number;
+  readonly inspectedBytes: number;
+}
 
 export interface CodexHistoryOccurrenceHydration {
   readonly threadId: string;
@@ -117,14 +95,10 @@ export class CodexHistorySearchAdapterError extends Schema.TaggedError<CodexHist
     threadId: Schema.String,
     turnId: Schema.NullOr(Schema.String),
     reason: Schema.Literals([
-      "invalid-search-term",
       "unsupported-capability",
       "stale-generation",
       "request-failed",
-      "page-size-exceeded",
-      "page-byte-limit",
       "invalid-occurrence",
-      "item-byte-limit",
       "cursor-stalled",
       "foreign-item",
       "anchor-missing",
@@ -161,35 +135,24 @@ interface LoadedItemPage {
   readonly approximateBytes: number;
 }
 
-const approximateValueBytes = (
-  value: unknown,
-  limit = CODEX_HISTORY_SEARCH_SELECTED_BYTE_LIMIT,
-): number => cappedApproximateValueBytes(value, limit);
+const approximateValueBytes = (value: unknown, limit = Number.MAX_SAFE_INTEGER): number =>
+  cappedApproximateValueBytes(value, limit);
 
 const invalidOccurrenceCause = (value: unknown): Error | null => {
   if (typeof value !== "object" || value === null || Array.isArray(value)) {
     return new Error("Persisted-history occurrence must be an object");
   }
   const occurrence = value as Partial<ThreadSearchOccurrence>;
-  const boundedId = (candidate: unknown): candidate is string =>
-    typeof candidate === "string" &&
-    candidate.length > 0 &&
-    candidate.length <= CODEX_HISTORY_SEARCH_OCCURRENCE_ID_MAX_LENGTH;
-  if (!boundedId(occurrence.turnId) || !boundedId(occurrence.itemId)) {
-    return new Error("Persisted-history occurrence ids must be bounded non-empty strings");
+  const nonEmptyId = (candidate: unknown): candidate is string =>
+    typeof candidate === "string" && candidate.length > 0;
+  if (!nonEmptyId(occurrence.turnId) || !nonEmptyId(occurrence.itemId)) {
+    return new Error("Persisted-history occurrence ids must be non-empty strings");
   }
-  if (
-    typeof occurrence.turnCursor !== "string" ||
-    occurrence.turnCursor.length === 0 ||
-    occurrence.turnCursor.length > CODEX_HISTORY_SEARCH_OCCURRENCE_CURSOR_MAX_LENGTH
-  ) {
-    return new Error("Persisted-history occurrence cursor must be a bounded non-empty string");
+  if (typeof occurrence.turnCursor !== "string" || occurrence.turnCursor.length === 0) {
+    return new Error("Persisted-history occurrence cursor must be a non-empty string");
   }
-  if (
-    typeof occurrence.snippet !== "string" ||
-    occurrence.snippet.length > CODEX_HISTORY_SEARCH_OCCURRENCE_SNIPPET_MAX_LENGTH
-  ) {
-    return new Error("Persisted-history occurrence snippet exceeds its length budget");
+  if (typeof occurrence.snippet !== "string") {
+    return new Error("Persisted-history occurrence snippet must be a string");
   }
   const range = occurrence.snippetMatchRange;
   if (
@@ -202,12 +165,6 @@ const invalidOccurrenceCause = (value: unknown): Error | null => {
     range.end > occurrence.snippet.length
   ) {
     return new Error("Persisted-history occurrence match range is invalid");
-  }
-  if (
-    cappedApproximateValueBytes(occurrence, CODEX_HISTORY_SEARCH_OCCURRENCE_MAX_BYTES) >
-    CODEX_HISTORY_SEARCH_OCCURRENCE_MAX_BYTES
-  ) {
-    return new Error("Persisted-history occurrence exceeds its byte budget");
   }
   return null;
 };
@@ -263,21 +220,9 @@ export const make = (
   Effect.gen(function* () {
     const gateway = yield* CodexGateway;
     const capabilities = yield* CodexAppServerCapabilities;
-    const selectedItemLimit = positiveInteger(
-      options.selectedItemLimit,
-      CODEX_HISTORY_SEARCH_SELECTED_ITEM_LIMIT,
-    );
-    const selectedByteLimit = positiveInteger(
-      options.selectedByteLimit,
-      CODEX_HISTORY_SEARCH_SELECTED_BYTE_LIMIT,
-    );
-    const directionItemLimit = Math.min(
-      positiveInteger(options.directionItemLimit, CODEX_HISTORY_SEARCH_DIRECTION_ITEM_LIMIT),
-      selectedItemLimit,
-    );
-    const directionByteLimit = Math.min(
-      positiveInteger(options.directionByteLimit, CODEX_HISTORY_SEARCH_DIRECTION_BYTE_LIMIT),
-      selectedByteLimit,
+    const directionItemLimit = positiveInteger(
+      options.directionItemLimit,
+      CODEX_HISTORY_SEARCH_DIRECTION_ITEM_LIMIT,
     );
     let nextIslandSequence = 1;
 
@@ -390,17 +335,6 @@ export const make = (
         turnId: input.turnId,
         scheduling: HYDRATION_SCHEDULING,
       });
-      if (response.data.length > input.limit) {
-        return yield* adapterError({
-          operation: input.operation ?? "items",
-          threadId: input.threadId,
-          turnId: input.turnId,
-          reason: "page-size-exceeded",
-          cause: new Error(
-            `Item page for turn '${input.turnId}' returned ${response.data.length} entries for limit ${input.limit}`,
-          ),
-        });
-      }
       if (response.nextCursor !== null && response.nextCursor === input.cursor) {
         return yield* adapterError({
           operation: input.operation ?? "items",
@@ -424,15 +358,6 @@ export const make = (
           });
         }
         wireItems.push(entry.item as unknown as ThreadItem);
-      }
-      if (wireItems.length === 0 && response.nextCursor !== null) {
-        return yield* adapterError({
-          operation: input.operation ?? "items",
-          threadId: input.threadId,
-          turnId: input.turnId,
-          reason: "cursor-stalled",
-          cause: new Error(`Item page made no progress for turn '${input.turnId}'`),
-        });
       }
       return {
         items: input.sortDirection === "desc" ? wireItems.reverse() : wireItems,
@@ -463,7 +388,7 @@ export const make = (
           openingUserMessageId: firstVisible.id,
         } as const;
       }
-      if (opening.nextCursor === null && turn.status !== "inProgress") {
+      if (firstVisible || (opening.nextCursor === null && turn.status !== "inProgress")) {
         return { oldestUserInput: [], openingUserMessageId: null } as const;
       }
       return { oldestUserInput: null, openingUserMessageId: null } as const;
@@ -490,16 +415,6 @@ export const make = (
           operation: "turns",
           scheduling: HYDRATION_SCHEDULING,
         });
-        if (response.data.length > CODEX_HISTORY_SEARCH_TURN_RADIUS_PAGE_SIZE) {
-          return yield* adapterError({
-            operation: "turns",
-            threadId,
-            reason: "page-size-exceeded",
-            cause: new Error(
-              `Turn page for '${threadId}' returned ${response.data.length} entries for limit ${CODEX_HISTORY_SEARCH_TURN_RADIUS_PAGE_SIZE}`,
-            ),
-          });
-        }
         if (response.nextCursor !== null && response.nextCursor === cursor) {
           return yield* adapterError({
             operation: "turns",
@@ -510,21 +425,14 @@ export const make = (
         }
 
         let remainingItems = directionItemLimit;
-        let remainingBytes = directionByteLimit;
-        let itemPageRequestCount = 0;
         const turns: Turn[] = [];
         const itemsPaginationByTurnId: Record<string, CodexHistoryTurnItemsPagination> = {};
         for (const turn of response.data) {
           let itemCursor: string | null = null;
           let requested = false;
-          let retentionBlocked = false;
           let items: readonly ThreadItem[] = [];
           const seenItemCursors = new Set<string | null>();
-          while ((!requested || itemCursor !== null) && remainingItems > 0 && remainingBytes > 0) {
-            if (itemPageRequestCount >= CODEX_HISTORY_SEARCH_MAX_ITEM_PAGE_REQUESTS_PER_DIRECTION) {
-              retentionBlocked = true;
-              break;
-            }
+          while ((!requested || itemCursor !== null) && remainingItems > 0) {
             if (seenItemCursors.has(itemCursor)) {
               return yield* adapterError({
                 operation: "items",
@@ -536,59 +444,29 @@ export const make = (
             }
             seenItemCursors.add(itemCursor);
             requested = true;
-            itemPageRequestCount += 1;
             const page: LoadedItemPage = yield* loadItemsPage({
               snapshot,
               threadId,
               turnId: turn.id,
               cursor: itemCursor,
-              limit:
-                items.length === 0
-                  ? 1
-                  : Math.min(CODEX_HISTORY_SEARCH_ITEM_PAGE_SIZE, remainingItems),
+              limit: Math.min(CODEX_HISTORY_SEARCH_ITEM_PAGE_SIZE, remainingItems),
               sortDirection: "desc",
             });
-            if (page.rawItemCount > remainingItems) {
-              retentionBlocked = true;
-              break;
-            }
             const existingIds = new Set(items.map((item) => item.id));
             const unique = dedupeItems(page.items).filter((item) => !existingIds.has(item.id));
-            const retainedBytes = approximateValueBytes(unique, remainingBytes);
-            if (retainedBytes > remainingBytes) {
-              if (itemCursor === null) {
-                return yield* adapterError({
-                  operation: "items",
-                  threadId,
-                  turnId: turn.id,
-                  reason: "item-byte-limit",
-                  cause: new Error(
-                    `Initial search item page for turn '${turn.id}' exceeds the byte budget without a retry cursor`,
-                  ),
-                });
-              }
-              retentionBlocked = true;
-              break;
-            }
             items = [...unique, ...items];
             remainingItems -= unique.length;
-            remainingBytes -= retainedBytes;
             itemCursor = page.nextCursor;
           }
-          const hasLoadedOldest = requested && !retentionBlocked && itemCursor === null;
-          const openingCandidate =
-            hasLoadedOldest || remainingBytes === 0
-              ? { oldestUserInput: null, openingUserMessageId: null }
-              : yield* loadOpeningUser(snapshot, threadId, turn);
-          const openingBytes = approximateValueBytes(
-            openingCandidate.oldestUserInput,
-            remainingBytes,
-          );
+          const hasLoadedOldest = requested && itemCursor === null;
           const opening =
-            openingCandidate.oldestUserInput !== null && openingBytes > remainingBytes
+            hasLoadedOldest || items.length === 0
               ? { oldestUserInput: null, openingUserMessageId: null }
-              : openingCandidate;
-          if (opening.oldestUserInput !== null) remainingBytes -= openingBytes;
+              : yield* loadOpeningUser(snapshot, threadId, turn).pipe(
+                  Effect.catch(() =>
+                    Effect.succeed({ oldestUserInput: null, openingUserMessageId: null }),
+                  ),
+                );
           const itemsView = hasLoadedOldest ? "full" : "summary";
           turns.push(normalizeTurn(turn, items, itemsView));
           itemsPaginationByTurnId[turn.id] = {
@@ -617,40 +495,13 @@ export const make = (
         pagination: CodexHistoryTurnItemsPagination,
       ) {
         let inspectedItemCount = turn.items.length;
-        let inspectedBytes = approximateValueBytes(turn.items, selectedByteLimit);
+        let inspectedBytes = approximateValueBytes(turn.items);
         let currentTurn = turn;
         let currentPagination = { ...pagination };
         let found = selectedItem(currentTurn, itemId);
         const seenCursors = new Set<string | null>();
 
         while (found === null && !currentPagination.hasLoadedOldest) {
-          if (inspectedItemCount >= selectedItemLimit) {
-            return {
-              turn: currentTurn,
-              pagination: currentPagination,
-              selection: {
-                status: "bounded-incomplete",
-                reason: "item-count-limit",
-                inspectedItemCount,
-                inspectedBytes,
-                nextCursor: currentPagination.olderCursor,
-              } satisfies CodexHistorySelectedItemResolution,
-            } as const;
-          }
-          if (inspectedBytes >= selectedByteLimit) {
-            return {
-              turn: currentTurn,
-              pagination: currentPagination,
-              selection: {
-                status: "bounded-incomplete",
-                reason: "item-byte-limit",
-                inspectedItemCount,
-                inspectedBytes,
-                nextCursor: currentPagination.olderCursor,
-              } satisfies CodexHistorySelectedItemResolution,
-            } as const;
-          }
-
           const cursor = currentPagination.olderCursor;
           if (seenCursors.has(cursor)) {
             return yield* adapterError({
@@ -667,38 +518,9 @@ export const make = (
             threadId,
             turnId: currentTurn.id,
             cursor,
-            limit: Math.min(
-              CODEX_HISTORY_SEARCH_ITEM_PAGE_SIZE,
-              selectedItemLimit - inspectedItemCount,
-            ),
+            limit: CODEX_HISTORY_SEARCH_ITEM_PAGE_SIZE,
             sortDirection: "desc",
           });
-          if (inspectedItemCount + page.rawItemCount > selectedItemLimit) {
-            return {
-              turn: currentTurn,
-              pagination: currentPagination,
-              selection: {
-                status: "bounded-incomplete",
-                reason: "item-count-limit",
-                inspectedItemCount,
-                inspectedBytes,
-                nextCursor: cursor,
-              } satisfies CodexHistorySelectedItemResolution,
-            } as const;
-          }
-          if (inspectedBytes + page.approximateBytes > selectedByteLimit) {
-            return {
-              turn: currentTurn,
-              pagination: currentPagination,
-              selection: {
-                status: "bounded-incomplete",
-                reason: "item-byte-limit",
-                inspectedItemCount,
-                inspectedBytes,
-                nextCursor: cursor,
-              } satisfies CodexHistorySelectedItemResolution,
-            } as const;
-          }
           const existingIds = new Set(currentTurn.items.map((item) => item.id));
           const unique = dedupeItems(page.items).filter((item) => !existingIds.has(item.id));
           const items = [...unique, ...currentTurn.items];
@@ -745,18 +567,6 @@ export const make = (
     const search = Effect.fn("CodexHistorySearchAdapter.search")(function* (
       input: CodexHistorySearchInput,
     ) {
-      if (
-        input.searchTerm.length === 0 ||
-        cappedApproximateValueBytes(input.searchTerm, CODEX_HISTORY_SEARCH_TERM_MAX_BYTES) >
-          CODEX_HISTORY_SEARCH_TERM_MAX_BYTES
-      ) {
-        return yield* adapterError({
-          operation: "search",
-          threadId: input.threadId,
-          reason: "invalid-search-term",
-          cause: new Error("Persisted-history search term must be non-empty and byte-bounded"),
-        });
-      }
       const snapshot = yield* snapshotForThread(input.threadId).pipe(
         Effect.flatMap((snapshot) => requireSearchCapability(snapshot, input.threadId)),
       );
@@ -773,27 +583,6 @@ export const make = (
         operation: "search",
         scheduling: SEARCH_SCHEDULING,
       });
-      if (response.data.length > CODEX_HISTORY_SEARCH_OCCURRENCE_LIMIT) {
-        return yield* adapterError({
-          operation: "search",
-          threadId: input.threadId,
-          reason: "page-size-exceeded",
-          cause: new Error(
-            `Search page for '${input.threadId}' returned ${response.data.length} entries for limit ${CODEX_HISTORY_SEARCH_OCCURRENCE_LIMIT}`,
-          ),
-        });
-      }
-      if (
-        cappedApproximateValueBytes(response.data, CODEX_HISTORY_SEARCH_OCCURRENCE_PAGE_MAX_BYTES) >
-        CODEX_HISTORY_SEARCH_OCCURRENCE_PAGE_MAX_BYTES
-      ) {
-        return yield* adapterError({
-          operation: "search",
-          threadId: input.threadId,
-          reason: "page-byte-limit",
-          cause: new Error(`Search page for '${input.threadId}' exceeds its byte budget`),
-        });
-      }
       for (const occurrence of response.data) {
         const cause = invalidOccurrenceCause(occurrence);
         if (!cause) continue;
@@ -904,17 +693,12 @@ export const make = (
       const entities = turns.map((turn): CodexHistoryEntity<Turn> => ({
         key: turn.id,
         turn,
-        itemCount: turn.items.length,
-        approximateBytes: approximateValueBytes(turn, selectedByteLimit),
-        itemsPagination: itemsPaginationByTurnId[turn.id]!,
-        authority: "history",
-        revision: sequence,
       }));
       const island = {
         islandId,
         entries: turns.map((turn, index) => ({
           key: `${islandId}:${index}`,
-          entityKey: turn.id,
+          value: turn.id,
         })),
         entities,
         olderBoundary: boundary(descending.nextCursor, "older"),

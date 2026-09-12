@@ -1,3 +1,4 @@
+import { createCodexCanonicalConversationMetadata } from "./codex-conversation-state";
 import { describe, expect, test } from "vite-plus/test";
 import type { ThreadGoal } from "@nodex/codex-app-server-protocol/v2/ThreadGoal";
 import type { CodexCanonicalConversationState } from "./codex-conversation-state";
@@ -20,63 +21,64 @@ const goal: ThreadGoal = {
 
 function buildState(): CodexCanonicalConversationState {
   return {
-    protocol: {
-      model: null,
-      reasoningEffort: null,
-      id: "thread-goal",
-      extra: null,
-      sessionId: "session-goal",
-      forkedFromId: null,
-      parentThreadId: null,
-      preview: "",
-      ephemeral: false,
-      section: null,
-      sectionEnteredAt: null,
-      projectId: null,
-      historyMode: "paginated",
-      modelProvider: "openai",
-      createdAt: 1,
-      updatedAt: 1,
-      recencyAt: 1,
-      status: { type: "idle" },
-      path: null,
-      cwd: "/workspace",
-      cliVersion: "test",
-      source: "appServer",
-      canAcceptDirectInput: true,
-      threadSource: null,
-      agentNickname: null,
-      agentRole: null,
-      gitInfo: null,
-      name: null,
-    },
+    ...createCodexCanonicalConversationMetadata(
+      {
+        model: null,
+        reasoningEffort: null,
+        id: "thread-goal",
+        extra: null,
+        sessionId: "session-goal",
+        forkedFromId: null,
+        parentThreadId: null,
+        preview: "",
+        ephemeral: false,
+        section: null,
+        sectionEnteredAt: null,
+        projectId: null,
+        historyMode: "paginated",
+        modelProvider: "openai",
+        createdAt: 1,
+        updatedAt: 1,
+        recencyAt: 1,
+        status: { type: "idle" },
+        path: null,
+        cwd: "/workspace",
+        cliVersion: "test",
+        source: "appServer",
+        canAcceptDirectInput: true,
+        threadSource: null,
+        agentNickname: null,
+        agentRole: null,
+        gitInfo: null,
+        name: null,
+      },
+      "local",
+    ),
     turns: [],
     requests: [],
-    sidecar: {
-      hasUnreadTurn: false,
-      hydrationContext: null,
-      latestThreadSettings: {
-        cwd: "/workspace",
-        approvalPolicy: "never",
-        approvalsReviewer: "user",
-        sandboxPolicy: { type: "readOnly", networkAccess: false },
-        activePermissionProfile: null,
-        model: "gpt-test",
-        modelProvider: "openai",
-        serviceTier: null,
-        effort: "high",
-        summary: null,
-        collaborationMode: {
-          mode: "default",
-          settings: {
-            model: "gpt-test",
-            reasoning_effort: "high",
-            developer_instructions: null,
-          },
+    hasUnreadTurn: false,
+    hydrationContext: null,
+    latestThreadSettings: {
+      cwd: "/workspace",
+      approvalPolicy: "never",
+      approvalsReviewer: "user",
+      sandboxPolicy: { type: "readOnly", networkAccess: false },
+      activePermissionProfile: null,
+      model: "gpt-test",
+      modelProvider: "openai",
+      serviceTier: null,
+      effort: "high",
+      summary: null,
+      collaborationMode: {
+        mode: "default",
+        settings: {
+          model: "gpt-test",
+          reasoning_effort: "high",
+          developer_instructions: null,
         },
-        multiAgentMode: "explicitRequestOnly",
-        personality: null,
       },
+      multiAgentMode: "explicitRequestOnly",
+      personality: null,
     },
   };
 }
@@ -85,19 +87,18 @@ describe("Codex 30751 thread goal transcript", () => {
   test("stores the slash command only in canonical turn params", () => {
     const state = appendCodexCanonicalThreadGoalTranscriptTurn(buildState(), goal);
     const turn = state.turns[0];
-    const input = turn?.sidecar.params.input[0];
-
+    const input = turn?.params.input[0];
     expect(String(state.turns.length)).toBe("1");
-    expect(turn?.protocol.id).toBe(null);
-    expect(turn?.protocol.status).toBe("completed");
+    expect(turn?.turnId).toBe(null);
+    expect(turn?.status).toBe("completed");
     expect(String(turn?.items.length ?? -1)).toBe("0");
-    expect(turn?.sidecar.turnStartedAtMs).toBe(2_000);
+    expect(turn?.turnStartedAtMs).toBe(2000);
     expect(input?.type).toBe("text");
     expect(input?.type === "text" ? input.text : "").toBe("/goal Ship parity");
     expect(input?.type === "text" ? String(input.text_elements.length) : "-1").toBe("0");
-    expect(turn?.sidecar.params.approvalPolicy).toBe("never");
-    expect(turn?.sidecar.params.model).toBe(null);
-    expect(turn?.sidecar.params.effort).toBe("minimal");
+    expect(turn?.params.approvalPolicy).toBe("never");
+    expect(turn?.params.model).toBe(null);
+    expect(turn?.params.effort).toBe("minimal");
   });
 
   test("deduplicates the exact latest local turn and exposes a slash-free view projection", () => {
@@ -108,12 +109,10 @@ describe("Codex 30751 thread goal transcript", () => {
     expect(duplicate === appended).toBe(true);
     expect(projection.promptText).toBe("/goal Ship parity");
     expect(projection.message).toBe("Ship parity");
-    expect(projection.sentAtMs).toBe(2_000);
+    expect(projection.sentAtMs).toBe(2000);
     expect(
-      appendCodexCanonicalThreadGoalTranscriptTurn(
-        { ...buildState(), protocol: { ...buildState().protocol, id: "other" } },
-        goal,
-      ).turns.length,
+      appendCodexCanonicalThreadGoalTranscriptTurn({ ...buildState(), id: "other" }, goal).turns
+        .length,
     ).toBe(0);
   });
 
@@ -128,7 +127,7 @@ describe("Codex 30751 thread goal transcript", () => {
       afterTurn: turn,
       currentViews: [],
       currentTranscript: [],
-      observedAtMs: 2_000,
+      observedAtMs: 2000,
     });
 
     expect(projected.views).toHaveLength(1);

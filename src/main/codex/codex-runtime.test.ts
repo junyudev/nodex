@@ -17,13 +17,13 @@ function writeRuntime(rootPath: string): void {
         layoutVersion: 1,
         version: "0.152.0",
         target: "aarch64-apple-darwin",
-        variant: "codex-app-server",
-        entrypoint: "bin/codex-app-server",
+        variant: "codex",
+        entrypoint: "bin/codex",
         resourcesDir: "codex-resources",
         pathDir: "codex-path",
       }),
     ],
-    ["bin/codex-app-server", "#!/bin/sh\necho codex-app-server\n"],
+    ["bin/codex", "#!/bin/sh\necho codex-app-server\n"],
     ["bin/codex-code-mode-host", "#!/bin/sh\necho host\n"],
     ["codex-path/rg", "#!/bin/sh\necho rg\n"],
     ["codex-resources/zsh/bin/zsh", "#!/bin/sh\necho zsh\n"],
@@ -47,27 +47,27 @@ function writeRuntime(rootPath: string): void {
       releaseAsset: {
         archiveSha256: "1".repeat(64),
         archiveSize: 1,
-        assetName: "codex-app-server-package-aarch64-apple-darwin.tar.gz",
+        assetName: "codex-package-aarch64-apple-darwin.tar.gz",
         entrypointSha256: createHash("sha256")
-          .update(artifactBodies.get("bin/codex-app-server") ?? "")
+          .update(artifactBodies.get("bin/codex") ?? "")
           .digest("hex"),
         repository: "openai/codex",
         tag: "rust-v0.152.0",
       },
       artifacts,
       appServerRuntimeVersion: "0.152.0",
-      entrypoint: "bin/codex-app-server",
+      entrypoint: "bin/codex",
       layoutVersion: AGENT_RUNTIME_LAYOUT_VERSION,
       packageManifest: {
         layoutVersion: 1,
         version: "0.152.0",
         target: "aarch64-apple-darwin",
-        variant: "codex-app-server",
-        entrypoint: "bin/codex-app-server",
+        variant: "codex",
+        entrypoint: "bin/codex",
         resourcesDir: "codex-resources",
         pathDir: "codex-path",
       },
-      runtimeFamily: "codex-app-server",
+      runtimeFamily: "codex",
       protocolSchemaFingerprint: "2".repeat(64),
       searchPaths: ["codex-path"],
       sourceRevision: {
@@ -110,8 +110,8 @@ describe("codex-runtime", () => {
         resourcesPath: fixture.resourcesPath,
       });
       expect(runtime.source).toBe("bundled");
-      expect(runtime.runtimeFamily).toBe("codex-app-server");
-      expect(runtime.binaryPath).toBe(path.join(fixture.resourcesPath, "bin", "codex-app-server"));
+      expect(runtime.runtimeFamily).toBe("codex");
+      expect(runtime.binaryPath).toBe(path.join(fixture.resourcesPath, "bin", "codex"));
       expect(runtime.additionalSearchPaths).toEqual([
         path.join(fixture.resourcesPath, "codex-path"),
       ]);
@@ -208,7 +208,7 @@ describe("codex-runtime", () => {
         "agent-runtime",
       );
       expect(runtime.source).toBe("staged");
-      expect(runtime.binaryPath).toBe(path.join(runtimeRoot, "bin", "codex-app-server"));
+      expect(runtime.binaryPath).toBe(path.join(runtimeRoot, "bin", "codex"));
       expect(runtime.additionalSearchPaths).toEqual([path.join(runtimeRoot, "codex-path")]);
       expect(runtime.version).toBe("0.152.0");
       expect(runtime.metadataPath).toBe(path.join(runtimeRoot, "agent-runtime.json"));
@@ -242,7 +242,7 @@ describe("codex-runtime", () => {
         reason: "untested-runtime-pair",
         status: "unavailable",
       });
-      expect(runtime.binaryPath).toBe(path.join(runtimeRoot, "bin", "codex-app-server"));
+      expect(runtime.binaryPath).toBe(path.join(runtimeRoot, "bin", "codex"));
     } finally {
       fixture.cleanup();
     }

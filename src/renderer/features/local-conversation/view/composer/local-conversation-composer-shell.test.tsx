@@ -168,6 +168,8 @@ function installComposerShellWindowApi(
           return undefined;
         case "codex:thread:goal:editable-objective:read":
           return args[0];
+        case "codex:app-server:request":
+          return { type: "result", result: undefined };
         default:
           return null;
       }

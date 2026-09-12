@@ -1,4 +1,3 @@
-import { workbenchScriptedTitle } from "./support/workbench-scripted-title";
 import { expect, test } from "@playwright/test";
 import { writeFileSync } from "node:fs";
 import { join } from "node:path";
@@ -39,7 +38,6 @@ test("native Workbench tools arrange, read and safely edit the exact authorized 
   await withScriptedModelServer(
     {
       exchanges: [
-        workbenchScriptedTitle,
         {
           name: "native Workbench controls",
           match: (request) => request.hasUserInputText("WORKBENCH_CONTROL_PROBE"),

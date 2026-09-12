@@ -9,6 +9,7 @@ import type { CodexThreadSummary } from "@/lib/types";
 import {
   buildNfmSendToThreadRows,
   moveNfmSendToThreadFocusedRowId,
+  resolveNfmSendToThreadTitle,
   resolveNfmSendToThreadFocusedRowId,
 } from "./nfm-send-to-thread-menu-model";
 
@@ -82,6 +83,17 @@ function searchThreads(query: string, threads: CommandPaletteThread[]): CommandP
 }
 
 describe("nfm send-to-thread menu model", () => {
+  test("uses the compact Codex title projection for preferred thread labels", () => {
+    expect(
+      resolveNfmSendToThreadTitle(
+        makePreferredThread({
+          threadId: "projected",
+          threadName: "**Review** [changes](https://example.com)",
+        }),
+      ),
+    ).toBe("Review changes");
+  });
+
   test("keeps New chat last and preserves command-palette thread ordering", () => {
     const rows = buildNfmSendToThreadRows({
       query: "",

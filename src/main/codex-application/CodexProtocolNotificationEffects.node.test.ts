@@ -1,11 +1,11 @@
 import type { CodexHeartbeatDecision } from "../../shared/codex-turn-notification";
+import type { ConversationStreamRole } from "../../shared/codex-conversation-stream";
 import { assert, it } from "@effect/vitest";
 import * as Effect from "effect/Effect";
 import * as Stream from "effect/Stream";
 import type { CodexServerNotification } from "../codex-runtime/CodexApplicationProtocol";
 import { BrowserUseRuntime } from "../host-runtime/BrowserUseRuntime";
 import { RemoteHostedPipRuntime } from "../host-runtime/RemoteHostedPipRuntime";
-import { CodexActiveGoalContinuation } from "./CodexActiveGoalContinuation";
 import { CodexApplicationEventHub } from "./CodexApplicationEventHub";
 import { CodexAutomationTurnCompletion } from "./CodexAutomationTurnCompletion";
 import { CodexConversationDeltaBufferRuntime } from "./CodexConversationDeltaBufferRuntime";
@@ -16,34 +16,33 @@ import { CodexPendingServerRequestRuntime } from "./CodexPendingServerRequestRun
 import { make } from "./CodexProtocolNotificationEffects";
 import { CodexProtocolNotificationProjection } from "./CodexProtocolNotificationProjection";
 import { CodexQueuedFollowUps } from "./CodexQueuedFollowUps";
-import { CodexRendererConversationCoordinator } from "./CodexRendererConversationCoordinator";
-import { CodexRendererConversationRegistry } from "./CodexRendererConversationRegistry";
+import { CodexMainConversationManagers } from "./CodexMainConversationManagers";
 import { CodexThreadDurableProjection } from "./CodexThreadDurableProjection";
 import { CodexThreadDirectory } from "./CodexThreadDirectory";
 import { CodexSubagentDirectory } from "./CodexSubagentDirectory";
 import { CodexThreadGoalRuntime } from "./CodexThreadGoalRuntime";
+import { CodexThreadTitleReconsideration } from "./CodexThreadTitleReconsideration";
 import { CodexUserInputAutoResolution } from "./CodexUserInputAutoResolution";
 import { ConversationEntityMap } from "./internal/ConversationEntityMap";
 
-it.effect("drains frame text before terminal turn consequences", () =>
+it.effect("drains only Main-owned prose before applying terminal product consequences", () =>
   Effect.gen(function* () {
     const trace: string[] = [];
-    const forwarded: CodexServerNotification[] = [];
     let deferLifecycle = false;
     let automationDecision: CodexHeartbeatDecision | null = "DONT_NOTIFY";
+    let streamRole: ConversationStreamRole = { role: "owner" };
     const deliveredDecisions: Array<CodexHeartbeatDecision | null> = [];
+    const deliveredHosts: string[] = [];
     const service = yield* make.pipe(
-      Effect.provideService(
-        CodexActiveGoalContinuation,
-        CodexActiveGoalContinuation.of({} as CodexActiveGoalContinuation["Service"]),
-      ),
       Effect.provideService(
         CodexApplicationEventHub,
         CodexApplicationEventHub.of({
           events: Stream.empty,
           publish: (event) => {
-            if (event.kind === "threadNotification" && event.value.type === "turn-completed")
+            if (event.kind === "threadNotification" && event.value.type === "turn-completed") {
               deliveredDecisions.push(event.value.automationNotificationDecision ?? null);
+              deliveredHosts.push(event.value.hostId);
+            }
           },
         }),
       ),
@@ -87,34 +86,17 @@ it.effect("drains frame text before terminal turn consequences", () =>
       Effect.provideService(
         CodexQueuedFollowUps,
         CodexQueuedFollowUps.of({
-          list: () => [],
-          requestDispatch: () => Effect.sync(() => trace.push("queue")),
+          readHead: () => null,
           acceptTerminalOutcomeInCurrentLane: (
             input: Parameters<
               CodexQueuedFollowUps["Service"]["acceptTerminalOutcomeInCurrentLane"]
             >[0],
-          ) =>
-            Effect.sync(() =>
-              trace.push(`queue-terminal:${input.interrupted}:${input.rows.length}`),
-            ),
+          ) => Effect.sync(() => trace.push(`queue-terminal:${input.interrupted}:0`)),
         } as unknown as CodexQueuedFollowUps["Service"]),
       ),
-      Effect.provideService(
-        CodexRendererConversationCoordinator,
-        CodexRendererConversationCoordinator.of({
-          forwardNotificationForConversation: (
-            _threadId: string,
-            notification: CodexServerNotification,
-          ) => {
-            forwarded.push(notification);
-            return true;
-          },
-        } as unknown as CodexRendererConversationCoordinator["Service"]),
-      ),
-      Effect.provideService(
-        CodexRendererConversationRegistry,
-        CodexRendererConversationRegistry.of({} as CodexRendererConversationRegistry["Service"]),
-      ),
+      Effect.provideService(CodexMainConversationManagers, {
+        current: () => ({ generation: 7, stream: { getRole: () => streamRole } }),
+      } as unknown as CodexMainConversationManagers["Service"]),
       Effect.provideService(
         CodexThreadDurableProjection,
         CodexThreadDurableProjection.of({
@@ -147,12 +129,18 @@ it.effect("drains frame text before terminal turn consequences", () =>
         CodexThreadGoalRuntime.of({} as CodexThreadGoalRuntime["Service"]),
       ),
       Effect.provideService(
+        CodexThreadTitleReconsideration,
+        CodexThreadTitleReconsideration.of({ observe: () => Effect.void }),
+      ),
+      Effect.provideService(
         CodexUserInputAutoResolution,
         CodexUserInputAutoResolution.of({} as CodexUserInputAutoResolution["Service"]),
       ),
       Effect.provideService(
         ConversationEntityMap,
         ConversationEntityMap.of({
+          registerThreadMetadata: () => {},
+          readThreadMetadata: () => null,
           current: () => null,
         } as unknown as ConversationEntityMap["Service"]),
       ),
@@ -193,14 +181,7 @@ it.effect("drains frame text before terminal turn consequences", () =>
       occurrenceToken: 91,
     });
 
-    assert.deepEqual(trace, [
-      "drain",
-      "browser",
-      "pip",
-      "automation",
-      "queue",
-      "durable:remote-a:7",
-    ]);
+    assert.deepEqual(trace, ["drain", "browser", "pip", "automation", "durable:remote-a:7"]);
 
     assert.deepEqual(deliveredDecisions, ["DONT_NOTIFY"]);
     automationDecision = null;
@@ -238,45 +219,18 @@ it.effect("drains frame text before terminal turn consequences", () =>
 
     assert.deepEqual(deliveredDecisions, ["DONT_NOTIFY", null]);
 
+    trace.length = 0;
+    streamRole = { role: "follower", ownerClientId: "renderer-owner" };
     yield* service.apply({
       hostId: "remote-a",
       generation: 7,
-      notification: {
-        method: "item/started",
-        params: {
-          threadId: "thread-a",
-          turnId: "turn-a",
-          startedAtMs: 3,
-          item: {
-            questions: null,
-            type: "agentMessage",
-            id: "giant-item",
-            text: "x".repeat(2 * 1_024 * 1_024 + 1),
-            phase: null,
-            memoryCitation: null,
-            delivery: null,
-          },
-        },
-      } as unknown as CodexServerNotification,
+      notification,
       occurrenceId: "remote-a:7:inbox-a:93",
       occurrenceToken: 93,
     });
-
-    const forwardedItem = forwarded.findLast(
-      (notification) => notification.method === "item/started",
-    );
-    if (!forwardedItem || forwardedItem.method !== "item/started") {
-      throw new Error("Expected item lifecycle notification to be forwarded");
-    }
-    assert.strictEqual(forwardedItem.params.threadId, "thread-a");
-    assert.strictEqual(forwardedItem.params.turnId, "turn-a");
-    assert.strictEqual(forwardedItem.params.startedAtMs, 3);
-    assert.strictEqual(forwardedItem.params.item.id, "giant-item");
-    assert.strictEqual(forwardedItem.params.item.type, "agentMessage");
-    if (forwardedItem.params.item.type !== "agentMessage") {
-      throw new Error("Expected the original agent message to be preserved");
-    }
-    assert.strictEqual(forwardedItem.params.item.text, "x".repeat(2 * 1_024 * 1_024 + 1));
+    assert.deepEqual(trace, ["browser", "pip", "automation", "durable:remote-a:7"]);
+    assert.deepEqual(deliveredDecisions, ["DONT_NOTIFY", null, null]);
+    assert.deepEqual(deliveredHosts, ["remote-a", "remote-a", "remote-a"]);
 
     trace.length = 0;
     deferLifecycle = true;

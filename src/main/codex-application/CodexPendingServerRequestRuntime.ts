@@ -18,6 +18,7 @@ import type {
   CodexUserInputRequest,
 } from "../../shared/types";
 import type { FrozenNodexAgentTurnAuthority } from "../../shared/nodex-agent-authority";
+import type { CodexRequestTraceContext } from "../../shared/codex-request-lifecycle";
 import type { CodexServerRequest } from "../codex-runtime/CodexApplicationProtocol";
 
 export type CodexPendingServerRequestKind =
@@ -29,6 +30,8 @@ export type CodexPendingServerRequestKind =
   | "user-input";
 
 interface PendingServerRequestBase<Kind extends CodexPendingServerRequestKind> {
+  readonly hostId: string;
+  readonly generation: number;
   readonly kind: Kind;
   readonly occurrenceToken: number;
   readonly requestId: RequestId;
@@ -101,7 +104,10 @@ export type CodexPendingServerRequestResponse<Entry extends CodexPendingServerRe
             ? DynamicToolCallResponse | typeof CodexAppServerNoResponse
             : unknown;
 
-export type CodexPendingServerRequestRegistration =
+export type CodexPendingServerRequestRegistration = {
+  readonly hostId: string;
+  readonly generation: number;
+} & (
   | {
       readonly kind: "approval";
       readonly occurrenceToken: number | undefined;
@@ -133,7 +139,8 @@ export type CodexPendingServerRequestRegistration =
       readonly kind: "user-input";
       readonly occurrenceToken: number | undefined;
       readonly request: CodexUserInputRequest;
-    };
+    }
+);
 
 export interface CodexPendingServerRequestCounts {
   readonly approvals: number;
@@ -148,6 +155,7 @@ export interface CodexPendingServerRequestCounts {
 export interface CodexPendingServerRequestIdentity {
   readonly requestId: RequestId;
   readonly threadId: string;
+  readonly generation: number;
 }
 
 export interface CodexServerRequestOccurrenceCompletion {
@@ -190,12 +198,20 @@ export interface CodexPendingServerRequestRuntimeService {
   readonly complete: <Entry extends CodexPendingServerRequest>(
     entry: Entry,
     response: CodexPendingServerRequestResponse<Entry>,
+    trace?: CodexRequestTraceContext | null,
   ) => void;
   readonly reject: (entry: CodexPendingServerRequest, reason: unknown) => void;
   /** Consume a claimed application entry when the dispatcher itself returns the response. */
   readonly discard: (entry: CodexPendingServerRequest) => void;
-  readonly disconnectIdentities: () => readonly CodexPendingServerRequestIdentity[];
-  readonly abandonIdentity: (threadId: string, requestId: RequestId) => void;
+  readonly disconnectIdentities: (
+    hostId: string,
+    generation?: number,
+  ) => readonly CodexPendingServerRequestIdentity[];
+  readonly abandonIdentity: (
+    threadId: string,
+    requestId: RequestId,
+    connection?: Pick<CodexPendingServerRequest, "hostId" | "generation">,
+  ) => void;
   readonly rejectRemovedTurns: (
     threadId: string,
     retainedTurnIds: ReadonlySet<string>,
@@ -210,11 +226,17 @@ export class CodexPendingServerRequestRuntime extends Context.Service<
 >()("nodex/main/codex-application/CodexPendingServerRequestRuntime") {}
 
 export interface CodexPendingServerRequestRuntimeOptions {
+  readonly abandon: (
+    threadId: string,
+    requestId: RequestId,
+    occurrenceToken: number,
+  ) => Effect.Effect<boolean>;
   readonly respond: (
     threadId: string,
     requestId: RequestId,
     occurrenceToken: number,
     response: unknown,
+    trace?: CodexRequestTraceContext | null,
   ) => Effect.Effect<boolean>;
   readonly reject: (
     threadId: string,
@@ -251,6 +273,8 @@ const requestIdentity = (
   if (registration.kind === "private" || registration.kind === "dynamic-tool") {
     const request = registration.request;
     return {
+      hostId: registration.hostId,
+      generation: registration.generation,
       occurrenceToken,
       requestId: request.id,
       threadId: request.params.threadId,
@@ -259,6 +283,8 @@ const requestIdentity = (
   }
   const request = registration.request;
   return {
+    hostId: registration.hostId,
+    generation: registration.generation,
     occurrenceToken,
     requestId: request.requestId,
     threadId: request.threadId,
@@ -351,9 +377,16 @@ export const make = (
     const complete = <Entry extends CodexPendingServerRequest>(
       entry: Entry,
       response: CodexPendingServerRequestResponse<Entry>,
+      trace?: CodexRequestTraceContext | null,
     ): void => {
       if (!settle(entry)) return;
-      dispatch(options.respond(entry.threadId, entry.requestId, entry.occurrenceToken, response));
+      if (response === CodexAppServerNoResponse) {
+        dispatch(options.abandon(entry.threadId, entry.requestId, entry.occurrenceToken));
+        return;
+      }
+      dispatch(
+        options.respond(entry.threadId, entry.requestId, entry.occurrenceToken, response, trace),
+      );
     };
 
     const reject = (entry: CodexPendingServerRequest, reason: unknown): void => {
@@ -372,11 +405,18 @@ export const make = (
         (entry) => state.stateByEntry.get(entry) === "queued" && predicate(entry),
       );
 
-    const abandonIdentity = (threadId: string, requestId: RequestId): void => {
+    const abandonIdentity: CodexPendingServerRequestRuntimeService["abandonIdentity"] = (
+      threadId,
+      requestId,
+      connection,
+    ) => {
       for (const entry of queuedMatching(
         (candidate) =>
           candidate.threadId === threadId &&
           candidate.requestId === requestId &&
+          (!connection ||
+            (candidate.hostId === connection.hostId &&
+              candidate.generation === connection.generation)) &&
           (candidate.kind !== "dynamic-tool" || candidate.disposition === "stored"),
       )) {
         complete(entry, CodexAppServerNoResponse);
@@ -458,14 +498,18 @@ export const make = (
       discard: (entry) => {
         settle(entry);
       },
-      disconnectIdentities: () => {
+      disconnectIdentities: (hostId, generation) => {
         const byIdentity = new Map<string, CodexPendingServerRequestIdentity>();
         for (const entry of queuedMatching(
-          (candidate) => candidate.kind !== "dynamic-tool" || candidate.disposition === "stored",
+          (candidate) =>
+            candidate.hostId === hostId &&
+            (generation === undefined || candidate.generation === generation) &&
+            (candidate.kind !== "dynamic-tool" || candidate.disposition === "stored"),
         )) {
-          byIdentity.set(identityKey(entry.threadId, entry.requestId), {
+          byIdentity.set(`${entry.generation}:${identityKey(entry.threadId, entry.requestId)}`, {
             threadId: entry.threadId,
             requestId: entry.requestId,
+            generation: entry.generation,
           });
         }
         return [...byIdentity.values()];

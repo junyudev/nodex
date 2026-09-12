@@ -1482,7 +1482,8 @@ function HydratedThreadComposer({
       readonly characterCount: number;
       readonly generation: number;
     }) => {
-      void createPastedTextAttachment({ text: input.text })
+      const hostId = model.hostId === "durable" ? DEFAULT_CODEX_HOST_ID : model.hostId;
+      void createPastedTextAttachment({ text: input.text, hostId })
         .then((attachment) => {
           const isCurrent =
             composerMountedRef.current &&
@@ -1535,7 +1536,7 @@ function HydratedThreadComposer({
           );
         });
     },
-    [setPastedTextAttachments],
+    [model.hostId, setPastedTextAttachments],
   );
 
   const handleLargeTextPaste = useCallback(
@@ -1769,6 +1770,7 @@ function HydratedThreadComposer({
         });
         return false;
       }
+      const goalHostId = model.isCloudNewThreadTarget ? "durable" : model.hostId;
 
       if (!model.conversation) {
         const target = model.newThreadTarget;
@@ -1792,7 +1794,7 @@ function HydratedThreadComposer({
         if (target.runInTarget !== "newWorktree") {
           let materialized: CodexThreadGoalMaterializedDraft;
           try {
-            materialized = await materializeThreadGoalDraft(threadGoalDraft);
+            materialized = await materializeThreadGoalDraft(goalHostId, threadGoalDraft);
           } catch {
             toast.danger(getThreadGoalMessage("composer.threadGoal.materializeError"), {
               id: "thread-goal-materialize-failed",
@@ -1813,6 +1815,9 @@ function HydratedThreadComposer({
             submittedPresentation,
             threadGoalDraft,
             ...(threadGoalMaterializedDraft === undefined ? {} : { threadGoalMaterializedDraft }),
+            ...(threadGoalMaterializedDraft === undefined
+              ? {}
+              : { threadGoalMaterializedHostId: goalHostId }),
             runInTarget: target.runInTarget,
             runInEnvironmentPath: target.runInEnvironmentPath,
             worktreeStartingState: target.worktreeStartingState,
@@ -1823,7 +1828,7 @@ function HydratedThreadComposer({
           return true;
         } catch (error) {
           if (threadGoalMaterializedDraft) {
-            await cleanupMaterializedThreadGoalDraft(threadGoalMaterializedDraft);
+            await cleanupMaterializedThreadGoalDraft(goalHostId, threadGoalMaterializedDraft);
           }
           restoreAdmittedSubmission({
             prompt: draft.objective,
@@ -1847,7 +1852,7 @@ function HydratedThreadComposer({
       onErrorMessage(null);
       let materialized: CodexThreadGoalMaterializedDraft | null = null;
       try {
-        materialized = await materializeThreadGoalDraft({
+        materialized = await materializeThreadGoalDraft(goalHostId, {
           objective: draft.objective,
           imageAttachments: draft.imageAttachments,
           pastedTextAttachments: draft.pastedTextAttachments,
@@ -1870,7 +1875,7 @@ function HydratedThreadComposer({
         completeSuccessfulSubmission(draft.objective);
         return true;
       } catch {
-        await cleanupMaterializedThreadGoalDraft(materialized);
+        await cleanupMaterializedThreadGoalDraft(goalHostId, materialized);
         toast.danger(getThreadGoalMessage("composer.threadGoal.setError"), {
           id: "thread-goal-set-failed",
         });
@@ -1886,6 +1891,8 @@ function HydratedThreadComposer({
       completeSuccessfulSubmission,
       imageEditDraft,
       model.conversation,
+      model.hostId,
+      model.isCloudNewThreadTarget,
       onErrorMessage,
       model.newThreadTarget,
       recordSuccessfulPromptSubmit,

@@ -265,7 +265,7 @@ const writeAgentRuntime = (root: string, resources: string): string => {
       layoutVersion: number;
       pathDir: string;
       resourcesDir: string;
-      variant: "codex-app-server";
+      variant: "codex";
       version: string;
     };
     protocolSchema: { sha256: string };
@@ -285,7 +285,7 @@ const writeAgentRuntime = (root: string, resources: string): string => {
       "codex-package.json",
       { contents: Buffer.from(`${JSON.stringify(packageManifest)}\n`), executable: false },
     ],
-    ["bin/codex-app-server", { contents: Buffer.from("app-server\n"), executable: true }],
+    ["bin/codex", { contents: Buffer.from("app-server\n"), executable: true }],
     ["bin/codex-code-mode-host", { contents: Buffer.from("code-mode\n"), executable: true }],
     ["codex-path/rg", { contents: Buffer.from("ripgrep\n"), executable: true }],
     ["codex-resources/zsh/bin/zsh", { contents: Buffer.from("zsh\n"), executable: true }],
@@ -314,7 +314,7 @@ const writeAgentRuntime = (root: string, resources: string): string => {
     appServerRuntimeVersion: lock.packageManifest.version,
     artifacts,
     entrypoint: packageManifest.entrypoint,
-    layoutVersion: 4,
+    layoutVersion: 5,
     packageManifest,
     protocolSchemaFingerprint: lock.protocolSchema.sha256,
     releaseAsset: {
@@ -325,7 +325,7 @@ const writeAgentRuntime = (root: string, resources: string): string => {
       repository: lock.upstream.repository,
       tag: lock.upstream.tag,
     },
-    runtimeFamily: "codex-app-server",
+    runtimeFamily: "codex",
     searchPaths: [packageManifest.pathDir],
     sourceRevision: {
       commit: lock.upstream.commit,
@@ -359,6 +359,9 @@ const makeApp = (
   fs.writeFileSync(path.join(resources, "app.asar"), "current app payload\n");
   writeSparkleRuntime(appPath);
   fs.writeFileSync(path.join(resources, "native/nodex-clipboard.node"), "clipboard bridge", {
+    mode: 0o755,
+  });
+  fs.writeFileSync(path.join(resources, "native/nodex-devicecheck.node"), "devicecheck bridge", {
     mode: 0o755,
   });
   const agentSkills = writeAgentSkills(resources);
@@ -507,6 +510,7 @@ describe("packaged build provenance", () => {
     "agent-runtime.json",
     "native/nodex-sparkle.node",
     "native/nodex-clipboard.node",
+    "native/nodex-devicecheck.node",
   ])("rejects a packaged payload mutation in %s", (relativePath) => {
     const fixture = makeApp();
     writePackagedBuildProvenance(fixture.appPath, provenanceOptions(fixture));

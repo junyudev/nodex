@@ -30,12 +30,16 @@ interface ParsedSemanticVersion {
 }
 
 export const CODEX_APP_SERVER_CAPABILITY_MINIMUM_VERSIONS = Object.freeze({
+  turnApprovalsReviewer: "0.153.0-alpha.4",
+  turnToolOutput: "0.151.0-alpha.4",
   forkLastTurnId: "0.143.0-alpha.32",
+  paginatedFork: "0.146.0-alpha.7",
   paginatedHistory: "0.145.0-alpha.15",
   searchOccurrences: "0.145.0-alpha.24",
   ephemeralFork: "0.146.0-alpha.7",
   sideConversation: "0.146.0-alpha.8",
   threadRevert: "0.148.0-alpha.13",
+  threadQueue: "0.148.0-alpha.14",
   subagentAncestorFilter: "0.150.0-alpha.12.2",
   multiAgentV2Protocol: "0.150.0-alpha.12.2",
 } as const);
@@ -50,23 +54,31 @@ export type CodexAppServerCapabilityFlags = Readonly<Record<CodexAppServerCapabi
  * fork formats remain fail-closed because their wire shapes require version proof.
  */
 export const CODEX_APP_SERVER_DEVELOPMENT_CAPABILITY_FLAGS = Object.freeze({
+  turnApprovalsReviewer: true,
+  turnToolOutput: true,
   forkLastTurnId: false,
+  paginatedFork: false,
   paginatedHistory: false,
   searchOccurrences: true,
   ephemeralFork: false,
   sideConversation: false,
   threadRevert: true,
+  threadQueue: false,
   subagentAncestorFilter: false,
   multiAgentV2Protocol: false,
 }) satisfies CodexAppServerCapabilityFlags;
 
 const FAIL_CLOSED_CAPABILITY_FLAGS = Object.freeze({
+  turnApprovalsReviewer: false,
+  turnToolOutput: false,
   forkLastTurnId: false,
+  paginatedFork: false,
   paginatedHistory: false,
   searchOccurrences: false,
   ephemeralFork: false,
   sideConversation: false,
   threadRevert: false,
+  threadQueue: false,
   subagentAncestorFilter: false,
   multiAgentV2Protocol: false,
 }) satisfies CodexAppServerCapabilityFlags;
@@ -77,6 +89,8 @@ export interface CodexAppServerCapabilitySnapshotInput {
   /** Physical Endpoint incarnation. Production snapshots always provide this value. */
   readonly sourceEpoch?: string;
   readonly userAgent: string;
+  /** Proven by the exact physical Session launch, independently of host identity or version. */
+  readonly nativeAppTools?: boolean;
 }
 
 export interface CodexAppServerCapabilitySnapshot {
@@ -86,6 +100,7 @@ export interface CodexAppServerCapabilitySnapshot {
   readonly sourceEpoch?: string;
   readonly userAgent: string;
   readonly version: string | null;
+  readonly nativeAppTools: boolean;
   readonly flags: CodexAppServerCapabilityFlags;
 }
 
@@ -196,12 +211,18 @@ const capabilityFlagsForVersion = (version: string | null): CodexAppServerCapabi
     return parsedMinimum !== null && compareSemanticVersions(parsedVersion, parsedMinimum) >= 0;
   };
   return Object.freeze({
+    turnToolOutput: supports(CODEX_APP_SERVER_CAPABILITY_MINIMUM_VERSIONS.turnToolOutput),
+    turnApprovalsReviewer: supports(
+      CODEX_APP_SERVER_CAPABILITY_MINIMUM_VERSIONS.turnApprovalsReviewer,
+    ),
     forkLastTurnId: supports(CODEX_APP_SERVER_CAPABILITY_MINIMUM_VERSIONS.forkLastTurnId),
+    paginatedFork: supports(CODEX_APP_SERVER_CAPABILITY_MINIMUM_VERSIONS.paginatedFork),
     paginatedHistory: supports(CODEX_APP_SERVER_CAPABILITY_MINIMUM_VERSIONS.paginatedHistory),
     searchOccurrences: supports(CODEX_APP_SERVER_CAPABILITY_MINIMUM_VERSIONS.searchOccurrences),
     ephemeralFork: supports(CODEX_APP_SERVER_CAPABILITY_MINIMUM_VERSIONS.ephemeralFork),
     sideConversation: supports(CODEX_APP_SERVER_CAPABILITY_MINIMUM_VERSIONS.sideConversation),
     threadRevert: supports(CODEX_APP_SERVER_CAPABILITY_MINIMUM_VERSIONS.threadRevert),
+    threadQueue: supports(CODEX_APP_SERVER_CAPABILITY_MINIMUM_VERSIONS.threadQueue),
     subagentAncestorFilter: supports(
       CODEX_APP_SERVER_CAPABILITY_MINIMUM_VERSIONS.subagentAncestorFilter,
     ),
@@ -235,6 +256,7 @@ export function createCodexAppServerCapabilitySnapshot(
     ...(sourceEpoch === undefined ? {} : { sourceEpoch }),
     userAgent: input.userAgent,
     version,
+    nativeAppTools: input.nativeAppTools === true,
     flags: capabilityFlagsForVersion(version),
   });
 }
@@ -256,6 +278,7 @@ export const make: Effect.Effect<
       generation: session.generation,
       sourceEpoch: endpoint.sourceEpoch,
       userAgent: session.initialize.userAgent,
+      nativeAppTools: session.nativeAppTools,
     });
   });
 
@@ -271,6 +294,7 @@ export const make: Effect.Effect<
     return (
       current.generation === snapshot.generation &&
       current.userAgent === snapshot.userAgent &&
+      current.nativeAppTools === snapshot.nativeAppTools &&
       current.sourceEpoch === snapshot.sourceEpoch
     );
   });

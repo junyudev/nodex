@@ -1,3 +1,4 @@
+import type { CodexCanonicalTurnHeader } from "../../shared/types";
 import { assert, it } from "@effect/vitest";
 import * as Effect from "effect/Effect";
 import * as Stream from "effect/Stream";
@@ -10,7 +11,6 @@ import { CodexConversationFork, type CodexConversationForkInput } from "./CodexC
 import { CodexConversationProjection } from "./CodexConversationProjection";
 import { CodexForkSidePanelTransfer } from "./CodexForkSidePanelTransferRuntime";
 import { CodexForkTitlePolicy } from "./CodexForkTitlePolicy";
-import { CodexOwnerNotificationDrainRuntime } from "./CodexOwnerNotificationDrainRuntime";
 import { CodexPendingWorktreeRuntime } from "./CodexPendingWorktreeRuntime";
 import { make } from "./CodexProjectSessionFork";
 import { CodexThreadDirectory } from "./CodexThreadDirectory";
@@ -24,12 +24,16 @@ const childThreadId = "thread-child";
 const canonical = {
   turns: [
     {
-      protocol: { id: "turn-a", status: "completed" },
+      ...({ turnId: "turn-a", status: "completed" } satisfies Pick<
+        CodexCanonicalTurnHeader,
+        "turnId" | "status"
+      >),
       items: [],
-      sidecar: { params: undefined, hookRuns: [] },
+      params: undefined,
+      hookRuns: [],
     },
   ],
-  protocol: { id: sourceThreadId },
+  ...{ id: sourceThreadId },
 } as unknown as CodexCanonicalConversationState;
 
 const makeHarness = (backendBinding: AgentBackendBinding = { kind: "codex" }) => {
@@ -115,6 +119,10 @@ const makeHarness = (backendBinding: AgentBackendBinding = { kind: "codex" }) =>
     Effect.provideService(
       CodexConversationFork,
       CodexConversationFork.of({
+        prepareRenderer: () => Effect.die("unused renderer preparation"),
+        executeRenderer: () => Effect.die("unused renderer execution"),
+        acceptRenderer: () => Effect.die("unused renderer acceptance"),
+        releaseRenderer: () => Effect.void,
         fork: (input) =>
           Effect.sync(() => {
             order.push("direct:fork");
@@ -152,10 +160,6 @@ const makeHarness = (backendBinding: AgentBackendBinding = { kind: "codex" }) =>
       }),
     ),
     Effect.provideService(
-      CodexOwnerNotificationDrainRuntime,
-      CodexOwnerNotificationDrainRuntime.of({ awaitCurrent: () => Effect.void } as never),
-    ),
-    Effect.provideService(
       CodexPendingWorktreeRuntime,
       CodexPendingWorktreeRuntime.of({
         list: () => [],
@@ -186,6 +190,8 @@ const makeHarness = (backendBinding: AgentBackendBinding = { kind: "codex" }) =>
     Effect.provideService(
       ConversationEntityMap,
       ConversationEntityMap.of({
+        registerThreadMetadata: () => {},
+        readThreadMetadata: () => null,
         runCommand: <A, E, R>(_threadId: string, operation: Effect.Effect<A, E, R>) => operation,
       } as never),
     ),

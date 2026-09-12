@@ -36,12 +36,21 @@ it.effect("runs bounded Git probes with the immutable Main environment", () =>
 
 it.effect("distinguishes a non-repository from unrelated Git failures", () =>
   Effect.gen(function* () {
-    const nonGit = make({
-      environment: {},
-      command: async () => {
-        throw new Error("fatal: not a git repository");
-      },
-    });
+    for (const message of [
+      "fatal: not a git repository",
+      "fatal: cannot use bare repository",
+      "fatal: invalid gitfile format",
+      "fatal: no path in gitfile",
+      "fatal: invalid gitdir",
+    ]) {
+      const nonGit = make({
+        environment: {},
+        command: async () => {
+          throw new Error(message);
+        },
+      });
+      assert.isTrue(yield* nonGit.isNonGitWorkspace("/workspace"));
+    }
     const unavailable = make({
       environment: {},
       command: async () => {
@@ -49,10 +58,26 @@ it.effect("distinguishes a non-repository from unrelated Git failures", () =>
       },
     });
 
-    assert.isTrue(yield* nonGit.isNonGitWorkspace("/workspace"));
     assert.isFalse(yield* unavailable.isNonGitWorkspace("/workspace"));
     assert.isNull(yield* unavailable.readPath("/workspace", ["rev-parse", "HEAD"]));
     assert.isNull(yield* unavailable.readPath(" ", ["rev-parse", "HEAD"]));
+  }),
+);
+
+it.effect("uses the execution-host Git probe for remote workspaces", () =>
+  Effect.gen(function* () {
+    const calls: Array<{ hostId: string; cwd: string }> = [];
+    const probe = make({
+      environment: {},
+      remoteIsNonGitWorkspace: (hostId, cwd) =>
+        Effect.sync(() => {
+          calls.push({ hostId, cwd });
+          return true;
+        }),
+    });
+
+    assert.isTrue(yield* probe.isNonGitWorkspaceOnHost("ssh:builder", "/remote/repo"));
+    assert.deepEqual(calls, [{ hostId: "ssh:builder", cwd: "/remote/repo" }]);
   }),
 );
 

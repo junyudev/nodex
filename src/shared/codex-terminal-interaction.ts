@@ -1,62 +1,6 @@
-export const CODEX_TERMINAL_INTERACTION_MAX_BUFFERED_ITEMS = 64;
-export const CODEX_TERMINAL_INTERACTION_MAX_BUFFERED_BYTES_PER_ITEM = 64 * 1_024;
-export const CODEX_TERMINAL_INTERACTION_MAX_BUFFERED_BYTES = 1 * 1_024 * 1_024;
-export const CODEX_TERMINAL_INTERACTION_MAX_IDLE_MS = 60_000;
-export const CODEX_TERMINAL_INTERACTION_MAX_COMMANDS_PER_INPUT = 64;
-export const CODEX_TERMINAL_INTERACTION_MAX_COMMAND_BYTES_PER_INPUT = 256 * 1_024;
-
 export interface CodexTerminalInteractionIdentity {
   readonly conversationId: string;
-  readonly turnId: string;
   readonly itemId: string;
-}
-
-export type CodexTerminalInteractionOverflowReason =
-  | "buffered-item-limit"
-  | "buffered-item-bytes"
-  | "buffered-total-bytes"
-  | "command-count"
-  | "command-bytes";
-
-export type CodexTerminalInteractionAccumulatorResult =
-  | {
-      readonly disposition: "applied";
-      readonly commands: readonly string[];
-    }
-  | {
-      readonly disposition: "overflow";
-      readonly commands: readonly [];
-      readonly reason: CodexTerminalInteractionOverflowReason;
-    };
-
-export interface CodexTerminalInteractionAccumulatorOptions {
-  readonly maxBufferedItems?: number;
-  readonly maxBufferedBytesPerItem?: number;
-  readonly maxBufferedBytes?: number;
-  readonly maxIdleMs?: number;
-  readonly maxCommandsPerInput?: number;
-  readonly maxCommandBytesPerInput?: number;
-}
-
-interface TerminalInputBuffer {
-  readonly identity: CodexTerminalInteractionIdentity;
-  readonly input: string;
-  readonly inputBytes: number;
-  readonly retainedBytes: number;
-  readonly updatedAtMs: number;
-}
-
-interface ParseTerminalInputResult {
-  readonly input: string;
-  readonly bytes: number;
-  readonly commands: readonly string[];
-  readonly overflowReason: CodexTerminalInteractionOverflowReason | null;
-}
-
-interface ParseTerminalInputOptions {
-  readonly maxBufferedBytesPerItem: number;
-  readonly maxCommandsPerInput: number;
-  readonly maxCommandBytesPerInput: number;
 }
 
 function isHighSurrogate(codeUnit: number): boolean {
@@ -94,262 +38,71 @@ export function codexUtf8ByteLength(value: string): number {
   return bytes;
 }
 
-function codexUtf8ByteLengthAfterAppend(
-  current: string,
-  currentBytes: number,
-  suffix: string,
-): number {
-  if (suffix.length === 0) return currentBytes;
-  const suffixBytes = codexUtf8ByteLength(suffix);
-  if (current.length === 0) return suffixBytes;
-  const previous = current.charCodeAt(current.length - 1);
-  const next = suffix.charCodeAt(0);
-  return isHighSurrogate(previous) && isLowSurrogate(next)
-    ? currentBytes + suffixBytes - 2
-    : currentBytes + suffixBytes;
-}
-
-function removeLastInputCodeUnit(
-  input: string,
-  inputBytes: number,
-): { readonly input: string; readonly bytes: number } {
-  if (input.length === 0) return { input, bytes: inputBytes };
-  const lastIndex = input.length - 1;
-  const last = input.charCodeAt(lastIndex);
-  const previous = lastIndex > 0 ? input.charCodeAt(lastIndex - 1) : null;
-  const removedBytes =
-    previous !== null && isHighSurrogate(previous) && isLowSurrogate(last)
-      ? 1
-      : last <= 0x7f
-        ? 1
-        : last <= 0x7ff
-          ? 2
-          : 3;
-  return {
-    input: input.slice(0, -1),
-    bytes: Math.max(0, inputBytes - removedBytes),
-  };
-}
-
-function parseTerminalInput(
-  existingInput: string,
-  existingBytes: number,
+/** Interpret terminal controls while retaining incomplete input between notifications. */
+export function parseCodexTerminalInput(
+  inputBuffer: string,
   stdin: string,
-  options: ParseTerminalInputOptions,
-): ParseTerminalInputResult {
-  let input = existingInput;
-  let bytes = existingBytes;
-  let overflowReason: CodexTerminalInteractionOverflowReason | null = null;
-  let discardingOverflowedInput = false;
+): {
+  commands: string[];
+  inputBuffer: string;
+} {
   const commands: string[] = [];
-  let commandBytes = 0;
+  let input = inputBuffer;
   let segmentStart = 0;
-
-  const appendSegment = (end: number): void => {
-    if (segmentStart === end || discardingOverflowedInput) return;
-    const segment = stdin.slice(segmentStart, end);
-    const nextBytes = codexUtf8ByteLengthAfterAppend(input, bytes, segment);
-    if (nextBytes > options.maxBufferedBytesPerItem) {
-      overflowReason ??= "buffered-item-bytes";
-      input = "";
-      bytes = 0;
-      discardingOverflowedInput = true;
-      return;
-    }
-    input = `${input}${segment}`;
-    bytes = nextBytes;
-  };
-
-  const completeInputLine = (): void => {
-    if (discardingOverflowedInput) {
-      discardingOverflowedInput = false;
-      input = "";
-      bytes = 0;
-      return;
-    }
-    const command = input.trim();
-    input = "";
-    bytes = 0;
-    if (command.length === 0) return;
-
-    const nextCommandBytes = commandBytes + codexUtf8ByteLength(command);
-    if (commands.length >= options.maxCommandsPerInput) {
-      overflowReason ??= "command-count";
-      return;
-    }
-    if (nextCommandBytes > options.maxCommandBytesPerInput) {
-      overflowReason ??= "command-bytes";
-      return;
-    }
-    commands.push(command);
-    commandBytes = nextCommandBytes;
-  };
-
   for (let index = 0; index < stdin.length; index += 1) {
-    const codeUnit = stdin.charCodeAt(index);
-    const isLineEnd = codeUnit === 0x0a || codeUnit === 0x0d;
-    const isInterrupt = codeUnit === 0x03;
-    const isBackspace = codeUnit === 0x08 || codeUnit === 0x7f;
-    if (!isLineEnd && !isInterrupt && !isBackspace) continue;
-
-    appendSegment(index);
-    if (isLineEnd) {
-      completeInputLine();
-    } else if (isInterrupt) {
-      discardingOverflowedInput = false;
-      input = "";
-      bytes = 0;
-    } else if (!discardingOverflowedInput) {
-      ({ input, bytes } = removeLastInputCodeUnit(input, bytes));
-    }
+    const char = stdin[index];
+    if (char !== "\r" && char !== "\n" && char !== "\u0003" && char !== "\b" && char !== "\u007f")
+      continue;
+    input += stdin.slice(segmentStart, index);
     segmentStart = index + 1;
+    if (char === "\r" || char === "\n") {
+      const command = input.trim();
+      if (command.length > 0) commands.push(command);
+      input = "";
+      continue;
+    }
+    input = char === "\u0003" ? "" : input.slice(0, -1);
   }
-  appendSegment(stdin.length);
-
-  return { input, bytes, commands, overflowReason };
+  return { commands, inputBuffer: input + stdin.slice(segmentStart) };
 }
 
-function positiveInteger(value: number | undefined, fallback: number): number {
-  return value !== undefined && Number.isSafeInteger(value) && value > 0 ? value : fallback;
-}
-
-/** Stable collision-free key shared by the bounded Map and its test fixtures. */
 export function getTerminalInteractionBufferKey(
   identity: CodexTerminalInteractionIdentity,
 ): string {
-  return JSON.stringify([identity.conversationId, identity.turnId, identity.itemId]);
+  return `${identity.conversationId}:${identity.itemId}`;
 }
 
-/**
- * Owns partial terminal input only. Parsed commands leave this accumulator immediately; canonical
- * command-action retention is bounded independently at the reducer seam.
- */
+/** Input belongs to a command item, even when later notifications carry a different turn ID. */
 export class CodexTerminalInteractionAccumulator {
-  private readonly maxBufferedItems: number;
-  private readonly maxBufferedBytesPerItem: number;
-  private readonly maxBufferedBytes: number;
-  private readonly maxIdleMs: number;
-  private readonly maxCommandsPerInput: number;
-  private readonly maxCommandBytesPerInput: number;
-  private readonly buffers = new Map<string, TerminalInputBuffer>();
-  private bufferedBytes = 0;
-
-  constructor(options: CodexTerminalInteractionAccumulatorOptions = {}) {
-    this.maxBufferedItems = positiveInteger(
-      options.maxBufferedItems,
-      CODEX_TERMINAL_INTERACTION_MAX_BUFFERED_ITEMS,
-    );
-    this.maxBufferedBytesPerItem = positiveInteger(
-      options.maxBufferedBytesPerItem,
-      CODEX_TERMINAL_INTERACTION_MAX_BUFFERED_BYTES_PER_ITEM,
-    );
-    this.maxBufferedBytes = positiveInteger(
-      options.maxBufferedBytes,
-      CODEX_TERMINAL_INTERACTION_MAX_BUFFERED_BYTES,
-    );
-    this.maxIdleMs = positiveInteger(options.maxIdleMs, CODEX_TERMINAL_INTERACTION_MAX_IDLE_MS);
-    this.maxCommandsPerInput = positiveInteger(
-      options.maxCommandsPerInput,
-      CODEX_TERMINAL_INTERACTION_MAX_COMMANDS_PER_INPUT,
-    );
-    this.maxCommandBytesPerInput = positiveInteger(
-      options.maxCommandBytesPerInput,
-      CODEX_TERMINAL_INTERACTION_MAX_COMMAND_BYTES_PER_INPUT,
-    );
-  }
+  private readonly buffers = new Map<string, string>();
 
   accept(
     identity: CodexTerminalInteractionIdentity,
     stdin: string,
-    observedAtMs = Date.now(),
-  ): CodexTerminalInteractionAccumulatorResult {
-    this.discardExpired(observedAtMs);
+  ): { commands: readonly string[] } {
     const key = getTerminalInteractionBufferKey(identity);
-    const current = this.buffers.get(key);
-    const parsed = parseTerminalInput(current?.input ?? "", current?.inputBytes ?? 0, stdin, {
-      maxBufferedBytesPerItem: this.maxBufferedBytesPerItem,
-      maxCommandsPerInput: this.maxCommandsPerInput,
-      maxCommandBytesPerInput: this.maxCommandBytesPerInput,
-    });
-    if (parsed.overflowReason !== null) {
-      this.delete(key);
-      return { disposition: "overflow", commands: [], reason: parsed.overflowReason };
-    }
-
-    if (parsed.input.length === 0) {
-      this.delete(key);
-      return { disposition: "applied", commands: parsed.commands };
-    }
-    const retainedBytes = codexUtf8ByteLength(key) + parsed.bytes;
-    if (retainedBytes > this.maxBufferedBytesPerItem) {
-      this.delete(key);
-      return { disposition: "overflow", commands: [], reason: "buffered-item-bytes" };
-    }
-    if (!current && this.buffers.size >= this.maxBufferedItems) {
-      return { disposition: "overflow", commands: [], reason: "buffered-item-limit" };
-    }
-    const nextBufferedBytes = this.bufferedBytes - (current?.retainedBytes ?? 0) + retainedBytes;
-    if (nextBufferedBytes > this.maxBufferedBytes) {
-      this.delete(key);
-      return { disposition: "overflow", commands: [], reason: "buffered-total-bytes" };
-    }
-
-    this.buffers.set(key, {
-      identity,
-      input: parsed.input,
-      inputBytes: parsed.bytes,
-      retainedBytes,
-      updatedAtMs: observedAtMs,
-    });
-    this.bufferedBytes = nextBufferedBytes;
-    return { disposition: "applied", commands: parsed.commands };
+    const result = parseCodexTerminalInput(this.buffers.get(key) ?? "", stdin);
+    if (result.inputBuffer.length > 0) this.buffers.set(key, result.inputBuffer);
+    else this.buffers.delete(key);
+    return { commands: result.commands };
   }
 
   clearItem(identity: CodexTerminalInteractionIdentity): void {
-    this.delete(getTerminalInteractionBufferKey(identity));
+    this.buffers.delete(getTerminalInteractionBufferKey(identity));
   }
 
-  clearTurn(conversationId: string, turnId: string): void {
-    for (const [key, buffer] of this.buffers) {
-      if (buffer.identity.conversationId !== conversationId || buffer.identity.turnId !== turnId) {
-        continue;
-      }
-      this.delete(key);
-    }
+  clearItems(conversationId: string, itemIds: readonly string[]): void {
+    for (const itemId of itemIds) this.clearItem({ conversationId, itemId });
   }
 
   clearConversation(conversationId: string): void {
-    for (const [key, buffer] of this.buffers) {
-      if (buffer.identity.conversationId !== conversationId) continue;
-      this.delete(key);
+    const prefix = `${conversationId}:`;
+    for (const key of this.buffers.keys()) {
+      if (key.startsWith(prefix)) this.buffers.delete(key);
     }
   }
 
   clear(): void {
     this.buffers.clear();
-    this.bufferedBytes = 0;
-  }
-
-  get bufferedItemCount(): number {
-    return this.buffers.size;
-  }
-
-  get bufferedByteLength(): number {
-    return this.bufferedBytes;
-  }
-
-  private discardExpired(observedAtMs: number): void {
-    const cutoff = observedAtMs - this.maxIdleMs;
-    for (const [key, buffer] of this.buffers) {
-      if (buffer.updatedAtMs > cutoff) continue;
-      this.delete(key);
-    }
-  }
-
-  private delete(key: string): void {
-    const current = this.buffers.get(key);
-    if (!current) return;
-    this.buffers.delete(key);
-    this.bufferedBytes = Math.max(0, this.bufferedBytes - current.retainedBytes);
   }
 }

@@ -16,6 +16,7 @@ import type {
 } from "./types";
 import type { CodexExecutionProfile } from "./codex-execution-profile";
 import type { BrowserUsePresentationOrigin } from "./browser-sidebar";
+import { projectCodexMarkdownToPlainText } from "./codex-markdown-text";
 
 export type CodexPendingWorktreePhase =
   | "queued"
@@ -128,23 +129,26 @@ export interface CodexPendingLocalProjectAssignment {
   readonly pendingCoreUpdate: false;
 }
 
-export const CODEX_PENDING_WORKTREE_FALLBACK_LABEL = "Codex Task";
+export const CODEX_PENDING_WORKTREE_FALLBACK_LABEL = "Codex Chat";
 export const CODEX_PENDING_WORKTREE_LABEL_MAX_LENGTH = 80;
 export const CODEX_USER_REQUEST_SECTION_MARKER = "## My request for Codex:";
+const CODEX_USER_REQUEST_SECTION_PATTERN = /## My request(?: for Codex)?:/;
 export const CODEX_PENDING_WORKTREE_SETUP_REPAIR_LABEL = "Fix worktree setup";
 
 /** Exact prompt utility `JH`: use only the final explicit user-request section. */
 export function extractCodexUserRequestSection(value: string): string {
-  const sections = value.split(CODEX_USER_REQUEST_SECTION_MARKER);
+  const sections = value.split(CODEX_USER_REQUEST_SECTION_PATTERN);
   return sections.length <= 1 ? value : (sections.at(-1) ?? "").trim();
 }
 
-/** Exact pending-row prompt summary from bundle `q`: collapsed text, 80 chars, ellipsis. */
+/** Compact the first text request into the pending-row label shown before Thread creation settles. */
 export function summarizeCodexPendingWorktreeLabel(prompt: string): string {
-  const normalized = extractCodexUserRequestSection(prompt).trim().replace(/\s+/g, " ").trim();
-  if (!normalized) return CODEX_PENDING_WORKTREE_FALLBACK_LABEL;
-  if (normalized.length <= CODEX_PENDING_WORKTREE_LABEL_MAX_LENGTH) return normalized;
-  return `${normalized.slice(0, CODEX_PENDING_WORKTREE_LABEL_MAX_LENGTH - 1).trimEnd()}…`;
+  const request = extractCodexUserRequestSection(prompt).trim();
+  if (!request) return CODEX_PENDING_WORKTREE_FALLBACK_LABEL;
+  const projected = projectCodexMarkdownToPlainText(request);
+  if (!projected) return CODEX_PENDING_WORKTREE_FALLBACK_LABEL;
+  if (projected.length <= CODEX_PENDING_WORKTREE_LABEL_MAX_LENGTH) return projected;
+  return `${projected.slice(0, CODEX_PENDING_WORKTREE_LABEL_MAX_LENGTH - 1).trimEnd()}…`;
 }
 
 export type CodexPendingWorktreeRequest =

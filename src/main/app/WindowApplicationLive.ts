@@ -17,7 +17,8 @@ import { ChatGptDesktop } from "../codex-application/ChatGptDesktop";
 import { CodexAccount } from "../codex-application/CodexAccount";
 import { CodexApplicationEventHub } from "../codex-application/CodexApplicationEventHub";
 import { CodexConnection } from "../codex-application/CodexConnection";
-import { CodexRendererConversationCoordinator } from "../codex-application/CodexRendererConversationCoordinator";
+import { CodexRendererPresentationRegistry } from "../codex-application/CodexRendererPresentationRegistry";
+import { CodexUserInputAutoResolution } from "../codex-application/CodexUserInputAutoResolution";
 import { CodexMedia, live as codexMediaLive } from "../codex-application/CodexMedia";
 import { CodexGateway, CodexThreadHostResolver } from "../codex-runtime/CodexGateway";
 import { CoreAuthority } from "../core-runtime/CoreAuthority";
@@ -178,7 +179,31 @@ const applicationWindows = Layer.unwrap(
     const appUpdates = yield* AppUpdateRuntime;
     const browser = yield* BrowserApplication;
     const initialization = yield* ApplicationInitializationRuntime;
-    const rendererConversations = yield* CodexRendererConversationCoordinator;
+    const events = yield* CodexApplicationEventHub;
+    const presentation = yield* CodexRendererPresentationRegistry;
+    const autoResolution = yield* CodexUserInputAutoResolution;
+    const rendererConversations = {
+      setClientForegrounded: (clientId: string | null | undefined, foregrounded: boolean) => {
+        if (!clientId) return Effect.void;
+        return Effect.sync(() => presentation.setClientForegrounded(clientId, foregrounded)).pipe(
+          Effect.flatMap((conversationIds) =>
+            Effect.forEach(
+              conversationIds,
+              (conversationId) => {
+                if (foregrounded) {
+                  events.publish({
+                    kind: "rendererConversationPresentedInForeground",
+                    value: conversationId,
+                  });
+                }
+                return autoResolution.reevaluatePresentation(conversationId);
+              },
+              { discard: true },
+            ),
+          ),
+        );
+      },
+    };
     const desktopNotifications = yield* DesktopNotificationRuntime;
     const config = yield* MainConfig;
     const mcpAppSandbox = yield* McpAppSandboxRuntime;
@@ -287,7 +312,8 @@ export const live: Layer.Layer<
   | CodexConnection
   | CodexGateway
   | CodexThreadHostResolver
-  | CodexRendererConversationCoordinator
+  | CodexRendererPresentationRegistry
+  | CodexUserInputAutoResolution
   | CoreAuthority
   | DatabaseModule
   | DesktopDocumentSessionRuntime

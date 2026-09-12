@@ -242,7 +242,11 @@ function CodexConnectedSessionThread({
   const startInSelectorProject = summary ? project : selectedNewThreadProject;
   const newThreadEnvironmentWorkspaceRoot = projectWorkspaceRootOrNull(startInSelectorProject);
   const effectiveProjectId = summary ? session.projectId : (selectedNewThreadProject?.id ?? null);
-  const codexControl = useCodexAppServerControl(effectiveProjectId);
+  const codexControl = useCodexAppServerControl(
+    effectiveProjectId,
+    summary?.threadId ?? null,
+    session.thread?.executionHostId ?? null,
+  );
   const loadModels = codexControl.loadModels;
   const listCollaborationModes = codexControl.listCollaborationModes;
   const [collaborationModes, setCollaborationModes] = useState<CodexCollaborationModePreset[]>([]);

@@ -128,7 +128,6 @@ export type CodexHistoryItemWindowErrorCode =
   | "pageLimitExceeded"
   | "historyExhausted"
   | "cursorStalled"
-  | "emptyPageContinuation"
   | "staleBoundary";
 
 export interface CodexHistoryItemWindowError {
@@ -791,15 +790,6 @@ function prependTransition<TCanonicalItem extends CodexHistoryItemIdentity, TRen
     copiedSegment.items.itemIds.length +
     copiedSegment.items.canonicalItems.length +
     copiedSegment.items.rendererItems.length;
-  if (copiedSegment.items.itemIds.length === 0 && input.olderCursorAfter !== null) {
-    return {
-      ok: false,
-      error: itemWindowError(
-        "emptyPageContinuation",
-        "An empty item page cannot advance to another available cursor",
-      ),
-    };
-  }
   const state = window[codexHistoryItemWindowState];
   if (
     copiedSegment.items.itemIds.length > 0 &&
@@ -948,15 +938,6 @@ function appendTransition<TCanonicalItem extends CodexHistoryItemIdentity, TRend
     copiedSegment.items.itemIds.length +
     copiedSegment.items.canonicalItems.length +
     copiedSegment.items.rendererItems.length;
-  if (copiedSegment.items.itemIds.length === 0 && input.newerCursorAfter !== null) {
-    return {
-      ok: false,
-      error: itemWindowError(
-        "emptyPageContinuation",
-        "An empty item page cannot advance to another available cursor",
-      ),
-    };
-  }
   const state = window[codexHistoryItemWindowState];
   if (
     copiedSegment.items.itemIds.length > 0 &&

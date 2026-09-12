@@ -35,6 +35,9 @@ import { BrowserUseRuntime } from "../host-runtime/BrowserUseRuntime";
 import { ProjectRuntimeLifecycleRuntime } from "../host-runtime/ProjectRuntimeLifecycleRuntime";
 import { CodexAgentConfigRuntime } from "./CodexAgentConfigRuntime";
 import { CodexAttachments } from "./CodexAttachments";
+import { CodexExecutionAssignments } from "./CodexExecutionAssignments";
+import { CodexGitProbe } from "./CodexGitProbe";
+import { materializeCodexThreadRequestSettings } from "./CodexThreadRequestSettings";
 import { requireExactThreadStartProfile } from "./codex-thread-start-profile";
 import { CodexFreshThreadLaunchRuntime } from "./CodexFreshThreadLaunchRuntime";
 import { CodexPendingWorktreeRuntime } from "./CodexPendingWorktreeRuntime";
@@ -42,7 +45,6 @@ import { CodexThreadDirectory } from "./CodexThreadDirectory";
 import { CodexThreadLaunchCompletion } from "./CodexThreadLaunchCompletion";
 import { ThreadCreationRuntime } from "./ThreadCreationRuntime";
 import { CodexTurnCommands, type CodexTurnCommandsError } from "./CodexTurnCommands";
-import { CodexTurnPreparation } from "./CodexTurnPreparation";
 import type { CodexTurnPresentationClaim } from "./CodexTurnPresentation";
 
 type GatewayThreadStartParams = ClientRequestParamsByMethod["thread/start"];
@@ -52,6 +54,10 @@ type PreparedSessionThreadLaunchInput = CodexThreadStartForSessionInput & {
 };
 
 export interface CodexSessionThreadLaunchContext {
+  readonly sendNativeStart?: (
+    request: ThreadStartParams,
+    capability: CodexAppServerCapabilitySnapshot,
+  ) => Effect.Effect<ThreadStartResponse, CodexSessionThreadLaunchFailure>;
   readonly presentationClaim?: CodexTurnPresentationClaim;
   readonly browserViewScopeId: string;
   readonly ownerClientId: string | null;
@@ -65,7 +71,7 @@ export class CodexSessionThreadLaunchError extends Data.TaggedError(
   readonly cause: unknown;
 }> {}
 
-type CodexSessionThreadLaunchFailure =
+export type CodexSessionThreadLaunchFailure =
   | CodexRuntimeError
   | CodexTurnCommandsError
   | CodexSessionThreadLaunchError;
@@ -114,13 +120,14 @@ export const make: Effect.Effect<
   | CodexAgentConfigRuntime
   | CodexAttachments
   | CodexAppServerCapabilities
+  | CodexExecutionAssignments
+  | CodexGitProbe
   | CodexGateway
   | CodexPendingWorktreeRuntime
   | CodexThreadDirectory
   | CodexThreadLaunchCompletion
   | ThreadCreationRuntime
   | CodexTurnCommands
-  | CodexTurnPreparation
   | CoreModules
   | BrowserUseRuntime
   | DesktopToolRuntime
@@ -131,6 +138,8 @@ export const make: Effect.Effect<
   const agentConfig = yield* CodexAgentConfigRuntime;
   const attachments = yield* CodexAttachments;
   const capabilities = yield* CodexAppServerCapabilities;
+  const executionAssignments = yield* CodexExecutionAssignments;
+  const gitProbe = yield* CodexGitProbe;
   const gateway = yield* CodexGateway;
   const browserUse = yield* BrowserUseRuntime;
   const desktopTools = yield* DesktopToolRuntime;
@@ -138,7 +147,6 @@ export const make: Effect.Effect<
   const pendingWorktrees = yield* CodexPendingWorktreeRuntime;
   const directory = yield* CodexThreadDirectory;
   const turns = yield* CodexTurnCommands;
-  const preparation = yield* CodexTurnPreparation;
   const freshLaunches = yield* CodexFreshThreadLaunchRuntime;
   const completion = yield* CodexThreadLaunchCompletion;
   const threadStarts = yield* ThreadCreationRuntime;
@@ -195,12 +203,16 @@ export const make: Effect.Effect<
   const enqueuePending = (
     input: PreparedSessionThreadLaunchInput & { readonly projectId: string },
     sourceRoots: readonly string[],
+    executionHostId: string,
   ): Effect.Effect<CodexThreadStartForSessionResult, CodexSessionThreadLaunchError> =>
     Effect.gen(function* () {
       const sourceWorkspaceRoot = sourceRoots[0]?.trim();
       if (!sourceWorkspaceRoot) throw new Error("Managed worktree requires a Project source root");
       const materializedGoal = input.threadGoalDraft
-        ? yield* attachments.materializePastedText(input.threadGoalDraft.pastedTextAttachments)
+        ? yield* attachments.materializePastedText(
+            input.threadGoalDraft.pastedTextAttachments,
+            executionHostId,
+          )
         : null;
       const frozenGoal = input.threadGoalDraft
         ? {
@@ -211,17 +223,17 @@ export const make: Effect.Effect<
         : null;
       const collaborationModel = input.executionProfile?.modelId ?? input.model?.trim();
       const allocated = allocateCodexPendingWorktreeRequest({
-        hostId: gateway.localHostId,
+        hostId: executionHostId,
         launchMode: "start-conversation",
         firstSubmission: input.firstSubmission,
-        label: summarizeCodexPendingWorktreeLabel(input.prompt),
+        label: input.threadName ?? summarizeCodexPendingWorktreeLabel(input.prompt),
         initialThreadTitle: input.threadName ?? null,
         sourceWorkspaceRoot,
         startingState: input.worktreeStartingState ?? null,
         localEnvironmentConfigPath: input.runInEnvironmentPath ?? null,
         prompt: input.prompt,
         projectSessionId: input.sessionId,
-        threadStartHostId: gateway.localHostId,
+        threadStartHostId: executionHostId,
         threadGoalDraft: frozenGoal,
         heartbeatAutomation: input.heartbeatAutomation ?? null,
         skipAutoTitleGeneration: input.skipAutoTitleGeneration,
@@ -257,6 +269,11 @@ export const make: Effect.Effect<
                 }
               : null,
           config: {},
+          memoryPreferences: input.memoryPreferences ?? null,
+          mode: input.mode,
+          threadStartKind: input.threadStartKind,
+          baseInstructions: input.baseInstructions ?? null,
+          additionalDeveloperInstructions: input.additionalDeveloperInstructions ?? null,
           threadSource:
             input.threadSource === "subagent" || input.threadSource === "system"
               ? input.threadSource
@@ -276,22 +293,25 @@ export const make: Effect.Effect<
           new Error("Conversation worktree allocation requires a client Thread identity"),
         );
       }
-      yield* pendingWorktrees
-        .create(allocated.request)
-        .pipe(
-          Effect.onError(() =>
-            materializedGoal
-              ? Effect.forEach(
-                  materializedGoal.createdAttachmentPaths,
-                  (attachmentPath) =>
-                    attachments
-                      .removePastedText({ path: attachmentPath, fsPath: attachmentPath, label: "" })
-                      .pipe(Effect.ignore),
-                  { discard: true },
-                )
-              : Effect.void,
-          ),
-        );
+      yield* pendingWorktrees.create(allocated.request).pipe(
+        Effect.onError(() =>
+          materializedGoal
+            ? Effect.forEach(
+                materializedGoal.createdAttachmentPaths,
+                (attachmentPath) =>
+                  attachments
+                    .removePastedText({
+                      path: attachmentPath,
+                      fsPath: attachmentPath,
+                      label: "",
+                      hostId: executionHostId,
+                    })
+                    .pipe(Effect.ignore),
+                { discard: true },
+              )
+            : Effect.void,
+        ),
+      );
       return {
         kind: "pending" as const,
         pendingWorktreeId: allocated.result.pendingWorktreeId,
@@ -309,7 +329,7 @@ export const make: Effect.Effect<
     return yield* Effect.gen(function* () {
       // Hold the Project lease only through backend creation and its durable Session binding.
       // First-Turn commands run on a separate Conversation owner and acquire their own lease.
-      const { entry, snapshot, input, model, serviceTier, reasoningEffort } =
+      const { entry, snapshot, input, model, serviceTier, reasoningEffort, response } =
         yield* threadStarts.materialize(
           capability.hostId,
           capability.generation,
@@ -336,34 +356,65 @@ export const make: Effect.Effect<
                 const reasoningEffort = executionProfile
                   ? executionProfile.reasoningEffort
                   : input.reasoningEffort;
-                const desktopToolConfig = yield* desktopTools.threadConfig.pipe(
-                  Effect.mapError((cause) => fail("start", input.sessionId, cause)),
+                const executionSettings = yield* materializeCodexThreadRequestSettings(
+                  {
+                    hostId: capability.hostId,
+                    appServerVersion: capability.version,
+                    model: model ?? null,
+                    cwd,
+                    includeDeveloperInstructions: true,
+                    allowMemoryPromptOverrides: capability.hostId === gateway.localHostId,
+                    baseInstructions: input.baseInstructions,
+                    additionalDeveloperInstructions: input.additionalDeveloperInstructions,
+                    mode: input.mode ?? input.collaborationMode ?? "default",
+                    threadStartKind: input.threadStartKind ?? "default",
+                    requestOptions: codexGatewayGenerationFence(capability),
+                  },
+                  executionAssignments,
+                  gateway,
+                  gitProbe,
                 );
+                if (!executionSettings) {
+                  return yield* fail(
+                    "start",
+                    input.sessionId,
+                    new Error("execution-config-loading"),
+                  );
+                }
+                const desktopToolConfig = yield* desktopTools
+                  .threadConfig(cwd)
+                  .pipe(Effect.mapError((cause) => fail("start", input.sessionId, cause)));
                 const request: ThreadStartParams = {
                   cwd,
                   runtimeWorkspaceRoots: workspaceRoots,
                   model: model ?? null,
                   serviceTier: serviceTier ?? null,
-                  baseInstructions: input.baseInstructions ?? null,
-                  developerInstructions: input.additionalDeveloperInstructions ?? null,
+                  baseInstructions: null,
+                  developerInstructions: executionSettings.developerInstructions,
+                  personality: executionSettings.personality,
                   threadSource: input.threadSource ?? "user",
                   historyMode: "paginated",
                   dynamicTools: [],
-                  config: {
-                    ...(desktopToolConfig ?? {}),
-                    ...buildCodexThreadConfig({ nativeMcp: true }),
-                    ...(reasoningEffort
-                      ? {
-                          model_reasoning_effort: reasoningEffort,
-                        }
-                      : {}),
-                  },
+                  config: buildCodexThreadConfig({
+                    nativeAppTools: capability.nativeAppTools,
+                    overrides: {
+                      ...executionSettings.config,
+                      ...(desktopToolConfig ?? {}),
+                      ...(reasoningEffort
+                        ? {
+                            model_reasoning_effort: reasoningEffort,
+                          }
+                        : {}),
+                    },
+                  }),
                 };
-                const response = (yield* gateway.requestLocal(
-                  "thread/start",
-                  request as GatewayThreadStartParams,
-                  codexGatewayGenerationFence(capability),
-                )) as unknown as ThreadStartResponse;
+                const response = context.sendNativeStart
+                  ? yield* context.sendNativeStart(request, capability)
+                  : ((yield* gateway.requestLocal(
+                      "thread/start",
+                      request as GatewayThreadStartParams,
+                      codexGatewayGenerationFence(capability),
+                    )) as unknown as ThreadStartResponse);
                 startedThreadId = response.thread.id;
                 yield* Effect.try({
                   try: () => requireExactThreadStartProfile(response, executionProfile),
@@ -378,6 +429,7 @@ export const make: Effect.Effect<
                   );
                 const entry = yield* directory
                   .acceptSessionStart({
+                    durableOnly: Boolean(context.ownerClientId),
                     response: threadName
                       ? { ...response, thread: { ...response.thread, name: threadName } }
                       : response,
@@ -390,10 +442,12 @@ export const make: Effect.Effect<
                     managedWorktreePath: null,
                     projectlessOutputDirectory: projectless?.outputDirectory ?? null,
                     projectlessWorkspaceBrowserRoot: projectless?.workspaceRoot ?? null,
+                    mode: input.mode ?? input.collaborationMode ?? "default",
+                    threadStartKind: input.threadStartKind ?? "default",
                   })
                   .pipe(Effect.mapError((cause) => fail("commit", input.sessionId, cause)));
                 linked = true;
-                if (!entry.snapshot) {
+                if (!entry.snapshot && !context.ownerClientId) {
                   return yield* fail(
                     "commit",
                     input.sessionId,
@@ -402,6 +456,7 @@ export const make: Effect.Effect<
                 }
                 return {
                   entry,
+                  response,
                   snapshot: entry.snapshot,
                   input,
                   model,
@@ -466,58 +521,32 @@ export const make: Effect.Effect<
         input.skipAutoTitleGeneration === undefined && !skipAutoTitleGeneration
           ? undefined
           : skipAutoTitleGeneration;
-      const detail = detailFromSnapshot(snapshot);
+      const detail: CodexThreadDetail = snapshot
+        ? detailFromSnapshot(snapshot)
+        : { ...entry.summary, turns: [], transcript: [] };
       if (context.ownerClientId) {
-        const plan = yield* preparation
-          .start({
-            threadId: entry.summary.threadId,
+        const freshLaunch: import("./CodexFreshThreadLaunchRuntime").CodexFreshThreadLaunch = {
+          nativeStart: { hostId: capability.hostId, generation: capability.generation, response },
+          ...(context.presentationClaim ? { presentationClaim: context.presentationClaim } : {}),
+          ...outcome,
+          rendererClientId: context.ownerClientId,
+          clientUserMessageId: input.firstSubmission.clientUserMessageId,
+          firstTurn: {
             prompt: input.prompt,
             overrides: {
               clientUserMessageId: input.firstSubmission.clientUserMessageId,
               promptInput: input.promptInput,
               model,
               serviceTier,
+              reasoningEffort: reasoningEffort ?? undefined,
               permissionMode: input.permissionMode,
-              reasoningEffort,
-              ...(input.agentConfigPermissionMode === undefined
-                ? {}
-                : { agentConfigPermissionMode: input.agentConfigPermissionMode }),
+              agentConfigPermissionMode: input.agentConfigPermissionMode,
               collaborationMode: input.collaborationMode,
               ...(skipAutoTitleOverride === undefined
                 ? {}
                 : { skipAutoTitleGeneration: skipAutoTitleOverride }),
             },
-            rendererOwnsState: true,
-          })
-          .pipe(Effect.mapError((cause) => fail("first-turn", input.sessionId, cause)));
-        if (!plan.canonicalParams) {
-          return yield* fail(
-            "first-turn",
-            input.sessionId,
-            new Error("Renderer-owned first Turn has no canonical parameters"),
-          );
-        }
-        if (plan.clientUserMessageId !== input.firstSubmission.clientUserMessageId) {
-          return yield* fail(
-            "first-turn",
-            input.sessionId,
-            new Error("Renderer-owned first Turn changed its admitted client message identity"),
-          );
-        }
-        const freshLaunch = {
-          ...(context.presentationClaim ? { presentationClaim: context.presentationClaim } : {}),
-          ...outcome,
-          launchId: input.firstSubmission.launchId,
-          rendererClientId: context.ownerClientId,
-          clientUserMessageId: plan.clientUserMessageId,
-          canonicalParams: plan.canonicalParams,
-          turnStartParams: { ...plan.request, attachments: [] },
-          autoTitlePrompt: plan.promptText,
-          autoTitleServiceName: plan.serviceName,
-          autoTitlePastedTextAttachments: plan.autoTitlePastedTextAttachments,
-          skipAutoTitleGeneration,
-          verifiedBuiltinFullAccess: plan.verifiedBuiltinFullAccess,
-          executionReadOnly: plan.executionReadOnly,
+          },
         };
         freshLaunches.register(freshLaunch);
         return {
@@ -527,11 +556,14 @@ export const make: Effect.Effect<
             launchId: freshLaunch.launchId,
             threadId: freshLaunch.threadId,
             clientUserMessageId: freshLaunch.clientUserMessageId,
-            canonicalParams: freshLaunch.canonicalParams,
           },
         };
       }
       const turn = yield* turns.start(entry.summary.threadId, input.prompt, {
+        freshNativeThread: {
+          hostId: capability.hostId,
+          generation: capability.generation,
+        },
         ...(context.presentationClaim ? { presentationClaim: context.presentationClaim } : {}),
         clientUserMessageId: input.firstSubmission.clientUserMessageId,
         promptInput: input.promptInput,
@@ -637,6 +669,7 @@ export const make: Effect.Effect<
       runExclusive(
         input.sessionId,
         Effect.gen(function* () {
+          const executionHostId = input.executionHostId?.trim() || gateway.localHostId;
           if ((input.runInTarget ?? "localProject") === "newWorktree") {
             return yield* projectLifecycle.runExclusive(
               input.projectId,
@@ -651,11 +684,12 @@ export const make: Effect.Effect<
                 return yield* enqueuePending(
                   { ...preparedInput, projectId: preparedInput.projectId },
                   sourceRoots,
+                  executionHostId,
                 );
               }),
             );
           }
-          const capability = yield* capabilities.forHost(gateway.localHostId);
+          const capability = yield* capabilities.forHost(executionHostId);
           return yield* startImmediate(input, context, capability);
         }),
       ).pipe(

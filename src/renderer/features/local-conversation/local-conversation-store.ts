@@ -1,3 +1,207 @@
+import {
+  buildCodexCommandApprovalRequest,
+  buildCodexFileApprovalRequest,
+  buildCodexPermissionRequest,
+} from "../../../shared/codex-background-request-projection";
+import {
+  mutateCodexTurnStartRejection,
+  type CodexPreparedTurnExecution,
+} from "../../../shared/codex-conversation-state/codex-turn-execution";
+import {
+  acceptCodexPreparedEnvironmentSelection,
+  resolveCodexAcceptedThreadEnvironmentSelection,
+} from "../../../shared/codex-conversation-state/codex-environment-selection";
+import type { CodexCanonicalServerRequest } from "../../../shared/types";
+import { receiveConversationStreamServiceEvent } from "../../../shared/codex-stream-service-events";
+import {
+  allowsAutomaticResumeHistoryDrain,
+  refreshResumedConversationTurnParams,
+} from "../../../shared/codex-conversation-state/codex-history-resume";
+import type {
+  CodexNativeAutoResponseInput,
+  CodexNativeServerResponseInput,
+  CodexNativeUserResponse,
+  CodexNativeUserResponseInput,
+} from "../../../shared/codex-native-server-response";
+import {
+  canonicalResumePreparation,
+  resolveConversationResumePermissions,
+} from "../../../shared/codex-conversation-state/codex-resume-permissions";
+import {
+  prepareConversationResumePermissionContext,
+  type ConversationResumePreparationOptions,
+} from "../../../shared/codex-conversation-state/codex-resume-request";
+import { conversationResumeRequestOptions } from "../../../shared/codex-conversation-resume-retry";
+import type { CodexRendererNativeRequestOptions } from "../../../shared/codex-renderer-request";
+import {
+  requestRendererConversationResume,
+  type ConversationResumeRequestLifetime,
+} from "./renderer-conversation-resume-request";
+import { CodexManualCompactions } from "../../../shared/codex-manual-compactions";
+import {
+  mutateCodexCanonicalInProgressSyntheticItem,
+  mutateCodexCanonicalLocalSyntheticItemRemoval,
+  resolveCodexCanonicalHydratedCwd,
+} from "../../../shared/codex-conversation-state/codex-conversation-state";
+import { mutateCodexCanonicalThreadGoalTranscriptTurn } from "../../../shared/codex-conversation-state/codex-thread-goal-transcript";
+import { reconcileCodexResumedConversationState } from "../../../shared/codex-conversation-state/codex-thread-metadata";
+import {
+  isSteerTurnInactiveError,
+  isNoActiveTurnError,
+  parseSteerTurnMismatchActualTurnId,
+} from "../../../shared/codex-steer-errors";
+import {
+  QueuedMessageExecution,
+  QueueNotReady,
+} from "../../../shared/codex-queued-message-execution";
+import {
+  bindRendererConversationWindowActivity,
+  readRendererConversationWindowActivity,
+} from "./renderer-conversation-window-activity";
+import {
+  canAutomaticallySendQueuedMessage,
+  resumeInterruptedQueuedMessage,
+} from "../../../shared/codex-queued-message-policy";
+import {
+  hasPendingConversationTurnStart,
+  latestConversationTurn,
+  latestResidentConversationTurn,
+} from "../../../shared/codex-conversation-state/codex-turn-selectors";
+import { QueuedMessageLocks } from "../../../shared/codex-queued-message-locks";
+import type { ConversationFollowerTurnStart } from "../../../shared/codex-thread-follower-request";
+const queuedStartLocks = new QueuedMessageLocks();
+import { QueuedMessageCoordinator } from "../../../shared/codex-queued-message-coordinator";
+import {
+  isCodexQueuedMessage,
+  projectCodexQueuedMessage,
+  queuedMessagePromptInput,
+  type CodexQueuedMessage,
+} from "../../../shared/codex-queued-message";
+import { prepareUntrustedAppInput } from "../../../shared/codex-untrusted-app-input";
+import {
+  CodexServerQueuedMessages,
+  preserveGeneratedQueueText,
+} from "./codex-server-queued-messages";
+import { rendererQueuedMessageStorage } from "./renderer-queued-message-storage";
+import { registerAppCloseFlushHandler } from "../../lib/app-close-flush";
+import {
+  CanonicalConversationRetention,
+  shouldKeepCanonicalConversationLoaded,
+  releaseCanonicalConversationHistoryDraft,
+  completeCanonicalConversationUnsubscribeDraft,
+  selectCanonicalRetentionRequestKind,
+} from "../../../shared/codex-canonical-retention";
+import {
+  editCanonicalLastUserTurn,
+  type CanonicalEditOptions,
+} from "../../../shared/codex-conversation-state/codex-owner-edit";
+import {
+  canonicalPermissionsForMode,
+  nativePermissionRequestFields,
+} from "../../../shared/codex-conversation-state/codex-native-permissions";
+import {
+  mutateCodexCanonicalRevert,
+  mutateCodexCanonicalRollbackThread,
+} from "../../../shared/codex-conversation-state/codex-rollback-state";
+import { isCodexNativeMethodUnsupported } from "../../../shared/codex-native-request-outcome";
+import {
+  runCanonicalOwnerSteer,
+  type CanonicalOwnerSteerInput,
+} from "../../../shared/codex-conversation-state/codex-owner-steer";
+import {
+  clearCodexUnconfirmedTurnSubmission,
+  recordCodexUnconfirmedTurnSubmission,
+  CodexTurnDeliveryError,
+  type CodexTurnDelivery,
+} from "../../../shared/codex-conversation-state/codex-turn-delivery";
+import { interruptCanonicalConversationTurn } from "../../../shared/codex-conversation-state/codex-conversation-interrupt";
+import { mutateCodexBackgroundTerminalCleanup } from "../../../shared/codex-conversation-state/codex-background-terminal-cleanup";
+import {
+  updateCanonicalThreadSettings,
+  type CanonicalThreadSettingsPatch,
+  type CanonicalThreadSettingsCondition,
+} from "../../../shared/codex-conversation-state/codex-thread-settings-update";
+import {
+  conversationFollowerRequest,
+  type ConversationFollowerParams,
+} from "../../../shared/codex-thread-follower-request";
+import {
+  CanonicalCompleteHistoryLoader,
+  hasCompleteCanonicalConversationHistory,
+} from "../../../shared/codex-conversation-state/codex-complete-history-loader";
+import { CanonicalConversationArchiveState } from "../../../shared/codex-conversation-state/codex-conversation-archive-state";
+import {
+  mutateCodexCanonicalOptimisticTurn,
+  mutateCodexCanonicalOptimisticTurnBinding,
+} from "../../../shared/codex-conversation-state/codex-optimistic-turn";
+import {
+  loadCanonicalPromptRailIndex,
+  previewCanonicalPromptRailTurn,
+} from "../../../shared/codex-conversation-state/codex-canonical-prompt-rail";
+import type {
+  CodexPromptRailIndexRequest,
+  CodexPromptRailIndexCommandResult,
+  CodexPromptRailRevealRequest,
+  CodexPromptRailRevealCommandResult,
+  CodexPromptRailReveal,
+} from "../../../shared/codex-prompt-rail-history";
+import { hydrateCanonicalHistorySearchMatch } from "../../../shared/codex-conversation-state/codex-canonical-history-search";
+type LocalHistoryPageResult = { readonly status: "applied" | "stale" };
+import {
+  CanonicalHistoryItemLoader,
+  listCanonicalHistoryTurns,
+  replaceCanonicalHistoryDraft,
+  loadCanonicalHistoryBoundaryPage,
+  type CanonicalHistoryClient,
+} from "../../../shared/codex-conversation-state/codex-canonical-history-loader";
+import { CodexConversationEntityDocument } from "../../../shared/codex-conversation-entity-document";
+import type {
+  CodexNativeNotificationMessage,
+  CodexNativeRequestMessage,
+} from "../../../shared/types";
+import { mutateCodexConversationEvent } from "../../../shared/codex-conversation-state/codex-conversation-reducer";
+import {
+  CODEX_APP_TOOL_NAMESPACE,
+  hasCodexDynamicToolIdentity,
+} from "../../../shared/codex-dynamic-tool-identity";
+import { mutateCodexConversationThreadMetadata } from "../../../shared/codex-conversation-state/codex-thread-metadata";
+import {
+  createCodexCanonicalHydratedConversationState,
+  canonicalHistoryPermissionContext,
+  extractCodexCanonicalHydratedAttachments,
+  hydrateCodexCanonicalTurns,
+  mergeCodexCanonicalTurnStates,
+} from "../../../shared/codex-conversation-state/codex-conversation-state";
+import { applyPatches, castDraft, type Draft, type Patch } from "immer";
+import {
+  ConversationStream,
+  type ConversationWindowActivity,
+  type ConversationStreamRole as LocalConversationStreamRole,
+} from "../../../shared/codex-conversation-stream";
+import type {
+  ConversationCoordinationHost,
+  ConversationCoordinationEvent,
+  ConversationFollowerRequest,
+} from "../../../shared/codex-client-coordination";
+import type { ConversationCoordinationBroadcast } from "../../../shared/codex-coordination-view";
+import {
+  connectConversationCoordination,
+  type ConversationCoordinationConnection,
+} from "./conversation-coordination-connection";
+import { residentConversationTurns } from "../../../shared/codex-conversation-state/codex-turn-mutation";
+import { connectRendererThreadReadState } from "./renderer-thread-read-state";
+import { RendererNativeAppServer, type NativeRequestOptions } from "./renderer-native-app-server";
+import { codexTurnFirstResponseTracker } from "./codex-turn-first-response";
+import {
+  startCodexRequestInteractionTrace,
+  startCodexServerResponseInteractionTrace,
+} from "./codex-request-interaction-trace";
+import { readNativeModelCatalog, readNativeCollaborationModes } from "./renderer-native-catalog";
+import { ConversationActivity } from "../../../shared/codex-conversation-activity";
+import {
+  ConversationStreamRecovery,
+  type ConversationReconnectOptions,
+} from "../../../shared/codex-conversation-recovery";
 import { createAsyncQuestionRuntime } from "./async-question-runtime";
 import type { CodexTurnPresentationTicket } from "../../../shared/nodex-app-tools/turn-presentation";
 import type { WorkbenchSubmitPresentation } from "../../../shared/nodex-app-tools/workbench";
@@ -27,15 +231,10 @@ import {
 import type {
   FeedbackUploadParams,
   ThreadBackgroundTerminal,
-  ThreadBackgroundTerminalsListResponse,
-  ThreadBackgroundTerminalsTerminateResponse,
   ThreadGoal,
   ThreadGoalSetParams,
   Thread,
-  ThreadItem,
-  ThreadSettings,
   ThreadStatus,
-  ThreadSource,
   Turn,
   TurnStartResponse,
   UserInput,
@@ -43,21 +242,16 @@ import type {
 import { parseAssetSource } from "../../../shared/assets";
 import type {
   CodexPersistedHistoryOccurrenceHydrateInput,
-  CodexPersistedHistoryOccurrenceHydrateRequest,
-  CodexPersistedHistoryOccurrenceHydrateResult,
   CodexPersistedHistoryOccurrenceResolution,
-  CodexThreadOwnerPersistedHistoryHydrationResult,
 } from "../../../shared/codex-persisted-history-search";
 import {
-  createEmptyCodexPreparedPrompt,
   prepareCodexPrompt,
+  createEmptyCodexPreparedPrompt,
 } from "../../../shared/codex-prompt-preparation";
-import { resolveCodexReasoningSummary } from "../../../shared/codex-reasoning-summary-policy";
 import { normalizeCodexServiceTier } from "../../../shared/codex-service-tier";
 import type {
   CodexAccountSnapshot,
   CodexApprovalRequest,
-  CodexApprovalKind,
   CodexApprovalResponse,
   CodexSubagentOverviewReadInput,
   CodexSubagentOverviewWindow,
@@ -66,7 +260,6 @@ import type {
   CodexBackgroundTerminalRow,
   PageRunInTarget,
   CodexCanonicalOptionPickerResponse,
-  CodexCanonicalSetupContextPickerResponse,
   CodexCanonicalSetupCodexStepResponse,
   CodexConversationSource,
   CodexConversationCapabilityFlags,
@@ -78,7 +271,6 @@ import type {
   CodexComposerIntent,
   CodexConnectionState,
   CodexConversationItem,
-  CodexItemStatus,
   CodexConversationServerRequest,
   CodexConversationSnapshot,
   CodexConversationThreadSettings,
@@ -91,37 +283,24 @@ import type {
   CodexMcpServerElicitationRequest,
   CodexMcpServerElicitationResponse,
   CodexModelOption,
-  CodexOwnerAppServerRequestInput,
   CodexPendingSteer,
   CodexPreparedPrompt,
   CodexPermissionMode,
-  CodexPermissionRequest,
   CodexPermissionRequestResponse,
   CodexPersonality,
   CodexPermissionState,
   CodexProtocolRequestId,
   CodexQueuedFollowUp,
-  CodexQueuedFollowUpProjection,
-  CodexQueueOwnerTranscriptDirective,
-  CodexQueueOwnerUpdateRequest,
-  CodexQueueOwnerUpdateResult,
   CodexUserInputRequest,
   CodexRendererClientRequestMessage,
   CodexRendererClientResponseMessage,
-  CodexRendererThreadRole,
-  CodexRendererThreadRoleRequest,
   NodexAgentAuthorizationRequest,
   NodexAgentAuthorizationResponse,
-  CodexSafetyBufferingState,
   CodexSideChatStartInput,
   CodexSideChatStartResult,
   CodexSteerTurnInput,
-  CodexSteerTurnResult,
   CodexThreadActionResult,
   CodexThreadGoalSetActionInput,
-  CodexThreadOwnerHistoryMutationResult,
-  CodexThreadOwnerActionRequest,
-  CodexPromptInput,
   CodexReasoningEffort,
   CodexReasoningEffortOption,
   CodexServiceTier,
@@ -133,32 +312,13 @@ import type {
   CodexThreadSummaryWindow,
   CodexTurnStartOptions,
 } from "../../lib/types";
+import { EMPTY_CODEX_QUEUED_FOLLOW_UP_PROJECTION } from "../../../shared/codex-queued-follow-up-state";
 import {
-  CODEX_QUEUE_OWNER_UPDATE_METHOD,
-  EMPTY_CODEX_QUEUED_FOLLOW_UP_PROJECTION,
-} from "../../../shared/codex-queued-follow-up-state";
-import {
-  projectCodexCanonicalProtocolThread,
+  mutateCodexCanonicalForkedFromConversationItem,
   type CodexCanonicalConversationState,
   type CodexCanonicalLiveTurnParams,
-  type CodexCanonicalSteeringUserMessageItem,
   type CodexCanonicalTurnState,
 } from "../../../shared/codex-conversation-state/codex-conversation-state";
-import {
-  appendCodexCanonicalOptimisticTurn,
-  bindCodexCanonicalOptimisticTurn,
-  failCodexCanonicalOptimisticTurn,
-  removeCodexCanonicalOptimisticTurn,
-} from "../../../shared/codex-conversation-state/codex-optimistic-turn";
-import { buildCodexSteeringCompareKey } from "../../../shared/codex-conversation-state/codex-steering-compare";
-import {
-  removeCodexCanonicalSteeringItem,
-  retargetCodexCanonicalSteeringItem,
-  acknowledgeCodexCanonicalSteeringItem,
-  upsertCodexCanonicalSteeringItem,
-} from "../../../shared/codex-conversation-state/codex-steering-state";
-import { replaceCodexCanonicalRollbackThread } from "../../../shared/codex-conversation-state/codex-rollback-state";
-import { reduceCodexBackgroundTerminalCleanup } from "../../../shared/codex-conversation-state/codex-background-terminal-cleanup";
 import {
   normalizeCodexMcpServerElicitationMode,
   normalizeCodexMcpServerElicitationResponse,
@@ -168,14 +328,9 @@ import type {
   CodexBackgroundProcessRow,
   CodexBackgroundProcessRunActionInput,
   CodexThreadActiveFlag,
-  CodexThreadHistoryEditResult,
-  CodexThreadOwnerStreamStatePublishResult,
   CodexThreadRuntimeStatus,
-  CodexThreadStreamCheckpoint,
-  CodexThreadStreamResyncRequestInput,
   CodexTurnStatus,
 } from "../../../shared/types";
-import { getCodexThreadOwnerNotificationThreadId } from "../../../shared/types";
 import { applyTerminalTextDelta } from "../../../shared/terminal-text";
 import { WORKTREE_OUTPUT_TAIL_MAX_CHARS } from "../../../shared/worktree-output";
 import { sessionFirstSubmissionOwner } from "../conversation-launch/session-first-submission-owner";
@@ -186,108 +341,55 @@ import {
   type LocalConversationAttachmentState,
 } from "./conversation-attachment-state";
 import {
-  applyCodexConversationStateUpdates,
-  buildCodexConversationStateUpdates,
-} from "../../../shared/codex-conversation-patches";
-import { projectCodexConversationDocument as toSharedConversationDocument } from "../../../shared/codex-conversation-document";
-import {
-  applyCodexConversationHistoryMutation,
   codexConversationHistoryPageRequestKey,
-  type CodexConversationHistoryMutation,
   type CodexConversationHistoryPageRequest,
-  type CodexConversationHistoryPageResult,
 } from "../../../shared/codex-conversation-history-page";
-import { buildCodexThreadStreamCheckpoint } from "../../../shared/codex-owner-follower-replication";
-import {
-  reduceCodexConversationEventWithEffects,
-  type CodexItemLifecycleNotification,
-} from "../../../shared/codex-conversation-state/codex-conversation-reducer";
-import {
-  applyCodexLifecycleProjectionDiff,
-  collectCodexLifecycleStatusChangedItemIds,
-} from "../../../shared/codex-conversation-state/codex-lifecycle-projection-diff";
-import {
-  areCodexCanonicalTurnParamsEqual,
-  isCodexCanonicalTurnPromptBlocked,
-} from "../../../shared/codex-canonical-item-projector";
+import { applyCodexLifecycleProjectionDiff } from "../../../shared/codex-conversation-state/codex-lifecycle-projection-diff";
 import { buildCodexTurnOccurrenceKey } from "../../../shared/codex-turn-identity";
 import {
   groupCodexFrameTextDeltasByConversation,
   isCodexFrameTextDeltaNotification,
-  reduceCodexConversationFrameTextDeltas,
+  mutateCodexConversationFrameTextDeltas,
   toCodexFrameTextDelta,
 } from "../../../shared/codex-conversation-state/codex-frame-text-delta";
 import {
   CodexFrameTextDeltaQueue,
   type CodexFrameTextDeltaUpdate,
 } from "../../../shared/codex-conversation-state/codex-frame-text-delta-queue";
-import { CodexFrameTextDeltaSequenceTracker } from "../../../shared/codex-conversation-state/codex-frame-text-delta-sequence-tracker";
 import {
   groupCodexCommandOutputUpdatesByConversation,
-  reduceCodexConversationCommandOutput,
-  reduceCodexConversationTerminalCommands,
-  type CodexTerminalCommandUpdate,
+  isCodexCommandOutputNotification,
+  toCodexCommandOutputUpdate,
+  mutateCodexConversationCommandOutput,
+  mutateCodexConversationTerminalCommands,
 } from "../../../shared/codex-conversation-state/codex-command-execution-stream";
 import {
   CodexCommandOutputQueue,
   type CodexCommandOutputUpdate,
 } from "../../../shared/codex-conversation-state/codex-command-output-queue";
 import {
-  isCodexFileChangePatchUpdatedNotification,
-  isCodexMcpToolCallProgressNotification,
-  reduceCodexConversationFileChangePatch,
-  reduceCodexConversationMcpToolCallProgress,
-  toCodexFileChangePatchUpdate,
-  toCodexMcpToolCallProgressUpdate,
-} from "../../../shared/codex-conversation-state/codex-file-change-stream";
-import {
-  completeCodexCanonicalPlanImplementationState,
-  reduceCodexConversationApprovalResponse,
-  reduceCodexConversationMcpElicitationResponse,
-  reduceCodexConversationOnboardingInputResponse,
+  mutateCodexCanonicalPlanImplementationCompletion,
+  mutateCodexConversationApprovalResponse,
+  mutateCodexConversationUserInputResponse,
+  mutateCodexConversationMcpElicitationResponse,
+  mutateCodexConversationPermissionResponse,
+  mutateCodexConversationOnboardingInputResponse,
+  mutateCodexConversationOptionPickerResponse,
+  mutateCodexConversationSetupCodexStepResponse,
   reduceCodexConversationOptionPickerResponse,
-  reduceCodexConversationPermissionResponse,
-  reduceCodexConversationServerRequest,
-  reduceCodexConversationServerRequestResolved,
-  reduceCodexConversationSetupCodexStepResponse,
   reduceCodexConversationSetupContextPickerResponse,
-  reduceCodexConversationUserInputResponse,
-  type CodexServerRequestLifecycleResult,
+  reduceCodexServerRequestOptionPickerResponseRawState,
+  reduceCodexServerRequestSetupContextPickerResponseRawState,
+  type CodexServerRequestRawState,
 } from "../../../shared/codex-conversation-state/codex-server-request-lifecycle";
-import { reduceCodexConversationTurnLifecycle } from "../../../shared/codex-conversation-state/codex-turn-lifecycle";
-import {
-  reduceCodexConversationThreadGoalCleared,
-  reduceCodexConversationThreadGoalResumeConfirmationDismissed,
-  reduceCodexConversationThreadGoalUpdated,
-  reduceCodexConversationThreadName,
-  reduceCodexConversationThreadSettings,
-  reduceCodexConversationThreadStarted,
-  reduceCodexConversationThreadStatus,
-  reduceCodexConversationThreadTokenUsage,
-  type CodexThreadMetadataEffect,
-} from "../../../shared/codex-conversation-state/codex-thread-metadata";
-import { appendCodexCanonicalThreadGoalTranscriptTurn } from "../../../shared/codex-conversation-state/codex-thread-goal-transcript";
-import {
-  reduceCodexConversationAutomaticApprovalReview,
-  reduceCodexConversationError,
-  reduceCodexConversationGuardianWarning,
-  reduceCodexConversationHookRun,
-  reduceCodexConversationModelRerouted,
-  reduceCodexConversationSafetyBuffering,
-  reduceCodexConversationTurnDiff,
-  reduceCodexConversationTurnPlan,
-  type CodexTurnMetadataEffect,
-  type CodexTurnMetadataResult,
-} from "../../../shared/codex-conversation-state/codex-turn-metadata";
-import {
-  getCodexApprovalKindForRequestMethod,
-  getCodexApprovalRequestMethod,
-} from "../../../shared/codex-approval";
+import { type CodexThreadMetadataEffect } from "../../../shared/codex-conversation-state/codex-thread-metadata";
+import { getCodexApprovalKindForRequestMethod } from "../../../shared/codex-approval";
 import { DEFAULT_CODEX_HOST_ID } from "../../../shared/codex-host";
-import { normalizeCodexManualThreadTitle } from "../../../shared/codex-thread-title";
+import {
+  normalizeCodexManualThreadTitle,
+  projectCodexMarkdownLabel,
+} from "../../../shared/codex-thread-title";
 import { isCodexNotificationChildConversation } from "../../../shared/codex-thread-notification";
-import { shouldShowAutoReviewInterruptionWarning } from "../../../shared/codex-transcript-special-items";
-import { extractCodexThreadSubagentMetadata } from "../../../shared/codex-subagent-metadata";
 import { CodexTerminalInteractionAccumulator } from "../../../shared/codex-terminal-interaction";
 import {
   resolveCodexReasoningEffortOptions,
@@ -302,10 +404,6 @@ import { useCodexThreadSettings } from "../../lib/use-codex-thread-settings";
 import { terminalSessionStore } from "../../lib/terminal-session-store";
 import { useCodexServiceTierSettings } from "../../lib/use-codex-service-tier-settings";
 import {
-  logAssistantStreamingDebug,
-  logAssistantStreamingDebugSampled,
-} from "../../lib/assistant-streaming-debug";
-import {
   runConversationOperation,
   subscribeCodexEvents,
   subscribeCodexRendererClientRequests,
@@ -317,14 +415,6 @@ import {
   type CodexSharedObjectUpdatedEvent,
   type CodexThreadDeletedEvent,
   type CodexThreadTitleUpdatedEvent,
-  type CodexThreadOwnerNotificationEvent,
-  type CodexThreadOwnerRequestEvent,
-  type CodexThreadOwnerUnavailableEvent,
-  type CodexThreadStreamStateChangedEvent,
-  type CodexThreadStreamFollowersChangedEvent,
-  type CodexThreadStreamSnapshotRequestedEvent,
-  type CodexThreadStreamFollowingStatusRequestedEvent,
-  type CodexThreadStreamTransportResetEvent,
   __resetCodexAppServerMessageBusForTests,
 } from "./app-server-message-bus";
 import {
@@ -335,10 +425,6 @@ import {
   areConversationLiveRequestsEqual,
   selectPrimaryConversationRequest,
 } from "./conversation-request-helpers";
-import {
-  LocalConversationStreamState,
-  type LocalConversationStreamRole,
-} from "./local-conversation-stream-state";
 
 const INITIAL_CONNECTION: CodexConnectionState = {
   status: "disconnected",
@@ -356,7 +442,6 @@ const EMPTY_QUEUED_FOLLOW_UPS: CodexQueuedFollowUp[] = [];
 const EMPTY_BACKGROUND_TERMINAL_ROWS: CodexBackgroundTerminalRow[] = [];
 const EMPTY_CHILD_MEMBERSHIPS: CodexConversationChildMembership[] = [];
 const EMPTY_STATUS_ACTIVE_FLAGS: CodexConversationSnapshot["statusActiveFlags"] = [];
-const ACTIVE_THREAD_GOAL_CONTINUATION_DELAY_MS = 250;
 const DEFAULT_PERMISSION_STATE: CodexPermissionState = {
   mode: "custom",
   effectivePreset: "custom",
@@ -401,12 +486,6 @@ const DEFAULT_COLLABORATION_MODE_STATE: CodexCollaborationModeState = {
   },
 };
 
-function copyQueuedFollowUpProjection(
-  projection: CodexQueuedFollowUpProjection,
-): CodexQueuedFollowUpProjection {
-  return { ...projection, entries: [...projection.entries] };
-}
-
 function normalizeThreadGoalSetParams(input: ThreadGoalSetParams): ThreadGoalSetParams {
   const params: ThreadGoalSetParams = { threadId: input.threadId };
   if (input.objective !== undefined) params.objective = input.objective;
@@ -437,79 +516,10 @@ interface SetThreadGoalAsOwnerOptions {
   clearResumeConfirmation?: boolean;
 }
 
-function hasPendingSteeringUserMessage(conversation: CodexConversationSnapshot): boolean {
-  if (conversation.pendingSteers.length > 0) return true;
-  return conversation.turns.some((turn) =>
-    turn.items.some((item) => {
-      if (item.steeringStatus === "pending") return true;
-      const rawItem = asRecord(item.rawItem);
-      return rawItem?.type === "steeringUserMessage" && rawItem.status === "pending";
-    }),
-  );
-}
-
-function hasRunningAgentState(value: unknown): boolean {
-  const record = asRecord(value);
-  if (!record) return false;
-  if (record.status === "running") return true;
-
-  const agentStates = asRecord(record.agentsStates);
-  if (agentStates && Object.values(agentStates).some(hasRunningAgentState)) {
-    return true;
-  }
-
-  return hasRunningAgentState(record.action);
-}
-
-function hasRunningCollabAgentWork(conversation: CodexConversationSnapshot): boolean {
-  return conversation.turns.some((turn) =>
-    turn.items.some((item) => {
-      const toolArgs = asRecord(item.toolCall?.args);
-      if (hasRunningAgentState(toolArgs)) return true;
-      const rawItem = asRecord(item.rawItem);
-      if (rawItem?.type !== "collabAgentToolCall" && rawItem?.type !== "collab_agent_tool_call") {
-        return false;
-      }
-      return hasRunningAgentState(rawItem);
-    }),
-  );
-}
-
-function hasInProgressGoalContinuationWork(conversation: CodexConversationSnapshot): boolean {
-  if (conversation.statusType === "active") return true;
-  if (conversation.statusActiveFlags.length > 0) return true;
-  if (conversation.turns.some((turn) => turn.status === "inProgress")) return true;
-  return hasRunningCollabAgentWork(conversation);
-}
-
 function normalizeThreadSettingsModel(value: unknown): string | null {
   if (typeof value !== "string") return null;
   const normalized = value.trim();
   return normalized.length > 0 ? normalized : null;
-}
-
-function createOwnerPendingSteer(
-  threadId: string,
-  turnId: string,
-  prompt: string,
-  steerId = `steer:${threadId}:${Date.now()}:${Math.random().toString(36).slice(2, 8)}`,
-): CodexPendingSteer {
-  const createdAt = Date.now();
-  return {
-    steerId,
-    threadId,
-    turnId,
-    prompt,
-    createdAt,
-  };
-}
-
-function getLatestInProgressTurnId(conversation: CodexConversationSnapshot): string | null {
-  for (let index = conversation.turns.length - 1; index >= 0; index -= 1) {
-    const turn = conversation.turns[index];
-    if (turn?.status === "inProgress") return turn.turnId;
-  }
-  return null;
 }
 
 function resolveCodexDraftRequestSettings(
@@ -560,17 +570,25 @@ const areDictationCapabilitiesEqual = (
   left.semanticCleanup === right.semanticCleanup &&
   left.microphoneOwner === right.microphoneOwner &&
   left.auth === right.auth;
-const COMPLETE_HISTORY_WAIT_TIMEOUT_MS = 30_000;
-
-interface OwnerStreamRevisionResult {
-  streamRevision?: number;
-}
-
-interface OwnerBooleanActionResult extends OwnerStreamRevisionResult {
-  accepted: boolean;
-}
-
 type StoreListener = () => void;
+type ConversationResumeSource = "view" | "executor" | "recovery";
+interface ConversationResumeOptions extends ConversationResumePreparationOptions {
+  showThreadGoalResumeConfirmation?: boolean;
+  timeoutMs?: number;
+  source?: ConversationResumeSource;
+  isReconnectRecovery?: boolean;
+}
+interface QueuedConversationResumeInput {
+  readonly conversationId: string;
+  readonly model: null;
+  readonly serviceTier?: CodexServiceTier;
+  readonly reasoningEffort: null;
+  readonly workspaceRoots: readonly string[];
+  readonly useAppServerPermissionDefault: boolean;
+  readonly collaborationMode:
+    | import("@nodex/codex-app-server-protocol/v2/TurnStartParams").TurnStartParams["collaborationMode"]
+    | null;
+}
 type ConversationListener = (conversation: CodexConversationSnapshot) => void;
 type AnyConversationListener = (conversations: CodexConversationSnapshot[]) => void;
 type ControlListener = () => void;
@@ -594,45 +612,9 @@ interface CodexHostErrorState {
   updatedAt: number;
 }
 
-interface OutputDeltaUpdate extends CodexCommandOutputUpdate {
-  readonly ownerNotificationSequence?: number;
-  readonly ownerNotificationSequences?: readonly number[];
-}
-
-interface OwnerFrameTextDeltaUpdate extends CodexFrameTextDeltaUpdate {
-  readonly ownerNotificationSequence: number;
-}
+type OutputDeltaUpdate = CodexCommandOutputUpdate;
 
 type ConversationNotifyMode = "default" | "sync";
-
-interface OwnerFrameTextDeltaFlushOptions {
-  notifyMode?: ConversationNotifyMode;
-  completedSequencesByConversationId?: ReadonlyMap<string, readonly number[]>;
-}
-
-type OwnerStreamPublishPatches = ReturnType<typeof buildCodexConversationStateUpdates>;
-
-interface OwnerStreamPublishCursor {
-  acceptedCheckpoint: CodexThreadStreamCheckpoint;
-  acceptedDocument: CodexConversationSnapshot;
-  inFlight: boolean;
-  dirty: boolean;
-  standaloneUnreadStateOverride?: boolean;
-}
-
-type OwnerSnapshotPublishOutcome =
-  | {
-      readonly accepted: true;
-      readonly checkpoint: CodexThreadStreamCheckpoint;
-      readonly conversation: CodexConversationSnapshot;
-    }
-  | {
-      readonly accepted: false;
-      readonly reason: Exclude<
-        CodexThreadOwnerStreamStatePublishResult,
-        { accepted: true }
-      >["reason"];
-    };
 
 function applyStandaloneUnreadStateToSnapshot(
   conversation: CodexConversationSnapshot,
@@ -641,8 +623,17 @@ function applyStandaloneUnreadStateToSnapshot(
   return {
     ...conversation,
     hasUnreadTurn,
+    canonicalState: conversation.canonicalState
+      ? { ...conversation.canonicalState, hasUnreadTurn }
+      : conversation.canonicalState,
     ...(!hasUnreadTurn ? { unreadMessageCount: 0 } : {}),
   };
+}
+
+interface OwnerTurnRequestContext {
+  readonly options: NativeRequestOptions;
+  readonly assertCurrent: () => void;
+  readonly confirmDelivery: () => void;
 }
 
 interface OwnerServerRequestReplyResult {
@@ -650,312 +641,12 @@ interface OwnerServerRequestReplyResult {
   readonly streamRevision?: number;
 }
 
-interface OwnerNotificationCompletionState {
-  nextSequenceToAck: number;
-  readonly completedSequences: Set<number>;
-  reservedAckThrough: number | null;
-}
-
-export const CODEX_OWNER_NOTIFICATION_MAX_TRACKED_CONVERSATIONS = 32;
-export const CODEX_OWNER_NOTIFICATION_MAX_PENDING_SEQUENCES_PER_CONVERSATION = 1_024;
-export const CODEX_OWNER_NOTIFICATION_MAX_PENDING_SEQUENCES = 4_096;
-export const CODEX_OWNER_RECOVERY_MAX_CONVERSATIONS = 32;
-export const CODEX_OWNER_RECOVERY_MAX_DEFERRED_MESSAGES_PER_CONVERSATION = 256;
-export const CODEX_OWNER_RECOVERY_MAX_DEFERRED_MESSAGES = 1_024;
-export const CODEX_OWNER_RECOVERY_MAX_DEFERRED_BYTES_PER_CONVERSATION = 4 * 1_024 * 1_024;
-export const CODEX_OWNER_RECOVERY_MAX_DEFERRED_BYTES = 16 * 1_024 * 1_024;
-export const CODEX_OWNER_STREAM_MAX_IDLE_WAITERS_PER_CONVERSATION = 256;
-export const CODEX_OWNER_STREAM_MAX_IDLE_WAITERS = 1_024;
-export const CODEX_OWNER_STREAM_IPC_DEADLINE_MS = 30_000;
-
-interface DeferredOwnerRecoveryMessage {
-  readonly apply: () => void;
-  readonly approximateBytes: number;
-}
-
-interface DeferredOwnerRecoveryQueue {
-  readonly messages: DeferredOwnerRecoveryMessage[];
-  approximateBytes: number;
-}
-
-type OwnerNotificationSequenceInput = number | readonly number[];
-
-interface OwnerStreamPublishIdleWaiter {
-  resolve: () => void;
-  reject: (error: Error) => void;
-}
-
-function runWithOwnerStreamDeadline<T>(operation: Promise<T>, label: string): Promise<T> {
-  return new Promise<T>((resolve, reject) => {
-    const timeout = setTimeout(() => {
-      reject(new Error(`${label} exceeded the owner-stream IPC deadline`));
-    }, CODEX_OWNER_STREAM_IPC_DEADLINE_MS);
-    void operation.then(resolve, reject).finally(() => clearTimeout(timeout));
-  });
-}
-
-function shouldWarnForMissingOutputDeltaTarget(): boolean {
-  const meta = import.meta as ImportMeta & {
-    env?: {
-      MODE?: string;
-      DEV?: boolean;
-    };
-  };
-  return meta.env?.DEV === true || meta.env?.MODE === "development";
-}
-
-function warnMissingOutputDeltaTarget(message: string, update: OutputDeltaUpdate): void {
-  if (!shouldWarnForMissingOutputDeltaTarget()) {
-    return;
-  }
-
-  console.warn("[local-conversation-output-delta]", message, {
-    conversationId: update.conversationId,
-    turnId: update.turnId,
-    itemId: update.itemId,
-    deltaPreview: update.delta.slice(0, 80),
-  });
-}
-
 function mergeOutputDeltaQueueUpdate(
-  existing: OutputDeltaUpdate | undefined,
+  _existing: OutputDeltaUpdate | undefined,
   incoming: OutputDeltaUpdate,
   delta: string,
 ): OutputDeltaUpdate {
-  const incomingSequences =
-    incoming.ownerNotificationSequences ??
-    (typeof incoming.ownerNotificationSequence === "number"
-      ? [incoming.ownerNotificationSequence]
-      : []);
-  const ownerNotificationSequences = [
-    ...(existing?.ownerNotificationSequences ?? []),
-    ...incomingSequences,
-  ];
-  const ownerNotificationSequence =
-    Math.max(existing?.ownerNotificationSequence ?? 0, incoming.ownerNotificationSequence ?? 0) ||
-    undefined;
-  return {
-    ...incoming,
-    delta,
-    ...(ownerNotificationSequence === undefined ? {} : { ownerNotificationSequence }),
-    ...(ownerNotificationSequences.length === 0 ? {} : { ownerNotificationSequences }),
-  };
-}
-
-interface RendererOwnerAppServerRequestClient {
-  sendRequest<TResult>(
-    conversationId: string,
-    request: CodexOwnerAppServerRequestInput["request"],
-  ): Promise<TResult>;
-  revertThreadForEdit(
-    conversationId: string,
-    params: { threadId: string; beforeTurnId: string },
-  ): Promise<CodexThreadHistoryEditResult>;
-  forkConversationFromTurn(
-    conversationId: string,
-    params: { threadId: string; turnId: string; message: string },
-  ): Promise<CodexThreadActionResult>;
-  startTurn(
-    conversationId: string,
-    params: {
-      presentationTicket?: CodexTurnPresentationTicket;
-      threadId: string;
-      prompt: string;
-      opts?: CodexTurnStartOptions;
-      clientUserMessageId: string;
-      preparedPrompt: CodexPreparedPrompt;
-    },
-  ): Promise<TurnStartResponse | unknown>;
-  resumeInterruptedTurn(
-    conversationId: string,
-    params: {
-      presentationTicket?: CodexTurnPresentationTicket;
-      threadId: string;
-      opts?: CodexTurnStartOptions;
-      clientUserMessageId: string;
-    },
-  ): Promise<TurnStartResponse | unknown>;
-  startSessionFirstTurn(
-    conversationId: string,
-    params: {
-      threadId: string;
-      launchId: string;
-    },
-  ): Promise<TurnStartResponse | unknown>;
-  interruptTurn(
-    conversationId: string,
-    params: { threadId: string; turnId?: string },
-  ): Promise<boolean>;
-  updateThreadSettings(
-    conversationId: string,
-    params: { threadId: string; patch: CodexConversationThreadSettingsPatch },
-  ): Promise<CodexConversationThreadSettings>;
-  setThreadGoal(conversationId: string, params: ThreadGoalSetParams): Promise<ThreadGoal | null>;
-  clearThreadGoal(conversationId: string, params: { threadId: string }): Promise<void>;
-  setThreadMemoryMode(
-    conversationId: string,
-    params: { threadId: string; mode: ThreadMemoryMode },
-  ): Promise<void>;
-  compactThread(conversationId: string, params: { threadId: string }): Promise<void>;
-  listBackgroundTerminals(
-    conversationId: string,
-    params: { threadId: string; cursor?: string | null; limit?: number | null },
-  ): Promise<ThreadBackgroundTerminalsListResponse>;
-  terminateBackgroundTerminal(
-    conversationId: string,
-    params: { threadId: string; processId: string },
-  ): Promise<ThreadBackgroundTerminalsTerminateResponse>;
-}
-
-class IpcRendererOwnerAppServerRequestClient implements RendererOwnerAppServerRequestClient {
-  async sendRequest<TResult>(
-    conversationId: string,
-    request: CodexOwnerAppServerRequestInput["request"],
-  ): Promise<TResult> {
-    return (await runConversationOperation("codex:thread-owner:app-server-request", {
-      conversationId,
-      request,
-    } satisfies CodexOwnerAppServerRequestInput)) as TResult;
-  }
-
-  async revertThreadForEdit(
-    conversationId: string,
-    params: { threadId: string; beforeTurnId: string },
-  ): Promise<CodexThreadHistoryEditResult> {
-    return await this.sendRequest(conversationId, {
-      method: "thread/revert",
-      params,
-    });
-  }
-
-  async forkConversationFromTurn(
-    conversationId: string,
-    params: { threadId: string; turnId: string; message: string },
-  ): Promise<CodexThreadActionResult> {
-    return await this.sendRequest(conversationId, {
-      method: "thread/fork",
-      params,
-    });
-  }
-
-  async startTurn(
-    conversationId: string,
-    params: {
-      presentationTicket?: CodexTurnPresentationTicket;
-      threadId: string;
-      prompt: string;
-      opts?: CodexTurnStartOptions;
-      clientUserMessageId: string;
-      preparedPrompt: CodexPreparedPrompt;
-    },
-  ): Promise<TurnStartResponse | unknown> {
-    return await this.sendRequest(conversationId, {
-      method: "turn/start",
-      params,
-    });
-  }
-
-  async resumeInterruptedTurn(
-    conversationId: string,
-    params: {
-      presentationTicket?: CodexTurnPresentationTicket;
-      threadId: string;
-      opts?: CodexTurnStartOptions;
-      clientUserMessageId: string;
-    },
-  ): Promise<TurnStartResponse | unknown> {
-    return await this.sendRequest(conversationId, {
-      method: "turn/resume-interrupted",
-      params,
-    });
-  }
-
-  async startSessionFirstTurn(
-    conversationId: string,
-    params: {
-      threadId: string;
-      launchId: string;
-    },
-  ): Promise<TurnStartResponse | unknown> {
-    return await this.sendRequest(conversationId, {
-      method: "thread/session-first-turn/start",
-      params,
-    });
-  }
-
-  async interruptTurn(
-    conversationId: string,
-    params: { threadId: string; turnId?: string },
-  ): Promise<boolean> {
-    return await this.sendRequest(conversationId, {
-      method: "turn/interrupt",
-      params,
-    });
-  }
-
-  async updateThreadSettings(
-    conversationId: string,
-    params: { threadId: string; patch: CodexConversationThreadSettingsPatch },
-  ): Promise<CodexConversationThreadSettings> {
-    return await this.sendRequest(conversationId, {
-      method: "thread/settings/update",
-      params,
-    });
-  }
-
-  async setThreadGoal(
-    conversationId: string,
-    params: ThreadGoalSetParams,
-  ): Promise<ThreadGoal | null> {
-    return await this.sendRequest(conversationId, {
-      method: "thread/goal/set",
-      params,
-    });
-  }
-
-  async clearThreadGoal(conversationId: string, params: { threadId: string }): Promise<void> {
-    await this.sendRequest(conversationId, {
-      method: "thread/goal/clear",
-      params,
-    });
-  }
-
-  async setThreadMemoryMode(
-    conversationId: string,
-    params: { threadId: string; mode: ThreadMemoryMode },
-  ): Promise<void> {
-    await this.sendRequest(conversationId, {
-      method: "thread/memoryMode/set",
-      params,
-    });
-  }
-
-  async compactThread(conversationId: string, params: { threadId: string }): Promise<void> {
-    await this.sendRequest(conversationId, {
-      method: "thread/compact/start",
-      params,
-    });
-  }
-
-  async listBackgroundTerminals(
-    conversationId: string,
-    params: { threadId: string; cursor?: string | null; limit?: number | null },
-  ): Promise<ThreadBackgroundTerminalsListResponse> {
-    return await this.sendRequest(conversationId, {
-      method: "thread/backgroundTerminals/list",
-      params,
-    });
-  }
-
-  async terminateBackgroundTerminal(
-    conversationId: string,
-    params: { threadId: string; processId: string },
-  ): Promise<ThreadBackgroundTerminalsTerminateResponse> {
-    return await this.sendRequest(conversationId, {
-      method: "thread/backgroundTerminals/terminate",
-      params,
-    });
-  }
+  return { ...incoming, delta };
 }
 
 function sortThreadSummaries(threads: CodexThreadSummary[]): CodexThreadSummary[] {
@@ -1376,7 +1067,7 @@ function normalizeConversationSnapshot(
   const nextStatusActiveFlags = Array.isArray(conversation.statusActiveFlags)
     ? conversation.statusActiveFlags
     : [];
-  const nextThreadName = typeof conversation.threadName === "string" ? conversation.threadName : "";
+  const nextThreadName = projectCodexMarkdownLabel(conversation.threadName) ?? "";
   const nextThreadPreview =
     typeof conversation.threadPreview === "string" ? conversation.threadPreview : "";
   const nextCreatedAt = Number.isFinite(conversation.createdAt) ? conversation.createdAt : 0;
@@ -1452,341 +1143,14 @@ function normalizeConversationSnapshot(
   };
 }
 
-function applyOwnerBackgroundTerminalCleanupToConversation(
-  conversation: CodexConversationSnapshot,
-): CodexConversationSnapshot | null {
-  const canonicalBefore = conversation.canonicalState;
-  if (!canonicalBefore) return null;
-  const canonicalState = reduceCodexBackgroundTerminalCleanup(canonicalBefore);
-  const nextTurns = conversation.turns.map((turn) => {
-    const canonicalTurn = canonicalState.turns.find(
-      (candidate) => candidate.protocol.id === turn.turnId,
-    );
-    const interrupted = canonicalTurn?.sidecar.interruptedCommandExecutionItemIds;
-    if (interrupted === undefined) return turn;
-    return {
-      ...turn,
-      interruptedCommandExecutionItemIds: [...interrupted],
-    };
-  });
-
-  const hadBackgroundRows = conversation.backgroundTerminalRows.length > 0;
-  const didChangeTurns = nextTurns.some((turn, index) => turn !== conversation.turns[index]);
-  if (!didChangeTurns && !hadBackgroundRows) {
-    return null;
-  }
-
-  return {
-    ...conversation,
-    canonicalState,
-    turns: nextTurns,
-    backgroundTerminalRows: hadBackgroundRows ? [] : conversation.backgroundTerminalRows,
-  };
-}
-
 function asRecord(value: unknown): Record<string, unknown> | null {
   if (typeof value !== "object" || value === null) return null;
   return value as Record<string, unknown>;
 }
 
-function isNonNegativeInteger(value: unknown): value is number {
-  return typeof value === "number" && Number.isSafeInteger(value) && value >= 0;
-}
-
-function isCodexQueueOwnerUpdateRequest(value: unknown): value is CodexQueueOwnerUpdateRequest {
-  const input = asRecord(value);
-  const projection = asRecord(input?.projection);
-  const transcript = asRecord(input?.transcript);
-  if (!input || !projection || !transcript) return false;
-  if (typeof input.threadId !== "string" || !input.threadId.trim()) return false;
-  if (
-    !isNonNegativeInteger(input.threadGeneration) ||
-    !isNonNegativeInteger(input.ownerEpoch) ||
-    !isNonNegativeInteger(input.projectionRevision)
-  ) {
-    return false;
-  }
-  if (
-    projection.status !== "loading" &&
-    projection.status !== "ready" &&
-    projection.status !== "error"
-  ) {
-    return false;
-  }
-  if (
-    !isNonNegativeInteger(projection.ledgerRevision) ||
-    projection.projectionRevision !== input.projectionRevision ||
-    !Array.isArray(projection.entries) ||
-    !projection.entries.every(
-      (entry) =>
-        typeof entry === "object" &&
-        entry !== null &&
-        (entry as { threadId?: unknown }).threadId === input.threadId &&
-        typeof (entry as { followUpId?: unknown }).followUpId === "string",
-    ) ||
-    (projection.inFlightFollowUpId !== null && typeof projection.inFlightFollowUpId !== "string") ||
-    (projection.editingFollowUpId !== null && typeof projection.editingFollowUpId !== "string") ||
-    (projection.error !== null && typeof projection.error !== "string")
-  ) {
-    return false;
-  }
-
-  switch (transcript.kind) {
-    case "none":
-      return true;
-    case "stageSteer":
-      return (
-        isNonNegativeInteger(transcript.observedAtMs) &&
-        typeof transcript.item === "object" &&
-        transcript.item !== null &&
-        (transcript.item as { type?: unknown }).type === "steeringUserMessage"
-      );
-    case "retargetSteer":
-      return (
-        typeof transcript.clientUserMessageId === "string" &&
-        Boolean(transcript.clientUserMessageId.trim()) &&
-        typeof transcript.targetTurnId === "string" &&
-        Boolean(transcript.targetTurnId.trim())
-      );
-    case "rejectSteer":
-      return (
-        typeof transcript.clientUserMessageId === "string" &&
-        Boolean(transcript.clientUserMessageId.trim())
-      );
-    default:
-      return false;
-  }
-}
-
-function findPendingCanonicalSteer(
-  state: CodexCanonicalConversationState,
-  clientUserMessageId: string,
-): { readonly turnId: string; readonly item: CodexCanonicalSteeringUserMessageItem } | null {
-  for (const turn of state.turns) {
-    const turnId = turn.protocol.id;
-    if (!turnId) continue;
-    const item = turn.items.find(
-      (candidate): candidate is CodexCanonicalSteeringUserMessageItem =>
-        candidate.type === "steeringUserMessage" &&
-        candidate.status === "pending" &&
-        candidate.clientUserMessageId === clientUserMessageId,
-    );
-    if (item) return { turnId, item };
-  }
-  return null;
-}
-
-function applyQueueOwnerTranscriptDirective(
-  conversation: CodexConversationSnapshot,
-  directive: CodexQueueOwnerTranscriptDirective,
-): Pick<CodexConversationSnapshot, "canonicalState" | "pendingSteers"> | null {
-  if (directive.kind === "none") {
-    return {
-      canonicalState: conversation.canonicalState ?? null,
-      pendingSteers: conversation.pendingSteers,
-    };
-  }
-
-  const canonical = conversation.canonicalState;
-  if (!canonical) return null;
-
-  if (directive.kind === "stageSteer") {
-    const targetTurnId = directive.item.targetTurnId;
-    if (!targetTurnId) return null;
-    const restore = asRecord(directive.item.restoreMessage);
-    const queueRow = asRecord(restore?.queueRow);
-    const pendingSteer: CodexPendingSteer = {
-      steerId: directive.item.id,
-      threadId: conversation.threadId,
-      turnId: targetTurnId,
-      prompt: typeof queueRow?.prompt === "string" ? queueRow.prompt : "",
-      createdAt: directive.observedAtMs,
-    };
-    return {
-      canonicalState: upsertCodexCanonicalSteeringItem(canonical, targetTurnId, directive.item),
-      pendingSteers: [
-        ...conversation.pendingSteers.filter((entry) => entry.steerId !== pendingSteer.steerId),
-        pendingSteer,
-      ],
-    };
-  }
-
-  const pending = findPendingCanonicalSteer(canonical, directive.clientUserMessageId);
-  if (!pending) {
-    return { canonicalState: canonical, pendingSteers: conversation.pendingSteers };
-  }
-
-  if (directive.kind === "retargetSteer") {
-    return {
-      canonicalState: retargetCodexCanonicalSteeringItem(
-        canonical,
-        pending.turnId,
-        directive.targetTurnId,
-        pending.item.id,
-      ),
-      pendingSteers: conversation.pendingSteers.map((entry) =>
-        entry.steerId === pending.item.id ? { ...entry, turnId: directive.targetTurnId } : entry,
-      ),
-    };
-  }
-
-  return {
-    canonicalState: removeCodexCanonicalSteeringItem(canonical, pending.turnId, pending.item.id),
-    pendingSteers: conversation.pendingSteers.filter((entry) => entry.steerId !== pending.item.id),
-  };
-}
-
-function isProseRecord(record: Record<string, unknown>): boolean {
-  return (
-    record.role === "assistant" ||
-    record.kind === "assistantMessage" ||
-    record.kind === "plan" ||
-    record.kind === "reasoning" ||
-    record.semanticKind === "assistantMessage" ||
-    record.semanticKind === "proposedPlan" ||
-    record.semanticKind === "reasoning"
-  );
-}
-
-function isInProgressProsePatchValue(value: unknown): boolean {
-  const record = asRecord(value);
-  return Boolean(
-    record &&
-    record.status === "inProgress" &&
-    typeof record.markdownText === "string" &&
-    isProseRecord(record),
-  );
-}
-
-function patchValueContainsInProgressProse(value: unknown): boolean {
-  if (isInProgressProsePatchValue(value)) return true;
-  if (!Array.isArray(value)) return false;
-
-  return value.some((entry) => patchValueContainsInProgressProse(entry));
-}
-
-function conversationHasInProgressProseItem(conversation: CodexConversationSnapshot): boolean {
-  for (const turn of conversation.turns) {
-    for (const item of turn.items) {
-      if (
-        item.status === "inProgress" &&
-        typeof item.markdownText === "string" &&
-        isProseRecord(item as unknown as Record<string, unknown>)
-      ) {
-        return true;
-      }
-    }
-  }
-
-  return false;
-}
-
-function shouldSynchronouslyNotifyStreamingProsePatch(
-  nextConversation: CodexConversationSnapshot,
-  patches: OwnerStreamPublishPatches,
-): boolean {
-  for (const patch of patches) {
-    if (
-      patch.path.includes("markdownText") &&
-      conversationHasInProgressProseItem(nextConversation)
-    ) {
-      return true;
-    }
-
-    if (patch.op !== "remove" && patchValueContainsInProgressProse(patch.value)) {
-      return true;
-    }
-  }
-
-  return false;
-}
-
 function getString(candidate: Record<string, unknown>, key: string): string | null {
   const value = candidate[key];
   return typeof value === "string" ? value : null;
-}
-
-function getOwnerTurnId(turn: CodexConversationTurn): string | null {
-  const value = (turn as { turnId?: unknown }).turnId;
-  return typeof value === "string" && value.length > 0 ? value : null;
-}
-
-function replaceOwnerTurnAt(
-  conversation: CodexConversationSnapshot,
-  turnIndex: number,
-  turn: CodexConversationTurn,
-): CodexConversationSnapshot {
-  const turns = [...conversation.turns];
-  turns[turnIndex] = turn;
-  return {
-    ...conversation,
-    turns,
-  };
-}
-
-function insertOwnerTurnAt(
-  conversation: CodexConversationSnapshot,
-  turnIndex: number,
-  turn: CodexConversationTurn,
-): {
-  conversation: CodexConversationSnapshot;
-  turnIndex: number;
-} {
-  const turns = [...conversation.turns];
-  const insertionIndex = Math.min(turnIndex, turns.length);
-  turns.splice(insertionIndex, 0, turn);
-  return {
-    conversation: { ...conversation, turns },
-    turnIndex: insertionIndex,
-  };
-}
-
-function findOwnerTurnItemByItemId(
-  conversation: CodexConversationSnapshot,
-  itemId: string,
-): {
-  turnIndex: number;
-  itemIndex: number;
-  turn: CodexConversationTurn;
-  item: CodexConversationItem;
-} | null {
-  for (let turnIndex = conversation.turns.length - 1; turnIndex >= 0; turnIndex -= 1) {
-    const turn = conversation.turns[turnIndex];
-    if (!turn) continue;
-
-    const itemIndex = turn.items.findIndex((candidate) => candidate.itemId === itemId);
-    const item = itemIndex >= 0 ? turn.items[itemIndex] : null;
-    if (item) {
-      return {
-        turnIndex,
-        itemIndex,
-        turn,
-        item,
-      };
-    }
-  }
-
-  return null;
-}
-
-function readOwnerStreamingDebugItemState(
-  conversation: CodexConversationSnapshot,
-  itemId: string,
-): Record<string, unknown> {
-  const target = findOwnerTurnItemByItemId(conversation, itemId);
-  if (!target) {
-    return { found: false };
-  }
-
-  return {
-    found: true,
-    turnId: target.turn.turnId ?? null,
-    turnStatus: target.turn.status,
-    itemStatus: target.item.status ?? null,
-    itemKind: target.item.kind,
-    itemSemanticKind: target.item.semanticKind ?? null,
-    markdownLength: target.item.markdownText?.length ?? 0,
-  };
 }
 
 function buildRecentConversationOrderKey(
@@ -1800,305 +1164,11 @@ function buildRecentConversationOrderKey(
     .join("|");
 }
 
-interface OwnerItemLifecyclePayload {
-  threadId: string;
-  turnId: string | null;
-  item: ThreadItem;
-  observedAtMs: number;
-  notification: CodexItemLifecycleNotification;
-}
-
-function toOwnerItemLifecyclePayload(
-  notification: CodexItemLifecycleNotification,
-): OwnerItemLifecyclePayload {
-  const { threadId, turnId, item } = notification.params;
-  const observedAtMs =
-    notification.method === "item/started"
-      ? notification.params.startedAtMs
-      : notification.params.completedAtMs;
-
-  return {
-    threadId,
-    turnId,
-    item,
-    observedAtMs,
-    notification,
-  };
-}
-
 function projectConversationItemToIdentityView(item: CodexConversationItem): CodexItemView {
   return {
     ...item,
     normalizedKind: item.kind,
   } as CodexItemView;
-}
-
-interface OwnerCanonicalLifecycleHiddenTurn {
-  readonly sourceTurnKey: string;
-  readonly targetTurnKey: string;
-  readonly itemTypes: ReadonlyMap<string, string>;
-}
-
-interface OwnerCanonicalLifecycleProjectionResult {
-  readonly conversation: CodexConversationSnapshot;
-  readonly hiddenTurns: readonly OwnerCanonicalLifecycleHiddenTurn[];
-}
-
-interface OwnerCanonicalProjectionOptions {
-  readonly observedAtMs: number;
-  readonly lifecycleStatus?: CodexItemStatus;
-  readonly preserveExistingUpdatedAt?: boolean;
-}
-
-function applyOwnerCanonicalTurnProjection(
-  conversation: CodexConversationSnapshot,
-  before: CodexCanonicalConversationState,
-  after: CodexCanonicalConversationState,
-  options: OwnerCanonicalProjectionOptions,
-): OwnerCanonicalLifecycleProjectionResult {
-  let nextConversation = conversation;
-  let didProjectChange = false;
-  const hiddenTurns: OwnerCanonicalLifecycleHiddenTurn[] = [];
-
-  for (const [turnIndex, afterTurn] of after.turns.entries()) {
-    const beforeTurn = before.turns[turnIndex] ?? null;
-    if (afterTurn === beforeTurn) continue;
-
-    const targetTurnId = afterTurn.protocol.id;
-    const sourceTurnId = beforeTurn ? beforeTurn.protocol.id : targetTurnId;
-    const sourceTurnKey = buildCodexTurnOccurrenceKey(
-      sourceTurnId,
-      turnIndex,
-      beforeTurn?.sidecar.entityKey,
-    );
-    const targetTurnKey = buildCodexTurnOccurrenceKey(
-      targetTurnId,
-      turnIndex,
-      afterTurn.sidecar.entityKey,
-    );
-    const indexedOwnerTurn = nextConversation.turns[turnIndex];
-    let ownerTurnIndex = indexedOwnerTurn ? turnIndex : -1;
-    if (ownerTurnIndex < 0) {
-      const boundIds = new Set(
-        [targetTurnId, sourceTurnId].filter((turnId): turnId is string => turnId !== null),
-      );
-      const boundEntityKeys = new Set(
-        [afterTurn.sidecar.entityKey, beforeTurn?.sidecar.entityKey].filter(
-          (entityKey): entityKey is string => entityKey !== undefined,
-        ),
-      );
-      if (boundIds.size > 0 || boundEntityKeys.size > 0) {
-        ownerTurnIndex = nextConversation.turns.findIndex((turn) => {
-          const turnId = getOwnerTurnId(turn);
-          return (
-            (turn.entityKey !== undefined && boundEntityKeys.has(turn.entityKey)) ||
-            (turnId !== null && boundIds.has(turnId))
-          );
-        });
-      }
-      if (ownerTurnIndex < 0) {
-        const inserted = insertOwnerTurnAt(
-          nextConversation,
-          turnIndex,
-          buildOwnerCanonicalTurnPlaceholder(conversation.threadId, afterTurn),
-        );
-        nextConversation = inserted.conversation;
-        ownerTurnIndex = inserted.turnIndex;
-      }
-    }
-
-    const currentTurn = nextConversation.turns[ownerTurnIndex];
-    if (!currentTurn) continue;
-    const currentViews = currentTurn.items.map(projectConversationItemToIdentityView);
-    const projection = applyCodexLifecycleProjectionDiff({
-      threadId: conversation.threadId,
-      turnKey: targetTurnKey,
-      beforeTurn,
-      afterTurn,
-      currentViews,
-      currentTranscript: currentTurn.items,
-      observedAtMs: options.observedAtMs,
-      lifecycleStatus: options.lifecycleStatus,
-      isBackgroundSubagentsEnabled: true,
-      preserveExistingUpdatedAt: options.preserveExistingUpdatedAt,
-    });
-    const lifecycleStatusChangedItemIds = collectCodexLifecycleStatusChangedItemIds(
-      beforeTurn,
-      afterTurn,
-    );
-    const canonicalItemsUnchanged = Boolean(
-      beforeTurn &&
-      beforeTurn.items.length === afterTurn.items.length &&
-      beforeTurn.items.every((item, index) => item === afterTurn.items[index]),
-    );
-    const didItemProjectionChange =
-      sourceTurnId !== targetTurnId ||
-      beforeTurn === null ||
-      !canonicalItemsUnchanged ||
-      beforeTurn.protocol.status !== afterTurn.protocol.status ||
-      !areCodexCanonicalTurnParamsEqual(beforeTurn.sidecar.params, afterTurn.sidecar.params) ||
-      isCodexCanonicalTurnPromptBlocked(beforeTurn) !==
-        isCodexCanonicalTurnPromptBlocked(afterTurn) ||
-      lifecycleStatusChangedItemIds.size > 0 ||
-      beforeTurn.sidecar.commandExecutionStartedAtMsById !==
-        afterTurn.sidecar.commandExecutionStartedAtMsById ||
-      beforeTurn.sidecar.interruptedCommandExecutionItemIds !==
-        afterTurn.sidecar.interruptedCommandExecutionItemIds;
-    const didTurnProjectionChange =
-      didItemProjectionChange ||
-      sourceTurnId !== targetTurnId ||
-      beforeTurn === null ||
-      beforeTurn.protocol.status !== afterTurn.protocol.status ||
-      beforeTurn.protocol.error !== afterTurn.protocol.error ||
-      beforeTurn.protocol.durationMs !== afterTurn.protocol.durationMs ||
-      !areCodexCanonicalTurnParamsEqual(beforeTurn.sidecar.params, afterTurn.sidecar.params) ||
-      beforeTurn.sidecar.turnStartedAtMs !== afterTurn.sidecar.turnStartedAtMs ||
-      beforeTurn.sidecar.completedAtMs !== afterTurn.sidecar.completedAtMs ||
-      beforeTurn.sidecar.firstTurnWorkItemStartedAtMs !==
-        afterTurn.sidecar.firstTurnWorkItemStartedAtMs ||
-      beforeTurn.sidecar.finalAssistantStartedAtMs !==
-        afterTurn.sidecar.finalAssistantStartedAtMs ||
-      beforeTurn.sidecar.commandExecutionStartedAtMsById !==
-        afterTurn.sidecar.commandExecutionStartedAtMsById ||
-      beforeTurn.sidecar.interruptedCommandExecutionItemIds !==
-        afterTurn.sidecar.interruptedCommandExecutionItemIds ||
-      beforeTurn.sidecar.hookRuns !== afterTurn.sidecar.hookRuns ||
-      beforeTurn.sidecar.diff !== afterTurn.sidecar.diff ||
-      beforeTurn.sidecar.safetyBuffering !== afterTurn.sidecar.safetyBuffering;
-    if (!didTurnProjectionChange) continue;
-    didProjectChange = true;
-    const visibleOwnerIds = new Set(
-      projection.views.flatMap((view) => (view.rawItemId ? [view.rawItemId] : [])),
-    );
-    const hiddenItemTypes = new Map<string, string>();
-    for (const item of afterTurn.items) {
-      if (visibleOwnerIds.has(item.id)) continue;
-      hiddenItemTypes.set(item.id, item.type);
-    }
-    hiddenTurns.push({ sourceTurnKey, targetTurnKey, itemTypes: hiddenItemTypes });
-
-    const projectedTurnItems = didItemProjectionChange
-      ? projection.transcript.map((entry) => {
-          const item = entry as CodexConversationItem;
-          if (!item.mcpToolCall) return item;
-          const mcpToolCall = completeCodexMcpToolCallForTurn(
-            item.mcpToolCall,
-            afterTurn.protocol.status,
-          );
-          return mcpToolCall === item.mcpToolCall ? item : { ...item, mcpToolCall };
-        })
-      : currentTurn.items;
-    const nextTurn: CodexConversationTurn = {
-      ...currentTurn,
-      turnId: targetTurnId,
-      ...(afterTurn.sidecar.entityKey === undefined
-        ? {}
-        : { entityKey: afterTurn.sidecar.entityKey }),
-      status: afterTurn.protocol.status,
-      errorMessage: afterTurn.protocol.error?.message ?? undefined,
-      diff: afterTurn.sidecar.diff ?? undefined,
-      durationMs: afterTurn.protocol.durationMs,
-      itemIds:
-        targetTurnId === null
-          ? [...new Set(projection.transcript.map((entry) => entry.itemId))]
-          : [...projection.itemIds],
-      turnStartedAtMs: afterTurn.sidecar.turnStartedAtMs,
-      firstTurnWorkItemStartedAtMs: afterTurn.sidecar.firstTurnWorkItemStartedAtMs,
-      finalAssistantStartedAtMs: afterTurn.sidecar.finalAssistantStartedAtMs,
-      startedAt: afterTurn.sidecar.turnStartedAtMs,
-      completedAt: afterTurn.sidecar.completedAtMs ?? null,
-      commandExecutionStartedAtMsById:
-        afterTurn.sidecar.commandExecutionStartedAtMsById === undefined
-          ? undefined
-          : { ...afterTurn.sidecar.commandExecutionStartedAtMsById },
-      interruptedCommandExecutionItemIds:
-        afterTurn.sidecar.interruptedCommandExecutionItemIds === undefined
-          ? undefined
-          : [...afterTurn.sidecar.interruptedCommandExecutionItemIds],
-      hookRuns:
-        afterTurn.sidecar.hookRuns === undefined ? undefined : [...afterTurn.sidecar.hookRuns],
-      safetyBuffering:
-        afterTurn.sidecar.safetyBuffering === undefined
-          ? undefined
-          : {
-              ...afterTurn.sidecar.safetyBuffering,
-              useCases: [...afterTurn.sidecar.safetyBuffering.useCases],
-              reasons: [...afterTurn.sidecar.safetyBuffering.reasons],
-            },
-      items: projectedTurnItems,
-    };
-    nextConversation = replaceOwnerTurnAt(nextConversation, ownerTurnIndex, nextTurn);
-  }
-
-  return {
-    conversation: didProjectChange
-      ? {
-          ...nextConversation,
-          updatedAt:
-            options.preserveExistingUpdatedAt !== true
-              ? Math.max(nextConversation.updatedAt, options.observedAtMs)
-              : nextConversation.updatedAt,
-        }
-      : nextConversation,
-    hiddenTurns,
-  };
-}
-
-function projectOwnerCanonicalTurnMetadataResult(
-  conversation: CodexConversationSnapshot,
-  before: CodexCanonicalConversationState,
-  result: CodexTurnMetadataResult,
-  observedAtMs: number,
-): CodexConversationSnapshot {
-  if (result.state === before) return conversation;
-  const projection = applyOwnerCanonicalTurnProjection(conversation, before, result.state, {
-    observedAtMs,
-    preserveExistingUpdatedAt: true,
-  });
-  const touchedAtMs = result.effects.find(
-    (effect) => effect.type === "touchConversationUpdatedAt",
-  )?.observedAtMs;
-  return {
-    ...projection.conversation,
-    canonicalState: result.state,
-    updatedAt:
-      touchedAtMs === undefined
-        ? projection.conversation.updatedAt
-        : Math.max(projection.conversation.updatedAt, touchedAtMs),
-  };
-}
-
-function resolveAcceptedConversationReplica(input: {
-  conversation: CodexConversationSnapshot;
-  revision: number;
-  checkpoint: CodexThreadStreamCheckpoint;
-  context: string;
-}): CodexConversationSnapshot {
-  if (input.checkpoint.revision !== input.revision) {
-    throw new Error(
-      `${input.context} revision ${input.revision} does not match checkpoint revision ${input.checkpoint.revision}`,
-    );
-  }
-
-  return toSharedConversationDocument(input.conversation);
-}
-
-type OwnerTurnLifecycleMethod = "turn/started" | "turn/completed";
-type OwnerTurnLifecycleNotification = Extract<
-  CodexThreadOwnerNotificationEvent["notification"],
-  { method: OwnerTurnLifecycleMethod }
->;
-
-interface OwnerTurnLifecyclePayload {
-  threadId: string;
-  turnId: string;
-  status: CodexTurnStatus;
-  errorMessage?: string;
-  startedAt?: number | null;
-  completedAt?: number | null;
-  turnStartedAtMs?: number | null;
-  durationMs?: number | null;
-  observedAtMs: number;
 }
 
 function normalizeOwnerTurnStatus(value: unknown, fallback: CodexTurnStatus): CodexTurnStatus {
@@ -2116,7 +1186,7 @@ function normalizeOwnerTurnStatus(value: unknown, fallback: CodexTurnStatus): Co
 
 function normalizeOwnerTimestamp(value: unknown): number | null {
   if (typeof value !== "number" || !Number.isFinite(value)) return null;
-  if (value > 0 && value < 10_000_000_000) return value * 1000;
+  if (value > 0 && value < 10000000000) return value * 1000;
   return value;
 }
 
@@ -2125,14 +1195,6 @@ function parseOwnerTurnErrorMessage(value: unknown): string | undefined {
   if (!candidate) return undefined;
   const message = getString(candidate, "message");
   return message ?? undefined;
-}
-
-function buildOwnerTextUserInput(text: string): UserInput {
-  return {
-    type: "text",
-    text,
-    text_elements: [],
-  };
 }
 
 function isLikelyLocalImageSource(source: string): boolean {
@@ -2167,134 +1229,57 @@ async function resolveOwnerPromptImageInput(source: string): Promise<UserInput> 
   throw new Error(`Unsupported image source: ${normalizedSource}`);
 }
 
-function buildOwnerPromptInputFromUserInputItems(
-  items: readonly UserInput[],
-  fallbackText: string,
-): CodexPromptInput {
-  const promptInput: CodexPromptInput = { text: fallbackText };
-  const textAttachments: CodexPromptInput["textAttachments"] = [];
-  const images: CodexPromptInput["images"] = [];
-  const mentions: CodexPromptInput["mentions"] = [];
-  const skills: CodexPromptInput["skills"] = [];
-  let didUsePrimaryText = false;
+async function compileServerQueuedMessageInput(
+  message: CodexQueuedMessage,
+  previous: import("@nodex/codex-app-server-protocol/v2").QueuedSubmission | undefined,
+  preserveGeneratedText: boolean,
+): Promise<UserInput[]> {
+  const prepared = await prepareCodexPrompt(
+    message.context.prompt,
+    queuedMessagePromptInput(message),
+    { resolveImageInput: resolveOwnerPromptImageInput },
+  );
+  const appInput = prepareUntrustedAppInput(
+    prepared.promptText,
+    message.context,
+    `untrusted_input_${message.id}`,
+  );
+  const input = [appInput.input, ...prepared.inputItems.slice(1)];
+  if (!previous) return input;
 
-  for (const item of items) {
-    if (item.type === "text") {
-      const text = item.text.trim();
-      if (!text) continue;
-      if (!didUsePrimaryText) {
-        promptInput.text = text;
-        didUsePrimaryText = true;
-      } else {
-        textAttachments.push({ text });
+  const previousAttachments = extractCodexCanonicalHydratedAttachments(previous.input);
+  return [
+    ...input.map((entry) => {
+      if (entry.type === "text" && preserveGeneratedText) {
+        const previousText = previous.input.find((candidate) => candidate.type === "text");
+        if (previousText?.type === "text") {
+          return { ...entry, text: preserveGeneratedQueueText(previousText.text, entry.text) };
+        }
       }
-      continue;
-    }
-
-    if (item.type === "image") {
-      images.push({ source: item.url });
-      continue;
-    }
-
-    if (item.type === "localImage") {
-      images.push({ source: item.path });
-      continue;
-    }
-
-    if (item.type === "mention") {
-      mentions.push({ name: item.name, path: item.path });
-      continue;
-    }
-
-    if (item.type === "skill") {
-      skills.push({ name: item.name, path: item.path });
-    }
-  }
-
-  if (!didUsePrimaryText) {
-    promptInput.text = fallbackText;
-  }
-  if (textAttachments.length > 0) promptInput.textAttachments = textAttachments;
-  if (images.length > 0) promptInput.images = images;
-  if (mentions.length > 0) promptInput.mentions = mentions;
-  if (skills.length > 0) promptInput.skills = skills;
-  return promptInput;
-}
-
-function readOwnerUserInputItemsFromItem(item: CodexConversationItem): UserInput[] {
-  const rawItem = asRecord(item.rawItem);
-  const content = Array.isArray(rawItem?.content) ? rawItem.content : [];
-  const items: UserInput[] = [];
-
-  for (const entry of content) {
-    const input = asRecord(entry);
-    if (!input) continue;
-    const type = typeof input?.type === "string" ? input.type : "";
-    if (type === "text") {
-      const text = typeof input.text === "string" ? input.text : "";
-      items.push(buildOwnerTextUserInput(text));
-      continue;
-    }
-    if (type === "image") {
-      const url =
-        typeof input.url === "string"
-          ? input.url
-          : typeof input.source === "string"
-            ? input.source
-            : "";
-      if (url) items.push({ type: "image", url });
-      continue;
-    }
-    if (type === "localImage") {
-      const path =
-        typeof input.path === "string"
-          ? input.path
-          : typeof input.source === "string"
-            ? input.source
-            : "";
-      if (path) items.push({ type: "localImage", path });
-      continue;
-    }
-    if (type === "mention") {
-      const name = typeof input.name === "string" ? input.name : "";
-      const path = typeof input.path === "string" ? input.path : "";
-      if (name && path) items.push({ type: "mention", name, path });
-      continue;
-    }
-    if (type === "skill") {
-      const name = typeof input.name === "string" ? input.name : "";
-      const path = typeof input.path === "string" ? input.path : "";
-      if (name && path) items.push({ type: "skill", name, path });
-    }
-  }
-
-  if (items.length > 0) return items;
-
-  const fallbackText = item.markdownText?.trim() ?? "";
-  return fallbackText ? [buildOwnerTextUserInput(fallbackText)] : [];
-}
-
-function buildOwnerEditReplacementPromptInput(
-  turn: CodexConversationTurn,
-  replacementText: string,
-): CodexPromptInput {
-  const userItem = turn.items.find(isConversationUserMessageItem) ?? null;
-  if (!userItem) return { text: replacementText };
-
-  const inputItems = readOwnerUserInputItemsFromItem(userItem);
-  if (inputItems.length === 0) return { text: replacementText };
-
-  let didReplaceText = false;
-  const replacementItems = inputItems.map((item) => {
-    if (item.type !== "text" || didReplaceText) return item;
-    didReplaceText = true;
-    return buildOwnerTextUserInput(replacementText);
-  });
-  if (!didReplaceText) {
-    replacementItems.unshift(buildOwnerTextUserInput(replacementText));
-  }
-
-  return buildOwnerPromptInputFromUserInputItems(replacementItems, replacementText);
+      if (entry.type === "image")
+        return (
+          previous.input.find(
+            (candidate) => candidate.type === "image" && candidate.url === entry.url,
+          ) ?? entry
+        );
+      if (entry.type === "localImage")
+        return (
+          previous.input.find(
+            (candidate) => candidate.type === "localImage" && candidate.path === entry.path,
+          ) ?? entry
+        );
+      return entry;
+    }),
+    ...previous.input.filter(
+      (entry) =>
+        entry.type !== "text" &&
+        entry.type !== "image" &&
+        entry.type !== "localImage" &&
+        (entry.type !== "mention" ||
+          !previousAttachments.some(({ path }) => path === entry.path) ||
+          message.context.fileAttachments.some(({ path }) => path === entry.path)),
+    ),
+  ];
 }
 
 function createOwnerClientUserMessageId(): string {
@@ -2305,85 +1290,9 @@ function createOwnerClientUserMessageId(): string {
   return `${Date.now().toString(36)}-${Math.random().toString(36).slice(2)}`;
 }
 
-function appendOwnerOptimisticTurn(
-  conversation: CodexConversationSnapshot,
-  params: CodexCanonicalLiveTurnParams,
-  observedAtMs: number,
-  optimisticRuntimeStatus: CodexThreadRuntimeStatus | null,
-): CodexConversationSnapshot {
-  const canonicalState = conversation.canonicalState;
-  if (!canonicalState) return conversation;
-  const nextCanonicalState = appendCodexCanonicalOptimisticTurn(canonicalState, {
-    params,
-    currentCollaborationModel: conversation.latestCollaborationMode?.settings.model,
-    startedAtMs: observedAtMs,
-  });
-  return {
-    ...conversation,
-    canonicalState: nextCanonicalState,
-    ...(optimisticRuntimeStatus
-      ? {
-          statusType: "active" as const,
-          statusActiveFlags: [],
-          threadRuntimeStatus: optimisticRuntimeStatus,
-        }
-      : {}),
-    updatedAt: Math.max(conversation.updatedAt, observedAtMs),
-  };
-}
-
-function buildOwnerCanonicalOptimisticParams(
-  conversation: CodexConversationSnapshot,
-  input: {
-    clientUserMessageId: string;
-    opts?: CodexTurnStartOptions;
-    preparedPrompt: CodexPreparedPrompt;
-  },
-): CodexCanonicalLiveTurnParams | null {
-  const canonical = conversation.canonicalState;
-  const hydration = canonical?.sidecar.hydrationContext;
-  if (!canonical || !hydration) return null;
-  const settings = hydration.latestThreadSettings;
-  const permissions = hydration.currentPermissions;
-  const collaborationMode = input.opts?.collaborationMode
-    ? {
-        mode: input.opts.collaborationMode,
-        settings: {
-          model: input.opts.model ?? hydration.latestModel,
-          reasoning_effort: input.opts.reasoningEffort ?? hydration.latestReasoningEffort,
-          developer_instructions: null,
-        },
-      }
-    : (settings?.collaborationMode ??
-      canonical.turns.at(-1)?.sidecar.params.collaborationMode ??
-      null);
-  return {
-    threadId: conversation.threadId,
-    clientUserMessageId: input.clientUserMessageId,
-    input: [...input.preparedPrompt.inputItems],
-    cwd: settings?.cwd ?? hydration.cwd,
-    approvalPolicy: settings?.approvalPolicy ?? permissions.approvalPolicy,
-    approvalsReviewer: settings?.approvalsReviewer ?? permissions.approvalsReviewer,
-    sandboxPolicy: settings?.sandboxPolicy ?? permissions.sandboxPolicy,
-    permissions: settings?.permissions ?? permissions.activePermissionProfile?.id ?? null,
-    runtimeWorkspaceRoots: [...permissions.runtimeWorkspaceRoots],
-    useAppServerPermissionDefault: false,
-    model: collaborationMode ? null : (input.opts?.model ?? hydration.latestModel),
-    serviceTier: input.opts?.serviceTier ?? settings?.serviceTier ?? null,
-    effort: collaborationMode
-      ? null
-      : (input.opts?.reasoningEffort ?? hydration.latestReasoningEffort),
-    multiAgentMode: settings?.multiAgentMode ?? "explicitRequestOnly",
-    summary: resolveCodexReasoningSummary({
-      configuredSummary: settings?.summary,
-      explicitSummary: input.opts?.summary,
-    }),
-    personality: settings?.personality ?? null,
-    outputSchema: null,
-    collaborationMode,
-    attachments: [...input.preparedPrompt.fileAttachments, ...input.preparedPrompt.addedFiles],
-    commentAttachments: [...input.preparedPrompt.commentAttachments],
-  };
+interface RendererTurnSubmissionIdentity {
+  readonly clientUserMessageId: string;
+  readonly startedAtMs: number;
 }
 
 function buildOwnerTurnSummaryFromProtocolTurn(
@@ -2419,11 +1328,11 @@ function materializeOwnerCanonicalTurn(
   observedAtMs: number,
   turnIndex: number,
 ): CodexConversationTurn {
-  const turnId = canonicalTurn.protocol.id;
+  const turnId = canonicalTurn.turnId;
 
   const projection = applyCodexLifecycleProjectionDiff({
     threadId: currentTurn.threadId,
-    turnKey: buildCodexTurnOccurrenceKey(turnId, turnIndex, canonicalTurn.sidecar.entityKey),
+    turnKey: buildCodexTurnOccurrenceKey(turnId, turnIndex, canonicalTurn.entityKey),
     beforeTurn: previousCanonicalTurn,
     afterTurn: canonicalTurn,
     currentViews: currentTurn.items.map(projectConversationItemToIdentityView),
@@ -2434,10 +1343,7 @@ function materializeOwnerCanonicalTurn(
   });
   const items = projection.transcript.map((entry): CodexConversationItem => {
     if (!entry.mcpToolCall) return entry as CodexConversationItem;
-    const mcpToolCall = completeCodexMcpToolCallForTurn(
-      entry.mcpToolCall,
-      canonicalTurn.protocol.status,
-    );
+    const mcpToolCall = completeCodexMcpToolCallForTurn(entry.mcpToolCall, canonicalTurn.status);
     return mcpToolCall === entry.mcpToolCall
       ? (entry as CodexConversationItem)
       : ({ ...entry, mcpToolCall } as CodexConversationItem);
@@ -2446,39 +1352,35 @@ function materializeOwnerCanonicalTurn(
   return {
     ...currentTurn,
     turnId,
-    ...(canonicalTurn.sidecar.entityKey === undefined
-      ? {}
-      : { entityKey: canonicalTurn.sidecar.entityKey }),
-    status: canonicalTurn.protocol.status,
-    errorMessage: canonicalTurn.protocol.error?.message ?? undefined,
-    diff: canonicalTurn.sidecar.diff ?? undefined,
-    durationMs: canonicalTurn.protocol.durationMs,
-    turnStartedAtMs: canonicalTurn.sidecar.turnStartedAtMs,
-    firstTurnWorkItemStartedAtMs: canonicalTurn.sidecar.firstTurnWorkItemStartedAtMs ?? null,
-    finalAssistantStartedAtMs: canonicalTurn.sidecar.finalAssistantStartedAtMs,
+    clientUserMessageId: canonicalTurn.params.clientUserMessageId ?? null,
+    ...(canonicalTurn.entityKey === undefined ? {} : { entityKey: canonicalTurn.entityKey }),
+    status: canonicalTurn.status,
+    errorMessage: canonicalTurn.error?.message ?? undefined,
+    diff: canonicalTurn.diff ?? undefined,
+    durationMs: canonicalTurn.durationMs,
+    turnStartedAtMs: canonicalTurn.turnStartedAtMs,
+    firstTurnWorkItemStartedAtMs: canonicalTurn.firstTurnWorkItemStartedAtMs ?? null,
+    finalAssistantStartedAtMs: canonicalTurn.finalAssistantStartedAtMs,
     commandExecutionStartedAtMsById:
-      canonicalTurn.sidecar.commandExecutionStartedAtMsById === undefined
+      canonicalTurn.commandExecutionStartedAtMsById === undefined
         ? undefined
-        : { ...canonicalTurn.sidecar.commandExecutionStartedAtMsById },
+        : { ...canonicalTurn.commandExecutionStartedAtMsById },
     interruptedCommandExecutionItemIds:
-      canonicalTurn.sidecar.interruptedCommandExecutionItemIds === undefined
+      canonicalTurn.interruptedCommandExecutionItemIds === undefined
         ? undefined
-        : [...canonicalTurn.sidecar.interruptedCommandExecutionItemIds],
-    hookRuns:
-      canonicalTurn.sidecar.hookRuns === undefined
-        ? undefined
-        : [...canonicalTurn.sidecar.hookRuns],
+        : [...canonicalTurn.interruptedCommandExecutionItemIds],
+    hookRuns: canonicalTurn.hookRuns === undefined ? undefined : [...canonicalTurn.hookRuns],
     safetyBuffering:
-      canonicalTurn.sidecar.safetyBuffering === undefined
+      canonicalTurn.safetyBuffering === undefined
         ? undefined
         : {
-            useCases: [...canonicalTurn.sidecar.safetyBuffering.useCases],
-            reasons: [...canonicalTurn.sidecar.safetyBuffering.reasons],
-            showBufferingUi: canonicalTurn.sidecar.safetyBuffering.showBufferingUi,
-            fasterModel: canonicalTurn.sidecar.safetyBuffering.fasterModel,
+            useCases: [...canonicalTurn.safetyBuffering.useCases],
+            reasons: [...canonicalTurn.safetyBuffering.reasons],
+            showBufferingUi: canonicalTurn.safetyBuffering.showBufferingUi,
+            fasterModel: canonicalTurn.safetyBuffering.fasterModel,
           },
-    startedAt: canonicalTurn.sidecar.turnStartedAtMs,
-    completedAt: canonicalTurn.sidecar.completedAtMs ?? null,
+    startedAt: canonicalTurn.turnStartedAtMs,
+    completedAt: canonicalTurn.completedAtMs ?? null,
     itemIds:
       turnId === null
         ? [...new Set(projection.transcript.map((entry) => entry.itemId))]
@@ -2493,19 +1395,18 @@ function buildOwnerCanonicalTurnPlaceholder(
 ): CodexConversationTurn {
   return {
     threadId,
-    turnId: canonicalTurn.protocol.id,
-    ...(canonicalTurn.sidecar.entityKey === undefined
-      ? {}
-      : { entityKey: canonicalTurn.sidecar.entityKey }),
-    status: canonicalTurn.protocol.status,
-    errorMessage: canonicalTurn.protocol.error?.message ?? undefined,
+    turnId: canonicalTurn.turnId,
+    clientUserMessageId: canonicalTurn.params.clientUserMessageId ?? null,
+    ...(canonicalTurn.entityKey === undefined ? {} : { entityKey: canonicalTurn.entityKey }),
+    status: canonicalTurn.status,
+    errorMessage: canonicalTurn.error?.message ?? undefined,
     itemIds: [],
-    turnStartedAtMs: canonicalTurn.sidecar.turnStartedAtMs,
-    firstTurnWorkItemStartedAtMs: canonicalTurn.sidecar.firstTurnWorkItemStartedAtMs ?? null,
-    finalAssistantStartedAtMs: canonicalTurn.sidecar.finalAssistantStartedAtMs,
-    startedAt: canonicalTurn.sidecar.turnStartedAtMs,
-    completedAt: canonicalTurn.sidecar.completedAtMs ?? null,
-    durationMs: canonicalTurn.protocol.durationMs,
+    turnStartedAtMs: canonicalTurn.turnStartedAtMs,
+    firstTurnWorkItemStartedAtMs: canonicalTurn.firstTurnWorkItemStartedAtMs ?? null,
+    finalAssistantStartedAtMs: canonicalTurn.finalAssistantStartedAtMs,
+    startedAt: canonicalTurn.turnStartedAtMs,
+    completedAt: canonicalTurn.completedAtMs ?? null,
+    durationMs: canonicalTurn.durationMs,
     items: [],
   };
 }
@@ -2517,20 +1418,20 @@ function materializeOwnerCanonicalConversationSnapshot(
   const canonicalState = conversation.canonicalState;
   if (!canonicalState) return conversation;
 
-  const turns = canonicalState.turns.map((canonicalTurn, turnIndex) => {
+  const turns = residentConversationTurns(canonicalState).map((canonicalTurn, turnIndex) => {
     const currentTurn =
       conversation.turns[turnIndex] ??
       buildOwnerCanonicalTurnPlaceholder(conversation.threadId, canonicalTurn);
     const observedAtMs =
-      canonicalTurn.sidecar.turnStartedAtMs ?? currentTurn.startedAt ?? conversation.updatedAt;
-    const indexedPrevious = previousCanonicalState?.turns[turnIndex] ?? null;
+      canonicalTurn.turnStartedAtMs ?? currentTurn.startedAt ?? conversation.updatedAt;
+    const indexedPrevious = residentConversationTurns(previousCanonicalState)[turnIndex] ?? null;
     const previousCanonicalTurn =
-      indexedPrevious?.protocol.id === canonicalTurn.protocol.id
+      indexedPrevious?.turnId === canonicalTurn.turnId
         ? indexedPrevious
-        : canonicalTurn.protocol.id === null
+        : canonicalTurn.turnId === null
           ? null
-          : (previousCanonicalState?.turns.findLast(
-              (turn) => turn.protocol.id === canonicalTurn.protocol.id,
+          : (residentConversationTurns(previousCanonicalState).findLast(
+              (turn) => turn.turnId === canonicalTurn.turnId,
             ) ?? null);
     return materializeOwnerCanonicalTurn(
       currentTurn,
@@ -2545,106 +1446,17 @@ function materializeOwnerCanonicalConversationSnapshot(
     ...conversation,
     turns,
     canonicalRequests: [...canonicalState.requests],
-    hasUnreadTurn: canonicalState.sidecar.hasUnreadTurn,
+    hasUnreadTurn: canonicalState.hasUnreadTurn,
   };
-}
-
-function finalizeOwnerConversationMutation(
-  previous: CodexConversationSnapshot,
-  candidate: CodexConversationSnapshot,
-): CodexConversationSnapshot {
-  const previousCanonical = previous.canonicalState;
-  const candidateCanonical = candidate.canonicalState;
-  if (!previousCanonical || !candidateCanonical || candidateCanonical === previousCanonical) {
-    return candidate;
-  }
-  const materialized = materializeOwnerCanonicalConversationSnapshot(candidate, previousCanonical);
-  // Reprojecting canonical Turn metadata must preserve the standalone local unread state.
-  return applyStandaloneUnreadStateToSnapshot(
-    materialized,
-    candidate.hasUnreadTurn ?? previous.hasUnreadTurn ?? false,
-  );
-}
-
-function materializeOwnerRollbackConversation(
-  currentConversation: CodexConversationSnapshot,
-  rollbackResponse: CodexThreadHistoryEditResult,
-): CodexConversationSnapshot {
-  const thread = rollbackResponse.thread;
-  const now = Date.now();
-  const createdAt = normalizeOwnerThreadTimestamp(thread.createdAt, currentConversation.createdAt);
-  const updatedAt = normalizeOwnerThreadTimestamp(thread.updatedAt, now);
-  const statusPayload = toOwnerThreadStatusPayload(thread.id, thread.status);
-  const subagentMetadata = extractCodexThreadSubagentMetadata(thread);
-  const threadTurns = Array.isArray(thread.turns) ? thread.turns : [];
-  const canonicalState = currentConversation.canonicalState
-    ? replaceCodexCanonicalRollbackThread(currentConversation.canonicalState, thread)
-    : null;
-  if (!canonicalState) {
-    throw new Error(`Canonical rollback state unavailable for '${thread.id}'`);
-  }
-  const canonicalTurnsById = new Map(
-    canonicalState.turns.map((turn) => [turn.protocol.id, turn] as const),
-  );
-  const currentTurnsById = new Map(
-    currentConversation.turns.map((turn) => [getOwnerTurnId(turn), turn] as const),
-  );
-  const turns = threadTurns.map((turn, turnIndex) => {
-    const canonicalTurn = canonicalTurnsById.get(turn.id);
-    if (!canonicalTurn) {
-      throw new Error(`Canonical rollback turn unavailable for '${turn.id}'`);
-    }
-    const summary = buildOwnerTurnSummaryFromProtocolTurn(thread.id, turn);
-    const currentTurn = currentTurnsById.get(turn.id);
-    return materializeOwnerCanonicalTurn(
-      {
-        ...summary,
-        items: currentTurn?.items ?? [],
-      },
-      currentConversation.canonicalState?.turns.findLast(
-        (candidate) => candidate.protocol.id === canonicalTurn.protocol.id,
-      ) ?? null,
-      canonicalTurn,
-      canonicalTurn.sidecar.turnStartedAtMs ?? now,
-      turnIndex,
-    );
-  });
-
-  return normalizeConversationSnapshot({
-    ...currentConversation,
-    canonicalState,
-    threadId: thread.id,
-    source: {
-      ...currentConversation.source,
-      parentThreadId:
-        subagentMetadata.parentThreadId ?? currentConversation.source?.parentThreadId ?? null,
-    },
-    ephemeral: thread.ephemeral,
-    threadSource: thread.threadSource ?? currentConversation.threadSource ?? null,
-    agentNickname: subagentMetadata.agentNickname ?? currentConversation.agentNickname ?? null,
-    agentRole: subagentMetadata.agentRole ?? currentConversation.agentRole ?? null,
-    agentPath: subagentMetadata.agentPath ?? currentConversation.agentPath ?? null,
-    threadPreview: thread.preview,
-    cwd: thread.cwd,
-    statusType: statusPayload.statusType,
-    statusActiveFlags: statusPayload.statusActiveFlags,
-    createdAt,
-    updatedAt,
-    resumeState: "resumed",
-    turnPagination: rollbackResponse.turnPagination,
-    turnItemsPaginationById: rollbackResponse.turnItemsPaginationById,
-    historyRows: undefined,
-    turns,
-    requests: [],
-    canonicalRequests: [],
-    hasUnreadTurn: false,
-  });
 }
 
 function parseOwnerTurnStartResult(
   threadId: string,
   result: unknown,
-): { protocol: Turn; summary: Omit<CodexConversationTurn, "items"> } | null {
+): {
+  protocol: Turn;
+  summary: Omit<CodexConversationTurn, "items">;
+} | null {
   const record = asRecord(result);
   if (!record) return null;
   const turnRecord = asRecord(record?.turn);
@@ -2684,352 +1496,10 @@ function parseOwnerTurnStartResult(
       status,
       error: null,
       durationMs: summary.durationMs ?? null,
-      startedAt: summary.startedAt == null ? null : summary.startedAt / 1_000,
-      completedAt: summary.completedAt == null ? null : summary.completedAt / 1_000,
+      startedAt: summary.startedAt == null ? null : summary.startedAt / 1000,
+      completedAt: summary.completedAt == null ? null : summary.completedAt / 1000,
       items: [],
     },
-  };
-}
-
-function rebindOwnerOptimisticTurn(
-  conversation: CodexConversationSnapshot,
-  clientUserMessageId: string,
-  startedTurn: { protocol: Turn; summary: Omit<CodexConversationTurn, "items"> } | null,
-): CodexConversationSnapshot | null {
-  if (!startedTurn) return null;
-  const { protocol } = startedTurn;
-  const canonicalState = conversation.canonicalState;
-  if (!canonicalState) return null;
-  const nextCanonicalState = bindCodexCanonicalOptimisticTurn(
-    canonicalState,
-    clientUserMessageId,
-    protocol,
-  );
-  if (nextCanonicalState === canonicalState) return null;
-
-  return {
-    ...conversation,
-    canonicalState: nextCanonicalState,
-  };
-}
-
-function applyOwnerStartFailureToConversation(
-  conversation: CodexConversationSnapshot,
-  clientUserMessageId: string,
-  previousRuntimeStatus: CodexThreadRuntimeStatus,
-  optimisticRuntimeStatus: CodexThreadRuntimeStatus | null,
-): CodexConversationSnapshot | null {
-  const canonicalState = conversation.canonicalState;
-  if (!canonicalState) return null;
-  const nextCanonicalState = failCodexCanonicalOptimisticTurn(canonicalState, clientUserMessageId);
-  if (nextCanonicalState === canonicalState) return null;
-
-  const shouldRestoreRuntimeStatus =
-    optimisticRuntimeStatus !== null &&
-    conversation.threadRuntimeStatus === optimisticRuntimeStatus;
-
-  return {
-    ...conversation,
-    canonicalState: nextCanonicalState,
-    ...(shouldRestoreRuntimeStatus
-      ? {
-          statusType: previousRuntimeStatus.type,
-          statusActiveFlags:
-            previousRuntimeStatus.type === "active" ? [...previousRuntimeStatus.activeFlags] : [],
-          threadRuntimeStatus: previousRuntimeStatus,
-        }
-      : {}),
-  };
-}
-
-function removeOwnerResumePlaceholderFromConversation(
-  conversation: CodexConversationSnapshot,
-  clientUserMessageId: string,
-  previousRuntimeStatus: CodexThreadRuntimeStatus,
-  optimisticRuntimeStatus: CodexThreadRuntimeStatus | null,
-  previousTurnModel: string | null,
-): CodexConversationSnapshot | null {
-  const canonicalState = conversation.canonicalState;
-  if (!canonicalState) return null;
-  const nextCanonicalState = removeCodexCanonicalOptimisticTurn(
-    canonicalState,
-    clientUserMessageId,
-    { previousTurnModel },
-  );
-  if (nextCanonicalState === canonicalState) return null;
-
-  const shouldRestoreRuntimeStatus =
-    optimisticRuntimeStatus !== null &&
-    conversation.threadRuntimeStatus === optimisticRuntimeStatus;
-
-  return {
-    ...conversation,
-    canonicalState: nextCanonicalState,
-    ...(shouldRestoreRuntimeStatus
-      ? {
-          statusType: previousRuntimeStatus.type,
-          statusActiveFlags:
-            previousRuntimeStatus.type === "active" ? [...previousRuntimeStatus.activeFlags] : [],
-          threadRuntimeStatus: previousRuntimeStatus,
-        }
-      : {}),
-  };
-}
-
-function toOwnerTurnLifecyclePayload(
-  notification: OwnerTurnLifecycleNotification,
-): OwnerTurnLifecyclePayload {
-  const { threadId, turn } = notification.params;
-  const startedAt = normalizeOwnerTimestamp(turn.startedAt);
-  const completedAt = normalizeOwnerTimestamp(turn.completedAt);
-  const observedAtMs =
-    notification.method === "turn/started"
-      ? (startedAt ?? Date.now())
-      : (completedAt ?? Date.now());
-
-  return {
-    threadId,
-    turnId: turn.id,
-    status: turn.status,
-    errorMessage: turn.error?.message,
-    startedAt,
-    completedAt,
-    turnStartedAtMs: startedAt,
-    durationMs: turn.durationMs,
-    observedAtMs,
-  };
-}
-
-function projectOwnerCanonicalPlanRequests(
-  conversation: CodexConversationSnapshot,
-  state: CodexCanonicalConversationState,
-  observedAtMs: number,
-): CodexConversationServerRequest[] {
-  const nonPlanRequests = conversation.requests.filter(
-    (request) => request.type !== "implementPlan",
-  );
-  const planRequests = state.requests.flatMap((request): CodexConversationServerRequest[] => {
-    if (request.method !== "item/plan/requestImplementation" || typeof request.id !== "string")
-      return [];
-    const turn = conversation.turns.find((candidate) => candidate.turnId === request.params.turnId);
-    const item = turn?.items.find((candidate) => candidate.itemId === request.id);
-    return [
-      {
-        type: "implementPlan",
-        requestId: request.id,
-        projectId: conversation.projectId,
-        threadId: request.params.threadId,
-        turnId: request.params.turnId,
-        itemId: request.id,
-        planContent: request.params.planContent,
-        createdAt: item?.createdAt ?? observedAtMs,
-      },
-    ];
-  });
-  return [...nonPlanRequests, ...planRequests];
-}
-
-function inheritOwnerPlanImplementationTimestamps(
-  before: CodexConversationSnapshot,
-  projected: CodexConversationSnapshot,
-  turnId: string,
-): CodexConversationSnapshot {
-  const turnIndex = projected.turns.findIndex((turn) => turn.turnId === turnId);
-  const projectedTurn = projected.turns[turnIndex];
-  if (!projectedTurn) return projected;
-  const implementationIndex = projectedTurn.items.findIndex(
-    (item) => item.type === "planImplementation",
-  );
-  const implementation = projectedTurn.items[implementationIndex];
-  if (!implementation) return projected;
-
-  const beforeTurn = before.turns.find((turn) => turn.turnId === turnId);
-  const existing = beforeTurn?.items.find((item) => item.itemId === implementation.itemId);
-  const plan = beforeTurn?.items.findLast((item) => item.type === "plan");
-  const createdAt = existing?.createdAt ?? plan?.createdAt;
-  const updatedAt = existing?.updatedAt ?? plan?.updatedAt;
-  if (createdAt === undefined || updatedAt === undefined) return projected;
-
-  const items = [...projectedTurn.items];
-  items[implementationIndex] = { ...implementation, createdAt, updatedAt };
-  return replaceOwnerTurnAt(projected, turnIndex, { ...projectedTurn, items });
-}
-
-function applyOwnerTurnLifecycleToConversation(
-  conversation: CodexConversationSnapshot,
-  before: CodexCanonicalConversationState,
-  method: OwnerTurnLifecycleMethod,
-  payload: OwnerTurnLifecyclePayload,
-): OwnerCanonicalLifecycleProjectionResult {
-  const result = reduceCodexConversationTurnLifecycle(before, {
-    conversationId: payload.threadId,
-    method,
-    turn: {
-      id: payload.turnId,
-      status: payload.status,
-      error: payload.errorMessage
-        ? {
-            message: payload.errorMessage,
-            codexErrorInfo: null,
-            additionalDetails: null,
-            misalignment: null,
-          }
-        : null,
-      startedAt:
-        payload.startedAt === null || payload.startedAt === undefined
-          ? null
-          : payload.startedAt / 1_000,
-      completedAt:
-        payload.completedAt === null || payload.completedAt === undefined
-          ? null
-          : payload.completedAt / 1_000,
-      durationMs: payload.durationMs ?? null,
-    },
-    observedAtMs: payload.observedAtMs,
-  });
-  if (!result.stateChanged) return { conversation, hiddenTurns: [] };
-  const projection = applyOwnerCanonicalTurnProjection(conversation, before, result.state, {
-    observedAtMs: payload.observedAtMs,
-  });
-  const projectedConversation = inheritOwnerPlanImplementationTimestamps(
-    conversation,
-    projection.conversation,
-    payload.turnId,
-  );
-  const requests = projectOwnerCanonicalPlanRequests(
-    projectedConversation,
-    result.state,
-    payload.observedAtMs,
-  );
-  const hasInProgressTurn = projectedConversation.turns.some(
-    (turn) => turn.status === "inProgress",
-  );
-  return {
-    ...projection,
-    conversation: {
-      ...projectedConversation,
-      canonicalState: result.state,
-      canonicalRequests: [...result.state.requests],
-      hasUnreadTurn: result.state.sidecar.hasUnreadTurn,
-      requests,
-      statusType: hasInProgressTurn ? "active" : "idle",
-      statusActiveFlags: hasInProgressTurn ? conversation.statusActiveFlags : [],
-    },
-  };
-}
-
-function normalizeOwnerThreadTimestamp(value: unknown, fallback: number): number {
-  if (typeof value !== "number" || !Number.isFinite(value)) return fallback;
-  if (value > 10_000_000_000) return Math.floor(value);
-  return Math.floor(value * 1000);
-}
-
-function getOwnerNotificationConversationId(
-  notification: CodexThreadOwnerNotificationEvent["notification"],
-): string | null {
-  return getCodexThreadOwnerNotificationThreadId(notification);
-}
-
-type OwnerThreadStartedPayload = {
-  threadId: string;
-  parentThreadId: string | null;
-  threadSource: ThreadSource | null;
-  agentNickname: string | null;
-  agentRole: string | null;
-  agentPath: string | null;
-  threadName: string | null;
-  threadPreview: string | null;
-  modelProvider: string | null;
-  cwd: string | null;
-  statusType: CodexConversationSnapshot["statusType"] | null;
-  statusActiveFlags: CodexThreadActiveFlag[];
-  threadRuntimeStatus: CodexThreadRuntimeStatus | null;
-  ephemeral: boolean | null;
-  createdAt: number | null;
-  updatedAt: number | null;
-};
-
-function toOwnerThreadStartedPayload(
-  notification: Extract<
-    CodexThreadOwnerNotificationEvent["notification"],
-    { method: "thread/started" }
-  >,
-): OwnerThreadStartedPayload {
-  const { thread } = notification.params;
-  const parsedStatus = toOwnerThreadStatusPayload(thread.id, thread.status);
-  const subagentMetadata = extractCodexThreadSubagentMetadata(thread);
-
-  return {
-    threadId: thread.id,
-    parentThreadId: subagentMetadata.parentThreadId,
-    threadSource: thread.threadSource,
-    agentNickname: subagentMetadata.agentNickname,
-    agentRole: subagentMetadata.agentRole,
-    agentPath: subagentMetadata.agentPath,
-    threadName: thread.name?.trim() || null,
-    threadPreview: thread.preview,
-    modelProvider: thread.modelProvider,
-    cwd: thread.cwd,
-    statusType: parsedStatus.statusType,
-    statusActiveFlags: parsedStatus.statusActiveFlags,
-    threadRuntimeStatus: parsedStatus.threadRuntimeStatus,
-    ephemeral: thread.ephemeral,
-    createdAt: thread.createdAt,
-    updatedAt: thread.updatedAt,
-  };
-}
-
-function applyOwnerThreadStartedToConversation(
-  conversation: CodexConversationSnapshot,
-  state: CodexCanonicalConversationState,
-): CodexConversationSnapshot {
-  const thread = state.protocol;
-  const parsedStatus = toOwnerThreadStatusPayload(thread.id, thread.status);
-  const source: CodexConversationSource | null = thread.parentThreadId
-    ? { parentThreadId: thread.parentThreadId }
-    : conversation.source;
-
-  return {
-    ...conversation,
-    canonicalState: state,
-    source,
-    ephemeral: thread.ephemeral,
-    threadSource: thread.threadSource,
-    agentNickname: thread.agentNickname,
-    agentRole: thread.agentRole,
-    threadName: thread.name?.trim() || conversation.threadName,
-    threadPreview: thread.preview,
-    modelProvider: thread.modelProvider,
-    cwd: thread.cwd,
-    statusType: parsedStatus.statusType,
-    statusActiveFlags: parsedStatus.statusActiveFlags,
-    threadRuntimeStatus: parsedStatus.threadRuntimeStatus,
-    createdAt: normalizeOwnerThreadTimestamp(thread.createdAt, conversation.createdAt),
-    updatedAt: normalizeOwnerThreadTimestamp(thread.updatedAt, conversation.updatedAt),
-    resumeState: "resumed",
-  };
-}
-
-function buildOwnerCanonicalStartedThread(
-  before: CodexCanonicalConversationState,
-  payload: OwnerThreadStartedPayload,
-): Thread {
-  return {
-    ...before.protocol,
-    id: payload.threadId,
-    parentThreadId: payload.parentThreadId,
-    preview: payload.threadPreview ?? before.protocol.preview,
-    ephemeral: payload.ephemeral ?? before.protocol.ephemeral,
-    modelProvider: payload.modelProvider ?? before.protocol.modelProvider,
-    createdAt: payload.createdAt ?? before.protocol.createdAt,
-    updatedAt: payload.updatedAt ?? before.protocol.updatedAt,
-    status: payload.threadRuntimeStatus ?? before.protocol.status,
-    cwd: payload.cwd ?? before.protocol.cwd,
-    threadSource: payload.threadSource ?? before.protocol.threadSource,
-    agentNickname: payload.agentNickname ?? before.protocol.agentNickname,
-    agentRole: payload.agentRole ?? before.protocol.agentRole,
-    name: payload.threadName,
-    turns: [],
   };
 }
 
@@ -3067,70 +1537,9 @@ function toOwnerThreadStatusPayload(
   };
 }
 
-function projectOwnerThreadStatusToConversation(
-  conversation: CodexConversationSnapshot,
-  state: CodexCanonicalConversationState,
-): CodexConversationSnapshot {
-  const payload = toOwnerThreadStatusPayload(state.protocol.id, state.protocol.status);
-  if (
-    conversation.statusType === payload.statusType &&
-    areStringArraysEqual(conversation.statusActiveFlags, payload.statusActiveFlags) &&
-    areThreadRuntimeStatusesEqual(conversation.threadRuntimeStatus, payload.threadRuntimeStatus)
-  ) {
-    return { ...conversation, canonicalState: state };
-  }
-
-  return {
-    ...conversation,
-    canonicalState: state,
-    statusType: payload.statusType,
-    statusActiveFlags: payload.statusActiveFlags,
-    threadRuntimeStatus: payload.threadRuntimeStatus,
-  };
-}
-
-function projectOwnerThreadGoalToConversation(
-  conversation: CodexConversationSnapshot,
-  state: CodexCanonicalConversationState,
-): CodexConversationSnapshot {
-  return {
-    ...conversation,
-    canonicalState: state,
-    threadGoal: state.sidecar.threadGoal ?? null,
-    completedThreadGoal: state.sidecar.completedThreadGoal ?? null,
-    threadGoalResumeConfirmation: state.sidecar.threadGoalResumeConfirmation ?? null,
-  };
-}
-
-function applyOwnerThreadGoalResumeConfirmationDismissedToConversation(
-  conversation: CodexConversationSnapshot,
-): CodexConversationSnapshot | null {
-  if (!conversation.threadGoalResumeConfirmation) return null;
-
-  return {
-    ...conversation,
-    threadGoalResumeConfirmation: null,
-    updatedAt: Math.max(conversation.updatedAt, Date.now()),
-  };
-}
-
-function projectOwnerThreadNameToConversation(
-  conversation: CodexConversationSnapshot,
-  state: CodexCanonicalConversationState,
-): CodexConversationSnapshot {
-  const threadName = state.protocol.name?.trim() || conversation.threadName;
-  if (conversation.threadName === threadName) return { ...conversation, canonicalState: state };
-
-  return {
-    ...conversation,
-    canonicalState: state,
-    threadName,
-  };
-}
-
 function buildOwnerConversationThreadSettings(
   conversation: CodexConversationSnapshot,
-  threadSettings: ThreadSettings,
+  threadSettings: NonNullable<CodexCanonicalConversationState["latestThreadSettings"]>,
 ): CodexConversationThreadSettings {
   const fallbackMode =
     conversation.latestThreadSettings?.collaborationMode ??
@@ -3167,7 +1576,8 @@ function buildOwnerConversationThreadSettings(
         developer_instructions: collaborationSettings.developer_instructions,
       },
     },
-    personality: threadSettings.personality,
+    personality:
+      threadSettings.personality ?? conversation.latestThreadSettings?.personality ?? null,
   };
 }
 
@@ -3196,15 +1606,15 @@ function projectOwnerThreadSettingsToConversation(
   conversation: CodexConversationSnapshot,
   state: CodexCanonicalConversationState,
 ): CodexConversationSnapshot {
-  const settings = state.sidecar.latestThreadSettings;
+  const settings = state.latestThreadSettings;
   if (!settings) return { ...conversation, canonicalState: state };
   const latestThreadSettings = buildOwnerConversationThreadSettings(conversation, settings);
   if (areOwnerThreadSettingsEqual(conversation.latestThreadSettings, latestThreadSettings)) {
     return {
       ...conversation,
       canonicalState: state,
-      modelProvider: state.protocol.modelProvider,
-      cwd: state.protocol.cwd,
+      modelProvider: state.modelProvider,
+      cwd: state.cwd,
     };
   }
 
@@ -3214,13 +1624,9 @@ function projectOwnerThreadSettingsToConversation(
     latestThreadSettings,
     latestCollaborationMode:
       latestThreadSettings.collaborationMode ?? DEFAULT_COLLABORATION_MODE_STATE,
-    modelProvider: state.protocol.modelProvider,
-    cwd: state.protocol.cwd,
+    modelProvider: state.modelProvider,
+    cwd: state.cwd,
   };
-}
-
-function createOwnerGeneratedItemId(prefix: string): string {
-  return `${prefix}:${globalThis.crypto?.randomUUID?.() ?? `${Date.now()}-${Math.random().toString(36).slice(2)}`}`;
 }
 
 function clearOwnerApprovalAttachments(
@@ -3253,155 +1659,14 @@ function clearOwnerApprovalAttachments(
   return didChange ? { ...conversation, turns } : conversation;
 }
 
-function applyOwnerServerRequestResolvedToConversation(
-  conversation: CodexConversationSnapshot,
-  before: CodexCanonicalConversationState,
-  payload: Extract<
-    CodexThreadOwnerNotificationEvent["notification"],
-    { method: "serverRequest/resolved" }
-  >["params"],
-): OwnerCanonicalServerRequestMutationResult {
-  const observedAtMs = Date.now();
-  const lifecycle = reduceCodexConversationServerRequestResolved(
-    before,
-    {
-      method: "serverRequest/resolved",
-      params: payload,
-    },
-    { now: () => observedAtMs },
-  );
-  const projection = applyOwnerCanonicalServerRequestLifecycleResult(
-    conversation,
-    before,
-    lifecycle,
-    observedAtMs,
-  );
-  const selectedIds = new Set(lifecycle.selectedRequestIds);
-  const nextConversation = clearOwnerApprovalAttachments(projection.conversation, selectedIds);
-
-  return {
-    conversation: {
-      ...nextConversation,
-      requests:
-        lifecycle.selectedRequests.length === 0
-          ? nextConversation.requests
-          : nextConversation.requests.filter(
-              (candidate) => candidate.requestId !== payload.requestId,
-            ),
-    },
-    hiddenTurns: projection.hiddenTurns,
-  };
-}
-
-function normalizeOwnerApprovalAvailableDecisions(
-  value: readonly unknown[] | null | undefined,
-): string[] | null {
-  if (!value || value.length === 0) return null;
-
-  const decisions = value
-    .map((decision) => {
-      if (typeof decision === "string") return decision;
-      const record = asRecord(decision);
-      return record ? (Object.keys(record)[0] ?? "") : "";
-    })
-    .filter((decision) => decision.length > 0);
-
-  return decisions.length > 0 ? decisions : null;
-}
-
-function buildOwnerCommandApprovalRequest(
-  conversation: CodexConversationSnapshot,
-  requestId: CodexProtocolRequestId,
-  params: Extract<
-    CodexThreadOwnerRequestEvent["request"],
-    { method: "item/commandExecution/requestApproval" }
-  >["params"],
-): CodexApprovalRequest {
-  const command = params.command ?? "";
-  const commandActions = params.commandActions ?? null;
-  const commandActionCommands =
-    commandActions
-      ?.map((action) => action.command)
-      .filter(
-        (command): command is string => typeof command === "string" && command.trim().length > 0,
-      ) ?? [];
-
-  return {
-    type: "approval",
-    requestId,
-    kind: "command",
-    projectId: conversation.projectId,
-    threadId: params.threadId,
-    turnId: params.turnId,
-    itemId: params.itemId,
-    approvalId: params.approvalId ?? null,
-    approvalRequestId: requestId,
-    callId: params.itemId,
-    reason: params.reason ?? undefined,
-    command: command || undefined,
-    cwd: params.cwd ?? undefined,
-    approvalReason: params.reason ?? undefined,
-    cmd:
-      commandActionCommands.length > 0
-        ? commandActionCommands
-        : command.trim().length > 0
-          ? command.split(" ").filter((segment) => segment.trim().length > 0)
-          : undefined,
-    networkApprovalContext: params.networkApprovalContext
-      ? {
-          host: params.networkApprovalContext.host,
-          protocol: params.networkApprovalContext.protocol,
-        }
-      : null,
-    proposedExecpolicyAmendment: params.proposedExecpolicyAmendment ?? null,
-    proposedNetworkPolicyAmendments:
-      params.proposedNetworkPolicyAmendments?.map((amendment) => ({
-        host: amendment.host,
-        action: amendment.action,
-      })) ?? null,
-    availableDecisions: normalizeOwnerApprovalAvailableDecisions(params.availableDecisions),
-    grantRoot: null,
-    commandActions,
-    createdAt: params.startedAtMs,
-  };
-}
-
-function buildOwnerFileApprovalRequest(
-  conversation: CodexConversationSnapshot,
-  requestId: CodexProtocolRequestId,
-  params: Extract<
-    CodexThreadOwnerRequestEvent["request"],
-    { method: "item/fileChange/requestApproval" }
-  >["params"],
-): CodexApprovalRequest {
-  return {
-    type: "approval",
-    requestId,
-    kind: "file",
-    projectId: conversation.projectId,
-    threadId: params.threadId,
-    turnId: params.turnId,
-    itemId: params.itemId,
-    approvalRequestId: requestId,
-    callId: params.itemId,
-    reason: params.reason ?? undefined,
-    approvalReason: params.reason ?? undefined,
-    networkApprovalContext: null,
-    proposedExecpolicyAmendment: null,
-    proposedNetworkPolicyAmendments: null,
-    availableDecisions: null,
-    grantRoot: params.grantRoot ?? null,
-    commandActions: null,
-    createdAt: params.startedAtMs,
-  };
-}
-
 function buildOwnerUserInputRequest(
   conversation: CodexConversationSnapshot,
   requestId: CodexProtocolRequestId,
   params: Extract<
-    CodexThreadOwnerRequestEvent["request"],
-    { method: "item/tool/requestUserInput" }
+    CodexCanonicalServerRequest,
+    {
+      method: "item/tool/requestUserInput";
+    }
   >["params"],
 ): CodexUserInputRequest {
   return {
@@ -3432,8 +1697,10 @@ function buildOwnerMcpElicitationRequest(
   conversation: CodexConversationSnapshot,
   requestId: CodexProtocolRequestId,
   params: Extract<
-    CodexThreadOwnerRequestEvent["request"],
-    { method: "mcpServer/elicitation/request" }
+    CodexCanonicalServerRequest,
+    {
+      method: "mcpServer/elicitation/request";
+    }
   >["params"],
 ): CodexMcpServerElicitationRequest {
   return {
@@ -3452,30 +1719,6 @@ function buildOwnerMcpElicitationRequest(
     requestedSchema: params.mode !== "url" ? params.requestedSchema : undefined,
     meta: params._meta,
     createdAt: Date.now(),
-  };
-}
-
-function buildOwnerPermissionRequest(
-  conversation: CodexConversationSnapshot,
-  requestId: CodexProtocolRequestId,
-  params: Extract<
-    CodexThreadOwnerRequestEvent["request"],
-    { method: "item/permissions/requestApproval" }
-  >["params"],
-): CodexPermissionRequest {
-  return {
-    type: "permissionRequest",
-    requestId,
-    projectId: conversation.projectId,
-    threadId: params.threadId,
-    turnId: params.turnId,
-    itemId: params.itemId,
-    cwd: params.cwd,
-    reason: params.reason,
-    permissions: params.permissions,
-    response: null,
-    completed: false,
-    createdAt: params.startedAtMs,
   };
 }
 
@@ -3532,189 +1775,21 @@ function attachOwnerApprovalRequestToItem(
   return attached ?? conversation;
 }
 
-interface OwnerCanonicalServerRequestMutationResult {
-  readonly conversation: CodexConversationSnapshot;
-  readonly hiddenTurns: readonly OwnerCanonicalLifecycleHiddenTurn[];
-}
-
-function applyOwnerCanonicalServerRequestLifecycleResult(
-  conversation: CodexConversationSnapshot,
-  before: CodexCanonicalConversationState,
-  result: CodexServerRequestLifecycleResult,
-  observedAtMs: number,
-): OwnerCanonicalServerRequestMutationResult {
-  if (!result.stateChanged) {
-    return { conversation, hiddenTurns: [] };
-  }
-
-  const projection = applyOwnerCanonicalTurnProjection(conversation, before, result.state, {
-    observedAtMs,
-    preserveExistingUpdatedAt: true,
-  });
-  return {
-    conversation: {
-      ...projection.conversation,
-      canonicalState: result.state,
-      canonicalRequests: [...result.state.requests],
-      hasUnreadTurn: result.state.sidecar.hasUnreadTurn,
-    },
-    hiddenTurns: projection.hiddenTurns,
-  };
-}
-
-function applyOwnerApprovalResponseToConversation(
-  conversation: CodexConversationSnapshot,
-  before: CodexCanonicalConversationState,
-  requestId: CodexProtocolRequestId,
-  kind: CodexApprovalKind,
-): OwnerCanonicalServerRequestMutationResult {
-  const lifecycle = reduceCodexConversationApprovalResponse(
-    before,
-    requestId,
-    getCodexApprovalRequestMethod(kind),
-  );
-  const applied = applyOwnerCanonicalServerRequestLifecycleResult(
-    conversation,
-    before,
-    lifecycle,
-    Date.now(),
-  );
-  const selectedIds = new Set(lifecycle.selectedRequestIds);
-  const nextConversation = clearOwnerApprovalAttachments(applied.conversation, selectedIds);
-  return {
-    conversation: {
-      ...nextConversation,
-      requests: nextConversation.requests.filter(
-        (candidate) => !selectedIds.has(candidate.requestId),
-      ),
-    },
-    hiddenTurns: applied.hiddenTurns,
-  };
-}
-
-function applyOwnerUserInputResponseToConversation(
-  conversation: CodexConversationSnapshot,
-  before: CodexCanonicalConversationState,
-  requestId: CodexProtocolRequestId,
-  answers: Record<string, string[]>,
-): OwnerCanonicalServerRequestMutationResult {
-  const firstRequest = before.requests.find((candidate) => candidate.id === requestId);
-  const lifecycle =
-    firstRequest?.method === "item/tool/call" &&
-    firstRequest.params.tool === "request_onboarding_input"
-      ? reduceCodexConversationOnboardingInputResponse(before, requestId)
-      : reduceCodexConversationUserInputResponse(before, requestId, answers, {
-          now: () => Date.now(),
-        });
-  const applied = applyOwnerCanonicalServerRequestLifecycleResult(
-    conversation,
-    before,
-    lifecycle,
-    Date.now(),
-  );
-  const selectedIds = new Set(lifecycle.selectedRequestIds);
-  return {
-    conversation: {
-      ...applied.conversation,
-      requests: applied.conversation.requests.filter(
-        (candidate) => !selectedIds.has(candidate.requestId),
-      ),
-    },
-    hiddenTurns: applied.hiddenTurns,
-  };
-}
-
-function applyOwnerMcpElicitationResponseToConversation(
-  conversation: CodexConversationSnapshot,
-  before: CodexCanonicalConversationState,
-  requestId: CodexProtocolRequestId,
-  response: CodexMcpServerElicitationResponse,
-): OwnerCanonicalServerRequestMutationResult {
-  const observedAtMs = Date.now();
-  const lifecycle = reduceCodexConversationMcpElicitationResponse(before, requestId, response, {
-    now: () => observedAtMs,
-  });
-  const applied = applyOwnerCanonicalServerRequestLifecycleResult(
-    conversation,
-    before,
-    lifecycle,
-    observedAtMs,
-  );
-  const selectedIds = new Set(lifecycle.selectedRequestIds);
-  return {
-    conversation: {
-      ...applied.conversation,
-      requests: applied.conversation.requests.filter(
-        (candidate) => !selectedIds.has(candidate.requestId),
-      ),
-    },
-    hiddenTurns: applied.hiddenTurns,
-  };
-}
-
-function applyOwnerPermissionRequestResponseToConversation(
-  conversation: CodexConversationSnapshot,
-  before: CodexCanonicalConversationState,
-  requestId: CodexProtocolRequestId,
-  response: CodexPermissionRequestResponse,
-): OwnerCanonicalServerRequestMutationResult {
-  const observedAtMs = Date.now();
-  const lifecycle = reduceCodexConversationPermissionResponse(before, requestId, response, {
-    now: () => observedAtMs,
-  });
-  const applied = applyOwnerCanonicalServerRequestLifecycleResult(
-    conversation,
-    before,
-    lifecycle,
-    observedAtMs,
-  );
-  const selectedIds = new Set(lifecycle.selectedRequestIds);
-  return {
-    conversation: {
-      ...applied.conversation,
-      requests: applied.conversation.requests.filter(
-        (candidate) => !selectedIds.has(candidate.requestId),
-      ),
-    },
-    hiddenTurns: applied.hiddenTurns,
-  };
-}
-
-function applyOwnerStoredInteractiveResponseToConversation(
-  conversation: CodexConversationSnapshot,
-  before: CodexCanonicalConversationState,
-  requestId: CodexProtocolRequestId,
-  kind: "optionPicker" | "setupContextPicker",
-): OwnerCanonicalServerRequestMutationResult {
-  const lifecycle =
-    kind === "optionPicker"
-      ? reduceCodexConversationOptionPickerResponse(before, requestId)
-      : reduceCodexConversationSetupContextPickerResponse(before, requestId);
-  const applied = applyOwnerCanonicalServerRequestLifecycleResult(
-    conversation,
-    before,
-    lifecycle,
-    Date.now(),
-  );
-  const selectedIds = new Set(lifecycle.selectedRequestIds);
-  return {
-    conversation: {
-      ...applied.conversation,
-      requests: applied.conversation.requests.filter(
-        (request) => !selectedIds.has(request.requestId),
-      ),
-    },
-    hiddenTurns: applied.hiddenTurns,
-  };
-}
-
 function hasOwnerStoredInteractiveResponseTarget(
   conversation: CodexConversationSnapshot,
   requestId: CodexProtocolRequestId,
   kind: "optionPicker" | "setupContextPicker",
 ): boolean {
   const state = conversation.canonicalState;
-  if (!state || state.protocol.id !== conversation.threadId) return false;
+  if (state && state.id !== conversation.threadId) return false;
+  if (!state) {
+    const raw = ownerRawServerRequestState(conversation);
+    const result =
+      kind === "optionPicker"
+        ? reduceCodexServerRequestOptionPickerResponseRawState(raw, requestId)
+        : reduceCodexServerRequestSetupContextPickerResponseRawState(raw, requestId);
+    return result.selectedRequests.length > 0;
+  }
   const lifecycle =
     kind === "optionPicker"
       ? reduceCodexConversationOptionPickerResponse(state, requestId)
@@ -3722,59 +1797,30 @@ function hasOwnerStoredInteractiveResponseTarget(
   return lifecycle.selectedRequests.length > 0;
 }
 
-function applyOwnerSetupCodexStepResponseToConversation(
+function ownerRawServerRequestState(
   conversation: CodexConversationSnapshot,
-  before: CodexCanonicalConversationState,
-  requestId: CodexProtocolRequestId,
-  response: CodexCanonicalSetupCodexStepResponse,
-): OwnerCanonicalServerRequestMutationResult {
-  const lifecycle = reduceCodexConversationSetupCodexStepResponse(before, requestId, response);
-  return applyOwnerCanonicalServerRequestLifecycleResult(
-    conversation,
-    before,
-    lifecycle,
-    Date.now(),
-  );
+): CodexServerRequestRawState {
+  return {
+    threadId: conversation.threadId,
+    turns: [],
+    requests: conversation.canonicalRequests ?? [],
+    hasUnreadTurn: conversation.hasUnreadTurn ?? false,
+  };
 }
 
-interface OwnerServerRequestApplication {
-  readonly conversation: CodexConversationSnapshot;
-  readonly lifecycle: CodexServerRequestLifecycleResult;
-  readonly hiddenTurns: readonly OwnerCanonicalLifecycleHiddenTurn[];
-}
-
-function applyOwnerServerRequestToConversation(
+/** Projects only requests retained by the canonical draft transition. */
+function projectOwnerServerRequestToConversation(
   conversation: CodexConversationSnapshot,
-  before: CodexCanonicalConversationState,
-  request: CodexThreadOwnerRequestEvent["request"],
-  isOpenAIFormElicitationsEnabled: boolean,
-): OwnerServerRequestApplication {
+  request: import("../../../shared/codex-conversation-state/codex-conversation-state").CodexCanonicalServerRequest,
+): CodexConversationSnapshot {
+  if (!conversation.canonicalState?.requests.some((pending) => pending.id === request.id))
+    return conversation;
   const viewRequestId = request.id;
-  const observedAtMs = Date.now();
-  const lifecycle = reduceCodexConversationServerRequest(before, request, {
-    now: () => observedAtMs,
-    isOpenAIFormElicitationsEnabled,
-  });
-  const applied = applyOwnerCanonicalServerRequestLifecycleResult(
-    conversation,
-    before,
-    lifecycle,
-    observedAtMs,
-  );
-  const withCanonicalState = applied.conversation;
-  let nextConversation = withCanonicalState;
-
-  if (lifecycle.disposition !== "stored") {
-    return {
-      conversation: nextConversation,
-      lifecycle,
-      hiddenTurns: applied.hiddenTurns,
-    };
-  }
-
+  const withCanonicalState = conversation;
+  let nextConversation = conversation;
   switch (request.method) {
     case "item/commandExecution/requestApproval": {
-      const approvalRequest = buildOwnerCommandApprovalRequest(
+      const approvalRequest = buildCodexCommandApprovalRequest(
         withCanonicalState,
         viewRequestId,
         request.params,
@@ -3786,7 +1832,7 @@ function applyOwnerServerRequestToConversation(
       break;
     }
     case "item/fileChange/requestApproval": {
-      const approvalRequest = buildOwnerFileApprovalRequest(
+      const approvalRequest = buildCodexFileApprovalRequest(
         withCanonicalState,
         viewRequestId,
         request.params,
@@ -3818,7 +1864,7 @@ function applyOwnerServerRequestToConversation(
       break;
     }
     case "item/permissions/requestApproval": {
-      const permissionRequest = buildOwnerPermissionRequest(
+      const permissionRequest = buildCodexPermissionRequest(
         withCanonicalState,
         viewRequestId,
         request.params,
@@ -3829,13 +1875,27 @@ function applyOwnerServerRequestToConversation(
     case "item/tool/requestOptionPicker":
     case "item/tool/requestSetupCodexContextPicker":
       break;
+    case "item/plan/requestImplementation": {
+      if (typeof request.id !== "string") break;
+      const turn = withCanonicalState.turns.find(
+        (candidate) => candidate.turnId === request.params.turnId,
+      );
+      const item = turn?.items.find((candidate) => candidate.itemId === request.id);
+      nextConversation = upsertOwnerConversationRequest(withCanonicalState, {
+        type: "implementPlan",
+        requestId: request.id,
+        projectId: withCanonicalState.projectId,
+        threadId: request.params.threadId,
+        turnId: request.params.turnId,
+        itemId: request.id,
+        planContent: request.params.planContent,
+        createdAt: item?.createdAt ?? Date.now(),
+      });
+      break;
+    }
   }
 
-  return {
-    conversation: nextConversation,
-    lifecycle,
-    hiddenTurns: applied.hiddenTurns,
-  };
+  return nextConversation;
 }
 
 function isConversationStreaming(conversation: CodexConversationSnapshot): boolean {
@@ -3894,8 +1954,44 @@ function selectedSubagentErrorMessage(cause: unknown, fallback: string): string 
   return cause instanceof Error ? cause.message : fallback;
 }
 
+function sendCodexAppServerResponse(input: CodexNativeServerResponseInput): Promise<boolean> {
+  const method = "effect" in input ? input.effect.method : input.method;
+  const interactionTrace = startCodexServerResponseInteractionTrace(method);
+  try {
+    const result = runConversationOperation(
+      "codex:app-server:respond",
+      interactionTrace
+        ? {
+            ...input,
+            requestMethod: method,
+            trace: interactionTrace.trace,
+          }
+        : input,
+    );
+    interactionTrace?.finish();
+    return result;
+  } catch (error) {
+    interactionTrace?.finish(error);
+    throw error;
+  }
+}
+
 export class CodexAppServerManager {
+  private destroyed = false;
+  private readonly foregroundConversations = new Map<symbol, string>();
   readonly asyncQuestions = createAsyncQuestionRuntime();
+  private readonly conversationActivity = new ConversationActivity((threadId, active) => {
+    void this.applyThreadActivity(threadId, active).catch(() => {});
+  });
+  private readonly queuedExecution: QueuedMessageExecution<
+    CodexQueuedMessage,
+    QueuedConversationResumeInput,
+    ConversationFollowerTurnStart,
+    CanonicalOwnerSteerInput
+  >;
+  private readonly queuedMessages: QueuedMessageCoordinator<CodexQueuedMessage>;
+  private readonly serverQueuedMessages: CodexServerQueuedMessages;
+  private readonly retention: CanonicalConversationRetention;
   private connection: CodexConnectionState = INITIAL_CONNECTION;
   private account: CodexAccountSnapshot | null = null;
   private dictationState: CodexDictationStateSnapshot = DEFAULT_CODEX_DICTATION_STATE;
@@ -3907,14 +2003,12 @@ export class CodexAppServerManager {
     string,
     Promise<CodexThreadSummary[]>
   >();
+  private savedReadState: Set<string> | null = null;
   private readonly conversationsById = new Map<string, CodexConversationSnapshot>();
+  private readonly threadsById = new Map<string, Thread>();
   private readonly childMembershipsByParentThreadId = new Map<
     string,
     CodexConversationChildMembership[]
-  >();
-  private readonly followerAcceptedReplicasByConversationId = new Map<
-    string,
-    CodexConversationSnapshot
   >();
   private readonly ownerHiddenLifecycleItemTypesByConversationId = new Map<
     string,
@@ -3922,25 +2016,64 @@ export class CodexAppServerManager {
   >();
   private readonly resumeInFlightByThreadId = new Map<
     string,
-    Promise<CodexConversationSnapshot | null>
+    {
+      source: ConversationResumeSource;
+      promise: Promise<CodexConversationSnapshot | null>;
+      cancel(): void;
+    }
   >();
+  private readonly conversationRemovedCallbacks = new Set<(threadId: string) => void>();
   private readonly attachmentStateByThreadId = new Map<string, LocalConversationAttachmentState>();
   private readonly interruptedTurnResumesInFlightByThreadId = new Map<string, Promise<unknown>>();
   private readonly ownerHistoryOperationsByThread = new Map<string, Promise<void>>();
   private readonly ownerHistoryReadBarriers = new Set<string>();
   private readonly historyPageLoadsInFlightByTarget = new Map<
     string,
-    Promise<CodexConversationHistoryPageResult>
+    Promise<LocalHistoryPageResult>
   >();
   private readonly primaryConversationRequestByThread = new Map<
     string,
     CodexConversationLiveRequest | null
   >();
   private readonly conversationVersionById = new Map<string, number>();
-  private readonly streamState = new LocalConversationStreamState();
+  private readonly streamState: ConversationStream<CodexCanonicalConversationState, Patch>;
+  private readonly streamRecovery: ConversationStreamRecovery<CodexCanonicalConversationState>;
+  private readonly activeStreamingIds = new Set<string>();
+  private readonly goalHydrationTokens = new Map<string, symbol>();
+  private readonly manualCompactions = new CodexManualCompactions();
+  private readonly nativeRequestOccurrences = new Map<string, CodexNativeRequestMessage[]>();
+  private readonly nativeResumeBuffers = new Map<
+    string,
+    {
+      generation: number;
+      notifications: (CodexNativeNotificationMessage | CodexNativeRequestMessage)[];
+    }
+  >();
+  private readonly nativeGenerationByThread = new Map<string, number>();
+  private readonly archiveState = new CanonicalConversationArchiveState();
+  private supportsPaginatedHistory = false;
+  private nativeHostContext:
+    | import("../../../shared/codex-renderer-resume").CodexRendererHostContext
+    | null = null;
+  private suspendedNativeHostContext: typeof this.nativeHostContext = null;
+  private readonly disposalCallbacks = new Set<() => void>();
+  private readonly settingsUpdates = new Map<string, Promise<boolean>>();
+  private nativeSettingsSupport: "unknown" | "supported" | "unsupported" = "unknown";
+  private nativeHostContextLoad: Promise<void> | null = null;
+  private nativeHostContextRevision = 0;
+  /** Null mirrors execution-assignment loading. This build currently resolves the assignment false. */
+  private permissionRefreshEnabled: boolean | null = null;
+  private threadQueueEnabled: boolean | null = null;
+  private readonly historyClient: CanonicalHistoryClient;
+  private readonly historyItemLoader: CanonicalHistoryItemLoader;
+  private readonly completeHistoryLoader: CanonicalCompleteHistoryLoader;
   private readonly followerMembershipByConversationId = new Map<
     string,
-    { ownerClientId: string; followerClientIds: readonly string[]; membershipEpoch: number }
+    {
+      ownerClientId: string;
+      followerClientIds: readonly string[];
+      membershipEpoch: number;
+    }
   >();
   private readonly composerIntentsByThread = new Map<string, CodexComposerIntent>();
   private readonly permissionStateByScope = new Map<string | null, CodexPermissionState>();
@@ -3951,54 +2084,33 @@ export class CodexAppServerManager {
   private readonly threadStartProgressByTarget = new Map<string, CodexThreadStartProgressState>();
   private readonly threadTitlesById = new Map<string, string>();
   private readonly recentConversationIds: string[] = [];
-  private readonly activeGoalContinuationPromises = new Map<string, Promise<void>>();
-  private readonly activeGoalContinuationTimers = new Map<string, ReturnType<typeof setTimeout>>();
-  private readonly ownerTextDeltaSequenceTracker = new CodexFrameTextDeltaSequenceTracker();
-  private readonly ownerTextDeltaQueue = new CodexFrameTextDeltaQueue<OwnerFrameTextDeltaUpdate>({
-    onFlush: (updates, context) => {
-      const completedSequencesByConversationId =
-        this.ownerTextDeltaSequenceTracker.consume(updates);
-      this.applyOwnerTextDeltas(updates, {
-        notifyMode: context.terminalDrainCommit ? "sync" : "default",
-        completedSequencesByConversationId,
-      });
+  private readonly ownerTextDeltaQueue = new CodexFrameTextDeltaQueue<CodexFrameTextDeltaUpdate>({
+    onFlush: (updates) => {
+      for (const [id, deltas] of groupCodexFrameTextDeltasByConversation(updates)) {
+        if (this.streamState.getRole(id)?.role !== "owner") continue;
+        this.historyClient.updateConversation(id, (draft) => {
+          mutateCodexConversationFrameTextDeltas(draft, deltas, { now: Date.now });
+        });
+      }
     },
   });
   private readonly outputDeltaQueue = new CodexCommandOutputQueue<OutputDeltaUpdate>({
     mergeUpdate: mergeOutputDeltaQueueUpdate,
     onFlush: (updates) => {
-      this.applyOutputDeltas(updates);
+      for (const [id, deltas] of groupCodexCommandOutputUpdatesByConversation(updates)) {
+        if (this.streamState.getRole(id)?.role !== "owner") continue;
+        this.historyClient.updateConversation(
+          id,
+          (draft) => {
+            for (const delta of deltas) mutateCodexConversationCommandOutput(draft, delta);
+          },
+          false,
+        );
+      }
     },
   });
-  private readonly ownerRollbackTombstonesByConversationId = new Map<string, Set<string>>();
-  private readonly ownerNotificationCompletionByConversationId = new Map<
-    string,
-    OwnerNotificationCompletionState
-  >();
-  private readonly unclaimedOwnerNotificationSequencesByConversationId = new Map<
-    string,
-    Set<number>
-  >();
-  private readonly ownerStreamPublishCursorsByConversationId = new Map<
-    string,
-    OwnerStreamPublishCursor
-  >();
-  private readonly ownerStreamPublishIdleWaitersByConversationId = new Map<
-    string,
-    Set<OwnerStreamPublishIdleWaiter>
-  >();
-  private readonly queueOwnerProjectionFenceByConversationId = new Map<
-    string,
-    {
-      readonly threadGeneration: number;
-      readonly ownerEpoch: number;
-      readonly projectionRevision: number;
-      readonly publication: Promise<number> | null;
-      readonly streamRevision: number | null;
-    }
-  >();
   private readonly terminalInputBuffers = new CodexTerminalInteractionAccumulator();
-  private readonly ownerAppServerRequestClient = new IpcRendererOwnerAppServerRequestClient();
+  private readonly nativeAppServer: RendererNativeAppServer;
   private readonly pendingNodexAgentAuthorizations = new Map<
     string,
     {
@@ -4019,10 +2131,6 @@ export class CodexAppServerManager {
   private readonly relationshipCallbacks = new Map<string, Set<StoreListener>>();
   private anyConversationCallbacks = new Set<AnyConversationListener>();
   private anyConversationMetaCallbacks = new Set<AnyConversationListener>();
-  private readonly deferredOwnerMessagesByRequestRecovery = new Map<
-    string,
-    DeferredOwnerRecoveryQueue
-  >();
   private readonly lastAnySnapshotById = new Map<string, ConversationAnyProjection>();
   private readonly lastMetaSnapshotById = new Map<string, ConversationMetaProjection>();
   private lastAnyOrderKey: string | null = null;
@@ -4030,17 +2138,394 @@ export class CodexAppServerManager {
 
   private readonly busUnsubscribers: Array<() => void> = [];
   private bootstrapStarted = false;
-  private readonly resyncInFlight = new Set<string>();
   private lastHostError: CodexHostErrorState | null = null;
   private readonly isOpenAIFormElicitationsEnabled: () => boolean;
+  private readonly saveReadState: (
+    threadId: string,
+    hasUnreadTurn: boolean,
+    origin?: "user" | "turn",
+  ) => Promise<unknown>;
 
   constructor(
     private readonly hostId: string,
-    options: { isOpenAIFormElicitationsEnabled?: () => boolean } = {},
+    options: {
+      isOpenAIFormElicitationsEnabled?: () => boolean;
+      saveReadState?: (
+        threadId: string,
+        hasUnreadTurn: boolean,
+        origin?: "user" | "turn",
+      ) => Promise<unknown>;
+    } = {},
   ) {
+    this.nativeAppServer = new RendererNativeAppServer(hostId);
+    this.streamState = new ConversationStream({
+      hostId,
+      isLocalHost: hostId === DEFAULT_CODEX_HOST_ID,
+      canHandleOwnerlessDynamicTool: () => false,
+      getConversation: (id) => this.conversationsById.get(id)?.canonicalState ?? undefined,
+      normalizeSnapshot: (state) => state,
+      applyPatches: (state, patches) => applyPatches(state, patches as Patch[]),
+      setConversation: (state, details) => {
+        const before = this.conversationsById.get(state.id)?.canonicalState;
+        this.applyCanonicalDocument(state);
+        if (!details || !before) return;
+        const existing = new Set(
+          mergeCodexCanonicalTurnStates(residentConversationTurns(before), before.turns)
+            .flatMap((turn) => turn.items)
+            .filter((item) => item.type === "agentMessage" && item.delivery === "async")
+            .map((item) => item.id),
+        );
+        for (const turn of mergeCodexCanonicalTurnStates(
+          residentConversationTurns(state),
+          state.turns,
+        ))
+          for (const item of turn.items) {
+            if (item.type === "agentMessage" && item.delivery === "async" && !existing.has(item.id))
+              this.asyncQuestions.receive(state.id, item.id);
+          }
+      },
+      notifyConversation: (id) => this.notifyConversationCallbacks(id),
+      onRoleChanged: (id) => {
+        this.manualCompactions.clear(id);
+        this.wakeQueuedMessages(id);
+        this.notifyConversationCallbacks(id);
+        if (this.conversationsById.get(id)?.canonicalState) this.retention?.reconcile(id);
+      },
+      onFollowersChanged: (id) => {
+        if (this.conversationsById.get(id)?.canonicalState) this.retention?.reconcile(id);
+      },
+      onOwnerUnavailable: (id, owner) =>
+        this.markConversationNeedsResumeAfterUnavailableOwner(id, owner),
+      onError: (operation, id, error) =>
+        console.error("Conversation stream failed", { operation, id, error }),
+      schedule: (callback, delay) => {
+        const timer = setTimeout(callback, delay);
+        return () => clearTimeout(timer);
+      },
+      transport: {
+        sendState: async (conversationId, hostId, targetClientIds, change) =>
+          (await getConversationCoordinationHost()).threadStreamStateChanged({
+            params: { conversationId, hostId, change },
+            targetClientIds,
+          }),
+        sendFollowing: async (conversationId, hostId, following, targetClientIds) =>
+          (await getConversationCoordinationHost()).threadStreamFollowingChanged({
+            params: { conversationId, hostId, following },
+            targetClientIds,
+          }),
+        requestFollowingStatus: async (conversationId, hostId) =>
+          (await getConversationCoordinationHost()).threadStreamFollowingStatusRequested({
+            conversationId,
+            hostId,
+          }),
+        setThreadOwnership: async (conversationId, hostId, ownsThread) =>
+          (await getConversationCoordinationHost()).setThreadOwnership({
+            conversationId,
+            hostId,
+            ownsThread,
+          }),
+      },
+    });
+
+    this.historyClient = {
+      hostId,
+      supportsPaginatedHistory: () => this.supportsPaginatedHistory,
+      getConversation: (id) => this.conversationsById.get(id)?.canonicalState,
+      sendRequest: (method, params, options) =>
+        this.nativeAppServer.request(method, params, options),
+      updateConversation: (id, recipe, broadcast = true) => {
+        const before = this.conversationsById.get(id)?.canonicalState;
+        if (!before) return;
+        const receipt = new CodexConversationEntityDocument()
+          .withCanonicalState(before)
+          .mutate(recipe);
+        if (!receipt) return;
+        this.applyCanonicalDocument(receipt.after);
+        if (broadcast) this.streamState.broadcastPatches(id, receipt.patches);
+      },
+      broadcastSnapshot: (id) => {
+        this.streamState.broadcastSnapshot(id);
+      },
+      mapTurns: (id, turns, pagination) => {
+        const state = this.conversationsById.get(id)?.canonicalState;
+        const context = state?.hydrationContext;
+        if (!state || !context || !state.currentPermissions)
+          throw new Error("History hydration context unavailable");
+        const params = residentConversationTurns(state).at(-1)?.params;
+        const settings = state.latestThreadSettings;
+        const current = state.currentPermissions;
+        return hydrateCodexCanonicalTurns(id, turns, {
+          hostId,
+          model: state.latestModel ?? context.model,
+          reasoningEffort: state.latestReasoningEffort ?? context.reasoningEffort,
+          cwd: settings?.cwd ?? state.cwd ?? params?.cwd ?? context.cwd ?? "/",
+          ...canonicalHistoryPermissionContext(current),
+          approvalPolicy:
+            settings?.approvalPolicy ?? params?.approvalPolicy ?? current.approvalPolicy,
+          approvalsReviewer:
+            settings?.approvalsReviewer ?? params?.approvalsReviewer ?? current.approvalsReviewer,
+          sandboxPolicy:
+            settings?.sandboxPolicy ??
+            (params && "sandboxPolicy" in params ? params.sandboxPolicy : undefined) ??
+            current.sandboxPolicy,
+          latestThreadSettings: context.latestThreadSettings,
+          turnItemsPaginationById: pagination,
+          pendingRequests: state.requests,
+          hasUnreadTurn: state.hasUnreadTurn,
+        });
+      },
+    };
+
+    this.historyItemLoader = new CanonicalHistoryItemLoader(this.historyClient);
+    this.completeHistoryLoader = new CanonicalCompleteHistoryLoader(
+      this.historyClient,
+      this.historyItemLoader,
+    );
+    this.streamRecovery = new ConversationStreamRecovery<CodexCanonicalConversationState>({
+      conversations: () =>
+        [...this.conversationsById.values()].flatMap((value) =>
+          value.canonicalState ? [value.canonicalState] : [],
+        ),
+      getConversation: (id) => this.historyClient.getConversation(id) ?? undefined,
+      streamingConversationIds: () => this.streamState.getStreamingConversationIds(),
+      ownsHistory: (id) => this.streamState.ownsConversationHistoryStream(id),
+      hasResumeInFlight: (id) => this.resumeInFlightByThreadId.has(id),
+      isSuppressed: (id) =>
+        this.archiveState.isSuppressed(id) || this.threadSummariesById.get(id)?.archived === true,
+      isDisposed: () => this.destroyed,
+      cancelResumes: () => {
+        for (const id of this.resumeInFlightByThreadId.keys()) this.nativeResumeBuffers.delete(id);
+        this.cancelPendingConversationResumes();
+      },
+      resetHistory: () => this.resetConversationHistoryAfterReconnect(),
+      resetStreams: (preserve) => {
+        this.streamState.resetAfterReconnect(preserve);
+      },
+      markNeedsResume: (id) => {
+        this.historyClient.updateConversation(id, (draft) => {
+          draft.resumeState = "needs_resume";
+        });
+        this.setConversationAttachmentState(id, IDLE_LOCAL_CONVERSATION_ATTACHMENT_STATE);
+      },
+      resume: (conversation) =>
+        this.requestThreadStreamResume(conversation.id, {
+          source: "recovery",
+          isReconnectRecovery: true,
+        }),
+      schedule: (callback, delay) => {
+        const timer = setTimeout(callback, delay);
+        return () => clearTimeout(timer);
+      },
+      onError: (threadId, error) =>
+        console.warn("Failed to restore conversation after reconnect", { threadId, error }),
+    });
+
+    const ephemeralSide = (state: CodexCanonicalConversationState) =>
+      state.ephemeral && state.sideConversation === true;
+    this.retention = new CanonicalConversationRetention({
+      getConversation: (id) => this.historyClient.getConversation(id),
+      getRole: (id) => this.streamState.getRole(id)?.role ?? null,
+      ownsHistory: (id) => this.streamState.getRole(id)?.role === "owner",
+      hasActiveView: (id) => this.conversationActivity.has(id),
+      hasFollowers: (id) => this.streamState.hasFollowersOrPendingReconnect(id),
+      shouldKeepLoaded: (state) =>
+        shouldKeepCanonicalConversationLoaded(
+          state,
+          selectCanonicalRetentionRequestKind(state),
+          ephemeralSide(state),
+        ),
+      isEphemeralSide: ephemeralSide,
+      unsubscribe: (id) => this.nativeAppServer.request("thread/unsubscribe", { threadId: id }),
+      releaseHistory: (id) =>
+        this.historyClient.updateConversation(id, releaseCanonicalConversationHistoryDraft, false),
+      completeUnsubscribe: (id, options) =>
+        this.historyClient.updateConversation(id, (draft) =>
+          completeCanonicalConversationUnsubscribeDraft(draft, {
+            ...options,
+            primaryRequest: selectCanonicalRetentionRequestKind(draft),
+          }),
+        ),
+      clearOwnership: (id) => {
+        this.nativeGenerationByThread.delete(id);
+        this.streamState.setRole(id, null);
+      },
+      now: Date.now,
+      schedule: (callback, delay) => {
+        const timer = setTimeout(callback, delay);
+        return () => clearTimeout(timer);
+      },
+      scheduleMicrotask: (callback) => queueMicrotask(callback),
+    });
+
+    this.queuedMessages = new QueuedMessageCoordinator({
+      storage: rendererQueuedMessageStorage,
+      role: (id) => this.streamState.getRole(id),
+      validate: (messages) => {
+        if (!messages.every(isCodexQueuedMessage)) throw new Error("Invalid queued messages");
+      },
+      requestFollower: async (id, state, ownerClientId) => {
+        const response = await (
+          await getConversationCoordinationHost()
+        ).requestThreadFollower({
+          hostId: this.hostId,
+          targetClientId: ownerClientId,
+          request: conversationFollowerRequest("thread-follower-set-queued-follow-ups-state", {
+            conversationId: id,
+            state,
+          }),
+        });
+        if (response.resultType !== "success")
+          throw new Error(
+            response.resultType === "error" ? response.error : "Queue owner unavailable",
+          );
+      },
+      broadcast: async (id, messages) =>
+        (await getConversationCoordinationHost()).threadQueuedFollowUpsChanged({
+          hostId: this.hostId,
+          conversationId: id,
+          messages,
+        }),
+      changed: (id) => {
+        for (const threadId of id ? [id] : this.conversationsById.keys()) {
+          this.refreshQueuedMessageProjection(threadId);
+          if (
+            this.isServerQueueSelected(threadId) &&
+            this.serverQueuedMessages.read(threadId) == null
+          )
+            void this.serverQueuedMessages
+              .load(threadId)
+              .catch((error) => console.error("Server queue load failed", error));
+        }
+      },
+      wake: (id) => this.wakeQueuedMessages(id),
+      error: (operation, error) => console.error("Queued messages failed", { operation, error }),
+    });
+    this.serverQueuedMessages = new CodexServerQueuedMessages({
+      request: (method, params) => this.nativeAppServer.request(method, params),
+      compileInput: compileServerQueuedMessageInput,
+      getConversationCwd: (id) => this.historyClient.getConversation(id)?.cwd ?? null,
+      isConversationInterrupted: (id) =>
+        latestResidentConversationTurn(this.historyClient.getConversation(id))?.status ===
+        "interrupted",
+      isConversationStreaming: (id) => {
+        const conversation = this.conversationsById.get(id);
+        return conversation ? isConversationStreaming(conversation) : false;
+      },
+      onQueueChanged: (id) => this.refreshQueuedMessageProjection(id),
+    });
+    this.queuedExecution = new QueuedMessageExecution<
+      CodexQueuedMessage,
+      QueuedConversationResumeInput,
+      ConversationFollowerTurnStart,
+      CanonicalOwnerSteerInput
+    >({
+      coordinator: this.queuedMessages,
+      role: (id) => this.streamState.getRole(id),
+      canSend: (id, message) =>
+        !this.isServerQueueSelected(id) &&
+        canAutomaticallySendQueuedMessage({
+          conversation: this.historyClient.getConversation(id),
+          message,
+          role: this.streamState.getRole(id),
+        }),
+      validate: (messages) => {
+        if (!messages.every(isCodexQueuedMessage)) throw new Error("Invalid queued messages");
+      },
+      error: (operation, error) => console.error("Queued submission failed", { operation, error }),
+      runtime: {
+        isClientReady: () => this.connection.status === "connected" && !this.destroyed,
+        canAcquireOwnership: () => this.canAcquireConversationOwnership("executor"),
+        tryAcquireStartTurn: (id) => queuedStartLocks.tryAcquireStartTurn(id),
+        releaseStartTurn: (id) => queuedStartLocks.releaseStartTurn(id),
+        waitUntilReady: async () => {
+          await this.refreshNativeHostContext();
+        },
+        acquireSendLock: async (conversationId, messageId) => {
+          const identity = { conversationId, messageId, lockId: crypto.randomUUID() };
+          if (!(await runConversationOperation("codex:queued-messages:acquire-send", identity)))
+            return null;
+          return {
+            release: async (sent) => {
+              await Promise.all([
+                runConversationOperation("codex:turn:native:release", messageId),
+                runConversationOperation("codex:turn:native-steer:release", messageId),
+              ]);
+              await runConversationOperation("codex:queued-messages:release-send", {
+                ...identity,
+                sent,
+              });
+            },
+          };
+        },
+        errorReason: (error) => (error instanceof Error ? error.message : String(error)),
+        prepare: (conversationId, message, mode) =>
+          this.prepareQueuedSubmission(conversationId, message, mode, "executor"),
+      },
+      submissionHost: {
+        needsResume: (id) =>
+          this.historyClient.getConversation(id)?.resumeState !== "resumed" ||
+          !this.streamState.getRole(id),
+        resume: async (resume, automatic) => {
+          const resumed = await this.requestThreadStreamResume(resume.conversationId, {
+            source: automatic ? "executor" : "view",
+            serviceTier: resume.serviceTier,
+            useAppServerPermissionDefault: resume.useAppServerPermissionDefault,
+            workspaceRoots: resume.workspaceRoots,
+            collaborationMode: resume.collaborationMode,
+          });
+          if (!resumed) return { status: "not-ready" };
+          return {
+            status: "ready",
+            activeTurnId: this.queuedActiveTurn(resume.conversationId),
+          };
+        },
+        getActiveTurnId: (id) => this.queuedActiveTurn(id),
+        hasPendingTurnStart: (id) =>
+          hasPendingConversationTurnStart(this.historyClient.getConversation(id)),
+        start: (id, turnStart) => this.startPreparedQueuedMessage(id, turnStart),
+        steer: (id, input) => this.steerPreparedQueuedMessage(id, input),
+        canStartAfterSteerError: (_id, error) => isSteerTurnInactiveError(error),
+        isNoActiveTurnError,
+      },
+    });
+    this.busUnsubscribers.push(
+      rendererQueuedMessageStorage.subscribe(() => this.queuedMessages.storageChanged()),
+      registerAppCloseFlushHandler(() => this.queuedMessages.flushPendingWrites()),
+    );
+
+    this.saveReadState =
+      options.saveReadState ??
+      (async (threadId, hasUnreadTurn, origin) =>
+        readStateConnection?.set({ hostId: this.hostId, threadId, hasUnreadTurn }, origin));
     this.isOpenAIFormElicitationsEnabled = options.isOpenAIFormElicitationsEnabled ?? (() => true);
     this.busUnsubscribers.push(
       subscribeCodexEvents((event) => {
+        if (event.type === "queuedMessageStateChanged") {
+          rendererQueuedMessageStorage.invalidate();
+          return;
+        }
+        if (event.type === "executionAssignmentsChanged") {
+          void runConversationOperation("codex:execution-assignments:read")
+            .then((snapshot) => {
+              if (this.destroyed) return;
+              const permissionChanged =
+                this.permissionRefreshEnabled !== snapshot.permissionRefresh;
+              const queueChanged = this.threadQueueEnabled !== snapshot.threadQueue;
+              if (!permissionChanged && !queueChanged) return;
+              this.permissionRefreshEnabled = snapshot.permissionRefresh;
+              this.threadQueueEnabled = snapshot.threadQueue;
+              for (const id of this.conversationsById.keys()) {
+                this.refreshQueuedMessageProjection(id);
+                this.wakeQueuedMessages(id);
+                if (this.isServerQueueSelected(id) && this.serverQueuedMessages.read(id) == null)
+                  void this.serverQueuedMessages
+                    .load(id)
+                    .catch((error) => console.error("Server queue load failed", error));
+              }
+            })
+            .catch(() => {});
+          return;
+        }
         if (event.type === "dictationState") {
           this.setDictationState(event.state);
           return;
@@ -4051,21 +2536,6 @@ export class CodexAppServerManager {
       }),
       subscribeCodexAppServerMessage("shared-object-updated", (event) => {
         this.handleSharedObjectUpdated(event);
-      }),
-      subscribeCodexAppServerMessage("thread-stream-state-changed", (event) => {
-        this.handleThreadStreamStateChanged(event);
-      }),
-      subscribeCodexAppServerMessage("thread-stream-snapshot-requested", (event) => {
-        this.handleThreadStreamSnapshotRequested(event);
-      }),
-      subscribeCodexAppServerMessage("thread-stream-followers-changed", (event) => {
-        this.handleThreadStreamFollowersChanged(event);
-      }),
-      subscribeCodexAppServerMessage("thread-stream-following-status-requested", (event) => {
-        this.handleThreadStreamFollowingStatusRequested(event);
-      }),
-      subscribeCodexAppServerMessage("thread-stream-transport-reset", (event) => {
-        this.handleThreadStreamTransportReset(event);
       }),
       subscribeCodexAppServerMessage("client-status-changed", (event) => {
         this.handleClientStatusChanged(event);
@@ -4079,24 +2549,605 @@ export class CodexAppServerManager {
       }),
       subscribeCodexAppServerMessage("thread-archived", (event) => {
         if (event.hostId !== this.hostId) return;
+        this.archiveState.suppress(event.conversationId);
+        this.historyItemLoader.cancelLoads(event.conversationId);
         this.removeThreadLocalState(event.conversationId);
       }),
       subscribeCodexAppServerMessage("thread-deleted", (event) => {
         this.handleThreadDeleted(event);
       }),
-      subscribeCodexAppServerMessage("thread-owner-notification", (event) => {
-        this.handleThreadOwnerNotification(event);
-      }),
-      subscribeCodexAppServerMessage("thread-owner-request", (event) => {
-        this.handleThreadOwnerRequest(event);
-      }),
-      subscribeCodexAppServerMessage("thread-owner-unavailable", (event) => {
-        this.handleThreadOwnerUnavailable(event);
-      }),
+      subscribeCodexAppServerMessage("native-notification", (event) =>
+        this.receiveNativeNotification(event),
+      ),
+      subscribeCodexAppServerMessage("native-request", (event) => this.receiveNativeRequest(event)),
       subscribeCodexAppServerMessage("error", (event) => {
         this.handleHostError(event);
       }),
     );
+  }
+
+  private receiveNativeNotification(event: CodexNativeNotificationMessage): void {
+    if (event.hostId !== this.hostId || this.destroyed) return;
+    if (
+      this.nativeHostContext
+        ? this.nativeHostContext.generation !== event.generation
+        : this.nativeHostContextRevision > 0
+    )
+      return;
+    if (event.notification.method === "thread/started")
+      this.registerThreadMetadata(event.notification.params.thread);
+    if (event.notification.method === "thread/archived") {
+      const id = event.notification.params.threadId;
+      this.archiveState.suppress(id);
+      this.historyItemLoader.cancelLoads(id);
+      this.removeThreadLocalState(id);
+      return;
+    }
+    if (event.notification.method === "thread/unarchived") {
+      this.archiveState.unsuppress(event.notification.params.threadId);
+      return;
+    }
+    const params = event.notification.params as { threadId?: unknown; thread?: { id?: unknown } };
+    const threadId =
+      typeof params.threadId === "string"
+        ? params.threadId
+        : typeof params.thread?.id === "string"
+          ? params.thread.id
+          : null;
+    if (threadId && event.notification.method === "thread/queue/changed") {
+      if (this.isServerQueueEnabled())
+        void this.serverQueuedMessages
+          .refresh(threadId)
+          .catch((error) => console.error("Server queue refresh failed", error));
+      return;
+    }
+    if (!threadId || this.streamState.getRole(threadId)?.role !== "owner") return;
+    const buffer = this.nativeResumeBuffers.get(threadId);
+    if (buffer) {
+      if (buffer.generation === event.generation) buffer.notifications.push(event);
+      return;
+    }
+    if (this.nativeGenerationByThread.get(threadId) !== event.generation) return;
+    if (
+      [
+        "thread/started",
+        "thread/status/changed",
+        "turn/completed",
+        "serverRequest/resolved",
+      ].includes(event.notification.method)
+    )
+      this.retention.notificationHandled(threadId);
+    if (event.notification.method === "item/commandExecution/terminalInteraction") {
+      const payload = event.notification.params;
+      const parsed = this.terminalInputBuffers.accept(
+        { conversationId: threadId, itemId: payload.itemId },
+        payload.stdin,
+      );
+      if (parsed.commands.length > 0)
+        this.historyClient.updateConversation(
+          threadId,
+          (draft) => {
+            mutateCodexConversationTerminalCommands(draft, {
+              conversationId: threadId,
+              turnId: payload.turnId,
+              itemId: payload.itemId,
+              commands: parsed.commands,
+            });
+          },
+          false,
+        );
+      return;
+    }
+    if (
+      event.notification.method === "item/completed" &&
+      event.notification.params.item.type === "commandExecution"
+    )
+      this.terminalInputBuffers.clearItem({
+        conversationId: threadId,
+        itemId: event.notification.params.item.id,
+      });
+    if (isCodexCommandOutputNotification(event.notification)) {
+      this.outputDeltaQueue.enqueue(toCodexCommandOutputUpdate(event.notification));
+      return;
+    }
+    if (
+      event.notification.method === "item/completed" ||
+      event.notification.method === "turn/completed"
+    )
+      this.outputDeltaQueue.flushNow();
+    if (isCodexFrameTextDeltaNotification(event.notification)) {
+      if (event.notification.method === "item/agentMessage/delta") {
+        codexTurnFirstResponseTracker.markFirstDataReceived(event.notification.params.turnId);
+      }
+      this.ownerTextDeltaQueue.enqueue(toCodexFrameTextDelta(event.notification));
+      return;
+    }
+    if (
+      (event.notification.method === "item/completed" ||
+        event.notification.method === "turn/completed") &&
+      this.ownerTextDeltaQueue.drainBefore(() => this.receiveNativeNotification(event), threadId)
+    )
+      return;
+    const before = this.conversationsById.get(threadId)?.canonicalState;
+    if (!before) return;
+    const receipt = new CodexConversationEntityDocument()
+      .withCanonicalState(before)
+      .mutate((draft) =>
+        mutateCodexConversationEvent(
+          draft,
+          { type: "notification", notification: event.notification },
+          {
+            now: Date.now,
+            createId: () => crypto.randomUUID(),
+            consumeContextCompactionSource: () => this.manualCompactions.consumeSource(threadId),
+            resolveCollabReceiverThread: (id) => this.threadsById.get(id) ?? null,
+            isOpenAIFormElicitationsEnabled: this.isOpenAIFormElicitationsEnabled(),
+          },
+        ),
+      );
+    if (!receipt) return;
+    if (receipt.after !== before) this.applyCanonicalDocument(receipt.after);
+    if (event.notification.method === "item/started")
+      this.asyncQuestions.receive(threadId, event.notification.params.item.id);
+    if (event.notification.method === "turn/started") {
+      const turnId = event.notification.params.turn.id;
+      const turn = receipt.after.turns.find((candidate) => candidate.turnId === turnId);
+      const clientUserMessageId = turn?.params.clientUserMessageId;
+      if (clientUserMessageId) {
+        codexTurnFirstResponseTracker.markTurnStarted(clientUserMessageId, threadId, turnId);
+      }
+    }
+    if (
+      event.notification.method === "item/started" &&
+      event.notification.params.item.type !== "userMessage" &&
+      event.notification.params.item.type !== "hookPrompt"
+    ) {
+      codexTurnFirstResponseTracker.markFirstDataReceived(event.notification.params.turnId);
+    }
+    if (event.notification.method !== "item/fileChange/patchUpdated" && receipt.patches.length > 0)
+      this.streamState.broadcastPatches(threadId, receipt.patches);
+    for (const effect of receipt.result) {
+      if (effect.type === "markConversationStreaming") this.activeStreamingIds.add(effect.threadId);
+      if (effect.type === "clearCompletedGoal") this.consumeOwnerThreadMetadataEffects([effect]);
+    }
+    if (event.notification.method === "turn/completed") {
+      if (event.notification.params.turn.status !== "inProgress") {
+        codexTurnFirstResponseTracker.finishTurn(
+          event.notification.params.turn.id,
+          event.notification.params.turn.status,
+        );
+      }
+      this.queuedExecution.turnCompleted(
+        threadId,
+        event.notification.params.turn.status === "interrupted",
+      );
+    }
+    if (!before.hasUnreadTurn && receipt.after.hasUnreadTurn)
+      void this.saveReadState(threadId, true, "turn");
+  }
+
+  private receiveNativeRequest(event: CodexNativeRequestMessage): void {
+    if (event.hostId !== this.hostId || this.destroyed) return;
+    if (
+      this.nativeHostContext
+        ? this.nativeHostContext.generation !== event.generation
+        : this.nativeHostContextRevision > 0
+    )
+      return;
+    if (event.request.method === "currentTime/read") {
+      void sendCodexAppServerResponse({
+        ...event,
+        effect: {
+          type: "respond",
+          method: "currentTime/read",
+          requestId: event.request.id,
+          response: { currentTimeAt: Math.floor(Date.now() / 1_000) },
+        },
+      } satisfies CodexNativeAutoResponseInput);
+      return;
+    }
+    const threadId = "threadId" in event.request.params ? event.request.params.threadId : null;
+    if (typeof threadId !== "string") return;
+    const key = JSON.stringify([threadId, event.request.id]);
+    const occurrences = this.nativeRequestOccurrences.get(key) ?? [];
+    if (!occurrences.some((entry) => entry.occurrenceToken === event.occurrenceToken))
+      this.nativeRequestOccurrences.set(key, [...occurrences, event]);
+    if (this.streamState.getRole(threadId)?.role !== "owner") return;
+    const buffer = this.nativeResumeBuffers.get(threadId);
+    if (buffer) {
+      if (buffer.generation === event.generation) buffer.notifications.push(event);
+      return;
+    }
+    if (this.nativeGenerationByThread.get(threadId) !== event.generation) return;
+    const before = this.conversationsById.get(threadId)?.canonicalState;
+    if (!before) return;
+    const receipt = new CodexConversationEntityDocument()
+      .withCanonicalState(before)
+      .mutate((draft) =>
+        mutateCodexConversationEvent(
+          draft,
+          { type: "request", request: event.request },
+          {
+            now: Date.now,
+            createId: () => crypto.randomUUID(),
+            isOpenAIFormElicitationsEnabled: this.isOpenAIFormElicitationsEnabled(),
+          },
+        ),
+      );
+    if (!receipt) return;
+    this.applyCanonicalDocument(receipt.after);
+    this.streamState.broadcastPatches(threadId, receipt.patches);
+    for (const effect of receipt.result) {
+      if (effect.type === "respond")
+        void sendCodexAppServerResponse({
+          ...event,
+          effect,
+        } satisfies CodexNativeAutoResponseInput);
+      if (effect.type === "dispatchDynamicToolCall") {
+        const projectId = this.conversationsById.get(threadId)?.projectId ?? null;
+        const serviceTier = readCodexServiceTier();
+        void runConversationOperation(
+          "codex:dynamic-tool-call:respond",
+          threadId,
+          event.request.id,
+          {
+            nativeOccurrence: event,
+            permissionMode:
+              this.permissionStateByScope.get(projectId)?.mode ?? DEFAULT_PERMISSION_STATE.mode,
+            serviceTierSelector:
+              serviceTier === "fast" ? { type: "custom", serviceTier } : { type: "standard" },
+          },
+        );
+      }
+    }
+  }
+
+  getStreamRole(conversationId: string): LocalConversationStreamRole | null {
+    return this.streamState.getRole(conversationId);
+  }
+
+  async handleThreadFollowerRequest(
+    request: ConversationFollowerRequest,
+  ): Promise<{ method: string; result: unknown }> {
+    const params = asRecord(request.params);
+    if (typeof params?.conversationId !== "string")
+      throw new Error("Conversation follower request is missing its conversation identity");
+    this.assertOwnerForConversation(params.conversationId);
+    if (request.method === "thread-follower-command-approval-decision") {
+      const params =
+        request.params as ConversationFollowerParams["thread-follower-command-approval-decision"];
+      this.assertOwnerForConversation(params.conversationId);
+      await this.respondApprovalAsOwner(
+        params.requestId,
+        { kind: "command", decision: params.decision },
+        params.conversationId,
+      );
+      return { method: request.method, result: { ok: true } };
+    }
+    if (request.method === "thread-follower-file-approval-decision") {
+      const params =
+        request.params as ConversationFollowerParams["thread-follower-file-approval-decision"];
+      this.assertOwnerForConversation(params.conversationId);
+      await this.respondApprovalAsOwner(
+        params.requestId,
+        { kind: "file", decision: params.decision },
+        params.conversationId,
+      );
+      return { method: request.method, result: { ok: true } };
+    }
+    if (request.method === "thread-follower-permissions-request-approval-response") {
+      const params =
+        request.params as ConversationFollowerParams["thread-follower-permissions-request-approval-response"];
+      this.assertOwnerForConversation(params.conversationId);
+      await this.respondPermissionRequestAsOwner(
+        params.requestId,
+        params.response,
+        params.conversationId,
+      );
+      return { method: request.method, result: { ok: true } };
+    }
+    if (request.method === "thread-follower-submit-user-input") {
+      const params =
+        request.params as ConversationFollowerParams["thread-follower-submit-user-input"];
+      this.assertOwnerForConversation(params.conversationId);
+      await this.respondUserInputAsOwner(
+        params.requestId,
+        Object.fromEntries(
+          Object.entries(params.response.answers).map(([id, answer]) => [
+            id,
+            answer?.answers ?? [],
+          ]),
+        ),
+        params.conversationId,
+      );
+      return { method: request.method, result: { ok: true } };
+    }
+    if (request.method === "thread-follower-submit-mcp-server-elicitation-response") {
+      const params =
+        request.params as ConversationFollowerParams["thread-follower-submit-mcp-server-elicitation-response"];
+      this.assertOwnerForConversation(params.conversationId);
+      await this.respondMcpElicitationAsOwner(
+        params.requestId,
+        params.response,
+        params.conversationId,
+      );
+      return { method: request.method, result: { ok: true } };
+    }
+    if (request.method === "thread-follower-start-turn") {
+      const { conversationId, turnStart } =
+        request.params as ConversationFollowerParams["thread-follower-start-turn"];
+      this.assertOwnerForConversation(conversationId);
+      const prepared = await this.inspectOwnerTurnStart(turnStart);
+      const clientUserMessageId = turnStart.request.clientUserMessageId;
+      if (!clientUserMessageId) throw new Error("Prepared native turn identity missing");
+      const result = await this.executeOwnerOptimisticTurnTransaction({
+        threadId: conversationId,
+        clientUserMessageId,
+        canonicalParams: prepared.params,
+        execution: prepared,
+        turnContext: turnStart.context,
+        request: (submission) =>
+          this.executePreparedNativeTurn(turnStart, prepared.request, submission),
+      });
+      return { method: request.method, result: { result } };
+    }
+    if (request.method === "thread-follower-edit-last-user-turn") {
+      const params =
+        request.params as ConversationFollowerParams["thread-follower-edit-last-user-turn"];
+      await this.executeNativeEditAsOwner(params.conversationId, params as CanonicalEditOptions);
+      return { method: request.method, result: { ok: true } };
+    }
+    if (request.method === "thread-follower-steer-turn") {
+      const params = request.params as ConversationFollowerParams["thread-follower-steer-turn"];
+      if (!params.clientUserMessageId) throw new Error("Steer preparation identity missing");
+      const prepared = await runConversationOperation(
+        "codex:turn:native-steer:inspect",
+        params.clientUserMessageId,
+      );
+      const result = await this.executeNativeSteerAsOwner(prepared);
+      return { method: request.method, result: { result } };
+    }
+    if (request.method === "thread-follower-interrupt-turn") {
+      const params = request.params as ConversationFollowerParams["thread-follower-interrupt-turn"];
+      try {
+        const interruptedTurnId = await this.interruptNativeConversationAsOwner(
+          params.conversationId,
+          params.mode,
+          params.expectedTurnId,
+        );
+        return { method: request.method, result: { interruptedTurnId, ok: true } };
+      } catch (error) {
+        if (
+          params.mode !== "user-stop" ||
+          !(error instanceof Error) ||
+          !("interruptedTurnId" in error) ||
+          typeof error.interruptedTurnId !== "string"
+        )
+          throw error;
+        return {
+          method: request.method,
+          result: {
+            interruptedTurnId: error.interruptedTurnId,
+            goalPauseError: error.message,
+            ok: true,
+          },
+        };
+      }
+    }
+    if (request.method === "thread-follower-update-thread-settings") {
+      const params =
+        request.params as ConversationFollowerParams["thread-follower-update-thread-settings"];
+      const applied = await this.updateNativeThreadSettingsAsOwner(
+        params.conversationId,
+        params.threadSettings as CanonicalThreadSettingsPatch,
+        params.condition as CanonicalThreadSettingsCondition | undefined,
+        params.activeTurnId,
+      );
+      return { method: request.method, result: { applied } };
+    }
+    if (request.method === "thread-follower-compact-thread") {
+      const params = request.params as ConversationFollowerParams["thread-follower-compact-thread"];
+      this.assertOwnerForConversation(params.conversationId);
+      await this.compactThread(params.conversationId);
+      return { method: request.method, result: { ok: true } };
+    }
+    if (request.method === "thread-follower-load-complete-history") {
+      const params = request.params as { conversationId: string };
+      this.assertOwnerForConversation(params.conversationId);
+      const before = this.conversationsById.get(params.conversationId)?.canonicalState ?? null;
+      const complete = before ? hasCompleteCanonicalConversationHistory(before) : false;
+      const beforeRevision = this.streamState.getRevision(params.conversationId);
+      await this.completeHistoryLoader.load(params.conversationId);
+      const afterRevision = this.streamState.getRevision(params.conversationId);
+      const revision =
+        !complete && afterRevision !== null && afterRevision > (beforeRevision ?? 0)
+          ? afterRevision
+          : this.streamState.broadcastSnapshot(params.conversationId);
+      if (revision === null)
+        throw new Error("no-client-found: thread stream owner became unavailable");
+      return {
+        method: request.method,
+        result: { revision },
+      };
+    }
+    if (request.method === "thread-follower-set-queued-follow-ups-state") {
+      const params =
+        request.params as import("../../../shared/codex-thread-follower-request").ConversationFollowerParams["thread-follower-set-queued-follow-ups-state"];
+      const messages = params.state[params.conversationId] ?? [];
+      if (!messages.every(isCodexQueuedMessage)) throw new Error("Invalid queued messages");
+      await this.queuedMessages.acceptFromFollower(params.conversationId, messages);
+      return { method: request.method, result: { ok: true } };
+    }
+    throw new Error(`Unsupported conversation follower method: ${request.method}`);
+  }
+
+  receiveCoordination(
+    method: ConversationCoordinationBroadcast,
+    event: ConversationCoordinationEvent,
+  ): void {
+    receiveConversationStreamServiceEvent(this.streamState, this.hostId, method, event);
+    const params = event.params as {
+      hostId?: string;
+      conversationId?: string;
+    };
+    if (params?.hostId !== this.hostId) return;
+    const id = params.conversationId;
+    if (!id) return;
+    if (method === "threadQueuedFollowUpsChanged") {
+      const messages: unknown =
+        event.params !== null && typeof event.params === "object"
+          ? Reflect.get(event.params, "messages")
+          : null;
+      if (Array.isArray(messages) && messages.every(isCodexQueuedMessage))
+        this.queuedMessages.receiveBroadcast(event.sourceClientId, id, messages);
+    }
+    if (method === "threadUnarchived") this.archiveState.unsuppress(id);
+    if (method === "threadArchived") {
+      this.archiveState.suppress(id);
+      this.historyItemLoader.cancelLoads(id);
+      this.removeThreadLocalState(id);
+    }
+  }
+
+  private installNativeThreadResponse(
+    response:
+      | import("@nodex/codex-app-server-protocol/v2").ThreadStartResponse
+      | import("@nodex/codex-app-server-protocol/v2").ThreadForkResponse,
+    resumeState: "resumed" | "needs_resume",
+    workspaceKind?: CodexCanonicalConversationState["workspaceKind"],
+  ): void {
+    this.registerThreadMetadata(response.thread);
+    const hydrated = createCodexCanonicalHydratedConversationState(response.thread, {
+      hostId: this.hostId,
+      model: response.model,
+      reasoningEffort: response.reasoningEffort,
+      cwd: response.cwd,
+      approvalPolicy: response.approvalPolicy,
+      approvalsReviewer: response.approvalsReviewer,
+      sandboxPolicy: response.sandbox,
+      activePermissionProfile: response.activePermissionProfile,
+      runtimeWorkspaceRoots: response.runtimeWorkspaceRoots,
+      latestThreadSettings: {
+        cwd: response.cwd,
+        model: response.model,
+        effort: response.reasoningEffort,
+        serviceTier: response.serviceTier,
+        multiAgentMode: response.multiAgentMode,
+        approvalPolicy: response.approvalPolicy,
+        approvalsReviewer: response.approvalsReviewer,
+        activePermissionProfile: response.activePermissionProfile,
+        sandboxPolicy: response.sandbox,
+      },
+      hasUnreadTurn: false,
+    });
+    const canonical = reconcileCodexResumedConversationState({
+      existing: null,
+      resumed: hydrated,
+      thread: response.thread,
+      settingsPatch: {
+        ...(hydrated.hydrationContext?.latestThreadSettings ?? {}),
+        permissions: response.activePermissionProfile?.id ?? null,
+      },
+    });
+    this.applyCanonicalDocument({ ...canonical, workspaceKind, resumeState });
+  }
+
+  private applyCanonicalDocument(state: CodexCanonicalConversationState): void {
+    const current = this.conversationsById.get(state.id);
+    const interruptionChanged =
+      (latestResidentConversationTurn(current?.canonicalState)?.status === "interrupted") !==
+      (latestResidentConversationTurn(state)?.status === "interrupted");
+    const status = toOwnerThreadStatusPayload(state.id, state.threadRuntimeStatus);
+    const summary = this.threadSummariesById.get(state.id);
+    const rawMetadata = this.threadsById.get(state.id);
+    const base: CodexConversationSnapshot = {
+      threadId: state.id,
+      projectId: summary?.projectId ?? null,
+      source: state.parentThreadId ? { parentThreadId: state.parentThreadId } : null,
+      threadName: state.title,
+      threadPreview: summary?.threadPreview ?? "",
+      cwd: state.cwd,
+      statusType: status.statusType,
+      statusActiveFlags: status.statusActiveFlags,
+      archived: summary?.archived ?? false,
+      createdAt: state.createdAt,
+      updatedAt: state.updatedAt,
+      linkedAt: summary?.linkedAt ?? "",
+      turns: [],
+      requests: [],
+      resumeState: state.resumeState,
+      queuedFollowUps: this.projectQueuedMessages(
+        state.id,
+        EMPTY_CODEX_QUEUED_FOLLOW_UP_PROJECTION,
+      ),
+      pendingSteers: [],
+      backgroundTerminalRows: [],
+      capabilityFlags: {
+        canEditLastUserTurn: true,
+        canForkFromTurn: true,
+        canSearch: true,
+        canCollapseTurns: true,
+      },
+    };
+    const conversation: CodexConversationSnapshot = {
+      ...base,
+      ...current,
+      canonicalState: state,
+      threadName: state.title,
+      cwd: state.cwd,
+      projectId: summary?.projectId ?? current?.projectId ?? null,
+      agentNickname: state.agentNickname,
+      ephemeral: state.ephemeral,
+      threadSource: state.threadSource,
+      ...(rawMetadata
+        ? { threadPreview: rawMetadata.preview, agentRole: rawMetadata.agentRole }
+        : {}),
+      ...(state.sideConversation !== undefined
+        ? {
+            source: {
+              parentThreadId: null,
+              ...(current?.source ?? base.source),
+              sideConversation: state.sideConversation,
+            },
+          }
+        : {}),
+      statusType: status.statusType,
+      statusActiveFlags: status.statusActiveFlags,
+      threadRuntimeStatus: state.threadRuntimeStatus,
+      modelProvider: state.modelProvider,
+      createdAt: state.createdAt,
+      updatedAt: state.updatedAt,
+      resumeState: state.resumeState,
+      latestTokenUsageInfo: state.latestTokenUsageInfo,
+      threadGoal: state.threadGoal,
+      completedThreadGoal: state.completedThreadGoal,
+    };
+    const nativeRequestIds = new Set(
+      [...(current?.canonicalState?.requests ?? []), ...state.requests].map(
+        (request) => request.id,
+      ),
+    );
+    let projected = clearOwnerApprovalAttachments(
+      {
+        ...conversation,
+        requests: conversation.requests.filter(
+          (request) => !("requestId" in request) || !nativeRequestIds.has(request.requestId),
+        ),
+      },
+      nativeRequestIds,
+    );
+    for (const request of state.requests)
+      projected = projectOwnerServerRequestToConversation(projected, request);
+    this.applyConversationSnapshot(
+      state.id,
+      materializeOwnerCanonicalConversationSnapshot(
+        projectOwnerThreadSettingsToConversation(projected, state),
+        current?.canonicalState,
+      ),
+    );
+    if (interruptionChanged && this.isServerQueueSelected(state.id)) {
+      this.refreshQueuedMessageProjection(state.id);
+    }
   }
 
   getHostId(): string {
@@ -4121,27 +3172,39 @@ export class CodexAppServerManager {
   }
 
   destroy(): void {
+    this.queuedExecution[Symbol.dispose]();
+    this.queuedMessages[Symbol.dispose]();
+    this.serverQueuedMessages[Symbol.dispose]();
+    if (this.destroyed) return;
+    this.destroyed = true;
+    this.streamRecovery.dispose();
+    for (const callback of this.disposalCallbacks) callback();
+    this.disposalCallbacks.clear();
+    this.manualCompactions.clearAll();
+    this.goalHydrationTokens.clear();
+    this.retention.dispose();
+    this.nativeAppServer[Symbol.dispose]();
+    this.archiveState.clear();
+    this.completeHistoryLoader[Symbol.dispose]();
+    this.historyItemLoader[Symbol.dispose]();
+    this.streamState.dispose();
+    this.nativeResumeBuffers.clear();
+    this.nativeRequestOccurrences.clear();
+    this.nativeGenerationByThread.clear();
+    this.threadsById.clear();
     this.asyncQuestions.clear();
     this.cancelPendingNodexAgentAuthorizations();
+    this.conversationActivity.clear();
+    this.foregroundConversations.clear();
     this.ownerTextDeltaQueue.dispose();
-    this.ownerTextDeltaSequenceTracker.clear();
-    this.ownerNotificationCompletionByConversationId.clear();
-    this.unclaimedOwnerNotificationSequencesByConversationId.clear();
     this.outputDeltaQueue.dispose();
-    this.resumeInFlightByThreadId.clear();
+    this.cancelPendingConversationResumes();
+    this.conversationRemovedCallbacks.clear();
     this.attachmentStateByThreadId.clear();
     this.attachmentCallbacks.clear();
     this.interruptedTurnResumesInFlightByThreadId.clear();
-    this.deferredOwnerMessagesByRequestRecovery.clear();
     this.ownerHiddenLifecycleItemTypesByConversationId.clear();
-    this.ownerRollbackTombstonesByConversationId.clear();
-    this.queueOwnerProjectionFenceByConversationId.clear();
-    this.cancelOwnerStreamPublishQueues();
-    for (const timer of this.activeGoalContinuationTimers.values()) {
-      clearTimeout(timer);
-    }
-    this.activeGoalContinuationTimers.clear();
-    this.activeGoalContinuationPromises.clear();
+
     this.terminalInputBuffers.clear();
     this.childMembershipsByParentThreadId.clear();
     this.relationshipCallbacks.clear();
@@ -4227,6 +3290,7 @@ export class CodexAppServerManager {
   readRecentConversations(): CodexConversationSnapshot[] {
     const conversations: CodexConversationSnapshot[] = [];
     for (const threadId of this.recentConversationIds) {
+      if (this.archiveState.isSuppressed(threadId)) continue;
       const conversation = this.conversationsById.get(threadId);
       if (conversation) {
         conversations.push(conversation);
@@ -4363,7 +3427,9 @@ export class CodexAppServerManager {
 
   async loadThreads(
     projectId: string,
-    opts?: { includeArchived?: boolean },
+    opts?: {
+      includeArchived?: boolean;
+    },
   ): Promise<CodexThreadSummary[]> {
     if (!opts && this.threadSummaryLoadsInFlightByProject.has(projectId)) {
       return this.threadSummaryLoadsInFlightByProject.get(projectId)!;
@@ -4385,7 +3451,9 @@ export class CodexAppServerManager {
 
   private async loadThreadsFromHost(
     projectId: string,
-    opts?: { includeArchived?: boolean },
+    opts?: {
+      includeArchived?: boolean;
+    },
   ): Promise<CodexThreadSummary[]> {
     const threads: CodexThreadSummary[] = [];
     let after: string | null = null;
@@ -4407,7 +3475,7 @@ export class CodexAppServerManager {
   }
 
   async loadAvailableModels(): Promise<CodexModelOption[]> {
-    const models = (await runConversationOperation("codex:model:list")) as CodexModelOption[];
+    const models = await readNativeModelCatalog(this.nativeAppServer);
     this.setAvailableModels(models);
     return models;
   }
@@ -4421,117 +3489,721 @@ export class CodexAppServerManager {
   }
 
   async listCollaborationModes(): Promise<CodexCollaborationModePreset[]> {
-    return (await runConversationOperation(
-      "codex:collaboration-mode:list",
-    )) as CodexCollaborationModePreset[];
+    return readNativeCollaborationModes(this.nativeAppServer);
+  }
+
+  async hydrateArchivedThreadPreview(threadId: string): Promise<boolean> {
+    await this.refreshNativeHostContext();
+    const hostContext = this.nativeHostContext;
+    return this.archiveState.hydratePreview(threadId, {
+      hasOrdinaryState: () =>
+        this.conversationsById.has(threadId) || this.threadsById.has(threadId),
+      hasConversation: () => this.conversationsById.has(threadId),
+      hasPreviewHistory: () =>
+        Boolean(this.conversationsById.get(threadId)?.canonicalState?.turnHistory),
+      onSuppressed: () => this.notifyAnyConversationCallbacks({ forceMeta: true }),
+      hydrate: async (isCurrent) => {
+        const prepared = await runConversationOperation(
+          "codex:thread:history-hydration:prepare",
+          threadId,
+        );
+        if (prepared.context.hostId !== this.hostId)
+          throw new Error("Archived history belongs to another host");
+        const response = await this.nativeAppServer.request(
+          "thread/read",
+          { threadId, includeTurns: !this.supportsPaginatedHistory },
+          { source: "thread_hydration" },
+        );
+        const page = this.supportsPaginatedHistory
+          ? await listCanonicalHistoryTurns(this.historyClient, threadId, {
+              limit: 5,
+              itemsView: "full",
+              sortDirection: "desc",
+              requestOptions: { source: "thread_hydration" },
+            })
+          : null;
+        if (!isCurrent() || this.destroyed || this.nativeHostContext !== hostContext) return;
+        const rawTurns = page ? [...page.response.data].reverse() : response.thread.turns;
+        const canonical = createCodexCanonicalHydratedConversationState(
+          { ...response.thread, turns: rawTurns },
+          { ...prepared.context, turnItemsPaginationById: page?.itemsPaginationByTurnId },
+        );
+        const receipt = new CodexConversationEntityDocument()
+          .withCanonicalState(canonical)
+          .mutate((draft) => {
+            const turns = residentConversationTurns(draft);
+            const cursor = page?.response.nextCursor ?? null;
+            replaceCanonicalHistoryDraft(
+              draft,
+              turns,
+              cursor === null,
+              cursor === null ? null : { cursor, oldestLoadedTurnId: turns[0]?.turnId ?? null },
+            );
+            draft.resumeState = "needs_resume";
+          });
+        if (!receipt) return;
+        this.applyThreadSummary(prepared.summary);
+        this.registerThreadMetadata(response.thread);
+        this.applyCanonicalDocument(receipt.after);
+      },
+    });
   }
 
   async requestThreadStreamSnapshot(threadId: string): Promise<CodexConversationSnapshot | null> {
-    const current = this.conversationsById.get(threadId);
-    if (this.streamState.getRole(threadId)?.role === "owner" && current?.resumeState === "resumed")
-      return current;
-    const conversation = (await runConversationOperation(
-      "codex:thread:snapshot:request",
-      threadId,
-    )) as CodexConversationSnapshot | null;
-    if (conversation && !this.isFollowerForConversation(threadId)) {
-      const materialized = materializeOwnerCanonicalConversationSnapshot(conversation);
-      this.applyConversationSnapshot(threadId, materialized);
-      return materialized;
+    if (
+      this.archiveState.isSuppressed(threadId) ||
+      this.threadSummariesById.get(threadId)?.archived
+    ) {
+      await this.hydrateArchivedThreadPreview(threadId);
+      return this.conversationsById.get(threadId) ?? null;
     }
-    return conversation;
+    return this.conversationsById.get(threadId) ?? this.requestThreadStreamResume(threadId);
   }
 
-  async requestThreadStreamResume(threadId: string): Promise<CodexConversationSnapshot | null> {
-    const existing = this.resumeInFlightByThreadId.get(threadId);
-    if (existing) return await existing;
-
-    const resumePromise = this.runThreadStreamResume(threadId);
-    this.resumeInFlightByThreadId.set(threadId, resumePromise);
-    try {
-      return await resumePromise;
-    } finally {
-      if (this.resumeInFlightByThreadId.get(threadId) === resumePromise) {
-        this.resumeInFlightByThreadId.delete(threadId);
-      }
+  async requestThreadStreamResume(
+    threadId: string,
+    options: ConversationResumeOptions = {},
+  ): Promise<CodexConversationSnapshot | null> {
+    if (this.destroyed) throw new Error("Conversation manager is disposed");
+    if (
+      this.archiveState.isSuppressed(threadId) ||
+      this.threadSummariesById.get(threadId)?.archived
+    ) {
+      await this.hydrateArchivedThreadPreview(threadId);
+      return this.conversationsById.get(threadId) ?? null;
     }
-  }
-
-  private async runThreadStreamResume(threadId: string): Promise<CodexConversationSnapshot | null> {
-    this.setConversationAttachmentState(threadId, {
-      status: "attaching",
-    });
-    this.markConversationResumeState(threadId, "resuming");
-    let adoptedRenderer = false;
-
-    try {
-      const result = await runConversationOperation("codex:thread:resume:request", threadId);
-      if (result) {
-        const acceptedReplica = resolveAcceptedConversationReplica({
-          conversation: result.conversation,
-          revision: result.revision,
-          checkpoint: result.checkpoint,
-          context: `Thread resume for ${threadId}`,
-        });
-        const materialized = materializeOwnerCanonicalConversationSnapshot(result.conversation);
-        if (result.role === "follower") {
-          const checkpoint = result.checkpoint;
-          await this.waitForOwnerStreamPublishIdle(threadId);
-          this.ownerStreamPublishCursorsByConversationId.delete(threadId);
-          this.queueOwnerProjectionFenceByConversationId.delete(threadId);
-          this.followerAcceptedReplicasByConversationId.set(threadId, acceptedReplica);
-          this.streamState.adoptFollowerBaseline({
-            conversationId: threadId,
-            checkpoint,
-            sourceClientId: result.ownerClientId,
-          });
-          this.applyConversationSnapshot(threadId, materialized);
-          // The host baseline is recovery data; attachment waits for the active owner's barrier.
-          await this.setThreadStreamFollowingWithOptions(threadId, true, { reannounce: true });
-          await this.waitForOwnerPublishedRevision(threadId, checkpoint.revision + 1);
-          this.setConversationAttachmentState(threadId, { status: "attached" });
-          return this.conversationsById.get(threadId) ?? materialized;
-        }
-
-        await this.waitForOwnerStreamPublishIdle(threadId);
-        this.followerAcceptedReplicasByConversationId.delete(threadId);
-        const checkpoint = result.checkpoint;
-        this.streamState.markOwner(threadId, checkpoint);
-        this.recordQueueOwnerProjectionFence({
-          threadId,
-          threadGeneration: result.threadGeneration,
-          ownerEpoch: checkpoint.ownerEpoch,
-          projectionRevision: result.conversation.queuedFollowUps.projectionRevision,
-        });
-        this.seedOwnerStreamPublishCursor(threadId, checkpoint, acceptedReplica);
-        adoptedRenderer = true;
-        this.applyConversationSnapshot(threadId, materialized);
-        await runConversationOperation("codex:thread:resume-buffer:release", threadId);
-        const latestConversation = this.conversationsById.get(threadId) ?? materialized;
-        await this.publishOwnerSnapshotTransaction(threadId, latestConversation, "owner resume");
-        await runConversationOperation("codex:thread-owner:pending-requests:replay", threadId);
-        this.setConversationAttachmentState(threadId, {
-          status: "attached",
-        });
-        return this.conversationsById.get(threadId) ?? latestConversation;
-      }
-      this.markConversationResumeState(threadId, "needs_resume");
-      this.setConversationAttachmentState(
-        threadId,
-        makeLocalConversationAttachmentFailure(
-          new Error("The thread is no longer available to restore."),
-        ),
-      );
+    const source = options.source ?? "view";
+    const canAcquireOwnership = () => this.canAcquireConversationOwnership(source);
+    if (!this.streamState.getRole(threadId) && !canAcquireOwnership()) {
+      this.ensureRecentConversationId(threadId);
       return null;
+    }
+    const existing = this.resumeInFlightByThreadId.get(threadId);
+    if (existing) {
+      if (existing.source === source || source === "recovery") return await existing.promise;
+      let removed = false;
+      const onRemoved = (id: string) => {
+        if (id === threadId) removed = true;
+      };
+      this.conversationRemovedCallbacks.add(onRemoved);
+      try {
+        await existing.promise.catch(() => {});
+        if (removed || this.destroyed) return null;
+        return this.requestThreadStreamResume(threadId, options);
+      } finally {
+        this.conversationRemovedCallbacks.delete(onRemoved);
+      }
+    }
+
+    let retryCleanup: (() => void) | undefined;
+    let result: CodexConversationSnapshot | null = null;
+    let failure: unknown;
+    const cancel = () => {
+      const cleanup = retryCleanup;
+      retryCleanup = undefined;
+      cleanup?.();
+    };
+    const isCurrent = (): boolean =>
+      !this.destroyed && this.resumeInFlightByThreadId.get(threadId) === attempt;
+    const attempt = {
+      source,
+      cancel,
+      promise: Promise.resolve()
+        .then(() =>
+          this.runThreadStreamResume(
+            threadId,
+            options,
+            {
+              isCurrent,
+              setRetryCleanup: (cleanup) => {
+                retryCleanup = cleanup;
+                if (!isCurrent()) cancel();
+              },
+            },
+            canAcquireOwnership,
+          ),
+        )
+        .then((value) => {
+          result = value;
+          return value;
+        })
+        .catch((error: unknown) => {
+          failure = error;
+          if (isCurrent()) {
+            this.markConversationResumeState(threadId, "needs_resume");
+            this.setConversationAttachmentState(
+              threadId,
+              makeLocalConversationAttachmentFailure(error),
+            );
+          }
+          throw error;
+        })
+        .finally(() => {
+          cancel();
+          if (this.resumeInFlightByThreadId.get(threadId) === attempt) {
+            this.streamRecovery.onResumeAttemptSettled(
+              threadId,
+              result?.resumeState === "resumed",
+              failure,
+            );
+            this.resumeInFlightByThreadId.delete(threadId);
+          }
+        }),
+    };
+    this.resumeInFlightByThreadId.set(threadId, attempt);
+    return await attempt.promise;
+  }
+
+  private cancelPendingConversationResumes(): void {
+    const attempts = [...this.resumeInFlightByThreadId.values()];
+    this.resumeInFlightByThreadId.clear();
+    for (const attempt of attempts) attempt.cancel();
+  }
+
+  registerWindowActivity(activity: ConversationWindowActivity): Disposable & {
+    update(activity: ConversationWindowActivity): void;
+  } {
+    if (this.destroyed) throw new Error("Conversation manager is disposed");
+    return this.streamState.registerWindowActivity(activity, () => {
+      for (const threadId of this.conversationsById.keys()) this.wakeQueuedMessages(threadId);
+    });
+  }
+
+  getWindowActivity(): ConversationWindowActivity | undefined {
+    return this.streamState.getWindowActivity();
+  }
+
+  onDispose(callback: () => void): Disposable {
+    if (this.destroyed) callback();
+    else this.disposalCallbacks.add(callback);
+    return {
+      [Symbol.dispose]: () => {
+        this.disposalCallbacks.delete(callback);
+      },
+    };
+  }
+
+  private canAcquireConversationOwnership(source: ConversationResumeSource): boolean {
+    return source === "executor"
+      ? readRendererConversationWindowActivity().canAcquireThreadStream
+      : (this.getWindowActivity()?.canAcquireThreadStream ?? true);
+  }
+
+  markAllConversationsNeedResumeAfterReconnect(options: ConversationReconnectOptions = {}): void {
+    if (this.destroyed) return;
+    this.streamRecovery.markAllConversationsNeedResumeAfterReconnect(options);
+  }
+
+  private resetConversationHistoryAfterReconnect(): void {
+    this.historyItemLoader.cancelLoads();
+    this.completeHistoryLoader.resetAfterReconnect();
+    this.historyPageLoadsInFlightByTarget.clear();
+    this.threadsById.clear();
+    for (const id of this.conversationsById.keys()) {
+      this.historyClient.updateConversation(id, (draft) => {
+        draft.connectedEnvironmentIds = undefined;
+        if (draft.turnHistory?.kind !== "canonical") return;
+        draft.turnHistory.history.generation += 1;
+        draft.turnHistory.history.isComplete = false;
+      });
+    }
+  }
+
+  /** Revokes native work synchronously, before any replacement identity is loaded. */
+  retireNativeHostContext(): void {
+    if (this.destroyed) return;
+    this.suspendedNativeHostContext = null;
+    this.invalidateNativeRequests();
+    this.markAllConversationsNeedResumeAfterReconnect();
+    for (const id of this.conversationsById.keys())
+      this.setConversationAttachmentState(id, IDLE_LOCAL_CONVERSATION_ATTACHMENT_STATE);
+  }
+
+  private suspendNativeConnection(options?: { readonly preserveHostContextLoad?: boolean }): void {
+    this.suspendedNativeHostContext ??= this.nativeHostContext;
+    this.streamRecovery.dispose();
+    this.invalidateNativeRequests(options);
+  }
+
+  private invalidateNativeRequests(options?: { readonly preserveHostContextLoad?: boolean }): void {
+    this.nativeHostContextRevision += 1;
+    this.nativeHostContext = null;
+    if (options?.preserveHostContextLoad !== true) this.nativeHostContextLoad = null;
+    this.nativeAppServer.retire();
+    this.cancelPendingConversationResumes();
+    this.settingsUpdates.clear();
+    this.nativeSettingsSupport = "unknown";
+    this.permissionRefreshEnabled = null;
+    this.threadQueueEnabled = null;
+    this.serverQueuedMessages.retire();
+    this.nativeResumeBuffers.clear();
+    this.nativeRequestOccurrences.clear();
+    this.goalHydrationTokens.clear();
+    this.nativeGenerationByThread.clear();
+    for (const id of this.conversationsById.keys()) {
+      this.ownerTextDeltaQueue.discardConversation(id);
+      this.outputDeltaQueue.discardConversation(id);
+      this.terminalInputBuffers.clearConversation(id);
+      this.manualCompactions.clear(id);
+    }
+  }
+
+  private async refreshNativeHostContext(): Promise<void> {
+    if (this.nativeHostContextLoad) return this.nativeHostContextLoad;
+    const revision = this.nativeHostContextRevision;
+    const load = (async () => {
+      const context = await runConversationOperation("codex:app-server:host-context", this.hostId);
+      if (this.destroyed) throw new Error("Conversation manager disposed during host bootstrap");
+      if (this.nativeHostContextRevision !== revision)
+        throw new Error("Conversation manager retired during host bootstrap");
+      if (context.hostId !== this.hostId) throw new Error("Host bootstrap returned another host");
+      const previous = this.nativeHostContext ?? this.suspendedNativeHostContext;
+      const sameIdentity =
+        previous !== null &&
+        previous.sourceEpoch === context.sourceEpoch &&
+        JSON.stringify(previous.accountContext) === JSON.stringify(context.accountContext);
+      const unchanged =
+        sameIdentity &&
+        previous === this.nativeHostContext &&
+        previous.generation === context.generation;
+      const restoreStreams =
+        sameIdentity &&
+        !unchanged &&
+        this.connection.native?.transportKind === "websocket" &&
+        this.connection.native.sourceEpoch === context.sourceEpoch;
+      if (previous && !unchanged) {
+        if (restoreStreams) this.suspendNativeConnection({ preserveHostContextLoad: true });
+        else this.retireNativeHostContext();
+      }
+      const acceptedRevision = this.nativeHostContextRevision;
+      // Pending hydration captures this identity, so an unchanged refresh must preserve it.
+      this.nativeHostContext = unchanged ? previous : context;
+      this.suspendedNativeHostContext = null;
+      this.supportsPaginatedHistory = context.supportsPaginatedHistory;
+      const executionAssignments = await runConversationOperation(
+        "codex:execution-assignments:read",
+      ).catch(() => null);
+      if (
+        this.destroyed ||
+        this.nativeHostContextRevision !== acceptedRevision ||
+        this.nativeHostContext !== (unchanged ? previous : context)
+      )
+        throw new Error("Conversation manager retired during execution assignment refresh");
+      if (executionAssignments !== null) {
+        const permissionChanged =
+          this.permissionRefreshEnabled !== executionAssignments.permissionRefresh;
+        const queueChanged = this.threadQueueEnabled !== executionAssignments.threadQueue;
+        this.permissionRefreshEnabled = executionAssignments.permissionRefresh;
+        this.threadQueueEnabled = executionAssignments.threadQueue;
+        if (permissionChanged || queueChanged) {
+          for (const id of this.conversationsById.keys()) {
+            this.refreshQueuedMessageProjection(id);
+            this.wakeQueuedMessages(id);
+          }
+        }
+      }
+      if (restoreStreams)
+        this.markAllConversationsNeedResumeAfterReconnect({
+          restoreStreams: true,
+          foregroundConversationId: [...this.foregroundConversations.values()].at(-1) ?? null,
+        });
+    })();
+    this.nativeHostContextLoad = load;
+    try {
+      await load;
+    } finally {
+      if (this.nativeHostContextLoad === load) this.nativeHostContextLoad = null;
+    }
+  }
+
+  private async readResumedThreadGoal(
+    threadId: string,
+    requestOptions?: CodexRendererNativeRequestOptions,
+  ): Promise<{ ok: true; goal: ThreadGoal | null } | { ok: false }> {
+    try {
+      return { ok: true, goal: await this.getThreadGoal(threadId, requestOptions) };
     } catch (error) {
-      await this.releaseResumeBufferAfterFailedResume(threadId);
-      if (adoptedRenderer) {
-        this.markOwnerStreamPublishUnavailable(threadId);
-      } else {
+      console.warn("Failed to hydrate thread goal after resume", { threadId, error });
+      return { ok: false };
+    }
+  }
+
+  private async runThreadStreamResume(
+    threadId: string,
+    options: ConversationResumeOptions,
+    lifetime: ConversationResumeRequestLifetime,
+    canAcquireOwnership: () => boolean,
+  ): Promise<CodexConversationSnapshot | null> {
+    if (!lifetime.isCurrent()) return null;
+    const showGoalConfirmation = options.showThreadGoalResumeConfirmation === true;
+    const isReconnectRecovery = options.isReconnectRecovery === true;
+    const cannotAcquire = () => !this.streamState.getRole(threadId) && !canAcquireOwnership();
+    if (cannotAcquire()) return null;
+    await this.refreshNativeHostContext();
+    if (!lifetime.isCurrent()) return null;
+    if (cannotAcquire()) return null;
+    const metadataHostContext = this.nativeHostContext;
+    const requestOptions = conversationResumeRequestOptions(isReconnectRecovery, options.timeoutMs);
+    const { priority } = requestOptions;
+    const goalRequestOptions =
+      showGoalConfirmation || isReconnectRecovery
+        ? { source: "thread_hydration" as const, priority }
+        : undefined;
+    const previousRole = this.streamState.getRole(threadId);
+    const existing = this.historyClient.getConversation(threadId);
+    if (previousRole?.role === "follower" && existing?.resumeState !== "resumed") return null;
+    if (previousRole && existing && existing.resumeState !== "needs_resume") {
+      this.setConversationAttachmentState(threadId, { status: "attached" });
+      return this.conversationsById.get(threadId) ?? null;
+    }
+    this.setConversationAttachmentState(threadId, { status: "attaching" });
+    const [metadata, workspace] = await Promise.all([
+      this.nativeAppServer
+        .request(
+          "thread/read",
+          { threadId, includeTurns: false },
+          { source: "thread_hydration", priority, timeoutMs: 30_000 },
+        )
+        .then((result) => result.thread)
+        .catch(() => null),
+      runConversationOperation("codex:thread:history-hydration:prepare", threadId),
+    ]);
+    if (!lifetime.isCurrent() || this.nativeHostContext !== metadataHostContext)
+      throw new Error("Conversation manager retired during resume metadata read");
+    this.markConversationResumeState(threadId, "resuming");
+    if (metadata) this.registerThreadMetadata(metadata);
+    const workspaceRoots = options.workspaceRoots ?? workspace.context.runtimeWorkspaceRoots;
+    const preparation = canonicalResumePreparation(this.historyClient.getConversation(threadId), {
+      cwd: workspace.context.cwd ?? null,
+      metadataCwd: metadata?.cwd ?? null,
+      resumeWorkspaceRoots: workspaceRoots,
+      permissions: {
+        approvalPolicy: workspace.context.approvalPolicy,
+        approvalsReviewer: workspace.context.approvalsReviewer,
+        sandboxPolicy: workspace.context.sandboxPolicy,
+        activePermissionProfile: workspace.context.activePermissionProfile,
+        runtimeWorkspaceRoots: workspace.context.runtimeWorkspaceRoots,
+      },
+    });
+    const prepared = await runConversationOperation(
+      "codex:thread:resume:prepare",
+      threadId,
+      metadata,
+      preparation.overrides,
+      {
+        permissions: options.permissions,
+        useAppServerPermissionDefault: options.useAppServerPermissionDefault,
+        preserveServerConfiguration: options.preserveServerConfiguration,
+        serviceTier: options.serviceTier,
+        workspaceRoots: options.workspaceRoots,
+        collaborationMode: options.collaborationMode,
+      },
+    );
+    const permissionContext = prepareConversationResumePermissionContext({
+      preparation,
+      request: prepared.params,
+      hostId: this.hostId,
+      status: metadata?.status,
+      options,
+    });
+    const goalToken = Symbol();
+    const hostContext = metadataHostContext;
+    const resumeBuffer = {
+      generation: prepared.generation,
+      notifications: [] as (CodexNativeNotificationMessage | CodexNativeRequestMessage)[],
+    };
+    const isCurrent = () =>
+      !this.destroyed &&
+      this.nativeHostContext === hostContext &&
+      this.goalHydrationTokens.get(threadId) === goalToken;
+    try {
+      if (
+        !lifetime.isCurrent() ||
+        this.nativeHostContext !== hostContext ||
+        prepared.generation !== hostContext?.generation
+      )
+        throw new Error("Conversation manager retired during resume preparation");
+      if (prepared.hostId !== this.hostId) throw new Error("Resume execution host changed");
+      if (cannotAcquire()) {
+        if (this.historyClient.getConversation(threadId)?.resumeState === "resuming")
+          this.markConversationResumeState(threadId, "needs_resume");
+        this.setConversationAttachmentState(threadId, IDLE_LOCAL_CONVERSATION_ATTACHMENT_STATE);
+        return null;
+      }
+      // Active views can receive the owner's snapshot while native preparation is pending.
+      // That snapshot already supplies the ordinary host's live conversation.
+      const role = this.streamState.getRole(threadId);
+      if (role?.role === "follower") {
+        if (this.historyClient.getConversation(threadId)?.resumeState === "resuming")
+          this.markConversationResumeState(threadId, "resumed");
+        this.setConversationAttachmentState(threadId, { status: "attached" });
+        return this.conversationsById.get(threadId) ?? null;
+      }
+      this.goalHydrationTokens.set(threadId, goalToken);
+      this.applyThreadSummary(prepared.summary);
+      if (!role) this.streamState.setRole(threadId, { role: "owner" });
+      this.supportsPaginatedHistory = prepared.supportsPaginatedHistory;
+      this.nativeGenerationByThread.set(threadId, prepared.generation);
+      this.nativeResumeBuffers.set(threadId, resumeBuffer);
+      const environmentSelectionEvidenceAtDispatch =
+        this.historyClient.getConversation(threadId)?.environmentSelectionEvidence;
+      const response = await requestRendererConversationResume(
+        this.nativeAppServer,
+        prepared,
+        { ...lifetime, isCurrent: () => lifetime.isCurrent() && isCurrent() },
+        requestOptions.timeoutMs,
+        priority,
+      );
+      if (response === null) return null;
+      if (!lifetime.isCurrent() || !isCurrent() || response.thread.id !== threadId)
+        throw new Error("Resume response no longer belongs to this manager");
+      const goalResult = showGoalConfirmation
+        ? await this.readResumedThreadGoal(threadId, goalRequestOptions)
+        : { ok: false as const };
+      if (!lifetime.isCurrent() || !isCurrent()) throw new Error("Resume goal hydration retired");
+      const previous = this.historyClient.getConversation(threadId);
+      const cwd =
+        resolveCodexCanonicalHydratedCwd({
+          requestedCwd: prepared.requestedCwd,
+          responseCwd: response.cwd,
+          threadCwd: response.thread.cwd,
+          fallbackCwd: workspace.context.cwd ?? null,
+        }) ?? "/";
+      this.registerThreadMetadata({ ...response.thread, cwd });
+      const thread = { ...response.thread, cwd, turns: [] };
+      const permissions = resolveConversationResumePermissions(response, permissionContext);
+      const canonicalBase = createCodexCanonicalHydratedConversationState(thread, {
+        hostId: this.hostId,
+        model: response.model,
+        reasoningEffort: response.reasoningEffort,
+        cwd,
+        ...permissions,
+        runtimeWorkspaceRoots: [...permissions.runtimeWorkspaceRoots],
+        latestThreadSettings: {
+          cwd,
+          model: response.model,
+          effort: response.reasoningEffort,
+          serviceTier: response.serviceTier,
+          multiAgentMode: response.multiAgentMode,
+          approvalPolicy: permissions.approvalPolicy,
+          approvalsReviewer: permissions.approvalsReviewer,
+          activePermissionProfile: permissions.activePermissionProfile,
+          sandboxPolicy: permissions.sandboxPolicy,
+        },
+        hasUnreadTurn:
+          this.savedReadState?.has(threadId) ?? prepared.summary.hasUnreadTurn ?? false,
+      });
+      const canonical =
+        options.collaborationMode == null
+          ? canonicalBase
+          : {
+              ...canonicalBase,
+              latestCollaborationMode: {
+                mode: "default" as const,
+                settings: {
+                  ...options.collaborationMode.settings,
+                  model: canonicalBase.latestModel,
+                  reasoning_effort: canonicalBase.latestReasoningEffort,
+                },
+              },
+            };
+      const resumeSettingsPatch: CanonicalThreadSettingsPatch = {
+        ...(canonical.hydrationContext?.latestThreadSettings ?? {}),
+        permissions: permissions.activePermissionProfile?.id ?? null,
+        ...(options.collaborationMode == null
+          ? {}
+          : {
+              collaborationMode: {
+                mode: "default" as const,
+                settings: {
+                  ...options.collaborationMode.settings,
+                  model: canonical.latestModel,
+                  reasoning_effort: canonical.latestReasoningEffort,
+                },
+              },
+            }),
+      };
+      const retained = reconcileCodexResumedConversationState({
+        existing: previous ?? null,
+        resumed: canonical,
+        thread: response.thread,
+        catalogTitle: prepared.summary.threadName,
+        settingsPatch: resumeSettingsPatch,
+        preserveResidentHistory: true,
+      });
+      const acceptedEnvironmentSelection = resolveCodexAcceptedThreadEnvironmentSelection(
+        response.thread,
+        previous ?? retained,
+        environmentSelectionEvidenceAtDispatch,
+      );
+      // Host and preparation select history before response metadata can change it.
+      const durableHost = prepared.hostId === "durable";
+      const paginated =
+        !durableHost &&
+        prepared.supportsPaginatedHistory &&
+        prepared.params.initialTurnsPage == null;
+      this.applyCanonicalDocument({
+        ...retained,
+        ...acceptedEnvironmentSelection,
+        resumeState: "resuming",
+        threadGoal: goalResult.ok ? goalResult.goal : previous?.threadGoal,
+        completedThreadGoal: previous?.completedThreadGoal,
+        threadGoalResumeConfirmation: goalResult.ok
+          ? goalResult.goal &&
+            ["paused", "blocked", "usageLimited"].includes(goalResult.goal.status)
+            ? goalResult.goal
+            : null
+          : previous?.threadGoalResumeConfirmation,
+        paginatedHistory: paginated
+          ? {
+              turnsBackwardsCursor: response.turnsBackwardsCursor,
+              itemsBackwardsCursor: response.itemsBackwardsCursor,
+            }
+          : undefined,
+      });
+      // Preparation selects the history contract. New response metadata must not
+      // discard a requested legacy page or reinterpret its remaining cursor.
+      const page = durableHost
+        ? await listCanonicalHistoryTurns(this.historyClient, threadId, {
+            cursor: null,
+            limit: 5,
+            sortDirection: "desc",
+            itemsView: "full",
+            requestOptions: { source: "thread_hydration", priority },
+          })
+        : paginated
+          ? response.turnsBackwardsCursor == null
+            ? { response: { data: [], nextCursor: null }, itemsPaginationByTurnId: {} }
+            : await listCanonicalHistoryTurns(this.historyClient, threadId, {
+                cursor: response.turnsBackwardsCursor,
+                limit: 5,
+                sortDirection: "desc",
+                itemsView: "full",
+                requestOptions: { source: "thread_hydration", priority },
+              })
+          : response.initialTurnsPage
+            ? { response: response.initialTurnsPage, itemsPaginationByTurnId: {} }
+            : null;
+      const legacy =
+        page === null
+          ? await this.nativeAppServer.request(
+              "thread/read",
+              { threadId, includeTurns: true },
+              { source: "thread_hydration", priority },
+            )
+          : null;
+      if (!lifetime.isCurrent() || !isCurrent())
+        throw new Error("Resume history hydration retired");
+      // Durable acceptance may yield to another peer's snapshot. Complete that I/O before
+      // the final canonical transition, owner assignment, ingress replay and publication.
+      await runConversationOperation("codex:thread:resume:accept", prepared.receiptId);
+      if (!lifetime.isCurrent() || !isCurrent())
+        throw new Error("Resume manager retired during durable acceptance");
+      const rawTurns = page
+        ? ([...page.response.data].reverse() as Thread["turns"])
+        : (legacy?.thread.turns ?? []);
+      const pageTurns = this.historyClient.mapTurns(
+        threadId,
+        rawTurns,
+        page?.itemsPaginationByTurnId ?? {},
+      );
+      const turns = durableHost
+        ? mergeCodexCanonicalTurnStates(
+            pageTurns,
+            this.historyClient.mapTurns(threadId, response.thread.turns, {}),
+            () => ({ preserveExistingTerminalState: true }),
+          )
+        : pageTurns;
+      const olderCursor = page?.response.nextCursor ?? null;
+      const oldestLoadedTurnId = page
+        ? (turns.find((turn) => turn.turnId !== null)?.turnId ?? null)
+        : null;
+      this.historyClient.updateConversation(
+        threadId,
+        (draft) => {
+          const merged = mergeCodexCanonicalTurnStates(
+            residentConversationTurns(draft),
+            turns,
+            () => ({ isResumeSnapshot: paginated }),
+          );
+          replaceCanonicalHistoryDraft(
+            draft,
+            merged,
+            olderCursor === null,
+            olderCursor === null ? null : { cursor: olderCursor, oldestLoadedTurnId },
+          );
+          refreshResumedConversationTurnParams(draft, response, cwd);
+          draft.turnsPagination = {
+            olderCursor,
+            oldestLoadedTurnId,
+            isLoadingOlder: false,
+            hasLoadedOldest: olderCursor === null,
+          };
+          draft.resumeState = "resumed";
+        },
+        false,
+      );
+      this.streamState.setRole(threadId, { role: "owner" });
+      let goalHydration: Promise<void> | null = null;
+      if (!showGoalConfirmation) {
+        const previousGoal = this.historyClient.getConversation(threadId)?.threadGoal;
+        goalHydration = this.readResumedThreadGoal(threadId, goalRequestOptions).then((result) => {
+          if (
+            !result.ok ||
+            !isCurrent() ||
+            this.historyClient.getConversation(threadId)?.threadGoal !== previousGoal
+          )
+            return;
+          this.historyClient.updateConversation(threadId, (draft) => {
+            draft.threadGoal = result.goal;
+            draft.threadGoalResumeConfirmation = null;
+          });
+        });
+      }
+      const buffered = this.nativeResumeBuffers.get(threadId)?.notifications ?? [];
+      this.nativeResumeBuffers.delete(threadId);
+      for (const event of buffered) {
+        if (event.type === "nativeRequest") this.receiveNativeRequest(event);
+        else this.receiveNativeNotification(event);
+      }
+      this.streamState.broadcastSnapshot(threadId);
+      const drainRemainingHistory =
+        allowsAutomaticResumeHistoryDrain({
+          hostId: this.hostId,
+          tailHydration: prepared.params.excludeTurns === true,
+          paginated,
+          requested: true,
+          reconnectRecovery: isReconnectRecovery,
+          suppressed: prepared.supportsPaginatedHistory,
+        }) && this.historyClient.getConversation(threadId)?.turnsPagination?.olderCursor != null;
+      const finishGoalHydration = () => {
+        if (!isCurrent()) return;
+        this.goalHydrationTokens.delete(threadId);
+        if (!drainRemainingHistory) return;
+        void this.completeHistoryLoader.load(threadId).catch((error: unknown) => {
+          console.warn("Failed to load remaining thread turns after resume", { threadId, error });
+        });
+      };
+      if (goalHydration)
+        void goalHydration.then(finishGoalHydration).finally(() => {
+          if (this.goalHydrationTokens.get(threadId) === goalToken)
+            this.goalHydrationTokens.delete(threadId);
+        });
+      else finishGoalHydration();
+      this.setConversationAttachmentState(threadId, { status: "attached" });
+      return this.conversationsById.get(threadId) ?? null;
+    } catch (error) {
+      if (this.goalHydrationTokens.get(threadId) === goalToken) {
+        this.goalHydrationTokens.delete(threadId);
         this.markConversationResumeState(threadId, "needs_resume");
       }
-      this.setConversationAttachmentState(threadId, makeLocalConversationAttachmentFailure(error));
       throw error;
+    } finally {
+      if (this.nativeResumeBuffers.get(threadId) === resumeBuffer)
+        this.nativeResumeBuffers.delete(threadId);
+      await runConversationOperation("codex:thread:resume:release", prepared.receiptId).catch(
+        () => {},
+      );
     }
   }
 
@@ -4540,28 +4212,43 @@ export class CodexAppServerManager {
     resumeState: CodexConversationSnapshot["resumeState"],
   ): void {
     const conversation = this.conversationsById.get(threadId);
-    if (!conversation || conversation.resumeState === resumeState) {
+    if (
+      !conversation ||
+      (conversation.resumeState === resumeState &&
+        (!conversation.canonicalState || conversation.canonicalState.resumeState === resumeState))
+    ) {
       return;
     }
 
     this.applyConversationSnapshot(threadId, {
       ...conversation,
       resumeState,
+      canonicalState: conversation.canonicalState
+        ? { ...conversation.canonicalState, resumeState }
+        : conversation.canonicalState,
     });
   }
 
-  private async releaseResumeBufferAfterFailedResume(threadId: string): Promise<void> {
-    try {
-      await runConversationOperation("codex:thread:resume-buffer:release", threadId);
-    } catch {}
+  retainActiveConversation(threadId: string, options: { foreground?: boolean } = {}): Disposable {
+    if (this.destroyed) throw new Error("Conversation manager is disposed");
+    void this.loadQueuedMessages(threadId).catch((error: unknown) =>
+      console.error("Queue load failed", error),
+    );
+    const activity = this.conversationActivity.retain(threadId);
+    const token = Symbol();
+    if (options.foreground) this.foregroundConversations.set(token, threadId);
+    return {
+      [Symbol.dispose]: () => {
+        this.foregroundConversations.delete(token);
+        activity[Symbol.dispose]();
+      },
+    };
   }
 
-  async setThreadViewActive(threadId: string, active: boolean): Promise<boolean> {
-    this.streamState.setConversationFollowing(threadId, active);
-    return (await runConversationOperation("codex:thread:view-active:set", {
-      threadId,
-      active,
-    })) as boolean;
+  private async applyThreadActivity(threadId: string, active: boolean): Promise<boolean> {
+    this.streamState.setFollowing(threadId, active);
+    this.retention.activityChanged(threadId, active);
+    return true;
   }
 
   async setThreadStreamFollowing(threadId: string, following: boolean): Promise<boolean> {
@@ -4573,12 +4260,14 @@ export class CodexAppServerManager {
     following: boolean,
     options: { reannounce?: boolean } = {},
   ): Promise<boolean> {
-    this.streamState.setConversationFollowing(threadId, following);
-    return (await runConversationOperation("codex:thread:stream-following:set", {
-      threadId,
-      following,
-      ...(options.reannounce === true ? { reannounce: true } : {}),
-    })) as boolean;
+    this.streamState.setFollowing(threadId, following);
+    if (options.reannounce)
+      await (
+        await getConversationCoordinationHost()
+      ).threadStreamFollowingChanged({
+        params: { hostId: this.hostId, conversationId: threadId, following },
+      });
+    return true;
   }
 
   async setThreadPresented(
@@ -4703,19 +4392,90 @@ export class CodexAppServerManager {
     }
   }
 
+  async loadPromptRailIndex(
+    input: CodexPromptRailIndexRequest,
+  ): Promise<CodexPromptRailIndexCommandResult> {
+    await this.refreshNativeHostContext();
+    const generation = this.nativeHostContext?.generation;
+    if (generation === undefined) return { status: "cancelled", requestId: input.requestId };
+    const result = await loadCanonicalPromptRailIndex(this.historyClient, input.threadId);
+    if (this.destroyed || this.nativeHostContext?.generation !== generation)
+      return { status: "cancelled", requestId: input.requestId };
+    return {
+      status: "completed",
+      requestId: input.requestId,
+      expectedTopologyGeneration: input.expectedTopologyGeneration,
+      index: {
+        threadId: input.threadId,
+        hostId: this.hostId,
+        generation,
+        shells: result.items,
+        complete: result.complete,
+        truncatedBy: result.complete ? null : "page-budget",
+        approximateBytes: 0,
+        loadedAtMs: Date.now(),
+      },
+    };
+  }
+
+  async revealPromptRail(
+    input: CodexPromptRailRevealRequest,
+  ): Promise<CodexPromptRailRevealCommandResult> {
+    await this.refreshNativeHostContext();
+    if (input.hostId !== this.hostId || this.nativeHostContext?.generation !== input.generation)
+      return { status: "cancelled", requestId: input.requestId };
+    const target = input.target;
+    const shell =
+      target.kind === "shell"
+        ? target.shell
+        : (await loadCanonicalPromptRailIndex(this.historyClient, input.threadId)).items.find(
+            (item) => item.turnId === target.turnId,
+          );
+    if (!shell) return { status: "cancelled", requestId: input.requestId };
+    const preview = await previewCanonicalPromptRailTurn(this.historyClient, input.threadId, shell);
+    if (!preview || this.destroyed || this.nativeHostContext?.generation !== input.generation)
+      return { status: "cancelled", requestId: input.requestId };
+    return {
+      status: "completed",
+      requestId: input.requestId,
+      expectedTopologyGeneration: input.expectedTopologyGeneration,
+      reveal: {
+        threadId: input.threadId,
+        hostId: this.hostId,
+        generation: input.generation,
+        turnId: shell.turnId,
+        topologyGeneration: input.expectedTopologyGeneration,
+        ...preview,
+      },
+    };
+  }
+
+  async preparePromptRailNavigation(reveal: CodexPromptRailReveal): Promise<void> {
+    const item = reveal.previews[0];
+    if (!item) return;
+    await this.hydratePersistedHistoryOccurrence({
+      threadId: reveal.threadId,
+      hostId: reveal.hostId,
+      hostGeneration: reveal.generation,
+      topologyGeneration: reveal.topologyGeneration,
+      occurrence: {
+        turnId: reveal.turnId,
+        itemId: item.itemId,
+        turnCursor: reveal.turnCursor,
+        snippet: "",
+        snippetMatchRange: { start: 0, end: 0 },
+      },
+    });
+  }
+
   requestHistoryPage(
     request: CodexConversationHistoryPageRequest,
-  ): Promise<CodexConversationHistoryPageResult> {
+  ): Promise<LocalHistoryPageResult> {
     const key = codexConversationHistoryPageRequestKey(request);
     const existing = this.historyPageLoadsInFlightByTarget.get(key);
     if (existing) return existing;
 
-    const loadPromise = (async () => {
-      if (this.isFollowerForConversation(request.threadId)) {
-        return await this.waitForHistoryPageFromOwner(request);
-      }
-      return (await this.loadHistoryPageAsOwner(request)).page;
-    })();
+    const loadPromise = this.loadHistoryPage(request);
 
     this.historyPageLoadsInFlightByTarget.set(key, loadPromise);
     const release = () => {
@@ -4727,322 +4487,56 @@ export class CodexAppServerManager {
     return loadPromise;
   }
 
-  /** Commits a prepared history proposal through the current owner authority. */
-  async publishLocalConversationHistoryMutation(
-    threadId: string,
-    mutation: CodexConversationHistoryMutation,
-  ): Promise<number> {
-    if (this.isFollowerForConversation(threadId)) {
-      const result = await this.runFollowerActionThroughOwner<{ revision: number }>(threadId, {
-        type: "publishHistoryMutation",
-        threadId,
-        mutation,
-      });
-      await this.waitForOwnerPublishedRevision(threadId, result.revision);
-      return result.revision;
-    }
-    await this.ensureOwnerForConversationAction(threadId, "publish bounded history");
-    return await this.publishOwnerHistoryMutation(threadId, mutation);
-  }
-
-  /** A history read and its visible owner commit share one lane with the publication outbox. */
-  private runOwnerHistoryOperation<T>(threadId: string, operation: () => Promise<T>): Promise<T> {
-    const previous = this.ownerHistoryOperationsByThread.get(threadId) ?? Promise.resolve();
-    const run = previous.then(async () => {
-      await this.waitForOwnerStreamPublishIdle(threadId);
-      this.ownerHistoryReadBarriers.add(threadId);
-      try {
-        return await operation();
-      } finally {
-        this.ownerHistoryReadBarriers.delete(threadId);
-        this.processOwnerStreamPublishCursor(threadId);
-        this.resolveOwnerStreamPublishIdleWaiters(threadId);
-      }
-    });
-    const settled = run.then(
-      () => {},
-      () => {},
-    );
-    this.ownerHistoryOperationsByThread.set(threadId, settled);
-    void settled.then(() => {
-      if (this.ownerHistoryOperationsByThread.get(threadId) === settled) {
-        this.ownerHistoryOperationsByThread.delete(threadId);
-      }
-    });
-    return run;
-  }
-
-  private async loadHistoryPageAsOwner(
+  private async loadHistoryPage(
     request: CodexConversationHistoryPageRequest,
-  ): Promise<CodexThreadOwnerHistoryMutationResult> {
-    await this.ensureOwnerForConversationAction(request.threadId, "load history page");
-    return this.runOwnerHistoryOperation(request.threadId, async () => {
-      const page = (await runConversationOperation(
-        "codex:thread:history-page:load",
-        request,
-      )) as CodexConversationHistoryPageResult;
-      const conversation = this.conversationsById.get(request.threadId);
-      const proposal =
-        page.status !== "stale" && conversation
-          ? applyCodexConversationHistoryMutation(conversation, page.mutation)
-          : undefined;
-      if (proposal) {
-        if (!proposal.ok && proposal.reason.startsWith("stale-")) {
-          return {
-            revision: this.streamState.getRevision(request.threadId) ?? 0,
-            page: { status: "stale" },
-          };
-        }
-      }
-      return {
-        revision:
-          page.status === "stale"
-            ? (this.streamState.getRevision(request.threadId) ?? 0)
-            : await this.commitOwnerHistoryMutation(request.threadId, page.mutation, proposal),
-        page,
-      };
-    });
+  ): Promise<LocalHistoryPageResult> {
+    const { threadId, target } = request;
+    if (target.kind === "turnBoundary") {
+      const status = await loadCanonicalHistoryBoundaryPage(
+        this.historyClient,
+        threadId,
+        target.boundary,
+      );
+      return { status };
+    }
+    const before = this.historyClient.getConversation(threadId);
+    const turn = residentConversationTurns(before).find(
+      (entry) => entry.turnId === target.items.turnId,
+    );
+    if (!turn?.itemsPagination) return { status: "stale" };
+    await this.historyItemLoader.loadTurnItems(threadId, target.items.turnId);
+    return { status: "applied" };
   }
 
   async hydratePersistedHistoryOccurrence(
     input: CodexPersistedHistoryOccurrenceHydrateInput,
   ): Promise<CodexPersistedHistoryOccurrenceResolution> {
-    const request: CodexPersistedHistoryOccurrenceHydrateRequest = {
-      ...input,
-      requestId: createOwnerGeneratedItemId("persisted-history-hydration"),
+    await this.refreshNativeHostContext();
+    if (
+      input.hostId !== this.hostId ||
+      this.nativeHostContext?.generation !== input.hostGeneration
+    ) {
+      throw new Error("History search belongs to an unavailable host generation");
+    }
+    await hydrateCanonicalHistorySearchMatch(
+      this.historyClient,
+      {
+        conversationId: input.threadId,
+        itemId: input.occurrence.itemId,
+        turnId: input.occurrence.turnId,
+        turnCursor: input.occurrence.turnCursor,
+      },
+      () => crypto.randomUUID(),
+    );
+    return {
+      status: "found",
+      threadId: input.threadId,
+      turnId: input.occurrence.turnId,
+      itemId: input.occurrence.itemId,
+      topologyGeneration:
+        this.historyClient.getConversation(input.threadId)?.turnHistory?.history.generation ??
+        input.topologyGeneration,
     };
-    const role = this.streamState.getRole(input.threadId);
-    if (role?.role === "follower") {
-      const result =
-        await this.runFollowerActionThroughOwner<CodexThreadOwnerPersistedHistoryHydrationResult>(
-          input.threadId,
-          { type: "hydratePersistedHistoryOccurrence", input: request },
-          { fallback: () => this.hydratePersistedHistoryOccurrenceAsOwner(request) },
-        );
-      await this.waitForOwnerPublishedRevision(input.threadId, result.revision);
-      return result.hydration;
-    }
-
-    await this.ensureOwnerForConversationAction(
-      input.threadId,
-      "hydrate persisted history occurrence",
-    );
-    return (await this.hydratePersistedHistoryOccurrenceAsOwner(request)).hydration;
-  }
-
-  private async hydratePersistedHistoryOccurrenceAsOwner(
-    input: CodexPersistedHistoryOccurrenceHydrateRequest,
-  ): Promise<CodexThreadOwnerPersistedHistoryHydrationResult> {
-    await this.ensureOwnerForConversationAction(
-      input.threadId,
-      "hydrate persisted history occurrence",
-    );
-    return this.runOwnerHistoryOperation(input.threadId, async () => {
-      const result = (await runConversationOperation(
-        "codex:thread:history-search:hydrate",
-        input,
-      )) as CodexPersistedHistoryOccurrenceHydrateResult;
-      const { mutation, ...hydration } = result;
-      return {
-        revision:
-          mutation === null
-            ? (this.streamState.getRevision(input.threadId) ?? 0)
-            : await this.commitOwnerHistoryMutation(input.threadId, mutation),
-        hydration,
-      };
-    });
-  }
-
-  private async publishOwnerSnapshotTransaction(
-    threadId: string,
-    conversation: CodexConversationSnapshot,
-    label: string,
-    options: { notifyMode?: ConversationNotifyMode } = {},
-  ): Promise<number> {
-    await this.waitForOwnerStreamPublishIdle(threadId);
-    return await this.publishOwnerSnapshotFromIdle(threadId, conversation, label, options);
-  }
-
-  private async publishOwnerSnapshotFromIdle(
-    threadId: string,
-    conversation: CodexConversationSnapshot,
-    label: string,
-    options: { notifyMode?: ConversationNotifyMode; broadcast?: boolean } = {},
-  ): Promise<number> {
-    const role = this.streamState.getRole(threadId);
-    const currentCheckpoint = this.streamState.getCheckpoint(threadId);
-    const currentConversation = this.conversationsById.get(threadId) ?? conversation;
-    if (!role || role.role !== "owner" || !currentCheckpoint) {
-      throw new Error(
-        `Cannot publish ${label} snapshot because renderer is not owner for ${threadId}`,
-      );
-    }
-
-    const cursor = this.ensureOwnerStreamPublishCursor(
-      threadId,
-      currentCheckpoint,
-      currentConversation,
-    );
-    if (cursor.inFlight || cursor.dirty) {
-      throw new Error(
-        `Cannot publish ${label} snapshot because owner stream cursor is still busy for ${threadId}`,
-      );
-    }
-
-    cursor.inFlight = true;
-    this.applyConversationSnapshot(
-      threadId,
-      conversation,
-      undefined,
-      options.notifyMode ?? "default",
-    );
-    const latestConversation = this.conversationsById.get(threadId) ?? conversation;
-    const sharedConversation = toSharedConversationDocument(latestConversation);
-    const result = await this.publishOwnerSnapshotFromCursor(
-      threadId,
-      cursor,
-      sharedConversation,
-      undefined,
-      options.broadcast,
-    );
-    if (!result.accepted) {
-      cursor.inFlight = false;
-      this.markOwnerStreamPublishUnavailable(threadId);
-      throw new Error(`Could not publish ${label} snapshot for ${threadId}: ${result.reason}`);
-    }
-
-    cursor.acceptedCheckpoint = result.checkpoint;
-    cursor.acceptedDocument = this.consumeOwnerStandaloneUnreadStateOverride(
-      cursor,
-      result.conversation,
-    );
-    cursor.inFlight = false;
-    this.streamState.recordOwnerCheckpoint(threadId, result.checkpoint);
-    this.processOwnerStreamPublishCursor(threadId);
-    this.resolveOwnerStreamPublishIdleWaiters(threadId);
-    return result.checkpoint.revision;
-  }
-
-  private async publishOwnerActionSnapshotMutation(
-    threadId: string,
-    label: string,
-    buildNextConversation: (
-      conversation: CodexConversationSnapshot,
-    ) => CodexConversationSnapshot | null,
-    options: { notifyMode?: ConversationNotifyMode } = {},
-  ): Promise<number> {
-    const currentConversation = this.conversationsById.get(threadId);
-    if (!currentConversation) {
-      throw new Error(`Cannot publish ${label} because conversation ${threadId} is unavailable`);
-    }
-
-    // Local commit is deliberately synchronous. Publication belongs to the
-    // existing owner outbox and must never gate owner-visible interaction.
-    const expectedRevision = this.publishOwnerActionConversationMutation(
-      threadId,
-      buildNextConversation,
-      options,
-    );
-    if (expectedRevision === null) {
-      return this.streamState.getRevision(threadId) ?? 0;
-    }
-
-    await this.waitForOwnerStreamPublishIdle(threadId);
-    return this.streamState.getRevision(threadId) ?? expectedRevision;
-  }
-
-  /** Commits history against the latest owner document and publishes its snapshot barrier. */
-  private async publishOwnerHistoryMutation(
-    threadId: string,
-    mutation: CodexConversationHistoryMutation,
-  ): Promise<number> {
-    return this.runOwnerHistoryOperation(threadId, () =>
-      this.commitOwnerHistoryMutation(threadId, mutation),
-    );
-  }
-
-  /** Only callbacks that already own the history lane may call this synchronous merge boundary. */
-  private async commitOwnerHistoryMutation(
-    threadId: string,
-    mutation: CodexConversationHistoryMutation,
-    proposal?: ReturnType<typeof applyCodexConversationHistoryMutation>,
-  ): Promise<number> {
-    const role = this.streamState.getRole(threadId);
-    const checkpoint = this.streamState.getCheckpoint(threadId);
-    const currentConversation = this.conversationsById.get(threadId);
-    if (!role || role.role !== "owner" || !checkpoint || !currentConversation) {
-      throw new Error(`Cannot publish history without owner authority for ${threadId}`);
-    }
-    const presented =
-      proposal ?? applyCodexConversationHistoryMutation(currentConversation, mutation);
-    if (!presented.ok) {
-      throw new Error(`Could not apply history mutation for ${threadId}: ${presented.reason}`);
-    }
-    const cursor = this.ensureOwnerStreamPublishCursor(threadId, checkpoint, currentConversation);
-    // History is a snapshot barrier from the latest owner document. Any live updates received
-    // during the read are included; later updates remain dirty behind the publication in flight.
-    const ownerNotificationSequence = this.reserveOwnerNotificationAck(threadId);
-    cursor.dirty = false;
-    cursor.inFlight = true;
-    this.applyConversationSnapshot(threadId, presented.conversation);
-    const shared = toSharedConversationDocument(presented.conversation);
-    const result = await this.publishOwnerSnapshotFromCursor(
-      threadId,
-      cursor,
-      shared,
-      ownerNotificationSequence || undefined,
-    );
-    if (this.ownerStreamPublishCursorsByConversationId.get(threadId) !== cursor) {
-      throw new Error(`Owner authority changed while publishing history for ${threadId}`);
-    }
-    cursor.inFlight = false;
-    if (!result.accepted) {
-      this.markOwnerStreamPublishUnavailable(threadId);
-      throw new Error(`Could not publish history snapshot for ${threadId}: ${result.reason}`);
-    }
-    cursor.acceptedCheckpoint = result.checkpoint;
-    cursor.acceptedDocument = this.consumeOwnerStandaloneUnreadStateOverride(
-      cursor,
-      result.conversation,
-    );
-    this.confirmOwnerNotificationAck(threadId, ownerNotificationSequence);
-    this.flushOwnerNotificationCompletions(threadId);
-    this.streamState.recordOwnerCheckpoint(threadId, result.checkpoint);
-    return result.checkpoint.revision;
-  }
-
-  /**
-   * A failed owner command normally publishes its terminal projection through the owner outbox.
-   * Endpoint loss revokes that role first, so the same semantic failure must still settle the
-   * visible optimistic turn locally while the replacement generation rehydrates canonical state.
-   */
-  private async settleOwnerActionFailure(
-    threadId: string,
-    label: string,
-    buildNextConversation: (
-      conversation: CodexConversationSnapshot,
-    ) => CodexConversationSnapshot | null,
-  ): Promise<number> {
-    if (this.streamState.getRole(threadId)?.role === "owner") {
-      return await this.publishOwnerActionSnapshotMutation(threadId, label, buildNextConversation);
-    }
-
-    const currentConversation = this.conversationsById.get(threadId);
-    if (!currentConversation) return 0;
-    const candidateConversation = buildNextConversation(currentConversation);
-    if (!candidateConversation || candidateConversation === currentConversation) {
-      return this.streamState.getRevision(threadId) ?? 0;
-    }
-
-    const nextConversation = finalizeOwnerConversationMutation(
-      currentConversation,
-      candidateConversation,
-    );
-    this.applyConversationSnapshot(threadId, {
-      ...nextConversation,
-      resumeState: "needs_resume",
-    });
-    return this.streamState.getRevision(threadId) ?? 0;
   }
 
   async startThreadForSession(
@@ -5071,10 +4565,15 @@ export class CodexAppServerManager {
 
     try {
       await this.loadPermissionState(input.projectId);
-      const result = (await runConversationOperation("codex:thread:start-for-session", {
+      const launchInput = {
         ...input,
+        executionHostId: input.executionHostId ?? this.hostId,
         permissionMode: this.readPermissionMode(input.projectId),
-      })) as CodexThreadStartForSessionResult;
+      };
+      const result =
+        runInTarget === "newWorktree"
+          ? await runConversationOperation("codex:thread:start-for-session", launchInput)
+          : await this.startNativeSessionThread(launchInput);
 
       if (result.kind === "started") {
         if (result.freshLaunch) {
@@ -5109,13 +4608,72 @@ export class CodexAppServerManager {
     }
   }
 
+  private async startNativeSessionThread(
+    input: CodexThreadStartForSessionInput,
+  ): Promise<CodexThreadStartForSessionResult> {
+    const clientUserMessageId = input.firstSubmission.clientUserMessageId;
+    codexTurnFirstResponseTracker.markThreadCreationStarted(clientUserMessageId, "regular");
+    await this.refreshNativeHostContext();
+    const hostContext = this.nativeHostContext;
+    let prepared: import("../../../shared/codex-native-thread-start").CodexNativeSessionLaunchPreparation;
+    try {
+      prepared = await runConversationOperation("codex:thread:native-session:prepare", input);
+    } catch (error) {
+      codexTurnFirstResponseTracker.fail(clientUserMessageId, "submit_preparation_failed");
+      throw error;
+    }
+    try {
+      if (
+        this.destroyed ||
+        this.nativeHostContext !== hostContext ||
+        prepared.generation !== hostContext?.generation
+      )
+        throw new Error("Starting conversation manager retired during preparation");
+      codexTurnFirstResponseTracker.markThreadInputsReady(clientUserMessageId);
+      codexTurnFirstResponseTracker.markRequestDispatched(clientUserMessageId, "thread/start");
+      const response = await this.nativeAppServer.executeSessionThread(prepared, {
+        clientUserMessageId,
+        trace: codexTurnFirstResponseTracker.getTrace(clientUserMessageId),
+      });
+      if (
+        this.destroyed ||
+        prepared.hostId !== this.hostId ||
+        this.nativeHostContext !== hostContext
+      )
+        throw new Error("Starting conversation manager retired");
+      codexTurnFirstResponseTracker.bindConversation(clientUserMessageId, response.thread.id);
+      codexTurnFirstResponseTracker.markThreadCreated(clientUserMessageId);
+      this.nativeGenerationByThread.set(response.thread.id, prepared.generation);
+      this.streamState.setRole(response.thread.id, { role: "owner" });
+      this.installNativeThreadResponse(response, "resumed");
+      this.streamState.broadcastSnapshot(response.thread.id);
+      const accepted = await runConversationOperation(
+        "codex:thread:native-session:accept",
+        prepared.receiptId,
+      );
+      if (this.destroyed || this.nativeHostContext !== hostContext)
+        throw new Error("Starting conversation manager retired during acceptance");
+      if (accepted.kind === "started") this.applyThreadSummary(accepted.detail);
+      return accepted;
+    } finally {
+      await runConversationOperation("codex:thread:native-session:release", prepared.receiptId);
+    }
+  }
+
   private async adoptFreshThreadLaunch(
     projectId: string | null,
     sessionId: string,
     launch: NonNullable<
-      Extract<CodexThreadStartForSessionResult, { kind: "started" }>["freshLaunch"]
+      Extract<
+        CodexThreadStartForSessionResult,
+        {
+          kind: "started";
+        }
+      >["freshLaunch"]
     >,
   ): Promise<void> {
+    await this.refreshNativeHostContext();
+    const hostContext = this.nativeHostContext;
     sessionFirstSubmissionOwner.update(launch.launchId, {
       threadId: launch.threadId,
       phase: "adoptingOwner",
@@ -5129,26 +4687,18 @@ export class CodexAppServerManager {
         launch.threadId,
         launch.launchId,
       );
-      const acceptedReplica = resolveAcceptedConversationReplica({
-        conversation: result.conversation,
-        revision: result.revision,
-        checkpoint: result.checkpoint,
-        context: `Fresh owner adoption for ${launch.threadId}`,
-      });
-      const conversation = materializeOwnerCanonicalConversationSnapshot(result.conversation);
-      this.followerAcceptedReplicasByConversationId.delete(launch.threadId);
-      const checkpoint = result.checkpoint;
-      this.streamState.markOwner(launch.threadId, checkpoint);
-      this.recordQueueOwnerProjectionFence({
-        threadId: launch.threadId,
-        threadGeneration: result.threadGeneration,
-        ownerEpoch: checkpoint.ownerEpoch,
-        projectionRevision: result.conversation.queuedFollowUps.projectionRevision,
-      });
-      this.seedOwnerStreamPublishCursor(launch.threadId, checkpoint, acceptedReplica);
-      this.applyConversationSnapshot(launch.threadId, conversation);
-      await runConversationOperation("codex:thread:resume-buffer:release", launch.threadId);
-      await runConversationOperation("codex:thread-owner:pending-requests:replay", launch.threadId);
+      if (
+        result.hostId !== this.hostId ||
+        result.response.thread.id !== launch.threadId ||
+        this.nativeHostContext !== hostContext ||
+        result.generation !== hostContext?.generation ||
+        this.destroyed
+      )
+        throw new Error("Fresh thread response belongs to a retired owner");
+      this.nativeGenerationByThread.set(launch.threadId, result.generation);
+      this.streamState.setRole(launch.threadId, { role: "owner" });
+      this.installNativeThreadResponse(result.response, "resumed");
+      this.streamState.broadcastSnapshot(launch.threadId);
       this.setConversationAttachmentState(launch.threadId, {
         status: "attached",
       });
@@ -5157,8 +4707,7 @@ export class CodexAppServerManager {
         stage: "adoptingOwner",
         message: error instanceof Error ? error.message : "Message could not be sent.",
       });
-      await this.releaseResumeBufferAfterFailedResume(launch.threadId);
-      this.markOwnerStreamPublishUnavailable(launch.threadId);
+      this.streamState.setRole(launch.threadId, null);
       this.setConversationAttachmentState(
         launch.threadId,
         makeLocalConversationAttachmentFailure(error),
@@ -5166,23 +4715,42 @@ export class CodexAppServerManager {
       throw error;
     }
 
-    // The transaction commits and synchronously notifies the optimistic turn
-    // before returning this transport-completion promise.
-    const firstTurnCompletion = this.executeOwnerOptimisticTurnTransaction({
-      threadId: launch.threadId,
-      clientUserMessageId: launch.clientUserMessageId,
-      canonicalParams: launch.canonicalParams,
-      request: () =>
-        this.ownerAppServerRequestClient.startSessionFirstTurn(launch.threadId, {
-          threadId: launch.threadId,
-          launchId: launch.launchId,
-        }),
-      onOptimisticCommitted: () => {
-        this.commitRendererFreshLaunchReady(launch.launchId, projectId, sessionId, launch.threadId);
-      },
-      optimisticNotifyMode: "sync",
-    });
     try {
+      const operation = await runConversationOperation(
+        "codex:turn:native-fresh:prepare",
+        launch.threadId,
+        launch.launchId,
+      );
+      const prepared = await this.inspectOwnerTurnStart(operation);
+      if (this.destroyed || this.nativeHostContext !== hostContext)
+        throw new Error("Fresh turn preparation belongs to a retired owner");
+      // The transaction commits and synchronously notifies the optimistic turn
+      // before returning this transport-completion promise.
+      const firstTurnCompletion = this.executeOwnerOptimisticTurnTransaction({
+        threadId: launch.threadId,
+        clientUserMessageId: launch.clientUserMessageId,
+        canonicalParams: prepared.params,
+        execution: prepared,
+        turnContext: operation.context,
+        request: (submission) =>
+          this.executePreparedNativeTurn(operation, prepared.request, submission, (options) =>
+            this.nativeAppServer.executeFreshTurn(
+              launch.threadId,
+              launch.launchId,
+              prepared.request,
+              options,
+            ),
+          ),
+        onOptimisticCommitted: () => {
+          this.commitRendererFreshLaunchReady(
+            launch.launchId,
+            projectId,
+            sessionId,
+            launch.threadId,
+          );
+        },
+        optimisticNotifyMode: "sync",
+      });
       await firstTurnCompletion;
     } catch (error) {
       sessionFirstSubmissionOwner.fail(launch.launchId, {
@@ -5203,6 +4771,8 @@ export class CodexAppServerManager {
         });
       }
       throw error;
+    } finally {
+      await runConversationOperation("codex:turn:native:release", launch.clientUserMessageId);
     }
   }
 
@@ -5268,6 +4838,10 @@ export class CodexAppServerManager {
 
   async archiveThread(threadId: string, projectId: string | null): Promise<boolean> {
     const result = (await runConversationOperation("codex:thread:archive", threadId)) as boolean;
+    if (result) {
+      this.archiveState.suppress(threadId);
+      this.historyItemLoader.cancelLoads(threadId);
+    }
     if (result && projectId !== null) await this.loadThreads(projectId);
     return result;
   }
@@ -5280,6 +4854,10 @@ export class CodexAppServerManager {
       "codex:thread:unarchive",
       threadId,
     )) as CodexThreadSummary | null;
+    if (result) {
+      this.archiveState.unsuppress(threadId);
+      this.applyThreadSummary(result);
+    }
     if (projectId !== null) await this.loadThreads(projectId, { includeArchived: true });
     return result;
   }
@@ -5291,6 +4869,42 @@ export class CodexAppServerManager {
   private assertOwnerForConversation(conversationId: string): void {
     if (this.streamState.getRole(conversationId)?.role === "owner") return;
     throw new Error(`Renderer is not owner for conversation ${conversationId}`);
+  }
+
+  /** Observe one admitted owner without creating a separate lifetime authority. */
+  private observeOwnerActionLifetime(threadId: string, action: string) {
+    this.assertOwnerForConversation(threadId);
+    const owner = this.streamState.getRole(threadId);
+    const nativeRevision = this.nativeHostContextRevision;
+    let removed = false;
+    const onRemoved = (id: string) => {
+      if (id === threadId) removed = true;
+    };
+    const assertCurrent = () => {
+      if (
+        removed ||
+        this.destroyed ||
+        this.nativeHostContextRevision !== nativeRevision ||
+        this.streamState.getRole(threadId) !== owner
+      )
+        throw new Error(`Conversation owner changed during ${action}`);
+      this.assertOwnerForConversation(threadId);
+    };
+    this.conversationRemovedCallbacks.add(onRemoved);
+    return {
+      assertCurrent,
+      isCurrent: () => {
+        try {
+          assertCurrent();
+          return true;
+        } catch {
+          return false;
+        }
+      },
+      [Symbol.dispose]: () => {
+        this.conversationRemovedCallbacks.delete(onRemoved);
+      },
+    };
   }
 
   private async ensureOwnerForConversationAction(
@@ -5313,10 +4927,6 @@ export class CodexAppServerManager {
         `Cannot run ${label} because conversation ${conversationId} could not become renderer-owned`,
       );
     }
-  }
-
-  getThreadRoleForRendererClientRequest(conversationId: string): CodexRendererThreadRole {
-    return this.streamState.getRole(conversationId)?.role === "owner" ? "owner" : "follower";
   }
 
   private conversationHasRequest(
@@ -5376,57 +4986,6 @@ export class CodexAppServerManager {
     return this.findFollowerConversationIdForRequest(requestId);
   }
 
-  private async runFollowerActionThroughOwner<TResult>(
-    conversationId: string,
-    action: CodexThreadOwnerActionRequest,
-    options: {
-      fallback?: () => Promise<TResult>;
-      fallbackOnTimeout?: boolean;
-    } = {},
-  ): Promise<TResult> {
-    try {
-      return (await runConversationOperation("codex:thread-follower:action", {
-        conversationId,
-        action,
-      })) as TResult;
-    } catch (error) {
-      if (!this.isUnavailableOwnerActionError(error, options.fallbackOnTimeout === true)) {
-        throw error;
-      }
-      this.markConversationNeedsResumeAfterUnavailableOwner(conversationId);
-      if (!options.fallback) {
-        throw error;
-      }
-
-      await this.requestThreadStreamResume(conversationId);
-      return await options.fallback();
-    }
-  }
-
-  private async executeConversationAction<TResult>(input: {
-    conversationId: string;
-    label: string;
-    action: CodexThreadOwnerActionRequest;
-    executeAsOwner: () => Promise<TResult>;
-    waitForStreamRevision?: boolean;
-  }): Promise<TResult> {
-    const role = this.streamState.getRole(input.conversationId);
-    if (role?.role === "follower") {
-      const result = await this.runFollowerActionThroughOwner<TResult>(
-        input.conversationId,
-        input.action,
-        { fallback: input.executeAsOwner },
-      );
-      if (input.waitForStreamRevision === true) {
-        await this.waitForFollowerActionStreamRevision(input.conversationId, result);
-      }
-      return result;
-    }
-
-    await this.ensureOwnerForConversationAction(input.conversationId, input.label);
-    return await input.executeAsOwner();
-  }
-
   private isUnavailableOwnerActionError(error: unknown, includeTimeout: boolean): boolean {
     const message = error instanceof Error ? error.message : String(error);
     return (
@@ -5436,396 +4995,56 @@ export class CodexAppServerManager {
     );
   }
 
-  private markConversationNeedsResumeAfterUnavailableOwner(conversationId: string): void {
+  private markConversationNeedsResumeAfterUnavailableOwner(
+    conversationId: string,
+    ownerClientId: string | null,
+  ): void {
     const role = this.streamState.getRole(conversationId);
+    if (role?.role === "follower" && role.ownerClientId !== ownerClientId) return;
     if (role?.role === "follower") {
-      this.streamState.markOwnerUnavailable(role.ownerClientId);
+      const wasFollowing = this.streamState.isFollowing(conversationId);
+      this.streamState.removeConversation(conversationId);
+      if (wasFollowing) {
+        void this.setThreadStreamFollowing(conversationId, false).catch((error: unknown) => {
+          console.warn("Failed to stop following an unavailable conversation owner", error);
+        });
+      }
     }
-    const conversation = this.conversationsById.get(conversationId);
-    if (conversation && conversation.resumeState !== "needs_resume") {
-      this.applyConversationSnapshot(conversationId, {
-        ...conversation,
-        resumeState: "needs_resume",
-      });
-    }
+    this.markConversationResumeState(conversationId, "needs_resume");
     this.setConversationAttachmentState(conversationId, IDLE_LOCAL_CONVERSATION_ATTACHMENT_STATE);
   }
 
-  private async runFollowerRequestResponseThroughOwner(
-    conversationId: string,
-    action: CodexThreadOwnerActionRequest,
-  ): Promise<boolean> {
-    try {
-      const result = await this.runFollowerActionThroughOwner<unknown>(conversationId, action);
-      const accepted = this.readOwnerBooleanActionResult(result);
-      if (accepted) await this.waitForFollowerActionStreamRevision(conversationId, result);
-      return accepted;
-    } catch (error) {
-      if (this.isUnavailableOwnerActionError(error, false)) {
-        return false;
-      }
-      throw error;
-    }
-  }
-
-  private async waitForHistoryPageFromOwner(
-    request: CodexConversationHistoryPageRequest,
-  ): Promise<CodexConversationHistoryPageResult> {
-    const role = this.streamState.getRole(request.threadId);
-    if (role?.role !== "follower" || !role.ownerClientId) {
-      throw new Error(`Cannot route history page without a follower owner for ${request.threadId}`);
-    }
-    const result = await this.runFollowerActionThroughOwner<CodexThreadOwnerHistoryMutationResult>(
-      request.threadId,
-      { type: "loadHistoryPage", request },
-    );
-    await this.waitForOwnerPublishedRevision(request.threadId, result.revision);
-    return result.page;
-  }
-
-  private async waitForOwnerPublishedRevision(threadId: string, revision: number): Promise<void> {
-    const role = this.streamState.getRole(threadId);
-    if (role?.role !== "follower" || !role.ownerClientId) return;
-    await this.streamState.waitForRevision({
-      conversationId: threadId,
-      ownerClientId: role.ownerClientId,
-      revision,
-      timeoutMs: COMPLETE_HISTORY_WAIT_TIMEOUT_MS,
-    });
-  }
-
-  private async waitForFollowerActionStreamRevision(
+  private buildOriginalNativeTurnRequest(
     threadId: string,
-    result: unknown,
-  ): Promise<void> {
-    const streamRevision = this.readOwnerStreamRevision(result);
-    if (streamRevision === null) return;
-
-    const role = this.streamState.getRole(threadId);
-    if (role?.role !== "follower" || !role.ownerClientId) return;
-
-    await this.streamState.waitForRevision({
-      conversationId: threadId,
-      ownerClientId: role.ownerClientId,
-      revision: streamRevision,
-      timeoutMs: COMPLETE_HISTORY_WAIT_TIMEOUT_MS,
-    });
-  }
-
-  private withOwnerStreamRevision<TResult>(result: TResult, streamRevision: number): TResult {
-    if (typeof result === "object" && result !== null && !Array.isArray(result)) {
-      return {
-        ...result,
-        streamRevision,
-      };
-    }
-
-    return result;
-  }
-
-  private buildOwnerStreamRevisionResult(streamRevision: number): OwnerStreamRevisionResult {
-    return { streamRevision };
-  }
-
-  private readOwnerStreamRevision(result: unknown): number | null {
-    const resultRecord = asRecord(result);
-    return typeof resultRecord?.streamRevision === "number" ? resultRecord.streamRevision : null;
-  }
-
-  private readOwnerBooleanActionResult(result: unknown): boolean {
-    const resultRecord = asRecord(result);
-    if (typeof resultRecord?.accepted === "boolean") return resultRecord.accepted;
-    if (typeof resultRecord?.ok === "boolean") return resultRecord.ok;
-    return result === true;
-  }
-
-  private markOwnerServerRequestActionHandled(
-    result: OwnerServerRequestReplyResult,
-  ): OwnerServerRequestReplyResult {
+    clientUserMessageId: string,
+    preparedPrompt: CodexPreparedPrompt,
+    opts?: CodexTurnStartOptions,
+  ): import("@nodex/codex-app-server-protocol/v2/TurnStartParams").TurnStartParams {
+    const context = this.conversationsById.get(threadId)?.canonicalState;
+    const model = opts?.model ?? context?.latestModel;
+    if (opts?.collaborationMode && !model)
+      throw new Error("Collaboration mode requires a selected model");
     return {
-      accepted: true,
-      ...(result.streamRevision !== undefined ? { streamRevision: result.streamRevision } : {}),
+      threadId,
+      clientUserMessageId,
+      input: [...preparedPrompt.inputItems],
+      ...(opts?.model !== undefined ? { model: opts.model } : {}),
+      ...(opts?.reasoningEffort !== undefined ? { effort: opts.reasoningEffort } : {}),
+      ...(opts?.serviceTier !== undefined ? { serviceTier: opts.serviceTier } : {}),
+      ...(opts?.summary !== undefined ? { summary: opts.summary } : {}),
+      ...(opts?.collaborationMode
+        ? {
+            collaborationMode: {
+              mode: opts.collaborationMode,
+              settings: {
+                model: model!,
+                reasoning_effort: opts.reasoningEffort ?? context?.latestReasoningEffort ?? null,
+                developer_instructions: null,
+              },
+            },
+          }
+        : {}),
     };
-  }
-
-  private recordQueueOwnerProjectionFence(input: {
-    readonly threadId: string;
-    readonly threadGeneration: number;
-    readonly ownerEpoch: number;
-    readonly projectionRevision: number;
-    readonly publication?: Promise<number> | null;
-    readonly streamRevision?: number | null;
-  }): void {
-    this.queueOwnerProjectionFenceByConversationId.set(input.threadId, {
-      threadGeneration: input.threadGeneration,
-      ownerEpoch: input.ownerEpoch,
-      projectionRevision: input.projectionRevision,
-      publication: input.publication ?? null,
-      streamRevision: input.streamRevision ?? null,
-    });
-  }
-
-  async applyQueueOwnerUpdate(
-    input: CodexQueueOwnerUpdateRequest,
-  ): Promise<CodexQueueOwnerUpdateResult> {
-    const currentFence = () =>
-      this.queueOwnerProjectionFenceByConversationId.get(input.threadId) ?? null;
-    const reject = (
-      reason: Extract<CodexQueueOwnerUpdateResult, { kind: "rejected" }>["reason"],
-    ): CodexQueueOwnerUpdateResult => ({
-      kind: "rejected",
-      reason,
-      currentProjectionRevision: currentFence()?.projectionRevision ?? null,
-    });
-
-    const conversation = this.conversationsById.get(input.threadId);
-    if (!conversation) return reject("conversation-unavailable");
-    if (this.streamState.getRole(input.threadId)?.role !== "owner") {
-      return reject("not-owner");
-    }
-
-    const checkpoint = this.streamState.getCheckpoint(input.threadId);
-    if (!checkpoint || checkpoint.ownerEpoch !== input.ownerEpoch) {
-      return reject("owner-epoch-mismatch");
-    }
-
-    const fence = currentFence();
-    if (!fence || fence.threadGeneration !== input.threadGeneration) {
-      return reject("thread-generation-mismatch");
-    }
-    if (fence.ownerEpoch !== input.ownerEpoch) return reject("owner-epoch-mismatch");
-    if (input.projectionRevision < fence.projectionRevision) {
-      return reject("newer-projection-applied");
-    }
-    if (input.projectionRevision === fence.projectionRevision) {
-      const streamRevision =
-        fence.streamRevision ??
-        (fence.publication
-          ? await fence.publication
-          : (this.streamState.getRevision(input.threadId) ?? 0));
-      return {
-        kind: "already-applied",
-        projectionRevision: fence.projectionRevision,
-        streamRevision,
-      };
-    }
-    if (input.transcript.kind !== "none" && !conversation.canonicalState) {
-      return reject("canonical-state-unavailable");
-    }
-
-    const publication = this.publishOwnerActionSnapshotMutation(
-      input.threadId,
-      "Main queue owner projection",
-      (currentConversation) => {
-        const transcript = applyQueueOwnerTranscriptDirective(
-          currentConversation,
-          input.transcript,
-        );
-        if (!transcript) return null;
-        return {
-          ...currentConversation,
-          ...transcript,
-          queuedFollowUps: copyQueuedFollowUpProjection(input.projection),
-        };
-      },
-    );
-    this.recordQueueOwnerProjectionFence({
-      threadId: input.threadId,
-      threadGeneration: input.threadGeneration,
-      ownerEpoch: input.ownerEpoch,
-      projectionRevision: input.projectionRevision,
-      publication,
-    });
-    const streamRevision = await publication;
-    const appliedFence = currentFence();
-    if (
-      appliedFence?.threadGeneration === input.threadGeneration &&
-      appliedFence.ownerEpoch === input.ownerEpoch &&
-      appliedFence.projectionRevision === input.projectionRevision
-    ) {
-      this.recordQueueOwnerProjectionFence({
-        threadId: input.threadId,
-        threadGeneration: input.threadGeneration,
-        ownerEpoch: input.ownerEpoch,
-        projectionRevision: input.projectionRevision,
-        streamRevision,
-      });
-    }
-    return {
-      kind: "applied",
-      projectionRevision: input.projectionRevision,
-      streamRevision,
-    };
-  }
-
-  async handleThreadOwnerActionRequest(action: CodexThreadOwnerActionRequest): Promise<unknown> {
-    switch (action.type) {
-      case "startTurn":
-        this.assertOwnerForConversation(action.threadId);
-        return await this.startTurnAsOwner(
-          action.threadId,
-          action.prompt,
-          action.opts,
-          action.presentationTicket,
-        );
-      case "resumeInterruptedTurn":
-        this.assertOwnerForConversation(action.threadId);
-        return await this.resumeInterruptedTurnAsOwner(
-          action.threadId,
-          action.opts,
-          action.presentationTicket,
-        );
-      case "steerTurn":
-        this.assertOwnerForConversation(action.input.threadId);
-        return await this.steerTurnAsOwner(action.input);
-      case "interruptTurn":
-        this.assertOwnerForConversation(action.threadId);
-        return await this.interruptTurnAsOwner(action.threadId, action.turnId);
-      case "updateThreadSettings":
-        this.assertOwnerForConversation(action.threadId);
-        return await this.setThreadSettingsForConversationAsOwner(action.threadId, action.patch);
-      case "compactThread":
-        this.assertOwnerForConversation(action.threadId);
-        await this.compactThreadAsOwner(action.threadId);
-        return null;
-      case "setThreadGoal":
-        this.assertOwnerForConversation(action.threadId);
-        return await this.setThreadGoalAsOwner(normalizeThreadGoalSetActionInput(action));
-      case "clearThreadGoal":
-        this.assertOwnerForConversation(action.threadId);
-        return await this.clearThreadGoalAsOwner(action.threadId);
-      case "dismissThreadGoalResumeConfirmation":
-        this.assertOwnerForConversation(action.threadId);
-        return await this.dismissThreadGoalResumeConfirmationAsOwner(action.threadId);
-      case "setThreadMemoryMode":
-        this.assertOwnerForConversation(action.threadId);
-        await this.setThreadMemoryModeAsOwner({
-          threadId: action.threadId,
-          mode: action.mode,
-        });
-        return null;
-      case "editLastUserTurn":
-        this.assertOwnerForConversation(action.threadId);
-        return await this.editLastUserTurnAsOwner(
-          action.threadId,
-          action.turnId,
-          action.message,
-          action.opts,
-          action.presentationTicket,
-        );
-      case "forkConversationFromTurn":
-        this.assertOwnerForConversation(action.threadId);
-        return await this.forkConversationFromTurnAsOwner(
-          action.threadId,
-          action.turnId,
-          action.message,
-        );
-      case "loadHistoryPage":
-        this.assertOwnerForConversation(action.request.threadId);
-        return await this.loadHistoryPageAsOwner(action.request);
-      case "publishHistoryMutation":
-        this.assertOwnerForConversation(action.threadId);
-        return {
-          revision: await this.publishOwnerHistoryMutation(action.threadId, action.mutation),
-        };
-      case "hydratePersistedHistoryOccurrence":
-        this.assertOwnerForConversation(action.input.threadId);
-        return await this.hydratePersistedHistoryOccurrenceAsOwner(action.input);
-      case "enqueueQueuedFollowUp":
-        this.assertOwnerForConversation(action.threadId);
-        return await this.enqueueQueuedFollowUpAsOwner(
-          action.threadId,
-          action.prompt,
-          action.opts,
-          action.presentationTicket,
-        );
-      case "removeQueuedFollowUp":
-        this.assertOwnerForConversation(action.threadId);
-        return await this.removeQueuedFollowUpAsOwner(action.threadId, action.followUpId);
-      case "replaceQueuedFollowUp":
-        this.assertOwnerForConversation(action.threadId);
-        return await this.replaceQueuedFollowUpAsOwner(
-          action.threadId,
-          action.followUpId,
-          action.expectedLedgerRevision,
-          action.prompt,
-          action.opts,
-          action.presentationTicket,
-        );
-      case "reorderQueuedFollowUps":
-        this.assertOwnerForConversation(action.threadId);
-        return await this.reorderQueuedFollowUpsAsOwner(action.threadId, action.orderedFollowUpIds);
-      case "resumeQueuedFollowUps":
-        this.assertOwnerForConversation(action.threadId);
-        return await this.resumeQueuedFollowUpsAsOwner(action.threadId);
-      case "resolveQueuedFollowUpsAfterFreshStart":
-        this.assertOwnerForConversation(action.threadId);
-        return await this.resolveQueuedFollowUpsAfterFreshStartAsOwner(
-          action.threadId,
-          action.expectedLedgerRevision,
-          action.resolution,
-        );
-      case "sendQueuedFollowUpNow":
-        this.assertOwnerForConversation(action.threadId);
-        return await this.sendQueuedFollowUpNowAsOwner(action.threadId, action.followUpId);
-      case "respondApproval":
-        this.assertOwnerForConversation(action.conversationId);
-        return this.markOwnerServerRequestActionHandled(
-          await this.respondApprovalAsOwner(
-            action.requestId,
-            action.response,
-            action.conversationId,
-          ),
-        );
-      case "respondUserInput":
-        this.assertOwnerForConversation(action.conversationId);
-        return this.markOwnerServerRequestActionHandled(
-          await this.respondUserInputAsOwner(
-            action.requestId,
-            action.answers,
-            action.conversationId,
-          ),
-        );
-      case "respondMcpElicitation":
-        this.assertOwnerForConversation(action.conversationId);
-        return this.markOwnerServerRequestActionHandled(
-          await this.respondMcpElicitationAsOwner(
-            action.requestId,
-            action.response,
-            action.conversationId,
-          ),
-        );
-      case "respondPermissionRequest":
-        this.assertOwnerForConversation(action.conversationId);
-        return this.markOwnerServerRequestActionHandled(
-          await this.respondPermissionRequestAsOwner(
-            action.requestId,
-            action.response,
-            action.conversationId,
-          ),
-        );
-      case "respondOptionPicker":
-        this.assertOwnerForConversation(action.conversationId);
-        return this.markOwnerServerRequestActionHandled(
-          await this.respondOptionPickerAsOwner(
-            action.conversationId,
-            action.requestId,
-            action.response,
-          ),
-        );
-      case "respondSetupCodexStep":
-        this.assertOwnerForConversation(action.conversationId);
-        return this.markOwnerServerRequestActionHandled(
-          await this.respondSetupCodexStepAsOwner(
-            action.conversationId,
-            action.requestId,
-            action.response,
-          ),
-        );
-      case "removePlanImplementationRequest":
-        this.assertOwnerForConversation(action.threadId);
-        return await this.removePlanImplementationRequestAsOwner(action.threadId, action.turnId);
-    }
   }
 
   async startTurn(
@@ -5833,20 +5052,65 @@ export class CodexAppServerManager {
     prompt: string,
     opts?: CodexTurnStartOptions,
     presentationTicket?: CodexTurnPresentationTicket,
+    submissionIdentity?: RendererTurnSubmissionIdentity,
   ): Promise<unknown> {
-    return await this.executeConversationAction({
-      conversationId: threadId,
-      label: "start turn",
-      action: {
-        type: "startTurn",
+    await this.settingsUpdates.get(threadId);
+    const role = this.streamState.getRole(threadId);
+    if (role?.role === "follower") {
+      const preparedPrompt = await prepareCodexPrompt(prompt, opts?.promptInput, {
+        resolveImageInput: resolveOwnerPromptImageInput,
+      });
+      const clientUserMessageId =
+        submissionIdentity?.clientUserMessageId ?? createOwnerClientUserMessageId();
+      const request = await runConversationOperation("codex:turn:native:prepare", {
         threadId,
         prompt,
         opts,
         presentationTicket,
-      },
-      executeAsOwner: () => this.startTurnAsOwner(threadId, prompt, opts, presentationTicket),
-      waitForStreamRevision: true,
-    });
+        clientUserMessageId,
+        preparedPrompt,
+        originalRequest: this.buildOriginalNativeTurnRequest(
+          threadId,
+          clientUserMessageId,
+          preparedPrompt,
+          opts,
+        ),
+        sourceContext: {
+          attachments: [...preparedPrompt.fileAttachments, ...preparedPrompt.addedFiles],
+          commentAttachments: [...preparedPrompt.commentAttachments],
+          inheritThreadSettings: true,
+        },
+      });
+      try {
+        const currentRole = this.streamState.getRole(threadId);
+        if (currentRole?.role !== "follower" || currentRole.ownerClientId !== role.ownerClientId)
+          throw new Error("Turn owner changed during preparation");
+        const forwarded = await this.forwardPreparedStartTurnOrRecover(
+          threadId,
+          role.ownerClientId,
+          request,
+        );
+        if (forwarded.forwarded) {
+          codexTurnFirstResponseTracker.abort(clientUserMessageId, "follower_window_forwarded");
+          return forwarded.result;
+        }
+
+        const prepared = await this.inspectOwnerTurnStart(request);
+        return await this.executeOwnerOptimisticTurnTransaction({
+          threadId,
+          clientUserMessageId,
+          canonicalParams: prepared.params,
+          execution: prepared,
+          turnContext: request.context,
+          optimisticNotifyMode: "sync",
+          request: (submission) =>
+            this.executePreparedNativeTurn(request, prepared.request, submission),
+        });
+      } finally {
+        await runConversationOperation("codex:turn:native:release", clientUserMessageId);
+      }
+    }
+    return this.startTurnAsOwner(threadId, prompt, opts, presentationTicket, submissionIdentity);
   }
 
   async resumeInterruptedTurn(
@@ -5857,18 +5121,7 @@ export class CodexAppServerManager {
     const existing = this.interruptedTurnResumesInFlightByThreadId.get(threadId);
     if (existing) return await existing;
 
-    const operation = this.executeConversationAction({
-      conversationId: threadId,
-      label: "resume interrupted turn",
-      action: {
-        type: "resumeInterruptedTurn",
-        threadId,
-        opts,
-        presentationTicket,
-      },
-      executeAsOwner: () => this.resumeInterruptedTurnAsOwner(threadId, opts, presentationTicket),
-      waitForStreamRevision: true,
-    });
+    const operation = this.resumeInterruptedTurnAsOwner(threadId, opts, presentationTicket);
     this.interruptedTurnResumesInFlightByThreadId.set(threadId, operation);
     try {
       return await operation;
@@ -5884,7 +5137,7 @@ export class CodexAppServerManager {
     opts?: CodexTurnStartOptions,
     presentationTicket?: CodexTurnPresentationTicket,
   ): Promise<unknown> {
-    await this.ensureOwnerForConversationAction(threadId, "resume interrupted turn");
+    if (!this.conversationsById.has(threadId)) await this.requestThreadStreamResume(threadId);
     const conversation = this.conversationsById.get(threadId);
     if (!conversation) {
       this.handleOwnerReducerUnavailable(threadId);
@@ -5911,31 +5164,40 @@ export class CodexAppServerManager {
       throw new Error("Only the latest interrupted turn can be resumed");
     }
 
-    const preparedPrompt = createEmptyCodexPreparedPrompt();
-    const clientUserMessageId = createOwnerClientUserMessageId();
-    const canonicalParams = buildOwnerCanonicalOptimisticParams(conversation, {
-      clientUserMessageId,
-      opts,
-      preparedPrompt,
-    });
-    if (!canonicalParams) {
-      this.handleOwnerReducerUnavailable(threadId);
-      throw new Error(`Canonical conversation state unavailable for '${threadId}'`);
-    }
+    return await this.startTurnAsOwnerLocalTransaction(threadId, "", opts, presentationTicket);
+  }
 
-    return await this.executeOwnerOptimisticTurnTransaction({
-      threadId,
-      clientUserMessageId,
-      canonicalParams,
-      failureMode: "remove",
-      request: () =>
-        this.ownerAppServerRequestClient.resumeInterruptedTurn(threadId, {
-          presentationTicket,
-          threadId,
-          opts,
-          clientUserMessageId,
+  private async forwardPreparedStartTurnOrRecover(
+    threadId: string,
+    ownerClientId: string,
+    turnStart: ConversationFollowerTurnStart,
+  ): Promise<
+    { readonly forwarded: true; readonly result: unknown } | { readonly forwarded: false }
+  > {
+    try {
+      const response = await (
+        await getConversationCoordinationHost()
+      ).requestThreadFollower({
+        hostId: this.hostId,
+        targetClientId: ownerClientId,
+        request: conversationFollowerRequest("thread-follower-start-turn", {
+          conversationId: threadId,
+          turnStart,
         }),
-    });
+      });
+      if (response.resultType !== "success") {
+        throw new Error(response.resultType === "error" ? response.error : "no-client-found");
+      }
+      return { forwarded: true, result: (response.result as { result: unknown }).result };
+    } catch (error) {
+      if (!this.isUnavailableOwnerActionError(error, false)) throw error;
+      this.markConversationNeedsResumeAfterUnavailableOwner(threadId, ownerClientId);
+      await this.requestThreadStreamResume(threadId);
+      if (this.streamState.getRole(threadId)?.role !== "owner") {
+        throw new Error("Conversation owner unavailable after resume", { cause: error });
+      }
+      return { forwarded: false };
+    }
   }
 
   private async startTurnAsOwner(
@@ -5943,9 +5205,16 @@ export class CodexAppServerManager {
     prompt: string,
     opts?: CodexTurnStartOptions,
     presentationTicket?: CodexTurnPresentationTicket,
+    submissionIdentity?: RendererTurnSubmissionIdentity,
   ): Promise<unknown> {
     await this.ensureOwnerForConversationAction(threadId, "start turn");
-    return await this.startTurnAsOwnerLocalTransaction(threadId, prompt, opts, presentationTicket);
+    return await this.startTurnAsOwnerLocalTransaction(
+      threadId,
+      prompt,
+      opts,
+      presentationTicket,
+      submissionIdentity,
+    );
   }
 
   private async startTurnAsOwnerLocalTransaction(
@@ -5953,118 +5222,212 @@ export class CodexAppServerManager {
     prompt: string,
     opts?: CodexTurnStartOptions,
     presentationTicket?: CodexTurnPresentationTicket,
+    submissionIdentity?: RendererTurnSubmissionIdentity,
   ): Promise<unknown> {
+    await this.settingsUpdates.get(threadId);
     const promptInput = opts?.promptInput;
-    const preparedPrompt = await prepareCodexPrompt(prompt, promptInput, {
-      resolveImageInput: resolveOwnerPromptImageInput,
-    });
-    const clientUserMessageId = createOwnerClientUserMessageId();
-    const conversation = this.conversationsById.get(threadId);
-    if (!conversation) {
-      this.handleOwnerReducerUnavailable(threadId);
-      throw new Error(`Canonical conversation state unavailable for '${threadId}'`);
+    const clientUserMessageId =
+      submissionIdentity?.clientUserMessageId ?? createOwnerClientUserMessageId();
+    let preparedPrompt: CodexPreparedPrompt;
+    try {
+      preparedPrompt =
+        prompt.length === 0 && !promptInput
+          ? createEmptyCodexPreparedPrompt()
+          : await prepareCodexPrompt(prompt, promptInput, {
+              resolveImageInput: resolveOwnerPromptImageInput,
+            });
+    } catch (error) {
+      codexTurnFirstResponseTracker.fail(clientUserMessageId, "submit_preparation_failed");
+      throw error;
     }
-    const canonicalParams = buildOwnerCanonicalOptimisticParams(conversation, {
-      clientUserMessageId,
-      opts,
-      preparedPrompt,
-    });
-    if (!canonicalParams) {
-      this.handleOwnerReducerUnavailable(threadId);
-      throw new Error(`Canonical conversation state unavailable for '${threadId}'`);
-    }
-    return await this.executeOwnerOptimisticTurnTransaction({
+    const request = await runConversationOperation("codex:turn:native:prepare", {
       threadId,
+      prompt,
+      opts,
+      presentationTicket,
       clientUserMessageId,
-      canonicalParams,
-      optimisticNotifyMode: "sync",
-      request: () =>
-        this.ownerAppServerRequestClient.startTurn(threadId, {
-          presentationTicket,
-          threadId,
-          prompt,
-          opts,
-          clientUserMessageId,
-          preparedPrompt,
-        }),
+      preparedPrompt,
+      originalRequest: this.buildOriginalNativeTurnRequest(
+        threadId,
+        clientUserMessageId,
+        preparedPrompt,
+        opts,
+      ),
+      sourceContext: {
+        attachments: [...preparedPrompt.fileAttachments, ...preparedPrompt.addedFiles],
+        commentAttachments: [...preparedPrompt.commentAttachments],
+        inheritThreadSettings: true,
+      },
     });
+    try {
+      const role = this.streamState.getRole(threadId);
+      if (role?.role === "follower") {
+        const forwarded = await this.forwardPreparedStartTurnOrRecover(
+          threadId,
+          role.ownerClientId,
+          request,
+        );
+        if (forwarded.forwarded) {
+          codexTurnFirstResponseTracker.abort(clientUserMessageId, "follower_window_forwarded");
+          return forwarded.result;
+        }
+      }
+      const prepared = await this.inspectOwnerTurnStart(request);
+      return await this.executeOwnerOptimisticTurnTransaction({
+        threadId,
+        clientUserMessageId,
+        canonicalParams: prepared.params,
+        execution: prepared,
+        turnContext: request.context,
+        optimisticNotifyMode: "sync",
+        request: (submission) =>
+          this.executePreparedNativeTurn(request, prepared.request, submission),
+      });
+    } finally {
+      await runConversationOperation("codex:turn:native:release", clientUserMessageId);
+    }
+  }
+
+  private async inspectOwnerTurnStart(operation: ConversationFollowerTurnStart) {
+    const threadId = operation.request.threadId;
+    using lifetime = this.observeOwnerActionLifetime(threadId, "turn preparation");
+    await this.settingsUpdates.get(threadId);
+    lifetime.assertCurrent();
+    const prepared = await runConversationOperation("codex:turn:native:inspect", operation);
+    lifetime.assertCurrent();
+    return prepared;
   }
 
   private async executeOwnerOptimisticTurnTransaction(input: {
     readonly threadId: string;
     readonly clientUserMessageId: string;
     readonly canonicalParams: CodexCanonicalLiveTurnParams;
-    readonly request: () => Promise<TurnStartResponse | unknown>;
+    readonly execution: CodexPreparedTurnExecution;
+    readonly turnContext?: ConversationFollowerTurnStart["context"];
+    readonly request: (submission: OwnerTurnRequestContext) => Promise<TurnStartResponse | unknown>;
     readonly onOptimisticCommitted?: () => void;
     readonly optimisticNotifyMode?: ConversationNotifyMode;
-    readonly failureMode?: "fail" | "remove";
   }): Promise<unknown> {
     const { threadId, clientUserMessageId, canonicalParams } = input;
+    using lifetime = this.observeOwnerActionLifetime(threadId, "turn submission");
     const observedAtMs = Date.now();
     const conversation = this.conversationsById.get(threadId);
     if (!conversation) {
       this.handleOwnerReducerUnavailable(threadId);
       throw new Error(`Canonical conversation state unavailable for '${threadId}'`);
     }
+    if (conversation.canonicalState?.unconfirmedTurnSubmissions?.length)
+      throw new Error("A previous turn submission is awaiting confirmation");
+    if (
+      Array.isArray(input.turnContext?.responseItems) &&
+      input.turnContext.responseItems.length > 0 &&
+      (latestConversationTurn(conversation.canonicalState)?.status === "inProgress" ||
+        conversation.threadRuntimeStatus?.type === "active")
+    )
+      throw new Error("App context must wait until the current turn finishes");
     const previousRuntimeStatus =
       conversation.threadRuntimeStatus ??
       buildOwnerThreadRuntimeStatus(conversation.statusType, conversation.statusActiveFlags);
     const optimisticRuntimeStatus: CodexThreadRuntimeStatus | null =
       previousRuntimeStatus.type === "active" ? null : { type: "active", activeFlags: [] };
-    const previousTurnModel = conversation.canonicalState?.sidecar.previousTurnModel ?? null;
 
-    const optimisticPublication = this.publishOwnerActionSnapshotMutation(
-      threadId,
-      "turn start optimistic",
-      (conversation) =>
-        appendOwnerOptimisticTurn(
-          conversation,
-          canonicalParams,
-          observedAtMs,
-          optimisticRuntimeStatus,
-        ),
-      { notifyMode: input.optimisticNotifyMode },
-    );
-    input.onOptimisticCommitted?.();
-
+    this.historyClient.updateConversation(threadId, (draft) => {
+      mutateCodexCanonicalOptimisticTurn(draft, {
+        execution: input.execution,
+        params: canonicalParams,
+        startedAtMs: observedAtMs,
+        localMetadata: input.turnContext?.localTurnMetadata,
+        mcpAppModelContextAttachments: input.turnContext?.mcpAppModelContextAttachments,
+      });
+      if (optimisticRuntimeStatus) draft.threadRuntimeStatus = optimisticRuntimeStatus;
+    });
+    const optimisticStatus = this.historyClient.getConversation(threadId)?.threadRuntimeStatus;
+    let pendingRequestId: CodexTurnDelivery["requestId"] | null = null;
+    const confirmDelivery = () => {
+      lifetime.assertCurrent();
+      if (pendingRequestId === null) return;
+      this.historyClient.updateConversation(threadId, (draft) => {
+        clearCodexUnconfirmedTurnSubmission(draft, pendingRequestId);
+      });
+      pendingRequestId = null;
+    };
+    const onOutcomeUnknown = (delivery: CodexTurnDelivery) => {
+      if (!lifetime.isCurrent()) return;
+      pendingRequestId = delivery.requestId;
+      this.historyClient.updateConversation(threadId, (draft) => {
+        recordCodexUnconfirmedTurnSubmission(draft, delivery, clientUserMessageId);
+      });
+    };
     try {
-      const startResult = await input.request();
-      const startedTurn = parseOwnerTurnStartResult(threadId, startResult);
-      const rebindPublication = this.publishOwnerActionSnapshotMutation(
-        threadId,
-        "turn start rebind",
-        (conversation) => rebindOwnerOptimisticTurn(conversation, clientUserMessageId, startedTurn),
-      );
-      const [optimisticRevision, streamRevision] = await Promise.all([
-        optimisticPublication,
-        rebindPublication,
-      ]);
-
-      return this.withOwnerStreamRevision(
-        startedTurn?.summary ?? null,
-        streamRevision || optimisticRevision,
-      );
+      input.onOptimisticCommitted?.();
+      const environmentSelectionEvidence =
+        this.historyClient.getConversation(threadId)?.environmentSelectionEvidence;
+      const result = await input.request({
+        options: { priority: "critical", timeoutMs: 30_000, onOutcomeUnknown },
+        assertCurrent: lifetime.assertCurrent,
+        confirmDelivery,
+      });
+      lifetime.assertCurrent();
+      const startedTurn = parseOwnerTurnStartResult(threadId, result);
+      if (startedTurn)
+        this.historyClient.updateConversation(threadId, (draft) => {
+          mutateCodexCanonicalOptimisticTurnBinding(
+            draft,
+            clientUserMessageId,
+            startedTurn.protocol,
+          );
+          const environmentSelection = acceptCodexPreparedEnvironmentSelection(
+            draft,
+            input.execution.environments,
+            environmentSelectionEvidence,
+            observedAtMs / 1_000,
+          );
+          draft.environments = castDraft(environmentSelection.environments);
+          draft.environmentSelectionEvidence = castDraft(
+            environmentSelection.environmentSelectionEvidence,
+          );
+          if (input.execution.pendingWorkspace) {
+            draft.workspaceBrowserRoot = null;
+            draft.cwd = input.execution.pendingWorkspace.cwd;
+          }
+          const workspaceKind = input.execution.workspaceKind;
+          if (workspaceKind === "project" || workspaceKind === "projectless") {
+            draft.workspaceKind = workspaceKind;
+          }
+          draft.currentPermissions = castDraft(input.execution.permissions);
+        });
+      confirmDelivery();
+      return result;
     } catch (error) {
-      const failurePublication = this.settleOwnerActionFailure(
-        threadId,
-        "turn start failure",
-        (conversation) =>
-          input.failureMode === "remove"
-            ? removeOwnerResumePlaceholderFromConversation(
-                conversation,
-                clientUserMessageId,
-                previousRuntimeStatus,
-                optimisticRuntimeStatus,
-                previousTurnModel,
-              )
-            : applyOwnerStartFailureToConversation(
-                conversation,
-                clientUserMessageId,
-                previousRuntimeStatus,
-                optimisticRuntimeStatus,
-              ),
-      );
-      await Promise.all([optimisticPublication, failurePublication]);
+      if (!lifetime.isCurrent()) throw error;
+      const delivery =
+        error instanceof CodexTurnDeliveryError && error.delivery.stage === "outcome-unknown"
+          ? error.delivery
+          : null;
+      if (delivery) {
+        this.historyClient.updateConversation(threadId, (draft) => {
+          recordCodexUnconfirmedTurnSubmission(
+            draft,
+            delivery,
+            clientUserMessageId,
+            delivery.method === "thread/inject_items",
+          );
+        });
+        if (delivery.method !== "thread/inject_items") throw error;
+      } else confirmDelivery();
+      const restoreRuntimeStatus =
+        optimisticRuntimeStatus !== null &&
+        this.historyClient.getConversation(threadId)?.threadRuntimeStatus === optimisticStatus;
+      this.historyClient.updateConversation(threadId, (draft) => {
+        mutateCodexTurnStartRejection(draft, {
+          clientUserMessageId,
+          previousPermissions: input.execution.previousPermissions,
+          message: error instanceof Error ? error.message : "Error submitting message",
+          failureItemId: crypto.randomUUID(),
+          retainTurn: delivery?.method === "thread/inject_items",
+          restoreRuntimeStatus: restoreRuntimeStatus ? previousRuntimeStatus : undefined,
+        });
+      });
       throw error;
     }
   }
@@ -6073,58 +5436,143 @@ export class CodexAppServerManager {
     threadId: string,
     patch: CodexConversationThreadSettingsPatch,
   ): Promise<CodexConversationThreadSettings> {
-    return await this.executeConversationAction({
-      conversationId: threadId,
-      label: "update thread settings",
-      action: {
-        type: "updateThreadSettings",
-        threadId,
-        patch,
-      },
-      executeAsOwner: () => this.setThreadSettingsForConversationAsOwner(threadId, patch),
-      waitForStreamRevision: true,
-    });
+    if (!this.streamState.getRole(threadId)) await this.requestThreadStreamResume(threadId);
+    const profile = patch.executionProfile
+      ? await runConversationOperation(
+          "codex:thread:settings:prepare-profile",
+          threadId,
+          patch.executionProfile,
+          patch.executionProfileChange,
+        )
+      : null;
+    const current = this.historyClient.getConversation(threadId);
+    if (!current) throw new Error("Conversation document unavailable");
+    const nativePatch: CanonicalThreadSettingsPatch = {
+      ...(profile
+        ? {
+            model: profile.modelId,
+            effort: profile.reasoningEffort as CodexReasoningEffort | null,
+            serviceTier: profile.serviceTier,
+          }
+        : {}),
+      ...(patch.model !== undefined ? { model: patch.model } : {}),
+      ...(patch.reasoningEffort !== undefined ? { effort: patch.reasoningEffort } : {}),
+      ...(patch.serviceTier !== undefined ? { serviceTier: patch.serviceTier } : {}),
+      ...(patch.summary !== undefined ? { summary: patch.summary } : {}),
+      ...(patch.personality !== undefined ? { personality: patch.personality } : {}),
+      ...(patch.collaborationMode != null
+        ? {
+            collaborationMode: {
+              mode: patch.collaborationMode,
+              settings: {
+                model: patch.model ?? profile?.modelId ?? current.latestModel,
+                reasoning_effort:
+                  patch.reasoningEffort !== undefined
+                    ? patch.reasoningEffort
+                    : current.latestReasoningEffort,
+                developer_instructions: null,
+              },
+            },
+          }
+        : {}),
+    };
+    const role = this.streamState.getRole(threadId);
+    if (role?.role === "follower") {
+      const response = await (
+        await getConversationCoordinationHost()
+      ).requestThreadFollower({
+        hostId: this.hostId,
+        targetClientId: role.ownerClientId,
+        request: conversationFollowerRequest("thread-follower-update-thread-settings", {
+          conversationId: threadId,
+          threadSettings: nativePatch,
+        }),
+      });
+      if (response.resultType !== "success")
+        throw new Error(
+          response.resultType === "error" ? response.error : "Thread settings owner unavailable",
+        );
+    } else {
+      await this.updateNativeThreadSettingsAsOwner(threadId, nativePatch);
+    }
+    const conversation = this.conversationsById.get(threadId);
+    const settings = conversation?.canonicalState?.latestThreadSettings;
+    if (!conversation || !settings) throw new Error("Thread settings unavailable");
+    return buildOwnerConversationThreadSettings(conversation, settings);
   }
 
   private async setThreadSettingsForConversationAsOwner(
     threadId: string,
     patch: CodexConversationThreadSettingsPatch,
   ): Promise<CodexConversationThreadSettings> {
-    await this.ensureOwnerForConversationAction(threadId, "update thread settings");
+    this.assertOwnerForConversation(threadId);
+    return this.setThreadSettingsForConversation(threadId, patch);
+  }
 
-    const persistedSettings = await this.ownerAppServerRequestClient.updateThreadSettings(
-      threadId,
-      {
-        threadId,
-        patch,
-      },
-    );
-    const streamRevision = await this.publishOwnerActionSnapshotMutation(
-      threadId,
-      "thread settings update",
-      (conversation) => {
-        const before = conversation.canonicalState;
-        const previous = before?.sidecar.latestThreadSettings;
-        if (!before || !previous) return null;
-        const protocolSettings: Parameters<typeof reduceCodexConversationThreadSettings>[2] = {
-          ...previous,
-          model: persistedSettings.model ?? previous.model,
-          modelProvider: persistedSettings.modelProvider ?? previous.modelProvider,
-          serviceTier:
-            persistedSettings.serviceTier === undefined
-              ? previous.serviceTier
-              : persistedSettings.serviceTier,
-          effort: persistedSettings.reasoningEffort,
-          summary:
-            persistedSettings.summary === undefined ? previous.summary : persistedSettings.summary,
-          collaborationMode: persistedSettings.collaborationMode ?? previous.collaborationMode,
-          personality: persistedSettings.personality,
+  private updateNativeThreadSettingsAsOwner(
+    id: string,
+    patch: CanonicalThreadSettingsPatch,
+    condition?: CanonicalThreadSettingsCondition,
+    activeTurnId?: string | null,
+  ): Promise<boolean> {
+    const revision = this.nativeHostContextRevision;
+    const previous = this.settingsUpdates.get(id) ?? Promise.resolve(true);
+    const pending = previous
+      .catch(() => false)
+      .then(async () => {
+        if (this.nativeHostContextRevision !== revision)
+          throw new Error("Thread settings owner lifetime ended");
+        this.assertOwnerForConversation(id);
+        await this.refreshNativeHostContext();
+        if (this.nativeHostContextRevision !== revision)
+          throw new Error("Thread settings owner lifetime ended");
+        const context = this.nativeHostContext;
+        const read = () => {
+          this.assertOwnerForConversation(id);
+          if (this.destroyed || this.nativeHostContext !== context)
+            throw new Error("Thread settings owner lifetime ended");
+          const state = this.historyClient.getConversation(id);
+          if (!state) throw new Error("Conversation document unavailable");
+          return state;
         };
-        const state = reduceCodexConversationThreadSettings(before, threadId, protocolSettings);
-        return projectOwnerThreadSettingsToConversation(conversation, state);
-      },
-    );
-    return this.withOwnerStreamRevision(persistedSettings, streamRevision);
+        return updateCanonicalThreadSettings(
+          {
+            getConversation: read,
+            updateConversation: (threadId, recipe) => {
+              read();
+              this.historyClient.updateConversation(threadId, recipe);
+            },
+            getSupport: () => this.nativeSettingsSupport,
+            setSupport: (support) => {
+              read();
+              this.nativeSettingsSupport = support;
+            },
+            isUnsupported: (error) =>
+              isCodexNativeMethodUnsupported(error, "thread/settings/update"),
+            updateThread: (params) =>
+              this.nativeAppServer.request("thread/settings/update", params),
+            updateTurnReviewer: (threadId, turnId, approvalsReviewer) =>
+              this.nativeAppServer.request("turn/settings/update", {
+                threadId,
+                turnId,
+                approvalsReviewer,
+              }),
+            supportsTurnReviewer: () =>
+              this.nativeHostContext?.supportsTurnApprovalsReviewer === true,
+          },
+          id,
+          patch,
+          condition,
+          activeTurnId,
+        );
+      });
+    this.settingsUpdates.set(id, pending);
+    void pending
+      .finally(() => {
+        if (this.settingsUpdates.get(id) === pending) this.settingsUpdates.delete(id);
+      })
+      .catch(() => {});
+    return pending;
   }
 
   async setLatestCollaborationModeForConversation(
@@ -6137,218 +5585,368 @@ export class CodexAppServerManager {
     return persistedSettings.collaborationMode ?? DEFAULT_COLLABORATION_MODE_STATE;
   }
 
-  async enqueueQueuedFollowUp(
-    threadId: string,
-    prompt: string,
-    opts?: CodexTurnStartOptions,
-    presentationTicket?: CodexTurnPresentationTicket,
-  ): Promise<void> {
-    await this.executeConversationAction({
-      conversationId: threadId,
-      label: "enqueue follow-up",
-      action: {
-        type: "enqueueQueuedFollowUp",
-        threadId,
-        prompt,
-        opts,
-        presentationTicket,
-      },
-      executeAsOwner: () =>
-        this.enqueueQueuedFollowUpAsOwner(threadId, prompt, opts, presentationTicket),
-      waitForStreamRevision: true,
+  private async executePreparedNativeTurn(
+    operation: ConversationFollowerTurnStart,
+    request: import("@nodex/codex-app-server-protocol/v2").TurnStartParams,
+    submission: OwnerTurnRequestContext,
+    execute: (options: NativeRequestOptions) => Promise<TurnStartResponse> = (options) =>
+      this.nativeAppServer.executePreparedTurn(request, options),
+  ): Promise<TurnStartResponse> {
+    submission.assertCurrent();
+    const responseItems = operation.context?.responseItems;
+    if (Array.isArray(responseItems) && responseItems.length) {
+      await this.nativeAppServer.injectPreparedTurn(operation, submission.options);
+      submission.confirmDelivery();
+      if (this.historyClient.getConversation(request.threadId)?.unconfirmedTurnSubmissions?.length)
+        throw new Error("An earlier turn submission is not yet confirmed");
+    }
+    submission.assertCurrent();
+    const clientUserMessageId = request.clientUserMessageId ?? undefined;
+    if (clientUserMessageId) {
+      codexTurnFirstResponseTracker.markRequestDispatched(clientUserMessageId, "turn/start");
+    }
+    const trace = clientUserMessageId
+      ? codexTurnFirstResponseTracker.getTrace(clientUserMessageId)
+      : undefined;
+    return execute({
+      ...submission.options,
+      ...(clientUserMessageId ? { clientUserMessageId } : {}),
+      ...(trace ? { trace } : {}),
     });
   }
 
-  private async enqueueQueuedFollowUpAsOwner(
+  private queuedActiveTurn(id: string): string | null {
+    const turn = latestConversationTurn(this.historyClient.getConversation(id));
+    return turn?.status === "inProgress" ? turn.turnId : null;
+  }
+  private isServerQueueEnabled(): boolean {
+    return this.threadQueueEnabled === true && this.nativeHostContext?.supportsThreadQueue === true;
+  }
+  private isServerQueueSelected(id: string): boolean {
+    if (!this.isServerQueueEnabled()) return false;
+    const local = this.queuedMessages.readMessages(id);
+    return local !== undefined && local.length === 0;
+  }
+  private async loadQueuedMessages(id: string): Promise<void> {
+    await this.queuedMessages.loadMessages(id);
+    if (this.isServerQueueSelected(id) && this.serverQueuedMessages.read(id) == null)
+      await this.serverQueuedMessages.load(id);
+    this.refreshQueuedMessageProjection(id);
+  }
+  private wakeQueuedMessages(id: string): void {
+    this.queuedExecution?.wake(id);
+  }
+  private async prepareQueuedSubmission(
+    conversationId: string,
+    message: CodexQueuedMessage,
+    mode: "start" | "steer",
+    source: ConversationResumeSource,
+    clientUserMessageId?: string,
+  ) {
+    const conversation = this.historyClient.getConversation(conversationId);
+    const needsResume =
+      conversation?.resumeState !== "resumed" || !this.streamState.getRole(conversationId);
+    const cwd = conversation?.cwd ?? message.cwd;
+    let workspaceRoots = message.context.workspaceRoots;
+    if (workspaceRoots === undefined) {
+      if (needsResume) {
+        const workspace = await runConversationOperation(
+          "codex:thread:history-hydration:prepare",
+          conversationId,
+        );
+        workspaceRoots = workspace.context.runtimeWorkspaceRoots;
+      } else {
+        workspaceRoots =
+          conversation?.currentPermissions?.runtimeWorkspaceRoots ??
+          (cwd === null ? undefined : [cwd]);
+      }
+    }
+    if (workspaceRoots === undefined || !workspaceRoots.every((root) => root.length > 0)) {
+      return { status: "paused" as const, reason: "workspace-unavailable" };
+    }
+    const usePermissionSelection =
+      message.submissionOptions?.usePermissionSelection ?? this.permissionRefreshEnabled;
+    if (usePermissionSelection === null) throw new QueueNotReady("execution-config-loading");
+    const resume: QueuedConversationResumeInput = {
+      conversationId,
+      model: null,
+      serviceTier: message.submissionOptions?.serviceTier,
+      reasoningEffort: null,
+      workspaceRoots: [...workspaceRoots],
+      useAppServerPermissionDefault: usePermissionSelection,
+      collaborationMode: message.submissionOptions?.collaborationMode ?? null,
+    };
+    if (needsResume) {
+      const resumed = await this.requestThreadStreamResume(conversationId, {
+        source,
+        model: resume.model,
+        serviceTier: resume.serviceTier,
+        useAppServerPermissionDefault: resume.useAppServerPermissionDefault,
+        workspaceRoots: resume.workspaceRoots,
+        collaborationMode: resume.collaborationMode,
+      });
+      if (!resumed) throw new QueueNotReady("Thread is not ready");
+    }
+    await runConversationOperation(
+      "codex:turn:native-steer:release",
+      clientUserMessageId ?? message.id,
+    );
+    const prepared = await runConversationOperation(
+      "codex:queued-messages:prepare-native",
+      conversationId,
+      message,
+      mode,
+      {
+        runtimeWorkspaceRoots: workspaceRoots,
+        usePermissionSelection,
+        ...(clientUserMessageId ? { clientUserMessageId } : {}),
+      },
+    );
+    return {
+      status: "ready" as const,
+      submission: {
+        conversationId,
+        executionHostId: message.submissionOptions?.executionHostId,
+        resume,
+        ...prepared,
+      },
+    };
+  }
+  private async startPreparedQueuedMessage(
+    id: string,
+    turnStart: ConversationFollowerTurnStart,
+  ): Promise<string> {
+    const role = this.streamState.getRole(id);
+    if (role?.role === "follower") {
+      const response = await (
+        await getConversationCoordinationHost()
+      ).requestThreadFollower({
+        hostId: this.hostId,
+        targetClientId: role.ownerClientId,
+        request: conversationFollowerRequest("thread-follower-start-turn", {
+          conversationId: id,
+          turnStart,
+        }),
+      });
+      if (response.resultType !== "success")
+        throw new Error(
+          response.resultType === "error" ? response.error : "Queue owner unavailable",
+        );
+      return (response.result as { result: TurnStartResponse }).result.turn.id;
+    }
+    this.assertOwnerForConversation(id);
+    const prepared = await this.inspectOwnerTurnStart(turnStart);
+    const clientUserMessageId = turnStart.request.clientUserMessageId;
+    if (!clientUserMessageId) throw new Error("Queue submission identity missing");
+    const result = (await this.executeOwnerOptimisticTurnTransaction({
+      threadId: id,
+      clientUserMessageId,
+      canonicalParams: prepared.params,
+      execution: prepared,
+      turnContext: turnStart.context,
+      request: (submission) =>
+        this.executePreparedNativeTurn(turnStart, prepared.request, submission),
+    })) as TurnStartResponse;
+    return result.turn.id;
+  }
+
+  private async steerPreparedQueuedMessage(
+    id: string,
+    input: CanonicalOwnerSteerInput,
+  ): Promise<string> {
+    const role = this.streamState.getRole(id);
+    if (role?.role !== "follower") return (await this.executeNativeSteerAsOwner(input)).turnId;
+    const response = await (
+      await getConversationCoordinationHost()
+    ).requestThreadFollower({
+      hostId: this.hostId,
+      targetClientId: role.ownerClientId,
+      request: conversationFollowerRequest("thread-follower-steer-turn", input),
+    });
+    if (response.resultType !== "success")
+      throw new Error(response.resultType === "error" ? response.error : "Queue owner unavailable");
+    return (response.result as { result: { turnId: string } }).result.turnId;
+  }
+
+  private async sendServerQueuedMessageNow(
+    threadId: string,
+    message: CodexQueuedMessage,
+    clientUserMessageId: string,
+  ): Promise<{ status: "sent"; messageId: string; turnId: string }> {
+    try {
+      const result = await this.queuedExecution.sendPreparedNow(threadId, message, {
+        prepare: (id, queuedMessage, mode) =>
+          this.prepareQueuedSubmission(id, queuedMessage, mode, "view", clientUserMessageId),
+      });
+      return { status: "sent", messageId: message.id, turnId: result.turnId };
+    } finally {
+      await Promise.all([
+        runConversationOperation("codex:turn:native:release", clientUserMessageId),
+        runConversationOperation("codex:turn:native-steer:release", clientUserMessageId),
+      ]);
+    }
+  }
+
+  private projectQueuedMessages(
+    id: string,
+    previous: CodexConversationSnapshot["queuedFollowUps"],
+  ): CodexConversationSnapshot["queuedFollowUps"] {
+    const messages = this.isServerQueueSelected(id)
+      ? this.serverQueuedMessages.read(id)
+      : this.queuedMessages.readMessages(id);
+    return {
+      ...previous,
+      status: messages === undefined ? "loading" : "ready",
+      entries: (messages ?? []).map((message) => projectCodexQueuedMessage(id, message)),
+      ledgerRevision: previous.ledgerRevision + 1,
+      projectionRevision: previous.projectionRevision + 1,
+      error: null,
+    };
+  }
+  private refreshQueuedMessageProjection(id: string): void {
+    const conversation = this.conversationsById.get(id);
+    if (!conversation) return;
+    this.applyConversationSnapshot(id, {
+      ...conversation,
+      queuedFollowUps: this.projectQueuedMessages(id, conversation.queuedFollowUps),
+    });
+  }
+
+  async enqueueQueuedFollowUp(
     threadId: string,
     prompt: string,
-    opts?: CodexTurnStartOptions,
+    opts?: import("../../../shared/codex-queued-message").CodexQueuedMessagePrepareOptions,
     presentationTicket?: CodexTurnPresentationTicket,
-  ): Promise<OwnerStreamRevisionResult | void> {
-    await this.ensureOwnerForConversationAction(threadId, "enqueue follow-up");
-    await runConversationOperation(
-      "codex:thread:follow-up:enqueue",
+  ): Promise<void> {
+    const message = await runConversationOperation(
+      "codex:queued-messages:prepare",
       threadId,
       prompt,
       opts,
       presentationTicket,
     );
+    await this.loadQueuedMessages(threadId);
+    if (this.isServerQueueSelected(threadId)) {
+      await this.serverQueuedMessages.enqueue(threadId, message);
+      return;
+    }
+    await this.queuedMessages.update(threadId, (messages) => [...messages, message]);
   }
+  private enqueueQueuedFollowUpAsOwner = this.enqueueQueuedFollowUp.bind(this);
 
   async removeQueuedFollowUp(threadId: string, followUpId: string): Promise<void> {
-    await this.executeConversationAction({
-      conversationId: threadId,
-      label: "remove queued follow-up",
-      action: {
-        type: "removeQueuedFollowUp",
-        threadId,
-        followUpId,
-      },
-      executeAsOwner: () => this.removeQueuedFollowUpAsOwner(threadId, followUpId),
-      waitForStreamRevision: true,
-    });
+    await this.loadQueuedMessages(threadId);
+    if (this.isServerQueueSelected(threadId)) {
+      await this.serverQueuedMessages.remove(threadId, followUpId);
+      return;
+    }
+    await this.queuedMessages.update(threadId, (messages) =>
+      messages.filter((message) => message.id !== followUpId),
+    );
   }
-
-  private async removeQueuedFollowUpAsOwner(
-    threadId: string,
-    followUpId: string,
-  ): Promise<OwnerStreamRevisionResult | void> {
-    await this.ensureOwnerForConversationAction(threadId, "remove queued follow-up");
-    await runConversationOperation("codex:thread:follow-up:remove", threadId, followUpId);
-  }
+  private removeQueuedFollowUpAsOwner = this.removeQueuedFollowUp.bind(this);
 
   async replaceQueuedFollowUp(
     threadId: string,
     followUpId: string,
-    expectedLedgerRevision: number,
+    _expectedLedgerRevision: number,
     prompt: string,
-    opts?: CodexTurnStartOptions,
+    opts?: import("../../../shared/codex-queued-message").CodexQueuedMessagePrepareOptions,
     presentationTicket?: CodexTurnPresentationTicket,
   ): Promise<boolean> {
-    return await this.executeConversationAction({
-      conversationId: threadId,
-      label: "replace queued follow-up",
-      action: {
-        type: "replaceQueuedFollowUp",
-        threadId,
-        followUpId,
-        expectedLedgerRevision,
-        prompt,
-        opts,
-        presentationTicket,
-      },
-      executeAsOwner: () =>
-        this.replaceQueuedFollowUpAsOwner(
-          threadId,
-          followUpId,
-          expectedLedgerRevision,
-          prompt,
-          opts,
-          presentationTicket,
-        ),
-      waitForStreamRevision: true,
-    });
-  }
-
-  private async replaceQueuedFollowUpAsOwner(
-    threadId: string,
-    followUpId: string,
-    expectedLedgerRevision: number,
-    prompt: string,
-    opts?: CodexTurnStartOptions,
-    presentationTicket?: CodexTurnPresentationTicket,
-  ): Promise<boolean> {
-    await this.ensureOwnerForConversationAction(threadId, "replace queued follow-up");
-    return await runConversationOperation(
-      "codex:thread:follow-up:replace",
+    const replacement = await runConversationOperation(
+      "codex:queued-messages:prepare",
       threadId,
-      followUpId,
-      expectedLedgerRevision,
       prompt,
       opts,
       presentationTicket,
     );
+    await this.loadQueuedMessages(threadId);
+    if (this.isServerQueueSelected(threadId)) {
+      const messages = this.serverQueuedMessages.read(threadId) ?? [];
+      const index = messages.findIndex((message) => message.id === followUpId);
+      if (index === -1) return false;
+      await this.serverQueuedMessages.enqueue(threadId, replacement, {
+        messageId: followUpId,
+        previousMessageId: messages[index - 1]?.id ?? null,
+        nextMessageId: messages[index + 1]?.id ?? null,
+      });
+      return true;
+    }
+    const before = await this.queuedMessages.update(threadId, (messages) =>
+      messages.map((message) =>
+        message.id === followUpId ? { ...replacement, id: message.id } : message,
+      ),
+    );
+    return before.some((message) => message.id === followUpId);
   }
+  private replaceQueuedFollowUpAsOwner = this.replaceQueuedFollowUp.bind(this);
 
   async reorderQueuedFollowUps(threadId: string, orderedFollowUpIds: string[]): Promise<void> {
-    await this.executeConversationAction({
-      conversationId: threadId,
-      label: "reorder queued follow-ups",
-      action: {
-        type: "reorderQueuedFollowUps",
-        threadId,
-        orderedFollowUpIds,
-      },
-      executeAsOwner: () => this.reorderQueuedFollowUpsAsOwner(threadId, orderedFollowUpIds),
-      waitForStreamRevision: true,
+    await this.loadQueuedMessages(threadId);
+    if (this.isServerQueueSelected(threadId)) {
+      await this.serverQueuedMessages.reorder(threadId, orderedFollowUpIds);
+      return;
+    }
+    await this.queuedMessages.update(threadId, (messages) => {
+      const byId = new Map(messages.map((message) => [message.id, message]));
+      const ordered = orderedFollowUpIds.flatMap((id) => {
+        const message = byId.get(id);
+        byId.delete(id);
+        return message ? [message] : [];
+      });
+      return [...ordered, ...byId.values()];
     });
   }
-
-  private async reorderQueuedFollowUpsAsOwner(
-    threadId: string,
-    orderedFollowUpIds: string[],
-  ): Promise<OwnerStreamRevisionResult | void> {
-    await this.ensureOwnerForConversationAction(threadId, "reorder queued follow-ups");
-    await runConversationOperation("codex:thread:follow-up:reorder", threadId, orderedFollowUpIds);
-  }
+  private reorderQueuedFollowUpsAsOwner = this.reorderQueuedFollowUps.bind(this);
 
   async resumeQueuedFollowUps(threadId: string): Promise<void> {
-    await this.executeConversationAction({
-      conversationId: threadId,
-      label: "resume queued follow-ups",
-      action: { type: "resumeQueuedFollowUps", threadId },
-      executeAsOwner: () => this.resumeQueuedFollowUpsAsOwner(threadId),
-      waitForStreamRevision: true,
-    });
+    await this.loadQueuedMessages(threadId);
+    if (this.isServerQueueSelected(threadId)) {
+      await this.serverQueuedMessages.resume(threadId);
+      return;
+    }
+    await this.queuedMessages.update(threadId, (messages) =>
+      messages.map(resumeInterruptedQueuedMessage),
+    );
   }
-
-  private async resumeQueuedFollowUpsAsOwner(threadId: string): Promise<void> {
-    await this.ensureOwnerForConversationAction(threadId, "resume queued follow-ups");
-    await runConversationOperation("codex:thread:follow-up:resume", threadId);
-  }
+  private resumeQueuedFollowUpsAsOwner = this.resumeQueuedFollowUps.bind(this);
 
   async resolveQueuedFollowUpsAfterFreshStart(
     threadId: string,
-    expectedLedgerRevision: number,
+    _expectedLedgerRevision: number,
     resolution: "resume" | "clear",
   ): Promise<boolean> {
-    return await this.executeConversationAction({
-      conversationId: threadId,
-      label: "resolve queued follow-ups after fresh message",
-      action: {
-        type: "resolveQueuedFollowUpsAfterFreshStart",
-        threadId,
-        expectedLedgerRevision,
-        resolution,
-      },
-      executeAsOwner: () =>
-        this.resolveQueuedFollowUpsAfterFreshStartAsOwner(
-          threadId,
-          expectedLedgerRevision,
-          resolution,
-        ),
-      waitForStreamRevision: true,
-    });
-  }
-
-  private async resolveQueuedFollowUpsAfterFreshStartAsOwner(
-    threadId: string,
-    expectedLedgerRevision: number,
-    resolution: "resume" | "clear",
-  ): Promise<boolean> {
-    await this.ensureOwnerForConversationAction(
-      threadId,
-      "resolve queued follow-ups after fresh message",
+    await this.loadQueuedMessages(threadId);
+    if (this.isServerQueueSelected(threadId)) {
+      if (resolution === "clear") await this.serverQueuedMessages.clear(threadId);
+      else await this.serverQueuedMessages.resume(threadId);
+      return true;
+    }
+    await this.queuedMessages.update(threadId, (messages) =>
+      resolution === "clear" ? [] : messages.map((message) => ({ ...message, pausedReason: null })),
     );
-    return await runConversationOperation(
-      "codex:thread:follow-up:resolve-after-fresh-start",
-      threadId,
-      expectedLedgerRevision,
-      resolution,
-    );
+    return true;
   }
+  private resolveQueuedFollowUpsAfterFreshStartAsOwner =
+    this.resolveQueuedFollowUpsAfterFreshStart.bind(this);
 
   async sendQueuedFollowUpNow(threadId: string, followUpId: string): Promise<void> {
-    await this.executeConversationAction({
-      conversationId: threadId,
-      label: "send queued follow-up",
-      action: {
-        type: "sendQueuedFollowUpNow",
+    await this.loadQueuedMessages(threadId);
+    if (this.isServerQueueSelected(threadId)) {
+      await this.serverQueuedMessages.sendNow(
         threadId,
         followUpId,
-      },
-      executeAsOwner: () => this.sendQueuedFollowUpNowAsOwner(threadId, followUpId),
-      waitForStreamRevision: true,
+        (message, clientUserMessageId) =>
+          this.sendServerQueuedMessageNow(threadId, message, clientUserMessageId),
+      );
+      return;
+    }
+    await this.queuedExecution.sendNow(threadId, followUpId, {
+      prepare: (id, message, mode) => this.prepareQueuedSubmission(id, message, mode, "view"),
     });
   }
-
-  private async sendQueuedFollowUpNowAsOwner(
-    threadId: string,
-    followUpId: string,
-  ): Promise<OwnerStreamRevisionResult | void> {
-    await this.ensureOwnerForConversationAction(threadId, "send queued follow-up");
-    await runConversationOperation("codex:thread:follow-up:send-now", threadId, followUpId);
-  }
+  private sendQueuedFollowUpNowAsOwner = this.sendQueuedFollowUpNow.bind(this);
 
   async editLastUserTurn(
     threadId: string,
@@ -6357,156 +5955,301 @@ export class CodexAppServerManager {
     opts?: { serviceTier?: CodexServiceTier },
     presentationTicket?: CodexTurnPresentationTicket,
   ): Promise<CodexThreadActionResult> {
-    return await this.executeConversationAction({
-      conversationId: threadId,
-      label: "edit last user turn",
-      action: {
-        type: "editLastUserTurn",
-        presentationTicket,
+    if (!this.streamState.getRole(threadId)) await this.requestThreadStreamResume(threadId);
+    const role = this.streamState.getRole(threadId);
+    if (role?.role === "follower") {
+      const response = await (
+        await getConversationCoordinationHost()
+      ).requestThreadFollower({
+        hostId: this.hostId,
+        targetClientId: role.ownerClientId,
+        request: conversationFollowerRequest("thread-follower-edit-last-user-turn", {
+          conversationId: threadId,
+          turnId,
+          message,
+          serviceTier: opts?.serviceTier,
+        }),
+      });
+      if (response.resultType !== "success")
+        throw new Error(
+          response.resultType === "error" ? response.error : "Edit owner unavailable",
+        );
+    } else {
+      await this.executeNativeEditAsOwner(
         threadId,
-        turnId,
-        message,
-        opts,
-      },
-      executeAsOwner: () =>
-        this.editLastUserTurnAsOwner(threadId, turnId, message, opts, presentationTicket),
-      waitForStreamRevision: true,
-    });
+        { turnId, message, serviceTier: opts?.serviceTier },
+        presentationTicket,
+      );
+    }
+    return { threadId, streamRevision: this.streamState.getRevision(threadId) ?? 0 };
   }
 
-  private async editLastUserTurnAsOwner(
-    threadId: string,
-    turnId: string,
-    message: string,
-    opts?: { serviceTier?: CodexServiceTier },
+  private async executeNativeEditAsOwner(
+    id: string,
+    options: CanonicalEditOptions,
     presentationTicket?: CodexTurnPresentationTicket,
-  ): Promise<CodexThreadActionResult> {
-    const role = this.streamState.getRole(threadId);
-    if (role?.role !== "owner") {
-      await this.ensureOwnerForConversationAction(threadId, "edit last user turn");
-    }
-
-    await this.waitForOwnerStreamPublishIdle(threadId);
-
-    const conversationBeforeRollback = this.conversationsById.get(threadId);
-    if (!conversationBeforeRollback) {
-      throw new Error(`Thread '${threadId}' was not found`);
-    }
-
-    if (resolveLatestEditableUserTurnId(conversationBeforeRollback) !== turnId) {
-      throw new Error("Only the latest completed user turn can be edited");
-    }
-
-    const targetTurn = conversationBeforeRollback.turns.find((turn) => turn.turnId === turnId);
-    if (!targetTurn) {
-      throw new Error("Only the latest completed user turn can be edited");
-    }
-    const replacementPromptInput = buildOwnerEditReplacementPromptInput(targetTurn, message);
-    const rollbackResult = await this.ownerAppServerRequestClient.revertThreadForEdit(threadId, {
-      threadId,
-      beforeTurnId: turnId,
-    });
-    const conversationAtRollback = this.conversationsById.get(threadId);
-    if (!conversationAtRollback) {
-      throw new Error(`Thread '${threadId}' was not found`);
-    }
-    const rollbackConversation = materializeOwnerRollbackConversation(
-      conversationAtRollback,
-      rollbackResult,
-    );
-    this.rememberOwnerRollbackTombstones(threadId, conversationAtRollback, rollbackConversation);
-    const streamRevision = await this.publishOwnerSnapshotTransaction(
-      threadId,
-      rollbackConversation,
-      "edit rollback",
-      { notifyMode: "sync" },
-    );
-
-    const startResult = await this.startTurnAsOwnerLocalTransaction(
-      threadId,
-      message,
+  ): Promise<void> {
+    this.assertOwnerForConversation(id);
+    await this.refreshNativeHostContext();
+    await editCanonicalLastUserTurn(
       {
-        ...opts,
-        promptInput: replacementPromptInput,
+        getConversation: () => {
+          this.assertOwnerForConversation(id);
+          return this.historyClient.getConversation(id) ?? undefined;
+        },
+        awaitSettings: async () => {
+          await this.settingsUpdates.get(id);
+        },
+        supportsRevert: () => this.nativeHostContext?.supportsThreadRevert === true,
+        readPermissionOverrides: async (_id, state, edit) => {
+          const response = await this.nativeAppServer.request("config/read", {
+            includeLayers: false,
+            cwd: state.cwd ?? null,
+          });
+          return (cwd) => {
+            const resolved = canonicalPermissionsForMode(
+              edit.agentMode,
+              cwd === undefined ? [] : [cwd],
+              response.config as import("@nodex/codex-app-server-protocol/v2/ConfigReadResponse").ConfigReadResponse["config"],
+            );
+            if (!resolved) return null;
+            const profile =
+              state.latestThreadSettings?.activePermissionProfile === undefined
+                ? state.currentPermissions?.activePermissionProfile
+                : state.latestThreadSettings.activePermissionProfile;
+            return nativePermissionRequestFields(
+              profile === undefined ? resolved : { ...resolved, activePermissionProfile: profile },
+            );
+          };
+        },
+        revert: async (_id, beforeTurnId) => {
+          const response = await this.nativeAppServer.request("thread/revert", {
+            threadId: id,
+            beforeTurnId,
+          });
+          this.assertOwnerForConversation(id);
+          return response as import("@nodex/codex-app-server-protocol/v2/ThreadRevertResponse").ThreadRevertResponse;
+        },
+        rollback: async (_id, numTurns) => {
+          const response = await this.nativeAppServer.request("thread/rollback", {
+            threadId: id,
+            numTurns,
+          });
+          this.assertOwnerForConversation(id);
+          return response as import("@nodex/codex-app-server-protocol/v2/ThreadRollbackResponse").ThreadRollbackResponse;
+        },
+        applyRevert: (_id, response, removed) =>
+          this.historyClient.updateConversation(id, (draft) =>
+            mutateCodexCanonicalRevert(
+              draft,
+              response,
+              new Set(removed.map((turn) => turn.turnId)),
+            ),
+          ),
+        applyRollback: (_id, _before, response) =>
+          this.historyClient.updateConversation(id, (draft) => {
+            if (!mutateCodexCanonicalRollbackThread(draft, response.thread))
+              throw new Error("Rollback could not hydrate retained turns");
+          }),
+        start: async (request, original, inheritPermissionDefaults) => {
+          const clientUserMessageId = createOwnerClientUserMessageId();
+          const prompt = await prepareCodexPrompt(options.message, undefined, {
+            resolveImageInput: resolveOwnerPromptImageInput,
+          });
+          const preparedPrompt = { ...prompt, inputItems: request.input };
+          const turnStart = await runConversationOperation("codex:turn:native:prepare", {
+            threadId: id,
+            prompt: options.message,
+            presentationTicket,
+            clientUserMessageId,
+            preparedPrompt,
+            originalRequest: { ...request, clientUserMessageId },
+            sourceContext: {
+              attachments: original.params.attachments,
+              commentAttachments: original.params.commentAttachments,
+              useAppServerPermissionDefault: inheritPermissionDefaults,
+              writingBlockContextPrepared: options.writingBlockContextPrepared,
+              mcpAppModelContextAttachments: original.mcpAppModelContextAttachments,
+            },
+          });
+          try {
+            const materialized = await this.inspectOwnerTurnStart(turnStart);
+            return await this.executeOwnerOptimisticTurnTransaction({
+              threadId: id,
+              clientUserMessageId,
+              canonicalParams: materialized.params,
+              execution: materialized,
+              turnContext: turnStart.context,
+              request: (submission) =>
+                this.executePreparedNativeTurn(turnStart, materialized.request, submission),
+            });
+          } finally {
+            await runConversationOperation("codex:turn:native:release", clientUserMessageId);
+          }
+        },
       },
-      presentationTicket,
+      id,
+      options,
     );
-    const startRevision = asRecord(startResult)?.streamRevision;
-
-    return {
-      threadId,
-      streamRevision: typeof startRevision === "number" ? startRevision : streamRevision,
-    };
   }
 
   async forkConversationFromTurn(
     threadId: string,
     turnId: string,
-    message: string,
+    _message: string,
   ): Promise<CodexThreadActionResult> {
-    return await this.executeConversationAction({
-      conversationId: threadId,
-      label: "fork conversation from turn",
-      action: {
-        type: "forkConversationFromTurn",
+    await this.refreshNativeHostContext();
+    if (!this.historyClient.getConversation(threadId))
+      await this.requestThreadStreamResume(threadId);
+    const hostContext = this.nativeHostContext;
+    const source = this.historyClient.getConversation(threadId);
+    if (!source) throw new Error("Source conversation not found");
+    if (source.historyMode !== "paginated") await this.completeHistoryLoader.load(threadId);
+    const forkTrace = startCodexRequestInteractionTrace({
+      attributes: {
+        "thread.ephemeral": false,
+        "thread.side_conversation": false,
+      },
+      childName: "thread.fork",
+      rootName: "desktop.thread_fork",
+    });
+    let prepared: import("../../../shared/codex-native-fork").CodexNativeForkPreparation | null =
+      null;
+    try {
+      prepared = await runConversationOperation(
+        "codex:thread:native-fork:prepare",
         threadId,
         turnId,
-        message,
-      },
-      executeAsOwner: () => this.forkConversationFromTurnAsOwner(threadId, turnId, message),
-    });
-  }
-
-  private async forkConversationFromTurnAsOwner(
-    threadId: string,
-    turnId: string,
-    message: string,
-  ): Promise<CodexThreadActionResult> {
-    const role = this.streamState.getRole(threadId);
-    if (role?.role !== "owner") {
-      await this.ensureOwnerForConversationAction(threadId, "fork conversation from turn");
+      );
+      if (prepared.hostId !== this.hostId) throw new Error("Fork execution host changed");
+      if (
+        this.destroyed ||
+        this.nativeHostContext !== hostContext ||
+        prepared.generation !== hostContext?.generation
+      )
+        throw new Error("Fork manager retired during preparation");
+      const response = await this.nativeAppServer.executePreparedFork(prepared.receiptId, {
+        source: "thread_hydration",
+        trace: forkTrace?.trace ?? null,
+      });
+      if (this.destroyed || this.nativeHostContext !== hostContext)
+        throw new Error("Fork manager retired");
+      this.installNativeThreadResponse(response, "needs_resume", source.workspaceKind);
+      const accepted = await runConversationOperation(
+        "codex:thread:native-fork:accept",
+        prepared.receiptId,
+      );
+      if (this.destroyed || this.nativeHostContext !== hostContext)
+        throw new Error("Fork manager retired during acceptance");
+      this.applyThreadSummary(accepted.summary);
+      await this.requestThreadStreamResume(response.thread.id);
+      const sourceTitle = prepared.sourceTitle;
+      this.historyClient.updateConversation(response.thread.id, (draft) =>
+        mutateCodexCanonicalForkedFromConversationItem(draft, {
+          id: crypto.randomUUID(),
+          type: "forkedFromConversation",
+          sourceConversationId: threadId,
+          sourceConversationTitle: sourceTitle,
+        }),
+      );
+      forkTrace?.finish();
+      return { threadId: accepted.threadId, composerIntent: accepted.composerIntent };
+    } catch (error) {
+      forkTrace?.finish(error);
+      throw error;
+    } finally {
+      if (prepared)
+        await runConversationOperation("codex:thread:native-fork:release", prepared.receiptId);
     }
-
-    return await this.ownerAppServerRequestClient.forkConversationFromTurn(threadId, {
-      threadId,
-      turnId,
-      message,
-    });
   }
+
+  private forkConversationFromTurnAsOwner = this.forkConversationFromTurn.bind(this);
 
   async compactThread(threadId: string): Promise<void> {
-    await this.executeConversationAction({
-      conversationId: threadId,
-      label: "compact thread",
-      action: {
-        type: "compactThread",
-        threadId,
-      },
-      executeAsOwner: () => this.compactThreadAsOwner(threadId),
-    });
+    const nativeRevision = this.nativeHostContextRevision;
+    const assertNativeCurrent = () => {
+      if (this.destroyed || this.nativeHostContextRevision !== nativeRevision)
+        throw new Error("Conversation connection changed during compaction");
+    };
+    try {
+      await this.settingsUpdates.get(threadId);
+    } catch (error) {
+      if (
+        !this.isFollowerForConversation(threadId) ||
+        !(error instanceof Error) ||
+        !error.message.includes("no-client-found")
+      )
+        throw error;
+    }
+    assertNativeCurrent();
+    const role = this.streamState.getRole(threadId);
+    if (role?.role === "follower") {
+      try {
+        const coordination = await getConversationCoordinationHost();
+        assertNativeCurrent();
+        const response = await coordination.requestThreadFollower({
+          hostId: this.hostId,
+          targetClientId: role.ownerClientId,
+          request: conversationFollowerRequest("thread-follower-compact-thread", {
+            conversationId: threadId,
+          }),
+        });
+        if (response.resultType !== "success")
+          throw new Error(response.resultType === "error" ? response.error : "no-client-found");
+        assertNativeCurrent();
+        return;
+      } catch (error) {
+        assertNativeCurrent();
+        if (!(error instanceof Error) || !error.message.includes("no-client-found")) throw error;
+        this.markConversationNeedsResumeAfterUnavailableOwner(threadId, role.ownerClientId);
+        await this.requestThreadStreamResume(threadId);
+      }
+    }
+    assertNativeCurrent();
+    await this.compactThreadAsOwner(threadId);
   }
 
   private async compactThreadAsOwner(threadId: string): Promise<void> {
-    await this.ensureOwnerForConversationAction(threadId, "compact thread");
-    await this.ownerAppServerRequestClient.compactThread(threadId, { threadId });
+    const lifetime = this.observeOwnerActionLifetime(threadId, "compaction");
+    const { assertCurrent } = lifetime;
+    try {
+      this.manualCompactions.register(threadId);
+      this.historyClient.updateConversation(threadId, (draft) =>
+        mutateCodexCanonicalInProgressSyntheticItem(
+          draft,
+          {
+            type: "contextCompaction",
+            id: "pending-manual-context-compaction",
+            completed: false,
+            source: "manual",
+          },
+          Date.now(),
+        ),
+      );
+      await this.nativeAppServer.request("thread/compact/start", { threadId });
+      assertCurrent();
+    } catch (error) {
+      assertCurrent();
+      if (this.manualCompactions.remove(threadId))
+        this.historyClient.updateConversation(threadId, (draft) =>
+          mutateCodexCanonicalLocalSyntheticItemRemoval(draft, "pending-manual-context-compaction"),
+        );
+      throw error;
+    } finally {
+      lifetime[Symbol.dispose]();
+    }
   }
 
-  async getThreadGoal(threadId: string): Promise<ThreadGoal | null> {
-    return (await runConversationOperation("codex:thread:goal:get", threadId)) as ThreadGoal | null;
+  async getThreadGoal(
+    threadId: string,
+    requestOptions?: CodexRendererNativeRequestOptions,
+  ): Promise<ThreadGoal | null> {
+    return (await this.nativeAppServer.request("thread/goal/get", { threadId }, requestOptions))
+      .goal;
   }
 
   async setThreadGoal(input: CodexThreadGoalSetActionInput): Promise<ThreadGoal | null> {
-    const action = normalizeThreadGoalSetActionInput(input);
-    return await this.executeConversationAction({
-      conversationId: input.threadId,
-      label: "set thread goal",
-      action: {
-        type: "setThreadGoal",
-        ...action,
-      },
-      executeAsOwner: () => this.setThreadGoalAsOwner(action),
-      waitForStreamRevision: true,
-    });
+    return this.setThreadGoalAsOwner(normalizeThreadGoalSetActionInput(input));
   }
 
   private async setThreadGoalAsOwner(
@@ -6515,134 +6258,49 @@ export class CodexAppServerManager {
   ): Promise<ThreadGoal | null> {
     const action = normalizeThreadGoalSetActionInput(input);
     const params = normalizeThreadGoalSetParams(action);
-    await this.ensureOwnerForConversationAction(input.threadId, "set thread goal");
-    if (action.threadSettings) {
-      await this.setThreadSettingsForConversationAsOwner(input.threadId, action.threadSettings);
+    if (typeof action.objective === "string")
+      await this.ensureOwnerForConversationAction(input.threadId, "set thread goal");
+    if (typeof action.objective === "string" || action.status === "active") {
+      if (action.threadSettings)
+        await this.setThreadSettingsForConversationAsOwner(input.threadId, action.threadSettings);
+      else await this.settingsUpdates.get(input.threadId);
     }
-    const goal = await this.ownerAppServerRequestClient.setThreadGoal(input.threadId, params);
-    const streamRevision = await this.publishOwnerActionSnapshotMutation(
-      input.threadId,
-      "thread goal set",
-      (conversation) => {
-        const before = conversation.canonicalState;
-        if (!before || !goal) return null;
-        const result = reduceCodexConversationThreadGoalUpdated(before, input.threadId, goal);
-        const state = options.clearResumeConfirmation
-          ? reduceCodexConversationThreadGoalResumeConfirmationDismissed(
-              result.state,
-              input.threadId,
-            )
-          : result.state;
-        if (
-          !goal ||
-          action.appendTranscriptItem === false ||
-          typeof action.objective !== "string"
-        ) {
-          return projectOwnerThreadGoalToConversation(conversation, state);
-        }
-        const withTranscript = appendCodexCanonicalThreadGoalTranscriptTurn(state, goal);
-        return materializeOwnerCanonicalConversationSnapshot(
-          projectOwnerThreadGoalToConversation(conversation, withTranscript),
-        );
-      },
-    );
-    return goal ? this.withOwnerStreamRevision(goal, streamRevision) : goal;
+    const { goal } = await this.nativeAppServer.request("thread/goal/set", params);
+    if (this.destroyed) throw new Error("Conversation manager retired");
+    this.historyClient.updateConversation(input.threadId, (draft) => {
+      draft.threadGoal = goal;
+      if (typeof action.objective !== "string" || options.clearResumeConfirmation)
+        draft.threadGoalResumeConfirmation = null;
+      if (goal && action.appendTranscriptItem !== false && typeof action.objective === "string")
+        mutateCodexCanonicalThreadGoalTranscriptTurn(draft, goal);
+    });
+    return goal;
   }
 
   async clearThreadGoal(threadId: string): Promise<void> {
-    await this.executeConversationAction({
-      conversationId: threadId,
-      label: "clear thread goal",
-      action: {
-        type: "clearThreadGoal",
-        threadId,
-      },
-      executeAsOwner: () => this.clearThreadGoalAsOwner(threadId),
-      waitForStreamRevision: true,
-    });
+    await this.clearThreadGoalAsOwner(threadId);
   }
-
-  private async clearThreadGoalAsOwner(
-    threadId: string,
-  ): Promise<OwnerStreamRevisionResult | void> {
-    await this.ensureOwnerForConversationAction(threadId, "clear thread goal");
-    await this.ownerAppServerRequestClient.clearThreadGoal(threadId, { threadId });
-    const streamRevision = await this.publishOwnerActionSnapshotMutation(
-      threadId,
-      "thread goal clear",
-      (conversation) => {
-        const before = conversation.canonicalState;
-        if (!before) return null;
-        return projectOwnerThreadGoalToConversation(
-          conversation,
-          reduceCodexConversationThreadGoalCleared(before, threadId),
-        );
-      },
-    );
-    return this.buildOwnerStreamRevisionResult(streamRevision);
+  private async clearThreadGoalAsOwner(threadId: string): Promise<void> {
+    await this.nativeAppServer.request("thread/goal/clear", { threadId });
   }
 
   async dismissThreadGoalResumeConfirmation(threadId: string): Promise<void> {
-    await this.executeConversationAction({
-      conversationId: threadId,
-      label: "dismiss thread goal resume confirmation",
-      action: {
-        type: "dismissThreadGoalResumeConfirmation",
-        threadId,
-      },
-      executeAsOwner: () => this.dismissThreadGoalResumeConfirmationAsOwner(threadId),
-      waitForStreamRevision: true,
-    });
+    await this.dismissThreadGoalResumeConfirmationAsOwner(threadId);
   }
-
-  private async dismissThreadGoalResumeConfirmationAsOwner(
-    threadId: string,
-  ): Promise<OwnerStreamRevisionResult | void> {
-    await this.ensureOwnerForConversationAction(
-      threadId,
-      "dismiss thread goal resume confirmation",
-    );
-
-    const streamRevision = await this.publishOwnerActionSnapshotMutation(
-      threadId,
-      "thread goal resume confirmation dismissed",
-      (conversation) => {
-        const before = conversation.canonicalState;
-        if (!before) return null;
-        const projected = projectOwnerThreadGoalToConversation(
-          conversation,
-          reduceCodexConversationThreadGoalResumeConfirmationDismissed(before, threadId),
-        );
-        return (
-          applyOwnerThreadGoalResumeConfirmationDismissedToConversation(projected) ?? projected
-        );
-      },
-    );
-    return this.buildOwnerStreamRevisionResult(streamRevision);
+  private async dismissThreadGoalResumeConfirmationAsOwner(threadId: string): Promise<void> {
+    this.historyClient.updateConversation(threadId, (draft) => {
+      draft.threadGoalResumeConfirmation = null;
+    });
   }
 
   async setThreadMemoryMode(input: { threadId: string; mode: ThreadMemoryMode }): Promise<void> {
-    await this.executeConversationAction({
-      conversationId: input.threadId,
-      label: "set thread memory mode",
-      action: {
-        type: "setThreadMemoryMode",
-        threadId: input.threadId,
-        mode: input.mode,
-      },
-      executeAsOwner: () => this.setThreadMemoryModeAsOwner(input),
-    });
+    await this.setThreadMemoryModeAsOwner(input);
   }
-
   private async setThreadMemoryModeAsOwner(input: {
     threadId: string;
     mode: ThreadMemoryMode;
   }): Promise<void> {
-    await this.ensureOwnerForConversationAction(input.threadId, "set thread memory mode");
-    await this.ownerAppServerRequestClient.setThreadMemoryMode(input.threadId, {
-      threadId: input.threadId,
-      mode: input.mode,
-    });
+    await this.nativeAppServer.request("thread/memoryMode/set", input);
   }
 
   async uploadFeedback(params: FeedbackUploadParams): Promise<void> {
@@ -6650,62 +6308,30 @@ export class CodexAppServerManager {
   }
 
   async cleanBackgroundTerminals(threadId: string): Promise<boolean> {
-    if (this.isFollowerForConversation(threadId)) {
+    if (this.isFollowerForConversation(threadId))
       throw new Error("Please continue this conversation on the window where it was started.");
-    }
-
-    if (this.streamState.getRole(threadId)?.role === "owner") {
-      const cleaned = (await runConversationOperation(
-        "codex:thread:background-terminals:clean-silent",
-        threadId,
-      )) as boolean;
-      if (cleaned) {
-        this.publishOwnerActionConversationMutation(
-          threadId,
-          applyOwnerBackgroundTerminalCleanupToConversation,
-        );
-      }
-      return cleaned;
-    }
-
-    return (await runConversationOperation(
-      "codex:thread:background-terminals:clean",
-      threadId,
-    )) as boolean;
+    await this.nativeAppServer.request("thread/backgroundTerminals/clean", { threadId });
+    this.historyClient.updateConversation(threadId, mutateCodexBackgroundTerminalCleanup, false);
+    return true;
   }
 
   async listBackgroundTerminals(threadId: string): Promise<ThreadBackgroundTerminal[]> {
     const trimmedThreadId = threadId.trim();
-    if (!trimmedThreadId) {
-      return [];
-    }
-
-    if (this.isFollowerForConversation(trimmedThreadId)) {
+    if (!trimmedThreadId) return [];
+    if (this.isFollowerForConversation(trimmedThreadId))
       throw new Error("Please continue this conversation on the window where it was started.");
-    }
-
-    if (this.streamState.getRole(trimmedThreadId)?.role !== "owner") {
-      return (await runConversationOperation(
-        "codex:thread:background-terminals:list",
-        trimmedThreadId,
-      )) as ThreadBackgroundTerminal[];
-    }
-
     const rows: ThreadBackgroundTerminal[] = [];
     let cursor: string | null = null;
     do {
-      const response = await this.ownerAppServerRequestClient.listBackgroundTerminals(
-        trimmedThreadId,
-        {
+      const response: import("@nodex/codex-app-server-protocol/v2").ThreadBackgroundTerminalsListResponse =
+        await this.nativeAppServer.request("thread/backgroundTerminals/list", {
           threadId: trimmedThreadId,
           cursor,
           limit: 100,
-        },
-      );
+        });
       rows.push(...response.data);
       cursor = response.nextCursor;
     } while (cursor);
-
     return rows;
   }
 
@@ -6792,14 +6418,7 @@ export class CodexAppServerManager {
       throw new Error("Please continue this conversation on the window where it was started.");
     }
 
-    if (this.streamState.getRole(threadId)?.role !== "owner") {
-      return (await runConversationOperation("codex:thread:background-terminals:terminate", {
-        threadId,
-        processId,
-      })) as boolean;
-    }
-
-    const response = await this.ownerAppServerRequestClient.terminateBackgroundTerminal(threadId, {
+    const response = await this.nativeAppServer.request("thread/backgroundTerminals/terminate", {
       threadId,
       processId,
     });
@@ -6807,354 +6426,461 @@ export class CodexAppServerManager {
   }
 
   async steerTurn(input: CodexSteerTurnInput): Promise<{ turnId: string } | null> {
-    const promptText = input.prompt.trim();
-    if (!promptText) {
-      throw new Error("Turn steer requires a non-empty prompt");
+    if (!input.prompt.trim()) throw new Error("Turn steer requires a non-empty prompt");
+    if (!this.streamState.getRole(input.threadId))
+      await this.requestThreadStreamResume(input.threadId);
+    const prepared = await runConversationOperation("codex:turn:native-steer:prepare", input);
+    try {
+      const role = this.streamState.getRole(input.threadId);
+      if (role?.role !== "follower") return await this.executeNativeSteerAsOwner(prepared);
+      try {
+        const response = await (
+          await getConversationCoordinationHost()
+        ).requestThreadFollower({
+          hostId: this.hostId,
+          targetClientId: role.ownerClientId,
+          request: conversationFollowerRequest("thread-follower-steer-turn", { ...prepared }),
+        });
+        if (response.resultType !== "success")
+          throw new Error(response.resultType === "error" ? response.error : "no-client-found");
+        return (response.result as { result: { turnId: string } }).result;
+      } catch (error) {
+        if (!(error instanceof Error) || !error.message.includes("no-client-found")) throw error;
+        this.markConversationNeedsResumeAfterUnavailableOwner(input.threadId, role.ownerClientId);
+        await this.requestThreadStreamResume(input.threadId);
+        return await this.executeNativeSteerAsOwner(prepared);
+      }
+    } finally {
+      await runConversationOperation(
+        "codex:turn:native-steer:release",
+        prepared.clientUserMessageId,
+      );
     }
-    const normalizedInput = {
-      ...input,
-      prompt: promptText,
-    };
-
-    return await this.executeConversationAction({
-      conversationId: input.threadId,
-      label: "steer turn",
-      action: {
-        type: "steerTurn",
-        input: normalizedInput,
-      },
-      executeAsOwner: () => this.steerTurnAsOwner(normalizedInput),
-      waitForStreamRevision: true,
-    });
   }
 
-  private async steerTurnAsOwner(input: CodexSteerTurnInput): Promise<{ turnId: string } | null> {
-    await this.ensureOwnerForConversationAction(input.threadId, "steer turn");
-
-    const conversation = this.conversationsById.get(input.threadId);
-    if (!conversation) {
-      throw new Error(`Thread '${input.threadId}' was not found`);
-    }
-
-    const expectedTurnId = input.expectedTurnId ?? getLatestInProgressTurnId(conversation);
-    if (!expectedTurnId) {
-      throw new Error(
-        "Nodex is already running. Wait for the active turn to load or queue the follow-up instead.",
-      );
-    }
-
-    const preparedPrompt = await prepareCodexPrompt(input.prompt, input.promptInput, {
-      resolveImageInput: resolveOwnerPromptImageInput,
-    });
-    if (preparedPrompt.agentConfigs.length > 0) {
-      throw new Error(
-        "Agent config cannot be steered into a running turn. Wait for the turn to finish or queue a follow-up.",
-      );
-    }
-
-    const clientUserMessageId = createOwnerClientUserMessageId();
-    const followUpId = `follow-up:${input.threadId}:${Date.now()}:${Math.random().toString(36).slice(2, 8)}`;
-    const pendingSteer = createOwnerPendingSteer(
-      input.threadId,
-      expectedTurnId,
-      input.prompt,
-      clientUserMessageId,
-    );
-    const targetTurn = conversation.turns.find((turn) => turn.turnId === expectedTurnId) ?? null;
-    const canonicalSteer: CodexCanonicalSteeringUserMessageItem = {
-      type: "steeringUserMessage",
-      id: pendingSteer.steerId,
-      targetTurnId: expectedTurnId,
-      targetTurnStartedAtMs: targetTurn?.turnStartedAtMs ?? targetTurn?.startedAt ?? null,
-      status: "pending",
-      clientUserMessageId,
-      input: [...preparedPrompt.inputItems],
-      attachments: [...preparedPrompt.fileAttachments, ...preparedPrompt.addedFiles],
-      restoreMessage: {
-        queueRow: {
-          followUpId,
-          clientUserMessageId,
-          threadId: input.threadId,
-          prompt: input.prompt,
-          promptInput: input.promptInput ?? { text: input.prompt },
-          createdAtMs: Date.now(),
-          collaborationMode: input.collaborationMode ?? null,
-          serviceTier: normalizeCodexServiceTier(input.serviceTier),
-          summary: input.summary ?? null,
-          pause: null,
-          payloadRef: null,
-        },
-        context: { commentAttachments: [...preparedPrompt.commentAttachments] },
-      },
-      compareKey: buildCodexSteeringCompareKey(
-        preparedPrompt.inputItems,
-        preparedPrompt.commentAttachments,
-      ),
-    };
-    const publications: Promise<number>[] = [
-      this.publishOwnerActionSnapshotMutation(
-        input.threadId,
-        "pending steer add",
-        (currentConversation) => {
-          const canonical = currentConversation.canonicalState;
-          if (!canonical) return null;
-          const canonicalState = upsertCodexCanonicalSteeringItem(
-            canonical,
-            expectedTurnId,
-            canonicalSteer,
-          );
-          if (canonicalState === canonical) return null;
-          return {
-            ...currentConversation,
-            canonicalState,
-            pendingSteers: [...currentConversation.pendingSteers, pendingSteer],
-          };
-        },
-      ),
-    ];
-
-    let result: CodexSteerTurnResult | null = null;
-    let targetTurnId = expectedTurnId;
-    let streamRevision = this.streamState.getRevision(input.threadId) ?? 0;
+  private async executeNativeSteerAsOwner(
+    input: CanonicalOwnerSteerInput,
+  ): Promise<import("@nodex/codex-app-server-protocol/v2/TurnSteerResponse").TurnSteerResponse> {
+    const id = input.conversationId;
+    const lifetime = this.observeOwnerActionLifetime(id, "steering");
+    const { assertCurrent } = lifetime;
     try {
-      result = await runConversationOperation("codex:turn:steer", {
-        ...input,
-        expectedTurnId,
-        intent: {
-          steerId: pendingSteer.steerId,
-          recoveryRow: canonicalSteer.restoreMessage.queueRow,
+      return await runCanonicalOwnerSteer(
+        {
+          read: () => {
+            assertCurrent();
+            return this.historyClient.getConversation(id) ?? null;
+          },
+          update: (recipe) => {
+            assertCurrent();
+            this.historyClient.updateConversation(id, recipe);
+          },
+          subscribe: (callback) => {
+            const unsubscribe = this.addConversationCallback(id, callback);
+            return { [Symbol.dispose]: unsubscribe };
+          },
+          onDispose: (callback) => {
+            const disposed = this.onDispose(callback);
+            const removed = (threadId: string) => {
+              if (threadId === id) callback();
+            };
+            this.conversationRemovedCallbacks.add(removed);
+            return {
+              [Symbol.dispose]: () => {
+                disposed[Symbol.dispose]();
+                this.conversationRemovedCallbacks.delete(removed);
+              },
+            };
+          },
+          createId: () => crypto.randomUUID(),
+          sendNative: async (request, options) => {
+            assertCurrent();
+            const response = await this.nativeAppServer.executePreparedSteer(
+              request,
+              input.clientUserMessageId,
+              options,
+            );
+            assertCurrent();
+            return response;
+          },
+          outcomeUnknown: (error) =>
+            error instanceof CodexTurnDeliveryError && error.delivery.stage === "outcome-unknown"
+              ? error.delivery
+              : null,
+          mismatchTurnId: parseSteerTurnMismatchActualTurnId,
+          isLocalHost: this.hostId === DEFAULT_CODEX_HOST_ID,
+          emitSteered: () => {
+            assertCurrent();
+            void runConversationOperation(
+              "codex:thread:interrupt-effects",
+              this.hostId,
+              id,
+              "steered",
+            ).catch((error) => console.warn("Failed to publish steering event", error));
+          },
         },
-      });
-      if (result?.turnId && result.turnId !== expectedTurnId) {
-        const actualTurnId = result.turnId;
-        targetTurnId = actualTurnId;
-        publications.push(
-          this.publishOwnerActionSnapshotMutation(
-            input.threadId,
-            "pending steer retarget",
-            (currentConversation) => {
-              const canonical = currentConversation.canonicalState;
-              if (!canonical) return null;
-              const canonicalState = retargetCodexCanonicalSteeringItem(
-                canonical,
-                expectedTurnId,
-                actualTurnId,
-                pendingSteer.steerId,
-              );
-              if (canonicalState === canonical) return null;
-              return {
-                ...currentConversation,
-                canonicalState,
-                pendingSteers: currentConversation.pendingSteers.map((entry) =>
-                  entry.steerId === pendingSteer.steerId
-                    ? { ...entry, turnId: actualTurnId }
-                    : entry,
-                ),
-              };
-            },
-          ),
-        );
-      }
-      if (result?.outcome === "unknown") throw new Error("Message delivery is not yet confirmed");
-    } finally {
-      const completionPublication = this.publishOwnerActionSnapshotMutation(
-        input.threadId,
-        "pending steer clear",
-        (currentConversation) => {
-          let canonicalState = currentConversation.canonicalState;
-          if (canonicalState && result?.outcome !== "unknown") {
-            canonicalState =
-              typeof result?.turnId === "string"
-                ? acknowledgeCodexCanonicalSteeringItem(canonicalState, pendingSteer.steerId)
-                : removeCodexCanonicalSteeringItem(
-                    removeCodexCanonicalSteeringItem(
-                      canonicalState,
-                      expectedTurnId,
-                      pendingSteer.steerId,
-                    ),
-                    targetTurnId,
-                    pendingSteer.steerId,
-                  );
-          }
-          return {
-            ...currentConversation,
-            canonicalState,
-            pendingSteers: currentConversation.pendingSteers.filter(
-              (entry) => entry.steerId !== pendingSteer.steerId,
-            ),
-          };
-        },
+        input,
       );
-      publications.push(completionPublication);
-      const revisions = await Promise.all(publications);
-      streamRevision = revisions.at(-1) ?? streamRevision;
+    } finally {
+      lifetime[Symbol.dispose]();
     }
-    return result ? this.withOwnerStreamRevision(result, streamRevision) : result;
   }
 
   async interruptTurn(threadId: string, turnId?: string): Promise<boolean> {
-    if (this.isFollowerForConversation(threadId)) {
-      return await this.runFollowerActionThroughOwner(
-        threadId,
-        {
-          type: "interruptTurn",
-          threadId,
-        },
-        {
-          fallback: () => this.interruptTurnAsOwner(threadId),
-          fallbackOnTimeout: true,
-        },
-      );
+    const role = this.streamState.getRole(threadId);
+    if (role?.role !== "follower") return this.interruptTurnAsOwner(threadId, turnId);
+    try {
+      const response = await (
+        await getConversationCoordinationHost()
+      ).requestThreadFollower({
+        hostId: this.hostId,
+        targetClientId: role.ownerClientId,
+        request: conversationFollowerRequest("thread-follower-interrupt-turn", {
+          conversationId: threadId,
+          mode: "user-stop",
+          ...(turnId !== undefined ? { expectedTurnId: turnId } : {}),
+        }),
+      });
+      if (response.resultType !== "success")
+        throw new Error(response.resultType === "error" ? response.error : "no-client-found");
+      const result = response.result as {
+        interruptedTurnId?: string | null;
+        goalPauseError?: string;
+      };
+      if (result.goalPauseError != null)
+        throw Object.assign(new Error(result.goalPauseError), {
+          interruptedTurnId: result.interruptedTurnId,
+        });
+      return result.interruptedTurnId != null;
+    } catch (error) {
+      if (
+        !/timeout|request-version-mismatch|no-client-found/i.test(
+          error instanceof Error ? error.message : String(error),
+        )
+      )
+        throw error;
+      this.markConversationNeedsResumeAfterUnavailableOwner(threadId, role.ownerClientId);
+      await this.requestThreadStreamResume(threadId);
+      return this.interruptTurnAsOwner(threadId, turnId);
     }
-
-    return await this.interruptTurnAsOwner(threadId, turnId);
   }
 
   private async interruptTurnAsOwner(threadId: string, turnId?: string): Promise<boolean> {
-    const interruptedTurnId = this.resolveInterruptTurnId(threadId, turnId);
-    await this.pauseActiveThreadGoalBeforeInterruptAsOwner(threadId);
-    if (this.streamState.getRole(threadId)?.role === "owner") {
-      await this.declineOwnerRequestsBeforeInterrupt(threadId);
+    await this.ensureOwnerForConversationAction(threadId, "interrupt turn");
+    return (await this.interruptNativeConversationAsOwner(threadId, "user-stop", turnId)) != null;
+  }
+
+  private async interruptNativeConversationAsOwner(
+    threadId: string,
+    mode: "system" | "user-stop" | "descendant-cleanup",
+    expectedTurnId?: string,
+  ): Promise<string | null> {
+    const lifetime = this.observeOwnerActionLifetime(threadId, "interruption");
+    const { assertCurrent } = lifetime;
+    const activeGoal =
+      expectedTurnId == null &&
+      this.historyClient.getConversation(threadId)?.threadGoal?.status === "active";
+    const pause = async (critical = false) => {
+      assertCurrent();
+      const response = await this.nativeAppServer.request(
+        "thread/goal/set",
+        { threadId, status: "paused" },
+        critical ? { priority: "critical", timeoutMs: 500 } : undefined,
+      );
+      assertCurrent();
+      this.historyClient.updateConversation(threadId, (draft) => {
+        draft.threadGoal = response.goal as ThreadGoal | null;
+        draft.threadGoalResumeConfirmation = null;
+      });
+    };
+    let pauseError: unknown;
+    let interruptedTurnId: string | null = null;
+    try {
+      if (activeGoal && mode === "system") await pause();
+      if (activeGoal && mode === "user-stop") {
+        try {
+          await pause(true);
+        } catch (error) {
+          pauseError = error;
+          console.warn("Failed to pause thread goal before interrupt", error);
+        }
+      }
+      assertCurrent();
+      if (expectedTurnId == null)
+        void this.declineOwnerRequestsBeforeInterrupt(threadId).catch((error) =>
+          console.warn("Failed to decline interrupted requests", error),
+        );
+      interruptedTurnId = await interruptCanonicalConversationTurn(
+        {
+          getConversation: () => {
+            assertCurrent();
+            return this.historyClient.getConversation(threadId) ?? undefined;
+          },
+          updateConversation: (id, recipe) => {
+            assertCurrent();
+            this.historyClient.updateConversation(id, recipe);
+          },
+          sendInterrupt: async (id, turnId) => {
+            assertCurrent();
+            try {
+              return await this.nativeAppServer.request("turn/interrupt", { threadId: id, turnId });
+            } finally {
+              assertCurrent();
+            }
+          },
+          cleanBackgroundTerminals: async (id) => {
+            assertCurrent();
+            await this.nativeAppServer.request("thread/backgroundTerminals/clean", {
+              threadId: id,
+            });
+            assertCurrent();
+            this.historyClient.updateConversation(id, mutateCodexBackgroundTerminalCleanup, false);
+          },
+          killNodeReplExecutions: (_sessionId, turnId) =>
+            lifetime.isCurrent()
+              ? runConversationOperation(
+                  "codex:thread:node-repl:cleanup",
+                  this.hostId,
+                  threadId,
+                  turnId,
+                )
+              : Promise.resolve(),
+          onInterruptStarted: (id) => {
+            if (!lifetime.isCurrent()) return;
+            void runConversationOperation(
+              "codex:thread:interrupt-effects",
+              this.hostId,
+              id,
+              "started",
+            ).catch((error) => console.warn("Failed to publish interrupt start", error));
+          },
+          errorMessage: (error) => (error instanceof Error ? error.message : String(error)),
+          warn: (error) => console.warn("Failed to clean background terminals", error),
+        },
+        threadId,
+        expectedTurnId,
+        mode === "user-stop" && expectedTurnId == null,
+      );
+      assertCurrent();
+      if (activeGoal && mode === "descendant-cleanup") {
+        try {
+          await pause();
+        } catch (error) {
+          console.warn("Failed to pause thread goal after interrupt", error);
+        }
+      }
+      assertCurrent();
+      if (pauseError !== undefined)
+        throw Object.assign(new Error("Failed to pause thread goal", { cause: pauseError }), {
+          interruptedTurnId,
+        });
+      return interruptedTurnId;
+    } finally {
+      try {
+        if (
+          lifetime.isCurrent() &&
+          (expectedTurnId == null || interruptedTurnId != null) &&
+          mode !== "descendant-cleanup" &&
+          this.streamState.getRole(threadId)?.role !== "follower"
+        ) {
+          const cleanup = runConversationOperation(
+            "codex:thread:interrupt-effects",
+            this.hostId,
+            threadId,
+            "descendants",
+          ).catch((error) => console.warn("Failed to interrupt descendants", error));
+          if (mode === "user-stop") void cleanup;
+          else await cleanup;
+        }
+      } finally {
+        lifetime[Symbol.dispose]();
+      }
     }
-    return this.streamState.getRole(threadId)?.role === "owner"
-      ? await this.ownerAppServerRequestClient.interruptTurn(threadId, {
-          threadId,
-          turnId: interruptedTurnId ?? turnId,
-        })
-      : ((await runConversationOperation("codex:turn:interrupt", threadId, turnId)) as boolean);
   }
 
   private async declineOwnerRequestsBeforeInterrupt(threadId: string): Promise<void> {
     const requests = [...(this.conversationsById.get(threadId)?.canonicalRequests ?? [])];
-    for (const request of requests) {
-      switch (request.method) {
-        case "item/commandExecution/requestApproval":
-        case "item/fileChange/requestApproval":
-          await this.respondApprovalAsOwner(
-            request.id,
-            {
-              kind: getCodexApprovalKindForRequestMethod(request.method),
-              decision: "decline",
-            },
-            threadId,
-          );
-          break;
-        case "item/permissions/requestApproval":
-          await this.respondPermissionRequestAsOwner(
-            request.id,
-            {
-              permissions: {},
-              scope: "turn",
-            },
-            threadId,
-          );
-          break;
-        case "item/tool/requestUserInput":
-          await this.respondUserInputAsOwner(request.id, {}, threadId);
-          break;
-        case "item/tool/requestOptionPicker":
-          await this.respondOptionPickerAsOwner(threadId, request.id, {
-            action: "dismiss",
-            selectedOptions: [],
-            freeformAnswer: null,
-          });
-          break;
-        case "item/tool/requestSetupCodexContextPicker":
-          await this.respondSetupContextPickerAsOwner(threadId, request.id, {
-            action: "dismiss",
-            selectedSources: [],
-          });
-          break;
-        case "mcpServer/elicitation/request":
-          await this.respondMcpElicitationAsOwner(
-            request.id,
-            {
-              action: "decline",
-              content: null,
-              _meta: null,
-            },
-            threadId,
-          );
-          break;
-        default:
-          break;
-      }
-    }
-  }
-
-  private async pauseActiveThreadGoalBeforeInterruptAsOwner(threadId: string): Promise<void> {
-    if (this.streamState.getRole(threadId)?.role !== "owner") return;
-
-    const conversation = this.conversationsById.get(threadId);
-    if (conversation?.threadGoal?.status !== "active") return;
-
-    await this.setThreadGoalAsOwner(
-      { threadId, status: "paused" },
-      { clearResumeConfirmation: true },
+    await Promise.all(
+      requests.map(async (request) => {
+        switch (request.method) {
+          case "item/commandExecution/requestApproval":
+          case "item/fileChange/requestApproval":
+            await this.respondApprovalAsOwner(
+              request.id,
+              {
+                kind: getCodexApprovalKindForRequestMethod(request.method),
+                decision: "decline",
+              },
+              threadId,
+            );
+            break;
+          case "item/permissions/requestApproval":
+            await this.respondPermissionRequestAsOwner(
+              request.id,
+              {
+                permissions: {},
+                scope: "turn",
+              },
+              threadId,
+            );
+            break;
+          case "item/tool/requestUserInput":
+            await this.respondUserInputAsOwner(request.id, {}, threadId);
+            break;
+          case "item/tool/requestOptionPicker":
+            await this.respondOptionPickerRequest(threadId, request.id, {
+              action: "dismiss",
+              selectedOptions: [],
+              freeformAnswer: null,
+            });
+            break;
+          case "mcpServer/elicitation/request":
+            await this.respondMcpElicitationAsOwner(
+              request.id,
+              {
+                action: "decline",
+                content: null,
+                _meta: null,
+              },
+              threadId,
+            );
+            break;
+          default:
+            break;
+        }
+      }),
     );
   }
 
-  private canContinueActiveThreadGoalAsOwner(threadId: string): boolean {
-    const conversation = this.conversationsById.get(threadId);
-    if (!conversation) return false;
-    if (conversation.resumeState !== "resumed") return false;
-    if (conversation.threadGoal?.status !== "active") return false;
-    if ((conversation.canonicalRequests ?? []).length > 0) return false;
-    if (hasPendingSteeringUserMessage(conversation)) return false;
-    if (this.streamState.getRole(threadId)?.role !== "owner") return false;
-    if (hasInProgressGoalContinuationWork(conversation)) return false;
-    return true;
+  private async sendNativeUserResponseToOwner(
+    conversationId: string,
+    response: Exclude<
+      CodexNativeUserResponse,
+      {
+        readonly method:
+          | "item/tool/requestOptionPicker"
+          | "item/tool/requestSetupCodexContextPicker";
+      }
+    >,
+  ): Promise<boolean> {
+    const role = this.streamState.getRole(conversationId);
+    if (role?.role !== "follower") return false;
+    const common = { conversationId, requestId: response.requestId };
+    const request =
+      response.method === "item/commandExecution/requestApproval"
+        ? conversationFollowerRequest("thread-follower-command-approval-decision", {
+            ...common,
+            decision: response.response.decision,
+          })
+        : response.method === "item/fileChange/requestApproval"
+          ? conversationFollowerRequest("thread-follower-file-approval-decision", {
+              ...common,
+              decision: response.response.decision,
+            })
+          : response.method === "item/tool/requestUserInput"
+            ? conversationFollowerRequest("thread-follower-submit-user-input", {
+                ...common,
+                response: response.response,
+              })
+            : response.method === "item/permissions/requestApproval"
+              ? conversationFollowerRequest(
+                  "thread-follower-permissions-request-approval-response",
+                  { ...common, response: response.response },
+                )
+              : conversationFollowerRequest(
+                  "thread-follower-submit-mcp-server-elicitation-response",
+                  { ...common, response: response.response },
+                );
+    try {
+      const result = await (
+        await getConversationCoordinationHost()
+      ).requestThreadFollower({ hostId: this.hostId, targetClientId: role.ownerClientId, request });
+      if (result.resultType !== "success") return false;
+      return (
+        typeof result.result === "object" &&
+        result.result !== null &&
+        "ok" in result.result &&
+        result.result.ok === true
+      );
+    } catch (error) {
+      console.warn("Failed to send follower request response to owner", error);
+      return false;
+    }
   }
 
-  private clearActiveGoalContinuationTimer(threadId: string): void {
-    const timer = this.activeGoalContinuationTimers.get(threadId);
-    if (!timer) return;
-    clearTimeout(timer);
-    this.activeGoalContinuationTimers.delete(threadId);
+  private async commitNativeUserResponse(
+    conversationId: string,
+    response: CodexNativeUserResponse,
+    mutate: (draft: Draft<CodexCanonicalConversationState>) => {
+      readonly selectedRequests: readonly unknown[];
+    },
+  ): Promise<OwnerServerRequestReplyResult> {
+    if (response.method !== "item/tool/requestOptionPicker")
+      this.assertOwnerForConversation(conversationId);
+    const before = this.historyClient.getConversation(conversationId);
+    if (!before) return { accepted: false };
+    const key = JSON.stringify([conversationId, response.requestId]);
+    const occurrence = this.nativeRequestOccurrences
+      .get(key)
+      ?.find(
+        (entry) =>
+          entry.request.method === response.method &&
+          entry.generation === this.nativeHostContext?.generation,
+      );
+    if (!occurrence) return { accepted: false };
+    const receipt = new CodexConversationEntityDocument().withCanonicalState(before).mutate(mutate);
+    if (!receipt || receipt.result.selectedRequests.length === 0) return { accepted: false };
+    const result = sendCodexAppServerResponse({
+      hostId: occurrence.hostId,
+      generation: occurrence.generation,
+      occurrenceId: occurrence.occurrenceId,
+      occurrenceToken: occurrence.occurrenceToken,
+      threadId: conversationId,
+      ...response,
+    } satisfies CodexNativeUserResponseInput);
+    this.nativeRequestOccurrences.delete(key);
+    if (receipt.after !== before) this.applyCanonicalDocument(receipt.after);
+    if (receipt.patches.length) this.streamState.broadcastPatches(conversationId, receipt.patches);
+    return { accepted: await result };
   }
 
-  private waitForActiveGoalContinuationDelay(threadId: string): Promise<void> {
-    this.clearActiveGoalContinuationTimer(threadId);
-    return new Promise((resolve) => {
-      const timer = setTimeout(() => {
-        this.activeGoalContinuationTimers.delete(threadId);
-        resolve();
-      }, ACTIVE_THREAD_GOAL_CONTINUATION_DELAY_MS);
-      this.activeGoalContinuationTimers.set(threadId, timer);
-    });
-  }
-
-  private async maybeContinueActiveThreadGoalAsOwner(threadId: string): Promise<void> {
-    if (this.activeGoalContinuationPromises.has(threadId)) return;
-    if (!this.canContinueActiveThreadGoalAsOwner(threadId)) return;
-
-    const continuation = this.waitForActiveGoalContinuationDelay(threadId)
-      .then(async () => {
-        if (!this.canContinueActiveThreadGoalAsOwner(threadId)) return;
-        const subagents = await this.readSubagentOverview({
-          rootThreadId: threadId,
-          mode: "initial",
-        });
-        if (subagents.completeness !== "complete" || subagents.active.knownCount > 0) return;
-        if (!this.canContinueActiveThreadGoalAsOwner(threadId)) return;
-        await this.ownerAppServerRequestClient.setThreadGoal(threadId, {
-          threadId,
-          status: "active",
-        });
-      })
-      .catch((error) => {
-        console.error("[codex-thread-goal] Failed to continue active thread goal", {
-          threadId,
-          error,
-        });
-      })
-      .finally(() => {
-        this.clearActiveGoalContinuationTimer(threadId);
-        this.activeGoalContinuationPromises.delete(threadId);
-      });
-
-    this.activeGoalContinuationPromises.set(threadId, continuation);
-    await continuation;
+  private async commitNativeDynamicToolResponse(
+    conversationId: string,
+    requestId: CodexProtocolRequestId,
+    value: unknown,
+    mutate: (draft: Draft<CodexCanonicalConversationState>) => {
+      readonly selectedRequests: readonly unknown[];
+    },
+  ): Promise<OwnerServerRequestReplyResult> {
+    const before = this.historyClient.getConversation(conversationId);
+    if (!before) return { accepted: false };
+    const key = JSON.stringify([conversationId, requestId]);
+    const occurrence = this.nativeRequestOccurrences
+      .get(key)
+      ?.find(
+        (entry) =>
+          entry.request.method === "item/tool/call" &&
+          entry.generation === this.nativeHostContext?.generation,
+      );
+    if (!occurrence) return { accepted: false };
+    const receipt = new CodexConversationEntityDocument().withCanonicalState(before).mutate(mutate);
+    if (!receipt || receipt.result.selectedRequests.length === 0) return { accepted: false };
+    const result = sendCodexAppServerResponse({
+      ...occurrence,
+      effect: {
+        type: "respond",
+        method: "item/tool/call",
+        requestId,
+        response: {
+          contentItems: [{ type: "inputText", text: JSON.stringify(value) }],
+          success: true,
+        },
+      },
+    } satisfies CodexNativeAutoResponseInput);
+    this.nativeRequestOccurrences.delete(key);
+    if (receipt.after !== before) this.applyCanonicalDocument(receipt.after);
+    if (receipt.patches.length) this.streamState.broadcastPatches(conversationId, receipt.patches);
+    return { accepted: await result };
   }
 
   async respondApproval(
@@ -7167,12 +6893,20 @@ export class CodexAppServerManager {
       conversationId,
     );
     if (followerConversationId) {
-      return await this.runFollowerRequestResponseThroughOwner(followerConversationId, {
-        type: "respondApproval",
-        conversationId: followerConversationId,
-        requestId,
-        response,
-      });
+      return await this.sendNativeUserResponseToOwner(
+        followerConversationId,
+        response.kind === "command"
+          ? {
+              method: "item/commandExecution/requestApproval",
+              requestId,
+              response: { decision: response.decision },
+            }
+          : {
+              method: "item/fileChange/requestApproval",
+              requestId,
+              response: { decision: response.decision },
+            },
+      );
     }
 
     return (await this.respondApprovalAsOwner(requestId, response, conversationId)).accepted;
@@ -7185,22 +6919,20 @@ export class CodexAppServerManager {
   ): Promise<OwnerServerRequestReplyResult> {
     const conversationId = this.findConversationIdForRequest(requestId, requestedConversationId);
     if (!conversationId) return { accepted: false };
-    await this.ensureOwnerForConversationAction(conversationId, "respond to approval");
-    const responsePromise = runConversationOperation(
-      "codex:approval:respond",
-      conversationId,
-      requestId,
-      response,
-    ) as Promise<boolean>;
-    const streamRevision = this.publishOwnerServerRequestReply(
-      conversationId,
-      (conversation, before) =>
-        applyOwnerApprovalResponseToConversation(conversation, before, requestId, response.kind),
-    );
-    return await this.finishOwnerServerRequestReply(
-      conversationId,
-      responsePromise,
-      streamRevision,
+    const native: CodexNativeUserResponse =
+      response.kind === "command"
+        ? {
+            method: "item/commandExecution/requestApproval",
+            requestId,
+            response: { decision: response.decision },
+          }
+        : {
+            method: "item/fileChange/requestApproval",
+            requestId,
+            response: { decision: response.decision },
+          };
+    return this.commitNativeUserResponse(conversationId, native, (draft) =>
+      mutateCodexConversationApprovalResponse(draft, requestId, native.method),
     );
   }
 
@@ -7214,11 +6946,14 @@ export class CodexAppServerManager {
       conversationId,
     );
     if (followerConversationId) {
-      return await this.runFollowerRequestResponseThroughOwner(followerConversationId, {
-        type: "respondUserInput",
-        conversationId: followerConversationId,
+      return await this.sendNativeUserResponseToOwner(followerConversationId, {
+        method: "item/tool/requestUserInput",
         requestId,
-        answers,
+        response: {
+          answers: Object.fromEntries(
+            Object.entries(answers).map(([id, values]) => [id, { answers: values }]),
+          ),
+        },
       });
     }
 
@@ -7232,22 +6967,32 @@ export class CodexAppServerManager {
   ): Promise<OwnerServerRequestReplyResult> {
     const conversationId = this.findConversationIdForRequest(requestId, requestedConversationId);
     if (!conversationId) return { accepted: false };
-    await this.ensureOwnerForConversationAction(conversationId, "respond to user input");
-    const responsePromise = runConversationOperation(
-      "codex:user-input:respond",
-      conversationId,
+    const response = {
+      answers: Object.fromEntries(
+        Object.entries(answers).map(([id, values]) => [id, { answers: values }]),
+      ),
+    };
+    const request = this.conversationsById
+      .get(conversationId)
+      ?.canonicalRequests?.find((candidate) => candidate.id === requestId);
+    if (
+      request?.method === "item/tool/call" &&
+      hasCodexDynamicToolIdentity(request.params, {
+        namespace: CODEX_APP_TOOL_NAMESPACE,
+        tool: "request_onboarding_input",
+      })
+    ) {
+      return this.commitNativeDynamicToolResponse(conversationId, requestId, response, (draft) =>
+        mutateCodexConversationOnboardingInputResponse(draft, requestId),
+      );
+    }
+    const native: CodexNativeUserResponse = {
+      method: "item/tool/requestUserInput",
       requestId,
-      answers,
-    ) as Promise<boolean>;
-    const streamRevision = this.publishOwnerServerRequestReply(
-      conversationId,
-      (conversation, before) =>
-        applyOwnerUserInputResponseToConversation(conversation, before, requestId, answers),
-    );
-    return await this.finishOwnerServerRequestReply(
-      conversationId,
-      responsePromise,
-      streamRevision,
+      response,
+    };
+    return this.commitNativeUserResponse(conversationId, native, (draft) =>
+      mutateCodexConversationUserInputResponse(draft, requestId, answers, { now: Date.now }),
     );
   }
 
@@ -7262,9 +7007,8 @@ export class CodexAppServerManager {
       conversationId,
     );
     if (followerConversationId) {
-      return await this.runFollowerRequestResponseThroughOwner(followerConversationId, {
-        type: "respondMcpElicitation",
-        conversationId: followerConversationId,
+      return await this.sendNativeUserResponseToOwner(followerConversationId, {
+        method: "mcpServer/elicitation/request",
         requestId,
         response: normalizedResponse,
       });
@@ -7281,22 +7025,13 @@ export class CodexAppServerManager {
   ): Promise<OwnerServerRequestReplyResult> {
     const conversationId = this.findConversationIdForRequest(requestId, requestedConversationId);
     if (!conversationId) return { accepted: false };
-    await this.ensureOwnerForConversationAction(conversationId, "respond to MCP elicitation");
-    const responsePromise = runConversationOperation(
-      "codex:mcp-elicitation:respond",
+    return this.commitNativeUserResponse(
       conversationId,
-      requestId,
-      response,
-    ) as Promise<boolean>;
-    const streamRevision = this.publishOwnerServerRequestReply(
-      conversationId,
-      (conversation, before) =>
-        applyOwnerMcpElicitationResponseToConversation(conversation, before, requestId, response),
-    );
-    return await this.finishOwnerServerRequestReply(
-      conversationId,
-      responsePromise,
-      streamRevision,
+      { method: "mcpServer/elicitation/request", requestId, response },
+      (draft) =>
+        mutateCodexConversationMcpElicitationResponse(draft, requestId, response, {
+          now: Date.now,
+        }),
     );
   }
 
@@ -7310,9 +7045,8 @@ export class CodexAppServerManager {
       conversationId,
     );
     if (followerConversationId) {
-      return await this.runFollowerRequestResponseThroughOwner(followerConversationId, {
-        type: "respondPermissionRequest",
-        conversationId: followerConversationId,
+      return await this.sendNativeUserResponseToOwner(followerConversationId, {
+        method: "item/permissions/requestApproval",
         requestId,
         response,
       });
@@ -7406,27 +7140,11 @@ export class CodexAppServerManager {
   ): Promise<OwnerServerRequestReplyResult> {
     const conversationId = this.findConversationIdForRequest(requestId, requestedConversationId);
     if (!conversationId) return { accepted: false };
-    await this.ensureOwnerForConversationAction(conversationId, "respond to permission request");
-    const responsePromise = runConversationOperation(
-      "codex:permission-request:respond",
+    return this.commitNativeUserResponse(
       conversationId,
-      requestId,
-      response,
-    ) as Promise<boolean>;
-    const streamRevision = this.publishOwnerServerRequestReply(
-      conversationId,
-      (conversation, before) =>
-        applyOwnerPermissionRequestResponseToConversation(
-          conversation,
-          before,
-          requestId,
-          response,
-        ),
-    );
-    return await this.finishOwnerServerRequestReply(
-      conversationId,
-      responsePromise,
-      streamRevision,
+      { method: "item/permissions/requestApproval", requestId, response },
+      (draft) =>
+        mutateCodexConversationPermissionResponse(draft, requestId, response, { now: Date.now }),
     );
   }
 
@@ -7435,45 +7153,28 @@ export class CodexAppServerManager {
     requestId: CodexProtocolRequestId,
     response: CodexCanonicalSetupCodexStepResponse,
   ): Promise<boolean> {
-    if (this.isFollowerForConversation(conversationId)) {
-      return await this.runFollowerRequestResponseThroughOwner(conversationId, {
-        type: "respondSetupCodexStep",
-        conversationId,
-        requestId,
-        response,
-      });
-    }
-    return (await this.respondSetupCodexStepAsOwner(conversationId, requestId, response)).accepted;
+    return (await this.respondSetupCodexStepRequest(conversationId, requestId, response)).accepted;
   }
 
-  private async respondSetupCodexStepAsOwner(
+  private async respondSetupCodexStepRequest(
     conversationId: string,
     requestId: CodexProtocolRequestId,
     response: CodexCanonicalSetupCodexStepResponse,
   ): Promise<OwnerServerRequestReplyResult> {
-    await this.ensureOwnerForConversationAction(conversationId, "respond to setup step");
     const request = this.conversationsById
       .get(conversationId)
       ?.canonicalRequests?.find((candidate) => candidate.id === requestId);
-    if (request?.method !== "item/tool/call" || request.params.tool !== "setup_codex_step") {
+    if (
+      request?.method !== "item/tool/call" ||
+      !hasCodexDynamicToolIdentity(request.params, {
+        namespace: CODEX_APP_TOOL_NAMESPACE,
+        tool: "setup_codex_step",
+      })
+    ) {
       return { accepted: false };
     }
-
-    const responsePromise = runConversationOperation(
-      "codex:setup-codex-step:respond",
-      conversationId,
-      requestId,
-      response,
-    ) as Promise<boolean>;
-    const streamRevision = this.publishOwnerServerRequestReply(
-      conversationId,
-      (conversation, before) =>
-        applyOwnerSetupCodexStepResponseToConversation(conversation, before, requestId, response),
-    );
-    return await this.finishOwnerServerRequestReply(
-      conversationId,
-      responsePromise,
-      streamRevision,
+    return this.commitNativeDynamicToolResponse(conversationId, requestId, response, (draft) =>
+      mutateCodexConversationSetupCodexStepResponse(draft, requestId, response),
     );
   }
 
@@ -7482,121 +7183,40 @@ export class CodexAppServerManager {
     requestId: CodexProtocolRequestId,
     response: CodexCanonicalOptionPickerResponse,
   ): Promise<boolean> {
-    if (this.isFollowerForConversation(conversationId)) {
-      return await this.runFollowerRequestResponseThroughOwner(conversationId, {
-        type: "respondOptionPicker",
-        conversationId,
-        requestId,
-        response,
-      });
-    }
-    return (await this.respondOptionPickerAsOwner(conversationId, requestId, response)).accepted;
+    return (await this.respondOptionPickerRequest(conversationId, requestId, response)).accepted;
   }
 
-  private async respondOptionPickerAsOwner(
+  private async respondOptionPickerRequest(
     conversationId: string,
     requestId: CodexProtocolRequestId,
     response: CodexCanonicalOptionPickerResponse,
   ): Promise<OwnerServerRequestReplyResult> {
-    await this.ensureOwnerForConversationAction(conversationId, "respond to option picker");
     const conversation = this.conversationsById.get(conversationId);
     if (
       !conversation ||
       !hasOwnerStoredInteractiveResponseTarget(conversation, requestId, "optionPicker")
     )
       return { accepted: false };
-
-    const responsePromise = runConversationOperation(
-      "codex:option-picker:respond",
-      conversationId,
-      requestId,
-      response,
-    ) as Promise<boolean>;
-    const streamRevision = this.publishOwnerServerRequestReply(
-      conversationId,
-      (conversation, before) =>
-        applyOwnerStoredInteractiveResponseToConversation(
-          conversation,
-          before,
-          requestId,
-          "optionPicker",
-        ),
-    );
-    return await this.finishOwnerServerRequestReply(
-      conversationId,
-      responsePromise,
-      streamRevision,
-    );
-  }
-
-  private async respondSetupContextPickerAsOwner(
-    conversationId: string,
-    requestId: CodexProtocolRequestId,
-    response: CodexCanonicalSetupContextPickerResponse,
-  ): Promise<boolean> {
-    await this.ensureOwnerForConversationAction(conversationId, "respond to setup context picker");
-    const conversation = this.conversationsById.get(conversationId);
-    if (
-      !conversation ||
-      !hasOwnerStoredInteractiveResponseTarget(conversation, requestId, "setupContextPicker")
-    )
-      return false;
-
-    const responsePromise = runConversationOperation(
-      "codex:setup-context-picker:respond",
-      conversationId,
-      requestId,
-      response,
-    ) as Promise<boolean>;
-    const streamRevision = this.publishOwnerServerRequestReply(
-      conversationId,
-      (conversation, before) =>
-        applyOwnerStoredInteractiveResponseToConversation(
-          conversation,
-          before,
-          requestId,
-          "setupContextPicker",
-        ),
-    );
-    return (
-      await this.finishOwnerServerRequestReply(conversationId, responsePromise, streamRevision)
-    ).accepted;
-  }
-
-  private publishOwnerServerRequestReply(
-    conversationId: string,
-    reduce: (
-      conversation: CodexConversationSnapshot,
-      before: CodexCanonicalConversationState,
-    ) => OwnerCanonicalServerRequestMutationResult,
-  ): number | null {
-    return this.publishOwnerActionConversationMutation(conversationId, (conversation) => {
-      const before = conversation.canonicalState;
-      if (!before || before.protocol.id !== conversationId) {
-        this.handleOwnerReducerUnavailable(conversationId);
-        return null;
-      }
-      const result = reduce(conversation, before);
-      this.applyOwnerCanonicalHiddenTurns(conversationId, result.hiddenTurns);
-      return result.conversation;
-    });
-  }
-
-  private async finishOwnerServerRequestReply(
-    conversationId: string,
-    responsePromise: Promise<boolean>,
-    streamRevision: number | null,
-  ): Promise<OwnerServerRequestReplyResult> {
-    try {
-      const accepted = await responsePromise;
-      return {
-        accepted,
-        ...(accepted && streamRevision !== null ? { streamRevision } : {}),
-      };
-    } catch (error) {
-      this.handleOwnerReducerUnavailable(conversationId);
-      throw error;
+    const request = conversation.canonicalRequests?.find((candidate) => candidate.id === requestId);
+    if (request?.method === "item/tool/requestOptionPicker") {
+      return this.commitNativeUserResponse(
+        conversationId,
+        { method: request.method, requestId, response },
+        (draft) => mutateCodexConversationOptionPickerResponse(draft, requestId),
+      );
     }
+    if (
+      request?.method === "item/tool/call" &&
+      hasCodexDynamicToolIdentity(request.params, {
+        namespace: CODEX_APP_TOOL_NAMESPACE,
+        tool: "request_option_picker",
+      })
+    ) {
+      return this.commitNativeDynamicToolResponse(conversationId, requestId, response, (draft) =>
+        mutateCodexConversationOptionPickerResponse(draft, requestId),
+      );
+    }
+    return { accepted: false };
   }
 
   async setPermissionMode(projectId: string | null, mode: CodexPermissionMode): Promise<void> {
@@ -7613,6 +7233,19 @@ export class CodexAppServerManager {
     this.applyPermissionState(projectId, nextState);
   }
 
+  receiveReadStateSnapshot(unreadIds: readonly string[] | null): void {
+    this.savedReadState = unreadIds === null ? null : new Set(unreadIds);
+    if (this.savedReadState === null) return;
+    const ids = new Set([...this.conversationsById.keys(), ...this.threadSummariesById.keys()]);
+    for (const id of ids) this.applyConversationUnreadState(id, this.savedReadState.has(id));
+  }
+
+  receiveReadStateChange(threadId: string, unread: boolean): void {
+    if (unread) this.savedReadState?.add(threadId);
+    else this.savedReadState?.delete(threadId);
+    this.applyConversationUnreadState(threadId, unread);
+  }
+
   private applyConversationUnreadState(conversationId: string, hasUnreadTurn: boolean): boolean {
     const normalizedConversationId = conversationId.trim();
     if (!normalizedConversationId) return false;
@@ -7620,30 +7253,17 @@ export class CodexAppServerManager {
     const summary = this.threadSummariesById.get(normalizedConversationId);
     if (!conversation && !summary) return false;
     const conversationChanged = Boolean(
-      conversation && conversation.hasUnreadTurn !== hasUnreadTurn,
+      conversation &&
+      (conversation.hasUnreadTurn !== hasUnreadTurn ||
+        (conversation.canonicalState != null &&
+          conversation.canonicalState.hasUnreadTurn !== hasUnreadTurn)),
     );
     const summaryChanged = Boolean(summary && summary.hasUnreadTurn !== hasUnreadTurn);
     if (!conversationChanged && !summaryChanged) return false;
 
     if (conversation && conversationChanged) {
-      const nextConversation = {
-        ...conversation,
-        hasUnreadTurn,
-        ...(!hasUnreadTurn ? { unreadMessageCount: 0 } : {}),
-      };
+      const nextConversation = applyStandaloneUnreadStateToSnapshot(conversation, hasUnreadTurn);
       this.applyConversationSnapshot(normalizedConversationId, nextConversation);
-      const cursor = this.ownerStreamPublishCursorsByConversationId.get(normalizedConversationId);
-      if (cursor) {
-        if (cursor.inFlight) {
-          cursor.standaloneUnreadStateOverride = hasUnreadTurn;
-        } else {
-          cursor.acceptedDocument = applyStandaloneUnreadStateToSnapshot(
-            cursor.acceptedDocument,
-            hasUnreadTurn,
-          );
-        }
-      }
-      return true;
     }
     if (summary && summaryChanged) {
       this.applyThreadSummary({ ...summary, hasUnreadTurn });
@@ -7651,9 +7271,17 @@ export class CodexAppServerManager {
     return true;
   }
 
-  async setConversationUnreadState(conversationId: string, hasUnreadTurn: boolean): Promise<void> {
-    if (!this.applyConversationUnreadState(conversationId, hasUnreadTurn)) return;
-    await runConversationOperation("codex:conversation-unread:set", conversationId, hasUnreadTurn);
+  async setConversationUnreadState(
+    conversationId: string,
+    hasUnreadTurn: boolean,
+    origin: "user" | "turn" = "user",
+  ): Promise<void> {
+    const savedUnread = this.savedReadState?.has(conversationId) ?? false;
+    const changed = this.applyConversationUnreadState(conversationId, hasUnreadTurn);
+    if (!changed && savedUnread === hasUnreadTurn) return;
+    if (hasUnreadTurn) this.savedReadState?.add(conversationId);
+    else this.savedReadState?.delete(conversationId);
+    await this.saveReadState(conversationId, hasUnreadTurn, origin);
   }
 
   async markConversationAsRead(conversationId: string): Promise<void> {
@@ -7689,81 +7317,15 @@ export class CodexAppServerManager {
   }
 
   async removePlanImplementationRequest(threadId: string, turnId: string): Promise<boolean> {
-    const result = await this.executeConversationAction({
-      conversationId: threadId,
-      label: "remove plan implementation request",
-      action: {
-        type: "removePlanImplementationRequest",
-        threadId,
-        turnId,
-      },
-      executeAsOwner: () => this.removePlanImplementationRequestAsOwner(threadId, turnId),
-      waitForStreamRevision: true,
-    });
-    return this.readOwnerBooleanActionResult(result);
-  }
-
-  private async removePlanImplementationRequestAsOwner(
-    threadId: string,
-    turnId: string,
-  ): Promise<OwnerBooleanActionResult> {
-    await this.ensureOwnerForConversationAction(threadId, "remove plan implementation request");
-
-    const streamRevision = await this.publishOwnerActionSnapshotMutation(
-      threadId,
-      "plan implementation remove",
-      (conversation) => {
-        const canonicalState = conversation.canonicalState
-          ? completeCodexCanonicalPlanImplementationState(conversation.canonicalState, turnId)
-          : null;
-        if (!canonicalState) return null;
-        const nextTurns = conversation.turns.map((turn) => {
-          if (turn.turnId !== turnId) {
-            return turn;
-          }
-
-          return {
-            ...turn,
-            items: turn.items.map((item) =>
-              item.type !== "planImplementation"
-                ? item
-                : {
-                    ...item,
-                    status: "completed" as const,
-                    rawItem:
-                      typeof item.rawItem === "object" && item.rawItem !== null
-                        ? {
-                            ...item.rawItem,
-                            isCompleted: true,
-                          }
-                        : item.rawItem,
-                  },
-            ),
-          };
-        });
-        return {
-          ...conversation,
-          canonicalState,
-          turns: nextTurns,
-          requests: conversation.requests.filter(
-            (request) => request.type !== "implementPlan" || request.turnId !== turnId,
-          ),
-          canonicalRequests: [...canonicalState.requests],
-        };
-      },
+    if (!this.historyClient.getConversation(threadId)) return false;
+    this.historyClient.updateConversation(threadId, (draft) =>
+      mutateCodexCanonicalPlanImplementationCompletion(draft, turnId),
     );
-
-    return {
-      accepted: (await runConversationOperation(
-        "codex:thread:plan-implementation:remove",
-        threadId,
-        turnId,
-      )) as boolean,
-      streamRevision,
-    };
+    return true;
   }
 
   resetForTests(): void {
+    this.streamRecovery.dispose();
     this.cancelPendingNodexAgentAuthorizations();
     this.connection = INITIAL_CONNECTION;
     this.account = null;
@@ -7773,21 +7335,21 @@ export class CodexAppServerManager {
     this.threadSummariesById.clear();
     this.loadedThreadSummariesByProject.clear();
     this.threadSummaryLoadsInFlightByProject.clear();
-    this.resumeInFlightByThreadId.clear();
+    this.cancelPendingConversationResumes();
     this.attachmentStateByThreadId.clear();
     this.interruptedTurnResumesInFlightByThreadId.clear();
     this.conversationsById.clear();
     this.asyncQuestions.clear();
-    this.followerAcceptedReplicasByConversationId.clear();
     this.ownerHiddenLifecycleItemTypesByConversationId.clear();
     this.conversationVersionById.clear();
-    this.streamState.reset();
+    this.streamState.resetAfterReconnect();
     this.followerMembershipByConversationId.clear();
     this.composerIntentsByThread.clear();
     this.permissionStateByScope.clear();
     this.permissionStateLoadsInFlightByScope.clear();
     this.threadStartProgressByTarget.clear();
     this.threadTitlesById.clear();
+    this.threadsById.clear();
     this.projectSummaryCallbacksByProject.clear();
     this.recentConversationIds.length = 0;
     this.lastHostError = null;
@@ -7795,15 +7357,12 @@ export class CodexAppServerManager {
     this.lastMetaSnapshotById.clear();
     this.lastAnyOrderKey = null;
     this.lastMetaOrderKey = null;
+    this.conversationActivity.clear();
     this.ownerTextDeltaQueue.dispose();
-    this.ownerTextDeltaSequenceTracker.clear();
-    this.ownerNotificationCompletionByConversationId.clear();
-    this.unclaimedOwnerNotificationSequencesByConversationId.clear();
     this.outputDeltaQueue.dispose();
-    this.cancelOwnerStreamPublishQueues();
+
     this.terminalInputBuffers.clear();
     this.bootstrapStarted = false;
-    this.resyncInFlight.clear();
     this.stop();
   }
 
@@ -7827,6 +7386,7 @@ export class CodexAppServerManager {
     try {
       const connection = (await runConversationOperation(
         "codex:connection:status",
+        this.hostId,
       )) as CodexConnectionState;
       this.handleSharedObjectUpdated({
         hostId: this.hostId,
@@ -7925,7 +7485,40 @@ export class CodexAppServerManager {
     const sharedObject = event.object;
     if (sharedObject.objectType === "connection") {
       if (this.connection !== sharedObject.value) {
-        this.connection = sharedObject.value;
+        const previousConnection = this.connection;
+        const nextConnection = sharedObject.value;
+        if (
+          nextConnection.status !== "connected" &&
+          (this.nativeHostContext !== null || this.nativeHostContextLoad !== null)
+        ) {
+          const source = nextConnection.native ?? previousConnection.native;
+          if (
+            source?.transportKind === "websocket" &&
+            source.sourceEpoch ===
+              (this.nativeHostContext ?? this.suspendedNativeHostContext)?.sourceEpoch
+          )
+            this.suspendNativeConnection();
+          else this.retireNativeHostContext();
+        } else if (
+          previousConnection.status === "connected" &&
+          nextConnection.status === "connected" &&
+          previousConnection.native != null &&
+          nextConnection.native != null &&
+          (previousConnection.native.sourceEpoch !== nextConnection.native.sourceEpoch ||
+            previousConnection.native.generation !== nextConnection.native.generation ||
+            previousConnection.native.transportKind !== nextConnection.native.transportKind)
+        ) {
+          const sameWebSocketIdentity =
+            previousConnection.native.transportKind === "websocket" &&
+            nextConnection.native.transportKind === "websocket" &&
+            previousConnection.native.sourceEpoch === nextConnection.native.sourceEpoch;
+          if (sameWebSocketIdentity) this.suspendNativeConnection();
+          else this.retireNativeHostContext();
+        }
+        this.connection = nextConnection;
+        if (this.connection.status === "connected")
+          void this.refreshNativeHostContext().catch(() => {});
+        for (const id of this.conversationsById.keys()) this.wakeQueuedMessages(id);
         this.notifyListeners(this.connectionCallbacks);
       }
       return;
@@ -7937,6 +7530,8 @@ export class CodexAppServerManager {
       }
 
       this.account = sharedObject.value;
+      if (this.connection.status === "connected")
+        void this.refreshNativeHostContext().catch(() => {});
       this.notifyListeners(this.accountCallbacks);
       void this.loadDictationState().catch(() => {});
       return;
@@ -8015,2228 +7610,43 @@ export class CodexAppServerManager {
     this.notifyControlCallbacks();
   }
 
-  private deferOwnerRecoveryMessage(
-    conversationId: string,
-    message: unknown,
-    apply: () => void,
-  ): boolean {
-    const queue = this.deferredOwnerMessagesByRequestRecovery.get(conversationId);
-    if (!queue) return false;
-
-    let approximateBytes: number;
-    try {
-      const encoded = JSON.stringify(message);
-      approximateBytes = new TextEncoder().encode(encoded ?? "null").byteLength;
-    } catch {
-      approximateBytes = CODEX_OWNER_RECOVERY_MAX_DEFERRED_BYTES + 1;
-    }
-    const totalMessages = [...this.deferredOwnerMessagesByRequestRecovery.values()].reduce(
-      (total, candidate) => total + candidate.messages.length,
-      0,
-    );
-    const totalBytes = [...this.deferredOwnerMessagesByRequestRecovery.values()].reduce(
-      (total, candidate) => total + candidate.approximateBytes,
-      0,
-    );
-    if (
-      queue.messages.length + 1 > CODEX_OWNER_RECOVERY_MAX_DEFERRED_MESSAGES_PER_CONVERSATION ||
-      totalMessages + 1 > CODEX_OWNER_RECOVERY_MAX_DEFERRED_MESSAGES ||
-      queue.approximateBytes + approximateBytes >
-        CODEX_OWNER_RECOVERY_MAX_DEFERRED_BYTES_PER_CONVERSATION ||
-      totalBytes + approximateBytes > CODEX_OWNER_RECOVERY_MAX_DEFERRED_BYTES
-    ) {
-      return false;
-    }
-
-    queue.messages.push({ apply, approximateBytes });
-    queue.approximateBytes += approximateBytes;
-    return true;
-  }
-
-  private discardDeferredOwnerRecoveryMessages(conversationId: string): void {
-    const queue = this.deferredOwnerMessagesByRequestRecovery.get(conversationId);
-    if (!queue) return;
-    queue.messages.length = 0;
-    queue.approximateBytes = 0;
-    this.deferredOwnerMessagesByRequestRecovery.delete(conversationId);
-  }
-
-  private handleThreadOwnerNotification(event: CodexThreadOwnerNotificationEvent): void {
-    if (event.hostId !== this.hostId) {
-      return;
-    }
-    if (typeof event.sequence !== "number") return;
-
-    const eventConversationId = getOwnerNotificationConversationId(event.notification);
-    const deferredMessages = eventConversationId
-      ? this.deferredOwnerMessagesByRequestRecovery.get(eventConversationId)
-      : null;
-    if (deferredMessages) {
-      if (
-        !this.deferOwnerRecoveryMessage(eventConversationId!, event, () =>
-          this.handleThreadOwnerNotification(event),
-        )
-      ) {
-        this.markOwnerStreamPublishUnavailable(eventConversationId!);
-      }
-      return;
-    }
-    if (
-      eventConversationId &&
-      !this.beginOwnerNotificationHandling(eventConversationId, event.sequence)
-    ) {
-      this.markOwnerStreamPublishUnavailable(eventConversationId);
-      return;
-    }
-
-    try {
-      if (
-        event.notification.method === "thread/started" ||
-        event.notification.method === "thread/name/updated" ||
-        event.notification.method === "thread/settings/updated" ||
-        event.notification.method === "thread/status/changed" ||
-        event.notification.method === "thread/tokenUsage/updated" ||
-        event.notification.method === "thread/goal/updated" ||
-        event.notification.method === "thread/goal/cleared"
-      ) {
-        this.handleOwnerThreadNotification(event);
-        return;
-      }
-
-      if (
-        event.notification.method === "turn/diff/updated" ||
-        event.notification.method === "turn/plan/updated" ||
-        event.notification.method === "model/safetyBuffering/updated" ||
-        event.notification.method === "hook/started" ||
-        event.notification.method === "hook/completed" ||
-        event.notification.method === "item/autoApprovalReview/started" ||
-        event.notification.method === "item/autoApprovalReview/completed" ||
-        event.notification.method === "guardianWarning" ||
-        event.notification.method === "model/rerouted"
-      ) {
-        this.handleOwnerTurnMutationNotification(event);
-        return;
-      }
-
-      if (
-        event.notification.method === "turn/started" ||
-        event.notification.method === "turn/completed"
-      ) {
-        this.handleOwnerTurnLifecycleNotification(event);
-        return;
-      }
-
-      if (
-        event.notification.method === "item/started" ||
-        event.notification.method === "item/completed"
-      ) {
-        this.handleOwnerItemLifecycleNotification(event);
-        return;
-      }
-
-      if (event.notification.method === "item/fileChange/patchUpdated") {
-        this.handleOwnerFileChangePatchUpdatedNotification(event);
-        return;
-      }
-
-      if (event.notification.method === "item/mcpToolCall/progress") {
-        this.handleOwnerMcpToolCallProgressNotification(event);
-        return;
-      }
-
-      if (event.notification.method === "item/reasoning/summaryPartAdded") {
-        this.handleOwnerReasoningSummaryPartAddedNotification(event);
-        return;
-      }
-
-      if (event.notification.method === "item/fileChange/outputDelta") {
-        this.handleOwnerNoopItemNotification(event);
-        return;
-      }
-
-      if (event.notification.method === "serverRequest/resolved") {
-        this.handleOwnerServerRequestResolvedNotification(event);
-        return;
-      }
-
-      if (event.notification.method === "error") {
-        this.handleOwnerErrorNotification(event);
-        return;
-      }
-
-      if (event.notification.method === "item/commandExecution/terminalInteraction") {
-        this.handleOwnerTerminalInteractionNotification(event);
-        return;
-      }
-
-      const payload =
-        typeof event.notification.params === "object" && event.notification.params !== null
-          ? (event.notification.params as Record<string, unknown>)
-          : null;
-      if (!payload) return;
-      if (
-        typeof payload.threadId !== "string" ||
-        typeof payload.itemId !== "string" ||
-        typeof payload.delta !== "string"
-      ) {
-        return;
-      }
-      const turnId = getString(payload, "turnId");
-      if (
-        this.ackOwnerNotificationIfTombstoned(
-          payload.threadId,
-          [turnId, payload.itemId],
-          event.sequence,
-        )
-      ) {
-        return;
-      }
-
-      if (event.notification.method === "item/commandExecution/outputDelta") {
-        this.claimOwnerNotificationSequence(payload.threadId, event.sequence);
-        this.outputDeltaQueue.enqueue({
-          conversationId: payload.threadId,
-          turnId,
-          itemId: payload.itemId,
-          delta: payload.delta,
-          ownerNotificationSequence: event.sequence,
-        });
-        return;
-      }
-
-      if (!isCodexFrameTextDeltaNotification(event.notification)) return;
-      const frameTextDelta = toCodexFrameTextDelta(event.notification);
-      if (frameTextDelta.target.type === "agentMessage" || frameTextDelta.target.type === "plan") {
-        logAssistantStreamingDebugSampled(
-          "renderer-owner-delta-received",
-          `${payload.threadId}:${turnId ?? "latest"}:${payload.itemId}:${event.notification.method}`,
-          {
-            method: event.notification.method,
-            sequence: event.sequence,
-            threadId: payload.threadId,
-            turnId,
-            itemId: payload.itemId,
-            deltaLength: payload.delta.length,
-          },
-        );
-      }
-
-      const queued = this.ownerTextDeltaQueue.enqueue({
-        ...frameTextDelta,
-        ownerNotificationSequence: event.sequence,
-      });
-      // The sequence becomes ACK-eligible only after both bounded buffers own the same delta.
-      if (!queued.accepted) {
-        this.markOwnerStreamPublishUnavailable(frameTextDelta.conversationId);
-        return;
-      }
-      const tracked = this.ownerTextDeltaSequenceTracker.track(frameTextDelta, event.sequence);
-      if (!tracked.accepted) {
-        this.markOwnerStreamPublishUnavailable(frameTextDelta.conversationId);
-        return;
-      }
-      this.claimOwnerNotificationSequence(frameTextDelta.conversationId, event.sequence);
-    } catch (error) {
-      if (eventConversationId) {
-        this.claimOwnerNotificationSequence(eventConversationId, event.sequence);
-      }
-      throw error;
-    } finally {
-      if (eventConversationId) {
-        this.finishOwnerNotificationHandling(eventConversationId, event.sequence);
-      }
-    }
-  }
-
-  private handleThreadOwnerRequest(event: CodexThreadOwnerRequestEvent): void {
-    if (event.hostId !== this.hostId) {
-      return;
-    }
-    if (typeof event.sequence !== "number") return;
-
-    const conversationId = event.request.params.threadId;
-    const deferredMessages = this.deferredOwnerMessagesByRequestRecovery.get(conversationId);
-    if (deferredMessages) {
-      if (
-        !this.deferOwnerRecoveryMessage(conversationId, event, () =>
-          this.handleThreadOwnerRequest(event),
-        )
-      ) {
-        this.markOwnerStreamPublishUnavailable(conversationId);
-      }
-      return;
-    }
-    if (!this.registerOwnerNotificationSequence(conversationId, event.sequence)) {
-      this.markOwnerStreamPublishUnavailable(conversationId);
-      return;
-    }
-    if (!conversationId) {
-      void this.ackOwnerNotification("", event.sequence);
-      return;
-    }
-
-    const currentCanonical = this.conversationsById.get(conversationId)?.canonicalState;
-    if (!currentCanonical || currentCanonical.protocol.id !== conversationId) {
-      void this.recoverThreadOwnerRequest(event, conversationId);
-      return;
-    }
-
-    this.applyThreadOwnerRequest(event, conversationId);
-  }
-
-  private async recoverThreadOwnerRequest(
-    event: CodexThreadOwnerRequestEvent,
-    conversationId: string,
-  ): Promise<void> {
-    if (
-      !this.deferredOwnerMessagesByRequestRecovery.has(conversationId) &&
-      this.deferredOwnerMessagesByRequestRecovery.size >= CODEX_OWNER_RECOVERY_MAX_CONVERSATIONS
-    ) {
-      this.markOwnerStreamPublishUnavailable(conversationId);
-      return;
-    }
-    const deferredMessages: DeferredOwnerRecoveryQueue = {
-      messages: [],
-      approximateBytes: 0,
-    };
-    this.deferredOwnerMessagesByRequestRecovery.set(conversationId, deferredMessages);
-    let recovered = false;
-    try {
-      const conversation = await runWithOwnerStreamDeadline(
-        this.requestThreadStreamResume(conversationId),
-        `Owner request recovery for ${conversationId}`,
-      );
-      if (this.deferredOwnerMessagesByRequestRecovery.get(conversationId) !== deferredMessages) {
-        return;
-      }
-      const canonicalState = conversation?.canonicalState;
-      if (!canonicalState || canonicalState.protocol.id !== conversationId) {
-        return;
-      }
-
-      recovered = true;
-      this.applyThreadOwnerRequest(event, conversationId);
-    } catch {
-      // Recovery failure is handled by the fail-closed path below.
-    } finally {
-      if (this.deferredOwnerMessagesByRequestRecovery.get(conversationId) === deferredMessages) {
-        this.deferredOwnerMessagesByRequestRecovery.delete(conversationId);
-        if (!recovered) {
-          this.handleOwnerReducerUnavailable(conversationId);
-          await this.ackOwnerNotification(conversationId, event.sequence);
-        }
-        for (const deferredMessage of deferredMessages.messages) {
-          deferredMessage.apply();
-        }
-      }
-    }
-  }
-
-  private applyThreadOwnerRequest(
-    event: CodexThreadOwnerRequestEvent,
-    conversationId: string,
-  ): void {
-    if (event.request.method === "item/tool/call") {
-      void this.handleOwnerDynamicToolCallRequest(event, conversationId);
-      return;
-    }
-
-    this.publishOwnerConversationMutation(conversationId, event.sequence, (conversation) => {
-      const before = conversation.canonicalState;
-      if (!before || before.protocol.id !== conversationId) return null;
-      const application = applyOwnerServerRequestToConversation(
-        conversation,
-        before,
-        event.request,
-        this.isOpenAIFormElicitationsEnabled(),
-      );
-      this.applyOwnerCanonicalHiddenTurns(conversationId, application.hiddenTurns);
-      return application.conversation;
-    });
-  }
-
-  private async handleOwnerDynamicToolCallRequest(
-    event: CodexThreadOwnerRequestEvent,
-    conversationId: string,
-  ): Promise<void> {
-    const role = this.streamState.getRole(conversationId);
-    if (role?.role !== "owner") {
-      this.handleOwnerReducerUnavailable(conversationId);
-      await this.ackOwnerNotification(conversationId, event.sequence);
-      return;
-    }
-
-    const conversation = this.conversationsById.get(conversationId);
-    if (!conversation) {
-      this.handleOwnerReducerUnavailable(conversationId);
-      await this.ackOwnerNotification(conversationId, event.sequence);
-      return;
-    }
-
-    const before = conversation.canonicalState;
-    if (!before || before.protocol.id !== conversationId) {
-      this.handleOwnerReducerUnavailable(conversationId);
-      await this.ackOwnerNotification(conversationId, event.sequence);
-      return;
-    }
-    const application = applyOwnerServerRequestToConversation(
-      conversation,
-      before,
-      event.request,
-      this.isOpenAIFormElicitationsEnabled(),
-    );
-    if (application.lifecycle.disposition === "stored") {
-      this.applyOwnerCanonicalHiddenTurns(conversationId, application.hiddenTurns);
-      this.publishOwnerConversationMutation(
-        conversationId,
-        event.sequence,
-        () => application.conversation,
-      );
-      return;
-    }
-
-    try {
-      const serviceTier = readCodexServiceTier();
-      await runConversationOperation(
-        "codex:dynamic-tool-call:respond",
-        conversationId,
-        event.request.id,
-        {
-          permissionMode: conversation.projectId
-            ? (this.permissionStateByScope.get(conversation.projectId)?.mode ??
-              DEFAULT_PERMISSION_STATE.mode)
-            : (this.permissionStateByScope.get(null)?.mode ?? DEFAULT_PERMISSION_STATE.mode),
-          serviceTierSelector:
-            serviceTier === "fast" ? { type: "custom", serviceTier } : { type: "standard" },
-        },
-      );
-    } finally {
-      await this.ackOwnerNotification(conversationId, event.sequence);
-    }
-  }
-
-  private handleOwnerThreadNotification(event: CodexThreadOwnerNotificationEvent): void {
-    if (event.notification.method === "thread/started") {
-      const payload = toOwnerThreadStartedPayload(event.notification);
-      if (!this.requireOwnerCanonicalMetadata(payload.threadId, event.sequence)) return;
-      this.publishOwnerConversationSnapshotMutation(
-        payload.threadId,
-        event.sequence,
-        (conversation) => {
-          const before = conversation.canonicalState;
-          if (!before || before.protocol.id !== payload.threadId) return null;
-          const state = reduceCodexConversationThreadStarted(
-            before,
-            buildOwnerCanonicalStartedThread(before, payload),
-          );
-          return applyOwnerThreadStartedToConversation(conversation, state);
-        },
-      );
-      return;
-    }
-
-    if (event.notification.method === "thread/goal/updated") {
-      const payload = event.notification.params;
-      if (!this.requireOwnerCanonicalMetadata(payload.threadId, event.sequence)) return;
-      let effects: readonly CodexThreadMetadataEffect[] = [];
-      this.publishOwnerConversationMutation(payload.threadId, event.sequence, (conversation) => {
-        const before = conversation.canonicalState;
-        if (!before || before.protocol.id !== payload.threadId) return null;
-        const result = reduceCodexConversationThreadGoalUpdated(
-          before,
-          payload.threadId,
-          payload.goal,
-        );
-        effects = result.effects;
-        return projectOwnerThreadGoalToConversation(conversation, result.state);
-      });
-      this.consumeOwnerThreadMetadataEffects(effects);
-      return;
-    }
-
-    if (event.notification.method === "thread/goal/cleared") {
-      const payload = event.notification.params;
-      if (!this.requireOwnerCanonicalMetadata(payload.threadId, event.sequence)) return;
-      this.publishOwnerConversationMutation(payload.threadId, event.sequence, (conversation) => {
-        const before = conversation.canonicalState;
-        if (!before || before.protocol.id !== payload.threadId) return null;
-        const state = reduceCodexConversationThreadGoalCleared(before, payload.threadId);
-        return projectOwnerThreadGoalToConversation(conversation, state);
-      });
-      return;
-    }
-
-    if (event.notification.method === "thread/name/updated") {
-      const payload = event.notification.params;
-      if (!this.requireOwnerCanonicalMetadata(payload.threadId, event.sequence)) return;
-      this.publishOwnerConversationMutation(payload.threadId, event.sequence, (conversation) => {
-        const before = conversation.canonicalState;
-        if (!before || before.protocol.id !== payload.threadId) return null;
-        const state = reduceCodexConversationThreadName(
-          before,
-          payload.threadId,
-          payload.threadName,
-        );
-        return projectOwnerThreadNameToConversation(conversation, state);
-      });
-      return;
-    }
-
-    if (event.notification.method === "thread/settings/updated") {
-      const payload = event.notification.params;
-      if (!this.requireOwnerCanonicalMetadata(payload.threadId, event.sequence)) return;
-      this.publishOwnerConversationMutation(payload.threadId, event.sequence, (conversation) => {
-        const before = conversation.canonicalState;
-        if (!before || before.protocol.id !== payload.threadId) return null;
-        const state = reduceCodexConversationThreadSettings(
-          before,
-          payload.threadId,
-          payload.threadSettings,
-        );
-        return projectOwnerThreadSettingsToConversation(conversation, state);
-      });
-      return;
-    }
-
-    if (event.notification.method === "thread/tokenUsage/updated") {
-      const payload = event.notification.params;
-      if (!this.requireOwnerCanonicalMetadata(payload.threadId, event.sequence)) return;
-      this.publishOwnerConversationMutation(payload.threadId, event.sequence, (conversation) => {
-        const before = conversation.canonicalState;
-        if (!before || before.protocol.id !== payload.threadId) return null;
-        const state = reduceCodexConversationThreadTokenUsage(before, {
-          conversationId: payload.threadId,
-          tokenUsage: payload.tokenUsage,
-        });
-        if (state === before) return conversation;
-        return {
-          ...conversation,
-          canonicalState: state,
-          latestTokenUsageInfo: state.sidecar.latestTokenUsageInfo ?? null,
-        };
-      });
-      return;
-    }
-
-    if (event.notification.method !== "thread/status/changed") return;
-    const payload = toOwnerThreadStatusPayload(
-      event.notification.params.threadId,
-      event.notification.params.status,
-    );
-    if (!this.requireOwnerCanonicalMetadata(payload.threadId, event.sequence)) return;
-    let effects: readonly CodexThreadMetadataEffect[] = [];
-    this.publishOwnerConversationMutation(payload.threadId, event.sequence, (conversation) => {
-      const before = conversation.canonicalState;
-      if (!before || before.protocol.id !== payload.threadId) return null;
-      const result = reduceCodexConversationThreadStatus(
-        before,
-        payload.threadId,
-        payload.threadRuntimeStatus,
-      );
-      effects = result.effects;
-      return projectOwnerThreadStatusToConversation(conversation, result.state);
-    });
-    this.consumeOwnerThreadMetadataEffects(effects);
-  }
-
-  private requireOwnerCanonicalMetadata(threadId: string, sequence: number): boolean {
-    const state = this.conversationsById.get(threadId)?.canonicalState;
-    if (state?.protocol.id === threadId) return true;
-    this.handleOwnerReducerUnavailable(threadId);
-    void this.ackOwnerNotification(threadId, sequence);
-    return false;
-  }
-
   private consumeOwnerThreadMetadataEffects(effects: readonly CodexThreadMetadataEffect[]): void {
     for (const effect of effects) {
       if (effect.type === "clearCompletedGoal") {
         void this.clearThreadGoal(effect.threadId).catch(() => {});
         continue;
       }
-      void this.maybeContinueActiveThreadGoalAsOwner(effect.threadId);
     }
   }
 
-  private handleOwnerTurnMutationNotification(event: CodexThreadOwnerNotificationEvent): void {
-    if (event.notification.method === "guardianWarning") {
-      const payload = event.notification.params;
-      if (!shouldShowAutoReviewInterruptionWarning(payload)) {
-        void this.ackOwnerNotification(payload.threadId, event.sequence);
-        return;
-      }
-      const observedAtMs = Date.now();
-      if (!this.requireOwnerCanonicalMetadata(payload.threadId, event.sequence)) return;
-      this.publishOwnerConversationMutation(payload.threadId, event.sequence, (conversation) => {
-        const before = conversation.canonicalState;
-        if (!before || before.protocol.id !== payload.threadId) return null;
-        const result = reduceCodexConversationGuardianWarning(
-          before,
-          payload.threadId,
-          createOwnerGeneratedItemId("auto-review-interruption-warning"),
-        );
-        return projectOwnerCanonicalTurnMetadataResult(conversation, before, result, observedAtMs);
-      });
-      return;
-    }
-
-    if (
-      event.notification.method === "item/autoApprovalReview/started" ||
-      event.notification.method === "item/autoApprovalReview/completed"
-    ) {
-      const notification = event.notification;
-      const payload = notification.params;
-      const observedAtMs = Date.now();
-      if (
-        this.ackOwnerNotificationIfTombstoned(
-          payload.threadId,
-          [payload.turnId, payload.targetItemId],
-          event.sequence,
-        )
-      )
-        return;
-      if (!this.requireOwnerCanonicalMetadata(payload.threadId, event.sequence)) return;
-      this.publishOwnerConversationMutation(payload.threadId, event.sequence, (conversation) => {
-        const before = conversation.canonicalState;
-        if (!before || before.protocol.id !== payload.threadId) return null;
-        const result = reduceCodexConversationAutomaticApprovalReview(
-          before,
-          notification,
-          observedAtMs,
-        );
-        return projectOwnerCanonicalTurnMetadataResult(conversation, before, result, observedAtMs);
-      });
-      return;
-    }
-
-    if (
-      event.notification.method === "hook/started" ||
-      event.notification.method === "hook/completed"
-    ) {
-      const method = event.notification.method;
-      const payload = event.notification.params;
-      const observedAtMs = Date.now();
-      if (this.ackOwnerNotificationIfTombstoned(payload.threadId, [payload.turnId], event.sequence))
-        return;
-      if (!this.requireOwnerCanonicalMetadata(payload.threadId, event.sequence)) return;
-      let effects: readonly CodexTurnMetadataEffect[] = [];
-      this.publishOwnerConversationMutation(payload.threadId, event.sequence, (conversation) => {
-        const before = conversation.canonicalState;
-        if (!before || before.protocol.id !== payload.threadId) return null;
-        const result = reduceCodexConversationHookRun(
-          before,
-          payload.threadId,
-          payload.turnId,
-          method,
-          payload.run,
-          observedAtMs,
-        );
-        effects = result.effects;
-        if (result.state === before) return conversation;
-        const projection = applyOwnerCanonicalTurnProjection(conversation, before, result.state, {
-          observedAtMs,
-          preserveExistingUpdatedAt: true,
-        });
-        return { ...projection.conversation, canonicalState: result.state };
-      });
-      this.consumeOwnerTurnMetadataEffects(effects);
-      return;
-    }
-
-    if (event.notification.method === "model/safetyBuffering/updated") {
-      const payload = event.notification.params;
-      const observedAtMs = Date.now();
-      const safetyBuffering: CodexSafetyBufferingState = {
-        useCases: payload.useCases,
-        reasons: payload.reasons,
-        showBufferingUi: payload.showBufferingUi,
-        fasterModel: payload.fasterModel,
-      };
-      if (this.ackOwnerNotificationIfTombstoned(payload.threadId, [payload.turnId], event.sequence))
-        return;
-      if (!this.requireOwnerCanonicalMetadata(payload.threadId, event.sequence)) return;
-      this.publishOwnerConversationMutation(payload.threadId, event.sequence, (conversation) => {
-        const before = conversation.canonicalState;
-        if (!before || before.protocol.id !== payload.threadId) return null;
-        const result = reduceCodexConversationSafetyBuffering(
-          before,
-          payload.threadId,
-          payload.turnId,
-          safetyBuffering,
-          observedAtMs,
-        );
-        if (result.state === before) return conversation;
-        const projection = applyOwnerCanonicalTurnProjection(conversation, before, result.state, {
-          observedAtMs,
-          preserveExistingUpdatedAt: true,
-        });
-        return { ...projection.conversation, canonicalState: result.state };
-      });
-      return;
-    }
-
-    if (event.notification.method === "turn/plan/updated") {
-      const notification = event.notification;
-      const payload = notification.params;
-      const observedAtMs = Date.now();
-      if (this.ackOwnerNotificationIfTombstoned(payload.threadId, [payload.turnId], event.sequence))
-        return;
-      if (!this.requireOwnerCanonicalMetadata(payload.threadId, event.sequence)) return;
-      this.publishOwnerConversationMutation(payload.threadId, event.sequence, (conversation) => {
-        const before = conversation.canonicalState;
-        if (!before || before.protocol.id !== payload.threadId) return null;
-        const result = reduceCodexConversationTurnPlan(
-          before,
-          notification,
-          createOwnerGeneratedItemId("todo-list"),
-          observedAtMs,
-        );
-        return projectOwnerCanonicalTurnMetadataResult(conversation, before, result, observedAtMs);
-      });
-      return;
-    }
-
-    if (event.notification.method === "model/rerouted") {
-      const notification = event.notification;
-      const payload = notification.params;
-      const observedAtMs = Date.now();
-      if (this.ackOwnerNotificationIfTombstoned(payload.threadId, [payload.turnId], event.sequence))
-        return;
-      if (!this.requireOwnerCanonicalMetadata(payload.threadId, event.sequence)) return;
-      this.publishOwnerConversationMutation(payload.threadId, event.sequence, (conversation) => {
-        const before = conversation.canonicalState;
-        if (!before || before.protocol.id !== payload.threadId) return null;
-        const result = reduceCodexConversationModelRerouted(
-          before,
-          notification,
-          createOwnerGeneratedItemId("model-rerouted"),
-          observedAtMs,
-        );
-        return projectOwnerCanonicalTurnMetadataResult(conversation, before, result, observedAtMs);
-      });
-      return;
-    }
-
-    if (event.notification.method !== "turn/diff/updated") return;
-    const payload = event.notification.params;
-    const observedAtMs = Date.now();
-    if (this.ackOwnerNotificationIfTombstoned(payload.threadId, [payload.turnId], event.sequence))
-      return;
-    if (!this.requireOwnerCanonicalMetadata(payload.threadId, event.sequence)) return;
-
-    this.publishOwnerConversationMutation(payload.threadId, event.sequence, (conversation) => {
+  private registerThreadMetadata(thread: Thread): void {
+    this.threadsById.set(thread.id, { ...thread, turns: [] });
+    for (const [id, conversation] of this.conversationsById) {
+      if (this.streamState.getRole(id)?.role === "follower") continue;
       const before = conversation.canonicalState;
-      if (!before || before.protocol.id !== payload.threadId) return null;
-      const result = reduceCodexConversationTurnDiff(
-        before,
-        payload.threadId,
-        payload.turnId,
-        payload.diff,
-        observedAtMs,
-      );
-      if (result.state === before) return conversation;
-      const projection = applyOwnerCanonicalTurnProjection(conversation, before, result.state, {
-        observedAtMs,
-        preserveExistingUpdatedAt: true,
-      });
-      return { ...projection.conversation, canonicalState: result.state };
-    });
-  }
-
-  private consumeOwnerTurnMetadataEffects(effects: readonly CodexTurnMetadataEffect[]): void {
-    for (const effect of effects) {
-      if (effect.type === "markConversationStreaming") {
-        this.streamState.setStreaming(effect.threadId, true);
-      }
-    }
-  }
-
-  /** Commit earlier command bytes before prose drains or a lifecycle snapshot can replace them. */
-  private drainOwnerItemStreamsBefore(continuation: () => void, conversationId: string): boolean {
-    this.outputDeltaQueue.flushNow();
-    return this.ownerTextDeltaQueue.drainBefore(continuation, conversationId);
-  }
-
-  private handleOwnerTurnLifecycleNotification(event: CodexThreadOwnerNotificationEvent): void {
-    const method = event.notification.method;
-    if (method !== "turn/started" && method !== "turn/completed") {
-      return;
-    }
-
-    const deferredForTextDrain =
-      method === "turn/completed" &&
-      this.drainOwnerItemStreamsBefore(() => {
-        this.handleThreadOwnerNotification(event);
-      }, event.notification.params.threadId);
-    if (deferredForTextDrain) {
-      this.claimOwnerNotificationSequence(event.notification.params.threadId, event.sequence);
-      return;
-    }
-
-    const payload = toOwnerTurnLifecyclePayload(event.notification);
-    if (method === "turn/completed") {
-      this.terminalInputBuffers.clearTurn(payload.threadId, payload.turnId);
-    }
-    if (this.ackOwnerNotificationIfTombstoned(payload.threadId, [payload.turnId], event.sequence))
-      return;
-
-    logAssistantStreamingDebug("renderer-owner-turn-lifecycle", {
-      method,
-      sequence: event.sequence,
-      threadId: payload.threadId,
-      turnId: payload.turnId,
-      status: payload.status,
-    });
-
-    this.applyOwnerTurnLifecycleNotification(method, payload, event.sequence);
-  }
-
-  private applyOwnerTurnLifecycleNotification(
-    method: OwnerTurnLifecycleMethod,
-    payload: OwnerTurnLifecyclePayload,
-    ownerNotificationSequence: number,
-  ): void {
-    const currentCanonical = this.conversationsById.get(payload.threadId)?.canonicalState;
-    if (!currentCanonical || currentCanonical.protocol.id !== payload.threadId) {
-      this.handleOwnerReducerUnavailable(payload.threadId);
-      void this.ackOwnerNotification(payload.threadId, ownerNotificationSequence);
-      return;
-    }
-    this.publishOwnerConversationSnapshotMutation(
-      payload.threadId,
-      ownerNotificationSequence,
-      (conversation) => {
-        const before = conversation.canonicalState;
-        if (!before || before.protocol.id !== payload.threadId) return null;
-        const projection = applyOwnerTurnLifecycleToConversation(
-          conversation,
-          before,
-          method,
-          payload,
+      if (!before) continue;
+      const receipt = new CodexConversationEntityDocument()
+        .withCanonicalState(before)
+        .mutate((draft) =>
+          mutateCodexConversationThreadMetadata(
+            draft,
+            thread.id,
+            (id) => this.threadsById.get(id) ?? null,
+          ),
         );
-        this.applyOwnerCanonicalHiddenTurns(payload.threadId, projection.hiddenTurns);
-        return projection.conversation;
-      },
-    );
-  }
-
-  private handleOwnerItemLifecycleNotification(event: CodexThreadOwnerNotificationEvent): void {
-    const method = event.notification.method;
-    if (method !== "item/started" && method !== "item/completed") {
-      return;
-    }
-
-    const deferredForTextDrain =
-      method === "item/completed" &&
-      this.drainOwnerItemStreamsBefore(() => {
-        this.handleThreadOwnerNotification(event);
-      }, event.notification.params.threadId);
-    if (deferredForTextDrain) {
-      this.claimOwnerNotificationSequence(event.notification.params.threadId, event.sequence);
-      return;
-    }
-
-    const payload = toOwnerItemLifecyclePayload(event.notification);
-    const itemId = payload.item.id;
-    if (payload.turnId) {
-      this.terminalInputBuffers.clearItem({
-        conversationId: payload.threadId,
-        turnId: payload.turnId,
-        itemId,
-      });
-    }
-    if (
-      this.ackOwnerNotificationIfTombstoned(
-        payload.threadId,
-        [payload.turnId, itemId],
-        event.sequence,
-      )
-    ) {
-      return;
-    }
-    logAssistantStreamingDebug("renderer-owner-item-lifecycle", {
-      method,
-      sequence: event.sequence,
-      threadId: payload.threadId,
-      turnId: payload.turnId,
-      itemId,
-      itemType: payload.item.type,
-      itemStatus: "status" in payload.item ? payload.item.status : null,
-    });
-
-    this.applyOwnerItemLifecycleNotification(method, payload, event.sequence);
-    if (method === "item/started") this.asyncQuestions.receive(payload.threadId, payload.item.id);
-  }
-
-  private applyOwnerItemLifecycleNotification(
-    method: "item/started" | "item/completed",
-    payload: OwnerItemLifecyclePayload,
-    ownerNotificationSequence: number,
-  ): void {
-    const currentCanonical = this.conversationsById.get(payload.threadId)?.canonicalState;
-    if (!currentCanonical || currentCanonical.protocol.id !== payload.threadId) {
-      this.handleOwnerReducerUnavailable(payload.threadId);
-      void this.ackOwnerNotification(payload.threadId, ownerNotificationSequence);
-      return;
-    }
-
-    this.publishOwnerConversationMutation(
-      payload.threadId,
-      ownerNotificationSequence,
-      (conversation) => {
-        const before = conversation.canonicalState;
-        if (!before || before.protocol.id !== payload.threadId) return null;
-        const canonicalResult = reduceCodexConversationEventWithEffects(
-          before,
-          { type: "notification", notification: payload.notification },
-          {
-            now: () => payload.observedAtMs,
-            resolveCollabReceiverThread: (receiverThreadId) =>
-              this.resolveLoadedOwnerCanonicalThread(receiverThreadId),
-          },
-        );
-        const projection = applyOwnerCanonicalTurnProjection(
-          conversation,
-          before,
-          canonicalResult.state,
-          {
-            observedAtMs: payload.observedAtMs,
-            lifecycleStatus: method === "item/started" ? "inProgress" : "completed",
-          },
-        );
-        for (const effect of canonicalResult.effects) {
-          if (effect.type === "markConversationStreaming") {
-            this.streamState.setStreaming(effect.threadId, true);
-            continue;
-          }
-          // Collaboration receiver metadata invalidates the bounded overview projection; it must
-          // never make an owner lifecycle notification hydrate child transcript history.
-          if (effect.type === "hydrateCollabThreads") continue;
-        }
-        this.applyOwnerCanonicalHiddenTurns(payload.threadId, projection.hiddenTurns);
-        return {
-          ...projection.conversation,
-          canonicalState: canonicalResult.state,
-          canonicalRequests: [...canonicalResult.state.requests],
-          hasUnreadTurn: canonicalResult.state.sidecar.hasUnreadTurn,
-        };
-      },
-    );
-  }
-
-  private resolveLoadedOwnerCanonicalThread(threadId: string): Thread | null {
-    const state = this.conversationsById.get(threadId)?.canonicalState;
-    if (!state) return null;
-    return projectCodexCanonicalProtocolThread(state);
-  }
-
-  private applyOwnerCanonicalHiddenTurns(
-    threadId: string,
-    turns: readonly OwnerCanonicalLifecycleHiddenTurn[],
-  ): void {
-    const hiddenTypesByTurn =
-      this.ownerHiddenLifecycleItemTypesByConversationId.get(threadId) ?? new Map();
-    for (const turn of turns) {
-      if (turn.sourceTurnKey !== turn.targetTurnKey) {
-        hiddenTypesByTurn.delete(turn.sourceTurnKey);
-      }
-      if (turn.itemTypes.size === 0) {
-        hiddenTypesByTurn.delete(turn.targetTurnKey);
-        continue;
-      }
-      hiddenTypesByTurn.set(turn.targetTurnKey, new Map(turn.itemTypes));
-    }
-    if (hiddenTypesByTurn.size === 0) {
-      this.ownerHiddenLifecycleItemTypesByConversationId.delete(threadId);
-      return;
-    }
-    this.ownerHiddenLifecycleItemTypesByConversationId.set(threadId, hiddenTypesByTurn);
-  }
-
-  private handleOwnerFileChangePatchUpdatedNotification(
-    event: CodexThreadOwnerNotificationEvent,
-  ): void {
-    if (!isCodexFileChangePatchUpdatedNotification(event.notification)) return;
-    const update = toCodexFileChangePatchUpdate(event.notification);
-    if (
-      this.ackOwnerNotificationIfTombstoned(
-        update.conversationId,
-        [update.turnId, update.itemId],
-        event.sequence,
-      )
-    ) {
-      return;
-    }
-    const currentCanonical = this.conversationsById.get(update.conversationId)?.canonicalState;
-    if (!currentCanonical || currentCanonical.protocol.id !== update.conversationId) {
-      this.handleOwnerReducerUnavailable(update.conversationId);
-      void this.ackOwnerNotification(update.conversationId, event.sequence);
-      return;
-    }
-
-    this.publishOwnerConversationMutation(update.conversationId, event.sequence, (conversation) => {
-      const before = conversation.canonicalState;
-      if (!before || before.protocol.id !== update.conversationId) return null;
-      const observedAtMs = Date.now();
-      const result = reduceCodexConversationFileChangePatch(before, update, {
-        now: () => observedAtMs,
-      });
-      if (result.disposition !== "applied") {
-        console.warn("Dropping fileChange/patchUpdated for missing turn", {
-          threadId: update.conversationId,
-          turnId: update.turnId,
-          itemId: update.itemId,
-        });
-        return conversation;
-      }
-      if (!result.stateChanged) return conversation;
-      const projection = applyOwnerCanonicalTurnProjection(conversation, before, result.state, {
-        observedAtMs,
-        preserveExistingUpdatedAt: true,
-      });
-      this.applyOwnerCanonicalHiddenTurns(update.conversationId, projection.hiddenTurns);
-      return { ...projection.conversation, canonicalState: result.state };
-    });
-  }
-
-  private handleOwnerMcpToolCallProgressNotification(
-    event: CodexThreadOwnerNotificationEvent,
-  ): void {
-    if (!isCodexMcpToolCallProgressNotification(event.notification)) return;
-    const update = toCodexMcpToolCallProgressUpdate(event.notification);
-    if (
-      this.ackOwnerNotificationIfTombstoned(
-        update.conversationId,
-        [update.turnId, update.itemId],
-        event.sequence,
-      )
-    ) {
-      return;
-    }
-    const currentCanonical = this.conversationsById.get(update.conversationId)?.canonicalState;
-    if (!currentCanonical || currentCanonical.protocol.id !== update.conversationId) {
-      this.handleOwnerReducerUnavailable(update.conversationId);
-      void this.ackOwnerNotification(update.conversationId, event.sequence);
-      return;
-    }
-
-    this.publishOwnerConversationMutation(update.conversationId, event.sequence, (conversation) => {
-      const before = conversation.canonicalState;
-      if (!before || before.protocol.id !== update.conversationId) return null;
-      const observedAtMs = Date.now();
-      const result = reduceCodexConversationMcpToolCallProgress(before, update, {
-        now: () => observedAtMs,
-      });
-      if (result.disposition !== "applied") return conversation;
-      if (result.matchedItemIndex >= 0) {
-        console.debug("Ignoring mcpToolCall progress message", {
-          itemId: update.itemId,
-          message: update.message,
-        });
-      } else {
-        console.error("Item not found in turn state", {
-          itemId: update.itemId,
-          expectedType: "mcpToolCall",
-        });
-      }
-      if (!result.stateChanged) return conversation;
-      const projection = applyOwnerCanonicalTurnProjection(conversation, before, result.state, {
-        observedAtMs,
-        preserveExistingUpdatedAt: true,
-      });
-      this.applyOwnerCanonicalHiddenTurns(update.conversationId, projection.hiddenTurns);
-      return { ...projection.conversation, canonicalState: result.state };
-    });
-  }
-
-  private handleOwnerNoopItemNotification(event: CodexThreadOwnerNotificationEvent): void {
-    if (event.notification.method !== "item/fileChange/outputDelta") return;
-
-    void this.ackOwnerNotification(event.notification.params.threadId, event.sequence);
-  }
-
-  private handleOwnerReasoningSummaryPartAddedNotification(
-    event: CodexThreadOwnerNotificationEvent,
-  ): void {
-    if (event.notification.method !== "item/reasoning/summaryPartAdded") return;
-    const payload = event.notification.params;
-    if (
-      this.ackOwnerNotificationIfTombstoned(
-        payload.threadId,
-        [payload.turnId, payload.itemId],
-        event.sequence,
-      )
-    ) {
-      return;
-    }
-    const currentCanonical = this.conversationsById.get(payload.threadId)?.canonicalState;
-    if (!currentCanonical || currentCanonical.protocol.id !== payload.threadId) {
-      this.handleOwnerReducerUnavailable(payload.threadId);
-      void this.ackOwnerNotification(payload.threadId, event.sequence);
-      return;
-    }
-    this.publishOwnerConversationMutation(payload.threadId, event.sequence, (conversation) => {
-      const before = conversation.canonicalState;
-      if (!before || before.protocol.id !== payload.threadId) return null;
-      const result = reduceCodexConversationEventWithEffects(
-        before,
-        { type: "notification", notification: event.notification },
-        { now: () => Date.now() },
-      );
-      if (result.state === before) return conversation;
-      const projection = applyOwnerCanonicalTurnProjection(conversation, before, result.state, {
-        observedAtMs: Date.now(),
-        preserveExistingUpdatedAt: true,
-      });
-      this.applyOwnerCanonicalHiddenTurns(payload.threadId, projection.hiddenTurns);
-      return {
-        ...projection.conversation,
-        canonicalState: result.state,
-        canonicalRequests: [...result.state.requests],
-        hasUnreadTurn: result.state.sidecar.hasUnreadTurn,
-      };
-    });
-  }
-
-  private handleOwnerTerminalInteractionNotification(
-    event: CodexThreadOwnerNotificationEvent,
-  ): void {
-    if (event.notification.method !== "item/commandExecution/terminalInteraction") return;
-    const payload = event.notification.params;
-
-    if (
-      this.ackOwnerNotificationIfTombstoned(
-        payload.threadId,
-        [payload.turnId, payload.itemId],
-        event.sequence,
-      )
-    ) {
-      return;
-    }
-    const parsed = this.terminalInputBuffers.accept(
-      {
-        conversationId: payload.threadId,
-        turnId: payload.turnId,
-        itemId: payload.itemId,
-      },
-      payload.stdin,
-    );
-    if (parsed.disposition === "overflow") {
-      console.warn("Dropping overflowing commandExecution/terminalInteraction", {
-        threadId: payload.threadId,
-        turnId: payload.turnId,
-        itemId: payload.itemId,
-        reason: parsed.reason,
-      });
-      this.claimOwnerNotificationSequence(payload.threadId, event.sequence);
-      this.markOwnerStreamPublishUnavailable(payload.threadId);
-      return;
-    }
-    if (parsed.commands.length === 0) return;
-
-    const terminalUpdate: CodexTerminalCommandUpdate = {
-      conversationId: payload.threadId,
-      turnId: payload.turnId,
-      itemId: payload.itemId,
-      commands: parsed.commands,
-    };
-    const currentCanonical = this.conversationsById.get(payload.threadId)?.canonicalState;
-    if (!currentCanonical || currentCanonical.protocol.id !== payload.threadId) {
-      this.handleOwnerReducerUnavailable(payload.threadId);
-      void this.ackOwnerNotification(payload.threadId, event.sequence);
-      return;
-    }
-    this.publishOwnerConversationMutation(payload.threadId, event.sequence, (conversation) => {
-      const before = conversation.canonicalState;
-      if (!before || before.protocol.id !== payload.threadId) return null;
-      const result = reduceCodexConversationTerminalCommands(before, terminalUpdate);
-      if (result.disposition !== "applied") {
-        console.warn("Dropping commandExecution/terminalInteraction for missing item", {
-          threadId: payload.threadId,
-          turnId: terminalUpdate.turnId,
-          itemId: payload.itemId,
-        });
-        return conversation;
-      }
-      if (!result.stateChanged) return conversation;
-      const projection = applyOwnerCanonicalTurnProjection(conversation, before, result.state, {
-        observedAtMs: Date.now(),
-        preserveExistingUpdatedAt: true,
-      });
-      this.applyOwnerCanonicalHiddenTurns(payload.threadId, projection.hiddenTurns);
-      return {
-        ...projection.conversation,
-        canonicalState: result.state,
-        canonicalRequests: [...result.state.requests],
-        hasUnreadTurn: result.state.sidecar.hasUnreadTurn,
-      };
-    });
-  }
-
-  private handleOwnerServerRequestResolvedNotification(
-    event: CodexThreadOwnerNotificationEvent,
-  ): void {
-    if (event.notification.method !== "serverRequest/resolved") return;
-    const payload = event.notification.params;
-
-    const currentCanonical = this.conversationsById.get(payload.threadId)?.canonicalState;
-    if (!currentCanonical || currentCanonical.protocol.id !== payload.threadId) {
-      this.handleOwnerReducerUnavailable(payload.threadId);
-      void this.ackOwnerNotification(payload.threadId, event.sequence);
-      return;
-    }
-
-    this.publishOwnerConversationMutation(payload.threadId, event.sequence, (conversation) => {
-      const before = conversation.canonicalState;
-      if (!before || before.protocol.id !== payload.threadId) return null;
-      const result = applyOwnerServerRequestResolvedToConversation(conversation, before, payload);
-      this.applyOwnerCanonicalHiddenTurns(payload.threadId, result.hiddenTurns);
-      return result.conversation;
-    });
-  }
-
-  private handleOwnerErrorNotification(event: CodexThreadOwnerNotificationEvent): void {
-    if (event.notification.method !== "error") return;
-    const notification = event.notification;
-    const payload = notification.params;
-    const observedAtMs = Date.now();
-    if (!this.requireOwnerCanonicalMetadata(payload.threadId, event.sequence)) return;
-
-    this.publishOwnerConversationMutation(payload.threadId, event.sequence, (conversation) => {
-      const before = conversation.canonicalState;
-      if (!before || before.protocol.id !== payload.threadId) return null;
-      const result = reduceCodexConversationError(
-        before,
-        notification,
-        createOwnerGeneratedItemId("error"),
-        observedAtMs,
-      );
-      return projectOwnerCanonicalTurnMetadataResult(conversation, before, result, observedAtMs);
-    });
-  }
-
-  private handleThreadOwnerUnavailable(event: CodexThreadOwnerUnavailableEvent): void {
-    if (event.hostId !== this.hostId) {
-      return;
-    }
-
-    const targetConversationIds = new Set([
-      ...this.streamState.markOwnerUnavailable(event.ownerClientId),
-      ...event.conversationIds,
-    ]);
-    for (const conversationId of targetConversationIds) {
-      this.queueOwnerProjectionFenceByConversationId.delete(conversationId);
-      this.setConversationAttachmentState(conversationId, IDLE_LOCAL_CONVERSATION_ATTACHMENT_STATE);
-      this.followerAcceptedReplicasByConversationId.delete(conversationId);
-      this.ownerTextDeltaQueue.discardConversation(conversationId);
-      this.outputDeltaQueue.discardConversation(conversationId);
-      this.discardOwnerNotificationState(conversationId);
-      if (this.streamState.getRole(conversationId)?.role === "owner") continue;
-
-      const conversation = this.conversationsById.get(conversationId);
-      if (!conversation || conversation.resumeState === "needs_resume") continue;
-
-      this.applyConversationSnapshot(conversationId, {
-        ...conversation,
-        resumeState: "needs_resume",
-      });
-    }
-  }
-
-  private handleThreadStreamFollowingStatusRequested(
-    event: CodexThreadStreamFollowingStatusRequestedEvent,
-  ): void {
-    if (event.hostId !== this.hostId) return;
-    if (!this.streamState.isConversationFollowing(event.conversationId)) return;
-
-    void this.setThreadStreamFollowingWithOptions(event.conversationId, true, {
-      reannounce: true,
-    }).catch(() => {
-      // A renderer that is closing may receive the status request after its IPC bridge is gone.
-    });
-  }
-
-  private handleThreadStreamSnapshotRequested(
-    event: CodexThreadStreamSnapshotRequestedEvent,
-  ): void {
-    if (event.hostId !== this.hostId) return;
-    if (this.streamState.getRole(event.conversationId)?.role !== "owner") return;
-    if (this.streamState.getCheckpoint(event.conversationId)?.ownerEpoch !== event.ownerEpoch)
-      return;
-    void this.runOwnerHistoryOperation(event.conversationId, async () => {
-      if (this.streamState.getRole(event.conversationId)?.role !== "owner") return;
-      if (this.streamState.getCheckpoint(event.conversationId)?.ownerEpoch !== event.ownerEpoch)
-        return;
-      const conversation = this.conversationsById.get(event.conversationId);
-      if (!conversation) return;
-      await this.publishOwnerSnapshotFromIdle(
-        event.conversationId,
-        conversation,
-        "follower attachment",
-        { broadcast: true },
-      );
-    }).catch(() => {
-      if (this.streamState.getCheckpoint(event.conversationId)?.ownerEpoch !== event.ownerEpoch)
-        return;
-      this.markOwnerStreamPublishUnavailable(event.conversationId);
-    });
-  }
-
-  private handleThreadStreamFollowersChanged(event: CodexThreadStreamFollowersChangedEvent): void {
-    if (event.hostId !== this.hostId) return;
-
-    const previous = this.followerMembershipByConversationId.get(event.conversationId);
-    if (
-      previous &&
-      previous.ownerClientId === event.ownerClientId &&
-      event.membershipEpoch <= previous.membershipEpoch
-    ) {
-      return;
-    }
-
-    this.followerMembershipByConversationId.set(event.conversationId, {
-      ownerClientId: event.ownerClientId,
-      followerClientIds: [...event.followerClientIds],
-      membershipEpoch: event.membershipEpoch,
-    });
-    if ((previous?.followerClientIds.length ?? 0) === 0 && event.followerClientIds.length > 0) {
-      const cursor = this.ownerStreamPublishCursorsByConversationId.get(event.conversationId);
-      if (!cursor || this.streamState.getRole(event.conversationId)?.role !== "owner") return;
-      // Catch up changes received after the attachment snapshot but before its acknowledgement.
-      cursor.dirty = true;
-      this.processOwnerStreamPublishCursor(event.conversationId);
-    }
-  }
-
-  private handleThreadStreamTransportReset(event: CodexThreadStreamTransportResetEvent): void {
-    if (event.hostId !== this.hostId) return;
-
-    const ownerConversationIds = new Set(
-      event.conversationIds.filter(
-        (conversationId) => this.streamState.getRole(conversationId)?.role === "owner",
-      ),
-    );
-    const affectedConversationIds = this.streamState.handleTransportReset(event.conversationIds);
-    for (const conversationId of affectedConversationIds) {
-      this.setConversationAttachmentState(conversationId, IDLE_LOCAL_CONVERSATION_ATTACHMENT_STATE);
-      this.followerAcceptedReplicasByConversationId.delete(conversationId);
-      this.conversationVersionById.delete(conversationId);
-      if (ownerConversationIds.has(conversationId)) {
-        this.ownerTextDeltaQueue.discardConversation(conversationId);
-        this.outputDeltaQueue.discardConversation(conversationId);
-        this.discardDeferredOwnerRecoveryMessages(conversationId);
-        this.discardOwnerNotificationState(conversationId);
-        this.cancelOwnerStreamPublishQueues(
-          conversationId,
-          new Error(`Owner stream transport reset for ${conversationId}`),
-        );
-      }
-      void this.setThreadStreamFollowingWithOptions(conversationId, true, {
-        reannounce: true,
-      }).catch(() => {
-        // The owner may be reconnecting while this renderer is recovering its stream role.
-      });
-      const conversation = this.conversationsById.get(conversationId);
-      if (!conversation || conversation.resumeState === "needs_resume") continue;
-      this.applyConversationSnapshot(conversationId, {
-        ...conversation,
-        resumeState: "needs_resume",
-      });
-    }
-  }
-
-  private discardOwnerNotificationState(conversationId: string): void {
-    this.ownerTextDeltaSequenceTracker.discardConversation(conversationId);
-    this.ownerNotificationCompletionByConversationId.delete(conversationId);
-    this.unclaimedOwnerNotificationSequencesByConversationId.delete(conversationId);
-  }
-
-  private pendingOwnerNotificationSequenceCount(conversationId?: string): number {
-    const conversationIds = new Set([
-      ...this.ownerNotificationCompletionByConversationId.keys(),
-      ...this.unclaimedOwnerNotificationSequencesByConversationId.keys(),
-    ]);
-    let total = 0;
-    for (const candidateConversationId of conversationIds) {
-      if (conversationId !== undefined && candidateConversationId !== conversationId) continue;
-      const completion =
-        this.ownerNotificationCompletionByConversationId.get(candidateConversationId);
-      total += completion?.completedSequences.size ?? 0;
-      if (completion?.reservedAckThrough !== null && completion?.reservedAckThrough !== undefined) {
-        total += 1;
-      }
-      total +=
-        this.unclaimedOwnerNotificationSequencesByConversationId.get(candidateConversationId)
-          ?.size ?? 0;
-    }
-    return total;
-  }
-
-  private canRetainOwnerNotificationSequences(
-    conversationId: string,
-    additionalCount: number,
-  ): boolean {
-    if (additionalCount <= 0) return true;
-    return (
-      this.pendingOwnerNotificationSequenceCount(conversationId) + additionalCount <=
-        CODEX_OWNER_NOTIFICATION_MAX_PENDING_SEQUENCES_PER_CONVERSATION &&
-      this.pendingOwnerNotificationSequenceCount() + additionalCount <=
-        CODEX_OWNER_NOTIFICATION_MAX_PENDING_SEQUENCES
-    );
-  }
-
-  private beginOwnerNotificationHandling(conversationId: string, sequence: number): boolean {
-    if (!this.registerOwnerNotificationSequence(conversationId, sequence)) return false;
-    const sequences = this.unclaimedOwnerNotificationSequencesByConversationId.get(conversationId);
-    if (sequences) {
-      if (
-        !sequences.has(sequence) &&
-        !this.canRetainOwnerNotificationSequences(conversationId, 1)
-      ) {
-        return false;
-      }
-      sequences.add(sequence);
-      return true;
-    }
-    if (!this.canRetainOwnerNotificationSequences(conversationId, 1)) return false;
-    this.unclaimedOwnerNotificationSequencesByConversationId.set(
-      conversationId,
-      new Set([sequence]),
-    );
-    return true;
-  }
-
-  private claimOwnerNotificationSequence(conversationId: string, sequence: number): void {
-    const sequences = this.unclaimedOwnerNotificationSequencesByConversationId.get(conversationId);
-    if (!sequences) return;
-    sequences.delete(sequence);
-    if (sequences.size === 0) {
-      this.unclaimedOwnerNotificationSequencesByConversationId.delete(conversationId);
-    }
-  }
-
-  private finishOwnerNotificationHandling(conversationId: string, sequence: number): void {
-    const sequences = this.unclaimedOwnerNotificationSequencesByConversationId.get(conversationId);
-    if (!sequences?.delete(sequence)) return;
-    if (sequences.size === 0) {
-      this.unclaimedOwnerNotificationSequencesByConversationId.delete(conversationId);
-    }
-    void this.ackOwnerNotification(conversationId, sequence);
-  }
-
-  private registerOwnerNotificationSequence(conversationId: string, sequence: number): boolean {
-    if (!Number.isSafeInteger(sequence) || sequence <= 0) return false;
-    if (this.ownerNotificationCompletionByConversationId.has(conversationId)) {
-      return true;
-    }
-    if (
-      this.ownerNotificationCompletionByConversationId.size >=
-      CODEX_OWNER_NOTIFICATION_MAX_TRACKED_CONVERSATIONS
-    ) {
-      return false;
-    }
-
-    this.ownerNotificationCompletionByConversationId.set(conversationId, {
-      nextSequenceToAck: sequence,
-      completedSequences: new Set(),
-      reservedAckThrough: null,
-    });
-    return true;
-  }
-
-  private recordOwnerNotificationCompletions(
-    conversationId: string,
-    input: OwnerNotificationSequenceInput,
-  ): boolean {
-    const sequences = typeof input === "number" ? [input] : input;
-    const firstSequence = sequences.find(
-      (sequence) => Number.isSafeInteger(sequence) && sequence > 0,
-    );
-    if (firstSequence === undefined) return sequences.every((value) => value === 0);
-
-    for (const sequence of sequences) {
-      this.claimOwnerNotificationSequence(conversationId, sequence);
-    }
-    if (!this.registerOwnerNotificationSequence(conversationId, firstSequence)) return false;
-    const state = this.ownerNotificationCompletionByConversationId.get(conversationId);
-    if (!state) return false;
-    const additions = new Set(
-      sequences.filter(
-        (sequence) =>
-          Number.isSafeInteger(sequence) &&
-          sequence >= state.nextSequenceToAck &&
-          !state.completedSequences.has(sequence),
-      ),
-    );
-    if (!this.canRetainOwnerNotificationSequences(conversationId, additions.size)) return false;
-    for (const sequence of additions) {
-      state.completedSequences.add(sequence);
-    }
-    return true;
-  }
-
-  private reserveOwnerNotificationAck(conversationId: string): number {
-    const state = this.ownerNotificationCompletionByConversationId.get(conversationId);
-    if (!state || state.reservedAckThrough !== null) return 0;
-
-    let nextSequence = state.nextSequenceToAck;
-    let ackThrough = 0;
-    while (state.completedSequences.delete(nextSequence)) {
-      ackThrough = nextSequence;
-      nextSequence += 1;
-    }
-    if (ackThrough === 0) return 0;
-
-    state.nextSequenceToAck = nextSequence;
-    state.reservedAckThrough = ackThrough;
-    return ackThrough;
-  }
-
-  private confirmOwnerNotificationAck(conversationId: string, sequence: number): void {
-    if (sequence <= 0) return;
-    const state = this.ownerNotificationCompletionByConversationId.get(conversationId);
-    if (!state || state.reservedAckThrough !== sequence) return;
-    state.reservedAckThrough = null;
-  }
-
-  private flushOwnerNotificationCompletions(conversationId: string): void {
-    const state = this.ownerNotificationCompletionByConversationId.get(conversationId);
-    if (!state || state.reservedAckThrough !== null) return;
-
-    const cursor = this.ownerStreamPublishCursorsByConversationId.get(conversationId);
-    if (cursor?.inFlight) return;
-    if (cursor?.dirty) {
-      this.processOwnerStreamPublishCursor(conversationId);
-      return;
-    }
-
-    const sequence = this.reserveOwnerNotificationAck(conversationId);
-    if (sequence <= 0) return;
-    this.dispatchReservedOwnerNotificationAck(conversationId, sequence);
-  }
-
-  private dispatchReservedOwnerNotificationAck(conversationId: string, sequence: number): void {
-    const completionState = this.ownerNotificationCompletionByConversationId.get(conversationId);
-    if (!completionState || completionState.reservedAckThrough !== sequence) return;
-
-    void (async () => {
-      let accepted = false;
-      try {
-        accepted =
-          (await runWithOwnerStreamDeadline(
-            runConversationOperation("codex:thread-owner:notification:ack", {
-              conversationId,
-              sequence,
-            }),
-            `Owner notification ACK for ${conversationId}`,
-          )) === true;
-      } catch {
-        accepted = false;
-      }
-
-      if (
-        this.ownerNotificationCompletionByConversationId.get(conversationId) !== completionState
-      ) {
-        return;
-      }
-      if (!accepted) {
-        this.markOwnerStreamPublishUnavailable(conversationId);
-        return;
-      }
-
-      this.confirmOwnerNotificationAck(conversationId, sequence);
-      this.processOwnerStreamPublishCursor(conversationId);
-      this.flushOwnerNotificationCompletions(conversationId);
-    })();
-  }
-
-  private applyOwnerTextDeltas(
-    updates: readonly OwnerFrameTextDeltaUpdate[],
-    options: OwnerFrameTextDeltaFlushOptions = {},
-  ): void {
-    if (updates.length === 0) return;
-
-    for (const [conversationId, conversationUpdates] of groupCodexFrameTextDeltasByConversation(
-      updates,
-    )) {
-      const completedSequences =
-        options.completedSequencesByConversationId?.get(conversationId) ?? [];
-      const currentCanonical = this.conversationsById.get(conversationId)?.canonicalState;
-      if (!currentCanonical || currentCanonical.protocol.id !== conversationId) {
-        this.handleOwnerReducerUnavailable(conversationId);
-        void this.ackOwnerNotification(conversationId, completedSequences);
-        continue;
-      }
-      this.publishOwnerConversationMutation(
-        conversationId,
-        completedSequences,
-        (currentConversation) => {
-          const before = currentConversation.canonicalState;
-          if (!before || before.protocol.id !== conversationId) return null;
-          const observedAtMs = Date.now();
-          const canonicalResult = reduceCodexConversationFrameTextDeltas(
-            before,
-            conversationUpdates,
-            { now: () => observedAtMs },
-          );
-          const projection =
-            canonicalResult.state === before
-              ? { conversation: currentConversation, hiddenTurns: [] }
-              : applyOwnerCanonicalTurnProjection(
-                  currentConversation,
-                  before,
-                  canonicalResult.state,
-                  { observedAtMs, preserveExistingUpdatedAt: true },
-                );
-
-          for (const [outcomeIndex, outcome] of canonicalResult.outcomes.entries()) {
-            const update = conversationUpdates[outcomeIndex];
-            if (!update) continue;
-            if (update.target.type === "agentMessage" || update.target.type === "plan") {
-              const beforeState = readOwnerStreamingDebugItemState(
-                currentConversation,
-                update.itemId,
-              );
-              const afterState = readOwnerStreamingDebugItemState(
-                projection.conversation,
-                update.itemId,
-              );
-              const turnStatus = afterState.turnStatus;
-              const itemStatus = afterState.itemStatus;
-              logAssistantStreamingDebugSampled(
-                "renderer-owner-delta-applied",
-                `${conversationId}:${update.turnId ?? "latest"}:${update.itemId}:${update.target.type}`,
-                {
-                  conversationId,
-                  turnId: update.turnId,
-                  itemId: update.itemId,
-                  targetType: update.target.type,
-                  sequence: update.ownerNotificationSequence,
-                  deltaLength: update.delta.length,
-                  applied: outcome.disposition === "applied",
-                  beforeState,
-                  afterState,
-                  wouldAnimateAssistantMarkdown:
-                    update.target.type === "agentMessage" &&
-                    turnStatus === "inProgress" &&
-                    itemStatus === "inProgress",
-                },
-              );
-            }
-          }
-          if (canonicalResult.state === before) return currentConversation;
-          this.applyOwnerCanonicalHiddenTurns(conversationId, projection.hiddenTurns);
-          return {
-            ...projection.conversation,
-            canonicalState: canonicalResult.state,
-            canonicalRequests: [...canonicalResult.state.requests],
-            hasUnreadTurn: canonicalResult.state.sidecar.hasUnreadTurn,
-          };
-        },
-        { notifyMode: options.notifyMode ?? "default" },
-      );
-    }
-  }
-
-  private ensureOwnerStreamPublishCursor(
-    conversationId: string,
-    acceptedCheckpoint: CodexThreadStreamCheckpoint,
-    acceptedDocument: CodexConversationSnapshot,
-  ): OwnerStreamPublishCursor {
-    const existing = this.ownerStreamPublishCursorsByConversationId.get(conversationId);
-    if (existing) {
-      return existing;
-    }
-
-    const cursor: OwnerStreamPublishCursor = {
-      acceptedCheckpoint,
-      acceptedDocument: toSharedConversationDocument(acceptedDocument),
-      inFlight: false,
-      dirty: false,
-    };
-    this.ownerStreamPublishCursorsByConversationId.set(conversationId, cursor);
-    return cursor;
-  }
-
-  private seedOwnerStreamPublishCursor(
-    conversationId: string,
-    acceptedCheckpoint: CodexThreadStreamCheckpoint,
-    acceptedReplica: CodexConversationSnapshot,
-  ): void {
-    const existing = this.ownerStreamPublishCursorsByConversationId.get(conversationId);
-    if (existing && !existing.inFlight && !existing.dirty) {
-      existing.acceptedCheckpoint = acceptedCheckpoint;
-      existing.acceptedDocument = acceptedReplica;
-      return;
-    }
-
-    if (!existing) {
-      this.ownerStreamPublishCursorsByConversationId.set(conversationId, {
-        acceptedCheckpoint,
-        acceptedDocument: acceptedReplica,
-        inFlight: false,
-        dirty: false,
-      });
-    }
-  }
-
-  private consumeOwnerStandaloneUnreadStateOverride(
-    cursor: OwnerStreamPublishCursor,
-    conversation: CodexConversationSnapshot,
-  ): CodexConversationSnapshot {
-    const override = cursor.standaloneUnreadStateOverride;
-    cursor.standaloneUnreadStateOverride = undefined;
-    if (override === undefined) return conversation;
-    return applyStandaloneUnreadStateToSnapshot(conversation, override);
-  }
-
-  private isOwnerStreamPublishIdle(conversationId: string): boolean {
-    const cursor = this.ownerStreamPublishCursorsByConversationId.get(conversationId);
-    if (cursor && (cursor.inFlight || cursor.dirty)) {
-      return false;
-    }
-    return true;
-  }
-
-  private waitForOwnerStreamPublishIdle(conversationId: string): Promise<void> {
-    if (this.isOwnerStreamPublishIdle(conversationId)) {
-      return Promise.resolve();
-    }
-
-    return new Promise((resolve, reject) => {
-      const waiters = this.ownerStreamPublishIdleWaitersByConversationId.get(conversationId);
-      const totalWaiters = [...this.ownerStreamPublishIdleWaitersByConversationId.values()].reduce(
-        (total, candidates) => total + candidates.size,
-        0,
-      );
-      if (
-        (waiters?.size ?? 0) >= CODEX_OWNER_STREAM_MAX_IDLE_WAITERS_PER_CONVERSATION ||
-        totalWaiters >= CODEX_OWNER_STREAM_MAX_IDLE_WAITERS
-      ) {
-        const error = new Error(`Owner stream waiters exceeded their bound for ${conversationId}`);
-        this.markOwnerStreamPublishUnavailable(conversationId);
-        reject(error);
-        return;
-      }
-      const waiter: OwnerStreamPublishIdleWaiter = { resolve, reject };
-      if (waiters) {
-        waiters.add(waiter);
-        return;
-      }
-      this.ownerStreamPublishIdleWaitersByConversationId.set(conversationId, new Set([waiter]));
-    });
-  }
-
-  private resolveOwnerStreamPublishIdleWaiters(conversationId: string): void {
-    if (!this.isOwnerStreamPublishIdle(conversationId)) {
-      return;
-    }
-
-    const waiters = this.ownerStreamPublishIdleWaitersByConversationId.get(conversationId);
-    if (!waiters) {
-      return;
-    }
-
-    this.ownerStreamPublishIdleWaitersByConversationId.delete(conversationId);
-    for (const waiter of waiters) {
-      waiter.resolve();
-    }
-  }
-
-  private rejectOwnerStreamPublishIdleWaiters(conversationId: string, error: Error): void {
-    const waiters = this.ownerStreamPublishIdleWaitersByConversationId.get(conversationId);
-    if (!waiters) return;
-    this.ownerStreamPublishIdleWaitersByConversationId.delete(conversationId);
-    for (const waiter of waiters) {
-      waiter.reject(error);
-    }
-  }
-
-  private queueOwnerStreamCursorPublish(
-    conversationId: string,
-    ownerNotificationSequence: OwnerNotificationSequenceInput,
-    cursor: OwnerStreamPublishCursor,
-  ): void {
-    cursor.dirty = true;
-    if (!this.recordOwnerNotificationCompletions(conversationId, ownerNotificationSequence)) {
-      this.markOwnerStreamPublishUnavailable(conversationId);
-      return;
-    }
-    this.processOwnerStreamPublishCursor(conversationId);
-  }
-
-  private processOwnerStreamPublishCursor(conversationId: string): void {
-    const cursor = this.ownerStreamPublishCursorsByConversationId.get(conversationId);
-    if (
-      !cursor ||
-      cursor.inFlight ||
-      !cursor.dirty ||
-      this.ownerHistoryReadBarriers.has(conversationId)
-    ) {
-      return;
-    }
-    const completionState = this.ownerNotificationCompletionByConversationId.get(conversationId);
-    if (completionState && completionState.reservedAckThrough !== null) {
-      return;
-    }
-
-    const localConversation = this.conversationsById.get(conversationId);
-    const role = this.streamState.getRole(conversationId);
-    if (!localConversation || !role || role.role !== "owner") {
-      this.markOwnerStreamPublishUnavailable(conversationId);
-      return;
-    }
-    // No follower consumes live replica patches. Keep the owner document local and acknowledge
-    // transport delivery; a new follower explicitly requests a fresh owner snapshot.
-    if (
-      (this.followerMembershipByConversationId.get(conversationId)?.followerClientIds.length ??
-        0) === 0
-    ) {
-      cursor.dirty = false;
-      const sequence = this.reserveOwnerNotificationAck(conversationId);
-      if (sequence > 0) this.dispatchReservedOwnerNotificationAck(conversationId, sequence);
-      this.resolveOwnerStreamPublishIdleWaiters(conversationId);
-      return;
-    }
-    const conversation = toSharedConversationDocument(localConversation);
-
-    const patches = buildCodexConversationStateUpdates(cursor.acceptedDocument, conversation);
-    const ownerNotificationSequence = this.reserveOwnerNotificationAck(conversationId);
-    cursor.dirty = false;
-
-    if (patches.length === 0) {
-      if (ownerNotificationSequence > 0) {
-        this.dispatchReservedOwnerNotificationAck(conversationId, ownerNotificationSequence);
-      }
-      this.resolveOwnerStreamPublishIdleWaiters(conversationId);
-      return;
-    }
-
-    const baseRevision = cursor.acceptedCheckpoint.revision;
-    const revision = baseRevision + 1;
-    const publishedConversation = conversation;
-    const checkpoint = buildCodexThreadStreamCheckpoint({
-      ownerEpoch: cursor.acceptedCheckpoint.ownerEpoch,
-      revision,
-    });
-    cursor.inFlight = true;
-
-    void (async () => {
-      const result = await this.dispatchOwnerStreamPatches(
-        conversationId,
-        cursor.acceptedCheckpoint,
-        checkpoint,
-        patches,
-        ownerNotificationSequence || undefined,
-      );
-
-      if (this.ownerStreamPublishCursorsByConversationId.get(conversationId) !== cursor) {
-        return;
-      }
-
-      if (result.accepted) {
-        cursor.acceptedCheckpoint = result.checkpoint;
-        cursor.acceptedDocument = this.consumeOwnerStandaloneUnreadStateOverride(
-          cursor,
-          publishedConversation,
-        );
-        cursor.inFlight = false;
-        this.confirmOwnerNotificationAck(conversationId, ownerNotificationSequence);
-        this.streamState.recordOwnerCheckpoint(conversationId, result.checkpoint);
-        this.processOwnerStreamPublishCursor(conversationId);
-        this.flushOwnerNotificationCompletions(conversationId);
-        this.resolveOwnerStreamPublishIdleWaiters(conversationId);
-        return;
-      }
-
-      await this.repairOwnerStreamPublishCursor(
-        conversationId,
-        cursor,
-        ownerNotificationSequence,
-        result,
-      );
-    })();
-  }
-
-  private async repairOwnerStreamPublishCursor(
-    conversationId: string,
-    cursor: OwnerStreamPublishCursor,
-    ownerNotificationSequence: number,
-    rejection: Exclude<CodexThreadOwnerStreamStatePublishResult, { accepted: true }>,
-  ): Promise<void> {
-    if (!rejection.recovery) {
-      cursor.inFlight = false;
-      this.markOwnerStreamPublishUnavailable(conversationId);
-      return;
-    }
-
-    const conversation = this.adoptOwnerSnapshotRecovery(
-      conversationId,
-      cursor,
-      rejection.recovery,
-    );
-    if (!conversation) {
-      cursor.inFlight = false;
-      this.markOwnerStreamPublishUnavailable(conversationId);
-      return;
-    }
-    cursor.dirty = false;
-    const result = await this.publishOwnerSnapshotFromCursor(
-      conversationId,
-      cursor,
-      conversation,
-      ownerNotificationSequence || undefined,
-    );
-    if (!result.accepted) {
-      cursor.inFlight = false;
-      this.markOwnerStreamPublishUnavailable(conversationId);
-      return;
-    }
-
-    cursor.acceptedCheckpoint = result.checkpoint;
-    cursor.acceptedDocument = this.consumeOwnerStandaloneUnreadStateOverride(
-      cursor,
-      result.conversation,
-    );
-    cursor.inFlight = false;
-    this.confirmOwnerNotificationAck(conversationId, ownerNotificationSequence);
-    this.streamState.recordOwnerCheckpoint(conversationId, result.checkpoint);
-    this.processOwnerStreamPublishCursor(conversationId);
-    this.flushOwnerNotificationCompletions(conversationId);
-    this.resolveOwnerStreamPublishIdleWaiters(conversationId);
-  }
-
-  private adoptOwnerSnapshotRecovery(
-    conversationId: string,
-    cursor: OwnerStreamPublishCursor,
-    recovery: NonNullable<
-      Exclude<CodexThreadOwnerStreamStatePublishResult, { accepted: true }>["recovery"]
-    >,
-  ): CodexConversationSnapshot | null {
-    const localConversation = this.conversationsById.get(conversationId);
-    const role = this.streamState.getRole(conversationId);
-    if (
-      !localConversation ||
-      !role ||
-      role.role !== "owner" ||
-      this.ownerStreamPublishCursorsByConversationId.get(conversationId) !== cursor
-    ) {
-      return null;
-    }
-
-    cursor.acceptedCheckpoint = recovery.checkpoint;
-    cursor.acceptedDocument = recovery.conversationState;
-    this.streamState.recordOwnerCheckpoint(conversationId, recovery.checkpoint);
-
-    const authoritativeUnread =
-      cursor.standaloneUnreadStateOverride ?? recovery.conversationState.hasUnreadTurn;
-    const convergedConversation =
-      typeof authoritativeUnread === "boolean"
-        ? applyStandaloneUnreadStateToSnapshot(recovery.conversationState, authoritativeUnread)
-        : recovery.conversationState;
-    // A mismatched checkpoint recovers the accepted owner document. Do not replay an older
-    // owner generation over it; only the standalone unread override survives.
-    this.applyConversationSnapshot(
-      conversationId,
-      materializeOwnerCanonicalConversationSnapshot(convergedConversation),
-    );
-    return toSharedConversationDocument(convergedConversation);
-  }
-
-  private async publishOwnerSnapshotFromCursor(
-    conversationId: string,
-    cursor: OwnerStreamPublishCursor,
-    initialConversation: CodexConversationSnapshot,
-    ownerNotificationSequence?: number,
-    broadcast = false,
-  ): Promise<OwnerSnapshotPublishOutcome> {
-    let conversation = initialConversation;
-    let rejectionReason: Exclude<
-      CodexThreadOwnerStreamStatePublishResult,
-      { accepted: true }
-    >["reason"] = "base-checkpoint-mismatch";
-
-    for (let attempt = 0; attempt < 3; attempt += 1) {
-      const baseCheckpoint = cursor.acceptedCheckpoint;
-      const recoveryOnly =
-        !broadcast &&
-        (this.followerMembershipByConversationId.get(conversationId)?.followerClientIds.length ??
-          0) === 0;
-      const checkpoint = buildCodexThreadStreamCheckpoint({
-        ownerEpoch: baseCheckpoint.ownerEpoch,
-        revision: baseCheckpoint.revision + (recoveryOnly ? 0 : 1),
-      });
-      const result = await this.dispatchOwnerStreamSnapshot(
-        conversationId,
-        baseCheckpoint,
-        checkpoint,
-        conversation,
-        ownerNotificationSequence,
-        recoveryOnly,
-      );
-      if (this.ownerStreamPublishCursorsByConversationId.get(conversationId) !== cursor) {
-        return { accepted: false, reason: "not-owner" };
-      }
-      if (result.accepted) {
-        return { accepted: true, checkpoint: result.checkpoint, conversation };
-      }
-
-      rejectionReason = result.reason;
-      if (result.reason === "followers-present") {
-        broadcast = true;
-        continue;
-      }
-      if (!result.recovery) break;
-      const recovered = this.adoptOwnerSnapshotRecovery(conversationId, cursor, result.recovery);
-      if (!recovered) break;
-      conversation = recovered;
-    }
-
-    return { accepted: false, reason: rejectionReason };
-  }
-
-  private publishOwnerConversationMutation(
-    conversationId: string,
-    ownerNotificationSequence: OwnerNotificationSequenceInput,
-    buildNextConversation: (
-      conversation: CodexConversationSnapshot,
-    ) => CodexConversationSnapshot | null,
-    options: { notifyMode?: ConversationNotifyMode } = {},
-  ): void {
-    const role = this.streamState.getRole(conversationId);
-    const acceptedCheckpoint = this.streamState.getCheckpoint(conversationId);
-    const currentConversation = this.conversationsById.get(conversationId);
-    if (!currentConversation || !role || role.role !== "owner" || !acceptedCheckpoint) {
-      this.handleOwnerReducerUnavailable(conversationId);
-      void this.ackOwnerNotification(conversationId, ownerNotificationSequence);
-      return;
-    }
-
-    const candidateConversation = buildNextConversation(currentConversation);
-    if (!candidateConversation || candidateConversation === currentConversation) {
-      void this.ackOwnerNotification(conversationId, ownerNotificationSequence);
-      return;
-    }
-    const nextConversation = finalizeOwnerConversationMutation(
-      currentConversation,
-      candidateConversation,
-    );
-
-    if (buildCodexConversationStateUpdates(currentConversation, nextConversation).length === 0) {
-      this.applyConversationSnapshot(
-        conversationId,
-        nextConversation,
-        undefined,
-        options.notifyMode ?? "default",
-      );
-      void this.ackOwnerNotification(conversationId, ownerNotificationSequence);
-      return;
-    }
-
-    const cursor = this.ensureOwnerStreamPublishCursor(
-      conversationId,
-      acceptedCheckpoint,
-      currentConversation,
-    );
-    this.applyConversationSnapshot(
-      conversationId,
-      nextConversation,
-      undefined,
-      options.notifyMode ?? "default",
-    );
-    this.queueOwnerStreamCursorPublish(conversationId, ownerNotificationSequence, cursor);
-  }
-
-  private publishOwnerConversationSnapshotMutation(
-    conversationId: string,
-    ownerNotificationSequence: number,
-    buildNextConversation: (
-      conversation: CodexConversationSnapshot,
-    ) => CodexConversationSnapshot | null,
-  ): void {
-    const role = this.streamState.getRole(conversationId);
-    const acceptedCheckpoint = this.streamState.getCheckpoint(conversationId);
-    const currentConversation = this.conversationsById.get(conversationId);
-    if (!currentConversation || !role || role.role !== "owner" || !acceptedCheckpoint) {
-      this.handleOwnerReducerUnavailable(conversationId);
-      void this.ackOwnerNotification(conversationId, ownerNotificationSequence);
-      return;
-    }
-
-    const candidateConversation = buildNextConversation(currentConversation);
-    if (!candidateConversation || candidateConversation === currentConversation) {
-      void this.ackOwnerNotification(conversationId, ownerNotificationSequence);
-      return;
-    }
-    const nextConversation = finalizeOwnerConversationMutation(
-      currentConversation,
-      candidateConversation,
-    );
-
-    const cursor = this.ensureOwnerStreamPublishCursor(
-      conversationId,
-      acceptedCheckpoint,
-      currentConversation,
-    );
-    this.applyConversationSnapshot(conversationId, nextConversation);
-    this.queueOwnerStreamCursorPublish(conversationId, ownerNotificationSequence, cursor);
-  }
-
-  private publishOwnerActionConversationMutation(
-    conversationId: string,
-    buildNextConversation: (
-      conversation: CodexConversationSnapshot,
-    ) => CodexConversationSnapshot | null,
-    options: { notifyMode?: ConversationNotifyMode } = {},
-  ): number | null {
-    const role = this.streamState.getRole(conversationId);
-    const acceptedCheckpoint = this.streamState.getCheckpoint(conversationId);
-    const currentConversation = this.conversationsById.get(conversationId);
-    if (!currentConversation || !role || role.role !== "owner" || !acceptedCheckpoint) {
-      this.handleOwnerReducerUnavailable(conversationId);
-      return null;
-    }
-
-    const candidateConversation = buildNextConversation(currentConversation);
-    if (!candidateConversation || candidateConversation === currentConversation) {
-      return null;
-    }
-    const nextConversation = finalizeOwnerConversationMutation(
-      currentConversation,
-      candidateConversation,
-    );
-
-    if (buildCodexConversationStateUpdates(currentConversation, nextConversation).length === 0) {
-      this.applyConversationSnapshot(
-        conversationId,
-        nextConversation,
-        undefined,
-        options.notifyMode ?? "default",
-      );
-      return acceptedCheckpoint.revision;
-    }
-
-    const cursor = this.ensureOwnerStreamPublishCursor(
-      conversationId,
-      acceptedCheckpoint,
-      currentConversation,
-    );
-    const streamRevision = cursor.acceptedCheckpoint.revision + (cursor.inFlight ? 2 : 1);
-    this.applyConversationSnapshot(
-      conversationId,
-      nextConversation,
-      undefined,
-      options.notifyMode ?? "default",
-    );
-    this.queueOwnerStreamCursorPublish(conversationId, 0, cursor);
-    return streamRevision;
-  }
-
-  private ackOwnerNotification(
-    conversationId: string,
-    sequence: OwnerNotificationSequenceInput,
-  ): Promise<void> {
-    if (!this.recordOwnerNotificationCompletions(conversationId, sequence)) {
-      this.markOwnerStreamPublishUnavailable(conversationId);
-      return Promise.resolve();
-    }
-    this.flushOwnerNotificationCompletions(conversationId);
-    return Promise.resolve();
-  }
-
-  private async dispatchOwnerStreamPatches(
-    conversationId: string,
-    baseCheckpoint: CodexThreadStreamCheckpoint,
-    checkpoint: CodexThreadStreamCheckpoint,
-    patches: OwnerStreamPublishPatches,
-    ownerNotificationSequence?: number,
-  ): Promise<CodexThreadOwnerStreamStatePublishResult> {
-    try {
-      const result = (await runWithOwnerStreamDeadline(
-        runConversationOperation("codex:thread-owner:stream-state:publish", {
-          conversationId,
-          change: {
-            type: "patches",
-            baseRevision: baseCheckpoint.revision,
-            revision: checkpoint.revision,
-            patches,
-          },
-          baseCheckpoint,
-          checkpoint,
-          ownerNotificationSequence,
-        }),
-        `Owner patch publication for ${conversationId}`,
-      )) as CodexThreadOwnerStreamStatePublishResult | boolean;
-      if (result === true) return { accepted: true, checkpoint };
-      if (result === false) {
-        return { accepted: false, reason: "base-checkpoint-mismatch", recovery: null };
-      }
-      return result;
-    } catch {
-      return { accepted: false, reason: "not-owner", recovery: null };
-    }
-  }
-
-  private async dispatchOwnerStreamSnapshot(
-    conversationId: string,
-    baseCheckpoint: CodexThreadStreamCheckpoint,
-    checkpoint: CodexThreadStreamCheckpoint,
-    conversation: CodexConversationSnapshot,
-    ownerNotificationSequence?: number,
-    recoveryOnly = false,
-  ): Promise<CodexThreadOwnerStreamStatePublishResult> {
-    try {
-      const result = (await runWithOwnerStreamDeadline(
-        runConversationOperation("codex:thread-owner:stream-state:publish", {
-          conversationId,
-          change: {
-            type: "snapshot",
-            revision: checkpoint.revision,
-            conversationState: toSharedConversationDocument(conversation),
-          },
-          baseCheckpoint,
-          checkpoint,
-          ownerNotificationSequence,
-          ...(recoveryOnly ? { recoveryOnly: true as const } : {}),
-        }),
-        `Owner snapshot publication for ${conversationId}`,
-      )) as CodexThreadOwnerStreamStatePublishResult | boolean;
-      if (result === true) return { accepted: true, checkpoint };
-      if (result === false) {
-        return { accepted: false, reason: "base-checkpoint-mismatch", recovery: null };
-      }
-      return result;
-    } catch {
-      return { accepted: false, reason: "not-owner", recovery: null };
-    }
-  }
-
-  private cancelOwnerStreamPublishQueues(conversationId?: string, error?: Error): void {
-    if (typeof conversationId === "string") {
-      this.ownerStreamPublishCursorsByConversationId.delete(conversationId);
-      if (error) {
-        this.rejectOwnerStreamPublishIdleWaiters(conversationId, error);
-      } else {
-        this.resolveOwnerStreamPublishIdleWaiters(conversationId);
-      }
-      return;
-    }
-
-    this.ownerStreamPublishCursorsByConversationId.clear();
-    for (const conversationId of this.ownerStreamPublishIdleWaitersByConversationId.keys()) {
-      this.resolveOwnerStreamPublishIdleWaiters(conversationId);
-    }
+      if (!receipt || receipt.after === before) continue;
+      this.applyCanonicalDocument(receipt.after);
+      if (this.streamState.getRole(id)?.role === "owner")
+        this.streamState.broadcastPatches(id, receipt.patches);
+    }
+    const current = this.conversationsById.get(thread.id)?.canonicalState;
+    if (current) this.applyCanonicalDocument(current);
   }
 
   private markOwnerStreamPublishUnavailable(conversationId: string): void {
     this.ownerTextDeltaQueue.discardConversation(conversationId);
     this.outputDeltaQueue.discardConversation(conversationId);
-    this.discardDeferredOwnerRecoveryMessages(conversationId);
-    this.discardOwnerNotificationState(conversationId);
-    this.cancelOwnerStreamPublishQueues(
-      conversationId,
-      new Error(`Owner stream became unavailable for ${conversationId}`),
-    );
-    this.queueOwnerProjectionFenceByConversationId.delete(conversationId);
+
     const conversation = this.conversationsById.get(conversationId);
     if (!conversation) {
       this.streamState.removeConversation(conversationId);
@@ -10244,12 +7654,7 @@ export class CodexAppServerManager {
       return;
     }
 
-    if (conversation.resumeState !== "needs_resume") {
-      this.applyConversationSnapshot(conversationId, {
-        ...conversation,
-        resumeState: "needs_resume",
-      });
-    }
+    this.markConversationResumeState(conversationId, "needs_resume");
     this.streamState.removeConversation(conversationId);
     this.setConversationAttachmentState(conversationId, IDLE_LOCAL_CONVERSATION_ATTACHMENT_STATE);
   }
@@ -10262,267 +7667,13 @@ export class CodexAppServerManager {
     this.markOwnerStreamPublishUnavailable(conversationId);
   }
 
-  private applyOutputDeltas(updates: readonly OutputDeltaUpdate[]): void {
-    if (updates.length === 0) {
-      return;
-    }
-
-    for (const [
-      conversationId,
-      conversationUpdates,
-    ] of groupCodexCommandOutputUpdatesByConversation(updates)) {
-      const completedOwnerSequences = conversationUpdates.flatMap(
-        (update) =>
-          update.ownerNotificationSequences ??
-          (typeof update.ownerNotificationSequence === "number"
-            ? [update.ownerNotificationSequence]
-            : []),
-      );
-      const hasOwnerNotifications = completedOwnerSequences.length > 0;
-      const baseRevision = this.streamState.getRevision(conversationId);
-      const currentConversation = this.conversationsById.get(conversationId);
-      if (!currentConversation) {
-        void this.ackOwnerNotification(conversationId, completedOwnerSequences);
-        continue;
-      }
-
-      if (hasOwnerNotifications) {
-        const role = this.streamState.getRole(conversationId);
-        if (!role || role.role !== "owner" || typeof baseRevision !== "number") {
-          this.handleOwnerReducerUnavailable(conversationId);
-          void this.ackOwnerNotification(conversationId, completedOwnerSequences);
-          continue;
-        }
-      }
-
-      const before = currentConversation.canonicalState;
-      if (!before || before.protocol.id !== conversationId) {
-        if (hasOwnerNotifications) {
-          this.handleOwnerReducerUnavailable(conversationId);
-          void this.ackOwnerNotification(conversationId, completedOwnerSequences);
-        }
-        continue;
-      }
-
-      let state = before;
-      for (const update of conversationUpdates) {
-        const result = reduceCodexConversationCommandOutput(state, update);
-        state = result.state;
-        if (result.disposition === "missingItem") {
-          warnMissingOutputDeltaTarget(
-            "Skipping command output delta for missing raw command execution",
-            update,
-          );
-        }
-      }
-
-      if (state === before) {
-        void this.ackOwnerNotification(conversationId, completedOwnerSequences);
-        continue;
-      }
-
-      const projection = applyOwnerCanonicalTurnProjection(currentConversation, before, state, {
-        observedAtMs: Date.now(),
-        preserveExistingUpdatedAt: true,
-      });
-      this.applyOwnerCanonicalHiddenTurns(conversationId, projection.hiddenTurns);
-      const nextConversation: CodexConversationSnapshot = {
-        ...projection.conversation,
-        canonicalState: state,
-        canonicalRequests: [...state.requests],
-        hasUnreadTurn: state.sidecar.hasUnreadTurn,
-      };
-
-      this.publishOwnerConversationMutation(
-        conversationId,
-        completedOwnerSequences,
-        () => nextConversation,
-      );
-    }
-  }
-
-  private requestOwnerFollowerStreamResync(
-    conversationId: string,
-    ownerClientId: string,
-    reason: CodexThreadStreamResyncRequestInput["reason"],
-  ): void {
-    if (this.resyncInFlight.has(conversationId)) return;
-    this.resyncInFlight.add(conversationId);
-    void runConversationOperation("codex:thread:stream-resync:request", {
-      conversationId,
-      ownerClientId,
-      observedCheckpoint: this.streamState.getCheckpoint(conversationId),
-      reason,
-    }).finally(() => {
-      this.resyncInFlight.delete(conversationId);
-    });
-  }
-
-  private acknowledgeOwnerFollowerSnapshot(
-    conversationId: string,
-    ownerClientId: string,
-    checkpoint: CodexThreadStreamCheckpoint,
-  ): void {
-    void runConversationOperation("codex:thread-follower:snapshot-applied", {
-      conversationId,
-      ownerClientId,
-      checkpoint,
-    });
-  }
-
-  private handleThreadStreamStateChanged(event: CodexThreadStreamStateChangedEvent): void {
-    if (event.hostId !== this.hostId) {
-      return;
-    }
-
-    const sourceClientId = event.sourceClientId?.trim() ?? "";
-    if (!sourceClientId) return;
-    const existingRole = this.streamState.getRole(event.conversationId);
-    if (existingRole?.role === "owner") {
-      return;
-    }
-    const checkpoint = event.checkpoint;
-    if (!checkpoint || checkpoint.revision !== event.change.revision) {
-      this.requestOwnerFollowerStreamResync(
-        event.conversationId,
-        existingRole?.role === "follower" ? existingRole.ownerClientId : sourceClientId,
-        "missing-snapshot",
-      );
-      return;
-    }
-    if (event.change.type === "snapshot") {
-      const decision = this.streamState.acceptSnapshot({
-        conversationId: event.conversationId,
-        checkpoint,
-        sourceClientId,
-      });
-      if (decision.type === "resync") {
-        this.requestOwnerFollowerStreamResync(
-          event.conversationId,
-          existingRole?.role === "follower" ? existingRole.ownerClientId : sourceClientId,
-          decision.reason,
-        );
-        return;
-      }
-      if (decision.type === "drop") return;
-      this.ownerStreamPublishCursorsByConversationId.delete(event.conversationId);
-      this.followerAcceptedReplicasByConversationId.set(
-        event.conversationId,
-        event.change.conversationState,
-      );
-      const materialized = materializeOwnerCanonicalConversationSnapshot(
-        event.change.conversationState,
-      );
-      this.applyConversationSnapshot(event.conversationId, materialized);
-      this.setConversationAttachmentState(event.conversationId, {
-        status: "attached",
-      });
-      this.conversationVersionById.set(
-        event.conversationId,
-        Math.max(event.version, this.conversationVersionById.get(event.conversationId) ?? 0),
-      );
-      this.acknowledgeOwnerFollowerSnapshot(event.conversationId, sourceClientId, checkpoint);
-      return;
-    }
-
-    const baseCheckpoint = event.baseCheckpoint;
-    if (
-      !baseCheckpoint ||
-      baseCheckpoint.revision !== event.change.baseRevision ||
-      checkpoint.revision !== event.change.revision
-    ) {
-      this.requestOwnerFollowerStreamResync(
-        event.conversationId,
-        existingRole?.role === "follower" ? existingRole.ownerClientId : sourceClientId,
-        "revision-gap",
-      );
-      return;
-    }
-    const patchDecision = this.streamState.evaluatePatch({
-      conversationId: event.conversationId,
-      baseCheckpoint,
-      checkpoint,
-      sourceClientId,
-    });
-    if (patchDecision.type === "resync") {
-      this.requestOwnerFollowerStreamResync(
-        event.conversationId,
-        existingRole?.role === "follower" ? existingRole.ownerClientId : sourceClientId,
-        patchDecision.reason,
-      );
-      return;
-    }
-    if (patchDecision.type === "drop") {
-      return;
-    }
-
-    const currentReplica = this.followerAcceptedReplicasByConversationId.get(event.conversationId);
-    if (!currentReplica) {
-      this.requestOwnerFollowerStreamResync(
-        event.conversationId,
-        sourceClientId,
-        "missing-snapshot",
-      );
-      return;
-    }
-
-    try {
-      const nextReplica = applyCodexConversationStateUpdates(currentReplica, event.change.patches);
-      this.followerAcceptedReplicasByConversationId.set(event.conversationId, nextReplica);
-      const currentPresentation = this.conversationsById.get(event.conversationId);
-      const materialized = materializeOwnerCanonicalConversationSnapshot(nextReplica);
-      const nextConversation = currentPresentation
-        ? applyStandaloneUnreadStateToSnapshot(
-            materialized,
-            currentPresentation.hasUnreadTurn === true,
-          )
-        : materialized;
-      this.applyConversationSnapshot(
-        event.conversationId,
-        nextConversation,
-        undefined,
-        event.change.type === "patches" &&
-          shouldSynchronouslyNotifyStreamingProsePatch(nextConversation, event.change.patches)
-          ? "sync"
-          : "default",
-      );
-      this.streamState.acceptPatch({
-        conversationId: event.conversationId,
-        checkpoint,
-        sourceClientId,
-      });
-      if (event.change.type === "patches") {
-        // Only contiguous live owner patches admit arrivals; snapshots and history pages do not.
-        const questions = this.asyncQuestions.read(event.conversationId);
-        const previousItemIds = new Set(
-          currentPresentation?.canonicalState?.turns
-            .find((turn) => turn.protocol.id === questions.activeTurnId)
-            ?.items.map((item) => item.id),
-        );
-        for (const question of Object.values(questions.questions)) {
-          if (!previousItemIds.has(question.sourceItemId)) {
-            this.asyncQuestions.receive(event.conversationId, question.sourceItemId);
-          }
-        }
-      }
-      this.setConversationAttachmentState(event.conversationId, {
-        status: "attached",
-      });
-      this.conversationVersionById.set(
-        event.conversationId,
-        Math.max(event.version, this.conversationVersionById.get(event.conversationId) ?? 0),
-      );
-    } catch {
-      this.requestOwnerFollowerStreamResync(
-        event.conversationId,
-        sourceClientId,
-        "patch-apply-failed",
-      );
-    }
-  }
-
   private applyConversationChildMembershipsUpdate(
-    event: Extract<CodexSharedObject, { objectType: "conversationChildMemberships" }>["value"],
+    event: Extract<
+      CodexSharedObject,
+      {
+        objectType: "conversationChildMemberships";
+      }
+    >["value"],
   ): void {
     const parentThreadId = event.parentThreadId.trim();
     if (!parentThreadId) return;
@@ -10534,7 +7685,12 @@ export class CodexAppServerManager {
   }
 
   private applyThreadStartProgress(
-    event: Extract<CodexSharedObject, { objectType: "threadStartProgress" }>["value"],
+    event: Extract<
+      CodexSharedObject,
+      {
+        objectType: "threadStartProgress";
+      }
+    >["value"],
   ): void {
     const activeSubmission = sessionFirstSubmissionOwner
       .getSnapshot()
@@ -10598,6 +7754,14 @@ export class CodexAppServerManager {
     const current = this.threadStartProgressByTarget.get(targetKey);
     if (!current || current.launchId !== launchId) return;
 
+    const firstSubmission = sessionFirstSubmissionOwner
+      .getSnapshot()
+      .submissions.find((submission) => submission.launchId === launchId);
+    if (firstSubmission) {
+      codexTurnFirstResponseTracker.markNewThreadNavigationDispatched(
+        firstSubmission.clientUserMessageId,
+      );
+    }
     this.threadStartProgressByTarget.set(targetKey, {
       ...current,
       threadId,
@@ -10607,8 +7771,11 @@ export class CodexAppServerManager {
   }
 
   private withCachedThreadTitle(thread: CodexThreadSummary): CodexThreadSummary {
-    if (thread.threadName?.trim()) {
-      return thread;
+    const projectedTitle = projectCodexMarkdownLabel(thread.threadName);
+    if (projectedTitle) {
+      return projectedTitle === thread.threadName
+        ? thread
+        : { ...thread, threadName: projectedTitle };
     }
 
     const cachedTitle = this.threadTitlesById.get(thread.threadId);
@@ -10625,8 +7792,11 @@ export class CodexAppServerManager {
   private withCachedConversationTitle(
     conversation: CodexConversationSnapshot,
   ): CodexConversationSnapshot {
-    if (conversation.threadName?.trim()) {
-      return conversation;
+    const projectedTitle = projectCodexMarkdownLabel(conversation.threadName);
+    if (projectedTitle) {
+      return projectedTitle === conversation.threadName
+        ? conversation
+        : { ...conversation, threadName: projectedTitle };
     }
 
     const cachedTitle = this.threadTitlesById.get(conversation.threadId);
@@ -10642,7 +7812,7 @@ export class CodexAppServerManager {
 
   private applyThreadTitleUpdate(threadId: string, title: string): void {
     const normalizedThreadId = threadId.trim();
-    const normalizedTitle = title.trim();
+    const normalizedTitle = projectCodexMarkdownLabel(title);
     if (!normalizedThreadId || !normalizedTitle) {
       return;
     }
@@ -10709,10 +7879,16 @@ export class CodexAppServerManager {
   }
 
   private removeThreadLocalState(threadId: string): void {
+    this.manualCompactions.clear(threadId);
+    this.goalHydrationTokens.delete(threadId);
     const normalizedThreadId = threadId.trim();
     if (!normalizedThreadId) {
       return;
     }
+    for (const callback of this.conversationRemovedCallbacks) callback(normalizedThreadId);
+    const pendingResume = this.resumeInFlightByThreadId.get(normalizedThreadId);
+    this.resumeInFlightByThreadId.delete(normalizedThreadId);
+    pendingResume?.cancel();
     for (const [requestId, pending] of this.pendingNodexAgentAuthorizations) {
       if (pending.threadId !== normalizedThreadId) continue;
       this.pendingNodexAgentAuthorizations.delete(requestId);
@@ -10720,6 +7896,7 @@ export class CodexAppServerManager {
       pending.resolve({ decision: "deny" });
     }
 
+    this.threadsById.delete(normalizedThreadId);
     const changedProjectIds = new Set<string>();
     const existingSummary = this.threadSummariesById.get(normalizedThreadId);
     if (existingSummary?.projectId) {
@@ -10728,11 +7905,12 @@ export class CodexAppServerManager {
 
     this.threadSummariesById.delete(normalizedThreadId);
     this.conversationsById.delete(normalizedThreadId);
+    this.conversationActivity.remove(normalizedThreadId);
+    this.retention.remove(normalizedThreadId);
     this.asyncQuestions.clear(normalizedThreadId);
     this.attachmentStateByThreadId.delete(normalizedThreadId);
     for (const listener of this.attachmentCallbacks.get(normalizedThreadId) ?? []) listener();
     this.childMembershipsByParentThreadId.delete(normalizedThreadId);
-    this.followerAcceptedReplicasByConversationId.delete(normalizedThreadId);
     this.ownerHiddenLifecycleItemTypesByConversationId.delete(normalizedThreadId);
     this.primaryConversationRequestByThread.delete(normalizedThreadId);
     this.conversationVersionById.delete(normalizedThreadId);
@@ -10741,18 +7919,7 @@ export class CodexAppServerManager {
     this.ownerTextDeltaQueue.discardConversation(normalizedThreadId);
     this.outputDeltaQueue.discardConversation(normalizedThreadId);
     this.terminalInputBuffers.clearConversation(normalizedThreadId);
-    this.discardDeferredOwnerRecoveryMessages(normalizedThreadId);
-    this.discardOwnerNotificationState(normalizedThreadId);
-    this.cancelOwnerStreamPublishQueues(
-      normalizedThreadId,
-      new Error(`Thread ${normalizedThreadId} was removed`),
-    );
-    this.ownerRollbackTombstonesByConversationId.delete(normalizedThreadId);
-    this.queueOwnerProjectionFenceByConversationId.delete(normalizedThreadId);
-    this.clearActiveGoalContinuationTimer(normalizedThreadId);
-    this.activeGoalContinuationPromises.delete(normalizedThreadId);
     this.composerIntentsByThread.delete(normalizedThreadId);
-    this.resyncInFlight.delete(normalizedThreadId);
 
     for (const [projectId, threads] of this.threadSummariesByProject.entries()) {
       const nextThreads = threads.filter((thread) => thread.threadId !== normalizedThreadId);
@@ -10790,86 +7957,6 @@ export class CodexAppServerManager {
     void this.loadThreads(projectId).catch(() => {});
   }
 
-  private resolveInterruptTurnId(threadId: string, turnId?: string): string | null {
-    if (typeof turnId === "string" && turnId.trim().length > 0) {
-      return turnId;
-    }
-
-    const conversation = this.conversationsById.get(threadId);
-    if (!conversation) {
-      return null;
-    }
-
-    for (let index = conversation.turns.length - 1; index >= 0; index -= 1) {
-      const turn = conversation.turns[index];
-      if (turn?.status === "inProgress") {
-        return turn.turnId;
-      }
-    }
-
-    return null;
-  }
-
-  private rememberOwnerRollbackTombstones(
-    threadId: string,
-    before: CodexConversationSnapshot,
-    after: CodexConversationSnapshot,
-  ): void {
-    const liveIds = new Set<string>();
-    for (const turn of after.turns) {
-      if (turn.turnId) liveIds.add(turn.turnId);
-      for (const itemId of turn.itemIds) {
-        liveIds.add(itemId);
-      }
-      for (const item of turn.items) {
-        liveIds.add(item.itemId);
-      }
-    }
-
-    const tombstones =
-      this.ownerRollbackTombstonesByConversationId.get(threadId) ?? new Set<string>();
-    for (const turn of before.turns) {
-      if (turn.turnId && !liveIds.has(turn.turnId)) {
-        tombstones.add(turn.turnId);
-      }
-      for (const itemId of turn.itemIds) {
-        if (!liveIds.has(itemId)) {
-          tombstones.add(itemId);
-        }
-      }
-      for (const item of turn.items) {
-        if (!liveIds.has(item.itemId)) {
-          tombstones.add(item.itemId);
-        }
-      }
-    }
-
-    if (tombstones.size > 0) {
-      this.ownerRollbackTombstonesByConversationId.set(threadId, tombstones);
-    }
-  }
-
-  private isOwnerRollbackTombstoned(
-    threadId: string,
-    ids: readonly (string | null | undefined)[],
-  ): boolean {
-    const tombstones = this.ownerRollbackTombstonesByConversationId.get(threadId);
-    if (!tombstones) return false;
-
-    return ids.some((id) => typeof id === "string" && tombstones.has(id));
-  }
-
-  private ackOwnerNotificationIfTombstoned(
-    threadId: string,
-    ids: readonly (string | null | undefined)[],
-    sequence: number,
-  ): boolean {
-    if (!this.isOwnerRollbackTombstoned(threadId, ids)) return false;
-
-    void this.ackOwnerNotification(threadId, sequence);
-    return true;
-  }
-
   private withNodexAgentAuthorizationPresentationOverlays(
     conversation: CodexConversationSnapshot,
   ): CodexConversationSnapshot {
@@ -10891,6 +7978,10 @@ export class CodexAppServerManager {
     };
   }
 
+  private schedulePassiveHistoryRelease(threadId: string): void {
+    this.retention.notificationHandled(threadId);
+  }
+
   private applyConversationSnapshot(
     threadId: string,
     conversation: CodexConversationSnapshot,
@@ -10901,7 +7992,23 @@ export class CodexAppServerManager {
       return;
     }
 
-    const normalizedConversation = normalizeConversationSnapshot(conversation);
+    const withSideConversation =
+      conversation.canonicalState &&
+      conversation.source?.sideConversation !== undefined &&
+      conversation.canonicalState.sideConversation !== conversation.source.sideConversation
+        ? {
+            ...conversation,
+            canonicalState: {
+              ...conversation.canonicalState,
+              sideConversation: conversation.source.sideConversation,
+            },
+          }
+        : conversation;
+    const normalizedConversation = normalizeConversationSnapshot(
+      this.savedReadState !== null && !this.conversationsById.has(threadId)
+        ? { ...withSideConversation, hasUnreadTurn: this.savedReadState.has(threadId) }
+        : withSideConversation,
+    );
     const terminalTurnIds = new Set(
       normalizedConversation.turns
         .filter((turn) => turn.turnId !== null && turn.status !== "inProgress")
@@ -10926,6 +8033,11 @@ export class CodexAppServerManager {
     }
 
     this.conversationsById.set(threadId, nextConversation);
+    if (
+      currentConversation?.turnPagination?.isLoadingOlder &&
+      !nextConversation.turnPagination?.isLoadingOlder
+    )
+      this.schedulePassiveHistoryRelease(threadId);
     const previousPrimaryRequest = this.primaryConversationRequestByThread.get(threadId) ?? null;
     const nextPrimaryRequest = selectPrimaryConversationRequest(nextConversation);
     this.primaryConversationRequestByThread.set(
@@ -10944,9 +8056,9 @@ export class CodexAppServerManager {
       this.ensureRecentConversationId(threadId);
     }
     if (isConversationStreaming(nextConversation)) {
-      this.streamState.setStreaming(threadId, true);
+      this.activeStreamingIds.add(threadId);
     } else {
-      this.streamState.setStreaming(threadId, false);
+      this.activeStreamingIds.delete(threadId);
     }
     if (typeof version === "number") {
       this.conversationVersionById.set(threadId, version);
@@ -10959,7 +8071,14 @@ export class CodexAppServerManager {
     };
     this.applyThreadSummary(mergedSummary);
 
+    this.retention.reconcile(threadId);
     this.notifyConversationCallbacks(threadId, notifyMode);
+    if (
+      currentConversation &&
+      (currentConversation.statusType !== nextConversation.statusType ||
+        currentConversation.requests.length > nextConversation.requests.length)
+    )
+      this.schedulePassiveHistoryRelease(threadId);
   }
 
   private notifyConversationCallbacks(
@@ -11063,6 +8182,7 @@ export class CodexAppServerManager {
   }
 
   private ensureRecentConversationId(threadId: string): void {
+    if (this.archiveState.isSuppressed(threadId)) return;
     if (this.recentConversationIds.includes(threadId)) {
       return;
     }
@@ -11076,7 +8196,11 @@ export class CodexAppServerManagerRegistry {
   private readonly callbacks = new Set<StoreListener>();
 
   addManager(manager: CodexAppServerManager): void {
+    const previous = this.managers.get(manager.getHostId());
+    if (previous === manager) return;
+    previous?.destroy();
     this.managers.set(manager.getHostId(), manager);
+    bindRendererConversationWindowActivity(manager);
     this.notifyRegistryChanged();
   }
 
@@ -11110,8 +8234,7 @@ export class CodexAppServerManagerRegistry {
     }
 
     const manager = new CodexAppServerManager(hostId);
-    this.managers.set(hostId, manager);
-    this.notifyRegistryChanged();
+    this.addManager(manager);
     return manager;
   }
 
@@ -11151,30 +8274,61 @@ export class CodexAppServerManagerRegistry {
 }
 
 const codexAppServerRegistry = new CodexAppServerManagerRegistry();
+let conversationCoordinationConnection: ConversationCoordinationConnection | undefined;
+let conversationCoordinationConsumers = 0;
+function retainConversationCoordination(): () => void {
+  conversationCoordinationConsumers++;
+  void getConversationCoordinationHost().catch(() => {});
+  return () => {
+    conversationCoordinationConsumers--;
+    if (conversationCoordinationConsumers > 0) return;
+    conversationCoordinationConnection?.[Symbol.dispose]();
+    conversationCoordinationConnection = undefined;
+  };
+}
+
+function getConversationCoordinationConnection(): ConversationCoordinationConnection {
+  conversationCoordinationConnection ??= connectConversationCoordination(
+    (hostId) => codexAppServerRegistry.getForHostId(hostId),
+    (method, event) => {
+      if (method === "clientStatusChanged" || method === "ipcConnectionReset") {
+        for (const manager of codexAppServerRegistry.getAll())
+          manager.receiveCoordination(method, event);
+        return;
+      }
+      const hostId = (event.params as { hostId?: unknown } | null)?.hostId;
+      if (typeof hostId !== "string") return;
+      codexAppServerRegistry.getForHostId(hostId).receiveCoordination(method, event);
+    },
+  );
+  return conversationCoordinationConnection;
+}
+
+function getConversationCoordinationHost(): Promise<ConversationCoordinationHost> {
+  return getConversationCoordinationConnection().ready;
+}
 
 function getDefaultLocalConversationManager(): CodexAppServerManager {
   return codexAppServerRegistry.getDefault();
 }
 
+function getLocalConversationManagerForConversation(
+  conversationId: string,
+  preferredHostId?: string | null,
+): CodexAppServerManager {
+  const normalizedHostId = preferredHostId?.trim();
+  if (normalizedHostId) {
+    return codexAppServerRegistry.getForHostId(normalizedHostId);
+  }
+  return (
+    codexAppServerRegistry.getMaybeForConversationId(conversationId) ??
+    getDefaultLocalConversationManager()
+  );
+}
+
 let rendererClientRequestBridgeRefCount = 0;
 let unsubscribeRendererClientRequests: (() => void) | null = null;
 let rendererClientRequestManager: CodexAppServerManager | null = null;
-
-function isCodexThreadOwnerActionRequest(value: unknown): value is CodexThreadOwnerActionRequest {
-  return (
-    typeof value === "object" &&
-    value !== null &&
-    typeof (value as { type?: unknown }).type === "string"
-  );
-}
-
-function isCodexRendererThreadRoleRequest(value: unknown): value is CodexRendererThreadRoleRequest {
-  return (
-    typeof value === "object" &&
-    value !== null &&
-    typeof (value as { conversationId?: unknown }).conversationId === "string"
-  );
-}
 
 function isNodexAgentAuthorizationRequest(value: unknown): value is NodexAgentAuthorizationRequest {
   if (typeof value !== "object" || value === null) return false;
@@ -11224,52 +8378,14 @@ async function buildRendererClientResponse(
   message: CodexRendererClientRequestMessage,
 ): Promise<CodexRendererClientResponseMessage> {
   try {
-    if (message.method === "thread-role") {
-      if (!isCodexRendererThreadRoleRequest(message.params)) {
-        throw new Error("Invalid thread role request");
-      }
-
-      return {
-        type: "success",
-        requestId: message.requestId,
-        result: manager.getThreadRoleForRendererClientRequest(message.params.conversationId),
-      };
-    }
-
-    if (message.method === NODEX_AGENT_AUTHORIZATION_RENDERER_METHOD) {
-      if (!isNodexAgentAuthorizationRequest(message.params)) {
-        throw new Error("Invalid Nodex authorization request");
-      }
-      return {
-        type: "success",
-        requestId: message.requestId,
-        result: await manager.requestNodexAgentAuthorization(message.params),
-      };
-    }
-
-    if (message.method === CODEX_QUEUE_OWNER_UPDATE_METHOD) {
-      if (!isCodexQueueOwnerUpdateRequest(message.params)) {
-        throw new Error("Invalid Main queue owner update");
-      }
-      return {
-        type: "success",
-        requestId: message.requestId,
-        result: await manager.applyQueueOwnerUpdate(message.params),
-      };
-    }
-
-    if (message.method !== "thread-owner-action") {
+    if (message.method !== NODEX_AGENT_AUTHORIZATION_RENDERER_METHOD)
       throw new Error(`Unsupported renderer client request method ${message.method}`);
-    }
-    if (!isCodexThreadOwnerActionRequest(message.params)) {
-      throw new Error("Invalid thread owner action request");
-    }
-
-    const result = await manager.handleThreadOwnerActionRequest(message.params);
+    if (!isNodexAgentAuthorizationRequest(message.params))
+      throw new Error("Invalid Nodex authorization request");
     return {
       type: "success",
       requestId: message.requestId,
-      result,
+      result: await manager.requestNodexAgentAuthorization(message.params),
     };
   } catch (error) {
     return {
@@ -11308,6 +8424,22 @@ function startLocalConversationRendererClientRequestBridge(
   };
 }
 
+let readStateConnection: ReturnType<typeof connectRendererThreadReadState> | undefined;
+let readStateConnectionConsumers = 0;
+function startThreadReadStateConnection(registry: CodexAppServerManagerRegistry): () => void {
+  readStateConnectionConsumers += 1;
+  readStateConnection ??= connectRendererThreadReadState(
+    (hostId) => registry.getForHostId(hostId),
+    getConversationCoordinationConnection().readStateReady,
+  );
+  return () => {
+    readStateConnectionConsumers -= 1;
+    if (readStateConnectionConsumers > 0) return;
+    readStateConnection?.[Symbol.dispose]();
+    readStateConnection = undefined;
+  };
+}
+
 const CodexAppServerRegistryContext =
   createContext<CodexAppServerManagerRegistry>(codexAppServerRegistry);
 
@@ -11322,15 +8454,19 @@ export function LocalConversationProvider({
   const manager = useMemo(() => registry.getForHostId(hostId), [hostId, registry]);
 
   useEffect(() => {
+    const stopCoordination = retainConversationCoordination();
+    const stopReadState = startThreadReadStateConnection(registry);
     const stopHostBridge = startLocalConversationHostBridge();
     const stopRendererClientRequestBridge =
       startLocalConversationRendererClientRequestBridge(manager);
     manager.start();
     return () => {
+      stopReadState();
+      stopCoordination();
       stopRendererClientRequestBridge();
       stopHostBridge();
     };
-  }, [manager]);
+  }, [manager, registry]);
 
   return createElement(CodexAppServerRegistryContext.Provider, { value: registry }, children);
 }
@@ -11356,7 +8492,10 @@ function useExternalSelector<T>(
   getSnapshot: () => T,
   isEqual: (left: T, right: T) => boolean = Object.is,
 ): T {
-  const cacheRef = useRef<{ hasValue: boolean; value: T }>({
+  const cacheRef = useRef<{
+    hasValue: boolean;
+    value: T;
+  }>({
     hasValue: false,
     value: undefined as T,
   });
@@ -11440,10 +8579,16 @@ export function useMaybeCodexAppServerManagerForConversationId(
 
 export function useCodexAppServerManagerForConversationId(
   conversationId: string | null,
+  preferredHostId?: string | null,
 ): CodexAppServerManager {
   const manager = useMaybeCodexAppServerManagerForConversationId(conversationId);
+  const registry = useCodexAppServerRegistry();
+  const preferredManager = useMemo(() => {
+    const normalizedHostId = preferredHostId?.trim();
+    return normalizedHostId ? registry.getForHostId(normalizedHostId) : null;
+  }, [preferredHostId, registry]);
   const defaultManager = useDefaultCodexAppServerManager();
-  return manager ?? defaultManager;
+  return manager ?? preferredManager ?? defaultManager;
 }
 
 export function useCodexConversationValue<T>(
@@ -11523,87 +8668,108 @@ export function hydrateLocalConversationThreadSummaries(
 
 export function requestLocalConversationSnapshot(
   threadId: string,
+  hostId?: string | null,
 ): Promise<CodexConversationSnapshot | null> {
-  return getDefaultLocalConversationManager().requestThreadStreamSnapshot(threadId);
+  return getLocalConversationManagerForConversation(threadId, hostId).requestThreadStreamSnapshot(
+    threadId,
+  );
 }
 
 export function requestLocalConversationResume(
   threadId: string,
+  hostId?: string | null,
 ): Promise<CodexConversationSnapshot | null> {
-  return getDefaultLocalConversationManager().requestThreadStreamResume(threadId);
+  return getLocalConversationManagerForConversation(threadId, hostId).requestThreadStreamResume(
+    threadId,
+  );
 }
 
-export function markLocalConversationAsRead(threadId: string): Promise<void> {
-  return getDefaultLocalConversationManager().markConversationAsRead(threadId);
-}
-
-export function setLocalConversationThreadViewActive(
+export function markLocalConversationAsRead(
   threadId: string,
-  active: boolean,
-): Promise<boolean> {
-  return getDefaultLocalConversationManager().setThreadViewActive(threadId, active);
+  hostId?: string | null,
+): Promise<void> {
+  return getLocalConversationManagerForConversation(threadId, hostId).markConversationAsRead(
+    threadId,
+  );
 }
 
 export function setLocalConversationThreadPresented(
   threadId: string,
   surfaceId: string,
   presented: boolean,
+  hostId?: string | null,
 ): Promise<boolean> {
-  return getDefaultLocalConversationManager().setThreadPresented(threadId, surfaceId, presented);
+  return getLocalConversationManagerForConversation(threadId, hostId).setThreadPresented(
+    threadId,
+    surfaceId,
+    presented,
+  );
 }
 
 export function requestLocalConversationHistoryPage(
   request: CodexConversationHistoryPageRequest,
-): Promise<CodexConversationHistoryPageResult> {
-  return getDefaultLocalConversationManager().requestHistoryPage(request);
-}
-
-export function publishLocalConversationHistoryMutation(
-  threadId: string,
-  mutation: CodexConversationHistoryMutation,
-): Promise<number> {
-  return getDefaultLocalConversationManager().publishLocalConversationHistoryMutation(
-    threadId,
-    mutation,
+  hostId?: string | null,
+): Promise<LocalHistoryPageResult> {
+  return getLocalConversationManagerForConversation(request.threadId, hostId).requestHistoryPage(
+    request,
   );
 }
 
 export function hydrateLocalPersistedHistoryOccurrence(
   input: CodexPersistedHistoryOccurrenceHydrateInput,
 ): Promise<CodexPersistedHistoryOccurrenceResolution> {
-  return getDefaultLocalConversationManager().hydratePersistedHistoryOccurrence(input);
+  return codexAppServerRegistry.getForHostId(input.hostId).hydratePersistedHistoryOccurrence(input);
 }
 
 export function setLocalConversationComposerIntent(
   threadId: string,
   composerIntent: CodexComposerIntent,
+  hostId?: string | null,
 ): void {
-  getDefaultLocalConversationManager().setComposerIntent(threadId, composerIntent);
+  getLocalConversationManagerForConversation(threadId, hostId).setComposerIntent(
+    threadId,
+    composerIntent,
+  );
 }
 
-export function consumeLocalConversationComposerIntent(threadId: string, focusNonce: number): void {
-  getDefaultLocalConversationManager().consumeComposerIntent(threadId, focusNonce);
+export function consumeLocalConversationComposerIntent(
+  threadId: string,
+  focusNonce: number,
+  hostId?: string | null,
+): void {
+  getLocalConversationManagerForConversation(threadId, hostId).consumeComposerIntent(
+    threadId,
+    focusNonce,
+  );
 }
 
 export function removeLocalConversationPlanImplementationRequest(
   threadId: string,
   turnId: string,
+  hostId?: string | null,
 ): Promise<boolean> {
-  return getDefaultLocalConversationManager().removePlanImplementationRequest(threadId, turnId);
+  return getLocalConversationManagerForConversation(
+    threadId,
+    hostId,
+  ).removePlanImplementationRequest(threadId, turnId);
 }
 
 export function setLocalConversationCollaborationMode(
   threadId: string,
   mode: CodexCollaborationModeKind,
+  hostId?: string | null,
 ): Promise<CodexCollaborationModeState> {
-  return getDefaultLocalConversationManager().setLatestCollaborationModeForConversation(
+  return getLocalConversationManagerForConversation(
     threadId,
-    mode,
-  );
+    hostId,
+  ).setLatestCollaborationModeForConversation(threadId, mode);
 }
 
-export function readLocalConversation(threadId: string): CodexConversationSnapshot | null {
-  return getDefaultLocalConversationManager().readConversation(threadId);
+export function readLocalConversation(
+  threadId: string,
+  hostId?: string | null,
+): CodexConversationSnapshot | null {
+  return getLocalConversationManagerForConversation(threadId, hostId).readConversation(threadId);
 }
 
 export function __resetLocalConversationStoreForTests(): void {
@@ -11899,8 +9065,10 @@ export function useComposerIntent(threadId: string | null): CodexComposerIntent 
   );
 }
 
-export function useLocalConversationConnection(): CodexConnectionState {
-  const manager = useDefaultCodexAppServerManager();
+export function useLocalConversationConnection(
+  conversationId: string | null = null,
+): CodexConnectionState {
+  const manager = useCodexAppServerManagerForConversationId(conversationId);
   return useExternalSelector(
     (listener) => manager.subscribeConnection(listener),
     () => manager.readConnection(),
@@ -11917,6 +9085,14 @@ export function useLocalConversationAccount(): CodexAccountSnapshot | null {
 
 export function useCodexAvailableModels(): CodexModelOption[] {
   return useManagerControlSelection((manager) => manager.readAvailableModels(), areModelsEqual);
+}
+
+function useCodexAvailableModelsForManager(manager: CodexAppServerManager): CodexModelOption[] {
+  return useExternalSelector(
+    (listener) => manager.subscribeControl(listener),
+    () => manager.readAvailableModels(),
+    areModelsEqual,
+  );
 }
 
 export function useCodexDictationState(): CodexDictationStateSnapshot {
@@ -11936,14 +9112,22 @@ export function useCodexPermissionMode(projectId: string | null): CodexPermissio
 
 export function useCodexPermissionState(projectId: string | null): CodexPermissionState {
   const manager = useDefaultCodexAppServerManager();
+  return useCodexPermissionStateForManager(manager, projectId);
+}
+
+function useCodexPermissionStateForManager(
+  manager: CodexAppServerManager,
+  projectId: string | null,
+): CodexPermissionState {
   useEffect(() => {
     void manager.loadPermissionState(projectId).catch(() => {
       // main-process authority will retry on the next interaction
     });
   }, [manager, projectId]);
 
-  return useManagerControlSelection(
-    (managed) => managed.readPermissionState(projectId),
+  return useExternalSelector(
+    (listener) => manager.subscribeControl(listener),
+    () => manager.readPermissionState(projectId),
     arePermissionStatesEqual,
   );
 }
@@ -11982,11 +9166,20 @@ export function useCodexThreadStartProgress(
   );
 }
 
-export function useCodexAppServerControl(activeProjectId: string | null) {
-  const manager = useDefaultCodexAppServerManager();
+export function useCodexAppServerControl(
+  activeProjectId: string | null,
+  activeConversationId: string | null = null,
+  preferredHostId?: string | null,
+) {
+  const registry = useCodexAppServerRegistry();
+  const manager = useCodexAppServerManagerForConversationId(activeConversationId, preferredHostId);
+  const managerForConversation = useCallback(
+    (conversationId: string) => registry.getMaybeForConversationId(conversationId) ?? manager,
+    [manager, registry],
+  );
   const workbenchOwner = useWorkbenchWindowOwner();
-  const availableModels = useCodexAvailableModels();
-  const permissionState = useCodexPermissionState(activeProjectId);
+  const availableModels = useCodexAvailableModelsForManager(manager);
+  const permissionState = useCodexPermissionStateForManager(manager, activeProjectId);
   const permissionMode = permissionState.mode;
   const { settings: storedThreadSettings, updateSettings: updateStoredThreadSettings } =
     useCodexThreadSettings();
@@ -12041,8 +9234,12 @@ export function useCodexAppServerControl(activeProjectId: string | null) {
   );
 
   const loadThreads = useCallback(
-    async (projectId: string, opts?: { includeArchived?: boolean }) =>
-      manager.loadThreads(projectId, opts),
+    async (
+      projectId: string,
+      opts?: {
+        includeArchived?: boolean;
+      },
+    ) => manager.loadThreads(projectId, opts),
     [manager],
   );
   const loadModels = useCallback(async () => manager.loadAvailableModels(), [manager]);
@@ -12051,21 +9248,24 @@ export function useCodexAppServerControl(activeProjectId: string | null) {
     [manager],
   );
   const requestThreadStreamSnapshot = useCallback(
-    async (threadId: string) => manager.requestThreadStreamSnapshot(threadId),
-    [manager],
+    async (threadId: string) =>
+      managerForConversation(threadId).requestThreadStreamSnapshot(threadId),
+    [managerForConversation],
   );
   const readSubagentOverview = useCallback(
-    async (input: CodexSubagentOverviewReadInput) => manager.readSubagentOverview(input),
-    [manager],
+    async (input: CodexSubagentOverviewReadInput) =>
+      managerForConversation(input.rootThreadId).readSubagentOverview(input),
+    [managerForConversation],
   );
   const hydrateSelectedSubagent = useCallback(
-    async (input: CodexSelectedSubagentHydrateInput) => manager.hydrateSelectedSubagent(input),
-    [manager],
+    async (input: CodexSelectedSubagentHydrateInput) =>
+      managerForConversation(input.rootThreadId).hydrateSelectedSubagent(input),
+    [managerForConversation],
   );
   const refreshSelectedSubagentAuthority = useCallback(
     async (input: CodexSelectedSubagentHydrateInput) =>
-      manager.refreshSelectedSubagentAuthority(input),
-    [manager],
+      managerForConversation(input.rootThreadId).refreshSelectedSubagentAuthority(input),
+    [managerForConversation],
   );
 
   const captureSubmissionPresentation = useCallback(
@@ -12095,7 +9295,10 @@ export function useCodexAppServerControl(activeProjectId: string | null) {
         input,
         serviceTierSettings.serviceTier,
       );
-      const result = await manager.startThreadForSession({
+      const launchManager = input.executionHostId
+        ? registry.getForHostId(input.executionHostId)
+        : manager;
+      const result = await launchManager.startThreadForSession({
         ...input,
         presentationTicket,
         ...requestSettings,
@@ -12103,7 +9306,7 @@ export function useCodexAppServerControl(activeProjectId: string | null) {
         executionProfile: input.executionProfile ?? executionProfile ?? undefined,
       });
       if (result.kind === "started" && input.projectId !== null) {
-        await manager.loadThreads(input.projectId);
+        await launchManager.loadThreads(input.projectId);
       }
       return result;
     },
@@ -12111,6 +9314,7 @@ export function useCodexAppServerControl(activeProjectId: string | null) {
       availableModels,
       executionProfile,
       manager,
+      registry,
       serviceTierSettings.serviceTier,
       storedThreadSettings,
       workbenchOwner,
@@ -12135,7 +9339,7 @@ export function useCodexAppServerControl(activeProjectId: string | null) {
         input,
         serviceTierSettings.serviceTier,
       );
-      return manager.startSideChat({
+      return managerForConversation(input.parentThreadId).startSideChat({
         ...input,
         presentationTicket,
         clientUserMessageId,
@@ -12145,7 +9349,7 @@ export function useCodexAppServerControl(activeProjectId: string | null) {
     },
     [
       availableModels,
-      manager,
+      managerForConversation,
       serviceTierSettings.serviceTier,
       storedThreadSettings,
       workbenchOwner,
@@ -12153,24 +9357,24 @@ export function useCodexAppServerControl(activeProjectId: string | null) {
   );
 
   const discardSideChat = useCallback(
-    async (threadId: string) => manager.discardSideChat(threadId),
-    [manager],
+    async (threadId: string) => managerForConversation(threadId).discardSideChat(threadId),
+    [managerForConversation],
   );
 
   const setThreadName = useCallback(
     async (threadId: string, name: string, projectId: string) =>
-      manager.setThreadName(threadId, name, projectId),
-    [manager],
+      managerForConversation(threadId).setThreadName(threadId, name, projectId),
+    [managerForConversation],
   );
   const archiveThread = useCallback(
     async (threadId: string, projectId: string | null) =>
-      manager.archiveThread(threadId, projectId),
-    [manager],
+      managerForConversation(threadId).archiveThread(threadId, projectId),
+    [managerForConversation],
   );
   const unarchiveThread = useCallback(
     async (threadId: string, projectId: string | null) =>
-      manager.unarchiveThread(threadId, projectId),
-    [manager],
+      managerForConversation(threadId).unarchiveThread(threadId, projectId),
+    [managerForConversation],
   );
 
   const startTurn = useCallback(
@@ -12186,6 +9390,7 @@ export function useCodexAppServerControl(activeProjectId: string | null) {
         promptInput?: CodexTurnStartOptions["promptInput"];
       },
       submittedPresentation?: WorkbenchSubmitPresentation,
+      submissionIdentity?: RendererTurnSubmissionIdentity,
     ) => {
       const presentationTicket = await captureCodexTurnPresentation(
         workbenchOwner,
@@ -12196,24 +9401,33 @@ export function useCodexAppServerControl(activeProjectId: string | null) {
         submittedPresentation,
       );
       const resolvedProjectId = opts?.projectId ?? activeProjectId;
-      await manager.loadPermissionState(resolvedProjectId);
+      const targetManager = managerForConversation(threadId);
+      await targetManager.loadPermissionState(resolvedProjectId);
       const turnOpts: CodexTurnStartOptions = {
-        permissionMode: manager.readPermissionMode(resolvedProjectId),
+        permissionMode: targetManager.readPermissionMode(resolvedProjectId),
         collaborationMode: opts?.collaborationMode,
         model: opts?.model,
         reasoningEffort: opts?.reasoningEffort,
         ...(opts?.promptInput ? { promptInput: opts.promptInput } : {}),
         ...buildCodexServiceTierRequestOverride(opts?.serviceTier ?? null),
       };
-      return manager.startTurn(threadId, prompt, turnOpts, presentationTicket);
+      return targetManager.startTurn(
+        threadId,
+        prompt,
+        turnOpts,
+        presentationTicket,
+        submissionIdentity,
+      );
     },
-    [activeProjectId, manager, workbenchOwner],
+    [activeProjectId, managerForConversation, workbenchOwner],
   );
 
   const resumeInterruptedTurn = useCallback(
     async (
       threadId: string,
-      opts?: { projectId?: string },
+      opts?: {
+        projectId?: string;
+      },
       submittedPresentation?: WorkbenchSubmitPresentation,
     ) => {
       const presentationTicket = await captureCodexTurnPresentation(
@@ -12225,16 +9439,17 @@ export function useCodexAppServerControl(activeProjectId: string | null) {
         submittedPresentation,
       );
       const resolvedProjectId = opts?.projectId ?? activeProjectId;
-      await manager.loadPermissionState(resolvedProjectId);
-      return await manager.resumeInterruptedTurn(
+      const targetManager = managerForConversation(threadId);
+      await targetManager.loadPermissionState(resolvedProjectId);
+      return await targetManager.resumeInterruptedTurn(
         threadId,
         {
-          permissionMode: manager.readPermissionMode(resolvedProjectId),
+          permissionMode: targetManager.readPermissionMode(resolvedProjectId),
         },
         presentationTicket,
       );
     },
-    [activeProjectId, manager, workbenchOwner],
+    [activeProjectId, managerForConversation, workbenchOwner],
   );
 
   const enqueueQueuedFollowUp = useCallback(
@@ -12258,22 +9473,23 @@ export function useCodexAppServerControl(activeProjectId: string | null) {
         submittedPresentation,
       );
       const resolvedProjectId = opts?.projectId ?? activeProjectId;
-      await manager.loadPermissionState(resolvedProjectId);
+      const targetManager = managerForConversation(threadId);
+      await targetManager.loadPermissionState(resolvedProjectId);
       const turnOpts: CodexTurnStartOptions = {
-        permissionMode: manager.readPermissionMode(resolvedProjectId),
+        permissionMode: targetManager.readPermissionMode(resolvedProjectId),
         collaborationMode: opts?.collaborationMode ?? undefined,
         ...(opts?.promptInput ? { promptInput: opts.promptInput } : {}),
         ...buildCodexServiceTierRequestOverride(opts?.serviceTier ?? null),
       };
-      await manager.enqueueQueuedFollowUp(threadId, prompt, turnOpts, presentationTicket);
+      await targetManager.enqueueQueuedFollowUp(threadId, prompt, turnOpts, presentationTicket);
     },
-    [activeProjectId, manager, workbenchOwner],
+    [activeProjectId, managerForConversation, workbenchOwner],
   );
 
   const removeQueuedFollowUp = useCallback(
     async (threadId: string, followUpId: string) =>
-      manager.removeQueuedFollowUp(threadId, followUpId),
-    [manager],
+      managerForConversation(threadId).removeQueuedFollowUp(threadId, followUpId),
+    [managerForConversation],
   );
   const replaceQueuedFollowUp = useCallback(
     async (
@@ -12292,7 +9508,7 @@ export function useCodexAppServerControl(activeProjectId: string | null) {
         },
         submittedPresentation,
       );
-      return manager.replaceQueuedFollowUp(
+      return managerForConversation(threadId).replaceQueuedFollowUp(
         threadId,
         followUpId,
         expectedLedgerRevision,
@@ -12301,33 +9517,39 @@ export function useCodexAppServerControl(activeProjectId: string | null) {
         presentationTicket,
       );
     },
-    [manager, workbenchOwner],
+    [managerForConversation, workbenchOwner],
   );
   const reorderQueuedFollowUps = useCallback(
     async (threadId: string, orderedFollowUpIds: string[]) =>
-      manager.reorderQueuedFollowUps(threadId, orderedFollowUpIds),
-    [manager],
+      managerForConversation(threadId).reorderQueuedFollowUps(threadId, orderedFollowUpIds),
+    [managerForConversation],
   );
   const resumeQueuedFollowUps = useCallback(
-    async (threadId: string) => manager.resumeQueuedFollowUps(threadId),
-    [manager],
+    async (threadId: string) => managerForConversation(threadId).resumeQueuedFollowUps(threadId),
+    [managerForConversation],
   );
   const resolveQueuedFollowUpsAfterFreshStart = useCallback(
     async (threadId: string, expectedLedgerRevision: number, resolution: "resume" | "clear") =>
-      manager.resolveQueuedFollowUpsAfterFreshStart(threadId, expectedLedgerRevision, resolution),
-    [manager],
+      managerForConversation(threadId).resolveQueuedFollowUpsAfterFreshStart(
+        threadId,
+        expectedLedgerRevision,
+        resolution,
+      ),
+    [managerForConversation],
   );
   const sendQueuedFollowUpNow = useCallback(
     async (threadId: string, followUpId: string) =>
-      manager.sendQueuedFollowUpNow(threadId, followUpId),
-    [manager],
+      managerForConversation(threadId).sendQueuedFollowUpNow(threadId, followUpId),
+    [managerForConversation],
   );
   const editLastUserTurn = useCallback(
     async (
       threadId: string,
       turnId: string,
       message: string,
-      opts?: { serviceTier?: CodexServiceTier },
+      opts?: {
+        serviceTier?: CodexServiceTier;
+      },
       submittedPresentation?: WorkbenchSubmitPresentation,
     ) => {
       const presentationTicket = await captureCodexTurnPresentation(
@@ -12338,7 +9560,7 @@ export function useCodexAppServerControl(activeProjectId: string | null) {
         },
         submittedPresentation,
       );
-      return manager.editLastUserTurn(
+      return managerForConversation(threadId).editLastUserTurn(
         threadId,
         turnId,
         message,
@@ -12346,89 +9568,93 @@ export function useCodexAppServerControl(activeProjectId: string | null) {
         presentationTicket,
       );
     },
-    [manager, workbenchOwner],
+    [managerForConversation, workbenchOwner],
   );
   const forkConversationFromTurn = useCallback(
     async (threadId: string, turnId: string, message: string) =>
-      manager.forkConversationFromTurn(threadId, turnId, message),
-    [manager],
+      managerForConversation(threadId).forkConversationFromTurn(threadId, turnId, message),
+    [managerForConversation],
   );
   const compactThread = useCallback(
-    async (threadId: string) => manager.compactThread(threadId),
-    [manager],
+    async (threadId: string) => managerForConversation(threadId).compactThread(threadId),
+    [managerForConversation],
   );
   const getThreadGoal = useCallback(
-    async (threadId: string) => manager.getThreadGoal(threadId),
-    [manager],
+    async (threadId: string) => managerForConversation(threadId).getThreadGoal(threadId),
+    [managerForConversation],
   );
   const setThreadGoal = useCallback(
-    async (input: CodexThreadGoalSetActionInput) => manager.setThreadGoal(input),
-    [manager],
+    async (input: CodexThreadGoalSetActionInput) =>
+      managerForConversation(input.threadId).setThreadGoal(input),
+    [managerForConversation],
   );
   const clearThreadGoal = useCallback(
-    async (threadId: string) => manager.clearThreadGoal(threadId),
-    [manager],
+    async (threadId: string) => managerForConversation(threadId).clearThreadGoal(threadId),
+    [managerForConversation],
   );
   const dismissThreadGoalResumeConfirmation = useCallback(
-    async (threadId: string) => manager.dismissThreadGoalResumeConfirmation(threadId),
-    [manager],
+    async (threadId: string) =>
+      managerForConversation(threadId).dismissThreadGoalResumeConfirmation(threadId),
+    [managerForConversation],
   );
   const setThreadMemoryMode = useCallback(
     async (input: { threadId: string; mode: ThreadMemoryMode }) =>
-      manager.setThreadMemoryMode(input),
-    [manager],
+      managerForConversation(input.threadId).setThreadMemoryMode(input),
+    [managerForConversation],
   );
   const uploadFeedback = useCallback(
     async (params: FeedbackUploadParams) => manager.uploadFeedback(params),
     [manager],
   );
   const cleanBackgroundTerminals = useCallback(
-    async (threadId: string) => manager.cleanBackgroundTerminals(threadId),
-    [manager],
+    async (threadId: string) => managerForConversation(threadId).cleanBackgroundTerminals(threadId),
+    [managerForConversation],
   );
   const listBackgroundTerminals = useCallback(
-    async (threadId: string) => manager.listBackgroundTerminals(threadId),
-    [manager],
+    async (threadId: string) => managerForConversation(threadId).listBackgroundTerminals(threadId),
+    [managerForConversation],
   );
   const listBackgroundProcesses = useCallback(
-    async (threadId: string) => manager.listBackgroundProcesses(threadId),
-    [manager],
+    async (threadId: string) => managerForConversation(threadId).listBackgroundProcesses(threadId),
+    [managerForConversation],
   );
   const runBackgroundProcess = useCallback(
-    async (input: CodexBackgroundProcessRunActionInput) => manager.runBackgroundProcess(input),
-    [manager],
+    async (input: CodexBackgroundProcessRunActionInput) =>
+      managerForConversation(input.threadId).runBackgroundProcess(input),
+    [managerForConversation],
   );
   const stopBackgroundProcess = useCallback(
     async (input: {
       threadId: string;
       processId: string | null;
       terminalSessionId: string | null;
-    }) => manager.stopBackgroundProcess(input),
-    [manager],
+    }) => managerForConversation(input.threadId).stopBackgroundProcess(input),
+    [managerForConversation],
   );
   const terminateBackgroundTerminal = useCallback(
     async (input: { threadId: string; processId: string }) =>
-      manager.terminateBackgroundTerminal(input),
-    [manager],
+      managerForConversation(input.threadId).terminateBackgroundTerminal(input),
+    [managerForConversation],
   );
   const setComposerIntent = useCallback(
     (threadId: string, composerIntent: CodexComposerIntent) =>
-      manager.setComposerIntent(threadId, composerIntent),
-    [manager],
+      managerForConversation(threadId).setComposerIntent(threadId, composerIntent),
+    [managerForConversation],
   );
   const consumeComposerIntent = useCallback(
-    (threadId: string, focusNonce: number) => manager.consumeComposerIntent(threadId, focusNonce),
-    [manager],
+    (threadId: string, focusNonce: number) =>
+      managerForConversation(threadId).consumeComposerIntent(threadId, focusNonce),
+    [managerForConversation],
   );
   const setConversationCollaborationMode = useCallback(
     async (threadId: string, mode: CodexCollaborationModeKind) =>
-      manager.setLatestCollaborationModeForConversation(threadId, mode),
-    [manager],
+      managerForConversation(threadId).setLatestCollaborationModeForConversation(threadId, mode),
+    [managerForConversation],
   );
   const setConversationThreadSettings = useCallback(
     async (threadId: string, patch: CodexConversationThreadSettingsPatch) =>
-      manager.setThreadSettingsForConversation(threadId, patch),
-    [manager],
+      managerForConversation(threadId).setThreadSettingsForConversation(threadId, patch),
+    [managerForConversation],
   );
   const setPersonality = useCallback(async (nextPersonality: CodexPersonality) => {
     const intentVersion = personalityIntentVersion.current + 1;
@@ -12449,16 +9675,18 @@ export function useCodexAppServerControl(activeProjectId: string | null) {
   }, []);
   const removePlanImplementationRequest = useCallback(
     async (threadId: string, turnId: string) =>
-      manager.removePlanImplementationRequest(threadId, turnId),
-    [manager],
+      managerForConversation(threadId).removePlanImplementationRequest(threadId, turnId),
+    [managerForConversation],
   );
   const markConversationAsRead = useCallback(
-    async (conversationId: string) => manager.markConversationAsRead(conversationId),
-    [manager],
+    async (conversationId: string) =>
+      managerForConversation(conversationId).markConversationAsRead(conversationId),
+    [managerForConversation],
   );
   const markConversationAsUnread = useCallback(
-    async (conversationId: string) => manager.markConversationAsUnread(conversationId),
-    [manager],
+    async (conversationId: string) =>
+      managerForConversation(conversationId).markConversationAsUnread(conversationId),
+    [managerForConversation],
   );
 
   const steerTurn = useCallback(
@@ -12471,69 +9699,104 @@ export function useCodexAppServerControl(activeProjectId: string | null) {
         },
         submittedPresentation,
       );
-      return manager.steerTurn({ ...input, presentationTicket });
+      return managerForConversation(input.threadId).steerTurn({ ...input, presentationTicket });
     },
-    [manager, workbenchOwner],
+    [managerForConversation, workbenchOwner],
   );
   const interruptTurn = useCallback(
-    async (threadId: string, turnId?: string) => manager.interruptTurn(threadId, turnId),
-    [manager],
+    async (threadId: string, turnId?: string) =>
+      managerForConversation(threadId).interruptTurn(threadId, turnId),
+    [managerForConversation],
   );
   const respondApproval = useCallback(
     async (
       requestId: CodexProtocolRequestId,
       response: CodexApprovalResponse,
       conversationId?: string | null,
-    ) => manager.respondApproval(requestId, response, conversationId),
-    [manager],
+    ) =>
+      (conversationId ? managerForConversation(conversationId) : manager).respondApproval(
+        requestId,
+        response,
+        conversationId,
+      ),
+    [manager, managerForConversation],
   );
   const respondUserInput = useCallback(
     async (
       requestId: CodexProtocolRequestId,
       answers: Record<string, string[]>,
       conversationId?: string | null,
-    ) => manager.respondUserInput(requestId, answers, conversationId),
-    [manager],
+    ) =>
+      (conversationId ? managerForConversation(conversationId) : manager).respondUserInput(
+        requestId,
+        answers,
+        conversationId,
+      ),
+    [manager, managerForConversation],
   );
   const respondMcpElicitation = useCallback(
     async (
       requestId: CodexProtocolRequestId,
       response: CodexMcpServerElicitationAction | CodexMcpServerElicitationResponse,
       conversationId?: string | null,
-    ) => manager.respondMcpElicitation(requestId, response, conversationId),
-    [manager],
+    ) =>
+      (conversationId ? managerForConversation(conversationId) : manager).respondMcpElicitation(
+        requestId,
+        response,
+        conversationId,
+      ),
+    [manager, managerForConversation],
   );
   const respondPermissionRequest = useCallback(
     async (
       requestId: CodexProtocolRequestId,
       response: CodexPermissionRequestResponse,
       conversationId?: string | null,
-    ) => manager.respondPermissionRequest(requestId, response, conversationId),
-    [manager],
+    ) =>
+      (conversationId ? managerForConversation(conversationId) : manager).respondPermissionRequest(
+        requestId,
+        response,
+        conversationId,
+      ),
+    [manager, managerForConversation],
   );
   const respondNodexAgentAuthorization = useCallback(
     async (
       requestId: string,
       response: NodexAgentAuthorizationResponse,
       conversationId?: string | null,
-    ) => manager.respondNodexAgentAuthorization(requestId, response, conversationId),
-    [manager],
+    ) =>
+      (conversationId
+        ? managerForConversation(conversationId)
+        : manager
+      ).respondNodexAgentAuthorization(requestId, response, conversationId),
+    [manager, managerForConversation],
   );
   const respondOptionPicker = useCallback(
     async (
       conversationId: string,
       requestId: CodexProtocolRequestId,
       response: CodexCanonicalOptionPickerResponse,
-    ) => manager.respondOptionPicker(conversationId, requestId, response),
-    [manager],
+    ) =>
+      managerForConversation(conversationId).respondOptionPicker(
+        conversationId,
+        requestId,
+        response,
+      ),
+    [managerForConversation],
   );
   const respondSetupCodexStep = useCallback(
     async (
       conversationId: string,
       requestId: CodexProtocolRequestId,
       response: CodexCanonicalSetupCodexStepResponse,
-    ) => manager.respondSetupCodexStep(conversationId, requestId, response),
-    [manager],
+    ) =>
+      managerForConversation(conversationId).respondSetupCodexStep(
+        conversationId,
+        requestId,
+        response,
+      ),
+    [managerForConversation],
   );
   const setPermissionMode = useCallback(
     async (projectId: string | null, mode: CodexPermissionMode) =>
@@ -12636,4 +9899,23 @@ export function useCodexAppServerControl(activeProjectId: string | null) {
     setDefaultServiceTier,
     setExecutionProfile,
   };
+}
+
+export function loadLocalConversationPromptRailIndex(
+  input: CodexPromptRailIndexRequest,
+  hostId?: string | null,
+): Promise<CodexPromptRailIndexCommandResult> {
+  return getLocalConversationManagerForConversation(input.threadId, hostId).loadPromptRailIndex(
+    input,
+  );
+}
+export function revealLocalConversationPromptRailTurn(
+  input: CodexPromptRailRevealRequest,
+): Promise<CodexPromptRailRevealCommandResult> {
+  return codexAppServerRegistry.getForHostId(input.hostId).revealPromptRail(input);
+}
+export function prepareLocalConversationPromptRailNavigation(
+  reveal: CodexPromptRailReveal,
+): Promise<void> {
+  return codexAppServerRegistry.getForHostId(reveal.hostId).preparePromptRailNavigation(reveal);
 }

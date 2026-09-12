@@ -1,4 +1,3 @@
-import { buildCodexThreadConfig } from "../codex/codex-thread-config";
 import type {
   ClientRequestParamsByMethod,
   ClientRequestResponsesByMethod,
@@ -21,18 +20,24 @@ import type { CodexEndpointEvent } from "../codex-runtime/CodexEventHub";
 import { cappedApproximateValueBytes } from "../../shared/codex-bounded-value-size";
 import {
   buildThreadTitleGenerationPrompt,
-  CODEX_THREAD_TITLE_CONFIG,
+  buildCodexThreadTitleThreadConfig,
+  buildThreadTitleReconsiderationPrompt,
   CODEX_THREAD_TITLE_MODEL,
   CODEX_THREAD_TITLE_OUTPUT_SCHEMA,
+  CODEX_THREAD_TITLE_RECONSIDERATION_OUTPUT_SCHEMA,
   CODEX_THREAD_TITLE_TIMEOUT_MS,
   parseGeneratedThreadMetadataResponse,
+  parseThreadTitleReconsiderationResponse,
   type CodexGeneratedThreadMetadata,
+  type CodexThreadTitleReadOnlyAppTool,
 } from "../codex/thread-title-generator";
 import { CodexInternalThreadRegistry } from "./CodexInternalThreadRegistry";
 import { ThreadCreationRuntime } from "./ThreadCreationRuntime";
 
 type ThreadStartParams = ClientRequestParamsByMethod["thread/start"];
 type ThreadStartResponse = ClientRequestResponsesByMethod["thread/start"];
+type ThreadForkParams = ClientRequestParamsByMethod["thread/fork"];
+type ThreadForkResponse = ClientRequestResponsesByMethod["thread/fork"];
 type TurnStartParams = ClientRequestParamsByMethod["turn/start"];
 type TurnStartResponse = ClientRequestResponsesByMethod["turn/start"];
 type TitleNotification =
@@ -54,7 +59,17 @@ type TitleNotification =
     };
 
 export interface CodexStructuredThreadTitleInput {
+  readonly hostId: string;
   readonly prompt: string;
+  readonly cwd: string | null;
+  readonly serviceName?: string;
+  readonly readOnlyAppToolAllowlist?: readonly CodexThreadTitleReadOnlyAppTool[];
+}
+
+export interface CodexStructuredThreadTitleReconsiderationInput {
+  readonly hostId: string;
+  readonly sourceThreadId: string;
+  readonly currentTitle: string;
   readonly cwd: string | null;
   readonly serviceName?: string;
 }
@@ -77,24 +92,32 @@ export class CodexStructuredThreadTitleError extends Data.TaggedError(
 }> {}
 
 export interface CodexStructuredThreadTitleOptions {
-  readonly hostId: string;
   /** Captures the exact Endpoint generation that owns this helper Thread. */
-  readonly generation: Effect.Effect<number, CodexStructuredThreadTitleError>;
+  readonly generation: (hostId: string) => Effect.Effect<number, CodexStructuredThreadTitleError>;
   readonly events: Stream.Stream<CodexEndpointEvent>;
   readonly startThread: (
+    hostId: string,
     params: ThreadStartParams,
     generation: number,
   ) => Effect.Effect<ThreadStartResponse, CodexStructuredThreadTitleError>;
+  readonly forkThread: (
+    hostId: string,
+    params: ThreadForkParams,
+    generation: number,
+  ) => Effect.Effect<ThreadForkResponse, CodexStructuredThreadTitleError>;
   readonly startTurn: (
+    hostId: string,
     params: TurnStartParams,
     generation: number,
   ) => Effect.Effect<TurnStartResponse, CodexStructuredThreadTitleError>;
   readonly interruptTurn: (
+    hostId: string,
     threadId: string,
     turnId: string,
     generation: number,
   ) => Effect.Effect<unknown, CodexStructuredThreadTitleError>;
   readonly unsubscribeThread: (
+    hostId: string,
     threadId: string,
     generation: number,
   ) => Effect.Effect<unknown, CodexStructuredThreadTitleError>;
@@ -107,9 +130,11 @@ export class CodexStructuredThreadTitle extends Context.Service<
     readonly generate: (
       input: CodexStructuredThreadTitleInput,
     ) => Effect.Effect<string | null, CodexStructuredThreadTitleError>;
-    /** Optional richer result retained for title descriptions without breaking title-only callers. */
-    readonly generateMetadata?: (
+    readonly generateMetadata: (
       input: CodexStructuredThreadTitleInput,
+    ) => Effect.Effect<CodexGeneratedThreadMetadata | null, CodexStructuredThreadTitleError>;
+    readonly reconsiderTitle: (
+      input: CodexStructuredThreadTitleReconsiderationInput,
     ) => Effect.Effect<CodexGeneratedThreadMetadata | null, CodexStructuredThreadTitleError>;
   }
 >()("nodex/main/codex-application/CodexStructuredThreadTitle") {}
@@ -384,6 +409,7 @@ export const make = (
       threadId: string,
       turnId: string,
       notifications: TitleNotificationInbox,
+      parseResult: (raw: string | null | undefined) => CodexGeneratedThreadMetadata | null,
     ): Effect.Effect<CodexGeneratedThreadMetadata | null, CodexStructuredThreadTitleError> =>
       Effect.gen(function* () {
         const chunks: string[] = [];
@@ -400,8 +426,7 @@ export const make = (
               return yield* Effect.fail(terminalError(notification.params, observedError));
             }
             return yield* Effect.try({
-              try: () =>
-                parseGeneratedThreadMetadataResponse(chunks.length === 0 ? null : chunks.join("")),
+              try: () => parseResult(chunks.length === 0 ? null : chunks.join("")),
               catch: (cause) => requestError("result parsing", cause, threadId),
             });
           }
@@ -441,74 +466,139 @@ export const make = (
         }
       });
 
-    const run = (input: CodexStructuredThreadTitleInput) =>
+    const run = (input: {
+      readonly hostId: string;
+      readonly prompt: string;
+      readonly cwd: string | null;
+      readonly serviceName?: string;
+      readonly readOnlyAppToolAllowlist?: readonly CodexThreadTitleReadOnlyAppTool[];
+      readonly sourceThreadId?: string;
+      readonly fallbackToFreshThread?: boolean;
+      readonly threadSource: "thread_title" | "thread_title_reconsideration";
+      readonly outputSchema: TurnStartParams["outputSchema"];
+      readonly parseResult: (raw: string | null | undefined) => CodexGeneratedThreadMetadata | null;
+    }) =>
       Effect.scoped(
         Effect.gen(function* () {
-          const prompt = buildThreadTitleGenerationPrompt(input.prompt.trim());
+          const prompt = input.prompt.trim();
           if (!prompt) return null;
-          const generation = yield* options.generation;
+          const hostId = input.hostId.trim();
+          if (!hostId) return null;
+          const generation = yield* options.generation(hostId);
+          const config = buildCodexThreadTitleThreadConfig(
+            input.readOnlyAppToolAllowlist ?? [],
+          ) as ThreadStartParams["config"];
 
-          const acceptMetadataOnlyThread = (response: ThreadStartResponse) => {
-            if (Array.isArray(response.thread.turns) && response.thread.turns.length === 0) {
-              return internalThreads.leaseStructuredTitle(response.thread.id);
-            }
-            return options
-              .unsubscribeThread(response.thread.id, generation)
-              .pipe(
-                Effect.ignore,
-                Effect.andThen(
-                  Effect.fail(
+          const releaseThread = (response: ThreadStartResponse | ThreadForkResponse) =>
+            options.unsubscribeThread(hostId, response.thread.id, generation).pipe(Effect.ignore);
+
+          const acceptMetadataOnlyThread = (response: ThreadStartResponse | ThreadForkResponse) => {
+            const lease =
+              Array.isArray(response.thread.turns) && response.thread.turns.length === 0
+                ? internalThreads.leaseStructuredTitle(response.thread.id)
+                : Effect.fail(
                     requestError(
                       "metadata admission",
                       new Error("Structured title Thread start returned inline history"),
                       response.thread.id,
                     ),
-                  ),
-                ),
-              );
+                  );
+            return lease.pipe(
+              Effect.as(response),
+              Effect.onError(() => releaseThread(response)),
+            );
           };
 
-          const thread = yield* Effect.acquireRelease(
-            threadStarts.materialize(
-              options.hostId,
+          const startFresh = threadStarts
+            .materialize(
+              hostId,
               generation,
-              options
-                .startThread(
-                  {
-                    model: CODEX_THREAD_TITLE_MODEL,
-                    modelProvider: null,
-                    cwd: input.cwd,
-                    approvalPolicy: "never",
-                    permissions: ":read-only",
-                    runtimeWorkspaceRoots: [],
-                    config: buildCodexThreadConfig({
-                      nativeMcp: true,
-                      purpose: "system",
-                      overrides: CODEX_THREAD_TITLE_CONFIG,
-                    }),
-                    personality: null,
-                    ephemeral: true,
-                    threadSource: "system",
-                    experimentalRawEvents: false,
-                    dynamicTools: [],
-                    serviceTier: null,
-                    ...(input.serviceName === undefined ? {} : { serviceName: input.serviceName }),
-                  },
-                  generation,
-                )
-                .pipe(Effect.tap(acceptMetadataOnlyThread)),
+              options.startThread(
+                hostId,
+                {
+                  model: CODEX_THREAD_TITLE_MODEL,
+                  modelProvider: null,
+                  allowProviderModelFallback: true,
+                  cwd: input.cwd,
+                  approvalPolicy: "never",
+                  permissions: ":read-only",
+                  runtimeWorkspaceRoots: [],
+                  config,
+                  personality: null,
+                  ephemeral: true,
+                  threadSource: input.threadSource,
+                  experimentalRawEvents: false,
+                  dynamicTools: null,
+                  serviceTier: null,
+                  ...(input.serviceName === undefined ? {} : { serviceName: input.serviceName }),
+                },
+                generation,
+              ),
               (response) => response.thread.id,
-            ),
-            (response) =>
-              options.unsubscribeThread(response.thread.id, generation).pipe(Effect.ignore),
+            )
+            .pipe(Effect.flatMap(acceptMetadataOnlyThread));
+
+          const forkSource = input.sourceThreadId
+            ? threadStarts
+                .materialize(
+                  hostId,
+                  generation,
+                  options
+                    .forkThread(
+                      hostId,
+                      {
+                        threadId: input.sourceThreadId,
+                        path: null,
+                        model: CODEX_THREAD_TITLE_MODEL,
+                        modelProvider: null,
+                        serviceTier: null,
+                        cwd: input.cwd,
+                        approvalPolicy: "never",
+                        permissions: ":read-only",
+                        runtimeWorkspaceRoots: [],
+                        config,
+                        ephemeral: true,
+                        excludeTurns: true,
+                        threadSource: input.threadSource,
+                      },
+                      generation,
+                    )
+                    .pipe(
+                      Effect.map((response) => ({ _tag: "Forked" as const, response })),
+                      Effect.catch(() => Effect.succeed({ _tag: "ForkFailed" as const })),
+                    ),
+                  (result) => (result._tag === "Forked" ? result.response.thread.id : null),
+                )
+                .pipe(
+                  Effect.flatMap((result) =>
+                    result._tag === "Forked"
+                      ? acceptMetadataOnlyThread(result.response)
+                      : Effect.succeed(null),
+                  ),
+                )
+            : Effect.succeed(null);
+
+          const acquireThread = forkSource.pipe(
+            Effect.flatMap((forked) => {
+              if (forked) return Effect.succeed(forked);
+              if (input.sourceThreadId && input.fallbackToFreshThread === false) {
+                return Effect.succeed(null);
+              }
+              return startFresh;
+            }),
           );
+
+          const thread = yield* Effect.acquireRelease(acquireThread, (response) =>
+            response === null ? Effect.void : releaseThread(response),
+          );
+          if (thread === null) return null;
           const threadId = thread.thread.id;
           const targetTurnId = yield* Ref.make<string | null>(null);
           const notifications = yield* makeTitleNotificationInbox(threadId);
           yield* Effect.addFinalizer(() => notifications.shutdown);
           yield* options.events.pipe(
             Stream.runForEach((event) => {
-              const notification = titleNotification(event, options.hostId, generation);
+              const notification = titleNotification(event, hostId, generation);
               if (notification === null || titleNotificationThreadId(notification) !== threadId) {
                 return Effect.void;
               }
@@ -528,8 +618,10 @@ export const make = (
           const waitForTurn = Effect.acquireUseRelease(
             options
               .startTurn(
+                hostId,
                 {
                   threadId,
+                  turnTrigger: input.threadSource,
                   clientUserMessageId: randomUUID(),
                   input: [{ type: "text", text: prompt, text_elements: [] }],
                   cwd: null,
@@ -541,17 +633,19 @@ export const make = (
                   serviceTier: null,
                   summary: "none",
                   personality: null,
-                  outputSchema: CODEX_THREAD_TITLE_OUTPUT_SCHEMA,
+                  outputSchema: input.outputSchema,
                   collaborationMode: null,
                 },
                 generation,
               )
               .pipe(Effect.tap((response) => Ref.set(targetTurnId, response.turn.id))),
-            (response) => awaitTitle(threadId, response.turn.id, notifications),
+            (response) => awaitTitle(threadId, response.turn.id, notifications, input.parseResult),
             (response, exit) =>
               Exit.isSuccess(exit)
                 ? Effect.void
-                : options.interruptTurn(threadId, response.turn.id, generation).pipe(Effect.ignore),
+                : options
+                    .interruptTurn(hostId, threadId, response.turn.id, generation)
+                    .pipe(Effect.ignore),
           );
           return yield* Effect.raceFirst(
             waitForTurn,
@@ -570,9 +664,14 @@ export const make = (
         }),
       );
 
-    const generateMetadata = (input: CodexStructuredThreadTitleInput) =>
+    const protectRuntime = (
+      operation: Effect.Effect<
+        CodexGeneratedThreadMetadata | null,
+        CodexStructuredThreadTitleError
+      >,
+    ) =>
       Effect.raceFirst(
-        run(input),
+        operation,
         closed.await.pipe(
           Effect.andThen(
             Effect.fail(
@@ -585,8 +684,42 @@ export const make = (
         ),
       );
 
+    const generateMetadata = (input: CodexStructuredThreadTitleInput) => {
+      const prompt = buildThreadTitleGenerationPrompt(input.prompt.trim());
+      if (!prompt) return Effect.succeed(null);
+      return protectRuntime(
+        run({
+          ...input,
+          prompt,
+          threadSource: "thread_title",
+          outputSchema: CODEX_THREAD_TITLE_OUTPUT_SCHEMA,
+          parseResult: parseGeneratedThreadMetadataResponse,
+        }),
+      );
+    };
+
+    const reconsiderTitle = (input: CodexStructuredThreadTitleReconsiderationInput) => {
+      const currentTitle = input.currentTitle.trim();
+      if (!currentTitle) return Effect.succeed(null);
+      return protectRuntime(
+        run({
+          hostId: input.hostId,
+          sourceThreadId: input.sourceThreadId,
+          fallbackToFreshThread: false,
+          cwd: input.cwd,
+          serviceName: input.serviceName,
+          prompt: buildThreadTitleReconsiderationPrompt(currentTitle),
+          threadSource: "thread_title_reconsideration",
+          outputSchema:
+            CODEX_THREAD_TITLE_RECONSIDERATION_OUTPUT_SCHEMA as TurnStartParams["outputSchema"],
+          parseResult: parseThreadTitleReconsiderationResponse,
+        }),
+      );
+    };
+
     return CodexStructuredThreadTitle.of({
       generateMetadata,
+      reconsiderTitle,
       generate: (input) =>
         generateMetadata(input).pipe(Effect.map((metadata) => metadata?.title ?? null)),
     });

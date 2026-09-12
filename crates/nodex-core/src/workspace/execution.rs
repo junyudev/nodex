@@ -6,9 +6,10 @@ use nodex_core_contracts::collection::{
 };
 use nodex_core_contracts::workspace::{
     CodexPermissionMode, ProjectWorkspaceBackgroundProcess,
-    ProjectWorkspaceBackgroundProcessSource, ProjectWorkspaceTurnAuthority,
-    ProjectWorkspaceTurnAuthorityResolution, ProjectWorkspaceTurnAuthorityScope,
-    ProjectWorkspaceTurnAuthoritySource,
+    ProjectWorkspaceBackgroundProcessSource, ProjectWorkspaceThreadWorkspace,
+    ProjectWorkspaceThreadWorkspaceState, ProjectWorkspaceThreadWorkspaceTransition,
+    ProjectWorkspaceTurnAuthority, ProjectWorkspaceTurnAuthorityResolution,
+    ProjectWorkspaceTurnAuthorityScope, ProjectWorkspaceTurnAuthoritySource,
 };
 use nodex_core_contracts::{AdapterKind, BoundModuleContext};
 use rusqlite::types::Value as SqlValue;
@@ -77,6 +78,193 @@ pub(super) fn read_writable_roots(
         ));
     }
     Ok(roots)
+}
+
+pub(super) fn read_thread_workspace_state(
+    connection: &Connection,
+    thread_id: &str,
+) -> Result<Option<ProjectWorkspaceThreadWorkspaceState>, StoreError> {
+    validate_id("thread_id", thread_id)?;
+    let state_json = connection
+        .query_row(
+            "SELECT state_json FROM codex_thread_workspace_states WHERE thread_id = ?1",
+            [thread_id],
+            |row| row.get::<_, String>(0),
+        )
+        .optional()?;
+    state_json
+        .map(|raw| {
+            let state = serde_json::from_str::<ProjectWorkspaceThreadWorkspaceState>(&raw)
+                .map_err(|_| corrupt("Codex Thread workspace state is invalid"))?;
+            validate_workspace_state(&state)?;
+            Ok(state)
+        })
+        .transpose()
+}
+
+pub(super) fn prepare_workspace_transition_records(
+    connection: &Connection,
+    thread_id: &str,
+    source_project_id: Option<&str>,
+    transition: &ProjectWorkspaceThreadWorkspaceTransition,
+) -> Result<(), StoreError> {
+    validate_id("thread_id", thread_id)?;
+    validate_id("workspace_transition.revision", &transition.revision)?;
+    if let Some(pending) = transition.pending.as_ref() {
+        validate_workspace(pending)?;
+    }
+    let existing = read_thread_workspace_state(connection, thread_id)?;
+    let applied = match existing.and_then(|state| state.applied) {
+        Some(applied) => Some(applied),
+        None => read_workspace_fallback(connection, thread_id, source_project_id)?,
+    };
+    write_thread_workspace_state(
+        connection,
+        thread_id,
+        &ProjectWorkspaceThreadWorkspaceState {
+            revision: transition.revision.clone(),
+            applied,
+            pending: transition.pending.clone(),
+        },
+    )
+}
+
+#[allow(clippy::too_many_arguments)]
+pub(super) fn commit_workspace_transition(
+    connection: &Connection,
+    library_id: &str,
+    context: &BoundModuleContext,
+    store_epoch: &str,
+    operation_id: &str,
+    request_hash: &str,
+    thread_id: &str,
+    revision: &str,
+    workspace: &ProjectWorkspaceThreadWorkspace,
+) -> Result<ProjectWorkspaceApplyOutcome, StoreError> {
+    validate_id("thread_id", thread_id)?;
+    validate_id("workspace_transition.revision", revision)?;
+    validate_workspace(workspace)?;
+    let project_id = require_mutable_thread(connection, library_id, thread_id)?;
+    let Some(current) = read_thread_workspace_state(connection, thread_id)? else {
+        return Err(invalid(
+            "Codex Thread has no workspace transition to commit",
+        ));
+    };
+    let next = ProjectWorkspaceThreadWorkspaceState {
+        revision: current.revision.clone(),
+        applied: Some(workspace.clone()),
+        pending: if current.revision == revision {
+            None
+        } else {
+            current.pending
+        },
+    };
+    write_thread_workspace_state(connection, thread_id, &next)?;
+    finish_execution_mutation(
+        connection,
+        library_id,
+        context,
+        store_epoch,
+        operation_id,
+        request_hash,
+        "commit_thread_workspace_transition",
+        project_id.as_deref(),
+        thread_id,
+    )
+}
+
+fn read_workspace_fallback(
+    connection: &Connection,
+    thread_id: &str,
+    project_id: Option<&str>,
+) -> Result<Option<ProjectWorkspaceThreadWorkspace>, StoreError> {
+    let cwd = connection
+        .query_row(
+            "SELECT cwd FROM codex_threads WHERE thread_id = ?1",
+            [thread_id],
+            |row| row.get::<_, Option<String>>(0),
+        )
+        .optional()?
+        .flatten();
+    let Some(cwd) = cwd else {
+        return Ok(None);
+    };
+    let runtime_workspace_roots = read_writable_roots(connection, thread_id)?;
+    let project_sources = match project_id {
+        Some(project_id) => connection
+            .prepare(
+                "SELECT root FROM project_sources WHERE project_id = ?1 ORDER BY \"order\", root",
+            )?
+            .query_map([project_id], |row| row.get::<_, String>(0))?
+            .collect::<rusqlite::Result<Vec<_>>>()?,
+        None => Vec::new(),
+    };
+    let workspace = ProjectWorkspaceThreadWorkspace {
+        project_sources: if project_sources.is_empty() {
+            vec![cwd.clone()]
+        } else {
+            project_sources
+        },
+        runtime_workspace_roots: if runtime_workspace_roots.is_empty() {
+            vec![cwd.clone()]
+        } else {
+            runtime_workspace_roots
+        },
+        cwd,
+    };
+    validate_workspace(&workspace)?;
+    Ok(Some(workspace))
+}
+
+fn write_thread_workspace_state(
+    connection: &Connection,
+    thread_id: &str,
+    state: &ProjectWorkspaceThreadWorkspaceState,
+) -> Result<(), StoreError> {
+    validate_workspace_state(state)?;
+    let state_json = serde_json::to_string(state)
+        .map_err(|_| invalid("Codex Thread workspace state could not be encoded"))?;
+    connection.execute(
+        "INSERT INTO codex_thread_workspace_states(thread_id, state_json, updated_at_unix_ms) \
+         VALUES (?1, ?2, ?3) \
+         ON CONFLICT(thread_id) DO UPDATE SET \
+           state_json = excluded.state_json, updated_at_unix_ms = excluded.updated_at_unix_ms",
+        params![thread_id, state_json, unix_time_millis()?],
+    )?;
+    Ok(())
+}
+
+fn validate_workspace_state(
+    state: &ProjectWorkspaceThreadWorkspaceState,
+) -> Result<(), StoreError> {
+    validate_id("workspace_state.revision", &state.revision)?;
+    if let Some(applied) = state.applied.as_ref() {
+        validate_workspace(applied)?;
+    }
+    if let Some(pending) = state.pending.as_ref() {
+        validate_workspace(pending)?;
+    }
+    Ok(())
+}
+
+fn validate_workspace(workspace: &ProjectWorkspaceThreadWorkspace) -> Result<(), StoreError> {
+    if workspace.cwd.is_empty() || workspace.cwd.len() > MAX_PATH_BYTES {
+        return Err(invalid("Workspace cwd violates its Core bound"));
+    }
+    if workspace.project_sources.len() > MAX_WRITABLE_ROOT_INPUTS
+        || workspace.runtime_workspace_roots.len() > MAX_WRITABLE_ROOT_INPUTS
+    {
+        return Err(invalid("Workspace roots exceed their Core bound"));
+    }
+    if workspace
+        .project_sources
+        .iter()
+        .chain(workspace.runtime_workspace_roots.iter())
+        .any(|root| !valid_workspace_root(root))
+    {
+        return Err(invalid("Workspace roots contain an invalid path"));
+    }
+    Ok(())
 }
 
 pub(super) fn resolve_turn_authority(
@@ -971,7 +1159,6 @@ fn finish_execution_mutation(
             view_ids: Vec::new(),
             document_heads: Vec::new(),
             committed_at: sqlite_now(connection)?,
-            queued_follow_up_ledger: None,
         },
     )
 }

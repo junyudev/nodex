@@ -56,8 +56,13 @@ const capability = {
   generation: 1,
   userAgent: "codex-app-server/0.145.0-alpha.15",
   version: "0.145.0-alpha.15",
+  nativeAppTools: false,
   flags: {
+    turnApprovalsReviewer: false,
+
+    turnToolOutput: false,
     forkLastTurnId: true,
+    paginatedFork: false,
     paginatedHistory: true,
     searchOccurrences: true,
     ephemeralFork: false,
@@ -65,6 +70,7 @@ const capability = {
     sideConversation: false,
     subagentAncestorFilter: false,
     threadRevert: false,
+    threadQueue: false,
   },
 } satisfies CodexAppServerCapabilitySnapshot;
 

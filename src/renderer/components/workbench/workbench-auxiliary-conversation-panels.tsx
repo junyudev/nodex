@@ -69,7 +69,11 @@ export function BackgroundAgentSessionTab({
 }) {
   const project = projects.find((candidate) => candidate.id === tab.projectId) ?? null;
   const conversation = useConversation(tab.threadId);
-  const codexControl = useCodexAppServerControl(tab.projectId);
+  const codexControl = useCodexAppServerControl(
+    tab.projectId,
+    tab.threadId,
+    activeSession.thread?.executionHostId ?? null,
+  );
   const loadModels = codexControl.loadModels;
   const listCollaborationModes = codexControl.listCollaborationModes;
   const [collaborationModes, setCollaborationModes] = useState<CodexCollaborationModePreset[]>([]);
@@ -202,7 +206,11 @@ export function SubagentsPanelSessionTab({
   turnDiffHoverPreviewDisabled: boolean;
 }) {
   const selectedConversation = useConversation(tab.selectedThreadId);
-  const codexControl = useCodexAppServerControl(tab.projectId);
+  const codexControl = useCodexAppServerControl(
+    tab.projectId,
+    tab.selectedThreadId ?? tab.rootThreadId,
+    activeSession.thread?.executionHostId ?? null,
+  );
   const refreshSelectedSubagentAuthority = codexControl.refreshSelectedSubagentAuthority;
   const [selectedCanInteract, setSelectedCanInteract] = useState(false);
   useEffect(() => {
@@ -428,7 +436,11 @@ export function SideChatSessionTab({
     parentProjectId: activeSession.projectId,
   });
   const project = projects.find((candidate) => candidate.id === projectId) ?? null;
-  const codexControl = useCodexAppServerControl(projectId);
+  const codexControl = useCodexAppServerControl(
+    projectId,
+    tab.threadId,
+    activeSession.thread?.executionHostId ?? null,
+  );
   const loadModels = codexControl.loadModels;
   const listCollaborationModes = codexControl.listCollaborationModes;
   const [collaborationModes, setCollaborationModes] = useState<CodexCollaborationModePreset[]>([]);

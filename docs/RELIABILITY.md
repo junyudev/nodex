@@ -314,8 +314,10 @@ capabilities to the same WebContents and opens one renderer gate at a time, prim
 that encounters Core or renderer startup failure stays visible in its branded failure state and can
 restart the app; only a renderer document that cannot load at all falls back to native error UI.
 Window Session bootstrap, bounds, and layout persistence remain in that pre-Core shell lifetime.
-They therefore stay admitted through the bounded renderer close flush even after post-Core ingress
-has begun releasing, while every other renderer capability can retire with the authority graph.
+After full application acquisition, its consumer Scope closes windows and waits for their bounded
+renderer flush before releasing application IPC or Core-dependent capabilities. Accepted queue,
+document and layout writes therefore keep their persistence services through graceful close.
+Before acquisition completes, the pre-Core shell still owns its bootstrap and layout lifetime.
 Layer acquisition itself is the application readiness boundary: the acquired `MainApplication`
 contains only operations that are valid after startup, with no separate `start` method or
 partially initialized controller that can escape the Scope.
@@ -330,7 +332,9 @@ deadline or escalation policy at the platform adapter rather than in a global sh
 The same first-wins decision races application acquisition and readiness, so a signal or first
 `before-quit` during startup interrupts in-flight work and rolls back everything already acquired.
 `before-quit` never consults a partially published runtime or performs window cleanup itself; it
-only submits that decision, while Window and other Layers release their own resources.
+only submits that decision. The acquired application's inner Scope first runs its semantic shutdown
+preparation while its provided Layers remain alive. Window close and cleanup reporting share one
+cached operation with the Window Layer finalizer, including later rollback or release.
 Window release stops new admission, requests renderer-aware graceful close in parallel, and then
 destroys only the still-live windows at the per-window deadline. Close and destroy outcomes are
 reported without allowing one damaged window to block the rest of the resource graph.
@@ -391,34 +395,88 @@ an actor defect requests typed runtime shutdown instead of leaving a ready-looki
 consumer. Generated protocol payloads are decoded once at the connection boundary. Internal
 extensions remain explicitly tagged and cannot weaken generated-message validation.
 
-The physical JSONL transport limits incoming and outgoing retained message counts, retained bytes,
-and single-frame bytes independently. An incoming encoded frame is rejected before JSON decode at
-16 MiB; decoded history projection then applies its narrower 8 MiB resident-page budget without
-advancing a rejected cursor. Because the protocol has no per-page byte parameter, a compliant page
-may transiently occupy the difference between those two bounds, but it cannot grow without limit.
-Exceeding any reliable transport budget terminates that exact
-endpoint generation so replacement can hydrate from canonical state; it never blocks forever or
-continues after silently dropping a command. Main observation hubs use bounded sliding publication
+Physical JSONL ingress switches to streaming parsing for large lines instead of rejecting them at
+a fixed frame size. Its message-count and byte capacities are unbounded by default; size and queue
+observations do not impose rejection quotas. WebSocket ingress preserves native message boundaries.
+Explicit protocol capacity limits, when configured, terminate that exact endpoint generation rather
+than silently dropping a command. Ordinary decoded history pages are admitted by their protocol page
+boundaries; excerpt consumers may request a separate byte budget without advancing a rejected cursor.
+Main observation hubs use bounded sliding publication
 only where subscribers can reread the canonical owner. Variable terminal output is truncated before
 publication, while reliable command queues use bounded backpressure and surface admission failure.
 Before semantic routing, the application Inbox also applies process-wide admission of 4,096
 occurrences / 16 MiB and rejects any single occurrence above 2 MiB. Queue and pending-request
 references share one reservation ledger, so settlement releases bytes exactly once.
-Main's no-renderer fallback coalesces prose/reasoning and command-output deltas in two process-wide
-queues with key, update, per-key, and aggregate byte/code-unit budgets. Pressure synchronously
-commits the already bounded batch before admitting more work. A live Turn has its own byte budget;
+Main's no-renderer fallback coalesces prose/reasoning and command-output deltas in two manager-global
+queues. Prose retains its pending deltas until the scheduled flush or explicit completion drain;
+command output retains 20,000 UTF-16 code units per key. Queue size does not trigger an early
+publication. Completion drains both complete manager batches. Notification ACK attribution is a
+separate bounded ledger and does not set the queue's scheduling policy. A live Turn has its own byte budget;
 an oversized lifecycle payload is replaced at the first typed Endpoint seam by an explicit overflow
-marker instead of entering either the Inbox or observation hub. A terminal event drains only its Thread, and Thread teardown
-discards only that Thread's queued entries.
+marker instead of entering either the Inbox or observation hub. Thread teardown discards only that
+Thread's queued entries.
 
 History fan-out passes through one host scheduler with global, priority, background-lane,
-per-conversation, count, byte, expiry, and exact-request coalescing budgets. Tail and search pages
+per-conversation, count and expiry rules. Request origin determines coalescing policy. Tail and search pages
 are generation-fenced and make cursor progress or fail closed. The resident Entity enforces active
 Turn-count and byte budgets across every object graph; passive owner cleanup retires the complete
 Entity generation. Complete export has its own bounded one-Turn working set, progress,
 cancellation, and idle-job retention, and never mutates the resident snapshot.
-Scheduler admission applies a capped object-graph estimate before canonical request-key encoding,
-so an oversized request cannot force a second payload-sized allocation merely to be rejected.
+Scheduler admission uses queued request counts, not retained-byte ceilings. Critical work can
+enter a full queue while any of the six physical execution slots is available. The twenty-request
+group cap applies only to a conversation or its widget; unscoped work uses its priority queue cap.
+Byte counts remain diagnostic measurements. Physical transport and application Inbox limits are
+separate boundaries.
+
+Native request diagnostics capture JSONL receive progress before dispatch and retain the response's
+physical receipt boundary, so later queued traffic is not attributed to an earlier response.
+Competing large-message measurements exclude the response itself and bytes received before the
+request began. Background work omits competing-traffic attribution; a busy WebSocket ingress queue
+also omits it. Notification lag remains signed and carries a minimum observed clock-skew baseline.
+Matched response consumers publish these measurements to their request trace and diagnostic log.
+Typed Gateway decoding preserves stdio source-line byte metadata for renderer chunk selection;
+WebSocket frame sizes remain diagnostics and do not replace structured-size chunk selection.
+These measurements do not decide admission, deadlines, or request settlement.
+
+Responses to app-server initiated requests preserve renderer interaction trace context through the
+Main settlement queue and emit that context on the physical JSON-RPC response. Tool calls and option
+pickers use the tool-response interaction; other user-facing server requests use the approval-response
+interaction. Current-time reads remain an untraced fast path. A semantic no-response completion is an
+explicit abandonment and never reaches the transport as a response value.
+Transport-owned internal requests bypass the application settlement queue and remain untraced. Their
+handler lifetime is the stable Endpoint, so completion may cross a physical reconnect; success waits
+for the currently ready session, while failure attempts the fixed internal-error response immediately
+against the session that is current then.
+
+Renderer-owned conversation operations carry caller identity and an optional absolute deadline
+through their primary native request. The host scheduler admits that request before waiting for
+session readiness; readiness consumes the caller's deadline, and no fresh Main response timer
+starts at dispatch. Ancillary reads and operations on other Threads keep their Main lifetimes.
+A renderer timeout and renderer destruction have distinct post-dispatch lifetimes. Work that has not
+reached physical dispatch is cancelled. After dispatch, an ordinary timeout retains Main correlation
+until the physical reply; retained mutations can still settle the original renderer request, while a
+renderer that already rejected a non-retained request ignores its late response. A timed-out
+coalesced follower detaches only itself. Resume and plugin catalog requests release scheduler
+ownership on timeout according to their native request lifetime. Renderer destruction always removes
+its logical destination while allowing already-dispatched native work to finish. If no coalesced
+logical waiter remains, the physical completion is routed independently: request IDs beginning with
+`thread/list:`, `thread/read:`, `thread/resume:`, or `plugin/list:` are discarded as orphan responses;
+other request IDs fall back to the remaining renderer windows as a bare response without request
+trace, request method, or delivery-time metadata. A surviving coalesced renderer waiter receives the
+shared response directly, so the destroyed caller does not also trigger a broadcast fallback. Native
+generation fences remain mandatory before dispatch.
+
+Main Gateway requests always keep independent execution and response lifetimes, including
+catalog and Subagent reads. The Gateway does not expose request coalescing as a caller option.
+For callers that use scheduler coalescing, selected reads share execution only when their serialized
+method, parameters, priority, source and timeout match. Parameter key order is preserved; item
+pages do not coalesce. Routing metadata does not create a second execution for the same request,
+and host generations retain separate queues. Each execution can have one original caller plus
+128 coalesced callers; cancelling the original caller does not consume or free a coalesced slot.
+A nonpositive relative timeout adds no explicit deadline; background queue expiry still applies.
+Abandoning an already-dispatched resume releases its scheduler slot immediately. Its late response
+cannot release the slot again. Other dispatched requests retain their slot until completion when
+their caller detaches.
 
 Thread catalogs and Subagent discovery are metadata projections with independent page, result,
 byte, cursor-progress, and total-deadline budgets. Sidebar refresh and fork-title selection publish
@@ -434,19 +492,19 @@ host dispatch, and the per-Thread hydration tracker is a bounded last-write-wins
 than a lifetime request map. Structured-title helper Threads likewise require a metadata-only
 start response; a transcript-bearing helper is unsubscribed without starting a Turn.
 
-Main-to-renderer delivery rejects count-saturated destinations before JSON encoding, applies a
-capped resident-graph preflight, and computes the exact JSON UTF-8 size while validating the graph
-before allocating the serialized copy. It serializes the remaining encoding admission and then
-applies per-target and process byte budgets. Large payloads use one-frame-at-a-time transfer with
-exact generation/sequence acknowledgements, deadlines, bounded retry, and target release. A slow
-or destroyed renderer therefore cannot create an unbounded queue or keep multiple encoded
-transfers in flight.
+Native host delivery keeps one FIFO per window when a large message needs chunking. Each chunk
+waits for its matching transfer ID and sequence acknowledgement before the next part is sent.
+Window loading pauses delivery, send failure retains the pending message for retry, and window
+destruction releases the transfer. Critical inline messages can pass a blocked ordinary transfer.
+These chunk ACKs belong to physical delivery and do not acknowledge canonical conversation state.
 
-One renderer owner is the sole visible conversation writer. Main validates and retains its accepted
-document as a relay/recovery replica; followers first acknowledge an exact snapshot barrier and then
-accept only contiguous patches from the same owner epoch. A revision gap, hash mismatch, owner
-replacement, renderer loss, or transport reset requests a fresh barrier. Recovery never merges
-competing renderer documents or advances a follower past an unacknowledged checkpoint.
+The effective owner peer publishes its canonical draft patches. Main is an ordinary peer, with
+no central accepted replica or publication acknowledgement. Followers accept patches from their
+current owner only when the base revision matches; snapshots may replace the owner and rewind
+the revision. A mismatch or failed patch is dropped without hidden replay or resynchronization.
+Ordinary follower history reads remain local. Owner replacement, disconnect, unfollow and manager
+disposal settle affected revision waiters rather than leaving a conversation operation pending.
+See [Thread Owner/Follower Streaming](product-specs/codex-thread-owner-follower-streaming.md).
 
 Subagent recovery has one root universe coordinate: app-server host, source epoch, endpoint
 generation, and root Thread. Main's Subagent Directory records spawn before metadata when necessary,

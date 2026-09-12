@@ -926,13 +926,11 @@ pub(super) fn delete_thread(
         thread.project_id.as_deref(),
     )?;
     let now = sqlite_now(connection)?;
-    let queued_payloads = super::queued_follow_up::thread_payloads(connection, thread_id)?;
     sync_linked_sessions_archived(connection, &session_ids, true, &now)?;
     connection.execute(
         "DELETE FROM codex_threads WHERE thread_id = ?1",
         [thread_id],
     )?;
-    super::queued_follow_up::release_thread_payloads(connection, &queued_payloads, &now)?;
     let project_ids = thread.project_id.into_iter().collect::<Vec<_>>();
     let summary_scopes = project_session_scopes(&project_ids, &session_ids);
     finish_thread_mutation(
@@ -1062,7 +1060,6 @@ pub(super) fn reconcile_app_server_thread_sweep(
         if let Some(project_id) = project_id {
             project_ids.insert(project_id.clone());
         }
-        let queued_payloads = super::queued_follow_up::thread_payloads(connection, thread_id)?;
         let deleted = connection.execute(
             "DELETE FROM codex_threads WHERE thread_id = ?1",
             [thread_id],
@@ -1072,7 +1069,6 @@ pub(super) fn reconcile_app_server_thread_sweep(
                 "App-server sweep Thread disappeared during reconciliation",
             ));
         }
-        super::queued_follow_up::release_thread_payloads(connection, &queued_payloads, &now)?;
     }
     let project_ids = project_ids.into_iter().collect::<Vec<_>>();
     let session_ids = session_ids.into_iter().collect::<Vec<_>>();
@@ -2429,7 +2425,6 @@ fn thread_mutation_effects(
         view_ids: Vec::new(),
         document_heads: Vec::new(),
         committed_at,
-        queued_follow_up_ledger: None,
     })
 }
 

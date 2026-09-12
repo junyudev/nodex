@@ -4,6 +4,7 @@ import { ThreadCreationRuntime } from "./ThreadCreationRuntime";
 
 /** Test adapter for modules whose focused behavior is unrelated to protocol start ordering. */
 export const transparentThreadCreationRuntime = ThreadCreationRuntime.of({
+  open: () => ({ close: () => Effect.void }),
   materialize: (_hostId, _generation, operation) => operation,
   defer: () => false,
   releases: Stream.empty,

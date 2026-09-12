@@ -5,6 +5,7 @@ import type { SandboxMode } from "@nodex/codex-app-server-protocol/v2/SandboxMod
 import type { SandboxPolicy } from "@nodex/codex-app-server-protocol/v2/SandboxPolicy";
 import type { Config } from "@nodex/codex-app-server-protocol/v2/Config";
 import type { CodexAgentMode } from "../../shared/types";
+import { CODEX_GRANULAR_APPROVAL_POLICY } from "../../shared/codex-permission-catalog";
 
 export type CodexDynamicCreatePermissionMode = CodexAgentMode;
 
@@ -95,15 +96,7 @@ export interface ResolveCodexDynamicCreatePermissionSelectionInput {
   readonly destination: CodexDynamicCreatePermissionDestination;
 }
 
-const GRANULAR_APPROVAL_POLICY = {
-  granular: {
-    sandbox_approval: false,
-    rules: false,
-    skill_approval: false,
-    request_permissions: true,
-    mcp_elicitations: true,
-  },
-} as const satisfies AskForApproval;
+const GRANULAR_APPROVAL_POLICY = CODEX_GRANULAR_APPROVAL_POLICY;
 
 function configApprovalsReviewer(config: Readonly<Partial<Config>>): ApprovalsReviewer {
   const reviewer = config.approvals_reviewer;

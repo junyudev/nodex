@@ -9,7 +9,6 @@ import { CodexConnection } from "./CodexConnection";
 import { CodexApplicationEventHub } from "./CodexApplicationEventHub";
 import { CodexPendingServerRequestRuntime } from "./CodexPendingServerRequestRuntime";
 import { CodexProtocolNotificationEffects } from "./CodexProtocolNotificationEffects";
-import { CodexRendererConversationCoordinator } from "./CodexRendererConversationCoordinator";
 import { CodexSidebarSyncRuntime } from "./CodexSidebarSyncRuntime";
 import { CodexSubagentDirectory } from "./CodexSubagentDirectory";
 import { CodexUserInputAutoResolution } from "./CodexUserInputAutoResolution";
@@ -18,13 +17,12 @@ import { RemoteHostedPipRuntime } from "../host-runtime/RemoteHostedPipRuntime";
 
 export class CodexConnectionLifecycle extends Context.Service<
   CodexConnectionLifecycle,
-  { readonly observe: (connection: CodexConnectionState) => Effect.Effect<void> }
+  { readonly observe: (connection: CodexConnectionState, hostId?: string) => Effect.Effect<void> }
 >()("nodex/main/codex-application/CodexConnectionLifecycle") {}
 
 /**
- * Owns the application consequences of local app-server connection generations. Transport state
- * stays in `CodexConnection`; this capability atomically retires ephemeral request state and marks
- * loaded conversations for resume before the reconnected catalog is refreshed.
+ * Retires only the disconnected host's request generation. Local catalog and OS consequences
+ * remain local; remote transport changes cannot clear another host's requests or timers.
  */
 export const make: Effect.Effect<
   CodexConnectionLifecycle["Service"],
@@ -33,7 +31,6 @@ export const make: Effect.Effect<
   | CodexConnection
   | CodexPendingServerRequestRuntime
   | CodexProtocolNotificationEffects
-  | CodexRendererConversationCoordinator
   | CodexSidebarSyncRuntime
   | CodexSubagentDirectory
   | CodexUserInputAutoResolution
@@ -46,7 +43,6 @@ export const make: Effect.Effect<
   const events = yield* CodexApplicationEventHub;
   const pending = yield* CodexPendingServerRequestRuntime;
   const protocol = yield* CodexProtocolNotificationEffects;
-  const renderer = yield* CodexRendererConversationCoordinator;
   const sidebar = yield* CodexSidebarSyncRuntime;
   const subagents = yield* CodexSubagentDirectory;
   const autoResolution = yield* CodexUserInputAutoResolution;
@@ -55,21 +51,21 @@ export const make: Effect.Effect<
   // The endpoint may already be ready before this dependent Layer subscribes. Seed the transition
   // fence from the current stable-host state so its first observed disconnect cannot be mistaken
   // for startup and leave loaded renderer roles attached to a dead generation.
-  let previousStatus: CodexConnectionState["status"] = (yield* connectionState.read).status;
+  const previousByHost = new Map(yield* connectionState.readAll);
   let disconnectedThreadIds: readonly string[] = [];
 
   const settleDisconnectedRequests = Effect.fn(
     "CodexConnectionLifecycle.settleDisconnectedRequests",
-  )(function* () {
+  )(function* (hostId: string, generation?: number) {
     yield* Effect.forEach(
-      pending.disconnectIdentities(),
-      ({ threadId, requestId }) =>
+      pending.disconnectIdentities(hostId, generation),
+      ({ threadId, requestId, generation: requestGeneration }) =>
         conversations.runCommand(
           threadId,
           protocol
             .apply({
-              hostId: DEFAULT_CODEX_HOST_ID,
-              generation: 0,
+              hostId,
+              generation: requestGeneration,
               notification: {
                 method: "serverRequest/resolved",
                 params: { threadId, requestId },
@@ -91,34 +87,27 @@ export const make: Effect.Effect<
 
   const observe = Effect.fn("CodexConnectionLifecycle.observe")(function* (
     connection: CodexConnectionState,
+    hostId = DEFAULT_CODEX_HOST_ID,
   ) {
-    const wasConnected = previousStatus === "connected";
-    previousStatus = connection.status;
+    const previous = previousByHost.get(hostId);
+    const wasConnected = previous?.status === "connected";
+    previousByHost.set(hostId, connection);
+    const isLocal = hostId === DEFAULT_CODEX_HOST_ID;
 
     if (wasConnected && connection.status !== "connected") {
-      yield* remoteHostedPip.retireLocalCodexHost("connection-lost");
-      yield* autoResolution.handleDisconnect;
-      yield* settleDisconnectedRequests();
+      if (isLocal) yield* remoteHostedPip.retireLocalCodexHost("connection-lost");
+      yield* autoResolution.handleDisconnect(hostId, previous.native?.generation);
+      yield* settleDisconnectedRequests(hostId, previous.native?.generation);
     }
 
+    if (!isLocal) return;
     events.publish({ kind: "codex", value: { type: "connection", connection } });
-    events.publish({
-      kind: "hostMessage",
-      value: {
-        type: "sharedObjectUpdated",
-        hostId: DEFAULT_CODEX_HOST_ID,
-        object: {
-          objectType: "connection",
-          objectId: "connection",
-          value: connection,
-        },
-      },
-    });
 
     if (wasConnected && connection.status !== "connected") {
-      const affectedThreadIds = conversations.markAllNeedsResume();
-      disconnectedThreadIds = affectedThreadIds;
-      renderer.resetTransport(affectedThreadIds);
+      // Each Main manager resets its own native stream. Catalog recovery concerns this host only.
+      disconnectedThreadIds = conversations
+        .forHost(DEFAULT_CODEX_HOST_ID)
+        .map((entity) => entity.threadId);
       return;
     }
 
@@ -131,7 +120,7 @@ export const make: Effect.Effect<
     const reconnectThreadIds = disconnectedThreadIds;
     disconnectedThreadIds = [];
     yield* sidebar
-      .sync({ policy: "stale", reason: "app-server-reconnect" })
+      .sync({ policy: "force", reason: "app-server-reconnect" })
       .pipe(
         Effect.catchCause((cause) =>
           Effect.logWarning("Failed to refresh the task catalog after Codex reconnected").pipe(
@@ -145,8 +134,17 @@ export const make: Effect.Effect<
   });
 
   const service = CodexConnectionLifecycle.of({ observe });
-  yield* connectionState.changes.pipe(
-    Stream.runForEach(service.observe),
+  yield* connectionState.allChanges.pipe(
+    Stream.runForEach((snapshot) =>
+      Effect.forEach(
+        snapshot,
+        ([hostId, connection]) =>
+          previousByHost.get(hostId) === connection
+            ? Effect.void
+            : service.observe(connection, hostId),
+        { discard: true },
+      ),
+    ),
     Effect.forkScoped({ startImmediately: true }),
   );
   return service;

@@ -266,7 +266,7 @@ describe("useWorkbenchCommandIngress", () => {
       notificationId: "question-default-request-1",
       actionId: null,
       actionType: "open",
-      hostId: "default",
+      hostId: "local",
       conversationId: "thread-1",
       navigationPath: "thread:thread-1",
       activateTabId: null,

@@ -14,10 +14,9 @@ import {
 const queryChannels = [
   "asset:resolve-path",
   "codex:account:read",
-  "codex:collaboration-mode:list",
   "codex:connection:status",
   "codex:dictation:state:read",
-  "codex:model:list",
+  "codex:execution-assignments:read",
   "codex:permission:state:get",
   "codex:personality:get",
   "codex:subagents:overview:read",
@@ -38,22 +37,48 @@ const controlChannels = [
   "codex:setup-codex-step:respond",
   "codex:setup-context-picker:respond",
   "codex:subagents:selected:hydrate",
-  "codex:thread-follower:snapshot-applied",
-  "codex:thread-owner:app-server-request",
-  "codex:thread-owner:notification:ack",
-  "codex:thread-owner:pending-requests:replay",
-  "codex:thread-owner:stream-state:publish",
+  "codex:app-server:request",
+  "codex:thread:history-hydration:prepare",
+  "codex:app-server:host-context",
+  "codex:queued-messages:prepare-native",
+  "codex:queued-messages:read",
+  "codex:queued-messages:write",
+  "codex:queued-messages:prepare",
+  "codex:queued-messages:acquire-send",
+  "codex:queued-messages:release-send",
+  "codex:thread:native-fork:prepare",
+  "codex:thread:native-fork:execute",
+  "codex:thread:native-fork:accept",
+  "codex:thread:native-fork:release",
+  "codex:thread:native-session:prepare",
+  "codex:thread:native-session:execute",
+  "codex:thread:native-session:accept",
+  "codex:thread:native-session:release",
+  "codex:turn:native-fresh:prepare",
+  "codex:turn:native-fresh:execute",
+  "codex:turn:native:inject",
+  "codex:turn:native-steer:prepare",
+  "codex:turn:native-steer:inspect",
+  "codex:turn:native-steer:execute",
+  "codex:turn:native-steer:release",
+  "codex:thread:interrupt-effects",
+  "codex:thread:node-repl:cleanup",
+  "codex:thread:settings:prepare-profile",
+  "codex:turn:native:prepare",
+  "codex:turn:native:execute",
+  "codex:turn:native:inspect",
+  "codex:turn:native:release",
+  "codex:app-server:respond",
+  "codex:app-server:request:abandon",
   "codex:thread:fresh-owner:adopt",
   "codex:thread:history-export:cancel",
   "codex:thread:history-export:next",
   "codex:thread:history-export:start",
-  "codex:thread:history-page:load",
-  "codex:thread:history-search:hydrate",
-  "codex:thread:resume-buffer:release",
-  "codex:thread:resume:request",
+  "codex:thread:resume:prepare",
+  "codex:thread:resume:retry",
+  "codex:thread:resume:accept",
+  "codex:thread:resume:release",
   "codex:thread:snapshot:request",
-  "codex:thread:stream-following:set",
-  "codex:thread:stream-resync:request",
   "codex:thread:view-active:set",
   "codex:user-input:respond",
 ] as const satisfies readonly IpcControlChannel[];
@@ -97,7 +122,6 @@ export const localConversationCommandDefinitions = {
   "codex:feedback:upload": defineReturnedConversationCommand("codex:feedback:upload"),
   "codex:permission:mode:set": defineReturnedConversationCommand("codex:permission:mode:set"),
   "codex:personality:set": definePendingConversationCommand("codex:personality:set"),
-  "codex:thread-follower:action": definePendingConversationCommand("codex:thread-follower:action"),
   "codex:thread:archive": defineReturnedConversationCommand("codex:thread:archive"),
   "codex:thread:background-processes:run-action": defineReturnedConversationCommand(
     "codex:thread:background-processes:run-action",
@@ -111,31 +135,7 @@ export const localConversationCommandDefinitions = {
   "codex:thread:background-terminals:terminate": defineReturnedConversationCommand(
     "codex:thread:background-terminals:terminate",
   ),
-  "codex:thread:follow-up:enqueue": definePendingConversationCommand(
-    "codex:thread:follow-up:enqueue",
-  ),
-  "codex:thread:follow-up:remove": definePendingConversationCommand(
-    "codex:thread:follow-up:remove",
-  ),
-  "codex:thread:follow-up:reorder": definePendingConversationCommand(
-    "codex:thread:follow-up:reorder",
-  ),
-  "codex:thread:follow-up:replace": defineReturnedConversationCommand(
-    "codex:thread:follow-up:replace",
-  ),
-  "codex:thread:follow-up:resolve-after-fresh-start": defineReturnedConversationCommand(
-    "codex:thread:follow-up:resolve-after-fresh-start",
-  ),
-  "codex:thread:follow-up:resume": defineReturnedConversationCommand(
-    "codex:thread:follow-up:resume",
-  ),
-  "codex:thread:follow-up:send-now": definePendingConversationCommand(
-    "codex:thread:follow-up:send-now",
-  ),
   "codex:thread:name:set": defineReturnedConversationCommand("codex:thread:name:set"),
-  "codex:thread:plan-implementation:remove": defineReturnedConversationCommand(
-    "codex:thread:plan-implementation:remove",
-  ),
   "codex:thread:presentation:set": defineReturnedConversationCommand(
     "codex:thread:presentation:set",
   ),
@@ -150,57 +150,6 @@ export const localConversationCommandDefinitions = {
   "codex:turn:interrupt": defineReturnedConversationCommand("codex:turn:interrupt"),
   "codex:turn:steer": defineReturnedConversationCommand("codex:turn:steer"),
 } as const;
-
-type ThreadOwnerAction = IpcApi["codex:thread-follower:action"]["args"][0]["action"];
-type ThreadOwnerActionType = ThreadOwnerAction["type"];
-
-const followerActionDefinition = <const ActionType extends ThreadOwnerActionType>(
-  actionType: ActionType,
-) =>
-  definePendingConversationCommand(
-    "codex:thread-follower:action",
-    `local_conversation.thread_owner.${actionType}`,
-  );
-
-/** Each owner-routed workflow declares its own semantic identity; additions must be exhaustive. */
-export const localConversationFollowerActionDefinitions = {
-  startTurn: followerActionDefinition("startTurn"),
-  steerTurn: followerActionDefinition("steerTurn"),
-  resumeInterruptedTurn: followerActionDefinition("resumeInterruptedTurn"),
-  interruptTurn: followerActionDefinition("interruptTurn"),
-  updateThreadSettings: followerActionDefinition("updateThreadSettings"),
-  compactThread: followerActionDefinition("compactThread"),
-  setThreadGoal: followerActionDefinition("setThreadGoal"),
-  clearThreadGoal: followerActionDefinition("clearThreadGoal"),
-  dismissThreadGoalResumeConfirmation: followerActionDefinition(
-    "dismissThreadGoalResumeConfirmation",
-  ),
-  setThreadMemoryMode: followerActionDefinition("setThreadMemoryMode"),
-  editLastUserTurn: followerActionDefinition("editLastUserTurn"),
-  forkConversationFromTurn: followerActionDefinition("forkConversationFromTurn"),
-  hydratePersistedHistoryOccurrence: followerActionDefinition("hydratePersistedHistoryOccurrence"),
-  loadHistoryPage: followerActionDefinition("loadHistoryPage"),
-  publishHistoryMutation: followerActionDefinition("publishHistoryMutation"),
-  enqueueQueuedFollowUp: followerActionDefinition("enqueueQueuedFollowUp"),
-  removeQueuedFollowUp: followerActionDefinition("removeQueuedFollowUp"),
-  replaceQueuedFollowUp: followerActionDefinition("replaceQueuedFollowUp"),
-  reorderQueuedFollowUps: followerActionDefinition("reorderQueuedFollowUps"),
-  resumeQueuedFollowUps: followerActionDefinition("resumeQueuedFollowUps"),
-  resolveQueuedFollowUpsAfterFreshStart: followerActionDefinition(
-    "resolveQueuedFollowUpsAfterFreshStart",
-  ),
-  sendQueuedFollowUpNow: followerActionDefinition("sendQueuedFollowUpNow"),
-  respondApproval: followerActionDefinition("respondApproval"),
-  respondUserInput: followerActionDefinition("respondUserInput"),
-  respondMcpElicitation: followerActionDefinition("respondMcpElicitation"),
-  respondPermissionRequest: followerActionDefinition("respondPermissionRequest"),
-  respondOptionPicker: followerActionDefinition("respondOptionPicker"),
-  respondSetupCodexStep: followerActionDefinition("respondSetupCodexStep"),
-  removePlanImplementationRequest: followerActionDefinition("removePlanImplementationRequest"),
-} as const satisfies Record<
-  ThreadOwnerActionType,
-  (typeof localConversationCommandDefinitions)["codex:thread-follower:action"]
->;
 
 type LocalConversationQueryChannel = (typeof queryChannels)[number];
 type LocalConversationControlChannel = (typeof controlChannels)[number];
@@ -234,11 +183,7 @@ export async function runConversationOperation<
   }
 
   const definition =
-    channel === "codex:thread-follower:action"
-      ? localConversationFollowerActionDefinitions[
-          (args[0] as IpcApi["codex:thread-follower:action"]["args"][0]).action.type
-        ]
-      : localConversationCommandDefinitions[channel as LocalConversationCommandChannel];
+    localConversationCommandDefinitions[channel as LocalConversationCommandChannel];
   return (await Reflect.apply(invokePlainCommand, undefined, [
     definition,
     ...args,

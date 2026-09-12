@@ -850,6 +850,7 @@ export function useWorkbenchSidebarController({
         if (!conversationId) return;
         await copyConversationMarkdown({
           conversationId,
+          executionHostId: session.thread.executionHostId,
           title: session.displayTitle || session.noThreadFallbackTitle,
         });
         return;

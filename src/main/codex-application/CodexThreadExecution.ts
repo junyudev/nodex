@@ -1,3 +1,4 @@
+import { residentConversationTurns } from "../../shared/codex-conversation-state/codex-turn-mutation";
 import * as path from "node:path";
 import type {
   ThreadResumeResponse,
@@ -8,7 +9,7 @@ import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 import * as Schema from "effect/Schema";
 import { createCodexCanonicalWorkspacePermissionContext } from "../../shared/codex-conversation-state/codex-conversation-state";
-import type { CodexCanonicalHydratedPermissionContext } from "../../shared/types";
+import type { CodexCanonicalPermissionContext } from "../../shared/types";
 import { CodexGateway, codexGatewayGenerationFence } from "../codex-runtime/CodexGateway";
 import {
   CodexAppServerCapabilities,
@@ -23,6 +24,7 @@ import { createOperationId } from "../core-runtime/operation-identity";
 import { DesktopToolRuntime } from "../host-runtime/DesktopToolRuntime";
 import type { ManagedWorktreeHandoffPreparation } from "./ManagedWorktreeHandoff";
 import { CodexConversationProjection } from "./CodexConversationProjection";
+import { CodexExecutionAssignments } from "./CodexExecutionAssignments";
 import { CodexTurnCommands } from "./CodexTurnCommands";
 import { ConversationCommands } from "./ConversationCommands";
 import { ConversationEntityMap } from "./internal/ConversationEntityMap";
@@ -67,7 +69,7 @@ export class CodexThreadExecution extends Context.Service<
   }
 >()("nodex/main/codex-application/CodexThreadExecution") {}
 
-const resumePermissions = (context: CodexCanonicalHydratedPermissionContext) => ({
+const resumePermissions = (context: CodexCanonicalPermissionContext) => ({
   approvalPolicy: context.approvalPolicy,
   approvalsReviewer: context.approvalsReviewer,
   ...(context.activePermissionProfile
@@ -82,7 +84,9 @@ const resumePermissions = (context: CodexCanonicalHydratedPermissionContext) => 
                 ? ("workspace-write" as const)
                 : null,
       }),
-  runtimeWorkspaceRoots: [...context.runtimeWorkspaceRoots],
+  ...(context.runtimeWorkspaceRoots === undefined
+    ? {}
+    : { runtimeWorkspaceRoots: [...context.runtimeWorkspaceRoots] }),
 });
 
 const assertResumeLocation = (
@@ -111,6 +115,7 @@ export const live: Layer.Layer<
   never,
   | CodexConversationProjection
   | CodexAppServerCapabilities
+  | CodexExecutionAssignments
   | CodexGateway
   | CodexTurnCommands
   | ConversationCommands
@@ -123,6 +128,7 @@ export const live: Layer.Layer<
   Effect.gen(function* () {
     const projection = yield* CodexConversationProjection;
     const capabilities = yield* CodexAppServerCapabilities;
+    const executionAssignments = yield* CodexExecutionAssignments;
     const gateway = yield* CodexGateway;
     const turns = yield* CodexTurnCommands;
     const conversations = yield* ConversationCommands;
@@ -209,8 +215,9 @@ export const live: Layer.Layer<
 
     const permissionContext = (threadId: string, workspaceRoots: readonly string[]) =>
       Effect.sync(() => {
-        const existing = conversationRuntimes.current(threadId)?.readCanonicalState()?.sidecar
-          .hydrationContext?.currentPermissions;
+        const existing = conversationRuntimes
+          .current(threadId)
+          ?.readCanonicalState()?.currentPermissions;
         if (!existing) return createCodexCanonicalWorkspacePermissionContext(workspaceRoots);
         return {
           ...existing,
@@ -219,7 +226,7 @@ export const live: Layer.Layer<
             existing.sandboxPolicy.type === "workspaceWrite"
               ? { ...existing.sandboxPolicy, writableRoots: [...workspaceRoots] }
               : existing.sandboxPolicy,
-        } satisfies CodexCanonicalHydratedPermissionContext;
+        } satisfies CodexCanonicalPermissionContext;
       });
 
     const switchRuntime = (
@@ -302,12 +309,21 @@ export const live: Layer.Layer<
             yield* ensureCurrent(capability);
           }
         }
-        const toolConfig = yield* tools.threadConfig;
+        const executionDefaults = yield* executionAssignments.readThreadDefaults(
+          capability.version,
+        );
+        if (!executionDefaults) {
+          return yield* error("switch-runtime", threadId, new Error("execution-config-loading"));
+        }
+        const toolConfig = yield* tools.threadConfig(location.cwd);
         const config = yield* Effect.try({
           try: () =>
             buildCodexThreadConfig({
-              nativeMcp: location.hostId === gateway.localHostId,
-              overrides: toolConfig,
+              nativeAppTools: capability.nativeAppTools,
+              overrides: {
+                ...executionDefaults.config,
+                ...(toolConfig ?? {}),
+              },
             }),
           catch: (cause) => error("switch-runtime", threadId, cause),
         });
@@ -356,8 +372,9 @@ export const live: Layer.Layer<
         projection.read(threadId).pipe(
           Effect.map(
             ({ canonical }) =>
-              [...canonical.turns].reverse().find((turn) => turn.protocol.status === "inProgress")
-                ?.protocol.id ?? null,
+              [...residentConversationTurns(canonical)]
+                .reverse()
+                .find((turn) => turn.status === "inProgress")?.turnId ?? null,
           ),
           Effect.flatMap((turnId) =>
             turnId ? conversations.interrupt(threadId, turnId).pipe(Effect.asVoid) : Effect.void,

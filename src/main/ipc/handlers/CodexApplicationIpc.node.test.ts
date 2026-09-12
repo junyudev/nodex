@@ -20,6 +20,8 @@ import { ComposerExternalSuggestions } from "../../codex-application/ComposerExt
 import { ConversationCommands } from "../../codex-application/ConversationCommands";
 import { CodexPreferences } from "../../codex-application/CodexPreferences";
 import { CodexAttachments } from "../../codex-application/CodexAttachments";
+import { CodexExecutionAssignments } from "../../codex-application/CodexExecutionAssignments";
+import { CodexHttpFetch } from "../../codex-application/CodexHttpFetch";
 import { makeTestElectronIpc } from "../../platform/electron/ElectronIpc.test-support";
 import { ElectronIpc } from "../../platform/electron/ElectronIpc";
 import { ElectronWindowHost } from "../../platform/electron/ElectronWindowHost";
@@ -41,6 +43,10 @@ it.effect("registers application channels directly against their owning modules"
       on: () => Effect.void,
     });
     const accountSnapshot = yield* SubscriptionRef.make(emptyAccountSnapshot());
+    const executionAssignmentsSnapshot = yield* SubscriptionRef.make({
+      permissionRefresh: null as boolean | null,
+      threadQueue: null as boolean | null,
+    });
     const account = CodexAccount.of({
       snapshot: accountSnapshot,
       refresh: Effect.succeed(emptyAccountSnapshot()),
@@ -49,6 +55,19 @@ it.effect("registers application channels directly against their owning modules"
       startLogin: () => Effect.die("unused"),
       cancelLogin: () => Effect.die("unused"),
       logout: Effect.succeed(true),
+    });
+    const executionAssignments = CodexExecutionAssignments.of({
+      snapshot: executionAssignmentsSnapshot,
+      read: SubscriptionRef.get(executionAssignmentsSnapshot),
+      readExecutionAssignments: () => Effect.succeed(null),
+      readThreadDefaults: () => Effect.succeed(null),
+      readThreadSettings: () => Effect.succeed(null),
+      bootstrap: Effect.die("unused"),
+      publish: () => Effect.void,
+    });
+    const httpFetch = CodexHttpFetch.of({
+      fetch: () => Effect.die("unused"),
+      cancel: () => Effect.void,
     });
     const composer = ComposerCatalog.of({
       listModels: Effect.succeed([
@@ -68,8 +87,6 @@ it.effect("registers application channels directly against their owning modules"
         },
       ]),
       listExperimentalFeatures: Effect.succeed([]),
-      listCollaborationModes: Effect.succeed([]),
-      listPlugins: () => Effect.succeed([]),
       activatePlugin: () => Effect.void,
       uninstallPlugin: () => Effect.die("unused"),
       listSkills: () => Effect.succeed([]),
@@ -87,7 +104,10 @@ it.effect("registers application channels directly against their owning modules"
       listChatGptConversations: () => Effect.succeed({ available: false, conversations: [] }),
     });
     const connection = CodexConnection.of({
+      readAll: Effect.succeed(new Map()),
+      allChanges: Stream.empty,
       read: Effect.succeed({ status: "connected", retries: 0 }),
+      readForHost: () => Effect.succeed({ status: "connected", retries: 0 }),
       changes: Stream.succeed({ status: "connected", retries: 0 }),
     });
     const media = CodexMedia.of({
@@ -219,6 +239,8 @@ it.effect("registers application channels directly against their owning modules"
               }),
             ),
             Layer.succeed(CodexAccount, account),
+            Layer.succeed(CodexExecutionAssignments, executionAssignments),
+            Layer.succeed(CodexHttpFetch, httpFetch),
             Layer.succeed(CodexConnection, connection),
             Layer.succeed(CodexMedia, media),
             Layer.succeed(ComposerCatalog, composer),
@@ -235,6 +257,8 @@ it.effect("registers application channels directly against their owning modules"
 
     assert.isTrue(handlers.has("codex:account:read"));
     assert.isTrue(handlers.has("codex:connection:status"));
+    assert.isTrue(handlers.has("codex:http-fetch"));
+    assert.isTrue(handlers.has("codex:http-fetch:cancel"));
     assert.isTrue(handlers.has("codex:personality:get"));
     assert.isTrue(handlers.has("codex:personality:set"));
     assert.isTrue(handlers.has("codex:thread:goal:materialize-draft"));
@@ -251,18 +275,10 @@ it.effect("registers application channels directly against their owning modules"
     assert.isTrue(handlers.has("codex:thread:background-terminals:terminate"));
     assert.isTrue(handlers.has("codex:conversation-image-asset:resolve"));
     assert.isTrue(handlers.has("codex:experimental-features:list"));
-    assert.isTrue(handlers.has("codex:collaboration-mode:list"));
-    assert.isTrue(handlers.has("codex:composer-plugins:list"));
     assert.isTrue(handlers.has("codex:mcp-server-statuses:list"));
     assert.isTrue(handlers.has("codex:hooks:list"));
     assert.isTrue(handlers.has("codex:hooks:state:update"));
     const event = {} as IpcMainInvokeEvent;
-    const models = yield* handlers.get("codex:model:list")!(event);
-    assert.strictEqual((models as readonly { id: string }[])[0]?.id, "model-a");
-    const invalid = yield* handlers.get("codex:composer-plugins:list")!(event, {
-      cwds: ["relative/path"],
-    }).pipe(Effect.result);
-    assert.strictEqual(invalid._tag, "Failure");
     const review = yield* handlers.get("codex:review:start")!(event, {
       threadId: "source-thread",
       target: { type: "uncommittedChanges" },

@@ -62,7 +62,7 @@ export const make: Effect.Effect<
 
   return CodexConversationMaterialization.of({
     ensure: (threadId) =>
-      conversations.current(threadId)?.readCanonicalState()?.sidecar.hydrationContext
+      conversations.current(threadId)?.readCanonicalState()?.hydrationContext
         ? Effect.void
         : reload(threadId),
     reload,

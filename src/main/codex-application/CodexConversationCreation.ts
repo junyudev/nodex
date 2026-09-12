@@ -28,6 +28,9 @@ import { CodexAttachments } from "./CodexAttachments";
 import { requireExactThreadStartProfile } from "./codex-thread-start-profile";
 import { CodexClientThreadIdentity } from "./CodexClientThreadIdentity";
 import { CodexConversationFork } from "./CodexConversationFork";
+import { CodexExecutionAssignments } from "./CodexExecutionAssignments";
+import { CodexGitProbe } from "./CodexGitProbe";
+import { materializeCodexThreadRequestSettings } from "./CodexThreadRequestSettings";
 import { CodexForkSidePanelTransfer } from "./CodexForkSidePanelTransferRuntime";
 import { CodexSidebarSyncRuntime } from "./CodexSidebarSyncRuntime";
 import { CodexThreadDirectory } from "./CodexThreadDirectory";
@@ -97,6 +100,8 @@ export const make: Effect.Effect<
   | CodexAttachments
   | CodexClientThreadIdentity
   | CodexConversationFork
+  | CodexExecutionAssignments
+  | CodexGitProbe
   | CodexForkSidePanelTransfer
   | CodexAppServerCapabilities
   | CodexGateway
@@ -116,6 +121,8 @@ export const make: Effect.Effect<
   const attachments = yield* CodexAttachments;
   const clientIdentity = yield* CodexClientThreadIdentity;
   const conversationFork = yield* CodexConversationFork;
+  const executionAssignments = yield* CodexExecutionAssignments;
+  const gitProbe = yield* CodexGitProbe;
   const forkTransfers = yield* CodexForkSidePanelTransfer;
   const capabilities = yield* CodexAppServerCapabilities;
   const gateway = yield* CodexGateway;
@@ -248,38 +255,66 @@ export const make: Effect.Effect<
       worktreeWorkspaceRoot: workspaceRoot,
     });
     const executionProfile = params.executionProfile ?? null;
-    const desktopToolConfig = yield* desktopTools.threadConfig.pipe(
-      Effect.mapError((cause) => fail("desktop-tools", entry, cause)),
+    const model =
+      executionProfile?.modelId ?? params.model ?? params.collaborationMode?.settings.model ?? null;
+    const executionSettings = yield* materializeCodexThreadRequestSettings(
+      {
+        hostId: capability.hostId,
+        appServerVersion: capability.version,
+        model,
+        cwd: location.cwd,
+        includeDeveloperInstructions: true,
+        allowMemoryPromptOverrides: capability.hostId === gateway.localHostId,
+        baseInstructions: params.baseInstructions,
+        additionalDeveloperInstructions: params.additionalDeveloperInstructions,
+        mode: params.mode ?? collaborationMode(params.collaborationMode) ?? "default",
+        threadStartKind: params.threadStartKind ?? "default",
+        requestOptions: codexGatewayGenerationFence(capability),
+      },
+      executionAssignments,
+      gateway,
+      gitProbe,
     );
+    if (!executionSettings) {
+      return yield* fail("start", entry, new Error("execution-config-loading"));
+    }
+    const desktopToolConfig =
+      capability.hostId === gateway.localHostId
+        ? yield* desktopTools
+            .threadConfig(location.cwd)
+            .pipe(Effect.mapError((cause) => fail("desktop-tools", entry, cause)))
+        : null;
     const request: ThreadStartParams = {
       cwd: location.cwd,
       runtimeWorkspaceRoots: [...location.workspaceRoots],
-      model:
-        executionProfile?.modelId ??
-        params.model ??
-        params.collaborationMode?.settings.model ??
-        null,
+      model,
       serviceTier: executionProfile ? executionProfile.serviceTier : params.serviceTier,
-      baseInstructions: params.baseInstructions ?? null,
-      developerInstructions: params.additionalDeveloperInstructions ?? null,
+      baseInstructions: null,
+      developerInstructions: executionSettings.developerInstructions,
+      personality: executionSettings.personality,
       threadSource: params.threadSource,
       historyMode: "paginated",
       dynamicTools: [],
-      config: {
-        ...(desktopToolConfig ?? {}),
-        ...buildCodexThreadConfig({ nativeMcp: true, overrides: params.configOverrides }),
-        ...((executionProfile?.reasoningEffort ?? params.reasoningEffort)
-          ? {
-              model_reasoning_effort: executionProfile?.reasoningEffort ?? params.reasoningEffort,
-            }
-          : {}),
-      },
+      config: buildCodexThreadConfig({
+        nativeAppTools: capability.nativeAppTools,
+        overrides: {
+          ...executionSettings.config,
+          ...(desktopToolConfig ?? {}),
+          ...(params.configOverrides ?? {}),
+          ...((executionProfile?.reasoningEffort ?? params.reasoningEffort)
+            ? {
+                model_reasoning_effort: executionProfile?.reasoningEffort ?? params.reasoningEffort,
+              }
+            : {}),
+        },
+      }),
     };
     let startedThreadId: string | null = null;
     let committed = false;
     let materializedGoalDirectory: string | null = null;
     return yield* Effect.gen(function* () {
-      const response = (yield* gateway.requestLocal(
+      const response = (yield* gateway.requestOnHost(
+        capability.hostId,
         "thread/start",
         request as GatewayThreadStartParams,
         codexGatewayGenerationFence(capability),
@@ -300,6 +335,8 @@ export const make: Effect.Effect<
             runtimeWorkspaceRoots: location.workspaceRoots,
             fallbackCwd: location.cwd,
             managedWorktreePath: includeWorktreeInit ? entry.worktreeGitRoot : null,
+            mode: params.mode ?? collaborationMode(params.collaborationMode) ?? "default",
+            threadStartKind: params.threadStartKind ?? "default",
           })
         : yield* directory.acceptStandaloneStart({
             response,
@@ -309,6 +346,8 @@ export const make: Effect.Effect<
             runtimeWorkspaceRoots: location.workspaceRoots,
             fallbackCwd: location.cwd,
             managedWorktreePath: includeWorktreeInit ? entry.worktreeGitRoot : null,
+            mode: params.mode ?? collaborationMode(params.collaborationMode) ?? "default",
+            threadStartKind: params.threadStartKind ?? "default",
           });
       const threadId = accepted.summary.threadId;
       const initialTitle = (
@@ -316,7 +355,7 @@ export const make: Effect.Effect<
       ).trim();
       const materializedGoal =
         includeWorktreeInit && entry.threadGoalDraft
-          ? yield* attachments.materializeGoal(entry.threadGoalDraft)
+          ? yield* attachments.materializeGoal(capability.hostId, entry.threadGoalDraft)
           : null;
       materializedGoalDirectory = materializedGoal?.attachmentDirectory ?? null;
       const prompt = materializedGoal
@@ -333,6 +372,10 @@ export const make: Effect.Effect<
           )
         : undefined;
       const turn = yield* turns.start(threadId, prompt, {
+        freshNativeThread: {
+          hostId: capability.hostId,
+          generation: capability.generation,
+        },
         presentationClaim,
         clientUserMessageId: entry.firstSubmission.clientUserMessageId,
         preparedPrompt: preparedPrompt(entry, prompt),
@@ -439,12 +482,13 @@ export const make: Effect.Effect<
               [
                 materializedGoalDirectory
                   ? attachments
-                      .cleanupMaterializedGoal(materializedGoalDirectory)
+                      .cleanupMaterializedGoal(capability.hostId, materializedGoalDirectory)
                       .pipe(Effect.ignore)
                   : Effect.void,
                 startedThreadId
                   ? gateway
-                      .requestLocal(
+                      .requestOnHost(
+                        capability.hostId,
                         "thread/delete",
                         { threadId: startedThreadId },
                         codexGatewayGenerationFence(capability),
@@ -471,8 +515,9 @@ export const make: Effect.Effect<
     includeWorktreeInit: boolean,
   ) =>
     Effect.gen(function* () {
+      const targetHostId = entry.threadStartHostId ?? entry.hostId;
       const capability = yield* capabilities
-        .forHost(gateway.localHostId)
+        .forHost(targetHostId)
         .pipe(Effect.mapError((cause) => fail("start", entry, cause)));
       return yield* threadStarts.materialize(
         capability.hostId,

@@ -38,7 +38,7 @@ it.effect(
           }),
       } as unknown as CodexGateway["Service"];
       const session = yield* makeFileSearchSession(
-        { hostId: "default", sessionId: "search", roots: ["/repo"] },
+        { hostId: "local", sessionId: "search", roots: ["/repo"] },
         (event) =>
           Effect.sync(() => {
             received.push(event);

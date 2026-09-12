@@ -63,6 +63,7 @@ describe("SessionFirstSubmissionOwner", () => {
       clientUserMessageId: MESSAGE_ID,
       originProjectId: "project_1",
       originSessionId: "session_1",
+      acceptedAt: 10,
     });
     expect(notifications).toBe(1);
 

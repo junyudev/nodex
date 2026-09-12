@@ -1263,7 +1263,7 @@ describe("workbench session shell / pages-shell-navigation", () => {
           input.config !== undefined &&
           !("projectId" in input.config) &&
           typeof input.config.terminalSessionId === "string" &&
-          input.config.terminalSessionId.startsWith("session:session:alpha:database-view:terminal:")
+          input.config.terminalSessionId.startsWith("terminal:")
         );
       }),
     ).toBe(true);

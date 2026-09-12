@@ -1,4 +1,5 @@
-import type { CodexCanonicalTurnState } from "../../../shared/codex-conversation-state/codex-conversation-state";
+import { mergeCodexCanonicalTurnStates } from "../../../shared/codex-conversation-state/codex-conversation-state";
+import { residentConversationTurns } from "../../../shared/codex-conversation-state/codex-turn-mutation";
 import {
   expandCodexAsyncQuestions,
   collectCodexAsyncQuestionAnswers,
@@ -83,22 +84,22 @@ export function createAsyncQuestionRuntime() {
       for (const listener of listeners) listener();
     },
     reconcile(
-      conversation: Pick<CodexConversationSnapshot, "threadId" | "conversationEntityGeneration"> & {
-        canonicalState?: {
-          turns: readonly (Pick<CodexCanonicalTurnState, "protocol" | "items"> & {
-            sidecar?: Pick<CodexCanonicalTurnState["sidecar"], "entityKey">;
-          })[];
-        } | null;
-      },
+      conversation: Pick<
+        CodexConversationSnapshot,
+        "threadId" | "conversationEntityGeneration" | "canonicalState"
+      >,
     ) {
       const threadId = conversation.threadId;
       const canonical = conversation.canonicalState;
       if (!canonical) return;
       const generation = conversation.conversationEntityGeneration;
       const initialized = states.has(threadId) && generations.get(threadId) === generation;
-      const active = canonical.turns.findLast((turn) => turn.protocol.status === "inProgress");
-      const activeTurnId = active?.protocol.id ?? null;
-      const entityKey = active?.sidecar?.entityKey ?? activeTurnId;
+      const turns = canonical.turnHistory
+        ? mergeCodexCanonicalTurnStates(residentConversationTurns(canonical), canonical.turns)
+        : canonical.turns;
+      const active = turns.findLast((turn) => turn.status === "inProgress");
+      const activeTurnId = active?.turnId ?? null;
+      const entityKey = active?.entityKey ?? activeTurnId;
       const sameTurn = initialized && activeEntityKeys.get(threadId) === entityKey;
       activeEntityKeys.set(threadId, entityKey);
       const before = sameTurn ? read(threadId) : EMPTY;

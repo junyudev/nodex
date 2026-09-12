@@ -30,7 +30,6 @@ function row(id: string, prompt = id): CodexQueuedFollowUp {
     serviceTier: null,
     summary: null,
     pause: null,
-    payloadRef: null,
   };
 }
 

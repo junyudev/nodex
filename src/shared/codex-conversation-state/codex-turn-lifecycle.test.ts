@@ -46,21 +46,24 @@ function buildState() {
       turns: [],
     },
     {
-      model: "gpt-test",
-      reasoningEffort: "high",
-      cwd: "/workspace",
-      approvalPolicy: "on-request",
-      approvalsReviewer: "user",
-      sandboxPolicy: {
-        type: "workspaceWrite",
-        writableRoots: ["/workspace"],
-        networkAccess: false,
-        excludeTmpdirEnvVar: false,
-        excludeSlashTmp: false,
+      hostId: "local",
+      ...{
+        model: "gpt-test",
+        reasoningEffort: "high",
+        cwd: "/workspace",
+        approvalPolicy: "on-request",
+        approvalsReviewer: "user",
+        sandboxPolicy: {
+          type: "workspaceWrite",
+          writableRoots: ["/workspace"],
+          networkAccess: false,
+          excludeTmpdirEnvVar: false,
+          excludeSlashTmp: false,
+        },
+        activePermissionProfile: { id: ":workspace", extends: null },
+        runtimeWorkspaceRoots: ["/workspace"],
+        hasUnreadTurn: false,
       },
-      activePermissionProfile: { id: ":workspace", extends: null },
-      runtimeWorkspaceRoots: ["/workspace"],
-      hasUnreadTurn: false,
     },
   );
 }
@@ -115,14 +118,14 @@ describe("Codex 30751 turn lifecycle", () => {
 
     expect(result.disposition).toBe("applied");
     expect(result.state.turns.length).toBe(1);
-    expect(result.state.turns[0]?.protocol.id).toBe("turn-1");
-    expect(result.state.turns[0]?.sidecar.turnStartedAtMs).toBe(41);
-    expect(result.state.turns[0]?.sidecar.params.clientUserMessageId).toBe("client-1");
+    expect(result.state.turns[0]?.turnId).toBe("turn-1");
+    expect(result.state.turns[0]?.turnStartedAtMs).toBe(41);
+    expect(result.state.turns[0]?.params.clientUserMessageId).toBe("client-1");
   });
 
   test("completes stale plan rows on start, then creates one canonical follow-up on completion", () => {
     const placeholder = appendPlaceholder();
-    const params = placeholder.turns[0]!.sidecar.params;
+    const params = placeholder.turns[0]!.params;
     const staleItem: CodexCanonicalPlanImplementationItem = {
       id: "implement-plan:old-turn",
       type: "planImplementation",
@@ -134,20 +137,16 @@ describe("Codex 30751 turn lifecycle", () => {
       ...placeholder,
       turns: [
         {
-          protocol: {
-            id: "old-turn",
-            itemsView: "full" as const,
-            status: "completed" as const,
-            error: null,
-            durationMs: 1,
-          },
+          turnId: "old-turn",
+          itemsView: "full" as const,
+          status: "completed" as const,
+          error: null,
+          durationMs: 1,
           items: [staleItem],
-          sidecar: {
-            params,
-            diff: null,
-            turnStartedAtMs: 1,
-            finalAssistantStartedAtMs: null,
-          },
+          params,
+          diff: null,
+          turnStartedAtMs: 1,
+          finalAssistantStartedAtMs: null,
         },
         ...placeholder.turns,
       ],
@@ -178,7 +177,7 @@ describe("Codex 30751 turn lifecycle", () => {
     );
     expect(started.requests.length).toBe(0);
 
-    const activeIndex = started.turns.findIndex((turn) => turn.protocol.id === "turn-1");
+    const activeIndex = started.turns.findIndex((turn) => turn.turnId === "turn-1");
     const active = started.turns[activeIndex]!;
     const turns = [...started.turns];
     turns[activeIndex] = {
@@ -204,10 +203,10 @@ describe("Codex 30751 turn lifecycle", () => {
     const completedTurn = completed.turns[activeIndex];
     const implementation = completedTurn?.items.find((item) => item.type === "planImplementation");
 
-    expect(completedTurn?.protocol.durationMs).toBe(42);
+    expect(completedTurn?.durationMs).toBe(42);
     expect(implementation?.planContent).toBe("Ship exact parity");
     expect(completed.requests[0]?.method).toBe("item/plan/requestImplementation");
-    expect(completed.sidecar.hasUnreadTurn).toBe(true);
+    expect(completed.hasUnreadTurn).toBe(true);
   });
 
   test("ignores completion for an unknown turn", () => {
@@ -229,7 +228,7 @@ describe("Codex 30751 turn lifecycle", () => {
     expect(result.disposition).toBe("missingTurn");
   });
 
-  test("removes pending steers and emits their terminal recovery rows once in canonical order", () => {
+  test("retains pending steering messages through terminal notifications and replay", () => {
     const started = reduceCodexConversationTurnLifecycle(appendPlaceholder(), {
       conversationId: THREAD_ID,
       method: "turn/started",
@@ -300,21 +299,12 @@ describe("Codex 30751 turn lifecycle", () => {
       };
 
       const completed = reduceCodexConversationTurnLifecycle(state, update);
-      expect(completed.effects).toEqual([
-        {
-          type: "restoreUnacceptedSteers",
-          terminalStatus,
-          rows: [
-            expect.objectContaining({ followUpId: "follow-up-first" }),
-            expect.objectContaining({ followUpId: "follow-up-second" }),
-          ],
-        },
-      ]);
-      expect(completed.state.turns[0]?.items.map((item) => item.id)).toEqual(["accepted"]);
+      expect(completed.effects).toEqual([]);
+      expect(completed.state.turns[0]?.items.map((item) => item.id)).toEqual(state.turns[0]?.items.map((item) => item.id));
 
       const replay = reduceCodexConversationTurnLifecycle(completed.state, update);
       expect(replay.effects).toEqual([]);
-      expect(replay.state.turns[0]?.items.map((item) => item.id)).toEqual(["accepted"]);
+      expect(replay.state.turns[0]?.items.map((item) => item.id)).toEqual(state.turns[0]?.items.map((item) => item.id));
     }
   });
 });

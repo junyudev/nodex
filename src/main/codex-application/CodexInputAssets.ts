@@ -8,12 +8,6 @@ import * as Layer from "effect/Layer";
 import * as Schema from "effect/Schema";
 import { getAssetSource, parseAssetSource } from "../../shared/assets";
 import type {
-  CodexQueuedFollowUp,
-  CodexQueuedFollowUpPayloadRef,
-} from "../../shared/codex-queued-follow-up-state";
-import { CODEX_QUEUED_FOLLOW_UP_PAYLOAD_SCHEMA_VERSION } from "../../shared/codex-queued-follow-up-state";
-import { normalizeCodexServiceTier } from "../../shared/codex-service-tier";
-import type {
   CodexLiveFileAttachment,
   CodexPreparedPrompt,
   CodexPromptInput,
@@ -28,7 +22,6 @@ import { MainConfig } from "../app/MainConfig";
 import { TemporaryAssets } from "../local-store/TemporaryAssets";
 
 const MAX_BLOB_BYTES = 256 * 1024 * 1024;
-const MAX_MANIFEST_BYTES = 64 * 1024 * 1024;
 const MAX_TOTAL_BYTES = 512 * 1024 * 1024;
 
 interface FreezeContext {
@@ -42,29 +35,6 @@ interface QueuedFollowUpAssetReference {
   readonly sha256: string;
   readonly byte_length: number;
   readonly mime_type: string;
-}
-
-interface QueuedFollowUpManifestPayload {
-  readonly prompt: string;
-  readonly prompt_input: CodexPromptInput;
-  readonly collaboration_mode: CodexQueuedFollowUp["collaborationMode"];
-  readonly service_tier: CodexQueuedFollowUp["serviceTier"];
-  readonly summary: CodexQueuedFollowUp["summary"];
-}
-
-interface QueuedFollowUpPayloadManifest {
-  readonly schema_version: typeof CODEX_QUEUED_FOLLOW_UP_PAYLOAD_SCHEMA_VERSION;
-  readonly payload: QueuedFollowUpManifestPayload;
-  readonly asset_references: readonly QueuedFollowUpAssetReference[];
-}
-
-export interface CodexQueuedFollowUpDurableEntry {
-  readonly followUpId: string;
-  readonly clientUserMessageId: string;
-  readonly threadId: string;
-  readonly createdAtMs: number;
-  readonly pause: CodexQueuedFollowUp["pause"];
-  readonly payloadRef: CodexQueuedFollowUpPayloadRef;
 }
 
 export class CodexInputAssetsError extends Schema.TaggedError<CodexInputAssetsError>()(
@@ -84,17 +54,11 @@ export class CodexInputAssets extends Context.Service<
       prepared: CodexPreparedPrompt,
       localExecution: boolean,
     ) => Effect.Effect<CodexPreparedPrompt, CodexInputAssetsError>;
-    readonly freeze: (
-      row: CodexQueuedFollowUp,
-    ) => Effect.Effect<CodexQueuedFollowUp, CodexInputAssetsError>;
-    readonly publish: (
+    readonly retainCaptured: (
       threadId: string,
-      operationId: string,
-      rows: readonly CodexQueuedFollowUp[],
-    ) => Effect.Effect<readonly string[], CodexInputAssetsError>;
-    readonly hydrate: (
-      entry: CodexQueuedFollowUpDurableEntry,
-    ) => Effect.Effect<CodexQueuedFollowUp, CodexInputAssetsError>;
+      submissionId: string,
+      input: CodexPromptInput,
+    ) => Effect.Effect<CodexPromptInput, CodexInputAssetsError>;
   }
 >()("nodex/main/codex-application/CodexInputAssets") {}
 
@@ -264,263 +228,6 @@ function freezePromptInput(input: CodexPromptInput, context: FreezeContext): Cod
   };
 }
 
-function hydratePromptInput(
-  input: CodexPromptInput,
-  assetsRootPath: string,
-  references: readonly QueuedFollowUpAssetReference[],
-): CodexPromptInput {
-  const imageSource = (source: string): string => {
-    const reference = references.find((candidate) => candidate.asset_uri === source);
-    if (!reference) return source;
-    const parsed = parseAssetSource(source);
-    if (!parsed || !reference.mime_type.startsWith("image/"))
-      throw new Error("Queued image has no captured image MIME type");
-    const bytes = readBoundedFile(resolveAssetPathInRoot(assetsRootPath, parsed.fileName));
-    return `data:${reference.mime_type};base64,${bytes.toString("base64")}`;
-  };
-  return {
-    ...input,
-    ...(input.images
-      ? { images: input.images.map((image) => ({ ...image, source: imageSource(image.source) })) }
-      : {}),
-    ...(input.appshots
-      ? {
-          appshots: input.appshots.map((appshot) => ({
-            ...appshot,
-            imageDataUrl: imageSource(appshot.imageDataUrl),
-          })),
-        }
-      : {}),
-    ...(input.browserAnnotationAttachments
-      ? {
-          browserAnnotationAttachments: input.browserAnnotationAttachments.map((attachment) => ({
-            ...attachment,
-            ...(attachment.evidence
-              ? {
-                  evidence: {
-                    ...attachment.evidence,
-                    source: imageSource(attachment.evidence.source),
-                  },
-                }
-              : {}),
-          })),
-        }
-      : {}),
-    ...(input.fileAttachments
-      ? {
-          fileAttachments: input.fileAttachments.map((attachment) =>
-            hydrateFileAttachment(attachment, assetsRootPath),
-          ),
-        }
-      : {}),
-    ...(input.addedFiles
-      ? {
-          addedFiles: input.addedFiles.map((attachment) =>
-            hydrateFileAttachment(attachment, assetsRootPath),
-          ),
-        }
-      : {}),
-    ...(input.textAttachments
-      ? {
-          textAttachments: input.textAttachments.map((attachment) =>
-            attachment.file
-              ? {
-                  ...attachment,
-                  file: hydrateFileAttachment(attachment.file, assetsRootPath),
-                }
-              : { ...attachment },
-          ),
-        }
-      : {}),
-  };
-}
-
-function collectManagedAssetUris(value: unknown, found = new Set<string>()): Set<string> {
-  if (typeof value === "string") {
-    if (parseAssetSource(value)) found.add(value);
-    return found;
-  }
-  if (Array.isArray(value)) {
-    for (const entry of value) collectManagedAssetUris(entry, found);
-    return found;
-  }
-  if (!value || typeof value !== "object") return found;
-  for (const entry of Object.values(value)) collectManagedAssetUris(entry, found);
-  return found;
-}
-
-function evidenceForAsset(assetUri: string, assetsRootPath: string): QueuedFollowUpAssetReference {
-  const parsed = parseAssetSource(assetUri);
-  if (!parsed) throw new Error("Queued payload contains an invalid managed asset URI");
-  const bytes = fs.readFileSync(resolveAssetPathInRoot(assetsRootPath, parsed.fileName));
-  return {
-    asset_uri: assetUri,
-    sha256: sha256(bytes),
-    byte_length: bytes.byteLength,
-    mime_type: "application/octet-stream",
-  };
-}
-
-function parseManifestPayload(value: unknown): QueuedFollowUpManifestPayload {
-  if (!value || typeof value !== "object" || Array.isArray(value)) {
-    throw new Error("Queued follow-up payload is invalid");
-  }
-  const payload = value as Partial<QueuedFollowUpManifestPayload>;
-  if (
-    typeof payload.prompt !== "string" ||
-    !payload.prompt_input ||
-    typeof payload.prompt_input !== "object"
-  ) {
-    throw new Error("Queued follow-up payload is incomplete");
-  }
-  return payload as QueuedFollowUpManifestPayload;
-}
-
-function parseManifestAssetReferences(value: unknown): readonly QueuedFollowUpAssetReference[] {
-  if (!Array.isArray(value)) {
-    throw new Error("Queued follow-up payload asset references are invalid");
-  }
-  return value.map((entry) => {
-    if (!entry || typeof entry !== "object" || Array.isArray(entry)) {
-      throw new Error("Queued follow-up payload asset reference is invalid");
-    }
-    const reference = entry as Partial<QueuedFollowUpAssetReference>;
-    if (
-      typeof reference.asset_uri !== "string" ||
-      typeof reference.sha256 !== "string" ||
-      typeof reference.byte_length !== "number" ||
-      !Number.isSafeInteger(reference.byte_length) ||
-      reference.byte_length < 0 ||
-      reference.byte_length > MAX_BLOB_BYTES ||
-      typeof reference.mime_type !== "string" ||
-      !reference.mime_type.trim() ||
-      reference.mime_type.length > 255 ||
-      !/^[a-f0-9]{64}$/u.test(reference.sha256) ||
-      reference.asset_uri !== getAssetSource(`${reference.sha256}.blob`)
-    ) {
-      throw new Error("Queued follow-up payload asset reference is incomplete");
-    }
-    return {
-      asset_uri: reference.asset_uri,
-      sha256: reference.sha256,
-      byte_length: reference.byte_length,
-      mime_type: reference.mime_type,
-    };
-  });
-}
-
-function validateManifestAssets(
-  payload: QueuedFollowUpManifestPayload,
-  references: readonly QueuedFollowUpAssetReference[],
-  assetsRootPath: string,
-): void {
-  const embedded = [...collectManagedAssetUris(payload)].sort((left, right) =>
-    left.localeCompare(right),
-  );
-  const listed = references.map((reference) => reference.asset_uri);
-  if (
-    embedded.length !== listed.length ||
-    embedded.some((assetUri, index) => assetUri !== listed[index])
-  ) {
-    throw new Error("Queued follow-up payload asset references do not match its locators");
-  }
-  for (const reference of references) {
-    const actual = evidenceForAsset(reference.asset_uri, assetsRootPath);
-    if (actual.sha256 !== reference.sha256 || actual.byte_length !== reference.byte_length) {
-      throw new Error("Queued follow-up payload asset evidence does not match its file");
-    }
-  }
-}
-
-function freezeAtRoot(
-  row: CodexQueuedFollowUp,
-  assetsRootPath: string,
-  sourceAssetsRootPath: string,
-): CodexQueuedFollowUp {
-  const context: FreezeContext = {
-    stagingRootPath: assetsRootPath,
-    sourceAssetsRootPath,
-    references: new Map(),
-  };
-  const promptInput = freezePromptInput(row.promptInput, context);
-  const payload: QueuedFollowUpManifestPayload = {
-    prompt: row.prompt,
-    prompt_input: promptInput,
-    collaboration_mode: row.collaborationMode,
-    service_tier: row.serviceTier,
-    summary: row.summary,
-  };
-  const assetReferences = [...collectManagedAssetUris(payload)]
-    .sort((left, right) => left.localeCompare(right))
-    .map((assetUri) => {
-      const reference = context.references.get(assetUri);
-      if (!reference) throw new Error("Queued payload contains an uncaptured managed asset");
-      return reference;
-    });
-  if (
-    assetReferences.length > 512 ||
-    assetReferences.reduce((total, reference) => total + reference.byte_length, 0) > MAX_TOTAL_BYTES
-  ) {
-    throw new Error("Queued payload exceeds its attachment budget");
-  }
-  const manifest: QueuedFollowUpPayloadManifest = {
-    schema_version: CODEX_QUEUED_FOLLOW_UP_PAYLOAD_SCHEMA_VERSION,
-    payload,
-    asset_references: assetReferences,
-  };
-  const bytes = Buffer.from(JSON.stringify(manifest), "utf8");
-  const contentHash = sha256(bytes);
-  const fileName = `${contentHash}.blob`;
-  if (bytes.byteLength > MAX_MANIFEST_BYTES)
-    throw new Error("Queued manifest exceeds its byte limit");
-  cacheContentAddressedBytes(assetsRootPath, fileName, bytes, contentHash);
-  return {
-    ...row,
-    promptInput: hydratePromptInput(promptInput, assetsRootPath, assetReferences),
-    payloadRef: {
-      schemaVersion: CODEX_QUEUED_FOLLOW_UP_PAYLOAD_SCHEMA_VERSION,
-      assetUri: getAssetSource(fileName),
-      sha256: contentHash,
-      byteLength: bytes.byteLength,
-    },
-  };
-}
-
-function hydrateAtRoot(
-  entry: CodexQueuedFollowUpDurableEntry,
-  assetsRootPath: string,
-): CodexQueuedFollowUp {
-  const parsed = parseAssetSource(entry.payloadRef.assetUri);
-  if (!parsed) throw new Error("Queued follow-up manifest URI is invalid");
-  const bytes = fs.readFileSync(resolveAssetPathInRoot(assetsRootPath, parsed.fileName));
-  if (
-    bytes.byteLength !== entry.payloadRef.byteLength ||
-    sha256(bytes) !== entry.payloadRef.sha256
-  ) {
-    throw new Error("Queued follow-up manifest evidence does not match its file");
-  }
-  const manifest = JSON.parse(bytes.toString("utf8")) as Partial<QueuedFollowUpPayloadManifest>;
-  if (manifest.schema_version !== CODEX_QUEUED_FOLLOW_UP_PAYLOAD_SCHEMA_VERSION) {
-    throw new Error("Queued follow-up manifest schema is unsupported");
-  }
-  const payload = parseManifestPayload(manifest.payload);
-  const references = parseManifestAssetReferences(manifest.asset_references);
-  validateManifestAssets(payload, references, assetsRootPath);
-  return {
-    followUpId: entry.followUpId,
-    clientUserMessageId: entry.clientUserMessageId,
-    threadId: entry.threadId,
-    prompt: payload.prompt,
-    promptInput: hydratePromptInput(payload.prompt_input, assetsRootPath, references),
-    createdAtMs: entry.createdAtMs,
-    collaborationMode: payload.collaboration_mode ?? null,
-    serviceTier: normalizeCodexServiceTier(payload.service_tier),
-    summary: payload.summary ?? null,
-    pause: entry.pause,
-    payloadRef: entry.payloadRef,
-  };
-}
-
 function stagePreparedInput(
   prepared: CodexPreparedPrompt,
   context: FreezeContext,
@@ -616,33 +323,6 @@ export function makeCodexInputAssets(input: {
       try: evaluate,
       catch: (cause) => new CodexInputAssetsError({ operation, cause }),
     });
-  const fetch = Effect.fn("QueuedPayload.fetch")(
-    function* (threadId: string, hash: string, length: number) {
-      const result = yield* input.sessions.use("queue.readBlob", (client, signal) =>
-        client.readThreadAssetBlob({ threadId, contentHash: hash }, { signal }),
-      );
-      yield* attempt("hydrate", () => {
-        if (result.bytes.byteLength !== length || sha256(result.bytes) !== hash)
-          throw new Error("Core queued Blob evidence changed");
-        cacheContentAddressedBytes(root, `${hash}.blob`, Buffer.from(result.bytes), hash);
-      });
-    },
-    Effect.mapError((cause) => new CodexInputAssetsError({ operation: "hydrate", cause })),
-  );
-  const readManifest = (ref: CodexQueuedFollowUpPayloadRef) => {
-    if (ref.assetUri !== getAssetSource(`${ref.sha256}.blob`))
-      throw new Error("Queued manifest identity is invalid");
-    const bytes = readBoundedFile(
-      resolveAssetPathInRoot(root, `${ref.sha256}.blob`),
-      MAX_MANIFEST_BYTES,
-    );
-    if (sha256(bytes) !== ref.sha256 || bytes.byteLength !== ref.byteLength)
-      throw new Error("Queued manifest evidence changed");
-    const manifest = JSON.parse(bytes.toString("utf8")) as Partial<QueuedFollowUpPayloadManifest>;
-    if (manifest.schema_version !== CODEX_QUEUED_FOLLOW_UP_PAYLOAD_SCHEMA_VERSION)
-      throw new Error("Unsupported queued manifest");
-    return { bytes, references: parseManifestAssetReferences(manifest.asset_references) };
-  };
   const publishClosure = Effect.fn("CodexInputAssets.publishClosure")(
     function* (operationId: string, closure: ReadonlyMap<string, number>) {
       const receipts: string[] = [];
@@ -708,42 +388,42 @@ export function makeCodexInputAssets(input: {
       },
       Effect.mapError((cause) => new CodexInputAssetsError({ operation: "retain", cause })),
     ),
-    freeze: (row) => attempt("freeze", () => freezeAtRoot(row, root, input.sourceAssetsRootPath)),
-    publish: Effect.fn("QueuedPayload.publish")(
-      function* (threadId, operationId, rows) {
-        const closure = new Map<string, number>();
-        for (const row of rows) {
-          const ref = row.payloadRef;
-          if (!ref || row.threadId !== threadId)
-            return yield* new CodexInputAssetsError({
-              operation: "publish",
-              cause: new Error("Queue row has no captured payload"),
-            });
-          const manifest = yield* attempt("publish", () => readManifest(ref));
-          closure.set(ref.sha256, ref.byteLength);
-          for (const reference of manifest.references)
-            closure.set(reference.sha256, reference.byte_length);
-        }
-        if (
-          closure.size > 1024 ||
-          [...closure.values()].reduce((total, bytes) => total + bytes, 0) > MAX_TOTAL_BYTES
-        ) {
-          return yield* new CodexInputAssetsError({
-            operation: "publish",
-            cause: new Error("Queue publication exceeds its byte budget"),
-          });
-        }
-        return yield* publishClosure(operationId, closure);
-      },
-      Effect.mapError((cause) => new CodexInputAssetsError({ operation: "publish", cause })),
-    ),
-    hydrate: Effect.fn("QueuedPayload.hydrate")(function* (entry) {
-      yield* fetch(entry.threadId, entry.payloadRef.sha256, entry.payloadRef.byteLength);
-      const manifest = yield* attempt("hydrate", () => readManifest(entry.payloadRef));
-      for (const reference of manifest.references)
-        yield* fetch(entry.threadId, reference.sha256, reference.byte_length);
-      return yield* attempt("hydrate", () => hydrateAtRoot(entry, root));
-    }),
+    retainCaptured: (threadId, submissionId, promptInput) =>
+      Effect.gen(function* () {
+        const context: FreezeContext = {
+          stagingRootPath: root,
+          sourceAssetsRootPath: input.sourceAssetsRootPath,
+          references: new Map(),
+        };
+        const captured = yield* attempt("retain", () => freezePromptInput(promptInput, context));
+        if (context.references.size === 0) return captured;
+        const operationId = `thread-input:${sha256(Buffer.from(JSON.stringify([threadId, submissionId])))}`;
+        const receipts = yield* publishClosure(
+          operationId,
+          new Map(
+            [...context.references.values()].map((reference) => [
+              reference.sha256,
+              reference.byte_length,
+            ]),
+          ),
+        );
+        yield* input.sessions.use("thread.retainCaptured", (client, signal) =>
+          client.workspaceApply(
+            {
+              operationId,
+              intent: {
+                kind: "retain_thread_assets",
+                thread_id: threadId,
+                prepared_blob_receipt_ids: receipts,
+              },
+            },
+            { signal },
+          ),
+        );
+        return captured;
+      }).pipe(
+        Effect.mapError((cause) => new CodexInputAssetsError({ operation: "retain", cause })),
+      ),
   });
 }
 

@@ -1,9 +1,9 @@
+import type { CodexConversationRequestContext } from "./codex-conversation-request-context";
 import type { ServerRequest } from "@nodex/codex-app-server-protocol";
 
 import type {
   CodexCanonicalInteractivePendingRequest,
   CodexCanonicalServerRequest,
-  CodexConversationSnapshot,
   CodexOptionPickerOption,
   CodexOptionPickerRequest,
   CodexSetupCodexStepRequest,
@@ -163,7 +163,7 @@ function getOrCreateBucket(
 }
 
 function buildOptionPickerRequest(input: {
-  conversation: CodexConversationSnapshot;
+  conversation: CodexConversationRequestContext;
   request: CodexCanonicalServerRequest;
   turnId: string;
   itemId: string;
@@ -183,7 +183,7 @@ function buildOptionPickerRequest(input: {
 }
 
 function buildSetupStepRequest(input: {
-  conversation: CodexConversationSnapshot;
+  conversation: CodexConversationRequestContext;
   request: CodexCanonicalServerRequest;
   turnId: string;
   itemId: string;
@@ -203,7 +203,7 @@ function buildSetupStepRequest(input: {
 }
 
 function projectDirectUserInput(
-  conversation: CodexConversationSnapshot,
+  conversation: CodexConversationRequestContext,
   request: Extract<CodexCanonicalServerRequest, { method: "item/tool/requestUserInput" }>,
   createdAt: number,
 ): CodexUserInputRequest {
@@ -233,7 +233,7 @@ function projectDirectUserInput(
 
 function projectDynamicRequest(input: {
   buckets: Map<string, CodexCanonicalPendingRequestBucket>;
-  conversation: CodexConversationSnapshot;
+  conversation: CodexConversationRequestContext;
   request: DynamicToolCallRequest;
   createdAt: number;
 }): void {
@@ -285,7 +285,7 @@ function projectDynamicRequest(input: {
 }
 
 export function buildCodexCanonicalPendingRequestBuckets(
-  conversation: CodexConversationSnapshot | null,
+  conversation: CodexConversationRequestContext | null,
 ): Map<string, CodexCanonicalPendingRequestBucket> {
   const requests = conversation?.canonicalRequests;
   if (!conversation || !requests || requests.length === 0) {
@@ -351,4 +351,17 @@ export function selectCanonicalInteractiveRequestForTurn(
     bucket.latestOptionPickerRequest ??
     bucket.latestSetupCodexStepRequest
   );
+}
+
+/** Classifies validated native dynamic requests without a presentation snapshot. */
+export function classifyCanonicalDynamicInteractiveRequest(
+  request: DynamicToolCallRequest,
+): "userInput" | "optionPicker" | "setupCodexStep" | null {
+  if (request.params.tool === "request_onboarding_input")
+    return parseOnboardingInputArguments(request.params.arguments) ? "userInput" : null;
+  if (request.params.tool === "request_option_picker")
+    return parseOptionPickerArguments(request.params.arguments) ? "optionPicker" : null;
+  if (request.params.tool !== "setup_codex_step") return null;
+  const step = parseSetupStep(request.params.arguments);
+  return step && step !== "complete" ? "setupCodexStep" : null;
 }

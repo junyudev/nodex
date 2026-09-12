@@ -29,7 +29,7 @@ import {
   parseCodexAppServerReleaseLock,
 } from "../src/shared/codex-app-server-release-lock.mjs";
 
-export const PACKAGED_BUILD_PROVENANCE_SCHEMA_VERSION = 6;
+export const PACKAGED_BUILD_PROVENANCE_SCHEMA_VERSION = 7;
 const PREPARED_SCHEMA_VERSION = 4;
 const projectRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const canonicalAgentRuntimeLockPath = path.join(
@@ -55,6 +55,7 @@ const provenanceRelativePath = `${resourcesRelativePath}/nodex-build-provenance.
 const preparedRelativePath = `${resourcesRelativePath}/prepared-electron-build.json`;
 const appAsarRelativePath = `${resourcesRelativePath}/app.asar`;
 const clipboardBridgeRelativePath = `${resourcesRelativePath}/native/nodex-clipboard.node`;
+const deviceCheckBridgeRelativePath = `${resourcesRelativePath}/native/nodex-devicecheck.node`;
 const nativeManifestRelativePath = `${resourcesRelativePath}/bin/rust-core-runtime.json`;
 const agentManifestRelativePath = `${resourcesRelativePath}/agent-runtime.json`;
 const browserManifestRelativePath = `${resourcesRelativePath}/browser-runtime/browser-runtime-manifest.json`;
@@ -186,7 +187,7 @@ const inspectLockedAgentRuntime = (appPath, rawMetadata, targetArch, lockPath) =
   if (
     metadataSha256 !== locked.build.runtimeMetadataSha256 ||
     metadata.appServerRuntimeVersion !== locked.runtimeVersion ||
-    metadata.runtimeFamily !== "codex-app-server" ||
+    metadata.runtimeFamily !== "codex" ||
     metadata.targetPlatform !== "darwin" ||
     metadata.targetArch !== targetArch ||
     metadata.targetTriple !== locked.build.targetTriple ||
@@ -519,6 +520,7 @@ export const writePackagedBuildProvenance = (appPath, options = {}) => {
     payload: {
       appAsar: fileIdentity(resolvedAppPath, appAsarRelativePath),
       clipboardBridge: fileIdentity(resolvedAppPath, clipboardBridgeRelativePath),
+      deviceCheckBridge: fileIdentity(resolvedAppPath, deviceCheckBridgeRelativePath),
       nativeRuntimeManifest: fileIdentity(resolvedAppPath, nativeManifestRelativePath),
       agentRuntimeManifest: fileIdentity(resolvedAppPath, agentManifestRelativePath),
       browserRuntimeManifest: optionalFileIdentity(resolvedAppPath, browserManifestRelativePath),
@@ -610,6 +612,7 @@ export const verifyPackagedBuildProvenance = (appPath, options = {}) => {
     [
       "appAsar",
       "clipboardBridge",
+      "deviceCheckBridge",
       "nativeRuntimeManifest",
       "agentRuntimeManifest",
       "browserRuntimeManifest",
@@ -622,6 +625,11 @@ export const verifyPackagedBuildProvenance = (appPath, options = {}) => {
     value.payload.clipboardBridge,
     "native/nodex-clipboard.node",
     "Packaged clipboard bridge",
+  );
+  const deviceCheckBridge = parseFileIdentity(
+    value.payload.deviceCheckBridge,
+    "native/nodex-devicecheck.node",
+    "Packaged DeviceCheck bridge",
   );
   const nativeRuntimeManifest = parseFileIdentity(
     value.payload.nativeRuntimeManifest,
@@ -710,6 +718,12 @@ export const verifyPackagedBuildProvenance = (appPath, options = {}) => {
     clipboardBridge,
     clipboardBridgeRelativePath,
     "Packaged clipboard bridge",
+  );
+  verifyFileIdentity(
+    resolvedAppPath,
+    deviceCheckBridge,
+    deviceCheckBridgeRelativePath,
+    "Packaged DeviceCheck bridge",
   );
   verifyFileIdentity(
     resolvedAppPath,

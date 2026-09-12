@@ -1,5 +1,4 @@
 import type { ThreadItem, Turn } from "@nodex/codex-app-server-protocol/v2";
-import type { CodexConversationHistoryMutation } from "./codex-conversation-history-page";
 import type { CodexHistoryTurnItemsPagination } from "./codex-conversation-state/codex-history-topology";
 import type { CodexThreadHistoryFeatureUnavailable } from "./codex-thread-history-features";
 
@@ -51,8 +50,8 @@ export interface CodexPromptRailReveal {
   readonly turnId: string;
   readonly topologyGeneration: number;
   readonly previews: readonly CodexPromptRailPreview[];
-  /** One bounded Main-authored island mutation; raw Turns never cross into renderer state. */
-  readonly mutation: CodexConversationHistoryMutation;
+  /** Native locator retained by a preview; only navigation installs its history window. */
+  readonly turnCursor: string;
 }
 
 /** A renderer request identity is scoped to one renderer and lives only for one IPC call. */

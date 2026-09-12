@@ -631,6 +631,39 @@ describe("local-conversation selectors", () => {
     );
   });
 
+  test("recomputes request scope when unchanged request arrays move to a different context", () => {
+    const context = {
+      projectId: "project_1",
+      threadId: "thread_1",
+      turns: [buildTurn({ turnId: "turn_1", status: "inProgress" })],
+      requests: [],
+      canonicalRequests: [
+        {
+          id: "option-1",
+          method: "item/tool/requestOptionPicker",
+          params: {
+            threadId: "thread_1",
+            turnId: "turn_1",
+            question: "Choose a slice",
+            options: [{ label: "UI" }],
+          },
+        } satisfies CodexCanonicalServerRequest,
+      ],
+    };
+    expect(selectPrimaryConversationRequest(context)).toMatchObject({
+      projectId: "project_1",
+      threadId: "thread_1",
+    });
+    expect(selectPrimaryConversationRequest({ ...context, projectId: "project_2" })).toMatchObject({
+      projectId: "project_2",
+      threadId: "thread_1",
+    });
+    expect(selectPrimaryConversationRequest({ ...context, threadId: "thread_2" })).toMatchObject({
+      projectId: "project_1",
+      threadId: "thread_2",
+    });
+  });
+
   test("does not duplicate a direct user-input request across canonical and legacy projections", () => {
     const conversation = buildConversation({
       turns: [buildTurn({ turnId: "turn_1", status: "inProgress" })],

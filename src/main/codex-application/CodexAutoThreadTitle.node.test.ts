@@ -6,6 +6,7 @@ import { CodexAttachments } from "./CodexAttachments";
 import { CodexStructuredThreadTitle } from "./CodexStructuredThreadTitle";
 import { make } from "./CodexAutoThreadTitle";
 import { CodexThreadDescriptionPersistence } from "./CodexThreadDescriptionPersistence";
+import { CodexThreadTitleAppTools } from "./CodexThreadTitleAppTools";
 import { CodexThreadTitlePersistence } from "./CodexThreadTitlePersistence";
 
 type TitleCall = Parameters<CodexThreadTitlePersistence["Service"]["set"]>[0];
@@ -18,6 +19,20 @@ const descriptions = CodexThreadDescriptionPersistence.of({
   set: () => Effect.void,
   get: () => Effect.succeed(null),
 });
+
+const appTools = CodexThreadTitleAppTools.of({
+  discover: () => Effect.succeed([]),
+});
+
+const structuredTitleService = (
+  generateMetadata: CodexStructuredThreadTitle["Service"]["generateMetadata"],
+) =>
+  CodexStructuredThreadTitle.of({
+    generateMetadata,
+    generate: (input) =>
+      generateMetadata(input).pipe(Effect.map((metadata) => metadata?.title ?? null)),
+    reconsiderTitle: () => Effect.succeed(null),
+  });
 
 const titlePersistence = (calls: TitleCall[], completed: Deferred.Deferred<void>) =>
   CodexThreadTitlePersistence.of({
@@ -41,17 +56,19 @@ it.effect("claims a local provisional title before persisting the generated titl
   Effect.gen(function* () {
     const completed = yield* Deferred.make<void>();
     const calls: TitleCall[] = [];
-    const structuredTitle = CodexStructuredThreadTitle.of({
-      generate: () => Effect.succeed("Generated title"),
-    });
+    const structuredTitle = structuredTitleService(() =>
+      Effect.succeed({ title: "Generated title", description: "Generated title summary" }),
+    );
     const autoTitle = yield* make.pipe(
       Effect.provideService(CodexStructuredThreadTitle, structuredTitle),
       Effect.provideService(CodexThreadDescriptionPersistence, descriptions),
       Effect.provideService(CodexThreadTitlePersistence, titlePersistence(calls, completed)),
+      Effect.provideService(CodexThreadTitleAppTools, appTools),
       Effect.provideService(CodexAttachments, attachments),
     );
 
     yield* autoTitle.scheduleFirstTurn({
+      hostId: "local",
       threadId: "thread-1",
       prompt: "  Prompt preview  ",
       cwd: "/repo",
@@ -59,11 +76,12 @@ it.effect("claims a local provisional title before persisting the generated titl
     yield* Deferred.await(completed);
 
     assert.deepEqual(
-      calls.map(({ name, onlyIfUntitled, expectedName, persist }) => ({
+      calls.map(({ name, onlyIfUntitled, expectedName, persist, generated }) => ({
         name,
         onlyIfUntitled,
         expectedName,
         persist,
+        generated,
       })),
       [
         {
@@ -71,12 +89,14 @@ it.effect("claims a local provisional title before persisting the generated titl
           onlyIfUntitled: true,
           expectedName: undefined,
           persist: false,
+          generated: undefined,
         },
         {
           name: "Generated title",
           onlyIfUntitled: undefined,
           expectedName: "Prompt preview",
           persist: undefined,
+          generated: true,
         },
       ],
     );
@@ -88,11 +108,9 @@ it.effect("persists generated descriptions only after the title CAS commits", ()
     const completed = yield* Deferred.make<void>();
     const titleCalls: TitleCall[] = [];
     const descriptionCalls: Array<{ readonly threadId: string; readonly description: string }> = [];
-    const structuredTitle = CodexStructuredThreadTitle.of({
-      generate: () => Effect.succeed("Generated title"),
-      generateMetadata: () =>
-        Effect.succeed({ title: "Generated title", description: "Searchable summary" }),
-    });
+    const structuredTitle = structuredTitleService(() =>
+      Effect.succeed({ title: "Generated title", description: "Searchable summary" }),
+    );
     const autoTitle = yield* make.pipe(
       Effect.provideService(CodexStructuredThreadTitle, structuredTitle),
       Effect.provideService(
@@ -106,10 +124,12 @@ it.effect("persists generated descriptions only after the title CAS commits", ()
         }),
       ),
       Effect.provideService(CodexThreadTitlePersistence, titlePersistence(titleCalls, completed)),
+      Effect.provideService(CodexThreadTitleAppTools, appTools),
       Effect.provideService(CodexAttachments, attachments),
     );
 
     yield* autoTitle.scheduleFirstTurn({
+      hostId: "local",
       threadId: "thread-with-description",
       prompt: "Prompt preview",
       cwd: "/repo",
@@ -127,17 +147,19 @@ it.effect("restores the provisional title when structured generation fails", () 
   Effect.gen(function* () {
     const completed = yield* Deferred.make<void>();
     const calls: TitleCall[] = [];
-    const structuredTitle = CodexStructuredThreadTitle.of({
-      generate: () => Effect.die(new Error("title service unavailable")),
-    });
+    const structuredTitle = structuredTitleService(() =>
+      Effect.die(new Error("title service unavailable")),
+    );
     const autoTitle = yield* make.pipe(
       Effect.provideService(CodexStructuredThreadTitle, structuredTitle),
       Effect.provideService(CodexThreadDescriptionPersistence, descriptions),
       Effect.provideService(CodexThreadTitlePersistence, titlePersistence(calls, completed)),
+      Effect.provideService(CodexThreadTitleAppTools, appTools),
       Effect.provideService(CodexAttachments, attachments),
     );
 
     yield* autoTitle.scheduleFirstTurn({
+      hostId: "local",
       threadId: "thread-1",
       prompt: "Prompt preview",
       cwd: null,
@@ -154,17 +176,19 @@ it.effect("does not schedule title work when auto generation is explicitly skipp
   Effect.gen(function* () {
     const completed = yield* Deferred.make<void>();
     const calls: TitleCall[] = [];
-    const structuredTitle = CodexStructuredThreadTitle.of({
-      generate: () => Effect.succeed("unexpected"),
-    });
+    const structuredTitle = structuredTitleService(() =>
+      Effect.succeed({ title: "unexpected", description: "unexpected" }),
+    );
     const autoTitle = yield* make.pipe(
       Effect.provideService(CodexStructuredThreadTitle, structuredTitle),
       Effect.provideService(CodexThreadDescriptionPersistence, descriptions),
       Effect.provideService(CodexThreadTitlePersistence, titlePersistence(calls, completed)),
+      Effect.provideService(CodexThreadTitleAppTools, appTools),
       Effect.provideService(CodexAttachments, attachments),
     );
 
     yield* autoTitle.scheduleFirstTurn({
+      hostId: "local",
       threadId: "thread-1",
       prompt: "Prompt preview",
       cwd: null,
@@ -181,13 +205,12 @@ it.effect("feeds raw and file-backed pasted excerpts into the added-thread title
     const completed = yield* Deferred.make<void>();
     const calls: TitleCall[] = [];
     let generationPrompt = "";
-    const structuredTitle = CodexStructuredThreadTitle.of({
-      generate: ({ prompt }) =>
-        Effect.sync(() => {
-          generationPrompt = prompt;
-          return "Generated title";
-        }),
-    });
+    const structuredTitle = structuredTitleService(({ prompt }) =>
+      Effect.sync(() => {
+        generationPrompt = prompt;
+        return { title: "Generated title", description: "Generated title summary" };
+      }),
+    );
     const pastedAttachments = CodexAttachments.of({
       getTextExcerpts: (files: readonly CodexLiveFileAttachment[] | null | undefined) =>
         Effect.succeed((files ?? []).map(() => "file-backed excerpt")),
@@ -196,10 +219,12 @@ it.effect("feeds raw and file-backed pasted excerpts into the added-thread title
       Effect.provideService(CodexStructuredThreadTitle, structuredTitle),
       Effect.provideService(CodexThreadDescriptionPersistence, descriptions),
       Effect.provideService(CodexThreadTitlePersistence, titlePersistence(calls, completed)),
+      Effect.provideService(CodexThreadTitleAppTools, appTools),
       Effect.provideService(CodexAttachments, pastedAttachments),
     );
 
     yield* autoTitle.scheduleAddedThread({
+      hostId: "local",
       threadId: "thread-added",
       prompt: "Prompt before paste",
       cwd: "/repo",
@@ -226,5 +251,62 @@ it.effect("feeds raw and file-backed pasted excerpts into the added-thread title
       "Prompt before paste raw pasted excerpt file-backed excerpt",
     );
     assert.strictEqual(calls[0]?.onlyIfUntitled, true);
+  }),
+);
+
+it.effect("discovers referenced read-only app tools on the source host", () =>
+  Effect.gen(function* () {
+    const completed = yield* Deferred.make<void>();
+    const calls: TitleCall[] = [];
+    const discovered: Array<{
+      readonly hostId: string;
+      readonly threadId: string;
+      readonly prompt: string;
+    }> = [];
+    const generated: Parameters<CodexStructuredThreadTitle["Service"]["generateMetadata"]>[0][] =
+      [];
+    const allowlist = [{ appId: "github", toolNames: ["search_code"] }] as const;
+    const autoTitle = yield* make.pipe(
+      Effect.provideService(
+        CodexStructuredThreadTitle,
+        structuredTitleService((input) =>
+          Effect.sync(() => {
+            generated.push(input);
+            return { title: "Generated title", description: "GitHub issue summary" };
+          }),
+        ),
+      ),
+      Effect.provideService(CodexThreadDescriptionPersistence, descriptions),
+      Effect.provideService(CodexThreadTitlePersistence, titlePersistence(calls, completed)),
+      Effect.provideService(
+        CodexThreadTitleAppTools,
+        CodexThreadTitleAppTools.of({
+          discover: (input) =>
+            Effect.sync(() => {
+              discovered.push(input);
+              return allowlist;
+            }),
+        }),
+      ),
+      Effect.provideService(CodexAttachments, attachments),
+    );
+
+    yield* autoTitle.scheduleFirstTurn({
+      hostId: "remote-a",
+      threadId: "thread-app-link",
+      prompt: "Inspect https://github.com/openai/codex/issues/123",
+      cwd: "/repo",
+    });
+    yield* Deferred.await(completed);
+
+    assert.deepEqual(discovered, [
+      {
+        hostId: "remote-a",
+        threadId: "thread-app-link",
+        prompt: "Inspect https://github.com/openai/codex/issues/123",
+      },
+    ]);
+    assert.deepEqual(generated[0]?.readOnlyAppToolAllowlist, allowlist);
+    assert.strictEqual(generated[0]?.hostId, "remote-a");
   }),
 );

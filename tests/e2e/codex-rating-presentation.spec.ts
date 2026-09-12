@@ -28,7 +28,10 @@ test("rates and clears a response through the message action menu", async ({}, t
     const composer = page.locator('[data-codex-composer="true"][aria-label="Do anything"]');
     await expect(composer).toBeVisible();
     await composer.fill("Check response rating");
-    await page.getByRole("button", { name: "Send prompt", exact: true }).click();
+    await expect(composer).toHaveText("Check response rating");
+    const sendButton = page.getByRole("button", { name: "Send prompt", exact: true });
+    await expect(sendButton).toBeEnabled();
+    await sendButton.click();
     const reply = page.getByText("The hook completed successfully.", { exact: true });
     await expect(reply).toBeVisible({ timeout: 30_000 });
     await expect(page.getByRole("button", { name: "Stop", exact: true })).toHaveCount(0);

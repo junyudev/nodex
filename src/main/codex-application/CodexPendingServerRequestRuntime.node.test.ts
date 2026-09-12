@@ -12,7 +12,7 @@ import {
 } from "./CodexPendingServerRequestRuntime";
 
 interface Completion {
-  readonly kind: "reject" | "respond";
+  readonly kind: "abandon" | "reject" | "respond";
   readonly occurrenceToken: number;
   readonly requestId: string | number;
   readonly response: unknown;
@@ -20,6 +20,17 @@ interface Completion {
 }
 
 const harness = (completions: Completion[]): CodexPendingServerRequestRuntimeOptions => ({
+  abandon: (threadId, requestId, occurrenceToken) =>
+    Effect.sync(() => {
+      completions.push({
+        kind: "abandon",
+        threadId,
+        requestId,
+        occurrenceToken,
+        response: CodexAppServerNoResponse,
+      });
+      return true;
+    }),
   respond: (threadId, requestId, occurrenceToken, response) =>
     Effect.sync(() => {
       completions.push({ kind: "respond", threadId, requestId, occurrenceToken, response });
@@ -88,9 +99,27 @@ it.effect(
     Effect.gen(function* () {
       const completions: Completion[] = [];
       const runtime = yield* make(harness(completions));
-      runtime.register({ kind: "approval", request: approval(7), occurrenceToken: 1 });
-      runtime.register({ kind: "approval", request: approval(7), occurrenceToken: 2 });
-      runtime.register({ kind: "approval", request: approval("7"), occurrenceToken: 3 });
+      runtime.register({
+        hostId: "local",
+        generation: 1,
+        kind: "approval",
+        request: approval(7),
+        occurrenceToken: 1,
+      });
+      runtime.register({
+        hostId: "local",
+        generation: 1,
+        kind: "approval",
+        request: approval(7),
+        occurrenceToken: 2,
+      });
+      runtime.register({
+        hostId: "local",
+        generation: 1,
+        kind: "approval",
+        request: approval("7"),
+        occurrenceToken: 3,
+      });
 
       const numeric = runtime.takeAll("approval", 7);
       assert.deepEqual(
@@ -110,8 +139,8 @@ it.effect(
         })),
         [
           { kind: "respond", occurrenceToken: 1, requestId: 7 },
-          { kind: "respond", occurrenceToken: 2, requestId: 7 },
-          { kind: "respond", occurrenceToken: 3, requestId: "7" },
+          { kind: "abandon", occurrenceToken: 2, requestId: 7 },
+          { kind: "abandon", occurrenceToken: 3, requestId: "7" },
         ],
       );
       assert.strictEqual(runtime.counts().total, 0);
@@ -123,11 +152,15 @@ it.effect("scopes same-id selection to the requested conversation", () =>
     const completions: Completion[] = [];
     const runtime = yield* make(harness(completions));
     runtime.register({
+      hostId: "local",
+      generation: 1,
       kind: "approval",
       request: approval("shared", "thread-1"),
       occurrenceToken: 1,
     });
     runtime.register({
+      hostId: "local",
+      generation: 1,
       kind: "approval",
       request: approval("shared", "thread-2"),
       occurrenceToken: 2,
@@ -151,9 +184,23 @@ it.effect(
   () =>
     Effect.gen(function* () {
       const runtime = yield* make(harness([]));
-      runtime.register({ kind: "approval", request: approval("same"), occurrenceToken: 1 });
-      runtime.register({ kind: "user-input", request: userInput("same"), occurrenceToken: 2 });
       runtime.register({
+        hostId: "local",
+        generation: 1,
+        kind: "approval",
+        request: approval("same"),
+        occurrenceToken: 1,
+      });
+      runtime.register({
+        hostId: "local",
+        generation: 1,
+        kind: "user-input",
+        request: userInput("same"),
+        occurrenceToken: 2,
+      });
+      runtime.register({
+        hostId: "local",
+        generation: 1,
         kind: "dynamic-tool",
         request: dynamicTool("stored", "thread-2", "turn-2"),
         occurrenceToken: 3,
@@ -161,6 +208,8 @@ it.effect(
         disposition: "stored",
       });
       runtime.register({
+        hostId: "local",
+        generation: 1,
         kind: "dynamic-tool",
         request: dynamicTool("dispatched", "thread-3", "turn-3"),
         occurrenceToken: 4,
@@ -168,10 +217,41 @@ it.effect(
         disposition: "dispatched",
       });
 
-      assert.deepEqual(runtime.disconnectIdentities(), [
-        { threadId: "thread-1", requestId: "same" },
-        { threadId: "thread-2", requestId: "stored" },
+      assert.deepEqual(runtime.disconnectIdentities("local", 1), [
+        { threadId: "thread-1", requestId: "same", generation: 1 },
+        { threadId: "thread-2", requestId: "stored", generation: 1 },
       ]);
+    }),
+);
+
+it.effect(
+  "disconnect enumeration isolates host and connection generation even for reused request ids",
+  () =>
+    Effect.gen(function* () {
+      const runtime = yield* make(harness([]));
+      for (const [hostId, generation, occurrenceToken] of [
+        ["local", 1, 1],
+        ["remote", 1, 2],
+        ["local", 2, 3],
+      ] as const)
+        runtime.register({
+          hostId,
+          generation,
+          kind: "approval",
+          request: approval(7),
+          occurrenceToken,
+        });
+      assert.deepEqual(runtime.disconnectIdentities("local", 1), [
+        { threadId: "thread-1", requestId: 7, generation: 1 },
+      ]);
+      assert.deepEqual(runtime.disconnectIdentities("remote", 1), [
+        { threadId: "thread-1", requestId: 7, generation: 1 },
+      ]);
+      assert.deepEqual(runtime.disconnectIdentities("local", 2), [
+        { threadId: "thread-1", requestId: 7, generation: 2 },
+      ]);
+      assert.deepEqual(runtime.disconnectIdentities("missing", 1), []);
+      assert.strictEqual(runtime.counts().total, 3);
     }),
 );
 
@@ -182,11 +262,15 @@ it.effect(
       const completions: Completion[] = [];
       const runtime = yield* make(harness(completions));
       runtime.register({
+        hostId: "local",
+        generation: 1,
         kind: "user-input",
         request: userInput("removed", "thread-1", "turn-removed"),
         occurrenceToken: 1,
       });
       runtime.register({
+        hostId: "local",
+        generation: 1,
         kind: "user-input",
         request: userInput("retained", "thread-1", "turn-retained"),
         occurrenceToken: 2,
@@ -212,8 +296,20 @@ it.effect("Scope shutdown rejects every unsettled occurrence exactly once", () =
     const runtime = yield* make(harness(completions)).pipe(
       Effect.provideService(Scope.Scope, scope),
     );
-    runtime.register({ kind: "approval", request: approval("queued"), occurrenceToken: 1 });
-    runtime.register({ kind: "user-input", request: userInput("claimed"), occurrenceToken: 2 });
+    runtime.register({
+      hostId: "local",
+      generation: 1,
+      kind: "approval",
+      request: approval("queued"),
+      occurrenceToken: 1,
+    });
+    runtime.register({
+      hostId: "local",
+      generation: 1,
+      kind: "user-input",
+      request: userInput("claimed"),
+      occurrenceToken: 2,
+    });
     const claimed = runtime.takeFirst("user-input", "claimed");
     assert.isDefined(claimed);
 
@@ -230,7 +326,14 @@ it.effect("Scope shutdown rejects every unsettled occurrence exactly once", () =
     );
     assert.strictEqual(runtime.counts().total, 0);
     assert.throws(
-      () => runtime.register({ kind: "approval", request: approval("late"), occurrenceToken: 3 }),
+      () =>
+        runtime.register({
+          hostId: "local",
+          generation: 1,
+          kind: "approval",
+          request: approval("late"),
+          occurrenceToken: 3,
+        }),
       CodexPendingServerRequestRuntimeClosedError,
     );
   }),

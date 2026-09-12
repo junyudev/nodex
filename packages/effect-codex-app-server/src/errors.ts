@@ -114,6 +114,7 @@ export const CodexAppServerTransportOperation = Schema.Literals([
   "outgoing-capacity",
   "incoming-capacity",
   "protocol-scope-closed",
+  "duplicate-request-id",
   "read-process-exit-status",
 ]);
 export type CodexAppServerTransportOperation = typeof CodexAppServerTransportOperation.Type;

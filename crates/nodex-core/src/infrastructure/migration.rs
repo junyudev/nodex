@@ -241,6 +241,26 @@ const MIGRATION_STEPS: &[MigrationStep] = &[
         to_revision: 166,
         apply: migrate_v165_to_v166,
     },
+    MigrationStep {
+        from_revision: 166,
+        to_revision: 167,
+        apply: migrate_v166_to_v167,
+    },
+    MigrationStep {
+        from_revision: 167,
+        to_revision: 168,
+        apply: migrate_v167_to_v168,
+    },
+    MigrationStep {
+        from_revision: 168,
+        to_revision: 169,
+        apply: migrate_v168_to_v169,
+    },
+    MigrationStep {
+        from_revision: 169,
+        to_revision: 170,
+        apply: migrate_v169_to_v170,
+    },
 ];
 
 fn resolve_migration_path(
@@ -2173,6 +2193,66 @@ fn migrate_v163_to_v164(
         UPDATE codex_scheduled_automations SET status = CASE WHEN status = 'ACTIVE' THEN 'PAUSED' ELSE status END, next_run_at = NULL
           WHERE kind = 'cron' AND project_id IS NULL AND (json_array_length(cwds_json) > 0 OR execution_environment <> 'local' OR local_environment_config_path IS NOT NULL);")?;
     connection.execute("INSERT INTO core_store_migration_history(source_revision,target_revision,source_schema_fingerprint,target_schema_fingerprint,backup_name,completed_at_unix_ms,evidence_json) VALUES (?1,?2,?3,?4,?5,?6,?7)",params![context.source_revision,context.target_revision,context.source_schema_fingerprint,context.target_schema_fingerprint,context.backup_name,context.completed_at_unix_ms,r#"{"automation_project_targets":true}"#])?;
+    connection.pragma_update(None, "user_version", context.target_revision)?;
+    Ok(())
+}
+
+fn migrate_v168_to_v169(
+    connection: &Connection,
+    context: &MigrationContext,
+) -> Result<(), StoreError> {
+    connection.execute_batch(include_str!("../../schema/migrations/v168_to_v169.sql"))?;
+    connection.execute(
+        "INSERT INTO core_store_migration_history(source_revision,target_revision,source_schema_fingerprint,target_schema_fingerprint,backup_name,completed_at_unix_ms,evidence_json) VALUES (?1,?2,?3,?4,?5,?6,?7)",
+        params![context.source_revision, context.target_revision, context.source_schema_fingerprint,
+            context.target_schema_fingerprint, context.backup_name, context.completed_at_unix_ms,
+            r#"{"retired_queued_payload_ledgers":true}"#],
+    )?;
+    connection.pragma_update(None, "user_version", context.target_revision)?;
+    Ok(())
+}
+
+fn migrate_v169_to_v170(
+    connection: &Connection,
+    context: &MigrationContext,
+) -> Result<(), StoreError> {
+    connection.execute_batch(include_str!("../../schema/migrations/v169_to_v170.sql"))?;
+    connection.execute(
+        "INSERT INTO core_store_migration_history(source_revision,target_revision,source_schema_fingerprint,target_schema_fingerprint,backup_name,completed_at_unix_ms,evidence_json) VALUES (?1,?2,?3,?4,?5,?6,?7)",
+        params![context.source_revision, context.target_revision, context.source_schema_fingerprint,
+            context.target_schema_fingerprint, context.backup_name, context.completed_at_unix_ms,
+            r#"{"thread_workspace_transition_state":true}"#],
+    )?;
+    connection.pragma_update(None, "user_version", context.target_revision)?;
+    Ok(())
+}
+
+fn migrate_v167_to_v168(
+    connection: &Connection,
+    context: &MigrationContext,
+) -> Result<(), StoreError> {
+    connection.execute_batch(include_str!("../../schema/migrations/v167_to_v168.sql"))?;
+    connection.execute(
+        "INSERT INTO core_store_migration_history(source_revision,target_revision,source_schema_fingerprint,target_schema_fingerprint,backup_name,completed_at_unix_ms,evidence_json) VALUES (?1,?2,?3,?4,?5,?6,?7)",
+        params![context.source_revision, context.target_revision, context.source_schema_fingerprint,
+            context.target_schema_fingerprint, context.backup_name, context.completed_at_unix_ms,
+            r#"{"queued_message_documents":true}"#],
+    )?;
+    connection.pragma_update(None, "user_version", context.target_revision)?;
+    Ok(())
+}
+
+fn migrate_v166_to_v167(
+    connection: &Connection,
+    context: &MigrationContext,
+) -> Result<(), StoreError> {
+    connection.execute_batch(include_str!("../../schema/migrations/v166_to_v167.sql"))?;
+    connection.execute(
+        "INSERT INTO core_store_migration_history(source_revision,target_revision,source_schema_fingerprint,target_schema_fingerprint,backup_name,completed_at_unix_ms,evidence_json) VALUES (?1,?2,?3,?4,?5,?6,?7)",
+        params![context.source_revision, context.target_revision, context.source_schema_fingerprint,
+            context.target_schema_fingerprint, context.backup_name, context.completed_at_unix_ms,
+            r#"{"identity_scoped_thread_read_state":true}"#],
+    )?;
     connection.pragma_update(None, "user_version", context.target_revision)?;
     Ok(())
 }
@@ -4218,12 +4298,7 @@ mod tests {
         assert_eq!(preparation.schema_version, CURRENT_STORE_REVISION);
         assert_migration_events(&events, 133);
         validate_current_store(&connection).expect("current Store");
-        for table in [
-            "codex_queued_follow_up_ledgers",
-            "codex_queued_follow_up_entries",
-            "codex_queued_follow_up_payload_manifests",
-            "codex_queued_follow_up_payload_asset_refs",
-        ] {
+        for table in ["codex_queued_message_state"] {
             let exists = connection
                 .query_row(
                     "SELECT 1 FROM sqlite_schema WHERE type = 'table' AND name = ?1",
@@ -5355,66 +5430,6 @@ mod tests {
             )
             .expect("migrated Canvas bytes"),
             canvas_bytes
-        );
-
-        let migrated_queue = connection
-            .query_row(
-                "SELECT manifest.payload_sha256, manifest.schema_version, manifest.asset_uri, \
-                        reference.asset_uri, reference.mime_type, entry.payload_sha256 \
-                 FROM codex_queued_follow_up_payload_manifests manifest \
-                 JOIN codex_queued_follow_up_payload_asset_refs reference \
-                   ON reference.payload_sha256 = manifest.payload_sha256 \
-                 JOIN codex_queued_follow_up_entries entry \
-                   ON entry.payload_sha256 = manifest.payload_sha256 \
-                 WHERE entry.follow_up_id = 'follow-up:migration'",
-                [],
-                |row| {
-                    Ok((
-                        row.get::<_, String>(0)?,
-                        row.get::<_, i64>(1)?,
-                        row.get::<_, String>(2)?,
-                        row.get::<_, String>(3)?,
-                        row.get::<_, String>(4)?,
-                        row.get::<_, String>(5)?,
-                    ))
-                },
-            )
-            .expect("migrated queued follow-up");
-        assert_ne!(migrated_queue.0, queued_manifest_hash);
-        assert_eq!(migrated_queue.1, 2);
-        assert_eq!(
-            migrated_queue.2,
-            format!("nodex://assets/{}.blob", migrated_queue.0)
-        );
-        assert_eq!(
-            migrated_queue.3,
-            format!("nodex://assets/{queued_asset_hash}.blob")
-        );
-        assert_eq!(migrated_queue.4, "text/plain");
-        assert_eq!(migrated_queue.5, migrated_queue.0);
-        let migrated_manifest_bytes = fs::read(
-            directory
-                .path()
-                .join("assets")
-                .join(format!("{}.blob", migrated_queue.0)),
-        )
-        .expect("migrated queue manifest bytes");
-        let migrated_manifest: Value =
-            serde_json::from_slice(&migrated_manifest_bytes).expect("migrated queue manifest JSON");
-        assert_eq!(migrated_manifest["schema_version"], 2);
-        assert_eq!(
-            migrated_manifest["payload"]["prompt_input"]["attachment"],
-            format!("nodex://assets/{queued_asset_hash}.blob")
-        );
-        assert_eq!(
-            fs::read(
-                directory
-                    .path()
-                    .join("assets")
-                    .join(format!("{queued_asset_hash}.blob")),
-            )
-            .expect("migrated queued attachment bytes"),
-            queued_asset
         );
 
         let stable_counts = connection

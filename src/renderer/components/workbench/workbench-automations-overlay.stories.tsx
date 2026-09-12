@@ -332,9 +332,12 @@ function installAutomationsStoryApi({
   window.api = {
     invoke: async (channel: string, ...args: unknown[]) => {
       if (channel === "codex:scheduled-automations:list") return { items: automations };
-      if (channel === "codex:model:list") {
+      if (
+        channel === "codex:app-server:request" &&
+        (args[0] as { request?: { method?: string } }).request?.method === "model/list"
+      ) {
         if (modelListState === "loading") return new Promise<never>(() => undefined);
-        return CODEX_MODELS;
+        return { type: "result", result: { data: CODEX_MODELS.map((model) => ({ ...model, model: model.id })), nextCursor: null } };
       }
       if (channel === "worktrees:environments:list") {
         const projectId = String(args[0] ?? "");

@@ -21,7 +21,7 @@ export type CodexAppServerPackageManifest = {
   pathDir: string;
   resourcesDir: string;
   target: string;
-  variant: "codex-app-server";
+  variant: "codex";
   version: string;
 };
 
@@ -41,7 +41,7 @@ export type BundledAgentRuntimeMetadata = {
     repository: "openai/codex";
     tag: string;
   };
-  runtimeFamily: "codex-app-server";
+  runtimeFamily: "codex";
   searchPaths: string[];
   sourceRevision: {
     commit: string;

@@ -222,7 +222,7 @@ describe("resolveCodexDynamicCreatePermissionSelection", () => {
             rules: false,
             skill_approval: false,
             request_permissions: true,
-            mcp_elicitations: true,
+            mcp_elicitations: false,
           },
         },
         approvalsReviewer: "user",

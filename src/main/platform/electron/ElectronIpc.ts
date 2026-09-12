@@ -25,6 +25,15 @@ type ElectronIpcReadonlyWireResult<Value> = Value extends (...args: never[]) => 
 
 export type ElectronIpcWireResult<Value> = Value | ElectronIpcReadonlyWireResult<Value>;
 
+/** A semantic result may use a separate, flow-controlled response channel. Invoke then carries only completion. */
+export interface ElectronIpcResultDelivery<Channel extends keyof IpcApi, Result> {
+  readonly deliver: (
+    event: IpcMainInvokeEvent,
+    args: IpcApi[Channel]["args"],
+    result: Result,
+  ) => Effect.Effect<void>;
+}
+
 export type ElectronIpcHandler<
   Channel extends keyof IpcApi,
   Result extends ElectronIpcWireResult<IpcApi[Channel]["result"]> = ElectronIpcWireResult<
@@ -79,6 +88,7 @@ export class ElectronIpc extends Context.Service<
     >(
       channel: Channel,
       handler: ElectronIpcHandler<Channel, Result>,
+      delivery?: ElectronIpcResultDelivery<Channel, Result>,
     ) => Effect.Effect<void, never, Scope.Scope>;
     readonly handleLocalCommitCommand: <
       Channel extends CoreLocalCommitCommandChannel,
@@ -129,7 +139,8 @@ export const mapElectronIpcHandlers = (
   | "handleRevisionedCommand"
 > => ({
   handleQuery: (channel, handler) => ipc.handleQuery(channel, mapHandler(channel, handler)),
-  handleControl: (channel, handler) => ipc.handleControl(channel, mapHandler(channel, handler)),
+  handleControl: (channel, handler, delivery) =>
+    ipc.handleControl(channel, mapHandler(channel, handler), delivery),
   handleLocalCommitCommand: (channel, handler) =>
     ipc.handleLocalCommitCommand(channel, mapHandler(channel, handler)),
   handleRevisionedCommand: (channel, handler) =>
@@ -159,6 +170,7 @@ const asyncLive: Layer.Layer<ElectronIpc, never, ScopedCallbackRuntime> = Layer.
     >(
       channel: Channel,
       handler: ElectronIpcHandler<Channel, Result>,
+      delivery?: ElectronIpcResultDelivery<Channel, Result>,
     ): Effect.Effect<void, never, Scope.Scope> =>
       Effect.acquireRelease(
         Effect.sync(() => {
@@ -169,6 +181,11 @@ const asyncLive: Layer.Layer<ElectronIpc, never, ScopedCallbackRuntime> = Layer.
             >;
             return callbacks.runPromise(
               task.pipe(
+                Effect.flatMap((result) =>
+                  delivery
+                    ? delivery.deliver(event, args as IpcApi[Channel]["args"], result as Result)
+                    : Effect.succeed(result),
+                ),
                 Effect.catchCause((cause) =>
                   Effect.logError("Electron IPC handler failed").pipe(
                     Effect.annotateLogs({ channel, cause: Cause.pretty(cause) }),

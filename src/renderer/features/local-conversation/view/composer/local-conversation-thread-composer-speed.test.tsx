@@ -171,12 +171,12 @@ function installComposerWindowApi(testInvoke?: TestInvoke): void {
 function buildModel(overrides?: Partial<ThreadFooterModel>): ThreadFooterModel {
   return {
     workspaceSearchContext: {
-      hostId: "default",
+      hostId: "local",
       roots: ["/tmp/project"],
       skillRoots: ["/tmp/project"],
     },
     projectId: "project_1",
-    hostId: "default",
+    hostId: "local",
     projectWorkspacePath: "/tmp/project",
     threadId: "thread_1",
     cwd: "/tmp/project",
@@ -2921,7 +2921,7 @@ describe("ThreadComposer speed menu", () => {
     await waitFor(() => {
       expect(activationInputs).toEqual([
         {
-          hostId: "default",
+          hostId: "local",
           id: "browser@openai-bundled",
           cwds: ["/tmp/project"],
         },
@@ -3503,7 +3503,7 @@ describe("ThreadComposer speed menu", () => {
       expect(startThreadCalls.length).toBe(1);
     });
     expect(startThreadCalls[0]).toBe(
-      '{"projectId":"project_1","sessionId":"session_1","prompt":"Keep refining the migration until tests pass","threadGoalDraft":{"objective":"Keep refining the migration until tests pass","imageAttachments":[],"pastedTextAttachments":[]},"threadGoalMaterializedDraft":{"objective":"Keep refining the migration until tests pass","attachmentDirectory":null},"runInTarget":"localProject"}',
+      '{"projectId":"project_1","sessionId":"session_1","prompt":"Keep refining the migration until tests pass","threadGoalDraft":{"objective":"Keep refining the migration until tests pass","imageAttachments":[],"pastedTextAttachments":[]},"threadGoalMaterializedDraft":{"objective":"Keep refining the migration until tests pass","attachmentDirectory":null},"threadGoalMaterializedHostId":"local","runInTarget":"localProject"}',
     );
     expect(setGoalCalls.length).toBe(0);
     expect(sentPrompts.length).toBe(0);
@@ -3708,7 +3708,8 @@ describe("ThreadComposer speed menu", () => {
       },
       async (channel, ...args) => {
         if (channel !== "codex:thread:goal:materialize-draft") return undefined;
-        materializeCalls.push(args[0]);
+        expect(args[0]).toBe("local");
+        materializeCalls.push(args[1]);
         return {
           objective: "Materialized local objective",
           attachmentDirectory: "/tmp/materialized-goal",

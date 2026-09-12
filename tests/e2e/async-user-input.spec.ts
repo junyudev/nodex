@@ -8,6 +8,8 @@ import {
 } from "../../scripts/scenarios/harness/electron-e2e-harness";
 import { prepareScenarioCodexAppServerRuntimeSync } from "../../scripts/scenarios/runtime/agent-runtime-fixture";
 import { decodeCodexAsyncQuestionReplies } from "../../src/shared/codex-async-user-input";
+import { attachComposerFailureEvidence } from "./support/composer-failure-evidence";
+import { openNewChatDraft } from "./support/new-chat-draft";
 
 async function createQuestionHarness(environment: Record<string, string> = {}) {
   const harness = await ElectronScenarioHarness.create({
@@ -35,30 +37,15 @@ async function createQuestionHarness(environment: Record<string, string> = {}) {
 async function startQuestionScenario(harness: ElectronScenarioHarness) {
   const page = await harness.launch();
   page.on("pageerror", (error) => console.error("ASYNC QUESTION RENDER ERROR", error.message));
-  await page.getByRole("button", { name: "New chat" }).first().click();
-  // Wait for the durable draft Task before typing into its Composer.
-  await expect
-    .poll(async () =>
-      page.evaluate(async () => {
-        const projects = (await window.api?.invoke("projects:list")) as
-          | { items: Array<{ id: string }> }
-          | undefined;
-        const projectId = projects?.items[0]?.id;
-        if (!projectId) return 0;
-        const tasks = (await window.api?.invoke("workspace:tasks:list", projectId, {
-          first: 50,
-        })) as { items: Array<{ thread?: unknown }> } | undefined;
-        return tasks?.items.filter((task) => task.thread == null).length ?? 0;
-      }),
-    )
-    .toBe(1);
-  const composer = page.locator('[data-codex-composer="true"][aria-label="Do anything"]');
-  // Draft Task hydration can replace the initial Composer after persistence completes.
-  await expect(async () => {
+  const scene = await openNewChatDraft(page);
+  const composer = scene.locator('[data-codex-composer="true"][aria-label="Do anything"]');
+  try {
     await composer.fill("Ask optional questions and continue checking the files");
-    await expect(page.getByRole("button", { name: "Send prompt" })).toBeEnabled({ timeout: 1_000 });
-  }).toPass({ timeout: 10_000 });
-  await page.getByRole("button", { name: "Send prompt" }).click();
+    await scene.getByRole("button", { name: "Send prompt" }).click();
+  } catch (error) {
+    await attachComposerFailureEvidence(page, test.info());
+    throw error;
+  }
   return page;
 }
 
@@ -158,7 +145,9 @@ for (const failure of ["inactive", "mismatch"] as const) {
       await panel.getByLabel("Reply…").fill("Keep this answer on its question");
       await panel.getByRole("button", { name: "Send", exact: true }).click();
       if (failure === "inactive")
-        await expect(page.getByRole("alert")).toContainText("Couldn’t send response");
+        await expect(
+          page.getByRole("alert").filter({ hasText: "Couldn’t send response" }),
+        ).toBeVisible();
       await expect
         .poll(
           () =>

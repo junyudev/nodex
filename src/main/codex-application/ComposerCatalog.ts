@@ -1,6 +1,5 @@
-import { resolveRendererHostId } from "./renderer-host-identity";
 import { buildAppHostFilesystemUrl } from "../../shared/app-protocol";
-import { resolveComposerInventoryIconUrl } from "../codex/composer-inventory-icon";
+import { resolveComposerInventoryIconUrl } from "../../shared/codex-composer-inventory-icon";
 import * as Context from "effect/Context";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
@@ -19,27 +18,22 @@ import type {
 } from "../../shared/codex-hooks";
 import { DEFAULT_CODEX_HOST_ID } from "../../shared/codex-host";
 import type {
-  CodexComposerPlugin,
-  CodexComposerPluginListInput,
   CodexComposerSkillListInput,
   CodexComposerPluginActivateInput,
   CodexComposerSkill,
-  CodexCollaborationModePreset,
   CodexModelOption,
 } from "../../shared/types";
 import { CodexGateway } from "../codex-runtime/CodexGateway";
 import type { CodexRuntimeError } from "../codex-runtime/CodexRuntimeError";
 import {
-  buildComposerPluginInventory,
   COMPOSER_INSTALL_SUGGESTION_PLUGIN_NAMES,
-  hydrateComposerPluginInventoryIcons,
   resolveComposerPluginActivation,
-} from "../codex/composer-plugin-inventory";
+} from "../../shared/codex-composer-plugin-inventory";
 import {
   buildComposerSkillInventory,
   hydrateComposerSkillInventoryIcons,
 } from "../codex/composer-skill-inventory";
-import { parseCollaborationModePreset, parseModelOption } from "./ComposerCatalogState";
+import { parseModelOption } from "../../shared/codex-composer-catalog";
 
 export class ComposerCatalogInputError extends Schema.TaggedError<ComposerCatalogInputError>()(
   "ComposerCatalogInputError",
@@ -85,13 +79,6 @@ export class ComposerCatalog extends Context.Service<
       readonly ExperimentalFeature[],
       CodexRuntimeError
     >;
-    readonly listCollaborationModes: Effect.Effect<
-      readonly CodexCollaborationModePreset[],
-      CodexRuntimeError
-    >;
-    readonly listPlugins: (
-      input: CodexComposerPluginListInput,
-    ) => Effect.Effect<readonly CodexComposerPlugin[], ComposerCatalogError>;
     readonly activatePlugin: (
       input: CodexComposerPluginActivateInput,
     ) => Effect.Effect<void, ComposerCatalogError>;
@@ -145,28 +132,9 @@ export const live: Layer.Layer<ComposerCatalog, never, CodexGateway> = Layer.eff
         installSuggestionPluginNames: [...COMPOSER_INSTALL_SUGGESTION_PLUGIN_NAMES],
       });
 
-    const listPlugins: ComposerCatalog["Service"]["listPlugins"] = (input) =>
-      Effect.gen(function* () {
-        const hostId = resolveRendererHostId(input.hostId, gateway.localHostId);
-        yield* gateway.awaitReady(hostId);
-        const response = yield* readInstalled(normalizeCwds(input.cwds), hostId);
-        const plain = asPlainPluginResponse(response);
-        return yield* Effect.tryPromise({
-          try: () =>
-            hydrateComposerPluginInventoryIcons(
-              plain,
-              buildComposerPluginInventory(plain, {
-                installSuggestionPluginNames: COMPOSER_INSTALL_SUGGESTION_PLUGIN_NAMES,
-              }),
-              iconResolver(hostId),
-            ),
-          catch: (cause) => new ComposerCatalogProjectionError({ cause }),
-        });
-      });
-
     const activatePlugin: ComposerCatalog["Service"]["activatePlugin"] = (input) =>
       Effect.gen(function* () {
-        const hostId = resolveRendererHostId(input.hostId, gateway.localHostId);
+        const hostId = input.hostId;
         yield* gateway.awaitReady(hostId);
         const id = input.id.trim();
         if (!id) {
@@ -314,18 +282,10 @@ export const live: Layer.Layer<ComposerCatalog, never, CodexGateway> = Layer.eff
         } while (true);
         return features;
       }),
-      listCollaborationModes: Effect.gen(function* () {
-        yield* awaitReady;
-        const response = yield* gateway.requestLocal("collaborationMode/list", {});
-        return response.data
-          .map(parseCollaborationModePreset)
-          .filter((preset): preset is CodexCollaborationModePreset => preset !== null);
-      }),
-      listPlugins,
       activatePlugin,
       listSkills: (input) =>
         Effect.gen(function* () {
-          const hostId = resolveRendererHostId(input.hostId, gateway.localHostId);
+          const hostId = input.hostId;
           yield* gateway.awaitReady(hostId);
           const normalized = normalizeCwds(input.cwds);
           const response = yield* gateway.requestOnHost(hostId, "skills/list", {

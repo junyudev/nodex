@@ -1070,7 +1070,6 @@ function buildBackgroundConversation(): {
           serviceTier: null,
           summary: null,
           pause: null,
-          payloadRef: null,
         },
       ],
       inFlightFollowUpId: null,
@@ -3355,12 +3354,12 @@ export function buildThreadStageStorySurfaceModels(
   const selectedReasoningEffort = controls.preset === "implement-plan" ? "xhigh" : "high";
   const footerModel: ThreadFooterModel = {
     workspaceSearchContext: {
-      hostId: "default",
+      hostId: "local",
       roots: ["/tmp/project"],
       skillRoots: ["/tmp/project"],
     },
     projectId: STORY_PROJECT_ID,
-    hostId: "default",
+    hostId: "local",
     projectWorkspacePath: STORY_WORKSPACE_PATH,
     threadId: activeThreadId,
     cwd: conversation?.cwd ?? null,
@@ -3421,7 +3420,7 @@ export function buildThreadStageStorySurfaceModels(
 
   const bodyModel: ThreadBodySurfaceModel = {
     projectId: STORY_PROJECT_ID,
-    hostId: "default",
+    hostId: "local",
     threadId: activeThreadId,
     isSideChat: false,
     cwd: conversation?.cwd ?? null,

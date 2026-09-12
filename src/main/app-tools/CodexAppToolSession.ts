@@ -49,6 +49,7 @@ export const make = Effect.gen(function* () {
         return sessionLive({
           ...options,
           args: [...options.args, ...appToolsLaunchArgs({ ...runtime, pipe })],
+          nativeAppTools: true,
         });
       }),
     ).pipe(Layer.provide(callbackRuntimeLayer));

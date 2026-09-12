@@ -1,0 +1,62 @@
+diff --git a/dist/internal/effect.js b/dist/internal/effect.js
+index 1c0de869bff69eb6ea9562fde116b0fead53f351..6ae96259e158a0c21a38a0cba7ad79852ae1ea61 100644
+--- a/dist/internal/effect.js
++++ b/dist/internal/effect.js
+@@ -982,7 +982,9 @@ export const raceAll = (all, options) => withFiber(parent => callback(resume =>
+     }
+     const isWinner = !done;
+     done = true;
+-    resume(fibers.size === 0 ? exit : flatMap(uninterruptible(fiberInterruptAll(fibers)), () => exit));
++    // A child can complete another child before forkUnsafe returns.
++    // Wait until registration finishes before selecting the fibers to interrupt.
++    resume(suspend(() => fibers.size === 0 ? exit : flatMap(uninterruptible(fiberInterruptAll(fibers)), () => exit)));
+     if (isWinner && options?.onWinner) {
+       options.onWinner({
+         fiber,
+@@ -1008,7 +1010,9 @@ export const raceAllFirst = (all, options) => withFiber(parent => callback(resum
+   const fibers = new Set();
+   const onExit = exit => {
+     done = true;
+-    resume(fibers.size === 0 ? exit : flatMap(uninterruptible(fiberInterruptAll(fibers)), () => exit));
++    // A child can complete another child before forkUnsafe returns.
++    // Wait until registration finishes before selecting the fibers to interrupt.
++    resume(suspend(() => fibers.size === 0 ? exit : flatMap(uninterruptible(fiberInterruptAll(fibers)), () => exit)));
+   };
+   let i = 0;
+   for (const effect of all) {
+diff --git a/src/internal/effect.ts b/src/internal/effect.ts
+index f10aa5c893dc1b0d836d0866f494ec29c9d5aa5d..240c0ce1ce673031437c104aaa32b7b8259e2d8f 100644
+--- a/src/internal/effect.ts
++++ b/src/internal/effect.ts
+@@ -1507,11 +1507,13 @@ export const raceAll = <Eff extends Effect.Effect<any, any, any>>(
+         }
+         const isWinner = !done
+         done = true
+-        resume(
++        // A child can complete another child before forkUnsafe returns.
++        // Wait until registration finishes before selecting the fibers to interrupt.
++        resume(suspend(() =>
+           fibers.size === 0
+             ? exit
+             : flatMap(uninterruptible(fiberInterruptAll(fibers)), () => exit)
+-        )
++        ))
+         if (isWinner && options?.onWinner) {
+           options.onWinner({ fiber, index: i, parentFiber: parent })
+         }
+@@ -1552,11 +1554,13 @@ export const raceAllFirst = <Eff extends Effect.Effect<any, any, any>>(
+       const fibers = new Set<Fiber.Fiber<any, any>>()
+       const onExit = (exit: Exit.Exit<any, any>) => {
+         done = true
+-        resume(
++        // A child can complete another child before forkUnsafe returns.
++        // Wait until registration finishes before selecting the fibers to interrupt.
++        resume(suspend(() =>
+           fibers.size === 0
+             ? exit
+             : flatMap(uninterruptible(fiberInterruptAll(fibers)), () => exit)
+-        )
++        ))
+       }
+ 
+       let i = 0

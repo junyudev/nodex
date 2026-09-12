@@ -57,6 +57,15 @@ const createHarness = async (
   return harness;
 };
 
+const searchResidentConversation = async (page: Page, query: string): Promise<void> => {
+  await page.keyboard.press(process.platform === "darwin" ? "Meta+f" : "Control+f");
+  const search = page.locator("#content-search-input");
+  await expect(search).toBeVisible();
+  await search.fill(query);
+  await expect(page.getByText(/^1 \/ [1-9]\d* results$/u)).toBeVisible();
+  await search.press("Escape");
+};
+
 const beginTransitionCapture = async (page: Page, prompt: string): Promise<void> => {
   await page.evaluate((expectedPrompt) => {
     const scope = window as typeof window & {
@@ -405,30 +414,7 @@ test("an unversioned host may prove a durable paginated start without enabling o
     if (typeof rawThreadId !== "string") throw new Error("turn/start did not identify its Thread");
 
     const beforeOptionalReads = readRpcEntries(rpcLogPath);
-    const outcome = await page.evaluate(async (threadId) => {
-      const snapshot = (await window.api?.invoke("codex:thread:snapshot:request", threadId)) as {
-        historyTopologyGeneration: number;
-      };
-      return {
-        index: await window.api?.invoke("codex:thread:prompt-rail:index", {
-          requestId: "unversioned-index",
-          threadId,
-          expectedTopologyGeneration: snapshot.historyTopologyGeneration,
-        }),
-        search: await window.api?.invoke("codex:thread:history-search", threadId, "concrete"),
-      };
-    }, rawThreadId);
-    expect(outcome).toMatchObject({
-      index: {
-        status: "unavailable",
-        availability: { feature: "prompt-rail", reason: "capability-unproven" },
-      },
-      search: {
-        status: "unavailable",
-        feature: "persisted-search",
-        reason: "capability-unproven",
-      },
-    });
+    await searchResidentConversation(page, "concrete");
 
     const afterOptionalReads = readRpcEntries(rpcLogPath);
     const addedCalls = (method: string): RpcEntry[] => {
@@ -520,35 +506,7 @@ test("reconnect capability downgrades keep optional history resident-only withou
       .toBe("connected");
 
     const beforeOptionalReads = readRpcEntries(rpcLogPath);
-    const outcome = await page.evaluate(async (expectedThreadId) => {
-      const snapshot = (await window.api?.invoke(
-        "codex:thread:snapshot:request",
-        expectedThreadId,
-      )) as { historyTopologyGeneration: number };
-      return {
-        index: await window.api?.invoke("codex:thread:prompt-rail:index", {
-          requestId: "reconnect-index",
-          threadId: expectedThreadId,
-          expectedTopologyGeneration: snapshot.historyTopologyGeneration,
-        }),
-        search: await window.api?.invoke(
-          "codex:thread:history-search",
-          expectedThreadId,
-          "resident",
-        ),
-      };
-    }, threadId);
-    expect(outcome).toMatchObject({
-      index: {
-        status: "unavailable",
-        availability: { feature: "prompt-rail", reason: "host-unsupported" },
-      },
-      search: {
-        status: "unavailable",
-        feature: "persisted-search",
-        reason: "host-unsupported",
-      },
-    });
+    await searchResidentConversation(page, "resident");
     await expect(
       page.locator("[data-user-message-bubble='true']", { hasText: promptText }),
     ).toBeVisible();

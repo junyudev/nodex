@@ -1,3 +1,4 @@
+import type { Thread } from "@nodex/codex-app-server-protocol/v2";
 import * as Context from "effect/Context";
 import * as Duration from "effect/Duration";
 import * as Effect from "effect/Effect";
@@ -14,6 +15,11 @@ import {
 export class ConversationEntityMap extends Context.Service<
   ConversationEntityMap,
   {
+    readonly subscribeRetired: ConversationEntityStateRegistry["subscribeRetired"];
+    readonly subscribeCanonicalMutations: ConversationEntityStateRegistry["subscribeCanonicalMutations"];
+    readonly forHost: ConversationEntityStateRegistry["forHost"];
+    readonly registerThreadMetadata: (thread: Thread) => void;
+    readonly readThreadMetadata: (threadId: string) => Thread | null;
     /** Acquires the canonical semantic capability for one Thread generation. */
     readonly entity: (threadId: string) => ConversationEntityState;
     /** Pure query that never creates or resurrects a Thread generation. */
@@ -90,6 +96,11 @@ export const live: Layer.Layer<ConversationEntityMap> = Layer.effect(
       );
 
     return ConversationEntityMap.of({
+      subscribeRetired: aggregates.subscribeRetired,
+      subscribeCanonicalMutations: aggregates.subscribeCanonicalMutations,
+      forHost: aggregates.forHost,
+      registerThreadMetadata: aggregates.registerThreadMetadata,
+      readThreadMetadata: aggregates.readThreadMetadata,
       entity: aggregates.acquire,
       current: aggregates.current,
       runCommand: (threadId, operation) =>
@@ -102,7 +113,7 @@ export const live: Layer.Layer<ConversationEntityMap> = Layer.effect(
           .pipe(
             Effect.ensuring(
               generation === undefined
-                ? Effect.void
+                ? Effect.sync(() => aggregates.removeThreadMetadata(threadId))
                 : Effect.sync(() => aggregates.releaseGeneration(threadId, generation)),
             ),
           );

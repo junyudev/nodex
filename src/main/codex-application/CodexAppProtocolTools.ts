@@ -1,4 +1,9 @@
+import { CoreModuleResponseError } from "../core-client/core-client";
+import { CoreRuntimeError } from "../core-runtime/CoreRuntimeError";
+import { CodexWaitThreads } from "./CodexWaitThreads";
+import { CodexAppServerNoResponse } from "@nodex/effect-codex-app-server/protocol";
 import { createCodexThreadHandoffOperationId } from "../../shared/codex-thread-handoff";
+import { resolveCodexElectronDisplayThreadTitle } from "../../shared/codex-thread-title";
 import type { RequestId } from "@nodex/codex-app-server-protocol";
 import type { DynamicToolCallParams } from "@nodex/codex-app-server-protocol/v2/DynamicToolCallParams";
 import type { DynamicToolCallResponse } from "@nodex/codex-app-server-protocol/v2/DynamicToolCallResponse";
@@ -47,7 +52,7 @@ import { CodexThreadDirectory } from "./CodexThreadDirectory";
 import { CodexThreadDescriptionPersistence } from "./CodexThreadDescriptionPersistence";
 import { CodexThreadHandoffRuntime } from "./CodexThreadHandoffRuntime";
 import { CodexThreadTitlePersistence } from "./CodexThreadTitlePersistence";
-import { CodexTurnCommands } from "./CodexTurnCommands";
+import { CodexDelegatedMessages } from "./CodexDelegatedMessages";
 import { ConversationCommands } from "./ConversationCommands";
 
 const SAME_DIRECTORY_FORK_CONTINUATION =
@@ -363,6 +368,7 @@ export const make: Effect.Effect<
   | CodexPendingServerRequestRuntime
   | CodexProjectSessionFork
   | CodexReadThreadHistory
+  | CodexWaitThreads
   | CodexSessionThreadLaunch
   | CodexSidebarSectionSync
   | CodexThreadCatalog
@@ -370,11 +376,12 @@ export const make: Effect.Effect<
   | CodexThreadDirectory
   | CodexThreadHandoffRuntime
   | CodexThreadTitlePersistence
-  | CodexTurnCommands
+  | CodexDelegatedMessages
   | ConversationCommands
   | CoreModules
   | TerminalSessions
 > = Effect.gen(function* () {
+  const waits = yield* CodexWaitThreads;
   const events = yield* CodexApplicationEventHub;
   const automations = yield* AutomationApplication;
   const conversationFork = yield* CodexConversationFork;
@@ -388,7 +395,7 @@ export const make: Effect.Effect<
   const directory = yield* CodexThreadDirectory;
   const handoffs = yield* CodexThreadHandoffRuntime;
   const titles = yield* CodexThreadTitlePersistence;
-  const turns = yield* CodexTurnCommands;
+  const delegatedMessages = yield* CodexDelegatedMessages;
   const commands = yield* ConversationCommands;
   const core = yield* CoreModules;
   const terminals = yield* TerminalSessions;
@@ -410,10 +417,22 @@ export const make: Effect.Effect<
    */
   const requireCodexThreadAuthority = Effect.fn(
     "CodexAppProtocolTools.requireCodexThreadAuthority",
-  )(function* (threadId: string) {
+  )(function* (threadId: string, allowNativeOnly = false) {
     const normalized = threadId.trim();
     if (!normalized) return yield* toolError("Thread id is required");
-    const snapshot = yield* core.workspace.read({ kind: "thread", thread_id: normalized });
+    const snapshot = yield* core.workspace.read({ kind: "thread", thread_id: normalized }).pipe(
+      Effect.catch((cause) => {
+        if (
+          allowNativeOnly &&
+          cause instanceof CoreRuntimeError &&
+          cause.cause instanceof CoreModuleResponseError &&
+          cause.cause.coreError.code === "not_found"
+        )
+          return Effect.succeed(null);
+        return Effect.fail(cause);
+      }),
+    );
+    if (snapshot === null) return normalized;
     if (snapshot.value.kind !== "thread") {
       return yield* toolError(`Thread '${normalized}' was not found`);
     }
@@ -618,26 +637,18 @@ export const make: Effect.Effect<
   ) {
     const threadId = stringArg(args.threadId);
     if (!threadId) return yield* toolError("read_thread requires threadId");
-    yield* requireCodexThreadAuthority(threadId);
+    yield* requireCodexThreadAuthority(threadId, true);
     return yield* readThreadHistory
       .read({
         threadId,
+        hostId: stringArg(args.hostId) ?? undefined,
         cursor: stringArg(args.cursor),
         turnLimit: typeof args.turnLimit === "number" ? args.turnLimit : null,
         includeOutputs: args.includeOutputs === true,
         maxOutputCharsPerItem:
           typeof args.maxOutputCharsPerItem === "number" ? args.maxOutputCharsPerItem : null,
       })
-      .pipe(
-        Effect.mapError((cause) =>
-          toolError(
-            cause.reason === "unknown-cursor"
-              ? `Unknown cursor for thread ${threadId}: ${stringArg(args.cursor)}`
-              : failureMessage(cause.cause),
-            cause,
-          ),
-        ),
-      );
+      .pipe(Effect.mapError((cause) => toolError(failureMessage(cause.cause), cause)));
   });
 
   const executeInfallible = (
@@ -1134,6 +1145,11 @@ export const make: Effect.Effect<
         });
         return buildCodexAppDynamicToolSuccess({ sectionIds });
       }
+      if (params.tool === "wait_threads")
+        return (
+          (yield* waits.execute(params)) ??
+          buildCodexAppDynamicToolFailure("Calling turn completed.")
+        );
       if (params.tool === "read_thread")
         return buildCodexAppDynamicToolSuccess(yield* readThread(args));
       if (params.tool === "send_message_to_thread") {
@@ -1142,7 +1158,7 @@ export const make: Effect.Effect<
         if (!threadId || !prompt)
           return yield* toolError("send_message_to_thread requires threadId and prompt");
         yield* requireCodexThread(threadId);
-        yield* turns.start(threadId, prompt, {
+        yield* delegatedMessages.send(threadId, params.threadId, prompt, {
           model: stringArg(args.model) ?? undefined,
           reasoningEffort: reasoningEffort(args.thinking),
         });
@@ -1311,7 +1327,11 @@ export const make: Effect.Effect<
           (yield* handoffs.launch({
             operationId,
             requestThreadId: params.threadId,
-            threadTitle: target.summary.threadName ?? target.summary.threadPreview,
+            threadTitle: resolveCodexElectronDisplayThreadTitle({
+              threadName: target.summary.threadName,
+              threadPreview: target.summary.threadPreview,
+              fallback: threadId,
+            }),
             threadId,
             destinationHostId: stringArg(args.destinationHostId),
             followUpPrompt: stringArg(args.followUpPrompt),
@@ -1360,6 +1380,14 @@ export const make: Effect.Effect<
       ).pipe(
         Effect.flatMap((entry) => {
           if (!entry) return Effect.succeed(null);
+          if (entry.request.params.tool === "wait_threads")
+            return waits
+              .execute(entry.request.params)
+              .pipe(
+                Effect.tap((response) =>
+                  Effect.sync(() => pending.complete(entry, response ?? CodexAppServerNoResponse)),
+                ),
+              );
           return executeInfallible(entry.request.params, context).pipe(
             Effect.tap((response) => Effect.sync(() => pending.complete(entry, response))),
             Effect.onExit((exit) =>

@@ -143,6 +143,7 @@ it.effect("admits once and replays a stable Session binding without another back
     );
     assert.isUndefined(launch.model);
     assert.isUndefined(launch.executionProfile);
+    assert.strictEqual(launch.executionHostId, "local");
     assert.strictEqual(launch.threadSource, "user");
   }),
 );
@@ -182,6 +183,7 @@ it.effect(
         const execute = yield* fixture.execute;
         const call = {
           ...input,
+          caller: { ...input.caller, hostId: "ssh:builder" },
           arguments: {
             ...input.arguments,
             model: "chosen-model",
@@ -207,6 +209,7 @@ it.effect(
         assert.deepInclude(fixture.starts[0], {
           model: "chosen-model",
           runInTarget: "newWorktree",
+          executionHostId: "ssh:builder",
         });
         assert.deepStrictEqual(fixture.starts[0]?.worktreeStartingState, {
           type: "branch",

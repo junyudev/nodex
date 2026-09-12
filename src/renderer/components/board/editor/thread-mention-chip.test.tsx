@@ -51,7 +51,7 @@ describe("thread mention inline content", () => {
       }),
     });
 
-    expect(resolved.label).toBe("First preview line");
+    expect(resolved.label).toBe("First preview line Second");
     expect(resolved.stateLabel).toBe("Archived");
     expect(resolved.shortUuid).toBe("019-thread");
 

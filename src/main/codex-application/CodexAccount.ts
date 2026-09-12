@@ -14,6 +14,7 @@ import type {
   CodexRateLimitResetInput,
   CodexRateLimitResetResult,
 } from "../../shared/types";
+import { CodexExecutionHostAuthState } from "../codex-runtime/CodexExecutionHostAuthState";
 import { CodexGateway } from "../codex-runtime/CodexGateway";
 import type { CodexRuntimeError } from "../codex-runtime/CodexRuntimeError";
 import {
@@ -77,14 +78,16 @@ export class CodexAccount extends Context.Service<
 
 export const live = (
   options: CodexAccountOptions,
-): Layer.Layer<CodexAccount, never, CodexGateway> =>
+): Layer.Layer<CodexAccount, never, CodexGateway | CodexExecutionHostAuthState> =>
   Layer.effect(
     CodexAccount,
     Effect.gen(function* () {
       const gateway = yield* CodexGateway;
+      const authState = yield* CodexExecutionHostAuthState;
       const snapshot = yield* SubscriptionRef.make<CodexAccountSnapshot>(emptyAccountSnapshot());
       const refreshLock = yield* Semaphore.make(1);
       const refreshInFlight = yield* Ref.make<AccountRefreshEffect | null>(null);
+      const authGeneration = yield* Ref.make(0);
       const awaitReady = gateway.awaitReady(gateway.localHostId);
       const asRecord = (value: unknown): Readonly<Record<string, unknown>> | undefined =>
         typeof value === "object" && value !== null && !Array.isArray(value)
@@ -105,11 +108,16 @@ export const live = (
       });
 
       const load = Effect.gen(function* () {
+        const generation = yield* Ref.get(authGeneration);
         yield* awaitReady;
         const response = yield* gateway.requestLocal("account/read", { refreshToken: false });
+        if ((yield* Ref.get(authGeneration)) !== generation)
+          return yield* SubscriptionRef.get(snapshot);
         const account = parseAccountIdentity(response.account ?? null);
         const rateLimitState =
           account?.type === "chatgpt" ? yield* readRateLimits() : emptyAccountRateLimitState();
+        const currentGeneration = yield* Ref.get(authGeneration);
+        if (currentGeneration !== generation) return yield* SubscriptionRef.get(snapshot);
         const previous = yield* SubscriptionRef.get(snapshot);
         const next: CodexAccountSnapshot = {
           account,
@@ -251,6 +259,19 @@ export const live = (
           status: response.status === "canceled" ? ("canceled" as const) : ("notFound" as const),
         };
       });
+
+      const invalidateWithoutServer = Effect.gen(function* () {
+        yield* Ref.update(authGeneration, (generation) => generation + 1);
+        yield* Ref.set(refreshInFlight, null);
+        yield* SubscriptionRef.set(snapshot, emptyAccountSnapshot());
+      }).pipe(Effect.withSpan("CodexAccount.invalidateWithoutServer"));
+
+      yield* authState.changes.pipe(
+        Stream.runForEach((loginRequiredHosts) =>
+          loginRequiredHosts.has(gateway.localHostId) ? invalidateWithoutServer : Effect.void,
+        ),
+        Effect.forkScoped({ startImmediately: true }),
+      );
 
       const logout = Effect.gen(function* () {
         yield* awaitReady;

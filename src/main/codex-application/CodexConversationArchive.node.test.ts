@@ -21,8 +21,12 @@ import {
 } from "../project-application/ProjectWorkspace";
 import { CodexApplicationEventHub } from "./CodexApplicationEventHub";
 import { CodexConversationLifecycleReconciliationError, make } from "./CodexConversationArchive";
+import { CodexConversationLifecycle } from "./CodexConversationLifecycle";
 import { CodexHistoryPageAdapter } from "./CodexHistoryPageAdapter";
+import { CodexMainConversationManagers } from "./CodexMainConversationManagers";
 import { CodexSubagentDirectory } from "./CodexSubagentDirectory";
+import { buildWorkspaceThreadSummary } from "./CodexThreadCatalogProjection";
+import { CodexThreadDirectory } from "./CodexThreadDirectory";
 import { ConversationEntityMap } from "./internal/ConversationEntityMap";
 import {
   ManagedWorktreeRuntime,
@@ -68,8 +72,13 @@ const capability = {
   generation: 1,
   userAgent: "codex-app-server/0.145.0-alpha.15",
   version: "0.145.0-alpha.15",
+  nativeAppTools: false,
   flags: {
+    turnApprovalsReviewer: false,
+
+    turnToolOutput: false,
     forkLastTurnId: true,
+    paginatedFork: false,
     paginatedHistory: true,
     searchOccurrences: true,
     ephemeralFork: false,
@@ -77,11 +86,13 @@ const capability = {
     sideConversation: false,
     subagentAncestorFilter: false,
     threadRevert: false,
+    threadQueue: false,
   },
 } satisfies CodexAppServerCapabilitySnapshot;
 
 const makeArchive = (input: {
   readonly events: string[];
+  readonly applicationEvents?: unknown[];
   readonly lifecycleConsumers: readonly ReturnType<typeof thread>[];
   readonly remove?: ManagedWorktreeRuntime["Service"]["remove"];
   readonly currentThread?: ReturnType<typeof thread>;
@@ -98,6 +109,11 @@ const makeArchive = (input: {
   readonly deleteTransportFailure?: unknown;
   readonly archivePersistenceFailure?: unknown;
   readonly deletePersistenceFailure?: unknown;
+  readonly unarchiveOwner?: boolean;
+  readonly unarchiveUnsubscribeFailure?: unknown;
+  readonly unarchiveHydrationFailure?: unknown;
+  readonly unarchiveHydrationMissing?: boolean;
+  readonly lifecycleClosures?: Array<{ readonly threadId: string; readonly reason: unknown }>;
 }) => {
   const unsupported = () => Effect.die(new Error("unused"));
   const gateway = CodexGateway.of({
@@ -116,7 +132,14 @@ const makeArchive = (input: {
     requestRawOnHost: unsupported,
     requestRawForThread: unsupported,
     requestLocal: unsupported,
-    requestOnHost: unsupported,
+    requestOnHost: (hostId: string, method: string) =>
+      Effect.sync(() => input.events.push(`gateway:${hostId}:${method}`)).pipe(
+        Effect.andThen(
+          method === "thread/unsubscribe" && input.unarchiveUnsubscribeFailure
+            ? Effect.fail(input.unarchiveUnsubscribeFailure)
+            : Effect.succeed({}),
+        ),
+      ) as never,
     notifyLocal: unsupported,
     connection: unsupported,
     connectionChanges: () => Stream.empty,
@@ -147,7 +170,21 @@ const makeArchive = (input: {
     ),
     Effect.provideService(
       CodexApplicationEventHub,
-      CodexApplicationEventHub.of({ events: Stream.empty, publish: () => undefined }),
+      CodexApplicationEventHub.of({
+        events: Stream.empty,
+        publish: (event) => {
+          input.applicationEvents?.push(event);
+        },
+      }),
+    ),
+    Effect.provideService(
+      CodexConversationLifecycle,
+      CodexConversationLifecycle.of({
+        close: (threadId, reason) =>
+          Effect.sync(() => {
+            input.lifecycleClosures?.push({ threadId, reason });
+          }),
+      }),
     ),
     Effect.provideService(
       CodexAppServerCapabilities,
@@ -158,6 +195,26 @@ const makeArchive = (input: {
       }),
     ),
     Effect.provideService(CodexGateway, gateway),
+    Effect.provideService(
+      CodexMainConversationManagers,
+      CodexMainConversationManagers.of({
+        current: (hostId: string) =>
+          input.unarchiveOwner
+            ? ({
+                hostId,
+                generation: 1,
+                assertCurrent: (generation?: number) => {
+                  input.events.push(`manager:assert:${generation ?? "current"}`);
+                },
+                stream: {
+                  getRole: () => ({ role: "owner" }),
+                  removeConversation: (threadId: string) =>
+                    input.events.push(`manager:clear:${threadId}`),
+                },
+              } as never)
+            : null,
+      } as never),
+    ),
     Effect.provideService(
       RemoteHostedPipRuntime,
       RemoteHostedPipRuntime.of({
@@ -180,6 +237,8 @@ const makeArchive = (input: {
     Effect.provideService(
       ConversationEntityMap,
       ConversationEntityMap.of({
+        registerThreadMetadata: () => {},
+        readThreadMetadata: () => null,
         current: () =>
           input.localTranscript
             ? ({
@@ -223,6 +282,28 @@ const makeArchive = (input: {
           input.events.push(`release-quarantine:${action}`);
         },
       } as unknown as CodexSubagentDirectory["Service"]),
+    ),
+    Effect.provideService(
+      CodexThreadDirectory,
+      CodexThreadDirectory.of({
+        refreshMetadataInCurrentLane: ({ threadId }: { readonly threadId: string }) =>
+          Effect.sync(() => input.events.push(`directory:metadata:${threadId}`)).pipe(
+            Effect.andThen(
+              input.unarchiveHydrationFailure
+                ? Effect.fail(input.unarchiveHydrationFailure as never)
+                : input.unarchiveHydrationMissing
+                  ? Effect.succeed(null)
+                  : Effect.succeed({
+                      fidelity: "metadata",
+                      historyMode: null,
+                      durable: { ...current, archived: false },
+                      summary: buildWorkspaceThreadSummary({ ...current, archived: false }),
+                      canonical: null,
+                      snapshot: null,
+                    }),
+            ),
+          ),
+      } as never),
     ),
     Effect.provideService(
       ManagedWorktreeRuntime,
@@ -329,6 +410,44 @@ it.effect("writes a shared worktree replacement owner before archiving the Threa
   }),
 );
 
+it.effect("publishes archived remote read state on the Thread execution host", () =>
+  Effect.gen(function* () {
+    const events: string[] = [];
+    const applicationEvents: unknown[] = [];
+    const currentThread = thread({
+      executionHostId: "ssh:builder",
+      managedWorktreePath: null,
+      hasUnreadTurn: true,
+    });
+    const archive = yield* makeArchive({
+      events,
+      applicationEvents,
+      currentThread,
+      lifecycleConsumers: [currentThread],
+    });
+
+    assert.isTrue(yield* archive.archive("thread-a"));
+    assert.deepEqual(
+      applicationEvents.find(
+        (event) =>
+          typeof event === "object" &&
+          event !== null &&
+          "kind" in event &&
+          event.kind === "hostMessage",
+      ),
+      {
+        kind: "hostMessage",
+        value: {
+          type: "threadReadStateChanged",
+          hostId: "ssh:builder",
+          conversationId: "thread-a",
+          hasUnreadTurn: false,
+        },
+      },
+    );
+  }),
+);
+
 it.effect("retires the exact deferred archive cohort after durable persistence", () =>
   Effect.gen(function* () {
     const events: string[] = [];
@@ -353,6 +472,26 @@ it.effect("retires the exact deferred archive cohort after durable persistence",
       "core:archive",
       "pip:archive:thread-a,thread-child",
     ]);
+  }),
+);
+
+it.effect("retires process-local conversation state after durable archive persistence", () =>
+  Effect.gen(function* () {
+    const events: string[] = [];
+    const lifecycleClosures: Array<{ readonly threadId: string; readonly reason: unknown }> = [];
+    const currentThread = thread({ cwd: "/repo", managedWorktreePath: null });
+    const archive = yield* makeArchive({
+      events,
+      currentThread,
+      lifecycleConsumers: [currentThread],
+      lifecycleClosures,
+    });
+
+    assert.isTrue(yield* archive.archive("thread-a"));
+    assert.strictEqual(lifecycleClosures.length, 1);
+    assert.strictEqual(lifecycleClosures[0]?.threadId, "thread-a");
+    assert.match(String(lifecycleClosures[0]?.reason), /was archived/);
+    assert.isTrue(events.indexOf("core:archive") < events.length);
   }),
 );
 
@@ -405,6 +544,88 @@ it.effect("rejects ACP lifecycle before invoking any Codex owner", () =>
     yield* Effect.flip(archive.deleteArchived("thread-a"));
     yield* Effect.flip(archive.unarchive("thread-a"));
     assert.deepEqual(events, []);
+  }),
+);
+
+it.effect("releases owned stream state before unarchive and refreshes metadata afterwards", () =>
+  Effect.gen(function* () {
+    const events: string[] = [];
+    const applicationEvents: unknown[] = [];
+    const currentThread = thread({
+      archived: true,
+      managedWorktreePath: null,
+    });
+    const archive = yield* makeArchive({
+      events,
+      applicationEvents,
+      currentThread,
+      lifecycleConsumers: [currentThread],
+      unarchiveOwner: true,
+    });
+
+    const summary = yield* archive.unarchive("thread-a");
+
+    assert.strictEqual(summary?.archived, false);
+    assert.deepEqual(events, [
+      "manager:assert:1",
+      "gateway:local:thread/unsubscribe",
+      "manager:assert:1",
+      "manager:clear:thread-a",
+      "gateway:thread/unarchive",
+      "core:archive",
+      "directory:metadata:thread-a",
+    ]);
+    assert.deepEqual(applicationEvents, [
+      { kind: "codex", value: { type: "threadSummary", thread: summary } },
+      {
+        kind: "codex",
+        value: { type: "threadArchivedState", threadId: "thread-a", archived: false },
+      },
+    ]);
+  }),
+);
+
+it.effect("does not clear ownership or unarchive when owner unsubscribe fails", () =>
+  Effect.gen(function* () {
+    const events: string[] = [];
+    const currentThread = thread({ archived: true, managedWorktreePath: null });
+    const archive = yield* makeArchive({
+      events,
+      currentThread,
+      lifecycleConsumers: [currentThread],
+      unarchiveOwner: true,
+      unarchiveUnsubscribeFailure: new Error("unsubscribe failed"),
+    });
+
+    const exit = yield* Effect.exit(archive.unarchive("thread-a"));
+
+    assert.isTrue(exit._tag === "Failure");
+    assert.deepEqual(events, ["manager:assert:1", "gateway:local:thread/unsubscribe"]);
+  }),
+);
+
+it.effect("requires metadata hydration before publishing an unarchived Thread", () =>
+  Effect.gen(function* () {
+    const events: string[] = [];
+    const applicationEvents: unknown[] = [];
+    const currentThread = thread({ archived: true, managedWorktreePath: null });
+    const archive = yield* makeArchive({
+      events,
+      applicationEvents,
+      currentThread,
+      lifecycleConsumers: [currentThread],
+      unarchiveHydrationMissing: true,
+    });
+
+    const exit = yield* Effect.exit(archive.unarchive("thread-a"));
+
+    assert.isTrue(exit._tag === "Failure");
+    assert.deepEqual(events, [
+      "gateway:thread/unarchive",
+      "core:archive",
+      "directory:metadata:thread-a",
+    ]);
+    assert.deepEqual(applicationEvents, []);
   }),
 );
 
@@ -643,6 +864,29 @@ it.effect("retires the exact deferred delete cohort after durable postconditions
       "core:delete",
       "pip:delete:thread-a,thread-child",
     ]);
+  }),
+);
+
+it.effect("retires process-local conversation state after durable deletion", () =>
+  Effect.gen(function* () {
+    const events: string[] = [];
+    const lifecycleClosures: Array<{ readonly threadId: string; readonly reason: unknown }> = [];
+    const currentThread = thread({
+      archived: true,
+      cwd: "/repo",
+      managedWorktreePath: null,
+    });
+    const archive = yield* makeArchive({
+      events,
+      currentThread,
+      lifecycleConsumers: [currentThread],
+      lifecycleClosures,
+    });
+
+    assert.isTrue(yield* archive.deleteArchived("thread-a"));
+    assert.strictEqual(lifecycleClosures.length, 1);
+    assert.strictEqual(lifecycleClosures[0]?.threadId, "thread-a");
+    assert.match(String(lifecycleClosures[0]?.reason), /was deleted/);
   }),
 );
 

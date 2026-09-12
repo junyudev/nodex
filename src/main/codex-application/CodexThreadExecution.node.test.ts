@@ -12,6 +12,8 @@ import { CodexGateway } from "../codex-runtime/CodexGateway";
 import { CoreModules } from "../core-runtime/CoreModules";
 import { DesktopToolRuntime } from "../host-runtime/DesktopToolRuntime";
 import { CodexConversationProjection } from "./CodexConversationProjection";
+import { CodexExecutionAssignments } from "./CodexExecutionAssignments";
+import { makeReadyCodexExecutionAssignments } from "./CodexExecutionAssignments.test-support";
 import { CodexTurnCommands } from "./CodexTurnCommands";
 import { ConversationCommands } from "./ConversationCommands";
 import { ConversationEntityMap } from "./internal/ConversationEntityMap";
@@ -40,6 +42,7 @@ it.effect.each(["local", "remote-a"])(
           hostId,
           generation: 7,
           userAgent: "codex-app-server/0.153.4",
+          nativeAppTools: hostId === "local",
         });
         const context = yield* Layer.buildWithScope(
           live.pipe(
@@ -50,6 +53,7 @@ it.effect.each(["local", "remote-a"])(
                   forThread: () => Effect.succeed(capability),
                   isCurrent: () => Effect.succeed(true),
                 }),
+                Layer.succeed(CodexExecutionAssignments, makeReadyCodexExecutionAssignments()),
                 Layer.succeed(CodexGateway, {
                   localHostId: "local",
                   requestOnHost: (
@@ -84,7 +88,7 @@ it.effect.each(["local", "remote-a"])(
                   current: () => null,
                 } as unknown as ConversationEntityMap["Service"]),
                 Layer.succeed(DesktopToolRuntime, {
-                  threadConfig: Effect.succeed({ "features.js_repl": false }),
+                  threadConfig: () => Effect.succeed({ "features.js_repl": false }),
                 } as unknown as DesktopToolRuntime["Service"]),
                 Layer.succeed(CoreModules, {} as CoreModules["Service"]),
                 Layer.succeed(CodexTurnCommands, {} as CodexTurnCommands["Service"]),

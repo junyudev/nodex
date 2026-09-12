@@ -110,7 +110,7 @@ export const make: Effect.Effect<
       });
     }
 
-    const historyMode = canonical.protocol.historyMode;
+    const historyMode = canonical.historyMode;
     if (historyMode !== "paginated" || !supportsFeature(capability, feature)) {
       const resolution = {
         status: "unavailable" as const,

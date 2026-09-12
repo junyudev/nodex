@@ -1,255 +1,53 @@
-import { it as effectIt } from "@effect/vitest";
-import { describe, expect, it } from "vitest";
+import { assert, it } from "@effect/vitest";
+import { expect, test } from "vite-plus/test";
 import * as Effect from "effect/Effect";
-import type { Turn } from "@nodex/codex-app-server-protocol/v2";
-import type { CodexConversationSnapshot } from "../../shared/types";
-import {
-  CodexAppServerCapabilities,
-  type CodexAppServerCapabilitySnapshot,
-} from "../codex-runtime/CodexAppServerCapabilities";
-import { CodexHistoryPageAdapter } from "./CodexHistoryPageAdapter";
-import {
-  CodexReadThreadCursorRegistry,
-  make as makeReadThreadHistory,
-  serializeCodexReadThreadProtocolItem,
-} from "./CodexReadThreadHistory";
-import { CodexThreadDirectory } from "./CodexThreadDirectory";
-
-const capability = (generation: number): CodexAppServerCapabilitySnapshot =>
-  ({
-    hostId: "local",
-    generation,
-    readiness: "ready",
-    capabilities: { threadTurnsList: true, threadItemsList: true },
-  }) as unknown as CodexAppServerCapabilitySnapshot;
-
-const residentTurn = (turnId: string) =>
-  ({
-    turnId,
-    status: "completed",
-    errorMessage: null,
-    startedAt: 1,
-    turnStartedAtMs: 1,
-    firstTurnWorkItemStartedAtMs: null,
-    completedAt: 2,
-    durationMs: 1,
-    items: [],
-  }) as unknown as CodexConversationSnapshot["turns"][number];
-
-const snapshot = {
-  threadId: "thread-1",
-  threadName: "History",
-  threadPreview: "Tail",
-  statusType: "idle",
-  statusActiveFlags: [],
-  cwd: "/repo",
-  createdAt: 1,
-  updatedAt: 2,
-  turns: [residentTurn("turn-tail")],
-  turnPagination: {
-    olderCursor: "opaque:tail-older",
-    backwardsCursor: null,
-    oldestLoadedTurnId: "turn-tail",
-    isLoadingOlder: false,
-    hasLoadedOldest: false,
-    loadedTurnCount: 1,
-    itemsView: "full",
-  },
-} as unknown as CodexConversationSnapshot;
-
-const protocolTurn = (id: string): Turn =>
-  ({
-    id,
-    status: "completed",
-    error: null,
-    startedAt: 1,
-    completedAt: 2,
-    durationMs: 1,
-    itemsView: "full",
-    items: [],
-  }) as unknown as Turn;
-
-describe("CodexReadThreadCursorRegistry", () => {
-  it("is bounded, expires entries, and rejects a replacement host generation", () => {
-    let now = 1;
-    const registry = new CodexReadThreadCursorRegistry(() => now, 2, 10);
-    const set = (publicCursor: string, appServerCursor: string) =>
-      registry.set({
-        threadId: "thread-1",
-        publicCursor,
-        appServerCursor,
-        hostId: "local",
-        hostGeneration: 7,
-      });
-
-    set("turn-1", "opaque-1");
-    set("turn-2", "opaque-2");
-    expect(
-      registry.get({
-        threadId: "thread-1",
-        publicCursor: "turn-1",
-        hostId: "local",
-        hostGeneration: 7,
-      }),
-    ).toBe("opaque-1");
-    set("turn-3", "opaque-3");
-    expect(
-      registry.get({
-        threadId: "thread-1",
-        publicCursor: "turn-2",
-        hostId: "local",
-        hostGeneration: 7,
-      }),
-    ).toBeNull();
-    expect(
-      registry.get({
-        threadId: "thread-1",
-        publicCursor: "turn-1",
-        hostId: "local",
-        hostGeneration: 8,
-      }),
-    ).toBeNull();
-    now = 12;
-    expect(
-      registry.get({
-        threadId: "thread-1",
-        publicCursor: "turn-3",
-        hostId: "local",
-        hostGeneration: 7,
-      }),
-    ).toBeNull();
-  });
-
-  it("keeps the one admitted cursor readable at an exact capacity of one", () => {
-    const registry = new CodexReadThreadCursorRegistry(() => 1, 1, 10);
-    registry.set({
-      threadId: "thread-1",
-      publicCursor: "turn-1",
-      appServerCursor: "opaque-1",
-      hostId: "local",
-      hostGeneration: 7,
-    });
-
-    expect(
-      registry.get({
-        threadId: "thread-1",
-        publicCursor: "turn-1",
-        hostId: "local",
-        hostGeneration: 7,
-      }),
-    ).toBe("opaque-1");
-  });
+import type { Thread, Turn } from "@nodex/codex-app-server-protocol/v2";
+import { CodexGateway } from "../codex-runtime/CodexGateway";
+import { CodexAppServerCapabilities, createCodexAppServerCapabilitySnapshot } from "../codex-runtime/CodexAppServerCapabilities";
+import { CodexNativeThreadLookup } from "./CodexNativeThreadLookup";
+import { make, serializeCodexReadThreadProtocolItem } from "./CodexReadThreadHistory";
+import { turnFixture } from "./conversation-test-fixture";
+const nativeThread = (turns: Turn[], historyMode: Thread["historyMode"] = "paginated"): Thread => ({ id: "thread", historyMode, turns, name: "History", preview: "Native", status: { type: "idle" }, cwd: "/repo", createdAt: 1, updatedAt: 2 } as Thread);
+function service(thread: Thread, paginated: boolean, calls: { method: string; params: unknown }[], assertCurrent = () => {}) {
+  return make.pipe(
+    Effect.provideService(CodexNativeThreadLookup, { resolve: () => Effect.sync(() => { calls.push({ method: "thread/read", params: { threadId: "thread", includeTurns: false } }); return { hostId: "local", thread, manager: { assertCurrent, generation: 1 } }; }) } as unknown as CodexNativeThreadLookup["Service"]),
+    Effect.provideService(CodexAppServerCapabilities, { forHost: () => Effect.succeed({ ...createCodexAppServerCapabilitySnapshot({ hostId: "local", generation: 1, userAgent: "0.153.0" }), flags: { paginatedHistory: paginated } }) } as unknown as CodexAppServerCapabilities["Service"]),
+    Effect.provideService(CodexGateway, { requestOnHost: (_host: string, method: string, params: unknown) => Effect.sync(() => { calls.push({ method, params }); return method === "thread/read" ? { thread } : { data: [turnFixture("older")], nextCursor: "opaque-next" }; }) } as unknown as CodexGateway["Service"]),
+  );
+}
+it.effect("paginated read forwards the native cursor and returns native metadata without resident hydration", () => Effect.gen(function* () {
+  const calls: { method: string; params: unknown }[] = [];
+  const reader = yield* service(nativeThread([]), true, calls);
+  const result = yield* reader.read({ threadId: "thread", cursor: "opaque-before", turnLimit: 2 });
+  assert.deepEqual(calls, [{ method: "thread/read", params: { threadId: "thread", includeTurns: false } }, { method: "thread/turns/list", params: { threadId: "thread", cursor: "opaque-before", itemsView: "full", limit: 2 } }]);
+  assert.strictEqual(result.page.nextCursor, "opaque-next"); assert.strictEqual(result.thread.createdAt, 1); assert.strictEqual(result.thread.kind, "codex");
+}));
+it.effect("legacy paginated history translates turn identity cursors only at the native boundary", () => Effect.gen(function* () {
+  const calls: { method: string; params: unknown }[] = [];
+  const reader = yield* service(nativeThread([], "default" as Thread["historyMode"]), true, calls);
+  const result = yield* reader.read({ threadId: "thread", cursor: "anchor" });
+  assert.deepEqual(calls[1]?.params, { threadId: "thread", cursor: JSON.stringify({ turnId: "anchor", includeAnchor: false }), itemsView: "full", limit: 1 });
+  assert.strictEqual(result.page.nextCursor, "older");
+}));
+it.effect("nonpaginated history uses exclusive turn IDs and rejects unknown anchors", () => Effect.gen(function* () {
+  const calls: { method: string; params: unknown }[] = [];
+  const reader = yield* service(nativeThread([turnFixture("a"), turnFixture("b"), turnFixture("c")], "default" as Thread["historyMode"]), false, calls);
+  const result = yield* reader.read({ threadId: "thread", cursor: "c" });
+  assert.strictEqual(result.turns[0]?.id, "b"); assert.strictEqual(result.page.nextCursor, "b");
+  const error = yield* reader.read({ threadId: "thread", cursor: "missing" }).pipe(Effect.flip);
+  assert.include(String(error.cause), "Unknown cursor");
+}));
+test("output budget does not truncate user/assistant input and structured output reports original size", () => {
+  expect(serializeCodexReadThreadProtocolItem({ type: "agentMessage", id: "answer", text: "complete answer", phase: "final_answer", memoryCitation: null, delivery: null, questions: null }, true, 3)).toMatchObject({ text: "complete answer" });
+  expect(serializeCodexReadThreadProtocolItem({ type: "functionCallOutput", id: "output", name: "tool", namespace: null, output: "abcdef" }, true, 3)).toMatchObject({ output: { text: "abc", truncated: true, originalChars: 6 } });
+  expect(serializeCodexReadThreadProtocolItem({ type: "userMessage", id: "input", clientId: null, content: [{ type: "localImage", path: "/image.png" }] }, false, 0)).toEqual({ type: "userMessage", id: "input", content: [{ type: "localImage", path: "/image.png" }] });
 });
 
-describe("CodexReadThreadHistory", () => {
-  effectIt.effect(
-    "translates its public Turn-id cursor back to exactly one opaque physical page",
-    () =>
-      Effect.gen(function* () {
-        const physicalRequests: Array<{ cursor: string | null; limit?: number }> = [];
-        const directory = CodexThreadDirectory.of({
-          resolve: () =>
-            Effect.succeed({
-              durable: { executionHostId: "local" },
-              snapshot,
-            } as never),
-        } as never);
-        const capabilities = CodexAppServerCapabilities.of({
-          forThread: () => Effect.succeed(capability(7)),
-          isCurrent: () => Effect.succeed(true),
-        } as never);
-        const pages = CodexHistoryPageAdapter.of({
-          loadTurnPage: (input) => {
-            physicalRequests.push({ cursor: input.cursor, limit: input.limit });
-            return Effect.succeed({
-              turns: [protocolTurn("turn-older")],
-              nextCursor: "opaque:next",
-              backwardsCursor: null,
-              itemsPaginationByTurnId: {},
-              itemSegmentsByTurnId: {},
-              loadedItemCount: 0,
-            });
-          },
-          loadTurnItemsPage: () => Effect.die("read_thread must not load an extra item page"),
-        });
-        const service = yield* makeReadThreadHistory.pipe(
-          Effect.provideService(CodexAppServerCapabilities, capabilities),
-          Effect.provideService(CodexHistoryPageAdapter, pages),
-          Effect.provideService(CodexThreadDirectory, directory),
-        );
-
-        const tail = yield* service.read({ threadId: "thread-1", turnLimit: 1 });
-        expect(tail.turns.map((turn) => turn.id)).toEqual(["turn-tail"]);
-        expect(tail.page.nextCursor).toBe("turn-tail");
-        expect(physicalRequests).toEqual([]);
-
-        const older = yield* service.read({
-          threadId: "thread-1",
-          cursor: "turn-tail",
-          turnLimit: 1,
-        });
-        expect(physicalRequests).toEqual([{ cursor: "opaque:tail-older", limit: 1 }]);
-        expect(older.turns.map((turn) => turn.id)).toEqual(["turn-older"]);
-        expect(older.page.nextCursor).toBe("turn-older");
-      }),
-  );
-
-  effectIt.effect("rejects a physical page from a replaced host generation", () =>
-    Effect.gen(function* () {
-      const directory = CodexThreadDirectory.of({
-        resolve: () =>
-          Effect.succeed({
-            durable: { executionHostId: "local" },
-            snapshot,
-          } as never),
-      } as never);
-      const capabilities = CodexAppServerCapabilities.of({
-        forThread: () => Effect.succeed(capability(7)),
-        isCurrent: () => Effect.succeed(false),
-      } as never);
-      const pages = CodexHistoryPageAdapter.of({
-        loadTurnPage: () =>
-          Effect.succeed({
-            turns: [protocolTurn("turn-older")],
-            nextCursor: "opaque:next",
-            backwardsCursor: null,
-            itemsPaginationByTurnId: {},
-            itemSegmentsByTurnId: {},
-            loadedItemCount: 0,
-          }),
-        loadTurnItemsPage: () => Effect.die("read_thread must not load an extra item page"),
-      });
-      const service = yield* makeReadThreadHistory.pipe(
-        Effect.provideService(CodexAppServerCapabilities, capabilities),
-        Effect.provideService(CodexHistoryPageAdapter, pages),
-        Effect.provideService(CodexThreadDirectory, directory),
-      );
-
-      yield* service.read({ threadId: "thread-1", turnLimit: 1 });
-      const failure = yield* service
-        .read({ threadId: "thread-1", cursor: "turn-tail", turnLimit: 1 })
-        .pipe(Effect.flip);
-
-      expect(failure.reason).toBe("request-failed");
-      expect(String(failure.cause)).toContain("generation changed");
-    }),
-  );
-
-  it("bounds textual protocol fields before they enter a dynamic-tool response", () => {
-    expect(
-      serializeCodexReadThreadProtocolItem(
-        {
-          questions: null,
-          type: "agentMessage",
-          id: "item-1",
-          text: "abcdefghij",
-          phase: null,
-          memoryCitation: null,
-          delivery: null,
-        },
-        false,
-        6,
-      ),
-    ).toMatchObject({ text: "abc..." });
-  });
-});
+it.effect("native history rejects a page returned after its authenticated manager retires", () => Effect.gen(function* () {
+  const calls: { method: string; params: unknown }[] = [];
+  const reader = yield* service(nativeThread([]), true, calls, () => { if (calls.length > 1) throw new Error("account retired"); });
+  const error = yield* reader.read({ threadId: "thread" }).pipe(Effect.flip);
+  assert.strictEqual(error.reason, "request-failed");
+  assert.include(String(error.cause), "account retired");
+  assert.lengthOf(calls, 2);
+}));

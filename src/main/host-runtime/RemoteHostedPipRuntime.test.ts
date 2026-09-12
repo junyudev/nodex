@@ -152,7 +152,7 @@ it.effect("admits only the captured physical local host and durable local Codex 
     const image = { screenshot: { tabId: "1", url: pngDataUrl() } };
 
     yield* runtime.observeCodexOccurrence(
-      occurrence(browserNotification("thread-1", "browser-1", image), { hostId: "default" }),
+      occurrence(browserNotification("thread-1", "browser-1", image), { hostId: "local" }),
     );
     yield* runtime.observeCodexOccurrence(
       occurrence(browserNotification("acp-thread", "browser-1", image)),

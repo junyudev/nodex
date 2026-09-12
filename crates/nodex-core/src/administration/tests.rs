@@ -9,9 +9,6 @@ use nodex_core_contracts::administration::{
     StoreAdministrationReadValue, StoreIntegrity, StoreReadiness,
 };
 use nodex_core_contracts::collection::CollectionWindowRequest;
-use nodex_core_contracts::workspace::{
-    ProjectWorkspaceQueuedFollowUpEntry, ProjectWorkspaceQueuedFollowUpPayloadRef,
-};
 use nodex_core_contracts::{
     AdapterKind, BoundModuleContext, CoreErrorCode, LibraryId, ModuleApplyRequest,
     ModuleReadRequest, ProfileId, STORE_ADMINISTRATION_CONTRACT_VERSION, StoreEpoch,
@@ -1125,21 +1122,6 @@ fn restores_database_assets_epoch_and_exact_retry_with_a_safety_backup() {
     let queue_manifest_hash = crate::document::sha256(&queue_manifest);
     let queue_manifest_name = format!("{queue_manifest_hash}.blob");
     let queue_manifest_length = queue_manifest.len();
-    let queue_ledger_hash = crate::document::sha256(
-        &serde_json::to_vec(&vec![ProjectWorkspaceQueuedFollowUpEntry {
-            follow_up_id: "follow-up:backup".to_owned(),
-            client_user_message_id: "message:backup".to_owned(),
-            created_at_ms: 1,
-            pause: None,
-            payload: ProjectWorkspaceQueuedFollowUpPayloadRef {
-                schema_version: 2,
-                asset_uri: format!("nodex://assets/{queue_manifest_name}"),
-                sha256: queue_manifest_hash.clone(),
-                byte_length: queue_manifest_length as u64,
-            },
-        }])
-        .expect("queued follow-up ledger JSON"),
-    );
     fs::write(
         fixture.home().join("assets").join(&queue_manifest_name),
         &queue_manifest,
@@ -1152,7 +1134,6 @@ fn restores_database_assets_epoch_and_exact_retry_with_a_safety_backup() {
             let managed_name = managed_name.clone();
             let queue_manifest_name = queue_manifest_name.clone();
             let queue_manifest_hash = queue_manifest_hash.clone();
-            let queue_ledger_hash = queue_ledger_hash.clone();
             move |connection| {
                 connection.execute(
                     "UPDATE projects SET description = 'backup' \
@@ -1185,38 +1166,12 @@ fn restores_database_assets_epoch_and_exact_retry_with_a_safety_backup() {
                     [],
                 )?;
                 connection.execute(
-                    "INSERT INTO codex_queued_follow_up_ledgers( \
-                   thread_id, revision, ledger_hash, updated_at \
-                 ) VALUES ('thread:backup-queue', 1, ?1, '2026-07-19T00:00:00.000Z')",
-                    [queue_ledger_hash],
+                    "INSERT INTO codex_thread_asset_refs(thread_id, library_id, blob_hash, retained_at) SELECT 'thread:backup-queue', library_id, ?1, '2026-07-19T00:00:00.000Z' FROM projects WHERE id = 'project:administration-test'",
+                    [crate::document::sha256(b"backup asset")],
                 )?;
                 connection.execute(
-                    "INSERT INTO codex_queued_follow_up_payload_manifests( \
-                       payload_sha256, schema_version, asset_uri, byte_length \
-                     ) VALUES (?1, 2, ?2, ?3)",
-                    rusqlite::params![
-                        queue_manifest_hash,
-                        format!("nodex://assets/{queue_manifest_name}"),
-                        i64::try_from(queue_manifest_length).expect("manifest length"),
-                    ],
-                )?;
-                connection.execute(
-                    "INSERT INTO codex_queued_follow_up_payload_asset_refs( \
-                   payload_sha256, ordinal, asset_uri, sha256, byte_length, mime_type \
-                 ) VALUES (?1, 0, ?2, ?3, ?4, 'application/octet-stream')",
-                    rusqlite::params![
-                        queue_manifest_hash,
-                        format!("nodex://assets/{managed_name}"),
-                        crate::document::sha256(b"backup asset"),
-                        i64::try_from(b"backup asset".len()).expect("asset length"),
-                    ],
-                )?;
-                connection.execute(
-                    "INSERT INTO codex_queued_follow_up_entries( \
-                   thread_id, follow_up_id, position, client_user_message_id, created_at_ms, \
-                   payload_sha256 \
-                 ) VALUES ('thread:backup-queue', 'follow-up:backup', 0, 'message:backup', 1, ?1)",
-                    [queue_manifest_hash],
+                    "INSERT INTO codex_queued_message_state(singleton, state_json) VALUES (1, ?1)",
+                    [serde_json::json!({"thread:backup-queue": [{"id": "message:backup", "context": {"prompt": "restore me", "fileAttachments": [{"source": format!("nodex://assets/{managed_name}")}]}}]}).to_string()],
                 )?;
                 Ok(())
             }
@@ -1336,8 +1291,7 @@ fn restores_database_assets_epoch_and_exact_retry_with_a_safety_backup() {
         .read_default(|connection| {
             connection
                 .query_row(
-                    "SELECT count(*) FROM codex_queued_follow_up_entries \
-                     WHERE thread_id = 'thread:backup-queue'",
+                    "SELECT json_array_length(state_json, '$.\"thread:backup-queue\"') FROM codex_queued_message_state WHERE singleton = 1",
                     [],
                     |row| row.get::<_, i64>(0),
                 )

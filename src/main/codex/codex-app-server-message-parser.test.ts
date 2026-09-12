@@ -79,6 +79,35 @@ describe("Codex app-server message parser", () => {
       success: false,
       error: "Invalid params for Codex server request 'item/tool/requestOptionPicker'.",
     });
+
+    const userVerification = parseCodexAppServerMessage({
+      id: "private-mcp-1",
+      method: "mcpServer/elicitation/request",
+      params: {
+        threadId: "thread-1",
+        turnId: "turn-1",
+        serverName: "browser-use",
+        mode: "openai/userVerification",
+        _meta: { verificationUrl: "https://example.com" },
+      },
+    });
+    expect(userVerification).toEqual({
+      success: true,
+      data: {
+        kind: "request",
+        request: {
+          id: "private-mcp-1",
+          method: "mcpServer/elicitation/request",
+          params: {
+            threadId: "thread-1",
+            turnId: "turn-1",
+            serverName: "browser-use",
+            mode: "openai/userVerification",
+            _meta: { verificationUrl: "https://example.com" },
+          },
+        },
+      },
+    });
   });
 
   it("classifies unknown server requests so the client can send method-not-found", () => {

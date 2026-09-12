@@ -76,12 +76,14 @@ export interface PastedTextAttachmentManagerOptions {
   readonly attachmentsRoot: string;
   readonly fileSystem?: Partial<AttachmentFileSystem>;
   readonly createUuid?: () => string;
+  readonly hostId?: string;
 }
 
 export class PastedTextAttachmentManager {
   readonly #attachmentsRoot: string;
   readonly #fileSystem: AttachmentFileSystem;
   readonly #createUuid: () => string;
+  readonly #hostId: string | undefined;
   #state: Promise<PastedTextAttachmentRegistryState> | null = null;
   #registryWrite: Promise<void> = Promise.resolve();
 
@@ -89,6 +91,7 @@ export class PastedTextAttachmentManager {
     this.#attachmentsRoot = resolve(options.attachmentsRoot);
     this.#fileSystem = { ...defaultAttachmentFileSystem, ...options.fileSystem };
     this.#createUuid = options.createUuid ?? randomUUID;
+    this.#hostId = options.hostId;
   }
 
   async createRawSource(input: {
@@ -233,6 +236,7 @@ export class PastedTextAttachmentManager {
       label: input.label,
       path: filePath,
       fsPath: filePath,
+      ...(this.#hostId === undefined ? {} : { hostId: this.#hostId }),
     };
   }
 
@@ -320,18 +324,27 @@ export interface ThreadGoalAttachmentDirectoryManagerOptions {
   readonly attachmentsRoot: string;
   readonly fileSystem?: Partial<AttachmentFileSystem>;
   readonly createUuid?: () => string;
+  readonly targetHostId?: string;
+  readonly localHostId?: string;
+  readonly readSourceFile?: (path: string, hostId?: string) => Promise<Buffer>;
 }
 
 export class ThreadGoalAttachmentDirectoryManager {
   readonly #attachmentsRoot: string;
   readonly #fileSystem: AttachmentFileSystem;
   readonly #createUuid: () => string;
+  readonly #targetHostId: string | undefined;
+  readonly #localHostId: string | undefined;
+  readonly #readSourceFile: (path: string, hostId?: string) => Promise<Buffer>;
   readonly #directories = new Set<string>();
 
   constructor(options: ThreadGoalAttachmentDirectoryManagerOptions) {
     this.#attachmentsRoot = resolve(options.attachmentsRoot);
     this.#fileSystem = { ...defaultAttachmentFileSystem, ...options.fileSystem };
     this.#createUuid = options.createUuid ?? randomUUID;
+    this.#targetHostId = options.targetHostId;
+    this.#localHostId = options.localHostId;
+    this.#readSourceFile = options.readSourceFile ?? ((path) => this.#fileSystem.readFile(path));
   }
 
   async createDirectory(): Promise<{ path: string }> {
@@ -397,7 +410,11 @@ export class ThreadGoalAttachmentDirectoryManager {
       const pastedTextAttachments = await Promise.all(
         (draft.pastedTextAttachments ?? []).map(async (attachment, index) => ({
           filename: `pasted-text-${index + 1}.txt`,
-          contentsBase64: await readPastedTextAttachmentBase64(attachment, this.#fileSystem),
+          contentsBase64: await readPastedTextAttachmentBase64(
+            attachment,
+            this.#readSourceFile,
+            this.#targetHostId,
+          ),
         })),
       );
 
@@ -416,7 +433,13 @@ export class ThreadGoalAttachmentDirectoryManager {
           continue;
         }
         localImageAttachments.push({
-          contentsBase64: await readImageAttachmentBase64(attachment, source, this.#fileSystem),
+          contentsBase64: await readImageAttachmentBase64(
+            attachment,
+            source,
+            this.#readSourceFile,
+            this.#targetHostId,
+            this.#localHostId,
+          ),
           filename: `image-${position}.${inferImageAttachmentExtension(attachment, source)}`,
           position,
         });
@@ -504,11 +527,12 @@ export function getThreadGoalAttachmentsRoot(basePath: string): string {
 export async function readThreadGoalEditableObjective(input: {
   attachmentsRoot: string;
   objective: string;
+  readFile?: (path: string) => Promise<string>;
 }): Promise<string> {
   const filePath = parseThreadGoalObjectiveFileReference(input.objective);
   if (filePath === null) return input.objective;
   if (!isOwnedThreadGoalObjectiveFilePath(input.attachmentsRoot, filePath)) return input.objective;
-  return await readFile(filePath, "utf8");
+  return input.readFile ? await input.readFile(filePath) : await readFile(filePath, "utf8");
 }
 
 export function parseThreadGoalObjectiveFileReference(objective: string): string | null {
@@ -591,11 +615,15 @@ function isManagedPastedTextAttachmentFilePath(path: string, attachmentsRoot: st
 function isMissingFileError(error: unknown): boolean {
   if (!(error instanceof Error)) return false;
   if ("code" in error && error.code === "ENOENT") return true;
-  return (
+  if (
     error.message.includes("ENOENT") ||
     error.message.includes("No such file or directory") ||
     /\(os error [23]\)/.test(error.message)
-  );
+  ) {
+    return true;
+  }
+  if (!("cause" in error) || error.cause === undefined || error.cause === error) return false;
+  return isMissingFileError(error.cause);
 }
 
 function clonePastedTextAttachment(
@@ -619,10 +647,16 @@ function buildPastedTextAttachmentPreview(text: string): string {
 
 async function readPastedTextAttachmentBase64(
   attachment: CodexThreadGoalPastedTextAttachmentInput,
-  fileSystem: AttachmentFileSystem,
+  readSourceFile: (path: string, hostId?: string) => Promise<Buffer>,
+  targetHostId?: string,
 ): Promise<string> {
   if ("file" in attachment && attachment.file !== undefined) {
-    return (await fileSystem.readFile(attachment.file.fsPath)).toString("base64");
+    return (
+      await readSourceFile(
+        attachment.file.fsPath,
+        attachment.hostId ?? attachment.file.hostId ?? targetHostId,
+      )
+    ).toString("base64");
   }
   if ("text" in attachment) {
     return Buffer.from(attachment.text, "utf8").toString("base64");
@@ -637,7 +671,9 @@ function getGoalImageSource(attachment: CodexThreadGoalImageAttachmentInput): st
 async function readImageAttachmentBase64(
   attachment: CodexThreadGoalImageAttachmentInput,
   source: string,
-  fileSystem: AttachmentFileSystem,
+  readSourceFile: (path: string, hostId?: string) => Promise<Buffer>,
+  targetHostId?: string,
+  localHostId?: string,
 ): Promise<string> {
   if (source.startsWith("data:")) {
     const dataUrlMatch = source.match(/^data:[^,]*?(;base64)?,(.*)$/is);
@@ -653,7 +689,11 @@ async function readImageAttachmentBase64(
     attachment.localPath === undefined || attachment.localPath === null
       ? decodeURIComponent(rawPath)
       : rawPath;
-  return (await fileSystem.readFile(filePath)).toString("base64");
+  const sourceHostId =
+    attachment.localPath === undefined || attachment.localPath === null
+      ? localHostId
+      : targetHostId;
+  return (await readSourceFile(filePath, sourceHostId)).toString("base64");
 }
 
 function inferImageAttachmentExtension(

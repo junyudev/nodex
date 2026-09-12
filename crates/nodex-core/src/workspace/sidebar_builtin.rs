@@ -334,7 +334,6 @@ pub(super) fn reorder(
             view_ids: Vec::new(),
             document_heads: Vec::new(),
             committed_at: now,
-            queued_follow_up_ledger: None,
         },
     )
 }

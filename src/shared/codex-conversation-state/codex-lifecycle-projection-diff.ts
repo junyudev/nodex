@@ -31,7 +31,7 @@ export interface CodexLifecycleProjectionDiffResult {
 }
 
 /**
- * Lifecycle status is canonical sidecar state, so a status transition can
+ * Lifecycle status is canonical Turn state, so a status transition can
  * affect a projected transcript even when the protocol item payload is the
  * same object. Keep this comparison value-based for snapshot/replay merges.
  */
@@ -39,8 +39,8 @@ export function collectCodexLifecycleStatusChangedItemIds(
   before: CodexCanonicalTurnState | null,
   after: CodexCanonicalTurnState,
 ): ReadonlySet<string> {
-  const beforeStatuses = before?.sidecar.lifecycleStatusByItemId ?? {};
-  const afterStatuses = after.sidecar.lifecycleStatusByItemId ?? {};
+  const beforeStatuses = before?.lifecycleStatusByItemId ?? {};
+  const afterStatuses = after.lifecycleStatusByItemId ?? {};
   const changed = new Set<string>();
   const itemIds = new Set([...Object.keys(beforeStatuses), ...Object.keys(afterStatuses)]);
 
@@ -218,31 +218,27 @@ function collectCodexProjectionAffectedOwnerIds(
   const beforeItems = input.beforeTurn?.items ?? [];
   const beforeLastWork = lastNonUserWorkItem(beforeItems);
   const afterLastWork = lastNonUserWorkItem(input.afterTurn.items);
-  if (
-    beforeLastWork !== afterLastWork ||
-    input.beforeTurn?.protocol.status !== input.afterTurn.protocol.status
-  ) {
+  if (beforeLastWork !== afterLastWork || input.beforeTurn?.status !== input.afterTurn.status) {
     if (beforeLastWork) affected.add(beforeLastWork.id);
     if (afterLastWork) affected.add(afterLastWork.id);
   }
 
-  const beforeTurnStatus = input.beforeTurn?.protocol.status;
-  if (beforeTurnStatus && beforeTurnStatus !== input.afterTurn.protocol.status) {
+  const beforeTurnStatus = input.beforeTurn?.status;
+  if (beforeTurnStatus && beforeTurnStatus !== input.afterTurn.status) {
     for (const item of [...beforeItems, ...input.afterTurn.items]) {
       if (
         doesCodexCanonicalItemProjectionChangeWithTurnStatus(
           item,
           beforeTurnStatus,
-          input.afterTurn.protocol.status,
+          input.afterTurn.status,
         )
       ) {
         affected.add(item.id);
       }
     }
   }
-
-  const beforeStartedAt = input.beforeTurn?.sidecar.commandExecutionStartedAtMsById;
-  const afterStartedAt = input.afterTurn.sidecar.commandExecutionStartedAtMsById;
+  const beforeStartedAt = input.beforeTurn?.commandExecutionStartedAtMsById;
+  const afterStartedAt = input.afterTurn.commandExecutionStartedAtMsById;
   const commandIds = new Set([
     ...Object.keys(beforeStartedAt ?? {}),
     ...Object.keys(afterStartedAt ?? {}),
@@ -252,13 +248,8 @@ function collectCodexProjectionAffectedOwnerIds(
       affected.add(commandId);
     }
   }
-
-  const beforeInterrupted = new Set(
-    input.beforeTurn?.sidecar.interruptedCommandExecutionItemIds ?? [],
-  );
-  const afterInterrupted = new Set(
-    input.afterTurn.sidecar.interruptedCommandExecutionItemIds ?? [],
-  );
+  const beforeInterrupted = new Set(input.beforeTurn?.interruptedCommandExecutionItemIds ?? []);
+  const afterInterrupted = new Set(input.afterTurn.interruptedCommandExecutionItemIds ?? []);
   for (const commandId of new Set([...beforeInterrupted, ...afterInterrupted])) {
     if (beforeInterrupted.has(commandId) !== afterInterrupted.has(commandId)) {
       affected.add(commandId);
@@ -286,17 +277,17 @@ function projectAffectedRawItems(
   changedOwnerIds: ReadonlySet<string>,
 ): ReadonlyMap<string, readonly CodexItemView[]> {
   const projectedByOwnerId = new Map<string, CodexItemView[]>();
-  const turnId = input.afterTurn.protocol.id;
+  const turnId = input.afterTurn.turnId;
   const projectedViews = projectCodexCanonicalVisibleTurnItemViews({
     threadId: input.threadId,
     turnId,
     items: input.afterTurn.items,
-    params: input.afterTurn.sidecar.params,
+    params: input.afterTurn.params,
     observedAtMs: input.observedAtMs,
-    turnStatus: input.afterTurn.protocol.status,
-    lifecycleStatusByItemId: input.afterTurn.sidecar.lifecycleStatusByItemId,
-    commandExecutionStartedAtMsById: input.afterTurn.sidecar.commandExecutionStartedAtMsById,
-    interruptedCommandExecutionItemIds: input.afterTurn.sidecar.interruptedCommandExecutionItemIds,
+    turnStatus: input.afterTurn.status,
+    lifecycleStatusByItemId: input.afterTurn.lifecycleStatusByItemId,
+    commandExecutionStartedAtMsById: input.afterTurn.commandExecutionStartedAtMsById,
+    interruptedCommandExecutionItemIds: input.afterTurn.interruptedCommandExecutionItemIds,
     isBackgroundSubagentsEnabled: input.isBackgroundSubagentsEnabled ?? true,
   });
   for (const view of projectedViews) {
@@ -327,8 +318,11 @@ function projectAffectedRawItems(
   }
   return projectedByOwnerId;
 }
-
-function orderScopedEntries<T extends ProjectionOwner & { readonly turnId: string | null }>(
+function orderScopedEntries<
+  T extends ProjectionOwner & {
+    readonly turnId: string | null;
+  },
+>(
   beforeItems: readonly CodexCanonicalItem[],
   afterItems: readonly CodexCanonicalItem[],
   currentEntries: readonly T[],
@@ -422,14 +416,14 @@ function projectChangedTranscriptEntries(
 function projectCompleteCanonicalTurnViews(
   input: ApplyCodexLifecycleProjectionDiffInput,
 ): readonly CodexItemView[] {
-  const targetTurnId = input.afterTurn.protocol.id;
+  const targetTurnId = input.afterTurn.turnId;
   const turnKey = input.turnKey ?? targetTurnId;
   if (turnKey === null) {
     throw new Error("A null-id canonical turn requires its occurrence key");
   }
   const paramsItemId = `${turnKey}:input`;
   const canonicalRawOwnerIds = new Set(input.afterTurn.items.map((item) => item.id));
-  const rawParamsClientId = input.afterTurn.sidecar.params.clientUserMessageId;
+  const rawParamsClientId = input.afterTurn.params.clientUserMessageId;
   const paramsClientId =
     typeof rawParamsClientId === "string" && rawParamsClientId.trim().length > 0
       ? rawParamsClientId.trim()
@@ -499,14 +493,14 @@ function projectCompleteCanonicalTurnTranscript(
   input: ApplyCodexLifecycleProjectionDiffInput,
   views: readonly CodexItemView[],
 ): readonly CodexTranscriptEntry[] {
-  const targetTurnId = input.afterTurn.protocol.id;
+  const targetTurnId = input.afterTurn.turnId;
   const turnKey = input.turnKey ?? targetTurnId;
   if (turnKey === null) {
     throw new Error("A null-id canonical turn requires its occurrence key");
   }
   const paramsItemId = `${turnKey}:input`;
   const canonicalRawOwnerIds = new Set(input.afterTurn.items.map((item) => item.id));
-  const rawParamsClientId = input.afterTurn.sidecar.params.clientUserMessageId;
+  const rawParamsClientId = input.afterTurn.params.clientUserMessageId;
   const paramsClientId =
     typeof rawParamsClientId === "string" && rawParamsClientId.trim().length > 0
       ? rawParamsClientId.trim()
@@ -558,7 +552,7 @@ function orderScopedTranscript(
     input.currentTranscript,
     affectedOwnerIds,
     projectedByOwnerId,
-    input.afterTurn.protocol.id,
+    input.afterTurn.turnId,
   );
 }
 
@@ -577,9 +571,9 @@ export function applyCodexLifecycleProjectionDiff(
   const visibilityChangedOwnerIds = input.beforeTurn
     ? collectCodexCanonicalUserMessageVisibilityChangedOwnerIds({
         beforeItems: input.beforeTurn.items,
-        beforeParams: input.beforeTurn.sidecar.params,
+        beforeParams: input.beforeTurn.params,
         afterItems: input.afterTurn.items,
-        afterParams: input.afterTurn.sidecar.params,
+        afterParams: input.afterTurn.params,
       })
     : new Set<string>();
   const changedOwnerIds = new Set(changedRawOwnerIds);
@@ -589,13 +583,10 @@ export function applyCodexLifecycleProjectionDiff(
     visibilityChangedOwnerIds,
   );
   const isTurnIdentityRebind =
-    input.beforeTurn !== null && input.beforeTurn.protocol.id !== input.afterTurn.protocol.id;
+    input.beforeTurn !== null && input.beforeTurn.turnId !== input.afterTurn.turnId;
   const didTurnParamsChange =
     input.beforeTurn !== null &&
-    !areCodexCanonicalTurnParamsEqual(
-      input.beforeTurn.sidecar.params,
-      input.afterTurn.sidecar.params,
-    );
+    !areCodexCanonicalTurnParamsEqual(input.beforeTurn.params, input.afterTurn.params);
   const isCompleteCanonicalTurnRebuild =
     input.beforeTurn === null ||
     isTurnIdentityRebind ||
@@ -610,9 +601,9 @@ export function applyCodexLifecycleProjectionDiff(
         input.currentViews,
         affectedOwnerIds,
         projectAffectedRawItems(input, affectedOwnerIds, changedOwnerIds),
-        input.afterTurn.protocol.id,
+        input.afterTurn.turnId,
       );
-  // Hook runs remain in the Turn sidecar; only canonical items own transcript identities.
+  // Hook runs remain Turn metadata; only canonical items own transcript identities.
   const transcript = isCompleteCanonicalTurnRebuild
     ? projectCompleteCanonicalTurnTranscript(input, views)
     : orderScopedTranscript(input, views, affectedOwnerIds);

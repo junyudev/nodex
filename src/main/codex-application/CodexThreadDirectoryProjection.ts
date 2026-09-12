@@ -1,3 +1,4 @@
+import { residentConversationTurns } from "../../shared/codex-conversation-state/codex-turn-mutation";
 import type { Thread } from "@nodex/codex-app-server-protocol/v2";
 import {
   projectAgentBackendBindingFromCore,
@@ -238,7 +239,7 @@ export const projectCodexThreadDirectorySnapshot = (input: {
         turns: [],
         canonicalState: input.before,
         canonicalRequests: [...(input.before?.requests ?? [])],
-        hasUnreadTurn: input.after.sidecar.hasUnreadTurn,
+        hasUnreadTurn: input.after.hasUnreadTurn,
         requests: [],
         queuedFollowUps: {
           status: "ready",
@@ -274,7 +275,7 @@ export const projectCodexThreadDirectorySnapshot = (input: {
     historyTopologyGeneration: input.historyTopologyGeneration,
     capabilityFlags: {
       ...projected.capabilityFlags,
-      canForkFromTurn: input.after.turns.length > 0,
+      canForkFromTurn: residentConversationTurns(input.after).length > 0,
     },
   };
 };

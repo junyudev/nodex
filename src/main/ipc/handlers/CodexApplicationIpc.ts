@@ -31,6 +31,11 @@ import type { ReviewStartResponse } from "@nodex/codex-app-server-protocol/v2/Re
 import type { TurnError } from "@nodex/codex-app-server-protocol/v2/TurnError";
 import type { IpcEvents } from "../../../shared/ipc-api";
 import type { CodexHooksListInput, CodexHooksStateUpdateInput } from "../../../shared/codex-hooks";
+import {
+  isCodexExecutionAssignmentValues,
+  type CodexExecutionAssignmentsPublication,
+} from "../../../shared/codex-execution-assignments";
+import type { CodexHttpFetchRequest } from "../../../shared/codex-http-fetch";
 import { DEFAULT_CODEX_HOST_ID } from "../../../shared/codex-host";
 import { parseCodexProtocolThreadItem } from "../../../shared/codex-protocol-thread-item";
 
@@ -133,6 +138,8 @@ import { ComposerExternalSuggestions } from "../../codex-application/ComposerExt
 import { ConversationCommands } from "../../codex-application/ConversationCommands";
 import { CodexPreferences } from "../../codex-application/CodexPreferences";
 import { CodexAttachments } from "../../codex-application/CodexAttachments";
+import { CodexExecutionAssignments } from "../../codex-application/CodexExecutionAssignments";
+import { CodexHttpFetch } from "../../codex-application/CodexHttpFetch";
 import { ElectronIpc } from "../../platform/electron/ElectronIpc";
 import { ElectronWindowHost } from "../../platform/electron/ElectronWindowHost";
 import { safeBroadcastToWindows } from "../../ipc-safe-send";
@@ -211,6 +218,102 @@ const parseFeedbackUpload = (input: FeedbackUploadParams) => ({
       }),
 });
 
+const parseExecutionAssignmentsPublication = (
+  input: CodexExecutionAssignmentsPublication,
+): CodexExecutionAssignmentsPublication => {
+  if (typeof input !== "object" || input === null || Array.isArray(input))
+    throw new TypeError("Invalid execution assignments publication");
+  for (const key of ["userId", "accountId", "authMethod", "stableId"] as const) {
+    const value = input[key];
+    if (value !== null && (typeof value !== "string" || value.length > 1_024))
+      throw new TypeError(`Invalid execution assignments ${key}`);
+  }
+  if (
+    input.sdkKey !== undefined &&
+    (typeof input.sdkKey !== "string" || input.sdkKey.length > 1_024)
+  )
+    throw new TypeError("Invalid execution assignments SDK key");
+  if (
+    input.payload !== undefined &&
+    input.payload !== null &&
+    (typeof input.payload !== "string" || input.payload.length > 16 * 1024 * 1024)
+  )
+    throw new TypeError("Invalid execution assignments payload");
+  if (
+    input.executionValues !== undefined &&
+    !isCodexExecutionAssignmentValues(input.executionValues)
+  )
+    throw new TypeError("Invalid execution assignment values");
+  if (
+    input.defaultEnableFeatures !== undefined &&
+    (typeof input.defaultEnableFeatures !== "object" ||
+      input.defaultEnableFeatures === null ||
+      Array.isArray(input.defaultEnableFeatures))
+  )
+    throw new TypeError("Invalid default execution features");
+  return input;
+};
+
+const parseCodexHttpFetchRequest = (input: CodexHttpFetchRequest): CodexHttpFetchRequest => {
+  if (typeof input !== "object" || input === null || Array.isArray(input))
+    throw new TypeError("Invalid HTTP fetch request");
+  if (
+    typeof input.requestId !== "string" ||
+    input.requestId.length === 0 ||
+    input.requestId.length > 256 ||
+    typeof input.url !== "string" ||
+    input.url.length === 0 ||
+    input.url.length > 32_768 ||
+    typeof input.method !== "string" ||
+    input.method.length === 0 ||
+    input.method.length > 32
+  ) {
+    throw new TypeError("Invalid HTTP fetch identity");
+  }
+  const url = new URL(input.url);
+  if (url.protocol !== "http:" && url.protocol !== "https:")
+    throw new TypeError("HTTP fetch URL must use http or https");
+  if (input.headers !== undefined) {
+    if (typeof input.headers !== "object" || input.headers === null || Array.isArray(input.headers))
+      throw new TypeError("Invalid HTTP fetch headers");
+    const entries = Object.entries(input.headers);
+    if (
+      entries.length > 256 ||
+      entries.some(
+        ([key, value]) =>
+          key.length === 0 ||
+          key.length > 1_024 ||
+          typeof value !== "string" ||
+          value.length > 16_384,
+      )
+    ) {
+      throw new TypeError("Invalid HTTP fetch headers");
+    }
+  }
+  if (
+    input.body !== undefined &&
+    typeof input.body !== "string" &&
+    !(input.body instanceof Uint8Array)
+  ) {
+    throw new TypeError("Invalid HTTP fetch body");
+  }
+  if (
+    (typeof input.body === "string" && Buffer.byteLength(input.body, "utf8") > 32 * 1024 * 1024) ||
+    (input.body instanceof Uint8Array && input.body.byteLength > 32 * 1024 * 1024)
+  ) {
+    throw new TypeError("HTTP fetch body is too large");
+  }
+  if (input.keepalive !== undefined && typeof input.keepalive !== "boolean")
+    throw new TypeError("Invalid HTTP keepalive value");
+  return input;
+};
+
+const parseCodexHttpFetchRequestId = (input: string): string => {
+  if (typeof input !== "string" || input.length === 0 || input.length > 256)
+    throw new TypeError("Invalid HTTP fetch request id");
+  return input;
+};
+
 export const live: Layer.Layer<
   never,
   never,
@@ -219,6 +322,8 @@ export const live: Layer.Layer<
   | MainConfig
   | CodexAccount
   | CodexConnection
+  | CodexExecutionAssignments
+  | CodexHttpFetch
   | CodexMedia
   | ComposerCatalog
   | ComposerExternalSuggestions
@@ -233,6 +338,8 @@ export const live: Layer.Layer<
     const config = yield* MainConfig;
     const account = yield* CodexAccount;
     const connection = yield* CodexConnection;
+    const executionAssignments = yield* CodexExecutionAssignments;
+    const httpFetch = yield* CodexHttpFetch;
     const media = yield* CodexMedia;
     const composer = yield* ComposerCatalog;
     const externalSuggestions = yield* ComposerExternalSuggestions;
@@ -279,7 +386,55 @@ export const live: Layer.Layer<
       Effect.forkScoped,
     );
 
+    yield* SubscriptionRef.changes(executionAssignments.snapshot).pipe(
+      Stream.runForEach(() =>
+        windows.all.pipe(
+          Effect.tap((all) =>
+            Effect.sync(() => {
+              safeBroadcastToWindows(all, "codex:event" satisfies keyof IpcEvents, [
+                { type: "executionAssignmentsChanged" },
+              ]);
+            }),
+          ),
+          Effect.asVoid,
+        ),
+      ),
+      Effect.forkScoped,
+    );
+
     yield* ipc.handleQuery("codex:account:read", () => account.refresh);
+    yield* ipc.handleQuery("codex:execution-assignments:read", (event) =>
+      trusted(event, "Execution settings").pipe(Effect.andThen(executionAssignments.read)),
+    );
+    yield* ipc.handleQuery("codex:execution-assignments:bootstrap", (event) =>
+      trusted(event, "Execution settings").pipe(Effect.andThen(executionAssignments.bootstrap)),
+    );
+    yield* ipc.handlePlainCommand(
+      "codex:execution-assignments:publish",
+      (event, input: CodexExecutionAssignmentsPublication) =>
+        trusted(event, "Execution settings").pipe(
+          Effect.andThen(
+            validate("execution-assignments-publication", () =>
+              parseExecutionAssignmentsPublication(input),
+            ),
+          ),
+          Effect.flatMap(executionAssignments.publish),
+        ),
+    );
+    yield* ipc.handleControl("codex:http-fetch", (event, input: CodexHttpFetchRequest) =>
+      trusted(event, "HTTP fetch").pipe(
+        Effect.andThen(validate("http-fetch-request", () => parseCodexHttpFetchRequest(input))),
+        Effect.flatMap(httpFetch.fetch),
+      ),
+    );
+    yield* ipc.handleControl("codex:http-fetch:cancel", (event, requestId: string) =>
+      trusted(event, "HTTP fetch").pipe(
+        Effect.andThen(
+          validate("http-fetch-cancel", () => parseCodexHttpFetchRequestId(requestId)),
+        ),
+        Effect.flatMap(httpFetch.cancel),
+      ),
+    );
     yield* ipc.handlePlainCommand(
       "codex:account:rate-limit-reset:consume",
       (_event, input: CodexRateLimitResetInput) => account.consumeRateLimitResetCredit(input),
@@ -292,7 +447,9 @@ export const live: Layer.Layer<
       account.cancelLogin(loginId),
     );
     yield* ipc.handlePlainCommand("codex:account:logout", () => account.logout);
-    yield* ipc.handleQuery("codex:connection:status", () => connection.read);
+    yield* ipc.handleQuery("codex:connection:status", (_event, hostId) =>
+      hostId === undefined ? connection.read : connection.readForHost(hostId),
+    );
     yield* ipc.handleQuery("codex:personality:get", () => Effect.sync(() => preferences.current()));
     yield* ipc.handlePlainCommand(
       "codex:personality:set",
@@ -300,16 +457,18 @@ export const live: Layer.Layer<
     );
     yield* ipc.handlePlainCommand(
       "codex:thread:goal:materialize-draft",
-      (_event, draft: CodexThreadGoalDraftInput) => attachments.materializeGoal(draft),
+      (_event, hostId: string, draft: CodexThreadGoalDraftInput) =>
+        attachments.materializeGoal(hostId, draft),
     );
     yield* ipc.handleControl(
       "codex:thread:goal:materialized-cleanup",
-      (_event, attachmentDirectory: string | null) =>
-        attachments.cleanupMaterializedGoal(attachmentDirectory),
+      (_event, hostId: string, attachmentDirectory: string | null) =>
+        attachments.cleanupMaterializedGoal(hostId, attachmentDirectory),
     );
     yield* ipc.handleQuery(
       "codex:thread:goal:editable-objective:read",
-      (_event, objective: string) => attachments.readEditableObjective(objective),
+      (_event, hostId: string, objective: string) =>
+        attachments.readEditableObjective(hostId, objective),
     );
     yield* ipc.handlePlainCommand(
       "codex:pasted-text:create",
@@ -398,19 +557,10 @@ export const live: Layer.Layer<
       (_event, input: CodexConversationImageAssetResolveInput) => media.resolveImage(input),
     );
 
-    yield* ipc.handleQuery("codex:model:list", () => composer.listModels);
-    yield* ipc.handleQuery("codex:collaboration-mode:list", () => composer.listCollaborationModes);
     yield* ipc.handleQuery("codex:experimental-features:list", (event) =>
       trusted(event, "Experimental feature access").pipe(
         Effect.andThen(composer.listExperimentalFeatures),
       ),
-    );
-    yield* ipc.handleQuery(
-      "codex:composer-plugins:list",
-      (_event, input: CodexComposerPluginListInput) =>
-        validate("composer-plugins-list", () => parseComposerInventoryCwds(input)).pipe(
-          Effect.flatMap((cwds) => composer.listPlugins({ hostId: input.hostId, cwds })),
-        ),
     );
     yield* ipc.handlePlainCommand(
       "codex:composer-plugins:activate",

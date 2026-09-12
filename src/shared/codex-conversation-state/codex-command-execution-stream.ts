@@ -1,9 +1,9 @@
+import { produce, type Draft } from "immer";
+import { residentConversationTurnEntries, residentConversationTurns, conversationTurnDraft } from "./codex-turn-mutation";
 import type { ServerNotification } from "@nodex/codex-app-server-protocol";
 import type { ThreadItem } from "@nodex/codex-app-server-protocol/v2";
 import type {
   CodexCanonicalConversationState,
-  CodexCanonicalItem,
-  CodexCanonicalTurnState,
 } from "./codex-conversation-state";
 import {
   appendCodexCommandOutputTail,
@@ -11,11 +11,6 @@ import {
   stripCodexCommandOutputTruncationPrefix,
   type CodexCommandOutputUpdate,
 } from "./codex-command-output-queue";
-import { codexUtf8ByteLength } from "../codex-terminal-interaction";
-
-export const CODEX_TERMINAL_COMMAND_ACTION_MAX_COUNT = 128;
-export const CODEX_TERMINAL_COMMAND_ACTION_MAX_UTF8_BYTES = 256 * 1_024;
-const CODEX_TERMINAL_COMMAND_ACTION_MAX_CANDIDATE_SCAN = 256;
 
 export type CodexCommandOutputNotification = Extract<
   ServerNotification,
@@ -117,85 +112,16 @@ function appendRawTerminalCommands(
   commands: readonly string[],
 ): CodexRawCommandExecution {
   if (commands.length === 0) return item;
-  const commandActions = boundedTerminalCommandActions(item.commandActions, commands);
-  if (
-    commandActions.length === item.commandActions.length &&
-    commandActions.every((action, index) => action === item.commandActions[index])
-  ) {
-    return item;
-  }
-  return { ...item, commandActions };
-}
-
-type CodexCommandAction = CodexRawCommandExecution["commandActions"][number];
-
-function optionalUtf8ByteLength(value: string | null): number {
-  return value === null ? 0 : codexUtf8ByteLength(value);
-}
-
-function codexCommandActionUtf8Bytes(action: CodexCommandAction): number {
-  if (action.type === "read") {
-    return (
-      codexUtf8ByteLength(action.command) +
-      codexUtf8ByteLength(action.name) +
-      codexUtf8ByteLength(action.path) +
-      32
-    );
-  }
-  if (action.type === "listFiles") {
-    return codexUtf8ByteLength(action.command) + optionalUtf8ByteLength(action.path) + 24;
-  }
-  if (action.type === "search") {
-    return (
-      codexUtf8ByteLength(action.command) +
-      optionalUtf8ByteLength(action.query) +
-      optionalUtf8ByteLength(action.path) +
-      32
-    );
-  }
-  return codexUtf8ByteLength(action.command) + 16;
-}
-
-/** Keeps a terminal command-action tail bounded even when the input stream contains many lines. */
-function boundedTerminalCommandActions(
-  existing: readonly CodexCommandAction[],
-  commands: readonly string[],
-): CodexCommandAction[] {
-  const newestFirst: CodexCommandAction[] = [];
-  let bytes = 0;
-  const appendIfWithinBudget = (action: CodexCommandAction): boolean => {
-    const actionBytes = codexCommandActionUtf8Bytes(action);
-    if (
-      newestFirst.length >= CODEX_TERMINAL_COMMAND_ACTION_MAX_COUNT ||
-      actionBytes > CODEX_TERMINAL_COMMAND_ACTION_MAX_UTF8_BYTES - bytes
-    ) {
-      return false;
-    }
-    newestFirst.push(action);
-    bytes += actionBytes;
-    return newestFirst.length < CODEX_TERMINAL_COMMAND_ACTION_MAX_COUNT;
+  return {
+    ...item,
+    commandActions: [
+      ...item.commandActions,
+      ...commands.map((command): CodexRawCommandExecution["commandActions"][number] => ({
+        type: "unknown",
+        command,
+      })),
+    ],
   };
-  const scanTail = <T>(
-    values: readonly T[],
-    toAction: (value: T) => CodexCommandAction,
-  ): boolean => {
-    const firstIndex = Math.max(
-      0,
-      values.length - CODEX_TERMINAL_COMMAND_ACTION_MAX_CANDIDATE_SCAN,
-    );
-    for (let index = values.length - 1; index >= firstIndex; index -= 1) {
-      const value = values[index];
-      if (value === undefined) continue;
-      if (!appendIfWithinBudget(toAction(value))) {
-        if (newestFirst.length >= CODEX_TERMINAL_COMMAND_ACTION_MAX_COUNT) return false;
-      }
-    }
-    return newestFirst.length < CODEX_TERMINAL_COMMAND_ACTION_MAX_COUNT;
-  };
-
-  const hasRoomAfterIncoming = scanTail(commands, (command) => ({ type: "unknown", command }));
-  if (hasRoomAfterIncoming) scanTail(existing, (action) => action);
-  return newestFirst.reverse();
 }
 
 function reduceRawCommandExecution(
@@ -252,65 +178,33 @@ export function reduceCodexTerminalCommandsRawTurns(
   );
 }
 
-function replaceCanonicalRawItem(
-  state: CodexCanonicalConversationState,
-  result: CodexCommandExecutionRawMutationResult,
-): CodexCanonicalConversationState {
-  if (!result.stateChanged || !result.rawItem) return state;
-  const turn = state.turns[result.turnIndex];
-  if (!turn) return state;
-  const items = [...turn.items];
-  items[result.itemIndex] = result.rawItem as CodexCanonicalItem;
-  const turns = [...state.turns];
-  turns[result.turnIndex] = {
-    ...turn,
-    items,
-  } as CodexCanonicalTurnState;
-  return { ...state, turns };
+type CommandMutation = Omit<CodexCommandExecutionCanonicalMutationResult, "state">;
+
+export function mutateCodexConversationCommandOutput(state: Draft<CodexCanonicalConversationState>, update: CodexCommandOutputUpdate): CommandMutation {
+  if (state.id !== update.conversationId) return { disposition: "foreignConversation", turnIndex: -1, itemIndex: -1, stateChanged: false };
+  const result = reduceCodexCommandOutputRawTurns(residentConversationTurns(state), update);
+  const entry = residentConversationTurnEntries(state)[result.turnIndex];
+  const item = entry ? conversationTurnDraft(state, entry.address)?.items[result.itemIndex] : null;
+  if (result.stateChanged && result.rawItem && item?.type === "commandExecution") item.aggregatedOutput = result.rawItem.aggregatedOutput;
+  return { disposition: result.disposition, turnIndex: result.turnIndex, itemIndex: result.itemIndex, stateChanged: result.stateChanged };
 }
-
-function reduceCanonicalCommandExecution(
-  state: CodexCanonicalConversationState,
-  conversationId: string,
-  reduce: () => CodexCommandExecutionRawMutationResult,
-): CodexCommandExecutionCanonicalMutationResult {
-  if (state.protocol.id !== conversationId) {
-    return {
-      state,
-      disposition: "foreignConversation",
-      turnIndex: -1,
-      itemIndex: -1,
-      stateChanged: false,
-    };
-  }
-
-  const result = reduce();
-  const nextState = replaceCanonicalRawItem(state, result);
-  return {
-    state: nextState,
-    disposition: result.disposition,
-    turnIndex: result.turnIndex,
-    itemIndex: result.itemIndex,
-    stateChanged: nextState !== state,
-  };
+export function mutateCodexConversationTerminalCommands(state: Draft<CodexCanonicalConversationState>, update: CodexTerminalCommandUpdate): CommandMutation {
+  if (state.id !== update.conversationId) return { disposition: "foreignConversation", turnIndex: -1, itemIndex: -1, stateChanged: false };
+  const result = reduceCodexTerminalCommandsRawTurns(residentConversationTurns(state), update);
+  const entry = residentConversationTurnEntries(state)[result.turnIndex];
+  const item = entry ? conversationTurnDraft(state, entry.address)?.items[result.itemIndex] : null;
+  if (result.stateChanged && item?.type === "commandExecution") item.commandActions.push(...update.commands.map((command) => ({ type: "unknown" as const, command })));
+  return { disposition: result.disposition, turnIndex: result.turnIndex, itemIndex: result.itemIndex, stateChanged: result.stateChanged };
 }
-
-export function reduceCodexConversationCommandOutput(
-  state: CodexCanonicalConversationState,
-  update: CodexCommandOutputUpdate,
-): CodexCommandExecutionCanonicalMutationResult {
-  return reduceCanonicalCommandExecution(state, update.conversationId, () =>
-    reduceCodexCommandOutputRawTurns(state.turns, update),
-  );
+export function reduceCodexConversationCommandOutput(state: CodexCanonicalConversationState, update: CodexCommandOutputUpdate): CodexCommandExecutionCanonicalMutationResult {
+  let operation!: CommandMutation;
+  const next = produce(state, (draft) => { operation = mutateCodexConversationCommandOutput(draft, update); });
+  return { ...operation, state: next, stateChanged: next !== state };
 }
-
-export function reduceCodexConversationTerminalCommands(
-  state: CodexCanonicalConversationState,
-  update: CodexTerminalCommandUpdate,
-): CodexCommandExecutionCanonicalMutationResult {
-  return reduceCanonicalCommandExecution(state, update.conversationId, () =>
-    reduceCodexTerminalCommandsRawTurns(state.turns, update),
-  );
+export function reduceCodexConversationTerminalCommands(state: CodexCanonicalConversationState, update: CodexTerminalCommandUpdate): CodexCommandExecutionCanonicalMutationResult {
+  let operation!: CommandMutation;
+  const next = produce(state, (draft) => { operation = mutateCodexConversationTerminalCommands(draft, update); });
+  return { ...operation, state: next, stateChanged: next !== state };
 }
 
 export function isCodexCommandOutputNotification(

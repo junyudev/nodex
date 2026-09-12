@@ -1,3 +1,9 @@
+import type { CodexRendererResumePreparation } from "./codex-renderer-resume";
+import type {
+  CodexRendererRequestCaller,
+  CodexRendererNativeRequestInput,
+  CodexRendererRequestAbandonment,
+} from "./codex-renderer-request";
 import type { FileSearchStartInput } from "./file-search";
 import type { FuzzyFileSearchSessionUpdateParams } from "@nodex/codex-app-server-protocol";
 import type { FuzzyFileSearchSessionStopParams } from "@nodex/codex-app-server-protocol";
@@ -30,21 +36,14 @@ import type {
   AcpBackendThreadStartResult,
 } from "./agent-backend-api";
 import type { AcpBackendSessionPresentation, AcpConversationSnapshot } from "./acp-conversation";
+import type { CodexPersistedHistorySearchResult } from "./codex-persisted-history-search";
 import type {
-  CodexPersistedHistoryOccurrenceHydrateRequest,
-  CodexPersistedHistoryOccurrenceHydrateResult,
-  CodexPersistedHistorySearchResult,
-} from "./codex-persisted-history-search";
-import type {
-  CodexConversationHistoryPageRequest,
-  CodexConversationHistoryPageResult,
-} from "./codex-conversation-history-page";
-import type {
-  CodexPromptRailIndexCommandResult,
-  CodexPromptRailIndexRequest,
-  CodexPromptRailRevealCommandResult,
-  CodexPromptRailRevealRequest,
-} from "./codex-prompt-rail-history";
+  CodexExecutionAssignmentsPublication,
+  CodexExecutionAssignmentsSnapshot,
+  CodexExecutionStatsigBootstrap,
+} from "./codex-execution-assignments";
+import type { CodexHttpFetchRequest, CodexHttpFetchResult } from "./codex-http-fetch";
+
 import type { GitRepositoryIdentity } from "./git-repository-identity";
 import type { ContentAccessContext } from "./content-access-context";
 import type { LocalPathPresentationContext } from "./local-path-presentation";
@@ -260,20 +259,17 @@ import type {
   CodexConversationImageAssetResolveInput,
   CodexConversationImageAssetResolveResult,
   ProtocolDynamicToolCallResponse,
-  CodexCollaborationModePreset,
   CodexCollaborationModeKind,
   CodexCollaborationModeState,
   CodexConversationThreadSettings,
   CodexConversationThreadSettingsPatch,
   CodexPersonality,
   CodexEvent,
-  CodexOwnerAppServerRequestInput,
   CodexAgentMode,
   CodexReviewStartParams,
   CodexReviewStartResponse,
   CodexRendererClientRequestMessage,
   CodexRendererClientResponseMessage,
-  CodexRendererConversationResumeResult,
   CodexAutomationRunsInboxResponse,
   CodexAutomationRunArchiveInput,
   CodexAutomationRunDeleteInput,
@@ -295,12 +291,6 @@ import type {
   CodexScheduledAutomationRunNowInput,
   CodexScheduledAutomationRunNowResponse,
   CodexScheduledAutomationUpdateInput,
-  CodexThreadFollowerActionInput,
-  CodexThreadFollowerSnapshotAppliedInput,
-  CodexThreadOwnerNotificationAckInput,
-  CodexThreadOwnerStreamStatePublishResult,
-  CodexThreadOwnerStreamStatePublishInput,
-  CodexThreadStreamResyncRequestInput,
   CodexSidebarRefreshPolicy,
   CodexSidebarRefreshReason,
   CodexSidebarSnapshot,
@@ -334,14 +324,11 @@ import type {
   CodexComposerAppshotTargetResult,
   CodexComposerChatGptConversationListInput,
   CodexComposerChatGptConversationListResult,
-  CodexComposerPlugin,
   CodexComposerPluginActivateInput,
-  CodexComposerPluginListInput,
   CodexComposerSiteListResult,
   CodexComposerSkill,
   CodexComposerSkillListInput,
   CodexHostMessage,
-  CodexModelOption,
   CodexMcpServerElicitationResponse,
   CodexPermissionMode,
   CodexPermissionRequestResponse,
@@ -1796,8 +1783,28 @@ export interface IpcApi {
   };
 
   // Codex
-  "codex:connection:status": { args: []; result: CodexConnectionState };
+  "codex:connection:status": { args: [hostId?: string]; result: CodexConnectionState };
   "codex:account:read": { args: []; result: CodexAccountSnapshot };
+  "codex:execution-assignments:read": {
+    args: [];
+    result: CodexExecutionAssignmentsSnapshot;
+  };
+  "codex:execution-assignments:bootstrap": {
+    args: [];
+    result: CodexExecutionStatsigBootstrap;
+  };
+  "codex:execution-assignments:publish": {
+    args: [publication: CodexExecutionAssignmentsPublication];
+    result: void;
+  };
+  "codex:http-fetch": {
+    args: [request: CodexHttpFetchRequest];
+    result: CodexHttpFetchResult;
+  };
+  "codex:http-fetch:cancel": {
+    args: [requestId: string];
+    result: void;
+  };
   "codex:account:rate-limit-reset:consume": {
     args: [input: CodexRateLimitResetInput];
     result: CodexRateLimitResetResult;
@@ -2035,14 +2042,6 @@ export interface IpcApi {
     args: [input: CodexAutomationRunMarkAllReadInput];
     result: CodexAutomationRunMarkAllReadResponse;
   };
-  "codex:model:list": {
-    args: [];
-    result: CodexModelOption[];
-  };
-  "codex:composer-plugins:list": {
-    args: [input: CodexComposerPluginListInput];
-    result: CodexComposerPlugin[];
-  };
   "codex:composer-plugins:activate": {
     args: [input: CodexComposerPluginActivateInput];
     result: void;
@@ -2087,10 +2086,6 @@ export interface IpcApi {
     args: [input: CodexHooksStateUpdateInput];
     result: void;
   };
-  "codex:collaboration-mode:list": {
-    args: [];
-    result: CodexCollaborationModePreset[];
-  };
   "codex:projectless-thread-cwd": {
     args: [input: CodexProjectlessThreadCwdInput];
     result: CodexProjectlessWorkspace;
@@ -2115,43 +2110,166 @@ export interface IpcApi {
     args: [response: CodexRendererClientResponseMessage];
     result: boolean;
   };
-  "codex:thread-owner:stream-state:publish": {
-    args: [input: CodexThreadOwnerStreamStatePublishInput];
-    result: CodexThreadOwnerStreamStatePublishResult;
-  };
-  "codex:thread-follower:snapshot-applied": {
-    args: [input: CodexThreadFollowerSnapshotAppliedInput];
-    result: boolean;
-  };
-  "codex:thread:stream-resync:request": {
-    args: [input: CodexThreadStreamResyncRequestInput];
-    result: boolean;
-  };
-  "codex:thread:resume-buffer:release": {
+  "codex:thread:history-hydration:prepare": {
     args: [threadId: string];
+    result: {
+      summary: CodexThreadSummary;
+      context: import("./codex-conversation-state/codex-conversation-state").CreateCodexCanonicalHydratedConversationStateOptions;
+    };
+  };
+  "codex:app-server:host-context": {
+    args: [hostId: string];
+    result: import("./codex-renderer-resume").CodexRendererHostContext;
+  };
+  "codex:thread:native-session:prepare": {
+    args: [input: CodexThreadStartForSessionInput];
+    result: import("./codex-native-thread-start").CodexNativeSessionLaunchPreparation;
+  };
+  "codex:thread:native-session:execute": {
+    args: [
+      input: {
+        hostId: string;
+        receiptId: string;
+        caller: import("./codex-renderer-request").CodexRendererRequestCaller;
+        trace?: import("./codex-request-lifecycle").CodexRequestTraceContext | null;
+      },
+    ];
+    result: import("./codex-native-request-outcome").CodexNativeRequestOutcome<
+      import("@nodex/codex-app-server-protocol/v2").ThreadStartResponse
+    >;
+  };
+  "codex:thread:native-session:accept": {
+    args: [receiptId: string];
+    result: CodexThreadStartForSessionResult;
+  };
+  "codex:thread:native-session:release": { args: [receiptId: string]; result: void };
+  "codex:turn:native-fresh:prepare": {
+    args: [threadId: string, launchId: string];
+    result: import("./codex-thread-follower-request").ConversationFollowerTurnStart;
+  };
+  "codex:turn:native-fresh:execute": {
+    args: [
+      input: {
+        hostId: string;
+        threadId: string;
+        launchId: string;
+        request: import("@nodex/codex-app-server-protocol/v2").TurnStartParams;
+        caller: import("./codex-renderer-request").CodexRendererRequestCaller;
+        trace?: import("./codex-request-lifecycle").CodexRequestTraceContext | null;
+      },
+    ];
+    result: import("./codex-native-request-outcome").CodexNativeRequestOutcome<
+      import("@nodex/codex-app-server-protocol/v2").TurnStartResponse
+    >;
+  };
+  "codex:thread:native-fork:prepare": {
+    args: [sourceThreadId: string, lastTurnId: string];
+    result: import("./codex-native-fork").CodexNativeForkPreparation;
+  };
+  "codex:thread:native-fork:execute": {
+    args: [
+      input: {
+        hostId: string;
+        receiptId: string;
+        caller: import("./codex-renderer-request").CodexRendererRequestCaller;
+        trace?: import("./codex-request-lifecycle").CodexRequestTraceContext | null;
+      },
+    ];
+    result: import("./codex-native-request-outcome").CodexNativeRequestOutcome<
+      import("@nodex/codex-app-server-protocol/v2").ThreadForkResponse
+    >;
+  };
+  "codex:thread:native-fork:accept": {
+    args: [receiptId: string];
+    result: import("./codex-native-fork").CodexNativeForkAcceptance;
+  };
+  "codex:thread:native-fork:release": { args: [receiptId: string]; result: void };
+  "codex:turn:native:inject": {
+    args: [
+      input: {
+        hostId: string;
+        operation: import("./codex-thread-follower-request").ConversationFollowerTurnStart;
+        caller: import("./codex-renderer-request").CodexRendererRequestCaller;
+        trace?: import("./codex-request-lifecycle").CodexRequestTraceContext | null;
+      },
+    ];
+    result: import("./codex-native-request-outcome").CodexNativeRequestOutcome<void>;
+  };
+  "codex:turn:native-steer:prepare": {
+    args: [input: CodexSteerTurnInput];
+    result: import("./codex-conversation-state/codex-owner-steer").CanonicalOwnerSteerInput;
+  };
+  "codex:turn:native-steer:inspect": {
+    args: [clientUserMessageId: string];
+    result: import("./codex-conversation-state/codex-owner-steer").CanonicalOwnerSteerInput;
+  };
+  "codex:turn:native-steer:execute": {
+    args: [
+      input: {
+        hostId: string;
+        request: import("./codex-conversation-state/codex-owner-steer").CanonicalSteerNativeRequest;
+        clientUserMessageId: string;
+        caller: CodexRendererRequestCaller;
+        trace?: import("./codex-request-lifecycle").CodexRequestTraceContext | null;
+      },
+    ];
+    result: import("./codex-native-request-outcome").CodexNativeRequestOutcome<
+      import("@nodex/codex-app-server-protocol/v2/TurnSteerResponse").TurnSteerResponse
+    >;
+  };
+  "codex:turn:native-steer:release": { args: [clientUserMessageId: string]; result: void };
+  "codex:turn:native:prepare": {
+    args: [
+      input: {
+        threadId: string;
+        prompt: string;
+        opts?: CodexTurnStartOptions;
+        presentationTicket?: CodexTurnPresentationTicket;
+        clientUserMessageId: string;
+        preparedPrompt: import("./types").CodexPreparedPrompt;
+        originalRequest?: import("@nodex/codex-app-server-protocol/v2/TurnStartParams").TurnStartParams;
+        sourceContext?: import("./codex-thread-follower-request").ConversationFollowerTurnStart["context"];
+      },
+    ];
+    result: import("./codex-thread-follower-request").ConversationFollowerTurnStart;
+  };
+  "codex:turn:native:inspect": {
+    args: [turnStart: import("./codex-thread-follower-request").ConversationFollowerTurnStart];
+    result: import("./codex-conversation-state/codex-turn-execution").CodexInspectedTurnStart;
+  };
+  "codex:turn:native:execute": {
+    args: [
+      input: {
+        hostId: string;
+        request: import("@nodex/codex-app-server-protocol/v2/TurnStartParams").TurnStartParams;
+        caller: CodexRendererRequestCaller;
+        trace?: import("./codex-request-lifecycle").CodexRequestTraceContext | null;
+      },
+    ];
+    result: import("./codex-native-request-outcome").CodexNativeRequestOutcome<
+      import("@nodex/codex-app-server-protocol/v2/TurnStartResponse").TurnStartResponse
+    >;
+  };
+  "codex:turn:native:release": { args: [clientUserMessageId: string]; result: void };
+  "codex:app-server:respond": {
+    args: [input: import("./codex-native-server-response").CodexNativeServerResponseInput];
     result: boolean;
   };
-  "codex:thread-owner:notification:ack": {
-    args: [input: CodexThreadOwnerNotificationAckInput];
-    result: boolean;
+  "codex:app-server:request": {
+    args: [input: CodexRendererNativeRequestInput];
+    result: import("./codex-native-request-outcome").CodexNativeRequestOutcome<unknown>;
   };
-  "codex:thread-owner:pending-requests:replay": {
-    args: [threadId: string];
-    result: number;
+  "codex:app-server:request:abandon": {
+    args: [input: CodexRendererRequestAbandonment];
+    result: void;
   };
-  "codex:thread-owner:app-server-request": {
-    args: [input: CodexOwnerAppServerRequestInput];
-    result: unknown;
-  };
-  "codex:thread-follower:action": {
-    args: [input: CodexThreadFollowerActionInput];
-    result: unknown;
-  };
+
   "codex:dynamic-tool-call:respond": {
     args: [
       conversationId: string,
       requestId: CodexProtocolRequestId,
       context: {
+        nativeOccurrence: import("./types").CodexNativeIngressIdentity;
         permissionMode: CodexAgentMode;
         serviceTierSelector: { type: "standard" } | { type: "custom"; serviceTier: string };
       },
@@ -2269,13 +2387,22 @@ export interface IpcApi {
     args: [threadId: string];
     result: CodexConversationSnapshot | null;
   };
-  "codex:thread:resume:request": {
-    args: [threadId: string];
-    result: CodexRendererConversationResumeResult | null;
+  "codex:thread:resume:prepare": {
+    args: [
+      threadId: string,
+      metadata?: import("@nodex/codex-app-server-protocol/v2/Thread").Thread | null,
+      overrides?: import("./codex-conversation-state/codex-resume-permissions").CanonicalResumeOverrides,
+      options?: import("./codex-conversation-state/codex-resume-request").ConversationResumePreparationOptions,
+    ];
+    result: CodexRendererResumePreparation;
   };
+  "codex:thread:resume:retry": { args: [receiptId: string]; result: string };
+  "codex:thread:resume:accept": { args: [receiptId: string]; result: CodexThreadSummary };
+  "codex:thread:resume:release": { args: [receiptId: string]; result: void };
+
   "codex:thread:fresh-owner:adopt": {
     args: [threadId: string, launchId: string];
-    result: Extract<CodexRendererConversationResumeResult, { role: "owner" }>;
+    result: import("./codex-native-thread-start").CodexNativeFreshLaunchAdoption;
   };
   "codex:subagents:overview:read": {
     args: [input: CodexSubagentOverviewReadInput];
@@ -2287,10 +2414,6 @@ export interface IpcApi {
   };
   "codex:thread:view-active:set": {
     args: [input: { threadId: string; active: boolean }];
-    result: boolean;
-  };
-  "codex:thread:stream-following:set": {
-    args: [input: { threadId: string; following: boolean; reannounce?: boolean }];
     result: boolean;
   };
   "codex:thread:presentation:set": {
@@ -2309,29 +2432,9 @@ export interface IpcApi {
     args: [input: CodexUserInputAutoResolutionTarget];
     result: boolean;
   };
-  "codex:thread:history-page:load": {
-    args: [request: CodexConversationHistoryPageRequest];
-    result: CodexConversationHistoryPageResult;
-  };
-  "codex:thread:prompt-rail:index": {
-    args: [request: CodexPromptRailIndexRequest];
-    result: CodexPromptRailIndexCommandResult;
-  };
-  "codex:thread:prompt-rail:reveal": {
-    args: [request: CodexPromptRailRevealRequest];
-    result: CodexPromptRailRevealCommandResult;
-  };
-  "codex:thread:prompt-rail:cancel": {
-    args: [requestId: string];
-    result: boolean;
-  };
   "codex:thread:history-search": {
     args: [threadId: string, query: string];
     result: CodexPersistedHistorySearchResult;
-  };
-  "codex:thread:history-search:hydrate": {
-    args: [input: CodexPersistedHistoryOccurrenceHydrateRequest];
-    result: CodexPersistedHistoryOccurrenceHydrateResult;
   };
   "codex:thread:history-export:start": {
     args: [threadId: string];
@@ -2369,13 +2472,25 @@ export interface IpcApi {
   };
   "codex:personality:get": { args: []; result: CodexPersonality };
   "codex:personality:set": { args: [personality: CodexPersonality]; result: void };
+  "codex:thread:interrupt-effects": {
+    args: [hostId: string, threadId: string, effect: "started" | "descendants" | "steered"];
+    result: void;
+  };
+  "codex:thread:node-repl:cleanup": {
+    args: [hostId: string, threadId: string, turnId: string];
+    result: void;
+  };
+  "codex:thread:settings:prepare-profile": {
+    args: [
+      threadId: string,
+      requested: import("./codex-execution-profile").CodexExecutionProfile,
+      change: CodexConversationThreadSettingsPatch["executionProfileChange"],
+    ];
+    result: import("./codex-execution-profile").CodexExecutionProfile;
+  };
   "codex:thread:settings:update": {
     args: [threadId: string, patch: CodexConversationThreadSettingsPatch];
     result: CodexConversationThreadSettings;
-  };
-  "codex:thread:plan-implementation:remove": {
-    args: [threadId: string, turnId: string];
-    result: boolean;
   };
   "codex:turn:start": {
     args: [
@@ -2390,44 +2505,42 @@ export interface IpcApi {
     args: [input: CodexReviewStartParams];
     result: CodexReviewStartResponse;
   };
-  "codex:thread:follow-up:enqueue": {
+  "codex:queued-messages:prepare-native": {
+    args: [
+      threadId: string,
+      message: import("./codex-queued-message").CodexQueuedMessage,
+      mode: "start" | "steer",
+      preparation: import("./codex-queued-message").CodexQueuedNativePreparationContext,
+    ];
+    result: {
+      start?: import("./codex-thread-follower-request").ConversationFollowerTurnStart;
+      steer: import("./codex-conversation-state/codex-owner-steer").CanonicalOwnerSteerInput;
+      requiresIdle: boolean;
+    };
+  };
+  "codex:queued-messages:read": {
+    args: [];
+    result: import("./codex-queued-message").CodexQueuedMessageState;
+  };
+  "codex:queued-messages:write": {
+    args: [state: import("./codex-queued-message").CodexQueuedMessageState];
+    result: void;
+  };
+  "codex:queued-messages:prepare": {
     args: [
       threadId: string,
       prompt: string,
-      opts?: CodexTurnStartOptions,
+      opts?: import("./codex-queued-message").CodexQueuedMessagePrepareOptions,
       presentationTicket?: CodexTurnPresentationTicket,
     ];
-    result: void;
+    result: import("./codex-queued-message").CodexQueuedMessage;
   };
-  "codex:thread:follow-up:remove": {
-    args: [threadId: string, followUpId: string];
-    result: void;
-  };
-  "codex:thread:follow-up:replace": {
-    args: [
-      threadId: string,
-      followUpId: string,
-      expectedLedgerRevision: number,
-      prompt: string,
-      opts?: CodexTurnStartOptions,
-      presentationTicket?: CodexTurnPresentationTicket,
-    ];
+  "codex:queued-messages:acquire-send": {
+    args: [identity: { conversationId: string; messageId: string; lockId: string }];
     result: boolean;
   };
-  "codex:thread:follow-up:reorder": {
-    args: [threadId: string, orderedFollowUpIds: string[]];
-    result: void;
-  };
-  "codex:thread:follow-up:resume": {
-    args: [threadId: string];
-    result: boolean;
-  };
-  "codex:thread:follow-up:resolve-after-fresh-start": {
-    args: [threadId: string, expectedLedgerRevision: number, resolution: "resume" | "clear"];
-    result: boolean;
-  };
-  "codex:thread:follow-up:send-now": {
-    args: [threadId: string, followUpId: string];
+  "codex:queued-messages:release-send": {
+    args: [identity: { conversationId: string; messageId: string; lockId: string; sent: boolean }];
     result: void;
   };
   "codex:thread:compact:start": {
@@ -2447,15 +2560,15 @@ export interface IpcApi {
     result: void;
   };
   "codex:thread:goal:materialize-draft": {
-    args: [draft: CodexThreadGoalDraftInput];
+    args: [hostId: string, draft: CodexThreadGoalDraftInput];
     result: CodexThreadGoalMaterializedDraft;
   };
   "codex:thread:goal:materialized-cleanup": {
-    args: [attachmentDirectory: string | null];
+    args: [hostId: string, attachmentDirectory: string | null];
     result: void;
   };
   "codex:thread:goal:editable-objective:read": {
-    args: [objective: string];
+    args: [hostId: string, objective: string];
     result: string;
   };
   "codex:pasted-text:create": {

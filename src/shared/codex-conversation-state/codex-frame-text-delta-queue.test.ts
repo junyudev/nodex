@@ -257,24 +257,16 @@ describe("CodexFrameTextDeltaQueue", () => {
     expect(callbacks.join(",")).toBe("first,second");
   });
 
-  test("pressure flushes a bounded terminal callback batch before admitting more", () => {
+  test("retains all terminal callbacks until the shared frame drain finishes", () => {
     const scheduler = new ManualFrameTextDeltaScheduler();
-    const order: string[] = [];
-    const queue = new CodexFrameTextDeltaQueue<SequencedDelta>({
-      scheduler,
-      maxDrainCallbacks: 2,
-      onFlush: () => order.push("text"),
-    });
-
+    const completed: number[] = [];
+    const queue = new CodexFrameTextDeltaQueue<SequencedDelta>({ scheduler, onFlush: () => {} });
     queue.enqueue(delta("x".repeat(100)));
-    expect(queue.drainBefore(() => order.push("first"), "conversation-a")).toBe(true);
-    expect(queue.drainBefore(() => order.push("second"), "conversation-a")).toBe(true);
-    expect(queue.drainBefore(() => order.push("third"), "conversation-a")).toBe(false);
-
-    expect(order).toEqual(["text", "first", "second"]);
-    order.push("third");
-    expect(order).toEqual(["text", "first", "second", "third"]);
-    expect(scheduler.frameCount).toBe(0);
+    for (let index = 0; index < 1100; index += 1)
+      expect(queue.drainBefore(() => completed.push(index))).toBe(true);
+    expect(completed).toEqual([]);
+    while (scheduler.frameCount > 0) scheduler.runNextFrame();
+    expect(completed).toEqual(Array.from({ length: 1100 }, (_, index) => index));
   });
 
   test("disposal drops pending buffers and terminal callbacks", () => {
@@ -299,69 +291,69 @@ describe("CodexFrameTextDeltaQueue", () => {
     expect(callbackCalls).toBe(0);
   });
 
-  test("rejects per-key and aggregate pressure before concatenating another delta", () => {
+  test("retains all prose until a normal frame or completion drain", () => {
     const scheduler = new ManualFrameTextDeltaScheduler();
-    const flushed: string[] = [];
+    const flushed: SequencedDelta[][] = [];
     const queue = new CodexFrameTextDeltaQueue<SequencedDelta>({
       scheduler,
-      maxBufferedKeys: 2,
-      maxBufferedCodeUnitsPerKey: 4,
-      maxBufferedCodeUnits: 5,
-      onFlush: (updates) => flushed.push(...updates.map((update) => update.delta)),
+      onFlush: (updates) => flushed.push([...updates]),
     });
-
-    expect(queue.enqueue(delta("1234"))).toEqual({ accepted: true });
-    expect(queue.enqueue(delta("5"))).toMatchObject({
-      accepted: false,
-      reason: "per-key-code-units",
-      bufferedCodeUnits: 4,
-      incomingCodeUnits: 1,
-    });
-    expect(
-      queue.enqueue(delta("x", { conversationId: "conversation-b", itemId: "item-b" })),
-    ).toEqual({ accepted: true });
-    expect(
-      queue.enqueue(delta("y", { conversationId: "conversation-b", itemId: "item-b" })),
-    ).toMatchObject({
-      accepted: false,
-      reason: "total-code-units",
-      bufferedCodeUnits: 5,
-      incomingCodeUnits: 1,
-    });
-
+    const updates = Array.from({ length: 1100 }, (_, index) =>
+      delta("x".repeat(index === 0 ? 600000 : 4000), { itemId: `item-${index}` }),
+    );
+    for (const update of updates) queue.enqueue(update);
+    expect(flushed).toEqual([]);
     scheduler.runNextFrame();
-    expect(flushed).toEqual(["1234", "x"]);
+    expect(flushed[0]?.map((update) => update.delta.length)).toEqual(updates.map(() => 24));
+    queue.flushNow();
+    expect(flushed[1]?.map((update) => update.delta.length)).toEqual(
+      updates.map((update) => update.delta.length - 24),
+    );
   });
 
-  test("bounds distinct keys and releases admission as frames or conversations drain", () => {
+  test("flushes reasoning summaries in full while prose remains frame-sized", () => {
     const scheduler = new ManualFrameTextDeltaScheduler();
-    const flushed: string[] = [];
+    const flushed: SequencedDelta[][] = [];
     const queue = new CodexFrameTextDeltaQueue<SequencedDelta>({
       scheduler,
-      targetCharsPerFrame: 2,
-      maxBufferedKeys: 2,
-      maxBufferedCodeUnitsPerKey: 8,
-      maxBufferedCodeUnits: 6,
+      onFlush: (updates) => flushed.push([...updates]),
+    });
+    queue.enqueue(
+      delta("s".repeat(100), { target: { type: "reasoningSummary", summaryIndex: 0 } }),
+    );
+    queue.enqueue(delta("a".repeat(100)));
+    scheduler.runNextFrame();
+    expect(flushed[0]?.map((update) => update.delta.length)).toEqual([100, 24]);
+    queue.dispose();
+  });
+
+  test("visibility loss flushes pending prose and releases the visibility subscription", () => {
+    const scheduler = new ManualFrameTextDeltaScheduler();
+    let changed: (() => void) | null = null;
+    const visibleScheduler: CodexFrameTextDeltaScheduler = {
+      canUseAnimationFrame: scheduler.canUseAnimationFrame,
+      scheduleAnimationFrame: scheduler.scheduleAnimationFrame,
+      scheduleTimeout: scheduler.scheduleTimeout,
+      subscribeVisibilityChange: (callback) => {
+        changed = callback;
+        return () => {
+          changed = null;
+        };
+      },
+    };
+    const flushed: string[] = [];
+    const queue = new CodexFrameTextDeltaQueue<SequencedDelta>({
+      scheduler: visibleScheduler,
       onFlush: (updates) => flushed.push(...updates.map((update) => update.delta)),
     });
-
-    expect(queue.enqueue(delta("1234"))).toEqual({ accepted: true });
-    expect(
-      queue.enqueue(delta("b", { conversationId: "conversation-b", itemId: "item-b" })),
-    ).toEqual({ accepted: true });
-    expect(
-      queue.enqueue(delta("c", { conversationId: "conversation-c", itemId: "item-c" })),
-    ).toMatchObject({ accepted: false, reason: "key-count" });
-
-    scheduler.runNextFrame();
-    expect(flushed).toEqual(["12", "b"]);
-    expect(
-      queue.enqueue(delta("cd", { conversationId: "conversation-c", itemId: "item-c" })),
-    ).toEqual({ accepted: true });
-    queue.discardConversation("conversation-a");
-    expect(
-      queue.enqueue(delta("ef", { conversationId: "conversation-d", itemId: "item-d" })),
-    ).toEqual({ accepted: true });
+    queue.enqueue(delta("a".repeat(100)));
+    scheduler.canAnimate = false;
+    const onVisibilityChange = changed as (() => void) | null;
+    if (!onVisibilityChange) throw new Error("No visibility subscription");
+    onVisibilityChange();
+    expect(flushed).toEqual(["a".repeat(100)]);
+    expect(scheduler.frameCount).toBe(0);
+    expect(changed).toBeNull();
   });
 
   test("scoped teardown drops only that conversation without flushing or stranding others", () => {
@@ -396,7 +388,7 @@ describe("CodexFrameTextDeltaQueue", () => {
     expect(callbacks.join(",")).toBe("b-completed");
   });
 
-  test("terminal flush publishes only the addressed conversation and preserves the global timer", () => {
+  test("terminal flush publishes the complete manager batch and cancels its frame", () => {
     const scheduler = new ManualFrameTextDeltaScheduler();
     const flushed: string[] = [];
     const terminal: boolean[] = [];
@@ -416,14 +408,10 @@ describe("CodexFrameTextDeltaQueue", () => {
       }),
     );
 
-    queue.flushConversationNow("conversation-a");
-    expect(flushed).toEqual(["conversation-a:a"]);
+    queue.flushNow({ terminalDrainCommit: true });
+    expect(flushed).toEqual(["conversation-a:a,conversation-b:b"]);
     expect(terminal).toEqual([true]);
-    expect(scheduler.frameCount).toBe(1);
-
-    scheduler.runNextFrame();
-    expect(flushed).toEqual(["conversation-a:a", "conversation-b:b"]);
-    expect(terminal).toEqual([true, false]);
+    expect(scheduler.frameCount).toBe(0);
   });
 
   test("scoped teardown completes surviving drains when it removes the last buffer", () => {

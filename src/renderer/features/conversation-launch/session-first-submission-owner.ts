@@ -19,6 +19,7 @@ export interface FirstSubmissionIdentity {
 export interface FirstSubmissionHandle extends FirstSubmissionIdentity {
   readonly originProjectId: string | null;
   readonly originSessionId: string;
+  readonly acceptedAt: number;
 }
 
 export interface FirstSubmissionFailure {
@@ -64,6 +65,11 @@ export interface BeginFirstSubmissionInput {
 interface SessionFirstSubmissionOwnerDependencies {
   readonly createId?: () => string;
   readonly now?: () => number;
+}
+
+function submissionNow(): number {
+  if (typeof performance !== "undefined") return performance.timeOrigin + performance.now();
+  return Date.now();
 }
 
 type FirstSubmissionPatch = Partial<
@@ -277,7 +283,7 @@ export function createSessionFirstSubmissionOwner(
   dependencies: SessionFirstSubmissionOwnerDependencies = {},
 ): SessionFirstSubmissionOwner {
   const createId = dependencies.createId ?? createUuidV7;
-  const now = dependencies.now ?? Date.now;
+  const now = dependencies.now ?? submissionNow;
   const listeners = new Set<() => void>();
   let snapshot = EMPTY_SNAPSHOT;
 
@@ -346,6 +352,7 @@ export function createSessionFirstSubmissionOwner(
         clientUserMessageId,
         originProjectId: input.originProjectId,
         originSessionId: input.originSessionId,
+        acceptedAt,
       };
     },
     update,

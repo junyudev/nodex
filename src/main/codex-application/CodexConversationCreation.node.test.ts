@@ -26,6 +26,10 @@ import { CodexAttachments } from "./CodexAttachments";
 import { CodexClientThreadIdentity } from "./CodexClientThreadIdentity";
 import { make } from "./CodexConversationCreation";
 import { CodexConversationFork } from "./CodexConversationFork";
+import { CodexExecutionAssignments } from "./CodexExecutionAssignments";
+import { makeReadyCodexExecutionAssignments } from "./CodexExecutionAssignments.test-support";
+import { CodexGitProbe } from "./CodexGitProbe";
+import { makeTestCodexGitProbe } from "./CodexGitProbe.test-support";
 import { CodexForkSidePanelTransfer } from "./CodexForkSidePanelTransferRuntime";
 import { CodexSidebarSyncRuntime } from "./CodexSidebarSyncRuntime";
 import { CodexThreadDirectory } from "./CodexThreadDirectory";
@@ -94,51 +98,65 @@ const request = (): Extract<
 });
 
 it.effect.each([
-  { withProfile: true, pinned: false, withOrigin: false },
-  { withProfile: false, pinned: false, withOrigin: false },
-  { withProfile: true, pinned: true, withOrigin: false },
-  { withProfile: true, pinned: false, withOrigin: true },
+  { withProfile: true, pinned: false, withOrigin: false, targetHostId: "local" },
+  { withProfile: false, pinned: false, withOrigin: false, targetHostId: "local" },
+  { withProfile: true, pinned: true, withOrigin: false, targetHostId: "local" },
+  { withProfile: true, pinned: false, withOrigin: true, targetHostId: "local" },
+  { withProfile: true, pinned: false, withOrigin: false, targetHostId: "ssh:remote" },
 ])(
   "preserves the model, accepted first Turn, and Session pin during pending launch (%j)",
-  ({ withProfile, pinned, withOrigin }) =>
+  ({ withProfile, pinned, withOrigin, targetHostId }) =>
     Effect.scoped(
       Effect.gen(function* () {
         const presentation = yield* makeTestTurnPresentation;
-        const requests: Array<{ readonly method: string; readonly scheduling: unknown }> = [];
+        const requests: Array<{
+          readonly hostId: string;
+          readonly method: string;
+          readonly scheduling: unknown;
+        }> = [];
         const threadStartParams: Record<string, unknown>[] = [];
         const acceptedCapabilities: CodexAppServerCapabilitySnapshot[] = [];
         const firstTurnOverrides: Record<string, unknown>[] = [];
         const launchEvents: string[] = [];
         const unsupported = () => Effect.die(new Error("unused"));
         const capability = createCodexAppServerCapabilitySnapshot({
-          hostId: "local",
+          hostId: targetHostId,
           generation: 17,
           userAgent: "codex-app-server/0.145.0-alpha.15",
+          nativeAppTools: targetHostId === "local",
         });
+        const requestPhysical = (
+          hostId: string,
+          method: string,
+          params: unknown,
+          scheduling: unknown,
+        ) =>
+          Effect.sync(() => {
+            requests.push({ hostId, method, scheduling });
+            if (method === "thread/start") {
+              const requestParams = params as Record<string, unknown>;
+              threadStartParams.push(requestParams);
+              return {
+                thread: { id: "thread-created", historyMode: "paginated", turns: [] },
+                model: requestParams.model,
+                modelProvider: requestParams.modelProvider,
+                reasoningEffort: (requestParams.config as Record<string, unknown> | undefined)
+                  ?.model_reasoning_effort,
+                serviceTier:
+                  requestParams.serviceTier === null ? "default" : requestParams.serviceTier,
+              };
+            }
+            return {};
+          }) as never;
         const gateway = CodexGateway.of({
           localHostId: "local",
           events: Stream.empty,
           requestLocal: (method: string, params: unknown, scheduling: unknown) =>
-            Effect.sync(() => {
-              requests.push({ method, scheduling });
-              if (method === "thread/start") {
-                const requestParams = params as Record<string, unknown>;
-                threadStartParams.push(requestParams);
-                return {
-                  thread: { id: "thread-created", historyMode: "paginated", turns: [] },
-                  model: requestParams.model,
-                  modelProvider: requestParams.modelProvider,
-                  reasoningEffort: (requestParams.config as Record<string, unknown> | undefined)
-                    ?.model_reasoning_effort,
-                  serviceTier:
-                    requestParams.serviceTier === null ? "default" : requestParams.serviceTier,
-                };
-              }
-              return {};
-            }) as never,
+            requestPhysical("local", method, params, scheduling),
           requestRawOnHost: unsupported,
           requestRawForThread: unsupported,
-          requestOnHost: unsupported,
+          requestOnHost: (hostId: string, method: string, params: unknown, scheduling: unknown) =>
+            requestPhysical(hostId, method, params, scheduling),
           requestForThread: unsupported,
           notifyLocal: unsupported,
           connection: unsupported,
@@ -148,7 +166,7 @@ it.effect.each([
           removeHost: unsupported,
           restartHost: unsupported,
         });
-        const service = yield* make.pipe(
+        const serviceEffect = make.pipe(
           Effect.provideService(CodexTurnPresentation, presentation),
           Effect.provideService(
             CodexAppServerCapabilities,
@@ -156,6 +174,13 @@ it.effect.each([
               forHost: () => Effect.succeed(capability),
               forThread: () => Effect.succeed(capability),
               isCurrent: () => Effect.succeed(true),
+            }),
+          ),
+          Effect.provideService(
+            CodexExecutionAssignments,
+            makeReadyCodexExecutionAssignments({
+              concurrent_reasoning_summaries: true,
+              thread_tools: true,
             }),
           ),
           Effect.provideService(
@@ -185,10 +210,11 @@ it.effect.each([
           Effect.provideService(
             DesktopToolRuntime,
             DesktopToolRuntime.of({
-              threadConfig: Effect.succeed({
-                "features.js_repl": false,
-                "mcp_servers.node_repl": { command: "/runtime/node" },
-              }),
+              threadConfig: () =>
+                Effect.succeed({
+                  "features.js_repl": false,
+                  "mcp_servers.node_repl": { command: "/runtime/node" },
+                }),
             } as unknown as DesktopToolRuntime["Service"]),
           ),
           Effect.provideService(
@@ -275,6 +301,9 @@ it.effect.each([
             } as never),
           ),
         );
+        const service = yield* serviceEffect.pipe(
+          Effect.provideService(CodexGitProbe, makeTestCodexGitProbe()),
+        );
 
         const pending = request();
         const target = {
@@ -304,6 +333,7 @@ it.effect.each([
           yield* service.launchPending(
             {
               ...pending,
+              threadStartHostId: targetHostId,
               projectSessionId: withOrigin ? target.sessionId : null,
               isPinned: pinned,
               pinnedBeforeThreadId: "thread-before",
@@ -318,8 +348,19 @@ it.effect.each([
         );
         assert.deepEqual(requests, [
           {
+            hostId: targetHostId,
+            method: "config/read",
+            scheduling: { expectedHostId: targetHostId, expectedGeneration: 17 },
+          },
+          {
+            hostId: targetHostId,
+            method: "experimentalFeature/list",
+            scheduling: { expectedHostId: targetHostId, expectedGeneration: 17 },
+          },
+          {
+            hostId: targetHostId,
             method: "thread/start",
-            scheduling: { expectedHostId: "local", expectedGeneration: 17 },
+            scheduling: { expectedHostId: targetHostId, expectedGeneration: 17 },
           },
         ]);
         assert.strictEqual(threadStartParams[0]?.serviceTier, null);
@@ -332,12 +373,19 @@ it.effect.each([
         assert.deepEqual(threadStartParams[0]?.dynamicTools, []);
         assert.isUndefined(threadStartParams[0]?.allowProviderModelFallback);
         assert.deepEqual(threadStartParams[0]?.config, {
-          "features.js_repl": false,
-          "mcp_servers.node_repl": { command: "/runtime/node" },
-          "features.apply_patch_streaming_events": true,
+          ...(targetHostId === "local"
+            ? {
+                "features.js_repl": false,
+                "mcp_servers.node_repl": { command: "/runtime/node" },
+              }
+            : {}),
           "features.concurrent_reasoning_summaries": true,
           "features.thread_tools": true,
-          "mcp_servers.nodex_app.enabled_tools": appToolCatalog.map((tool) => tool.name),
+          ...(capability.nativeAppTools
+            ? {
+                "mcp_servers.nodex_app.enabled_tools": appToolCatalog.map((tool) => tool.name),
+              }
+            : {}),
           model_reasoning_effort: "max",
         });
         assert.strictEqual(firstTurnOverrides[0]?.serviceTier, null);

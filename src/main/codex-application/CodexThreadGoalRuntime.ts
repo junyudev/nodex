@@ -102,8 +102,11 @@ export const live: Layer.Layer<
       input: CodexThreadGoalSetCommand,
     ) {
       const action = normalizeCodexThreadGoalSetAction(input);
-      if (action.threadSettings) {
-        yield* settings.update({ threadId: action.threadId, patch: action.threadSettings });
+      const hasObjective = typeof action.objective === "string";
+      if (hasObjective || action.status === "active") {
+        if (action.threadSettings)
+          yield* settings.update({ threadId: action.threadId, patch: action.threadSettings });
+        else yield* settings.awaitCurrent(action.threadId);
       }
       const response = yield* gateway.requestForThread(
         action.threadId,
@@ -111,13 +114,11 @@ export const live: Layer.Layer<
         requestParams(action),
       );
       const goal = response.goal ? projectGoal(response.goal) : null;
-      if (!goal) return null;
       yield* projection.acceptThreadGoal({
         threadId: action.threadId,
         goal,
-        appendTranscriptItem:
-          action.appendTranscriptItem !== false && typeof action.objective === "string",
-        dismissResumeConfirmation: action.dismissResumeConfirmation === true,
+        appendTranscriptItem: action.appendTranscriptItem !== false && hasObjective,
+        dismissResumeConfirmation: !hasObjective || action.dismissResumeConfirmation === true,
       });
       return goal;
     });

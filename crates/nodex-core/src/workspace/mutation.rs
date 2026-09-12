@@ -4,8 +4,8 @@ use std::path::{Path, PathBuf};
 use nodex_core_contracts::workspace::{
     ProjectAppearance, ProjectCatalogChangeKind, ProjectLifecycle, ProjectMarker,
     ProjectSessionInvalidationScope, ProjectWorkspaceCommitValue, ProjectWorkspaceIntent,
-    ProjectWorkspaceQueuedFollowUpLedgerCommit, ProjectWorkspaceReceipt,
-    ProjectWorkspaceStarterPage, ProjectWorkspaceThreadMoveProjectAccessGrant,
+    ProjectWorkspaceReceipt, ProjectWorkspaceStarterPage,
+    ProjectWorkspaceThreadMoveProjectAccessGrant,
 };
 use nodex_core_contracts::{
     BoundModuleContext, ModuleApplyRequest, ModuleMutationReceipt, ModuleName,
@@ -41,8 +41,8 @@ use crate::infrastructure::sqlite::{StoreError, StoreErrorCode, with_immediate_t
 use crate::infrastructure::writer::StoreWriter;
 
 use super::{
-    ProjectWorkspaceApplyOutcome, execution, queued_follow_up, session_lifecycle, session_mutation,
-    sidebar, sidebar_section, subagent_projection, thread,
+    ProjectWorkspaceApplyOutcome, execution, session_lifecycle, session_mutation, sidebar,
+    sidebar_section, subagent_projection, thread,
 };
 
 const MODULE_NAME: &str = "project_workspace";
@@ -103,7 +103,6 @@ pub(super) struct WorkspaceMutationEffects {
     pub(super) view_ids: Vec<String>,
     pub(super) document_heads: Vec<PageDocumentHeadImpact>,
     pub(super) committed_at: String,
-    pub(super) queued_follow_up_ledger: Option<ProjectWorkspaceQueuedFollowUpLedgerCommit>,
 }
 
 pub(super) fn project_session_scope(project_id: Option<&str>) -> ProjectSessionInvalidationScope {
@@ -851,24 +850,6 @@ pub(super) fn apply(
                 ProjectWorkspaceIntent::RetainThreadAssets { thread_id, prepared_blob_receipt_ids } => super::thread_assets::retain(
                     transaction, &context, &store_epoch, &request.operation_id, &request_hash, thread_id, prepared_blob_receipt_ids,
                 ),
-                ProjectWorkspaceIntent::CommitQueuedFollowUpLedger {
-                    thread_id,
-                    expected_revision,
-                    entries,
-                    prepared_blob_receipt_ids,
-                } => queued_follow_up::commit_ledger(
-                    transaction,
-                    &library_id,
-                    &context,
-                    &store_epoch,
-                    &request.operation_id,
-                    &request_hash,
-                    thread_id,
-                    *expected_revision,
-                    entries,
-                    prepared_blob_receipt_ids,
-                    &assets_root,
-                ),
                 ProjectWorkspaceIntent::ObserveAppServerThreadWindow {
                     sweep_id,
                     thread_ids,
@@ -1036,6 +1017,7 @@ pub(super) fn apply(
                     target,
                     placement,
                     metadata,
+                    workspace_transition,
                     runtime_workspace_roots,
                     project_access_grant,
                 } => sidebar::move_thread(
@@ -1064,9 +1046,41 @@ pub(super) fn apply(
                     },
                     placement,
                     metadata,
+                    workspace_transition.as_ref(),
                     runtime_workspace_roots.as_deref(),
                     project_access_grant.as_ref(),
                 ),
+                ProjectWorkspaceIntent::CommitThreadWorkspaceTransition {
+                    thread_id,
+                    revision,
+                    workspace,
+                } => execution::commit_workspace_transition(
+                    transaction,
+                    &library_id,
+                    &context,
+                    &store_epoch,
+                    &request.operation_id,
+                    &request_hash,
+                    thread_id,
+                    revision,
+                    workspace,
+                ),
+                ProjectWorkspaceIntent::SetQueuedMessageState { state } => {
+                    super::queued_message_state::write(transaction, state)?;
+                    thread::finish_thread_mutation(transaction, &library_id, &context, &store_epoch, &request.operation_id, &request_hash, "set_queued_message_state", vec![], vec![], vec![], vec![])
+                }
+                ProjectWorkspaceIntent::SelectThreadReadStateIdentity { identity_key, execution_host_keys } => {
+                    super::thread_read_state::project(transaction, identity_key.as_deref(), execution_host_keys)?;
+                    thread::finish_thread_mutation(transaction, &library_id, &context, &store_epoch, &request.operation_id, &request_hash, "select_thread_read_state_identity", vec![nodex_core_contracts::workspace::ProjectSessionInvalidationScope::All], vec![], vec![], vec![])
+                }
+                ProjectWorkspaceIntent::SetIdentityThreadUnread { identity_key, execution_host_key, thread_id, unread } => {
+                    super::thread_read_state::set(transaction, identity_key, execution_host_key, thread_id, *unread)?;
+                    thread::finish_thread_mutation(transaction, &library_id, &context, &store_epoch, &request.operation_id, &request_hash, "set_identity_thread_unread", vec![], vec![], vec![], vec![])
+                }
+                ProjectWorkspaceIntent::ClearIdentityThreadReadState { identity_key } => {
+                    super::thread_read_state::clear(transaction, identity_key)?;
+                    thread::finish_thread_mutation(transaction, &library_id, &context, &store_epoch, &request.operation_id, &request_hash, "clear_identity_thread_read_state", vec![], vec![], vec![], vec![])
+                }
                 ProjectWorkspaceIntent::SetThreadUnread { thread_id, unread } => {
                     thread::set_thread_unread(
                         transaction,
@@ -1327,7 +1341,6 @@ fn create_project(
                     view_ids,
                     document_heads,
                     committed_at: committed_at.clone(),
-                    queued_follow_up_ledger: None,
                 },
             )
         },
@@ -1395,33 +1408,6 @@ pub(super) fn finish_no_op(
     session_ids: Vec<String>,
     committed_at: &str,
 ) -> Result<ProjectWorkspaceApplyOutcome, StoreError> {
-    finish_no_op_with_queued_follow_up(
-        connection,
-        context,
-        store_epoch,
-        operation_id,
-        request_hash,
-        operation_kind,
-        project_ids,
-        session_ids,
-        committed_at,
-        None,
-    )
-}
-
-#[allow(clippy::too_many_arguments)]
-pub(super) fn finish_no_op_with_queued_follow_up(
-    connection: &Connection,
-    context: &BoundModuleContext,
-    store_epoch: &str,
-    operation_id: &str,
-    request_hash: &str,
-    operation_kind: &'static str,
-    project_ids: Vec<String>,
-    session_ids: Vec<String>,
-    committed_at: &str,
-    queued_follow_up_ledger: Option<ProjectWorkspaceQueuedFollowUpLedgerCommit>,
-) -> Result<ProjectWorkspaceApplyOutcome, StoreError> {
     let result = durable_mutation::run(
         connection,
         OperationIdentity {
@@ -1445,7 +1431,6 @@ pub(super) fn finish_no_op_with_queued_follow_up(
                     affected_project_ids: project_ids.clone(),
                     affected_session_ids: session_ids.clone(),
                     affected_thread_ids: Vec::new(),
-                    queued_follow_up_ledger: queued_follow_up_ledger.clone(),
                 },
                 receipt: ProjectWorkspaceReceipt {
                     mutation: ModuleMutationReceipt {
@@ -1571,7 +1556,6 @@ fn seal_mutation(
             affected_project_ids: effects.project_ids.clone(),
             affected_session_ids: effects.session_ids.clone(),
             affected_thread_ids: effects.thread_ids.clone(),
-            queued_follow_up_ledger: effects.queued_follow_up_ledger.clone(),
         },
         receipt: ProjectWorkspaceReceipt {
             mutation: ModuleMutationReceipt {
@@ -1858,7 +1842,6 @@ fn reorder_projects(
             view_ids: Vec::new(),
             document_heads: Vec::new(),
             committed_at: now,
-            queued_follow_up_ledger: None,
         },
     )
 }
@@ -1992,7 +1975,6 @@ fn reorder_pinned_projects(
             view_ids: Vec::new(),
             document_heads: Vec::new(),
             committed_at: now,
-            queued_follow_up_ledger: None,
         },
     )
 }
@@ -2053,7 +2035,6 @@ fn project_mutation_effects(
         view_ids: Vec::new(),
         document_heads: Vec::new(),
         committed_at,
-        queued_follow_up_ledger: None,
     }
 }
 

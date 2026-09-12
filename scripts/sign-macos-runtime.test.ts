@@ -180,7 +180,7 @@ describe("Codex runtime vendor signing boundary", () => {
 
   test("preserves only the official Codex package executables", () => {
     for (const relativePath of [
-      "Contents/Resources/bin/codex-app-server",
+      "Contents/Resources/bin/codex",
       "Contents/Resources/bin/codex-code-mode-host",
       "Contents/Resources/codex-path/rg",
       "Contents/Resources/codex-resources/zsh/bin/zsh",
@@ -198,7 +198,7 @@ describe("Codex runtime vendor signing boundary", () => {
     expect(
       isPreservedCodexRuntimeVendorCode(
         appPath,
-        path.join(appPath, "Contents/Resources/bin/codex-app-server.backup"),
+        path.join(appPath, "Contents/Resources/bin/codex.backup"),
       ),
     ).toBe(false);
   });

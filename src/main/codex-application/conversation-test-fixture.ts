@@ -1,0 +1,58 @@
+import type { Thread, Turn } from "@nodex/codex-app-server-protocol/v2";
+import { createCodexCanonicalHydratedConversationState } from "../../shared/codex-conversation-state/codex-conversation-state";
+const thread: Thread = {
+  model: null,
+  reasoningEffort: null,
+  id: "fixture",
+  extra: null,
+  sessionId: "session-canonical-projection",
+  forkedFromId: null,
+  parentThreadId: null,
+  preview: "Canonical projection fixture",
+  ephemeral: false,
+  section: null,
+  sectionEnteredAt: null,
+  projectId: null,
+  historyMode: "paginated",
+  modelProvider: "openai",
+  createdAt: 1,
+  updatedAt: 2,
+  recencyAt: 2,
+  status: { type: "idle" },
+  path: null,
+  cwd: "/workspace/project",
+  cliVersion: "fixture",
+  source: "unknown",
+  canAcceptDirectInput: true,
+  threadSource: null,
+  agentNickname: null,
+  agentRole: null,
+  gitInfo: null,
+  name: "Initial title",
+  turns: [],
+};
+export const conversationFixture = (id: string, turns: Turn[] = []) =>
+  createCodexCanonicalHydratedConversationState(
+    { ...thread, id, turns },
+    {
+      hostId: "local",
+      model: "gpt-test",
+      reasoningEffort: "high",
+      cwd: "/workspace/project",
+      approvalPolicy: "on-request",
+      approvalsReviewer: "user",
+      sandboxPolicy: { type: "readOnly", networkAccess: false },
+      activePermissionProfile: null,
+      runtimeWorkspaceRoots: ["/workspace/project"],
+    },
+  );
+export const turnFixture = (id: string, status: Turn["status"] = "completed"): Turn => ({
+  id,
+  status,
+  items: [],
+  itemsView: "full",
+  error: null,
+  startedAt: null,
+  completedAt: null,
+  durationMs: null,
+});

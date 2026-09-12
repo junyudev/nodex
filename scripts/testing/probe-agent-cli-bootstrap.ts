@@ -27,7 +27,7 @@ const withPinnedShell = async (
 ) => {
   await mkdir(home, { recursive: true });
   const server = spawn(
-    resolve(".generated/codex-runtime/agent-runtime/bin/codex-app-server"),
+    resolve(".generated/codex-runtime/agent-runtime/bin/codex"),
     ["--listen", "stdio://", "--session-source", "app-server", ...args],
     {
       env: { ...process.env, CODEX_HOME: home, NODEX_HOME: join(home, "..", ".nodex") },

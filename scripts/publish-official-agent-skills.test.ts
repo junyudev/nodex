@@ -146,7 +146,12 @@ const cloneRemote = (root: string, remote: string, name: string): string => {
 
 afterEach(() => {
   for (const root of temporaryRoots.splice(0)) {
-    fs.rmSync(root, { recursive: true, force: true });
+    fs.rmSync(root, {
+      force: true,
+      maxRetries: 10,
+      recursive: true,
+      retryDelay: 100,
+    });
   }
 });
 

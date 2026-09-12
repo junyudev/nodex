@@ -4,6 +4,9 @@ import path from "node:path";
 
 import { ElectronScenarioHarness } from "../../scripts/scenarios/harness/electron-e2e-harness";
 import { prepareScenarioCodexAppServerRuntimeSync } from "../../scripts/scenarios/runtime/agent-runtime-fixture";
+import type { CodexHostMessage } from "../../src/shared/types";
+import { attachComposerFailureEvidence } from "./support/composer-failure-evidence";
+import { openNewChatDraft } from "./support/new-chat-draft";
 
 const repositoryRoot = process.cwd();
 const scenarioThreadTimestampHex = Date.now().toString(16).padStart(12, "0");
@@ -12,6 +15,7 @@ const scenarioThreadId = (suffix: string): string =>
 const rootThreadId = scenarioThreadId("000000000101");
 const fallbackInterruptThreadId = scenarioThreadId("000000000201");
 const selectedThreadId = scenarioThreadId("000000000202");
+const reconnectScoutThreadId = scenarioThreadId("000000000204");
 const nestedThreadId = scenarioThreadId("000000000205");
 const relationshipReceiverThreadId = scenarioThreadId("000000000299");
 const topologyRecoveredThreadId = scenarioThreadId("000000000312");
@@ -90,30 +94,18 @@ const createSubagentHarness = async (
 };
 
 const prepareSubagentDraft = async (page: Page, prompt: string): Promise<Locator> => {
-  await page.getByRole("button", { name: "New chat" }).first().click();
-  await expect
-    .poll(
-      async () =>
-        await page.evaluate(async () => {
-          const projects = (await window.api?.invoke("projects:list")) as
-            | { items?: Array<{ id?: unknown }> }
-            | undefined;
-          const projectId = projects?.items?.[0]?.id;
-          if (typeof projectId !== "string") return 0;
-          const tasks = (await window.api?.invoke("workspace:tasks:list", projectId, {
-            first: 50,
-          })) as { items?: Array<{ thread?: unknown }> } | undefined;
-          return tasks?.items?.filter((item) => item.thread == null).length ?? 0;
-        }),
-      { timeout: 30_000 },
-    )
-    .toBe(1);
-  const composer = page.locator('[data-codex-composer="true"][aria-label="Do anything"]');
-  await expect(composer).toBeVisible();
-  await composer.fill(prompt);
-  await expect(composer).toHaveText(prompt);
-  const sendButton = page.getByRole("button", { name: "Send prompt" });
-  await expect(sendButton).toBeEnabled();
+  const scene = await openNewChatDraft(page);
+  const composer = scene.locator('[data-codex-composer="true"][aria-label="Do anything"]');
+  const sendButton = scene.getByRole("button", { name: "Send prompt" });
+  try {
+    await expect(composer).toBeVisible();
+    await composer.fill(prompt);
+    await expect(composer).toHaveText(prompt);
+    await expect(sendButton).toBeEnabled();
+  } catch (error) {
+    await attachComposerFailureEvidence(page, test.info());
+    throw error;
+  }
   return sendButton;
 };
 
@@ -202,13 +194,22 @@ const beginCodexEventCapture = async (page: Page): Promise<void> => {
   await page.evaluate(() => {
     const scope = window as typeof window & {
       __subagentScenarioCodexEvents?: unknown[];
+      __subagentScenarioHostMessages?: CodexHostMessage[];
       __stopSubagentScenarioCodexEvents?: () => void;
     };
     scope.__stopSubagentScenarioCodexEvents?.();
     scope.__subagentScenarioCodexEvents = [];
-    scope.__stopSubagentScenarioCodexEvents = window.api?.on("codex:event", (event: unknown) => {
+    scope.__subagentScenarioHostMessages = [];
+    const stopEvents = window.api?.on("codex:event", (event: unknown) => {
       scope.__subagentScenarioCodexEvents?.push({ observedAtMs: Date.now(), event });
     });
+    const stopHostMessages = window.api?.on("codex:host-message", (message) => {
+      scope.__subagentScenarioHostMessages?.push(message as CodexHostMessage);
+    });
+    scope.__stopSubagentScenarioCodexEvents = () => {
+      stopEvents?.();
+      stopHostMessages?.();
+    };
   });
 };
 
@@ -256,30 +257,24 @@ test("keeps overview metadata-only, expands bounded windows, and hydrates only t
     await expect
       .poll(
         () =>
-          page.evaluate(
-            async ({ expectedItemId, expectedRootThreadId }) => {
-              const snapshot = (await window.api?.invoke(
-                "codex:thread:snapshot:request",
-                expectedRootThreadId,
-              )) as {
-                canonicalState?: {
-                  turns?: Array<{ items?: Array<{ id?: unknown }> }>;
-                } | null;
-              } | null;
-              return (
-                snapshot?.canonicalState?.turns?.some((turn) =>
-                  turn.items?.some((item) => item.id === expectedItemId),
-                ) ?? false
-              );
-            },
-            {
-              expectedItemId: "activity-topology-missed-edge",
-              expectedRootThreadId: rootThreadId,
-            },
-          ),
+          page.evaluate((threadId) => {
+            const scope = window as typeof window & {
+              __subagentScenarioHostMessages?: CodexHostMessage[];
+            };
+            return (scope.__subagentScenarioHostMessages ?? []).some(
+              (message) =>
+                message.type === "nativeNotification" &&
+                message.notification.method === "item/started" &&
+                message.notification.params.threadId === threadId &&
+                message.notification.params.item.id === "activity-topology-missed-edge",
+            );
+          }, rootThreadId),
         { timeout: 15_000 },
       )
       .toBe(true);
+    // The window owns the document. Confirm its activity rendered before the
+    // overview's bounded topology repair, instead of polling Main's presentation.
+    await expect(page.getByTestId("subagent-activity-inline-group")).toBeVisible();
     await page.getByRole("button", { name: "Open subagents" }).first().click();
 
     const panel = page.locator(`[data-subagents-panel-overview="${rootThreadId}"]`);
@@ -503,12 +498,22 @@ test("keeps overview metadata-only, expands bounded windows, and hydrates only t
     expect([...new Set(selectedEntries.map((entry) => entry.params.threadId))]).toEqual([
       selectedThreadId,
     ]);
-    expect(selectedEntries.filter((entry) => entry.method === "thread/resume")).toHaveLength(0);
+    // Opening an interactive detail resumes that child through the normal
+    // owner boundary after its sparse history attaches. Siblings stay dormant.
+    expect(selectedEntries.filter((entry) => entry.method === "thread/resume")).toEqual([
+      expect.objectContaining({
+        params: expect.objectContaining({ threadId: selectedThreadId, excludeTurns: true }),
+      }),
+    ]);
     expect(
       readRpcEntries(logPath).filter(
         (entry) => entry.method === "thread/read" && entry.params.threadId === selectedThreadId,
       ),
     ).toEqual([
+      // Sparse attachment and owner preparation independently read metadata.
+      expect.objectContaining({
+        params: { threadId: selectedThreadId, includeTurns: false },
+      }),
       expect.objectContaining({
         params: { threadId: selectedThreadId, includeTurns: false },
       }),
@@ -537,8 +542,19 @@ test("omits an empty Done section and remains usable at narrow width", async () 
 
   try {
     const page = await startSubagentScenario(harness);
-    await page.getByRole("button", { name: "Open subagents" }).first().click();
+    // Crossing the shell breakpoint closes competing panels. Establish the
+    // narrow layout before opening the overview whose usability is under test.
     await page.setViewportSize({ width: 820, height: 720 });
+    await expect(page.locator("[data-app-shell-width-class]")).toHaveAttribute(
+      "data-app-shell-width-class",
+      "medium",
+    );
+    await page
+      .locator(
+        `[data-above-composer-queue-portal="true"][data-above-composer-conversation-id="${rootThreadId}"]`,
+      )
+      .getByRole("button", { name: "Open subagents" })
+      .click();
 
     const panel = page.locator(`[data-subagents-panel-overview="${rootThreadId}"]`);
     await expect(panel).toBeVisible({ timeout: 30_000 });
@@ -1077,15 +1093,21 @@ test("fences a disconnected app-server generation without flashing an active Sub
             complete: authority?.completeness === "complete",
             doneKnownCount: authority?.done.knownCount ?? 0,
             generationAdvanced: (authority?.generation ?? 0) > (initialAuthority?.generation ?? 0),
+            selectedStatus: authority?.active.rows.find((row) => row.threadId === selectedThreadId)
+              ?.status,
+            scoutStatus: authority?.done.rows.find((row) => row.threadId === reconnectScoutThreadId)
+              ?.status,
           };
         },
         { timeout: 30_000 },
       )
       .toEqual({
-        activeKnownCount: 5,
+        activeKnownCount: 4,
         complete: true,
-        doneKnownCount: 12,
+        doneKnownCount: 13,
         generationAdvanced: true,
+        selectedStatus: "active",
+        scoutStatus: "done",
       });
     const recoveredAuthority = await readOverviewAuthority();
     expect(recoveredAuthority?.generation).toBeGreaterThan(initialAuthority?.generation ?? 0);
@@ -1126,6 +1148,23 @@ test("fences a disconnected app-server generation without flashing an active Sub
 
     const finalState = readScenarioState(statePath);
     const entries = readRpcEntries(logPath);
+    // The scout was notLoaded, but its latest Turn is terminal. Reconciliation
+    // must resolve that row without downgrading the selected active child.
+    expect(entries).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          processInstanceOrdinal: secondInstance?.ordinal,
+          method: "thread/turns/list",
+          params: {
+            threadId: reconnectScoutThreadId,
+            cursor: null,
+            limit: 1,
+            sortDirection: "desc",
+            itemsView: "notLoaded",
+          },
+        }),
+      ]),
+    );
     expect(finalState.reconnectReadRespondedAtMs).toBeNull();
     expect(
       entries.some(

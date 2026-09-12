@@ -9,36 +9,12 @@ import type { CodexHostMessage } from "../../shared/types";
 import { MAIN_OBSERVATION_EVENT_CAPACITY } from "../runtime-limits";
 
 export type CodexApplicationEvent =
+  | { readonly kind: "queuedMessageStateChanged"; readonly value: null }
+  | { readonly kind: "conversationTurnSteered"; readonly value: string }
+  | { readonly kind: "conversationTurnInterruptStarted"; readonly value: string }
   | { readonly kind: "codex"; readonly value: IpcEvents["codex:event"] }
   | { readonly kind: "threadNotification"; readonly value: CodexThreadNotificationEvent }
   | { readonly kind: "hostMessage"; readonly value: CodexHostMessage }
-  | {
-      readonly kind: "rendererOwnerHostMessage";
-      readonly value: { readonly targetClientId: string; readonly message: unknown };
-    }
-  | {
-      readonly kind: "rendererThreadStreamRelay";
-      readonly value: {
-        readonly targetClientIds: readonly string[];
-        readonly sourceClientId: string | null;
-        readonly message: CodexHostMessage;
-      };
-    }
-  | {
-      readonly kind: "rendererThreadStreamControlRelay";
-      readonly value: {
-        readonly targetClientIds: readonly string[];
-        readonly message: Extract<
-          CodexHostMessage,
-          {
-            type:
-              | "threadStreamFollowersChanged"
-              | "threadStreamTransportReset"
-              | "threadStreamSnapshotRequested";
-          }
-        >;
-      };
-    }
   | { readonly kind: "rendererConversationPresentedInForeground"; readonly value: string }
   | {
       readonly kind: "conversationReadStateCommitted";

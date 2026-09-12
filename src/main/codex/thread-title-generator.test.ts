@@ -1,12 +1,16 @@
 import { describe, expect, test } from "vite-plus/test";
 import {
+  buildCodexThreadTitleThreadConfig,
   buildThreadTitleGenerationPrompt,
+  buildThreadTitleReconsiderationPrompt,
   CODEX_THREAD_TITLE_MODEL,
   CODEX_THREAD_TITLE_OUTPUT_SCHEMA,
+  CODEX_THREAD_TITLE_RECONSIDERATION_OUTPUT_SCHEMA,
   CODEX_THREAD_TITLE_REASONING_EFFORT,
   CODEX_THREAD_TITLE_TIMEOUT_MS,
   parseGeneratedThreadMetadataResponse,
   parseGeneratedThreadTitleResponse,
+  parseThreadTitleReconsiderationResponse,
 } from "./thread-title-generator";
 
 describe("thread title generator parity helpers", () => {
@@ -61,7 +65,7 @@ describe("thread title generator parity helpers", () => {
   });
 
   test("keeps Electron model, reasoning, timeout, and schema constants", () => {
-    expect(CODEX_THREAD_TITLE_MODEL).toBe("gpt-5.4-mini");
+    expect(CODEX_THREAD_TITLE_MODEL).toBe("gpt-5.6-luna");
     expect(CODEX_THREAD_TITLE_REASONING_EFFORT).toBe("low");
     expect(CODEX_THREAD_TITLE_TIMEOUT_MS).toBe(30_000);
     expect(JSON.stringify(CODEX_THREAD_TITLE_OUTPUT_SCHEMA)).toBe(
@@ -76,13 +80,50 @@ describe("thread title generator parity helpers", () => {
           },
           description: {
             type: "string",
-            maxLength: 100,
+            minLength: 1,
           },
         },
-        required: ["title"],
+        required: ["title", "description"],
         additionalProperties: false,
       }),
     );
+  });
+
+  test("builds the exact deny-by-default title helper config", () => {
+    expect(
+      buildCodexThreadTitleThreadConfig([
+        { appId: "github", toolNames: ["search_code", "get_file"] },
+      ]),
+    ).toEqual({
+      "features.enable_fanout": false,
+      "features.hooks": false,
+      "features.multi_agent": false,
+      "features.multi_agent_v2": false,
+      "features.plugins": false,
+      "features.shell_snapshot": false,
+      "features.tool_suggest": false,
+      web_search: "disabled",
+      "features.apps": true,
+      apps: {
+        github: {
+          enabled: true,
+          destructive_enabled: false,
+          open_world_enabled: false,
+          default_tools_enabled: false,
+          tools: {
+            search_code: { enabled: true },
+            get_file: { enabled: true },
+          },
+        },
+        _default: {
+          enabled: false,
+          destructive_enabled: false,
+          open_world_enabled: false,
+        },
+      },
+      "mcp_servers.codex_app": { enabled: false, command: "" },
+      model_reasoning_effort: "low",
+    });
   });
 
   test("truncates the source prompt before wrapping", () => {
@@ -93,33 +134,53 @@ describe("thread title generator parity helpers", () => {
   });
 
   test("parses structured JSON title responses only", () => {
-    expect(parseGeneratedThreadTitleResponse('{"title":"title: \\"Fix flaky test.\\""}')).toBe(
-      "Fix flaky test",
-    );
     expect(
       parseGeneratedThreadTitleResponse(
-        '{"title":"This title is definitely longer than thirty six chars"}',
+        '{"title":"title: \\"Fix flaky test.\\"","description":"Fix flaky test"}',
+      ),
+    ).toBe("Fix flaky test");
+    expect(
+      parseGeneratedThreadTitleResponse(
+        '{"title":"This title is definitely longer than thirty six chars","description":"long"}',
       ),
     ).toBe(null);
-    expect(parseGeneratedThreadTitleResponse('{"title":""}')).toBe(null);
+    expect(parseGeneratedThreadTitleResponse('{"title":"","description":"empty"}')).toBe(null);
     expect(parseGeneratedThreadTitleResponse('{"name":"Fix flaky test"}')).toBe(null);
     expect(parseGeneratedThreadTitleResponse("Fix flaky test")).toBe(null);
   });
 
-  test("retains an optional structured description beside the normalized title", () => {
+  test("requires and normalizes the structured description beside the title", () => {
     expect(
       parseGeneratedThreadMetadataResponse(
         '{"title":"Fix flaky test.","description":"  Retry-safe test coverage  "}',
       ),
     ).toEqual({ title: "Fix flaky test", description: "Retry-safe test coverage" });
-    expect(parseGeneratedThreadMetadataResponse('{"title":"Fix flaky test"}')).toEqual({
-      title: "Fix flaky test",
-      description: null,
-    });
+    expect(parseGeneratedThreadMetadataResponse('{"title":"Fix flaky test"}')).toBe(null);
     expect(
       parseGeneratedThreadMetadataResponse(
         '{"title":"Fix flaky test","description":"first\\nsecond"}',
       ),
     ).toEqual({ title: "Fix flaky test", description: "first second" });
+    expect(
+      parseGeneratedThreadMetadataResponse(
+        `{"title":"Fix flaky test","description":"${"x".repeat(120)}"}`,
+      ),
+    ).toEqual({ title: "Fix flaky test", description: "x".repeat(100) });
+  });
+
+  test("builds and parses conservative durable title reconsideration", () => {
+    expect(buildThreadTitleReconsiderationPrompt("Old title")).toContain(
+      "You are in a fork of an existing Codex thread at a possible durable title checkpoint.",
+    );
+    expect(buildThreadTitleReconsiderationPrompt("Old title")).toContain(
+      "The current UI title is: Old title",
+    );
+    expect(CODEX_THREAD_TITLE_RECONSIDERATION_OUTPUT_SCHEMA.anyOf).toHaveLength(2);
+    expect(parseThreadTitleReconsiderationResponse('{"title":null,"description":null}')).toBe(null);
+    expect(
+      parseThreadTitleReconsiderationResponse(
+        '{"title":"New durable purpose","description":"Replacement purpose"}',
+      ),
+    ).toEqual({ title: "New durable purpose", description: "Replacement purpose" });
   });
 });

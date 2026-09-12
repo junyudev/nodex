@@ -29,12 +29,22 @@ function buildProps(overrides?: Partial<ThreadSectionRowProps>): ThreadSectionRo
 
 describe("ThreadSectionRow", () => {
   test("renders the section label, state, and thread name", () => {
-    const { container } = render(<ThreadSectionRow {...buildProps()} />);
+    const { container } = render(
+      <ThreadSectionRow
+        {...buildProps({
+          thread: {
+            ...buildProps().thread!,
+            threadName: "**Parser** [thread](https://example.com)",
+          },
+        })}
+      />,
+    );
 
     const content = textContent(container);
     expect(content.includes("Investigate parser")).toBe(true);
     expect(content.includes("Ready")).toBe(true);
     expect(content.includes("Parser thread")).toBe(true);
+    expect(content.includes("**Parser**")).toBe(false);
     expect(content.includes("Send")).toBe(true);
   });
 

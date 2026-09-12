@@ -28,6 +28,7 @@ it.effect("owns Browser Use routing, turn lifecycle, and physical registry with 
       releaseOwner: () => Effect.sync(() => void events.push("release-owner")),
       releaseSession: (sessionId: string) =>
         Effect.sync(() => void events.push(`release-session:${sessionId}`)),
+      endSessionActivity: () => Effect.void,
       turnEnded: ({ turnId }: { turnId: string }) =>
         Effect.sync(() => void events.push(`turn-ended:${turnId}`)),
       turnStarted: ({ turnId }: { turnId: string }) =>

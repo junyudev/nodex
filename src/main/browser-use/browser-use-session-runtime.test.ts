@@ -65,6 +65,9 @@ class FakeApi {
     return "pong";
   }
 
+  controlRelease: Promise<void> | null = null;
+  async releaseSessionControl(): Promise<void> { this.activeControl = false; if (this.controlRelease) await this.controlRelease; }
+
   async turnEnded(params: unknown): Promise<void> {
     this.endedTurns.push((params as { turn_id: string }).turn_id);
     this.resolveBlockedTurnEndStarted?.();
@@ -343,3 +346,37 @@ it.effect("invalidates every backend owned by a renderer", () =>
     yield* Scope.close(scope, Exit.void);
   }),
 );
+
+
+it.effect("ending session activity releases control and preserves a reusable route", () => Effect.gen(function* () {
+  const { apis, runtime, scope } = yield* makeTestRuntime;
+  yield* runtime.captureRoute(capture());
+  apis[0]!.activeControl = true;
+  yield* runtime.endSessionActivity("thread-1");
+  assert.isFalse(apis[0]!.activeControl);
+  assert.isFalse(apis[0]!.disposed);
+  assert.lengthOf((yield* runtime.debugSnapshot).sessions, 1);
+  assert.deepEqual(apis[0]!.endedTurns, []);
+  yield* Scope.close(scope, Exit.void);
+}));
+it.effect("ending temporary session activity disposes only that captured route", () => Effect.gen(function* () {
+  const { apis, runtime, scope, servers } = yield* makeTestRuntime;
+  yield* runtime.captureRoute(capture({ disposeAfterSessionActivity: true }));
+  apis[0]!.activeControl = true;
+  yield* runtime.endSessionActivity("thread-1");
+  assert.isTrue(apis[0]!.disposed); assert.isTrue(servers[0]!.released);
+  assert.lengthOf((yield* runtime.debugSnapshot).sessions, 0);
+  yield* Scope.close(scope, Exit.void);
+}));
+
+it.effect("temporary activity retirement does not wait for a pending control release", () => Effect.gen(function* () {
+  const { apis, runtime, scope } = yield* makeTestRuntime;
+  yield* runtime.captureRoute(capture({ disposeAfterSessionActivity: true }));
+  let release: () => void = () => {};
+  apis[0]!.controlRelease = new Promise<void>((resolve) => { release = resolve; });
+  yield* runtime.endSessionActivity("thread-1");
+  assert.isTrue(apis[0]!.disposed);
+  assert.lengthOf((yield* runtime.debugSnapshot).sessions, 0);
+  release();
+  yield* Scope.close(scope, Exit.void);
+}));

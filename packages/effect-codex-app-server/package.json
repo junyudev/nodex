@@ -7,6 +7,7 @@
     "./schema": "./src/schema.ts",
     "./rpc": "./src/rpc.ts",
     "./protocol": "./src/protocol.ts",
+    "./transport-values": "./src/transport-values.ts",
     "./errors": "./src/errors.ts"
   },
   "scripts": {

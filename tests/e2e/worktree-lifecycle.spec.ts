@@ -236,10 +236,8 @@ function runtimeWorkspaceRoots(value: unknown): readonly string[] {
     return value.runtimeWorkspaceRoots.filter((root): root is string => typeof root === "string");
   }
   const canonicalState = value.canonicalState;
-  if (!isRecord(canonicalState) || !isRecord(canonicalState.sidecar)) return [];
-  const hydrationContext = canonicalState.sidecar.hydrationContext;
-  if (!isRecord(hydrationContext) || !isRecord(hydrationContext.currentPermissions)) return [];
-  const roots = hydrationContext.currentPermissions.runtimeWorkspaceRoots;
+  if (!isRecord(canonicalState) || !isRecord(canonicalState.currentPermissions)) return [];
+  const roots = canonicalState.currentPermissions.runtimeWorkspaceRoots;
   return Array.isArray(roots)
     ? roots.filter((root): root is string => typeof root === "string")
     : [];
@@ -301,11 +299,16 @@ test("keeps a pre-checkout failure in the creation state and renders exact recov
     await waitForProjectDraft(page, projectId);
     const composer = page.locator('[contenteditable="true"][aria-label="Do anything"]');
     await composer.fill("Invalid Git source E2E");
+    await expect(composer).toHaveText("Invalid Git source E2E");
     await page.getByRole("button", { name: "Start in" }).click();
     await page.locator('[data-new-chat-start-in-option="newWorktree"]').click();
     await expect(page.getByRole("button", { name: "Select starting state" })).toContainText("main");
+    await expect(page.getByRole("button", { name: "Select worktree environment" })).toContainText(
+      "E2E Environment",
+      { timeout: 20_000 },
+    );
     const sendButton = page.getByRole("button", { name: "Send prompt" });
-    await expect(sendButton).toBeEnabled();
+    await expect(sendButton).toBeEnabled({ timeout: 20_000 });
 
     await beginPendingWorktreeEventCapture(page);
     // Keep the discovered branch visible to Composer while invalidating its
@@ -579,12 +582,16 @@ test("keeps a managed Task recoverable across renderer and full app restarts", a
     expect(worktreeInitCount(rendererReloadSnapshot)).toBe(1);
 
     page = await harness.restart();
-    const resumed = await invokeIpc(page, "codex:thread:resume:request", threadId);
-    expect(isRecord(resumed) && isRecord(resumed.conversation)).toBe(true);
-    const coldSnapshot = await invokeIpc(page, "codex:thread:snapshot:request", threadId);
-    // The initialization occurrence is app-owned. Like the product runtime,
-    // it survives renderer replacement but is not serialized into protocol history.
-    expect(worktreeInitCount(coldSnapshot)).toBe(0);
+    const coldProject = page.getByRole("listitem", { name: "Managed Worktree E2E" });
+    await coldProject.hover();
+    await coldProject.getByRole("button", { name: "Expand project", exact: true }).click();
+    const coldThreadLink = page.locator(`[data-app-action-sidebar-thread-id="${threadId}"]`);
+    await expect(coldThreadLink).toBeVisible({ timeout: 20_000 });
+    await coldThreadLink.click();
+    await expect(page.getByTestId("session-thread-page")).toBeVisible({ timeout: 20_000 });
+    await expect(
+      page.getByText("Report the current working directory.", { exact: true }).last(),
+    ).toBeVisible({ timeout: 30_000 });
     const coldSummary = await invokeIpc(page, "codex:thread:summary:get", threadId);
     expect(coldSummary).toMatchObject({
       threadId,

@@ -60,7 +60,7 @@ describe("useComposerImageAttachments", () => {
     const hook = renderController({
       readFileAsDataUrl: async () => "data:image/png;base64,aW1hZ2U=",
       materializeFile: async () => ({
-        hostId: "default",
+        hostId: "local",
         managedSource: "nodex://assets/image.png",
         localPath: "/managed/image.png",
       }),
@@ -98,7 +98,7 @@ describe("useComposerImageAttachments", () => {
 
     await act(async () => {
       materialization.resolve({
-        hostId: "default",
+        hostId: "local",
         managedSource: "nodex://assets/diagram.png",
         localPath: "/managed/diagram.png",
       });
@@ -129,7 +129,7 @@ describe("useComposerImageAttachments", () => {
 
     await act(async () => {
       materialization.resolve({
-        hostId: "default",
+        hostId: "local",
         managedSource: "nodex://assets/diagram.png",
         localPath: "/managed/diagram.png",
       });
@@ -149,7 +149,7 @@ describe("useComposerImageAttachments", () => {
           : Promise.resolve("data:image/png;base64,c2Vjb25k");
       },
       materializeFile: async () => ({
-        hostId: "default",
+        hostId: "local",
         managedSource: "nodex://assets/image.png",
         localPath: "/managed/image.png",
       }),
@@ -222,7 +222,7 @@ describe("useComposerImageAttachments", () => {
       expect.objectContaining({
         filename: "diagram.png",
         materialization: {
-          hostId: "default",
+          hostId: "local",
           localPath: "/picked/diagram.png",
           managedSource: null,
         },
@@ -306,7 +306,7 @@ describe("useComposerImageAttachments", () => {
     await act(async () => {
       read.resolve("data:image/png;base64,aW1hZ2U=");
       materialization.resolve({
-        hostId: "default",
+        hostId: "local",
         managedSource: "nodex://assets/image.png",
         localPath: "/managed/image.png",
       });

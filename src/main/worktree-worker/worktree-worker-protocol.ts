@@ -6,6 +6,7 @@ import type {
   CodexWorktreeWorkerCreateInput,
   CodexWorktreeWorkerCreateResult,
   CodexWorktreeWorkerEvent,
+  CodexWorktreeWorkerGitRootInput,
   CodexWorktreeWorkerInspectInput,
   CodexWorktreeWorkerListInput,
   CodexWorktreeWorkerOperation,
@@ -29,7 +30,7 @@ import {
   CODEX_WORKTREE_WORKER_OPERATIONS,
 } from "../codex/codex-worktree-worker-protocol";
 
-export const CODEX_WORKTREE_WORKER_PROTOCOL_VERSION = 6 as const;
+export const CODEX_WORKTREE_WORKER_PROTOCOL_VERSION = 7 as const;
 
 export type CodexWorktreeWorkerHostMessage =
   | {
@@ -108,6 +109,11 @@ function isAbsolutePath(value: unknown): value is string {
   return isNonEmptyString(value) && path.isAbsolute(value);
 }
 
+/** Git roots belong to the execution host, whose path syntax can differ from Main. */
+function isExecutionHostAbsolutePath(value: unknown): value is string {
+  return isNonEmptyString(value) && (path.posix.isAbsolute(value) || path.win32.isAbsolute(value));
+}
+
 function isPathWithin(parentPath: string, candidatePath: string): boolean {
   const relative = path.relative(path.resolve(parentPath), path.resolve(candidatePath));
   return relative === "" || (!relative.startsWith("..") && !path.isAbsolute(relative));
@@ -163,6 +169,15 @@ function isCreateInput(value: unknown): value is CodexWorktreeWorkerCreateInput 
       isCodexWorktreeEnvironmentConfigPath(value.localEnvironmentConfigPath)) &&
     typeof value.setUpSyncedBranch === "boolean" &&
     typeof value.propagateLocalWorkspaceFiles === "boolean"
+  );
+}
+
+function isGitRootInput(value: unknown): value is CodexWorktreeWorkerGitRootInput {
+  return (
+    isRecord(value) &&
+    hasOnlyKeys(value, ["requestId", "hostId", "cwd"]) &&
+    isIdentity(value) &&
+    isExecutionHostAbsolutePath(value.cwd)
   );
 }
 
@@ -464,6 +479,8 @@ function isRequest(value: unknown): value is CodexWorktreeWorkerRequest {
   if (!isRecord(value) || !isOperation(value.operation)) return false;
   if (!hasOnlyKeys(value, ["operation", "input"])) return false;
   switch (value.operation) {
+    case "git-root":
+      return isGitRootInput(value.input);
     case "create":
       return isCreateInput(value.input);
     case "list":
@@ -640,6 +657,8 @@ function isSuccess(
   if (!isRecord(value) || value.operation !== operation || !("value" in value)) return false;
   const result = value.value;
   switch (operation) {
+    case "git-root":
+      return isRecord(result) && (result.root === null || isExecutionHostAbsolutePath(result.root));
     case "create":
       return isCreateResult(result);
     case "list":

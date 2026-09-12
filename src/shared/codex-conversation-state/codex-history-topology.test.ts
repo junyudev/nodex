@@ -1,22 +1,36 @@
+import { measureCodexHistoryResidency } from "./codex-history-topology";
 import { describe, expect, test } from "vite-plus/test";
-import type { Turn } from "@nodex/codex-app-server-protocol/v2";
+import type { Turn as ProtocolTurn } from "@nodex/codex-app-server-protocol/v2";
 import {
   availableCodexHistoryBoundary,
   createCodexHistoryBoundaryRef,
+  readCurrentCodexHistoryBoundary,
   createCodexHistoryIslandTopology,
   createEmptyCodexHistoryTopology,
   exhaustedCodexHistoryBoundary,
   flattenCodexHistoryTopology,
   insertCodexHistoryIsland,
   mergeCodexHistoryBoundaryPage,
+  replaceCodexHistoryEntity,
+  validateCodexHistoryTopology,
   type CodexHistoryBoundary,
   type CodexHistoryEntity,
   type CodexHistoryEntry,
 } from "./codex-history-topology";
 
+type Turn = ProtocolTurn & {
+  readonly itemsPagination: import("./codex-history-topology").CodexHistoryTurnItemsPagination;
+};
+
 function turn(id: string, itemsView: Turn["itemsView"] = "full"): Turn {
   return {
     id,
+    itemsPagination: {
+      olderCursor: itemsView === "full" ? null : `items:${id}`,
+      isLoadingOlder: false,
+      hasLoadedOldest: itemsView === "full",
+      itemsView,
+    },
     items: [],
     itemsView,
     status: "completed",
@@ -31,31 +45,19 @@ function entity(
   id: string,
   options: {
     readonly itemsView?: Turn["itemsView"];
-    readonly authority?: "history" | "live";
-    readonly revision?: number;
+    readonly durationMs?: number;
   } = {},
 ): CodexHistoryEntity<Turn> {
   const itemsView = options.itemsView ?? "full";
   return {
     key: id,
-    turn: turn(id, itemsView),
-    itemCount: 0,
-    approximateBytes: id.length,
-    itemsPagination: {
-      olderCursor: itemsView === "full" ? null : `items:${id}`,
-      isLoadingOlder: false,
-      hasLoadedOldest: itemsView === "full",
-      oldestUserInput: null,
-      openingUserMessageId: null,
-      itemsView,
-    },
-    authority: options.authority ?? "history",
-    revision: options.revision ?? 0,
+    turn: {...turn(id, itemsView), durationMs: options.durationMs ?? null},
+
   };
 }
 
 function entry(id: string): CodexHistoryEntry {
-  return { key: id, entityKey: id };
+  return { key: id, value: id };
 }
 
 function available(id: string, cursor = id): CodexHistoryBoundary {
@@ -74,9 +76,28 @@ describe("Codex sparse history topology", () => {
       generation: 4,
       isComplete: false,
       islands: [],
-      residency: { islandCount: 0, turnCount: 0, itemCount: 0, approximateBytes: 0 },
     });
     expect(flattenCodexHistoryTopology(topology)).toEqual([]);
+  });
+
+  test("keeps the completeness and boundaries of an empty fetched tail", () => {
+    const complete = expectTopology(
+      createCodexHistoryIslandTopology<Turn>({
+        generation: 3,
+        isComplete: true,
+        islandId: "tail:3",
+        entries: [],
+        entities: [],
+        olderBoundary: exhaustedCodexHistoryBoundary("tail:3:older"),
+        newerBoundary: exhaustedCodexHistoryBoundary("tail:3:newer"),
+      }),
+    );
+    expect(complete.isComplete).toBe(true);
+    expect(complete.islands).toHaveLength(1);
+    expect(flattenCodexHistoryTopology(complete)).toEqual([]);
+    const incomplete = { ...complete, isComplete: false };
+    expect(validateCodexHistoryTopology(incomplete)).toBeNull();
+    expect(flattenCodexHistoryTopology(incomplete)).toEqual([]);
   });
 
   test("projects five tail turns after one inert older gap", () => {
@@ -102,7 +123,7 @@ describe("Codex sparse history topology", () => {
     ]);
     expect(rows[0]).toMatchObject({ kind: "gap", estimatedHeightPx: 144, olderBoundary: null });
     expect(topology.isComplete).toBe(false);
-    expect(topology.residency.turnCount).toBe(5);
+    expect(measureCodexHistoryResidency(topology).turnCount).toBe(5);
   });
 
   test("prepends one page, advances the exact boundary, and preserves loaded identity", () => {
@@ -126,14 +147,14 @@ describe("Codex sparse history topology", () => {
       continuation: available("older:page-2", "cursor:1"),
     });
     if (!result.ok) throw new Error(result.error.message);
-    expect(result.topology.islands[0]!.entries.map((value) => value.entityKey)).toEqual([
+    expect(result.topology.islands[0]!.entries.map((value) => value.value)).toEqual([
       "turn-2",
       "turn-3",
       "turn-4",
       "turn-5",
     ]);
     expect(result.topology.entitiesByKey["turn-4"]).toBe(oldTurn);
-    expect(result.topology.residency.turnCount).toBe(4);
+    expect(measureCodexHistoryResidency(result.topology).turnCount).toBe(4);
   });
 
   test("rejects a stale generation and a cursor that does not advance", () => {
@@ -165,33 +186,94 @@ describe("Codex sparse history topology", () => {
     expect(stalled).toMatchObject({ ok: false, error: { code: "cursorStalled" } });
   });
 
-  test("merges a search island into the tail and lets the live entity win", () => {
+  test("accepts an outstanding page after its boundary survives an island merge", () => {
+    const boundary = available("retained:older", "cursor:1");
+    const topology = expectTopology(
+      createCodexHistoryIslandTopology({
+        generation: 6,
+        islandId: "merged:6",
+        entries: [entry("turn-2")],
+        entities: [entity("turn-2")],
+        olderBoundary: boundary,
+        newerBoundary: exhaustedCodexHistoryBoundary("merged:newer"),
+      }),
+    );
+    if (boundary.status !== "available") throw new Error("Expected available boundary");
+    const reference = createCodexHistoryBoundaryRef(6, "old:6", "older", boundary);
+    const result = mergeCodexHistoryBoundaryPage(topology, {
+      boundary: reference,
+      entries: [entry("turn-1")],
+      entities: [entity("turn-1")],
+      continuation: exhaustedCodexHistoryBoundary("page:newer-id"),
+    });
+    const next = expectTopology(result);
+    expect(next.islands[0]?.olderBoundary.boundaryId).toBe("retained:older");
+    expect(next.islands[0]?.entries.map((item) => item.value)).toEqual(["turn-1", "turn-2"]);
+    expect(next.isComplete).toBe(true);
+  });
+
+  test("advances a cursor when its anchor changes and rejects replaying its old progress", () => {
+    const boundary = availableCodexHistoryBoundary("tail:older", {
+      cursor: "cursor:1",
+      oldestLoadedTurnId: "turn-2",
+    });
+    const topology = expectTopology(
+      createCodexHistoryIslandTopology({
+        generation: 6,
+        islandId: "tail:6",
+        entries: [entry("turn-2")],
+        entities: [entity("turn-2")],
+        olderBoundary: boundary,
+        newerBoundary: exhaustedCodexHistoryBoundary("tail:newer"),
+      }),
+    );
+    if (boundary.status !== "available") throw new Error("Expected available boundary");
+    const reference = createCodexHistoryBoundaryRef(6, "tail:6", "older", boundary);
+    const page = {
+      boundary: reference,
+      entries: [entry("turn-1")],
+      entities: [entity("turn-1")],
+      continuation: availableCodexHistoryBoundary("ignored:page-id", {
+        cursor: "cursor:1",
+        oldestLoadedTurnId: "turn-1",
+      }),
+    };
+    const next = expectTopology(mergeCodexHistoryBoundaryPage(topology, page));
+    expect(next.islands[0]?.olderBoundary).toMatchObject({
+      boundaryId: "tail:older",
+      handle: { cursor: "cursor:1", oldestLoadedTurnId: "turn-1" },
+    });
+    expect(mergeCodexHistoryBoundaryPage(next, page).ok).toBe(false);
+  });
+
+  test("merges an overlapping search island using the caller Turn policy", () => {
     const search = expectTopology(
       createCodexHistoryIslandTopology({
         generation: 3,
         islandId: "search:1",
         entries: [entry("turn-1"), entry("turn-2")],
-        entities: [entity("turn-1"), entity("turn-2", { authority: "live", revision: 4 })],
+        entities: [entity("turn-1"), entity("turn-2", { durationMs: 4 })],
         olderBoundary: exhaustedCodexHistoryBoundary("older:search"),
         newerBoundary: available("newer:search"),
       }),
     );
     const merged = insertCodexHistoryIsland(search, {
       index: 1,
+      mergeTurns: (current, incoming) => ({...incoming, durationMs: current.durationMs}),
       islandId: "tail:3",
       entries: [entry("turn-2"), entry("turn-3")],
-      entities: [entity("turn-2", { authority: "history", revision: 99 }), entity("turn-3")],
+      entities: [entity("turn-2", { durationMs: 99 }), entity("turn-3")],
       olderBoundary: available("older:tail"),
       newerBoundary: exhaustedCodexHistoryBoundary("newer:tail"),
     });
     if (!merged.ok) throw new Error(merged.error.message);
     expect(merged.topology.islands).toHaveLength(1);
-    expect(merged.topology.islands[0]!.entries.map((value) => value.entityKey)).toEqual([
+    expect(merged.topology.islands[0]!.entries.map((value) => value.value)).toEqual([
       "turn-1",
       "turn-2",
       "turn-3",
     ]);
-    expect(merged.topology.entitiesByKey["turn-2"]?.authority).toBe("live");
+    expect(merged.topology.entitiesByKey["turn-2"]?.durationMs).toBe(4);
   });
 
   test("aligns an overlapping search window around its resident anchor positions", () => {
@@ -221,7 +303,7 @@ describe("Codex sparse history topology", () => {
       },
     });
     if (!inserted.ok) throw new Error(inserted.error.message);
-    expect(inserted.topology.islands[0]?.entries.map((value) => value.entityKey)).toEqual([
+    expect(inserted.topology.islands[0]?.entries.map((value) => value.value)).toEqual([
       "turn-a",
       "turn-x",
       "turn-b",
@@ -259,7 +341,7 @@ describe("Codex sparse history topology", () => {
     });
   });
 
-  test("does not mark a single exhausted island complete while one turn is partial", () => {
+  test("records complete Turn history independently from partially loaded items", () => {
     const partial = expectTopology(
       createCodexHistoryIslandTopology({
         generation: 6,
@@ -270,6 +352,38 @@ describe("Codex sparse history topology", () => {
         newerBoundary: exhaustedCodexHistoryBoundary("newer:tail"),
       }),
     );
-    expect(partial.isComplete).toBe(false);
+    expect(partial.isComplete).toBe(true);
+    expect(partial.entitiesByKey["turn-1"]?.itemsPagination.hasLoadedOldest).toBe(false);
   });
+
+  test("preserves explicit incomplete history through a resident item update with exhausted boundaries", () => {
+    const incomplete = expectTopology(
+      createCodexHistoryIslandTopology({
+        generation: 7,
+        isComplete: false,
+        islandId: "tail:7",
+        entries: [entry("turn-1")],
+        entities: [entity("turn-1")],
+        olderBoundary: exhaustedCodexHistoryBoundary("older:tail"),
+        newerBoundary: exhaustedCodexHistoryBoundary("newer:tail"),
+      }),
+    );
+    expect(incomplete.isComplete).toBe(false);
+    expect(validateCodexHistoryTopology(incomplete)).toBeNull();
+    const updated = replaceCodexHistoryEntity(incomplete, {
+      expectedGeneration: 7,
+      entity: entity("turn-1", { durationMs: 1 }),
+    });
+    expect(updated.ok && updated.topology.isComplete).toBe(false);
+  });
+  test("retires a boundary reference when its native source changes at the same cursor", () => {
+    const older = availableCodexHistoryBoundary("older", { source: "ordinary", cursor: "same", oldestLoadedTurnId: "turn-1" });
+    if (older.status !== "available") throw new Error("Expected available boundary");
+    const topology = expectTopology(createCodexHistoryIslandTopology({ generation: 1, islandId: "tail", entries: [entry("turn-1")], entities: [entity("turn-1")], olderBoundary: older, newerBoundary: exhaustedCodexHistoryBoundary("newer") }));
+    const reference = createCodexHistoryBoundaryRef(1, "tail", "older", older);
+    expect(readCurrentCodexHistoryBoundary(topology, reference)).toBe(older);
+    const replaced = { ...topology, islands: topology.islands.map((island) => ({ ...island, olderBoundary: { ...older, handle: { ...older.handle, source: "compact" as const } } })) };
+    expect(readCurrentCodexHistoryBoundary(replaced, reference)).toBeNull();
+  });
+
 });

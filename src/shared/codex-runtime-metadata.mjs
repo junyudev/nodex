@@ -1,4 +1,4 @@
-export const AGENT_RUNTIME_LAYOUT_VERSION = 4;
+export const AGENT_RUNTIME_LAYOUT_VERSION = 5;
 export const AGENT_RUNTIME_METADATA_FILENAME = "agent-runtime.json";
 
 const SHA256 = /^[a-f0-9]{64}$/u;
@@ -47,7 +47,7 @@ const packageManifest = (value) => {
       "version",
     ]) ||
     !Number.isSafeInteger(value.layoutVersion) ||
-    value.variant !== "codex-app-server" ||
+    value.variant !== "codex" ||
     !nonEmpty(value.version) ||
     !nonEmpty(value.target) ||
     !nonEmpty(value.entrypoint) ||
@@ -139,7 +139,7 @@ export function parseBundledAgentRuntimeMetadata(value) {
       "targetTriple",
     ]) ||
     value.layoutVersion !== AGENT_RUNTIME_LAYOUT_VERSION ||
-    value.runtimeFamily !== "codex-app-server" ||
+    value.runtimeFamily !== "codex" ||
     !nonEmpty(value.appServerRuntimeVersion) ||
     !nonEmpty(value.protocolSchemaFingerprint) ||
     !SHA256.test(value.protocolSchemaFingerprint) ||

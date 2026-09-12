@@ -1,24 +1,27 @@
+import {
+  CodexMainConversationManagers,
+  make as makeMainConversationManagers,
+} from "../codex-application/CodexMainConversationManagers";
+import { CodexConversationPeerRuntime } from "../platform/node/CodexConversationPeerRuntime";
+import { ScopedCallbackRuntime } from "./ScopedCallbackRuntime";
+import { ApplicationSettings } from "../settings/ApplicationSettings";
 import { CodexAppServerRequestError } from "@nodex/effect-codex-app-server/errors";
 import * as Context from "effect/Context";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 import { CODEX_INTEGRATION_CAPABILITIES } from "../../shared/codex-integration-capabilities";
-import { standaloneCodexAppServerArgs } from "../../shared/codex-app-server-launch";
+import { codexCliAppServerArgs } from "../../shared/codex-app-server-launch";
 import { resolveCodexRuntime } from "../codex/codex-runtime";
 import { CodexAccount, live as codexAccountLive } from "../codex-application/CodexAccount";
+import {
+  CodexAttestation,
+  supportsCodexAttestationRequests,
+} from "../codex-application/CodexAttestation";
 import {
   CodexApplicationEventHub,
   make as makeCodexApplicationEventHub,
 } from "../codex-application/CodexApplicationEventHub";
-import {
-  CodexAttachments,
-  live as codexAttachmentsLive,
-} from "../codex-application/CodexAttachments";
 import { CodexConnection, live as codexConnectionLive } from "../codex-application/CodexConnection";
-import {
-  CodexOwnerNotificationDrainRuntime,
-  make as makeCodexOwnerNotificationDrainRuntime,
-} from "../codex-application/CodexOwnerNotificationDrainRuntime";
 import {
   CodexPendingServerRequestRuntime,
   make as makeCodexPendingServerRequestRuntime,
@@ -32,17 +35,9 @@ import {
   live as codexPreferencesLive,
 } from "../codex-application/CodexPreferences";
 import {
-  CodexRendererConversationCoordinator,
-  make as makeCodexRendererConversationCoordinator,
-} from "../codex-application/CodexRendererConversationCoordinator";
-import {
-  CodexRendererConversationRegistry,
-  make as makeCodexRendererConversationRegistry,
-} from "../codex-application/CodexRendererConversationRegistry";
-import {
-  CodexRendererOwnerRetention,
-  make as makeCodexRendererOwnerRetention,
-} from "../codex-application/CodexRendererOwnerRetention";
+  CodexRendererPresentationRegistry,
+  make as makeCodexRendererPresentationRegistry,
+} from "../codex-application/CodexRendererPresentationRegistry";
 import {
   CodexServerRequestResponses,
   make as makeCodexServerRequestResponses,
@@ -79,11 +74,11 @@ import * as CodexRuntimeLive from "../codex-runtime/CodexRuntimeLive";
 import { CodexAppServerCapabilities } from "../codex-runtime/CodexAppServerCapabilities";
 import { CodexRequestScheduler } from "../codex-runtime/CodexRequestScheduler";
 import * as CodexSessionTransport from "../platform/node/CodexSessionTransport";
+import { live as electronCodexAttestationLive } from "../platform/electron/ElectronCodexAttestation";
 import { resolveCodexProcessEnvironment } from "../platform/node/CodexProcessEnvironment";
 import { nodexCliShellLaunchArgs, prepareNodexCliShell } from "../platform/node/NodexCliShell";
 import { ProjectWorkspace } from "../project-application/ProjectWorkspace";
 import { CoreModules } from "../core-runtime/CoreModules";
-import { getThreadGoalAttachmentsRoot } from "../thread-goal-attachments";
 import { MainConfig } from "./MainConfig";
 import { MainApplicationError } from "./MainExit";
 import {
@@ -129,13 +124,28 @@ const platform: Layer.Layer<CodexPlatform, MainApplicationError, MainConfig> = L
 
 const requestInbox = Layer.effect(CodexApplicationRequestInbox, makeCodexApplicationRequestInbox);
 
+const attestation = Layer.unwrap(
+  Effect.gen(function* () {
+    const config = yield* MainConfig;
+    return electronCodexAttestationLive({
+      architecture: config.arch,
+      isPackaged: config.isPackaged,
+      platform: config.platform as NodeJS.Platform,
+      projectRootPath: config.projectRootPath,
+      resourcesPath: config.resourcesPath,
+    });
+  }),
+);
+
 const pendingRequests = Layer.effect(
   CodexPendingServerRequestRuntime,
   Effect.gen(function* () {
     const inbox = yield* CodexApplicationRequestInbox;
     return yield* makeCodexPendingServerRequestRuntime({
-      respond: (_threadId, _requestId, occurrenceToken, response) =>
-        inbox.settleOccurrenceToken(occurrenceToken, { kind: "result", value: response }),
+      abandon: (_threadId, _requestId, occurrenceToken) =>
+        inbox.settleOccurrenceToken(occurrenceToken, { kind: "abandon" }),
+      respond: (_threadId, _requestId, occurrenceToken, response, trace) =>
+        inbox.settleOccurrenceToken(occurrenceToken, { kind: "result", value: response }, trace),
       reject: (_threadId, requestId, occurrenceToken, reason) =>
         inbox.settleOccurrenceToken(occurrenceToken, {
           kind: "error",
@@ -157,6 +167,7 @@ const runtime = Layer.unwrap(
   Effect.gen(function* () {
     const config = yield* MainConfig;
     const codex = yield* CodexPlatform;
+    const codexAttestation = yield* CodexAttestation;
     const cliArgs =
       config.platform === "win32"
         ? []
@@ -187,7 +198,13 @@ const runtime = Layer.unwrap(
     const local: Omit<CodexAppServerSessionOptions, "generation"> = {
       hostId: "local",
       command: codex.runtime.binaryPath,
-      args: [...standaloneCodexAppServerArgs(), ...cliArgs],
+      localDaemon: {
+        codexHome: codex.runtimeStateHome,
+        platform: config.platform,
+        resourcesPath: config.resourcesPath,
+        configOverrides: cliArgs,
+      },
+      args: [...codexCliAppServerArgs(config.environment), ...cliArgs],
       env: {},
       resolveEnv: () =>
         resolveCodexProcessEnvironment({
@@ -201,7 +218,7 @@ const runtime = Layer.unwrap(
         capabilities: {
           experimentalApi: true,
           extensions: { "openai/form": {} },
-          requestAttestation: false,
+          requestAttestation: supportsCodexAttestationRequests(config.platform),
         },
       },
       initializeTimeout: "20 seconds",
@@ -210,6 +227,8 @@ const runtime = Layer.unwrap(
     const browserRuntime = codex.runtime.browserRuntime;
     return CodexRuntimeLive.live({
       local,
+      internalServerRequestHandler: (request) =>
+        request.method === "attestation/generate" ? codexAttestation.generate : null,
       ...(browserRuntime.status === "available"
         ? {
             localSessionLayer: (generation: number) =>
@@ -222,7 +241,6 @@ const runtime = Layer.unwrap(
               ),
           }
         : {}),
-      requestTimeout: "180 seconds",
     });
   }),
 );
@@ -232,6 +250,7 @@ const conversations = codexConversationsLive.pipe(Layer.provideMerge(conversatio
 const appToolInvocations = Layer.effect(AppToolInvocationInbox, makeAppToolInvocationInbox);
 const foundations = Layer.mergeAll(
   platform,
+  attestation,
   requestInbox,
   appToolInvocations,
   conversations,
@@ -242,16 +261,11 @@ const kernel = pendingRequests.pipe(Layer.provideMerge(transport));
 
 const account = codexAccountLive({ pollInterval: "60 seconds" }).pipe(Layer.provideMerge(kernel));
 const catalog = composerCatalogLive.pipe(Layer.provideMerge(kernel));
-const connection = codexConnectionLive.pipe(Layer.provideMerge(kernel));
+const events = Layer.effect(CodexApplicationEventHub, makeCodexApplicationEventHub);
+const connection = codexConnectionLive.pipe(Layer.provideMerge(Layer.mergeAll(kernel, events)));
 const tools = codexToolRuntimeLive({
   supportsChatGptApps: CODEX_INTEGRATION_CAPABILITIES.chatGptApps,
 }).pipe(Layer.provideMerge(Layer.merge(kernel, account)));
-const attachments = Layer.unwrap(
-  Effect.gen(function* () {
-    const codex = yield* CodexPlatform;
-    return codexAttachmentsLive(getThreadGoalAttachmentsRoot(codex.runtimeStateHome));
-  }),
-).pipe(Layer.provideMerge(platform));
 const permissions = Layer.unwrap(
   Effect.gen(function* () {
     const codex = yield* CodexPlatform;
@@ -259,56 +273,24 @@ const permissions = Layer.unwrap(
   }),
 ).pipe(Layer.provideMerge(kernel));
 
-const events = Layer.effect(CodexApplicationEventHub, makeCodexApplicationEventHub);
-const notificationDrain = Layer.effect(
-  CodexOwnerNotificationDrainRuntime,
-  makeCodexOwnerNotificationDrainRuntime(),
-);
-const rendererRegistry = Layer.effect(
-  CodexRendererConversationRegistry,
-  makeCodexRendererConversationRegistry(),
+const rendererPresentation = Layer.effect(
+  CodexRendererPresentationRegistry,
+  makeCodexRendererPresentationRegistry,
 );
 const readState = Layer.effect(CodexThreadReadState, makeCodexThreadReadState).pipe(
-  Layer.provideMerge(Layer.mergeAll(events, rendererRegistry, kernel)),
+  Layer.provideMerge(Layer.mergeAll(events, kernel)),
+);
+const mainManagers = Layer.effect(CodexMainConversationManagers, makeMainConversationManagers).pipe(
+  Layer.provideMerge(readState),
 );
 const userInputAutoResolution = Layer.effect(
   CodexUserInputAutoResolution,
   makeCodexUserInputAutoResolution,
-).pipe(Layer.provideMerge(rendererRegistry));
-const rendererOwnerRetention = Layer.effect(
-  CodexRendererOwnerRetention,
-  makeCodexRendererOwnerRetention(),
-).pipe(Layer.provideMerge(Layer.mergeAll(events, notificationDrain, rendererRegistry, kernel)));
-const rendererCoordinator = Layer.effect(
-  CodexRendererConversationCoordinator,
-  makeCodexRendererConversationCoordinator,
-).pipe(
-  Layer.provideMerge(
-    Layer.mergeAll(
-      events,
-      notificationDrain,
-      rendererRegistry,
-      rendererOwnerRetention,
-      userInputAutoResolution,
-      kernel,
-    ),
-  ),
-);
+).pipe(Layer.provideMerge(rendererPresentation));
 const serverRequestResponses = Layer.effect(
   CodexServerRequestResponses,
   makeCodexServerRequestResponses,
-).pipe(
-  Layer.provideMerge(
-    Layer.mergeAll(
-      events,
-      notificationDrain,
-      rendererRegistry,
-      readState,
-      userInputAutoResolution,
-      kernel,
-    ),
-  ),
-);
+).pipe(Layer.provideMerge(Layer.mergeAll(events, readState, userInputAutoResolution, kernel)));
 
 const applicationServices = Layer.mergeAll(
   account,
@@ -316,21 +298,19 @@ const applicationServices = Layer.mergeAll(
   connection,
   tools,
   codexPreferencesLive,
-  attachments,
   permissions,
   events,
-  notificationDrain,
-  rendererRegistry,
+  rendererPresentation,
   readState,
+  mainManagers,
   userInputAutoResolution,
-  rendererOwnerRetention,
-  rendererCoordinator,
   serverRequestResponses,
 );
 
 /** Stable Codex host generations and application-owned conversation foundations. */
 export const live: Layer.Layer<
   | CodexPlatform
+  | CodexAttestation
   | AppToolInvocationInbox
   | CodexApplicationRequestInbox
   | CodexPendingServerRequestRuntime
@@ -346,16 +326,19 @@ export const live: Layer.Layer<
   | CodexConnection
   | CodexToolRuntime
   | CodexPreferences
-  | CodexAttachments
   | CodexPermissions
   | CodexApplicationEventHub
-  | CodexOwnerNotificationDrainRuntime
-  | CodexRendererConversationRegistry
+  | CodexRendererPresentationRegistry
   | CodexThreadReadState
+  | CodexMainConversationManagers
   | CodexUserInputAutoResolution
-  | CodexRendererOwnerRetention
-  | CodexRendererConversationCoordinator
   | CodexServerRequestResponses,
   MainApplicationError,
-  MainConfig | CodexThreadHostResolver | ProjectWorkspace | CoreModules
+  | MainConfig
+  | CodexThreadHostResolver
+  | ProjectWorkspace
+  | CoreModules
+  | ApplicationSettings
+  | CodexConversationPeerRuntime
+  | ScopedCallbackRuntime
 > = applicationServices;

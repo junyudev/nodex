@@ -6,7 +6,6 @@ import * as Option from "effect/Option";
 import * as Schema from "effect/Schema";
 import type * as Scope from "effect/Scope";
 import * as Stream from "effect/Stream";
-import { DEFAULT_CODEX_HOST_ID } from "../../shared/codex-host";
 import { cappedApproximateValueBytes } from "../../shared/codex-bounded-value-size";
 import type {
   CodexConversationChildMembership,
@@ -24,6 +23,7 @@ import {
 } from "./CodexConversationRelationshipsProjection";
 import { CodexThreadDirectory } from "./CodexThreadDirectory";
 import { ConversationEntityMap } from "./internal/ConversationEntityMap";
+import type { ConversationEntityState } from "./internal/ConversationEntityState";
 
 const REPAIR_RETRY = "30 seconds";
 const PAGE_SIZE = 200;
@@ -72,6 +72,7 @@ export class CodexConversationRelationships extends Context.Service<
 
 const projectCoreChild = (thread: CoreChildThread): CodexConversationRelationshipThread => ({
   threadId: thread.thread_id,
+  projectId: thread.project_id ?? null,
   parentThreadId: thread.parent_thread_id ?? null,
   threadName: thread.thread_name ?? null,
   threadPreview: thread.thread_preview,
@@ -90,6 +91,7 @@ const projectSnapshotChild = (
   conversation: CodexConversationSnapshot,
 ): CodexConversationRelationshipThread => ({
   threadId: conversation.threadId,
+  projectId: conversation.projectId,
   parentThreadId: conversation.source?.parentThreadId ?? parentThreadId,
   threadName: conversation.threadName,
   threadPreview: conversation.threadPreview,
@@ -106,8 +108,10 @@ const projectSnapshotChild = (
 const provisionalChild = (
   parentThreadId: string,
   childThreadId: string,
+  projectId: string | null,
 ): CodexConversationRelationshipThread => ({
   threadId: childThreadId,
+  projectId,
   parentThreadId,
   threadName: null,
   threadPreview: "",
@@ -260,6 +264,7 @@ export const make: Effect.Effect<
   });
 
   const publish = (
+    hostId: string,
     parentThreadId: string,
     memberships: readonly CodexConversationChildMembership[],
   ): void => {
@@ -267,7 +272,7 @@ export const make: Effect.Effect<
       kind: "hostMessage",
       value: {
         type: "sharedObjectUpdated",
-        hostId: DEFAULT_CODEX_HOST_ID,
+        hostId,
         object: {
           objectType: "conversationChildMemberships",
           objectId: parentThreadId,
@@ -315,6 +320,7 @@ export const make: Effect.Effect<
     if (actualParentThreadId !== parentThreadId) return true;
     return hasFriendlyCodexConversationRelationshipIdentity({
       threadId: entry.durable.threadId,
+      projectId: entry.durable.projectId,
       parentThreadId: entry.durable.parentThreadId,
       threadName: entry.durable.threadName,
       threadPreview: entry.durable.threadPreview,
@@ -346,6 +352,20 @@ export const make: Effect.Effect<
       ),
     );
 
+  const repairInParentLifetime = Effect.fn("CodexConversationRelationships.repairInParentLifetime")(
+    function* (parent: ConversationEntityState, childThreadId: string, hostId: string) {
+      if (conversations.current(parent.threadId) !== parent) return;
+      let subscription: Disposable | undefined;
+      const retired = Effect.callback<void>((resume) => {
+        subscription = conversations.subscribeRetired((threadId, generation) => {
+          if (threadId === parent.threadId && generation === parent.generation) resume(Effect.void);
+        });
+        if (conversations.current(parent.threadId) !== parent) resume(Effect.void);
+      }).pipe(Effect.ensuring(Effect.sync(() => subscription?.[Symbol.dispose]())));
+      yield* Effect.raceFirst(retired, repairLoop(parent.threadId, childThreadId, hostId));
+    },
+  );
+
   refreshPhysical = Effect.fn("CodexConversationRelationships.refresh")(function* (
     rawParentThreadId: string,
   ): Effect.fn.Return<
@@ -359,17 +379,17 @@ export const make: Effect.Effect<
       Effect.gen(function* () {
         const parentAggregate = conversations.current(parentThreadId);
         if (!parentAggregate) return [];
-        const parent = parentAggregate.readSnapshot();
-        if (!parent) return [];
+        if (!parentAggregate.readCanonicalState()) return [];
         const parentRecord = yield* core.workspace
           .read({ kind: "thread", thread_id: parentThreadId })
           .pipe(Effect.mapError((cause) => error(parentThreadId, cause)));
         if (parentRecord.value.kind !== "thread") return [];
-
-        const canonicalChildThreadIds = extractCodexConversationRelationshipThreadIds(
-          parentAggregate.readCanonicalState(),
-        );
+        if (conversations.current(parentThreadId) !== parentAggregate) return [];
         const durableChildren = yield* readChildren(parentThreadId);
+        if (conversations.current(parentThreadId) !== parentAggregate) return [];
+        const parent = parentAggregate.readCanonicalState();
+        if (!parent) return [];
+        const canonicalChildThreadIds = extractCodexConversationRelationshipThreadIds(parent);
         const childrenById = new Map<string, CodexConversationRelationshipThread>(
           durableChildren.map((child) => [child.thread_id, projectCoreChild(child)]),
         );
@@ -383,13 +403,21 @@ export const make: Effect.Effect<
           // durable child window. This fails closed instead of resurrecting a deleted canonical id.
           if (removedThreadIdsSaturated && !childrenById.has(childThreadId)) continue;
           if (removedThreadIds.has(childThreadId)) continue;
-          const childConversation = conversations.current(childThreadId)?.readSnapshot() ?? null;
+          const childEntity = conversations.current(childThreadId);
+          const childConversation = childEntity?.readSnapshot() ?? null;
+          const canonicalState = childEntity?.readCanonicalState() ?? null;
           const thread =
             childrenById.get(childThreadId) ??
             (childConversation
               ? projectSnapshotChild(parentThreadId, childConversation)
-              : provisionalChild(parentThreadId, childThreadId));
-          children.push({ thread, conversation: childConversation });
+              : provisionalChild(
+                  canonicalState?.parentThreadId ?? parentThreadId,
+                  childThreadId,
+                  parentRecord.value.thread.project_id ?? null,
+                ));
+          const child = { thread, conversation: childConversation, canonicalState };
+          children.push(child);
+          // A live display name does not prove that the durable child metadata was repaired.
           if (!hasFriendlyCodexConversationRelationshipIdentity(thread)) {
             const key = JSON.stringify([parentThreadId, childThreadId]);
             if (FiberMap.hasUnsafe(repairs, key)) continue;
@@ -403,8 +431,8 @@ export const make: Effect.Effect<
             keys.add(key);
             runRepair(
               key,
-              repairLoop(
-                parentThreadId,
+              repairInParentLifetime(
+                parentAggregate,
                 childThreadId,
                 parentRecord.value.thread.execution_host_id,
               ).pipe(
@@ -426,7 +454,7 @@ export const make: Effect.Effect<
           canonicalChildThreadIds,
           children,
         });
-        publish(parentThreadId, memberships);
+        publish(parentRecord.value.thread.execution_host_id, parentThreadId, memberships);
         return memberships;
       }),
     );

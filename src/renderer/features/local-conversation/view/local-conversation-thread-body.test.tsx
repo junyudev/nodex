@@ -318,7 +318,7 @@ function buildModel(overrides?: {
 
   return {
     projectId: conversation?.projectId ?? "project_1",
-    hostId: "default",
+    hostId: "local",
     threadId: conversation?.threadId ?? null,
     isSideChat: false,
     cwd: conversation?.cwd ?? null,

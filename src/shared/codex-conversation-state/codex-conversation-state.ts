@@ -1,7 +1,22 @@
+import { produce, type Draft } from "immer";
+import {
+  residentConversationTurns,
+  residentConversationTurnEntries,
+  conversationTurnDraft,
+  appendConversationTurnDraft,
+  removeConversationTurnDraft,
+} from "./codex-turn-mutation";
+import { areStructurallyEqual } from "../structural-equality";
+import { mergeCodexCanonicalHistoryItems } from "./codex-history-item-merge";
+import {
+  reconcileCodexHydratedSteering,
+  relocateCodexHydratedSteering,
+} from "./codex-steering-reconciliation";
 import type { Personality, RequestId, ServerRequest } from "@nodex/codex-app-server-protocol";
 import type {
   ActivePermissionProfile,
   CodexErrorInfo,
+  EnvironmentConnectionNotification,
   GuardianApprovalReviewAction,
   GuardianApprovalReviewStatus,
   GuardianRiskLevel,
@@ -17,30 +32,45 @@ import type {
   ThreadGoal,
   ThreadItem,
   ThreadSettings,
+  ThreadSettingsUpdateParams,
+  ThreadResumeResponse,
   Turn,
+  TurnEnvironmentParams,
   TurnPlanStep,
   TurnStartParams,
   ToolRequestUserInputOption,
   UserInput,
 } from "@nodex/codex-app-server-protocol/v2";
+import { projectCodexMarkdownLabel } from "../codex-markdown-text";
 import type { ThreadTokenUsage } from "@nodex/codex-app-server-protocol/v2/ThreadTokenUsage";
 import { isCodexProtocolThreadItem } from "../codex-protocol-thread-item";
 import type { CodexQueuedFollowUp } from "../codex-queued-follow-up-state";
 import { normalizeCodexServiceTier } from "../codex-service-tier";
 import type { CodexItemStatus } from "../types";
-import type { CodexHistoryTurnItemsPagination } from "./codex-history-topology";
+import type {
+  CodexCanonicalHistoryTopology,
+  CodexHistoryTurnItemsPagination,
+} from "./codex-history-topology";
 import { boundCodexReasoningParts } from "./codex-reasoning-parts";
+import {
+  mergeCodexThreadEnvironmentSelection,
+  type CodexEnvironmentSelectionEvidence,
+} from "./codex-environment-selection";
 
 export type CodexProtocolRequestId = RequestId;
 export type CodexProtocolThreadItem = ThreadItem;
 export type CodexProtocolThreadItemOf<TType extends ThreadItem["type"]> = Extract<
   ThreadItem,
-  { type: TType }
+  {
+    type: TType;
+  }
 >;
 export type CodexProtocolServerRequest = ServerRequest;
 export type CodexProtocolServerRequestOf<TMethod extends ServerRequest["method"]> = Extract<
   ServerRequest,
-  { method: TMethod }
+  {
+    method: TMethod;
+  }
 >;
 
 /** Exact 30751 request extensions not present in the generated app-server union. */
@@ -90,7 +120,14 @@ export type CodexCanonicalSetupCodexStepResponse =
   | {
       readonly step: "task";
       readonly action: "submit" | "skip" | "dismiss";
-      readonly answers: Readonly<Record<string, { readonly answers: readonly string[] }>>;
+      readonly answers: Readonly<
+        Record<
+          string,
+          {
+            readonly answers: readonly string[];
+          }
+        >
+      >;
     }
   | {
       readonly step: "context";
@@ -287,9 +324,14 @@ export interface CodexCanonicalSteeringCompareKey {
 }
 
 export interface CodexCanonicalSteeringRestoreMessage {
-  readonly queueRow: CodexQueuedFollowUp;
+  readonly id?: string;
+  readonly cwd?: string | null;
+  readonly responsesapiClientMetadata?: TurnStartParams["responsesapiClientMetadata"];
+  readonly queueRow?: CodexQueuedFollowUp;
   readonly context: {
     readonly commentAttachments: readonly unknown[];
+    readonly workspaceRoots?: readonly string[];
+    readonly collaborationMode?: TurnStartParams["collaborationMode"];
   };
 }
 
@@ -413,13 +455,19 @@ export interface CodexCanonicalPlanImplementationItem {
 /** App-side context-compaction state enriches the generated identity-only item. */
 export type CodexCanonicalContextCompactionItem = Extract<
   ThreadItem,
-  { type: "contextCompaction" }
+  {
+    type: "contextCompaction";
+  }
 > & {
   readonly completed?: boolean;
   readonly source?: "automatic" | "manual";
 };
-
-export type CodexCanonicalImageGenerationItem = Extract<ThreadItem, { type: "imageGeneration" }> & {
+export type CodexCanonicalImageGenerationItem = Extract<
+  ThreadItem,
+  {
+    type: "imageGeneration";
+  }
+> & {
   readonly src: string | null;
 };
 
@@ -430,14 +478,21 @@ export interface CodexCanonicalCollabReceiverThread {
 
 export type CodexCanonicalCollabAgentToolCallItem = Extract<
   ThreadItem,
-  { type: "collabAgentToolCall" }
+  {
+    type: "collabAgentToolCall";
+  }
 > & {
   readonly receiverThreads: readonly CodexCanonicalCollabReceiverThread[];
 };
 
 /** Generated items that require app-owned display enrichment after ingress. */
 export type CodexCanonicalGeneratedItem =
-  | Exclude<ThreadItem, { type: "imageGeneration" | "collabAgentToolCall" | "contextCompaction" }>
+  | Exclude<
+      ThreadItem,
+      {
+        type: "imageGeneration" | "collabAgentToolCall" | "contextCompaction";
+      }
+    >
   | CodexCanonicalImageGenerationItem
   | CodexCanonicalCollabAgentToolCallItem
   | CodexCanonicalContextCompactionItem;
@@ -465,14 +520,80 @@ export type CodexCanonicalItem =
   | CodexCanonicalLifecycleSyntheticItem
   | CodexCanonicalRequestSyntheticItem;
 
-export type CodexCanonicalTurnProtocol = Omit<
-  Turn,
-  "id" | "items" | "startedAt" | "completedAt"
-> & {
+export type CodexCanonicalTurnHeader = Omit<Turn, "id" | "items" | "startedAt" | "completedAt"> & {
   /** Exact live state can carry one placeholder turn before app-server binding. */
-  readonly id: Turn["id"] | null;
+  readonly turnId: Turn["id"] | null;
 };
-export type CodexCanonicalThreadProtocol = Omit<Thread, "turns">;
+export interface CodexCanonicalConversationMetadata {
+  readonly id: Thread["id"];
+  readonly hostId: string;
+  readonly sessionId: Thread["sessionId"];
+  readonly ephemeral: Thread["ephemeral"];
+  readonly sideConversation?: boolean;
+  readonly forkedFromId: Thread["forkedFromId"];
+  readonly parentThreadId: Thread["parentThreadId"];
+  readonly source: Thread["source"];
+  readonly threadSource: Thread["threadSource"];
+  readonly agentNickname: Thread["agentNickname"];
+  readonly historyMode: Thread["historyMode"];
+  readonly modelProvider: Thread["modelProvider"];
+  readonly createdAt: number;
+  readonly updatedAt: number;
+  readonly recencyAt: number;
+  readonly title: string | null;
+  readonly generatedTitle?: string | null;
+  readonly latestModel: string;
+  readonly latestReasoningEffort: Thread["reasoningEffort"];
+  readonly latestCollaborationMode: NonNullable<TurnStartParams["collaborationMode"]>;
+  /** App-side execution mode selected when the Thread was created. */
+  readonly mode?: string | null;
+  /** App-side Thread start classification used when rematerializing desktop instructions. */
+  readonly threadStartKind?: string | null;
+  readonly threadRuntimeStatus: Thread["status"];
+  readonly rolloutPath: string;
+  readonly cwd: Thread["cwd"];
+  readonly gitInfo: Thread["gitInfo"];
+  readonly resumeState: "needs_resume" | "resuming" | "resumed";
+}
+
+/** Converts generated seconds once, before metadata enters a manager document. */
+export function createCodexCanonicalConversationMetadata(
+  thread: Omit<Thread, "turns">,
+  hostId: string,
+  nowMs = Date.now(),
+): CodexCanonicalConversationMetadata {
+  const createdAt = Number.isFinite(thread.createdAt * 1000) ? thread.createdAt * 1000 : nowMs;
+  const updatedAt = Number.isFinite(thread.updatedAt * 1000) ? thread.updatedAt * 1000 : createdAt;
+  const recencyAt = thread.recencyAt === null ? null : thread.recencyAt * 1000;
+  return {
+    id: thread.id,
+    hostId,
+    sessionId: thread.sessionId,
+    ephemeral: thread.ephemeral,
+    forkedFromId: thread.forkedFromId,
+    parentThreadId: thread.parentThreadId,
+    source: thread.source,
+    threadSource: thread.threadSource,
+    agentNickname: thread.agentNickname,
+    historyMode: thread.historyMode,
+    modelProvider: thread.modelProvider,
+    createdAt,
+    updatedAt,
+    recencyAt: recencyAt !== null && Number.isFinite(recencyAt) ? recencyAt : updatedAt,
+    title: projectCodexMarkdownLabel(thread.name),
+    latestModel: thread.model ?? "",
+    latestReasoningEffort: thread.reasoningEffort,
+    latestCollaborationMode: {
+      mode: "default",
+      settings: { model: "", reasoning_effort: null, developer_instructions: null },
+    },
+    threadRuntimeStatus: thread.status,
+    rolloutPath: thread.path ?? "",
+    cwd: thread.cwd,
+    gitInfo: thread.gitInfo,
+    resumeState: "resumed",
+  };
+}
 
 type CodexCanonicalRequiredTurnParamKey =
   | "approvalPolicy"
@@ -575,7 +696,7 @@ export interface CodexCanonicalSafetyBufferingState {
  * Mutable lifecycle/projection context absent from generated Turn/ThreadItem.
  * Optional collections preserve the exact unknown/absent merge semantics.
  */
-export interface CodexCanonicalTurnSidecar {
+export interface CodexCanonicalTurnContext {
   /** Stable local Turn identity when the server corrects its protocol ID during steering. */
   readonly entityKey?: string;
   readonly params: CodexCanonicalTurnParams;
@@ -592,59 +713,117 @@ export interface CodexCanonicalTurnSidecar {
   readonly hookRuns?: readonly CodexCanonicalHookRun[];
   readonly safetyBuffering?: CodexCanonicalSafetyBufferingState;
 }
-
-export interface CodexCanonicalTurnState {
-  readonly protocol: CodexCanonicalTurnProtocol;
+export interface CodexCanonicalTurnState
+  extends CodexCanonicalTurnContext, CodexCanonicalTurnHeader {
+  readonly permissionParamsSource?: "inferred";
+  readonly localMetadata?: unknown;
+  readonly mcpAppModelContextAttachments?: unknown;
   readonly items: readonly CodexCanonicalItem[];
-  readonly sidecar: CodexCanonicalTurnSidecar;
+  readonly itemsPagination?: CodexHistoryTurnItemsPagination;
 }
 
-export interface CodexCanonicalConversationState {
-  readonly protocol: CodexCanonicalThreadProtocol;
+export interface CodexCanonicalUnconfirmedTurnSubmission {
+  readonly requestId: RequestId;
+  readonly method: string;
+  readonly stage: "outcome-unknown";
+  readonly clientUserMessageId: string;
+  readonly terminal?: boolean;
+}
+
+export interface CodexCanonicalConversationState
+  extends CodexCanonicalConversationContext, CodexCanonicalConversationMetadata {
+  readonly workspaceKind?: "project" | "projectless" | null;
+  readonly workspaceBrowserRoot?: string | null;
+  readonly unconfirmedTurnSubmissions?: readonly CodexCanonicalUnconfirmedTurnSubmission[];
+  readonly turnsPagination?: {
+    readonly source?: "ordinary" | "compact";
+    readonly olderCursor: string | null;
+    readonly oldestLoadedTurnId: string | null;
+    readonly isLoadingOlder: boolean;
+    readonly hasLoadedOldest: boolean;
+  };
+  readonly paginatedHistory?: Pick<ThreadResumeResponse, "itemsBackwardsCursor"> &
+    Partial<Pick<ThreadResumeResponse, "turnsBackwardsCursor">>;
+  readonly turnHistory?: {
+    readonly kind: "canonical";
+    readonly history: CodexCanonicalHistoryTopology<CodexCanonicalTurnState>;
+  };
   readonly turns: readonly CodexCanonicalTurnState[];
   readonly requests: readonly CodexCanonicalServerRequest[];
-  /** App-only conversation state; never inferred from the pending request list. */
-  readonly sidecar: CodexCanonicalConversationSidecar;
 }
 
 /** Reconstructs the loaded generated-protocol Thread without app-only placeholder occurrences. */
 export function projectCodexCanonicalProtocolThread(
   state: CodexCanonicalConversationState,
+  metadata: Omit<Thread, "turns">,
 ): Thread {
   return {
-    ...state.protocol,
-    turns: state.turns.flatMap((turn): Thread["turns"] => {
-      if (turn.protocol.id === null) return [];
+    ...metadata,
+    turns: residentConversationTurns(state).flatMap((turn): Thread["turns"] => {
+      if (turn.turnId === null) return [];
       return [
         {
-          ...turn.protocol,
-          id: turn.protocol.id,
+          id: turn.turnId,
+          itemsView: turn.itemsView,
+          status: turn.status,
+          error: turn.error,
+          durationMs: turn.durationMs,
           items: turn.items.filter(isCodexCanonicalProtocolItem),
-          startedAt: turn.sidecar.turnStartedAtMs,
-          completedAt: turn.sidecar.completedAtMs ?? null,
+          startedAt: millisecondsToProtocolSeconds(turn.turnStartedAtMs),
+          completedAt: millisecondsToProtocolSeconds(turn.completedAtMs),
         },
       ];
     }),
   };
 }
 
-export interface CodexCanonicalConversationSidecar {
+/** Owner settings may precede a complete native settings notification. */
+export type CodexCanonicalThreadSettings = Omit<
+  ThreadSettingsUpdateParams,
+  "threadId" | "model" | "effort" | "collaborationMode"
+> &
+  Pick<ThreadSettings, "model" | "effort" | "collaborationMode"> &
+  Partial<Pick<ThreadSettings, "activePermissionProfile" | "modelProvider">>;
+
+export interface CodexCanonicalConversationContext {
+  /** Live execution permissions are independent of historical hydration and next-Turn settings. */
+  readonly currentPermissions?: CodexCanonicalPermissionContext;
+  /** Sticky native environments apply before workspace and permission materialization. */
+  readonly environments?: readonly TurnEnvironmentParams[] | null;
+  readonly environmentSelectionEvidence?: CodexEnvironmentSelectionEvidence;
+  readonly connectedEnvironmentIds?: readonly EnvironmentConnectionNotification["environmentId"][];
   readonly hasUnreadTurn: boolean;
   readonly hydrationContext: CodexCanonicalHydrationContext | null;
   readonly latestTokenUsageInfo?: ThreadTokenUsage | null;
-  readonly latestThreadSettings?: ThreadSettings | null;
+  readonly latestThreadSettings?: CodexCanonicalThreadSettings | null;
   readonly previousTurnModel?: string | null;
   readonly threadGoal?: ThreadGoal | null;
   readonly completedThreadGoal?: ThreadGoal | null;
   readonly threadGoalResumeConfirmation?: ThreadGoal | null;
 }
 
-export interface CodexCanonicalHydratedPermissionContext {
-  readonly activePermissionProfile: ActivePermissionProfile | null;
-  readonly runtimeWorkspaceRoots: readonly string[];
+/** Live preparation can leave profile provenance or runtime roots unobserved. */
+export interface CodexCanonicalPermissionContext {
+  readonly activePermissionProfile?: ActivePermissionProfile | null;
+  readonly runtimeWorkspaceRoots?: readonly string[];
   readonly approvalPolicy: NonNullable<TurnStartParams["approvalPolicy"]>;
   readonly approvalsReviewer: NonNullable<TurnStartParams["approvalsReviewer"]>;
   readonly sandboxPolicy: NonNullable<TurnStartParams["sandboxPolicy"]>;
+}
+
+/** A native hydration response supplies both profile provenance and runtime roots. */
+export interface CodexCanonicalHydratedPermissionContext extends CodexCanonicalPermissionContext {
+  readonly activePermissionProfile: ActivePermissionProfile | null;
+  readonly runtimeWorkspaceRoots: readonly string[];
+}
+
+/** History reconstruction needs concrete grants without changing the live permission context. */
+export function canonicalHistoryPermissionContext(permissions: CodexCanonicalPermissionContext) {
+  return {
+    ...permissions,
+    activePermissionProfile: permissions.activePermissionProfile ?? null,
+    runtimeWorkspaceRoots: [...(permissions.runtimeWorkspaceRoots ?? [])],
+  };
 }
 
 export interface CodexCanonicalHydrationContext {
@@ -654,7 +833,6 @@ export interface CodexCanonicalHydrationContext {
   readonly latestReasoningEffort: NonNullable<TurnStartParams["effort"]> | null;
   readonly cwd: string | null;
   readonly latestThreadSettings: CodexCanonicalHydratedThreadSettings | null;
-  readonly currentPermissions: CodexCanonicalHydratedPermissionContext;
 }
 
 export interface CodexCanonicalHydratedThreadSettings {
@@ -674,6 +852,10 @@ export interface CodexCanonicalHydratedThreadSettings {
 }
 
 export interface CreateCodexCanonicalConversationStateOptions {
+  readonly hostId: string;
+  readonly environmentSource?: CodexEnvironmentSelectionEvidence["source"];
+  readonly workspaceKind?: "project" | "projectless" | null;
+  readonly workspaceBrowserRoot?: string | null;
   readonly pendingRequests?: readonly CodexCanonicalServerRequest[];
   /** Hydrated callers pass the app snapshot value; absent means the bundle default. */
   readonly hasUnreadTurn?: boolean;
@@ -691,12 +873,16 @@ export interface CreateCodexCanonicalHydratedConversationStateOptions {
   readonly model: string;
   readonly reasoningEffort: NonNullable<TurnStartParams["effort"]> | null;
   readonly cwd: string;
+  readonly workspaceKind?: "project" | "projectless" | null;
+  readonly workspaceBrowserRoot?: string | null;
   readonly approvalPolicy: NonNullable<TurnStartParams["approvalPolicy"]>;
   readonly approvalsReviewer: NonNullable<TurnStartParams["approvalsReviewer"]>;
   readonly sandboxPolicy: NonNullable<TurnStartParams["sandboxPolicy"]>;
   readonly activePermissionProfile: ActivePermissionProfile | null;
   readonly runtimeWorkspaceRoots: NonNullable<TurnStartParams["runtimeWorkspaceRoots"]>;
   readonly latestThreadSettings?: CodexCanonicalHydratedThreadSettings | null;
+  readonly hostId: string;
+  readonly environmentSource?: CodexEnvironmentSelectionEvidence["source"];
   readonly pendingRequests?: readonly CodexCanonicalServerRequest[];
   readonly hasUnreadTurn?: boolean;
   /** Required for every partial Turn so params can retain its opening user input. */
@@ -743,8 +929,12 @@ function protocolSecondsToMilliseconds(value: number | null): number | null {
   if (value === null || !Number.isFinite(value)) {
     return null;
   }
+  return value * 1000;
+}
 
-  return value * 1_000;
+function millisecondsToProtocolSeconds(value: number | null | undefined): number | null {
+  if (value == null || !Number.isFinite(value)) return null;
+  return value / 1000;
 }
 
 function normalizeCodexCanonicalCwdForComparison(value: string): string {
@@ -935,19 +1125,18 @@ export function createCodexCanonicalTurnState(
   turn: Turn,
   params: CodexCanonicalTurnParams,
 ): CodexCanonicalTurnState {
-  const { items, startedAt, completedAt, ...protocol } = turn;
+  const { id, items, startedAt, completedAt, ...header } = turn;
 
   return {
-    protocol,
+    ...header,
+    turnId: id,
     items: items.map((item) => materializeCodexCanonicalProtocolItem(item)),
-    sidecar: {
-      params,
-      diff: null,
-      turnStartedAtMs: protocolSecondsToMilliseconds(startedAt),
-      completedAtMs: protocolSecondsToMilliseconds(completedAt),
-      finalAssistantStartedAtMs: protocolSecondsToMilliseconds(completedAt),
-      lifecycleStatusByItemId: buildCodexInitialItemLifecycleStatusById(items, protocol.status),
-    },
+    params,
+    diff: null,
+    turnStartedAtMs: protocolSecondsToMilliseconds(startedAt),
+    completedAtMs: protocolSecondsToMilliseconds(completedAt),
+    finalAssistantStartedAtMs: protocolSecondsToMilliseconds(completedAt),
+    lifecycleStatusByItemId: buildCodexInitialItemLifecycleStatusById(items, header.status),
   };
 }
 
@@ -1008,10 +1197,12 @@ function hasCodexHeartbeatDecision(text: string): boolean {
     heartbeat !== undefined && /<decision>\s*(?:NOTIFY|DONT_NOTIFY)\s*<\/decision>/i.test(heartbeat)
   );
 }
-
-function getCodexHeartbeatUserMessage(
-  items: readonly CodexCanonicalItem[],
-): Extract<ThreadItem, { type: "userMessage" }> | null {
+function getCodexHeartbeatUserMessage(items: readonly CodexCanonicalItem[]): Extract<
+  ThreadItem,
+  {
+    type: "userMessage";
+  }
+> | null {
   for (const item of items) {
     if (item.type === "userMessage" && hasCodexHeartbeatAutomationInput(item.content)) {
       return item;
@@ -1025,7 +1216,16 @@ function mergeCodexCanonicalHydratedItems(
   incomingItems: readonly CodexCanonicalItem[],
 ): readonly CodexCanonicalItem[] {
   let items: readonly CodexCanonicalItem[] = incomingItems;
-  if (existingItems.length > incomingItems.length) {
+  if (existingItems.some((item) => item.type === "steeringUserMessage")) {
+    const incomingById = new Map(incomingItems.map((item) => [item.id, item]));
+    items = mergeCodexCanonicalHistoryItems(
+      existingItems.map((item) =>
+        item.type === "agentMessage" ? (incomingById.get(item.id) ?? item) : item,
+      ),
+      incomingItems,
+      "append",
+    ).items;
+  } else if (existingItems.length > incomingItems.length) {
     items = existingItems;
     for (let index = incomingItems.length - 1; index >= 0; index -= 1) {
       const incoming = incomingItems[index];
@@ -1033,7 +1233,14 @@ function mergeCodexCanonicalHydratedItems(
         continue;
       }
       const existing = existingItems.find(
-        (item): item is Extract<ThreadItem, { type: "agentMessage" }> =>
+        (
+          item,
+        ): item is Extract<
+          ThreadItem,
+          {
+            type: "agentMessage";
+          }
+        > =>
           item.type === "agentMessage" &&
           (item.id === incoming.id ||
             (incoming.delivery !== "async" &&
@@ -1050,7 +1257,12 @@ function mergeCodexCanonicalHydratedItems(
           memoryCitation: incoming.memoryCitation ?? existing.memoryCitation,
           delivery: incoming.delivery ?? existing.delivery,
           questions: incoming.questions ?? existing.questions,
-        } satisfies Extract<ThreadItem, { type: "agentMessage" }>;
+        } satisfies Extract<
+          ThreadItem,
+          {
+            type: "agentMessage";
+          }
+        >;
         items = existingItems.map((item) => (item === existing ? merged : item));
       }
       break;
@@ -1070,6 +1282,12 @@ function mergeCodexCanonicalTurnParams(
   incoming: CodexCanonicalTurnParams,
 ): CodexCanonicalTurnParams {
   if (
+    existing.clientUserMessageId != null &&
+    existing.input.length > 0 &&
+    incoming.input.length === 0
+  )
+    return existing;
+  if (
     hasCodexHeartbeatAutomationInput(incoming.input) ||
     !hasCodexHeartbeatAutomationInput(existing.input)
   ) {
@@ -1083,19 +1301,19 @@ function mergeCodexCanonicalTurnParams(
 
 function isCodexCanonicalPlaceholderTurn(turn: CodexCanonicalTurnState): boolean {
   return (
-    turn.protocol.id === null &&
-    turn.sidecar.turnStartedAtMs === null &&
-    turn.protocol.status === "completed" &&
-    turn.protocol.error === null &&
+    turn.turnId === null &&
+    turn.turnStartedAtMs === null &&
+    turn.status === "completed" &&
+    turn.error === null &&
     turn.items.length === 0
   );
 }
 
 function isCodexCanonicalArchivedHeartbeatTurn(turn: CodexCanonicalTurnState): boolean {
   if (
-    turn.protocol.status !== "completed" ||
-    turn.protocol.error !== null ||
-    hasCodexHeartbeatAutomationInput(turn.sidecar.params.input) ||
+    turn.status !== "completed" ||
+    turn.error !== null ||
+    hasCodexHeartbeatAutomationInput(turn.params.input) ||
     getCodexHeartbeatUserMessage(turn.items) !== null
   ) {
     return false;
@@ -1105,43 +1323,99 @@ function isCodexCanonicalArchivedHeartbeatTurn(turn: CodexCanonicalTurnState): b
   );
 }
 
-/** Exact `oIe`: merge one matching hydrated/live turn without flattening raw items. */
+export interface CodexCanonicalTurnMergeOptions {
+  readonly itemsPagination?: CodexHistoryTurnItemsPagination;
+  readonly isResumeSnapshot?: boolean;
+  readonly preserveExistingTerminalState?: boolean;
+}
+
+/** Merges matching hydrated/live Turns while retaining local work and correlated input. */
 export function mergeCodexCanonicalTurnState(
   existing: CodexCanonicalTurnState,
   incoming: CodexCanonicalTurnState,
+  options: CodexCanonicalTurnMergeOptions = {},
 ): CodexCanonicalTurnState {
-  return {
+  const terminalRegression = existing.status !== "inProgress" && incoming.status === "inProgress";
+  const incomingPagination = incoming.itemsPagination ?? options.itemsPagination;
+  let itemsPagination =
+    existing.itemsPagination == null
+      ? incomingPagination
+      : { ...incomingPagination, ...existing.itemsPagination };
+  if (options.isResumeSnapshot && incomingPagination != null) {
+    const previous = existing.itemsPagination;
+    const stopItemId =
+      previous?.reconnect == null ? previous?.newestSnapshotItemId : previous.reconnect.stopItemId;
+    const olderCursorAfterReconnect =
+      previous?.reconnect == null
+        ? previous?.olderCursor
+        : previous.reconnect.olderCursorAfterReconnect;
+    const overlaps =
+      incomingPagination.summaryItemIds == null &&
+      stopItemId != null &&
+      incoming.items.some((item) => item.id === stopItemId);
+    const cursor = overlaps ? (olderCursorAfterReconnect ?? null) : incomingPagination.olderCursor;
+    const complete =
+      incomingPagination.hasLoadedOldest || (overlaps && olderCursorAfterReconnect == null);
+    itemsPagination = {
+      ...incomingPagination,
+      olderCursor: complete ? null : cursor,
+      hasLoadedOldest: complete,
+      reconnect:
+        complete || overlaps
+          ? undefined
+          : {
+              beforeItemId: incoming.items[0]?.id ?? null,
+              stopItemId,
+              olderCursorAfterReconnect: olderCursorAfterReconnect ?? undefined,
+            },
+    };
+  }
+  if (areStructurallyEqual(itemsPagination, existing.itemsPagination))
+    itemsPagination = existing.itemsPagination;
+
+  const items =
+    existing.itemsPagination != null || incomingPagination != null
+      ? mergeCodexCanonicalHistoryItems(
+          existing.items,
+          incoming.items,
+          options.isResumeSnapshot ? { snapshotBeforeItemId: null } : "append",
+        ).items
+      : options.preserveExistingTerminalState && terminalRegression
+        ? existing.items
+        : mergeCodexCanonicalHydratedItems(existing.items, incoming.items);
+  const merged: CodexCanonicalTurnState = {
     ...incoming,
-    protocol: {
-      ...incoming.protocol,
-      durationMs: existing.protocol.durationMs ?? incoming.protocol.durationMs,
-    },
-    items: mergeCodexCanonicalHydratedItems(existing.items, incoming.items),
-    sidecar: {
-      ...incoming.sidecar,
-      entityKey: existing.sidecar.entityKey ?? incoming.sidecar.entityKey,
-      params: mergeCodexCanonicalTurnParams(existing.sidecar.params, incoming.sidecar.params),
-      hookRuns: existing.sidecar.hookRuns?.length
-        ? existing.sidecar.hookRuns
-        : incoming.sidecar.hookRuns,
-      safetyBuffering: incoming.sidecar.safetyBuffering ?? existing.sidecar.safetyBuffering,
-      diff: incoming.sidecar.diff ?? existing.sidecar.diff,
-      interruptedCommandExecutionItemIds:
-        incoming.sidecar.interruptedCommandExecutionItemIds ??
-        existing.sidecar.interruptedCommandExecutionItemIds,
-      commandExecutionStartedAtMsById:
-        existing.sidecar.commandExecutionStartedAtMsById ??
-        incoming.sidecar.commandExecutionStartedAtMsById,
-      turnStartedAtMs: existing.sidecar.turnStartedAtMs ?? incoming.sidecar.turnStartedAtMs,
-      completedAtMs: existing.sidecar.completedAtMs ?? incoming.sidecar.completedAtMs,
-      finalAssistantStartedAtMs:
-        existing.sidecar.finalAssistantStartedAtMs ?? incoming.sidecar.finalAssistantStartedAtMs,
-      lifecycleStatusByItemId: mergeCodexLifecycleStatusByItemId(
-        existing.sidecar.lifecycleStatusByItemId,
-        incoming.sidecar.lifecycleStatusByItemId,
-      ),
-    },
+    ...(itemsPagination == null ? {} : { itemsPagination }),
+    status:
+      terminalRegression && (options.preserveExistingTerminalState || itemsPagination != null)
+        ? existing.status
+        : incoming.status,
+    error:
+      terminalRegression && options.preserveExistingTerminalState ? existing.error : incoming.error,
+    durationMs: existing.durationMs ?? incoming.durationMs,
+    items,
+    entityKey: existing.entityKey ?? incoming.entityKey,
+    params: mergeCodexCanonicalTurnParams(existing.params, incoming.params),
+    permissionParamsSource: existing.permissionParamsSource,
+    hookRuns: existing.hookRuns?.length ? existing.hookRuns : incoming.hookRuns,
+    safetyBuffering: incoming.safetyBuffering ?? existing.safetyBuffering,
+    diff: incoming.diff ?? existing.diff,
+    interruptedCommandExecutionItemIds:
+      incoming.interruptedCommandExecutionItemIds ?? existing.interruptedCommandExecutionItemIds,
+    commandExecutionStartedAtMsById:
+      existing.commandExecutionStartedAtMsById ?? incoming.commandExecutionStartedAtMsById,
+    turnStartedAtMs: existing.turnStartedAtMs ?? incoming.turnStartedAtMs,
+    completedAtMs: existing.completedAtMs ?? incoming.completedAtMs,
+    finalAssistantStartedAtMs:
+      existing.finalAssistantStartedAtMs ?? incoming.finalAssistantStartedAtMs,
+    lifecycleStatusByItemId: mergeCodexLifecycleStatusByItemId(
+      existing.lifecycleStatusByItemId,
+      incoming.lifecycleStatusByItemId,
+    ),
   };
+  return existing.items.some((item) => item.type === "steeringUserMessage")
+    ? reconcileCodexHydratedSteering(merged, itemsPagination)
+    : merged;
 }
 
 function mergeCodexLifecycleStatusByItemId(
@@ -1162,29 +1436,34 @@ function mergeCodexLifecycleStatusByItemId(
 export function mergeCodexCanonicalTurnStates(
   existingTurns: readonly CodexCanonicalTurnState[],
   incomingTurns: readonly CodexCanonicalTurnState[],
+  optionsForTurn?: (turnId: string | null) => CodexCanonicalTurnMergeOptions,
 ): CodexCanonicalTurnState[] {
   const existingIds = new Set(
-    existingTurns.flatMap((turn) => (turn.protocol.id === null ? [] : [turn.protocol.id])),
+    existingTurns.flatMap((turn) => (turn.turnId === null ? [] : [turn.turnId])),
   );
   const incomingById = new Map(
-    incomingTurns.flatMap((turn) =>
-      turn.protocol.id === null ? [] : [[turn.protocol.id, turn] as const],
-    ),
+    incomingTurns.flatMap((turn) => (turn.turnId === null ? [] : [[turn.turnId, turn] as const])),
   );
   const merged = existingTurns.flatMap((existing) => {
     if (isCodexCanonicalPlaceholderTurn(existing)) return [];
-    if (existing.protocol.id === null) return [existing];
-    const incoming = incomingById.get(existing.protocol.id);
-    if (incoming) return [mergeCodexCanonicalTurnState(existing, incoming)];
-    return isCodexCanonicalArchivedHeartbeatTurn(existing) ? [] : [existing];
+    if (existing.turnId === null) return [existing];
+    const incoming = incomingById.get(existing.turnId);
+    if (incoming)
+      return [mergeCodexCanonicalTurnState(existing, incoming, optionsForTurn?.(existing.turnId))];
+    return isCodexCanonicalArchivedHeartbeatTurn(existing) &&
+      !existing.items.some(
+        (item) => item.type === "steeringUserMessage" && item.serverUserMessageId == null,
+      )
+      ? []
+      : [existing];
   });
   let pendingIncoming: CodexCanonicalTurnState[] = [];
 
   for (const incoming of incomingTurns) {
-    const incomingId = incoming.protocol.id;
+    const incomingId = incoming.turnId;
     if (incomingId !== null && existingIds.has(incomingId)) {
       if (pendingIncoming.length === 0) continue;
-      const existingIndex = merged.findIndex((turn) => turn.protocol.id === incomingId);
+      const existingIndex = merged.findIndex((turn) => turn.turnId === incomingId);
       if (existingIndex !== -1) {
         merged.splice(existingIndex, 0, ...pendingIncoming);
         pendingIncoming = [];
@@ -1195,7 +1474,27 @@ export function mergeCodexCanonicalTurnStates(
   }
 
   merged.push(...pendingIncoming);
-  return merged;
+  if (
+    !merged.some((turn) =>
+      turn.items.some(
+        (item) => item.type === "steeringUserMessage" && item.targetTurnId !== turn.turnId,
+      ),
+    )
+  )
+    return merged;
+  return relocateCodexHydratedSteering(
+    merged,
+    (turnId) => optionsForTurn?.(turnId).itemsPagination,
+  ).filter((turn) => !isCodexCanonicalPlaceholderTurn(turn));
+}
+
+/** Read projection combining resident history with current live Turns; never a mutation target. */
+export function conversationTurnsWithOverlay(
+  state: CodexCanonicalConversationState | null | undefined,
+): readonly CodexCanonicalTurnState[] {
+  if (!state) return [];
+  if (!state.turnHistory) return state.turns;
+  return mergeCodexCanonicalTurnStates(residentConversationTurns(state), state.turns);
 }
 
 /** Exact `DB` duplicate-ID fold used when installing canonical tail history. */
@@ -1205,7 +1504,7 @@ export function canonicalizeCodexCanonicalTurnStates(
   const canonical: CodexCanonicalTurnState[] = [];
   const indexByTurnId = new Map<string, number>();
   for (const turn of turns) {
-    const turnId = turn.protocol.id;
+    const turnId = turn.turnId;
     if (turnId === null) {
       canonical.push(turn);
       continue;
@@ -1230,25 +1529,21 @@ export function buildCodexCanonicalSyntheticTurnParams(
 ): CodexCanonicalSyntheticTurnParams {
   const defaults = createCodexCanonicalWorkspacePermissionContext([]);
   const latestSettings =
-    state.sidecar.latestThreadSettings ??
-    state.sidecar.hydrationContext?.latestThreadSettings ??
-    null;
+    state.latestThreadSettings ?? state.hydrationContext?.latestThreadSettings ?? null;
   return {
-    threadId: state.protocol.id,
+    threadId: state.id,
     input: [],
     cwd: null,
     approvalPolicy:
       latestSettings?.approvalPolicy ??
-      previousTurn?.sidecar.params.approvalPolicy ??
+      previousTurn?.params.approvalPolicy ??
       defaults.approvalPolicy,
     approvalsReviewer:
       latestSettings?.approvalsReviewer ??
-      previousTurn?.sidecar.params.approvalsReviewer ??
+      previousTurn?.params.approvalsReviewer ??
       defaults.approvalsReviewer,
     sandboxPolicy:
-      latestSettings?.sandboxPolicy ??
-      previousTurn?.sidecar.params.sandboxPolicy ??
-      defaults.sandboxPolicy,
+      latestSettings?.sandboxPolicy ?? previousTurn?.params.sandboxPolicy ?? defaults.sandboxPolicy,
     model: null,
     effort: "minimal",
     summary: "none",
@@ -1264,147 +1559,129 @@ function createCodexCanonicalCompletedSyntheticTurn(
   previousTurn: CodexCanonicalTurnState | null,
 ): CodexCanonicalTurnState {
   return {
-    protocol: {
-      id: null,
-      itemsView: "full",
-      status: "completed",
-      error: null,
-      durationMs: null,
-    },
+    turnId: null,
+    itemsView: "full",
+    status: "completed",
+    error: null,
+    durationMs: null,
     items: [item],
-    sidecar: {
-      params: buildCodexCanonicalSyntheticTurnParams(state, previousTurn),
-      diff: null,
-      turnStartedAtMs: null,
-      firstTurnWorkItemStartedAtMs: null,
-      finalAssistantStartedAtMs: null,
-      hookRuns: [],
-    },
+    params: buildCodexCanonicalSyntheticTurnParams(state, previousTurn),
+    diff: null,
+    turnStartedAtMs: null,
+    firstTurnWorkItemStartedAtMs: null,
+    finalAssistantStartedAtMs: null,
+    hookRuns: [],
   };
 }
 
 /** Exact `M4e`: dedupe an app-local item, reuse the active turn, or create one. */
+export function mutateCodexCanonicalInProgressSyntheticItem(
+  state: Draft<CodexCanonicalConversationState>,
+  item: CodexCanonicalLifecycleSyntheticItem,
+  observedAtMs: number,
+): void {
+  const entries = residentConversationTurnEntries(state);
+  if (entries.some(({ turn }) => turn.items.some((candidate) => candidate.id === item.id))) return;
+  const latest = entries.at(-1);
+  if (latest?.turn.status === "inProgress") {
+    conversationTurnDraft(state, latest.address)!.items.push(
+      item as Draft<CodexCanonicalLifecycleSyntheticItem>,
+    );
+    return;
+  }
+  appendConversationTurnDraft(
+    state,
+    {
+      turnId: null,
+      itemsView: "full",
+      status: "inProgress",
+      error: null,
+      durationMs: null,
+      items: [item],
+      params: buildCodexCanonicalSyntheticTurnParams(state, latest?.turn ?? null),
+      diff: null,
+      turnStartedAtMs: observedAtMs,
+      firstTurnWorkItemStartedAtMs: null,
+      finalAssistantStartedAtMs: null,
+      hookRuns: [],
+    },
+    () => globalThis.crypto.randomUUID(),
+  );
+}
 export function appendCodexCanonicalInProgressSyntheticItem(
   state: CodexCanonicalConversationState,
   item: CodexCanonicalLifecycleSyntheticItem,
   observedAtMs: number,
 ): CodexCanonicalConversationState {
-  if (state.turns.some((turn) => turn.items.some((entry) => entry.id === item.id))) {
-    return state;
-  }
-
-  const latestTurn = state.turns.at(-1) ?? null;
-  if (latestTurn?.protocol.status === "inProgress") {
-    return {
-      ...state,
-      turns: state.turns.map((turn) =>
-        turn === latestTurn ? { ...turn, items: [...turn.items, item] } : turn,
-      ),
-    };
-  }
-
-  return {
-    ...state,
-    turns: [
-      ...state.turns,
-      {
-        protocol: {
-          id: null,
-          itemsView: "full",
-          status: "inProgress",
-          error: null,
-          durationMs: null,
-        },
-        items: [item],
-        sidecar: {
-          params: buildCodexCanonicalSyntheticTurnParams(state, latestTurn),
-          diff: null,
-          turnStartedAtMs: observedAtMs,
-          firstTurnWorkItemStartedAtMs: null,
-          finalAssistantStartedAtMs: null,
-          hookRuns: [],
-        },
-      },
-    ],
-  };
+  return produce(state, (draft) =>
+    mutateCodexCanonicalInProgressSyntheticItem(draft, item, observedAtMs),
+  );
 }
-
-/** Exact manual-compaction cancellation: remove its now-empty local placeholder turn. */
+export function mutateCodexCanonicalLocalSyntheticItemRemoval(
+  state: Draft<CodexCanonicalConversationState>,
+  itemId: string,
+): void {
+  for (const entry of [...residentConversationTurnEntries(state)].reverse()) {
+    const turn = conversationTurnDraft(state, entry.address)!;
+    if (!turn.items.some((item) => item.id === itemId)) continue;
+    turn.items = turn.items.filter((item) => item.id !== itemId);
+    if (turn.turnId === null && turn.status === "inProgress" && turn.items.length === 0)
+      removeConversationTurnDraft(state, entry.address);
+  }
+}
 export function removeCodexCanonicalLocalSyntheticItem(
   state: CodexCanonicalConversationState,
   itemId: string,
 ): CodexCanonicalConversationState {
-  let changed = false;
-  const turns = state.turns.flatMap((turn): CodexCanonicalTurnState[] => {
-    const items = turn.items.filter((item) => item.id !== itemId);
-    if (items.length === turn.items.length) return [turn];
-    changed = true;
-    if (turn.protocol.id === null && turn.protocol.status === "inProgress" && items.length === 0)
-      return [];
-    return [{ ...turn, items }];
-  });
-  return changed ? { ...state, turns } : state;
+  return produce(state, (draft) => mutateCodexCanonicalLocalSyntheticItemRemoval(draft, itemId));
 }
-
-/** Exact `F4e` / `C1` / `S1`: append fork provenance or create its null-id turn. */
+export function mutateCodexCanonicalForkedFromConversationItem(
+  state: Draft<CodexCanonicalConversationState>,
+  item: CodexCanonicalForkedFromConversationItem,
+): void {
+  const latest = residentConversationTurnEntries(state).at(-1);
+  if (latest) {
+    const turn = conversationTurnDraft(state, latest.address)!;
+    turn.hookRuns ??= [];
+    turn.items.push(item as Draft<CodexCanonicalForkedFromConversationItem>);
+    return;
+  }
+  appendConversationTurnDraft(
+    state,
+    createCodexCanonicalCompletedSyntheticTurn(state, item, null),
+    () => globalThis.crypto.randomUUID(),
+  );
+}
 export function appendCodexCanonicalForkedFromConversationItem(
   state: CodexCanonicalConversationState,
   item: CodexCanonicalForkedFromConversationItem,
 ): CodexCanonicalConversationState {
-  const latestTurn = state.turns.at(-1) ?? null;
-  if (latestTurn) {
-    return {
-      ...state,
-      turns: state.turns.map((turn) =>
-        turn === latestTurn
-          ? {
-              ...turn,
-              items: [...turn.items, item],
-              sidecar: {
-                ...turn.sidecar,
-                hookRuns: turn.sidecar.hookRuns ?? [],
-              },
-            }
-          : turn,
-      ),
-    };
-  }
-
-  return {
-    ...state,
-    turns: [createCodexCanonicalCompletedSyntheticTurn(state, item, null)],
-  };
+  return produce(state, (draft) => mutateCodexCanonicalForkedFromConversationItem(draft, item));
 }
-
-/** Exact `L4e`: append to the latest turn, or force the fork-only `new-turn`. */
+export function mutateCodexCanonicalWorktreeInitItem(
+  state: Draft<CodexCanonicalConversationState>,
+  item: CodexCanonicalWorktreeInitItem,
+  placement: "latest-turn" | "new-turn" = "latest-turn",
+): void {
+  const latest = residentConversationTurnEntries(state).at(-1);
+  if (placement === "latest-turn" && latest) {
+    const turn = conversationTurnDraft(state, latest.address)!;
+    turn.hookRuns ??= [];
+    turn.items.push(item as Draft<CodexCanonicalWorktreeInitItem>);
+    return;
+  }
+  appendConversationTurnDraft(
+    state,
+    createCodexCanonicalCompletedSyntheticTurn(state, item, latest?.turn ?? null),
+    () => globalThis.crypto.randomUUID(),
+  );
+}
 export function appendCodexCanonicalWorktreeInitItem(
   state: CodexCanonicalConversationState,
   item: CodexCanonicalWorktreeInitItem,
   placement: "latest-turn" | "new-turn" = "latest-turn",
 ): CodexCanonicalConversationState {
-  const previousTurn = state.turns.at(-1) ?? null;
-  if (placement === "latest-turn" && previousTurn) {
-    return {
-      ...state,
-      turns: state.turns.map((turn) =>
-        turn === previousTurn
-          ? {
-              ...turn,
-              items: [...turn.items, item],
-              sidecar: {
-                ...turn.sidecar,
-                hookRuns: turn.sidecar.hookRuns ?? [],
-              },
-            }
-          : turn,
-      ),
-    };
-  }
-
-  return {
-    ...state,
-    turns: [...state.turns, createCodexCanonicalCompletedSyntheticTurn(state, item, previousTurn)],
-  };
+  return produce(state, (draft) => mutateCodexCanonicalWorktreeInitItem(draft, item, placement));
 }
 
 function canonicalizeCodexCanonicalTurnIds(
@@ -1413,7 +1690,7 @@ function canonicalizeCodexCanonicalTurnIds(
   const canonical: CodexCanonicalTurnState[] = [];
   const indexByTurnId = new Map<string, number>();
   for (const turn of turns) {
-    const turnId = turn.protocol.id;
+    const turnId = turn.turnId;
     if (turnId === null) {
       canonical.push(turn);
       continue;
@@ -1438,7 +1715,7 @@ export function mergeCodexCanonicalOlderTurnStates(input: {
   const anchorIndex =
     input.oldestLoadedTurnId === null
       ? -1
-      : input.currentTurns.findIndex((turn) => turn.protocol.id === input.oldestLoadedTurnId);
+      : input.currentTurns.findIndex((turn) => turn.turnId === input.oldestLoadedTurnId);
   const staged =
     anchorIndex === -1
       ? mergeCodexCanonicalTurnStates(input.olderTurns, input.currentTurns)
@@ -1465,18 +1742,15 @@ export function overlayCodexCanonicalTurnHydration(
 ): CodexCanonicalTurnState[] {
   return turns.map((turn) => ({
     ...turn,
-    sidecar: {
-      ...turn.sidecar,
-      params: {
-        ...turn.sidecar.params,
-        approvalPolicy: overlay.approvalPolicy,
-        approvalsReviewer: overlay.approvalsReviewer,
-        sandboxPolicy: overlay.sandboxPolicy,
-        model: overlay.model,
-        cwd: overlay.cwd,
-        effort: overlay.effort,
-      } as CodexCanonicalTurnParams,
-    },
+    params: {
+      ...turn.params,
+      approvalPolicy: overlay.approvalPolicy,
+      approvalsReviewer: overlay.approvalsReviewer,
+      sandboxPolicy: overlay.sandboxPolicy,
+      model: overlay.model,
+      cwd: overlay.cwd,
+      effort: overlay.effort,
+    } as CodexCanonicalTurnParams,
   }));
 }
 
@@ -1491,18 +1765,28 @@ export function createCodexCanonicalConversationState(
   thread: Thread,
   options: CreateCodexCanonicalConversationStateOptions,
 ): CodexCanonicalConversationState {
-  const { turns, ...protocol } = thread;
+  const { turns } = thread;
+  const environmentSelection = mergeCodexThreadEnvironmentSelection(
+    thread,
+    null,
+    options.environmentSource ?? "stored",
+  );
 
   return {
-    protocol,
+    ...createCodexCanonicalConversationMetadata(thread, options.hostId),
+    ...environmentSelection,
+    ...(options.workspaceKind === undefined ? {} : { workspaceKind: options.workspaceKind }),
+    ...(options.workspaceBrowserRoot === undefined
+      ? {}
+      : { workspaceBrowserRoot: options.workspaceBrowserRoot }),
+    previousTurnModel: null,
+    latestTokenUsageInfo: null,
     turns: turns.map((turn) =>
       createCodexCanonicalTurnState(turn, getRequiredTurnParams(turn.id, options.turnParamsById)),
     ),
     requests: [...(options.pendingRequests ?? [])],
-    sidecar: {
-      hasUnreadTurn: options.hasUnreadTurn ?? false,
-      hydrationContext: options.hydrationContext ?? null,
-    },
+    hasUnreadTurn: options.hasUnreadTurn ?? false,
+    hydrationContext: options.hydrationContext ?? null,
   };
 }
 
@@ -1598,15 +1882,7 @@ export function createCodexCanonicalHydratedConversationState(
   options: CreateCodexCanonicalHydratedConversationStateOptions,
 ): CodexCanonicalConversationState {
   assertCompleteCodexCanonicalHydrationOptions(options);
-  const partialTurnWithoutPagination = thread.turns.find(
-    (turn) => turn.itemsView !== "full" && options.turnItemsPaginationById?.[turn.id] === undefined,
-  );
-  if (partialTurnWithoutPagination) {
-    throw new Error(
-      `Cannot hydrate partial turn '${partialTurnWithoutPagination.id}' without item pagination`,
-    );
-  }
-  const { turns, ...protocol } = thread;
+  const { turns } = thread;
   const currentPermissions = {
     activePermissionProfile: options.activePermissionProfile,
     runtimeWorkspaceRoots: [...options.runtimeWorkspaceRoots],
@@ -1614,15 +1890,65 @@ export function createCodexCanonicalHydratedConversationState(
     approvalsReviewer: options.approvalsReviewer,
     sandboxPolicy: options.sandboxPolicy,
   } satisfies CodexCanonicalHydratedPermissionContext;
+  const hydratedTurns = hydrateCodexCanonicalTurns(thread.id, turns, options);
+  const environmentSelection = mergeCodexThreadEnvironmentSelection(
+    thread,
+    null,
+    options.environmentSource ?? "stored",
+  );
+
+  return {
+    ...createCodexCanonicalConversationMetadata(thread, options.hostId),
+    ...environmentSelection,
+    ...(options.workspaceKind === undefined ? {} : { workspaceKind: options.workspaceKind }),
+    ...(options.workspaceBrowserRoot === undefined
+      ? {}
+      : { workspaceBrowserRoot: options.workspaceBrowserRoot }),
+    previousTurnModel: null,
+    latestTokenUsageInfo: null,
+    turns: hydratedTurns,
+    currentPermissions,
+    requests: [...(options.pendingRequests ?? [])],
+    hasUnreadTurn: options.hasUnreadTurn ?? false,
+    hydrationContext: {
+      model: options.model,
+      reasoningEffort: options.reasoningEffort,
+      latestModel: options.model,
+      latestReasoningEffort: options.reasoningEffort,
+      cwd: options.cwd,
+      latestThreadSettings: options.latestThreadSettings
+        ? {
+            ...options.latestThreadSettings,
+            serviceTier: normalizeCodexServiceTier(options.latestThreadSettings.serviceTier),
+          }
+        : null,
+    },
+  };
+}
+
+export function hydrateCodexCanonicalTurns(
+  threadId: string,
+  turns: readonly Turn[],
+  options: CreateCodexCanonicalHydratedConversationStateOptions,
+): CodexCanonicalTurnState[] {
   const hydratedTurns = turns.map((turn) => {
-    const firstItem = turn.items[0];
-    const input: UserInput[] =
-      firstItem?.type === "userMessage"
+    const pagination = options.turnItemsPaginationById?.[turn.id];
+    const firstItem = turn.items.find((item) => item.type !== "contextCompaction");
+    const hasOpeningItem =
+      pagination?.hasLoadedOldest !== false && firstItem?.type === "userMessage";
+    const openingInput = pagination?.oldestUserInput;
+    const input: UserInput[] = Array.isArray(openingInput)
+      ? openingInput
+      : hasOpeningItem
         ? firstItem.content
-        : [...(options.turnItemsPaginationById?.[turn.id]?.oldestUserInput ?? [])];
+        : [];
     const common = {
-      threadId: thread.id,
+      threadId: threadId,
       input,
+      clientUserMessageId:
+        pagination?.oldestUserInput == null && hasOpeningItem
+          ? firstItem.clientId
+          : pagination?.openingUserMessageClientId,
       approvalPolicy: options.approvalPolicy,
       approvalsReviewer: options.approvalsReviewer,
       model: options.model,
@@ -1647,31 +1973,13 @@ export function createCodexCanonicalHydratedConversationState(
             permissions: options.activePermissionProfile.id,
             runtimeWorkspaceRoots: [...options.runtimeWorkspaceRoots],
           };
-    return createCodexCanonicalTurnState(turn, params);
+    return {
+      ...createCodexCanonicalTurnState(turn, params),
+      permissionParamsSource: "inferred" as const,
+      ...(pagination ? { itemsPagination: pagination } : {}),
+    };
   });
-
-  return {
-    protocol,
-    turns: hydratedTurns,
-    requests: [...(options.pendingRequests ?? [])],
-    sidecar: {
-      hasUnreadTurn: options.hasUnreadTurn ?? false,
-      hydrationContext: {
-        model: options.model,
-        reasoningEffort: options.reasoningEffort,
-        latestModel: options.model,
-        latestReasoningEffort: options.reasoningEffort,
-        cwd: options.cwd,
-        latestThreadSettings: options.latestThreadSettings
-          ? {
-              ...options.latestThreadSettings,
-              serviceTier: normalizeCodexServiceTier(options.latestThreadSettings.serviceTier),
-            }
-          : null,
-        currentPermissions,
-      },
-    },
-  };
+  return hydratedTurns;
 }
 
 /**

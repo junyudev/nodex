@@ -26,7 +26,7 @@ test("coalesces edits during session creation, delivers only current results, an
   mocks.control.mockResolvedValue(undefined);
   const receive = vi.fn();
   const session = createFileSearchSession({
-    hostId: "default",
+    hostId: "local",
     roots: ["/repo"],
     onEvent: receive,
   });
@@ -72,7 +72,7 @@ test("closing while start is in flight prevents an update and still releases the
   );
   mocks.control.mockResolvedValue(undefined);
   const session = createFileSearchSession({
-    hostId: "default",
+    hostId: "local",
     roots: ["/repo"],
     onEvent: vi.fn(),
   });

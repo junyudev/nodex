@@ -230,6 +230,10 @@ export interface DesktopProjectWorkspaceThreadMoveInput {
   readonly afterThreadId?: string | null;
   readonly insertAtEnd?: boolean;
   readonly useDefaultOrder?: boolean;
+  readonly workspaceTransition?: {
+    readonly revision: string;
+    readonly pending: DesktopProjectWorkspaceThreadWorkspace | null;
+  };
   readonly runtimeWorkspaceRoots?: readonly string[];
   readonly projectAccessGrant?: {
     readonly expectedTargetBindingRevision: number;
@@ -252,6 +256,18 @@ export interface DesktopProjectWorkspaceExecutionLocation {
   readonly runtimeWorkspaceRoots: readonly string[];
   readonly projectlessOutputDirectory: string | null;
   readonly projectlessWorkspaceBrowserRoot: string | null;
+}
+
+export interface DesktopProjectWorkspaceThreadWorkspace {
+  readonly projectSources: readonly string[];
+  readonly cwd: string;
+  readonly runtimeWorkspaceRoots: readonly string[];
+}
+
+export interface DesktopProjectWorkspaceThreadWorkspaceState {
+  readonly revision: string;
+  readonly applied: DesktopProjectWorkspaceThreadWorkspace | null;
+  readonly pending: DesktopProjectWorkspaceThreadWorkspace | null;
 }
 
 export interface DesktopProjectWorkspaceThreadBackendSession {
@@ -311,7 +327,26 @@ export interface DesktopProjectWorkspaceExecutionContext {
   readonly permissionMode: CodexPermissionMode | null;
   readonly dynamicToolCatalogs: readonly DynamicToolCatalogSelection[];
   readonly writableRoots: readonly string[];
+  readonly workspaceState: DesktopProjectWorkspaceThreadWorkspaceState | null;
 }
+
+export const projectWorkspaceThreadWorkspaceToCore = (
+  workspace: DesktopProjectWorkspaceThreadWorkspace,
+) => ({
+  project_sources: [...workspace.projectSources],
+  cwd: workspace.cwd,
+  runtime_workspace_roots: [...workspace.runtimeWorkspaceRoots],
+});
+
+export const projectWorkspaceThreadWorkspaceFromCore = (workspace: {
+  readonly project_sources: readonly string[];
+  readonly cwd: string;
+  readonly runtime_workspace_roots: readonly string[];
+}): DesktopProjectWorkspaceThreadWorkspace => ({
+  projectSources: [...workspace.project_sources],
+  cwd: workspace.cwd,
+  runtimeWorkspaceRoots: [...workspace.runtime_workspace_roots],
+});
 
 export interface DesktopManagedWorktreeSummary {
   readonly threadId: string;

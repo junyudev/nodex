@@ -1,3 +1,44 @@
+import { randomUUID } from "node:crypto";
+import {
+  CodexRendererSessionLaunch,
+  make as makeRendererSessionLaunch,
+} from "../codex-application/CodexRendererSessionLaunch";
+import {
+  CodexNativeThreadLookup,
+  make as makeNativeThreadLookup,
+} from "../codex-application/CodexNativeThreadLookup";
+import {
+  CodexMainConversationResume,
+  make as makeMainConversationResume,
+} from "../codex-application/CodexMainConversationResume";
+import { layer as resumeIngressLayer } from "../codex-application/CodexResumeIngress";
+import {
+  CodexDelegatedMessages,
+  make as makeDelegatedMessages,
+} from "../codex-application/CodexDelegatedMessages";
+import { install as installBrowserSessionActivity } from "../codex-application/CodexBrowserSessionActivity";
+import { CodexWaitThreads, make as makeWaitThreads } from "../codex-application/CodexWaitThreads";
+import {
+  CodexMainConversationEdit,
+  make as makeMainConversationEdit,
+} from "../codex-application/CodexMainConversationEdit";
+import {
+  CodexMainConversationInterrupt,
+  make as makeMainConversationInterrupt,
+} from "../codex-application/CodexMainConversationInterrupt";
+import {
+  CodexNodeReplRuntime,
+  make as makeNodeReplRuntime,
+} from "../codex-application/CodexNodeReplRuntime";
+import {
+  CodexMainConversationSettings,
+  make as makeMainConversationSettings,
+} from "../codex-application/CodexMainConversationSettings";
+import {
+  CodexMainConversationHistory,
+  make as makeMainConversationHistory,
+} from "../codex-application/CodexMainConversationHistory";
+import { install as installMainConversationActions } from "../codex-application/CodexMainConversationActions";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 import {
@@ -17,6 +58,7 @@ import {
   make as makeCodexExternalAgentImportRuntime,
 } from "../codex-application/CodexExternalAgentImportRuntime";
 import { CodexGitProbe, make as makeCodexGitProbe } from "../codex-application/CodexGitProbe";
+import { ExecutionHostRuntime } from "../codex-application/ExecutionHostRuntime";
 import {
   CodexHeartbeatTurnCompletion,
   CodexHeartbeatTurnCompletionError,
@@ -57,13 +99,14 @@ import {
   make as makeCodexAutoThreadTitle,
 } from "../codex-application/CodexAutoThreadTitle";
 import {
-  CodexConversationHistoryRuntime,
-  make as makeCodexConversationHistoryRuntime,
-} from "../codex-application/CodexConversationHistoryRuntime";
+  CodexThreadTitleAppTools,
+  make as makeCodexThreadTitleAppTools,
+} from "../codex-application/CodexThreadTitleAppTools";
 import {
-  CodexPromptRailHistory,
-  make as makeCodexPromptRailHistory,
-} from "../codex-application/CodexPromptRailHistory";
+  CodexThreadTitleReconsideration,
+  make as makeCodexThreadTitleReconsideration,
+} from "../codex-application/CodexThreadTitleReconsideration";
+
 import {
   CodexThreadHistoryFeatures,
   make as makeCodexThreadHistoryFeatures,
@@ -126,10 +169,6 @@ import {
   make as makeCodexTurnCommands,
 } from "../codex-application/CodexTurnCommands";
 import {
-  CodexActiveGoalContinuation,
-  make as makeCodexActiveGoalContinuation,
-} from "../codex-application/CodexActiveGoalContinuation";
-import {
   CodexThreadLaunchCompletion,
   make as makeCodexThreadLaunchCompletion,
 } from "../codex-application/CodexThreadLaunchCompletion";
@@ -146,10 +185,7 @@ import {
   CodexConversationDeltaBufferRuntime,
   make as makeCodexConversationDeltaBufferRuntime,
 } from "../codex-application/CodexConversationDeltaBufferRuntime";
-import {
-  CodexPostResumeGoalRuntime,
-  make as makeCodexPostResumeGoalRuntime,
-} from "../codex-application/CodexPostResumeGoalRuntime";
+
 import { live as codexThreadExecutionLive } from "../codex-application/CodexThreadExecution";
 import {
   CodexThreadCatalog,
@@ -192,17 +228,9 @@ import {
 } from "../codex-application/AgentImportRuntime";
 import { live as codexManualCompactionLive } from "../codex-application/CodexManualCompactionRuntime";
 import {
-  CodexThreadRollbackCommands,
-  make as makeCodexThreadRollbackCommands,
-} from "../codex-application/CodexThreadRollbackCommands";
-import {
   CodexProjectSessionFork,
   make as makeCodexProjectSessionFork,
 } from "../codex-application/CodexProjectSessionFork";
-import {
-  CodexRendererOwnerCommands,
-  make as makeCodexRendererOwnerCommands,
-} from "../codex-application/CodexRendererOwnerCommands";
 import {
   CodexSideChatCommands,
   make as makeCodexSideChatCommands,
@@ -274,11 +302,45 @@ const historySearchAdapter = Layer.effect(
   CodexHistorySearchAdapter,
   makeCodexHistorySearchAdapter(),
 );
-const threadDirectory = Layer.effect(CodexThreadDirectory, makeCodexThreadDirectory).pipe(
-  Layer.provideMerge(Layer.merge(conversationProjection, historyPageAdapter)),
+const gitProbe = Layer.unwrap(
+  Effect.gen(function* () {
+    const config = yield* MainConfig;
+    const executionHosts = yield* ExecutionHostRuntime;
+    return Layer.succeed(
+      CodexGitProbe,
+      makeCodexGitProbe({
+        environment: config.environment,
+        remoteIsNonGitWorkspace: (hostId, cwd) =>
+          executionHosts.resolve(hostId, "git-root").pipe(
+            Effect.flatMap((host) =>
+              host.request({
+                operation: "git-root",
+                input: { requestId: randomUUID(), hostId, cwd },
+              }),
+            ),
+            Effect.map((result) => result.root === null),
+            Effect.orElseSucceed(() => false),
+          ),
+      }),
+    );
+  }),
 );
+const threadDirectory = Layer.effect(CodexThreadDirectory, makeCodexThreadDirectory).pipe(
+  Layer.provideMerge(Layer.mergeAll(conversationProjection, historyPageAdapter, gitProbe)),
+);
+const mainConversationHistory = Layer.effect(
+  CodexMainConversationHistory,
+  makeMainConversationHistory,
+);
+const mainConversationResume = Layer.effect(
+  CodexMainConversationResume,
+  makeMainConversationResume,
+).pipe(
+  Layer.provideMerge(Layer.mergeAll(threadDirectory, resumeIngressLayer, mainConversationHistory)),
+);
+const nativeThreadLookup = Layer.effect(CodexNativeThreadLookup, makeNativeThreadLookup);
 const readThreadHistory = Layer.effect(CodexReadThreadHistory, makeCodexReadThreadHistory).pipe(
-  Layer.provideMerge(threadDirectory),
+  Layer.provideMerge(Layer.merge(threadDirectory, nativeThreadLookup)),
 );
 const conversationRelationships = Layer.effect(
   CodexConversationRelationships,
@@ -295,12 +357,6 @@ const sidebarSync = Layer.unwrap(
   }),
 ).pipe(Layer.provideMerge(Layer.mergeAll(threadDirectory, internalThreadRegistry)));
 
-const gitProbe = Layer.unwrap(
-  Effect.gen(function* () {
-    const config = yield* MainConfig;
-    return Layer.succeed(CodexGitProbe, makeCodexGitProbe({ environment: config.environment }));
-  }),
-);
 const externalAgentImport = Layer.effect(
   CodexExternalAgentImportRuntime,
   makeCodexExternalAgentImportRuntime(),
@@ -354,38 +410,51 @@ const structuredThreadTitle = Layer.unwrap(
         ...(threadId === undefined ? {} : { threadId }),
         ...(turnId === undefined ? {} : { turnId }),
       });
-    const fence = (generation: number) =>
-      codexGatewayGenerationFence({ hostId: gateway.localHostId, generation });
+    const fence = (hostId: string, generation: number) =>
+      codexGatewayGenerationFence({ hostId, generation });
     return Layer.effect(
       CodexStructuredThreadTitle,
       makeCodexStructuredThreadTitle({
-        hostId: gateway.localHostId,
-        generation: capabilities.forHost(gateway.localHostId).pipe(
-          Effect.map((capability) => capability.generation),
-          Effect.mapError((cause) =>
-            requestError("Structured thread title generation capture failed", cause),
+        generation: (hostId) =>
+          capabilities.forHost(hostId).pipe(
+            Effect.map((capability) => capability.generation),
+            Effect.mapError((cause) =>
+              requestError("Structured thread title generation capture failed", cause),
+            ),
           ),
-        ),
         events: gateway.events,
-        startThread: (params, generation) =>
+        startThread: (hostId, params, generation) =>
           gateway
-            .requestLocal("thread/start", params, fence(generation))
+            .requestOnHost(hostId, "thread/start", params, fence(hostId, generation))
             .pipe(
               Effect.mapError((cause) =>
                 requestError("Structured thread title thread/start failed", cause),
               ),
             ),
-        startTurn: (params, generation) =>
+        forkThread: (hostId, params, generation) =>
           gateway
-            .requestLocal("turn/start", params, fence(generation))
+            .requestOnHost(hostId, "thread/fork", params, fence(hostId, generation))
+            .pipe(
+              Effect.mapError((cause) =>
+                requestError("Structured thread title thread/fork failed", cause, params.threadId),
+              ),
+            ),
+        startTurn: (hostId, params, generation) =>
+          gateway
+            .requestOnHost(hostId, "turn/start", params, fence(hostId, generation))
             .pipe(
               Effect.mapError((cause) =>
                 requestError("Structured thread title turn/start failed", cause, params.threadId),
               ),
             ),
-        interruptTurn: (threadId, turnId, generation) =>
+        interruptTurn: (hostId, threadId, turnId, generation) =>
           gateway
-            .requestLocal("turn/interrupt", { threadId, turnId }, fence(generation))
+            .requestOnHost(
+              hostId,
+              "turn/interrupt",
+              { threadId, turnId },
+              fence(hostId, generation),
+            )
             .pipe(
               Effect.mapError((cause) =>
                 requestError(
@@ -396,9 +465,9 @@ const structuredThreadTitle = Layer.unwrap(
                 ),
               ),
             ),
-        unsubscribeThread: (threadId, generation) =>
+        unsubscribeThread: (hostId, threadId, generation) =>
           gateway
-            .requestLocal("thread/unsubscribe", { threadId }, fence(generation))
+            .requestOnHost(hostId, "thread/unsubscribe", { threadId }, fence(hostId, generation))
             .pipe(
               Effect.mapError((cause) =>
                 requestError("Structured thread title thread/unsubscribe failed", cause, threadId),
@@ -421,7 +490,6 @@ const foundations = Layer.mergeAll(
   conversationContext,
   conversationRelationships,
   externalAgentImport,
-  gitProbe,
   heartbeatTurnCompletion,
   historySearchAdapter,
   sidebarSync,
@@ -443,24 +511,18 @@ const threadDescriptions = Layer.unwrap(
     );
   }),
 );
+const threadTitleAppTools = Layer.effect(CodexThreadTitleAppTools, makeCodexThreadTitleAppTools);
 const autoThreadTitle = Layer.effect(CodexAutoThreadTitle, makeCodexAutoThreadTitle).pipe(
-  Layer.provideMerge(Layer.merge(titlePersistence, threadDescriptions)),
+  Layer.provideMerge(Layer.mergeAll(titlePersistence, threadDescriptions, threadTitleAppTools)),
 );
-const history = Layer.effect(
-  CodexConversationHistoryRuntime,
-  makeCodexConversationHistoryRuntime,
-).pipe(Layer.provideMerge(titlePersistence));
 const threadHistoryFeatures = Layer.effect(
   CodexThreadHistoryFeatures,
   makeCodexThreadHistoryFeatures,
-).pipe(Layer.provideMerge(history));
-const promptRailHistory = Layer.effect(CodexPromptRailHistory, makeCodexPromptRailHistory()).pipe(
-  Layer.provideMerge(threadHistoryFeatures),
-);
+).pipe(Layer.provideMerge(titlePersistence));
 const historyExport = Layer.effect(
   CodexConversationHistoryExport,
   makeCodexConversationHistoryExport,
-).pipe(Layer.provideMerge(promptRailHistory));
+).pipe(Layer.provideMerge(threadHistoryFeatures));
 const persistedHistorySearch = Layer.effect(
   CodexPersistedHistorySearchRuntime,
   makeCodexPersistedHistorySearchRuntime,
@@ -490,20 +552,31 @@ const inputAssets = codexInputAssetsLive;
 const turnPreparation = Layer.effect(CodexTurnPreparation, makeCodexTurnPreparation).pipe(
   Layer.provideMerge(Layer.mergeAll(agentConfig, inputAssets)),
 );
+const mainConversationSettings = Layer.effect(
+  CodexMainConversationSettings,
+  makeMainConversationSettings,
+).pipe(Layer.provideMerge(mainConversationResume));
+const deltaBuffer = Layer.effect(
+  CodexConversationDeltaBufferRuntime,
+  makeCodexConversationDeltaBufferRuntime(),
+).pipe(Layer.provideMerge(mainConversationSettings));
+const manualCompaction = codexManualCompactionLive.pipe(
+  Layer.provideMerge(mainConversationSettings),
+);
+const conversationLifecycle = Layer.effect(
+  CodexConversationLifecycle,
+  makeCodexConversationLifecycle,
+).pipe(Layer.provideMerge(Layer.merge(deltaBuffer, manualCompaction)));
 const turnCommands = Layer.effect(CodexTurnCommands, makeCodexTurnCommands).pipe(
-  Layer.provideMerge(Layer.merge(turnPreparation, autoThreadTitle)),
+  Layer.provideMerge(Layer.mergeAll(turnPreparation, autoThreadTitle, mainConversationSettings)),
 );
 const queuedFollowUps = Layer.effect(CodexQueuedFollowUps, makeCodexQueuedFollowUps).pipe(
   Layer.provideMerge(turnCommands),
 );
-const activeGoalContinuation = Layer.effect(
-  CodexActiveGoalContinuation,
-  makeCodexActiveGoalContinuation,
-).pipe(Layer.provideMerge(queuedFollowUps));
 const launchCompletion = Layer.effect(
   CodexThreadLaunchCompletion,
   makeCodexThreadLaunchCompletion,
-).pipe(Layer.provideMerge(activeGoalContinuation));
+).pipe(Layer.provideMerge(queuedFollowUps));
 const freshThreadLaunch = Layer.effect(
   CodexFreshThreadLaunchRuntime,
   makeCodexFreshThreadLaunchRuntime,
@@ -511,17 +584,9 @@ const freshThreadLaunch = Layer.effect(
 const conversationArchive = Layer.effect(
   CodexConversationArchive,
   makeCodexConversationArchive,
-).pipe(Layer.provideMerge(freshThreadLaunch));
+).pipe(Layer.provideMerge(Layer.merge(freshThreadLaunch, conversationLifecycle)));
 const commands = conversationCommandsLive.pipe(Layer.provideMerge(conversationArchive));
-const deltaBuffer = Layer.effect(
-  CodexConversationDeltaBufferRuntime,
-  makeCodexConversationDeltaBufferRuntime(),
-).pipe(Layer.provideMerge(commands));
-const postResumeGoals = Layer.effect(
-  CodexPostResumeGoalRuntime,
-  makeCodexPostResumeGoalRuntime,
-).pipe(Layer.provideMerge(deltaBuffer));
-const threadExecution = codexThreadExecutionLive.pipe(Layer.provideMerge(postResumeGoals));
+const threadExecution = codexThreadExecutionLive.pipe(Layer.provideMerge(commands));
 
 const threadCatalog = Layer.unwrap(
   Effect.gen(function* () {
@@ -552,7 +617,7 @@ const forkTitlePolicy = Layer.effect(CodexForkTitlePolicy, makeCodexForkTitlePol
   Layer.provideMerge(forkSidePanelTransfer),
 );
 const conversationFork = Layer.effect(CodexConversationFork, makeCodexConversationFork).pipe(
-  Layer.provideMerge(forkTitlePolicy),
+  Layer.provideMerge(Layer.merge(forkTitlePolicy, mainConversationResume)),
 );
 const conversationCreation = Layer.effect(
   CodexConversationCreation,
@@ -596,29 +661,42 @@ const agentImport = Layer.unwrap(
     );
   }),
 ).pipe(Layer.provideMerge(threadHandoff));
-const manualCompaction = codexManualCompactionLive.pipe(Layer.provideMerge(agentImport));
-const threadRollback = Layer.effect(
-  CodexThreadRollbackCommands,
-  makeCodexThreadRollbackCommands,
-).pipe(Layer.provideMerge(manualCompaction));
 const projectSessionFork = Layer.effect(CodexProjectSessionFork, makeCodexProjectSessionFork).pipe(
-  Layer.provideMerge(threadRollback),
+  Layer.provideMerge(Layer.merge(agentImport, manualCompaction)),
 );
-const rendererOwnerCommands = Layer.effect(
-  CodexRendererOwnerCommands,
-  makeCodexRendererOwnerCommands,
-).pipe(Layer.provideMerge(projectSessionFork));
+const nodeReplRuntime = Layer.effect(CodexNodeReplRuntime, makeNodeReplRuntime).pipe(
+  Layer.provideMerge(Layer.merge(projectSessionFork, mainConversationHistory)),
+);
+const mainConversationInterrupt = Layer.effect(
+  CodexMainConversationInterrupt,
+  makeMainConversationInterrupt,
+).pipe(Layer.provideMerge(nodeReplRuntime));
+const mainConversationEdit = Layer.effect(CodexMainConversationEdit, makeMainConversationEdit).pipe(
+  Layer.provideMerge(mainConversationInterrupt),
+);
+const mainConversationActions = Layer.merge(
+  Layer.effectDiscard(installMainConversationActions),
+  Layer.effectDiscard(installBrowserSessionActivity),
+).pipe(Layer.provideMerge(mainConversationEdit));
 const sideChatCommands = Layer.effect(CodexSideChatCommands, makeCodexSideChatCommands).pipe(
-  Layer.provideMerge(rendererOwnerCommands),
+  Layer.provideMerge(mainConversationActions),
 );
 const sessionThreadLaunch = Layer.effect(
   CodexSessionThreadLaunch,
   makeCodexSessionThreadLaunch,
 ).pipe(Layer.provideMerge(Layer.merge(sideChatCommands, autoThreadTitle)));
+const rendererSessionLaunch = Layer.effect(
+  CodexRendererSessionLaunch,
+  makeRendererSessionLaunch,
+).pipe(Layer.provideMerge(sessionThreadLaunch));
+const waitThreads = Layer.effect(CodexWaitThreads, makeWaitThreads).pipe(
+  Layer.provideMerge(Layer.mergeAll(rendererSessionLaunch, threadDescriptions, nativeThreadLookup)),
+);
+const delegatedMessages = Layer.effect(CodexDelegatedMessages, makeDelegatedMessages).pipe(
+  Layer.provideMerge(Layer.merge(waitThreads, mainConversationResume)),
+);
 const protocolTools = Layer.effect(CodexAppProtocolTools, makeCodexAppProtocolTools).pipe(
-  Layer.provideMerge(
-    Layer.merge(Layer.merge(sessionThreadLaunch, readThreadHistory), threadDescriptions),
-  ),
+  Layer.provideMerge(Layer.merge(delegatedMessages, readThreadHistory)),
 );
 const automationInbox = codexAutomationInboxLive.pipe(Layer.provideMerge(protocolTools));
 const oneShotServerRequests = codexOneShotServerRequestsLive.pipe(
@@ -630,15 +708,26 @@ const protocolProjection = codexProtocolNotificationProjectionLive({
 const automationTurnCompletion = codexAutomationTurnCompletionLive.pipe(
   Layer.provideMerge(protocolProjection),
 );
-const conversationLifecycle = Layer.effect(
-  CodexConversationLifecycle,
-  makeCodexConversationLifecycle,
-).pipe(Layer.provideMerge(automationTurnCompletion));
 const durableProjection = codexThreadDurableProjectionLive.pipe(
-  Layer.provideMerge(Layer.merge(conversationLifecycle, autoThreadTitle)),
+  Layer.provideMerge(
+    Layer.mergeAll(conversationLifecycle, automationTurnCompletion, autoThreadTitle),
+  ),
+);
+const threadTitleReconsideration = Layer.effect(
+  CodexThreadTitleReconsideration,
+  makeCodexThreadTitleReconsideration,
+).pipe(
+  Layer.provideMerge(
+    Layer.mergeAll(
+      structuredThreadTitle,
+      titlePersistence,
+      threadDescriptions,
+      conversationProjection,
+    ),
+  ),
 );
 const notificationEffects = codexProtocolNotificationEffectsLive.pipe(
-  Layer.provideMerge(durableProjection),
+  Layer.provideMerge(Layer.merge(durableProjection, threadTitleReconsideration)),
 );
 const appToolAuthority = appToolAuthorityLive.pipe(Layer.provideMerge(notificationEffects));
 const nodexAgentProtocolTools = nodexAgentProtocolToolsLive.pipe(

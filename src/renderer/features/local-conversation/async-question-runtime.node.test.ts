@@ -1,3 +1,5 @@
+import { createCodexCanonicalHydratedConversationState } from "../../../shared/codex-conversation-state/codex-conversation-state";
+import { buildAgentActivityV2CorpusThread } from "../../../shared/codex-conversation-state/test-fixtures/agent-activity-v2-corpus-provenance";
 import { createCodexQueuedFollowUp } from "../../../shared/codex-queued-follow-up-state";
 import { describe, expect, test, vi } from "vite-plus/test";
 import { createAsyncQuestionRuntime } from "./async-question-runtime";
@@ -27,21 +29,35 @@ const question: CodexCanonicalItem = {
 const ids = expandCodexAsyncQuestions(question).map((entry) => entry.id);
 function conversation(
   items: readonly CodexCanonicalItem[],
-  status: CodexCanonicalTurnState["protocol"]["status"] = "inProgress",
+  status: CodexCanonicalTurnState["status"] = "inProgress",
   threadId = "thread",
 ) {
+  const base = createCodexCanonicalHydratedConversationState(
+    { ...buildAgentActivityV2CorpusThread([]), id: threadId },
+    {
+      hostId: "local",
+      model: "test",
+      reasoningEffort: null,
+      cwd: "/repo",
+      approvalPolicy: "on-request",
+      approvalsReviewer: "user",
+      sandboxPolicy: { type: "readOnly", networkAccess: false },
+      activePermissionProfile: null,
+      runtimeWorkspaceRoots: ["/repo"],
+    },
+  );
   return {
     threadId,
     canonicalState: {
+      ...base,
       turns: [
         {
-          protocol: {
-            id: "turn",
-            status,
-            error: null,
-            durationMs: null,
-            itemsView: "full" as const,
-          },
+          ...base.turns[0]!,
+          turnId: "turn",
+          status,
+          error: null,
+          durationMs: null,
+          itemsView: "full" as const,
           items,
         },
       ],
@@ -322,9 +338,13 @@ describe("asynchronous question lifecycle", () => {
       .turns[0]!;
     const active = {
       ...conversation([question]).canonicalState.turns[0]!,
-      protocol: { ...older.protocol, id: "new-turn", status: "inProgress" as const },
+      turnId: "new-turn",
+      status: "inProgress" as const,
     };
-    runtime.reconcile({ threadId: "thread", canonicalState: { turns: [older, active] } });
+    runtime.reconcile({
+      threadId: "thread",
+      canonicalState: { ...conversation([]).canonicalState, turns: [older, active] },
+    });
     expect(runtime.read("thread").openIds).toEqual([]);
     expect(runtime.read("thread").questions[ids[0]!]!.baseline).toBe("");
     expect(runtime.read("thread").questions[ids[0]!]!.draft).toBe("");
@@ -346,13 +366,14 @@ test("preserves an in-flight question batch across an explicit Turn identity cor
   runtime.setDraft("thread", ids[0]!, "Local");
   await runtime.submit("thread", async () => {
     const corrected = conversation([question]);
-    corrected.canonicalState.turns[0]!.protocol.id = "corrected";
+    corrected.canonicalState.turns[0]!.turnId = "corrected";
     runtime.reconcile({
       ...corrected,
       canonicalState: {
+        ...corrected.canonicalState,
         turns: corrected.canonicalState.turns.map((turn) => ({
           ...turn,
-          sidecar: { entityKey: "turn" },
+          entityKey: "turn",
         })),
       },
     });
@@ -373,10 +394,11 @@ test("a corrected Turn keeps its draft and releases submission after a failed re
     runtime.reconcile({
       ...corrected,
       canonicalState: {
+        ...corrected.canonicalState,
         turns: corrected.canonicalState.turns.map((turn) => ({
           ...turn,
-          protocol: { ...turn.protocol, id: "corrected" },
-          sidecar: { entityKey: "turn" },
+          turnId: "corrected",
+          entityKey: "turn",
         })),
       },
     });
@@ -386,4 +408,58 @@ test("a corrected Turn keeps its draft and releases submission after a failed re
   expect(runtime.read("thread").questions[ids[0]!]!.baseline).toBe("");
   expect(runtime.read("thread").selectedId).toBe(ids[0]);
   expect(runtime.read("thread").submitting).toBe(false);
+});
+
+test("resident history owns active questions while overlay answers reconcile against the same Turn", () => {
+  const runtime = createAsyncQuestionRuntime();
+  const fixture = conversation([question]);
+  const turn = fixture.canonicalState.turns[0]!;
+  const canonicalState = {
+    ...fixture.canonicalState,
+    turns: [],
+    turnHistory: {
+      kind: "canonical" as const,
+      history: {
+        generation: 1,
+        isComplete: true,
+        islands: [
+          {
+            id: "tail",
+            entries: [{ key: "stable-entry", value: "turn:turn" }],
+            olderBoundary: { status: "exhausted" as const, boundaryId: "older" },
+            newerBoundary: { status: "exhausted" as const, boundaryId: "newer" },
+          },
+        ],
+        entitiesByKey: { "turn:turn": turn },
+      },
+    },
+  };
+  runtime.reconcile({ ...fixture, canonicalState });
+  expect(runtime.read("thread").questions[ids[0]!]?.title).toBe("Which scope?");
+  expect(runtime.read("thread").openIds).toEqual([]);
+  runtime.receive("thread", "ask", 200);
+  expect(runtime.read("thread").selectedId).toBe(ids[0]);
+  runtime.reconcile({
+    ...fixture,
+    canonicalState: {
+      ...canonicalState,
+      turns: [{ ...turn, items: [question, answer("Overlay answer")] }],
+    },
+  });
+  expect(runtime.read("thread").questions[ids[0]!]?.baseline).toBe("Overlay answer");
+  runtime.reconcile({
+    ...fixture,
+    canonicalState: {
+      ...canonicalState,
+      turnHistory: {
+        ...canonicalState.turnHistory,
+        history: {
+          ...canonicalState.turnHistory.history,
+          entitiesByKey: { "turn:turn": { ...turn, status: "completed" } },
+        },
+      },
+    },
+  });
+  expect(runtime.read("thread").activeTurnId).toBeNull();
+  expect(runtime.read("thread").openIds).toEqual([]);
 });

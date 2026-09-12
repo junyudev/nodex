@@ -66,31 +66,29 @@ const modelOption = (overrides: Partial<CodexModelOption> = {}): CodexModelOptio
 
 const canonical = (threadId: string): CodexCanonicalConversationState =>
   ({
-    protocol: { id: threadId },
+    ...{ id: threadId },
     turns: [],
     requests: [],
-    sidecar: {
-      hasUnreadTurn: false,
-      hydrationContext: {
-        model: "model-a",
-        reasoningEffort: "high",
-        latestModel: "model-a",
-        latestReasoningEffort: "high",
-        cwd: "/repo",
-        latestThreadSettings: null,
-        currentPermissions: {
-          activePermissionProfile: null,
-          runtimeWorkspaceRoots: ["/repo"],
-          approvalPolicy: "on-request",
-          approvalsReviewer: "user",
-          sandboxPolicy: {
-            type: "workspaceWrite",
-            writableRoots: ["/repo"],
-            networkAccess: false,
-            excludeTmpdirEnvVar: false,
-            excludeSlashTmp: false,
-          },
-        },
+    hasUnreadTurn: false,
+    hydrationContext: {
+      model: "model-a",
+      reasoningEffort: "high",
+      latestModel: "model-a",
+      latestReasoningEffort: "high",
+      cwd: "/repo",
+      latestThreadSettings: null,
+    },
+    currentPermissions: {
+      activePermissionProfile: null,
+      runtimeWorkspaceRoots: ["/repo"],
+      approvalPolicy: "on-request",
+      approvalsReviewer: "user",
+      sandboxPolicy: {
+        type: "workspaceWrite",
+        writableRoots: ["/repo"],
+        networkAccess: false,
+        excludeTmpdirEnvVar: false,
+        excludeSlashTmp: false,
       },
     },
   }) as unknown as CodexCanonicalConversationState;

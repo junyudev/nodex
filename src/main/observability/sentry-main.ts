@@ -1,4 +1,5 @@
 import type { DiagnosticsSettings } from "../../shared/types";
+import type { CodexRequestTraceContext } from "../../shared/codex-request-lifecycle";
 import {
   scrubSentryBreadcrumb,
   scrubSentryData,
@@ -12,7 +13,22 @@ export interface MainSentryAdapter {
   captureMessage: (message: string, hint?: unknown) => string | undefined;
   close: (timeout?: number) => Promise<boolean>;
   init: (options: Record<string, unknown>) => void;
+  runTraceSpan?: <A>(
+    options: MainTraceSpanOptions,
+    callback: (trace: CodexRequestTraceContext | null) => A,
+  ) => A;
   setTag: (key: string, value: string) => void;
+}
+
+export interface MainTraceSpanOptions {
+  readonly name: string;
+  readonly op: string;
+  readonly attributes?: Readonly<Record<string, string | number | boolean | undefined>>;
+  readonly trace?: CodexRequestTraceContext | null;
+  readonly links?: readonly CodexRequestTraceContext[];
+  readonly root?: boolean;
+  readonly startTimeMs?: number;
+  readonly endTimeMs?: number;
 }
 
 export interface InitializeMainSentryInput {
@@ -133,6 +149,16 @@ export function captureMainMessage(message: string, context: CaptureContext = {}
     tags: context.tags,
     extra: scrubSentryData(context.extra ?? {}),
   });
+}
+
+/** Runs a Main trace span when diagnostics tracing is active and preserves the incoming trace otherwise. */
+export function runMainTraceSpan<A>(
+  options: MainTraceSpanOptions,
+  callback: (trace: CodexRequestTraceContext | null) => A,
+): A {
+  const runTraceSpan = activeAdapter?.runTraceSpan;
+  if (!runTraceSpan) return callback(options.trace ?? null);
+  return runTraceSpan(options, callback);
 }
 
 export async function shutdownMainSentry(timeoutMs = 2_000): Promise<void> {
