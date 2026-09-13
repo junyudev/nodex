@@ -1,0 +1,185 @@
+src/main/codex-application/FileSearch.node.test.ts
+  s_a5eaa05fd0049d::t_4ea7c1b69ff36d 5,9,13,23,29,31,33,40-41,131-132,145-171
+src/renderer/components/workbench/command-palette.tsx
+  s_a5eaa05fd0049d::t_4ea7c1b69ff36d 1,14,30-31,46-50,69-70,110-113,163
+src/renderer/features/local-conversation/view/composer/async-question-panel.tsx
+  s_a5eaa05fd0049d::t_4ea7c1b69ff36d 1,27,32,329,334
+src/main/host-runtime/CodexFilesystemAssetRuntime.ts
+  s_a5eaa05fd0049d::t_4ea7c1b69ff36d 1-23
+src/main/ipc/handlers/BrowserSidebarIpc.ts
+  s_a5eaa05fd0049d::t_4ea7c1b69ff36d 308
+src/renderer/lib/command-palette-commands.ts
+  s_a5eaa05fd0049d::t_4ea7c1b69ff36d 53-54,176-188,640-644
+src/shared/file-search.ts
+  s_a5eaa05fd0049d::t_4ea7c1b69ff36d 1-28
+src/main/app-protocol.test.ts
+  s_a5eaa05fd0049d::t_4ea7c1b69ff36d 8,414-433
+src/renderer/lib/workbench-ui-scopes.tsx
+  s_a5eaa05fd0049d::t_4ea7c1b69ff36d 1,72-101
+src/renderer/components/workbench/workbench-session-thread-route.tsx
+  s_a5eaa05fd0049d::t_4ea7c1b69ff36d 584-585
+src/renderer/features/local-conversation/view/composer/composer-prompt-editor.tsx
+  s_a5eaa05fd0049d::t_4ea7c1b69ff36d 626,1169-1174
+src/main/local-store/assets.test.ts
+  s_a5eaa05fd0049d::t_4ea7c1b69ff36d 60-61,67,89,93,105,116,153-168,170,172,177,200-201
+src/renderer/features/workspace-files/workspace-files-panel.test.tsx
+  s_a5eaa05fd0049d::t_4ea7c1b69ff36d 1,59-60,102,248-249
+src/renderer/features/local-conversation/view/local-conversation-footer.test.tsx
+  s_a5eaa05fd0049d::t_4ea7c1b69ff36d 29-33
+src/main/ipc/handlers/CodexApplicationIpc.ts
+  s_a5eaa05fd0049d::t_4ea7c1b69ff36d 1,162-164,171,191,412,430-434
+src/main/codex-application/ComposerCatalog.ts
+  s_a5eaa05fd0049d::t_4ea7c1b69ff36d 1-3,23-24,93,104,136-139,142-143,148,150-152,161,169-170,178,185-186,191-192,197-198,326,328-332,338-342
+src/renderer/features/local-conversation/view/composer/local-conversation-thread-composer-speed.test.tsx
+  s_a5eaa05fd0049d::t_4ea7c1b69ff36d 173-177,2924
+src/main/host-runtime/AppProtocolRuntime.ts
+  s_a5eaa05fd0049d::t_4ea7c1b69ff36d 5,10-15,18-23,34,38,47-59
+src/main/local-store/TemporaryAssets.node.test.ts
+  s_a5eaa05fd0049d::t_4ea7c1b69ff36d 20-26
+src/main/workspace-files-service.ts
+  s_a5eaa05fd0049d::t_4ea7c1b69ff36d 1,3,199-200,206,209-227,232-273,276
+src/renderer/components/workbench/workbench-command-palette-host.tsx
+  s_a5eaa05fd0049d::t_4ea7c1b69ff36d 4-5,40-43,109,113-115,220-222,224-225,246-255
+tests/e2e/fixtures/codex-queue-app-server.mjs
+  s_a5eaa05fd0049d::t_4ea7c1b69ff36d 318-321
+src/main/ipc/handlers/file-local-import.test.ts
+  s_a5eaa05fd0049d::t_4ea7c1b69ff36d 51-64
+src/shared/command-keybindings.ts
+  s_a5eaa05fd0049d::t_4ea7c1b69ff36d 670
+src/renderer/lib/file-search-operations.ts
+  s_a5eaa05fd0049d::t_4ea7c1b69ff36d 1,5,11-15,20,28,30,43,46,54
+src/shared/ipc-api.ts
+  s_a5eaa05fd0049d::t_4ea7c1b69ff36d 1,4,1415-1416,1419,1423,2642
+src/main/app-protocol.ts
+  s_a5eaa05fd0049d::t_4ea7c1b69ff36d 1,43-47,298-313
+src/main/ipc/handlers/WorkspaceFileIpc.test.ts
+  s_a5eaa05fd0049d::t_4ea7c1b69ff36d 88
+src/renderer/lib/renderer-transport.ts
+  s_a5eaa05fd0049d::t_4ea7c1b69ff36d 127-128
+src/renderer/features/local-conversation/view/composer/composer-add-context-menu.tsx
+  s_a5eaa05fd0049d::t_4ea7c1b69ff36d 1-3,54,84,114,135,526,528,542,545-548,562,727,745,749,755-756,758-759,792-796,807,1019-1021,1038-1039,1107,1113,1289,1295,1428,1431,1449-1453,1456,1466,1499,1501,1503,1506,1516
+src/main/app/RendererIngressLive.ts
+  s_a5eaa05fd0049d::t_4ea7c1b69ff36d 1-2,67-68
+docs/product-specs/workbench-shell.md
+  s_a5eaa05fd0049d::t_4ea7c1b69ff36d 224-227
+src/renderer/features/local-conversation/view/composer/async-question-surface.tsx
+  s_a5eaa05fd0049d::t_4ea7c1b69ff36d 30
+src/main/browser-application/BrowserState.ts
+  s_a5eaa05fd0049d::t_4ea7c1b69ff36d 1871-1883
+src/renderer/features/local-conversation/view/composer/thread-composer-prompt-history.test.tsx
+  s_a5eaa05fd0049d::t_4ea7c1b69ff36d 93
+src/renderer/lib/file-search-results.ts
+  s_a5eaa05fd0049d::t_4ea7c1b69ff36d 1-55
+src/shared/types.ts
+  s_a5eaa05fd0049d::t_4ea7c1b69ff36d 2617,2622,2638
+src/renderer/lib/workspace-search-context.node.test.ts
+  s_a5eaa05fd0049d::t_4ea7c1b69ff36d 1-38
+docs/product-specs/command-palette-behavior.md
+  s_a5eaa05fd0049d::t_4ea7c1b69ff36d 11,27,48,86,88-90,275
+src/renderer/lib/use-file-search.ts
+  s_a5eaa05fd0049d::t_4ea7c1b69ff36d 1-84
+src/renderer/features/local-conversation/view/composer/local-conversation-thread-composer-dictation.test.tsx
+  s_a5eaa05fd0049d::t_4ea7c1b69ff36d 94-98
+src/renderer/lib/command-palette.ts
+  s_a5eaa05fd0049d::t_4ea7c1b69ff36d 1,704-708
+src/renderer/lib/use-debounced-value.ts
+  s_a5eaa05fd0049d::t_4ea7c1b69ff36d 1-11
+src/renderer/features/local-conversation/thread-stage-types.ts
+  s_a5eaa05fd0049d::t_4ea7c1b69ff36d 2,220,1118
+tests/e2e/composer-search.spec.ts
+  s_a5eaa05fd0049d::t_4ea7c1b69ff36d 60-70,108-113
+src/shared/file-search-paths.node.test.ts
+  s_a5eaa05fd0049d::t_4ea7c1b69ff36d 1-28
+src/renderer/lib/query-options.ts
+  s_a5eaa05fd0049d::t_4ea7c1b69ff36d 210-211,214,216,225-226,229,231
+src/renderer/features/local-conversation/view/composer/local-conversation-thread-composer.tsx
+  s_a5eaa05fd0049d::t_4ea7c1b69ff36d 3434,3726-3727
+src/renderer/components/workbench/command-palette.test.tsx
+  s_a5eaa05fd0049d::t_4ea7c1b69ff36d 1-2,5,167,531,921,1246,1313,1474-1537
+src/renderer/test/file-search-fixture.ts
+  s_a5eaa05fd0049d::t_4ea7c1b69ff36d 1-44
+src/renderer/features/local-conversation/view/thread-stage-story-fixtures.tsx
+  s_a5eaa05fd0049d::t_4ea7c1b69ff36d 3357-3361
+src/main/ipc/handlers/FileSearchIpc.ts
+  s_a5eaa05fd0049d::t_4ea7c1b69ff36d 1,9-12,14,21-22,40,46,48,50,53,55,59,61,73-83,99,108,112,115-116,123,127
+src/main/codex-application/ComposerCatalog.node.test.ts
+  s_a5eaa05fd0049d::t_4ea7c1b69ff36d 1,26-29,34,216,218,220-221,225-229,372-425
+src/main/file-link-opener.test.ts
+  s_a5eaa05fd0049d::t_4ea7c1b69ff36d 1-2,11-15,66-67,75-92
+src/renderer/features/local-conversation/composer-context-operations.node.test.ts
+  s_a5eaa05fd0049d::t_4ea7c1b69ff36d 23,25,56,65
+src/shared/ipc-endpoint-policy.ts
+  s_a5eaa05fd0049d::t_4ea7c1b69ff36d 321-323
+src/main/codex-application/renderer-host-identity.ts
+  s_a5eaa05fd0049d::t_4ea7c1b69ff36d 1-5
+src/renderer/lib/file-search-results.node.test.ts
+  s_a5eaa05fd0049d::t_4ea7c1b69ff36d 3,14,24,27-29,41-57
+src/main/file-link-opener.ts
+  s_a5eaa05fd0049d::t_4ea7c1b69ff36d 1,4-6,150,153-157,163-167,170-173,176-178,180-198,200-211,214,217-223,227-228,231-233,237,243,256-257,270-277,280,282,292,334,339,346,349,360,397,400-407,409-413,421,426,450,454,462,486-498,504-506,523,525,528,552,561-566,570,572,576-579,617,625-628,635,702-705
+docs/product-specs/codex-thread-transcript-behavior.md
+  s_a5eaa05fd0049d::t_4ea7c1b69ff36d 560-563
+src/main/workspace-files-service.test.ts
+  s_a5eaa05fd0049d::t_4ea7c1b69ff36d 228-245
+src/renderer/features/local-conversation/view/composer/composer-prompt-editor.test.tsx
+  s_a5eaa05fd0049d::t_4ea7c1b69ff36d 691-709
+CHANGELOG.md
+  s_a5eaa05fd0049d::t_4ea7c1b69ff36d 9-10
+src/renderer/features/local-conversation/view/connected-thread-stage.tsx
+  s_a5eaa05fd0049d::t_4ea7c1b69ff36d 1-2,13-16,515,517-543,545-553,667,809,830-853
+src/shared/app-protocol.ts
+  s_a5eaa05fd0049d::t_4ea7c1b69ff36d 58-62
+src/main/codex-application/FileSearch.ts
+  s_a5eaa05fd0049d::t_4ea7c1b69ff36d 1-2,8,12,22-25,29-30,33,41,48,52,77,94-112,124,156
+src/shared/file-search-paths.ts
+  s_a5eaa05fd0049d::t_4ea7c1b69ff36d 1-45
+src/renderer/lib/use-file-search.test.tsx
+  s_a5eaa05fd0049d::t_4ea7c1b69ff36d 1-83
+src/renderer/lib/server-state-hooks.test.tsx
+  s_a5eaa05fd0049d::t_4ea7c1b69ff36d 347-350
+src/renderer/lib/use-workbench-shortcuts.ts
+  s_a5eaa05fd0049d::t_4ea7c1b69ff36d 229-232
+src/shared/command-keybindings.test.ts
+  s_a5eaa05fd0049d::t_4ea7c1b69ff36d 373
+src/renderer/lib/electron-renderer-transport.ts
+  s_a5eaa05fd0049d::t_4ea7c1b69ff36d 437-439
+src/shared/schemas/file-search.ts
+  s_a5eaa05fd0049d::t_4ea7c1b69ff36d 1-2,8,11-12,14-15,21
+src/renderer/features/workspace-files/workspace-files-panel.stories.tsx
+  s_a5eaa05fd0049d::t_4ea7c1b69ff36d 1,181,213,224
+src/main/ipc/handlers/file-local-import.ts
+  s_a5eaa05fd0049d::t_4ea7c1b69ff36d 88-89,129
+docs/ARCHITECTURE.md
+  s_a5eaa05fd0049d::t_4ea7c1b69ff36d 235
+src/renderer/components/workbench/command-palette-surface.tsx
+  s_a5eaa05fd0049d::t_4ea7c1b69ff36d 1-2,17-18,37,81-85,89,158,181,221,314,675-686,716,744-752,885,903,988,1013-1014,1024,1080-1083,1125-1131
+src/renderer/lib/file-search-operations.node.test.ts
+  s_a5eaa05fd0049d::t_4ea7c1b69ff36d 2,6,8,13,28-32,39,61,74-78,84-85
+src/main/local-store/assets.ts
+  s_a5eaa05fd0049d::t_4ea7c1b69ff36d 1,131-135,138-144,146-149,151-152,300,304,309,319-320,330,334,343,351,379,382,394,402,405,418,429,432,438,440,443,460-463,594-598
+src/main/ipc/handlers/FileSearchIpc.node.test.ts
+  s_a5eaa05fd0049d::t_4ea7c1b69ff36d 16,18,27,48,54,56,82-88,95-97,102,106-120
+src/renderer/features/local-conversation/composer-context-operations.ts
+  s_a5eaa05fd0049d::t_4ea7c1b69ff36d 55-60,67-68
+src/renderer/features/workspace-files/workspace-files-panel.tsx
+  s_a5eaa05fd0049d::t_4ea7c1b69ff36d 1-3,447-469
+src/renderer/lib/query-keys.ts
+  s_a5eaa05fd0049d::t_4ea7c1b69ff36d 213-214,218-219
+src/renderer/lib/workspace-search-context.ts
+  s_a5eaa05fd0049d::t_4ea7c1b69ff36d 1-33
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "f6c7676fcbc5ab7166d6159c3997b3dfe8dc2df0",
+  "prompts": {},
+  "sessions": {
+    "s_a5eaa05fd0049d": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a08fcc-91a3-7ba0-a4e4-720879ecb167",
+        "model": "chatgpt-web/extra-high"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    }
+  }
+}
