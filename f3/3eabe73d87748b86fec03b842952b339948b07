@@ -117,6 +117,7 @@ src/shared/codex-conversation-state/codex-history-resume.ts
   s_a5eaa05fd0049d::t_69d30d2296668c 53,55,81-82
 src/shared/codex-conversation-state/codex-lifecycle-projection-diff.ts
   s_a5eaa05fd0049d::t_eadad7511d4469 221,226-227,233,280,287,419,496,555,586,604
+  s_a5eaa05fd0049d::t_417b0290cc9326 606
 src/shared/codex-conversation-state/codex-optimistic-turn.test.ts
   s_a5eaa05fd0049d::t_cf75b539f65f75 113,125-126,175-178,203-205,224-225,257,277,291-293
 src/shared/codex-conversation-state/codex-optimistic-turn.ts
