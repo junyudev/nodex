@@ -59,6 +59,7 @@ crates/nodex-core/src/infrastructure/migration.rs
   s_a5eaa05fd0049d::t_99141c80d8d37a 239-241,243
   s_a5eaa05fd0049d::t_5079d96ebcf414 2186,2188,2190-2195
   s_a5eaa05fd0049d::t_f2ae070fe2d672 242,2187,2196-2199
+  s_a5eaa05fd0049d::t_39611b6ea1a517 244-248,2185,2189
 src/main/codex-application/CodexFreshThreadLaunchRuntime.node.test.ts
   s_a5eaa05fd0049d::t_2fed5557f00182 136-146
   s_a5eaa05fd0049d::t_4fdfe61b6e47b1 1
@@ -265,6 +266,8 @@ src/shared/codex-conversation-state/codex-history-topology.ts
   s_a5eaa05fd0049d::t_fb7cc8ea3c995d 441-448,454-465,477-478,481,483,507,514,521-522
 crates/nodex-store-format/src/lib.rs
   s_a5eaa05fd0049d::t_76e560bdfe682c 133-134,141
+  s_a5eaa05fd0049d::t_99453568dc0e9d 140
+  s_a5eaa05fd0049d::t_39611b6ea1a517 136-139
 src/renderer/features/local-conversation/conversation-coordination-connection.ts
   s_a5eaa05fd0049d::t_e431120867806b 1,18,75,96
   s_a5eaa05fd0049d::t_f6e75b6f4c9545 70-74
@@ -444,6 +447,7 @@ crates/nodex-core/schema/current.sql
   s_a5eaa05fd0049d::t_99141c80d8d37a 5071-5072
   s_a5eaa05fd0049d::t_24a9ec4b7f46da 5067
   s_a5eaa05fd0049d::t_5079d96ebcf414 5063-5066,5068-5070
+  s_a5eaa05fd0049d::t_39611b6ea1a517 5073
 src/shared/codex-conversation-state/codex-file-change-stream.test.ts
   s_a5eaa05fd0049d::t_b0f7bddd8f36d9 663-664
   s_a5eaa05fd0049d::t_f9e120a5c3cc0f 111-114
@@ -515,6 +519,10 @@ packages/core-protocol/openapi.json
   s_41a8cda9701f7d::t_0d7a04c7d80369 8177-8212,29069-29146,34635-34656,37082-37159,47140-47157
 packages/core-protocol/src/generated.ts
   s_41a8cda9701f7d::t_97693ba1638f72 1951-1958,7040-7057,8282-8286,8958-8975,11074-11077
+crates/nodex-core/src/infrastructure/schema.rs
+  s_a5eaa05fd0049d::t_9d6b12cc45273d 222
+crates/nodex-core/schema/migrations/v166_to_v167.sql
+  s_a5eaa05fd0049d::t_39611b6ea1a517 1-8
 ---
 {
   "schema_version": "authorship/3.0.0",
