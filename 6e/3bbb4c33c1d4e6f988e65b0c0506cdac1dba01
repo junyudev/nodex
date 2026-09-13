@@ -1,0 +1,19 @@
+src/shared/codex-conversation-state/codex-lifecycle-projection-diff.test.ts
+  s_a5eaa05fd0049d::t_852a75c52eaffb 1043-1046,1048-1060,1062-1063,1092-1094,1099-1102,1104-1116,1118-1119
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "6e3bbb4c33c1d4e6f988e65b0c0506cdac1dba01",
+  "prompts": {},
+  "sessions": {
+    "s_a5eaa05fd0049d": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a08fcc-91a3-7ba0-a4e4-720879ecb167",
+        "model": "chatgpt-web/extra-high"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    }
+  }
+}
