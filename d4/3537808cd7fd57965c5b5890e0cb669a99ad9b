@@ -1,0 +1,26 @@
+src/main/platform/electron/CodexConversationService.node.test.ts
+  s_a5eaa05fd0049d::t_16b799528110b0 23,147-152
+src/shared/codex-follower-request.ts
+  s_a5eaa05fd0049d::t_252b3281a3d028 1-63
+src/shared/codex-follower-request.test.ts
+  s_a5eaa05fd0049d::t_f9ab2c48a42cfc 1-42,45-57,59-67,69-83,86-89,91-94,99,101-108,110-113,115-122,124-134,137-141
+  s_a5eaa05fd0049d::t_2306a33e07ab9b 43-44,58,68,84-85,90,95-98,100,109,114,123,135-136
+docs/product-specs/conversation-peer-service.md
+  s_a5eaa05fd0049d::t_db8b9925dbb54d 35-39
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "d43537808cd7fd57965c5b5890e0cb669a99ad9b",
+  "prompts": {},
+  "sessions": {
+    "s_a5eaa05fd0049d": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a08fcc-91a3-7ba0-a4e4-720879ecb167",
+        "model": "gpt-6-astra"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    }
+  }
+}

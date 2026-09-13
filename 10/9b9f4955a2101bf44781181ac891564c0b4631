@@ -1,0 +1,92 @@
+src/renderer/features/local-conversation/local-conversation-store.test.tsx
+  s_a5eaa05fd0049d::t_2c552c9db678d5 1322,1369,1381,1420,1452,1473,1488,1534,1539,1547,1567,1581,1595,1625,1650,1689,1701,1745,1794,1837,1879,1969,2113,2167,2208,2259,2291,2301,2417,2439,2476,2505,2535,2546,2635,2651,2663,2692,2727,2738,2756,2781,2803,2821,2832,2884,2922,2953,2983,3061,3068,3157,3244,3266,3304,3336,3358,3405,3462,3487,3498,3533,3558,3569,3604,3632,3668,3691,3702,3733,3743,3773,3799,3813,3835,3880,3947,4008,4024,4055,4111,4185,4230,4285,4345,4397,4458,4481,4549,4618,4621,4651,4689,4698,4755,4772,4785,4832,4849,4859,4884,4933,4955,4965,5003,5056,5070,5083,5097,5162,5171,5184,5205,5228,5288,5305,5318,5350,5416,5439,5451,5469,5511,5536,5548,5579,5607,5663,5681,5693,5731,5774,5791,5840,5902,5914,5940,5986,6004,6017,6030,6083,6092,6105,6121,6187,6197,6210,6265,6282,6296,6346,6385,6399,6410,6448,6528,6550,6564,6651,6715,6729,6745,6763,6777,6845,6867,6881,6906,6931,7080,7097,7111,7152,7170,7201,7224,7251,7294,7325,7344,7357,7382,7403,7430,7506,7519,7527,7593,7641,7662,7722,7743,7791,7796,7862,7868,7911,7990,8055,8101,8119,8157,8174,8188,8257,8275,8289,8336,8368,8432,8494,8621,8628,8667,8707,8734,8754,8782,8795,8837,8854,8869,8938,8955,8970,8997,9077,9094,9108,9144,9229,9246,9260,9284,9363,9386,9399,9474,9497,9511,9596,9620,9643,9660,9751,9803,9905,9928,9963,10027,10050,10085,10126,10157,10168,10175,10218,10253,10286,10306,10319,10323,10388,10411,10425,10438,10559,10582,10596,10609,10713,10736,10755,10769,10817,10824,10838,10881,10886,10900,10916,10947,10963,10977,10990,11018,11023,11037,11049,11157,11176,11189,11287,11304,11318,11331,11344,11358,11449,11474,11488,11501,11575,11597,11612,11678,11700,11721,11723,11750,11767,11780,11834,11851,11864,11886,11945,11963,11977,11990,12003,12054,12073,12089,12138,12154,12168,12210,12228,12241,12285,12302,12315,12361,12378,12391,12425,12442,12466,12475,12496,12528,12545,12569,12578,12591,12621,12662,12718,12738,12801,12821,12835,12893,12912,12924,12945,12981,13029,13046,13059,13113,13130,13144,13188,13207,13220,13272,13287,13332,13347,13395,13407,13528,13531,13619,13624,13648,13703,13707,13725,13780,13852,13868,13918,13964,13967,14028,14031,14092,14156,14192,14275,14342,14405,14495,14511,14536,14564,14616,14628,14646,14667,14720,14786,14797,14843,14912,14979,15097,15164,15181,15225,15228,15404,15407,15510,15513,15648,15665,15679,15695,15754,15771,15789,15845,15923,15937,15996,16033,16060,16105,16154,16157,16250,16255,16276,16307,16441,16457,16496,16504,16551,16578,16603,16614,16619,16643,16684,16704,16738,16754,16767,16792,16808,16829,16854,16871,16883,16966,17051,17125,17131,17211,17217,17585,17632,17711,17756,17837,17902,18026,18071,18104,18136,18177,18181,18228,18258,18273,18331,18370,18389,18403,18433,18448,18500,18591,18594,18645,18692,18746,18796,18882,18885,18947,18950,19026,19092,19095,19148,19151,19196,19199,19248,19251,19322,19372,19549,19585,19652,19804,19885,19919,19988,20056,20130,20192,20240,20267,20299,20302,20324,20336,20370,20374,20398,20429,20432,20459,20491,20494,20517,20545,20560,20572,20584,20650,20675,20699,20822,20874,20941,20971,21041,21045,21060,21074,21098
+  s_a5eaa05fd0049d::t_8c31b3828ef8ea 152,186
+docs/product-specs/conversation-peer-service.md
+  s_a5eaa05fd0049d::t_d808df097bdc0f 32-34
+src/main/codex-application/CodexMedia.node.test.ts
+  s_a5eaa05fd0049d::t_0e3c905cf6aed4 196
+src/main/codex-application/CodexRendererConversationCoordinator.node.test.ts
+  s_a5eaa05fd0049d::t_44d5013fa52e73 98,280
+src/main/codex-application/ComposerCatalog.node.test.ts
+  s_a5eaa05fd0049d::t_3f8929f2c14288 216,218,220-221,230,234,253
+src/main/codex-application/ComposerCatalog.ts
+  s_a5eaa05fd0049d::t_459164ffbda64a 149,168,327
+src/main/codex-application/FileSearch.node.test.ts
+  s_a5eaa05fd0049d::t_9f8a187d6925a9 41
+src/main/codex-application/FileSearch.ts
+  s_a5eaa05fd0049d::t_b2303515f99ea2 28
+src/main/codex-application/internal/ConversationEntityState.node.test.ts
+  s_a5eaa05fd0049d::t_b6b476e3645853 196,828
+src/main/codex/codex-thread-notification-handler.test.ts
+  s_a5eaa05fd0049d::t_5b17e6022379eb 104,131,153,170,179,210,220,228,236,250,276,298
+src/main/host-runtime/CodexThreadNotificationRuntime.test.ts
+  s_a5eaa05fd0049d::t_b895b1b39ed1bd 94
+src/main/host-runtime/RemoteHostedPipRuntime.test.ts
+  s_a5eaa05fd0049d::t_201e4a6b110afc 155
+src/renderer/components/workbench/command-palette.test.tsx
+  s_a5eaa05fd0049d::t_2fa6fa1e0dd6b1 1499
+src/renderer/components/workbench/workbench-hooks-settings-page.stories.tsx
+  s_a5eaa05fd0049d::t_fdf7286afac661 62,68,100
+src/renderer/components/workbench/workbench-hooks-settings-page.test.tsx
+  s_a5eaa05fd0049d::t_33e7e53bb4e994 43-44,75,106,150,169
+src/renderer/features/local-conversation/composer-context-operations.node.test.ts
+  s_a5eaa05fd0049d::t_4fbab7fb363a0f 23,25,56,65
+src/renderer/features/local-conversation/local-conversation-host-bridge.test.ts
+  s_a5eaa05fd0049d::t_773d566226b52e 43,79,127,157,184,226
+src/renderer/features/local-conversation/projection/hook-feedback-settings.node.test.ts
+  s_a5eaa05fd0049d::t_de15bad4044dec 54,59,69-70,73,77
+src/renderer/features/local-conversation/view/blocks/local-conversation-block-leaves.test.tsx
+  s_a5eaa05fd0049d::t_5a0530e6316aed 389
+src/renderer/features/local-conversation/view/composer/image-attachments/composer-image-attachment-model.node.test.ts
+  s_a5eaa05fd0049d::t_9a5423651b3a1e 17,36,46,59,69,75,86-87
+src/renderer/features/local-conversation/view/composer/image-attachments/composer-image-attachment-thumbnail.test.tsx
+  s_a5eaa05fd0049d::t_7d7952c408fd9d 94
+src/renderer/features/local-conversation/view/composer/image-attachments/image-edit-intent-attachments.node.test.ts
+  s_a5eaa05fd0049d::t_6e8b64a9eff6e3 26,53,90,96,129,135
+src/renderer/features/local-conversation/view/composer/image-attachments/use-composer-image-attachments.test.tsx
+  s_a5eaa05fd0049d::t_c49b84453a0b9a 63,101,132,152,225,309
+src/renderer/features/local-conversation/view/composer/local-conversation-thread-composer-dictation.test.tsx
+  s_a5eaa05fd0049d::t_d2f27756601738 95,100
+src/renderer/features/local-conversation/view/composer/local-conversation-thread-composer-speed.test.tsx
+  s_a5eaa05fd0049d::t_e83269b964c5ff 174,179,2924
+src/renderer/features/local-conversation/view/connected-thread-stage.test.tsx
+  s_a5eaa05fd0049d::t_51d067b5c41431 403,753,778,789,1005,1056,1074,1109,1141,1218,1384
+src/renderer/features/local-conversation/view/local-conversation-footer.test.tsx
+  s_a5eaa05fd0049d::t_fb7cf7fd67a897 30,35
+src/renderer/features/local-conversation/view/local-conversation-thread-body.test.tsx
+  s_a5eaa05fd0049d::t_08c9e31072305b 321
+src/renderer/features/local-conversation/view/thread-stage-story-fixtures.tsx
+  s_a5eaa05fd0049d::t_dc8cb08f8093db 3358,3363,3424
+src/renderer/features/user-attachment-image-editor/view/user-attachment-image-editor-surface.test.tsx
+  s_a5eaa05fd0049d::t_3856a97e3ae607 288,308
+src/renderer/lib/codex-hooks-route.node.test.ts
+  s_a5eaa05fd0049d::t_8f1a1c6c1675b2 21,24,28,31,64,69,74-75
+src/renderer/lib/file-search-operations.node.test.ts
+  s_a5eaa05fd0049d::t_a4a7d305e3fe34 29,75
+src/renderer/lib/server-state-hooks.test.tsx
+  s_a5eaa05fd0049d::t_08b108cfe435f5 347-350
+src/renderer/lib/use-file-search.test.tsx
+  s_a5eaa05fd0049d::t_6cade96b8aa45c 39,41,57,60
+src/renderer/lib/use-workbench-command-ingress.test.tsx
+  s_a5eaa05fd0049d::t_cca5bc752677ca 269
+src/shared/codex-host.ts
+  s_a5eaa05fd0049d::t_31cc6595268735 2
+src/shared/codex-thread-notification.test.ts
+  s_a5eaa05fd0049d::t_be077db0d8846a 35,244-245
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "109b9f4955a2101bf44781181ac891564c0b4631",
+  "prompts": {},
+  "sessions": {
+    "s_a5eaa05fd0049d": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a08fcc-91a3-7ba0-a4e4-720879ecb167",
+        "model": "gpt-6-astra"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    }
+  }
+}

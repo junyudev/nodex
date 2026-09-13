@@ -1,0 +1,44 @@
+src/shared/codex-terminal-interaction.ts
+  s_a5eaa05fd0049d::t_1675ae2e6d5a09 41,46-48,50,53,56-60,62,64,66,72,75,77,84-87,91,94-95,99-101
+  s_a5eaa05fd0049d::t_a6c9130ae3fbc2 42-43,45,54-55,82
+docs/product-specs/codex-thread-owner-follower-streaming.md
+  s_a5eaa05fd0049d::t_34cb59ed8b6c2f 283
+  s_a5eaa05fd0049d::t_0208cd869a0c13 281-282
+src/renderer/features/local-conversation/local-conversation-store.test.tsx
+  s_a5eaa05fd0049d::t_4635f78c085c8e 12540-12669
+  s_a5eaa05fd0049d::t_cc0546ca303b9f 11758,11832,11834-11835,11842,11911,11936-11937
+src/renderer/features/local-conversation/local-conversation-store.ts
+  s_a5eaa05fd0049d::t_a6c9130ae3fbc2 8884-8889
+  s_a5eaa05fd0049d::t_4635f78c085c8e 10517-10522
+  s_a5eaa05fd0049d::t_1675ae2e6d5a09 8890
+  s_a5eaa05fd0049d::t_90d700b0a0d0db 630-642,9286-9287
+  s_a5eaa05fd0049d::t_850ac092ee05ec 8956,9119,9258-9276,9278-9285,10155,10180,10182,10189-10191
+src/main/codex-application/CodexProtocolNotificationEffects.ts
+  s_a5eaa05fd0049d::t_1675ae2e6d5a09 411
+  s_a5eaa05fd0049d::t_a6c9130ae3fbc2 279,281-292,394-397,404-410
+src/shared/codex-conversation-state/codex-command-execution-stream.ts
+  s_a5eaa05fd0049d::t_1675ae2e6d5a09 115-118,123
+  s_a5eaa05fd0049d::t_a6c9130ae3fbc2 119-122
+src/shared/codex-conversation-state/codex-command-execution-stream.test.ts
+  s_a5eaa05fd0049d::t_a6c9130ae3fbc2 286-295,300,302-306
+src/shared/codex-terminal-interaction.test.ts
+  s_a5eaa05fd0049d::t_a6c9130ae3fbc2 4,7,10,12-16,19-25,29-37,40-50,52-56
+docs/product-specs/codex-thread-transcript-behavior.md
+  s_a5eaa05fd0049d::t_6a2d6e77b4bc2a 276-280
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "a753473bdd69293ad74b37a84fbfac8c9daea87d",
+  "prompts": {},
+  "sessions": {
+    "s_a5eaa05fd0049d": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a08fcc-91a3-7ba0-a4e4-720879ecb167",
+        "model": "gpt-6-astra"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    }
+  }
+}

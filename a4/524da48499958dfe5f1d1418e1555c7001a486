@@ -1,0 +1,23 @@
+src/shared/codex-coordination-view.ts
+  s_a5eaa05fd0049d::t_b03de671b2d24f 15-17,75
+src/shared/codex-coordination-view.test.ts
+  s_a5eaa05fd0049d::t_b03de671b2d24f 1-46
+docs/product-specs/conversation-peer-service.md
+  s_a5eaa05fd0049d::t_b03de671b2d24f 13-14
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "a4524da48499958dfe5f1d1418e1555c7001a486",
+  "prompts": {},
+  "sessions": {
+    "s_a5eaa05fd0049d": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a08fcc-91a3-7ba0-a4e4-720879ecb167",
+        "model": "gpt-6-astra"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    }
+  }
+}

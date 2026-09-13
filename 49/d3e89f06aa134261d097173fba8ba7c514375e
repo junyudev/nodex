@@ -1,0 +1,29 @@
+src/main/ipc/handlers/CodexConversationServiceIpc.ts
+  s_a5eaa05fd0049d::t_c2a076524185f7 11
+  s_a5eaa05fd0049d::t_c5477f19f4c53d 56-61
+  s_a5eaa05fd0049d::t_38c310f197c185 48-49,55,62-67,78-86
+src/main/platform/electron/CodexConversationService.node.test.ts
+  s_a5eaa05fd0049d::t_c2a076524185f7 20,108-109
+src/main/platform/node/CodexPeerEndpoint.ts
+  s_a5eaa05fd0049d::t_c2a076524185f7 1-3,5-6,10-66,78-116,118-130,132-133,135-143,145-153
+docs/product-specs/conversation-peer-service.md
+  s_a5eaa05fd0049d::t_fcbca0d62d7282 32-45
+src/main/platform/node/CodexPeerEndpoint.node.test.ts
+  s_a5eaa05fd0049d::t_bade11846da7cf 1-89
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "49d3e89f06aa134261d097173fba8ba7c514375e",
+  "prompts": {},
+  "sessions": {
+    "s_a5eaa05fd0049d": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a08fcc-91a3-7ba0-a4e4-720879ecb167",
+        "model": "gpt-6-astra"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    }
+  }
+}
