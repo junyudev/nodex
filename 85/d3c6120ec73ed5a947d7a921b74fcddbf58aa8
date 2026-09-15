@@ -1,0 +1,54 @@
+src/main/codex-application/CodexThreadGoalRuntime.node.test.ts
+  s_a5eaa05fd0049d::t_e33caebbd5cb0f 185-195,200,206-220,223-225,230,235-245,248-250,255-259,268-271
+  s_a5eaa05fd0049d::t_0b3082d24f9433 226-229,251-254
+  s_a5eaa05fd0049d::t_299dcf5ffb4613 80,196-199,201-205,221-222,231-234,246-247,260-267
+src/shared/codex-conversation-state/codex-thread-metadata.test.ts
+  s_a5eaa05fd0049d::t_c109d0ca4c5c82 203
+  s_a5eaa05fd0049d::t_299dcf5ffb4613 205-212
+  s_a5eaa05fd0049d::t_9523ca33d7fced 166,180
+  s_a5eaa05fd0049d::t_e33caebbd5cb0f 200-202,204,213-219
+src/main/app/ConversationApplicationLive.ts
+  s_a5eaa05fd0049d::t_52a478c70af28a 524
+src/shared/codex-conversation-state/codex-thread-metadata.ts
+  s_a5eaa05fd0049d::t_299dcf5ffb4613 2-6,100-102,155-157,160-164,170-174,176-178,186-190,192-193,201-205,207-209,245-247,273-277,284-295,299-306
+  s_a5eaa05fd0049d::t_52a478c70af28a 18-21,167-168
+  s_a5eaa05fd0049d::t_1516ce57c07e7c 197
+src/renderer/features/local-conversation/local-conversation-store.test.tsx
+  s_a5eaa05fd0049d::t_9523ca33d7fced 17472,17526,17539,17544,17554,17629
+  s_a5eaa05fd0049d::t_299dcf5ffb4613 17541-17543,17545-17547
+src/main/codex-application/CodexThreadGoalRuntime.ts
+  s_a5eaa05fd0049d::t_9561c382219854 105-109,121
+  s_a5eaa05fd0049d::t_299dcf5ffb4613 120
+src/renderer/features/local-conversation/local-conversation-store.ts
+  s_a5eaa05fd0049d::t_299dcf5ffb4613 2623
+src/main/codex-application/internal/ConversationEntityState.ts
+  s_a5eaa05fd0049d::t_299dcf5ffb4613 1328-1338
+  s_a5eaa05fd0049d::t_9561c382219854 424
+docs/product-specs/codex-thread-transcript-behavior.md
+  s_a5eaa05fd0049d::t_9561c382219854 133-134
+src/main/codex-application/CodexTurnCommands.ts
+  s_a5eaa05fd0049d::t_c2f6e980d88b0d 439,504
+src/main/codex-application/internal/ConversationEntityState.node.test.ts
+  s_a5eaa05fd0049d::t_299dcf5ffb4613 344-348,353-357
+  s_a5eaa05fd0049d::t_e33caebbd5cb0f 334-343,349-352,358-362
+docs/ARCHITECTURE.md
+  s_a5eaa05fd0049d::t_c2f6e980d88b0d 180-183
+src/main/codex-application/CodexConversationProjection.ts
+  s_a5eaa05fd0049d::t_9561c382219854 84
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "85d3c6120ec73ed5a947d7a921b74fcddbf58aa8",
+  "prompts": {},
+  "sessions": {
+    "s_a5eaa05fd0049d": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a08fcc-91a3-7ba0-a4e4-720879ecb167",
+        "model": "chatgpt-web/pro"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    }
+  }
+}
