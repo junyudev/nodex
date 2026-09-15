@@ -1,0 +1,48 @@
+src/main/codex-application/CodexHistoryPageAdapter.node.test.ts
+  s_a5eaa05fd0049d::t_018e312063a6dc 51-72,74-96,98-99,102-104,106-116,118-186,188-196,198-206,208-216,218-226,228-230
+src/renderer/features/local-conversation/local-conversation-native-stream.jsdom.test.ts
+  s_a5eaa05fd0049d::t_5adb868f357f79 32,201-202,208-209,1375,1393-1396,1576-1579
+  s_a5eaa05fd0049d::t_018e312063a6dc 1569-1574
+src/main/codex-application/CodexHistoryPageAdapter.ts
+  s_a5eaa05fd0049d::t_018e312063a6dc 12-16,365-371
+  s_a5eaa05fd0049d::t_d9eccf19d4fffd 24,70,81,200,215,267,282,329,415
+src/main/codex-application/CodexMainConversationResume.ts
+  s_a5eaa05fd0049d::t_9d9b5b9bbfdbbf 15,174,249,316,321
+  s_a5eaa05fd0049d::t_018e312063a6dc 67-69,263-266,317-320
+src/main/codex-application/CodexThreadDirectory.node.test.ts
+  s_a5eaa05fd0049d::t_6f9e79107d9557 1602,1604-1606,1657
+src/renderer/features/local-conversation/local-conversation-store.ts
+  s_a5eaa05fd0049d::t_9d9b5b9bbfdbbf 14-15,3548,3551,3573-3574,3662,3669,3813
+  s_a5eaa05fd0049d::t_018e312063a6dc 3575-3578,5625-5630
+src/shared/codex-conversation-resume-retry.test.ts
+  s_a5eaa05fd0049d::t_9e4a19c22502a7 16-31
+  s_a5eaa05fd0049d::t_9a3c81a71b3555 6,11-15,32-34
+src/main/codex-application/CodexThreadDirectory.ts
+  s_a5eaa05fd0049d::t_6f9e79107d9557 780
+  s_a5eaa05fd0049d::t_d9eccf19d4fffd 60,236,672,742,1480,1499
+src/shared/codex-conversation-resume-retry.ts
+  s_a5eaa05fd0049d::t_9d9b5b9bbfdbbf 11-19
+docs/product-specs/codex-thread-transcript-behavior.md
+  s_a5eaa05fd0049d::t_6f9e79107d9557 74
+src/main/codex-application/CodexMainConversationResume.node.test.ts
+  s_a5eaa05fd0049d::t_018e312063a6dc 10-14,270-294
+  s_a5eaa05fd0049d::t_6f9e79107d9557 98,196,199,232
+  s_a5eaa05fd0049d::t_5adb868f357f79 97,148,150,231,295
+  s_a5eaa05fd0049d::t_4cb2d1891903be 296
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "68909fae3774357d8d3227a6185e27957f51ad4d",
+  "prompts": {},
+  "sessions": {
+    "s_a5eaa05fd0049d": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a08fcc-91a3-7ba0-a4e4-720879ecb167",
+        "model": "chatgpt-web/pro"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    }
+  }
+}
