@@ -1,0 +1,51 @@
+src/main/codex-application/CodexThreadDirectory.ts
+  s_a5eaa05fd0049d::t_e52d79e7555f9d 138,885,909,917,926
+src/renderer/features/local-conversation/local-conversation-native-stream.jsdom.test.ts
+  s_a5eaa05fd0049d::t_5508765b7fb4a4 130,413,640
+  s_a5eaa05fd0049d::t_2761f6b623f6bb 27,173,605,636-638,654
+src/main/codex-application/CodexConversationResumeRuntime.ts
+  s_a5eaa05fd0049d::t_e52d79e7555f9d 3,47,127,131
+src/main/codex-application/CodexDelegatedMessages.node.test.ts
+  s_a5eaa05fd0049d::t_c94c762a7c8721 16,52,55,117,165,167
+src/shared/codex-conversation-state/codex-resume-request.ts
+  s_a5eaa05fd0049d::t_e52d79e7555f9d 22,45,52-53,58
+src/main/codex-application/CodexConversationResumeRuntime.node.test.ts
+  s_a5eaa05fd0049d::t_2761f6b623f6bb 197,199-202,205-206,214-222
+src/main/codex-application/CodexThreadDirectory.node.test.ts
+  s_a5eaa05fd0049d::t_b0c7d80bb08d1f 2132,2134-2138
+  s_a5eaa05fd0049d::t_2761f6b623f6bb 2027-2034,2133,2247
+src/main/codex-application/CodexDelegatedMessages.ts
+  s_a5eaa05fd0049d::t_e52d79e7555f9d 36
+src/shared/codex-conversation-state/codex-resume-request.test.ts
+  s_a5eaa05fd0049d::t_2761f6b623f6bb 83-107
+  s_a5eaa05fd0049d::t_e52d79e7555f9d 127-130
+src/renderer/features/local-conversation/local-conversation-store.ts
+  s_a5eaa05fd0049d::t_e52d79e7555f9d 539,1849,2298,2301,3368,3560,3565-3566,3573,3618,5201-5204,5219
+src/main/codex-application/CodexMainConversationResume.ts
+  s_a5eaa05fd0049d::t_e52d79e7555f9d 2,40,226-231
+src/shared/ipc-api.ts
+  s_a5eaa05fd0049d::t_e52d79e7555f9d 2364
+src/main/ipc/handlers/CodexWorkspaceIpc.ts
+  s_a5eaa05fd0049d::t_e52d79e7555f9d 752-759
+tests/e2e/codex-conversation-reconnect.spec.ts
+  s_a5eaa05fd0049d::t_4cff8703eced2f 46,270-275,277-281,283,289-291,293,298-321,334
+  s_a5eaa05fd0049d::t_27afc109496822 276,282,284-288,292,294-297
+docs/product-specs/codex-thread-transcript-behavior.md
+  s_a5eaa05fd0049d::t_e52d79e7555f9d 74
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "19356d53023a6b181124d9e87db56605e00b7c8c",
+  "prompts": {},
+  "sessions": {
+    "s_a5eaa05fd0049d": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a08fcc-91a3-7ba0-a4e4-720879ecb167",
+        "model": "chatgpt-web/pro"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    }
+  }
+}
