@@ -1,0 +1,59 @@
+src/main/codex-application/CodexHistoryPageAdapter.ts
+  s_a5eaa05fd0049d::t_e26183626aa4c4 6
+  s_a5eaa05fd0049d::t_c486a7b9b6e7c2 10,356,359,363,391,413-415,419-424,430-437
+  s_a5eaa05fd0049d::t_2baa475c87de43 26-29,307-317,330-342,344-355,357-358,364-366,416-418,425-429
+  s_a5eaa05fd0049d::t_1909a692302c3e 343
+  s_a5eaa05fd0049d::t_17824c629e7b8c 318-329
+  s_a5eaa05fd0049d::t_8d81bcb1a8d60f 438
+src/main/codex-application/CodexThreadDirectory.ts
+  s_a5eaa05fd0049d::t_ab085641bd237c 542-543,586,603-616,708,710,714-715,749,765-771,777-779,896
+  s_a5eaa05fd0049d::t_2baa475c87de43 620-621,750-764,772-776,987-992
+  s_a5eaa05fd0049d::t_b82d9c737d96f4 617-619,622-624,627-635,647,665-668,677
+src/shared/codex-conversation-state/codex-resume-request.ts
+  s_a5eaa05fd0049d::t_ab085641bd237c 10,24,49,53,73-74,78-86
+src/shared/codex-conversation-state/codex-resume-request.test.ts
+  s_a5eaa05fd0049d::t_044794380fae30 6,38
+  s_a5eaa05fd0049d::t_2baa475c87de43 22-37,39-66
+  s_a5eaa05fd0049d::t_35e9277329287e 67
+src/main/codex-application/CodexThreadDirectory.node.test.ts
+  s_a5eaa05fd0049d::t_68be1d060f336c 1992-1998,2001,2008,2013-2027,2030-2031,2042-2044,2056,2068,2073,2110,2114-2119,2122,2124-2127,2129-2132,2145-2147,2153-2175,2178-2186,2216,2240-2254,2264-2265,2271,2273-2276,2281-2282,2305
+  s_a5eaa05fd0049d::t_2baa475c87de43 1563-1743
+  s_a5eaa05fd0049d::t_bb03b59233282d 1744
+  s_a5eaa05fd0049d::t_e3087fd1b09572 2109,2189-2193
+  s_a5eaa05fd0049d::t_9ad64a36ae92a8 2255-2263,2277-2280
+src/renderer/features/local-conversation/local-conversation-store.ts
+  s_a5eaa05fd0049d::t_ab085641bd237c 3725-3726,3751-3759,3790,3795-3801
+  s_a5eaa05fd0049d::t_2baa475c87de43 3727-3730,3742-3747,3760-3771
+src/main/codex-application/CodexMainConversationResume.ts
+  s_a5eaa05fd0049d::t_2baa475c87de43 267-274
+  s_a5eaa05fd0049d::t_ab085641bd237c 286
+src/main/codex-application/CodexHistoryPageAdapter.node.test.ts
+  s_a5eaa05fd0049d::t_25c2a84130c722 157-158,223
+  s_a5eaa05fd0049d::t_17824c629e7b8c 287-290
+  s_a5eaa05fd0049d::t_2baa475c87de43 51-156,159-222,224-286,291-305
+  s_a5eaa05fd0049d::t_794dc9ed279d03 306
+docs/product-specs/codex-thread-transcript-behavior.md
+  s_a5eaa05fd0049d::t_3c6977bac3d5ac 69-70
+src/renderer/features/local-conversation/local-conversation-native-stream.jsdom.test.ts
+  s_a5eaa05fd0049d::t_044794380fae30 18,140,147,158,177,182,184,250,254,344,346,382,385,402,1463-1466,1488-1490,1501,1517-1520,1541-1544,1549,1554-1556
+  s_a5eaa05fd0049d::t_2baa475c87de43 243-249,1467-1487,1491-1500,1502-1516,1521-1540,1545-1548,1550-1553
+  s_a5eaa05fd0049d::t_ceeef4b4602994 1557-1558
+tests/e2e/codex-conversation-reconnect.spec.ts
+  s_a5eaa05fd0049d::t_9cc12fc47a5795 132-135
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "27af421efab7cd92dd25a1871e17bfe449bff87e",
+  "prompts": {},
+  "sessions": {
+    "s_a5eaa05fd0049d": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a08fcc-91a3-7ba0-a4e4-720879ecb167",
+        "model": "chatgpt-web/pro"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    }
+  }
+}
