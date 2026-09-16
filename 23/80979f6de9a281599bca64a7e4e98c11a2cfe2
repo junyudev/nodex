@@ -1,0 +1,50 @@
+tests/e2e/fixtures/codex-queue-app-server.mjs
+  s_a5eaa05fd0049d::t_9298afaab69a13 397-402,405
+CHANGELOG.md
+  s_a5eaa05fd0049d::t_8ae183c1549a46 58
+src/shared/codex-reasoning-summary-policy.test.ts
+  s_a5eaa05fd0049d::t_8ae183c1549a46 8
+  s_a5eaa05fd0049d::t_2b90d716158dda 36-55
+  s_a5eaa05fd0049d::t_f1aa141d4aa290 34-35,56
+  s_a5eaa05fd0049d::t_3d645a89cc9ce5 25
+src/main/codex-application/CodexTurnPermissionMaterialization.node.test.ts
+  s_a5eaa05fd0049d::t_f1aa141d4aa290 15,107-108,172-176,300-320,329-332,354-364
+  s_a5eaa05fd0049d::t_f4b1d31ab7f152 368-373,376-398,417-427
+  s_a5eaa05fd0049d::t_2b90d716158dda 221-238,321-328,333-353,374-375,399-416,429-445
+  s_a5eaa05fd0049d::t_91945ab9e20258 628
+  s_a5eaa05fd0049d::t_8dbcd704511bab 428,446-448
+  s_a5eaa05fd0049d::t_3d645a89cc9ce5 106,153,239-256,258-299,365-366
+  s_a5eaa05fd0049d::t_2d50e55097de7a 257
+  s_a5eaa05fd0049d::t_4c93f2475551ae 367
+tests/e2e/codex-conversation-reconnect.spec.ts
+  s_a5eaa05fd0049d::t_2b90d716158dda 188-191,195-201,208-211,219-226,445-447,489-491,495-496,549-551
+  s_a5eaa05fd0049d::t_f4b1d31ab7f152 451,464,475,484-488,492-494,497-502,527,548,552,571-572
+  s_a5eaa05fd0049d::t_9298afaab69a13 37,186-187,192-194,202-207,212-218,240-243,254,596
+docs/product-specs/codex-thread-owner-follower-streaming.md
+  s_a5eaa05fd0049d::t_8ae183c1549a46 4,267-284
+  s_a5eaa05fd0049d::t_ef4d2b755d97a2 285
+src/shared/codex-reasoning-summary-policy.ts
+  s_a5eaa05fd0049d::t_8ae183c1549a46 7,10
+  s_a5eaa05fd0049d::t_68625920d20c19 24-25,29,34-36,41
+src/main/codex-application/CodexTurnPreparation.ts
+  s_a5eaa05fd0049d::t_68625920d20c19 62,433-434,438-462,536,567,631
+  s_a5eaa05fd0049d::t_8dbcd704511bab 520-525,539-543
+  s_a5eaa05fd0049d::t_2b90d716158dda 360,591
+  s_a5eaa05fd0049d::t_13fbbe5b2b8fb0 314-319,338-352,354-358,417-427,463-466,532-533,537-538,564-565,605,628
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "2380979f6de9a281599bca64a7e4e98c11a2cfe2",
+  "prompts": {},
+  "sessions": {
+    "s_a5eaa05fd0049d": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a08fcc-91a3-7ba0-a4e4-720879ecb167",
+        "model": "chatgpt-web/pro"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    }
+  }
+}
