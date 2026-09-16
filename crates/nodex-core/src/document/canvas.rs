@@ -32,7 +32,7 @@ use super::persistence::{DocumentAuthorityRow, read_event_head, sha256};
 
 const MAX_CANVAS_ELEMENTS: i64 = 100_000;
 const MAX_CANVAS_FILES: i64 = 10_000;
-const PROJECTION_VERSION: i64 = 2;
+pub(super) const PROJECTION_VERSION: i64 = 2;
 const CANVAS_COMPACTION_TOMBSTONE_COUNT_THRESHOLD: i64 = 5_000;
 const CANVAS_COMPACTION_TOMBSTONE_BYTES_THRESHOLD: i64 = 4 * 1024 * 1024;
 
