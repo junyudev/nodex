@@ -433,6 +433,8 @@ fn revision_conflict() -> StoreError {
 
 #[cfg(test)]
 mod tests {
+    mod canvas_bindings;
+
     use std::fs;
 
     use nodex_core_contracts::library::{

@@ -63,6 +63,12 @@ not change either slot. Creating a binding requires direct File read authority
 or an exact current binding in the authorized Canvas. Canvas access exposes
 only the bound bytes, not global File metadata or arbitrary versions.
 
+Moving or resizing shapes and changing shared Canvas settings preserve unchanged
+image bindings for reads, slot duplication, and recovery capture. Those operations
+remain available after direct File access is revoked while the Canvas remains
+authorized. A missing or stale scene projection, or a slot whose indexed binding
+disagrees with its canonical content, cannot supply File read authority.
+
 Canvas image insertion publishes an independent Library File before the scene
 mutation. It does not create a Page File entry. Renderer serialization accepts
 only schema 2 exact bindings and reads every image through its Canvas, revision,

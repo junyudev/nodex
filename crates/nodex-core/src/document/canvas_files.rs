@@ -43,6 +43,50 @@ fn version_evidence(
     Ok((evidence.0, evidence.1))
 }
 
+/// The collection head proves freshness; an unchanged slot keeps its last-change
+/// sequence. Reads, binding reuse and recovery must share this proof, including
+/// canonical slot contents and immutable version evidence. Callers authorize the
+/// Document and hold one Store observation. An omitted scene_file_id permits a
+/// matching binding in any slot.
+fn has_current_binding(
+    connection: &Connection,
+    library_id: &str,
+    document_id: &str,
+    file: &CanvasFile,
+    scene_file_id: Option<&str>,
+) -> Result<bool, StoreError> {
+    connection.query_row(
+        "SELECT EXISTS(
+           SELECT 1 FROM canvas_scene_file_refs reference
+           JOIN documents document ON document.id = reference.document_id
+           JOIN block_documents ownership ON ownership.document_id = document.id
+             AND ownership.block_id = reference.owner_block_id AND ownership.library_id = document.library_id
+           JOIN canvas_scene_projection_heads projection ON projection.document_id = document.id
+           JOIN canvas_scene_files canonical ON canonical.document_id = reference.document_id AND canonical.file_id = reference.file_id
+           JOIN file_versions version ON version.library_id = reference.library_id
+             AND version.file_id = reference.target_file_id AND version.version = reference.file_version
+           WHERE reference.document_id = ?1 AND document.library_id = ?2 AND reference.library_id = ?2
+             AND (?3 IS NULL OR reference.file_id = ?3)
+             AND reference.target_file_id = ?4 AND reference.file_version = ?5 AND reference.default_name = ?6
+             AND reference.mime_type = ?7 AND reference.asset_uri = ?8
+             AND document.readiness = 'ready' AND document.authority = 'ydoc_primary' AND document.sync_engine = 'canvas_scene'
+             AND projection.generation = document.generation AND projection.projected_head_seq = document.head_seq
+             AND projection.projection_version = ?9 AND reference.document_generation = projection.generation
+             AND reference.projected_seq BETWEEN 0 AND projection.projected_head_seq
+             AND json_extract(canonical.file_json, '$.id') = reference.file_id
+             AND json_extract(canonical.file_json, '$.source') = reference.asset_uri
+             AND json_extract(canonical.file_json, '$.fileVersion') = reference.file_version
+             AND json_extract(canonical.file_json, '$.defaultName') = reference.default_name
+             AND json_extract(canonical.file_json, '$.mimeType') = reference.mime_type
+             AND version.blob_hash = reference.asset_hash AND version.byte_length = reference.byte_length
+             AND version.mime_type = reference.mime_type
+         )",
+        params![document_id, library_id, scene_file_id, file.target_file_id, file.file_version,
+            file.default_name, file.mime_type, file.source, super::canvas::PROJECTION_VERSION],
+        |row| row.get(0),
+    ).map_err(StoreError::from)
+}
+
 /// New client-provided bindings need direct File authority or an exact current
 /// Canvas binding. A scene-file ID and a bare File URI are not capabilities.
 pub(super) fn authorize_additions<'a>(
@@ -61,19 +105,13 @@ pub(super) fn authorize_additions<'a>(
         if !live {
             return Err(invalid("A trashed File cannot be added to a Canvas"));
         }
-        let existing = connection.query_row(
-            "SELECT EXISTS(SELECT 1 FROM canvas_scene_file_refs reference JOIN documents document ON document.id = reference.document_id WHERE reference.document_id = ?1
-             AND reference.target_file_id = ?2 AND reference.file_version = ?3 AND reference.default_name = ?4
-             AND reference.document_generation = document.generation AND reference.projected_seq = document.head_seq)",
-            params![
-                authority.head.id,
-                file.target_file_id,
-                file.file_version,
-                file.default_name
-            ],
-            |row| row.get::<_, bool>(0),
-        )?;
-        if existing {
+        if has_current_binding(
+            connection,
+            &authority.head.library_id,
+            &authority.head.id,
+            file,
+            None,
+        )? {
             continue;
         }
         let direct = match &context.project_id {
@@ -113,10 +151,7 @@ pub(super) fn capture_recovery_target(
         }
         return Err(error);
     }
-    let current = connection.query_row(
-        "SELECT EXISTS(SELECT 1 FROM canvas_scene_file_refs reference JOIN documents document ON document.id = reference.document_id WHERE reference.document_id = ?1 AND reference.target_file_id = ?2 AND reference.file_version = ?3 AND reference.default_name = ?4 AND reference.document_generation = document.generation AND reference.projected_seq = document.head_seq)",
-        params![document_id, file.target_file_id, file.file_version, file.default_name], |row| row.get::<_, bool>(0),
-    )?;
+    let current = has_current_binding(connection, &context.library_id.0, document_id, file, None)?;
     if !current {
         if let Some(project) = &context.project_id
             && crate::library::file_grant_authorization_proof(
@@ -181,17 +216,14 @@ pub(crate) fn resolve_current_target(
             false,
         ));
     }
-    let evidence = content_evidence(connection, &document_id, &file)?;
-    let indexed = connection.query_row(
-        "SELECT EXISTS(SELECT 1 FROM canvas_scene_file_refs reference JOIN documents document ON document.id = reference.document_id
-         WHERE reference.document_id = ?1 AND reference.file_id = ?2 AND reference.target_file_id = ?3
-          AND reference.file_version = ?4 AND reference.default_name = ?5 AND reference.asset_hash = ?6
-          AND reference.byte_length = ?7 AND reference.mime_type = ?8
-          AND reference.document_generation = document.generation AND reference.projected_seq = document.head_seq)",
-        params![document_id, scene_file_id, file_id, file.file_version, file.default_name, evidence.0, evidence.1, file.mime_type],
-        |row| row.get::<_, bool>(0),
-    )?;
-    if !indexed {
+    content_evidence(connection, &document_id, &file)?;
+    if !has_current_binding(
+        connection,
+        &context.library_id.0,
+        &document_id,
+        &file,
+        Some(scene_file_id),
+    )? {
         return Err(corrupt(
             "Canvas File projection disagrees with its canonical binding",
         ));
