@@ -1,0 +1,34 @@
+src/renderer/lib/database-promotion-presentation.test.tsx
+  s_16535355388fae::t_45dc8ff6e8f4d6 1-113
+tests/e2e/electron-smoke.spec.ts
+  s_16535355388fae::t_1da391c60b92dc 3380-3384,3387-3388
+  s_16535355388fae::t_d02ee161f5dce2 3342-3348,3356-3358,3376-3379,3385-3386,3389-3415,3427-3430,3472-3477,3487-3513
+  s_16535355388fae::t_2c93e7ebde5f68 3514
+docs/ARCHITECTURE.md
+  s_16535355388fae::t_91c8bb0ce24145 662-665
+src/renderer/lib/database-promotion-presentation.node.test.ts
+  s_16535355388fae::t_91c8bb0ce24145 205-206
+  s_16535355388fae::t_db3026006b1343 39,73,171,180-184,190-192,198-204,207-212
+  s_16535355388fae::t_24ca3ad9c1136e 213-214
+docs/product-specs/database-pages-and-views-behavior.md
+  s_16535355388fae::t_91c8bb0ce24145 653-663
+src/renderer/lib/database-promotion-presentation.ts
+  s_16535355388fae::t_db3026006b1343 311-313
+  s_16535355388fae::t_8cab0f054ce303 310
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "28109b8b2618cfb7864c4adb8beb446d164d15ee",
+  "prompts": {},
+  "sessions": {
+    "s_16535355388fae": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a09092-f4ff-7bf2-8708-15f7037bd227",
+        "model": "chatgpt-web/extra-high"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    }
+  }
+}
