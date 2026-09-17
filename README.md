@@ -1,101 +1,103 @@
-# Nodex
+<p align="center">
+  <a href="https://nodex.jyu.app">
+    <picture>
+      <source srcset=".github/assets/nodex-wordmark-dark.svg" media="(prefers-color-scheme: dark)">
+      <source srcset=".github/assets/nodex-wordmark-light.svg" media="(prefers-color-scheme: light)">
+      <img src=".github/assets/nodex-wordmark-light.svg" alt="Nodex logo">
+    </picture>
+  </a>
+</p>
 
-![Nodex preview](packages/landing/public/og.png)
+<p align="center">The open-source Notion+Codex alternative.</p>
 
-**Local-first orchestration for coding agents.** Nodex gives your agent work a real workspace: tasks, threads, terminals, files, diffs, and history stay together instead of scattering across chat tabs and terminal windows.
+<p align="center">
+  <a href="https://nodex.jyu.app">Website</a> ·
+  <a href="https://github.com/junyudev/nodex/releases/latest">Download</a> ·
+  <a href="https://nodex.jyu.app/changelog/">Changelog</a>
+</p>
 
-[Download for macOS](https://github.com/junyudev/nodex/releases/latest/download/Nodex-latest-arm64.dmg) · [Intel Mac download](https://github.com/junyudev/nodex/releases/latest/download/Nodex-latest-x64.dmg) · [Product page](https://nodex.jyu.app) · [Changelog](https://nodex.jyu.app/changelog/)
+<!-- <p align="center">
+  <a href="https://github.com/junyudev/nodex/releases/latest"><img alt="Latest release" src="https://img.shields.io/github/v/release/junyudev/nodex?style=flat-square" /></a>
+  <img alt="macOS 15+" src="https://img.shields.io/badge/macOS-15%2B-black?style=flat-square&amp;logo=apple" />
+  <a href="LICENSE"><img alt="MIT License" src="https://img.shields.io/badge/license-MIT-blue?style=flat-square" /></a>
+</p> -->
+
+<picture>
+  <source srcset=".github/assets/splash-dark.png" media="(prefers-color-scheme: dark)">
+  <source srcset=".github/assets/splash-light.png" media="(prefers-color-scheme: light)">
+  <img src=".github/assets/splash-light.png" alt="Nodex workspace with a project board, linked Page, and agent chat" width="100%">
+</picture>
+
+<!--
+README TODO:
+- Replace the splash with one polished GIF showing the full Page → Agent → Review → Page loop.
+  Keep it readable at GitHub README width and avoid a generic marketing collage.
+- Write a complete README.zh.md, then add a centered `English | 简体中文` language switcher.
+- Add a Discord badge after Nodex has an official public server and real invite.
+- Add build or release badges only after choosing a meaningful user-facing status signal.
+- Revisit the README and landing-page taglines together so the positioning does not drift.
+- Publish the agent setup section after Homebrew installation also installs the Nodex CLI.
+-->
+
+## Installation
+
+```bash
+brew install --cask junyudev/tap/nodex
+```
+
+Or grab the `.dmg` ([nodex-arm64.dmg](https://github.com/junyudev/nodex/releases/latest/download/Nodex-latest-arm64.dmg)) from the [latest release](https://github.com/junyudev/nodex/releases/latest) and drag Nodex to Applications.
+
+(Nodex is currently in beta for macOS 15 and later.)
 
 ## Why Nodex
 
-Coding agents are powerful, but the surrounding workflow can get messy fast. One task turns into a chat, a terminal, a diff, a browser tab, a note, and a half-remembered branch name.
+Coding agents are good at doing the work. The messy part is everything around it: turning notes
+into prompts, remembering which chat belongs to which task, finding the right branch, reviewing
+the result, and updating the plan afterward.
 
-Nodex is built for that moment. It turns agent work into a visible operating surface where every project has its own board, every session has context, and every change can be reviewed where the conversation happened.
+Nodex keeps the work itself (not just the conversation) at the center. Your notes, agent chats,
+project files, terminals, browser previews, diffs, and history stay together, so the next step
+starts with the context the last one produced.
 
-## What You Can Do
+## The Nodex workflow
 
-- **Coordinate work on a live board.** Track ideas, bugs, experiments, and implementation tasks across project-specific views.
-- **Keep the agent close to the task.** Start Codex sessions from cards or project chats, then keep the thread attached to the work it belongs to.
-- **Review changes in context.** Open diffs next to the conversation that produced them, with files and terminals available in the same workspace.
-- **Work safely in local projects or new worktrees.** Keep exploratory agent runs isolated without losing the thread, task, or review trail.
-- **Capture richer task context.** Write card notes with blocks, attachments, images, toggles, and runnable thread sections.
-- **Resume without losing context.** Reopen windows, sessions, panels, and project state so long-running work stays organized.
+- **Shape the work.** Turn ideas, bugs, specs, and research into rich Pages, then organize them
+  with Database Views.
+- **Run agents in context.** Start or resume agent chats in the right Project, local checkout, or
+  isolated worktree.
+- **Review the result.** Inspect files, terminal output, browser previews, and Git changes beside
+  the conversation that produced them.
+- **Keep the source of truth current.** Agents can read and update authorized Nodex Pages through
+  the native CLI and Agent Skill, so useful context does not end as chat output.
 
-## Who It Is For
+## Local-first by design
 
-Nodex is for builders who use coding agents as part of real development work:
+Your Nodex workspace lives on your machine. Projects point to folders you already own, while Pages,
+Databases, Canvases, document history, assets, backups, and window state remain under one local
+Profile. Nodex does not require a cloud workspace to organize your work.
 
-- solo developers running several agent tasks at once
-- founders turning product ideas into working software
-- engineers who want a local, inspectable command center for agent-assisted changes
-- anyone who wants agent output tied back to tasks, branches, files, and review
+<!-- ### Connect your coding agent
 
-## The Shape of the App
+Nodex includes a native CLI and an official Agent Skill for working with Pages, rich Nested
+Markdown, Databases, and saved Views through the same local data authority as the desktop app.
 
-Think of Nodex as a local desktop workbench:
+After moving `Nodex.app` into `/Applications`, use **Nodex → Install Command Line Tool…** and 
 
-- a project board for deciding what should happen next
-- a session space for talking to agents
-- a card editor for durable product and implementation notes
-- side panels for files, browser previews, terminals, and reviews
-- local history and backups so the workspace remains yours
-
-It is intentionally local-first. The core task state lives on your machine, and the app is designed around project folders you already own.
-
-## Try Nodex
-
-Nodex is in beta for macOS 15 and later, with builds for Apple silicon and Intel Macs.
-
-Start with the [public product page](https://nodex.jyu.app), or download the latest build directly:
-
-- [Apple silicon Mac](https://github.com/junyudev/nodex/releases/latest/download/Nodex-latest-arm64.dmg)
-- [Intel Mac](https://github.com/junyudev/nodex/releases/latest/download/Nodex-latest-x64.dmg)
-
-## Use Nodex from Codex or Claude Code
-
-Nodex ships a native CLI and one official `nodex` Agent Skill for working with
-Pages, rich Nested Markdown, saved database Views, and Board placement through
-the same local Core authority as the desktop app.
-
-After moving `Nodex.app` into `/Applications`, install the CLI from
-**Nodex → Install Command Line Tool…**, then choose **Set Up Agent Skills…**.
-The equivalent terminal command is:
+**Set Up Agent Skills…**. You can also run:
 
 ```bash
 nodex setup
 ```
 
-Native setup is deliberately global-only and link-based:
+The Skill supports local, shell-capable agents such as Codex and Claude Code. See the
+[CLI reference](docs/CLI.md) for commands and capability details. -->
 
-- Codex: `~/.agents/skills/nodex`
-- Claude Code: `${CLAUDE_CONFIG_DIR:-~/.claude}/skills/nodex`
+## Documentation
 
-It never writes project files, creates `.agents/.nodex`, copies the Skill, or
-overwrites an existing file, directory, or foreign link. `nodex skills status`
-distinguishes a current managed link, a compatible external install, a missing
-target, and a conflict; rerunning setup safely completes an interrupted install.
+- [Product specification](docs/product-specs/nodex-product-spec.md)
+- [Architecture](docs/ARCHITECTURE.md)
+- [Development guide](docs/development.md)
 
-For a third-party global or project-local copy, use the public official mirror:
+## License
 
-```bash
-npx skills@latest add NodexApp/skills
-```
-
-For a reproducible release, use the mirror's annotated version tag:
-`npx skills@latest add https://github.com/NodexApp/skills/tree/vX.Y.Z`.
-
-That copy remains externally owned—Nodex reports compatible content but never
-adopts, updates, or removes it. The Skill requires a compatible local `nodex`
-CLI and a shell-capable local Agent. It does not make local Nodex data available
-to Claude.ai, remote Cowork/cloud sessions, or any machine where Nodex is not
-running. `nodex capabilities --json` reports the installed Agent interface and
-bundle revision; a newer Skill/CLI mismatch must be resolved by updating Nodex,
-not by bypassing its typed commands or reading SQLite directly.
-
-## Project Notes
-
-Contributor setup, build, release, and deployment details are kept outside this pitch page:
-
-- [Developer guide](docs/development.md)
-- [macOS release notes](docs/release-macos.md)
-- [Landing site operations](docs/landing-site.md)
+Nodex is open source under the [MIT License](LICENSE).
