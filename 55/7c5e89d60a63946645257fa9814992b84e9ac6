@@ -1,0 +1,15 @@
+README.md
+  h_6a6ac0c07fcd37 11,15,19,23,29,32,40-42,57,61-77,82
+  h_6a6ac0c07fcd37 3
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "557c5e89d60a63946645257fa9814992b84e9ac6",
+  "prompts": {},
+  "humans": {
+    "h_6a6ac0c07fcd37": {
+      "author": "Jun Yu <junyu.dev@gmail.com>"
+    }
+  }
+}
