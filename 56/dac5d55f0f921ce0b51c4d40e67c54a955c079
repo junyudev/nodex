@@ -1,0 +1,55 @@
+src/main/codex-application/CodexMainConversationActions.ts
+  s_a5eaa05fd0049d::t_cffb3c0ff548f5 158-167
+  s_a5eaa05fd0049d::t_6f2d8730d7d35d 31,129,131,151,156-157,168-169,171-174,190,213
+src/main/codex-application/CodexTurnCommands.node.test.ts
+  s_a5eaa05fd0049d::t_0a07af77e655ac 1126,1140,1146-1149,1202-1207
+  s_a5eaa05fd0049d::t_2f5bd9a784cc55 141-145
+  s_a5eaa05fd0049d::t_cffb3c0ff548f5 323-325,327-351,353-365,1095,1099-1100,1115
+  s_a5eaa05fd0049d::t_1884f3bbe9db6e 759-776,932
+  s_a5eaa05fd0049d::t_f26326f5d5f010 122-125,160-187,1038-1056,1060-1062,1065-1085,1096-1098,1104-1114,1131-1133,1136-1137,1141-1145,1156-1163,1175-1179,1197-1201,1208-1211,1213-1218
+  s_a5eaa05fd0049d::t_d9f7b533cc9e2e 135,137-140,146-147,149-150,312,392-397,719,888
+  s_a5eaa05fd0049d::t_a879c93a9288de 23-27,107,109,159,200,383-384
+  s_a5eaa05fd0049d::t_4d33bf14a453db 108,136,320-322,366,1094,1101-1103,1116
+  s_a5eaa05fd0049d::t_7e606077baddce 1015-1037,1057-1059,1063-1064,1086-1093,1117-1125,1127-1130,1134-1135,1138-1139,1150-1155,1164-1174,1180-1196,1212,1219-1226
+tests/e2e/codex-conversation-reconnect.spec.ts
+  s_a5eaa05fd0049d::t_3b205a4bef5df2 5,7-8,68,103-105,117,145,147,155-158,177
+  s_a5eaa05fd0049d::t_498dd63d63866b 102,106-116,148-153
+  s_a5eaa05fd0049d::t_d9cc86bf11f093 6,146,154
+src/shared/codex-conversation-state/codex-owner-steer.ts
+  s_a5eaa05fd0049d::t_498dd63d63866b 25-29,65-68,70-71,94-95,98-100,122-123
+  s_a5eaa05fd0049d::t_c25bc766cba88a 91-93,96-97,101
+src/main/codex-application/CodexMainConversationActions.node.test.ts
+  s_a5eaa05fd0049d::t_7d23e80ccde3f0 5-6,12-16,18,23,107-109,142,158,192,212,216,252-253
+  s_a5eaa05fd0049d::t_cffb3c0ff548f5 19-22,25-27,53-59,110-140,143-157,159-180,186-191,193-211,213-215,217-251
+  s_a5eaa05fd0049d::t_a1aae13fb04303 17
+  s_a5eaa05fd0049d::t_498dd63d63866b 181-185
+  s_a5eaa05fd0049d::t_c25bc766cba88a 141
+  s_a5eaa05fd0049d::t_4a8eece9e1dbb8 24
+src/main/codex-application/CodexTurnCommands.ts
+  s_a5eaa05fd0049d::t_5e27a32511de34 1159-1161,1298-1300
+  s_a5eaa05fd0049d::t_182eda38c6e8ed 71-87,273,308,312-313,386,474,622-623,631,706-707,709,723,730-731,751,778,804,834,858,902,910,916,928,948,955
+  s_a5eaa05fd0049d::t_1f17f9e08fb37e 974,986,1000,1029,1045,1102,1135,1137,1212-1214,1233,1246,1250,1252,1308,1311,1370,1492,1497,1504,1541,1546,1559,1581,1605,1613,1636,1643,1647,1678-1679,1688
+  s_a5eaa05fd0049d::t_86141c5bc2c169 1105,1204
+  s_a5eaa05fd0049d::t_f26326f5d5f010 1454
+  s_a5eaa05fd0049d::t_6b891e5d916994 1665-1669
+  s_a5eaa05fd0049d::t_2f5bd9a784cc55 459-464,475-479,732-746,764-776,1068-1071,1195-1203,1377-1379,1561-1563,1627-1629
+docs/product-specs/codex-thread-owner-follower-streaming.md
+  s_a5eaa05fd0049d::t_0fc74df7cf2aa5 24,31-40
+  s_a5eaa05fd0049d::t_8b0c4e7ca50ff7 41
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "56dac5d55f0f921ce0b51c4d40e67c54a955c079",
+  "prompts": {},
+  "sessions": {
+    "s_a5eaa05fd0049d": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a08fcc-91a3-7ba0-a4e4-720879ecb167",
+        "model": "chatgpt-web/pro"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    }
+  }
+}

@@ -1,0 +1,58 @@
+src/shared/codex-conversation-state/codex-history-item-merge.ts
+  s_a5eaa05fd0049d::t_f855d65cd4df85 29,33-44,46,50-51,53,56,59-75,78-79,81,83-87,89-113,116-117
+  s_a5eaa05fd0049d::t_db3801d11db344 8,26-28
+src/shared/codex-conversation-state/codex-conversation-state.ts
+  s_a5eaa05fd0049d::t_1e52d9359de73c 1133-1138,1143,1145-1155,1160-1167,1170,1219-1222,1236-1239
+src/main/codex-application/internal/ConversationEntityState.ts
+  s_a5eaa05fd0049d::t_41e729593341a0 333,1342-1356,1364,1382-1391,1396-1397
+  s_a5eaa05fd0049d::t_a412bc2bceb00b 1,1402,1416-1427,1515-1526
+src/main/codex-application/CodexConversationHistoryRuntime.ts
+  s_a5eaa05fd0049d::t_41e729593341a0 304-306
+src/shared/codex-conversation-history-page.test.ts
+  s_a5eaa05fd0049d::t_ebc59b2f9195ae 212-320
+  s_a5eaa05fd0049d::t_a210ae9683397a 321-356
+src/shared/codex-conversation-state/codex-history-resume.ts
+  s_a5eaa05fd0049d::t_1e52d9359de73c 1-52,54-57,62-76,90,95,97,110,112,115
+  s_a5eaa05fd0049d::t_3cc2f8c91bb167 53,58-61
+  s_a5eaa05fd0049d::t_ebc59b2f9195ae 77-89,102,114
+  s_a5eaa05fd0049d::t_d00c6af0d3f1d7 91-94,96,98-101,103-109,111,113
+src/main/codex-application/CodexHistoryPageAdapter.ts
+  s_a5eaa05fd0049d::t_3cc2f8c91bb167 398
+src/main/codex-application/CodexThreadDirectory.ts
+  s_a5eaa05fd0049d::t_3cc2f8c91bb167 1,541,561-565,567-571,573,577,585-586,723
+  s_a5eaa05fd0049d::t_d8e5b8bc0b2e89 566,572
+src/shared/codex-conversation-state/codex-history-topology.ts
+  s_a5eaa05fd0049d::t_1e52d9359de73c 33-39
+src/shared/codex-conversation-history-page.ts
+  s_a5eaa05fd0049d::t_ebc59b2f9195ae 239-244,270
+  s_a5eaa05fd0049d::t_41e729593341a0 202,204-209,215-220,251,776,937-939,946-958,963-964
+  s_a5eaa05fd0049d::t_ec8e963de13265 170,172,201,248-250,252-265,268-269,271-272,309,319,545-547,979-993
+src/renderer/features/local-conversation/local-conversation-store.ts
+  s_a5eaa05fd0049d::t_41e729593341a0 4886,4894
+docs/product-specs/codex-thread-transcript-behavior.md
+  s_a5eaa05fd0049d::t_1052341adcb399 69
+src/main/codex-application/CodexConversationHistoryRuntime.node.test.ts
+  s_a5eaa05fd0049d::t_73f57326fe4f49 223-303,305-365,367-379,382-385,388-389,391,394,397-425
+src/main/codex-application/CodexHistoryPageAdapter.node.test.ts
+  s_a5eaa05fd0049d::t_09e250c9f952e0 128
+src/main/codex-application/CodexThreadDirectory.node.test.ts
+  s_a5eaa05fd0049d::t_f9463a1f5b46df 1253-1256,1326-1351
+src/shared/codex-conversation-state/codex-history-resume.test.ts
+  s_a5eaa05fd0049d::t_0cc8d85352944d 1-94
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "da1e111bd16a41d4ec990e0ec17f2878807e1ea3",
+  "prompts": {},
+  "sessions": {
+    "s_a5eaa05fd0049d": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a08fcc-91a3-7ba0-a4e4-720879ecb167",
+        "model": "gpt-6-astra"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    }
+  }
+}

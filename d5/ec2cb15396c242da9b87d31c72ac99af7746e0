@@ -1,0 +1,118 @@
+src/shared/codex-markdown-text.ts
+  s_a5eaa05fd0049d::t_1031f1a80b37dc 139-145
+src/shared/codex-async-user-input.node.test.ts
+  s_a5eaa05fd0049d::t_9f2baedc97772f 74-80,97
+src/renderer/components/board/editor/thread-section-row.tsx
+  s_a5eaa05fd0049d::t_2575067cbbc927 7,100-104
+src/main/codex-application/CodexThreadCatalogProjection.ts
+  s_a5eaa05fd0049d::t_33af8f9357935b 288,326
+  s_a5eaa05fd0049d::t_225540b262f7dd 93
+  s_a5eaa05fd0049d::t_493aaf064c10d0 11-14,80-85
+  s_a5eaa05fd0049d::t_f6ded9427b1dbf 86-92,94-96
+  s_a5eaa05fd0049d::t_dcf971d3a17fa0 15-18,97-100,224-227
+src/main/codex-application/CodexProtocolNotificationEffects.ts
+  s_a5eaa05fd0049d::t_8f4a07f9d9f3ef 24,171-174,178-182
+src/shared/codex-conversation-state/codex-conversation-state.ts
+  s_a5eaa05fd0049d::t_493aaf064c10d0 44,583
+src/renderer/components/board/editor/nfm-editor.tsx
+  s_a5eaa05fd0049d::t_7ea6f7642220d9 41,899-903
+src/shared/codex-conversation-state/codex-thread-metadata.ts
+  s_a5eaa05fd0049d::t_493aaf064c10d0 21,79,146,204
+src/renderer/components/board/editor/thread-section-row.test.tsx
+  s_a5eaa05fd0049d::t_7f498640adbb0a 32-41,47
+src/renderer/components/board/editor/nfm-send-to-thread-menu-model.test.ts
+  s_a5eaa05fd0049d::t_7f498640adbb0a 12,86-96
+src/main/codex-application/CodexThreadCatalog.ts
+  s_a5eaa05fd0049d::t_7ea6f7642220d9 19,455-459
+  s_a5eaa05fd0049d::t_f6ded9427b1dbf 56,755,758-759
+src/shared/codex-pending-worktree.test.ts
+  s_a5eaa05fd0049d::t_45bf60bab656df 25-27,30,37
+package.json
+  s_a5eaa05fd0049d::t_5dc5eab0be77bb 204
+src/main/codex-application/CodexSessionThreadLaunch.node.test.ts
+  s_a5eaa05fd0049d::t_a8b5da1fa23706 673,688-705
+  s_a5eaa05fd0049d::t_85251ef06cb411 706-708
+  s_99b5ced14329a1::t_cb1672756f1110 709
+src/renderer/features/local-conversation/view/summary-panel/thread-summary-panel-header-action.tsx
+  s_a5eaa05fd0049d::t_2575067cbbc927 2,56-61
+src/main/codex-application/CodexThreadCatalogProjection.node.test.ts
+  s_a5eaa05fd0049d::t_f6ded9427b1dbf 1-2,4-15,17-43,51-52
+  s_a5eaa05fd0049d::t_dcf971d3a17fa0 3,44-50
+  s_a5eaa05fd0049d::t_262e8ea80cd1d1 16
+src/shared/codex-pending-worktree.ts
+  s_a5eaa05fd0049d::t_45bf60bab656df 19,132,135,140,144,146-151
+src/main/codex-application/CodexConversations.ts
+  s_a5eaa05fd0049d::t_7ea6f7642220d9 10,76
+src/main/project-application/ProjectArchiveBlockers.ts
+  s_a5eaa05fd0049d::t_7ea6f7642220d9 5,78
+src/renderer/features/user-attachment-image-editor/adapters/generated-image-collection-store.ts
+  s_a5eaa05fd0049d::t_53bbf611a96844 4,82
+src/renderer/features/local-conversation/local-conversation-store.test.tsx
+  s_a5eaa05fd0049d::t_7cbb846a022a6f 4390-4392,4406
+src/main/codex-application/CodexBackgroundProcesses.ts
+  s_a5eaa05fd0049d::t_7ea6f7642220d9 17,139-144,147-151
+docs/product-specs/codex-thread-transcript-behavior.md
+  s_a5eaa05fd0049d::t_1f33f0673c1e10 120
+src/main/codex-application/CodexBackgroundProcesses.node.test.ts
+  s_a5eaa05fd0049d::t_7f498640adbb0a 272,328
+src/renderer/components/workbench/managed-worktrees-settings-control.tsx
+  s_a5eaa05fd0049d::t_7ea6f7642220d9 28,170
+src/main/codex-application/CodexAppProtocolTools.ts
+  s_a5eaa05fd0049d::t_7ea6f7642220d9 6,423-434,651,1148-1152,1330-1334
+  s_a5eaa05fd0049d::t_761e1017f47bdc 1383-1390
+src/renderer/features/local-conversation/local-conversation-store.ts
+  s_a5eaa05fd0049d::t_33af8f9357935b 388-391,1070,7774-7778,7795-7799,7815
+src/renderer/lib/nfm/thread-mention-display.node.test.ts
+  s_a5eaa05fd0049d::t_7f498640adbb0a 1-31
+src/renderer/components/board/editor/nfm-send-to-thread-menu-model.ts
+  s_a5eaa05fd0049d::t_2575067cbbc927 7,55-59
+src/shared/codex-thread-title.test.ts
+  s_a5eaa05fd0049d::t_493aaf064c10d0 91-114,144
+src/shared/codex-thread-title.ts
+  s_a5eaa05fd0049d::t_37cba0dc560041 7,14
+  s_a5eaa05fd0049d::t_d8749e5aa29e26 344-345,511
+  s_a5eaa05fd0049d::t_493aaf064c10d0 4,144,165-168,589-590,592-595,598-601
+  s_a5eaa05fd0049d::t_a357aed1a87d4a 3
+src/main/codex-application/CodexSidebarSyncRuntime.ts
+  s_a5eaa05fd0049d::t_dcf971d3a17fa0 42,370-373
+src/main/codex-application/CodexSessionThreadLaunch.ts
+  s_a5eaa05fd0049d::t_45bf60bab656df 229
+src/main/codex-application/CodexAppProtocolTools.node.test.ts
+  s_a5eaa05fd0049d::t_7f498640adbb0a 101-104
+  s_a5eaa05fd0049d::t_b7588b305965bf 59-91,294-305
+src/shared/codex-markdown-text.test.ts
+  s_a5eaa05fd0049d::t_bf10e46fa3c5b0 22-25
+src/shared/codex-conversation-state/codex-thread-metadata.test.ts
+  s_a5eaa05fd0049d::t_9f2baedc97772f 153-159,161-169
+  s_a5eaa05fd0049d::t_ff1a9bf273f956 160
+src/shared/codex-async-user-input.ts
+  s_a5eaa05fd0049d::t_493aaf064c10d0 3,137-139
+src/renderer/lib/nfm/thread-mention-display.ts
+  s_a5eaa05fd0049d::t_2575067cbbc927 3,49-53
+pnpm-lock.yaml
+  s_99b5ced14329a1::t_8139ee5ef93255 173-174,6685-6686,14405
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "d5ec2cb15396c242da9b87d31c72ac99af7746e0",
+  "prompts": {},
+  "sessions": {
+    "s_99b5ced14329a1": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a0ad8b-1ec0-7fb1-866c-ec5a022640ce",
+        "model": "unknown"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    },
+    "s_a5eaa05fd0049d": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a08fcc-91a3-7ba0-a4e4-720879ecb167",
+        "model": "chatgpt-web/extra-high"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    }
+  }
+}

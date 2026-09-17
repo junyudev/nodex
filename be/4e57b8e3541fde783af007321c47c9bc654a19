@@ -1,0 +1,22 @@
+docs/product-specs/conversation-peer-service.md
+  s_a5eaa05fd0049d::t_d1b4ee533c0593 17-19
+src/main/platform/node/CodexPeerTransport.node.test.ts
+  s_a5eaa05fd0049d::t_cd7abb66873e98 140
+  s_a5eaa05fd0049d::t_d1b4ee533c0593 141-172
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "be4e57b8e3541fde783af007321c47c9bc654a19",
+  "prompts": {},
+  "sessions": {
+    "s_a5eaa05fd0049d": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a08fcc-91a3-7ba0-a4e4-720879ecb167",
+        "model": "gpt-6-astra"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    }
+  }
+}

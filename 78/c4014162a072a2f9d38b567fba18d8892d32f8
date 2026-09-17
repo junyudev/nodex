@@ -1,0 +1,73 @@
+src/main/codex-application/CodexConversationResumeRuntime.node.test.ts
+  s_a5eaa05fd0049d::t_80b423ed775d2a 197,206,226,228
+  s_a5eaa05fd0049d::t_e907c0b9a357e4 204-205
+  s_a5eaa05fd0049d::t_15385fb0e2905d 208-209
+  s_a5eaa05fd0049d::t_6ee6b46a5b487b 198-202,291-296,360
+src/shared/codex-conversation-state/codex-resume-permissions.ts
+  s_a5eaa05fd0049d::t_6ee6b46a5b487b 56-59,83-86
+  s_a5eaa05fd0049d::t_9f4a61da35747d 23-55,60-82,87-97,156,163,175-186
+src/renderer/features/local-conversation/local-conversation-store.ts
+  s_a5eaa05fd0049d::t_15385fb0e2905d 3681
+  s_a5eaa05fd0049d::t_9adabf51d16727 14,535,3618-3623
+src/shared/ipc-api.ts
+  s_a5eaa05fd0049d::t_9adabf51d16727 2372
+src/main/ipc/handlers/CodexWorkspaceIpc.ts
+  s_a5eaa05fd0049d::t_9adabf51d16727 754,756
+docs/product-specs/auto-review-behavior.md
+  s_a5eaa05fd0049d::t_5d34b1a64c0a47 36
+src/main/codex-application/CodexMainConversationResume.node.test.ts
+  s_a5eaa05fd0049d::t_15385fb0e2905d 181
+src/main/codex-application/CodexMainConversationResume.ts
+  s_a5eaa05fd0049d::t_9adabf51d16727 2,37,229
+  s_a5eaa05fd0049d::t_15385fb0e2905d 268,283
+tests/e2e/codex-conversation-reconnect.spec.ts
+  s_a5eaa05fd0049d::t_6ee6b46a5b487b 283-287,341-347
+  s_a5eaa05fd0049d::t_058e334e425c30 7,10,48,272-282,288-290,292,300,327,329,331-340,348-349,352,357-359,372
+src/shared/codex-renderer-resume.ts
+  s_a5eaa05fd0049d::t_15385fb0e2905d 12-13
+src/main/codex-application/CodexThreadDirectory.ts
+  s_a5eaa05fd0049d::t_15385fb0e2905d 145,890,901,918,934,936,1004
+  s_a5eaa05fd0049d::t_9adabf51d16727 141,889,902,925
+  s_a5eaa05fd0049d::t_6ee6b46a5b487b 5-8,910-915,980-986
+src/main/codex-application/CodexThreadDirectory.node.test.ts
+  s_a5eaa05fd0049d::t_6ee6b46a5b487b 1992-2000,2044-2060,2071-2122,2124-2129,2131-2167,2169-2171,2173-2186,2188-2207,2209-2231,2233-2250,2252-2255,2257-2268,2270-2271,2274-2332,2337-2339,2342-2343,2345-2356,2358,2360-2363,2365-2403
+  s_a5eaa05fd0049d::t_ac0a34e6b0c525 2256
+  s_a5eaa05fd0049d::t_6751eff913ce3c 9,2061-2070,2168
+  s_a5eaa05fd0049d::t_9fc65f205f8417 8,2172,2187
+src/renderer/features/local-conversation/local-conversation-native-stream.jsdom.test.ts
+  s_a5eaa05fd0049d::t_80b423ed775d2a 13,28,174,416,632,682
+  s_a5eaa05fd0049d::t_6ee6b46a5b487b 184-185,608-631
+src/shared/codex-conversation-state/codex-resume-request.test.ts
+  s_a5eaa05fd0049d::t_ac0a34e6b0c525 22-71,80-97,113-114
+  s_a5eaa05fd0049d::t_e907c0b9a357e4 140,220
+  s_a5eaa05fd0049d::t_6ee6b46a5b487b 72-79,98-112
+src/main/codex-application/CodexConversationResumeRuntime.ts
+  s_a5eaa05fd0049d::t_9adabf51d16727 3,47,127,131
+  s_a5eaa05fd0049d::t_15385fb0e2905d 141,203
+src/renderer/features/local-conversation/view/connected-thread-stage.test.tsx
+  s_a5eaa05fd0049d::t_15385fb0e2905d 228
+docs/product-specs/codex-thread-transcript-behavior.md
+  s_a5eaa05fd0049d::t_15385fb0e2905d 75
+src/renderer/features/local-conversation/local-conversation-store.test.tsx
+  s_a5eaa05fd0049d::t_6ee6b46a5b487b 426-427
+src/shared/codex-conversation-state/codex-resume-request.ts
+  s_a5eaa05fd0049d::t_6ee6b46a5b487b 4-7,21-35,40-47,49-50
+  s_a5eaa05fd0049d::t_9f4a61da35747d 8,12-16,18-19,37-39,48,51-58,77
+  s_a5eaa05fd0049d::t_76d59fce8db614 20
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "78c4014162a072a2f9d38b567fba18d8892d32f8",
+  "prompts": {},
+  "sessions": {
+    "s_a5eaa05fd0049d": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a08fcc-91a3-7ba0-a4e4-720879ecb167",
+        "model": "chatgpt-web/pro"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    }
+  }
+}

@@ -1,0 +1,29 @@
+src/main/worktree-worker/worktree-worker-protocol.test.ts
+  s_a5eaa05fd0049d::t_46f0c8c0b62cfb 38,53-61
+  s_a5eaa05fd0049d::t_9c60f91aa003aa 69-74
+src/main/codex/codex-worktree-worker-operation.ts
+  s_a5eaa05fd0049d::t_b365ced4e613a3 143-150,152-153,160-161,168,170
+  s_a5eaa05fd0049d::t_0cb702ce0fe9be 1,37-38
+  s_a5eaa05fd0049d::t_0f1544dad3ef8a 59-136
+  s_a5eaa05fd0049d::t_d950e4a567aba6 39-57
+  s_a5eaa05fd0049d::t_1ba0983c8f1c53 58
+src/main/worktree-worker/worktree-worker-protocol.ts
+  s_a5eaa05fd0049d::t_46f0c8c0b62cfb 112-113,115-116,180,661
+  s_a5eaa05fd0049d::t_9c60f91aa003aa 114
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "b0f32e9e73253a19f22ac5f6a43585d35aa7bb6a",
+  "prompts": {},
+  "sessions": {
+    "s_a5eaa05fd0049d": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a08fcc-91a3-7ba0-a4e4-720879ecb167",
+        "model": "chatgpt-web/extra-high"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    }
+  }
+}

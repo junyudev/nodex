@@ -1,0 +1,41 @@
+src/renderer/features/local-conversation/local-conversation-native-stream.jsdom.test.ts
+  s_a5eaa05fd0049d::t_415bad111326d6 565-578,587
+  s_a5eaa05fd0049d::t_7d1c167584050f 23,25,181-183,185,378,409-457,460-481,605-660,663,672
+  s_a5eaa05fd0049d::t_b58e0a3fa455aa 26,482-516,526,528-564,579-586,588-604,664,671,677,682,686,689-690
+  s_a5eaa05fd0049d::t_2b7e6598ffc605 458-459
+  s_a5eaa05fd0049d::t_7c2cfdb9d0f0fc 27,43-46,380,517-525,527
+  s_a5eaa05fd0049d::t_9f50f9762bd8c3 47-48,100,150-151,166,381-382,661-662,665-670,673-676,678-681,683-685,687-688,691-692
+src/renderer/features/local-conversation/renderer-conversation-window-activity.ts
+  s_a5eaa05fd0049d::t_7c2cfdb9d0f0fc 2,29,32
+  s_a5eaa05fd0049d::t_20356eb0020a80 1,3-28,30-31,33-35
+docs/product-specs/codex-thread-owner-follower-streaming.md
+  s_a5eaa05fd0049d::t_ad2fb1eb4d36b5 29-41,76-79
+  s_a5eaa05fd0049d::t_8016f82c70e893 80
+src/shared/codex-queued-message-execution.ts
+  s_a5eaa05fd0049d::t_20356eb0020a80 81
+src/renderer/features/local-conversation/local-conversation-store.ts
+  s_a5eaa05fd0049d::t_20356eb0020a80 18-23,2419-2420,3458,3554-3568,5170-5196,5343
+  s_a5eaa05fd0049d::t_7d1c167584050f 563-565,3544-3551
+  s_a5eaa05fd0049d::t_2b7e6598ffc605 2039-2042,3468-3473,3475-3486,3552-3553,3659,3662,3685,3721-3723
+  s_a5eaa05fd0049d::t_f88fb1bc94be3e 24-25,132,566-568,2043,2045,2388,2412-2413,2421-2423,3090,3460,3487-3489,3500,3514,3569-3572,3654,3658,3724-3726,5197-5199,5344-5345,5840,7218,7535,7569
+src/renderer/features/local-conversation/local-conversation-deps.ts
+  s_a5eaa05fd0049d::t_7c2cfdb9d0f0fc 5
+src/renderer/features/local-conversation/local-conversation-store.test.tsx
+  s_a5eaa05fd0049d::t_7c2cfdb9d0f0fc 259
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "50beff374327b44dd5cfeac9aa522130d74b48f7",
+  "prompts": {},
+  "sessions": {
+    "s_a5eaa05fd0049d": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a08fcc-91a3-7ba0-a4e4-720879ecb167",
+        "model": "chatgpt-web/pro"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    }
+  }
+}

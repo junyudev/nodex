@@ -1,0 +1,29 @@
+src/shared/codex-host.ts
+  s_a5eaa05fd0049d::t_fef8731ab62a9a 1
+src/renderer/components/workbench/workbench-command-palette-host.tsx
+  s_a5eaa05fd0049d::t_6cfb530a086004 1,116,247
+src/renderer/features/local-conversation/view/composer/composer-add-context-menu.tsx
+  s_a5eaa05fd0049d::t_e4d61956842166 1,795
+src/renderer/lib/query-keys.ts
+  s_a5eaa05fd0049d::t_c1278c9e3e437b 1,214,219
+src/renderer/lib/query-options.ts
+  s_a5eaa05fd0049d::t_00537e1cd378b9 1,211,226
+src/shared/codex-thread-notification.ts
+  s_a5eaa05fd0049d::t_89d7beab4805d2 1,10
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "7c1628219467ebf4c00b0d04254fe034b35a00a3",
+  "prompts": {},
+  "sessions": {
+    "s_a5eaa05fd0049d": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a08fcc-91a3-7ba0-a4e4-720879ecb167",
+        "model": "gpt-6-astra"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    }
+  }
+}

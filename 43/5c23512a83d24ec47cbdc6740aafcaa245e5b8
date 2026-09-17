@@ -1,0 +1,24 @@
+src/shared/codex-conversation-state/codex-conversation-state.ts
+  s_a5eaa05fd0049d::t_ca02fc9157e9a1 623-624,750-752
+  s_a5eaa05fd0049d::t_e3ff195832e6a5 753-754
+docs/product-specs/codex-thread-transcript-behavior.md
+  s_a5eaa05fd0049d::t_7c80dd0d8aeb22 41
+src/shared/codex-conversation-state/codex-conversation-state.test.ts
+  s_a5eaa05fd0049d::t_ca02fc9157e9a1 21,198-224
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "435c23512a83d24ec47cbdc6740aafcaa245e5b8",
+  "prompts": {},
+  "sessions": {
+    "s_a5eaa05fd0049d": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a08fcc-91a3-7ba0-a4e4-720879ecb167",
+        "model": "gpt-6-astra"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    }
+  }
+}

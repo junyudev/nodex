@@ -1,0 +1,68 @@
+src/main/codex-runtime/CodexRequestScheduler.node.test.ts
+  s_a5eaa05fd0049d::t_f97b2582454c7c 466-489,491-499
+  s_a5eaa05fd0049d::t_b9cc59759d0112 803-832
+src/main/ipc/handlers/CodexWorkspaceIpc.ts
+  s_a5eaa05fd0049d::t_6253bb4b418e51 14-15,287-290,314
+  s_a5eaa05fd0049d::t_a5c3bd50fdf45e 291-313
+  s_a5eaa05fd0049d::t_95eef4d1166621 357
+src/main/codex-runtime/CodexRendererRequestLifetimes.ts
+  s_a5eaa05fd0049d::t_a5c3bd50fdf45e 85
+  s_a5eaa05fd0049d::t_34c24565b19ff9 76-80
+src/main/host-runtime/CodexNativeResponse.ts
+  s_a5eaa05fd0049d::t_95eef4d1166621 11-16,20-21,36,41,44
+  s_a5eaa05fd0049d::t_6253bb4b418e51 18-19,22-26,40,43
+  s_a5eaa05fd0049d::t_d1f71a509663da 17
+src/main/host-runtime/CodexNativeResponse.node.test.ts
+  s_a5eaa05fd0049d::t_95eef4d1166621 177,179-180,182-184,191,196-219
+  s_a5eaa05fd0049d::t_b9cc59759d0112 181,188
+  s_a5eaa05fd0049d::t_b304936713d284 178
+src/main/codex-runtime/CodexRendererRequestLifetimes.node.test.ts
+  s_a5eaa05fd0049d::t_b9cc59759d0112 107,109-111,118-128,135-141
+  s_a5eaa05fd0049d::t_f97b2582454c7c 112-117,129-134
+  s_a5eaa05fd0049d::t_a5c3bd50fdf45e 69,75,83,108
+docs/RELIABILITY.md
+  s_a5eaa05fd0049d::t_bc4f1a7ec10268 445-447,456-457
+  s_a5eaa05fd0049d::t_fe3eb6bb196ee1 448-450,453-455
+  s_3fbaf472cd17d7::t_261dc33c1fef28 451-452
+tests/e2e/codex-native-response-delivery.spec.ts
+  s_a5eaa05fd0049d::t_b9cc59759d0112 33,340
+  s_a5eaa05fd0049d::t_f97b2582454c7c 745-751
+  s_a5eaa05fd0049d::t_dedb0ad4381cbf 21-32,607,616,649-744,752-759,764
+  s_a5eaa05fd0049d::t_55da0766f7e142 760-763
+src/main/codex-runtime/CodexRendererRequestOrigin.ts
+  s_a5eaa05fd0049d::t_34c24565b19ff9 19-20
+  s_a5eaa05fd0049d::t_a5c3bd50fdf45e 6,13-16,21-22
+src/main/codex-runtime/CodexRequestScheduler.ts
+  s_a5eaa05fd0049d::t_a5c3bd50fdf45e 43,53-55,181-183,458-472,477-481,493-494,746,1102
+  s_a5eaa05fd0049d::t_34c24565b19ff9 52,403,831-838
+  s_a5eaa05fd0049d::t_a338eaed2ea77d 707,753
+  s_a5eaa05fd0049d::t_f97b2582454c7c 473
+  s_a5eaa05fd0049d::t_7a6caf576177be 457
+src/main/codex-runtime/CodexGateway.ts
+  s_a5eaa05fd0049d::t_34c24565b19ff9 427-429
+  s_a5eaa05fd0049d::t_a5c3bd50fdf45e 432
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "4ad33b209bcc7af574115460ab386438e8386b1b",
+  "prompts": {},
+  "sessions": {
+    "s_3fbaf472cd17d7": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a0a2f8-fe70-7ec2-b4d7-4e6bb670c4f6",
+        "model": "unknown"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    },
+    "s_a5eaa05fd0049d": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a08fcc-91a3-7ba0-a4e4-720879ecb167",
+        "model": "chatgpt-web/extra-high"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    }
+  }
+}

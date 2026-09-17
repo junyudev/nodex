@@ -1,0 +1,25 @@
+src/main/codex-application/CodexSubagentDirectory.node.test.ts
+  s_a5eaa05fd0049d::t_05fec6c5297cac 1032-1034
+  s_a5eaa05fd0049d::t_9c2bd115eb8904 1035-1073,1075-1125,1127-1128,1130-1156
+src/main/codex-application/CodexSubagentDirectory.ts
+  s_a5eaa05fd0049d::t_9c2bd115eb8904 2256-2262
+  s_a5eaa05fd0049d::t_5da952ba1da92c 2263,2272-2281,2285
+docs/product-specs/codex-subagent-behavior.md
+  s_a5eaa05fd0049d::t_fb199b792ee60c 53-55
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "fdc7cc29949df1bc84895c92760c846bd768fe1a",
+  "prompts": {},
+  "sessions": {
+    "s_a5eaa05fd0049d": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a08fcc-91a3-7ba0-a4e4-720879ecb167",
+        "model": "chatgpt-web/pro"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    }
+  }
+}

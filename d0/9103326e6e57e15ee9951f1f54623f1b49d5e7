@@ -1,0 +1,90 @@
+src/main/codex-application/CodexTurnPreparation.node.test.ts
+  s_a5eaa05fd0049d::t_b18e7ab1206ba2 9,48
+src/main/codex-application/CodexMainConversationHistory.ts
+  s_a5eaa05fd0049d::t_3eb3992df6b5f1 139
+  s_a5eaa05fd0049d::t_ef1b26304b8370 5-8
+src/main/codex-application/CodexSideChatCommands.ts
+  s_a5eaa05fd0049d::t_ef1b26304b8370 413-416
+  s_a5eaa05fd0049d::t_660b057038a7fc 14,101,110,119-121
+src/main/codex-application/CodexMainConversationHistory.node.test.ts
+  s_a5eaa05fd0049d::t_82889c627ce85a 196-200,210-215,220,229-231
+  s_a5eaa05fd0049d::t_ef1b26304b8370 201-209,216-219,221-228
+src/shared/codex-conversation-state/codex-turn-permissions.ts
+  s_a5eaa05fd0049d::t_b18e7ab1206ba2 7,180,188,192,210
+  s_a5eaa05fd0049d::t_ef1b26304b8370 11-14,16-18,45,48-60,66-102,104-117,124-129,132-133,135-137,139-148,150-160,163-168,173-176,181-186,189-190,195-198,202-209
+  s_a5eaa05fd0049d::t_dbe3b7a0ed777b 1-6,8-10,15,19-44,46-47,61-65,103,118-123,130-131,134,138,149,161-162,169-172,177-179,187,191,193-194,199-201,211-214
+src/main/codex-application/internal/ConversationEntityState.ts
+  s_a5eaa05fd0049d::t_660b057038a7fc 20,391,411,1329
+  s_a5eaa05fd0049d::t_ef1b26304b8370 1328
+src/main/codex-application/CodexTurnCommands.node.test.ts
+  s_a5eaa05fd0049d::t_ef1b26304b8370 1311-1330
+  s_a5eaa05fd0049d::t_e6900c8cd07a8d 1309-1310,1331-1334
+src/main/codex-application/internal/ConversationEntityState.node.test.ts
+  s_a5eaa05fd0049d::t_82889c627ce85a 862-876
+  s_a5eaa05fd0049d::t_ef1b26304b8370 877-884
+src/main/codex-application/CodexTurnPreparation.ts
+  s_a5eaa05fd0049d::t_e19bda15159955 365,376
+  s_a5eaa05fd0049d::t_b18e7ab1206ba2 34,48,103,218,224,226,244,258,450,504
+  s_a5eaa05fd0049d::t_ef1b26304b8370 355-364,366-375,378-379,382-383,433-436,445-447,451-471,573-601
+  s_a5eaa05fd0049d::t_91976e7d415597 4-5,60,302,353-354,377,380-381,384,432,437-438,442,448,483-484,497,538-539,644,647
+tests/e2e/codex-conversation-reconnect.spec.ts
+  s_a5eaa05fd0049d::t_ef1b26304b8370 385-391,403-409,415-419,425-429,437-443,445-455,460-467,469-474,476-478,481-488,495-500
+  s_a5eaa05fd0049d::t_20b5f2f3100fbe 16-17,384,392-402,410-414,420-424,430-436,444,456-459,468,475,479,501-509,523
+  s_a5eaa05fd0049d::t_6848d90e9f692f 15,480,489-494
+src/shared/codex-conversation-state/codex-conversation-state.ts
+  s_a5eaa05fd0049d::t_e19bda15159955 809
+  s_a5eaa05fd0049d::t_660b057038a7fc 725,802-804,806-808,810-811
+  s_a5eaa05fd0049d::t_ef1b26304b8370 805
+  s_a5eaa05fd0049d::t_b18e7ab1206ba2 789-792,798-801,820
+  s_a5eaa05fd0049d::t_454448a19791cd 812
+src/main/codex-application/CodexConversationProjection.ts
+  s_a5eaa05fd0049d::t_660b057038a7fc 10,74,94
+src/renderer/features/local-conversation/local-conversation-store.ts
+  s_a5eaa05fd0049d::t_3eb3992df6b5f1 149,2128
+src/main/codex-application/CodexTurnPermissionMaterialization.node.test.ts
+  s_a5eaa05fd0049d::t_ef1b26304b8370 8-12,14-17,28-32,100,108-113,128-136,142-146,161-166,171-179,182-197,200-202,216-220,225-242,244-261,263-266,276-302,305-322,327-332,341-349,352-359,365-372,379-380,383-386,390-402,406-430,433-450,453-467,470-481
+  s_a5eaa05fd0049d::t_b18e7ab1206ba2 160,170
+  s_a5eaa05fd0049d::t_e19bda15159955 101,212-215,221-222
+  s_a5eaa05fd0049d::t_62917f96818dfa 13,103-107,114-119,139,167-169,198-199,203-211,223-224,243,262,267-275,303-304,323-326,333-340,350-351,360-364,373-378,381-382,387-389,403-405,431-432
+  s_a5eaa05fd0049d::t_c43c2ea4a1ba8a 1-7,18-27,33-67,120-127,137-138,140-141,147-159,180-181,451-452,468-469,482
+  s_a5eaa05fd0049d::t_32e56601d06fe2 68-99,102
+src/main/codex-application/CodexTurnCommands.ts
+  s_a5eaa05fd0049d::t_b737d483868421 1105
+src/shared/types.ts
+  s_a5eaa05fd0049d::t_b18e7ab1206ba2 124
+src/main/codex-application/CodexTurnPreparationServiceTier.node.test.ts
+  s_a5eaa05fd0049d::t_b18e7ab1206ba2 23-25
+  s_a5eaa05fd0049d::t_ef1b26304b8370 26-28
+src/main/codex-application/CodexConversationContext.ts
+  s_a5eaa05fd0049d::t_660b057038a7fc 195
+CHANGELOG.md
+  s_a5eaa05fd0049d::t_68d385634bb0b9 57
+src/main/codex-application/CodexThreadExecution.ts
+  s_a5eaa05fd0049d::t_660b057038a7fc 12,71,86-88,225
+  s_a5eaa05fd0049d::t_ef1b26304b8370 362-364
+src/renderer/features/local-conversation/local-conversation-store.test.tsx
+  s_a5eaa05fd0049d::t_3eb3992df6b5f1 1232-1234
+src/main/codex-application/CodexThreadDirectory.ts
+  s_a5eaa05fd0049d::t_660b057038a7fc 32,608,614-618,688
+  s_a5eaa05fd0049d::t_ef1b26304b8370 686-687
+src/main/codex-application/CodexConversationHistoryExport.ts
+  s_a5eaa05fd0049d::t_3eb3992df6b5f1 10,155
+docs/product-specs/codex-thread-owner-follower-streaming.md
+  s_a5eaa05fd0049d::t_68d385634bb0b9 241-266
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "d09103326e6e57e15ee9951f1f54623f1b49d5e7",
+  "prompts": {},
+  "sessions": {
+    "s_a5eaa05fd0049d": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a08fcc-91a3-7ba0-a4e4-720879ecb167",
+        "model": "chatgpt-web/pro"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    }
+  }
+}

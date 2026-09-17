@@ -1,0 +1,265 @@
+src/main/codex-application/CodexConnection.node.test.ts
+  s_a5eaa05fd0049d::t_3677c3c3ea2e6a 43,122,129-131
+  s_a5eaa05fd0049d::t_6aca6cda729103 9-12,44-46,53,64-65,72,84-85,89-90,110-111,123-128,139
+  s_a5eaa05fd0049d::t_2086a1ea896325 83,86-88,91-92
+src/shared/codex-request-lifecycle.ts
+  s_a5eaa05fd0049d::t_d3553e5dd57d9b 1,3-4,11-22,24-33,35-38,50-61,63-79
+  s_a5eaa05fd0049d::t_3677c3c3ea2e6a 34
+  s_a5eaa05fd0049d::t_4a2609d553f854 2,5-10,23
+  s_a5eaa05fd0049d::t_cd76fc1de376b8 39-49,62
+src/main/codex-runtime/CodexRendererRequestOrigin.ts
+  s_a5eaa05fd0049d::t_2f5d2e5c1195c4 5,23
+src/shared/types.ts
+  s_a5eaa05fd0049d::t_e6b49c834b5ab3 4779
+  s_a5eaa05fd0049d::t_40e39df08e7a20 1972-1975
+  s_a5eaa05fd0049d::t_752f74e1e54b96 2890-2891
+  s_a5eaa05fd0049d::t_dbc7e40b30b2b4 4778
+  s_a5eaa05fd0049d::t_2bf33bfa67f1f4 2820-2821
+src/main/observability/sentry-main.ts
+  s_a5eaa05fd0049d::t_0c5064aa976de5 2,16-19,23-33,154-162
+  s_a5eaa05fd0049d::t_934f9dd074cbd1 163
+src/renderer/features/local-conversation/renderer-native-app-server.ts
+  s_a5eaa05fd0049d::t_3677c3c3ea2e6a 2-5,17-20,38-42,59-61,105-119,130-142,150-153,171-185,193-196,212-222,233-240
+  s_a5eaa05fd0049d::t_6c67cd5e498882 22-23,31-33,43-46,48-49,251-252
+  s_a5eaa05fd0049d::t_1c599051034666 1,26,29,55-58,62,103,120,128,148,159,169,210,231,241
+  s_a5eaa05fd0049d::t_55405fa6baa386 24,47
+  s_a5eaa05fd0049d::t_bdf5796df4ddb6 157,191,200,202
+  s_a5eaa05fd0049d::t_b9415f35023775 30
+src/renderer/features/local-conversation/view/connected-thread-stage.tsx
+  s_a5eaa05fd0049d::t_2bf33bfa67f1f4 71-72,1030-1034,1297-1302
+src/main/codex-runtime/CodexHostRequestMetrics.ts
+  s_a5eaa05fd0049d::t_2770cacca3daeb 14,29,52-54
+  s_a5eaa05fd0049d::t_fd97fea38b0cd3 49
+src/main/observability/sentry-electron-main-adapter.ts
+  s_a5eaa05fd0049d::t_0c5064aa976de5 2-68,78
+src/renderer/features/local-conversation/codex-turn-first-response-view.tsx
+  s_a5eaa05fd0049d::t_2bf33bfa67f1f4 1-77
+packages/effect-codex-app-server/src/transport-metrics.ts
+  s_a5eaa05fd0049d::t_2770cacca3daeb 90-91
+src/main/codex-runtime/CodexExecutionHostAuthState.ts
+  s_a5eaa05fd0049d::t_76acef270535a7 1-21,37-48
+  s_a5eaa05fd0049d::t_3677c3c3ea2e6a 22-36
+src/renderer/features/local-conversation/view/local-conversation-thread-turn.tsx
+  s_a5eaa05fd0049d::t_752f74e1e54b96 219
+  s_a5eaa05fd0049d::t_2bf33bfa67f1f4 21,220-231,290,340,354
+src/main/codex-runtime/CodexRendererRequestLifetimes.node.test.ts
+  s_a5eaa05fd0049d::t_9329de4f5606f7 7-8,47-88
+src/main/codex-runtime/CodexAppServerTraceAttributes.ts
+  s_a5eaa05fd0049d::t_4c15ac35a22c97 1-29,31-54
+  s_a5eaa05fd0049d::t_3677c3c3ea2e6a 30
+src/main/codex-runtime/CodexRendererRequestLifetimes.ts
+  s_a5eaa05fd0049d::t_3677c3c3ea2e6a 21
+  s_a5eaa05fd0049d::t_9329de4f5606f7 15
+  s_a5eaa05fd0049d::t_fd97fea38b0cd3 6-7,20,22-26,42-43,46-47,60-61,70,72-80,85
+src/renderer/features/local-conversation/codex-request-diagnostics.tsx
+  s_a5eaa05fd0049d::t_795df557942091 1-77,82-95,103-150,154-160,164-221
+  s_a5eaa05fd0049d::t_3677c3c3ea2e6a 78-81,96-102,151-153,161-163
+tests/e2e/codex-native-response-delivery.spec.ts
+  s_a5eaa05fd0049d::t_76ef3fa9cc8750 252-273,275-278
+  s_a5eaa05fd0049d::t_053cb4d687cfd8 337-339,341-342,345-353,355-356,359-366,369-377,383-387
+  s_a5eaa05fd0049d::t_c75553fdb5398a 21,328-336
+  s_a5eaa05fd0049d::t_3677c3c3ea2e6a 274,343-344,357-358
+  s_a5eaa05fd0049d::t_3cb137731a8a8f 340
+  s_a5eaa05fd0049d::t_a084c846fd2a72 354
+docs/product-specs/settings-route-behavior.md
+  s_a5eaa05fd0049d::t_02ad2d442a2674 52-55
+packages/effect-codex-app-server/src/protocol.test.ts
+  s_a5eaa05fd0049d::t_9a9736c2722483 77-108
+src/main/host-runtime/CodexNativeResponse.ts
+  s_a5eaa05fd0049d::t_3677c3c3ea2e6a 18-22
+  s_a5eaa05fd0049d::t_e6b49c834b5ab3 89-93
+  s_a5eaa05fd0049d::t_771a938909f32d 106-114
+  s_a5eaa05fd0049d::t_ba8a814fc86a29 11-17,23-50
+src/renderer/lib/statsig-telemetry.ts
+  s_a5eaa05fd0049d::t_ddbf336e38b2a7 296-299
+docs/RELIABILITY.md
+  s_a5eaa05fd0049d::t_02ad2d442a2674 445-449
+packages/effect-codex-app-server/src/transport-values.ts
+  s_a5eaa05fd0049d::t_b449b4bc9e9d25 14,25-32,53-54
+src/main/codex-runtime/CodexRuntime.node.test.ts
+  s_a5eaa05fd0049d::t_1e246949d9b5fb 107,205,594-621,623-631,633-637,639-646,651-656
+  s_a5eaa05fd0049d::t_ad24088acdf7b3 638,647-650
+  s_a5eaa05fd0049d::t_1e2e5aa9203d4f 632
+  s_a5eaa05fd0049d::t_cd76fc1de376b8 561-567
+  s_a5eaa05fd0049d::t_f2359b4715f784 451,784,875,937,988,1119,1156,1205,1330,1379
+  s_a5eaa05fd0049d::t_599499a9bcf6fd 622
+  s_a5eaa05fd0049d::t_b7d0fb48662a91 71-72
+  s_a5eaa05fd0049d::t_99427433ffcbf3 40-43,532-560,569-593
+  s_a5eaa05fd0049d::t_3677c3c3ea2e6a 568
+  s_a5eaa05fd0049d::t_781f8ee9c94cba 73,657
+src/renderer/features/local-conversation/renderer-app-server-request-client.node.test.ts
+  s_a5eaa05fd0049d::t_d6215e0925da87 277-305,307-376
+  s_a5eaa05fd0049d::t_54312fd4fb4d66 306
+src/renderer/features/local-conversation/renderer-app-server-request-client.ts
+  s_a5eaa05fd0049d::t_8bd4e760ea531b 49,53,59,62,70-84,152-168,173,179-183,193,254-260,273-287,289-291,324-328,333,338,340,351-364,366-373,376-391,393-406,408-409,424-445,447-459,473-490,492-510,516,524-525,537,545-569,612,617,643,674
+  s_a5eaa05fd0049d::t_7583ff7ba8cdf7 392
+  s_a5eaa05fd0049d::t_83a154df5d82fd 460-469,471-472,539-544,591,618
+  s_a5eaa05fd0049d::t_5c7a0193cd7fe7 670-672
+  s_a5eaa05fd0049d::t_dbe33b4f970e20 22,27-33,56-57,85-114,119-151
+  s_a5eaa05fd0049d::t_a0223d583ea85a 5-10,15,17-21,34-42,45-48,50-52,54-55,58,64-66,172,174,185,192,196-197,201,206,210-211,217-220,225,228-229,240-244,292,321-323,342-344,410-419,423,517,526-528,531-536,538,570-571,576-579,590,592-593,601-607,613-616,619-620,628,636,651-652,658-659,663-664,675,683-684
+  s_a5eaa05fd0049d::t_96eaeaa7c9406b 261-272,288,293-320,334-336
+  s_a5eaa05fd0049d::t_3677c3c3ea2e6a 23-26,115-118,175-178,198-200,203-205,230-239,329-332,420-422,446,511-515,518-523,529-530,572-575,580-589,594-600,608-611,621-627,653-657
+  s_a5eaa05fd0049d::t_bce9eb6c42d5ef 212-216,221-224,365
+  s_a5eaa05fd0049d::t_07e916c359e6a8 202,660
+src/main/codex-runtime/CodexRequestTraceCoordinator.node.test.ts
+  s_a5eaa05fd0049d::t_040d673c3dc628 2,4-69,77-110
+  s_a5eaa05fd0049d::t_f5c7bfdbf59a68 1,3,70-76
+src/main/host-runtime/RendererClientRuntime.ts
+  s_a5eaa05fd0049d::t_e6b49c834b5ab3 468
+src/main/codex-runtime/CodexRequestTraceCoordinator.ts
+  s_a5eaa05fd0049d::t_040d673c3dc628 1-252,254-306,308-327
+  s_a5eaa05fd0049d::t_3677c3c3ea2e6a 253,307
+  s_a5eaa05fd0049d::t_411a122d4e01dd 328-329
+src/renderer/features/local-conversation/renderer-app-server-request-tracing.node.test.ts
+  s_a5eaa05fd0049d::t_69875bc332ccab 1-121
+src/main/codex-runtime/CodexAppServerTraceAttributes.node.test.ts
+  s_a5eaa05fd0049d::t_9f3e2b4a6f97bd 1-31
+src/renderer/components/workbench/workbench-settings-section-pages.tsx
+  s_a5eaa05fd0049d::t_795df557942091 15,219-220
+  s_a5eaa05fd0049d::t_b769dcf8fc9fab 221-222
+src/main/host-runtime/StructuralClipboardRuntime.node.test.ts
+  s_a5eaa05fd0049d::t_f5c7bfdbf59a68 86
+packages/effect-codex-app-server/src/protocol.ts
+  s_a5eaa05fd0049d::t_9a9736c2722483 57-62,67,69,751
+  s_a5eaa05fd0049d::t_2770cacca3daeb 438
+  s_a5eaa05fd0049d::t_b449b4bc9e9d25 12,520-523
+src/main/observability/sentry-main.test.ts
+  s_a5eaa05fd0049d::t_3677c3c3ea2e6a 133
+  s_a5eaa05fd0049d::t_0c5064aa976de5 3-8,126-132,134
+  s_a5eaa05fd0049d::t_1ed5025b4ef97f 135
+src/main/ipc/handlers/CodexWorkspaceIpc.ts
+  s_a5eaa05fd0049d::t_ba8a814fc86a29 14-15,327-333,340-342,345,349
+  s_a5eaa05fd0049d::t_3081343be77256 309,334-339,343-344,346-348,361,373-374,400
+  s_a5eaa05fd0049d::t_3677c3c3ea2e6a 4,351-353,411-412,1099-1129,1131-1133,1135-1149,1151,1217-1252,1254-1264,1266-1271,1273
+  s_a5eaa05fd0049d::t_411a122d4e01dd 98
+  s_a5eaa05fd0049d::t_2f5d2e5c1195c4 992,1023,1448,1485,1606,1652,1918,1943
+  s_a5eaa05fd0049d::t_1a22fb21c0c4cb 97,100,161-179,312-314,325-326,350,354-360,375-377,380-384,389-399,408-410,413-416,419
+  s_a5eaa05fd0049d::t_852303e4f38f08 362-372,1032,1034,1494,1661,1663,1726,1728,1953
+  s_a5eaa05fd0049d::t_c49cbd2cea4ea9 1214-1216,1678,1717
+  s_a5eaa05fd0049d::t_569c13f8bad13d 321-324,378-379,385-388,420-421,427-430
+  s_a5eaa05fd0049d::t_233b548f42eed0 99,401-407
+  s_a5eaa05fd0049d::t_c3c038703ee1fa 180
+src/main/codex-application/CodexAccount.ts
+  s_a5eaa05fd0049d::t_2086a1ea896325 114-115
+  s_a5eaa05fd0049d::t_40e39df08e7a20 90,111,119-120,263-268
+  s_a5eaa05fd0049d::t_63d667a7874b94 17,81,86,269-275
+src/renderer/features/local-conversation/codex-request-recorder.node.test.ts
+  s_a5eaa05fd0049d::t_2705275234570a 1-84,88-175
+  s_a5eaa05fd0049d::t_3677c3c3ea2e6a 85-87
+src/shared/codex-native-request-outcome.ts
+  s_a5eaa05fd0049d::t_771a938909f32d 18-20
+  s_a5eaa05fd0049d::t_e6b49c834b5ab3 32-34
+  s_a5eaa05fd0049d::t_fd97fea38b0cd3 15
+  s_a5eaa05fd0049d::t_d3553e5dd57d9b 93,97-101
+  s_a5eaa05fd0049d::t_740df9d990e37c 102-103
+src/shared/codex-auth-failure.ts
+  s_a5eaa05fd0049d::t_d3553e5dd57d9b 1-13,18
+  s_a5eaa05fd0049d::t_3677c3c3ea2e6a 14-17
+src/renderer/features/local-conversation/codex-request-interaction-trace.ts
+  s_a5eaa05fd0049d::t_f099d3fa82bd44 1-22,26-89,91-112,114-129,131-179
+  s_a5eaa05fd0049d::t_3677c3c3ea2e6a 23-25,90,113,130
+src/renderer/features/conversation-launch/session-first-submission-owner.ts
+  s_a5eaa05fd0049d::t_8d114bd9852f76 22,355
+  s_a5eaa05fd0049d::t_2bf33bfa67f1f4 70-74,286
+src/renderer/features/local-conversation/codex-request-analytics.ts
+  s_a5eaa05fd0049d::t_cd76fc1de376b8 3,52,54,77,141-144,166
+  s_a5eaa05fd0049d::t_3677c3c3ea2e6a 22-26
+  s_a5eaa05fd0049d::t_35e7162a1646ce 1-2,4-21,27-51,53,55-76,78-140,145-165,167-175
+src/renderer/features/local-conversation/local-conversation-store.ts
+  s_a5eaa05fd0049d::t_3677c3c3ea2e6a 2537,2540,4864,8889
+  s_a5eaa05fd0049d::t_a1c534622703b4 180,5697-5706,5708-5713,5720-5723,5744,5746-5748,5750-5751
+  s_a5eaa05fd0049d::t_395498a662e3c0 179
+  s_a5eaa05fd0049d::t_66f5043220c747 1208-1212,4806,4814-4815,4844-4847,4959,4962-4968,4976,4980-4993,5021-5024,5335-5346
+  s_a5eaa05fd0049d::t_bf9ddf72ba6d30 8869
+  s_a5eaa05fd0049d::t_b8a3da4ced63be 7329-7336
+  s_a5eaa05fd0049d::t_57ad8a9533243c 4365-4366,4369-4375,4383-4388,4395-4396
+  s_a5eaa05fd0049d::t_c18101958b80dc 5735,5741
+  s_a5eaa05fd0049d::t_c57822784b65c4 2535,2538-2539,2541-2549,2556-2562,2567
+  s_a5eaa05fd0049d::t_752f74e1e54b96 1270,1314,2502-2504,2536
+src/main/codex-runtime/CodexRequestScheduler.ts
+  s_a5eaa05fd0049d::t_2770cacca3daeb 53-56,395-398,404-407
+src/main/host-runtime/CodexRendererProjectionRuntime.ts
+  s_a5eaa05fd0049d::t_771a938909f32d 13-14,62-63,105-106,108-140
+  s_a5eaa05fd0049d::t_411a122d4e01dd 12,61,107
+src/shared/codex-request-policy.ts
+  s_a5eaa05fd0049d::t_a0223d583ea85a 1-2,148-149,156-157,171-184
+  s_a5eaa05fd0049d::t_2b34d0db5ff96b 3
+  s_a5eaa05fd0049d::t_3677c3c3ea2e6a 4-147,150-155,158-170
+src/renderer/features/local-conversation/codex-request-recorder.ts
+  s_a5eaa05fd0049d::t_4c73dac9cabfce 234-252
+  s_a5eaa05fd0049d::t_cd76fc1de376b8 203
+  s_a5eaa05fd0049d::t_5686565428f5b1 1-48,50-100,105-202,204-233,253-261,264-284
+  s_a5eaa05fd0049d::t_3677c3c3ea2e6a 49,101-104,262-263
+src/renderer/features/local-conversation/codex-request-analytics.node.test.ts
+  s_a5eaa05fd0049d::t_292af9fb260221 7,63-64,72-77,84,132,159,173,184
+  s_a5eaa05fd0049d::t_2705275234570a 1-6,8-62,65-71,78-83,85-131,133-158,160-172,174-183,185-213
+src/renderer/features/local-conversation/thread-action-controller.ts
+  s_a5eaa05fd0049d::t_2bf33bfa67f1f4 23-26,425,458-461,463-476
+  s_a5eaa05fd0049d::t_06061ad393149e 221-227,338-340,424,426-428,430-431,433-454
+src/shared/codex-renderer-request.ts
+  s_a5eaa05fd0049d::t_9a9736c2722483 32-34
+src/main/codex-runtime/CodexRuntimeLive.ts
+  s_a5eaa05fd0049d::t_411a122d4e01dd 54
+  s_a5eaa05fd0049d::t_76acef270535a7 20-23,53,65-67
+  s_a5eaa05fd0049d::t_3677c3c3ea2e6a 68
+src/main/codex-application/CodexConnection.ts
+  s_a5eaa05fd0049d::t_3677c3c3ea2e6a 83-94,96-97,99-109,111-119,121-122,124-125,127-181,183-184,186-211
+  s_a5eaa05fd0049d::t_63d667a7874b94 8,78-82,95,110
+  s_a5eaa05fd0049d::t_40e39df08e7a20 182
+src/main/codex-application/CodexTurnCommands.ts
+  s_a5eaa05fd0049d::t_2bf33bfa67f1f4 679
+src/main/codex-application/CodexApplicationProtocol.ts
+  s_a5eaa05fd0049d::t_dbc7e40b30b2b4 801
+src/main/codex/renderer-client-runtime-contracts.ts
+  s_a5eaa05fd0049d::t_e6b49c834b5ab3 99
+src/main/host-runtime/CodexNativeResponse.node.test.ts
+  s_a5eaa05fd0049d::t_1479ed0ffa3ebe 21-22,174-188,193-214
+  s_a5eaa05fd0049d::t_3677c3c3ea2e6a 189-192
+  s_a5eaa05fd0049d::t_788077dc01da23 215-216
+src/main/codex-application/CodexAccount.node.test.ts
+  s_a5eaa05fd0049d::t_2086a1ea896325 2,5,144-187,190-191,198-201,203,206-213
+  s_a5eaa05fd0049d::t_b1fbdbf5baf320 12-15,70-71,74-79,188-189,192-197,204-205
+  s_a5eaa05fd0049d::t_59e40448424c1a 202
+  s_a5eaa05fd0049d::t_0f199e88b969da 214-216
+src/main/codex-runtime/CodexEndpoint.ts
+  s_a5eaa05fd0049d::t_5ecda6719dc6f7 2,270-271,293
+  s_a5eaa05fd0049d::t_b449b4bc9e9d25 16
+  s_a5eaa05fd0049d::t_3677c3c3ea2e6a 272-278,282,285-292
+src/main/codex-runtime/CodexApplicationRequestInbox.ts
+  s_a5eaa05fd0049d::t_3677c3c3ea2e6a 291-292,911-928
+  s_a5eaa05fd0049d::t_dbc7e40b30b2b4 43,135
+src/main/codex-runtime/CodexGateway.ts
+  s_a5eaa05fd0049d::t_76acef270535a7 48-49,216-220,229,511-515,621-622
+  s_a5eaa05fd0049d::t_2f5d2e5c1195c4 484
+  s_a5eaa05fd0049d::t_2770cacca3daeb 51-52,160,162-166,171-193,195-200,204,445-452,504,506-507
+  s_a5eaa05fd0049d::t_9a9736c2722483 50,77-78
+  s_a5eaa05fd0049d::t_411a122d4e01dd 53,194
+  s_a5eaa05fd0049d::t_8ee2e9ff65b05b 232,248-252,485
+  s_a5eaa05fd0049d::t_1a22fb21c0c4cb 337
+src/renderer/features/local-conversation/codex-turn-first-response.ts
+  s_a5eaa05fd0049d::t_b210dce4f34a26 1-60,62-65,69-104,106-119,121-200,204-266,274-425
+  s_a5eaa05fd0049d::t_2bf33bfa67f1f4 61,105,120
+  s_a5eaa05fd0049d::t_3677c3c3ea2e6a 66-68,201-203,267-273
+src/renderer/features/local-conversation/codex-turn-first-response.node.test.ts
+  s_a5eaa05fd0049d::t_b210dce4f34a26 1-24,30-53,61-120,136-209
+  s_a5eaa05fd0049d::t_3677c3c3ea2e6a 25-29,54-60,121-135
+src/shared/ipc-api.ts
+  s_a5eaa05fd0049d::t_5b868f99851843 2149,2167
+  s_a5eaa05fd0049d::t_2f5d2e5c1195c4 2108,2132,2187,2220
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "8ef62ebd6ab01532f45d9c5d7351413f7e630b10",
+  "prompts": {},
+  "sessions": {
+    "s_a5eaa05fd0049d": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a08fcc-91a3-7ba0-a4e4-720879ecb167",
+        "model": "chatgpt-web/extra-high"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    }
+  }
+}

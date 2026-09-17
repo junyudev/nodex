@@ -1,0 +1,44 @@
+src/main/codex-runtime/CodexGateway.ts
+  s_a5eaa05fd0049d::t_2c30accec19577 427-431
+src/main/codex-runtime/CodexRendererRequestOrigin.ts
+  s_a5eaa05fd0049d::t_2c30accec19577 12-17,19
+src/main/codex-runtime/CodexRendererRequestLifetimes.node.test.ts
+  s_a5eaa05fd0049d::t_8729853fbc779a 95-101
+  s_a5eaa05fd0049d::t_3a5523a3399fd6 89-94,102-109
+src/main/codex-runtime/CodexRequestScheduler.node.test.ts
+  s_a5eaa05fd0049d::t_3a5523a3399fd6 466-513
+src/main/codex-runtime/CodexRendererRequestLifetimes.ts
+  s_a5eaa05fd0049d::t_2c30accec19577 7-10,23,82-85
+tests/e2e/fixtures/codex-queue-app-server.mjs
+  s_a5eaa05fd0049d::t_6d724f96abfc73 14,473-485
+src/main/codex-runtime/CodexRequestScheduler.ts
+  s_a5eaa05fd0049d::t_2c30accec19577 51-52,396-406,1046,1088
+tests/e2e/codex-native-response-delivery.spec.ts
+  s_a5eaa05fd0049d::t_6d724f96abfc73 551-653
+docs/RELIABILITY.md
+  s_3fbaf472cd17d7::t_faa17a7a25413e 449-452
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "048023cc212350d82f1e79e228f5d32347613185",
+  "prompts": {},
+  "sessions": {
+    "s_3fbaf472cd17d7": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a0a2f8-fe70-7ec2-b4d7-4e6bb670c4f6",
+        "model": "unknown"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    },
+    "s_a5eaa05fd0049d": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a08fcc-91a3-7ba0-a4e4-720879ecb167",
+        "model": "chatgpt-web/extra-high"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    }
+  }
+}
