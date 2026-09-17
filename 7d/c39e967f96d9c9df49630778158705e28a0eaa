@@ -1,0 +1,43 @@
+src/renderer/components/workbench/database-board/database-board-card.tsx
+  s_16535355388fae::t_70481d24323b82 291
+src/renderer/components/workbench/database-view-page-drag.ts
+  s_16535355388fae::t_70481d24323b82 162,167,169,184,188
+docs/product-specs/board-drag-and-drop-behavior.md
+  s_16535355388fae::t_30333c94535502 170-177
+src/renderer/components/board/editor/nfm-editor.tsx
+  s_16535355388fae::t_bf8b2c1718e2f8 19,58-62,477,2270-2277,2297
+src/renderer/components/workbench/database-view-page-drag.jsdom.test.ts
+  s_16535355388fae::t_00cfc48e52444f 1-6,8-51,54-58,84-101
+src/renderer/lib/block-reference-queries.ts
+  s_16535355388fae::t_70481d24323b82 2,68-75
+  s_16535355388fae::t_825a2f3f69057a 76
+tests/e2e/support/drag-block-with-mouse.ts
+  s_16535355388fae::t_528ea92a194f85 44-49
+tests/e2e/board-dense.spec.ts
+  s_16535355388fae::t_70ec58c1da8f78 13,471-479,482-497,499-508,528-548,551-552,554-594,596-606,608-612,620-626
+  s_16535355388fae::t_65c66fdb849276 480-481
+  s_16535355388fae::t_4c80f796197313 468-470,549-550,617-619
+  s_16535355388fae::t_9bb7ea96ac5455 429-467,627
+  s_16535355388fae::t_0d01dc066b7738 498,509-527,553,595,607,613-616
+  s_16535355388fae::t_1356a5e648ce0d 628-630
+src/renderer/components/board/editor/dragged-block-roots.ts
+  s_16535355388fae::t_70481d24323b82 9-32
+src/renderer/components/board/editor/dragged-block-roots.test.ts
+  s_16535355388fae::t_70481d24323b82 2-6,35-58
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "7dc39e967f96d9c9df49630778158705e28a0eaa",
+  "prompts": {},
+  "sessions": {
+    "s_16535355388fae": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a09092-f4ff-7bf2-8708-15f7037bd227",
+        "model": "chatgpt-web/extra-high"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    }
+  }
+}
