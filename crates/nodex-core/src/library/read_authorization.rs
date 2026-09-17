@@ -1,7 +1,8 @@
 use nodex_core_contracts::events::{AuthorizedReadStamp, ResourceKey};
 use nodex_core_contracts::library::{
-    LibraryCatalogEntry, LibraryNavigationNode, LibraryNavigationParent, LibraryRead,
-    LibraryReadValue, LibraryResourceTarget, LibraryRouteTarget,
+    LibraryBlockTransferSource, LibraryCatalogEntry, LibraryNavigationNode,
+    LibraryNavigationParent, LibraryRead, LibraryReadValue, LibraryResourceTarget,
+    LibraryRouteTarget,
 };
 use nodex_core_contracts::{BoundModuleContext, StoreEpoch};
 use rusqlite::Connection;
@@ -113,6 +114,18 @@ fn read_subject(
         LibraryRead::Metadata
         | LibraryRead::StandaloneRoots { .. }
         | LibraryRead::Catalog { .. } => Some(library_resource(library_id)),
+        LibraryRead::BlockTransferPresentationPlan { intent, .. } => Some(match &intent.source {
+            LibraryBlockTransferSource::Library { library_id } => library_resource(library_id),
+            LibraryBlockTransferSource::Page { page_id } => ResourceKey::Page {
+                page_id: page_id.clone(),
+            },
+            LibraryBlockTransferSource::Document { document_id } => ResourceKey::Document {
+                document_id: document_id.clone(),
+            },
+            LibraryBlockTransferSource::DataSource { data_source_id } => ResourceKey::DataSource {
+                data_source_id: data_source_id.clone(),
+            },
+        }),
         LibraryRead::ResourceProjectAccess { target } => Some(resource_target(target)),
         LibraryRead::Children { parent, .. } => Some(navigation_parent(library_id, parent)),
         LibraryRead::Path { target } => Some(route_target(target)),

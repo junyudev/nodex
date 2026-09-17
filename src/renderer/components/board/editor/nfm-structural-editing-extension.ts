@@ -3,6 +3,12 @@ import {
   withRendererStructuralSpan,
 } from "@/lib/renderer-causal-trace";
 import type { NfmStructuralRemovalPresentation } from "./nfm-structural-removal-presentation";
+import {
+  setNfmIncomingPageTransfers,
+  subscribeNfmStructuralView,
+  type NfmIncomingPageTransfer,
+} from "./nfm-clipboard-paste-pending-extension";
+import { localStructuralTransactionPresentation } from "@/lib/local-structural-transaction-presentation";
 import { clipboardFileReferences } from "../../../../shared/clipboard-file-references";
 import { getBlockInfo, getNodeById, type BlockNoteEditor } from "@blocknote/core";
 import { TextSelection } from "@tiptap/pm/state";
@@ -314,6 +320,8 @@ const withoutPortableBlockIdentity = (
 export class NfmStructuralEditingSession {
   private readonly editor: StructuralEditor;
   private removalPresentation: NfmStructuralRemovalPresentation | undefined;
+  private readonly incomingPageTransfers = new Map<string, NfmIncomingPageTransfer>();
+  private incomingPageViewRelease: (() => void) | undefined;
 
   retainRemovalPresentation(
     create: () => NfmStructuralRemovalPresentation,
@@ -612,7 +620,36 @@ export class NfmStructuralEditingSession {
   }
 
   async receivePages(transfer: NfmReceivingPageTransferIntent): Promise<void> {
-    await this.completeCommand({ kind: "receive_pages", transfer: structuredClone(transfer) });
+    const prediction: NfmIncomingPageTransfer = {
+      operationId: transfer.operationId,
+      pages: transfer.pages.map((page) => ({ ...page })),
+      target: {
+        parentBlockId: transfer.target.parentBlockId ?? null,
+        beforeBlockId: transfer.target.beforeBlockId ?? null,
+      },
+    };
+    this.incomingPageTransfers.set(transfer.operationId, prediction);
+    this.syncIncomingPageTransfers();
+    this.ensureIncomingPageObserver();
+    if (transfer.mode === "move") {
+      localStructuralTransactionPresentation.beginDatabasePageMove({
+        operationId: transfer.operationId,
+        projectId: transfer.projectId,
+        storeEpoch: transfer.storeEpoch,
+        dataSourceId: transfer.dataSourceId,
+        pageIds: transfer.rootBlockIds,
+      });
+    } else {
+      localStructuralTransactionPresentation.begin(transfer.operationId, transfer.storeEpoch);
+    }
+    try {
+      await this.completeCommand({ kind: "receive_pages", transfer: structuredClone(transfer) });
+    } catch (error) {
+      this.incomingPageTransfers.delete(transfer.operationId);
+      this.syncIncomingPageTransfers();
+      localStructuralTransactionPresentation.reject(transfer.operationId);
+      throw error;
+    }
   }
 
   handleClipboard(
@@ -730,6 +767,12 @@ export class NfmStructuralEditingSession {
     if (this.disposed) return;
     this.disposed = true;
     this.removalPresentation?.dispose();
+    this.incomingPageViewRelease?.();
+    this.incomingPageViewRelease = undefined;
+    for (const operationId of this.incomingPageTransfers.keys())
+      localStructuralTransactionPresentation.reject(operationId);
+    this.incomingPageTransfers.clear();
+    this.syncIncomingPageTransfers();
     this.releasePendingHistoryInput?.();
     this.preparationLifetime.abort();
     this.bindFocusDocument(null);
@@ -1088,7 +1131,7 @@ export class NfmStructuralEditingSession {
             kind: "block_transfer",
             presentation,
             request: {
-              operationId: createUuidV7(),
+              operationId: transfer.operationId,
               projectId: transfer.projectId,
               storeEpoch: transfer.storeEpoch,
               mode: transfer.mode,
@@ -1353,7 +1396,27 @@ export class NfmStructuralEditingSession {
   }
 
   private async presentReceipt(receipt: NfmHistoryReceipt): Promise<void> {
-    if (receipt.kind !== "structural" || this.disposed) return;
+    if (this.disposed) return;
+    if (receipt.kind === "block_transfer") {
+      const prediction = this.incomingPageTransfers.get(receipt.result.operationId);
+      if (!prediction) return;
+      const resultPageIds = receipt.result.resultRootBlockIds;
+      const pages = prediction.pages.map((page, index) => ({
+        pageId: resultPageIds[index] ?? page.pageId,
+        title: page.title,
+      }));
+      this.incomingPageTransfers.set(receipt.result.operationId, { ...prediction, pages });
+      localStructuralTransactionPresentation.acknowledge({
+        operationId: receipt.result.operationId,
+        storeEpoch: receipt.result.storeEpoch,
+        commitSeq: receipt.result.commitSeq,
+        resultPageIds,
+      });
+      this.syncIncomingPageTransfers();
+      this.reconcileIncomingPageTransfers();
+      return;
+    }
+    if (receipt.kind !== "structural") return;
     const { result, presentation } = receipt;
     if (presentation?.cutClaim)
       await this.settleClipboardSafely({
@@ -1387,6 +1450,32 @@ export class NfmStructuralEditingSession {
     // A restored caret still needs the DOM focus released by the preparation fence.
     if (!this.disposed && presentation.focusRevision === this.focusRevision)
       this.restoreFocusIfUnclaimed();
+  }
+
+  private syncIncomingPageTransfers(): void {
+    if (!this.editor.prosemirrorState) return;
+    setNfmIncomingPageTransfers(this.editor, [...this.incomingPageTransfers.values()]);
+  }
+
+  private ensureIncomingPageObserver(): void {
+    if (this.incomingPageViewRelease || !this.editor.prosemirrorState) return;
+    this.incomingPageViewRelease = subscribeNfmStructuralView(this.editor, () =>
+      this.reconcileIncomingPageTransfers(),
+    );
+  }
+
+  private reconcileIncomingPageTransfers(): void {
+    const document = this.editor.prosemirrorView?.state.doc;
+    if (!document) return;
+    let changed = false;
+    for (const [operationId, transfer] of this.incomingPageTransfers) {
+      if (transfer.pages.length === 0) continue;
+      if (!transfer.pages.every((page) => getNodeById(page.pageId, document))) continue;
+      this.incomingPageTransfers.delete(operationId);
+      localStructuralTransactionPresentation.markTargetMaterialized(operationId);
+      changed = true;
+    }
+    if (changed) this.syncIncomingPageTransfers();
   }
 
   private async settleClipboardSafely(

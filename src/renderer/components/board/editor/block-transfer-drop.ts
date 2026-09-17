@@ -17,6 +17,7 @@ import {
   buildBoardCardEditorTransferTargetData,
   isBoardCardDragData,
 } from "../pragmatic-drag-data";
+import { createUuidV7 } from "../../../../shared/uuid-v7";
 import { hasClosest, resolveBlockId } from "./drag-source-resolver";
 import {
   createToggleDropCueController,
@@ -452,13 +453,19 @@ export const setupBlockTransferDocumentDrop = (
       );
       const target = plan.target;
       clear();
+      const operationId = createUuidV7();
       void boundary
         .receivePages({
+          operationId,
           projectId: boundary.projectId,
           storeEpoch: boundary.storeEpoch,
           mode: resolveCrossSurfaceTransferMode(location.current.input),
           rootBlockIds: sourceData.dragItems.map((item) => item.card.id),
           dataSourceId: sourceData.dataSourceId,
+          pages: sourceData.dragItems.map((item) => ({
+            pageId: item.card.id,
+            title: item.card.title,
+          })),
           target: boundary.hostPageId
             ? { kind: "page", pageId: boundary.hostPageId, ...target }
             : {

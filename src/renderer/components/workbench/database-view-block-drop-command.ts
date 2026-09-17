@@ -1,9 +1,11 @@
 import type { DatabasePromotionPresentationStore } from "@/lib/database-promotion-presentation";
+import { planBlockTransferPresentation } from "@/lib/api";
 import { createUuidV7 } from "../../../shared/uuid-v7";
 import type { DatabaseViewBlockDropCommand } from "./database-view-history-adapter";
 import { toast } from "@/components/ui/toast";
 import type { BlockTransferDataSourcePlacement } from "../../../shared/block-transfer";
 import {
+  buildBlockToDataSourceTransferIntent,
   containsCanvasBlockDrag,
   containsDatabaseBlockDrag,
   endLocalBlockDragSession,
@@ -61,6 +63,21 @@ export const commitDatabaseViewBlockDrop = async (
     return false;
   }
   const operationId = createUuidV7();
+  const presentationPlan = input.presentation
+    ? planBlockTransferPresentation(
+        projectId,
+        buildBlockToDataSourceTransferIntent({
+          operationId,
+          projectId,
+          storeEpoch: input.storeEpoch,
+          payload,
+          dataSourceId: input.dataSourceId,
+          placement: input.placement,
+          altKey: input.altKey,
+          promotionPolicy: "literal",
+        }),
+      )
+    : undefined;
   let committed;
   try {
     committed = await input.mutationHistory.executeBlockDrop({
@@ -70,9 +87,14 @@ export const commitDatabaseViewBlockDrop = async (
         input.presentation?.accept({
           operationId,
           gestureIdentity: input.session.sessionId,
+          storeEpoch: input.storeEpoch,
           rootBlockIds: payload.rootBlockIds,
+          previews:
+            input.session.promotionPreviews ??
+            payload.rootBlockIds.map((rootBlockId) => ({ rootBlockId, title: "Untitled" })),
           placement: input.placement,
           mode: input.altKey ? "copy" : "move",
+          plan: presentationPlan,
           refresh: (cursor) => input.onCommitted?.(cursor),
           observe: (listener) =>
             handle.observe((state) => {

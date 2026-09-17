@@ -161,6 +161,25 @@ This post-removal contract must stay identical across:
   sort values against that presentation, never against a different durable
   default hidden behind Profile-local View preferences.
 - Pointer position determines the Board insert slot when block-drop import is allowed. List-specific gaps, groups, derived-sort feedback, and search rejection follow [Database Pages and Views Behavior](database-pages-and-views-behavior.md).
+- After an accepted predictable drop, Move immediately hides the source roots and
+  the destination immediately renders final-looking Page rows/cards at the
+  intended slot. Copy leaves the source unchanged. This local structural
+  projection does not wait for the source flush or durable receipt and does not
+  show a Moving/Copying placeholder. Core still plans generated Page identities
+  and owns the durable transfer.
+- When the dragged root is already a Page/subpage, its predicted Board card uses
+  that Page's title authority. A Page shell has no inline title content, so a
+  known titled Page must never transiently degrade to `Untitled` during the
+  predicted-to-canonical handoff.
+- Source drag presentation ends with the drag-source lifecycle even when an
+  accepted structural move removes that source card before the browser emits a
+  native `dragend` on it. If the same Page later returns to the Board, its
+  canonical card must render immediately in normal, non-dragging visual state.
+- A deterministic rejection removes the still-owned local projection. An
+  uncertain outcome keeps the same operation identity and projection through
+  recovery. If a newer structural move claims the same Page identity, it owns
+  presentation immediately and an older promotion receipt cannot restore the
+  earlier location.
 - The active Database View shows truthful drag feedback for this import path.
 - Empty target columns use whole-column drop feedback instead of a floating insertion line, because there is no sibling list for a truthful gap preview.
 - Auto-collapsed empty columns and user-collapsed populated columns stay collapsed
@@ -183,7 +202,17 @@ This post-removal contract must stay identical across:
 
 - Dragging one or more ordered Board Cards or List rows into a Card Stage or independently mounted reference editor moves the real same-ID, childless Card shells into the target Document. Their separately owned title/body Documents are unchanged.
 - Move is the default. Holding Alt/Option at drop time copies each recursive ownership closure with fresh application IDs and preserves the source Cards.
-- The target editor shows pending feedback but does not insert or remove authority optimistically. `BlockTransfer` commits the source Database parent, target Y.Doc shells, projections, and receipt together; failure leaves both surfaces unchanged.
+- Once the drop is accepted, the target editor immediately projects the final
+  Page/subpage rows at the frozen insertion target. Move simultaneously removes
+  the source Cards from the local Board/List projection; Copy preserves them.
+  The predicted editor rows are presentation state and never enter the
+  collaborative Document before Core commits. `BlockTransfer` remains the only
+  durable owner of the source Database parent, target Y.Doc shells, projections,
+  and receipt.
+- Deterministic failure removes the still-owned prediction. Unknown outcome
+  retains the exact operation and visible result while recovery continues.
+  Newer structural intent for the same Page supersedes older presentation
+  ownership permanently.
 - Board preserves the canonical Card-shaped native drag preview and source ghost;
   List preserves its dense-row drag overlay. Both sources enter the same typed
   Page-transfer path.

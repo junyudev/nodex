@@ -5,6 +5,8 @@ import {
   nfmClipboardPastePendingExtension,
   nfmClipboardPastePendingPluginKey,
   setNfmClipboardPastePending,
+  setNfmIncomingPageTransfers,
+  setNfmPendingRemovals,
 } from "./nfm-clipboard-paste-pending-extension";
 
 describe("NFM clipboard paste pending extension", () => {
@@ -36,5 +38,34 @@ describe("NFM clipboard paste pending extension", () => {
     const removed = nfmClipboardPastePendingPluginKey.getState(editor.prosemirrorState);
     expect(removed?.blockIds.has("paste-anchor")).toBe(false);
     expect(removed?.decorations.find()).toHaveLength(0);
+  });
+
+  test("projects predictable structural moves as final-looking local semantics", () => {
+    editor = BlockNoteEditor.create({
+      initialContent: [{ id: "source", type: "paragraph", content: "Source" }],
+      extensions: [nfmClipboardPastePendingExtension()],
+    });
+    const container = document.createElement("div");
+    editor.mount(container);
+    const before = editor.prosemirrorState.doc;
+
+    setNfmPendingRemovals(editor, [
+      { operationId: "move-out", rootBlockIds: ["source"], action: "move" },
+    ]);
+    setNfmIncomingPageTransfers(editor, [
+      {
+        operationId: "move-in",
+        pages: [{ pageId: "page", title: "Predicted Page" }],
+        target: { parentBlockId: null, beforeBlockId: null },
+      },
+    ]);
+
+    const removed = container.querySelector<HTMLElement>('[data-nfm-predicted-removal="move-out"]');
+    expect(removed?.classList.contains("hidden")).toBe(true);
+    expect(container.querySelector('[data-nfm-pending-removal="move-out"]')).toBeNull();
+    expect(container.querySelector('[data-nfm-predicted-page="page"]')?.textContent).toContain(
+      "Predicted Page",
+    );
+    expect(editor.prosemirrorState.doc).toBe(before);
   });
 });

@@ -33,6 +33,7 @@ import type {
 import type {
   BlockTransferCommandResult,
   BlockTransferIntent,
+  BlockTransferPresentationPlanResult,
   BlockTransferUndoCommandResult,
   BlockTransferUndoIntent,
 } from "../../shared/block-transfer";
@@ -225,6 +226,9 @@ export interface DesktopDocumentSessionService {
     intent: BlockTransferIntent,
     editorHistoryOwnerId?: string,
   ): Effect.Effect<BlockTransferCommandResult>;
+  planBlockTransfer(
+    intent: BlockTransferIntent,
+  ): Effect.Effect<BlockTransferPresentationPlanResult>;
   undoBlockTransfer(
     intent: BlockTransferUndoIntent,
     editorHistoryOwnerId?: string,
@@ -1469,6 +1473,36 @@ const makeDesktopDocumentSessionState = (
         ),
       );
 
+  const planBlockTransfer = (
+    intent: BlockTransferIntent,
+  ): Effect.Effect<BlockTransferPresentationPlanResult> =>
+    input.coreSession
+      .use(
+        "block-transfer.plan-presentation",
+        (client) =>
+          createCoreBlockTransferAdapter({
+            client,
+            libraryId: input.coreAuthority.identity.libraryId,
+            projectId: intent.projectId,
+            storeEpoch: input.coreAuthority.identity.storeEpoch,
+          }).planPresentation(intent),
+        { projectId: intent.projectId },
+      )
+      .pipe(
+        Effect.catch((error) =>
+          Effect.succeed({
+            ok: false as const,
+            error: {
+              code: "unknown" as const,
+              message: documentSessionError(error).message,
+              retryable: documentSessionError(error).retryable,
+              reloadRequired: false,
+              operationId: intent.operationId,
+            },
+          }),
+        ),
+      );
+
   const undoBlockTransfer = (
     intent: BlockTransferUndoIntent,
     editorHistoryOwnerId?: string,
@@ -2197,6 +2231,7 @@ const makeDesktopDocumentSessionState = (
           Effect.mapError((error) => sessionError("document.get-version", error.cause ?? error)),
         ),
     applyDocumentMutation,
+    planBlockTransfer,
     transferBlocks,
     undoBlockTransfer,
     restoreVersion: applyDocumentMutation,

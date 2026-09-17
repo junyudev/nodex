@@ -288,7 +288,7 @@ export function DatabaseBoardCard(props: DatabaseBoardCardProps) {
   } = props;
   const { setElementRef: cardElementRef, previewPortal } = useDatabaseViewPageDragSource(
     draggable ? pragmaticDragData : null,
-    { nativePreview: "portal" },
+    { nativePreview: "portal", onDragFinished: onDragEndPage },
   );
   const title = usePresentedPageTitle(row.pageId, row.title, model.libraryId, {
     generation: row.documentGeneration,

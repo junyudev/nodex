@@ -18341,6 +18341,47 @@
           "copy"
         ]
       },
+      "LibraryBlockTransferPresentationPlan": {
+        "type": "object",
+        "required": [
+          "operation_id",
+          "mode",
+          "roots"
+        ],
+        "properties": {
+          "mode": {
+            "$ref": "#/components/schemas/LibraryBlockTransferMode"
+          },
+          "operation_id": {
+            "type": "string"
+          },
+          "roots": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/LibraryBlockTransferPresentationRoot"
+            }
+          }
+        }
+      },
+      "LibraryBlockTransferPresentationRoot": {
+        "type": "object",
+        "required": [
+          "source_block_id",
+          "result_page_id",
+          "transformation_kind"
+        ],
+        "properties": {
+          "result_page_id": {
+            "type": "string"
+          },
+          "source_block_id": {
+            "type": "string"
+          },
+          "transformation_kind": {
+            "type": "string"
+          }
+        }
+      },
       "LibraryBlockTransferPromotionEvidence": {
         "oneOf": [
           {
@@ -33130,6 +33171,32 @@
               {
                 "type": "object",
                 "required": [
+                  "operation_id",
+                  "store_epoch",
+                  "intent",
+                  "kind"
+                ],
+                "properties": {
+                  "intent": {
+                    "$ref": "#/components/schemas/LibraryBlockTransferLogicalIntent"
+                  },
+                  "kind": {
+                    "type": "string",
+                    "enum": [
+                      "block_transfer_presentation_plan"
+                    ]
+                  },
+                  "operation_id": {
+                    "type": "string"
+                  },
+                  "store_epoch": {
+                    "type": "string"
+                  }
+                }
+              },
+              {
+                "type": "object",
+                "required": [
                   "target",
                   "kind"
                 ],
@@ -45617,6 +45684,24 @@
                             "enum": [
                               "structural_history_states"
                             ]
+                          }
+                        }
+                      },
+                      {
+                        "type": "object",
+                        "required": [
+                          "value",
+                          "kind"
+                        ],
+                        "properties": {
+                          "kind": {
+                            "type": "string",
+                            "enum": [
+                              "block_transfer_presentation_plan"
+                            ]
+                          },
+                          "value": {
+                            "$ref": "#/components/schemas/LibraryBlockTransferPresentationPlan"
                           }
                         }
                       },

@@ -4475,6 +4475,16 @@ export interface components {
         };
         /** @enum {string} */
         readonly LibraryBlockTransferMode: "move" | "copy";
+        readonly LibraryBlockTransferPresentationPlan: {
+            readonly mode: components["schemas"]["LibraryBlockTransferMode"];
+            readonly operation_id: string;
+            readonly roots: readonly components["schemas"]["LibraryBlockTransferPresentationRoot"][];
+        };
+        readonly LibraryBlockTransferPresentationRoot: {
+            readonly result_page_id: string;
+            readonly source_block_id: string;
+            readonly transformation_kind: string;
+        };
         readonly LibraryBlockTransferPromotionEvidence: {
             /** @enum {string} */
             readonly kind: "not_requested";
@@ -7956,6 +7966,12 @@ export interface components {
                 readonly kind: "structural_history_states";
                 readonly tokens: readonly components["schemas"]["LibraryStructuralHistoryToken"][];
             } | {
+                readonly intent: components["schemas"]["LibraryBlockTransferLogicalIntent"];
+                /** @enum {string} */
+                readonly kind: "block_transfer_presentation_plan";
+                readonly operation_id: string;
+                readonly store_epoch: string;
+            } | {
                 /** @enum {string} */
                 readonly kind: "resource_project_access";
                 readonly target: components["schemas"]["LibraryResourceTarget"];
@@ -10745,6 +10761,10 @@ export interface components {
                     readonly items: readonly components["schemas"]["LibraryStructuralHistoryState"][];
                     /** @enum {string} */
                     readonly kind: "structural_history_states";
+                } | {
+                    /** @enum {string} */
+                    readonly kind: "block_transfer_presentation_plan";
+                    readonly value: components["schemas"]["LibraryBlockTransferPresentationPlan"];
                 } | {
                     /** Format: int64 */
                     readonly commit_seq: number;

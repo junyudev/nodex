@@ -13,6 +13,7 @@ import type { LocalBlockDragSession } from "./block-transfer/cross-surface-drag"
 
 const mocks = vi.hoisted(() => ({
   transferBlocks: vi.fn(),
+  planBlockTransferPresentation: vi.fn(),
   undoBlockTransfer: vi.fn(),
   applyLibraryModule: vi.fn(),
   control: vi.fn(),
@@ -22,6 +23,7 @@ const mocks = vi.hoisted(() => ({
 }));
 vi.mock("@/lib/api", () => ({
   transferBlocks: mocks.transferBlocks,
+  planBlockTransferPresentation: mocks.planBlockTransferPresentation,
   undoBlockTransfer: mocks.undoBlockTransfer,
   applyLibraryModule: mocks.applyLibraryModule,
   applyDatabaseModule: vi.fn(),
@@ -113,6 +115,84 @@ describe("Database View Block drop command", () => {
   beforeEach(() => {
     Object.values(mocks).forEach((mock) => mock.mockReset());
     mocks.control.mockResolvedValue({ accepted: true });
+    mocks.planBlockTransferPresentation.mockResolvedValue({
+      ok: true,
+      value: {
+        operationId: "planned",
+        mode: "move",
+        roots: [],
+      },
+    });
+  });
+
+  test("publishes final local source and target semantics before source fencing or durable submit", async () => {
+    const order: string[] = [];
+    let releaseFence:
+      | ((value: {
+          documentId: string;
+          storeEpoch: string;
+          generation: number;
+          expectedHeadSeq: number;
+        }) => void)
+      | undefined;
+    const prepareAndFence = vi.fn(
+      () =>
+        new Promise<{
+          documentId: string;
+          storeEpoch: string;
+          generation: number;
+          expectedHeadSeq: number;
+        }>((resolve) => {
+          order.push("prepare");
+          releaseFence = resolve;
+        }),
+    );
+    const presentRemoval = vi.fn(() => {
+      order.push("source");
+    });
+    const unregister = registerBlockDocumentStructuralMutationParticipant(session.sourceSurfaceId, {
+      documentId: "document-source",
+      prepareAndFence,
+      presentRemoval,
+    });
+    const history = createDatabaseViewMutationHistory("view-1");
+    const presentation = {
+      accept: vi.fn(() => {
+        order.push("target");
+      }),
+    };
+    mocks.planBlockTransferPresentation.mockImplementation(() => {
+      order.push("plan");
+      return new Promise(() => undefined);
+    });
+    mocks.transferBlocks.mockImplementation(async (_projectId, request) => {
+      order.push("submit");
+      return success(request.operationId);
+    });
+    try {
+      const pending = commitDatabaseViewBlockDrop({ ...inputFor(history), presentation });
+
+      expect(order.slice(0, 3)).toEqual(["plan", "target", "source"]);
+      expect(presentation.accept).toHaveBeenCalledOnce();
+      expect(presentRemoval).toHaveBeenCalledOnce();
+      expect(mocks.transferBlocks).not.toHaveBeenCalled();
+
+      await Promise.resolve();
+      expect(prepareAndFence).toHaveBeenCalledOnce();
+      expect(order).toEqual(["plan", "target", "source", "prepare"]);
+
+      releaseFence?.({
+        documentId: "document-source",
+        storeEpoch: "epoch-1",
+        generation: 1,
+        expectedHeadSeq: 2,
+      });
+      expect(await pending).toBe(true);
+      expect(order.at(-1)).toBe("submit");
+    } finally {
+      history.close();
+      unregister();
+    }
   });
 
   test("the View reverses each authoritative opposite without resubmitting the drop", async () => {

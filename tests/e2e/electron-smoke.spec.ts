@@ -3291,6 +3291,238 @@ test.describe("parallel functional Electron smoke", () => {
     }
   });
 
+  test("projects an accepted native Block to Board move by the next frame @instant-dnd", async ({}, testInfo) => {
+    test.setTimeout(120_000);
+    const harness = await ElectronScenarioHarness.create({ label: "instant-native-dnd" });
+    const workspace = harness.profile.initialProjectsDirectory;
+    try {
+      const page = await harness.launch();
+      const project = await createConvergenceProject(page, "Instant structural DnD", workspace);
+      await createConvergenceBoardPage(page, project, "Instant target Page", "Board target");
+      const source = await createConvergenceBoardPage(
+        page,
+        project,
+        "Instant source Page",
+        "Page containing the instant projection fixture",
+      );
+      await seedConvergenceDocument(
+        page,
+        project,
+        source,
+        ["Before instant sibling", "Instant projected Page", "\tInstant projected child"].join(
+          "\n",
+        ),
+      );
+
+      await page.getByRole("button", { name: "Open Instant structural DnD", exact: true }).click();
+      await page.getByRole("tab", { name: "Project Home" }).waitFor();
+      const triageColumn = page.locator('[data-board-column-root][data-board-column-id="triage"]');
+      await expect(triageColumn).toBeVisible({ timeout: 15_000 });
+      const sourceCard = triageColumn.locator(`[data-board-uuid-v7="${source.pageId}"]`);
+      await expect(sourceCard).toBeVisible();
+      await openBoardPageFromCard({ card: sourceCard, page, tabName: "Instant source Page" });
+
+      const sourcePanel = page.getByRole("tabpanel", { name: /Instant source Page$/ });
+      const sourceEditor = sourcePanel.locator(".nfm-editor");
+      const sourceSurface = sourceEditor.locator('.ProseMirror[contenteditable="true"]');
+      await expect(sourceSurface).toBeVisible({ timeout: 15_000 });
+      const sourceBlock = sourceSurface
+        .locator(".bn-block[data-id]")
+        .filter({ hasText: "Instant projected Page" })
+        .first();
+      await expect(sourceBlock).toBeVisible();
+
+      await page.evaluate(() => {
+        type NativeDndPresentationTiming = {
+          dropAt: number | null;
+          sourceAt: number | null;
+          targetAt: number | null;
+          firstFrameAt: number | null;
+          firstFrameComplete: boolean | null;
+          continuityStartedAt: number | null;
+          continuityCompletedAt: number | null;
+          continuityViolations: readonly {
+            readonly at: number;
+            readonly targetPresent: boolean;
+            readonly sourceVisible: boolean;
+          }[];
+        };
+        const timing: NativeDndPresentationTiming = {
+          dropAt: null,
+          sourceAt: null,
+          targetAt: null,
+          firstFrameAt: null,
+          firstFrameComplete: null,
+          continuityStartedAt: null,
+          continuityCompletedAt: null,
+          continuityViolations: [],
+        };
+        const browserWindow = window as typeof window & {
+          __nodexNativeDndPresentationTiming?: NativeDndPresentationTiming;
+        };
+        browserWindow.__nodexNativeDndPresentationTiming = timing;
+        const observePresentation = () => {
+          if (timing.dropAt === null) return;
+          if (timing.sourceAt === null && document.querySelector("[data-nfm-predicted-removal]"))
+            timing.sourceAt = performance.now();
+          if (
+            timing.targetAt === null &&
+            [...document.querySelectorAll("[data-predicted-promotion]")].some((element) =>
+              element.textContent?.includes("Instant projected Page"),
+            )
+          )
+            timing.targetAt = performance.now();
+        };
+        const sourceVisible = () =>
+          [...document.querySelectorAll<HTMLElement>(".bn-block[data-id]")].some((element) => {
+            if (!element.textContent?.includes("Instant projected Page")) return false;
+            const style = getComputedStyle(element);
+            return (
+              style.display !== "none" &&
+              style.visibility !== "hidden" &&
+              element.getClientRects().length > 0
+            );
+          });
+        const targetPresent = () =>
+          [...document.querySelectorAll<HTMLElement>("[data-predicted-promotion]")].some(
+            (element) => element.textContent?.includes("Instant projected Page"),
+          ) ||
+          [...document.querySelectorAll<HTMLElement>("[data-board-uuid-v7]")].some((element) =>
+            element.textContent?.includes("Instant projected Page"),
+          );
+        const durableComplete = () =>
+          [...document.querySelectorAll<HTMLElement>("[data-board-uuid-v7]")].some((element) =>
+            element.textContent?.includes("Instant projected Page"),
+          ) &&
+          ![...document.querySelectorAll<HTMLElement>(".bn-block[data-id]")].some((element) =>
+            element.textContent?.includes("Instant projected Page"),
+          );
+        const observeContinuity = () => {
+          if (timing.continuityStartedAt === null || timing.continuityCompletedAt !== null) return;
+          const target = targetPresent();
+          const source = sourceVisible();
+          if (!target || source) {
+            timing.continuityViolations = [
+              ...timing.continuityViolations,
+              { at: performance.now(), targetPresent: target, sourceVisible: source },
+            ];
+          }
+          if (durableComplete()) {
+            timing.continuityCompletedAt = performance.now();
+            return;
+          }
+          requestAnimationFrame(observeContinuity);
+        };
+        const observer = new MutationObserver(observePresentation);
+        observer.observe(document.body, { attributes: true, childList: true, subtree: true });
+        document.addEventListener(
+          "drop",
+          () => {
+            timing.dropAt = performance.now();
+            observePresentation();
+            requestAnimationFrame(() => {
+              observePresentation();
+              timing.firstFrameAt = performance.now();
+              timing.firstFrameComplete = timing.sourceAt !== null && timing.targetAt !== null;
+              if (timing.firstFrameComplete) {
+                timing.continuityStartedAt = performance.now();
+                requestAnimationFrame(observeContinuity);
+              }
+              observer.disconnect();
+            });
+          },
+          { capture: true, once: true },
+        );
+      });
+
+      await dragBlockFromEditorWithMouse({
+        page,
+        sourceBlock,
+        sourceEditor,
+        target: triageColumn,
+        onFeedback: async () => {
+          await expect(triageColumn).toHaveAttribute(
+            "data-board-column-drop-target-active",
+            "true",
+          );
+        },
+      });
+
+      await expect
+        .poll(async () =>
+          page.evaluate(
+            () =>
+              (
+                window as typeof window & {
+                  __nodexNativeDndPresentationTiming?: { firstFrameComplete: boolean | null };
+                }
+              ).__nodexNativeDndPresentationTiming?.firstFrameComplete ?? null,
+          ),
+        )
+        .toBe(true);
+      const timing = await page.evaluate(
+        () =>
+          (
+            window as typeof window & {
+              __nodexNativeDndPresentationTiming?: {
+                dropAt: number | null;
+                sourceAt: number | null;
+                targetAt: number | null;
+                firstFrameAt: number | null;
+                continuityCompletedAt: number | null;
+                continuityViolations: readonly {
+                  readonly at: number;
+                  readonly targetPresent: boolean;
+                  readonly sourceVisible: boolean;
+                }[];
+              };
+            }
+          ).__nodexNativeDndPresentationTiming ?? null,
+      );
+      await testInfo.attach("instant-structural-dnd-timing", {
+        body: JSON.stringify(timing, null, 2),
+        contentType: "application/json",
+      });
+
+      await expect
+        .poll(async () =>
+          page.evaluate(
+            () =>
+              (
+                window as typeof window & {
+                  __nodexNativeDndPresentationTiming?: { continuityCompletedAt: number | null };
+                }
+              ).__nodexNativeDndPresentationTiming?.continuityCompletedAt ?? null,
+          ),
+        )
+        .not.toBeNull();
+      const continuityViolations = await page.evaluate(
+        () =>
+          (
+            window as typeof window & {
+              __nodexNativeDndPresentationTiming?: {
+                continuityViolations: readonly {
+                  readonly at: number;
+                  readonly targetPresent: boolean;
+                  readonly sourceVisible: boolean;
+                }[];
+              };
+            }
+          ).__nodexNativeDndPresentationTiming?.continuityViolations ?? [],
+      );
+      expect(continuityViolations).toEqual([]);
+
+      const promotedCards = triageColumn
+        .locator("[data-board-uuid-v7]")
+        .filter({ hasText: "Instant projected Page" });
+      await expect(promotedCards).toHaveCount(1, { timeout: 15_000 });
+      await expect(sourceBlock).toHaveCount(0, { timeout: 15_000 });
+      await expect(page.getByText("Moving blocks", { exact: false })).toHaveCount(0);
+    } finally {
+      await harness.close();
+    }
+  });
+
   // This is the native source-gesture smoke. High-pressure tests below remain on
   // the direct typed transfer boundary because they test transaction convergence,
   // not the handle-to-dragover pipeline exercised here.

@@ -511,4 +511,25 @@ describe("Core Block Transfer Adapter", () => {
       },
     });
   });
+
+  test("preserves typed View-order preparation so Main can retry only that condition eagerly", async () => {
+    const client = new FakeCoreClient();
+    const adapter = createCoreBlockTransferAdapter({ client, ...identity });
+    vi.spyOn(client, "libraryApply").mockRejectedValueOnce(
+      new CoreModuleResponseError({
+        code: "maintenance_in_progress",
+        message: "View order is preparing; retry after preparation completes",
+        retryable: true,
+        recovery: { kind: "database_view_order_preparation", view_id: "view:target" },
+      }),
+    );
+
+    await expect(adapter.commit(intent)).resolves.toMatchObject({
+      ok: false,
+      error: {
+        code: "view_order_preparing",
+        retryable: true,
+      },
+    });
+  });
 });

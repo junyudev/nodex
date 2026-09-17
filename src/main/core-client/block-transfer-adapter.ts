@@ -5,6 +5,7 @@ import {
   type BlockTransferCommandError,
   type BlockTransferCommandResult,
   type BlockTransferIntent,
+  type BlockTransferPresentationPlanResult,
   type BlockTransferReceipt,
   type BlockTransferTransformationEvidence,
   type BlockTransferUndoCommandResult,
@@ -27,6 +28,7 @@ export interface CoreBlockTransferAdapterInput {
 }
 
 export interface CoreBlockTransferAdapter {
+  planPresentation(intent: BlockTransferIntent): Promise<BlockTransferPresentationPlanResult>;
   commit(intent: BlockTransferIntent): Promise<BlockTransferCommandResult>;
   undo(intent: BlockTransferUndoIntent): Promise<BlockTransferUndoCommandResult>;
 }
@@ -334,6 +336,9 @@ const coreFailure = (
     operationId: intent.operationId,
     retryable: error.coreError.retryable,
   };
+  if (error.coreError.recovery.kind === "database_view_order_preparation") {
+    return blockTransferFailure("view_order_preparing", error.message, options);
+  }
   switch (error.coreError.code) {
     case "invalid_input":
       return blockTransferFailure(
@@ -384,6 +389,57 @@ export const createCoreBlockTransferAdapter = (
   input: CoreBlockTransferAdapterInput,
 ): CoreBlockTransferAdapter => {
   return {
+    planPresentation: async (rawIntent) => {
+      let intent: BlockTransferIntent;
+      try {
+        intent = parseBlockTransferIntent(rawIntent);
+      } catch (error) {
+        rethrowCoreTransportFailure(error);
+        return { ok: false, error: coreFailure(rawIntent, error) };
+      }
+      const scopeError = assertIntentScope(input, intent);
+      if (scopeError) return { ok: false, error: scopeError };
+      try {
+        const snapshot = await input.client.libraryRead({
+          kind: "block_transfer_presentation_plan",
+          operation_id: intent.operationId,
+          store_epoch: intent.storeEpoch,
+          intent: toCoreIntent(intent),
+        });
+        if (snapshot.value.kind !== "block_transfer_presentation_plan") {
+          throw new Error("Core returned the wrong Library read for Block transfer planning");
+        }
+        const plan = snapshot.value.value;
+        if (plan.operation_id !== intent.operationId || plan.mode !== intent.mode) {
+          throw new Error("Core returned a mismatched Block transfer presentation plan");
+        }
+        return {
+          ok: true,
+          value: {
+            operationId: plan.operation_id,
+            mode: plan.mode,
+            roots: plan.roots.map((root) => {
+              if (
+                root.transformation_kind !== "promote" &&
+                root.transformation_kind !== "wrap" &&
+                root.transformation_kind !== "page" &&
+                root.transformation_kind !== "page_copy"
+              ) {
+                throw new Error("Core returned an unsupported Block transfer presentation kind");
+              }
+              return {
+                sourceBlockId: root.source_block_id,
+                resultPageId: root.result_page_id,
+                transformationKind: root.transformation_kind,
+              };
+            }),
+          },
+        };
+      } catch (error) {
+        rethrowCoreTransportFailure(error);
+        return { ok: false, error: coreFailure(intent, error) };
+      }
+    },
     commit: async (rawIntent) => {
       let intent: BlockTransferIntent;
       try {

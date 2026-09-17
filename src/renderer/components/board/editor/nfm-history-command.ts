@@ -62,11 +62,16 @@ export interface NfmStructuralTransferIntent {
 
 /** Data Source Pages are ownership transfers, not selections in a source Document. */
 export interface NfmReceivingPageTransferIntent {
+  readonly operationId: string;
   readonly projectId: string;
   readonly storeEpoch: string;
   readonly mode: "move" | "copy";
   readonly rootBlockIds: readonly string[];
   readonly dataSourceId: string;
+  readonly pages: readonly {
+    readonly pageId: string;
+    readonly title: string;
+  }[];
   readonly target: Extract<PublicBlockTransferIntent["target"], { kind: "page" | "document" }>;
 }
 

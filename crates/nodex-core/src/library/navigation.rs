@@ -719,6 +719,9 @@ pub(super) fn read(
         LibraryRead::PlanAgentResourceAccess { .. } => Err(invalid(
             "Agent resource planning is assembled by the Library Module",
         )),
+        LibraryRead::BlockTransferPresentationPlan { .. } => Err(invalid(
+            "Block transfer presentation planning is assembled by the Library Module",
+        )),
         LibraryRead::PrepareAgentPageCopy { .. } => Err(invalid(
             "Agent Page copy preparation is assembled by the Library Module",
         )),

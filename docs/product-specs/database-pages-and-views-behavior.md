@@ -630,22 +630,37 @@ order without requiring that View to remain focused. Immediately undoing a Block
 drop removes promoted Pages and restores the source Blocks; Redo restores the
 same generated identities.
 
-An accepted Block promotion immediately places a compact Moving/Copying status
-at its Board or List destination. Pending display slots belong to operation
-identities, never Page identities: they have no selection, navigation, Property
-editing or drag actions, and do not change Page counts. Consecutive batches retain
-separate slots. Source Copy remains unchanged; Move shows an editor decoration.
+An accepted Block promotion immediately projects final-looking Page cards or
+rows at its Board or List destination. Move simultaneously hides the source
+roots from the local editor projection; Copy leaves them visible. Normal
+predictable promotion does not show Moving/Copying status. Before Core's
+read-only transfer planner supplies an exact generated Page identity, the
+destination shell is presentation-only and cannot author identity-sensitive
+actions. The planner and durable transfer reuse the same Core identity rules.
+Consecutive batches retain separate operation identities.
 
-A receipt replaces a slot with canonical Pages when available. Retirement requires
-that consumer's complete bounded query at or beyond the receipt and a matching
-React render. The query must retain the same Library/access, Store epoch, View,
-effective rules and loaded-window coordinates. A matching bounded read may also
-prove the result is outside that window. RowsById summaries, a stream cursor, or a
-read-generation counter cannot prove membership or absence. Canonical repair uses
-the receipt as a minimum read cursor; it does not delay command completion or
-Undo eligibility. Unknown outcomes keep the original slot through exact recovery.
-Changing the display's rules/window or revoking its authority discards only that
-presentation lease, without claiming the command was rejected.
+The predicted structural revision is keyed by operation identity and exact Page
+ownership once known. A newer structural operation that claims the same Page
+immediately supersedes the older presentation; later acknowledgement or
+canonical delivery for the older operation cannot restore its earlier visible
+location. A deterministic rejection rolls back only prediction still owned by
+that operation. Unknown outcomes retain the same prediction and operation
+identity through exact recovery.
+
+A receipt normally leaves the visible result unchanged and begins canonical
+retirement. Retirement requires that consumer's complete bounded query at or
+beyond the receipt and a matching React render. The query must retain the same
+Library/access, Store epoch, View and effective rules. Loaded-window coordinates
+are current materialization evidence rather than presentation-owner identity:
+pagination, refresh, or another bounded-window reshape cannot revoke an admitted
+promotion between its predicted frame and canonical handoff. The currently
+complete bounded read may prove the result is present or outside that window,
+and prediction retires only when that same visible consumer commits the matching
+canonical frame. RowsById summaries, a stream cursor, or a read-generation
+counter cannot prove membership or absence. Canonical repair uses the receipt as
+a minimum read cursor; it does not delay command completion or Undo eligibility.
+Changing the display's effective rules or revoking its authority discards only
+that presentation lease, without claiming the command was rejected.
 
 List also accepts native NFM Block drags from another mounted editor in the
 same renderer window. Under manual order or an inferable writable Property

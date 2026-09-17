@@ -112,6 +112,18 @@ export interface BlockTransferPreparation {
   readonly documentHeads: readonly BlockTransferDocumentHead[];
 }
 
+export interface BlockTransferPresentationRoot {
+  readonly sourceBlockId: BlockId;
+  readonly resultPageId: BlockId;
+  readonly transformationKind: "promote" | "wrap" | "page" | "page_copy";
+}
+
+export interface BlockTransferPresentationPlan {
+  readonly operationId: string;
+  readonly mode: BlockTransferMode;
+  readonly roots: readonly BlockTransferPresentationRoot[];
+}
+
 export type BlockTransferSource =
   | { readonly kind: "library"; readonly libraryId: string }
   | {
@@ -298,6 +310,7 @@ export type BlockTransferErrorCode =
   | "invalid_target"
   | "transfer_cycle"
   | "unsupported_transfer"
+  | "view_order_preparing"
   | "undo_unavailable"
   | "undo_conflict"
   | "recovery_required"
@@ -316,6 +329,10 @@ export type BlockTransferCommandResult<Value = BlockTransferReceipt> =
   | { readonly ok: false; readonly error: BlockTransferCommandError };
 
 export type BlockTransferUndoCommandResult = BlockTransferCommandResult<BlockTransferUndoReceipt>;
+
+export type BlockTransferPresentationPlanResult =
+  | { readonly ok: true; readonly value: BlockTransferPresentationPlan }
+  | { readonly ok: false; readonly error: BlockTransferCommandError };
 
 export class BlockTransferContractError extends Error {
   constructor(message: string) {

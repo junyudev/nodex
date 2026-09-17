@@ -41,8 +41,12 @@ export async function dragBlockFromEditorWithMouse({
 }): Promise<void> {
   await sourceBlock.scrollIntoViewIfNeeded();
   const sourceBlockContent = sourceBlock.locator(":scope > .bn-block-content");
-  await expect(sourceBlockContent).toBeVisible();
-  await sourceBlockContent.hover();
+  const hoverTarget =
+    (await sourceBlockContent.count()) > 0
+      ? sourceBlockContent
+      : sourceBlock.locator(":scope [data-page-outliner-target] .bn-toggle-wrapper").first();
+  await expect(hoverTarget).toBeVisible();
+  await hoverTarget.hover();
 
   // A parent Block's outer box includes its children, so hover its direct
   // content to reveal the correct dynamic handle. Keep that same connected node

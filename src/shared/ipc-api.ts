@@ -96,7 +96,11 @@ import type {
   LibraryAccessedDocumentDescriptor,
   ProjectAccessedDocumentDescriptor,
 } from "./block-documents/contracts";
-import type { BlockTransferCommandResult, BlockTransferUndoCommandResult } from "./block-transfer";
+import type {
+  BlockTransferCommandResult,
+  BlockTransferPresentationPlanResult,
+  BlockTransferUndoCommandResult,
+} from "./block-transfer";
 import type { ProjectionCursor } from "./projection-stream";
 import type {
   PublicBlockTransferIntent,
@@ -982,6 +986,10 @@ export interface IpcApi {
   "blocks:transfer": {
     args: [projectId: string, intent: PublicBlockTransferIntent];
     result: BlockTransferCommandResult;
+  };
+  "blocks:transfer:plan": {
+    args: [projectId: string, intent: PublicBlockTransferIntent];
+    result: BlockTransferPresentationPlanResult;
   };
   "blocks:transfer:undo": {
     args: [projectId: string, intent: PublicBlockTransferUndoIntent];

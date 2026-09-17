@@ -449,7 +449,7 @@ describe("Database List occurrence selection", () => {
 test("scroll restoration anchors canonical rows around temporary promotion slots", () => {
   const rows = [
     { kind: "page", key: "before", height: 44 },
-    { kind: "pending_promotion", key: "temporary", height: 32 },
+    { kind: "predicted_promotion", key: "temporary", height: 32 },
     { kind: "page", key: "after", height: 44 },
   ];
   expect(captureDatabaseListScrollAnchor(rows, 50)).toEqual({ rowKey: "after", intraRowOffset: 0 });
