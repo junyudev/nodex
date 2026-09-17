@@ -1,0 +1,31 @@
+crates/nodex-core/src/library/files/tests/canvas_bindings.rs
+  s_2c3b0224693d42::t_e164ca5901b29b 239-250,252
+  s_2c3b0224693d42::t_b1149097d6b6db 8,234-238,251,253-274,285-286
+  s_2c3b0224693d42::t_cc40ce6d4942bc 26-29,39-53,60-78,82-89,94-109,111-112,117-118,124-126,138-146,166-174,179-190,199-209,223-230,291-298,300-312
+  s_2c3b0224693d42::t_a708fbe062f71e 1-7,9-25,30-38,54-59,79-81,90-93,110,113-116,119-123,127-137,147-165,175-178,191-198,210-222,231-233,275-284,287-290,299,313-314
+crates/nodex-core/src/document/canvas.rs
+  s_2c3b0224693d42::t_9389918985f8f1 35
+crates/nodex-core/src/document/canvas_files.rs
+  s_2c3b0224693d42::t_b1149097d6b6db 49-50
+  s_2c3b0224693d42::t_9389918985f8f1 46-48,51-89,108-114,154,219-226
+docs/product-specs/canvas-behavior.md
+  s_2c3b0224693d42::t_9389918985f8f1 66-71
+crates/nodex-core/src/library/files.rs
+  s_2c3b0224693d42::t_a708fbe062f71e 436-437
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "5d3dad63cb7a8854a5681f2b59a7461bd922bd21",
+  "prompts": {},
+  "sessions": {
+    "s_2c3b0224693d42": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a0a7ec-8b04-7180-b74c-428533751042",
+        "model": "chatgpt-web/extra-high"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    }
+  }
+}
