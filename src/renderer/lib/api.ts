@@ -97,6 +97,7 @@ import type { AdditionalDocumentCommandResult } from "../../shared/additional-do
 import type { PublicAdditionalDocumentCommandRequest } from "../../shared/additional-document-command-transport";
 import type {
   BlockTransferCommandResult,
+  BlockTransferPresentationPlanResult,
   BlockTransferUndoCommandResult,
 } from "../../shared/block-transfer";
 import type {
@@ -669,6 +670,13 @@ export async function transferBlocks(
   intent: PublicBlockTransferIntent,
 ): Promise<BlockTransferCommandResult> {
   return await invokeLocalCommitCommandResult(blockTransferCommand, projectId, intent);
+}
+
+export function planBlockTransferPresentation(
+  projectId: string,
+  intent: PublicBlockTransferIntent,
+): Promise<BlockTransferPresentationPlanResult> {
+  return invokeRendererQuery("blocks:transfer:plan", projectId, intent);
 }
 
 export async function undoBlockTransfer(

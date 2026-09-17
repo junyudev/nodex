@@ -461,6 +461,20 @@ pub struct LibraryBlockTransferLogicalIntent {
     pub promotion_policy: LibraryPagePromotionPolicy,
 }
 
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize, ToSchema)]
+pub struct LibraryBlockTransferPresentationRoot {
+    pub source_block_id: String,
+    pub result_page_id: String,
+    pub transformation_kind: String,
+}
+
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize, ToSchema)]
+pub struct LibraryBlockTransferPresentationPlan {
+    pub operation_id: String,
+    pub mode: LibraryBlockTransferMode,
+    pub roots: Vec<LibraryBlockTransferPresentationRoot>,
+}
+
 /// Exact durable coordinates for a Document mutation fence.
 ///
 /// Structural owner mutations use the same coordinate shape as BlockTransfer:
@@ -854,6 +868,11 @@ pub enum LibraryRead {
     },
     StructuralHistoryStates {
         tokens: Vec<LibraryStructuralHistoryToken>,
+    },
+    BlockTransferPresentationPlan {
+        operation_id: String,
+        store_epoch: String,
+        intent: LibraryBlockTransferLogicalIntent,
     },
     ResourceProjectAccess {
         target: LibraryResourceTarget,
@@ -2792,6 +2811,9 @@ pub enum LibraryReadValue {
     },
     StructuralHistoryStates {
         items: Vec<LibraryStructuralHistoryState>,
+    },
+    BlockTransferPresentationPlan {
+        value: Box<LibraryBlockTransferPresentationPlan>,
     },
     Metadata {
         profile_id: String,

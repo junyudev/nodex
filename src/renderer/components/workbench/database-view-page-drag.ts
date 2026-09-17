@@ -159,11 +159,14 @@ export const useDatabaseViewPageDragSource = (
   options: {
     readonly dragHandle?: Element | null;
     readonly nativePreview?: "portal" | "source" | "disabled";
+    readonly onDragFinished?: () => void;
   } = {},
 ): DatabaseViewPageDragSourceRegistration => {
   const dragDataRef = useRef(dragData);
   const activeDragDataRef = useRef<BoardCardDragData | null>(null);
+  const onDragFinishedRef = useRef(options.onDragFinished);
   dragDataRef.current = dragData;
+  onDragFinishedRef.current = options.onDragFinished;
   const enabled = dragData !== null;
   const dragHandle = options.dragHandle ?? null;
   const nativePreview = options.nativePreview ?? "disabled";
@@ -178,9 +181,11 @@ export const useDatabaseViewPageDragSource = (
   useEffect(() => {
     if (!element || !enabled) return;
     const finish = (): void => {
+      const wasActive = activeDragDataRef.current !== null;
       element.removeAttribute("data-database-view-page-drag-active");
       dragHandle?.removeAttribute("data-database-view-page-drag-active");
       activeDragDataRef.current = null;
+      if (wasActive) onDragFinishedRef.current?.();
     };
     const setCopyMove = (event: DragEvent): void => {
       if (event.dataTransfer) event.dataTransfer.effectAllowed = "copyMove";

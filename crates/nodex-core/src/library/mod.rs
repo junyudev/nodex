@@ -426,6 +426,7 @@ impl LibraryModule {
             let library_id = self.library_id.clone();
             let context = context.clone();
             let page_search = self.page_search.clone();
+            let document_runtime_cache = self.document_runtime_cache.clone();
             return readers
                 .read_default(move |connection| {
                     let transaction = connection.unchecked_transaction()?;
@@ -463,6 +464,21 @@ impl LibraryModule {
                                 )?,
                             }
                         }
+                        LibraryRead::BlockTransferPresentationPlan {
+                            operation_id,
+                            store_epoch: expected_store_epoch,
+                            intent,
+                        } => LibraryReadValue::BlockTransferPresentationPlan {
+                            value: Box::new(block_transfer::plan_presentation(
+                                &transaction,
+                                document_runtime_cache.as_ref(),
+                                &context,
+                                &library_id,
+                                &operation_id,
+                                &expected_store_epoch,
+                                &intent,
+                            )?),
+                        },
                         LibraryRead::ResourceProjectAccess { target } => {
                             LibraryReadValue::ResourceProjectAccess {
                                 value: Box::new(resource_access::read(

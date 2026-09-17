@@ -1,4 +1,8 @@
 import { useDatabasePromotionPresentation } from "@/lib/database-promotion-presentation";
+import {
+  localStructuralTransactionPresentation,
+  useHiddenDatabasePageIds,
+} from "@/lib/local-structural-transaction-presentation";
 import { DatabasePromotionSlot } from "../database-promotion-slot";
 import { databaseListPromotionDisplay } from "./database-list-promotion-display";
 import {
@@ -413,6 +417,13 @@ export function DatabaseList({
   onRemovePageChatRelation,
 }: DatabaseListProps) {
   const mutationHistory = useDatabaseViewMutationHistory(model, providedMutationHistory);
+  const structuralProjectId =
+    model.accessContext.kind === "project" ? model.accessContext.projectId : "";
+  const hiddenStructuralPageIds = useHiddenDatabasePageIds({
+    projectId: structuralProjectId,
+    storeEpoch: model.storeEpoch,
+    dataSourceId: model.dataSourceId,
+  });
   const hostRef = useRef<HTMLDivElement | null>(null);
   const scrollerRef = useRef<HTMLDivElement | null>(null);
   const inFlightScopesRef = useRef(new Set<string>());
@@ -648,7 +659,16 @@ export function DatabaseList({
     authoritativeProjection,
     proofProjection,
   ]);
-  const projection = presented.model;
+  const projection = useMemo(
+    () =>
+      presented.model.filter(
+        (row) =>
+          row.kind !== "page" ||
+          (!hiddenStructuralPageIds.has(row.pageId) &&
+            !row.ancestorPageIds.some((pageId) => hiddenStructuralPageIds.has(pageId))),
+      ),
+    [hiddenStructuralPageIds, presented.model],
+  );
   const promotionPageIds = useMemo(
     () =>
       new Set(authoritativeProjection.flatMap((row) => (row.kind === "page" ? [row.pageId] : []))),
@@ -659,6 +679,17 @@ export function DatabaseList({
       new Set(coreWindow.rows.flatMap((row) => (row.kind === "page" ? [row.row.page.pageId] : []))),
     [coreWindow.rows],
   );
+  useLayoutEffect(() => {
+    const evidence = coreWindow.boundedRead;
+    if (!evidence || model.accessContext.kind !== "project") return;
+    localStructuralTransactionPresentation.observeDatabaseProjection({
+      projectId: model.accessContext.projectId,
+      storeEpoch: evidence.storeEpoch,
+      dataSourceId: model.dataSourceId,
+      commitSeq: evidence.commitSeq,
+      pageIds: new Set(evidence.pageIds),
+    });
+  }, [coreWindow.boundedRead, model.accessContext, model.dataSourceId]);
   const promotions = useDatabasePromotionPresentation({
     model,
     effective,
@@ -794,7 +825,7 @@ export function DatabaseList({
     [dndActive, overscan, displayProjection, scrollTop, viewportHeight],
   );
   const renderedRows = displayProjection.slice(virtualWindow.startIndex, virtualWindow.endIndex);
-  const mountedRows = renderedRows.filter((row) => row.kind !== "pending_promotion");
+  const mountedRows = renderedRows.filter((row) => row.kind !== "predicted_promotion");
   const mountedKeys = new Set(mountedRows.map((row) => row.key));
   useWorkbenchViewContent(workbenchContent, (request) => {
     const scroller = scrollerRef.current;
@@ -2033,13 +2064,9 @@ export function DatabaseList({
                   />
                 ) : null}
                 {renderedRows.map((item) => {
-                  if (item.kind === "pending_promotion")
+                  if (item.kind === "predicted_promotion")
                     return (
-                      <DatabasePromotionSlot
-                        key={item.key}
-                        slot={item}
-                        className="col-span-full h-8"
-                      />
+                      <DatabasePromotionSlot key={item.key} slot={item} className="col-span-full" />
                     );
                   const logicalIndex = projectionIndexByKey.get(item.key) ?? 0;
                   if (item.kind === "page") return renderPage(item, logicalIndex);

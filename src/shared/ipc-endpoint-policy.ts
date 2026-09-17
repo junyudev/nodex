@@ -89,6 +89,7 @@ type QueryEndpointPolicy =
   | "backup:list"
   | "backup:storage-optimization:get"
   | "block-document:owned:get"
+  | "blocks:transfer:plan"
   | "block-documents:history:get"
   | "block-documents:history:list"
   | "browser-annotation-capture-evidence"

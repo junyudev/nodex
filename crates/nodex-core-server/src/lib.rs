@@ -95,7 +95,7 @@ use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 use tokio::io::AsyncReadExt;
 use tokio::net::UnixListener;
-use tokio::sync::broadcast;
+use tokio::sync::{Notify, broadcast};
 use tracing::Instrument;
 
 use connections::{
@@ -231,7 +231,39 @@ struct ServerState {
     document_live_publisher: DocumentLivePublisher,
     metrics: ServerMetrics,
     request_executor: RequestExecutor,
+    order_maintenance_wake: ViewOrderMaintenanceWake,
     logging: logging::LoggingHandle,
+}
+
+#[derive(Default)]
+struct ViewOrderMaintenanceWake {
+    notify: Notify,
+}
+
+impl ViewOrderMaintenanceWake {
+    fn notify_if_recovery(&self, error: &CoreError) {
+        if matches!(
+            error.recovery,
+            CoreErrorRecovery::DatabaseViewOrderPreparation { .. }
+        ) {
+            self.notify.notify_one();
+        }
+    }
+
+    async fn wait_after_slice(&self, work_remaining: bool) {
+        if work_remaining {
+            tokio::time::sleep(Duration::from_millis(25)).await;
+            return;
+        }
+        tokio::select! {
+            _ = self.notify.notified() => {}
+            _ = tokio::time::sleep(Duration::from_secs(30)) => {}
+        }
+    }
+}
+
+fn wake_view_order_maintenance(state: &ServerState, error: &CoreError) {
+    state.order_maintenance_wake.notify_if_recovery(error);
 }
 
 /// A deliberately opaque notification that durable LocalCommit state may
@@ -350,6 +382,37 @@ mod commit_wake_tests {
         assert!(matches!(receiver.recv().await, Ok(CommitWake)));
         sender.send(CommitWake).expect("post-lag wake");
         assert!(matches!(receiver.recv().await, Ok(CommitWake)));
+    }
+}
+
+#[cfg(test)]
+mod view_order_maintenance_wake_tests {
+    use super::*;
+
+    #[tokio::test]
+    async fn preparation_recovery_wakes_an_idle_worker_without_the_poll_delay() {
+        let wake = Arc::new(ViewOrderMaintenanceWake::default());
+        let waiting = {
+            let wake = Arc::clone(&wake);
+            tokio::spawn(async move {
+                wake.wait_after_slice(false).await;
+            })
+        };
+        tokio::task::yield_now().await;
+
+        wake.notify_if_recovery(&CoreError {
+            code: CoreErrorCode::MaintenanceInProgress,
+            message: "View order is preparing".to_owned(),
+            retryable: true,
+            recovery: CoreErrorRecovery::DatabaseViewOrderPreparation {
+                view_id: "view:test".to_owned(),
+            },
+        });
+
+        tokio::time::timeout(Duration::from_millis(250), waiting)
+            .await
+            .expect("typed preparation recovery must wake the idle worker promptly")
+            .expect("maintenance waiter task");
     }
 }
 
@@ -1383,6 +1446,9 @@ async fn library_apply(
             )
         })
         .await;
+    if let Err(error) = &response {
+        wake_view_order_maintenance(&state, error);
+    }
     Json(LibraryApplyResponse(response_envelope(response)))
 }
 
@@ -1465,6 +1531,9 @@ async fn database_apply(
             )
         })
         .await;
+    if let Err(error) = &response {
+        wake_view_order_maintenance(&state, error);
+    }
     Json(DatabaseApplyResponse(response_envelope(response)))
 }
 
@@ -4052,6 +4121,7 @@ pub async fn run_with_selection(
         document_live_publisher,
         metrics: ServerMetrics::default(),
         request_executor: RequestExecutor::new(),
+        order_maintenance_wake: ViewOrderMaintenanceWake::default(),
         logging: logging_handle,
     });
     let idle_task = idle_timeout.map(|timeout| {
@@ -4118,12 +4188,13 @@ pub async fn run_with_selection(
             if let Err(error) = &result {
                 tracing::warn!(subsystem = "database_order", error = ?error, "View order preparation will retry");
             }
-            let delay = if matches!(result, Ok(true)) {
-                Duration::from_millis(25)
-            } else {
-                Duration::from_secs(30)
-            };
-            tokio::time::sleep(delay).await;
+            // A failed structural gesture can enqueue preparation while this worker is idle.
+            // Wake immediately for that known recovery path, while retaining the 30 second
+            // fallback for work that arrives without a request-side signal.
+            order_state
+                .order_maintenance_wake
+                .wait_after_slice(matches!(result, Ok(true)))
+                .await;
         }
     });
     let result = axum::serve(

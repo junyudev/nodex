@@ -648,6 +648,22 @@ autonomous presence scheduler.
 
 Before a structural command consumes a mounted Document's shape, the surface flushes pending durable updates and supplies an exact head token. Core rechecks the token while planning and applying the mutation. Ownership, membership, host-shell changes, Document updates, projections, and the receipt then commit atomically. Response loss is recovered by exact receipt replay or canonical synchronization, not by reconstructing the transaction in Electron.
 
+Cross-surface structural commands may publish one renderer-local predicted
+semantic revision as soon as command admission succeeds. That revision can hide
+the moved source and project the final target shape before source fencing or the
+durable receipt, but it never writes SQLite or a collaborative Document. When a
+generated Page identity is needed, a read-only Core planner derives it through
+the same deterministic transfer rules used by commit. Presentation ownership is
+operation-scoped and Page-scoped: newer structural intent supersedes older
+visible ownership, deterministic rejection rolls back only still-owned
+prediction, and unknown outcome keeps the exact operation alive until receipt or
+canonical evidence resolves it. The durable receipt normally confirms the
+already-visible result and retires prediction only after the owning bounded
+projection materializes it. Transient bounded-window coordinates are proof
+inputs, not presentation-owner identity, so pagination or refresh cannot revoke
+an admitted prediction before the same visible consumer commits its canonical
+handoff frame.
+
 Any editor selection containing an owning Page, Canvas, or Database is one Library structural edit; the complete selected forest and ownership closure stay outside generic Document mutation. Core owns delete, clipboard capture/paste, duplicate, move, retention, and forward-inverse recipes. Native clipboard data carries a bounded private routing descriptor plus standard portable presentation, never the ownership closure; only Core's durable capability and cut claim authorize structural materialization or an identity-preserving move. Main coordinates the ephemeral cross-window lifecycle without becoming semantic authority. A destination freezes its stable target intent and sanitized fallback before waiting, then fences the current Document immediately before commit, so selection drift cannot redirect Paste. Each editor surface merges structural tokens with its own local Yjs history in user-action order and releases tokens when they leave reachable history. The user-visible contract is [NFM Editor Structural Editing Behavior](product-specs/nfm-editor-structural-editing-behavior.md), and the ownership decisions are [ADR 0048](adr/0048-typed-owner-structural-editing.md) and [ADR 0053](adr/0053-structural-clipboard-private-protocol-and-host-lifecycle.md).
 
 When a structural commit invalidates collaborative addresses, its durable

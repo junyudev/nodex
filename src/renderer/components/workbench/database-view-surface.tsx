@@ -1,4 +1,8 @@
 import { useDatabasePromotionPresentation } from "@/lib/database-promotion-presentation";
+import {
+  localStructuralTransactionPresentation,
+  useHiddenDatabasePageIds,
+} from "@/lib/local-structural-transaction-presentation";
 import { insertDatabasePromotionSlots } from "@/lib/database-promotion-display";
 import { DatabasePromotionSlot } from "./database-promotion-slot";
 import {
@@ -424,6 +428,13 @@ function BoardDatabaseViewSurface({
     canonicalModel ?? model,
   );
   const mutationModel = presentationOwner.model;
+  const structuralProjectId =
+    model.accessContext.kind === "project" ? model.accessContext.projectId : "";
+  const hiddenStructuralPageIds = useHiddenDatabasePageIds({
+    projectId: structuralProjectId,
+    storeEpoch: model.storeEpoch,
+    dataSourceId: model.dataSourceId,
+  });
   const promotionPageIds = useMemo(
     () => new Set(mutationModel.query.rows.map((row) => row.page.pageId)),
     [mutationModel.query.rows],
@@ -432,6 +443,17 @@ function BoardDatabaseViewSurface({
     () => new Set(canonicalMutationModel.query.rows.map((row) => row.page.pageId)),
     [canonicalMutationModel.query.rows],
   );
+  useEffect(() => {
+    const evidence = canonicalMutationModel.boundedRead;
+    if (!evidence || model.accessContext.kind !== "project") return;
+    localStructuralTransactionPresentation.observeDatabaseProjection({
+      projectId: model.accessContext.projectId,
+      storeEpoch: evidence.storeEpoch,
+      dataSourceId: model.dataSourceId,
+      commitSeq: evidence.commitSeq,
+      pageIds: new Set(evidence.pageIds),
+    });
+  }, [canonicalMutationModel.boundedRead, model.accessContext, model.dataSourceId]);
   const promotions = useDatabasePromotionPresentation({
     model: canonicalMutationModel,
     effective: effectivePresentation,
@@ -466,18 +488,20 @@ function BoardDatabaseViewSurface({
         ...column,
         rows:
           compiledSearchQuery.normalizedQuery.length === 0
-            ? column.rows
-            : column.rows.filter((row) =>
-                matchesPageCollectionSearchQuery(
-                  row.pageKey,
-                  normalizeSearchText(
-                    `${row.title} ${row.preview} ${row.plainText} ${searchablePropertyValues(mutationModel, row.pageId, optionRegistries)}`,
+            ? column.rows.filter((row) => !hiddenStructuralPageIds.has(row.pageId))
+            : column.rows.filter(
+                (row) =>
+                  !hiddenStructuralPageIds.has(row.pageId) &&
+                  matchesPageCollectionSearchQuery(
+                    row.pageKey,
+                    normalizeSearchText(
+                      `${row.title} ${row.preview} ${row.plainText} ${searchablePropertyValues(mutationModel, row.pageId, optionRegistries)}`,
+                    ),
+                    compiledSearchQuery,
                   ),
-                  compiledSearchQuery,
-                ),
               ),
       })),
-    [compiledSearchQuery, mutationModel, optionRegistries, presentation],
+    [compiledSearchQuery, hiddenStructuralPageIds, mutationModel, optionRegistries, presentation],
   );
   const groupProperty =
     model.query.properties.find(

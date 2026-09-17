@@ -10,6 +10,7 @@ import {
   BOARD_DENSE_PRIMARY_PAGE_KEY,
   BOARD_DENSE_SCENARIO_ID,
 } from "../../scripts/scenarios/scenarios/board-dense";
+import { dragBlockFromEditorWithMouse } from "./support/drag-block-with-mouse";
 
 const primaryShortcut = (key: string): string =>
   `${process.platform === "darwin" ? "Meta" : "Control"}+${key}`;
@@ -421,6 +422,208 @@ test("moves Board cards and List rows into NFM as real Page blocks", async () =>
         { timeout: 15_000 },
       );
       await expect(listSource).toHaveCount(0, { timeout: 15_000 });
+    },
+  );
+});
+
+test("round-trips a Board Page through a Subpage without stale presentation", async ({}, testInfo) => {
+  test.setTimeout(120_000);
+  await withElectronScenario(
+    {
+      label: "database-view-page-to-editor",
+      scenarioId: BOARD_DENSE_SCENARIO_ID,
+    },
+    async ({ application, page, manifest }) => {
+      if (!manifest) throw new Error("board/dense did not materialize");
+      await application.evaluate(({ BrowserWindow }) => {
+        BrowserWindow.getAllWindows()[0]?.setBounds({ x: 0, y: 0, width: 1440, height: 960 });
+      });
+      await focusBoardDenseUi(page, manifest);
+      await page
+        .locator('[data-page-stage-surface="true"]:visible')
+        .getByRole("link", { name: "Open projection notes" })
+        .click();
+      await expect(
+        page.getByRole("tab", { name: "Keep projection updates bounded" }),
+      ).toHaveAttribute("aria-selected", "true");
+      const referenceTab = page.getByRole("tab", { name: "Keep projection updates bounded" });
+      await referenceTab.dblclick();
+      await expect(referenceTab).not.toHaveAttribute("data-app-shell-tab-preview", "true");
+      await referenceTab.click({ button: "right" });
+      await page.getByRole("menuitem", { name: /^Move to (?:right|bottom) panel$/u }).click();
+      await page.getByRole("tab", { name: "Project Home" }).click();
+
+      const primaryPageId = manifest.pageIdsByKey.boundedProjection;
+      const boardSourcePageId = manifest.pageIdsByKey.offlineRecovery;
+      if (!primaryPageId || !boardSourcePageId) {
+        throw new Error("board/dense Page transfer fixtures are missing");
+      }
+      const editor = page
+        .locator(`[data-page-stage-page-id="${primaryPageId}"]:visible .nfm-editor`)
+        .first();
+      await expect(editor).toBeVisible();
+
+      const boardSource = page.locator(`[data-board-uuid-v7="${boardSourcePageId}"]:visible`);
+      await expect(boardSource).toBeVisible();
+      const boardSourceTitle = (
+        await boardSource.locator('[data-database-view-page-open="true"]').first().textContent()
+      )?.trim();
+      if (!boardSourceTitle) throw new Error("Board Page title is missing");
+      await dragDatabasePageToEditorWithMouse({ page, source: boardSource, editor });
+      await expect(
+        editor.locator(`[data-page-outliner-target="${boardSourcePageId}"]`),
+      ).toBeVisible({ timeout: 15_000 });
+      await expect(page.locator(`[data-board-uuid-v7="${boardSourcePageId}"]`)).toHaveCount(0, {
+        timeout: 15_000,
+      });
+
+      const subpageBlock = editor.locator(`.bn-block[data-id="${boardSourcePageId}"]`);
+      await expect(subpageBlock).toBeVisible({ timeout: 30_000 });
+      const triageColumn = page.locator(
+        '[data-board-column-root][data-board-column-id="triage"]:visible',
+      );
+      await page.evaluate(
+        ({ pageId }) => {
+          type RoundTripSample = {
+            readonly at: number;
+            readonly predictedText: string | null;
+            readonly canonicalText: string | null;
+            readonly canonicalOpacity: string | null;
+            readonly canonicalClassName: string | null;
+            readonly canonicalAriaSelected: string | null;
+            readonly canonicalDragActive: string | null;
+          };
+          const state = {
+            samples: [] as RoundTripSample[],
+            predictedTextsSeen: [] as string[],
+            dropped: false,
+            settled: false,
+            stableCanonicalFrames: 0,
+          };
+          (
+            globalThis as typeof globalThis & {
+              __nodexSubpageBoardRoundTrip?: typeof state;
+            }
+          ).__nodexSubpageBoardRoundTrip = state;
+
+          const recordPredictedNode = (node: Node): void => {
+            if (!state.dropped || !(node instanceof Element)) return;
+            const candidates = [
+              ...(node.matches(`[data-predicted-page="${pageId}"]`) ? [node] : []),
+              ...node.querySelectorAll(`[data-predicted-page="${pageId}"]`),
+            ];
+            for (const candidate of candidates) {
+              const text = candidate.textContent?.trim();
+              if (text) state.predictedTextsSeen.push(text);
+            }
+          };
+          const observer = new MutationObserver((mutations) => {
+            for (const mutation of mutations) {
+              if (mutation.type !== "childList") continue;
+              mutation.addedNodes.forEach(recordPredictedNode);
+            }
+          });
+          observer.observe(document.body, { childList: true, subtree: true });
+
+          const sample = (): void => {
+            if (!state.dropped || state.settled) {
+              requestAnimationFrame(sample);
+              return;
+            }
+            const predicted = document.querySelector<HTMLElement>(
+              `[data-predicted-page="${pageId}"]`,
+            );
+            const canonical = document.querySelector<HTMLElement>(
+              `[data-board-uuid-v7="${pageId}"]`,
+            );
+            state.samples.push({
+              at: performance.now(),
+              predictedText: predicted?.textContent?.trim() ?? null,
+              canonicalText: canonical?.textContent?.trim() ?? null,
+              canonicalOpacity: canonical ? getComputedStyle(canonical).opacity : null,
+              canonicalClassName: canonical?.className ?? null,
+              canonicalAriaSelected: canonical?.getAttribute("aria-selected") ?? null,
+              canonicalDragActive:
+                canonical?.getAttribute("data-database-view-page-drag-active") ?? null,
+            });
+            state.stableCanonicalFrames =
+              canonical && !predicted ? state.stableCanonicalFrames + 1 : 0;
+            if (state.stableCanonicalFrames >= 4) {
+              state.settled = true;
+              observer.disconnect();
+              return;
+            }
+            requestAnimationFrame(sample);
+          };
+          document.addEventListener(
+            "drop",
+            () => {
+              state.dropped = true;
+            },
+            { capture: true, once: true },
+          );
+          requestAnimationFrame(sample);
+        },
+        { pageId: boardSourcePageId },
+      );
+
+      await dragBlockFromEditorWithMouse({
+        page,
+        sourceBlock: subpageBlock,
+        sourceEditor: editor,
+        target: triageColumn,
+      });
+      await expect
+        .poll(
+          async () =>
+            page.evaluate(
+              () =>
+                (
+                  globalThis as typeof globalThis & {
+                    __nodexSubpageBoardRoundTrip?: { readonly settled: boolean };
+                  }
+                ).__nodexSubpageBoardRoundTrip?.settled ?? false,
+            ),
+          { timeout: 15_000 },
+        )
+        .toBe(true);
+      const roundTrip = await page.evaluate(
+        () =>
+          (
+            globalThis as typeof globalThis & {
+              __nodexSubpageBoardRoundTrip?: {
+                readonly predictedTextsSeen: readonly string[];
+                readonly samples: ReadonlyArray<{
+                  readonly at: number;
+                  readonly predictedText: string | null;
+                  readonly canonicalText: string | null;
+                  readonly canonicalOpacity: string | null;
+                  readonly canonicalClassName: string | null;
+                  readonly canonicalAriaSelected: string | null;
+                  readonly canonicalDragActive: string | null;
+                }>;
+              };
+            }
+          ).__nodexSubpageBoardRoundTrip ?? { predictedTextsSeen: [], samples: [] },
+      );
+      await testInfo.attach("subpage-board-round-trip-frames", {
+        body: JSON.stringify(roundTrip, null, 2),
+        contentType: "application/json",
+      });
+      expect(roundTrip.predictedTextsSeen).not.toContain("Untitled");
+      if (roundTrip.predictedTextsSeen.length > 0) {
+        expect(roundTrip.predictedTextsSeen).toContain(boardSourceTitle);
+      }
+      const canonicalFrames = roundTrip.samples.filter(
+        (sample) => sample.canonicalOpacity !== null,
+      );
+      expect(canonicalFrames.length).toBeGreaterThan(0);
+      expect(canonicalFrames.map((sample) => sample.canonicalOpacity)).toEqual(
+        canonicalFrames.map(() => "1"),
+      );
+      await expect(page.locator(`[data-board-uuid-v7="${boardSourcePageId}"]`)).toContainText(
+        boardSourceTitle,
+      );
     },
   );
 });

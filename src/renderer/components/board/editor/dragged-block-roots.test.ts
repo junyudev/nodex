@@ -1,5 +1,9 @@
 import { describe, expect, test } from "vite-plus/test";
-import { resolveTopLevelDraggedBlocks, type DraggableEditorBlock } from "./dragged-block-roots";
+import {
+  resolveDraggedBlockPromotionTitle,
+  resolveTopLevelDraggedBlocks,
+  type DraggableEditorBlock,
+} from "./dragged-block-roots";
 
 describe("dragged Block roots", () => {
   test("does not duplicate a selected descendant", () => {
@@ -27,5 +31,29 @@ describe("dragged Block roots", () => {
         [root.id, child.id],
       ).map((block) => block.id),
     ).toEqual([root.id]);
+  });
+
+  test("uses Page authority for a Page shell promotion title", () => {
+    const page: DraggableEditorBlock = {
+      id: "page-1",
+      type: "page",
+    };
+
+    expect(resolveDraggedBlockPromotionTitle(page, () => "Owned Page title")).toBe(
+      "Owned Page title",
+    );
+    expect(resolveDraggedBlockPromotionTitle(page, () => null)).toBe("Untitled");
+  });
+
+  test("keeps ordinary Block promotion titles inline", () => {
+    const paragraph: DraggableEditorBlock = {
+      id: "paragraph-1",
+      type: "paragraph",
+      content: [{ type: "text", text: "Inline " }, { label: "title" }],
+    };
+
+    expect(resolveDraggedBlockPromotionTitle(paragraph, () => "Wrong Page title")).toBe(
+      "Inline title",
+    );
   });
 });

@@ -627,7 +627,7 @@ export const captureDatabaseListScrollAnchor = (
   let offset = 0;
   let last: (typeof rows)[number] | undefined;
   for (const row of rows) {
-    if (row.kind === "pending_promotion") {
+    if (row.kind === "predicted_promotion") {
       offset += row.height;
       continue;
     }

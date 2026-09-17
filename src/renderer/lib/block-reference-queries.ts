@@ -1,5 +1,5 @@
 import { useEffect } from "react";
-import { hashKey, useQuery, useQueryClient } from "@tanstack/react-query";
+import { hashKey, useQuery, useQueryClient, type QueryClient } from "@tanstack/react-query";
 import type { PageTargetReadModel } from "../../shared/page-targets";
 import type { PageOwnershipPathReadModel } from "../../shared/page-ownership-paths";
 import type { DatabaseViewReadModel } from "../../shared/database-views";
@@ -64,6 +64,15 @@ const pageTargetQueryOptions = (accessContext: ContentAccessContext, targetBlock
     meta: resourceAuthorityQueryMeta(resolveReferenceAuthority),
   };
 };
+
+export const readCachedPageTargetReadModel = (
+  queryClient: Pick<QueryClient, "getQueryData">,
+  accessContext: ContentAccessContext,
+  targetPageId: string,
+): PageTargetReadModel | null =>
+  queryClient.getQueryData<PageTargetReadModel>(
+    queryKeys.pageTargets.byId(accessContext, targetPageId),
+  ) ?? null;
 
 const useProjectionQueryRefresh = (input: {
   readonly scope: ProjectionScope | null;

@@ -599,6 +599,25 @@ export const live: Layer.Layer<
       },
     );
 
+    yield* ipc.handleQuery(
+      "blocks:transfer:plan",
+      (event, projectId: string, rawIntent: IpcApi["blocks:transfer:plan"]["args"][1]) => {
+        const identity = trustedIdentity(event);
+        if (!identity) {
+          return Effect.succeed({
+            ok: false as const,
+            error: blockTransferFailure(
+              "invalid_transfer_request",
+              "Block transfer planning is restricted to a trusted application window",
+            ),
+          });
+        }
+        const bound = bindBlockTransferIntent(rawIntent, projectId, identity);
+        if (!bound.ok) return Effect.succeed(bound);
+        return documents.planBlockTransfer(bound.value);
+      },
+    );
+
     yield* ipc.handleLocalCommitCommand(
       "blocks:transfer",
       (event, projectId: string, rawIntent: IpcApi["blocks:transfer"]["args"][1]) => {

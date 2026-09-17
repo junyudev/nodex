@@ -16,6 +16,7 @@ import {
   type Ref,
   type MouseEvent as ReactMouseEvent,
 } from "react";
+import { useQueryClient } from "@tanstack/react-query";
 import { SideMenuController, type LinkToolbarProps } from "@blocknote/react";
 import { BlockNoteView } from "@blocknote/shadcn";
 import { useSurfaceHistoryFocus } from "@/lib/surface-history/use-surface-history-focus";
@@ -54,7 +55,11 @@ import {
   beginLocalBlockDragSession,
   endLocalBlockDragSession,
 } from "../../workbench/block-transfer/cross-surface-drag";
-import { resolveTopLevelDraggedBlocks } from "./dragged-block-roots";
+import {
+  resolveDraggedBlockPromotionTitle,
+  resolveTopLevelDraggedBlocks,
+} from "./dragged-block-roots";
+import { readCachedPageTargetReadModel } from "@/lib/block-reference-queries";
 import { previewTaskShorthandInlineContent } from "@/lib/task-shorthand-preview";
 import type { CodexPromptInput } from "@/lib/types";
 import { NfmSlashMenu } from "./nfm-slash-menu";
@@ -469,6 +474,7 @@ function NfmEditorInstance({
   onEditorViewUnmount,
   editorSession,
 }: NfmEditorInstanceProps) {
+  const queryClient = useQueryClient();
   const executionProjectId = projectIdFromContentAccessContext(contentAccessContext);
   const parentBlockReferenceRuntime = useBlockReferenceHostRuntime();
   const { resolved: themeMode } = useTheme();
@@ -2259,6 +2265,17 @@ function NfmEditorInstance({
                 ? "structural"
                 : block.type,
           ),
+          promotionPreviews: roots.map((block) => ({
+            rootBlockId: block.id,
+            title: resolveDraggedBlockPromotionTitle(block, (pageId) => {
+              const target = readCachedPageTargetReadModel(
+                queryClient,
+                contentAccessContext,
+                pageId,
+              );
+              return target?.status === "available" ? target.page.title : null;
+            }),
+          })),
           taskShorthandPreviewHints: roots.flatMap((block) => {
             const content = (block as { readonly content?: unknown }).content;
             const preview = previewTaskShorthandInlineContent(content);
@@ -2277,7 +2294,7 @@ function NfmEditorInstance({
         dataTransfer,
       );
     },
-    [editor, executionProjectId, source, sourcePageContext],
+    [contentAccessContext, editor, executionProjectId, queryClient, source, sourcePageContext],
   );
   const handleBlockDragEnd = useCallback(
     () => endLocalBlockDragSession({ sourceSurfaceId: source.clientSessionId }),

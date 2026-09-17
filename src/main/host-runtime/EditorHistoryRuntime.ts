@@ -337,6 +337,10 @@ export const live: Layer.Layer<
             while (true) {
               const outcome = yield* send.pipe(Effect.catch(() => Effect.succeed(null)));
               if (outcome && (outcome.ok || outcome.error.code !== "unknown")) {
+                if (!outcome.ok && outcome.error.code === "view_order_preparing") {
+                  yield* Effect.sleep(25);
+                  continue;
+                }
                 yield* Deferred.succeed(result, outcome);
                 return;
               }

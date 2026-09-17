@@ -277,6 +277,16 @@ generation as well as its covered floor, which rejects reads started before a
 same-floor reset. This is a client consistency guarantee, not a
 replacement for Core's read authorization.
 
+An admitted cross-surface structural command may also own one ephemeral local
+semantic prediction. The renderer can immediately project source removal and
+the final target shape while Core remains the only durable ownership authority.
+Generated Page identities come from a read-only Core transfer plan that reuses
+the commit planner. Prediction is fenced by the durable operation identity and
+affected Page identities: a newer operation permanently supersedes older visible
+ownership for the same Page, deterministic rejection rolls back only still-owned
+prediction, and an unknown outcome keeps the same operation and projection until
+receipt or canonical evidence resolves it.
+
 Structural commands can still return a retryable revision conflict when a
 mounted provider changes after its barrier or when an unmounted target changes
 before Core applies the command. This is intentional: the command never
@@ -288,9 +298,11 @@ or UI freeze is needed for the normal commit path.
 - Wait for the SSE tailer or projection callback before resolving apply. This
   makes a durable local commit look remote and couples command latency to
   renderer fanout.
-- Let each renderer optimistically mutate Board membership and Page ownership.
-  This duplicates the SQLite authority and cannot reconcile ownership/body
-  transactions safely.
+- Let each renderer independently invent durable membership, Page ownership, or
+  generated identities. This duplicates SQLite/Core authority and cannot safely
+  reconcile ownership/body transactions. Renderer-local predicted presentation
+  is permitted only when it is operation-scoped, non-durable, supersedable, and
+  reconciled against Core receipts and canonical projections.
 - Use only `max(commit_seq)` as a dedupe cursor. An out-of-order N+1 delivery
   would cause N to be discarded even though it may affect another Document or
   projection.

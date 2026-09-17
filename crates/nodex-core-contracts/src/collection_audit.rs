@@ -180,6 +180,7 @@ fn library_policy(read: &LibraryRead) -> ReadBudgetPolicy {
             ReadBudgetPolicy::FixedDomain
         }
         LibraryRead::StructuralHistoryStates { .. }
+        | LibraryRead::BlockTransferPresentationPlan { .. }
         | LibraryRead::ProjectPageSearch { .. }
         | LibraryRead::ProjectPageSearchFacets { .. }
         | LibraryRead::ProjectPageSearchMetadata { .. }

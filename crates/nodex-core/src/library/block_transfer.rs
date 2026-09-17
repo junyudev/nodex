@@ -11,6 +11,7 @@ use nodex_core_contracts::library::{
     LibraryBlockLocation, LibraryBlockTransferDataSourcePlacement,
     LibraryBlockTransferDocumentCommit, LibraryBlockTransferDocumentHead,
     LibraryBlockTransferLogicalIntent, LibraryBlockTransferMode,
+    LibraryBlockTransferPresentationPlan, LibraryBlockTransferPresentationRoot,
     LibraryBlockTransferPromotionEvidence, LibraryBlockTransferResult, LibraryBlockTransferSource,
     LibraryBlockTransferTarget, LibraryBlockTransferTransformationEvidence,
     LibraryBlockTransferUndoResult, LibraryBlockTransferUndoToken, LibraryCommitValue,
@@ -72,6 +73,7 @@ use super::mutation::{
 };
 use super::page_copy::{
     PageCopyParentDocumentMode, execute_page_copy, page_copy_closure_document_heads,
+    preview_page_copy,
 };
 
 const MODULE_NAME: &str = "library";
@@ -931,6 +933,185 @@ pub(super) fn prepare_for_apply(
     prepare_transfer(connection, context, library_id, operation_id, intent, cache)
         .map(Box::new)
         .map(PreparedBlockTransfer::Ordinary)
+}
+
+/// Derives the Page identities that a structural transfer will present without
+/// resolving target placement or mutating durable state. Renderer prediction
+/// uses this read-only plan so generated wrapper/copy identities stay owned by
+/// the same Core algorithms as the eventual commit.
+pub(super) fn plan_presentation(
+    connection: &Connection,
+    cache: Option<&Arc<Mutex<crate::document::DocumentRuntimeCache>>>,
+    context: &BoundModuleContext,
+    library_id: &str,
+    operation_id: &str,
+    store_epoch: &str,
+    intent: &LibraryBlockTransferLogicalIntent,
+) -> Result<LibraryBlockTransferPresentationPlan, StoreError> {
+    check_request_interruption()?;
+    validate_id(operation_id, "operation_id")?;
+    validate_intent(library_id, intent)?;
+    let current_epoch = crate::document::read_store_epoch(connection)?;
+    if current_epoch != store_epoch {
+        return Err(StoreError::new(
+            StoreErrorCode::StaleStoreEpoch,
+            "Block transfer presentation plan targets a stale store epoch",
+            true,
+        ));
+    }
+    validate_causal_dependencies(connection, context, store_epoch, intent)?;
+
+    let project_id = bound_project_id(context)?;
+    if uses_page_ownership_parent_compiler(connection, intent)? {
+        let mut roots = Vec::with_capacity(intent.root_block_ids.len());
+        for page_id in &intent.root_block_ids {
+            check_request_interruption()?;
+            let document_id = connection
+                .query_row(
+                    "SELECT page.document_id FROM pages page \
+                     JOIN blocks block ON block.id = page.block_id AND block.library_id = page.library_id \
+                     WHERE page.block_id = ?1 AND page.library_id = ?2 \
+                       AND block.type = 'page' AND block.lifecycle = 'active'",
+                    params![page_id, library_id],
+                    |row| row.get::<_, String>(0),
+                )
+                .optional()?
+                .ok_or_else(|| invalid("Page ownership transfer requires Page roots"))?;
+            require_transfer_authority(
+                connection,
+                library_id,
+                project_id,
+                &document_id,
+                Some(page_id),
+                match intent.mode {
+                    LibraryBlockTransferMode::Move => TransferDocumentAccess::Write,
+                    LibraryBlockTransferMode::Copy => TransferDocumentAccess::Read,
+                },
+            )?;
+            let result_page_id = match intent.mode {
+                LibraryBlockTransferMode::Move => page_id.clone(),
+                LibraryBlockTransferMode::Copy => {
+                    preview_page_copy(connection, operation_id, library_id, page_id, &document_id)?
+                        .page_id
+                }
+            };
+            roots.push(LibraryBlockTransferPresentationRoot {
+                source_block_id: page_id.clone(),
+                result_page_id,
+                transformation_kind: match intent.mode {
+                    LibraryBlockTransferMode::Move => "page".to_owned(),
+                    LibraryBlockTransferMode::Copy => "page_copy".to_owned(),
+                },
+            });
+        }
+        return Ok(LibraryBlockTransferPresentationPlan {
+            operation_id: operation_id.to_owned(),
+            mode: intent.mode,
+            roots,
+        });
+    }
+
+    let source_page_id = match &intent.source {
+        LibraryBlockTransferSource::Page { page_id } => Some(page_id.as_str()),
+        _ => None,
+    };
+    let source_document_id = resolve_source_document(connection, library_id, &intent.source)?;
+    let source_authority = require_transfer_authority(
+        connection,
+        library_id,
+        project_id,
+        &source_document_id,
+        source_page_id,
+        match intent.mode {
+            LibraryBlockTransferMode::Move => TransferDocumentAccess::Write,
+            LibraryBlockTransferMode::Copy => TransferDocumentAccess::Read,
+        },
+    )?;
+    let source_schema = require_schema(&source_authority)?;
+    let (source_engine, _) = clone_runtime_engine(connection, &source_authority.head, cache)?;
+    let source_decoded = decode_block_document(source_engine.document(), source_schema)
+        .map_err(|error| corrupt(error.to_string()))?;
+    let source_materialization = materialize_decoded_document(&source_decoded)
+        .map_err(|error| corrupt(error.to_string()))?;
+    let source_forest = crate::domain::subtree::capture_block_subtree_forest(
+        &source_decoded.block_tree,
+        &intent.root_block_ids,
+    )
+    .map_err(|error| invalid(error.to_string()))?;
+    for block_id in &source_forest.block_ids {
+        if is_typed_resource(connection, block_id)? {
+            return Err(invalid(
+                "Page ownership roots use the recursive Page transfer planner",
+            ));
+        }
+    }
+
+    let mut roots = Vec::with_capacity(source_forest.roots.len());
+    for source_root in &source_forest.roots {
+        check_request_interruption()?;
+        let materialized = find_materialized_block(
+            &source_materialization.block_tree,
+            &source_root.root_block_id,
+        )
+        .ok_or_else(|| corrupt("Selected Block is absent from its materialization"))?;
+        roots.push(plan_page_parent_presentation_root(
+            operation_id,
+            intent.mode,
+            &source_root.root_block_id,
+            &source_root.block_ids,
+            &materialized,
+        )?);
+    }
+
+    Ok(LibraryBlockTransferPresentationPlan {
+        operation_id: operation_id.to_owned(),
+        mode: intent.mode,
+        roots,
+    })
+}
+
+fn plan_page_parent_presentation_root(
+    operation_id: &str,
+    mode: LibraryBlockTransferMode,
+    source_root_id: &str,
+    source_block_ids: &[String],
+    materialized: &MaterializedBlockNode,
+) -> Result<LibraryBlockTransferPresentationRoot, StoreError> {
+    let source_to_result_block_ids = source_block_ids
+        .iter()
+        .map(|source_id| {
+            let result_id = if mode == LibraryBlockTransferMode::Copy {
+                stable_uuid_v7(operation_id, "block_transfer", source_id)
+            } else {
+                source_id.clone()
+            };
+            (source_id.clone(), result_id)
+        })
+        .collect::<BTreeMap<_, _>>();
+    let result_root = remap_materialized_block(materialized, &source_to_result_block_ids)?;
+    let result_root_id = source_to_result_block_ids
+        .get(source_root_id)
+        .ok_or_else(|| corrupt("Block transfer presentation plan omitted its result root"))?;
+    let wrapper_page_id = stable_uuid_v7(operation_id, "block_transfer_wrapper", source_root_id);
+    let empty_body_block_id =
+        stable_uuid_v7(operation_id, "block_transfer_page_body", source_root_id);
+    let transformation = plan_block_to_page_transformation(
+        &result_root,
+        result_root_id,
+        &wrapper_page_id,
+        &empty_body_block_id,
+    )
+    .map_err(|error| invalid(error.to_string()))?;
+    let (result_page_id, transformation_kind) = match transformation {
+        BlockToPageTransformation::Promote { page_id, .. } => (page_id, "promote"),
+        BlockToPageTransformation::Wrap { page_id, .. } => (page_id, "wrap"),
+        BlockToPageTransformation::AlreadyPage { page_id } => (page_id, "page"),
+    };
+    Ok(LibraryBlockTransferPresentationRoot {
+        source_block_id: source_root_id.to_owned(),
+        result_page_id,
+        transformation_kind: transformation_kind.to_owned(),
+    })
 }
 
 #[derive(Clone, Copy)]
@@ -7229,6 +7410,68 @@ mod tests {
             content: Some(json!([])),
             children,
         }
+    }
+
+    #[test]
+    fn presentation_planner_uses_commit_identities_without_mutating_source_blocks() {
+        let operation_id = "0199-structural-presentation";
+        let paragraph = materialized_block("paragraph-root", "paragraph", Vec::new());
+        let original = paragraph.clone();
+        let paragraph_ids = vec![paragraph.id.clone()];
+
+        let moved = plan_page_parent_presentation_root(
+            operation_id,
+            LibraryBlockTransferMode::Move,
+            &paragraph.id,
+            &paragraph_ids,
+            &paragraph,
+        )
+        .expect("promotable move plan");
+        assert_eq!(moved.result_page_id, paragraph.id);
+        assert_eq!(moved.transformation_kind, "promote");
+
+        let copied = plan_page_parent_presentation_root(
+            operation_id,
+            LibraryBlockTransferMode::Copy,
+            &paragraph.id,
+            &paragraph_ids,
+            &paragraph,
+        )
+        .expect("promotable copy plan");
+        assert_eq!(
+            copied.result_page_id,
+            stable_uuid_v7(operation_id, "block_transfer", &paragraph.id)
+        );
+        assert_eq!(copied.transformation_kind, "promote");
+        assert_eq!(
+            plan_page_parent_presentation_root(
+                operation_id,
+                LibraryBlockTransferMode::Copy,
+                &paragraph.id,
+                &paragraph_ids,
+                &paragraph,
+            )
+            .expect("repeat copy plan"),
+            copied
+        );
+        assert_eq!(paragraph, original);
+
+        let wrapped = materialized_block("code-root", "codeBlock", Vec::new());
+        let wrapped_ids = vec![wrapped.id.clone()];
+        let wrapped_plan = plan_page_parent_presentation_root(
+            operation_id,
+            LibraryBlockTransferMode::Move,
+            &wrapped.id,
+            &wrapped_ids,
+            &wrapped,
+        )
+        .expect("wrapped move plan");
+        assert_eq!(
+            wrapped_plan.result_page_id,
+            stable_uuid_v7(operation_id, "block_transfer_wrapper", &wrapped.id)
+        );
+        assert_ne!(wrapped_plan.result_page_id, wrapped.id);
+        assert_eq!(wrapped_plan.transformation_kind, "wrap");
     }
 
     #[test]

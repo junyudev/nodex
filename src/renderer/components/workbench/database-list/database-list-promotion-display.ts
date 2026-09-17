@@ -25,4 +25,6 @@ export const databaseListPromotionDisplay = (
         candidate > index && (row.kind !== "page" || !row.ancestorPageIds.includes(parent.pageId)),
     );
     return after < 0 ? rows.length : after;
-  }).map((row) => (row.kind === "pending_promotion" ? { ...row, height: 32 } : row));
+  }).map((row) =>
+    row.kind === "predicted_promotion" ? { ...row, height: Math.max(row.count, 1) * 40 } : row,
+  );

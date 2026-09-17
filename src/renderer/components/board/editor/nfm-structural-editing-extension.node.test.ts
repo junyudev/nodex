@@ -387,11 +387,13 @@ describe("NFM structural editing session", () => {
         await session.whenIdle();
         const pending = receiving
           ? session.receivePages({
+              operationId: "operation:receive-pages",
               projectId: "project:test",
               storeEpoch: "epoch:test",
               mode,
               rootBlockIds: ["page"],
               dataSourceId: "source:test",
+              pages: [{ pageId: "page", title: "Page" }],
               target: { kind: "page", pageId: "page:host" },
             })
           : session.promoteBlocks({

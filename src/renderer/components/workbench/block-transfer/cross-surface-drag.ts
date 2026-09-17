@@ -191,6 +191,13 @@ export interface LocalBlockDragSession {
   readonly sourceSurfaceId: string;
   readonly payload: CrossSurfaceBlockTransferPayload;
   readonly taskShorthandPreviewHints?: readonly TaskShorthandPreviewHint[];
+  readonly promotionPreviews?: readonly BlockPromotionPreview[];
+}
+
+export interface BlockPromotionPreview {
+  readonly rootBlockId: string;
+  readonly resultPageId?: string;
+  readonly title: string;
 }
 
 export interface TaskShorthandPreviewHint {
@@ -279,6 +286,7 @@ export class BlockDragSessionCoordinator {
     > & {
       readonly sourceSurfaceId: string;
       readonly taskShorthandPreviewHints?: readonly TaskShorthandPreviewHint[];
+      readonly promotionPreviews?: readonly BlockPromotionPreview[];
     },
     dataTransfer: DataTransfer,
   ): LocalBlockDragSession {
@@ -300,6 +308,7 @@ export class BlockDragSessionCoordinator {
       sourceSurfaceId: input.sourceSurfaceId,
       payload,
       taskShorthandPreviewHints: [...(input.taskShorthandPreviewHints ?? [])],
+      promotionPreviews: [...(input.promotionPreviews ?? [])],
     } satisfies LocalBlockDragSession;
 
     dataTransfer.setData(NODEX_BLOCK_TRANSFER_DRAG_MIME, encodeBlockTransferDragPayload(payload));

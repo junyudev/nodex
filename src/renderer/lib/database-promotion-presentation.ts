@@ -8,6 +8,7 @@ import {
 import { useEffectEvent, useLayoutEffect, useMemo, useSyncExternalStore } from "react";
 import type {
   BlockTransferDataSourcePlacement,
+  BlockTransferPresentationPlanResult,
   BlockTransferReceipt,
 } from "../../shared/block-transfer";
 import type { EffectiveDatabaseView } from "../../shared/database-kernel";
@@ -19,21 +20,27 @@ import {
   type DatabasePromotionReadEvidence,
 } from "./database-promotion-read-evidence";
 import { getRendererProjectionInvalidationRegistry } from "./projection-invalidation-service";
+import { localStructuralTransactionPresentation } from "./local-structural-transaction-presentation";
+import type { BlockPromotionPreview } from "../components/workbench/block-transfer/cross-surface-drag";
 
 export interface DatabasePromotionSlot {
-  readonly kind: "pending_promotion";
+  readonly kind: "predicted_promotion";
   readonly key: string;
   readonly operationId: string;
   readonly count: number;
   readonly mode: "move" | "copy";
   readonly placement: BlockTransferDataSourcePlacement;
+  readonly previews: readonly BlockPromotionPreview[];
 }
 export interface DatabasePromotionAdmission {
   readonly gestureIdentity?: string;
   readonly operationId: string;
+  readonly storeEpoch: string;
   readonly rootBlockIds: readonly string[];
+  readonly previews: readonly BlockPromotionPreview[];
   readonly mode: "move" | "copy";
   readonly placement: BlockTransferDataSourcePlacement;
+  readonly plan?: Promise<BlockTransferPresentationPlanResult>;
   readonly observe: (
     listener: (state: HistoryCommandObservation<BlockTransferReceipt>) => void,
   ) => () => void;
@@ -64,7 +71,6 @@ export class DatabasePromotionPresentationStore {
   });
   constructor(
     readonly identity: string,
-    readonly windowKey: string,
     readonly displayIdentity = "",
   ) {}
   subscribe = (listener: () => void): (() => void) => {
@@ -93,14 +99,18 @@ export class DatabasePromotionPresentationStore {
   pageDependencies = (): readonly string[] => [...this.dependencyPageIds];
   accept = (input: DatabasePromotionAdmission): void => {
     if (!this.active) return;
+    localStructuralTransactionPresentation.begin(input.operationId, input.storeEpoch);
     let resultPageIds: readonly string[] | undefined;
-    const slot: DatabasePromotionSlot = {
-      kind: "pending_promotion",
+    let plannedPageIds: readonly string[] | undefined;
+    let terminal = false;
+    let slot: DatabasePromotionSlot = {
+      kind: "predicted_promotion",
       key: `promotion:${input.operationId}`,
       operationId: input.operationId,
       count: input.rootBlockIds.length,
       mode: input.mode,
       placement: input.placement,
+      previews: input.previews,
     };
     const trace = beginRendererOwnerTrace({
       semanticKey: "database.promotion",
@@ -116,10 +126,17 @@ export class DatabasePromotionPresentationStore {
       phase: "target_handoff",
       blockCount: input.rootBlockIds.length,
     });
+    let releaseAuthority: (() => void) | undefined;
+    const releaseLocalAuthority = () => {
+      releaseAuthority?.();
+      releaseAuthority = undefined;
+      localStructuralTransactionPresentation.release(input.operationId);
+    };
     const observed = this.journal.beginObserved<BlockTransferReceipt>({
       trace: (event) => {
         recordRendererOwnerTrace(trace, event);
         if (["rendered", "failed", "revoked"].includes(event.kind)) finishHandoff();
+        if (["settled", "failed", "revoked"].includes(event.kind)) releaseLocalAuthority();
       },
       operationIdentity: input.operationId,
       conflictKeys: [slot.key],
@@ -140,7 +157,6 @@ export class DatabasePromotionPresentationStore {
         if (
           !evidence ||
           evidence.identity !== this.identity ||
-          evidence.windowKey !== this.windowKey ||
           evidence.storeEpoch !== receipt.storeEpoch ||
           evidence.commitSeq < receipt.commitSeq
         )
@@ -153,7 +169,6 @@ export class DatabasePromotionPresentationStore {
         );
       },
     });
-    let terminal = false;
     let release: (() => void) | undefined;
     const stop = () => {
       terminal = true;
@@ -166,9 +181,29 @@ export class DatabasePromotionPresentationStore {
       if (state.status === "submitted")
         recordRendererOwnerTrace(trace, { kind: "submitted", reason: "transport_submit" });
       if (state.status === "committed") {
-        resultPageIds = state.receipt.resultRootBlockIds;
+        const receiptPageIds = state.receipt.resultRootBlockIds;
+        resultPageIds = receiptPageIds;
+        const ownsResult = plannedPageIds
+          ? localStructuralTransactionPresentation.replacePageClaims({
+              operationId: input.operationId,
+              storeEpoch: state.receipt.storeEpoch,
+              previousPageIds: plannedPageIds,
+              nextPageIds: receiptPageIds,
+            })
+          : localStructuralTransactionPresentation.claimPageIds(
+              input.operationId,
+              state.receipt.storeEpoch,
+              receiptPageIds,
+            );
         for (const id of resultPageIds) this.dependencyPageIds.add(id);
+        localStructuralTransactionPresentation.acknowledge({
+          operationId: input.operationId,
+          storeEpoch: state.receipt.storeEpoch,
+          commitSeq: state.receipt.commitSeq,
+          resultPageIds,
+        });
         observed.acknowledge(state.receipt);
+        if (!ownsResult) this.journal.discard(input.operationId);
         stop();
         // Repair is presentation work; failure cannot change the admitted receipt.
         void Promise.resolve()
@@ -193,9 +228,53 @@ export class DatabasePromotionPresentationStore {
       } else if (state.status === "recovering") observed.unknown();
       else if (["noop", "rejected", "blocked", "revoked"].includes(state.status)) {
         observed.reject();
+        localStructuralTransactionPresentation.reject(input.operationId);
         stop();
       }
     });
+    releaseAuthority = localStructuralTransactionPresentation.subscribe(() => {
+      if (!resultPageIds) return;
+      if (
+        resultPageIds.every((pageId) =>
+          localStructuralTransactionPresentation.ownsPage(
+            input.operationId,
+            input.storeEpoch,
+            pageId,
+          ),
+        )
+      )
+        return;
+      this.journal.discard(input.operationId);
+    });
+    void input.plan
+      ?.then((result) => {
+        if (terminal || !result.ok || result.value.operationId !== input.operationId) return;
+        const rootBySource = new Map(
+          result.value.roots.map((root) => [root.sourceBlockId, root] as const),
+        );
+        const roots = input.rootBlockIds.map((rootBlockId) => rootBySource.get(rootBlockId));
+        if (roots.some((root) => root === undefined)) return;
+        const exactRoots = roots.filter((root) => root !== undefined);
+        plannedPageIds = exactRoots.map((root) => root.resultPageId);
+        resultPageIds = plannedPageIds;
+        for (const id of plannedPageIds) this.dependencyPageIds.add(id);
+        const ownsResult = localStructuralTransactionPresentation.claimPageIds(
+          input.operationId,
+          input.storeEpoch,
+          plannedPageIds,
+        );
+        slot = {
+          ...slot,
+          previews: input.previews.map((preview) => ({
+            ...preview,
+            resultPageId: rootBySource.get(preview.rootBlockId)?.resultPageId,
+          })),
+        };
+        if (!ownsResult) this.journal.discard(input.operationId);
+        this.revision += 1;
+        for (const listener of this.listeners) listener();
+      })
+      .catch(() => undefined);
     if (terminal) release();
     else this.observations.add(release);
   };
@@ -227,10 +306,11 @@ export const useDatabasePromotionPresentation = (input: {
   readonly displayIdentity: string;
 }) => {
   const identity = databasePromotionReadIdentity(input.model, input.effective);
-  const windowKey = input.evidence?.windowKey ?? "pending-window";
   const owner = useMemo(
-    () => new DatabasePromotionPresentationStore(identity, windowKey, input.displayIdentity),
-    [identity, windowKey, input.displayIdentity],
+    () => new DatabasePromotionPresentationStore(identity, input.displayIdentity),
+    // Read-window coordinates are materialization evidence, not operation ownership.
+    // Search/collapse presentation changes intentionally revoke the visible lease.
+    [identity, input.displayIdentity],
   );
   const revision = useSyncExternalStore(owner.subscribe, owner.getSnapshot, owner.getSnapshot);
   useLayoutEffect(() => owner.attach(), [owner]);
