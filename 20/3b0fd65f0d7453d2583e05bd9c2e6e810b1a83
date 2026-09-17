@@ -1,0 +1,28 @@
+src/renderer/lib/local-structural-transaction-presentation.ts
+  s_16535355388fae::t_501f9136d79c42 90-99,125-126,138,142,148-150
+  s_16535355388fae::t_6b415f62a3cf10 109,121
+  s_16535355388fae::t_a59e9983083bf9 136-137
+src/renderer/lib/local-structural-transaction-presentation.node.test.ts
+  s_16535355388fae::t_257e5b76eb7936 59-95
+src/renderer/lib/database-promotion-presentation.node.test.ts
+  s_16535355388fae::t_43b2261f36c3cc 198-248,250-253
+  s_16535355388fae::t_f19e61ca98be20 249
+src/renderer/lib/database-promotion-presentation.ts
+  s_16535355388fae::t_2d699c5f2f4fa0 185
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "203b0fd65f0d7453d2583e05bd9c2e6e810b1a83",
+  "prompts": {},
+  "sessions": {
+    "s_16535355388fae": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a09092-f4ff-7bf2-8708-15f7037bd227",
+        "model": "chatgpt-web/extra-high"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    }
+  }
+}
