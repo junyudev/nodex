@@ -1,0 +1,33 @@
+README.md
+  s_5808f0d29557e2::t_702aa80125f18f 44-46,56,58-59,63,72-74,77,80,83,88-89,92,94
+  s_5808f0d29557e2::t_f1c1cade6bd635 13-17,20-22,25,29,42-47,51-64,66-68,86
+  h_6a6ac0c07fcd37 11,19,23,26-27,28,32,38,40,48-50,65,69-85,90
+  s_5808f0d29557e2::t_b965eb1f4c5e1a 1,9
+  s_5808f0d29557e2::t_42f88f986d2da0 2-3,7-8
+  s_5808f0d29557e2::t_953873bdde2cc9 4-6
+.github/assets/nodex-wordmark-dark.svg
+  s_5808f0d29557e2::t_00df17244d37ca 1-47
+.github/assets/nodex-wordmark-light.svg
+  s_5808f0d29557e2::t_42f88f986d2da0 1-47
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "06b974292aa6984a6536ef9d5aec01d2154b96cf",
+  "prompts": {},
+  "humans": {
+    "h_6a6ac0c07fcd37": {
+      "author": "Jun Yu <junyu.dev@gmail.com>"
+    }
+  },
+  "sessions": {
+    "s_5808f0d29557e2": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a0ae8c-a700-7571-a2bd-e305e9c63891",
+        "model": "gpt-5.6-sol"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    }
+  }
+}
