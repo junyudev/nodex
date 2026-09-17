@@ -1,0 +1,49 @@
+src/main/codex/codex-managed-worktree-effects.test.ts
+  s_a5eaa05fd0049d::t_1644b21d143067 23-32
+src/main/codex-application/CodexSidebarCapabilities.node.test.ts
+  s_a5eaa05fd0049d::t_17df210dcd9bb1 525-541,543-555,558-568
+  s_a5eaa05fd0049d::t_891c0773a1abb8 556-557
+src/renderer/components/workbench/workbench-testkit/workbench-shell-harness.tsx
+  s_a5eaa05fd0049d::t_14618c0df59a43 2332-2334,4504,4506,4606-4608
+  s_a5eaa05fd0049d::t_b5beb767b00e8e 4555
+  s_a5eaa05fd0049d::t_d2bcbbfd091e43 2328-2331,3112-3118
+  s_a5eaa05fd0049d::t_4ebdb0c677d7c3 4609
+src/renderer/components/workbench/workbench-shell.pages-shell-navigation.test.tsx
+  s_a5eaa05fd0049d::t_b22feedcef508b 1266
+src/main/git-worker/git-review-operations.integration.ts
+  s_a5eaa05fd0049d::t_0e857519f44c50 81-86
+src/renderer/components/workbench/workbench-shell.layout-panel-actions.test.tsx
+  s_a5eaa05fd0049d::t_d2bcbbfd091e43 1906-1907
+  s_a5eaa05fd0049d::t_b22feedcef508b 64-65,2122
+src/main/git-worker/git-worker-module.test.ts
+  s_a5eaa05fd0049d::t_f0f7f076068444 23-30
+src/main/codex/git-worktree-service.test.ts
+  s_a5eaa05fd0049d::t_f0f7f076068444 112-121
+src/main/codex-runtime/CodexAppServerCapabilities.node.test.ts
+  s_a5eaa05fd0049d::t_17df210dcd9bb1 180
+  s_a5eaa05fd0049d::t_891c0773a1abb8 158,186
+src/renderer/features/conversation-launch/session-first-submission-owner.node.test.ts
+  s_a5eaa05fd0049d::t_8e9fd84719fb85 66
+scripts/publish-official-agent-skills.ts
+  s_a5eaa05fd0049d::t_8e9fd84719fb85 24-29,303,386
+scripts/publish-official-agent-skills.test.ts
+  s_a5eaa05fd0049d::t_8e9fd84719fb85 149-154
+src/renderer/components/board/editor/thread-mention-chip.test.tsx
+  s_a5eaa05fd0049d::t_b22feedcef508b 54
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "2c0896b2a6972aae8f5625ffcecb5d67194e9b2a",
+  "prompts": {},
+  "sessions": {
+    "s_a5eaa05fd0049d": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a08fcc-91a3-7ba0-a4e4-720879ecb167",
+        "model": "chatgpt-web/extra-high"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    }
+  }
+}
