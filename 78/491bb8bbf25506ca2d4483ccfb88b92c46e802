@@ -1,0 +1,24 @@
+.github/assets/nodex-wordmark-dark.svg
+  s_5808f0d29557e2::t_00df17244d37ca 1-47
+README.md
+  s_5808f0d29557e2::t_b965eb1f4c5e1a 1,9
+  s_5808f0d29557e2::t_42f88f986d2da0 2-8
+.github/assets/nodex-wordmark-light.svg
+  s_5808f0d29557e2::t_42f88f986d2da0 1-47
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "78491bb8bbf25506ca2d4483ccfb88b92c46e802",
+  "prompts": {},
+  "sessions": {
+    "s_5808f0d29557e2": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a0ae8c-a700-7571-a2bd-e305e9c63891",
+        "model": "gpt-5.6-sol"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    }
+  }
+}
