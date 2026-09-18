@@ -1,0 +1,93 @@
+src/renderer/components/workbench/database-view-surface.tsx
+  s_a5eaa05fd0049d::t_c0709e767cd956 1591
+scripts/scenarios/scenarios/board-dense.ts
+  s_a5eaa05fd0049d::t_764d492aa97a64 2,14,20,44,78-149,262,270-271,282-283,295,310
+tests/e2e/nfm-page-mention-entrypoints.spec.ts
+  s_a5eaa05fd0049d::t_e3002fd5e06d68 32-44
+scripts/scenarios/scenarios/board-dense.test.ts
+  s_a5eaa05fd0049d::t_3c8521bda5c3ac 3-10,34-35,91-186,253
+src/renderer/components/block-documents/block-reference-runtime-context.tsx
+  s_a5eaa05fd0049d::t_6d2428146e9f70 9,31-32
+src/renderer/components/board/editor/nfm-editor-history.ts
+  s_a5eaa05fd0049d::t_781e1859a88155 257
+tests/e2e/board-dense.spec.ts
+  s_a5eaa05fd0049d::t_f798ba185f955f 633,1446-1449
+  s_a5eaa05fd0049d::t_fdd8f8235c2507 632,634-644
+  s_a5eaa05fd0049d::t_a8d44e6efdaa31 956
+src/renderer/lib/focused-history.browser.test.ts
+  s_a5eaa05fd0049d::t_781e1859a88155 87-121
+tests/e2e/agent-cli-workflow.spec.ts
+  s_a5eaa05fd0049d::t_a8d44e6efdaa31 116
+tests/e2e/electron-startup.spec.ts
+  s_a5eaa05fd0049d::t_746a90232fef02 13-21
+src/renderer/lib/surface-history/owner.node.test.ts
+  s_a5eaa05fd0049d::t_37f30e146298b4 201
+  s_a5eaa05fd0049d::t_1f19df2f349a51 198-200,202-239
+src/renderer/components/board/editor/nfm-editor.tsx
+  s_a5eaa05fd0049d::t_728451e155cf91 159,1744-1757
+  s_a5eaa05fd0049d::t_6d2428146e9f70 2707,2736
+  s_a5eaa05fd0049d::t_959ca19e8c299e 1758
+src/renderer/lib/surface-history/owner.ts
+  s_a5eaa05fd0049d::t_1f19df2f349a51 298,979-982,986-987,993,1005,1007
+src/renderer/lib/surface-history/controls.ts
+  s_a5eaa05fd0049d::t_781e1859a88155 1-4,10
+src/renderer/lib/surface-history/use-surface-history-focus.ts
+  s_a5eaa05fd0049d::t_6d2428146e9f70 7,11
+tests/e2e/electron-smoke.spec.ts
+  s_a5eaa05fd0049d::t_3935566f1254af 4400
+  s_a5eaa05fd0049d::t_55bdc5e70298b2 3579,3583,3615,3683,3704,3737-3741,3757,3766,3768,3780
+  s_a5eaa05fd0049d::t_91e9f44b098513 4256,4303
+  s_a5eaa05fd0049d::t_d2266ff1f57fb4 41,4852
+  s_a5eaa05fd0049d::t_39f0d9c5e3f50e 2620-2623,4402-4406
+  s_a5eaa05fd0049d::t_e3002fd5e06d68 4302,4305
+  s_a5eaa05fd0049d::t_fa56d2887d7258 2418
+  s_a5eaa05fd0049d::t_0a667fd2059a11 3761
+  s_a5eaa05fd0049d::t_ceddb378682127 32,4292,4985
+  s_a5eaa05fd0049d::t_0afc040ee7d110 4986
+tests/e2e/support/drag-block-with-mouse.ts
+  s_a5eaa05fd0049d::t_0a667fd2059a11 30,40,45,50,56-58,73,75,77,149,160,168,173,175-177
+  s_a5eaa05fd0049d::t_6a5dc033626824 53-55,67-72,74
+  s_a5eaa05fd0049d::t_74ef251ceba92b 151-157
+  s_a5eaa05fd0049d::t_34e7f434190bc1 44,46-49,51-52,59-66,76,150,158-159,169-172,174
+src/renderer/lib/focused-history.ts
+  s_a5eaa05fd0049d::t_781e1859a88155 25-79,148,156,162,186-190
+scripts/scenarios/harness/electron-e2e-harness.ts
+  s_a5eaa05fd0049d::t_e3002fd5e06d68 72-94,397
+tests/e2e/database-settings.spec.ts
+  s_a5eaa05fd0049d::t_a8d44e6efdaa31 1057-1065
+  s_a5eaa05fd0049d::t_74ef251ceba92b 1161-1163
+  s_a5eaa05fd0049d::t_d39d5decf26409 469
+  s_a5eaa05fd0049d::t_cd315e9beb6056 6-8,16-17
+  s_a5eaa05fd0049d::t_ceb4cdc168a579 1160,1164-1175
+  s_a5eaa05fd0049d::t_4cea2540e95279 466-468,470-474
+  s_a5eaa05fd0049d::t_6979c6cdd79560 1183
+  s_a5eaa05fd0049d::t_a1a2c5d67fa26e 5
+tests/e2e/support/editor-scenario.ts
+  s_a5eaa05fd0049d::t_ceddb378682127 300,341
+  s_a5eaa05fd0049d::t_fa56d2887d7258 65-95
+  s_a5eaa05fd0049d::t_39f0d9c5e3f50e 10,118-121
+  s_a5eaa05fd0049d::t_97a10e907ff207 11,17,29,39
+  s_a5eaa05fd0049d::t_fc0d9d07981652 122,125,129-135,182
+  s_a5eaa05fd0049d::t_74ef251ceba92b 12
+src/renderer/components/workbench/database-view-filter-editors.tsx
+  s_a5eaa05fd0049d::t_dae944e60293d4 1131-1135
+src/renderer/components/board/editor/page-outliner-block.tsx
+  s_a5eaa05fd0049d::t_b1cce124fdeda4 98,109,111
+  s_a5eaa05fd0049d::t_6d2428146e9f70 24,104-108,110,112,209
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "43e3680d8ede94b94594e2caf3579eae089a39b9",
+  "prompts": {},
+  "sessions": {
+    "s_a5eaa05fd0049d": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a08fcc-91a3-7ba0-a4e4-720879ecb167",
+        "model": "chatgpt-web/extra-high"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    }
+  }
+}
