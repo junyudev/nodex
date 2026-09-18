@@ -1,5 +1,13 @@
 import { describe, expect, test } from "vite-plus/test";
 
+import { emptyDatabaseViewConfig } from "../../../src/renderer/lib/database-view-authoring";
+import type {
+  DatabaseApplyResultV2,
+  DatabaseApplyV2,
+  DatabaseModuleReadRequestV2,
+  DatabaseModuleReadResultV2,
+  DatabaseViewRecordV2,
+} from "../../../src/shared/database-module-v2";
 import type { Project } from "../../../src/shared/types";
 import {
   parseScenarioFacts,
@@ -23,6 +31,8 @@ class RecordingSeedPort implements ScenarioSeedPort {
   readonly pages: ScenarioPageSeed[] = [];
   readonly replacements: ScenarioDocumentReplacement[] = [];
   readonly #failFirstPageOnce: boolean;
+  #commitSeq = 12;
+  #listView: DatabaseViewRecordV2 | null = null;
 
   constructor(options: { readonly failFirstPageOnce?: boolean } = {}) {
     this.#failFirstPageOnce = options.failFirstPageOnce ?? false;
@@ -76,6 +86,102 @@ class RecordingSeedPort implements ScenarioSeedPort {
 
   async readPrimaryDataSourcePropertyCount(): Promise<number> {
     return 0;
+  }
+
+  async readDatabase(request: DatabaseModuleReadRequestV2): Promise<DatabaseModuleReadResultV2> {
+    const board = {
+      viewId: "view:board-dense",
+      databaseId: "database:board-dense",
+      dataSourceId: "source:board-dense",
+      name: "Board",
+      layout: "board",
+      config: emptyDatabaseViewConfig(),
+      isDefault: true,
+      revision: 1,
+      rankKey: "a",
+      lifecycle: "active",
+      createdAt: "2026-01-01T00:00:00.000Z",
+      updatedAt: "2026-01-01T00:00:00.000Z",
+    } as const satisfies DatabaseViewRecordV2;
+    const target = request.read.target;
+    const value =
+      target.kind === "view" && this.#listView?.viewId === target.viewId
+        ? { kind: "view" as const, value: this.#listView }
+        : target.kind === "project_default"
+          ? {
+              kind: "database" as const,
+              value: {
+                database: {} as never,
+                dataSources: [],
+                views: [board, ...(this.#listView ? [this.#listView] : [])],
+              },
+            }
+          : null;
+    if (!value) {
+      return {
+        ok: false,
+        error: { code: "resource_not_found", message: "fixture read missing", retryable: false },
+      };
+    }
+    return {
+      ok: true,
+      value: {
+        projectId: request.projectId,
+        libraryId: "library:test",
+        storeEpoch: "epoch:test",
+        commitSeq: this.#commitSeq,
+        authorization: null,
+        value,
+      },
+    } as DatabaseModuleReadResultV2;
+  }
+
+  async applyDatabase(request: DatabaseApplyV2): Promise<DatabaseApplyResultV2> {
+    for (const operation of request.operations) {
+      if (operation.kind === "duplicate_view") {
+        this.#listView = {
+          viewId: operation.newViewId,
+          databaseId: operation.databaseId,
+          dataSourceId: "source:board-dense",
+          name: "Board copy",
+          layout: "board",
+          config: emptyDatabaseViewConfig(),
+          isDefault: false,
+          revision: 1,
+          rankKey: "b",
+          lifecycle: "active",
+          createdAt: "2026-01-01T00:00:00.000Z",
+          updatedAt: "2026-01-01T00:00:00.000Z",
+        };
+      } else if (operation.kind === "change_view_layout" && this.#listView) {
+        this.#listView = { ...this.#listView, layout: operation.layout, revision: 2 };
+      } else if (operation.kind === "put_view" && this.#listView) {
+        this.#listView = {
+          ...this.#listView,
+          name: operation.name,
+          layout: operation.layout,
+          config: operation.config,
+          isDefault: operation.isDefault,
+          revision: operation.expectedRevision + 1,
+        };
+      }
+    }
+    this.#commitSeq += 1;
+    return {
+      ok: true,
+      value: {
+        projectId: request.projectId,
+        libraryId: "library:test",
+        storeEpoch: "epoch:test",
+        commitSeq: this.#commitSeq,
+        receipts: request.operations.map((_, operationIndex) => ({
+          kind: "view_edit" as const,
+          operationIndex,
+          viewId: this.#listView!.viewId,
+          revision: this.#listView!.revision,
+        })),
+      },
+    } as DatabaseApplyResultV2;
   }
 
   async replaceOwnedDocument(
@@ -144,6 +250,7 @@ describe("board/dense authoritative scenario", () => {
       scenarioRevision: BOARD_DENSE_SCENARIO_REVISION,
       totalRows: BOARD_DENSE_PAGES.length,
       groups: { triage: 3, plan: 2, build: 3, review: 1, ship: 1 },
+      listViewId: manifest.entityIdsByKey?.listView,
       primaryBuildPage: {
         pageId: manifest.pageIdsByKey[BOARD_DENSE_PRIMARY_PAGE_KEY],
         title: "Unify Database View rendering",

@@ -29,10 +29,19 @@ const focusEditableBlockEnd = async (page: Page, block: Locator): Promise<void> 
 };
 
 const waitForMentionOrFailure = async (page: Page, mention: Locator): Promise<void> => {
-  const alert = page.getByRole("alert").last();
-  await mention.or(alert).first().waitFor({ state: "visible", timeout: 15_000 });
-  if (await mention.isVisible()) return;
-  throw new Error(`Page mention creation failed: ${await alert.innerText()}`);
+  try {
+    await mention.waitFor({ state: "visible", timeout: 15_000 });
+  } catch {
+    const operationAlerts = await page
+      .getByRole("alert")
+      .filter({ hasText: /Page mention|create (?:a )?(?:Page|Subpage)|created Page/u })
+      .allInnerTexts();
+    throw new Error(
+      operationAlerts.length > 0
+        ? `Page mention creation failed: ${operationAlerts.join(" | ")}`
+        : "Page mention creation did not reach the invoking editor.",
+    );
+  }
 };
 
 test("opens an empty-query Page destination flow and resumes the mention session", async () => {

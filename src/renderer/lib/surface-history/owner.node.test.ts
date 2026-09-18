@@ -195,6 +195,48 @@ describe("interaction history bindings", () => {
     realm.close();
   });
 
+  test("late native captures stay behind the already observed Undo and Redo frontier", async () => {
+    const realm = createInteractionHistory({ scopeKey: "scene" });
+    const live = participant(realm, "Live");
+    await live.binding.execute(1).result;
+    let historicalValue = 7;
+    const historical = realm.bind<number, never, number, number>({
+      initialCaptures: {
+        undo: [{ intent: 7, receipt: 7 }],
+        redo: [{ intent: 9, receipt: 9 }],
+      },
+      adapter: {
+        describe: (value) => `Historical ${value}`,
+        prepare: async () => {
+          throw new Error("Initial captures are already committed.");
+        },
+        prepareInverse: async (value) => {
+          historicalValue = value;
+          return { kind: "complete", receipt: value === 0 ? 7 : 0 };
+        },
+        submit: async () => {
+          throw new Error("Historical captures replay locally in this fixture.");
+        },
+        interpret: (receipt) => ({ kind: "reversible", inverse: receipt === 7 ? 0 : 7 }),
+      },
+    });
+    try {
+      expect(realm.snapshot().undo.label).toBe("Live");
+      expect((await realm.request("undo").result).status).toBe("committed");
+      expect(live.value()).toBe(0);
+      expect(historicalValue).toBe(7);
+      expect(realm.snapshot().undo.label).toBe("Historical 7");
+
+      expect((await realm.request("redo").result).status).toBe("committed");
+      expect(live.value()).toBe(1);
+      expect(historicalValue).toBe(7);
+      expect(realm.snapshot().redo.label).toBe("Historical 9");
+    } finally {
+      historical.close();
+      realm.close();
+    }
+  });
+
   test("capture ownership switches before native grouping and durable admission cuts the active group", async () => {
     const realm = createInteractionHistory({ scopeKey: "scene" });
     const a = participant(realm, "A");

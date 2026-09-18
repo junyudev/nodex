@@ -1588,7 +1588,7 @@ function BoardDatabaseViewSurface({
                               data-database-board-collapsed-header-underlay={
                                 collapsed ? "true" : undefined
                               }
-                              className="absolute inset-x-0 top-0 z-10 rounded-t-lg bg-(--background)"
+                              className="pointer-events-none absolute inset-x-0 top-0 z-10 rounded-t-lg bg-(--background)"
                               initial={reducedMotion ? false : { opacity: 0, x: -4 }}
                               animate={{ opacity: 1, x: 0 }}
                               transition={columnContentTransition}

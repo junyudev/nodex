@@ -113,7 +113,7 @@ test("direct Agent commands update the same Page, properties, and attachments sh
       const help = JSON.parse(await run(["--json", "page", "insert", "--help"])) as {
         schemaVersion: number;
       };
-      expect(help.schemaVersion).toBe(3);
+      expect(help.schemaVersion).toBe(4);
       const matches = await structured<{ items: readonly { page_id: string }[] }>([
         "search",
         "Release meeting",
