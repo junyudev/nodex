@@ -14,6 +14,7 @@ function statuses(server = "calendar"): ProtocolListMcpServerStatusResponse {
         runtimeStatus: null,
         pluginId: null,
         serverInfo: null,
+        toolsError: null,
         authStatus: "unsupported",
         resources: [{ name: "widget", uri: "ui://calendar/widget" }],
         resourceTemplates: [],

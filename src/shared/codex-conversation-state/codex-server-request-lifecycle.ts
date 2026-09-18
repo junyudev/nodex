@@ -654,6 +654,7 @@ export function normalizeCodexCanonicalMcpElicitation(
   params: McpServerElicitationRequestParams,
   isOpenAIFormElicitationsEnabled = true,
 ): CodexCanonicalMcpElicitation | null {
+  if (params.mode === "openai/userVerification") return null;
   const displayMeta = normalizeMcpMeta(params._meta);
   if (params.mode === "url") {
     const url = parseHttpsUrl(params.url);

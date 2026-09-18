@@ -57,6 +57,7 @@ function buildThread(items: ThreadItem[] = [], turnId = TURN_ID): Thread {
     model: null,
     reasoningEffort: null,
     id: THREAD_ID,
+    environments: null,
     extra: null,
     sessionId: "session_c03",
     forkedFromId: null,
@@ -78,6 +79,7 @@ function buildThread(items: ThreadItem[] = [], turnId = TURN_ID): Thread {
     path: null,
     cwd: "/workspace/project",
     cliVersion: "fixture",
+    originator: null,
     source: "unknown",
     canAcceptDirectInput: true,
     threadSource: null,
@@ -85,6 +87,7 @@ function buildThread(items: ThreadItem[] = [], turnId = TURN_ID): Thread {
     agentRole: null,
     gitInfo: null,
     name: "C-03 lifecycle fixture",
+    daybreakEnabled: null,
     turns: [
       {
         id: turnId,

@@ -42,6 +42,7 @@ it.effect(
         } as unknown as CodexTurnAuthority["Service"]),
         Effect.provideService(CodexAccount, {
           readUsageLimits: Effect.succeed({
+            ordinaryUsageAllowed: false,
             rateLimits: null,
             rateLimitsByLimitId: null,
             rateLimitResetCredits: null,
@@ -67,7 +68,12 @@ it.effect(
       assert.deepStrictEqual(calls, []);
       assert.deepStrictEqual(
         (yield* execute({ ...input, name: "get_usage_limits", arguments: {} })).structuredContent,
-        { rateLimits: null, rateLimitsByLimitId: null, rateLimitResetCredits: null },
+        {
+          ordinaryUsageAllowed: false,
+          rateLimits: null,
+          rateLimitsByLimitId: null,
+          rateLimitResetCredits: null,
+        },
       );
       readOnly = false;
       assert.deepStrictEqual((yield* execute(input)).structuredContent, {

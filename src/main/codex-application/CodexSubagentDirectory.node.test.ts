@@ -64,6 +64,7 @@ const child = {
   model: null,
   reasoningEffort: null,
   id: "child-a",
+  environments: null,
   extra: null,
   sessionId: "session-child-a",
   forkedFromId: null,
@@ -82,6 +83,7 @@ const child = {
   path: null,
   cwd: "/repo",
   cliVersion: "test",
+  originator: null,
   source: {
     subAgent: {
       thread_spawn: {
@@ -99,6 +101,7 @@ const child = {
   agentRole: "explorer",
   gitInfo: null,
   name: "Scout",
+  daybreakEnabled: null,
   turns: [],
 } as Thread;
 

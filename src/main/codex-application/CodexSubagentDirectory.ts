@@ -379,6 +379,7 @@ const projectStartedSubagentThreadShell = (input: {
     model: null,
     reasoningEffort: null,
     id: input.threadId,
+    environments: null,
     extra: null,
     sessionId: input.parent.durable.threadId,
     forkedFromId: null,
@@ -396,6 +397,7 @@ const projectStartedSubagentThreadShell = (input: {
     path: null,
     cwd: input.parent.durable.cwd ?? "",
     cliVersion: "",
+    originator: null,
     source: {
       subAgent: {
         thread_spawn: {
@@ -413,6 +415,7 @@ const projectStartedSubagentThreadShell = (input: {
     agentRole: null,
     gitInfo: null,
     name: agentName,
+    daybreakEnabled: null,
     modelProvider: input.parent.canonical?.modelProvider ?? "",
     turns: [],
   };

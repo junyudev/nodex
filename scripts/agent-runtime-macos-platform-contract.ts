@@ -1,5 +1,5 @@
 import { execFileSync } from "node:child_process";
-import { lstatSync } from "node:fs";
+import { closeSync, lstatSync, openSync, readSync } from "node:fs";
 import path from "node:path";
 import { CODEX_APP_SERVER_REQUIRED_ARTIFACTS } from "./agent-runtime-release-lock";
 
@@ -124,6 +124,27 @@ export function assertAgentRuntimeMacosPlatformContract(input: {
   }
 }
 
+function isMachO(filePath: string): boolean {
+  const descriptor = openSync(filePath, "r");
+  try {
+    const header = Buffer.alloc(4);
+    if (readSync(descriptor, header, 0, header.length, 0) !== header.length) return false;
+    const magic = header.readUInt32BE(0);
+    return (
+      magic === 0xfeedface ||
+      magic === 0xfeedfacf ||
+      magic === 0xcefaedfe ||
+      magic === 0xcffaedfe ||
+      magic === 0xcafebabe ||
+      magic === 0xbebafeca ||
+      magic === 0xcafebabf ||
+      magic === 0xbfbafeca
+    );
+  } finally {
+    closeSync(descriptor);
+  }
+}
+
 function inspectExecutable(
   runtimeRoot: string,
   artifactPath: string,
@@ -148,9 +169,11 @@ export const verifyAgentRuntimeMacosPlatformContract: AgentRuntimeMacosPlatformC
     return { artifactPath, executable: (metadata.mode & 0o111) !== 0 };
   });
   assertAgentRuntimeMacosArtifactModes(artifacts);
-  const inspections = artifacts.flatMap(({ artifactPath, executable }) =>
-    executable ? [inspectExecutable(input.runtimeRoot, artifactPath)] : [],
-  );
+  const inspections = artifacts.flatMap(({ artifactPath, executable }) => {
+    if (!executable) return [];
+    const absolutePath = path.join(input.runtimeRoot, ...artifactPath.split("/"));
+    return isMachO(absolutePath) ? [inspectExecutable(input.runtimeRoot, artifactPath)] : [];
+  });
   assertAgentRuntimeMacosPlatformContract({
     inspections,
     productMinimumMacos: input.productMinimumMacos,

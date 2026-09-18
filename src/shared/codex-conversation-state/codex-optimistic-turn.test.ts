@@ -24,6 +24,7 @@ function buildState() {
       model: null,
       reasoningEffort: null,
       id: "thread-created",
+      environments: null,
       extra: null,
       sessionId: "session-created",
       forkedFromId: null,
@@ -42,6 +43,7 @@ function buildState() {
       path: null,
       cwd: "/workspace",
       cliVersion: "test",
+      originator: null,
       source: "appServer",
       canAcceptDirectInput: true,
       threadSource: "subagent",
@@ -49,6 +51,7 @@ function buildState() {
       agentRole: null,
       gitInfo: null,
       name: null,
+      daybreakEnabled: null,
       turns: [],
     },
     {

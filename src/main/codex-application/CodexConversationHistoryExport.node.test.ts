@@ -36,6 +36,7 @@ const thread = (turns: Turn[]): Thread => ({
   model: null,
   reasoningEffort: null,
   id: "thread-export",
+  environments: null,
   extra: null,
   sessionId: "session-export",
   forkedFromId: null,
@@ -54,6 +55,7 @@ const thread = (turns: Turn[]): Thread => ({
   path: null,
   cwd: "/workspace",
   cliVersion: "test",
+  originator: null,
   source: "appServer",
   canAcceptDirectInput: true,
   threadSource: null,
@@ -61,6 +63,7 @@ const thread = (turns: Turn[]): Thread => ({
   agentRole: null,
   gitInfo: null,
   name: null,
+  daybreakEnabled: null,
   turns,
 });
 

@@ -62,6 +62,7 @@ const appThread = (turns: readonly Turn[], overrides: Partial<Thread> = {}): Thr
   model: null,
   reasoningEffort: null,
   id: "thread-a",
+  environments: null,
   extra: null,
   sessionId: "session-a",
   forkedFromId: null,
@@ -80,6 +81,7 @@ const appThread = (turns: readonly Turn[], overrides: Partial<Thread> = {}): Thr
   path: null,
   cwd: "/repo",
   cliVersion: "test",
+  originator: null,
   source: "unknown",
   canAcceptDirectInput: true,
   threadSource: null,
@@ -87,6 +89,7 @@ const appThread = (turns: readonly Turn[], overrides: Partial<Thread> = {}): Thr
   agentRole: null,
   gitInfo: null,
   name: "Thread A",
+  daybreakEnabled: null,
   ...overrides,
   turns: [...turns],
 });

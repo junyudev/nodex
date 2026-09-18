@@ -280,8 +280,16 @@ export function parseCodexAppServerReleaseLock(value) {
   const requiredArtifacts = value.requiredArtifacts.map((entry, index) =>
     relativePath(entry, `requiredArtifacts[${index}]`),
   );
-  if (JSON.stringify(requiredArtifacts) !== JSON.stringify(CODEX_APP_SERVER_REQUIRED_ARTIFACTS)) {
-    throw new Error("Codex requiredArtifacts must equal the canonical ordered package closure");
+  const requiredArtifactSet = new Set(requiredArtifacts);
+  if (requiredArtifactSet.size !== requiredArtifacts.length) {
+    throw new Error("Codex requiredArtifacts must not contain duplicates");
+  }
+  if (
+    CODEX_APP_SERVER_REQUIRED_ARTIFACTS.some(
+      (artifactPath) => !requiredArtifactSet.has(artifactPath),
+    )
+  ) {
+    throw new Error("Codex requiredArtifacts must contain the canonical runtime artifacts");
   }
   if (
     !isObject(value.notices) ||

@@ -96,7 +96,9 @@ test("accepts the canonical no-patch runtime lock", () => {
     resolve("resources/agent-runtime/codex-app-server.lock.json"),
   );
   expect(lock.schemaVersion).toBe(1);
-  expect(lock.requiredArtifacts).toEqual(CODEX_APP_SERVER_REQUIRED_ARTIFACTS);
+  expect(lock.requiredArtifacts).toEqual(
+    expect.arrayContaining(CODEX_APP_SERVER_REQUIRED_ARTIFACTS),
+  );
   expect(lock.upstream.tag).toBe(`rust-v${lock.appServerRuntimeVersion}`);
 });
 
@@ -112,7 +114,7 @@ test("rejects runtime assets and checksum manifests outside the official release
   expect(() => parseCodexAppServerReleaseLock(manifestDrift)).toThrow("checksumManifest.url");
 });
 
-test("requires exact supported targets and canonical closure", () => {
+test("requires exact supported targets and the canonical runtime artifacts", () => {
   const extraTarget = makeLock();
   const builds = extraTarget.builds as Record<string, unknown>;
   builds["darwin-arm64-debug"] = builds["darwin-arm64"];
@@ -123,8 +125,24 @@ test("requires exact supported targets and canonical closure", () => {
   const missingArtifact = makeLock();
   missingArtifact.requiredArtifacts = CODEX_APP_SERVER_REQUIRED_ARTIFACTS.slice(0, -1);
   expect(() => parseCodexAppServerReleaseLock(missingArtifact)).toThrow(
-    "canonical ordered package closure",
+    "canonical runtime artifacts",
   );
+
+  const extendedClosure = makeLock();
+  extendedClosure.requiredArtifacts = [
+    ...CODEX_APP_SERVER_REQUIRED_ARTIFACTS,
+    "codex-resources/voice/bin/codex-voice-host",
+  ];
+  expect(parseCodexAppServerReleaseLock(extendedClosure).requiredArtifacts).toEqual(
+    extendedClosure.requiredArtifacts,
+  );
+
+  const duplicateArtifact = makeLock();
+  duplicateArtifact.requiredArtifacts = [
+    ...CODEX_APP_SERVER_REQUIRED_ARTIFACTS,
+    CODEX_APP_SERVER_REQUIRED_ARTIFACTS[0],
+  ];
+  expect(() => parseCodexAppServerReleaseLock(duplicateArtifact)).toThrow("duplicates");
 
   const packageLayoutDrift = makeLock();
   (packageLayoutDrift.packageManifest as Record<string, unknown>).pathDir = "bin";

@@ -59,6 +59,7 @@ const state = (turns: readonly Turn[]) => {
     model: null,
     reasoningEffort: null,
     id: threadId,
+    environments: null,
     extra: null,
     sessionId: "session-background",
     forkedFromId: null,
@@ -77,6 +78,7 @@ const state = (turns: readonly Turn[]) => {
     path: null,
     cwd: "/repo",
     cliVersion: "test",
+    originator: null,
     source: "unknown",
     canAcceptDirectInput: true,
     threadSource: null,
@@ -84,6 +86,7 @@ const state = (turns: readonly Turn[]) => {
     agentRole: null,
     gitInfo: null,
     name: "background terminals",
+    daybreakEnabled: null,
     turns: [...turns],
   };
   return createCodexCanonicalConversationState(thread, {

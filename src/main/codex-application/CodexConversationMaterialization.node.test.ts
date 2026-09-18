@@ -13,6 +13,7 @@ const thread: Thread = {
   model: null,
   reasoningEffort: null,
   id: threadId,
+  environments: null,
   extra: null,
   sessionId: "session-materialization",
   forkedFromId: null,
@@ -31,6 +32,7 @@ const thread: Thread = {
   path: null,
   cwd: "/workspace",
   cliVersion: "test",
+  originator: null,
   source: "appServer",
   canAcceptDirectInput: true,
   threadSource: null,
@@ -38,6 +40,7 @@ const thread: Thread = {
   agentRole: null,
   gitInfo: null,
   name: null,
+  daybreakEnabled: null,
   turns: [],
 };
 

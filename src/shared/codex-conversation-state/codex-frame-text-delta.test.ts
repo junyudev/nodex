@@ -55,6 +55,7 @@ function buildState(
     model: null,
     reasoningEffort: null,
     id: THREAD_ID,
+    environments: null,
     extra: null,
     sessionId: "session_c04",
     forkedFromId: null,
@@ -73,6 +74,7 @@ function buildState(
     path: null,
     cwd: "/workspace/project",
     cliVersion: "fixture",
+    originator: null,
     source: "unknown",
     canAcceptDirectInput: true,
     threadSource: null,
@@ -80,6 +82,7 @@ function buildState(
     agentRole: null,
     gitInfo: null,
     name: "C-04 delta fixture",
+    daybreakEnabled: null,
     turns: [
       {
         id: TURN_ID,

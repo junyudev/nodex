@@ -2020,7 +2020,7 @@
               "type": "string"
             },
             "cwd": {
-              "$ref": "#/definitions/definitions__v2__AbsolutePathBuf"
+              "$ref": "#/definitions/definitions__v2__LegacyAppPathString"
             },
             "source": {
               "$ref": "#/definitions/definitions__v2__GuardianCommandSource"
@@ -2113,11 +2113,11 @@
         {
           "properties": {
             "cwd": {
-              "$ref": "#/definitions/definitions__v2__AbsolutePathBuf"
+              "$ref": "#/definitions/definitions__v2__LegacyAppPathString"
             },
             "files": {
               "items": {
-                "$ref": "#/definitions/definitions__v2__AbsolutePathBuf"
+                "$ref": "#/definitions/definitions__v2__LegacyAppPathString"
               },
               "type": "array"
             },
@@ -3491,6 +3491,13 @@
             "null"
           ]
         },
+        "normalModelSlug": {
+          "description": "Normal model whose display name and reasoning options describe this quota alias.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
         "planType": {
           "anyOf": [
             {
@@ -4211,6 +4218,24 @@
           ],
           "description": "Working directory captured for the thread."
         },
+        "daybreakEnabled": {
+          "description": "Saved Daybreak choice, independent of turn execution. Null if unset.",
+          "type": [
+            "boolean",
+            "null"
+          ]
+        },
+        "environments": {
+          "default": null,
+          "description": "Current environments for a loaded thread, in priority order, primary first. `null` means the thread is not loaded or the server does not expose its selection. An empty list means no environments are selected. This does not report connection status.",
+          "items": {
+            "$ref": "#/definitions/definitions__v2__ThreadEnvironment"
+          },
+          "type": [
+            "array",
+            "null"
+          ]
+        },
         "ephemeral": {
           "description": "Whether the thread is ephemeral and should not be materialized on disk.",
           "type": "boolean"
@@ -4270,6 +4295,13 @@
         },
         "name": {
           "description": "Optional user-facing thread title.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "originator": {
+          "description": "Originator recorded when the thread was created, independent of its current client or executor. Null when the recorded originator is unavailable.",
           "type": [
             "string",
             "null"
@@ -4421,6 +4453,44 @@
       "title": "ThreadArchivedNotification",
       "type": "object"
     },
+    "definitions__v2__ThreadAttachmentOperation": {
+      "description": "The persisted attachment change represented by a notification.",
+      "enum": [
+        "created",
+        "deleted"
+      ],
+      "type": "string"
+    },
+    "definitions__v2__ThreadAttachmentUpdatedNotification": {
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "description": "Notification published after a thread attachment is created or deleted.",
+      "properties": {
+        "attachmentId": {
+          "type": "string"
+        },
+        "attachmentType": {
+          "type": "string"
+        },
+        "identityKey": {
+          "type": "string"
+        },
+        "operation": {
+          "$ref": "#/definitions/definitions__v2__ThreadAttachmentOperation"
+        },
+        "threadId": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "attachmentId",
+        "attachmentType",
+        "identityKey",
+        "operation",
+        "threadId"
+      ],
+      "title": "ThreadAttachmentUpdatedNotification",
+      "type": "object"
+    },
     "definitions__v2__ThreadClosedNotification": {
       "$schema": "http://json-schema.org/draft-07/schema#",
       "properties": {
@@ -4445,6 +4515,29 @@
         "threadId"
       ],
       "title": "ThreadDeletedNotification",
+      "type": "object"
+    },
+    "definitions__v2__ThreadEnvironment": {
+      "description": "An environment selected by a loaded thread, independent of connection status.",
+      "properties": {
+        "cwd": {
+          "$ref": "#/definitions/definitions__v2__LegacyAppPathString"
+        },
+        "environmentId": {
+          "type": "string"
+        },
+        "runtimeWorkspaceRoots": {
+          "items": {
+            "$ref": "#/definitions/definitions__v2__LegacyAppPathString"
+          },
+          "type": "array"
+        }
+      },
+      "required": [
+        "cwd",
+        "environmentId",
+        "runtimeWorkspaceRoots"
+      ],
       "type": "object"
     },
     "definitions__v2__ThreadExtra": {
@@ -7088,6 +7181,26 @@
         "params"
       ],
       "title": "Thread/name/updatedNotification",
+      "type": "object"
+    },
+    {
+      "properties": {
+        "method": {
+          "enum": [
+            "thread/attachment/updated"
+          ],
+          "title": "Thread/attachment/updatedNotificationMethod",
+          "type": "string"
+        },
+        "params": {
+          "$ref": "#/definitions/definitions__v2__ThreadAttachmentUpdatedNotification"
+        }
+      },
+      "required": [
+        "method",
+        "params"
+      ],
+      "title": "Thread/attachment/updatedNotification",
       "type": "object"
     },
     {

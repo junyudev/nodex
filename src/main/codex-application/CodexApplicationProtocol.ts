@@ -306,23 +306,28 @@ const mcpPayload = (
   conversations: ConversationEntityMap["Service"],
   request: Extract<ServerRequest, { method: "mcpServer/elicitation/request" }>,
   observedAtMs: number,
-): CodexMcpServerElicitationRequest => ({
-  type: "mcpServerElicitation",
-  requestId: request.id,
-  projectId: projectId(conversations, request.params.threadId),
-  threadId: request.params.threadId,
-  turnId: request.params.turnId ?? "",
-  itemId: `mcp-server-elicitation-${String(request.id)}`,
-  kind: request.params.mode === "url" ? "toolSuggestion" : "generic",
-  mode: normalizeCodexMcpServerElicitationMode(request.params.mode),
-  serverName: request.params.serverName,
-  message: request.params.message,
-  url: request.params.mode === "url" ? request.params.url : undefined,
-  elicitationId: request.params.mode === "url" ? request.params.elicitationId : undefined,
-  requestedSchema: request.params.mode !== "url" ? request.params.requestedSchema : undefined,
-  meta: request.params._meta,
-  createdAt: observedAtMs,
-});
+): CodexMcpServerElicitationRequest => {
+  if (request.params.mode === "openai/userVerification") {
+    throw new Error("User verification must be resolved before entering the Nodex request plane");
+  }
+  return {
+    type: "mcpServerElicitation",
+    requestId: request.id,
+    projectId: projectId(conversations, request.params.threadId),
+    threadId: request.params.threadId,
+    turnId: request.params.turnId ?? "",
+    itemId: `mcp-server-elicitation-${String(request.id)}`,
+    kind: request.params.mode === "url" ? "toolSuggestion" : "generic",
+    mode: normalizeCodexMcpServerElicitationMode(request.params.mode),
+    serverName: request.params.serverName,
+    message: request.params.message,
+    url: request.params.mode === "url" ? request.params.url : undefined,
+    elicitationId: request.params.mode === "url" ? request.params.elicitationId : undefined,
+    requestedSchema: request.params.mode !== "url" ? request.params.requestedSchema : undefined,
+    meta: request.params._meta,
+    createdAt: observedAtMs,
+  };
+};
 
 type Lifecycle = CodexServerRequestLifecycleResult | CodexServerRequestRawLifecycleResult;
 
@@ -524,7 +529,7 @@ export const make: Effect.Effect<
             request: payload,
             occurrenceToken: request[CODEX_SERVER_REQUEST_OCCURRENCE_TOKEN],
           });
-          const autoResolutionMs = mcpAutoResolutionMs(generatedRequest.params._meta);
+          const autoResolutionMs = mcpAutoResolutionMs(request.params._meta);
           if (autoResolutionMs !== null) {
             yield* autoResolution.observeRequest(
               payload.threadId,

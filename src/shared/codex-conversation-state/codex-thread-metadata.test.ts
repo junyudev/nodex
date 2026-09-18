@@ -50,6 +50,7 @@ function buildThread(name: string | null): Omit<Thread, "turns"> {
   return {
     model: null,
     reasoningEffort: null,
+    environments: null,
     id: "thread-token",
     extra: null,
     sessionId: "session-1",
@@ -68,6 +69,7 @@ function buildThread(name: string | null): Omit<Thread, "turns"> {
     status: { type: "active", activeFlags: [] },
     path: null,
     cwd: "/old",
+    originator: null,
     cliVersion: "test",
     source: "appServer",
     canAcceptDirectInput: true,
@@ -75,6 +77,7 @@ function buildThread(name: string | null): Omit<Thread, "turns"> {
     agentNickname: null,
     agentRole: null,
     gitInfo: null,
+    daybreakEnabled: null,
     name,
   };
 }

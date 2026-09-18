@@ -7,7 +7,7 @@ type CodexMcpServerElicitationMode = CodexMcpServerElicitationRequest["mode"];
 
 /** Canonicalizes the legacy wire spelling before the request enters Nodex-owned state. */
 export function normalizeCodexMcpServerElicitationMode(
-  mode: McpServerElicitationRequestParams["mode"],
+  mode: Exclude<McpServerElicitationRequestParams["mode"], "openai/userVerification">,
 ): CodexMcpServerElicitationMode {
   return mode === "openaiForm" ? "openai/form" : mode;
 }
@@ -327,6 +327,7 @@ function hasConnectorAuthFailureMeta(value: unknown): boolean {
 export function isRenderableMcpServerElicitationRequest(
   params: McpServerElicitationRequestParams,
 ): boolean {
+  if (params.mode === "openai/userVerification") return false;
   if (params.mode !== "url") return true;
 
   const url = parseHttpsUrl(params.url);

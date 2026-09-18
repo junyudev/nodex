@@ -140,6 +140,7 @@ it.effect("commits a large buffered delta on the explicit completion drain", () 
         model: null,
         reasoningEffort: null,
         id: "thread-1",
+        environments: null,
         extra: null,
         sessionId: "session-1",
         forkedFromId: null,
@@ -158,6 +159,7 @@ it.effect("commits a large buffered delta on the explicit completion drain", () 
         path: null,
         cwd: "/repo",
         cliVersion: "test",
+        originator: null,
         source: "unknown",
         canAcceptDirectInput: true,
         threadSource: null,
@@ -165,6 +167,7 @@ it.effect("commits a large buffered delta on the explicit completion drain", () 
         agentRole: null,
         gitInfo: null,
         name: null,
+        daybreakEnabled: null,
         turns: [
           {
             id: "turn-1",

@@ -109,6 +109,7 @@ const appThread = (threadId: string, turns: Thread["turns"] = []): Thread => ({
   model: null,
   reasoningEffort: null,
   id: threadId,
+  environments: null,
   extra: null,
   sessionId: `session-${threadId}`,
   forkedFromId: null,
@@ -127,6 +128,7 @@ const appThread = (threadId: string, turns: Thread["turns"] = []): Thread => ({
   path: null,
   cwd: "/repo",
   cliVersion: "test",
+  originator: null,
   source: "unknown",
   canAcceptDirectInput: true,
   threadSource: null,
@@ -134,6 +136,7 @@ const appThread = (threadId: string, turns: Thread["turns"] = []): Thread => ({
   agentRole: null,
   gitInfo: null,
   name: "Hydrated Thread",
+  daybreakEnabled: null,
   turns: [...turns],
 });
 

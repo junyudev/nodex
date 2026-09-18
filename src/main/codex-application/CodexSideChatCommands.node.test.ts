@@ -52,6 +52,7 @@ const protocolThread = (threadId: string): Thread => ({
   model: null,
   reasoningEffort: null,
   id: threadId,
+  environments: null,
   extra: null,
   sessionId: `session-${threadId}`,
   forkedFromId: null,
@@ -70,6 +71,7 @@ const protocolThread = (threadId: string): Thread => ({
   path: null,
   cwd: "/workspace",
   cliVersion: "test",
+  originator: null,
   source: "appServer",
   canAcceptDirectInput: true,
   threadSource: null,
@@ -77,6 +79,7 @@ const protocolThread = (threadId: string): Thread => ({
   agentRole: null,
   gitInfo: null,
   name: null,
+  daybreakEnabled: null,
   turns: [],
 });
 

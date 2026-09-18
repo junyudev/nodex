@@ -47,6 +47,7 @@ function buildStatuses(
         runtimeStatus: null,
         pluginId: null,
         serverInfo: null,
+        toolsError: null,
         tools,
         resources: [],
         resourceTemplates: [],

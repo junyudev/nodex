@@ -20,7 +20,12 @@ afterEach(() => {
   for (const root of roots.splice(0)) rmSync(root, { recursive: true, force: true });
 });
 
-function createArchive(root: string, target: string, version: string): string {
+function createArchive(
+  root: string,
+  target: string,
+  version: string,
+  requiredArtifacts: readonly string[],
+): string {
   const packageRoot = path.join(root, `package-${target}`);
   mkdirSync(packageRoot, { recursive: true });
   writeFileSync(
@@ -35,16 +40,19 @@ function createArchive(root: string, target: string, version: string): string {
       version,
     })}\n`,
   );
-  for (const artifact of [
+  const executableArtifacts = new Set([
     "bin/codex",
     "bin/codex-code-mode-host",
     "codex-path/rg",
     "codex-resources/zsh/bin/zsh",
-  ]) {
+  ]);
+  for (const artifact of requiredArtifacts) {
+    if (artifact === "codex-package.json") continue;
     const filePath = path.join(packageRoot, artifact);
     mkdirSync(path.dirname(filePath), { recursive: true });
-    writeFileSync(filePath, "#!/bin/sh\nexit 0\n");
-    chmodSync(filePath, 0o755);
+    const executable = executableArtifacts.has(artifact);
+    writeFileSync(filePath, executable ? "#!/bin/sh\nexit 0\n" : `fixture:${artifact}\n`);
+    chmodSync(filePath, executable ? 0o755 : 0o644);
   }
   const archivePath = path.join(root, `codex-package-${target}.tar.gz`);
   execFileSync("/usr/bin/tar", [
@@ -77,11 +85,13 @@ function fixture() {
     projectRoot,
     "aarch64-apple-darwin",
     lock.appServerRuntimeVersion,
+    lock.requiredArtifacts,
   );
   const x64ArchivePath = createArchive(
     projectRoot,
     "x86_64-apple-darwin",
     lock.appServerRuntimeVersion,
+    lock.requiredArtifacts,
   );
   const manifestBody =
     `${sha256(readFileSync(arm64ArchivePath))}  ${path.basename(arm64ArchivePath)}\n` +
