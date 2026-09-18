@@ -84,6 +84,41 @@ test("capabilities follow the nearest surface without claiming embedded or nativ
   }
 });
 
+test("history shortcuts on nested controls use the nearest registered surface owner", () => {
+  const editorHistory = history();
+  const editor = document.createElement("div");
+  editor.contentEditable = "true";
+  const boundary = document.createElement("section");
+  boundary.setAttribute("data-embedded-surface-input", "page-title");
+  const expand = document.createElement("button");
+  boundary.append(expand);
+  editor.append(boundary);
+  document.body.append(editor);
+  const request = vi.fn(editorHistory.request);
+  const release = registerFocusedHistory(editor, {
+    controls: { ...editorHistory, request },
+    contentEditableRoot: () => editor,
+  });
+  try {
+    expand.focus();
+    const undo = new KeyboardEvent("keydown", {
+      key: "z",
+      metaKey: true,
+      bubbles: true,
+      cancelable: true,
+    });
+    expect(expand.dispatchEvent(undo)).toBe(false);
+    expect(request).toHaveBeenCalledExactlyOnceWith("undo");
+
+    dispatchFocusedHistory("redo");
+    expect(request).toHaveBeenLastCalledWith("redo");
+  } finally {
+    release();
+    editorHistory.close();
+    editor.remove();
+  }
+});
+
 test("menu history follows the Composer focus, not the previously active Page", async () => {
   const page = document.createElement("div");
   page.className = "nfm-editor";

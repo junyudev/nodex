@@ -7,11 +7,14 @@ import {
 import { createUuidV7 } from "../../../src/shared/uuid-v7";
 import { createBoundedOperationId } from "../../../src/shared/operation-identity";
 import type { LibraryPageFileInventory } from "../../../src/shared/library-files";
+import type { IpcApi, IpcArgs } from "../../../src/shared/ipc-api";
+import type { ProjectAccessedDocumentDescriptor } from "../../../src/shared/block-documents/contracts";
+import { parseDatabaseViewId, type DatabaseViewId } from "../../../src/shared/database-identities";
 
 export interface ConvergenceProject {
   projectId: string;
   storeEpoch: string;
-  defaultDatabaseViewId: string;
+  defaultDatabaseViewId: DatabaseViewId;
 }
 
 export interface ConvergencePage {
@@ -23,7 +26,7 @@ export interface ConvergencePage {
 export async function createConvergenceListView(
   page: Page,
   project: ConvergenceProject,
-): Promise<string> {
+): Promise<DatabaseViewId> {
   const snapshot = requireIpcValue<DatabaseModuleReadSnapshotV2>(
     await invokeIpc(page, "database-module:read", project.projectId, {
       projectId: project.projectId,
@@ -33,7 +36,7 @@ export async function createConvergenceListView(
   );
   if (snapshot.value.kind !== "view") throw new Error("List fixture requires a Board View");
   const board = snapshot.value.value;
-  const viewId = createUuidV7();
+  const viewId = parseDatabaseViewId(createUuidV7());
   requireIpcValue(
     await invokeIpc(page, "database-module:apply", project.projectId, {
       operationId: createUuidV7(),
@@ -59,6 +62,37 @@ export async function createConvergenceListView(
     }),
     "Create List fixture",
   );
+  const listSnapshot = requireIpcValue<DatabaseModuleReadSnapshotV2>(
+    await invokeIpc(page, "database-module:read", project.projectId, {
+      projectId: project.projectId,
+      read: { target: { kind: "view", viewId }, mode: "view" },
+    }),
+    "Read List fixture",
+  );
+  if (listSnapshot.value.kind !== "view") throw new Error("List fixture View is unavailable");
+  const list = listSnapshot.value.value;
+  requireIpcValue(
+    await invokeIpc(page, "database-module:apply", project.projectId, {
+      operationId: createUuidV7(),
+      projectId: project.projectId,
+      storeEpoch: project.storeEpoch,
+      actor: { kind: "electron_e2e" },
+      operations: [
+        {
+          kind: "put_view",
+          databaseId: list.databaseId,
+          dataSourceId: list.dataSourceId,
+          viewId: list.viewId,
+          expectedRevision: list.revision,
+          name: "List",
+          layout: "list",
+          config: list.config,
+          isDefault: false,
+        },
+      ],
+    }),
+    "Name List fixture",
+  );
   return viewId;
 }
 
@@ -81,15 +115,24 @@ export const requireIpcValue = <T>(result: unknown, label: string): T => {
   return result.value as T;
 };
 
+export async function invokeIpc<Channel extends keyof IpcApi>(
+  page: Page,
+  channel: Channel,
+  ...args: IpcArgs<Channel>
+): Promise<IpcApi[Channel]["result"]>;
 export async function invokeIpc(
   page: Page,
-  channel: string,
+  channel: keyof IpcApi,
   ...args: readonly unknown[]
 ): Promise<unknown> {
   return await page.evaluate(
-    async ({ channel: targetChannel, args: targetArgs }) =>
-      await window.api?.invoke(targetChannel, ...targetArgs),
-    { channel, args },
+    async ({ channel: targetChannel, args: targetArgs }) => {
+      const invoke = window.api?.invoke as
+        | ((target: string, ...targetArgs: readonly unknown[]) => Promise<unknown>)
+        | undefined;
+      return await invoke?.(targetChannel, ...targetArgs);
+    },
+    { channel: String(channel), args },
   );
 }
 
@@ -136,10 +179,7 @@ export async function createConvergenceProject(
     "Project creation",
   );
   const projectId = requireString(project.id, "Project id");
-  const defaultDatabaseViewId = requireString(
-    project.defaultDatabaseViewId,
-    "Project default Database View id",
-  );
+  const defaultDatabaseViewId = parseDatabaseViewId(project.defaultDatabaseViewId);
   const metadata = requireIpcValue<Record<string, unknown>>(
     await invokeIpc(
       page,
@@ -257,7 +297,7 @@ export async function seedConvergenceDocument(
   source: ConvergencePage,
   nfm = "Keep block\nDragged source",
 ): Promise<SeededConvergencePage> {
-  const descriptor = requireIpcValue<Record<string, unknown>>(
+  const descriptor = requireIpcValue<ProjectAccessedDocumentDescriptor>(
     await invokeIpc(page, "block-document:owned:prepare", project.projectId, source.pageId),
     "Prepare source Page document",
   );
@@ -298,7 +338,7 @@ export async function createConvergenceSubpage(
   title: string,
   beforeBlockId: string,
 ): Promise<ConvergencePage> {
-  const descriptor = requireIpcValue<Record<string, unknown>>(
+  const descriptor = requireIpcValue<ProjectAccessedDocumentDescriptor>(
     await invokeIpc(page, "block-document:owned:prepare", project.projectId, parent.pageId),
     `Prepare ${title} parent`,
   );

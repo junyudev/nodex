@@ -137,39 +137,6 @@ const setBoardCardPriority = async ({
   await page.getByRole("option", { name: optionName, exact: true }).click();
 };
 
-const openFilterPicker = async ({
-  trigger,
-  search,
-}: {
-  readonly trigger: Locator;
-  readonly search: Locator;
-}): Promise<void> => {
-  await expect(async () => {
-    if (await search.isVisible()) return;
-    await trigger.click({ timeout: 2_000 });
-    await expect(search).toBeVisible({ timeout: 2_000 });
-  }).toPass({ timeout: 10_000 });
-};
-
-const chooseFilterPickerOption = async ({
-  trigger,
-  search,
-  option,
-  expectedLabel,
-}: {
-  readonly trigger: Locator;
-  readonly search: Locator;
-  readonly option: Locator;
-  readonly expectedLabel: string;
-}): Promise<void> => {
-  await expect(async () => {
-    if ((await trigger.textContent())?.includes(expectedLabel)) return;
-    await openFilterPicker({ trigger, search });
-    await option.click({ timeout: 2_000 });
-    await expect(trigger).toContainText(expectedLabel, { timeout: 2_000 });
-  }).toPass({ timeout: 30_000 });
-};
-
 const dragBoardCardWithMouse = async ({
   page,
   source,
@@ -662,26 +629,19 @@ test("keeps the canonical Board while grouping and dragging by Priority", async 
       await setBoardCardPriority({ page, pageId: sourcePageId, optionName: "P1 - High" });
       await setBoardCardPriority({ page, pageId: targetPageId, optionName: "P1 - High" });
 
-      await page.getByRole("button", { name: "Display options" }).click();
-      const orderBy = page.getByRole("button", { name: "Order by", exact: true });
-      const orderBySearch = page.getByRole("combobox", { name: "Search Order by" });
-      await chooseFilterPickerOption({
-        trigger: orderBy,
-        search: orderBySearch,
-        option: page.getByRole("option", { name: "Priority", exact: true }),
-        expectedLabel: "Priority",
-      });
-      await expect(orderBySearch).toBeHidden();
-      const groupBy = page.getByRole("button", { name: "Group by", exact: true });
-      await expect(groupBy).toHaveAttribute("aria-disabled", "false");
-      const groupBySearch = page.getByRole("combobox", { name: "Search Group by" });
-      await chooseFilterPickerOption({
-        trigger: groupBy,
-        search: groupBySearch,
-        option: page.getByRole("option", { name: "Priority", exact: true }),
-        expectedLabel: "Priority",
-      });
-      await expect(groupBySearch).toBeHidden();
+      await page.getByRole("button", { name: "Sort View", exact: true }).click();
+      await page.getByRole("button", { name: "Priority", exact: true }).click();
+      await expect(page.getByTestId("database-view-rules-bar")).toBeVisible();
+      await page.keyboard.press("Escape");
+
+      await page.getByRole("button", { name: "Database settings", exact: true }).click();
+      const settings = page.getByRole("complementary", { name: "Database settings" });
+      await settings.getByRole("button", { name: /^Group\b/u }).click();
+      const groupBy = settings.getByRole("button", { name: "Group by", exact: true });
+      await groupBy.click();
+      await page.getByRole("option", { name: "Priority", exact: true }).click();
+      await expect(groupBy).toContainText("Priority");
+      await settings.getByRole("button", { name: "Close settings", exact: true }).click();
 
       const highColumn = page.locator('[data-board-column-root][data-board-column-id="p1-high"]');
       await expect(highColumn.locator(`[data-board-uuid-v7="${sourcePageId}"]`)).toBeVisible({
@@ -993,7 +953,7 @@ test("materializes and opens the authoritative board/dense environment", async (
       );
       expect(countBox.x - (labelBox.x + labelBox.width)).toBeLessThanOrEqual(8);
       await moreOptions.click();
-      await page.getByRole("button", { name: "Collapse", exact: true }).click();
+      await page.getByRole("button", { name: "Collapse column", exact: true }).click();
       const buildColumn = page.locator('[data-board-column-root][data-board-column-id="build"]');
       await expect(buildColumn).toHaveAttribute("data-board-column-collapsed", "true");
       await expect.poll(async () => (await buildColumn.boundingBox())?.width ?? null).toBe(52);
@@ -1483,8 +1443,10 @@ test("materializes and opens the authoritative board/dense environment", async (
       expect(mentionFocusUnderlineStyle.textDecorationColor).toBe(mentionFocusUnderlineStyle.color);
       await page.keyboard.press("Enter");
       await expect(
-        page.getByRole("tab", { name: "Keep projection updates bounded" }),
-      ).toHaveAttribute("aria-selected", "true");
+        page.locator(
+          'button[role="tab"][aria-label="Keep projection updates bounded"][aria-selected="true"]',
+        ),
+      ).toHaveCount(1);
       await page.getByRole("tab", { name: "Unify Database View rendering" }).click();
       await expect(
         page.getByRole("tab", { name: "Unify Database View rendering" }),

@@ -295,6 +295,7 @@ const createHistoryEngine = <Intent, Request, Receipt, Inverse>(options: {
   });
   let scope = makeScope(options.scopeKey, 1);
   let sequence = 0;
+  let historicalSequence = 0;
   let revision = 0;
   let activeCount = 0;
   let requestBytes = 0;
@@ -975,20 +976,21 @@ const createHistoryEngine = <Intent, Request, Receipt, Inverse>(options: {
     publish();
     return true;
   };
-  // A native engine may already have reachable history when the surface binds.
-  // Adopt it without creating a new content branch or trimming dependent Redo early.
+  // A newly mounted native engine may expose history that predates everything
+  // already observed by this interaction realm. Keep those captures behind the
+  // live frontier so mounting an embedded editor cannot steal the next Undo or
+  // Redo from a newer cross-surface action.
   const adopt = (initialCaptures: typeof options.initialCaptures) => {
     for (const direction of ["undo", "redo"] as const) {
-      const existingLength = scope[direction].length;
       const captures = [...(initialCaptures?.[direction] ?? [])];
-      if (direction === "redo") captures.reverse();
-      for (const { intent, receipt } of captures) {
+      const adopted: Slot[] = [];
+      for (const { intent, receipt } of captures.toReversed()) {
         const adapter =
           typeof options.adapter === "function" ? options.adapter(intent) : options.adapter;
         const interpretation = interpret(adapter, receipt);
         if (interpretation.kind === "noop") continue;
         const entry: Slot = {
-          id: ++sequence,
+          id: --historicalSequence,
           local: true,
           label: adapter.describe(intent),
           location: adapter.locate?.() ?? null,
@@ -1000,12 +1002,9 @@ const createHistoryEngine = <Intent, Request, Receipt, Inverse>(options: {
               : { kind: "blocked", reason: interpretation.reason, retryable: false },
         };
         entry.bytes = measure(entry);
-        scope[direction].push(entry);
+        adopted.unshift(entry);
       }
-      if (direction === "redo") {
-        const adopted = scope.redo.splice(existingLength);
-        scope.redo.push(...adopted.reverse());
-      }
+      scope[direction].unshift(...adopted);
     }
     trim(scope);
     publish();

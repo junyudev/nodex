@@ -10,7 +10,15 @@ function readMacApplicationType(processId: number): string | null {
     "-pid",
     String(processId),
   ]).toString();
-  return appInfo.match(/"ApplicationType"="([^"]+)"/)?.[1] ?? null;
+  const processBlock = appInfo
+    .split(/\n\s*\n/u)
+    .find((block) => new RegExp(`\\bpid\\s*=\\s*${processId}\\b`, "u").test(block));
+  if (!processBlock) return null;
+  return (
+    processBlock.match(/\btype="([^"]+)"/u)?.[1] ??
+    processBlock.match(/"ApplicationType"="([^"]+)"/u)?.[1] ??
+    null
+  );
 }
 
 async function expectCanonicalStartup(harness: ElectronScenarioHarness): Promise<void> {

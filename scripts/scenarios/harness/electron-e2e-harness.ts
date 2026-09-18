@@ -69,6 +69,29 @@ export async function waitForNodexApplicationWindow(
   throw new Error("Nodex did not create a full application window before the startup deadline");
 }
 
+/** Waits through renderer navigations until the final preload can complete Main initialization. */
+export async function waitForNodexWindowInitialization(page: Page): Promise<Page> {
+  const deadline = Date.now() + APPLICATION_WINDOW_DISCOVERY_TIMEOUT_MS;
+  while (Date.now() < deadline) {
+    if (page.isClosed()) throw new Error("Nodex application window closed during initialization");
+    const initialized = await page
+      .evaluate(async () => {
+        const api = (
+          window as unknown as {
+            api?: { awaitInitialization?: () => Promise<void> };
+          }
+        ).api;
+        if (!api?.awaitInitialization) return false;
+        await api.awaitInitialization();
+        return true;
+      })
+      .catch(() => false);
+    if (initialized) return page;
+    await delay(25);
+  }
+  throw new Error("Nodex application window did not finish initialization before the deadline");
+}
+
 /** Resolves the first physical application window without waiting for Main initialization. */
 export async function waitForNodexFirstWindow(application: ElectronApplication): Promise<Page> {
   const deadline = Date.now() + APPLICATION_WINDOW_DISCOVERY_TIMEOUT_MS;
@@ -371,16 +394,7 @@ export class ElectronScenarioHarness {
   async waitForApplicationReady(): Promise<Page> {
     const page = this.#page;
     if (!page) throw new Error("Electron scenario renderer is not running");
-    await page.evaluate(async () => {
-      const api = (
-        window as unknown as {
-          api?: { awaitInitialization(): Promise<void> };
-        }
-      ).api;
-      if (!api) throw new Error("Nodex preload API is unavailable");
-      await api.awaitInitialization();
-    });
-    return page;
+    return await waitForNodexWindowInitialization(page);
   }
 
   async restart(): Promise<Page> {

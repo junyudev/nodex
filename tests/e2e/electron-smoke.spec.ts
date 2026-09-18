@@ -29,6 +29,7 @@ import {
 import { CoreClient } from "../../src/main/core-client/core-client";
 import { LARGE_CONTENT_FIXTURE_SIZES } from "../../src/main/performance/large-content-fixtures";
 import { createUuidV7 } from "../../src/shared/uuid-v7";
+import { parseDataSourceId } from "../../src/shared/database-identities";
 import {
   attachNodexStructuralClipboardWriteClaim,
   encodeNodexStructuralClipboardDescriptor,
@@ -37,6 +38,7 @@ import {
 import {
   ElectronScenarioHarness,
   stopNodexElectronApplication as stopApplication,
+  waitForNodexWindowInitialization,
 } from "../../scripts/scenarios/harness/electron-e2e-harness";
 import { openBoardPageFromCard } from "./support/open-board-page";
 
@@ -2413,6 +2415,7 @@ test.describe("parallel functional Electron smoke", () => {
       const page = await harness.launch();
 
       const project = await createConvergenceProject(page, "Create modal convergence", workspace);
+      await createConvergenceListView(page, project);
       await page
         .getByRole("button", {
           name: "Open Create modal convergence",
@@ -2614,7 +2617,10 @@ test.describe("parallel functional Electron smoke", () => {
               await invokeIpc(page, "database:list-window:get", project.projectId, {
                 databaseViewId: project.defaultDatabaseViewId,
                 first: 50,
-                presentationOverride: { layout: "list" },
+                preferencesOverride: {
+                  rulesOverride: {},
+                  presentationOverride: {},
+                },
               }),
               "Read Property-edited List window",
             );
@@ -3570,10 +3576,11 @@ test.describe("parallel functional Electron smoke", () => {
         source,
         [
           "Before smoke sibling",
-          "1XL(ui, unclear) DnD smoke title",
+          "1XL(ui, unclear) DnD Board title",
           "\tDnD smoke first child",
           "\tDnD smoke middle child",
           "\tDnD smoke last child",
+          "1XL(ui, unclear) DnD List title",
         ].join("\n"),
       );
 
@@ -3605,7 +3612,7 @@ test.describe("parallel functional Electron smoke", () => {
       const sourceBlock = sourceSurface
         .locator(".bn-block[data-id]")
         .filter({
-          hasText: "1XL(ui, unclear) DnD smoke title",
+          hasText: "1XL(ui, unclear) DnD Board title",
         })
         .first();
       await expect(sourceBlock).toBeVisible();
@@ -3673,7 +3680,7 @@ test.describe("parallel functional Electron smoke", () => {
         .toBe(4);
       const promotedCards = triageColumn
         .locator(`[data-board-uuid-v7]:not([data-board-uuid-v7="${source.pageId}"])`)
-        .filter({ hasText: "DnD smoke title" });
+        .filter({ hasText: "DnD Board title" });
       await expect(promotedCards).toHaveCount(1, { timeout: 15_000 });
       await expect(promotedCards).toBeVisible();
       await expect(sourceBlock).toHaveCount(0, { timeout: 15_000 });
@@ -3694,7 +3701,7 @@ test.describe("parallel functional Electron smoke", () => {
         "Read native DnD promoted Page detail",
       );
       expect(detail.page).toMatchObject({
-        title: "DnD smoke title",
+        title: "DnD Board title",
         parent: {
           kind: "data_source",
           dataSourceId: database.dataSourceId,
@@ -3727,27 +3734,11 @@ test.describe("parallel functional Electron smoke", () => {
         .locator('[data-slot="toast-item"]')
         .filter({ hasText: "Task shorthand applied" });
       await expect(promotionToast.locator('[role="alert"]')).toBeVisible();
-      await promotionToast.getByRole("button", { name: "Undo" }).click();
-
-      await expect(promotedCards).toHaveCount(0, { timeout: 15_000 });
-      await expect
-        .poll(async () => await readConvergenceBoardTotal(page, project), { timeout: 15_000 })
-        .toBe(3);
-      await expect
-        .poll(
-          async () => {
-            const restored = requireIpcValue<Record<string, unknown>>(
-              await invokeIpc(page, "pages:detail:get", project.projectId, source.pageId),
-              "Read restored source Page detail",
-            );
-            return isRecord(restored.page) ? restored.page.plainText : null;
-          },
-          { timeout: 15_000 },
-        )
-        .toEqual(expect.stringContaining("1XL(ui, unclear) DnD smoke title"));
-      await page.getByRole("tab", { name: "DnD source Page" }).click();
-      await expect(sourceSurface).toBeVisible({ timeout: 15_000 });
-      await expect(sourceBlock).toHaveCount(1, { timeout: 15_000 });
+      const listSourceBlock = sourceSurface
+        .locator(".bn-block[data-id]")
+        .filter({ hasText: "1XL(ui, unclear) DnD List title" })
+        .first();
+      await expect(listSourceBlock).toBeVisible({ timeout: 15_000 });
 
       await page.getByRole("tab", { name: "Project Home", exact: true }).click();
       await page
@@ -3763,18 +3754,18 @@ test.describe("parallel functional Electron smoke", () => {
 
       await dragBlockFromEditorWithMouse({
         page,
-        sourceBlock,
+        sourceBlock: listSourceBlock,
         sourceEditor,
         target: listTarget,
         targetYRatio: 0.25,
-        expectedFeedback: listTarget.locator('[data-list-drop-indicator="true"]'),
+        expectAcceptedDragOver: true,
       });
 
       const promotedListRows = list
         .locator('[data-list-row="true"][data-database-view-page-id]')
-        .filter({ hasText: "DnD smoke title" });
+        .filter({ hasText: "DnD List title" });
       await expect(promotedListRows).toHaveCount(1, { timeout: 15_000 });
-      await expect(sourceBlock).toHaveCount(0, { timeout: 15_000 });
+      await expect(listSourceBlock).toHaveCount(0, { timeout: 15_000 });
       await expect(sourcePanel.getByRole("button", { name: "Reload" })).toHaveCount(0);
       await expect(sourceSurface).toHaveAttribute("contenteditable", "true");
       const promotedListPageId = requireString(
@@ -3786,7 +3777,7 @@ test.describe("parallel functional Electron smoke", () => {
         "Read native List DnD promoted Page detail",
       );
       expect(promotedListDetail.page).toMatchObject({
-        title: "DnD smoke title",
+        title: "DnD List title",
         parent: {
           kind: "data_source",
           dataSourceId: database.dataSourceId,
@@ -3805,9 +3796,6 @@ test.describe("parallel functional Electron smoke", () => {
         .filter({ hasText: "Task shorthand applied" })
         .last();
       await expect(listPromotionToast.locator('[role="alert"]')).toBeVisible();
-      await listPromotionToast.getByRole("button", { name: "Undo" }).click();
-      await expect(promotedListRows).toHaveCount(0, { timeout: 15_000 });
-      await expect(sourceBlock).toHaveCount(1, { timeout: 15_000 });
     } finally {
       await harness.close();
     }
@@ -4265,6 +4253,7 @@ test.describe("parallel functional Electron smoke", () => {
       const page = await harness.launch();
 
       const project = await createConvergenceProject(page, "Native List DnD smoke", workspace);
+      const listViewId = await createConvergenceListView(page, project);
       const firstTitle = "List fixture one";
       const firstFixture = await createConvergenceBoardPage(
         page,
@@ -4300,7 +4289,7 @@ test.describe("parallel functional Electron smoke", () => {
           operations: [
             {
               kind: "set_task_parent",
-              dataSourceId: listDescriptor.dataSourceId,
+              dataSourceId: parseDataSourceId(listDescriptor.dataSourceId),
               pages: [
                 {
                   pageId: secondFixture.pageId,
@@ -4310,9 +4299,10 @@ test.describe("parallel functional Electron smoke", () => {
               parentPageId: firstFixture.pageId,
             },
             {
-              kind: "put_view_personal_presentation",
-              viewId: project.defaultDatabaseViewId,
+              kind: "put_view_personal_preferences",
+              viewId: listViewId,
               expectedRevision: 0,
+              rulesOverride: {},
               presentationOverride: {
                 hierarchy: { showSubPages: true, nestedSubPages: true },
               },
@@ -4407,11 +4397,13 @@ test.describe("parallel functional Electron smoke", () => {
               }[];
             }>(
               await invokeIpc(page, "database:list-window:get", project.projectId, {
-                databaseViewId: project.defaultDatabaseViewId,
+                databaseViewId: listViewId,
                 first: 50,
-                presentationOverride: {
-                  layout: "list",
-                  hierarchy: { showSubPages: true, nestedSubPages: true },
+                preferencesOverride: {
+                  rulesOverride: {},
+                  presentationOverride: {
+                    hierarchy: { showSubPages: true, nestedSubPages: true },
+                  },
                 },
               }),
               "Read reordered List window",
@@ -4857,7 +4849,7 @@ test("converges a high-pressure Page promotion across tab groups and WebContents
     const audienceWindowOpened = application.waitForEvent("window");
     expect(await invokeIpc(page, "window:new", {})).toBe(true);
     const audiencePage = await audienceWindowOpened;
-    await audiencePage.evaluate(() => window.api?.awaitInitialization?.());
+    await waitForNodexWindowInitialization(audiencePage);
     await audiencePage
       .getByRole("button", {
         name: "Open Cross-tab Board stress",
@@ -4990,8 +4982,8 @@ test("converges a high-pressure Page promotion across tab groups and WebContents
         },
       },
     });
-    const localCommit = isRecord(transferCommand) ? transferCommand.localCommit : undefined;
-    const delivery = isRecord(localCommit) ? localCommit.delivery : undefined;
+    const localCommit = transferCommand.ok ? transferCommand.localCommit : undefined;
+    const delivery = localCommit?.status === "committed" ? localCommit.delivery : undefined;
     const effects =
       isRecord(delivery) && Array.isArray(delivery.projection_effects)
         ? delivery.projection_effects

@@ -22,6 +22,61 @@ export function historyKeyDirection(event: KeyboardEvent): SurfaceHistoryDirecti
   return null;
 }
 
+const focusedRegistration = (
+  target: Element | null = document.activeElement,
+): FocusedHistoryRegistration | null => {
+  if (!(target instanceof HTMLElement)) return null;
+  for (let element: HTMLElement | null = target; element; element = element.parentElement) {
+    const registered = registrations.get(element);
+    if (!registered) continue;
+    const native = target.closest(
+      'input, textarea, [contenteditable], [role="textbox"], [role="combobox"]',
+    );
+    const editing =
+      native &&
+      (native.matches('input, textarea, [role="textbox"], [role="combobox"]') ||
+        native.getAttribute("contenteditable") !== "false");
+    if (native?.getAttribute("contenteditable") === "false" && registered.contentEditableRoot)
+      return null;
+    if (editing && native !== registered.contentEditableRoot?.()) return null;
+    return registered;
+  }
+  return null;
+};
+
+const routeFocusedHistory = (event: Event, direction: SurfaceHistoryDirection): boolean => {
+  if (event.defaultPrevented) return false;
+  const registration = focusedRegistration(event.target instanceof Element ? event.target : null);
+  if (!registration?.controls.request) return false;
+  event.preventDefault();
+  event.stopPropagation();
+  registration.controls.request(direction);
+  return true;
+};
+
+const handleFocusedHistoryKeyDown = (event: KeyboardEvent): void => {
+  const direction = historyKeyDirection(event);
+  if (direction) routeFocusedHistory(event, direction);
+};
+
+const handleFocusedHistoryBeforeInput = (event: InputEvent): void => {
+  if (event.isComposing) return;
+  if (event.inputType === "historyUndo") routeFocusedHistory(event, "undo");
+  if (event.inputType === "historyRedo") routeFocusedHistory(event, "redo");
+};
+
+const attachFocusedHistoryInput = (): void => {
+  if (registrations.size !== 1) return;
+  document.addEventListener("keydown", handleFocusedHistoryKeyDown, true);
+  document.addEventListener("beforeinput", handleFocusedHistoryBeforeInput, true);
+};
+
+const detachFocusedHistoryInput = (): void => {
+  if (registrations.size !== 0) return;
+  document.removeEventListener("keydown", handleFocusedHistoryKeyDown, true);
+  document.removeEventListener("beforeinput", handleFocusedHistoryBeforeInput, true);
+};
+
 const isUnclaimedFocus = (document: Document): boolean => {
   const active = document.activeElement;
   return !active || active === document.body || active === document.documentElement;
@@ -90,24 +145,7 @@ export function retainPendingHistoryInput(
 export function readFocusedHistory(): SurfaceHistorySnapshot | null {
   if (pendingInput?.element.isConnected && isUnclaimedFocus(document))
     return pendingInput.controls.snapshot();
-  const target = document.activeElement;
-  if (!(target instanceof HTMLElement)) return null;
-  for (let element: HTMLElement | null = target; element; element = element.parentElement) {
-    const registered = registrations.get(element);
-    if (!registered) continue;
-    const native = target.closest(
-      'input, textarea, [contenteditable], [role="textbox"], [role="combobox"]',
-    );
-    const editing =
-      native &&
-      (native.matches('input, textarea, [role="textbox"], [role="combobox"]') ||
-        native.getAttribute("contenteditable") !== "false");
-    if (native?.getAttribute("contenteditable") === "false" && registered.contentEditableRoot)
-      return null;
-    if (editing && native !== registered.contentEditableRoot?.()) return null;
-    return registered.controls.snapshot();
-  }
-  return null;
+  return focusedRegistration()?.controls.snapshot() ?? null;
 }
 
 export function registerFocusedHistory(
@@ -115,11 +153,13 @@ export function registerFocusedHistory(
   registration: FocusedHistoryRegistration,
 ): () => void {
   registrations.set(element, registration);
+  attachFocusedHistoryInput();
   const unsubscribe = registration.controls.subscribe(notify);
   notify();
   return () => {
     unsubscribe();
     if (registrations.get(element) === registration) registrations.delete(element);
+    detachFocusedHistoryInput();
     notify();
   };
 }
@@ -143,6 +183,11 @@ export function subscribeFocusedHistory(listener: () => void): () => void {
 /** Route native menus through the same focused input owner as browser history input. */
 export function dispatchFocusedHistory(direction: SurfaceHistoryDirection): void {
   const target = document.activeElement ?? document.body;
+  const registration = focusedRegistration(target instanceof Element ? target : null);
+  if (registration?.controls.request) {
+    registration.controls.request(direction);
+    return;
+  }
   const request = new InputEvent("beforeinput", {
     inputType: direction === "undo" ? "historyUndo" : "historyRedo",
     bubbles: true,

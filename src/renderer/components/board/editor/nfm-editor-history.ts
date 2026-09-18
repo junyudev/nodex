@@ -254,7 +254,7 @@ export class NfmHistoryLane {
     this.stopCapturing();
     (this.options.interactionHistory ?? this.standaloneHistory!).reset();
   }
-  private request(direction: SurfaceHistoryDirection): boolean {
+  request(direction: SurfaceHistoryDirection): boolean {
     if (this.disposed) return false;
     this.requestHistory(direction);
     // Empty, pending and blocked still belong to this surface, never another engine.

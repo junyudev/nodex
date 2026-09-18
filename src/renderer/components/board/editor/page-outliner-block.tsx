@@ -21,6 +21,7 @@ import {
 import { PortableRichTitle } from "@/components/block-documents/portable-rich-title";
 import { useBlockReferenceHostRuntime } from "@/components/block-documents/block-reference-runtime-context";
 import { usePageTargetReadModel } from "@/lib/block-reference-queries";
+import { useSurfaceHistoryFocus } from "@/lib/surface-history/use-surface-history-focus";
 import {
   pageOutlinerInlineStateLabel,
   pageOutlinerPlainTitle,
@@ -94,12 +95,21 @@ export function PageOutlinerBlock({
     activationBudget,
     visibilityOverride,
   });
-  const { engageTitle } = activation;
+  const { engageTitle, sectionRef: activationSectionRef } = activation;
   const nextFocusIntentId = useRef(0);
   const projectedPointerIntent = useRef<{
     readonly clientX: number;
     readonly clientY: number;
   } | null>(null);
+  const historyFocusRef = useRef<HTMLElement | null>(null);
+  useSurfaceHistoryFocus(historyFocusRef, host?.historyControls ?? null);
+  const sectionRef = useCallback(
+    (element: HTMLElement | null) => {
+      historyFocusRef.current = element;
+      activationSectionRef(element);
+    },
+    [activationSectionRef],
+  );
   const [focusIntent, setFocusIntent] = useState<PageOutlinerFocusIntent | null>(null);
   const requestBoundaryFocus = useCallback(
     (direction: VerticalArrowDirection) => {
@@ -196,7 +206,7 @@ export function PageOutlinerBlock({
       {...(target.status === "available" ? { accessKind: target.contentAccessContext.kind } : {})}
       expanded={activation.expanded}
       active={activation.active}
-      sectionRef={activation.sectionRef}
+      sectionRef={sectionRef}
       onTouch={activation.touch}
     >
       <PageOutlinerDisclosure {...rowProps}>

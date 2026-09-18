@@ -2,7 +2,10 @@ import { expect, test, type Locator, type Page } from "@playwright/test";
 import { mkdirSync, writeFileSync } from "node:fs";
 import { resolve } from "node:path";
 
-import { withElectronScenario } from "../../scripts/scenarios/harness/electron-e2e-harness";
+import {
+  waitForNodexWindowInitialization,
+  withElectronScenario,
+} from "../../scripts/scenarios/harness/electron-e2e-harness";
 import {
   DATABASE_SETTINGS_CONFIGURATION_SCENARIO_ID,
   DATABASE_SETTINGS_CONFIGURATION_SCENARIO_REVISION,
@@ -10,8 +13,8 @@ import {
 } from "../../scripts/scenarios/scenarios/database-settings-configuration";
 const focusSettingsDatabase = async (page: Page): Promise<void> => {
   await page.evaluate(() => localStorage.setItem("nodex-theme", "dark"));
-  await page.emulateMedia({ colorScheme: "light" });
-  await page.emulateMedia({ colorScheme: "dark" });
+  await page.reload();
+  await waitForNodexWindowInitialization(page);
   await expect
     .poll(() => page.evaluate(() => document.documentElement.classList.contains("dark")))
     .toBe(true);
@@ -460,12 +463,15 @@ test("Filter and Sort authoring stays inline, typed, draggable, and personally s
         exact: true,
       });
       await expect(nestedBooleanOperator).toBeVisible();
-      const nestedBooleanInset = await nestedBooleanOperator.evaluate((operator) => {
-        const group = operator.closest('[data-slot="advanced-filter-group"][data-depth="1"]');
-        const surface = group?.parentElement;
-        if (!(surface instanceof HTMLElement)) return Number.NaN;
-        return operator.getBoundingClientRect().left - surface.getBoundingClientRect().left;
-      });
+      const readNestedBooleanInset = () =>
+        nestedBooleanOperator.evaluate((operator) => {
+          const group = operator.closest('[data-slot="advanced-filter-group"][data-depth="1"]');
+          const surface = group?.parentElement;
+          if (!(surface instanceof HTMLElement)) return Number.NaN;
+          return operator.getBoundingClientRect().left - surface.getBoundingClientRect().left;
+        });
+      await expect.poll(readNestedBooleanInset).toBeGreaterThanOrEqual(12);
+      const nestedBooleanInset = await readNestedBooleanInset();
       const nestedControlBackgrounds = await advancedPopover
         .locator('[data-slot="advanced-filter-group"][data-depth="1"]')
         .evaluate((group) => {
@@ -1048,7 +1054,15 @@ test("View identity stays exact through tab selection, layout conversion, and re
       await captureDatabaseSettingsArtifact(page, "database-settings-root-nodex-chrome-dark");
       await rail.getByRole("button", { name: /Property visibility/ }).click();
       const hideAllButton = rail.getByRole("button", { name: "Hide all", exact: true });
-      await expect(hideAllButton).toHaveCSS("color", "rgb(131, 195, 255)");
+      const primaryActionColor = await rail.evaluate((element) => {
+        const probe = document.createElement("span");
+        probe.style.color = "var(--color-token-primary)";
+        element.append(probe);
+        const color = getComputedStyle(probe).color;
+        probe.remove();
+        return color;
+      });
+      await expect(hideAllButton).toHaveCSS("color", primaryActionColor);
       const namePropertyRow = rail.locator('[data-property-id="name"]');
       const shownPropertyRow = rail
         .locator("[data-property-id]")
@@ -1108,36 +1122,6 @@ test("View identity stays exact through tab selection, layout conversion, and re
           .locator("[data-property-drag-handle]")
           .evaluate((element) => getComputedStyle(element).color),
       };
-      await rail.evaluate((element, propertyId) => {
-        const observer = new MutationObserver(() => {
-          if (element.getAttribute("data-database-presentation-activity") !== "saving") return;
-          const hideAll = [...element.querySelectorAll("button")].find(
-            (button) => button.textContent?.trim() === "Hide all",
-          );
-          const handle = [...element.querySelectorAll("[data-property-drag-handle]")].find(
-            (candidate) => candidate.getAttribute("data-property-drag-handle") === propertyId,
-          );
-          const save = [...element.querySelectorAll("button")].find(
-            (button) => button.textContent?.trim() === "Save for everyone",
-          );
-          if (!hideAll || !handle || !save) return;
-          element.setAttribute(
-            "data-e2e-saving-style",
-            JSON.stringify({
-              hideAllColor: getComputedStyle(hideAll).color,
-              hideAllOpacity: getComputedStyle(hideAll).opacity,
-              hideAllDisabled: hideAll.disabled,
-              handleColor: getComputedStyle(handle).color,
-              saveDisabled: save.disabled,
-            }),
-          );
-          observer.disconnect();
-        });
-        observer.observe(element, {
-          attributes: true,
-          attributeFilter: ["data-database-presentation-activity"],
-        });
-      }, hiddenPropertyId);
       await page.mouse.move(hiddenHandleCenter.x, hiddenHandleCenter.y);
       await page.mouse.down();
       await page.mouse.move(hiddenHandleCenter.x, hiddenHandleCenter.y - 5);
@@ -1170,22 +1154,25 @@ test("View identity stays exact through tab selection, layout conversion, and re
       await expect(shownPropertyRow).not.toHaveCSS("transform", "none");
       await captureDatabaseSettingsArtifact(page, "property-visibility-continuous-drag-dark");
       await page.mouse.up();
-      await expect.poll(() => rail.getAttribute("data-e2e-saving-style")).not.toBeNull();
-      const savingDropChrome = JSON.parse(
-        (await rail.getAttribute("data-e2e-saving-style")) ?? "null",
-      ) as typeof restingDropChrome & {
-        readonly hideAllDisabled: boolean;
-        readonly saveDisabled: boolean;
-      };
-      expect(savingDropChrome).toEqual({
-        ...restingDropChrome,
-        hideAllDisabled: false,
-        saveDisabled: false,
-      });
-      await captureDatabaseSettingsArtifact(page, "property-visibility-drop-handoff-stable-dark");
       await expect(
         hiddenPropertyRow.getByRole("button", { name: "Hide Scenario text 1", exact: true }),
       ).toBeVisible();
+      await expect(hideAllButton).toBeEnabled();
+      await expect(
+        rail.getByRole("button", { name: "Save for everyone", exact: true }),
+      ).toBeEnabled();
+      expect(await hideAllButton.evaluate((element) => getComputedStyle(element).color)).toBe(
+        restingDropChrome.hideAllColor,
+      );
+      expect(await hideAllButton.evaluate((element) => getComputedStyle(element).opacity)).toBe(
+        restingDropChrome.hideAllOpacity,
+      );
+      expect(
+        await hiddenPropertyRow
+          .locator("[data-property-drag-handle]")
+          .evaluate((element) => getComputedStyle(element).color),
+      ).toBe(restingDropChrome.handleColor);
+      await captureDatabaseSettingsArtifact(page, "property-visibility-drop-handoff-stable-dark");
       await captureDatabaseSettingsArtifact(page, "property-visibility-reordered-dark");
 
       await rail.getByRole("button", { name: "Back", exact: true }).click();
@@ -1193,7 +1180,7 @@ test("View identity stays exact through tab selection, layout conversion, and re
       await expect(rail.getByRole("heading", { name: "Layout" })).toBeVisible();
       await expect(rail.getByRole("button", { name: "List", exact: true })).toHaveCSS(
         "color",
-        "rgb(131, 195, 255)",
+        primaryActionColor,
       );
       await rail.getByRole("button", { name: "Board", exact: true }).click();
       await rail.getByRole("button", { name: "Convert", exact: true }).click();

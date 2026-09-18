@@ -1128,7 +1128,11 @@ function FilterGroupEditor({
 }) {
   const objectIdentityKey = useObjectIdentityKey();
   return (
-    <div data-slot="advanced-filter-group" data-depth={depth} className="w-max min-w-full">
+    <div
+      data-slot="advanced-filter-group"
+      data-depth={depth}
+      className={cn("w-max min-w-full", depth > 0 && "pl-3")}
+    >
       <div className="flex flex-col gap-2 px-2 pt-2">
         {group.children.map((child, index) => {
           const childPath = [...path, index];

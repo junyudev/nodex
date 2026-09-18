@@ -1,4 +1,5 @@
 import { createUuidV7 } from "../../../src/shared/uuid-v7";
+import { parseDatabaseViewId } from "../../../src/shared/database-identities";
 import type { WorkflowStatus } from "../../../src/shared/workflow-status";
 import {
   parseScenarioFacts,
@@ -10,12 +11,13 @@ import {
 } from "../contracts";
 
 export const BOARD_DENSE_SCENARIO_ID = "board/dense" as const;
-export const BOARD_DENSE_SCENARIO_REVISION = 2 as const;
+export const BOARD_DENSE_SCENARIO_REVISION = 3 as const;
 export const BOARD_DENSE_PRIMARY_PAGE_KEY = "primaryBuildPage" as const;
 
 export interface BoardDenseScenarioFacts extends ScenarioFacts {
   readonly totalRows: number;
   readonly groups: Readonly<Record<WorkflowStatus, number>>;
+  readonly listViewId: string;
   readonly primaryBuildPage: {
     readonly pageId: string;
     readonly title: string;
@@ -39,6 +41,7 @@ export const requireBoardDenseScenarioFacts = (value: unknown): BoardDenseScenar
     !["triage", "plan", "build", "review", "ship"].every(
       (status) => typeof groups[status] === "number" && groups[status] >= 0,
     ) ||
+    typeof candidate.listViewId !== "string" ||
     !isRecord(primary) ||
     typeof primary.pageId !== "string" ||
     typeof primary.title !== "string" ||
@@ -70,6 +73,78 @@ const retryIdempotentOperation = async <Value>(operation: () => Promise<Value>):
   } catch {
     return await operation();
   }
+};
+
+const createListView = async (
+  port: ScenarioSeedPort,
+  projectId: string,
+): Promise<{ readonly viewId: string; readonly commitSeq: number }> => {
+  const databaseRead = await port.readDatabase({
+    projectId,
+    read: { target: { kind: "project_default" }, mode: "database" },
+  });
+  if (!databaseRead.ok) throw new Error(databaseRead.error.message);
+  const databaseSnapshot = databaseRead.value;
+  if (databaseSnapshot.value.kind !== "database") {
+    throw new Error("board/dense default Database descriptor is unavailable");
+  }
+  const board = databaseSnapshot.value.value.views.find((view) => view.isDefault);
+  if (!board) throw new Error("board/dense default Board View is unavailable");
+  const viewId = parseDatabaseViewId(createUuidV7());
+  const apply = async (
+    operations: Parameters<ScenarioSeedPort["applyDatabase"]>[0]["operations"],
+  ) => {
+    const result = await port.applyDatabase({
+      operationId: createUuidV7(),
+      projectId,
+      storeEpoch: databaseSnapshot.storeEpoch,
+      actor: { kind: "scenario_seed" },
+      operations,
+    });
+    if (!result.ok) throw new Error(result.error.message);
+    return result.value;
+  };
+  await apply([
+    {
+      kind: "duplicate_view",
+      databaseId: board.databaseId,
+      sourceViewId: board.viewId,
+      expectedRevision: board.revision,
+      newViewId: viewId,
+    },
+  ]);
+  await apply([
+    {
+      kind: "change_view_layout",
+      databaseId: board.databaseId,
+      viewId,
+      expectedRevision: 1,
+      layout: "list",
+    },
+  ]);
+  const listRead = await port.readDatabase({
+    projectId,
+    read: { target: { kind: "view", viewId }, mode: "view" },
+  });
+  if (!listRead.ok) throw new Error(listRead.error.message);
+  if (listRead.value.value.kind !== "view") {
+    throw new Error("board/dense List View descriptor is unavailable");
+  }
+  const list = listRead.value.value.value;
+  const renamed = await apply([
+    {
+      kind: "put_view",
+      databaseId: list.databaseId,
+      dataSourceId: list.dataSourceId,
+      viewId: list.viewId,
+      expectedRevision: list.revision,
+      name: "List",
+      layout: "list",
+      config: list.config,
+      isDefault: false,
+    },
+  ]);
+  return { viewId, commitSeq: renamed.commitSeq };
 };
 
 export const BOARD_DENSE_PAGES: readonly BoardDensePageDefinition[] = [
@@ -184,6 +259,7 @@ const materializeBoardDense = async (
   if (!project.defaultDatabaseViewId) {
     throw new Error("board/dense Project has no default Database View");
   }
+  const listView = await createListView(port, project.id);
   return {
     version: 1,
     scenarioId: BOARD_DENSE_SCENARIO_ID,
@@ -191,7 +267,8 @@ const materializeBoardDense = async (
     projectId: project.id,
     databaseViewId: project.defaultDatabaseViewId,
     pageIdsByKey,
-    minimumCommitSeq: replacement.commitSeq,
+    entityIdsByKey: { listView: listView.viewId },
+    minimumCommitSeq: Math.max(replacement.commitSeq, listView.commitSeq),
     materializedAt: new Date().toISOString(),
   };
 };
@@ -202,6 +279,8 @@ const inspectBoardDense = async (
 ): Promise<BoardDenseScenarioFacts> => {
   const primaryPageId = manifest.pageIdsByKey[BOARD_DENSE_PRIMARY_PAGE_KEY];
   if (!primaryPageId) throw new Error("board/dense manifest has no primary Page");
+  const listViewId = manifest.entityIdsByKey?.listView;
+  if (!listViewId) throw new Error("board/dense manifest has no List View");
   const board = await port.readBoard(
     manifest.projectId,
     manifest.databaseViewId,
@@ -213,6 +292,7 @@ const inspectBoardDense = async (
     scenarioRevision: manifest.scenarioRevision,
     totalRows: board.totalRows,
     groups: board.groups,
+    listViewId,
     primaryBuildPage: {
       pageId: primary.pageId,
       title: primary.title,
@@ -227,6 +307,7 @@ const inspectBoardDense = async (
     facts.groups.build !== 3 ||
     facts.groups.review !== 1 ||
     facts.groups.ship !== 1 ||
+    facts.listViewId !== listViewId ||
     facts.primaryBuildPage.title !== "Unify Database View rendering" ||
     facts.primaryBuildPage.documentReadiness !== "ready"
   ) {

@@ -156,6 +156,7 @@ import {
   ThreadMentionRuntimeProvider,
   type ThreadMentionRuntimeValue,
 } from "./thread-mention-chip";
+import { activateSelectedMention } from "./mention-chip-keyboard-navigation";
 import { AgentConfigRuntimeProvider, type AgentConfigRuntimeValue } from "./agent-config-runtime";
 import { resolveDefaultAgentConfigIntelligence } from "./agent-config-chip";
 import { prepareOwnedBlockDocument } from "@/lib/api";
@@ -1740,6 +1741,21 @@ function NfmEditorInstance({
       const targetIsTextField =
         event.target instanceof HTMLInputElement || event.target instanceof HTMLTextAreaElement;
 
+      if (
+        !targetIsTextField &&
+        event.key === "Enter" &&
+        !event.altKey &&
+        !event.shiftKey &&
+        !event.ctrlKey &&
+        !event.metaKey &&
+        !event.isComposing &&
+        activateSelectedMention(editor)
+      ) {
+        event.preventDefault();
+        event.stopPropagation();
+        return;
+      }
+
       if (!targetIsTextField && structuralEditingController.current?.handleKeyDown(event)) {
         event.preventDefault();
         event.stopPropagation();
@@ -2688,6 +2704,7 @@ function NfmEditorInstance({
       ),
       isActiveSurface: isActivePanelTab,
       documentSurfaceId: source.clientSessionId,
+      historyControls: structuralEditingSession.historyControls,
       ...(onOpenPage ? { openPage: onOpenPage } : {}),
       ...(onOpenDatabase ? { openDatabase: onOpenDatabase } : {}),
       ...(onOpenCanvas ? { openCanvas: onOpenCanvas } : {}),
@@ -2716,6 +2733,7 @@ function NfmEditorInstance({
     parentBlockReferenceRuntime?.ancestorDocumentOwnerBlockIds,
     sourcePageContext,
     source.clientSessionId,
+    structuralEditingSession,
     surfaceMutationBarrier,
     createCanvasAtEmptyParagraph,
     createPageMention,

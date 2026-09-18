@@ -27,6 +27,7 @@ export async function dragBlockFromEditorWithMouse({
   target,
   targetYRatio = 0.7,
   expectedFeedback,
+  expectAcceptedDragOver = false,
   onFeedback,
   exerciseAncestorScrollLifecycle = false,
 }: {
@@ -36,9 +37,44 @@ export async function dragBlockFromEditorWithMouse({
   target: Locator;
   targetYRatio?: number;
   expectedFeedback?: Locator;
+  expectAcceptedDragOver?: boolean;
   onFeedback?: () => Promise<void>;
   exerciseAncestorScrollLifecycle?: boolean;
 }): Promise<void> {
+  const acceptedDragOverTargetBox = expectAcceptedDragOver ? await target.boundingBox() : null;
+  if (expectAcceptedDragOver) {
+    if (!acceptedDragOverTargetBox) {
+      throw new Error("Native dragover acceptance target has no layout box");
+    }
+    await page.evaluate((rect) => {
+      const controller = new AbortController();
+      const state = { accepted: false, dropEffect: "", observed: 0 };
+      Reflect.set(window, "__nodexE2eAcceptedDragOverProbe", { controller, state });
+      const reactRoot = document.getElementById("root");
+      if (!reactRoot) throw new Error("Nodex renderer root is unavailable for dragover probing");
+      reactRoot.addEventListener(
+        "dragover",
+        (rawEvent) => {
+          const event = rawEvent as DragEvent;
+          if (
+            event.clientX < rect.x ||
+            event.clientX > rect.x + rect.width ||
+            event.clientY < rect.y ||
+            event.clientY > rect.y + rect.height
+          )
+            return;
+          state.observed += 1;
+          // React registered its root listener when the application mounted.
+          // This later listener runs on the same node after React, even when the
+          // synthetic handler stops propagation, so defaultPrevented is settled.
+          if (!event.defaultPrevented) return;
+          state.accepted = true;
+          state.dropEffect = event.dataTransfer?.dropEffect ?? "";
+        },
+        { signal: controller.signal },
+      );
+    }, acceptedDragOverTargetBox);
+  }
   await sourceBlock.scrollIntoViewIfNeeded();
   const sourceBlockContent = sourceBlock.locator(":scope > .bn-block-content");
   const hoverTarget =
@@ -110,6 +146,18 @@ export async function dragBlockFromEditorWithMouse({
     // reliably produce the accepted dragover required for an HTML5 drop.
     await page.mouse.move(dropPoint.x + 1, dropPoint.y + 1);
     await page.mouse.move(dropPoint.x + 2, dropPoint.y + 2);
+    if (expectAcceptedDragOver) {
+      await expect
+        .poll(
+          async () =>
+            await page.evaluate(() => {
+              const probe = Reflect.get(window, "__nodexE2eAcceptedDragOverProbe");
+              const state = probe && Reflect.get(probe, "state");
+              return state && Reflect.get(state, "accepted") === true;
+            }),
+        )
+        .toBe(true);
+    }
     if (expectedFeedback) await expect(expectedFeedback).toBeVisible();
     await onFeedback?.();
     await page.mouse.up();
@@ -117,5 +165,15 @@ export async function dragBlockFromEditorWithMouse({
   } finally {
     // Deliberately do not retry: a failed gesture may already have committed.
     if (!mouseReleased) await page.mouse.up().catch(() => undefined);
+    if (expectAcceptedDragOver) {
+      await page
+        .evaluate(() => {
+          const probe = Reflect.get(window, "__nodexE2eAcceptedDragOverProbe");
+          const controller = probe && Reflect.get(probe, "controller");
+          if (controller instanceof AbortController) controller.abort();
+          Reflect.deleteProperty(window, "__nodexE2eAcceptedDragOverProbe");
+        })
+        .catch(() => undefined);
+    }
   }
 }

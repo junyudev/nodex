@@ -6,6 +6,7 @@ import type {
   ContentPageNavigationTarget,
 } from "../../../shared/content-access-context";
 import type { PortableRichText } from "../../../shared/block-documents/portable-rich-text";
+import type { SurfaceHistoryControls } from "@/lib/surface-history/controls";
 
 export interface BlockReferenceHostRuntime {
   /** Authority inherited by every nested content editor in this host chain. */
@@ -27,6 +28,8 @@ export interface BlockReferenceHostRuntime {
   readonly ancestorDocumentOwnerBlockIds: readonly string[];
   readonly isActiveSurface: boolean;
   readonly documentSurfaceId?: string;
+  /** Shared content history used by non-editing chrome inside nested owners. */
+  readonly historyControls?: SurfaceHistoryControls;
   readonly openPage?: (input: ContentPageNavigationTarget) => void | Promise<void>;
   readonly openDatabase?: (databaseId: DatabaseId) => void | Promise<void>;
   readonly openCanvas?: (input: ContentCanvasNavigationTarget) => void | Promise<void>;
