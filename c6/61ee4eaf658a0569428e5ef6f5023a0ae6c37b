@@ -1,0 +1,246 @@
+src/shared/codex-conversation-state/codex-environment-selection.ts
+  s_13facd0d06ac39::t_c2c26c1b32bdba 29,32-33
+src/shared/codex-conversation-state/codex-command-execution-stream.test.ts
+  s_13facd0d06ac39::t_ec6be593af75e6 76,95,103
+packages/codex-app-server-protocol/src/v2/GuardianApprovalReviewAction.ts
+  s_13facd0d06ac39::t_bb481f12a614e8 10
+src/shared/codex-conversation-state/codex-file-change-stream.test.ts
+  s_13facd0d06ac39::t_ec6be593af75e6 71,90,98
+packages/codex-app-server-protocol/src/v2/UserVerificationProof.ts
+  s_13facd0d06ac39::t_bb481f12a614e8 1-12
+packages/codex-app-server-protocol/src/v2/ReviewStartParams.ts
+  s_13facd0d06ac39::t_bb481f12a614e8 11-12
+packages/codex-app-server-protocol/src/v2/ThreadAttachmentListResponse.ts
+  s_13facd0d06ac39::t_bb481f12a614e8 1-9
+packages/codex-app-server-protocol/src/v2/ThreadAttachmentUpdatedNotification.ts
+  s_13facd0d06ac39::t_bb481f12a614e8 1-9
+packages/codex-app-server-protocol/src/v2/ThreadMetadataUpdateParams.ts
+  s_13facd0d06ac39::t_bb481f12a614e8 17-23
+packages/codex-app-server-protocol/src/v2/UserVerificationStatusParams.ts
+  s_13facd0d06ac39::t_bb481f12a614e8 1-5
+packages/codex-app-server-protocol/src/v2/UserVerificationDeleteResponse.ts
+  s_13facd0d06ac39::t_bb481f12a614e8 1-5
+src/shared/codex-conversation-state/codex-server-request-lifecycle.ts
+  s_13facd0d06ac39::t_c2c26c1b32bdba 657
+packages/codex-app-server-protocol/src/v2/ThreadAttachmentRemoveResponse.ts
+  s_13facd0d06ac39::t_bb481f12a614e8 1-8
+src/main/app-tools/AccountAppTools.node.test.ts
+  s_13facd0d06ac39::t_73819669246ed0 71-76
+  s_13facd0d06ac39::t_898081fda2ce15 45
+packages/codex-app-server-protocol/src/v2/MemoryStatusParams.ts
+  s_13facd0d06ac39::t_bb481f12a614e8 1-9
+src/shared/codex-conversation-state/codex-frame-text-delta.test.ts
+  s_13facd0d06ac39::t_ec6be593af75e6 58,77,85
+src/shared/codex-conversation-state/test-fixtures/sanitized-command-lifecycle.ts
+  s_13facd0d06ac39::t_5b631100139e82 41
+  s_13facd0d06ac39::t_8a8727ea874546 62,70
+packages/codex-app-server-protocol/src/v2/UserVerificationRpcError.ts
+  s_13facd0d06ac39::t_bb481f12a614e8 1-9
+packages/codex-app-server-protocol/src/v2/UserVerificationStatusResponse.ts
+  s_13facd0d06ac39::t_bb481f12a614e8 1-9
+src/main/codex-application/CodexHistoryIndependentCreationPerformance.stress.test.ts
+  s_13facd0d06ac39::t_ec6be593af75e6 86,105,113
+packages/codex-app-server-protocol/src/v2/GetAccountRateLimitsParams.ts
+  s_13facd0d06ac39::t_bb481f12a614e8 1-18
+src/shared/codex-mcp-elicitation.ts
+  s_13facd0d06ac39::t_c2c26c1b32bdba 10,330
+src/renderer/features/local-conversation/projection/agent-activity-v2.node.test.ts
+  s_13facd0d06ac39::t_8a8727ea874546 133
+packages/codex-app-server-protocol/src/ServerNotification.ts
+  s_13facd0d06ac39::t_bb481f12a614e8 53,90
+src/main/codex-application/CodexAccount.ts
+  s_13facd0d06ac39::t_c2c26c1b32bdba 99,288
+  s_13facd0d06ac39::t_021525276e6c40 42,290
+src/shared/codex-conversation-state/codex-owner-steer.test.ts
+  s_13facd0d06ac39::t_ec6be593af75e6 23,42,47
+packages/codex-app-server-protocol/src/ResponseItem.ts
+  s_13facd0d06ac39::t_bb481f12a614e8 5,25
+src/main/codex-application/internal/ConversationEntityState.node.test.ts
+  s_13facd0d06ac39::t_ec6be593af75e6 39,58,66
+src/shared/codex-conversation-state/codex-conversation-reducer.test.ts
+  s_13facd0d06ac39::t_ec6be593af75e6 60,82,90
+src/shared/browser-app-server-compatibility.mjs
+  s_13facd0d06ac39::t_a5586b5f16f704 7-40
+src/main/core-client/CodexSubagentParityPerformance.stress.test.ts
+  s_13facd0d06ac39::t_ec6be593af75e6 226,245,263
+scripts/relock-agent-runtime.test.ts
+  s_13facd0d06ac39::t_d05602b106bc70 23-28,43,48-50,53-55,88,94
+src/shared/codex-app-server-release-lock.mjs
+  s_13facd0d06ac39::t_35d4ed45b5f36c 283-292
+packages/codex-app-server-protocol/src/v2/UserVerificationVerifyResponse.ts
+  s_13facd0d06ac39::t_bb481f12a614e8 1-6
+packages/codex-app-server-protocol/runtime-schemas/ClientRequest.schema.json
+  s_13facd0d06ac39::t_bb481f12a614e8 804-815,1818-1831,2399-2414,4314-4334,4528,4978-5051,5530-5539,5684-5690,7845-7903,7986-8105,8565-8636,8709-8732,11255-11262
+packages/codex-app-server-protocol/src/ConfigurationReasoning.ts
+  s_13facd0d06ac39::t_bb481f12a614e8 1-9
+src/main/codex-application/conversation-test-fixture.ts
+  s_13facd0d06ac39::t_ec6be593af75e6 7,26,34
+src/renderer/features/local-conversation/local-conversation-store.test.tsx
+  s_13facd0d06ac39::t_ec6be593af75e6 7313,7332,7340
+src/shared/codex-conversation-state/codex-turn-lifecycle.test.ts
+  s_13facd0d06ac39::t_8a8727ea874546 20,39,47
+  s_13facd0d06ac39::t_52e8842792f15d 306-308,312-314
+packages/codex-app-server-protocol/src/v2/ConfigRequirements.ts
+  s_13facd0d06ac39::t_bb481f12a614e8 6,22
+packages/codex-app-server-protocol/src/v2/GetAccountRateLimitsResponse.ts
+  s_13facd0d06ac39::t_bb481f12a614e8 10-13
+  s_13facd0d06ac39::t_310c5c043cc141 9
+src/main/codex/codex-permission-resolver.test.ts
+  s_13facd0d06ac39::t_8a8727ea874546 69
+packages/codex-app-server-protocol/src/v2/ThreadAttachment.ts
+  s_13facd0d06ac39::t_bb481f12a614e8 1-9
+src/shared/codex-mcp-elicitation.test.ts
+  s_13facd0d06ac39::t_a650085fe4341a 21-34
+packages/effect-codex-app-server/src/_generated/schema.gen.ts
+  s_13facd0d06ac39::t_bb481f12a614e8 122-159,478-487,688-742,800-819,2028-2050,2752-2754,2814-2818,3288-3296,5555-5560,7199-7200,7202,7213-7214,7216-7218,7292-7293,7295,7306-7307,7309-7311,8064-8086,9173-9182,9839-9898,10985-10989,11481-11485,12462-12466,13473-13482,14076-14080,14531-14535,15048-15052,15812-15816,17852-17856,19747-19814,19855-19865,20359-20382,20538,20544-20552,20680,20747-20755,21080,22185-22188,22190-22193,22195-22196,22286-22452,22473-22490,22735,22749-22757,23448,23464-23472,23873-23885,24797,24813-24821,25628,25646-25654,26735-26744,27127-27140,27811-27866,28183-28217,28221,28232,28237,28257,28988-29043,29639-29648,29955-29968,30120-30175,30492-30526,30530,30541,30546,30566,30929-30984,31513-31568,31976-31989,33138-33193,34611-34658,34920-34931,35756-35867,36482-36490,36515,36525,40187-40190,40367-40375,40501-40560,40660-40668,42795-42798,43022-43030,46358-46361,46538-46546,52454-52493,52768,52816-52818,54271-54283,54291-54292,54302,54355-54371,54423-54431,54620-54621,54631,54685-54701,54753-54761,54848-54849,54859,54913-54929,54981-54989,55076-55077,55087,55141-55157,55209-55217,55306-55307,55317,55371-55387,55439-55447,55545-55546,55556,55610-55626,55678-55686,55774-55775,55785,55839-55855,55907-55915,56003-56004,56014,56068-56084,56136-56144,56233-56234,56244,56298-56314,56366-56374,56462-56463,56473,56527-56543,56595-56825,56829,56920-56921,56931,56985-57001,57053-57061,57168,57187-57188,57215,57241-57242,57283-57289,57406,57416,57449,57468-57469,57497,57525-57526,57572,57591-57592,57620,57648-57649,57777-57785,57825-57844,58017-58041,58137-58151,58167-58171,58695,58844-58878,59004-59024,59046-59050,59733-59735,60379-60387,60427-60447,60544,60554,60650-60654,61110-61119,63234-63249,63534,63551-63559,64240-64272,64411-64417,65433,65616-65720,66221,66288-66296,66450,66456-66464,68493-68598
+  s_13facd0d06ac39::t_836dd85569c94e 68599
+packages/codex-app-server-protocol/src/v2/FeedbackUploadResponse.ts
+  s_13facd0d06ac39::t_bb481f12a614e8 5-11
+packages/codex-app-server-protocol/src/v2/index.ts
+  s_13facd0d06ac39::t_bb481f12a614e8 34-35,216,328-329,539-548,564,734-750
+src/shared/codex-conversation-state/codex-steering-state.test.ts
+  s_13facd0d06ac39::t_ec6be593af75e6 21,40,45
+src/shared/nodex-app-tools/account-schemas.ts
+  s_13facd0d06ac39::t_ab628e36ee9395 10
+packages/codex-app-server-protocol/runtime-schemas/ServerNotification.schema.json
+  s_13facd0d06ac39::t_bb481f12a614e8 2023,2116,2120,3494-3500,4221-4238,4303-4309,4456-4493,4520-4542,7186-7203,7205
+  s_13facd0d06ac39::t_872a043131fb6b 7204
+packages/codex-app-server-protocol/src/v2/ThreadAttachmentAddOutcome.ts
+  s_13facd0d06ac39::t_bb481f12a614e8 1-8
+packages/codex-app-server-protocol/src/v2/UserVerificationEnrollResponse.ts
+  s_13facd0d06ac39::t_bb481f12a614e8 1-5
+packages/codex-app-server-protocol/src/v2/ThreadAttachmentAddResponse.ts
+  s_13facd0d06ac39::t_bb481f12a614e8 1-10
+src/shared/codex-conversation-state/codex-thread-metadata.test.ts
+  s_13facd0d06ac39::t_8a8727ea874546 80
+  s_13facd0d06ac39::t_52e8842792f15d 53,72
+src/shared/codex-conversation-state/codex-background-terminal-cleanup.test.ts
+  s_13facd0d06ac39::t_ec6be593af75e6 62,81,89
+src/shared/codex-mcp-tool-call.test.ts
+  s_13facd0d06ac39::t_42132e6b41740a 50
+src/main/codex-application/CodexSubagentDirectory.ts
+  s_13facd0d06ac39::t_c2c26c1b32bdba 382,400,418
+src/main/codex-application/CodexConversationMaterialization.node.test.ts
+  s_13facd0d06ac39::t_ec6be593af75e6 16,35,43
+src/main/codex-application/CodexConversationHistoryExport.node.test.ts
+  s_13facd0d06ac39::t_ec6be593af75e6 39,58,66
+src/renderer/features/local-conversation/local-conversation-store.ts
+  s_13facd0d06ac39::t_c2c26c1b32bdba 1705-1706,1864-1866
+src/main/codex-application/CodexThreadDirectory.node.test.ts
+  s_13facd0d06ac39::t_ec6be593af75e6 112,131,139
+packages/codex-app-server-protocol/src/v2/ApplicationRequirements.ts
+  s_13facd0d06ac39::t_bb481f12a614e8 1-6
+packages/codex-app-server-protocol/src/v2/UserVerificationCancellationReason.ts
+  s_13facd0d06ac39::t_bb481f12a614e8 1-5
+resources/agent-runtime/codex-app-server.lock.json
+  s_13facd0d06ac39::t_bb481f12a614e8 2,5-6,8-10,14-15,17-19,35,39,42-43,45,50-51,53,62,64-100,108-110,112,115
+packages/codex-app-server-protocol/src/v2/RateLimitSnapshot.ts
+  s_13facd0d06ac39::t_bb481f12a614e8 10-14
+packages/codex-app-server-protocol/src/ServerNotificationEnvelope.ts
+  s_13facd0d06ac39::t_bb481f12a614e8 53,100
+packages/codex-app-server-protocol/src/v2/UserVerificationFailureReason.ts
+  s_13facd0d06ac39::t_bb481f12a614e8 1-5
+packages/codex-app-server-protocol/src/v2/ThreadAttachmentRemoveParams.ts
+  s_13facd0d06ac39::t_bb481f12a614e8 1-8
+packages/codex-app-server-protocol/src/v2/UserVerificationErrorDetails.ts
+  s_13facd0d06ac39::t_bb481f12a614e8 1-12
+scripts/agent-runtime-release-lock.test.ts
+  s_13facd0d06ac39::t_35d4ed45b5f36c 117,128-137,140-145
+  s_13facd0d06ac39::t_0ee693c601a42b 99-101
+  s_13facd0d06ac39::t_92cbb798c4f668 146
+src/main/codex-application/CodexApplicationProtocol.ts
+  s_13facd0d06ac39::t_a650085fe4341a 532
+  s_13facd0d06ac39::t_c2c26c1b32bdba 309-330
+src/main/codex-runtime/CodexRuntime.node.test.ts
+  s_13facd0d06ac39::t_ec6be593af75e6 813,834,842
+packages/codex-app-server-protocol/src/v2/UserVerificationDeleteParams.ts
+  s_13facd0d06ac39::t_bb481f12a614e8 1-5
+src/shared/codex-conversation-state/codex-optimistic-turn.test.ts
+  s_13facd0d06ac39::t_ec6be593af75e6 27,46,54
+src/main/codex-application/CodexAccount.node.test.ts
+  s_13facd0d06ac39::t_da7d003a664757 35,95,165
+packages/codex-app-server-protocol/runtime-schemas/ServerRequest.schema.json
+  s_13facd0d06ac39::t_bb481f12a614e8 1071-1096,1364
+  s_13facd0d06ac39::t_05d3b2d2ffa156 1070
+packages/codex-app-server-protocol/src/v2/ThreadEnvironment.ts
+  s_13facd0d06ac39::t_bb481f12a614e8 1-9
+src/renderer/features/local-conversation/view/shared/tools/mcp-tool-call-resource-utils.node.test.ts
+  s_13facd0d06ac39::t_8a8727ea874546 58,93
+packages/codex-app-server-protocol/src/v2/ThreadListParams.ts
+  s_13facd0d06ac39::t_bb481f12a614e8 36-40
+  s_13facd0d06ac39::t_c2423d0d554890 35
+src/main/codex-application/CodexConversationDeltaBufferRuntime.node.test.ts
+  s_13facd0d06ac39::t_ec6be593af75e6 143,162,170
+scripts/agent-runtime-macos-platform-contract.ts
+  s_13facd0d06ac39::t_9fa0e1a1733b09 2,127-147,172-176
+packages/codex-app-server-protocol/src/v2/UserVerificationInvalidRequestReason.ts
+  s_13facd0d06ac39::t_bb481f12a614e8 1-5
+packages/codex-app-server-protocol/src/v2/UserVerificationVerifyParams.ts
+  s_13facd0d06ac39::t_bb481f12a614e8 1-20
+packages/codex-app-server-protocol/src/v2/ThreadAttachmentOperation.ts
+  s_13facd0d06ac39::t_bb481f12a614e8 1-8
+src/shared/codex-conversation-state/codex-thread-goal-transcript.test.ts
+  s_13facd0d06ac39::t_ec6be593af75e6 29,48,56
+packages/codex-app-server-protocol/src/v2/ThreadAttachmentListParams.ts
+  s_13facd0d06ac39::t_bb481f12a614e8 1-8
+packages/codex-app-server-protocol/src/index.ts
+  s_13facd0d06ac39::t_bb481f12a614e8 15
+src/main/codex-application/CodexSubagentDirectory.node.test.ts
+  s_13facd0d06ac39::t_ec6be593af75e6 67,86,104
+packages/codex-app-server-protocol/src/v2/McpServerStatus.ts
+  s_13facd0d06ac39::t_bb481f12a614e8 15-20
+src/main/codex-application/CodexTurnPermissionMaterialization.node.test.ts
+  s_13facd0d06ac39::t_8a8727ea874546 93
+packages/codex-app-server-protocol/src/v2/ApplicationNetworkRequirements.ts
+  s_13facd0d06ac39::t_bb481f12a614e8 1-10
+packages/codex-app-server-protocol/src/v2/UserVerificationCancelResponse.ts
+  s_13facd0d06ac39::t_bb481f12a614e8 1-9
+src/main/codex-application/CodexThreadDurableProjection.node.test.ts
+  s_13facd0d06ac39::t_ec6be593af75e6 65,84,92
+packages/effect-codex-app-server/src/_generated/namespaces.gen.ts
+  s_13facd0d06ac39::t_bb481f12a614e8 145-146,156,253-259,397-407
+packages/codex-app-server-protocol/src/v2/UserVerificationEnrollParams.ts
+  s_13facd0d06ac39::t_bb481f12a614e8 1-5
+packages/codex-app-server-protocol/src/v2/BrowserUseRequirements.ts
+  s_13facd0d06ac39::t_bb481f12a614e8 6
+packages/codex-app-server-protocol/src/v2/McpServerElicitationRequestParams.ts
+  s_13facd0d06ac39::t_bb481f12a614e8 16
+packages/codex-app-server-protocol/src/v2/UserVerificationCancelParams.ts
+  s_13facd0d06ac39::t_bb481f12a614e8 1-10
+packages/codex-app-server-protocol/src/v2/ThreadAttachmentAddParams.ts
+  s_13facd0d06ac39::t_bb481f12a614e8 1-9
+packages/codex-app-server-protocol/src/v2/Thread.ts
+  s_13facd0d06ac39::t_bb481f12a614e8 8,21-26,109-113,143-146
+packages/effect-codex-app-server/src/_generated/meta.gen.ts
+  s_13facd0d06ac39::t_bb481f12a614e8 9-13,33-35,39,205,289-293,313-315,319,424-426,463-467,487-489,493,673,752-756,776-778,782,891-893,931-935,955-957,961,1143
+packages/codex-app-server-protocol/src/v2/PermissionsRequestApprovalParams.ts
+  s_13facd0d06ac39::t_bb481f12a614e8 4,11
+packages/codex-app-server-protocol/src/ClientRequest.ts
+  s_13facd0d06ac39::t_bb481f12a614e8 47,60,103-105,158-162,168
+src/shared/codex-conversation-state/codex-turn-metadata.test.ts
+  s_13facd0d06ac39::t_8a8727ea874546 26,45,53
+src/main/codex-application/CodexSideChatCommands.node.test.ts
+  s_13facd0d06ac39::t_ec6be593af75e6 55,74,82
+packages/codex-app-server-protocol/src/v2/MemoryStatusResponse.ts
+  s_13facd0d06ac39::t_bb481f12a614e8 1-5
+packages/codex-app-server-protocol/src/v2/UserVerificationUnavailableReason.ts
+  s_13facd0d06ac39::t_bb481f12a614e8 1-5
+src/shared/mcp-app/mcp-app-scope.test.ts
+  s_13facd0d06ac39::t_42132e6b41740a 17
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "c661ee4eaf658a0569428e5ef6f5023a0ae6c37b",
+  "prompts": {},
+  "sessions": {
+    "s_13facd0d06ac39": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a0b526-68d0-7c41-9a41-4bb65e44d9be",
+        "model": "chatgpt-web/extra-high"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    }
+  }
+}
