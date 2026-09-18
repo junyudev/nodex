@@ -810,6 +810,7 @@ it.effect(
       const text = "raw history ".repeat(200_000);
       const thread: Thread = {
         id: "thread-raw",
+        environments: null,
         extra: null,
         sessionId: "session-raw",
         forkedFromId: null,
@@ -830,6 +831,7 @@ it.effect(
         path: null,
         cwd: "/repo",
         cliVersion: "test",
+        originator: null,
         source: "unknown",
         canAcceptDirectInput: true,
         threadSource: "user",
@@ -837,6 +839,7 @@ it.effect(
         agentRole: null,
         gitInfo: null,
         name: "Raw history",
+        daybreakEnabled: null,
         turns: [
           {
             id: "turn-raw",

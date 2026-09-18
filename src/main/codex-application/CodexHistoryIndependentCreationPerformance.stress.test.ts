@@ -83,6 +83,7 @@ const protocolThread = (threadId: string, overrides: Partial<Thread> = {}): Thre
   model: null,
   reasoningEffort: null,
   id: threadId,
+  environments: null,
   extra: null,
   sessionId: `session-${threadId}`,
   forkedFromId: null,
@@ -101,6 +102,7 @@ const protocolThread = (threadId: string, overrides: Partial<Thread> = {}): Thre
   path: null,
   cwd: "/workspace",
   cliVersion: "test",
+  originator: null,
   source: "appServer",
   canAcceptDirectInput: true,
   threadSource: null,
@@ -108,6 +110,7 @@ const protocolThread = (threadId: string, overrides: Partial<Thread> = {}): Thre
   agentRole: null,
   gitInfo: null,
   name: null,
+  daybreakEnabled: null,
   turns: [],
   ...overrides,
 });

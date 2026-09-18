@@ -66,6 +66,7 @@ function buildRequirements(overrides?: Partial<ConfigRequirements>): ConfigRequi
     hooks: null,
     enforceResidency: null,
     network: null,
+    application: null,
     models: null,
     sqliteHome: null,
     logDir: null,

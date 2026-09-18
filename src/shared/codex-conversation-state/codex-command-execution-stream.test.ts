@@ -73,6 +73,7 @@ function buildState(items: ThreadItem[] = []): CodexCanonicalConversationState {
     model: null,
     reasoningEffort: null,
     id: THREAD_ID,
+    environments: null,
     extra: null,
     sessionId: "session_c05",
     forkedFromId: null,
@@ -91,6 +92,7 @@ function buildState(items: ThreadItem[] = []): CodexCanonicalConversationState {
     path: null,
     cwd: "/workspace/project",
     cliVersion: "fixture",
+    originator: null,
     source: "unknown",
     canAcceptDirectInput: true,
     threadSource: null,
@@ -98,6 +100,7 @@ function buildState(items: ThreadItem[] = []): CodexCanonicalConversationState {
     agentRole: null,
     gitInfo: null,
     name: "C-05 command stream fixture",
+    daybreakEnabled: null,
     turns: [
       {
         id: TURN_ID,

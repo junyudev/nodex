@@ -801,6 +801,18 @@
       "title": "ConfigReadParams",
       "type": "object"
     },
+    "definitions__v2__ConfigurationReasoning": {
+      "description": "Reasoning settings interpreted by the backend for the routed model.",
+      "properties": {
+        "effort": {
+          "$ref": "#/definitions/definitions__v2__ReasoningEffort"
+        }
+      },
+      "required": [
+        "effort"
+      ],
+      "type": "object"
+    },
     "definitions__v2__ConfigValueWriteParams": {
       "$schema": "http://json-schema.org/draft-07/schema#",
       "properties": {
@@ -1803,6 +1815,20 @@
       "title": "GetAccountParams",
       "type": "object"
     },
+    "definitions__v2__GetAccountRateLimitsParams": {
+      "description": "Usage-read capabilities of the requesting client, never inferred from its experiment arm.",
+      "properties": {
+        "excludeResetCreditDetails": {
+          "description": "Skip the separate reset-credit detail lookup for background usage polls. The usage response still includes the available count; omitted/false preserves detailed reads.",
+          "type": "boolean"
+        },
+        "supportsLunaReserve": {
+          "description": "The client supports automatic Luna Reserve fallback. For eligible ChatGPT CLI users, allow the backend to record experiment exposure after ordinary usage is blocked.",
+          "type": "boolean"
+        }
+      },
+      "type": "object"
+    },
     "definitions__v2__GetAccountTokenUsageParams": {
       "properties": {
         "threadId": {
@@ -2368,6 +2394,22 @@
         "tool"
       ],
       "title": "McpServerToolCallParams",
+      "type": "object"
+    },
+    "definitions__v2__MemoryStatusParams": {
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "properties": {
+        "minConsolidatedThreads": {
+          "description": "Required distinct consolidated threads. Defaults to 20; supported range is 1..=4096.",
+          "format": "uint32",
+          "minimum": 0,
+          "type": [
+            "integer",
+            "null"
+          ]
+        }
+      },
+      "title": "MemoryStatusParams",
       "type": "object"
     },
     "definitions__v2__MergeStrategy": {
@@ -4270,6 +4312,27 @@
           "type": "object"
         },
         {
+          "description": "A durable input control interpreted by the backend at its position in history.",
+          "properties": {
+            "reasoning": {
+              "$ref": "#/definitions/definitions__v2__ConfigurationReasoning"
+            },
+            "type": {
+              "enum": [
+                "configuration_update"
+              ],
+              "title": "ConfigurationUpdateResponseItemType",
+              "type": "string"
+            }
+          },
+          "required": [
+            "reasoning",
+            "type"
+          ],
+          "title": "ConfigurationUpdateResponseItem",
+          "type": "object"
+        },
+        {
           "properties": {
             "type": {
               "enum": [
@@ -4462,7 +4525,7 @@
             }
           ],
           "default": null,
-          "description": "Where to run the review: inline (default) on the current thread or detached on a new thread (returned in `reviewThreadId`)."
+          "description": "Where to run the review: inline (default) on the current thread or detached on a new thread (returned in `reviewThreadId`). Detached delivery is deprecated and emits `deprecationNotice`. Use `thread/start` followed by an inline review for a separate review thread."
         },
         "target": {
           "$ref": "#/definitions/definitions__v2__ReviewTarget"
@@ -4910,6 +4973,80 @@
         "threadId"
       ],
       "title": "ThreadArchiveParams",
+      "type": "object"
+    },
+    "definitions__v2__ThreadAttachmentAddParams": {
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "description": "Parameters for creating or locating an attachment on its owning thread.",
+      "properties": {
+        "attachmentType": {
+          "type": "string"
+        },
+        "identityKey": {
+          "type": "string"
+        },
+        "payload": true,
+        "threadId": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "attachmentType",
+        "identityKey",
+        "payload",
+        "threadId"
+      ],
+      "title": "ThreadAttachmentAddParams",
+      "type": "object"
+    },
+    "definitions__v2__ThreadAttachmentListParams": {
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "description": "Parameters for listing attachments from one thread.",
+      "properties": {
+        "cursor": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "limit": {
+          "format": "uint32",
+          "minimum": 0,
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "threadId": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "threadId"
+      ],
+      "title": "ThreadAttachmentListParams",
+      "type": "object"
+    },
+    "definitions__v2__ThreadAttachmentRemoveParams": {
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "description": "Parameters for deleting an attachment by its stable thread-local identity.",
+      "properties": {
+        "attachmentType": {
+          "type": "string"
+        },
+        "identityKey": {
+          "type": "string"
+        },
+        "threadId": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "attachmentType",
+        "identityKey",
+        "threadId"
+      ],
+      "title": "ThreadAttachmentRemoveParams",
       "type": "object"
     },
     "definitions__v2__ThreadBackgroundTerminalsCleanParams": {
@@ -5390,6 +5527,16 @@
             "null"
           ]
         },
+        "originators": {
+          "description": "Optional originator allowlist, matching any supplied value exactly. Supported by hosted backends only; the local app-server rejects a nonempty list. Omitted or empty lists leave originators unrestricted.",
+          "items": {
+            "type": "string"
+          },
+          "type": [
+            "array",
+            "null"
+          ]
+        },
         "parentThreadId": {
           "description": "Optional direct parent thread filter. Mutually exclusive with `ancestorThreadId`.",
           "type": [
@@ -5534,6 +5681,13 @@
     "definitions__v2__ThreadMetadataUpdateParams": {
       "$schema": "http://json-schema.org/draft-07/schema#",
       "properties": {
+        "daybreakEnabled": {
+          "description": "Save the client's Daybreak choice for this persistent thread. Omitted or null leaves it unchanged. This does not select a turn's `cyberAccessProgram` or grant access.",
+          "type": [
+            "boolean",
+            "null"
+          ]
+        },
         "gitInfo": {
           "anyOf": [
             {
@@ -7688,6 +7842,65 @@
         }
       ]
     },
+    "definitions__v2__UserVerificationCancelParams": {
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "additionalProperties": false,
+      "description": "Cancels a native verification RPC issued on this connection, not an elicitation. Use a fresh request ID for each operation and a distinct ID for this cancellation RPC.",
+      "properties": {
+        "requestId": {
+          "$ref": "#/definitions/definitions__v2__RequestId"
+        }
+      },
+      "required": [
+        "requestId"
+      ],
+      "title": "UserVerificationCancelParams",
+      "type": "object"
+    },
+    "definitions__v2__UserVerificationDeleteParams": {
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "additionalProperties": false,
+      "title": "UserVerificationDeleteParams",
+      "type": "object"
+    },
+    "definitions__v2__UserVerificationEnrollParams": {
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "additionalProperties": false,
+      "title": "UserVerificationEnrollParams",
+      "type": "object"
+    },
+    "definitions__v2__UserVerificationStatusParams": {
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "additionalProperties": false,
+      "title": "UserVerificationStatusParams",
+      "type": "object"
+    },
+    "definitions__v2__UserVerificationVerifyParams": {
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "additionalProperties": false,
+      "description": "Local signing primitive, independent of any pending elicitation.",
+      "properties": {
+        "challenge": {
+          "description": "Unpadded base64url encoding of 1–4096 challenge bytes.",
+          "type": "string"
+        },
+        "description": {
+          "description": "Additional display context; at most 4096 UTF-8 bytes.",
+          "type": "string"
+        },
+        "title": {
+          "description": "Display context already approved by the UI; 1–256 UTF-8 bytes.",
+          "type": "string"
+        }
+      },
+      "required": [
+        "challenge",
+        "description",
+        "title"
+      ],
+      "title": "UserVerificationVerifyParams",
+      "type": "object"
+    },
     "definitions__v2__WindowsSandboxSetupMode": {
       "enum": [
         "elevated",
@@ -7768,6 +7981,126 @@
         "params"
       ],
       "title": "Server/diagnosticsRequest",
+      "type": "object"
+    },
+    {
+      "properties": {
+        "id": {
+          "$ref": "#/definitions/definitions__v2__RequestId"
+        },
+        "method": {
+          "enum": [
+            "userVerification/status"
+          ],
+          "title": "UserVerification/statusRequestMethod",
+          "type": "string"
+        },
+        "params": {
+          "$ref": "#/definitions/definitions__v2__UserVerificationStatusParams"
+        }
+      },
+      "required": [
+        "id",
+        "method",
+        "params"
+      ],
+      "title": "UserVerification/statusRequest",
+      "type": "object"
+    },
+    {
+      "properties": {
+        "id": {
+          "$ref": "#/definitions/definitions__v2__RequestId"
+        },
+        "method": {
+          "enum": [
+            "userVerification/enroll"
+          ],
+          "title": "UserVerification/enrollRequestMethod",
+          "type": "string"
+        },
+        "params": {
+          "$ref": "#/definitions/definitions__v2__UserVerificationEnrollParams"
+        }
+      },
+      "required": [
+        "id",
+        "method",
+        "params"
+      ],
+      "title": "UserVerification/enrollRequest",
+      "type": "object"
+    },
+    {
+      "properties": {
+        "id": {
+          "$ref": "#/definitions/definitions__v2__RequestId"
+        },
+        "method": {
+          "enum": [
+            "userVerification/delete"
+          ],
+          "title": "UserVerification/deleteRequestMethod",
+          "type": "string"
+        },
+        "params": {
+          "$ref": "#/definitions/definitions__v2__UserVerificationDeleteParams"
+        }
+      },
+      "required": [
+        "id",
+        "method",
+        "params"
+      ],
+      "title": "UserVerification/deleteRequest",
+      "type": "object"
+    },
+    {
+      "properties": {
+        "id": {
+          "$ref": "#/definitions/definitions__v2__RequestId"
+        },
+        "method": {
+          "enum": [
+            "userVerification/verify"
+          ],
+          "title": "UserVerification/verifyRequestMethod",
+          "type": "string"
+        },
+        "params": {
+          "$ref": "#/definitions/definitions__v2__UserVerificationVerifyParams"
+        }
+      },
+      "required": [
+        "id",
+        "method",
+        "params"
+      ],
+      "title": "UserVerification/verifyRequest",
+      "type": "object"
+    },
+    {
+      "properties": {
+        "id": {
+          "$ref": "#/definitions/definitions__v2__RequestId"
+        },
+        "method": {
+          "enum": [
+            "userVerification/cancel"
+          ],
+          "title": "UserVerification/cancelRequestMethod",
+          "type": "string"
+        },
+        "params": {
+          "$ref": "#/definitions/definitions__v2__UserVerificationCancelParams"
+        }
+      },
+      "required": [
+        "id",
+        "method",
+        "params"
+      ],
+      "title": "UserVerification/cancelRequest",
       "type": "object"
     },
     {
@@ -8236,6 +8569,78 @@
         },
         "method": {
           "enum": [
+            "thread/attachment/add"
+          ],
+          "title": "Thread/attachment/addRequestMethod",
+          "type": "string"
+        },
+        "params": {
+          "$ref": "#/definitions/definitions__v2__ThreadAttachmentAddParams"
+        }
+      },
+      "required": [
+        "id",
+        "method",
+        "params"
+      ],
+      "title": "Thread/attachment/addRequest",
+      "type": "object"
+    },
+    {
+      "properties": {
+        "id": {
+          "$ref": "#/definitions/definitions__v2__RequestId"
+        },
+        "method": {
+          "enum": [
+            "thread/attachment/list"
+          ],
+          "title": "Thread/attachment/listRequestMethod",
+          "type": "string"
+        },
+        "params": {
+          "$ref": "#/definitions/definitions__v2__ThreadAttachmentListParams"
+        }
+      },
+      "required": [
+        "id",
+        "method",
+        "params"
+      ],
+      "title": "Thread/attachment/listRequest",
+      "type": "object"
+    },
+    {
+      "properties": {
+        "id": {
+          "$ref": "#/definitions/definitions__v2__RequestId"
+        },
+        "method": {
+          "enum": [
+            "thread/attachment/remove"
+          ],
+          "title": "Thread/attachment/removeRequestMethod",
+          "type": "string"
+        },
+        "params": {
+          "$ref": "#/definitions/definitions__v2__ThreadAttachmentRemoveParams"
+        }
+      },
+      "required": [
+        "id",
+        "method",
+        "params"
+      ],
+      "title": "Thread/attachment/removeRequest",
+      "type": "object"
+    },
+    {
+      "properties": {
+        "id": {
+          "$ref": "#/definitions/definitions__v2__RequestId"
+        },
+        "method": {
+          "enum": [
             "thread/section/move"
           ],
           "title": "Thread/section/moveRequestMethod",
@@ -8299,6 +8704,30 @@
         "params"
       ],
       "title": "Thread/memoryMode/setRequest",
+      "type": "object"
+    },
+    {
+      "properties": {
+        "id": {
+          "$ref": "#/definitions/definitions__v2__RequestId"
+        },
+        "method": {
+          "enum": [
+            "memory/status"
+          ],
+          "title": "Memory/statusRequestMethod",
+          "type": "string"
+        },
+        "params": {
+          "$ref": "#/definitions/definitions__v2__MemoryStatusParams"
+        }
+      },
+      "required": [
+        "id",
+        "method",
+        "params"
+      ],
+      "title": "Memory/statusRequest",
       "type": "object"
     },
     {
@@ -10823,7 +11252,14 @@
           "type": "string"
         },
         "params": {
-          "type": "null"
+          "anyOf": [
+            {
+              "$ref": "#/definitions/definitions__v2__GetAccountRateLimitsParams"
+            },
+            {
+              "type": "null"
+            }
+          ]
         }
       },
       "required": [

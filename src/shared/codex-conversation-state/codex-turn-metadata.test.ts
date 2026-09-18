@@ -23,6 +23,7 @@ function buildState(): CodexCanonicalConversationState {
     {
       model: null,
       reasoningEffort: null,
+      environments: null,
       id: THREAD_ID,
       extra: null,
       sessionId: "session-turn-metadata",
@@ -41,6 +42,7 @@ function buildState(): CodexCanonicalConversationState {
       status: { type: "idle" },
       path: null,
       cwd: "/workspace",
+      originator: null,
       cliVersion: "test",
       source: "appServer",
       canAcceptDirectInput: true,
@@ -48,6 +50,7 @@ function buildState(): CodexCanonicalConversationState {
       agentNickname: null,
       agentRole: null,
       gitInfo: null,
+      daybreakEnabled: null,
       name: null,
       turns: [
         {

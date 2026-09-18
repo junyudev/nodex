@@ -223,6 +223,7 @@ const makeThread = (
     model: null,
     reasoningEffort: null,
     id: threadId,
+    environments: null,
     extra: null,
     sessionId: `session-${threadId}`,
     forkedFromId: null,
@@ -241,6 +242,7 @@ const makeThread = (
     path: null,
     cwd: "/subagent-scale",
     cliVersion: "0.152.0",
+    originator: null,
     source: {
       subAgent: {
         thread_spawn: {
@@ -258,6 +260,7 @@ const makeThread = (
     agentRole: "explorer",
     gitInfo: null,
     name: `Scale-${index}`,
+    daybreakEnabled: null,
     turns: [],
   } as Thread;
 };

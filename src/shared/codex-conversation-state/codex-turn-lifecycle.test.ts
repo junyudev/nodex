@@ -17,6 +17,7 @@ function buildState() {
     {
       model: null,
       reasoningEffort: null,
+      environments: null,
       id: THREAD_ID,
       extra: null,
       sessionId: "session-turn-lifecycle",
@@ -35,6 +36,7 @@ function buildState() {
       status: { type: "idle" },
       path: null,
       cwd: "/workspace",
+      originator: null,
       cliVersion: "test",
       source: "appServer",
       canAcceptDirectInput: true,
@@ -42,6 +44,7 @@ function buildState() {
       agentNickname: null,
       agentRole: null,
       gitInfo: null,
+      daybreakEnabled: null,
       name: null,
       turns: [],
     },
@@ -300,11 +303,15 @@ describe("Codex 30751 turn lifecycle", () => {
 
       const completed = reduceCodexConversationTurnLifecycle(state, update);
       expect(completed.effects).toEqual([]);
-      expect(completed.state.turns[0]?.items.map((item) => item.id)).toEqual(state.turns[0]?.items.map((item) => item.id));
+      expect(completed.state.turns[0]?.items.map((item) => item.id)).toEqual(
+        state.turns[0]?.items.map((item) => item.id),
+      );
 
       const replay = reduceCodexConversationTurnLifecycle(completed.state, update);
       expect(replay.effects).toEqual([]);
-      expect(replay.state.turns[0]?.items.map((item) => item.id)).toEqual(state.turns[0]?.items.map((item) => item.id));
+      expect(replay.state.turns[0]?.items.map((item) => item.id)).toEqual(
+        state.turns[0]?.items.map((item) => item.id),
+      );
     }
   });
 });

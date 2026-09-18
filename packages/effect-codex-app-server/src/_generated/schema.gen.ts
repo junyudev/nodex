@@ -119,6 +119,44 @@ export const ClientRequest__ServerDiagnosticsParams = Schema.Record(
   Schema.Never,
 ).annotate({ identifier: "ClientRequest__ServerDiagnosticsParams" });
 
+export type ClientRequest__UserVerificationStatusParams = { readonly [x: string]: never };
+export const ClientRequest__UserVerificationStatusParams = Schema.Record(
+  Schema.String,
+  Schema.Never,
+).annotate({ identifier: "ClientRequest__UserVerificationStatusParams" });
+
+export type ClientRequest__UserVerificationEnrollParams = { readonly [x: string]: never };
+export const ClientRequest__UserVerificationEnrollParams = Schema.Record(
+  Schema.String,
+  Schema.Never,
+).annotate({ identifier: "ClientRequest__UserVerificationEnrollParams" });
+
+export type ClientRequest__UserVerificationDeleteParams = { readonly [x: string]: never };
+export const ClientRequest__UserVerificationDeleteParams = Schema.Record(
+  Schema.String,
+  Schema.Never,
+).annotate({ identifier: "ClientRequest__UserVerificationDeleteParams" });
+
+export type ClientRequest__UserVerificationVerifyParams = {
+  readonly challenge: string;
+  readonly description: string;
+  readonly title: string;
+};
+export const ClientRequest__UserVerificationVerifyParams = Schema.Struct({
+  challenge: Schema.String.annotate({
+    description: "Unpadded base64url encoding of 1–4096 challenge bytes.",
+  }),
+  description: Schema.String.annotate({
+    description: "Additional display context; at most 4096 UTF-8 bytes.",
+  }),
+  title: Schema.String.annotate({
+    description: "Display context already approved by the UI; 1–256 UTF-8 bytes.",
+  }),
+}).annotate({
+  description: "Local signing primitive, independent of any pending elicitation.",
+  identifier: "ClientRequest__UserVerificationVerifyParams",
+});
+
 export type ClientRequest__AskForApproval =
   | "untrusted"
   | "on-request"
@@ -437,6 +475,16 @@ export const ClientRequest__ResponsesApiWebSearchAction = Schema.Union(
   { mode: "oneOf" },
 ).annotate({ identifier: "ClientRequest__ResponsesApiWebSearchAction" });
 
+export type ClientRequest__ReasoningEffort = string;
+export const ClientRequest__ReasoningEffort = Schema.String.annotate({
+  description: "A non-empty reasoning effort value advertised by the model.",
+}).check(
+  Schema.isMinLength(1).annotate({
+    expected: "a value with a length of at least 1",
+    identifier: "ClientRequest__ReasoningEffort",
+  }),
+);
+
 export type ClientRequest__TurnItemsView = "notLoaded" | "summary" | "full";
 export const ClientRequest__TurnItemsView = Schema.Union(
   [
@@ -637,6 +685,61 @@ export const ClientRequest__ThreadMetadataGitInfoUpdateParams = Schema.Struct({
   ),
 }).annotate({ identifier: "ClientRequest__ThreadMetadataGitInfoUpdateParams" });
 
+export type ClientRequest__ThreadAttachmentAddParams = {
+  readonly attachmentType: string;
+  readonly identityKey: string;
+  readonly payload: Schema.Json;
+  readonly threadId: string;
+};
+export const ClientRequest__ThreadAttachmentAddParams = Schema.Struct({
+  attachmentType: Schema.String,
+  identityKey: Schema.String,
+  payload: Schema.Json.annotate({ expected: "JSON value" }),
+  threadId: Schema.String,
+}).annotate({
+  description: "Parameters for creating or locating an attachment on its owning thread.",
+  identifier: "ClientRequest__ThreadAttachmentAddParams",
+});
+
+export type ClientRequest__ThreadAttachmentListParams = {
+  readonly cursor?: string | null;
+  readonly limit?: number | null;
+  readonly threadId: string;
+};
+export const ClientRequest__ThreadAttachmentListParams = Schema.Struct({
+  cursor: Schema.optionalKey(Schema.Union([Schema.String, Schema.Null])),
+  limit: Schema.optionalKey(
+    Schema.Union([
+      Schema.Number.annotate({ format: "uint32" })
+        .check(Schema.isInt().annotate({ expected: "an integer" }))
+        .check(
+          Schema.isGreaterThanOrEqualTo(0).annotate({
+            expected: "a value greater than or equal to 0",
+          }),
+        ),
+      Schema.Null,
+    ]),
+  ),
+  threadId: Schema.String,
+}).annotate({
+  description: "Parameters for listing attachments from one thread.",
+  identifier: "ClientRequest__ThreadAttachmentListParams",
+});
+
+export type ClientRequest__ThreadAttachmentRemoveParams = {
+  readonly attachmentType: string;
+  readonly identityKey: string;
+  readonly threadId: string;
+};
+export const ClientRequest__ThreadAttachmentRemoveParams = Schema.Struct({
+  attachmentType: Schema.String,
+  identityKey: Schema.String,
+  threadId: Schema.String,
+}).annotate({
+  description: "Parameters for deleting an attachment by its stable thread-local identity.",
+  identifier: "ClientRequest__ThreadAttachmentRemoveParams",
+});
+
 export type ClientRequest__ThreadSectionMoveParams = {
   readonly beforeThreadId?: string | null;
   readonly sectionId: string | null;
@@ -671,16 +774,6 @@ export const ClientRequest__ModeKind = Schema.Literals(["plan", "default"]).anno
   identifier: "ClientRequest__ModeKind",
 });
 
-export type ClientRequest__ReasoningEffort = string;
-export const ClientRequest__ReasoningEffort = Schema.String.annotate({
-  description: "A non-empty reasoning effort value advertised by the model.",
-}).check(
-  Schema.isMinLength(1).annotate({
-    expected: "a value with a length of at least 1",
-    identifier: "ClientRequest__ReasoningEffort",
-  }),
-);
-
 export type ClientRequest__NetworkAccess = "restricted" | "enabled";
 export const ClientRequest__NetworkAccess = Schema.Literals(["restricted", "enabled"]).annotate({
   identifier: "ClientRequest__NetworkAccess",
@@ -703,6 +796,26 @@ export type ClientRequest__ThreadMemoryMode = "enabled" | "disabled";
 export const ClientRequest__ThreadMemoryMode = Schema.Literals(["enabled", "disabled"]).annotate({
   identifier: "ClientRequest__ThreadMemoryMode",
 });
+
+export type ClientRequest__MemoryStatusParams = { readonly minConsolidatedThreads?: number | null };
+export const ClientRequest__MemoryStatusParams = Schema.Struct({
+  minConsolidatedThreads: Schema.optionalKey(
+    Schema.Union([
+      Schema.Number.annotate({
+        description:
+          "Required distinct consolidated threads. Defaults to 20; supported range is 1..=4096.",
+        format: "uint32",
+      })
+        .check(Schema.isInt().annotate({ expected: "an integer" }))
+        .check(
+          Schema.isGreaterThanOrEqualTo(0).annotate({
+            expected: "a value greater than or equal to 0",
+          }),
+        ),
+      Schema.Null,
+    ]),
+  ),
+}).annotate({ identifier: "ClientRequest__MemoryStatusParams" });
 
 export type ClientRequest__ThreadUnarchiveParams = { readonly threadId: string };
 export const ClientRequest__ThreadUnarchiveParams = Schema.Struct({
@@ -1912,6 +2025,29 @@ export const ClientRequest__CancelLoginAccountParams = Schema.Struct({
   loginId: Schema.String,
 }).annotate({ identifier: "ClientRequest__CancelLoginAccountParams" });
 
+export type ClientRequest__GetAccountRateLimitsParams = {
+  readonly excludeResetCreditDetails?: boolean;
+  readonly supportsLunaReserve?: boolean;
+};
+export const ClientRequest__GetAccountRateLimitsParams = Schema.Struct({
+  excludeResetCreditDetails: Schema.optionalKey(
+    Schema.Boolean.annotate({
+      description:
+        "Skip the separate reset-credit detail lookup for background usage polls. The usage response still includes the available count; omitted/false preserves detailed reads.",
+    }),
+  ),
+  supportsLunaReserve: Schema.optionalKey(
+    Schema.Boolean.annotate({
+      description:
+        "The client supports automatic Luna Reserve fallback. For eligible ChatGPT CLI users, allow the backend to record experiment exposure after ordinary usage is blocked.",
+    }),
+  ),
+}).annotate({
+  description:
+    "Usage-read capabilities of the requesting client, never inferred from its experiment arm.",
+  identifier: "ClientRequest__GetAccountRateLimitsParams",
+});
+
 export type ClientRequest__ConsumeAccountRateLimitResetCreditParams = {
   readonly creditId?: string | null;
   readonly idempotencyKey: string;
@@ -2613,11 +2749,9 @@ export const McpServerElicitationRequestResponse__McpServerElicitationAction = S
   "cancel",
 ]).annotate({ identifier: "McpServerElicitationRequestResponse__McpServerElicitationAction" });
 
-export type PermissionsRequestApprovalParams__AbsolutePathBuf = string;
-export const PermissionsRequestApprovalParams__AbsolutePathBuf = Schema.String.annotate({
-  description:
-    "A path that is guaranteed to be absolute and normalized (though it is not guaranteed to be canonicalized or exist on the filesystem).\n\nIMPORTANT: When deserializing an `AbsolutePathBuf`, a base path must be set using [AbsolutePathBufGuard::new]. If no base path is set, the deserialization will fail unless the path being deserialized is already absolute.",
-  identifier: "PermissionsRequestApprovalParams__AbsolutePathBuf",
+export type PermissionsRequestApprovalParams__LegacyAppPathString = string;
+export const PermissionsRequestApprovalParams__LegacyAppPathString = Schema.String.annotate({
+  identifier: "PermissionsRequestApprovalParams__LegacyAppPathString",
 });
 
 export type PermissionsRequestApprovalParams__FileSystemAccessMode = "read" | "write" | "deny";
@@ -2626,11 +2760,6 @@ export const PermissionsRequestApprovalParams__FileSystemAccessMode = Schema.Lit
   "write",
   "deny",
 ]).annotate({ identifier: "PermissionsRequestApprovalParams__FileSystemAccessMode" });
-
-export type PermissionsRequestApprovalParams__LegacyAppPathString = string;
-export const PermissionsRequestApprovalParams__LegacyAppPathString = Schema.String.annotate({
-  identifier: "PermissionsRequestApprovalParams__LegacyAppPathString",
-});
 
 export type PermissionsRequestApprovalParams__AdditionalNetworkPermissions = {
   readonly enabled?: boolean | null;
@@ -2680,6 +2809,11 @@ export const ServerNotification__AbsolutePathBuf = Schema.String.annotate({
   description:
     "A path that is guaranteed to be absolute and normalized (though it is not guaranteed to be canonicalized or exist on the filesystem).\n\nIMPORTANT: When deserializing an `AbsolutePathBuf`, a base path must be set using [AbsolutePathBufGuard::new]. If no base path is set, the deserialization will fail unless the path being deserialized is already absolute.",
   identifier: "ServerNotification__AbsolutePathBuf",
+});
+
+export type ServerNotification__LegacyAppPathString = string;
+export const ServerNotification__LegacyAppPathString = Schema.String.annotate({
+  identifier: "ServerNotification__LegacyAppPathString",
 });
 
 export type ServerNotification__ThreadExtra = { readonly [x: string]: never };
@@ -2831,11 +2965,6 @@ export const ServerNotification__AsyncUserInputQuestion = Schema.Struct({
   options: Schema.optionalKey(Schema.Union([Schema.Array(Schema.String), Schema.Null])),
   title: Schema.String,
 }).annotate({ identifier: "ServerNotification__AsyncUserInputQuestion" });
-
-export type ServerNotification__LegacyAppPathString = string;
-export const ServerNotification__LegacyAppPathString = Schema.String.annotate({
-  identifier: "ServerNotification__LegacyAppPathString",
-});
 
 export type ServerNotification__CommandExecutionSource =
   | "agent"
@@ -3155,6 +3284,15 @@ export const ServerNotification__ThreadNameUpdatedNotification = Schema.Struct({
   threadId: Schema.String,
   threadName: Schema.optionalKey(Schema.Union([Schema.String, Schema.Null])),
 }).annotate({ identifier: "ServerNotification__ThreadNameUpdatedNotification" });
+
+export type ServerNotification__ThreadAttachmentOperation = "created" | "deleted";
+export const ServerNotification__ThreadAttachmentOperation = Schema.Literals([
+  "created",
+  "deleted",
+]).annotate({
+  description: "The persisted attachment change represented by a notification.",
+  identifier: "ServerNotification__ThreadAttachmentOperation",
+});
 
 export type ServerNotification__ThreadGoalStatus =
   | "active"
@@ -4513,13 +4651,6 @@ export const ServerRequest__McpElicitationObjectType = Schema.Literal("object").
   identifier: "ServerRequest__McpElicitationObjectType",
 });
 
-export type ServerRequest__AbsolutePathBuf = string;
-export const ServerRequest__AbsolutePathBuf = Schema.String.annotate({
-  description:
-    "A path that is guaranteed to be absolute and normalized (though it is not guaranteed to be canonicalized or exist on the filesystem).\n\nIMPORTANT: When deserializing an `AbsolutePathBuf`, a base path must be set using [AbsolutePathBufGuard::new]. If no base path is set, the deserialization will fail unless the path being deserialized is already absolute.",
-  identifier: "ServerRequest__AbsolutePathBuf",
-});
-
 export type ServerRequest__DynamicToolCallParams = {
   readonly arguments: Schema.Json;
   readonly callId: string;
@@ -5421,6 +5552,12 @@ export const V2ConfigRequirementsReadResponse__WindowsSandboxSetupMode = Schema.
   "unelevated",
 ]).annotate({ identifier: "V2ConfigRequirementsReadResponse__WindowsSandboxSetupMode" });
 
+export type V2ConfigRequirementsReadResponse__NetworkDomainPermission = "allow" | "deny";
+export const V2ConfigRequirementsReadResponse__NetworkDomainPermission = Schema.Literals([
+  "allow",
+  "deny",
+]).annotate({ identifier: "V2ConfigRequirementsReadResponse__NetworkDomainPermission" });
+
 export type V2ConfigRequirementsReadResponse__AutoReviewRequirements = {
   readonly ignoreRules?: ReadonlyArray<string> | null;
   readonly requiredOnModels?: ReadonlyArray<string> | null;
@@ -5570,12 +5707,6 @@ export const V2ConfigRequirementsReadResponse__ReasoningEffort = Schema.String.a
     identifier: "V2ConfigRequirementsReadResponse__ReasoningEffort",
   }),
 );
-
-export type V2ConfigRequirementsReadResponse__NetworkDomainPermission = "allow" | "deny";
-export const V2ConfigRequirementsReadResponse__NetworkDomainPermission = Schema.Literals([
-  "allow",
-  "deny",
-]).annotate({ identifier: "V2ConfigRequirementsReadResponse__NetworkDomainPermission" });
 
 export type V2ConfigRequirementsReadResponse__NetworkUnixSocketPermission = "allow" | "deny";
 export const V2ConfigRequirementsReadResponse__NetworkUnixSocketPermission = Schema.Literals([
@@ -7065,12 +7196,10 @@ export const V2ItemCompletedNotification__AbsolutePathBuf = Schema.String.annota
   identifier: "V2ItemCompletedNotification__AbsolutePathBuf",
 });
 
-export type V2ItemGuardianApprovalReviewCompletedNotification__AbsolutePathBuf = string;
-export const V2ItemGuardianApprovalReviewCompletedNotification__AbsolutePathBuf =
+export type V2ItemGuardianApprovalReviewCompletedNotification__LegacyAppPathString = string;
+export const V2ItemGuardianApprovalReviewCompletedNotification__LegacyAppPathString =
   Schema.String.annotate({
-    description:
-      "A path that is guaranteed to be absolute and normalized (though it is not guaranteed to be canonicalized or exist on the filesystem).\n\nIMPORTANT: When deserializing an `AbsolutePathBuf`, a base path must be set using [AbsolutePathBufGuard::new]. If no base path is set, the deserialization will fail unless the path being deserialized is already absolute.",
-    identifier: "V2ItemGuardianApprovalReviewCompletedNotification__AbsolutePathBuf",
+    identifier: "V2ItemGuardianApprovalReviewCompletedNotification__LegacyAppPathString",
   });
 
 export type V2ItemGuardianApprovalReviewCompletedNotification__GuardianCommandSource =
@@ -7081,10 +7210,12 @@ export const V2ItemGuardianApprovalReviewCompletedNotification__GuardianCommandS
     identifier: "V2ItemGuardianApprovalReviewCompletedNotification__GuardianCommandSource",
   });
 
-export type V2ItemGuardianApprovalReviewCompletedNotification__LegacyAppPathString = string;
-export const V2ItemGuardianApprovalReviewCompletedNotification__LegacyAppPathString =
+export type V2ItemGuardianApprovalReviewCompletedNotification__AbsolutePathBuf = string;
+export const V2ItemGuardianApprovalReviewCompletedNotification__AbsolutePathBuf =
   Schema.String.annotate({
-    identifier: "V2ItemGuardianApprovalReviewCompletedNotification__LegacyAppPathString",
+    description:
+      "A path that is guaranteed to be absolute and normalized (though it is not guaranteed to be canonicalized or exist on the filesystem).\n\nIMPORTANT: When deserializing an `AbsolutePathBuf`, a base path must be set using [AbsolutePathBufGuard::new]. If no base path is set, the deserialization will fail unless the path being deserialized is already absolute.",
+    identifier: "V2ItemGuardianApprovalReviewCompletedNotification__AbsolutePathBuf",
   });
 
 export type V2ItemGuardianApprovalReviewCompletedNotification__NetworkApprovalProtocol =
@@ -7158,12 +7289,10 @@ export const V2ItemGuardianApprovalReviewCompletedNotification__GuardianUserAuth
     identifier: "V2ItemGuardianApprovalReviewCompletedNotification__GuardianUserAuthorization",
   });
 
-export type V2ItemGuardianApprovalReviewStartedNotification__AbsolutePathBuf = string;
-export const V2ItemGuardianApprovalReviewStartedNotification__AbsolutePathBuf =
+export type V2ItemGuardianApprovalReviewStartedNotification__LegacyAppPathString = string;
+export const V2ItemGuardianApprovalReviewStartedNotification__LegacyAppPathString =
   Schema.String.annotate({
-    description:
-      "A path that is guaranteed to be absolute and normalized (though it is not guaranteed to be canonicalized or exist on the filesystem).\n\nIMPORTANT: When deserializing an `AbsolutePathBuf`, a base path must be set using [AbsolutePathBufGuard::new]. If no base path is set, the deserialization will fail unless the path being deserialized is already absolute.",
-    identifier: "V2ItemGuardianApprovalReviewStartedNotification__AbsolutePathBuf",
+    identifier: "V2ItemGuardianApprovalReviewStartedNotification__LegacyAppPathString",
   });
 
 export type V2ItemGuardianApprovalReviewStartedNotification__GuardianCommandSource =
@@ -7174,10 +7303,12 @@ export const V2ItemGuardianApprovalReviewStartedNotification__GuardianCommandSou
     identifier: "V2ItemGuardianApprovalReviewStartedNotification__GuardianCommandSource",
   });
 
-export type V2ItemGuardianApprovalReviewStartedNotification__LegacyAppPathString = string;
-export const V2ItemGuardianApprovalReviewStartedNotification__LegacyAppPathString =
+export type V2ItemGuardianApprovalReviewStartedNotification__AbsolutePathBuf = string;
+export const V2ItemGuardianApprovalReviewStartedNotification__AbsolutePathBuf =
   Schema.String.annotate({
-    identifier: "V2ItemGuardianApprovalReviewStartedNotification__LegacyAppPathString",
+    description:
+      "A path that is guaranteed to be absolute and normalized (though it is not guaranteed to be canonicalized or exist on the filesystem).\n\nIMPORTANT: When deserializing an `AbsolutePathBuf`, a base path must be set using [AbsolutePathBufGuard::new]. If no base path is set, the deserialization will fail unless the path being deserialized is already absolute.",
+    identifier: "V2ItemGuardianApprovalReviewStartedNotification__AbsolutePathBuf",
   });
 
 export type V2ItemGuardianApprovalReviewStartedNotification__NetworkApprovalProtocol =
@@ -7929,6 +8060,29 @@ export type V2ModelVerificationNotification__ModelVerification = "trustedAccessF
 export const V2ModelVerificationNotification__ModelVerification = Schema.Literal(
   "trustedAccessForCyber",
 ).annotate({ identifier: "V2ModelVerificationNotification__ModelVerification" });
+
+export type V2NullableGetAccountRateLimitsParams__GetAccountRateLimitsParams = {
+  readonly excludeResetCreditDetails?: boolean;
+  readonly supportsLunaReserve?: boolean;
+};
+export const V2NullableGetAccountRateLimitsParams__GetAccountRateLimitsParams = Schema.Struct({
+  excludeResetCreditDetails: Schema.optionalKey(
+    Schema.Boolean.annotate({
+      description:
+        "Skip the separate reset-credit detail lookup for background usage polls. The usage response still includes the available count; omitted/false preserves detailed reads.",
+    }),
+  ),
+  supportsLunaReserve: Schema.optionalKey(
+    Schema.Boolean.annotate({
+      description:
+        "The client supports automatic Luna Reserve fallback. For eligible ChatGPT CLI users, allow the backend to record experiment exposure after ordinary usage is blocked.",
+    }),
+  ),
+}).annotate({
+  description:
+    "Usage-read capabilities of the requesting client, never inferred from its experiment arm.",
+  identifier: "V2NullableGetAccountRateLimitsParams__GetAccountRateLimitsParams",
+});
 
 export type V2NullableGetAccountTokenUsageParams__GetAccountTokenUsageParams = {
   readonly threadId?: string | null;
@@ -9016,6 +9170,16 @@ export const V2RawResponseItemCompletedNotification__ResponsesApiWebSearchAction
   { mode: "oneOf" },
 ).annotate({ identifier: "V2RawResponseItemCompletedNotification__ResponsesApiWebSearchAction" });
 
+export type V2RawResponseItemCompletedNotification__ReasoningEffort = string;
+export const V2RawResponseItemCompletedNotification__ReasoningEffort = Schema.String.annotate({
+  description: "A non-empty reasoning effort value advertised by the model.",
+}).check(
+  Schema.isMinLength(1).annotate({
+    expected: "a value with a length of at least 1",
+    identifier: "V2RawResponseItemCompletedNotification__ReasoningEffort",
+  }),
+);
+
 export type V2RemoteControlClientsListParams__RemoteControlClientsListOrder = "asc" | "desc";
 export const V2RemoteControlClientsListParams__RemoteControlClientsListOrder = Schema.Literals([
   "asc",
@@ -9671,6 +9835,66 @@ export const V2SkillsListResponse__SkillScope = Schema.Literals([
   "system",
   "admin",
 ]).annotate({ identifier: "V2SkillsListResponse__SkillScope" });
+
+export type V2ThreadAttachmentAddResponse__ThreadAttachment = {
+  readonly attachmentType: string;
+  readonly createdAt: number;
+  readonly id: string;
+  readonly identityKey: string;
+  readonly payload: Schema.Json;
+};
+export const V2ThreadAttachmentAddResponse__ThreadAttachment = Schema.Struct({
+  attachmentType: Schema.String,
+  createdAt: Schema.Number.annotate({ format: "int64" }).check(
+    Schema.isInt().annotate({ expected: "an integer" }),
+  ),
+  id: Schema.String,
+  identityKey: Schema.String,
+  payload: Schema.Json.annotate({ expected: "JSON value" }),
+}).annotate({
+  description: "An independently persisted attachment associated with a thread.",
+  identifier: "V2ThreadAttachmentAddResponse__ThreadAttachment",
+});
+
+export type V2ThreadAttachmentAddResponse__ThreadAttachmentAddOutcome = "created" | "existing";
+export const V2ThreadAttachmentAddResponse__ThreadAttachmentAddOutcome = Schema.Literals([
+  "created",
+  "existing",
+]).annotate({
+  description: "Result of attempting to associate an attachment with a thread.",
+  identifier: "V2ThreadAttachmentAddResponse__ThreadAttachmentAddOutcome",
+});
+
+export type V2ThreadAttachmentListResponse__ThreadAttachment = {
+  readonly attachmentType: string;
+  readonly createdAt: number;
+  readonly id: string;
+  readonly identityKey: string;
+  readonly payload: Schema.Json;
+};
+export const V2ThreadAttachmentListResponse__ThreadAttachment = Schema.Struct({
+  attachmentType: Schema.String,
+  createdAt: Schema.Number.annotate({ format: "int64" }).check(
+    Schema.isInt().annotate({ expected: "an integer" }),
+  ),
+  id: Schema.String,
+  identityKey: Schema.String,
+  payload: Schema.Json.annotate({ expected: "JSON value" }),
+}).annotate({
+  description: "An independently persisted attachment associated with a thread.",
+  identifier: "V2ThreadAttachmentListResponse__ThreadAttachment",
+});
+
+export type V2ThreadAttachmentUpdatedNotification__ThreadAttachmentOperation =
+  | "created"
+  | "deleted";
+export const V2ThreadAttachmentUpdatedNotification__ThreadAttachmentOperation = Schema.Literals([
+  "created",
+  "deleted",
+]).annotate({
+  description: "The persisted attachment change represented by a notification.",
+  identifier: "V2ThreadAttachmentUpdatedNotification__ThreadAttachmentOperation",
+});
 
 export type V2ThreadBackgroundTerminalsListResponse__LegacyAppPathString = string;
 export const V2ThreadBackgroundTerminalsListResponse__LegacyAppPathString = Schema.String.annotate({
@@ -10758,6 +10982,11 @@ export const V2ThreadListResponse__AbsolutePathBuf = Schema.String.annotate({
   identifier: "V2ThreadListResponse__AbsolutePathBuf",
 });
 
+export type V2ThreadListResponse__LegacyAppPathString = string;
+export const V2ThreadListResponse__LegacyAppPathString = Schema.String.annotate({
+  identifier: "V2ThreadListResponse__LegacyAppPathString",
+});
+
 export type V2ThreadListResponse__ThreadExtra = { readonly [x: string]: never };
 export const V2ThreadListResponse__ThreadExtra = Schema.Record(
   Schema.String,
@@ -10921,11 +11150,6 @@ export const V2ThreadListResponse__AsyncUserInputQuestion = Schema.Struct({
   options: Schema.optionalKey(Schema.Union([Schema.Array(Schema.String), Schema.Null])),
   title: Schema.String,
 }).annotate({ identifier: "V2ThreadListResponse__AsyncUserInputQuestion" });
-
-export type V2ThreadListResponse__LegacyAppPathString = string;
-export const V2ThreadListResponse__LegacyAppPathString = Schema.String.annotate({
-  identifier: "V2ThreadListResponse__LegacyAppPathString",
-});
 
 export type V2ThreadListResponse__CommandExecutionSource =
   | "agent"
@@ -11254,6 +11478,11 @@ export const V2ThreadMetadataUpdateResponse__AbsolutePathBuf = Schema.String.ann
   identifier: "V2ThreadMetadataUpdateResponse__AbsolutePathBuf",
 });
 
+export type V2ThreadMetadataUpdateResponse__LegacyAppPathString = string;
+export const V2ThreadMetadataUpdateResponse__LegacyAppPathString = Schema.String.annotate({
+  identifier: "V2ThreadMetadataUpdateResponse__LegacyAppPathString",
+});
+
 export type V2ThreadMetadataUpdateResponse__ThreadExtra = { readonly [x: string]: never };
 export const V2ThreadMetadataUpdateResponse__ThreadExtra = Schema.Record(
   Schema.String,
@@ -11422,11 +11651,6 @@ export const V2ThreadMetadataUpdateResponse__AsyncUserInputQuestion = Schema.Str
   options: Schema.optionalKey(Schema.Union([Schema.Array(Schema.String), Schema.Null])),
   title: Schema.String,
 }).annotate({ identifier: "V2ThreadMetadataUpdateResponse__AsyncUserInputQuestion" });
-
-export type V2ThreadMetadataUpdateResponse__LegacyAppPathString = string;
-export const V2ThreadMetadataUpdateResponse__LegacyAppPathString = Schema.String.annotate({
-  identifier: "V2ThreadMetadataUpdateResponse__LegacyAppPathString",
-});
 
 export type V2ThreadMetadataUpdateResponse__CommandExecutionSource =
   | "agent"
@@ -12235,6 +12459,11 @@ export const V2ThreadReadResponse__AbsolutePathBuf = Schema.String.annotate({
   identifier: "V2ThreadReadResponse__AbsolutePathBuf",
 });
 
+export type V2ThreadReadResponse__LegacyAppPathString = string;
+export const V2ThreadReadResponse__LegacyAppPathString = Schema.String.annotate({
+  identifier: "V2ThreadReadResponse__LegacyAppPathString",
+});
+
 export type V2ThreadReadResponse__ThreadExtra = { readonly [x: string]: never };
 export const V2ThreadReadResponse__ThreadExtra = Schema.Record(
   Schema.String,
@@ -12398,11 +12627,6 @@ export const V2ThreadReadResponse__AsyncUserInputQuestion = Schema.Struct({
   options: Schema.optionalKey(Schema.Union([Schema.Array(Schema.String), Schema.Null])),
   title: Schema.String,
 }).annotate({ identifier: "V2ThreadReadResponse__AsyncUserInputQuestion" });
-
-export type V2ThreadReadResponse__LegacyAppPathString = string;
-export const V2ThreadReadResponse__LegacyAppPathString = Schema.String.annotate({
-  identifier: "V2ThreadReadResponse__LegacyAppPathString",
-});
 
 export type V2ThreadReadResponse__CommandExecutionSource =
   | "agent"
@@ -13246,6 +13470,16 @@ export const V2ThreadResumeParams__ResponsesApiWebSearchAction = Schema.Union(
   { mode: "oneOf" },
 ).annotate({ identifier: "V2ThreadResumeParams__ResponsesApiWebSearchAction" });
 
+export type V2ThreadResumeParams__ReasoningEffort = string;
+export const V2ThreadResumeParams__ReasoningEffort = Schema.String.annotate({
+  description: "A non-empty reasoning effort value advertised by the model.",
+}).check(
+  Schema.isMinLength(1).annotate({
+    expected: "a value with a length of at least 1",
+    identifier: "V2ThreadResumeParams__ReasoningEffort",
+  }),
+);
+
 export type V2ThreadResumeParams__TurnItemsView = "notLoaded" | "summary" | "full";
 export const V2ThreadResumeParams__TurnItemsView = Schema.Union(
   [
@@ -13839,6 +14073,11 @@ export const V2ThreadRevertResponse__AbsolutePathBuf = Schema.String.annotate({
   identifier: "V2ThreadRevertResponse__AbsolutePathBuf",
 });
 
+export type V2ThreadRevertResponse__LegacyAppPathString = string;
+export const V2ThreadRevertResponse__LegacyAppPathString = Schema.String.annotate({
+  identifier: "V2ThreadRevertResponse__LegacyAppPathString",
+});
+
 export type V2ThreadRevertResponse__ThreadExtra = { readonly [x: string]: never };
 export const V2ThreadRevertResponse__ThreadExtra = Schema.Record(
   Schema.String,
@@ -14002,11 +14241,6 @@ export const V2ThreadRevertResponse__AsyncUserInputQuestion = Schema.Struct({
   options: Schema.optionalKey(Schema.Union([Schema.Array(Schema.String), Schema.Null])),
   title: Schema.String,
 }).annotate({ identifier: "V2ThreadRevertResponse__AsyncUserInputQuestion" });
-
-export type V2ThreadRevertResponse__LegacyAppPathString = string;
-export const V2ThreadRevertResponse__LegacyAppPathString = Schema.String.annotate({
-  identifier: "V2ThreadRevertResponse__LegacyAppPathString",
-});
 
 export type V2ThreadRevertResponse__CommandExecutionSource =
   | "agent"
@@ -14294,6 +14528,11 @@ export const V2ThreadRollbackResponse__AbsolutePathBuf = Schema.String.annotate(
   identifier: "V2ThreadRollbackResponse__AbsolutePathBuf",
 });
 
+export type V2ThreadRollbackResponse__LegacyAppPathString = string;
+export const V2ThreadRollbackResponse__LegacyAppPathString = Schema.String.annotate({
+  identifier: "V2ThreadRollbackResponse__LegacyAppPathString",
+});
+
 export type V2ThreadRollbackResponse__ThreadExtra = { readonly [x: string]: never };
 export const V2ThreadRollbackResponse__ThreadExtra = Schema.Record(
   Schema.String,
@@ -14457,11 +14696,6 @@ export const V2ThreadRollbackResponse__AsyncUserInputQuestion = Schema.Struct({
   options: Schema.optionalKey(Schema.Union([Schema.Array(Schema.String), Schema.Null])),
   title: Schema.String,
 }).annotate({ identifier: "V2ThreadRollbackResponse__AsyncUserInputQuestion" });
-
-export type V2ThreadRollbackResponse__LegacyAppPathString = string;
-export const V2ThreadRollbackResponse__LegacyAppPathString = Schema.String.annotate({
-  identifier: "V2ThreadRollbackResponse__LegacyAppPathString",
-});
 
 export type V2ThreadRollbackResponse__CommandExecutionSource =
   | "agent"
@@ -14811,6 +15045,11 @@ export const V2ThreadSearchResponse__AbsolutePathBuf = Schema.String.annotate({
   identifier: "V2ThreadSearchResponse__AbsolutePathBuf",
 });
 
+export type V2ThreadSearchResponse__LegacyAppPathString = string;
+export const V2ThreadSearchResponse__LegacyAppPathString = Schema.String.annotate({
+  identifier: "V2ThreadSearchResponse__LegacyAppPathString",
+});
+
 export type V2ThreadSearchResponse__ThreadExtra = { readonly [x: string]: never };
 export const V2ThreadSearchResponse__ThreadExtra = Schema.Record(
   Schema.String,
@@ -14974,11 +15213,6 @@ export const V2ThreadSearchResponse__AsyncUserInputQuestion = Schema.Struct({
   options: Schema.optionalKey(Schema.Union([Schema.Array(Schema.String), Schema.Null])),
   title: Schema.String,
 }).annotate({ identifier: "V2ThreadSearchResponse__AsyncUserInputQuestion" });
-
-export type V2ThreadSearchResponse__LegacyAppPathString = string;
-export const V2ThreadSearchResponse__LegacyAppPathString = Schema.String.annotate({
-  identifier: "V2ThreadSearchResponse__LegacyAppPathString",
-});
 
 export type V2ThreadSearchResponse__CommandExecutionSource =
   | "agent"
@@ -15575,6 +15809,11 @@ export const V2ThreadStartedNotification__AbsolutePathBuf = Schema.String.annota
   identifier: "V2ThreadStartedNotification__AbsolutePathBuf",
 });
 
+export type V2ThreadStartedNotification__LegacyAppPathString = string;
+export const V2ThreadStartedNotification__LegacyAppPathString = Schema.String.annotate({
+  identifier: "V2ThreadStartedNotification__LegacyAppPathString",
+});
+
 export type V2ThreadStartedNotification__ThreadExtra = { readonly [x: string]: never };
 export const V2ThreadStartedNotification__ThreadExtra = Schema.Record(
   Schema.String,
@@ -15743,11 +15982,6 @@ export const V2ThreadStartedNotification__AsyncUserInputQuestion = Schema.Struct
   options: Schema.optionalKey(Schema.Union([Schema.Array(Schema.String), Schema.Null])),
   title: Schema.String,
 }).annotate({ identifier: "V2ThreadStartedNotification__AsyncUserInputQuestion" });
-
-export type V2ThreadStartedNotification__LegacyAppPathString = string;
-export const V2ThreadStartedNotification__LegacyAppPathString = Schema.String.annotate({
-  identifier: "V2ThreadStartedNotification__LegacyAppPathString",
-});
 
 export type V2ThreadStartedNotification__CommandExecutionSource =
   | "agent"
@@ -17615,6 +17849,11 @@ export const V2ThreadUnarchiveResponse__AbsolutePathBuf = Schema.String.annotate
   identifier: "V2ThreadUnarchiveResponse__AbsolutePathBuf",
 });
 
+export type V2ThreadUnarchiveResponse__LegacyAppPathString = string;
+export const V2ThreadUnarchiveResponse__LegacyAppPathString = Schema.String.annotate({
+  identifier: "V2ThreadUnarchiveResponse__LegacyAppPathString",
+});
+
 export type V2ThreadUnarchiveResponse__ThreadExtra = { readonly [x: string]: never };
 export const V2ThreadUnarchiveResponse__ThreadExtra = Schema.Record(
   Schema.String,
@@ -17780,11 +18019,6 @@ export const V2ThreadUnarchiveResponse__AsyncUserInputQuestion = Schema.Struct({
   options: Schema.optionalKey(Schema.Union([Schema.Array(Schema.String), Schema.Null])),
   title: Schema.String,
 }).annotate({ identifier: "V2ThreadUnarchiveResponse__AsyncUserInputQuestion" });
-
-export type V2ThreadUnarchiveResponse__LegacyAppPathString = string;
-export const V2ThreadUnarchiveResponse__LegacyAppPathString = Schema.String.annotate({
-  identifier: "V2ThreadUnarchiveResponse__LegacyAppPathString",
-});
 
 export type V2ThreadUnarchiveResponse__CommandExecutionSource =
   | "agent"
@@ -19510,6 +19744,74 @@ export const V2TurnSteerParams__ImageDetail = Schema.Literals([
   "original",
 ]).annotate({ identifier: "V2TurnSteerParams__ImageDetail" });
 
+export type V2UserVerificationCancelParams__RequestId = string | number;
+export const V2UserVerificationCancelParams__RequestId = Schema.Union([
+  Schema.String,
+  Schema.Number.annotate({ format: "int64" }).check(
+    Schema.isInt().annotate({ expected: "an integer" }),
+  ),
+]).annotate({ identifier: "V2UserVerificationCancelParams__RequestId" });
+
+export type V2UserVerificationRpcError__UserVerificationInvalidRequestReason = "invalidParams";
+export const V2UserVerificationRpcError__UserVerificationInvalidRequestReason = Schema.Literal(
+  "invalidParams",
+).annotate({ identifier: "V2UserVerificationRpcError__UserVerificationInvalidRequestReason" });
+
+export type V2UserVerificationRpcError__UserVerificationUnavailableReason =
+  | "credentialMissing"
+  | "biometricsUnavailable"
+  | "providerUnavailable";
+export const V2UserVerificationRpcError__UserVerificationUnavailableReason = Schema.Literals([
+  "credentialMissing",
+  "biometricsUnavailable",
+  "providerUnavailable",
+]).annotate({ identifier: "V2UserVerificationRpcError__UserVerificationUnavailableReason" });
+
+export type V2UserVerificationRpcError__UserVerificationCancellationReason =
+  | "userCancelled"
+  | "interrupted";
+export const V2UserVerificationRpcError__UserVerificationCancellationReason = Schema.Literals([
+  "userCancelled",
+  "interrupted",
+]).annotate({ identifier: "V2UserVerificationRpcError__UserVerificationCancellationReason" });
+
+export type V2UserVerificationRpcError__UserVerificationFailureReason =
+  | "authenticationFailed"
+  | "timeout"
+  | "providerError"
+  | "serviceError";
+export const V2UserVerificationRpcError__UserVerificationFailureReason = Schema.Literals([
+  "authenticationFailed",
+  "timeout",
+  "providerError",
+  "serviceError",
+]).annotate({ identifier: "V2UserVerificationRpcError__UserVerificationFailureReason" });
+
+export type V2UserVerificationStatusResponse__UserVerificationUnavailableReason =
+  | "credentialMissing"
+  | "biometricsUnavailable"
+  | "providerUnavailable";
+export const V2UserVerificationStatusResponse__UserVerificationUnavailableReason = Schema.Literals([
+  "credentialMissing",
+  "biometricsUnavailable",
+  "providerUnavailable",
+]).annotate({ identifier: "V2UserVerificationStatusResponse__UserVerificationUnavailableReason" });
+
+export type V2UserVerificationVerifyResponse__UserVerificationProof = {
+  readonly credentialId: string;
+  readonly signature: string;
+};
+export const V2UserVerificationVerifyResponse__UserVerificationProof = Schema.Struct({
+  credentialId: Schema.String,
+  signature: Schema.String.annotate({
+    description: "Unpadded base64url DER ECDSA signature using P-256 and SHA-256.",
+  }),
+}).annotate({
+  description:
+    "A signature over the exact decoded challenge. The verifier validates and consumes it.",
+  identifier: "V2UserVerificationVerifyResponse__UserVerificationProof",
+});
+
 export type V2WindowsSandboxReadinessResponse__WindowsSandboxReadiness =
   | "ready"
   | "notConfigured"
@@ -19549,6 +19851,17 @@ export const ApplyPatchApprovalResponse__NetworkPolicyAmendment = Schema.Struct(
   action: ApplyPatchApprovalResponse__NetworkPolicyRuleAction,
   host: Schema.String,
 }).annotate({ identifier: "ApplyPatchApprovalResponse__NetworkPolicyAmendment" });
+
+export type ClientRequest__UserVerificationCancelParams = {
+  readonly requestId: ClientRequest__RequestId;
+};
+export const ClientRequest__UserVerificationCancelParams = Schema.Struct({
+  requestId: ClientRequest__RequestId,
+}).annotate({
+  description:
+    "Cancels a native verification RPC issued on this connection, not an elicitation. Use a fresh request ID for each operation and a distinct ID for this cancellation RPC.",
+  identifier: "ClientRequest__UserVerificationCancelParams",
+});
 
 export type ClientRequest__InitializeParams = {
   readonly capabilities?: ClientRequest__InitializeCapabilities | null;
@@ -20043,6 +20356,30 @@ export const ClientRequest__FunctionCallOutputContentItem = Schema.Union(
   identifier: "ClientRequest__FunctionCallOutputContentItem",
 });
 
+export type ClientRequest__ConfigurationReasoning = {
+  readonly effort: ClientRequest__ReasoningEffort;
+};
+export const ClientRequest__ConfigurationReasoning = Schema.Struct({
+  effort: ClientRequest__ReasoningEffort,
+}).annotate({
+  description: "Reasoning settings interpreted by the backend for the routed model.",
+  identifier: "ClientRequest__ConfigurationReasoning",
+});
+
+export type ClientRequest__Settings = {
+  readonly developer_instructions?: string | null;
+  readonly model: string;
+  readonly reasoning_effort?: ClientRequest__ReasoningEffort | null;
+};
+export const ClientRequest__Settings = Schema.Struct({
+  developer_instructions: Schema.optionalKey(Schema.Union([Schema.String, Schema.Null])),
+  model: Schema.String,
+  reasoning_effort: Schema.optionalKey(Schema.Union([ClientRequest__ReasoningEffort, Schema.Null])),
+}).annotate({
+  description: "Settings for a collaboration mode.",
+  identifier: "ClientRequest__Settings",
+});
+
 export type ClientRequest__ThreadResumeInitialTurnsPageParams = {
   readonly itemsView?: ClientRequest__TurnItemsView | null;
   readonly limit?: number | null;
@@ -20198,11 +20535,21 @@ export const ClientRequest__TextElement = Schema.Struct({
 }).annotate({ identifier: "ClientRequest__TextElement" });
 
 export type ClientRequest__ThreadMetadataUpdateParams = {
+  readonly daybreakEnabled?: boolean | null;
   readonly gitInfo?: ClientRequest__ThreadMetadataGitInfoUpdateParams | null;
   readonly projectId?: string | null;
   readonly threadId: string;
 };
 export const ClientRequest__ThreadMetadataUpdateParams = Schema.Struct({
+  daybreakEnabled: Schema.optionalKey(
+    Schema.Union([
+      Schema.Boolean.annotate({
+        description:
+          "Save the client's Daybreak choice for this persistent thread. Omitted or null leaves it unchanged. This does not select a turn's `cyberAccessProgram` or grant access.",
+      }),
+      Schema.Null,
+    ]),
+  ),
   gitInfo: Schema.optionalKey(
     Schema.Union([ClientRequest__ThreadMetadataGitInfoUpdateParams, Schema.Null]).annotate({
       description:
@@ -20220,20 +20567,6 @@ export const ClientRequest__ThreadMetadataUpdateParams = Schema.Struct({
   ),
   threadId: Schema.String,
 }).annotate({ identifier: "ClientRequest__ThreadMetadataUpdateParams" });
-
-export type ClientRequest__Settings = {
-  readonly developer_instructions?: string | null;
-  readonly model: string;
-  readonly reasoning_effort?: ClientRequest__ReasoningEffort | null;
-};
-export const ClientRequest__Settings = Schema.Struct({
-  developer_instructions: Schema.optionalKey(Schema.Union([Schema.String, Schema.Null])),
-  model: Schema.String,
-  reasoning_effort: Schema.optionalKey(Schema.Union([ClientRequest__ReasoningEffort, Schema.Null])),
-}).annotate({
-  description: "Settings for a collaboration mode.",
-  identifier: "ClientRequest__Settings",
-});
 
 export type ClientRequest__SandboxPolicy =
   | { readonly type: "dangerFullAccess" }
@@ -20344,6 +20677,7 @@ export type ClientRequest__ThreadListParams = {
   readonly cwd?: ClientRequest__ThreadListCwdFilter | null;
   readonly limit?: number | null;
   readonly modelProviders?: ReadonlyArray<string> | null;
+  readonly originators?: ReadonlyArray<string> | null;
   readonly parentThreadId?: string | null;
   readonly projectId?: string | null;
   readonly searchTerm?: string | null;
@@ -20406,6 +20740,15 @@ export const ClientRequest__ThreadListParams = Schema.Struct({
       Schema.Array(Schema.String).annotate({
         description:
           "Optional provider filter; when set, only sessions recorded under these providers are returned. When present but empty, includes all providers.",
+      }),
+      Schema.Null,
+    ]),
+  ),
+  originators: Schema.optionalKey(
+    Schema.Union([
+      Schema.Array(Schema.String).annotate({
+        description:
+          "Optional originator allowlist, matching any supplied value exactly. Supported by hosted backends only; the local app-server rejects a nonempty list. Omitted or empty lists leave originators unrestricted.",
       }),
       Schema.Null,
     ]),
@@ -20734,7 +21077,7 @@ export const ClientRequest__ReviewStartParams = Schema.Struct({
   delivery: Schema.optionalKey(
     Schema.Union([ClientRequest__ReviewDelivery, Schema.Null]).annotate({
       description:
-        "Where to run the review: inline (default) on the current thread or detached on a new thread (returned in `reviewThreadId`).",
+        "Where to run the review: inline (default) on the current thread or detached on a new thread (returned in `reviewThreadId`). Detached delivery is deprecated and emits `deprecationNotice`. Use `thread/start` followed by an inline review for a separate review thread.",
     }),
   ),
   target: ClientRequest__ReviewTarget,
@@ -21839,6 +22182,107 @@ export const ServerNotification__FsChangedNotification = Schema.Struct({
   identifier: "ServerNotification__FsChangedNotification",
 });
 
+export type ServerNotification__ThreadEnvironment = {
+  readonly cwd: ServerNotification__LegacyAppPathString;
+  readonly environmentId: string;
+  readonly runtimeWorkspaceRoots: ReadonlyArray<ServerNotification__LegacyAppPathString>;
+};
+export const ServerNotification__ThreadEnvironment = Schema.Struct({
+  cwd: ServerNotification__LegacyAppPathString,
+  environmentId: Schema.String,
+  runtimeWorkspaceRoots: Schema.Array(ServerNotification__LegacyAppPathString),
+}).annotate({
+  description: "An environment selected by a loaded thread, independent of connection status.",
+  identifier: "ServerNotification__ThreadEnvironment",
+});
+
+export type ServerNotification__CommandAction =
+  | {
+      readonly command: string;
+      readonly name: string;
+      readonly path: ServerNotification__LegacyAppPathString;
+      readonly type: "read";
+    }
+  | { readonly command: string; readonly path?: string | null; readonly type: "listFiles" }
+  | {
+      readonly command: string;
+      readonly path?: string | null;
+      readonly query?: string | null;
+      readonly type: "search";
+    }
+  | { readonly command: string; readonly type: "unknown" };
+export const ServerNotification__CommandAction = Schema.Union(
+  [
+    Schema.Struct({
+      command: Schema.String,
+      name: Schema.String,
+      path: ServerNotification__LegacyAppPathString,
+      type: Schema.Literal("read").annotate({ title: "ReadCommandActionType" }),
+    }).annotate({ title: "ReadCommandAction" }),
+    Schema.Struct({
+      command: Schema.String,
+      path: Schema.optionalKey(Schema.Union([Schema.String, Schema.Null])),
+      type: Schema.Literal("listFiles").annotate({ title: "ListFilesCommandActionType" }),
+    }).annotate({ title: "ListFilesCommandAction" }),
+    Schema.Struct({
+      command: Schema.String,
+      path: Schema.optionalKey(Schema.Union([Schema.String, Schema.Null])),
+      query: Schema.optionalKey(Schema.Union([Schema.String, Schema.Null])),
+      type: Schema.Literal("search").annotate({ title: "SearchCommandActionType" }),
+    }).annotate({ title: "SearchCommandAction" }),
+    Schema.Struct({
+      command: Schema.String,
+      type: Schema.Literal("unknown").annotate({ title: "UnknownCommandActionType" }),
+    }).annotate({ title: "UnknownCommandAction" }),
+  ],
+  { mode: "oneOf" },
+).annotate({ identifier: "ServerNotification__CommandAction" });
+
+export type ServerNotification__FileSystemSpecialPath =
+  | { readonly kind: "root" }
+  | { readonly kind: "minimal" }
+  | {
+      readonly kind: "project_roots";
+      readonly subpath?: ServerNotification__LegacyAppPathString | null;
+    }
+  | { readonly kind: "tmpdir" }
+  | { readonly kind: "slash_tmp" }
+  | {
+      readonly kind: "unknown";
+      readonly path: string;
+      readonly subpath?: ServerNotification__LegacyAppPathString | null;
+    };
+export const ServerNotification__FileSystemSpecialPath = Schema.Union(
+  [
+    Schema.Struct({ kind: Schema.Literal("root") }).annotate({
+      title: "RootFileSystemSpecialPath",
+    }),
+    Schema.Struct({ kind: Schema.Literal("minimal") }).annotate({
+      title: "MinimalFileSystemSpecialPath",
+    }),
+    Schema.Struct({
+      kind: Schema.Literal("project_roots"),
+      subpath: Schema.optionalKey(
+        Schema.Union([ServerNotification__LegacyAppPathString, Schema.Null]),
+      ),
+    }).annotate({ title: "KindFileSystemSpecialPath" }),
+    Schema.Struct({ kind: Schema.Literal("tmpdir") }).annotate({
+      title: "TmpdirFileSystemSpecialPath",
+    }),
+    Schema.Struct({ kind: Schema.Literal("slash_tmp") }).annotate({
+      title: "SlashTmpFileSystemSpecialPath",
+    }),
+    Schema.Struct({
+      kind: Schema.Literal("unknown"),
+      path: Schema.String,
+      subpath: Schema.optionalKey(
+        Schema.Union([ServerNotification__LegacyAppPathString, Schema.Null]),
+      ),
+    }),
+  ],
+  { mode: "oneOf" },
+).annotate({ identifier: "ServerNotification__FileSystemSpecialPath" });
+
 export type ServerNotification__Settings = {
   readonly developer_instructions?: string | null;
   readonly model: string;
@@ -22006,93 +22450,6 @@ export const ServerNotification__MemoryCitation = Schema.Struct({
   threadIds: Schema.Array(Schema.String),
 }).annotate({ identifier: "ServerNotification__MemoryCitation" });
 
-export type ServerNotification__CommandAction =
-  | {
-      readonly command: string;
-      readonly name: string;
-      readonly path: ServerNotification__LegacyAppPathString;
-      readonly type: "read";
-    }
-  | { readonly command: string; readonly path?: string | null; readonly type: "listFiles" }
-  | {
-      readonly command: string;
-      readonly path?: string | null;
-      readonly query?: string | null;
-      readonly type: "search";
-    }
-  | { readonly command: string; readonly type: "unknown" };
-export const ServerNotification__CommandAction = Schema.Union(
-  [
-    Schema.Struct({
-      command: Schema.String,
-      name: Schema.String,
-      path: ServerNotification__LegacyAppPathString,
-      type: Schema.Literal("read").annotate({ title: "ReadCommandActionType" }),
-    }).annotate({ title: "ReadCommandAction" }),
-    Schema.Struct({
-      command: Schema.String,
-      path: Schema.optionalKey(Schema.Union([Schema.String, Schema.Null])),
-      type: Schema.Literal("listFiles").annotate({ title: "ListFilesCommandActionType" }),
-    }).annotate({ title: "ListFilesCommandAction" }),
-    Schema.Struct({
-      command: Schema.String,
-      path: Schema.optionalKey(Schema.Union([Schema.String, Schema.Null])),
-      query: Schema.optionalKey(Schema.Union([Schema.String, Schema.Null])),
-      type: Schema.Literal("search").annotate({ title: "SearchCommandActionType" }),
-    }).annotate({ title: "SearchCommandAction" }),
-    Schema.Struct({
-      command: Schema.String,
-      type: Schema.Literal("unknown").annotate({ title: "UnknownCommandActionType" }),
-    }).annotate({ title: "UnknownCommandAction" }),
-  ],
-  { mode: "oneOf" },
-).annotate({ identifier: "ServerNotification__CommandAction" });
-
-export type ServerNotification__FileSystemSpecialPath =
-  | { readonly kind: "root" }
-  | { readonly kind: "minimal" }
-  | {
-      readonly kind: "project_roots";
-      readonly subpath?: ServerNotification__LegacyAppPathString | null;
-    }
-  | { readonly kind: "tmpdir" }
-  | { readonly kind: "slash_tmp" }
-  | {
-      readonly kind: "unknown";
-      readonly path: string;
-      readonly subpath?: ServerNotification__LegacyAppPathString | null;
-    };
-export const ServerNotification__FileSystemSpecialPath = Schema.Union(
-  [
-    Schema.Struct({ kind: Schema.Literal("root") }).annotate({
-      title: "RootFileSystemSpecialPath",
-    }),
-    Schema.Struct({ kind: Schema.Literal("minimal") }).annotate({
-      title: "MinimalFileSystemSpecialPath",
-    }),
-    Schema.Struct({
-      kind: Schema.Literal("project_roots"),
-      subpath: Schema.optionalKey(
-        Schema.Union([ServerNotification__LegacyAppPathString, Schema.Null]),
-      ),
-    }).annotate({ title: "KindFileSystemSpecialPath" }),
-    Schema.Struct({ kind: Schema.Literal("tmpdir") }).annotate({
-      title: "TmpdirFileSystemSpecialPath",
-    }),
-    Schema.Struct({ kind: Schema.Literal("slash_tmp") }).annotate({
-      title: "SlashTmpFileSystemSpecialPath",
-    }),
-    Schema.Struct({
-      kind: Schema.Literal("unknown"),
-      path: Schema.String,
-      subpath: Schema.optionalKey(
-        Schema.Union([ServerNotification__LegacyAppPathString, Schema.Null]),
-      ),
-    }),
-  ],
-  { mode: "oneOf" },
-).annotate({ identifier: "ServerNotification__FileSystemSpecialPath" });
-
 export type ServerNotification__FileUpdateChange = {
   readonly diff: string;
   readonly kind: ServerNotification__PatchChangeKind;
@@ -22112,6 +22469,24 @@ export const ServerNotification__CollabAgentState = Schema.Struct({
   message: Schema.optionalKey(Schema.Union([Schema.String, Schema.Null])),
   status: ServerNotification__CollabAgentStatus,
 }).annotate({ identifier: "ServerNotification__CollabAgentState" });
+
+export type ServerNotification__ThreadAttachmentUpdatedNotification = {
+  readonly attachmentId: string;
+  readonly attachmentType: string;
+  readonly identityKey: string;
+  readonly operation: ServerNotification__ThreadAttachmentOperation;
+  readonly threadId: string;
+};
+export const ServerNotification__ThreadAttachmentUpdatedNotification = Schema.Struct({
+  attachmentId: Schema.String,
+  attachmentType: Schema.String,
+  identityKey: Schema.String,
+  operation: ServerNotification__ThreadAttachmentOperation,
+  threadId: Schema.String,
+}).annotate({
+  description: "Notification published after a thread attachment is created or deleted.",
+  identifier: "ServerNotification__ThreadAttachmentUpdatedNotification",
+});
 
 export type ServerNotification__ThreadGoal = {
   readonly createdAt: number;
@@ -22357,6 +22732,7 @@ export type ServerNotification__RateLimitSnapshot = {
   readonly individualLimit?: ServerNotification__SpendControlLimitSnapshot | null;
   readonly limitId?: string | null;
   readonly limitName?: string | null;
+  readonly normalModelSlug?: string | null;
   readonly planType?: ServerNotification__PlanType | null;
   readonly primary?: ServerNotification__RateLimitWindow | null;
   readonly rateLimitReachedType?: ServerNotification__RateLimitReachedType | null;
@@ -22370,6 +22746,15 @@ export const ServerNotification__RateLimitSnapshot = Schema.Struct({
   ),
   limitId: Schema.optionalKey(Schema.Union([Schema.String, Schema.Null])),
   limitName: Schema.optionalKey(Schema.Union([Schema.String, Schema.Null])),
+  normalModelSlug: Schema.optionalKey(
+    Schema.Union([
+      Schema.String.annotate({
+        description:
+          "Normal model whose display name and reasoning options describe this quota alias.",
+      }),
+      Schema.Null,
+    ]),
+  ),
   planType: Schema.optionalKey(Schema.Union([ServerNotification__PlanType, Schema.Null])),
   primary: Schema.optionalKey(Schema.Union([ServerNotification__RateLimitWindow, Schema.Null])),
   rateLimitReachedType: Schema.optionalKey(
@@ -23060,6 +23445,7 @@ export type V2AccountRateLimitsUpdatedNotification__RateLimitSnapshot = {
   readonly individualLimit?: V2AccountRateLimitsUpdatedNotification__SpendControlLimitSnapshot | null;
   readonly limitId?: string | null;
   readonly limitName?: string | null;
+  readonly normalModelSlug?: string | null;
   readonly planType?: V2AccountRateLimitsUpdatedNotification__PlanType | null;
   readonly primary?: V2AccountRateLimitsUpdatedNotification__RateLimitWindow | null;
   readonly rateLimitReachedType?: V2AccountRateLimitsUpdatedNotification__RateLimitReachedType | null;
@@ -23075,6 +23461,15 @@ export const V2AccountRateLimitsUpdatedNotification__RateLimitSnapshot = Schema.
   ),
   limitId: Schema.optionalKey(Schema.Union([Schema.String, Schema.Null])),
   limitName: Schema.optionalKey(Schema.Union([Schema.String, Schema.Null])),
+  normalModelSlug: Schema.optionalKey(
+    Schema.Union([
+      Schema.String.annotate({
+        description:
+          "Normal model whose display name and reasoning options describe this quota alias.",
+      }),
+      Schema.Null,
+    ]),
+  ),
   planType: Schema.optionalKey(
     Schema.Union([V2AccountRateLimitsUpdatedNotification__PlanType, Schema.Null]),
   ),
@@ -23474,6 +23869,19 @@ export const V2ConfigReadResponse__ConfigLayerSource = Schema.Union(
   ],
   { mode: "oneOf" },
 ).annotate({ identifier: "V2ConfigReadResponse__ConfigLayerSource" });
+
+export type V2ConfigRequirementsReadResponse__ApplicationNetworkRequirements = {
+  readonly domains: {
+    readonly [x: string]: V2ConfigRequirementsReadResponse__NetworkDomainPermission;
+  };
+  readonly enabled: boolean;
+};
+export const V2ConfigRequirementsReadResponse__ApplicationNetworkRequirements = Schema.Struct({
+  domains: Schema.Record(Schema.String, V2ConfigRequirementsReadResponse__NetworkDomainPermission),
+  enabled: Schema.Boolean.annotate({
+    description: "When enabled, only explicitly allowed exact domains may be contacted.",
+  }),
+}).annotate({ identifier: "V2ConfigRequirementsReadResponse__ApplicationNetworkRequirements" });
 
 export type V2ConfigRequirementsReadResponse__ComputerUseMacosRequirements = {
   readonly bundleIds?: {
@@ -24386,6 +24794,7 @@ export type V2GetAccountRateLimitsResponse__RateLimitSnapshot = {
   readonly individualLimit?: V2GetAccountRateLimitsResponse__SpendControlLimitSnapshot | null;
   readonly limitId?: string | null;
   readonly limitName?: string | null;
+  readonly normalModelSlug?: string | null;
   readonly planType?: V2GetAccountRateLimitsResponse__PlanType | null;
   readonly primary?: V2GetAccountRateLimitsResponse__RateLimitWindow | null;
   readonly rateLimitReachedType?: V2GetAccountRateLimitsResponse__RateLimitReachedType | null;
@@ -24401,6 +24810,15 @@ export const V2GetAccountRateLimitsResponse__RateLimitSnapshot = Schema.Struct({
   ),
   limitId: Schema.optionalKey(Schema.Union([Schema.String, Schema.Null])),
   limitName: Schema.optionalKey(Schema.Union([Schema.String, Schema.Null])),
+  normalModelSlug: Schema.optionalKey(
+    Schema.Union([
+      Schema.String.annotate({
+        description:
+          "Normal model whose display name and reasoning options describe this quota alias.",
+      }),
+      Schema.Null,
+    ]),
+  ),
   planType: Schema.optionalKey(
     Schema.Union([V2GetAccountRateLimitsResponse__PlanType, Schema.Null]),
   ),
@@ -25207,6 +25625,7 @@ export type V2ListMcpServerStatusResponse__McpServerStatus = {
   readonly runtimeStatus?: V2ListMcpServerStatusResponse__McpServerConnectionStatus | null;
   readonly serverInfo?: V2ListMcpServerStatusResponse__McpServerInfo | null;
   readonly tools: { readonly [x: string]: V2ListMcpServerStatusResponse__Tool };
+  readonly toolsError?: string | null;
 };
 export const V2ListMcpServerStatusResponse__McpServerStatus = Schema.Struct({
   authStatus: V2ListMcpServerStatusResponse__McpAuthStatus,
@@ -25224,6 +25643,15 @@ export const V2ListMcpServerStatusResponse__McpServerStatus = Schema.Struct({
     Schema.Union([V2ListMcpServerStatusResponse__McpServerInfo, Schema.Null]),
   ),
   tools: Schema.Record(Schema.String, V2ListMcpServerStatusResponse__Tool),
+  toolsError: Schema.optionalKey(
+    Schema.Union([
+      Schema.String.annotate({
+        description:
+          "Tool discovery failed and no catalog was returned. Null when a catalog is returned, including cached or empty catalogs.",
+      }),
+      Schema.Null,
+    ]),
+  ),
 }).annotate({ identifier: "V2ListMcpServerStatusResponse__McpServerStatus" });
 
 export type V2ModelListResponse__ReasoningEffortOption = {
@@ -26304,6 +26732,16 @@ export const V2RawResponseItemCompletedNotification__FunctionCallOutputContentIt
   identifier: "V2RawResponseItemCompletedNotification__FunctionCallOutputContentItem",
 });
 
+export type V2RawResponseItemCompletedNotification__ConfigurationReasoning = {
+  readonly effort: V2RawResponseItemCompletedNotification__ReasoningEffort;
+};
+export const V2RawResponseItemCompletedNotification__ConfigurationReasoning = Schema.Struct({
+  effort: V2RawResponseItemCompletedNotification__ReasoningEffort,
+}).annotate({
+  description: "Reasoning settings interpreted by the backend for the routed model.",
+  identifier: "V2RawResponseItemCompletedNotification__ConfigurationReasoning",
+});
+
 export type V2ReviewStartResponse__CodexErrorInfo =
   | "contextWindowExceeded"
   | "sessionBudgetExceeded"
@@ -26685,6 +27123,20 @@ export const V2ThreadBackgroundTerminalsListResponse__ThreadBackgroundTerminal =
     ]),
   ),
 }).annotate({ identifier: "V2ThreadBackgroundTerminalsListResponse__ThreadBackgroundTerminal" });
+
+export type V2ThreadForkResponse__ThreadEnvironment = {
+  readonly cwd: V2ThreadForkResponse__LegacyAppPathString;
+  readonly environmentId: string;
+  readonly runtimeWorkspaceRoots: ReadonlyArray<V2ThreadForkResponse__LegacyAppPathString>;
+};
+export const V2ThreadForkResponse__ThreadEnvironment = Schema.Struct({
+  cwd: V2ThreadForkResponse__LegacyAppPathString,
+  environmentId: Schema.String,
+  runtimeWorkspaceRoots: Schema.Array(V2ThreadForkResponse__LegacyAppPathString),
+}).annotate({
+  description: "An environment selected by a loaded thread, independent of connection status.",
+  identifier: "V2ThreadForkResponse__ThreadEnvironment",
+});
 
 export type V2ThreadForkResponse__CommandAction =
   | {
@@ -27356,6 +27808,62 @@ export const V2ThreadItemsListResponse__CollabAgentState = Schema.Struct({
   status: V2ThreadItemsListResponse__CollabAgentStatus,
 }).annotate({ identifier: "V2ThreadItemsListResponse__CollabAgentState" });
 
+export type V2ThreadListResponse__ThreadEnvironment = {
+  readonly cwd: V2ThreadListResponse__LegacyAppPathString;
+  readonly environmentId: string;
+  readonly runtimeWorkspaceRoots: ReadonlyArray<V2ThreadListResponse__LegacyAppPathString>;
+};
+export const V2ThreadListResponse__ThreadEnvironment = Schema.Struct({
+  cwd: V2ThreadListResponse__LegacyAppPathString,
+  environmentId: Schema.String,
+  runtimeWorkspaceRoots: Schema.Array(V2ThreadListResponse__LegacyAppPathString),
+}).annotate({
+  description: "An environment selected by a loaded thread, independent of connection status.",
+  identifier: "V2ThreadListResponse__ThreadEnvironment",
+});
+
+export type V2ThreadListResponse__CommandAction =
+  | {
+      readonly command: string;
+      readonly name: string;
+      readonly path: V2ThreadListResponse__LegacyAppPathString;
+      readonly type: "read";
+    }
+  | { readonly command: string; readonly path?: string | null; readonly type: "listFiles" }
+  | {
+      readonly command: string;
+      readonly path?: string | null;
+      readonly query?: string | null;
+      readonly type: "search";
+    }
+  | { readonly command: string; readonly type: "unknown" };
+export const V2ThreadListResponse__CommandAction = Schema.Union(
+  [
+    Schema.Struct({
+      command: Schema.String,
+      name: Schema.String,
+      path: V2ThreadListResponse__LegacyAppPathString,
+      type: Schema.Literal("read").annotate({ title: "ReadCommandActionType" }),
+    }).annotate({ title: "ReadCommandAction" }),
+    Schema.Struct({
+      command: Schema.String,
+      path: Schema.optionalKey(Schema.Union([Schema.String, Schema.Null])),
+      type: Schema.Literal("listFiles").annotate({ title: "ListFilesCommandActionType" }),
+    }).annotate({ title: "ListFilesCommandAction" }),
+    Schema.Struct({
+      command: Schema.String,
+      path: Schema.optionalKey(Schema.Union([Schema.String, Schema.Null])),
+      query: Schema.optionalKey(Schema.Union([Schema.String, Schema.Null])),
+      type: Schema.Literal("search").annotate({ title: "SearchCommandActionType" }),
+    }).annotate({ title: "SearchCommandAction" }),
+    Schema.Struct({
+      command: Schema.String,
+      type: Schema.Literal("unknown").annotate({ title: "UnknownCommandActionType" }),
+    }).annotate({ title: "UnknownCommandAction" }),
+  ],
+  { mode: "oneOf" },
+).annotate({ identifier: "V2ThreadListResponse__CommandAction" });
+
 export type V2ThreadListResponse__ThreadSection = {
   readonly appearance?: V2ThreadListResponse__ThreadSectionAppearance | null;
   readonly id: string;
@@ -27672,48 +28180,6 @@ export const V2ThreadListResponse__MemoryCitation = Schema.Struct({
   threadIds: Schema.Array(Schema.String),
 }).annotate({ identifier: "V2ThreadListResponse__MemoryCitation" });
 
-export type V2ThreadListResponse__CommandAction =
-  | {
-      readonly command: string;
-      readonly name: string;
-      readonly path: V2ThreadListResponse__LegacyAppPathString;
-      readonly type: "read";
-    }
-  | { readonly command: string; readonly path?: string | null; readonly type: "listFiles" }
-  | {
-      readonly command: string;
-      readonly path?: string | null;
-      readonly query?: string | null;
-      readonly type: "search";
-    }
-  | { readonly command: string; readonly type: "unknown" };
-export const V2ThreadListResponse__CommandAction = Schema.Union(
-  [
-    Schema.Struct({
-      command: Schema.String,
-      name: Schema.String,
-      path: V2ThreadListResponse__LegacyAppPathString,
-      type: Schema.Literal("read").annotate({ title: "ReadCommandActionType" }),
-    }).annotate({ title: "ReadCommandAction" }),
-    Schema.Struct({
-      command: Schema.String,
-      path: Schema.optionalKey(Schema.Union([Schema.String, Schema.Null])),
-      type: Schema.Literal("listFiles").annotate({ title: "ListFilesCommandActionType" }),
-    }).annotate({ title: "ListFilesCommandAction" }),
-    Schema.Struct({
-      command: Schema.String,
-      path: Schema.optionalKey(Schema.Union([Schema.String, Schema.Null])),
-      query: Schema.optionalKey(Schema.Union([Schema.String, Schema.Null])),
-      type: Schema.Literal("search").annotate({ title: "SearchCommandActionType" }),
-    }).annotate({ title: "SearchCommandAction" }),
-    Schema.Struct({
-      command: Schema.String,
-      type: Schema.Literal("unknown").annotate({ title: "UnknownCommandActionType" }),
-    }).annotate({ title: "UnknownCommandAction" }),
-  ],
-  { mode: "oneOf" },
-).annotate({ identifier: "V2ThreadListResponse__CommandAction" });
-
 export type V2ThreadListResponse__FileUpdateChange = {
   readonly diff: string;
   readonly kind: V2ThreadListResponse__PatchChangeKind;
@@ -27733,6 +28199,62 @@ export const V2ThreadListResponse__CollabAgentState = Schema.Struct({
   message: Schema.optionalKey(Schema.Union([Schema.String, Schema.Null])),
   status: V2ThreadListResponse__CollabAgentStatus,
 }).annotate({ identifier: "V2ThreadListResponse__CollabAgentState" });
+
+export type V2ThreadMetadataUpdateResponse__ThreadEnvironment = {
+  readonly cwd: V2ThreadMetadataUpdateResponse__LegacyAppPathString;
+  readonly environmentId: string;
+  readonly runtimeWorkspaceRoots: ReadonlyArray<V2ThreadMetadataUpdateResponse__LegacyAppPathString>;
+};
+export const V2ThreadMetadataUpdateResponse__ThreadEnvironment = Schema.Struct({
+  cwd: V2ThreadMetadataUpdateResponse__LegacyAppPathString,
+  environmentId: Schema.String,
+  runtimeWorkspaceRoots: Schema.Array(V2ThreadMetadataUpdateResponse__LegacyAppPathString),
+}).annotate({
+  description: "An environment selected by a loaded thread, independent of connection status.",
+  identifier: "V2ThreadMetadataUpdateResponse__ThreadEnvironment",
+});
+
+export type V2ThreadMetadataUpdateResponse__CommandAction =
+  | {
+      readonly command: string;
+      readonly name: string;
+      readonly path: V2ThreadMetadataUpdateResponse__LegacyAppPathString;
+      readonly type: "read";
+    }
+  | { readonly command: string; readonly path?: string | null; readonly type: "listFiles" }
+  | {
+      readonly command: string;
+      readonly path?: string | null;
+      readonly query?: string | null;
+      readonly type: "search";
+    }
+  | { readonly command: string; readonly type: "unknown" };
+export const V2ThreadMetadataUpdateResponse__CommandAction = Schema.Union(
+  [
+    Schema.Struct({
+      command: Schema.String,
+      name: Schema.String,
+      path: V2ThreadMetadataUpdateResponse__LegacyAppPathString,
+      type: Schema.Literal("read").annotate({ title: "ReadCommandActionType" }),
+    }).annotate({ title: "ReadCommandAction" }),
+    Schema.Struct({
+      command: Schema.String,
+      path: Schema.optionalKey(Schema.Union([Schema.String, Schema.Null])),
+      type: Schema.Literal("listFiles").annotate({ title: "ListFilesCommandActionType" }),
+    }).annotate({ title: "ListFilesCommandAction" }),
+    Schema.Struct({
+      command: Schema.String,
+      path: Schema.optionalKey(Schema.Union([Schema.String, Schema.Null])),
+      query: Schema.optionalKey(Schema.Union([Schema.String, Schema.Null])),
+      type: Schema.Literal("search").annotate({ title: "SearchCommandActionType" }),
+    }).annotate({ title: "SearchCommandAction" }),
+    Schema.Struct({
+      command: Schema.String,
+      type: Schema.Literal("unknown").annotate({ title: "UnknownCommandActionType" }),
+    }).annotate({ title: "UnknownCommandAction" }),
+  ],
+  { mode: "oneOf" },
+).annotate({ identifier: "V2ThreadMetadataUpdateResponse__CommandAction" });
 
 export type V2ThreadMetadataUpdateResponse__ThreadSection = {
   readonly appearance?: V2ThreadMetadataUpdateResponse__ThreadSectionAppearance | null;
@@ -28052,48 +28574,6 @@ export const V2ThreadMetadataUpdateResponse__MemoryCitation = Schema.Struct({
   entries: Schema.Array(V2ThreadMetadataUpdateResponse__MemoryCitationEntry),
   threadIds: Schema.Array(Schema.String),
 }).annotate({ identifier: "V2ThreadMetadataUpdateResponse__MemoryCitation" });
-
-export type V2ThreadMetadataUpdateResponse__CommandAction =
-  | {
-      readonly command: string;
-      readonly name: string;
-      readonly path: V2ThreadMetadataUpdateResponse__LegacyAppPathString;
-      readonly type: "read";
-    }
-  | { readonly command: string; readonly path?: string | null; readonly type: "listFiles" }
-  | {
-      readonly command: string;
-      readonly path?: string | null;
-      readonly query?: string | null;
-      readonly type: "search";
-    }
-  | { readonly command: string; readonly type: "unknown" };
-export const V2ThreadMetadataUpdateResponse__CommandAction = Schema.Union(
-  [
-    Schema.Struct({
-      command: Schema.String,
-      name: Schema.String,
-      path: V2ThreadMetadataUpdateResponse__LegacyAppPathString,
-      type: Schema.Literal("read").annotate({ title: "ReadCommandActionType" }),
-    }).annotate({ title: "ReadCommandAction" }),
-    Schema.Struct({
-      command: Schema.String,
-      path: Schema.optionalKey(Schema.Union([Schema.String, Schema.Null])),
-      type: Schema.Literal("listFiles").annotate({ title: "ListFilesCommandActionType" }),
-    }).annotate({ title: "ListFilesCommandAction" }),
-    Schema.Struct({
-      command: Schema.String,
-      path: Schema.optionalKey(Schema.Union([Schema.String, Schema.Null])),
-      query: Schema.optionalKey(Schema.Union([Schema.String, Schema.Null])),
-      type: Schema.Literal("search").annotate({ title: "SearchCommandActionType" }),
-    }).annotate({ title: "SearchCommandAction" }),
-    Schema.Struct({
-      command: Schema.String,
-      type: Schema.Literal("unknown").annotate({ title: "UnknownCommandActionType" }),
-    }).annotate({ title: "UnknownCommandAction" }),
-  ],
-  { mode: "oneOf" },
-).annotate({ identifier: "V2ThreadMetadataUpdateResponse__CommandAction" });
 
 export type V2ThreadMetadataUpdateResponse__FileUpdateChange = {
   readonly diff: string;
@@ -28505,6 +28985,62 @@ export const V2ThreadQueueUpdateResponse__TextElement = Schema.Struct({
   ),
 }).annotate({ identifier: "V2ThreadQueueUpdateResponse__TextElement" });
 
+export type V2ThreadReadResponse__ThreadEnvironment = {
+  readonly cwd: V2ThreadReadResponse__LegacyAppPathString;
+  readonly environmentId: string;
+  readonly runtimeWorkspaceRoots: ReadonlyArray<V2ThreadReadResponse__LegacyAppPathString>;
+};
+export const V2ThreadReadResponse__ThreadEnvironment = Schema.Struct({
+  cwd: V2ThreadReadResponse__LegacyAppPathString,
+  environmentId: Schema.String,
+  runtimeWorkspaceRoots: Schema.Array(V2ThreadReadResponse__LegacyAppPathString),
+}).annotate({
+  description: "An environment selected by a loaded thread, independent of connection status.",
+  identifier: "V2ThreadReadResponse__ThreadEnvironment",
+});
+
+export type V2ThreadReadResponse__CommandAction =
+  | {
+      readonly command: string;
+      readonly name: string;
+      readonly path: V2ThreadReadResponse__LegacyAppPathString;
+      readonly type: "read";
+    }
+  | { readonly command: string; readonly path?: string | null; readonly type: "listFiles" }
+  | {
+      readonly command: string;
+      readonly path?: string | null;
+      readonly query?: string | null;
+      readonly type: "search";
+    }
+  | { readonly command: string; readonly type: "unknown" };
+export const V2ThreadReadResponse__CommandAction = Schema.Union(
+  [
+    Schema.Struct({
+      command: Schema.String,
+      name: Schema.String,
+      path: V2ThreadReadResponse__LegacyAppPathString,
+      type: Schema.Literal("read").annotate({ title: "ReadCommandActionType" }),
+    }).annotate({ title: "ReadCommandAction" }),
+    Schema.Struct({
+      command: Schema.String,
+      path: Schema.optionalKey(Schema.Union([Schema.String, Schema.Null])),
+      type: Schema.Literal("listFiles").annotate({ title: "ListFilesCommandActionType" }),
+    }).annotate({ title: "ListFilesCommandAction" }),
+    Schema.Struct({
+      command: Schema.String,
+      path: Schema.optionalKey(Schema.Union([Schema.String, Schema.Null])),
+      query: Schema.optionalKey(Schema.Union([Schema.String, Schema.Null])),
+      type: Schema.Literal("search").annotate({ title: "SearchCommandActionType" }),
+    }).annotate({ title: "SearchCommandAction" }),
+    Schema.Struct({
+      command: Schema.String,
+      type: Schema.Literal("unknown").annotate({ title: "UnknownCommandActionType" }),
+    }).annotate({ title: "UnknownCommandAction" }),
+  ],
+  { mode: "oneOf" },
+).annotate({ identifier: "V2ThreadReadResponse__CommandAction" });
+
 export type V2ThreadReadResponse__ThreadSection = {
   readonly appearance?: V2ThreadReadResponse__ThreadSectionAppearance | null;
   readonly id: string;
@@ -28821,48 +29357,6 @@ export const V2ThreadReadResponse__MemoryCitation = Schema.Struct({
   threadIds: Schema.Array(Schema.String),
 }).annotate({ identifier: "V2ThreadReadResponse__MemoryCitation" });
 
-export type V2ThreadReadResponse__CommandAction =
-  | {
-      readonly command: string;
-      readonly name: string;
-      readonly path: V2ThreadReadResponse__LegacyAppPathString;
-      readonly type: "read";
-    }
-  | { readonly command: string; readonly path?: string | null; readonly type: "listFiles" }
-  | {
-      readonly command: string;
-      readonly path?: string | null;
-      readonly query?: string | null;
-      readonly type: "search";
-    }
-  | { readonly command: string; readonly type: "unknown" };
-export const V2ThreadReadResponse__CommandAction = Schema.Union(
-  [
-    Schema.Struct({
-      command: Schema.String,
-      name: Schema.String,
-      path: V2ThreadReadResponse__LegacyAppPathString,
-      type: Schema.Literal("read").annotate({ title: "ReadCommandActionType" }),
-    }).annotate({ title: "ReadCommandAction" }),
-    Schema.Struct({
-      command: Schema.String,
-      path: Schema.optionalKey(Schema.Union([Schema.String, Schema.Null])),
-      type: Schema.Literal("listFiles").annotate({ title: "ListFilesCommandActionType" }),
-    }).annotate({ title: "ListFilesCommandAction" }),
-    Schema.Struct({
-      command: Schema.String,
-      path: Schema.optionalKey(Schema.Union([Schema.String, Schema.Null])),
-      query: Schema.optionalKey(Schema.Union([Schema.String, Schema.Null])),
-      type: Schema.Literal("search").annotate({ title: "SearchCommandActionType" }),
-    }).annotate({ title: "SearchCommandAction" }),
-    Schema.Struct({
-      command: Schema.String,
-      type: Schema.Literal("unknown").annotate({ title: "UnknownCommandActionType" }),
-    }).annotate({ title: "UnknownCommandAction" }),
-  ],
-  { mode: "oneOf" },
-).annotate({ identifier: "V2ThreadReadResponse__CommandAction" });
-
 export type V2ThreadReadResponse__FileUpdateChange = {
   readonly diff: string;
   readonly kind: V2ThreadReadResponse__PatchChangeKind;
@@ -29140,6 +29634,16 @@ export const V2ThreadResumeParams__FunctionCallOutputContentItem = Schema.Union(
   description:
     "Responses API compatible content items that can be returned by a tool call. This is a subset of ContentItem with the types we support as function call outputs.",
   identifier: "V2ThreadResumeParams__FunctionCallOutputContentItem",
+});
+
+export type V2ThreadResumeParams__ConfigurationReasoning = {
+  readonly effort: V2ThreadResumeParams__ReasoningEffort;
+};
+export const V2ThreadResumeParams__ConfigurationReasoning = Schema.Struct({
+  effort: V2ThreadResumeParams__ReasoningEffort,
+}).annotate({
+  description: "Reasoning settings interpreted by the backend for the routed model.",
+  identifier: "V2ThreadResumeParams__ConfigurationReasoning",
 });
 
 export type V2ThreadResumeParams__ThreadResumeInitialTurnsPageParams = {
@@ -29448,6 +29952,20 @@ export const V2ThreadResumeResponse__CommandAction = Schema.Union(
   { mode: "oneOf" },
 ).annotate({ identifier: "V2ThreadResumeResponse__CommandAction" });
 
+export type V2ThreadResumeResponse__ThreadEnvironment = {
+  readonly cwd: V2ThreadResumeResponse__LegacyAppPathString;
+  readonly environmentId: string;
+  readonly runtimeWorkspaceRoots: ReadonlyArray<V2ThreadResumeResponse__LegacyAppPathString>;
+};
+export const V2ThreadResumeResponse__ThreadEnvironment = Schema.Struct({
+  cwd: V2ThreadResumeResponse__LegacyAppPathString,
+  environmentId: Schema.String,
+  runtimeWorkspaceRoots: Schema.Array(V2ThreadResumeResponse__LegacyAppPathString),
+}).annotate({
+  description: "An environment selected by a loaded thread, independent of connection status.",
+  identifier: "V2ThreadResumeResponse__ThreadEnvironment",
+});
+
 export type V2ThreadResumeResponse__FileUpdateChange = {
   readonly diff: string;
   readonly kind: V2ThreadResumeResponse__PatchChangeKind;
@@ -29598,6 +30116,62 @@ export const V2ThreadResumeResponse__ThreadStatus = Schema.Union(
   ],
   { mode: "oneOf" },
 ).annotate({ identifier: "V2ThreadResumeResponse__ThreadStatus" });
+
+export type V2ThreadRevertResponse__ThreadEnvironment = {
+  readonly cwd: V2ThreadRevertResponse__LegacyAppPathString;
+  readonly environmentId: string;
+  readonly runtimeWorkspaceRoots: ReadonlyArray<V2ThreadRevertResponse__LegacyAppPathString>;
+};
+export const V2ThreadRevertResponse__ThreadEnvironment = Schema.Struct({
+  cwd: V2ThreadRevertResponse__LegacyAppPathString,
+  environmentId: Schema.String,
+  runtimeWorkspaceRoots: Schema.Array(V2ThreadRevertResponse__LegacyAppPathString),
+}).annotate({
+  description: "An environment selected by a loaded thread, independent of connection status.",
+  identifier: "V2ThreadRevertResponse__ThreadEnvironment",
+});
+
+export type V2ThreadRevertResponse__CommandAction =
+  | {
+      readonly command: string;
+      readonly name: string;
+      readonly path: V2ThreadRevertResponse__LegacyAppPathString;
+      readonly type: "read";
+    }
+  | { readonly command: string; readonly path?: string | null; readonly type: "listFiles" }
+  | {
+      readonly command: string;
+      readonly path?: string | null;
+      readonly query?: string | null;
+      readonly type: "search";
+    }
+  | { readonly command: string; readonly type: "unknown" };
+export const V2ThreadRevertResponse__CommandAction = Schema.Union(
+  [
+    Schema.Struct({
+      command: Schema.String,
+      name: Schema.String,
+      path: V2ThreadRevertResponse__LegacyAppPathString,
+      type: Schema.Literal("read").annotate({ title: "ReadCommandActionType" }),
+    }).annotate({ title: "ReadCommandAction" }),
+    Schema.Struct({
+      command: Schema.String,
+      path: Schema.optionalKey(Schema.Union([Schema.String, Schema.Null])),
+      type: Schema.Literal("listFiles").annotate({ title: "ListFilesCommandActionType" }),
+    }).annotate({ title: "ListFilesCommandAction" }),
+    Schema.Struct({
+      command: Schema.String,
+      path: Schema.optionalKey(Schema.Union([Schema.String, Schema.Null])),
+      query: Schema.optionalKey(Schema.Union([Schema.String, Schema.Null])),
+      type: Schema.Literal("search").annotate({ title: "SearchCommandActionType" }),
+    }).annotate({ title: "SearchCommandAction" }),
+    Schema.Struct({
+      command: Schema.String,
+      type: Schema.Literal("unknown").annotate({ title: "UnknownCommandActionType" }),
+    }).annotate({ title: "UnknownCommandAction" }),
+  ],
+  { mode: "oneOf" },
+).annotate({ identifier: "V2ThreadRevertResponse__CommandAction" });
 
 export type V2ThreadRevertResponse__ThreadSection = {
   readonly appearance?: V2ThreadRevertResponse__ThreadSectionAppearance | null;
@@ -29915,48 +30489,6 @@ export const V2ThreadRevertResponse__MemoryCitation = Schema.Struct({
   threadIds: Schema.Array(Schema.String),
 }).annotate({ identifier: "V2ThreadRevertResponse__MemoryCitation" });
 
-export type V2ThreadRevertResponse__CommandAction =
-  | {
-      readonly command: string;
-      readonly name: string;
-      readonly path: V2ThreadRevertResponse__LegacyAppPathString;
-      readonly type: "read";
-    }
-  | { readonly command: string; readonly path?: string | null; readonly type: "listFiles" }
-  | {
-      readonly command: string;
-      readonly path?: string | null;
-      readonly query?: string | null;
-      readonly type: "search";
-    }
-  | { readonly command: string; readonly type: "unknown" };
-export const V2ThreadRevertResponse__CommandAction = Schema.Union(
-  [
-    Schema.Struct({
-      command: Schema.String,
-      name: Schema.String,
-      path: V2ThreadRevertResponse__LegacyAppPathString,
-      type: Schema.Literal("read").annotate({ title: "ReadCommandActionType" }),
-    }).annotate({ title: "ReadCommandAction" }),
-    Schema.Struct({
-      command: Schema.String,
-      path: Schema.optionalKey(Schema.Union([Schema.String, Schema.Null])),
-      type: Schema.Literal("listFiles").annotate({ title: "ListFilesCommandActionType" }),
-    }).annotate({ title: "ListFilesCommandAction" }),
-    Schema.Struct({
-      command: Schema.String,
-      path: Schema.optionalKey(Schema.Union([Schema.String, Schema.Null])),
-      query: Schema.optionalKey(Schema.Union([Schema.String, Schema.Null])),
-      type: Schema.Literal("search").annotate({ title: "SearchCommandActionType" }),
-    }).annotate({ title: "SearchCommandAction" }),
-    Schema.Struct({
-      command: Schema.String,
-      type: Schema.Literal("unknown").annotate({ title: "UnknownCommandActionType" }),
-    }).annotate({ title: "UnknownCommandAction" }),
-  ],
-  { mode: "oneOf" },
-).annotate({ identifier: "V2ThreadRevertResponse__CommandAction" });
-
 export type V2ThreadRevertResponse__FileUpdateChange = {
   readonly diff: string;
   readonly kind: V2ThreadRevertResponse__PatchChangeKind;
@@ -29976,6 +30508,62 @@ export const V2ThreadRevertResponse__CollabAgentState = Schema.Struct({
   message: Schema.optionalKey(Schema.Union([Schema.String, Schema.Null])),
   status: V2ThreadRevertResponse__CollabAgentStatus,
 }).annotate({ identifier: "V2ThreadRevertResponse__CollabAgentState" });
+
+export type V2ThreadRollbackResponse__ThreadEnvironment = {
+  readonly cwd: V2ThreadRollbackResponse__LegacyAppPathString;
+  readonly environmentId: string;
+  readonly runtimeWorkspaceRoots: ReadonlyArray<V2ThreadRollbackResponse__LegacyAppPathString>;
+};
+export const V2ThreadRollbackResponse__ThreadEnvironment = Schema.Struct({
+  cwd: V2ThreadRollbackResponse__LegacyAppPathString,
+  environmentId: Schema.String,
+  runtimeWorkspaceRoots: Schema.Array(V2ThreadRollbackResponse__LegacyAppPathString),
+}).annotate({
+  description: "An environment selected by a loaded thread, independent of connection status.",
+  identifier: "V2ThreadRollbackResponse__ThreadEnvironment",
+});
+
+export type V2ThreadRollbackResponse__CommandAction =
+  | {
+      readonly command: string;
+      readonly name: string;
+      readonly path: V2ThreadRollbackResponse__LegacyAppPathString;
+      readonly type: "read";
+    }
+  | { readonly command: string; readonly path?: string | null; readonly type: "listFiles" }
+  | {
+      readonly command: string;
+      readonly path?: string | null;
+      readonly query?: string | null;
+      readonly type: "search";
+    }
+  | { readonly command: string; readonly type: "unknown" };
+export const V2ThreadRollbackResponse__CommandAction = Schema.Union(
+  [
+    Schema.Struct({
+      command: Schema.String,
+      name: Schema.String,
+      path: V2ThreadRollbackResponse__LegacyAppPathString,
+      type: Schema.Literal("read").annotate({ title: "ReadCommandActionType" }),
+    }).annotate({ title: "ReadCommandAction" }),
+    Schema.Struct({
+      command: Schema.String,
+      path: Schema.optionalKey(Schema.Union([Schema.String, Schema.Null])),
+      type: Schema.Literal("listFiles").annotate({ title: "ListFilesCommandActionType" }),
+    }).annotate({ title: "ListFilesCommandAction" }),
+    Schema.Struct({
+      command: Schema.String,
+      path: Schema.optionalKey(Schema.Union([Schema.String, Schema.Null])),
+      query: Schema.optionalKey(Schema.Union([Schema.String, Schema.Null])),
+      type: Schema.Literal("search").annotate({ title: "SearchCommandActionType" }),
+    }).annotate({ title: "SearchCommandAction" }),
+    Schema.Struct({
+      command: Schema.String,
+      type: Schema.Literal("unknown").annotate({ title: "UnknownCommandActionType" }),
+    }).annotate({ title: "UnknownCommandAction" }),
+  ],
+  { mode: "oneOf" },
+).annotate({ identifier: "V2ThreadRollbackResponse__CommandAction" });
 
 export type V2ThreadRollbackResponse__ThreadSection = {
   readonly appearance?: V2ThreadRollbackResponse__ThreadSectionAppearance | null;
@@ -30295,48 +30883,6 @@ export const V2ThreadRollbackResponse__MemoryCitation = Schema.Struct({
   threadIds: Schema.Array(Schema.String),
 }).annotate({ identifier: "V2ThreadRollbackResponse__MemoryCitation" });
 
-export type V2ThreadRollbackResponse__CommandAction =
-  | {
-      readonly command: string;
-      readonly name: string;
-      readonly path: V2ThreadRollbackResponse__LegacyAppPathString;
-      readonly type: "read";
-    }
-  | { readonly command: string; readonly path?: string | null; readonly type: "listFiles" }
-  | {
-      readonly command: string;
-      readonly path?: string | null;
-      readonly query?: string | null;
-      readonly type: "search";
-    }
-  | { readonly command: string; readonly type: "unknown" };
-export const V2ThreadRollbackResponse__CommandAction = Schema.Union(
-  [
-    Schema.Struct({
-      command: Schema.String,
-      name: Schema.String,
-      path: V2ThreadRollbackResponse__LegacyAppPathString,
-      type: Schema.Literal("read").annotate({ title: "ReadCommandActionType" }),
-    }).annotate({ title: "ReadCommandAction" }),
-    Schema.Struct({
-      command: Schema.String,
-      path: Schema.optionalKey(Schema.Union([Schema.String, Schema.Null])),
-      type: Schema.Literal("listFiles").annotate({ title: "ListFilesCommandActionType" }),
-    }).annotate({ title: "ListFilesCommandAction" }),
-    Schema.Struct({
-      command: Schema.String,
-      path: Schema.optionalKey(Schema.Union([Schema.String, Schema.Null])),
-      query: Schema.optionalKey(Schema.Union([Schema.String, Schema.Null])),
-      type: Schema.Literal("search").annotate({ title: "SearchCommandActionType" }),
-    }).annotate({ title: "SearchCommandAction" }),
-    Schema.Struct({
-      command: Schema.String,
-      type: Schema.Literal("unknown").annotate({ title: "UnknownCommandActionType" }),
-    }).annotate({ title: "UnknownCommandAction" }),
-  ],
-  { mode: "oneOf" },
-).annotate({ identifier: "V2ThreadRollbackResponse__CommandAction" });
-
 export type V2ThreadRollbackResponse__FileUpdateChange = {
   readonly diff: string;
   readonly kind: V2ThreadRollbackResponse__PatchChangeKind;
@@ -30379,6 +30925,62 @@ export const V2ThreadSearchOccurrencesResponse__ThreadSearchOccurrence = Schema.
   description: "One visible message occurrence returned by [`ThreadSearchOccurrencesResponse`].",
   identifier: "V2ThreadSearchOccurrencesResponse__ThreadSearchOccurrence",
 });
+
+export type V2ThreadSearchResponse__ThreadEnvironment = {
+  readonly cwd: V2ThreadSearchResponse__LegacyAppPathString;
+  readonly environmentId: string;
+  readonly runtimeWorkspaceRoots: ReadonlyArray<V2ThreadSearchResponse__LegacyAppPathString>;
+};
+export const V2ThreadSearchResponse__ThreadEnvironment = Schema.Struct({
+  cwd: V2ThreadSearchResponse__LegacyAppPathString,
+  environmentId: Schema.String,
+  runtimeWorkspaceRoots: Schema.Array(V2ThreadSearchResponse__LegacyAppPathString),
+}).annotate({
+  description: "An environment selected by a loaded thread, independent of connection status.",
+  identifier: "V2ThreadSearchResponse__ThreadEnvironment",
+});
+
+export type V2ThreadSearchResponse__CommandAction =
+  | {
+      readonly command: string;
+      readonly name: string;
+      readonly path: V2ThreadSearchResponse__LegacyAppPathString;
+      readonly type: "read";
+    }
+  | { readonly command: string; readonly path?: string | null; readonly type: "listFiles" }
+  | {
+      readonly command: string;
+      readonly path?: string | null;
+      readonly query?: string | null;
+      readonly type: "search";
+    }
+  | { readonly command: string; readonly type: "unknown" };
+export const V2ThreadSearchResponse__CommandAction = Schema.Union(
+  [
+    Schema.Struct({
+      command: Schema.String,
+      name: Schema.String,
+      path: V2ThreadSearchResponse__LegacyAppPathString,
+      type: Schema.Literal("read").annotate({ title: "ReadCommandActionType" }),
+    }).annotate({ title: "ReadCommandAction" }),
+    Schema.Struct({
+      command: Schema.String,
+      path: Schema.optionalKey(Schema.Union([Schema.String, Schema.Null])),
+      type: Schema.Literal("listFiles").annotate({ title: "ListFilesCommandActionType" }),
+    }).annotate({ title: "ListFilesCommandAction" }),
+    Schema.Struct({
+      command: Schema.String,
+      path: Schema.optionalKey(Schema.Union([Schema.String, Schema.Null])),
+      query: Schema.optionalKey(Schema.Union([Schema.String, Schema.Null])),
+      type: Schema.Literal("search").annotate({ title: "SearchCommandActionType" }),
+    }).annotate({ title: "SearchCommandAction" }),
+    Schema.Struct({
+      command: Schema.String,
+      type: Schema.Literal("unknown").annotate({ title: "UnknownCommandActionType" }),
+    }).annotate({ title: "UnknownCommandAction" }),
+  ],
+  { mode: "oneOf" },
+).annotate({ identifier: "V2ThreadSearchResponse__CommandAction" });
 
 export type V2ThreadSearchResponse__ThreadSection = {
   readonly appearance?: V2ThreadSearchResponse__ThreadSectionAppearance | null;
@@ -30696,48 +31298,6 @@ export const V2ThreadSearchResponse__MemoryCitation = Schema.Struct({
   threadIds: Schema.Array(Schema.String),
 }).annotate({ identifier: "V2ThreadSearchResponse__MemoryCitation" });
 
-export type V2ThreadSearchResponse__CommandAction =
-  | {
-      readonly command: string;
-      readonly name: string;
-      readonly path: V2ThreadSearchResponse__LegacyAppPathString;
-      readonly type: "read";
-    }
-  | { readonly command: string; readonly path?: string | null; readonly type: "listFiles" }
-  | {
-      readonly command: string;
-      readonly path?: string | null;
-      readonly query?: string | null;
-      readonly type: "search";
-    }
-  | { readonly command: string; readonly type: "unknown" };
-export const V2ThreadSearchResponse__CommandAction = Schema.Union(
-  [
-    Schema.Struct({
-      command: Schema.String,
-      name: Schema.String,
-      path: V2ThreadSearchResponse__LegacyAppPathString,
-      type: Schema.Literal("read").annotate({ title: "ReadCommandActionType" }),
-    }).annotate({ title: "ReadCommandAction" }),
-    Schema.Struct({
-      command: Schema.String,
-      path: Schema.optionalKey(Schema.Union([Schema.String, Schema.Null])),
-      type: Schema.Literal("listFiles").annotate({ title: "ListFilesCommandActionType" }),
-    }).annotate({ title: "ListFilesCommandAction" }),
-    Schema.Struct({
-      command: Schema.String,
-      path: Schema.optionalKey(Schema.Union([Schema.String, Schema.Null])),
-      query: Schema.optionalKey(Schema.Union([Schema.String, Schema.Null])),
-      type: Schema.Literal("search").annotate({ title: "SearchCommandActionType" }),
-    }).annotate({ title: "SearchCommandAction" }),
-    Schema.Struct({
-      command: Schema.String,
-      type: Schema.Literal("unknown").annotate({ title: "UnknownCommandActionType" }),
-    }).annotate({ title: "UnknownCommandAction" }),
-  ],
-  { mode: "oneOf" },
-).annotate({ identifier: "V2ThreadSearchResponse__CommandAction" });
-
 export type V2ThreadSearchResponse__FileUpdateChange = {
   readonly diff: string;
   readonly kind: V2ThreadSearchResponse__PatchChangeKind;
@@ -30949,6 +31509,62 @@ export const V2ThreadSettingsUpdateParams__SandboxPolicy = Schema.Union(
   ],
   { mode: "oneOf" },
 ).annotate({ identifier: "V2ThreadSettingsUpdateParams__SandboxPolicy" });
+
+export type V2ThreadStartedNotification__ThreadEnvironment = {
+  readonly cwd: V2ThreadStartedNotification__LegacyAppPathString;
+  readonly environmentId: string;
+  readonly runtimeWorkspaceRoots: ReadonlyArray<V2ThreadStartedNotification__LegacyAppPathString>;
+};
+export const V2ThreadStartedNotification__ThreadEnvironment = Schema.Struct({
+  cwd: V2ThreadStartedNotification__LegacyAppPathString,
+  environmentId: Schema.String,
+  runtimeWorkspaceRoots: Schema.Array(V2ThreadStartedNotification__LegacyAppPathString),
+}).annotate({
+  description: "An environment selected by a loaded thread, independent of connection status.",
+  identifier: "V2ThreadStartedNotification__ThreadEnvironment",
+});
+
+export type V2ThreadStartedNotification__CommandAction =
+  | {
+      readonly command: string;
+      readonly name: string;
+      readonly path: V2ThreadStartedNotification__LegacyAppPathString;
+      readonly type: "read";
+    }
+  | { readonly command: string; readonly path?: string | null; readonly type: "listFiles" }
+  | {
+      readonly command: string;
+      readonly path?: string | null;
+      readonly query?: string | null;
+      readonly type: "search";
+    }
+  | { readonly command: string; readonly type: "unknown" };
+export const V2ThreadStartedNotification__CommandAction = Schema.Union(
+  [
+    Schema.Struct({
+      command: Schema.String,
+      name: Schema.String,
+      path: V2ThreadStartedNotification__LegacyAppPathString,
+      type: Schema.Literal("read").annotate({ title: "ReadCommandActionType" }),
+    }).annotate({ title: "ReadCommandAction" }),
+    Schema.Struct({
+      command: Schema.String,
+      path: Schema.optionalKey(Schema.Union([Schema.String, Schema.Null])),
+      type: Schema.Literal("listFiles").annotate({ title: "ListFilesCommandActionType" }),
+    }).annotate({ title: "ListFilesCommandAction" }),
+    Schema.Struct({
+      command: Schema.String,
+      path: Schema.optionalKey(Schema.Union([Schema.String, Schema.Null])),
+      query: Schema.optionalKey(Schema.Union([Schema.String, Schema.Null])),
+      type: Schema.Literal("search").annotate({ title: "SearchCommandActionType" }),
+    }).annotate({ title: "SearchCommandAction" }),
+    Schema.Struct({
+      command: Schema.String,
+      type: Schema.Literal("unknown").annotate({ title: "UnknownCommandActionType" }),
+    }).annotate({ title: "UnknownCommandAction" }),
+  ],
+  { mode: "oneOf" },
+).annotate({ identifier: "V2ThreadStartedNotification__CommandAction" });
 
 export type V2ThreadStartedNotification__ThreadSection = {
   readonly appearance?: V2ThreadStartedNotification__ThreadSectionAppearance | null;
@@ -31269,48 +31885,6 @@ export const V2ThreadStartedNotification__MemoryCitation = Schema.Struct({
   threadIds: Schema.Array(Schema.String),
 }).annotate({ identifier: "V2ThreadStartedNotification__MemoryCitation" });
 
-export type V2ThreadStartedNotification__CommandAction =
-  | {
-      readonly command: string;
-      readonly name: string;
-      readonly path: V2ThreadStartedNotification__LegacyAppPathString;
-      readonly type: "read";
-    }
-  | { readonly command: string; readonly path?: string | null; readonly type: "listFiles" }
-  | {
-      readonly command: string;
-      readonly path?: string | null;
-      readonly query?: string | null;
-      readonly type: "search";
-    }
-  | { readonly command: string; readonly type: "unknown" };
-export const V2ThreadStartedNotification__CommandAction = Schema.Union(
-  [
-    Schema.Struct({
-      command: Schema.String,
-      name: Schema.String,
-      path: V2ThreadStartedNotification__LegacyAppPathString,
-      type: Schema.Literal("read").annotate({ title: "ReadCommandActionType" }),
-    }).annotate({ title: "ReadCommandAction" }),
-    Schema.Struct({
-      command: Schema.String,
-      path: Schema.optionalKey(Schema.Union([Schema.String, Schema.Null])),
-      type: Schema.Literal("listFiles").annotate({ title: "ListFilesCommandActionType" }),
-    }).annotate({ title: "ListFilesCommandAction" }),
-    Schema.Struct({
-      command: Schema.String,
-      path: Schema.optionalKey(Schema.Union([Schema.String, Schema.Null])),
-      query: Schema.optionalKey(Schema.Union([Schema.String, Schema.Null])),
-      type: Schema.Literal("search").annotate({ title: "SearchCommandActionType" }),
-    }).annotate({ title: "SearchCommandAction" }),
-    Schema.Struct({
-      command: Schema.String,
-      type: Schema.Literal("unknown").annotate({ title: "UnknownCommandActionType" }),
-    }).annotate({ title: "UnknownCommandAction" }),
-  ],
-  { mode: "oneOf" },
-).annotate({ identifier: "V2ThreadStartedNotification__CommandAction" });
-
 export type V2ThreadStartedNotification__FileUpdateChange = {
   readonly diff: string;
   readonly kind: V2ThreadStartedNotification__PatchChangeKind;
@@ -31397,6 +31971,20 @@ export const V2ThreadStartParams__SelectedCapabilityRoot = Schema.Struct({
 }).annotate({
   description: "A user-selected root that can expose one or more runtime capabilities.",
   identifier: "V2ThreadStartParams__SelectedCapabilityRoot",
+});
+
+export type V2ThreadStartResponse__ThreadEnvironment = {
+  readonly cwd: V2ThreadStartResponse__LegacyAppPathString;
+  readonly environmentId: string;
+  readonly runtimeWorkspaceRoots: ReadonlyArray<V2ThreadStartResponse__LegacyAppPathString>;
+};
+export const V2ThreadStartResponse__ThreadEnvironment = Schema.Struct({
+  cwd: V2ThreadStartResponse__LegacyAppPathString,
+  environmentId: Schema.String,
+  runtimeWorkspaceRoots: Schema.Array(V2ThreadStartResponse__LegacyAppPathString),
+}).annotate({
+  description: "An environment selected by a loaded thread, independent of connection status.",
+  identifier: "V2ThreadStartResponse__ThreadEnvironment",
 });
 
 export type V2ThreadStartResponse__CommandAction =
@@ -32547,6 +33135,62 @@ export const V2ThreadTurnsListResponse__CollabAgentState = Schema.Struct({
   status: V2ThreadTurnsListResponse__CollabAgentStatus,
 }).annotate({ identifier: "V2ThreadTurnsListResponse__CollabAgentState" });
 
+export type V2ThreadUnarchiveResponse__ThreadEnvironment = {
+  readonly cwd: V2ThreadUnarchiveResponse__LegacyAppPathString;
+  readonly environmentId: string;
+  readonly runtimeWorkspaceRoots: ReadonlyArray<V2ThreadUnarchiveResponse__LegacyAppPathString>;
+};
+export const V2ThreadUnarchiveResponse__ThreadEnvironment = Schema.Struct({
+  cwd: V2ThreadUnarchiveResponse__LegacyAppPathString,
+  environmentId: Schema.String,
+  runtimeWorkspaceRoots: Schema.Array(V2ThreadUnarchiveResponse__LegacyAppPathString),
+}).annotate({
+  description: "An environment selected by a loaded thread, independent of connection status.",
+  identifier: "V2ThreadUnarchiveResponse__ThreadEnvironment",
+});
+
+export type V2ThreadUnarchiveResponse__CommandAction =
+  | {
+      readonly command: string;
+      readonly name: string;
+      readonly path: V2ThreadUnarchiveResponse__LegacyAppPathString;
+      readonly type: "read";
+    }
+  | { readonly command: string; readonly path?: string | null; readonly type: "listFiles" }
+  | {
+      readonly command: string;
+      readonly path?: string | null;
+      readonly query?: string | null;
+      readonly type: "search";
+    }
+  | { readonly command: string; readonly type: "unknown" };
+export const V2ThreadUnarchiveResponse__CommandAction = Schema.Union(
+  [
+    Schema.Struct({
+      command: Schema.String,
+      name: Schema.String,
+      path: V2ThreadUnarchiveResponse__LegacyAppPathString,
+      type: Schema.Literal("read").annotate({ title: "ReadCommandActionType" }),
+    }).annotate({ title: "ReadCommandAction" }),
+    Schema.Struct({
+      command: Schema.String,
+      path: Schema.optionalKey(Schema.Union([Schema.String, Schema.Null])),
+      type: Schema.Literal("listFiles").annotate({ title: "ListFilesCommandActionType" }),
+    }).annotate({ title: "ListFilesCommandAction" }),
+    Schema.Struct({
+      command: Schema.String,
+      path: Schema.optionalKey(Schema.Union([Schema.String, Schema.Null])),
+      query: Schema.optionalKey(Schema.Union([Schema.String, Schema.Null])),
+      type: Schema.Literal("search").annotate({ title: "SearchCommandActionType" }),
+    }).annotate({ title: "SearchCommandAction" }),
+    Schema.Struct({
+      command: Schema.String,
+      type: Schema.Literal("unknown").annotate({ title: "UnknownCommandActionType" }),
+    }).annotate({ title: "UnknownCommandAction" }),
+  ],
+  { mode: "oneOf" },
+).annotate({ identifier: "V2ThreadUnarchiveResponse__CommandAction" });
+
 export type V2ThreadUnarchiveResponse__ThreadSection = {
   readonly appearance?: V2ThreadUnarchiveResponse__ThreadSectionAppearance | null;
   readonly id: string;
@@ -32864,48 +33508,6 @@ export const V2ThreadUnarchiveResponse__MemoryCitation = Schema.Struct({
   entries: Schema.Array(V2ThreadUnarchiveResponse__MemoryCitationEntry),
   threadIds: Schema.Array(Schema.String),
 }).annotate({ identifier: "V2ThreadUnarchiveResponse__MemoryCitation" });
-
-export type V2ThreadUnarchiveResponse__CommandAction =
-  | {
-      readonly command: string;
-      readonly name: string;
-      readonly path: V2ThreadUnarchiveResponse__LegacyAppPathString;
-      readonly type: "read";
-    }
-  | { readonly command: string; readonly path?: string | null; readonly type: "listFiles" }
-  | {
-      readonly command: string;
-      readonly path?: string | null;
-      readonly query?: string | null;
-      readonly type: "search";
-    }
-  | { readonly command: string; readonly type: "unknown" };
-export const V2ThreadUnarchiveResponse__CommandAction = Schema.Union(
-  [
-    Schema.Struct({
-      command: Schema.String,
-      name: Schema.String,
-      path: V2ThreadUnarchiveResponse__LegacyAppPathString,
-      type: Schema.Literal("read").annotate({ title: "ReadCommandActionType" }),
-    }).annotate({ title: "ReadCommandAction" }),
-    Schema.Struct({
-      command: Schema.String,
-      path: Schema.optionalKey(Schema.Union([Schema.String, Schema.Null])),
-      type: Schema.Literal("listFiles").annotate({ title: "ListFilesCommandActionType" }),
-    }).annotate({ title: "ListFilesCommandAction" }),
-    Schema.Struct({
-      command: Schema.String,
-      path: Schema.optionalKey(Schema.Union([Schema.String, Schema.Null])),
-      query: Schema.optionalKey(Schema.Union([Schema.String, Schema.Null])),
-      type: Schema.Literal("search").annotate({ title: "SearchCommandActionType" }),
-    }).annotate({ title: "SearchCommandAction" }),
-    Schema.Struct({
-      command: Schema.String,
-      type: Schema.Literal("unknown").annotate({ title: "UnknownCommandActionType" }),
-    }).annotate({ title: "UnknownCommandAction" }),
-  ],
-  { mode: "oneOf" },
-).annotate({ identifier: "V2ThreadUnarchiveResponse__CommandAction" });
 
 export type V2ThreadUnarchiveResponse__FileUpdateChange = {
   readonly diff: string;
@@ -34006,6 +34608,54 @@ export const V2TurnSteerParams__TextElement = Schema.Struct({
   ),
 }).annotate({ identifier: "V2TurnSteerParams__TextElement" });
 
+export type V2UserVerificationRpcError__UserVerificationErrorDetails =
+  | {
+      readonly reason: V2UserVerificationRpcError__UserVerificationInvalidRequestReason;
+      readonly type: "invalidRequest";
+    }
+  | {
+      readonly reason: V2UserVerificationRpcError__UserVerificationUnavailableReason;
+      readonly type: "unavailable";
+    }
+  | {
+      readonly reason: V2UserVerificationRpcError__UserVerificationCancellationReason;
+      readonly type: "cancelled";
+    }
+  | {
+      readonly reason: V2UserVerificationRpcError__UserVerificationFailureReason;
+      readonly type: "failed";
+    };
+export const V2UserVerificationRpcError__UserVerificationErrorDetails = Schema.Union(
+  [
+    Schema.Struct({
+      reason: V2UserVerificationRpcError__UserVerificationInvalidRequestReason,
+      type: Schema.Literal("invalidRequest").annotate({
+        title: "InvalidRequestUserVerificationErrorDetailsType",
+      }),
+    }).annotate({ title: "InvalidRequestUserVerificationErrorDetails" }),
+    Schema.Struct({
+      reason: V2UserVerificationRpcError__UserVerificationUnavailableReason,
+      type: Schema.Literal("unavailable").annotate({
+        title: "UnavailableUserVerificationErrorDetailsType",
+      }),
+    }).annotate({ title: "UnavailableUserVerificationErrorDetails" }),
+    Schema.Struct({
+      reason: V2UserVerificationRpcError__UserVerificationCancellationReason,
+      type: Schema.Literal("cancelled").annotate({
+        title: "CancelledUserVerificationErrorDetailsType",
+      }),
+    }).annotate({ title: "CancelledUserVerificationErrorDetails" }),
+    Schema.Struct({
+      reason: V2UserVerificationRpcError__UserVerificationFailureReason,
+      type: Schema.Literal("failed").annotate({ title: "FailedUserVerificationErrorDetailsType" }),
+    }).annotate({ title: "FailedUserVerificationErrorDetails" }),
+  ],
+  { mode: "oneOf" },
+).annotate({
+  description: "Closed error categories; native diagnostic payloads must not cross this boundary.",
+  identifier: "V2UserVerificationRpcError__UserVerificationErrorDetails",
+});
+
 export type ApplyPatchApprovalResponse__ReviewDecision =
   | "approved"
   | {
@@ -34267,6 +34917,18 @@ export const ClientRequest__FunctionCallOutputBody = Schema.Union([
   Schema.Array(ClientRequest__FunctionCallOutputContentItem),
 ]).annotate({ identifier: "ClientRequest__FunctionCallOutputBody" });
 
+export type ClientRequest__CollaborationMode = {
+  readonly mode: ClientRequest__ModeKind;
+  readonly settings: ClientRequest__Settings;
+};
+export const ClientRequest__CollaborationMode = Schema.Struct({
+  mode: ClientRequest__ModeKind,
+  settings: ClientRequest__Settings,
+}).annotate({
+  description: "Collaboration mode for a Codex session.",
+  identifier: "ClientRequest__CollaborationMode",
+});
+
 export type ClientRequest__UserInput =
   | {
       readonly text: string;
@@ -34330,18 +34992,6 @@ export const ClientRequest__UserInput = Schema.Union(
   ],
   { mode: "oneOf" },
 ).annotate({ identifier: "ClientRequest__UserInput" });
-
-export type ClientRequest__CollaborationMode = {
-  readonly mode: ClientRequest__ModeKind;
-  readonly settings: ClientRequest__Settings;
-};
-export const ClientRequest__CollaborationMode = Schema.Struct({
-  mode: ClientRequest__ModeKind,
-  settings: ClientRequest__Settings,
-}).annotate({
-  description: "Collaboration mode for a Codex session.",
-  identifier: "ClientRequest__CollaborationMode",
-});
 
 export type ClientRequest__CommandExecParams = {
   readonly command: ReadonlyArray<string>;
@@ -35081,6 +35731,28 @@ export const ServerNotification__TurnError = Schema.Struct({
   ),
 }).annotate({ identifier: "ServerNotification__TurnError" });
 
+export type ServerNotification__FileSystemPath =
+  | { readonly path: ServerNotification__LegacyAppPathString; readonly type: "path" }
+  | { readonly pattern: string; readonly type: "glob_pattern" }
+  | { readonly type: "special"; readonly value: ServerNotification__FileSystemSpecialPath };
+export const ServerNotification__FileSystemPath = Schema.Union(
+  [
+    Schema.Struct({
+      path: ServerNotification__LegacyAppPathString,
+      type: Schema.Literal("path").annotate({ title: "PathFileSystemPathType" }),
+    }).annotate({ title: "PathFileSystemPath" }),
+    Schema.Struct({
+      pattern: Schema.String,
+      type: Schema.Literal("glob_pattern").annotate({ title: "GlobPatternFileSystemPathType" }),
+    }).annotate({ title: "GlobPatternFileSystemPath" }),
+    Schema.Struct({
+      type: Schema.Literal("special").annotate({ title: "SpecialFileSystemPathType" }),
+      value: ServerNotification__FileSystemSpecialPath,
+    }).annotate({ title: "SpecialFileSystemPath" }),
+  ],
+  { mode: "oneOf" },
+).annotate({ identifier: "ServerNotification__FileSystemPath" });
+
 export type ServerNotification__CollaborationMode = {
   readonly mode: ServerNotification__ModeKind;
   readonly settings: ServerNotification__Settings;
@@ -35192,28 +35864,6 @@ export const ServerNotification__FunctionCallOutputBody = Schema.Union([
   Schema.String,
   Schema.Array(ServerNotification__FunctionCallOutputContentItem),
 ]).annotate({ identifier: "ServerNotification__FunctionCallOutputBody" });
-
-export type ServerNotification__FileSystemPath =
-  | { readonly path: ServerNotification__LegacyAppPathString; readonly type: "path" }
-  | { readonly pattern: string; readonly type: "glob_pattern" }
-  | { readonly type: "special"; readonly value: ServerNotification__FileSystemSpecialPath };
-export const ServerNotification__FileSystemPath = Schema.Union(
-  [
-    Schema.Struct({
-      path: ServerNotification__LegacyAppPathString,
-      type: Schema.Literal("path").annotate({ title: "PathFileSystemPathType" }),
-    }).annotate({ title: "PathFileSystemPath" }),
-    Schema.Struct({
-      pattern: Schema.String,
-      type: Schema.Literal("glob_pattern").annotate({ title: "GlobPatternFileSystemPathType" }),
-    }).annotate({ title: "GlobPatternFileSystemPath" }),
-    Schema.Struct({
-      type: Schema.Literal("special").annotate({ title: "SpecialFileSystemPathType" }),
-      value: ServerNotification__FileSystemSpecialPath,
-    }).annotate({ title: "SpecialFileSystemPath" }),
-  ],
-  { mode: "oneOf" },
-).annotate({ identifier: "ServerNotification__FileSystemPath" });
 
 export type ServerNotification__FileChangePatchUpdatedNotification = {
   readonly changes: ReadonlyArray<ServerNotification__FileUpdateChange>;
@@ -35829,6 +36479,15 @@ export const V2ConfigReadResponse__ConfigLayerMetadata = Schema.Struct({
   version: Schema.String,
 }).annotate({ identifier: "V2ConfigReadResponse__ConfigLayerMetadata" });
 
+export type V2ConfigRequirementsReadResponse__ApplicationRequirements = {
+  readonly network?: V2ConfigRequirementsReadResponse__ApplicationNetworkRequirements | null;
+};
+export const V2ConfigRequirementsReadResponse__ApplicationRequirements = Schema.Struct({
+  network: Schema.optionalKey(
+    Schema.Union([V2ConfigRequirementsReadResponse__ApplicationNetworkRequirements, Schema.Null]),
+  ),
+}).annotate({ identifier: "V2ConfigRequirementsReadResponse__ApplicationRequirements" });
+
 export type V2ConfigRequirementsReadResponse__ComputerUseWindowsRequirements = {
   readonly aumids?: {
     readonly [x: string]: V2ConfigRequirementsReadResponse__AllowDenyRequirement;
@@ -35853,6 +36512,7 @@ export const V2ConfigRequirementsReadResponse__ComputerUseWindowsRequirements = 
 export type V2ConfigRequirementsReadResponse__BrowserUseRequirements = {
   readonly allowGlobalPersistentApproval?: boolean | null;
   readonly allowHistoryAccess?: boolean | null;
+  readonly allowWebmcp?: boolean | null;
   readonly defaultOriginPolicy?: V2ConfigRequirementsReadResponse__BrowserUseOriginPolicy | null;
   readonly disableAutoReview?: boolean | null;
   readonly origins?: {
@@ -35862,6 +36522,7 @@ export type V2ConfigRequirementsReadResponse__BrowserUseRequirements = {
 export const V2ConfigRequirementsReadResponse__BrowserUseRequirements = Schema.Struct({
   allowGlobalPersistentApproval: Schema.optionalKey(Schema.Union([Schema.Boolean, Schema.Null])),
   allowHistoryAccess: Schema.optionalKey(Schema.Union([Schema.Boolean, Schema.Null])),
+  allowWebmcp: Schema.optionalKey(Schema.Union([Schema.Boolean, Schema.Null])),
   defaultOriginPolicy: Schema.optionalKey(
     Schema.Union([V2ConfigRequirementsReadResponse__BrowserUseOriginPolicy, Schema.Null]),
   ),
@@ -39523,6 +40184,10 @@ export type ClientRequest__ResponseItem =
       readonly internal_chat_message_metadata_passthrough?: ClientRequest__InternalChatMessageMetadataPassthrough | null;
       readonly type: "compaction";
     }
+  | {
+      readonly reasoning: ClientRequest__ConfigurationReasoning;
+      readonly type: "configuration_update";
+    }
   | { readonly type: "compaction_trigger" }
   | {
       readonly encrypted_content?: string | null;
@@ -39700,6 +40365,15 @@ export const ClientRequest__ResponseItem = Schema.Union(
       type: Schema.Literal("compaction").annotate({ title: "CompactionResponseItemType" }),
     }).annotate({ title: "CompactionResponseItem" }),
     Schema.Struct({
+      reasoning: ClientRequest__ConfigurationReasoning,
+      type: Schema.Literal("configuration_update").annotate({
+        title: "ConfigurationUpdateResponseItemType",
+      }),
+    }).annotate({
+      title: "ConfigurationUpdateResponseItem",
+      description: "A durable input control interpreted by the backend at its position in history.",
+    }),
+    Schema.Struct({
       type: Schema.Literal("compaction_trigger").annotate({
         title: "CompactionTriggerResponseItemType",
       }),
@@ -39731,66 +40405,6 @@ export const ClientRequest__TurnToolOutput = Schema.Struct({
   namespace: Schema.optionalKey(Schema.Union([Schema.String, Schema.Null])),
   output: ClientRequest__FunctionCallOutputBody,
 }).annotate({ identifier: "ClientRequest__TurnToolOutput" });
-
-export type ClientRequest__ThreadQueueAddParams = {
-  readonly clientUserMessageId: string;
-  readonly input: ReadonlyArray<ClientRequest__UserInput>;
-  readonly threadId: string;
-};
-export const ClientRequest__ThreadQueueAddParams = Schema.Struct({
-  clientUserMessageId: Schema.String,
-  input: Schema.Array(ClientRequest__UserInput),
-  threadId: Schema.String,
-}).annotate({ identifier: "ClientRequest__ThreadQueueAddParams" });
-
-export type ClientRequest__ThreadQueueUpdateParams = {
-  readonly input: ReadonlyArray<ClientRequest__UserInput>;
-  readonly queuedSubmissionId: string;
-  readonly threadId: string;
-};
-export const ClientRequest__ThreadQueueUpdateParams = Schema.Struct({
-  input: Schema.Array(ClientRequest__UserInput),
-  queuedSubmissionId: Schema.String,
-  threadId: Schema.String,
-}).annotate({ identifier: "ClientRequest__ThreadQueueUpdateParams" });
-
-export type ClientRequest__TurnSteerParams = {
-  readonly additionalContext?: {
-    readonly [x: string]: ClientRequest__AdditionalContextEntry;
-  } | null;
-  readonly clientUserMessageId?: string | null;
-  readonly expectedTurnId: string;
-  readonly input: ReadonlyArray<ClientRequest__UserInput>;
-  readonly responsesapiClientMetadata?: { readonly [x: string]: string } | null;
-  readonly threadId: string;
-};
-export const ClientRequest__TurnSteerParams = Schema.Struct({
-  additionalContext: Schema.optionalKey(
-    Schema.Union([
-      Schema.Record(Schema.String, ClientRequest__AdditionalContextEntry).annotate({
-        description:
-          "Optional client-provided context fragments keyed by an opaque source identifier.",
-      }),
-      Schema.Null,
-    ]),
-  ),
-  clientUserMessageId: Schema.optionalKey(Schema.Union([Schema.String, Schema.Null])),
-  expectedTurnId: Schema.String.annotate({
-    description:
-      "Required active turn id precondition. The request fails when it does not match the currently active turn.",
-  }),
-  input: Schema.Array(ClientRequest__UserInput),
-  responsesapiClientMetadata: Schema.optionalKey(
-    Schema.Union([
-      Schema.Record(Schema.String, Schema.String).annotate({
-        description:
-          'Optional metadata to enrich Codex\'s ResponsesAPI turn metadata.\n\nEntries are flattened into the JSON string sent as `client_metadata["x-codex-turn-metadata"]` on ResponsesAPI HTTP and websocket requests.\n\nThey are not sent as top-level ResponsesAPI `client_metadata` keys, and reserved keys such as `session_id`, `thread_id`, `turn_id`, and `window_id` cannot be overridden.',
-      }),
-      Schema.Null,
-    ]),
-  ),
-  threadId: Schema.String,
-}).annotate({ identifier: "ClientRequest__TurnSteerParams" });
 
 export type ClientRequest__ThreadSettingsUpdateParams = {
   readonly approvalPolicy?: ClientRequest__AskForApproval | null;
@@ -39883,6 +40497,66 @@ export const ClientRequest__ThreadSettingsUpdateParams = Schema.Struct({
   ),
   threadId: Schema.String,
 }).annotate({ identifier: "ClientRequest__ThreadSettingsUpdateParams" });
+
+export type ClientRequest__ThreadQueueAddParams = {
+  readonly clientUserMessageId: string;
+  readonly input: ReadonlyArray<ClientRequest__UserInput>;
+  readonly threadId: string;
+};
+export const ClientRequest__ThreadQueueAddParams = Schema.Struct({
+  clientUserMessageId: Schema.String,
+  input: Schema.Array(ClientRequest__UserInput),
+  threadId: Schema.String,
+}).annotate({ identifier: "ClientRequest__ThreadQueueAddParams" });
+
+export type ClientRequest__ThreadQueueUpdateParams = {
+  readonly input: ReadonlyArray<ClientRequest__UserInput>;
+  readonly queuedSubmissionId: string;
+  readonly threadId: string;
+};
+export const ClientRequest__ThreadQueueUpdateParams = Schema.Struct({
+  input: Schema.Array(ClientRequest__UserInput),
+  queuedSubmissionId: Schema.String,
+  threadId: Schema.String,
+}).annotate({ identifier: "ClientRequest__ThreadQueueUpdateParams" });
+
+export type ClientRequest__TurnSteerParams = {
+  readonly additionalContext?: {
+    readonly [x: string]: ClientRequest__AdditionalContextEntry;
+  } | null;
+  readonly clientUserMessageId?: string | null;
+  readonly expectedTurnId: string;
+  readonly input: ReadonlyArray<ClientRequest__UserInput>;
+  readonly responsesapiClientMetadata?: { readonly [x: string]: string } | null;
+  readonly threadId: string;
+};
+export const ClientRequest__TurnSteerParams = Schema.Struct({
+  additionalContext: Schema.optionalKey(
+    Schema.Union([
+      Schema.Record(Schema.String, ClientRequest__AdditionalContextEntry).annotate({
+        description:
+          "Optional client-provided context fragments keyed by an opaque source identifier.",
+      }),
+      Schema.Null,
+    ]),
+  ),
+  clientUserMessageId: Schema.optionalKey(Schema.Union([Schema.String, Schema.Null])),
+  expectedTurnId: Schema.String.annotate({
+    description:
+      "Required active turn id precondition. The request fails when it does not match the currently active turn.",
+  }),
+  input: Schema.Array(ClientRequest__UserInput),
+  responsesapiClientMetadata: Schema.optionalKey(
+    Schema.Union([
+      Schema.Record(Schema.String, Schema.String).annotate({
+        description:
+          'Optional metadata to enrich Codex\'s ResponsesAPI turn metadata.\n\nEntries are flattened into the JSON string sent as `client_metadata["x-codex-turn-metadata"]` on ResponsesAPI HTTP and websocket requests.\n\nThey are not sent as top-level ResponsesAPI `client_metadata` keys, and reserved keys such as `session_id`, `thread_id`, `turn_id`, and `window_id` cannot be overridden.',
+      }),
+      Schema.Null,
+    ]),
+  ),
+  threadId: Schema.String,
+}).annotate({ identifier: "ClientRequest__TurnSteerParams" });
 
 export type ClientRequest__ExternalAgentConfigImportParams = {
   readonly migrationItems: ReadonlyArray<ClientRequest__ExternalAgentConfigMigrationItem>;
@@ -39982,6 +40656,15 @@ export const ServerNotification__ErrorNotification = Schema.Struct({
   turnId: Schema.String,
   willRetry: Schema.Boolean,
 }).annotate({ identifier: "ServerNotification__ErrorNotification" });
+
+export type ServerNotification__FileSystemSandboxEntry = {
+  readonly access: ServerNotification__FileSystemAccessMode;
+  readonly path: ServerNotification__FileSystemPath;
+};
+export const ServerNotification__FileSystemSandboxEntry = Schema.Struct({
+  access: ServerNotification__FileSystemAccessMode,
+  path: ServerNotification__FileSystemPath,
+}).annotate({ identifier: "ServerNotification__FileSystemSandboxEntry" });
 
 export type ServerNotification__ThreadSettings = {
   readonly activePermissionProfile?: ServerNotification__ActivePermissionProfile | null;
@@ -40465,15 +41148,6 @@ export const ServerNotification__ThreadItem = Schema.Union(
   ],
   { mode: "oneOf" },
 ).annotate({ identifier: "ServerNotification__ThreadItem" });
-
-export type ServerNotification__FileSystemSandboxEntry = {
-  readonly access: ServerNotification__FileSystemAccessMode;
-  readonly path: ServerNotification__FileSystemPath;
-};
-export const ServerNotification__FileSystemSandboxEntry = Schema.Struct({
-  access: ServerNotification__FileSystemAccessMode,
-  path: ServerNotification__FileSystemPath,
-}).annotate({ identifier: "ServerNotification__FileSystemSandboxEntry" });
 
 export type ServerNotification__HookStartedNotification = {
   readonly run: ServerNotification__HookRunSummary;
@@ -42118,6 +42792,10 @@ export type V2RawResponseItemCompletedNotification__ResponseItem =
       readonly internal_chat_message_metadata_passthrough?: V2RawResponseItemCompletedNotification__InternalChatMessageMetadataPassthrough | null;
       readonly type: "compaction";
     }
+  | {
+      readonly reasoning: V2RawResponseItemCompletedNotification__ConfigurationReasoning;
+      readonly type: "configuration_update";
+    }
   | { readonly type: "compaction_trigger" }
   | {
       readonly encrypted_content?: string | null;
@@ -42341,6 +43019,15 @@ export const V2RawResponseItemCompletedNotification__ResponseItem = Schema.Union
       ),
       type: Schema.Literal("compaction").annotate({ title: "CompactionResponseItemType" }),
     }).annotate({ title: "CompactionResponseItem" }),
+    Schema.Struct({
+      reasoning: V2RawResponseItemCompletedNotification__ConfigurationReasoning,
+      type: Schema.Literal("configuration_update").annotate({
+        title: "ConfigurationUpdateResponseItemType",
+      }),
+    }).annotate({
+      title: "ConfigurationUpdateResponseItem",
+      description: "A durable input control interpreted by the backend at its position in history.",
+    }),
     Schema.Struct({
       type: Schema.Literal("compaction_trigger").annotate({
         title: "CompactionTriggerResponseItemType",
@@ -45668,6 +46355,10 @@ export type V2ThreadResumeParams__ResponseItem =
       readonly internal_chat_message_metadata_passthrough?: V2ThreadResumeParams__InternalChatMessageMetadataPassthrough | null;
       readonly type: "compaction";
     }
+  | {
+      readonly reasoning: V2ThreadResumeParams__ConfigurationReasoning;
+      readonly type: "configuration_update";
+    }
   | { readonly type: "compaction_trigger" }
   | {
       readonly encrypted_content?: string | null;
@@ -45844,6 +46535,15 @@ export const V2ThreadResumeParams__ResponseItem = Schema.Union(
       ),
       type: Schema.Literal("compaction").annotate({ title: "CompactionResponseItemType" }),
     }).annotate({ title: "CompactionResponseItem" }),
+    Schema.Struct({
+      reasoning: V2ThreadResumeParams__ConfigurationReasoning,
+      type: Schema.Literal("configuration_update").annotate({
+        title: "ConfigurationUpdateResponseItemType",
+      }),
+    }).annotate({
+      title: "ConfigurationUpdateResponseItem",
+      description: "A durable input control interpreted by the backend at its position in history.",
+    }),
     Schema.Struct({
       type: Schema.Literal("compaction_trigger").annotate({
         title: "CompactionTriggerResponseItemType",
@@ -51751,6 +52451,46 @@ export const PermissionsRequestApprovalResponse__AdditionalFileSystemPermissions
   ),
 }).annotate({ identifier: "PermissionsRequestApprovalResponse__AdditionalFileSystemPermissions" });
 
+export type ServerNotification__AdditionalFileSystemPermissions = {
+  readonly entries?: ReadonlyArray<ServerNotification__FileSystemSandboxEntry> | null;
+  readonly globScanMaxDepth?: number | null;
+  readonly read?: ReadonlyArray<ServerNotification__LegacyAppPathString> | null;
+  readonly write?: ReadonlyArray<ServerNotification__LegacyAppPathString> | null;
+};
+export const ServerNotification__AdditionalFileSystemPermissions = Schema.Struct({
+  entries: Schema.optionalKey(
+    Schema.Union([Schema.Array(ServerNotification__FileSystemSandboxEntry), Schema.Null]),
+  ),
+  globScanMaxDepth: Schema.optionalKey(
+    Schema.Union([
+      Schema.Number.annotate({ format: "uint" })
+        .check(Schema.isInt().annotate({ expected: "an integer" }))
+        .check(
+          Schema.isGreaterThanOrEqualTo(1).annotate({
+            expected: "a value greater than or equal to 1",
+          }),
+        ),
+      Schema.Null,
+    ]),
+  ),
+  read: Schema.optionalKey(
+    Schema.Union([
+      Schema.Array(ServerNotification__LegacyAppPathString).annotate({
+        description: "This will be removed in favor of `entries`.",
+      }),
+      Schema.Null,
+    ]),
+  ),
+  write: Schema.optionalKey(
+    Schema.Union([
+      Schema.Array(ServerNotification__LegacyAppPathString).annotate({
+        description: "This will be removed in favor of `entries`.",
+      }),
+      Schema.Null,
+    ]),
+  ),
+}).annotate({ identifier: "ServerNotification__AdditionalFileSystemPermissions" });
+
 export type ServerNotification__ThreadSettingsUpdatedNotification = {
   readonly threadId: string;
   readonly threadSettings: ServerNotification__ThreadSettings;
@@ -51851,46 +52591,6 @@ export const ServerNotification__ItemCompletedNotification = Schema.Struct({
   threadId: Schema.String,
   turnId: Schema.String,
 }).annotate({ identifier: "ServerNotification__ItemCompletedNotification" });
-
-export type ServerNotification__AdditionalFileSystemPermissions = {
-  readonly entries?: ReadonlyArray<ServerNotification__FileSystemSandboxEntry> | null;
-  readonly globScanMaxDepth?: number | null;
-  readonly read?: ReadonlyArray<ServerNotification__LegacyAppPathString> | null;
-  readonly write?: ReadonlyArray<ServerNotification__LegacyAppPathString> | null;
-};
-export const ServerNotification__AdditionalFileSystemPermissions = Schema.Struct({
-  entries: Schema.optionalKey(
-    Schema.Union([Schema.Array(ServerNotification__FileSystemSandboxEntry), Schema.Null]),
-  ),
-  globScanMaxDepth: Schema.optionalKey(
-    Schema.Union([
-      Schema.Number.annotate({ format: "uint" })
-        .check(Schema.isInt().annotate({ expected: "an integer" }))
-        .check(
-          Schema.isGreaterThanOrEqualTo(1).annotate({
-            expected: "a value greater than or equal to 1",
-          }),
-        ),
-      Schema.Null,
-    ]),
-  ),
-  read: Schema.optionalKey(
-    Schema.Union([
-      Schema.Array(ServerNotification__LegacyAppPathString).annotate({
-        description: "This will be removed in favor of `entries`.",
-      }),
-      Schema.Null,
-    ]),
-  ),
-  write: Schema.optionalKey(
-    Schema.Union([
-      Schema.Array(ServerNotification__LegacyAppPathString).annotate({
-        description: "This will be removed in favor of `entries`.",
-      }),
-      Schema.Null,
-    ]),
-  ),
-}).annotate({ identifier: "ServerNotification__AdditionalFileSystemPermissions" });
 
 export type ServerRequest__AdditionalFileSystemPermissions = {
   readonly entries?: ReadonlyArray<ServerRequest__FileSystemSandboxEntry> | null;
@@ -52065,6 +52765,7 @@ export type V2ConfigRequirementsReadResponse__ConfigRequirements = {
   readonly allowedSandboxModes?: ReadonlyArray<V2ConfigRequirementsReadResponse__SandboxMode> | null;
   readonly allowedWebSearchModes?: ReadonlyArray<V2ConfigRequirementsReadResponse__WebSearchMode> | null;
   readonly allowedWindowsSandboxImplementations?: ReadonlyArray<V2ConfigRequirementsReadResponse__WindowsSandboxSetupMode> | null;
+  readonly application?: V2ConfigRequirementsReadResponse__ApplicationRequirements | null;
   readonly autoReview?: V2ConfigRequirementsReadResponse__AutoReviewRequirements | null;
   readonly browserUse?: V2ConfigRequirementsReadResponse__BrowserUseRequirements | null;
   readonly chatgptBaseUrl?: string | null;
@@ -52111,6 +52812,9 @@ export const V2ConfigRequirementsReadResponse__ConfigRequirements = Schema.Struc
       Schema.Array(V2ConfigRequirementsReadResponse__WindowsSandboxSetupMode),
       Schema.Null,
     ]),
+  ),
+  application: Schema.optionalKey(
+    Schema.Union([V2ConfigRequirementsReadResponse__ApplicationRequirements, Schema.Null]),
   ),
   autoReview: Schema.optionalKey(
     Schema.Union([V2ConfigRequirementsReadResponse__AutoReviewRequirements, Schema.Null]),
@@ -53564,6 +54268,19 @@ export const PermissionsRequestApprovalResponse__GrantedPermissionProfile = Sche
   ),
 }).annotate({ identifier: "PermissionsRequestApprovalResponse__GrantedPermissionProfile" });
 
+export type ServerNotification__RequestPermissionProfile = {
+  readonly fileSystem?: ServerNotification__AdditionalFileSystemPermissions | null;
+  readonly network?: ServerNotification__AdditionalNetworkPermissions | null;
+};
+export const ServerNotification__RequestPermissionProfile = Schema.Struct({
+  fileSystem: Schema.optionalKey(
+    Schema.Union([ServerNotification__AdditionalFileSystemPermissions, Schema.Null]),
+  ),
+  network: Schema.optionalKey(
+    Schema.Union([ServerNotification__AdditionalNetworkPermissions, Schema.Null]),
+  ),
+}).annotate({ identifier: "ServerNotification__RequestPermissionProfile" });
+
 export type ServerNotification__Thread = {
   readonly agentNickname?: string | null;
   readonly agentRole?: string | null;
@@ -53571,6 +54288,8 @@ export type ServerNotification__Thread = {
   readonly cliVersion: string;
   readonly createdAt: number;
   readonly cwd: ServerNotification__AbsolutePathBuf;
+  readonly daybreakEnabled?: boolean | null;
+  readonly environments?: ReadonlyArray<ServerNotification__ThreadEnvironment> | null;
   readonly ephemeral: boolean;
   readonly extra?: ServerNotification__ThreadExtra | null;
   readonly forkedFromId?: string | null;
@@ -53580,6 +54299,7 @@ export type ServerNotification__Thread = {
   readonly model?: string | null;
   readonly modelProvider: string;
   readonly name?: string | null;
+  readonly originator?: string | null;
   readonly parentThreadId?: string | null;
   readonly path?: string | null;
   readonly preview: string;
@@ -53632,6 +54352,23 @@ export const ServerNotification__Thread = Schema.Struct({
   cwd: Schema.suspend(
     (): Schema.Codec<ServerNotification__AbsolutePathBuf> => ServerNotification__AbsolutePathBuf,
   ).annotate({ description: "Working directory captured for the thread." }),
+  daybreakEnabled: Schema.optionalKey(
+    Schema.Union([
+      Schema.Boolean.annotate({
+        description: "Saved Daybreak choice, independent of turn execution. Null if unset.",
+      }),
+      Schema.Null,
+    ]),
+  ),
+  environments: Schema.optionalKey(
+    Schema.Union([
+      Schema.Array(ServerNotification__ThreadEnvironment).annotate({
+        description:
+          "Current environments for a loaded thread, in priority order, primary first. `null` means the thread is not loaded or the server does not expose its selection. An empty list means no environments are selected. This does not report connection status.",
+      }),
+      Schema.Null,
+    ]),
+  ),
   ephemeral: Schema.Boolean.annotate({
     description: "Whether the thread is ephemeral and should not be materialized on disk.",
   }),
@@ -53680,6 +54417,15 @@ export const ServerNotification__Thread = Schema.Struct({
   name: Schema.optionalKey(
     Schema.Union([
       Schema.String.annotate({ description: "Optional user-facing thread title." }),
+      Schema.Null,
+    ]),
+  ),
+  originator: Schema.optionalKey(
+    Schema.Union([
+      Schema.String.annotate({
+        description:
+          "Originator recorded when the thread was created, independent of its current client or executor. Null when the recorded originator is unavailable.",
+      }),
       Schema.Null,
     ]),
   ),
@@ -53780,19 +54526,6 @@ export const ServerNotification__TurnCompletedNotification = Schema.Struct({
   turn: ServerNotification__Turn,
 }).annotate({ identifier: "ServerNotification__TurnCompletedNotification" });
 
-export type ServerNotification__RequestPermissionProfile = {
-  readonly fileSystem?: ServerNotification__AdditionalFileSystemPermissions | null;
-  readonly network?: ServerNotification__AdditionalNetworkPermissions | null;
-};
-export const ServerNotification__RequestPermissionProfile = Schema.Struct({
-  fileSystem: Schema.optionalKey(
-    Schema.Union([ServerNotification__AdditionalFileSystemPermissions, Schema.Null]),
-  ),
-  network: Schema.optionalKey(
-    Schema.Union([ServerNotification__AdditionalNetworkPermissions, Schema.Null]),
-  ),
-}).annotate({ identifier: "ServerNotification__RequestPermissionProfile" });
-
 export type ServerRequest__AdditionalPermissionProfile = {
   readonly fileSystem?: ServerRequest__AdditionalFileSystemPermissions | null;
   readonly network?: ServerRequest__AdditionalNetworkPermissions | null;
@@ -53884,6 +54617,8 @@ export type V2ThreadForkResponse__Thread = {
   readonly cliVersion: string;
   readonly createdAt: number;
   readonly cwd: V2ThreadForkResponse__AbsolutePathBuf;
+  readonly daybreakEnabled?: boolean | null;
+  readonly environments?: ReadonlyArray<V2ThreadForkResponse__ThreadEnvironment> | null;
   readonly ephemeral: boolean;
   readonly extra?: V2ThreadForkResponse__ThreadExtra | null;
   readonly forkedFromId?: string | null;
@@ -53893,6 +54628,7 @@ export type V2ThreadForkResponse__Thread = {
   readonly model?: string | null;
   readonly modelProvider: string;
   readonly name?: string | null;
+  readonly originator?: string | null;
   readonly parentThreadId?: string | null;
   readonly path?: string | null;
   readonly preview: string;
@@ -53946,6 +54682,23 @@ export const V2ThreadForkResponse__Thread = Schema.Struct({
     (): Schema.Codec<V2ThreadForkResponse__AbsolutePathBuf> =>
       V2ThreadForkResponse__AbsolutePathBuf,
   ).annotate({ description: "Working directory captured for the thread." }),
+  daybreakEnabled: Schema.optionalKey(
+    Schema.Union([
+      Schema.Boolean.annotate({
+        description: "Saved Daybreak choice, independent of turn execution. Null if unset.",
+      }),
+      Schema.Null,
+    ]),
+  ),
+  environments: Schema.optionalKey(
+    Schema.Union([
+      Schema.Array(V2ThreadForkResponse__ThreadEnvironment).annotate({
+        description:
+          "Current environments for a loaded thread, in priority order, primary first. `null` means the thread is not loaded or the server does not expose its selection. An empty list means no environments are selected. This does not report connection status.",
+      }),
+      Schema.Null,
+    ]),
+  ),
   ephemeral: Schema.Boolean.annotate({
     description: "Whether the thread is ephemeral and should not be materialized on disk.",
   }),
@@ -53994,6 +54747,15 @@ export const V2ThreadForkResponse__Thread = Schema.Struct({
   name: Schema.optionalKey(
     Schema.Union([
       Schema.String.annotate({ description: "Optional user-facing thread title." }),
+      Schema.Null,
+    ]),
+  ),
+  originator: Schema.optionalKey(
+    Schema.Union([
+      Schema.String.annotate({
+        description:
+          "Originator recorded when the thread was created, independent of its current client or executor. Null when the recorded originator is unavailable.",
+      }),
       Schema.Null,
     ]),
   ),
@@ -54083,6 +54845,8 @@ export type V2ThreadListResponse__Thread = {
   readonly cliVersion: string;
   readonly createdAt: number;
   readonly cwd: V2ThreadListResponse__AbsolutePathBuf;
+  readonly daybreakEnabled?: boolean | null;
+  readonly environments?: ReadonlyArray<V2ThreadListResponse__ThreadEnvironment> | null;
   readonly ephemeral: boolean;
   readonly extra?: V2ThreadListResponse__ThreadExtra | null;
   readonly forkedFromId?: string | null;
@@ -54092,6 +54856,7 @@ export type V2ThreadListResponse__Thread = {
   readonly model?: string | null;
   readonly modelProvider: string;
   readonly name?: string | null;
+  readonly originator?: string | null;
   readonly parentThreadId?: string | null;
   readonly path?: string | null;
   readonly preview: string;
@@ -54145,6 +54910,23 @@ export const V2ThreadListResponse__Thread = Schema.Struct({
     (): Schema.Codec<V2ThreadListResponse__AbsolutePathBuf> =>
       V2ThreadListResponse__AbsolutePathBuf,
   ).annotate({ description: "Working directory captured for the thread." }),
+  daybreakEnabled: Schema.optionalKey(
+    Schema.Union([
+      Schema.Boolean.annotate({
+        description: "Saved Daybreak choice, independent of turn execution. Null if unset.",
+      }),
+      Schema.Null,
+    ]),
+  ),
+  environments: Schema.optionalKey(
+    Schema.Union([
+      Schema.Array(V2ThreadListResponse__ThreadEnvironment).annotate({
+        description:
+          "Current environments for a loaded thread, in priority order, primary first. `null` means the thread is not loaded or the server does not expose its selection. An empty list means no environments are selected. This does not report connection status.",
+      }),
+      Schema.Null,
+    ]),
+  ),
   ephemeral: Schema.Boolean.annotate({
     description: "Whether the thread is ephemeral and should not be materialized on disk.",
   }),
@@ -54193,6 +54975,15 @@ export const V2ThreadListResponse__Thread = Schema.Struct({
   name: Schema.optionalKey(
     Schema.Union([
       Schema.String.annotate({ description: "Optional user-facing thread title." }),
+      Schema.Null,
+    ]),
+  ),
+  originator: Schema.optionalKey(
+    Schema.Union([
+      Schema.String.annotate({
+        description:
+          "Originator recorded when the thread was created, independent of its current client or executor. Null when the recorded originator is unavailable.",
+      }),
       Schema.Null,
     ]),
   ),
@@ -54282,6 +55073,8 @@ export type V2ThreadMetadataUpdateResponse__Thread = {
   readonly cliVersion: string;
   readonly createdAt: number;
   readonly cwd: V2ThreadMetadataUpdateResponse__AbsolutePathBuf;
+  readonly daybreakEnabled?: boolean | null;
+  readonly environments?: ReadonlyArray<V2ThreadMetadataUpdateResponse__ThreadEnvironment> | null;
   readonly ephemeral: boolean;
   readonly extra?: V2ThreadMetadataUpdateResponse__ThreadExtra | null;
   readonly forkedFromId?: string | null;
@@ -54291,6 +55084,7 @@ export type V2ThreadMetadataUpdateResponse__Thread = {
   readonly model?: string | null;
   readonly modelProvider: string;
   readonly name?: string | null;
+  readonly originator?: string | null;
   readonly parentThreadId?: string | null;
   readonly path?: string | null;
   readonly preview: string;
@@ -54344,6 +55138,23 @@ export const V2ThreadMetadataUpdateResponse__Thread = Schema.Struct({
     (): Schema.Codec<V2ThreadMetadataUpdateResponse__AbsolutePathBuf> =>
       V2ThreadMetadataUpdateResponse__AbsolutePathBuf,
   ).annotate({ description: "Working directory captured for the thread." }),
+  daybreakEnabled: Schema.optionalKey(
+    Schema.Union([
+      Schema.Boolean.annotate({
+        description: "Saved Daybreak choice, independent of turn execution. Null if unset.",
+      }),
+      Schema.Null,
+    ]),
+  ),
+  environments: Schema.optionalKey(
+    Schema.Union([
+      Schema.Array(V2ThreadMetadataUpdateResponse__ThreadEnvironment).annotate({
+        description:
+          "Current environments for a loaded thread, in priority order, primary first. `null` means the thread is not loaded or the server does not expose its selection. An empty list means no environments are selected. This does not report connection status.",
+      }),
+      Schema.Null,
+    ]),
+  ),
   ephemeral: Schema.Boolean.annotate({
     description: "Whether the thread is ephemeral and should not be materialized on disk.",
   }),
@@ -54392,6 +55203,15 @@ export const V2ThreadMetadataUpdateResponse__Thread = Schema.Struct({
   name: Schema.optionalKey(
     Schema.Union([
       Schema.String.annotate({ description: "Optional user-facing thread title." }),
+      Schema.Null,
+    ]),
+  ),
+  originator: Schema.optionalKey(
+    Schema.Union([
+      Schema.String.annotate({
+        description:
+          "Originator recorded when the thread was created, independent of its current client or executor. Null when the recorded originator is unavailable.",
+      }),
       Schema.Null,
     ]),
   ),
@@ -54483,6 +55303,8 @@ export type V2ThreadReadResponse__Thread = {
   readonly cliVersion: string;
   readonly createdAt: number;
   readonly cwd: V2ThreadReadResponse__AbsolutePathBuf;
+  readonly daybreakEnabled?: boolean | null;
+  readonly environments?: ReadonlyArray<V2ThreadReadResponse__ThreadEnvironment> | null;
   readonly ephemeral: boolean;
   readonly extra?: V2ThreadReadResponse__ThreadExtra | null;
   readonly forkedFromId?: string | null;
@@ -54492,6 +55314,7 @@ export type V2ThreadReadResponse__Thread = {
   readonly model?: string | null;
   readonly modelProvider: string;
   readonly name?: string | null;
+  readonly originator?: string | null;
   readonly parentThreadId?: string | null;
   readonly path?: string | null;
   readonly preview: string;
@@ -54545,6 +55368,23 @@ export const V2ThreadReadResponse__Thread = Schema.Struct({
     (): Schema.Codec<V2ThreadReadResponse__AbsolutePathBuf> =>
       V2ThreadReadResponse__AbsolutePathBuf,
   ).annotate({ description: "Working directory captured for the thread." }),
+  daybreakEnabled: Schema.optionalKey(
+    Schema.Union([
+      Schema.Boolean.annotate({
+        description: "Saved Daybreak choice, independent of turn execution. Null if unset.",
+      }),
+      Schema.Null,
+    ]),
+  ),
+  environments: Schema.optionalKey(
+    Schema.Union([
+      Schema.Array(V2ThreadReadResponse__ThreadEnvironment).annotate({
+        description:
+          "Current environments for a loaded thread, in priority order, primary first. `null` means the thread is not loaded or the server does not expose its selection. An empty list means no environments are selected. This does not report connection status.",
+      }),
+      Schema.Null,
+    ]),
+  ),
   ephemeral: Schema.Boolean.annotate({
     description: "Whether the thread is ephemeral and should not be materialized on disk.",
   }),
@@ -54593,6 +55433,15 @@ export const V2ThreadReadResponse__Thread = Schema.Struct({
   name: Schema.optionalKey(
     Schema.Union([
       Schema.String.annotate({ description: "Optional user-facing thread title." }),
+      Schema.Null,
+    ]),
+  ),
+  originator: Schema.optionalKey(
+    Schema.Union([
+      Schema.String.annotate({
+        description:
+          "Originator recorded when the thread was created, independent of its current client or executor. Null when the recorded originator is unavailable.",
+      }),
       Schema.Null,
     ]),
   ),
@@ -54693,6 +55542,8 @@ export type V2ThreadResumeResponse__Thread = {
   readonly cliVersion: string;
   readonly createdAt: number;
   readonly cwd: V2ThreadResumeResponse__AbsolutePathBuf;
+  readonly daybreakEnabled?: boolean | null;
+  readonly environments?: ReadonlyArray<V2ThreadResumeResponse__ThreadEnvironment> | null;
   readonly ephemeral: boolean;
   readonly extra?: V2ThreadResumeResponse__ThreadExtra | null;
   readonly forkedFromId?: string | null;
@@ -54702,6 +55553,7 @@ export type V2ThreadResumeResponse__Thread = {
   readonly model?: string | null;
   readonly modelProvider: string;
   readonly name?: string | null;
+  readonly originator?: string | null;
   readonly parentThreadId?: string | null;
   readonly path?: string | null;
   readonly preview: string;
@@ -54755,6 +55607,23 @@ export const V2ThreadResumeResponse__Thread = Schema.Struct({
     (): Schema.Codec<V2ThreadResumeResponse__AbsolutePathBuf> =>
       V2ThreadResumeResponse__AbsolutePathBuf,
   ).annotate({ description: "Working directory captured for the thread." }),
+  daybreakEnabled: Schema.optionalKey(
+    Schema.Union([
+      Schema.Boolean.annotate({
+        description: "Saved Daybreak choice, independent of turn execution. Null if unset.",
+      }),
+      Schema.Null,
+    ]),
+  ),
+  environments: Schema.optionalKey(
+    Schema.Union([
+      Schema.Array(V2ThreadResumeResponse__ThreadEnvironment).annotate({
+        description:
+          "Current environments for a loaded thread, in priority order, primary first. `null` means the thread is not loaded or the server does not expose its selection. An empty list means no environments are selected. This does not report connection status.",
+      }),
+      Schema.Null,
+    ]),
+  ),
   ephemeral: Schema.Boolean.annotate({
     description: "Whether the thread is ephemeral and should not be materialized on disk.",
   }),
@@ -54803,6 +55672,15 @@ export const V2ThreadResumeResponse__Thread = Schema.Struct({
   name: Schema.optionalKey(
     Schema.Union([
       Schema.String.annotate({ description: "Optional user-facing thread title." }),
+      Schema.Null,
+    ]),
+  ),
+  originator: Schema.optionalKey(
+    Schema.Union([
+      Schema.String.annotate({
+        description:
+          "Originator recorded when the thread was created, independent of its current client or executor. Null when the recorded originator is unavailable.",
+      }),
       Schema.Null,
     ]),
   ),
@@ -54893,6 +55771,8 @@ export type V2ThreadRevertResponse__Thread = {
   readonly cliVersion: string;
   readonly createdAt: number;
   readonly cwd: V2ThreadRevertResponse__AbsolutePathBuf;
+  readonly daybreakEnabled?: boolean | null;
+  readonly environments?: ReadonlyArray<V2ThreadRevertResponse__ThreadEnvironment> | null;
   readonly ephemeral: boolean;
   readonly extra?: V2ThreadRevertResponse__ThreadExtra | null;
   readonly forkedFromId?: string | null;
@@ -54902,6 +55782,7 @@ export type V2ThreadRevertResponse__Thread = {
   readonly model?: string | null;
   readonly modelProvider: string;
   readonly name?: string | null;
+  readonly originator?: string | null;
   readonly parentThreadId?: string | null;
   readonly path?: string | null;
   readonly preview: string;
@@ -54955,6 +55836,23 @@ export const V2ThreadRevertResponse__Thread = Schema.Struct({
     (): Schema.Codec<V2ThreadRevertResponse__AbsolutePathBuf> =>
       V2ThreadRevertResponse__AbsolutePathBuf,
   ).annotate({ description: "Working directory captured for the thread." }),
+  daybreakEnabled: Schema.optionalKey(
+    Schema.Union([
+      Schema.Boolean.annotate({
+        description: "Saved Daybreak choice, independent of turn execution. Null if unset.",
+      }),
+      Schema.Null,
+    ]),
+  ),
+  environments: Schema.optionalKey(
+    Schema.Union([
+      Schema.Array(V2ThreadRevertResponse__ThreadEnvironment).annotate({
+        description:
+          "Current environments for a loaded thread, in priority order, primary first. `null` means the thread is not loaded or the server does not expose its selection. An empty list means no environments are selected. This does not report connection status.",
+      }),
+      Schema.Null,
+    ]),
+  ),
   ephemeral: Schema.Boolean.annotate({
     description: "Whether the thread is ephemeral and should not be materialized on disk.",
   }),
@@ -55003,6 +55901,15 @@ export const V2ThreadRevertResponse__Thread = Schema.Struct({
   name: Schema.optionalKey(
     Schema.Union([
       Schema.String.annotate({ description: "Optional user-facing thread title." }),
+      Schema.Null,
+    ]),
+  ),
+  originator: Schema.optionalKey(
+    Schema.Union([
+      Schema.String.annotate({
+        description:
+          "Originator recorded when the thread was created, independent of its current client or executor. Null when the recorded originator is unavailable.",
+      }),
       Schema.Null,
     ]),
   ),
@@ -55093,6 +56000,8 @@ export type V2ThreadRollbackResponse__Thread = {
   readonly cliVersion: string;
   readonly createdAt: number;
   readonly cwd: V2ThreadRollbackResponse__AbsolutePathBuf;
+  readonly daybreakEnabled?: boolean | null;
+  readonly environments?: ReadonlyArray<V2ThreadRollbackResponse__ThreadEnvironment> | null;
   readonly ephemeral: boolean;
   readonly extra?: V2ThreadRollbackResponse__ThreadExtra | null;
   readonly forkedFromId?: string | null;
@@ -55102,6 +56011,7 @@ export type V2ThreadRollbackResponse__Thread = {
   readonly model?: string | null;
   readonly modelProvider: string;
   readonly name?: string | null;
+  readonly originator?: string | null;
   readonly parentThreadId?: string | null;
   readonly path?: string | null;
   readonly preview: string;
@@ -55155,6 +56065,23 @@ export const V2ThreadRollbackResponse__Thread = Schema.Struct({
     (): Schema.Codec<V2ThreadRollbackResponse__AbsolutePathBuf> =>
       V2ThreadRollbackResponse__AbsolutePathBuf,
   ).annotate({ description: "Working directory captured for the thread." }),
+  daybreakEnabled: Schema.optionalKey(
+    Schema.Union([
+      Schema.Boolean.annotate({
+        description: "Saved Daybreak choice, independent of turn execution. Null if unset.",
+      }),
+      Schema.Null,
+    ]),
+  ),
+  environments: Schema.optionalKey(
+    Schema.Union([
+      Schema.Array(V2ThreadRollbackResponse__ThreadEnvironment).annotate({
+        description:
+          "Current environments for a loaded thread, in priority order, primary first. `null` means the thread is not loaded or the server does not expose its selection. An empty list means no environments are selected. This does not report connection status.",
+      }),
+      Schema.Null,
+    ]),
+  ),
   ephemeral: Schema.Boolean.annotate({
     description: "Whether the thread is ephemeral and should not be materialized on disk.",
   }),
@@ -55203,6 +56130,15 @@ export const V2ThreadRollbackResponse__Thread = Schema.Struct({
   name: Schema.optionalKey(
     Schema.Union([
       Schema.String.annotate({ description: "Optional user-facing thread title." }),
+      Schema.Null,
+    ]),
+  ),
+  originator: Schema.optionalKey(
+    Schema.Union([
+      Schema.String.annotate({
+        description:
+          "Originator recorded when the thread was created, independent of its current client or executor. Null when the recorded originator is unavailable.",
+      }),
       Schema.Null,
     ]),
   ),
@@ -55294,6 +56230,8 @@ export type V2ThreadSearchResponse__Thread = {
   readonly cliVersion: string;
   readonly createdAt: number;
   readonly cwd: V2ThreadSearchResponse__AbsolutePathBuf;
+  readonly daybreakEnabled?: boolean | null;
+  readonly environments?: ReadonlyArray<V2ThreadSearchResponse__ThreadEnvironment> | null;
   readonly ephemeral: boolean;
   readonly extra?: V2ThreadSearchResponse__ThreadExtra | null;
   readonly forkedFromId?: string | null;
@@ -55303,6 +56241,7 @@ export type V2ThreadSearchResponse__Thread = {
   readonly model?: string | null;
   readonly modelProvider: string;
   readonly name?: string | null;
+  readonly originator?: string | null;
   readonly parentThreadId?: string | null;
   readonly path?: string | null;
   readonly preview: string;
@@ -55356,6 +56295,23 @@ export const V2ThreadSearchResponse__Thread = Schema.Struct({
     (): Schema.Codec<V2ThreadSearchResponse__AbsolutePathBuf> =>
       V2ThreadSearchResponse__AbsolutePathBuf,
   ).annotate({ description: "Working directory captured for the thread." }),
+  daybreakEnabled: Schema.optionalKey(
+    Schema.Union([
+      Schema.Boolean.annotate({
+        description: "Saved Daybreak choice, independent of turn execution. Null if unset.",
+      }),
+      Schema.Null,
+    ]),
+  ),
+  environments: Schema.optionalKey(
+    Schema.Union([
+      Schema.Array(V2ThreadSearchResponse__ThreadEnvironment).annotate({
+        description:
+          "Current environments for a loaded thread, in priority order, primary first. `null` means the thread is not loaded or the server does not expose its selection. An empty list means no environments are selected. This does not report connection status.",
+      }),
+      Schema.Null,
+    ]),
+  ),
   ephemeral: Schema.Boolean.annotate({
     description: "Whether the thread is ephemeral and should not be materialized on disk.",
   }),
@@ -55404,6 +56360,15 @@ export const V2ThreadSearchResponse__Thread = Schema.Struct({
   name: Schema.optionalKey(
     Schema.Union([
       Schema.String.annotate({ description: "Optional user-facing thread title." }),
+      Schema.Null,
+    ]),
+  ),
+  originator: Schema.optionalKey(
+    Schema.Union([
+      Schema.String.annotate({
+        description:
+          "Originator recorded when the thread was created, independent of its current client or executor. Null when the recorded originator is unavailable.",
+      }),
       Schema.Null,
     ]),
   ),
@@ -55494,6 +56459,8 @@ export type V2ThreadStartedNotification__Thread = {
   readonly cliVersion: string;
   readonly createdAt: number;
   readonly cwd: V2ThreadStartedNotification__AbsolutePathBuf;
+  readonly daybreakEnabled?: boolean | null;
+  readonly environments?: ReadonlyArray<V2ThreadStartedNotification__ThreadEnvironment> | null;
   readonly ephemeral: boolean;
   readonly extra?: V2ThreadStartedNotification__ThreadExtra | null;
   readonly forkedFromId?: string | null;
@@ -55503,6 +56470,7 @@ export type V2ThreadStartedNotification__Thread = {
   readonly model?: string | null;
   readonly modelProvider: string;
   readonly name?: string | null;
+  readonly originator?: string | null;
   readonly parentThreadId?: string | null;
   readonly path?: string | null;
   readonly preview: string;
@@ -55556,6 +56524,23 @@ export const V2ThreadStartedNotification__Thread = Schema.Struct({
     (): Schema.Codec<V2ThreadStartedNotification__AbsolutePathBuf> =>
       V2ThreadStartedNotification__AbsolutePathBuf,
   ).annotate({ description: "Working directory captured for the thread." }),
+  daybreakEnabled: Schema.optionalKey(
+    Schema.Union([
+      Schema.Boolean.annotate({
+        description: "Saved Daybreak choice, independent of turn execution. Null if unset.",
+      }),
+      Schema.Null,
+    ]),
+  ),
+  environments: Schema.optionalKey(
+    Schema.Union([
+      Schema.Array(V2ThreadStartedNotification__ThreadEnvironment).annotate({
+        description:
+          "Current environments for a loaded thread, in priority order, primary first. `null` means the thread is not loaded or the server does not expose its selection. An empty list means no environments are selected. This does not report connection status.",
+      }),
+      Schema.Null,
+    ]),
+  ),
   ephemeral: Schema.Boolean.annotate({
     description: "Whether the thread is ephemeral and should not be materialized on disk.",
   }),
@@ -55604,6 +56589,15 @@ export const V2ThreadStartedNotification__Thread = Schema.Struct({
   name: Schema.optionalKey(
     Schema.Union([
       Schema.String.annotate({ description: "Optional user-facing thread title." }),
+      Schema.Null,
+    ]),
+  ),
+  originator: Schema.optionalKey(
+    Schema.Union([
+      Schema.String.annotate({
+        description:
+          "Originator recorded when the thread was created, independent of its current client or executor. Null when the recorded originator is unavailable.",
+      }),
       Schema.Null,
     ]),
   ),
@@ -55695,6 +56689,8 @@ export type V2ThreadStartResponse__Thread = {
   readonly cliVersion: string;
   readonly createdAt: number;
   readonly cwd: V2ThreadStartResponse__AbsolutePathBuf;
+  readonly daybreakEnabled?: boolean | null;
+  readonly environments?: ReadonlyArray<V2ThreadStartResponse__ThreadEnvironment> | null;
   readonly ephemeral: boolean;
   readonly extra?: V2ThreadStartResponse__ThreadExtra | null;
   readonly forkedFromId?: string | null;
@@ -55704,6 +56700,7 @@ export type V2ThreadStartResponse__Thread = {
   readonly model?: string | null;
   readonly modelProvider: string;
   readonly name?: string | null;
+  readonly originator?: string | null;
   readonly parentThreadId?: string | null;
   readonly path?: string | null;
   readonly preview: string;
@@ -55757,6 +56754,23 @@ export const V2ThreadStartResponse__Thread = Schema.Struct({
     (): Schema.Codec<V2ThreadStartResponse__AbsolutePathBuf> =>
       V2ThreadStartResponse__AbsolutePathBuf,
   ).annotate({ description: "Working directory captured for the thread." }),
+  daybreakEnabled: Schema.optionalKey(
+    Schema.Union([
+      Schema.Boolean.annotate({
+        description: "Saved Daybreak choice, independent of turn execution. Null if unset.",
+      }),
+      Schema.Null,
+    ]),
+  ),
+  environments: Schema.optionalKey(
+    Schema.Union([
+      Schema.Array(V2ThreadStartResponse__ThreadEnvironment).annotate({
+        description:
+          "Current environments for a loaded thread, in priority order, primary first. `null` means the thread is not loaded or the server does not expose its selection. An empty list means no environments are selected. This does not report connection status.",
+      }),
+      Schema.Null,
+    ]),
+  ),
   ephemeral: Schema.Boolean.annotate({
     description: "Whether the thread is ephemeral and should not be materialized on disk.",
   }),
@@ -55805,6 +56819,15 @@ export const V2ThreadStartResponse__Thread = Schema.Struct({
   name: Schema.optionalKey(
     Schema.Union([
       Schema.String.annotate({ description: "Optional user-facing thread title." }),
+      Schema.Null,
+    ]),
+  ),
+  originator: Schema.optionalKey(
+    Schema.Union([
+      Schema.String.annotate({
+        description:
+          "Originator recorded when the thread was created, independent of its current client or executor. Null when the recorded originator is unavailable.",
+      }),
       Schema.Null,
     ]),
   ),
@@ -55894,6 +56917,8 @@ export type V2ThreadUnarchiveResponse__Thread = {
   readonly cliVersion: string;
   readonly createdAt: number;
   readonly cwd: V2ThreadUnarchiveResponse__AbsolutePathBuf;
+  readonly daybreakEnabled?: boolean | null;
+  readonly environments?: ReadonlyArray<V2ThreadUnarchiveResponse__ThreadEnvironment> | null;
   readonly ephemeral: boolean;
   readonly extra?: V2ThreadUnarchiveResponse__ThreadExtra | null;
   readonly forkedFromId?: string | null;
@@ -55903,6 +56928,7 @@ export type V2ThreadUnarchiveResponse__Thread = {
   readonly model?: string | null;
   readonly modelProvider: string;
   readonly name?: string | null;
+  readonly originator?: string | null;
   readonly parentThreadId?: string | null;
   readonly path?: string | null;
   readonly preview: string;
@@ -55956,6 +56982,23 @@ export const V2ThreadUnarchiveResponse__Thread = Schema.Struct({
     (): Schema.Codec<V2ThreadUnarchiveResponse__AbsolutePathBuf> =>
       V2ThreadUnarchiveResponse__AbsolutePathBuf,
   ).annotate({ description: "Working directory captured for the thread." }),
+  daybreakEnabled: Schema.optionalKey(
+    Schema.Union([
+      Schema.Boolean.annotate({
+        description: "Saved Daybreak choice, independent of turn execution. Null if unset.",
+      }),
+      Schema.Null,
+    ]),
+  ),
+  environments: Schema.optionalKey(
+    Schema.Union([
+      Schema.Array(V2ThreadUnarchiveResponse__ThreadEnvironment).annotate({
+        description:
+          "Current environments for a loaded thread, in priority order, primary first. `null` means the thread is not loaded or the server does not expose its selection. An empty list means no environments are selected. This does not report connection status.",
+      }),
+      Schema.Null,
+    ]),
+  ),
   ephemeral: Schema.Boolean.annotate({
     description: "Whether the thread is ephemeral and should not be materialized on disk.",
   }),
@@ -56004,6 +57047,15 @@ export const V2ThreadUnarchiveResponse__Thread = Schema.Struct({
   name: Schema.optionalKey(
     Schema.Union([
       Schema.String.annotate({ description: "Optional user-facing thread title." }),
+      Schema.Null,
+    ]),
+  ),
+  originator: Schema.optionalKey(
+    Schema.Union([
+      Schema.String.annotate({
+        description:
+          "Originator recorded when the thread was created, independent of its current client or executor. Null when the recorded originator is unavailable.",
+      }),
       Schema.Null,
     ]),
   ),
@@ -56110,17 +57162,10 @@ export const McpServerElicitationRequestParams__McpElicitationSchema = Schema.St
   identifier: "McpServerElicitationRequestParams__McpElicitationSchema",
 });
 
-export type ServerNotification__ThreadStartedNotification = {
-  readonly thread: ServerNotification__Thread;
-};
-export const ServerNotification__ThreadStartedNotification = Schema.Struct({
-  thread: ServerNotification__Thread,
-}).annotate({ identifier: "ServerNotification__ThreadStartedNotification" });
-
 export type ServerNotification__GuardianApprovalReviewAction =
   | {
       readonly command: string;
-      readonly cwd: ServerNotification__AbsolutePathBuf;
+      readonly cwd: ServerNotification__LegacyAppPathString;
       readonly source: ServerNotification__GuardianCommandSource;
       readonly type: "command";
     }
@@ -56139,8 +57184,8 @@ export type ServerNotification__GuardianApprovalReviewAction =
       readonly type: "writeStdin";
     }
   | {
-      readonly cwd: ServerNotification__AbsolutePathBuf;
-      readonly files: ReadonlyArray<ServerNotification__AbsolutePathBuf>;
+      readonly cwd: ServerNotification__LegacyAppPathString;
+      readonly files: ReadonlyArray<ServerNotification__LegacyAppPathString>;
       readonly type: "applyPatch";
     }
   | {
@@ -56167,7 +57212,7 @@ export const ServerNotification__GuardianApprovalReviewAction = Schema.Union(
   [
     Schema.Struct({
       command: Schema.String,
-      cwd: ServerNotification__AbsolutePathBuf,
+      cwd: ServerNotification__LegacyAppPathString,
       source: ServerNotification__GuardianCommandSource,
       type: Schema.Literal("command").annotate({
         title: "CommandGuardianApprovalReviewActionType",
@@ -56193,8 +57238,8 @@ export const ServerNotification__GuardianApprovalReviewAction = Schema.Union(
       description: "A child approval for input to an existing command execution item.",
     }),
     Schema.Struct({
-      cwd: ServerNotification__AbsolutePathBuf,
-      files: Schema.Array(ServerNotification__AbsolutePathBuf),
+      cwd: ServerNotification__LegacyAppPathString,
+      files: Schema.Array(ServerNotification__LegacyAppPathString),
       type: Schema.Literal("applyPatch").annotate({
         title: "ApplyPatchGuardianApprovalReviewActionType",
       }),
@@ -56234,6 +57279,13 @@ export const ServerNotification__GuardianApprovalReviewAction = Schema.Union(
   ],
   { mode: "oneOf" },
 ).annotate({ identifier: "ServerNotification__GuardianApprovalReviewAction" });
+
+export type ServerNotification__ThreadStartedNotification = {
+  readonly thread: ServerNotification__Thread;
+};
+export const ServerNotification__ThreadStartedNotification = Schema.Struct({
+  thread: ServerNotification__Thread,
+}).annotate({ identifier: "ServerNotification__ThreadStartedNotification" });
 
 export type ServerRequest__CommandExecutionRequestApprovalParams = {
   readonly additionalPermissions?: ServerRequest__AdditionalPermissionProfile | null;
@@ -56351,7 +57403,7 @@ export const ServerRequest__CommandExecutionRequestApprovalParams = Schema.Struc
 }).annotate({ identifier: "ServerRequest__CommandExecutionRequestApprovalParams" });
 
 export type ServerRequest__PermissionsRequestApprovalParams = {
-  readonly cwd: ServerRequest__AbsolutePathBuf;
+  readonly cwd: ServerRequest__LegacyAppPathString;
   readonly environmentId?: string | null;
   readonly itemId: string;
   readonly permissions: ServerRequest__RequestPermissionProfile;
@@ -56361,7 +57413,7 @@ export type ServerRequest__PermissionsRequestApprovalParams = {
   readonly turnId: string;
 };
 export const ServerRequest__PermissionsRequestApprovalParams = Schema.Struct({
-  cwd: ServerRequest__AbsolutePathBuf,
+  cwd: ServerRequest__LegacyAppPathString,
   environmentId: Schema.optionalKey(Schema.Union([Schema.String, Schema.Null])),
   itemId: Schema.String,
   permissions: ServerRequest__RequestPermissionProfile,
@@ -56394,7 +57446,7 @@ export const ServerRequest__McpElicitationSchema = Schema.Struct({
 export type V2ItemGuardianApprovalReviewCompletedNotification__GuardianApprovalReviewAction =
   | {
       readonly command: string;
-      readonly cwd: V2ItemGuardianApprovalReviewCompletedNotification__AbsolutePathBuf;
+      readonly cwd: V2ItemGuardianApprovalReviewCompletedNotification__LegacyAppPathString;
       readonly source: V2ItemGuardianApprovalReviewCompletedNotification__GuardianCommandSource;
       readonly type: "command";
     }
@@ -56413,8 +57465,8 @@ export type V2ItemGuardianApprovalReviewCompletedNotification__GuardianApprovalR
       readonly type: "writeStdin";
     }
   | {
-      readonly cwd: V2ItemGuardianApprovalReviewCompletedNotification__AbsolutePathBuf;
-      readonly files: ReadonlyArray<V2ItemGuardianApprovalReviewCompletedNotification__AbsolutePathBuf>;
+      readonly cwd: V2ItemGuardianApprovalReviewCompletedNotification__LegacyAppPathString;
+      readonly files: ReadonlyArray<V2ItemGuardianApprovalReviewCompletedNotification__LegacyAppPathString>;
       readonly type: "applyPatch";
     }
   | {
@@ -56442,7 +57494,7 @@ export const V2ItemGuardianApprovalReviewCompletedNotification__GuardianApproval
     [
       Schema.Struct({
         command: Schema.String,
-        cwd: V2ItemGuardianApprovalReviewCompletedNotification__AbsolutePathBuf,
+        cwd: V2ItemGuardianApprovalReviewCompletedNotification__LegacyAppPathString,
         source: V2ItemGuardianApprovalReviewCompletedNotification__GuardianCommandSource,
         type: Schema.Literal("command").annotate({
           title: "CommandGuardianApprovalReviewActionType",
@@ -56470,8 +57522,8 @@ export const V2ItemGuardianApprovalReviewCompletedNotification__GuardianApproval
         description: "A child approval for input to an existing command execution item.",
       }),
       Schema.Struct({
-        cwd: V2ItemGuardianApprovalReviewCompletedNotification__AbsolutePathBuf,
-        files: Schema.Array(V2ItemGuardianApprovalReviewCompletedNotification__AbsolutePathBuf),
+        cwd: V2ItemGuardianApprovalReviewCompletedNotification__LegacyAppPathString,
+        files: Schema.Array(V2ItemGuardianApprovalReviewCompletedNotification__LegacyAppPathString),
         type: Schema.Literal("applyPatch").annotate({
           title: "ApplyPatchGuardianApprovalReviewActionType",
         }),
@@ -56517,7 +57569,7 @@ export const V2ItemGuardianApprovalReviewCompletedNotification__GuardianApproval
 export type V2ItemGuardianApprovalReviewStartedNotification__GuardianApprovalReviewAction =
   | {
       readonly command: string;
-      readonly cwd: V2ItemGuardianApprovalReviewStartedNotification__AbsolutePathBuf;
+      readonly cwd: V2ItemGuardianApprovalReviewStartedNotification__LegacyAppPathString;
       readonly source: V2ItemGuardianApprovalReviewStartedNotification__GuardianCommandSource;
       readonly type: "command";
     }
@@ -56536,8 +57588,8 @@ export type V2ItemGuardianApprovalReviewStartedNotification__GuardianApprovalRev
       readonly type: "writeStdin";
     }
   | {
-      readonly cwd: V2ItemGuardianApprovalReviewStartedNotification__AbsolutePathBuf;
-      readonly files: ReadonlyArray<V2ItemGuardianApprovalReviewStartedNotification__AbsolutePathBuf>;
+      readonly cwd: V2ItemGuardianApprovalReviewStartedNotification__LegacyAppPathString;
+      readonly files: ReadonlyArray<V2ItemGuardianApprovalReviewStartedNotification__LegacyAppPathString>;
       readonly type: "applyPatch";
     }
   | {
@@ -56565,7 +57617,7 @@ export const V2ItemGuardianApprovalReviewStartedNotification__GuardianApprovalRe
     [
       Schema.Struct({
         command: Schema.String,
-        cwd: V2ItemGuardianApprovalReviewStartedNotification__AbsolutePathBuf,
+        cwd: V2ItemGuardianApprovalReviewStartedNotification__LegacyAppPathString,
         source: V2ItemGuardianApprovalReviewStartedNotification__GuardianCommandSource,
         type: Schema.Literal("command").annotate({
           title: "CommandGuardianApprovalReviewActionType",
@@ -56593,8 +57645,8 @@ export const V2ItemGuardianApprovalReviewStartedNotification__GuardianApprovalRe
         description: "A child approval for input to an existing command execution item.",
       }),
       Schema.Struct({
-        cwd: V2ItemGuardianApprovalReviewStartedNotification__AbsolutePathBuf,
-        files: Schema.Array(V2ItemGuardianApprovalReviewStartedNotification__AbsolutePathBuf),
+        cwd: V2ItemGuardianApprovalReviewStartedNotification__LegacyAppPathString,
+        files: Schema.Array(V2ItemGuardianApprovalReviewStartedNotification__LegacyAppPathString),
         type: Schema.Literal("applyPatch").annotate({
           title: "ApplyPatchGuardianApprovalReviewActionType",
         }),
@@ -56726,6 +57778,15 @@ export type ServerRequest__McpServerElicitationRequestParams =
       readonly serverName: string;
       readonly threadId: string;
       readonly turnId?: string | null;
+      readonly challenge: string;
+      readonly description: string;
+      readonly mode: "openai/userVerification";
+      readonly title: string;
+    }
+  | {
+      readonly serverName: string;
+      readonly threadId: string;
+      readonly turnId?: string | null;
       readonly _meta?: Schema.Json;
       readonly message: string;
       readonly mode: "form";
@@ -56761,6 +57822,26 @@ export type ServerRequest__McpServerElicitationRequestParams =
     };
 export const ServerRequest__McpServerElicitationRequestParams = Schema.Union(
   [
+    Schema.Struct({
+      serverName: Schema.String,
+      threadId: Schema.String,
+      turnId: Schema.optionalKey(
+        Schema.Union([
+          Schema.String.annotate({
+            description:
+              "Active Codex turn when this elicitation was observed, if app-server could correlate one.\n\nThis is nullable because MCP models elicitation as a standalone server-to-client request identified by the MCP server request id. It may be triggered during a turn, but turn context is app-server correlation rather than part of the protocol identity of the elicitation itself.",
+          }),
+          Schema.Null,
+        ]),
+      ),
+      challenge: Schema.String,
+      description: Schema.String,
+      mode: Schema.Literal("openai/userVerification"),
+      title: Schema.String,
+    }).annotate({
+      description:
+        "A device-authenticated approval; accepted responses contain the proof in `content`.",
+    }),
     Schema.Struct({
       serverName: Schema.String,
       threadId: Schema.String,
@@ -56935,6 +58016,31 @@ export type ClientRequest =
     }
   | {
       readonly id: ClientRequest__RequestId;
+      readonly method: "userVerification/status";
+      readonly params: ClientRequest__UserVerificationStatusParams;
+    }
+  | {
+      readonly id: ClientRequest__RequestId;
+      readonly method: "userVerification/enroll";
+      readonly params: ClientRequest__UserVerificationEnrollParams;
+    }
+  | {
+      readonly id: ClientRequest__RequestId;
+      readonly method: "userVerification/delete";
+      readonly params: ClientRequest__UserVerificationDeleteParams;
+    }
+  | {
+      readonly id: ClientRequest__RequestId;
+      readonly method: "userVerification/verify";
+      readonly params: ClientRequest__UserVerificationVerifyParams;
+    }
+  | {
+      readonly id: ClientRequest__RequestId;
+      readonly method: "userVerification/cancel";
+      readonly params: ClientRequest__UserVerificationCancelParams;
+    }
+  | {
+      readonly id: ClientRequest__RequestId;
       readonly method: "thread/start";
       readonly params: ClientRequest__ThreadStartParams;
     }
@@ -57030,6 +58136,21 @@ export type ClientRequest =
     }
   | {
       readonly id: ClientRequest__RequestId;
+      readonly method: "thread/attachment/add";
+      readonly params: ClientRequest__ThreadAttachmentAddParams;
+    }
+  | {
+      readonly id: ClientRequest__RequestId;
+      readonly method: "thread/attachment/list";
+      readonly params: ClientRequest__ThreadAttachmentListParams;
+    }
+  | {
+      readonly id: ClientRequest__RequestId;
+      readonly method: "thread/attachment/remove";
+      readonly params: ClientRequest__ThreadAttachmentRemoveParams;
+    }
+  | {
+      readonly id: ClientRequest__RequestId;
       readonly method: "thread/section/move";
       readonly params: ClientRequest__ThreadSectionMoveParams;
     }
@@ -57042,6 +58163,11 @@ export type ClientRequest =
       readonly id: ClientRequest__RequestId;
       readonly method: "thread/memoryMode/set";
       readonly params: ClientRequest__ThreadMemoryModeSetParams;
+    }
+  | {
+      readonly id: ClientRequest__RequestId;
+      readonly method: "memory/status";
+      readonly params: ClientRequest__MemoryStatusParams;
     }
   | {
       readonly id: ClientRequest__RequestId;
@@ -57566,7 +58692,7 @@ export type ClientRequest =
   | {
       readonly id: ClientRequest__RequestId;
       readonly method: "account/rateLimits/read";
-      readonly params?: null;
+      readonly params?: ClientRequest__GetAccountRateLimitsParams | null;
     }
   | {
       readonly id: ClientRequest__RequestId;
@@ -57717,6 +58843,41 @@ export const ClientRequest = Schema.Union(
     }),
     Schema.Struct({
       id: ClientRequest__RequestId,
+      method: Schema.Literal("userVerification/status").annotate({
+        title: "UserVerification/statusRequestMethod",
+      }),
+      params: ClientRequest__UserVerificationStatusParams,
+    }).annotate({ title: "UserVerification/statusRequest" }),
+    Schema.Struct({
+      id: ClientRequest__RequestId,
+      method: Schema.Literal("userVerification/enroll").annotate({
+        title: "UserVerification/enrollRequestMethod",
+      }),
+      params: ClientRequest__UserVerificationEnrollParams,
+    }).annotate({ title: "UserVerification/enrollRequest" }),
+    Schema.Struct({
+      id: ClientRequest__RequestId,
+      method: Schema.Literal("userVerification/delete").annotate({
+        title: "UserVerification/deleteRequestMethod",
+      }),
+      params: ClientRequest__UserVerificationDeleteParams,
+    }).annotate({ title: "UserVerification/deleteRequest" }),
+    Schema.Struct({
+      id: ClientRequest__RequestId,
+      method: Schema.Literal("userVerification/verify").annotate({
+        title: "UserVerification/verifyRequestMethod",
+      }),
+      params: ClientRequest__UserVerificationVerifyParams,
+    }).annotate({ title: "UserVerification/verifyRequest" }),
+    Schema.Struct({
+      id: ClientRequest__RequestId,
+      method: Schema.Literal("userVerification/cancel").annotate({
+        title: "UserVerification/cancelRequestMethod",
+      }),
+      params: ClientRequest__UserVerificationCancelParams,
+    }).annotate({ title: "UserVerification/cancelRequest" }),
+    Schema.Struct({
+      id: ClientRequest__RequestId,
       method: Schema.Literal("thread/start").annotate({ title: "Thread/startRequestMethod" }),
       params: ClientRequest__ThreadStartParams,
     }).annotate({ title: "Thread/startRequest", description: "NEW APIs" }),
@@ -57842,6 +59003,27 @@ export const ClientRequest = Schema.Union(
     }).annotate({ title: "Thread/metadata/updateRequest" }),
     Schema.Struct({
       id: ClientRequest__RequestId,
+      method: Schema.Literal("thread/attachment/add").annotate({
+        title: "Thread/attachment/addRequestMethod",
+      }),
+      params: ClientRequest__ThreadAttachmentAddParams,
+    }).annotate({ title: "Thread/attachment/addRequest" }),
+    Schema.Struct({
+      id: ClientRequest__RequestId,
+      method: Schema.Literal("thread/attachment/list").annotate({
+        title: "Thread/attachment/listRequestMethod",
+      }),
+      params: ClientRequest__ThreadAttachmentListParams,
+    }).annotate({ title: "Thread/attachment/listRequest" }),
+    Schema.Struct({
+      id: ClientRequest__RequestId,
+      method: Schema.Literal("thread/attachment/remove").annotate({
+        title: "Thread/attachment/removeRequestMethod",
+      }),
+      params: ClientRequest__ThreadAttachmentRemoveParams,
+    }).annotate({ title: "Thread/attachment/removeRequest" }),
+    Schema.Struct({
+      id: ClientRequest__RequestId,
       method: Schema.Literal("thread/section/move").annotate({
         title: "Thread/section/moveRequestMethod",
       }),
@@ -57861,6 +59043,11 @@ export const ClientRequest = Schema.Union(
       }),
       params: ClientRequest__ThreadMemoryModeSetParams,
     }).annotate({ title: "Thread/memoryMode/setRequest" }),
+    Schema.Struct({
+      id: ClientRequest__RequestId,
+      method: Schema.Literal("memory/status").annotate({ title: "Memory/statusRequestMethod" }),
+      params: ClientRequest__MemoryStatusParams,
+    }).annotate({ title: "Memory/statusRequest" }),
     Schema.Struct({
       id: ClientRequest__RequestId,
       method: Schema.Literal("memory/reset").annotate({ title: "Memory/resetRequestMethod" }),
@@ -58543,7 +59730,9 @@ export const ClientRequest = Schema.Union(
       method: Schema.Literal("account/rateLimits/read").annotate({
         title: "Account/rateLimits/readRequestMethod",
       }),
-      params: Schema.optionalKey(Schema.Null),
+      params: Schema.optionalKey(
+        Schema.Union([ClientRequest__GetAccountRateLimitsParams, Schema.Null]),
+      ),
     }).annotate({ title: "Account/rateLimits/readRequest" }),
     Schema.Struct({
       id: ClientRequest__RequestId,
@@ -59191,6 +60380,15 @@ export type McpServerElicitationRequestParams =
       readonly serverName: string;
       readonly threadId: string;
       readonly turnId?: string | null;
+      readonly challenge: string;
+      readonly description: string;
+      readonly mode: "openai/userVerification";
+      readonly title: string;
+    }
+  | {
+      readonly serverName: string;
+      readonly threadId: string;
+      readonly turnId?: string | null;
       readonly _meta?: Schema.Json;
       readonly message: string;
       readonly mode: "form";
@@ -59226,6 +60424,27 @@ export type McpServerElicitationRequestParams =
     };
 export const McpServerElicitationRequestParams = Schema.Union(
   [
+    Schema.Struct({
+      serverName: Schema.String,
+      threadId: Schema.String,
+      turnId: Schema.optionalKey(
+        Schema.Union([
+          Schema.String.annotate({
+            description:
+              "Active Codex turn when this elicitation was observed, if app-server could correlate one.\n\nThis is nullable because MCP models elicitation as a standalone server-to-client request identified by the MCP server request id. It may be triggered during a turn, but turn context is app-server correlation rather than part of the protocol identity of the elicitation itself.",
+          }),
+          Schema.Null,
+        ]),
+      ),
+      challenge: Schema.String,
+      description: Schema.String,
+      mode: Schema.Literal("openai/userVerification"),
+      title: Schema.String,
+    }).annotate({
+      title: "McpServerElicitationRequestParams",
+      description:
+        "A device-authenticated approval; accepted responses contain the proof in `content`.",
+    }),
     Schema.Struct({
       serverName: Schema.String,
       threadId: Schema.String,
@@ -59322,7 +60541,7 @@ export const McpServerElicitationRequestResponse = Schema.Struct({
 }).annotate({ title: "McpServerElicitationRequestResponse" });
 
 export type PermissionsRequestApprovalParams = {
-  readonly cwd: PermissionsRequestApprovalParams__AbsolutePathBuf;
+  readonly cwd: PermissionsRequestApprovalParams__LegacyAppPathString;
   readonly environmentId?: string | null;
   readonly itemId: string;
   readonly permissions: PermissionsRequestApprovalParams__RequestPermissionProfile;
@@ -59332,7 +60551,7 @@ export type PermissionsRequestApprovalParams = {
   readonly turnId: string;
 };
 export const PermissionsRequestApprovalParams = Schema.Struct({
-  cwd: PermissionsRequestApprovalParams__AbsolutePathBuf,
+  cwd: PermissionsRequestApprovalParams__LegacyAppPathString,
   environmentId: Schema.optionalKey(Schema.Union([Schema.String, Schema.Null])),
   itemId: Schema.String,
   permissions: PermissionsRequestApprovalParams__RequestPermissionProfile,
@@ -59426,6 +60645,11 @@ export type ServerNotification =
   | {
       readonly method: "thread/name/updated";
       readonly params: ServerNotification__ThreadNameUpdatedNotification;
+      readonly emittedAtMs?: never;
+    }
+  | {
+      readonly method: "thread/attachment/updated";
+      readonly params: ServerNotification__ThreadAttachmentUpdatedNotification;
       readonly emittedAtMs?: never;
     }
   | {
@@ -59878,6 +61102,16 @@ export const ServerNotification = Schema.Union(
         title: "Thread/name/updatedNotificationMethod",
       }),
       params: ServerNotification__ThreadNameUpdatedNotification,
+      emittedAtMs: Schema.optionalKey(Schema.Never),
+    }).annotate({
+      title: "ServerNotification",
+      description: "Notification sent from the server to the client.",
+    }),
+    Schema.Struct({
+      method: Schema.Literal("thread/attachment/updated").annotate({
+        title: "Thread/attachment/updatedNotificationMethod",
+      }),
+      params: ServerNotification__ThreadAttachmentUpdatedNotification,
       emittedAtMs: Schema.optionalKey(Schema.Never),
     }).annotate({
       title: "ServerNotification",
@@ -61997,10 +63231,22 @@ export const V2FeedbackUploadParams = Schema.Struct({
   threadId: Schema.optionalKey(Schema.Union([Schema.String, Schema.Null])),
 }).annotate({ title: "FeedbackUploadParams" });
 
-export type V2FeedbackUploadResponse = { readonly threadId: string };
-export const V2FeedbackUploadResponse = Schema.Struct({ threadId: Schema.String }).annotate({
-  title: "FeedbackUploadResponse",
-});
+export type V2FeedbackUploadResponse = {
+  readonly promptHash?: string | null;
+  readonly threadId: string;
+};
+export const V2FeedbackUploadResponse = Schema.Struct({
+  promptHash: Schema.optionalKey(
+    Schema.Union([
+      Schema.String.annotate({
+        description:
+          "Whitespace-normalized SHA-256 of the session base instructions, matching the uploaded `prompt_hash` tag. Does not include later developer messages. Null when the reported rollout has no prompt metadata.",
+      }),
+      Schema.Null,
+    ]),
+  ),
+  threadId: Schema.String,
+}).annotate({ title: "FeedbackUploadResponse" });
 
 export type V2FileChangeOutputDeltaNotification = {
   readonly delta: string;
@@ -62285,6 +63531,7 @@ export const V2GetAccountParams = Schema.Struct({
 
 export type V2GetAccountRateLimitsResponse = {
   readonly accountId?: string | null;
+  readonly ordinaryUsageAllowed?: boolean | null;
   readonly rateLimitResetCredits?: V2GetAccountRateLimitsResponse__RateLimitResetCreditsSummary | null;
   readonly rateLimitUpsell?: Schema.Json;
   readonly rateLimits: V2GetAccountRateLimitsResponse__RateLimitSnapshot;
@@ -62297,6 +63544,15 @@ export const V2GetAccountRateLimitsResponse = Schema.Struct({
     Schema.Union([
       Schema.String.annotate({
         description: "Account associated with this usage snapshot, when supplied by the backend.",
+      }),
+      Schema.Null,
+    ]),
+  ),
+  ordinaryUsageAllowed: Schema.optionalKey(
+    Schema.Union([
+      Schema.Boolean.annotate({
+        description:
+          "Backend permission for ordinary included usage, validated against the active account. Null means unavailable; clients must not infer recovery from percentages or reset times.",
       }),
       Schema.Null,
     ]),
@@ -62981,6 +64237,39 @@ export const V2MemoryResetResponse = Schema.Record(Schema.String, Schema.Never).
   title: "MemoryResetResponse",
 });
 
+export type V2MemoryStatusParams = { readonly minConsolidatedThreads?: number | null };
+export const V2MemoryStatusParams = Schema.Struct({
+  minConsolidatedThreads: Schema.optionalKey(
+    Schema.Union([
+      Schema.Number.annotate({
+        description:
+          "Required distinct consolidated threads. Defaults to 20; supported range is 1..=4096.",
+        format: "uint32",
+      })
+        .check(Schema.isInt().annotate({ expected: "an integer" }))
+        .check(
+          Schema.isGreaterThanOrEqualTo(0).annotate({
+            expected: "a value greater than or equal to 0",
+          }),
+        ),
+      Schema.Null,
+    ]),
+  ),
+}).annotate({ title: "MemoryStatusParams" });
+
+export type V2MemoryStatusResponse = {
+  readonly v2ConsolidatedThreads: number;
+  readonly v2Ready: boolean;
+};
+export const V2MemoryStatusResponse = Schema.Struct({
+  v2ConsolidatedThreads: Schema.Number.annotate({ format: "uint32" })
+    .check(Schema.isInt().annotate({ expected: "an integer" }))
+    .check(
+      Schema.isGreaterThanOrEqualTo(0).annotate({ expected: "a value greater than or equal to 0" }),
+    ),
+  v2Ready: Schema.Boolean,
+}).annotate({ title: "MemoryStatusResponse" });
+
 export type V2MockExperimentalMethodParams = { readonly value?: string | null };
 export const V2MockExperimentalMethodParams = Schema.Struct({
   value: Schema.optionalKey(
@@ -63118,6 +64407,13 @@ export const V2ModelVerificationNotification = Schema.Struct({
   turnId: Schema.String,
   verifications: Schema.Array(V2ModelVerificationNotification__ModelVerification),
 }).annotate({ title: "ModelVerificationNotification" });
+
+export type V2NullableGetAccountRateLimitsParams =
+  V2NullableGetAccountRateLimitsParams__GetAccountRateLimitsParams | null;
+export const V2NullableGetAccountRateLimitsParams = Schema.Union([
+  V2NullableGetAccountRateLimitsParams__GetAccountRateLimitsParams,
+  Schema.Null,
+]).annotate({ title: "Nullable_GetAccountRateLimitsParams" });
 
 export type V2NullableGetAccountTokenUsageParams =
   V2NullableGetAccountTokenUsageParams__GetAccountTokenUsageParams | null;
@@ -64134,7 +65430,7 @@ export const V2ReviewStartParams = Schema.Struct({
   delivery: Schema.optionalKey(
     Schema.Union([V2ReviewStartParams__ReviewDelivery, Schema.Null]).annotate({
       description:
-        "Where to run the review: inline (default) on the current thread or detached on a new thread (returned in `reviewThreadId`).",
+        "Where to run the review: inline (default) on the current thread or detached on a new thread (returned in `reviewThreadId`). Detached delivery is deprecated and emits `deprecationNotice`. Use `thread/start` followed by an inline review for a separate review thread.",
     }),
   ),
   target: V2ReviewStartParams__ReviewTarget,
@@ -64315,6 +65611,111 @@ export const V2ThreadArchiveParams = Schema.Struct({ threadId: Schema.String }).
 export type V2ThreadArchiveResponse = { readonly [x: string]: never };
 export const V2ThreadArchiveResponse = Schema.Record(Schema.String, Schema.Never).annotate({
   title: "ThreadArchiveResponse",
+});
+
+export type V2ThreadAttachmentAddParams = {
+  readonly attachmentType: string;
+  readonly identityKey: string;
+  readonly payload: Schema.Json;
+  readonly threadId: string;
+};
+export const V2ThreadAttachmentAddParams = Schema.Struct({
+  attachmentType: Schema.String,
+  identityKey: Schema.String,
+  payload: Schema.Json.annotate({ expected: "JSON value" }),
+  threadId: Schema.String,
+}).annotate({
+  title: "ThreadAttachmentAddParams",
+  description: "Parameters for creating or locating an attachment on its owning thread.",
+});
+
+export type V2ThreadAttachmentAddResponse = {
+  readonly attachment: V2ThreadAttachmentAddResponse__ThreadAttachment;
+  readonly outcome: V2ThreadAttachmentAddResponse__ThreadAttachmentAddOutcome;
+};
+export const V2ThreadAttachmentAddResponse = Schema.Struct({
+  attachment: V2ThreadAttachmentAddResponse__ThreadAttachment,
+  outcome: V2ThreadAttachmentAddResponse__ThreadAttachmentAddOutcome,
+}).annotate({
+  title: "ThreadAttachmentAddResponse",
+  description: "The created or existing attachment.",
+});
+
+export type V2ThreadAttachmentListParams = {
+  readonly cursor?: string | null;
+  readonly limit?: number | null;
+  readonly threadId: string;
+};
+export const V2ThreadAttachmentListParams = Schema.Struct({
+  cursor: Schema.optionalKey(Schema.Union([Schema.String, Schema.Null])),
+  limit: Schema.optionalKey(
+    Schema.Union([
+      Schema.Number.annotate({ format: "uint32" })
+        .check(Schema.isInt().annotate({ expected: "an integer" }))
+        .check(
+          Schema.isGreaterThanOrEqualTo(0).annotate({
+            expected: "a value greater than or equal to 0",
+          }),
+        ),
+      Schema.Null,
+    ]),
+  ),
+  threadId: Schema.String,
+}).annotate({
+  title: "ThreadAttachmentListParams",
+  description: "Parameters for listing attachments from one thread.",
+});
+
+export type V2ThreadAttachmentListResponse = {
+  readonly data: ReadonlyArray<V2ThreadAttachmentListResponse__ThreadAttachment>;
+  readonly nextCursor?: string | null;
+};
+export const V2ThreadAttachmentListResponse = Schema.Struct({
+  data: Schema.Array(V2ThreadAttachmentListResponse__ThreadAttachment),
+  nextCursor: Schema.optionalKey(Schema.Union([Schema.String, Schema.Null])),
+}).annotate({
+  title: "ThreadAttachmentListResponse",
+  description: "One page of attachments associated with the requested thread.",
+});
+
+export type V2ThreadAttachmentRemoveParams = {
+  readonly attachmentType: string;
+  readonly identityKey: string;
+  readonly threadId: string;
+};
+export const V2ThreadAttachmentRemoveParams = Schema.Struct({
+  attachmentType: Schema.String,
+  identityKey: Schema.String,
+  threadId: Schema.String,
+}).annotate({
+  title: "ThreadAttachmentRemoveParams",
+  description: "Parameters for deleting an attachment by its stable thread-local identity.",
+});
+
+export type V2ThreadAttachmentRemoveResponse = { readonly [x: string]: never };
+export const V2ThreadAttachmentRemoveResponse = Schema.Record(Schema.String, Schema.Never).annotate(
+  {
+    title: "ThreadAttachmentRemoveResponse",
+    description: "Successful deletion does not return additional attachment data.",
+  },
+);
+
+export type V2ThreadAttachmentUpdatedNotification = {
+  readonly attachmentId: string;
+  readonly attachmentType: string;
+  readonly identityKey: string;
+  readonly operation: V2ThreadAttachmentUpdatedNotification__ThreadAttachmentOperation;
+  readonly threadId: string;
+};
+export const V2ThreadAttachmentUpdatedNotification = Schema.Struct({
+  attachmentId: Schema.String,
+  attachmentType: Schema.String,
+  identityKey: Schema.String,
+  operation: V2ThreadAttachmentUpdatedNotification__ThreadAttachmentOperation,
+  threadId: Schema.String,
+}).annotate({
+  title: "ThreadAttachmentUpdatedNotification",
+  description: "Notification published after a thread attachment is created or deleted.",
 });
 
 export type V2ThreadBackgroundTerminalsCleanParams = { readonly threadId: string };
@@ -64817,6 +66218,7 @@ export type V2ThreadListParams = {
   readonly cwd?: V2ThreadListParams__ThreadListCwdFilter | null;
   readonly limit?: number | null;
   readonly modelProviders?: ReadonlyArray<string> | null;
+  readonly originators?: ReadonlyArray<string> | null;
   readonly parentThreadId?: string | null;
   readonly projectId?: string | null;
   readonly searchTerm?: string | null;
@@ -64879,6 +66281,15 @@ export const V2ThreadListParams = Schema.Struct({
       Schema.Array(Schema.String).annotate({
         description:
           "Optional provider filter; when set, only sessions recorded under these providers are returned. When present but empty, includes all providers.",
+      }),
+      Schema.Null,
+    ]),
+  ),
+  originators: Schema.optionalKey(
+    Schema.Union([
+      Schema.Array(Schema.String).annotate({
+        description:
+          "Optional originator allowlist, matching any supplied value exactly. Supported by hosted backends only; the local app-server rejects a nonempty list. Omitted or empty lists leave originators unrestricted.",
       }),
       Schema.Null,
     ]),
@@ -65036,11 +66447,21 @@ export const V2ThreadMemoryModeSetResponse = Schema.Record(Schema.String, Schema
 });
 
 export type V2ThreadMetadataUpdateParams = {
+  readonly daybreakEnabled?: boolean | null;
   readonly gitInfo?: V2ThreadMetadataUpdateParams__ThreadMetadataGitInfoUpdateParams | null;
   readonly projectId?: string | null;
   readonly threadId: string;
 };
 export const V2ThreadMetadataUpdateParams = Schema.Struct({
+  daybreakEnabled: Schema.optionalKey(
+    Schema.Union([
+      Schema.Boolean.annotate({
+        description:
+          "Save the client's Daybreak choice for this persistent thread. Omitted or null leaves it unchanged. This does not select a turn's `cyberAccessProgram` or grant access.",
+      }),
+      Schema.Null,
+    ]),
+  ),
   gitInfo: Schema.optionalKey(
     Schema.Union([
       V2ThreadMetadataUpdateParams__ThreadMetadataGitInfoUpdateParams,
@@ -67068,6 +68489,113 @@ export type V2TurnSteerResponse = { readonly turnId: string };
 export const V2TurnSteerResponse = Schema.Struct({ turnId: Schema.String }).annotate({
   title: "TurnSteerResponse",
 });
+
+export type V2UserVerificationCancelParams = {
+  readonly requestId: V2UserVerificationCancelParams__RequestId;
+};
+export const V2UserVerificationCancelParams = Schema.Struct({
+  requestId: V2UserVerificationCancelParams__RequestId,
+}).annotate({
+  title: "UserVerificationCancelParams",
+  description:
+    "Cancels a native verification RPC issued on this connection, not an elicitation. Use a fresh request ID for each operation and a distinct ID for this cancellation RPC.",
+});
+
+export type V2UserVerificationCancelResponse = { readonly [x: string]: never };
+export const V2UserVerificationCancelResponse = Schema.Record(Schema.String, Schema.Never).annotate(
+  {
+    title: "UserVerificationCancelResponse",
+    description:
+      "Acknowledges the cancellation signal; native work may still be finishing. Unknown or finished requests are a no-op, and completed effects are not rolled back.",
+  },
+);
+
+export type V2UserVerificationDeleteParams = { readonly [x: string]: never };
+export const V2UserVerificationDeleteParams = Schema.Record(Schema.String, Schema.Never).annotate({
+  title: "UserVerificationDeleteParams",
+});
+
+export type V2UserVerificationDeleteResponse = { readonly [x: string]: never };
+export const V2UserVerificationDeleteResponse = Schema.Record(Schema.String, Schema.Never).annotate(
+  { title: "UserVerificationDeleteResponse" },
+);
+
+export type V2UserVerificationEnrollParams = { readonly [x: string]: never };
+export const V2UserVerificationEnrollParams = Schema.Record(Schema.String, Schema.Never).annotate({
+  title: "UserVerificationEnrollParams",
+});
+
+export type V2UserVerificationEnrollResponse = { readonly credentialId: string };
+export const V2UserVerificationEnrollResponse = Schema.Struct({
+  credentialId: Schema.String,
+}).annotate({ title: "UserVerificationEnrollResponse" });
+
+export type V2UserVerificationRpcError = {
+  readonly code: number;
+  readonly data: V2UserVerificationRpcError__UserVerificationErrorDetails;
+  readonly message: string;
+};
+export const V2UserVerificationRpcError = Schema.Struct({
+  code: Schema.Number.annotate({ format: "int64" }).check(
+    Schema.isInt().annotate({ expected: "an integer" }),
+  ),
+  data: V2UserVerificationRpcError__UserVerificationErrorDetails,
+  message: Schema.String,
+}).annotate({
+  title: "UserVerificationRpcError",
+  description: "The error object inside the normal JSON-RPC envelope.",
+});
+
+export type V2UserVerificationStatusParams = { readonly [x: string]: never };
+export const V2UserVerificationStatusParams = Schema.Record(Schema.String, Schema.Never).annotate({
+  title: "UserVerificationStatusParams",
+});
+
+export type V2UserVerificationStatusResponse = {
+  readonly credentialId?: string | null;
+  readonly unavailableMessage?: string | null;
+  readonly unavailableReason?: V2UserVerificationStatusResponse__UserVerificationUnavailableReason | null;
+};
+export const V2UserVerificationStatusResponse = Schema.Struct({
+  credentialId: Schema.optionalKey(Schema.Union([Schema.String, Schema.Null])),
+  unavailableMessage: Schema.optionalKey(Schema.Union([Schema.String, Schema.Null])),
+  unavailableReason: Schema.optionalKey(
+    Schema.Union([
+      V2UserVerificationStatusResponse__UserVerificationUnavailableReason,
+      Schema.Null,
+    ]),
+  ),
+}).annotate({
+  title: "UserVerificationStatusResponse",
+  description: "Local readiness only; this neither prompts nor queries server registration.",
+});
+
+export type V2UserVerificationVerifyParams = {
+  readonly challenge: string;
+  readonly description: string;
+  readonly title: string;
+};
+export const V2UserVerificationVerifyParams = Schema.Struct({
+  challenge: Schema.String.annotate({
+    description: "Unpadded base64url encoding of 1–4096 challenge bytes.",
+  }),
+  description: Schema.String.annotate({
+    description: "Additional display context; at most 4096 UTF-8 bytes.",
+  }),
+  title: Schema.String.annotate({
+    description: "Display context already approved by the UI; 1–256 UTF-8 bytes.",
+  }),
+}).annotate({
+  title: "UserVerificationVerifyParams",
+  description: "Local signing primitive, independent of any pending elicitation.",
+});
+
+export type V2UserVerificationVerifyResponse = {
+  readonly proof: V2UserVerificationVerifyResponse__UserVerificationProof;
+};
+export const V2UserVerificationVerifyResponse = Schema.Struct({
+  proof: V2UserVerificationVerifyResponse__UserVerificationProof,
+}).annotate({ title: "UserVerificationVerifyResponse" });
 
 export type V2WarningNotification = { readonly message: string; readonly threadId?: string | null };
 export const V2WarningNotification = Schema.Struct({

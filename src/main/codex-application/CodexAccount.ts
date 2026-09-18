@@ -39,7 +39,7 @@ export type CodexAccountError = CodexRuntimeError | CodexAccountInputError;
 type AccountRefreshEffect = Effect.Effect<CodexAccountSnapshot, CodexRuntimeError>;
 export type CodexUsageLimits = Pick<
   ClientRequestResponsesByMethod["account/rateLimits/read"],
-  "rateLimits" | "rateLimitsByLimitId"
+  "ordinaryUsageAllowed" | "rateLimits" | "rateLimitsByLimitId"
 > & {
   readonly rateLimitResetCredits: CodexAccountSnapshot["rateLimitResetCredits"];
 };
@@ -96,7 +96,7 @@ export const live = (
 
       const readRateLimits = Effect.fn("CodexAccount.readRateLimits")(function* () {
         const response = yield* gateway
-          .requestLocal("account/rateLimits/read", undefined)
+          .requestLocal("account/rateLimits/read", {})
           .pipe(Effect.orElseSucceed(() => null));
         if (response === null) return emptyAccountRateLimitState();
         return {
@@ -285,8 +285,9 @@ export const live = (
         refresh,
         readUsageLimits: Effect.gen(function* () {
           yield* awaitReady;
-          const response = yield* gateway.requestLocal("account/rateLimits/read", undefined);
+          const response = yield* gateway.requestLocal("account/rateLimits/read", {});
           return {
+            ordinaryUsageAllowed: response.ordinaryUsageAllowed ?? null,
             rateLimits: response.rateLimits,
             rateLimitsByLimitId: response.rateLimitsByLimitId ?? null,
             rateLimitResetCredits: parseRateLimitResetCreditsSummary(

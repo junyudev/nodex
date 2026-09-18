@@ -11,10 +11,6 @@ export interface CodexEnvironmentSelectionState {
   readonly environmentSelectionEvidence?: CodexEnvironmentSelectionEvidence;
 }
 
-type ThreadEnvironmentProjection = Thread & {
-  readonly environments?: readonly TurnEnvironmentParams[] | null;
-};
-
 const cloneEnvironments = (
   environments: readonly TurnEnvironmentParams[],
 ): readonly TurnEnvironmentParams[] =>
@@ -30,14 +26,11 @@ const cloneEnvironments = (
         }),
   }));
 
-/**
- * Desktop can expose sticky environments on Thread metadata before the generated protocol
- * package has caught up. Keep that compatibility projection isolated at this boundary.
- */
+/** Reads the app-server's loaded-thread environment selection into Nodex's turn model. */
 export function readCodexThreadEnvironments(
   thread: Thread,
-): readonly TurnEnvironmentParams[] | null | undefined {
-  const environments = (thread as ThreadEnvironmentProjection).environments;
+): readonly TurnEnvironmentParams[] | null {
+  const environments = thread.environments;
   if (environments == null) return environments;
   return cloneEnvironments(environments);
 }

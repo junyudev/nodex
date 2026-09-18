@@ -1702,7 +1702,8 @@ function buildOwnerMcpElicitationRequest(
       method: "mcpServer/elicitation/request";
     }
   >["params"],
-): CodexMcpServerElicitationRequest {
+): CodexMcpServerElicitationRequest | null {
+  if (params.mode === "openai/userVerification") return null;
   return {
     type: "mcpServerElicitation",
     requestId,
@@ -1860,7 +1861,9 @@ function projectOwnerServerRequestToConversation(
         viewRequestId,
         request.params,
       );
-      nextConversation = upsertOwnerConversationRequest(withCanonicalState, elicitationRequest);
+      if (elicitationRequest) {
+        nextConversation = upsertOwnerConversationRequest(withCanonicalState, elicitationRequest);
+      }
       break;
     }
     case "item/permissions/requestApproval": {

@@ -90,6 +90,7 @@ const disabledFastMode: ConfigRequirementsReadResponse = {
     hooks: null,
     enforceResidency: null,
     network: null,
+    application: null,
     autoReview: null,
     models: null,
     sqliteHome: null,

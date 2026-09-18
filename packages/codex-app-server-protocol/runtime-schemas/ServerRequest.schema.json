@@ -1068,6 +1068,33 @@
       "$schema": "http://json-schema.org/draft-07/schema#",
       "oneOf": [
         {
+          "description": "A device-authenticated approval; accepted responses contain the proof in `content`.",
+          "properties": {
+            "challenge": {
+              "type": "string"
+            },
+            "description": {
+              "type": "string"
+            },
+            "mode": {
+              "enum": [
+                "openai/userVerification"
+              ],
+              "type": "string"
+            },
+            "title": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "challenge",
+            "description",
+            "mode",
+            "title"
+          ],
+          "type": "object"
+        },
+        {
           "properties": {
             "_meta": true,
             "message": {
@@ -1334,7 +1361,7 @@
       "$schema": "http://json-schema.org/draft-07/schema#",
       "properties": {
         "cwd": {
-          "$ref": "#/definitions/definitions__v2__AbsolutePathBuf"
+          "$ref": "#/definitions/definitions__v2__LegacyAppPathString"
         },
         "environmentId": {
           "default": null,
@@ -1473,10 +1500,6 @@
         "question"
       ],
       "type": "object"
-    },
-    "definitions__v2__AbsolutePathBuf": {
-      "description": "A path that is guaranteed to be absolute and normalized (though it is not guaranteed to be canonicalized or exist on the filesystem).\n\nIMPORTANT: When deserializing an `AbsolutePathBuf`, a base path must be set using [AbsolutePathBufGuard::new]. If no base path is set, the deserialization will fail unless the path being deserialized is already absolute.",
-      "type": "string"
     },
     "definitions__v2__AdditionalFileSystemPermissions": {
       "properties": {

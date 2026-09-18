@@ -6,6 +6,11 @@ import * as Schema from "effect/Schema";
 export const CLIENT_REQUEST_METHODS = {
   initialize: "initialize",
   "server/diagnostics": "server/diagnostics",
+  "userVerification/status": "userVerification/status",
+  "userVerification/enroll": "userVerification/enroll",
+  "userVerification/delete": "userVerification/delete",
+  "userVerification/verify": "userVerification/verify",
+  "userVerification/cancel": "userVerification/cancel",
   "thread/start": "thread/start",
   "thread/resume": "thread/resume",
   "thread/fork": "thread/fork",
@@ -25,9 +30,13 @@ export const CLIENT_REQUEST_METHODS = {
   "thread/queue/reorder": "thread/queue/reorder",
   "thread/queue/start": "thread/queue/start",
   "thread/metadata/update": "thread/metadata/update",
+  "thread/attachment/add": "thread/attachment/add",
+  "thread/attachment/list": "thread/attachment/list",
+  "thread/attachment/remove": "thread/attachment/remove",
   "thread/section/move": "thread/section/move",
   "thread/settings/update": "thread/settings/update",
   "thread/memoryMode/set": "thread/memoryMode/set",
+  "memory/status": "memory/status",
   "memory/reset": "memory/reset",
   "thread/unarchive": "thread/unarchive",
   "thread/compact/start": "thread/compact/start",
@@ -193,6 +202,7 @@ export const SERVER_NOTIFICATION_METHODS = {
   "thread/reverted": "thread/reverted",
   "skills/changed": "skills/changed",
   "thread/name/updated": "thread/name/updated",
+  "thread/attachment/updated": "thread/attachment/updated",
   "thread/goal/updated": "thread/goal/updated",
   "thread/goal/cleared": "thread/goal/cleared",
   "thread/queue/changed": "thread/queue/changed",
@@ -276,6 +286,11 @@ export type ServerNotificationMethod = keyof typeof SERVER_NOTIFICATION_METHODS;
 export interface ClientRequestParamsByMethod {
   readonly initialize: CodexSchema.V1InitializeParams;
   readonly "server/diagnostics": CodexSchema.V2ServerDiagnosticsParams;
+  readonly "userVerification/status": CodexSchema.V2UserVerificationStatusParams;
+  readonly "userVerification/enroll": CodexSchema.V2UserVerificationEnrollParams;
+  readonly "userVerification/delete": CodexSchema.V2UserVerificationDeleteParams;
+  readonly "userVerification/verify": CodexSchema.V2UserVerificationVerifyParams;
+  readonly "userVerification/cancel": CodexSchema.V2UserVerificationCancelParams;
   readonly "thread/start": CodexSchema.V2ThreadStartParams;
   readonly "thread/resume": CodexSchema.V2ThreadResumeParams;
   readonly "thread/fork": CodexSchema.V2ThreadForkParams;
@@ -295,9 +310,13 @@ export interface ClientRequestParamsByMethod {
   readonly "thread/queue/reorder": CodexSchema.V2ThreadQueueReorderParams;
   readonly "thread/queue/start": CodexSchema.V2ThreadQueueStartParams;
   readonly "thread/metadata/update": CodexSchema.V2ThreadMetadataUpdateParams;
+  readonly "thread/attachment/add": CodexSchema.V2ThreadAttachmentAddParams;
+  readonly "thread/attachment/list": CodexSchema.V2ThreadAttachmentListParams;
+  readonly "thread/attachment/remove": CodexSchema.V2ThreadAttachmentRemoveParams;
   readonly "thread/section/move": CodexSchema.V2ThreadSectionMoveParams;
   readonly "thread/settings/update": CodexSchema.V2ThreadSettingsUpdateParams;
   readonly "thread/memoryMode/set": CodexSchema.V2ThreadMemoryModeSetParams;
+  readonly "memory/status": CodexSchema.V2MemoryStatusParams;
   readonly "memory/reset": undefined;
   readonly "thread/unarchive": CodexSchema.V2ThreadUnarchiveParams;
   readonly "thread/compact/start": CodexSchema.V2ThreadCompactStartParams;
@@ -402,7 +421,9 @@ export interface ClientRequestParamsByMethod {
   readonly "account/bedrock/setup": CodexSchema.V2BedrockSetupParams;
   readonly "account/login/cancel": CodexSchema.V2CancelLoginAccountParams;
   readonly "account/logout": undefined;
-  readonly "account/rateLimits/read": undefined;
+  readonly "account/rateLimits/read":
+    | CodexSchema.V2NullableGetAccountRateLimitsParams__GetAccountRateLimitsParams
+    | undefined;
   readonly "account/rateLimitResetCredit/consume": CodexSchema.V2ConsumeAccountRateLimitResetCreditParams;
   readonly "account/usage/read":
     | CodexSchema.V2NullableGetAccountTokenUsageParams__GetAccountTokenUsageParams
@@ -439,6 +460,11 @@ export interface ClientRequestParamsByMethod {
 export interface ClientRequestResponsesByMethod {
   readonly initialize: CodexSchema.V1InitializeResponse;
   readonly "server/diagnostics": CodexSchema.V2ServerDiagnosticsResponse;
+  readonly "userVerification/status": CodexSchema.V2UserVerificationStatusResponse;
+  readonly "userVerification/enroll": CodexSchema.V2UserVerificationEnrollResponse;
+  readonly "userVerification/delete": CodexSchema.V2UserVerificationDeleteResponse;
+  readonly "userVerification/verify": CodexSchema.V2UserVerificationVerifyResponse;
+  readonly "userVerification/cancel": CodexSchema.V2UserVerificationCancelResponse;
   readonly "thread/start": CodexSchema.V2ThreadStartResponse;
   readonly "thread/resume": CodexSchema.V2ThreadResumeResponse;
   readonly "thread/fork": CodexSchema.V2ThreadForkResponse;
@@ -458,9 +484,13 @@ export interface ClientRequestResponsesByMethod {
   readonly "thread/queue/reorder": CodexSchema.V2ThreadQueueReorderResponse;
   readonly "thread/queue/start": CodexSchema.V2ThreadQueueStartResponse;
   readonly "thread/metadata/update": CodexSchema.V2ThreadMetadataUpdateResponse;
+  readonly "thread/attachment/add": CodexSchema.V2ThreadAttachmentAddResponse;
+  readonly "thread/attachment/list": CodexSchema.V2ThreadAttachmentListResponse;
+  readonly "thread/attachment/remove": CodexSchema.V2ThreadAttachmentRemoveResponse;
   readonly "thread/section/move": CodexSchema.V2ThreadSectionMoveResponse;
   readonly "thread/settings/update": CodexSchema.V2ThreadSettingsUpdateResponse;
   readonly "thread/memoryMode/set": CodexSchema.V2ThreadMemoryModeSetResponse;
+  readonly "memory/status": CodexSchema.V2MemoryStatusResponse;
   readonly "memory/reset": CodexSchema.V2MemoryResetResponse;
   readonly "thread/unarchive": CodexSchema.V2ThreadUnarchiveResponse;
   readonly "thread/compact/start": CodexSchema.V2ThreadCompactStartResponse;
@@ -640,6 +670,7 @@ export interface ServerNotificationParamsByMethod {
   readonly "thread/reverted": CodexSchema.V2ThreadRevertedNotification;
   readonly "skills/changed": CodexSchema.V2SkillsChangedNotification;
   readonly "thread/name/updated": CodexSchema.V2ThreadNameUpdatedNotification;
+  readonly "thread/attachment/updated": CodexSchema.V2ThreadAttachmentUpdatedNotification;
   readonly "thread/goal/updated": CodexSchema.V2ThreadGoalUpdatedNotification;
   readonly "thread/goal/cleared": CodexSchema.V2ThreadGoalClearedNotification;
   readonly "thread/queue/changed": CodexSchema.V2ThreadQueueChangedNotification;
@@ -718,6 +749,11 @@ export interface ServerNotificationParamsByMethod {
 export const CLIENT_REQUEST_PARAMS = {
   initialize: CodexSchema.V1InitializeParams,
   "server/diagnostics": CodexSchema.V2ServerDiagnosticsParams,
+  "userVerification/status": CodexSchema.V2UserVerificationStatusParams,
+  "userVerification/enroll": CodexSchema.V2UserVerificationEnrollParams,
+  "userVerification/delete": CodexSchema.V2UserVerificationDeleteParams,
+  "userVerification/verify": CodexSchema.V2UserVerificationVerifyParams,
+  "userVerification/cancel": CodexSchema.V2UserVerificationCancelParams,
   "thread/start": CodexSchema.V2ThreadStartParams,
   "thread/resume": CodexSchema.V2ThreadResumeParams,
   "thread/fork": CodexSchema.V2ThreadForkParams,
@@ -737,9 +773,13 @@ export const CLIENT_REQUEST_PARAMS = {
   "thread/queue/reorder": CodexSchema.V2ThreadQueueReorderParams,
   "thread/queue/start": CodexSchema.V2ThreadQueueStartParams,
   "thread/metadata/update": CodexSchema.V2ThreadMetadataUpdateParams,
+  "thread/attachment/add": CodexSchema.V2ThreadAttachmentAddParams,
+  "thread/attachment/list": CodexSchema.V2ThreadAttachmentListParams,
+  "thread/attachment/remove": CodexSchema.V2ThreadAttachmentRemoveParams,
   "thread/section/move": CodexSchema.V2ThreadSectionMoveParams,
   "thread/settings/update": CodexSchema.V2ThreadSettingsUpdateParams,
   "thread/memoryMode/set": CodexSchema.V2ThreadMemoryModeSetParams,
+  "memory/status": CodexSchema.V2MemoryStatusParams,
   "memory/reset": undefined,
   "thread/unarchive": CodexSchema.V2ThreadUnarchiveParams,
   "thread/compact/start": CodexSchema.V2ThreadCompactStartParams,
@@ -848,7 +888,9 @@ export const CLIENT_REQUEST_PARAMS = {
   "account/bedrock/setup": CodexSchema.V2BedrockSetupParams,
   "account/login/cancel": CodexSchema.V2CancelLoginAccountParams,
   "account/logout": undefined,
-  "account/rateLimits/read": undefined,
+  "account/rateLimits/read": Schema.UndefinedOr(
+    CodexSchema.V2NullableGetAccountRateLimitsParams__GetAccountRateLimitsParams,
+  ),
   "account/rateLimitResetCredit/consume": CodexSchema.V2ConsumeAccountRateLimitResetCreditParams,
   "account/usage/read": Schema.UndefinedOr(
     CodexSchema.V2NullableGetAccountTokenUsageParams__GetAccountTokenUsageParams,
@@ -886,6 +928,11 @@ export const CLIENT_REQUEST_PARAMS = {
 export const CLIENT_REQUEST_RESPONSES = {
   initialize: CodexSchema.V1InitializeResponse,
   "server/diagnostics": CodexSchema.V2ServerDiagnosticsResponse,
+  "userVerification/status": CodexSchema.V2UserVerificationStatusResponse,
+  "userVerification/enroll": CodexSchema.V2UserVerificationEnrollResponse,
+  "userVerification/delete": CodexSchema.V2UserVerificationDeleteResponse,
+  "userVerification/verify": CodexSchema.V2UserVerificationVerifyResponse,
+  "userVerification/cancel": CodexSchema.V2UserVerificationCancelResponse,
   "thread/start": CodexSchema.V2ThreadStartResponse,
   "thread/resume": CodexSchema.V2ThreadResumeResponse,
   "thread/fork": CodexSchema.V2ThreadForkResponse,
@@ -905,9 +952,13 @@ export const CLIENT_REQUEST_RESPONSES = {
   "thread/queue/reorder": CodexSchema.V2ThreadQueueReorderResponse,
   "thread/queue/start": CodexSchema.V2ThreadQueueStartResponse,
   "thread/metadata/update": CodexSchema.V2ThreadMetadataUpdateResponse,
+  "thread/attachment/add": CodexSchema.V2ThreadAttachmentAddResponse,
+  "thread/attachment/list": CodexSchema.V2ThreadAttachmentListResponse,
+  "thread/attachment/remove": CodexSchema.V2ThreadAttachmentRemoveResponse,
   "thread/section/move": CodexSchema.V2ThreadSectionMoveResponse,
   "thread/settings/update": CodexSchema.V2ThreadSettingsUpdateResponse,
   "thread/memoryMode/set": CodexSchema.V2ThreadMemoryModeSetResponse,
+  "memory/status": CodexSchema.V2MemoryStatusResponse,
   "memory/reset": CodexSchema.V2MemoryResetResponse,
   "thread/unarchive": CodexSchema.V2ThreadUnarchiveResponse,
   "thread/compact/start": CodexSchema.V2ThreadCompactStartResponse,
@@ -1089,6 +1140,7 @@ export const SERVER_NOTIFICATION_PARAMS = {
   "thread/reverted": CodexSchema.V2ThreadRevertedNotification,
   "skills/changed": CodexSchema.V2SkillsChangedNotification,
   "thread/name/updated": CodexSchema.V2ThreadNameUpdatedNotification,
+  "thread/attachment/updated": CodexSchema.V2ThreadAttachmentUpdatedNotification,
   "thread/goal/updated": CodexSchema.V2ThreadGoalUpdatedNotification,
   "thread/goal/cleared": CodexSchema.V2ThreadGoalClearedNotification,
   "thread/queue/changed": CodexSchema.V2ThreadQueueChangedNotification,

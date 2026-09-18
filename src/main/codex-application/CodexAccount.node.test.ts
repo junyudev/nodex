@@ -32,6 +32,7 @@ it.effect("owns account, login, rate-limit, and notification state behind one in
         }
         if (method === "account/rateLimits/read") {
           return {
+            ordinaryUsageAllowed: false,
             rateLimits: { primary: { usedPercent: 25, resetsAt: 1_800_000_000 } },
             rateLimitsByLimitId: null,
             rateLimitResetCredits: { availableCount: 1, credits: null },
@@ -91,6 +92,7 @@ it.effect("owns account, login, rate-limit, and notification state behind one in
     });
     assert.strictEqual(first.rateLimits?.primary?.usedPercent, 25);
     assert.strictEqual(first.rateLimitResetCredits?.availableCount, 1);
+    assert.strictEqual((yield* account.readUsageLimits).ordinaryUsageAllowed, false);
 
     const readsBeforeConcurrentRefresh = requests.filter(
       (method) => method === "account/read",
@@ -160,6 +162,7 @@ it.effect("keeps invalidated auth signed out when an older refresh completes", (
       }
       if (method === "account/rateLimits/read") {
         return Effect.succeed({
+          ordinaryUsageAllowed: null,
           rateLimits: null,
           rateLimitsByLimitId: null,
           rateLimitResetCredits: null,

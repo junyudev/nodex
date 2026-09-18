@@ -38,6 +38,7 @@ export const sanitizedCommandLifecycleFixture = {
     model: null,
     reasoningEffort: null,
     id: THREAD_ID,
+    environments: null,
     extra: null,
     sessionId: "session_fixture",
     forkedFromId: null,
@@ -58,6 +59,7 @@ export const sanitizedCommandLifecycleFixture = {
     },
     path: null,
     cwd: "/workspace/project",
+    originator: null,
     cliVersion: "fixture",
     source: "unknown",
     canAcceptDirectInput: true,
@@ -65,6 +67,7 @@ export const sanitizedCommandLifecycleFixture = {
     agentNickname: null,
     agentRole: null,
     gitInfo: null,
+    daybreakEnabled: null,
     name: "Sanitized replay fixture",
     turns: [{
       id: TURN_ID,

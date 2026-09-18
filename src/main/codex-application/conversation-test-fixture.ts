@@ -4,6 +4,7 @@ const thread: Thread = {
   model: null,
   reasoningEffort: null,
   id: "fixture",
+  environments: null,
   extra: null,
   sessionId: "session-canonical-projection",
   forkedFromId: null,
@@ -22,6 +23,7 @@ const thread: Thread = {
   path: null,
   cwd: "/workspace/project",
   cliVersion: "fixture",
+  originator: null,
   source: "unknown",
   canAcceptDirectInput: true,
   threadSource: null,
@@ -29,6 +31,7 @@ const thread: Thread = {
   agentRole: null,
   gitInfo: null,
   name: "Initial title",
+  daybreakEnabled: null,
   turns: [],
 };
 export const conversationFixture = (id: string, turns: Turn[] = []) =>

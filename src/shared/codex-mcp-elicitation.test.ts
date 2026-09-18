@@ -18,6 +18,20 @@ describe("isRenderableMcpServerElicitationRequest", () => {
     expect(normalizeCodexMcpServerElicitationMode("url")).toBe("url");
   });
 
+  test("does not project device user verification into the generic elicitation UI", () => {
+    expect(
+      isRenderableMcpServerElicitationRequest({
+        threadId: "thread-1",
+        turnId: "turn-1",
+        serverName: "codex_apps",
+        mode: "openai/userVerification",
+        title: "Approve",
+        description: "Verify this action",
+        challenge: "AQID",
+      }),
+    ).toBe(false);
+  });
+
   test("declines invalid url-mode elicitations before they enter the request plane", () => {
     expect(
       isRenderableMcpServerElicitationRequest({
