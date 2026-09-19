@@ -2118,8 +2118,10 @@ describe("workbench session shell / layout-panel-actions", () => {
       initialSelectedSessionId: projectlessSession.id,
     });
     await settleAsyncRender();
+    // Async queries manage their own act environment; finish them before opening act.
+    const projectlessRow = await waitForThreadRow(screen.container, "Projectless tools");
     await act(async () => {
-      fireEvent.click(await waitForThreadRow(screen.container, "Projectless tools"));
+      fireEvent.click(projectlessRow);
       await Promise.resolve();
     });
     await settleAsyncRender();
