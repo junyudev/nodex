@@ -8,6 +8,22 @@ function nextFrame(): Promise<void> {
   return new Promise((resolve) => requestAnimationFrame(() => resolve()));
 }
 
+// Observe native scroll delivery before starting the idle interval; a synthetic
+// event can be followed by a browser event that restarts the settle timer.
+async function scrollViewport(scrollElement: HTMLElement, scrollTop: number): Promise<void> {
+  let delivered = false;
+  const onScroll = () => {
+    delivered = true;
+  };
+  scrollElement.addEventListener("scroll", onScroll);
+  try {
+    scrollElement.scrollTop = scrollTop;
+    await waitFor(() => expect(delivered).toBe(true));
+  } finally {
+    scrollElement.removeEventListener("scroll", onScroll);
+  }
+}
+
 function createViewport(
   dynamicBlockHeight: number,
   options: { readonly marksPendingLayout?: boolean } = {},
@@ -58,9 +74,12 @@ async function captureReadingPosition(
 ) {
   session.mount(viewport.scrollElement, viewport.contentRoot);
   viewport.scrollElement.dispatchEvent(new WheelEvent("wheel", { bubbles: true, deltaY: 80 }));
-  viewport.scrollElement.scrollTop +=
-    targetViewportOffset(viewport.scrollElement, viewport.target) - 80;
-  viewport.scrollElement.dispatchEvent(new Event("scroll"));
+  await scrollViewport(
+    viewport.scrollElement,
+    viewport.scrollElement.scrollTop +
+      targetViewportOffset(viewport.scrollElement, viewport.target) -
+      80,
+  );
   await nextFrame();
   expect(Math.abs(targetViewportOffset(viewport.scrollElement, viewport.target) - 80)).toBeLessThan(
     1,
@@ -133,9 +152,12 @@ describe("Page Stage viewport continuity in Chromium", () => {
     const source = createViewport(800);
     session.mount(source.scrollElement, source.contentRoot);
     source.scrollElement.dispatchEvent(new WheelEvent("wheel", { bubbles: true, deltaY: 80 }));
-    source.scrollElement.scrollTop +=
-      targetViewportOffset(source.scrollElement, source.target) - 80;
-    source.scrollElement.dispatchEvent(new Event("scroll"));
+    await scrollViewport(
+      source.scrollElement,
+      source.scrollElement.scrollTop +
+        targetViewportOffset(source.scrollElement, source.target) -
+        80,
+    );
     await nextFrame();
 
     source.contentRoot.replaceChildren();
@@ -185,8 +207,7 @@ describe("Page Stage viewport continuity in Chromium", () => {
     session.mount(restored.scrollElement, restored.contentRoot);
     await nextFrame();
     restored.scrollElement.dispatchEvent(new WheelEvent("wheel", { bubbles: true, deltaY: 40 }));
-    restored.scrollElement.scrollTop += 40;
-    restored.scrollElement.dispatchEvent(new Event("scroll"));
+    await scrollViewport(restored.scrollElement, restored.scrollElement.scrollTop + 40);
     await new Promise((resolve) => setTimeout(resolve, 180));
     const settledOffset = targetViewportOffset(restored.scrollElement, restored.target);
 
@@ -232,8 +253,10 @@ describe("Page Stage viewport continuity in Chromium", () => {
     const first = createViewport(800);
     const staleLease = session.mount(first.scrollElement, first.contentRoot);
     first.scrollElement.dispatchEvent(new WheelEvent("wheel", { bubbles: true, deltaY: 80 }));
-    first.scrollElement.scrollTop += targetViewportOffset(first.scrollElement, first.target) - 80;
-    first.scrollElement.dispatchEvent(new Event("scroll"));
+    await scrollViewport(
+      first.scrollElement,
+      first.scrollElement.scrollTop + targetViewportOffset(first.scrollElement, first.target) - 80,
+    );
     await nextFrame();
 
     const replacement = createViewport(80, { marksPendingLayout: false });

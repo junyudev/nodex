@@ -55,8 +55,7 @@ jobs:
         env:
           CI_GATE_PLAN_JSON: ${{ inputs.gate_plan_json }}
           APP_TEST_SUITE: ${{ matrix.suite }}
-          DEBUG: ${{ matrix.suite == 'browser' && 'pw:browser,vitest:browser:playwright' || '' }}
-          VITEST_PW_DEBUG: ${{ matrix.suite == 'browser' && '1' || '' }}
+          DEBUG: ${{ matrix.suite == 'browser' && 'pw:browser' || '' }}
           NEEDS_RUST: ${{ steps.suite.outputs.needs_rust }}
           NEEDS_XVFB: ${{ steps.suite.outputs.needs_xvfb }}
         shell: bash

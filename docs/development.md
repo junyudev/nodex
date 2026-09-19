@@ -359,6 +359,19 @@ The test commands follow production boundaries:
   `.jsdom.test.ts` DOM behavior in jsdom. A `.test.ts` file must not rely on
   browser globals implicitly.
 - `vp run test:browser` runs browser-sensitive renderer contracts in Chromium.
+  Each invocation rebuilds its optimized dependency graph before testing; a
+  cache populated by a focused run must not trigger reloads during a later
+  full run. Keep lazily loaded runtimes that cause late dependency discovery
+  in `vitest.browser.config.ts`'s `optimizeDeps.include`. Enable browser failure
+  traces with `NODEX_BROWSER_TRACE=1` locally or rerun a GitHub job with debug
+  logging enabled. Traces are retained under `.vitest-attachments/browser-traces/`
+  and uploaded by CI. Normal runs avoid trace overhead; CI always records
+  Chromium process diagnostics.
+  Assert immediate state transitions in renderer tests and native pointer,
+  layout, and animation behavior in browser tests. Do not measure remote
+  Playwright command latency as a UI response-time contract. After changing
+  `scrollTop`, await the native scroll event before testing an idle interval;
+  a synthetic scroll event does not consume the browser's queued event.
 - `vp run test:integration` runs integration tests in Electron's Node runtime.
 - Rust development and test profiles retain full debug information in separate
   build artifacts (`split-debuginfo = "unpacked"`) on every host. Keep these

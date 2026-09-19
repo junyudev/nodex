@@ -1,4 +1,4 @@
-import { act, fireEvent, waitFor } from "@testing-library/react";
+import { act, fireEvent } from "@testing-library/react";
 import { describe, expect, test, vi } from "vite-plus/test";
 
 import { render } from "@/test/dom";
@@ -31,6 +31,7 @@ function TestMenu({ onResolve }: { readonly onResolve: (id: string) => void }) {
         <NodexContextMenuContent>
           {submenu("First")}
           {submenu("Second")}
+          <NodexContextMenuItem>Plain action</NodexContextMenuItem>
         </NodexContextMenuContent>
       </NodexContextMenuPortal>
     </NodexContextMenuRoot>
@@ -69,7 +70,7 @@ describe("NodexContextMenuSubmenu", () => {
     expect(onResolve).toHaveBeenLastCalledWith("First");
   });
 
-  test("switches only the two sibling submenus without a delay timer", async () => {
+  test("switches and dismisses sibling submenus without a delay timer", async () => {
     const view = render(<TestMenu onResolve={() => undefined} />);
     await openRoot(view.getByRole("button", { name: "Target" }));
 
@@ -77,9 +78,10 @@ describe("NodexContextMenuSubmenu", () => {
     await view.findByRole("menuitem", { name: "First child" });
 
     await hoverItem(view.getByRole("menuitem", { name: "Second" }));
-    await view.findByRole("menuitem", { name: "Second child" });
-    await waitFor(() => {
-      expect(view.queryByRole("menuitem", { name: "First child" })).toBeNull();
-    });
+    expect(view.getByRole("menuitem", { name: "Second child" })).toBeTruthy();
+    expect(view.queryByRole("menuitem", { name: "First child" })).toBeNull();
+
+    await hoverItem(view.getByRole("menuitem", { name: "Plain action" }));
+    expect(view.queryByRole("menuitem", { name: "Second child" })).toBeNull();
   });
 });
