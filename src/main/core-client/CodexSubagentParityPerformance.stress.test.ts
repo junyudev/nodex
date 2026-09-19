@@ -54,14 +54,14 @@ const DESCENDANT_COUNTS = [10, 100, 1_000] as const;
 const REAL_HISTORY_ITEM_COUNTS = [0, 100, 10_000] as const;
 const REAL_HISTORY_ITEM_TEXT_BYTES = 4_096;
 const REAL_HISTORY_INJECTION_BATCH_SIZE = 500;
-const REAL_HISTORY_SOURCE = "appServer";
 const REAL_HISTORY_LIST_PARAMS = {
   archived: false,
   limit: 10,
   modelProviders: [],
   sortDirection: "desc",
   sortKey: "created_at",
-  sourceKinds: [REAL_HISTORY_SOURCE],
+  // Use the runtime's interactive sources. thread/start.threadSource is an analytics label,
+  // not the session origin selected by sourceKinds (the bundled stdio runtime uses vscode).
   useStateDbOnly: true,
 } satisfies ThreadListParams;
 const SAMPLE_COUNT = 15;
@@ -666,7 +666,6 @@ const measureRealPersistedHistory = async (input: {
       const started = await writer.request("thread/start", {
         ephemeral: false,
         historyMode: "paginated",
-        threadSource: REAL_HISTORY_SOURCE,
         cwd,
         approvalPolicy: "never",
         sandbox: "danger-full-access",
