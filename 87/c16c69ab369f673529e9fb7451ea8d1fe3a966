@@ -1,0 +1,37 @@
+.github/assets/nodex-wordmark-light.svg
+  s_5808f0d29557e2::t_42f88f986d2da0 2-8,10-39,42,44,46-47
+.github/assets/nodex-wordmark-dark.svg
+  s_5808f0d29557e2::t_00df17244d37ca 2-8,10-39,42,44,46-47
+README.md
+  s_5808f0d29557e2::t_953873bdde2cc9 4-6,11
+  s_5808f0d29557e2::t_57df1f30602828 25-32,34-36
+  s_5808f0d29557e2::t_7b8bdc8ce40189 55
+  s_5808f0d29557e2::t_f1c1cade6bd635 20-22,50,54,58-61,65-67,69-70,73,75
+  h_6a6ac0c07fcd37 16-17,19,23,45,49,52,56-57,63,72,77,83-84,86,88-90,92,94
+  s_5808f0d29557e2::t_b965eb1f4c5e1a 1,9,15
+  s_5808f0d29557e2::t_42f88f986d2da0 2-3,7-8,13-14
+  s_5808f0d29557e2::t_4bb905911b4ab5 10
+  s_5808f0d29557e2::t_5cfe6e5312c6c8 12
+  h_6a6ac0c07fcd37 18,24,38,40,44,46,48
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "87c16c69ab369f673529e9fb7451ea8d1fe3a966",
+  "prompts": {},
+  "humans": {
+    "h_6a6ac0c07fcd37": {
+      "author": "Jun Yu <junyu.dev@gmail.com>"
+    }
+  },
+  "sessions": {
+    "s_5808f0d29557e2": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a0ae8c-a700-7571-a2bd-e305e9c63891",
+        "model": "gpt-5.6-sol"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    }
+  }
+}
