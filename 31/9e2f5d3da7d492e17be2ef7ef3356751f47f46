@@ -1,0 +1,28 @@
+docs/release-macos.md
+  s_d4ab4c7bf5efe1::t_657130f8c04232 343-348
+native/macos-clipboard/binding.gyp
+  s_d4ab4c7bf5efe1::t_6140546834d00e 9-10,12-13
+  s_d4ab4c7bf5efe1::t_6f738c27212d4e 11
+native/macos-sparkle/binding.gyp
+  s_d4ab4c7bf5efe1::t_6f738c27212d4e 36
+  s_d4ab4c7bf5efe1::t_6140546834d00e 34-35,37-38
+native/macos-devicecheck/binding.gyp
+  s_d4ab4c7bf5efe1::t_6140546834d00e 9-10,12-13
+  s_d4ab4c7bf5efe1::t_6f738c27212d4e 11
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "319e2f5d3da7d492e17be2ef7ef3356751f47f46",
+  "prompts": {},
+  "sessions": {
+    "s_d4ab4c7bf5efe1": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a0b8c8-33e0-78f2-8327-d2c8f5715807",
+        "model": "gpt-6-astra"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    }
+  }
+}
