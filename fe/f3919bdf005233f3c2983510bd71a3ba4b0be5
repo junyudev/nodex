@@ -1,0 +1,23 @@
+scripts/sign-macos-runtime.test.ts
+  s_d4ab4c7bf5efe1::t_0e30776fbfbd3c 181,188-189
+  s_d4ab4c7bf5efe1::t_8cd634b27d2f58 182-187,193-195
+scripts/sign-macos-runtime.mjs
+  s_d4ab4c7bf5efe1::t_8cd634b27d2f58 31-36
+  s_d4ab4c7bf5efe1::t_757ea7654386d1 16,30,37
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "fef3919bdf005233f3c2983510bd71a3ba4b0be5",
+  "prompts": {},
+  "sessions": {
+    "s_d4ab4c7bf5efe1": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a0b8c8-33e0-78f2-8327-d2c8f5715807",
+        "model": "gpt-6-astra"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    }
+  }
+}
