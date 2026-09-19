@@ -130,14 +130,8 @@ function fixture(
   const lock = {
     appServerRuntimeVersion: "0.152.0",
     builds: {
-      "darwin-arm64": build(
-        "aarch64-apple-darwin",
-        "codex-package-aarch64-apple-darwin.tar.gz",
-      ),
-      "darwin-x64": build(
-        "x86_64-apple-darwin",
-        "codex-package-x86_64-apple-darwin.tar.gz",
-      ),
+      "darwin-arm64": build("aarch64-apple-darwin", "codex-package-aarch64-apple-darwin.tar.gz"),
+      "darwin-x64": build("x86_64-apple-darwin", "codex-package-x86_64-apple-darwin.tar.gz"),
     },
     notices: {
       licensePath: "resources/third-party/codex/LICENSE",

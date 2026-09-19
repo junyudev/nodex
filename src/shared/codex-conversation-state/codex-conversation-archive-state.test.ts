@@ -7,15 +7,31 @@ function fixture() {
   let ordinary = false;
   let suppressions = 0;
   let resume!: () => void;
-  const gate = new Promise<void>((resolve) => { resume = resolve; });
+  const gate = new Promise<void>((resolve) => {
+    resume = resolve;
+  });
   const callbacks = {
     hasOrdinaryState: () => ordinary,
     hasConversation: () => resident,
     hasPreviewHistory: () => false,
-    onSuppressed: () => { suppressions += 1; },
-    hydrate: async (isCurrent: () => boolean) => { await gate; if (isCurrent()) resident = true; },
+    onSuppressed: () => {
+      suppressions += 1;
+    },
+    hydrate: async (isCurrent: () => boolean) => {
+      await gate;
+      if (isCurrent()) resident = true;
+    },
   };
-  return { archive, callbacks, resume, setOrdinary: () => { ordinary = true; }, resident: () => resident, suppressions: () => suppressions };
+  return {
+    archive,
+    callbacks,
+    resume,
+    setOrdinary: () => {
+      ordinary = true;
+    },
+    resident: () => resident,
+    suppressions: () => suppressions,
+  };
 }
 
 test("ordinary and explicitly unarchived threads never begin archived preview hydration", async () => {
@@ -23,7 +39,9 @@ test("ordinary and explicitly unarchived threads never begin archived preview hy
   f.setOrdinary();
   expect(await f.archive.hydratePreview("thread", f.callbacks)).toBe(false);
   f.archive.unsuppress("other");
-  expect(await f.archive.hydratePreview("other", { ...f.callbacks, hasOrdinaryState: () => false })).toBe(false);
+  expect(
+    await f.archive.hydratePreview("other", { ...f.callbacks, hasOrdinaryState: () => false }),
+  ).toBe(false);
   expect(f.suppressions()).toBe(0);
 });
 
@@ -54,10 +72,20 @@ test("current preview succeeds after hydration and reuses already loaded preview
   f.resume();
   expect(await pending).toBe(true);
   expect(f.suppressions()).toBe(1);
-  expect(await f.archive.hydratePreview("thread", { ...f.callbacks, hasPreviewHistory: () => true, hydrate: () => { throw new Error("Must reuse history"); } })).toBe(true);
+  expect(
+    await f.archive.hydratePreview("thread", {
+      ...f.callbacks,
+      hasPreviewHistory: () => true,
+      hydrate: () => {
+        throw new Error("Must reuse history");
+      },
+    }),
+  ).toBe(true);
 });
 
 test("current hydration with no resulting conversation reports the archived task failure", async () => {
   const f = fixture();
-  await expect(f.archive.hydratePreview("thread", { ...f.callbacks, hydrate: async () => {} })).rejects.toThrow("Could not load archived task");
+  await expect(
+    f.archive.hydratePreview("thread", { ...f.callbacks, hydrate: async () => {} }),
+  ).rejects.toThrow("Could not load archived task");
 });

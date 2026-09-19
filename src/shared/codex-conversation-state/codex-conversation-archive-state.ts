@@ -7,7 +7,7 @@ export class CanonicalConversationArchiveState {
   }
 
   suppressedIds(): string[] {
-    return [...this.markers].flatMap(([id, marker]) => marker.archived ? [id] : []);
+    return [...this.markers].flatMap(([id, marker]) => (marker.archived ? [id] : []));
   }
 
   /** Returns whether visibility changed. Even repeated suppression retires an older preview. */
@@ -25,17 +25,21 @@ export class CanonicalConversationArchiveState {
     this.markers.clear();
   }
 
-  async hydratePreview(conversationId: string, callbacks: {
-    /** Resident conversation or raw Thread metadata means an ordinary loaded thread. */
-    readonly hasOrdinaryState: () => boolean;
-    readonly hasConversation: () => boolean;
-    readonly hasPreviewHistory: () => boolean;
-    readonly onSuppressed: () => void;
-    /** The owner must check isCurrent together with its hydration generation before applying. */
-    readonly hydrate: (isCurrent: () => boolean) => Promise<void>;
-  }): Promise<boolean> {
+  async hydratePreview(
+    conversationId: string,
+    callbacks: {
+      /** Resident conversation or raw Thread metadata means an ordinary loaded thread. */
+      readonly hasOrdinaryState: () => boolean;
+      readonly hasConversation: () => boolean;
+      readonly hasPreviewHistory: () => boolean;
+      readonly onSuppressed: () => void;
+      /** The owner must check isCurrent together with its hydration generation before applying. */
+      readonly hydrate: (isCurrent: () => boolean) => Promise<void>;
+    },
+  ): Promise<boolean> {
     const previous = this.markers.get(conversationId);
-    if (previous?.archived === false || (previous === undefined && callbacks.hasOrdinaryState())) return false;
+    if (previous?.archived === false || (previous === undefined && callbacks.hasOrdinaryState()))
+      return false;
     if (previous === undefined) {
       this.suppress(conversationId);
       callbacks.onSuppressed();

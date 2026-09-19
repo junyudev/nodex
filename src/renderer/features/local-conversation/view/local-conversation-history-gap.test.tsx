@@ -211,9 +211,12 @@ describe("local conversation history gap controller", () => {
   test("does not request after the history gap is exhausted", async () => {
     const coordinator = createLocalConversationHistoryGapRequestCoordinator();
     let requests = 0;
-    await coordinator.observeViewport({ viewportStartPx: 0, viewportEndPx: 800, gaps: [] }, async () => {
-      requests += 1;
-    });
+    await coordinator.observeViewport(
+      { viewportStartPx: 0, viewportEndPx: 800, gaps: [] },
+      async () => {
+        requests += 1;
+      },
+    );
     expect(requests).toBe(0);
   });
 });

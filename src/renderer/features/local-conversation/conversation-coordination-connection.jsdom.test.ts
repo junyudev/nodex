@@ -55,7 +55,9 @@ it("closes an established RPC service and rejects further calls", async () => {
     "owner",
   );
   scope[Symbol.dispose]();
-  await expect(host.findThreadOwner({ hostId: "local", conversationId: "thread" })).rejects.toThrow();
+  await expect(
+    host.findThreadOwner({ hostId: "local", conversationId: "thread" }),
+  ).rejects.toThrow();
 });
 
 it("rejects readiness when transferring the port fails", async () => {

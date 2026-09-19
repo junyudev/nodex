@@ -241,9 +241,7 @@ describe("codex thread notification policy", () => {
   test("builds host-qualified public IDs while preserving strict IDs internally", () => {
     expect(buildCodexApprovalNotificationId("remote-a", 73)).toBe("approval-remote-a-73");
     expect(buildCodexApprovalNotificationId("remote-a", "73")).toBe("approval-remote-a-73");
-    expect(buildCodexQuestionNotificationId("local", "request-1")).toBe(
-      "question-local-request-1",
-    );
+    expect(buildCodexQuestionNotificationId("local", "request-1")).toBe("question-local-request-1");
     expect(
       buildCodexRequestNotificationOccurrenceId("approval", "remote-a", "thread-1", 73),
     ).not.toBe(buildCodexRequestNotificationOccurrenceId("approval", "remote-a", "thread-1", "73"));

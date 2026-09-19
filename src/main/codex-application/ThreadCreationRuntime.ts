@@ -164,11 +164,16 @@ export const makeWithCapacity = (
       const normalizedHostId = normalizeHostId(hostId);
       const launchId = begin(normalizedHostId, generation);
       let closed = false;
-      return { close: (threadId) => Effect.suspend(() => {
-        if (closed) return Effect.void;
-        closed = true;
-        return (threadId ? release(normalizedHostId, generation, threadId) : Effect.void).pipe(Effect.ensuring(end(launchId)));
-      }) };
+      return {
+        close: (threadId) =>
+          Effect.suspend(() => {
+            if (closed) return Effect.void;
+            closed = true;
+            return (threadId ? release(normalizedHostId, generation, threadId) : Effect.void).pipe(
+              Effect.ensuring(end(launchId)),
+            );
+          }),
+      };
     };
 
     return ThreadCreationRuntime.of({

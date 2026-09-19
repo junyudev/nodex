@@ -1,4 +1,7 @@
-import type { CodexHistoryBoundaryRef, CodexHistoryTurnItemsPagination } from "./codex-conversation-state/codex-history-topology";
+import type {
+  CodexHistoryBoundaryRef,
+  CodexHistoryTurnItemsPagination,
+} from "./codex-conversation-state/codex-history-topology";
 
 export interface CodexConversationHistoryTurnItemsRef {
   readonly turnId: string;
@@ -55,7 +58,8 @@ export function createCodexConversationHistoryTurnItemsRef(input: {
   ) {
     return null;
   }
-  if (edge !== "older" || input.pagination.hasLoadedOldest || input.pagination.itemsView === "full") return null;
+  if (edge !== "older" || input.pagination.hasLoadedOldest || input.pagination.itemsView === "full")
+    return null;
   return {
     turnId: input.turnId,
     expectedTopologyGeneration: input.expectedTopologyGeneration,

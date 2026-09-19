@@ -108,7 +108,10 @@ export function connectConversationService(
     new ConversationServiceRoot(new DeferredCoordination(), readState),
   ).getRemoteMain();
   return {
-    getClientId: () => coordination.then(() => disposed || !peer ? null : peer.getClientId().then((id) => disposed ? null : id)),
+    getClientId: () =>
+      coordination.then(() =>
+        disposed || !peer ? null : peer.getClientId().then((id) => (disposed ? null : id)),
+      ),
     dispose: () => {
       disposed = true;
       peer?.dispose();

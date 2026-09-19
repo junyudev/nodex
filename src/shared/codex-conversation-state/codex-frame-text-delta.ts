@@ -1,9 +1,11 @@
 import { produce, type Draft } from "immer";
-import { residentConversationTurnEntries, residentConversationTurns, conversationTurnDraft } from "./codex-turn-mutation";
+import {
+  residentConversationTurnEntries,
+  residentConversationTurns,
+  conversationTurnDraft,
+} from "./codex-turn-mutation";
 import type { ServerNotification } from "@nodex/codex-app-server-protocol";
-import type {
-  CodexCanonicalConversationState,
-} from "./codex-conversation-state";
+import type { CodexCanonicalConversationState } from "./codex-conversation-state";
 import { resolveCodexTurnReference } from "./codex-turn-reference";
 import type {
   CodexFrameTextDeltaTarget,
@@ -300,12 +302,30 @@ export function mutateCodexConversationFrameTextDeltas(
   for (const update of updates) {
     const entries = residentConversationTurnEntries(state);
     if (state.id !== update.conversationId || entries.length === 0) {
-      outcomes.push({ update, disposition: state.id !== update.conversationId ? "foreignConversation" : "noTurns", turnResolution: "none", stateChanged: false });
+      outcomes.push({
+        update,
+        disposition: state.id !== update.conversationId ? "foreignConversation" : "noTurns",
+        turnResolution: "none",
+        stateChanged: false,
+      });
       continue;
     }
-    const resolution = resolveCodexFrameTextDeltaTurn(residentConversationTurns(state).map((turn) => ({ turnId: turn.turnId, status: turn.status, hasError: turn.error !== null, itemCount: turn.items.length })), update.turnId);
+    const resolution = resolveCodexFrameTextDeltaTurn(
+      residentConversationTurns(state).map((turn) => ({
+        turnId: turn.turnId,
+        status: turn.status,
+        hasError: turn.error !== null,
+        itemCount: turn.items.length,
+      })),
+      update.turnId,
+    );
     if (resolution.kind === "none") {
-      outcomes.push({ update, disposition: "missingTurn", turnResolution: "none", stateChanged: false });
+      outcomes.push({
+        update,
+        disposition: "missingTurn",
+        turnResolution: "none",
+        stateChanged: false,
+      });
       continue;
     }
     const entry = entries[resolution.turnIndex]!;
@@ -326,14 +346,20 @@ export function mutateCodexConversationFrameTextDeltas(
         const target = update.target;
         if (target.type === "reasoningSummary" || target.type === "reasoningContent") {
           const parts = target.type === "reasoningSummary" ? item.summary : item.content;
-          const index = target.type === "reasoningSummary" ? target.summaryIndex : target.contentIndex;
+          const index =
+            target.type === "reasoningSummary" ? target.summaryIndex : target.contentIndex;
           while (parts.length <= index) parts.push("");
           parts[index] = `${parts[index] ?? ""}${update.delta}`;
         }
       }
       changed = true;
     }
-    outcomes.push({ update, disposition: result.disposition, turnResolution: resolution.kind, stateChanged: changed });
+    outcomes.push({
+      update,
+      disposition: result.disposition,
+      turnResolution: resolution.kind,
+      stateChanged: changed,
+    });
   }
   return outcomes;
 }
@@ -344,6 +370,8 @@ export function reduceCodexConversationFrameTextDeltas(
   context: { readonly now: () => number },
 ): CodexFrameTextDeltaBatchResult {
   let outcomes: readonly CodexFrameTextDeltaOutcome[] = [];
-  const state = produce(initialState, (draft) => { outcomes = mutateCodexConversationFrameTextDeltas(draft, updates, context); });
+  const state = produce(initialState, (draft) => {
+    outcomes = mutateCodexConversationFrameTextDeltas(draft, updates, context);
+  });
   return { state, outcomes };
 }

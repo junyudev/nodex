@@ -1,17 +1,17 @@
 import { useLayoutEffect, useRef, useState } from "react";
-import { NodexDropdownItem, NodexDropdownMenu } from "@/components/ui/dropdown";
-import { NodexTooltip } from "@/components/ui/tooltip";
-import {
-  threadMessageActionButtonClassName,
-  type AssistantMessageRating,
-} from "./thread-message-actions";
 import {
   ThumbDownFilledIcon,
   ThumbDownIcon,
   ThumbMixedIcon,
   ThumbUpFilledIcon,
   ThumbUpIcon,
-} from "./thread-rating-icons";
+} from "@/components/shared/icons";
+import { NodexDropdownItem, NodexDropdownMenu } from "@/components/ui/dropdown";
+import { NodexTooltip } from "@/components/ui/tooltip";
+import {
+  threadMessageActionButtonClassName,
+  type AssistantMessageRating,
+} from "./thread-message-actions";
 
 export function AssistantRatingMenu({
   selectedRating,

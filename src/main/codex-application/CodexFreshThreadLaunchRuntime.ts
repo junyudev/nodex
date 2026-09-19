@@ -1,7 +1,10 @@
 import type { ConversationFollowerTurnStart } from "../../shared/codex-thread-follower-request";
 import type { CodexTurnStartOverrides } from "./CodexTurnCommands";
 import type { CodexNativeFreshLaunchAdoption } from "../../shared/codex-native-thread-start";
-import { CodexMainConversationManagers, type MainConversationManager } from "./CodexMainConversationManagers";
+import {
+  CodexMainConversationManagers,
+  type MainConversationManager,
+} from "./CodexMainConversationManagers";
 import * as Context from "effect/Context";
 import * as Effect from "effect/Effect";
 import * as Exit from "effect/Exit";
@@ -90,7 +93,9 @@ export interface CodexFreshThreadLaunchRuntimeService {
   readonly adopt: (
     identity: CodexFreshThreadLaunchIdentity,
   ) => Effect.Effect<AdoptionResult, CodexFreshThreadLaunchError>;
-  readonly prepare: (identity: CodexFreshThreadLaunchIdentity) => Effect.Effect<ConversationFollowerTurnStart, CodexFreshThreadLaunchError>;
+  readonly prepare: (
+    identity: CodexFreshThreadLaunchIdentity,
+  ) => Effect.Effect<ConversationFollowerTurnStart, CodexFreshThreadLaunchError>;
   readonly start: (
     identity: CodexFreshThreadLaunchIdentity,
     request: TurnStartParams,
@@ -151,34 +156,56 @@ export const make: Effect.Effect<
       },
       { cause },
     );
-  const readAdopted = (launch: CodexFreshThreadLaunch): Effect.Effect<AdoptionResult, CodexFreshThreadLaunchError> => Effect.gen(function* () {
-    const manager = yield* managers.get(launch.nativeStart.hostId).pipe(Effect.mapError((cause) => adoptionError(launch, cause)));
-    yield* Effect.try({ try: manager.assertCurrent, catch: (cause) => adoptionError(launch, cause) });
-    if (manager.generation !== launch.nativeStart.generation) return yield* Effect.fail(adoptionError(launch, new Error("Fresh native generation retired")));
-    const entry = entries.get(launch.threadId);
-    if (!entry || entry.launch !== launch || (entry.manager && entry.manager !== manager)) return yield* Effect.fail(adoptionError(launch, new Error("Fresh manager lifetime retired")));
-    if (!entry.manager) {
-      entry.manager = manager;
-      entry.retirement = manager.onDispose(() => {
-        if (entries.get(launch.threadId) !== entry) return;
-        entries.delete(launch.threadId);
-        turns.releasePreparedNativeStart(launch.clientUserMessageId);
-        presentation.releaseClaim(launch.presentationClaim);
-        interrupt(launch.threadId);
-        completion.failed(launch);
+  const readAdopted = (
+    launch: CodexFreshThreadLaunch,
+  ): Effect.Effect<AdoptionResult, CodexFreshThreadLaunchError> =>
+    Effect.gen(function* () {
+      const manager = yield* managers
+        .get(launch.nativeStart.hostId)
+        .pipe(Effect.mapError((cause) => adoptionError(launch, cause)));
+      yield* Effect.try({
+        try: manager.assertCurrent,
+        catch: (cause) => adoptionError(launch, cause),
       });
-    }
-    return launch.nativeStart;
-  });
+      if (manager.generation !== launch.nativeStart.generation)
+        return yield* Effect.fail(
+          adoptionError(launch, new Error("Fresh native generation retired")),
+        );
+      const entry = entries.get(launch.threadId);
+      if (!entry || entry.launch !== launch || (entry.manager && entry.manager !== manager))
+        return yield* Effect.fail(
+          adoptionError(launch, new Error("Fresh manager lifetime retired")),
+        );
+      if (!entry.manager) {
+        entry.manager = manager;
+        entry.retirement = manager.onDispose(() => {
+          if (entries.get(launch.threadId) !== entry) return;
+          entries.delete(launch.threadId);
+          turns.releasePreparedNativeStart(launch.clientUserMessageId);
+          presentation.releaseClaim(launch.presentationClaim);
+          interrupt(launch.threadId);
+          completion.failed(launch);
+        });
+      }
+      return launch.nativeStart;
+    });
   const adoptLaunch = readAdopted;
 
-  const startFirstTurn = (launch: CodexFreshThreadLaunch, request: TurnStartParams) => Effect.gen(function* () {
-    const manager = yield* managers.get(launch.nativeStart.hostId);
-    if (manager.generation !== launch.nativeStart.generation) return yield* Effect.fail(adoptionError(launch, new Error("Fresh native generation retired")));
-    const response = yield* turns.executePreparedNativeStart(request, launch.rendererClientId);
-    yield* completion.accepted(launch);
-    return response;
-  }).pipe(Effect.onExit((exit) => Exit.isFailure(exit) ? Effect.sync(() => completion.failed(launch)) : Effect.void));
+  const startFirstTurn = (launch: CodexFreshThreadLaunch, request: TurnStartParams) =>
+    Effect.gen(function* () {
+      const manager = yield* managers.get(launch.nativeStart.hostId);
+      if (manager.generation !== launch.nativeStart.generation)
+        return yield* Effect.fail(
+          adoptionError(launch, new Error("Fresh native generation retired")),
+        );
+      const response = yield* turns.executePreparedNativeStart(request, launch.rendererClientId);
+      yield* completion.accepted(launch);
+      return response;
+    }).pipe(
+      Effect.onExit((exit) =>
+        Exit.isFailure(exit) ? Effect.sync(() => completion.failed(launch)) : Effect.void,
+      ),
+    );
 
   const lookup = (
     identity: CodexFreshThreadLaunchIdentity,
@@ -254,7 +281,10 @@ export const make: Effect.Effect<
           Effect.mapError((cause) => operationError(identity, cause)),
           Effect.ensuring(
             Effect.sync(() => {
-              if (entries.get(identity.threadId) === entry) { entries.delete(identity.threadId); entry.retirement?.[Symbol.dispose](); }
+              if (entries.get(identity.threadId) === entry) {
+                entries.delete(identity.threadId);
+                entry.retirement?.[Symbol.dispose]();
+              }
             }),
           ),
         );
@@ -285,7 +315,11 @@ export const make: Effect.Effect<
   const release = Effect.gen(function* () {
     if (closed) return;
     closed = true;
-    for (const entry of entries.values()) { entry.retirement?.[Symbol.dispose](); turns.releasePreparedNativeStart(entry.launch.clientUserMessageId); presentation.releaseClaim(entry.launch.presentationClaim); }
+    for (const entry of entries.values()) {
+      entry.retirement?.[Symbol.dispose]();
+      turns.releasePreparedNativeStart(entry.launch.clientUserMessageId);
+      presentation.releaseClaim(entry.launch.presentationClaim);
+    }
     entries.clear();
     yield* FiberMap.clear(adoptions);
     yield* FiberMap.clear(starts);
@@ -311,18 +345,27 @@ export const make: Effect.Effect<
       return entry ? { rendererClientId: entry.launch.rendererClientId, state: entry.state } : null;
     },
     adopt,
-    prepare: (identity) => admission.withPermits(1)(Effect.gen(function* () {
-      const entry = yield* lookup(identity);
-      if (entry.prepared) return entry.prepared;
-      if (entry.state !== "adopted") return yield* Effect.fail(new CodexFreshThreadLaunchError("not-adopted", identity));
-      const operation = yield* turns.prepareNativeStart(entry.launch.threadId, entry.launch.firstTurn.prompt, { ...entry.launch.firstTurn.overrides, presentationClaim: entry.launch.presentationClaim }).pipe(Effect.mapError((cause) => adoptionError(entry.launch, cause)));
-      if (entries.get(identity.threadId) !== entry || closed) {
-        turns.releasePreparedNativeStart(entry.launch.clientUserMessageId);
-        return yield* Effect.fail(new CodexFreshThreadLaunchError("unavailable", identity));
-      }
-      entry.prepared = operation;
-      return operation;
-    })),
+    prepare: (identity) =>
+      admission.withPermits(1)(
+        Effect.gen(function* () {
+          const entry = yield* lookup(identity);
+          if (entry.prepared) return entry.prepared;
+          if (entry.state !== "adopted")
+            return yield* Effect.fail(new CodexFreshThreadLaunchError("not-adopted", identity));
+          const operation = yield* turns
+            .prepareNativeStart(entry.launch.threadId, entry.launch.firstTurn.prompt, {
+              ...entry.launch.firstTurn.overrides,
+              presentationClaim: entry.launch.presentationClaim,
+            })
+            .pipe(Effect.mapError((cause) => adoptionError(entry.launch, cause)));
+          if (entries.get(identity.threadId) !== entry || closed) {
+            turns.releasePreparedNativeStart(entry.launch.clientUserMessageId);
+            return yield* Effect.fail(new CodexFreshThreadLaunchError("unavailable", identity));
+          }
+          entry.prepared = operation;
+          return operation;
+        }),
+      ),
     start,
     releaseRenderer: (rendererClientId, _reason) => {
       for (const [threadId, entry] of entries) {
@@ -339,7 +382,11 @@ export const make: Effect.Effect<
     },
     clear: (threadId) => {
       const entry = entries.get(threadId);
-      if (entry) { turns.releasePreparedNativeStart(entry.launch.clientUserMessageId); presentation.releaseClaim(entry.launch.presentationClaim); entry.retirement?.[Symbol.dispose](); }
+      if (entry) {
+        turns.releasePreparedNativeStart(entry.launch.clientUserMessageId);
+        presentation.releaseClaim(entry.launch.presentationClaim);
+        entry.retirement?.[Symbol.dispose]();
+      }
       entries.delete(threadId);
       interrupt(threadId);
     },

@@ -103,7 +103,9 @@ export interface BrowserUseSessionRuntime {
   readonly releaseSession: (
     sessionId: string,
   ) => Effect.Effect<void, BrowserUseSessionRuntimeError>;
-  readonly endSessionActivity: (sessionId: string) => Effect.Effect<void, BrowserUseSessionRuntimeError>;
+  readonly endSessionActivity: (
+    sessionId: string,
+  ) => Effect.Effect<void, BrowserUseSessionRuntimeError>;
   readonly turnEnded: (
     input: BrowserUseTurnLifecycleInput,
   ) => Effect.Effect<void, BrowserUseSessionRuntimeError>;
@@ -298,7 +300,14 @@ const sessionLayer = (
         endSessionActivity: Effect.sync(() => {
           // Control release may await CDP. Temporary route retirement must not wait for it.
           const release = api.releaseSessionControl();
-          runActivity(Effect.tryPromise({ try: () => release, catch: (cause) => runtimeError("session-activity-ended", sessionId, cause) }).pipe(Effect.catch((cause) => Effect.logWarning("Browser control release failed", cause))));
+          runActivity(
+            Effect.tryPromise({
+              try: () => release,
+              catch: (cause) => runtimeError("session-activity-ended", sessionId, cause),
+            }).pipe(
+              Effect.catch((cause) => Effect.logWarning("Browser control release failed", cause)),
+            ),
+          );
         }).pipe(Effect.andThen(Ref.get(disposeAfterSessionActivity))),
         hasActiveControl: Effect.sync(() => api.hasActiveControl()),
         markDisposeAfterSessionActivity: Ref.set(disposeAfterSessionActivity, true),
@@ -563,13 +572,22 @@ export const makeBrowserUseSessionRuntime = (
     );
 
     return {
-      endSessionActivity: (sessionId) => useSessionWithKey(sessionId, (session) => session.endSessionActivity).pipe(Effect.flatMap((entry) => {
-        if (entry?.value !== true) return record("session-activity-ended", sessionId);
-        return mutationLock.withPermits(1)(Ref.get(state).pipe(Effect.flatMap((current) => {
-          if (current.active.get(sessionId) !== entry.key) return Effect.void;
-          return removeKey(entry.key).pipe(Effect.andThen(record("session-activity-ended", sessionId)));
-        })));
-      })),
+      endSessionActivity: (sessionId) =>
+        useSessionWithKey(sessionId, (session) => session.endSessionActivity).pipe(
+          Effect.flatMap((entry) => {
+            if (entry?.value !== true) return record("session-activity-ended", sessionId);
+            return mutationLock.withPermits(1)(
+              Ref.get(state).pipe(
+                Effect.flatMap((current) => {
+                  if (current.active.get(sessionId) !== entry.key) return Effect.void;
+                  return removeKey(entry.key).pipe(
+                    Effect.andThen(record("session-activity-ended", sessionId)),
+                  );
+                }),
+              ),
+            );
+          }),
+        ),
       availableBackends: () => (enabled ? ["iab"] : []),
       captureRoute,
       debugSnapshot: mutationLock.withPermits(1)(

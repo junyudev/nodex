@@ -26,7 +26,6 @@
     "src/renderer/features/local-conversation/view/shared/context-window.tsx": 1,
     "src/renderer/features/local-conversation/view/shared/request-cards/local-conversation-request-cards.tsx": 3,
     "src/renderer/features/local-conversation/view/shared/subagent-avatar.tsx": 1,
-    "src/renderer/features/local-conversation/view/shared/thread-message-actions.tsx": 1,
     "src/renderer/features/local-conversation/view/shared/todo-list-surface.tsx": 3,
     "src/renderer/features/local-conversation/view/shared/turn-diff-surface.tsx": 1,
     "src/renderer/features/user-attachment-image-editor/adapters/resolved-image-asset.node.test.ts": 1,

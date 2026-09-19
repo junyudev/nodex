@@ -1,4 +1,7 @@
-import type { CodexQueuedMessage, CodexQueuedMessageState } from "../../../shared/codex-queued-message";
+import type {
+  CodexQueuedMessage,
+  CodexQueuedMessageState,
+} from "../../../shared/codex-queued-message";
 import type { QueuedMessageStorage } from "../../../shared/codex-queued-message-coordinator";
 import { runConversationOperation } from "./local-conversation-operations";
 
@@ -23,7 +26,9 @@ export class RendererQueuedMessageStorage implements QueuedMessageStorage<CodexQ
         return state;
       }
     };
-    const loading = load().finally(() => { if (this.loading === loading) this.loading = undefined; });
+    const loading = load().finally(() => {
+      if (this.loading === loading) this.loading = undefined;
+    });
     this.loading = loading;
     return loading;
   }
@@ -41,7 +46,11 @@ export class RendererQueuedMessageStorage implements QueuedMessageStorage<CodexQ
     this.value = undefined;
     for (const listener of this.listeners) listener();
     if (!this.listeners.size) return;
-    void this.load().then(() => { for (const listener of this.listeners) listener(); }).catch((error: unknown) => console.error("Queued message refresh failed", error));
+    void this.load()
+      .then(() => {
+        for (const listener of this.listeners) listener();
+      })
+      .catch((error: unknown) => console.error("Queued message refresh failed", error));
   }
   subscribe(listener: () => void): () => void {
     this.listeners.add(listener);

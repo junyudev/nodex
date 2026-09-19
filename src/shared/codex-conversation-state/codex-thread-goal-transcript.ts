@@ -105,6 +105,9 @@ export function mutateCodexCanonicalThreadGoalTranscriptTurn(
   appendConversationTurnDraft(state, turn, () => globalThis.crypto.randomUUID());
 }
 
-export function appendCodexCanonicalThreadGoalTranscriptTurn(state: CodexCanonicalConversationState, goal: ThreadGoal): CodexCanonicalConversationState {
+export function appendCodexCanonicalThreadGoalTranscriptTurn(
+  state: CodexCanonicalConversationState,
+  goal: ThreadGoal,
+): CodexCanonicalConversationState {
   return produce(state, (draft) => mutateCodexCanonicalThreadGoalTranscriptTurn(draft, goal));
 }

@@ -74,7 +74,11 @@ export function createCodexSshProxy(options: {
   readonly codexHome?: string | null;
   readonly connectTimeoutSeconds?: number;
   readonly sentinel?: Buffer;
-  readonly spawnProcess?: (command: string, args: readonly string[], options: { env: NodeJS.ProcessEnv; stdio: ["pipe", "pipe", "pipe"] }) => ChildProcessWithoutNullStreams;
+  readonly spawnProcess?: (
+    command: string,
+    args: readonly string[],
+    options: { env: NodeJS.ProcessEnv; stdio: ["pipe", "pipe", "pipe"] },
+  ) => ChildProcessWithoutNullStreams;
 }): Duplex {
   const sentinel = options.sentinel ?? randomBytes(8);
   const home = options.codexHome

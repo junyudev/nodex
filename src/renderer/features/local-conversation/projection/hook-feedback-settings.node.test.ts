@@ -55,9 +55,7 @@ describe("hook feedback settings", () => {
         cwd: "/workspace/nodex",
         sources: ["project"],
       }),
-    ).toBe(
-      "/settings/hooks-settings?hostId=local&source=project&projectRoot=%2Fworkspace%2Fnodex",
-    );
+    ).toBe("/settings/hooks-settings?hostId=local&source=project&projectRoot=%2Fworkspace%2Fnodex");
     expect(
       buildHookFeedbackSettingsHref({
         hostId: "remote-1",

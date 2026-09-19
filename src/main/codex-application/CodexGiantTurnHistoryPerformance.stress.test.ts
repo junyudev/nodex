@@ -4,11 +4,11 @@ import { makeCanonicalHistoryPressureFixture } from "../../shared/codex-conversa
 
 test("native history retains whole giant items without invented byte clipping or item splitting", async () => {
   const bytes = 2 * 1024 * 1024;
-  const f = makeCanonicalHistoryPressureFixture(1,1,bytes);
-  const page = await listCanonicalHistoryTurns(f.client,"thread");
+  const f = makeCanonicalHistoryPressureFixture(1, 1, bytes);
+  const page = await listCanonicalHistoryTurns(f.client, "thread");
   const item = page.response.data[0]?.items[0];
   expect(item?.type).toBe("plan");
-  if(item?.type!=="plan")throw new Error("Expected plan item");
+  if (item?.type !== "plan") throw new Error("Expected plan item");
   expect(item.text.length).toBe(bytes);
   expect(item.text).toBe("x".repeat(bytes));
   expect(page.response.data[0]?.items).toHaveLength(1);

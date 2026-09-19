@@ -67,7 +67,7 @@ it.effect(
                     promoteRoute: () => Effect.void,
                     releaseSession: () => Effect.void,
                     endSessionActivity: () => Effect.void,
-      turnEnded: () => Effect.void,
+                    turnEnded: () => Effect.void,
                     turnStarted: () => Effect.void,
                   }),
                 ),

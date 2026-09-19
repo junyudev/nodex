@@ -63,7 +63,8 @@ export const make: Effect.Effect<CodexForkTitlePolicy["Service"], never, CoreMod
       const sourceTitle = resolveCodexForkSourceConversationTitle({
         explicitTitle: source.threadName,
         firstTurnInput: residentConversationTurns(source.canonical)[0]?.params?.input,
-        firstTurnCommentAttachments: residentConversationTurns(source.canonical)[0]?.params?.commentAttachments,
+        firstTurnCommentAttachments: residentConversationTurns(source.canonical)[0]?.params
+          ?.commentAttachments,
       });
       const scanCatalog = Effect.gen(function* () {
         const known: CodexForkTitleThread[] = [];

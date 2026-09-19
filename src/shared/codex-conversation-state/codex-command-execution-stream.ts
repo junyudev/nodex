@@ -1,10 +1,12 @@
 import { produce, type Draft } from "immer";
-import { residentConversationTurnEntries, residentConversationTurns, conversationTurnDraft } from "./codex-turn-mutation";
+import {
+  residentConversationTurnEntries,
+  residentConversationTurns,
+  conversationTurnDraft,
+} from "./codex-turn-mutation";
 import type { ServerNotification } from "@nodex/codex-app-server-protocol";
 import type { ThreadItem } from "@nodex/codex-app-server-protocol/v2";
-import type {
-  CodexCanonicalConversationState,
-} from "./codex-conversation-state";
+import type { CodexCanonicalConversationState } from "./codex-conversation-state";
 import {
   appendCodexCommandOutputTail,
   CODEX_COMMAND_OUTPUT_TRUNCATION_PREFIX,
@@ -180,30 +182,72 @@ export function reduceCodexTerminalCommandsRawTurns(
 
 type CommandMutation = Omit<CodexCommandExecutionCanonicalMutationResult, "state">;
 
-export function mutateCodexConversationCommandOutput(state: Draft<CodexCanonicalConversationState>, update: CodexCommandOutputUpdate): CommandMutation {
-  if (state.id !== update.conversationId) return { disposition: "foreignConversation", turnIndex: -1, itemIndex: -1, stateChanged: false };
+export function mutateCodexConversationCommandOutput(
+  state: Draft<CodexCanonicalConversationState>,
+  update: CodexCommandOutputUpdate,
+): CommandMutation {
+  if (state.id !== update.conversationId)
+    return {
+      disposition: "foreignConversation",
+      turnIndex: -1,
+      itemIndex: -1,
+      stateChanged: false,
+    };
   const result = reduceCodexCommandOutputRawTurns(residentConversationTurns(state), update);
   const entry = residentConversationTurnEntries(state)[result.turnIndex];
   const item = entry ? conversationTurnDraft(state, entry.address)?.items[result.itemIndex] : null;
-  if (result.stateChanged && result.rawItem && item?.type === "commandExecution") item.aggregatedOutput = result.rawItem.aggregatedOutput;
-  return { disposition: result.disposition, turnIndex: result.turnIndex, itemIndex: result.itemIndex, stateChanged: result.stateChanged };
+  if (result.stateChanged && result.rawItem && item?.type === "commandExecution")
+    item.aggregatedOutput = result.rawItem.aggregatedOutput;
+  return {
+    disposition: result.disposition,
+    turnIndex: result.turnIndex,
+    itemIndex: result.itemIndex,
+    stateChanged: result.stateChanged,
+  };
 }
-export function mutateCodexConversationTerminalCommands(state: Draft<CodexCanonicalConversationState>, update: CodexTerminalCommandUpdate): CommandMutation {
-  if (state.id !== update.conversationId) return { disposition: "foreignConversation", turnIndex: -1, itemIndex: -1, stateChanged: false };
+export function mutateCodexConversationTerminalCommands(
+  state: Draft<CodexCanonicalConversationState>,
+  update: CodexTerminalCommandUpdate,
+): CommandMutation {
+  if (state.id !== update.conversationId)
+    return {
+      disposition: "foreignConversation",
+      turnIndex: -1,
+      itemIndex: -1,
+      stateChanged: false,
+    };
   const result = reduceCodexTerminalCommandsRawTurns(residentConversationTurns(state), update);
   const entry = residentConversationTurnEntries(state)[result.turnIndex];
   const item = entry ? conversationTurnDraft(state, entry.address)?.items[result.itemIndex] : null;
-  if (result.stateChanged && item?.type === "commandExecution") item.commandActions.push(...update.commands.map((command) => ({ type: "unknown" as const, command })));
-  return { disposition: result.disposition, turnIndex: result.turnIndex, itemIndex: result.itemIndex, stateChanged: result.stateChanged };
+  if (result.stateChanged && item?.type === "commandExecution")
+    item.commandActions.push(
+      ...update.commands.map((command) => ({ type: "unknown" as const, command })),
+    );
+  return {
+    disposition: result.disposition,
+    turnIndex: result.turnIndex,
+    itemIndex: result.itemIndex,
+    stateChanged: result.stateChanged,
+  };
 }
-export function reduceCodexConversationCommandOutput(state: CodexCanonicalConversationState, update: CodexCommandOutputUpdate): CodexCommandExecutionCanonicalMutationResult {
+export function reduceCodexConversationCommandOutput(
+  state: CodexCanonicalConversationState,
+  update: CodexCommandOutputUpdate,
+): CodexCommandExecutionCanonicalMutationResult {
   let operation!: CommandMutation;
-  const next = produce(state, (draft) => { operation = mutateCodexConversationCommandOutput(draft, update); });
+  const next = produce(state, (draft) => {
+    operation = mutateCodexConversationCommandOutput(draft, update);
+  });
   return { ...operation, state: next, stateChanged: next !== state };
 }
-export function reduceCodexConversationTerminalCommands(state: CodexCanonicalConversationState, update: CodexTerminalCommandUpdate): CodexCommandExecutionCanonicalMutationResult {
+export function reduceCodexConversationTerminalCommands(
+  state: CodexCanonicalConversationState,
+  update: CodexTerminalCommandUpdate,
+): CodexCommandExecutionCanonicalMutationResult {
   let operation!: CommandMutation;
-  const next = produce(state, (draft) => { operation = mutateCodexConversationTerminalCommands(draft, update); });
+  const next = produce(state, (draft) => {
+    operation = mutateCodexConversationTerminalCommands(draft, update);
+  });
   return { ...operation, state: next, stateChanged: next !== state };
 }
 
