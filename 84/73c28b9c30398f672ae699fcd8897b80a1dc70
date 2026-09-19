@@ -1,0 +1,45 @@
+crates/nodex-core-protocol/src/document_module_wire.rs
+  s_eb6e6e7ed854d5::t_f1a637db478667 36,333,355,367
+  s_eb6e6e7ed854d5::t_90041bfa794cd0 32,245,304
+crates/nodex-core/src/infrastructure/migration.rs
+  s_eb6e6e7ed854d5::t_cc3f4d9fc1b24a 4301-4311
+src/renderer/features/local-conversation/local-conversation-store.ts
+  s_eb6e6e7ed854d5::t_d9509a1080f0f4 5620
+crates/nodex-core/src/workspace/queued_message_state.rs
+  s_eb6e6e7ed854d5::t_510835420fde18 38
+src/main/codex/codex-developer-instructions.ts
+  s_eb6e6e7ed854d5::t_06e5a3cc2548af 178
+crates/nodex-core-contracts/src/document/recovery_bundle.rs
+  s_eb6e6e7ed854d5::t_b664499fe01f30 438-488
+  s_eb6e6e7ed854d5::t_deacaba15f4c66 489
+crates/nodex-core/src/document/retention.rs
+  s_eb6e6e7ed854d5::t_572363d2ad972f 3251
+crates/nodex-core/src/workspace/thread_read_state.rs
+  s_eb6e6e7ed854d5::t_f05e319562b7a5 64
+  s_eb6e6e7ed854d5::t_ff0e657673a534 72,128
+scripts/verify-codex-runtime.test.ts
+  s_eb6e6e7ed854d5::t_bc669e5acbe084 43-44
+  s_eb6e6e7ed854d5::t_3d14468e1c5403 25-35,37-42
+src/main/codex-application/CodexThreadRequestSettings.node.test.ts
+  s_eb6e6e7ed854d5::t_0c6fb42cd7e88d 239-242
+src/renderer/bootstrap/startup-controller.ts
+  s_eb6e6e7ed854d5::t_1a7d5f8f9822e5 133-138
+crates/nodex-core/src/document/module/recovery_drafts.rs
+  s_eb6e6e7ed854d5::t_d4980c4694d0bf 905
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "8473c28b9c30398f672ae699fcd8897b80a1dc70",
+  "prompts": {},
+  "sessions": {
+    "s_eb6e6e7ed854d5": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a0b7f1-ee45-7543-97d2-1c3405ecaa3b",
+        "model": "chatgpt-web/extra-high"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    }
+  }
+}
