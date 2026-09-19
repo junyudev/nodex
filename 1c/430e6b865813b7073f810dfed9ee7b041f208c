@@ -1,0 +1,19 @@
+.github/workflows/_app-tests.yml
+  s_68bba929cf96a5::t_b320138a62a6f6 58-59
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "1c430e6b865813b7073f810dfed9ee7b041f208c",
+  "prompts": {},
+  "sessions": {
+    "s_68bba929cf96a5": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a0ba4b-747f-7223-b054-3325c5b045fc",
+        "model": "gpt-6-astra"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    }
+  }
+}
