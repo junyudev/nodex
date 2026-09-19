@@ -118,7 +118,7 @@
     "prosemirror-view": "1.42.2",
     "y-prosemirror": "^1.3.7",
     "y-protocols": "^1.0.6",
-    "yjs": "13.6.31"
+    "yjs": "13.6.32"
   },
   "peerDependencies": {
     "@y/prosemirror": "^2.0.0-6",
