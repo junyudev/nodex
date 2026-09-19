@@ -1,19 +1,14 @@
 resources/browser-runtime/browser-runtime.lock.json
-  s_13facd0d06ac39::t_029b5a162b0e33 5,8-9,11-12,15-19,21-24,28-32,34-37
+  h_6a6ac0c07fcd37 5,8-9,11-12,15-19,21-24,28-32,34-37
 ---
 {
   "schema_version": "authorship/3.0.0",
   "git_ai_version": "1.7.5",
   "base_commit_sha": "eca8ba8bb128db646f2d938b172eb23f99d40176",
   "prompts": {},
-  "sessions": {
-    "s_13facd0d06ac39": {
-      "agent_id": {
-        "tool": "codex",
-        "id": "01a0b526-68d0-7c41-9a41-4bb65e44d9be",
-        "model": "chatgpt-web/extra-high"
-      },
-      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+  "humans": {
+    "h_6a6ac0c07fcd37": {
+      "author": "Jun Yu <junyu.dev@gmail.com>"
     }
   }
 }
