@@ -448,6 +448,21 @@ describe("NFM chronological history lane", () => {
     }
   });
 
+  test("disposed surface history detaches its document destroy callback", () => {
+    const document = new Y.Doc();
+    let destructions = 0;
+    class SurfaceHistory extends Y.UndoManager {
+      override destroy() {
+        destructions += 1;
+        super.destroy();
+      }
+    }
+    const manager = new SurfaceHistory(document.getText("body"));
+    manager.destroy();
+    document.destroy();
+    expect(destructions).toBe(1);
+  });
+
   test.each(["discard", "clear", "destroy"] as const)(
     "%s of one surface history cannot garbage-collect another surface's retained parent",
     (mode) => {

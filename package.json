@@ -213,7 +213,7 @@
     "stream-json": "2.1.0",
     "uuid": "14.0.0",
     "y-protocols": "1.0.7",
-    "yjs": "13.6.31"
+    "yjs": "13.6.32"
   },
   "devDependencies": {
     "@atlaskit/pragmatic-drag-and-drop": "2.0.0",
