@@ -25,6 +25,8 @@ An ordinary title or body edit stays inside Yjs and ProseMirror:
 
 The hot path does not serialize the complete body to NFM, update a React `description` draft, replace the BlockNote tree from Card props, or send a whole-Card mutation. This removes both the historical per-keystroke serialization cost and the last-writer-wins snapshot seam.
 
+Block change readers scope ordinary snapshots to the transaction’s affected range, including property and mark changes. Selection-only transactions produce no content changes. Preflight reads tolerate unassigned Block IDs without writing snapshot identities into the live Document.
+
 Editor-local derived features may observe BlockNote transactions for selection, heading navigation, search, menus, or UI state. They must not turn those observations into a content save payload.
 
 ## Provider and Writer

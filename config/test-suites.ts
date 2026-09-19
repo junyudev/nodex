@@ -19,6 +19,11 @@ export const CODEX_SCALE_TEST =
 export const YJS_YRS_TEST = "src/shared/block-documents/yjs-yrs-conformance.test.ts";
 
 const blocknoteTests = [
+  "third_party/blocknote/packages/core/src/api/getBlocksChangedByTransaction.test.ts",
+  "third_party/blocknote/packages/core/src/schema/schema.test.ts",
+  "third_party/blocknote/packages/core/src/schema/nodeViewMutations.test.ts",
+  "third_party/blocknote/packages/core/src/extensions/PreviousBlockType/PreviousBlockType.test.ts",
+  "third_party/blocknote/packages/core/src/exporter/Exporter.test.ts",
   "third_party/blocknote/packages/core/src/api/getBlockInfoFromPos.test.ts",
   "third_party/blocknote/packages/core/src/api/blockManipulation/tables/table-resource-limits.test.ts",
   "third_party/blocknote/packages/core/src/api/exporters/markdown/htmlToMarkdown.test.ts",
@@ -133,7 +138,10 @@ const suites: Readonly<Record<SuiteId, TestSuite>> = {
   browser: {
     config: "vitest.browser.config.ts",
     runtime: "chromium",
-    include: ["src/renderer/**/*.browser.test.{ts,tsx}"],
+    include: [
+      "src/renderer/**/*.browser.test.{ts,tsx}",
+      "third_party/blocknote/packages/core/src/extensions/TableHandles/TableHandles.browser.test.ts",
+    ],
     exclude: [],
     stress: ["src/renderer/**/*.stress.browser.test.{ts,tsx}"],
     native: [],

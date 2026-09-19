@@ -15,6 +15,7 @@ import {
   getNodeId,
   isSuggestedDeletionNode,
 } from "./getBlockInfoFromPos.js";
+import { getChangedRange } from "./getChangedRange.js";
 import { nodeToBlock } from "./nodeConversions/nodeToBlock.js";
 import { isNodeBlock } from "./nodeUtil.js";
 
@@ -23,14 +24,23 @@ import { isNodeBlock } from "./nodeUtil.js";
  *
  * High-level algorithm used by getBlocksChangedByTransaction:
  * 1) Merge appended transactions into one document change.
- * 2) Collect a snapshot of blocks before and after (flat map by id, and per-parent child order).
- * 3) Emit inserts and deletes by diffing ids between snapshots.
- * 4) For ids present in both snapshots:
- *    - If parentId changed, emit a move
- *    - Else if block changed (ignoring children), emit an update
- * 5) Finally, detect same-parent sibling reorders by comparing child order per parent.
- *    We use an inlined O(n log n) LIS inside detectReorderedChildren to keep a
- *    longest already-ordered subsequence and mark only the remaining items as moved.
+ * 2) Compute the single range the transaction touched (in both the old and new
+ *    doc) and only snapshot blocks within it, rather than walking the whole
+ *    document. getChanges() runs per transaction, so a full-document snapshot
+ *    made typing in large documents slow: every keystroke re-converted every block.
+ * 3) Snapshot blocks before and after within that range (flat map by id, and
+ *    per-parent child order).
+ * 4) Emit inserts/deletes by diffing ids; for shared ids, emit a move (parent
+ *    changed) or update (block changed, ignoring children).
+ * 5) Detect same-parent sibling reorders via an O(n log n) LIS in
+ *    detectReorderedChildren, marking only items outside the longest ordered
+ *    subsequence as moved.
+ *
+ * The range suffices because `changedRange()` spans from the first to the last
+ * changed position: any inserted/deleted/moved/updated/reordered block has its
+ * relevant positions inside it, and blocks outside are byte-for-byte identical in
+ * the same relative order. A moved block's parent contains it, so the parent
+ * overlaps the range too (and nodeToBlock converts its full subtree regardless).
  */
 /**
  * Gets the parent block of a node, if it has one.
@@ -230,14 +240,19 @@ function materializeTransientSnapshotIds(
 }
 
 /**
- * Collects a snapshot of blocks and per-parent child order in a single traversal.
- * Uses "__root__" to represent the root level where parentId is undefined.
+ * Snapshots blocks and per-parent child order for the block nodes overlapping the
+ * given range (uses "__root__" for the root level). Traversing only the range is
+ * what keeps this cheap per keystroke: nodeToBlock runs only for blocks that could
+ * have changed.
  */
 function collectSnapshot<
   BSchema extends BlockSchema,
   ISchema extends InlineContentSchema,
   SSchema extends StyleSchema,
->(doc: Node): BlockSnapshot<BSchema, ISchema, SSchema> {
+>(
+  doc: Node,
+  range: { from: number; to: number },
+): BlockSnapshot<BSchema, ISchema, SSchema> {
   const ROOT_KEY = "__root__";
   const byId: Record<
     string,
@@ -247,7 +262,12 @@ function collectSnapshot<
     }
   > = {};
   const childrenByParent: Record<string, string[]> = {};
-  doc.descendants((node, pos) => {
+  // Clamp to valid positions; nodesBetween throws on out-of-range ones.
+  const from = Math.max(0, Math.min(range.from, doc.content.size));
+  const to = Math.max(from, Math.min(range.to, doc.content.size));
+  // nodesBetween visits every node overlapping [from, to] in document order,
+  // including ancestor blocks that contain the range.
+  doc.nodesBetween(from, to, (node, pos) => {
     if (!isNodeBlock(node)) {
       return true;
     }
@@ -423,13 +443,22 @@ export function getBlocksChangedByTransaction<
     ...appendedTransactions,
   ]);
 
+  const newRange = getChangedRange(combinedTransaction);
+  if (!newRange) return [];
+  const invertedMapping = combinedTransaction.mapping.invert();
+  const oldRange = {
+    from: invertedMapping.map(newRange.from, -1),
+    to: invertedMapping.map(newRange.to, 1),
+  };
+
   let assignedIds: Set<string> | undefined;
   const collectTransactionSnapshot = (
     doc: Node,
     phase: "before" | "after",
+    range: { from: number; to: number },
   ) => {
     try {
-      return collectSnapshot<BSchema, ISchema, SSchema>(doc);
+      return collectSnapshot<BSchema, ISchema, SSchema>(doc, range);
     } catch (error) {
       if (!(error instanceof UnassignedBlockIdInSnapshot)) {
         throw error;
@@ -440,6 +469,7 @@ export function getBlocksChangedByTransaction<
       ]);
       return collectSnapshot<BSchema, ISchema, SSchema>(
         materializeTransientSnapshotIds(doc, phase, assignedIds),
+        range,
       );
     }
   };
@@ -447,10 +477,12 @@ export function getBlocksChangedByTransaction<
   const prevSnap = collectTransactionSnapshot(
     combinedTransaction.before,
     "before",
+    oldRange,
   );
   const nextSnap = collectTransactionSnapshot(
     combinedTransaction.doc,
     "after",
+    newRange,
   );
 
   const changes: BlocksChanged<BSchema, ISchema, SSchema> = [];
