@@ -175,9 +175,7 @@ export function buildCodexDesktopDeveloperInstructions(
   const appContext = joinInstructionSections(
     CODEX_DESKTOP_CONTEXT,
     CODEX_PULL_REQUEST_DIFF_LINKS_CONTEXT,
-    input.workspaceDependenciesEnabled
-      ? CODEX_WORKSPACE_DEPENDENCIES_CONTEXT
-      : null,
+    input.workspaceDependenciesEnabled ? CODEX_WORKSPACE_DEPENDENCIES_CONTEXT : null,
     CODEX_AUTOMATIONS_CONTEXT,
     threadCoordination,
     input.threadToolsEnabled && input.sidebarSectionToolsEnabled

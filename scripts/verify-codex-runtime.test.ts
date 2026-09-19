@@ -22,16 +22,26 @@ test("binds final runtime verification to the complete canonical metadata digest
     sha256: sha256(artifactPath),
     size: artifactPath.length,
   });
-  const artifacts = [
-    artifact("codex-package.json", false),
-    artifact("bin/codex", true),
-    artifact("bin/codex-code-mode-host", true),
-    artifact("codex-path/rg", true),
-    artifact("codex-resources/zsh/bin/zsh", true),
-    artifact("third-party/codex/LICENSE", false),
-    artifact("third-party/codex/NOTICE", false),
+  const executablePaths = new Set([
+    lock.packageManifest.entrypoint,
+    "bin/codex-code-mode-host",
+    "codex-path/rg",
+    "codex-resources/voice/bin/codex-voice-host",
+    "codex-resources/zsh/bin/zsh",
+  ]);
+  const artifactPaths = [
+    ...lock.requiredArtifacts,
+    "third-party/codex/LICENSE",
+    "third-party/codex/NOTICE",
   ];
-  const entrypointSha256 = artifacts[1]!.sha256;
+  const artifacts = artifactPaths.map((artifactPath) =>
+    artifact(artifactPath, executablePaths.has(artifactPath)),
+  );
+  const entrypointSha256 = artifacts.find(
+    ({ path: artifactPath }) => artifactPath === lock.packageManifest.entrypoint,
+  )?.sha256;
+  if (!entrypointSha256)
+    throw new Error("Release lock entrypoint is missing from required artifacts");
   const metadata: BundledAgentRuntimeMetadata = {
     appServerRuntimeVersion: lock.appServerRuntimeVersion,
     artifacts,

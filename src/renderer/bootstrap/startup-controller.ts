@@ -130,12 +130,12 @@ export function startStartupController(): StartupController {
           .catch(() => FAIL_CLOSED_RUNTIME_CAPABILITIES),
       ]);
       const [application, closeFlush, transport, sentry, telemetry] = await Promise.all([
-          import("../application-renderer"),
-          import("../lib/app-close-flush"),
-          import("../lib/electron-renderer-transport"),
-          import("../lib/sentry-renderer"),
-          import("../lib/statsig-telemetry"),
-        ]);
+        import("../application-renderer"),
+        import("../lib/app-close-flush"),
+        import("../lib/electron-renderer-transport"),
+        import("../lib/sentry-renderer"),
+        import("../lib/statsig-telemetry"),
+      ]);
       if (disposed) return;
       transport.initializeElectronRendererLocalCommitIngress(api);
       await sentry.initializeRendererSentry();

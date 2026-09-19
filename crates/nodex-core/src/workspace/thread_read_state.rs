@@ -61,6 +61,7 @@ pub(super) fn clear(connection: &Connection, identity_key: &str) -> Result<(), S
 }
 
 #[cfg(test)]
+#[allow(clippy::items_after_test_module)]
 mod tests {
     use super::*;
 
@@ -68,7 +69,7 @@ mod tests {
     fn selected_identity_updates_sidebar_without_touching_other_backends() {
         let connection = Connection::open_in_memory().unwrap();
         connection
-            .execute_batch(include_str!("../../schema/migrations/v165_to_v166.sql"))
+            .execute_batch(include_str!("../../schema/migrations/v166_to_v167.sql"))
             .unwrap();
         connection.execute_batch("CREATE TABLE codex_threads(thread_id TEXT PRIMARY KEY, agent_backend_kind TEXT, execution_host_id TEXT, archived INTEGER); CREATE TABLE codex_unread_threads(thread_id TEXT PRIMARY KEY); CREATE TABLE project_sessions(id TEXT PRIMARY KEY, unread INTEGER); CREATE TABLE project_session_threads(session_id TEXT, thread_id TEXT); INSERT INTO codex_threads VALUES ('a','codex','local',0),('b','acp','local',0); INSERT INTO project_sessions VALUES ('sa',1),('sb',1); INSERT INTO project_session_threads VALUES ('sa','a'),('sb','b'); INSERT INTO codex_unread_threads VALUES ('a'),('b');").unwrap();
         let hosts = [("local".to_string(), "key".to_string())]
@@ -124,7 +125,7 @@ mod tests {
     fn preserves_identity_host_isolation_and_unread_insertion_order() {
         let connection = Connection::open_in_memory().unwrap();
         connection
-            .execute_batch(include_str!("../../schema/migrations/v165_to_v166.sql"))
+            .execute_batch(include_str!("../../schema/migrations/v166_to_v167.sql"))
             .unwrap();
         set(&connection, "account-a", "host-a", "second", true).unwrap();
         set(&connection, "account-a", "host-a", "first", true).unwrap();

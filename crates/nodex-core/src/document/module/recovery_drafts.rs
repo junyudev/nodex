@@ -902,7 +902,7 @@ fn analyse_content(
                 result.can_copy = scene.page_references.is_empty()
                     && file_snapshot
                         .as_ref()
-                        .is_some_and(|snapshot| snapshot.covers_canvas(&scene));
+                        .is_some_and(|snapshot| snapshot.covers_canvas(scene));
                 if !result.can_copy {
                     result.explanation = Some("This Canvas draft references files or Pages that are not included in its retained package. You can export it without discarding the draft.".to_owned());
                 }

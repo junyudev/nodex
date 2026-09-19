@@ -4298,18 +4298,17 @@ mod tests {
         assert_eq!(preparation.schema_version, CURRENT_STORE_REVISION);
         assert_migration_events(&events, 133);
         validate_current_store(&connection).expect("current Store");
-        for table in ["codex_queued_message_state"] {
-            let exists = connection
-                .query_row(
-                    "SELECT 1 FROM sqlite_schema WHERE type = 'table' AND name = ?1",
-                    [table],
-                    |_| Ok(()),
-                )
-                .optional()
-                .expect("schema query")
-                .is_some();
-            assert!(exists, "missing {table}");
-        }
+        let table = "codex_queued_message_state";
+        let exists = connection
+            .query_row(
+                "SELECT 1 FROM sqlite_schema WHERE type = 'table' AND name = ?1",
+                [table],
+                |_| Ok(()),
+            )
+            .optional()
+            .expect("schema query")
+            .is_some();
+        assert!(exists, "missing {table}");
         assert!(
             connection
                 .query_row(
