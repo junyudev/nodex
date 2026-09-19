@@ -1,0 +1,27 @@
+scripts/core-read-budget-gate.test.ts
+  s_d4ab4c7bf5efe1::t_73b4f4ae73897f 1-20
+package.json
+  s_d4ab4c7bf5efe1::t_6a7a4ee7017d6a 77
+scripts/core-read-budget-gate.ts
+  s_d4ab4c7bf5efe1::t_73b4f4ae73897f 4-10,102,105-110,113,121-125,131-136
+crates/nodex-core/src/read_budget_gate.rs
+  s_d4ab4c7bf5efe1::t_0cbfac21866d98 21,233,240-241,316,330-331,421,444-445,773-777
+  s_d4ab4c7bf5efe1::t_c8368292a02110 897,914-938,940-964,966-973
+  s_d4ab4c7bf5efe1::t_1a3d3272c6fbfb 939,965
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "1b66d5a2d024cea4d9f14a6cff944dd791b81b8f",
+  "prompts": {},
+  "sessions": {
+    "s_d4ab4c7bf5efe1": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a0b8c8-33e0-78f2-8327-d2c8f5715807",
+        "model": "gpt-6-astra"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    }
+  }
+}
