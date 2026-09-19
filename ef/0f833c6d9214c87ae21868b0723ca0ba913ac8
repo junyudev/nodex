@@ -1,0 +1,27 @@
+package.json
+  s_68bba929cf96a5::t_1c9b19f4cd88b7 290
+pnpm-lock.yaml
+  s_68bba929cf96a5::t_378f111927ff0b 426-427,5519-5520,13000
+pnpm-workspace.yaml
+  s_68bba929cf96a5::t_047fd17e948caf 88
+src/main/electron-test-runtime.test.ts
+  s_68bba929cf96a5::t_00338b87965774 5-6
+tests/e2e/clipboard-native.spec.ts
+  s_68bba929cf96a5::t_e3b22253441ece 23
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "ef0f833c6d9214c87ae21868b0723ca0ba913ac8",
+  "prompts": {},
+  "sessions": {
+    "s_68bba929cf96a5": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a0ba4b-747f-7223-b054-3325c5b045fc",
+        "model": "gpt-6-astra"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    }
+  }
+}
