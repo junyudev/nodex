@@ -1,0 +1,25 @@
+scripts/audit-rust-core-boundaries.ts
+  s_d4ab4c7bf5efe1::t_dc7666e8930b5f 200-203
+scripts/audit-version-surfaces.ts
+  s_d4ab4c7bf5efe1::t_e31e4ed4037c9a 336,338-339,437-448,528-531,673-674
+src/renderer/components/workbench/workbench-shell.pages-shell-navigation.test.tsx
+  s_d4ab4c7bf5efe1::t_a96220350cb82e 1129-1136
+src/renderer/features/local-conversation/view/connected-thread-stage.test.tsx
+  s_d4ab4c7bf5efe1::t_dc7666e8930b5f 627-643
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "1d926bf377082247d4609252894f0bfbc53ccc0d",
+  "prompts": {},
+  "sessions": {
+    "s_d4ab4c7bf5efe1": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a0b8c8-33e0-78f2-8327-d2c8f5715807",
+        "model": "chatgpt-web/extra-high"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    }
+  }
+}
