@@ -1,0 +1,128 @@
+third_party/blocknote/packages/core/src/schema/schema.test.ts
+  s_68bba929cf96a5::t_70ac005ff3993f 62-67
+  s_68bba929cf96a5::t_997e29668af334 1-61,68-122
+config/test-suites.ts
+  s_68bba929cf96a5::t_e87dbf2a09294f 22-26,141-144
+docs/product-specs/card-stage-rich-editor-performance.md
+  s_68bba929cf96a5::t_365d72a98a7548 28-29
+package.json
+  s_68bba929cf96a5::t_14ef8ada1adae2 313
+third_party/blocknote/ORIGIN.md
+  s_68bba929cf96a5::t_6e24b18b07b781 8-9,36,68,145-146
+third_party/blocknote/packages/code-block/package.json
+  s_68bba929cf96a5::t_2c0924422e3881 12
+third_party/blocknote/packages/code-block/vite.config.ts
+  s_68bba929cf96a5::t_47f4092df2a346 19-21
+third_party/blocknote/packages/core/package.json
+  s_68bba929cf96a5::t_32acbbd792ef25 14
+third_party/blocknote/packages/core/src/api/getBlocksChangedByTransaction.test.ts
+  s_68bba929cf96a5::t_2749b8b80b7605 8-9,12,32,84,86,244,249,667-874
+third_party/blocknote/packages/core/src/api/getChangedRange.ts
+  s_68bba929cf96a5::t_0977489e745caf 1-54
+third_party/blocknote/packages/core/src/editor/performance.test.ts
+  s_68bba929cf96a5::t_c0827aad0569b5 147-203
+third_party/blocknote/packages/core/src/exporter/Exporter.test.ts
+  s_68bba929cf96a5::t_f819cb47f43b0e 2-15,17-134,140-148,165,173-175,182-184
+third_party/blocknote/packages/core/src/exporter/Exporter.ts
+  s_68bba929cf96a5::t_e62a25dfd34a7b 84,90-108
+third_party/blocknote/packages/core/src/extensions/PreviousBlockType/PreviousBlockType.test.ts
+  s_68bba929cf96a5::t_542eb5c2c7af67 99-119
+third_party/blocknote/packages/core/src/extensions/PreviousBlockType/PreviousBlockType.ts
+  s_68bba929cf96a5::t_38bde99bd9006f 5,76-79
+third_party/blocknote/packages/core/src/extensions/TableHandles/TableHandles.browser.test.ts
+  s_68bba929cf96a5::t_15a9d35dfa7436 1-305
+third_party/blocknote/packages/core/src/extensions/TableHandles/TableHandles.ts
+  s_68bba929cf96a5::t_9bf8295474ce9a 1,31,189-199,231,236,255-259,261-262,265-276,282-283,531-546,564,572-574,682,687-696,727,962-963,993,997-1008
+third_party/blocknote/packages/core/src/fonts/inter.css
+  s_68bba929cf96a5::t_587ee7049a7c15 12,23,34,45,56,67,78,89,100
+third_party/blocknote/packages/core/src/schema/blocks/createSpec.ts
+  s_68bba929cf96a5::t_40405072aeb469 15,306-308
+third_party/blocknote/packages/core/src/schema/inlineContent/createSpec.ts
+  s_68bba929cf96a5::t_7d7df2e49dc368 13,369-371
+third_party/blocknote/packages/core/src/schema/nodeViewMutations.test.ts
+  s_68bba929cf96a5::t_4a68753a426676 5-6,9-13,17-18,33,35,38-45,48,50-52,54,56,59-60,62-81,86,88-89,91-94,98-100,102,109,111-113,118-134,138,142
+third_party/blocknote/packages/core/src/schema/nodeViewMutations.ts
+  s_68bba929cf96a5::t_75580b4846792c 3-13,16,19-20,22-26,29,34,39-47
+third_party/blocknote/packages/core/src/schema/schema.ts
+  s_68bba929cf96a5::t_013c3c4d66ad6a 242-255
+third_party/blocknote/packages/core/src/y/extensions/AttributionExtension.test.ts
+  s_68bba929cf96a5::t_a60627ed573da1 20-27
+third_party/blocknote/packages/core/src/y/versioning/__test__/yhub.test.ts
+  s_68bba929cf96a5::t_7149e38a72e9ce 69,74,83,162,167-172,192-194,201,211,218,226-228,246-248,279,283-288,305-307,317-323,340-346,377-385,395-403,423-429,459-461,464-466,468-470,481-483,513,548,550,625,632-633,689,718,723
+third_party/blocknote/packages/core/src/y/versioning/yhub.ts
+  s_68bba929cf96a5::t_37df8b266a8a80 28-29,83,97-98,101-102,111-115,235,256-259,317-318,320-321,378-380,382-385,429,443,447,511,594-596
+third_party/blocknote/packages/core/vite.config.ts
+  s_68bba929cf96a5::t_b5d81071d3974c 3,17-19,26-28
+third_party/blocknote/packages/diagram-block/package.json
+  s_68bba929cf96a5::t_a0ddf4f694615f 12
+third_party/blocknote/packages/diagram-block/src/block/helpers/render/DiagramBlockPreviewWithPopup.tsx
+  s_68bba929cf96a5::t_dccdd551504946 12,26,40-45,59-63,76,84-87
+third_party/blocknote/packages/diagram-block/src/exporterTestUtil.ts
+  s_68bba929cf96a5::t_81255084c1dfba 1,23,34-46
+third_party/blocknote/packages/diagram-block/src/helpers/index.ts
+  s_68bba929cf96a5::t_afa3889d4307d7 3-4
+third_party/blocknote/packages/diagram-block/src/helpers/initializeMermaid.ts
+  s_68bba929cf96a5::t_728d2891aaffee 1-25,30-32,37
+third_party/blocknote/packages/diagram-block/src/helpers/renderDiagramToImage.ts
+  s_68bba929cf96a5::t_55bbe282b5dba9 3-4,11-14,28-33,38,40-52,54,57
+third_party/blocknote/packages/diagram-block/src/helpers/renderDiagramToSVG.browser.test.ts
+  s_68bba929cf96a5::t_0e33f048b89d9b 1-65
+third_party/blocknote/packages/diagram-block/src/helpers/renderDiagramToSVG.ts
+  s_68bba929cf96a5::t_64d849ecf9e97e 1-3,5-11,13-18,20-25,27-39
+third_party/blocknote/packages/diagram-block/src/helpers/renderToSizedSVG.ts
+  s_68bba929cf96a5::t_438728adafca41 1-77
+third_party/blocknote/packages/diagram-block/src/helpers/svgFontFamily.browser.test.ts
+  s_68bba929cf96a5::t_b6768af874caaa 1-30
+third_party/blocknote/packages/diagram-block/src/helpers/svgFontFamily.ts
+  s_68bba929cf96a5::t_2ddb49b3f3cee1 1-48
+third_party/blocknote/packages/diagram-block/src/typst-exporter/__snapshots__/withDiagramMappings/diagramDocument.typ
+  s_68bba929cf96a5::t_276a3df2e7b272 1-35
+third_party/blocknote/packages/diagram-block/src/typst-exporter/index.ts
+  s_68bba929cf96a5::t_96d0f5c3894879 6-8,10-11,33-38,42-50,53,55-56,58,70,73,76-83,86-88,100-108,110-114,119-121
+third_party/blocknote/packages/diagram-block/src/typst-exporter/typstExporter.test.ts
+  s_68bba929cf96a5::t_be02b06bbb6961 3-7,13,16,18-23,25,27-28,31-33,37-42,44-46,48-50,52-57,59-95,98,100,102-120
+third_party/blocknote/packages/diagram-block/vite.config.ts
+  s_68bba929cf96a5::t_8ecc8db6628600 18-20,64,66,87-90
+third_party/blocknote/packages/math-block/package.json
+  s_68bba929cf96a5::t_744ee6356ef96f 12
+third_party/blocknote/packages/math-block/src/docx-exporter/docxExporter.test.ts
+  s_68bba929cf96a5::t_1148a4afacd691 73-74,77
+third_party/blocknote/packages/math-block/src/exporterHelpers/renderMathToImage.ts
+  s_68bba929cf96a5::t_f854f9643e7a5e 52
+third_party/blocknote/packages/math-block/src/odt-exporter/odtExporter.test.ts
+  s_68bba929cf96a5::t_8250a893836a0b 110-111,114
+third_party/blocknote/packages/math-block/src/typst-exporter/__snapshots__/withMathMappings/mathDocument.typ
+  s_68bba929cf96a5::t_66657eeb3dbbab 1-37
+third_party/blocknote/packages/math-block/src/typst-exporter/index.ts
+  s_68bba929cf96a5::t_a482b0d18d3ea9 6-8,10,21-35,44-46,51-61,64,66-67,69,78,81,84-86,89-93,97-100,103,105-106,108-109,114-123,125-128,130
+third_party/blocknote/packages/math-block/src/typst-exporter/typstExporter.test.ts
+  s_68bba929cf96a5::t_82a4b082ca475e 1,3-5,7,10,12,17,19,23-24,27-28,33-38,40-48,50-52,54-64,66-69,74,82-83,89-94,97-98,100,102-103,105,110-111
+third_party/blocknote/packages/math-block/vite.config.ts
+  s_68bba929cf96a5::t_98d850bcfa28dd 18-20,64,66,87-90
+third_party/blocknote/packages/react/package.json
+  s_68bba929cf96a5::t_c663089e402419 14
+third_party/blocknote/packages/react/vite.config.ts
+  s_68bba929cf96a5::t_bff1d13d19bde5 20-22
+third_party/blocknote/packages/shadcn/package.json
+  s_68bba929cf96a5::t_3ca4bd2e8c5bf6 14
+third_party/blocknote/packages/shadcn/vite.config.ts
+  s_68bba929cf96a5::t_aaa50171193652 20-22
+pnpm-lock.yaml
+  s_68bba929cf96a5::t_844ed1d86c1910 495-496
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "d33d8886539173e5c0d5798e8b6eafdc8b19fbd0",
+  "prompts": {},
+  "sessions": {
+    "s_68bba929cf96a5": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a0ba4b-747f-7223-b054-3325c5b045fc",
+        "model": "gpt-6-astra"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    }
+  }
+}
