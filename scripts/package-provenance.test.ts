@@ -268,6 +268,7 @@ const writeAgentRuntime = (root: string, resources: string): string => {
       variant: "codex";
       version: string;
     };
+    requiredArtifacts: string[];
     protocolSchema: { sha256: string };
     upstream: {
       commit: string;
@@ -292,6 +293,13 @@ const writeAgentRuntime = (root: string, resources: string): string => {
     ["third-party/codex/LICENSE", { contents: Buffer.from("license\n"), executable: false }],
     ["third-party/codex/NOTICE", { contents: Buffer.from("notice\n"), executable: false }],
   ]);
+  for (const artifactPath of lock.requiredArtifacts) {
+    if (files.has(artifactPath)) continue;
+    files.set(artifactPath, {
+      contents: Buffer.from(`fixture ${artifactPath}\n`),
+      executable: false,
+    });
+  }
   const artifacts = [...files].map(([relativePath, file]) => {
     const destination = path.join(resources, ...relativePath.split("/"));
     fs.mkdirSync(path.dirname(destination), { recursive: true });
@@ -554,6 +562,41 @@ describe("packaged build provenance", () => {
       "invalid or incomplete",
     );
   });
+
+  test.each(["missing", "unexpected"])(
+    "rejects %s locked Agent artifacts even with a matching manifest digest",
+    (kind) => {
+      const fixture = makeApp();
+      const manifestPath = path.join(fixture.appPath, "Contents/Resources/agent-runtime.json");
+      const manifest = JSON.parse(fs.readFileSync(manifestPath, "utf8")) as {
+        artifacts: Array<{ path: string; sha256: string; size: number; executable: boolean }>;
+      };
+      const lock = JSON.parse(fs.readFileSync(fixture.lockPath, "utf8")) as {
+        requiredArtifacts: string[];
+        builds: { "darwin-arm64": { runtimeMetadataSha256: string } };
+      };
+      if (kind === "missing") {
+        const extension = lock.requiredArtifacts.find((artifactPath) =>
+          artifactPath.includes("voice"),
+        );
+        if (!extension) throw new Error("Expected locked voice runtime artifact");
+        manifest.artifacts = manifest.artifacts.filter((artifact) => artifact.path !== extension);
+      } else {
+        manifest.artifacts.push({
+          path: "codex-resources/unlocked.dat",
+          sha256: sha256("extra"),
+          size: 5,
+          executable: false,
+        });
+      }
+      writeJson(manifestPath, manifest);
+      lock.builds["darwin-arm64"].runtimeMetadataSha256 = sha256(stableJson(manifest));
+      writeJson(fixture.lockPath, lock);
+      expect(() =>
+        writePackagedBuildProvenance(fixture.appPath, provenanceOptions(fixture)),
+      ).toThrow("artifact closure is incomplete");
+    },
+  );
 
   test("rejects a self-consistent Agent artifact reseal that is absent from the canonical lock", () => {
     const fixture = makeApp();

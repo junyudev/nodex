@@ -24,7 +24,6 @@ import {
   parseBundledAgentRuntimeMetadata,
 } from "../src/shared/codex-runtime-metadata.mjs";
 import {
-  CODEX_APP_SERVER_REQUIRED_ARTIFACTS,
   OFFICIAL_CODEX_MACOS_SIGNING_TEAM_ID,
   parseCodexAppServerReleaseLock,
 } from "../src/shared/codex-app-server-release-lock.mjs";
@@ -38,11 +37,6 @@ const canonicalAgentRuntimeLockPath = path.join(
   "agent-runtime",
   "codex-app-server.lock.json",
 );
-const packagedAgentRuntimeArtifacts = [
-  ...CODEX_APP_SERVER_REQUIRED_ARTIFACTS,
-  "third-party/codex/LICENSE",
-  "third-party/codex/NOTICE",
-];
 const resolveAgentRuntimeLockPath = (options) => {
   if (!options.testOnlyAgentRuntimeLockPath) return canonicalAgentRuntimeLockPath;
   if (process.env.VITEST !== "true") {
@@ -144,13 +138,19 @@ const readCanonicalAgentRuntimeLock = (lockPath, targetArch) => {
     build,
     lockSha256: sha256File(lockPath),
     packageManifest: value.packageManifest,
+    requiredArtifacts: value.requiredArtifacts,
     protocolSchemaFingerprint: value.protocolSchema.sha256,
     runtimeVersion: value.appServerRuntimeVersion,
     upstream: value.upstream,
   };
 };
 
-const verifyAgentRuntimeArtifactClosure = (appPath, metadata) => {
+const verifyAgentRuntimeArtifactClosure = (appPath, metadata, requiredArtifacts) => {
+  const packagedAgentRuntimeArtifacts = [
+    ...requiredArtifacts,
+    "third-party/codex/LICENSE",
+    "third-party/codex/NOTICE",
+  ];
   const paths = metadata.artifacts.map(({ path: artifactPath }) => artifactPath);
   if (
     paths.length !== packagedAgentRuntimeArtifacts.length ||
@@ -213,7 +213,7 @@ const inspectLockedAgentRuntime = (appPath, rawMetadata, targetArch, lockPath) =
   if (entrypoint?.sha256 !== locked.build.entrypointSha256) {
     throw new Error("Packaged Agent runtime entrypoint does not match the canonical release lock");
   }
-  verifyAgentRuntimeArtifactClosure(appPath, metadata);
+  verifyAgentRuntimeArtifactClosure(appPath, metadata, locked.requiredArtifacts);
   return {
     identity: {
       archiveSha256: locked.build.archiveSha256,
