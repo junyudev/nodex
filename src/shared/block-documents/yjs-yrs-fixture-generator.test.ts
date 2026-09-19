@@ -5,6 +5,7 @@ import { blocksToYXmlFragment } from "@blocknote/core/yjs";
 import { Awareness, encodeAwarenessUpdate, removeAwarenessStates } from "y-protocols/awareness";
 import { test } from "vite-plus/test";
 import * as Y from "yjs";
+import yjsPackage from "yjs/package.json";
 import { materializePageDocument, populateBlockDocumentBodyFromNfm } from "./block-document-codec";
 import { assertValidBlockDocument } from "./block-structure";
 import { createBodyOnlyBlockDocument } from "./body-only-block-document";
@@ -447,7 +448,7 @@ generate("generates stable Yjs 13 fixtures for the Yrs compatibility corpus", as
       `${JSON.stringify(
         {
           version: 2,
-          yjsVersion: "13.6.31",
+          yjsVersion: yjsPackage.version,
           title: merged.getText("title").toString(),
           bodyXml: merged.getXmlFragment("body").toString(),
           nfm: materialization.nfm,
