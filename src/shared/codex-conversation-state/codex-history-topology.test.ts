@@ -51,8 +51,7 @@ function entity(
   const itemsView = options.itemsView ?? "full";
   return {
     key: id,
-    turn: {...turn(id, itemsView), durationMs: options.durationMs ?? null},
-
+    turn: { ...turn(id, itemsView), durationMs: options.durationMs ?? null },
   };
 }
 
@@ -259,7 +258,7 @@ describe("Codex sparse history topology", () => {
     );
     const merged = insertCodexHistoryIsland(search, {
       index: 1,
-      mergeTurns: (current, incoming) => ({...incoming, durationMs: current.durationMs}),
+      mergeTurns: (current, incoming) => ({ ...incoming, durationMs: current.durationMs }),
       islandId: "tail:3",
       entries: [entry("turn-2"), entry("turn-3")],
       entities: [entity("turn-2", { durationMs: 99 }), entity("turn-3")],
@@ -377,13 +376,31 @@ describe("Codex sparse history topology", () => {
     expect(updated.ok && updated.topology.isComplete).toBe(false);
   });
   test("retires a boundary reference when its native source changes at the same cursor", () => {
-    const older = availableCodexHistoryBoundary("older", { source: "ordinary", cursor: "same", oldestLoadedTurnId: "turn-1" });
+    const older = availableCodexHistoryBoundary("older", {
+      source: "ordinary",
+      cursor: "same",
+      oldestLoadedTurnId: "turn-1",
+    });
     if (older.status !== "available") throw new Error("Expected available boundary");
-    const topology = expectTopology(createCodexHistoryIslandTopology({ generation: 1, islandId: "tail", entries: [entry("turn-1")], entities: [entity("turn-1")], olderBoundary: older, newerBoundary: exhaustedCodexHistoryBoundary("newer") }));
+    const topology = expectTopology(
+      createCodexHistoryIslandTopology({
+        generation: 1,
+        islandId: "tail",
+        entries: [entry("turn-1")],
+        entities: [entity("turn-1")],
+        olderBoundary: older,
+        newerBoundary: exhaustedCodexHistoryBoundary("newer"),
+      }),
+    );
     const reference = createCodexHistoryBoundaryRef(1, "tail", "older", older);
     expect(readCurrentCodexHistoryBoundary(topology, reference)).toBe(older);
-    const replaced = { ...topology, islands: topology.islands.map((island) => ({ ...island, olderBoundary: { ...older, handle: { ...older.handle, source: "compact" as const } } })) };
+    const replaced = {
+      ...topology,
+      islands: topology.islands.map((island) => ({
+        ...island,
+        olderBoundary: { ...older, handle: { ...older.handle, source: "compact" as const } },
+      })),
+    };
     expect(readCurrentCodexHistoryBoundary(replaced, reference)).toBeNull();
   });
-
 });

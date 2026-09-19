@@ -10,7 +10,10 @@ export class CodexConversationPeerRuntime extends Context.Service<
   CodexConversationPeerRuntime,
   {
     readonly getEndpoint: () => Promise<string>;
-    readonly registerWindowPeer: (senderId: number, getClientId: () => Promise<string | null>) => () => void;
+    readonly registerWindowPeer: (
+      senderId: number,
+      getClientId: () => Promise<string | null>,
+    ) => () => void;
     readonly resolvePeerClientId: (senderId: number) => Promise<string | null>;
   }
 >()("nodex/main/platform/node/CodexConversationPeerRuntime") {}
@@ -30,12 +33,14 @@ export const live = Layer.effect(
     return CodexConversationPeerRuntime.of({
       registerWindowPeer: (senderId, getClientId) => {
         windowPeers.set(senderId, getClientId);
-        return () => { if (windowPeers.get(senderId) === getClientId) windowPeers.delete(senderId); };
+        return () => {
+          if (windowPeers.get(senderId) === getClientId) windowPeers.delete(senderId);
+        };
       },
       resolvePeerClientId: (senderId) => {
         const resolve = windowPeers.get(senderId);
         if (!resolve) return Promise.resolve(null);
-        return resolve().then((id) => windowPeers.get(senderId) === resolve ? id : null);
+        return resolve().then((id) => (windowPeers.get(senderId) === resolve ? id : null));
       },
       getEndpoint: () => endpoints.getOrStartRouterEndpoint(),
     });

@@ -405,17 +405,38 @@ test("selects the newest resident request before older approvals and ignores orp
       {
         id: 1,
         method: "item/commandExecution/requestApproval",
-        params: { threadId: base.id, turnId: "older", itemId: "command", kind: "command", startedAtMs: 0, environmentId: null },
+        params: {
+          threadId: base.id,
+          turnId: "older",
+          itemId: "command",
+          kind: "command",
+          startedAtMs: 0,
+          environmentId: null,
+        },
       },
       {
         id: 2,
         method: "item/tool/requestUserInput",
-        params: { threadId: base.id, turnId: "newer", itemId: "question", questions: [], isBlocking: true, autoResolutionMs: null },
+        params: {
+          threadId: base.id,
+          turnId: "newer",
+          itemId: "question",
+          questions: [],
+          isBlocking: true,
+          autoResolutionMs: null,
+        },
       },
       {
         id: 3,
         method: "item/tool/requestUserInput",
-        params: { threadId: base.id, turnId: "orphan", itemId: "orphan", questions: [], isBlocking: true, autoResolutionMs: null },
+        params: {
+          threadId: base.id,
+          turnId: "orphan",
+          itemId: "orphan",
+          questions: [],
+          isBlocking: true,
+          autoResolutionMs: null,
+        },
       },
     ];
   });
@@ -436,14 +457,19 @@ test("selects the newest resident request before older approvals and ignores orp
 });
 
 test("an empty known tail does not treat an older detached in-progress turn as active", () => {
-  const state = produce(document("empty-tail"), draft => {
-    draft.threadRuntimeStatus = {type: "idle"};
+  const state = produce(document("empty-tail"), (draft) => {
+    draft.threadRuntimeStatus = { type: "idle" };
     draft.turns[0]!.status = "inProgress";
     replaceCanonicalHistoryDraft(draft, draft.turns, false);
   });
   expect(shouldKeepCanonicalConversationLoaded(state, null, false)).toBe(true);
-  const emptyTail = produce(state, draft => {
-    draft.turnHistory!.history.islands.push({id: "empty-tail", entries: [], olderBoundary: {status: "opaque", boundaryId: "gap"}, newerBoundary: {status: "exhausted", boundaryId: "newest"}});
+  const emptyTail = produce(state, (draft) => {
+    draft.turnHistory!.history.islands.push({
+      id: "empty-tail",
+      entries: [],
+      olderBoundary: { status: "opaque", boundaryId: "gap" },
+      newerBoundary: { status: "exhausted", boundaryId: "newest" },
+    });
   });
   expect(shouldKeepCanonicalConversationLoaded(emptyTail, null, false)).toBe(false);
 });

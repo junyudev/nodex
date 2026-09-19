@@ -31,27 +31,29 @@ test("alias selection takes precedence over direct SSH connection fields", () =>
   ).toEqual(["-i", "key", "-p", "22", "example"]);
 });
 
-it.effect("proxy strips split login marker and preserves handshake bytes", () => Effect.gen(function* () {
-  const marker = Buffer.from("12345678");
-  const proxy = createCodexSshProxy({
-    connection: { host: "unused" },
-    sentinel: marker,
-    spawnProcess: (() =>
-      spawn(
-        process.execPath,
-        [
-          "-e",
-          'process.stdout.write("login noise1234"); setTimeout(()=>{process.stdout.write("5678HTTP/1.1 101\\r\\n");process.stdout.end();},10)',
-        ],
-        { stdio: ["pipe", "pipe", "pipe"] },
-      )),
-  });
-  const chunks: Buffer[] = [];
-  proxy.on("data", (chunk: Buffer) => chunks.push(chunk));
-  try {
-    yield* Effect.promise(() => once(proxy, "end"));
-    expect(Buffer.concat(chunks).toString()).toBe("HTTP/1.1 101\r\n");
-  } finally {
-    proxy.destroy();
-  }
-}));
+it.effect("proxy strips split login marker and preserves handshake bytes", () =>
+  Effect.gen(function* () {
+    const marker = Buffer.from("12345678");
+    const proxy = createCodexSshProxy({
+      connection: { host: "unused" },
+      sentinel: marker,
+      spawnProcess: () =>
+        spawn(
+          process.execPath,
+          [
+            "-e",
+            'process.stdout.write("login noise1234"); setTimeout(()=>{process.stdout.write("5678HTTP/1.1 101\\r\\n");process.stdout.end();},10)',
+          ],
+          { stdio: ["pipe", "pipe", "pipe"] },
+        ),
+    });
+    const chunks: Buffer[] = [];
+    proxy.on("data", (chunk: Buffer) => chunks.push(chunk));
+    try {
+      yield* Effect.promise(() => once(proxy, "end"));
+      expect(Buffer.concat(chunks).toString()).toBe("HTTP/1.1 101\r\n");
+    } finally {
+      proxy.destroy();
+    }
+  }),
+);

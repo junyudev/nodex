@@ -192,7 +192,9 @@ export function doesCodexCanonicalItemProjectionChangeWithTurnStatus(
 
 const MEMORY_CITATION_MARKERS = ["<oai-mem-citation>", "[oai-mem-citation]"];
 function nextMemoryCitation(text: string, start = 0): number {
-  const offsets = MEMORY_CITATION_MARKERS.map((marker) => text.indexOf(marker, start)).filter((offset) => offset >= 0);
+  const offsets = MEMORY_CITATION_MARKERS.map((marker) => text.indexOf(marker, start)).filter(
+    (offset) => offset >= 0,
+  );
   return offsets.length ? Math.min(...offsets) : -1;
 }
 function stripUnclosedMemoryCitation(text: string): string {
@@ -204,24 +206,38 @@ function stripUnclosedMemoryCitation(text: string): string {
     if (opening < 0) break;
     let escapes = 0;
     while (text[opening - escapes - 1] === "\\") escapes += 1;
-    if (escapes % 2 === 1) { position = opening + 1; continue; }
+    if (escapes % 2 === 1) {
+      position = opening + 1;
+      continue;
+    }
     let content = opening + 1;
     while (text[content] === "`") content += 1;
     const marker = text.slice(opening, content);
     let closing = text.indexOf(marker, content);
-    while (closing >= 0 && (text[closing - 1] === "`" || text[closing + marker.length] === "`")) closing = text.indexOf(marker, closing + marker.length);
-    if (closing < 0) { position = content; continue; }
-    if (citation >= content && citation < closing && MEMORY_CITATION_MARKERS.includes(text.slice(content, closing).trim())) citation = nextMemoryCitation(text, citation + 1);
+    while (closing >= 0 && (text[closing - 1] === "`" || text[closing + marker.length] === "`"))
+      closing = text.indexOf(marker, closing + marker.length);
+    if (closing < 0) {
+      position = content;
+      continue;
+    }
+    if (
+      citation >= content &&
+      citation < closing &&
+      MEMORY_CITATION_MARKERS.includes(text.slice(content, closing).trim())
+    )
+      citation = nextMemoryCitation(text, citation + 1);
     position = closing + marker.length;
   }
   return citation < 0 ? text : text.slice(0, citation);
 }
 
 export function projectAssistantText(text: string, streaming: boolean): string | null {
-  const withoutMemoryCitations = stripUnclosedMemoryCitation(text.replace(
-    /(?:<oai-mem-citation>|\[oai-mem-citation\])(?:(?!(?:<oai-mem-citation>|\[oai-mem-citation\])).)*?<\/oai-mem-citation>/gs,
-    "",
-  ));
+  const withoutMemoryCitations = stripUnclosedMemoryCitation(
+    text.replace(
+      /(?:<oai-mem-citation>|\[oai-mem-citation\])(?:(?!(?:<oai-mem-citation>|\[oai-mem-citation\])).)*?<\/oai-mem-citation>/gs,
+      "",
+    ),
+  );
   const partialCitationIndex = streaming ? withoutMemoryCitations.lastIndexOf("<") : -1;
   const withoutPartialCitation =
     partialCitationIndex >= 0 &&
@@ -361,7 +377,9 @@ export function collectCodexCanonicalUserMessageVisibilityChangedOwnerIds(input:
   ]);
 }
 
-export function isReviewDiffCommentAttachment(value: unknown): value is CodexReviewDiffCommentAttachment {
+export function isReviewDiffCommentAttachment(
+  value: unknown,
+): value is CodexReviewDiffCommentAttachment {
   const attachment = asJsonObject(value);
   const position = asJsonObject(attachment?.position);
   if (

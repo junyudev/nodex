@@ -337,7 +337,13 @@ function installAutomationsStoryApi({
         (args[0] as { request?: { method?: string } }).request?.method === "model/list"
       ) {
         if (modelListState === "loading") return new Promise<never>(() => undefined);
-        return { type: "result", result: { data: CODEX_MODELS.map((model) => ({ ...model, model: model.id })), nextCursor: null } };
+        return {
+          type: "result",
+          result: {
+            data: CODEX_MODELS.map((model) => ({ ...model, model: model.id })),
+            nextCursor: null,
+          },
+        };
       }
       if (channel === "worktrees:environments:list") {
         const projectId = String(args[0] ?? "");

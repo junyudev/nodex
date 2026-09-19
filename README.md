@@ -81,7 +81,7 @@ Profile. Nodex does not require a cloud workspace to organize your work.
 Nodex includes a native CLI and an official Agent Skill for working with Pages, rich Nested
 Markdown, Databases, and saved Views through the same local data authority as the desktop app.
 
-After moving `Nodex.app` into `/Applications`, use **Nodex → Install Command Line Tool…** and 
+After moving `Nodex.app` into `/Applications`, use **Nodex → Install Command Line Tool…** and
 
 **Set Up Agent Skills…**. You can also run:
 

@@ -158,16 +158,28 @@ it.effect("never admits or releases a start across Endpoint generations", () =>
   }),
 );
 
-it.effect("a renderer admission spans raw response delivery and closes exactly once after acceptance", () => Effect.gen(function* () {
-  const gate = yield* make;
-  const admission = gate.open("local", 9);
-  assert.isTrue(gate.defer("local", 9, "child"));
-  yield* admission.close("child");
-  assert.deepEqual(Option.getOrThrow(yield* Stream.runHead(gate.releases)), { hostId: "local", generation: 9, threadId: "child" });
-  assert.isFalse(gate.defer("local", 9, "child"));
-  yield* admission.close("child");
-  const replacement = gate.open("local", 9);
-  assert.isTrue(gate.defer("local", 9, "next"));
-  yield* replacement.close();
-  assert.deepEqual(Option.getOrThrow(yield* Stream.runHead(gate.releases)), { hostId: "local", generation: 9, threadId: "next" });
-}));
+it.effect(
+  "a renderer admission spans raw response delivery and closes exactly once after acceptance",
+  () =>
+    Effect.gen(function* () {
+      const gate = yield* make;
+      const admission = gate.open("local", 9);
+      assert.isTrue(gate.defer("local", 9, "child"));
+      yield* admission.close("child");
+      assert.deepEqual(Option.getOrThrow(yield* Stream.runHead(gate.releases)), {
+        hostId: "local",
+        generation: 9,
+        threadId: "child",
+      });
+      assert.isFalse(gate.defer("local", 9, "child"));
+      yield* admission.close("child");
+      const replacement = gate.open("local", 9);
+      assert.isTrue(gate.defer("local", 9, "next"));
+      yield* replacement.close();
+      assert.deepEqual(Option.getOrThrow(yield* Stream.runHead(gate.releases)), {
+        hostId: "local",
+        generation: 9,
+        threadId: "next",
+      });
+    }),
+);

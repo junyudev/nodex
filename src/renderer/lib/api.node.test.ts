@@ -124,5 +124,4 @@ describe("renderer api transport", () => {
       restoreWindow(originalWindowDescriptor);
     }
   });
-
 });

@@ -819,9 +819,15 @@ describe("projectCodexCanonicalTurnViews", () => {
 });
 
 test("assistant memory citations preserve literal markers in code but strip real and incomplete blocks", () => {
-  expect(projectAssistantText("Answer [oai-mem-citation]private</oai-mem-citation> suffix", false)).toBe("Answer  suffix");
-  expect(projectAssistantText("Use `<oai-mem-citation>` literally.", false)).toBe("Use `<oai-mem-citation>` literally.");
-  expect(projectAssistantText("Use `` [oai-mem-citation] `` literally. [oai-mem-citation]private", true)).toBe("Use `` [oai-mem-citation] `` literally.");
+  expect(
+    projectAssistantText("Answer [oai-mem-citation]private</oai-mem-citation> suffix", false),
+  ).toBe("Answer  suffix");
+  expect(projectAssistantText("Use `<oai-mem-citation>` literally.", false)).toBe(
+    "Use `<oai-mem-citation>` literally.",
+  );
+  expect(
+    projectAssistantText("Use `` [oai-mem-citation] `` literally. [oai-mem-citation]private", true),
+  ).toBe("Use `` [oai-mem-citation] `` literally.");
   expect(projectAssistantText("Answer <oai-mem-citation>incomplete", false)).toBe("Answer");
   expect(projectAssistantText("Answer <oai-mem-cit", true)).toBe("Answer");
 });

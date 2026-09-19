@@ -236,7 +236,10 @@ export function connectCoordinationPeer(
   }
   return {
     host,
-    getClientId: async () => { await peer.waitUntilInitialized(); return peer.getClientId(); },
+    getClientId: async () => {
+      await peer.waitUntilInitialized();
+      return peer.getClientId();
+    },
     dispose: () => {
       detach();
       peer.dispose();

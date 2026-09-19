@@ -210,7 +210,7 @@ function installEntities<TTurn>(
 ): Readonly<Record<string, TTurn>> {
   if (incoming.length === 0) return current;
   const next: Record<string, TTurn> = { ...current };
-  for (const {key, turn} of incoming) {
+  for (const { key, turn } of incoming) {
     const resident = next[key];
     next[key] = resident !== undefined && mergeTurns ? mergeTurns(resident, turn) : turn;
   }
@@ -270,7 +270,7 @@ function coalesceIslands(
   return next;
 }
 
-export function measureCodexHistoryResidency<TTurn extends {readonly items: readonly unknown[]}>(
+export function measureCodexHistoryResidency<TTurn extends { readonly items: readonly unknown[] }>(
   topology: CodexCanonicalHistoryTopology<TTurn>,
 ): CodexHistoryResidency {
   const { islands, entitiesByKey } = topology;

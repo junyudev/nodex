@@ -134,7 +134,7 @@ overrides:
 
 patchedDependencies:
   '@y/prosemirror@2.0.0-6': 0571932eed7c6e4ffb73defa770d0e67e7b37168f173eecaf8ec49378a7f767e
-  effect@4.0.0-rc.111: f932daef34f47aca504529278873a0219e1c635bfefea0caab6e03fec4e233ee
+  effect@4.0.0-rc.111: 63cbfffaa0faff45748857ee145980f088f57945c0e2078240a3f4d00876b983
   y-prosemirror@1.3.7: 1455252e42a8d5765c73ee98bfda5934fb8398a5a8f15cc58a44c1d8439ef375
   yjs@13.6.31: 550542e4306fed9ac18708e188852566c163157de761dd4d5839a3cad5d07807
 
@@ -147,7 +147,7 @@ importers:
         version: 1.4.0(zod@4.4.3)
       '@effect/platform-node':
         specifier: 4.0.0-rc.111
-        version: 4.0.0-rc.111(effect@4.0.0-rc.111(patch_hash=f932daef34f47aca504529278873a0219e1c635bfefea0caab6e03fec4e233ee))(redis@6.2.1(@opentelemetry/api@1.9.1))
+        version: 4.0.0-rc.111(effect@4.0.0-rc.111(patch_hash=63cbfffaa0faff45748857ee145980f088f57945c0e2078240a3f4d00876b983))(redis@6.2.1(@opentelemetry/api@1.9.1))
       '@prettier/plugin-xml':
         specifier: 3.4.2
         version: 3.4.2(prettier@3.8.3)
@@ -159,7 +159,7 @@ importers:
         version: 0.11.1
       effect:
         specifier: 4.0.0-rc.111
-        version: 4.0.0-rc.111(patch_hash=f932daef34f47aca504529278873a0219e1c635bfefea0caab6e03fec4e233ee)
+        version: 4.0.0-rc.111(patch_hash=63cbfffaa0faff45748857ee145980f088f57945c0e2078240a3f4d00876b983)
       immer:
         specifier: 11.1.8
         version: 11.1.8
@@ -253,7 +253,7 @@ importers:
         version: 0.36.5
       '@effect/vitest':
         specifier: 4.0.0-rc.111
-        version: 4.0.0-rc.111(effect@4.0.0-rc.111(patch_hash=f932daef34f47aca504529278873a0219e1c635bfefea0caab6e03fec4e233ee))(vitest@4.1.10)
+        version: 4.0.0-rc.111(effect@4.0.0-rc.111(patch_hash=63cbfffaa0faff45748857ee145980f088f57945c0e2078240a3f4d00876b983))(vitest@4.1.10)
       '@electron/osx-sign':
         specifier: 1.3.3
         version: 1.3.3(supports-color@10.2.2)
@@ -581,17 +581,17 @@ importers:
         version: link:../codex-app-server-protocol
       effect:
         specifier: 4.0.0-rc.111
-        version: 4.0.0-rc.111(patch_hash=f932daef34f47aca504529278873a0219e1c635bfefea0caab6e03fec4e233ee)
+        version: 4.0.0-rc.111(patch_hash=63cbfffaa0faff45748857ee145980f088f57945c0e2078240a3f4d00876b983)
     devDependencies:
       '@effect/openapi-generator':
         specifier: 4.0.0-rc.111
-        version: 4.0.0-rc.111(@effect/platform-node@4.0.0-rc.111(effect@4.0.0-rc.111(patch_hash=f932daef34f47aca504529278873a0219e1c635bfefea0caab6e03fec4e233ee))(redis@6.2.1(@opentelemetry/api@1.9.1)))(effect@4.0.0-rc.111(patch_hash=f932daef34f47aca504529278873a0219e1c635bfefea0caab6e03fec4e233ee))
+        version: 4.0.0-rc.111(@effect/platform-node@4.0.0-rc.111(effect@4.0.0-rc.111(patch_hash=63cbfffaa0faff45748857ee145980f088f57945c0e2078240a3f4d00876b983))(redis@6.2.1(@opentelemetry/api@1.9.1)))(effect@4.0.0-rc.111(patch_hash=63cbfffaa0faff45748857ee145980f088f57945c0e2078240a3f4d00876b983))
       '@effect/platform-node':
         specifier: 4.0.0-rc.111
-        version: 4.0.0-rc.111(effect@4.0.0-rc.111(patch_hash=f932daef34f47aca504529278873a0219e1c635bfefea0caab6e03fec4e233ee))(redis@6.2.1(@opentelemetry/api@1.9.1))
+        version: 4.0.0-rc.111(effect@4.0.0-rc.111(patch_hash=63cbfffaa0faff45748857ee145980f088f57945c0e2078240a3f4d00876b983))(redis@6.2.1(@opentelemetry/api@1.9.1))
       '@effect/vitest':
         specifier: 4.0.0-rc.111
-        version: 4.0.0-rc.111(effect@4.0.0-rc.111(patch_hash=f932daef34f47aca504529278873a0219e1c635bfefea0caab6e03fec4e233ee))(vitest@4.1.10)
+        version: 4.0.0-rc.111(effect@4.0.0-rc.111(patch_hash=63cbfffaa0faff45748857ee145980f088f57945c0e2078240a3f4d00876b983))(vitest@4.1.10)
       '@types/node':
         specifier: 24.13.3
         version: 24.13.3
@@ -8835,27 +8835,27 @@ snapshots:
       react: 19.2.7
       tslib: 2.8.1
 
-  '@effect/openapi-generator@4.0.0-rc.111(@effect/platform-node@4.0.0-rc.111(effect@4.0.0-rc.111(patch_hash=f932daef34f47aca504529278873a0219e1c635bfefea0caab6e03fec4e233ee))(redis@6.2.1(@opentelemetry/api@1.9.1)))(effect@4.0.0-rc.111(patch_hash=f932daef34f47aca504529278873a0219e1c635bfefea0caab6e03fec4e233ee))':
+  '@effect/openapi-generator@4.0.0-rc.111(@effect/platform-node@4.0.0-rc.111(effect@4.0.0-rc.111(patch_hash=63cbfffaa0faff45748857ee145980f088f57945c0e2078240a3f4d00876b983))(redis@6.2.1(@opentelemetry/api@1.9.1)))(effect@4.0.0-rc.111(patch_hash=63cbfffaa0faff45748857ee145980f088f57945c0e2078240a3f4d00876b983))':
     dependencies:
-      '@effect/platform-node': 4.0.0-rc.111(effect@4.0.0-rc.111(patch_hash=f932daef34f47aca504529278873a0219e1c635bfefea0caab6e03fec4e233ee))(redis@6.2.1(@opentelemetry/api@1.9.1))
-      effect: 4.0.0-rc.111(patch_hash=f932daef34f47aca504529278873a0219e1c635bfefea0caab6e03fec4e233ee)
+      '@effect/platform-node': 4.0.0-rc.111(effect@4.0.0-rc.111(patch_hash=63cbfffaa0faff45748857ee145980f088f57945c0e2078240a3f4d00876b983))(redis@6.2.1(@opentelemetry/api@1.9.1))
+      effect: 4.0.0-rc.111(patch_hash=63cbfffaa0faff45748857ee145980f088f57945c0e2078240a3f4d00876b983)
       swagger2openapi: 7.0.8
     transitivePeerDependencies:
       - encoding
 
-  '@effect/platform-node-shared@4.0.0-rc.111(effect@4.0.0-rc.111(patch_hash=f932daef34f47aca504529278873a0219e1c635bfefea0caab6e03fec4e233ee))':
+  '@effect/platform-node-shared@4.0.0-rc.111(effect@4.0.0-rc.111(patch_hash=63cbfffaa0faff45748857ee145980f088f57945c0e2078240a3f4d00876b983))':
     dependencies:
       '@types/ws': 8.18.1
-      effect: 4.0.0-rc.111(patch_hash=f932daef34f47aca504529278873a0219e1c635bfefea0caab6e03fec4e233ee)
+      effect: 4.0.0-rc.111(patch_hash=63cbfffaa0faff45748857ee145980f088f57945c0e2078240a3f4d00876b983)
       ws: 8.21.3
     transitivePeerDependencies:
       - bufferutil
       - utf-8-validate
 
-  '@effect/platform-node@4.0.0-rc.111(effect@4.0.0-rc.111(patch_hash=f932daef34f47aca504529278873a0219e1c635bfefea0caab6e03fec4e233ee))(redis@6.2.1(@opentelemetry/api@1.9.1))':
+  '@effect/platform-node@4.0.0-rc.111(effect@4.0.0-rc.111(patch_hash=63cbfffaa0faff45748857ee145980f088f57945c0e2078240a3f4d00876b983))(redis@6.2.1(@opentelemetry/api@1.9.1))':
     dependencies:
-      '@effect/platform-node-shared': 4.0.0-rc.111(effect@4.0.0-rc.111(patch_hash=f932daef34f47aca504529278873a0219e1c635bfefea0caab6e03fec4e233ee))
-      effect: 4.0.0-rc.111(patch_hash=f932daef34f47aca504529278873a0219e1c635bfefea0caab6e03fec4e233ee)
+      '@effect/platform-node-shared': 4.0.0-rc.111(effect@4.0.0-rc.111(patch_hash=63cbfffaa0faff45748857ee145980f088f57945c0e2078240a3f4d00876b983))
+      effect: 4.0.0-rc.111(patch_hash=63cbfffaa0faff45748857ee145980f088f57945c0e2078240a3f4d00876b983)
       mime: 4.1.0
       redis: 6.2.1(@opentelemetry/api@1.9.1)
       undici: 8.10.0
@@ -8894,9 +8894,9 @@ snapshots:
       '@effect/tsgo-win32-arm64': 0.36.5
       '@effect/tsgo-win32-x64': 0.36.5
 
-  '@effect/vitest@4.0.0-rc.111(effect@4.0.0-rc.111(patch_hash=f932daef34f47aca504529278873a0219e1c635bfefea0caab6e03fec4e233ee))(vitest@4.1.10)':
+  '@effect/vitest@4.0.0-rc.111(effect@4.0.0-rc.111(patch_hash=63cbfffaa0faff45748857ee145980f088f57945c0e2078240a3f4d00876b983))(vitest@4.1.10)':
     dependencies:
-      effect: 4.0.0-rc.111(patch_hash=f932daef34f47aca504529278873a0219e1c635bfefea0caab6e03fec4e233ee)
+      effect: 4.0.0-rc.111(patch_hash=63cbfffaa0faff45748857ee145980f088f57945c0e2078240a3f4d00876b983)
       vitest: 4.1.10(@opentelemetry/api@1.9.1)(@types/node@24.13.3)(@vitest/browser-playwright@4.1.10)(@vitest/browser-preview@4.1.10)(@voidzero-dev/vite-plus-core@0.2.9(@types/node@24.13.3)(esbuild@0.28.1)(jiti@2.7.0)(sass@1.101.0)(tsx@4.23.0)(typescript@7.0.2)(yaml@2.9.0))(jsdom@29.1.1(@noble/hashes@2.2.0))
 
   '@electron-internal/extract-zip@1.0.4': {}
@@ -12936,7 +12936,7 @@ snapshots:
 
   ee-first@1.1.1: {}
 
-  effect@4.0.0-rc.111(patch_hash=f932daef34f47aca504529278873a0219e1c635bfefea0caab6e03fec4e233ee):
+  effect@4.0.0-rc.111(patch_hash=63cbfffaa0faff45748857ee145980f088f57945c0e2078240a3f4d00876b983):
     dependencies:
       '@standard-schema/spec': 1.1.0
       fast-check: 4.9.0

@@ -1,5 +1,7 @@
 import type { SVGProps } from "react";
 
+/** Semantic response-feedback glyphs shared by conversation surfaces. */
+
 export function ThumbUpIcon(props: SVGProps<SVGSVGElement>) {
   return (
     <svg

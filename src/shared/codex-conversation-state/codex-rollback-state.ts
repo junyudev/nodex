@@ -1,10 +1,16 @@
 import { produce, type Draft } from "immer";
 import type { Thread } from "@nodex/codex-app-server-protocol/v2";
-import { hydrateCodexCanonicalTurns, type CodexCanonicalConversationState } from "./codex-conversation-state";
+import {
+  hydrateCodexCanonicalTurns,
+  type CodexCanonicalConversationState,
+} from "./codex-conversation-state";
 import { canonicalPermissionsForMode } from "./codex-native-permissions";
 import { replaceCanonicalHistoryDraft } from "./codex-canonical-history-loader";
 
-export function mutateCodexCanonicalRollbackThread(state: Draft<CodexCanonicalConversationState>, thread: Thread): boolean {
+export function mutateCodexCanonicalRollbackThread(
+  state: Draft<CodexCanonicalConversationState>,
+  thread: Thread,
+): boolean {
   if (state.id !== thread.id) return false;
   const roots = state.cwd ? [state.cwd] : [];
   const permissions = canonicalPermissionsForMode("auto", roots, {})!;
@@ -21,7 +27,12 @@ export function mutateCodexCanonicalRollbackThread(state: Draft<CodexCanonicalCo
   });
   if (state.turnHistory?.kind === "canonical") replaceCanonicalHistoryDraft(state, turns, true);
   else Object.assign(state, { turns });
-  state.turnsPagination = { olderCursor: null, oldestLoadedTurnId: null, isLoadingOlder: false, hasLoadedOldest: true };
+  state.turnsPagination = {
+    olderCursor: null,
+    oldestLoadedTurnId: null,
+    isLoadingOlder: false,
+    hasLoadedOldest: true,
+  };
   state.requests = [];
   state.resumeState = "resumed";
   state.sessionId = thread.sessionId;
@@ -36,9 +47,14 @@ export function mutateCodexCanonicalRollbackThread(state: Draft<CodexCanonicalCo
   if (Number.isFinite(updatedAt)) state.updatedAt = updatedAt;
   return true;
 }
-export function replaceCodexCanonicalRollbackThread(state: CodexCanonicalConversationState, thread: Thread): CodexCanonicalConversationState | null {
+export function replaceCodexCanonicalRollbackThread(
+  state: CodexCanonicalConversationState,
+  thread: Thread,
+): CodexCanonicalConversationState | null {
   let accepted = false;
-  const next = produce(state, (draft) => { accepted = mutateCodexCanonicalRollbackThread(draft, thread); });
+  const next = produce(state, (draft) => {
+    accepted = mutateCodexCanonicalRollbackThread(draft, thread);
+  });
   return accepted ? next : null;
 }
 
@@ -58,16 +74,26 @@ export function mutateCodexCanonicalRevert(
     for (const island of history.islands) {
       island.entries = island.entries.filter(({ value }) => {
         const turn = history.entitiesByKey[value];
-        if (!turn || (!revertedTurnIds.has(turn.turnId) && !(island === tail && turn.turnId === null))) return true;
+        if (
+          !turn ||
+          (!revertedTurnIds.has(turn.turnId) && !(island === tail && turn.turnId === null))
+        )
+          return true;
         delete history.entitiesByKey[value];
         return false;
       });
     }
   }
   if (tail?.entries.length === 0) {
-    tail.olderBoundary = turnsBackwardsCursor === null
-      ? { status: "exhausted", boundaryId: `${tail.id}:older` }
-      : { status: "available", boundaryId: `${tail.id}:older`, handle: { cursor: turnsBackwardsCursor, oldestLoadedTurnId: null }, progressKey: JSON.stringify([turnsBackwardsCursor, null]) };
+    tail.olderBoundary =
+      turnsBackwardsCursor === null
+        ? { status: "exhausted", boundaryId: `${tail.id}:older` }
+        : {
+            status: "available",
+            boundaryId: `${tail.id}:older`,
+            handle: { cursor: turnsBackwardsCursor, oldestLoadedTurnId: null },
+            progressKey: JSON.stringify([turnsBackwardsCursor, null]),
+          };
     if (turnsBackwardsCursor === null && history?.islands.length === 1) history.isComplete = true;
     if (state.turnsPagination) {
       state.turnsPagination.olderCursor = turnsBackwardsCursor;

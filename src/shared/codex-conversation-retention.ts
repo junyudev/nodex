@@ -134,20 +134,39 @@ export function projectCodexConversationWithoutHistory(
     ...historyReleaseFields(conversation),
     resumeState: "needs_resume",
     canonicalState: conversation.canonicalState
-      ? { ...conversation.canonicalState, resumeState: "needs_resume", ...releasedCanonicalHistory(conversation.canonicalState) }
+      ? {
+          ...conversation.canonicalState,
+          resumeState: "needs_resume",
+          ...releasedCanonicalHistory(conversation.canonicalState),
+        }
       : conversation.canonicalState,
   };
 }
 
 /** Releasing fetched history retains its canonical mode and advances its generation. */
-function releasedCanonicalHistory(state: CodexCanonicalConversationState): Pick<CodexCanonicalConversationState, "turns" | "turnHistory"> {
+function releasedCanonicalHistory(
+  state: CodexCanonicalConversationState,
+): Pick<CodexCanonicalConversationState, "turns" | "turnHistory"> {
   if (!state.turnHistory) return { turns: [] };
   const generation = state.turnHistory.history.generation + 1;
   const id = `tail:${generation}`;
-  return {turns: [], turnHistory: {kind: "canonical", history: {
-    generation,
-    isComplete: false,
-    entitiesByKey: {},
-    islands: [{id, entries: [], olderBoundary: {status: "exhausted", boundaryId: `${id}:older`}, newerBoundary: {status: "exhausted", boundaryId: `${id}:newer`}}],
-  }}};
+  return {
+    turns: [],
+    turnHistory: {
+      kind: "canonical",
+      history: {
+        generation,
+        isComplete: false,
+        entitiesByKey: {},
+        islands: [
+          {
+            id,
+            entries: [],
+            olderBoundary: { status: "exhausted", boundaryId: `${id}:older` },
+            newerBoundary: { status: "exhausted", boundaryId: `${id}:newer` },
+          },
+        ],
+      },
+    },
+  };
 }

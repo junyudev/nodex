@@ -135,24 +135,25 @@ export class CodexConversationPresentation {
     if (!metadata) return null;
     const nextTurns = new Map<string, CodexCanonicalTurnState>();
     const nextViews = new Map<string, CodexConversationTurn>();
-    const turns =
-      canonical ? residentConversationTurns(canonical).map((turn, index) => {
-        const key = turnKey(turn, index);
-        const view =
-          this.views.get(turn) ??
-          projectCodexConversationTurn({
-            threadId: canonical.id,
-            turnIndex: index,
-            beforeTurn: this.previousTurns.get(key) ?? null,
-            afterTurn: turn,
-            current: this.previousViews.get(key) ?? null,
-            observedAtMs: canonical.updatedAt,
-          });
-        this.views.set(turn, view);
-        nextTurns.set(key, turn);
-        nextViews.set(key, view);
-        return view;
-      }) : [];
+    const turns = canonical
+      ? residentConversationTurns(canonical).map((turn, index) => {
+          const key = turnKey(turn, index);
+          const view =
+            this.views.get(turn) ??
+            projectCodexConversationTurn({
+              threadId: canonical.id,
+              turnIndex: index,
+              beforeTurn: this.previousTurns.get(key) ?? null,
+              afterTurn: turn,
+              current: this.previousViews.get(key) ?? null,
+              observedAtMs: canonical.updatedAt,
+            });
+          this.views.set(turn, view);
+          nextTurns.set(key, turn);
+          nextViews.set(key, view);
+          return view;
+        })
+      : [];
     this.previousTurns = nextTurns;
     this.previousViews = nextViews;
     this.cachedDocument = document;

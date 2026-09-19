@@ -26,8 +26,7 @@ const WORK_MODE = process.argv.includes("--work");
 const CODEX_HOME = process.env.CODEX_HOME || path.join(os.homedir(), ".codex");
 const WORK_SKILLS_ROOT = path.join(CODEX_HOME, "skills", "remote-skills");
 const WORK_PLUGINS_ROOT = path.join(CODEX_HOME, "plugins", "cache");
-const WORK_PREVIEW =
-  "data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///ywAAAAAAQABAAACAUwAOw==";
+const WORK_PREVIEW = "data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///ywAAAAAAQABAAACAUwAOw==";
 const DESCRIPTION_KINDS = new Map([
   ["document", "document"],
   ["presentation", "presentation"],
@@ -37,9 +36,10 @@ const DESCRIPTION_KINDS = new Map([
   ["google sheet", "google-sheets"],
 ]);
 const catalog = new Map(
-  JSON.parse(process.env.CODEX_ARTIFACT_TEMPLATE_SKILLS ?? "[]").map(
-    (template) => [template.skillName, template],
-  ),
+  JSON.parse(process.env.CODEX_ARTIFACT_TEMPLATE_SKILLS ?? "[]").map((template) => [
+    template.skillName,
+    template,
+  ]),
 );
 const workCatalog = new Map();
 const pendingRequests = new Map();
@@ -88,8 +88,7 @@ readline.createInterface({ input: process.stdin }).on("line", async (line) => {
 
 async function handleRequest(method, params) {
   if (method === "initialize") {
-    formExtension =
-      params?.capabilities?.extensions?.["openai/elicitation"]?.form;
+    formExtension = params?.capabilities?.extensions?.["openai/elicitation"]?.form;
     legacyFormExtension = params?.capabilities?.extensions?.["openai/form"];
     return {
       protocolVersion: params?.protocolVersion ?? "2025-06-18",
@@ -203,8 +202,7 @@ async function listArtifactTemplates(arguments_) {
     Array.from(request).length > LIMITS.request ||
     (WORK_MODE &&
       pluginTemplates != null &&
-      (!Array.isArray(pluginTemplates) ||
-        pluginTemplates.length > LIMITS.templates))
+      (!Array.isArray(pluginTemplates) || pluginTemplates.length > LIMITS.templates))
   ) {
     throw new InvalidParamsError("Invalid template request");
   }
@@ -248,9 +246,7 @@ async function listArtifactTemplates(arguments_) {
       skillName: validated.skillName,
       title: validated.title,
       description: template.description,
-      ...(template.resourceUri == null
-        ? {}
-        : { resourceUri: template.resourceUri }),
+      ...(template.resourceUri == null ? {} : { resourceUri: template.resourceUri }),
     });
   }
   if (WORK_MODE) {
@@ -311,10 +307,9 @@ async function discoverWorkTemplates() {
     }
     let plugins;
     try {
-      plugins = await fs.readdir(
-        path.join(WORK_PLUGINS_ROOT, marketplace.name),
-        { withFileTypes: true },
-      );
+      plugins = await fs.readdir(path.join(WORK_PLUGINS_ROOT, marketplace.name), {
+        withFileTypes: true,
+      });
     } catch {
       continue;
     }
@@ -323,24 +318,18 @@ async function discoverWorkTemplates() {
       if (!plugin.isDirectory()) {
         continue;
       }
-      const pluginRoot = path.join(
-        WORK_PLUGINS_ROOT,
-        marketplace.name,
-        plugin.name,
-      );
+      const pluginRoot = path.join(WORK_PLUGINS_ROOT, marketplace.name, plugin.name);
       let version;
       let skillEntries;
       try {
-        const versions = (
-          await fs.readdir(pluginRoot, { withFileTypes: true })
-        ).filter((entry) => entry.isDirectory());
+        const versions = (await fs.readdir(pluginRoot, { withFileTypes: true })).filter((entry) =>
+          entry.isDirectory(),
+        );
         if (versions.length !== 1) {
           continue;
         }
         version = path.join(pluginRoot, versions[0].name);
-        const manifest = JSON.parse(
-          await readTrustedText(version, ".codex-plugin/plugin.json"),
-        );
+        const manifest = JSON.parse(await readTrustedText(version, ".codex-plugin/plugin.json"));
         if (manifest.name !== plugin.name) {
           continue;
         }
@@ -352,10 +341,7 @@ async function discoverWorkTemplates() {
       }
 
       for (const entry of skillEntries) {
-        if (
-          !entry.isDirectory() ||
-          !/^artifact-template-[a-z0-9][a-z0-9._-]*$/u.test(entry.name)
-        ) {
+        if (!entry.isDirectory() || !/^artifact-template-[a-z0-9][a-z0-9._-]*$/u.test(entry.name)) {
           continue;
         }
         const template = await readWorkTemplate(
@@ -382,20 +368,15 @@ async function readWorkTemplate(directory, owner, librarySkillId) {
   } catch {
     return null;
   }
-  const frontmatter = /^---\r?\n([\s\S]*?)\r?\n---(?:\r?\n|$)/u.exec(
-    source,
-  )?.[1];
-  const skillName = /^name:\s*["']?([^\s"']+)["']?\s*$/mu.exec(
-    frontmatter ?? "",
-  )?.[1];
+  const frontmatter = /^---\r?\n([\s\S]*?)\r?\n---(?:\r?\n|$)/u.exec(source)?.[1];
+  const skillName = /^name:\s*["']?([^\s"']+)["']?\s*$/mu.exec(frontmatter ?? "")?.[1];
   if (
     !/^artifact-template-[a-z0-9][a-z0-9._-]*$/u.test(skillName ?? "") ||
     (owner != null && skillName !== path.basename(directory))
   ) {
     return null;
   }
-  const description =
-    /^description:\s*["']?(.+?)["']?\s*$/mu.exec(frontmatter ?? "")?.[1] ?? "";
+  const description = /^description:\s*["']?(.+?)["']?\s*$/mu.exec(frontmatter ?? "")?.[1] ?? "";
   return {
     skillName: owner == null ? skillName : `${owner}:${skillName}`,
     skillPath: path.join(directory, "SKILL.md"),
@@ -405,14 +386,8 @@ async function readWorkTemplate(directory, owner, librarySkillId) {
 }
 
 function validatePluginTemplate(template, requestedKind) {
-  const {
-    skillName,
-    resourceUri,
-    pluginId,
-    pluginReleaseSkillId,
-    title,
-    description,
-  } = template ?? {};
+  const { skillName, resourceUri, pluginId, pluginReleaseSkillId, title, description } =
+    template ?? {};
   if (
     typeof skillName !== "string" ||
     typeof resourceUri !== "string" ||
@@ -438,9 +413,7 @@ function validatePluginTemplate(template, requestedKind) {
     names.length !== 2 ||
     !names[0] ||
     /[\s/\\]/u.test(names[0]) ||
-    !/^artifact-template-[a-z0-9][a-z0-9._-]*$/u.test(
-      unqualifiedSkillName ?? "",
-    ) ||
+    !/^artifact-template-[a-z0-9][a-z0-9._-]*$/u.test(unqualifiedSkillName ?? "") ||
     resourceUri !== `skill://${pluginId}/${unqualifiedSkillName}`
   ) {
     return null;
@@ -472,8 +445,7 @@ function validatePluginTemplate(template, requestedKind) {
 }
 
 async function chooseArtifactTemplate(arguments_) {
-  const { artifactKind, templates, request, includeAllTemplates } =
-    arguments_ ?? {};
+  const { artifactKind, templates, request, includeAllTemplates } = arguments_ ?? {};
   if (
     !ARTIFACT_KINDS.has(artifactKind) ||
     !Array.isArray(templates) ||
@@ -499,21 +471,16 @@ async function chooseArtifactTemplate(arguments_) {
 
   const candidates = new Map();
   for (const selected of templates) {
-    if (
-      typeof selected?.skillName !== "string" ||
-      candidates.has(selected.skillName)
-    ) {
+    if (typeof selected?.skillName !== "string" || candidates.has(selected.skillName)) {
       throw new InvalidParamsError("Invalid or duplicate template");
     }
-    const configured =
-      workCatalog.get(selected.skillName) ?? catalog.get(selected.skillName);
+    const configured = workCatalog.get(selected.skillName) ?? catalog.get(selected.skillName);
     if (configured == null && typeof selected.skillPath !== "string") {
       throw new InvalidParamsError("Selected template is not enabled");
     }
     candidates.set(selected.skillName, {
       ...(configured ?? selected),
-      includeSkillPath:
-        configured != null && selected.skillPath !== configured.skillPath,
+      includeSkillPath: configured != null && selected.skillPath !== configured.skillPath,
     });
   }
   if (includeAllTemplates || WORK_MODE) {
@@ -547,9 +514,7 @@ async function chooseArtifactTemplate(arguments_) {
       totalBytes += template.preview?.length ?? 0;
       totalPixels += template.pixels;
       if (totalBytes > LIMITS.totalBytes || totalPixels > LIMITS.totalPixels) {
-        throw new InvalidParamsError(
-          "Template previews exceed the allowed size",
-        );
+        throw new InvalidParamsError("Template previews exceed the allowed size");
       }
     }
     identities.add(identity);
@@ -572,9 +537,7 @@ async function chooseArtifactTemplate(arguments_) {
       },
       skillName: template.skillName,
       skillPath: candidate.includeSkillPath ? candidate.skillPath : undefined,
-      ...(WORK_MODE && candidate.resourceUri != null
-        ? { pluginTemplate: candidate }
-        : {}),
+      ...(WORK_MODE && candidate.resourceUri != null ? { pluginTemplate: candidate } : {}),
     });
     if (offered.size === LIMITS.offered) {
       break;
@@ -601,15 +564,12 @@ async function chooseArtifactTemplate(arguments_) {
                 format: "uri",
                 "x-openai-input": {
                   type: "file",
-                  options: Array.from(
-                    offered.values(),
-                    ({ item, skillName }) => ({
-                      uri: item.id,
-                      name: skillName,
-                      title: item.title,
-                      icons: [{ src: item.image }],
-                    }),
-                  ),
+                  options: Array.from(offered.values(), ({ item, skillName }) => ({
+                    uri: item.id,
+                    name: skillName,
+                    title: item.title,
+                    icons: [{ src: item.image }],
+                  })),
                   userOptions: { accept: [`.${extension}`] },
                 },
               }
@@ -630,10 +590,7 @@ async function chooseArtifactTemplate(arguments_) {
       status: result.action === "cancel" ? "cancelled" : "declined",
     });
   }
-  if (
-    result.action !== "accept" ||
-    typeof result.content?.selection !== "string"
-  ) {
+  if (result.action !== "accept" || typeof result.content?.selection !== "string") {
     throw new InvalidParamsError("Invalid form response");
   }
   const selection = result.content.selection;
@@ -665,10 +622,7 @@ async function chooseArtifactTemplate(arguments_) {
       selected.skillPath ??
       (selected.pluginTemplate == null
         ? undefined
-        : await installedPluginSkillPath(
-            selected.pluginTemplate,
-            artifactKind,
-          ));
+        : await installedPluginSkillPath(selected.pluginTemplate, artifactKind));
     return toolResult({
       status: "selected",
       skillName: selected.skillName,
@@ -766,19 +720,13 @@ async function installedPluginSkillPath(template, artifactKind) {
       if (marker.remote_plugin_id !== template.pluginId) {
         continue;
       }
-      const versions = (
-        await fs.readdir(directory, { withFileTypes: true })
-      ).filter((entry) => entry.isDirectory());
+      const versions = (await fs.readdir(directory, { withFileTypes: true })).filter((entry) =>
+        entry.isDirectory(),
+      );
       if (versions.length !== 1) {
         continue;
       }
-      const skillPath = path.join(
-        directory,
-        versions[0].name,
-        "skills",
-        name,
-        "SKILL.md",
-      );
+      const skillPath = path.join(directory, versions[0].name, "skills", name, "SKILL.md");
       if (await validateTemplate({ ...template, skillPath }, artifactKind)) {
         return skillPath;
       }
@@ -811,17 +759,14 @@ async function validateTemplate(template, requestedKind) {
       path.dirname(directory) === (await fs.realpath(WORK_SKILLS_ROOT));
     if (
       !personalSkill &&
-      (path.basename(directory) !== name ||
-        path.basename(path.dirname(directory)) !== "skills")
+      (path.basename(directory) !== name || path.basename(path.dirname(directory)) !== "skills")
     ) {
       return null;
     }
     const pluginDirectory = path.dirname(path.dirname(directory));
     let plugin = null;
     try {
-      plugin = JSON.parse(
-        await readTrustedText(pluginDirectory, ".codex-plugin/plugin.json"),
-      );
+      plugin = JSON.parse(await readTrustedText(pluginDirectory, ".codex-plugin/plugin.json"));
     } catch (error) {
       if (error.code !== "ENOENT") {
         return null;
@@ -837,25 +782,19 @@ async function validateTemplate(template, requestedKind) {
     ]);
     const manifest = JSON.parse(manifestText);
     const kind = ARTIFACT_KINDS.get(manifest.kind);
-    const requestedFamily =
-      ARTIFACT_KINDS.get(requestedKind).family ?? requestedKind;
+    const requestedFamily = ARTIFACT_KINDS.get(requestedKind).family ?? requestedKind;
     if (
       manifest.schemaVersion !== 1 ||
       !kind ||
       (kind.family ?? manifest.kind) !== requestedFamily ||
       manifest.reference !== `assets/reference.${kind.extension ?? "png"}` ||
-      (kind.family &&
-        !hasCanonicalGoogleUrl(manifest.sourceUrl, kind.workspacePath))
+      (kind.family && !hasCanonicalGoogleUrl(manifest.sourceUrl, kind.workspacePath))
     ) {
       return null;
     }
 
-    const title = JSON.parse(
-      /^ {2}display_name:\s*(.+?)\s*$/mu.exec(metadata)?.[1] ?? "null",
-    );
-    const icon = JSON.parse(
-      /^ {2}icon_large:\s*(.+?)\s*$/mu.exec(metadata)?.[1] ?? "null",
-    );
+    const title = JSON.parse(/^ {2}display_name:\s*(.+?)\s*$/mu.exec(metadata)?.[1] ?? "null");
+    const icon = JSON.parse(/^ {2}icon_large:\s*(.+?)\s*$/mu.exec(metadata)?.[1] ?? "null");
     if (
       typeof title !== "string" ||
       !title.trim() ||
@@ -912,11 +851,7 @@ async function validateTemplate(template, requestedKind) {
     const width = preview.readUInt32BE(16);
     const height = preview.readUInt32BE(20);
     const pixels = width * height;
-    if (
-      !pixels ||
-      Math.max(width, height) > 8_192 ||
-      pixels > LIMITS.previewPixels
-    ) {
+    if (!pixels || Math.max(width, height) > 8_192 || pixels > LIMITS.previewPixels) {
       return null;
     }
     return {
@@ -959,11 +894,7 @@ async function readTrustedText(root, relativePath) {
 
 function isInside(directory, filePath) {
   const relative = path.relative(directory, filePath);
-  return (
-    !!relative &&
-    !path.isAbsolute(relative) &&
-    relative.split(path.sep)[0] !== ".."
-  );
+  return !!relative && !path.isAbsolute(relative) && relative.split(path.sep)[0] !== "..";
 }
 
 function requestClient(params) {

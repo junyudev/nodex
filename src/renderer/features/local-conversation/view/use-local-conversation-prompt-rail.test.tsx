@@ -89,7 +89,10 @@ describe("useLocalConversationPromptRail", () => {
     await waitFor(() => expect(hook.result.current.items).toHaveLength(1_000));
     expect(revealRequests).toHaveLength(0);
 
-    await act(async () => { hook.result.current.previewItem(hook.result.current.items[499]!); await Promise.resolve(); });
+    await act(async () => {
+      hook.result.current.previewItem(hook.result.current.items[499]!);
+      await Promise.resolve();
+    });
     await waitFor(() => expect(hook.result.current.items[499]?.label).toBe("Prompt for turn-500"));
     expect(revealRequests).toHaveLength(1);
     expect(publishReveal).not.toHaveBeenCalled();
@@ -266,7 +269,10 @@ describe("useLocalConversationPromptRail", () => {
 
     await waitFor(() => expect(hook.result.current.items).toHaveLength(1));
     const shell = hook.result.current.items[0]!;
-    await act(async () => { hook.result.current.previewItem(shell); await Promise.resolve(); });
+    await act(async () => {
+      hook.result.current.previewItem(shell);
+      await Promise.resolve();
+    });
     await waitFor(() => expect(hook.result.current.items[0]?.label).toBe("Prompt for turn-1"));
 
     const { promptRailShell: _promptRailShell, ...residentShell } = shell;
@@ -464,7 +470,10 @@ describe("useLocalConversationPromptRail", () => {
     );
 
     await waitFor(() => expect(hook.result.current.items).toHaveLength(1));
-    await act(async () => { hook.result.current.previewItem(hook.result.current.items[0]!); await Promise.resolve(); });
+    await act(async () => {
+      hook.result.current.previewItem(hook.result.current.items[0]!);
+      await Promise.resolve();
+    });
     await waitFor(() => expect(pendingReveal).toBeDefined());
     const committedRequest = pendingReveal!.request;
     hook.rerender({ topologyGeneration: 2 });

@@ -30,7 +30,10 @@ export class CodexConversationEntityDocument {
       requests: [],
       hasUnreadTurn: false,
     },
-    private readonly mutation: {readonly before: CodexCanonicalConversationState; readonly patches: readonly Patch[]} | null = null,
+    private readonly mutation: {
+      readonly before: CodexCanonicalConversationState;
+      readonly patches: readonly Patch[];
+    } | null = null,
   ) {}
 
   get canonicalState(): CodexCanonicalConversationState | null {
@@ -59,7 +62,13 @@ export class CodexConversationEntityDocument {
     const [after, patches] = produceWithPatches(before, (draft) => {
       result = recipe(draft);
     });
-    const document = after === before ? this : new CodexConversationEntityDocument({kind: "conversation", conversation: after}, {before, patches});
+    const document =
+      after === before
+        ? this
+        : new CodexConversationEntityDocument(
+            { kind: "conversation", conversation: after },
+            { before, patches },
+          );
     return { document, before, after, patches, result };
   }
 

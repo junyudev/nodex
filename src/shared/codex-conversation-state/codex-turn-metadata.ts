@@ -1,5 +1,10 @@
 import { produce, type Draft } from "immer";
-import { residentConversationTurns, residentConversationTurnEntries, conversationTurnDraft, appendConversationTurnDraft } from "./codex-turn-mutation";
+import {
+  residentConversationTurns,
+  residentConversationTurnEntries,
+  conversationTurnDraft,
+  appendConversationTurnDraft,
+} from "./codex-turn-mutation";
 import type { ServerNotification } from "@nodex/codex-app-server-protocol";
 import type {
   GuardianApprovalReviewAction,
@@ -112,7 +117,13 @@ export function mutateCodexConversationTurnDiff(
   diff: string,
   observedAtMs: number,
 ): Omit<CodexTurnMetadataResult, "state" | "stateChanged"> {
-  const { disposition, effects } = applyCodexConversationTurnDiff(state, conversationId, turnId, diff, observedAtMs);
+  const { disposition, effects } = applyCodexConversationTurnDiff(
+    state,
+    conversationId,
+    turnId,
+    diff,
+    observedAtMs,
+  );
   return { disposition, effects };
 }
 
@@ -123,8 +134,13 @@ export function reduceCodexConversationTurnDiff(
   diff: string,
   observedAtMs: number,
 ): CodexTurnMetadataResult {
-  let operation: Omit<CodexTurnMetadataResult, "state" | "stateChanged"> = { disposition: "missingTurn", effects: [] };
-  const next = produce(state, (draft) => { operation = mutateCodexConversationTurnDiff(draft, conversationId, turnId, diff, observedAtMs); });
+  let operation: Omit<CodexTurnMetadataResult, "state" | "stateChanged"> = {
+    disposition: "missingTurn",
+    effects: [],
+  };
+  const next = produce(state, (draft) => {
+    operation = mutateCodexConversationTurnDiff(draft, conversationId, turnId, diff, observedAtMs);
+  });
   return { ...operation, state: next, stateChanged: next !== state };
 }
 
@@ -153,7 +169,13 @@ export function mutateCodexConversationSafetyBuffering(
   safetyBuffering: CodexCanonicalSafetyBufferingState,
   observedAtMs: number,
 ): Omit<CodexTurnMetadataResult, "state" | "stateChanged"> {
-  const { disposition, effects } = applyCodexConversationSafetyBuffering(state, conversationId, turnId, safetyBuffering, observedAtMs);
+  const { disposition, effects } = applyCodexConversationSafetyBuffering(
+    state,
+    conversationId,
+    turnId,
+    safetyBuffering,
+    observedAtMs,
+  );
   return { disposition, effects };
 }
 
@@ -164,8 +186,19 @@ export function reduceCodexConversationSafetyBuffering(
   safetyBuffering: CodexCanonicalSafetyBufferingState,
   observedAtMs: number,
 ): CodexTurnMetadataResult {
-  let operation: Omit<CodexTurnMetadataResult, "state" | "stateChanged"> = { disposition: "missingTurn", effects: [] };
-  const next = produce(state, (draft) => { operation = mutateCodexConversationSafetyBuffering(draft, conversationId, turnId, safetyBuffering, observedAtMs); });
+  let operation: Omit<CodexTurnMetadataResult, "state" | "stateChanged"> = {
+    disposition: "missingTurn",
+    effects: [],
+  };
+  const next = produce(state, (draft) => {
+    operation = mutateCodexConversationSafetyBuffering(
+      draft,
+      conversationId,
+      turnId,
+      safetyBuffering,
+      observedAtMs,
+    );
+  });
   return { ...operation, state: next, stateChanged: next !== state };
 }
 
@@ -290,7 +323,14 @@ export function mutateCodexConversationHookRun(
   run: HookRunSummary,
   observedAtMs: number,
 ): Omit<CodexTurnMetadataResult, "state" | "stateChanged"> {
-  const { disposition, effects } = applyCodexConversationHookRun(state, conversationId, turnId, method, run, observedAtMs);
+  const { disposition, effects } = applyCodexConversationHookRun(
+    state,
+    conversationId,
+    turnId,
+    method,
+    run,
+    observedAtMs,
+  );
   return { disposition, effects };
 }
 
@@ -302,8 +342,20 @@ export function reduceCodexConversationHookRun(
   run: HookRunSummary,
   observedAtMs: number,
 ): CodexTurnMetadataResult {
-  let operation: Omit<CodexTurnMetadataResult, "state" | "stateChanged"> = { disposition: "missingTurn", effects: [] };
-  const next = produce(state, (draft) => { operation = mutateCodexConversationHookRun(draft, conversationId, turnId, method, run, observedAtMs); });
+  let operation: Omit<CodexTurnMetadataResult, "state" | "stateChanged"> = {
+    disposition: "missingTurn",
+    effects: [],
+  };
+  const next = produce(state, (draft) => {
+    operation = mutateCodexConversationHookRun(
+      draft,
+      conversationId,
+      turnId,
+      method,
+      run,
+      observedAtMs,
+    );
+  });
   return { ...operation, state: next, stateChanged: next !== state };
 }
 
@@ -331,9 +383,9 @@ function applyCodexConversationTurnPlan(
   observedAtMs: number,
 ): CodexTurnMetadataResult {
   const { threadId, turnId, explanation, plan } = notification.params;
-  return replaceResolvedTurnItem(state, threadId, turnId, observedAtMs, (items) => { items.push(
-    { id: itemId, type: "todo-list", explanation, plan },
-  ); });
+  return replaceResolvedTurnItem(state, threadId, turnId, observedAtMs, (items) => {
+    items.push({ id: itemId, type: "todo-list", explanation, plan });
+  });
 }
 
 export function mutateCodexConversationTurnPlan(
@@ -342,7 +394,12 @@ export function mutateCodexConversationTurnPlan(
   itemId: string,
   observedAtMs: number,
 ): Omit<CodexTurnMetadataResult, "state" | "stateChanged"> {
-  const { disposition, effects } = applyCodexConversationTurnPlan(state, notification, itemId, observedAtMs);
+  const { disposition, effects } = applyCodexConversationTurnPlan(
+    state,
+    notification,
+    itemId,
+    observedAtMs,
+  );
   return { disposition, effects };
 }
 
@@ -352,8 +409,13 @@ export function reduceCodexConversationTurnPlan(
   itemId: string,
   observedAtMs: number,
 ): CodexTurnMetadataResult {
-  let operation: Omit<CodexTurnMetadataResult, "state" | "stateChanged"> = { disposition: "missingTurn", effects: [] };
-  const next = produce(state, (draft) => { operation = mutateCodexConversationTurnPlan(draft, notification, itemId, observedAtMs); });
+  let operation: Omit<CodexTurnMetadataResult, "state" | "stateChanged"> = {
+    disposition: "missingTurn",
+    effects: [],
+  };
+  const next = produce(state, (draft) => {
+    operation = mutateCodexConversationTurnPlan(draft, notification, itemId, observedAtMs);
+  });
   return { ...operation, state: next, stateChanged: next !== state };
 }
 
@@ -364,9 +426,9 @@ function applyCodexConversationModelRerouted(
   observedAtMs: number,
 ): CodexTurnMetadataResult {
   const { threadId, turnId, fromModel, toModel, reason } = notification.params;
-  return replaceResolvedTurnItem(state, threadId, turnId, observedAtMs, (items) => { items.push(
-    { id: itemId, type: "modelRerouted", fromModel, toModel, reason },
-  ); });
+  return replaceResolvedTurnItem(state, threadId, turnId, observedAtMs, (items) => {
+    items.push({ id: itemId, type: "modelRerouted", fromModel, toModel, reason });
+  });
 }
 
 export function mutateCodexConversationModelRerouted(
@@ -375,7 +437,12 @@ export function mutateCodexConversationModelRerouted(
   itemId: string,
   observedAtMs: number,
 ): Omit<CodexTurnMetadataResult, "state" | "stateChanged"> {
-  const { disposition, effects } = applyCodexConversationModelRerouted(state, notification, itemId, observedAtMs);
+  const { disposition, effects } = applyCodexConversationModelRerouted(
+    state,
+    notification,
+    itemId,
+    observedAtMs,
+  );
   return { disposition, effects };
 }
 
@@ -385,8 +452,13 @@ export function reduceCodexConversationModelRerouted(
   itemId: string,
   observedAtMs: number,
 ): CodexTurnMetadataResult {
-  let operation: Omit<CodexTurnMetadataResult, "state" | "stateChanged"> = { disposition: "missingTurn", effects: [] };
-  const next = produce(state, (draft) => { operation = mutateCodexConversationModelRerouted(draft, notification, itemId, observedAtMs); });
+  let operation: Omit<CodexTurnMetadataResult, "state" | "stateChanged"> = {
+    disposition: "missingTurn",
+    effects: [],
+  };
+  const next = produce(state, (draft) => {
+    operation = mutateCodexConversationModelRerouted(draft, notification, itemId, observedAtMs);
+  });
   return { ...operation, state: next, stateChanged: next !== state };
 }
 
@@ -397,16 +469,16 @@ function applyCodexConversationError(
   observedAtMs: number,
 ): CodexTurnMetadataResult {
   const { threadId, turnId, error, willRetry } = notification.params;
-  return replaceResolvedTurnItem(state, threadId, turnId, observedAtMs, (items) => { items.push(
-    {
+  return replaceResolvedTurnItem(state, threadId, turnId, observedAtMs, (items) => {
+    items.push({
       id: itemId,
       type: "error",
       message: error.message,
       willRetry,
       errorInfo: error.codexErrorInfo,
       additionalDetails: error.additionalDetails,
-    },
-  ); });
+    });
+  });
 }
 
 export function mutateCodexConversationError(
@@ -415,7 +487,12 @@ export function mutateCodexConversationError(
   itemId: string,
   observedAtMs: number,
 ): Omit<CodexTurnMetadataResult, "state" | "stateChanged"> {
-  const { disposition, effects } = applyCodexConversationError(state, notification, itemId, observedAtMs);
+  const { disposition, effects } = applyCodexConversationError(
+    state,
+    notification,
+    itemId,
+    observedAtMs,
+  );
   return { disposition, effects };
 }
 
@@ -425,8 +502,13 @@ export function reduceCodexConversationError(
   itemId: string,
   observedAtMs: number,
 ): CodexTurnMetadataResult {
-  let operation: Omit<CodexTurnMetadataResult, "state" | "stateChanged"> = { disposition: "missingTurn", effects: [] };
-  const next = produce(state, (draft) => { operation = mutateCodexConversationError(draft, notification, itemId, observedAtMs); });
+  let operation: Omit<CodexTurnMetadataResult, "state" | "stateChanged"> = {
+    disposition: "missingTurn",
+    effects: [],
+  };
+  const next = produce(state, (draft) => {
+    operation = mutateCodexConversationError(draft, notification, itemId, observedAtMs);
+  });
   return { ...operation, state: next, stateChanged: next !== state };
 }
 
@@ -540,7 +622,10 @@ function applyCodexConversationAutomaticApprovalReview(
         event: buildDeniedGuardianEvent(params),
         ...params.review,
       };
-      if (index < 0) { items.push(item as Draft<CodexCanonicalItem>); return; }
+      if (index < 0) {
+        items.push(item as Draft<CodexCanonicalItem>);
+        return;
+      }
       items[index] = item as Draft<CodexCanonicalItem>;
     },
   );
@@ -556,7 +641,11 @@ export function mutateCodexConversationAutomaticApprovalReview(
     | NotificationOf<"item/autoApprovalReview/completed">,
   observedAtMs: number,
 ): Omit<CodexTurnMetadataResult, "state" | "stateChanged"> {
-  const { disposition, effects } = applyCodexConversationAutomaticApprovalReview(state, notification, observedAtMs);
+  const { disposition, effects } = applyCodexConversationAutomaticApprovalReview(
+    state,
+    notification,
+    observedAtMs,
+  );
   return { disposition, effects };
 }
 
@@ -567,8 +656,13 @@ export function reduceCodexConversationAutomaticApprovalReview(
     | NotificationOf<"item/autoApprovalReview/completed">,
   observedAtMs: number,
 ): CodexTurnMetadataResult {
-  let operation: Omit<CodexTurnMetadataResult, "state" | "stateChanged"> = { disposition: "missingTurn", effects: [] };
-  const next = produce(state, (draft) => { operation = mutateCodexConversationAutomaticApprovalReview(draft, notification, observedAtMs); });
+  let operation: Omit<CodexTurnMetadataResult, "state" | "stateChanged"> = {
+    disposition: "missingTurn",
+    effects: [],
+  };
+  const next = produce(state, (draft) => {
+    operation = mutateCodexConversationAutomaticApprovalReview(draft, notification, observedAtMs);
+  });
   return { ...operation, state: next, stateChanged: next !== state };
 }
 
@@ -592,7 +686,11 @@ export function mutateCodexConversationGuardianWarning(
   conversationId: string,
   itemId: string,
 ): Omit<CodexTurnMetadataResult, "state" | "stateChanged"> {
-  const { disposition, effects } = applyCodexConversationGuardianWarning(state, conversationId, itemId);
+  const { disposition, effects } = applyCodexConversationGuardianWarning(
+    state,
+    conversationId,
+    itemId,
+  );
   return { disposition, effects };
 }
 
@@ -601,7 +699,12 @@ export function reduceCodexConversationGuardianWarning(
   conversationId: string,
   itemId: string,
 ): CodexTurnMetadataResult {
-  let operation: Omit<CodexTurnMetadataResult, "state" | "stateChanged"> = { disposition: "missingTurn", effects: [] };
-  const next = produce(state, (draft) => { operation = mutateCodexConversationGuardianWarning(draft, conversationId, itemId); });
+  let operation: Omit<CodexTurnMetadataResult, "state" | "stateChanged"> = {
+    disposition: "missingTurn",
+    effects: [],
+  };
+  const next = produce(state, (draft) => {
+    operation = mutateCodexConversationGuardianWarning(draft, conversationId, itemId);
+  });
   return { ...operation, state: next, stateChanged: next !== state };
 }

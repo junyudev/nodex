@@ -295,9 +295,13 @@ export function shouldKeepCanonicalConversationLoaded(
   const history = state.turnHistory?.history;
   const tail = history?.islands.at(-1);
   const key = tail?.entries.at(-1)?.value;
-  const latest = tail?.newerBoundary.status === "exhausted" ? (key ? history?.entitiesByKey[key] : null) : turns.at(-1);
-  if (latest?.status === "inProgress" && (primaryRequest === null || ephemeralSide))
-    return true;
+  const latest =
+    tail?.newerBoundary.status === "exhausted"
+      ? key
+        ? history?.entitiesByKey[key]
+        : null
+      : turns.at(-1);
+  if (latest?.status === "inProgress" && (primaryRequest === null || ephemeralSide)) return true;
   return turns.some((turn) =>
     turn.items.some(
       (item) => item.type === "steeringUserMessage" && item.serverUserMessageId == null,

@@ -50,7 +50,7 @@ export class BrowserUseRuntime extends Context.Service<
     }) => Effect.Effect<void, BrowserUseRuntimeError>;
     readonly releaseSession: (sessionId: string) => Effect.Effect<void, BrowserUseRuntimeError>;
     readonly endSessionActivity: (sessionId: string) => Effect.Effect<void, BrowserUseRuntimeError>;
-  readonly turnEnded: (input: {
+    readonly turnEnded: (input: {
       readonly sessionId: string;
       readonly turnId: string;
     }) => Effect.Effect<void, BrowserUseRuntimeError>;

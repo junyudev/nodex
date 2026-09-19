@@ -44,7 +44,7 @@ index f10aa5c893dc1b0d836d0866f494ec29c9d5aa5d..240c0ce1ce673031437c104aaa32b7b8
          if (isWinner && options?.onWinner) {
            options.onWinner({ fiber, index: i, parentFiber: parent })
          }
-@@ -1552,11 +1554,13 @@ export const raceAllFirst = <Eff extends Effect.Effect<any, any, any>>(
+@@ -1552,9 +1554,11 @@ export const raceAllFirst = <Eff extends Effect.Effect<any, any, any>>(
        const fibers = new Set<Fiber.Fiber<any, any>>()
        const onExit = (exit: Exit.Exit<any, any>) => {
          done = true
@@ -58,5 +58,3 @@ index f10aa5c893dc1b0d836d0866f494ec29c9d5aa5d..240c0ce1ce673031437c104aaa32b7b8
 -        )
 +        ))
        }
- 
-       let i = 0
