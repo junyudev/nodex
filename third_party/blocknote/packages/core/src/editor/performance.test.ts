@@ -144,4 +144,61 @@ describe("Performance: transaction processing scales sub-linearly (#2595)", () =
     // Absolute time (~40ms) is comparable to begin (~32ms).
     expect(ratio).toBeLessThan(250);
   });
+
+  // getChanges() is lazy — it only diffs when a subscriber calls it, so the tests
+  // above don't cover getBlocksChangedByTransaction. This locks in that the diff
+  // scopes to the changed range, not the whole document.
+  it(
+    "getChanges() in onChange scales sub-linearly",
+    { timeout: 30_000 },
+    () => {
+      function measureWithGetChanges(
+        editor: BlockNoteEditor<any, any, any>,
+        pos: number,
+      ) {
+        // Run the diff every transaction, like an app reading changed blocks per keystroke.
+        // eslint-disable-next-line @typescript-eslint/unbound-method -- getChanges is destructured from callback parameter, not a class
+        const samples: number[] = [];
+        const unsubscribe = editor.onChange((_editor, { getChanges }) => {
+          const start = performance.now();
+          getChanges();
+          samples.push(performance.now() - start);
+        });
+        try {
+          measureAvgInsertTime(editor, pos);
+          const measured = samples.slice(1);
+          expect(measured).toHaveLength(ITERATIONS);
+          return measured.reduce((total, sample) => total + sample, 0) / measured.length;
+        } finally {
+          unsubscribe();
+        }
+      }
+
+      const smallEditor = createEditorWithBlocks(SMALL, "paragraph");
+      const largeEditor = createEditorWithBlocks(LARGE, "paragraph");
+
+      // Resolve an actual text caret: content.size - 2 is outside the final
+      // paragraph and measures schema repair rather than typing.
+      smallEditor.setTextCursorPosition(smallEditor.document.at(-1)!, "end");
+      largeEditor.setTextCursorPosition(largeEditor.document.at(-1)!, "end");
+      const smallAvg = measureWithGetChanges(
+        smallEditor,
+        smallEditor._tiptapEditor.state.selection.from,
+      );
+      const largeAvg = measureWithGetChanges(
+        largeEditor,
+        largeEditor._tiptapEditor.state.selection.from,
+      );
+      const ratio = largeAvg / smallAvg;
+
+      // eslint-disable-next-line no-console
+      console.log(
+        `getChanges (end): ${SMALL}=${smallAvg.toFixed(3)}ms, ${LARGE}=${largeAvg.toFixed(3)}ms, ratio=${ratio.toFixed(2)}x`,
+      );
+
+      // The full-document snapshot made getChanges O(blocks) per keystroke, pushing
+      // this toward the block-count ratio (~50x); the ranged diff stays well below.
+      expect(ratio).toBeLessThan(50);
+    },
+  );
 });
