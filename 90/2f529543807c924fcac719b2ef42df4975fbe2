@@ -1,0 +1,19 @@
+src/renderer/components/workbench/workbench-shell.layout-panel-actions.test.tsx
+  s_d4ab4c7bf5efe1::t_d2a3515b44dfad 2144-2146
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "902f529543807c924fcac719b2ef42df4975fbe2",
+  "prompts": {},
+  "sessions": {
+    "s_d4ab4c7bf5efe1": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a0b8c8-33e0-78f2-8327-d2c8f5715807",
+        "model": "chatgpt-web/extra-high"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    }
+  }
+}
