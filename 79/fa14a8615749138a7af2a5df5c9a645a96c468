@@ -1,0 +1,31 @@
+src/main/core-client/core-client.ts
+  s_d4ab4c7bf5efe1::t_5510edb0128d9f 103,579-586
+src/renderer/features/local-conversation/local-conversation-store.test.tsx
+  s_d4ab4c7bf5efe1::t_69c8e4185f0614 1927-1932,1940-1952,1956,1960-1965
+  s_d4ab4c7bf5efe1::t_901f56065a3734 1955
+scripts/scenarios/harness/development-seed.ts
+  s_d4ab4c7bf5efe1::t_5510edb0128d9f 7,39
+scripts/scenarios/profile/isolated-profile.ts
+  s_d4ab4c7bf5efe1::t_5510edb0128d9f 66,72-76,89-104
+  s_d4ab4c7bf5efe1::t_27b252f250a479 105-106
+scripts/scenarios/harness/core-scenario-harness.ts
+  s_d4ab4c7bf5efe1::t_5510edb0128d9f 10-14,100,125
+src/renderer/lib/workbench-agent-context.node.test.ts
+  s_d4ab4c7bf5efe1::t_f940c80356a044 553-578
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "79fa14a8615749138a7af2a5df5c9a645a96c468",
+  "prompts": {},
+  "sessions": {
+    "s_d4ab4c7bf5efe1": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a0b8c8-33e0-78f2-8327-d2c8f5715807",
+        "model": "chatgpt-web/extra-high"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    }
+  }
+}
