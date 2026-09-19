@@ -20,7 +20,7 @@ test("enhances a browser copy without losing private formats or overwriting newe
   });
   try {
     if (process.env.NODEX_ELECTRON_CLIPBOARD_CANDIDATE) {
-      expect(await application.evaluate(() => process.versions.electron)).toBe("44.2.0");
+      expect(await application.evaluate(() => process.versions.electron)).toBe("44.4.3");
     }
     const page = await application.firstWindow();
     const editor = page.getByRole("textbox");
