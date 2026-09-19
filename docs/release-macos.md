@@ -340,6 +340,12 @@ verifies both identities before materializing credentials, carries the
 certificate in each architecture bundle, and then runs the packaged
 process/runtime probes.
 
+Nodex's Clipboard, DeviceCheck, and Sparkle bridges target macOS 15.0. Keep their
+GYP deployment target in `target_conditions`: Electron header defaults can
+override ordinary `xcode_settings` during late condition expansion. After an
+Electron upgrade, rebuild both architectures and inspect the resulting Mach-O
+minimum versions; an environment variable alone does not enforce this contract.
+
 The signed package gate must preserve the complete vendor signature closure
 under `Contents/Resources/browser-runtime`, including the signed Codex CLI,
 Node, Node REPL native dependencies, native PiP bridge, `sky.node`, and nested

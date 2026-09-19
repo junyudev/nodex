@@ -31,9 +31,11 @@
         "GCC_SYMBOLS_PRIVATE_EXTERN": "YES",
         "LD_RUNPATH_SEARCH_PATHS": [
           "@loader_path/../../Frameworks"
-        ],
-        "MACOSX_DEPLOYMENT_TARGET": "15.0"
-      }
+        ]
+      },
+      "target_conditions": [["OS=='mac'", {
+        "xcode_settings": { "MACOSX_DEPLOYMENT_TARGET": "15.0" }
+      }]]
     }
   ]
 }
