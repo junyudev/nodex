@@ -1,0 +1,23 @@
+scripts/package-provenance.test.ts
+  s_d4ab4c7bf5efe1::t_7c560f96da7a9d 600
+  s_d4ab4c7bf5efe1::t_d36b83b4917db2 298-301,566-599
+  s_d4ab4c7bf5efe1::t_98a8d03e58d3cb 271,296-297,302
+scripts/package-provenance.mjs
+  s_d4ab4c7bf5efe1::t_490adb437e05ff 141,148-153,216
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "1e68729b66828d1a39a1919ac5fea02f8da748d7",
+  "prompts": {},
+  "sessions": {
+    "s_d4ab4c7bf5efe1": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a0b8c8-33e0-78f2-8327-d2c8f5715807",
+        "model": "gpt-6-astra"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    }
+  }
+}
