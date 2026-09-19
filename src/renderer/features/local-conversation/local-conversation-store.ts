@@ -5617,8 +5617,7 @@ export class CodexAppServerManager {
     if (workspaceRoots === undefined || !workspaceRoots.every((root) => root.length > 0)) {
       return { status: "paused" as const, reason: "workspace-unavailable" };
     }
-    const usePermissionSelection =
-      message.submissionOptions?.usePermissionSelection ?? false;
+    const usePermissionSelection = message.submissionOptions?.usePermissionSelection ?? false;
     const resume: QueuedConversationResumeInput = {
       conversationId,
       model: null,

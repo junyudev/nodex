@@ -3248,7 +3248,7 @@ mod tests {
         let fixture = Fixture::new();
         fixture.insert_owned_page_closure("deleted");
         fixture.kernel.writer().call(|connection| {
-            connection.execute("INSERT INTO document_recovery_drafts(library_id, draft_id, document_id, source_store_epoch, generation, created_at, received_at, payload_json, payload_hash, byte_length) VALUES (?1, 'draft:protected', 'document:owned-page', 'epoch:test', 1, '2000-01-01', '2000-01-01', '{}', ?2, 2)", params![LIBRARY_ID, "0".repeat(64)])?;
+            connection.execute("INSERT INTO document_recovery_drafts(library_id, draft_id, document_id, source_store_epoch, generation, created_at, received_at, payload_encoding, payload, payload_hash, byte_length) VALUES (?1, 'draft:protected', 'document:owned-page', 'epoch:test', 1, '2000-01-01', '2000-01-01', 'legacy_json', CAST('{}' AS BLOB), ?2, 2)", params![LIBRARY_ID, "0".repeat(64)])?;
             connection.execute("INSERT INTO document_recovery_block_roots VALUES (?1, 'draft:protected', ?2)", params![LIBRARY_ID, OWNED_CHILD_ID])?;
             assert_eq!(run_block_retention_pass(connection, 0)?.collected_candidates, 0);
             connection.execute("DELETE FROM document_recovery_drafts WHERE draft_id = 'draft:protected'", [])?;

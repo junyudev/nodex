@@ -35,7 +35,7 @@ mod tests {
     fn replaces_full_queue_documents_without_flattening_context() {
         let connection = Connection::open_in_memory().unwrap();
         connection
-            .execute_batch(include_str!("../../schema/migrations/v166_to_v167.sql"))
+            .execute_batch(include_str!("../../schema/migrations/v167_to_v168.sql"))
             .unwrap();
         assert!(read(&connection).unwrap().is_empty());
         let state = BTreeMap::from([(

@@ -223,55 +223,6 @@ fn extract_evidence(
     Ok(())
 }
 
-#[cfg(test)]
-mod tests {
-    use super::*;
-    fn capture() -> RecoveryDraftCapture {
-        let bytes: Vec<u8> = (0..70_020).map(|n| n as u8).collect();
-        RecoveryDraftCapture {
-            draft_id: "draft".into(),
-            document_id: "document".into(),
-            source_store_epoch: "epoch".into(),
-            generation: 1,
-            base_head_seq: 0,
-            created_at: "2026-09-12".into(),
-            schema_key: "page".into(),
-            schema_version: 1,
-            content: RecoveryDraftContent::Yjs {
-                state: bytes.clone(),
-                unintegrated_updates: vec![vec![], vec![255, 0]],
-            },
-            source: serde_json::json!({"state": bytes, "submission": {"update": bytes, "id": "原始"}, "~special/path": [0, 255], "unknown": {"$bytes": "unchanged"}}),
-        }
-    }
-    #[test]
-    fn recovery_bundle_preserves_evidence_and_stores_shared_bytes_once() {
-        let original = capture();
-        let bytes = encode(&original, "revision").unwrap();
-        assert!(bytes.len() < 73_000);
-        let decoded = decode(&bytes).unwrap();
-        assert_eq!(decoded.capture, original);
-        assert_eq!(decoded.manifest.source_revision, "revision");
-        assert_eq!(decoded.payload_hash, payload_hash(&bytes));
-    }
-    #[test]
-    fn recovery_bundle_rejects_corruption_truncation_and_future_formats() {
-        let bytes = encode(&capture(), "revision").unwrap();
-        for length in [0, 11, 12, bytes.len() - 1] {
-            assert!(decode(&bytes[..length]).is_err());
-        }
-        let mut corrupt = bytes.clone();
-        *corrupt.last_mut().unwrap() ^= 1;
-        assert!(decode(&corrupt).is_err());
-        let mut future = bytes.clone();
-        future[4] = 2;
-        assert!(decode(&future).is_err());
-        let mut trailing = bytes;
-        trailing.push(0);
-        assert!(decode(&trailing).is_err());
-    }
-}
-
 fn validate_manifest_tree(value: &Value) -> Result<(), RecoveryBundleError> {
     let mut pending = vec![(value, 0_usize)];
     let mut nodes = 0;
@@ -483,4 +434,56 @@ fn decode_inner(
         capture,
         payload_hash: payload_hash(bytes),
     })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn capture() -> RecoveryDraftCapture {
+        let bytes: Vec<u8> = (0..70_020).map(|n| n as u8).collect();
+        RecoveryDraftCapture {
+            draft_id: "draft".into(),
+            document_id: "document".into(),
+            source_store_epoch: "epoch".into(),
+            generation: 1,
+            base_head_seq: 0,
+            created_at: "2026-09-12".into(),
+            schema_key: "page".into(),
+            schema_version: 1,
+            content: RecoveryDraftContent::Yjs {
+                state: bytes.clone(),
+                unintegrated_updates: vec![vec![], vec![255, 0]],
+            },
+            source: serde_json::json!({"state": bytes, "submission": {"update": bytes, "id": "原始"}, "~special/path": [0, 255], "unknown": {"$bytes": "unchanged"}}),
+        }
+    }
+
+    #[test]
+    fn recovery_bundle_preserves_evidence_and_stores_shared_bytes_once() {
+        let original = capture();
+        let bytes = encode(&original, "revision").unwrap();
+        assert!(bytes.len() < 73_000);
+        let decoded = decode(&bytes).unwrap();
+        assert_eq!(decoded.capture, original);
+        assert_eq!(decoded.manifest.source_revision, "revision");
+        assert_eq!(decoded.payload_hash, payload_hash(&bytes));
+    }
+
+    #[test]
+    fn recovery_bundle_rejects_corruption_truncation_and_future_formats() {
+        let bytes = encode(&capture(), "revision").unwrap();
+        for length in [0, 11, 12, bytes.len() - 1] {
+            assert!(decode(&bytes[..length]).is_err());
+        }
+        let mut corrupt = bytes.clone();
+        *corrupt.last_mut().unwrap() ^= 1;
+        assert!(decode(&corrupt).is_err());
+        let mut future = bytes.clone();
+        future[4] = 2;
+        assert!(decode(&future).is_err());
+        let mut trailing = bytes;
+        trailing.push(0);
+        assert!(decode(&trailing).is_err());
+    }
 }

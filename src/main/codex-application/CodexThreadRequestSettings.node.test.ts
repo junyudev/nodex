@@ -236,6 +236,9 @@ it.effect("adds writing-block instructions only for the product prose detail set
     assert.include(prose?.developerInstructions ?? "", "### Writing blocks");
     assert.notInclude(commands?.developerInstructions ?? "", "### Writing blocks");
     assert.notInclude(prose?.developerInstructions ?? "", "### Task title checkpoints");
-    assert.notInclude(prose?.developerInstructions ?? "", "### Presentation outline writing blocks");
+    assert.notInclude(
+      prose?.developerInstructions ?? "",
+      "### Presentation outline writing blocks",
+    );
   }),
 );

@@ -29,11 +29,11 @@ pub enum DocumentModuleFrameMetadata {
         request: OwnedDocumentApplyRequest,
     },
     ModuleReadResponse {
-        response: OwnedDocumentReadResponse,
+        response: Box<OwnedDocumentReadResponse>,
         state_vector_bytes: u32,
     },
     ModuleApplyResponse {
-        response: OwnedDocumentApplyResponse,
+        response: Box<OwnedDocumentApplyResponse>,
         has_canvas: bool,
     },
 }
@@ -242,7 +242,7 @@ pub fn encode_read_response(mut response: OwnedDocumentReadResponse) -> Result<V
     payload.extend_from_slice(&vector);
     encode(
         DocumentModuleFrameMetadata::ModuleReadResponse {
-            response,
+            response: Box::new(response),
             state_vector_bytes,
         },
         &payload,
@@ -301,7 +301,7 @@ pub fn decode_read_response(bytes: &[u8]) -> Result<OwnedDocumentReadResponse, C
         ResponseEnvelope::Error(_) if payload.is_empty() => {}
         _ => return Err(invalid("Unexpected Document error payload")),
     }
-    Ok(response)
+    Ok(*response)
 }
 
 pub fn encode_apply_response(
@@ -330,7 +330,7 @@ pub fn encode_apply_response(
     }
     encode(
         DocumentModuleFrameMetadata::ModuleApplyResponse {
-            response,
+            response: Box::new(response),
             has_canvas: canvas.is_some(),
         },
         &payload,
@@ -352,7 +352,7 @@ pub fn decode_apply_response(bytes: &[u8]) -> Result<OwnedDocumentApplyResponse,
         if !payload.is_empty() {
             return Err(invalid("Unexpected Document apply response payload"));
         }
-        return Ok(response);
+        return Ok(*response);
     }
     let ResponseEnvelope::Ok(
         ApplyResponse::Committed { outcome, .. } | ApplyResponse::NoOp { outcome, .. },
@@ -364,7 +364,7 @@ pub fn decode_apply_response(bytes: &[u8]) -> Result<OwnedDocumentApplyResponse,
         return Err(invalid("Unexpected inline Canvas response"));
     }
     outcome.canvas = Some(json_content(payload)?);
-    Ok(response)
+    Ok(*response)
 }
 
 #[cfg(test)]
