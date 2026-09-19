@@ -2141,9 +2141,9 @@ describe("workbench session shell / layout-panel-actions", () => {
     expect(within(menu).queryByText("Files")).toBe(null);
 
     await clickMenuItem(menu, "Side chat");
-    await waitFor(() => {
-      expect(startSideChatCalls).toHaveLength(1);
-    });
+    await settleAsyncRender();
+    expect(startSideChatCalls).toHaveLength(1);
+    expect(screen.getByRole("button", { name: "Close Side chat tab" })).toBeTruthy();
     const sideChatInput = startSideChatCalls[0] as Record<string, unknown>;
     expect("projectId" in sideChatInput).toBe(false);
     expect(sideChatInput.parentNavigationPath).toBe(
