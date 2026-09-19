@@ -13,6 +13,7 @@ import type {
 } from "../../shared/types";
 import type { CodexExecutionProfile } from "../../shared/codex-execution-profile";
 import type { CodexPendingWorktreeRequest } from "../../shared/codex-pending-worktree";
+import { buildCodexDesktopThreadFeatureConfig } from "../codex/codex-thread-config";
 import {
   CodexAppServerCapabilities,
   createCodexAppServerCapabilitySnapshot,
@@ -21,6 +22,8 @@ import { CodexGateway } from "../codex-runtime/CodexGateway";
 import { CoreModules } from "../core-runtime/CoreModules";
 import { DesktopToolRuntime } from "../host-runtime/DesktopToolRuntime";
 import { BrowserUseRuntime } from "../host-runtime/BrowserUseRuntime";
+import { ApplicationSettings } from "../settings/ApplicationSettings";
+import { makeTestApplicationSettings } from "../settings/ApplicationSettings.test-support";
 import {
   ProjectRuntimeLifecycleRuntime,
   live as projectLifecycleLive,
@@ -28,8 +31,6 @@ import {
 import { CodexAttachments } from "./CodexAttachments";
 import { CodexAgentConfigRuntime } from "./CodexAgentConfigRuntime";
 import { CodexAutoThreadTitle } from "./CodexAutoThreadTitle";
-import { CodexExecutionAssignments } from "./CodexExecutionAssignments";
-import { makeReadyCodexExecutionAssignments } from "./CodexExecutionAssignments.test-support";
 import { CodexGitProbe } from "./CodexGitProbe";
 import { makeTestCodexGitProbe } from "./CodexGitProbe.test-support";
 import { CodexFreshThreadLaunchRuntime } from "./CodexFreshThreadLaunchRuntime";
@@ -88,7 +89,6 @@ const harness = (
     readonly prepareAgentConfig?: CodexAgentConfigRuntime["Service"]["prepare"];
     readonly projectLifecycle?: ProjectRuntimeLifecycleRuntime["Service"];
     readonly threadCreation?: ThreadCreationRuntime["Service"];
-    readonly executionFeatures?: Readonly<Record<string, unknown>>;
   } = {},
 ) => {
   const events: string[] = [];
@@ -110,6 +110,15 @@ const harness = (
   });
   const gateway = CodexGateway.of({
     localHostId: "local",
+    requestOnHost: ((_hostId: string, method: string) => {
+      if (method === "config/read") {
+        return Effect.succeed({ config: {}, origins: {}, layers: null });
+      }
+      if (method === "experimentalFeature/list") {
+        return Effect.succeed({ data: [], nextCursor: null });
+      }
+      return Effect.die(`Unexpected host request ${method}`);
+    }) as CodexGateway["Service"]["requestOnHost"],
     requestLocal: ((method: string, params: Record<string, unknown>, scheduling: unknown) => {
       if (method === "thread/name/set") {
         threadNames.push(params);
@@ -234,15 +243,7 @@ const harness = (
           isCurrent: () => Effect.succeed(true),
         }),
       ),
-      Effect.provideService(
-        CodexExecutionAssignments,
-        makeReadyCodexExecutionAssignments(
-          options.executionFeatures ?? {
-            concurrent_reasoning_summaries: true,
-            thread_tools: true,
-          },
-        ),
-      ),
+      Effect.provideService(ApplicationSettings, makeTestApplicationSettings()),
       Effect.provideService(CodexGitProbe, makeTestCodexGitProbe()),
       Effect.provideService(
         CodexAgentConfigRuntime,
@@ -465,10 +466,9 @@ it.effect("uses one execution profile for renderer-owned Thread and first-Turn p
       historyMode: "paginated",
       dynamicTools: [],
       config: {
+        ...buildCodexDesktopThreadFeatureConfig(test.capability.version),
         "features.js_repl": false,
         "mcp_servers.node_repl": { command: "/runtime/node" },
-        "features.concurrent_reasoning_summaries": true,
-        "features.thread_tools": true,
         "mcp_servers.nodex_app.enabled_tools": appToolCatalog.map((tool) => tool.name),
         model_reasoning_effort: "max",
       },

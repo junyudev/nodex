@@ -20,7 +20,6 @@ import {
   resolveArtifactTemplatePickerRuntime,
   type ArtifactTemplatePickerRuntime,
 } from "../codex/artifact-template-picker";
-import { CodexExecutionAssignments } from "../codex-application/CodexExecutionAssignments";
 import { CodexGateway } from "../codex-runtime/CodexGateway";
 import { BrowserUseRuntime } from "./BrowserUseRuntime";
 import { ComputerUseRuntime, type ComputerUseRuntimeResult } from "./ComputerUseRuntime";
@@ -176,18 +175,13 @@ const fromPorts = (options: DesktopToolRuntimeLayerOptions): Layer.Layer<Desktop
 
 export const live = (
   options: DesktopToolRuntimeOptions,
-): Layer.Layer<
-  DesktopToolRuntime,
-  never,
-  BrowserUseRuntime | CodexExecutionAssignments | CodexGateway | ComputerUseRuntime
-> =>
+): Layer.Layer<DesktopToolRuntime, never, BrowserUseRuntime | CodexGateway | ComputerUseRuntime> =>
   Layer.effect(
     DesktopToolRuntime,
     Effect.gen(function* () {
       const computerUse = yield* ComputerUseRuntime;
       const browserUse = yield* BrowserUseRuntime;
       const gateway = yield* CodexGateway;
-      const executionAssignments = yield* CodexExecutionAssignments;
       const artifactTemplatePickerRuntime = resolveArtifactTemplatePickerRuntime({
         browserNodePath:
           options.browserRuntime.status === "available"
@@ -200,13 +194,7 @@ export const live = (
       return yield* make({
         availableBackends: browserUse.availableBackends,
         browserRuntime: options.browserRuntime,
-        artifactTemplatePickerEnabled: executionAssignments.readExecutionAssignments().pipe(
-          Effect.map((assignments) => assignments?.values.artifactTemplatePicker === true),
-          Effect.mapError(
-            (cause) =>
-              new DesktopToolRuntimeError({ operation: "artifact-template-picker-gate", cause }),
-          ),
-        ),
+        artifactTemplatePickerEnabled: Effect.succeed(true),
         artifactTemplatePickerRuntime,
         computerUse,
         plugins: (availableBackends) =>

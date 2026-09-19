@@ -5,7 +5,11 @@ import {
   residentConversationTurnEntries,
   conversationTurnDraft,
 } from "../../shared/codex-conversation-state/codex-turn-mutation";
-import { buildCodexThreadConfig } from "../codex/codex-thread-config";
+import {
+  buildCodexDesktopThreadFeatureConfig,
+  buildCodexThreadConfig,
+  CODEX_DESKTOP_THREAD_FEATURE_CONFIG,
+} from "../codex/codex-thread-config";
 import type {
   Thread,
   ThreadResumeParams,
@@ -34,13 +38,13 @@ import {
 } from "../codex-runtime/CodexAppServerCapabilities";
 import { CoreModules, type CoreModuleClients } from "../core-runtime/CoreModules";
 import { CoreRuntimeError } from "../core-runtime/CoreRuntimeError";
+import { ApplicationSettings } from "../settings/ApplicationSettings";
+import { makeTestApplicationSettings } from "../settings/ApplicationSettings.test-support";
 import { CodexApplicationEventHub } from "./CodexApplicationEventHub";
 import {
   CodexConversationProjection,
   make as makeConversationProjection,
 } from "./CodexConversationProjection";
-import { CodexExecutionAssignments } from "./CodexExecutionAssignments";
-import { makeReadyCodexExecutionAssignments } from "./CodexExecutionAssignments.test-support";
 import { CodexGitProbe } from "./CodexGitProbe";
 import { makeTestCodexGitProbe } from "./CodexGitProbe.test-support";
 import { makeConversationEntityStateRegistry } from "./internal/ConversationEntityState";
@@ -251,6 +255,7 @@ const makeGateway = (
   requestOnHost: RequestOnHost,
   requestForThread?: RequestForThread,
   localHostId = "local",
+  options?: { readonly passthroughRequestSettings?: boolean },
 ): CodexGateway["Service"] => {
   const unsupported = () => Effect.die(new Error("Unsupported Gateway operation"));
   return CodexGateway.of({
@@ -259,7 +264,15 @@ const makeGateway = (
     requestRawForThread: unsupported,
     events: Stream.empty,
     requestLocal: unsupported,
-    requestOnHost,
+    requestOnHost: (hostId, method, params, scheduling) => {
+      if (!options?.passthroughRequestSettings && method === "config/read") {
+        return Effect.succeed({ config: {}, origins: {}, layers: null }) as never;
+      }
+      if (!options?.passthroughRequestSettings && method === "experimentalFeature/list") {
+        return Effect.succeed({ data: [], nextCursor: null }) as never;
+      }
+      return requestOnHost(hostId, method, params, scheduling);
+    },
     requestForThread: requestForThread ?? unsupported,
     notifyLocal: unsupported,
     connection: unsupported,
@@ -297,12 +310,12 @@ const localCapabilitySnapshot = createCodexAppServerCapabilitySnapshot({
   nativeAppTools: true,
 });
 
-const directoryWithExecutionAssignments = makeDirectory.pipe(
-  Effect.provideService(CodexExecutionAssignments, makeReadyCodexExecutionAssignments()),
+const directoryWithRequestSettings = makeDirectory.pipe(
+  Effect.provideService(ApplicationSettings, makeTestApplicationSettings()),
   Effect.provideService(CodexGitProbe, makeTestCodexGitProbe()),
 );
 
-const directoryFoundations = directoryWithExecutionAssignments.pipe(
+const directoryFoundations = directoryWithRequestSettings.pipe(
   Effect.provideService(
     CodexHistoryPageAdapter,
     CodexHistoryPageAdapter.of({
@@ -382,15 +395,20 @@ it.effect.each([
         Effect.provideService(CoreModules, core),
       );
       const configCwds: string[] = [];
-      const gateway = makeGateway(((_hostId, method, params) =>
-        Effect.sync(() => {
-          if (method === "config/read") {
-            configCwds.push((params as { cwd: string }).cwd);
-            return { config: {} };
-          }
-          if (method === "experimentalFeature/list") return { data: [], nextCursor: null };
-          throw new Error(`Unexpected request: ${method}`);
-        })) as RequestOnHost);
+      const gateway = makeGateway(
+        ((_hostId, method, params) =>
+          Effect.sync(() => {
+            if (method === "config/read") {
+              configCwds.push((params as { cwd: string }).cwd);
+              return { config: {} };
+            }
+            if (method === "experimentalFeature/list") return { data: [], nextCursor: null };
+            throw new Error(`Unexpected request: ${method}`);
+          })) as RequestOnHost,
+        undefined,
+        "local",
+        { passthroughRequestSettings: true },
+      );
       const directory = yield* directoryFoundations.pipe(
         Effect.provideService(CodexApplicationEventHub, eventHub),
         Effect.provideService(CodexConversationProjection, projection),
@@ -477,15 +495,20 @@ it.effect("prepareResume keeps the applied workspace until the pending move is a
         Effect.provideService(CoreModules, core),
       );
       const configCwds: string[] = [];
-      const gateway = makeGateway(((_hostId, method, params) =>
-        Effect.sync(() => {
-          if (method === "config/read") {
-            configCwds.push((params as { cwd: string }).cwd);
-            return { config: {} };
-          }
-          if (method === "experimentalFeature/list") return { data: [], nextCursor: null };
-          throw new Error(`Unexpected request: ${method}`);
-        })) as RequestOnHost);
+      const gateway = makeGateway(
+        ((_hostId, method, params) =>
+          Effect.sync(() => {
+            if (method === "config/read") {
+              configCwds.push((params as { cwd: string }).cwd);
+              return { config: {} };
+            }
+            if (method === "experimentalFeature/list") return { data: [], nextCursor: null };
+            throw new Error(`Unexpected request: ${method}`);
+          })) as RequestOnHost,
+        undefined,
+        "local",
+        { passthroughRequestSettings: true },
+      );
       const directory = yield* directoryFoundations.pipe(
         Effect.provideService(CodexApplicationEventHub, eventHub),
         Effect.provideService(CodexConversationProjection, projection),
@@ -800,7 +823,7 @@ it.effect("accepts a metadata-only import shell and hydrates only a bounded tail
         generation: 1,
         userAgent: "codex-app-server/0.147.0",
       });
-      const directory = yield* directoryWithExecutionAssignments.pipe(
+      const directory = yield* directoryWithRequestSettings.pipe(
         Effect.provideService(CodexApplicationEventHub, eventHub),
         Effect.provideService(CodexConversationProjection, projection),
         Effect.provideService(CodexGateway, gateway),
@@ -949,7 +972,7 @@ it.effect("accepts a metadata-only fork shell with inherited durable authority",
         loadTurnPage: () => Effect.die("fork shell must not read child history"),
         loadTurnItemsPage: () => Effect.die("unused"),
       });
-      const directory = yield* directoryWithExecutionAssignments.pipe(
+      const directory = yield* directoryWithRequestSettings.pipe(
         Effect.provideService(CodexApplicationEventHub, eventHub),
         Effect.provideService(CodexConversationProjection, projection),
         Effect.provideService(
@@ -1046,7 +1069,7 @@ it.effect("keeps an excluded paginated fork lazy until the child is opened", () 
           }),
         loadTurnItemsPage: () => Effect.die("unused"),
       });
-      const directory = yield* directoryWithExecutionAssignments.pipe(
+      const directory = yield* directoryWithRequestSettings.pipe(
         Effect.provideService(CodexApplicationEventHub, eventHub),
         Effect.provideService(CodexConversationProjection, projection),
         Effect.provideService(
@@ -1310,7 +1333,7 @@ it.effect("hydrates an inactive paginated Thread from a bounded tail without res
         },
         loadTurnItemsPage: () => Effect.die("unused"),
       });
-      const directory = yield* directoryWithExecutionAssignments.pipe(
+      const directory = yield* directoryWithRequestSettings.pipe(
         Effect.provideService(CodexApplicationEventHub, eventHub),
         Effect.provideService(CodexConversationProjection, projection),
         Effect.provideService(CodexGateway, gateway),
@@ -1384,7 +1407,7 @@ it.effect("keeps legacy tail reads metadata-only instead of loading unbounded hi
         generation: 1,
         userAgent: "codex-app-server/0.144.0",
       });
-      const directory = yield* directoryWithExecutionAssignments.pipe(
+      const directory = yield* directoryWithRequestSettings.pipe(
         Effect.provideService(CodexApplicationEventHub, eventHub),
         Effect.provideService(CodexConversationProjection, projection),
         Effect.provideService(CodexGateway, gateway),
@@ -1579,7 +1602,13 @@ it.effect.each([
           },
           loadTurnItemsPage: () => Effect.die("unused"),
         });
-        const directory = yield* directoryWithExecutionAssignments.pipe(
+        const scenarioCapability = createCodexAppServerCapabilitySnapshot({
+          hostId: "remote-a",
+          generation: 1,
+          userAgent: capabilitySnapshot.userAgent,
+          nativeAppTools: nativeMcp,
+        });
+        const directory = yield* directoryWithRequestSettings.pipe(
           Effect.provideService(CodexApplicationEventHub, eventHub),
           Effect.provideService(CodexConversationProjection, projection),
           Effect.provideService(CodexGateway, gateway),
@@ -1587,8 +1616,8 @@ it.effect.each([
           Effect.provideService(
             CodexAppServerCapabilities,
             CodexAppServerCapabilities.of({
-              forHost: () => Effect.succeed(capabilitySnapshot),
-              forThread: () => Effect.succeed(capabilitySnapshot),
+              forHost: () => Effect.succeed(scenarioCapability),
+              forThread: () => Effect.succeed(scenarioCapability),
               isCurrent: () => Effect.succeed(true),
             }),
           ),
@@ -1614,20 +1643,19 @@ it.effect.each([
           expectedGeneration: 1,
           timeoutMs: 120_000,
         });
-        if (nativeMcp) {
-          assert.deepEqual(
-            (resumeRequest.params as { config?: unknown }).config,
-            buildCodexThreadConfig({ nativeAppTools: nativeMcp }),
-          );
-          assert.include(
-            String(
-              (resumeRequest.params as { developerInstructions?: string }).developerInstructions,
-            ),
-            "<app-context>",
-          );
-        } else {
-          assert.notProperty(resumeRequest.params as object, "developerInstructions");
-        }
+        assert.deepEqual(
+          (resumeRequest.params as { config?: unknown }).config,
+          buildCodexThreadConfig({
+            nativeAppTools: nativeMcp,
+            overrides: buildCodexDesktopThreadFeatureConfig(capabilitySnapshot.version),
+          }),
+        );
+        assert.include(
+          String(
+            (resumeRequest.params as { developerInstructions?: string }).developerInstructions,
+          ),
+          "<app-context>",
+        );
         assert.strictEqual(resolved?.canonical?.cwd, finalCwd);
         assert.strictEqual(resolved?.canonical?.hydrationContext?.cwd, finalCwd);
         assert.strictEqual(
@@ -1638,7 +1666,7 @@ it.effect.each([
         assert.strictEqual(threads.get("thread-a")?.cwd, finalCwd);
         assert.deepEqual(pageInputs, [
           {
-            capability: capabilitySnapshot,
+            capability: scenarioCapability,
             threadId: "thread-a",
             cursor: "turns:tail",
             initialItemsCursor: "items:tail",
@@ -1750,7 +1778,7 @@ it.effect("reads authoritative history when an unversioned resume omits its page
           itemsBackwardsCursor: "must-not-page",
         } as never);
       }) as RequestOnHost);
-      const directory = yield* directoryWithExecutionAssignments.pipe(
+      const directory = yield* directoryWithRequestSettings.pipe(
         Effect.provideService(CodexApplicationEventHub, eventHub),
         Effect.provideService(CodexConversationProjection, projection),
         Effect.provideService(CodexGateway, gateway),
@@ -1805,21 +1833,28 @@ it.effect("reads authoritative history when an unversioned resume omits its page
 
       const resolved = yield* directory.resolve({ threadId: "thread-a", fidelity: "live" });
 
-      assert.deepEqual(resumeRequests, [
-        {
-          params: {
-            threadId: "thread-a",
-            excludeTurns: true,
-            initialTurnsPage: { limit: 5, itemsView: "full", sortDirection: "desc" },
-            history: null,
-            path: null,
-            model: null,
-            cwd: "/repo",
-            personality: null,
-          },
-          scheduling: { expectedHostId: "remote-a", expectedGeneration: 2, timeoutMs: 120_000 },
-        },
-      ]);
+      assert.lengthOf(resumeRequests, 1);
+      const resumeRequest = resumeRequests[0]!;
+      assert.deepInclude(resumeRequest.params as Record<string, unknown>, {
+        threadId: "thread-a",
+        excludeTurns: true,
+        initialTurnsPage: { limit: 5, itemsView: "full", sortDirection: "desc" },
+        history: null,
+        path: null,
+        model: null,
+        cwd: "/repo",
+        personality: null,
+        config: CODEX_DESKTOP_THREAD_FEATURE_CONFIG,
+      });
+      assert.deepEqual(resumeRequest.scheduling, {
+        expectedHostId: "remote-a",
+        expectedGeneration: 2,
+        timeoutMs: 120_000,
+      });
+      assert.include(
+        String((resumeRequest.params as { developerInstructions?: string }).developerInstructions),
+        "<app-context>",
+      );
       assert.deepEqual(
         resolved?.canonical?.turns.map((turn) => turn.turnId),
         ["turn-resident"],
@@ -1912,7 +1947,7 @@ it.effect.each([false, true])(
         const history = yield* makeHistoryPageAdapter.pipe(
           Effect.provideService(CodexGateway, gateway),
         );
-        const directory = yield* directoryWithExecutionAssignments.pipe(
+        const directory = yield* directoryWithRequestSettings.pipe(
           Effect.provideService(CodexApplicationEventHub, eventHub),
           Effect.provideService(CodexConversationProjection, projection),
           Effect.provideService(CodexGateway, gateway),
@@ -2076,7 +2111,7 @@ it.effect.each([false, true])(
         const history = yield* makeHistoryPageAdapter.pipe(
           Effect.provideService(CodexGateway, gateway),
         );
-        const directory = yield* directoryWithExecutionAssignments.pipe(
+        const directory = yield* directoryWithRequestSettings.pipe(
           Effect.provideService(CodexApplicationEventHub, eventHub),
           Effect.provideService(CodexConversationProjection, projection),
           Effect.provideService(CodexGateway, gateway),
@@ -2612,7 +2647,7 @@ it.effect.each(mainResumeScenarios)(
         const historyPages = yield* makeHistoryPageAdapter.pipe(
           Effect.provideService(CodexGateway, gateway),
         );
-        const directory = yield* directoryWithExecutionAssignments.pipe(
+        const directory = yield* directoryWithRequestSettings.pipe(
           Effect.provideService(CodexApplicationEventHub, eventHub),
           Effect.provideService(CodexConversationProjection, projection),
           Effect.provideService(CodexGateway, gateway),

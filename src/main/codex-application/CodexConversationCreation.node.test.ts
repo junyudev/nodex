@@ -13,6 +13,7 @@ import type {
   CodexPendingStartConversationParamsInput,
   CodexPendingWorktreeEntry,
 } from "../../shared/codex-pending-worktree";
+import { buildCodexDesktopThreadFeatureConfig } from "../codex/codex-thread-config";
 import {
   CodexAppServerCapabilities,
   createCodexAppServerCapabilitySnapshot,
@@ -22,12 +23,12 @@ import { CodexGateway } from "../codex-runtime/CodexGateway";
 import { BrowserUseRuntime } from "../host-runtime/BrowserUseRuntime";
 import { DesktopToolRuntime } from "../host-runtime/DesktopToolRuntime";
 import { ProjectWorkspace } from "../project-application/ProjectWorkspace";
+import { ApplicationSettings } from "../settings/ApplicationSettings";
+import { makeTestApplicationSettings } from "../settings/ApplicationSettings.test-support";
 import { CodexAttachments } from "./CodexAttachments";
 import { CodexClientThreadIdentity } from "./CodexClientThreadIdentity";
 import { make } from "./CodexConversationCreation";
 import { CodexConversationFork } from "./CodexConversationFork";
-import { CodexExecutionAssignments } from "./CodexExecutionAssignments";
-import { makeReadyCodexExecutionAssignments } from "./CodexExecutionAssignments.test-support";
 import { CodexGitProbe } from "./CodexGitProbe";
 import { makeTestCodexGitProbe } from "./CodexGitProbe.test-support";
 import { CodexForkSidePanelTransfer } from "./CodexForkSidePanelTransferRuntime";
@@ -133,6 +134,12 @@ it.effect.each([
         ) =>
           Effect.sync(() => {
             requests.push({ hostId, method, scheduling });
+            if (method === "config/read") {
+              return { config: {}, origins: {}, layers: null };
+            }
+            if (method === "experimentalFeature/list") {
+              return { data: [], nextCursor: null };
+            }
             if (method === "thread/start") {
               const requestParams = params as Record<string, unknown>;
               threadStartParams.push(requestParams);
@@ -176,13 +183,7 @@ it.effect.each([
               isCurrent: () => Effect.succeed(true),
             }),
           ),
-          Effect.provideService(
-            CodexExecutionAssignments,
-            makeReadyCodexExecutionAssignments({
-              concurrent_reasoning_summaries: true,
-              thread_tools: true,
-            }),
-          ),
+          Effect.provideService(ApplicationSettings, makeTestApplicationSettings()),
           Effect.provideService(
             CodexAttachments,
             CodexAttachments.of({
@@ -373,14 +374,13 @@ it.effect.each([
         assert.deepEqual(threadStartParams[0]?.dynamicTools, []);
         assert.isUndefined(threadStartParams[0]?.allowProviderModelFallback);
         assert.deepEqual(threadStartParams[0]?.config, {
+          ...buildCodexDesktopThreadFeatureConfig(capability.version),
           ...(targetHostId === "local"
             ? {
                 "features.js_repl": false,
                 "mcp_servers.node_repl": { command: "/runtime/node" },
               }
             : {}),
-          "features.concurrent_reasoning_summaries": true,
-          "features.thread_tools": true,
           ...(capability.nativeAppTools
             ? {
                 "mcp_servers.nodex_app.enabled_tools": appToolCatalog.map((tool) => tool.name),

@@ -16,7 +16,10 @@ import {
   type CodexAppServerCapabilitySnapshot,
 } from "../codex-runtime/CodexAppServerCapabilities";
 import { projectCodexGatewayThreadResumeResponse } from "../codex-runtime/CodexGatewayProtocolProjection";
-import { buildCodexThreadConfig } from "../codex/codex-thread-config";
+import {
+  buildCodexDesktopThreadFeatureConfig,
+  buildCodexThreadConfig,
+} from "../codex/codex-thread-config";
 import { rewriteExecutionWorkspaceRoots } from "../codex/codex-execution-workspace-roots";
 import type { CodexThreadExecutionLocation } from "../codex/codex-thread-handoff-journal";
 import { CoreModules } from "../core-runtime/CoreModules";
@@ -24,7 +27,6 @@ import { createOperationId } from "../core-runtime/operation-identity";
 import { DesktopToolRuntime } from "../host-runtime/DesktopToolRuntime";
 import type { ManagedWorktreeHandoffPreparation } from "./ManagedWorktreeHandoff";
 import { CodexConversationProjection } from "./CodexConversationProjection";
-import { CodexExecutionAssignments } from "./CodexExecutionAssignments";
 import { CodexTurnCommands } from "./CodexTurnCommands";
 import { ConversationCommands } from "./ConversationCommands";
 import { ConversationEntityMap } from "./internal/ConversationEntityMap";
@@ -115,7 +117,6 @@ export const live: Layer.Layer<
   never,
   | CodexConversationProjection
   | CodexAppServerCapabilities
-  | CodexExecutionAssignments
   | CodexGateway
   | CodexTurnCommands
   | ConversationCommands
@@ -128,7 +129,6 @@ export const live: Layer.Layer<
   Effect.gen(function* () {
     const projection = yield* CodexConversationProjection;
     const capabilities = yield* CodexAppServerCapabilities;
-    const executionAssignments = yield* CodexExecutionAssignments;
     const gateway = yield* CodexGateway;
     const turns = yield* CodexTurnCommands;
     const conversations = yield* ConversationCommands;
@@ -309,19 +309,13 @@ export const live: Layer.Layer<
             yield* ensureCurrent(capability);
           }
         }
-        const executionDefaults = yield* executionAssignments.readThreadDefaults(
-          capability.version,
-        );
-        if (!executionDefaults) {
-          return yield* error("switch-runtime", threadId, new Error("execution-config-loading"));
-        }
         const toolConfig = yield* tools.threadConfig(location.cwd);
         const config = yield* Effect.try({
           try: () =>
             buildCodexThreadConfig({
               nativeAppTools: capability.nativeAppTools,
               overrides: {
-                ...executionDefaults.config,
+                ...buildCodexDesktopThreadFeatureConfig(capability.version),
                 ...(toolConfig ?? {}),
               },
             }),

@@ -33,9 +33,9 @@ import { CoreModules } from "../core-runtime/CoreModules";
 import { DesktopToolRuntime } from "../host-runtime/DesktopToolRuntime";
 import { BrowserUseRuntime } from "../host-runtime/BrowserUseRuntime";
 import { ProjectRuntimeLifecycleRuntime } from "../host-runtime/ProjectRuntimeLifecycleRuntime";
+import { ApplicationSettings } from "../settings/ApplicationSettings";
 import { CodexAgentConfigRuntime } from "./CodexAgentConfigRuntime";
 import { CodexAttachments } from "./CodexAttachments";
-import { CodexExecutionAssignments } from "./CodexExecutionAssignments";
 import { CodexGitProbe } from "./CodexGitProbe";
 import { materializeCodexThreadRequestSettings } from "./CodexThreadRequestSettings";
 import { requireExactThreadStartProfile } from "./codex-thread-start-profile";
@@ -120,7 +120,6 @@ export const make: Effect.Effect<
   | CodexAgentConfigRuntime
   | CodexAttachments
   | CodexAppServerCapabilities
-  | CodexExecutionAssignments
   | CodexGitProbe
   | CodexGateway
   | CodexPendingWorktreeRuntime
@@ -132,15 +131,16 @@ export const make: Effect.Effect<
   | BrowserUseRuntime
   | DesktopToolRuntime
   | ProjectRuntimeLifecycleRuntime
+  | ApplicationSettings
   | Scope.Scope
 > = Effect.gen(function* () {
   const core = yield* CoreModules;
   const agentConfig = yield* CodexAgentConfigRuntime;
   const attachments = yield* CodexAttachments;
   const capabilities = yield* CodexAppServerCapabilities;
-  const executionAssignments = yield* CodexExecutionAssignments;
   const gitProbe = yield* CodexGitProbe;
   const gateway = yield* CodexGateway;
+  const applicationSettings = yield* ApplicationSettings;
   const browserUse = yield* BrowserUseRuntime;
   const desktopTools = yield* DesktopToolRuntime;
   const projectLifecycle = yield* ProjectRuntimeLifecycleRuntime;
@@ -359,18 +359,14 @@ export const make: Effect.Effect<
                 const executionSettings = yield* materializeCodexThreadRequestSettings(
                   {
                     hostId: capability.hostId,
-                    appServerVersion: capability.version,
-                    model: model ?? null,
                     cwd,
+                    appServerVersion: capability.version,
                     includeDeveloperInstructions: true,
-                    allowMemoryPromptOverrides: capability.hostId === gateway.localHostId,
                     baseInstructions: input.baseInstructions,
                     additionalDeveloperInstructions: input.additionalDeveloperInstructions,
-                    mode: input.mode ?? input.collaborationMode ?? "default",
-                    threadStartKind: input.threadStartKind ?? "default",
                     requestOptions: codexGatewayGenerationFence(capability),
                   },
-                  executionAssignments,
+                  applicationSettings,
                   gateway,
                   gitProbe,
                 );

@@ -5,7 +5,6 @@ import type { AppInitializationStep } from "../../shared/app-startup";
 import { startStartupController } from "./startup-controller";
 
 const mocks = vi.hoisted(() => ({
-  initializeCodexExecutionAssignments: vi.fn<() => Promise<boolean>>(),
   initializeElectronRendererLocalCommitIngress: vi.fn(),
   initializeRendererSentry: vi.fn<() => Promise<void>>(),
   initializeRendererTelemetry: vi.fn<() => Promise<void>>(),
@@ -31,10 +30,6 @@ vi.mock("../lib/sentry-renderer", () => ({
 
 vi.mock("../lib/statsig-telemetry", () => ({
   initializeRendererTelemetry: mocks.initializeRendererTelemetry,
-}));
-
-vi.mock("../lib/codex-execution-assignments", () => ({
-  initializeCodexExecutionAssignments: mocks.initializeCodexExecutionAssignments,
 }));
 
 interface BridgeHarness {
@@ -77,18 +72,9 @@ function installBridge(): BridgeHarness {
   };
 }
 
-function deferred<T>() {
-  let resolve!: (value: T) => void;
-  const promise = new Promise<T>((resolvePromise) => {
-    resolve = resolvePromise;
-  });
-  return { promise, resolve };
-}
-
 describe("startup controller", () => {
   beforeEach(() => {
     vi.useFakeTimers();
-    mocks.initializeCodexExecutionAssignments.mockReset().mockResolvedValue(true);
     mocks.initializeElectronRendererLocalCommitIngress.mockReset();
     mocks.initializeRendererSentry.mockReset().mockResolvedValue(undefined);
     mocks.initializeRendererTelemetry.mockReset().mockResolvedValue(undefined);
@@ -162,19 +148,14 @@ describe("startup controller", () => {
     expect(bridge.restartApplication).toHaveBeenCalledOnce();
   });
 
-  test("does not mount the application before execution assignments finish initializing", async () => {
-    const executionAssignments = deferred<boolean>();
-    mocks.initializeCodexExecutionAssignments.mockReturnValue(executionAssignments.promise);
+  test("does not mount the application before native initialization completes", async () => {
     const bridge = installBridge();
     startStartupController();
 
-    bridge.resolveInitialization();
-    await vi.waitFor(() => {
-      expect(mocks.initializeCodexExecutionAssignments).toHaveBeenCalledOnce();
-    });
+    await act(async () => Promise.resolve());
     expect(mocks.mountApplicationRenderer).not.toHaveBeenCalled();
 
-    executionAssignments.resolve(true);
+    bridge.resolveInitialization();
     await vi.waitFor(() => {
       expect(mocks.mountApplicationRenderer).toHaveBeenCalledOnce();
     });

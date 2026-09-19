@@ -2064,9 +2064,6 @@ export class CodexAppServerManager {
   private nativeSettingsSupport: "unknown" | "supported" | "unsupported" = "unknown";
   private nativeHostContextLoad: Promise<void> | null = null;
   private nativeHostContextRevision = 0;
-  /** Null mirrors execution-assignment loading. This build currently resolves the assignment false. */
-  private permissionRefreshEnabled: boolean | null = null;
-  private threadQueueEnabled: boolean | null = null;
   private readonly historyClient: CanonicalHistoryClient;
   private readonly historyItemLoader: CanonicalHistoryItemLoader;
   private readonly completeHistoryLoader: CanonicalCompleteHistoryLoader;
@@ -2505,28 +2502,6 @@ export class CodexAppServerManager {
       subscribeCodexEvents((event) => {
         if (event.type === "queuedMessageStateChanged") {
           rendererQueuedMessageStorage.invalidate();
-          return;
-        }
-        if (event.type === "executionAssignmentsChanged") {
-          void runConversationOperation("codex:execution-assignments:read")
-            .then((snapshot) => {
-              if (this.destroyed) return;
-              const permissionChanged =
-                this.permissionRefreshEnabled !== snapshot.permissionRefresh;
-              const queueChanged = this.threadQueueEnabled !== snapshot.threadQueue;
-              if (!permissionChanged && !queueChanged) return;
-              this.permissionRefreshEnabled = snapshot.permissionRefresh;
-              this.threadQueueEnabled = snapshot.threadQueue;
-              for (const id of this.conversationsById.keys()) {
-                this.refreshQueuedMessageProjection(id);
-                this.wakeQueuedMessages(id);
-                if (this.isServerQueueSelected(id) && this.serverQueuedMessages.read(id) == null)
-                  void this.serverQueuedMessages
-                    .load(id)
-                    .catch((error) => console.error("Server queue load failed", error));
-              }
-            })
-            .catch(() => {});
           return;
         }
         if (event.type === "dictationState") {
@@ -3736,8 +3711,6 @@ export class CodexAppServerManager {
     this.cancelPendingConversationResumes();
     this.settingsUpdates.clear();
     this.nativeSettingsSupport = "unknown";
-    this.permissionRefreshEnabled = null;
-    this.threadQueueEnabled = null;
     this.serverQueuedMessages.retire();
     this.nativeResumeBuffers.clear();
     this.nativeRequestOccurrences.clear();
@@ -3778,33 +3751,10 @@ export class CodexAppServerManager {
         if (restoreStreams) this.suspendNativeConnection({ preserveHostContextLoad: true });
         else this.retireNativeHostContext();
       }
-      const acceptedRevision = this.nativeHostContextRevision;
       // Pending hydration captures this identity, so an unchanged refresh must preserve it.
       this.nativeHostContext = unchanged ? previous : context;
       this.suspendedNativeHostContext = null;
       this.supportsPaginatedHistory = context.supportsPaginatedHistory;
-      const executionAssignments = await runConversationOperation(
-        "codex:execution-assignments:read",
-      ).catch(() => null);
-      if (
-        this.destroyed ||
-        this.nativeHostContextRevision !== acceptedRevision ||
-        this.nativeHostContext !== (unchanged ? previous : context)
-      )
-        throw new Error("Conversation manager retired during execution assignment refresh");
-      if (executionAssignments !== null) {
-        const permissionChanged =
-          this.permissionRefreshEnabled !== executionAssignments.permissionRefresh;
-        const queueChanged = this.threadQueueEnabled !== executionAssignments.threadQueue;
-        this.permissionRefreshEnabled = executionAssignments.permissionRefresh;
-        this.threadQueueEnabled = executionAssignments.threadQueue;
-        if (permissionChanged || queueChanged) {
-          for (const id of this.conversationsById.keys()) {
-            this.refreshQueuedMessageProjection(id);
-            this.wakeQueuedMessages(id);
-          }
-        }
-      }
       if (restoreStreams)
         this.markAllConversationsNeedResumeAfterReconnect({
           restoreStreams: true,
@@ -5623,7 +5573,7 @@ export class CodexAppServerManager {
     return turn?.status === "inProgress" ? turn.turnId : null;
   }
   private isServerQueueEnabled(): boolean {
-    return this.threadQueueEnabled === true && this.nativeHostContext?.supportsThreadQueue === true;
+    return this.nativeHostContext?.supportsThreadQueue === true;
   }
   private isServerQueueSelected(id: string): boolean {
     if (!this.isServerQueueEnabled()) return false;
@@ -5668,8 +5618,7 @@ export class CodexAppServerManager {
       return { status: "paused" as const, reason: "workspace-unavailable" };
     }
     const usePermissionSelection =
-      message.submissionOptions?.usePermissionSelection ?? this.permissionRefreshEnabled;
-    if (usePermissionSelection === null) throw new QueueNotReady("execution-config-loading");
+      message.submissionOptions?.usePermissionSelection ?? false;
     const resume: QueuedConversationResumeInput = {
       conversationId,
       model: null,

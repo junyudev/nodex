@@ -302,9 +302,6 @@ importers:
       '@statsig/js-client':
         specifier: 3.33.2
         version: 3.33.2
-      '@statsig/react-bindings':
-        specifier: 3.33.2
-        version: 3.33.2(react@19.2.7)
       '@statsig/web-analytics':
         specifier: 3.33.2
         version: 3.33.2
@@ -3623,11 +3620,6 @@ packages:
 
   '@statsig/js-client@3.33.2':
     resolution: {integrity: sha512-FgAnaN0d8X/OEZS/HEGI2D3CdbZzsbw3BHlSGvaqUcnwu45aXejFFUCCw96/NTH4lEvSMj1S1RBsrnQ2pVErgQ==}
-
-  '@statsig/react-bindings@3.33.2':
-    resolution: {integrity: sha512-IMipEGbDVMH1xnNJ4KHB5RwAmOWK6CUWRGOfY2Le3rPID6xByEn91KWNHVGZ423FodX8+4opblV9U8/bz02D7A==}
-    peerDependencies:
-      react: ^16.6.3 || ^17.0.0 || ^18.0.0 || ^19.0.0
 
   '@statsig/web-analytics@3.33.2':
     resolution: {integrity: sha512-+xvWNB/p4ziHTUn7828fIfewTqy2Y0JK+priehHoee2aeskO0fm40UrXiaKJdC69Nk3UUSninXdeyI0bK4gWdw==}
@@ -10946,12 +10938,6 @@ snapshots:
   '@statsig/js-client@3.33.2':
     dependencies:
       '@statsig/client-core': 3.33.2
-
-  '@statsig/react-bindings@3.33.2(react@19.2.7)':
-    dependencies:
-      '@statsig/client-core': 3.33.2
-      '@statsig/js-client': 3.33.2
-      react: 19.2.7
 
   '@statsig/web-analytics@3.33.2':
     dependencies:

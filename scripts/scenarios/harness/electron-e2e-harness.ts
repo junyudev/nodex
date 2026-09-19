@@ -29,10 +29,6 @@ import { inspectScenario, materializeScenario } from "../seed/scenario-seed";
 const repositoryRoot = process.cwd();
 const DEFAULT_RUNTIME_LOG_CHARS = 32_768;
 const APPLICATION_WINDOW_DISCOVERY_TIMEOUT_MS = 60_000;
-const DEFAULT_TEST_CODEX_EXECUTION_ASSIGNMENTS = JSON.stringify({
-  permissionRefresh: false,
-  threadQueue: true,
-});
 
 type ScenarioPreloadApi = {
   invoke<Channel extends keyof IpcApi>(
@@ -303,7 +299,6 @@ export class ElectronScenarioHarness {
           ...(input.prepareAgentRuntime !== false && cwd === profile.runRoot
             ? { NODEX_TEST_AGENT_RUNTIME_PROJECT_ROOT: "." }
             : {}),
-          NODEX_TEST_CODEX_EXECUTION_ASSIGNMENTS: DEFAULT_TEST_CODEX_EXECUTION_ASSIGNMENTS,
           ...input.environment,
           ...developmentFeatureEnvironment(
             resolveDevelopmentFeatureOverrides(input.enabledFeatures ?? []),

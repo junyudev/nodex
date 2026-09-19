@@ -24,11 +24,11 @@ import {
 import { CodexGateway, codexGatewayGenerationFence } from "../codex-runtime/CodexGateway";
 import { DesktopToolRuntime } from "../host-runtime/DesktopToolRuntime";
 import { ProjectWorkspace } from "../project-application/ProjectWorkspace";
+import { ApplicationSettings } from "../settings/ApplicationSettings";
 import { CodexAttachments } from "./CodexAttachments";
 import { requireExactThreadStartProfile } from "./codex-thread-start-profile";
 import { CodexClientThreadIdentity } from "./CodexClientThreadIdentity";
 import { CodexConversationFork } from "./CodexConversationFork";
-import { CodexExecutionAssignments } from "./CodexExecutionAssignments";
 import { CodexGitProbe } from "./CodexGitProbe";
 import { materializeCodexThreadRequestSettings } from "./CodexThreadRequestSettings";
 import { CodexForkSidePanelTransfer } from "./CodexForkSidePanelTransferRuntime";
@@ -100,7 +100,6 @@ export const make: Effect.Effect<
   | CodexAttachments
   | CodexClientThreadIdentity
   | CodexConversationFork
-  | CodexExecutionAssignments
   | CodexGitProbe
   | CodexForkSidePanelTransfer
   | CodexAppServerCapabilities
@@ -117,15 +116,16 @@ export const make: Effect.Effect<
   | DesktopToolRuntime
   | ManagedWorktreeRuntime
   | ProjectWorkspace
+  | ApplicationSettings
 > = Effect.gen(function* () {
   const attachments = yield* CodexAttachments;
   const clientIdentity = yield* CodexClientThreadIdentity;
   const conversationFork = yield* CodexConversationFork;
-  const executionAssignments = yield* CodexExecutionAssignments;
   const gitProbe = yield* CodexGitProbe;
   const forkTransfers = yield* CodexForkSidePanelTransfer;
   const capabilities = yield* CodexAppServerCapabilities;
   const gateway = yield* CodexGateway;
+  const applicationSettings = yield* ApplicationSettings;
   const desktopTools = yield* DesktopToolRuntime;
   const directory = yield* CodexThreadDirectory;
   const goals = yield* CodexThreadGoalRuntime;
@@ -260,18 +260,14 @@ export const make: Effect.Effect<
     const executionSettings = yield* materializeCodexThreadRequestSettings(
       {
         hostId: capability.hostId,
-        appServerVersion: capability.version,
-        model,
         cwd: location.cwd,
+        appServerVersion: capability.version,
         includeDeveloperInstructions: true,
-        allowMemoryPromptOverrides: capability.hostId === gateway.localHostId,
         baseInstructions: params.baseInstructions,
         additionalDeveloperInstructions: params.additionalDeveloperInstructions,
-        mode: params.mode ?? collaborationMode(params.collaborationMode) ?? "default",
-        threadStartKind: params.threadStartKind ?? "default",
         requestOptions: codexGatewayGenerationFence(capability),
       },
-      executionAssignments,
+      applicationSettings,
       gateway,
       gitProbe,
     );

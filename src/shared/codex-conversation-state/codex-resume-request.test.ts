@@ -14,7 +14,6 @@ const input = () => ({
   supportsPaginatedHistory: true,
   overrides: { cwd: "/workspace" },
   config: { "features.thread_tools": true },
-  defaultFeatureOverrides: { thread_tools: true },
   baseInstructions: "base",
   developerInstructions: "developer",
 });
@@ -74,10 +73,10 @@ test.each([false, true])(
       "runtimeWorkspaceRoots",
       "approvalPolicy",
       "approvalsReviewer",
-      "config",
-      "baseInstructions",
     ])
       expect(Object.hasOwn(request, key)).toBe(!useAppServerPermissionDefault);
+    expect(request.config).toEqual(initial.config);
+    expect(request.baseInstructions).toBe(initial.baseInstructions);
   },
 );
 
@@ -158,18 +157,18 @@ test.each([false, true])(
   },
 );
 
-test("idle resume rejoins without repeating unchanged feature configuration or instructions", () => {
+test("idle resume reapplies product-owned static feature configuration and instructions", () => {
   const result = buildConversationResumeRequest(input());
   expect(result).toMatchObject({
     threadId: "thread",
     history: null,
     model: null,
     cwd: "/workspace",
+    config: { "features.thread_tools": true },
+    baseInstructions: "base",
+    developerInstructions: "developer",
     excludeTurns: true,
   });
-  expect(result).not.toHaveProperty("config");
-  expect(result).not.toHaveProperty("baseInstructions");
-  expect(result).not.toHaveProperty("developerInstructions");
   expect(result).not.toHaveProperty("initialTurnsPage");
 });
 
@@ -179,8 +178,8 @@ test.each([undefined, null, "priority"])(
     const result = buildConversationResumeRequest({ ...input(), serviceTier });
     expect(result.serviceTier).toBe(serviceTier);
     expect(Object.hasOwn(result, "serviceTier")).toBe(serviceTier !== undefined);
-    expect(Object.hasOwn(result, "config")).toBe(serviceTier != null);
-    expect(Object.hasOwn(result, "developerInstructions")).toBe(serviceTier != null);
+    expect(result.config).toEqual(input().config);
+    expect(result.developerInstructions).toBe("developer");
   },
 );
 
@@ -288,11 +287,10 @@ test.each([false, true])(
   },
 );
 
-test("feature defaults accept qualified keys and structural object equality", () => {
+test("explicit static feature config is sent instead of being treated as a remote default", () => {
   const result = buildConversationResumeRequest({
     ...input(),
     config: { "features.custom": { one: true, two: [1, 2] } },
-    defaultFeatureOverrides: { "features.custom": { two: [1, 2], one: true } },
   });
-  expect(result).not.toHaveProperty("config");
+  expect(result.config).toEqual({ "features.custom": { one: true, two: [1, 2] } });
 });

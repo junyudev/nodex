@@ -11,7 +11,6 @@ import { CodexAgentConfigRuntime } from "./CodexAgentConfigRuntime";
 import { CodexAttachments } from "./CodexAttachments";
 import { CodexConversationContext } from "./CodexConversationContext";
 import { CodexConversationProjection } from "./CodexConversationProjection";
-import { CodexExecutionAssignments } from "./CodexExecutionAssignments";
 import { CodexInputAssets } from "./CodexInputAssets";
 import { CodexPermissions } from "./CodexPermissions";
 import { CodexPreferences } from "./CodexPreferences";
@@ -37,7 +36,6 @@ const prepare = (canonical: CodexCanonicalConversationState | null) =>
     Effect.provideService(CodexConversationProjection, {
       read: () => Effect.succeed({ canonical }),
     } as unknown as CodexConversationProjection["Service"]),
-    Effect.provideService(CodexExecutionAssignments, {} as CodexExecutionAssignments["Service"]),
     Effect.provideService(CodexPermissions, {} as CodexPermissions["Service"]),
     Effect.provideService(CodexPreferences, {} as CodexPreferences["Service"]),
     Effect.provideService(CodexThreadSettingsRuntime, {} as CodexThreadSettingsRuntime["Service"]),

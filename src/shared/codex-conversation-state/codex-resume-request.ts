@@ -1,7 +1,6 @@
 import type { Thread } from "@nodex/codex-app-server-protocol/v2/Thread";
 import type { ThreadResumeParams } from "@nodex/codex-app-server-protocol/v2/ThreadResumeParams";
 import type { TurnStartParams } from "@nodex/codex-app-server-protocol/v2/TurnStartParams";
-import { areStructurallyEqual } from "../structural-equality";
 import { workspaceRootsForCwd } from "../codex-workspace-paths";
 import {
   withExplicitResumePermissions,
@@ -78,7 +77,6 @@ export function buildConversationResumeRequest(
     readonly supportsPaginatedHistory: boolean;
     readonly overrides: CanonicalResumeOverrides;
     readonly config: ResumeConfig;
-    readonly defaultFeatureOverrides: Readonly<Record<string, unknown>>;
     readonly baseInstructions?: string | null;
     readonly developerInstructions?: string | null;
   },
@@ -116,12 +114,7 @@ export function buildConversationResumeRequest(
       Object.keys(value).length > 0
     );
   });
-  const changesConfiguration = entries.some(
-    ([key, value]) =>
-      !key.startsWith("features.") ||
-      (!areStructurallyEqual(input.defaultFeatureOverrides[key], value) &&
-        !areStructurallyEqual(input.defaultFeatureOverrides[key.slice(9)], value)),
-  );
+  const changesConfiguration = entries.length > 0;
   const reuseIdleConfiguration =
     input.metadata?.status.type === "idle" &&
     !explicitPermissions &&

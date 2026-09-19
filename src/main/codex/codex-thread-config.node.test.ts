@@ -1,7 +1,36 @@
 import { describe, expect, test } from "vite-plus/test";
 import { appToolCatalog } from "../../shared/nodex-app-tools/catalog";
 import { selectAppToolCatalog } from "../../shared/nodex-app-tools/catalog-selection";
-import { buildCodexThreadConfig } from "./codex-thread-config";
+import {
+  buildCodexDesktopThreadFeatureConfig,
+  buildCodexThreadConfig,
+  CODEX_DESKTOP_THREAD_FEATURE_CONFIG,
+} from "./codex-thread-config";
+
+describe("Codex Desktop static feature defaults", () => {
+  test("keeps the currently enabled Desktop wire features on by default", () => {
+    expect(CODEX_DESKTOP_THREAD_FEATURE_CONFIG).toMatchObject({
+      "features.guardianv2": { enabled: true },
+      "features.recommended_plugins": true,
+      "features.workspace_dependencies": true,
+    });
+  });
+
+  test("keeps Desktop compatibility for older app-server versions", () => {
+    const config = buildCodexDesktopThreadFeatureConfig("0.146.0");
+
+    expect(config["features.guardianv2"]).toBe(true);
+    expect(config).not.toHaveProperty("features.recommended_plugins");
+    expect(config["features.workspace_dependencies"]).toBe(true);
+  });
+
+  test("treats the app-server development sentinel as current for wire compatibility", () => {
+    expect(buildCodexDesktopThreadFeatureConfig("0.0.0")).toMatchObject({
+      "features.guardianv2": { enabled: true },
+      "features.recommended_plugins": true,
+    });
+  });
+});
 
 describe("Codex native app-tool visibility", () => {
   test.each(["session", "automation"] as const)(

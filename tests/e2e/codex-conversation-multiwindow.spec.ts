@@ -29,10 +29,6 @@ test("two windows share queued execution and Main actions, then continue after t
       NODEX_FAKE_CODEX_STATE_PATH: ".fake-codex/state.json",
       NODEX_FAKE_CODEX_LOG_PATH: ".fake-codex/requests.jsonl",
       NODEX_TEST_AGENT_RUNTIME_PROJECT_ROOT: ".",
-      NODEX_TEST_CODEX_EXECUTION_ASSIGNMENTS: JSON.stringify({
-        permissionRefresh: false,
-        threadQueue: true,
-      }),
       NODEX_FAKE_CODEX_AUTOMATIC_COMPLETION_DELAY_MS: "8000",
       NODEX_FAKE_CODEX_APP_SERVER_VERSION: "0.155.0-alpha.2.6",
     },

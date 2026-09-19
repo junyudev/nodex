@@ -75,7 +75,6 @@ function capture(
     metadata,
     supportsPaginatedHistory: true,
     config: {},
-    defaultFeatureOverrides: {},
     overrides: preparation.overrides,
   });
   return prepareConversationResumePermissionContext({

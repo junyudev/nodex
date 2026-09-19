@@ -1,8 +1,8 @@
 import { assert, it } from "@effect/vitest";
 import * as Effect from "effect/Effect";
-import { emptyCodexExecutionAssignmentValues } from "../../shared/codex-execution-assignments";
+import { CODEX_DESKTOP_THREAD_FEATURE_CONFIG } from "../codex/codex-thread-config";
 import type { CodexGateway } from "../codex-runtime/CodexGateway";
-import { makeReadyCodexExecutionAssignments } from "./CodexExecutionAssignments.test-support";
+import { makeTestApplicationSettings } from "../settings/ApplicationSettings.test-support";
 import { CodexGitProbe } from "./CodexGitProbe";
 import {
   materializeCodexDesktopDeveloperInstructions,
@@ -29,86 +29,60 @@ const gitProbe = (
     isNonGitWorkspaceOnHost,
   });
 
-it.effect(
-  "discovers workspace dependencies through paginated app-server features and caches it",
-  () =>
-    Effect.gen(function* () {
-      const featureRequests: Array<{ cursor: string | null; limit: number }> = [];
-      const gateway = {
-        localHostId: "local",
-        requestOnHost: (_hostId: string, method: string, params: Record<string, unknown>) => {
-          if (method === "config/read") {
-            return Effect.succeed({ config: {}, origins: {}, layers: null });
-          }
-          if (method !== "experimentalFeature/list") return Effect.die(`Unexpected ${method}`);
-          const cursor = (params.cursor as string | null) ?? null;
-          featureRequests.push({ cursor, limit: params.limit as number });
-          return Effect.succeed(
-            cursor === null
-              ? { data: [], nextCursor: "page-2" }
-              : {
-                  data: [experimentalFeature("workspace_dependencies", true)],
-                  nextCursor: null,
-                },
-          );
-        },
-      } as unknown as CodexGateway["Service"];
-      const assignments = makeReadyCodexExecutionAssignments({ workspace_dependencies: false });
-      const input = {
+it.effect("uses paginated app-server experimental features as workspace-dependency authority", () =>
+  Effect.gen(function* () {
+    const featureRequests: Array<{ cursor: string | null; limit: number }> = [];
+    const gateway = {
+      localHostId: "local",
+      requestOnHost: (_hostId: string, method: string, params: Record<string, unknown>) => {
+        if (method === "config/read") {
+          return Effect.succeed({ config: {}, origins: {}, layers: null });
+        }
+        if (method !== "experimentalFeature/list") return Effect.die(`Unexpected ${method}`);
+        const cursor = (params.cursor as string | null) ?? null;
+        featureRequests.push({ cursor, limit: params.limit as number });
+        return Effect.succeed(
+          cursor === null
+            ? { data: [], nextCursor: "page-2" }
+            : {
+                data: [experimentalFeature("workspace_dependencies", true)],
+                nextCursor: null,
+              },
+        );
+      },
+    } as unknown as CodexGateway["Service"];
+
+    const materialized = yield* materializeCodexThreadRequestSettings(
+      {
         hostId: "local",
-        model: "gpt-test",
         cwd: "/workspace",
         includeDeveloperInstructions: true,
         isNonGitWorkspace: false,
-      } as const;
+      },
+      makeTestApplicationSettings(),
+      gateway,
+      gitProbe(),
+    );
 
-      const first = yield* materializeCodexThreadRequestSettings(
-        input,
-        assignments,
-        gateway,
-        gitProbe(),
-      );
-      assert.include(first?.developerInstructions ?? "", "### Workspace Dependencies");
-      assert.deepEqual(featureRequests, [
-        { cursor: null, limit: 100 },
-        { cursor: "page-2", limit: 100 },
-      ]);
-
-      yield* materializeCodexThreadRequestSettings(input, assignments, gateway, gitProbe());
-      assert.lengthOf(featureRequests, 2);
-
-      const changedAssignments = makeReadyCodexExecutionAssignments({
-        workspace_dependencies: true,
-      });
-      yield* materializeCodexThreadRequestSettings(input, changedAssignments, gateway, gitProbe());
-      assert.deepEqual(featureRequests.slice(2), [
-        { cursor: null, limit: 100 },
-        { cursor: "page-2", limit: 100 },
-      ]);
-    }),
+    assert.include(materialized?.developerInstructions ?? "", "### Workspace Dependencies");
+    assert.deepEqual(featureRequests, [
+      { cursor: null, limit: 100 },
+      { cursor: "page-2", limit: 100 },
+    ]);
+  }),
 );
 
-it.effect("resolves host personality before model personality and the remote default", () =>
+it.effect("resolves host personality before model personality and then friendly", () =>
   Effect.gen(function* () {
-    const assignments = makeReadyCodexExecutionAssignments(
-      {},
-      {
-        values: {
-          ...emptyCodexExecutionAssignmentValues(),
-          personality: { default_personality: "friendly" },
-        },
-      },
-    );
     const read = (config: Readonly<Record<string, unknown>>) =>
       materializeCodexThreadRequestSettings(
         {
           hostId: "local",
-          model: "gpt-test",
           cwd: "/workspace",
           includeDeveloperInstructions: false,
           isNonGitWorkspace: false,
         },
-        assignments,
+        makeTestApplicationSettings(),
         {
           localHostId: "local",
           requestOnHost: () => Effect.succeed({ config, origins: {}, layers: null }),
@@ -125,7 +99,7 @@ it.effect("resolves host personality before model personality and the remote def
   }),
 );
 
-it.effect("omits Git guidance after resolving a non-Git workspace on the target host", () =>
+it.effect("uses ApplicationSettings Git policy and target-host workspace classification", () =>
   Effect.gen(function* () {
     const methods: string[] = [];
     const probeCalls: Array<{ hostId: string; cwd: string }> = [];
@@ -139,24 +113,14 @@ it.effect("omits Git guidance after resolving a non-Git workspace on the target 
         return Effect.die(`Unexpected ${method}`);
       },
     } as unknown as CodexGateway["Service"];
-    const assignments = makeReadyCodexExecutionAssignments(
-      {},
-      {
-        gitSettings: {
-          branchPrefix: "codex/",
-          commitInstructions: "Commit carefully.",
-          pullRequestInstructions: "Keep the PR focused.",
-        },
-      },
-    );
 
     const instructions = yield* materializeCodexDesktopDeveloperInstructions(
-      {
-        hostId: "ssh:builder",
-        model: "gpt-test",
-        cwd: "/remote/workspace",
-      },
-      assignments,
+      { hostId: "ssh:builder", cwd: "/remote/workspace" },
+      makeTestApplicationSettings({
+        branchPrefix: "nodex/",
+        commitInstructions: "Commit carefully.",
+        pullRequestInstructions: "Keep the PR focused.",
+      }),
       gateway,
       gitProbe((hostId, cwd) => {
         probeCalls.push({ hostId, cwd });
@@ -172,41 +136,106 @@ it.effect("omits Git guidance after resolving a non-Git workspace on the target 
 
 it.effect("uses an explicit Git-workspace classification without probing the execution host", () =>
   Effect.gen(function* () {
-    const methods: string[] = [];
+    const gateway = {
+      localHostId: "local",
+      requestOnHost: (_hostId: string, method: string) =>
+        method === "experimentalFeature/list"
+          ? Effect.succeed({ data: [], nextCursor: null })
+          : Effect.die(`Unexpected ${method}`),
+    } as unknown as CodexGateway["Service"];
+
+    const instructions = yield* materializeCodexDesktopDeveloperInstructions(
+      { hostId: "local", cwd: "/workspace", isNonGitWorkspace: false },
+      makeTestApplicationSettings({ branchPrefix: "codex/" }),
+      gateway,
+      gitProbe(() => Effect.die("Git probe should not run")),
+    );
+
+    assert.include(instructions ?? "", "### Git");
+    assert.include(instructions ?? "", "Branch prefix: `codex/`");
+  }),
+);
+
+it.effect("never imports unknown host or experimental features into execution config", () =>
+  Effect.gen(function* () {
     const gateway = {
       localHostId: "local",
       requestOnHost: (_hostId: string, method: string) => {
-        methods.push(method);
+        if (method === "config/read") {
+          return Effect.succeed({
+            config: {
+              "features.remote_surprise": true,
+              "features.unified_exec": true,
+            },
+            origins: {},
+            layers: null,
+          });
+        }
+        if (method === "experimentalFeature/list") {
+          return Effect.succeed({
+            data: [experimentalFeature("remote_surprise", true)],
+            nextCursor: null,
+          });
+        }
+        return Effect.die(`Unexpected ${method}`);
+      },
+    } as unknown as CodexGateway["Service"];
+
+    const materialized = yield* materializeCodexThreadRequestSettings(
+      {
+        hostId: "local",
+        cwd: "/workspace",
+        includeDeveloperInstructions: true,
+        isNonGitWorkspace: false,
+      },
+      makeTestApplicationSettings(),
+      gateway,
+      gitProbe(),
+    );
+
+    assert.deepEqual(materialized?.config, CODEX_DESKTOP_THREAD_FEATURE_CONFIG);
+    assert.notProperty(materialized?.config ?? {}, "features.remote_surprise");
+    assert.notProperty(materialized?.config ?? {}, "features.unified_exec");
+  }),
+);
+
+it.effect("adds writing-block instructions only for the product prose detail setting", () =>
+  Effect.gen(function* () {
+    const gateway = {
+      localHostId: "local",
+      requestOnHost: (_hostId: string, method: string) => {
+        if (method === "config/read") {
+          return Effect.succeed({ config: {}, origins: {}, layers: null });
+        }
         if (method === "experimentalFeature/list") {
           return Effect.succeed({ data: [], nextCursor: null });
         }
         return Effect.die(`Unexpected ${method}`);
       },
     } as unknown as CodexGateway["Service"];
-    const assignments = makeReadyCodexExecutionAssignments(
-      {},
-      {
-        gitSettings: {
-          branchPrefix: "codex/",
-          commitInstructions: "",
-          pullRequestInstructions: "",
-        },
-      },
-    );
+    const input = {
+      hostId: "local",
+      cwd: "/workspace",
+      includeDeveloperInstructions: true,
+      isNonGitWorkspace: false,
+    } as const;
 
-    const instructions = yield* materializeCodexDesktopDeveloperInstructions(
-      {
-        hostId: "local",
-        model: "gpt-test",
-        cwd: "/workspace",
-        isNonGitWorkspace: false,
-      },
-      assignments,
+    const prose = yield* materializeCodexThreadRequestSettings(
+      input,
+      makeTestApplicationSettings({ detailLevel: "STEPS_PROSE" }),
       gateway,
-      gitProbe(() => Effect.die("Git probe should not run")),
+      gitProbe(),
+    );
+    const commands = yield* materializeCodexThreadRequestSettings(
+      input,
+      makeTestApplicationSettings({ detailLevel: "STEPS_COMMANDS" }),
+      gateway,
+      gitProbe(),
     );
 
-    assert.include(instructions ?? "", "### Git");
-    assert.deepEqual(methods, ["experimentalFeature/list"]);
+    assert.include(prose?.developerInstructions ?? "", "### Writing blocks");
+    assert.notInclude(commands?.developerInstructions ?? "", "### Writing blocks");
+    assert.notInclude(prose?.developerInstructions ?? "", "### Task title checkpoints");
+    assert.notInclude(prose?.developerInstructions ?? "", "### Presentation outline writing blocks");
   }),
 );

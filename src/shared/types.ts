@@ -4592,7 +4592,6 @@ export type CodexThreadStartProgressStream = "info" | "stdout" | "stderr";
 
 export type CodexEvent =
   | { type: "queuedMessageStateChanged" }
-  | { type: "executionAssignmentsChanged" }
   | { type: "connection"; connection: CodexConnectionState }
   | { type: "account"; account: CodexAccountSnapshot }
   | { type: "dictationState"; state: CodexDictationStateSnapshot }

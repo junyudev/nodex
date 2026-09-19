@@ -54,15 +54,6 @@ const CODEX_INLINE_CODE_COMMENTS_CONTEXT = `### Inline Code Comments
 const CODEX_INLINE_ARTIFACT_FOLLOWUPS_CONTEXT = `### Inline Artifact Follow-Ups
 - Format each artifact follow-up as an unescaped Markdown list item, \`- :codex-followup[visible phrase]{prompt="Complete user request"}\`; avoid closing brackets in the visible phrase and escape double quotes in the prompt.`;
 
-const CODEX_TASK_TITLE_CHECKPOINTS = `### Task title checkpoints
-- A title checkpoint requires two consecutive substantive user turns that explicitly and consistently replace the conversation's durable main purpose with the same substantially different one.
-- On the first unequivocal replacement turn, emit \`::thread-purpose-changed{}\` on its own line at the end of your final response. This is only a candidate signal and cannot rename the task by itself.
-- On the immediately following user turn, emit the signal again only if that turn substantively confirms or continues the same replacement purpose. The app requires both consecutive signals before reconsidering the title.
-- Never infer a change from assistant actions alone. Do not emit the second signal if the next user turn changes direction again, returns to the old purpose, or merely discusses whether to pivot.
-- Never emit it for a side track, quick question, clarification, correction, temporary subtask, change in depth or work mode, implementation approach, debugging discovery, or progress within the existing outcome.
-- Emit it only when the current task title would materially mislead someone scanning their task list. If the old title remains broadly accurate, or there is any reasonable ambiguity, do not emit it.
-- Stop emitting it after the two confirming turns for that distinct durable change. Do not mention or explain the signal to the user.`;
-
 const CODEX_WRITING_BLOCK_CONTEXT = `### Writing blocks
 
 - A writing block contains a finished, reusable writing artifact that the user can copy, edit, or use outside this conversation. It is not a generic callout or formatting container.
@@ -92,13 +83,6 @@ const CODEX_WRITING_BLOCK_CONTEXT = `### Writing blocks
 - Every ---tone <label> marker must be alone on its line. Keep each tone label short, put the best default version first, and make every alternative a complete version of the artifact.
 - Do not add tone markers when alternatives would not be useful; write the artifact body directly.
 - Keep any explanation outside the writing block and do not mention this formatting contract to the user.`;
-
-const CODEX_PRESENTATION_OUTLINE_CONTEXT = `### Presentation outline writing blocks
-
-- A complete presentation outline requested by the user is a finished writing artifact, not an ordinary plan.
-- \`slides\` is an additional allowed writing-block variant for this artifact.
-- When the user asks for a complete presentation outline, always use \`variant="slides"\`.
-- Format each slide as a level-two Markdown heading in the form \`## Slide N: Title\`, followed by concise dash bullets.`;
 
 const CODEX_HEARTBEAT_CONTEXT = `## Heartbeats
 
@@ -137,17 +121,11 @@ export interface CodexDesktopGitInstructionSettings {
   readonly pullRequestInstructions?: string | null;
 }
 
-export interface CodexDesktopInstructionOverrides {
-  readonly desktopContextSection?: string;
-  readonly workspaceDependenciesSection?: string;
-}
-
 export interface BuildCodexDesktopDeveloperInstructionsInput {
   readonly baseInstructions?: string | null;
   readonly gitSettings?: CodexDesktopGitInstructionSettings;
   readonly heartbeatEnabled?: boolean;
   readonly includeProseDetailLevelInstructions?: boolean;
-  readonly instructionOverrides?: CodexDesktopInstructionOverrides | null;
   readonly isNonGitWorkspace?: boolean;
   readonly sidebarSectionToolsEnabled?: boolean;
   readonly threadToolsEnabled?: boolean;
@@ -156,8 +134,6 @@ export interface BuildCodexDesktopDeveloperInstructionsInput {
 
 export interface BuildCodexThreadDeveloperInstructionsInput extends BuildCodexDesktopDeveloperInstructionsInput {
   readonly additionalDeveloperInstructions?: string | null;
-  readonly automaticTitleCheckpoints?: boolean;
-  readonly presentationOutlineInstructions?: boolean;
   readonly writingBlockInstructions?: boolean;
 }
 
@@ -197,11 +173,10 @@ export function buildCodexDesktopDeveloperInstructions(
       : CODEX_THREAD_COORDINATION_CONTEXT
     : null;
   const appContext = joinInstructionSections(
-    input.instructionOverrides?.desktopContextSection ?? CODEX_DESKTOP_CONTEXT,
+    CODEX_DESKTOP_CONTEXT,
     CODEX_PULL_REQUEST_DIFF_LINKS_CONTEXT,
     input.workspaceDependenciesEnabled
-      ? (input.instructionOverrides?.workspaceDependenciesSection ??
-          CODEX_WORKSPACE_DEPENDENCIES_CONTEXT)
+      ? CODEX_WORKSPACE_DEPENDENCIES_CONTEXT
       : null,
     CODEX_AUTOMATIONS_CONTEXT,
     threadCoordination,
@@ -225,14 +200,10 @@ export function buildCodexThreadDeveloperInstructions(
   input: BuildCodexThreadDeveloperInstructionsInput = {},
 ): string {
   const writingBlockInstructions = input.writingBlockInstructions
-    ? joinInstructionSections(
-        CODEX_WRITING_BLOCK_CONTEXT,
-        input.presentationOutlineInstructions ? CODEX_PRESENTATION_OUTLINE_CONTEXT : null,
-      )
+    ? CODEX_WRITING_BLOCK_CONTEXT
     : null;
   return joinInstructionSections(
     buildCodexDesktopDeveloperInstructions(input),
-    input.automaticTitleCheckpoints ? CODEX_TASK_TITLE_CHECKPOINTS : null,
     writingBlockInstructions,
     input.additionalDeveloperInstructions,
   );

@@ -15,11 +15,6 @@ import {
   live as codexAttachmentsLive,
 } from "../codex-application/CodexAttachments";
 import {
-  CodexExecutionAssignments,
-  live as codexExecutionAssignmentsLive,
-} from "../codex-application/CodexExecutionAssignments";
-import { CodexHttpFetch, live as codexHttpFetchLive } from "../codex-application/CodexHttpFetch";
-import {
   ComposerExternalSuggestions,
   live as composerExternalSuggestionsLive,
 } from "../codex-application/ComposerExternalSuggestions";
@@ -100,8 +95,6 @@ import { CodexPlatform } from "./CodexApplicationLive";
 const logger = getLogger({ subsystem: "app" });
 
 const chatGpt = chatGptDesktopLive.pipe(Layer.provideMerge(ElectronNet.live));
-const httpFetch = codexHttpFetchLive.pipe(Layer.provideMerge(chatGpt));
-const executionAssignments = codexExecutionAssignmentsLive.pipe(Layer.provideMerge(chatGpt));
 const browserSiteStatus = browserSiteStatusRuntimeLive.pipe(Layer.provideMerge(chatGpt));
 const browserApplication = Layer.unwrap(
   Effect.gen(function* () {
@@ -199,7 +192,7 @@ const desktopTools = Layer.unwrap(
       runtimeStateHome: codex.runtimeStateHome,
     });
   }),
-).pipe(Layer.provideMerge(Layer.mergeAll(browserPresentation, computerUse, executionAssignments)));
+).pipe(Layer.provideMerge(Layer.mergeAll(browserPresentation, computerUse)));
 
 const localWorktreeWorker = localWorktreeWorkerRuntimeLive({
   hostId: "local",
@@ -244,8 +237,6 @@ const gitActions = gitActionsLive.pipe(
 export const live: Layer.Layer<
   | ElectronNet.ElectronNet
   | ChatGptDesktop
-  | CodexHttpFetch
-  | CodexExecutionAssignments
   | ComposerExternalSuggestions
   | BrowserSiteStatusRuntime
   | BrowserApplication
@@ -290,6 +281,4 @@ export const live: Layer.Layer<
   managedWorktrees,
   gitActions,
   externalSuggestions,
-  httpFetch,
-  executionAssignments,
 );
