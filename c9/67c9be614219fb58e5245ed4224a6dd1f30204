@@ -1,0 +1,21 @@
+Cargo.lock
+  s_68bba929cf96a5::t_ccbc1322f4853e 2274,2276
+Cargo.toml
+  s_68bba929cf96a5::t_109ad0b0069e71 78
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "c967c9be614219fb58e5245ed4224a6dd1f30204",
+  "prompts": {},
+  "sessions": {
+    "s_68bba929cf96a5": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a0ba4b-747f-7223-b054-3325c5b045fc",
+        "model": "gpt-6-astra"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    }
+  }
+}
