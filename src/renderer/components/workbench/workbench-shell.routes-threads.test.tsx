@@ -52,17 +52,21 @@ const standaloneNotesDatabase: LibraryDatabaseNavigationNode = {
   title: "Notes",
 };
 
-const openStandaloneTasksDatabase = async (screen: ReturnType<typeof renderWorkbench>) => {
-  const row = await waitFor(() => {
-    const candidate = screen
-      .queryAllByText("Tasks")
-      .map((element) => element.closest('[role="listitem"]'))
-      .find((element): element is HTMLElement => element instanceof HTMLElement);
-    if (!candidate) throw new Error("Expected the standalone Tasks row");
-    return candidate;
-  });
+const openStandaloneDatabase = async (
+  screen: ReturnType<typeof renderWorkbench>,
+  title = "Tasks",
+) => {
+  const currentRow = () => {
+    const list = screen.getByRole("list", { name: "Pages" });
+    const row = within(list).getByText(title).closest('[role="listitem"]');
+    if (!(row instanceof HTMLElement)) throw new Error(`Expected the standalone ${title} row`);
+    return row;
+  };
+  await waitFor(currentRow);
   await act(async () => {
-    fireEvent.click(row);
+    // Navigation can replace the roots query while waitFor drains pending updates.
+    // Resolve the live row at interaction time, not before that async boundary.
+    fireEvent.click(currentRow());
     await Promise.resolve();
   });
   await settleAsyncRender();
@@ -261,7 +265,7 @@ describe("workbench session shell / routes-threads", () => {
     await settleAsyncRender();
 
     const globalHeader = screen.getByTestId("workbench-global-header");
-    await openStandaloneTasksDatabase(screen);
+    await openStandaloneDatabase(screen);
 
     expect(screen.getByTestId("workbench-database-view-surface") !== null).toBe(true);
     const breadcrumb = screen.getByTestId("app-shell-header-context-menu-surface");
@@ -292,7 +296,7 @@ describe("workbench session shell / routes-threads", () => {
     await settleAsyncRender();
     await settleAsyncRender();
 
-    await openStandaloneTasksDatabase(screen);
+    await openStandaloneDatabase(screen);
 
     const props = (
       globalThis as {
@@ -311,7 +315,7 @@ describe("workbench session shell / routes-threads", () => {
   test("projects a visible Pages Scene Page Stage back into its Database surface", async () => {
     const screen = renderWorkbench({ libraryRoots: [standaloneTasksDatabase] });
     await settleAsyncRender();
-    await openStandaloneTasksDatabase(screen);
+    await openStandaloneDatabase(screen);
 
     const props = (
       globalThis as {
@@ -348,40 +352,34 @@ describe("workbench session shell / routes-threads", () => {
     const screen = renderWorkbench({
       libraryRoots: [standaloneTasksDatabase, standaloneNotesDatabase],
     });
-    await openStandaloneTasksDatabase(screen);
-
-    const notesRow = (await screen.findByText("Notes")).closest('[role="listitem"]');
-    if (!(notesRow instanceof HTMLElement)) throw new Error("Expected Notes row");
-    await act(async () => {
-      fireEvent.click(notesRow);
-      await Promise.resolve();
-    });
-    await waitFor(() => {
-      const props = (
-        globalThis as {
-          __lastWorkbenchDatabaseViewSurfaceProps?: Record<string, unknown>;
-        }
-      ).__lastWorkbenchDatabaseViewSurfaceProps;
-      expect(props?.target).toEqual({
-        kind: "database-default",
-        databaseId: "database:test:notes",
-      });
-      expect(screen.getAllByRole("tab")).toHaveLength(2);
+    await openStandaloneDatabase(screen);
+    const tasksTabId = await waitFor(() => {
+      expect(screen.getAllByRole("tab")).toHaveLength(1);
+      const id = screen
+        .getByRole("tab", { selected: true })
+        .closest<HTMLElement>("[data-panel-tab-id]")?.dataset.panelTabId;
+      if (!id) throw new Error("Expected the selected Tasks tab identity");
+      return id;
     });
 
-    await openStandaloneTasksDatabase(screen);
+    await openStandaloneDatabase(screen, "Notes");
+    await waitFor(() => {
+      expect(screen.getAllByRole("tab")).toHaveLength(2);
+      expect(getPanelTabById(screen.container, tasksTabId).getAttribute("aria-selected")).toBe(
+        "false",
+      );
+      expect(screen.getByRole("tab", { selected: true })).not.toBe(
+        getPanelTabById(screen.container, tasksTabId),
+      );
+    });
+
+    await openStandaloneDatabase(screen);
 
     await waitFor(() => {
       expect(screen.getAllByRole("tab")).toHaveLength(2);
-      const props = (
-        globalThis as {
-          __lastWorkbenchDatabaseViewSurfaceProps?: Record<string, unknown>;
-        }
-      ).__lastWorkbenchDatabaseViewSurfaceProps;
-      expect(props?.target).toEqual({
-        kind: "database-default",
-        databaseId: "database:test:standalone",
-      });
+      expect(getPanelTabById(screen.container, tasksTabId).getAttribute("aria-selected")).toBe(
+        "true",
+      );
     });
   });
 
