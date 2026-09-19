@@ -184,6 +184,21 @@ const compareSemanticVersions = (
   return 0;
 };
 
+/** Compares two exact app-server SemVer strings without inferring support for unknown versions. */
+export function isCodexAppServerVersionAtLeast(
+  version: string | null | undefined,
+  minimumVersion: string,
+): boolean {
+  if (!version) return false;
+  const parsedVersion = parseSemanticVersion(version);
+  const parsedMinimum = parseSemanticVersion(minimumVersion);
+  return (
+    parsedVersion !== null &&
+    parsedMinimum !== null &&
+    compareSemanticVersions(parsedVersion, parsedMinimum) >= 0
+  );
+}
+
 /** Extracts only an app-server product version, never an unrelated OS/browser version. */
 export function extractCodexAppServerVersion(userAgent: string | null | undefined): string | null {
   const normalized = userAgent?.trim();

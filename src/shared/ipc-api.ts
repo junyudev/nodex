@@ -37,12 +37,6 @@ import type {
 } from "./agent-backend-api";
 import type { AcpBackendSessionPresentation, AcpConversationSnapshot } from "./acp-conversation";
 import type { CodexPersistedHistorySearchResult } from "./codex-persisted-history-search";
-import type {
-  CodexExecutionAssignmentsPublication,
-  CodexExecutionAssignmentsSnapshot,
-  CodexExecutionStatsigBootstrap,
-} from "./codex-execution-assignments";
-import type { CodexHttpFetchRequest, CodexHttpFetchResult } from "./codex-http-fetch";
 
 import type { GitRepositoryIdentity } from "./git-repository-identity";
 import type { ContentAccessContext } from "./content-access-context";
@@ -1785,26 +1779,6 @@ export interface IpcApi {
   // Codex
   "codex:connection:status": { args: [hostId?: string]; result: CodexConnectionState };
   "codex:account:read": { args: []; result: CodexAccountSnapshot };
-  "codex:execution-assignments:read": {
-    args: [];
-    result: CodexExecutionAssignmentsSnapshot;
-  };
-  "codex:execution-assignments:bootstrap": {
-    args: [];
-    result: CodexExecutionStatsigBootstrap;
-  };
-  "codex:execution-assignments:publish": {
-    args: [publication: CodexExecutionAssignmentsPublication];
-    result: void;
-  };
-  "codex:http-fetch": {
-    args: [request: CodexHttpFetchRequest];
-    result: CodexHttpFetchResult;
-  };
-  "codex:http-fetch:cancel": {
-    args: [requestId: string];
-    result: void;
-  };
   "codex:account:rate-limit-reset:consume": {
     args: [input: CodexRateLimitResetInput];
     result: CodexRateLimitResetResult;

@@ -16,8 +16,6 @@ import { CodexApplicationEventHub } from "../codex-application/CodexApplicationE
 import { CodexGitProbe } from "../codex-application/CodexGitProbe";
 import { CodexHeartbeatTurnCompletion } from "../codex-application/CodexHeartbeatTurnCompletion";
 import { CodexHistoryPageAdapter } from "../codex-application/CodexHistoryPageAdapter";
-import { CodexExecutionAssignments } from "../codex-application/CodexExecutionAssignments";
-import { makeReadyCodexExecutionAssignments } from "../codex-application/CodexExecutionAssignments.test-support";
 import { CodexPermissions } from "../codex-application/CodexPermissions";
 import { CodexMainConversationManagers } from "../codex-application/CodexMainConversationManagers";
 import { CodexThreadDirectory } from "../codex-application/CodexThreadDirectory";
@@ -99,7 +97,6 @@ const buildExecutionContext = (
     readonly composer?: ComposerCatalog["Service"];
     readonly conversations?: CodexConversations["Service"];
     readonly desktopTools?: DesktopToolRuntime["Service"];
-    readonly executionAssignments?: CodexExecutionAssignments["Service"];
     readonly directory?: CodexThreadDirectory["Service"];
     readonly gateway?: CodexGateway["Service"];
     readonly git?: CodexGitProbe["Service"];
@@ -123,10 +120,6 @@ const buildExecutionContext = (
             publish: () => undefined,
           } as unknown as CodexApplicationEventHub["Service"]),
           Layer.succeed(CodexAppServerCapabilities, input.capabilities ?? capabilities),
-          Layer.succeed(
-            CodexExecutionAssignments,
-            input.executionAssignments ?? makeReadyCodexExecutionAssignments(),
-          ),
           Layer.succeed(
             CodexGateway,
             input.gateway ?? ({ localHostId: "local" } as CodexGateway["Service"]),

@@ -68,9 +68,9 @@ import { createOperationId } from "../core-runtime/operation-identity";
 import { CoreRuntimeError } from "../core-runtime/CoreRuntimeError";
 import { CodexApplicationEventHub } from "./CodexApplicationEventHub";
 import { CodexConversationProjection } from "./CodexConversationProjection";
-import { CodexExecutionAssignments } from "./CodexExecutionAssignments";
 import { CodexGitProbe } from "./CodexGitProbe";
 import { materializeCodexThreadRequestSettings } from "./CodexThreadRequestSettings";
+import { ApplicationSettings } from "../settings/ApplicationSettings";
 import {
   CodexHistoryPageAdapter,
   type CodexHydratedHistoryItemSegment,
@@ -329,11 +329,11 @@ export const make: Effect.Effect<
   | CodexConversationProjection
   | CodexHistoryPageAdapter
   | CodexAppServerCapabilities
-  | CodexExecutionAssignments
   | CodexGitProbe
   | CodexGateway
   | ConversationEntityMap
   | CoreModules
+  | ApplicationSettings
   | Scope.Scope
 > = Effect.gen(function* () {
   const ownerScope = yield* Scope.Scope;
@@ -341,9 +341,9 @@ export const make: Effect.Effect<
   const projection = yield* CodexConversationProjection;
   const historyPages = yield* CodexHistoryPageAdapter;
   const capabilities = yield* CodexAppServerCapabilities;
-  const executionAssignments = yield* CodexExecutionAssignments;
   const gitProbe = yield* CodexGitProbe;
   const gateway = yield* CodexGateway;
+  const applicationSettings = yield* ApplicationSettings;
   const conversations = yield* ConversationEntityMap;
   const core = yield* CoreModules;
 
@@ -1056,34 +1056,18 @@ export const make: Effect.Effect<
       capability.hostId === "durable" && options.preserveServerConfiguration === true;
     const workspaceRoots = options.workspaceRoots ?? preparation.resumeWorkspaceRoots;
     const requestCwd = workspaceRoots[0] ?? "/";
-    const model =
-      (
-        options.model ??
-        canonical?.latestCollaborationMode.settings.model ??
-        options.collaborationMode?.settings.model ??
-        canonical?.latestModel ??
-        metadata?.model
-      )?.trim() || null;
-    const mode = canonical?.mode ?? canonical?.latestCollaborationMode.mode ?? null;
-    const threadStartKind =
-      canonical?.threadStartKind ??
-      (metadata?.threadSource === "realtime_voice" ? "realtime_voice" : "default");
     const executionSettings = preserveServerConfiguration
       ? null
       : yield* materializeCodexThreadRequestSettings(
           {
             hostId: capability.hostId,
-            appServerVersion: capability.version,
-            model,
             cwd: requestCwd,
+            appServerVersion: capability.version,
             threadId,
             includeDeveloperInstructions: true,
-            allowMemoryPromptOverrides: capability.hostId === gateway.localHostId,
-            mode,
-            threadStartKind,
             requestOptions: codexGatewayGenerationFence(capability),
           },
-          executionAssignments,
+          applicationSettings,
           gateway,
           gitProbe,
         );
@@ -1112,7 +1096,6 @@ export const make: Effect.Effect<
               overrides: executionSettings?.config,
             }),
           ),
-      defaultFeatureOverrides: executionSettings?.defaultEnableFeatures ?? {},
       developerInstructions: executionSettings?.developerInstructions ?? null,
     });
     return {

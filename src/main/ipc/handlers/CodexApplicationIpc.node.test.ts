@@ -20,8 +20,6 @@ import { ComposerExternalSuggestions } from "../../codex-application/ComposerExt
 import { ConversationCommands } from "../../codex-application/ConversationCommands";
 import { CodexPreferences } from "../../codex-application/CodexPreferences";
 import { CodexAttachments } from "../../codex-application/CodexAttachments";
-import { CodexExecutionAssignments } from "../../codex-application/CodexExecutionAssignments";
-import { CodexHttpFetch } from "../../codex-application/CodexHttpFetch";
 import { makeTestElectronIpc } from "../../platform/electron/ElectronIpc.test-support";
 import { ElectronIpc } from "../../platform/electron/ElectronIpc";
 import { ElectronWindowHost } from "../../platform/electron/ElectronWindowHost";
@@ -43,10 +41,6 @@ it.effect("registers application channels directly against their owning modules"
       on: () => Effect.void,
     });
     const accountSnapshot = yield* SubscriptionRef.make(emptyAccountSnapshot());
-    const executionAssignmentsSnapshot = yield* SubscriptionRef.make({
-      permissionRefresh: null as boolean | null,
-      threadQueue: null as boolean | null,
-    });
     const account = CodexAccount.of({
       snapshot: accountSnapshot,
       refresh: Effect.succeed(emptyAccountSnapshot()),
@@ -55,19 +49,6 @@ it.effect("registers application channels directly against their owning modules"
       startLogin: () => Effect.die("unused"),
       cancelLogin: () => Effect.die("unused"),
       logout: Effect.succeed(true),
-    });
-    const executionAssignments = CodexExecutionAssignments.of({
-      snapshot: executionAssignmentsSnapshot,
-      read: SubscriptionRef.get(executionAssignmentsSnapshot),
-      readExecutionAssignments: () => Effect.succeed(null),
-      readThreadDefaults: () => Effect.succeed(null),
-      readThreadSettings: () => Effect.succeed(null),
-      bootstrap: Effect.die("unused"),
-      publish: () => Effect.void,
-    });
-    const httpFetch = CodexHttpFetch.of({
-      fetch: () => Effect.die("unused"),
-      cancel: () => Effect.void,
     });
     const composer = ComposerCatalog.of({
       listModels: Effect.succeed([
@@ -239,8 +220,6 @@ it.effect("registers application channels directly against their owning modules"
               }),
             ),
             Layer.succeed(CodexAccount, account),
-            Layer.succeed(CodexExecutionAssignments, executionAssignments),
-            Layer.succeed(CodexHttpFetch, httpFetch),
             Layer.succeed(CodexConnection, connection),
             Layer.succeed(CodexMedia, media),
             Layer.succeed(ComposerCatalog, composer),
@@ -257,8 +236,6 @@ it.effect("registers application channels directly against their owning modules"
 
     assert.isTrue(handlers.has("codex:account:read"));
     assert.isTrue(handlers.has("codex:connection:status"));
-    assert.isTrue(handlers.has("codex:http-fetch"));
-    assert.isTrue(handlers.has("codex:http-fetch:cancel"));
     assert.isTrue(handlers.has("codex:personality:get"));
     assert.isTrue(handlers.has("codex:personality:set"));
     assert.isTrue(handlers.has("codex:thread:goal:materialize-draft"));

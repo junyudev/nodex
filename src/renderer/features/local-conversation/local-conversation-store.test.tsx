@@ -76,13 +76,6 @@ function recordedNativeRequests(): typeof invokeRecords {
 }
 let queuedMessageFixtureState: import("../../../shared/codex-queued-message").CodexQueuedMessageState =
   {};
-let executionAssignmentsFixture: {
-  permissionRefresh: boolean | null;
-  threadQueue: boolean | null;
-} = { permissionRefresh: false, threadQueue: false };
-let executionAssignmentsHandler:
-  | (() => Promise<{ permissionRefresh: boolean | null; threadQueue: boolean | null }>)
-  | null = null;
 let nativeResumeResponseGate: Promise<void> | null = null;
 let nativeResumeAcceptanceGate: Promise<void> | null = null;
 let nativeSupportsPaginatedHistory = true;
@@ -451,10 +444,6 @@ vi.mock("./local-conversation-deps", () => ({
           supportsThreadQueue: nativeSupportsThreadQueue,
           accountContext: { hostId: args[0], accountId: null, userId: null },
         };
-      if (channel === "codex:execution-assignments:read")
-        return executionAssignmentsHandler
-          ? executionAssignmentsHandler()
-          : executionAssignmentsFixture;
       if (channel === "codex:thread:history-hydration:prepare") {
         const pending = resumeThreadResult instanceof Promise ? null : resumeThreadResult;
         const summary =
@@ -1164,8 +1153,6 @@ function resetLocalConversationStoreTestHarness(reset: () => void): void {
   codexEventListeners.clear();
   reset();
   queuedMessageFixtureState = {};
-  executionAssignmentsFixture = { permissionRefresh: false, threadQueue: false };
-  executionAssignmentsHandler = null;
   queuedMessageFixtureId = 0;
   queuedStorageWrite = Promise.resolve();
   Object.defineProperty(navigator, "locks", {
@@ -2927,7 +2914,7 @@ describe("local-conversation-store", () => {
         .sort()
         .join(","),
     ).toBe(
-      "codex:account:read,codex:app-server:host-context,codex:app-server:request,codex:connection:status,codex:dictation:state:read,codex:dictation:state:read,codex:execution-assignments:read",
+      "codex:account:read,codex:app-server:host-context,codex:app-server:request,codex:connection:status,codex:dictation:state:read,codex:dictation:state:read",
     );
     expect(textContent(container)).toBe("connected:dev@example.com:gpt-5.3-codex");
   });
@@ -15660,7 +15647,6 @@ describe("local-conversation-store", () => {
       await import("./local-conversation-store");
     resetLocalConversationStoreTestHarness(__resetLocalConversationStoreForTests);
     nativeSupportsThreadQueue = true;
-    executionAssignmentsFixture = { permissionRefresh: false, threadQueue: true };
     const serverItems: Array<{
       id: string;
       clientUserMessageId: string;
@@ -15713,7 +15699,6 @@ describe("local-conversation-store", () => {
       await import("./local-conversation-store");
     resetLocalConversationStoreTestHarness(__resetLocalConversationStoreForTests);
     nativeSupportsThreadQueue = true;
-    executionAssignmentsFixture = { permissionRefresh: false, threadQueue: true };
     queuedMessageFixtureState = {
       "thread-1": [
         {
@@ -15764,7 +15749,6 @@ describe("local-conversation-store", () => {
     const { dispatchCodexAppServerMessage } = await import("./app-server-message-bus");
     resetLocalConversationStoreTestHarness(__resetLocalConversationStoreForTests);
     nativeSupportsThreadQueue = true;
-    executionAssignmentsFixture = { permissionRefresh: false, threadQueue: true };
     let serverItems = [
       {
         id: "server-first",
@@ -15839,7 +15823,6 @@ describe("local-conversation-store", () => {
       await import("./local-conversation-store");
     resetLocalConversationStoreTestHarness(__resetLocalConversationStoreForTests);
     nativeSupportsThreadQueue = true;
-    executionAssignmentsFixture = { permissionRefresh: false, threadQueue: true };
     queuedMessageFixtureState = {};
     rendererQueuedMessageStorage.invalidate();
     const serverItems = [
@@ -15899,7 +15882,6 @@ describe("local-conversation-store", () => {
       await import("./local-conversation-store");
     resetLocalConversationStoreTestHarness(__resetLocalConversationStoreForTests);
     nativeSupportsThreadQueue = true;
-    executionAssignmentsFixture = { permissionRefresh: false, threadQueue: true };
     const serverItems = [
       {
         id: "server-queued",
@@ -15977,7 +15959,6 @@ describe("local-conversation-store", () => {
       await import("./local-conversation-store");
     resetLocalConversationStoreTestHarness(__resetLocalConversationStoreForTests);
     nativeSupportsThreadQueue = true;
-    executionAssignmentsFixture = { permissionRefresh: false, threadQueue: true };
     const serverItems = [
       {
         id: "server-idle",
@@ -16019,12 +16000,11 @@ describe("local-conversation-store", () => {
     }
   });
 
-  test("queued execution stays not-ready until execution assignments resolve", async () => {
+  test("queued execution uses the static permission-selection default", async () => {
     invokeRecords = [];
     const { CodexAppServerManager, __resetLocalConversationStoreForTests } =
       await import("./local-conversation-store");
     resetLocalConversationStoreTestHarness(__resetLocalConversationStoreForTests);
-    executionAssignmentsFixture = { permissionRefresh: null, threadQueue: false };
     resumeThreadResult = {
       ...buildConversation("thread-1", "project-1"),
       turns: [
@@ -16040,28 +16020,26 @@ describe("local-conversation-store", () => {
     const manager = trackNativeTestManager(new CodexAppServerManager("local"));
     try {
       await manager.requestThreadStreamResume("thread-1");
-      await manager.enqueueQueuedFollowUp("thread-1", "wait for execution config");
+      await manager.enqueueQueuedFollowUp("thread-1", "use static execution config");
       const message = queuedMessageFixtureState["thread-1"]?.[0];
       if (!message) throw new Error("Expected queued message");
       invokeRecords = [];
-      await expect(manager.sendQueuedFollowUpNow("thread-1", message.id)).rejects.toThrow(
-        "execution-config-loading",
-      );
+      await manager.sendQueuedFollowUpNow("thread-1", message.id);
       expect(
-        invokeRecords.some((record) => record.channel === "codex:queued-messages:prepare-native"),
-      ).toBe(false);
+        invokeRecords.find((record) => record.channel === "codex:queued-messages:prepare-native")
+          ?.args[3],
+      ).toMatchObject({ usePermissionSelection: false });
     } finally {
       resumeThreadResult = null;
       manager.destroy();
     }
   });
 
-  test("captured permission readiness bypasses a later global loading state", async () => {
+  test("captured permission selection is preserved for queued execution", async () => {
     invokeRecords = [];
     const { CodexAppServerManager, __resetLocalConversationStoreForTests } =
       await import("./local-conversation-store");
     resetLocalConversationStoreTestHarness(__resetLocalConversationStoreForTests);
-    executionAssignmentsFixture = { permissionRefresh: null, threadQueue: false };
     resumeThreadResult = {
       ...buildConversation("thread-1", "project-1"),
       turns: [
@@ -16099,12 +16077,11 @@ describe("local-conversation-store", () => {
     }
   });
 
-  test("execution assignment updates wake a queued message after loading completes", async () => {
+  test("queued messages remain executable without a remote feature refresh", async () => {
     invokeRecords = [];
     const { CodexAppServerManager, __resetLocalConversationStoreForTests } =
       await import("./local-conversation-store");
     resetLocalConversationStoreTestHarness(__resetLocalConversationStoreForTests);
-    executionAssignmentsFixture = { permissionRefresh: null, threadQueue: false };
     resumeThreadResult = {
       ...buildConversation("thread-1", "project-1"),
       turns: [
@@ -16124,18 +16101,6 @@ describe("local-conversation-store", () => {
       await manager.enqueueQueuedFollowUp("thread-1", "send when config is ready");
       await flushAsyncWork();
       expect(queuedMessageFixtureState["thread-1"]).toHaveLength(1);
-      expect(
-        invokeRecords.some((record) => record.channel === "codex:queued-messages:prepare-native"),
-      ).toBe(false);
-
-      const wake = vi.spyOn(
-        manager as unknown as { wakeQueuedMessages: (conversationId: string) => void },
-        "wakeQueuedMessages",
-      );
-      executionAssignmentsFixture = { permissionRefresh: true, threadQueue: false };
-      for (const listener of codexEventListeners) listener({ type: "executionAssignmentsChanged" });
-      await waitForCondition(() => wake.mock.calls.length > 0, 500);
-      expect(wake).toHaveBeenCalledWith("thread-1");
       const message = queuedMessageFixtureState["thread-1"]?.[0];
       if (!message) throw new Error("Expected queued message");
       invokeRecords = [];
@@ -16143,7 +16108,7 @@ describe("local-conversation-store", () => {
       expect(
         invokeRecords.find((record) => record.channel === "codex:queued-messages:prepare-native")
           ?.args[3],
-      ).toMatchObject({ usePermissionSelection: true });
+      ).toMatchObject({ usePermissionSelection: false });
       expect(queuedMessageFixtureState["thread-1"] ?? []).toEqual([]);
     } finally {
       resumeThreadResult = null;
@@ -16151,7 +16116,7 @@ describe("local-conversation-store", () => {
     }
   });
 
-  test("a stale reconnect assignment read cannot replace the newer native generation", async () => {
+  test("native reconnects preserve the static queued permission default", async () => {
     invokeRecords = [];
     const { CodexAppServerManager, __resetLocalConversationStoreForTests } =
       await import("./local-conversation-store");
@@ -16193,25 +16158,6 @@ describe("local-conversation-store", () => {
         await flushAsyncWork();
       });
 
-      let releaseStale!: () => void;
-      let reportStaleStarted!: () => void;
-      const staleGate = new Promise<void>((resolve) => {
-        releaseStale = resolve;
-      });
-      const staleStarted = new Promise<void>((resolve) => {
-        reportStaleStarted = resolve;
-      });
-      let assignmentReads = 0;
-      executionAssignmentsHandler = async () => {
-        assignmentReads += 1;
-        if (assignmentReads === 1) {
-          reportStaleStarted();
-          await staleGate;
-          return { permissionRefresh: false, threadQueue: false };
-        }
-        return { permissionRefresh: true, threadQueue: false };
-      };
-
       resumeThreadGeneration = 2;
       await act(async () => {
         dispatchCodexAppServerMessage("shared-object-updated", {
@@ -16231,8 +16177,6 @@ describe("local-conversation-store", () => {
           },
         });
       });
-      await staleStarted;
-
       resumeThreadGeneration = 3;
       await act(async () => {
         dispatchCodexAppServerMessage("shared-object-updated", {
@@ -16251,16 +16195,14 @@ describe("local-conversation-store", () => {
             },
           },
         });
-        await waitForCondition(() => assignmentReads >= 2, 500);
+        await flushAsyncWork();
       });
-      releaseStale();
-      await flushAsyncWork();
       await waitForCondition(
         () => manager.readConversation("thread-1")?.resumeState === "resumed",
         500,
       );
 
-      await manager.enqueueQueuedFollowUp("thread-1", "use the current assignment");
+      await manager.enqueueQueuedFollowUp("thread-1", "use the static default");
       const message = queuedMessageFixtureState["thread-1"]?.[0];
       if (!message) throw new Error("Expected queued message");
       invokeRecords = [];
@@ -16268,9 +16210,8 @@ describe("local-conversation-store", () => {
       expect(
         invokeRecords.find((record) => record.channel === "codex:queued-messages:prepare-native")
           ?.args[3],
-      ).toMatchObject({ usePermissionSelection: true });
+      ).toMatchObject({ usePermissionSelection: false });
     } finally {
-      executionAssignmentsHandler = null;
       resumeThreadResult = null;
       manager.destroy();
     }

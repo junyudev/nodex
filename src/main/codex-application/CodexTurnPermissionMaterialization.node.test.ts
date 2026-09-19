@@ -20,7 +20,6 @@ import { CodexAgentConfigRuntime } from "./CodexAgentConfigRuntime";
 import { CodexAttachments } from "./CodexAttachments";
 import { CodexConversationContext } from "./CodexConversationContext";
 import { CodexConversationProjection } from "./CodexConversationProjection";
-import { CodexExecutionAssignments } from "./CodexExecutionAssignments";
 import { CodexInputAssets } from "./CodexInputAssets";
 import { CodexPermissions } from "./CodexPermissions";
 import { CodexPreferences } from "./CodexPreferences";
@@ -106,7 +105,6 @@ const disabledFastMode: ConfigRequirementsReadResponse = {
 interface PreparationFixture {
   readonly canonical?: CodexCanonicalConversationState;
   readonly defaultPersonality?: TurnStartParams["personality"];
-  readonly remoteDefaultPersonality?: TurnStartParams["personality"];
   readonly config?: Partial<ConfigReadResponse["config"]>;
   readonly configFailure?: CodexRuntimeError;
   readonly permissionState?: CodexPermissionState;
@@ -145,13 +143,6 @@ const prepare = (
     Effect.provideService(CodexConversationProjection, {
       read: () => Effect.succeed({ canonical: fixture.canonical ?? state, snapshot: null }),
     } as unknown as CodexConversationProjection["Service"]),
-    Effect.provideService(CodexExecutionAssignments, {
-      readThreadSettings: () =>
-        Effect.succeed({
-          defaultPersonality:
-            fixture.remoteDefaultPersonality ?? fixture.defaultPersonality ?? "friendly",
-        }),
-    } as unknown as CodexExecutionAssignments["Service"]),
     Effect.provideService(CodexPermissions, {
       resolve: () =>
         Effect.succeed({
@@ -333,7 +324,7 @@ for (const [config, expected] of [
   );
 }
 
-it.effect("uses the remote default personality when workspace configuration omits one", () =>
+it.effect("uses the application personality when workspace configuration omits one", () =>
   Effect.gen(function* () {
     const plan = yield* prepare(
       {
@@ -342,8 +333,7 @@ it.effect("uses the remote default personality when workspace configuration omit
       },
       {
         config: {},
-        defaultPersonality: "friendly",
-        remoteDefaultPersonality: "pragmatic",
+        defaultPersonality: "pragmatic",
       },
     );
     assert.strictEqual(plan.request.personality, "pragmatic");

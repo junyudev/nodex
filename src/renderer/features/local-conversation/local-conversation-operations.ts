@@ -16,7 +16,6 @@ const queryChannels = [
   "codex:account:read",
   "codex:connection:status",
   "codex:dictation:state:read",
-  "codex:execution-assignments:read",
   "codex:permission:state:get",
   "codex:personality:get",
   "codex:subagents:overview:read",

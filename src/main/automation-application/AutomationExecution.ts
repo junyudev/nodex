@@ -38,7 +38,10 @@ import { CODEX_APP_LOCAL_HOST_ID } from "../codex/codex-app-meta-thread-tools";
 import { buildCodexDesktopDeveloperInstructions } from "../codex/codex-developer-instructions";
 import { rewriteExecutionWorkspaceRoots } from "../codex/codex-execution-workspace-roots";
 import { createCodexProjectlessWorkspace } from "../codex/codex-projectless-workspace";
-import { buildCodexThreadConfig } from "../codex/codex-thread-config";
+import {
+  buildCodexDesktopThreadFeatureConfig,
+  buildCodexThreadConfig,
+} from "../codex/codex-thread-config";
 import { persistCodexWorktreeShellEnvironmentAtGitPath } from "../codex/codex-worktree-shell-environment";
 import {
   CODEX_AUTOMATION_DEVELOPER_INSTRUCTIONS,
@@ -75,7 +78,6 @@ import { CodexHeartbeatTurnCompletion } from "../codex-application/CodexHeartbea
 import { CodexHistoryPageAdapter } from "../codex-application/CodexHistoryPageAdapter";
 import { CodexMainConversationManagers } from "../codex-application/CodexMainConversationManagers";
 import { CodexPermissions } from "../codex-application/CodexPermissions";
-import { CodexExecutionAssignments } from "../codex-application/CodexExecutionAssignments";
 import { CodexThreadDirectory } from "../codex-application/CodexThreadDirectory";
 import { ThreadCreationRuntime } from "../codex-application/ThreadCreationRuntime";
 import { CodexThreadTitlePersistence } from "../codex-application/CodexThreadTitlePersistence";
@@ -232,7 +234,6 @@ export const live = (
   | AutomationApplication
   | CodexApplicationEventHub
   | CodexAppServerCapabilities
-  | CodexExecutionAssignments
   | CodexGateway
   | CodexGitProbe
   | CodexHeartbeatTurnCompletion
@@ -260,7 +261,6 @@ export const live = (
       const automation = yield* AutomationApplication;
       const events = yield* CodexApplicationEventHub;
       const capabilities = yield* CodexAppServerCapabilities;
-      const executionAssignments = yield* CodexExecutionAssignments;
       const gateway = yield* CodexGateway;
       const git = yield* CodexGitProbe;
       const heartbeatCompletion = yield* CodexHeartbeatTurnCompletion;
@@ -582,12 +582,6 @@ export const live = (
               permissionState: yield* permissions.resolveAutomation([requestedCwd]),
               workspaceRoots: [requestedCwd],
             });
-        const executionDefaults = yield* executionAssignments.readThreadDefaults(
-          target.hostGeneration.version,
-        );
-        if (!executionDefaults) {
-          return yield* fail("resume-heartbeat-thread", "execution-config-loading");
-        }
         const browserConfig = yield* desktopTools.threadConfig(requestedCwd);
         const resume = projectCodexGatewayThreadResumeResponse(
           yield* fencedHostRequest("resume-heartbeat-thread", target.hostGeneration, () =>
@@ -607,7 +601,7 @@ export const live = (
                   nativeAppTools: target.hostGeneration.nativeAppTools,
                   purpose: "automation",
                   overrides: {
-                    ...executionDefaults.config,
+                    ...buildCodexDesktopThreadFeatureConfig(target.hostGeneration.version),
                     ...(browserConfig ?? {}),
                   },
                 }),
@@ -876,10 +870,6 @@ export const live = (
         readonly now: number;
       }) {
         const capability = yield* capabilities.forHost(gateway.localHostId);
-        const executionDefaults = yield* executionAssignments.readThreadDefaults(
-          capability.version,
-        );
-        if (!executionDefaults) return yield* fail("start-cron-run", "execution-config-loading");
         const pendingThreadId = `pending:${randomUUID()}`;
         if (
           yield* automation.runs.begin({
@@ -919,7 +909,7 @@ export const live = (
             buildCodexDesktopDeveloperInstructions({
               baseInstructions: CODEX_AUTOMATION_DEVELOPER_INSTRUCTIONS,
               isNonGitWorkspace: true,
-              threadToolsEnabled: executionDefaults.defaultEnableFeatures.thread_tools === true,
+              threadToolsEnabled: true,
               workspaceDependenciesEnabled: false,
             }),
             location.projectlessOutputDirectory
@@ -940,7 +930,7 @@ export const live = (
               nativeAppTools: capability.nativeAppTools,
               purpose: "automation",
               overrides: {
-                ...executionDefaults.config,
+                ...buildCodexDesktopThreadFeatureConfig(capability.version),
                 ...(browserConfig ?? {}),
                 ...(executionProfile?.reasoningEffort
                   ? { model_reasoning_effort: executionProfile.reasoningEffort }

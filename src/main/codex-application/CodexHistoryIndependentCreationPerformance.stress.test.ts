@@ -26,10 +26,10 @@ import {
 import { CodexGateway, CodexThreadHostResolver } from "../codex-runtime/CodexGateway";
 import { CoreModules, type CoreModuleClients } from "../core-runtime/CoreModules";
 import { DesktopToolRuntime } from "../host-runtime/DesktopToolRuntime";
+import { ApplicationSettings } from "../settings/ApplicationSettings";
+import { makeTestApplicationSettings } from "../settings/ApplicationSettings.test-support";
 import { CodexConversationProjection } from "./CodexConversationProjection";
 import { make as makePersistentFork } from "./CodexConversationFork";
-import { CodexExecutionAssignments } from "./CodexExecutionAssignments";
-import { makeReadyCodexExecutionAssignments } from "./CodexExecutionAssignments.test-support";
 import { CodexGitProbe } from "./CodexGitProbe";
 import { makeTestCodexGitProbe } from "./CodexGitProbe.test-support";
 import { CodexForkSidePanelTransfer } from "./CodexForkSidePanelTransferRuntime";
@@ -495,7 +495,7 @@ const makeSideChatHarness = (logicalTurnCount: number) => {
   const commands = makeSideChatCommands.pipe(
     Effect.provideService(CodexAppServerCapabilities, capabilityService),
     Effect.provideService(CodexConversationProjection, projection),
-    Effect.provideService(CodexExecutionAssignments, makeReadyCodexExecutionAssignments()),
+    Effect.provideService(ApplicationSettings, makeTestApplicationSettings()),
     Effect.provideService(CodexGitProbe, makeTestCodexGitProbe()),
     Effect.provideService(CodexGateway, gateway),
     Effect.provideService(

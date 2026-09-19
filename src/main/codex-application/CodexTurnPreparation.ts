@@ -57,7 +57,6 @@ import {
 import { CodexAttachments } from "./CodexAttachments";
 import { CodexConversationProjection } from "./CodexConversationProjection";
 import { CodexConversationContext } from "./CodexConversationContext";
-import { CodexExecutionAssignments } from "./CodexExecutionAssignments";
 import { CodexPermissions } from "./CodexPermissions";
 import { CodexPreferences } from "./CodexPreferences";
 import { parseCodexPersonality } from "./CodexPersonality";
@@ -245,7 +244,6 @@ export const make: Effect.Effect<
   | CodexAttachments
   | CodexConversationContext
   | CodexConversationProjection
-  | CodexExecutionAssignments
   | CodexPermissions
   | CodexPreferences
   | CodexThreadSettingsRuntime
@@ -260,7 +258,6 @@ export const make: Effect.Effect<
   const attachments = yield* CodexAttachments;
   const conversationContext = yield* CodexConversationContext;
   const projection = yield* CodexConversationProjection;
-  const executionAssignments = yield* CodexExecutionAssignments;
   const permissions = yield* CodexPermissions;
   const preferences = yield* CodexPreferences;
   const threadSettings = yield* CodexThreadSettingsRuntime;
@@ -545,13 +542,7 @@ export const make: Effect.Effect<
           : nextSettings?.personality !== undefined
             ? nextSettings.personality
             : (inheritedParams?.personality ?? undefined);
-      const remoteDefaultPersonality =
-        selectedPersonality === undefined
-          ? ((yield* executionAssignments.readThreadSettings({
-              model,
-              includeDeveloperInstructions: false,
-            }))?.defaultPersonality ?? preferences.current())
-          : preferences.current();
+      const defaultPersonality = preferences.current();
       const personality =
         selectedPersonality !== undefined
           ? selectedPersonality
@@ -569,7 +560,7 @@ export const make: Effect.Effect<
                     parseCodexPersonality(response.config.model_personality),
                 ),
                 Effect.catch(() => Effect.succeed(null)),
-                Effect.map((configured) => configured ?? remoteDefaultPersonality),
+                Effect.map((configured) => configured ?? defaultPersonality),
               );
       const inheritedTier =
         nextSettings?.serviceTier === undefined

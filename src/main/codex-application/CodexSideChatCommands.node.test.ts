@@ -28,10 +28,10 @@ import {
 } from "../codex-runtime/CodexEphemeralThreadRouting";
 import { codexRuntimeError, type CodexRuntimeError } from "../codex-runtime/CodexRuntimeError";
 import { DesktopToolRuntime } from "../host-runtime/DesktopToolRuntime";
+import { ApplicationSettings } from "../settings/ApplicationSettings";
+import { makeTestApplicationSettings } from "../settings/ApplicationSettings.test-support";
 import { CodexTurnCommands, type CodexTurnCommandsService } from "./CodexTurnCommands";
 import { CodexConversationProjection } from "./CodexConversationProjection";
-import { CodexExecutionAssignments } from "./CodexExecutionAssignments";
-import { makeReadyCodexExecutionAssignments } from "./CodexExecutionAssignments.test-support";
 import { CodexGitProbe } from "./CodexGitProbe";
 import { makeTestCodexGitProbe } from "./CodexGitProbe.test-support";
 import { CodexThreadDirectory } from "./CodexThreadDirectory";
@@ -382,7 +382,7 @@ const makeHarness = (scope: Scope.Scope, options: SideChatHarnessOptions = {}) =
             Effect.succeed({ "mcp_servers.node_repl": { command: "/runtime/node" } }),
         } as unknown as DesktopToolRuntime["Service"]),
       ),
-      Effect.provideService(CodexExecutionAssignments, makeReadyCodexExecutionAssignments()),
+      Effect.provideService(ApplicationSettings, makeTestApplicationSettings()),
       Effect.provideService(CodexGitProbe, makeTestCodexGitProbe()),
       Effect.provideService(CodexThreadHostResolver, hostResolver),
       Effect.provideService(CodexEphemeralThreadRouting, routing),

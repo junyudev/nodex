@@ -35,7 +35,7 @@ describe("Codex desktop developer instructions", () => {
     expect(instructions.includes("### Workspace Dependencies")).toBe(false);
   });
 
-  test("uses exact override, prose, heartbeat, and git section ordering", () => {
+  test("uses product-owned prose, heartbeat, and git section ordering", () => {
     const instructions = buildCodexDesktopDeveloperInstructions({
       gitSettings: {
         branchPrefix: "nodex/",
@@ -43,17 +43,13 @@ describe("Codex desktop developer instructions", () => {
       },
       heartbeatEnabled: true,
       includeProseDetailLevelInstructions: true,
-      instructionOverrides: {
-        desktopContextSection: "# Overridden desktop context",
-        workspaceDependenciesSection: "### Overridden dependencies",
-      },
       threadToolsEnabled: true,
       workspaceDependenciesEnabled: true,
     });
 
     const sectionOrder = [
-      "# Overridden desktop context",
-      "### Overridden dependencies",
+      "# Codex desktop context",
+      "### Workspace Dependencies",
       "### Automations",
       "### Thread Coordination",
       "### Non-technical UI",
@@ -78,25 +74,19 @@ describe("Codex desktop developer instructions", () => {
     expect(instructions.includes("### Automations")).toBe(true);
   });
 
-  test("appends title, writing, presentation, and caller instructions in request order", () => {
+  test("appends writing and caller instructions without remote title or presentation experiments", () => {
     const instructions = buildCodexThreadDeveloperInstructions({
-      automaticTitleCheckpoints: true,
       writingBlockInstructions: true,
-      presentationOutlineInstructions: true,
       additionalDeveloperInstructions: "Caller instructions",
     });
-    const order = [
-      "<app-context>",
-      "### Task title checkpoints",
-      "### Writing blocks",
-      "### Presentation outline writing blocks",
-      "Caller instructions",
-    ].map((section) => instructions.indexOf(section));
+    const order = ["<app-context>", "### Writing blocks", "Caller instructions"].map((section) =>
+      instructions.indexOf(section),
+    );
     expect(order.every((index) => index >= 0)).toBe(true);
     expect(
       order.every((index, position) => position === 0 || index > (order[position - 1] ?? -1)),
     ).toBe(true);
-    expect(instructions.includes("::thread-purpose-changed{}")).toBe(true);
-    expect(instructions.includes('variant="slides"')).toBe(true);
+    expect(instructions.includes("### Task title checkpoints")).toBe(false);
+    expect(instructions.includes("### Presentation outline writing blocks")).toBe(false);
   });
 });

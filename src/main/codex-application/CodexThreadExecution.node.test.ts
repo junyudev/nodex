@@ -12,8 +12,6 @@ import { CodexGateway } from "../codex-runtime/CodexGateway";
 import { CoreModules } from "../core-runtime/CoreModules";
 import { DesktopToolRuntime } from "../host-runtime/DesktopToolRuntime";
 import { CodexConversationProjection } from "./CodexConversationProjection";
-import { CodexExecutionAssignments } from "./CodexExecutionAssignments";
-import { makeReadyCodexExecutionAssignments } from "./CodexExecutionAssignments.test-support";
 import { CodexTurnCommands } from "./CodexTurnCommands";
 import { ConversationCommands } from "./ConversationCommands";
 import { ConversationEntityMap } from "./internal/ConversationEntityMap";
@@ -53,7 +51,6 @@ it.effect.each(["local", "remote-a"])(
                   forThread: () => Effect.succeed(capability),
                   isCurrent: () => Effect.succeed(true),
                 }),
-                Layer.succeed(CodexExecutionAssignments, makeReadyCodexExecutionAssignments()),
                 Layer.succeed(CodexGateway, {
                   localHostId: "local",
                   requestOnHost: (

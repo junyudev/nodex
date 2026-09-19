@@ -22,6 +22,7 @@ import {
 } from "../../shared/codex-conversation-state/codex-conversation-state";
 import { buildCodexThreadConfig } from "../codex/codex-thread-config";
 import { DesktopToolRuntime } from "../host-runtime/DesktopToolRuntime";
+import { ApplicationSettings } from "../settings/ApplicationSettings";
 import {
   CodexGateway,
   CodexThreadHostResolver,
@@ -45,7 +46,6 @@ import { ConversationEntityMap } from "./internal/ConversationEntityMap";
 import { SIDE_CHAT_BOUNDARY_TEXT } from "./CodexSideChatPolicy";
 import { SIDE_CHAT_DEVELOPER_INSTRUCTIONS } from "./CodexSideChatPolicy";
 import { CodexConversationProjection } from "./CodexConversationProjection";
-import { CodexExecutionAssignments } from "./CodexExecutionAssignments";
 import { CodexGitProbe } from "./CodexGitProbe";
 import { CodexThreadDirectory, type CodexThreadDirectoryEntry } from "./CodexThreadDirectory";
 import { materializeCodexDesktopDeveloperInstructions } from "./CodexThreadRequestSettings";
@@ -132,7 +132,6 @@ export const make: Effect.Effect<
   never,
   | CodexConversationProjection
   | CodexAppServerCapabilities
-  | CodexExecutionAssignments
   | CodexGitProbe
   | CodexGateway
   | DesktopToolRuntime
@@ -142,12 +141,13 @@ export const make: Effect.Effect<
   | ThreadCreationRuntime
   | CodexTurnCommands
   | ConversationEntityMap
+  | ApplicationSettings
 > = Effect.gen(function* () {
   const conversations = yield* ConversationEntityMap;
   const capabilities = yield* CodexAppServerCapabilities;
-  const executionAssignments = yield* CodexExecutionAssignments;
   const gitProbe = yield* CodexGitProbe;
   const gateway = yield* CodexGateway;
+  const applicationSettings = yield* ApplicationSettings;
   const desktopTools = yield* DesktopToolRuntime;
   const hostResolver = yield* CodexThreadHostResolver;
   const routing = yield* CodexEphemeralThreadRouting;
@@ -497,13 +497,10 @@ export const make: Effect.Effect<
     const parentInstructions = yield* materializeCodexDesktopDeveloperInstructions(
       {
         hostId,
-        appServerVersion: capability.version,
-        model: plan.instructionModel,
         cwd: plan.forkRequest.cwd ?? plan.parent.durable.cwd ?? "/",
-        allowMemoryPromptOverrides: hostId === gateway.localHostId,
         requestOptions: codexGatewayGenerationFence(capability),
       },
-      executionAssignments,
+      applicationSettings,
       gateway,
       gitProbe,
     );
