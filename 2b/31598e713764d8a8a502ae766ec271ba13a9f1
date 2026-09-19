@@ -1,0 +1,31 @@
+package.json
+  s_68bba929cf96a5::t_0844f6f4820f5f 216
+patches/yjs@13.6.32.patch
+  s_68bba929cf96a5::t_5ff5d45bc13e5a 2,15,69,77,140,144-145,148,150,204,212,275,279-280,283,285,342,350,415,423
+pnpm-lock.yaml
+  s_68bba929cf96a5::t_43e6583dc5928f 139,207,209-210,763,766,768-769,8513-8514,16654,16660-16661,16663,16666,16692
+pnpm-workspace.yaml
+  s_68bba929cf96a5::t_93bb31504d8954 9
+src/renderer/components/board/editor/nfm-editor-history.node.test.ts
+  s_68bba929cf96a5::t_cf77cae7a59255 451-465
+src/shared/block-documents/yjs-yrs-fixture-generator.test.ts
+  s_68bba929cf96a5::t_61d3551bc708c2 8,451
+third_party/blocknote/packages/core/package.json
+  s_68bba929cf96a5::t_551379c208fd9d 121
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "2b31598e713764d8a8a502ae766ec271ba13a9f1",
+  "prompts": {},
+  "sessions": {
+    "s_68bba929cf96a5": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a0ba4b-747f-7223-b054-3325c5b045fc",
+        "model": "gpt-6-astra"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    }
+  }
+}
