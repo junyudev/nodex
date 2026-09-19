@@ -1924,9 +1924,12 @@ describe("local-conversation-store", () => {
     try {
       const control = controlRef.current;
       if (!control) throw new Error("Control fixture unavailable");
-      control.setComposerIntent("remote-thread", {
-        prompt: "Route before hydration",
-        focusNonce: 1,
+      await act(async () => {
+        control.setComposerIntent("remote-thread", {
+          prompt: "Route before hydration",
+          focusNonce: 1,
+        });
+        await Promise.resolve();
       });
       expect(remoteManager.readComposerIntent("remote-thread")?.prompt).toBe(
         "Route before hydration",
@@ -1934,26 +1937,32 @@ describe("local-conversation-store", () => {
       expect(localManager.readComposerIntent("remote-thread")).toBeNull();
 
       await flushAsyncWork();
-      remoteManager.receiveCoordination("threadStreamStateChanged", {
-        sourceClientId: "remote-owner",
-        params: {
-          hostId: "remote-host",
-          conversationId: "remote-thread",
-          change: {
-            type: "snapshot",
-            revision: 1,
-            conversationState: {
-              ...canonicalFixture(buildConversation("remote-thread", "project-1")),
-              hostId: "remote-host",
+      await act(async () => {
+        remoteManager.receiveCoordination("threadStreamStateChanged", {
+          sourceClientId: "remote-owner",
+          params: {
+            hostId: "remote-host",
+            conversationId: "remote-thread",
+            change: {
+              type: "snapshot",
+              revision: 1,
+              conversationState: {
+                ...canonicalFixture(buildConversation("remote-thread", "project-1")),
+                hostId: "remote-host",
+              },
             },
           },
-        },
+        });
+        await Promise.resolve();
       });
       await settleAsyncRender();
 
-      setLocalConversationComposerIntent("remote-thread", {
-        prompt: "Route through hydrated ownership",
-        focusNonce: 2,
+      await act(async () => {
+        setLocalConversationComposerIntent("remote-thread", {
+          prompt: "Route through hydrated ownership",
+          focusNonce: 2,
+        });
+        await Promise.resolve();
       });
 
       expect(remoteManager.readComposerIntent("remote-thread")?.prompt).toBe(

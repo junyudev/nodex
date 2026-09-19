@@ -550,11 +550,32 @@ test("hidden selections are excluded from submission references", () => {
 test("the maximum durable Scene plus its primary yields valid bounded observation evidence", () => {
   const owner = { kind: "session", sessionId: "session-a" } as const;
   let scene = materializeInitialWorkbenchScene(owner);
-  for (let index = 0; index < WORKBENCH_SCENE_MAX_PANEL_SURFACES; index += 1)
-    scene = createWorkbenchSceneSurface(scene, {
-      panelId: "right",
-      surface: browser(`tab-${index}`),
-    });
+  const surfaces = Array.from({ length: WORKBENCH_SCENE_MAX_PANEL_SURFACES }, (_, index) =>
+    browser(`tab-${index}`),
+  );
+  const tabIds = surfaces.map((surface) => surface.id);
+  const rightRoot = scene.panels.right.layout.root;
+  if (rightRoot.type !== "leaf") throw new Error("Expected one right panel leaf");
+  scene = {
+    ...scene,
+    panelSurfacesById: Object.fromEntries(surfaces.map((surface) => [surface.id, surface])),
+    panels: {
+      ...scene.panels,
+      right: {
+        ...scene.panels.right,
+        collapsed: false,
+        layout: {
+          ...scene.panels.right.layout,
+          root: {
+            ...rightRoot,
+            tabIds,
+            activeTabId: tabIds.at(-1) ?? null,
+            mruTabIds: [...tabIds].reverse(),
+          },
+        },
+      },
+    },
+  };
   expect(WorkbenchSceneSnapshotSchema.safeParse(scene).success).toBe(true);
   const state = stateFor([scene], {
     kind: "session",

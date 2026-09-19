@@ -1,23 +1,11 @@
-import { existsSync } from "node:fs";
-import path from "node:path";
-
 import {
   initializeStandaloneDataAuthority,
   type RustDataAuthorityRuntime,
 } from "../../../src/main/core-client";
 import { CoreClientSeedAdapter } from "../adapters/core-client-seed-adapter";
 import type { ScenarioManifest } from "../contracts";
+import { waitForCoreRuntimeRemoval } from "../profile/isolated-profile";
 import { materializeScenario } from "../seed/scenario-seed";
-
-const waitForCoreRemoval = async (nodexHome: string): Promise<void> => {
-  const socketPath = path.join(nodexHome, "run/core/core.sock");
-  const deadline = Date.now() + 15_000;
-  while (Date.now() < deadline) {
-    if (!existsSync(socketPath)) return;
-    await new Promise((resolve) => setTimeout(resolve, 25));
-  }
-  throw new Error(`Core socket remained after seed shutdown: ${socketPath}`);
-};
 
 export const materializeDevelopmentSeed = async (input: {
   readonly environment?: NodeJS.ProcessEnv;
@@ -48,7 +36,7 @@ export const materializeDevelopmentSeed = async (input: {
   if (runtime) {
     try {
       await runtime.rootClient.shutdown();
-      await waitForCoreRemoval(input.nodexHome);
+      await waitForCoreRuntimeRemoval(input.nodexHome);
     } catch (error) {
       teardownErrors.push(error);
     }

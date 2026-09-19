@@ -100,7 +100,7 @@ import type {
   StoreAdministrationReadResponse,
   StoreAdministrationReadSnapshot,
 } from "./types";
-import { CoreEventCompatibilityError, UdsHttpTransport } from "./uds-http";
+import { CoreEventCompatibilityError, CoreHttpError, UdsHttpTransport } from "./uds-http";
 
 const DOCUMENT_FRAME_OVERHEAD_BYTES = MAX_DOCUMENT_HTTP_METADATA_BYTES + 8;
 
@@ -576,6 +576,14 @@ export class CoreClient implements CoreClientPort {
     options: CoreRequestOptions = {},
   ): Promise<OwnedDocumentApplyResult> {
     const { bundle } = input;
+    if (bundle.bytes.byteLength > CORE_TRANSPORT_BUDGETS.recovery_bundle_bytes) {
+      throw new CoreHttpError(413, "request body exceeds its bound", {
+        reason: "request_too_large",
+        effect: "not_applied",
+        actual: bundle.bytes.byteLength,
+        limit: CORE_TRANSPORT_BUDGETS.recovery_bundle_bytes,
+      });
+    }
     const result = await this.#transport.requestBoundedBytes(
       "POST",
       "/core/v1/modules/document/recovery/capture",
