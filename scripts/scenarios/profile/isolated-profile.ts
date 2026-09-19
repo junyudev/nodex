@@ -63,11 +63,15 @@ const resolveSourceCodexHome = (explicit?: string): string => {
   return path.join(os.homedir(), ".codex");
 };
 
-const runtimeEvidencePaths = (nodexHome: string): readonly string[] => [
-  path.join(nodexHome, "run/isolated-supervisor.lock"),
+const coreRuntimeEvidencePaths = (nodexHome: string): readonly string[] => [
   path.join(nodexHome, "run/core/core.json"),
   path.join(nodexHome, "run/core/core.auth"),
   path.join(nodexHome, "run/core/core.sock"),
+];
+
+const runtimeEvidencePaths = (nodexHome: string): readonly string[] => [
+  path.join(nodexHome, "run/isolated-supervisor.lock"),
+  ...coreRuntimeEvidencePaths(nodexHome),
 ];
 
 const existsOrSymlink = async (candidate: string): Promise<boolean> => {
@@ -80,6 +84,24 @@ const existsOrSymlink = async (candidate: string): Promise<boolean> => {
     }
     throw error;
   }
+};
+
+export const waitForCoreRuntimeRemoval = async (
+  nodexHome: string,
+  timeoutMs = 15_000,
+): Promise<void> => {
+  const deadline = Date.now() + timeoutMs;
+  const runtimePaths = coreRuntimeEvidencePaths(nodexHome);
+  while (Date.now() < deadline) {
+    const remaining = await Promise.all(runtimePaths.map(existsOrSymlink));
+    if (remaining.every((present) => !present)) return;
+    await new Promise((resolve) => setTimeout(resolve, 25));
+  }
+  const remaining = [] as string[];
+  for (const runtimePath of runtimePaths) {
+    if (await existsOrSymlink(runtimePath)) remaining.push(runtimePath);
+  }
+  throw new Error(`Core runtime evidence remained after shutdown: ${remaining.join(", ")}`);
 };
 
 const ensureOwnedRootShape = async (profile: IsolatedProfile): Promise<void> => {

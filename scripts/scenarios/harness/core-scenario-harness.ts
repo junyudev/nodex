@@ -1,4 +1,3 @@
-import { existsSync } from "node:fs";
 import { readFile, readdir } from "node:fs/promises";
 import path from "node:path";
 
@@ -8,7 +7,11 @@ import {
   type RustDataAuthorityRuntime,
 } from "../../../src/main/core-client";
 import type { IsolatedProfile } from "../profile/isolated-profile";
-import { cleanupIsolatedProfile, createIsolatedProfile } from "../profile/isolated-profile";
+import {
+  cleanupIsolatedProfile,
+  createIsolatedProfile,
+  waitForCoreRuntimeRemoval,
+} from "../profile/isolated-profile";
 import type { ScenarioFacts, ScenarioManifest } from "../contracts";
 import { CoreClientSeedAdapter } from "../adapters/core-client-seed-adapter";
 import { inspectScenario, materializeScenario } from "../seed/scenario-seed";
@@ -24,16 +27,6 @@ export interface CoreScenarioContext {
   /** Runs a cold-start assertion, then reattaches the harness to the current Core generation. */
   readonly withStoppedCore: <Value>(run: () => Promise<Value>) => Promise<Value>;
 }
-
-const waitForCoreRemoval = async (nodexHome: string): Promise<void> => {
-  const socketPath = path.join(nodexHome, "run/core/core.sock");
-  const deadline = Date.now() + 15_000;
-  while (Date.now() < deadline) {
-    if (!existsSync(socketPath)) return;
-    await new Promise((resolve) => setTimeout(resolve, 25));
-  }
-  throw new Error(`Core socket remained after shutdown: ${socketPath}`);
-};
 
 const readBoundedCoreDiagnostics = async (nodexHome: string): Promise<string> => {
   const logDirectory = path.join(nodexHome, "logs");
@@ -104,7 +97,7 @@ export const withCoreScenario = async <Value>(
       withStoppedCore: async (run) => {
         if (!runtime) throw new Error("Scenario Core is unavailable");
         await runtime.rootClient.shutdown();
-        await waitForCoreRemoval(profile.nodexHome);
+        await waitForCoreRuntimeRemoval(profile.nodexHome);
         try {
           return await run();
         } finally {
@@ -129,7 +122,7 @@ export const withCoreScenario = async <Value>(
   if (runtime) {
     try {
       await runtime.rootClient.shutdown();
-      await waitForCoreRemoval(profile.nodexHome);
+      await waitForCoreRuntimeRemoval(profile.nodexHome);
     } catch (error) {
       teardownErrors.push(error);
     }
