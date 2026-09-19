@@ -9,6 +9,7 @@ import {
   type BundledAgentRuntimeMetadata,
 } from "../src/shared/codex-runtime-metadata";
 import { resolveCodexRuntime } from "../src/main/codex/codex-runtime";
+import { isMachO } from "./agent-runtime-macos-platform-contract";
 import {
   readCodexAppServerReleaseLock,
   type CodexAppServerReleaseLock,
@@ -127,6 +128,24 @@ export function assertCodexRuntimeMatchesReleaseLock(
   }
 }
 
+export function verifyAgentVendorSignatures(
+  runtimeRoot: string,
+  artifacts: readonly { path: string }[],
+  expectedTeam: string,
+  readTeam: (artifactPath: string) => string = readMacosTeamIdentifier,
+): void {
+  for (const artifact of artifacts) {
+    const artifactPath = join(runtimeRoot, ...artifact.path.split("/"));
+    if (!isMachO(artifactPath)) continue;
+    const team = readTeam(artifactPath);
+    if (team !== expectedTeam) {
+      throw new Error(
+        `Expected ${artifactPath} to retain official OpenAI team ${expectedTeam}; found ${team}`,
+      );
+    }
+  }
+}
+
 export function verifyCodexRuntime(input: {
   requireBrowserRuntime?: boolean;
   resourcesPath: string;
@@ -163,17 +182,7 @@ export function verifyCodexRuntime(input: {
 
   if (input.verifyMacosSignatures) {
     const runtimeRoot = input.resourcesPath;
-    for (const artifact of metadata.artifacts) {
-      if (!artifact.executable) continue;
-      const artifactPath = join(runtimeRoot, ...artifact.path.split("/"));
-      const artifactTeamIdentifier = readMacosTeamIdentifier(artifactPath);
-      if (artifactTeamIdentifier !== lock.upstream.signingTeamId) {
-        throw new Error(
-          `Expected ${artifactPath} to retain official OpenAI team ${lock.upstream.signingTeamId}; ` +
-            `found ${artifactTeamIdentifier}`,
-        );
-      }
-    }
+    verifyAgentVendorSignatures(runtimeRoot, metadata.artifacts, lock.upstream.signingTeamId);
     if (runtime.browserRuntime.status === "available") {
       const { bundle } = runtime.browserRuntime;
       const browserRuntimeTeamIdentifier = bundle.manifest.peerAuthorization.signingTeamId;

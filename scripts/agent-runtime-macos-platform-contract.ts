@@ -124,7 +124,7 @@ export function assertAgentRuntimeMacosPlatformContract(input: {
   }
 }
 
-function isMachO(filePath: string): boolean {
+export function isMachO(filePath: string): boolean {
   const descriptor = openSync(filePath, "r");
   try {
     const header = Buffer.alloc(4);
