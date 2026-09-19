@@ -624,6 +624,23 @@ async function renderNewThreadHome(overrides?: {
           ],
         };
       }
+      if (channel === "codex:composer-plugins:list") {
+        return [
+          {
+            id: "browser@openai-bundled",
+            name: "Browser",
+            displayName: "Browser",
+            description: "Control the in-app browser with ChatGPT",
+            defaultPrompt: null,
+            installed: true,
+            enabled: true,
+            path: "plugin://browser@openai-bundled",
+            iconUrl: null,
+            iconUrlDark: null,
+            brandColor: "#4b8df8",
+          },
+        ];
+      }
       if (channel === "codex:composer-skills:list") return [];
       if (channel === "codex:composer-sites:list") {
         return { available: false, sites: [] };

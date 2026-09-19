@@ -1126,8 +1126,14 @@ describe("workbench session shell / pages-shell-navigation", () => {
     const screen = renderWorkbench({
       sessionsByProject: { alpha: [session] },
     });
-    await settleAsyncRender();
-    await settleAsyncRender();
+    await waitFor(() => {
+      const pageStageProps = (
+        globalThis as {
+          __mockPageStagePropsByPageId?: Record<string, Record<string, unknown>>;
+        }
+      ).__mockPageStagePropsByPageId?.["card-1"];
+      expect(typeof pageStageProps?.__publishPageTitle).toBe("function");
+    });
 
     const pageStageProps = (
       globalThis as {

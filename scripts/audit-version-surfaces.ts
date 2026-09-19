@@ -333,10 +333,10 @@ const VERSION_SURFACES: readonly Surface[] = [
     "reject unsupported clipboard snapshots",
   ],
   [
-    "crates/nodex-core/src/workspace/queued_follow_up.rs:MANIFEST_SCHEMA_VERSION",
+    "crates/nodex-core/src/library/structural_edit/clipboard_file_exports.rs:PAYLOAD_VERSION",
     "durableFormat",
-    "queued follow-up payload manifest",
-    "decode or reject queued payload manifests",
+    "structural clipboard File export payload",
+    "decode legacy payloads and reject unsupported explicit versions",
   ],
   [
     "crates/nodex-core/src/workspace/execution.rs:AUTHORITY_PROVENANCE_VERSION",
@@ -435,6 +435,18 @@ const VERSION_SURFACES: readonly Surface[] = [
     "disable on older runtimes",
   ],
   [
+    "src/main/codex/codex-thread-config.ts:CODEX_DESKTOP_RECOMMENDED_PLUGINS_MINIMUM_VERSION",
+    "runtimeCompatibility",
+    "Codex Desktop recommended-plugins wire format",
+    "omit the feature on app-server versions that predate the wire format",
+  ],
+  [
+    "src/main/codex/codex-thread-config.ts:CODEX_DESKTOP_STRUCTURED_GUARDIAN_V2_MINIMUM_VERSION",
+    "runtimeCompatibility",
+    "Codex Desktop structured guardian-v2 wire format",
+    "fall back to the legacy boolean on older app-server versions",
+  ],
+  [
     "src/main/codex/codex-thread-handoff-journal.ts:CODEX_THREAD_HANDOFF_JOURNAL_SCHEMA_VERSION",
     "durableFormat",
     "Codex handoff journal",
@@ -513,10 +525,10 @@ const VERSION_SURFACES: readonly Surface[] = [
     "normalize the supported prior manifest format",
   ],
   [
-    "src/shared/codex-queued-follow-up-state.ts:CODEX_QUEUED_FOLLOW_UP_PAYLOAD_SCHEMA_VERSION",
-    "durableFormat",
-    "queued follow-up payload manifest",
-    "decode or reject queued payload manifests",
+    "src/shared/codex-peer-protocol.ts:CODEX_PEER_METHOD_VERSIONS",
+    "runtimeCompatibility",
+    "Codex peer method contracts",
+    "reject peer requests whose method version is not accepted",
   ],
   [
     "src/shared/block-documents/additional-document-bearing-blocks.ts:REUSABLE_TEMPLATE_DOCUMENT_SCHEMA_VERSION",
@@ -627,12 +639,6 @@ const VERSION_SURFACES: readonly Surface[] = [
     "decode durable records",
   ],
   [
-    "src/shared/renderer-delivery-transport.ts:RENDERER_DELIVERY_WIRE_VERSION",
-    "runtimeCompatibility",
-    "Renderer delivery transport",
-    "reject unsupported bounded transfer envelopes",
-  ],
-  [
     "src/shared/workbench-panel-layout.ts:WORKBENCH_PANEL_LAYOUT_VERSION",
     "durableFormat",
     "Workbench panel layout",
@@ -664,7 +670,8 @@ const filesUnder = (root: string): string[] => {
   });
 };
 
-const declaration = /^(?:(?:export|pub(?:\(crate\))?) )?const ([A-Z][A-Z0-9_]*VERSION(?:S)?)\b/gmu;
+const declaration =
+  /^(?:(?:export|pub(?:\([^\n)]+\))?) )?const ([A-Z][A-Z0-9_]*VERSION(?:S)?)\b/gmu;
 const observed = new Set<string>();
 for (const file of ["crates", "src", "scripts", "packages"].flatMap(filesUnder)) {
   for (const match of fs.readFileSync(file, "utf8").matchAll(declaration)) {
