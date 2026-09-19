@@ -943,10 +943,7 @@ describe("workbench session shell / pages-shell-navigation", () => {
       ],
       sessionsByProject: { alpha: [session] },
     });
-    await settleAsyncRender();
-    await settleAsyncRender();
-
-    expect(screen.getByRole("tab", { name: "Beta project, Beta Card" }) !== null).toBe(true);
+    expect(await screen.findByRole("tab", { name: "Beta project, Beta Card" })).toBeTruthy();
     expect(
       screen.container.querySelector('[data-app-shell-tab-context-label="card-tab"]')?.textContent,
     ).toBe("Beta");
