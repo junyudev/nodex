@@ -178,16 +178,21 @@ describe("desktop tool runtime vendor signing boundary", () => {
 describe("Codex runtime vendor signing boundary", () => {
   const appPath = "/tmp/Nodex.app";
 
-  test("preserves only the official Codex package executables", () => {
-    for (const relativePath of [
-      "Contents/Resources/bin/codex",
-      "Contents/Resources/bin/codex-code-mode-host",
-      "Contents/Resources/codex-path/rg",
-      "Contents/Resources/codex-resources/zsh/bin/zsh",
-    ]) {
+  test("preserves every locked Codex artifact without exempting adjacent files", () => {
+    const lock = JSON.parse(
+      fs.readFileSync(
+        new URL("../resources/agent-runtime/codex-app-server.lock.json", import.meta.url),
+        "utf8",
+      ),
+    ) as { requiredArtifacts: string[] };
+    for (const artifactPath of lock.requiredArtifacts) {
+      const relativePath = path.join("Contents/Resources", artifactPath);
       expect(isPreservedCodexRuntimeVendorCode(appPath, path.join(appPath, relativePath))).toBe(
         true,
       );
+      expect(
+        isPreservedCodexRuntimeVendorCode(appPath, path.join(appPath, `${relativePath}.backup`)),
+      ).toBe(false);
     }
     expect(
       isPreservedCodexRuntimeVendorCode(

@@ -13,6 +13,7 @@ import {
 import path from "node:path";
 
 import { signAsync } from "@electron/osx-sign";
+import { parseCodexAppServerReleaseLock } from "../src/shared/codex-app-server-release-lock.mjs";
 import { writePackagedBuildProvenance } from "./package-provenance.mjs";
 
 const nativeManifestRelativePath = "Contents/Resources/bin/rust-core-runtime.json";
@@ -26,12 +27,14 @@ const sparkleOwnedRelativePaths = [
   "Contents/Frameworks/Sparkle.framework",
 ];
 const browserRuntimeVendorRelativePath = path.join("Contents", "Resources", "browser-runtime");
-const codexRuntimeVendorRelativePaths = [
-  "Contents/Resources/bin/codex",
-  "Contents/Resources/bin/codex-code-mode-host",
-  "Contents/Resources/codex-path/rg",
-  "Contents/Resources/codex-resources/zsh/bin/zsh",
-];
+const codexRuntimeVendorRelativePaths = parseCodexAppServerReleaseLock(
+  JSON.parse(
+    readFileSync(
+      new URL("../resources/agent-runtime/codex-app-server.lock.json", import.meta.url),
+      "utf8",
+    ),
+  ),
+).requiredArtifacts.map((artifactPath) => path.join("Contents/Resources", artifactPath));
 const sparkleCodeObjectRelativePaths = [
   "Contents/Resources/native/nodex-sparkle.node",
   "Contents/Frameworks/Sparkle.framework/Versions/B/Autoupdate",
