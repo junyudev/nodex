@@ -1,0 +1,30 @@
+src/renderer/lib/page-stage-viewport-session.browser.test.ts
+  s_68bba929cf96a5::t_0d47f1ed4fc811 11-26,77-82,155-160,210,256-259
+docs/development.md
+  s_68bba929cf96a5::t_2b8743a84baa6e 372-374
+  s_68bba929cf96a5::t_af2e38c2a2f79c 362-371
+.github/workflows/_app-tests.yml
+  s_68bba929cf96a5::t_cee69fc78539d2 58
+src/renderer/components/ui/context-menu.browser.test.tsx
+  s_68bba929cf96a5::t_92c5dac16e0f49 52
+src/renderer/components/ui/context-menu.test.tsx
+  s_68bba929cf96a5::t_d2883324adc2c3 1,34,73,81-85
+vitest.browser.config.ts
+  s_68bba929cf96a5::t_524e0e188e9fad 19-21,34,44-47
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "ea6afe42bd0fea510c9f03916bfcefb3257b75e8",
+  "prompts": {},
+  "sessions": {
+    "s_68bba929cf96a5": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a0ba4b-747f-7223-b054-3325c5b045fc",
+        "model": "gpt-6-astra"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    }
+  }
+}
