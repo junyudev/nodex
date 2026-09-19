@@ -1,12 +1,4 @@
 import type { ClientRequestResponsesByMethod } from "@nodex/effect-codex-app-server/rpc";
-import { DEFAULT_CODEX_HOST_ID } from "../../../shared/codex-host";
-import { buildAppHostFilesystemUrl } from "../../../shared/app-protocol";
-import { resolveComposerInventoryIconUrl } from "../../../shared/codex-composer-inventory-icon";
-import {
-  COMPOSER_INSTALL_SUGGESTION_PLUGIN_NAMES,
-  buildComposerPluginInventory,
-  hydrateComposerPluginInventoryIcons,
-} from "../../../shared/codex-composer-plugin-inventory";
 import {
   parseCollaborationModePreset,
   parseModelOption,
@@ -57,37 +49,6 @@ export async function readModelCatalogForHost(
   signal?.addEventListener("abort", close, { once: true });
   try {
     return await readNativeModelCatalog(client);
-  } finally {
-    signal?.removeEventListener("abort", close);
-    close();
-  }
-}
-
-export async function readPluginCatalogForHost(
-  hostId: string,
-  cwds: readonly string[],
-  signal?: AbortSignal,
-): Promise<import("../../../shared/types").CodexComposerPlugin[]> {
-  const client = new RendererNativeAppServer(hostId);
-  const close = () => client[Symbol.dispose]();
-  if (signal?.aborted) close();
-  signal?.addEventListener("abort", close, { once: true });
-  try {
-    const response = await client.request("plugin/installed", {
-      cwds: cwds.length ? [...cwds] : null,
-      installSuggestionPluginNames: [...COMPOSER_INSTALL_SUGGESTION_PLUGIN_NAMES],
-    });
-    const plain =
-      response as import("@nodex/codex-app-server-protocol/v2/PluginInstalledResponse").PluginInstalledResponse;
-    return await hydrateComposerPluginInventoryIcons(
-      plain,
-      buildComposerPluginInventory(plain, {
-        installSuggestionPluginNames: COMPOSER_INSTALL_SUGGESTION_PLUGIN_NAMES,
-      }),
-      hostId === DEFAULT_CODEX_HOST_ID
-        ? resolveComposerInventoryIconUrl
-        : (path) => buildAppHostFilesystemUrl(hostId, path),
-    );
   } finally {
     signal?.removeEventListener("abort", close);
     close();

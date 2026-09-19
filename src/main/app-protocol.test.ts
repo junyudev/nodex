@@ -5,7 +5,7 @@ import { Readable } from "node:stream";
 import { pathToFileURL } from "node:url";
 import type { Protocol, Session } from "electron";
 import { afterEach, describe, expect, test } from "vite-plus/test";
-import { buildAppFilesystemUrl, buildAppHostFilesystemUrl } from "../shared/app-protocol";
+import { buildAppFilesystemUrl, buildAppHostAssetUrl } from "../shared/app-protocol";
 import {
   createAppProtocolHandler,
   createOrdinaryFileResponse,
@@ -412,23 +412,27 @@ describe("app protocol dispatch and origin gate", () => {
   });
 });
 
-test("host-qualified assets retain their host and native path without a local fallback", async () => {
-  const calls: Array<{ hostId: string; path: string }> = [];
-  const remotePath = "C:\\skills\\icons\\a #1.svg";
+test("host assets require an opaque Main-issued capability", async () => {
+  const calls: string[] = [];
   const handler = createAppProtocolHandler({
     rendererRoot: "/renderer",
-    readHostFile: async ({ hostId, path }) => {
-      calls.push({ hostId, path });
-      return hostId === "remote-a" ? new TextEncoder().encode("<svg/>") : null;
+    readHostAsset: async ({ assetId }) => {
+      calls.push(assetId);
+      if (assetId === "authorized-image") {
+        return { bytes: new TextEncoder().encode("<svg/>"), mimeType: "image/svg+xml" };
+      }
+      if (assetId === "authorized-text") {
+        return { bytes: new TextEncoder().encode("secret"), mimeType: "text/plain" };
+      }
+      return null;
     },
   });
-  const response = await handler(new Request(buildAppHostFilesystemUrl("remote-a", remotePath)));
+  const response = await handler(new Request(buildAppHostAssetUrl("authorized-image")));
   expect(await response.text()).toBe("<svg/>");
   expect(response.headers.get("Content-Type")).toBe("image/svg+xml");
-  const missing = await handler(new Request(buildAppHostFilesystemUrl("remote-b", remotePath)));
+  const missing = await handler(new Request(buildAppHostAssetUrl("forged")));
   expect(missing.status).toBe(404);
-  expect(calls).toEqual([
-    { hostId: "remote-a", path: remotePath },
-    { hostId: "remote-b", path: remotePath },
-  ]);
+  const nonImage = await handler(new Request(buildAppHostAssetUrl("authorized-text")));
+  expect(nonImage.status).toBe(404);
+  expect(calls).toEqual(["authorized-image", "forged", "authorized-text"]);
 });

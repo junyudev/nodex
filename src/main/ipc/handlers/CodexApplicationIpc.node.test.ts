@@ -69,6 +69,7 @@ it.effect("registers application channels directly against their owning modules"
       ]),
       listExperimentalFeatures: Effect.succeed([]),
       activatePlugin: () => Effect.void,
+      listPlugins: () => Effect.succeed([]),
       uninstallPlugin: () => Effect.die("unused"),
       listSkills: () => Effect.succeed([]),
       listHooks: () => Effect.succeed({ data: [] }),

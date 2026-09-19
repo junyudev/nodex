@@ -1,4 +1,3 @@
-import { buildAppHostFilesystemUrl } from "../../shared/app-protocol";
 import { resolveComposerInventoryIconUrl } from "../../shared/codex-composer-inventory-icon";
 import * as Context from "effect/Context";
 import * as Effect from "effect/Effect";
@@ -19,6 +18,8 @@ import type {
 import { DEFAULT_CODEX_HOST_ID } from "../../shared/codex-host";
 import type {
   CodexComposerSkillListInput,
+  CodexComposerPlugin,
+  CodexComposerPluginListInput,
   CodexComposerPluginActivateInput,
   CodexComposerSkill,
   CodexModelOption,
@@ -27,6 +28,8 @@ import { CodexGateway } from "../codex-runtime/CodexGateway";
 import type { CodexRuntimeError } from "../codex-runtime/CodexRuntimeError";
 import {
   COMPOSER_INSTALL_SUGGESTION_PLUGIN_NAMES,
+  buildComposerPluginInventory,
+  hydrateComposerPluginInventoryIcons,
   resolveComposerPluginActivation,
 } from "../../shared/codex-composer-plugin-inventory";
 import {
@@ -34,6 +37,7 @@ import {
   hydrateComposerSkillInventoryIcons,
 } from "../codex/composer-skill-inventory";
 import { parseModelOption } from "../../shared/codex-composer-catalog";
+import { AppProtocolRuntime } from "../host-runtime/AppProtocolRuntime";
 
 export class ComposerCatalogInputError extends Schema.TaggedError<ComposerCatalogInputError>()(
   "ComposerCatalogInputError",
@@ -82,6 +86,9 @@ export class ComposerCatalog extends Context.Service<
     readonly activatePlugin: (
       input: CodexComposerPluginActivateInput,
     ) => Effect.Effect<void, ComposerCatalogError>;
+    readonly listPlugins: (
+      input: CodexComposerPluginListInput,
+    ) => Effect.Effect<readonly CodexComposerPlugin[], ComposerCatalogError>;
     readonly uninstallPlugin: (input: {
       readonly plugin: string;
       readonly cwds: readonly string[];
@@ -116,251 +123,270 @@ const asPlainSkillsResponse = (
   response: ClientRequestResponsesByMethod["skills/list"],
 ): SkillsListResponse => response as unknown as SkillsListResponse;
 
-export const live: Layer.Layer<ComposerCatalog, never, CodexGateway> = Layer.effect(
-  ComposerCatalog,
-  Effect.gen(function* () {
-    const gateway = yield* CodexGateway;
-    const iconResolver = (hostId: string) => (path: string) =>
-      hostId === gateway.localHostId
-        ? resolveComposerInventoryIconUrl(path)
-        : buildAppHostFilesystemUrl(hostId, path);
-    const awaitReady = gateway.awaitReady(gateway.localHostId);
+export const live: Layer.Layer<ComposerCatalog, never, CodexGateway | AppProtocolRuntime> =
+  Layer.effect(
+    ComposerCatalog,
+    Effect.gen(function* () {
+      const gateway = yield* CodexGateway;
+      const protocol = yield* AppProtocolRuntime;
+      const iconResolver = (hostId: string) => (path: string) =>
+        hostId === gateway.localHostId
+          ? resolveComposerInventoryIconUrl(path)
+          : protocol.authorizeHostFile({ hostId, path });
+      const awaitReady = gateway.awaitReady(gateway.localHostId);
 
-    const readInstalled = (cwds: readonly string[], hostId = gateway.localHostId) =>
-      gateway.requestOnHost(hostId, "plugin/installed", {
-        cwds: cwds.length > 0 ? [...cwds] : null,
-        installSuggestionPluginNames: [...COMPOSER_INSTALL_SUGGESTION_PLUGIN_NAMES],
-      });
-
-    const activatePlugin: ComposerCatalog["Service"]["activatePlugin"] = (input) =>
-      Effect.gen(function* () {
-        const hostId = input.hostId;
-        yield* gateway.awaitReady(hostId);
-        const id = input.id.trim();
-        if (!id) {
-          return yield* new ComposerCatalogInputError({
-            message: "Composer plugin id is required",
-          });
-        }
-        const cwds = normalizeCwds(input.cwds);
-        const installed = yield* readInstalled(cwds, hostId);
-        const activation = yield* Effect.try({
-          try: () => resolveComposerPluginActivation(asPlainPluginResponse(installed), id),
-          catch: (cause) => new ComposerCatalogInputError({ message: String(cause) }),
+      const readInstalled = (cwds: readonly string[], hostId = gateway.localHostId) =>
+        gateway.requestOnHost(hostId, "plugin/installed", {
+          cwds: cwds.length > 0 ? [...cwds] : null,
+          installSuggestionPluginNames: [...COMPOSER_INSTALL_SUGGESTION_PLUGIN_NAMES],
         });
-        if (activation.kind === "active") return;
-        if (activation.kind === "enable") {
-          yield* gateway.requestOnHost(
-            hostId,
-            "config/batchWrite",
-            activation.params as unknown as ClientRequestParamsByMethod["config/batchWrite"],
-          );
-        } else {
-          yield* gateway.requestOnHost(
-            hostId,
-            "plugin/install",
-            activation.params as unknown as ClientRequestParamsByMethod["plugin/install"],
-          );
-        }
-        yield* gateway.requestOnHost(hostId, "skills/list", { cwds, forceReload: true });
-        const verified = (yield* readInstalled(cwds, hostId)).marketplaces
-          .flatMap((marketplace) => marketplace.plugins)
-          .find((plugin) => plugin.id.trim() === id);
-        if (!verified?.installed || !verified.enabled) {
-          return yield* new ComposerCatalogInputError({
-            message: "Composer plugin activation did not become active",
-          });
-        }
-      });
 
-    const listModels = Effect.fn("ComposerCatalog.listModels")(function* () {
-      yield* awaitReady;
-      const models: CodexModelOption[] = [];
-      const seenCursors = new Set<string>();
-      let cursor: string | null = null;
-
-      for (let page = 0; page < CODEX_MODEL_CATALOG_MAX_PAGES; page += 1) {
-        const response: ClientRequestResponsesByMethod["model/list"] = yield* gateway.requestLocal(
-          "model/list",
-          {
-            cursor,
-            limit: CODEX_MODEL_CATALOG_PAGE_SIZE,
-          },
-        );
-        models.push(
-          ...response.data
-            .map(parseModelOption)
-            .filter((option): option is CodexModelOption => option !== null),
-        );
-
-        const nextCursor: string | null = response.nextCursor ?? null;
-        if (nextCursor === null) return models;
-        if (seenCursors.has(nextCursor)) {
-          return yield* new ComposerCatalogProjectionError({
-            cause: new Error(`Model catalog repeated cursor '${nextCursor}'`),
-          });
-        }
-        seenCursors.add(nextCursor);
-        cursor = nextCursor;
-      }
-
-      return yield* new ComposerCatalogProjectionError({
-        cause: new Error(
-          `Model catalog exceeded ${CODEX_MODEL_CATALOG_MAX_PAGES} pages without completing`,
-        ),
-      });
-    });
-
-    return ComposerCatalog.of({
-      uninstallPlugin: Effect.fn("ComposerCatalog.uninstallPlugin")(
-        function* (input): Effect.fn.Return<PluginRemovalResult, ComposerCatalogError> {
-          yield* awaitReady;
-          if (!(yield* input.isCurrent)) return { status: "cancelled" };
-          const query = input.plugin.trim();
-          if (!query)
-            return yield* new ComposerCatalogInputError({
-              message: "Plugin name or ID is required",
-            });
-          const cwds = normalizeCwds(input.cwds);
-          const inventory = yield* readInstalled(cwds);
-          if ((inventory.marketplaceLoadErrors?.length ?? 0) > 0)
-            return { status: "inventory_unavailable" };
-          const plugins = [
-            ...new Map(
-              inventory.marketplaces.flatMap((marketplace) =>
-                marketplace.plugins
-                  .filter((plugin) => plugin.installed)
-                  .map((plugin) => [plugin.id, plugin] as const),
-              ),
-            ).values(),
-          ];
-          const exact = plugins.find((plugin) => plugin.id === query);
-          const matches = exact
-            ? [exact]
-            : plugins.filter(
-                (plugin) =>
-                  plugin.name.toLowerCase() === query.toLowerCase() ||
-                  plugin.interface?.displayName?.toLowerCase() === query.toLowerCase(),
-              );
-          if (!(yield* input.isCurrent)) return { status: "cancelled" };
-          if (matches.length === 0) return { status: "not_installed" };
-          if (matches.length > 1)
-            return {
-              status: "selection_required",
-              candidates: matches.map((plugin) => ({
-                pluginId: plugin.id,
-                name: plugin.interface?.displayName ?? plugin.name,
-              })),
-            };
-          const pluginId = matches[0]!.id;
-          // These plugins are acquired by the Desktop Host and reconciled on launch.
-          if (managedDesktopPlugins.has(pluginId)) return { status: "protected" };
-          yield* gateway.requestLocal("plugin/uninstall", { pluginId });
-          const refreshed = yield* readInstalled(cwds);
-          if ((refreshed.marketplaceLoadErrors?.length ?? 0) > 0)
-            return { status: "outcome_unavailable" };
-          const remains = refreshed.marketplaces.some((marketplace) =>
-            marketplace.plugins.some((plugin) => plugin.id === pluginId && plugin.installed),
-          );
-          return { status: remains ? "still_installed" : "uninstalled", pluginId };
-        },
-      ),
-      listModels: listModels(),
-      listExperimentalFeatures: Effect.gen(function* () {
-        yield* awaitReady;
-        const features: ExperimentalFeature[] = [];
-        const seenCursors = new Set<string>();
-        let cursor: string | null = null;
-        do {
-          const response: ClientRequestResponsesByMethod["experimentalFeature/list"] =
-            yield* gateway.requestLocal("experimentalFeature/list", { cursor, limit: 100 });
-          features.push(...response.data.map((feature) => feature as ExperimentalFeature));
-          const nextCursor: string | null = response.nextCursor ?? null;
-          if (nextCursor === null || seenCursors.has(nextCursor)) break;
-          seenCursors.add(nextCursor);
-          cursor = nextCursor;
-        } while (true);
-        return features;
-      }),
-      activatePlugin,
-      listSkills: (input) =>
+      const activatePlugin: ComposerCatalog["Service"]["activatePlugin"] = (input) =>
         Effect.gen(function* () {
           const hostId = input.hostId;
           yield* gateway.awaitReady(hostId);
-          const normalized = normalizeCwds(input.cwds);
-          const response = yield* gateway.requestOnHost(hostId, "skills/list", {
-            ...(input.forceReload === undefined ? {} : { forceReload: input.forceReload }),
-            ...(normalized.length > 0 ? { cwds: normalized } : {}),
+          const id = input.id.trim();
+          if (!id) {
+            return yield* new ComposerCatalogInputError({
+              message: "Composer plugin id is required",
+            });
+          }
+          const cwds = normalizeCwds(input.cwds);
+          const installed = yield* readInstalled(cwds, hostId);
+          const activation = yield* Effect.try({
+            try: () => resolveComposerPluginActivation(asPlainPluginResponse(installed), id),
+            catch: (cause) => new ComposerCatalogInputError({ message: String(cause) }),
           });
-          const plain = asPlainSkillsResponse(response);
-          return yield* Effect.tryPromise({
-            try: () =>
-              hydrateComposerSkillInventoryIcons(
-                plain,
-                buildComposerSkillInventory(plain),
-                iconResolver(hostId),
-              ),
-            catch: (cause) => new ComposerCatalogProjectionError({ cause }),
-          });
-        }),
-      listHooks: (input) =>
-        Effect.gen(function* () {
-          if (input.hostId !== DEFAULT_CODEX_HOST_ID) {
+          if (activation.kind === "active") return;
+          if (activation.kind === "enable") {
+            yield* gateway.requestOnHost(
+              hostId,
+              "config/batchWrite",
+              activation.params as unknown as ClientRequestParamsByMethod["config/batchWrite"],
+            );
+          } else {
+            yield* gateway.requestOnHost(
+              hostId,
+              "plugin/install",
+              activation.params as unknown as ClientRequestParamsByMethod["plugin/install"],
+            );
+          }
+          yield* gateway.requestOnHost(hostId, "skills/list", { cwds, forceReload: true });
+          const verified = (yield* readInstalled(cwds, hostId)).marketplaces
+            .flatMap((marketplace) => marketplace.plugins)
+            .find((plugin) => plugin.id.trim() === id);
+          if (!verified?.installed || !verified.enabled) {
             return yield* new ComposerCatalogInputError({
-              message: `Codex host is unavailable: ${input.hostId}`,
+              message: "Composer plugin activation did not become active",
             });
           }
-          yield* awaitReady;
-          return (yield* gateway.requestLocal("hooks/list", {
-            cwds: input.cwds,
-          })) as unknown as CodexHooksListResponse;
-        }),
-      updateHooksState: (input) =>
-        Effect.gen(function* () {
-          if (input.hostId !== DEFAULT_CODEX_HOST_ID) {
-            return yield* new ComposerCatalogInputError({
-              message: `Codex host is unavailable: ${input.hostId}`,
+        });
+
+      const listModels = Effect.fn("ComposerCatalog.listModels")(function* () {
+        yield* awaitReady;
+        const models: CodexModelOption[] = [];
+        const seenCursors = new Set<string>();
+        let cursor: string | null = null;
+
+        for (let page = 0; page < CODEX_MODEL_CATALOG_MAX_PAGES; page += 1) {
+          const response: ClientRequestResponsesByMethod["model/list"] =
+            yield* gateway.requestLocal("model/list", {
+              cursor,
+              limit: CODEX_MODEL_CATALOG_PAGE_SIZE,
             });
-          }
-          if (input.patches.length === 0) {
-            return yield* new ComposerCatalogInputError({
-              message: "At least one hook state patch is required",
-            });
-          }
-          const seenKeys = new Set<string>();
-          for (const patch of input.patches) {
-            if (!patch.key.trim()) {
-              return yield* new ComposerCatalogInputError({ message: "Hook key is required" });
-            }
-            if (seenKeys.has(patch.key)) {
-              return yield* new ComposerCatalogInputError({
-                message: `Duplicate hook state patch: ${patch.key}`,
-              });
-            }
-            if (patch.trustedHash !== undefined && !patch.trustedHash.trim()) {
-              return yield* new ComposerCatalogInputError({
-                message: "Hook trusted hash is required",
-              });
-            }
-            seenKeys.add(patch.key);
-          }
-          yield* awaitReady;
-          const value = Object.fromEntries(
-            input.patches.map((patch) => [
-              patch.key,
-              {
-                ...(patch.enabled === undefined ? {} : { enabled: patch.enabled }),
-                ...(patch.trustedHash === undefined ? {} : { trusted_hash: patch.trustedHash }),
-              },
-            ]),
+          models.push(
+            ...response.data
+              .map(parseModelOption)
+              .filter((option): option is CodexModelOption => option !== null),
           );
-          yield* gateway.requestLocal("config/batchWrite", {
-            edits: [{ keyPath: "hooks.state", value, mergeStrategy: "upsert" }],
-            filePath: null,
-            expectedVersion: null,
-            reloadUserConfig: true,
-          });
+
+          const nextCursor: string | null = response.nextCursor ?? null;
+          if (nextCursor === null) return models;
+          if (seenCursors.has(nextCursor)) {
+            return yield* new ComposerCatalogProjectionError({
+              cause: new Error(`Model catalog repeated cursor '${nextCursor}'`),
+            });
+          }
+          seenCursors.add(nextCursor);
+          cursor = nextCursor;
+        }
+
+        return yield* new ComposerCatalogProjectionError({
+          cause: new Error(
+            `Model catalog exceeded ${CODEX_MODEL_CATALOG_MAX_PAGES} pages without completing`,
+          ),
+        });
+      });
+
+      return ComposerCatalog.of({
+        uninstallPlugin: Effect.fn("ComposerCatalog.uninstallPlugin")(
+          function* (input): Effect.fn.Return<PluginRemovalResult, ComposerCatalogError> {
+            yield* awaitReady;
+            if (!(yield* input.isCurrent)) return { status: "cancelled" };
+            const query = input.plugin.trim();
+            if (!query)
+              return yield* new ComposerCatalogInputError({
+                message: "Plugin name or ID is required",
+              });
+            const cwds = normalizeCwds(input.cwds);
+            const inventory = yield* readInstalled(cwds);
+            if ((inventory.marketplaceLoadErrors?.length ?? 0) > 0)
+              return { status: "inventory_unavailable" };
+            const plugins = [
+              ...new Map(
+                inventory.marketplaces.flatMap((marketplace) =>
+                  marketplace.plugins
+                    .filter((plugin) => plugin.installed)
+                    .map((plugin) => [plugin.id, plugin] as const),
+                ),
+              ).values(),
+            ];
+            const exact = plugins.find((plugin) => plugin.id === query);
+            const matches = exact
+              ? [exact]
+              : plugins.filter(
+                  (plugin) =>
+                    plugin.name.toLowerCase() === query.toLowerCase() ||
+                    plugin.interface?.displayName?.toLowerCase() === query.toLowerCase(),
+                );
+            if (!(yield* input.isCurrent)) return { status: "cancelled" };
+            if (matches.length === 0) return { status: "not_installed" };
+            if (matches.length > 1)
+              return {
+                status: "selection_required",
+                candidates: matches.map((plugin) => ({
+                  pluginId: plugin.id,
+                  name: plugin.interface?.displayName ?? plugin.name,
+                })),
+              };
+            const pluginId = matches[0]!.id;
+            // These plugins are acquired by the Desktop Host and reconciled on launch.
+            if (managedDesktopPlugins.has(pluginId)) return { status: "protected" };
+            yield* gateway.requestLocal("plugin/uninstall", { pluginId });
+            const refreshed = yield* readInstalled(cwds);
+            if ((refreshed.marketplaceLoadErrors?.length ?? 0) > 0)
+              return { status: "outcome_unavailable" };
+            const remains = refreshed.marketplaces.some((marketplace) =>
+              marketplace.plugins.some((plugin) => plugin.id === pluginId && plugin.installed),
+            );
+            return { status: remains ? "still_installed" : "uninstalled", pluginId };
+          },
+        ),
+        listModels: listModels(),
+        listPlugins: (input) =>
+          Effect.gen(function* () {
+            const hostId = input.hostId;
+            yield* gateway.awaitReady(hostId);
+            const cwds = normalizeCwds(input.cwds);
+            const response = yield* readInstalled(cwds, hostId);
+            const plain = asPlainPluginResponse(response);
+            return yield* Effect.tryPromise({
+              try: () =>
+                hydrateComposerPluginInventoryIcons(
+                  plain,
+                  buildComposerPluginInventory(plain, {
+                    installSuggestionPluginNames: COMPOSER_INSTALL_SUGGESTION_PLUGIN_NAMES,
+                  }),
+                  iconResolver(hostId),
+                ),
+              catch: (cause) => new ComposerCatalogProjectionError({ cause }),
+            });
+          }),
+        listExperimentalFeatures: Effect.gen(function* () {
+          yield* awaitReady;
+          const features: ExperimentalFeature[] = [];
+          const seenCursors = new Set<string>();
+          let cursor: string | null = null;
+          do {
+            const response: ClientRequestResponsesByMethod["experimentalFeature/list"] =
+              yield* gateway.requestLocal("experimentalFeature/list", { cursor, limit: 100 });
+            features.push(...response.data.map((feature) => feature as ExperimentalFeature));
+            const nextCursor: string | null = response.nextCursor ?? null;
+            if (nextCursor === null || seenCursors.has(nextCursor)) break;
+            seenCursors.add(nextCursor);
+            cursor = nextCursor;
+          } while (true);
+          return features;
         }),
-    });
-  }),
-);
+        activatePlugin,
+        listSkills: (input) =>
+          Effect.gen(function* () {
+            const hostId = input.hostId;
+            yield* gateway.awaitReady(hostId);
+            const normalized = normalizeCwds(input.cwds);
+            const response = yield* gateway.requestOnHost(hostId, "skills/list", {
+              ...(input.forceReload === undefined ? {} : { forceReload: input.forceReload }),
+              ...(normalized.length > 0 ? { cwds: normalized } : {}),
+            });
+            const plain = asPlainSkillsResponse(response);
+            return yield* Effect.tryPromise({
+              try: () =>
+                hydrateComposerSkillInventoryIcons(
+                  plain,
+                  buildComposerSkillInventory(plain),
+                  iconResolver(hostId),
+                ),
+              catch: (cause) => new ComposerCatalogProjectionError({ cause }),
+            });
+          }),
+        listHooks: (input) =>
+          Effect.gen(function* () {
+            if (input.hostId !== DEFAULT_CODEX_HOST_ID) {
+              return yield* new ComposerCatalogInputError({
+                message: `Codex host is unavailable: ${input.hostId}`,
+              });
+            }
+            yield* awaitReady;
+            return (yield* gateway.requestLocal("hooks/list", {
+              cwds: input.cwds,
+            })) as unknown as CodexHooksListResponse;
+          }),
+        updateHooksState: (input) =>
+          Effect.gen(function* () {
+            if (input.hostId !== DEFAULT_CODEX_HOST_ID) {
+              return yield* new ComposerCatalogInputError({
+                message: `Codex host is unavailable: ${input.hostId}`,
+              });
+            }
+            if (input.patches.length === 0) {
+              return yield* new ComposerCatalogInputError({
+                message: "At least one hook state patch is required",
+              });
+            }
+            const seenKeys = new Set<string>();
+            for (const patch of input.patches) {
+              if (!patch.key.trim()) {
+                return yield* new ComposerCatalogInputError({ message: "Hook key is required" });
+              }
+              if (seenKeys.has(patch.key)) {
+                return yield* new ComposerCatalogInputError({
+                  message: `Duplicate hook state patch: ${patch.key}`,
+                });
+              }
+              if (patch.trustedHash !== undefined && !patch.trustedHash.trim()) {
+                return yield* new ComposerCatalogInputError({
+                  message: "Hook trusted hash is required",
+                });
+              }
+              seenKeys.add(patch.key);
+            }
+            yield* awaitReady;
+            const value = Object.fromEntries(
+              input.patches.map((patch) => [
+                patch.key,
+                {
+                  ...(patch.enabled === undefined ? {} : { enabled: patch.enabled }),
+                  ...(patch.trustedHash === undefined ? {} : { trusted_hash: patch.trustedHash }),
+                },
+              ]),
+            );
+            yield* gateway.requestLocal("config/batchWrite", {
+              edits: [{ keyPath: "hooks.state", value, mergeStrategy: "upsert" }],
+              filePath: null,
+              expectedVersion: null,
+              reloadUserConfig: true,
+            });
+          }),
+      });
+    }),
+  );

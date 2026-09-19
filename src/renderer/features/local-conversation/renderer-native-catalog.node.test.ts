@@ -1,7 +1,7 @@
 import { beforeEach, expect, it, vi } from "vitest";
 const bridge = vi.hoisted(() => ({ invoke: vi.fn() }));
 vi.mock("./local-conversation-deps", () => ({ runConversationOperation: bridge.invoke }));
-import { readModelCatalogForHost, readPluginCatalogForHost } from "./renderer-native-catalog";
+import { readModelCatalogForHost } from "./renderer-native-catalog";
 
 beforeEach(() => {
   bridge.invoke.mockReset();
@@ -38,42 +38,6 @@ it("loads native model pages with independent caller identities on the selected 
   expect(new Set(callers).size).toBe(2);
   for (const [, input] of bridge.invoke.mock.calls)
     expect(input.request.id).toBe(input.caller.requestId);
-});
-
-it("projects installed plugin metadata in the renderer after a native host request", async () => {
-  bridge.invoke.mockResolvedValue({
-    type: "result",
-    result: {
-      marketplaces: [
-        {
-          plugins: [
-            {
-              id: "browser@bundled",
-              name: "browser",
-              installed: true,
-              enabled: true,
-              interface: {
-                displayName: "Browser",
-                shortDescription: "Browse pages",
-                brandColor: "#123456",
-              },
-            },
-          ],
-        },
-      ],
-    },
-  });
-  const plugins = await readPluginCatalogForHost("remote", ["/repo"]);
-  expect(plugins[0]).toMatchObject({
-    id: "browser@bundled",
-    name: "Browser",
-    description: "Browse pages",
-    brandColor: "#123456",
-  });
-  expect(bridge.invoke.mock.calls[0]?.[1]).toMatchObject({
-    hostId: "remote",
-    request: { method: "plugin/installed", params: { cwds: ["/repo"] } },
-  });
 });
 
 it("cancels the pending raw catalog caller when its query is aborted", async () => {

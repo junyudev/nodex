@@ -78,6 +78,7 @@ import { live as electronCodexAttestationLive } from "../platform/electron/Elect
 import { resolveCodexProcessEnvironment } from "../platform/node/CodexProcessEnvironment";
 import { nodexCliShellLaunchArgs, prepareNodexCliShell } from "../platform/node/NodexCliShell";
 import { ProjectWorkspace } from "../project-application/ProjectWorkspace";
+import { AppProtocolRuntime } from "../host-runtime/AppProtocolRuntime";
 import { CoreModules } from "../core-runtime/CoreModules";
 import { MainConfig } from "./MainConfig";
 import { MainApplicationError } from "./MainExit";
@@ -335,6 +336,7 @@ export const live: Layer.Layer<
   | CodexServerRequestResponses,
   MainApplicationError,
   | MainConfig
+  | AppProtocolRuntime
   | CodexThreadHostResolver
   | ProjectWorkspace
   | CoreModules

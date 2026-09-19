@@ -116,6 +116,7 @@ type QueryEndpointPolicy =
   | "codex:composer-appshot:target"
   | "codex:composer-chatgpt-conversations:list"
   | "codex:composer-sites:list"
+  | "codex:composer-plugins:list"
   | "codex:composer-skills:list"
   | "codex:connection:status"
   | "codex:conversation-image-asset:resolve"
