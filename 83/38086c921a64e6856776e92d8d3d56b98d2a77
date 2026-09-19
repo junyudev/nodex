@@ -1,0 +1,23 @@
+package.json
+  s_68bba929cf96a5::t_f6c3bcf64168bf 289
+pnpm-lock.yaml
+  s_68bba929cf96a5::t_d16fab2ffd4b7c 111,423-424,5458-5459,12897,14330
+pnpm-workspace.yaml
+  s_68bba929cf96a5::t_509d4e6340b38f 22
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "8338086c921a64e6856776e92d8d3d56b98d2a77",
+  "prompts": {},
+  "sessions": {
+    "s_68bba929cf96a5": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a0ba4b-747f-7223-b054-3325c5b045fc",
+        "model": "gpt-6-astra"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    }
+  }
+}
