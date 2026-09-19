@@ -310,7 +310,7 @@
     "oxc-parser": "0.146.0",
     "parse5": "8.0.1",
     "playwright": "1.61.1",
-    "prosemirror-highlight": "0.15.2",
+    "prosemirror-highlight": "0.15.3",
     "prosemirror-view": "1.42.2",
     "react": "19.2.7",
     "react-day-picker": "^10.0.1",
