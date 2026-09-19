@@ -1,7 +1,4 @@
-import {
-  readModelCatalogForHost,
-  readPluginCatalogForHost,
-} from "../features/local-conversation/renderer-native-catalog";
+import { readModelCatalogForHost } from "../features/local-conversation/renderer-native-catalog";
 import { DEFAULT_CODEX_HOST_ID } from "../../shared/codex-host";
 import { infiniteQueryOptions, queryOptions } from "@tanstack/react-query";
 import { readDatabaseViewWindow } from "./api";
@@ -11,6 +8,7 @@ import { preferNewestProjectSessionSummaryWindow } from "./project-session-summa
 import type {
   CodexAutomationRunsInboxResponse,
   CodexComposerChatGptConversationListResult,
+  CodexComposerPlugin,
   CodexComposerSiteListResult,
   CodexComposerSkill,
   CodexScheduledAutomationListResponse,
@@ -218,7 +216,10 @@ export function codexComposerPluginsListQueryOptions(
 
   return queryOptions({
     queryKey: queryKeys.codexComposerPlugins.list(normalizedCwds, hostId),
-    queryFn: ({ signal }) => readPluginCatalogForHost(hostId, normalizedCwds, signal),
+    queryFn: () =>
+      invoke("codex:composer-plugins:list", { hostId, cwds: normalizedCwds }) as Promise<
+        CodexComposerPlugin[]
+      >,
     retry: false,
     staleTime: 60_000,
     refetchOnWindowFocus: true,

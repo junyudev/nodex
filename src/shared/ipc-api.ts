@@ -318,7 +318,9 @@ import type {
   CodexComposerAppshotTargetResult,
   CodexComposerChatGptConversationListInput,
   CodexComposerChatGptConversationListResult,
+  CodexComposerPlugin,
   CodexComposerPluginActivateInput,
+  CodexComposerPluginListInput,
   CodexComposerSiteListResult,
   CodexComposerSkill,
   CodexComposerSkillListInput,
@@ -2019,6 +2021,10 @@ export interface IpcApi {
   "codex:composer-plugins:activate": {
     args: [input: CodexComposerPluginActivateInput];
     result: void;
+  };
+  "codex:composer-plugins:list": {
+    args: [input: CodexComposerPluginListInput];
+    result: CodexComposerPlugin[];
   };
   "codex:composer-skills:list": {
     args: [input: CodexComposerSkillListInput];

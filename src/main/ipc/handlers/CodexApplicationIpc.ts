@@ -415,6 +415,14 @@ export const live: Layer.Layer<
         ),
     );
     yield* ipc.handleQuery(
+      "codex:composer-plugins:list",
+      (_event, input: CodexComposerPluginListInput) =>
+        validate("composer-plugins-list", () => ({
+          hostId: input.hostId,
+          cwds: parseComposerInventoryCwds(input),
+        })).pipe(Effect.flatMap(composer.listPlugins)),
+    );
+    yield* ipc.handleQuery(
       "codex:composer-skills:list",
       (_event, input: CodexComposerSkillListInput) =>
         validate("composer-skills-list", () => {

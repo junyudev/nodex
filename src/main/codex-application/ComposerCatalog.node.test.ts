@@ -1,4 +1,4 @@
-import { buildAppHostFilesystemUrl } from "../../shared/app-protocol";
+import { buildAppHostAssetUrl } from "../../shared/app-protocol";
 import * as Context from "effect/Context";
 import * as Effect from "effect/Effect";
 import * as Exit from "effect/Exit";
@@ -7,6 +7,7 @@ import * as Scope from "effect/Scope";
 import * as Stream from "effect/Stream";
 import { assert, it } from "@effect/vitest";
 import { CodexGateway } from "../codex-runtime/CodexGateway";
+import { AppProtocolRuntime } from "../host-runtime/AppProtocolRuntime";
 import {
   CODEX_MODEL_CATALOG_PAGE_SIZE,
   ComposerCatalog,
@@ -37,6 +38,22 @@ const makeGateway = (
     restartHost: unsupported,
   });
 };
+
+const testProtocol = AppProtocolRuntime.of({
+  installed: true,
+  authorizeHostFile: () => buildAppHostAssetUrl("authorized-host-image"),
+  registerHostFileReader: () => Effect.void,
+});
+
+const catalogLayer = (gateway: CodexGateway["Service"]) =>
+  composerCatalogLive.pipe(
+    Layer.provide(
+      Layer.merge(
+        Layer.succeed(CodexGateway, gateway),
+        Layer.succeed(AppProtocolRuntime, testProtocol),
+      ),
+    ),
+  );
 
 it.effect("projects models, plugins, and skills through one composer interface", () =>
   Effect.gen(function* () {
@@ -170,10 +187,7 @@ it.effect("projects models, plugins, and skills through one composer interface",
     }) as CodexGateway["Service"]["requestLocal"];
     const gateway = makeGateway(requestLocal);
     const scope = yield* Scope.make();
-    const context = yield* Layer.buildWithScope(
-      composerCatalogLive.pipe(Layer.provide(Layer.succeed(CodexGateway, gateway))),
-      scope,
-    );
+    const context = yield* Layer.buildWithScope(catalogLayer(gateway), scope);
     const catalog = Context.get(context, ComposerCatalog);
 
     const models = yield* catalog.listModels;
@@ -204,6 +218,8 @@ it.effect("projects models, plugins, and skills through one composer interface",
     assert.strictEqual(experimentalRequests.length, 2);
     assert.strictEqual((experimentalRequests[0] as { readonly limit?: number }).limit, 100);
     assert.isFalse(Object.hasOwn(experimentalRequests[0] as object, "threadId"));
+    const plugins = yield* catalog.listPlugins({ hostId: "local", cwds: ["/repo"] });
+    assert.strictEqual(plugins[0]?.id, "browser@openai-bundled");
     const skills = yield* catalog.listSkills({ hostId: "local", cwds: ["/repo"] });
     assert.strictEqual(skills[0]?.path, "/skills/pdf/SKILL.md");
     yield* catalog.listSkills({ hostId: "local", cwds: [] });
@@ -281,12 +297,7 @@ it.effect(
         });
       }) as CodexGateway["Service"]["requestLocal"];
       const scope = yield* Scope.make();
-      const context = yield* Layer.buildWithScope(
-        composerCatalogLive.pipe(
-          Layer.provide(Layer.succeed(CodexGateway, makeGateway(requestLocal))),
-        ),
-        scope,
-      );
+      const context = yield* Layer.buildWithScope(catalogLayer(makeGateway(requestLocal)), scope);
       const result = yield* Context.get(context, ComposerCatalog).listModels.pipe(Effect.result);
 
       assert.strictEqual(result._tag, "Failure");
@@ -325,9 +336,7 @@ it.effect("uninstalls only an unambiguous user plugin and verifies the installed
           }
           throw new Error(`Unexpected method ${method}`);
         })) as CodexGateway["Service"]["requestLocal"];
-      const context = yield* Layer.build(
-        composerCatalogLive.pipe(Layer.provide(Layer.succeed(CodexGateway, makeGateway(request)))),
-      );
+      const context = yield* Layer.build(catalogLayer(makeGateway(request)));
       const catalog = Context.get(context, ComposerCatalog);
       const input = { plugin: "Same", cwds: [], isCurrent: Effect.succeed(true) };
       assert.strictEqual((yield* catalog.uninstallPlugin(input)).status, "selection_required");
@@ -391,10 +400,7 @@ it.effect("routes skill inventory and its icon paths to the selected host", () =
       }) as CodexGateway["Service"]["requestOnHost"],
     });
     const scope = yield* Scope.make();
-    const context = yield* Layer.buildWithScope(
-      composerCatalogLive.pipe(Layer.provide(Layer.succeed(CodexGateway, remoteGateway))),
-      scope,
-    );
+    const context = yield* Layer.buildWithScope(catalogLayer(remoteGateway), scope);
     const catalog = Context.get(context, ComposerCatalog);
     const skills = yield* catalog.listSkills({
       hostId: "remote-a",
@@ -409,7 +415,7 @@ it.effect("routes skill inventory and its icon paths to the selected host", () =
       },
     ]);
     assert.strictEqual(skills[0]?.path, remotePath);
-    assert.strictEqual(skills[0]?.iconUrl, buildAppHostFilesystemUrl("remote-a", iconPath));
+    assert.strictEqual(skills[0]?.iconUrl, buildAppHostAssetUrl("authorized-host-image"));
     yield* Scope.close(scope, Exit.void);
   }),
 );
