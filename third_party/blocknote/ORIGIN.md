@@ -5,8 +5,8 @@ Nodex vendors a narrow BlockNote subset so editor fixes can be maintained direct
 ## Upstream
 
 - Repository: https://github.com/TypeCellOS/BlockNote
-- Tag: `v0.54.0`
-- Commit: `ea5d80358f179d1683abcd2e0e3e9d547bf52eef`
+- Tag: `v0.54.2`
+- Commit: `fa7f7b84ac4ab52a802aa0b2f8f922933b8358e4`
 - Imported packages:
   - `packages/core` -> `third_party/blocknote/packages/core`
   - `packages/react` -> `third_party/blocknote/packages/react`
@@ -33,6 +33,7 @@ The `@blocknote/xl-*` packages are intentionally excluded because upstream marks
 - The renderer manual chunk resolver groups `third_party/blocknote/packages/` with the BlockNote/Tiptap vendor chunk.
 - The standard Nodex suites run vendored tests only when they are selected explicitly; use the repository's `vp test run --config ...` commands below when maintaining BlockNote.
 - BlockNote 0.54's optional Yjs v14 versioning surface is compiled and tested but is not wired into Nodex's Yjs v13 editor runtime or durable Core history authority.
+- Schema extension isolates shared specs while preserving the schema's Block child acceptance and layout rules. Transaction change readers bound ordinary snapshots to the changed range, including property-only and mark-only edits; pre-UniqueID snapshots retain their read-only transient identity fallback. Table handles resolve their current Block identity after intervening edits and ignore HTML tables owned by other Block types.
 - `@y/prosemirror@2.0.0-6` is patched only to publish four conversion helpers already present in its source and declaration files; BlockNote 0.54 imports those helpers from the package root for diff preview.
 
 ## Nodex Semantic Patch Ledger
@@ -64,7 +65,7 @@ Treat BlockNote upgrades as a source rebase, not as an npm version bump. The goa
 Use a local clone instead of reading upstream files from `raw.githubusercontent.com`:
 
 ```bash
-OLD_TAG=v0.54.0
+OLD_TAG=v0.54.2
 NEW_TAG=vX.Y.Z
 blocknote_upgrade_dir=$(mktemp -d /tmp/nodex-blocknote-upgrade.XXXXXX)
 
@@ -141,6 +142,8 @@ Finish with the standard validation commands:
 ```bash
 vp install
 vp test run --config vitest.renderer.config.ts \
+  third_party/blocknote/packages/core/src/api/getBlocksChangedByTransaction.test.ts \
+  third_party/blocknote/packages/core/src/schema/schema.test.ts \
   third_party/blocknote/packages/core/src/extensions/Versioning/Versioning.test.ts \
   third_party/blocknote/packages/core/src/extensions/Versioning/inMemoryVersioning.test.ts \
   third_party/blocknote/packages/core/src/yjs/extensions/Versioning.test.ts \
