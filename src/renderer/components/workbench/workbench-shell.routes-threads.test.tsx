@@ -356,21 +356,32 @@ describe("workbench session shell / routes-threads", () => {
       fireEvent.click(notesRow);
       await Promise.resolve();
     });
-    await settleAsyncRender();
-
-    expect(screen.getAllByRole("tab")).toHaveLength(2);
+    await waitFor(() => {
+      const props = (
+        globalThis as {
+          __lastWorkbenchDatabaseViewSurfaceProps?: Record<string, unknown>;
+        }
+      ).__lastWorkbenchDatabaseViewSurfaceProps;
+      expect(props?.target).toEqual({
+        kind: "database-default",
+        databaseId: "database:test:notes",
+      });
+      expect(screen.getAllByRole("tab")).toHaveLength(2);
+    });
 
     await openStandaloneTasksDatabase(screen);
 
-    expect(screen.getAllByRole("tab")).toHaveLength(2);
-    const props = (
-      globalThis as {
-        __lastWorkbenchDatabaseViewSurfaceProps?: Record<string, unknown>;
-      }
-    ).__lastWorkbenchDatabaseViewSurfaceProps;
-    expect(props?.target).toEqual({
-      kind: "database-default",
-      databaseId: "database:test:standalone",
+    await waitFor(() => {
+      expect(screen.getAllByRole("tab")).toHaveLength(2);
+      const props = (
+        globalThis as {
+          __lastWorkbenchDatabaseViewSurfaceProps?: Record<string, unknown>;
+        }
+      ).__lastWorkbenchDatabaseViewSurfaceProps;
+      expect(props?.target).toEqual({
+        kind: "database-default",
+        databaseId: "database:test:standalone",
+      });
     });
   });
 
