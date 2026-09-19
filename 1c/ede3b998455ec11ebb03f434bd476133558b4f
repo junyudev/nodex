@@ -1,0 +1,22 @@
+src/renderer/components/workbench/workbench-shell.routes-threads.test.tsx
+  s_d4ab4c7bf5efe1::t_e37e24c8a2e503 56-65,67-69
+  s_d4ab4c7bf5efe1::t_259d8d0d994399 356-362,368-373,380-382
+  s_d4ab4c7bf5efe1::t_2f857b634859ed 55,268,299,318,355,365,376
+  s_d4ab4c7bf5efe1::t_1fa8266a0c4e8c 364
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "1cede3b998455ec11ebb03f434bd476133558b4f",
+  "prompts": {},
+  "sessions": {
+    "s_d4ab4c7bf5efe1": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a0b8c8-33e0-78f2-8327-d2c8f5715807",
+        "model": "gpt-6-astra"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    }
+  }
+}
