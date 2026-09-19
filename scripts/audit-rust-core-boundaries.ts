@@ -197,6 +197,10 @@ const expectedRoutes = new Set([
   // separately bounded, authenticated streams so they never enter JSON commands.
   "/core/v1/files/blobs/prepare",
   "/core/v1/files/blobs/{file_id}",
+  // Recovery capture/export are Document-owned bounded transports. Large
+  // immutable package bytes stay off the generic JSON Module apply/read path.
+  "/core/v1/modules/document/recovery/capture",
+  "/core/v1/modules/document/recovery/export",
   "/core/v1/requests/cancel",
   "/core/v1/modules/query/read",
   "/core/v1/threads/{thread_id}/blobs/{content_hash}",
