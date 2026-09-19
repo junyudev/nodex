@@ -1,12 +1,47 @@
 import { createHash } from "node:crypto";
 import path from "node:path";
+import { mkdtempSync, writeFileSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
 import { expect, test } from "vite-plus/test";
 import {
   canonicalBundledAgentRuntimeMetadataJson,
   type BundledAgentRuntimeMetadata,
 } from "../src/shared/codex-runtime-metadata";
 import { readCodexAppServerReleaseLock } from "./agent-runtime-release-lock";
-import { assertCodexRuntimeMatchesReleaseLock } from "./verify-codex-runtime";
+import {
+  assertCodexRuntimeMatchesReleaseLock,
+  verifyAgentVendorSignatures,
+} from "./verify-codex-runtime";
+
+test("verifies Mach-O vendor signatures regardless of file mode, not executable data", () => {
+  const root = mkdtempSync(path.join(tmpdir(), "nodex-vendor-signatures-"));
+  try {
+    writeFileSync(path.join(root, "runtime.json"), "{}", { mode: 0o755 });
+    writeFileSync(path.join(root, "voice-host"), Buffer.from([0xcf, 0xfa, 0xed, 0xfe]), {
+      mode: 0o755,
+    });
+    writeFileSync(path.join(root, "library.dylib"), Buffer.from([0xca, 0xfe, 0xba, 0xbe]), {
+      mode: 0o644,
+    });
+    const artifacts = ["runtime.json", "voice-host", "library.dylib"].map((path) => ({ path }));
+    const checked: string[] = [];
+    verifyAgentVendorSignatures(root, artifacts, "vendor", (file) => {
+      checked.push(path.basename(file));
+      return "vendor";
+    });
+    expect(checked).toEqual(["voice-host", "library.dylib"]);
+    expect(() =>
+      verifyAgentVendorSignatures(root, artifacts, "vendor", () => "wrong-team"),
+    ).toThrow("found wrong-team");
+    expect(() =>
+      verifyAgentVendorSignatures(root, artifacts, "vendor", () => {
+        throw new Error("unsigned code");
+      }),
+    ).toThrow("unsigned code");
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
 
 const sha256 = (value: string): string => createHash("sha256").update(value).digest("hex");
 
