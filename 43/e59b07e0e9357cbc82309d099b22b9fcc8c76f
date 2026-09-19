@@ -1,0 +1,19 @@
+src/renderer/components/workbench/workbench-shell.pages-shell-navigation.test.tsx
+  s_d4ab4c7bf5efe1::t_c1effb260e79ba 946
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "43e59b07e0e9357cbc82309d099b22b9fcc8c76f",
+  "prompts": {},
+  "sessions": {
+    "s_d4ab4c7bf5efe1": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a0b8c8-33e0-78f2-8327-d2c8f5715807",
+        "model": "gpt-6-astra"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    }
+  }
+}
