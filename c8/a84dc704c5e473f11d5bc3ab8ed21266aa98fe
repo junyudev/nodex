@@ -1,0 +1,30 @@
+README.md
+  s_5808f0d29557e2::t_953873bdde2cc9 11
+  s_5808f0d29557e2::t_b965eb1f4c5e1a 15
+  s_5808f0d29557e2::t_f1c1cade6bd635 19-23,26-28,31,35,48-49,51,53,57-60,62,64-66,68-69,72,74
+  h_6a6ac0c07fcd37 17,25,33-34,44,54-56,71,76,82-83,85,87-89,91
+  s_5808f0d29557e2::t_42f88f986d2da0 13-14
+  s_5808f0d29557e2::t_7b8bdc8ce40189 47
+  h_6a6ac0c07fcd37 16,37,39,41,43,45,93
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "c8a84dc704c5e473f11d5bc3ab8ed21266aa98fe",
+  "prompts": {},
+  "humans": {
+    "h_6a6ac0c07fcd37": {
+      "author": "Jun Yu <junyu.dev@gmail.com>"
+    }
+  },
+  "sessions": {
+    "s_5808f0d29557e2": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a0ae8c-a700-7571-a2bd-e305e9c63891",
+        "model": "gpt-5.6-sol"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    }
+  }
+}
