@@ -1,6 +1,13 @@
 import { lstat, mkdir, mkdtemp, readdir, realpath, rm } from "node:fs/promises";
 import path from "node:path";
 import { spawn } from "node:child_process";
+import { fileURLToPath } from "node:url";
+
+export function verifyReadBudgetTestResult(output: string): void {
+  if (!/^test result: ok\. 1 passed; 0 failed; 0 ignored;/mu.test(output)) {
+    throw new Error("Read-budget gate must execute exactly one passing, non-ignored test");
+  }
+}
 
 const READ_BUDGET_TESTS = [
   "read_budget_gate_large_fixture",
@@ -92,12 +99,18 @@ async function main(): Promise<void> {
           ...process.env,
           NODEX_READ_BUDGET_GATE_PROFILE: target,
         },
-        stdio: "inherit",
+        stdio: ["inherit", "pipe", "inherit"],
       },
     );
+    let outputTail = "";
+    child.stdout.setEncoding("utf8");
+    child.stdout.on("data", (chunk: string) => {
+      process.stdout.write(chunk);
+      outputTail = (outputTail + chunk).slice(-8_192);
+    });
     const exitCode = await new Promise<number>((resolve, reject) => {
       child.once("error", reject);
-      child.once("exit", (code, signal) => {
+      child.once("close", (code, signal) => {
         if (signal) {
           reject(new Error(`Read-budget gate terminated by ${signal}`));
           return;
@@ -105,13 +118,19 @@ async function main(): Promise<void> {
         resolve(code ?? 1);
       });
     });
-    if (exitCode !== 0) process.exitCode = exitCode;
+    if (exitCode !== 0) {
+      process.exitCode = exitCode;
+      return;
+    }
+    verifyReadBudgetTestResult(outputTail);
   } finally {
     if (temporary) await rm(target, { recursive: true, force: true });
   }
 }
 
-void main().catch((error: unknown) => {
-  console.error(error instanceof Error ? error.message : error);
-  process.exitCode = 1;
-});
+if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
+  void main().catch((error: unknown) => {
+    console.error(error instanceof Error ? error.message : error);
+    process.exitCode = 1;
+  });
+}

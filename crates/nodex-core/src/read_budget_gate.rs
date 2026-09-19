@@ -18,6 +18,7 @@ use rusqlite::{Connection, params};
 use serde_json::{Value, json};
 
 use crate::database::DatabaseModule;
+use crate::document::PAGE_SCHEMA_VERSION;
 use crate::domain::fractional_rank::evenly_spaced_rank;
 use crate::infrastructure::sqlite::{QueryCancellation, with_immediate_transaction};
 use crate::infrastructure::store::SqliteStoreKernel;
@@ -229,14 +230,15 @@ fn seed_database_rows(kernel: &SqliteStoreKernel) {
                         "INSERT INTO documents(\
                            id, library_id, generation, head_seq, schema_key, schema_version, \
                            state_vector, state_hash, readiness, authority, created_at, updated_at\
-                         ) VALUES (?1, ?2, 1, 0, 'nodex.page', 3, X'', '', 'pending_genesis', \
+                         ) VALUES (?1, ?2, 1, 0, 'nodex.page', ?4, X'', '', 'pending_genesis', \
                            'legacy_shadow', ?3, ?3)",
                     )?;
                     for index in 0..DATABASE_ROW_COUNT {
                         statement.execute(params![
                             format!("document:scale:{index:05}"),
                             LIBRARY_ID,
-                            NOW
+                            NOW,
+                            PAGE_SCHEMA_VERSION
                         ])?;
                     }
                 }
@@ -311,7 +313,7 @@ fn seed_database_rows(kernel: &SqliteStoreKernel) {
                            document_id, generation, projected_seq, schema_version, title, \
                            title_rich_json, title_rich_hash, nfm, plain_text, preview, \
                            block_tree_json, references_json, asset_refs_json, updated_at\
-                         ) VALUES (?1, 1, 0, 1, ?2, '[]', ?3, ?4, ?4, ?5, '[]', '[]', '[]', ?6)",
+                         ) VALUES (?1, 1, 0, ?7, ?2, '[]', ?3, ?4, ?4, ?5, '[]', '[]', '[]', ?6)",
                     )?;
                     for index in 0..DATABASE_ROW_COUNT {
                         let title = format!("Scale row {index:05}");
@@ -325,7 +327,8 @@ fn seed_database_rows(kernel: &SqliteStoreKernel) {
                             TITLE_RICH_HASH,
                             body,
                             format!("摘要🚀 {index:05}"),
-                            NOW
+                            NOW,
+                            PAGE_SCHEMA_VERSION
                         ])?;
                     }
                 }
@@ -415,7 +418,7 @@ fn seed_database_rows(kernel: &SqliteStoreKernel) {
                            database_values_json, intrinsic_properties_json, \
                            property_revisions_json, projection_version, created_at, updated_at\
                          ) VALUES (?1, ?2, 'active', 'data_source', ?3, NULL, 1, 1, ?4, 1, 0, \
-                           3, 'legacy_shadow', ?5, ?6, ?7, ?8, ?9, ?10, ?11, 10, 1, ?12, '{}', \
+                           ?14, 'legacy_shadow', ?5, ?6, ?7, ?8, ?9, ?10, ?11, 10, 1, ?12, '{}', \
                            '{\"status\":1,\"task_parent\":1}', 1, ?13, ?13)",
                     )?;
                     for index in 0..DATABASE_ROW_COUNT {
@@ -438,7 +441,8 @@ fn seed_database_rows(kernel: &SqliteStoreKernel) {
                             format!("Scale row {index:05}"),
                             format!("摘要🚀 {index:05}"),
                             format!("{{\"status\":\"{status}\"}}"),
-                            NOW
+                            NOW,
+                            PAGE_SCHEMA_VERSION
                         ])?;
                     }
                 }
@@ -766,6 +770,11 @@ fn read_budget_gate_large_fixture() {
         .expect("serialize Database window")
         .len();
     assert!(database_bytes < MAX_COLLECTION_WINDOW_JSON_BYTES);
+    assert_eq!(
+        database_window.rows.items.len(),
+        200,
+        "full Database window"
+    );
     let encoded_database = serde_json::to_string(&first_database).expect("encode Database window");
     assert!(!encoded_database.contains("BODY-SENTINEL"));
     assert!(
@@ -885,7 +894,7 @@ fn read_budget_gate_large_fixture() {
             .len()
             < MAX_COLLECTION_WINDOW_JSON_BYTES
     );
-    let continued = database
+    let stale_cursor = database
         .read(
             &context(),
             ModuleReadRequest {
@@ -902,7 +911,66 @@ fn read_budget_gate_large_fixture() {
                 },
             },
         )
-        .expect("cursor keeps working after a sorting mutation");
+        .expect_err("sorting mutations invalidate physical order cursors");
+    assert_eq!(
+        stale_cursor.code,
+        nodex_core_contracts::CoreErrorCode::InvalidInput
+    );
+
+    let refreshed = database
+        .read(
+            &context(),
+            ModuleReadRequest {
+                contract_version: DATABASE_CONTRACT_VERSION,
+                read: DatabaseRead::ViewWindow {
+                    target: DatabaseViewReadTarget::View {
+                        view_id: VIEW_ID.to_owned(),
+                    },
+                    window: CollectionWindowRequest {
+                        after: None,
+                        first: Some(200),
+                    },
+                    group_scope: None,
+                },
+            },
+        )
+        .expect("refresh Database window after sorting mutation");
+    let nodex_core_contracts::database::DatabaseReadValue::ViewWindow {
+        value: refreshed_window,
+    } = refreshed.value
+    else {
+        panic!("Database returned the wrong refreshed window");
+    };
+    assert_eq!(refreshed_window.rows.items.len(), 200);
+    let first_database_ids = refreshed_window
+        .rows
+        .items
+        .iter()
+        .map(|row| row.page_id.clone())
+        .collect::<HashSet<_>>();
+    let continued = database
+        .read(
+            &context(),
+            ModuleReadRequest {
+                contract_version: DATABASE_CONTRACT_VERSION,
+                read: DatabaseRead::ViewWindow {
+                    target: DatabaseViewReadTarget::View {
+                        view_id: VIEW_ID.to_owned(),
+                    },
+                    window: CollectionWindowRequest {
+                        after: Some(
+                            refreshed_window
+                                .rows
+                                .next_cursor
+                                .expect("refreshed Database continuation"),
+                        ),
+                        first: Some(200),
+                    },
+                    group_scope: None,
+                },
+            },
+        )
+        .expect("continue the refreshed Database query");
     let nodex_core_contracts::database::DatabaseReadValue::ViewWindow {
         value: continued_window,
     } = continued.value

@@ -74,7 +74,7 @@
     "core:test:nightly": "vp run core:test:canvas-performance && vp run core:test:sidebar-section-read-budget && vp run core:test:read-budget && vp run core:test:relation-scale && vp run core:test:manual-order-scale",
     "core:test:scale": "vp run core:test:nightly",
     "core:test:canvas-performance": "cargo test -p nodex-core --all-features --lib document::module::tests::canvas_incremental_hot_path_stays_bounded_at_twenty_thousand_elements -- --exact --include-ignored --test-threads=1",
-    "core:test:read-budget": "cargo test -p nodex-core --all-features --lib read_budget_gate::tests::read_budget_gate_large_fixture -- --exact --include-ignored --test-threads=1",
+    "core:test:read-budget": "tsx scripts/core-read-budget-gate.ts --temporary --test read_budget_gate_large_fixture --include-ignored",
     "core:test:sidebar-section-read-budget": "tsx scripts/core-read-budget-gate.ts --temporary --test sidebar_section_large_window_budget --include-ignored",
     "core:test:relation-scale": "cargo test -p nodex-core --all-features --lib database::relation_projection::tests::million_edge_relation_projection_stays_bounded_at_sqlite_boundary -- --exact --include-ignored --test-threads=1",
     "core:test:manual-order-scale": "cargo test -p nodex-core --all-features --lib database::tests::maximum_manual_position_commands_keep_writer_work_bounded -- --exact --include-ignored --test-threads=1",
