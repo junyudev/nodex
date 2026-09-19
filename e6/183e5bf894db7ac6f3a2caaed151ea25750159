@@ -1,0 +1,25 @@
+scripts/verify-codex-runtime.test.ts
+  s_d4ab4c7bf5efe1::t_701ed1ff87452b 3-4,15-19,26-27,32,41-44
+  s_d4ab4c7bf5efe1::t_d5331be7352c38 11-14,20-25,28-31,33-40
+scripts/agent-runtime-macos-platform-contract.ts
+  s_d4ab4c7bf5efe1::t_5f6097e57cbf44 127
+scripts/verify-codex-runtime.ts
+  s_d4ab4c7bf5efe1::t_5f6097e57cbf44 12,131-141,145-148,185
+  s_d4ab4c7bf5efe1::t_d5331be7352c38 142-144
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "e6183e5bf894db7ac6f3a2caaed151ea25750159",
+  "prompts": {},
+  "sessions": {
+    "s_d4ab4c7bf5efe1": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a0b8c8-33e0-78f2-8327-d2c8f5715807",
+        "model": "gpt-6-astra"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    }
+  }
+}
