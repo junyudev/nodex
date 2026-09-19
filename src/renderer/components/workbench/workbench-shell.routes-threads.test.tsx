@@ -53,14 +53,14 @@ const standaloneNotesDatabase: LibraryDatabaseNavigationNode = {
 };
 
 const openStandaloneTasksDatabase = async (screen: ReturnType<typeof renderWorkbench>) => {
-  await settleAsyncRender();
-  await settleAsyncRender();
-  const row = (await screen.findAllByText("Tasks"))
-    .map((element) => element.closest('[role="listitem"]'))
-    .find((element): element is HTMLElement => element instanceof HTMLElement);
-  if (!(row instanceof HTMLElement)) {
-    throw new Error("Expected the standalone Tasks row");
-  }
+  const row = await waitFor(() => {
+    const candidate = screen
+      .queryAllByText("Tasks")
+      .map((element) => element.closest('[role="listitem"]'))
+      .find((element): element is HTMLElement => element instanceof HTMLElement);
+    if (!candidate) throw new Error("Expected the standalone Tasks row");
+    return candidate;
+  });
   await act(async () => {
     fireEvent.click(row);
     await Promise.resolve();
