@@ -1,0 +1,19 @@
+src/main/core-client/CodexSubagentParityPerformance.stress.test.ts
+  s_d4ab4c7bf5efe1::t_f5e45f88a357a6 63-64
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "e07f0e6b67d809547c5dcc0ccccc2c3031ca8ca9",
+  "prompts": {},
+  "sessions": {
+    "s_d4ab4c7bf5efe1": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a0b8c8-33e0-78f2-8327-d2c8f5715807",
+        "model": "gpt-6-astra"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    }
+  }
+}
