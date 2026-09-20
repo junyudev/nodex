@@ -107,6 +107,11 @@ resolve to regular files inside the canonical repository root. The release
 workspace is virtual and uses literal repository-relative member paths without
 exclusions or globs; unsupported workspace shapes fail closed. Unrelated path
 dependencies are not release-version owners.
+Declared path dependencies (including dev, build, target-specific and inherited
+workspace dependencies) must resolve to explicit members. Implicit Cargo
+workspace enrollment and external path declarations fail closed. Lock entries
+are owned by name, version and absent source; registry or Git entries with the
+same name and version are preserved when the local entry exists.
 
 The metadata-only path allowlist is:
 
