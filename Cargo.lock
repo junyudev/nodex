@@ -1033,7 +1033,7 @@ dependencies = [
 
 [[package]]
 name = "nodex-browser-profile-helper"
-version = "0.2.2"
+version = "0.3.0"
 dependencies = [
  "aes",
  "cbc",
@@ -1049,7 +1049,7 @@ dependencies = [
 
 [[package]]
 name = "nodex-cli"
-version = "0.2.2"
+version = "0.3.0"
 dependencies = [
  "chrono",
  "chrono-tz",
@@ -1075,7 +1075,7 @@ dependencies = [
 
 [[package]]
 name = "nodex-core"
-version = "0.2.2"
+version = "0.3.0"
 dependencies = [
  "base64",
  "chrono",
@@ -1107,7 +1107,7 @@ dependencies = [
 
 [[package]]
 name = "nodex-core-contracts"
-version = "0.2.2"
+version = "0.3.0"
 dependencies = [
  "hex",
  "serde",
@@ -1118,7 +1118,7 @@ dependencies = [
 
 [[package]]
 name = "nodex-core-protocol"
-version = "0.2.2"
+version = "0.3.0"
 dependencies = [
  "getrandom",
  "hex",
@@ -1134,7 +1134,7 @@ dependencies = [
 
 [[package]]
 name = "nodex-core-server"
-version = "0.2.2"
+version = "0.3.0"
 dependencies = [
  "async-stream",
  "axum",
@@ -1160,7 +1160,7 @@ dependencies = [
 
 [[package]]
 name = "nodex-page-search-kernel"
-version = "0.2.2"
+version = "0.3.0"
 dependencies = [
  "serde",
  "serde-wasm-bindgen",
@@ -1172,14 +1172,14 @@ dependencies = [
 
 [[package]]
 name = "nodex-sqlite-query"
-version = "0.2.2"
+version = "0.3.0"
 dependencies = [
  "rusqlite",
 ]
 
 [[package]]
 name = "nodex-store-format"
-version = "0.2.2"
+version = "0.3.0"
 
 [[package]]
 name = "nu-ansi-term"

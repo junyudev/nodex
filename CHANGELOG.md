@@ -6,6 +6,14 @@ All notable changes to this project will be documented in this file.
 
 ### Added
 
+### Changed
+
+### Fixed
+
+## [0.3.0] - 2026-09-20
+
+### Added
+
 - Command Palette can now search local workspace files and open previews, with directory completion shared across file-search surfaces.
 
 - Local agent tasks can discover Projects, create, fork, and move Sessions, send follow-ups, manage scheduled tasks, wait for tasks to complete or need attention, read and edit authorized content, open files at a line and targeted Review sources, navigate Sessions, use bundled document dependencies, arrange tabs, and organize the Sidebar through native application tools that respect the Turn's permissions, including verified Full access for tasks without a Project. Workbench context follows each accepted message or steer, reports missing context without blocking submission, and preserves exact long-path file targets through preview and pinning.
