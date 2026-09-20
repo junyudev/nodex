@@ -375,7 +375,7 @@ export class RecoveryStagingStore {
     )
       throw new RecoveryBundleValidationError(
         "source_unverified",
-        "The source Library or access context cannot be verified. Export this local package before continuing.",
+        "The source Library or access context cannot be verified. Export this local package to keep a backup, or remove it if you no longer need these edits.",
       );
     const source = this.config.source(row);
     const bundle = await encodeRecoveryBundle(this.config.input(source), summary.sourceRevision);
@@ -471,6 +471,28 @@ export class RecoveryStagingStore {
     }
     await completed;
     return matches;
+  }
+
+  /** Remove only the retained revision the user reviewed, never a newer local capture. */
+  async remove(entry: RecoveryStagingSummary): Promise<void> {
+    const database = await this.config.database();
+    const transaction = database.transaction(
+      [this.config.storeName, RECOVERY_DIRECTORY_STORE],
+      "readwrite",
+      { durability: "strict" },
+    );
+    const completed = recoveryTransaction(transaction);
+    const directory = transaction.objectStore(RECOVERY_DIRECTORY_STORE);
+    const current = (await recoveryRequest(directory.get(entry.sourceKey))) as
+      | RecoveryStagingSummary
+      | undefined;
+    if (!current || current.sourceRevision !== entry.sourceRevision) {
+      await completed;
+      throw new Error("The local draft changed. Review it again before removing it.");
+    }
+    transaction.objectStore(this.config.storeName).delete(current.rawKey);
+    directory.delete(entry.sourceKey);
+    await completed;
   }
 
   async recordFailure(

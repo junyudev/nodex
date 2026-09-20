@@ -134,3 +134,36 @@ test("resolve operations have one durable winner and late acknowledgements prese
   await first.acknowledgeOperation("resolve:draft", a);
   expect(await second.readOperation("resolve:draft")).toEqual(next);
 });
+
+test("explicit local removal clears only the reviewed package and rejects stale revisions", async () => {
+  const store = new IndexedDbDocumentLocalCheckpointStore(new IDBFactory());
+  await store.quarantine(snapshot("first"), { maxStateBytes: 200_000 });
+  const [entry] = (await store.staging.listSummaries(scope, null, null)).entries;
+  await store.quarantine(
+    { ...snapshot("second"), recoveryId: "draft:two" },
+    { maxStateBytes: 200_000 },
+  );
+  await expect(store.staging.remove({ ...entry, sourceRevision: "stale" })).rejects.toThrow(
+    "Review it again",
+  );
+  expect(await store.staging.countSummaries(scope, null)).toBe(2);
+  await store.staging.remove(entry);
+  expect(await store.staging.countSummaries(scope, null)).toBe(1);
+  await expect(store.staging.export(entry)).rejects.toThrow("changed");
+  const [remaining] = (await store.staging.listSummaries(scope, null, null)).entries;
+  expect(remaining.sourceKey).not.toBe(entry.sourceKey);
+  expect((await store.staging.export(remaining)).length).toBeGreaterThan(0);
+});
+
+test("a newer capture cannot be removed by an earlier review", async () => {
+  const factory = new IDBFactory();
+  const first = new IndexedDbDocumentLocalCheckpointStore(factory);
+  const second = new IndexedDbDocumentLocalCheckpointStore(factory);
+  await first.quarantine(snapshot("reviewed"), { maxStateBytes: 200_000 });
+  const [reviewed] = (await first.staging.listSummaries(scope, null, null)).entries;
+  await second.quarantine(snapshot("new edits"), { maxStateBytes: 200_000 });
+  await expect(first.staging.remove(reviewed)).rejects.toThrow("Review it again");
+  const [current] = (await first.staging.listSummaries(scope, null, null)).entries;
+  expect(current.sourceRevision).not.toBe(reviewed.sourceRevision);
+  expect(await second.nextRecovery("document:one")).not.toBeNull();
+});

@@ -1,3 +1,4 @@
+import { IndexedDbDocumentLocalCheckpointStore } from "@/lib/document-local-checkpoint";
 import { IDBFactory, IDBKeyRange } from "fake-indexeddb";
 import { act, fireEvent, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, expect, test, vi } from "vite-plus/test";
@@ -289,4 +290,54 @@ test("preview failure leaves the received package's export action available", as
   });
   expect(module.getSnapshot().pendingCount).toBe(1);
   expect(port.apply).not.toHaveBeenCalled();
+});
+
+test("unverified local drafts can be kept or permanently removed while Core is offline", async () => {
+  const store = new IndexedDbDocumentLocalCheckpointStore(indexedDB);
+  await store.quarantine(
+    {
+      documentId: "document:offline",
+      storeEpoch: "epoch:old",
+      generation: 1,
+      headSeq: 1,
+      state: new Uint8Array([0, 0]),
+      updatedAt: "2026-09-04T00:00:00.000Z",
+      recoveryId: "draft:offline",
+      schema: { ownerType: "page", schemaKey: "nodex.page", schemaVersion: 1 },
+      error: { code: "unknown", message: "uncertain", retryable: false, resetRequired: false },
+    },
+    { maxStateBytes: 200_000 },
+  );
+  const port: DocumentRecoveryPort = {
+    subscribe: () => () => {},
+    read: async () => {
+      throw new Error("Core offline");
+    },
+    apply: vi.fn(async () => {
+      throw new Error("No content mutations allowed");
+    }),
+    export: async () => ({ ok: true, status: "saved" }),
+  };
+  const module = new DocumentRecovery(scope, null, port);
+  vi.spyOn(module, "connect").mockReturnValue(() => {});
+  await module.refresh();
+  const view = renderWithMaitai(<RecoveryReview module={module} onClose={() => {}} />);
+  const click = async (name: string) => {
+    const button = await view.findByRole("button", { name });
+    await act(async () => {
+      fireEvent.click(button);
+      await Promise.resolve();
+    });
+  };
+  await click("Remove local draft");
+  expect(module.getSnapshot().stagedCount).toBe(1);
+  await click("Keep");
+  expect(module.getSnapshot().stagedCount).toBe(1);
+  await click("Remove local draft");
+  await click("Remove permanently");
+  await view.findByText("No unsaved drafts need attention.");
+  expect(module.getSnapshot().stagedCount).toBe(0);
+  expect(await store.nextRecovery("document:offline")).toBeNull();
+  expect(port.apply).not.toHaveBeenCalled();
+  view.unmount();
 });

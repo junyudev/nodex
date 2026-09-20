@@ -122,6 +122,7 @@ export class DocumentRecovery {
   private includeResolved = false;
   private connections = 0;
   private disconnect: (() => void) | null = null;
+  private localChanges: BroadcastChannel | null = null;
   private readonly checkpoint =
     typeof indexedDB === "undefined" ? null : new IndexedDbDocumentLocalCheckpointStore(indexedDB);
   private readonly canvas: IndexedDbCanvasSceneOutbox | null;
@@ -156,6 +157,14 @@ export class DocumentRecovery {
       if (!this.documentId || !documentId || documentId === this.documentId) void this.refresh();
     });
     const releaseIssues = contentEditIssues.register(createDocumentRecoveryIssueSource(this));
+    if (typeof BroadcastChannel !== "undefined") {
+      this.localChanges = new BroadcastChannel("nodex:recovery-local-changes");
+      this.localChanges.addEventListener("message", () => {
+        void this.loadLocal(false).catch((error: unknown) =>
+          this.publish({ localError: message(error) }),
+        );
+      });
+    }
     const refresh = () => {
       void this.refresh();
     };
@@ -163,6 +172,8 @@ export class DocumentRecovery {
     window.addEventListener("online", refresh);
     refresh();
     this.disconnect = () => {
+      this.localChanges?.close();
+      this.localChanges = null;
       releaseIssues();
       unsubscribe();
       window.removeEventListener("focus", refresh);
@@ -437,6 +448,17 @@ export class DocumentRecovery {
       await this.loadLocal(false);
     }
     await this.readReceived(false);
+  };
+  removeLocal = async (entry: RecoveryStagingSummary): Promise<void> => {
+    if (!this.state.staged.some((value) => value.sourceKey === entry.sourceKey))
+      throw new Error("Refresh the local recovery list before removing this draft");
+    if (this.state.sending.includes(entry.sourceKey))
+      throw new Error("Wait for this draft to finish sending before removing it");
+    const store = this.store(entry.sourceKind);
+    if (!store) throw new Error("Local recovery storage is unavailable");
+    await store.remove(entry);
+    this.localChanges?.postMessage(null);
+    await this.loadLocal(false);
   };
   exportLocal = async (sourceKey: string): Promise<void> => {
     const entry = this.state.staged.find((value) => value.sourceKey === sourceKey);
