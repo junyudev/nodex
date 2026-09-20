@@ -101,7 +101,9 @@ Stable source metadata requires the same `x.y.z` value in:
 Release validation derives local package names from the explicit
 `workspace.members` directories and each member's `Cargo.toml`, using the same
 Git revision as the release metadata. Members inherit the workspace version;
-each must have exactly one source-free lock entry at that version. The release
+each must have exactly one source-free lock entry at that version. Same-name
+dependencies at other versions remain untouched. Worktree source files must
+resolve to regular files inside the canonical repository root. The release
 workspace is virtual and uses literal repository-relative member paths without
 exclusions or globs; unsupported workspace shapes fail closed. Unrelated path
 dependencies are not release-version owners.

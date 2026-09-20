@@ -1,5 +1,5 @@
 import { execFileSync } from "node:child_process";
-import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { parse as parseToml } from "smol-toml";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -158,6 +158,51 @@ test("preparation preserves unrelated path dependency versions", () => {
   });
   const parsed = parseToml(readFileSync(lock, "utf8"));
   expect(parsed.package).toContainEqual({ name: "external-path-dependency", version: "8.0.0" });
+});
+
+test("preparation preserves a different-version path dependency with the same name", () => {
+  const lock = join(fixture, "Cargo.lock");
+  writeFileSync(
+    lock,
+    `${readFileSync(lock, "utf8")}\n[[package]]\nname = "new-workspace-member"\nversion = "8.0.0"\n`,
+  );
+  git("add", ".");
+  git("commit", "-m", "test: add same-name path dependency");
+  prepareReleaseSource({
+    cwd: fixture,
+    date: "2026-09-20",
+    validateCargoMetadata: false,
+    version: "0.2.0",
+  });
+  const parsed = parseToml(readFileSync(lock, "utf8"));
+  expect(parsed.package).toContainEqual({ name: "new-workspace-member", version: "8.0.0" });
+  expect(parsed.package).toContainEqual({ name: "new-workspace-member", version: "0.2.0" });
+});
+
+test("worktree inspection rejects member manifests resolving outside the repository", () => {
+  const outside = mkdtempSync(join(tmpdir(), "nodex-outside-manifest-"));
+  try {
+    const manifest = join(fixture, "crates/new-workspace-member/Cargo.toml");
+    const external = join(outside, "Cargo.toml");
+    writeFileSync(external, readFileSync(manifest, "utf8"));
+    rmSync(manifest);
+    symlinkSync(external, manifest);
+    expect(() => inspectReleaseSource(fixture)).toThrow("regular file within the worktree");
+  } finally {
+    rmSync(outside, { recursive: true, force: true });
+  }
+});
+
+test("worktree inspection accepts contained manifest links and rejects non-regular targets", () => {
+  const manifest = join(fixture, "crates/new-workspace-member/Cargo.toml");
+  const contained = join(fixture, "member.toml");
+  writeFileSync(contained, readFileSync(manifest, "utf8"));
+  rmSync(manifest);
+  symlinkSync(contained, manifest);
+  expect(inspectReleaseSource(fixture).packageVersion).toBe("0.1.10");
+  rmSync(manifest);
+  mkdirSync(manifest);
+  expect(() => inspectReleaseSource(fixture)).toThrow("regular file within the worktree");
 });
 
 test("checkWorktreeReleaseTransition accepts exactly the metadata-only release diff", () => {
