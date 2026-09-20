@@ -98,7 +98,15 @@ Stable source metadata requires the same `x.y.z` value in:
 - prepared Electron metadata, app `Info.plist`, native runtime manifest, and
   the packaged `nodex --version` result
 
-The only valid release commit diff is exactly:
+Release validation derives local package names from the explicit
+`workspace.members` directories and each member's `Cargo.toml`, using the same
+Git revision as the release metadata. Members inherit the workspace version;
+each must have exactly one source-free lock entry at that version. The release
+workspace is virtual and uses literal repository-relative member paths without
+exclusions or globs; unsupported workspace shapes fail closed. Unrelated path
+dependencies are not release-version owners.
+
+The metadata-only path allowlist is:
 
 ```text
 CHANGELOG.md
