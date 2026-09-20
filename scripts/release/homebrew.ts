@@ -33,14 +33,12 @@ cask "nodex" do
   on_arm do
     sha256 "${arm64}"
 
-    url "${releaseBase}/Nodex-latest-arm64.dmg",
-        verified: "github.com/${owner}/${repo}/"
+    url "${releaseBase}/Nodex-latest-arm64.dmg"
   end
   on_intel do
     sha256 "${x64}"
 
-    url "${releaseBase}/Nodex-latest-x64.dmg",
-        verified: "github.com/${owner}/${repo}/"
+    url "${releaseBase}/Nodex-latest-x64.dmg"
   end
 
   name "Nodex"

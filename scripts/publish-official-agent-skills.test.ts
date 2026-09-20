@@ -46,10 +46,15 @@ const makeRoot = (): string => {
   return root;
 };
 
-const writeArtifact = (root: string, version: string, marker = "default"): string => {
+const writeArtifact = (
+  root: string,
+  version: string,
+  marker = "default",
+  inventory: readonly string[] = skillFiles,
+): string => {
   const artifact = path.join(root, `artifact-${version}-${marker}`);
   const files = new Map(
-    skillFiles.map((relativePath) => [
+    inventory.map((relativePath) => [
       relativePath,
       Buffer.from(`${relativePath}: ${marker}\n`, "utf8"),
     ]),
@@ -156,6 +161,41 @@ afterEach(() => {
 });
 
 describe("official Agent Skills publisher", () => {
+  test("upgrades a manifest-verified historical inventory without relaxing new candidates", () => {
+    const root = makeRoot();
+    const remote = makeRemote(root);
+    const old = writeArtifact(
+      root,
+      "1.0.0",
+      "old",
+      skillFiles.filter((file) => file !== "references/queries-and-configuration.md"),
+    );
+    const seed = path.join(root, "seed");
+    fs.cpSync(old, seed, { recursive: true });
+    git(seed, ["add", "."]);
+    git(seed, ["commit", "-m", "release: historical inventory"]);
+    git(seed, ["tag", "-a", "v1.0.0", "-m", "historical"]);
+    git(seed, ["push", "--atomic", "origin", "main", "v1.0.0"]);
+    expect(() => inspectOfficialAgentSkillsArtifact(old)).toThrow("missing required files");
+    const next = writeArtifact(root, "1.1.0");
+    expect(publish(next, remote, "1.1.0").status).toBe("published");
+    expect(publish(next, remote, "1.1.0").status).toBe("unchanged");
+  });
+
+  test("rejects tampering with a historical inventory before replacing it", () => {
+    const root = makeRoot();
+    const remote = makeRemote(root);
+    const old = writeArtifact(root, "1.0.0", "old", ["SKILL.md"]);
+    const seed = path.join(root, "seed");
+    fs.cpSync(old, seed, { recursive: true });
+    fs.appendFileSync(path.join(seed, "skills/nodex/SKILL.md"), "tampered");
+    git(seed, ["add", "."]);
+    git(seed, ["commit", "-m", "corrupt historical artifact"]);
+    git(seed, ["push", "origin", "main"]);
+    expect(() => publish(writeArtifact(root, "1.1.0"), remote, "1.1.0")).toThrow(
+      "does not match its release manifest",
+    );
+  });
   test("uses GitHub-scoped password authentication without embedding the token", () => {
     const secret = "github_pat_secret-sentinel";
     const authorization = githubGitAuthorizationConfiguration(secret);

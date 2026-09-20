@@ -37,3 +37,8 @@ export interface InspectedOfficialAgentSkillsArtifact {
 export function inspectOfficialAgentSkillsArtifact(
   artifactRoot: string,
 ): InspectedOfficialAgentSkillsArtifact;
+
+export function inspectHistoricalOfficialAgentSkillsArtifact(
+  artifactRoot: string,
+  skillFiles: readonly string[],
+): InspectedOfficialAgentSkillsArtifact;

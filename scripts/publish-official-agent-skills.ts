@@ -14,7 +14,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 
 import {
-  OFFICIAL_AGENT_SKILLS_ARTIFACT_FILES,
+  inspectHistoricalOfficialAgentSkillsArtifact,
   inspectOfficialAgentSkillsArtifact,
   type InspectedOfficialAgentSkillsArtifact,
 } from "./official-agent-skills-artifact.mjs";
@@ -207,8 +207,20 @@ const materializeManagedRef = (
       return { mode: match[1]!, path: match[2]! };
     });
   const paths = entries.map((entry) => entry.path).sort();
-  const expected = [...OFFICIAL_AGENT_SKILLS_ARTIFACT_FILES].sort();
+  const skillFiles = paths
+    .filter((entry) => entry.startsWith("skills/nodex/"))
+    .map((entry) => entry.slice("skills/nodex/".length));
+  const expected = [
+    "LICENSE",
+    "README.md",
+    "release-manifest.json",
+    ...skillFiles.map((entry) => `skills/nodex/${entry}`),
+  ].sort();
   if (
+    entries.length > 131 ||
+    skillFiles.some(
+      (file) => !/^(?:[A-Za-z0-9_-]+\/){0,4}[A-Za-z0-9_-]+\.(?:md|yaml)$/u.test(file),
+    ) ||
     JSON.stringify(paths) !== JSON.stringify(expected) ||
     entries.some((entry) => entry.mode !== "100644")
   ) {
@@ -229,7 +241,7 @@ const materializeManagedRef = (
     mkdirSync(path.dirname(destinationPath), { recursive: true });
     writeFileSync(destinationPath, contents.stdout, { mode: 0o644 });
   }
-  return inspectOfficialAgentSkillsArtifact(destination);
+  return inspectHistoricalOfficialAgentSkillsArtifact(destination, skillFiles);
 };
 
 const inspectRef = (
