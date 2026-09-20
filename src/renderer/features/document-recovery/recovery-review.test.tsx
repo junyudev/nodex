@@ -1,3 +1,4 @@
+import { locks } from "node:worker_threads";
 import { IndexedDbDocumentLocalCheckpointStore } from "@/lib/document-local-checkpoint";
 import { IDBFactory, IDBKeyRange } from "fake-indexeddb";
 import { act, fireEvent, waitFor } from "@testing-library/react";
@@ -14,6 +15,7 @@ vi.mock("./recovery-preview", () => ({
 }));
 
 beforeEach(() => {
+  vi.stubGlobal("navigator", Object.create(navigator, { locks: { value: locks } }));
   vi.stubGlobal("indexedDB", new IDBFactory());
   vi.stubGlobal("IDBKeyRange", IDBKeyRange);
 });

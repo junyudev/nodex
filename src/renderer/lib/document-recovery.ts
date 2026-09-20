@@ -292,36 +292,41 @@ export class DocumentRecovery {
     this.publish({ loading: false });
   }
   private async transfer(entry: RecoveryStagingSummary, epoch: string): Promise<boolean> {
-    const store = this.store(entry.sourceKind);
-    if (!store) throw new Error("Local recovery storage is unavailable");
-    this.publish({ sending: [...this.state.sending, entry.sourceKey] });
-    try {
-      const frozen = await store.freeze(entry, this.scope, epoch);
-      const received = await this.port.apply({
-        ...frozen.scope,
-        kind: "capture",
-        operationId: frozen.operationId,
-        storeEpoch: frozen.storeEpoch,
-        bundle: frozen.bundle,
-      });
-      verifyRecoveryReceipt(frozen, received.capture_receipt);
-      if (
-        received.draft_id !== frozen.bundle.draftId ||
-        received.payload_hash !== received.capture_receipt?.stored_payload_hash
-      )
-        throw new Error("Core acknowledged another retained package. The local copy is unchanged.");
-      this.publish({
-        acceptedLocal: { ...this.state.acceptedLocal, [entry.sourceKey]: received.draft_id },
-        drafts: [
-          ...this.state.drafts.filter((draft) => draft.draft_id !== received.draft_id),
-          received,
-        ],
-      });
-      return await store.acknowledge(entry, frozen, received.capture_receipt);
-    } finally {
-      const index = this.state.sending.indexOf(entry.sourceKey);
-      this.publish({ sending: this.state.sending.filter((_, position) => position !== index) });
-    }
+    // Web Locks share this critical section across coordinators and renderer windows.
+    return navigator.locks.request(`nodex:recovery:${entry.sourceKey}`, async () => {
+      const store = this.store(entry.sourceKind);
+      if (!store) throw new Error("Local recovery storage is unavailable");
+      this.publish({ sending: [...this.state.sending, entry.sourceKey] });
+      try {
+        const frozen = await store.freeze(entry, this.scope, epoch);
+        const received = await this.port.apply({
+          ...frozen.scope,
+          kind: "capture",
+          operationId: frozen.operationId,
+          storeEpoch: frozen.storeEpoch,
+          bundle: frozen.bundle,
+        });
+        verifyRecoveryReceipt(frozen, received.capture_receipt);
+        if (
+          received.draft_id !== frozen.bundle.draftId ||
+          received.payload_hash !== received.capture_receipt?.stored_payload_hash
+        )
+          throw new Error(
+            "Core acknowledged another retained package. The local copy is unchanged.",
+          );
+        this.publish({
+          acceptedLocal: { ...this.state.acceptedLocal, [entry.sourceKey]: received.draft_id },
+          drafts: [
+            ...this.state.drafts.filter((draft) => draft.draft_id !== received.draft_id),
+            received,
+          ],
+        });
+        return await store.acknowledge(entry, frozen, received.capture_receipt);
+      } finally {
+        const index = this.state.sending.indexOf(entry.sourceKey);
+        this.publish({ sending: this.state.sending.filter((_, position) => position !== index) });
+      }
+    });
   }
 
   private transferFailure(
@@ -456,7 +461,17 @@ export class DocumentRecovery {
       throw new Error("Wait for this draft to finish sending before removing it");
     const store = this.store(entry.sourceKind);
     if (!store) throw new Error("Local recovery storage is unavailable");
-    await store.remove(entry);
+    await navigator.locks.request(
+      `nodex:recovery:${entry.sourceKey}`,
+      { ifAvailable: true },
+      async (lock) => {
+        if (!lock)
+          throw new Error(
+            "This draft is being sent in another window. Try again when sending finishes.",
+          );
+        await store.remove(entry);
+      },
+    );
     this.localChanges?.postMessage(null);
     await this.loadLocal(false);
   };

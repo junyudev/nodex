@@ -135,6 +135,8 @@ Core determines the available actions:
   unavailable. The confirmation recommends exporting a backup and states that this
   cannot be undone and does not change current documents. Removal checks the
   reviewed source revision and removes its local warning; other drafts remain.
+  Transfer and removal share an exclusive cross-window lock. Removal is refused
+  while another coordinator is sending that package.
 - Export saves a `.nodex-recovery` file containing the exact retained payload,
   integrity metadata and available captured File dependencies. Local packages can
   be exported before Core accepts them, including rejected or unreadable sources.

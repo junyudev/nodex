@@ -334,3 +334,65 @@ test("a persisted cursor reaches the package after 257 permanent failures withou
   expect(await outbox.staging.countSummaries(scope, null)).toBe(257);
   expect((await outbox.staging.listSummaries(scope, null, last.sourceKey)).entries).toEqual([]);
 });
+
+test("another coordinator cannot remove a draft during Core reception", async () => {
+  const store = new IndexedDbDocumentLocalCheckpointStore(indexedDB, scope);
+  await store.quarantine(snapshot(), { maxStateBytes: 1024 * 1024 });
+  const healthy = port();
+  let release!: () => void;
+  let entered!: () => void;
+  const gate = new Promise<void>((resolve) => {
+    release = resolve;
+  });
+  const started = new Promise<void>((resolve) => {
+    entered = resolve;
+  });
+  const api: DocumentRecoveryPort = {
+    ...healthy,
+    read: async () => {
+      throw new Error("offline");
+    },
+    apply: async (command) => {
+      entered();
+      await gate;
+      return healthy.apply(command);
+    },
+  };
+  const sender = new DocumentRecovery(scope, "document:one", api);
+  const remover = new DocumentRecovery(scope, null, api);
+  await Promise.all([sender.refresh(), remover.refresh()]);
+  const entry = remover.getSnapshot().staged[0];
+  api.read = healthy.read;
+  const sending = sender.retry(entry.sourceKey);
+  await started;
+  try {
+    expect(remover.getSnapshot().sending).toEqual([]);
+    await expect(remover.removeLocal(entry)).rejects.toThrow("another window");
+    expect(await store.staging.countSummaries(scope, null)).toBe(1);
+  } finally {
+    release();
+    await sending;
+  }
+  expect(await store.staging.countSummaries(scope, null)).toBe(0);
+});
+
+test("a stale coordinator cannot send a draft after local removal", async () => {
+  const store = new IndexedDbDocumentLocalCheckpointStore(indexedDB, scope);
+  await store.quarantine(snapshot(), { maxStateBytes: 1024 * 1024 });
+  const healthy = port();
+  const api: DocumentRecoveryPort = {
+    ...healthy,
+    read: async () => {
+      throw new Error("offline");
+    },
+  };
+  const sender = new DocumentRecovery(scope, "document:one", api);
+  const remover = new DocumentRecovery(scope, null, api);
+  await Promise.all([sender.refresh(), remover.refresh()]);
+  const entry = remover.getSnapshot().staged[0];
+  await remover.removeLocal(entry);
+  api.read = healthy.read;
+  await expect(sender.retry(entry.sourceKey)).rejects.toThrow("changed");
+  expect(api.apply).not.toHaveBeenCalled();
+  expect(await store.staging.countSummaries(scope, null)).toBe(0);
+});
