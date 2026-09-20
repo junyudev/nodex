@@ -1,0 +1,28 @@
+docs/release-macos.md
+  s_d4ab4c7bf5efe1::t_8a93bfb9ce1aba 110-114
+scripts/release/source.test.ts
+  s_d4ab4c7bf5efe1::t_2f70e516421cde 184-192,195-200,202-205,208-213,215-218,222-224,230-237,239-242
+  s_d4ab4c7bf5efe1::t_f56ff7771fb72c 251-254,256-267
+  s_d4ab4c7bf5efe1::t_4d6c5db1890b32 182-183,193-194,201,206-207,214,219-221,225-229,238,243-245
+  s_d4ab4c7bf5efe1::t_10c2e013b4265f 246-250,255,268-271
+scripts/release/source.ts
+  s_d4ab4c7bf5efe1::t_2f70e516421cde 74,92-102,146-148,152-155
+  s_d4ab4c7bf5efe1::t_6c5c604723f467 86-91
+  s_d4ab4c7bf5efe1::t_841c596d01e2f8 4,72-73,75-85,103-105,131
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "fc7b05eb8239d8214d920d2450f6a1f1c0df3e79",
+  "prompts": {},
+  "sessions": {
+    "s_d4ab4c7bf5efe1": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a0b8c8-33e0-78f2-8327-d2c8f5715807",
+        "model": "gpt-6-astra"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    }
+  }
+}
