@@ -1,0 +1,26 @@
+package.json
+  s_d4ab4c7bf5efe1::t_e7a7a10c4351c6 3
+CHANGELOG.md
+  s_d4ab4c7bf5efe1::t_e7a7a10c4351c6 9-15
+  s_d4ab4c7bf5efe1::t_0a639d5f37581f 16
+Cargo.toml
+  s_d4ab4c7bf5efe1::t_e7a7a10c4351c6 16
+Cargo.lock
+  s_d4ab4c7bf5efe1::t_3155e09c81fd04 1036,1052,1078,1110,1121,1137,1163,1175,1182
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "ebe969442cb5ecc426f81057ed3044f5835324b6",
+  "prompts": {},
+  "sessions": {
+    "s_d4ab4c7bf5efe1": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a0b8c8-33e0-78f2-8327-d2c8f5715807",
+        "model": "gpt-6-astra"
+      },
+      "human_author": null
+    }
+  }
+}
