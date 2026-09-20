@@ -396,3 +396,38 @@ test("a stale coordinator cannot send a draft after local removal", async () => 
   expect(api.apply).not.toHaveBeenCalled();
   expect(await store.staging.countSummaries(scope, null)).toBe(0);
 });
+
+test.each([false, true])(
+  "only a first definitive rejection releases a capture claim (prior uncertainty: %s)",
+  async (uncertain) => {
+    const store = new IndexedDbDocumentLocalCheckpointStore(indexedDB, scope);
+    await store.quarantine(snapshot(), { maxStateBytes: 1024 * 1024 });
+    const api = port();
+    const rejected = new CoreApiError({
+      code: "invalid_input",
+      message: "Rejected",
+      retryable: false,
+      recovery: { kind: "none" },
+    });
+    vi.mocked(api.apply).mockRejectedValue(uncertain ? new Error("Response lost") : rejected);
+    const sender = new DocumentRecovery(scope, null, api);
+    await sender.refresh();
+    const entry = sender.getSnapshot().staged[0];
+    const reopened = new DocumentRecovery(scope, null, api);
+    await reopened.refresh();
+    if (!uncertain) {
+      await reopened.removeLocal(entry);
+      expect(await store.staging.countSummaries(scope, null)).toBe(0);
+      return;
+    }
+    vi.mocked(api.apply).mockRejectedValue(rejected);
+    await expect(reopened.retry(entry.sourceKey)).rejects.toThrow("Rejected");
+    await expect(reopened.removeLocal(entry)).rejects.toThrow(
+      "Receipt for this draft is unconfirmed",
+    );
+    expect(await store.staging.countSummaries(scope, null)).toBe(1);
+    vi.mocked(api.apply).mockImplementation(port().apply);
+    await reopened.retry(entry.sourceKey);
+    expect(await store.staging.countSummaries(scope, null)).toBe(0);
+  },
+);

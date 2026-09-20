@@ -167,3 +167,19 @@ test("a newer capture cannot be removed by an earlier review", async () => {
   expect(current.sourceRevision).not.toBe(reviewed.sourceRevision);
   expect(await second.nextRecovery("document:one")).not.toBeNull();
 });
+
+test("a receipt claim survives its window and prevents removal until acknowledged", async () => {
+  const factory = new IDBFactory();
+  const sender = new IndexedDbDocumentLocalCheckpointStore(factory, scope);
+  await sender.quarantine(snapshot(), { maxStateBytes: 200_000 });
+  const [entry] = (await sender.staging.listSummaries(scope, null, null)).entries;
+  const frozen = await sender.staging.freeze(entry, scope, "epoch:one");
+  expect(await sender.staging.claimTransfer(entry)).toBe(false);
+  const reopened = new IndexedDbDocumentLocalCheckpointStore(factory, scope);
+  await expect(reopened.staging.remove(entry)).rejects.toThrow(
+    "Receipt for this draft is unconfirmed",
+  );
+  expect(await reopened.staging.claimTransfer(entry)).toBe(true);
+  await reopened.staging.acknowledge(entry, frozen, receipt(frozen));
+  expect(await reopened.staging.countSummaries(scope, null)).toBe(0);
+});

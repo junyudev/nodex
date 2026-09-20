@@ -33,6 +33,7 @@ export interface RecoveryTransferFailure {
 }
 export interface RecoveryStagingSummary {
   readonly sourceKey: string;
+  readonly receiptPending?: boolean;
   readonly sourceRevision: string;
   readonly sourceKind: RecoverySourceKind;
   readonly rawKey: IDBValidKey;
@@ -473,6 +474,41 @@ export class RecoveryStagingStore {
     return matches;
   }
 
+  /** A capture may outlive its renderer. Keep its claim until a receipt or definitive rejection. */
+  async claimTransfer(entry: RecoveryStagingSummary): Promise<boolean> {
+    const database = await this.config.database();
+    const transaction = database.transaction(RECOVERY_DIRECTORY_STORE, "readwrite", {
+      durability: "strict",
+    });
+    const completed = recoveryTransaction(transaction);
+    const directory = transaction.objectStore(RECOVERY_DIRECTORY_STORE);
+    const current = (await recoveryRequest(directory.get(entry.sourceKey))) as
+      | RecoveryStagingSummary
+      | undefined;
+    if (!current || current.sourceRevision !== entry.sourceRevision) {
+      await completed;
+      throw new Error("The local package changed. Refresh the recovery list.");
+    }
+    directory.put({ ...current, receiptPending: true });
+    await completed;
+    return current.receiptPending === true;
+  }
+
+  async rejectTransfer(entry: RecoveryStagingSummary): Promise<void> {
+    const database = await this.config.database();
+    const transaction = database.transaction(RECOVERY_DIRECTORY_STORE, "readwrite", {
+      durability: "strict",
+    });
+    const completed = recoveryTransaction(transaction);
+    const directory = transaction.objectStore(RECOVERY_DIRECTORY_STORE);
+    const current = (await recoveryRequest(directory.get(entry.sourceKey))) as
+      | RecoveryStagingSummary
+      | undefined;
+    if (current?.sourceRevision === entry.sourceRevision)
+      directory.put({ ...current, receiptPending: false });
+    await completed;
+  }
+
   /** Remove only the retained revision the user reviewed, never a newer local capture. */
   async remove(entry: RecoveryStagingSummary): Promise<void> {
     const database = await this.config.database();
@@ -489,6 +525,10 @@ export class RecoveryStagingStore {
     if (!current || current.sourceRevision !== entry.sourceRevision) {
       await completed;
       throw new Error("The local draft changed. Review it again before removing it.");
+    }
+    if (current.receiptPending) {
+      await completed;
+      throw new Error("Receipt for this draft is unconfirmed. Retry receipt before removing it.");
     }
     transaction.objectStore(this.config.storeName).delete(current.rawKey);
     directory.delete(entry.sourceKey);

@@ -299,13 +299,21 @@ export class DocumentRecovery {
       this.publish({ sending: [...this.state.sending, entry.sourceKey] });
       try {
         const frozen = await store.freeze(entry, this.scope, epoch);
-        const received = await this.port.apply({
-          ...frozen.scope,
-          kind: "capture",
-          operationId: frozen.operationId,
-          storeEpoch: frozen.storeEpoch,
-          bundle: frozen.bundle,
-        });
+        const previousClaim = await store.claimTransfer(entry);
+        const received = await this.port
+          .apply({
+            ...frozen.scope,
+            kind: "capture",
+            operationId: frozen.operationId,
+            storeEpoch: frozen.storeEpoch,
+            bundle: frozen.bundle,
+          })
+          .catch(async (error: unknown) => {
+            // A later rejection cannot disprove an earlier request with an uncertain receipt.
+            if (!previousClaim && this.transferFailure(error, null).effect === "not_applied")
+              await store.rejectTransfer(entry);
+            throw error;
+          });
         verifyRecoveryReceipt(frozen, received.capture_receipt);
         if (
           received.draft_id !== frozen.bundle.draftId ||

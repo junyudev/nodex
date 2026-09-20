@@ -245,9 +245,13 @@ test("a closed document's local package remains selectable and exportable while 
   const exported = vi.spyOn(module, "exportLocal").mockResolvedValue();
   await module.refresh();
   const source = module.getSnapshot().staged[0]!;
+  const inclusion = vi.spyOn(module, "setIncludeResolved");
   const view = renderWithMaitai(
     <RecoveryReview module={module} initialSourceKey={source.sourceKey} onClose={() => {}} />,
   );
+  await act(async () => {
+    await inclusion.mock.results[0]!.value;
+  });
   expect((await view.findByRole("status")).textContent).toBe("Retained on this device");
   await act(async () => {
     fireEvent.click(view.getByRole("button", { name: "Export" }));

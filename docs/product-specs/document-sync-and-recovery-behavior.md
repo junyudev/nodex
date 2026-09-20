@@ -136,7 +136,10 @@ Core determines the available actions:
   cannot be undone and does not change current documents. Removal checks the
   reviewed source revision and removes its local warning; other drafts remain.
   Transfer and removal share an exclusive cross-window lock. Removal is refused
-  while another coordinator is sending that package.
+  while another coordinator is sending that package. A durable receipt claim also
+  prevents removal if the sending window closes or its response is lost. Retry
+  receipt confirms that same capture; a later rejection cannot clear an earlier
+  uncertain claim.
 - Export saves a `.nodex-recovery` file containing the exact retained payload,
   integrity metadata and available captured File dependencies. Local packages can
   be exported before Core accepts them, including rejected or unreadable sources.
