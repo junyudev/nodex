@@ -1,0 +1,41 @@
+scripts/official-agent-skills-artifact.d.mts
+  s_d4ab4c7bf5efe1::t_1a07c4af667c5a 40-44
+scripts/publish-official-agent-skills.ts
+  s_d4ab4c7bf5efe1::t_a0995d2623a250 210-211,213-218
+  s_d4ab4c7bf5efe1::t_769902e658668d 220
+  s_d4ab4c7bf5efe1::t_6f0d5d598b2666 221-223
+  s_d4ab4c7bf5efe1::t_1a07c4af667c5a 17,212,244
+scripts/publish-official-agent-skills.test.ts
+  s_d4ab4c7bf5efe1::t_a0995d2623a250 49-54,167-172,195-197
+  s_d4ab4c7bf5efe1::t_a6920582c40494 57,164-166,173-194,198
+docs/release-macos.md
+  s_d4ab4c7bf5efe1::t_f596e2b0dbb0fd 165-178
+scripts/release/homebrew.ts
+  s_d4ab4c7bf5efe1::t_1a07c4af667c5a 36,41
+.github/workflows/_promote-release.yml
+  s_d4ab4c7bf5efe1::t_a6920582c40494 119-129,131,149,165
+scripts/official-agent-skills-artifact.mjs
+  s_d4ab4c7bf5efe1::t_1a07c4af667c5a 53,55,67,80-81,137,149,151,165,212,222-223,228-230,250-265
+  s_d4ab4c7bf5efe1::t_a0995d2623a250 68-73
+  s_d4ab4c7bf5efe1::t_4ec9ba629ef085 266
+scripts/release/homebrew.test.ts
+  s_d4ab4c7bf5efe1::t_f596e2b0dbb0fd 2,5,17-32,37-41
+  s_d4ab4c7bf5efe1::t_a0995d2623a250 6-16,33-36
+  s_d4ab4c7bf5efe1::t_51414b5b084893 42
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "10bb5a0fc4324b1a45b086c328ddf2a8b943d419",
+  "prompts": {},
+  "sessions": {
+    "s_d4ab4c7bf5efe1": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a0b8c8-33e0-78f2-8327-d2c8f5715807",
+        "model": "gpt-6-astra"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    }
+  }
+}
