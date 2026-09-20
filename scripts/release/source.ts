@@ -1,7 +1,7 @@
 import { execFileSync } from "node:child_process";
 import { randomUUID } from "node:crypto";
-import { readFileSync, renameSync, rmSync, writeFileSync } from "node:fs";
-import { join, resolve } from "node:path";
+import { readFileSync, realpathSync, statSync, renameSync, rmSync, writeFileSync } from "node:fs";
+import { isAbsolute, join, relative, resolve } from "node:path";
 import { parse as parseToml } from "smol-toml";
 import { extractReleaseNotes, prepareChangelog } from "./changelog";
 import { compareStableVersions, normalizeStableVersion, tagForVersion } from "./model";
@@ -107,9 +107,17 @@ const readWorkspacePackages = (
   return names;
 };
 
+const isReleasePackage = (
+  entry: { readonly name?: unknown; readonly version?: unknown } | undefined,
+  packages: ReadonlySet<string>,
+  version: string,
+): entry is { readonly name: string; readonly version: string; readonly source?: unknown } =>
+  typeof entry?.name === "string" && packages.has(entry.name) && entry.version === version;
+
 const parseLocalCargoVersions = (
   content: string,
   packages: ReadonlySet<string>,
+  expectedVersion: string,
 ): ReadonlyMap<string, string> => {
   const value = parseToml(content) as {
     readonly package?: readonly {
@@ -120,7 +128,7 @@ const parseLocalCargoVersions = (
   };
   const versions = new Map<string, string>();
   for (const entry of value.package ?? []) {
-    if (typeof entry.name !== "string" || !packages.has(entry.name)) continue;
+    if (!isReleasePackage(entry, packages, expectedVersion)) continue;
     if (versions.has(entry.name))
       throw new Error(`Cargo.lock has duplicate local package ${entry.name}.`);
     if (entry.source !== undefined) {
@@ -141,23 +149,34 @@ const parseLocalCargoVersions = (
 };
 
 export function readReleaseSourceFiles(cwd: string): ReleaseSourceFiles {
-  const root = resolve(cwd);
-  const cargoToml = readFileSync(join(root, "Cargo.toml"), "utf8");
+  const root = realpathSync(cwd);
+  const read = (path: string): string => {
+    const canonical = realpathSync(join(root, path));
+    const local = relative(root, canonical);
+    if (
+      local === ".." ||
+      local.startsWith("../") ||
+      isAbsolute(local) ||
+      !statSync(canonical).isFile()
+    ) {
+      throw new Error(`Release source ${path} must resolve to a regular file within the worktree.`);
+    }
+    return readFileSync(canonical, "utf8");
+  };
+  const cargoToml = read("Cargo.toml");
   return {
-    cargoPackages: readWorkspacePackages(cargoToml, (path) =>
-      readFileSync(join(root, path), "utf8"),
-    ),
-    packageJson: readFileSync(join(root, "package.json"), "utf8"),
+    cargoPackages: readWorkspacePackages(cargoToml, read),
+    packageJson: read("package.json"),
     cargoToml,
-    cargoLock: readFileSync(join(root, "Cargo.lock"), "utf8"),
-    changelog: readFileSync(join(root, "CHANGELOG.md"), "utf8"),
+    cargoLock: read("Cargo.lock"),
+    changelog: read("CHANGELOG.md"),
   };
 }
 
 const snapshotFromFiles = (files: ReleaseSourceFiles): ReleaseSourceSnapshot => {
   const packageVersion = parsePackageVersion(files.packageJson);
   const cargoVersion = parseCargoVersion(files.cargoToml);
-  const localVersions = parseLocalCargoVersions(files.cargoLock, files.cargoPackages);
+  const localVersions = parseLocalCargoVersions(files.cargoLock, files.cargoPackages, cargoVersion);
   if (packageVersion !== cargoVersion) {
     throw new Error(
       `Release version mismatch: package.json=${packageVersion}, Cargo.toml=${cargoVersion}.`,
@@ -238,7 +257,7 @@ const updateCargoLockVersions = (
         }[];
       };
       const entry = parsed.package?.[0];
-      if (typeof entry?.name !== "string" || !packages.has(entry.name)) return chunk;
+      if (!isReleasePackage(entry, packages, current)) return chunk;
       if (entry.source !== undefined || entry.version !== current) {
         throw new Error(`Cargo.lock local package ${entry.name} is not at ${current}.`);
       }
