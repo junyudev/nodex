@@ -13,16 +13,8 @@ export const RELEASE_SOURCE_PATHS = [
   "CHANGELOG.md",
 ] as const;
 
-const LOCAL_CARGO_PACKAGES = new Set([
-  "nodex-browser-profile-helper",
-  "nodex-cli",
-  "nodex-core",
-  "nodex-core-contracts",
-  "nodex-core-protocol",
-  "nodex-core-server",
-]);
-
 interface ReleaseSourceFiles {
+  readonly cargoPackages: ReadonlySet<string>;
   readonly cargoLock: string;
   readonly cargoToml: string;
   readonly changelog: string;
@@ -77,7 +69,48 @@ const parseCargoVersion = (content: string): string => {
   return normalizeStableVersion(version, "Cargo workspace version");
 };
 
-const parseLocalCargoVersions = (content: string): ReadonlyMap<string, string> => {
+// Read the inventory through the same worktree/ref reader as the release metadata.
+const readWorkspacePackages = (
+  cargoToml: string,
+  read: (path: string) => string,
+): ReadonlySet<string> => {
+  const root = parseToml(cargoToml);
+  const workspace = root.workspace as { members?: unknown; exclude?: unknown } | undefined;
+  if (
+    root.package ||
+    workspace?.exclude !== undefined ||
+    !Array.isArray(workspace?.members) ||
+    workspace.members.length === 0
+  ) {
+    throw new Error(
+      "Release workspace requires explicit members in a virtual workspace without exclusions.",
+    );
+  }
+  const names = new Set<string>();
+  for (const member of workspace.members) {
+    if (typeof member !== "string" || !/^[A-Za-z0-9_-]+(?:\/[A-Za-z0-9_-]+)*$/.test(member)) {
+      throw new Error(
+        "Release workspace members must be explicit repository-relative directories.",
+      );
+    }
+    const manifest = parseToml(read(`${member}/Cargo.toml`));
+    const pkg = manifest.package as
+      | { name?: unknown; version?: { workspace?: unknown } }
+      | undefined;
+    if (typeof pkg?.name !== "string" || pkg.version?.workspace !== true || names.has(pkg.name)) {
+      throw new Error(
+        `Workspace member ${member} requires a unique package name and inherited workspace version.`,
+      );
+    }
+    names.add(pkg.name);
+  }
+  return names;
+};
+
+const parseLocalCargoVersions = (
+  content: string,
+  packages: ReadonlySet<string>,
+): ReadonlyMap<string, string> => {
   const value = parseToml(content) as {
     readonly package?: readonly {
       readonly name?: unknown;
@@ -87,7 +120,9 @@ const parseLocalCargoVersions = (content: string): ReadonlyMap<string, string> =
   };
   const versions = new Map<string, string>();
   for (const entry of value.package ?? []) {
-    if (typeof entry.name !== "string" || !LOCAL_CARGO_PACKAGES.has(entry.name)) continue;
+    if (typeof entry.name !== "string" || !packages.has(entry.name)) continue;
+    if (versions.has(entry.name))
+      throw new Error(`Cargo.lock has duplicate local package ${entry.name}.`);
     if (entry.source !== undefined) {
       throw new Error(`Cargo.lock package ${entry.name} unexpectedly has a registry source.`);
     }
@@ -99,7 +134,7 @@ const parseLocalCargoVersions = (content: string): ReadonlyMap<string, string> =
       normalizeStableVersion(entry.version, `Cargo.lock ${entry.name} version`),
     );
   }
-  const missing = [...LOCAL_CARGO_PACKAGES].filter((name) => !versions.has(name));
+  const missing = [...packages].filter((name) => !versions.has(name));
   if (missing.length > 0)
     throw new Error(`Cargo.lock is missing local packages: ${missing.join(", ")}.`);
   return versions;
@@ -107,9 +142,13 @@ const parseLocalCargoVersions = (content: string): ReadonlyMap<string, string> =
 
 export function readReleaseSourceFiles(cwd: string): ReleaseSourceFiles {
   const root = resolve(cwd);
+  const cargoToml = readFileSync(join(root, "Cargo.toml"), "utf8");
   return {
+    cargoPackages: readWorkspacePackages(cargoToml, (path) =>
+      readFileSync(join(root, path), "utf8"),
+    ),
     packageJson: readFileSync(join(root, "package.json"), "utf8"),
-    cargoToml: readFileSync(join(root, "Cargo.toml"), "utf8"),
+    cargoToml,
     cargoLock: readFileSync(join(root, "Cargo.lock"), "utf8"),
     changelog: readFileSync(join(root, "CHANGELOG.md"), "utf8"),
   };
@@ -118,7 +157,7 @@ export function readReleaseSourceFiles(cwd: string): ReleaseSourceFiles {
 const snapshotFromFiles = (files: ReleaseSourceFiles): ReleaseSourceSnapshot => {
   const packageVersion = parsePackageVersion(files.packageJson);
   const cargoVersion = parseCargoVersion(files.cargoToml);
-  const localVersions = parseLocalCargoVersions(files.cargoLock);
+  const localVersions = parseLocalCargoVersions(files.cargoLock, files.cargoPackages);
   if (packageVersion !== cargoVersion) {
     throw new Error(
       `Release version mismatch: package.json=${packageVersion}, Cargo.toml=${cargoVersion}.`,
@@ -140,15 +179,17 @@ export function inspectReleaseSource(cwd: string): ReleaseSourceSnapshot {
 
 const filesAtRef = (cwd: string, ref: string): ReleaseSourceFiles => {
   run(cwd, "git", ["rev-parse", "--verify", `${ref}^{commit}`]);
-  const readAtRef = (path: (typeof RELEASE_SOURCE_PATHS)[number]): string =>
+  const readAtRef = (path: string): string =>
     execFileSync("git", ["show", `${ref}:${path}`], {
       cwd,
       encoding: "utf8",
       stdio: ["ignore", "pipe", "pipe"],
     });
+  const cargoToml = readAtRef("Cargo.toml");
   return {
+    cargoPackages: readWorkspacePackages(cargoToml, readAtRef),
     packageJson: readAtRef("package.json"),
-    cargoToml: readAtRef("Cargo.toml"),
+    cargoToml,
     cargoLock: readAtRef("Cargo.lock"),
     changelog: readAtRef("CHANGELOG.md"),
   };
@@ -178,7 +219,12 @@ const updateCargoTomlVersion = (content: string, current: string, target: string
   return updated;
 };
 
-const updateCargoLockVersions = (content: string, current: string, target: string): string => {
+const updateCargoLockVersions = (
+  content: string,
+  current: string,
+  target: string,
+  packages: ReadonlySet<string>,
+): string => {
   const chunks = content.split(/(?=^\[\[package\]\]\s*$)/m);
   const updatedPackages = new Set<string>();
   const updated = chunks
@@ -192,7 +238,7 @@ const updateCargoLockVersions = (content: string, current: string, target: strin
         }[];
       };
       const entry = parsed.package?.[0];
-      if (typeof entry?.name !== "string" || !LOCAL_CARGO_PACKAGES.has(entry.name)) return chunk;
+      if (typeof entry?.name !== "string" || !packages.has(entry.name)) return chunk;
       if (entry.source !== undefined || entry.version !== current) {
         throw new Error(`Cargo.lock local package ${entry.name} is not at ${current}.`);
       }
@@ -203,7 +249,7 @@ const updateCargoLockVersions = (content: string, current: string, target: strin
       return chunk.replace(versionPattern, `version = "${target}"`);
     })
     .join("");
-  const missing = [...LOCAL_CARGO_PACKAGES].filter((name) => !updatedPackages.has(name));
+  const missing = [...packages].filter((name) => !updatedPackages.has(name));
   if (missing.length > 0)
     throw new Error(`Cargo.lock did not update local packages: ${missing.join(", ")}.`);
   return updated;
@@ -259,9 +305,15 @@ export function prepareReleaseSource(options: {
   }
   const changelog = prepareChangelog(currentFiles.changelog, version, options.date);
   const nextFiles: ReleaseSourceFiles = {
+    cargoPackages: currentFiles.cargoPackages,
     packageJson: updatePackageVersion(currentFiles.packageJson, version),
     cargoToml: updateCargoTomlVersion(currentFiles.cargoToml, current.cargoVersion, version),
-    cargoLock: updateCargoLockVersions(currentFiles.cargoLock, current.cargoVersion, version),
+    cargoLock: updateCargoLockVersions(
+      currentFiles.cargoLock,
+      current.cargoVersion,
+      version,
+      currentFiles.cargoPackages,
+    ),
     changelog: changelog.changelogContent,
   };
   snapshotFromFiles(nextFiles);
