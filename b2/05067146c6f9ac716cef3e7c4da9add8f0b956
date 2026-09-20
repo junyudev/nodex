@@ -1,0 +1,31 @@
+src/renderer/lib/document-recovery.ts
+  s_8f0e6acde8cb40::t_47e3061bac849d 302-315
+  s_8f0e6acde8cb40::t_466801335a052d 316
+docs/product-specs/document-sync-and-recovery-behavior.md
+  s_8f0e6acde8cb40::t_47e3061bac849d 139-142
+src/renderer/features/document-recovery/recovery-review.test.tsx
+  s_8f0e6acde8cb40::t_47e3061bac849d 248,252-254
+src/renderer/lib/document-recovery-staging.ts
+  s_8f0e6acde8cb40::t_47e3061bac849d 36,477-480,482-485,487-499,501-504,506-511,529-532
+  s_8f0e6acde8cb40::t_a9a1d51ccc3891 481,486,500,505
+src/renderer/lib/document-recovery-staging.node.test.ts
+  s_8f0e6acde8cb40::t_bdc75050f5b067 170-185
+src/renderer/lib/document-recovery.node.test.ts
+  s_8f0e6acde8cb40::t_c45817c0f51e0d 399-433
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "b205067146c6f9ac716cef3e7c4da9add8f0b956",
+  "prompts": {},
+  "sessions": {
+    "s_8f0e6acde8cb40": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a0bd79-8ebb-7e00-bf06-c58b26be8811",
+        "model": "gpt-6-astra"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    }
+  }
+}
