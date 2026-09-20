@@ -179,6 +179,96 @@ test("preparation preserves a different-version path dependency with the same na
   expect(parsed.package).toContainEqual({ name: "new-workspace-member", version: "0.2.0" });
 });
 
+test("same-name and same-version registry dependencies do not own the release version", () => {
+  const lock = join(fixture, "Cargo.lock");
+  const remote = {
+    name: "new-workspace-member",
+    version: "0.1.10",
+    source: "registry+https://example.invalid/index",
+  };
+  writeFileSync(
+    lock,
+    `${readFileSync(lock, "utf8")}\n[[package]]\nname = "${remote.name}"\nversion = "${remote.version}"\nsource = "${remote.source}"\n`,
+  );
+  git("add", ".");
+  git("commit", "-m", "test: add same-identity registry dependency");
+  prepareReleaseSource({
+    cwd: fixture,
+    date: "2026-09-20",
+    validateCargoMetadata: false,
+    version: "0.2.0",
+  });
+  expect(parseToml(readFileSync(lock, "utf8")).package).toContainEqual(remote);
+  expect(parseToml(readFileSync(lock, "utf8")).package).toContainEqual({
+    name: remote.name,
+    version: "0.2.0",
+  });
+});
+
+test.each([
+  "dependencies",
+  "dev-dependencies",
+  "build-dependencies",
+  "target.'cfg(unix)'.dependencies",
+])("rejects implicit workspace enrollment through %s", (kind) => {
+  const manifest = join(fixture, "crates/new-workspace-member/Cargo.toml");
+  writeFileSync(
+    manifest,
+    `${readFileSync(manifest, "utf8")}\n[${kind}]\nunlisted = { path = "../unlisted" }\n`,
+  );
+  expect(() => inspectReleaseSource(fixture)).toThrow("must be an explicit workspace member");
+  git("add", ".");
+  git("commit", "-m", "test: add implicit workspace dependency");
+  expect(() => inspectReleaseSourceAtRef(fixture, "HEAD")).toThrow(
+    "must be an explicit workspace member",
+  );
+});
+
+test("inherited path dependencies resolve from the workspace root", () => {
+  const root = join(fixture, "Cargo.toml");
+  const manifest = join(fixture, "crates/new-workspace-member/Cargo.toml");
+  writeFileSync(
+    manifest,
+    `${readFileSync(manifest, "utf8")}\n[dependencies]\ncore.workspace = true\n`,
+  );
+  writeFileSync(
+    root,
+    `${readFileSync(root, "utf8")}\n[workspace.dependencies]\ncore = { path = "crates/nodex-core" }\n`,
+  );
+  expect(inspectReleaseSource(fixture).packageVersion).toBe("0.1.10");
+  writeFileSync(
+    root,
+    readFileSync(root, "utf8").replace('path = "crates/nodex-core"', 'path = "crates/unlisted"'),
+  );
+  expect(() => inspectReleaseSource(fixture)).toThrow("must be an explicit workspace member");
+});
+
+test("the explicit-member guard rejects a real Cargo implicitly enrolled crate", () => {
+  for (const name of [...PACKAGE_NAMES, "unlisted"]) {
+    mkdirSync(join(fixture, "crates", name, "src"), { recursive: true });
+    writeFileSync(join(fixture, "crates", name, "src/lib.rs"), "");
+  }
+  writeFileSync(
+    join(fixture, "crates/unlisted/Cargo.toml"),
+    '[package]\nname = "unlisted"\nversion.workspace = true\n',
+  );
+  const manifest = join(fixture, "crates/new-workspace-member/Cargo.toml");
+  writeFileSync(
+    manifest,
+    `${readFileSync(manifest, "utf8")}\n[dependencies]\nunlisted = { path = "../unlisted" }\n`,
+  );
+  const metadata = JSON.parse(
+    execFileSync("cargo", ["metadata", "--offline", "--no-deps", "--format-version", "1"], {
+      cwd: fixture,
+      encoding: "utf8",
+      stdio: ["ignore", "pipe", "pipe"],
+      timeout: 15000,
+    }),
+  ) as { workspace_members: string[] };
+  expect(metadata.workspace_members).toHaveLength(PACKAGE_NAMES.length + 1);
+  expect(() => inspectReleaseSource(fixture)).toThrow("must be an explicit workspace member");
+});
+
 test("worktree inspection rejects member manifests resolving outside the repository", () => {
   const outside = mkdtempSync(join(tmpdir(), "nodex-outside-manifest-"));
   try {

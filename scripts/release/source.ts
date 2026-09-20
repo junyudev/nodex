@@ -1,7 +1,7 @@
 import { execFileSync } from "node:child_process";
 import { randomUUID } from "node:crypto";
 import { readFileSync, realpathSync, statSync, renameSync, rmSync, writeFileSync } from "node:fs";
-import { isAbsolute, join, relative, resolve } from "node:path";
+import { isAbsolute, join, posix, relative, resolve } from "node:path";
 import { parse as parseToml } from "smol-toml";
 import { extractReleaseNotes, prepareChangelog } from "./changelog";
 import { compareStableVersions, normalizeStableVersion, tagForVersion } from "./model";
@@ -69,6 +69,40 @@ const parseCargoVersion = (content: string): string => {
   return normalizeStableVersion(version, "Cargo workspace version");
 };
 
+const asTable = (value: unknown): Record<string, unknown> =>
+  typeof value === "object" && value !== null && !Array.isArray(value)
+    ? (value as Record<string, unknown>)
+    : {};
+
+// Cargo implicitly enrolls in-tree path dependencies. Require them to be explicit
+// so this static, revision-local inventory cannot silently omit a version owner.
+const assertExplicitPathDependencies = (
+  manifest: Record<string, unknown>,
+  workspace: Record<string, unknown>,
+  member: string,
+  members: readonly unknown[],
+): void => {
+  const tables = [manifest, ...Object.values(asTable(manifest.target)).map(asTable)];
+  const dependencies = tables.flatMap((table) =>
+    ["dependencies", "dev-dependencies", "build-dependencies"].flatMap((kind) =>
+      Object.entries(asTable(table[kind])),
+    ),
+  );
+  for (const [name, value] of dependencies) {
+    const dependency = asTable(value);
+    const inherited = dependency.workspace === true;
+    const path = (inherited ? asTable(asTable(workspace.dependencies)[name]) : dependency).path;
+    if (typeof path !== "string") continue;
+    const directory = posix.normalize(posix.join(inherited ? "." : member, path));
+    if (posix.isAbsolute(path) || directory === ".." || directory.startsWith("../")) {
+      throw new Error(`Release path dependency ${name} must be repository-relative.`);
+    }
+    if (!members.includes(directory)) {
+      throw new Error(`Release path dependency ${directory} must be an explicit workspace member.`);
+    }
+  }
+};
+
 // Read the inventory through the same worktree/ref reader as the release metadata.
 const readWorkspacePackages = (
   cargoToml: string,
@@ -94,6 +128,7 @@ const readWorkspacePackages = (
       );
     }
     const manifest = parseToml(read(`${member}/Cargo.toml`));
+    assertExplicitPathDependencies(manifest, asTable(root.workspace), member, workspace.members);
     const pkg = manifest.package as
       | { name?: unknown; version?: { workspace?: unknown } }
       | undefined;
@@ -108,11 +143,16 @@ const readWorkspacePackages = (
 };
 
 const isReleasePackage = (
-  entry: { readonly name?: unknown; readonly version?: unknown } | undefined,
+  entry:
+    | { readonly name?: unknown; readonly version?: unknown; readonly source?: unknown }
+    | undefined,
   packages: ReadonlySet<string>,
   version: string,
 ): entry is { readonly name: string; readonly version: string; readonly source?: unknown } =>
-  typeof entry?.name === "string" && packages.has(entry.name) && entry.version === version;
+  typeof entry?.name === "string" &&
+  packages.has(entry.name) &&
+  entry.version === version &&
+  entry.source === undefined;
 
 const parseLocalCargoVersions = (
   content: string,
