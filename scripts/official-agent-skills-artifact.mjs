@@ -50,9 +50,9 @@ const requireSha256 = (value, label) => {
 
 const sha256Bytes = (value) => createHash("sha256").update(value).digest("hex");
 
-const allowedDirectories = () => {
+const allowedDirectories = (artifactFiles) => {
   const directories = new Set([""]);
-  for (const file of OFFICIAL_AGENT_SKILLS_ARTIFACT_FILES) {
+  for (const file of artifactFiles) {
     const segments = file.split("/");
     for (let index = 1; index < segments.length; index += 1) {
       directories.add(segments.slice(0, index).join("/"));
@@ -64,15 +64,21 @@ const allowedDirectories = () => {
 const portableRelativePath = (root, entryPath) =>
   path.relative(root, entryPath).split(path.sep).join("/");
 
-const readExactArtifactTree = (root) => {
+const readExactArtifactTree = (root, skillFiles) => {
+  const artifactFiles = [
+    "LICENSE",
+    "README.md",
+    "release-manifest.json",
+    ...skillFiles.map((entry) => `${SKILL_PREFIX}/${entry}`),
+  ];
   const resolvedRoot = path.resolve(root);
   const rootMetadata = lstatSync(resolvedRoot);
   if (rootMetadata.isSymbolicLink() || !rootMetadata.isDirectory()) {
     throw new Error(`Official Agent Skills artifact must be a real directory: ${resolvedRoot}`);
   }
 
-  const allowedFiles = new Set(OFFICIAL_AGENT_SKILLS_ARTIFACT_FILES);
-  const directories = allowedDirectories();
+  const allowedFiles = new Set(artifactFiles);
+  const directories = allowedDirectories(artifactFiles);
   const files = new Map();
   let totalBytes = 0;
 
@@ -128,7 +134,7 @@ const readExactArtifactTree = (root) => {
   };
 
   visit(resolvedRoot);
-  const missing = OFFICIAL_AGENT_SKILLS_ARTIFACT_FILES.filter((entry) => !files.has(entry));
+  const missing = artifactFiles.filter((entry) => !files.has(entry));
   if (missing.length > 0) {
     throw new Error(
       `Official Agent Skills artifact is missing required files: ${missing.join(", ")}`,
@@ -140,9 +146,9 @@ const readExactArtifactTree = (root) => {
   return files;
 };
 
-const hashSkillTree = (files) => {
+const hashSkillTree = (files, skillFiles) => {
   const hash = createHash("sha256");
-  for (const relativePath of [...OFFICIAL_AGENT_SKILL_FILES].sort()) {
+  for (const relativePath of [...skillFiles].sort()) {
     const artifactPath = `${SKILL_PREFIX}/${relativePath}`;
     const contents = files.get(artifactPath);
     if (!contents) throw new Error(`Official Agent Skill file is missing: ${artifactPath}`);
@@ -156,7 +162,7 @@ const hashSkillTree = (files) => {
   return hash.digest("hex");
 };
 
-const parseReleaseManifest = (contents) => {
+const parseReleaseManifest = (contents, fileCount) => {
   let value;
   try {
     value = JSON.parse(new TextDecoder("utf-8", { fatal: true }).decode(contents));
@@ -203,7 +209,7 @@ const parseReleaseManifest = (contents) => {
   if (
     skill.name !== "nodex" ||
     skill.path !== SKILL_PREFIX ||
-    skill.fileCount !== OFFICIAL_AGENT_SKILL_FILES.length ||
+    skill.fileCount !== fileCount ||
     !Number.isSafeInteger(skill.totalBytes) ||
     skill.totalBytes <= 0
   ) {
@@ -213,15 +219,15 @@ const parseReleaseManifest = (contents) => {
   return value;
 };
 
-export const inspectOfficialAgentSkillsArtifact = (artifactRoot) => {
-  const files = readExactArtifactTree(artifactRoot);
+const inspectArtifact = (artifactRoot, skillFiles) => {
+  const files = readExactArtifactTree(artifactRoot, skillFiles);
   const manifestContents = files.get("release-manifest.json");
   if (!manifestContents) {
     throw new Error("Official Agent Skills release manifest is missing");
   }
-  const manifest = parseReleaseManifest(manifestContents);
-  const treeSha256 = hashSkillTree(files);
-  const skillBytes = OFFICIAL_AGENT_SKILL_FILES.reduce(
+  const manifest = parseReleaseManifest(manifestContents, skillFiles.length);
+  const treeSha256 = hashSkillTree(files, skillFiles);
+  const skillBytes = skillFiles.reduce(
     (total, relativePath) =>
       total + (files.get(`${SKILL_PREFIX}/${relativePath}`)?.byteLength ?? 0),
     0,
@@ -240,4 +246,21 @@ export const inspectOfficialAgentSkillsArtifact = (artifactRoot) => {
     sourceRepository: manifest.source.repository,
     treeSha256,
   };
+};
+
+export const inspectOfficialAgentSkillsArtifact = (artifactRoot) =>
+  inspectArtifact(artifactRoot, OFFICIAL_AGENT_SKILL_FILES);
+
+// Historical releases bind their own inventory through the manifest tree digest.
+// This boundary is never used to admit a new release candidate.
+export const inspectHistoricalOfficialAgentSkillsArtifact = (artifactRoot, skillFiles) => {
+  if (
+    skillFiles.length > 128 ||
+    new Set(skillFiles).size !== skillFiles.length ||
+    !skillFiles.includes("SKILL.md") ||
+    skillFiles.some((file) => !/^(?:[A-Za-z0-9_-]+\/){0,4}[A-Za-z0-9_-]+\.(?:md|yaml)$/u.test(file))
+  ) {
+    throw new Error("Historical Skill inventory is invalid");
+  }
+  return inspectArtifact(artifactRoot, skillFiles);
 };

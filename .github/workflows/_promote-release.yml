@@ -116,7 +116,19 @@ jobs:
           vp run agent-skills:generate
           vp run agent-skills:smoke
 
+      # Regeneration belongs to the immutable source; publishing belongs to the
+      # reviewed workflow revision so recovery can repair downstream adapters.
+      - name: Check out pinned promotion tools
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          ref: ${{ github.workflow_sha }}
+          path: .release-tools
+      - run: vp install --frozen-lockfile
+        working-directory: .release-tools
+
       - name: Publish the verified NodexApp/skills release
+        working-directory: .release-tools
         env:
           GH_TOKEN: ${{ secrets.skills_github_token }}
         shell: bash
@@ -134,7 +146,7 @@ jobs:
           manifest_sha="$(node -p "require('${bundle}').agentSkills.manifestSha256")"
           tree_sha="$(node -p "require('${bundle}').agentSkills.treeSha256")"
           vp run agent-skills:publish -- \
-            --artifact .generated/official-agent-skills \
+            --artifact "${GITHUB_WORKSPACE}/.generated/official-agent-skills" \
             --manifest-sha256 "${manifest_sha}" \
             --tree-sha256 "${tree_sha}" \
             --version "${{ inputs.version }}" \
@@ -150,7 +162,7 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
-          ref: ${{ inputs.source_sha }}
+          ref: ${{ github.workflow_sha }}
       - uses: ./.github/actions/setup-vite-plus
       - run: vp install --frozen-lockfile
       - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1

@@ -1,5 +1,44 @@
 import { expect, test } from "vite-plus/test";
+import { execFileSync } from "node:child_process";
 import { generateHomebrewCask } from "./homebrew";
+
+test("generated cask evaluates with keyword-free download URLs", () => {
+  const cask = generateHomebrewCask({
+    version: "0.3.0",
+    arm64Sha256: "a".repeat(64),
+    x64Sha256: "b".repeat(64),
+  });
+  const result = execFileSync(
+    "ruby",
+    [
+      "-rjson",
+      "-e",
+      `
+    class CaskContract
+      attr_reader :downloads
+      def initialize; @downloads = []; end
+      def version(value = nil); @version = value if value; @version; end
+      def appdir; "/Applications"; end
+      def url(value, **options)
+        raise "Unsupported URL keywords" unless options.empty?
+        @downloads << value if value.end_with?(".dmg")
+      end
+      def method_missing(name, *args, **options, &block)
+        instance_eval(&block) if block
+      end
+    end
+    contract = CaskContract.new
+    contract.instance_eval(STDIN.read)
+    puts JSON.generate(contract.downloads)
+  `,
+    ],
+    { input: cask, encoding: "utf8" },
+  );
+  expect(JSON.parse(result)).toEqual([
+    "https://github.com/junyudev/nodex/releases/download/v0.3.0/Nodex-latest-arm64.dmg",
+    "https://github.com/junyudev/nodex/releases/download/v0.3.0/Nodex-latest-x64.dmg",
+  ]);
+});
 
 test("generateHomebrewCask binds immutable version tags to canonical DMGs", () => {
   const cask = generateHomebrewCask({

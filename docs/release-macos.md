@@ -162,7 +162,20 @@ expiry. Remove duplicate credentials from the legacy `release` environment
 after rehearsal succeeds.
 
 The official Skills publisher authenticates Git through a GitHub-scoped Basic
-extra header and keeps credentials out of remote URLs. Promotion additionally
+extra header and keeps credentials out of remote URLs. Historical mirror inventories
+are verified against their own manifest tree digest, file count and byte count;
+the current candidate still requires the complete current inventory and exact
+Release Bundle hashes. Adding a Skill reference must not make a valid older
+mirror impossible to upgrade.
+
+Downstream publishing tools are pinned to the protected workflow commit, separately
+from the immutable application source. Skills are regenerated and smoke-tested
+from the release source, then passed by absolute path to those publishing tools.
+Homebrew casks are derived from the verified Bundle using the pinned promotion
+tools and keyword-free download URLs; do not emit the deprecated `verified:`
+URL parameter. Recovery never changes the release source, tag or asset hashes.
+
+Promotion additionally
 configures `gh auth setup-git` as a workflow-owned recovery seam, so an
 immutable older release source can still be republished without changing its
 tag or checkout. Homebrew promotion registers `junyudev/tap` with `brew tap`
