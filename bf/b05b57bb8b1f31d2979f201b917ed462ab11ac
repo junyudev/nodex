@@ -1,0 +1,25 @@
+docs/product-specs/document-sync-and-recovery-behavior.md
+  s_8f0e6acde8cb40::t_dde72a783b12d4 138-139
+src/renderer/features/document-recovery/recovery-review.test.tsx
+  s_8f0e6acde8cb40::t_dde72a783b12d4 1,18
+src/renderer/lib/document-recovery.ts
+  s_8f0e6acde8cb40::t_dde72a783b12d4 295-329,464-474
+src/renderer/lib/document-recovery.node.test.ts
+  s_8f0e6acde8cb40::t_f346ca110678a2 337-398
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "bfb05b57bb8b1f31d2979f201b917ed462ab11ac",
+  "prompts": {},
+  "sessions": {
+    "s_8f0e6acde8cb40": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a0bd79-8ebb-7e00-bf06-c58b26be8811",
+        "model": "gpt-6-astra"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    }
+  }
+}
