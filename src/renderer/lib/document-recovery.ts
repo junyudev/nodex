@@ -122,6 +122,7 @@ export class DocumentRecovery {
   private includeResolved = false;
   private connections = 0;
   private disconnect: (() => void) | null = null;
+  private localChanges: BroadcastChannel | null = null;
   private readonly checkpoint =
     typeof indexedDB === "undefined" ? null : new IndexedDbDocumentLocalCheckpointStore(indexedDB);
   private readonly canvas: IndexedDbCanvasSceneOutbox | null;
@@ -156,6 +157,14 @@ export class DocumentRecovery {
       if (!this.documentId || !documentId || documentId === this.documentId) void this.refresh();
     });
     const releaseIssues = contentEditIssues.register(createDocumentRecoveryIssueSource(this));
+    if (typeof BroadcastChannel !== "undefined") {
+      this.localChanges = new BroadcastChannel("nodex:recovery-local-changes");
+      this.localChanges.addEventListener("message", () => {
+        void this.loadLocal(false).catch((error: unknown) =>
+          this.publish({ localError: message(error) }),
+        );
+      });
+    }
     const refresh = () => {
       void this.refresh();
     };
@@ -163,6 +172,8 @@ export class DocumentRecovery {
     window.addEventListener("online", refresh);
     refresh();
     this.disconnect = () => {
+      this.localChanges?.close();
+      this.localChanges = null;
       releaseIssues();
       unsubscribe();
       window.removeEventListener("focus", refresh);
@@ -281,36 +292,49 @@ export class DocumentRecovery {
     this.publish({ loading: false });
   }
   private async transfer(entry: RecoveryStagingSummary, epoch: string): Promise<boolean> {
-    const store = this.store(entry.sourceKind);
-    if (!store) throw new Error("Local recovery storage is unavailable");
-    this.publish({ sending: [...this.state.sending, entry.sourceKey] });
-    try {
-      const frozen = await store.freeze(entry, this.scope, epoch);
-      const received = await this.port.apply({
-        ...frozen.scope,
-        kind: "capture",
-        operationId: frozen.operationId,
-        storeEpoch: frozen.storeEpoch,
-        bundle: frozen.bundle,
-      });
-      verifyRecoveryReceipt(frozen, received.capture_receipt);
-      if (
-        received.draft_id !== frozen.bundle.draftId ||
-        received.payload_hash !== received.capture_receipt?.stored_payload_hash
-      )
-        throw new Error("Core acknowledged another retained package. The local copy is unchanged.");
-      this.publish({
-        acceptedLocal: { ...this.state.acceptedLocal, [entry.sourceKey]: received.draft_id },
-        drafts: [
-          ...this.state.drafts.filter((draft) => draft.draft_id !== received.draft_id),
-          received,
-        ],
-      });
-      return await store.acknowledge(entry, frozen, received.capture_receipt);
-    } finally {
-      const index = this.state.sending.indexOf(entry.sourceKey);
-      this.publish({ sending: this.state.sending.filter((_, position) => position !== index) });
-    }
+    // Web Locks share this critical section across coordinators and renderer windows.
+    return navigator.locks.request(`nodex:recovery:${entry.sourceKey}`, async () => {
+      const store = this.store(entry.sourceKind);
+      if (!store) throw new Error("Local recovery storage is unavailable");
+      this.publish({ sending: [...this.state.sending, entry.sourceKey] });
+      try {
+        const frozen = await store.freeze(entry, this.scope, epoch);
+        const previousClaim = await store.claimTransfer(entry);
+        const received = await this.port
+          .apply({
+            ...frozen.scope,
+            kind: "capture",
+            operationId: frozen.operationId,
+            storeEpoch: frozen.storeEpoch,
+            bundle: frozen.bundle,
+          })
+          .catch(async (error: unknown) => {
+            // A later rejection cannot disprove an earlier request with an uncertain receipt.
+            if (!previousClaim && this.transferFailure(error, null).effect === "not_applied")
+              await store.rejectTransfer(entry);
+            throw error;
+          });
+        verifyRecoveryReceipt(frozen, received.capture_receipt);
+        if (
+          received.draft_id !== frozen.bundle.draftId ||
+          received.payload_hash !== received.capture_receipt?.stored_payload_hash
+        )
+          throw new Error(
+            "Core acknowledged another retained package. The local copy is unchanged.",
+          );
+        this.publish({
+          acceptedLocal: { ...this.state.acceptedLocal, [entry.sourceKey]: received.draft_id },
+          drafts: [
+            ...this.state.drafts.filter((draft) => draft.draft_id !== received.draft_id),
+            received,
+          ],
+        });
+        return await store.acknowledge(entry, frozen, received.capture_receipt);
+      } finally {
+        const index = this.state.sending.indexOf(entry.sourceKey);
+        this.publish({ sending: this.state.sending.filter((_, position) => position !== index) });
+      }
+    });
   }
 
   private transferFailure(
@@ -437,6 +461,27 @@ export class DocumentRecovery {
       await this.loadLocal(false);
     }
     await this.readReceived(false);
+  };
+  removeLocal = async (entry: RecoveryStagingSummary): Promise<void> => {
+    if (!this.state.staged.some((value) => value.sourceKey === entry.sourceKey))
+      throw new Error("Refresh the local recovery list before removing this draft");
+    if (this.state.sending.includes(entry.sourceKey))
+      throw new Error("Wait for this draft to finish sending before removing it");
+    const store = this.store(entry.sourceKind);
+    if (!store) throw new Error("Local recovery storage is unavailable");
+    await navigator.locks.request(
+      `nodex:recovery:${entry.sourceKey}`,
+      { ifAvailable: true },
+      async (lock) => {
+        if (!lock)
+          throw new Error(
+            "This draft is being sent in another window. Try again when sending finishes.",
+          );
+        await store.remove(entry);
+      },
+    );
+    this.localChanges?.postMessage(null);
+    await this.loadLocal(false);
   };
   exportLocal = async (sourceKey: string): Promise<void> => {
     const entry = this.state.staged.find((value) => value.sourceKey === sourceKey);

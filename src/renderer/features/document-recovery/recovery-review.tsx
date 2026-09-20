@@ -62,6 +62,7 @@ function RecoveryReviewContent({
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [confirmDiscard, setConfirmDiscard] = useState(false);
+  const [removeTarget, setRemoveTarget] = useState<(typeof state.staged)[number] | null>(null);
   const [showResolved, setShowResolved] = useState(false);
   const request = useRef(0);
   useEffect(() => module.connect(), [module]);
@@ -147,6 +148,19 @@ function RecoveryReviewContent({
       setBusy(false);
     }
   };
+  const removeLocal = async () => {
+    if (!removeTarget || busy) return;
+    setBusy(true);
+    setError(null);
+    try {
+      await module.removeLocal(removeTarget);
+      setRemoveTarget(null);
+    } catch (error) {
+      setError(error instanceof Error ? error.message : String(error));
+    } finally {
+      setBusy(false);
+    }
+  };
   const exportDraft = async () => {
     try {
       if (local) await module.exportLocal(local.sourceKey);
@@ -187,7 +201,11 @@ function RecoveryReviewContent({
               aria-label="Retained draft"
               className="min-w-0 flex-1 bg-transparent text-token-text-secondary"
               value={selectedEntry?.key ?? ""}
-              onChange={(event) => setSelected(event.target.value)}
+              onChange={(event) => {
+                setSelected(event.target.value);
+                setRemoveTarget(null);
+                setConfirmDiscard(false);
+              }}
               disabled={busy}
             >
               {entries.map((entry) => (
@@ -353,6 +371,16 @@ function RecoveryReviewContent({
                 Retry receipt
               </NodexDialogAction>
             ) : null}
+            {local && !removeTarget ? (
+              <NodexDialogAction
+                size="compact"
+                tone="danger"
+                disabled={busy || state.sending.includes(local.sourceKey)}
+                onClick={() => setRemoveTarget(local)}
+              >
+                Remove local draft
+              </NodexDialogAction>
+            ) : null}
             {!resolution && current ? (
               <NodexDialogAction
                 size="compact"
@@ -369,7 +397,29 @@ function RecoveryReviewContent({
               </NodexDialogAction>
             ) : null}
             <div className="flex-1" />
-            {confirmDiscard ? (
+            {removeTarget ? (
+              <>
+                <span className="text-xs text-token-text-secondary">
+                  Permanently remove this local draft? Current documents are unchanged. Export first
+                  if you want a backup. This cannot be undone.
+                </span>
+                <NodexDialogAction
+                  size="compact"
+                  disabled={busy}
+                  onClick={() => setRemoveTarget(null)}
+                >
+                  Keep
+                </NodexDialogAction>
+                <NodexDialogAction
+                  size="compact"
+                  tone="danger"
+                  disabled={busy}
+                  onClick={() => void removeLocal()}
+                >
+                  {busy ? "Removing…" : "Remove permanently"}
+                </NodexDialogAction>
+              </>
+            ) : confirmDiscard ? (
               <>
                 <span className="text-xs text-token-text-secondary">Discard only this draft?</span>
                 <NodexDialogAction size="compact" onClick={() => setConfirmDiscard(false)}>

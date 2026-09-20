@@ -130,6 +130,16 @@ Core determines the available actions:
   pending and exportable; Nodex never marks a partial copy as complete.
 - Discard draft requires an inline confirmation, changes no current content, and
   can be reversed with Undo discard in Recently handled.
+- Remove local draft permanently removes a selected on-device package after an
+  explicit confirmation, including when its source cannot be verified or Core is
+  unavailable. The confirmation recommends exporting a backup and states that this
+  cannot be undone and does not change current documents. Removal checks the
+  reviewed source revision and removes its local warning; other drafts remain.
+  Transfer and removal share an exclusive cross-window lock. Removal is refused
+  while another coordinator is sending that package. A durable receipt claim also
+  prevents removal if the sending window closes or its response is lost. Retry
+  receipt confirms that same capture; a later rejection cannot clear an earlier
+  uncertain claim.
 - Export saves a `.nodex-recovery` file containing the exact retained payload,
   integrity metadata and available captured File dependencies. Local packages can
   be exported before Core accepts them, including rejected or unreadable sources.
@@ -150,8 +160,9 @@ converge on Core's recorded result. A changed preview requires review again.
 
 ## Protection and retention
 
-Core durably receives an immutable, hash-checked recovery package before the
-renderer retires its exact local staging row. The acknowledgement must match the
+Automatic retirement of a local staging row requires Core to durably receive its
+immutable, hash-checked recovery package. Explicit, confirmed Remove local draft
+is the only user-directed exception and does not claim Core receipt. The acknowledgement must match the
 draft, source revision and exact submitted-byte digest; deleting the row also
 requires that its persisted revision has not changed. Lost replies leave staging bytes
 intact; repeated reception cannot overwrite a different package under the same
