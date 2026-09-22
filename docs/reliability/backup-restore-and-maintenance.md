@@ -124,7 +124,8 @@ and goals. Existing writers cause immediate failure. The Adapter uses SQLite
 online backup and checks source data versions, file identity/inventory, and
 database-set stability before
 publication. It preserves selected histories after revert and rewrites their
-absolute database paths to the final destination. Transcript bytes stay intact,
+absolute database paths to the final destination. Current managed goal references
+and managed attachment ownership also move into the destination. Transcript bytes stay intact,
 including lineage byte cutoffs. The pagination database travels with its matching
 rollout bytes: native reads require ancestor projection rows and cannot be assumed
 to rebuild them when resuming a child. Capture checks projection byte/ordinal coverage for required

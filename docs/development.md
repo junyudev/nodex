@@ -202,8 +202,9 @@ a fresh backup first when the Profile has only an older manifest.
 The Profile materializer also captures the source's idle local Codex history:
 active and archived rollouts, inherited fork history, selected history after
 revert, native metadata, pagination indexes, goals, and managed Agent attachments.
-Native SQLite uses online backup rather than raw database/WAL copying, and
-selected rollout paths are relocated into the destination. Core Session/Thread IDs remain unchanged.
+Native SQLite uses online backup rather than raw database/WAL copying. Selected
+rollout paths, current managed goal references, and managed attachment ownership
+are relocated into the destination. Core Session/Thread IDs remain unchanged.
 Execution queues, locks, credentials, and Agent configuration are excluded. Stop
 the source Agent runtime if it owns conversation writers; the clone fails rather
 than copying an in-flight rollout.

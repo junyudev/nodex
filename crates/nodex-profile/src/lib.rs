@@ -3,10 +3,13 @@
 
 mod codex;
 mod files;
+mod goals;
 
 pub use codex::ConversationSnapshotReceipt;
 pub use nodex_core::administration::{ProfileCloneBackupSelection, ProfileCloneRequest};
-use nodex_core::administration::{ProfileCloneReceipt as StoreCloneReceipt, prepare_profile_clone};
+use nodex_core::administration::{
+    ProfileStoreCloneReceipt as StoreCloneReceipt, prepare_profile_clone,
+};
 use serde::{Deserialize, Serialize};
 
 #[derive(Debug, thiserror::Error)]

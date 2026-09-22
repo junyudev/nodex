@@ -62,6 +62,287 @@ fn state(home: &Path, selections: &[(&str, &Path)]) {
 }
 
 #[test]
+fn accepts_absent_and_known_history_modes_but_rejects_malformed_present_values() {
+    let root = tempfile::tempdir().unwrap();
+    let source = root.path().join("source");
+    let agent = source.join("agent");
+    let (relative, _) = write_rollout(&agent, ROOT, ROOT, Value::Null, false, false);
+    let original: Value =
+        serde_json::from_slice(&fs::read(agent.join(&relative)).unwrap()).unwrap();
+    assert!(!read_rollout(&agent, &relative).unwrap().paginated);
+    for (mode, paginated) in [("legacy", false), ("paginated", true)] {
+        let mut meta = original.clone();
+        meta["payload"]["history_mode"] = json!(mode);
+        fs::write(agent.join(&relative), format!("{meta}\n")).unwrap();
+        assert_eq!(
+            read_rollout(&agent, &relative).unwrap().paginated,
+            paginated
+        );
+    }
+    for (index, mode) in [
+        Value::Null,
+        json!(17),
+        json!(true),
+        json!({}),
+        json!([]),
+        json!("future"),
+    ]
+    .into_iter()
+    .enumerate()
+    {
+        let mut meta = original.clone();
+        meta["payload"]["history_mode"] = mode;
+        fs::write(agent.join(&relative), format!("{meta}\n")).unwrap();
+        let target = root.path().join(format!("invalid-{index}"));
+        let error = capture(&source, &target, &target, &[thread(ROOT)]).unwrap_err();
+        assert!(
+            error
+                .to_string()
+                .contains("Unsupported native rollout history mode")
+        );
+    }
+}
+
+#[test]
+fn bounds_projection_rows_and_bytes_including_oversized_thread_cells() {
+    let root = tempfile::tempdir().unwrap();
+    let connection = Connection::open(root.path().join("thread_history_1.sqlite")).unwrap();
+    connection.execute_batch(
+        "CREATE TABLE thread_history_projection_state(thread_id TEXT PRIMARY KEY, next_rollout_byte_offset INTEGER, next_rollout_ordinal INTEGER);
+         INSERT INTO thread_history_projection_state VALUES('a', 10, 1), ('é', 20, 2)",
+    ).unwrap();
+    let bytes = 3 + 4 * size_of::<u64>();
+    let result = read_projections(root.path(), MetadataBudget { rows: 2, bytes }).unwrap();
+    assert_eq!(
+        result,
+        BTreeMap::from([("a".into(), (10, 1)), ("é".into(), (20, 2))])
+    );
+    for budget in [
+        MetadataBudget { rows: 1, bytes },
+        MetadataBudget {
+            rows: 2,
+            bytes: bytes - 1,
+        },
+    ] {
+        assert!(
+            read_projections(root.path(), budget)
+                .unwrap_err()
+                .to_string()
+                .contains("metadata row or byte budget")
+        );
+    }
+    connection
+        .execute("DELETE FROM thread_history_projection_state", [])
+        .unwrap();
+    connection
+        .execute(
+            "INSERT INTO thread_history_projection_state VALUES(?1, 0, 0)",
+            ["é".repeat(8)],
+        )
+        .unwrap();
+    assert!(
+        read_projections(root.path(), MetadataBudget { rows: 1, bytes: 8 })
+            .unwrap_err()
+            .to_string()
+            .contains("metadata row or byte budget")
+    );
+}
+
+#[test]
+fn bounds_rollout_metadata_before_retaining_the_index() {
+    let root = tempfile::tempdir().unwrap();
+    let (relative, _) = write_rollout(root.path(), ROOT, ROOT, Value::Null, false, false);
+    let paths = [relative];
+    let bytes = 2 * ROOT.len() + paths[0].as_os_str().len();
+    assert_eq!(
+        read_rollouts(root.path(), paths.iter(), MetadataBudget { rows: 1, bytes })
+            .unwrap()
+            .len(),
+        1
+    );
+    for budget in [
+        MetadataBudget { rows: 0, bytes },
+        MetadataBudget {
+            rows: 1,
+            bytes: bytes - 1,
+        },
+    ] {
+        assert!(
+            read_rollouts(root.path(), paths.iter(), budget)
+                .unwrap_err()
+                .to_string()
+                .contains("metadata row or byte budget")
+        );
+    }
+}
+
+#[test]
+fn bounds_selected_paths_and_rolls_back_relocation_when_a_later_row_exceeds_budget() {
+    let root = tempfile::tempdir().unwrap();
+    let source = root.path().join("source");
+    let target = root.path().join("target");
+    let selections = [
+        (
+            ROOT,
+            PathBuf::from(format!("sessions/rollout-{ROOT}.jsonl")),
+        ),
+        (
+            CHILD,
+            PathBuf::from(format!("archived_sessions/rollout-{CHILD}.jsonl")),
+        ),
+    ];
+    state(
+        &source,
+        &[(ROOT, &selections[0].1), (CHILD, &selections[1].1)],
+    );
+    let original = selections
+        .iter()
+        .map(|(id, path)| {
+            (
+                id.to_string(),
+                source.join(path).to_str().unwrap().to_owned(),
+            )
+        })
+        .collect::<Vec<_>>();
+    let bytes = original
+        .iter()
+        .map(|(id, path)| id.len() + path.len())
+        .sum::<usize>();
+    let connection = Connection::open(source.join("state_5.sqlite")).unwrap();
+    for budget in [
+        MetadataBudget { rows: 1, bytes },
+        MetadataBudget {
+            rows: 2,
+            bytes: bytes - 1,
+        },
+    ] {
+        assert!(
+            relocate_state(&source, &source, &target, &BTreeMap::new(), budget)
+                .unwrap_err()
+                .to_string()
+                .contains("metadata row or byte budget")
+        );
+        for (id, path) in &original {
+            assert_eq!(
+                connection
+                    .query_row(
+                        "SELECT rollout_path FROM threads WHERE id = ?1",
+                        [id],
+                        |row| row.get::<_, String>(0)
+                    )
+                    .unwrap(),
+                *path
+            );
+        }
+        assert_eq!(
+            connection
+                .query_row("SELECT count(*) FROM agent_jobs", [], |row| row
+                    .get::<_, i64>(0))
+                .unwrap(),
+            1
+        );
+    }
+    let selected = relocate_state(
+        &source,
+        &source,
+        &target,
+        &BTreeMap::new(),
+        MetadataBudget { rows: 2, bytes },
+    )
+    .unwrap();
+    assert_eq!(
+        selected,
+        BTreeMap::from([(ROOT.into(), ROOT.into()), (CHILD.into(), CHILD.into())])
+    );
+    for (id, path) in selections {
+        assert_eq!(
+            connection
+                .query_row(
+                    "SELECT rollout_path FROM threads WHERE id = ?1",
+                    [id],
+                    |row| row.get::<_, String>(0)
+                )
+                .unwrap(),
+            target.join(path).to_str().unwrap()
+        );
+    }
+    assert_eq!(
+        connection
+            .query_row("SELECT count(*) FROM agent_jobs", [], |row| row
+                .get::<_, i64>(0))
+            .unwrap(),
+        0
+    );
+}
+
+#[test]
+fn rejects_oversized_native_selection_cells_before_relocation() {
+    let connection = Connection::open_in_memory().unwrap();
+    connection
+        .execute_batch("CREATE TABLE threads(id TEXT PRIMARY KEY, rollout_path TEXT)")
+        .unwrap();
+    for column in 0..2 {
+        connection.execute("DELETE FROM threads", []).unwrap();
+        let mut values = ["a".to_owned(), "b".to_owned()];
+        values[column] = "é".repeat(8);
+        connection
+            .execute(
+                "INSERT INTO threads VALUES(?1, ?2)",
+                rusqlite::params_from_iter(&values),
+            )
+            .unwrap();
+        assert!(
+            next_selection(&connection, None, &mut MetadataBudget { rows: 1, bytes: 8 })
+                .unwrap_err()
+                .to_string()
+                .contains("metadata row or byte budget")
+        );
+        assert_eq!(
+            next_selection(
+                &connection,
+                None,
+                &mut MetadataBudget { rows: 1, bytes: 17 }
+            )
+            .unwrap(),
+            Some((values[0].clone(), values[1].clone()))
+        );
+    }
+}
+
+#[test]
+fn resolves_plain_compression_siblings_but_rejects_unrelated_duplicate_identities() {
+    let root = tempfile::tempdir().unwrap();
+    let source = root.path().join("source");
+    let target = root.path().join("target");
+    let agent = source.join("agent");
+    let (plain, _) = write_rollout(&agent, ROOT, ROOT, Value::Null, false, false);
+    let (compressed, _) = write_rollout(
+        &agent,
+        ROOT,
+        ROOT,
+        json!({"thread_id":CHILD,"end_byte_offset":0,"end_ordinal_exclusive":0}),
+        false,
+        true,
+    );
+    // The stale compressed sibling is missing an ancestor, while plain history is readable.
+    state(&agent, &[(ROOT, &compressed)]);
+    let result = capture(&source, &target, &target, &[thread(ROOT)]).unwrap();
+    assert_eq!(result.captured_thread_count, 1);
+    assert_eq!(result.rollout_count, 1);
+    for relative in [plain, compressed] {
+        assert_eq!(
+            fs::read(target.join("agent").join(&relative)).unwrap(),
+            fs::read(agent.join(&relative)).unwrap()
+        );
+    }
+
+    write_rollout(&agent, ROOT, ROOT, Value::Null, true, false);
+    let duplicate = root.path().join("duplicate");
+    let error = capture(&source, &duplicate, &duplicate, &[thread(ROOT)]).unwrap_err();
+    assert!(error.to_string().contains("ambiguous duplicate rollout"));
+}
+
+#[test]
 fn keeps_selected_revert_archives_inherited_bytes_and_metadata_in_an_independent_home() {
     let root = tempfile::tempdir().unwrap();
     let source = root.path().join("source");
@@ -136,6 +417,21 @@ fn keeps_selected_revert_archives_inherited_bytes_and_metadata_in_an_independent
     ] {
         assert!(!target.join("agent").join(name).exists());
     }
+}
+
+#[test]
+fn rejects_unfinished_rollouts_even_without_required_threads() {
+    let root = tempfile::tempdir().unwrap();
+    let source = root.path().join("source");
+    let target = root.path().join("target");
+    let agent = source.join("agent");
+    let (relative, _) = write_rollout(&agent, ROOT, ROOT, Value::Null, false, false);
+    let path = agent.join(relative);
+    let mut bytes = fs::read(&path).unwrap();
+    bytes.pop();
+    fs::write(&path, bytes).unwrap();
+    let error = capture(&source, &target, &target, &[]).unwrap_err();
+    assert!(error.to_string().contains("unfinished record"));
 }
 
 #[test]

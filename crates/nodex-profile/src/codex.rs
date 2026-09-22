@@ -24,6 +24,31 @@ const DATABASES: &[&str] = &[
 ];
 const MAX_RECORD_BYTES: u64 = 64 * 1024 * 1024;
 
+// Each retained metadata index has a text/payload byte budget; its row cap bounds entry overhead.
+const METADATA_BUDGET: MetadataBudget = MetadataBudget {
+    rows: 100_000,
+    bytes: 16 * 1024 * 1024,
+};
+
+#[derive(Clone, Copy)]
+struct MetadataBudget {
+    rows: usize,
+    bytes: usize,
+}
+
+impl MetadataBudget {
+    fn charge(&mut self, bytes: usize) -> Result<()> {
+        if self.rows == 0 || bytes > self.bytes {
+            return Err(invalid(
+                "Conversation snapshot exceeds its metadata row or byte budget",
+            ));
+        }
+        self.rows -= 1;
+        self.bytes -= bytes;
+        Ok(())
+    }
+}
+
 #[derive(Clone, Debug, Deserialize, Serialize, utoipa::ToSchema)]
 #[serde(rename_all = "camelCase")]
 pub struct ConversationSnapshotReceipt {
@@ -218,11 +243,12 @@ pub(crate) fn capture(
     for relative in before.keys() {
         files::copy_file(&source.join(relative), &staging.join(relative))?;
     }
-    let rollouts = read_rollouts(&staging, before.keys())?;
-    let projections = read_projections(&staging)?;
+    crate::goals::relocate_managed_references(&source, &staging, &target)?;
+    let rollouts = read_rollouts(&staging, before.keys(), METADATA_BUDGET)?;
+    let projections = read_projections(&staging, METADATA_BUDGET)?;
     let has_state = files::exists(&staging.join("state_5.sqlite"))?;
     let mut selected = if has_state {
-        relocate_state(&source, &staging, &target, &rollouts)?
+        relocate_state(&source, &staging, &target, &rollouts, METADATA_BUDGET)?
     } else {
         legacy_selections(&rollouts)
     };
@@ -361,10 +387,20 @@ fn validate_database_layout(home: &Path) -> Result<()> {
 fn read_rollouts<'a>(
     home: &Path,
     paths: impl Iterator<Item = &'a PathBuf>,
+    mut budget: MetadataBudget,
 ) -> Result<BTreeMap<String, Rollout>> {
     let mut rollouts = BTreeMap::new();
     for relative in paths {
         if !relative.starts_with("sessions") && !relative.starts_with("archived_sessions") {
+            continue;
+        }
+        // Native compression publishes .zst before removing plain history. A stopped
+        // compressor may leave both; native resolution always prefers the plain sibling.
+        if relative
+            .extension()
+            .is_some_and(|extension| extension == "zst")
+            && files::exists(&home.join(relative.with_extension("")))?
+        {
             continue;
         }
         let Some(id) = rollout_id(relative) else {
@@ -374,6 +410,12 @@ fn read_rollouts<'a>(
             )));
         };
         let rollout = read_rollout(home, relative)?;
+        budget.charge(
+            id.len()
+                .saturating_add(rollout.thread_id.len())
+                .saturating_add(relative.as_os_str().len())
+                .saturating_add(rollout.base.as_ref().map_or(0, |base| base.id.len())),
+        )?;
         if rollouts.insert(id, rollout).is_some() {
             return Err(invalid("Source has ambiguous duplicate rollout identities"));
         }
@@ -444,9 +486,10 @@ fn read_rollout(home: &Path, relative: &Path) -> Result<Rollout> {
         .as_str()
         .ok_or_else(|| invalid("Rollout has no Thread identity"))?
         .to_owned();
-    let paginated = match meta["payload"]["history_mode"].as_str() {
-        None | Some("legacy") => false,
-        Some("paginated") => true,
+    let paginated = match meta["payload"].get("history_mode") {
+        None => false,
+        Some(Value::String(mode)) if mode == "legacy" => false,
+        Some(Value::String(mode)) if mode == "paginated" => true,
         _ => return Err(invalid("Unsupported native rollout history mode")),
     };
     let base = match &meta["payload"]["history_base"] {
@@ -476,30 +519,58 @@ fn read_rollout(home: &Path, relative: &Path) -> Result<Rollout> {
 
 /// Native paginated reads use this index even when the underlying rollout is present.
 /// Inherited ancestors are not automatically reprojected when a child is resumed.
-fn read_projections(home: &Path) -> Result<BTreeMap<String, (u64, u64)>> {
+fn read_projections(
+    home: &Path,
+    mut budget: MetadataBudget,
+) -> Result<BTreeMap<String, (u64, u64)>> {
     let path = home.join("thread_history_1.sqlite");
     if !files::exists(&path)? {
         return Ok(BTreeMap::new());
     }
     let connection = Connection::open(path)?;
-    let values = connection.prepare(
+    let mut statement = connection.prepare(
         "SELECT thread_id, next_rollout_byte_offset, next_rollout_ordinal FROM thread_history_projection_state"
-    )?.query_map([], |row| Ok((row.get::<_, String>(0)?, row.get::<_, i64>(1)?, row.get::<_, i64>(2)?)))?
-        .collect::<rusqlite::Result<Vec<_>>>()?;
-    values
-        .into_iter()
-        .map(|(id, bytes, ordinal)| {
-            Ok((
-                id,
-                (
-                    u64::try_from(bytes)
-                        .map_err(|_| invalid("Negative native projection offset"))?,
-                    u64::try_from(ordinal)
-                        .map_err(|_| invalid("Negative native projection ordinal"))?,
-                ),
-            ))
-        })
-        .collect()
+    )?;
+    let mut rows = statement.query([])?;
+    let mut result = BTreeMap::new();
+    while let Some(row) = rows.next()? {
+        let id = metadata_text(row, 0)?;
+        budget.charge(id.len().saturating_add(2 * size_of::<u64>()))?;
+        let bytes = u64::try_from(row.get::<_, i64>(1)?)
+            .map_err(|_| invalid("Negative native projection offset"))?;
+        let ordinal = u64::try_from(row.get::<_, i64>(2)?)
+            .map_err(|_| invalid("Negative native projection ordinal"))?;
+        result.insert(id.to_owned(), (bytes, ordinal));
+    }
+    Ok(result)
+}
+
+fn metadata_text<'a>(row: &'a rusqlite::Row<'_>, column: usize) -> Result<&'a str> {
+    row.get_ref(column)?
+        .as_str()
+        .map_err(|_| invalid("Native conversation metadata must be UTF-8 text"))
+}
+
+/// Release each read cursor before updating selected paths in the same transaction.
+fn next_selection(
+    connection: &Connection,
+    after: Option<&str>,
+    budget: &mut MetadataBudget,
+) -> Result<Option<(String, String)>> {
+    let sql = if after.is_some() {
+        "SELECT id, rollout_path FROM threads WHERE id > ?1 ORDER BY id LIMIT 1"
+    } else {
+        "SELECT id, rollout_path FROM threads ORDER BY id LIMIT 1"
+    };
+    let mut statement = connection.prepare_cached(sql)?;
+    let mut rows = statement.query(rusqlite::params_from_iter(after))?;
+    let Some(row) = rows.next()? else {
+        return Ok(None);
+    };
+    let thread = metadata_text(row, 0)?;
+    let path = metadata_text(row, 1)?;
+    budget.charge(thread.len().saturating_add(path.len()))?;
+    Ok(Some((thread.to_owned(), path.to_owned())))
 }
 
 fn table_exists(connection: &Connection, table: &str) -> Result<bool> {
@@ -515,17 +586,13 @@ fn relocate_state(
     staging: &Path,
     target: &Path,
     rollouts: &BTreeMap<String, Rollout>,
+    mut budget: MetadataBudget,
 ) -> Result<BTreeMap<String, String>> {
     let mut connection = Connection::open(staging.join("state_5.sqlite"))?;
-    let selected = connection
-        .prepare("SELECT id, rollout_path FROM threads ORDER BY id")?
-        .query_map([], |row| {
-            Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?))
-        })?
-        .collect::<rusqlite::Result<Vec<_>>>()?;
     let transaction = connection.transaction()?;
     let mut result = BTreeMap::new();
-    for (thread, path) in selected {
+    let mut after = None;
+    while let Some((thread, path)) = next_selection(&transaction, after.as_deref(), &mut budget)? {
         let relative = files::relative_path(source, Path::new(&path))?;
         if !relative.starts_with("sessions") && !relative.starts_with("archived_sessions") {
             return Err(invalid(
@@ -550,6 +617,7 @@ fn relocate_state(
             "UPDATE threads SET rollout_path = ?1 WHERE id = ?2",
             (target.join(&relative).to_string_lossy().as_ref(), &thread),
         )?;
+        after = Some(thread.clone());
         result.insert(thread, id);
     }
     // These are replayable progress/operational records, not selected conversation authority.

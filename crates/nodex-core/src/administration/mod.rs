@@ -48,8 +48,8 @@ use crate::infrastructure::store_replacement::{
 use crate::infrastructure::writer::{StoreMaintenance, StoreReaders, StoreWriter};
 
 pub use profile_clone::{
-    PreparedProfileClone, ProfileCloneBackupSelection, ProfileCloneReceipt, ProfileCloneRequest,
-    ProfileCloneThread, prepare_profile_clone,
+    PreparedProfileClone, ProfileCloneBackupSelection, ProfileCloneRequest, ProfileCloneThread,
+    ProfileStoreCloneReceipt, prepare_profile_clone,
 };
 
 const MODULE_NAME: &str = "store_administration";

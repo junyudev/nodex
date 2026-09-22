@@ -8,6 +8,7 @@ import * as Effect from "effect/Effect";
 import { expect, test } from "vite-plus/test";
 import type {
   ThreadForkResponse,
+  ThreadGoalGetResponse,
   ThreadReadResponse,
   ThreadResumeResponse,
   ThreadRevertResponse,
@@ -24,6 +25,11 @@ import {
 import { withCodexProbeSession, type CodexProbeClient } from "../../../scripts/codex-probe-session";
 import { ScopedCallbackRuntime, layer } from "../app/ScopedCallbackRuntime";
 import { initializeStandaloneDataAuthority } from "./index";
+import {
+  PastedTextAttachmentManager,
+  ThreadGoalAttachmentDirectoryManager,
+  readThreadGoalEditableObjective,
+} from "../thread-goal-attachments";
 
 const exec = promisify(execFile);
 const stamp = "2026-09-22T00:00:00Z";
@@ -146,6 +152,21 @@ const verifyClone = async (binaryPath?: string) => {
     );
     let selectedId: string = parentId;
     let selectedFile = basename(parentPath);
+    const attachmentsRoot = join(profile.codexHome, "attachments");
+    const pastedText = await new PastedTextAttachmentManager({ attachmentsRoot }).createRawSource({
+      text: "Retain this managed text attachment",
+    });
+    const goal = await new ThreadGoalAttachmentDirectoryManager({
+      attachmentsRoot,
+    }).materializeDraft({
+      objective: "A".repeat(4001),
+      pastedTextAttachments: [{ text: "Goal attachment contents" }],
+      imageAttachments: [],
+    });
+    const editableGoal = await readThreadGoalEditableObjective({
+      attachmentsRoot,
+      objective: goal.objective,
+    });
     if (binaryPath) {
       selectedId = await withNative(binaryPath, profile.codexHome, async (client) => {
         const source = await client.request<ThreadReadResponse>("thread/read", {
@@ -178,6 +199,11 @@ const verifyClone = async (binaryPath?: string) => {
         });
         expect(reverted.thread.id).toBe(selectedId);
         expect(reverted.thread.path).toBeTruthy();
+        await client.request("thread/goal/set", {
+          threadId: selectedId,
+          objective: goal.objective,
+          status: "paused",
+        });
         return basename(reverted.thread.path!);
       });
     }
@@ -240,6 +266,13 @@ const verifyClone = async (binaryPath?: string) => {
       const hidden = join(profile.runRoot, "source-unavailable");
       await rename(profile.nodexHome, hidden);
       try {
+        const copiedAttachmentsRoot = join(target, "agent", "attachments");
+        const copiedTextPath = pastedText.file.path.replace(attachmentsRoot, copiedAttachmentsRoot);
+        expect(
+          await new PastedTextAttachmentManager({
+            attachmentsRoot: copiedAttachmentsRoot,
+          }).readRawSource({ ...pastedText.file, path: copiedTextPath, fsPath: copiedTextPath }),
+        ).toBe("Retain this managed text attachment");
         const copied = await initializeStandaloneDataAuthority({
           buildId: "profile-clone-test",
           isPackaged: false,
@@ -269,6 +302,16 @@ const verifyClone = async (binaryPath?: string) => {
             expect(read.thread.name).toBe("Copied conversation");
             expect(read.thread.path?.startsWith(join(target, "agent"))).toBe(true);
             expect(basename(read.thread.path!)).toBe(selectedFile);
+            const copiedGoal = await client.request<ThreadGoalGetResponse>("thread/goal/get", {
+              threadId: selectedId,
+            });
+            expect(copiedGoal.goal?.status).toBe("paused");
+            expect(
+              await readThreadGoalEditableObjective({
+                attachmentsRoot: copiedAttachmentsRoot,
+                objective: copiedGoal.goal!.objective,
+              }),
+            ).toBe(editableGoal.replaceAll(attachmentsRoot, copiedAttachmentsRoot));
             const resumed = await client.request<ThreadResumeResponse>("thread/resume", {
               threadId: selectedId,
               excludeTurns: true,
