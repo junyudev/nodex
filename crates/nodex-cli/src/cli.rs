@@ -160,13 +160,13 @@ pub struct ProfileArgs {
 
 #[derive(Clone, Debug, PartialEq, Subcommand)]
 pub enum ProfileCommand {
-    /// Clone a published backup into a new local Profile home.
+    /// Clone a published Store backup and current local conversations into a new Profile.
     Clone(ProfileCloneArgs),
 }
 
 #[derive(Clone, Debug, Args, PartialEq)]
 pub struct ProfileCloneArgs {
-    /// Source Profile home containing published backups.
+    /// Source Profile home containing published backups and native conversation data.
     #[arg(long = "from", value_name = "PROFILE_HOME")]
     pub source: PathBuf,
     /// New Profile home to create; it must not already exist.
@@ -175,6 +175,9 @@ pub struct ProfileCloneArgs {
     /// Published backup ID to copy, or latest.
     #[arg(long, default_value = "latest", value_name = "BACKUP_ID_OR_LATEST")]
     pub backup: String,
+    /// Preserve missing native history for an explicitly incomplete diagnostic clone.
+    #[arg(long)]
+    pub allow_missing_conversations: bool,
 }
 
 #[derive(Clone, Debug, Args, PartialEq)]

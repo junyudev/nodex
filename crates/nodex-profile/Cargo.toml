@@ -1,0 +1,23 @@
+[package]
+name = "nodex-profile"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+
+[dependencies]
+nodex-core.workspace = true
+chrono.workspace = true
+hex.workspace = true
+rusqlite.workspace = true
+rustix.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+sha2.workspace = true
+thiserror.workspace = true
+toml.workspace = true
+utoipa.workspace = true
+zstd = "0.13.3"
+
+[dev-dependencies]
+tempfile = "3.23.0"

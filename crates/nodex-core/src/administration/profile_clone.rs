@@ -15,9 +15,11 @@ use crate::infrastructure::store::STORE_FILE_NAME;
 use super::{backup, restore};
 
 const PROFILE_SNAPSHOT_FILE_NAME: &str = "profile-snapshot.json";
-const PROFILE_SNAPSHOT_VERSION: u32 = 4;
+const PROFILE_SNAPSHOT_VERSION: u32 = 5;
 const PRIVATE_DIRECTORY_MODE: u32 = 0o700;
 const PRIVATE_FILE_MODE: u32 = 0o600;
+const MAX_CLONE_THREADS: usize = 100_000;
+const MAX_THREAD_METADATA_BYTES: usize = 16 * 1024 * 1024;
 
 #[derive(Clone, Debug, Deserialize, Serialize, utoipa::ToSchema)]
 #[serde(rename_all = "snake_case")]
@@ -35,7 +37,7 @@ pub struct ProfileCloneRequest {
 
 #[derive(Clone, Debug, Deserialize, Serialize, utoipa::ToSchema)]
 #[serde(rename_all = "camelCase")]
-pub struct ProfileCloneReceipt {
+pub struct ProfileStoreCloneReceipt {
     pub version: u32,
     pub source_profile_fingerprint: String,
     pub backup_integrity_evidence_version: u32,
@@ -50,9 +52,65 @@ pub struct ProfileCloneReceipt {
     pub library_id: String,
 }
 
-pub fn materialize_profile_clone(
+/// Store-owned requirements that another persistence owner must satisfy before publication.
+#[derive(Clone, Debug)]
+pub struct ProfileCloneThread {
+    pub thread_id: String,
+    pub backend_kind: String,
+    pub execution_host_id: String,
+}
+
+/// A verified, unpublished Store clone. Dropping it removes only its owned staging tree.
+pub struct PreparedProfileClone {
+    source: PathBuf,
+    target: PathBuf,
+    staging: PathBuf,
+    receipt: ProfileStoreCloneReceipt,
+    threads: Vec<ProfileCloneThread>,
+    published: bool,
+}
+
+impl PreparedProfileClone {
+    pub fn source_home(&self) -> &Path {
+        &self.source
+    }
+    pub fn target_home(&self) -> &Path {
+        &self.target
+    }
+    pub fn staging_home(&self) -> &Path {
+        &self.staging
+    }
+    pub fn store_receipt(&self) -> &ProfileStoreCloneReceipt {
+        &self.receipt
+    }
+    pub fn threads(&self) -> &[ProfileCloneThread] {
+        &self.threads
+    }
+
+    /// Publishes only after the outer Profile owner has prepared every required artifact.
+    pub fn publish(mut self, receipt: &impl Serialize) -> Result<(), StoreError> {
+        write_receipt(&self.staging, receipt)?;
+        sync_directory(&self.staging)?;
+        if fs::symlink_metadata(&self.target).is_ok() {
+            return Err(invalid_profile("Target Profile home already exists"));
+        }
+        fs::rename(&self.staging, &self.target).map_err(io_error)?;
+        self.published = true;
+        sync_directory(self.target.parent().expect("validated target parent"))
+    }
+}
+
+impl Drop for PreparedProfileClone {
+    fn drop(&mut self) {
+        if !self.published {
+            let _ = remove_owned_staging_directory(&self.target, &self.staging);
+        }
+    }
+}
+
+pub fn prepare_profile_clone(
     request: ProfileCloneRequest,
-) -> Result<ProfileCloneReceipt, StoreError> {
+) -> Result<PreparedProfileClone, StoreError> {
     let source = require_real_directory(&request.source_profile_home, "Source Profile")?;
     let target = resolve_new_target(&request.target_profile_home)?;
     if target.starts_with(&source) || source.starts_with(&target) {
@@ -60,31 +118,87 @@ pub fn materialize_profile_clone(
             "Source and target Profile homes must not contain one another",
         ));
     }
-
     let backup_id = match &request.backup {
         ProfileCloneBackupSelection::Latest => None,
         ProfileCloneBackupSelection::Id(backup_id) => Some(backup_id.as_str()),
     };
     let backup = backup::resolve_backup_for_profile_clone(&source, backup_id)?;
     let staging = create_staging_directory(&target)?;
-    let source_profile_fingerprint = hex::encode(Sha256::digest(source.as_os_str().as_bytes()));
-    let result =
-        materialize_staging_profile(&target, &staging, &backup, source_profile_fingerprint);
-    match result {
-        Ok(receipt) => Ok(receipt),
-        Err(error) => {
-            remove_owned_staging_directory(&target, &staging)?;
-            Err(error)
-        }
+    let fingerprint = hex::encode(Sha256::digest(source.as_os_str().as_bytes()));
+    let result = (|| {
+        let receipt = materialize_staging_profile(&staging, &backup, fingerprint)?;
+        let connection =
+            crate::infrastructure::sqlite::open_immutable_reader(&staging.join(STORE_FILE_NAME))?;
+        let threads =
+            read_clone_threads(&connection, MAX_CLONE_THREADS, MAX_THREAD_METADATA_BYTES)?;
+        Ok(PreparedProfileClone {
+            source,
+            target: target.clone(),
+            staging: staging.clone(),
+            receipt,
+            threads,
+            published: false,
+        })
+    })();
+    if result.is_err() {
+        remove_owned_staging_directory(&target, &staging)?;
     }
+    result
+}
+
+/// Bounds retained Thread requirements before allocating text from SQLite cells.
+fn read_clone_threads(
+    connection: &rusqlite::Connection,
+    max_rows: usize,
+    max_bytes: usize,
+) -> Result<Vec<ProfileCloneThread>, StoreError> {
+    let mut statement = connection.prepare(
+        "SELECT thread_id, agent_backend_kind, execution_host_id FROM codex_threads ORDER BY thread_id",
+    )?;
+    let mut rows = statement.query([])?;
+    let mut threads = Vec::new();
+    let mut bytes = 0usize;
+    while let Some(row) = rows.next()? {
+        if threads.len() >= max_rows {
+            return Err(invalid_profile(
+                "Profile clone Thread metadata exceeds its row budget",
+            ));
+        }
+        for column in 0..3 {
+            let rusqlite::types::ValueRef::Text(value) = row.get_ref(column)? else {
+                return Err(corrupt("Profile clone Thread metadata must be text"));
+            };
+            bytes = bytes.saturating_add(value.len());
+            if bytes > max_bytes {
+                return Err(invalid_profile(
+                    "Profile clone Thread metadata exceeds its byte budget",
+                ));
+            }
+        }
+        threads.push(ProfileCloneThread {
+            thread_id: row.get(0)?,
+            backend_kind: row.get(1)?,
+            execution_host_id: row.get(2)?,
+        });
+    }
+    Ok(threads)
+}
+
+#[cfg(test)]
+fn materialize_profile_clone(
+    request: ProfileCloneRequest,
+) -> Result<ProfileStoreCloneReceipt, StoreError> {
+    let prepared = prepare_profile_clone(request)?;
+    let receipt = prepared.store_receipt().clone();
+    prepared.publish(&receipt)?;
+    Ok(receipt)
 }
 
 fn materialize_staging_profile(
-    target: &Path,
     staging: &Path,
     backup: &backup::EvidenceBackedProfileClone,
     source_profile_fingerprint: String,
-) -> Result<ProfileCloneReceipt, StoreError> {
+) -> Result<ProfileStoreCloneReceipt, StoreError> {
     backup::copy_backup_to_profile(backup, staging)?;
     let database_path = staging.join(STORE_FILE_NAME);
     let (profile_id, library_id) = read_identity(&database_path)?;
@@ -107,7 +221,7 @@ fn materialize_staging_profile(
         ));
     }
 
-    let receipt = ProfileCloneReceipt {
+    let receipt = ProfileStoreCloneReceipt {
         version: PROFILE_SNAPSHOT_VERSION,
         source_profile_fingerprint,
         backup_integrity_evidence_version: backup.integrity_evidence_version(),
@@ -121,14 +235,6 @@ fn materialize_staging_profile(
         profile_id,
         library_id,
     };
-    write_receipt(staging, &receipt)?;
-    sync_directory(staging)?;
-    fs::rename(staging, target).map_err(io_error)?;
-    sync_directory(
-        target
-            .parent()
-            .ok_or_else(|| invalid_profile("Target Profile has no parent directory"))?,
-    )?;
     Ok(receipt)
 }
 
@@ -174,7 +280,7 @@ fn remint_profile_secrets(database_path: &Path) -> Result<(), StoreError> {
     Ok(())
 }
 
-fn write_receipt(profile_home: &Path, receipt: &ProfileCloneReceipt) -> Result<(), StoreError> {
+fn write_receipt(profile_home: &Path, receipt: &impl Serialize) -> Result<(), StoreError> {
     let mut bytes = serde_json::to_vec_pretty(receipt)
         .map_err(|_| internal("Profile snapshot receipt could not be encoded"))?;
     bytes.push(b'\n');
@@ -309,6 +415,55 @@ mod tests {
     use crate::infrastructure::store::SqliteStoreKernel;
 
     use super::*;
+
+    #[test]
+    fn bounds_clone_thread_rows_and_text_bytes_without_truncating() {
+        let connection = rusqlite::Connection::open_in_memory().unwrap();
+        connection.execute_batch(
+            "CREATE TABLE codex_threads(thread_id TEXT PRIMARY KEY, agent_backend_kind TEXT, execution_host_id TEXT)",
+        ).unwrap();
+        assert!(read_clone_threads(&connection, 0, 0).unwrap().is_empty());
+        let records = [["first", "codex", "local"], ["second", "acp", "remote"]];
+        for record in records {
+            connection
+                .execute("INSERT INTO codex_threads VALUES(?1, ?2, ?3)", record)
+                .unwrap();
+        }
+        let bytes = records
+            .iter()
+            .flatten()
+            .map(|value| value.len())
+            .sum::<usize>();
+        let threads = read_clone_threads(&connection, 2, bytes).unwrap();
+        assert_eq!(threads.len(), 2);
+        assert_eq!(threads[0].thread_id, "first");
+        assert_eq!(threads[1].backend_kind, "acp");
+        assert_eq!(threads[1].execution_host_id, "remote");
+        for (rows, bytes, message) in [(1, bytes, "row budget"), (2, bytes - 1, "byte budget")] {
+            let error = read_clone_threads(&connection, rows, bytes).unwrap_err();
+            assert_eq!(error.code, StoreErrorCode::InvalidProfile);
+            assert!(error.message.contains(message));
+        }
+    }
+
+    #[test]
+    fn rejects_oversized_cells_in_every_clone_thread_column() {
+        let connection = rusqlite::Connection::open_in_memory().unwrap();
+        connection.execute_batch(
+            "CREATE TABLE codex_threads(thread_id TEXT, agent_backend_kind TEXT, execution_host_id TEXT)",
+        ).unwrap();
+        for column in 0..3 {
+            connection.execute("DELETE FROM codex_threads", []).unwrap();
+            let mut record = ["a".to_owned(), "a".to_owned(), "a".to_owned()];
+            record[column] = "é".repeat(8);
+            connection
+                .execute("INSERT INTO codex_threads VALUES(?1, ?2, ?3)", record)
+                .unwrap();
+            let error = read_clone_threads(&connection, 1, 8).unwrap_err();
+            assert!(error.message.contains("byte budget"));
+            assert_eq!(read_clone_threads(&connection, 1, 18).unwrap().len(), 1);
+        }
+    }
 
     #[test]
     fn clones_a_published_backup_as_an_isolated_local_fork() {
@@ -457,7 +612,7 @@ mod tests {
         assert_ne!(source_secrets.0, clone_secrets.0);
         assert_ne!(source_secrets.1, clone_secrets.1);
         assert_eq!(
-            serde_json::from_slice::<ProfileCloneReceipt>(
+            serde_json::from_slice::<ProfileStoreCloneReceipt>(
                 &fs::read(target.join(PROFILE_SNAPSHOT_FILE_NAME)).expect("snapshot receipt")
             )
             .expect("valid snapshot receipt")

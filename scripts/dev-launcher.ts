@@ -1,3 +1,4 @@
+import { parseProfileConversationSnapshot } from "./profile-conversation-snapshot";
 import {
   resolveDevelopmentRendererPort,
   requireDevelopmentRendererPort,
@@ -44,6 +45,7 @@ export interface DevLauncherArguments {
   readonly seed?: string;
   readonly fromProfile?: string;
   readonly backup: string;
+  readonly allowMissingConversations: boolean;
   readonly build: boolean;
   readonly authJson?: string;
   readonly agentConfigToml?: string;
@@ -73,8 +75,10 @@ const USAGE = `Usage: pnpm run dev [options]
 Options:
   --home <dir>               Environment root (default: runs.local/default)
   --seed <seed-id>           Initialize a new environment from the seed catalog
-  --from-profile <dir>       Clone a published backup from a real Profile
+  --from-profile <dir>       Clone a Store backup and current local conversations
   --backup <id|latest>       Backup to clone (default: latest assets-inclusive backup)
+  --allow-missing-conversations
+                             Permit incomplete history for diagnostic Profile clones
   --renderer-port <port>     Explicitly choose and persist this home’s renderer cache origin
   --build                    Build optimized Rust binaries and run without HMR
   --auth-json <file>         Copy an auth.json into the environment
@@ -112,6 +116,7 @@ export const parseDevLauncherArguments = (args: readonly string[]): DevLauncherA
   let fromProfile: string | undefined;
   let backup = "latest";
   let backupWasSet = false;
+  let allowMissingConversations = false;
   let authJson: string | undefined;
   let agentConfigToml: string | undefined;
   let remoteDebuggingPort: string | undefined;
@@ -128,6 +133,10 @@ export const parseDevLauncherArguments = (args: readonly string[]): DevLauncherA
   for (let index = 0; index < args.length; index += 1) {
     const argument = args[index];
     if (argument === "--") continue;
+    if (argument === "--allow-missing-conversations") {
+      allowMissingConversations = true;
+      continue;
+    }
     if (argument === "--build") {
       build = true;
       continue;
@@ -202,6 +211,9 @@ export const parseDevLauncherArguments = (args: readonly string[]): DevLauncherA
   if (seed && fromProfile) {
     throw new Error("--seed and --from-profile are mutually exclusive");
   }
+  if (allowMissingConversations && !fromProfile) {
+    throw new Error("--allow-missing-conversations requires --from-profile");
+  }
   if (backupWasSet && !fromProfile) {
     throw new Error("--backup requires --from-profile");
   }
@@ -210,6 +222,7 @@ export const parseDevLauncherArguments = (args: readonly string[]): DevLauncherA
     ...(seed === undefined ? {} : { seed }),
     ...(fromProfile === undefined ? {} : { fromProfile }),
     backup,
+    allowMissingConversations,
     build,
     ...(authJson === undefined ? {} : { authJson }),
     ...(agentConfigToml === undefined ? {} : { agentConfigToml }),
@@ -407,7 +420,7 @@ const readProfileSnapshotReceipt = async (
   );
   if (
     !isRecord(value) ||
-    value.version !== 4 ||
+    value.version !== 5 ||
     typeof value.sourceProfileFingerprint !== "string" ||
     !/^[0-9a-f]{64}$/u.test(value.sourceProfileFingerprint) ||
     value.backupIntegrityEvidenceVersion !== 1 ||
@@ -430,6 +443,7 @@ const readProfileSnapshotReceipt = async (
   }
   return {
     sourceProfileHome,
+    conversations: parseProfileConversationSnapshot(value.conversations),
     sourceProfileFingerprint: value.sourceProfileFingerprint,
     backupIntegrityEvidenceVersion: value.backupIntegrityEvidenceVersion,
     missingManagedAssetCount: value.missingManagedAssetCount,
@@ -533,6 +547,7 @@ const prepareProfileSnapshot = (input: {
           current.nodexHome,
           "--backup",
           input.arguments.backup,
+          ...(input.arguments.allowMissingConversations ? ["--allow-missing-conversations"] : []),
         ],
       },
       current.repositoryRealpath,
@@ -548,6 +563,14 @@ const prepareProfileSnapshot = (input: {
         profileSnapshot,
       }),
     );
+    const missingConversations = profileSnapshot.conversations.missingThreadIds.length;
+    if (missingConversations > 0) {
+      yield* Effect.sync(() =>
+        process.stderr.write(
+          `Profile snapshot preserved ${missingConversations} local Thread(s) without recoverable native history.\n`,
+        ),
+      );
+    }
     if (profileSnapshot.missingManagedAssetCount > 0) {
       yield* Effect.sync(() =>
         process.stderr.write(

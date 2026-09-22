@@ -113,7 +113,7 @@ pub(super) fn result(path: &[&str]) -> Value {
                 document::<StoreAdministrationReceipt>(),
             ],
         ),
-        ["profile", "clone"] => document::<nodex_core::administration::ProfileCloneReceipt>(),
+        ["profile", "clone"] => document::<nodex_profile::ProfileCloneReceipt>(),
         ["doctor"] => document::<crate::runtime::DoctorOutput>(),
         ["draft", "create"] => document::<crate::draft::DraftWorkspaceResult>(),
         ["draft", "diff"] => document::<crate::draft::DraftDiffResult>(),
@@ -287,6 +287,53 @@ mod tests {
             }
             _ => {}
         }
+    }
+
+    #[test]
+    fn profile_clone_schema_validates_both_store_and_conversation_receipts() {
+        let schema = result(&["profile", "clone"]);
+        let validator = jsonschema::validator_for(&schema).expect("Profile clone schema");
+        let receipt = json!({
+            "version": 5,
+            "sourceProfileFingerprint": "source",
+            "backupIntegrityEvidenceVersion": 1,
+            "missingManagedAssetCount": 0,
+            "backupId": "backup",
+            "backupCreatedAt": "2026-09-22T00:00:00Z",
+            "clonedAt": "2026-09-22T01:00:00Z",
+            "storeSchemaVersion": 1,
+            "sourceStoreEpoch": "source-epoch",
+            "storeEpoch": "clone-epoch",
+            "profileId": "profile",
+            "libraryId": "library",
+            "conversations": {
+                "version": 1,
+                "captureStartedAt": "2026-09-22T01:00:00Z",
+                "captureCompletedAt": "2026-09-22T01:00:01Z",
+                "requiredThreadCount": 1,
+                "capturedThreadCount": 1,
+                "externalThreadCount": 0,
+                "missingThreadIds": [],
+                "rolloutCount": 1,
+                "nativeStateSchema": "state_5",
+                "contentSha256": "digest"
+            }
+        });
+        let typed: nodex_profile::ProfileCloneReceipt =
+            serde_json::from_value(receipt.clone()).expect("typed Profile receipt");
+        let serialized = serde_json::to_value(typed).unwrap();
+        assert!(validator.is_valid(&serialized));
+        for property in ["profileId", "conversations"] {
+            let mut incomplete = serialized.clone();
+            incomplete.as_object_mut().unwrap().remove(property);
+            assert!(
+                !validator.is_valid(&incomplete),
+                "Profile clone schema must require {property}"
+            );
+        }
+        let mut invalid = serialized;
+        invalid["conversations"]["capturedThreadCount"] = json!("one");
+        assert!(!validator.is_valid(&invalid));
     }
 
     #[test]

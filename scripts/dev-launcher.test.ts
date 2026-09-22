@@ -50,6 +50,7 @@ describe("dev launcher", () => {
       home: "runs.local/perf",
       seed: "board/dense",
       backup: "latest",
+      allowMissingConversations: false,
       build: true,
       authJson: "/tmp/auth.json",
       agentConfigToml: "/tmp/config.toml",
@@ -71,6 +72,9 @@ describe("dev launcher", () => {
     expect(() => parseDevLauncherArguments(["--backup", "backup-1"])).toThrow(
       "requires --from-profile",
     );
+    expect(() => parseDevLauncherArguments(["--allow-missing-conversations"])).toThrow(
+      "requires --from-profile",
+    );
   });
 
   test("parses a real Profile snapshot source and disables remote observability", () => {
@@ -79,10 +83,12 @@ describe("dev launcher", () => {
       "/tmp/live-profile",
       "--backup",
       "backup-1",
+      "--allow-missing-conversations",
     ]);
     expect(arguments_).toMatchObject({
       fromProfile: "/tmp/live-profile",
       backup: "backup-1",
+      allowMissingConversations: true,
     });
     const plan = createDevLaunchPlan({ arguments: arguments_, environment: {}, home: HOME });
     expect(plan.environment).toMatchObject({

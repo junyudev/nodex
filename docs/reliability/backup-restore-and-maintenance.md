@@ -90,7 +90,7 @@ restored Store.
 ## Development Profile clones
 
 Offline development provisioning may materialize a current evidence-backed
-published backup into a new Profile home. The source Profile remains unopened:
+published backup into a new Profile home. The source Core is never launched:
 Core reads only the backup package, copies `nodex.db` and its managed-asset
 closure into a private sibling staging directory, and rejects symlinks,
 existing targets, or source/target ancestry overlap. Regular-file copying uses
@@ -105,14 +105,48 @@ its source.
 Core verifies the copied database and asset-tree digests before reminting, then
 validates schema/epoch identity, document authorities, every present managed
 asset, and missing-asset evidence without repeating the publication-time SQLite
-integrity scan. It writes and syncs the private `profile-snapshot.json` receipt,
-then atomically renames the staging directory into place. Because the staging
-tree is disposable and exactly reproducible, development cloning omits
+integrity scan. Core returns an unpublished, owned staging capability with the
+local Thread requirements. The outer Profile materializer completes the native
+conversation closure before writing and syncing `profile-snapshot.json` and
+atomically publishing the directory. Dropping the capability on any capture or
+validation failure removes its staging tree. Because development clones are
+disposable, provisioning omits
 per-file fsync for the copied database/assets while retaining receipt and
 directory publication syncs. A power-loss-damaged fork must be deleted and
-recreated from its unchanged backup. Failed provisioning removes only the owned
+recreated from the source inputs. Failed provisioning removes only the owned
 staging directory and never modifies the source backup. This is a local
 development input path, not a restore into a running Profile.
+
+The Codex persistence Adapter holds the native home coordination lock while
+checking that all per-Thread writers are idle and capturing active/archived
+rollouts, inherited ancestors, attachments, session metadata, pagination indexes,
+and goals. Existing writers cause immediate failure. The Adapter uses SQLite
+online backup and checks source data versions, file identity/inventory, and
+database-set stability before
+publication. It preserves selected histories after revert and rewrites their
+absolute database paths to the final destination. Current managed goal references
+and managed attachment ownership also move into the destination. Transcript bytes stay intact,
+including lineage byte cutoffs. The pagination database travels with its matching
+rollout bytes: native reads require ancestor projection rows and cannot be assumed
+to rebuild them when resuming a child. Capture checks projection byte/ordinal coverage for required
+paginated histories. Credentials, configuration, operational queues, and process
+locks are excluded. Capture uses native writer and SQLite read coordination;
+source history and published Store backups are never rewritten.
+
+Required local Codex Threads must resolve through their entire inherited rollout
+chain, with valid byte/ordinal cutoffs. Missing chains prevent publication unless
+`--allow-missing-conversations` explicitly requests incomplete diagnostic state.
+The receipt records missing IDs separately from Threads on remote hosts or other
+backends. Unsupported native storage layouts, symlinks, paths outside the source
+Agent home, and source mutation fail capture. This Adapter's storage contract
+must be reviewed alongside Codex runtime upgrades.
+
+The Store backup and native capture are independently timestamped inputs. A
+selected older backup does not imply a matching historical native capture, and
+Core backups alone remain Store/managed-asset backups. Profile cloning does not
+supply a full-Profile point-in-time restore. Workspace and historical file paths
+are not relocated. Reusing an old development manifest without conversation
+capture evidence is rejected with instructions to create a fresh home.
 
 ## Maintenance
 

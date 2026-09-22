@@ -6,6 +6,7 @@ members = [
   "crates/nodex-core-contracts",
   "crates/nodex-core-protocol",
   "crates/nodex-page-search-kernel",
+  "crates/nodex-profile",
   "crates/nodex-core-server",
   "crates/nodex-store-format",
   "crates/nodex-sqlite-query",
@@ -19,6 +20,7 @@ rust-version = "1.97.1"
 license = "MIT"
 
 [workspace.dependencies]
+nodex-profile = { path = "crates/nodex-profile" }
 nodex-core = { path = "crates/nodex-core" }
 nodex-core-contracts = { path = "crates/nodex-core-contracts" }
 nodex-core-protocol = { path = "crates/nodex-core-protocol" }
