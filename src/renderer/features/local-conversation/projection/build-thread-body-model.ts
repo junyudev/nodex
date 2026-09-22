@@ -31,6 +31,7 @@ export interface ThreadBodyModelInput {
     updatedAt: number;
   } | null;
   firstSubmissionActive?: boolean;
+  readOnly?: boolean;
 }
 
 export type ThreadStartProgressPresentation = "hidden" | "panel";
@@ -222,7 +223,12 @@ export function buildThreadBodyModel(input: ThreadBodyModelInput): ThreadBodyMod
     };
   }
 
-  if (conversation.resumeState !== "resumed" && attachmentState.status !== "failed") {
+  const canReadAttachedHistory = input.readOnly === true && attachmentState.status === "attached";
+  if (
+    conversation.resumeState !== "resumed" &&
+    attachmentState.status !== "failed" &&
+    !canReadAttachedHistory
+  ) {
     if (hasThreadStartProgress) {
       return {
         threadId: conversation.threadId,
@@ -304,7 +310,7 @@ export function buildThreadBodyModel(input: ThreadBodyModelInput): ThreadBodyMod
       emptyState: {
         type: "emptyThread",
         title: "No messages yet",
-        description: "Send a prompt to begin.",
+        description: input.readOnly ? "" : "Send a prompt to begin.",
       },
     };
   }

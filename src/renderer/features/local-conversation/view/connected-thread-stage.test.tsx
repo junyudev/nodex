@@ -482,7 +482,9 @@ async function renderStage(
   return view;
 }
 
-async function renderPrimaryAndAuxiliaryThread(auxiliaryMode: "background-detail" | "side-chat") {
+async function renderPrimaryAndAuxiliaryThread(
+  auxiliaryMode: "background-detail" | "interactive-background" | "side-chat",
+) {
   const { __resetLocalConversationStoreForTests, LocalConversationProvider } =
     await import("../local-conversation-store");
   const { ConnectedThreadStage } = await import("./connected-thread-stage");
@@ -534,8 +536,12 @@ async function renderPrimaryAndAuxiliaryThread(auxiliaryMode: "background-detail
               {...sharedProps}
               activeThreadId={childSummary.threadId}
               activeThreadSummary={childSummary}
-              {...(auxiliaryMode === "background-detail"
-                ? { backgroundAgentDetail: true }
+              {...(auxiliaryMode !== "side-chat"
+                ? {
+                    backgroundAgentDetail: true,
+                    backgroundAgentCanInteract: auxiliaryMode === "interactive-background",
+                    composerScopeIdentity: "background-agent:thread_child",
+                  }
                 : {
                     composerScopeIdentity: "side-chat:thread_child",
                     sideChatContext: {
@@ -1039,10 +1045,37 @@ describe("ConnectedThreadStage archived resume behavior", () => {
 
   test("keeps background-agent detail read-only beside the primary thread composer", async () => {
     const view = await renderPrimaryAndAuxiliaryThread("background-detail");
+    expect(
+      invokeCalls.filter(
+        (call) =>
+          call.channel === "codex:thread:resume:prepare" && call.threadId === "thread_child",
+      ),
+    ).toEqual([]);
 
     expect(
       view.container.querySelectorAll('[data-local-conversation-composer-shell="true"]'),
     ).toHaveLength(1);
+  });
+
+  test("does not resume or mount a composer for a primary child route before parent history loads", async () => {
+    invokeCalls = [];
+    const view = await renderStage({
+      ...buildThreadSummary(false),
+      source: { parentThreadId: "thread-parent" },
+    });
+    expect(
+      view.container.querySelectorAll('[data-local-conversation-composer-shell="true"]'),
+    ).toHaveLength(0);
+    expect(invokeCalls.filter((call) => call.channel === "codex:thread:resume:prepare")).toEqual(
+      [],
+    );
+  });
+
+  test("keeps an explicitly interactive child composer separate from the primary composer", async () => {
+    const view = await renderPrimaryAndAuxiliaryThread("interactive-background");
+    expect(
+      view.container.querySelectorAll('[data-local-conversation-composer-shell="true"]'),
+    ).toHaveLength(2);
   });
 
   test("gives a writable auxiliary thread its own composer scope", async () => {

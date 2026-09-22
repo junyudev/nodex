@@ -1,3 +1,5 @@
+import { collectCodexSubagentInteractionReferences } from "../../../../shared/codex-subagent-interaction";
+import { conversationTurnsWithOverlay } from "../../../../shared/codex-conversation-state/codex-conversation-state";
 import { resolveWorkspaceSearchContext } from "@/lib/workspace-search-context";
 import { DEFAULT_CODEX_HOST_ID } from "../../../../shared/codex-host";
 import {
@@ -300,6 +302,7 @@ function ConnectedThreadStageBody({
   turnDiffHoverPreviewDisabled = false,
   presentedTurns,
   firstSubmissionActive = false,
+  readOnly = false,
 }: {
   activeThreadId: string | null;
   input: ConnectedThreadStageInput;
@@ -316,6 +319,7 @@ function ConnectedThreadStageBody({
   turnDiffHoverPreviewDisabled?: boolean;
   presentedTurns?: CodexConversationTurn[];
   firstSubmissionActive?: boolean;
+  readOnly?: boolean;
 }) {
   const canonicalTurns = useConversationTurns(activeThreadId);
   const turns = presentedTurns ?? canonicalTurns;
@@ -341,7 +345,14 @@ function ConnectedThreadStageBody({
   const statusType = useConversationStatusType(activeThreadId);
   const summaryFields = useConversationSummaryFields(activeThreadId);
   const archived = input.activeThreadSummary?.archived === true || summaryFields.archived;
-  const capabilityFlags = useConversationCapabilityFlags(activeThreadId);
+  const liveCapabilityFlags = useConversationCapabilityFlags(activeThreadId);
+  const capabilityFlags = useMemo(
+    () =>
+      readOnly
+        ? { ...liveCapabilityFlags, canEditLastUserTurn: false, canForkFromTurn: false }
+        : liveCapabilityFlags,
+    [liveCapabilityFlags, readOnly],
+  );
   const parentThreadId = useConversationParentThreadId(activeThreadId);
   const parentTurns = useConversationTurns(parentThreadId);
   const childMemberships = useConversationChildMemberships(activeThreadId);
@@ -385,6 +396,7 @@ function ConnectedThreadStageBody({
         ),
         threadStartProgress: input.threadStartProgress,
         firstSubmissionActive,
+        readOnly,
       }),
     [
       activeThreadId,
@@ -396,6 +408,7 @@ function ConnectedThreadStageBody({
       input.threadStartProgress,
       parentTurns,
       firstSubmissionActive,
+      readOnly,
     ],
   );
 
@@ -1060,6 +1073,25 @@ export function ConnectedThreadStage({
   );
   const showNewThreadHome = isNewThreadRoute && !hasFirstSubmission && !hasThreadStartProgress;
   const conversation = useConversation(activeThreadId);
+  const residentParentThreadId = useConversationParentThreadId(activeThreadId);
+  const parentThreadId =
+    residentParentThreadId ?? input.activeThreadSummary?.source?.parentThreadId ?? null;
+  const parentConversation = useConversation(parentThreadId);
+  const parentAllowsInteraction = useMemo(
+    () =>
+      activeThreadId !== null &&
+      collectCodexSubagentInteractionReferences(
+        conversationTurnsWithOverlay(parentConversation?.canonicalState),
+      ).get(activeThreadId)?.canInteract === true,
+    [activeThreadId, parentConversation?.canonicalState],
+  );
+  const isActiveThreadArchived =
+    input.activeThreadSummary?.archived === true || summaryFields.archived;
+  const subagentReadOnly = backgroundAgentDetail
+    ? !backgroundAgentCanInteract || isActiveThreadArchived
+    : !isSideChat &&
+      parentThreadId !== null &&
+      (!parentAllowsInteraction || isActiveThreadArchived);
   const backgroundTerminalRows = useConversationBackgroundTerminalRows(activeThreadId);
   const cwd = useConversationCwd(activeThreadId);
   const childMemberships = useConversationChildMemberships(activeThreadId);
@@ -1104,8 +1136,6 @@ export function ConnectedThreadStage({
     visibleBackgroundRequestConversationId,
   ]);
   usePresentedConversationIds(presentedConversationIds, preferredHostId);
-  const isActiveThreadArchived =
-    input.activeThreadSummary?.archived === true || summaryFields.archived;
   const activeThreadProjectless = summaryFields.threadId
     ? summaryFields.projectId === null
     : input.activeThreadSummary?.projectId === null;
@@ -1214,7 +1244,7 @@ export function ConnectedThreadStage({
     if (!input.activeThreadId || input.isNewThreadTab) {
       return;
     }
-    if (hasFirstSubmission) return;
+    if (hasFirstSubmission || subagentReadOnly) return;
     if (connection.status !== "connected") return;
     if (isActiveThreadArchived) {
       return;
@@ -1238,6 +1268,7 @@ export function ConnectedThreadStage({
     connection.status,
     attachmentState,
     hasFirstSubmission,
+    subagentReadOnly,
     resumeState,
     streamRole,
     input.activeThreadId,
@@ -1347,7 +1378,7 @@ export function ConnectedThreadStage({
             }
             contentShiftX={summaryPanelContentShift}
             footer={
-              backgroundAgentDetail && !backgroundAgentCanInteract ? null : (
+              subagentReadOnly ? null : (
                 <ConnectedThreadStageFooter
                   activeThreadId={activeThreadId}
                   input={input}
@@ -1369,6 +1400,7 @@ export function ConnectedThreadStage({
             turnDiffHoverPreviewDisabled={turnDiffHoverPreviewDisabled}
             presentedTurns={presentedTurns}
             firstSubmissionActive={hasFirstSubmission}
+            readOnly={subagentReadOnly}
           />
         }
         floatingContent={

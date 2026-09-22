@@ -4810,6 +4810,57 @@ describe("local-conversation-store", () => {
     }
   });
 
+  test("read-only subagent hydration waits for a peer snapshot without preparing execution", async () => {
+    const { CodexAppServerManager, __resetLocalConversationStoreForTests } =
+      await import("./local-conversation-store");
+    resetLocalConversationStoreTestHarness(__resetLocalConversationStoreForTests);
+    invokeRecords = [];
+    resumeThreadRole = "follower";
+    deferFollowerSnapshot = true;
+    const child = buildConversation("thread-read-only", "project-1");
+    selectedSubagentHydrateResult = {
+      rootThreadId: "thread-root",
+      threadId: child.threadId,
+      revision: 1,
+      fidelity: "attachedSparse",
+      checkpoint: "[1]",
+      canInteract: false,
+      outcome: "ready",
+      errorMessage: null,
+    };
+    const manager = trackNativeTestManager(new CodexAppServerManager("local"));
+    try {
+      const hydration = manager.hydrateSelectedSubagent({
+        rootThreadId: "thread-root",
+        threadId: child.threadId,
+      });
+      await flushAsyncWork();
+      expect(manager.readConversationAttachmentState(child.threadId).status).toBe("attaching");
+      expect(manager.readConversation(child.threadId)).toBeNull();
+      dispatchTestThreadStreamStateChanged(manager, {
+        hostId: "local",
+        conversationId: child.threadId,
+        sourceClientId: "main",
+        change: { type: "snapshot", revision: 1, conversationState: child },
+      });
+      await expect(hydration).resolves.toMatchObject({ outcome: "ready", canInteract: false });
+      expect(manager.readConversationStreamRole(child.threadId)).toBe("follower");
+      expect(manager.readConversationAttachmentState(child.threadId).status).toBe("attached");
+      expect(
+        invokeRecords.filter(
+          (record) =>
+            record.channel === "codex:thread:resume:prepare" ||
+            record.channel === "codex:thread:history-hydration:prepare",
+        ),
+      ).toEqual([]);
+    } finally {
+      selectedSubagentHydrateResult = null;
+      deferFollowerSnapshot = false;
+      resumeThreadRole = "owner";
+      manager.destroy();
+    }
+  });
+
   test("selected subagent hydration reports a missing native resume result", async () => {
     invokeCalls = [];
     invokeRecords = [];

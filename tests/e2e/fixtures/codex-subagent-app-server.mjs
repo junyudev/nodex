@@ -304,12 +304,21 @@ const childTurnStatus = (definition) => {
   return definition.status.type === "active" ? "inProgress" : "completed";
 };
 
+const childTurn = (definition, itemsView = "full") => ({
+  ...emptyTurn(`turn-${definition.id}`, childTurnStatus(definition), itemsView),
+  items: definition.id === selectedThreadId && itemsView !== "notLoaded" ? [{
+    type: "agentMessage", id: "selected-child-progress",
+    text: "Checking the selected child history.", phase: "commentary", memoryCitation: null,
+    delivery: null, questions: null,
+  }] : [],
+});
+
 const childThread = (definition, includeTurns = false) => {
   const status = childStatus(definition);
   const agentRole = status.type === "idle" ? "reviewer" : "explorer";
   return {
-    model: null,
-    reasoningEffort: null,
+    model: "gpt-5.5",
+    reasoningEffort: "high",
     id: definition.id,
     extra: null,
     sessionId: "subagent-parity-session",
@@ -347,7 +356,7 @@ const childThread = (definition, includeTurns = false) => {
     gitInfo: null,
     name: definition.name,
     turns: includeTurns
-      ? [emptyTurn(`turn-${definition.id}`, childTurnStatus(definition))]
+      ? [childTurn(definition)]
       : [],
   };
 };
@@ -699,16 +708,18 @@ const handle = (message) => {
           definition?.id === fallbackInterruptThreadId && itemsView === "full"
             ? [topologyTurn()]
             : definition
-              ? [emptyTurn(`turn-${definition.id}`, childTurnStatus(definition), itemsView)]
+              ? [childTurn(definition, itemsView)]
               : [],
         nextCursor: null,
         backwardsCursor: null,
       });
       return;
     }
-    case "thread/items/list":
-      respond(id, { data: [], nextCursor: null, backwardsCursor: null });
+    case "thread/items/list": {
+      const definition = definitionById(params.threadId);
+      respond(id, { data: definition ? childTurn(definition).items.map((item) => ({ turnId: params.turnId, item })) : [], nextCursor: null, backwardsCursor: null });
       return;
+    }
     case "thread/read": {
       if (
         params.threadId === selectedThreadId &&

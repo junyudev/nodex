@@ -1,3 +1,4 @@
+import { CodexMainConversationManagers } from "./CodexMainConversationManagers";
 import type { CodexCanonicalTurnHeader } from "../../shared/types";
 import type { Thread } from "@nodex/codex-app-server-protocol/v2";
 import { CodexAppServerRequestError } from "@nodex/effect-codex-app-server/errors";
@@ -233,6 +234,9 @@ const buildDirectory = (input: {
           }),
       } as unknown as CodexConversations["Service"]),
     ),
+    Effect.provideService(CodexMainConversationManagers, {
+      shareResident: () => Effect.void,
+    } as unknown as CodexMainConversationManagers["Service"]),
     Effect.provideService(
       CodexGateway,
       CodexGateway.of({
@@ -277,11 +281,32 @@ for (const scenario of [
   { name: "summary resident", itemsView: "summary", empty: false, attach: false },
   { name: "complete empty", itemsView: "full", empty: true, attach: false },
   { name: "skeleton only", itemsView: "notLoaded", empty: false, attach: true },
+  { name: "interactive completed", itemsView: "full", empty: false, attach: false },
 ] as const) {
   it.effect(`opens selected ${scenario.name} canonical history without a presentation`, () =>
     Effect.scoped(
       Effect.gen(function* () {
         const tailReads: string[] = [];
+        const interactive = scenario.name === "interactive completed";
+        const parentCanonical = conversationFixture("root-a", [
+          {
+            ...turnFixture("parent-turn"),
+            items: [
+              {
+                type: "collabAgentToolCall",
+                id: "spawn",
+                tool: "spawnAgent",
+                status: "completed",
+                senderThreadId: "root-a",
+                receiverThreadIds: [child.id],
+                prompt: null,
+                model: null,
+                reasoningEffort: null,
+                agentsStates: {},
+              },
+            ],
+          },
+        ]);
         const initial = produce(
           conversationFixture(
             child.id,
@@ -339,7 +364,14 @@ for (const scenario of [
                   canonicalState: canonical,
                   snapshot: null,
                 }
-              : null,
+              : id === "root-a" && interactive
+                ? {
+                    generation: 1,
+                    historyCheckpoint: [1, 0, 0],
+                    canonicalState: parentCanonical,
+                    snapshot: null,
+                  }
+                : null,
         });
         const result = yield* service.hydrateSelected({
           rootThreadId: "root-a",
@@ -347,7 +379,7 @@ for (const scenario of [
         });
         assert.strictEqual(result.outcome, "ready");
         assert.strictEqual(result.fidelity, scenario.attach ? "attachedSparse" : "residentSparse");
-        assert.isTrue(result.canInteract);
+        assert.strictEqual(result.canInteract, interactive);
         assert.strictEqual(
           result.checkpoint,
           JSON.stringify([8, canonical.turnHistory!.history.generation, 13]),

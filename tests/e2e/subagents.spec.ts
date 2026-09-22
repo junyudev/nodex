@@ -491,33 +491,31 @@ test("keeps overview metadata-only, expands bounded windows, and hydrates only t
     await expect(
       sidePanel.locator('[data-codex-composer="true"][aria-label="Ask for follow-up changes"]'),
       JSON.stringify(selectedPanelState),
-    ).toBeVisible({ timeout: 30_000 });
+    ).toHaveCount(0);
+    await expect(sidePanel.getByText("Deep investigator", { exact: true }).first()).toBeVisible();
 
     const selectedEntries = readRpcEntries(logPath).filter(isChildTranscriptRequest);
     expect(selectedEntries.length).toBeGreaterThan(0);
     expect([...new Set(selectedEntries.map((entry) => entry.params.threadId))]).toEqual([
       selectedThreadId,
     ]);
-    // Opening an interactive detail resumes that child through the normal
-    // owner boundary after its sparse history attaches. Siblings stay dormant.
-    expect(selectedEntries.filter((entry) => entry.method === "thread/resume")).toEqual([
-      expect.objectContaining({
-        params: expect.objectContaining({ threadId: selectedThreadId, excludeTurns: true }),
-      }),
-    ]);
+    await expect(
+      sidePanel.getByText("Checking the selected child history.", { exact: true }),
+    ).toBeVisible();
+    await expect(sidePanel.getByText("GPT-5.5 · High", { exact: true })).toBeVisible();
+    // Reading a child without an interaction grant never resumes its execution.
+    expect(selectedEntries.filter((entry) => entry.method === "thread/resume")).toEqual([]);
     expect(
       readRpcEntries(logPath).filter(
         (entry) => entry.method === "thread/read" && entry.params.threadId === selectedThreadId,
       ),
     ).toEqual([
-      // Sparse attachment and owner preparation independently read metadata.
-      expect.objectContaining({
-        params: { threadId: selectedThreadId, includeTurns: false },
-      }),
-      expect.objectContaining({
-        params: { threadId: selectedThreadId, includeTurns: false },
-      }),
+      expect.objectContaining({ params: { threadId: selectedThreadId, includeTurns: false } }),
     ]);
+    await testInfo.attach("subagent-read-only-detail", {
+      body: await sidePanel.screenshot(),
+      contentType: "image/png",
+    });
     for (const entry of selectedEntries.filter(
       (candidate) =>
         candidate.method === "thread/turns/list" || candidate.method === "thread/items/list",

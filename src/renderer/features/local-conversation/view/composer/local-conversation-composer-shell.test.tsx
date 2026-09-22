@@ -612,6 +612,7 @@ describe("LocalConversationComposerShell", () => {
             lastAssistantMessageAtMs: null,
             recencyAtMs: 3,
             showInlineActivity: false,
+            canInteract: true,
             diffStats: {
               linesAdded: 2,
               linesRemoved: 1,
@@ -632,6 +633,7 @@ describe("LocalConversationComposerShell", () => {
             lastAssistantMessageAtMs: null,
             recencyAtMs: 2,
             showInlineActivity: false,
+            canInteract: true,
             diffStats: {
               linesAdded: 0,
               linesRemoved: 0,
@@ -652,6 +654,7 @@ describe("LocalConversationComposerShell", () => {
             lastAssistantMessageAtMs: 1,
             recencyAtMs: 1,
             showInlineActivity: false,
+            canInteract: true,
             diffStats: null,
             role: "backgroundChild",
           },

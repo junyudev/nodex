@@ -1016,6 +1016,7 @@ export interface ThreadComposerShellQueuedFollowUpRowModel {
 }
 
 export interface ThreadComposerShellBackgroundAgentRowModel {
+  canInteract: boolean;
   conversationId: string;
   parentConversationId: string;
   parentTurnKey: string | null;

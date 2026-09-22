@@ -4287,6 +4287,53 @@ export class CodexAppServerManager {
     }
   }
 
+  /** Subscribe to Main's bounded history through the ordinary peer stream, without resuming execution. */
+  private async attachReadOnlySubagent(
+    threadId: string,
+  ): Promise<CodexConversationSnapshot | null> {
+    if (this.destroyed) throw new Error("Conversation manager is disposed");
+    this.start();
+    const wasFollowing = this.streamState.isFollowing(threadId);
+    let cleanup = () => {};
+    this.setConversationAttachmentState(threadId, { status: "attaching" });
+    try {
+      await new Promise<void>((resolve, reject) => {
+        const check = () => {
+          if (this.readConversation(threadId) && this.readConversationStreamRole(threadId))
+            resolve();
+        };
+        const unsubscribe = this.addConversationCallback(threadId, check);
+        const disposal = this.onDispose(() =>
+          reject(new Error("Conversation manager is disposed")),
+        );
+        const timeout = setTimeout(
+          () => reject(new Error("Subagent history subscription timed out")),
+          10_000,
+        );
+        const follow = this.setThreadStreamFollowingWithOptions(threadId, true, {
+          reannounce: true,
+        });
+        void follow.then(check, reject);
+        check();
+        // Cleanup also covers a snapshot arriving before the following announcement completes.
+        cleanup = () => {
+          unsubscribe();
+          disposal[Symbol.dispose]();
+          clearTimeout(timeout);
+        };
+      });
+      if (this.destroyed) throw new Error("Conversation manager is disposed");
+      this.setConversationAttachmentState(threadId, { status: "attached" });
+      return this.readConversation(threadId);
+    } catch (cause) {
+      if (!wasFollowing) this.streamState.setFollowing(threadId, false);
+      this.setConversationAttachmentState(threadId, makeLocalConversationAttachmentFailure(cause));
+      throw cause;
+    } finally {
+      cleanup();
+    }
+  }
+
   async hydrateSelectedSubagent(
     input: CodexSelectedSubagentHydrateInput,
   ): Promise<CodexSelectedSubagentHydrateResult> {
@@ -4295,7 +4342,9 @@ export class CodexAppServerManager {
     if (hydrated.outcome !== "ready") return hydrated;
 
     try {
-      const attached = await this.requestThreadStreamResume(normalized.threadId);
+      const attached = hydrated.canInteract
+        ? await this.requestThreadStreamResume(normalized.threadId)
+        : await this.attachReadOnlySubagent(normalized.threadId);
       const applied = this.readConversation(normalized.threadId);
       const role = this.readConversationStreamRole(normalized.threadId);
       const attachment = this.readConversationAttachmentState(normalized.threadId);

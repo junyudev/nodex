@@ -1,3 +1,4 @@
+import { CodexMainConversationManagers } from "../codex-application/CodexMainConversationManagers";
 import { execFileSync } from "node:child_process";
 import {
   existsSync,
@@ -461,6 +462,9 @@ const makeDirectoryHarness = Effect.fn("SubagentScale.makeDirectoryHarness")(fun
         ) as unknown as CodexConversations["Service"],
       ),
     ),
+    Effect.provideService(CodexMainConversationManagers, {
+      shareResident: () => Effect.void,
+    } as unknown as CodexMainConversationManagers["Service"]),
     Effect.provideService(
       CodexGateway,
       CodexGateway.of({

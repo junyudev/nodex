@@ -126,6 +126,7 @@ function buildBackgroundAgent(
     lastAssistantMessageAtMs: null,
     recencyAtMs: 1,
     showInlineActivity: true,
+    canInteract: false,
     diffStats: null,
     role: "backgroundChild",
     ...overrides,

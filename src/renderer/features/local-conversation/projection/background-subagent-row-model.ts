@@ -1,3 +1,4 @@
+import { advanceCodexSubagentInteraction } from "../../../../shared/codex-subagent-interaction";
 import type {
   CodexConversationChildMembership,
   CodexConversationItem,
@@ -18,6 +19,7 @@ type NormalizedAgentStatus = "active" | "waiting" | "done" | "hidden" | "unknown
 type ChildProgressStatus = "inProgress" | "notInProgress" | "unknown";
 
 interface LatestReference {
+  canInteract: boolean;
   tool: CodexMultiAgentActionName;
   parentTurnKey: string;
   thread: CodexMultiAgentReceiverThread["thread"];
@@ -218,6 +220,7 @@ function buildLatestReferenceMap(
           thread: previous?.thread ?? null,
           agentState: previous?.agentState ?? null,
           spawnModel: previous?.spawnModel ?? null,
+          canInteract: advanceCodexSubagentInteraction(previous, parentTurnKey, "activity"),
           usesThreadStatus: true,
           inlineDisplayName: activity.displayName ?? previous?.inlineDisplayName ?? null,
           showInlineActivity: true,
@@ -241,6 +244,11 @@ function buildLatestReferenceMap(
             payload.action === "spawnAgent"
               ? (payload.model ?? previous?.spawnModel ?? null)
               : (previous?.spawnModel ?? null),
+          canInteract: advanceCodexSubagentInteraction(
+            previous,
+            parentTurnKey,
+            payload.action === "spawnAgent" ? "spawn" : "collaboration",
+          ),
           usesThreadStatus: previous?.usesThreadStatus ?? false,
           inlineDisplayName: previous?.inlineDisplayName ?? null,
           showInlineActivity: previous?.showInlineActivity ?? false,
@@ -270,6 +278,7 @@ function buildFallbackReference(
       message: null,
     },
     spawnModel: null,
+    canInteract: false,
     usesThreadStatus: true,
     inlineDisplayName: null,
     showInlineActivity: membership.showInlineActivity === true || Boolean(membership.agentPath),
@@ -448,6 +457,7 @@ export function buildBackgroundSubagentRows(
           actorName: normalizeOptionalText(membership.actorName) ?? displayName,
           agentRole: resolveAgentRole({ membership, reference, child }),
           spawnModel: reference.spawnModel,
+          canInteract: reference.canInteract,
           status,
           statusSummary: status === "active" ? resolveStatusSummary(child) : null,
           lastAssistantMessage: lastAssistantMessage?.text ?? null,

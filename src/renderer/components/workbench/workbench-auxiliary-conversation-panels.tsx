@@ -81,11 +81,12 @@ export function BackgroundAgentSessionTab({
     useState<CodexCollaborationModeKind>("default");
 
   useEffect(() => {
+    if (tab.subagent.canInteract !== true) return;
     void loadModels().catch(() => undefined);
     void listCollaborationModes()
       .then(setCollaborationModes)
       .catch(() => setCollaborationModes([]));
-  }, [listCollaborationModes, loadModels]);
+  }, [listCollaborationModes, loadModels, tab.subagent.canInteract]);
 
   const actions = useMemo(
     () =>
@@ -206,6 +207,12 @@ export function SubagentsPanelSessionTab({
   turnDiffHoverPreviewDisabled: boolean;
 }) {
   const selectedConversation = useConversation(tab.selectedThreadId);
+  const selectedThreadSettings = selectedConversation?.canonicalState
+    ? {
+        model: selectedConversation.canonicalState.latestModel,
+        reasoningEffort: selectedConversation.canonicalState.latestReasoningEffort,
+      }
+    : selectedConversation?.latestThreadSettings;
   const codexControl = useCodexAppServerControl(
     tab.projectId,
     tab.selectedThreadId ?? tab.rootThreadId,
@@ -317,6 +324,7 @@ export function SubagentsPanelSessionTab({
       >
         <SubagentsPanelDetailHeader
           threadId={tab.selectedThreadId}
+          threadSettings={selectedThreadSettings}
           displayName={displayName}
           onBack={() => void onRouteSubagent(null)}
         />
@@ -357,6 +365,7 @@ export function SubagentsPanelSessionTab({
     >
       <SubagentsPanelDetailHeader
         threadId={tab.selectedThreadId}
+        threadSettings={selectedThreadSettings}
         displayName={displayName}
         onBack={() => void onRouteSubagent(null)}
       />

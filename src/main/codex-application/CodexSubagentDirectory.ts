@@ -1,3 +1,4 @@
+import { collectCodexSubagentInteractionReferences } from "../../shared/codex-subagent-interaction";
 import { conversationTurnsWithOverlay } from "../../shared/codex-conversation-state/codex-conversation-state";
 import { createHash, randomUUID } from "node:crypto";
 import type { Thread, ThreadListParams, Turn } from "@nodex/codex-app-server-protocol/v2";
@@ -46,6 +47,7 @@ import { projectCodexThreadDirectoryMaterialization } from "./CodexThreadDirecto
 import { CodexApplicationEventHub } from "./CodexApplicationEventHub";
 import { CodexThreadDirectory, type CodexThreadDirectoryEntry } from "./CodexThreadDirectory";
 import { CodexConversations } from "./CodexConversations";
+import { CodexMainConversationManagers } from "./CodexMainConversationManagers";
 import {
   projectCodexSubagentOverviewWindow,
   type CoreSubagentOverviewLike,
@@ -713,6 +715,7 @@ export const make: Effect.Effect<
   | CodexAppServerCapabilities
   | CodexApplicationEventHub
   | CodexConversations
+  | CodexMainConversationManagers
   | CodexGateway
   | CodexThreadDirectory
   | CoreModules
@@ -722,6 +725,7 @@ export const make: Effect.Effect<
   const capabilities = yield* CodexAppServerCapabilities;
   const events = yield* CodexApplicationEventHub;
   const conversations = yield* CodexConversations;
+  const managers = yield* CodexMainConversationManagers;
   const gateway = yield* CodexGateway;
   const threadDirectory = yield* CodexThreadDirectory;
   const core = yield* CoreModules;
@@ -742,6 +746,27 @@ export const make: Effect.Effect<
     publishInvalidation?: boolean,
   ) => Effect.Effect<void, CodexSubagentDirectoryError> = () => Effect.void;
   let schedulePendingStatusRepair: (context: RootContext) => void = () => undefined;
+
+  const interactionReferences = (parentThreadId: string | null | undefined) =>
+    collectCodexSubagentInteractionReferences(
+      conversationTurnsWithOverlay(
+        parentThreadId ? conversations.read(parentThreadId)?.canonicalState : null,
+      ),
+    );
+
+  const projectOverview = (overview: CoreSubagentOverviewLike): CodexSubagentOverviewWindow => {
+    const parents = new Map<string, ReturnType<typeof interactionReferences>>();
+    return projectCodexSubagentOverviewWindow(overview, (thread) => {
+      const parentId = thread.parent_thread_id;
+      if (!parentId) return false;
+      let references = parents.get(parentId);
+      if (!references) {
+        references = interactionReferences(parentId);
+        parents.set(parentId, references);
+      }
+      return references.get(thread.thread_id)?.canInteract === true;
+    });
+  };
 
   const observedSubagentThreadIds = (
     rootThreadId: string,
@@ -2191,9 +2216,7 @@ export const make: Effect.Effect<
           break;
         }
         latest = current;
-        const projected = projectCodexSubagentOverviewWindow(
-          current as unknown as CoreSubagentOverviewLike,
-        );
+        const projected = projectOverview(current as unknown as CoreSubagentOverviewLike);
         for (const row of projected.active.rows) {
           if (seenThreadIds.has(row.threadId)) continue;
           seenThreadIds.add(row.threadId);
@@ -2216,9 +2239,7 @@ export const make: Effect.Effect<
       }
 
       if (revisionChanged || !latest) continue;
-      const projected = projectCodexSubagentOverviewWindow(
-        latest as unknown as CoreSubagentOverviewLike,
-      );
+      const projected = projectOverview(latest as unknown as CoreSubagentOverviewLike);
       return {
         ...projected,
         active: {
@@ -2248,7 +2269,7 @@ export const make: Effect.Effect<
       doneAfter: null,
       doneFirst: EXPANDED_WINDOW_PAGE_SIZE,
     });
-    return projectCodexSubagentOverviewWindow(fallback as unknown as CoreSubagentOverviewLike);
+    return projectOverview(fallback as unknown as CoreSubagentOverviewLike);
   });
 
   const readOverview = Effect.fn("CodexSubagentDirectory.readOverview")(function* (
@@ -2291,7 +2312,7 @@ export const make: Effect.Effect<
       }
     }
     if (input.mode === "expanded") return yield* readExpanded(context);
-    return projectCodexSubagentOverviewWindow(overview as unknown as CoreSubagentOverviewLike);
+    return projectOverview(overview as unknown as CoreSubagentOverviewLike);
   });
 
   const readKnownOverview = Effect.fn("CodexSubagentDirectory.readKnownOverview")(
@@ -2308,7 +2329,7 @@ export const make: Effect.Effect<
       if (!overview.discovery_complete) {
         scheduleDiscoveryRepair(context);
       }
-      return projectCodexSubagentOverviewWindow(overview as unknown as CoreSubagentOverviewLike);
+      return projectOverview(overview as unknown as CoreSubagentOverviewLike);
     },
   );
 
@@ -3756,6 +3777,13 @@ export const make: Effect.Effect<
         const selectedGeneration = conversations.read(threadId)?.generation;
         if (childGeneration !== undefined && selectedGeneration !== childGeneration)
           return emptySelectedResult(normalizedInput, "Selected Thread changed while opening");
+        const canInteract =
+          interactionReferences(selected.durable.parentThreadId).get(threadId)?.canInteract ===
+          true;
+        if (!canInteract && hasSelectedSubagentHistory(selected))
+          yield* managers
+            .shareResident(rootContext.capability.hostId, threadId)
+            .pipe(Effect.mapError((cause) => error("hydrate", rootThreadId, cause, threadId)));
         const overviewItem = yield* readOverviewItem(rootContext, threadId);
         if (!overviewItem.item)
           return emptySelectedResult(
@@ -3799,6 +3827,8 @@ export const make: Effect.Effect<
           fidelity,
           checkpoint,
           canInteract:
+            interactionReferences(selected.durable.parentThreadId).get(threadId)?.canInteract ===
+              true &&
             !selected.summary.archived &&
             !overviewItem.item.thread.archived &&
             fidelity !== "metadata",

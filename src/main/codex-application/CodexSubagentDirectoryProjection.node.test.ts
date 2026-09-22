@@ -31,7 +31,7 @@ describe("CodexSubagentDirectoryProjection", () => {
       statusSummary: "Working",
       lastActivityAtMs: 120,
       canOpen: true,
-      canInteract: true,
+      canInteract: false,
     });
     expect(row).not.toHaveProperty("conversation");
     expect(row).not.toHaveProperty("transcript");
@@ -60,17 +60,20 @@ describe("CodexSubagentDirectoryProjection", () => {
     expect(window.active.rows[0]?.status).toBe("unknown");
   });
 
-  test("keeps completed children interactive until Thread authority is revoked", () => {
-    expect(projectCodexSubagentOverviewRow({ thread, status: "done" })).toMatchObject({
+  test("requires parent evidence and preserves eligible completed children until archive", () => {
+    expect(projectCodexSubagentOverviewRow({ thread, status: "done" }, true)).toMatchObject({
       status: "done",
       canOpen: true,
       canInteract: true,
     });
     expect(
-      projectCodexSubagentOverviewRow({
-        thread: { ...thread, archived: true },
-        status: "done",
-      }),
+      projectCodexSubagentOverviewRow(
+        {
+          thread: { ...thread, archived: true },
+          status: "done",
+        },
+        true,
+      ),
     ).toMatchObject({
       status: "done",
       canOpen: false,

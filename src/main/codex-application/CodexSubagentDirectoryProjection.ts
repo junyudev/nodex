@@ -70,6 +70,7 @@ const statusSummary = (status: CodexSubagentOverviewStatus): string | null => {
 
 export const projectCodexSubagentOverviewRow = (
   item: CoreSubagentOverviewItemLike,
+  hasInteractionGrant = false,
 ): CodexSubagentOverviewRow => {
   const { thread } = item;
   const canOpen = !thread.archived && thread.thread_id.trim().length > 0;
@@ -94,9 +95,8 @@ export const projectCodexSubagentOverviewRow = (
       item.status === "done" ? Math.max(thread.recency_at, thread.updated_at, 0) || null : null,
     diffStats: null,
     canOpen,
-    // Done is a Turn outcome, not a revocation of Thread writer authority. A
-    // completed child can accept a follow-up and become Active again.
-    canInteract: canOpen,
+    // Metadata permits opening; messaging requires positive parent-history evidence.
+    canInteract: canOpen && hasInteractionGrant,
   };
 };
 
@@ -105,8 +105,11 @@ const projectSection = (input: {
   readonly nextCursor?: string | null;
   readonly knownCount: number;
   readonly complete: boolean;
+  readonly canInteract: (thread: CoreSubagentOverviewThreadLike) => boolean;
 }): CodexSubagentOverviewSection => ({
-  rows: input.items.map(projectCodexSubagentOverviewRow),
+  rows: input.items.map((item) =>
+    projectCodexSubagentOverviewRow(item, input.canInteract(item.thread)),
+  ),
   knownCount: input.knownCount,
   totalCount: input.complete ? input.knownCount : null,
   continuation: input.nextCursor ?? null,
@@ -114,6 +117,7 @@ const projectSection = (input: {
 
 export function projectCodexSubagentOverviewWindow(
   overview: CoreSubagentOverviewLike,
+  canInteract: (thread: CoreSubagentOverviewThreadLike) => boolean = () => false,
 ): CodexSubagentOverviewWindow {
   return {
     rootThreadId: overview.universe.root_thread_id,
@@ -125,12 +129,14 @@ export function projectCodexSubagentOverviewWindow(
       nextCursor: overview.active.next_cursor,
       knownCount: overview.known_active_count,
       complete: overview.discovery_complete,
+      canInteract,
     }),
     done: projectSection({
       items: overview.done.items,
       nextCursor: overview.done.next_cursor,
       knownCount: overview.known_done_count,
       complete: overview.discovery_complete,
+      canInteract,
     }),
   };
 }

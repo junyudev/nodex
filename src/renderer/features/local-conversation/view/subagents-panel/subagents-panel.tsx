@@ -1,3 +1,8 @@
+import {
+  formatCodexModelLabel,
+  formatCodexReasoningEffortLabel,
+} from "@/lib/codex-thread-settings";
+import type { CodexConversationThreadSettings } from "@/lib/types";
 import { BackIcon } from "@/components/shared/icons";
 import { subscribeCodexEvents } from "@/lib/api";
 import { useCallback, useEffect, useRef, useState } from "react";
@@ -449,7 +454,9 @@ export function SubagentsPanelDetailHeader({
   displayName,
   onBack,
   threadId,
+  threadSettings,
 }: {
+  threadSettings?: Pick<CodexConversationThreadSettings, "model" | "reasoningEffort"> | null;
   displayName: string;
   onBack: () => void;
   threadId: string;
@@ -468,6 +475,14 @@ export function SubagentsPanelDetailHeader({
       <div className="min-w-0 flex-1 truncate text-sm font-medium text-token-foreground">
         {displayName}
       </div>
+      {threadSettings?.model ? (
+        <span className="max-w-1/2 min-w-0 truncate text-xs text-token-text-tertiary select-none">
+          {formatCodexModelLabel(threadSettings.model, [])}
+          {threadSettings.reasoningEffort
+            ? ` · ${formatCodexReasoningEffortLabel(threadSettings.reasoningEffort)}`
+            : null}
+        </span>
+      ) : null}
     </div>
   );
 }

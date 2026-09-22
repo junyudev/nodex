@@ -1,7 +1,7 @@
 # Codex Subagent Behavior
 
 Status: Active
-Last Updated: 2026-09-15
+Last Updated: 2026-09-22
 
 ## Intent and ownership
 
@@ -152,12 +152,30 @@ does not subscribe to or hydrate its siblings.
 The panel records a pending selected route while hydration runs, fences the
 result to the latest requested child, and rolls back to overview when that
 request fails. A ready detail uses the normal background-agent transcript
-surface. It is interactive when the child is not archived and the normal
-conversation-writer boundary permits interaction. Done describes the previous
-Turn, not the Thread's writer authority: a completed child may receive a
-follow-up and become Active again. Archived, deleted, unavailable, or
-unattached children remain read-only. Returning to overview does not discard
-child transcript authority or turn the parent into its owner.
+surface. Messaging requires positive evidence in the child's immediate parent's
+resident canonical history: a `collabAgentToolCall` with `tool=spawnAgent` grants
+interaction. Later collaboration calls preserve that grant. `subAgentActivity`
+preserves it only within the same parent Turn; activity in a later Turn resets
+it. Source-linked membership, status, archive availability, runtime residency,
+and `canAcceptDirectInput` do not grant messaging. Missing parent history defaults
+to read-only, including nested children whose immediate parent is not resident.
+Overview rows, inline open payloads, and selected-detail authority share this rule.
+
+A read-only detail subscribes to the selected canonical stream without native
+`thread/resume`, execution preparation, or a composer. It shows already attached
+history even when execution needs resume, and offers no message edit or Turn fork
+action. Main may publish the bounded resident document as an ordinary stream
+owner when no peer owns it; an existing peer keeps ownership. Publishing history
+never grants messaging or acquires the native execution writer. The header shows
+the child's observed model and reasoning effort, omitting unknown values.
+
+Interactive children must additionally be attached, unarchived, and permitted
+by the normal conversation-writer boundary. Done describes the previous Turn,
+not messaging authority: a completed collaborative child with a surviving grant
+may receive a follow-up. Archived, deleted, unavailable, or unattached children
+remain read-only. Selection revalidates authority after attachment and on relevant
+parent/child changes. Returning to overview does not discard child transcript
+authority or turn the parent into its owner.
 
 ## Root interruption and archive
 

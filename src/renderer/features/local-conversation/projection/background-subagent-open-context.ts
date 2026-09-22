@@ -10,6 +10,7 @@ export function buildBackgroundAgentOpenContext(
     subagent: {
       agentRole: row.agentRole,
       conversationId: row.conversationId,
+      canInteract: row.canInteract,
       diffStats: row.diffStats,
       displayName: row.displayName,
       showInlineActivity: row.showInlineActivity,

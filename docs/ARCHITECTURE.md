@@ -890,7 +890,10 @@ to child conversations. Multi-page expansion pins one Core projection revision a
 whole bounded scan on mutation, so Main never publishes a mixed-revision tree. Main validates one
 selected descendant before delegating its sparse attach to the existing Thread history and
 owner/follower Modules; the route becomes ready only after the requesting renderer has installed
-the role, attachment state, and canonical conversation state. Ordinary collaboration notifications
+the role, attachment state, and canonical conversation state. Read-only selection subscribes
+to resident history without native execution resume. Main can publish that history through
+the ordinary peer stream while preserving an existing peer owner; messaging eligibility
+remains a separate projection of immediate-parent canonical evidence. Ordinary collaboration notifications
 admit status/topology evidence without waiting for remote metadata, while discovery, metadata
 enrichment, interruption skeletons, and lifecycle postconditions share the existing root-scoped
 request scheduler lanes. Root interruption, archive, and permanent deletion compose the Directory's typed subtree result;
