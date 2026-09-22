@@ -1,0 +1,111 @@
+scripts/development-environment-home.test.ts
+  s_5355d2d71bc6dc::t_4293fba515a0b0 121-126
+  s_5355d2d71bc6dc::t_d15ce648712030 77-88
+crates/nodex-core/src/administration/mod.rs
+  s_5355d2d71bc6dc::t_f41164cedf7e21 52
+  s_5355d2d71bc6dc::t_1e230468a5e8e5 51
+crates/nodex-core/src/administration/profile_clone.rs
+  s_5355d2d71bc6dc::t_f41164cedf7e21 18,53-109,111,125-140,142-145,147-151,153-157,246
+  s_5355d2d71bc6dc::t_1c0337926f91be 141,152
+config/test-suites.ts
+  s_5355d2d71bc6dc::t_3dc61ecff65d82 17,200-202
+docs/development.md
+  s_5355d2d71bc6dc::t_8b986efb8042ef 176,202-203,211-223,227,237-238,240-251,254-255
+  s_5355d2d71bc6dc::t_08770978c2ab19 204-209,252-253
+  s_5355d2d71bc6dc::t_e4994d2f19468b 210
+crates/nodex-profile/src/lib.rs
+  s_5355d2d71bc6dc::t_938395dd2210c8 26-44
+  s_5355d2d71bc6dc::t_3f284c8020793f 71-72,75-78
+  s_5355d2d71bc6dc::t_94c2bb3218aa30 1-25,45-70,73-74,79-81
+config/test-suites.test.ts
+  s_5355d2d71bc6dc::t_4293fba515a0b0 6
+  s_5355d2d71bc6dc::t_43c4da37a21694 49
+crates/nodex-cli/src/runtime.rs
+  s_5355d2d71bc6dc::t_d3c4ca16f22c5c 385,387,389-390,395,397-403
+  s_5355d2d71bc6dc::t_b7766685c2662d 404
+crates/nodex-cli/src/agent_interface.rs
+  s_5355d2d71bc6dc::t_765ea9a9b36578 1072-1077
+crates/nodex-cli/Cargo.toml
+  s_5355d2d71bc6dc::t_f41164cedf7e21 13
+crates/nodex-profile/src/codex/tests.rs
+  s_5355d2d71bc6dc::t_3f284c8020793f 1-167,261-410
+  s_5355d2d71bc6dc::t_f2223e07685af6 173-174,178-186,190-195,197-202,204-218,226-240,242-256
+  s_5355d2d71bc6dc::t_af88dc9e3b6a46 168-172,175-177,187-189,196,203,219-225,241,257-260
+Cargo.toml
+  s_5355d2d71bc6dc::t_f41164cedf7e21 9,23
+crates/nodex-profile/src/files.rs
+  s_5355d2d71bc6dc::t_94c2bb3218aa30 1-7,9-27,32,40-44,49-61,66-69,79-82,87-89,104-107,113-115,119-121,125-128,140-144,152,156-181,185-189
+  s_5355d2d71bc6dc::t_3f284c8020793f 8,28-31,33-39,45-48,62-65,70-78,83-86,90-103,108-112,116-118,122-124,129-139,145-151,153-155,182-184
+scripts/dev-launcher.test.ts
+  s_5355d2d71bc6dc::t_3dc61ecff65d82 75-77,86,91
+  s_5355d2d71bc6dc::t_903ee9948e93a3 53
+src/main/core-client/profile-clone.node.test.ts
+  s_5355d2d71bc6dc::t_42a9d243758c2e 17,44,160,163,165,261,272-277
+  s_5355d2d71bc6dc::t_d2499fb3db05cc 1,147,195
+  s_5355d2d71bc6dc::t_19754369acd0ee 32-35,37,51,145
+  s_5355d2d71bc6dc::t_644effb460f61f 20-23,134-136
+  s_5355d2d71bc6dc::t_0b386813f8417a 2-4,6-12,14-16,18-19,24-31,38-43,45-50,53,58,62,65-68,80-81,85-90,92-98,101-107,109-122,124-125,127,129-131,138-143,146,149-151,153-159,166-167,169-171,178,182-193,196-203,205-212,214-215,219,221-235,239-245,247-256,258-260,262-265,267-270,278-279,281-287,292-304,306-312
+  s_5355d2d71bc6dc::t_c650aa104b1aa2 69-70,72-73,78
+  s_5355d2d71bc6dc::t_789e4c6a67392f 161-162
+  s_5355d2d71bc6dc::t_b76485c39cee09 99,132-133,137,238
+  s_5355d2d71bc6dc::t_60cbf626046bea 174
+  s_5355d2d71bc6dc::t_d3c4ca16f22c5c 216,218
+  s_5355d2d71bc6dc::t_20bb8b3f3c2de8 5,13,36,52,54-57,59-61,63-64,71,74-77,79,82-84,91,100,108,123,126,128,144,148,152,164,168,172-173,175-177,179-181,194,204,213,217,220,236-237,246,257,266,271,280,288-291,305
+crates/nodex-profile/Cargo.toml
+  s_5355d2d71bc6dc::t_f41164cedf7e21 1-23
+scripts/profile-conversation-snapshot.test.ts
+  s_5355d2d71bc6dc::t_3dc61ecff65d82 1-27,29-34
+  s_5355d2d71bc6dc::t_566096ed60fb58 28
+docs/CLI.md
+  s_5355d2d71bc6dc::t_08770978c2ab19 42-44
+  s_5355d2d71bc6dc::t_8b986efb8042ef 32-41,45
+crates/nodex-cli/src/cli.rs
+  s_5355d2d71bc6dc::t_2616b6a6a6d6e7 163,169
+  s_5355d2d71bc6dc::t_3de8b140f2ec76 178-180
+crates/nodex-profile/src/codex.rs
+  s_5355d2d71bc6dc::t_d5ac210bb218c9 234,330
+  s_5355d2d71bc6dc::t_19754369acd0ee 20-24,432-434,481-483,610-617
+  s_5355d2d71bc6dc::t_ceeb778413c962 485,487-498,500-502
+  s_5355d2d71bc6dc::t_542994c239acbc 342-344,346-350
+  s_5355d2d71bc6dc::t_c5388642e28b8f 95-97,256-264,266-267
+  s_5355d2d71bc6dc::t_d7317aa87d4ebb 345,351-352
+  s_5355d2d71bc6dc::t_f6c67b92d82227 591
+  s_5355d2d71bc6dc::t_c1c487c0baa085 236-241,243-246
+  s_5355d2d71bc6dc::t_dc91ee4b6d09a5 2,171-172,222,251,416,447-451,472-473,475-480,484,486,592,598,608-609,618-620,626
+  s_5355d2d71bc6dc::t_3f284c8020793f 16,40,44-94,98-170,173,180-220,226,228,231-233,235,242,247-250,252-255,268-329,331-335,337,353-413,417-431,435-446,454-471,474,503,506-590,593-596,599-607,621-625,627-662
+  s_5355d2d71bc6dc::t_c3fd4eef84b321 1,3-15,17-19,25-39,41-43,174-179,221,223-225,227,229-230,265,336,338-341,414-415,452-453,499,504-505,597,663-665
+docs/ARCHITECTURE.md
+  s_5355d2d71bc6dc::t_8b986efb8042ef 566
+docs/reliability/backup-restore-and-maintenance.md
+  s_5355d2d71bc6dc::t_402556ea055ce2 131
+  s_5355d2d71bc6dc::t_8b986efb8042ef 93,108-111,120-121,125-127,133-148
+  s_5355d2d71bc6dc::t_08770978c2ab19 122-124,128-130
+  s_5355d2d71bc6dc::t_ead4ecbd7d7bf5 112-113,116,132,149
+scripts/dev-launcher.ts
+  s_5355d2d71bc6dc::t_2616b6a6a6d6e7 78
+  s_5355d2d71bc6dc::t_63c87f59918961 1,48,80-81,119,136-139,214-216,225,423,446,550,566-573
+Cargo.lock
+  s_5355d2d71bc6dc::t_60b83fea618fb4 23,323-324,578,685,690-700,904-913,937,971,1080,1085,1107,1146,1168,1196-1214,1430-1435,1473,1849,2363-2390
+crates/nodex-cli/src/agent_interface/schema.rs
+  s_5355d2d71bc6dc::t_a77c26e460a33a 116
+scripts/development-environment-home.ts
+  s_5355d2d71bc6dc::t_2ce9a96d5ca087 1-4,34,126
+scripts/profile-conversation-snapshot.ts
+  s_5355d2d71bc6dc::t_cad7512fd717a8 1-60
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "481f06d0b28c37edd7a560e2d137e8c65e7ffa35",
+  "prompts": {},
+  "sessions": {
+    "s_5355d2d71bc6dc": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a0c833-c294-78c1-b4e9-83da25b2afa7",
+        "model": "gpt-6-astra"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    }
+  }
+}
