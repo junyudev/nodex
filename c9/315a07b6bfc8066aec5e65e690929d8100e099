@@ -1,0 +1,34 @@
+src/main/codex-runtime/CodexExecutionHostAuthState.ts
+  s_d96453aeece1d5::t_5f091b47ebb33d 4-5,29-34,41-42,47-57,85-90,97
+src/main/codex-application/DictationDictionary.ts
+  s_d96453aeece1d5::t_f81d9b4408adb0 3-4,93,128-131,134,136,138-141,260-263
+  s_d96453aeece1d5::t_9dc6824cd7b3f9 28-29
+  s_d96453aeece1d5::t_7f919b6b707232 132
+  s_d96453aeece1d5::t_e2d67992ec42ee 133,135,137
+src/main/dictation/DictationPolicy.ts
+  s_d96453aeece1d5::t_5f091b47ebb33d 63-64
+src/main/codex-application/DictationDictionary.node.test.ts
+  s_d96453aeece1d5::t_72c10bf34f961c 228-238
+  s_d96453aeece1d5::t_012d85e1fa70c2 239-244,246-266
+  s_d96453aeece1d5::t_2e388d751a83a1 245
+src/main/codex-application/ChatGptDesktop.ts
+  s_d96453aeece1d5::t_5f091b47ebb33d 4-6,73-74,77-78,84-89,100,126-138
+src/main/codex-runtime/CodexExecutionHostAuthState.node.test.ts
+  s_d96453aeece1d5::t_a7a15b656a85fb 1-81
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "c9315a07b6bfc8066aec5e65e690929d8100e099",
+  "prompts": {},
+  "sessions": {
+    "s_d96453aeece1d5": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a0c829-ea98-7dc1-b2ec-9cf8bfeb9bb2",
+        "model": "gpt-6-astra"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    }
+  }
+}
