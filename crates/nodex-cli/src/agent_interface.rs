@@ -1069,7 +1069,12 @@ const COMMANDS: &[CommandMetadata] = &[
         path: &["profile", "clone"],
         capability: "profile_clone",
         effect: CommandEffect::Local,
-        validators: &["global_only", "published_backup", "new_target_profile"],
+        validators: &[
+            "global_only",
+            "published_backup",
+            "new_target_profile",
+            "local_conversation_closure",
+        ],
         result: "profile_clone_receipt",
         errors: &["INVALID_INPUT", "CLI_INTERNAL"],
         example: "nodex --json profile clone --from ~/.nodex --to ./runs.local/real/.nodex",

@@ -113,7 +113,7 @@ pub(super) fn result(path: &[&str]) -> Value {
                 document::<StoreAdministrationReceipt>(),
             ],
         ),
-        ["profile", "clone"] => document::<nodex_core::administration::ProfileCloneReceipt>(),
+        ["profile", "clone"] => document::<nodex_profile::ProfileCloneReceipt>(),
         ["doctor"] => document::<crate::runtime::DoctorOutput>(),
         ["draft", "create"] => document::<crate::draft::DraftWorkspaceResult>(),
         ["draft", "diff"] => document::<crate::draft::DraftDiffResult>(),

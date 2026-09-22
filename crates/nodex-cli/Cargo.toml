@@ -10,7 +10,7 @@ name = "nodex"
 path = "src/main.rs"
 
 [dependencies]
-nodex-core.workspace = true
+nodex-profile.workspace = true
 nodex-core-contracts.workspace = true
 nodex-core-protocol.workspace = true
 clap.workspace = true

@@ -74,6 +74,18 @@ describe("development environment home", () => {
     const repositoryRoot = await createRepository();
     const home = await openDevelopmentEnvironmentHome({ repositoryRoot });
     const profileSnapshot = {
+      conversations: {
+        version: 1,
+        captureStartedAt: "2026-08-21T00:01:00.000Z",
+        captureCompletedAt: "2026-08-21T00:01:00.000Z",
+        requiredThreadCount: 2,
+        capturedThreadCount: 2,
+        externalThreadCount: 0,
+        missingThreadIds: [],
+        rolloutCount: 2,
+        nativeStateSchema: "state_5",
+        contentSha256: "b".repeat(64),
+      },
       sourceProfileHome: "/tmp/source-profile",
       sourceProfileFingerprint: "a".repeat(64),
       backupIntegrityEvidenceVersion: 1,
@@ -106,6 +118,12 @@ describe("development environment home", () => {
         profileSnapshot: { ...profileSnapshot, storeEpoch: "epoch:other" },
       }),
     ).toThrow("Profile snapshot provenance is invalid");
+    expect(() =>
+      parseDevelopmentHomeManifest({
+        ...home.manifest,
+        profileSnapshot: { ...profileSnapshot, conversations: undefined },
+      }),
+    ).toThrow("Create a new --home");
   });
 
   test("can defer Profile creation for atomic snapshot materialization", async () => {

@@ -382,18 +382,26 @@ pub(crate) fn execute_with_presentation(
 
 fn clone_profile(arguments: &ProfileCloneArgs) -> Result<Value, CliError> {
     let backup = if arguments.backup == "latest" {
-        nodex_core::administration::ProfileCloneBackupSelection::Latest
+        nodex_profile::ProfileCloneBackupSelection::Latest
     } else {
-        nodex_core::administration::ProfileCloneBackupSelection::Id(arguments.backup.clone())
+        nodex_profile::ProfileCloneBackupSelection::Id(arguments.backup.clone())
     };
-    let receipt = nodex_core::administration::materialize_profile_clone(
-        nodex_core::administration::ProfileCloneRequest {
+    let receipt = nodex_profile::materialize_profile_clone(
+        nodex_profile::ProfileCloneRequest {
             source_profile_home: arguments.source.clone(),
             target_profile_home: arguments.target.clone(),
             backup,
         },
+        arguments.allow_missing_conversations,
     )
-    .map_err(map_profile_clone_error)?;
+    .map_err(|error| {
+        let code = if error.is_invalid_input() {
+            CliErrorCode::InvalidInput
+        } else {
+            CliErrorCode::Internal
+        };
+        CliError::new(code, error.to_string())
+    })?;
     serde_json::to_value(receipt).map_err(internal)
 }
 
@@ -409,20 +417,6 @@ fn reject_profile_clone_scope_flags(cli: &Cli) -> Result<(), CliError> {
         CliErrorCode::InvalidInput,
         "profile clone does not accept Profile, Project, Database, or Page selectors",
     ))
-}
-
-fn map_profile_clone_error(error: nodex_core::infrastructure::sqlite::StoreError) -> CliError {
-    let code = match error.code {
-        nodex_core::infrastructure::sqlite::StoreErrorCode::AlreadyOwned
-        | nodex_core::infrastructure::sqlite::StoreErrorCode::InvalidInput
-        | nodex_core::infrastructure::sqlite::StoreErrorCode::InvalidProfile
-        | nodex_core::infrastructure::sqlite::StoreErrorCode::NotFound
-        | nodex_core::infrastructure::sqlite::StoreErrorCode::UnsupportedSchema => {
-            CliErrorCode::InvalidInput
-        }
-        _ => CliErrorCode::Internal,
-    };
-    CliError::new(code, error.message)
 }
 
 fn reject_skill_scope_flags(cli: &Cli) -> Result<(), CliError> {

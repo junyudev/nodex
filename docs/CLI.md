@@ -29,7 +29,20 @@ directory. On macOS, regular-file copies prefer APFS copy-on-write and fall back
 to ordinary copy when unavailable. The materializer preserves semantic
 identities and the imported Store epoch, remints instance secrets, performs the
 clone-specific semantic checks, then atomically publishes the target with a
-`profile-snapshot.json` receipt. It copies neither Agent credentials nor
+`profile-snapshot.json` receipt. Before publication, the Profile materializer
+captures idle local Codex conversations and relocates native selected rollout
+paths. It checks every local Codex Thread from the Store against its complete
+rollout ancestry. Missing native history rejects the clone; explicitly use
+`--allow-missing-conversations` only for incomplete diagnostic reproduction.
+The receipt records missing Thread IDs, external-host/backend counts, capture
+timestamps, and a native-artifact digest. Stop the source Agent runtime when
+conversation writer locks prevent capture.
+
+The selected Store backup and current native conversation capture have separate
+timestamps: `--backup` does not select historical native state. Native pagination
+indexes are included; execution queues are excluded. Historical workspace/file
+paths remain unchanged. See [development snapshots](development.md#real-profile-snapshots)
+for the precise scope. It copies neither Agent credentials nor
 arbitrary files from the source Profile. The receipt records the evidence-backed
 local-fork provenance and reports managed asset references that were already
 missing from the source backup; formal restore continues to require a complete

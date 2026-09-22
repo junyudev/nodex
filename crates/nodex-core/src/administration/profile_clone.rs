@@ -15,7 +15,7 @@ use crate::infrastructure::store::STORE_FILE_NAME;
 use super::{backup, restore};
 
 const PROFILE_SNAPSHOT_FILE_NAME: &str = "profile-snapshot.json";
-const PROFILE_SNAPSHOT_VERSION: u32 = 4;
+const PROFILE_SNAPSHOT_VERSION: u32 = 5;
 const PRIVATE_DIRECTORY_MODE: u32 = 0o700;
 const PRIVATE_FILE_MODE: u32 = 0o600;
 
@@ -50,9 +50,65 @@ pub struct ProfileCloneReceipt {
     pub library_id: String,
 }
 
-pub fn materialize_profile_clone(
+/// Store-owned requirements that another persistence owner must satisfy before publication.
+#[derive(Clone, Debug)]
+pub struct ProfileCloneThread {
+    pub thread_id: String,
+    pub backend_kind: String,
+    pub execution_host_id: String,
+}
+
+/// A verified, unpublished Store clone. Dropping it removes only its owned staging tree.
+pub struct PreparedProfileClone {
+    source: PathBuf,
+    target: PathBuf,
+    staging: PathBuf,
+    receipt: ProfileCloneReceipt,
+    threads: Vec<ProfileCloneThread>,
+    published: bool,
+}
+
+impl PreparedProfileClone {
+    pub fn source_home(&self) -> &Path {
+        &self.source
+    }
+    pub fn target_home(&self) -> &Path {
+        &self.target
+    }
+    pub fn staging_home(&self) -> &Path {
+        &self.staging
+    }
+    pub fn store_receipt(&self) -> &ProfileCloneReceipt {
+        &self.receipt
+    }
+    pub fn threads(&self) -> &[ProfileCloneThread] {
+        &self.threads
+    }
+
+    /// Publishes only after the outer Profile owner has prepared every required artifact.
+    pub fn publish(mut self, receipt: &impl Serialize) -> Result<(), StoreError> {
+        write_receipt(&self.staging, receipt)?;
+        sync_directory(&self.staging)?;
+        if fs::symlink_metadata(&self.target).is_ok() {
+            return Err(invalid_profile("Target Profile home already exists"));
+        }
+        fs::rename(&self.staging, &self.target).map_err(io_error)?;
+        self.published = true;
+        sync_directory(self.target.parent().expect("validated target parent"))
+    }
+}
+
+impl Drop for PreparedProfileClone {
+    fn drop(&mut self) {
+        if !self.published {
+            let _ = remove_owned_staging_directory(&self.target, &self.staging);
+        }
+    }
+}
+
+pub fn prepare_profile_clone(
     request: ProfileCloneRequest,
-) -> Result<ProfileCloneReceipt, StoreError> {
+) -> Result<PreparedProfileClone, StoreError> {
     let source = require_real_directory(&request.source_profile_home, "Source Profile")?;
     let target = resolve_new_target(&request.target_profile_home)?;
     if target.starts_with(&source) || source.starts_with(&target) {
@@ -60,27 +116,48 @@ pub fn materialize_profile_clone(
             "Source and target Profile homes must not contain one another",
         ));
     }
-
     let backup_id = match &request.backup {
         ProfileCloneBackupSelection::Latest => None,
         ProfileCloneBackupSelection::Id(backup_id) => Some(backup_id.as_str()),
     };
     let backup = backup::resolve_backup_for_profile_clone(&source, backup_id)?;
     let staging = create_staging_directory(&target)?;
-    let source_profile_fingerprint = hex::encode(Sha256::digest(source.as_os_str().as_bytes()));
-    let result =
-        materialize_staging_profile(&target, &staging, &backup, source_profile_fingerprint);
-    match result {
-        Ok(receipt) => Ok(receipt),
-        Err(error) => {
-            remove_owned_staging_directory(&target, &staging)?;
-            Err(error)
-        }
+    let fingerprint = hex::encode(Sha256::digest(source.as_os_str().as_bytes()));
+    let result = (|| {
+        let receipt = materialize_staging_profile(&staging, &backup, fingerprint)?;
+        let connection =
+            crate::infrastructure::sqlite::open_immutable_reader(&staging.join(STORE_FILE_NAME))?;
+        let threads = connection.prepare(
+            "SELECT thread_id, agent_backend_kind, execution_host_id FROM codex_threads ORDER BY thread_id"
+        )?.query_map([], |row| Ok(ProfileCloneThread {
+            thread_id: row.get(0)?, backend_kind: row.get(1)?, execution_host_id: row.get(2)?,
+        }))?.collect::<rusqlite::Result<Vec<_>>>()?;
+        Ok(PreparedProfileClone {
+            source,
+            target: target.clone(),
+            staging: staging.clone(),
+            receipt,
+            threads,
+            published: false,
+        })
+    })();
+    if result.is_err() {
+        remove_owned_staging_directory(&target, &staging)?;
     }
+    result
+}
+
+#[cfg(test)]
+fn materialize_profile_clone(
+    request: ProfileCloneRequest,
+) -> Result<ProfileCloneReceipt, StoreError> {
+    let prepared = prepare_profile_clone(request)?;
+    let receipt = prepared.store_receipt().clone();
+    prepared.publish(&receipt)?;
+    Ok(receipt)
 }
 
 fn materialize_staging_profile(
-    target: &Path,
     staging: &Path,
     backup: &backup::EvidenceBackedProfileClone,
     source_profile_fingerprint: String,
@@ -121,14 +198,6 @@ fn materialize_staging_profile(
         profile_id,
         library_id,
     };
-    write_receipt(staging, &receipt)?;
-    sync_directory(staging)?;
-    fs::rename(staging, target).map_err(io_error)?;
-    sync_directory(
-        target
-            .parent()
-            .ok_or_else(|| invalid_profile("Target Profile has no parent directory"))?,
-    )?;
     Ok(receipt)
 }
 
@@ -174,7 +243,7 @@ fn remint_profile_secrets(database_path: &Path) -> Result<(), StoreError> {
     Ok(())
 }
 
-fn write_receipt(profile_home: &Path, receipt: &ProfileCloneReceipt) -> Result<(), StoreError> {
+fn write_receipt(profile_home: &Path, receipt: &impl Serialize) -> Result<(), StoreError> {
     let mut bytes = serde_json::to_vec_pretty(receipt)
         .map_err(|_| internal("Profile snapshot receipt could not be encoded"))?;
     bytes.push(b'\n');

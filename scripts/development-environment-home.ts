@@ -1,3 +1,7 @@
+import {
+  parseProfileConversationSnapshot,
+  type ProfileConversationSnapshot,
+} from "./profile-conversation-snapshot";
 import { randomUUID } from "node:crypto";
 import {
   chmod,
@@ -27,6 +31,7 @@ export interface DevelopmentSeedProvenance {
 }
 
 export interface DevelopmentProfileSnapshotProvenance {
+  readonly conversations: ProfileConversationSnapshot;
   readonly sourceProfileHome: string;
   readonly sourceProfileFingerprint: string;
   readonly backupIntegrityEvidenceVersion: number;
@@ -118,6 +123,7 @@ const parseProfileSnapshot = (value: unknown): DevelopmentProfileSnapshotProvena
     throw new Error("Development home Profile snapshot provenance is invalid");
   }
   return {
+    conversations: parseProfileConversationSnapshot(value.conversations),
     sourceProfileHome: value.sourceProfileHome,
     sourceProfileFingerprint: value.sourceProfileFingerprint,
     backupIntegrityEvidenceVersion: value.backupIntegrityEvidenceVersion,
