@@ -1,0 +1,114 @@
+src/main/codex-application/CodexSubagentDirectoryProjection.ts
+  s_1b2e4d5f08f763::t_7609e88e1a4dd1 110-112
+  s_1b2e4d5f08f763::t_08aad64f350c8d 73,98-99,108,120,132,139
+src/renderer/features/local-conversation/thread-stage-types.ts
+  s_1b2e4d5f08f763::t_08aad64f350c8d 1019
+tests/e2e/subagents.spec.ts
+  s_1b2e4d5f08f763::t_7609e88e1a4dd1 502-504,516-517
+  s_1b2e4d5f08f763::t_b0a491aa4862a9 505-506
+  s_1b2e4d5f08f763::t_40e405fbec8d31 494-495,507,513,515,518
+src/main/codex-application/CodexSubagentDirectoryProjection.node.test.ts
+  s_1b2e4d5f08f763::t_40e405fbec8d31 34,63-64
+  s_1b2e4d5f08f763::t_7609e88e1a4dd1 70-76
+src/renderer/features/local-conversation/view/connected-thread-stage.test.tsx
+  s_1b2e4d5f08f763::t_7609e88e1a4dd1 485-487,539-544,1048-1053,1060-1078
+  s_a0a1735f9b0d2e::t_2a39c59b500edd 1079-1080
+tests/e2e/fixtures/codex-subagent-app-server.mjs
+  s_1b2e4d5f08f763::t_a0dc166f3a7562 720
+  s_1b2e4d5f08f763::t_4330aa2af5b165 307-311,313-315,320-321,359,711
+  s_1b2e4d5f08f763::t_b0a491aa4862a9 718-719,722
+  s_1b2e4d5f08f763::t_571b86c3ddd750 312
+docs/product-specs/codex-subagent-behavior.md
+  s_1b2e4d5f08f763::t_1ab2d58a99fdb2 4,155-178
+src/renderer/features/local-conversation/projection/build-turn-render-model.node.test.ts
+  s_1b2e4d5f08f763::t_7609e88e1a4dd1 129
+src/renderer/features/local-conversation/projection/build-thread-body-model.ts
+  s_1b2e4d5f08f763::t_7609e88e1a4dd1 227-231
+  s_1b2e4d5f08f763::t_89b8f21e6befef 34,226,313
+src/renderer/features/local-conversation/view/composer/local-conversation-composer-shell.test.tsx
+  s_1b2e4d5f08f763::t_7609e88e1a4dd1 615,636,657
+src/main/codex-application/CodexSubagentDirectory.ts
+  s_1b2e4d5f08f763::t_82a9d4c8de64a7 50,718,728,3780,3783
+  s_1b2e4d5f08f763::t_08aad64f350c8d 1,750-751,755-770,2272,2315,2332
+  s_1b2e4d5f08f763::t_7609e88e1a4dd1 752-754,2219,2242,3781-3782,3784-3786,3830-3831
+src/renderer/features/local-conversation/projection/background-subagent-row-model.ts
+  s_1b2e4d5f08f763::t_08aad64f350c8d 1,22,223,281,460
+  s_1b2e4d5f08f763::t_7609e88e1a4dd1 247-251
+src/main/codex-application/CodexMainConversationManagers.node.test.ts
+  s_1b2e4d5f08f763::t_4330aa2af5b165 97,105,108-109,114
+docs/ARCHITECTURE.md
+  s_1b2e4d5f08f763::t_1ab2d58a99fdb2 893-896
+src/main/codex-application/CodexMainConversationManagers.ts
+  s_1b2e4d5f08f763::t_ab242808d1bcae 519
+  s_1b2e4d5f08f763::t_82a9d4c8de64a7 84-87,511-518,520-540
+src/renderer/features/local-conversation/view/connected-thread-stage.tsx
+  s_1b2e4d5f08f763::t_7609e88e1a4dd1 349-355,1077-1093
+  s_1b2e4d5f08f763::t_b81a8dedaedb47 1076
+  s_1b2e4d5f08f763::t_02d4bd0ff1706d 1-2,305,322,348,399,411,1094,1247,1271,1381,1403
+src/renderer/features/local-conversation/local-conversation-store.test.tsx
+  s_1b2e4d5f08f763::t_4330aa2af5b165 4813-4821,4830-4833,4836-4840,4844-4848,4856-4863
+  s_1b2e4d5f08f763::t_7609e88e1a4dd1 4822-4829,4834-4835,4841-4843,4849-4855
+src/main/codex-application/CodexSubagentDirectory.node.test.ts
+  s_1b2e4d5f08f763::t_b81a8dedaedb47 1
+  s_1b2e4d5f08f763::t_7609e88e1a4dd1 237-239,284,290-309,367-373
+  s_1b2e4d5f08f763::t_ebaad91f35c87f 374,382
+src/main/core-client/CodexSubagentParityPerformance.stress.test.ts
+  s_1b2e4d5f08f763::t_7609e88e1a4dd1 465-467
+  s_1b2e4d5f08f763::t_b81a8dedaedb47 1
+src/shared/codex-subagent-interaction.test.ts
+  s_1b2e4d5f08f763::t_40e405fbec8d31 1-2,4-5,17,32,34-38,84,88-91,97-98
+  s_1b2e4d5f08f763::t_94d60bd6a00cb7 3,27
+  s_1b2e4d5f08f763::t_7609e88e1a4dd1 12-16,18-26,28-31,39-83,85-87,92-96
+  s_1b2e4d5f08f763::t_58a0eabb90a0f3 6-9
+  s_1b2e4d5f08f763::t_a7ef111e8d7f55 10-11,33
+src/shared/codex-subagent-interaction.ts
+  s_1b2e4d5f08f763::t_0d4b9e228d4853 1-30,34-42,45-52
+  s_1b2e4d5f08f763::t_7609e88e1a4dd1 31-33,43-44
+docs/product-specs/renderer-view-state-ownership.md
+  s_1b2e4d5f08f763::t_1ab2d58a99fdb2 98
+src/renderer/features/local-conversation/projection/build-thread-body-model.node.test.ts
+  s_1b2e4d5f08f763::t_7609e88e1a4dd1 550-563
+  s_1b2e4d5f08f763::t_b6b92894428565 546-549,564-565
+src/renderer/features/local-conversation/view/subagents-panel/subagents-panel.tsx
+  s_1b2e4d5f08f763::t_f6d173c9ee483c 459
+  s_1b2e4d5f08f763::t_7609e88e1a4dd1 1-4,481-483
+  s_1b2e4d5f08f763::t_f5f4e1249b909e 5,457,478-480,484-485
+src/renderer/features/local-conversation/local-conversation-store.ts
+  s_1b2e4d5f08f763::t_c4a2be65238c92 4330
+  s_1b2e4d5f08f763::t_ab242808d1bcae 4297,4325
+  s_1b2e4d5f08f763::t_82a9d4c8de64a7 4290,4294-4296,4298-4301,4304-4305,4316-4324,4326-4329,4331-4336,4345-4347
+  s_1b2e4d5f08f763::t_7609e88e1a4dd1 4291-4293,4302-4303,4306-4315
+src/renderer/features/local-conversation/projection/background-subagent-open-context.ts
+  s_1b2e4d5f08f763::t_08aad64f350c8d 13
+src/renderer/components/workbench/workbench-auxiliary-conversation-panels.tsx
+  s_1b2e4d5f08f763::t_f6d173c9ee483c 210-215
+  s_1b2e4d5f08f763::t_f1c11c2c8e71f5 84,89,327,368
+CHANGELOG.md
+  s_1b2e4d5f08f763::t_1ab2d58a99fdb2 41
+src/renderer/features/local-conversation/projection/build-renderer-item-stream.node.test.ts
+  s_1b2e4d5f08f763::t_7173061862d6fd 595,613,714,732
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "3dff371dc66adbdd3944c6eb07e30d46311e6eda",
+  "prompts": {},
+  "sessions": {
+    "s_1b2e4d5f08f763": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a0c831-7309-7fc1-833a-1dee99e2ba10",
+        "model": "gpt-6-astra"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    },
+    "s_a0a1735f9b0d2e": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a09231-9c45-71f3-8c7e-02fa9292fcc7",
+        "model": "gpt-6-astra"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    }
+  }
+}
