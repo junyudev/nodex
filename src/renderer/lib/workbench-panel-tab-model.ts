@@ -109,7 +109,7 @@ export interface BackgroundAgentPanelTab {
 }
 
 export type SelectedSubagentHydrationState =
-  | { status: "pending"; requestId: number }
+  | { status: "pending"; requestId: number; showLoading?: boolean }
   | {
       status: "ready";
       revision: number;

@@ -1,6 +1,6 @@
 // Recursive closures keep the current parent outside the child lookup with CROSS JOIN.
 // Otherwise SQLite may scan the entire universe per parent despite the parent index,
-// making overview, completeness, and lifecycle queries quadratic on fresh Profiles.
+// making overview and completeness queries quadratic on fresh Profiles.
 use std::collections::BTreeSet;
 
 use nodex_core_contracts::BoundModuleContext;
@@ -8,13 +8,11 @@ use nodex_core_contracts::collection::{
     CollectionWindow, CollectionWindowAuthority, CollectionWindowRequest,
 };
 use nodex_core_contracts::workspace::{
-    CodexThreadActiveFlag, CodexThreadStatusType, ProjectWorkspaceSubagentLifecycle,
-    ProjectWorkspaceSubagentLifecycleAction, ProjectWorkspaceSubagentLifecycleMember,
-    ProjectWorkspaceSubagentLifecycleObservation, ProjectWorkspaceSubagentLifecycleOutcome,
-    ProjectWorkspaceSubagentObservation, ProjectWorkspaceSubagentOverview,
-    ProjectWorkspaceSubagentOverviewItem, ProjectWorkspaceSubagentStatus,
-    ProjectWorkspaceSubagentStatusEvidence, ProjectWorkspaceSubagentStatusEvidenceKind,
-    ProjectWorkspaceSubagentStatusEvidencePrecondition, ProjectWorkspaceSubagentUniverse,
+    CodexThreadActiveFlag, CodexThreadStatusType, ProjectWorkspaceSubagentObservation,
+    ProjectWorkspaceSubagentOverview, ProjectWorkspaceSubagentOverviewItem,
+    ProjectWorkspaceSubagentStatus, ProjectWorkspaceSubagentStatusEvidence,
+    ProjectWorkspaceSubagentStatusEvidenceKind, ProjectWorkspaceSubagentStatusEvidencePrecondition,
+    ProjectWorkspaceSubagentUniverse,
 };
 use rusqlite::types::Value as SqlValue;
 use rusqlite::{Connection, OptionalExtension, params, params_from_iter};
@@ -32,11 +30,8 @@ use super::session_mutation::sqlite_now;
 use super::thread::{self, finish_thread_mutation};
 
 const MAX_DISCOVERY_PAGE_ITEMS: usize = 200;
-const MAX_LIFECYCLE_OBSERVATIONS: usize = 100;
-const MAX_LIFECYCLE_BATCH_ITEMS: usize = 100;
 const MAX_PENDING_STATUS_EVIDENCE: i64 = 4_096;
 const MAX_CONTINUATION_BYTES: usize = 512 * 1_024;
-const MAX_REASON_BYTES: usize = 4_096;
 
 #[allow(clippy::too_many_arguments)]
 pub(super) fn observe_discovery_page(
@@ -586,292 +581,6 @@ pub(super) fn buffer_status_evidence(
     )
 }
 
-#[allow(clippy::too_many_arguments)]
-pub(super) fn begin_lifecycle(
-    connection: &Connection,
-    library_id: &str,
-    context: &BoundModuleContext,
-    store_epoch: &str,
-    operation_id: &str,
-    request_hash: &str,
-    universe: &ProjectWorkspaceSubagentUniverse,
-    lifecycle_operation_id: &str,
-    action: ProjectWorkspaceSubagentLifecycleAction,
-) -> Result<ProjectWorkspaceApplyOutcome, StoreError> {
-    validate_universe(universe)?;
-    validate_identity("lifecycle_operation_id", lifecycle_operation_id)?;
-    let action_literal = lifecycle_action_literal(action);
-    let existing = connection
-        .query_row(
-            "SELECT operation.library_id, operation.host_id, operation.root_thread_id,
-               operation.action,
-               EXISTS(
-                 SELECT 1 FROM workspace_subagent_lifecycle_members member
-                 WHERE member.lifecycle_operation_id = operation.lifecycle_operation_id
-                   AND member.outcome <> 'settled'
-               ),
-               COALESCE((
-                 SELECT thread.archived FROM codex_threads thread
-                 WHERE thread.thread_id = operation.root_thread_id
-               ), 1)
-             FROM workspace_subagent_lifecycle_operations operation
-             WHERE operation.lifecycle_operation_id = ?1",
-            [lifecycle_operation_id],
-            |row| {
-                Ok((
-                    row.get::<_, String>(0)?,
-                    row.get::<_, String>(1)?,
-                    row.get::<_, String>(2)?,
-                    row.get::<_, String>(3)?,
-                    row.get::<_, i64>(4)? != 0,
-                    row.get::<_, i64>(5)? != 0,
-                ))
-            },
-        )
-        .optional()?;
-    let mut refresh_completed_archive_attempt = false;
-    if let Some(existing) = existing {
-        let expected = (
-            library_id.to_owned(),
-            universe.host_id.clone(),
-            universe.root_thread_id.clone(),
-            action_literal.to_owned(),
-        );
-        if (existing.0, existing.1, existing.2, existing.3) != expected {
-            return Err(conflict(
-                "Subagent lifecycle operation identity is already bound to another closure",
-            ));
-        }
-        refresh_completed_archive_attempt = action
-            == ProjectWorkspaceSubagentLifecycleAction::Archive
-            && !existing.4
-            && !existing.5;
-        if !refresh_completed_archive_attempt {
-            return finish_no_op(
-                connection,
-                context,
-                store_epoch,
-                operation_id,
-                request_hash,
-                "begin_subagent_lifecycle",
-                Vec::new(),
-                Vec::new(),
-                &sqlite_now(connection)?,
-            );
-        }
-    }
-    require_thread_in_library(connection, library_id, &universe.root_thread_id)?;
-    let discovery_complete = connection
-        .query_row(
-            "SELECT discovery_complete FROM workspace_subagent_universes
-             WHERE host_id = ?1 AND source_epoch = ?2 AND generation = ?3
-               AND root_thread_id = ?4",
-            params![
-                universe.host_id,
-                universe.source_epoch,
-                universe.generation,
-                universe.root_thread_id,
-            ],
-            |row| row.get::<_, i64>(0),
-        )
-        .optional()?;
-    if discovery_complete != Some(1) {
-        return Err(conflict(
-            "Subagent lifecycle closure requires a complete discovery universe",
-        ));
-    }
-    let now = sqlite_now(connection)?;
-    if refresh_completed_archive_attempt {
-        connection.execute(
-            "DELETE FROM workspace_subagent_lifecycle_members
-             WHERE lifecycle_operation_id = ?1",
-            [lifecycle_operation_id],
-        )?;
-        connection.execute(
-            "UPDATE workspace_subagent_lifecycle_operations
-             SET source_epoch = ?2, generation = ?3, updated_at = ?4
-             WHERE lifecycle_operation_id = ?1",
-            params![
-                lifecycle_operation_id,
-                universe.source_epoch,
-                universe.generation,
-                now,
-            ],
-        )?;
-    } else {
-        connection.execute(
-            "INSERT INTO workspace_subagent_lifecycle_operations(
-               lifecycle_operation_id, library_id, host_id, source_epoch, generation,
-               root_thread_id, action, created_at, updated_at
-             ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?8)",
-            params![
-                lifecycle_operation_id,
-                library_id,
-                universe.host_id,
-                universe.source_epoch,
-                universe.generation,
-                universe.root_thread_id,
-                action_literal,
-                now,
-            ],
-        )?;
-    }
-    connection.execute(
-        "WITH RECURSIVE reachable(thread_id) AS (
-           SELECT ?5
-           UNION
-           SELECT child.thread_id
-           FROM reachable parent
-           CROSS JOIN workspace_subagent_descendants child ON child.parent_thread_id = parent.thread_id
-           WHERE child.host_id = ?1 AND child.source_epoch = ?2
-             AND child.generation = ?3 AND child.root_thread_id = ?4
-         ), expected(thread_id) AS (
-           SELECT thread_id FROM reachable
-           UNION
-           SELECT member.thread_id
-           FROM workspace_subagent_lifecycle_operations prior_operation
-           JOIN workspace_subagent_lifecycle_members member
-             ON member.lifecycle_operation_id = prior_operation.lifecycle_operation_id
-           WHERE ?7 = 'delete' AND prior_operation.library_id = ?8
-             AND prior_operation.host_id = ?1 AND prior_operation.root_thread_id = ?4
-             AND prior_operation.action = 'archive'
-         )
-         INSERT INTO workspace_subagent_lifecycle_members(
-           lifecycle_operation_id, thread_id, outcome, attempt_count
-         )
-         SELECT ?6, thread_id, 'pending', 0 FROM expected ORDER BY thread_id",
-        params![
-            universe.host_id,
-            universe.source_epoch,
-            universe.generation,
-            universe.root_thread_id,
-            universe.root_thread_id,
-            lifecycle_operation_id,
-            action_literal,
-            library_id,
-        ],
-    )?;
-    finish_thread_mutation(
-        connection,
-        library_id,
-        context,
-        store_epoch,
-        operation_id,
-        request_hash,
-        "begin_subagent_lifecycle",
-        Vec::new(),
-        Vec::new(),
-        Vec::new(),
-        vec![universe.root_thread_id.clone()],
-    )
-}
-
-#[allow(clippy::too_many_arguments)]
-pub(super) fn observe_lifecycle_outcomes(
-    connection: &Connection,
-    library_id: &str,
-    context: &BoundModuleContext,
-    store_epoch: &str,
-    operation_id: &str,
-    request_hash: &str,
-    lifecycle_operation_id: &str,
-    observations: &[ProjectWorkspaceSubagentLifecycleObservation],
-) -> Result<ProjectWorkspaceApplyOutcome, StoreError> {
-    validate_identity("lifecycle_operation_id", lifecycle_operation_id)?;
-    if observations.is_empty() || observations.len() > MAX_LIFECYCLE_OBSERVATIONS {
-        return Err(invalid(
-            "Subagent lifecycle observation batch must contain between 1 and 100 members",
-        ));
-    }
-    let unique = observations
-        .iter()
-        .map(|observation| observation.thread_id.as_str())
-        .collect::<BTreeSet<_>>();
-    if unique.len() != observations.len() {
-        return Err(invalid(
-            "Subagent lifecycle observation batch contains duplicate Threads",
-        ));
-    }
-    connection
-        .query_row(
-            "SELECT 1 FROM workspace_subagent_lifecycle_operations
-             WHERE lifecycle_operation_id = ?1 AND library_id = ?2",
-            params![lifecycle_operation_id, library_id],
-            |_| Ok(()),
-        )
-        .optional()?
-        .ok_or_else(|| not_found("Subagent lifecycle operation is unavailable"))?;
-
-    let mut affected_thread_ids = Vec::with_capacity(observations.len());
-    for observation in observations {
-        validate_identity("thread_id", &observation.thread_id)?;
-        if observation.outcome == ProjectWorkspaceSubagentLifecycleOutcome::Pending {
-            return Err(invalid("Pending is not an observed lifecycle outcome"));
-        }
-        if observation.observed_at_ms < 0 {
-            return Err(invalid("Lifecycle observed_at_ms must be non-negative"));
-        }
-        if observation
-            .reason
-            .as_ref()
-            .is_some_and(|reason| reason.len() > MAX_REASON_BYTES)
-        {
-            return Err(invalid("Lifecycle failure reason exceeds its Core bound"));
-        }
-        let current = connection
-            .query_row(
-                "SELECT outcome, observed_at_ms
-                 FROM workspace_subagent_lifecycle_members
-                 WHERE lifecycle_operation_id = ?1 AND thread_id = ?2",
-                params![lifecycle_operation_id, observation.thread_id],
-                |row| Ok((row.get::<_, String>(0)?, row.get::<_, Option<i64>>(1)?)),
-            )
-            .optional()?
-            .ok_or_else(|| not_found("Thread is outside the lifecycle expected closure"))?;
-        let incoming_is_settled =
-            observation.outcome == ProjectWorkspaceSubagentLifecycleOutcome::Settled;
-        let should_update = current.0 != "settled"
-            && (incoming_is_settled
-                || current
-                    .1
-                    .is_none_or(|observed_at_ms| observation.observed_at_ms >= observed_at_ms));
-        if should_update {
-            connection.execute(
-                "UPDATE workspace_subagent_lifecycle_members SET
-                   outcome = ?1, attempt_count = attempt_count + 1,
-                   last_reason = ?2, observed_at_ms = ?3
-                 WHERE lifecycle_operation_id = ?4 AND thread_id = ?5",
-                params![
-                    lifecycle_outcome_literal(observation.outcome),
-                    observation.reason,
-                    observation.observed_at_ms,
-                    lifecycle_operation_id,
-                    observation.thread_id,
-                ],
-            )?;
-        }
-        affected_thread_ids.push(observation.thread_id.clone());
-    }
-    connection.execute(
-        "UPDATE workspace_subagent_lifecycle_operations SET updated_at = ?1
-         WHERE lifecycle_operation_id = ?2",
-        params![sqlite_now(connection)?, lifecycle_operation_id],
-    )?;
-    finish_thread_mutation(
-        connection,
-        library_id,
-        context,
-        store_epoch,
-        operation_id,
-        request_hash,
-        "observe_subagent_lifecycle_outcomes",
-        Vec::new(),
-        Vec::new(),
-        Vec::new(),
-        affected_thread_ids,
-    )
-}
-
 pub(super) fn read_overview(
     connection: &Connection,
     library_id: &str,
@@ -986,133 +695,6 @@ pub(super) fn read_overview_item(
         )
         .optional()
         .map_err(Into::into)
-}
-
-pub(super) fn read_lifecycle_batch(
-    connection: &Connection,
-    library_id: &str,
-    commit_head: i64,
-    lifecycle_operation_id: &str,
-    include_settled: bool,
-    request: &CollectionWindowRequest,
-) -> Result<ProjectWorkspaceSubagentLifecycle, StoreError> {
-    validate_identity("lifecycle_operation_id", lifecycle_operation_id)?;
-    let (universe, action) = connection
-        .query_row(
-            "SELECT host_id, source_epoch, generation, root_thread_id, action
-             FROM workspace_subagent_lifecycle_operations
-             WHERE lifecycle_operation_id = ?1 AND library_id = ?2",
-            params![lifecycle_operation_id, library_id],
-            |row| {
-                Ok((
-                    ProjectWorkspaceSubagentUniverse {
-                        host_id: row.get(0)?,
-                        source_epoch: row.get(1)?,
-                        generation: row.get(2)?,
-                        root_thread_id: row.get(3)?,
-                    },
-                    row.get::<_, String>(4)?,
-                ))
-            },
-        )
-        .optional()?
-        .ok_or_else(|| not_found("Subagent lifecycle operation is unavailable"))?;
-    let action = parse_lifecycle_action(&action)?;
-    let normalized = normalize_request(request)?;
-    if normalized.first > MAX_LIFECYCLE_BATCH_ITEMS {
-        return Err(invalid("Subagent lifecycle batch exceeds 100 members"));
-    }
-    let fingerprint =
-        cursor::query_fingerprint(&("workspace_subagent_lifecycle_v1", lifecycle_operation_id))?;
-    let subject = CollectionCursorSubject {
-        kind: "workspace_subagent_lifecycle",
-        library_id,
-        query_fingerprint: &fingerprint,
-    };
-    let after = normalized
-        .after
-        .map(|encoded| cursor::decode(connection, encoded, subject))
-        .transpose()?
-        .map(|(direction, coordinate)| {
-            if direction != CursorDirection::Forward || !coordinate.values.is_empty() {
-                return Err(invalid("Subagent lifecycle cursor is incompatible"));
-            }
-            Ok(coordinate.stable_id)
-        })
-        .transpose()?;
-    let rows = connection
-        .prepare(
-            "SELECT thread_id, outcome, attempt_count, last_reason, observed_at_ms
-             FROM workspace_subagent_lifecycle_members
-             WHERE lifecycle_operation_id = ?1 AND (?2 OR outcome <> 'settled')
-               AND (?3 IS NULL OR thread_id > ?3)
-             ORDER BY thread_id LIMIT ?4",
-        )?
-        .query_map(
-            params![
-                lifecycle_operation_id,
-                include_settled,
-                after,
-                i64::try_from(normalized.first + 1)
-                    .map_err(|_| invalid("Lifecycle batch size is invalid"))?,
-            ],
-            |row| {
-                Ok(ProjectWorkspaceSubagentLifecycleMember {
-                    thread_id: row.get(0)?,
-                    outcome: parse_lifecycle_outcome_row(&row.get::<_, String>(1)?)?,
-                    attempt_count: row.get(2)?,
-                    last_reason: row.get(3)?,
-                    observed_at_ms: row.get(4)?,
-                })
-            },
-        )?
-        .collect::<rusqlite::Result<Vec<_>>>()?;
-    let members = assemble(
-        rows.into_iter().map(|item| WindowCandidate {
-            coordinate: KeysetCoordinate {
-                values: Vec::new(),
-                stable_id: item.thread_id.clone(),
-            },
-            item,
-        }),
-        normalized.first,
-        CollectionWindowAuthority {
-            projection_revision: commit_head,
-        },
-        |coordinate| {
-            cursor::mint(
-                connection,
-                subject,
-                CursorDirection::Forward,
-                coordinate.clone(),
-            )
-        },
-    )?;
-    let (expected_count, processed_count, unresolved_count) = connection.query_row(
-        "SELECT count(*),
-           COALESCE(sum(CASE WHEN outcome <> 'pending' THEN 1 ELSE 0 END), 0),
-           COALESCE(sum(CASE WHEN outcome <> 'settled' THEN 1 ELSE 0 END), 0)
-         FROM workspace_subagent_lifecycle_members WHERE lifecycle_operation_id = ?1",
-        [lifecycle_operation_id],
-        |row| {
-            Ok((
-                count_u32(row.get::<_, i64>(0)?)?,
-                count_u32(row.get::<_, i64>(1)?)?,
-                count_u32(row.get::<_, i64>(2)?)?,
-            ))
-        },
-    )?;
-    Ok(ProjectWorkspaceSubagentLifecycle {
-        universe,
-        lifecycle_operation_id: lifecycle_operation_id.to_owned(),
-        action,
-        members,
-        expected_count,
-        processed_count,
-        unresolved_count,
-        complete: unresolved_count == 0,
-        projection_revision: commit_head,
-    })
 }
 
 fn read_overview_lane(
@@ -1812,32 +1394,6 @@ fn parse_evidence_kind_literal(
     }
 }
 
-fn lifecycle_action_literal(action: ProjectWorkspaceSubagentLifecycleAction) -> &'static str {
-    match action {
-        ProjectWorkspaceSubagentLifecycleAction::Archive => "archive",
-        ProjectWorkspaceSubagentLifecycleAction::Delete => "delete",
-    }
-}
-
-fn lifecycle_outcome_literal(outcome: ProjectWorkspaceSubagentLifecycleOutcome) -> &'static str {
-    match outcome {
-        ProjectWorkspaceSubagentLifecycleOutcome::Pending => "pending",
-        ProjectWorkspaceSubagentLifecycleOutcome::Unresolved => "unresolved",
-        ProjectWorkspaceSubagentLifecycleOutcome::Failed => "failed",
-        ProjectWorkspaceSubagentLifecycleOutcome::Settled => "settled",
-    }
-}
-
-fn parse_lifecycle_action(
-    value: &str,
-) -> Result<ProjectWorkspaceSubagentLifecycleAction, StoreError> {
-    match value {
-        "archive" => Ok(ProjectWorkspaceSubagentLifecycleAction::Archive),
-        "delete" => Ok(ProjectWorkspaceSubagentLifecycleAction::Delete),
-        _ => Err(corrupt("Stored Subagent lifecycle action is invalid")),
-    }
-}
-
 fn parse_status_row(value: &str) -> rusqlite::Result<ProjectWorkspaceSubagentStatus> {
     match value {
         "active" => Ok(ProjectWorkspaceSubagentStatus::Active),
@@ -1856,18 +1412,6 @@ fn parse_evidence_kind_row(
         "notification" => Ok(ProjectWorkspaceSubagentStatusEvidenceKind::Notification),
         "completion" => Ok(ProjectWorkspaceSubagentStatusEvidenceKind::Completion),
         "reconciliation" => Ok(ProjectWorkspaceSubagentStatusEvidenceKind::Reconciliation),
-        _ => Err(rusqlite::Error::InvalidQuery),
-    }
-}
-
-fn parse_lifecycle_outcome_row(
-    value: &str,
-) -> rusqlite::Result<ProjectWorkspaceSubagentLifecycleOutcome> {
-    match value {
-        "pending" => Ok(ProjectWorkspaceSubagentLifecycleOutcome::Pending),
-        "unresolved" => Ok(ProjectWorkspaceSubagentLifecycleOutcome::Unresolved),
-        "failed" => Ok(ProjectWorkspaceSubagentLifecycleOutcome::Failed),
-        "settled" => Ok(ProjectWorkspaceSubagentLifecycleOutcome::Settled),
         _ => Err(rusqlite::Error::InvalidQuery),
     }
 }
@@ -1903,10 +1447,8 @@ mod tests {
     use nodex_core_contracts::collection::CollectionWindowRequest;
     use nodex_core_contracts::workspace::{
         CodexThreadStatusType, ProjectWorkspaceIntent, ProjectWorkspaceRead,
-        ProjectWorkspaceReadValue, ProjectWorkspaceSubagentLifecycleAction,
-        ProjectWorkspaceSubagentLifecycleObservation, ProjectWorkspaceSubagentLifecycleOutcome,
-        ProjectWorkspaceSubagentObservation, ProjectWorkspaceSubagentStatus,
-        ProjectWorkspaceSubagentStatusEvidenceKind,
+        ProjectWorkspaceReadValue, ProjectWorkspaceSubagentObservation,
+        ProjectWorkspaceSubagentStatus, ProjectWorkspaceSubagentStatusEvidenceKind,
         ProjectWorkspaceSubagentStatusEvidencePrecondition, ProjectWorkspaceSubagentUniverse,
         ProjectWorkspaceThreadPatch, ProjectWorkspaceThreadStatus,
     };
@@ -2680,7 +2222,7 @@ mod tests {
     }
 
     #[test]
-    fn endpoint_epochs_inherit_positive_closure_and_gc_incomplete_scans_without_lifecycle_loss() {
+    fn endpoint_epochs_inherit_positive_closure_and_gc_incomplete_scans() {
         let workspace = seeded_workspace();
         seed_root(&workspace.module);
         observe_page(
@@ -2689,16 +2231,6 @@ mod tests {
             vec![observation(0, "thread:root", CodexThreadStatusType::Active)],
             true,
         );
-        apply(
-            &workspace.module,
-            "begin-epoch-lifecycle",
-            ProjectWorkspaceIntent::BeginSubagentLifecycle {
-                universe: universe(),
-                lifecycle_operation_id: "lifecycle:epoch-fence".to_owned(),
-                action: ProjectWorkspaceSubagentLifecycleAction::Archive,
-            },
-        );
-
         let epoch_2 = universe_with_epoch("app-server:epoch-2", 1);
         observe_page_in_universe(&workspace.module, &epoch_2, 0, Vec::new(), false);
         let inherited_2 = overview_in_universe(&workspace.module, &epoch_2, 4, None);
@@ -2707,35 +2239,26 @@ mod tests {
 
         let epoch_3 = universe_with_epoch("app-server:epoch-3", 1);
         observe_page_in_universe(&workspace.module, &epoch_3, 0, Vec::new(), false);
-        let (universe_count, lifecycle_count) = workspace
+        let (universe_count,) = workspace
             .kernel
             .writer()
             .call(|connection| {
-                Ok((
-                    connection.query_row(
-                        "SELECT COUNT(*) FROM workspace_subagent_universes
+                Ok((connection.query_row(
+                    "SELECT COUNT(*) FROM workspace_subagent_universes
                          WHERE host_id = 'local' AND root_thread_id = 'thread:root'",
-                        [],
-                        |row| row.get::<_, i64>(0),
-                    )?,
-                    connection.query_row(
-                        "SELECT COUNT(*) FROM workspace_subagent_lifecycle_operations
-                         WHERE lifecycle_operation_id = 'lifecycle:epoch-fence'",
-                        [],
-                        |row| row.get::<_, i64>(0),
-                    )?,
-                ))
+                    [],
+                    |row| row.get::<_, i64>(0),
+                )?,))
             })
             .expect("projection counts");
         assert_eq!(universe_count, 2);
-        assert_eq!(lifecycle_count, 1);
         assert_eq!(
             overview_in_universe(&workspace.module, &epoch_3, 4, None).known_active_count,
             1
         );
 
         observe_page_in_universe(&workspace.module, &epoch_3, 1, Vec::new(), true);
-        let (universe_count, descendant_count, lifecycle_count) = workspace
+        let (universe_count, descendant_count) = workspace
             .kernel
             .writer()
             .call(|connection| {
@@ -2752,18 +2275,11 @@ mod tests {
                         [],
                         |row| row.get::<_, i64>(0),
                     )?,
-                    connection.query_row(
-                        "SELECT COUNT(*) FROM workspace_subagent_lifecycle_operations
-                         WHERE lifecycle_operation_id = 'lifecycle:epoch-fence'",
-                        [],
-                        |row| row.get::<_, i64>(0),
-                    )?,
                 ))
             })
             .expect("completed projection counts");
         assert_eq!(universe_count, 1);
         assert_eq!(descendant_count, 1);
-        assert_eq!(lifecycle_count, 1);
     }
 
     #[test]
@@ -2805,189 +2321,5 @@ mod tests {
             panic!("missing Subagent overview item");
         };
         assert!(item.is_none());
-    }
-
-    #[test]
-    fn lifecycle_closure_survives_partial_failure_until_every_postcondition_settles() {
-        let workspace = seeded_workspace();
-        seed_root(&workspace.module);
-        observe_page(
-            &workspace.module,
-            0,
-            (0..3)
-                .map(|index| observation(index, "thread:root", CodexThreadStatusType::Active))
-                .collect(),
-            true,
-        );
-        apply(
-            &workspace.module,
-            "begin-lifecycle",
-            ProjectWorkspaceIntent::BeginSubagentLifecycle {
-                universe: universe(),
-                lifecycle_operation_id: "lifecycle:archive-root".to_owned(),
-                action: ProjectWorkspaceSubagentLifecycleAction::Delete,
-            },
-        );
-
-        let read_lifecycle = |first, after| {
-            let ProjectWorkspaceReadValue::SubagentLifecycleBatch { lifecycle } = read(
-                &workspace.module,
-                ProjectWorkspaceRead::SubagentLifecycleBatch {
-                    lifecycle_operation_id: "lifecycle:archive-root".to_owned(),
-                    include_settled: false,
-                    window: CollectionWindowRequest {
-                        after,
-                        first: Some(first),
-                    },
-                },
-            ) else {
-                panic!("Subagent lifecycle batch");
-            };
-            lifecycle
-        };
-        let first = read_lifecycle(2, None);
-        assert_eq!(first.expected_count, 4);
-        assert_eq!(first.members.items.len(), 2);
-        assert!(first.members.next_cursor.is_some());
-
-        apply(
-            &workspace.module,
-            "delete-root-before-lifecycle-observation",
-            ProjectWorkspaceIntent::DeleteThread {
-                thread_id: "thread:root".to_owned(),
-            },
-        );
-        apply(
-            &workspace.module,
-            "resume-existing-lifecycle-after-root-delete",
-            ProjectWorkspaceIntent::BeginSubagentLifecycle {
-                universe: universe(),
-                lifecycle_operation_id: "lifecycle:archive-root".to_owned(),
-                action: ProjectWorkspaceSubagentLifecycleAction::Delete,
-            },
-        );
-
-        workspace
-            .kernel
-            .writer()
-            .call(|connection| {
-                connection.execute(
-                    "INSERT INTO profiles(id, created_at, updated_at)
-                     VALUES ('profile-foreign', ?1, ?1)",
-                    [super::super::test_support::NOW],
-                )?;
-                connection.execute(
-                    "INSERT INTO libraries(id, profile_id, created_at, updated_at)
-                     VALUES ('library-foreign', 'profile-foreign', ?1, ?1)",
-                    [super::super::test_support::NOW],
-                )?;
-                Ok(())
-            })
-            .expect("foreign Library");
-        let foreign_module = super::super::ProjectWorkspaceModule::new(
-            "profile-foreign",
-            "library-foreign",
-            &workspace.kernel,
-        )
-        .expect("foreign Workspace module");
-        let mut foreign_context = super::super::test_support::context();
-        foreign_context.profile_id = nodex_core_contracts::ProfileId("profile-foreign".to_owned());
-        foreign_context.library_id = nodex_core_contracts::LibraryId("library-foreign".to_owned());
-        foreign_context.project_id = None;
-        let foreign_read_error = foreign_module
-            .read(
-                &foreign_context,
-                nodex_core_contracts::ModuleReadRequest {
-                    contract_version: nodex_core_contracts::PROJECT_WORKSPACE_CONTRACT_VERSION,
-                    read: ProjectWorkspaceRead::SubagentLifecycleBatch {
-                        lifecycle_operation_id: "lifecycle:archive-root".to_owned(),
-                        include_settled: false,
-                        window: CollectionWindowRequest {
-                            after: None,
-                            first: Some(100),
-                        },
-                    },
-                },
-            )
-            .expect_err("lifecycle operation remains scoped after root deletion");
-        assert_eq!(
-            foreign_read_error.code,
-            nodex_core_contracts::CoreErrorCode::NotFound
-        );
-
-        apply(
-            &workspace.module,
-            "observe-lifecycle-partial",
-            ProjectWorkspaceIntent::ObserveSubagentLifecycleOutcomes {
-                lifecycle_operation_id: "lifecycle:archive-root".to_owned(),
-                observations: vec![
-                    ProjectWorkspaceSubagentLifecycleObservation {
-                        thread_id: first.members.items[0].thread_id.clone(),
-                        outcome: ProjectWorkspaceSubagentLifecycleOutcome::Settled,
-                        reason: None,
-                        observed_at_ms: 10,
-                    },
-                    ProjectWorkspaceSubagentLifecycleObservation {
-                        thread_id: first.members.items[1].thread_id.clone(),
-                        outcome: ProjectWorkspaceSubagentLifecycleOutcome::Failed,
-                        reason: Some("remote archive did not settle".to_owned()),
-                        observed_at_ms: 10,
-                    },
-                ],
-            },
-        );
-        let partial = read_lifecycle(100, None);
-        assert_eq!(partial.processed_count, 2);
-        assert_eq!(partial.unresolved_count, 3);
-        assert!(!partial.complete);
-        assert!(partial.members.items.iter().any(|member| {
-            member.outcome == ProjectWorkspaceSubagentLifecycleOutcome::Failed
-                && member.last_reason.as_deref() == Some("remote archive did not settle")
-        }));
-
-        let settle = partial
-            .members
-            .items
-            .iter()
-            .map(|member| ProjectWorkspaceSubagentLifecycleObservation {
-                thread_id: member.thread_id.clone(),
-                outcome: ProjectWorkspaceSubagentLifecycleOutcome::Settled,
-                reason: None,
-                observed_at_ms: 20,
-            })
-            .collect();
-        apply(
-            &workspace.module,
-            "observe-lifecycle-complete",
-            ProjectWorkspaceIntent::ObserveSubagentLifecycleOutcomes {
-                lifecycle_operation_id: "lifecycle:archive-root".to_owned(),
-                observations: settle,
-            },
-        );
-        let complete = read_lifecycle(100, None);
-        assert_eq!(complete.processed_count, 4);
-        assert_eq!(complete.unresolved_count, 0);
-        assert!(complete.complete);
-        assert!(complete.members.items.is_empty());
-
-        let ProjectWorkspaceReadValue::SubagentLifecycleBatch { lifecycle: cohort } = read(
-            &workspace.module,
-            ProjectWorkspaceRead::SubagentLifecycleBatch {
-                lifecycle_operation_id: "lifecycle:archive-root".to_owned(),
-                include_settled: true,
-                window: CollectionWindowRequest {
-                    after: None,
-                    first: Some(100),
-                },
-            },
-        ) else {
-            panic!("complete Subagent lifecycle cohort");
-        };
-        assert_eq!(cohort.members.items.len(), 4);
-        assert!(
-            cohort.members.items.iter().all(|member| {
-                member.outcome == ProjectWorkspaceSubagentLifecycleOutcome::Settled
-            })
-        );
     }
 }

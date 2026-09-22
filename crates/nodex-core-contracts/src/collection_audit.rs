@@ -42,7 +42,6 @@ fn workspace_policy(read: &ProjectWorkspaceRead) -> ReadBudgetPolicy {
         | ProjectWorkspaceRead::SidebarOverview { .. }
         | ProjectWorkspaceRead::ChildThreadWindow { .. }
         | ProjectWorkspaceRead::SubagentOverviewWindow { .. }
-        | ProjectWorkspaceRead::SubagentLifecycleBatch { .. }
         | ProjectWorkspaceRead::BackgroundProcessWindow { .. }
         | ProjectWorkspaceRead::ManagedWorktreeWindow { .. }
         | ProjectWorkspaceRead::PageChatWindow { .. }

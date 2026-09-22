@@ -96,3 +96,14 @@ describe("subagent messaging evidence", () => {
     ).toBeUndefined();
   });
 });
+
+test("message markers require membership and reset a prior grant across parent turns", () => {
+  const message: InteractionItem = { ...activity, kind: "interacted" };
+  expect(collectCodexSubagentInteractionReferences([turn("message", [message])]).size).toBe(0);
+  expect(
+    collectCodexSubagentInteractionReferences([
+      turn("spawn", [collaboration("spawnAgent")]),
+      turn("message", [message]),
+    ]).get("child"),
+  ).toEqual({ parentTurnKey: "message", canInteract: false });
+});

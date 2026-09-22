@@ -6,6 +6,7 @@ import { renderWithMaitai as renderDom } from "../../../test/thread-maitai";
 import { settleAsyncRender } from "../../../test/dom";
 import type { CodexConversationItem, CodexConversationTurn } from "../../../lib/types";
 import type { VisibleConversationTurnEntry } from "../selectors";
+import type { ThreadStageActions } from "../thread-stage-types";
 import { LocalConversationTestQueryProvider } from "./local-conversation-test-query.test-fixtures";
 import { formatThreadMessageTimestamp } from "./shared/thread-message-timestamp";
 
@@ -174,6 +175,73 @@ describe("LocalConversationTurnEntry", () => {
     const host = view.container.querySelector("[data-above-composer-portal]");
     expect(host?.querySelector("[data-above-composer-fixed-content]") !== null).toBe(true);
     expect(host?.textContent?.includes("1 file changed") ?? false).toBe(true);
+  });
+
+  test("refreshes inherited spawn models when only the parent model changes", async () => {
+    const { LocalConversationTurnEntry } = await import("./local-conversation-turn-entry");
+    const item: CodexConversationItem = {
+      threadId: "thread_1",
+      turnId: "turn_model",
+      itemId: "spawn",
+      entryId: "spawn",
+      type: "collabAgentToolCall",
+      kind: "toolCall",
+      semanticKind: "multiAgentAction",
+      status: "completed",
+      createdAt: 1,
+      updatedAt: 1,
+      rawItem: {
+        id: "spawn",
+        tool: "spawnAgent",
+        status: "completed",
+        senderThreadId: "thread_1",
+        receiverThreads: [
+          { threadId: "child", thread: { nickname: "Scout", model: "child-model" } },
+        ],
+        prompt: "Inspect the project",
+        model: null,
+        agentsStates: {},
+      },
+    };
+    const entry = buildVisibleTurnEntry(
+      buildTurn("turn_model", "Inspect", "Done", {
+        items: [item],
+        itemIds: ["spawn"],
+      }),
+      [],
+      true,
+    );
+    const models: Array<string | null | undefined> = [];
+    const onOpenThread: ThreadStageActions["onOpenThread"] = (_id, context) => {
+      models.push(context?.subagent?.spawnModel);
+    };
+    const content = (parentModel: string) => (
+      <TooltipProvider>
+        <LocalConversationTurnEntry
+          conversationId="thread_1"
+          entry={entry}
+          cwd="/tmp/project"
+          canEditTurnUserPrefix={false}
+          canForkTurn={false}
+          persistedCollapsed={false}
+          parentModel={parentModel}
+          onOpenThread={onOpenThread}
+        />
+      </TooltipProvider>
+    );
+    const view = render(content("parent-model-a"));
+    await act(async () => {
+      fireEvent.click(view.getByTestId("multi-agent-action-header").querySelector("button")!);
+    });
+    await settleAsyncRender();
+    await act(async () => {
+      fireEvent.click(view.getByRole("button", { name: "Open subagent Scout" }));
+    });
+    view.rerender(content("parent-model-b"));
+    await act(async () => {
+      fireEvent.click(view.getByRole("button", { name: "Open subagent Scout" }));
+    });
+    expect(models).toEqual(["parent-model-a", "parent-model-b"]);
   });
 
   test("renders a resolved timestamp separator before the owning turn", async () => {

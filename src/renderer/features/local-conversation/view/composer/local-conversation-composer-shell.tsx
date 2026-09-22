@@ -59,7 +59,6 @@ import { NodexTooltip } from "@/components/ui/tooltip";
 import { toast } from "@/components/ui/toast";
 import { cn } from "@/lib/utils";
 import type {
-  ThreadComposerShellBackgroundAgentRowModel,
   ThreadComposerShellPendingSteerRowModel,
   ThreadComposerShellQueuedFollowUpRowModel,
   ThreadFooterModel,
@@ -85,15 +84,7 @@ import {
 } from "../local-conversation-above-composer-portal";
 import { buildCodexCanonicalRequestIdentityKey } from "../../../../../shared/codex-conversation-state/codex-conversation-state";
 import { usePortalHost } from "../use-portal-host";
-import { DiffStats } from "../shared/tools/diff-file-shared";
 import { ThreadGoalStatusRow } from "./local-conversation-thread-goal-status-row";
-import { buildBackgroundAgentOpenContext } from "../../projection/background-subagent-open-context";
-import {
-  buildBackgroundSubagentCompactStripModel,
-  getBackgroundSubagentListRows,
-} from "../../projection/background-subagent-summary-model";
-import { SubagentAvatar } from "../shared/subagent-avatar";
-import { CodexShimmerText } from "../shared/codex-shimmer-text";
 import {
   useAutoReviewApprovalNudgeActions,
   useAutoReviewApprovalNudgeState,
@@ -780,167 +771,6 @@ function BackgroundTerminalPanel({
   );
 }
 
-function resolveBackgroundRowStatusText(
-  status: ThreadComposerShellBackgroundAgentRowModel["status"],
-) {
-  if (status === "active") {
-    return "is working";
-  }
-  if (status === "waiting") {
-    return "is awaiting instruction";
-  }
-  return "is done";
-}
-
-function BackgroundAgentRowTooltipContent({
-  row,
-}: {
-  row: ThreadComposerShellBackgroundAgentRowModel;
-}) {
-  if (!row.agentRole && !row.spawnModel) return null;
-
-  return (
-    <span className="flex flex-col gap-0.5">
-      {row.agentRole ? <span>{row.agentRole}</span> : null}
-      {row.spawnModel ? <span>Uses {row.spawnModel}</span> : null}
-    </span>
-  );
-}
-
-function BackgroundAgentRow({
-  row,
-  actions,
-}: {
-  row: ThreadComposerShellBackgroundAgentRowModel;
-  actions: ThreadStageActions;
-}) {
-  const active = row.status === "active";
-  const metadataTooltip = <BackgroundAgentRowTooltipContent row={row} />;
-  const statusText = resolveBackgroundRowStatusText(row.status);
-
-  return (
-    <div className="px-0 py-1">
-      <div className="text-size-chat block min-w-0 truncate leading-4 text-token-description-foreground">
-        <div className="group flex items-center justify-between gap-2">
-          <NodexTooltip
-            disabled={!row.agentRole && !row.spawnModel}
-            side="top"
-            tooltipContent={metadataTooltip}
-            tooltipBodyClassName="items-start"
-          >
-            <button
-              type="button"
-              className="flex max-w-full min-w-0 cursor-interaction items-center gap-1 bg-transparent p-0"
-              onClick={() => {
-                void actions.onOpenThread(row.conversationId, buildBackgroundAgentOpenContext(row));
-              }}
-            >
-              <span className="flex min-w-0 items-center gap-1.5 text-token-foreground">
-                <SubagentAvatar
-                  seed={row.conversationId}
-                  className="icon-2xs pointer-events-none"
-                />
-                <span className="min-w-0 truncate font-medium">{row.displayName}</span>
-              </span>
-              <CodexShimmerText
-                active={active}
-                variant="classic"
-                className="shrink-0 whitespace-nowrap text-token-description-foreground"
-              >
-                {statusText}
-              </CodexShimmerText>
-            </button>
-          </NodexTooltip>
-          {row.diffStats ? (
-            <DiffStats
-              additions={row.diffStats.linesAdded}
-              deletions={row.diffStats.linesRemoved}
-              className="mr-0.5 shrink-0 text-size-chat"
-            />
-          ) : null}
-        </div>
-      </div>
-    </div>
-  );
-}
-
-function BackgroundAgentPanel({
-  rows,
-  actions,
-  showRoundedTop,
-}: {
-  rows: ThreadFooterModel["composerShell"]["backgroundAgentRows"];
-  actions: ThreadStageActions;
-  showRoundedTop: boolean;
-}) {
-  const compactModel = buildBackgroundSubagentCompactStripModel(rows);
-  const legacyRows = getBackgroundSubagentListRows(rows);
-  const stoppableThreadIds = rows
-    .filter((row) => row.status !== "done")
-    .map((row) => row.conversationId);
-  const canStopAll = stoppableThreadIds.length > 0 && Boolean(actions.onStopBackgroundAgents);
-  if (rows.length === 0) return null;
-
-  const aggregateContent =
-    compactModel.displayRows.length > 0 ? (
-      <>
-        <span className="flex shrink-0 items-center gap-1.5">
-          {compactModel.displayRows.map((row) => (
-            <SubagentAvatar key={row.conversationId} seed={row.conversationId} className="size-4" />
-          ))}
-        </span>
-        <span className="text-size-chat min-w-0 truncate leading-4 text-token-foreground">
-          {compactModel.workingCount > 0
-            ? `${compactModel.workingCount} working`
-            : `${compactModel.doneCount} done`}
-        </span>
-        {compactModel.workingCount > 0 && compactModel.doneCount > 0 ? (
-          <span className="text-size-chat shrink-0 text-token-text-tertiary">
-            {compactModel.doneCount} done
-          </span>
-        ) : null}
-      </>
-    ) : null;
-
-  return (
-    <ComposerShellCard showRoundedTop={showRoundedTop}>
-      {aggregateContent ? (
-        <div className="group flex min-h-8 items-center gap-2 px-3 py-row-y">
-          {actions.onOpenSubagentsPanel ? (
-            <button
-              type="button"
-              aria-label="Open subagents"
-              className="flex min-w-0 flex-1 cursor-interaction items-center gap-2 rounded-md text-left focus-visible:outline-2 focus-visible:outline-offset-2"
-              onClick={() => void actions.onOpenSubagentsPanel?.()}
-            >
-              {aggregateContent}
-            </button>
-          ) : (
-            <div className="flex min-w-0 flex-1 items-center gap-2">{aggregateContent}</div>
-          )}
-          {canStopAll ? (
-            <NodexTooltip tooltipContent="Stop all subagents in this chat">
-              <ComposerGhostIconButton
-                ariaLabel="Stop all"
-                onClick={() => void actions.onStopBackgroundAgents?.(stoppableThreadIds)}
-              >
-                <StopIcon className="icon-2xs" />
-              </ComposerGhostIconButton>
-            </NodexTooltip>
-          ) : null}
-        </div>
-      ) : null}
-      {legacyRows.length > 0 ? (
-        <div className="flex flex-col gap-0.5 px-3 pb-2">
-          {legacyRows.map((row) => (
-            <BackgroundAgentRow key={row.conversationId} row={row} actions={actions} />
-          ))}
-        </div>
-      ) : null}
-    </ComposerShellCard>
-  );
-}
-
 function RequestCardStack({
   model,
   actions,
@@ -1216,9 +1046,8 @@ function ScopedLocalConversationComposerShell({
   const backgroundTerminalThreadId = model.threadId;
   const showBackgroundTerminals =
     backgroundTerminalThreadId !== null && model.composerShell.backgroundTerminalRows.length > 0;
-  const showBackgroundAgents = model.composerShell.backgroundAgentRows.length > 0;
   const showAuxiliaryLaneStack =
-    showQueuePanel || showThreadGoalStatusRow || showBackgroundTerminals || showBackgroundAgents;
+    showQueuePanel || showThreadGoalStatusRow || showBackgroundTerminals;
   let sectionIndex = hasFixedPortalContent ? 1 : 0;
 
   const resolveRoundedTop = () => {
@@ -1244,13 +1073,6 @@ function ScopedLocalConversationComposerShell({
         <BackgroundTerminalPanel
           threadId={backgroundTerminalThreadId}
           rows={model.composerShell.backgroundTerminalRows}
-          actions={actions}
-          showRoundedTop={resolveRoundedTop()}
-        />
-      ) : null}
-      {showBackgroundAgents ? (
-        <BackgroundAgentPanel
-          rows={model.composerShell.backgroundAgentRows}
           actions={actions}
           showRoundedTop={resolveRoundedTop()}
         />
@@ -1304,6 +1126,7 @@ function ScopedLocalConversationComposerShell({
         </>
       ) : (
         <ThreadComposer
+          backgroundAgentRows={model.composerShell.backgroundAgentRows}
           model={model}
           actions={actions}
           errorMessage={errorMessage}

@@ -4,7 +4,7 @@ import path from "node:path";
 
 import { ElectronScenarioHarness } from "../../scripts/scenarios/harness/electron-e2e-harness";
 import { prepareScenarioCodexAppServerRuntimeSync } from "../../scripts/scenarios/runtime/agent-runtime-fixture";
-import type { CodexHostMessage } from "../../src/shared/types";
+import type { CodexConversationSnapshot, CodexHostMessage } from "../../src/shared/types";
 import { attachComposerFailureEvidence } from "./support/composer-failure-evidence";
 import { openNewChatDraft } from "./support/new-chat-draft";
 
@@ -16,9 +16,6 @@ const rootThreadId = scenarioThreadId("000000000101");
 const fallbackInterruptThreadId = scenarioThreadId("000000000201");
 const selectedThreadId = scenarioThreadId("000000000202");
 const reconnectScoutThreadId = scenarioThreadId("000000000204");
-const nestedThreadId = scenarioThreadId("000000000205");
-const relationshipReceiverThreadId = scenarioThreadId("000000000299");
-const topologyRecoveredThreadId = scenarioThreadId("000000000312");
 const childThreadIds = new Set([
   ...Array.from({ length: 5 }, (_, index) =>
     scenarioThreadId(String(201 + index).padStart(12, "0")),
@@ -51,10 +48,9 @@ interface ScenarioState {
   }>;
   readonly childIdleNotificationAtMs?: number;
   readonly childInterruptAcceptedAtMs?: number;
-  readonly collabItemNotificationAtMs?: number;
+  readonly discoveryListStartedAtMs?: number;
+  readonly discoveryListRespondedAtMs?: number | null;
   readonly lastDiscoveryThreadIds?: readonly string[];
-  readonly receiverReadRespondedAtMs?: number | null;
-  readonly receiverReadStartedAtMs?: number;
   readonly reconnectNotificationAtMs?: number;
   readonly reconnectNotificationInstances?: readonly number[];
   readonly reconnectReadRespondedAtMs?: number | null;
@@ -111,6 +107,20 @@ const prepareSubagentDraft = async (page: Page, prompt: string): Promise<Locator
 
 const startSubagentScenario = async (harness: ElectronScenarioHarness): Promise<Page> => {
   const page = await harness.launch();
+  const diagnosticsPath = test.info().outputPath("scenario-runtime.log");
+  fs.mkdirSync(path.dirname(diagnosticsPath), { recursive: true });
+  fs.writeFileSync(diagnosticsPath, `Disposable Profile: ${harness.profile.runRoot}\n`);
+  page.on("console", (message) => {
+    if (message.type() === "warning" || message.type() === "error") {
+      fs.appendFileSync(diagnosticsPath, `${message.type()}: ${message.text()}\n`);
+    }
+  });
+  page.on("pageerror", (error) =>
+    fs.appendFileSync(diagnosticsPath, `${error.stack ?? error.message}\n`),
+  );
+  harness.application
+    .process()
+    .stderr?.on("data", (chunk) => fs.appendFileSync(diagnosticsPath, chunk));
   const sendButton = await prepareSubagentDraft(page, "Coordinate the bounded subagent scenario");
   await beginCodexEventCapture(page);
   await sendButton.click();
@@ -168,28 +178,6 @@ const attachRequestEvidence = async (
   await testInfo.attach(name, { body, contentType: "application/json" });
 };
 
-const waitForRpcQuiet = async (
-  logPath: string,
-  predicate: (entry: RpcEntry) => boolean,
-  timeoutMs = 15_000,
-  quietMs = 300,
-): Promise<void> => {
-  const deadline = Date.now() + timeoutMs;
-  let lastCount = -1;
-  let lastChangeAtMs = Date.now();
-  while (Date.now() < deadline) {
-    const count = readRpcEntries(logPath).filter(predicate).length;
-    if (count !== lastCount) {
-      lastCount = count;
-      lastChangeAtMs = Date.now();
-    } else if (count > 0 && Date.now() - lastChangeAtMs >= quietMs) {
-      return;
-    }
-    await new Promise((resolve) => setTimeout(resolve, 50));
-  }
-  throw new Error(`RPC sequence did not settle within ${timeoutMs}ms`);
-};
-
 const beginCodexEventCapture = async (page: Page): Promise<void> => {
   await page.evaluate(() => {
     const scope = window as typeof window & {
@@ -233,301 +221,196 @@ const capturedRootInvalidationCount = async (page: Page): Promise<number> =>
     }).length;
   }, rootThreadId);
 
-test("keeps overview metadata-only, expands bounded windows, and hydrates only the selection", async ({}, testInfo) => {
+const captureSubagentPresentationDiagnostics = async (page: Page) =>
+  await page.evaluate(async (rootId) => {
+    const snapshot = (await window.api?.invoke("codex:thread:snapshot:request", rootId)) as
+      | CodexConversationSnapshot
+      | null
+      | undefined;
+    const elements = (selector: string) =>
+      [...document.querySelectorAll<HTMLElement>(selector)].map((element) => {
+        const rect = element.getBoundingClientRect();
+        const style = getComputedStyle(element);
+        return {
+          tag: element.tagName,
+          attributes: Object.fromEntries([...element.attributes].map((a) => [a.name, a.value])),
+          rect: { x: rect.x, y: rect.y, width: rect.width, height: rect.height },
+          display: style.display,
+          visibility: style.visibility,
+          opacity: style.opacity,
+          text: element.textContent?.slice(0, 100),
+        };
+      });
+    return {
+      rootSnapshot: snapshot
+        ? {
+            threadId: snapshot.threadId,
+            source: snapshot.source,
+            archived: snapshot.archived,
+            resumeState: snapshot.resumeState,
+          }
+        : null,
+      composers: elements("[data-codex-composer]"),
+      shells: elements("[data-local-conversation-composer-shell]"),
+      footers: elements("[data-thread-find-composer]"),
+      overlays: elements(
+        "[data-right-panel-composer-overlay], [data-above-composer-queue-portal], [data-above-composer-portal]",
+      ),
+      panels: elements("[data-background-agent-side-panel-tab], [data-subagents-side-panel-tab]"),
+    };
+  }, rootThreadId);
+
+test("renders compact subagent activity, expands the overview, and reads only the selected child", async ({}, testInfo) => {
   test.setTimeout(120_000);
   const harness = await createSubagentHarness("subagent-overview-and-selected-hydration", {
     NODEX_LOG_FILE: "1",
     NODEX_LOG_FILE_LEVEL: "debug",
-    NODEX_FAKE_SUBAGENT_TOPOLOGY_MISSED_EDGE: "1",
+    NODEX_FAKE_SUBAGENT_ACTIVITY: "1",
   });
-
+  const artifactDirectory =
+    process.env.NODEX_SUBAGENT_UI_ARTIFACT_DIR ?? testInfo.outputPath("ui-review");
+  fs.mkdirSync(artifactDirectory, { recursive: true });
+  fs.rmSync(path.join(artifactDirectory, "result.json"), { force: true });
+  let recordingPage: Page | null = null;
   try {
     const page = await startSubagentScenario(harness);
-    const rendererDiagnostics: string[] = [];
-    page.on("console", (message) => {
-      if (message.type() === "error" || message.type() === "warning") {
-        rendererDiagnostics.push(`${message.type()}: ${message.text()}`);
-      }
-    });
-    page.on("pageerror", (error) => {
-      rendererDiagnostics.push(`pageerror: ${error.stack ?? error.message}`);
-    });
+    await page.setViewportSize({ width: 1440, height: 960 });
     const logPath = path.join(harness.profile.runRoot, ".fake-codex", "requests.jsonl");
-    const statePath = path.join(harness.profile.runRoot, ".fake-codex", "state.json");
-    await expect
-      .poll(
-        () =>
-          page.evaluate((threadId) => {
-            const scope = window as typeof window & {
-              __subagentScenarioHostMessages?: CodexHostMessage[];
-            };
-            return (scope.__subagentScenarioHostMessages ?? []).some(
-              (message) =>
-                message.type === "nativeNotification" &&
-                message.notification.method === "item/started" &&
-                message.notification.params.threadId === threadId &&
-                message.notification.params.item.id === "activity-topology-missed-edge",
-            );
-          }, rootThreadId),
-        { timeout: 15_000 },
-      )
-      .toBe(true);
-    // The window owns the document. Confirm its activity rendered before the
-    // overview's bounded topology repair, instead of polling Main's presentation.
-    await expect(page.getByTestId("subagent-activity-inline-group")).toBeVisible();
+    const activity = page.getByTestId("subagent-activity-inline-group").first();
+    await expect(activity).toBeVisible();
+    await expect(activity.locator("[data-subagent-avatar-seed]")).toHaveCount(4);
+    await expect(activity).toContainText("and 2 more");
+    const portal = page.locator(
+      `[data-above-composer-queue-portal="true"][data-above-composer-conversation-id="${rootThreadId}"]`,
+    );
+    await expect(portal.getByRole("button", { name: "Open subagents" })).toHaveCount(0);
+    await expect(portal.getByRole("button", { name: "Stop all" })).toHaveCount(0);
+    await page.screencast.start({
+      path: path.join(artifactDirectory, "review.webm"),
+      size: { width: 1440, height: 960 },
+      annotate: { position: "bottom", fontSize: 14 },
+    });
+    recordingPage = page;
+    await page.screenshot({ path: path.join(artifactDirectory, "root-activity.png") });
     await page.getByRole("button", { name: "Open subagents" }).first().click();
-
     const panel = page.locator(`[data-subagents-panel-overview="${rootThreadId}"]`);
     const active = panel.locator('[data-subagent-overview-section="active"]');
     const done = panel.locator('[data-subagent-overview-section="done"]');
     await expect(panel).toBeVisible({ timeout: 30_000 });
-    await expect(active.getByRole("heading", { name: "Active · 5" })).toBeVisible({
+    await expect(active.getByRole("heading", { name: "Active · 4" })).toBeVisible({
       timeout: 30_000,
     });
-    // Topology repair may commit between the panel's first read and this DOM
-    // observation, so both the pre-repair and repaired totals are valid here.
-    await expect(done.getByRole("heading", { name: /^Done · (11|12)$/u })).toBeVisible({
-      timeout: 30_000,
-    });
+    await expect(done.getByRole("heading", { name: "Done · 13" })).toBeVisible();
     await expect(active.locator('[aria-label^="Open subagent "]')).toHaveCount(4);
     await expect(done.locator('[aria-label^="Open subagent "]')).toHaveCount(10);
     await expect(active.getByText("Approval sentinel", { exact: true })).toBeVisible();
-    await expect(active.getByText("Waiting", { exact: true })).toBeVisible();
-    await expect(active.getByText("Reconnect scout", { exact: true })).toBeVisible();
-    await expect(active.getByText("Nested verifier", { exact: true })).toHaveCount(0);
-
-    const overviewEntries = readRpcEntries(logPath);
-    const discovery = overviewEntries.find(
-      (entry) => entry.method === "thread/list" && entry.params.ancestorThreadId === rootThreadId,
-    );
-    expect(discovery?.params).toMatchObject({
-      ancestorThreadId: rootThreadId,
-      archived: false,
-      limit: 200,
-      sourceKinds: ["subAgentThreadSpawn"],
-    });
-    expect(overviewEntries.filter(isChildTranscriptRequest)).toEqual([]);
-    const initialTopologyMetadataReads = overviewEntries.filter(
-      (entry) =>
-        entry.method === "thread/read" && entry.params.threadId === topologyRecoveredThreadId,
-    );
-    expect(initialTopologyMetadataReads.length).toBeLessThanOrEqual(1);
-    for (const entry of initialTopologyMetadataReads) {
-      expect(entry.params).toEqual({
-        threadId: topologyRecoveredThreadId,
-        includeTurns: false,
-      });
-    }
-    await attachRequestEvidence(testInfo, "metadata-only-overview-rpcs", overviewEntries);
-
-    await expect
-      .poll(
-        () =>
-          readRpcEntries(logPath).filter(
-            (entry) =>
-              entry.method === "thread/read" && entry.params.threadId === topologyRecoveredThreadId,
-          ).length,
-        { timeout: 15_000 },
-      )
-      .toBe(1);
-    await expect
-      .poll(() => readRpcEntries(logPath).filter(isBoundedTopologyRequest).length, {
-        timeout: 15_000,
-      })
-      .toBeGreaterThanOrEqual(3);
-    await waitForRpcQuiet(
-      logPath,
-      (entry) =>
-        isBoundedTopologyRequest(entry) ||
-        (entry.method === "thread/read" && entry.params.threadId === topologyRecoveredThreadId),
-    );
-    await expect(done.getByRole("heading", { name: "Done · 12" })).toBeVisible({
-      timeout: 15_000,
-    });
-
-    type ExpandedOverview = {
-      completeness?: unknown;
-      active?: {
-        knownCount?: unknown;
-        rows?: Array<{ threadId?: unknown; parentThreadId?: unknown }>;
-      };
-      done?: {
-        knownCount?: unknown;
-        rows?: Array<{ threadId?: unknown; parentThreadId?: unknown }>;
-      };
-    };
-    const readExpandedOverview = async (): Promise<ExpandedOverview> =>
-      await page.evaluate(async (expectedRootThreadId) => {
-        return (await window.api?.invoke("codex:subagents:overview:read", {
-          rootThreadId: expectedRootThreadId,
-          mode: "expanded",
-        })) as ExpandedOverview;
-      }, rootThreadId);
-    const expandedOverview = await readExpandedOverview();
-    await testInfo.attach("expanded-overview-after-topology", {
-      body: JSON.stringify(expandedOverview, null, 2),
-      contentType: "application/json",
-    });
-    await expect
-      .poll(
-        () =>
-          readRpcEntries(logPath).filter(
-            (entry) =>
-              entry.method === "thread/read" && entry.params.threadId === topologyRecoveredThreadId,
-          ),
-        { timeout: 15_000 },
-      )
-      .toEqual([
-        expect.objectContaining({
-          method: "thread/read",
-          params: { threadId: topologyRecoveredThreadId, includeTurns: false },
-        }),
-      ]);
-    const topologyEntries = readRpcEntries(logPath).filter(
-      (entry) =>
-        isBoundedTopologyRequest(entry) ||
-        (entry.method === "thread/read" && entry.params.threadId === topologyRecoveredThreadId),
-    );
-    const topologyPageEntries = topologyEntries.filter(isBoundedTopologyRequest);
-    expect(topologyPageEntries.length).toBeGreaterThanOrEqual(3);
-    expect(topologyPageEntries.length).toBeLessThanOrEqual(32);
-    expect(topologyEntries).toEqual(
-      expect.arrayContaining([
-        expect.objectContaining({
-          method: "thread/turns/list",
-          params: expect.objectContaining({
-            threadId: fallbackInterruptThreadId,
-            limit: 5,
-            sortDirection: "asc",
-            itemsView: "full",
-          }),
-        }),
-      ]),
-    );
-    await attachRequestEvidence(testInfo, "bounded-topology-repair-rpcs", topologyEntries);
-
-    await active.getByRole("button", { name: "Show more" }).click();
-    await expect(active.locator('[aria-label^="Open subagent "]')).toHaveCount(5);
-    await expect(active.getByText("Nested verifier", { exact: true })).toBeVisible();
+    await expect(active.getByText("Waiting", { exact: true })).toHaveCount(0);
+    await expect(done.getByText("Reconnect scout", { exact: true })).toBeVisible();
+    expect(readRpcEntries(logPath).filter(isChildTranscriptRequest)).toEqual([]);
     await done.getByRole("button", { name: "Show more" }).click();
-    await expect(done.locator('[aria-label^="Open subagent "]')).toHaveCount(12);
+    await expect(done.locator('[aria-label^="Open subagent "]')).toHaveCount(13);
     expect(readRpcEntries(logPath).filter(isChildTranscriptRequest)).toEqual([]);
-
-    const expandedRows = [
-      ...(expandedOverview.active?.rows ?? []),
-      ...(expandedOverview.done?.rows ?? []),
-    ];
-    const nestedRows = expandedRows.filter((row) => row.threadId === nestedThreadId);
-    expect(nestedRows).toEqual([
-      expect.objectContaining({
-        threadId: nestedThreadId,
-        parentThreadId: fallbackInterruptThreadId,
-      }),
-    ]);
-    const discoveryOrder = readScenarioState(statePath).lastDiscoveryThreadIds;
-    expect(readScenarioState(statePath).spawnNotificationThreadIds).toEqual([
-      nestedThreadId,
-      fallbackInterruptThreadId,
-    ]);
-    expect(discoveryOrder?.indexOf(nestedThreadId)).toBeLessThan(
-      discoveryOrder?.indexOf(fallbackInterruptThreadId) ?? -1,
-    );
-    expect(readRpcEntries(logPath).filter(isChildTranscriptRequest)).toEqual([]);
-
-    await active.getByRole("button", { name: "Show less" }).click();
-    await expect(active.locator('[aria-label^="Open subagent "]')).toHaveCount(4);
+    await page.screenshot({ path: path.join(artifactDirectory, "overview-expanded.png") });
     await done.getByRole("button", { name: "Show less" }).click();
     await expect(done.locator('[aria-label^="Open subagent "]')).toHaveCount(10);
-
+    const rootHistoryRequestsBefore = readRpcEntries(logPath).filter(
+      (entry) => transcriptMethods.has(entry.method) && entry.params.threadId === rootThreadId,
+    ).length;
+    await expect(page.locator('[data-codex-composer="true"]')).toHaveCount(1);
+    const beforeSelection = await captureSubagentPresentationDiagnostics(page);
     await active.getByRole("button", { name: "Open subagent Deep investigator" }).click();
     const sidePanel = page.locator('[data-subagents-side-panel-tab^="subagents:"]');
-    await expect(sidePanel.getByText("Deep investigator", { exact: true }).first()).toBeVisible({
-      timeout: 30_000,
-    });
-    await expect
-      .poll(() => readRpcEntries(logPath).filter(isChildTranscriptRequest).length, {
-        timeout: 15_000,
-      })
-      .toBeGreaterThan(0);
-    await page.waitForTimeout(250);
-    const selectedRouteState = await page.evaluate(() => ({
-      panels: [...document.querySelectorAll<HTMLElement>("[data-subagents-side-panel-tab]")].map(
-        (element) => ({
-          id: element.dataset.subagentsSidePanelTab ?? null,
-          hydration: element.dataset.subagentsSelectedHydration ?? null,
-          text: element.textContent?.slice(0, 500) ?? "",
-        }),
-      ),
-      overviews: [...document.querySelectorAll<HTMLElement>("[data-subagents-panel-overview]")].map(
-        (element) => element.dataset.subagentsPanelOverview ?? null,
-      ),
-      alerts: [...document.querySelectorAll<HTMLElement>('[role="alert"]')].map(
-        (element) => element.textContent?.slice(0, 500) ?? "",
-      ),
-      selectedTabs: [
-        ...document.querySelectorAll<HTMLElement>('[role="tab"][aria-selected="true"]'),
-      ].map((element) => element.textContent?.slice(0, 200) ?? ""),
-    }));
-    await testInfo.attach("selected-route-state-after-rpc", {
-      body: JSON.stringify({ ...selectedRouteState, rendererDiagnostics }, null, 2),
-      contentType: "application/json",
-    });
     await expect(sidePanel).toHaveAttribute("data-subagents-selected-hydration", "ready", {
       timeout: 30_000,
     });
-    expect(rendererDiagnostics).toEqual([]);
-    const selectedPanelState = await sidePanel.evaluate((element) => ({
-      text: element.textContent,
-      hydration: element.getAttribute("data-subagents-selected-hydration"),
-      hasDetailStage: element.querySelector("[data-background-agent-side-panel-tab]") !== null,
-      composerLabels: [...element.querySelectorAll("[data-codex-composer]")].map((composer) =>
-        composer.getAttribute("aria-label"),
-      ),
-    }));
-    await testInfo.attach("selected-panel-state", {
-      body: JSON.stringify(selectedPanelState, null, 2),
-      contentType: "application/json",
-    });
-    await expect(
-      sidePanel.locator('[data-codex-composer="true"][aria-label="Ask for follow-up changes"]'),
-      JSON.stringify(selectedPanelState),
-    ).toHaveCount(0);
-    await expect(sidePanel.getByText("Deep investigator", { exact: true }).first()).toBeVisible();
-
-    const selectedEntries = readRpcEntries(logPath).filter(isChildTranscriptRequest);
-    expect(selectedEntries.length).toBeGreaterThan(0);
-    expect([...new Set(selectedEntries.map((entry) => entry.params.threadId))]).toEqual([
-      selectedThreadId,
-    ]);
+    await expect(sidePanel.locator('[data-codex-composer="true"]')).toHaveCount(0);
     await expect(
       sidePanel.getByText("Checking the selected child history.", { exact: true }),
     ).toBeVisible();
     await expect(sidePanel.getByText("GPT-5.5 · High", { exact: true })).toBeVisible();
-    // Reading a child without an interaction grant never resumes its execution.
+    const selectedEntries = readRpcEntries(logPath).filter(isChildTranscriptRequest);
+    expect([...new Set(selectedEntries.map((entry) => entry.params.threadId))]).toEqual([
+      selectedThreadId,
+    ]);
     expect(selectedEntries.filter((entry) => entry.method === "thread/resume")).toEqual([]);
+    const afterSelection = await captureSubagentPresentationDiagnostics(page);
+    fs.writeFileSync(
+      path.join(artifactDirectory, "composer-diagnostics.json"),
+      JSON.stringify({ beforeSelection, afterSelection }, null, 2),
+    );
+    await page.screenshot({ path: path.join(artifactDirectory, "final.png") });
+    await expect(page.locator('[data-codex-composer="true"]')).toHaveCount(1);
+    await expect(page.locator('[data-codex-composer="true"]')).toBeVisible();
     expect(
       readRpcEntries(logPath).filter(
-        (entry) => entry.method === "thread/read" && entry.params.threadId === selectedThreadId,
-      ),
-    ).toEqual([
-      expect.objectContaining({ params: { threadId: selectedThreadId, includeTurns: false } }),
-    ]);
-    await testInfo.attach("subagent-read-only-detail", {
-      body: await sidePanel.screenshot(),
-      contentType: "image/png",
+        (entry) => transcriptMethods.has(entry.method) && entry.params.threadId === rootThreadId,
+      ).length,
+    ).toBe(rootHistoryRequestsBefore);
+    const result = {
+      status: "passed",
+      scenario: "codex-subagent-app-server.mjs",
+      profile: harness.profile.runId,
+      assertions: [
+        {
+          claim: "root composers after read-only child selection",
+          expected: 1,
+          actual: await page.locator('[data-codex-composer="true"]').count(),
+        },
+        {
+          claim: "inline avatars",
+          expected: 4,
+          actual: await activity.locator("[data-subagent-avatar-seed]").count(),
+        },
+        {
+          claim: "portal subagent controls",
+          expected: 0,
+          actual: await portal.getByRole("button", { name: /Open subagents|Stop all/u }).count(),
+        },
+        {
+          claim: "selected child composers",
+          expected: 0,
+          actual: await sidePanel.locator('[data-codex-composer="true"]').count(),
+        },
+        {
+          claim: "child transcript targets",
+          expected: [selectedThreadId],
+          actual: [...new Set(selectedEntries.map((entry) => entry.params.threadId))],
+        },
+        {
+          claim: "child execution resumes",
+          expected: 0,
+          actual: selectedEntries.filter((entry) => entry.method === "thread/resume").length,
+        },
+      ],
+    };
+    fs.writeFileSync(path.join(artifactDirectory, "result.json"), JSON.stringify(result, null, 2));
+    await testInfo.attach("subagent-ui-result", {
+      body: JSON.stringify(result),
+      contentType: "application/json",
     });
-    for (const entry of selectedEntries.filter(
-      (candidate) =>
-        candidate.method === "thread/turns/list" || candidate.method === "thread/items/list",
-    )) {
-      expect(entry.params.limit).toEqual(expect.any(Number));
-      expect(entry.params.limit as number).toBeLessThanOrEqual(100);
-    }
     await attachRequestEvidence(testInfo, "selected-only-hydration-rpcs", selectedEntries);
-
     await sidePanel.getByRole("button", { name: "Back to subagents" }).click();
     await expect(panel).toBeVisible();
+    fs.copyFileSync(
+      testInfo.outputPath("scenario-runtime.log"),
+      path.join(artifactDirectory, "scenario-runtime.log"),
+    );
+  } catch (error) {
+    fs.writeFileSync(
+      path.join(artifactDirectory, "result.json"),
+      JSON.stringify(
+        {
+          status: "failed",
+          scenario: "codex-subagent-app-server.mjs",
+          error: error instanceof Error ? error.message : String(error),
+        },
+        null,
+        2,
+      ),
+    );
+    throw error;
   } finally {
+    if (recordingPage) await recordingPage.screencast.stop();
     await harness.close();
   }
 });
@@ -536,6 +419,7 @@ test("omits an empty Done section and remains usable at narrow width", async () 
   test.setTimeout(120_000);
   const harness = await createSubagentHarness("subagent-zero-done-narrow", {
     NODEX_FAKE_SUBAGENT_DONE_COUNT: "0",
+    NODEX_FAKE_SUBAGENT_SCOUT_ACTIVE: "1",
   });
 
   try {
@@ -547,12 +431,10 @@ test("omits an empty Done section and remains usable at narrow width", async () 
       "data-app-shell-width-class",
       "medium",
     );
-    await page
-      .locator(
-        `[data-above-composer-queue-portal="true"][data-above-composer-conversation-id="${rootThreadId}"]`,
-      )
-      .getByRole("button", { name: "Open subagents" })
-      .click();
+    await page.getByRole("button", { name: "Toggle summary" }).click();
+    const summary = page.locator('[data-thread-summary-panel-mode="popover"]');
+    await expect(summary).toBeVisible();
+    await summary.getByRole("button", { name: "Open subagents" }).click();
 
     const panel = page.locator(`[data-subagents-panel-overview="${rootThreadId}"]`);
     await expect(panel).toBeVisible({ timeout: 30_000 });
@@ -609,7 +491,7 @@ test("returns to the overview when the selected Subagent is deleted remotely", a
     await expect(
       overview
         .locator('[data-subagent-overview-section="active"]')
-        .getByRole("heading", { name: "Active · 4" }),
+        .getByRole("heading", { name: "Active · 3" }),
     ).toBeVisible({ timeout: 15_000 });
     await expect(
       overview.getByRole("button", { name: "Open subagent Deep investigator" }),
@@ -632,12 +514,11 @@ test("returns to the overview when the selected Subagent is deleted remotely", a
   }
 });
 
-test("keeps later root notifications moving while panel-closed relationship repair is stalled", async ({}, testInfo) => {
+test("keeps later root notifications moving while panel-closed metadata discovery is stalled", async ({}, testInfo) => {
   test.setTimeout(120_000);
   const harness = await createSubagentHarness("subagent-panel-closed-root-completion", {
     NODEX_FAKE_SUBAGENT_AUTO_COMPLETE_ROOT_MS: "1800",
-    NODEX_FAKE_SUBAGENT_COLLAB_ITEM_DELAY_MS: "1000",
-    NODEX_FAKE_SUBAGENT_RECEIVER_READ_DELAY_MS: "10000",
+    NODEX_FAKE_SUBAGENT_DISCOVERY_LIST_DELAY_MS: "10000",
   });
 
   try {
@@ -652,34 +533,20 @@ test("keeps later root notifications moving while panel-closed relationship repa
 
     const observedStartMs = Date.now();
     await sendButton.click();
-    await expect(page.getByRole("button", { name: "Open subagents" }).first()).toBeVisible({
-      timeout: 5_000,
-    });
+    // The compact strip waits for discovery too, so it is not a readiness signal in this case.
+    await expect
+      .poll(() => readScenarioState(statePath).rootTurnStartedAtMs, { timeout: 5_000 })
+      .toEqual(expect.any(Number));
+    await expect
+      .poll(() => readScenarioState(statePath).discoveryListStartedAtMs, { timeout: 5_000 })
+      .toEqual(expect.any(Number));
     await page.getByRole("button", { name: "New chat" }).first().click();
     await expect(
       page.locator('[data-codex-composer="true"][aria-label="Do anything"]'),
     ).toBeVisible();
+    await expect(page.locator(`[data-subagents-panel-overview="${rootThreadId}"]`)).toHaveCount(0);
 
-    await expect
-      .poll(
-        () =>
-          readRpcEntries(logPath).filter(
-            (entry) =>
-              entry.method === "thread/read" &&
-              entry.params.threadId === relationshipReceiverThreadId,
-          ).length,
-        { timeout: 5_000 },
-      )
-      .toBe(1);
-    const receiverRead = readRpcEntries(logPath).find(
-      (entry) =>
-        entry.method === "thread/read" && entry.params.threadId === relationshipReceiverThreadId,
-    );
-    expect(receiverRead?.params).toEqual({
-      threadId: relationshipReceiverThreadId,
-      includeTurns: false,
-    });
-
+    // Completion must read the known overview without joining the stalled native discovery.
     await expect
       .poll(
         async () =>
@@ -711,8 +578,9 @@ test("keeps later root notifications moving while panel-closed relationship repa
       (state.rootCompletedAtMs ?? Number.POSITIVE_INFINITY) - (state.rootTurnStartedAtMs ?? 0);
     expect(fixtureCompletionLatencyMs).toBeGreaterThanOrEqual(0);
     expect(fixtureCompletionLatencyMs).toBeLessThanOrEqual(5_000);
-    expect(state.receiverReadStartedAtMs).toEqual(expect.any(Number));
-    expect(state.receiverReadRespondedAtMs).toBeNull();
+    expect(state.discoveryListStartedAtMs).toEqual(expect.any(Number));
+    expect(state.discoveryListRespondedAtMs).toBeNull();
+    expect(rootIdleEvent!.observedAtMs).toBeGreaterThanOrEqual(state.discoveryListStartedAtMs!);
     const notificationLaneLatencyMs =
       (rootIdleEvent?.observedAtMs ?? Number.POSITIVE_INFINITY) - (state.rootCompletedAtMs ?? 0);
     expect(notificationLaneLatencyMs).toBeGreaterThanOrEqual(0);
@@ -722,10 +590,9 @@ test("keeps later root notifications moving while panel-closed relationship repa
     const descendantDiscoveryRequests = entries.filter(
       (entry) => entry.method === "thread/list" && entry.params.ancestorThreadId === rootThreadId,
     );
-    expect(descendantDiscoveryRequests.map((entry) => entry.params.useStateDbOnly)).toEqual([
-      true,
-      false,
-    ]);
+    // Fallback is considered only after a terminal first page identifies a missing spawn.
+    // The first page is still pending here, and concurrent callers must share that one scan.
+    expect(descendantDiscoveryRequests.map((entry) => entry.params.useStateDbOnly)).toEqual([true]);
     expect(entries.filter(isChildTranscriptRequest)).toEqual([]);
     await testInfo.attach("panel-closed-root-completion", {
       body: JSON.stringify(
@@ -733,8 +600,8 @@ test("keeps later root notifications moving while panel-closed relationship repa
           rendererTerminalLatencyMs,
           fixtureCompletionLatencyMs,
           notificationLaneLatencyMs,
-          receiverRead: receiverRead ?? null,
-          receiverReadRespondedAtMs: state.receiverReadRespondedAtMs,
+          discoveryListStartedAtMs: state.discoveryListStartedAtMs,
+          discoveryListRespondedAtMs: state.discoveryListRespondedAtMs,
           descendantDiscoveryRpcCount: descendantDiscoveryRequests.length,
           childTranscriptRpcCount: entries.filter(isChildTranscriptRequest).length,
           rpcCount: entries.length,
@@ -750,10 +617,11 @@ test("keeps later root notifications moving while panel-closed relationship repa
   }
 });
 
-test("stops the root, interrupts only a still-running child, and converges through invalidation", async ({}, testInfo) => {
+test("stops the root, interrupts remaining active children once, and updates from notifications", async ({}, testInfo) => {
   test.setTimeout(120_000);
   const harness = await createSubagentHarness("subagent-root-stop-convergence", {
     NODEX_LOG_FILE: "1",
+    NODEX_FAKE_SUBAGENT_SCOUT_ACTIVE: "1",
     NODEX_LOG_FILE_LEVEL: "debug",
   });
 
@@ -784,6 +652,7 @@ test("stops the root, interrupts only a still-running child, and converges throu
     await rootComposer.press("Backspace");
     const stopButton = page.getByRole("button", { name: "Stop", exact: true });
     await expect(stopButton).toBeVisible();
+    const requestsBeforeStop = readRpcEntries(logPath).length;
     await stopButton.click();
 
     await expect
@@ -798,7 +667,7 @@ test("stops the root, interrupts only a still-running child, and converges throu
       )
       .toBe(1);
 
-    const entriesAtFallback = readRpcEntries(logPath);
+    const entriesAtFallback = readRpcEntries(logPath).slice(requestsBeforeStop);
     const rootInterrupts = entriesAtFallback.filter(
       (entry) => entry.method === "turn/interrupt" && entry.params.threadId === rootThreadId,
     );
@@ -816,10 +685,8 @@ test("stops the root, interrupts only a still-running child, and converges throu
         childThreadIds.has(entry.params.threadId),
     );
     expect(rootInterrupts).toHaveLength(1);
-    expect(childSkeletons.length).toBeGreaterThan(0);
-    expect(
-      childSkeletons.some((entry) => entry.params.threadId === fallbackInterruptThreadId),
-    ).toBe(true);
+    expect(childSkeletons).toHaveLength(1);
+    expect(childSkeletons[0]?.params.threadId).toBe(fallbackInterruptThreadId);
     for (const entry of childSkeletons) {
       expect(entry.params).toMatchObject({
         limit: 1,
@@ -830,6 +697,20 @@ test("stops the root, interrupts only a still-running child, and converges throu
     expect(childInterrupts.map((entry) => entry.params.threadId)).toEqual([
       fallbackInterruptThreadId,
     ]);
+
+    const rootInterruptIndex = entriesAtFallback.indexOf(rootInterrupts[0]!);
+    const fallbackReadIndex = entriesAtFallback.indexOf(childSkeletons[0]!);
+    const fallbackInterruptIndex = entriesAtFallback.indexOf(childInterrupts[0]!);
+    expect(rootInterruptIndex).toBeLessThan(fallbackReadIndex);
+    expect(fallbackReadIndex).toBeLessThan(fallbackInterruptIndex);
+    expect(
+      entriesAtFallback
+        .slice(rootInterruptIndex + 1, fallbackReadIndex)
+        .some(
+          (entry) =>
+            entry.method === "thread/list" && entry.params.ancestorThreadId === rootThreadId,
+        ),
+    ).toBe(true);
 
     const discoveryReadsBeforeInterruptedNotification = entriesAtFallback.filter(
       (entry) => entry.method === "thread/list" && entry.params.ancestorThreadId === rootThreadId,
@@ -892,6 +773,23 @@ test("stops the root, interrupts only a still-running child, and converges throu
       ]),
     );
     await expect(stopButton).toHaveCount(0);
+    // The fixture emits interrupted at 500 ms and idle at 650 ms. Cleanup accepts
+    // the interruption once; these later notifications update the overview.
+    const finalStopRequests = readRpcEntries(logPath).slice(requestsBeforeStop);
+    const fallbackSkeletons = finalStopRequests.filter(
+      (entry) =>
+        entry.method === "thread/turns/list" &&
+        entry.params.threadId === fallbackInterruptThreadId &&
+        entry.params.itemsView === "notLoaded" &&
+        entry.params.limit === 1,
+    );
+    expect(fallbackSkeletons).toHaveLength(1);
+    expect(
+      finalStopRequests.filter(
+        (entry) =>
+          entry.method === "thread/goal/set" && entry.params.threadId === fallbackInterruptThreadId,
+      ),
+    ).toEqual([]);
     const terminalState = readScenarioState(statePath);
     expect(terminalState.childInterruptAcceptedAtMs).toEqual(expect.any(Number));
     expect(terminalState.childIdleNotificationAtMs).toEqual(expect.any(Number));
@@ -924,6 +822,16 @@ test("stops the root, interrupts only a still-running child, and converges throu
       ),
       contentType: "application/json",
     });
+  } catch (cause) {
+    for (const name of ["requests.jsonl", "state.json"]) {
+      const evidencePath = path.join(harness.profile.runRoot, ".fake-codex", name);
+      if (!fs.existsSync(evidencePath)) continue;
+      await testInfo.attach(`root-stop-failure-${name}`, {
+        body: fs.readFileSync(evidencePath),
+        contentType: name.endsWith("jsonl") ? "application/x-ndjson" : "application/json",
+      });
+    }
+    throw cause;
   } finally {
     await harness.close();
   }
@@ -948,7 +856,7 @@ test("fences a disconnected app-server generation without flashing an active Sub
     const active = panel.locator('[data-subagent-overview-section="active"]');
     const done = panel.locator('[data-subagent-overview-section="done"]');
     await expect(panel).toBeVisible({ timeout: 30_000 });
-    await expect(active.getByRole("heading", { name: "Active · 5" })).toBeVisible({
+    await expect(active.getByRole("heading", { name: "Active · 4" })).toBeVisible({
       timeout: 30_000,
     });
     await expect(active.getByText("Deep investigator", { exact: true })).toBeVisible();
@@ -971,7 +879,7 @@ test("fences a disconnected app-server generation without flashing an active Sub
         try {
           return (await window.api?.invoke("codex:subagents:overview:read", {
             rootThreadId: expectedRootThreadId,
-            mode: "initial",
+            mode: "expanded",
           })) as OverviewAuthority;
         } catch {
           return null;
@@ -980,6 +888,13 @@ test("fences a disconnected app-server generation without flashing an active Sub
 
     const initialAuthority = await readOverviewAuthority();
     expect(initialAuthority).not.toBeNull();
+    expect(initialAuthority?.active.knownCount).toBe(4);
+    expect(initialAuthority?.done.knownCount).toBe(13);
+    expect(initialAuthority?.done.rows).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ threadId: reconnectScoutThreadId, status: "done" }),
+      ]),
+    );
     expect(initialAuthority?.active.rows).toEqual(
       expect.arrayContaining([
         expect.objectContaining({ threadId: selectedThreadId, status: "active" }),
@@ -1146,23 +1061,16 @@ test("fences a disconnected app-server generation without flashing an active Sub
 
     const finalState = readScenarioState(statePath);
     const entries = readRpcEntries(logPath);
-    // The scout was notLoaded, but its latest Turn is terminal. Reconciliation
-    // must resolve that row without downgrading the selected active child.
-    expect(entries).toEqual(
-      expect.arrayContaining([
-        expect.objectContaining({
-          processInstanceOrdinal: secondInstance?.ordinal,
-          method: "thread/turns/list",
-          params: {
-            threadId: reconnectScoutThreadId,
-            cursor: null,
-            limit: 1,
-            sortDirection: "desc",
-            itemsView: "notLoaded",
-          },
-        }),
-      ]),
-    );
+    // Explicit notLoaded status remains Done after a generation change; metadata discovery
+    // does not load that child's transcript to manufacture a second status authority.
+    expect(
+      entries.some(
+        (entry) =>
+          entry.processInstanceOrdinal === secondInstance?.ordinal &&
+          entry.method === "thread/turns/list" &&
+          entry.params.threadId === reconnectScoutThreadId,
+      ),
+    ).toBe(false);
     expect(finalState.reconnectReadRespondedAtMs).toBeNull();
     expect(
       entries.some(

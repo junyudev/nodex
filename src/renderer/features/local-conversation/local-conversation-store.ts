@@ -338,6 +338,7 @@ import {
   IDLE_LOCAL_CONVERSATION_ATTACHMENT_STATE,
   areLocalConversationAttachmentStatesEqual,
   makeLocalConversationAttachmentFailure,
+  isLocalConversationWriterConflict,
   type LocalConversationAttachmentState,
 } from "./conversation-attachment-state";
 import {
@@ -747,6 +748,7 @@ function areConversationChildMembershipsEqual(
       leftEntry.updatedAtMs !== rightEntry.updatedAtMs ||
       leftEntry.statusType !== rightEntry.statusType ||
       leftEntry.showInlineActivity !== rightEntry.showInlineActivity ||
+      JSON.stringify(leftEntry.pendingRequest) !== JSON.stringify(rightEntry.pendingRequest) ||
       !areConversationChildThreadMetadataEqual(leftEntry.thread, rightEntry.thread)
     ) {
       return false;
@@ -1361,6 +1363,10 @@ function materializeOwnerCanonicalTurn(
     turnStartedAtMs: canonicalTurn.turnStartedAtMs,
     firstTurnWorkItemStartedAtMs: canonicalTurn.firstTurnWorkItemStartedAtMs ?? null,
     finalAssistantStartedAtMs: canonicalTurn.finalAssistantStartedAtMs,
+    assistantMessageStartedAtMsById:
+      canonicalTurn.assistantMessageStartedAtMsById === undefined
+        ? undefined
+        : { ...canonicalTurn.assistantMessageStartedAtMsById },
     commandExecutionStartedAtMsById:
       canonicalTurn.commandExecutionStartedAtMsById === undefined
         ? undefined
@@ -1404,6 +1410,10 @@ function buildOwnerCanonicalTurnPlaceholder(
     turnStartedAtMs: canonicalTurn.turnStartedAtMs,
     firstTurnWorkItemStartedAtMs: canonicalTurn.firstTurnWorkItemStartedAtMs ?? null,
     finalAssistantStartedAtMs: canonicalTurn.finalAssistantStartedAtMs,
+    assistantMessageStartedAtMsById:
+      canonicalTurn.assistantMessageStartedAtMsById === undefined
+        ? undefined
+        : { ...canonicalTurn.assistantMessageStartedAtMsById },
     startedAt: canonicalTurn.turnStartedAtMs,
     completedAt: canonicalTurn.completedAtMs ?? null,
     durationMs: canonicalTurn.durationMs,
@@ -3470,9 +3480,94 @@ export class CodexAppServerManager {
     return readNativeCollaborationModes(this.nativeAppServer);
   }
 
-  async hydrateArchivedThreadPreview(threadId: string): Promise<boolean> {
+  private readonly readOnlyHistoryLoads = new Map<string, Promise<void>>();
+
+  /** Fetch readable history without acquiring the native writer or resuming execution. */
+  hydrateReadOnlyHistory(threadId: string): Promise<void> {
+    const pending = this.readOnlyHistoryLoads.get(threadId);
+    if (pending) return pending;
+    const load = this.loadReadOnlyHistory(threadId)
+      .catch((cause: unknown) => {
+        if (!isLocalConversationWriterConflict(this.readConversationAttachmentState(threadId)))
+          this.setConversationAttachmentState(
+            threadId,
+            makeLocalConversationAttachmentFailure(cause),
+          );
+        throw cause;
+      })
+      .finally(() => {
+        this.readOnlyHistoryLoads.delete(threadId);
+      });
+    this.readOnlyHistoryLoads.set(threadId, load);
+    return load;
+  }
+
+  private async loadReadOnlyHistory(threadId: string): Promise<void> {
     await this.refreshNativeHostContext();
     const hostContext = this.nativeHostContext;
+    const initial = this.readConversation(threadId)?.canonicalState;
+    if (initial?.resumeState === "resumed" || this.readConversation(threadId)?.turns.length) {
+      if (!isLocalConversationWriterConflict(this.readConversationAttachmentState(threadId)))
+        this.setConversationAttachmentState(threadId, { status: "attached" });
+      return;
+    }
+    const isCurrent = () => this.readConversation(threadId)?.canonicalState === initial;
+    await this.fetchReadOnlyHistory(threadId, isCurrent);
+    if (
+      !this.destroyed &&
+      this.nativeHostContext === hostContext &&
+      !isLocalConversationWriterConflict(this.readConversationAttachmentState(threadId))
+    ) {
+      this.setConversationAttachmentState(threadId, { status: "attached" });
+    }
+  }
+
+  private async fetchReadOnlyHistory(threadId: string, isCurrent: () => boolean): Promise<void> {
+    const hostContext = this.nativeHostContext;
+    const prepared = await runConversationOperation(
+      "codex:thread:history-hydration:prepare",
+      threadId,
+    );
+    if (prepared.context.hostId !== this.hostId) throw new Error("History belongs to another host");
+    const response = await this.nativeAppServer.request(
+      "thread/read",
+      { threadId, includeTurns: !this.supportsPaginatedHistory },
+      { source: "thread_hydration" },
+    );
+    const page = this.supportsPaginatedHistory
+      ? await listCanonicalHistoryTurns(this.historyClient, threadId, {
+          limit: 5,
+          itemsView: "full",
+          sortDirection: "desc",
+          requestOptions: { source: "thread_hydration" },
+        })
+      : null;
+    if (!isCurrent() || this.destroyed || this.nativeHostContext !== hostContext) return;
+    const rawTurns = page ? [...page.response.data].reverse() : response.thread.turns;
+    const canonical = createCodexCanonicalHydratedConversationState(
+      { ...response.thread, turns: rawTurns },
+      { ...prepared.context, turnItemsPaginationById: page?.itemsPaginationByTurnId },
+    );
+    const receipt = new CodexConversationEntityDocument()
+      .withCanonicalState(canonical)
+      .mutate((draft) => {
+        const turns = residentConversationTurns(draft);
+        const cursor = page?.response.nextCursor ?? null;
+        replaceCanonicalHistoryDraft(
+          draft,
+          turns,
+          cursor === null,
+          cursor === null ? null : { cursor, oldestLoadedTurnId: turns[0]?.turnId ?? null },
+        );
+        draft.resumeState = "needs_resume";
+      });
+    this.applyThreadSummary(prepared.summary);
+    this.registerThreadMetadata(response.thread);
+    this.applyCanonicalDocument(receipt?.after ?? canonical);
+  }
+
+  async hydrateArchivedThreadPreview(threadId: string): Promise<boolean> {
+    await this.refreshNativeHostContext();
     return this.archiveState.hydratePreview(threadId, {
       hasOrdinaryState: () =>
         this.conversationsById.has(threadId) || this.threadsById.has(threadId),
@@ -3481,48 +3576,7 @@ export class CodexAppServerManager {
         Boolean(this.conversationsById.get(threadId)?.canonicalState?.turnHistory),
       onSuppressed: () => this.notifyAnyConversationCallbacks({ forceMeta: true }),
       hydrate: async (isCurrent) => {
-        const prepared = await runConversationOperation(
-          "codex:thread:history-hydration:prepare",
-          threadId,
-        );
-        if (prepared.context.hostId !== this.hostId)
-          throw new Error("Archived history belongs to another host");
-        const response = await this.nativeAppServer.request(
-          "thread/read",
-          { threadId, includeTurns: !this.supportsPaginatedHistory },
-          { source: "thread_hydration" },
-        );
-        const page = this.supportsPaginatedHistory
-          ? await listCanonicalHistoryTurns(this.historyClient, threadId, {
-              limit: 5,
-              itemsView: "full",
-              sortDirection: "desc",
-              requestOptions: { source: "thread_hydration" },
-            })
-          : null;
-        if (!isCurrent() || this.destroyed || this.nativeHostContext !== hostContext) return;
-        const rawTurns = page ? [...page.response.data].reverse() : response.thread.turns;
-        const canonical = createCodexCanonicalHydratedConversationState(
-          { ...response.thread, turns: rawTurns },
-          { ...prepared.context, turnItemsPaginationById: page?.itemsPaginationByTurnId },
-        );
-        const receipt = new CodexConversationEntityDocument()
-          .withCanonicalState(canonical)
-          .mutate((draft) => {
-            const turns = residentConversationTurns(draft);
-            const cursor = page?.response.nextCursor ?? null;
-            replaceCanonicalHistoryDraft(
-              draft,
-              turns,
-              cursor === null,
-              cursor === null ? null : { cursor, oldestLoadedTurnId: turns[0]?.turnId ?? null },
-            );
-            draft.resumeState = "needs_resume";
-          });
-        if (!receipt) return;
-        this.applyThreadSummary(prepared.summary);
-        this.registerThreadMetadata(response.thread);
-        this.applyCanonicalDocument(receipt.after);
+        await this.fetchReadOnlyHistory(threadId, isCurrent);
       },
     });
   }
@@ -4336,15 +4390,17 @@ export class CodexAppServerManager {
 
   async hydrateSelectedSubagent(
     input: CodexSelectedSubagentHydrateInput,
+    options: { resume?: boolean } = {},
   ): Promise<CodexSelectedSubagentHydrateResult> {
     const normalized = normalizeSelectedSubagentInput(input);
     const hydrated = await this.refreshSelectedSubagentAuthority(normalized);
     if (hydrated.outcome !== "ready") return hydrated;
 
     try {
-      const attached = hydrated.canInteract
-        ? await this.requestThreadStreamResume(normalized.threadId)
-        : await this.attachReadOnlySubagent(normalized.threadId);
+      const attached =
+        hydrated.canInteract && options.resume !== false
+          ? await this.requestThreadStreamResume(normalized.threadId)
+          : await this.attachReadOnlySubagent(normalized.threadId);
       const applied = this.readConversation(normalized.threadId);
       const role = this.readConversationStreamRole(normalized.threadId);
       const attachment = this.readConversationAttachmentState(normalized.threadId);
@@ -9258,8 +9314,8 @@ export function useCodexAppServerControl(
     [managerForConversation],
   );
   const hydrateSelectedSubagent = useCallback(
-    async (input: CodexSelectedSubagentHydrateInput) =>
-      managerForConversation(input.rootThreadId).hydrateSelectedSubagent(input),
+    async (input: CodexSelectedSubagentHydrateInput, options?: { resume?: boolean }) =>
+      managerForConversation(input.rootThreadId).hydrateSelectedSubagent(input, options),
     [managerForConversation],
   );
   const refreshSelectedSubagentAuthority = useCallback(

@@ -96,6 +96,7 @@ function buildSubagentActivityItem(): CodexConversationItem {
       agentThreadId: "thread_child",
       displayName: "Scout",
       displayStatus: "active",
+      isMessage: false,
     },
     rawItem: {
       id: "subagent_activity_1",
@@ -404,7 +405,7 @@ describe("buildTurnRenderModel", () => {
     expect(done).not.toBe(active);
   });
 
-  test("uses no-anchor subagent state for auto-collapse without creating an inline leaf", () => {
+  test("renders no-anchor subagent activity without stealing the final answer and derives auto-collapse", () => {
     const turn = buildTurn({
       status: "completed",
       itemIds: ["exec_1", "assistant_1"],
@@ -428,7 +429,10 @@ describe("buildTurnRenderModel", () => {
     expect(active.hasRenderableAgentBodyUnits).toBe(true);
     expect(active.defaultAgentBodyCollapsed).toBe(false);
     expect(done.defaultAgentBodyCollapsed).toBe(true);
-    expect(active.blocks.some((block) => block.type === "subagentActivityInlineGroup")).toBe(false);
+    expect(
+      active.agentBodyUnits.some((unit) => unit.block.type === "subagentActivityInlineGroup"),
+    ).toBe(true);
+    expect(active.trailingBlocks.some((block) => block.type === "assistantMessage")).toBe(true);
   });
 
   test("lets a no-anchor subagent move commentary into activity while live Thinking stays standalone", () => {
@@ -448,7 +452,10 @@ describe("buildTurnRenderModel", () => {
       backgroundAgents: [buildBackgroundAgent()],
     });
 
-    expect(model.agentBodyUnits.map((unit) => unit.block.type)).toEqual(["assistantMessage"]);
+    expect(model.agentBodyUnits.map((unit) => unit.block.type)).toEqual([
+      "assistantMessage",
+      "subagentActivityInlineGroup",
+    ]);
     expect(model.trailingBlocks).toEqual([]);
     expect(model.liveActivity).toMatchObject({
       global: {
@@ -457,7 +464,7 @@ describe("buildTurnRenderModel", () => {
       },
       fallback: { owner: "standalone", reason: "global-thinking" },
     });
-    expect(model.blocks.some((block) => block.type === "subagentActivityInlineGroup")).toBe(false);
+    expect(model.blocks.some((block) => block.type === "subagentActivityInlineGroup")).toBe(true);
   });
 
   test("projects one main-surface model per stable entry and action policy", () => {

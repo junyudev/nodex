@@ -910,36 +910,6 @@ CREATE TABLE workspace_subagent_pending_status_evidence (
   CHECK (length(trim(source_epoch)) BETWEEN 1 AND 512),
   CHECK (length(trim(thread_id)) BETWEEN 1 AND 512)
 ) WITHOUT ROWID, STRICT;
-CREATE TABLE workspace_subagent_lifecycle_operations (
-  lifecycle_operation_id TEXT PRIMARY KEY,
-  library_id TEXT NOT NULL REFERENCES libraries(id) ON DELETE RESTRICT,
-  host_id TEXT NOT NULL,
-  source_epoch TEXT NOT NULL,
-  generation INTEGER NOT NULL CHECK (generation >= 0),
-  root_thread_id TEXT NOT NULL,
-  action TEXT NOT NULL CHECK (action IN ('archive', 'delete')),
-  created_at TEXT NOT NULL,
-  updated_at TEXT NOT NULL,
-  CHECK (length(trim(lifecycle_operation_id)) BETWEEN 1 AND 512),
-  CHECK (length(trim(library_id)) BETWEEN 1 AND 512),
-  CHECK (length(trim(host_id)) BETWEEN 1 AND 512),
-  CHECK (length(trim(source_epoch)) BETWEEN 1 AND 512),
-  CHECK (length(trim(root_thread_id)) BETWEEN 1 AND 512)
-) WITHOUT ROWID, STRICT;
-CREATE TABLE workspace_subagent_lifecycle_members (
-  lifecycle_operation_id TEXT NOT NULL
-    REFERENCES workspace_subagent_lifecycle_operations(lifecycle_operation_id)
-    ON UPDATE CASCADE ON DELETE CASCADE,
-  thread_id TEXT NOT NULL,
-  outcome TEXT NOT NULL DEFAULT 'pending'
-    CHECK (outcome IN ('pending', 'unresolved', 'failed', 'settled')),
-  attempt_count INTEGER NOT NULL DEFAULT 0 CHECK (attempt_count >= 0),
-  last_reason TEXT,
-  observed_at_ms INTEGER,
-  PRIMARY KEY (lifecycle_operation_id, thread_id),
-  CHECK (last_reason IS NULL OR length(CAST(last_reason AS BLOB)) <= 4096),
-  CHECK (observed_at_ms IS NULL OR observed_at_ms >= 0)
-) WITHOUT ROWID, STRICT;
 CREATE TABLE "canvas_scenes" (
   document_id TEXT PRIMARY KEY REFERENCES documents(id) ON DELETE CASCADE,
   generation INTEGER NOT NULL CHECK (generation >= 1),
@@ -2671,8 +2641,6 @@ CREATE INDEX idx_workspace_subagent_pending_status_recency
   ON workspace_subagent_pending_status_evidence(
     library_id, observed_at_ms DESC, source_revision DESC, host_id, thread_id
   );
-CREATE INDEX idx_workspace_subagent_lifecycle_unresolved
-  ON workspace_subagent_lifecycle_members(lifecycle_operation_id, outcome, thread_id);
 CREATE INDEX idx_canvas_scene_elements_order
            ON canvas_scene_elements(document_id, order_key, element_id);
 CREATE INDEX idx_canvas_scene_elements_bucket
@@ -5035,7 +5003,7 @@ CREATE TABLE codex_queued_message_state (
   state_json TEXT NOT NULL CHECK (json_valid(state_json))
 ) STRICT;
 
-PRAGMA user_version = 170;
+PRAGMA user_version = 171;
 
 CREATE TABLE document_recovery_drafts (
     library_id TEXT NOT NULL REFERENCES libraries(id) ON DELETE CASCADE,

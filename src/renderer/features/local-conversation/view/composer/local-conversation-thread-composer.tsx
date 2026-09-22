@@ -74,7 +74,11 @@ import {
   NodexDialogHeader,
   NodexDialogTitle,
 } from "@/components/ui/dialog";
-import type { ThreadFooterModel, ThreadStageActions } from "../../thread-stage-types";
+import type {
+  ThreadComposerShellBackgroundAgentRowModel,
+  ThreadFooterModel,
+  ThreadStageActions,
+} from "../../thread-stage-types";
 import { ComposerActionTooltipContent } from "./composer-submit-tooltip";
 import { QueuedFollowUpSendDialog } from "./queued-follow-up-send-dialog";
 import {
@@ -260,6 +264,7 @@ interface ThreadComposerProps {
   errorMessage: string | null;
   onErrorMessage: (message: string | null) => void;
   contextRailLeadingContent?: ReactNode;
+  backgroundAgentRows?: readonly ThreadComposerShellBackgroundAgentRowModel[];
   intelligenceController?: ComposerIntelligenceController;
 }
 
@@ -1224,6 +1229,7 @@ function HydratedThreadComposer({
   errorMessage,
   onErrorMessage,
   contextRailLeadingContent,
+  backgroundAgentRows,
   prompt,
   setPrompt,
   clearSubmittedDraft,
@@ -3716,6 +3722,8 @@ function HydratedThreadComposer({
         <ComposerAddContextMenu
           ref={addContextMenuRef}
           suggestion={suggestionState}
+          activeConversationId={composerThreadId}
+          backgroundAgentRows={backgroundAgentRows}
           isHomeMenu={model.isNewThreadTab}
           imagesOnly={model.isCloudNewThreadTarget}
           plugins={model.composerPlugins ?? []}

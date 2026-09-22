@@ -100,11 +100,6 @@ pub enum ProjectWorkspaceRead {
         universe: ProjectWorkspaceSubagentUniverse,
         thread_id: String,
     },
-    SubagentLifecycleBatch {
-        lifecycle_operation_id: String,
-        include_settled: bool,
-        window: CollectionWindowRequest,
-    },
     ExecutionContext {
         thread_id: String,
     },
@@ -207,9 +202,6 @@ pub enum ProjectWorkspaceReadValue {
     SubagentOverviewItem {
         item: Option<Box<ProjectWorkspaceSubagentOverviewItem>>,
         projection_revision: i64,
-    },
-    SubagentLifecycleBatch {
-        lifecycle: ProjectWorkspaceSubagentLifecycle,
     },
     ExecutionContext {
         context: Box<ProjectWorkspaceExecutionContext>,
@@ -590,52 +582,6 @@ pub struct ProjectWorkspaceSubagentOverview {
     pub known_done_count: u32,
     pub discovery_complete: bool,
     pub discovery_continuation: Option<String>,
-    pub projection_revision: i64,
-}
-
-#[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize, ToSchema)]
-#[serde(rename_all = "snake_case")]
-pub enum ProjectWorkspaceSubagentLifecycleAction {
-    Archive,
-    Delete,
-}
-
-#[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize, ToSchema)]
-#[serde(rename_all = "snake_case")]
-pub enum ProjectWorkspaceSubagentLifecycleOutcome {
-    Pending,
-    Unresolved,
-    Failed,
-    Settled,
-}
-
-#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize, ToSchema)]
-pub struct ProjectWorkspaceSubagentLifecycleObservation {
-    pub thread_id: String,
-    pub outcome: ProjectWorkspaceSubagentLifecycleOutcome,
-    pub reason: Option<String>,
-    pub observed_at_ms: i64,
-}
-
-#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize, ToSchema)]
-pub struct ProjectWorkspaceSubagentLifecycleMember {
-    pub thread_id: String,
-    pub outcome: ProjectWorkspaceSubagentLifecycleOutcome,
-    pub attempt_count: u32,
-    pub last_reason: Option<String>,
-    pub observed_at_ms: Option<i64>,
-}
-
-#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize, ToSchema)]
-pub struct ProjectWorkspaceSubagentLifecycle {
-    pub universe: ProjectWorkspaceSubagentUniverse,
-    pub lifecycle_operation_id: String,
-    pub action: ProjectWorkspaceSubagentLifecycleAction,
-    pub members: CollectionWindow<ProjectWorkspaceSubagentLifecycleMember>,
-    pub expected_count: u32,
-    pub processed_count: u32,
-    pub unresolved_count: u32,
-    pub complete: bool,
     pub projection_revision: i64,
 }
 
@@ -1377,15 +1323,6 @@ pub enum ProjectWorkspaceIntent {
         evidence_kind: ProjectWorkspaceSubagentStatusEvidenceKind,
         source_revision: i64,
         observed_at_ms: i64,
-    },
-    BeginSubagentLifecycle {
-        universe: ProjectWorkspaceSubagentUniverse,
-        lifecycle_operation_id: String,
-        action: ProjectWorkspaceSubagentLifecycleAction,
-    },
-    ObserveSubagentLifecycleOutcomes {
-        lifecycle_operation_id: String,
-        observations: Vec<ProjectWorkspaceSubagentLifecycleObservation>,
     },
     SetThreadArchived {
         thread_id: String,

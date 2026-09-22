@@ -2,6 +2,7 @@ import type { ThreadItem } from "@nodex/codex-app-server-protocol/v2";
 import type { CodexConversationItem } from "../../../lib/types";
 import { buildCodexCanonicalRequestIdentityKey } from "../../../../shared/codex-conversation-state/codex-conversation-state";
 import { resolveCodexFileChangeActivity } from "../../../../shared/codex-file-change-activity";
+import { normalizeMultiAgentActionPayload } from "../../../../shared/codex-transcript-special-items";
 import { stripCodexRemarkDirectiveLines } from "../../../../shared/codex-remark-directives";
 import type { CodexTurnScopedConversationRequest } from "../conversation-request-helpers";
 import type {
@@ -22,6 +23,9 @@ export interface BuildRendererItemStreamInput {
   isLatestTurn?: boolean;
   backgroundAgents?: readonly ThreadComposerShellBackgroundAgentRowModel[];
   turnKey?: string;
+  turnId?: string | null;
+  showFullTranscript?: boolean;
+  canOpenSubagents?: boolean;
 }
 
 export interface BuildRendererItemStreamProjection {
@@ -143,6 +147,7 @@ function hasRenderableWebSearchEntry(entry: CodexConversationItem): boolean {
 function normalizeSubagentActivityStatus(
   displayStatus: NonNullable<CodexConversationItem["subagentActivity"]>["displayStatus"],
 ): ThreadSubagentActivityStatus {
+  if (displayStatus === "completed") return "done";
   if (displayStatus === "updated") return "updated";
   if (displayStatus === "interrupted") return "interrupted";
   return "started";
@@ -200,7 +205,7 @@ function resolveSubagentActivityRows(input: {
     );
   }
 
-  return Array.from(latestActivityByConversationId, ([conversationId, activity]) => {
+  return Array.from(latestActivityByConversationId).flatMap(([conversationId, activity]) => {
     const backgroundAgent = backgroundAgentsByConversationId.get(conversationId);
     const hasLaterActivity = input.laterActivityItems.some(
       (laterActivity) => laterActivity.agentThreadId === activity.agentThreadId,
@@ -211,52 +216,41 @@ function resolveSubagentActivityRows(input: {
     const rawActivityStatus = normalizeSubagentActivityStatus(activity.displayStatus);
     const status: ThreadOpenSubagentStatus =
       backgroundAgent === undefined
-        ? activity.displayStatus === "interrupted"
+        ? activity.displayStatus === "interrupted" || activity.displayStatus === "completed"
           ? "done"
           : "active"
         : belongsToTurn
           ? backgroundAgent.status
           : "done";
-    const activityStatus =
-      activity.displayStatus !== "interrupted" && status === "done" && isFinalForTurn
-        ? "done"
-        : rawActivityStatus;
-    const displayName = activity.displayName ?? "Agent";
+    const activityStatus = status === "done" && isFinalForTurn ? "done" : rawActivityStatus;
+    const displayName =
+      belongsToTurn && backgroundAgent.showInlineActivity === false
+        ? backgroundAgent.displayName
+        : activity.displayName?.trim()
+          ? activity.displayName
+          : backgroundAgent?.displayName;
+    if (!displayName?.trim() || displayName.trim() === activity.agentThreadId) return [];
     const fallbackStatusSummary = formatSubagentActivityStatusSummary(
       displayName,
       rawActivityStatus,
     );
 
-    return {
-      conversationId,
-      displayName,
-      agentRole: backgroundAgent?.agentRole ?? null,
-      spawnModel: backgroundAgent?.spawnModel ?? null,
-      status,
-      activityStatus,
-      statusSummary: belongsToTurn
-        ? (backgroundAgent?.statusSummary ?? fallbackStatusSummary)
-        : fallbackStatusSummary,
-      diffStats: backgroundAgent?.diffStats ?? null,
-    };
+    return [
+      {
+        conversationId,
+        canOpen: backgroundAgent !== undefined || activity.displayStatus === "active",
+        displayName,
+        agentRole: backgroundAgent?.agentRole ?? null,
+        spawnModel: backgroundAgent?.spawnModel ?? null,
+        status,
+        activityStatus,
+        statusSummary: belongsToTurn
+          ? (backgroundAgent?.statusSummary ?? fallbackStatusSummary)
+          : fallbackStatusSummary,
+        diffStats: backgroundAgent?.diffStats ?? null,
+      },
+    ];
   });
-}
-
-function buildProvisionalSubagentActivityRow(
-  activity: SubagentActivity,
-): ThreadSubagentActivityInlineRowModel {
-  const activityStatus = normalizeSubagentActivityStatus(activity.displayStatus);
-  const displayName = activity.displayName ?? "Agent";
-  return {
-    conversationId: activity.agentThreadId,
-    displayName,
-    agentRole: null,
-    spawnModel: null,
-    status: activity.displayStatus === "interrupted" ? "done" : "active",
-    activityStatus,
-    statusSummary: formatSubagentActivityStatusSummary(displayName, activityStatus),
-    diffStats: null,
-  };
 }
 
 function isProtocolThreadItemType(type: string): type is ProtocolThreadItemType {
@@ -393,25 +387,30 @@ function buildTranscriptBlock(
 
   if (type === "subagentActivityInlineGroup") {
     if (!entry.subagentActivity) return null;
-    const row = buildProvisionalSubagentActivityRow(entry.subagentActivity);
+    if (entry.subagentActivity.isMessage) {
+      return {
+        id: entryId,
+        turnId: entry.turnId,
+        createdAt: entry.createdAt,
+        updatedAt: entry.updatedAt,
+        searchableText: `Sent message to ${entry.subagentActivity.displayName ?? "parent"}`,
+        type,
+        entry,
+        status: entry.status,
+        isTurnCancelled: turnStatus === "interrupted",
+      };
+    }
     return {
       id: entryId,
       turnId: entry.turnId,
       createdAt: entry.createdAt,
       updatedAt: entry.updatedAt,
-      searchableText: [
-        row.displayName,
-        row.statusSummary ?? "",
-        resolveSubagentActivityStatusLabel([row]),
-      ]
-        .filter((segment) => segment.trim().length > 0)
-        .join("\n"),
+      searchableText: "",
       type,
       entry,
       status: entry.status,
       isTurnCancelled: turnStatus === "interrupted",
-      subagentActivityRows: [row],
-      subagentActivityStatusLabel: resolveSubagentActivityStatusLabel([row]),
+      subagentActivityAnchorItemId: entryId,
     };
   }
 
@@ -546,8 +545,8 @@ function resolveSubagentActivityGroups(
   );
   let activityGroupIndex = 0;
 
-  return groupedBlocks.map((groupedBlock) => {
-    if (!("activityItems" in groupedBlock)) return groupedBlock;
+  return groupedBlocks.flatMap((groupedBlock) => {
+    if (!("activityItems" in groupedBlock)) return [groupedBlock];
 
     const laterActivityItems = activityGroups
       .slice(activityGroupIndex + 1)
@@ -559,54 +558,169 @@ function resolveSubagentActivityGroups(
       turnKey: input.turnKey,
     });
     activityGroupIndex += 1;
+    if (rows.length === 0) return [];
 
-    return {
-      ...groupedBlock.block,
-      searchableText: rows
-        .flatMap((row) => [row.displayName, row.statusSummary ?? ""])
-        .filter(Boolean)
-        .join("\n"),
-      subagentActivityRows: rows,
-      subagentActivityStatusLabel: resolveSubagentActivityStatusLabel(rows),
-    };
+    return [
+      {
+        ...groupedBlock.block,
+        searchableText: rows
+          .flatMap((row) => [row.displayName, row.statusSummary ?? ""])
+          .filter(Boolean)
+          .join("\n"),
+        subagentActivityRows: rows,
+        subagentActivityStatusLabel: resolveSubagentActivityStatusLabel(rows),
+      },
+    ];
   });
 }
 
-function resolveTurnSubagentActivityState(
-  blocks: readonly ThreadTranscriptBlockModel[],
-  input: Pick<BuildRendererItemStreamInput, "backgroundAgents" | "turnKey">,
-): ThreadTurnSubagentActivityState {
-  const anchoredGroups = blocks.filter((block) => block.type === "subagentActivityInlineGroup");
-  const rows =
-    anchoredGroups.length > 0
-      ? anchoredGroups.flatMap((group) => group.subagentActivityRows ?? [])
-      : (input.backgroundAgents ?? []).filter(
-          (agent) => agent.showInlineActivity && agent.parentTurnKey === input.turnKey,
-        );
+function isNamedSubagent(displayName: string | null | undefined, conversationId: string): boolean {
+  return Boolean(displayName?.trim() && displayName.trim() !== conversationId);
+}
 
+function filterRedundantSpawns(input: BuildRendererItemStreamInput): CodexConversationItem[] {
+  const backgroundAgents = input.backgroundAgents ?? [];
+  const covered = new Set(
+    backgroundAgents
+      .filter(
+        (agent) =>
+          agent.parentTurnKey === input.turnKey &&
+          isNamedSubagent(agent.displayName, agent.conversationId),
+      )
+      .map((agent) => agent.conversationId),
+  );
+  for (const entry of input.entries) {
+    const activity = entry.subagentActivity;
+    if (
+      !activity ||
+      activity.isMessage ||
+      !isNamedSubagent(activity.displayName, activity.agentThreadId)
+    )
+      continue;
+    const background = backgroundAgents.find(
+      (agent) =>
+        agent.conversationId === activity.agentThreadId && agent.parentTurnKey === input.turnKey,
+    );
+    if (background?.showInlineActivity === false && !background.displayName.trim()) continue;
+    covered.add(activity.agentThreadId);
+  }
+  if (covered.size === 0) return input.entries;
+  return input.entries.filter((entry) => {
+    if (entry.semanticKind !== "multiAgentAction") return true;
+    const action = normalizeMultiAgentActionPayload(entry.rawItem);
+    if (
+      !action ||
+      action.action !== "spawnAgent" ||
+      action.status !== "completed" ||
+      action.prompt?.trim() ||
+      action.receiverThreads.length === 0
+    )
+      return true;
+    return !action.receiverThreads.every((receiver) => covered.has(receiver.threadId));
+  });
+}
+
+function buildFallbackSubagentBlock(
+  input: BuildRendererItemStreamInput,
+  representedIds: ReadonlySet<string>,
+): ThreadTranscriptBlockModel | null {
+  const rows: ThreadSubagentActivityInlineRowModel[] = (input.backgroundAgents ?? [])
+    .filter(
+      (agent) =>
+        agent.parentTurnKey === input.turnKey &&
+        !representedIds.has(agent.conversationId) &&
+        isNamedSubagent(agent.displayName, agent.conversationId),
+    )
+    .map((agent) => ({
+      conversationId: agent.conversationId,
+      displayName: agent.displayName,
+      canOpen: true,
+      agentRole: agent.agentRole,
+      spawnModel: agent.spawnModel,
+      status: agent.status,
+      activityStatus: agent.status === "done" ? "done" : "started",
+      statusSummary: agent.statusSummary,
+      diffStats: agent.diffStats,
+    }));
+  if (rows.length === 0) return null;
+  const id = `subagent-fallback:${input.turnKey ?? "unscoped"}`;
+  const lastEntry = input.entries.at(-1);
+  const entry: CodexConversationItem = {
+    threadId: lastEntry?.threadId ?? input.backgroundAgents?.[0]?.parentConversationId ?? "",
+    turnId: input.turnId !== undefined ? input.turnId : (lastEntry?.turnId ?? null),
+    itemId: id,
+    type: "subagent_activity_fallback",
+    kind: "systemEvent",
+    semanticKind: "subAgentActivity",
+    createdAt: lastEntry?.createdAt ?? 0,
+    updatedAt: lastEntry?.updatedAt ?? 0,
+  };
   return {
-    hasActivity: rows.length > 0,
-    hasActiveActivity: rows.some((row) => row.status !== "done"),
+    id,
+    turnId: entry.turnId,
+    createdAt: entry.createdAt,
+    updatedAt: entry.updatedAt,
+    type: "subagentActivityInlineGroup",
+    entry,
+    searchableText: rows.map((row) => row.displayName).join("\n"),
+    subagentActivityAnchorItemId: null,
+    subagentActivityRows: rows,
+    subagentActivityStatusLabel: resolveSubagentActivityStatusLabel(rows),
   };
 }
 
 export function buildRendererItemStreamProjection(
   input: BuildRendererItemStreamInput,
 ): BuildRendererItemStreamProjection {
-  const projectedTranscriptEntries = input.entries.map((entry): ProjectedTranscriptEntry => {
-    const block = buildTranscriptBlock(entry, input.turnStatus);
-    return {
-      block,
-      subagentActivity:
-        block?.type === "subagentActivityInlineGroup" ? (entry.subagentActivity ?? null) : null,
-    };
-  });
+  const projectedTranscriptEntries = filterRedundantSpawns(input).map(
+    (entry): ProjectedTranscriptEntry => {
+      const block = buildTranscriptBlock(entry, input.turnStatus);
+      return {
+        block,
+        subagentActivity:
+          block?.type === "subagentActivityInlineGroup" && !entry.subagentActivity?.isMessage
+            ? (entry.subagentActivity ?? null)
+            : null,
+      };
+    },
+  );
   const transcriptBlocks = resolveSubagentActivityGroups(projectedTranscriptEntries, input);
+  // Raw lifecycle membership owns fallback exclusion even when its name is not renderable.
+  const representedIds = new Set(
+    projectedTranscriptEntries.flatMap(({ subagentActivity }) =>
+      subagentActivity ? [subagentActivity.agentThreadId] : [],
+    ),
+  );
+  const fallback = buildFallbackSubagentBlock(input, representedIds);
+  if (fallback) transcriptBlocks.push(fallback);
+  const groups = transcriptBlocks.filter(
+    (block) =>
+      block.type === "subagentActivityInlineGroup" && !block.entry.subagentActivity?.isMessage,
+  );
+  const visibleRecipients = new Set(
+    !input.showFullTranscript && input.canOpenSubagents
+      ? groups.flatMap((group) =>
+          (group.subagentActivityRows ?? [])
+            .slice(0, 4)
+            .filter((row) => row.canOpen)
+            .map((row) => row.conversationId),
+        )
+      : [],
+  );
+  const visibleBlocks = transcriptBlocks.filter(
+    (block) =>
+      !block.entry.subagentActivity?.isMessage ||
+      !visibleRecipients.has(block.entry.subagentActivity.agentThreadId),
+  );
+  const rows = groups.flatMap((group) => group.subagentActivityRows ?? []);
   const requestBlocks = input.requests.map((request) => buildPendingRequestBlock(request));
 
   return {
-    items: [...transcriptBlocks, ...requestBlocks],
-    subagentActivityState: resolveTurnSubagentActivityState(transcriptBlocks, input),
+    items: [...visibleBlocks, ...requestBlocks],
+    subagentActivityState: {
+      hasActivity: rows.length > 0,
+      hasActiveActivity: rows.some((row) => row.status !== "done"),
+    },
   };
 }
 

@@ -2905,6 +2905,7 @@ export interface CodexTurnSummary {
   turnStartedAtMs?: number | null;
   firstTurnWorkItemStartedAtMs?: number | null;
   finalAssistantStartedAtMs?: number | null;
+  assistantMessageStartedAtMsById?: Record<string, number>;
   startedAt?: number | null;
   completedAt?: number | null;
   durationMs?: number | null;
@@ -3212,7 +3213,8 @@ export interface CodexGeneratedImageView {
 export interface CodexSubagentActivityView {
   agentThreadId: string;
   displayName: string | null;
-  displayStatus: "active" | "updated" | "interrupted";
+  displayStatus: "active" | "updated" | "interrupted" | "completed";
+  isMessage: boolean;
 }
 
 export interface CodexContextCompactionView {
@@ -4410,6 +4412,11 @@ export interface CodexConversationChildThreadMetadata {
 }
 
 export interface CodexConversationChildMembership {
+  /** Undefined means unavailable; null authoritatively clears the selected pending request. */
+  pendingRequest?: {
+    request: CodexConversationLiveRequest;
+    requestItem: CodexConversationItem | null;
+  } | null;
   threadId: string;
   parentThreadId: string;
   role: "childApproval" | "backgroundChild";
@@ -4505,7 +4512,7 @@ export interface CodexConversationHistoryExportNextResult {
   done: boolean;
 }
 
-/** Renderer-facing status from the bounded Subagent Directory overview projection. */
+/** Status evidence accepted by the Directory; shared visible rows narrow away unknown. */
 export type CodexSubagentOverviewStatus = "active" | "waiting" | "done" | "unknown";
 
 /**
@@ -4513,6 +4520,13 @@ export type CodexSubagentOverviewStatus = "active" | "waiting" | "done" | "unkno
  * selected child is the sole boundary that may attach its sparse history.
  */
 export interface CodexSubagentOverviewRow {
+  parentTurnKey?: string | null;
+  conversationId?: string;
+  parentConversationId?: string;
+  showInlineActivity?: boolean;
+  lastAssistantMessageAtMs?: number | null;
+  recencyAtMs?: number;
+  isCurrentParentTurn?: boolean;
   threadId: string;
   parentThreadId: string | null;
   displayName: string;
@@ -4544,6 +4558,8 @@ export interface CodexSubagentOverviewSection {
 
 /** One generation-fenced, revisioned and bounded root overview projection. */
 export interface CodexSubagentOverviewWindow {
+  /** Complete source-order shared rows; display sections have independent recency ordering. */
+  rows?: CodexSubagentOverviewRow[];
   rootThreadId: string;
   revision: number;
   generation: number;

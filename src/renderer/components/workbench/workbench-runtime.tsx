@@ -2650,6 +2650,10 @@ export function WorkbenchRuntime({
       pinnedOpen={threadSummaryPanelPinnedOpen}
       onTogglePinnedOpen={toggleThreadSummaryPanel}
       summary={threadSummary}
+      onOpenSubagentsPanel={() => {
+        const rootThreadId = activeSession?.thread?.threadId;
+        if (rootThreadId) void openSubagentsPanelTab(rootThreadId);
+      }}
     />
   );
 

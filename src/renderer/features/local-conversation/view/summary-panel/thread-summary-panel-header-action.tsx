@@ -1,4 +1,5 @@
 import { useMemo } from "react";
+import { useBackgroundSubagentRows } from "../../use-background-subagent-rows";
 import { resolveCodexElectronDisplayThreadTitle } from "../../../../../shared/codex-thread-title";
 import type {
   ThreadStageActions,
@@ -19,6 +20,7 @@ import { ThreadSummaryPanelToggle } from "./thread-summary-panel-toggle";
 
 export interface ThreadSummaryPanelHeaderActionProps {
   activeThreadId: string | null;
+  preferredHostId?: string | null;
   activeThreadIsManagedWorktree?: boolean;
   onPopoverOpenChange?: (open: boolean) => void;
   projectWorkspacePath: string | null;
@@ -29,12 +31,13 @@ export interface ThreadSummaryPanelHeaderActionProps {
   scheduledAutomation?: ThreadSummaryPanelScheduledAutomationRow | null;
   actions?: Pick<
     ThreadStageActions,
-    "onOpenSummaryOutputInSidePanel" | "onOpenSummaryScheduledAutomation"
+    "onOpenSummaryOutputInSidePanel" | "onOpenSummaryScheduledAutomation" | "onOpenSubagentsPanel"
   >;
 }
 
 export function ThreadSummaryPanelHeaderAction({
   activeThreadId,
+  preferredHostId,
   activeThreadIsManagedWorktree = false,
   onPopoverOpenChange,
   projectWorkspacePath,
@@ -46,6 +49,7 @@ export function ThreadSummaryPanelHeaderAction({
   actions,
 }: ThreadSummaryPanelHeaderActionProps) {
   const cwd = useConversationCwd(activeThreadId);
+  const backgroundAgentRows = useBackgroundSubagentRows(activeThreadId, preferredHostId);
   const turns = useConversationTurns(activeThreadId);
   const backgroundTerminalRows = useConversationBackgroundTerminalRows(activeThreadId);
   const summaryFields = useConversationSummaryFields(activeThreadId);
@@ -67,6 +71,7 @@ export function ThreadSummaryPanelHeaderAction({
       projectWorkspacePath,
       turns,
       backgroundTerminalRows,
+      backgroundAgentRows,
       scheduledAutomation: scheduledAutomation ?? null,
       actions,
       onErrorMessage: () => undefined,
@@ -77,6 +82,7 @@ export function ThreadSummaryPanelHeaderAction({
       activeThreadId,
       activeThreadProjectless,
       backgroundTerminalRows,
+      backgroundAgentRows,
       cwd,
       projectWorkspacePath,
       scheduledAutomation,

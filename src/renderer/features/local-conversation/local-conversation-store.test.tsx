@@ -24,6 +24,7 @@ import { createCodexQueuedFollowUp } from "../../../shared/codex-queued-follow-u
 import { createCodexFirstSubmissionIdentity } from "../../../shared/codex-first-submission";
 import type {
   CodexConnectionState,
+  CodexConversationChildMembership,
   CodexConversationStateUpdate,
   CodexConversationItem,
   CodexConversationSnapshot,
@@ -4810,56 +4811,62 @@ describe("local-conversation-store", () => {
     }
   });
 
-  test("read-only subagent hydration waits for a peer snapshot without preparing execution", async () => {
-    const { CodexAppServerManager, __resetLocalConversationStoreForTests } =
-      await import("./local-conversation-store");
-    resetLocalConversationStoreTestHarness(__resetLocalConversationStoreForTests);
-    invokeRecords = [];
-    resumeThreadRole = "follower";
-    deferFollowerSnapshot = true;
-    const child = buildConversation("thread-read-only", "project-1");
-    selectedSubagentHydrateResult = {
-      rootThreadId: "thread-root",
-      threadId: child.threadId,
-      revision: 1,
-      fidelity: "attachedSparse",
-      checkpoint: "[1]",
-      canInteract: false,
-      outcome: "ready",
-      errorMessage: null,
-    };
-    const manager = trackNativeTestManager(new CodexAppServerManager("local"));
-    try {
-      const hydration = manager.hydrateSelectedSubagent({
+  test.each([false, true])(
+    "subagent canInteract=%s hydration can wait for a peer snapshot without preparing execution",
+    async (canInteract) => {
+      const { CodexAppServerManager, __resetLocalConversationStoreForTests } =
+        await import("./local-conversation-store");
+      resetLocalConversationStoreTestHarness(__resetLocalConversationStoreForTests);
+      invokeRecords = [];
+      resumeThreadRole = "follower";
+      deferFollowerSnapshot = true;
+      const child = buildConversation("thread-read-only", "project-1");
+      selectedSubagentHydrateResult = {
         rootThreadId: "thread-root",
         threadId: child.threadId,
-      });
-      await flushAsyncWork();
-      expect(manager.readConversationAttachmentState(child.threadId).status).toBe("attaching");
-      expect(manager.readConversation(child.threadId)).toBeNull();
-      dispatchTestThreadStreamStateChanged(manager, {
-        hostId: "local",
-        conversationId: child.threadId,
-        sourceClientId: "main",
-        change: { type: "snapshot", revision: 1, conversationState: child },
-      });
-      await expect(hydration).resolves.toMatchObject({ outcome: "ready", canInteract: false });
-      expect(manager.readConversationStreamRole(child.threadId)).toBe("follower");
-      expect(manager.readConversationAttachmentState(child.threadId).status).toBe("attached");
-      expect(
-        invokeRecords.filter(
-          (record) =>
-            record.channel === "codex:thread:resume:prepare" ||
-            record.channel === "codex:thread:history-hydration:prepare",
-        ),
-      ).toEqual([]);
-    } finally {
-      selectedSubagentHydrateResult = null;
-      deferFollowerSnapshot = false;
-      resumeThreadRole = "owner";
-      manager.destroy();
-    }
-  });
+        revision: 1,
+        fidelity: "attachedSparse",
+        checkpoint: "[1]",
+        canInteract,
+        outcome: "ready",
+        errorMessage: null,
+      };
+      const manager = trackNativeTestManager(new CodexAppServerManager("local"));
+      try {
+        const hydration = manager.hydrateSelectedSubagent(
+          {
+            rootThreadId: "thread-root",
+            threadId: child.threadId,
+          },
+          { resume: false },
+        );
+        await flushAsyncWork();
+        expect(manager.readConversationAttachmentState(child.threadId).status).toBe("attaching");
+        expect(manager.readConversation(child.threadId)).toBeNull();
+        dispatchTestThreadStreamStateChanged(manager, {
+          hostId: "local",
+          conversationId: child.threadId,
+          sourceClientId: "main",
+          change: { type: "snapshot", revision: 1, conversationState: child },
+        });
+        await expect(hydration).resolves.toMatchObject({ outcome: "ready", canInteract });
+        expect(manager.readConversationStreamRole(child.threadId)).toBe("follower");
+        expect(manager.readConversationAttachmentState(child.threadId).status).toBe("attached");
+        expect(
+          invokeRecords.filter(
+            (record) =>
+              record.channel === "codex:thread:resume:prepare" ||
+              record.channel === "codex:thread:history-hydration:prepare",
+          ),
+        ).toEqual([]);
+      } finally {
+        selectedSubagentHydrateResult = null;
+        deferFollowerSnapshot = false;
+        resumeThreadRole = "owner";
+        manager.destroy();
+      }
+    },
+  );
 
   test("selected subagent hydration reports a missing native resume result", async () => {
     invokeCalls = [];
@@ -5259,6 +5266,91 @@ describe("local-conversation-store", () => {
       expect(ownerSnapshotPublishCount).toBe(1);
     } finally {
       resumeThreadResult = null;
+      manager.destroy();
+    }
+  });
+
+  test("readonly history inspection preserves the active parent writer", async () => {
+    const { CodexAppServerManager, __resetLocalConversationStoreForTests } =
+      await import("./local-conversation-store");
+    resetLocalConversationStoreTestHarness(__resetLocalConversationStoreForTests);
+    const manager = trackNativeTestManager(new CodexAppServerManager("local"));
+    resumeThreadResult = { ...buildConversation("root", "project-1"), turns: [] };
+    try {
+      await manager.requestThreadStreamResume("root");
+      const root = manager.readConversation("root");
+      expect(root?.resumeState).toBe("resumed");
+      invokeRecords = [];
+      await manager.hydrateReadOnlyHistory("root");
+      expect(manager.readConversation("root")?.canonicalState).toBe(root?.canonicalState);
+      expect(manager.readConversation("root")?.resumeState).toBe("resumed");
+      expect(
+        invokeRecords.filter(
+          (record) => record.channel === "codex:thread:history-hydration:prepare",
+        ),
+      ).toEqual([]);
+    } finally {
+      resumeThreadResult = null;
+      manager.destroy();
+    }
+  });
+
+  test("descendant pending projections update and clear without child history", async () => {
+    const { CodexAppServerManager, __resetLocalConversationStoreForTests } =
+      await import("./local-conversation-store");
+    const { dispatchCodexAppServerMessage } = await import("./app-server-message-bus");
+    resetLocalConversationStoreTestHarness(__resetLocalConversationStoreForTests);
+    const manager = trackNativeTestManager(new CodexAppServerManager("local"));
+    const changed = vi.fn();
+    const unsubscribe = manager.subscribeConversationChildMemberships("root", changed);
+    const publish = async (pendingRequest: CodexConversationChildMembership["pendingRequest"]) => {
+      dispatchCodexAppServerMessage("shared-object-updated", {
+        hostId: "local",
+        object: {
+          objectType: "conversationChildMemberships",
+          objectId: "root",
+          value: {
+            parentThreadId: "root",
+            childMemberships: [
+              {
+                threadId: "grandchild",
+                parentThreadId: "child",
+                role: "backgroundChild",
+                actorName: "Worker",
+                pendingRequest,
+              },
+            ],
+          },
+        },
+      });
+      await flushAsyncWork();
+    };
+    try {
+      await publish(undefined);
+      await publish(null);
+      expect(changed).toHaveBeenCalledTimes(2);
+      const pending: NonNullable<CodexConversationChildMembership["pendingRequest"]> = {
+        request: {
+          type: "approval",
+          requestId: "approval",
+          kind: "command",
+          projectId: "project-1",
+          threadId: "grandchild",
+          turnId: "turn",
+          itemId: "command",
+          createdAt: 3,
+        },
+        requestItem: null,
+      };
+      await publish(pending);
+      await publish({ ...pending });
+      expect(changed).toHaveBeenCalledTimes(3);
+      await publish(null);
+      expect(changed).toHaveBeenCalledTimes(4);
+      expect(manager.readConversationChildMemberships("root")[0]?.pendingRequest).toBeNull();
+      expect(manager.readConversation("grandchild")).toBeNull();
+    } finally {
+      unsubscribe();
       manager.destroy();
     }
   });
@@ -6045,6 +6137,9 @@ describe("local-conversation-store", () => {
       expect(secondPublish?.change?.revision).toBe(Number(secondPublish?.change?.baseRevision) + 1);
       expect(manager.readConversation("thread-1")?.turns[0]?.items[0]?.status).toBe("completed");
       expect(manager.readConversation("thread-1")?.turns[0]?.items[0]?.markdownText).toBe("done");
+      expect(
+        manager.readConversation("thread-1")?.turns[0]?.assistantMessageStartedAtMsById,
+      ).toEqual({ "assistant-1": 1 });
       expect(manager.readConversation("thread-1")?.turns[0]?.finalAssistantStartedAtMs).toBe(
         finalAssistantStartedAtMs,
       );

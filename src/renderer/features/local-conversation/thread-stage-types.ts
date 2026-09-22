@@ -448,7 +448,6 @@ export interface ThreadStageActions {
   onConsumeNewThreadComposerIntent?: (sessionId: string, focusNonce: number) => void;
   onOpenThread: (threadId: string, context?: ThreadOpenThreadContext) => void | Promise<void>;
   onRetryThreadAttachment?: (threadId: string) => void | Promise<void>;
-  onStopBackgroundAgents?: (threadIds: readonly string[]) => Promise<void>;
   onCleanBackgroundTerminals: (threadId: string) => Promise<void>;
 }
 
@@ -532,6 +531,7 @@ export interface ThreadWorkedForBlockModel extends ThreadRenderKeyedBlockFields 
 export type ThreadSubagentActivityStatus = "started" | "updated" | "interrupted" | "done";
 
 export interface ThreadSubagentActivityInlineRowModel {
+  canOpen: boolean;
   conversationId: string;
   displayName: string;
   agentRole: string | null;
@@ -603,6 +603,7 @@ export interface ThreadTranscriptBlockModel extends ThreadRenderKeyedBlockFields
     NonNullable<CodexConversationTurn["hookRuns"]>[number]["run"]["source"]
   >;
   imageViewPaths?: string[];
+  subagentActivityAnchorItemId?: string | null;
   subagentActivityRows?: ThreadSubagentActivityInlineRowModel[];
   subagentActivityStatusLabel?: string;
 }
@@ -1015,24 +1016,8 @@ export interface ThreadComposerShellQueuedFollowUpRowModel {
   ledgerRevision?: number;
 }
 
-export interface ThreadComposerShellBackgroundAgentRowModel {
-  canInteract: boolean;
-  conversationId: string;
-  parentConversationId: string;
-  parentTurnKey: string | null;
-  displayName: string;
-  actorName: string;
-  agentRole: string | null;
-  spawnModel: string | null;
-  status: "active" | "waiting" | "done";
-  statusSummary: string | null;
-  lastAssistantMessage: string | null;
-  lastAssistantMessageAtMs: number | null;
-  recencyAtMs: number;
-  showInlineActivity: boolean;
-  diffStats: ThreadSubagentDiffStats | null;
-  role: "childApproval" | "backgroundChild";
-}
+export type ThreadComposerShellBackgroundAgentRowModel =
+  import("../../../shared/codex-subagent-row-model").CodexSubagentRow;
 
 export interface ThreadComposerShellModel {
   activeRequest: ThreadComposerShellPendingRequestModel | null;
@@ -1070,6 +1055,7 @@ export interface ThreadStageHeaderModel {
 export type ThreadSummaryPanelMode = "hidden" | "pinned" | "popover";
 
 export interface ThreadBodySurfaceModel {
+  parentModel?: string | null;
   projectId: string | null;
   hostId: string;
   composerScopeIdentity?: string | null;

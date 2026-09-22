@@ -25,6 +25,7 @@ export function collectCodexSubagentInteractionReferences(
     const parentTurnKey = turn.turnId ?? `turn-index-${index}`;
     for (const item of turn.items) {
       if (item.type === "subAgentActivity") {
+        if (item.kind === "interacted" && !references.has(item.agentThreadId)) continue;
         references.set(item.agentThreadId, {
           parentTurnKey,
           canInteract: advanceCodexSubagentInteraction(

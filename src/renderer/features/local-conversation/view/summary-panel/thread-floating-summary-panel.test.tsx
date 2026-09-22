@@ -3600,8 +3600,8 @@ describe("ThreadFloatingSummaryPanel", () => {
 
     const content = textContent(view.container);
     expect(Boolean(content.includes("Subagents"))).toBe(true);
-    expect(Boolean(content.includes("2 working"))).toBe(true);
-    expect(Boolean(content.includes("1 done"))).toBe(true);
+    expect(view.getByText("1 working")).toBeTruthy();
+    expect(view.getByText("2 done")).toBeTruthy();
     expect(Boolean(content.includes("Listed active"))).toBe(true);
     expect(Boolean(content.includes("Listed waiting"))).toBe(true);
     expect(Boolean(content.includes("is working"))).toBe(true);
@@ -3613,7 +3613,7 @@ describe("ThreadFloatingSummaryPanel", () => {
       view.container.querySelector('[data-subagent-avatar-seed="inline-active"]') !== null,
     ).toBe(true);
     expect(
-      view.container.querySelector('[data-subagent-avatar-seed="inline-waiting"]') !== null,
+      view.container.querySelector('[data-subagent-avatar-seed="inline-waiting"]') === null,
     ).toBe(true);
     expect(view.container.querySelector('[data-subagent-avatar-seed="inline-done"]') === null).toBe(
       true,

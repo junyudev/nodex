@@ -92,11 +92,7 @@ const makeHarness = (trace: string[]) =>
         }),
       observeNotification: () => Effect.void,
       reconcileAfterReconnect: () => Effect.void,
-      beginLifecycle: () => Effect.die("unused"),
-      reconcileLifecycle: () => Effect.die("unused"),
       settleInterruptedSubtree: () => Effect.die("unused"),
-      shouldDeferLifecycleNotification: () => Effect.succeed(false),
-      releaseLifecycleQuarantine: () => {},
       observe: (threadId) => {
         trace.push(`subagent:observe:${threadId}`);
         knownSubagents.add(threadId);

@@ -424,6 +424,21 @@ describe("local-conversation selectors", () => {
     expect(entriesA[0] === entriesB[0]).toBe(true);
   });
 
+  test("refreshes a visible turn when assistant start timing arrives independently", () => {
+    const item = buildItem({ itemId: "assistant", markdownText: "Reply" });
+    const turn = buildTurn({ items: [item], itemIds: [item.itemId] });
+    const conversation = buildConversation({ turns: [turn] });
+    const before = selectVisibleConversationTurnEntries({ conversation });
+
+    turn.assistantMessageStartedAtMsById = { assistant: 1 };
+    const after = selectVisibleConversationTurnEntries({ conversation });
+
+    expect(after).not.toBe(before);
+    expect(after[0]?.turn.assistantMessageStartedAtMsById).toEqual({ assistant: 1 });
+    expect(before[0]?.turn.assistantMessageStartedAtMsById).toBeUndefined();
+    expect(selectVisibleConversationTurnEntries({ conversation })).toBe(after);
+  });
+
   test("publishes a fresh immutable turn snapshot when an identity-stable item advances", () => {
     const item = buildItem({ markdownText: "Initial reasoning" });
     const turn = buildTurn({
@@ -989,5 +1004,45 @@ describe("local-conversation selectors", () => {
 
     expect(entries.length).toBe(1);
     expect(entries[0]?.turnId ?? "").toBe("turn_1");
+  });
+});
+
+describe("inherited child history", () => {
+  test.each(["resumed", "needs_resume"] as const)(
+    "strips inherited IDs and content before %s",
+    (resumeState) => {
+      const parent = buildTurn({
+        turnId: "parent",
+        items: [
+          buildItem({ rawItem: { id: "parent-item", type: "agentMessage", text: "Inherited" } }),
+        ],
+      });
+      const child = buildTurn({
+        turnId: "child",
+        items: [
+          buildItem({ rawItem: { id: "child-item", type: "agentMessage", text: "Inherited" } }),
+        ],
+      });
+      const own = buildTurn({ turnId: "own", items: [buildItem({ markdownText: "Own work" })] });
+      const entries = selectVisibleConversationTurnEntries({
+        conversation: buildConversation({ resumeState, turns: [parent, child, own] }),
+        parentTurns: [parent],
+      });
+      expect(entries.map((entry) => entry.turnId)).toEqual(["own"]);
+    },
+  );
+  test("keeps a child continuation longer than its parent prefix", () => {
+    const item = buildItem({ markdownText: "Inherited" });
+    const parent = buildTurn({ turnId: "parent", items: [item] });
+    const child = buildTurn({
+      turnId: null,
+      items: [item, buildItem({ markdownText: "New work" })],
+    });
+    expect(
+      selectVisibleConversationTurnEntries({
+        conversation: buildConversation({ turns: [child] }),
+        parentTurns: [parent],
+      }),
+    ).toHaveLength(1);
   });
 });

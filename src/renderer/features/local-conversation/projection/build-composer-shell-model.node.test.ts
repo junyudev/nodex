@@ -4,6 +4,7 @@ import type {
   CodexConversationSnapshot,
 } from "../../../lib/types";
 import { buildComposerShellModel } from "./build-composer-shell-model";
+import type { ThreadComposerShellBackgroundAgentRowModel } from "../thread-stage-types";
 
 type AgentStatus =
   | "pendingInit"
@@ -158,7 +159,165 @@ function buildModelWithChild({
   });
 }
 
+function row(
+  conversationId: string,
+  parentConversationId: string,
+): ThreadComposerShellBackgroundAgentRowModel {
+  return {
+    conversationId,
+    parentConversationId,
+    canInteract: false,
+    displayName: conversationId === "grandchild" ? "Reviewer" : "Worker",
+    actorName: "Worker",
+    agentRole: null,
+    spawnModel: null,
+    parentTurnKey: null,
+    status: "waiting",
+    statusSummary: null,
+    lastAssistantMessage: null,
+    lastAssistantMessageAtMs: null,
+    recencyAtMs: 0,
+    showInlineActivity: true,
+    diffStats: null,
+    role: "backgroundChild",
+  };
+}
+
 describe("buildComposerShellModel", () => {
+  test("uses authoritative descendant pending requests without loading child history", () => {
+    const membership = (threadId: string, parentThreadId: string) =>
+      ({
+        threadId,
+        parentThreadId,
+        role: "backgroundChild",
+        pendingRequest: {
+          request: {
+            type: "approval",
+            requestId: `approve-${threadId}`,
+            kind: "file",
+            projectId: "project_1",
+            threadId,
+            turnId: "turn",
+            itemId: "change",
+            createdAt: 10,
+          },
+          requestItem: {
+            threadId,
+            turnId: "turn",
+            itemId: "change",
+            type: "fileChange",
+            kind: "fileChange",
+            createdAt: 10,
+            updatedAt: 10,
+            rawItem: { changes: [] },
+          },
+        },
+      }) satisfies CodexConversationChildMembership;
+    const grandchild = membership("grandchild", "child");
+    const sibling = membership("sibling", "thread_1");
+    const input = {
+      conversation: buildConversationSnapshot(),
+      childMemberships: [sibling, grandchild],
+      backgroundAgentRows: [row("grandchild", "child"), row("sibling", "thread_1")],
+      knownConversationsById: {},
+    };
+    const cold = buildComposerShellModel(input).backgroundRequest;
+    expect(cold?.conversationId).toBe("grandchild");
+    expect(cold?.request).toBe(grandchild.pendingRequest?.request);
+    expect(cold?.requestItem).toBe(grandchild.pendingRequest?.requestItem);
+
+    const stale = buildConversationSnapshot({
+      threadId: "grandchild",
+      turns: [
+        { threadId: "grandchild", turnId: "turn", status: "inProgress", itemIds: [], items: [] },
+      ],
+      requests: [grandchild.pendingRequest.request],
+    });
+    const resolved = buildComposerShellModel({
+      ...input,
+      childMemberships: [sibling, { ...grandchild, pendingRequest: null }],
+      knownConversationsById: { grandchild: stale },
+    });
+    expect(resolved.backgroundRequest?.conversationId).toBe("sibling");
+    expect(
+      buildComposerShellModel({
+        ...input,
+        childMemberships: input.childMemberships.map((child) => ({
+          ...child,
+          pendingRequest: null,
+        })),
+        knownConversationsById: { grandchild: stale },
+      }).backgroundRequest,
+    ).toBeNull();
+  });
+
+  test("selects descendant requests in directory order as cold conversations become resident", () => {
+    const pending = (threadId: string) =>
+      buildConversationSnapshot({
+        threadId,
+        turns: [{ threadId, turnId: "turn", status: "inProgress", itemIds: [], items: [] }],
+        requests: [
+          {
+            type: "mcpServerElicitation",
+            requestId: `request-${threadId}`,
+            projectId: "project_1",
+            threadId,
+            turnId: "turn",
+            itemId: "request",
+            kind: "generic",
+            mode: "form",
+            serverName: "workspace",
+            message: "Choose a workspace",
+            createdAt: 1,
+          },
+        ],
+      });
+    const input = {
+      conversation: buildConversationSnapshot(),
+      childMemberships: [
+        { threadId: "child", parentThreadId: "thread_1", role: "backgroundChild" as const },
+      ],
+      backgroundAgentRows: [row("grandchild", "child"), row("sibling", "thread_1")],
+    };
+    const unrelated = pending("unrelated");
+    expect(
+      buildComposerShellModel({ ...input, knownConversationsById: { unrelated } })
+        .backgroundRequest,
+    ).toBeNull();
+
+    const sibling = pending("sibling");
+    const cold = buildComposerShellModel({
+      ...input,
+      knownConversationsById: { sibling, unrelated },
+    });
+    expect(cold.backgroundRequest?.conversationId).toBe("sibling");
+
+    const grandchild = pending("grandchild");
+    const hydrated = buildComposerShellModel({
+      ...input,
+      knownConversationsById: { sibling, grandchild, unrelated },
+    });
+    expect(hydrated.backgroundRequest).toMatchObject({
+      conversationId: "grandchild",
+      actorName: "Reviewer",
+      surface: "backgroundThread",
+      request: { requestId: "request-grandchild", type: "mcpServerElicitation" },
+    });
+    expect(
+      buildComposerShellModel({
+        ...input,
+        knownConversationsById: { sibling, grandchild: { ...grandchild, requests: [] } },
+      }).backgroundRequest?.conversationId,
+    ).toBe("sibling");
+    expect(
+      buildComposerShellModel({
+        ...input,
+        backgroundAgentRows: [],
+        knownConversationsById: { sibling, grandchild },
+      }).backgroundRequest,
+    ).toBeNull();
+  });
+
   test("merges queue rows, background terminals, active request, and first child approval", () => {
     const model = buildComposerShellModel({
       conversation: buildConversationSnapshot({
@@ -602,7 +761,7 @@ describe("buildComposerShellModel", () => {
   });
 
   test("normalizes background subagent status matrix edges", () => {
-    const waitingModel = buildModelWithChild({
+    const discoveredModel = buildModelWithChild({
       parentTurns: [
         buildAgentTurn({
           turnId: "turn_waiting",
@@ -610,7 +769,7 @@ describe("buildComposerShellModel", () => {
         }),
       ],
     });
-    expect(waitingModel.backgroundAgentRows[0]?.status).toBe("waiting");
+    expect(discoveredModel.backgroundAgentRows[0]?.status).toBe("done");
 
     for (const agentStatus of ["interrupted", "errored", "shutdown", "notFound"] as const) {
       const hiddenModel = buildModelWithChild({
@@ -643,7 +802,7 @@ describe("buildComposerShellModel", () => {
         }),
       ],
     });
-    expect(unknownCurrentModel.backgroundAgentRows[0]?.status).toBe("active");
+    expect(unknownCurrentModel.backgroundAgentRows[0]?.status).toBe("done");
 
     const unknownStaleModel = buildModelWithChild({
       parentTurns: [
@@ -655,7 +814,7 @@ describe("buildComposerShellModel", () => {
         }),
       ],
     });
-    expect(unknownStaleModel.backgroundAgentRows.length).toBe(0);
+    expect(unknownStaleModel.backgroundAgentRows[0]?.status).toBe("done");
 
     const resumeActiveModel = buildModelWithChild({
       parentTurns: [
@@ -760,7 +919,7 @@ describe("buildComposerShellModel", () => {
     });
     expect(membershipThreadModel.backgroundAgentRows[0]?.displayName).toBe("Member");
 
-    const idFallbackModel = buildModelWithChild({
+    const unnamedModel = buildModelWithChild({
       child: {
         agentNickname: null,
         threadName: "Child thread title",
@@ -772,7 +931,7 @@ describe("buildComposerShellModel", () => {
         thread: null,
       },
     });
-    expect(idFallbackModel.backgroundAgentRows[0]?.displayName).toBe("thread_child");
+    expect(unnamedModel.backgroundAgentRows[0]?.displayName).toBe("");
 
     const defaultRoleModel = buildModelWithChild({
       parentTurns: [
@@ -803,7 +962,7 @@ describe("buildComposerShellModel", () => {
     });
     expect(membershipThreadRoleModel.backgroundAgentRows[0]?.agentRole).toBe("architect");
 
-    const childRoleModel = buildModelWithChild({
+    const membershipRoleModel = buildModelWithChild({
       child: {
         agentRole: "child-reviewer",
         statusType: "idle",
@@ -813,7 +972,7 @@ describe("buildComposerShellModel", () => {
         thread: null,
       },
     });
-    expect(childRoleModel.backgroundAgentRows[0]?.agentRole).toBe("child-reviewer");
+    expect(membershipRoleModel.backgroundAgentRows[0]?.agentRole).toBe("legacy-role");
   });
 
   test("hides terminal errored child statuses from background rows", () => {
@@ -867,7 +1026,7 @@ describe("buildComposerShellModel", () => {
     expect(row?.status).toBe("done");
   });
 
-  test("projects source-linked inline subagents with Codex overview message and recency fields", () => {
+  test("retains source-linked child text without inventing an assistant timestamp", () => {
     const child = buildConversationSnapshot({
       threadId: "thread_child",
       source: { parentThreadId: "thread_1" },
@@ -920,11 +1079,11 @@ describe("buildComposerShellModel", () => {
     expect(row?.showInlineActivity).toBe(true);
     expect(row?.status).toBe("done");
     expect(row?.lastAssistantMessage).toBe("Finished the repository audit.");
-    expect(row?.lastAssistantMessageAtMs).toBe(190);
-    expect(row?.recencyAtMs).toBe(190);
+    expect(row?.lastAssistantMessageAtMs).toBeNull();
+    expect(row?.recencyAtMs).toBe(200);
   });
 
-  test("keeps not-loaded source metadata unresolved instead of claiming completion", () => {
+  test("projects not-loaded runtime metadata as done", () => {
     const model = buildComposerShellModel({
       conversation: buildConversationSnapshot(),
       childMemberships: [
@@ -940,6 +1099,6 @@ describe("buildComposerShellModel", () => {
       knownConversationsById: {},
     });
 
-    expect(model.backgroundAgentRows[0]?.status).toBe("waiting");
+    expect(model.backgroundAgentRows[0]?.status).toBe("done");
   });
 });

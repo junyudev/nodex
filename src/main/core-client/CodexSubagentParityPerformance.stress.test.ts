@@ -1,3 +1,5 @@
+import { ConversationEntityMap } from "../codex-application/internal/ConversationEntityMap";
+import { makeConversationEntityStateRegistry } from "../codex-application/internal/ConversationEntityState";
 import { CodexMainConversationManagers } from "../codex-application/CodexMainConversationManagers";
 import { execFileSync } from "node:child_process";
 import {
@@ -432,7 +434,14 @@ const makeDirectoryHarness = Effect.fn("SubagentScale.makeDirectoryHarness")(fun
       >,
   };
 
+  const entities = makeConversationEntityStateRegistry();
   const service = yield* makeCodexSubagentDirectory.pipe(
+    Effect.provideService(ConversationEntityMap, {
+      ...entities,
+      entity: entities.acquire,
+      runCommand: (_id, operation) => operation,
+      retire: () => Effect.void,
+    }),
     Effect.provideService(
       CodexApplicationEventHub,
       CodexApplicationEventHub.of({ events: Stream.empty, publish: () => undefined }),

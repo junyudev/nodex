@@ -75,7 +75,7 @@ function resolveRowPreview(row: CodexSubagentOverviewRow): string | null {
   const objective = formatSubagentObjective(row.objective);
   if (objective) return objective;
   if (row.statusSummary?.trim()) return row.statusSummary.trim();
-  return row.status === "active" ? "Working" : null;
+  return row.status === "done" ? null : "Working";
 }
 
 function SubagentOverviewTrailing({
@@ -88,10 +88,8 @@ function SubagentOverviewTrailing({
   row: CodexSubagentOverviewRow;
 }) {
   const elapsedMs =
-    (row.status !== "active" && row.status !== "waiting") || row.startedAtMs === null
-      ? null
-      : Math.max(0, nowMs - row.startedAtMs);
-  const completedAtMs = row.completedAtMs ?? row.lastActivityAtMs;
+    row.status === "done" || row.startedAtMs === null ? null : Math.max(0, nowMs - row.startedAtMs);
+  const completedAtMs = row.lastAssistantMessageAtMs ?? row.recencyAtMs ?? null;
 
   return (
     <span className="flex shrink-0 items-center gap-3 whitespace-nowrap text-xs text-token-text-tertiary tabular-nums">

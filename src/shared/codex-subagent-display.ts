@@ -66,3 +66,15 @@ export function resolveCodexSubagentDisplayName(input: {
     "Agent"
   );
 }
+
+/** Formats the final meaningful path segment used by modern agent identities. */
+export function projectCodexSubagentPathDisplayName(agentPath: string): string | null {
+  const segment = agentPath
+    .split("/")
+    .map((value) => value.trim())
+    .filter((value) => value.length > 0 && value !== "root")
+    .at(-1);
+  if (!segment) return null;
+  const normalized = segment.replace(/[_-]+/gu, " ").replace(/\s+/gu, " ").trim().toLowerCase();
+  return normalized ? `${normalized[0]?.toUpperCase() ?? ""}${normalized.slice(1)}` : null;
+}

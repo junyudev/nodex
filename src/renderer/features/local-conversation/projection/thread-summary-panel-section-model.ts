@@ -35,7 +35,7 @@ export interface ThreadSummaryPanelSectionModelInput {
   sideChatCount: number;
   backgroundSubagentRows: readonly Pick<
     ThreadComposerShellBackgroundAgentRowModel,
-    "showInlineActivity" | "status"
+    "showInlineActivity" | "status" | "displayName"
   >[];
   taskCount: number;
   hasComputerUsePip: boolean;
@@ -64,6 +64,7 @@ function countSection(
 function buildSubagentsSection(
   rows: ThreadSummaryPanelSectionModelInput["backgroundSubagentRows"],
 ): ThreadSummaryPanelSectionModel | null {
+  rows = rows.filter((row) => row.displayName.trim().length > 0);
   if (rows.length === 0) return null;
 
   const hasInlineActivity = rows.some((row) => row.showInlineActivity);

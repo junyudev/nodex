@@ -50,3 +50,14 @@ export function areLocalConversationAttachmentStatesEqual(
   if (left.status !== "failed" || right.status !== "failed") return true;
   return left.message === right.message;
 }
+
+export function isLocalConversationWriterConflict(
+  state: LocalConversationAttachmentState,
+): boolean {
+  if (state.status !== "failed") return false;
+  const message = state.message.toLowerCase();
+  return (
+    message.includes("already has an active writer") ||
+    message.includes("already has a live local writer")
+  );
+}

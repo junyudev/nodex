@@ -5,6 +5,7 @@ import * as Fiber from "effect/Fiber";
 import * as Exit from "effect/Exit";
 import * as Scope from "effect/Scope";
 import * as Stream from "effect/Stream";
+import * as PubSub from "effect/PubSub";
 import type { CodexConversationSnapshot } from "../../shared/types";
 import type { ProjectWorkspaceReadSnapshot } from "../core-client/types";
 import { CoreModules, type CoreModuleClients } from "../core-runtime/CoreModules";
@@ -102,6 +103,8 @@ const coreThread = (threadId: string, parentThreadId: string | null): CoreThread
 const buildRelationships = Effect.fn("CodexConversationRelationshipsTest.build")(function* (input: {
   readonly scope: Scope.Scope;
   readonly published: CodexApplicationEvent[];
+  readonly eventStream?: Stream.Stream<CodexApplicationEvent>;
+  readonly onPublish?: (event: CodexApplicationEvent) => void;
   readonly thread?: (threadId: string) => CoreThread;
   readonly children: (parentThreadId: string) => readonly CoreThread[];
   readonly childWindow?: (input: {
@@ -161,8 +164,11 @@ const buildRelationships = Effect.fn("CodexConversationRelationshipsTest.build")
     Effect.provideService(
       CodexApplicationEventHub,
       CodexApplicationEventHub.of({
-        events: Stream.empty,
-        publish: (event) => input.published.push(event),
+        events: input.eventStream ?? Stream.empty,
+        publish: (event) => {
+          input.published.push(event);
+          input.onPublish?.(event);
+        },
       }),
     ),
     Effect.provideService(CodexThreadDirectory, input.directory),
@@ -172,6 +178,8 @@ const buildRelationships = Effect.fn("CodexConversationRelationshipsTest.build")
         registerThreadMetadata: () => {},
         readThreadMetadata: () => null,
         subscribeRetired: entities.subscribeRetired,
+        subscribeCanonicalMutations: entities.subscribeCanonicalMutations,
+        forHost: entities.forHost,
         current,
         runCommand,
       } as unknown as ConversationEntityMap["Service"]),
@@ -341,11 +349,11 @@ it.effect(
       yield* relationships.refresh("parent");
       yield* Effect.yieldNow;
       assert.strictEqual(started, 1);
-      assert.strictEqual(subscriptions, 1);
+      assert.strictEqual(subscriptions, 2);
       entities.releaseGeneration("parent", parent.generation);
       yield* Effect.yieldNow;
       assert.strictEqual(interrupted, 1);
-      assert.strictEqual(subscriptions, 0);
+      assert.strictEqual(subscriptions, 1);
       assert.isNull(entities.current("parent"));
       entities.acquire("parent").acceptCanonicalState(conversationFixture("parent"));
       yield* relationships.refresh("parent");
@@ -579,4 +587,183 @@ it.effect("bounds a 10k-child relationship scan before it can retain every child
     assert.deepEqual(published, []);
     yield* Scope.close(ownerScope, Exit.void);
   }),
+);
+
+it.effect(
+  "publishes and clears a nested canonical approval without opening any child transcript",
+  () =>
+    Effect.gen(function* () {
+      const scope = yield* Scope.make();
+      const entities = makeConversationEntityStateRegistry();
+      const root = entities.acquire("parent");
+      root.acceptCanonicalState(conversationFixture("parent"));
+      const grandchild = entities.acquire("grandchild");
+      grandchild.acceptCanonicalState({
+        ...conversationFixture("grandchild", [turnFixture("nested-turn", "inProgress")]),
+        parentThreadId: "child",
+        agentNickname: "Reviewer",
+        requests: [
+          {
+            id: 29,
+            method: "item/commandExecution/requestApproval",
+            params: {
+              kind: "command",
+              threadId: "grandchild",
+              turnId: "nested-turn",
+              itemId: "command",
+              environmentId: null,
+              startedAtMs: 3,
+              command: "pwd",
+            },
+          },
+        ],
+      });
+      const bus = yield* PubSub.unbounded<CodexApplicationEvent>();
+      const published: CodexApplicationEvent[] = [];
+      const relationships = yield* buildRelationships({
+        scope,
+        entities,
+        published,
+        eventStream: Stream.fromPubSub(bus),
+        onPublish: (event) => {
+          PubSub.publishUnsafe(bus, event);
+        },
+        thread: (id) => ({
+          ...coreThread(id, id === "grandchild" ? "child" : null),
+          thread_name: id,
+        }),
+        children: (id) =>
+          id === "parent" ? [{ ...coreThread("child", "parent"), thread_name: "Child" }] : [],
+        directory: CodexThreadDirectory.of({
+          resolve: (input: Parameters<CodexThreadDirectory["Service"]["resolve"]>[0]) => {
+            assert.strictEqual(input.fidelity, "metadata");
+            return Effect.never;
+          },
+        } as unknown as CodexThreadDirectory["Service"]),
+      });
+      yield* Effect.yieldNow;
+      const memberships = yield* relationships.refresh("parent");
+      assert.deepEqual(
+        memberships
+          .map((member) => [member.threadId, member.parentThreadId])
+          .sort((a, b) => a[0]!.localeCompare(b[0]!)),
+        [
+          ["child", "parent"],
+          ["grandchild", "child"],
+        ],
+      );
+      assert.strictEqual(
+        memberships.find((member) => member.threadId === "grandchild")?.pendingRequest?.request
+          .requestId,
+        29,
+      );
+      assert.strictEqual(
+        memberships.find((member) => member.threadId === "grandchild")?.pendingRequest?.requestItem,
+        null,
+      );
+      assert.isNull(root.readSnapshot());
+      assert.isNull(grandchild.readSnapshot());
+      assert.isNull(entities.current("child"));
+      const clearWatch = yield* Stream.fromPubSub(bus).pipe(
+        Stream.filter(
+          (event) =>
+            event.kind === "hostMessage" &&
+            event.value.type === "sharedObjectUpdated" &&
+            event.value.object.objectType === "conversationChildMemberships" &&
+            event.value.object.objectId === "parent" &&
+            event.value.object.value.childMemberships.some(
+              (member) => member.threadId === "grandchild" && member.pendingRequest === null,
+            ),
+        ),
+        Stream.take(1),
+        Stream.runDrain,
+        Effect.forkChild,
+      );
+      yield* Effect.yieldNow;
+      grandchild.replaceServerRequests([]);
+      yield* Fiber.join(clearWatch);
+      assert.isNull(grandchild.readSnapshot());
+      yield* Scope.close(scope, Exit.void);
+    }),
+);
+
+it.effect(
+  "routes the first deep request through nonresident ancestors to an already open root",
+  () =>
+    Effect.gen(function* () {
+      const scope = yield* Scope.make();
+      const entities = makeConversationEntityStateRegistry();
+      entities.acquire("parent").acceptCanonicalState(conversationFixture("parent"));
+      const parentById: Record<string, string | null> = {
+        parent: null,
+        child: "parent",
+        middle: "child",
+        leaf: "middle",
+      };
+      const bus = yield* PubSub.unbounded<CodexApplicationEvent>();
+      const relationships = yield* buildRelationships({
+        scope,
+        entities,
+        published: [],
+        eventStream: Stream.fromPubSub(bus),
+        onPublish: (event) => {
+          PubSub.publishUnsafe(bus, event);
+        },
+        thread: (id) => ({ ...coreThread(id, parentById[id] ?? null), thread_name: id }),
+        children: (id) =>
+          id === "parent" ? [{ ...coreThread("child", "parent"), thread_name: "Child" }] : [],
+        directory: CodexThreadDirectory.of({
+          resolve: (input: Parameters<CodexThreadDirectory["Service"]["resolve"]>[0]) => {
+            assert.strictEqual(input.fidelity, "metadata");
+            return Effect.never;
+          },
+        } as unknown as CodexThreadDirectory["Service"]),
+      });
+      yield* Effect.yieldNow;
+      assert.deepEqual(
+        (yield* relationships.refresh("parent")).map((member) => member.threadId),
+        ["child"],
+      );
+      const visible = yield* Stream.fromPubSub(bus).pipe(
+        Stream.filter(
+          (event) =>
+            event.kind === "hostMessage" &&
+            event.value.type === "sharedObjectUpdated" &&
+            event.value.object.objectType === "conversationChildMemberships" &&
+            event.value.object.objectId === "parent" &&
+            event.value.object.value.childMemberships.some(
+              (member) =>
+                member.threadId === "leaf" && member.pendingRequest?.request.requestId === 31,
+            ),
+        ),
+        Stream.take(1),
+        Stream.runDrain,
+        Effect.forkChild,
+      );
+      yield* Effect.yieldNow;
+      entities.acquire("leaf").acceptCanonicalState({
+        ...conversationFixture("leaf", [turnFixture("deep-turn", "inProgress")]),
+        parentThreadId: "middle",
+        requests: [
+          {
+            id: 31,
+            method: "item/commandExecution/requestApproval",
+            params: {
+              kind: "command",
+              threadId: "leaf",
+              turnId: "deep-turn",
+              itemId: "command",
+              environmentId: null,
+              startedAtMs: 3,
+              command: "pwd",
+            },
+          },
+        ],
+      });
+      yield* Fiber.join(visible);
+      assert.isNull(entities.current("middle"));
+      assert.isNull(entities.current("child"));
+      assert.isNull(entities.current("leaf")?.readSnapshot());
+      yield* Scope.close(scope, Exit.void);
+    }),
 );

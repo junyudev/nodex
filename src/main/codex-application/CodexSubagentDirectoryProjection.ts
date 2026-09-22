@@ -1,4 +1,14 @@
-import { resolveCodexSubagentDisplayName } from "../../shared/codex-subagent-display";
+import { projectCodexSubagentPathDisplayName } from "../../shared/codex-subagent-display";
+import {
+  buildBackgroundSubagentRows,
+  type CodexSubagentRow,
+  type SubagentConversation,
+} from "../../shared/codex-subagent-row-model";
+import type {
+  CodexConversationChildMembership,
+  CodexConversationTurn,
+  CodexThreadStatusType,
+} from "../../shared/types";
 import type {
   CodexSubagentOverviewRow,
   CodexSubagentOverviewSection,
@@ -17,6 +27,7 @@ export interface CoreSubagentOverviewThreadLike {
   readonly agent_nickname?: string | null;
   readonly agent_role?: string | null;
   readonly agent_path?: string | null;
+  readonly status?: { readonly status_type: CodexThreadStatusType };
   readonly archived: boolean;
   readonly created_at: number;
   readonly updated_at: number;
@@ -31,6 +42,7 @@ export interface CoreSubagentOverviewItemLike {
 export interface CoreSubagentOverviewLike {
   readonly universe: {
     readonly generation: number;
+    readonly host_id?: string;
     readonly root_thread_id: string;
   };
   readonly active: {
@@ -55,88 +67,124 @@ const compactObjective = (value: string): string | null => {
   return `${normalized.slice(0, OBJECTIVE_MAX_CHARACTERS - 1).trimEnd()}…`;
 };
 
-const statusSummary = (status: CodexSubagentOverviewStatus): string | null => {
-  switch (status) {
-    case "active":
-      return "Working";
-    case "waiting":
-      return "Waiting";
-    case "done":
-      return "Finished";
-    case "unknown":
-      return null;
-  }
-};
+export interface SubagentOverviewProjectionContext {
+  parentTurns: readonly CodexConversationTurn[];
+  cachedConversationIds?: readonly string[];
+  sourceLinkedThreadIds?: readonly string[];
+  knownConversationsById: Record<string, SubagentConversation>;
+}
 
-export const projectCodexSubagentOverviewRow = (
-  item: CoreSubagentOverviewItemLike,
-  hasInteractionGrant = false,
-): CodexSubagentOverviewRow => {
-  const { thread } = item;
-  const canOpen = !thread.archived && thread.thread_id.trim().length > 0;
+function membershipFor(
+  thread: CoreSubagentOverviewThreadLike,
+  rootThreadId: string,
+): CodexConversationChildMembership {
   return {
     threadId: thread.thread_id,
-    parentThreadId: thread.parent_thread_id ?? null,
-    displayName: resolveCodexSubagentDisplayName({
-      threadId: thread.thread_id,
-      fallbackDisplayName:
-        thread.agent_nickname ?? thread.thread_name ?? thread.agent_role ?? "Subagent",
-      fallbackLabel: "Subagent",
-    }),
-    actorName: thread.agent_path ?? null,
-    agentRole: thread.agent_role ?? null,
-    spawnModel: thread.model_id ?? null,
-    objective: compactObjective(thread.thread_preview),
-    status: item.status,
-    statusSummary: statusSummary(item.status),
-    startedAtMs: Math.max(thread.created_at, 0) || null,
-    lastActivityAtMs: Math.max(thread.recency_at, thread.updated_at, 0) || null,
-    completedAtMs:
-      item.status === "done" ? Math.max(thread.recency_at, thread.updated_at, 0) || null : null,
-    diffStats: null,
-    canOpen,
-    // Metadata permits opening; messaging requires positive parent-history evidence.
-    canInteract: canOpen && hasInteractionGrant,
+    parentThreadId: thread.parent_thread_id ?? rootThreadId,
+    role: "backgroundChild",
+    displayName: thread.agent_path ? projectCodexSubagentPathDisplayName(thread.agent_path) : null,
+    agentPath: thread.agent_path,
+    agentRole: thread.agent_role,
+    createdAtMs: thread.created_at,
+    updatedAtMs: thread.recency_at || thread.updated_at,
+    statusType: thread.status?.status_type,
+    thread: {
+      nickname: thread.agent_nickname,
+      agentRole: thread.agent_role,
+    },
   };
-};
+}
 
-const projectSection = (input: {
-  readonly items: readonly CoreSubagentOverviewItemLike[];
-  readonly nextCursor?: string | null;
-  readonly knownCount: number;
-  readonly complete: boolean;
-  readonly canInteract: (thread: CoreSubagentOverviewThreadLike) => boolean;
-}): CodexSubagentOverviewSection => ({
-  rows: input.items.map((item) =>
-    projectCodexSubagentOverviewRow(item, input.canInteract(item.thread)),
-  ),
-  knownCount: input.knownCount,
-  totalCount: input.complete ? input.knownCount : null,
-  continuation: input.nextCursor ?? null,
-});
+export function projectSubagentRowToOverview(row: CodexSubagentRow): CodexSubagentOverviewRow {
+  return {
+    conversationId: row.conversationId,
+    parentConversationId: row.parentConversationId,
+    parentTurnKey: row.parentTurnKey,
+    displayName: row.displayName,
+    actorName: row.actorName,
+    agentRole: row.agentRole,
+    spawnModel: row.spawnModel,
+    status: row.status,
+    statusSummary: row.statusSummary,
+    showInlineActivity: row.showInlineActivity,
+    lastAssistantMessageAtMs: row.lastAssistantMessageAtMs,
+    recencyAtMs: row.recencyAtMs,
+    isCurrentParentTurn: row.isCurrentParentTurn,
+    diffStats: row.diffStats,
+    canInteract: row.canInteract,
+    threadId: row.conversationId,
+    parentThreadId: row.parentConversationId,
+    objective: compactObjective(row.objective ?? ""),
+    startedAtMs: row.startedAtMs ?? null,
+    lastActivityAtMs: row.recencyAtMs || null,
+    completedAtMs: row.status === "done" ? (row.lastAssistantMessageAtMs ?? row.recencyAtMs) : null,
+    canOpen: true,
+  };
+}
 
+/** Adapts stored identity and resident history into the same rows used by the transcript. */
 export function projectCodexSubagentOverviewWindow(
   overview: CoreSubagentOverviewLike,
   canInteract: (thread: CoreSubagentOverviewThreadLike) => boolean = () => false,
+  context?: SubagentOverviewProjectionContext,
 ): CodexSubagentOverviewWindow {
+  const allItems = [...overview.active.items, ...overview.done.items];
+  const byId = new Map(allItems.map((item) => [item.thread.thread_id, item]));
+  const cached =
+    context?.cachedConversationIds ?? Object.keys(context?.knownConversationsById ?? {});
+  const source = context?.sourceLinkedThreadIds ?? allItems.map((item) => item.thread.thread_id);
+  const sources = new Set(source);
+  const ids = new Set([
+    ...cached,
+    ...allItems
+      .filter(
+        (item) =>
+          !sources.has(item.thread.thread_id) && item.thread.status?.status_type === "active",
+      )
+      .map((item) => item.thread.thread_id),
+    ...source,
+    ...allItems.map((item) => item.thread.thread_id),
+  ]);
+  const items = [...ids].flatMap((id) => {
+    const item = byId.get(id);
+    return item ? [item] : [];
+  });
+  const memberships = items
+    .filter((item) => !item.thread.archived)
+    .map((item) => membershipFor(item.thread, overview.universe.root_thread_id));
+  const projected = buildBackgroundSubagentRows({
+    parentConversationId: overview.universe.root_thread_id,
+    childMemberships: memberships,
+    parentTurns: context?.parentTurns ?? [],
+    knownConversationsById: context?.knownConversationsById ?? {},
+    discoveryComplete: overview.discovery_complete,
+  });
+  const threads = new Map(items.map((item) => [item.thread.thread_id, item.thread]));
+  const rows = projected.map((row) => {
+    const thread = threads.get(row.conversationId)!;
+    return projectSubagentRowToOverview({
+      ...row,
+      canInteract: row.canInteract || canInteract(thread),
+    });
+  });
+  const section = (done: boolean): CodexSubagentOverviewSection => {
+    const matching = rows
+      .filter((row) => row.displayName.trim().length > 0 && (row.status === "done") === done)
+      .sort((a, b) => (b.recencyAtMs ?? 0) - (a.recencyAtMs ?? 0));
+    return {
+      rows: matching,
+      knownCount: matching.length,
+      totalCount: overview.discovery_complete ? matching.length : null,
+      continuation: null,
+    };
+  };
   return {
     rootThreadId: overview.universe.root_thread_id,
     revision: overview.projection_revision,
     generation: overview.universe.generation,
     completeness: overview.discovery_complete ? "complete" : "incomplete",
-    active: projectSection({
-      items: overview.active.items,
-      nextCursor: overview.active.next_cursor,
-      knownCount: overview.known_active_count,
-      complete: overview.discovery_complete,
-      canInteract,
-    }),
-    done: projectSection({
-      items: overview.done.items,
-      nextCursor: overview.done.next_cursor,
-      knownCount: overview.known_done_count,
-      complete: overview.discovery_complete,
-      canInteract,
-    }),
+    rows,
+    active: section(false),
+    done: section(true),
   };
 }

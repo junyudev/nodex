@@ -31,8 +31,8 @@ const PAGE_SIZE = 200;
 /**
  * Relationship projection is metadata fan-out, never Subagent discovery or transcript transport.
  * Its independent envelope is intentionally wider than the bounded Subagent overview: this
- * projection preserves direct parent/child navigation while `CodexSubagentDirectory` owns the
- * recursive Agent graph, status and initial-window budgets.
+ * projection preserves immediate parent identities and forwards resident descendants' pending
+ * requests. `CodexSubagentDirectory` owns discovery and the complete Agent overview.
  */
 export const CODEX_CONVERSATION_RELATIONSHIP_CHILD_MAX_PAGES = 32;
 export const CODEX_CONVERSATION_RELATIONSHIP_CHILD_MAX_RESULTS = 6_400;
@@ -143,6 +143,7 @@ export const make: Effect.Effect<
   const repairKeysByChild = new Map<string, Set<string>>();
   const refreshes = yield* FiberMap.make<string, void>();
   const runRefresh = yield* FiberMap.runtime(refreshes)();
+  const descendantsByParent = new Map<string, ReadonlySet<string>>();
   const removedThreadIds = new Set<string>();
   let removedThreadIdsSaturated = false;
   let activeRepairCount = 0;
@@ -263,6 +264,36 @@ export const make: Effect.Effect<
     );
   });
 
+  const includeInvalidatedAncestors = Effect.fn(
+    "CodexConversationRelationships.includeInvalidatedAncestors",
+  )(function* (threadIds: readonly string[]) {
+    const ancestors = new Set(threadIds.map((id) => id.trim()).filter(Boolean));
+    const pending = [...ancestors];
+    for (let index = 0; index < pending.length; index += 1) {
+      const threadId = pending[index]!;
+      const resident = conversations.current(threadId)?.readCanonicalState();
+      let parentId = resident?.parentThreadId ?? null;
+      if (!resident) {
+        const record = yield* core.workspace
+          .read({ kind: "thread", thread_id: threadId })
+          .pipe(
+            Effect.catchCause((cause) =>
+              Effect.logWarning("Could not resolve pending-request ancestry").pipe(
+                Effect.annotateLogs({ threadId, cause }),
+                Effect.as(null),
+              ),
+            ),
+          );
+        if (record?.value.kind === "thread")
+          parentId = record.value.thread?.parent_thread_id ?? null;
+      }
+      if (!parentId || ancestors.has(parentId)) continue;
+      ancestors.add(parentId);
+      pending.push(parentId);
+    }
+    return ancestors;
+  });
+
   const publish = (
     hostId: string,
     parentThreadId: string,
@@ -373,7 +404,7 @@ export const make: Effect.Effect<
     CodexConversationRelationshipsError
   > {
     const parentThreadId = rawParentThreadId.trim();
-    if (!parentThreadId) return [];
+    if (!parentThreadId || !conversations.current(parentThreadId)) return [];
     return yield* conversations.runCommand(
       parentThreadId,
       Effect.gen(function* () {
@@ -397,11 +428,65 @@ export const make: Effect.Effect<
           ...canonicalChildThreadIds,
           ...durableChildren.map((child) => child.thread_id),
         ]);
+        const durableChildIds = new Set(childrenById.keys());
+        // Canonical pending requests already live in Main. Resolve ancestry from metadata only;
+        // opening a child transcript must never be a prerequisite for its parent's approval UI.
+        const resident = conversations.forHost(parentRecord.value.thread.execution_host_id);
+        const ancestry = new Map<string, CodexConversationRelationshipThread>(childrenById);
+        for (const entity of resident) {
+          const state = entity.readCanonicalState();
+          if (!state || ancestry.has(entity.threadId)) continue;
+          const snapshot = entity.readSnapshot();
+          ancestry.set(
+            entity.threadId,
+            snapshot
+              ? projectSnapshotChild(state.parentThreadId ?? "", snapshot)
+              : provisionalChild(
+                  state.parentThreadId ?? "",
+                  entity.threadId,
+                  parentRecord.value.thread.project_id ?? null,
+                ),
+          );
+        }
+        for (const entity of resident) {
+          if (entity.threadId === parentThreadId || childThreadIds.has(entity.threadId)) continue;
+          const path: CodexConversationRelationshipThread[] = [];
+          const visited = new Set<string>();
+          let ancestorId: string | null = entity.threadId;
+          while (ancestorId && ancestorId !== parentThreadId && !visited.has(ancestorId)) {
+            visited.add(ancestorId);
+            let ancestor = ancestry.get(ancestorId);
+            if (!ancestor) {
+              const record = yield* core.workspace
+                .read({ kind: "thread", thread_id: ancestorId })
+                .pipe(Effect.mapError((cause) => error(parentThreadId, cause)));
+              if (
+                record.value.kind !== "thread" ||
+                !record.value.thread ||
+                record.value.thread.execution_host_id !==
+                  parentRecord.value.thread.execution_host_id
+              )
+                break;
+              ancestor = projectCoreChild(record.value.thread);
+              ancestry.set(ancestorId, ancestor);
+              durableChildIds.add(ancestorId);
+            }
+            if (ancestor.archived) break;
+            path.push(ancestor);
+            ancestorId = ancestor.parentThreadId;
+          }
+          if (ancestorId !== parentThreadId) continue;
+          for (const descendant of path.reverse()) {
+            childThreadIds.add(descendant.threadId);
+            childrenById.set(descendant.threadId, descendant);
+          }
+        }
+        if (conversations.current(parentThreadId) !== parentAggregate) return [];
         const children: CodexConversationRelationshipChild[] = [];
         for (const childThreadId of childThreadIds) {
           // Once deletion pressure exceeds the tombstone envelope, trust only Core's bounded
           // durable child window. This fails closed instead of resurrecting a deleted canonical id.
-          if (removedThreadIdsSaturated && !childrenById.has(childThreadId)) continue;
+          if (removedThreadIdsSaturated && !durableChildIds.has(childThreadId)) continue;
           if (removedThreadIds.has(childThreadId)) continue;
           const childEntity = conversations.current(childThreadId);
           const childConversation = childEntity?.readSnapshot() ?? null;
@@ -454,11 +539,41 @@ export const make: Effect.Effect<
           canonicalChildThreadIds,
           children,
         });
+        descendantsByParent.set(
+          parentThreadId,
+          new Set(memberships.map((membership) => membership.threadId)),
+        );
         publish(parentRecord.value.thread.execution_host_id, parentThreadId, memberships);
         return memberships;
       }),
     );
   });
+
+  const mutationSubscription = conversations.subscribeCanonicalMutations((mutation) => {
+    const { before, after } = mutation;
+    if (!before?.requests.length && !after?.requests.length) return;
+    events.publish({
+      kind: "conversationRelationshipsInvalidated",
+      value: {
+        parentThreadIds: [
+          ...new Set(
+            [mutation.threadId, before?.parentThreadId, after?.parentThreadId].filter(
+              (id): id is string => Boolean(id),
+            ),
+          ),
+        ],
+      },
+    });
+  });
+  const retirementSubscription = conversations.subscribeRetired((threadId) =>
+    descendantsByParent.delete(threadId),
+  );
+  yield* Effect.addFinalizer(() =>
+    Effect.sync(() => {
+      mutationSubscription[Symbol.dispose]();
+      retirementSubscription[Symbol.dispose]();
+    }),
+  );
 
   yield* events.events.pipe(
     Stream.runForEach((event) => {
@@ -493,7 +608,12 @@ export const make: Effect.Effect<
             "Codex relationship deletion pressure exceeded its tombstone budget; canonical-only children are suppressed until restart",
           );
         }
-        for (const rawParentThreadId of event.value.parentThreadIds) {
+        const affectedParents = yield* includeInvalidatedAncestors(event.value.parentThreadIds);
+        for (const [parentId, descendants] of descendantsByParent) {
+          if (event.value.parentThreadIds.some((id) => descendants.has(id)))
+            affectedParents.add(parentId);
+        }
+        for (const rawParentThreadId of affectedParents) {
           const parentThreadId = rawParentThreadId.trim();
           if (!parentThreadId) continue;
           runRefresh(

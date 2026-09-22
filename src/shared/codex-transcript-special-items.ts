@@ -129,8 +129,7 @@ const CodexReceiverThreadSchema = CodexUnknownRecordSchema.transform((value, ctx
     ? (NullableStringSchema.parse(thread.data.nickname) ??
       NullableStringSchema.parse(thread.data.agentNickname) ??
       subagentMetadata?.agentNickname ??
-      displayName ??
-      name)
+      null)
     : null;
   const agentRole = thread.success
     ? (NullableStringSchema.parse(thread.data.agentRole) ?? subagentMetadata?.agentRole ?? null)

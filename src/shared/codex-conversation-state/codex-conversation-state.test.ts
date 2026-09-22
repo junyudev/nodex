@@ -303,6 +303,8 @@ describe("protocol-backed canonical conversation state", () => {
       ]);
       for (let cycle = 0; cycle < 3; cycle += 1) {
         expect(state.turns[0]?.turnStartedAtMs).toBe(startedAt === null ? null : startedAt * 1000);
+        expect(state.turns[0]?.finalAssistantStartedAtMs).toBeNull();
+        expect(state.turns[0]?.assistantMessageStartedAtMsById).toBeUndefined();
         const projected = projectCodexCanonicalProtocolThread(
           state,
           buildAgentActivityV2CorpusThread([]),
@@ -1467,4 +1469,26 @@ test("resume overlap closes reconnect using the resident Turn pagination anchor"
   expect(merged.itemsPagination?.hasLoadedOldest).toBe(true);
   expect(merged.itemsPagination?.reconnect).toBeUndefined();
   expect(merged.items.map((item) => item.id)).toEqual(["snapshot-stop", "latest"]);
+});
+
+test("merges per-assistant starts without substituting a turn completion time", () => {
+  const template = buildAgentActivityV2CorpusThread([]).turns[0]!;
+  const existing = hydrateCanonicalFixtureTurns([{ ...template, startedAt: 1, completedAt: 9 }])
+    .turns[0]!;
+  expect(existing.finalAssistantStartedAtMs).toBeNull();
+  expect(existing.completedAtMs).toBe(9000);
+  const merged = mergeCodexCanonicalTurnState(
+    { ...existing, assistantMessageStartedAtMsById: { commentary: 2000, final: 5000 } },
+    { ...existing, assistantMessageStartedAtMsById: { earlier: 1500, final: 6000 } },
+  );
+  expect(merged.assistantMessageStartedAtMsById).toEqual({
+    earlier: 1500,
+    commentary: 2000,
+    final: 5000,
+  });
+  const hydratedAgain = mergeCodexCanonicalTurnState(merged, existing, { isResumeSnapshot: true });
+  expect(hydratedAgain.assistantMessageStartedAtMsById).toEqual(
+    merged.assistantMessageStartedAtMsById,
+  );
+  expect(hydratedAgain.finalAssistantStartedAtMs).toBeNull();
 });

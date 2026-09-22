@@ -1,3 +1,4 @@
+import { isLocalConversationWriterConflict } from "../conversation-attachment-state";
 import type {
   CodexConversationSnapshot,
   CodexConversationTurn,
@@ -112,7 +113,10 @@ export function buildThreadBodyModel(input: ThreadBodyModelInput): ThreadBodyMod
       };
     }
     if (input.activeThreadId && resumeState) {
-      if (attachmentState.status === "failed") {
+      if (
+        attachmentState.status === "failed" &&
+        !isLocalConversationWriterConflict(attachmentState)
+      ) {
         return {
           threadId: input.activeThreadId,
           turnCount: 0,
@@ -271,7 +275,11 @@ export function buildThreadBodyModel(input: ThreadBodyModelInput): ThreadBodyMod
   const visibleTurnCount = visibleEntries.length;
   const isThreadRunning = conversation.statusType === "active" || activeTurnId !== null;
 
-  if (visibleTurnCount === 0 && attachmentState.status === "failed") {
+  if (
+    visibleTurnCount === 0 &&
+    attachmentState.status === "failed" &&
+    !isLocalConversationWriterConflict(attachmentState)
+  ) {
     return {
       threadId: conversation.threadId,
       turnCount: 0,

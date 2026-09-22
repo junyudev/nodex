@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, test } from "vite-plus/test";
-import { fireEvent } from "@testing-library/react";
+import { act, fireEvent } from "@testing-library/react";
 import type { ReactElement } from "react";
 import { NodexTooltipProvider as TooltipProvider } from "../../../../components/ui/tooltip";
 import type {
@@ -215,7 +215,7 @@ describe("MultiAgentActionSurface", () => {
       { action: "interruptAgent", status: "inProgress", expected: "Interrupting an agent" },
       { action: "interruptAgent", status: "completed", expected: "Interrupted an agent" },
       { action: "interruptAgent", status: "failed", expected: "Failed to interrupt an agent" },
-      { action: "listAgents", status: "completed", expected: "Listed" },
+      { action: "listAgents", status: "completed", expected: "Listed an agent" },
       { action: "resumeAgent", status: "inProgress", expected: "Resuming an agent" },
       { action: "resumeAgent", status: "completed", expected: "Resumed an agent" },
       { action: "resumeAgent", status: "failed", expected: "Failed to resume an agent" },
@@ -427,7 +427,7 @@ describe("MultiAgentActionSurface", () => {
     expect(calls[0]?.context?.subagent?.agentRole).toBe("explorer");
   });
 
-  test("falls back to parent child membership metadata when tool items only contain thread ids", async () => {
+  test("keeps unnamed receiver details generic even when membership has a nickname", async () => {
     const calls: Array<{ threadId: string; context: ThreadOpenThreadContext | undefined }> = [];
     const threadId = "019f3c8c-e9b6-7b31-a255-fd447335a704";
     const childMemberships: CodexConversationChildMembership[] = [
@@ -473,7 +473,7 @@ describe("MultiAgentActionSurface", () => {
       },
     });
 
-    const { container, getByRole, getByTestId } = render(
+    const { queryByRole, getByTestId } = render(
       <MultiAgentActionSurface
         childMemberships={childMemberships}
         items={[item]}
@@ -486,15 +486,9 @@ describe("MultiAgentActionSurface", () => {
     fireEvent.click(multiAgentDisclosureButton(getByTestId("multi-agent-action-header")));
     await settleAsyncRender();
 
-    const content = textContent(container);
-    expect(content.includes("Nash (worker)")).toBe(true);
-    expect(content.includes(threadId)).toBe(false);
-
-    fireEvent.click(getByRole("button", { name: "Open subagent Nash" }));
-    expect(calls[0]?.threadId).toBe(threadId);
-    expect(calls[0]?.context?.subagent?.displayName).toBe("Nash");
-    expect(calls[0]?.context?.subagent?.agentRole).toBe("worker");
-    expect(calls[0]?.context?.subagent?.spawnModel).toBe("gpt-5-codex");
+    expect(getByTestId("multi-agent-action-rows").textContent).toBe("Created");
+    expect(queryByRole("button", { name: "Open subagent Nash" })).toBeNull();
+    expect(calls).toEqual([]);
   });
 
   test("does not use child membership actor labels as agent display names", async () => {
@@ -535,7 +529,7 @@ describe("MultiAgentActionSurface", () => {
     await settleAsyncRender();
 
     const content = textContent(container);
-    expect(content.includes(threadId)).toBe(true);
+    expect(content.includes(threadId)).toBe(false);
     expect(content.includes("Structure Scout report preview")).toBe(false);
   });
 
@@ -655,6 +649,35 @@ describe("MultiAgentActionSurface", () => {
       fireEvent.click(view.getByRole("button", { name: "Open subagent research" }));
 
       expect(calls[0]?.context?.subagent?.status).toBe("done");
+      view.unmount();
+    }
+  });
+
+  test("uses the parent model only for a spawn without an explicit model", async () => {
+    for (const [action, model, expected] of [
+      ["spawnAgent", null, "gpt-5.6-sol"],
+      ["spawnAgent", "gpt-5.4-mini", "gpt-5.4-mini"],
+      ["sendInput", null, null],
+    ] as const) {
+      const item = buildActionItem({ id: "model-source", action, status: "completed" });
+      const calls: Array<ThreadOpenThreadContext | undefined> = [];
+      const view = render(
+        <MultiAgentActionSurface
+          items={[{ ...item, rawItem: { ...(item.rawItem as object), model } }]}
+          parentModel="gpt-5.6-sol"
+          onOpenThread={(_id, context) => {
+            calls.push(context);
+          }}
+        />,
+      );
+      await act(async () => {
+        fireEvent.click(multiAgentDisclosureButton(view.getByTestId("multi-agent-action-header")));
+      });
+      await settleAsyncRender();
+      await act(async () => {
+        fireEvent.click(view.getByRole("button", { name: "Open subagent agent1" }));
+      });
+      expect(calls[0]?.subagent?.spawnModel).toBe(expected);
       view.unmount();
     }
   });

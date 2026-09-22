@@ -452,7 +452,17 @@ function applySubagentCommentaryOwnership(
   return {
     ...buckets,
     assistantItem: null,
-    agentItems: [...buckets.agentItems, assistantItem],
+    agentItems: [
+      ...buckets.agentItems.filter(
+        (item) =>
+          item.type !== "subagentActivityInlineGroup" || item.subagentActivityAnchorItemId !== null,
+      ),
+      assistantItem,
+      ...buckets.agentItems.filter(
+        (item) =>
+          item.type === "subagentActivityInlineGroup" && item.subagentActivityAnchorItemId === null,
+      ),
+    ],
   };
 }
 

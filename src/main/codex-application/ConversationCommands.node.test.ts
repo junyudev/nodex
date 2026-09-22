@@ -1,5 +1,6 @@
 import * as Context from "effect/Context";
-import * as Clock from "effect/Clock";
+import * as Deferred from "effect/Deferred";
+import { layer as callbacks } from "../app/ScopedCallbackRuntime";
 import * as Effect from "effect/Effect";
 import * as Fiber from "effect/Fiber";
 import * as Layer from "effect/Layer";
@@ -15,7 +16,7 @@ import {
 import { CodexServerRequestResponses } from "./CodexServerRequestResponses";
 import { CodexThreadGoalRuntime } from "./CodexThreadGoalRuntime";
 import { CodexThreadDirectory, CodexThreadDirectoryError } from "./CodexThreadDirectory";
-import { CodexSubagentDirectory, CodexSubagentDirectoryError } from "./CodexSubagentDirectory";
+import { CodexSubagentDirectory } from "./CodexSubagentDirectory";
 import { ConversationCommands, live } from "./ConversationCommands";
 import { ConversationEntityMap } from "./internal/ConversationEntityMap";
 
@@ -104,6 +105,7 @@ it.effect("commits interruption without waking queued work before terminal compl
         live.pipe(
           Layer.provide(
             Layer.mergeAll(
+              callbacks,
               Layer.succeed(
                 CodexConversationArchive,
                 CodexConversationArchive.of({
@@ -157,111 +159,110 @@ it.effect("commits interruption without waking queued work before terminal compl
   ),
 );
 
-it.effect("shares one absolute deadline across the root interrupt and Subagent settlement", () =>
-  Effect.scoped(
-    Effect.gen(function* () {
-      let receivedDeadlineAtMs: number | undefined;
-      const unsupported = () => Effect.die(new Error("Unsupported test operation"));
-      const requestForThread: CodexGateway["Service"]["requestForThread"] = (_threadId, method) =>
-        method === "turn/interrupt"
-          ? Effect.sleep("300 millis").pipe(Effect.as({} as never))
-          : unsupported();
-      const settleInterruptedSubtree: CodexSubagentDirectory["Service"]["settleInterruptedSubtree"] =
-        (_threadId, options) =>
-          Effect.gen(function* () {
-            receivedDeadlineAtMs = options?.deadlineAtMs;
-            const now = yield* Clock.currentTimeMillis;
-            yield* Effect.sleep(`${Math.max(0, (receivedDeadlineAtMs ?? now) - now)} millis`);
-            return {
-              discoveryComplete: true,
-              interruptedThreadIds: [],
-              failed: [],
-              unresolvedThreadIds: ["child-a"],
-            };
-          });
-      const runCommand: ConversationEntityMap["Service"]["runCommand"] = (_threadId, operation) =>
-        operation;
-      const context = yield* Layer.build(
-        live.pipe(
-          Layer.provide(
-            Layer.mergeAll(
-              Layer.succeed(
-                CodexConversationArchive,
-                CodexConversationArchive.of({
-                  archive: () => Effect.succeed(true),
-                  deleteArchived: () => Effect.succeed(true),
-                  unarchive: () => Effect.succeed(null),
-                }),
-              ),
-              Layer.succeed(
-                CodexConversationProjection,
-                CodexConversationProjection.of({
-                  resolveInterruptTurn: () => Effect.succeed("turn-a"),
-                  commitInterruptedTurn: () => Effect.void,
-                } as unknown as CodexConversationProjection["Service"]),
-              ),
-              Layer.succeed(
-                CodexGateway,
-                CodexGateway.of({
-                  localHostId: "local",
-                  requestRawOnHost: unsupported,
-                  requestRawForThread: unsupported,
-                  events: Stream.empty,
-                  requestLocal: unsupported,
-                  requestOnHost: unsupported,
-                  requestForThread,
-                  notifyLocal: unsupported,
-                  connection: unsupported,
-                  connectionChanges: () => Stream.empty,
-                  awaitReady: () => Effect.void,
-                  reconcileHost: unsupported,
-                  removeHost: unsupported,
-                  restartHost: unsupported,
-                }),
-              ),
-              Layer.succeed(
-                CodexServerRequestResponses,
-                CodexServerRequestResponses.of({
-                  declineAllInTransaction: () => Effect.void,
-                } as unknown as CodexServerRequestResponses["Service"]),
-              ),
-              Layer.succeed(
-                CodexSubagentDirectory,
-                CodexSubagentDirectory.of({
-                  settleInterruptedSubtree,
-                } as unknown as CodexSubagentDirectory["Service"]),
-              ),
-              Layer.succeed(
-                CodexThreadGoalRuntime,
-                CodexThreadGoalRuntime.of({
-                  get: () => Effect.succeed(null),
-                } as unknown as CodexThreadGoalRuntime["Service"]),
-              ),
-              Layer.succeed(CodexThreadDirectory, threadDirectory),
-              Layer.succeed(
-                ConversationEntityMap,
-                ConversationEntityMap.of({
-                  registerThreadMetadata: () => {},
-                  readThreadMetadata: () => null,
-                  runCommand,
-                } as unknown as ConversationEntityMap["Service"]),
+it.effect(
+  "returns after stopping the root while descendant cleanup continues in the background",
+  () =>
+    Effect.scoped(
+      Effect.gen(function* () {
+        const cleanupStarted = yield* Deferred.make<void>();
+        const unsupported = () => Effect.die(new Error("Unsupported test operation"));
+        const requestForThread: CodexGateway["Service"]["requestForThread"] = (
+          _threadId,
+          method,
+        ) =>
+          method === "turn/interrupt"
+            ? Effect.sleep("300 millis").pipe(Effect.as({} as never))
+            : unsupported();
+        const settleInterruptedSubtree: CodexSubagentDirectory["Service"]["settleInterruptedSubtree"] =
+          () =>
+            Effect.gen(function* () {
+              yield* Deferred.succeed(cleanupStarted, undefined);
+              yield* Effect.sleep("10 seconds");
+              return {
+                discoveryComplete: false,
+                interruptedThreadIds: [],
+                failed: [],
+                unresolvedThreadIds: ["child-a"],
+              };
+            });
+        const runCommand: ConversationEntityMap["Service"]["runCommand"] = (_threadId, operation) =>
+          operation;
+        const context = yield* Layer.build(
+          live.pipe(
+            Layer.provide(
+              Layer.mergeAll(
+                callbacks,
+                Layer.succeed(
+                  CodexConversationArchive,
+                  CodexConversationArchive.of({
+                    archive: () => Effect.succeed(true),
+                    deleteArchived: () => Effect.succeed(true),
+                    unarchive: () => Effect.succeed(null),
+                  }),
+                ),
+                Layer.succeed(
+                  CodexConversationProjection,
+                  CodexConversationProjection.of({
+                    resolveInterruptTurn: () => Effect.succeed("turn-a"),
+                    commitInterruptedTurn: () => Effect.void,
+                  } as unknown as CodexConversationProjection["Service"]),
+                ),
+                Layer.succeed(
+                  CodexGateway,
+                  CodexGateway.of({
+                    localHostId: "local",
+                    requestRawOnHost: unsupported,
+                    requestRawForThread: unsupported,
+                    events: Stream.empty,
+                    requestLocal: unsupported,
+                    requestOnHost: unsupported,
+                    requestForThread,
+                    notifyLocal: unsupported,
+                    connection: unsupported,
+                    connectionChanges: () => Stream.empty,
+                    awaitReady: () => Effect.void,
+                    reconcileHost: unsupported,
+                    removeHost: unsupported,
+                    restartHost: unsupported,
+                  }),
+                ),
+                Layer.succeed(
+                  CodexServerRequestResponses,
+                  CodexServerRequestResponses.of({
+                    declineAllInTransaction: () => Effect.void,
+                  } as unknown as CodexServerRequestResponses["Service"]),
+                ),
+                Layer.succeed(
+                  CodexSubagentDirectory,
+                  CodexSubagentDirectory.of({
+                    settleInterruptedSubtree,
+                  } as unknown as CodexSubagentDirectory["Service"]),
+                ),
+                Layer.succeed(
+                  CodexThreadGoalRuntime,
+                  CodexThreadGoalRuntime.of({
+                    get: () => Effect.succeed(null),
+                  } as unknown as CodexThreadGoalRuntime["Service"]),
+                ),
+                Layer.succeed(CodexThreadDirectory, threadDirectory),
+                Layer.succeed(
+                  ConversationEntityMap,
+                  ConversationEntityMap.of({
+                    registerThreadMetadata: () => {},
+                    readThreadMetadata: () => null,
+                    runCommand,
+                  } as unknown as ConversationEntityMap["Service"]),
+                ),
               ),
             ),
           ),
-        ),
-      );
-      const commands = Context.get(context, ConversationCommands);
-      const interrupted = yield* commands
-        .interrupt("root-a", "turn-a")
-        .pipe(Effect.flip, Effect.forkChild);
+        );
+        const commands = Context.get(context, ConversationCommands);
+        const interrupted = yield* commands.interrupt("root-a", "turn-a").pipe(Effect.forkChild);
 
-      yield* TestClock.adjust("300 millis");
-      assert.strictEqual(receivedDeadlineAtMs, 4_750);
-      yield* TestClock.adjust("4450 millis");
-
-      const failure = yield* Fiber.join(interrupted);
-      assert.instanceOf(failure, CodexSubagentDirectoryError);
-      assert.match(String(failure.cause), /1 unresolved descendants/);
-    }),
-  ),
+        yield* TestClock.adjust("300 millis");
+        assert.isTrue(yield* Fiber.join(interrupted));
+        yield* Deferred.await(cleanupStarted);
+      }),
+    ),
 );

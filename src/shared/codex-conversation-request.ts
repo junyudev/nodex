@@ -33,15 +33,17 @@ interface LatestPlanImplementationSelection {
   turnId: string;
 }
 
+type BackgroundConversationRequest =
+  | CodexApprovalRequest
+  | CodexPermissionRequest
+  | CodexMcpServerElicitationRequest
+  | NodexAgentAuthorizationRequest;
+
 interface DerivedConversationRequestSelection {
   planSelection: LatestPlanImplementationSelection | null;
   liveRequests: CodexConversationLiveRequest[];
   primaryRequest: CodexConversationLiveRequest | null;
-  primaryBackgroundRequest:
-    | CodexApprovalRequest
-    | CodexPermissionRequest
-    | NodexAgentAuthorizationRequest
-    | null;
+  primaryBackgroundRequest: BackgroundConversationRequest | null;
   requestsByTurnId: Map<string, CodexTurnScopedConversationRequest[]>;
 }
 
@@ -275,11 +277,7 @@ function deriveConversationRequestSelection(
   const canonicalPendingBuckets = buildCodexCanonicalPendingRequestBuckets(conversation);
 
   const liveRequests: CodexConversationLiveRequest[] = [];
-  let primaryBackgroundRequest:
-    | CodexApprovalRequest
-    | CodexPermissionRequest
-    | NodexAgentAuthorizationRequest
-    | null = null;
+  let primaryBackgroundRequest: BackgroundConversationRequest | null = null;
   for (let turnIndex = conversation.turns.length - 1; turnIndex >= 0; turnIndex -= 1) {
     const turn = conversation.turns[turnIndex];
     if (!turn || turn.turnId === null) continue;
@@ -306,6 +304,7 @@ function deriveConversationRequestSelection(
 
     const mcpElicitation = projectedBucket?.latestMcpElicitationRequest;
     if (mcpElicitation) {
+      primaryBackgroundRequest ??= mcpElicitation;
       liveRequests.push(mcpElicitation);
     }
 
@@ -314,7 +313,10 @@ function deriveConversationRequestSelection(
     }
   }
   const turnlessMcpElicitation = projectedPendingBuckets.latestTurnlessMcpElicitation;
-  if (turnlessMcpElicitation) liveRequests.push(turnlessMcpElicitation);
+  if (turnlessMcpElicitation) {
+    primaryBackgroundRequest ??= turnlessMcpElicitation;
+    liveRequests.push(turnlessMcpElicitation);
+  }
 
   return {
     planSelection: latestPlanSelection,
@@ -486,7 +488,7 @@ export function selectPrimaryConversationRequest(
 
 export function selectPrimaryBackgroundConversationRequest(
   conversation: CodexConversationRequestContext | null,
-): CodexApprovalRequest | CodexPermissionRequest | NodexAgentAuthorizationRequest | null {
+): BackgroundConversationRequest | null {
   if (!conversation) return null;
   return resolveDerivedConversationRequestSelection(conversation).primaryBackgroundRequest;
 }

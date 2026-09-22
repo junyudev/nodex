@@ -45,6 +45,8 @@ export interface BuildTurnRenderModelInput {
   canRateTurn?: boolean;
   goalTimeUsedSeconds?: number;
   timestampHoverOnly?: boolean;
+  showFullTranscript?: boolean;
+  canOpenSubagents?: boolean;
   backgroundAgents?: readonly ThreadComposerShellBackgroundAgentRowModel[];
   turnKey?: string;
   cwd?: string | null;
@@ -64,6 +66,8 @@ export interface SelectTurnRenderModelInput {
   canRateTurn?: boolean;
   goalTimeUsedSeconds?: number;
   timestampHoverOnly?: boolean;
+  showFullTranscript?: boolean;
+  canOpenSubagents?: boolean;
   backgroundAgents?: readonly ThreadComposerShellBackgroundAgentRowModel[];
   cwd?: string | null;
   hostId?: string;
@@ -340,6 +344,9 @@ export function buildTurnRenderModel(input: BuildTurnRenderModelInput): ThreadTu
     turnStatus: input.turn.status,
     isLatestTurn: input.isLatestTurn,
     backgroundAgents: input.backgroundAgents,
+    showFullTranscript: input.showFullTranscript,
+    canOpenSubagents: input.canOpenSubagents,
+    turnId: input.turn.turnId,
     turnKey,
   });
   const baseItems = rendererProjection.items;
@@ -354,10 +361,18 @@ export function buildTurnRenderModel(input: BuildTurnRenderModelInput): ThreadTu
   const itemsWithTurnIntro = insertWorkedForItem(input.turn, baseItems, workedForItem);
   const items =
     input.surface === "preview" ? startAfterTurnIntro(itemsWithTurnIntro) : itemsWithTurnIntro;
+  const fallbackSubagentBlocks = items.filter(
+    (item): item is ThreadTranscriptBlockModel =>
+      item.type === "subagentActivityInlineGroup" && item.subagentActivityAnchorItemId === null,
+  );
   const buckets = bucketizeTurnItems({
-    items,
+    items: items.filter(
+      (item) =>
+        item.type !== "subagentActivityInlineGroup" || item.subagentActivityAnchorItemId !== null,
+    ),
     turnStatus: input.turn.status,
   });
+  buckets.agentItems.push(...fallbackSubagentBlocks);
   const isBlocked =
     buckets.approvalItem !== null ||
     buckets.userInputItem !== null ||
@@ -431,6 +446,8 @@ export function createTurnRenderModelSelector(
       input.timestampHoverOnly,
       canEditTurnUserPrefix,
       canForkTurn,
+      input.showFullTranscript,
+      input.canOpenSubagents,
       input.entry.isMostRecentTurn,
       input.cwd,
       input.hostId,
@@ -466,6 +483,8 @@ export function createTurnRenderModelSelector(
       canEditTurnUserPrefix,
       canForkTurn,
       backgroundAgents: input.backgroundAgents,
+      showFullTranscript: input.showFullTranscript,
+      canOpenSubagents: input.canOpenSubagents,
       turnKey: input.entry.turnKey,
       cwd: input.cwd,
       hostId: input.hostId,

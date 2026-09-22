@@ -661,6 +661,9 @@ describe("canonical item lifecycle reducer", () => {
       clock.context,
     );
     expect(afterComplete.turns[0]?.finalAssistantStartedAtMs).toBe(70001);
+    expect(afterComplete.turns[0]?.assistantMessageStartedAtMsById).toEqual({
+      "agent-message": 7000,
+    });
     expect(afterComplete.turns[0]?.firstTurnWorkItemStartedAtMs).toBe(70002);
     expect(afterStart.turns[0]?.lifecycleStatusByItemId?.["agent-message"]).toBe("inProgress");
     expect(afterComplete.turns[0]?.lifecycleStatusByItemId?.["agent-message"]).toBe("completed");
@@ -1497,4 +1500,45 @@ test("records resident item mutations without changing the canonical overlay", (
   );
   expect(unchanged.state).toBe(changed.state);
   expect(unchanged.patches).toEqual([]);
+});
+
+test("retains independent assistant start timestamps across repeats and terminal notifications", () => {
+  const message = (id: string): Extract<ThreadItem, { type: "agentMessage" }> => ({
+    type: "agentMessage",
+    id,
+    text: "",
+    phase: "commentary",
+    questions: null,
+    memoryCitation: null,
+    delivery: null,
+  });
+  const start = (state: CodexCanonicalConversationState, id: string, startedAtMs: number) =>
+    reduceLifecycle(
+      state,
+      {
+        method: "item/started",
+        params: { threadId: THREAD_ID, turnId: TURN_ID, item: message(id), startedAtMs },
+      },
+      { now: () => 99999 },
+    );
+  const first = start(buildState(), "commentary", 1200);
+  const second = start(first, "final", 4000);
+  const repeated = start(second, "commentary", 5000);
+  const completed = reduceLifecycle(
+    repeated,
+    {
+      method: "item/completed",
+      params: {
+        threadId: THREAD_ID,
+        turnId: TURN_ID,
+        item: { ...message("final"), phase: "final_answer", text: "Done" },
+        completedAtMs: 8000,
+      },
+    },
+    { now: () => 99999 },
+  );
+  expect(completed.turns[0]?.assistantMessageStartedAtMsById).toEqual({
+    commentary: 1200,
+    final: 4000,
+  });
 });

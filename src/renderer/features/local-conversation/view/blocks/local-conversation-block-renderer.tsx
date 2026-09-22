@@ -41,6 +41,7 @@ interface ThreadBlockRendererProps {
   projectWorkspacePath?: string | null;
   projectlessOutputDirectory?: string | null;
   childMemberships?: readonly CodexConversationChildMembership[];
+  parentModel?: string | null;
   threadCwd?: string | null;
   onEditLastUserTurn?: (input: {
     threadId: string;
@@ -79,6 +80,7 @@ export function ThreadBlockRenderer({
   projectWorkspacePath,
   projectlessOutputDirectory,
   childMemberships,
+  parentModel,
   threadCwd,
   onEditLastUserTurn,
   onForkFromTurn,
@@ -173,6 +175,7 @@ export function ThreadBlockRenderer({
         isLatestTurn={isLatestTurn}
         isStreamingTurn={isStreamingTurn}
         childMemberships={childMemberships}
+        parentModel={parentModel}
         onOpenThread={onOpenThread}
       />
     );
@@ -269,6 +272,7 @@ export function ThreadBlockRenderer({
               isStreamingTurn={isStreamingTurn}
               projectWorkspacePath={projectWorkspacePath}
               childMemberships={childMemberships}
+              parentModel={parentModel}
               threadCwd={threadCwd}
               onEditLastUserTurn={onEditLastUserTurn}
               onForkFromTurn={onForkFromTurn}

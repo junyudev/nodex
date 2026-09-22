@@ -151,6 +151,7 @@ function buildSubagentActivityStoryBlock(): ThreadTranscriptBlockModel {
     subagentActivity: {
       agentThreadId: `thread_${id}`,
       displayName,
+      isMessage: displayStatus === "updated",
       displayStatus: displayStatus as "active" | "updated" | "interrupted",
     },
     rawItem: {

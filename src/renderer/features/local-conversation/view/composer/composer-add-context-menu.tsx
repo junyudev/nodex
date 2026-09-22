@@ -54,7 +54,11 @@ import type {
 } from "@/lib/types";
 import { useFileSearch } from "../../../../lib/use-file-search";
 import { COMPOSER_FOOTER_GHOST_ICON_BUTTON_CLASS_NAME } from "../shared/composer-footer-controls";
-import type { NewChatProjectSelectorModel } from "../../thread-stage-types";
+import type {
+  NewChatProjectSelectorModel,
+  ThreadComposerShellBackgroundAgentRowModel,
+} from "../../thread-stage-types";
+import { SubagentAvatar } from "../shared/subagent-avatar";
 import { composerContextOperations } from "../../composer-context-operations";
 import {
   buildComposerContextSuggestionSections,
@@ -98,6 +102,8 @@ export interface ComposerAddContextMenuHandle {
 
 interface ComposerAddContextMenuProps {
   readonly suggestion: ComposerSuggestionState;
+  readonly activeConversationId?: string | null;
+  readonly backgroundAgentRows?: readonly ThreadComposerShellBackgroundAgentRowModel[];
   readonly isHomeMenu?: boolean;
   readonly imagesOnly: boolean;
   readonly plugins: readonly CodexComposerPlugin[];
@@ -138,6 +144,39 @@ interface ComposerAddContextMenuProps {
 
 const EMPTY_COMPOSER_SITES: readonly CodexComposerSite[] = [];
 const EMPTY_CHATGPT_CONVERSATIONS: readonly CodexComposerChatGptConversation[] = [];
+const EMPTY_BACKGROUND_AGENTS: readonly ThreadComposerShellBackgroundAgentRowModel[] = [];
+
+/** Mentions target interactive direct children, including children from earlier turns. */
+export function buildComposerSubagentMentionCandidates(
+  activeConversationId: string | null,
+  rows: readonly Pick<
+    ThreadComposerShellBackgroundAgentRowModel,
+    "conversationId" | "parentConversationId" | "canInteract" | "displayName" | "agentRole"
+  >[],
+): ComposerContextSuggestionCandidate<ComposerPromptMentionInput>[] {
+  if (activeConversationId === null) return [];
+  return rows.flatMap((row) => {
+    if (!row.canInteract || row.parentConversationId !== activeConversationId) return [];
+    const displayName = row.displayName.trim().replace(/^@/u, "").trim();
+    if (!displayName) return [];
+    return [
+      {
+        id: `agent:${row.conversationId}`,
+        section: "Chats",
+        label: displayName,
+        description: row.agentRole,
+        searchTerms: [row.agentRole ?? ""],
+        value: {
+          kind: "agent",
+          name: displayName.toLowerCase(),
+          displayName,
+          conversationId: row.conversationId,
+          path: `agent://${row.conversationId}`,
+        },
+      },
+    ];
+  });
+}
 
 function isSafeBrandColor(value: string | null): value is string {
   return Boolean(value && /^#[\da-f]{3,8}$/iu.test(value));
@@ -711,6 +750,8 @@ const ComposerAddContextRootMenuContent = forwardRef<
 >(function ComposerAddContextRootMenuContent(
   {
     suggestion,
+    activeConversationId = null,
+    backgroundAgentRows = EMPTY_BACKGROUND_AGENTS,
     isHomeMenu = false,
     imagesOnly,
     plugins,
@@ -988,6 +1029,23 @@ const ComposerAddContextRootMenuContent = forwardRef<
     const chatGptConversationItems = chatGptConversationsAvailable
       ? chatGptConversationSearch.conversations.map(buildComposerChatGptConversationItem)
       : [];
+    const agentCandidates = buildComposerSubagentMentionCandidates(
+      activeConversationId,
+      backgroundAgentRows,
+    );
+    const agentSuggestions = agentCandidates.map((candidate): ComposerContextItemView => ({
+      candidate: {
+        ...candidate,
+        value: { kind: "mention", mention: candidate.value },
+      },
+      icon: (
+        <SubagentAvatar
+          seed={candidate.value.conversationId ?? candidate.id}
+          className="size-4 shrink-0"
+        />
+      ),
+      active: false,
+    }));
     const threadSuggestions = normalizedQuery
       ? selectedThreads.map((thread): ComposerContextItemView => ({
           candidate: {
@@ -1027,10 +1085,13 @@ const ComposerAddContextRootMenuContent = forwardRef<
       ...inventoryItems.siteItems,
       ...chatGptConversationItems,
       ...(normalizedQuery ? inventoryItems.skillItems : []),
+      ...agentSuggestions,
       ...threadSuggestions,
       ...fileSuggestions,
     ];
   }, [
+    activeConversationId,
+    backgroundAgentRows,
     activatePlugin,
     inventoryItems,
     chatGptConversationSearch.conversations,

@@ -189,3 +189,26 @@ for (const boundary of ["thread/goal/set", "turn/interrupt"] as const) {
       }).pipe(Effect.provide(callbacks)),
   );
 }
+
+it.effect("pauses an active resident child Goal after descendant interruption", () =>
+  Effect.gen(function* () {
+    const f = yield* harness;
+    f.control.failPause = false;
+    const result = yield* f.service.interrupt("local", "thread", "descendant-cleanup");
+    assert.strictEqual(result.interruptedTurnId, "active");
+    assert.strictEqual(f.read().threadGoal?.status, "paused");
+    assert.isTrue(f.calls.indexOf("turn/interrupt") < f.calls.indexOf("thread/goal/set"));
+    assert.notInclude(f.calls, "descendants");
+  }).pipe(Effect.provide(callbacks)),
+);
+
+it.effect("keeps an accepted child stop successful if its Goal pause fails", () =>
+  Effect.gen(function* () {
+    const f = yield* harness;
+    const result = yield* f.service.interrupt("local", "thread", "descendant-cleanup");
+    assert.strictEqual(result.interruptedTurnId, "active");
+    assert.strictEqual(f.read().threadGoal?.status, "active");
+    assert.isTrue(f.calls.indexOf("turn/interrupt") < f.calls.indexOf("thread/goal/set"));
+    assert.notInclude(f.calls, "descendants");
+  }).pipe(Effect.provide(callbacks)),
+);

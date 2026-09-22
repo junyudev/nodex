@@ -706,6 +706,7 @@ export interface CodexCanonicalTurnContext {
   readonly completedAtMs?: number | null;
   readonly firstTurnWorkItemStartedAtMs?: number | null;
   readonly finalAssistantStartedAtMs: number | null;
+  readonly assistantMessageStartedAtMsById?: Readonly<Record<string, number>>;
   /** Explicit lifecycle for statusless protocol items such as reasoning. */
   readonly lifecycleStatusByItemId?: Readonly<Record<string, CodexItemStatus>>;
   readonly commandExecutionStartedAtMsById?: Readonly<Record<string, number>>;
@@ -1137,7 +1138,7 @@ export function createCodexCanonicalTurnState(
     diff: null,
     turnStartedAtMs: protocolSecondsToMilliseconds(startedAt),
     completedAtMs: protocolSecondsToMilliseconds(completedAt),
-    finalAssistantStartedAtMs: protocolSecondsToMilliseconds(completedAt),
+    finalAssistantStartedAtMs: null,
     lifecycleStatusByItemId: buildCodexInitialItemLifecycleStatusById(items, header.status),
   };
 }
@@ -1406,6 +1407,15 @@ export function mergeCodexCanonicalTurnState(
       incoming.interruptedCommandExecutionItemIds ?? existing.interruptedCommandExecutionItemIds,
     commandExecutionStartedAtMsById:
       existing.commandExecutionStartedAtMsById ?? incoming.commandExecutionStartedAtMsById,
+    assistantMessageStartedAtMsById:
+      existing.assistantMessageStartedAtMsById === undefined
+        ? incoming.assistantMessageStartedAtMsById
+        : incoming.assistantMessageStartedAtMsById === undefined
+          ? existing.assistantMessageStartedAtMsById
+          : {
+              ...incoming.assistantMessageStartedAtMsById,
+              ...existing.assistantMessageStartedAtMsById,
+            },
     turnStartedAtMs: existing.turnStartedAtMs ?? incoming.turnStartedAtMs,
     completedAtMs: existing.completedAtMs ?? incoming.completedAtMs,
     finalAssistantStartedAtMs:

@@ -186,6 +186,7 @@ function buildSubagentActivityInlineGroupBlock(): ThreadTranscriptBlockModel {
     subagentActivityStatusLabel: "updated",
     subagentActivityRows: [
       {
+        canOpen: true,
         conversationId: "thread-child-1",
         displayName: "Scout",
         agentRole: null,
@@ -196,6 +197,7 @@ function buildSubagentActivityInlineGroupBlock(): ThreadTranscriptBlockModel {
         diffStats: null,
       },
       {
+        canOpen: true,
         conversationId: "thread-child-2",
         displayName: "Reviewer",
         agentRole: null,
@@ -206,6 +208,7 @@ function buildSubagentActivityInlineGroupBlock(): ThreadTranscriptBlockModel {
         diffStats: null,
       },
       {
+        canOpen: true,
         conversationId: "thread-child-3",
         displayName: "Builder",
         agentRole: null,
@@ -216,6 +219,7 @@ function buildSubagentActivityInlineGroupBlock(): ThreadTranscriptBlockModel {
         diffStats: null,
       },
       {
+        canOpen: true,
         conversationId: "thread-child-4",
         displayName: "Tester",
         agentRole: null,
@@ -1518,7 +1522,66 @@ describe("ThreadBlockRenderer proposed-plan block", () => {
 });
 
 describe("ThreadBlockRenderer subagent activity block", () => {
-  test("renders capped inline chips and opens subagents with inline activity context", () => {
+  test("renders message markers without creating lifecycle avatars or navigation", () => {
+    for (const displayName of [null, "Scout"]) {
+      const block = buildSubagentActivityInlineGroupBlock();
+      const view = render(
+        <ThreadBlockRenderer
+          block={{
+            ...block,
+            entry: {
+              ...block.entry,
+              subagentActivity: {
+                agentThreadId: "child",
+                displayName,
+                displayStatus: "updated",
+                isMessage: true,
+              },
+            },
+            subagentActivityRows: undefined,
+          }}
+          isLatestTurn
+          isStreamingTurn={false}
+          onOpenThread={vi.fn()}
+        />,
+      );
+      expect(view.getByText(`Sent message to ${displayName ?? "parent"}`)).toBeTruthy();
+      expect(view.queryByRole("button")).toBeNull();
+      view.unmount();
+    }
+  });
+
+  test("keeps unavailable names static and supports Space on sentence names", async () => {
+    const block = buildSubagentActivityInlineGroupBlock();
+    const rows = block.subagentActivityRows ?? [];
+    const onOpenThread = vi.fn();
+    const view = render(
+      <ThreadBlockRenderer
+        block={{
+          ...block,
+          subagentActivityRows: rows.map((row, index) => ({ ...row, canOpen: index !== 0 })),
+        }}
+        isLatestTurn
+        isStreamingTurn={false}
+        onOpenThread={onOpenThread}
+      />,
+    );
+    expect(view.queryByRole("button", { name: "Scout" })).toBeNull();
+    await act(async () => {
+      fireEvent.keyDown(view.getByRole("button", { name: "Reviewer" }), { key: " " });
+    });
+    expect(onOpenThread).not.toHaveBeenCalled();
+    await act(async () => {
+      fireEvent.keyUp(view.getByRole("button", { name: "Reviewer" }), { key: " " });
+    });
+    expect(onOpenThread.mock.calls[0]?.[0]).toBe("thread-child-2");
+    await act(async () => {
+      fireEvent.click(view.getByRole("button", { name: "Tester" }));
+    });
+    expect(onOpenThread.mock.calls[1]?.[0]).toBe("thread-child-4");
+  });
+
+  test("keeps sentence names and overflow avatars independently keyboard accessible", async () => {
     const opened: Array<{ threadId: string; context?: ThreadOpenThreadContext }> = [];
     const completeBlock = buildSubagentActivityInlineGroupBlock();
     const initialBlock = {
@@ -1549,20 +1612,22 @@ describe("ThreadBlockRenderer subagent activity block", () => {
     );
 
     const group = view.getByTestId("subagent-activity-inline-group");
-    const buttons = group.querySelectorAll("button");
+    const buttons = group.querySelectorAll("button, [role=button]");
 
     expect(Boolean(group)).toBe(true);
-    expect(buttons.length).toBe(3);
-    expect(Boolean(view.getByText("and 1 other subagent updated"))).toBe(true);
+    expect(buttons.length).toBe(4);
+    expect(group.textContent).toBe("Scout, Reviewer and 2 more updated");
     expect(Boolean(view.queryByText("Tester"))).toBe(false);
-    expect(view.container.querySelectorAll("[data-animate-entrance]").length).toBe(1);
+    expect(view.container.querySelectorAll("[data-animate-entrance]").length).toBe(2);
     expect(
       Boolean(view.container.querySelector('[data-subagent-avatar-seed="thread-child-1"]')),
     ).toBe(true);
 
     expect(group.getAttribute("role")).toBe("status");
     expect(group.getAttribute("aria-live")).toBe("polite");
-    fireEvent.click(view.getByRole("button", { name: "Open subagent Scout" }));
+    await act(async () => {
+      fireEvent.keyDown(view.getByRole("button", { name: "Scout" }), { key: "Enter" });
+    });
 
     expect(opened.length).toBe(1);
     expect(opened[0]?.threadId).toBe("thread-child-1");
