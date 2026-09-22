@@ -1,0 +1,21 @@
+src/renderer/features/local-conversation/message-copy-text.ts
+  s_a0a1735f9b0d2e::t_0274d78acfcecc 19
+src/renderer/features/local-conversation/view/shared/message-clipboard.jsdom.test.ts
+  s_a0a1735f9b0d2e::t_474afa18363d3f 20,24-30
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "37a467b1c13e5c6dd38a65f43ae1897f91ba81ca",
+  "prompts": {},
+  "sessions": {
+    "s_a0a1735f9b0d2e": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a09231-9c45-71f3-8c7e-02fa9292fcc7",
+        "model": "gpt-6-astra"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    }
+  }
+}
