@@ -90,7 +90,8 @@ export const resolveDictationPolicy = (input: {
       input.gates.global &&
       (auth.method !== null || !auth.requiresAuth) &&
       (auth.method !== "chatgpt" || auth.hasToken),
-    streaming: composer && input.gates.streaming,
+    // Streaming is a standard dictation capability, independent of remote rollout assignment.
+    streaming: composer,
     sounds: input.gates.sounds,
     voiceDictionary: composer && input.identity !== null && input.gates.voiceDictionary,
     accountId: input.identity?.accountId ?? null,

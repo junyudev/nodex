@@ -6,7 +6,7 @@ All notable changes to this project will be documented in this file.
 
 ### Added
 
-- Dictation updates your draft as you speak, preserves edits when the cursor moves, and offers captured speech for recovery after an interruption.
+- Dictation streams into your draft by default, preserves edits when the cursor moves, and offers captured speech for recovery after an interruption.
 - Voice settings can manage an account dictionary when available.
 
 ### Changed

@@ -577,7 +577,7 @@ Detailed behavior lives in
 
 ### Dictation
 
-Dictation retains a complete `MediaRecorder` recording regardless of whether authenticated policy enables streaming. Streaming failures recover the full recording or only failed segments when editor boundaries exist. Successful empty results and known-silent audio do not trigger another upload. Explicit cancellation suppresses fallback and text application; interrupted capture preserves recognized text and offers recovery without automatic delivery. Session/generation checks make stop, cancel, dispose, recorder finalization, history finalization, and transcript completion idempotent.
+Eligible dictation sessions attempt streaming independently of remote rollout assignment and always retain a complete `MediaRecorder` recording. Explicit language selection or authenticated route constraints can require buffered transcription. Streaming failures recover the full recording or only failed segments when editor boundaries exist. Successful empty results and known-silent audio do not trigger another upload. Explicit cancellation suppresses fallback and text application; interrupted capture preserves recognized text and offers recovery without automatic delivery. Session/generation checks make stop, cancel, dispose, recorder finalization, history finalization, and transcript completion idempotent.
 
 Recording history appends ordered five-second chunks in a private Profile directory. Metadata uses temporary-file replacement; startup removes stale temporary files, reconstructs valid chunk facts, and marks unfinished recordings `interrupted`. Retention keeps at most twenty non-active entries and never removes a current recording. Retry and download rebuild audio from the same validated ordered chunks.
 

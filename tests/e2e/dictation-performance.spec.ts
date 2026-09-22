@@ -30,7 +30,7 @@ test("shows the persisted dictation route and performance evidence in Voice sett
             composer: true,
             global: false,
             sounds: true,
-            streaming: "unavailable",
+            streaming: "available",
             voiceDictionary: false,
           },
         });

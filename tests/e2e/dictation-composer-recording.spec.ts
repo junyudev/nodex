@@ -12,7 +12,7 @@ import {
 
 const shellQuote = (value: string): string => `'${value.replaceAll("'", "'\\''")}'`;
 const draft = "Keep my draft.";
-const bufferedTranscript = "Buffered recording is ready.";
+const unexpectedFallbackTranscript = "Unexpected buffered fallback.";
 const streamingTranscript = "Streamed recording is ready.";
 const readRecordings = (page: Page) =>
   page.evaluate(
@@ -166,7 +166,7 @@ const installStreamService = async (page: Page) => {
   return evidence;
 };
 
-test("records, cancels and inserts dictation through legacy and streaming Composer presentations", async ({}, testInfo) => {
+test("streams, cancels and inserts dictation regardless of the remote streaming gate", async ({}, testInfo) => {
   test.setTimeout(120_000);
   const launcher = testInfo.outputPath("electron-fake-media.sh");
   await mkdir(path.dirname(launcher), { recursive: true });
@@ -183,8 +183,8 @@ test("records, cancels and inserts dictation through legacy and streaming Compos
     { mode: 0o700 },
   );
 
-  for (const streaming of [false, true]) {
-    const mode = streaming ? "streaming" : "legacy";
+  for (const remoteStreamingGate of [false, true]) {
+    const mode = remoteStreamingGate ? "remote-gate-on" : "remote-gate-off";
     const harness = await ElectronScenarioHarness.create({
       label: `dictation-composer-${mode}`,
       executablePath: launcher,
@@ -205,8 +205,8 @@ test("records, cancels and inserts dictation through legacy and streaming Compos
         systemPreferences.getMediaAccessStatus = () => "granted";
       });
       await installDictationPolicyHttpFixture(harness.application, {
-        streaming,
-        transcription: bufferedTranscript,
+        streaming: remoteStreamingGate,
+        transcription: unexpectedFallbackTranscript,
       });
       await harness.waitForApplicationReady();
       await expect
@@ -218,7 +218,7 @@ test("records, cancels and inserts dictation through legacy and streaming Compos
           { timeout: 30_000 },
         )
         .toMatchObject({
-          capabilities: { composer: true, streaming: streaming ? "available" : "unavailable" },
+          capabilities: { composer: true, streaming: "available" },
         });
       service = await installStreamService(page);
       const streamEvidence = service;
@@ -237,15 +237,9 @@ test("records, cancels and inserts dictation through legacy and streaming Compos
         .poll(() => page.evaluate(() => window.api!.invoke("codex:dictation:history:list")))
         .toEqual([expect.objectContaining({ surface: "composer", status: "recording" })]);
       await waitForRecordedAudio(page);
-      if (streaming) {
-        await expect(composer).toHaveText(`${draft} ${streamingTranscript}`);
-        await expect(stop.locator("canvas")).toBeVisible();
-        await expect.poll(() => streamEvidence.frames).toBeGreaterThan(3);
-      } else {
-        await expect(
-          page.getByRole("button", { name: "Cancel dictation", exact: true }),
-        ).toBeVisible();
-      }
+      await expect(composer).toHaveText(`${draft} ${streamingTranscript}`);
+      await expect(stop.locator("canvas")).toBeVisible();
+      await expect.poll(() => streamEvidence.frames).toBeGreaterThan(3);
       // Move away from controls so the recording presentation, not a hover tooltip, is captured.
       await page.mouse.move(20, 20);
       await page.screenshot({ path: testInfo.outputPath(`${mode}-recording.png`), fullPage: true });
@@ -253,8 +247,7 @@ test("records, cancels and inserts dictation through legacy and streaming Compos
         path: testInfo.outputPath(`${mode}-recording.png`),
         contentType: "image/png",
       });
-      if (streaming) await composer.press("Escape");
-      else await page.getByRole("button", { name: "Cancel dictation", exact: true }).click();
+      await composer.press("Escape");
       await expect(page.getByRole("button", { name: "Dictate", exact: true })).toBeVisible();
       await expect(composer).toHaveText(draft);
       await expect
@@ -264,12 +257,10 @@ test("records, cancels and inserts dictation through legacy and streaming Compos
       await page.getByRole("button", { name: "Dictate", exact: true }).click();
       await expect(stop).toBeVisible();
       await waitForRecordedAudio(page);
-      if (streaming) await expect(composer).toContainText(streamingTranscript);
+      await expect(composer).toHaveText(`${draft} ${streamingTranscript}`);
       await stop.click();
       await expect(page.getByRole("button", { name: "Dictate", exact: true })).toBeVisible();
-      await expect(composer).toHaveText(
-        `${draft} ${streaming ? streamingTranscript : bufferedTranscript}`,
-      );
+      await expect(composer).toHaveText(`${draft} ${streamingTranscript}`);
       await expect
         .poll(async () => {
           const recordings = await readRecordings(page);
@@ -277,8 +268,8 @@ test("records, cancels and inserts dictation through legacy and streaming Compos
         })
         .toMatchObject({
           surface: "composer",
-          transcript: streaming ? streamingTranscript : bufferedTranscript,
-          diagnostics: { transport: streaming ? "websocket" : "buffered" },
+          transcript: streamingTranscript,
+          diagnostics: { transport: "websocket" },
         });
       const state = await page.evaluate(
         () =>
@@ -289,18 +280,20 @@ test("records, cancels and inserts dictation through legacy and streaming Compos
       expect(http.invalidRequests).toEqual([]);
       expect(http.bootstrapRequests).toBeGreaterThan(0);
       expect(http.settingsRequests).toBe(0);
-      expect(http.transcriptionBytes).toHaveLength(streaming ? 0 : 1);
+      expect(http.transcriptionBytes).toHaveLength(0);
       expect(service.invalidMessages).toEqual([]);
-      expect(service.sessions).toBe(streaming ? 2 : 0);
-      if (streaming) {
-        expect(service.completed).toBe(1);
-        expect(service.nonzeroAudio).toBe(true);
-        expect(service.bytes).toBeGreaterThan(4096);
-        await expect.poll(() => streamEvidence.closed).toBe(2);
-      }
+      expect(service.sessions).toBe(2);
+      expect(service.completed).toBe(1);
+      expect(service.nonzeroAudio).toBe(true);
+      expect(service.bytes).toBeGreaterThan(4096);
+      await expect.poll(() => streamEvidence.closed).toBe(2);
       await writeFile(
         testInfo.outputPath(`${mode}-evidence.json`),
-        JSON.stringify({ http, service }, null, 2),
+        JSON.stringify(
+          { remoteStreamingGate, capabilities: state.capabilities, http, service },
+          null,
+          2,
+        ),
       );
       await page.screenshot({ path: testInfo.outputPath(`${mode}-completed.png`), fullPage: true });
     } finally {
@@ -318,6 +311,7 @@ test("records, cancels and inserts dictation through legacy and streaming Compos
           testInfo.outputPath(`${mode}-runtime-evidence.json`),
           JSON.stringify(
             {
+              remoteStreamingGate,
               http: await readDictationPolicyHttpEvidence(harness.application),
               recordings: await readRecordings(harness.page),
               service,

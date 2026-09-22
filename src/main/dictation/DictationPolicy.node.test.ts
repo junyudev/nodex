@@ -194,7 +194,7 @@ it.effect("coalesces refreshes and discards completion after account invalidatio
   }).pipe(Effect.scoped),
 );
 
-it.effect("falls back to SDK evaluation when bootstrap is unavailable", () =>
+it.effect("admits streaming through SDK fallback without a remote streaming value", () =>
   Effect.gen(function* () {
     let bootstrapCalls = 0;
     let sdkCalls = 0;
@@ -216,41 +216,44 @@ it.effect("falls back to SDK evaluation when bootstrap is unavailable", () =>
     const flags = yield* policy.refresh;
     assert.isTrue(flags.composer);
     assert.isTrue(flags.sounds);
-    assert.isFalse(flags.streaming);
+    assert.isTrue(flags.streaming);
     assert.strictEqual(bootstrapCalls, 1);
     assert.strictEqual(sdkCalls, 1);
   }).pipe(Effect.scoped),
 );
 
-it.effect("republishes SDK live changes without another authenticated bootstrap", () =>
-  Effect.gen(function* () {
-    let bootstrapCalls = 0;
-    const { policy } = yield* make(
-      () =>
-        Effect.gen(function* () {
-          bootstrapCalls += 1;
-          const raw = yield* Effect.promise(() => response().json());
-          const data = JSON.parse(raw.statsigPayload);
-          data.time = 1;
-          data.sdk_configs = { live_values_auto_refresh_interval_seconds: 1 };
-          return new Response(JSON.stringify({ statsigPayload: JSON.stringify(data) }));
-        }),
-      true,
-      () =>
-        Effect.succeed(
-          new Response(
-            '{"response_mode":"live_overlay","time":2,"live_entity_names":{"feature_gates":["codex-app-dictation-streaming"]},"feature_gates":{"codex-app-dictation-streaming":{"value":false}}}',
+it.effect(
+  "keeps streaming admitted while publishing other live changes without a new bootstrap",
+  () =>
+    Effect.gen(function* () {
+      let bootstrapCalls = 0;
+      const { policy } = yield* make(
+        () =>
+          Effect.gen(function* () {
+            bootstrapCalls += 1;
+            const raw = yield* Effect.promise(() => response().json());
+            const data = JSON.parse(raw.statsigPayload);
+            data.time = 1;
+            data.sdk_configs = { live_values_auto_refresh_interval_seconds: 1 };
+            return new Response(JSON.stringify({ statsigPayload: JSON.stringify(data) }));
+          }),
+        true,
+        () =>
+          Effect.succeed(
+            new Response(
+              '{"response_mode":"live_overlay","time":2,"live_entity_names":{"feature_gates":["codex-app-dictation-streaming","codex-app-dictation-sounds"]},"feature_gates":{"codex-app-dictation-streaming":{"value":false},"codex-app-dictation-sounds":{"value":false}}}',
+            ),
           ),
-        ),
-    );
-    assert.isTrue((yield* policy.refresh).streaming);
-    yield* TestClock.adjust("1 second");
-    yield* policy.changes.pipe(
-      Stream.filter((value) => value.composer && !value.streaming),
-      Stream.runHead,
-    );
-    assert.strictEqual(bootstrapCalls, 1);
-  }).pipe(Effect.scoped),
+      );
+      assert.isTrue((yield* policy.refresh).streaming);
+      yield* TestClock.adjust("1 second");
+      yield* policy.changes.pipe(
+        Stream.filter((value) => value.composer && !value.sounds),
+        Stream.runHead,
+      );
+      assert.isTrue((yield* policy.read).streaming);
+      assert.strictEqual(bootstrapCalls, 1);
+    }).pipe(Effect.scoped),
 );
 
 it.effect("renews policy after a mutation that emits no account notification", () =>

@@ -13,7 +13,7 @@ describe("authenticated dictation policy", () => {
       gates: {
         composer: true,
         global: true,
-        streaming: true,
+        streaming: false,
         sounds: true,
         voiceDictionary: true,
         workspacePermissions: true,
@@ -41,6 +41,33 @@ describe("authenticated dictation policy", () => {
     expect(
       resolveDictationPolicy({ ...input, plan: "plus", gates: { ...input.gates, global: false } }),
     ).toMatchObject({ composer: true, global: false });
+  });
+
+  test("keeps streaming enabled for admitted dictation regardless of its rollout value", () => {
+    for (const streaming of [false, true]) {
+      const input = {
+        identity,
+        featureEnabled: true,
+        plan: "plus",
+        permissions: null,
+        gates: {
+          composer: true,
+          global: true,
+          streaming,
+          sounds: false,
+          voiceDictionary: false,
+          workspacePermissions: false,
+        },
+      };
+      expect(resolveDictationPolicy(input).streaming).toBe(true);
+      expect(resolveDictationPolicy({ ...input, featureEnabled: false }).streaming).toBe(false);
+      expect(
+        resolveDictationPolicy({
+          ...input,
+          auth: { method: "apikey", requiresAuth: true, hasToken: false },
+        }).streaming,
+      ).toBe(false);
+    }
   });
 });
 
