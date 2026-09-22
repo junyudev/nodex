@@ -1,0 +1,187 @@
+src/renderer/components/ui/dropdown.tsx
+  s_a0a1735f9b0d2e::t_addee8684bec3f 297-298,322-323,356-357
+src/renderer/features/local-conversation/view/blocks/local-conversation-block-renderer.tsx
+  s_a0a1735f9b0d2e::t_2e2e84629a1c80 69-70,98-99,222-223
+src/renderer/features/local-conversation/view/shared/thread-fork-state.tsx
+  s_a0a1735f9b0d2e::t_e508826c3417eb 1-12
+src/renderer/features/local-conversation/view/shared/plan-message.tsx
+  s_a0a1735f9b0d2e::t_a4cc7b0cb2bc41 1,46,51,86,92,114,124-141,147-148
+src/renderer/features/local-conversation/view/shared/thread-footer-metadata.tsx
+  s_a0a1735f9b0d2e::t_c2cdd8446e64bd 3,142,156-157,168,222-237,283-284,289,309-310
+  s_a0a1735f9b0d2e::t_34d727ee0141d3 4,10-11,20-22,32-34,61-64,82-83,93,97-100,102,107,176-177,187-188,208-210,220-221,329-333,352
+  s_a0a1735f9b0d2e::t_fd5d9675545011 5-9,143-155,158-167,238-282,311-322
+  s_a0a1735f9b0d2e::t_8c6909c5182892 12-19,23-31,35-60,65-81,84-92,103-106,108-113,128-141,169-175,178-186,189-203,205-207,211-219,285-288,290-308,323-328,334-351
+  s_a0a1735f9b0d2e::t_682f4938839e21 101
+  s_a0a1735f9b0d2e::t_8d9ffb1008eda3 114-117,119,121-122,124-127
+  s_a0a1735f9b0d2e::t_3a85b00093cd5a 1-2,94-96,118,120,123,204
+src/renderer/features/local-conversation/view/shared/plan-message.test.tsx
+  s_a0a1735f9b0d2e::t_a4cc7b0cb2bc41 2,19,44-46,50,76-78,98-111,134-136
+src/renderer/features/local-conversation/view/local-conversation-thread-body-owner.tsx
+  s_a0a1735f9b0d2e::t_b937aee64f9463 1,441-442,899,903,912,934,1118,1162
+  s_a0a1735f9b0d2e::t_f875a5214f3827 920-924,1119-1161
+src/renderer/features/local-conversation/view/local-conversation-turn-entry.tsx
+  s_d96453aeece1d5::t_311213edf35bd5 1,85-86,101-102,112-113
+  s_a0a1735f9b0d2e::t_8c6909c5182892 84,87-93
+src/renderer/features/local-conversation/view/blocks/local-conversation-block-leaves.tsx
+  s_a0a1735f9b0d2e::t_a9a1d649c2f79d 125-126,160-168,732-733,750,755,762,894,911,918,937-938
+  s_a0a1735f9b0d2e::t_841b228e8e4b08 1
+  s_a0a1735f9b0d2e::t_735d14266bfdc2 739-740,917,919
+  s_a0a1735f9b0d2e::t_839546a26a83b0 943
+  s_a0a1735f9b0d2e::t_f875a5214f3827 13-18,153-155,181-185,744-746,896-902,912-916,928-935,941-942,958-971,1136-1140,1188-1196
+  s_a0a1735f9b0d2e::t_bf7d1970d88934 2,186,855,936,946-947
+src/renderer/features/local-conversation/view/shared/thread-footer-i18n.node.test.ts
+  s_a0a1735f9b0d2e::t_f875a5214f3827 5-16,23-25
+  s_a0a1735f9b0d2e::t_1f7637e6654cf5 1-4,17-22,26-28
+src/renderer/features/local-conversation/view/shared/thread-footer-metadata.test.tsx
+  s_a0a1735f9b0d2e::t_c2cdd8446e64bd 118
+  s_a0a1735f9b0d2e::t_fd5d9675545011 14-16,55-63
+  s_a0a1735f9b0d2e::t_56665746ca53c2 7-9,17-18,72-77,91,100-102,119,124-126
+  s_a0a1735f9b0d2e::t_1a9d787c1a6192 10-12,78-90,92-99,103-117,120-123
+  s_a0a1735f9b0d2e::t_725b90f1ee9b20 1-6,19-25,52-54,64,70-71
+  s_a0a1735f9b0d2e::t_09f6b8321c7111 13
+  s_a0a1735f9b0d2e::t_8c6909c5182892 26-51,65-69
+src/renderer/features/local-conversation/view/shared/thread-message-actions.tsx
+  s_a0a1735f9b0d2e::t_bf6d6ed72d7ce3 8,91,119,216,218,220,222
+  s_a0a1735f9b0d2e::t_5213105952fcba 3-7,9,12,20,71,103-104,108-109,115-118,120-121,140,143-144,157-158,164,179-181,188-190,206-207
+  s_a0a1735f9b0d2e::t_1d81b82493dc59 11,136-137,150-151,165,168,170,177-178,182-187,191,213
+  s_a0a1735f9b0d2e::t_addee8684bec3f 23,130,208,217,219,221,228,233
+src/renderer/features/local-conversation/projection/turn-footer-metadata.node.test.ts
+  s_a0a1735f9b0d2e::t_ae80972bac7cb2 1-176
+tests/e2e/codex-rating-presentation.spec.ts
+  s_a0a1735f9b0d2e::t_f15ffbe133bd99 1,26,41-46,55,88-110,116
+  s_a0a1735f9b0d2e::t_f2c3253a1efbec 3-4,30-31,86-87
+src/renderer/features/local-conversation/view/shared/assistant-rating-menu.tsx
+  s_a0a1735f9b0d2e::t_f875a5214f3827 41-43
+  s_a0a1735f9b0d2e::t_addee8684bec3f 1,58,70-72,79,84,93,100
+src/renderer/features/local-conversation/view/shared/thread-footer-i18n.ts
+  s_a0a1735f9b0d2e::t_3bf9eb9498d9a3 31-32
+  s_a0a1735f9b0d2e::t_f15ffbe133bd99 33,36,38,51-57,59,61-74,78-81,84,103-104
+  s_a0a1735f9b0d2e::t_f875a5214f3827 16,22-25,27-30
+  s_a0a1735f9b0d2e::t_18555aeecf0a9b 50,58
+  s_a0a1735f9b0d2e::t_29f457b4ed97d6 1-9,13-15,34-35,37,39-49,60,75-77,82-83,85-102,105-110
+  s_a0a1735f9b0d2e::t_04a2b7c0c12d4a 10-12,17-21,26
+src/renderer/features/local-conversation/projection/hook-stats.node.test.ts
+  s_a0a1735f9b0d2e::t_4eb04951b19296 259
+  s_a0a1735f9b0d2e::t_05a21bade8faa4 232,234-252,254-258
+  s_a0a1735f9b0d2e::t_bf7d1970d88934 169,185,211,226,231,233,253
+src/renderer/components/shared/icons/index.ts
+  s_a0a1735f9b0d2e::t_47578679da301f 11
+src/renderer/features/local-conversation/view/blocks/local-conversation-block-leaves.test.tsx
+  s_a0a1735f9b0d2e::t_f875a5214f3827 383-387
+  s_a0a1735f9b0d2e::t_735d14266bfdc2 379-382,389-391
+  s_a0a1735f9b0d2e::t_0e623ab0a39b78 364,377-378,392-394,408-410,421-425,434-438,449,454-460,472-474
+  s_a0a1735f9b0d2e::t_05a21bade8faa4 374-376,395-407,411-420,426-433,439-448,450-453,461-471
+src/renderer/features/local-conversation/view/local-conversation-footer.tsx
+  s_a0a1735f9b0d2e::t_56665746ca53c2 145,156
+  s_a0a1735f9b0d2e::t_1a9d787c1a6192 146-150
+src/shared/codex-conversation-state/codex-thread-metadata.test.ts
+  s_a0a1735f9b0d2e::t_1a9d787c1a6192 1-4,335-352,354-385
+  s_a0a1735f9b0d2e::t_c2cdd8446e64bd 353
+  s_a0a1735f9b0d2e::t_5383ea2ab92ab5 386-388
+src/renderer/features/local-conversation/view/shared/message-clipboard.ts
+  s_a0a1735f9b0d2e::t_da932939cca30d 1,3,9-17,32-53,69-75,85,92-98
+  s_a0a1735f9b0d2e::t_47be5ec6b90afd 18-23,28-31
+  s_a0a1735f9b0d2e::t_0830d8fd06b51d 57-67
+  s_a0a1735f9b0d2e::t_abfbbb0534a84b 2,54-56
+  s_a0a1735f9b0d2e::t_a4cc7b0cb2bc41 4-8,76-84,86-91
+  s_a0a1735f9b0d2e::t_34d727ee0141d3 24-27
+  s_a0a1735f9b0d2e::t_3bf9eb9498d9a3 68
+src/renderer/features/local-conversation/projection/hook-stats.ts
+  s_a0a1735f9b0d2e::t_a9a1d649c2f79d 16-17,31-32,42-52
+src/renderer/components/shared/icons/response-copy-icon.tsx
+  s_a0a1735f9b0d2e::t_47578679da301f 1-4,18-20
+  s_a0a1735f9b0d2e::t_f875a5214f3827 5-17
+src/renderer/features/local-conversation/projection/build-turn-view-model.ts
+  s_a0a1735f9b0d2e::t_8c6909c5182892 61-70,211,300-308,378-385,486-495
+  s_a0a1735f9b0d2e::t_8d9ffb1008eda3 396-398
+  s_a0a1735f9b0d2e::t_68cd0a33d5066c 1,53,292,485
+  s_a0a1735f9b0d2e::t_34d727ee0141d3 2,48-52,54,72,296-297,312-313,317-318,377,399,401,498
+src/renderer/features/local-conversation/view/shared/thread-message-actions.test.tsx
+  s_a0a1735f9b0d2e::t_d210f38a55ddb7 79
+src/shared/codex-conversation-state/codex-thread-metadata.ts
+  s_d96453aeece1d5::t_1ef8e954fd6692 178,328-333
+src/renderer/features/local-conversation/projection/turn-footer-metadata.ts
+  s_a0a1735f9b0d2e::t_8c6909c5182892 30-109,117-145,160-166
+  s_a0a1735f9b0d2e::t_96cc3043540ecc 110-114,155-157
+  s_a0a1735f9b0d2e::t_b522f19a078f39 1-29,115-116,146-154,158-159,167
+src/renderer/features/local-conversation/view/shared/hook-stats-indicator.test.tsx
+  s_a0a1735f9b0d2e::t_bf7d1970d88934 11-12
+src/renderer/features/local-conversation/view/shared/thread-message-timestamp.ts
+  s_a0a1735f9b0d2e::t_4ca4585bd4d59a 1-2,19
+src/renderer/features/local-conversation/view/shared/assistant-message-actions.tsx
+  s_a0a1735f9b0d2e::t_841b228e8e4b08 8-14,23-46,54-55,64,118,120-122
+  s_a0a1735f9b0d2e::t_b73ee80447656e 1,56,119
+  s_a0a1735f9b0d2e::t_f875a5214f3827 2-7,15-22,47-53,57-63,65-117
+src/renderer/features/local-conversation/view/shared/assistant-message-actions.test.tsx
+  s_a0a1735f9b0d2e::t_757a075957675a 21,37,52,61,79,99,114,123
+  s_a0a1735f9b0d2e::t_1f7637e6654cf5 1-5,7-20,22-24,64-78,80-98,100-113,115-122,124-126
+  s_a0a1735f9b0d2e::t_4aeb86b42fe10a 6,25-36,38-51,53-60,62-63
+src/renderer/features/local-conversation/message-copy-text.ts
+  s_a0a1735f9b0d2e::t_2d78d59b589025 1-48
+src/shared/codex-conversation-state/codex-conversation-state.ts
+  s_a0a1735f9b0d2e::t_bbf13fdd48cdbd 802-803
+src/renderer/features/local-conversation/view/shared/copy-message-action.test.tsx
+  s_a0a1735f9b0d2e::t_f5055b74063210 2,12-15
+  s_a0a1735f9b0d2e::t_0ac31274ce2f11 1,3-8,10-11,16-25,27-63,65-98,100-131,133-138,140-142
+  s_a0a1735f9b0d2e::t_2754c2e12e79b1 9,26,64,99,132,139
+tests/e2e/codex-hook-presentation.spec.ts
+  s_a0a1735f9b0d2e::t_cc87e041a63dce 99
+  s_a0a1735f9b0d2e::t_f2c3253a1efbec 70-73,76-82,87-94,98,100-102,106
+  s_a0a1735f9b0d2e::t_f15ffbe133bd99 74-75,83-86,95-97,103-105
+src/renderer/components/shared/icons/memory-citation-icon.tsx
+  s_a0a1735f9b0d2e::t_8c6909c5182892 4-34
+  s_a0a1735f9b0d2e::t_34d727ee0141d3 1-3,35
+tests/e2e/fixtures/codex-queue-app-server.mjs
+  s_a0a1735f9b0d2e::t_9579414d3a78d1 263-265
+  s_a0a1735f9b0d2e::t_f2c3253a1efbec 201,276-287
+  s_a0a1735f9b0d2e::t_09f6b8321c7111 244-262,266-275,288,464
+docs/product-specs/codex-thread-transcript-behavior.md
+  s_a0a1735f9b0d2e::t_3bf9eb9498d9a3 392
+  s_a0a1735f9b0d2e::t_8abc127a06c4cc 293
+  s_a0a1735f9b0d2e::t_9aab64610b6d0a 389-391,393-397
+src/renderer/features/local-conversation/projection/build-turn-render-model.ts
+  s_a0a1735f9b0d2e::t_8b71dbceb9e407 51,69,388,436
+  s_a0a1735f9b0d2e::t_8abc127a06c4cc 47,66,385,431,465
+  s_a0a1735f9b0d2e::t_34d727ee0141d3 45-46,64-65,382-384,386-387,429-430,463-464
+  s_a0a1735f9b0d2e::t_8c6909c5182892 471
+src/renderer/components/shared/icons/used-skills-icon.tsx
+  s_a0a1735f9b0d2e::t_55eb7f19c2a279 1-3,5-19,21
+  s_d96453aeece1d5::t_fda463c2cb1539 4,20
+tests/e2e/codex-footer-metadata.spec.ts
+  s_a0a1735f9b0d2e::t_8ff05cf0fa299a 61-62,64
+  s_a0a1735f9b0d2e::t_9579414d3a78d1 38-39,41-60
+  s_a0a1735f9b0d2e::t_247306a276ca01 1-37,40,63,65-71
+src/renderer/features/local-conversation/thread-stage-types.ts
+  s_a0a1735f9b0d2e::t_34d727ee0141d3 495-497
+src/renderer/features/local-conversation/view/shared/hook-stats-indicator.tsx
+  s_a0a1735f9b0d2e::t_bf7d1970d88934 1,32,37,40,65-66,69-70,75-76,84,97-98
+  s_a0a1735f9b0d2e::t_05a21bade8faa4 41-43
+src/renderer/features/local-conversation/view/shared/message-clipboard.jsdom.test.ts
+  s_a0a1735f9b0d2e::t_0830d8fd06b51d 38-43
+  s_a0a1735f9b0d2e::t_3f8c913cec4b2e 1-21,23-24,26-29,31-32,34-35,37,50-66,68
+  s_a0a1735f9b0d2e::t_3bf9eb9498d9a3 22,25,30,33,36,44-49,67
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "999b92a1338601323ae4c12a93cd54e26406c770",
+  "prompts": {},
+  "sessions": {
+    "s_a0a1735f9b0d2e": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a09231-9c45-71f3-8c7e-02fa9292fcc7",
+        "model": "gpt-6-astra"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    },
+    "s_d96453aeece1d5": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a0c829-ea98-7dc1-b2ec-9cf8bfeb9bb2",
+        "model": "gpt-6-astra"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    }
+  }
+}
