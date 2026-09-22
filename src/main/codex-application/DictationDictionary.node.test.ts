@@ -225,6 +225,45 @@ it.effect("rejects stale responses after account drift and escapes delete identi
   }).pipe(Effect.provide(harness.layer));
 });
 
+it.effect("reports an HTTP failure even when the service omits its optional error code", () => {
+  const harness = makeHarness(() => Effect.succeed(new Response("unavailable", { status: 503 })));
+  return Effect.gen(function* () {
+    const dictionary = yield* DictationDictionary;
+    const error = yield* dictionary.add({ operationId, target, text: "Nodex" }).pipe(Effect.flip);
+    assert.equal(error.status, 503);
+    assert.isUndefined(error.errorCode);
+    // oxlint-disable-next-line effecttsgo/strict-effect-provide -- this test owns the complete dictionary application layer.
+  }).pipe(Effect.provide(harness.layer));
+});
+
+it.effect(
+  "rejects duplicate operations and releases their network lease on caller interruption",
+  () =>
+    Effect.gen(function* () {
+      const entered = yield* Deferred.make<void>();
+      const harness = makeHarness(() =>
+        Deferred.succeed(entered, undefined).pipe(Effect.andThen(Effect.never)),
+      );
+      yield* Effect.gen(function* () {
+        const dictionary = yield* DictationDictionary;
+        const request = yield* dictionary
+          .importWords({ operationId, target, words: ["Nodex", "Effect"] })
+          .pipe(Effect.forkChild);
+        yield* Deferred.await(entered);
+        const duplicate = yield* dictionary
+          .add({ operationId, target, text: "other" })
+          .pipe(Effect.flip);
+        assert.equal(duplicate.message, "Voice dictionary request is already running");
+        assert.equal(harness.state.requests.length, 1);
+        yield* Fiber.interrupt(request);
+        assert.isTrue(harness.state.requests[0]!.signal!.aborted);
+        assert.isFalse(yield* dictionary.cancel(operationId));
+        assert.deepStrictEqual(harness.state.local, ["Nodex", "Effect"]);
+        // oxlint-disable-next-line effecttsgo/strict-effect-provide -- this test owns the complete dictionary application layer.
+      }).pipe(Effect.provide(harness.layer));
+    }),
+);
+
 it("validates new words at 100 characters while preserving legacy imported text exactly", () => {
   assert.equal(
     DictationDictionaryAddSchema.parse({ operationId, target, text: ` ${"a".repeat(100)} ` }).text

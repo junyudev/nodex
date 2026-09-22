@@ -1,7 +1,9 @@
 import * as Context from "effect/Context";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
-import * as Ref from "effect/Ref";
+import * as SynchronizedRef from "effect/SynchronizedRef";
+import * as Scope from "effect/Scope";
+import * as Exit from "effect/Exit";
 import * as Schema from "effect/Schema";
 import * as Stream from "effect/Stream";
 import type { ClientRequestResponsesByMethod } from "@nodex/effect-codex-app-server/rpc";
@@ -68,20 +70,23 @@ export const live: Layer.Layer<
     const capabilities = yield* CodexAppServerCapabilities;
     const workspaceRouting = yield* CodexWorkspaceRouting;
     const authState = yield* CodexExecutionHostAuthState;
-    const lease = yield* Ref.make<{
+    const ownerScope = yield* Effect.scope;
+    const lease = yield* SynchronizedRef.make<{
       readonly accountId: string;
       readonly userId: string;
-      readonly controller: AbortController;
+      readonly scope: Scope.Closeable;
+      readonly signal: AbortSignal;
     } | null>(null);
 
     const readAuth = (includeToken: boolean, refreshToken: boolean) =>
       gateway.requestLocal("getAuthStatus", { includeToken, refreshToken });
 
-    const invalidate = Effect.gen(function* () {
-      const previous = yield* Ref.getAndSet(lease, null);
-      previous?.controller.abort(new DOMException("Authenticated workspace changed", "AbortError"));
-    });
-    yield* Effect.addFinalizer(() => invalidate);
+    const invalidate = SynchronizedRef.updateEffect(lease, (previous) =>
+      Effect.gen(function* () {
+        if (previous) yield* Scope.close(previous.scope, Exit.void);
+        return null;
+      }),
+    );
     yield* gateway.events.pipe(
       Stream.runForEach((event) =>
         Effect.gen(function* () {
@@ -92,7 +97,7 @@ export const live: Layer.Layer<
           }
           if (event.hostId !== gateway.localHostId || event.value.method !== "account/updated")
             return;
-          const previous = yield* Ref.get(lease);
+          const previous = yield* SynchronizedRef.get(lease);
           if (!previous) return;
           const status = yield* readAuth(true, false).pipe(Effect.orElseSucceed(() => null));
           const identity = status?.authToken
@@ -118,13 +123,19 @@ export const live: Layer.Layer<
       ) {
         return yield* new ChatGptBackendAuthError({ message: "Authenticated workspace changed" });
       }
-      const current = yield* Ref.get(lease);
-      if (current?.accountId === auth.identity.accountId && current.userId === auth.identity.userId)
-        return current.controller.signal;
-      yield* invalidate;
-      const controller = new AbortController();
-      yield* Ref.set(lease, { ...auth.identity, controller });
-      return controller.signal;
+      return yield* SynchronizedRef.modifyEffect(lease, (current) =>
+        Effect.gen(function* () {
+          if (
+            current?.accountId === auth.identity.accountId &&
+            current.userId === auth.identity.userId
+          )
+            return [current.signal, current] as const;
+          if (current) yield* Scope.close(current.scope, Exit.void);
+          const scope = yield* Scope.fork(ownerScope);
+          const signal = yield* Effect.abortSignal.pipe(Scope.provide(scope));
+          return [signal, { ...auth.identity, scope, signal }] as const;
+        }),
+      );
     });
 
     const readBackendAuth = Effect.fn("ChatGptDesktop.readBackendAuth")(function* (

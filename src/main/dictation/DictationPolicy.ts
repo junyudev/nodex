@@ -60,7 +60,8 @@ export const makeDictationPolicy = Effect.gen(function* () {
   const generation = yield* Ref.make(0);
   const inFlight = yield* Ref.make<Refresh | null>(null);
   const active = yield* Ref.make<Scope.Closeable | null>(null);
-  const mutationRefreshes = yield* Queue.unbounded<void>();
+  // Wakeups carry no history: one pending refresh rereads the latest account state.
+  const mutationRefreshes = yield* Queue.sliding<void>(1);
   const closeActive = Effect.gen(function* () {
     const previous = yield* Ref.getAndSet(active, null);
     if (previous) yield* Scope.close(previous, Exit.void);

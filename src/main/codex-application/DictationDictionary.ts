@@ -1,5 +1,7 @@
 import * as Context from "effect/Context";
 import * as Effect from "effect/Effect";
+import * as Fiber from "effect/Fiber";
+import * as FiberMap from "effect/FiberMap";
 import * as Layer from "effect/Layer";
 import * as Schema from "effect/Schema";
 import type { ConfigReadResponse } from "@nodex/codex-app-server-protocol/v2/ConfigReadResponse";
@@ -23,8 +25,8 @@ export class DictationDictionaryError extends Schema.TaggedError<DictationDictio
   "DictationDictionaryError",
   {
     message: Schema.String,
-    status: Schema.optionalKey(Schema.Number),
-    errorCode: Schema.optionalKey(Schema.String),
+    status: Schema.optional(Schema.Number),
+    errorCode: Schema.optional(Schema.String),
   },
 ) {}
 
@@ -88,13 +90,7 @@ export const live: Layer.Layer<
     const gateway = yield* CodexGateway;
     const dictation = yield* DictationRuntime;
     const media = yield* CodexMedia;
-    const operations = new Map<string, AbortController>();
-    yield* Effect.addFinalizer(() =>
-      Effect.sync(() => {
-        for (const controller of operations.values()) controller.abort();
-        operations.clear();
-      }),
-    );
+    const operations = yield* FiberMap.make<string, unknown, DictationDictionaryError>();
 
     const readTarget = Effect.fn("DictationDictionary.readTarget")(function* () {
       const policy = yield* media.dictationPolicySnapshot;
@@ -129,20 +125,20 @@ export const live: Layer.Layer<
       operationId: string,
       use: (signal: AbortSignal) => Effect.Effect<A, DictationDictionaryError>,
     ) =>
-      Effect.suspend(() => {
-        if (operations.has(operationId))
-          return Effect.fail(failure("Voice dictionary request is already running"));
-        const controller = new AbortController();
-        operations.set(operationId, controller);
-        return use(controller.signal).pipe(
-          Effect.ensuring(
-            Effect.sync(() => {
-              controller.abort();
-              operations.delete(operationId);
-            }),
-          ),
-        );
-      });
+      Effect.uninterruptibleMask((restore) =>
+        Effect.gen(function* () {
+          if (yield* FiberMap.has(operations, operationId))
+            return yield* failure("Voice dictionary request is already running");
+          // Register before request callbacks can synchronously cancel or reuse the ID.
+          const fiber = yield* Effect.forkChild(
+            Effect.scoped(Effect.flatMap(Effect.abortSignal, use)),
+            { startImmediately: false },
+          );
+          yield* FiberMap.set(operations, operationId, fiber);
+          // Both the requesting caller and the dictionary Scope own this operation.
+          return yield* restore(Fiber.join(fiber)).pipe(Effect.ensuring(Fiber.interrupt(fiber)));
+        }),
+      );
 
     const request = Effect.fn("DictationDictionary.request")(function* (
       target: DictationDictionaryTarget,
@@ -261,11 +257,10 @@ export const live: Layer.Layer<
           }),
         ),
       cancel: (operationId) =>
-        Effect.sync(() => {
-          const controller = operations.get(operationId);
-          if (!controller) return false;
-          controller.abort();
-          return true;
+        Effect.gen(function* () {
+          const active = yield* FiberMap.has(operations, operationId);
+          yield* FiberMap.remove(operations, operationId);
+          return active;
         }),
     });
   }),
