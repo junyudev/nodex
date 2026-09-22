@@ -11,12 +11,8 @@ const rootAutoCompleteMs = Number.parseInt(
   process.env.NODEX_FAKE_SUBAGENT_AUTO_COMPLETE_ROOT_MS ?? "",
   10,
 );
-const collabItemDelayMs = Number.parseInt(
-  process.env.NODEX_FAKE_SUBAGENT_COLLAB_ITEM_DELAY_MS ?? "",
-  10,
-);
-const receiverReadDelayMs = Number.parseInt(
-  process.env.NODEX_FAKE_SUBAGENT_RECEIVER_READ_DELAY_MS ?? "",
+const discoveryListDelayMs = Number.parseInt(
+  process.env.NODEX_FAKE_SUBAGENT_DISCOVERY_LIST_DELAY_MS ?? "",
   10,
 );
 const reconnectReadDelayMs = Number.parseInt(
@@ -47,7 +43,6 @@ const nowSeconds = () => Math.floor(Date.now() / 1_000);
 const rootThreadId = scenarioThreadId("000000000101");
 const fallbackInterruptThreadId = scenarioThreadId("000000000201");
 const selectedThreadId = scenarioThreadId("000000000202");
-const relationshipReceiverThreadId = scenarioThreadId("000000000299");
 
 const activeDefinitions = [
   {
@@ -78,7 +73,9 @@ const activeDefinitions = [
     id: scenarioThreadId("000000000204"),
     name: "Reconnect scout",
     preview: "Retain unknown state across residency changes",
-    status: { type: "notLoaded" },
+    status: process.env.NODEX_FAKE_SUBAGENT_SCOUT_ACTIVE === "1"
+      ? { type: "active", activeFlags: [] }
+      : { type: "notLoaded" },
     parentThreadId: rootThreadId,
     depth: 1,
   },
@@ -103,14 +100,6 @@ const doneDefinitions = Array.from({ length: Math.max(0, doneCount) }, (_, index
 
 const definitions = [...activeDefinitions, ...doneDefinitions];
 const topologyRecoveredDefinition = topologyRecoveryEnabled ? (doneDefinitions.at(-1) ?? null) : null;
-const relationshipReceiverDefinition = {
-  id: relationshipReceiverThreadId,
-  name: "Delayed relationship receiver",
-  preview: "Hydrate relationship metadata outside the notification lane",
-  status: { type: "notLoaded" },
-  parentThreadId: rootThreadId,
-  depth: 1,
-};
 const discoveryDefinitions = [
   activeDefinitions[4],
   ...activeDefinitions.slice(0, 4),
@@ -304,12 +293,21 @@ const childTurnStatus = (definition) => {
   return definition.status.type === "active" ? "inProgress" : "completed";
 };
 
+const childTurn = (definition, itemsView = "full") => ({
+  ...emptyTurn(`turn-${definition.id}`, childTurnStatus(definition), itemsView),
+  items: definition.id === selectedThreadId && itemsView !== "notLoaded" ? [{
+    type: "agentMessage", id: "selected-child-progress",
+    text: "Checking the selected child history.", phase: "commentary", memoryCitation: null,
+    delivery: null, questions: null,
+  }] : [],
+});
+
 const childThread = (definition, includeTurns = false) => {
   const status = childStatus(definition);
   const agentRole = status.type === "idle" ? "reviewer" : "explorer";
   return {
-    model: null,
-    reasoningEffort: null,
+    model: "gpt-5.5",
+    reasoningEffort: "high",
     id: definition.id,
     extra: null,
     sessionId: "subagent-parity-session",
@@ -347,7 +345,7 @@ const childThread = (definition, includeTurns = false) => {
     gitInfo: null,
     name: definition.name,
     turns: includeTurns
-      ? [emptyTurn(`turn-${definition.id}`, childTurnStatus(definition))]
+      ? [childTurn(definition)]
       : [],
   };
 };
@@ -440,6 +438,21 @@ const notifyBootstrapSubagent = () => {
   setTimeout(() => notify("thread/started", { thread: childThread(parent) }), 25);
 };
 
+const notifyModernActivity = () => {
+  if (process.env.NODEX_FAKE_SUBAGENT_ACTIVITY !== "1") return;
+  for (const [index, definition] of activeDefinitions.slice(0, 4).entries()) {
+    notify("item/started", {
+      threadId: rootThreadId,
+      turnId: "turn-subagent-root",
+      startedAtMs: Date.now(),
+      item: {
+        type: "subAgentActivity", id: `activity-${index}`, kind: "started",
+        agentThreadId: definition.id, agentPath: `agents/${definition.name}`,
+      },
+    });
+  }
+};
+
 const completeRootNormally = () => {
   state = readState();
   if (!state.rootTurnStarted) return;
@@ -451,30 +464,6 @@ const completeRootNormally = () => {
     turn: emptyTurn("turn-subagent-root", "completed"),
   });
   notify("thread/status/changed", { threadId: rootThreadId, status: { type: "idle" } });
-};
-
-const notifyNoOwnerCollabItem = () => {
-  state = readState();
-  if (!state.rootTurnStarted) return;
-  state.collabItemNotificationAtMs = Date.now();
-  persist();
-  notify("item/started", {
-    threadId: rootThreadId,
-    turnId: "turn-subagent-root",
-    startedAtMs: Date.now(),
-    item: {
-      type: "collabAgentToolCall",
-      id: "collab-delayed-relationship-repair",
-      tool: "spawnAgent",
-      status: "inProgress",
-      senderThreadId: rootThreadId,
-      receiverThreadIds: [relationshipReceiverThreadId],
-      prompt: "Repair metadata without blocking later notifications",
-      model: null,
-      reasoningEffort: null,
-      agentsStates: {},
-    },
-  });
 };
 
 const notifyTopologyMissedEdge = () => {
@@ -618,17 +607,46 @@ const handle = (message) => {
       respond(id, { data: [], nextCursor: null });
       return;
     case "thread/list": {
-      if (params.ancestorThreadId === rootThreadId) {
+      if (typeof params.ancestorThreadId === "string") {
+        const isDescendant = (definition) => {
+          let parentThreadId = definition.parentThreadId;
+          const seen = new Set();
+          while (parentThreadId && !seen.has(parentThreadId)) {
+            if (parentThreadId === params.ancestorThreadId) return true;
+            seen.add(parentThreadId);
+            parentThreadId = definitionById(parentThreadId)?.parentThreadId;
+          }
+          return false;
+        };
         const visibleDefinitions = discoveryDefinitions.filter(
-          (definition) => definitionById(definition.id) !== null,
+          (definition) => definitionById(definition.id) !== null && isDescendant(definition),
         );
-        state.lastDiscoveryThreadIds = visibleDefinitions.map((definition) => definition.id);
-        persist();
-        respond(id, {
+        if (params.ancestorThreadId === rootThreadId) {
+          state.lastDiscoveryThreadIds = visibleDefinitions.map((definition) => definition.id);
+          persist();
+        }
+        const respondWithDescendants = () => respond(id, {
           data: visibleDefinitions.map((definition) => childThread(definition)),
           nextCursor: null,
           backwardsCursor: null,
         });
+        if (
+          params.ancestorThreadId === rootThreadId &&
+          Number.isFinite(discoveryListDelayMs) &&
+          discoveryListDelayMs >= 0
+        ) {
+          state.discoveryListStartedAtMs = Date.now();
+          state.discoveryListRespondedAtMs = null;
+          persist();
+          setTimeout(() => {
+            state = readState();
+            state.discoveryListRespondedAtMs = Date.now();
+            persist();
+            respondWithDescendants();
+          }, discoveryListDelayMs);
+          return;
+        }
+        respondWithDescendants();
         return;
       }
       respond(id, {
@@ -699,16 +717,18 @@ const handle = (message) => {
           definition?.id === fallbackInterruptThreadId && itemsView === "full"
             ? [topologyTurn()]
             : definition
-              ? [emptyTurn(`turn-${definition.id}`, childTurnStatus(definition), itemsView)]
+              ? [childTurn(definition, itemsView)]
               : [],
         nextCursor: null,
         backwardsCursor: null,
       });
       return;
     }
-    case "thread/items/list":
-      respond(id, { data: [], nextCursor: null, backwardsCursor: null });
+    case "thread/items/list": {
+      const definition = definitionById(params.threadId);
+      respond(id, { data: definition ? childTurn(definition).items.map((item) => ({ turnId: params.turnId, item })) : [], nextCursor: null, backwardsCursor: null });
       return;
+    }
     case "thread/read": {
       if (
         params.threadId === selectedThreadId &&
@@ -730,22 +750,6 @@ const handle = (message) => {
               : rootThread(params.includeTurns === true),
           });
         }, reconnectReadDelayMs);
-        return;
-      }
-      if (
-        params.threadId === relationshipReceiverThreadId &&
-        Number.isFinite(receiverReadDelayMs) &&
-        receiverReadDelayMs >= 0
-      ) {
-        state.receiverReadStartedAtMs = Date.now();
-        state.receiverReadRespondedAtMs = null;
-        persist();
-        setTimeout(() => {
-          state = readState();
-          state.receiverReadRespondedAtMs = Date.now();
-          persist();
-          respond(id, { thread: childThread(relationshipReceiverDefinition) });
-        }, receiverReadDelayMs);
         return;
       }
       const definition = definitionById(params.threadId);
@@ -804,13 +808,11 @@ const handle = (message) => {
           status: { type: "active", activeFlags: [] },
         });
         notifyBootstrapSubagent();
+        setTimeout(notifyModernActivity, 75);
         setTimeout(notifyTopologyMissedEdge, 75);
       }, 0);
       if (Number.isFinite(rootAutoCompleteMs) && rootAutoCompleteMs >= 0) {
         setTimeout(completeRootNormally, rootAutoCompleteMs);
-      }
-      if (Number.isFinite(collabItemDelayMs) && collabItemDelayMs >= 0) {
-        setTimeout(notifyNoOwnerCollabItem, collabItemDelayMs);
       }
       return;
     }

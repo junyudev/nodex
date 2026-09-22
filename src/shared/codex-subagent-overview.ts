@@ -7,7 +7,6 @@ import type {
 export const CODEX_SUBAGENT_OVERVIEW_INITIAL_ACTIVE_LIMIT = 4;
 export const CODEX_SUBAGENT_OVERVIEW_INITIAL_DONE_LIMIT = 10;
 export const CODEX_SUBAGENT_DISCOVERY_PAGE_LIMIT = 200;
-export const CODEX_SUBAGENT_LIFECYCLE_BATCH_LIMIT = 100;
 
 export type CodexSubagentEvidenceKind =
   | "metadata"

@@ -45,6 +45,7 @@ export const extractCodexConversationRelationshipThreadIds = (
   for (const turn of conversationTurnsWithOverlay(state)) {
     for (const item of turn.items) {
       if (item.type === "subAgentActivity") {
+        if (item.kind === "interacted") continue;
         const threadId = item.agentThreadId.trim();
         if (threadId && threadId !== state.id) ids.add(threadId);
         continue;
@@ -188,32 +189,50 @@ export const projectCodexConversationRelationships = (input: {
   );
   const parentTurns = conversationTurnsWithOverlay(input.parent);
   const hasInlineSubagentActivity = parentTurns.some((turn) =>
-    turn.items.some((item) => item.type === "subAgentActivity"),
+    turn.items.some((item) => item.type === "subAgentActivity" && item.kind !== "interacted"),
   );
   const hasInlineReference = (threadId: string): boolean =>
     parentTurns.some((turn) =>
       turn.items.some(
-        (item) => item.type === "subAgentActivity" && item.agentThreadId === threadId,
+        (item) =>
+          item.type === "subAgentActivity" &&
+          item.kind !== "interacted" &&
+          item.agentThreadId === threadId,
       ),
     );
-  const children = [...input.children]
-    .filter((child) => child.thread.parentThreadId === input.parent.id && !child.thread.archived)
-    .sort((left, right) => {
-      const leftOrder = canonicalOrder.get(left.thread.threadId);
-      const rightOrder = canonicalOrder.get(right.thread.threadId);
-      if (leftOrder !== undefined || rightOrder !== undefined) {
-        if (leftOrder === undefined) return 1;
-        if (rightOrder === undefined) return -1;
-        if (leftOrder !== rightOrder) return leftOrder - rightOrder;
-      }
-      return (
-        left.thread.createdAt - right.thread.createdAt ||
-        left.thread.threadId.localeCompare(right.thread.threadId)
-      );
-    });
+  const childById = new Map(input.children.map((child) => [child.thread.threadId, child]));
+  const belongsToParent = (child: CodexConversationRelationshipChild): boolean => {
+    const visited = new Set<string>();
+    let current: CodexConversationRelationshipChild | undefined = child;
+    while (current && !current.thread.archived && !visited.has(current.thread.threadId)) {
+      visited.add(current.thread.threadId);
+      const parentId: string | null = current.thread.parentThreadId;
+      if (parentId === input.parent.id) return true;
+      current = parentId ? childById.get(parentId) : undefined;
+    }
+    return false;
+  };
+  const children = [...input.children].filter(belongsToParent).sort((left, right) => {
+    const leftOrder = canonicalOrder.get(left.thread.threadId);
+    const rightOrder = canonicalOrder.get(right.thread.threadId);
+    if (leftOrder !== undefined || rightOrder !== undefined) {
+      if (leftOrder === undefined) return 1;
+      if (rightOrder === undefined) return -1;
+      if (leftOrder !== rightOrder) return leftOrder - rightOrder;
+    }
+    return (
+      left.thread.createdAt - right.thread.createdAt ||
+      left.thread.threadId.localeCompare(right.thread.threadId)
+    );
+  });
 
   return children.map((child): CodexConversationChildMembership => {
     const requestContext = backgroundRequestContext(child);
+    const request = selectPrimaryBackgroundConversationRequest(requestContext);
+    const requestItem =
+      requestContext?.turns
+        .find((turn) => turn.turnId === request?.turnId)
+        ?.items.find((item) => item.itemId === request?.itemId) ?? null;
     const resolved = {
       ...child,
       thread: projectCodexConversationRelationshipThread(child),
@@ -225,10 +244,9 @@ export const projectCodexConversationRelationships = (input: {
     const agentPath = nonBlank(resolved.thread.agentPath);
     return {
       threadId,
-      parentThreadId: input.parent.id,
-      role: selectPrimaryBackgroundConversationRequest(requestContext)
-        ? "childApproval"
-        : "backgroundChild",
+      parentThreadId: resolved.thread.parentThreadId ?? input.parent.id,
+      role: request ? "childApproval" : "backgroundChild",
+      pendingRequest: request ? { request, requestItem } : null,
       actorName: actorName(resolved),
       agentRole,
       agentPath,

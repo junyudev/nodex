@@ -15,6 +15,7 @@ import type {
 import type {
   ThreadComposerShellModel,
   ThreadComposerShellPendingRequestModel,
+  ThreadComposerShellBackgroundAgentRowModel,
 } from "../thread-stage-types";
 import {
   buildComposerPendingSteerRows,
@@ -36,6 +37,8 @@ interface ExplicitBuildComposerShellModelInput {
   queuedFollowUpProjection?: CodexQueuedFollowUpProjection;
   backgroundTerminalRows: CodexBackgroundTerminalRow[];
   childMemberships: CodexConversationChildMembership[];
+  /** Complete ordered descendants from the scoped Subagent Directory, when available. */
+  backgroundAgentRows?: readonly ThreadComposerShellBackgroundAgentRowModel[];
   statusType: CodexThreadStatusType | null;
   statusActiveFlags: CodexThreadActiveFlag[];
   knownConversationsById: Record<string, CodexConversationSnapshot>;
@@ -45,6 +48,7 @@ interface ExplicitBuildComposerShellModelInput {
 interface LegacyBuildComposerShellModelInput {
   conversation: CodexConversationSnapshot;
   childMemberships?: CodexConversationChildMembership[];
+  backgroundAgentRows?: readonly ThreadComposerShellBackgroundAgentRowModel[];
   knownConversationsById: Record<string, CodexConversationSnapshot>;
   primaryRequest?: CodexConversationLiveRequest | null;
 }
@@ -67,6 +71,7 @@ function normalizeBuildComposerShellModelInput(
       queuedFollowUpProjection: input.conversation.queuedFollowUps,
       backgroundTerminalRows: input.conversation.backgroundTerminalRows,
       childMemberships: input.childMemberships ?? [],
+      backgroundAgentRows: input.backgroundAgentRows,
       statusType: input.conversation.statusType,
       statusActiveFlags: input.conversation.statusActiveFlags,
       knownConversationsById: input.knownConversationsById,
@@ -88,22 +93,37 @@ function resolveRequestItem(
 }
 
 function resolveBackgroundRequest(
-  input: Pick<ExplicitBuildComposerShellModelInput, "childMemberships">,
+  rows: readonly ThreadComposerShellBackgroundAgentRowModel[],
+  childMemberships: readonly CodexConversationChildMembership[],
   knownConversationsById: Record<string, CodexConversationSnapshot>,
 ): ThreadComposerShellPendingRequestModel | null {
-  for (const membership of input.childMemberships) {
-    const childConversation = knownConversationsById[membership.threadId];
-    const request = selectPrimaryBackgroundConversationRequest(childConversation ?? null);
+  const membershipsById = new Map(
+    childMemberships.map((membership) => [membership.threadId, membership]),
+  );
+  // Directory order decides precedence; snapshot residency must not reorder agents.
+  for (const row of rows) {
+    const childConversation = knownConversationsById[row.conversationId];
+    const pending = membershipsById.get(row.conversationId)?.pendingRequest;
+    const request =
+      pending !== undefined
+        ? (pending?.request ?? null)
+        : selectPrimaryBackgroundConversationRequest(childConversation ?? null);
     if (!request) {
       continue;
     }
 
     return {
       request,
-      conversationId: membership.threadId,
+      conversationId: row.conversationId,
       surface: "backgroundThread",
-      actorName: membership.actorName ?? null,
-      requestItem: resolveRequestItem(childConversation?.turns ?? [], request),
+      actorName:
+        row.displayName.trim() && row.displayName !== row.conversationId
+          ? row.displayName
+          : "Agent",
+      requestItem:
+        pending !== undefined
+          ? (pending?.requestItem ?? null)
+          : resolveRequestItem(childConversation?.turns ?? [], request),
     };
   }
 
@@ -147,7 +167,18 @@ export function buildComposerShellModel(
       canonicalRequests: normalized.canonicalRequests,
       requests: normalized.requests,
     });
-  const backgroundRequest = resolveBackgroundRequest(normalized, normalized.knownConversationsById);
+  const backgroundAgentRows =
+    normalized.backgroundAgentRows ??
+    buildBackgroundSubagentRows({
+      childMemberships: normalized.childMemberships,
+      knownConversationsById: normalized.knownConversationsById,
+      parentTurns: normalized.turns,
+    });
+  const backgroundRequest = resolveBackgroundRequest(
+    backgroundAgentRows,
+    normalized.childMemberships,
+    normalized.knownConversationsById,
+  );
 
   const showRequestCards = activeRequest !== null || backgroundRequest !== null;
   const showApprovalMode =
@@ -173,11 +204,7 @@ export function buildComposerShellModel(
     hasInterruptedQueuedFollowUps: queuedFollowUpProjection.entries.some(
       (entry) => entry.pause?.kind === "interrupted",
     ),
-    backgroundAgentRows: buildBackgroundSubagentRows({
-      childMemberships: normalized.childMemberships,
-      knownConversationsById: normalized.knownConversationsById,
-      parentTurns: normalized.turns,
-    }),
+    backgroundAgentRows: [...backgroundAgentRows],
     backgroundTerminalRows: normalized.backgroundTerminalRows,
     showRequestCards,
     showComposer: !showRequestCards,

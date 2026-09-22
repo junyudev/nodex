@@ -94,23 +94,24 @@ const build = (endpoint: string) =>
     };
   });
 
-it.effect("replicates an ordinary Main owner's canonical document into another manager", () =>
+it.effect("shares resident history without native resume and respects an existing peer owner", () =>
   Effect.gen(function* () {
     const endpoint = yield* network;
     const first = yield* build(endpoint);
     const second = yield* build(endpoint);
     const owner = yield* first.managers.get("local");
     const follower = yield* second.managers.get("local");
-    owner.stream.setRole("thread", { role: "owner" });
     first.entities.entity("thread").acceptCanonicalState(conversationFixture("thread"));
+    yield* first.managers.shareResident("local", "thread");
     const ownerId = yield* Effect.tryPromise(() => follower.findOwner("thread"));
     if (!ownerId) throw new Error("Owner missing");
-    follower.stream.setRole("thread", { role: "follower", ownerClientId: ownerId });
-    follower.stream.setFollowing("thread", true);
+    second.entities.entity("thread").acceptCanonicalState(conversationFixture("thread"));
+    yield* second.managers.shareResident("local", "thread");
     yield* Effect.tryPromise(() => follower.stream.waitForRevision("thread", ownerId, 1, 1000));
     assert.strictEqual(second.entities.current("thread")?.readCanonicalState()?.id, "thread");
     assert.strictEqual(follower.stream.getRole("thread")?.role, "follower");
     assert.strictEqual(owner.stream.getRevision("thread"), 1);
+    assert.strictEqual(owner.stream.getRole("thread")?.role, "owner");
   }).pipe(Effect.scoped, Effect.provide(callbackLayer)),
 );
 

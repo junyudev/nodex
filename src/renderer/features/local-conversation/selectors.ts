@@ -1,3 +1,4 @@
+import { selectOwnConversationTurns } from "../../../shared/codex-inherited-history";
 import type { CodexConversationRequestContext } from "../../../shared/codex-conversation-request-context";
 import type {
   CodexConversationResumeState,
@@ -70,6 +71,7 @@ export interface VisibleConversationTurnRenderRevision {
   readonly startedAt: number | null | undefined;
   readonly completedAt: number | null | undefined;
   readonly durationMs: number | null | undefined;
+  readonly assistantMessageStartedAtMsById: CodexConversationTurn["assistantMessageStartedAtMsById"];
   readonly commandExecutionStartedAtMsById: CodexConversationTurn["commandExecutionStartedAtMsById"];
   readonly interruptedCommandExecutionItemIds: CodexConversationTurn["interruptedCommandExecutionItemIds"];
   readonly hookRuns: CodexConversationTurn["hookRuns"];
@@ -123,6 +125,7 @@ export function buildVisibleConversationTurnRenderRevision(
     startedAt: turn.startedAt,
     completedAt: turn.completedAt,
     durationMs: turn.durationMs,
+    assistantMessageStartedAtMsById: turn.assistantMessageStartedAtMsById,
     commandExecutionStartedAtMsById: turn.commandExecutionStartedAtMsById,
     interruptedCommandExecutionItemIds: turn.interruptedCommandExecutionItemIds,
     hookRuns: turn.hookRuns,
@@ -158,6 +161,7 @@ export function areVisibleConversationTurnRenderRevisionsEqual(
     left.startedAt !== right.startedAt ||
     left.completedAt !== right.completedAt ||
     left.durationMs !== right.durationMs ||
+    left.assistantMessageStartedAtMsById !== right.assistantMessageStartedAtMsById ||
     left.commandExecutionStartedAtMsById !== right.commandExecutionStartedAtMsById ||
     left.interruptedCommandExecutionItemIds !== right.interruptedCommandExecutionItemIds ||
     left.hookRuns !== right.hookRuns ||
@@ -290,33 +294,6 @@ function createVisibleConversationTurnEntry(input: {
   return entry;
 }
 
-function selectMergedVisibleTurnIds(input: {
-  turns: readonly CodexConversationTurn[];
-  parentTurns: readonly CodexConversationTurn[];
-  resumeState: CodexConversationResumeState;
-}): ReadonlySet<string> | null {
-  if (input.resumeState !== "resumed" || input.parentTurns.length === 0) {
-    return null;
-  }
-
-  const parentTurnIds = new Set<string>();
-  for (const turn of input.parentTurns) {
-    if (turn.turnId !== null) parentTurnIds.add(turn.turnId);
-  }
-
-  if (parentTurnIds.size === 0) {
-    return null;
-  }
-
-  const visibleTurnIds = new Set<string>();
-  for (const turn of input.turns) {
-    if (turn.turnId !== null && !parentTurnIds.has(turn.turnId)) {
-      visibleTurnIds.add(turn.turnId);
-    }
-  }
-  return visibleTurnIds;
-}
-
 export function selectVisibleConversationTurns(
   conversation: CodexConversationSnapshot | null,
 ): CodexConversationTurn[] {
@@ -362,18 +339,14 @@ export function selectVisibleConversationTurnEntries(input: {
   }
 
   const latestTurnIndex = turns.length - 1;
-  const mergedVisibleTurnIds = selectMergedVisibleTurnIds({
-    turns,
-    parentTurns,
-    resumeState: conversation.resumeState,
-  });
+  const ownTurns = new Set(selectOwnConversationTurns(turns, parentTurns));
   const entries = turns.flatMap((turn, index) => {
     const requests = requestsByTurn[index] ?? [];
     if (!isRenderableConversationTurn(turn, requests)) {
       return [];
     }
 
-    if (mergedVisibleTurnIds && turn.turnId !== null && !mergedVisibleTurnIds.has(turn.turnId)) {
+    if (!ownTurns.has(turn)) {
       return [];
     }
 

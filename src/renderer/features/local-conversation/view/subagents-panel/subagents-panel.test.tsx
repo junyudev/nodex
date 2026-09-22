@@ -45,6 +45,8 @@ function buildRow(
     startedAtMs: status === "done" ? null : 1_000,
     lastActivityAtMs: status === "done" ? 2_000 : 1_000,
     completedAtMs: status === "done" ? 2_000 : null,
+    lastAssistantMessageAtMs: status === "done" ? 2_000 : null,
+    recencyAtMs: 1_000,
     diffStats: null,
     canOpen: true,
     canInteract: true,
@@ -267,28 +269,63 @@ describe("SubagentsPanelOverviewContent", () => {
     expect(onToggleExpanded).toHaveBeenCalledWith("active", false);
   });
 
-  test("keeps unknown unresolved without claiming that it is working or running its clock", () => {
+  test("uses a working preview and elapsed clock for a waiting row without a summary", () => {
     vi.useFakeTimers();
     vi.setSystemTime(10_000);
-    const waiting = buildRow(1, "waiting");
-    const unknown = buildRow(2, "unknown");
+    const waiting = { ...buildRow(2, "waiting"), statusSummary: null };
     const view = render(
       <SubagentsPanelOverviewContent
         rootThreadId="root"
-        overview={buildOverview({ active: [waiting, unknown], done: [] })}
+        overview={buildOverview({ active: [waiting], done: [] })}
         onSelect={() => undefined}
       />,
     );
 
     try {
-      expect(screen.getByText("Active · 2")).toBeTruthy();
+      expect(screen.getByText("Active · 1")).toBeTruthy();
       expect(screen.getByText("1 waiting")).toBeTruthy();
       expect(screen.getByText("Waiting")).toBeTruthy();
-      const unknownRow = screen.getByRole("button", { name: "Open subagent unknown 2" });
-      expect(unknownRow.textContent).toContain("Status unavailable");
-      expect(unknownRow.textContent).not.toContain("Working");
-      expect(unknownRow.textContent).not.toContain("9s");
+      const waitingRow = screen.getByRole("button", { name: "Open subagent waiting 2" });
+      expect(waitingRow.textContent).toContain("Waiting");
+      expect(waitingRow.textContent).toContain("Working");
+      expect(waitingRow.textContent).toContain("9s");
       expect(screen.queryByText(/Done ·/u)).toBeNull();
+    } finally {
+      view.unmount();
+      vi.useRealTimers();
+    }
+  });
+
+  test("dates completed rows from the last assistant message, then activity recency", () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(300_000);
+    const done = {
+      ...buildRow(1, "done"),
+      completedAtMs: 60_000,
+      lastActivityAtMs: 90_000,
+      lastAssistantMessageAtMs: 240_000,
+      recencyAtMs: 180_000,
+    };
+    const view = render(
+      <SubagentsPanelOverviewContent
+        rootThreadId="root"
+        overview={buildOverview({ active: [], done: [done] })}
+        onSelect={() => undefined}
+      />,
+    );
+    try {
+      expect(view.container.querySelector("time")?.dateTime).toBe(new Date(240_000).toISOString());
+      view.rerender(
+        <SubagentsPanelOverviewContent
+          rootThreadId="root"
+          overview={buildOverview({
+            active: [],
+            done: [{ ...done, lastAssistantMessageAtMs: null }],
+          })}
+          onSelect={() => undefined}
+        />,
+      );
+      expect(view.container.querySelector("time")?.dateTime).toBe(new Date(180_000).toISOString());
     } finally {
       view.unmount();
       vi.useRealTimers();

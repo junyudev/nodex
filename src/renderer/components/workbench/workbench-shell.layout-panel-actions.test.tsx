@@ -2781,7 +2781,51 @@ describe("workbench session shell / layout-panel-actions", () => {
     ).toBe("number");
   });
 
-  test("routes every subagent surface through one bounded Subagents detail tab", async () => {
+  test("opens interactive children in separate hydrated tabs", async () => {
+    const screen = renderWorkbench({
+      sessionsByProject: { alpha: [makeAttachedSession({ rightCollapsed: true })] },
+    });
+    await settleAsyncRender();
+    await settleAsyncRender();
+    setHydrateSelectedSubagentImpl(async (input) => ({
+      ...input,
+      revision: 1,
+      fidelity: "attachedSparse",
+      checkpoint: null,
+      canInteract: true,
+      outcome: "ready",
+      errorMessage: null,
+    }));
+    const openThread = getLastThreadStageActions()
+      .onOpenThread as import("@/features/local-conversation/thread-stage-types").ThreadStageActions["onOpenThread"];
+    expect(openThread).toBeDefined();
+    for (const id of ["interactive-a", "interactive-b"]) {
+      await act(async () => {
+        await openThread?.(id, {
+          subagent: {
+            conversationId: id,
+            displayName: id,
+            agentRole: null,
+            spawnModel: null,
+            status: "active",
+            statusSummary: null,
+            diffStats: null,
+            canInteract: true,
+          },
+        });
+        await settleAsyncRender();
+      });
+    }
+    expect(getPanelTabById(screen.container, "background-agent:interactive-a")).toBeDefined();
+    expect(
+      getPanelTabById(screen.container, "background-agent:interactive-b").getAttribute(
+        "aria-selected",
+      ),
+    ).toBe("true");
+    expect(screen.container.querySelector("[data-subagents-side-panel-tab]")).toBeNull();
+  });
+
+  test("routes read-only subagent selection through the root overview tab", async () => {
     sideChatConversations["thread-child"] = {
       threadId: "thread-child",
       projectId: "alpha",

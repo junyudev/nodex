@@ -369,7 +369,6 @@ export const make: Effect.Effect<
 
   const apply = Effect.fn("CodexProtocolNotificationEffects.apply")(function* (
     input: CodexProtocolNotificationInput,
-    deferRootLifecycleNotification: boolean,
   ) {
     // Direct callers must retain the same no-history invariant as the ingress lane.
     const notification = toCodexThreadStartedMetadataNotification(input.notification);
@@ -592,16 +591,6 @@ export const make: Effect.Effect<
         });
         return;
       }
-      if (deferRootLifecycleNotification) {
-        yield* subagents.observeNotification({
-          hostId: input.hostId,
-          generation: input.generation,
-          notification,
-          occurrenceToken: input.occurrenceToken,
-          observedAtMs,
-        });
-        return;
-      }
       const reason = new Error(
         `Codex Thread '${threadId}' was ${notification.method.slice("thread/".length)}`,
       );
@@ -624,28 +613,12 @@ export const make: Effect.Effect<
         if (input.notification.method === "thread/started") {
           conversations.registerThreadMetadata(input.notification.params.thread);
         }
-        const method = input.notification.method;
-        const threadId = codexProtocolNotificationThreadId(input.notification);
-        const deferRootLifecycleNotification =
-          threadId !== null && (method === "thread/archived" || method === "thread/deleted")
-            ? yield* subagents.shouldDeferLifecycleNotification(threadId, method).pipe(
-                Effect.mapError(
-                  (cause) =>
-                    new CodexNotificationConsequenceError({
-                      method,
-                      threadId,
-                      cause: Cause.fail(cause),
-                    }),
-                ),
-              )
-            : false;
         const disposition: CodexConversationDisposition =
-          !deferRootLifecycleNotification &&
-          (input.notification.method === "thread/archived" ||
-            input.notification.method === "thread/deleted")
+          input.notification.method === "thread/archived" ||
+          input.notification.method === "thread/deleted"
             ? "retire"
             : "retain";
-        return yield* apply(input, deferRootLifecycleNotification).pipe(
+        return yield* apply(input).pipe(
           Effect.catchCause((cause) =>
             isInterruptedOnly(cause)
               ? Effect.interrupt

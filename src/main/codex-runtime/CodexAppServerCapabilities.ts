@@ -40,7 +40,7 @@ export const CODEX_APP_SERVER_CAPABILITY_MINIMUM_VERSIONS = Object.freeze({
   sideConversation: "0.146.0-alpha.8",
   threadRevert: "0.148.0-alpha.13",
   threadQueue: "0.148.0-alpha.14",
-  subagentAncestorFilter: "0.150.0-alpha.12.2",
+  subagentAncestorFilter: "0.143.0-alpha.16",
   multiAgentV2Protocol: "0.150.0-alpha.12.2",
 } as const);
 
@@ -64,7 +64,7 @@ export const CODEX_APP_SERVER_DEVELOPMENT_CAPABILITY_FLAGS = Object.freeze({
   sideConversation: false,
   threadRevert: true,
   threadQueue: false,
-  subagentAncestorFilter: false,
+  subagentAncestorFilter: true,
   multiAgentV2Protocol: false,
 }) satisfies CodexAppServerCapabilityFlags;
 

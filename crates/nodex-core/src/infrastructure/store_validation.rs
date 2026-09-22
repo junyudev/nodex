@@ -757,13 +757,6 @@ fn validate_subagent_projection(connection: &Connection) -> Result<(), StoreErro
              AND reachable.thread_id = descendant.thread_id
             WHERE universe.discovery_complete = 1 AND reachable.thread_id IS NULL)
            +
-           (SELECT count(*)
-            FROM workspace_subagent_lifecycle_operations operation
-            WHERE NOT EXISTS (
-              SELECT 1 FROM workspace_subagent_lifecycle_members member
-              WHERE member.lifecycle_operation_id = operation.lifecycle_operation_id
-            ))
-           +
            (SELECT count(*) FROM workspace_subagent_pending_status_evidence pending
             WHERE pending.evidence_kind = 'completion' AND pending.status <> 'done')
            +

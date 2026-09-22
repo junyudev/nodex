@@ -108,6 +108,7 @@ function LocalConversationThreadBodyLayout({
               capabilityFlags={model.capabilityFlags}
               parentTurns={model.parentTurns}
               childMemberships={model.childMemberships}
+              parentModel={model.parentModel}
               backgroundAgentRows={model.backgroundAgentRows ?? []}
               projectWorkspacePath={model.projectWorkspacePath}
               projectlessOutputDirectory={model.projectlessOutputDirectory}

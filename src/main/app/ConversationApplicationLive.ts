@@ -1,3 +1,4 @@
+import { live as inactiveThreadArchiveLive } from "../platform/node/CodexInactiveThreadArchive";
 import { randomUUID } from "node:crypto";
 import {
   CodexRendererSessionLaunch,
@@ -584,7 +585,10 @@ const freshThreadLaunch = Layer.effect(
 const conversationArchive = Layer.effect(
   CodexConversationArchive,
   makeCodexConversationArchive,
-).pipe(Layer.provideMerge(Layer.merge(freshThreadLaunch, conversationLifecycle)));
+).pipe(
+  Layer.provide(inactiveThreadArchiveLive),
+  Layer.provideMerge(Layer.merge(freshThreadLaunch, conversationLifecycle)),
+);
 const commands = conversationCommandsLive.pipe(Layer.provideMerge(conversationArchive));
 const threadExecution = codexThreadExecutionLive.pipe(Layer.provideMerge(commands));
 

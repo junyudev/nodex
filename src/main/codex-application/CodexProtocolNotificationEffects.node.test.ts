@@ -28,7 +28,6 @@ import { ConversationEntityMap } from "./internal/ConversationEntityMap";
 it.effect("drains only Main-owned prose before applying terminal product consequences", () =>
   Effect.gen(function* () {
     const trace: string[] = [];
-    let deferLifecycle = false;
     let automationDecision: CodexHeartbeatDecision | null = "DONT_NOTIFY";
     let streamRole: ConversationStreamRole = { role: "owner" };
     const deliveredDecisions: Array<CodexHeartbeatDecision | null> = [];
@@ -63,7 +62,12 @@ it.effect("drains only Main-owned prose before applying terminal product consequ
       ),
       Effect.provideService(
         CodexConversationLifecycle,
-        CodexConversationLifecycle.of({} as CodexConversationLifecycle["Service"]),
+        CodexConversationLifecycle.of({
+          close: () =>
+            Effect.sync(() => {
+              trace.push("close");
+            }),
+        } as unknown as CodexConversationLifecycle["Service"]),
       ),
       Effect.provideService(
         CodexConversationProjection,
@@ -121,7 +125,6 @@ it.effect("drains only Main-owned prose before applying terminal product consequ
               done: { rows: [], knownCount: 0, totalCount: 0, continuation: null },
             }),
           observeNotification: () => Effect.void,
-          shouldDeferLifecycleNotification: () => Effect.succeed(deferLifecycle),
         } as unknown as CodexSubagentDirectory["Service"]),
       ),
       Effect.provideService(
@@ -233,7 +236,6 @@ it.effect("drains only Main-owned prose before applying terminal product consequ
     assert.deepEqual(deliveredHosts, ["remote-a", "remote-a", "remote-a"]);
 
     trace.length = 0;
-    deferLifecycle = true;
     const archivedDisposition = yield* service.apply({
       hostId: "remote-a",
       generation: 7,
@@ -244,8 +246,8 @@ it.effect("drains only Main-owned prose before applying terminal product consequ
       occurrenceId: "remote-a:7:inbox-a:94",
       occurrenceToken: 94,
     });
-    assert.strictEqual(archivedDisposition, "retain");
-    assert.notInclude(trace, "pip");
+    assert.strictEqual(archivedDisposition, "retire");
+    assert.deepEqual(trace, ["durable:remote-a:7", "close", "pip"]);
 
     trace.length = 0;
     const deletedDisposition = yield* service.apply({
@@ -258,7 +260,7 @@ it.effect("drains only Main-owned prose before applying terminal product consequ
       occurrenceId: "remote-a:7:inbox-a:95",
       occurrenceToken: 95,
     });
-    assert.strictEqual(deletedDisposition, "retain");
-    assert.notInclude(trace, "pip");
+    assert.strictEqual(deletedDisposition, "retire");
+    assert.deepEqual(trace, ["durable:remote-a:7", "close", "pip"]);
   }),
 );

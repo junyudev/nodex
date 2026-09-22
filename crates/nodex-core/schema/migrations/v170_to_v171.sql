@@ -1,0 +1,2 @@
+DROP TABLE workspace_subagent_lifecycle_members;
+DROP TABLE workspace_subagent_lifecycle_operations;

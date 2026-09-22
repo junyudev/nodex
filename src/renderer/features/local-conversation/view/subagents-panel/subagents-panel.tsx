@@ -1,3 +1,8 @@
+import {
+  formatCodexModelLabel,
+  formatCodexReasoningEffortLabel,
+} from "@/lib/codex-thread-settings";
+import type { CodexConversationThreadSettings } from "@/lib/types";
 import { BackIcon } from "@/components/shared/icons";
 import { subscribeCodexEvents } from "@/lib/api";
 import { useCallback, useEffect, useRef, useState } from "react";
@@ -70,7 +75,7 @@ function resolveRowPreview(row: CodexSubagentOverviewRow): string | null {
   const objective = formatSubagentObjective(row.objective);
   if (objective) return objective;
   if (row.statusSummary?.trim()) return row.statusSummary.trim();
-  return row.status === "active" ? "Working" : null;
+  return row.status === "done" ? null : "Working";
 }
 
 function SubagentOverviewTrailing({
@@ -83,10 +88,8 @@ function SubagentOverviewTrailing({
   row: CodexSubagentOverviewRow;
 }) {
   const elapsedMs =
-    (row.status !== "active" && row.status !== "waiting") || row.startedAtMs === null
-      ? null
-      : Math.max(0, nowMs - row.startedAtMs);
-  const completedAtMs = row.completedAtMs ?? row.lastActivityAtMs;
+    row.status === "done" || row.startedAtMs === null ? null : Math.max(0, nowMs - row.startedAtMs);
+  const completedAtMs = row.lastAssistantMessageAtMs ?? row.recencyAtMs ?? null;
 
   return (
     <span className="flex shrink-0 items-center gap-3 whitespace-nowrap text-xs text-token-text-tertiary tabular-nums">
@@ -449,7 +452,9 @@ export function SubagentsPanelDetailHeader({
   displayName,
   onBack,
   threadId,
+  threadSettings,
 }: {
+  threadSettings?: Pick<CodexConversationThreadSettings, "model" | "reasoningEffort"> | null;
   displayName: string;
   onBack: () => void;
   threadId: string;
@@ -468,6 +473,14 @@ export function SubagentsPanelDetailHeader({
       <div className="min-w-0 flex-1 truncate text-sm font-medium text-token-foreground">
         {displayName}
       </div>
+      {threadSettings?.model ? (
+        <span className="max-w-1/2 min-w-0 truncate text-xs text-token-text-tertiary select-none">
+          {formatCodexModelLabel(threadSettings.model, [])}
+          {threadSettings.reasoningEffort
+            ? ` · ${formatCodexReasoningEffortLabel(threadSettings.reasoningEffort)}`
+            : null}
+        </span>
+      ) : null}
     </div>
   );
 }

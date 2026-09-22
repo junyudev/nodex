@@ -1,7 +1,10 @@
 import * as path from "node:path";
+import type { ClientRequestResponsesByMethod } from "@nodex/effect-codex-app-server/rpc";
 import * as Context from "effect/Context";
 import * as Data from "effect/Data";
 import * as Effect from "effect/Effect";
+import * as Schema from "effect/Schema";
+import { CodexAppServerRequestError } from "@nodex/effect-codex-app-server/errors";
 import { isCodexAgentBackendBinding } from "../../shared/agent-backend";
 import type { CodexThreadSummary } from "../../shared/types";
 import { AutomationApplication } from "../automation-application/AutomationApplication";
@@ -18,7 +21,7 @@ import {
 } from "../codex/codex-managed-worktree-effects";
 import { CodexGateway } from "../codex-runtime/CodexGateway";
 import { CodexAppServerCapabilities } from "../codex-runtime/CodexAppServerCapabilities";
-import { isCodexThreadLifecycleAlreadyAppliedRequestError } from "../codex-runtime/CodexRuntimeError";
+import { CodexRuntimeError } from "../codex-runtime/CodexRuntimeError";
 import { AutomationRoutingIndex } from "../core-runtime/AutomationRoutingIndex";
 import {
   ProjectWorkspace,
@@ -29,14 +32,12 @@ import { CodexApplicationEventHub } from "./CodexApplicationEventHub";
 import { CodexConversationLifecycle } from "./CodexConversationLifecycle";
 import { CodexHistoryPageAdapter } from "./CodexHistoryPageAdapter";
 import { CodexMainConversationManagers } from "./CodexMainConversationManagers";
-import {
-  CodexSubagentDirectory,
-  type CodexSubagentLifecycleSnapshot,
-} from "./CodexSubagentDirectory";
 import { CodexThreadDirectory } from "./CodexThreadDirectory";
 import { ConversationEntityMap } from "./internal/ConversationEntityMap";
 import { ManagedWorktreeRuntime } from "./ManagedWorktreeRuntime";
 import { NodexAgentAuthorizationRuntime } from "./NodexAgentAuthorizationRuntime";
+import { ExecutionHostRuntime } from "./ExecutionHostRuntime";
+import { CodexInactiveThreadArchive } from "../platform/node/CodexInactiveThreadArchive";
 import { RemoteHostedPipRuntime } from "../host-runtime/RemoteHostedPipRuntime";
 
 export class CodexConversationArchiveError extends Data.TaggedError(
@@ -51,23 +52,6 @@ export class CodexConversationArchiveError extends Data.TaggedError(
     | "unarchive";
   readonly threadId: string;
   readonly cause: unknown;
-}> {}
-
-/**
- * Keeps an ambiguous physical lifecycle failure and the authoritative reconciliation outcome
- * together. Callers can distinguish a bounded-but-incomplete postcondition pass from a failure
- * to perform that pass without parsing error text, while retaining the original transport error.
- */
-export class CodexConversationLifecycleReconciliationError extends Data.TaggedError(
-  "CodexConversationLifecycleReconciliationError",
-)<{
-  readonly action: "archive" | "delete";
-  readonly operationId: string;
-  readonly reason: "postcondition-unresolved" | "reconciliation-failed";
-  readonly snapshot: CodexSubagentLifecycleSnapshot | null;
-  readonly physicalCause: unknown | null;
-  readonly reconciliationCause: unknown | null;
-  readonly message: string;
 }> {}
 
 export class CodexConversationArchive extends Context.Service<
@@ -101,13 +85,14 @@ export const make: Effect.Effect<
   | CodexGateway
   | CodexHistoryPageAdapter
   | CodexMainConversationManagers
-  | CodexSubagentDirectory
   | CodexThreadDirectory
   | ConversationEntityMap
   | ManagedWorktreeRuntime
   | NodexAgentAuthorizationRuntime
   | ProjectWorkspace
   | RemoteHostedPipRuntime
+  | ExecutionHostRuntime
+  | CodexInactiveThreadArchive
 > = Effect.gen(function* () {
   const automation = yield* AutomationApplication;
   const automationRouting = yield* AutomationRoutingIndex;
@@ -117,13 +102,14 @@ export const make: Effect.Effect<
   const gateway = yield* CodexGateway;
   const historyPages = yield* CodexHistoryPageAdapter;
   const mainManagers = yield* CodexMainConversationManagers;
-  const subagents = yield* CodexSubagentDirectory;
   const threadDirectory = yield* CodexThreadDirectory;
   const conversations = yield* ConversationEntityMap;
   const managedWorktrees = yield* ManagedWorktreeRuntime;
   const authorizations = yield* NodexAgentAuthorizationRuntime;
   const workspace = yield* ProjectWorkspace;
   const remoteHostedPip = yield* RemoteHostedPipRuntime;
+  const executionHosts = yield* ExecutionHostRuntime;
+  const inactiveArchive = yield* CodexInactiveThreadArchive;
 
   const fail = (
     operation: ArchiveOperation,
@@ -142,6 +128,48 @@ export const make: Effect.Effect<
       try: () => resolveWorktreePathComparisonKey(value),
       catch: (cause) => fail("archive-worktree", threadId, cause),
     });
+
+  const nativeMessage = (cause: CodexRuntimeError): string =>
+    Schema.is(CodexAppServerRequestError)(cause.cause) ? cause.cause.message : cause.message;
+
+  const recoverInactiveArchive = Effect.fn("CodexConversationArchive.recoverInactiveArchive")(
+    function* (thread: DesktopProjectWorkspaceThread, physicalCause: CodexRuntimeError) {
+      if (
+        thread.executionHostId !== gateway.localHostId ||
+        !nativeMessage(physicalCause).includes(`no rollout found for thread id ${thread.threadId}`)
+      )
+        return yield* fail("archive", thread.threadId, physicalCause);
+      const host = yield* executionHosts
+        .resolve(thread.executionHostId)
+        .pipe(Effect.mapError((cause) => fail("archive", thread.threadId, cause)));
+      if (host.descriptor.kind !== "local")
+        return yield* fail("archive", thread.threadId, physicalCause);
+      const result = yield* inactiveArchive
+        .archive({
+          codexHome: host.descriptor.codexHome,
+          threadId: thread.threadId,
+        })
+        .pipe(Effect.mapError((cause) => fail("archive", thread.threadId, cause)));
+      if (result === "archived") return false;
+      if (result !== "missing") return yield* fail("archive", thread.threadId, physicalCause);
+      // A stale catalog identity is retired only after the native owner confirms it is absent.
+      const missing = yield* gateway
+        .requestForThread(thread.threadId, "thread/read", {
+          threadId: thread.threadId,
+          includeTurns: false,
+        })
+        .pipe(
+          Effect.as(false),
+          Effect.catch((cause) =>
+            nativeMessage(cause) === `thread not loaded: ${thread.threadId}`
+              ? Effect.succeed(true)
+              : Effect.fail(fail("archive", thread.threadId, cause)),
+          ),
+        );
+      if (!missing) return yield* fail("archive", thread.threadId, physicalCause);
+      return true;
+    },
+  );
 
   const prepareOwnedThreadForUnarchive = Effect.fn(
     "CodexConversationArchive.prepareOwnedThreadForUnarchive",
@@ -172,60 +200,6 @@ export const make: Effect.Effect<
       },
       catch: (cause) => fail("unarchive", thread.threadId, cause),
     });
-  });
-
-  const reconcilePhysicalLifecycle = Effect.fn(
-    "CodexConversationArchive.reconcilePhysicalLifecycle",
-  )(function* (input: {
-    readonly action: "archive" | "delete";
-    readonly threadId: string;
-    readonly operationId: string;
-    readonly physicalCause: unknown | null;
-  }) {
-    const reconciled = yield* subagents.reconcileLifecycle({ operationId: input.operationId }).pipe(
-      Effect.mapError((reconciliationCause) =>
-        fail(
-          input.action,
-          input.threadId,
-          new CodexConversationLifecycleReconciliationError({
-            action: input.action,
-            operationId: input.operationId,
-            reason: "reconciliation-failed",
-            snapshot: null,
-            physicalCause: input.physicalCause,
-            reconciliationCause,
-            message: `${input.action === "archive" ? "Archive" : "Delete"} lifecycle ${input.operationId} could not verify its durable postconditions`,
-          }),
-        ),
-      ),
-    );
-    if (!reconciled.complete) {
-      return yield* fail(
-        input.action,
-        input.threadId,
-        new CodexConversationLifecycleReconciliationError({
-          action: input.action,
-          operationId: reconciled.operationId,
-          reason: "postcondition-unresolved",
-          snapshot: reconciled,
-          physicalCause: input.physicalCause,
-          reconciliationCause: null,
-          message: `${input.action === "archive" ? "Archived" : "Deleted"} Thread still has ${reconciled.unresolvedCount} unresolved Subagent descendants in lifecycle ${reconciled.operationId}`,
-        }),
-      );
-    }
-    if (input.physicalCause !== null) {
-      yield* Effect.logWarning(
-        `${input.action === "archive" ? "Archive" : "Delete"} physical request failed after its durable postconditions had converged`,
-      ).pipe(
-        Effect.annotateLogs({
-          threadId: input.threadId,
-          operationId: input.operationId,
-          physicalCause: input.physicalCause,
-        }),
-      );
-    }
-    return reconciled;
   });
 
   const retireRemoteHostedPip = Effect.fn("CodexConversationArchive.retireRemoteHostedPip")(
@@ -412,8 +386,6 @@ export const make: Effect.Effect<
 
   return CodexConversationArchive.of({
     archive: (threadId) => {
-      let admittedCodex = false;
-      let physicalAttempted = false;
       const normalizedThreadId = threadId.trim();
       return Effect.gen(function* () {
         const thread = yield* project(
@@ -429,7 +401,6 @@ export const make: Effect.Effect<
             new Error("Thread is not owned by the native Codex backend"),
           );
         }
-        admittedCodex = true;
 
         const rootThreadId = yield* resolveRootThreadId(thread);
         const automationRun = yield* automation.runs
@@ -445,45 +416,27 @@ export const make: Effect.Effect<
           ? yield* resolveAutomationMessages(normalizedThreadId)
           : null;
 
-        const subagentLifecycle = yield* subagents
-          .beginLifecycle({ rootThreadId: normalizedThreadId, action: "archive" })
-          .pipe(Effect.mapError((cause) => fail("archive", normalizedThreadId, cause)));
-
         yield* prepareManagedWorktreeArchive(
           thread,
           automationRun ? "automation-archive" : "archive",
         );
-        physicalAttempted = true;
-        const physicalArchiveCause = yield* gateway
+        const threadMissing = yield* gateway
           .requestForThread(normalizedThreadId, "thread/archive", {
             threadId: normalizedThreadId,
           })
           .pipe(
-            Effect.match({
-              onFailure: (cause) =>
-                isCodexThreadLifecycleAlreadyAppliedRequestError(cause, {
-                  method: "thread/archive",
-                  threadId: normalizedThreadId,
-                })
-                  ? null
-                  : cause,
-              onSuccess: () => null,
-            }),
+            Effect.as(false),
+            Effect.catch((cause) => recoverInactiveArchive(thread, cause)),
           );
-        const reconciled = yield* reconcilePhysicalLifecycle({
-          action: "archive",
-          threadId: normalizedThreadId,
-          operationId: subagentLifecycle.operationId,
-          physicalCause: physicalArchiveCause,
-        });
-        subagents.releaseLifecycleQuarantine(normalizedThreadId, "archive");
         yield* authorizations.revokeRoot(rootThreadId);
         yield* project(
           "archive",
           normalizedThreadId,
-          workspace.setThreadArchived(normalizedThreadId, true),
+          threadMissing
+            ? workspace.deleteThread(normalizedThreadId).pipe(Effect.asVoid)
+            : workspace.setThreadArchived(normalizedThreadId, true).pipe(Effect.asVoid),
         );
-        yield* retireRemoteHostedPip("archive", reconciled.settledThreadIds);
+        yield* retireRemoteHostedPip("archive", [normalizedThreadId]);
         yield* conversationLifecycle.close(
           normalizedThreadId,
           new Error(`Codex Thread '${normalizedThreadId}' was archived`),
@@ -501,7 +454,9 @@ export const make: Effect.Effect<
         }
         events.publish({
           kind: "codex",
-          value: { type: "threadArchivedState", threadId: normalizedThreadId, archived: true },
+          value: threadMissing
+            ? { type: "threadDeleted", threadId: normalizedThreadId }
+            : { type: "threadArchivedState", threadId: normalizedThreadId, archived: true },
         });
         if (automationRun && automationMessages) {
           yield* finishAutomationArchive(
@@ -511,19 +466,9 @@ export const make: Effect.Effect<
           );
         }
         return true;
-      }).pipe(
-        Effect.tapError(() =>
-          !admittedCodex || physicalAttempted
-            ? Effect.void
-            : Effect.sync(() =>
-                subagents.releaseLifecycleQuarantine(normalizedThreadId, "archive"),
-              ),
-        ),
-      );
+      });
     },
     deleteArchived: (threadId) => {
-      let admittedCodex = false;
-      let lifecycleStarted = false;
       const normalizedThreadId = threadId.trim();
       return Effect.gen(function* () {
         const thread = yield* project(
@@ -539,44 +484,48 @@ export const make: Effect.Effect<
             new Error("Thread is not owned by the native Codex backend"),
           );
         }
-        admittedCodex = true;
-        if (!thread.archived) {
-          return yield* fail(
-            "delete",
-            normalizedThreadId,
-            new Error("Only archived Threads can be permanently deleted"),
-          );
-        }
-        const lifecycle = yield* subagents
-          .beginLifecycle({ rootThreadId: normalizedThreadId, action: "delete" })
-          .pipe(Effect.mapError((cause) => fail("delete", normalizedThreadId, cause)));
-        lifecycleStarted = true;
-        const physicalDeleteCause = yield* gateway
+        // The native archive index is authoritative even when the local row is stale.
+        let cursor: string | null = null;
+        const archivedThreadIds = new Set<string>();
+        do {
+          const page: ClientRequestResponsesByMethod["thread/list"] = yield* gateway
+            .requestForThread(normalizedThreadId, "thread/list", {
+              archived: true,
+              cursor,
+              limit: 200,
+              useStateDbOnly: true,
+            })
+            .pipe(Effect.mapError((cause) => fail("delete", normalizedThreadId, cause)));
+          for (const archived of page.data) archivedThreadIds.add(archived.id);
+          cursor = page.nextCursor ?? null;
+        } while (cursor !== null);
+        if (!archivedThreadIds.has(normalizedThreadId)) return false;
+
+        yield* gateway
           .requestForThread(normalizedThreadId, "thread/delete", {
             threadId: normalizedThreadId,
           })
           .pipe(
-            Effect.match({
-              onFailure: (cause) =>
-                isCodexThreadLifecycleAlreadyAppliedRequestError(cause, {
-                  method: "thread/delete",
-                  threadId: normalizedThreadId,
-                })
-                  ? null
-                  : cause,
-              onSuccess: () => null,
+            Effect.catch((cause) => {
+              const nativeCause = Schema.is(CodexRuntimeError)(cause) ? cause.cause : cause;
+              const message = Schema.is(CodexAppServerRequestError)(nativeCause)
+                ? nativeCause.message
+                : cause.message;
+              if (message !== `no rollout found for thread id ${normalizedThreadId}`)
+                return Effect.fail(cause);
+              return gateway.requestRawForThread(normalizedThreadId, "thread/delete", {
+                threadId: normalizedThreadId,
+                missingRolloutRecovery: true,
+              });
             }),
+            Effect.mapError((cause) => fail("delete", normalizedThreadId, cause)),
           );
-        const reconciled = yield* reconcilePhysicalLifecycle({
-          action: "delete",
-          threadId: normalizedThreadId,
-          operationId: lifecycle.operationId,
-          physicalCause: physicalDeleteCause,
-        });
-        subagents.releaseLifecycleQuarantine(normalizedThreadId, "delete");
+        yield* automation.runs
+          .delete(normalizedThreadId)
+          .pipe(Effect.mapError((cause) => fail("delete", normalizedThreadId, cause)));
         yield* authorizations.revokeRoot(normalizedThreadId);
         yield* project("delete", normalizedThreadId, workspace.deleteThread(normalizedThreadId));
-        yield* retireRemoteHostedPip("delete", reconciled.settledThreadIds);
+        yield* retireRemoteHostedPip("delete", [normalizedThreadId]);
         yield* conversationLifecycle.close(
           normalizedThreadId,
           new Error(`Codex Thread '${normalizedThreadId}' was deleted`),
@@ -586,13 +535,7 @@ export const make: Effect.Effect<
           value: { type: "threadDeleted", threadId: normalizedThreadId },
         });
         return true;
-      }).pipe(
-        Effect.tapError(() =>
-          !admittedCodex || lifecycleStarted
-            ? Effect.void
-            : Effect.sync(() => subagents.releaseLifecycleQuarantine(normalizedThreadId, "delete")),
-        ),
-      );
+      });
     },
     unarchive: (threadId) =>
       Effect.gen(function* () {

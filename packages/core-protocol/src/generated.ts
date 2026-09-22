@@ -1792,19 +1792,6 @@ export interface components {
             }[];
             readonly next_cursor?: string | null;
         };
-        readonly CollectionWindow_ProjectWorkspaceSubagentLifecycleMember: {
-            readonly authority: components["schemas"]["CollectionWindowAuthority"];
-            readonly items: readonly {
-                /** Format: int32 */
-                readonly attempt_count: number;
-                readonly last_reason?: string | null;
-                /** Format: int64 */
-                readonly observed_at_ms?: number | null;
-                readonly outcome: components["schemas"]["ProjectWorkspaceSubagentLifecycleOutcome"];
-                readonly thread_id: string;
-            }[];
-            readonly next_cursor?: string | null;
-        };
         readonly CollectionWindow_ProjectWorkspaceSubagentOverviewItem: {
             readonly authority: components["schemas"]["CollectionWindowAuthority"];
             readonly items: readonly {
@@ -7339,17 +7326,6 @@ export interface components {
                 readonly status: components["schemas"]["ProjectWorkspaceSubagentStatus"];
                 readonly thread_id: string;
             } | {
-                readonly action: components["schemas"]["ProjectWorkspaceSubagentLifecycleAction"];
-                /** @enum {string} */
-                readonly kind: "begin_subagent_lifecycle";
-                readonly lifecycle_operation_id: string;
-                readonly universe: components["schemas"]["ProjectWorkspaceSubagentUniverse"];
-            } | {
-                /** @enum {string} */
-                readonly kind: "observe_subagent_lifecycle_outcomes";
-                readonly lifecycle_operation_id: string;
-                readonly observations: readonly components["schemas"]["ProjectWorkspaceSubagentLifecycleObservation"][];
-            } | {
                 readonly archived: boolean;
                 /** @enum {string} */
                 readonly kind: "set_thread_archived";
@@ -8418,12 +8394,6 @@ export interface components {
                 readonly thread_id: string;
                 readonly universe: components["schemas"]["ProjectWorkspaceSubagentUniverse"];
             } | {
-                readonly include_settled: boolean;
-                /** @enum {string} */
-                readonly kind: "subagent_lifecycle_batch";
-                readonly lifecycle_operation_id: string;
-                readonly window: components["schemas"]["CollectionWindowRequest"];
-            } | {
                 /** @enum {string} */
                 readonly kind: "execution_context";
                 readonly thread_id: string;
@@ -9268,17 +9238,6 @@ export interface components {
             readonly status: components["schemas"]["ProjectWorkspaceSubagentStatus"];
             readonly thread_id: string;
         } | {
-            readonly action: components["schemas"]["ProjectWorkspaceSubagentLifecycleAction"];
-            /** @enum {string} */
-            readonly kind: "begin_subagent_lifecycle";
-            readonly lifecycle_operation_id: string;
-            readonly universe: components["schemas"]["ProjectWorkspaceSubagentUniverse"];
-        } | {
-            /** @enum {string} */
-            readonly kind: "observe_subagent_lifecycle_outcomes";
-            readonly lifecycle_operation_id: string;
-            readonly observations: readonly components["schemas"]["ProjectWorkspaceSubagentLifecycleObservation"][];
-        } | {
             readonly archived: boolean;
             /** @enum {string} */
             readonly kind: "set_thread_archived";
@@ -9530,32 +9489,6 @@ export interface components {
             readonly page_id: string;
             readonly title_markdown: string;
         };
-        readonly ProjectWorkspaceSubagentLifecycle: {
-            readonly action: components["schemas"]["ProjectWorkspaceSubagentLifecycleAction"];
-            readonly complete: boolean;
-            /** Format: int32 */
-            readonly expected_count: number;
-            readonly lifecycle_operation_id: string;
-            readonly members: components["schemas"]["CollectionWindow_ProjectWorkspaceSubagentLifecycleMember"];
-            /** Format: int32 */
-            readonly processed_count: number;
-            /** Format: int64 */
-            readonly projection_revision: number;
-            readonly universe: components["schemas"]["ProjectWorkspaceSubagentUniverse"];
-            /** Format: int32 */
-            readonly unresolved_count: number;
-        };
-        /** @enum {string} */
-        readonly ProjectWorkspaceSubagentLifecycleAction: "archive" | "delete";
-        readonly ProjectWorkspaceSubagentLifecycleObservation: {
-            /** Format: int64 */
-            readonly observed_at_ms: number;
-            readonly outcome: components["schemas"]["ProjectWorkspaceSubagentLifecycleOutcome"];
-            readonly reason?: string | null;
-            readonly thread_id: string;
-        };
-        /** @enum {string} */
-        readonly ProjectWorkspaceSubagentLifecycleOutcome: "pending" | "unresolved" | "failed" | "settled";
         readonly ProjectWorkspaceSubagentObservation: {
             /** Format: int64 */
             readonly observed_at_ms: number;
@@ -11183,10 +11116,6 @@ export interface components {
                     readonly kind: "subagent_overview_item";
                     /** Format: int64 */
                     readonly projection_revision: number;
-                } | {
-                    /** @enum {string} */
-                    readonly kind: "subagent_lifecycle_batch";
-                    readonly lifecycle: components["schemas"]["ProjectWorkspaceSubagentLifecycle"];
                 } | {
                     readonly context: components["schemas"]["ProjectWorkspaceExecutionContext"];
                     /** @enum {string} */

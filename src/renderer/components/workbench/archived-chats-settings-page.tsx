@@ -100,29 +100,6 @@ export function projectArchivedChatGroups(input: {
     .toSorted((left, right) => left.label.localeCompare(right.label));
 }
 
-async function runWithConcurrency<T>(
-  values: readonly T[],
-  concurrency: number,
-  operation: (value: T) => Promise<void>,
-): Promise<ReadonlyArray<{ readonly value: T; readonly cause: unknown }>> {
-  let cursor = 0;
-  const failures: Array<{ readonly value: T; readonly cause: unknown }> = [];
-  const worker = async () => {
-    while (cursor < values.length) {
-      const value = values[cursor];
-      cursor += 1;
-      if (value === undefined) return;
-      try {
-        await operation(value);
-      } catch (cause) {
-        failures.push({ value, cause });
-      }
-    }
-  };
-  await Promise.all(Array.from({ length: Math.min(concurrency, values.length) }, worker));
-  return failures;
-}
-
 function ArchivedChatDeleteDialog({
   confirmation,
   busy,
@@ -268,26 +245,14 @@ export function ArchivedChatsSettingsPage({
       ),
     );
     try {
-      const failures = await runWithConcurrency(target.chats, 4, async (chat) => {
+      for (const chat of target.chats) {
         if (!isCodexAgentBackendBinding(chat.backendBinding)) {
           await workspaceSessionCommands.delete(requireSessionId(chat));
-          return;
+          continue;
         }
-        if (await deleteArchivedChat(chat.threadId)) return;
-        throw new Error(`Could not delete ${chatTitle(chat)}`);
-      });
-      if (failures.length > 0) {
-        const firstCause = failures[0]?.cause;
-        const firstMessage = firstCause instanceof Error ? firstCause.message : null;
-        throw new AggregateError(
-          failures.map(({ cause }) => cause),
-          [
-            `${failures.length} archived ${failures.length === 1 ? "chat" : "chats"} could not be deleted.`,
-            firstMessage,
-          ]
-            .filter(Boolean)
-            .join(" "),
-        );
+        if (!(await deleteArchivedChat(chat.threadId))) {
+          throw new Error(`Could not delete ${chatTitle(chat)}`);
+        }
       }
       setConfirmation(null);
       toast.success(

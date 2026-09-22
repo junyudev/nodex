@@ -59,3 +59,20 @@ describe("codex thread detail reducer", () => {
     expect(merged.commandExecutionStartedAtMsById?.hydratedOnly).toBe(undefined);
   });
 });
+
+test("preserves observed assistant starts while merging additional message starts", () => {
+  const existing = buildTurn({ assistantMessageStartedAtMsById: { commentary: 100, answer: 300 } });
+  const merged = mergeCodexTurnSummary(
+    existing,
+    buildTurn({ assistantMessageStartedAtMsById: { answer: 900, followup: 500 } }),
+  );
+  expect(merged.assistantMessageStartedAtMsById).toEqual({
+    commentary: 100,
+    answer: 300,
+    followup: 500,
+  });
+  expect(
+    mergeCodexTurnSummary(merged, buildTurn({ status: "completed" }))
+      .assistantMessageStartedAtMsById,
+  ).toEqual(merged.assistantMessageStartedAtMsById);
+});

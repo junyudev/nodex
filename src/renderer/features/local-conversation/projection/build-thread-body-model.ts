@@ -1,3 +1,4 @@
+import { isLocalConversationWriterConflict } from "../conversation-attachment-state";
 import type {
   CodexConversationSnapshot,
   CodexConversationTurn,
@@ -31,6 +32,7 @@ export interface ThreadBodyModelInput {
     updatedAt: number;
   } | null;
   firstSubmissionActive?: boolean;
+  readOnly?: boolean;
 }
 
 export type ThreadStartProgressPresentation = "hidden" | "panel";
@@ -111,7 +113,10 @@ export function buildThreadBodyModel(input: ThreadBodyModelInput): ThreadBodyMod
       };
     }
     if (input.activeThreadId && resumeState) {
-      if (attachmentState.status === "failed") {
+      if (
+        attachmentState.status === "failed" &&
+        !isLocalConversationWriterConflict(attachmentState)
+      ) {
         return {
           threadId: input.activeThreadId,
           turnCount: 0,
@@ -222,7 +227,12 @@ export function buildThreadBodyModel(input: ThreadBodyModelInput): ThreadBodyMod
     };
   }
 
-  if (conversation.resumeState !== "resumed" && attachmentState.status !== "failed") {
+  const canReadAttachedHistory = input.readOnly === true && attachmentState.status === "attached";
+  if (
+    conversation.resumeState !== "resumed" &&
+    attachmentState.status !== "failed" &&
+    !canReadAttachedHistory
+  ) {
     if (hasThreadStartProgress) {
       return {
         threadId: conversation.threadId,
@@ -265,7 +275,11 @@ export function buildThreadBodyModel(input: ThreadBodyModelInput): ThreadBodyMod
   const visibleTurnCount = visibleEntries.length;
   const isThreadRunning = conversation.statusType === "active" || activeTurnId !== null;
 
-  if (visibleTurnCount === 0 && attachmentState.status === "failed") {
+  if (
+    visibleTurnCount === 0 &&
+    attachmentState.status === "failed" &&
+    !isLocalConversationWriterConflict(attachmentState)
+  ) {
     return {
       threadId: conversation.threadId,
       turnCount: 0,
@@ -304,7 +318,7 @@ export function buildThreadBodyModel(input: ThreadBodyModelInput): ThreadBodyMod
       emptyState: {
         type: "emptyThread",
         title: "No messages yet",
-        description: "Send a prompt to begin.",
+        description: input.readOnly ? "" : "Send a prompt to begin.",
       },
     };
   }

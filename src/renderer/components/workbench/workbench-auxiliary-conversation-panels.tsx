@@ -81,11 +81,12 @@ export function BackgroundAgentSessionTab({
     useState<CodexCollaborationModeKind>("default");
 
   useEffect(() => {
+    if (tab.subagent.canInteract !== true) return;
     void loadModels().catch(() => undefined);
     void listCollaborationModes()
       .then(setCollaborationModes)
       .catch(() => setCollaborationModes([]));
-  }, [listCollaborationModes, loadModels]);
+  }, [listCollaborationModes, loadModels, tab.subagent.canInteract]);
 
   const actions = useMemo(
     () =>
@@ -206,6 +207,12 @@ export function SubagentsPanelSessionTab({
   turnDiffHoverPreviewDisabled: boolean;
 }) {
   const selectedConversation = useConversation(tab.selectedThreadId);
+  const selectedThreadSettings = selectedConversation?.canonicalState
+    ? {
+        model: selectedConversation.canonicalState.latestModel,
+        reasoningEffort: selectedConversation.canonicalState.latestReasoningEffort,
+      }
+    : selectedConversation?.latestThreadSettings;
   const codexControl = useCodexAppServerControl(
     tab.projectId,
     tab.selectedThreadId ?? tab.rootThreadId,
@@ -308,7 +315,10 @@ export function SubagentsPanelSessionTab({
     selectedConversation?.agentNickname?.replace(/^@/u, "") ||
     selectedConversation?.threadName ||
     tab.selectedThreadId;
-  if (tab.selectedHydration?.status !== "ready") {
+  if (
+    tab.selectedHydration === null ||
+    (tab.selectedHydration.status === "pending" && tab.selectedHydration.showLoading !== false)
+  ) {
     return (
       <div
         className="flex h-full min-h-0 flex-col bg-token-main-surface-primary"
@@ -317,6 +327,7 @@ export function SubagentsPanelSessionTab({
       >
         <SubagentsPanelDetailHeader
           threadId={tab.selectedThreadId}
+          threadSettings={selectedThreadSettings}
           displayName={displayName}
           onBack={() => void onRouteSubagent(null)}
         />
@@ -357,6 +368,7 @@ export function SubagentsPanelSessionTab({
     >
       <SubagentsPanelDetailHeader
         threadId={tab.selectedThreadId}
+        threadSettings={selectedThreadSettings}
         displayName={displayName}
         onBack={() => void onRouteSubagent(null)}
       />

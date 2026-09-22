@@ -202,6 +202,7 @@ interface LocalConversationVirtualizedTurnListProps {
   entries: LocalConversationVirtualizedTurnListEntry[];
   conversationId: string;
   childMemberships?: readonly CodexConversationChildMembership[];
+  parentModel?: string | null;
   backgroundAgentRows?: readonly ThreadComposerShellBackgroundAgentRowModel[];
   threadCwd: string | null;
   projectWorkspacePath?: string | null;
@@ -327,6 +328,7 @@ interface MeasuredTurnProps {
   entry: LocalConversationVirtualizedTurnListEntry;
   conversationId: string;
   childMemberships?: readonly CodexConversationChildMembership[];
+  parentModel?: string | null;
   backgroundAgentRows?: readonly ThreadComposerShellBackgroundAgentRowModel[];
   threadCwd: string | null;
   projectWorkspacePath?: string | null;
@@ -365,6 +367,7 @@ function MeasuredTurnComponent({
   entry,
   conversationId,
   childMemberships,
+  parentModel,
   backgroundAgentRows,
   threadCwd,
   projectWorkspacePath,
@@ -423,6 +426,7 @@ function MeasuredTurnComponent({
       <LocalConversationTurnEntry
         conversationId={conversationId}
         childMemberships={childMemberships}
+        parentModel={parentModel}
         backgroundAgentRows={backgroundAgentRows}
         entry={entry}
         cwd={threadCwd}
@@ -464,6 +468,7 @@ const MeasuredTurn = memo(
   (left, right) =>
     left.entry === right.entry &&
     left.conversationId === right.conversationId &&
+    left.parentModel === right.parentModel &&
     left.backgroundAgentRows === right.backgroundAgentRows &&
     left.threadCwd === right.threadCwd &&
     left.projectWorkspacePath === right.projectWorkspacePath &&
@@ -494,6 +499,7 @@ function LocalConversationVirtualizedTurnListCore({
   historyRows,
   conversationId,
   childMemberships,
+  parentModel,
   backgroundAgentRows,
   threadCwd,
   projectWorkspacePath,
@@ -1358,6 +1364,7 @@ function LocalConversationVirtualizedTurnListCore({
               entry={entry}
               conversationId={conversationId}
               childMemberships={childMemberships}
+              parentModel={parentModel}
               backgroundAgentRows={backgroundAgentRows}
               threadCwd={threadCwd}
               projectWorkspacePath={projectWorkspacePath}

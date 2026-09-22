@@ -1,3 +1,4 @@
+import type { CodexSubagentRow } from "../../../../../shared/codex-subagent-row-model";
 import { ListTree, PictureInPicture2, Slash } from "@/components/shared/icons/generic-icons";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { motion } from "motion/react";
@@ -142,6 +143,7 @@ export interface ThreadSummaryPanelContentProps {
   projectWorkspacePath: string | null;
   turns: readonly CodexConversationTurn[];
   backgroundTerminalRows?: readonly CodexBackgroundTerminalRow[];
+  backgroundAgentRows?: readonly CodexSubagentRow[];
   childMemberships?: readonly CodexConversationChildMembership[];
   knownConversationsById?: Record<string, CodexConversationSnapshot>;
   sideChatRows?: readonly ThreadSummaryPanelAuxiliaryRow[];
@@ -918,6 +920,7 @@ export function ThreadSummaryPanelSurface({
   projectWorkspacePath,
   turns,
   backgroundTerminalRows = EMPTY_BACKGROUND_TERMINAL_ROWS,
+  backgroundAgentRows: projectedBackgroundAgentRows,
   childMemberships = EMPTY_CHILD_MEMBERSHIPS,
   knownConversationsById = EMPTY_KNOWN_CONVERSATIONS_BY_ID,
   sideChatRows = EMPTY_SIDE_CHAT_ROWS,
@@ -987,12 +990,15 @@ export function ThreadSummaryPanelSurface({
   );
   const backgroundSubagentRows = useMemo(
     () =>
-      buildBackgroundSubagentRows({
-        childMemberships,
-        knownConversationsById,
-        parentTurns: turns,
-      }),
-    [childMemberships, knownConversationsById, turns],
+      (
+        projectedBackgroundAgentRows ??
+        buildBackgroundSubagentRows({
+          childMemberships,
+          knownConversationsById,
+          parentTurns: turns,
+        })
+      ).filter((row) => row.displayName.trim().length > 0),
+    [projectedBackgroundAgentRows, childMemberships, knownConversationsById, turns],
   );
   const compactBackgroundSubagentModel = useMemo(
     () => buildBackgroundSubagentCompactStripModel(backgroundSubagentRows),

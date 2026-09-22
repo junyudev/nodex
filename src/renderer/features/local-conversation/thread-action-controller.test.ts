@@ -989,28 +989,6 @@ describe("createThreadStageActions settings routing", () => {
     expect(JSON.stringify(calls)).toBe(JSON.stringify(["open:thread-ordinary:none"]));
   });
 
-  test("stops background agents by interrupting unique child threads", async () => {
-    const calls: string[] = [];
-    const input = buildInput({
-      codexControl: {
-        interruptTurn: async (threadId: string) => {
-          calls.push(threadId);
-          return true;
-        },
-      } as unknown as ThreadActionControllerInput["codexControl"],
-    });
-    const actions = createThreadStageActions(input);
-
-    await actions.onStopBackgroundAgents?.([
-      "thread-child-a",
-      "thread-child-b",
-      "thread-child-a",
-      " ",
-    ]);
-
-    expect(JSON.stringify(calls)).toBe(JSON.stringify(["thread-child-a", "thread-child-b"]));
-  });
-
   test("passes summary output side-panel opener through the action controller", async () => {
     const calls: unknown[] = [];
     const input = buildInput({

@@ -34,11 +34,14 @@ let invokeCalls: Array<{
   presented?: boolean;
 }> = [];
 let readStateWrites: ThreadReadStateChange[] = [];
+let overviewChild = false;
 beforeEach(() => {
   readStateWrites = [];
+  overviewChild = false;
   coordination.resumeError = null;
   coordination.generation = 1;
   coordination.hostAvailable = true;
+  coordination.ownerAvailable = true;
 });
 
 vi.mock("../renderer-thread-read-state", () => ({
@@ -58,6 +61,7 @@ const coordination = vi.hoisted(() => ({
   resumeError: null as Error | null,
   generation: 1,
   hostAvailable: true,
+  ownerAvailable: true,
 }));
 
 vi.mock("../conversation-coordination-connection", () => ({
@@ -70,7 +74,7 @@ vi.mock("../conversation-coordination-connection", () => ({
           args: [input],
           threadId: input.conversationId,
         });
-        return "test-owner";
+        return coordination.ownerAvailable ? "test-owner" : null;
       },
       setThreadOwnership: async () => {},
       threadArchived: async () => {},
@@ -200,6 +204,37 @@ vi.mock("../local-conversation-deps", () => ({
       };
     }
 
+    if (channel === "codex:subagents:overview:read") {
+      const rows = overviewChild
+        ? [
+            {
+              threadId: "thread_child",
+              parentThreadId: "thread_middle",
+              displayName: "Worker 1",
+              actorName: "Worker 1",
+              agentRole: null,
+              spawnModel: null,
+              objective: null,
+              status: "active",
+              statusSummary: null,
+              startedAtMs: null,
+              lastActivityAtMs: null,
+              completedAtMs: null,
+              diffStats: null,
+              canOpen: true,
+              canInteract: false,
+            },
+          ]
+        : [];
+      return {
+        rootThreadId: (firstArg as { rootThreadId: string }).rootThreadId,
+        revision: 1,
+        generation: 1,
+        completeness: "complete",
+        active: { rows, knownCount: rows.length, totalCount: rows.length, continuation: null },
+        done: { rows: [], knownCount: 0, totalCount: 0, continuation: null },
+      };
+    }
     if (channel === "codex:thread:history-hydration:prepare") {
       const response = buildResumeResponse(firstArg as string);
       return {
@@ -237,6 +272,31 @@ vi.mock("../local-conversation-deps", () => ({
       ).request;
       if (method === "model/list")
         return { type: "result", result: { data: [], nextCursor: null } };
+      if (method === "thread/turns/list")
+        return {
+          type: "result",
+          result: {
+            data: [
+              {
+                ...buildAgentActivityV2CorpusThread().turns[0],
+                id: `${params.threadId}:history`,
+                items: [
+                  {
+                    type: "agentMessage",
+                    id: "history-message",
+                    text: `History for ${params.threadId}`,
+                    phase: "final_answer",
+                    memoryCitation: null,
+                    delivery: null,
+                    questions: null,
+                  },
+                ],
+              },
+            ],
+            nextCursor: null,
+            backwardsCursor: null,
+          },
+        };
       if (method === "thread/read")
         return { type: "result", result: { thread: buildResumeResponse(params.threadId!).thread } };
       if (method === "thread/resume")
@@ -482,7 +542,9 @@ async function renderStage(
   return view;
 }
 
-async function renderPrimaryAndAuxiliaryThread(auxiliaryMode: "background-detail" | "side-chat") {
+async function renderPrimaryAndAuxiliaryThread(
+  auxiliaryMode: "background-detail" | "interactive-background" | "side-chat",
+) {
   const { __resetLocalConversationStoreForTests, LocalConversationProvider } =
     await import("../local-conversation-store");
   const { ConnectedThreadStage } = await import("./connected-thread-stage");
@@ -534,8 +596,12 @@ async function renderPrimaryAndAuxiliaryThread(auxiliaryMode: "background-detail
               {...sharedProps}
               activeThreadId={childSummary.threadId}
               activeThreadSummary={childSummary}
-              {...(auxiliaryMode === "background-detail"
-                ? { backgroundAgentDetail: true }
+              {...(auxiliaryMode !== "side-chat"
+                ? {
+                    backgroundAgentDetail: true,
+                    backgroundAgentCanInteract: auxiliaryMode === "interactive-background",
+                    composerScopeIdentity: "background-agent:thread_child",
+                  }
                 : {
                     composerScopeIdentity: "side-chat:thread_child",
                     sideChatContext: {
@@ -922,7 +988,8 @@ describe("ConnectedThreadStage archived resume behavior", () => {
     });
   });
 
-  test("registers the conversation behind a visible background request card", async () => {
+  test("registers a descendant outside immediate memberships behind a visible background request card", async () => {
+    overviewChild = true;
     installAsyncRequestAnimationFrame();
     invokeCalls = [];
     hostMessageListener = null;
@@ -930,54 +997,6 @@ describe("ConnectedThreadStage archived resume behavior", () => {
     const { dispatchCodexAppServerMessage } = await import("../app-server-message-bus");
 
     await act(async () => {
-      dispatchTestThreadStreamSnapshot(dispatchCodexAppServerMessage, {
-        hostId: "local",
-        conversationId: "thread_child",
-        version: 1,
-        sourceClientId: "test-owner",
-        change: {
-          type: "snapshot",
-          revision: 1,
-          conversationState: buildConversation("thread_child", {
-            source: { parentThreadId: "thread_active" },
-            requests: [
-              {
-                type: "approval",
-                requestId: "background-approval",
-                kind: "command",
-                projectId: "project_1",
-                threadId: "thread_child",
-                turnId: "turn_ready",
-                itemId: "command-background",
-                createdAt: 3,
-              },
-            ],
-            canonicalRequests: [
-              {
-                method: "item/commandExecution/requestApproval",
-                id: "background-approval",
-                params: {
-                  threadId: "thread_child",
-                  turnId: "turn_ready",
-                  itemId: "command-background",
-                  kind: "command",
-                  startedAtMs: 3,
-                  environmentId: null,
-                  command: "git status",
-                  cwd: "/tmp/project",
-                  reason: null,
-                  commandActions: [],
-                  availableDecisions: null,
-                  proposedExecpolicyAmendment: null,
-                  proposedNetworkPolicyAmendments: null,
-                  networkApprovalContext: null,
-                  additionalPermissions: null,
-                },
-              },
-            ],
-          }),
-        },
-      });
       dispatchTestThreadStreamSnapshot(dispatchCodexAppServerMessage, {
         hostId: "local",
         conversationId: "thread_active",
@@ -999,7 +1018,20 @@ describe("ConnectedThreadStage archived resume behavior", () => {
             childMemberships: [
               {
                 threadId: "thread_child",
-                parentThreadId: "thread_active",
+                parentThreadId: "thread_middle",
+                pendingRequest: {
+                  request: {
+                    type: "approval",
+                    requestId: "background-approval",
+                    kind: "command",
+                    projectId: "project_1",
+                    threadId: "thread_child",
+                    turnId: "turn_ready",
+                    itemId: "command-background",
+                    createdAt: 3,
+                  },
+                  requestItem: null,
+                },
                 role: "backgroundChild",
                 actorName: "Worker 1",
               },
@@ -1023,6 +1055,49 @@ describe("ConnectedThreadStage archived resume behavior", () => {
       }
     });
 
+    expect(coordination.getManager?.("local").readConversation("thread_child")).toBeNull();
+    expect(
+      invokeCalls.filter(
+        (call) =>
+          call.threadId === "thread_child" &&
+          ["codex:thread:history-hydration:prepare", "codex:thread:resume:prepare"].includes(
+            call.channel,
+          ),
+      ),
+    ).toEqual([]);
+    await act(async () => {
+      dispatchCodexAppServerMessage("shared-object-updated", {
+        hostId: "local",
+        object: {
+          objectType: "conversationChildMemberships",
+          objectId: "thread_active",
+          value: {
+            parentThreadId: "thread_active",
+            childMemberships: [
+              {
+                threadId: "thread_child",
+                parentThreadId: "thread_middle",
+                role: "backgroundChild",
+                actorName: "Worker 1",
+                pendingRequest: null,
+              },
+            ],
+          },
+        },
+      });
+      await settleAsyncRender();
+    });
+    await waitFor(() =>
+      expect(
+        invokeCalls.some(
+          (call) =>
+            call.channel === "codex:thread:presentation:set" &&
+            call.threadId === "thread_child" &&
+            call.presented === false,
+        ),
+      ).toBe(true),
+    );
+
     await act(async () => {
       view.unmount();
       await settleAsyncRender();
@@ -1039,10 +1114,56 @@ describe("ConnectedThreadStage archived resume behavior", () => {
 
   test("keeps background-agent detail read-only beside the primary thread composer", async () => {
     const view = await renderPrimaryAndAuxiliaryThread("background-detail");
+    expect(
+      invokeCalls.filter(
+        (call) =>
+          call.channel === "codex:thread:resume:prepare" && call.threadId === "thread_child",
+      ),
+    ).toEqual([]);
 
     expect(
       view.container.querySelectorAll('[data-local-conversation-composer-shell="true"]'),
     ).toHaveLength(1);
+    const root = coordination.getManager?.("local").readConversation("thread_root");
+    expect(root?.resumeState).toBe("resumed");
+  });
+
+  test("does not resume or mount a composer for a primary child route before parent history loads", async () => {
+    invokeCalls = [];
+    coordination.ownerAvailable = false;
+    const view = await renderStage({
+      ...buildThreadSummary(false),
+      source: { parentThreadId: "thread-parent" },
+    });
+    await waitFor(() => {
+      expect(
+        invokeCalls
+          .filter((call) => call.channel === "codex:thread:history-hydration:prepare")
+          .map((call) => call.threadId),
+      ).toEqual(expect.arrayContaining(["thread_active", "thread-parent"]));
+    });
+    await waitFor(() => {
+      expect(
+        coordination.getManager?.("local").readConversation("thread_active")?.turns.length,
+      ).toBeGreaterThan(0);
+      expect(
+        coordination.getManager?.("local").readConversation("thread_active")?.resumeState,
+      ).toBe("needs_resume");
+    });
+    await view.findByText("History for thread_active");
+    expect(
+      view.container.querySelectorAll('[data-local-conversation-composer-shell="true"]'),
+    ).toHaveLength(0);
+    expect(invokeCalls.filter((call) => call.channel === "codex:thread:resume:prepare")).toEqual(
+      [],
+    );
+  });
+
+  test("keeps an explicitly interactive child composer separate from the primary composer", async () => {
+    const view = await renderPrimaryAndAuxiliaryThread("interactive-background");
+    expect(
+      view.container.querySelectorAll('[data-local-conversation-composer-shell="true"]'),
+    ).toHaveLength(2);
   });
 
   test("gives a writable auxiliary thread its own composer scope", async () => {
@@ -1145,6 +1266,31 @@ describe("ConnectedThreadStage archived resume behavior", () => {
       });
     },
   );
+
+  test("keeps writer-conflicted history readable and retries from its dedicated footer", async () => {
+    coordination.resumeError = new Error("Thread already has an active writer");
+    const view = await renderStage(buildThreadSummary(false));
+    await view.findByText("This is open in another app");
+    await waitFor(() =>
+      expect(
+        coordination.getManager?.("local").readConversation("thread_active")?.turns.length,
+      ).toBeGreaterThan(0),
+    );
+    expect(
+      view.container.querySelectorAll('[data-local-conversation-composer-shell="true"]'),
+    ).toHaveLength(0);
+    coordination.resumeError = null;
+    await act(async () => {
+      fireEvent.click(view.getByRole("button", { name: "Retry" }));
+      await settleAsyncRender();
+    });
+    await waitFor(() =>
+      expect(
+        coordination.getManager?.("local").readConversation("thread_active")?.resumeState,
+      ).toBe("resumed"),
+    );
+    expect(view.queryByText("This is open in another app")).toBeNull();
+  });
 
   test("settles a failed resume visibly without retrying in a render loop", async () => {
     installAsyncRequestAnimationFrame();

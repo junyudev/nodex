@@ -84,8 +84,8 @@ describe("Codex app-server capability policy", () => {
     },
     {
       capability: "subagentAncestorFilter",
-      below: "0.150.0-alpha.12.1",
-      minimum: "0.150.0-alpha.12.2",
+      below: "0.143.0-alpha.15",
+      minimum: "0.143.0-alpha.16",
     },
     {
       capability: "multiAgentV2Protocol",
@@ -156,7 +156,7 @@ describe("Codex app-server capability policy", () => {
       sideConversation: false,
       threadRevert: true,
       threadQueue: false,
-      subagentAncestorFilter: false,
+      subagentAncestorFilter: true,
       multiAgentV2Protocol: false,
     });
   });

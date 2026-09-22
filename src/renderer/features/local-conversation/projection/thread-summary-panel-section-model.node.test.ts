@@ -21,7 +21,9 @@ describe("buildThreadSummaryPanelSectionModel", () => {
       outputCount: 2,
       suppressOutputs: false,
       sideChatCount: 1,
-      backgroundSubagentRows: [{ showInlineActivity: false, status: "active" }],
+      backgroundSubagentRows: [
+        { displayName: "Scout", showInlineActivity: false, status: "active" },
+      ],
       taskCount: 1,
       hasComputerUsePip: true,
       browserCount: 1,
@@ -83,8 +85,8 @@ describe("buildThreadSummaryPanelSectionModel", () => {
       suppressOutputs: false,
       sideChatCount: 0,
       backgroundSubagentRows: [
-        { showInlineActivity: false, status: "done" },
-        { showInlineActivity: false, status: "done" },
+        { displayName: "Scout", showInlineActivity: false, status: "done" },
+        { displayName: "Scout", showInlineActivity: false, status: "done" },
       ],
       taskCount: 0,
       hasComputerUsePip: false,
@@ -107,8 +109,8 @@ describe("buildThreadSummaryPanelSectionModel", () => {
       suppressOutputs: false,
       sideChatCount: 0,
       backgroundSubagentRows: [
-        { showInlineActivity: true, status: "done" },
-        { showInlineActivity: false, status: "done" },
+        { displayName: "Scout", showInlineActivity: true, status: "done" },
+        { displayName: "Scout", showInlineActivity: false, status: "done" },
       ],
       taskCount: 0,
       hasComputerUsePip: false,

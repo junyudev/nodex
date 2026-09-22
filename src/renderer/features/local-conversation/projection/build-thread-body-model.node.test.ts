@@ -543,3 +543,23 @@ describe("buildThreadBodyModel", () => {
     expect(model.emptyState.type).toBe("emptyThread");
   });
 });
+
+test("renders an attached read-only transcript without resuming its execution", () => {
+  const conversation = buildConversation({ resumeState: "needs_resume" });
+  const input = {
+    activeThreadId: conversation.threadId,
+    conversation,
+    attachmentState: { status: "attached" as const },
+    activeThreadArchived: false,
+    parentTurns: [],
+    isNewThreadTab: false,
+    newThreadTarget: null,
+    isCloudNewThreadTarget: false,
+    threadStartProgress: null,
+  };
+  expect(buildThreadBodyModel({ ...input, readOnly: true })).toMatchObject({
+    turnCount: 1,
+    emptyState: { type: "none" },
+  });
+  expect(buildThreadBodyModel(input).emptyState.type).toBe("resumingThread");
+});

@@ -9,6 +9,7 @@ interface WorkbenchThreadSummaryHeaderProps {
   readonly activeSession: WorkbenchSessionRenderProjection | null;
   readonly pinnedOpen: boolean;
   readonly onTogglePinnedOpen: () => void;
+  readonly onOpenSubagentsPanel?: () => void;
   readonly summary: WorkbenchThreadSummaryModel;
 }
 
@@ -17,6 +18,7 @@ export function WorkbenchThreadSummaryHeader({
   activeSession,
   pinnedOpen,
   onTogglePinnedOpen,
+  onOpenSubagentsPanel,
   summary,
 }: WorkbenchThreadSummaryHeaderProps) {
   if (summary.mode === "hidden" || !activeSession) return null;
@@ -24,6 +26,7 @@ export function WorkbenchThreadSummaryHeader({
   return (
     <ThreadSummaryPanelHeaderAction
       activeThreadId={activeSession.thread?.threadId ?? null}
+      preferredHostId={activeSession.thread?.executionHostId}
       activeThreadIsManagedWorktree={Boolean(activeSession.thread?.managedWorktreePath)}
       onPopoverOpenChange={summary.setPopoverOpen}
       projectWorkspacePath={projectWorkspaceRootOrNull(activeProject)}
@@ -32,7 +35,15 @@ export function WorkbenchThreadSummaryHeader({
       onPinnedOpenToggle={onTogglePinnedOpen}
       popoverOpen={summary.popoverOpen}
       scheduledAutomation={summary.scheduledAutomation}
-      actions={summary.headerActions}
+      actions={{
+        ...summary.headerActions,
+        onOpenSubagentsPanel: onOpenSubagentsPanel
+          ? () => {
+              summary.setPopoverOpen(false);
+              onOpenSubagentsPanel();
+            }
+          : undefined,
+      }}
     />
   );
 }

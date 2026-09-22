@@ -344,20 +344,6 @@ pub(super) fn read(
             .map(Box::new),
             projection_revision: commit_head,
         }),
-        ProjectWorkspaceRead::SubagentLifecycleBatch {
-            lifecycle_operation_id,
-            include_settled,
-            window,
-        } => Ok(ProjectWorkspaceReadValue::SubagentLifecycleBatch {
-            lifecycle: super::subagent_projection::read_lifecycle_batch(
-                connection,
-                library_id,
-                commit_head,
-                &lifecycle_operation_id,
-                include_settled,
-                &window,
-            )?,
-        }),
         ProjectWorkspaceRead::ExecutionContext { thread_id } => {
             validate_id("thread_id", &thread_id)?;
             let thread = read_thread(connection, library_id, &thread_id)?

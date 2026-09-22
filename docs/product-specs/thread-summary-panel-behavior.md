@@ -134,11 +134,11 @@ Subagents uses the canonical root-scoped overview and shared identity from
 compact strip that prefers up to four unfinished agents, or the last four
 finished agents when none remain active. The root panel groups metadata-only
 rows as Active and Done, initially shows at most four Active and ten Done rows,
-and exposes exact totals only after discovery is complete. Unknown evidence
-stays unresolved instead of becoming Done, Waiting rows retain elapsed time,
-and the Done section is absent when its count is zero. Explicit `Show more`
-loads the expanded metadata window; `Show less` returns to the bounded initial
-window.
+and exposes exact totals only after discovery is complete. It uses the same
+runtime/history status rules as inline activity; unnamed rows are omitted.
+Waiting rows retain elapsed time, and the Done section is absent when its count
+is zero. Show more expands the already discovered collection; Show less restores
+the initial limits without loading child transcripts.
 
 Overview rows use objective or status summary text and never assistant answer
 text. Selecting a row verifies root membership and hydrates only that child's

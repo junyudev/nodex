@@ -25,6 +25,15 @@ export function mergeCodexTurnSummary(
     startedAt: incoming.startedAt ?? existing.startedAt,
     completedAt: incoming.completedAt ?? existing.completedAt,
     durationMs: incoming.durationMs ?? existing.durationMs,
+    assistantMessageStartedAtMsById:
+      existing.assistantMessageStartedAtMsById === undefined
+        ? incoming.assistantMessageStartedAtMsById
+        : incoming.assistantMessageStartedAtMsById === undefined
+          ? existing.assistantMessageStartedAtMsById
+          : {
+              ...incoming.assistantMessageStartedAtMsById,
+              ...existing.assistantMessageStartedAtMsById,
+            },
     commandExecutionStartedAtMsById:
       existing.commandExecutionStartedAtMsById ?? incoming.commandExecutionStartedAtMsById,
     itemIds: mergeOrderedStringIds(existing.itemIds, incoming.itemIds),

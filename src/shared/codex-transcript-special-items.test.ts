@@ -264,7 +264,7 @@ describe("codex-transcript-special-items", () => {
     });
 
     expect(payload?.receiverThreads[0]?.thread?.nickname).toBe("@Euclid");
-    expect(payload?.receiverThreads[1]?.thread?.nickname).toBe("Proof Writer");
+    expect(payload?.receiverThreads[1]?.thread?.nickname).toBeNull();
     expect(payload?.receiverThreads[1]?.thread?.name).toBe("Proof Writer");
     expect(payload?.receiverThreads[2]?.thread?.nickname).toBe("@Nash");
     expect(payload?.receiverThreads[2]?.thread?.agentRole).toBe("reviewer");

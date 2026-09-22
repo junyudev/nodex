@@ -1,80 +1,109 @@
 import { describe, expect, test } from "vitest";
 import {
-  projectCodexSubagentOverviewRow,
   projectCodexSubagentOverviewWindow,
+  type CoreSubagentOverviewLike,
+  type CoreSubagentOverviewThreadLike,
 } from "./CodexSubagentDirectoryProjection";
 
-const thread = {
-  thread_id: "019agent",
+const thread: CoreSubagentOverviewThreadLike = {
+  thread_id: "child",
   parent_thread_id: "root",
-  thread_name: null,
-  thread_preview:
-    "  Investigate    renderer subscription pressure and return only the actionable findings.  ",
-  model_provider: "openai",
-  model_id: "gpt-5.6-sol",
+  thread_preview: "Stored preview",
   agent_nickname: "@Scout",
   agent_role: "explorer",
-  agent_path: "root/scout",
   archived: false,
   created_at: 80,
   updated_at: 120,
   recency_at: 100,
+  status: { status_type: "notLoaded" },
 };
-
-describe("CodexSubagentDirectoryProjection", () => {
-  test("projects only lightweight row metadata and never exposes an answer body", () => {
-    const row = projectCodexSubagentOverviewRow({ thread, status: "active" });
-    expect(row).toMatchObject({
-      threadId: "019agent",
+function overview(
+  threads: CoreSubagentOverviewThreadLike[],
+  complete = true,
+): CoreSubagentOverviewLike {
+  return {
+    universe: { generation: 7, root_thread_id: "root" },
+    active: { items: threads.map((thread) => ({ thread, status: "unknown" })) },
+    done: { items: [] },
+    known_active_count: threads.length,
+    known_done_count: 0,
+    discovery_complete: complete,
+    projection_revision: 42,
+  };
+}
+describe("subagent overview shared projection", () => {
+  test("regroups runtime-notLoaded metadata into done and omits unnamed or archived rows", () => {
+    const result = projectCodexSubagentOverviewWindow(
+      overview([
+        thread,
+        { ...thread, thread_id: "unnamed", agent_nickname: null },
+        { ...thread, thread_id: "archived", archived: true },
+      ]),
+    );
+    expect(result.active.rows).toEqual([]);
+    expect(result.done).toMatchObject({ knownCount: 1, totalCount: 1 });
+    expect(result.done.rows[0]).toMatchObject({
       displayName: "Scout",
-      objective: "Investigate renderer subscription pressure and return only…",
-      statusSummary: "Working",
-      lastActivityAtMs: 120,
-      canOpen: true,
-      canInteract: true,
-    });
-    expect(row).not.toHaveProperty("conversation");
-    expect(row).not.toHaveProperty("transcript");
-  });
-
-  test("publishes unknown rows in the active window without claiming an incomplete total", () => {
-    const window = projectCodexSubagentOverviewWindow({
-      universe: { generation: 7, root_thread_id: "root" },
-      active: { items: [{ thread, status: "unknown" }], next_cursor: "active-next" },
-      done: { items: [], next_cursor: null },
-      known_active_count: 20,
-      known_done_count: 0,
-      discovery_complete: false,
-      discovery_continuation: "discovery-next",
-      projection_revision: 42,
-    });
-
-    expect(window).toMatchObject({
-      rootThreadId: "root",
-      revision: 42,
-      generation: 7,
-      completeness: "incomplete",
-      active: { knownCount: 20, totalCount: null, continuation: "active-next" },
-      done: { knownCount: 0, totalCount: null, continuation: null },
-    });
-    expect(window.active.rows[0]?.status).toBe("unknown");
-  });
-
-  test("keeps completed children interactive until Thread authority is revoked", () => {
-    expect(projectCodexSubagentOverviewRow({ thread, status: "done" })).toMatchObject({
       status: "done",
-      canOpen: true,
-      canInteract: true,
-    });
-    expect(
-      projectCodexSubagentOverviewRow({
-        thread: { ...thread, archived: true },
-        status: "done",
-      }),
-    ).toMatchObject({
-      status: "done",
-      canOpen: false,
       canInteract: false,
+      canOpen: true,
+      spawnModel: null,
     });
+  });
+  test("resident runtime overrides stored evidence and never leaks an answer body", () => {
+    const result = projectCodexSubagentOverviewWindow(overview([thread]), () => false, {
+      parentTurns: [],
+      knownConversationsById: {
+        child: {
+          turns: [],
+          threadRuntimeStatus: { type: "active", activeFlags: ["waitingOnApproval"] },
+        },
+      },
+    });
+    expect(result.active.rows[0]).toMatchObject({ status: "active", startedAtMs: 80 });
+    expect(result.active.rows[0]).not.toHaveProperty("lastAssistantMessage");
+    expect(result.active.rows[0]).not.toHaveProperty("turns");
+  });
+  test("incomplete discovery preserves a lower-bound total and uses active fallback only without runtime", () => {
+    const result = projectCodexSubagentOverviewWindow(
+      overview([{ ...thread, status: undefined }], false),
+    );
+    expect(result.active).toMatchObject({ knownCount: 1, totalCount: null });
+    expect(result.active.rows[0]?.status).toBe("active");
+  });
+  test("runtime system error hides identity independently of durable done evidence", () => {
+    const result = projectCodexSubagentOverviewWindow(
+      overview([{ ...thread, status: { status_type: "systemError" } }]),
+    );
+    expect(result.active.rows).toEqual([]);
+    expect(result.done.rows).toEqual([]);
+  });
+  test("source order prefers cached descendants while display sections sort recency", () => {
+    const old = { ...thread, thread_id: "old", created_at: 1, recency_at: 1, updated_at: 1 };
+    const recent = {
+      ...thread,
+      thread_id: "recent",
+      created_at: 10,
+      recency_at: 10,
+      updated_at: 10,
+    };
+    const result = projectCodexSubagentOverviewWindow(overview([recent, old]), () => false, {
+      parentTurns: [],
+      knownConversationsById: { old: { turns: [] } },
+      cachedConversationIds: ["old"],
+      sourceLinkedThreadIds: ["recent", "old"],
+    });
+    expect(result.rows?.map((row) => row.threadId)).toEqual(["old", "recent"]);
+    expect(result.done.rows.map((row) => row.threadId)).toEqual(["recent", "old"]);
+  });
+  test("conversation titles never replace agent nicknames or name an unnamed source child", () => {
+    const result = projectCodexSubagentOverviewWindow(
+      overview([
+        { ...thread, thread_name: "Custom title" },
+        { ...thread, thread_id: "unnamed", thread_name: "Another title", agent_nickname: null },
+      ]),
+    );
+    expect(result.rows?.map((row) => row.displayName)).toEqual(["Scout", ""]);
+    expect(result.done.rows.map((row) => row.threadId)).toEqual(["child"]);
   });
 });

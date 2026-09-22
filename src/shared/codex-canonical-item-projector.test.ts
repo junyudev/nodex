@@ -831,3 +831,29 @@ test("assistant memory citations preserve literal markers in code but strip real
   expect(projectAssistantText("Answer <oai-mem-citation>incomplete", false)).toBe("Answer");
   expect(projectAssistantText("Answer <oai-mem-cit", true)).toBe("Answer");
 });
+
+describe("subagent activity lifecycle", () => {
+  test.each([
+    ["started", "active", "inProgress", false],
+    ["interacted", "updated", "inProgress", true],
+    ["interrupted", "interrupted", "interrupted", false],
+    ["completed", "completed", "completed", false],
+  ] as const)(
+    "projects %s without losing message or completion semantics",
+    (kind, displayStatus, status, isMessage) => {
+      const views = project([
+        materializeCodexCanonicalProtocolItem({
+          type: "subAgentActivity",
+          id: "activity",
+          kind,
+          agentThreadId: "child",
+          agentPath: "root/reviewer",
+        }),
+      ]);
+      expect(views[0]).toMatchObject({
+        status,
+        subagentActivity: { agentThreadId: "child", displayStatus, isMessage },
+      });
+    },
+  );
+});

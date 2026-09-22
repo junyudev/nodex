@@ -1,4 +1,5 @@
 import { ThreadForkSubmissionContext } from "./shared/thread-fork-state";
+import { isLocalConversationWriterConflict } from "../conversation-attachment-state";
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { appScope, useScopeHandle } from "@/lib/maitai";
 import {
@@ -355,6 +356,7 @@ interface LocalConversationThreadBodyOwnerProps {
   capabilityFlags: CodexConversationCapabilityFlags;
   parentTurns: readonly CodexConversationTurn[];
   childMemberships: readonly CodexConversationChildMembership[];
+  parentModel?: string | null;
   backgroundAgentRows: readonly ThreadComposerShellBackgroundAgentRowModel[];
   projectWorkspacePath?: string | null;
   projectlessOutputDirectory?: string | null;
@@ -413,6 +415,7 @@ export function LocalConversationThreadBodyOwner({
   capabilityFlags,
   parentTurns,
   childMemberships,
+  parentModel,
   backgroundAgentRows,
   projectWorkspacePath,
   projectlessOutputDirectory,
@@ -441,7 +444,10 @@ export function LocalConversationThreadBodyOwner({
   const [forkingTurnId, setForkingTurnId] = useState<string | null>(null);
   const isForkSubmitting = forkingTurnId !== null;
   const [isRestoringArchivedThread, setIsRestoringArchivedThread] = useState(false);
-  const attachmentFailure = attachmentState?.status === "failed" ? attachmentState : null;
+  const attachmentFailure =
+    attachmentState?.status === "failed" && !isLocalConversationWriterConflict(attachmentState)
+      ? attachmentState
+      : null;
   const retryAttachment = useCallback(() => {
     if (!threadId || !actions.onRetryThreadAttachment) return;
     void actions.onRetryThreadAttachment(threadId);
@@ -1122,6 +1128,7 @@ export function LocalConversationThreadBodyOwner({
                 historyRows={historyRows}
                 conversationId={conversation?.threadId ?? body.threadId ?? ""}
                 threadCwd={cwd}
+                parentModel={parentModel}
                 projectWorkspacePath={projectWorkspacePath}
                 projectlessOutputDirectory={projectlessOutputDirectory}
                 editableTurnId={editableTurnId}

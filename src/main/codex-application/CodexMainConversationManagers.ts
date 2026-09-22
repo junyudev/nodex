@@ -81,6 +81,10 @@ export class CodexMainConversationManagers extends Context.Service<
     ) => Effect.Effect<MainConversationManager, MainConversationManagerError>;
     readonly current: (hostId: string) => MainConversationManager | null;
     readonly role: (hostId: string, threadId: string) => ConversationStreamRole | null;
+    readonly shareResident: (
+      hostId: string,
+      threadId: string,
+    ) => Effect.Effect<void, MainConversationManagerError>;
     readonly dispatchFollowerRequest: FollowerHandler;
     readonly registerFollowerHandler: (handler: FollowerHandler) => Disposable;
     readonly retire: (hostId: string) => Effect.Effect<void>;
@@ -504,6 +508,36 @@ export const make = Effect.gen(function* () {
     get,
     current,
     role: (hostId, threadId) => current(hostId)?.stream.getRole(threadId) ?? null,
+    // Publishing resident history grants stream ownership, never native execution or input authority.
+    shareResident: (hostId, threadId) =>
+      Effect.gen(function* () {
+        const manager = yield* get(hostId);
+        const generation = manager.generation;
+        const entity = entities.current(threadId);
+        if (!entity?.readCanonicalState() || entity.readCanonicalState()?.hostId !== hostId)
+          return yield* fail(hostId, new Error("Resident conversation is unavailable"));
+        if (manager.stream.getRole(threadId)) return;
+        const ownerId = yield* Effect.tryPromise({
+          try: () => manager.findOwner(threadId),
+          catch: (cause) => fail(hostId, cause),
+        });
+        yield* Effect.try({
+          try: () => {
+            manager.assertCurrent(generation);
+            if (entities.current(threadId) !== entity || !entity.readCanonicalState())
+              throw new Error("Resident conversation changed while attaching");
+            if (manager.stream.getRole(threadId)) return;
+            if (ownerId) {
+              manager.stream.setRole(threadId, { role: "follower", ownerClientId: ownerId });
+              manager.stream.setFollowing(threadId, true);
+              return;
+            }
+            manager.stream.setRole(threadId, { role: "owner" });
+            manager.stream.broadcastSnapshot(threadId);
+          },
+          catch: (cause) => fail(hostId, cause),
+        });
+      }),
     retire,
     dispatchFollowerRequest: (hostId, request) =>
       Effect.suspend(() =>

@@ -55,6 +55,7 @@ interface ThreadTurnProps {
   projectWorkspacePath?: string | null;
   projectlessOutputDirectory?: string | null;
   childMemberships?: readonly CodexConversationChildMembership[];
+  parentModel?: string | null;
   threadCwd?: string | null;
   onEditLastUserTurn?: (input: {
     threadId: string;
@@ -194,6 +195,7 @@ function ThreadTurnBody({
   onClosePlanSidePanel,
   planSidePanelState,
   childMemberships,
+  parentModel,
   turnDiffHoverPreviewDisabled = false,
   latestTurnFollowContentRef,
 }: ThreadTurnProps & { agentBodyUnits: ThreadAgentRenderUnit[] }) {
@@ -238,6 +240,7 @@ function ThreadTurnBody({
       projectWorkspacePath={projectWorkspacePath}
       projectlessOutputDirectory={projectlessOutputDirectory}
       childMemberships={childMemberships}
+      parentModel={parentModel}
       threadCwd={threadCwd}
       onEditLastUserTurn={onEditLastUserTurn}
       onForkFromTurn={onForkFromTurn}
@@ -262,6 +265,7 @@ function ThreadTurnBody({
       projectWorkspacePath={projectWorkspacePath}
       projectlessOutputDirectory={projectlessOutputDirectory}
       childMemberships={childMemberships}
+      parentModel={parentModel}
       threadCwd={threadCwd}
       onEditLastUserTurn={onEditLastUserTurn}
       onForkFromTurn={onForkFromTurn}

@@ -27,7 +27,11 @@ import {
 } from "@/features/browser-sidebar/browser-image-attachments";
 import { NodexModalHost } from "@/lib/modal-registry";
 import type { ThreadGoal } from "@nodex/codex-app-server-protocol/v2";
-import type { ThreadFooterModel, ThreadStageActions } from "../../thread-stage-types";
+import type {
+  ThreadComposerShellBackgroundAgentRowModel,
+  ThreadFooterModel,
+  ThreadStageActions,
+} from "../../thread-stage-types";
 import {
   ThreadComposer,
   __composerAddContextTestUtils,
@@ -370,6 +374,7 @@ async function renderComposer(
   actionOverrides?: Partial<ThreadStageActions>,
   testInvoke?: TestInvoke,
   onErrorMessage: (message: string | null) => void = () => {},
+  backgroundAgentRows?: readonly ThreadComposerShellBackgroundAgentRowModel[],
 ) {
   installAsyncRequestAnimationFrame();
   document.documentElement.dataset.codexWindowType = "electron";
@@ -382,6 +387,7 @@ async function renderComposer(
         <TestComposerScopePath>
           <ThreadComposer
             model={buildModel(overrides)}
+            backgroundAgentRows={backgroundAgentRows}
             actions={buildActions(actionOverrides)}
             errorMessage={null}
             onErrorMessage={onErrorMessage}
@@ -2700,6 +2706,61 @@ describe("ThreadComposer speed menu", () => {
         ],
       }),
     );
+  });
+
+  test("inserts a direct subagent mention from an earlier parent turn without a search query", async () => {
+    resetStorage();
+    const sentPromptInputs: unknown[] = [];
+    const view = await renderComposer(
+      {},
+      {
+        onSendPrompt: async (_prompt, opts) => {
+          sentPromptInputs.push(opts?.promptInput);
+        },
+      },
+      undefined,
+      undefined,
+      [
+        {
+          conversationId: "child",
+          parentConversationId: "thread_1",
+          parentTurnKey: "older-turn",
+          displayName: "@Scout",
+          actorName: "Scout",
+          agentRole: "explorer",
+          canInteract: true,
+          spawnModel: null,
+          status: "done",
+          statusSummary: null,
+          lastAssistantMessage: null,
+          lastAssistantMessageAtMs: null,
+          recencyAtMs: 0,
+          showInlineActivity: false,
+          diffStats: null,
+          role: "backgroundChild",
+          isCurrentParentTurn: false,
+        },
+      ],
+    );
+    const trigger = view.getByLabelText("Add files and more");
+    await act(async () => {
+      fireEvent.pointerDown(trigger, { button: 0, ctrlKey: false });
+      fireEvent.click(trigger);
+      await Promise.resolve();
+    });
+    const candidate = await view.findByRole("button", { name: /Scout/u });
+    await act(async () => {
+      fireEvent.click(candidate);
+      await Promise.resolve();
+    });
+    await act(async () => {
+      fireEvent.click(view.getByLabelText("Send prompt"));
+      await Promise.resolve();
+    });
+    await waitFor(() => expect(sentPromptInputs).toHaveLength(1));
+    expect(sentPromptInputs[0]).toMatchObject({
+      mentions: [{ name: "scout", path: "agent://child" }],
+    });
   });
 
   test("unified add-context menu inserts a structured plugin mention", async () => {

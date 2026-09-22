@@ -347,6 +347,35 @@ describe("CodexConversationRelationshipsProjection", () => {
         children: [{ thread: durableChild("child"), canonicalState, conversation: null }],
       });
       expect(projected[0]?.role).toBe(hasChanges ? "childApproval" : "backgroundChild");
+      if (!hasChanges) {
+        expect(projected[0]?.pendingRequest).toBeNull();
+        return;
+      }
+      expect(projected[0]?.pendingRequest?.request.requestId).toBe("file-approval");
+      expect(projected[0]?.pendingRequest?.requestItem?.itemId).toBe("file");
+      expect(
+        Object.keys(projected[0]?.pendingRequest?.requestItem?.fileChange?.changes ?? {}),
+      ).toEqual(["/repo/file.txt"]);
     },
   );
+});
+
+test("all lifecycle activity establishes membership while messages never do", () => {
+  const state = {
+    id: "parent",
+    turns: [
+      {
+        items: ["started", "completed", "interrupted", "interacted"].map((kind) => ({
+          type: "subAgentActivity",
+          kind,
+          agentThreadId: kind,
+        })),
+      },
+    ],
+  } as unknown as CodexCanonicalConversationState;
+  expect(extractCodexConversationRelationshipThreadIds(state)).toEqual([
+    "started",
+    "completed",
+    "interrupted",
+  ]);
 });

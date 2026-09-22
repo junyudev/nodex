@@ -128,6 +128,7 @@ export interface CodexItemLifecycleMetadataState {
   readonly items: readonly CodexItemLifecycleIdentity[];
   readonly firstTurnWorkItemStartedAtMs?: number | null;
   readonly finalAssistantStartedAtMs?: number | null;
+  readonly assistantMessageStartedAtMsById?: Readonly<Record<string, number>>;
   readonly lifecycleStatusByItemId?: Readonly<Record<string, CodexItemStatus>>;
   readonly commandExecutionStartedAtMsById?: Readonly<Record<string, number>>;
 }
@@ -137,6 +138,7 @@ export interface CodexItemLifecycleMetadataResult {
   readonly upsertIndex: number;
   readonly firstTurnWorkItemStartedAtMs?: number | null;
   readonly finalAssistantStartedAtMs?: number | null;
+  readonly assistantMessageStartedAtMsById?: Readonly<Record<string, number>>;
   readonly lifecycleStatusByItemId?: Readonly<Record<string, CodexItemStatus>>;
   readonly commandExecutionStartedAtMsById?: Readonly<Record<string, number>>;
 }
@@ -423,6 +425,7 @@ export function reduceCodexItemLifecycleMetadata(
   const sameOccurrence = state.items[sameIdIndex]?.type === item.type;
   let firstTurnWorkItemStartedAtMs = state.firstTurnWorkItemStartedAtMs;
   let finalAssistantStartedAtMs = state.finalAssistantStartedAtMs;
+  let assistantMessageStartedAtMsById = state.assistantMessageStartedAtMsById;
   const previousLifecycleStatus = sameOccurrence
     ? state.lifecycleStatusByItemId?.[item.id]
     : undefined;
@@ -439,6 +442,7 @@ export function reduceCodexItemLifecycleMetadata(
         upsertIndex,
         firstTurnWorkItemStartedAtMs,
         finalAssistantStartedAtMs,
+        assistantMessageStartedAtMsById,
         lifecycleStatusByItemId,
         commandExecutionStartedAtMsById,
       };
@@ -452,11 +456,20 @@ export function reduceCodexItemLifecycleMetadata(
         upsertIndex,
         firstTurnWorkItemStartedAtMs,
         finalAssistantStartedAtMs,
+        assistantMessageStartedAtMsById,
         lifecycleStatusByItemId,
         commandExecutionStartedAtMsById,
       };
     }
 
+    if (item.type === "agentMessage") {
+      assistantMessageStartedAtMsById = {
+        ...(assistantMessageStartedAtMsById ?? {}),
+        [item.id]: sameOccurrence
+          ? (assistantMessageStartedAtMsById?.[item.id] ?? notification.params.startedAtMs)
+          : notification.params.startedAtMs,
+      };
+    }
     if (item.type === "agentMessage" && item.delivery !== "async") {
       finalAssistantStartedAtMs = context.now();
     }
@@ -475,6 +488,7 @@ export function reduceCodexItemLifecycleMetadata(
       upsertIndex,
       firstTurnWorkItemStartedAtMs,
       finalAssistantStartedAtMs,
+      assistantMessageStartedAtMsById,
       lifecycleStatusByItemId,
       commandExecutionStartedAtMsById,
     };
@@ -496,6 +510,7 @@ export function reduceCodexItemLifecycleMetadata(
       upsertIndex,
       firstTurnWorkItemStartedAtMs,
       finalAssistantStartedAtMs,
+      assistantMessageStartedAtMsById,
       lifecycleStatusByItemId,
       commandExecutionStartedAtMsById,
     };
@@ -513,6 +528,7 @@ export function reduceCodexItemLifecycleMetadata(
     upsertIndex,
     firstTurnWorkItemStartedAtMs,
     finalAssistantStartedAtMs,
+    assistantMessageStartedAtMsById,
     lifecycleStatusByItemId,
     commandExecutionStartedAtMsById,
   };
@@ -525,6 +541,10 @@ function applyLifecycleMetadataDraft(
   if (metadata.firstTurnWorkItemStartedAtMs !== undefined)
     turn.firstTurnWorkItemStartedAtMs = metadata.firstTurnWorkItemStartedAtMs;
   turn.finalAssistantStartedAtMs = metadata.finalAssistantStartedAtMs ?? null;
+  if (metadata.assistantMessageStartedAtMsById !== undefined) {
+    turn.assistantMessageStartedAtMsById ??= {};
+    Object.assign(turn.assistantMessageStartedAtMsById, metadata.assistantMessageStartedAtMsById);
+  }
   if (metadata.lifecycleStatusByItemId !== undefined) {
     turn.lifecycleStatusByItemId ??= {};
     Object.assign(turn.lifecycleStatusByItemId, metadata.lifecycleStatusByItemId);

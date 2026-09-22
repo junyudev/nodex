@@ -1,3 +1,4 @@
+import { projectCodexSubagentPathDisplayName } from "./codex-subagent-display";
 import { areStructurallyEqual } from "./structural-equality";
 import {
   expandCodexAsyncQuestions,
@@ -743,18 +744,6 @@ function projectDynamicToolCall(
   ];
 }
 
-function projectSubagentDisplayName(agentPath: string): string | null {
-  const segment = agentPath
-    .split("/")
-    .map((value) => value.trim())
-    .filter((value) => value.length > 0 && value !== "root")
-    .at(-1);
-  if (!segment) return null;
-  const normalized = segment.replace(/[_-]+/g, " ").replace(/\s+/g, " ").trim().toLowerCase();
-  if (!normalized) return null;
-  return `${normalized[0]?.toUpperCase() ?? ""}${normalized.slice(1)}`;
-}
-
 function projectSubagentDisplayStatus(
   kind: Extract<
     CodexCanonicalItem,
@@ -762,9 +751,10 @@ function projectSubagentDisplayStatus(
       type: "subAgentActivity";
     }
   >["kind"],
-): "active" | "updated" | "interrupted" {
+): "active" | "updated" | "interrupted" | "completed" {
   if (kind === "started") return "active";
   if (kind === "interacted") return "updated";
+  if (kind === "completed") return "completed";
   return "interrupted";
 }
 
@@ -941,11 +931,17 @@ function projectCanonicalItemViews(
           ...buildBaseView(item, context),
           normalizedKind: "systemEvent",
           semanticKind: "subAgentActivity",
-          status: item.kind === "interrupted" ? "interrupted" : "inProgress",
+          status:
+            item.kind === "completed"
+              ? "completed"
+              : item.kind === "interrupted"
+                ? "interrupted"
+                : "inProgress",
           subagentActivity: {
             agentThreadId: item.agentThreadId,
-            displayName: projectSubagentDisplayName(item.agentPath),
+            displayName: projectCodexSubagentPathDisplayName(item.agentPath),
             displayStatus: projectSubagentDisplayStatus(item.kind),
+            isMessage: item.kind === "interacted",
           },
         },
       ];

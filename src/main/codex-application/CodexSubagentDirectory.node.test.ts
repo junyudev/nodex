@@ -1,24 +1,21 @@
-import type { CodexCanonicalTurnHeader } from "../../shared/types";
+import { ConversationEntityMap } from "./internal/ConversationEntityMap";
+import { makeConversationEntityStateRegistry } from "./internal/ConversationEntityState";
+import { CodexMainConversationManagers } from "./CodexMainConversationManagers";
 import type { Thread } from "@nodex/codex-app-server-protocol/v2";
-import { CodexAppServerRequestError } from "@nodex/effect-codex-app-server/errors";
 import { assert, it } from "@effect/vitest";
 import * as Cause from "effect/Cause";
 import * as Deferred from "effect/Deferred";
 import * as Effect from "effect/Effect";
 import * as Fiber from "effect/Fiber";
 import * as Stream from "effect/Stream";
-import * as TestClock from "effect/testing/TestClock";
 import { extractCodexThreadSubagentMetadata } from "../../shared/codex-subagent-metadata";
-import { CoreModuleResponseError } from "../core-client/core-client";
 import type { ProjectWorkspaceReadSnapshot } from "../core-client/types";
 import {
   CodexAppServerCapabilities,
   type CodexAppServerCapabilitySnapshot,
 } from "../codex-runtime/CodexAppServerCapabilities";
 import { CodexGateway } from "../codex-runtime/CodexGateway";
-import { codexRuntimeError } from "../codex-runtime/CodexRuntimeError";
 import { CoreModules, type CoreModuleClients } from "../core-runtime/CoreModules";
-import { CoreRuntimeError } from "../core-runtime/CoreRuntimeError";
 import { CodexConversations } from "./CodexConversations";
 import { CodexApplicationEventHub } from "./CodexApplicationEventHub";
 import { CodexThreadDirectory, type CodexThreadDirectoryEntry } from "./CodexThreadDirectory";
@@ -32,10 +29,6 @@ type Overview = Extract<
   ProjectWorkspaceReadSnapshot["value"],
   { readonly kind: "subagent_overview_window" }
 >["overview"];
-type Lifecycle = Extract<
-  ProjectWorkspaceReadSnapshot["value"],
-  { readonly kind: "subagent_lifecycle_batch" }
->["lifecycle"];
 
 const capability: CodexAppServerCapabilitySnapshot = {
   hostId: "remote-a",
@@ -181,10 +174,25 @@ const buildDirectory = (input: {
   readonly observedSubagentThreadIdsByParent?: Readonly<Record<string, readonly string[]>>;
   readonly publish?: CodexApplicationEventHub["Service"]["publish"];
   readonly readConversation?: CodexConversations["Service"]["read"];
+  readonly shareResident?: CodexMainConversationManagers["Service"]["shareResident"];
+  readonly currentManager?: CodexMainConversationManagers["Service"]["current"];
+  readonly dispatchFollowerRequest?: CodexMainConversationManagers["Service"]["dispatchFollowerRequest"];
   readonly isCurrent?: CodexAppServerCapabilities["Service"]["isCurrent"];
+  readonly entities?: ConversationEntityMap["Service"];
 }) => {
   const unsupported = () => Effect.die(new Error("unused"));
   return make.pipe(
+    Effect.provideService(
+      ConversationEntityMap,
+      input.entities ?? {
+        ...makeConversationEntityStateRegistry(),
+        entity: () => {
+          throw new Error("Unexpected entity acquisition");
+        },
+        runCommand: (_threadId, operation) => operation,
+        retire: () => Effect.void,
+      },
+    ),
     Effect.provideService(
       CodexApplicationEventHub,
       CodexApplicationEventHub.of({
@@ -212,27 +220,39 @@ const buildDirectory = (input: {
               generation: 1,
               snapshot: null,
               canonicalState: {
-                ...{ id: "root-a" },
-                turns: [
+                ...conversationFixture(threadId, [
                   {
-                    ...({
-                      turnId: "turn-root",
-                      status: input.hasLiveRootTurn ? "inProgress" : "completed",
-                    } satisfies Pick<CodexCanonicalTurnHeader, "turnId" | "status">),
+                    ...turnFixture("turn-root", input.hasLiveRootTurn ? "inProgress" : "completed"),
                     items: [
                       {
                         type: "collabAgentToolCall",
+                        id: "spawn-fixture",
                         tool: "spawnAgent",
-                        receiverThreadIds: observedThreadIds ?? [],
+                        status: "completed",
+                        senderThreadId: threadId,
+                        receiverThreadIds: [...(observedThreadIds ?? [])],
+                        prompt: null,
+                        model: null,
+                        reasoningEffort: null,
+                        agentsStates: {},
                       },
                     ],
                   },
-                ],
+                ]),
+                threadRuntimeStatus:
+                  threadId !== "root-a" || input.hasLiveRootTurn
+                    ? { type: "active", activeFlags: [] }
+                    : { type: "idle" },
               },
             } as never;
           }),
       } as unknown as CodexConversations["Service"]),
     ),
+    Effect.provideService(CodexMainConversationManagers, {
+      shareResident: input.shareResident ?? (() => Effect.void),
+      current: input.currentManager ?? (() => null),
+      dispatchFollowerRequest: input.dispatchFollowerRequest ?? unsupported,
+    } as unknown as CodexMainConversationManagers["Service"]),
     Effect.provideService(
       CodexGateway,
       CodexGateway.of({
@@ -277,11 +297,34 @@ for (const scenario of [
   { name: "summary resident", itemsView: "summary", empty: false, attach: false },
   { name: "complete empty", itemsView: "full", empty: true, attach: false },
   { name: "skeleton only", itemsView: "notLoaded", empty: false, attach: true },
+  { name: "interactive completed", itemsView: "full", empty: false, attach: false },
+  { name: "interactive cold", itemsView: "notLoaded", empty: false, attach: true },
 ] as const) {
   it.effect(`opens selected ${scenario.name} canonical history without a presentation`, () =>
     Effect.scoped(
       Effect.gen(function* () {
         const tailReads: string[] = [];
+        const interactive = scenario.name.startsWith("interactive");
+        const shared: Array<[string, string]> = [];
+        const parentCanonical = conversationFixture("root-a", [
+          {
+            ...turnFixture("parent-turn"),
+            items: [
+              {
+                type: "collabAgentToolCall",
+                id: "spawn",
+                tool: "spawnAgent",
+                status: "completed",
+                senderThreadId: "root-a",
+                receiverThreadIds: [child.id],
+                prompt: null,
+                model: null,
+                reasoningEffort: null,
+                agentsStates: {},
+              },
+            ],
+          },
+        ]);
         const initial = produce(
           conversationFixture(
             child.id,
@@ -297,7 +340,8 @@ for (const scenario of [
             replaceCanonicalHistoryDraft(draft, draft.turns, true, null);
           },
         );
-        let canonical = initial;
+        let canonical: typeof initial | null =
+          scenario.name === "interactive cold" ? null : initial;
         const selected = (): CodexThreadDirectoryEntry => ({
           ...rootDirectoryEntry,
           durable: { ...rootDirectoryEntry.durable, threadId: child.id, parentThreadId: "root-a" },
@@ -331,15 +375,27 @@ for (const scenario of [
               }
               return selected();
             }),
+          shareResident: (hostId, threadId) =>
+            Effect.sync(() => {
+              assert.isNotNull(canonical);
+              shared.push([hostId, threadId]);
+            }),
           readConversation: (id) =>
-            id === child.id
+            id === child.id && canonical
               ? {
                   generation: 8,
                   historyCheckpoint: [8, canonical.turnHistory!.history.generation, 13],
                   canonicalState: canonical,
                   snapshot: null,
                 }
-              : null,
+              : id === "root-a" && interactive
+                ? {
+                    generation: 1,
+                    historyCheckpoint: [1, 0, 0],
+                    canonicalState: parentCanonical,
+                    snapshot: null,
+                  }
+                : null,
         });
         const result = yield* service.hydrateSelected({
           rootThreadId: "root-a",
@@ -347,12 +403,13 @@ for (const scenario of [
         });
         assert.strictEqual(result.outcome, "ready");
         assert.strictEqual(result.fidelity, scenario.attach ? "attachedSparse" : "residentSparse");
-        assert.isTrue(result.canInteract);
+        assert.strictEqual(result.canInteract, interactive);
         assert.strictEqual(
           result.checkpoint,
-          JSON.stringify([8, canonical.turnHistory!.history.generation, 13]),
+          JSON.stringify([8, canonical!.turnHistory!.history.generation, 13]),
         );
         assert.deepEqual(tailReads, scenario.attach ? [child.id] : []);
+        assert.deepEqual(shared, [[capability.hostId, child.id]]);
       }),
     ),
   );
@@ -579,7 +636,7 @@ for (const kind of ["interacted", "interrupted", "completed"] as const) {
 }
 
 it.effect(
-  "reconciles a terminal child after app-server replacement without a replayed notification",
+  "refreshes metadata after app-server replacement without reading terminal child history",
   () =>
     Effect.scoped(
       Effect.gen(function* () {
@@ -600,6 +657,7 @@ it.effect(
           agent_nickname: "Scout",
           agent_role: "explorer",
           agent_path: "root-a/Scout",
+          status: { status_type: "notLoaded", active_flags: [] },
           archived: false,
           created_at: 100_000,
           updated_at: 120_000,
@@ -731,11 +789,10 @@ it.effect(
         yield* service.reconcileAfterReconnect({ loadedThreadIds: ["root-a"] });
         const settled = yield* service.readKnownOverview({ rootThreadId: "root-a" });
 
-        assert.deepEqual(requestMethods, ["thread/list", "thread/turns/list"]);
+        assert.deepEqual(requestMethods, ["thread/list"]);
         assert.deepEqual(operationKinds, [
           "observe_subagent_discovery_page",
           "observe_subagent_discovery_page",
-          "observe_subagent_status_evidence",
         ]);
         assert.deepEqual(invalidatedRoots, ["root-a"]);
         assert.strictEqual(settled.active.knownCount, 0);
@@ -1069,6 +1126,7 @@ it.effect.each(["overlapping", "delayed-snapshot"] as const)(
                         agent_nickname: child.agentNickname,
                         agent_role: child.agentRole,
                         agent_path: "root-a/Scout",
+                        status: { status_type: "active", active_flags: [] },
                         archived: false,
                         created_at: 100_000,
                         updated_at: 120_000,
@@ -1194,6 +1252,7 @@ it.effect("recovers repeated ancestor and legacy cursors without poisoning page 
                     agent_nickname: thread.agentNickname,
                     agent_role: thread.agentRole,
                     agent_path: extractCodexThreadSubagentMetadata(thread).agentPath,
+                    status: { status_type: "active", active_flags: [] },
                     archived: false,
                     created_at: 100_000,
                     updated_at: 120_000,
@@ -1326,6 +1385,7 @@ it.effect("restarts expanded pagination when the Core projection revision change
           agent_nickname: threadId,
           agent_role: "explorer",
           agent_path: `root-a/${threadId}`,
+          status: { status_type: status === "done" ? "idle" : "active", active_flags: [] },
           archived: false,
           created_at: 100_000,
           updated_at: status === "done" ? 140_000 : 120_000,
@@ -1793,6 +1853,7 @@ for (const storage of ["resident", "overlay"] as const) {
                     agent_nickname: thread.agentNickname,
                     agent_role: thread.agentRole,
                     agent_path: null,
+                    status: { status_type: "active", active_flags: [] },
                     archived: false,
                     created_at: 100_000,
                     updated_at: 120_000,
@@ -1902,7 +1963,7 @@ for (const storage of ["resident", "overlay"] as const) {
 }
 
 it.effect(
-  "repairs a nested edge from bounded parent history when state-db and started miss it",
+  "repairs a missing nested child from resident spawn observations without scanning its parent",
   () =>
     Effect.scoped(
       Effect.gen(function* () {
@@ -1950,6 +2011,7 @@ it.effect(
                   agent_nickname: thread.agentNickname,
                   agent_role: thread.agentRole,
                   agent_path: null,
+                  status: { status_type: "active", active_flags: [] },
                   archived: false,
                   created_at: 100_000,
                   updated_at: 120_000,
@@ -2076,153 +2138,12 @@ it.effect(
           "thread/list",
           "thread/read",
           "thread/turns/list",
-          "thread/turns/list",
-          "thread/turns/list",
         ]);
       }),
     ),
 );
 
-it.effect(
-  "persists topology budget exhaustion instead of rescanning an oversized history page",
-  () =>
-    Effect.scoped(
-      Effect.gen(function* () {
-        let complete = false;
-        let continuation: string | null = null;
-        let observed = false;
-        const requestMethods: string[] = [];
-        const overview = (): Overview =>
-          ({
-            universe: {
-              host_id: "remote-a",
-              source_epoch: "remote-a:codex-app-server/0.150.0-alpha.12",
-              generation: 7,
-              root_thread_id: "root-a",
-            },
-            active: {
-              items: observed
-                ? [
-                    {
-                      thread: {
-                        thread_id: child.id,
-                        parent_thread_id: "root-a",
-                        thread_name: child.name,
-                        thread_preview: child.preview,
-                        model_provider: child.modelProvider,
-                        model_id: "gpt-test",
-                        agent_nickname: child.agentNickname,
-                        agent_role: child.agentRole,
-                        agent_path: null,
-                        archived: false,
-                        created_at: 100_000,
-                        updated_at: 120_000,
-                        recency_at: 120_000,
-                      },
-                      status: "active",
-                      evidence: null,
-                    },
-                  ]
-                : [],
-              next_cursor: null,
-              authority: { projection_revision: observed ? 2 : 1 },
-            },
-            done: {
-              items: [],
-              next_cursor: null,
-              authority: { projection_revision: observed ? 2 : 1 },
-            },
-            known_active_count: observed ? 1 : 0,
-            known_done_count: 0,
-            discovery_complete: complete,
-            discovery_continuation: continuation,
-            projection_revision: observed ? 2 : 1,
-          }) as unknown as Overview;
-        const read: CoreModuleClients["workspace"]["read"] = () =>
-          Effect.succeed({
-            commit_head: observed ? 2 : 1,
-            value: { kind: "subagent_overview_window", overview: overview() },
-          } as unknown as ProjectWorkspaceReadSnapshot);
-        const apply: CoreModuleClients["workspace"]["apply"] = (input) =>
-          Effect.sync(() => {
-            if (input.intent.kind !== "observe_subagent_discovery_page") return {} as never;
-            observed ||= input.intent.observations.some(
-              (observation) => observation.thread_id === child.id,
-            );
-            continuation = input.intent.continuation ?? null;
-            complete = input.intent.complete;
-            return {} as never;
-          });
-        const oversizedText = "x".repeat(9 * 1024 * 1024);
-        const requestOnHost = ((_hostId: string, method: string) =>
-          Effect.sync(() => {
-            requestMethods.push(method);
-            if (method === "thread/list") {
-              return { data: [], nextCursor: null, backwardsCursor: null };
-            }
-            if (method === "thread/read") {
-              return { thread: child };
-            }
-            assert.strictEqual(method, "thread/turns/list");
-            return {
-              data: [
-                {
-                  id: "oversized-turn",
-                  status: "completed",
-                  itemsView: "full",
-                  items: [
-                    {
-                      questions: null,
-                      type: "agentMessage",
-                      id: "oversized-message",
-                      text: oversizedText,
-                      phase: null,
-                      memoryCitation: null,
-                      delivery: null,
-                    },
-                  ],
-                  error: null,
-                  startedAt: 1,
-                  completedAt: 2,
-                  durationMs: 1_000,
-                },
-              ],
-              nextCursor: "oversized-next",
-              backwardsCursor: null,
-            };
-          })) as RequestOnHost;
-        const service = yield* buildDirectory({
-          capability,
-          read,
-          apply,
-          requestOnHost,
-          observedSubagentThreadIds: [child.id],
-        });
-
-        const first = yield* service.readOverview({ rootThreadId: "root-a", mode: "expanded" });
-        const requestsAfterFirst = requestMethods.length;
-        const second = yield* service.readOverview({ rootThreadId: "root-a", mode: "expanded" });
-
-        assert.strictEqual(first.completeness, "incomplete");
-        assert.strictEqual(second.completeness, "incomplete");
-        assert.deepEqual(requestMethods, [
-          "thread/list",
-          "thread/list",
-          "thread/read",
-          "thread/turns/list",
-        ]);
-        assert.strictEqual(requestMethods.length, requestsAfterFirst);
-        const state = JSON.parse((continuation ?? "").slice("subagent-ancestor-v1:".length)) as {
-          readonly scannedPages: number;
-          readonly scannedBytes: number;
-        };
-        assert.strictEqual(state.scannedPages, 200);
-        assert.strictEqual(state.scannedBytes, 64 * 1024 * 1024);
-      }),
-    ),
-);
-
-it.effect("resumes bounded direct-parent BFS when an older host lacks ancestor filtering", () =>
+it.effect("completes direct-parent BFS when an older host lacks ancestor filtering", () =>
   Effect.scoped(
     Effect.gen(function* () {
       const legacyCapability: CodexAppServerCapabilitySnapshot = {
@@ -2279,6 +2200,7 @@ it.effect("resumes bounded direct-parent BFS when an older host lacks ancestor f
                 agent_nickname: thread.agentNickname,
                 agent_role: thread.agentRole,
                 agent_path: null,
+                status: { status_type: "active", active_flags: [] },
                 archived: false,
                 created_at: 100_000,
                 updated_at: 120_000,
@@ -2363,7 +2285,6 @@ it.effect("resumes bounded direct-parent BFS when an older host lacks ancestor f
           ["root-a", true],
           ["child-a", true],
           ["child-b", true],
-          ["child-b", false],
         ],
       );
       assert.isTrue(
@@ -2376,1029 +2297,493 @@ it.effect("resumes bounded direct-parent BFS when an older host lacks ancestor f
   ),
 );
 
-it.live("checks only the latest turn skeleton before interrupting an unknown descendant", () =>
+const discoveryOverview = (
+  items: Overview["active"]["items"],
+  complete = false,
+  nextCursor: string | null = null,
+): Overview =>
+  ({
+    universe: {
+      host_id: "remote-a",
+      source_epoch: "remote-a:codex-app-server/0.150.0-alpha.12",
+      generation: 7,
+      root_thread_id: "root-a",
+    },
+    active: { items, next_cursor: nextCursor, authority: { projection_revision: 1 } },
+    done: { items: [], next_cursor: null, authority: { projection_revision: 1 } },
+    known_active_count: items.length,
+    known_done_count: 0,
+    discovery_complete: complete,
+    discovery_continuation: null,
+    projection_revision: 1,
+  }) as Overview;
+
+const discoveryItem = (threadId: string, statusType: "active" | "idle" = "active") =>
+  ({
+    thread: {
+      thread_id: threadId,
+      parent_thread_id: "root-a",
+      thread_name: `Agent ${threadId}`,
+      agent_nickname: `Agent ${threadId}`,
+      thread_preview: threadId,
+      archived: false,
+      created_at: 100_000,
+      updated_at: 120_000,
+      recency_at: 120_000,
+      status: { status_type: statusType, active_flags: [] },
+    },
+    status: "active",
+    evidence: { kind: "notification", source_revision: 12, observed_at_ms: 120_000 },
+  }) as unknown as Overview["active"]["items"][number];
+
+it.effect("collects all raw Core pages before regrouping and limiting initial rows", () =>
   Effect.scoped(
     Effect.gen(function* () {
-      const overview: Overview = {
-        universe: {
-          host_id: "remote-a",
-          source_epoch: "remote-a:codex-app-server/0.150.0-alpha.12",
-          generation: 7,
-          root_thread_id: "root-a",
-        },
-        active: {
-          items: [
-            {
-              thread: {
-                thread_id: "child-a",
-                parent_thread_id: "root-a",
-                thread_name: "Scout",
-                thread_preview: child.preview,
-                model_provider: "openai",
-                model_id: "gpt-test",
-                agent_nickname: "Scout",
-                agent_role: "explorer",
-                agent_path: "root-a/Scout",
-                archived: false,
-                created_at: 100_000,
-                updated_at: 120_000,
-                recency_at: 120_000,
-              },
-              status: "unknown",
-              evidence: null,
-            },
-          ],
-          next_cursor: null,
-          authority: { projection_revision: 3 },
-        },
-        done: {
-          items: [],
-          next_cursor: null,
-          authority: { projection_revision: 3 },
-        },
-        known_active_count: 1,
-        known_done_count: 0,
-        discovery_complete: true,
-        discovery_continuation: null,
-        projection_revision: 3,
-      } as unknown as Overview;
-      let projectedDone = false;
-      const read: CoreModuleClients["workspace"]["read"] = (input) =>
-        Effect.succeed(
-          input.kind === "subagent_overview_item"
-            ? ({
-                commit_head: 3,
-                value: {
-                  kind: "subagent_overview_item",
-                  item: {
-                    ...overview.active.items[0],
-                    status: projectedDone ? "done" : "unknown",
-                    evidence: projectedDone
-                      ? { kind: "reconciliation", source_revision: 0, observed_at_ms: 130_000 }
-                      : null,
-                  },
-                  projection_revision: 3,
-                },
-              } as unknown as ProjectWorkspaceReadSnapshot)
-            : ({
-                commit_head: 3,
-                value: { kind: "subagent_overview_window", overview },
-              } as unknown as ProjectWorkspaceReadSnapshot),
-        );
-      const requests: Array<{
-        readonly method: string;
-        readonly params: unknown;
-        readonly options: unknown;
-      }> = [];
-      let interrupted = false;
-      let postconditionReads = 0;
-      const requestOnHost = ((hostId: string, method: string, params: unknown, options: unknown) =>
-        Effect.sync(() => {
-          assert.strictEqual(hostId, "remote-a");
-          requests.push({ method, params, options });
-          if (method === "thread/turns/list") {
-            if (interrupted) postconditionReads += 1;
+      const cursors: Array<string | null> = [];
+      const service = yield* buildDirectory({
+        capability,
+        observedSubagentThreadIds: [
+          ...Array.from({ length: 34 }, (_, page) => `finished-${page}`),
+          "running-a",
+          "running-b",
+        ],
+        read: (query) =>
+          Effect.sync(() => {
+            assert.strictEqual(query.kind, "subagent_overview_window");
+            if (query.kind !== "subagent_overview_window") throw new Error("Wrong query");
+            const cursor = query.active_window.after ?? null;
+            cursors.push(cursor);
+            const page = Number(cursor ?? 0);
+            const items =
+              page === 34
+                ? [discoveryItem("running-a"), discoveryItem("running-b")]
+                : [discoveryItem(`finished-${page}`, "idle")];
             return {
-              data: [
-                {
-                  id: "turn-child-a",
-                  status: interrupted && postconditionReads > 1 ? "interrupted" : "inProgress",
-                },
-              ],
-              nextCursor: null,
-            };
-          }
-          if (method === "turn/interrupt") {
-            interrupted = true;
-            return {};
-          }
-          throw new Error(`Unexpected method ${method}`);
-        })) as RequestOnHost;
-      const service = yield* buildDirectory({
-        capability,
-        read,
-        apply: (input) =>
-          Effect.sync(() => {
-            if (input.intent.kind === "observe_subagent_status_evidence") projectedDone = true;
-            return {} as never;
+              commit_head: 1,
+              value: {
+                kind: "subagent_overview_window",
+                overview: discoveryOverview(items, true, page === 34 ? null : String(page + 1)),
+              },
+            } as ProjectWorkspaceReadSnapshot;
           }),
-        requestOnHost,
+        apply: () => Effect.die("Unexpected mutation"),
+        requestOnHost: (() =>
+          Effect.die("Complete snapshot must not discover again")) as RequestOnHost,
       });
-
-      const result = yield* service.settleInterruptedSubtree("root-a");
-
-      assert.deepEqual(result, {
-        discoveryComplete: true,
-        interruptedThreadIds: ["child-a"],
-        failed: [],
-        unresolvedThreadIds: [],
-      });
+      const initial = yield* service.readOverview({ rootThreadId: "root-a", mode: "initial" });
+      assert.include(cursors, "34");
       assert.deepEqual(
-        requests.map((request) => request.method),
-        ["thread/turns/list", "turn/interrupt", "thread/turns/list", "thread/turns/list"],
+        initial.active.rows.map((row) => row.threadId),
+        ["running-a", "running-b"],
       );
-      assert.deepEqual(requests[0]?.params, {
-        threadId: "child-a",
-        cursor: null,
-        limit: 1,
-        sortDirection: "desc",
-        itemsView: "notLoaded",
-      });
-      assert.deepInclude(requests[1]?.options as object, {
-        priority: "critical",
-        source: "collab_lifecycle",
-        conversationId: "root-a",
-      });
+      assert.strictEqual(initial.done.rows.length, 10);
+      assert.strictEqual(initial.done.knownCount, 34);
+      assert.strictEqual(initial.done.totalCount, 34);
+      assert.isNull(initial.done.continuation);
+      const expanded = yield* service.readOverview({ rootThreadId: "root-a", mode: "expanded" });
+      assert.strictEqual(expanded.done.rows.length, 34);
     }),
   ),
 );
 
-it.effect("treats a typed missing Thread response as an idempotently settled descendant", () =>
+it.effect.each([
+  "stable",
+  "stale-system-error",
+  "newer-active",
+  "newer-system-error",
+  "newer-evidence",
+  "lost-cas",
+  "listed-idle",
+  "listed-newer-active",
+  "incomplete",
+  "replaced-host",
+] as const)("conditionally reconciles absence with %s discovery authority", (mode) =>
   Effect.scoped(
     Effect.gen(function* () {
-      const overview: Overview = {
-        universe: {
-          host_id: "remote-a",
-          source_epoch: "remote-a:codex-app-server/0.150.0-alpha.12",
-          generation: 7,
-          root_thread_id: "root-a",
-        },
-        active: {
-          items: [
-            {
-              thread: {
-                thread_id: "child-a",
-                parent_thread_id: "root-a",
-                thread_name: "Scout",
-                thread_preview: child.preview,
-                model_provider: "openai",
-                model_id: "gpt-test",
-                agent_nickname: "Scout",
-                agent_role: "explorer",
-                agent_path: "root-a/Scout",
-                archived: false,
-                created_at: 100_000,
-                updated_at: 120_000,
-                recency_at: 120_000,
-              },
-              status: "unknown",
-              evidence: null,
-            },
-          ],
-          next_cursor: null,
-          authority: { projection_revision: 3 },
-        },
-        done: {
-          items: [],
-          next_cursor: null,
-          authority: { projection_revision: 3 },
-        },
-        known_active_count: 1,
-        known_done_count: 0,
-        discovery_complete: true,
-        discovery_continuation: null,
-        projection_revision: 3,
-      } as unknown as Overview;
-      const appliedStatuses: string[] = [];
+      let complete = false;
+      let hostCurrent = true;
+      const registry = makeConversationEntityStateRegistry();
+      const entity = registry.acquire(child.id);
+      entity.installFollowerCanonicalState({
+        ...conversationFixture(child.id),
+        hostId: "remote-a",
+        threadRuntimeStatus:
+          mode === "stale-system-error"
+            ? { type: "systemError" }
+            : { type: "active", activeFlags: [] },
+      });
+      let evidence = discoveryItem(child.id).evidence!;
+      let durableStatus: "active" | "idle" = "active";
+      let reconciled = false;
+      const attempted: unknown[] = [];
       const service = yield* buildDirectory({
         capability,
-        read: (input) =>
-          Effect.succeed(
-            input.kind === "subagent_overview_item"
-              ? ({
-                  commit_head: 3,
-                  value: {
+        entities: {
+          ...registry,
+          entity: registry.acquire,
+          runCommand: (_id, operation) => operation,
+          retire: () => Effect.void,
+        },
+        isCurrent: () => Effect.succeed(hostCurrent),
+        read: (query) =>
+          Effect.succeed({
+            commit_head: 1,
+            value:
+              query.kind === "subagent_overview_item"
+                ? {
                     kind: "subagent_overview_item",
-                    item: {
-                      ...overview.active.items[0],
-                      status: appliedStatuses.length > 0 ? "done" : "unknown",
-                      evidence:
-                        appliedStatuses.length > 0
-                          ? {
-                              kind: "reconciliation",
-                              source_revision: 0,
-                              observed_at_ms: 130_000,
-                            }
-                          : null,
-                    },
-                    projection_revision: 3,
+                    projection_revision: 1,
+                    item: { ...discoveryItem(child.id, durableStatus), evidence },
+                  }
+                : {
+                    kind: "subagent_overview_window",
+                    overview: discoveryOverview(
+                      [{ ...discoveryItem(child.id, durableStatus), evidence }],
+                      complete,
+                    ),
                   },
-                } as unknown as ProjectWorkspaceReadSnapshot)
-              : ({
-                  commit_head: 3,
-                  value: { kind: "subagent_overview_window", overview },
-                } as unknown as ProjectWorkspaceReadSnapshot),
-          ),
-        apply: (input) =>
+          } as ProjectWorkspaceReadSnapshot),
+        readConversation: (id) =>
+          id === child.id
+            ? {
+                canonicalState: entity.readCanonicalState(),
+                generation: entity.generation,
+                historyCheckpoint: [1, 1, 1],
+                snapshot: null,
+              }
+            : null,
+        apply: (operation) =>
           Effect.sync(() => {
-            if (input.intent.kind === "observe_subagent_status_evidence") {
-              appliedStatuses.push(input.intent.status);
+            if (operation.intent.kind === "observe_subagent_discovery_page")
+              complete = operation.intent.complete;
+            if (operation.intent.kind === "observe_subagent_status_evidence") {
+              const intent = operation.intent;
+              attempted.push(intent.precondition);
+              assert.strictEqual(intent.evidence_kind, "reconciliation");
+              assert.strictEqual(intent.status, "done");
+              reconciled = mode !== "lost-cas";
+              evidence =
+                mode === "lost-cas"
+                  ? { kind: "notification", source_revision: 13, observed_at_ms: 121_000 }
+                  : {
+                      kind: "reconciliation",
+                      source_revision: intent.source_revision,
+                      observed_at_ms: intent.observed_at_ms,
+                    };
+            }
+            if (operation.intent.kind === "update_thread") {
+              assert.isTrue(reconciled);
+              assert.deepEqual(operation.intent.patch.status, {
+                status_type: "idle",
+                active_flags: [],
+              });
+              durableStatus = "idle";
             }
             return {} as never;
           }),
-        requestOnHost: ((hostId: string, method: string) =>
-          Effect.fail(
-            codexRuntimeError({
-              operation: "request",
-              reason: "request",
-              retryable: false,
-              hostId,
-              method,
-              cause: new CodexAppServerRequestError({
-                code: -32_600,
-                errorMessage: "thread not loaded: child-a",
-                method,
-                operation: "receive-response",
-              }),
-            }),
-          )) as RequestOnHost,
+        requestOnHost: ((_host: string, method: string) =>
+          Effect.sync(() => {
+            assert.strictEqual(method, "thread/list");
+            if (
+              mode === "newer-active" ||
+              mode === "newer-system-error" ||
+              mode === "listed-newer-active"
+            )
+              entity.mutateCanonicalState((draft) => {
+                draft.threadRuntimeStatus =
+                  mode !== "newer-system-error"
+                    ? { type: "active", activeFlags: ["waitingOnUserInput"] }
+                    : { type: "systemError" };
+              }, 121_000);
+            if (mode === "newer-evidence")
+              evidence = { ...evidence, source_revision: 13, observed_at_ms: 121_000 };
+            if (mode === "replaced-host") hostCurrent = false;
+            return {
+              data:
+                mode === "listed-idle" || mode === "listed-newer-active"
+                  ? [{ ...child, status: { type: "idle" } }]
+                  : [],
+              nextCursor: mode === "incomplete" ? "repeat" : null,
+            };
+          })) as RequestOnHost,
       });
-
-      const result = yield* service.settleInterruptedSubtree("root-a");
-
-      assert.deepEqual(result, {
-        discoveryComplete: true,
-        interruptedThreadIds: [],
-        failed: [],
-        unresolvedThreadIds: [],
-      });
-      assert.deepEqual(appliedStatuses, ["done"]);
-    }),
-  ),
-);
-
-it.effect("projects an observed terminal skeleton before reporting the child settled", () =>
-  Effect.scoped(
-    Effect.gen(function* () {
-      const overview: Overview = {
-        universe: {
-          host_id: "remote-a",
-          source_epoch: "remote-a:codex-app-server/0.150.0-alpha.12",
-          generation: 7,
-          root_thread_id: "root-a",
-        },
-        active: {
-          items: [
-            {
-              thread: {
-                thread_id: "child-a",
-                parent_thread_id: "root-a",
-                thread_name: "Scout",
-                thread_preview: child.preview,
-                model_provider: "openai",
-                model_id: "gpt-test",
-                agent_nickname: "Scout",
-                agent_role: "explorer",
-                agent_path: "root-a/Scout",
-                archived: false,
-                created_at: 100_000,
-                updated_at: 120_000,
-                recency_at: 120_000,
+      const result = yield* service.readOverview({ rootThreadId: "root-a", mode: "expanded" });
+      const shouldReconcile =
+        mode === "stable" || mode === "stale-system-error" || mode === "listed-idle";
+      assert.strictEqual(
+        result.completeness,
+        mode === "incomplete" || mode === "replaced-host" ? "incomplete" : "complete",
+      );
+      assert.strictEqual(reconciled, shouldReconcile);
+      assert.strictEqual(durableStatus, shouldReconcile ? "idle" : "active");
+      assert.strictEqual(
+        entity.readCanonicalState()?.threadRuntimeStatus.type,
+        shouldReconcile ? "idle" : mode === "newer-system-error" ? "systemError" : "active",
+      );
+      if (shouldReconcile) {
+        assert.strictEqual(result.active.rows.length, 0);
+        assert.strictEqual(
+          result.done.rows.length,
+          1,
+          "An absent cached descendant remains visible as Done",
+        );
+      }
+      assert.deepEqual(
+        attempted,
+        shouldReconcile || mode === "lost-cas"
+          ? [
+              {
+                mode: "exact",
+                evidence_kind: "notification",
+                source_revision: 12,
+                observed_at_ms: 120_000,
               },
-              status: "unknown",
-              evidence: null,
-            },
-          ],
-          next_cursor: null,
-          authority: { projection_revision: 3 },
-        },
-        done: {
-          items: [],
-          next_cursor: null,
-          authority: { projection_revision: 3 },
-        },
-        known_active_count: 1,
-        known_done_count: 0,
-        discovery_complete: true,
-        discovery_continuation: null,
-        projection_revision: 3,
-      } as unknown as Overview;
-      let projectedStatus: string | null = null;
-      const invalidatedRoots: string[] = [];
-      const read: CoreModuleClients["workspace"]["read"] = (input) =>
-        Effect.succeed(
-          input.kind === "subagent_overview_item"
-            ? ({
-                commit_head: 3,
-                value: {
-                  kind: "subagent_overview_item",
-                  item: {
-                    ...overview.active.items[0],
-                    status: projectedStatus === "done" ? "done" : "unknown",
-                    evidence:
-                      projectedStatus === "done"
-                        ? {
-                            kind: "reconciliation",
-                            source_revision: 0,
-                            observed_at_ms: 130_000,
-                          }
-                        : null,
-                  },
-                  projection_revision: 3,
-                },
-              } as unknown as ProjectWorkspaceReadSnapshot)
-            : ({
-                commit_head: 3,
-                value: { kind: "subagent_overview_window", overview },
-              } as unknown as ProjectWorkspaceReadSnapshot),
-        );
-      const apply: CoreModuleClients["workspace"]["apply"] = (input) =>
-        Effect.sync(() => {
-          if (input.intent.kind === "observe_subagent_status_evidence") {
-            projectedStatus = input.intent.status;
-          }
-          return {} as never;
-        });
-      const requestOnHost = ((_hostId: string, method: string) => {
-        if (method !== "thread/turns/list") return Effect.die(`Unexpected method ${method}`);
-        return Effect.succeed({
-          data: [{ id: "turn-child-a", status: "completed", completedAt: 130 }],
-          nextCursor: null,
-        });
-      }) as RequestOnHost;
-      const service = yield* buildDirectory({
-        capability,
-        read,
-        apply,
-        requestOnHost,
-        publish: (event) => {
-          if (event.kind !== "codex" || event.value.type !== "subagentOverviewInvalidated") return;
-          invalidatedRoots.push(event.value.rootThreadId);
-        },
-      });
-
-      const result = yield* service.settleInterruptedSubtree("root-a");
-
-      assert.strictEqual(projectedStatus, "done");
-      assert.deepEqual(invalidatedRoots, ["root-a"]);
-      assert.deepEqual(result, {
-        discoveryComplete: true,
-        interruptedThreadIds: [],
-        failed: [],
-        unresolvedThreadIds: [],
-      });
+            ]
+          : [],
+      );
     }),
   ),
 );
 
-it.effect("returns one typed outcome for every known descendant when the stop budget expires", () =>
-  Effect.scoped(
-    Effect.gen(function* () {
-      const threadIds = Array.from({ length: 8 }, (_, index) => `child-${index + 1}`);
-      const items = threadIds.map((threadId) => ({
-        thread: {
-          thread_id: threadId,
-          parent_thread_id: "root-a",
-          thread_name: threadId,
-          thread_preview: threadId,
-          model_provider: "openai",
-          model_id: "gpt-test",
-          agent_nickname: threadId,
-          agent_role: "explorer",
-          agent_path: `root-a/${threadId}`,
-          archived: false,
-          created_at: 100_000,
-          updated_at: 120_000,
-          recency_at: 120_000,
-        },
-        status: "unknown" as const,
-        evidence: null,
-      }));
-      const overview = {
-        universe: {
-          host_id: "remote-a",
-          source_epoch: "remote-a:codex-app-server/0.150.0-alpha.12",
-          generation: 7,
-          root_thread_id: "root-a",
-        },
-        active: {
-          items,
-          next_cursor: null,
-          authority: { projection_revision: 3 },
-        },
-        done: {
-          items: [],
-          next_cursor: null,
-          authority: { projection_revision: 3 },
-        },
-        known_active_count: items.length,
-        known_done_count: 0,
-        discovery_complete: true,
-        discovery_continuation: null,
-        projection_revision: 3,
-      } as unknown as Overview;
-      const read: CoreModuleClients["workspace"]["read"] = (input) =>
-        Effect.succeed(
-          input.kind === "subagent_overview_item"
-            ? ({
-                commit_head: 3,
-                value: {
-                  kind: "subagent_overview_item",
-                  item: items.find((item) => item.thread.thread_id === input.thread_id) ?? null,
-                  projection_revision: 3,
-                },
-              } as unknown as ProjectWorkspaceReadSnapshot)
-            : ({
-                commit_head: 3,
-                value: { kind: "subagent_overview_window", overview },
-              } as unknown as ProjectWorkspaceReadSnapshot),
-        );
-      const requestedThreadIds: string[] = [];
-      const requestOnHost = ((_hostId: string, method: string, params: unknown) => {
-        if (method !== "thread/turns/list") return Effect.die(`Unexpected method ${method}`);
-        requestedThreadIds.push((params as { readonly threadId: string }).threadId);
-        return Effect.never;
-      }) as RequestOnHost;
-      const service = yield* buildDirectory({
-        capability,
-        read,
-        apply: () => Effect.succeed({} as never),
-        requestOnHost,
-      });
-
-      const fiber = yield* service.settleInterruptedSubtree("root-a").pipe(Effect.forkChild);
-      yield* TestClock.adjust("4750 millis");
-      const result = yield* Fiber.join(fiber);
-
-      assert.deepEqual(requestedThreadIds.sort(), ["child-1", "child-2"]);
-      assert.deepEqual(result, {
-        discoveryComplete: true,
-        interruptedThreadIds: [],
-        failed: [],
-        unresolvedThreadIds: threadIds,
-      });
-      assert.strictEqual(new Set(result.unresolvedThreadIds).size, threadIds.length);
-    }),
-  ),
-);
-
-it.effect("reconciles a durable delete closure by operation id after the root is gone", () =>
-  Effect.scoped(
-    Effect.gen(function* () {
-      let settled = false;
-      let rootResolveCount = 0;
-      const lifecycle = (includeSettled = false): Lifecycle =>
-        ({
-          universe: {
-            host_id: "remote-a",
-            source_epoch: "remote-a:codex-app-server/0.150.0-alpha.12",
-            generation: 7,
-            root_thread_id: "deleted-root",
-          },
-          lifecycle_operation_id: "delete-operation-a",
-          action: "delete",
-          members: {
-            items:
-              settled && !includeSettled
-                ? []
-                : [
-                    {
-                      thread_id: "deleted-root",
-                      outcome: settled ? "settled" : "pending",
-                      attempt_count: settled ? 1 : 0,
-                      last_reason: null,
-                      observed_at_ms: settled ? 10 : null,
-                    },
-                    {
-                      thread_id: "deleted-child",
-                      outcome: settled ? "settled" : "pending",
-                      attempt_count: settled ? 1 : 0,
-                      last_reason: null,
-                      observed_at_ms: settled ? 10 : null,
-                    },
-                  ],
-            next_cursor: null,
-            authority: { projection_revision: settled ? 5 : 4 },
-          },
-          expected_count: 2,
-          processed_count: settled ? 2 : 0,
-          unresolved_count: settled ? 0 : 2,
-          complete: settled,
-          projection_revision: settled ? 5 : 4,
-        }) as unknown as Lifecycle;
-      const read: CoreModuleClients["workspace"]["read"] = (input) => {
-        if (input.kind !== "subagent_lifecycle_batch") {
-          return assert.fail(`Unexpected read ${input.kind}`) as never;
-        }
-        return Effect.succeed({
-          commit_head: settled ? 5 : 4,
-          value: {
-            kind: "subagent_lifecycle_batch",
-            lifecycle: lifecycle(input.include_settled),
-          },
-        } as unknown as ProjectWorkspaceReadSnapshot);
-      };
-      const locallyDeletedThreadIds: string[] = [];
-      const apply: CoreModuleClients["workspace"]["apply"] = (input) =>
-        Effect.sync(() => {
-          if (input.intent.kind === "observe_subagent_lifecycle_outcomes") {
-            assert.deepEqual(
-              input.intent.observations.map((observation) => observation.outcome),
-              ["settled", "settled"],
-            );
-            settled = true;
-            return {} as never;
-          }
-          if (input.intent.kind !== "delete_thread") {
-            return assert.fail(`Unexpected intent ${input.intent.kind}`) as never;
-          }
-          locallyDeletedThreadIds.push(input.intent.thread_id);
-          return {} as never;
-        });
-      const readThreadIds: string[] = [];
-      const requestOnHost = ((hostId: string, method: string, rawParams: unknown) => {
-        assert.strictEqual(hostId, "remote-a");
-        assert.strictEqual(method, "thread/read");
-        readThreadIds.push((rawParams as { readonly threadId: string }).threadId);
-        return Effect.fail(
-          codexRuntimeError({
-            operation: "request",
-            reason: "request",
-            retryable: false,
-            hostId,
-            method,
-            cause: new CodexAppServerRequestError({
-              code: -32_600,
-              errorMessage: `thread not loaded: ${readThreadIds.at(-1)}`,
-              method,
-              requestId: "read-missing",
-              operation: "receive-response",
-            }),
-          }),
-        );
-      }) as unknown as RequestOnHost;
-      const service = yield* buildDirectory({
-        capability,
-        read,
-        apply,
-        requestOnHost,
-        resolve: () =>
-          Effect.sync(() => {
-            rootResolveCount += 1;
-            return null;
-          }),
-      });
-
-      const result = yield* service.reconcileLifecycle({ operationId: "delete-operation-a" });
-
-      assert.deepEqual(result, {
-        operationId: "delete-operation-a",
-        action: "delete",
-        expectedCount: 2,
-        processedCount: 2,
-        unresolvedCount: 0,
-        complete: true,
-        settledThreadIds: ["deleted-root", "deleted-child"],
-      });
-      assert.deepEqual(readThreadIds, ["deleted-root", "deleted-child"]);
-      assert.deepEqual(locallyDeletedThreadIds, ["deleted-child"]);
-      assert.strictEqual(rootResolveCount, 0);
-    }),
-  ),
-);
-
-it.effect("returns the complete durable archive cohort after settlement", () =>
-  Effect.scoped(
-    Effect.gen(function* () {
-      let settled = false;
-      const archiveCapability = {
-        ...capability,
-        flags: { ...capability.flags, subagentAncestorFilter: true },
-      };
-      const lifecycle = (includeSettled = false): Lifecycle =>
-        ({
-          universe: {
-            host_id: "remote-a",
-            source_epoch: "remote-a:codex-app-server/0.150.0-alpha.12",
-            generation: 7,
-            root_thread_id: "archived-root",
-          },
-          lifecycle_operation_id: "archive-operation-a",
-          action: "archive",
-          members: {
-            items:
-              settled && !includeSettled
-                ? []
-                : ["archived-root", "archived-child"].map((threadId) => ({
-                    thread_id: threadId,
-                    outcome: settled ? ("settled" as const) : ("pending" as const),
-                    attempt_count: settled ? 1 : 0,
-                    last_reason: null,
-                    observed_at_ms: settled ? 10 : null,
-                  })),
-            next_cursor: null,
-            authority: { projection_revision: settled ? 5 : 4 },
-          },
-          expected_count: 2,
-          processed_count: settled ? 2 : 0,
-          unresolved_count: settled ? 0 : 2,
-          complete: settled,
-          projection_revision: settled ? 5 : 4,
-        }) as unknown as Lifecycle;
-      const read: CoreModuleClients["workspace"]["read"] = (input) => {
-        if (input.kind !== "subagent_lifecycle_batch") {
-          return assert.fail(`Unexpected read ${input.kind}`) as never;
-        }
-        return Effect.succeed({
-          commit_head: settled ? 5 : 4,
-          value: {
-            kind: "subagent_lifecycle_batch",
-            lifecycle: lifecycle(input.include_settled),
-          },
-        } as unknown as ProjectWorkspaceReadSnapshot);
-      };
-      const apply: CoreModuleClients["workspace"]["apply"] = (input) =>
-        Effect.sync(() => {
-          if (input.intent.kind !== "observe_subagent_lifecycle_outcomes") {
-            return assert.fail(`Unexpected intent ${input.intent.kind}`) as never;
-          }
-          assert.deepEqual(
-            input.intent.observations.map((observation) => observation.thread_id),
-            ["archived-root", "archived-child"],
-          );
-          settled = true;
-          return {} as never;
-        });
-      const requestOnHost = ((hostId: string, method: string) => {
-        assert.strictEqual(hostId, "remote-a");
-        assert.strictEqual(method, "thread/list");
-        return Effect.succeed({
-          data: [{ id: "archived-child" }],
-          nextCursor: null,
-        } as never);
-      }) as unknown as RequestOnHost;
-      const service = yield* buildDirectory({
-        capability: archiveCapability,
-        read,
-        apply,
-        requestOnHost,
-      });
-
-      const result = yield* service.reconcileLifecycle({ operationId: "archive-operation-a" });
-
-      assert.deepEqual(result, {
-        operationId: "archive-operation-a",
-        action: "archive",
-        expectedCount: 2,
-        processedCount: 2,
-        unresolvedCount: 0,
-        complete: true,
-        settledThreadIds: ["archived-root", "archived-child"],
-      });
-    }),
-  ),
-);
-
-it.effect("cleans the complete durable delete cohort across reconciliation rounds", () =>
-  Effect.scoped(
-    Effect.gen(function* () {
-      const outcomes = new Map<string, "pending" | "unresolved" | "failed" | "settled">([
-        ["deleted-root", "pending"],
-        ["deleted-child-a", "pending"],
-        ["deleted-child-b", "pending"],
-      ]);
-      let reconciliationRound = 1;
-      let revision = 4;
-      const lifecycle = (includeSettled: boolean): Lifecycle => {
-        const items = [...outcomes].flatMap(([threadId, outcome]) =>
-          includeSettled || outcome !== "settled"
-            ? [
-                {
-                  thread_id: threadId,
-                  outcome,
-                  attempt_count: outcome === "pending" ? 0 : 1,
-                  last_reason: outcome === "failed" ? "failed" : null,
-                  observed_at_ms: outcome === "pending" ? null : reconciliationRound * 10,
-                },
-              ]
-            : [],
-        );
-        const unresolvedCount = [...outcomes.values()].filter(
-          (outcome) => outcome !== "settled",
-        ).length;
-        return {
-          universe: {
-            host_id: "remote-a",
-            source_epoch: "remote-a:codex-app-server/0.150.0-alpha.12",
-            generation: 7,
-            root_thread_id: "deleted-root",
-          },
-          lifecycle_operation_id: "delete-operation-multi-round",
-          action: "delete",
-          members: {
-            items,
-            next_cursor: null,
-            authority: { projection_revision: revision },
-          },
-          expected_count: outcomes.size,
-          processed_count: [...outcomes.values()].filter((outcome) => outcome !== "pending").length,
-          unresolved_count: unresolvedCount,
-          complete: unresolvedCount === 0,
-          projection_revision: revision,
-        } as unknown as Lifecycle;
-      };
-      const read: CoreModuleClients["workspace"]["read"] = (input) => {
-        if (input.kind !== "subagent_lifecycle_batch") {
-          return assert.fail(`Unexpected read ${input.kind}`) as never;
-        }
-        return Effect.succeed({
-          commit_head: revision,
-          value: {
-            kind: "subagent_lifecycle_batch",
-            lifecycle: lifecycle(input.include_settled),
-          },
-        } as unknown as ProjectWorkspaceReadSnapshot);
-      };
-      const locallyDeletedThreadIds: string[] = [];
-      const apply: CoreModuleClients["workspace"]["apply"] = (input) =>
-        Effect.sync(() => {
-          if (input.intent.kind === "observe_subagent_lifecycle_outcomes") {
-            for (const observation of input.intent.observations) {
-              outcomes.set(observation.thread_id, observation.outcome);
-            }
-            revision += 1;
-            return {} as never;
-          }
-          if (input.intent.kind !== "delete_thread") {
-            return assert.fail(`Unexpected intent ${input.intent.kind}`) as never;
-          }
-          locallyDeletedThreadIds.push(input.intent.thread_id);
-          return {} as never;
-        });
-      const requestOnHost = ((hostId: string, method: string, rawParams: unknown) => {
-        assert.strictEqual(hostId, "remote-a");
-        assert.strictEqual(method, "thread/read");
-        const threadId = (rawParams as { readonly threadId: string }).threadId;
-        if (threadId === "deleted-child-b" && reconciliationRound === 1) {
-          return Effect.succeed({ id: threadId } as never);
-        }
-        return Effect.fail(
-          codexRuntimeError({
-            operation: "request",
-            reason: "request",
-            retryable: false,
-            hostId,
-            method,
-            cause: new CodexAppServerRequestError({
-              code: -32_600,
-              errorMessage: `thread not loaded: ${threadId}`,
-              method,
-              requestId: `read-${threadId}`,
-              operation: "receive-response",
-            }),
-          }),
-        );
-      }) as unknown as RequestOnHost;
-      const firstService = yield* buildDirectory({ capability, read, apply, requestOnHost });
-
-      const partial = yield* firstService.reconcileLifecycle({
-        operationId: "delete-operation-multi-round",
-      });
-
-      assert.isFalse(partial.complete);
-      assert.deepEqual(partial.settledThreadIds, []);
-      assert.strictEqual(outcomes.get("deleted-child-a"), "settled");
-      assert.strictEqual(outcomes.get("deleted-child-b"), "unresolved");
-      assert.deepEqual(locallyDeletedThreadIds, []);
-
-      reconciliationRound = 2;
-      // A new Directory scope models a Main restart; only the durable lifecycle state survives.
-      const secondService = yield* buildDirectory({ capability, read, apply, requestOnHost });
-      const complete = yield* secondService.reconcileLifecycle({
-        operationId: "delete-operation-multi-round",
-      });
-
-      assert.isTrue(complete.complete);
-      assert.deepEqual(complete.settledThreadIds, [
-        "deleted-root",
-        "deleted-child-a",
-        "deleted-child-b",
-      ]);
-      assert.deepEqual(locallyDeletedThreadIds.sort(), ["deleted-child-a", "deleted-child-b"]);
-    }),
-  ),
-);
-
-it.effect(
-  "replays an already-complete delete cohort after local cleanup fails across a Directory restart",
-  () =>
+it.effect.each(["completed", "failed", "interrupted"] as const)(
+  "projects repaired %s turn metadata without attaching child history",
+  (status) =>
     Effect.scoped(
       Effect.gen(function* () {
-        const threadIds = ["deleted-root", "deleted-child-a", "deleted-child-b"] as const;
-        let lifecycleComplete = false;
-        let failChildCleanup = true;
-        let revision = 4;
-        const locallyDeletedThreadIds = new Set<string>();
-        const lifecycle = (includeSettled: boolean): Lifecycle => {
-          const items =
-            lifecycleComplete && !includeSettled
-              ? []
-              : threadIds.map((threadId) => ({
-                  thread_id: threadId,
-                  outcome: lifecycleComplete ? ("settled" as const) : ("pending" as const),
-                  attempt_count: lifecycleComplete ? 1 : 0,
-                  last_reason: null,
-                  observed_at_ms: lifecycleComplete ? 10 : null,
-                }));
-          return {
-            universe: {
-              host_id: "remote-a",
-              source_epoch: "remote-a:codex-app-server/0.150.0-alpha.12",
-              generation: 7,
-              root_thread_id: "deleted-root",
-            },
-            lifecycle_operation_id: "delete-operation-cleanup-replay",
-            action: "delete",
-            members: {
-              items,
-              next_cursor: null,
-              authority: { projection_revision: revision },
-            },
-            expected_count: threadIds.length,
-            processed_count: lifecycleComplete ? threadIds.length : 0,
-            unresolved_count: lifecycleComplete ? 0 : threadIds.length,
-            complete: lifecycleComplete,
-            projection_revision: revision,
-          } as unknown as Lifecycle;
-        };
-        const read: CoreModuleClients["workspace"]["read"] = (input) => {
-          if (input.kind !== "subagent_lifecycle_batch") {
-            return assert.fail(`Unexpected read ${input.kind}`) as never;
-          }
-          return Effect.succeed({
-            commit_head: revision,
-            value: {
-              kind: "subagent_lifecycle_batch",
-              lifecycle: lifecycle(input.include_settled),
-            },
-          } as unknown as ProjectWorkspaceReadSnapshot);
-        };
-        const apply: CoreModuleClients["workspace"]["apply"] = (input) => {
-          if (input.intent.kind === "observe_subagent_lifecycle_outcomes") {
-            return Effect.sync(() => {
-              lifecycleComplete = true;
-              revision += 1;
+        let complete = false;
+        let found = false;
+        const methods: string[] = [];
+        const service = yield* buildDirectory({
+          capability,
+          observedSubagentThreadIds: [child.id],
+          read: () =>
+            Effect.succeed({
+              commit_head: 1,
+              value: {
+                kind: "subagent_overview_window",
+                overview: discoveryOverview(
+                  found ? [discoveryItem(child.id, "idle")] : [],
+                  complete,
+                ),
+              },
+            } as ProjectWorkspaceReadSnapshot),
+          apply: (operation) =>
+            Effect.sync(() => {
+              if (operation.intent.kind === "observe_subagent_discovery_page") {
+                found ||= operation.intent.observations.some((item) => item.thread_id === child.id);
+                complete = operation.intent.complete;
+              }
               return {} as never;
-            });
-          }
-          if (input.intent.kind !== "delete_thread") {
-            return assert.fail(`Unexpected intent ${input.intent.kind}`) as never;
-          }
-          const threadId = input.intent.thread_id;
-          if (threadId === "deleted-child-b" && failChildCleanup) {
-            return Effect.fail(new Error("local child cleanup unavailable") as never);
-          }
-          if (locallyDeletedThreadIds.has(threadId)) {
-            return Effect.fail(
-              new CoreRuntimeError({
-                message: `Missing ${threadId}`,
-                operation: "workspace.apply",
-                reason: "operation",
-                retryable: false,
-                cause: new CoreModuleResponseError({
-                  code: "not_found",
-                  message: `Missing ${threadId}`,
-                  retryable: false,
-                  recovery: { kind: "none" },
-                }),
-              }) as never,
-            );
-          }
-          return Effect.sync(() => {
-            locallyDeletedThreadIds.add(threadId);
-            return {} as never;
-          });
-        };
-        const requestOnHost = ((hostId: string, method: string, rawParams: unknown) => {
-          assert.strictEqual(hostId, "remote-a");
-          assert.strictEqual(method, "thread/read");
-          const threadId = (rawParams as { readonly threadId: string }).threadId;
-          return Effect.fail(
-            codexRuntimeError({
-              operation: "request",
-              reason: "request",
-              retryable: false,
-              hostId,
-              method,
-              cause: new CodexAppServerRequestError({
-                code: -32_600,
-                errorMessage: `thread not loaded: ${threadId}`,
-                method,
-                requestId: `read-${threadId}`,
-                operation: "receive-response",
-              }),
             }),
-          );
-        }) as unknown as RequestOnHost;
-        const firstService = yield* buildDirectory({ capability, read, apply, requestOnHost });
-
-        const first = yield* Effect.exit(
-          firstService.reconcileLifecycle({ operationId: "delete-operation-cleanup-replay" }),
-        );
-
-        assert.isTrue(first._tag === "Failure");
-        assert.isTrue(lifecycleComplete);
-        assert.isFalse(locallyDeletedThreadIds.has("deleted-child-b"));
-
-        failChildCleanup = false;
-        const restartedService = yield* buildDirectory({ capability, read, apply, requestOnHost });
-        const recovered = yield* restartedService.reconcileLifecycle({
-          operationId: "delete-operation-cleanup-replay",
+          requestOnHost: ((_host: string, method: string, params: unknown) =>
+            Effect.sync(() => {
+              methods.push(method);
+              if (method === "thread/list") return { data: [], nextCursor: null };
+              if (method === "thread/read") {
+                assert.deepEqual(params, { threadId: child.id, includeTurns: false });
+                return { thread: { ...child, status: { type: "idle" } } };
+              }
+              assert.strictEqual(method, "thread/turns/list");
+              assert.deepEqual(params, {
+                threadId: child.id,
+                cursor: null,
+                limit: 5,
+                sortDirection: "asc",
+                itemsView: "full",
+              });
+              return { data: [turnFixture("repaired-latest", status)], nextCursor: null };
+            })) as RequestOnHost,
         });
-
-        assert.isTrue(recovered.complete);
-        assert.deepEqual(recovered.settledThreadIds, [
-          "deleted-root",
-          "deleted-child-a",
-          "deleted-child-b",
+        const overview = yield* service.readOverview({ rootThreadId: "root-a", mode: "expanded" });
+        assert.strictEqual(overview.completeness, "complete");
+        assert.strictEqual(overview.done.rows.length, status === "completed" ? 1 : 0);
+        assert.strictEqual(overview.active.rows.length, 0);
+        assert.deepEqual(methods, [
+          "thread/list",
+          "thread/list",
+          "thread/read",
+          "thread/turns/list",
         ]);
-        assert.deepEqual([...locallyDeletedThreadIds].sort(), [
-          "deleted-child-a",
-          "deleted-child-b",
-        ]);
+        const reread = yield* service.readKnownOverview({ rootThreadId: "root-a" });
+        assert.strictEqual(reread.done.rows.length, status === "completed" ? 1 : 0);
       }),
     ),
 );
 
-it.effect("restores archive and delete notification quarantine from durable lifecycle state", () =>
+it.effect("stops only freshly active native descendants while retained Core rows stay active", () =>
   Effect.scoped(
     Effect.gen(function* () {
-      let action: "archive" | "delete" = "archive";
-      let complete = false;
-      const read: CoreModuleClients["workspace"]["read"] = (input) => {
-        if (input.kind !== "subagent_lifecycle_batch") {
-          return assert.fail(`Unexpected read ${input.kind}`) as never;
-        }
-        return Effect.succeed({
-          commit_head: 4,
-          value: {
-            kind: "subagent_lifecycle_batch",
-            lifecycle: {
-              universe: {
-                host_id: "remote-a",
-                source_epoch: "remote-a:codex-app-server/0.150.0-alpha.12",
-                generation: 7,
-                root_thread_id: "root-a",
-              },
-              lifecycle_operation_id: input.lifecycle_operation_id,
-              action,
-              members: {
-                items: complete
-                  ? []
-                  : [
-                      {
-                        thread_id: "root-a",
-                        outcome: "pending",
-                        attempt_count: 0,
-                        last_reason: null,
-                        observed_at_ms: null,
-                      },
-                    ],
-                next_cursor: null,
-                authority: { projection_revision: 4 },
-              },
-              expected_count: 1,
-              processed_count: complete ? 1 : 0,
-              unresolved_count: complete ? 0 : 1,
-              complete,
-              projection_revision: 4,
-            },
+      const staleIds = ["absent-child", "not-loaded-child", "child-a"];
+      const requests: Array<{ method: string; params: Record<string, unknown> }> = [];
+      const service = yield* buildDirectory({
+        capability,
+        read: (query) =>
+          Effect.succeed({
+            commit_head: 1,
+            value:
+              query.kind === "subagent_overview_item"
+                ? {
+                    kind: "subagent_overview_item",
+                    projection_revision: 1,
+                    item: discoveryItem(query.thread_id),
+                  }
+                : {
+                    kind: "subagent_overview_window",
+                    overview: discoveryOverview(staleIds.map((id) => discoveryItem(id))),
+                  },
+          } as ProjectWorkspaceReadSnapshot),
+        apply: () => Effect.succeed({} as never),
+        requestOnHost: ((_hostId: string, method: string, rawParams: unknown) =>
+          Effect.sync(() => {
+            const params = rawParams as Record<string, unknown>;
+            requests.push({ method, params });
+            if (method === "thread/list")
+              return {
+                data: [child, { ...child, id: "not-loaded-child", status: { type: "notLoaded" } }],
+                nextCursor: null,
+              };
+            if (method === "thread/turns/list")
+              return {
+                data: [turnFixture("active-turn", "inProgress")],
+                nextCursor: null,
+                backwardsCursor: null,
+              };
+            if (method === "turn/interrupt") return {};
+            throw new Error(`Unexpected request ${method}`);
+          })) as RequestOnHost,
+      });
+      const result = yield* service.settleInterruptedSubtree("root-a");
+      assert.deepEqual(result.interruptedThreadIds, ["child-a"]);
+      assert.deepEqual(result.failed, []);
+      assert.deepEqual(requests, [
+        {
+          method: "thread/list",
+          params: {
+            archived: false,
+            cursor: null,
+            limit: 200,
+            modelProviders: null,
+            ancestorThreadId: "root-a",
+            sourceKinds: ["subAgentThreadSpawn"],
+            sortDirection: "desc",
+            sortKey: "created_at",
+            useStateDbOnly: true,
           },
-        } as unknown as ProjectWorkspaceReadSnapshot);
-      };
-      const service = yield* buildDirectory({
-        capability,
-        read,
-        apply: () => Effect.die("unexpected apply"),
-        requestOnHost: (() => Effect.die("unexpected gateway request")) as RequestOnHost,
-      });
-
-      assert.isTrue(yield* service.shouldDeferLifecycleNotification("root-a", "thread/archived"));
-      service.releaseLifecycleQuarantine("root-a", "archive");
-      action = "delete";
-      assert.isTrue(yield* service.shouldDeferLifecycleNotification("root-a", "thread/deleted"));
-      service.releaseLifecycleQuarantine("root-a", "delete");
-      complete = true;
-      assert.isFalse(yield* service.shouldDeferLifecycleNotification("root-a", "thread/deleted"));
+        },
+        {
+          method: "thread/turns/list",
+          params: {
+            threadId: "child-a",
+            cursor: null,
+            limit: 1,
+            sortDirection: "desc",
+            itemsView: "notLoaded",
+          },
+        },
+        { method: "turn/interrupt", params: { threadId: "child-a", turnId: "active-turn" } },
+      ]);
     }),
   ),
 );
 
-it.effect("fails closed when durable lifecycle quarantine cannot be read", () =>
-  Effect.scoped(
-    Effect.gen(function* () {
-      const service = yield* buildDirectory({
-        capability,
-        read: () => Effect.fail(new Error("Core temporarily unavailable") as never),
-        apply: () => Effect.die("unexpected apply"),
-        requestOnHost: (() => Effect.die("unexpected gateway request")) as RequestOnHost,
-      });
-
-      const result = yield* service
-        .shouldDeferLifecycleNotification("root-a", "thread/archived")
-        .pipe(Effect.result);
-
-      assert.strictEqual(result._tag, "Failure");
-    }),
-  ),
-);
+for (const ownership of ["main", "peer", "absent"] as const) {
+  it.effect(
+    `stops a canonical descendant with ${ownership} ownership through its actual interruption authority`,
+    () =>
+      Effect.scoped(
+        Effect.gen(function* () {
+          const nativeMethods: string[] = [];
+          const ownerRequests: unknown[] = [];
+          const canonical = {
+            ...conversationFixture(child.id),
+            resumeState: "needs_resume" as const,
+            threadRuntimeStatus: { type: "active" as const, activeFlags: [] },
+          };
+          const manager = {
+            assertCurrent: () => undefined,
+            stream: {
+              getRole: () =>
+                ownership === "main"
+                  ? { role: "owner" }
+                  : ownership === "peer"
+                    ? { role: "follower", ownerClientId: "renderer-a" }
+                    : null,
+            },
+            coordination: {
+              requestThreadFollower: (input: unknown) => {
+                ownerRequests.push(input);
+                return Promise.resolve(
+                  ownership === "absent"
+                    ? { resultType: "error", error: "no-client-found" }
+                    : { resultType: "success", result: { interruptedTurnId: "resident-turn" } },
+                );
+              },
+            },
+          } as unknown as NonNullable<
+            ReturnType<CodexMainConversationManagers["Service"]["current"]>
+          >;
+          const service = yield* buildDirectory({
+            capability,
+            currentManager: () => manager,
+            dispatchFollowerRequest: (hostId, request) =>
+              Effect.sync(() => {
+                ownerRequests.push({ hostId, request });
+                return { interruptedTurnId: "resident-turn" };
+              }),
+            readConversation: (threadId) =>
+              threadId === child.id
+                ? {
+                    canonicalState: canonical,
+                    snapshot: null,
+                    generation: 7,
+                    historyCheckpoint: [0, 0, 0],
+                  }
+                : null,
+            read: () =>
+              Effect.succeed({
+                commit_head: 1,
+                value: {
+                  kind: "subagent_overview_window",
+                  overview: discoveryOverview([discoveryItem(child.id)]),
+                },
+              } as ProjectWorkspaceReadSnapshot),
+            apply: () => Effect.succeed({} as never),
+            requestOnHost: ((_hostId: string, method: string) =>
+              Effect.sync(() => {
+                nativeMethods.push(method);
+                if (method === "thread/list") return { data: [child], nextCursor: null };
+                if (method === "thread/turns/list")
+                  return {
+                    data: [turnFixture("native-turn", "inProgress")],
+                    nextCursor: null,
+                    backwardsCursor: null,
+                  };
+                if (method === "turn/interrupt") return {};
+                throw new Error(`Unexpected request ${method}`);
+              })) as RequestOnHost,
+          });
+          const result = yield* service.settleInterruptedSubtree("root-a");
+          assert.deepEqual(result.interruptedThreadIds, [child.id]);
+          assert.deepEqual(result.failed, []);
+          assert.deepEqual(
+            nativeMethods,
+            ownership === "absent"
+              ? ["thread/list", "thread/turns/list", "turn/interrupt"]
+              : ["thread/list"],
+          );
+          assert.lengthOf(ownerRequests, ownership === "absent" ? 2 : 1);
+          for (const request of ownerRequests)
+            assert.deepEqual(request, {
+              hostId: "remote-a",
+              request: {
+                method: "thread-follower-interrupt-turn",
+                params: {
+                  conversationId: child.id,
+                  mode: "descendant-cleanup",
+                },
+              },
+            });
+        }),
+      ),
+  );
+}

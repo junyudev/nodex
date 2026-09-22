@@ -1,3 +1,6 @@
+import { collectCodexSubagentInteractionReferences } from "../../shared/codex-subagent-interaction";
+import { conversationTurnsWithOverlay } from "../../shared/codex-conversation-state/codex-conversation-state";
+import { readLocalConversation } from "@/features/local-conversation/local-conversation-store";
 import { useCallback, useEffect, useRef, type Dispatch, type SetStateAction } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { toast } from "@/components/ui/toast";
@@ -21,11 +24,13 @@ import {
   resolveSessionPanelActiveLeafId,
 } from "./workbench-panel-placement";
 import {
+  makeBackgroundAgentPanelTabId,
   makeProcessOutputPanelTabId,
   makeSubagentsPanelTabId,
   routeDeletedSelectedSubagentsToOverview,
   resolveProcessOutputPanelTitle,
   settlePendingSubagentsPanelTab,
+  type BackgroundAgentPanelTab,
   type ProcessOutputPanelTab,
   type ProcessOutputPanelTarget,
   type SubagentsPanelTab,
@@ -71,6 +76,24 @@ import type {
   WorkbenchTabCreateInput,
   WorkbenchTabProjection,
 } from "./types";
+
+function isResidentSubagentDescendant(
+  rootThreadId: string,
+  threadId: string,
+  hostId: string | null,
+): boolean {
+  const seen = new Set<string>();
+  let current: string | null = threadId;
+  while (current && !seen.has(current)) {
+    if (current === rootThreadId) return true;
+    seen.add(current);
+    current = readLocalConversation(current, hostId)?.source?.parentThreadId ?? null;
+  }
+  const parent = readLocalConversation(rootThreadId, hostId);
+  return collectCodexSubagentInteractionReferences(
+    conversationTurnsWithOverlay(parent?.canonicalState),
+  ).has(threadId);
+}
 
 type ProjectSession = WorkbenchSessionRenderProjection;
 type PanelLifecycle = Pick<
@@ -741,7 +764,20 @@ export function useWorkbenchSessionCommands({
           selectedDisplayName: subagent?.displayName.trim() || null,
           selectedCanInteract: false,
           selectedHydration: selectedThreadId
-            ? { status: "pending", requestId: requestSequence }
+            ? {
+                status: "pending",
+                requestId: requestSequence,
+                showLoading:
+                  !readLocalConversation(
+                    normalizedRootThreadId,
+                    activeSession.thread?.executionHostId,
+                  )?.turns.length ||
+                  !isResidentSubagentDescendant(
+                    normalizedRootThreadId,
+                    selectedThreadId,
+                    activeSession.thread?.executionHostId ?? null,
+                  ),
+              }
             : null,
         }),
       );
@@ -793,6 +829,46 @@ export function useWorkbenchSessionCommands({
     [activeSession, ensureActivePanelOpenWithoutRefresh, workbenchCodexControl],
   );
 
+  const openBackgroundAgentTab = useCallback(
+    async (rootThreadId: string, subagent: ThreadOpenSubagentPayload): Promise<boolean> => {
+      if (!activeSession || activeSession.projectId === null) return false;
+      const hydrated = await workbenchCodexControl.hydrateSelectedSubagent(
+        {
+          rootThreadId,
+          threadId: subagent.conversationId,
+        },
+        { resume: false },
+      );
+      if (hydrated.outcome !== "ready") {
+        toast.info(hydrated.errorMessage ?? "That subagent is not available");
+        return false;
+      }
+      if (!hydrated.canInteract)
+        return openSubagentsPanelTab(rootThreadId, { ...subagent, canInteract: false });
+      const tab: BackgroundAgentPanelTab = {
+        backgroundAgent: true,
+        id: makeBackgroundAgentPanelTabId(subagent.conversationId),
+        sessionId: activeSession.id,
+        projectId: activeSession.projectId,
+        panelId: "right",
+        leafId: resolveSessionPanelActiveLeafId(activeSession, "right"),
+        threadId: subagent.conversationId,
+        title: subagent.displayName,
+        stateKey: Date.now(),
+        subagent: { ...subagent, canInteract: hydrated.canInteract },
+      };
+      panelControllerRef.current.upsertEphemeralTab(tab);
+      await ensureActivePanelOpenWithoutRefresh("right");
+      return true;
+    },
+    [
+      activeSession,
+      workbenchCodexControl,
+      openSubagentsPanelTab,
+      ensureActivePanelOpenWithoutRefresh,
+    ],
+  );
+
   const openAttachedThreadSessionResult = useCallback(
     async (
       threadId: string,
@@ -808,8 +884,9 @@ export function useWorkbenchSessionCommands({
       if (context?.subagent) {
         const rootThreadId = activeSession?.thread?.threadId ?? null;
         if (rootThreadId) {
-          await openSubagentsPanelTab(rootThreadId, context.subagent);
-          return true;
+          return context.subagent.canInteract
+            ? openBackgroundAgentTab(rootThreadId, context.subagent)
+            : openSubagentsPanelTab(rootThreadId, context.subagent);
         }
       }
 
@@ -842,6 +919,7 @@ export function useWorkbenchSessionCommands({
       closePendingWorktreeRoute,
       knownSessions,
       openSubagentsPanelTab,
+      openBackgroundAgentTab,
       selectSession,
       sessionCatalog,
       setAutomationsPath,

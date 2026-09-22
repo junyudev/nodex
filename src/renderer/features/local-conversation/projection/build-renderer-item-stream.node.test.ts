@@ -1,7 +1,11 @@
 import { describe, expect, test } from "vite-plus/test";
 import type { CodexConversationItem } from "../../../lib/types";
 import { buildCodexFileChangeMap } from "../../../../shared/codex-file-change";
-import { buildRendererItemStream } from "./build-renderer-item-stream";
+import {
+  buildRendererItemStream,
+  buildRendererItemStreamProjection,
+} from "./build-renderer-item-stream";
+import type { ThreadTranscriptBlockModel } from "../thread-stage-types";
 
 function buildEntry(overrides: Partial<CodexConversationItem>): CodexConversationItem {
   return {
@@ -401,6 +405,7 @@ describe("buildRendererItemStream", () => {
             agentThreadId: "thread-child-1",
             displayName: "Scout",
             displayStatus: "active",
+            isMessage: false,
           },
           rawItem: {
             id: "sub_agent_1",
@@ -418,6 +423,7 @@ describe("buildRendererItemStream", () => {
             agentThreadId: "thread-child-2",
             displayName: "Reviewer",
             displayStatus: "updated",
+            isMessage: false,
           },
           rawItem: {
             id: "sub_agent_2",
@@ -437,8 +443,9 @@ describe("buildRendererItemStream", () => {
           semanticKind: "subAgentActivity",
           subagentActivity: {
             agentThreadId: "thread-child-3",
-            displayName: null,
+            displayName: "Finisher",
             displayStatus: "interrupted",
+            isMessage: false,
           },
           rawItem: {
             id: "sub_agent_3",
@@ -481,7 +488,7 @@ describe("buildRendererItemStream", () => {
       second && "subagentActivityRows" in second
         ? second.subagentActivityRows?.[0]?.displayName
         : "",
-    ).toBe("Agent");
+    ).toBe("Finisher");
     expect(
       second && "subagentActivityStatusLabel" in second ? second.subagentActivityStatusLabel : "",
     ).toBe("interrupted");
@@ -498,6 +505,7 @@ describe("buildRendererItemStream", () => {
             agentThreadId: "thread-child-1",
             displayName: "Scout",
             displayStatus: "active",
+            isMessage: false,
           },
         }),
         buildEntry({
@@ -514,6 +522,7 @@ describe("buildRendererItemStream", () => {
             agentThreadId: "thread-child-2",
             displayName: "Reviewer",
             displayStatus: "active",
+            isMessage: false,
           },
         }),
       ],
@@ -537,6 +546,7 @@ describe("buildRendererItemStream", () => {
             agentThreadId: "thread-child-1",
             displayName: "Scout",
             displayStatus: "active",
+            isMessage: false,
           },
         }),
         buildEntry({
@@ -547,6 +557,7 @@ describe("buildRendererItemStream", () => {
             agentThreadId: "thread-child-2",
             displayName: "Reviewer",
             displayStatus: "active",
+            isMessage: false,
           },
         }),
         buildEntry({
@@ -557,6 +568,7 @@ describe("buildRendererItemStream", () => {
             agentThreadId: "thread-child-1",
             displayName: "Scout",
             displayStatus: "updated",
+            isMessage: false,
           },
         }),
         buildEntry({
@@ -571,6 +583,7 @@ describe("buildRendererItemStream", () => {
             agentThreadId: "thread-child-1",
             displayName: "Scout",
             displayStatus: "active",
+            isMessage: false,
           },
         }),
       ],
@@ -592,6 +605,7 @@ describe("buildRendererItemStream", () => {
           lastAssistantMessageAtMs: null,
           recencyAtMs: 2,
           showInlineActivity: true,
+          canInteract: false,
           diffStats: null,
           role: "backgroundChild",
         },
@@ -609,6 +623,7 @@ describe("buildRendererItemStream", () => {
           lastAssistantMessageAtMs: null,
           recencyAtMs: 1,
           showInlineActivity: true,
+          canInteract: false,
           diffStats: null,
           role: "backgroundChild",
         },
@@ -668,6 +683,7 @@ describe("buildRendererItemStream", () => {
             agentThreadId: "thread-child-other-parent",
             displayName: "Migrated",
             displayStatus: "active",
+            isMessage: false,
           },
         }),
         buildEntry({
@@ -678,6 +694,7 @@ describe("buildRendererItemStream", () => {
             agentThreadId: "thread-child-waiting",
             displayName: "Waiting",
             displayStatus: "updated",
+            isMessage: false,
           },
         }),
         buildEntry({
@@ -686,8 +703,9 @@ describe("buildRendererItemStream", () => {
           semanticKind: "subAgentActivity",
           subagentActivity: {
             agentThreadId: "thread-child-missing",
-            displayName: null,
+            displayName: "Missing",
             displayStatus: "interrupted",
+            isMessage: false,
           },
         }),
       ],
@@ -709,6 +727,7 @@ describe("buildRendererItemStream", () => {
           lastAssistantMessageAtMs: null,
           recencyAtMs: 2,
           showInlineActivity: true,
+          canInteract: false,
           diffStats: null,
           role: "backgroundChild",
         },
@@ -726,6 +745,7 @@ describe("buildRendererItemStream", () => {
           lastAssistantMessageAtMs: null,
           recencyAtMs: 1,
           showInlineActivity: true,
+          canInteract: false,
           diffStats: null,
           role: "backgroundChild",
         },
@@ -749,7 +769,7 @@ describe("buildRendererItemStream", () => {
     expect(rows[2]).toMatchObject({
       status: "done",
       activityStatus: "interrupted",
-      statusSummary: "Agent interrupted",
+      statusSummary: "Missing interrupted",
     });
     expect(
       group?.type === "subagentActivityInlineGroup" ? group.subagentActivityStatusLabel : null,
@@ -1108,5 +1128,247 @@ describe("buildRendererItemStream", () => {
 
     expect(items.map((item) => item.id).join(",")).toBe("user_1,commentary_1,exec_1,assistant_1");
     expect(items.some((item) => item.type === "workedFor")).toBe(false);
+  });
+});
+
+type Activity = NonNullable<CodexConversationItem["subagentActivity"]>;
+type BackgroundAgent = NonNullable<
+  Parameters<typeof buildRendererItemStream>[0]["backgroundAgents"]
+>[number];
+
+function activityEntry(id: string, overrides: Partial<Activity> = {}): CodexConversationItem {
+  return buildEntry({
+    itemId: id,
+    kind: "systemEvent",
+    semanticKind: "subAgentActivity",
+    subagentActivity: {
+      agentThreadId: id,
+      displayName: id.toUpperCase(),
+      displayStatus: "active",
+      isMessage: false,
+      ...overrides,
+    },
+  });
+}
+
+function backgroundAgent(id: string, overrides: Partial<BackgroundAgent> = {}): BackgroundAgent {
+  return {
+    conversationId: id,
+    parentConversationId: "thread_1",
+    parentTurnKey: "turn_1",
+    displayName: id.toUpperCase(),
+    actorName: id.toUpperCase(),
+    agentRole: null,
+    spawnModel: null,
+    status: "active",
+    statusSummary: null,
+    lastAssistantMessage: null,
+    lastAssistantMessageAtMs: null,
+    recencyAtMs: 1,
+    showInlineActivity: true,
+    canInteract: false,
+    diffStats: null,
+    role: "backgroundChild",
+    ...overrides,
+  };
+}
+
+function activityGroups(items: ReturnType<typeof buildRendererItemStream>) {
+  return items.filter(
+    (item): item is ThreadTranscriptBlockModel => item.type === "subagentActivityInlineGroup",
+  );
+}
+
+describe("subagent lifecycle projection", () => {
+  test("uses named background rows without anchors, including legacy rows and partial raw coverage", () => {
+    const projection = buildRendererItemStreamProjection({
+      entries: [activityEntry("a", { displayStatus: "completed" })],
+      requests: [],
+      turnKey: "turn_1",
+      backgroundAgents: [
+        backgroundAgent("a", { status: "done" }),
+        backgroundAgent("b", { showInlineActivity: false }),
+        backgroundAgent("elsewhere", { parentTurnKey: "turn_0" }),
+        backgroundAgent("unnamed", { displayName: " " }),
+        backgroundAgent("raw-id", { displayName: "raw-id" }),
+      ],
+    });
+    const groups = activityGroups(projection.items);
+    expect(projection.subagentActivityState).toEqual({
+      hasActivity: true,
+      hasActiveActivity: true,
+    });
+    expect(groups.map((group) => group.subagentActivityAnchorItemId)).toEqual(["a", null]);
+    expect(
+      groups.map((group) => group.subagentActivityRows?.map((row) => row.conversationId)),
+    ).toEqual([["a"], ["b"]]);
+    expect(groups[1]?.subagentActivityRows?.[0]).toMatchObject({ canOpen: true, status: "active" });
+  });
+
+  test("resolves names by turn and mode, filters unnamed rows, and keeps navigation separate from interaction", () => {
+    const items = buildRendererItemStream({
+      entries: [
+        activityEntry("blank", { displayName: " " }),
+        activityEntry("legacy", { displayName: "Event" }),
+        activityEntry("modern", { displayName: "Event" }),
+        activityEntry("raw", { displayName: "raw" }),
+        activityEntry("none", { displayName: null }),
+        activityEntry("finished", { displayStatus: "completed" }),
+        activityEntry("interrupted", { displayStatus: "interrupted" }),
+        activityEntry("active"),
+      ],
+      requests: [],
+      turnKey: "turn_1",
+      backgroundAgents: [
+        backgroundAgent("blank", { displayName: "Known" }),
+        backgroundAgent("legacy", { displayName: "Legacy", showInlineActivity: false }),
+        backgroundAgent("modern", { displayName: "Modern" }),
+      ],
+    });
+    const rows = activityGroups(items).flatMap((group) => group.subagentActivityRows ?? []);
+    expect(rows.map((row) => [row.displayName, row.canOpen, row.status])).toEqual([
+      ["Known", true, "active"],
+      ["Legacy", true, "active"],
+      ["Event", true, "active"],
+      ["FINISHED", false, "done"],
+      ["INTERRUPTED", false, "done"],
+      ["ACTIVE", true, "active"],
+    ]);
+  });
+
+  test("normalizes only the final same-turn interruption to finished", () => {
+    const items = buildRendererItemStream({
+      entries: [
+        activityEntry("early", { agentThreadId: "a", displayStatus: "interrupted" }),
+        buildEntry({ itemId: "barrier" }),
+        activityEntry("last", { agentThreadId: "a", displayStatus: "interrupted" }),
+      ],
+      requests: [],
+      turnKey: "turn_1",
+      backgroundAgents: [backgroundAgent("a", { status: "done" })],
+    });
+    expect(
+      activityGroups(items).map((group) => group.subagentActivityRows?.[0]?.activityStatus),
+    ).toEqual(["interrupted", "done"]);
+  });
+
+  test("messages break lifecycle adjacency even when their marker is suppressed", () => {
+    const entries = [
+      activityEntry("a"),
+      activityEntry("message", { agentThreadId: "a", displayStatus: "updated", isMessage: true }),
+      activityEntry("b"),
+    ];
+    const visible = buildRendererItemStream({ entries, requests: [], canOpenSubagents: true });
+    expect(
+      activityGroups(visible).map((group) =>
+        group.subagentActivityRows?.map((row) => row.conversationId),
+      ),
+    ).toEqual([["a"], ["b"]]);
+    for (const options of [
+      { canOpenSubagents: false },
+      { canOpenSubagents: true, showFullTranscript: true },
+    ]) {
+      const all = buildRendererItemStream({ entries, requests: [], ...options });
+      expect(all.map((item) => item.id)).toEqual(["a", "message", "b"]);
+      expect(all[1]?.searchableText).toBe("Sent message to MESSAGE");
+    }
+    const parent = buildRendererItemStream({
+      entries: [activityEntry("root-message", { displayName: null, isMessage: true })],
+      requests: [],
+    });
+    expect(parent[0]?.searchableText).toBe("Sent message to parent");
+  });
+
+  test("message deduplication takes four rows before filtering canOpen and applies the budget per group", () => {
+    const entries = [
+      activityEntry("a", { displayStatus: "completed" }),
+      activityEntry("b"),
+      activityEntry("c"),
+      activityEntry("d"),
+      activityEntry("e"),
+      buildEntry({ itemId: "barrier" }),
+      activityEntry("f"),
+      ...["a", "b", "e", "f"].map((id) =>
+        activityEntry(`message-${id}`, {
+          agentThreadId: id,
+          displayStatus: "updated",
+          isMessage: true,
+        }),
+      ),
+    ];
+    const items = buildRendererItemStream({ entries, requests: [], canOpenSubagents: true });
+    expect(
+      items
+        .filter((item) => "entry" in item && item.entry.subagentActivity?.isMessage)
+        .map((item) => item.id),
+    ).toEqual(["message-a", "message-e"]);
+  });
+
+  test("named fallback rows suppress covered messages but do not become raw lifecycle members", () => {
+    const items = buildRendererItemStream({
+      entries: [activityEntry("message-b", { agentThreadId: "b", isMessage: true })],
+      requests: [],
+      turnKey: "turn_1",
+      canOpenSubagents: true,
+      backgroundAgents: [backgroundAgent("b", { showInlineActivity: false })],
+    });
+    expect(items).toHaveLength(1);
+    expect(activityGroups(items)[0]?.subagentActivityAnchorItemId).toBeNull();
+    expect(activityGroups(items)[0]?.subagentActivityRows?.[0]?.conversationId).toBe("b");
+  });
+
+  test("only removes completed empty-prompt spawns whose nonempty receiver list is fully represented", () => {
+    const spawn = (id: string, overrides: Record<string, unknown> = {}) =>
+      buildEntry({
+        itemId: id,
+        kind: "toolCall",
+        semanticKind: "multiAgentAction",
+        rawItem: {
+          type: "collabAgentToolCall",
+          tool: "spawnAgent",
+          status: "completed",
+          receiverThreads: [{ threadId: "a", thread: null }],
+          prompt: null,
+          ...overrides,
+        },
+      });
+    const entries = [
+      spawn("covered"),
+      spawn("prompted", { prompt: " Inspect " }),
+      spawn("running", { status: "inProgress" }),
+      spawn("partial", {
+        receiverThreads: [
+          { threadId: "a", thread: null },
+          { threadId: "b", thread: null },
+        ],
+      }),
+      spawn("empty", { receiverThreads: [] }),
+    ];
+    const items = buildRendererItemStream({
+      entries,
+      requests: [],
+      turnKey: "turn_1",
+      backgroundAgents: [backgroundAgent("a")],
+    });
+    expect(items.filter((item) => item.type === "multiAgentAction").map((item) => item.id)).toEqual(
+      ["prompted", "running", "partial", "empty"],
+    );
+    const otherTurn = buildRendererItemStream({
+      entries,
+      requests: [],
+      turnKey: "turn_2",
+      backgroundAgents: [backgroundAgent("a")],
+    });
+    expect(otherTurn.filter((item) => item.type === "multiAgentAction")).toHaveLength(5);
+    const namedActivity = buildRendererItemStream({
+      entries: [spawn("covered"), activityEntry("a")],
+      requests: [],
+    });
+    expect(namedActivity.some((item) => item.type === "multiAgentAction")).toBe(false);
+    const messageOnly = buildRendererItemStream({
+      entries: [spawn("covered"), activityEntry("a", { isMessage: true })],
+      requests: [],
+    });
+    expect(messageOnly.some((item) => item.type === "multiAgentAction")).toBe(true);
   });
 });

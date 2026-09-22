@@ -261,6 +261,11 @@ const MIGRATION_STEPS: &[MigrationStep] = &[
         to_revision: 170,
         apply: migrate_v169_to_v170,
     },
+    MigrationStep {
+        from_revision: 170,
+        to_revision: 171,
+        apply: migrate_v170_to_v171,
+    },
 ];
 
 fn resolve_migration_path(
@@ -2222,6 +2227,21 @@ fn migrate_v169_to_v170(
         params![context.source_revision, context.target_revision, context.source_schema_fingerprint,
             context.target_schema_fingerprint, context.backup_name, context.completed_at_unix_ms,
             r#"{"thread_workspace_transition_state":true}"#],
+    )?;
+    connection.pragma_update(None, "user_version", context.target_revision)?;
+    Ok(())
+}
+
+fn migrate_v170_to_v171(
+    connection: &Connection,
+    context: &MigrationContext,
+) -> Result<(), StoreError> {
+    connection.execute_batch(include_str!("../../schema/migrations/v170_to_v171.sql"))?;
+    connection.execute(
+        "INSERT INTO core_store_migration_history(source_revision,target_revision,source_schema_fingerprint,target_schema_fingerprint,backup_name,completed_at_unix_ms,evidence_json) VALUES (?1,?2,?3,?4,?5,?6,?7)",
+        params![context.source_revision, context.target_revision, context.source_schema_fingerprint,
+            context.target_schema_fingerprint, context.backup_name, context.completed_at_unix_ms,
+            r#"{"retired_subagent_lifecycle_ledger":true}"#],
     )?;
     connection.pragma_update(None, "user_version", context.target_revision)?;
     Ok(())
@@ -4321,6 +4341,88 @@ mod tests {
                 .expect("legacy queue GC schema query")
                 .is_none()
         );
+    }
+
+    #[test]
+    fn retiring_subagent_lifecycle_ledger_preserves_discovery_and_status() {
+        let mut connection = Connection::open_in_memory().expect("fixture");
+        connection
+            .execute_batch(include_str!("../../schema/published/v164.sql"))
+            .unwrap();
+        for step in MIGRATION_STEPS
+            .iter()
+            .filter(|step| step.from_revision >= 164 && step.to_revision <= 170)
+        {
+            with_schema_rebuild_transaction(&mut connection, |transaction| {
+                (step.apply)(
+                    transaction,
+                    &MigrationContext {
+                        source_revision: step.from_revision,
+                        target_revision: step.to_revision,
+                        source_schema_fingerprint: published_format(step.from_revision)?
+                            .schema_fingerprint,
+                        target_schema_fingerprint: published_format(step.to_revision)?
+                            .schema_fingerprint,
+                        backup_name: "fixture".to_owned(),
+                        completed_at_unix_ms: 1,
+                    },
+                )
+            })
+            .unwrap();
+        }
+        validate_schema_identity(&connection, 170).expect("exact predecessor");
+        crate::infrastructure::visibility_delta_journal::install_test_maintenance_context(
+            &connection,
+        )
+        .unwrap();
+        connection.execute_batch(r#"
+          INSERT INTO profiles(id,created_at,updated_at) VALUES ('profile','today','today');
+          INSERT INTO libraries(id,profile_id,created_at,updated_at) VALUES ('library','profile','today','today');
+          INSERT INTO codex_threads(thread_id,created_at,updated_at,linked_at) VALUES ('root',1,1,'today'),('child',1,1,'today');
+          INSERT INTO workspace_subagent_universes VALUES ('local','epoch',1,'root',NULL,1,1,'today');
+          INSERT INTO workspace_subagent_discovery_pages VALUES ('local','epoch',1,'root','page', 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa',NULL,1,'today');
+          INSERT INTO workspace_subagent_descendants VALUES ('local','epoch',1,'root','child','root','page','today');
+          INSERT INTO workspace_subagent_status_evidence VALUES ('local','epoch',1,'root','child','done','completion',5,100,'today');
+          INSERT INTO workspace_subagent_lifecycle_operations VALUES ('operation','library','local','epoch',1,'root','archive','today','today');
+          INSERT INTO workspace_subagent_lifecycle_members VALUES ('operation','child','unresolved',1,'unavailable',100);
+        "#).unwrap();
+        with_immediate_transaction(&mut connection, |transaction| {
+            migrate_v170_to_v171(
+                transaction,
+                &MigrationContext {
+                    source_revision: 170,
+                    target_revision: 171,
+                    source_schema_fingerprint: published_format(170)?.schema_fingerprint,
+                    target_schema_fingerprint: published_format(171)?.schema_fingerprint,
+                    backup_name: "fixture".to_owned(),
+                    completed_at_unix_ms: 2,
+                },
+            )
+        })
+        .unwrap();
+        validate_schema_identity(&connection, 171).expect("exact target");
+        let retained: (String, String, i64, i64) = connection.query_row(
+            "SELECT d.parent_thread_id,s.status,s.source_revision,u.discovery_complete FROM workspace_subagent_descendants d JOIN workspace_subagent_status_evidence s USING(host_id,source_epoch,generation,root_thread_id,thread_id) JOIN workspace_subagent_universes u USING(host_id,source_epoch,generation,root_thread_id)",
+            [], |row| Ok((row.get(0)?,row.get(1)?,row.get(2)?,row.get(3)?))).unwrap();
+        assert_eq!(retained, ("root".to_owned(), "done".to_owned(), 5, 1));
+        assert_eq!(
+            connection
+                .query_row("SELECT count(*) FROM codex_threads", [], |row| row
+                    .get::<_, i64>(0))
+                .unwrap(),
+            2
+        );
+        assert_eq!(
+            connection
+                .query_row(
+                    "SELECT count(*) FROM workspace_subagent_discovery_pages",
+                    [],
+                    |row| row.get::<_, i64>(0)
+                )
+                .unwrap(),
+            1
+        );
+        assert!(connection.query_row("SELECT json_extract(evidence_json,'$.retired_subagent_lifecycle_ledger') FROM core_store_migration_history WHERE source_revision=170 AND target_revision=171", [], |row| row.get::<_,bool>(0)).unwrap());
     }
 
     #[test]

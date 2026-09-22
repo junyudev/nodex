@@ -1,3 +1,7 @@
+import { useBackgroundSubagentRows } from "../use-background-subagent-rows";
+import { isLocalConversationWriterConflict } from "../conversation-attachment-state";
+import { collectCodexSubagentInteractionReferences } from "../../../../shared/codex-subagent-interaction";
+import { conversationTurnsWithOverlay } from "../../../../shared/codex-conversation-state/codex-conversation-state";
 import { resolveWorkspaceSearchContext } from "@/lib/workspace-search-context";
 import { DEFAULT_CODEX_HOST_ID } from "../../../../shared/codex-host";
 import {
@@ -17,7 +21,6 @@ import {
 import { resolveCodexElectronDisplayThreadTitle } from "../../../../shared/codex-thread-title";
 import { buildCodexTurnOccurrenceKey } from "../../../../shared/codex-turn-identity";
 import { buildComposerShellModel } from "../projection/build-composer-shell-model";
-import { buildBackgroundSubagentRows } from "../projection/background-subagent-row-model";
 import { selectPrimaryBackgroundConversationRequest } from "../conversation-request-helpers";
 import { copyConversationMarkdown } from "../copy-conversation-markdown";
 import {
@@ -300,6 +303,7 @@ function ConnectedThreadStageBody({
   turnDiffHoverPreviewDisabled = false,
   presentedTurns,
   firstSubmissionActive = false,
+  readOnly = false,
 }: {
   activeThreadId: string | null;
   input: ConnectedThreadStageInput;
@@ -316,6 +320,7 @@ function ConnectedThreadStageBody({
   turnDiffHoverPreviewDisabled?: boolean;
   presentedTurns?: CodexConversationTurn[];
   firstSubmissionActive?: boolean;
+  readOnly?: boolean;
 }) {
   const canonicalTurns = useConversationTurns(activeThreadId);
   const turns = presentedTurns ?? canonicalTurns;
@@ -329,10 +334,8 @@ function ConnectedThreadStageBody({
     activeThreadId !== null && !input.isNewThreadTab,
   );
   const preferredHostId = input.activeThreadSummary?.executionHostId ?? null;
-  const hostId = useCodexAppServerManagerForConversationId(
-    activeThreadId,
-    preferredHostId,
-  ).getHostId();
+  const manager = useCodexAppServerManagerForConversationId(activeThreadId, preferredHostId);
+  const hostId = manager.getHostId();
   const conversationSnapshot = useConversation(activeThreadId);
   const requests = useConversationRequests(activeThreadId);
   const cwd = useConversationCwd(activeThreadId);
@@ -341,33 +344,31 @@ function ConnectedThreadStageBody({
   const statusType = useConversationStatusType(activeThreadId);
   const summaryFields = useConversationSummaryFields(activeThreadId);
   const archived = input.activeThreadSummary?.archived === true || summaryFields.archived;
-  const capabilityFlags = useConversationCapabilityFlags(activeThreadId);
+  const liveCapabilityFlags = useConversationCapabilityFlags(activeThreadId);
+  const capabilityFlags = useMemo(
+    () =>
+      readOnly
+        ? { ...liveCapabilityFlags, canEditLastUserTurn: false, canForkFromTurn: false }
+        : liveCapabilityFlags,
+    [liveCapabilityFlags, readOnly],
+  );
   const parentThreadId = useConversationParentThreadId(activeThreadId);
   const parentTurns = useConversationTurns(parentThreadId);
   const childMemberships = useConversationChildMemberships(activeThreadId);
-  const childThreadIds = useMemo(
-    () => resolveChildConversationIds(activeThreadId, childMemberships),
-    [activeThreadId, childMemberships],
-  );
-  const knownConversationsById = useConversationSubset(childThreadIds);
-  const backgroundAgentRows = useMemo(
-    () =>
-      buildBackgroundSubagentRows({
-        childMemberships,
-        knownConversationsById,
-        parentTurns: turns,
-      }),
-    [childMemberships, knownConversationsById, turns],
-  );
+  const backgroundAgentRows = useBackgroundSubagentRows(activeThreadId, preferredHostId);
   const actionsWithAttachmentRetry = useMemo<ThreadStageActions>(
     () => ({
       ...actions,
       onRetryThreadAttachment: async (threadId) => {
         onErrorMessage(null);
+        if (readOnly) {
+          await manager.hydrateReadOnlyHistory(threadId).catch(() => null);
+          return;
+        }
         await requestLocalConversationResume(threadId, preferredHostId).catch(() => null);
       },
     }),
-    [actions, onErrorMessage, preferredHostId],
+    [actions, onErrorMessage, preferredHostId, readOnly, manager],
   );
 
   const body = useMemo(
@@ -385,6 +386,7 @@ function ConnectedThreadStageBody({
         ),
         threadStartProgress: input.threadStartProgress,
         firstSubmissionActive,
+        readOnly,
       }),
     [
       activeThreadId,
@@ -396,6 +398,7 @@ function ConnectedThreadStageBody({
       input.threadStartProgress,
       parentTurns,
       firstSubmissionActive,
+      readOnly,
     ],
   );
 
@@ -425,6 +428,10 @@ function ConnectedThreadStageBody({
       parentTurns,
       childMemberships,
       backgroundAgentRows,
+      parentModel:
+        conversationSnapshot?.canonicalState?.latestModel ??
+        conversationSnapshot?.latestThreadSettings?.model ??
+        null,
       projectWorkspacePath: input.projectWorkspacePath ?? null,
       projectlessOutputDirectory: conversationSnapshot?.projectlessOutputDirectory ?? null,
       searchOpenTick: input.searchOpenTick,
@@ -437,6 +444,8 @@ function ConnectedThreadStageBody({
       capabilityFlags,
       childMemberships,
       composerScopeIdentity,
+      conversationSnapshot?.canonicalState?.latestModel,
+      conversationSnapshot?.latestThreadSettings?.model,
       conversationSnapshot?.turnPagination,
       conversationSnapshot?.historyRows,
       conversationSnapshot?.conversationEntityGeneration,
@@ -599,9 +608,15 @@ export function ConnectedThreadStageFooter({
     }),
     [actions, refreshComposerCapabilities],
   );
+  const backgroundAgentRows = useBackgroundSubagentRows(activeThreadId, preferredHostId);
   const childThreadIds = useMemo(
-    () => resolveChildConversationIds(activeThreadId, childMemberships),
-    [activeThreadId, childMemberships],
+    () => [
+      ...new Set([
+        ...resolveChildConversationIds(activeThreadId, childMemberships),
+        ...backgroundAgentRows.map((row) => row.conversationId),
+      ]),
+    ],
+    [activeThreadId, childMemberships, backgroundAgentRows],
   );
   const knownConversationsById = useConversationSubset(childThreadIds);
 
@@ -615,6 +630,7 @@ export function ConnectedThreadStageFooter({
         pendingSteers,
         queuedFollowUps: [...queuedFollowUps],
         backgroundTerminalRows,
+        backgroundAgentRows,
         childMemberships,
         statusType,
         statusActiveFlags,
@@ -624,6 +640,7 @@ export function ConnectedThreadStageFooter({
     [
       activeThreadId,
       backgroundTerminalRows,
+      backgroundAgentRows,
       childMemberships,
       conversationSnapshot?.canonicalRequests,
       knownConversationsById,
@@ -927,21 +944,46 @@ export function ConnectedThreadComposerDock({
   const primaryRequest = useConversationPrimaryRequest(activeThreadId);
   const summaryFields = useConversationSummaryFields(activeThreadId);
   const archived = input.activeThreadSummary?.archived === true || summaryFields.archived;
+  const parentThreadId =
+    useConversationParentThreadId(activeThreadId) ??
+    input.activeThreadSummary?.source?.parentThreadId ??
+    null;
+  const parent = useConversation(parentThreadId);
+  const childReadOnly =
+    parentThreadId !== null &&
+    (!activeThreadId ||
+      collectCodexSubagentInteractionReferences(
+        conversationTurnsWithOverlay(parent?.canonicalState),
+      ).get(activeThreadId)?.canInteract !== true);
+
   const childMemberships = useConversationChildMemberships(activeThreadId);
+  const backgroundAgentRows = useBackgroundSubagentRows(activeThreadId, preferredHostId);
   const childThreadIds = useMemo(
-    () => resolveChildConversationIds(activeThreadId, childMemberships),
-    [activeThreadId, childMemberships],
+    () => [
+      ...new Set([
+        ...resolveChildConversationIds(activeThreadId, childMemberships),
+        ...backgroundAgentRows.map((row) => row.conversationId),
+      ]),
+    ],
+    [activeThreadId, childMemberships, backgroundAgentRows],
   );
   const knownConversationsById = useConversationSubset(childThreadIds);
   const visibleBackgroundRequestConversationId = useMemo(() => {
-    for (const membership of childMemberships) {
-      const conversation = knownConversationsById[membership.threadId];
-      if (selectPrimaryBackgroundConversationRequest(conversation ?? null)) {
-        return membership.threadId;
+    for (const row of backgroundAgentRows) {
+      const conversation = knownConversationsById[row.conversationId];
+      const projectedRequest = childMemberships.find(
+        (membership) => membership.threadId === row.conversationId,
+      )?.pendingRequest;
+      if (
+        projectedRequest !== undefined
+          ? projectedRequest !== null
+          : selectPrimaryBackgroundConversationRequest(conversation ?? null) !== null
+      ) {
+        return row.conversationId;
       }
     }
     return null;
-  }, [childMemberships, knownConversationsById]);
+  }, [backgroundAgentRows, knownConversationsById, childMemberships]);
   const presentedConversationIds = useMemo(() => {
     if (!routeActive || !visible) return [];
     return [activeThreadId, visibleBackgroundRequestConversationId].filter(
@@ -964,7 +1006,7 @@ export function ConnectedThreadComposerDock({
   useEffect(() => {
     if (!input.activeThreadId || input.isNewThreadTab || archived) return;
     if (connection.status !== "connected") return;
-    if (firstSubmission) return;
+    if (firstSubmission || childReadOnly) return;
     if (!lifecycleActive || attachmentState.status === "attaching") return;
     if (attachmentState.status === "failed") return;
     if (resumeState === "resumed" && (streamRole === "owner" || streamRole === "follower")) {
@@ -975,6 +1017,7 @@ export function ConnectedThreadComposerDock({
     archived,
     connection.status,
     attachmentState,
+    childReadOnly,
     firstSubmission,
     input.activeThreadId,
     input.isNewThreadTab,
@@ -983,6 +1026,8 @@ export function ConnectedThreadComposerDock({
     resumeState,
     streamRole,
   ]);
+
+  if (childReadOnly) return null;
 
   return (
     <EnsureLocalConversationThreadScrollController>
@@ -1033,6 +1078,9 @@ export function ConnectedThreadStage({
   const resumeState = useConversationResumeState(activeThreadId);
   const attachmentState = useConversationAttachmentState(activeThreadId);
   const streamRole = useConversationStreamRole(activeThreadId);
+  const historyManager = useCodexAppServerManagerForConversationId(activeThreadId, preferredHostId);
+  const [writerRetryPending, setWriterRetryPending] = useState(false);
+  const writerConflict = isLocalConversationWriterConflict(attachmentState) || writerRetryPending;
   const summaryFields = useConversationSummaryFields(activeThreadId);
   const requests = useConversationRequests(activeThreadId);
   const statusType = useConversationStatusType(activeThreadId);
@@ -1060,24 +1108,56 @@ export function ConnectedThreadStage({
   );
   const showNewThreadHome = isNewThreadRoute && !hasFirstSubmission && !hasThreadStartProgress;
   const conversation = useConversation(activeThreadId);
+  const residentParentThreadId = useConversationParentThreadId(activeThreadId);
+  const parentThreadId =
+    residentParentThreadId ?? input.activeThreadSummary?.source?.parentThreadId ?? null;
+  const parentConversation = useConversation(parentThreadId);
+  const parentAllowsInteraction = useMemo(
+    () =>
+      activeThreadId !== null &&
+      collectCodexSubagentInteractionReferences(
+        conversationTurnsWithOverlay(parentConversation?.canonicalState),
+      ).get(activeThreadId)?.canInteract === true,
+    [activeThreadId, parentConversation?.canonicalState],
+  );
+  const isActiveThreadArchived =
+    input.activeThreadSummary?.archived === true || summaryFields.archived;
+  const subagentReadOnly = backgroundAgentDetail
+    ? !backgroundAgentCanInteract || isActiveThreadArchived
+    : !isSideChat &&
+      parentThreadId !== null &&
+      (!parentAllowsInteraction || isActiveThreadArchived);
   const backgroundTerminalRows = useConversationBackgroundTerminalRows(activeThreadId);
   const cwd = useConversationCwd(activeThreadId);
   const childMemberships = useConversationChildMemberships(activeThreadId);
+  const backgroundAgentRows = useBackgroundSubagentRows(activeThreadId, preferredHostId);
   const childThreadIds = useMemo(
-    () => resolveChildConversationIds(activeThreadId, childMemberships),
-    [activeThreadId, childMemberships],
+    () => [
+      ...new Set([
+        ...resolveChildConversationIds(activeThreadId, childMemberships),
+        ...backgroundAgentRows.map((row) => row.conversationId),
+      ]),
+    ],
+    [activeThreadId, childMemberships, backgroundAgentRows],
   );
   const knownConversationsById = useConversationSubset(childThreadIds);
   const visibleBackgroundRequestConversationId = useMemo(() => {
     if (backgroundAgentDetail) return null;
-    for (const membership of childMemberships) {
-      const conversation = knownConversationsById[membership.threadId];
-      if (selectPrimaryBackgroundConversationRequest(conversation ?? null)) {
-        return membership.threadId;
+    for (const row of backgroundAgentRows) {
+      const conversation = knownConversationsById[row.conversationId];
+      const projectedRequest = childMemberships.find(
+        (membership) => membership.threadId === row.conversationId,
+      )?.pendingRequest;
+      if (
+        projectedRequest !== undefined
+          ? projectedRequest !== null
+          : selectPrimaryBackgroundConversationRequest(conversation ?? null) !== null
+      ) {
+        return row.conversationId;
       }
     }
     return null;
-  }, [backgroundAgentDetail, childMemberships, knownConversationsById]);
+  }, [backgroundAgentDetail, backgroundAgentRows, knownConversationsById, childMemberships]);
   const presentedConversationIds = useMemo(() => {
     const overlayManuallyVisible =
       rightPanelComposerOverlayVisibility?.kind !== "controlled" &&
@@ -1104,8 +1184,6 @@ export function ConnectedThreadStage({
     visibleBackgroundRequestConversationId,
   ]);
   usePresentedConversationIds(presentedConversationIds, preferredHostId);
-  const isActiveThreadArchived =
-    input.activeThreadSummary?.archived === true || summaryFields.archived;
   const activeThreadProjectless = summaryFields.threadId
     ? summaryFields.projectId === null
     : input.activeThreadSummary?.projectId === null;
@@ -1155,6 +1233,7 @@ export function ConnectedThreadStage({
       projectWorkspacePath: input.projectWorkspacePath ?? null,
       turns,
       backgroundTerminalRows,
+      backgroundAgentRows,
       childMemberships,
       knownConversationsById,
       sideChatRows: input.summarySideChatRows ?? [],
@@ -1172,6 +1251,7 @@ export function ConnectedThreadStage({
       activeThreadIsManagedWorktree,
       activeThreadProjectless,
       backgroundTerminalRows,
+      backgroundAgentRows,
       childMemberships,
       input.summaryComputerUsePip,
       input.summaryBrowserRows,
@@ -1214,7 +1294,7 @@ export function ConnectedThreadStage({
     if (!input.activeThreadId || input.isNewThreadTab) {
       return;
     }
-    if (hasFirstSubmission) return;
+    if (hasFirstSubmission || subagentReadOnly) return;
     if (connection.status !== "connected") return;
     if (isActiveThreadArchived) {
       return;
@@ -1238,6 +1318,7 @@ export function ConnectedThreadStage({
     connection.status,
     attachmentState,
     hasFirstSubmission,
+    subagentReadOnly,
     resumeState,
     streamRole,
     input.activeThreadId,
@@ -1245,6 +1326,24 @@ export function ConnectedThreadStage({
     preferredHostId,
     threadLifecycleActive,
     worktreeRuntimeAvailable,
+  ]);
+
+  useEffect(() => {
+    if (!activeThreadId || !threadLifecycleActive || connection.status !== "connected") return;
+    if (!subagentReadOnly && !writerConflict) return;
+    const historyIds = [activeThreadId, parentThreadId].filter((id): id is string => id !== null);
+    void Promise.all(historyIds.map((id) => historyManager.hydrateReadOnlyHistory(id))).catch(
+      (cause: unknown) =>
+        setErrorMessage(cause instanceof Error ? cause.message : "Could not load thread history"),
+    );
+  }, [
+    activeThreadId,
+    parentThreadId,
+    threadLifecycleActive,
+    connection.status,
+    subagentReadOnly,
+    writerConflict,
+    historyManager,
   ]);
 
   const ownsRemoteHostedPipHost =
@@ -1347,7 +1446,29 @@ export function ConnectedThreadStage({
             }
             contentShiftX={summaryPanelContentShift}
             footer={
-              backgroundAgentDetail && !backgroundAgentCanInteract ? null : (
+              writerConflict ? (
+                <div role="alert" className="flex items-center justify-between gap-3 px-3 py-2">
+                  <div>
+                    <div>This is open in another app</div>
+                    <div className="text-token-description-foreground text-sm">
+                      Close it there to continue here.
+                    </div>
+                  </div>
+                  <button
+                    type="button"
+                    disabled={writerRetryPending}
+                    onClick={() => {
+                      if (!activeThreadId) return;
+                      setWriterRetryPending(true);
+                      void requestLocalConversationResume(activeThreadId, preferredHostId)
+                        .catch(() => {})
+                        .finally(() => setWriterRetryPending(false));
+                    }}
+                  >
+                    Retry
+                  </button>
+                </div>
+              ) : subagentReadOnly ? null : (
                 <ConnectedThreadStageFooter
                   activeThreadId={activeThreadId}
                   input={input}
@@ -1369,6 +1490,7 @@ export function ConnectedThreadStage({
             turnDiffHoverPreviewDisabled={turnDiffHoverPreviewDisabled}
             presentedTurns={presentedTurns}
             firstSubmissionActive={hasFirstSubmission}
+            readOnly={subagentReadOnly || writerConflict}
           />
         }
         floatingContent={

@@ -18,6 +18,7 @@ import { ThreadTimestampSeparator } from "./shared/thread-timestamp-separator";
 interface LocalConversationTurnEntryProps {
   conversationId: string;
   childMemberships?: readonly CodexConversationChildMembership[];
+  parentModel?: string | null;
   backgroundAgentRows?: readonly ThreadComposerShellBackgroundAgentRowModel[];
   entry: VisibleConversationTurnEntry;
   cwd: string | null;
@@ -56,6 +57,7 @@ interface LocalConversationTurnEntryProps {
 function LocalConversationTurnEntryComponent({
   conversationId,
   childMemberships,
+  parentModel,
   backgroundAgentRows,
   entry,
   persistedCollapsed,
@@ -102,6 +104,7 @@ function LocalConversationTurnEntryComponent({
         hostId,
         canEditTurnUserPrefix,
         canForkTurn,
+        canOpenSubagents: Boolean(onOpenThread),
         backgroundAgents: backgroundAgentRows,
         cwd: threadCwd,
         projectlessOutputDirectory,
@@ -113,6 +116,7 @@ function LocalConversationTurnEntryComponent({
       hostId,
       canEditTurnUserPrefix,
       canForkTurn,
+      onOpenThread,
       backgroundAgentRows,
       entry,
       mcpApps,
@@ -158,6 +162,7 @@ function LocalConversationTurnEntryComponent({
           projectWorkspacePath={projectWorkspacePath}
           projectlessOutputDirectory={projectlessOutputDirectory}
           childMemberships={childMemberships}
+          parentModel={parentModel}
           threadCwd={threadCwd}
           onEditLastUserTurn={onEditLastTurnMessage}
           onForkFromTurn={onForkTurnMessage}
@@ -183,6 +188,7 @@ export const LocalConversationTurnEntry = memo(
   (left, right) =>
     left.conversationId === right.conversationId &&
     left.childMemberships === right.childMemberships &&
+    left.parentModel === right.parentModel &&
     left.backgroundAgentRows === right.backgroundAgentRows &&
     left.entry.turn === right.entry.turn &&
     left.entry.requests === right.entry.requests &&

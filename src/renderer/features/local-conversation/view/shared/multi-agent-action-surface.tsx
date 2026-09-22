@@ -15,7 +15,6 @@ import {
   type CodexMultiAgentActionStatus,
   type CodexMultiAgentAgentState,
 } from "../../../../../shared/codex-transcript-special-items";
-import { resolveCodexSubagentDisplayName } from "../../../../../shared/codex-subagent-display";
 import type { ThreadOpenSubagentPayload, ThreadOpenThreadContext } from "../../thread-stage-types";
 import { CODEX_THREAD_ACCORDION_TRANSITION } from "./thread-motion";
 import { useMeasuredElementHeight } from "./use-measured-element-height";
@@ -91,12 +90,12 @@ function getRowActionLabel(
   if (action === "interruptAgent") {
     if (status === "inProgress") return "Interrupting";
     if (status === "completed") return "Interrupted";
-    return "Failed interrupting";
+    return "Failed to interrupt";
   }
   if (action === "listAgents") {
     if (status === "inProgress") return "Listing";
     if (status === "completed") return "Listed";
-    return "Failed listing";
+    return "Failed to list";
   }
   if (status === "inProgress") return "Waiting";
   if (status === "completed") return "Waited";
@@ -129,16 +128,8 @@ function getAgentStateLabel(status: CodexMultiAgentAgentState["status"]): string
   }
 }
 
-function getAgentDisplayName(
-  threadId: string,
-  receiverThread: CodexMultiAgentReceiverThread | undefined,
-  membership: CodexConversationChildMembership | undefined,
-): string {
-  return resolveCodexSubagentDisplayName({
-    threadId,
-    receiverThread,
-    membership,
-  });
+function getAgentDisplayName(receiverThread: CodexMultiAgentReceiverThread | undefined): string {
+  return receiverThread?.thread?.nickname?.trim().replace(/^@/u, "") ?? "";
 }
 
 function getAgentRole(
@@ -212,13 +203,16 @@ type OpenMultiAgentThread = (
   context?: ThreadOpenThreadContext,
 ) => void | Promise<void>;
 
-function getSpawnModelByThreadId(items: CodexMultiAgentActionPayload[]): Map<string, string> {
+function getSpawnModelByThreadId(
+  items: CodexMultiAgentActionPayload[],
+  parentModel: string | null,
+): Map<string, string> {
   const models = new Map<string, string>();
   for (const item of items) {
-    const model = normalizeNullableText(item.model);
+    const model = normalizeNullableText(item.model) ?? normalizeNullableText(parentModel);
     if (item.action !== "spawnAgent" || !model) continue;
 
-    for (const targetThreadId of listTargetThreadIds(item)) {
+    for (const { threadId: targetThreadId } of item.receiverThreads) {
       const threadId = targetThreadId.trim();
       if (threadId.length === 0) continue;
       models.set(threadId, model);
@@ -242,12 +236,9 @@ function AgentLabel({
   state: CodexMultiAgentAgentState | undefined;
   threadId: string;
 }) {
-  const displayName = getAgentDisplayName(threadId, receiverThread, membership);
+  const displayName = getAgentDisplayName(receiverThread);
   const role = getAgentRole(receiverThread, membership);
-  const resolvedSpawnModel =
-    spawnModel ??
-    normalizeNullableText(receiverThread?.thread?.model) ??
-    normalizeNullableText(membership?.thread?.model);
+  const resolvedSpawnModel = spawnModel;
   const modelLabel = resolvedSpawnModel ? formatCodexModelLabel(resolvedSpawnModel, []) : null;
   const label = onOpenThread ? (
     <NodexTooltip
@@ -367,13 +358,17 @@ function renderRows(
   items: CodexMultiAgentActionPayload[],
   onOpenThread: OpenMultiAgentThread | undefined,
   childMemberships: readonly CodexConversationChildMembership[],
+  parentModel: string | null,
 ): MultiAgentRenderedRow[] {
   const rows: MultiAgentRenderedRow[] = [];
-  const spawnModelByThreadId = getSpawnModelByThreadId(items);
+  const spawnModelByThreadId = getSpawnModelByThreadId(items, parentModel);
   const childMembershipByThreadId = getChildMembershipMap(childMemberships);
 
   for (const [itemIndex, item] of items.entries()) {
-    const targetThreadIds = listTargetThreadIds(item);
+    const receiverThreads = getReceiverThreadMap(item);
+    const targetThreadIds = listTargetThreadIds(item).filter(
+      (id) => getAgentDisplayName(receiverThreads.get(id)).length > 0,
+    );
     const rawPrompt = item.prompt ?? "";
     const hasPrompt = rawPrompt.trim().length > 0;
     const isSpawnWithInstructions =
@@ -383,7 +378,6 @@ function renderRows(
         item.action === "sendMessage" ||
         item.action === "followupTask") &&
       hasPrompt;
-    const receiverThreads = getReceiverThreadMap(item);
 
     if (targetThreadIds.length === 0) {
       rows.push({
@@ -473,9 +467,11 @@ export function MultiAgentActionSurface({
   childMemberships = EMPTY_CHILD_MEMBERSHIPS,
   items,
   onOpenThread,
+  parentModel = null,
 }: {
   childMemberships?: readonly CodexConversationChildMembership[];
   items: CodexConversationItem[];
+  parentModel?: string | null;
   onOpenThread?: OpenMultiAgentThread;
 }) {
   const [expanded, setExpanded] = useState(false);
@@ -493,8 +489,8 @@ export function MultiAgentActionSurface({
 
   const resolvedStatus = resolveGroupStatus(normalizedItems);
   const isInProgress = resolvedStatus === "inProgress";
-  const rowModels = renderRows(normalizedItems, onOpenThread, childMemberships);
-  const targetCount = primaryItem.action === "listAgents" ? 0 : countTargets(normalizedItems);
+  const rowModels = renderRows(normalizedItems, onOpenThread, childMemberships, parentModel);
+  const targetCount = countTargets(normalizedItems);
   const countLabel = getCountLabel(targetCount);
 
   const summary = (

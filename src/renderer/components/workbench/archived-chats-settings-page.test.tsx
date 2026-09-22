@@ -12,6 +12,15 @@ const invoke = vi.fn();
 const subscribeCodexEvents = vi.fn((_callback: unknown) => () => undefined);
 const subscribeProjectSessionChanges = vi.fn((_callback: unknown) => () => undefined);
 const workspaceSessionCommand = vi.fn();
+const successToast = vi.fn();
+const dangerToast = vi.fn();
+
+vi.mock("@/components/ui/toast", () => ({
+  toast: {
+    success: (...args: unknown[]) => successToast(...args),
+    danger: (...args: unknown[]) => dangerToast(...args),
+  },
+}));
 
 vi.mock("@/lib/api", () => ({
   subscribeCodexEvents: (callback: unknown) => subscribeCodexEvents(callback),
@@ -108,6 +117,8 @@ describe("Archived chats settings", () => {
     subscribeCodexEvents.mockClear();
     subscribeProjectSessionChanges.mockClear();
     workspaceSessionCommand.mockReset();
+    successToast.mockReset();
+    dangerToast.mockReset();
   });
 
   test("keeps the archived surface root-only and deterministically groups matching chats", () => {
@@ -208,45 +219,83 @@ describe("Archived chats settings", () => {
     expect(invoke).not.toHaveBeenCalledWith("codex:thread:delete-archived", "acp-thread");
   });
 
-  test("settles every started bulk delete before refreshing a partial failure", async () => {
-    const chats = ["alpha", "beta", "gamma", "delta", "epsilon"].map((id) => chat(id));
+  test("deletes the selected archived chats sequentially in order", async () => {
+    const chats = ["alpha", "beta", "gamma"].map((id) => chat(id));
     const releases = new Map<string, () => void>();
-    let snapshotReads = 0;
+    const deleted: string[] = [];
     invoke.mockImplementation(async (channel: string, threadId?: string) => {
-      if (channel === "codex:sidebar:snapshot") {
-        snapshotReads += 1;
-        return snapshot(snapshotReads === 1 ? chats : [chats[0]!]);
-      }
-      if (channel !== "codex:thread:delete-archived" || !threadId) {
+      if (channel === "codex:sidebar:snapshot") return snapshot(chats);
+      if (channel !== "codex:thread:delete-archived" || !threadId)
         throw new Error(`Unexpected ${channel}`);
-      }
-      if (threadId === "alpha") throw new Error("alpha is still in use");
+      deleted.push(threadId);
       await new Promise<void>((resolve) => releases.set(threadId, resolve));
       return true;
     });
-
     const view = renderPage();
     expect(await view.findByText("Chat alpha")).toBeTruthy();
-    fireEvent.click(view.getByRole("button", { name: "Delete all" }));
-    fireEvent.click(view.getByRole("button", { name: "Delete" }));
-
-    await waitFor(() => expect(releases.size).toBe(4));
-    expect(snapshotReads).toBe(1);
-    expect((view.getByRole("button", { name: "Deleting…" }) as HTMLButtonElement).disabled).toBe(
-      true,
-    );
-
     await act(async () => {
-      for (const release of releases.values()) release();
+      fireEvent.click(view.getByRole("button", { name: "Delete all" }));
+    });
+    await act(async () => {
+      fireEvent.click(view.getByRole("button", { name: "Delete" }));
+    });
+    for (const [index, id] of ["alpha", "beta", "gamma"].entries()) {
+      await waitFor(() => expect(releases.has(id)).toBe(true));
+      expect(deleted).toEqual(["alpha", "beta", "gamma"].slice(0, index + 1));
+      await act(async () => {
+        releases.get(id)!();
+        await Promise.resolve();
+      });
+    }
+    await waitFor(() => expect(view.queryByRole("dialog")).toBeNull());
+    expect(deleted).toEqual(["alpha", "beta", "gamma"]);
+    expect(successToast).toHaveBeenCalledWith("Deleted 3 archived chats");
+    expect(dangerToast).not.toHaveBeenCalled();
+  });
+
+  test("stops bulk deletion at the first error and refreshes the remaining targets", async () => {
+    const chats = ["alpha", "beta", "gamma"].map((id) => chat(id));
+    let releaseFirst: (() => void) | undefined;
+    let snapshotReads = 0;
+    const deleted: string[] = [];
+    invoke.mockImplementation(async (channel: string, threadId?: string) => {
+      if (channel === "codex:sidebar:snapshot") {
+        snapshotReads++;
+        return snapshot(snapshotReads === 1 ? chats : chats.slice(1));
+      }
+      if (channel !== "codex:thread:delete-archived" || !threadId)
+        throw new Error(`Unexpected ${channel}`);
+      deleted.push(threadId);
+      if (threadId === "beta") throw new Error("beta is still in use");
+      await new Promise<void>((resolve) => {
+        releaseFirst = resolve;
+      });
+      return true;
+    });
+    const view = renderPage();
+    expect(await view.findByText("Chat alpha")).toBeTruthy();
+    await act(async () => {
+      fireEvent.click(view.getByRole("button", { name: "Delete all" }));
+    });
+    await act(async () => {
+      fireEvent.click(view.getByRole("button", { name: "Delete" }));
+    });
+    await waitFor(() => expect(releaseFirst).toBeDefined());
+    expect(deleted).toEqual(["alpha"]);
+    expect(snapshotReads).toBe(1);
+    await act(async () => {
+      releaseFirst!();
       await Promise.resolve();
     });
-
     await waitFor(() => expect(snapshotReads).toBe(2));
     await waitFor(() => expect(view.queryByRole("dialog")).toBeNull());
-    expect(view.getByText("Chat alpha")).toBeTruthy();
-    expect(view.queryByText("Chat beta")).toBeNull();
-    expect(
-      invoke.mock.calls.filter(([channel]) => channel === "codex:thread:delete-archived"),
-    ).toHaveLength(5);
+    expect(deleted).toEqual(["alpha", "beta"]);
+    expect(view.queryByText("Chat alpha")).toBeNull();
+    expect(view.getByText("Chat beta")).toBeTruthy();
+    expect(view.getByText("Chat gamma")).toBeTruthy();
+    expect(dangerToast).toHaveBeenCalledWith("Failed to delete archived chats", {
+      description: "beta is still in use",
+    });
+    expect(successToast).not.toHaveBeenCalled();
   });
 });
