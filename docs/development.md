@@ -199,12 +199,19 @@ Select a specific
 current backup with `--backup <backup-id>` when reproducibility matters; create
 a fresh backup first when the Profile has only an older manifest.
 
-The cloned environment is a normal local development Profile: the app, Agent,
-Terminal, Git, browser, and HMR behave normally against it. Backup contents do
-not include `CODEX_HOME` credentials. Add `--auth-json` or
-`--agent-config-toml` explicitly only when the validation requires those
-capabilities. Remote observability is disabled for a `--from-profile` launch so
-user content remains local by default.
+This is a Store snapshot, not a complete copy of the Profile's Agent state. It
+preserves Session and Thread metadata in `nodex.db`, but does not copy native
+conversation storage from the source Profile's `agent` directory. Imported
+Threads can therefore appear in the sidebar while their history is unavailable
+to the isolated app-server; restoring one can fail with `no rollout found for
+thread id`. The snapshot's database and managed-asset validation does not
+verify native conversation availability.
+
+The environment uses its own `${NODEX_HOME}/agent` directory. Add `--auth-json`
+or `--agent-config-toml` explicitly only when validation requires Agent
+authentication or configuration; neither option imports conversation history.
+Remote observability is disabled for a `--from-profile` launch so user content
+remains local by default.
 
 The snapshot is a detached local fork, not a branch that can be merged back.
 Its Store epoch and historical coordinates intentionally match the imported
