@@ -17,8 +17,15 @@ describe("message clipboard", () => {
         'See 【F:src/a%20b.ts†L2-L4】 citeturn1 :codex-annotation{index="2"}\n\n::note{value="hidden"}\n\n`【F:src/a.ts†L1】`\n\n```text\n::note{value="keep"}\n```',
       ),
     ).toBe(
-      'See src/a b.ts:2-4  Annotation 2\n\n\n\n`【F:src/a.ts†L1】`\n\n```text\n::note{value="keep"}\n```',
+      'See src/a b.ts:2-4  Annotation 2\n\n`【F:src/a.ts†L1】`\n\n```text\n::note{value="keep"}\n```',
     );
+  });
+
+  test("compacts prose gaps without changing blank lines inside code blocks", () => {
+    const code = "```text\nfirst\n\n\nlast\n```";
+    expect(
+      normalizeMessageCopyText(`Before.\n\n::note{value="hidden"}\n\n${code}\n\n\nAfter.`),
+    ).toBe(`Before.\n\n${code}\n\nAfter.`);
   });
 
   test("copies semantic formatting and portable file links without toolbar chrome", () => {

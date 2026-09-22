@@ -16,6 +16,7 @@ export function normalizeMessageCopyText(markdown: string): string {
   const normalize = (value: string): string =>
     value
       .replace(/^::[a-zA-Z0-9-]+.*$/gm, "")
+      .replace(/\n{3,}/g, "\n\n")
       .replace(/\uE200[^\uE201]*\uE201/g, "")
       .replace(
         /【([^†】\n]+)†L(\d+)(?:-L(\d+))?】/g,
