@@ -492,6 +492,9 @@ export interface ThreadUserMessageActionsModel {
 }
 
 export interface ThreadAssistantMessageActionsModel {
+  showTimestampWithoutActions?: boolean;
+  timestampHoverOnly?: boolean;
+  metadata?: import("./projection/turn-footer-metadata").TurnFooterMetadata;
   hookStats?: HookStats | null;
   copyText: string | null;
   sentAtMs: number | null;

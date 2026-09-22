@@ -349,7 +349,7 @@ describe("LocalConversationTurnEntry", () => {
     expect(view.queryByText("Steered conversation")).toBeNull();
   });
 
-  test("renders assistant actions in Codex order and forks with an empty composer draft", async () => {
+  test("renders copy, rating, and fork actions in order and forks with an empty composer draft", async () => {
     const stableRequests: [] = [];
     const forkInputs: Array<{
       threadId: string;
@@ -392,7 +392,7 @@ describe("LocalConversationTurnEntry", () => {
     );
     const assistantCopyIndex = labels.lastIndexOf("Copy");
     const ratingIndex = labels.indexOf("Rate response");
-    const forkIndex = labels.indexOf("Fork from this point");
+    const forkIndex = labels.indexOf("Fork chat from here");
 
     expect(assistantCopyIndex >= 0).toBe(true);
     expect(ratingIndex > assistantCopyIndex).toBe(true);
@@ -405,10 +405,13 @@ describe("LocalConversationTurnEntry", () => {
       '[data-content-search-turn-key="turn_assistant_actions"]',
     );
     if (turnRoot === null) {
-      throw new Error("expected Codex-style turn root");
+      throw new Error("expected turn root");
     }
 
-    fireEvent.click(view.getByLabelText("Fork from this point"));
+    await act(async () => {
+      fireEvent.click(view.getByLabelText("Fork chat from here"));
+      await Promise.resolve();
+    });
     expect(forkInputs.length).toBe(1);
     expect(forkInputs[0]?.turnId).toBe("turn_assistant_actions");
     expect(forkInputs[0]?.message).toBe("");
@@ -457,7 +460,7 @@ describe("LocalConversationTurnEntry", () => {
     ).toBe(true);
   });
 
-  test("suppresses assistant copy and rating while streaming or empty", async () => {
+  test("hides streaming actions and keeps rating and fork available for an empty completed reply", async () => {
     const stableRequests: [] = [];
     const { LocalConversationTurnEntry } = await import("./local-conversation-turn-entry");
     const streamingTurn: CodexConversationTurn = {
@@ -481,12 +484,14 @@ describe("LocalConversationTurnEntry", () => {
           cwd: "/tmp/project",
           canEditTurnUserPrefix: false,
           canForkTurn: true,
+          onForkTurnMessage: () => {},
         }),
       ),
     );
 
+    expect(view.queryByLabelText("Copy")).toBeNull();
     expect(view.queryByLabelText("Rate response") === null).toBe(true);
-    expect(view.queryByLabelText("Fork from this point") === null).toBe(true);
+    expect(view.queryByLabelText("Fork chat from here") === null).toBe(true);
 
     view.rerender(
       createElement(
@@ -498,12 +503,14 @@ describe("LocalConversationTurnEntry", () => {
           cwd: "/tmp/project",
           canEditTurnUserPrefix: false,
           canForkTurn: true,
+          onForkTurnMessage: () => {},
         }),
       ),
     );
 
-    expect(view.queryByLabelText("Rate response") === null).toBe(true);
-    expect(Boolean(view.getByLabelText("Fork from this point"))).toBe(true);
+    expect(view.queryByLabelText("Copy")).toBeNull();
+    expect(Boolean(view.getByLabelText("Rate response"))).toBe(true);
+    expect(Boolean(view.getByLabelText("Fork chat from here"))).toBe(true);
   });
 
   test("renders historical collapsed agent body as worked duration instead of previous messages", async () => {
@@ -1227,6 +1234,7 @@ describe("LocalConversationTurnEntry", () => {
           cwd: "/tmp/project",
           canEditTurnUserPrefix: false,
           canForkTurn: true,
+          onForkTurnMessage: () => {},
         }),
       ),
     );
@@ -1264,6 +1272,6 @@ describe("LocalConversationTurnEntry", () => {
         explorationLink.compareDocumentPosition(copyButton) & Node.DOCUMENT_POSITION_FOLLOWING,
       ),
     ).toBe(true);
-    expect(Boolean(view.getByLabelText("Fork from this point"))).toBe(true);
+    expect(Boolean(view.getByLabelText("Fork chat from here"))).toBe(true);
   });
 });

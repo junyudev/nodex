@@ -1,3 +1,5 @@
+import { footerLocale } from "./thread-footer-i18n";
+
 const RECENT_PAST_DAY_COUNT = 7;
 const DAY_MS = 86_400_000;
 
@@ -14,7 +16,7 @@ function getCalendarDayOffset(left: Date, right: Date): number {
 }
 
 function formatDateTime(date: Date, options: Intl.DateTimeFormatOptions): string {
-  return new Intl.DateTimeFormat(undefined, options).format(date);
+  return new Intl.DateTimeFormat(footerLocale(), options).format(date);
 }
 
 export function formatThreadMessageTimestamp(
@@ -26,15 +28,6 @@ export function formatThreadMessageTimestamp(
 
   const resolvedNowMs = resolveFiniteTimestampMs(nowMs) ?? Date.now();
   const sentAt = new Date(resolvedSentAtMs);
-
-  if (resolvedSentAtMs > resolvedNowMs) {
-    return formatDateTime(sentAt, {
-      month: "short",
-      day: "numeric",
-      hour: "numeric",
-      minute: "2-digit",
-    });
-  }
 
   const dayOffset = getCalendarDayOffset(sentAt, new Date(resolvedNowMs));
 

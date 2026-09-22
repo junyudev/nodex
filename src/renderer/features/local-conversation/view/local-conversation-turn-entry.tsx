@@ -1,3 +1,4 @@
+import { useCodexConversationValue } from "../local-conversation-store";
 import { memo, useMemo } from "react";
 import type { CodexConversationChildMembership } from "../../../lib/types";
 import type { ReviewOpenIntent } from "@/features/review/model/review-view-state";
@@ -80,6 +81,16 @@ function LocalConversationTurnEntryComponent({
   latestTurnFollowContentRef,
 }: LocalConversationTurnEntryProps) {
   const turn = entry.turn;
+  const goalTimeUsedSeconds = useCodexConversationValue(conversationId, (conversation) =>
+    conversation?.canonicalState?.completedThreadGoalTurnId === entry.turn.turnId &&
+    entry.turn.turnId != null
+      ? conversation.completedThreadGoal?.timeUsedSeconds
+      : undefined,
+  );
+  const hostId = useCodexConversationValue(
+    conversationId,
+    (conversation) => conversation?.canonicalState?.hostId ?? "local",
+  );
   onRendered?.(entry.turnKey);
   const { data: mcpApps } = useCodexMcpApps();
   const { data: mcpServerStatuses } = useMcpServerStatuses();
@@ -87,6 +98,8 @@ function LocalConversationTurnEntryComponent({
     () =>
       selectTurnRenderModel({
         entry,
+        goalTimeUsedSeconds,
+        hostId,
         canEditTurnUserPrefix,
         canForkTurn,
         backgroundAgents: backgroundAgentRows,
@@ -96,6 +109,8 @@ function LocalConversationTurnEntryComponent({
         mcpServerStatuses: mcpServerStatuses ?? null,
       }),
     [
+      goalTimeUsedSeconds,
+      hostId,
       canEditTurnUserPrefix,
       canForkTurn,
       backgroundAgentRows,

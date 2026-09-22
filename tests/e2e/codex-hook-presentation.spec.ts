@@ -67,3 +67,40 @@ test("shows completed lifecycle hooks only through accessible message action too
     await harness.close();
   }
 });
+
+test("explains a blocked prompt and opens its project hook settings", async ({}, testInfo) => {
+  test.setTimeout(120_000);
+  const harness = await ElectronScenarioHarness.create({
+    label: "blocked-hook-presentation",
+    prepareAgentRuntime: false,
+    environment: {
+      NODEX_FAKE_CODEX_STATE_PATH: ".fake-codex/state.json",
+      NODEX_FAKE_CODEX_LOG_PATH: ".fake-codex/requests.jsonl",
+      NODEX_TEST_AGENT_RUNTIME_PROJECT_ROOT: ".",
+      NODEX_FAKE_CODEX_BLOCKED_HOOK_TURN: "1",
+    },
+  });
+  prepareScenarioCodexAppServerRuntimeSync(
+    harness.profile.runRoot,
+    path.resolve("tests/e2e/fixtures/codex-queue-app-server.mjs"),
+  );
+  try {
+    const page = await harness.launch();
+    const scene = await openNewChatDraft(page);
+    const composer = scene.locator('[data-codex-composer="true"][aria-label="Do anything"]');
+    await composer.fill("Check the blocked prompt");
+    await scene.getByRole("button", { name: "Send prompt", exact: true }).click();
+    const link = page.getByRole("link", { name: "Hook blocked this message", exact: true });
+    await expect(link).toBeVisible({ timeout: 30_000 });
+    await expect(
+      page.getByText("The required check did not pass. Fix it before retrying.", { exact: true }),
+    ).toBeVisible();
+    await expect(link).toHaveAttribute("href", /source=project/);
+    await expect(page.getByRole("button", { name: "Stop", exact: true })).toHaveCount(0);
+    await page.screenshot({ path: testInfo.outputPath("blocked-hook.png") });
+    await link.click();
+    await expect(page.getByRole("heading", { name: "Hooks", exact: true })).toBeVisible();
+  } finally {
+    await harness.close();
+  }
+});

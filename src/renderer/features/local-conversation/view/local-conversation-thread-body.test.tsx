@@ -898,7 +898,7 @@ describe("LocalConversationThreadBody", () => {
     expect(restoreCalls[0]?.projectId).toBe("project_1");
   });
 
-  test("closes an older-turn fork confirmation before pending navigation finishes", async () => {
+  test("keeps an older-turn fork confirmation disabled until submission finishes", async () => {
     const onForkFromTurnCalls: Array<{
       threadId: string;
       turnId: string;
@@ -959,13 +959,19 @@ describe("LocalConversationThreadBody", () => {
       </TooltipProvider>,
     );
 
-    fireEvent.click(getAllByLabelText("Fork from this point")[0]!);
+    await act(async () => {
+      fireEvent.click(getAllByLabelText("Fork chat from here")[0]!);
+      await Promise.resolve();
+    });
     await settleAsyncRender();
     expect(Boolean(queryByText("Continue in a new chat"))).toBe(true);
     expect(Boolean(queryByText("Use this workspace"))).toBe(true);
     expect(Boolean(queryByText("Don't ask again when forking from an older turn"))).toBe(false);
 
-    fireEvent.click(getByRole("button", { name: /Use this workspace/ }));
+    await act(async () => {
+      fireEvent.click(getByRole("button", { name: /Use this workspace/ }));
+      await Promise.resolve();
+    });
     await settleAsyncRender();
 
     expect(onForkFromTurnCalls.length).toBe(1);
@@ -1040,11 +1046,17 @@ describe("LocalConversationThreadBody", () => {
       </TooltipProvider>,
     );
 
-    fireEvent.click(getAllByLabelText("Fork from this point")[0]!);
+    await act(async () => {
+      fireEvent.click(getAllByLabelText("Fork chat from here")[0]!);
+      await Promise.resolve();
+    });
     await settleAsyncRender();
     expect(Boolean(queryByText("Use a new worktree"))).toBe(true);
 
-    fireEvent.click(getByRole("button", { name: /Use a new worktree/ }));
+    await act(async () => {
+      fireEvent.click(getByRole("button", { name: /Use a new worktree/ }));
+      await Promise.resolve();
+    });
     await settleAsyncRender();
 
     expect(localForkCalls.length).toBe(0);

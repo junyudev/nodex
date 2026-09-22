@@ -1,3 +1,4 @@
+import { footerText, formatFooterNumber } from "./thread-footer-i18n";
 import { CODEX_HOOK_EVENT_LABELS } from "@/lib/codex-hooks-model";
 import { Fragment } from "react";
 import { HooksIcon } from "@/components/shared/icons";
@@ -28,16 +29,18 @@ export function HookStatsIndicator({ stats }: { stats: HookStats }) {
       style={{ maxWidth: "min(32rem, var(--available-width), calc(100vw - 16px))" }}
       tooltipContent={
         <div className="flex min-w-0 flex-col gap-2 text-start">
-          <div className="font-medium">{detailed ? "Hooks" : "Hooks summary"}</div>
+          <div className="font-medium">{footerText(detailed ? "Hooks" : "Hooks summary")}</div>
           {detailed ? (
             <ul className="grid min-w-0 grid-cols-[auto_minmax(0,1fr)] gap-x-4 gap-y-1">
               {stats.runs.map((run) => (
                 <Fragment key={run.id}>
-                  <li>{CODEX_HOOK_EVENT_LABELS[run.eventName]}</li>
+                  <li>{footerText(CODEX_HOOK_EVENT_LABELS[run.eventName])}</li>
                   <li className="flex min-w-0 flex-col">
                     <span className="min-w-0 break-words whitespace-pre-wrap opacity-65">
-                      {sources[normalizeCodexHooksSettingsSource(run.source)]}
-                      {run.count > 1 ? ` · ${run.count} runs` : null}
+                      {footerText(sources[normalizeCodexHooksSettingsSource(run.source)])}
+                      {run.count > 1
+                        ? ` · ${footerText("{count} runs", { count: formatFooterNumber(run.count) })}`
+                        : null}
                     </span>
                     {run.statusMessage === null ? null : (
                       <span className="opacity-65">{run.statusMessage}</span>
@@ -59,18 +62,18 @@ export function HookStatsIndicator({ stats }: { stats: HookStats }) {
           ) : (
             <>
               <div className="grid grid-cols-[auto_auto] gap-x-3 gap-y-1">
-                <span className="opacity-65">Ran</span>
-                <span className="text-end">{stats.count}</span>
+                <span className="opacity-65">{footerText("Ran")}</span>
+                <span className="text-end">{formatFooterNumber(stats.count)}</span>
                 {stats.blockedCount > 0 ? (
                   <>
-                    <span className="opacity-65">Blocked</span>
-                    <span className="text-end">{stats.blockedCount}</span>
+                    <span className="opacity-65">{footerText("Blocked")}</span>
+                    <span className="text-end">{formatFooterNumber(stats.blockedCount)}</span>
                   </>
                 ) : null}
                 {stats.errorCount > 0 ? (
                   <>
-                    <span className="opacity-65">Errors</span>
-                    <span className="text-end">{stats.errorCount}</span>
+                    <span className="opacity-65">{footerText("Errors")}</span>
+                    <span className="text-end">{formatFooterNumber(stats.errorCount)}</span>
                   </>
                 ) : null}
               </div>
@@ -78,7 +81,7 @@ export function HookStatsIndicator({ stats }: { stats: HookStats }) {
                 <ul className="grid min-w-0 grid-cols-[auto_minmax(0,1fr)] gap-x-3 gap-y-1">
                   {stats.entries.map((entry, index) => (
                     <li key={index} className="contents">
-                      <span className="opacity-65">{entryLabels[entry.kind]}</span>
+                      <span className="opacity-65">{footerText(entryLabels[entry.kind])}</span>
                       <span className="min-w-0 break-words whitespace-pre-wrap">{entry.text}</span>
                     </li>
                   ))}
@@ -91,8 +94,8 @@ export function HookStatsIndicator({ stats }: { stats: HookStats }) {
     >
       <button
         type="button"
-        aria-label="Hooks"
-        className="electron:[&>svg]:icon-sm no-drag flex cursor-default items-center justify-center rounded-full border border-transparent p-0.5 text-token-text-tertiary select-none focus:outline-none focus-visible:bg-token-list-hover-background focus-visible:text-token-foreground electron:rounded-md electron:p-1"
+        aria-label={footerText("Hooks")}
+        className="electron:[&>svg]:icon-sm no-drag flex cursor-default items-center justify-center rounded-full border border-transparent p-0.5 text-token-text-tertiary select-none focus:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-0 focus-visible:bg-token-list-hover-background focus-visible:text-token-foreground electron:rounded-md electron:p-1"
       >
         <HooksIcon className="icon-xs shrink-0" />
       </button>

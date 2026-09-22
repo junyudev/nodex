@@ -1,3 +1,4 @@
+import { footerText } from "./thread-footer-i18n";
 import { useLayoutEffect, useRef, useState } from "react";
 import {
   ThumbDownFilledIcon,
@@ -37,7 +38,9 @@ export function AssistantRatingMenu({
 
   if (selectedRating !== null) {
     const good = selectedRating === "thumbs_up";
-    const label = good ? "Remove good response feedback" : "Remove bad response feedback";
+    const label = footerText(
+      good ? "Remove good response feedback" : "Remove bad response feedback",
+    );
     const Icon = good ? ThumbUpFilledIcon : ThumbDownFilledIcon;
     return (
       <NodexTooltip tooltipContent={label} side="top" delay={700}>
@@ -52,7 +55,7 @@ export function AssistantRatingMenu({
             selectRating(null);
           }}
         >
-          <Icon className="icon-xs" />
+          <Icon className="icon-xs electron:icon-sm" />
         </button>
       </NodexTooltip>
     );
@@ -64,19 +67,21 @@ export function AssistantRatingMenu({
       onOpenChange={setOpen}
       side="top"
       align="start"
-      triggerTooltipContent="Rate response"
+      triggerTooltipContent={footerText("Rate response")}
+      triggerTooltipDelay={700}
+      triggerTooltipSideOffset={2}
       contentClassName="min-w-0 rounded-2xl"
       finalFocus={triggerRef}
       triggerButton={
         <button
           ref={triggerRef}
           type="button"
-          aria-label="Rate response"
+          aria-label={footerText("Rate response")}
           data-state={open ? "open" : "closed"}
           className={threadMessageActionButtonClassName}
           onClick={(event) => event.stopPropagation()}
         >
-          <ThumbMixedIcon className="icon-xs" />
+          <ThumbMixedIcon className="icon-xs electron:icon-sm" />
         </button>
       }
     >
@@ -85,14 +90,14 @@ export function AssistantRatingMenu({
         leftSlot={<ThumbUpIcon className="size-5! text-token-foreground" />}
         onSelect={() => selectRating("thumbs_up")}
       >
-        Good response
+        {footerText("Good response")}
       </NodexDropdownItem>
       <NodexDropdownItem
         className="rounded-xl"
         leftSlot={<ThumbDownIcon className="size-5! text-token-foreground" />}
         onSelect={() => selectRating("thumbs_down")}
       >
-        Bad response
+        {footerText("Bad response")}
       </NodexDropdownItem>
     </NodexDropdownMenu>
   );

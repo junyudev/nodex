@@ -25,7 +25,6 @@ function MessageActionRowStoryFrame() {
               <CopyMessageActionButton
                 text="Check the action row timestamp parity against a recent prior day."
                 feedbackMs={1500}
-                disabledWhenCopied
               />
               <ThreadActionIconButton label="Edit message" tooltip="Edit" autoFocus>
                 <EditMessageIcon />

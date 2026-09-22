@@ -175,6 +175,7 @@ export function reconcileCodexResumedConversationState(
     draft.connectedEnvironmentIds = castDraft(existing.connectedEnvironmentIds);
     draft.threadGoal = existing.threadGoal;
     draft.completedThreadGoal = existing.completedThreadGoal;
+    draft.completedThreadGoalTurnId = existing.completedThreadGoalTurnId;
     draft.threadGoalResumeConfirmation = existing.threadGoalResumeConfirmation;
     draft.unconfirmedTurnSubmissions = castDraft(existing.unconfirmedTurnSubmissions);
     if (input.preserveResidentHistory) {
@@ -324,6 +325,12 @@ export function mutateCodexConversationThreadGoalUpdated(
   Object.assign(state, {
     threadGoal: goal,
     completedThreadGoal: goal.status === "complete" ? goal : null,
+    completedThreadGoalTurnId:
+      goal.status !== "complete"
+        ? null
+        : shouldClear
+          ? (residentConversationTurns(state).at(-1)?.turnId ?? null)
+          : state.completedThreadGoalTurnId,
     ...(keepsGoalResumeConfirmation(goal.status) ? {} : { threadGoalResumeConfirmation: null }),
   });
   return shouldClear ? [{ type: "clearCompletedGoal", threadId: conversationId }] : [];

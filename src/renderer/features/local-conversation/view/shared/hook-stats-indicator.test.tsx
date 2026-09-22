@@ -8,6 +8,8 @@ import type { HookStats } from "../../projection/hook-stats";
 const stats: HookStats = {
   count: 3,
   blockedCount: 1,
+  blockedMessages: [],
+  blockedSources: [],
   errorCount: 1,
   entries: [
     { kind: "warning", text: "Check the configuration" },

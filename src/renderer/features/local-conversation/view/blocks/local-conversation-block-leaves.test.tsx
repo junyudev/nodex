@@ -361,7 +361,7 @@ describe("UserMessageBubble collapse", () => {
     expect(queryByText("Show less") === null).toBe(true);
   });
 
-  test("marks a retained first submission as not sent", () => {
+  test("links a blocked first submission to hook settings", () => {
     const block = buildUserMessageBlock("Retry this exact request.");
     block.entry.deliveryStatus = "not-sent";
     block.userMessageActions = { canEdit: false, sentAtMs: null };
@@ -371,7 +371,107 @@ describe("UserMessageBubble collapse", () => {
       </TooltipProvider>,
     );
 
+    expect(getByRole("link", { name: "Hook blocked this message" }).getAttribute("href")).toBe(
+      "/settings/hooks-settings?hostId=local",
+    );
+  });
+
+  test("keeps a failed launch distinct from a hook rejection", () => {
+    const block = buildUserMessageBlock("Could not start task");
+    block.entry.deliveryStatus = "not-sent";
+    block.entry.status = "failed";
+    const { getByRole, queryByRole } = render(
+      <TooltipProvider>
+        <UserMessageBubble block={block} isLatestTurn isStreamingTurn={false} />
+      </TooltipProvider>,
+    );
     expect(getByRole("status").textContent).toBe("Not sent");
+    expect(queryByRole("link", { name: "Hook blocked this message" })).toBeNull();
+  });
+
+  test("renders submit-hook explanations and navigates to their source", async () => {
+    const block = buildUserMessageBlock("Blocked request");
+    block.entry.deliveryStatus = "not-sent";
+    block.userMessageActions = {
+      canEdit: false,
+      sentAtMs: null,
+      hookStats: {
+        count: 1,
+        blockedCount: 1,
+        errorCount: 0,
+        entries: [],
+        runs: [],
+        blockedSources: ["project"],
+        blockedMessages: ["Fix the check\nThen retry"],
+      },
+    };
+    const onOpenHooksSettings = vi.fn();
+    const { getByRole, getByText } = render(
+      <TooltipProvider>
+        <HookFeedbackSettingsNavigationProvider
+          hostId="remote-1"
+          onOpenHooksSettings={onOpenHooksSettings}
+        >
+          <UserMessageBubble
+            block={block}
+            isLatestTurn
+            isStreamingTurn={false}
+            threadCwd="/workspace/nodex"
+          />
+        </HookFeedbackSettingsNavigationProvider>
+      </TooltipProvider>,
+    );
+    expect(getByText("Fix the check Then retry").textContent).toBe("Fix the check\nThen retry");
+    const link = getByRole("link", { name: "Hook blocked this message" });
+    await act(async () => {
+      fireEvent.click(link);
+      await Promise.resolve();
+    });
+    expect(onOpenHooksSettings).toHaveBeenCalledWith({
+      hostId: "remote-1",
+      selection: { source: "project", projectRoot: "/workspace/nodex" },
+    });
+  });
+
+  test("keeps Edit for an editable attachment-only message without offering empty Copy", async () => {
+    const block = buildUserMessageBlock("");
+    block.userMessageActions = { canEdit: true, sentAtMs: null };
+    const { getByRole, queryByRole } = render(
+      <TooltipProvider>
+        <UserMessageBubble
+          block={block}
+          isLatestTurn
+          isStreamingTurn={false}
+          onEditLastUserTurn={vi.fn()}
+        />
+      </TooltipProvider>,
+    );
+    expect(queryByRole("button", { name: "Copy message" })).toBeNull();
+    await act(async () => {
+      fireEvent.click(getByRole("button", { name: "Edit message" }));
+      await Promise.resolve();
+    });
+    expect(getByRole("textbox", { name: "Edit message" })).toBeTruthy();
+  });
+
+  test("explicitly hidden user actions preserve status while omitting copy and edit", () => {
+    const block = buildUserMessageBlock("Blocked request");
+    block.entry.deliveryStatus = "not-sent";
+    block.userMessageActions = { canEdit: true, sentAtMs: null };
+    const { getByRole, queryByRole } = render(
+      <TooltipProvider>
+        <UserMessageBubble
+          block={block}
+          isLatestTurn
+          isStreamingTurn={false}
+          hideUserMessageActions
+          compactUserMessageActions
+        />
+      </TooltipProvider>,
+    );
+    expect(getByRole("link", { name: "Hook blocked this message" })).toBeTruthy();
+    expect(queryByRole("button", { name: "Copy message" })).toBeNull();
+    expect(queryByRole("button", { name: "Edit message" })).toBeNull();
   });
 
   test("labels hook feedback without exposing ordinary edit controls", () => {
