@@ -1,0 +1,32 @@
+src/renderer/features/dictation/dictation-websocket-client.test.tsx
+  s_d96453aeece1d5::t_2dea8ac78c430e 111-135,139,143-145,147,149-151
+src/main/dictation/dictation-streaming.integration.ts
+  s_d96453aeece1d5::t_3b32bc6e00960e 15-18,80-82,86,119-121,171,174-176,197
+  s_d96453aeece1d5::t_2dea8ac78c430e 13-14
+CHANGELOG.md
+  s_d96453aeece1d5::t_8f90b559872261 14
+src/renderer/features/dictation/dictation-websocket-client.ts
+  s_d96453aeece1d5::t_8c6ef69da1788f 140-147,149,151
+src/renderer/features/dictation/dictation-streaming-client.ts
+  s_d96453aeece1d5::t_8c6ef69da1788f 199-201
+docs/product-specs/dictation-behavior.md
+  s_d96453aeece1d5::t_8f90b559872261 42-43,76
+src/shared/dictation-streaming.ts
+  s_d96453aeece1d5::t_8c6ef69da1788f 60
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "63d5c679b4b36c400fb0a6ffcc742f1e5ce38ea9",
+  "prompts": {},
+  "sessions": {
+    "s_d96453aeece1d5": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a0c829-ea98-7dc1-b2ec-9cf8bfeb9bb2",
+        "model": "gpt-6-astra"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    }
+  }
+}
