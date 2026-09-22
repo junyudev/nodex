@@ -1,0 +1,19 @@
+docs/development.md
+  s_5355d2d71bc6dc::t_20f68c47f5541b 202-214
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "622c4b23eb7c9b28f05d2d69e8f66baedaa59105",
+  "prompts": {},
+  "sessions": {
+    "s_5355d2d71bc6dc": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a0c833-c294-78c1-b4e9-83da25b2afa7",
+        "model": "gpt-6-astra"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    }
+  }
+}
