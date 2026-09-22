@@ -1,0 +1,36 @@
+tests/e2e/dictation-composer-recording.spec.ts
+  s_d96453aeece1d5::t_4ae80e3a52dc46 292-296
+  s_d96453aeece1d5::t_e97203558d428f 15,169,186-187,208-209,221,240-242,250,260,263,271-272,283,285-289,314
+docs/product-specs/dictation-behavior.md
+  s_d96453aeece1d5::t_b0b6be602e93a3 15
+  s_d96453aeece1d5::t_0f262a8569069e 20,40
+tests/e2e/dictation-performance.spec.ts
+  s_d96453aeece1d5::t_e97203558d428f 33
+src/main/dictation/DictationPolicy.node.test.ts
+  s_d96453aeece1d5::t_34e4a851d2f5c3 225-245,247-256
+  s_d96453aeece1d5::t_5f9f4f5ac07c66 197,219
+CHANGELOG.md
+  s_d96453aeece1d5::t_0f262a8569069e 9
+docs/RELIABILITY.md
+  s_d96453aeece1d5::t_0f262a8569069e 580
+src/main/dictation/DictationPolicyState.node.test.ts
+  s_d96453aeece1d5::t_1ba3e1588b617a 16,45-71
+src/main/dictation/DictationPolicyState.ts
+  s_d96453aeece1d5::t_1ba3e1588b617a 93-94
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "473a1ea3242fdef16e99986b2421ffa5c98753dc",
+  "prompts": {},
+  "sessions": {
+    "s_d96453aeece1d5": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a0c829-ea98-7dc1-b2ec-9cf8bfeb9bb2",
+        "model": "gpt-6-astra"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    }
+  }
+}
