@@ -13,6 +13,8 @@ export interface HookRunPresentation {
 export interface HookStats {
   count: number;
   blockedCount: number;
+  blockedMessages: string[];
+  blockedSources: Run["source"][];
   errorCount: number;
   entries: VisibleEntry[];
   runs: HookRunPresentation[];
@@ -26,6 +28,8 @@ export function buildHookStats(
   const stats: HookStats = {
     count: hooks.length,
     blockedCount: 0,
+    blockedMessages: [],
+    blockedSources: [],
     errorCount: 0,
     entries: [],
     runs: [],
@@ -35,7 +39,17 @@ export function buildHookStats(
       entry.kind === "context" ? [] : [{ kind: entry.kind, text: entry.text }],
     );
     stats.entries.push(...entries);
-    if (run.status === "blocked") stats.blockedCount += 1;
+    if (run.status === "blocked") {
+      stats.blockedCount += 1;
+      if (run.eventName === "userPromptSubmit") {
+        stats.blockedSources.push(run.source);
+        stats.blockedMessages.push(
+          ...entries.flatMap((entry) =>
+            entry.kind === "feedback" && entry.text.trim() ? [entry.text.trim()] : [],
+          ),
+        );
+      }
+    }
     if (run.status === "failed") stats.errorCount += 1;
     const row: HookRunPresentation = {
       id,

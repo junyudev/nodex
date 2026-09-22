@@ -1,4 +1,5 @@
-import { AssistantRatingMenu } from "../shared/assistant-rating-menu";
+import { AssistantMessageActionsRow } from "../shared/assistant-message-actions";
+import { footerText } from "../shared/thread-footer-i18n";
 import { HookStatsIndicator } from "../shared/hook-stats-indicator";
 import {
   useCallback,
@@ -9,7 +10,12 @@ import {
   type ReactNode,
 } from "react";
 import { motion } from "motion/react";
-import { ChevronRightIcon, GoalTargetIcon, HooksIcon } from "@/components/shared/icons";
+import {
+  ChevronRightIcon,
+  GoalTargetIcon,
+  HooksIcon,
+  QueuePendingInfoIcon,
+} from "@/components/shared/icons";
 import { BudgetedMarkdownRenderer } from "../shared/markdown/budgeted-markdown-renderer";
 import { AutomaticApprovalReviewSurface } from "../shared/automatic-approval-review-surface";
 import { MultiAgentActionSurface } from "../shared/multi-agent-action-surface";
@@ -23,12 +29,10 @@ import { TurnDiffSurface } from "../shared/turn-diff-surface";
 import {
   CopyMessageActionButton,
   EditMessageIcon,
-  ForkMessageIcon,
   MessageTimestamp,
   ThreadActionIconButton,
   ThreadMessageActionRow,
   USER_COPY_FEEDBACK_MS,
-  type AssistantMessageRating,
 } from "../shared/thread-message-actions";
 import { TodoListSurface } from "../shared/todo-list-surface";
 import { getToolComponent } from "../shared/tools/get-tool-component";
@@ -71,7 +75,6 @@ import { buildHookFeedbackSettingsHref } from "../../projection/hook-feedback-se
 import { resolveHookFeedbackSettingsTarget } from "../../../../lib/codex-hooks-route";
 import { formatThreadAgentActivityCompletedSummaryPart } from "../../projection/agent-activity-v2-summary";
 import type {
-  ThreadAssistantMessageActionsModel,
   ThreadBlockModel,
   ThreadAgentActivityCompletedSummaryPart,
   ThreadAgentActivityGroupHeader,
@@ -119,6 +122,8 @@ export interface ThreadLeafBlockProps {
   assistantAfter?: ReactNode;
   alwaysShowAssistantMessageActions?: boolean;
   compactUserMessageActions?: boolean;
+  hideUserMessageActions?: boolean;
+  alwaysShowUserMessageActions?: boolean;
 }
 
 export interface ThreadSpecialBlockProps {
@@ -145,20 +150,22 @@ function UserMessageGoalStatus() {
   return (
     <div className="ms-1 mr-1 flex items-center gap-2">
       <GoalTargetIcon className="icon-2xs shrink-0 text-token-description-foreground" />
-      <span className="text-token-description-foreground text-xs">Sent as goal</span>
+      <span className="text-token-description-foreground text-xs">
+        {footerText("Sent as goal")}
+      </span>
     </div>
   );
 }
 
-function UserMessageDeliveryFailureStatus() {
-  return (
-    <span className="mr-1 text-xs text-danger" role="status">
-      Not sent
-    </span>
-  );
-}
-
-function UserMessageHookFeedbackStatus({ href, onOpen }: { href: string; onOpen?: () => void }) {
+function UserMessageHookStatus({
+  href,
+  onOpen,
+  blocked = false,
+}: {
+  href: string;
+  onOpen?: () => void;
+  blocked?: boolean;
+}) {
   return (
     <a
       href={href}
@@ -171,8 +178,12 @@ function UserMessageHookFeedbackStatus({ href, onOpen }: { href: string; onOpen?
         onOpen();
       }}
     >
-      <HooksIcon aria-hidden className="icon-2xs shrink-0" />
-      <span>Hook feedback</span>
+      {blocked ? (
+        <QueuePendingInfoIcon aria-hidden className="icon-2xs shrink-0" />
+      ) : (
+        <HooksIcon aria-hidden className="icon-2xs shrink-0" />
+      )}
+      <span>{footerText(blocked ? "Hook blocked this message" : "Hook feedback")}</span>
     </a>
   );
 }
@@ -718,30 +729,37 @@ export function UserMessageBubble({
   projectWorkspacePath,
   threadCwd,
   compactUserMessageActions = false,
+  hideUserMessageActions = false,
+  alwaysShowUserMessageActions = false,
 }: ThreadLeafBlockProps) {
   const content = block.entry.markdownText ?? "";
   const userActions = block.userMessageActions;
   const canEdit = userActions?.canEdit ?? false;
   const isNotSent = block.entry.deliveryStatus === "not-sent";
+  // Launch failures never ran a submit hook and must not point users at hook settings.
+  const isHookBlocked = isNotSent && block.entry.status !== "failed";
   const isGoalMessage = block.entry.goal === true;
   const isHookFeedback = block.entry.hookFeedback === true;
   const hookSettingsNavigation = useHookFeedbackSettingsNavigation();
+  const hookSources = isNotSent
+    ? userActions?.hookStats?.blockedSources
+    : block.hookFeedbackSources;
   const hookFeedbackSettingsTarget = resolveHookFeedbackSettingsTarget({
     hostId: hookSettingsNavigation?.hostId ?? DEFAULT_CODEX_HOST_ID,
     cwd: threadCwd,
-    sources: block.hookFeedbackSources,
+    sources: hookSources,
   });
   const hookFeedbackSettingsHref = buildHookFeedbackSettingsHref({
     hostId: hookFeedbackSettingsTarget.hostId,
     cwd: threadCwd,
-    sources: block.hookFeedbackSources,
+    sources: hookSources,
   });
   const hasMessageContent = content.trim().length > 0;
   const shouldRenderFooter =
     isNotSent ||
     isGoalMessage ||
     isHookFeedback ||
-    (hasMessageContent && !compactUserMessageActions);
+    ((hasMessageContent || canEdit) && !compactUserMessageActions && !hideUserMessageActions);
   const [isEditing, setIsEditing] = useState(false);
   const [draftMessage, setDraftMessage] = useState(content);
   const [isSubmittingEdit, setIsSubmittingEdit] = useState(false);
@@ -834,7 +852,7 @@ export function UserMessageBubble({
             }}
           >
             <textarea
-              aria-label="Edit message"
+              aria-label={footerText("Edit message")}
               autoFocus
               className="w-full resize-none bg-transparent p-0 text-sm leading-relaxed text-token-foreground outline-none placeholder:text-token-description-foreground"
               rows={EDIT_MESSAGE_MIN_ROWS}
@@ -873,14 +891,15 @@ export function UserMessageBubble({
               </button>
             </div>
           </form>
-        ) : compactUserMessageActions && hasMessageContent ? (
+        ) : compactUserMessageActions && hasMessageContent && !hideUserMessageActions ? (
           <div className="flex w-full items-center justify-end gap-1">
-            <div className="opacity-0 group-focus-within:opacity-100 group-hover:opacity-100">
-              <CopyMessageActionButton
-                text={content}
-                feedbackMs={USER_COPY_FEEDBACK_MS}
-                disabledWhenCopied
-              />
+            <div
+              className={cn(
+                "opacity-0 group-focus-within:opacity-100 group-hover:opacity-100",
+                alwaysShowUserMessageActions && "opacity-100",
+              )}
+            >
+              <CopyMessageActionButton text={content} feedbackMs={USER_COPY_FEEDBACK_MS} />
             </div>
             {messageBubble}
           </div>
@@ -889,10 +908,15 @@ export function UserMessageBubble({
         )}
         {shouldRenderFooter ? (
           <div className="flex flex-row-reverse items-center gap-1">
-            {isNotSent ? <UserMessageDeliveryFailureStatus /> : null}
-            {isGoalMessage ? <UserMessageGoalStatus /> : null}
-            {isHookFeedback ? (
-              <UserMessageHookFeedbackStatus
+            {!isNotSent && isGoalMessage ? <UserMessageGoalStatus /> : null}
+            {isNotSent && !isHookBlocked ? (
+              <span className="mr-1 text-xs text-danger" role="status">
+                {footerText("Not sent")}
+              </span>
+            ) : null}
+            {isHookBlocked || (!isNotSent && !isGoalMessage && isHookFeedback) ? (
+              <UserMessageHookStatus
+                blocked={isHookBlocked}
                 href={hookFeedbackSettingsHref}
                 onOpen={
                   hookSettingsNavigation?.onOpenHooksSettings
@@ -901,22 +925,26 @@ export function UserMessageBubble({
                 }
               />
             ) : null}
-            {isEditing || !hasMessageContent || compactUserMessageActions ? null : (
-              <ThreadMessageActionRow align="end">
-                <MessageTimestamp sentAtMs={userActions?.sentAtMs ?? null} />
-                <div className="flex items-center gap-1">
-                  {userActions?.hookStats ? (
+            {isEditing ||
+            (!hasMessageContent && !canEdit) ||
+            compactUserMessageActions ||
+            hideUserMessageActions ? null : (
+              <ThreadMessageActionRow
+                align="end"
+                className={alwaysShowUserMessageActions ? "opacity-100" : undefined}
+              >
+                <MessageTimestamp sentAtMs={userActions?.sentAtMs ?? null} variant="user" />
+                <div className="flex items-center gap-0.5">
+                  {isNotSent && userActions?.hookStats ? (
                     <HookStatsIndicator stats={userActions.hookStats} />
                   ) : null}
-                  <CopyMessageActionButton
-                    text={content}
-                    feedbackMs={USER_COPY_FEEDBACK_MS}
-                    disabledWhenCopied
-                  />
+                  {hasMessageContent ? (
+                    <CopyMessageActionButton text={content} feedbackMs={USER_COPY_FEEDBACK_MS} />
+                  ) : null}
                   {canEdit ? (
                     <ThreadActionIconButton
-                      label="Edit message"
-                      tooltip="Edit"
+                      label={footerText("Edit message")}
+                      tooltip={footerText("Edit")}
                       onClick={openInlineEditor}
                     >
                       <EditMessageIcon />
@@ -927,6 +955,20 @@ export function UserMessageBubble({
             )}
           </div>
         ) : null}
+        {isNotSent
+          ? userActions?.hookStats?.blockedMessages.map((message, index) => (
+              <div
+                key={`${index}:${message}`}
+                className="flex max-w-[77%] items-start gap-2 rounded-lg border border-[var(--color-text-warning)]/30 px-3 py-2 text-sm text-token-foreground"
+              >
+                <HooksIcon
+                  aria-hidden
+                  className="mt-0.5 icon-2xs shrink-0 text-[var(--color-text-warning)]"
+                />
+                <span className="min-w-0 break-words whitespace-pre-wrap">{message}</span>
+              </div>
+            ))
+          : null}
       </div>
     </div>
   );
@@ -1042,64 +1084,6 @@ export function ThreadWorkedForBlock({ block }: { block: ThreadWorkedForBlockMod
   );
 }
 
-function AssistantMessageActionsRow({
-  actions,
-  threadId,
-  turnId,
-  isLatestTurn,
-  onForkFromTurn,
-  alwaysShowActions = false,
-}: {
-  actions: ThreadAssistantMessageActionsModel;
-  threadId: string;
-  turnId: string | null;
-  isLatestTurn: boolean;
-  onForkFromTurn?: (input: {
-    threadId: string;
-    turnId: string;
-    message: string;
-    isLatestTurn: boolean;
-  }) => void | Promise<void>;
-  alwaysShowActions?: boolean;
-}) {
-  const [selectedRating, setSelectedRating] = useState<AssistantMessageRating | null>(null);
-  const shouldShowActions =
-    actions.copyText !== null || actions.canFork || actions.hookStats != null;
-  if (!shouldShowActions) return null;
-
-  return (
-    <ThreadMessageActionRow align="start" className={alwaysShowActions ? "opacity-100" : undefined}>
-      {actions.copyText !== null ? (
-        <>
-          <CopyMessageActionButton text={actions.copyText} label="Copy" stopPropagation />
-          {actions.canRate ? (
-            <AssistantRatingMenu selectedRating={selectedRating} onSelect={setSelectedRating} />
-          ) : null}
-        </>
-      ) : null}
-      {actions.canFork && turnId !== null ? (
-        <ThreadActionIconButton
-          label="Fork from this point"
-          tooltip="Fork"
-          onClick={(event) => {
-            event.stopPropagation();
-            void onForkFromTurn?.({
-              threadId,
-              turnId,
-              message: "",
-              isLatestTurn,
-            });
-          }}
-        >
-          <ForkMessageIcon />
-        </ThreadActionIconButton>
-      ) : null}
-      {actions.hookStats ? <HookStatsIndicator stats={actions.hookStats} /> : null}
-      <MessageTimestamp sentAtMs={actions.sentAtMs} />
-    </ThreadMessageActionRow>
-  );
-}
-
 export function ThreadAssistantBodyBlock({
   block,
   isLatestTurn,
@@ -1149,6 +1133,11 @@ export function ThreadAssistantBodyBlock({
         isSearchMatch && THREAD_VISUAL_TOKENS.searchUnitMatched,
         isActiveSearchMatch && THREAD_VISUAL_TOKENS.searchUnitActive,
       )}
+      data-message-copy-root={JSON.stringify([
+        block.entry.threadId,
+        block.turnId,
+        block.entry.itemId,
+      ])}
       data-content-search-unit-key={block.searchUnitKey}
     >
       <div className="group flex min-w-0 flex-col">
@@ -1196,7 +1185,15 @@ export function ThreadAssistantActionsBlock({
   if (block.type !== "assistantActions") return null;
 
   return (
-    <div className="group flex min-w-0 flex-col" data-assistant-actions-anchor={block.entry.itemId}>
+    <div
+      className="group flex min-w-0 flex-col"
+      data-assistant-actions-anchor={block.entry.itemId}
+      data-message-copy-source={JSON.stringify([
+        block.entry.threadId,
+        block.turnId,
+        block.entry.itemId,
+      ])}
+    >
       <AssistantMessageActionsRow
         actions={block.actions}
         threadId={block.entry.threadId}

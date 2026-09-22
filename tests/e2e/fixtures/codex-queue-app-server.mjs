@@ -198,7 +198,7 @@ const startTurn = (params, source = "turn/start") => {
     `turn-queue-parity-${state.turnSequence}`,
     "inProgress",
     {},
-    [userMessage],
+    process.env.NODEX_FAKE_CODEX_BLOCKED_HOOK_TURN === "1" ? [] : [userMessage],
   );
   state.turns.push(next);
   persist();
@@ -240,6 +240,51 @@ const startTurn = (params, source = "turn/start") => {
         notify("item/started", { startedAtMs: Date.now(), threadId: thread().id, turnId: next.id, item: progress });
         notify("item/completed", { completedAtMs: Date.now(), threadId: thread().id, turnId: next.id, item: progress });
       }, 600);
+    }
+    if (process.env.NODEX_FAKE_CODEX_FOOTER_METADATA === "1") {
+      const skillPath = path.join(process.cwd(), ".agents/skills/footer-review/SKILL.md");
+      fs.mkdirSync(path.dirname(skillPath), { recursive: true });
+      fs.writeFileSync(skillPath, "---\nname: footer-review\ndescription: Review message actions\n---\nRead the message actions.\n");
+      const command = {
+        type: "commandExecution", id: `skill-read-${next.id}`, command: `cat ${skillPath}`,
+        cwd: process.cwd(), pluginId: null, scriptPath: null, processId: null,
+        source: "agent", status: "completed", commandActions: [{ type: "read", command: `cat ${skillPath}`, name: "SKILL.md", path: skillPath }],
+        aggregatedOutput: "Read the message actions.", exitCode: 0, durationMs: 20,
+      };
+      next.items.push(command);
+      notify("item/started", { threadId: thread().id, turnId: next.id, item: { ...command, status: "inProgress" }, startedAtMs: Date.now() });
+      notify("item/completed", { threadId: thread().id, turnId: next.id, item: command, completedAtMs: Date.now() });
+      const review = {
+        threadId: thread().id, turnId: next.id, reviewId: `review-${next.id}`, targetItemId: command.id,
+        startedAtMs: Date.now(), action: { type: "command", source: "unifiedExec", command: command.command, cwd: process.cwd() },
+      };
+      notify("item/autoApprovalReview/started", { ...review, review: { status: "inProgress", riskLevel: "low", userAuthorization: "high", rationale: null } });
+      notify("item/autoApprovalReview/completed", { ...review, completedAtMs: Date.now(), decisionSource: "agent", review: { status: "approved", riskLevel: "low", userAuthorization: "high", rationale: "Reading the requested skill is allowed." } });
+      const rejectedReview = { ...review, reviewId: `rejected-${next.id}`, targetItemId: null, action: { type: "command", source: "unifiedExec", command: "touch protected.txt", cwd: process.cwd() } };
+      notify("item/autoApprovalReview/started", { ...rejectedReview, review: { status: "inProgress", riskLevel: "low", userAuthorization: "low", rationale: null } });
+      notify("item/autoApprovalReview/completed", { ...rejectedReview, completedAtMs: Date.now(), decisionSource: "agent", review: { status: "denied", riskLevel: "low", userAuthorization: "low", rationale: "Changing the protected file was not requested." } });
+      const answer = { type: "agentMessage", id: `reply-${next.id}`, text: "The metadata review is complete.", phase: "final_answer", delivery: null, questions: null,
+        memoryCitation: { entries: [{ path: "MEMORY.md", lineStart: 2, lineEnd: 4, note: "Message actions follow project conventions." }], threadIds: [] },
+      };
+      next.items.push(answer);
+      notify("item/started", { threadId: thread().id, turnId: next.id, item: answer, startedAtMs: Date.now() });
+      notify("item/completed", { threadId: thread().id, turnId: next.id, item: answer, completedAtMs: Date.now() });
+      persist();
+      scheduleAutomaticCompletion(next.id);
+      return;
+    }
+    if (process.env.NODEX_FAKE_CODEX_BLOCKED_HOOK_TURN === "1") {
+      const run = {
+        id: `blocked-hook-${next.id}`, eventName: "userPromptSubmit", handlerType: "command",
+        executionMode: "sync", scope: "turn", sourcePath: "/fixture/hooks.json", source: "project",
+        displayOrder: 0, status: "blocked", statusMessage: null,
+        startedAt: Date.now(), completedAt: Date.now(), durationMs: 0,
+        entries: [{ kind: "feedback", text: "The required check did not pass.\nFix it before retrying." }],
+      };
+      notify("hook/started", { threadId: thread().id, turnId: next.id, run: { ...run, status: "running", entries: [] } });
+      notify("hook/completed", { threadId: thread().id, turnId: next.id, run });
+      setTimeout(() => completeTurn(next.id, "interrupted"), 100);
+      return;
     }
     if (process.env.NODEX_FAKE_CODEX_HOOK_TURN === "1") {
       const run = {
@@ -416,7 +461,7 @@ const handle = (message) => {
         data: [{
           cwd: process.cwd(),
           errors: [],
-          skills: [...extraSkills(), ...Array.from({ length: Number(process.env.NODEX_FAKE_CODEX_SKILL_COUNT ?? 0) }, (_, index) => ({
+          skills: [...(process.env.NODEX_FAKE_CODEX_FOOTER_METADATA === "1" ? [{ name: "footer-review", description: "Review message actions", path: path.join(process.cwd(), ".agents/skills/footer-review/SKILL.md"), scope: "repo", enabled: true, pluginId: null }] : []), ...extraSkills(), ...Array.from({ length: Number(process.env.NODEX_FAKE_CODEX_SKILL_COUNT ?? 0) }, (_, index) => ({
             name: `abc-tool-${index}`,
             description: "aaaa ".repeat(200) + "xb",
             path: `${process.cwd()}/skills/abc-tool-${index}/SKILL.md`,

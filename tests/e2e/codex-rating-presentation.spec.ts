@@ -1,5 +1,7 @@
-import { expect, test } from "@playwright/test";
+import { expect, test, type Page } from "@playwright/test";
 import path from "node:path";
+import { writeFile } from "node:fs/promises";
+import { openNewChatDraft } from "./support/new-chat-draft";
 import { ElectronScenarioHarness } from "../../scripts/scenarios/harness/electron-e2e-harness";
 import { prepareScenarioCodexAppServerRuntimeSync } from "../../scripts/scenarios/runtime/agent-runtime-fixture";
 
@@ -21,11 +23,12 @@ test("rates and clears a response through the message action menu", async ({}, t
     harness.profile.runRoot,
     path.resolve("tests/e2e/fixtures/codex-queue-app-server.mjs"),
   );
+  let recordingPage: Page | undefined;
   try {
     const page = await harness.launch();
     await page.emulateMedia({ colorScheme: "light" });
-    await page.getByRole("button", { name: "New chat", exact: true }).first().click();
-    const composer = page.locator('[data-codex-composer="true"][aria-label="Do anything"]');
+    const scene = await openNewChatDraft(page);
+    const composer = scene.locator('[data-codex-composer="true"][aria-label="Do anything"]');
     await expect(composer).toBeVisible();
     await composer.fill("Check response rating");
     await expect(composer).toHaveText("Check response rating");
@@ -35,6 +38,12 @@ test("rates and clears a response through the message action menu", async ({}, t
     const reply = page.getByText("The hook completed successfully.", { exact: true });
     await expect(reply).toBeVisible({ timeout: 30_000 });
     await expect(page.getByRole("button", { name: "Stop", exact: true })).toHaveCount(0);
+    recordingPage = page;
+    await page.screencast.start({
+      path: testInfo.outputPath("review.webm"),
+      size: { width: 1280, height: 800 },
+      annotate: { position: "bottom", fontSize: 14 },
+    });
     await reply.hover();
     const trigger = page.getByRole("button", { name: "Rate response", exact: true });
     await expect(trigger).toHaveCount(1);
@@ -43,6 +52,7 @@ test("rates and clears a response through the message action menu", async ({}, t
     await trigger.click();
     const menu = page.getByRole("menu");
     await expect(menu.getByRole("menuitem")).toHaveText(["Good response", "Bad response"]);
+    const menuChoices = await menu.getByRole("menuitem").allTextContents();
     const triggerBox = await trigger.boundingBox();
     const menuBox = await menu.boundingBox();
     expect(menuBox!.y + menuBox!.height).toBeLessThanOrEqual(triggerBox!.y);
@@ -73,11 +83,37 @@ test("rates and clears a response through the message action menu", async ({}, t
     await page.keyboard.press("Escape");
     await expect(menu).toHaveCount(0);
     await expect(trigger).toBeFocused();
+    expect(await trigger.evaluate((button) => getComputedStyle(button).boxShadow)).not.toBe("none");
+    await page.screenshot({ path: testInfo.outputPath("final.png") });
+    await writeFile(
+      testInfo.outputPath("result.json"),
+      JSON.stringify(
+        {
+          status: "passed",
+          scenario: "rating-presentation",
+          claims: [
+            {
+              claim: "menu choices",
+              expected: ["Good response", "Bad response"],
+              actual: menuChoices,
+            },
+            {
+              claim: "keyboard dismissal restores trigger focus",
+              expected: true,
+              actual: await trigger.evaluate((button) => button === document.activeElement),
+            },
+          ],
+        },
+        null,
+        2,
+      ),
+    );
     await trigger.click();
     await expect(menu).toBeVisible();
     await reply.click();
     await expect(menu).toHaveCount(0);
   } finally {
+    await recordingPage?.screencast.stop().catch(() => {});
     await harness.close();
   }
 });

@@ -66,6 +66,8 @@ interface ThreadBlockRendererProps {
   turnDiffHoverPreviewDisabled?: boolean;
   alwaysShowAssistantMessageActions?: boolean;
   compactUserMessageActions?: boolean;
+  hideUserMessageActions?: boolean;
+  alwaysShowUserMessageActions?: boolean;
 }
 
 export function ThreadBlockRenderer({
@@ -93,6 +95,8 @@ export function ThreadBlockRenderer({
   turnDiffHoverPreviewDisabled = false,
   alwaysShowAssistantMessageActions = false,
   compactUserMessageActions = false,
+  hideUserMessageActions = false,
+  alwaysShowUserMessageActions = false,
 }: ThreadBlockRendererProps) {
   if (block.type === "agentActivityGroup") {
     return (
@@ -215,6 +219,8 @@ export function ThreadBlockRenderer({
         onOpenSideChat={onOpenSideChat}
         threadCwd={threadCwd}
         compactUserMessageActions={compactUserMessageActions}
+        hideUserMessageActions={hideUserMessageActions}
+        alwaysShowUserMessageActions={alwaysShowUserMessageActions}
       />
     );
   }

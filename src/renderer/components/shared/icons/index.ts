@@ -8,3 +8,4 @@ export * from "./image-editor-aspect-icons";
 export * from "./image-editor-icons";
 export * from "./priority-value-icon";
 export * from "./rating-icons";
+export * from "./response-copy-icon";

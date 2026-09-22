@@ -1,3 +1,4 @@
+import { ThreadForkSubmissionContext } from "./shared/thread-fork-state";
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { appScope, useScopeHandle } from "@/lib/maitai";
 import {
@@ -437,7 +438,8 @@ export function LocalConversationThreadBodyOwner({
     message: string;
   } | null>(null);
   const forkSubmissionInFlightRef = useRef(false);
-  const [isForkSubmitting, setIsForkSubmitting] = useState(false);
+  const [forkingTurnId, setForkingTurnId] = useState<string | null>(null);
+  const isForkSubmitting = forkingTurnId !== null;
   const [isRestoringArchivedThread, setIsRestoringArchivedThread] = useState(false);
   const attachmentFailure = attachmentState?.status === "failed" ? attachmentState : null;
   const retryAttachment = useCallback(() => {
@@ -894,11 +896,11 @@ export function LocalConversationThreadBodyOwner({
   );
 
   const runForkChoice = useCallback(
-    async (fork: () => Promise<void>, fallbackError: string) => {
+    async (turnId: string, fork: () => Promise<void>, fallbackError: string) => {
       if (forkSubmissionInFlightRef.current) return;
 
       forkSubmissionInFlightRef.current = true;
-      setIsForkSubmitting(true);
+      setForkingTurnId(turnId);
       onErrorMessage(null);
       try {
         await fork();
@@ -907,7 +909,7 @@ export function LocalConversationThreadBodyOwner({
         onErrorMessage(error instanceof Error ? error.message : fallbackError);
       } finally {
         forkSubmissionInFlightRef.current = false;
-        setIsForkSubmitting(false);
+        setForkingTurnId(null);
       }
     },
     [onErrorMessage],
@@ -915,7 +917,11 @@ export function LocalConversationThreadBodyOwner({
 
   const runForkFromTurn = useCallback(
     async (input: { threadId: string; turnId: string; message: string }) => {
-      await runForkChoice(() => actions.onForkFromTurn(input), "Could not fork the conversation");
+      await runForkChoice(
+        input.turnId,
+        () => actions.onForkFromTurn(input),
+        "Could not fork the conversation",
+      );
     },
     [actions, runForkChoice],
   );
@@ -925,6 +931,7 @@ export function LocalConversationThreadBodyOwner({
       if (!onForkFromTurnIntoWorktree) return;
 
       await runForkChoice(
+        input.turnId,
         () =>
           onForkFromTurnIntoWorktree({
             threadId: input.threadId,
@@ -1108,47 +1115,51 @@ export function LocalConversationThreadBodyOwner({
                 onRetry={retryAttachment}
               />
             ) : null}
-            <LocalConversationVirtualizedTurnList
-              key={conversation?.threadId ?? body.threadId ?? "unattached"}
-              entries={virtualizedEntries}
-              historyRows={historyRows}
-              conversationId={conversation?.threadId ?? body.threadId ?? ""}
-              threadCwd={cwd}
-              projectWorkspacePath={projectWorkspacePath}
-              projectlessOutputDirectory={projectlessOutputDirectory}
-              editableTurnId={editableTurnId}
-              canForkFromTurn={canForkFromTurn}
-              initialCollapsedAgentBodyByTurnSearchKey={initialUiState?.collapsedAgentBodyByTurnId}
-              onEditLastTurnMessage={handleEditLastUserTurn}
-              onForkTurnMessage={handleForkFromTurn}
-              onOpenTurnDiffReview={actions.onOpenTurnDiffReview}
-              onOpenTurnDiffFileInSidePanel={actions.onOpenTurnDiffFileInSidePanel}
-              onOpenSideChat={actions.onOpenSideChat}
-              onOpenThread={actions.onOpenThread}
-              onOpenSummaryScheduledAutomation={actions.onOpenSummaryScheduledAutomation}
-              onOpenMcpAppSidePanel={actions.onOpenMcpAppSidePanel}
-              onOpenPlanInSidePanel={actions.onOpenPlanInSidePanel}
-              onClosePlanSidePanel={actions.onClosePlanSidePanel}
-              planSidePanelState={planSidePanelState}
-              childMemberships={childMemberships}
-              backgroundAgentRows={backgroundAgentRows}
-              turnDiffHoverPreviewDisabled={turnDiffHoverPreviewDisabled}
-              initialScrollOffset={normalizeThreadRestoreDistanceFromBottomPx(
-                initialRestoreSnapshot.distanceFromBottomPx,
-              )}
-              initialRestoreState={initialRestoreSnapshot.virtualizedTurnList}
-              initialLatestTurnRestoreState={initialRestoreSnapshot.latestTurn}
-              latestTurnSynchronousMeasurementKey={body.latestTurnId ?? body.turnCount}
-              onLatestTurnRestoreStateChange={handleLatestTurnRestoreStateChange}
-              onRestoreStateChange={handleVirtualizedTurnRestoreStateChange}
-              onLoadHistoryBoundary={handleLoadHistoryBoundary}
-              historyTurnItemsRefs={historyTurnItemsRefs}
-              onLoadHistoryTurnItems={handleLoadHistoryTurnItems}
-              scrollElement={scrollElement}
-              onApiChange={(api) => {
-                listApiRef.current = api;
-              }}
-            />
+            <ThreadForkSubmissionContext value={forkingTurnId}>
+              <LocalConversationVirtualizedTurnList
+                key={conversation?.threadId ?? body.threadId ?? "unattached"}
+                entries={virtualizedEntries}
+                historyRows={historyRows}
+                conversationId={conversation?.threadId ?? body.threadId ?? ""}
+                threadCwd={cwd}
+                projectWorkspacePath={projectWorkspacePath}
+                projectlessOutputDirectory={projectlessOutputDirectory}
+                editableTurnId={editableTurnId}
+                canForkFromTurn={canForkFromTurn}
+                initialCollapsedAgentBodyByTurnSearchKey={
+                  initialUiState?.collapsedAgentBodyByTurnId
+                }
+                onEditLastTurnMessage={handleEditLastUserTurn}
+                onForkTurnMessage={handleForkFromTurn}
+                onOpenTurnDiffReview={actions.onOpenTurnDiffReview}
+                onOpenTurnDiffFileInSidePanel={actions.onOpenTurnDiffFileInSidePanel}
+                onOpenSideChat={actions.onOpenSideChat}
+                onOpenThread={actions.onOpenThread}
+                onOpenSummaryScheduledAutomation={actions.onOpenSummaryScheduledAutomation}
+                onOpenMcpAppSidePanel={actions.onOpenMcpAppSidePanel}
+                onOpenPlanInSidePanel={actions.onOpenPlanInSidePanel}
+                onClosePlanSidePanel={actions.onClosePlanSidePanel}
+                planSidePanelState={planSidePanelState}
+                childMemberships={childMemberships}
+                backgroundAgentRows={backgroundAgentRows}
+                turnDiffHoverPreviewDisabled={turnDiffHoverPreviewDisabled}
+                initialScrollOffset={normalizeThreadRestoreDistanceFromBottomPx(
+                  initialRestoreSnapshot.distanceFromBottomPx,
+                )}
+                initialRestoreState={initialRestoreSnapshot.virtualizedTurnList}
+                initialLatestTurnRestoreState={initialRestoreSnapshot.latestTurn}
+                latestTurnSynchronousMeasurementKey={body.latestTurnId ?? body.turnCount}
+                onLatestTurnRestoreStateChange={handleLatestTurnRestoreStateChange}
+                onRestoreStateChange={handleVirtualizedTurnRestoreStateChange}
+                onLoadHistoryBoundary={handleLoadHistoryBoundary}
+                historyTurnItemsRefs={historyTurnItemsRefs}
+                onLoadHistoryTurnItems={handleLoadHistoryTurnItems}
+                scrollElement={scrollElement}
+                onApiChange={(api) => {
+                  listApiRef.current = api;
+                }}
+              />
+            </ThreadForkSubmissionContext>
           </div>
         )}
       </div>

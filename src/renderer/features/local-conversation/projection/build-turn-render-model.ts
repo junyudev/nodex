@@ -42,9 +42,13 @@ export interface BuildTurnRenderModelInput {
   surface?: TurnRenderSurface;
   canEditTurnUserPrefix?: boolean;
   canForkTurn?: boolean;
+  canRateTurn?: boolean;
+  goalTimeUsedSeconds?: number;
+  timestampHoverOnly?: boolean;
   backgroundAgents?: readonly ThreadComposerShellBackgroundAgentRowModel[];
   turnKey?: string;
   cwd?: string | null;
+  hostId?: string;
   projectlessOutputDirectory?: string | null;
   mcpApps?: readonly ProtocolAppInfo[];
   mcpServerStatuses?: ProtocolListMcpServerStatusResponse | null;
@@ -57,8 +61,12 @@ export interface SelectTurnRenderModelInput {
   surface?: TurnRenderSurface;
   canEditTurnUserPrefix?: boolean;
   canForkTurn?: boolean;
+  canRateTurn?: boolean;
+  goalTimeUsedSeconds?: number;
+  timestampHoverOnly?: boolean;
   backgroundAgents?: readonly ThreadComposerShellBackgroundAgentRowModel[];
   cwd?: string | null;
+  hostId?: string;
   projectlessOutputDirectory?: string | null;
   mcpApps?: readonly ProtocolAppInfo[];
   mcpServerStatuses?: ProtocolListMcpServerStatusResponse | null;
@@ -371,6 +379,13 @@ export function buildTurnRenderModel(input: BuildTurnRenderModelInput): ThreadTu
     subagentActivityState: rendererProjection.subagentActivityState,
     canEditTurnUserPrefix: input.turn.turnId !== null && input.canEditTurnUserPrefix,
     canForkTurn: input.turn.turnId !== null && input.canForkTurn,
+    canRateTurn: input.canRateTurn,
+    allowCopyWhileStreaming: input.surface === "preview",
+    showTimestampWithoutActions: input.surface === "preview",
+    timestampHoverOnly: input.timestampHoverOnly ?? false,
+    goalTimeUsedSeconds: input.goalTimeUsedSeconds,
+    cwd: input.cwd,
+    hostId: input.hostId,
     endResourcePaths,
     mcpApps: input.mcpApps,
     mcpServerStatuses: input.mcpServerStatuses,
@@ -411,10 +426,14 @@ export function createTurnRenderModelSelector(
     );
     const cacheKey = JSON.stringify([
       surface,
+      input.canRateTurn,
+      input.goalTimeUsedSeconds,
+      input.timestampHoverOnly,
       canEditTurnUserPrefix,
       canForkTurn,
       input.entry.isMostRecentTurn,
       input.cwd,
+      input.hostId,
       input.projectlessOutputDirectory,
       resolveSelectorIdentity(input.mcpApps),
       resolveSelectorIdentity(input.mcpServerStatuses),
@@ -441,11 +460,15 @@ export function createTurnRenderModelSelector(
       isLatestTurn: input.entry.isMostRecentTurn,
       isStreamingTurn: input.entry.turn.status === "inProgress",
       surface,
+      canRateTurn: input.canRateTurn,
+      goalTimeUsedSeconds: input.goalTimeUsedSeconds,
+      timestampHoverOnly: input.timestampHoverOnly,
       canEditTurnUserPrefix,
       canForkTurn,
       backgroundAgents: input.backgroundAgents,
       turnKey: input.entry.turnKey,
       cwd: input.cwd,
+      hostId: input.hostId,
       projectlessOutputDirectory: input.projectlessOutputDirectory,
       mcpApps: input.mcpApps,
       mcpServerStatuses: input.mcpServerStatuses,

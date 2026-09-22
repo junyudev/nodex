@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, test } from "vite-plus/test";
-import { fireEvent } from "@testing-library/react";
+import { act, fireEvent } from "@testing-library/react";
 import { NodexTooltipProvider as TooltipProvider } from "../../../../components/ui/tooltip";
 import { render, textContent } from "../../../../test/dom";
 import { PlanMessage } from "./plan-message";
@@ -16,7 +16,7 @@ describe("PlanMessage", () => {
     });
   });
 
-  test("renders a completed preview card that opens the plan side panel", () => {
+  test("renders a completed preview card that opens the plan side panel", async () => {
     let openCount = 0;
     const { container, getByRole, queryByRole } = render(
       <TooltipProvider>
@@ -41,11 +41,13 @@ describe("PlanMessage", () => {
     expect(Boolean(queryByRole("button", { name: "Expand plan summary" }))).toBe(false);
     expect(Boolean(queryByRole("button", { name: "Expand plan" }))).toBe(false);
 
-    fireEvent.click(overlay as HTMLButtonElement);
+    await act(async () => {
+      fireEvent.click(overlay as HTMLButtonElement);
+    });
     expect(openCount).toBe(1);
   });
 
-  test("collapses the mounted body and close overlay when the side panel is active", () => {
+  test("collapses the mounted body and close overlay when the side panel is active", async () => {
     let closeCount = 0;
     const { container, getByRole } = render(
       <TooltipProvider>
@@ -71,7 +73,9 @@ describe("PlanMessage", () => {
     expect(actionGroup?.getAttribute("aria-hidden")).toBe("true");
     expect(Boolean(actionGroup?.hasAttribute("hidden"))).toBe(true);
 
-    fireEvent.click(closeButton);
+    await act(async () => {
+      fireEvent.click(closeButton);
+    });
     expect(closeCount).toBe(1);
   });
 
@@ -91,7 +95,20 @@ describe("PlanMessage", () => {
     expect(Boolean(queryByRole("button", { name: "Open plan in side panel" }))).toBe(false);
   });
 
-  test("downloads markdown as PLAN.md", () => {
+  test.each([
+    { completed: false, content: "# In progress" },
+    { completed: true, content: "   \n" },
+  ])("does not export unfinished or empty plans ($completed)", ({ completed, content }) => {
+    const view = render(
+      <TooltipProvider>
+        <PlanMessage completed={completed} content={content} />
+      </TooltipProvider>,
+    );
+    expect(view.queryByRole("button", { name: "Download plan" })).toBeNull();
+    expect(view.queryByRole("button", { name: "Copy" })).toBeNull();
+  });
+
+  test("downloads markdown as PLAN.md", async () => {
     const originalCreateElement = document.createElement;
     let downloadedName = "";
     document.createElement = ((tagName: string, options?: ElementCreationOptions) => {
@@ -114,7 +131,9 @@ describe("PlanMessage", () => {
         </TooltipProvider>,
       );
 
-      fireEvent.click(getByRole("button", { name: "Download plan" }));
+      await act(async () => {
+        fireEvent.click(getByRole("button", { name: "Download plan" }));
+      });
       expect(downloadedName).toBe("PLAN.md");
     } finally {
       document.createElement = originalCreateElement;

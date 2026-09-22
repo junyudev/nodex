@@ -142,12 +142,18 @@ function LocalConversationFooterComponent({
     return selectTurnRenderModel({
       entry: latestVisibleTurn,
       surface: "preview",
+      hostId: model.hostId,
+      goalTimeUsedSeconds:
+        model.conversation.canonicalState?.completedThreadGoalTurnId ===
+        latestVisibleTurn.turn.turnId
+          ? model.conversation.completedThreadGoal?.timeUsedSeconds
+          : undefined,
       canEditTurnUserPrefix: false,
       canForkTurn: false,
       cwd: model.conversation.cwd,
       projectlessOutputDirectory: model.conversation.projectlessOutputDirectory,
     });
-  }, [model.conversation, rightPanelOverlayEnabled]);
+  }, [model.conversation, model.hostId, rightPanelOverlayEnabled]);
   const latestTurnKey = latestTurn?.turnKey ?? null;
   const latestTurnOwnerKey = model.composerScopeIdentity?.trim() || model.threadId;
   const latestTurnExpanded = Boolean(

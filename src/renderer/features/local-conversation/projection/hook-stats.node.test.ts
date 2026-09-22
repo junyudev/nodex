@@ -166,7 +166,7 @@ test("completed replies own hook statistics even without copyable content; activ
   expect(project(items, true).buckets.assistantItem?.assistantMessageActions).toBeUndefined();
 });
 
-test("blocked input owns fallback hooks only without an assistant, while feedback keeps its own entry", () => {
+test("blocked input owns fallback hooks only without an assistant, while feedback leaves statistics on the assistant", () => {
   const user = block("user", "userMessage");
   user.entry.deliveryStatus = "not-sent";
   expect(project([user]).buckets.userItems[0]?.userMessageActions).toMatchObject({
@@ -182,7 +182,7 @@ test("blocked input owns fallback hooks only without an assistant, while feedbac
   expect(
     project([feedback, block("answer", "assistantMessage")]).buckets.userItems[0]
       ?.userMessageActions,
-  ).toMatchObject({ hookStats: { count: 1 }, canEdit: false });
+  ).toMatchObject({ hookStats: null, canEdit: false });
 });
 
 test("image-only replies place hook statistics after the gallery rather than on blocked input", () => {
@@ -208,7 +208,7 @@ test("image-only replies place hook statistics after the gallery rather than on 
   expect(model.buckets.userItems[0]?.userMessageActions?.hookStats).toBeNull();
 });
 
-test("inline hook feedback receives statistics without borrowing the opening prompt timestamp", () => {
+test("inline hook feedback omits statistics without borrowing the opening prompt timestamp", () => {
   const feedback = block("feedback", "userMessage");
   feedback.entry.hookFeedback = true;
   const activity: ThreadTranscriptBlockModel = {
@@ -223,8 +223,37 @@ test("inline hook feedback receives statistics without borrowing the opening pro
   ]);
   const inline = model.buckets.agentItems.find((item) => item.id === "feedback");
   expect(inline?.type === "userMessage" && inline.userMessageActions).toMatchObject({
-    hookStats: { count: 1 },
+    hookStats: null,
     sentAtMs: null,
     canEdit: false,
+  });
+});
+
+test("blocked explanations include only nonempty submit-hook feedback and preserve line breaks", () => {
+  const stats = buildHookStats([
+    hook("submit", {
+      eventName: "userPromptSubmit",
+      status: "blocked",
+      source: "project",
+      entries: [
+        { kind: "feedback", text: "  First reason\nSecond line  " },
+        { kind: "feedback", text: "  " },
+        { kind: "error", text: "Execution detail" },
+      ],
+    }),
+    hook("stop", {
+      eventName: "stop",
+      status: "blocked",
+      entries: [{ kind: "feedback", text: "Follow up" }],
+    }),
+    hook("completed", {
+      eventName: "userPromptSubmit",
+      entries: [{ kind: "feedback", text: "Not blocked" }],
+    }),
+  ]);
+  expect(stats).toMatchObject({
+    blockedCount: 2,
+    blockedSources: ["project"],
+    blockedMessages: ["First reason\nSecond line"],
   });
 });

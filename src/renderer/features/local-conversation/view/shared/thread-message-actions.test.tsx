@@ -76,13 +76,11 @@ describe("formatThreadMessageTimestamp", () => {
     );
   });
 
-  test("renders month, day, and time for future timestamps", () => {
+  test("renders only time for a future timestamp on the same calendar day", () => {
     const sentAtMs = localTimestampMs(2026, 6, 10, 13, 35);
 
     expect(formatThreadMessageTimestamp(sentAtMs, nowMs)).toBe(
       formatExpected(sentAtMs, {
-        month: "short",
-        day: "numeric",
         hour: "numeric",
         minute: "2-digit",
       }),

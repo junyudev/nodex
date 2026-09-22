@@ -1,3 +1,4 @@
+import { footerText } from "./thread-footer-i18n";
 import { AssistantRatingMenu } from "./assistant-rating-menu";
 import { useState, type MouseEvent } from "react";
 import { motion } from "motion/react";
@@ -42,10 +43,12 @@ export function PlanMessage({
   onCloseSidePanel,
 }: PlanMessageProps) {
   const [selectedRating, setSelectedRating] = useState<AssistantMessageRating | null>(null);
+  const canExport = completed && content.trim().length > 0;
   const canOpenSidePanel = completed && Boolean(onOpenInSidePanel);
 
   const handleDownload = (event: MouseEvent<HTMLButtonElement>) => {
     event.stopPropagation();
+    if (!canExport) return;
     if (
       typeof document === "undefined" ||
       typeof URL === "undefined" ||
@@ -80,12 +83,13 @@ export function PlanMessage({
   return (
     <div
       className="extension:!bg-token-input-background/50 relative max-h-[200px] cursor-default overflow-clip rounded-lg border border-token-border bg-token-foreground/5 !bg-token-dropdown-background/50 select-none"
+      data-message-copy-root="true"
       data-plan-side-panel-active={isSidePanelActive ? "true" : "false"}
     >
       {isSidePanelActive ? (
         <button
           type="button"
-          aria-label="Close plan side panel"
+          aria-label={footerText("Close plan side panel")}
           className="absolute inset-0 z-10 flex cursor-interaction items-center justify-end px-3 text-token-text-tertiary focus-visible:ring-1 focus-visible:ring-token-focus-border focus-visible:ring-inset focus-visible:outline-none"
           onClick={handleCloseSidePanel}
         >
@@ -107,7 +111,7 @@ export function PlanMessage({
         <span className="inline-flex items-center gap-2 text-base leading-tight font-normal text-token-text-tertiary">
           <ComposerPlanModeIcon className="icon-2xs shrink-0" />
           <CodexShimmerText active={!completed}>
-            {completed ? "Plan" : "Writing plan"}
+            {footerText(completed ? "Plan" : "Writing plan")}
           </CodexShimmerText>
         </span>
 
@@ -117,21 +121,31 @@ export function PlanMessage({
           hidden={isSidePanelActive}
           className="relative z-20 flex items-center gap-1"
         >
-          <ThreadActionIconButton label="Download plan" onClick={handleDownload}>
-            <DownloadIcon />
-          </ThreadActionIconButton>
-          <CopyMessageActionButton
-            text={content}
-            label="Copy"
-            copiedLabel="Copied"
-            stopPropagation
-          />
+          {canExport ? (
+            <>
+              <ThreadActionIconButton
+                label={footerText("Download plan")}
+                tooltip={footerText("Download")}
+                onClick={handleDownload}
+              >
+                <DownloadIcon className="icon-2xs shrink-0" />
+              </ThreadActionIconButton>
+              <CopyMessageActionButton
+                text={content}
+                label="Copy"
+                copiedLabel="Copied"
+                iconClassName="icon-2xs"
+                stopPropagation
+              />
+            </>
+          ) : null}
           {completed ? (
             <>
               <AssistantRatingMenu selectedRating={selectedRating} onSelect={setSelectedRating} />
               {canOpenSidePanel ? (
                 <ThreadActionIconButton
-                  label="Open plan in side panel"
+                  label={footerText("Open plan in side panel")}
+                  tooltip={footerText("Open side panel")}
                   onClick={handleOpenSidePanel}
                 >
                   <PlanSidePanelOpenIcon className="icon-2xs shrink-0" />

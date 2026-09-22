@@ -799,6 +799,8 @@ export interface CodexCanonicalConversationContext {
   readonly previousTurnModel?: string | null;
   readonly threadGoal?: ThreadGoal | null;
   readonly completedThreadGoal?: ThreadGoal | null;
+  /** Turn that completed the goal; later prompts must not move the completion footer. */
+  readonly completedThreadGoalTurnId?: string | null;
   readonly threadGoalResumeConfirmation?: ThreadGoal | null;
 }
 

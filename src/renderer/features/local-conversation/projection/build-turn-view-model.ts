@@ -1,10 +1,11 @@
+import { normalizeMessageCopyText } from "../message-copy-text";
+import { buildTurnFooterMetadata, type TurnFooterMetadata } from "./turn-footer-metadata";
 import { buildHookStats, type HookStats } from "./hook-stats";
 import type {
   CodexConversationTurn,
   ProtocolAppInfo,
   ProtocolListMcpServerStatusResponse,
 } from "../../../lib/types";
-import { stripCodexRemarkDirectiveLines } from "../../../../shared/codex-remark-directives";
 import { materializeAgentRenderUnits } from "./agent-activity-group";
 import { resolveGeneratedImageOutputState } from "./generated-image-output";
 import { collectHookFeedbackSources } from "./hook-feedback-settings";
@@ -44,14 +45,31 @@ interface BuildTurnViewModelInput {
   isBlocked: boolean;
   canEditTurnUserPrefix?: boolean;
   canForkTurn?: boolean;
+  canRateTurn?: boolean;
+  allowCopyWhileStreaming?: boolean;
+  showTimestampWithoutActions?: boolean;
+  timestampHoverOnly?: boolean;
+  cwd?: string | null;
+  hostId?: string;
+  goalTimeUsedSeconds?: number;
   mcpApps?: readonly ProtocolAppInfo[];
   mcpServerStatuses?: ProtocolListMcpServerStatusResponse | null;
   endResourcePaths?: readonly string[];
   subagentActivityState?: ThreadTurnSubagentActivityState;
 }
 
-type TurnActionInput = Pick<BuildTurnViewModelInput, "canForkTurn" | "isStreamingTurn" | "turn"> & {
+type TurnActionInput = Pick<
+  BuildTurnViewModelInput,
+  | "canForkTurn"
+  | "canRateTurn"
+  | "allowCopyWhileStreaming"
+  | "showTimestampWithoutActions"
+  | "timestampHoverOnly"
+  | "isStreamingTurn"
+  | "turn"
+> & {
   hookStats: HookStats | null;
+  metadata?: TurnFooterMetadata;
 };
 
 const EMPTY_SUBAGENT_ACTIVITY_STATE: ThreadTurnSubagentActivityState = {
@@ -190,12 +208,7 @@ function applyUserMessageActions(
         }
       : {}),
     userMessageActions: {
-      hookStats:
-        block.entry.deliveryStatus === "not-sent"
-          ? input.fallbackHookStats
-          : block.entry.hookFeedback === true
-            ? input.hookStats
-            : null,
+      hookStats: block.entry.deliveryStatus === "not-sent" ? input.fallbackHookStats : null,
       canEdit:
         Boolean(input.canEditTurnUserPrefix) &&
         block.entry.hookFeedback !== true &&
@@ -276,21 +289,33 @@ function buildAssistantMessageActionsModel(
   if (!assistantItem || assistantItem.type !== "assistantMessage") return null;
   if (assistantItem.entry.assistantPhase === "commentary") return null;
 
-  const copyText = stripCodexRemarkDirectiveLines(assistantItem.entry.markdownText);
+  const copyText = normalizeMessageCopyText(assistantItem.entry.markdownText ?? "");
   const hasCopyableContent = copyText.length > 0;
   const isCompleted = !input.isStreamingTurn && assistantItem.status !== "inProgress";
   const canFork = isCompleted && Boolean(input.canForkTurn);
-  const canRate = isCompleted && hasCopyableContent;
+  const canRate = isCompleted && input.turn?.turnId != null && input.canRateTurn !== false;
+  const canCopy = hasCopyableContent && (isCompleted || input.allowCopyWhileStreaming === true);
 
   const hookStats = isCompleted ? input.hookStats : null;
-  if (!canFork && !(isCompleted && hasCopyableContent) && !hookStats) return null;
+  if (
+    !canFork &&
+    !canRate &&
+    !canCopy &&
+    !hookStats &&
+    !input.metadata &&
+    !input.showTimestampWithoutActions
+  )
+    return null;
 
   return {
     ...(hookStats ? { hookStats } : {}),
-    copyText: hasCopyableContent && isCompleted ? copyText : null,
+    copyText: canCopy ? copyText : null,
+    ...(input.metadata ? { metadata: input.metadata } : {}),
     sentAtMs: resolveAssistantMessageSentAt(input.turn),
     canRate,
     canFork,
+    ...(input.showTimestampWithoutActions ? { showTimestampWithoutActions: true } : {}),
+    ...(input.timestampHoverOnly ? { timestampHoverOnly: true } : {}),
   };
 }
 
@@ -349,7 +374,15 @@ function buildGeneratedImageActionsBlock(
 ): ThreadAssistantActionsBlockModel | null {
   if (!source || input.isStreamingTurn) return null;
   const canFork = Boolean(input.canForkTurn);
-  if (!input.hookStats && !canFork) return null;
+  const canRate = input.turn?.turnId != null && input.canRateTurn !== false;
+  if (
+    !input.hookStats &&
+    !canFork &&
+    !canRate &&
+    !input.metadata &&
+    !input.showTimestampWithoutActions
+  )
+    return null;
   return {
     id: `${source.id}:actions`,
     turnId: source.turnId,
@@ -360,9 +393,12 @@ function buildGeneratedImageActionsBlock(
     entry: source.entry,
     actions: {
       copyText: null,
-      sentAtMs: null,
-      canRate: false,
+      sentAtMs: resolveAssistantMessageSentAt(input.turn),
+      ...(input.showTimestampWithoutActions ? { showTimestampWithoutActions: true } : {}),
+      ...(input.timestampHoverOnly ? { timestampHoverOnly: true } : {}),
+      canRate,
       canFork,
+      ...(input.metadata ? { metadata: input.metadata } : {}),
       ...(input.hookStats ? { hookStats: input.hookStats } : {}),
     },
   };
@@ -446,8 +482,20 @@ export function buildTurnViewModel(input: BuildTurnViewModelInput): ThreadTurnMo
   if (turnKey === null) {
     throw new Error("A nullable local turn requires its occurrence key");
   }
+  const metadata = buildTurnFooterMetadata(input.turn, input.cwd, input.hostId);
+  const completedMetadata =
+    !input.isStreamingTurn && input.goalTimeUsedSeconds != null
+      ? {
+          skills: [],
+          reviews: [],
+          memories: [],
+          ...metadata,
+          goalTimeUsedSeconds: input.goalTimeUsedSeconds,
+        }
+      : metadata;
   const actionInput: TurnActionInput = {
     ...input,
+    metadata: completedMetadata,
     hookStats: input.isStreamingTurn ? null : buildHookStats(input.turn?.hookRuns),
   };
   const workedForItem = input.workedForItem ?? null;

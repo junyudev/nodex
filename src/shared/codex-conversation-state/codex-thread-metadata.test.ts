@@ -1,4 +1,7 @@
-import { createCodexCanonicalConversationMetadata } from "./codex-conversation-state";
+import {
+  createCodexCanonicalTurnState,
+  createCodexCanonicalConversationMetadata,
+} from "./codex-conversation-state";
 import { describe, expect, test } from "vite-plus/test";
 import type { Thread, ThreadSettings } from "@nodex/codex-app-server-protocol/v2";
 import { produce } from "immer";
@@ -327,6 +330,60 @@ describe("Codex 30751 thread metadata", () => {
     const cleared = reduceCodexConversationThreadGoalCleared(completed.state, "thread-token");
     expect(cleared.threadGoal).toBe(null);
     expect(cleared.completedThreadGoal === goal).toBe(true);
+  });
+
+  test("keeps goal completion attached to its original turn after later prompts and duplicate notifications", () => {
+    const makeTurn = (id: string) =>
+      createCodexCanonicalTurnState(
+        {
+          id,
+          items: [],
+          itemsView: "full",
+          status: "completed",
+          error: null,
+          startedAt: 1,
+          completedAt: 2,
+          durationMs: 1000,
+        },
+        {
+          threadId: "thread-token",
+          input: [],
+          approvalPolicy: "on-request",
+          approvalsReviewer: "user",
+          sandboxPolicy: { type: "readOnly", networkAccess: false },
+          model: "test",
+          cwd: "/work",
+          attachments: [],
+          effort: null,
+          summary: "none",
+          personality: null,
+          outputSchema: null,
+          collaborationMode: null,
+        },
+      );
+    const before = { ...buildState(), turns: [makeTurn("completed-turn")] };
+    const goal = {
+      threadId: "thread-token",
+      objective: "Finish",
+      status: "complete" as const,
+      tokenBudget: null,
+      tokensUsed: 10,
+      timeUsedSeconds: 2,
+      createdAt: 1,
+      updatedAt: 4,
+    };
+    const completed = reduceCodexConversationThreadGoalUpdated(before, "thread-token", goal).state;
+    expect(completed.completedThreadGoalTurnId).toBe("completed-turn");
+    const cleared = reduceCodexConversationThreadGoalCleared(completed, "thread-token");
+    const later = { ...cleared, turns: [...cleared.turns, makeTurn("later-turn")] };
+    const duplicate = reduceCodexConversationThreadGoalUpdated(later, "thread-token", goal).state;
+    expect(duplicate.completedThreadGoalTurnId).toBe("completed-turn");
+    const resumed = reduceCodexConversationThreadGoalUpdated(duplicate, "thread-token", {
+      ...goal,
+      status: "active",
+      updatedAt: 5,
+    }).state;
+    expect(resumed.completedThreadGoalTurnId).toBeNull();
   });
 
   test.each(["paused", "blocked", "usageLimited"] as const)(
