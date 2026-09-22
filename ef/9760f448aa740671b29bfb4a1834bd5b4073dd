@@ -100,6 +100,7 @@ src/renderer/features/local-conversation/view/composer/local-conversation-thread
 src/renderer/features/local-conversation/view/local-conversation-thread-body-owner.tsx
   s_1b2e4d5f08f763::t_aa1bbd286e1d71 359,418,447-450
   s_1b2e4d5f08f763::t_fe25be0fdf1dae 2
+  s_1b2e4d5f08f763::t_f056c435dfb48d 1131
 src/shared/codex-canonical-item-projector.ts
   s_1b2e4d5f08f763::t_4f83645ea19e4e 1,942
   s_1b2e4d5f08f763::t_b8449bbb13738b 754,757,944
