@@ -57,6 +57,7 @@ export const DICTATION_STREAMING_FAILURE_CODES = [
   "abnormal-close",
   "finish-timeout",
   "empty-final",
+  "incomplete-transcript",
   "send-failed",
 ] as const;
 export type DictationStreamingFailureCode = (typeof DICTATION_STREAMING_FAILURE_CODES)[number];

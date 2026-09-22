@@ -196,6 +196,9 @@ class BrowserDictationStreamingAttempt implements DictationStreamingAttempt {
     if (this.#closed) return this.#hasSignal === false ? "" : null;
     await this.#client.finish();
     if (this.#closed) return null;
+    if ([...this.#transcripts.values()].some((utterance) => utterance.final === null)) {
+      throw new DictationStreamingError("incomplete-transcript");
+    }
     this.#closed = true;
     return readDictationStreamingFinalText(this.#transcripts);
   }

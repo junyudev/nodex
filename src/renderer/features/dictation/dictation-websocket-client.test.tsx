@@ -108,21 +108,47 @@ describe("renderer dictation WebSocket", () => {
     expect(JSON.stringify(diagnostics)).not.toContain("test-secret");
   });
 
-  it("accepts a normal close after startup but retains an abnormal close for buffered recovery", async () => {
-    for (const code of [1000, 1006]) {
+  it.each([false, true])(
+    "requires session completion before socket closure (finishing: %s)",
+    async (finishing) => {
+      for (const code of [1000, 1006]) {
+        const { client, diagnostics } = createFixture();
+        const connecting = client.connect(48_000);
+        await flush();
+        const socket = Socket.instances.at(-1)!;
+        socket.open();
+        socket.receive(session("active"));
+        await connecting;
+        const result = finishing ? client.finish().catch((error: unknown) => error) : null;
+        socket.end(code);
+        const expected = { code: code === 1000 ? "unexpected-close" : "abnormal-close" };
+        if (result) expect(await result).toMatchObject(expected);
+        else await expect(client.finish()).rejects.toMatchObject(expected);
+        expect(diagnostics.closeCode).toBe(code);
+        expect(diagnostics.failureCode).toBe(expected.code);
+      }
+    },
+  );
+
+  it.each([1000, 1005, 1006])(
+    "does not mark an acknowledged session as failed on socket close %s",
+    async (code) => {
       const { client, diagnostics } = createFixture();
       const connecting = client.connect(48_000);
       await flush();
-      const socket = Socket.instances.at(-1)!;
+      const socket = Socket.instances[0]!;
       socket.open();
       socket.receive(session("active"));
       await connecting;
+      const finishing = client.finish();
+      socket.receive(session("closed"));
+      await finishing;
       socket.end(code);
-      if (code === 1000) await expect(client.finish()).resolves.toBeUndefined();
-      else await expect(client.finish()).rejects.toMatchObject({ code: "abnormal-close" });
+      await expect(client.finish()).resolves.toBeUndefined();
       expect(diagnostics.closeCode).toBe(code);
-    }
-  });
+      expect(diagnostics.failureCode).toBeUndefined();
+    },
+  );
 
   it("bounds startup and finalization waits", async () => {
     vi.useFakeTimers();

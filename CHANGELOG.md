@@ -11,6 +11,7 @@ All notable changes to this project will be documented in this file.
 ### Fixed
 
 - Retained edits that cannot be received can now be removed from this device after confirmation, clearing their warning without changing current documents.
+- Dictation now recovers the full recording when a streaming result is incomplete and no longer reports successful session closure as a connection failure.
 
 ## [0.3.0] - 2026-09-20
 

@@ -10,7 +10,12 @@ import { _electron as electron, type ElectronApplication } from "playwright";
 import { WebSocketServer } from "ws";
 import { expect, test } from "vitest";
 
-test("streams real AudioWorklet PCM from the isolated renderer directly to WebSocket and receives a final", async () => {
+test.each(["complete", "incomplete"] as const)(
+  "streams real AudioWorklet PCM and accepts only complete transcripts (%s)",
+  verifyStreamingCompletion,
+);
+
+async function verifyStreamingCompletion(completion: "complete" | "incomplete"): Promise<void> {
   const directory = mkdtempSync(path.join(tmpdir(), "nodex-dictation-stream-"));
   let application: ElectronApplication | null = null;
   const keyPath = path.join(directory, "key.pem");
@@ -72,10 +77,13 @@ test("streams real AudioWorklet PCM from the isolated renderer directly to WebSo
           text: "Streaming works.",
         }),
       );
+      if (completion === "incomplete") {
+        socket.send(JSON.stringify({ type: "speech.started", sequence_no: 2, utterance_id: "u2" }));
+      }
       socket.send(
         JSON.stringify({
           type: "session.updated",
-          sequence_no: 2,
+          sequence_no: 3,
           session: { ...session, status: "closed" },
         }),
       );
@@ -108,7 +116,9 @@ test("streams real AudioWorklet PCM from the isolated renderer directly to WebSo
       platform: "browser",
       format: "esm",
       outdir: rendererDirectory,
-      define: { "import.meta.env": JSON.stringify({ DEV: false, PROD: true, MODE: "production" }) },
+      define: {
+        "import.meta.env": JSON.stringify({ DEV: false, PROD: true, MODE: "production" }),
+      },
       plugins: [
         {
           name: "worklet-url",
@@ -158,10 +168,12 @@ test("streams real AudioWorklet PCM from the isolated renderer directly to WebSo
     await expect.poll(() => page.locator("output").textContent(), { timeout: 12_000 }).not.toBe("");
     const result = JSON.parse((await page.locator("output").textContent())!);
     expect(result).toMatchObject({
-      text: "Streaming works.",
+      text: completion === "complete" ? "Streaming works." : null,
       diagnostics: { opened: true, started: true, finalReceived: true },
     });
-    expect(result.diagnostics.failureCode).toBeUndefined();
+    expect(result.diagnostics.failureCode).toBe(
+      completion === "complete" ? undefined : "incomplete-transcript",
+    );
     expect(result.diagnostics.sentAudioFrames).toBe(frames.length);
     expect(frames.length).toBeGreaterThan(2);
     expect(
@@ -182,4 +194,4 @@ test("streams real AudioWorklet PCM from the isolated renderer directly to WebSo
     await new Promise<void>((resolve) => server.close(() => resolve()));
     rmSync(directory, { recursive: true, force: true });
   }
-});
+}

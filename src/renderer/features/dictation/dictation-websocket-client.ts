@@ -137,15 +137,18 @@ export class DictationWebSocketClient {
           clearTimeout(startTimer);
           this.#socket = null;
           this.diagnostics.closeCode = event.code;
-          const closeError =
-            error ??
-            (started && event.code === 1000
-              ? null
-              : this.failure(started ? "abnormal-close" : "closed-before-start"));
+          // Transport closure is not a transcription receipt, even with code 1000.
+          // Once the service confirms completion, its later close code is diagnostic only.
+          const closeFailure = !started
+            ? "closed-before-start"
+            : event.code === 1000
+              ? "unexpected-close"
+              : "abnormal-close";
+          const closeError = this.#sessionClosed ? null : (error ?? this.failure(closeFailure));
           if (this.#finishPromise) {
-            if (closeError && !this.#sessionClosed) this.#rejectFinish?.(closeError);
+            if (closeError) this.#rejectFinish?.(closeError);
             else this.#resolveFinish?.();
-          } else if (closeError && !this.#sessionClosed) this.#terminalError = closeError;
+          } else if (closeError) this.#terminalError = closeError;
           if (!settled) rejectStart(closeError ?? this.failure("closed-before-start"));
           this.#finishPromise = null;
           this.#resolveFinish = null;
