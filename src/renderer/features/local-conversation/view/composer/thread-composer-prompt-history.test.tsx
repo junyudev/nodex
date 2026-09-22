@@ -89,6 +89,19 @@ function PromptHistoryHarness({
     };
 
     editorRef.current = {
+      dictation: {
+        get document(): never {
+          throw new Error("Dictation is not exercised by prompt history");
+        },
+        start: () => undefined,
+        update: () => undefined,
+        finish: async () => {
+          throw new Error("Dictation is not exercised by prompt history");
+        },
+        cancel: () => undefined,
+        preserve: () => undefined,
+        dispose: () => undefined,
+      },
       getElement: () => null,
       completeSuggestionQuery: () => undefined,
       focus: () => {
@@ -100,6 +113,7 @@ function PromptHistoryHarness({
       setText,
       setPromptText: setText,
       insertText: (text) => setText(`${textRef.current}${text}`),
+      insertDictationText: (text) => setText(`${textRef.current} ${text.trim()}`.trim()),
       insertMention: () => textRef.current,
       replaceTextRange: ({ from, to, text }) => {
         const current = textRef.current;

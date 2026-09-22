@@ -556,6 +556,8 @@ const DEFAULT_CODEX_DICTATION_STATE: CodexDictationStateSnapshot = {
     history: true,
     streaming: "unavailable",
     semanticCleanup: false,
+    sounds: false,
+    voiceDictionary: false,
     microphoneOwner: "none",
     auth: "unsupported",
   },
@@ -569,6 +571,8 @@ const areDictationCapabilitiesEqual = (
   left.history === right.history &&
   left.streaming === right.streaming &&
   left.semanticCleanup === right.semanticCleanup &&
+  left.sounds === right.sounds &&
+  left.voiceDictionary === right.voiceDictionary &&
   left.microphoneOwner === right.microphoneOwner &&
   left.auth === right.auth;
 type StoreListener = () => void;

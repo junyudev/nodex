@@ -1374,7 +1374,11 @@ export interface IpcApi {
     args: [snapshot: KeyboardLayoutSnapshot];
     result: boolean;
   };
-  "global-dictation-capture-fn-hotkey": { args: []; result: "Fn" | null };
+  "global-dictation-capture-bare-modifier-hotkey": {
+    args: [allowsBareModifiers: boolean];
+    result: string | null;
+  };
+  "global-dictation-hotkey-capture:cancel": { args: []; result: boolean };
   "global-dictation:event": { args: [event: GlobalDictationRendererEvent]; result: boolean };
   "global-dictation:context-menu": {
     args: [];
@@ -1841,6 +1845,31 @@ export interface IpcApi {
     args: [];
     result: DictationSettings;
   };
+  "codex:dictation:voice-language:read": {
+    args: [];
+    result: string;
+  };
+  "codex:dictation:voice-language:update": {
+    args: [language: string];
+    result: string;
+  };
+  "codex:dictation:dictionary:read": {
+    args: [input: import("./dictation-dictionary").DictationDictionaryReadInput];
+    result: import("./dictation-dictionary").DictationDictionarySnapshot;
+  };
+  "codex:dictation:dictionary:add": {
+    args: [input: import("./dictation-dictionary").DictationDictionaryAddInput];
+    result: void;
+  };
+  "codex:dictation:dictionary:remove": {
+    args: [input: import("./dictation-dictionary").DictationDictionaryRemoveInput];
+    result: void;
+  };
+  "codex:dictation:dictionary:import": {
+    args: [input: import("./dictation-dictionary").DictationDictionaryImportInput];
+    result: void;
+  };
+  "codex:dictation:dictionary:cancel": { args: [operationId: string]; result: boolean };
   "codex:dictation:settings:update": {
     args: [patch: DictationSettingsPatch];
     result: DictationSettings;
@@ -2717,6 +2746,7 @@ export interface IpcEvents {
   "workbench-agent:request": WorkbenchAgentRequest;
   "workbench-agent:cancel": WorkbenchAgentCancel;
   "global-dictation:command": import("./global-dictation").GlobalDictationRendererCommand;
+  "dictation:open-recording": { readonly recordingId: string };
   "agent-import:progress": AgentImportProgress;
   "agent-backend:acp:session-changed": import("./agent-backend-api").AcpBackendSessionChangedEvent;
   "workspace-file:changed": import("./types").WorkspaceFileChangedEvent;

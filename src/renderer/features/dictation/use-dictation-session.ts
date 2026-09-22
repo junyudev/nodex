@@ -13,8 +13,8 @@ export const useDictationSession = (
     controller.getSnapshot,
   );
 
-  // Effect cleanup can be replayed while React retains this controller. Release
-  // the active session; subscriptions unsubscribe through useSyncExternalStore.
-  useEffect(() => () => controller.cancel(), [controller]);
+  // A recorded utterance can still settle into the owning draft after its surface
+  // detaches. Acquisition is cancelled; subscriptions remain React-owned.
+  useEffect(() => () => controller.detach(), [controller]);
   return snapshot;
 };

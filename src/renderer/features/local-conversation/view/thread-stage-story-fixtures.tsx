@@ -243,6 +243,8 @@ const DEFAULT_DICTATION_STATE: CodexDictationStateSnapshot = {
     history: true,
     streaming: "available",
     semanticCleanup: false,
+    sounds: false,
+    voiceDictionary: false,
     microphoneOwner: "none",
     auth: "chatgpt",
   },

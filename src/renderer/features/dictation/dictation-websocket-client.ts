@@ -32,9 +32,14 @@ export class DictationWebSocketClient {
     private readonly readConnectInfo: () => Promise<DictationStreamingConnectInfo>,
     private readonly onEvent: (event: DictationStreamingServerEvent) => void,
     private readonly diagnostics: DictationStreamDiagnostics,
+    private readonly onFailure?: (error: DictationStreamingError) => void,
   ) {}
 
-  async connect(sampleRateHz: number, receiveSegments = false): Promise<void> {
+  async connect(
+    sampleRateHz: number,
+    receiveSegments = false,
+    sendAudio: Promise<boolean> = Promise.resolve(true),
+  ): Promise<void> {
     this.#terminalError = null;
     this.#sessionClosed = false;
     this.diagnostics.attempted = true;
@@ -102,11 +107,23 @@ export class DictationWebSocketClient {
           this.diagnostics.started = true;
           this.diagnostics.providerMode = event.session.config.provider_mode;
           this.diagnostics.sessionStartMs = performance.now() - (openedAt ?? connectingAt);
-          if (settled) return;
-          clearTimeout(startTimer);
-          this.drainAudio();
-          settled = true;
-          resolve();
+          void sendAudio.then(
+            (allowed) => {
+              if (settled) return;
+              clearTimeout(startTimer);
+              if (allowed) this.drainAudio();
+              settled = true;
+              resolve();
+              if (!allowed) this.close();
+            },
+            () => {
+              if (settled) return;
+              clearTimeout(startTimer);
+              const cause = new DictationStreamingError("aborted");
+              rejectStart(cause);
+              this.close();
+            },
+          );
           return;
         }
         if (event.type === "session.updated" && event.session.status === "closed") {
@@ -127,6 +144,7 @@ export class DictationWebSocketClient {
       socket.addEventListener(
         "error",
         () => {
+          if (this.#sessionClosed) return;
           error ??= this.failure("websocket-failed");
         },
         { once: true },
@@ -137,15 +155,18 @@ export class DictationWebSocketClient {
           clearTimeout(startTimer);
           this.#socket = null;
           this.diagnostics.closeCode = event.code;
-          const closeError =
-            error ??
-            (started && event.code === 1000
-              ? null
-              : this.failure(started ? "abnormal-close" : "closed-before-start"));
+          // Transport closure is not a transcription receipt, even with code 1000.
+          // Once the service confirms completion, its later close code is diagnostic only.
+          const closeFailure = !started
+            ? "closed-before-start"
+            : event.code === 1000
+              ? "unexpected-close"
+              : "abnormal-close";
+          const closeError = this.#sessionClosed ? null : (error ?? this.failure(closeFailure));
           if (this.#finishPromise) {
-            if (closeError && !this.#sessionClosed) this.#rejectFinish?.(closeError);
+            if (closeError) this.#rejectFinish?.(closeError);
             else this.#resolveFinish?.();
-          } else if (closeError && !this.#sessionClosed) this.#terminalError = closeError;
+          } else if (closeError) this.#terminalError = closeError;
           if (!settled) rejectStart(closeError ?? this.failure("closed-before-start"));
           this.#finishPromise = null;
           this.#resolveFinish = null;
@@ -206,7 +227,9 @@ export class DictationWebSocketClient {
 
   private failure(code: FailureCode): Error {
     this.diagnostics.failureCode ??= code;
-    return new DictationStreamingError(code);
+    const error = new DictationStreamingError(code);
+    this.onFailure?.(error);
+    return error;
   }
   private drainAudio(): void {
     const pending = this.#pendingAudio ?? [];

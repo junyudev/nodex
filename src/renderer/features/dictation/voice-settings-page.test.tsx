@@ -8,6 +8,26 @@ const mocks = vi.hoisted(() => ({
   requestAccessibility: vi.fn(),
   setKeybinding: vi.fn(),
   updateSettings: vi.fn(),
+  readCapabilities: vi.fn(),
+  readLanguage: vi.fn(),
+  updateLanguage: vi.fn(),
+  listRecordings: vi.fn(),
+  readRecordingAudio: vi.fn(),
+  setTranscript: vi.fn(),
+  setDiagnostics: vi.fn(),
+  transcribe: vi.fn(),
+  subscribeUpdates: vi.fn(),
+}));
+
+vi.mock("./dictation-settings-runtime", () => ({
+  captureGlobalDictationBareModifierHotkey: vi.fn(async () => null),
+  readDictationVoiceLanguage: mocks.readLanguage,
+  updateDictationVoiceLanguage: mocks.updateLanguage,
+  subscribeDictationSettingsUpdates: mocks.subscribeUpdates,
+}));
+
+vi.mock("./dictation-buffered-client", () => ({
+  transcribeDictationBlob: mocks.transcribe,
 }));
 
 const commandKeymapState = {
@@ -54,30 +74,15 @@ vi.mock("@/lib/use-command-keymap-state", () => ({
 vi.mock("@/lib/api", () => ({
   deleteDictationRecording: vi.fn(),
   downloadDictationRecording: vi.fn(),
-  listDictationRecordings: async () => [],
+  listDictationRecordings: mocks.listRecordings,
   openGlobalDictationAccessibilitySettings: vi.fn(),
   openGlobalDictationInputMonitoringSettings: vi.fn(),
   openMicrophoneSettings: vi.fn(),
-  readDictationCapabilityState: async () => ({
-    isEnabled: false,
-    authMethod: "apiKey",
-    shortcutLabel: "Ctrl+M",
-    capabilities: {
-      composer: false,
-      global: false,
-      history: true,
-      streaming: "unavailable",
-      semanticCleanup: false,
-      microphoneOwner: "none",
-      auth: "unsupported",
-    },
-  }),
-  readDictationRecordingAudio: vi.fn(),
+  readDictationCapabilityState: mocks.readCapabilities,
+  readDictationRecordingAudio: mocks.readRecordingAudio,
   readDictationSettings: async () => ({
     microphoneInputDeviceId: "missing-microphone",
-    keepGlobalBarVisible: false,
-    playStartSound: true,
-    playStopSound: true,
+    dictationSoundsEnabled: true,
     globalShortcutNudgeDismissed: false,
     dictionary: [],
   }),
@@ -90,23 +95,50 @@ vi.mock("@/lib/api", () => ({
   requestMicrophoneAccess: vi.fn(),
   requestGlobalDictationAccessibility: mocks.requestAccessibility,
   requestGlobalDictationInputMonitoring: mocks.requestInputMonitoring,
-  setDictationRecordingTranscript: vi.fn(),
+  setDictationRecordingTranscript: mocks.setTranscript,
+  setDictationRecordingDiagnostics: mocks.setDiagnostics,
   updateDictationSettings: mocks.updateSettings,
 }));
 
-const renderPage = () => {
+const defaultCapability = {
+  isEnabled: true,
+  authMethod: "chatgpt",
+  shortcutLabel: "Ctrl+M",
+  capabilities: {
+    composer: true,
+    global: true,
+    history: true,
+    streaming: "unavailable",
+    semanticCleanup: false,
+    sounds: false,
+    voiceDictionary: false,
+    microphoneOwner: "none",
+    auth: "chatgpt",
+  },
+};
+
+const renderPage = (path = "/settings/voice") => {
   const queryClient = new QueryClient({
     defaultOptions: { queries: { retry: false }, mutations: { retry: false } },
   });
   return render(
     <QueryClientProvider client={queryClient}>
-      <VoiceSettingsPage onPathChange={() => undefined} />
+      <VoiceSettingsPage path={path} onPathChange={() => undefined} />
     </QueryClientProvider>,
   );
 };
 
 describe("VoiceSettingsPage", () => {
   beforeEach(() => {
+    mocks.subscribeUpdates.mockReset().mockReturnValue(() => undefined);
+    mocks.readCapabilities.mockReset().mockResolvedValue(defaultCapability);
+    mocks.readLanguage.mockReset().mockResolvedValue("auto");
+    mocks.updateLanguage.mockReset().mockImplementation(async (language) => language);
+    mocks.listRecordings.mockReset().mockResolvedValue([]);
+    mocks.readRecordingAudio.mockReset();
+    mocks.setTranscript.mockReset().mockResolvedValue(undefined);
+    mocks.setDiagnostics.mockReset().mockResolvedValue(undefined);
+    mocks.transcribe.mockReset();
     mocks.requestInputMonitoring.mockReset().mockResolvedValue({
       available: true,
       inputMonitoring: true,
@@ -122,9 +154,7 @@ describe("VoiceSettingsPage", () => {
       .mockResolvedValue({ type: "applied", state: commandKeymapState });
     mocks.updateSettings.mockReset().mockImplementation(async (patch) => ({
       microphoneInputDeviceId: "missing-microphone",
-      keepGlobalBarVisible: false,
-      playStartSound: true,
-      playStopSound: true,
+      dictationSoundsEnabled: true,
       globalShortcutNudgeDismissed: false,
       dictionary: [],
       ...patch,
@@ -137,39 +167,31 @@ describe("VoiceSettingsPage", () => {
     });
   });
 
-  test("explains auth requirements, preserves a missing selection, and separates macOS permissions", async () => {
-    renderPage();
-
-    expect(
-      await screen.findByText(
-        "Dictation requires a ChatGPT login. API-key sessions cannot use Voice transcription.",
-      ),
-    ).toBeTruthy();
-    expect(await screen.findByText("Unavailable microphone")).toBeTruthy();
-    expect(screen.getByText("Input Monitoring")).toBeTruthy();
-    expect(screen.getByText("Accessibility")).toBeTruthy();
-
-    const allowButtons = screen.getAllByRole("button", { name: "Allow" });
-    fireEvent.click(allowButtons[0]!);
-    fireEvent.click(allowButtons[1]!);
-    await vi.waitFor(() => {
-      expect(mocks.requestInputMonitoring).toHaveBeenCalledOnce();
-      expect(mocks.requestAccessibility).toHaveBeenCalledOnce();
+  test("keeps the selected microphone and hides unsupported dictation settings", async () => {
+    mocks.readCapabilities.mockResolvedValue({
+      ...defaultCapability,
+      capabilities: { ...defaultCapability.capabilities, composer: false, global: false },
     });
+    renderPage();
+    expect(await screen.findByText("Selected microphone")).toBeTruthy();
+    expect(
+      screen.queryByRole("button", { name: "Change shortcut for Hands-free dictation hotkey" }),
+    ).toBeNull();
+    expect(mocks.readLanguage).not.toHaveBeenCalled();
   });
 
   test("edits dictation hotkeys inline and waits for the non-modifier key", async () => {
     renderPage();
 
     const trigger = await screen.findByRole("button", {
-      name: "Change shortcut for Toggle dictation hotkey",
+      name: "Change shortcut for Hands-free dictation hotkey",
     });
     await act(async () => {
       fireEvent.click(trigger);
       await Promise.resolve();
     });
     const capture = screen.getByRole("textbox", {
-      name: "Toggle dictation hotkey capture",
+      name: "Hands-free dictation hotkey capture",
     });
     await act(async () => {
       fireEvent.keyDown(capture, {
@@ -205,18 +227,21 @@ describe("VoiceSettingsPage", () => {
 
     fireEvent.click(
       await screen.findByRole("button", {
-        name: "Change shortcut for Toggle dictation hotkey",
+        name: "Change shortcut for Hands-free dictation hotkey",
       }),
     );
-    fireEvent.keyDown(screen.getByRole("textbox", { name: "Toggle dictation hotkey capture" }), {
-      code: "KeyY",
-      key: "y",
-    });
+    fireEvent.keyDown(
+      screen.getByRole("textbox", { name: "Hands-free dictation hotkey capture" }),
+      {
+        code: "KeyY",
+        key: "y",
+      },
+    );
 
     expect(await screen.findByText("Shortcut must include Cmd/Ctrl or Alt.")).toBeTruthy();
     expect(mocks.setKeybinding).not.toHaveBeenCalled();
     expect(
-      screen.getByRole("button", { name: "Change shortcut for Toggle dictation hotkey" }),
+      screen.getByRole("button", { name: "Change shortcut for Hands-free dictation hotkey" }),
     ).toBeTruthy();
   });
 
@@ -233,14 +258,17 @@ describe("VoiceSettingsPage", () => {
 
     fireEvent.click(
       await screen.findByRole("button", {
-        name: "Change shortcut for Toggle dictation hotkey",
+        name: "Change shortcut for Hands-free dictation hotkey",
       }),
     );
-    fireEvent.keyDown(screen.getByRole("textbox", { name: "Toggle dictation hotkey capture" }), {
-      altKey: true,
-      code: "KeyY",
-      key: "¥",
-    });
+    fireEvent.keyDown(
+      screen.getByRole("textbox", { name: "Hands-free dictation hotkey capture" }),
+      {
+        altKey: true,
+        code: "KeyY",
+        key: "¥",
+      },
+    );
 
     expect(
       await screen.findByText("Input Monitoring permission is required for global shortcuts."),
@@ -269,5 +297,71 @@ describe("VoiceSettingsPage", () => {
       await Promise.resolve();
     });
     expect(await screen.findByRole("textbox", { name: "Dictionary entry 2" })).toBeTruthy();
+  });
+  test("updates the visible language using the account setting", async () => {
+    renderPage();
+    const trigger = await screen.findByRole("button", { name: "Auto-detect" });
+    await act(async () => {
+      fireEvent.click(trigger);
+    });
+    await act(async () => {
+      fireEvent.click(await screen.findByRole("menuitem", { name: "Japanese" }));
+    });
+    await vi.waitFor(() =>
+      expect(mocks.updateLanguage).toHaveBeenCalledWith("ja", expect.anything()),
+    );
+  });
+
+  test("retries saved audio without semantic rewriting and focuses the requested recording", async () => {
+    const recording = {
+      id: "recording-id",
+      createdAtMs: 1,
+      status: "interrupted",
+      transcript: null,
+      sizeBytes: 10,
+      mimeType: "audio/webm",
+      durationMs: 500,
+    };
+    mocks.listRecordings.mockResolvedValue([recording]);
+    mocks.readRecordingAudio.mockResolvedValue({ recording, bytes: [1, 2] });
+    mocks.transcribe.mockResolvedValue("  um keep my original wording  ");
+    const scrollIntoView = vi.fn();
+    Object.defineProperty(HTMLElement.prototype, "scrollIntoView", {
+      configurable: true,
+      value: scrollIntoView,
+    });
+    renderPage("/settings/voice?recording=recording-id");
+    const retry = await screen.findByRole("button", { name: "Retry" });
+    await act(async () => {
+      fireEvent.click(retry);
+    });
+    await vi.waitFor(() =>
+      expect(mocks.setTranscript).toHaveBeenCalledWith({
+        id: "recording-id",
+        transcript: "um keep my original wording",
+      }),
+    );
+    expect(scrollIntoView).toHaveBeenCalledWith({ block: "nearest" });
+    expect(document.activeElement?.getAttribute("tabindex")).toBe("-1");
+  });
+  test("updates settings visibility after asynchronous account policy arrives", async () => {
+    mocks.readCapabilities.mockResolvedValue({
+      ...defaultCapability,
+      capabilities: { ...defaultCapability.capabilities, composer: false, global: false },
+    });
+    renderPage();
+    await screen.findByText("Selected microphone");
+    expect(
+      screen.queryByRole("button", { name: "Change shortcut for Hands-free dictation hotkey" }),
+    ).toBeNull();
+    await act(async () => {
+      mocks.subscribeUpdates.mock.calls[0]?.[0]({ type: "capabilities", state: defaultCapability });
+    });
+    expect(
+      await screen.findByRole("button", {
+        name: "Change shortcut for Hands-free dictation hotkey",
+      }),
+    ).toBeTruthy();
+    expect(await screen.findByRole("button", { name: "Auto-detect" })).toBeTruthy();
   });
 });

@@ -3,6 +3,7 @@ import { DICTATION_STREAMING_FAILURE_CODES } from "./dictation-streaming";
 
 const milliseconds = z.number().finite().nonnegative().max(86_400_000);
 const count = z.number().int().nonnegative().max(1_000_000_000);
+export const MAX_DICTATION_DIAGNOSTIC_REQUESTS = 128;
 
 export const DictationStreamDiagnosticsSchema = z
   .object({
@@ -99,7 +100,7 @@ export const DictationDiagnosticsSchema = z
     clipboardRestoreMs: milliseconds.optional(),
     phases: z.array(DictationPhaseSchema).max(12),
     streaming: DictationStreamDiagnosticsSchema.optional(),
-    requests: z.array(DictationHttpDiagnosticsSchema).max(2),
+    requests: z.array(DictationHttpDiagnosticsSchema).max(MAX_DICTATION_DIAGNOSTIC_REQUESTS),
   })
   .strict();
 

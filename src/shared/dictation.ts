@@ -69,6 +69,8 @@ export interface DictationCapabilitySnapshot {
   readonly history: boolean;
   readonly streaming: "available" | "unavailable" | "unknown";
   readonly semanticCleanup: boolean;
+  readonly sounds: boolean;
+  readonly voiceDictionary: boolean;
   readonly microphoneOwner: "none" | "dictation" | "realtime-voice";
   readonly auth: "chatgpt" | "unsupported";
 }
@@ -81,20 +83,22 @@ export interface GlobalDictationPermissionSnapshot {
 
 export interface DictationSettings {
   readonly microphoneInputDeviceId: string | null;
-  readonly keepGlobalBarVisible: boolean;
-  readonly playStartSound: boolean;
-  readonly playStopSound: boolean;
+  readonly dictationSoundsEnabled: boolean;
   readonly globalShortcutNudgeDismissed: boolean;
   readonly dictionary: readonly string[];
 }
 
 export type DictationSettingsPatch = Partial<DictationSettings>;
 
+/** Account-level voice language choices, shared by Voice settings and dictation requests. */
+export const DICTATION_VOICE_LANGUAGES =
+  "auto.en.es.pt.fr.de.ja.id.ru.it.tr.ar.hi.ko.nl.pl.vi.uk.sv.da.nb.no.th.ro.ms.bn.mr.ta.te.gu.ur.ml.kn.sw.zh.af.hy.az.be.bs.bg.ca.hr.cs.et.fi.gl.ka.el.he.hu.is.kk.lv.lt.mk.mi.ne.fa.sr.sk.sl.tl.cy.amh.mya.yue.fil.gle.mon.som.zh-cn.zh-tw.zh-hk".split(
+    ".",
+  );
+
 export const DEFAULT_DICTATION_SETTINGS: DictationSettings = {
   microphoneInputDeviceId: null,
-  keepGlobalBarVisible: false,
-  playStartSound: true,
-  playStopSound: true,
+  dictationSoundsEnabled: true,
   globalShortcutNudgeDismissed: false,
   dictionary: [],
 };

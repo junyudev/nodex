@@ -7,6 +7,12 @@ import {
   useRef,
 } from "react";
 import { baseKeymap } from "@tiptap/pm/commands";
+import {
+  composerDictationPlugin,
+  createComposerDictationEditor,
+  type ComposerDictationEditor,
+} from "./composer-dictation-editor";
+import { history, redo, undo } from "@tiptap/pm/history";
 import { keymap } from "@tiptap/pm/keymap";
 import { Schema, Slice, type DOMOutputSpec, type Node as ProseMirrorNode } from "@tiptap/pm/model";
 import { EditorState, Plugin, TextSelection, type Transaction } from "@tiptap/pm/state";
@@ -615,13 +621,21 @@ const promptClipboardPlugin = new Plugin({
   },
 });
 
+export function appendComposerDictationText(current: string, transcript: string): string {
+  const text = transcript.trim();
+  if (!text) return current;
+  return `${current}${current && !/\s$/u.test(current) ? " " : ""}${text}`;
+}
+
 export interface ComposerPromptEditorHandle {
+  readonly dictation: ComposerDictationEditor | null;
   getElement: () => HTMLElement | null;
   focus: () => void;
   focusAtEnd: () => void;
   setText: (text: string) => string;
   setPromptText: (text: string) => string;
   insertText: (text: string) => string;
+  insertDictationText: (text: string) => string;
   insertMention: (mention: ComposerPromptMentionInput) => string;
   completeSuggestionQuery: (query: string) => void;
   replaceTextRange: (range: { from: number; to: number; text: string }) => string;
@@ -764,7 +778,7 @@ function serializePromptInlineContent(paragraph: ProseMirrorNode): string {
   return value;
 }
 
-function readPromptDocText(doc: ProseMirrorNode): string {
+export function readPromptDocText(doc: ProseMirrorNode): string {
   const paragraphs: string[] = [];
   doc.forEach((paragraph) => {
     paragraphs.push(serializePromptInlineContent(paragraph));
@@ -955,6 +969,9 @@ function createPromptEditorState(
     // Direct EditorView handlers own composer shortcuts first. Unconsumed
     // editing keys fall through to ProseMirror's structural commands.
     plugins: [
+      composerDictationPlugin,
+      history(),
+      keymap({ "Mod-z": undo, "Shift-Mod-z": redo, "Mod-y": redo }),
       createComposerSuggestionPlugin({ allowSlashCommands }),
       promptEditingKeymapPlugin,
       promptClipboardPlugin,
@@ -988,6 +1005,7 @@ export const ComposerPromptEditor = forwardRef<
 ) {
   const mountRef = useRef<HTMLDivElement | null>(null);
   const viewRef = useRef<EditorView | null>(null);
+  const dictationRef = useRef<ComposerDictationEditor | null>(null);
   const valueRef = useRef(value);
   const onChangeRef = useRef(onChange);
   const onKeyDownRef = useRef(onKeyDown);
@@ -1139,6 +1157,9 @@ export const ComposerPromptEditor = forwardRef<
   useImperativeHandle(
     ref,
     () => ({
+      get dictation() {
+        return dictationRef.current;
+      },
       getElement: () => viewRef.current?.dom ?? null,
       focus: () => {
         viewRef.current?.focus();
@@ -1166,6 +1187,37 @@ export const ComposerPromptEditor = forwardRef<
         view.focus();
         return readPromptDocText(view.state.doc);
       },
+      insertDictationText: (transcript: string) => {
+        const text = transcript.trim();
+        const view = viewRef.current;
+        const current = view ? readPromptDocText(view.state.doc) : valueRef.current;
+        if (!text) return current;
+        if (!view) {
+          const next = appendComposerDictationText(current, text);
+          onChangeRef.current(next);
+          return next;
+        }
+        const selection = view.dom.ownerDocument.getSelection();
+        const ownsSelection =
+          selection !== null &&
+          selection.rangeCount > 0 &&
+          selection.anchorNode !== null &&
+          selection.focusNode !== null &&
+          view.dom.contains(selection.anchorNode) &&
+          view.dom.contains(selection.focusNode);
+        const { doc } = view.state;
+        const { from, to } = ownsSelection ? view.state.selection : getPromptDocEndSelection(doc);
+        const before = doc.textBetween(Math.max(0, from - 1), from, "\n");
+        const after = doc.textBetween(to, Math.min(doc.content.size, to + 1), "\n");
+        const inserted = `${before && !/\s$/u.test(before) ? " " : ""}${text}${after && !/^\s/u.test(after) ? " " : ""}`;
+        const transaction = replacePromptTextRange(view.state.tr, { from, to, text: inserted });
+        transaction.setSelection(
+          TextSelection.create(transaction.doc, transaction.mapping.map(to)),
+        );
+        view.dispatch(transaction.scrollIntoView());
+        view.focus();
+        return readPromptDocText(view.state.doc);
+      },
       completeSuggestionQuery: (query) => {
         const view = viewRef.current;
         if (!view) return;
@@ -1177,7 +1229,11 @@ export const ComposerPromptEditor = forwardRef<
         const view = viewRef.current;
         const normalizedMention = normalizePromptMention(mention);
         if (!normalizedMention.name || !normalizedMention.path) {
-          return view ? readPromptDocText(view.state.doc) : valueRef.current;
+          return dictationRef.current
+            ? readPromptDocText(dictationRef.current.document)
+            : view
+              ? readPromptDocText(view.state.doc)
+              : valueRef.current;
         }
         if (!view) {
           const nextValue = `${valueRef.current}[${mentionLabel(normalizedMention)}](${normalizedMention.path}) `;
@@ -1291,11 +1347,19 @@ export const ComposerPromptEditor = forwardRef<
       },
       getText: () => {
         const view = viewRef.current;
-        return view ? readPromptDocText(view.state.doc) : valueRef.current;
+        return dictationRef.current
+          ? readPromptDocText(dictationRef.current.document)
+          : view
+            ? readPromptDocText(view.state.doc)
+            : valueRef.current;
       },
       getPersistedText: () => {
         const view = viewRef.current;
-        return view ? readPromptDocText(view.state.doc) : valueRef.current;
+        return dictationRef.current
+          ? readPromptDocText(dictationRef.current.document)
+          : view
+            ? readPromptDocText(view.state.doc)
+            : valueRef.current;
       },
       isCursorAtEnd: () => {
         const view = viewRef.current;
@@ -1361,10 +1425,12 @@ export const ComposerPromptEditor = forwardRef<
     });
 
     viewRef.current = view;
+    dictationRef.current = createComposerDictationEditor(view);
     emitSuggestionState(view);
     reportIntrinsicContentWidth();
 
     return () => {
+      dictationRef.current?.dispose();
       view.destroy();
       viewRef.current = null;
     };

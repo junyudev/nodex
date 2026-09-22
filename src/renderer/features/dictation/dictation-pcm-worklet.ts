@@ -13,8 +13,15 @@ class NodexDictationPcmProcessor extends AudioWorkletProcessor {
   #stopped = false;
   constructor() {
     super();
-    this.port.onmessage = () => {
+    this.port.onmessage = (event: MessageEvent<string | { boundary: number }>) => {
       if (this.#stopped) return;
+      if (typeof event.data !== "string") {
+        this.flush();
+        // The capture owner changes segments only after this ordered acknowledgement.
+        // oxlint-disable-next-line unicorn/require-post-message-target-origin -- This is an AudioWorklet MessagePort.
+        this.port.postMessage(event.data);
+        return;
+      }
       this.#stopped = true;
       this.flush();
       // oxlint-disable-next-line unicorn/require-post-message-target-origin -- This is an AudioWorklet MessagePort.

@@ -4,6 +4,7 @@ import type {
   DictationPhase,
   DictationStreamDiagnostics,
 } from "../../../shared/dictation-diagnostics";
+import { MAX_DICTATION_DIAGNOSTIC_REQUESTS } from "../../../shared/dictation-diagnostics";
 
 /** Capture-surface measurements use one monotonic clock; remote timings stay in their own lanes. */
 export class DictationDiagnosticsRecorder {
@@ -69,9 +70,9 @@ export class DictationDiagnosticsRecorder {
   }
   readonly request = (diagnostics: DictationHttpDiagnostics): void => {
     this.#value.requests = [
-      ...this.#value.requests.filter((entry) => entry.operation !== diagnostics.operation),
+      ...this.#value.requests.filter((entry) => entry.requestId !== diagnostics.requestId),
       diagnostics,
-    ];
+    ].slice(-MAX_DICTATION_DIAGNOSTIC_REQUESTS);
   };
 
   delivered(clipboardRestoreMs = 0): void {

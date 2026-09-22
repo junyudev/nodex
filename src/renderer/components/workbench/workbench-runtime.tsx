@@ -1,4 +1,5 @@
 import { useRegisterFileLocationNavigator } from "@/lib/file-location-navigation";
+import { subscribeDictationRecordingNavigation } from "@/lib/global-dictation-commands";
 import {
   useCallback,
   useEffect,
@@ -1716,14 +1717,20 @@ export function WorkbenchRuntime({
     setSettingsPath(buildSettingsPath("keyboard-shortcuts"));
   }, [closePendingWorktreeRoute, setAutomationsPath, setSettingsPath]);
 
-  const openVoiceSettings = useCallback(() => {
-    closePendingWorktreeRoute();
-    setAutomationsPath(null);
-    setReopenStableWorktreeAfterSettingsId(null);
-    setReopenPendingWorktreeAfterSettingsClientThreadId(null);
-    setLocalEnvironmentSettingsInitial(null);
-    setSettingsPath(buildSettingsPath("voice"));
-  }, [closePendingWorktreeRoute, setAutomationsPath, setSettingsPath]);
+  const openVoiceSettings = useCallback(
+    (recordingId?: string) => {
+      closePendingWorktreeRoute();
+      setAutomationsPath(null);
+      setReopenStableWorktreeAfterSettingsId(null);
+      setReopenPendingWorktreeAfterSettingsClientThreadId(null);
+      setLocalEnvironmentSettingsInitial(null);
+      const path = buildSettingsPath("voice");
+      setSettingsPath(recordingId ? `${path}?recording=${encodeURIComponent(recordingId)}` : path);
+    },
+    [closePendingWorktreeRoute, setAutomationsPath, setSettingsPath],
+  );
+
+  useEffect(() => subscribeDictationRecordingNavigation(openVoiceSettings), [openVoiceSettings]);
 
   const openKeyboardShortcutHelp = useCallback(() => {
     setCommandPaletteOpen(false);

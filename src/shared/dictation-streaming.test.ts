@@ -194,3 +194,22 @@ test("retains newest final revisions, ignores later segments, and accepts asset 
     });
   }
 });
+
+test("accepts numeric wire metadata without coercion and rejects non-finite metadata", () => {
+  const event = {
+    type: "transcript.segment",
+    sequence_no: 1.5,
+    utterance_id: "u",
+    revision: 2.5,
+    text: "text",
+  };
+  expect(parseDictationStreamingServerEvent(JSON.stringify(event))).toEqual(event);
+  for (const sequence_no of ["1", null, false]) {
+    expect(
+      parseDictationStreamingServerEvent(JSON.stringify({ ...event, sequence_no })),
+    ).toBeNull();
+  }
+  expect(
+    parseDictationStreamingServerEvent('{"type":"asset.ready","sequence_no":1e999}'),
+  ).toBeNull();
+});

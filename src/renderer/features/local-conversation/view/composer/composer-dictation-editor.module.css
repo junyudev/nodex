@@ -1,0 +1,31 @@
+.wordArrival {
+  animation: word-arrival 500ms ease-in-out both;
+}
+
+@keyframes word-arrival {
+  0% {
+    color: var(--color-text-info, var(--primary));
+    opacity: 0.2;
+  }
+  18% {
+    color: var(--color-text-info, var(--primary));
+  }
+  48% {
+    opacity: 1;
+  }
+  100% {
+    color: inherit;
+    opacity: 1;
+  }
+}
+
+:global([data-reduced-motion="true"]) .wordArrival,
+:global([data-dictation-reduced-motion="true"]) .wordArrival {
+  animation: none;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .wordArrival {
+    animation: none;
+  }
+}

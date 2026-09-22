@@ -30,6 +30,8 @@ export interface ApplicationWindowCoordinator {
   readonly beginApplicationQuit: () => void;
   readonly bootstrap: (webContentsId: number) => { readonly session: WindowSessionRecord };
   readonly focusLast: () => void;
+  readonly openDictationRecording: (recordingId: string) => boolean;
+  readonly flushDictationRecording: (webContentsId: number) => void;
   readonly openForRequest: (
     sourceWebContentsId: number,
     request: WindowSessionNewWindowRequest,
@@ -55,6 +57,8 @@ export const createApplicationWindowCoordinator = (
   options: ApplicationWindowCoordinatorOptions,
 ): ApplicationWindowCoordinator => {
   let accepting = true;
+  let pendingRecording: { readonly webContentsId: number; readonly recordingId: string } | null =
+    null;
 
   const show = (window: BrowserWindow): BrowserWindow => {
     window.show();
@@ -130,6 +134,18 @@ export const createApplicationWindowCoordinator = (
     if (window) options.syncTitle(window);
     return { session };
   };
+  const flushDictationRecording = (webContentsId: number): void => {
+    if (!accepting || pendingRecording?.webContentsId !== webContentsId) return;
+    if (!options.windows.isRendererInitialized(webContentsId)) return;
+    const window = options.windows.get(webContentsId);
+    if (
+      safeSendToWindow(window, "dictation:open-recording", [
+        { recordingId: pendingRecording.recordingId },
+      ])
+    ) {
+      pendingRecording = null;
+    }
+  };
 
   return {
     beginApplicationQuit: () => {
@@ -143,6 +159,20 @@ export const createApplicationWindowCoordinator = (
       return { session };
     },
     focusLast,
+    openDictationRecording: (recordingId) => {
+      if (!accepting) return false;
+      const existing = options.windows.getLastFocused();
+      const window = existing ?? openNew();
+      if (!window || window.isDestroyed()) return false;
+      if (existing) {
+        if (window.isMinimized()) window.restore();
+        show(window);
+      }
+      pendingRecording = { webContentsId: window.webContents.id, recordingId };
+      flushDictationRecording(window.webContents.id);
+      return true;
+    },
+    flushDictationRecording,
     openForRequest: (sourceWebContentsId, request) => {
       if (!accepting) return;
       if (request.activeProjectSessionId === undefined) {
@@ -166,6 +196,7 @@ export const createApplicationWindowCoordinator = (
     },
     stop: () => {
       accepting = false;
+      pendingRecording = null;
     },
     updateBounds: options.windows.updateBounds,
   };

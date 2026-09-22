@@ -12,6 +12,11 @@ import type {
   CodexConversationImageAssetResolveResult,
   CodexDictationStateSnapshot,
 } from "../../shared/types";
+import { CodexWorkspaceRouting } from "../codex-runtime/CodexWorkspaceRouting";
+import { CodexAppServerCapabilities } from "../codex-runtime/CodexAppServerCapabilities";
+import { CodexExecutionHostAuthState } from "../codex-runtime/CodexExecutionHostAuthState";
+import { makeDictationPolicy, type DictationPolicySnapshot } from "../dictation/DictationPolicy";
+import { readChatGptBackendRequestAuth } from "../codex/chatgpt-backend-auth";
 import { CodexGateway } from "../codex-runtime/CodexGateway";
 import { resolveChatGptBaseUrl } from "../codex/chatgpt-base-url";
 import { ElectronNet } from "../platform/electron/ElectronNet";
@@ -23,6 +28,7 @@ import { ChatGptDesktop } from "./ChatGptDesktop";
 import type { DictationTextResult } from "../../shared/dictation-diagnostics";
 import { DictationRequestDiagnostics } from "../dictation/dictation-request-diagnostics";
 import { buildDictationStreamConnectInfo } from "../dictation/dictation-stream-connect-info";
+import { DICTATION_VOICE_LANGUAGES } from "../../shared/dictation";
 
 const CODEX_DICTATION_SHORTCUT_LABEL = "Ctrl+M";
 const CODEX_DICTATION_BASE64_HEADER = "X-Codex-Base64";
@@ -54,6 +60,15 @@ const DictationCleanupStreamEvent = Schema.Struct({
 const decodeDictationCleanupStreamEvent = Schema.decodeUnknownEffect(
   Schema.fromJsonString(DictationCleanupStreamEvent),
 );
+const decodeVoiceSettings = Schema.decodeUnknownEffect(
+  Schema.fromJsonString(
+    Schema.Struct({
+      settings: Schema.optionalKey(
+        Schema.Struct({ voice_main_language: Schema.optionalKey(Schema.String) }),
+      ),
+    }),
+  ),
+);
 
 export class CodexMediaError extends Schema.TaggedError<CodexMediaError>()("CodexMediaError", {
   operation: Schema.String,
@@ -66,6 +81,9 @@ export class CodexMedia extends Context.Service<
   CodexMedia,
   {
     readonly dictationState: Effect.Effect<CodexDictationStateSnapshot>;
+    readonly dictationPolicySnapshot: Effect.Effect<DictationPolicySnapshot>;
+    readonly readVoiceLanguage: Effect.Effect<string, CodexMediaError>;
+    readonly updateVoiceLanguage: (language: string) => Effect.Effect<string, CodexMediaError>;
     readonly transcribe: (input: {
       readonly requestId: string;
       readonly contentType: string;
@@ -117,8 +135,9 @@ const responseText = (response: Response): Effect.Effect<string, CodexMediaError
 const cleanupResponseText = (response: typeof DictationCleanupResponse.Type): string | null => {
   const text = response.output
     .flatMap((output) => output.content ?? [])
-    .flatMap((content) => (content.text === undefined ? [] : [content.text]))
-    .join("")
+    .map((content) => content.text?.trim() ?? "")
+    .filter(Boolean)
+    .join("\n")
     .trim();
   return text || null;
 };
@@ -150,7 +169,7 @@ const parseCleanupStreamResponse = Effect.fn("CodexMedia.parseCleanupStreamRespo
         message: errorMessage,
       });
     }
-    if (event.delta) deltas.push(event.delta);
+    if (event.type === "response.output_text.delta" && event.delta) deltas.push(event.delta);
     if (event.type === "response.output_text.done" && event.text) {
       completedText = event.text;
     }
@@ -184,6 +203,8 @@ const areDictationStatesEqual = (
   left.capabilities.history === right.capabilities.history &&
   left.capabilities.streaming === right.capabilities.streaming &&
   left.capabilities.semanticCleanup === right.capabilities.semanticCleanup &&
+  left.capabilities.sounds === right.capabilities.sounds &&
+  left.capabilities.voiceDictionary === right.capabilities.voiceDictionary &&
   left.capabilities.microphoneOwner === right.capabilities.microphoneOwner &&
   left.capabilities.auth === right.capabilities.auth;
 
@@ -197,6 +218,8 @@ const initialDictationState = (): CodexDictationStateSnapshot => ({
     history: true,
     streaming: "unavailable",
     semanticCleanup: false,
+    sounds: false,
+    voiceDictionary: false,
     microphoneOwner: "none",
     auth: "unsupported",
   },
@@ -206,6 +229,9 @@ export const live: Layer.Layer<
   CodexMedia,
   never,
   | CodexGateway
+  | CodexAppServerCapabilities
+  | CodexExecutionHostAuthState
+  | CodexWorkspaceRouting
   | ChatGptDesktop
   | ElectronNet
   | CodexAccount
@@ -216,17 +242,17 @@ export const live: Layer.Layer<
   CodexMedia,
   Effect.gen(function* () {
     const gateway = yield* CodexGateway;
+    const appServerCapabilities = yield* CodexAppServerCapabilities;
+    const hostAuthState = yield* CodexExecutionHostAuthState;
+    const workspaceRouting = yield* CodexWorkspaceRouting;
     const chatgpt = yield* ChatGptDesktop;
     const electron = yield* ElectronNet;
     const account = yield* CodexAccount;
     const connection = yield* CodexConnection;
     const applicationEvents = yield* CodexApplicationEventHub;
     const dictation = yield* DictationRuntime;
+    const policy = yield* makeDictationPolicy;
     const authMethod = yield* SubscriptionRef.make<CodexDictationStateSnapshot["authMethod"]>(null);
-    const streamingAvailability =
-      yield* SubscriptionRef.make<CodexDictationStateSnapshot["capabilities"]["streaming"]>(
-        "unavailable",
-      );
     const dictationState = yield* SubscriptionRef.make(initialDictationState());
     const readBaseUrl = gateway.requestLocal("config/read", { includeLayers: false }).pipe(
       Effect.flatMap((config) =>
@@ -300,6 +326,75 @@ export const live: Layer.Layer<
           return typeof parsed.body?.text === "string" ? parsed.body.text : "";
         }).pipe(Effect.orElseSucceed(() => body.trim()));
       });
+
+    const voiceSettingsRequest = Effect.fn("CodexMedia.voiceSettingsRequest")(
+      function* (path: string, method: "GET" | "PATCH") {
+        const baseUrl = yield* readBaseUrl;
+        const response = yield* chatgpt.request({
+          action: "update voice language",
+          baseUrl,
+          path,
+          method,
+          refreshOn401: true,
+          missingAuthErrorMessage: "ChatGPT authentication is required for Voice settings.",
+        });
+        if (!response.ok) {
+          return yield* new CodexMediaError({
+            operation: "voice-settings-response",
+            message: "Unable to access voice language settings",
+            status: response.status,
+          });
+        }
+        return response;
+      },
+      Effect.mapError((cause) =>
+        Schema.is(CodexMediaError)(cause)
+          ? cause
+          : new CodexMediaError({
+              operation: "voice-settings-request",
+              message: "Unable to access voice language settings",
+              cause,
+            }),
+      ),
+    );
+
+    const readVoiceLanguage = Effect.gen(function* () {
+      const response = yield* voiceSettingsRequest("/settings/user", "GET");
+      const settings = yield* decodeVoiceSettings(yield* responseText(response)).pipe(
+        Effect.mapError(
+          (cause) =>
+            new CodexMediaError({
+              operation: "voice-settings-decode",
+              message: "Invalid voice language settings",
+              cause,
+            }),
+        ),
+      );
+      const language = settings.settings?.voice_main_language ?? "auto";
+      if (!DICTATION_VOICE_LANGUAGES.includes(language)) {
+        return yield* new CodexMediaError({
+          operation: "voice-settings-decode",
+          message: "Unsupported voice language setting",
+        });
+      }
+      return language;
+    });
+
+    const updateVoiceLanguage = Effect.fn("CodexMedia.updateVoiceLanguage")(function* (
+      language: string,
+    ) {
+      if (!DICTATION_VOICE_LANGUAGES.includes(language)) {
+        return yield* new CodexMediaError({
+          operation: "voice-language-validation",
+          message: "Unsupported voice language",
+        });
+      }
+      yield* voiceSettingsRequest(
+        `/settings/account_user_setting?feature=voice_main_language&value=${encodeURIComponent(language)}`,
+        "PATCH",
+      );
+      return language;
+    });
 
     const transcribe: CodexMedia["Service"]["transcribe"] = (input) =>
       Effect.gen(function* () {
@@ -394,20 +489,23 @@ export const live: Layer.Layer<
     const makeDictationState = Effect.fn("CodexMedia.makeDictationState")(function* (
       method: CodexDictationStateSnapshot["authMethod"],
     ) {
-      const streaming = yield* SubscriptionRef.get(streamingAvailability);
-      const enabled = method === "chatgpt";
+      const flags = yield* policy.read;
+      const authenticated = method === "chatgpt";
+      const enabled = authenticated && flags.composer;
       return {
         isEnabled: enabled,
         authMethod: method,
         shortcutLabel: CODEX_DICTATION_SHORTCUT_LABEL,
         capabilities: {
           composer: enabled,
-          global: enabled && dictation.globalAvailable(),
+          global: flags.global && dictation.globalAvailable(),
           history: true,
-          streaming: enabled ? streaming : "unavailable",
+          streaming: enabled && flags.streaming ? "available" : "unavailable",
           semanticCleanup: enabled,
+          sounds: flags.sounds,
+          voiceDictionary: enabled && flags.voiceDictionary,
           microphoneOwner: dictation.microphoneOwner(),
-          auth: enabled ? "chatgpt" : "unsupported",
+          auth: authenticated ? "chatgpt" : "unsupported",
         },
       } satisfies CodexDictationStateSnapshot;
     });
@@ -430,13 +528,9 @@ export const live: Layer.Layer<
       const previousAuthMethod = yield* SubscriptionRef.get(authMethod);
       if (previousAuthMethod !== nextAuthMethod) {
         yield* SubscriptionRef.set(authMethod, nextAuthMethod);
-        yield* SubscriptionRef.set(
-          streamingAvailability,
-          nextAuthMethod === "chatgpt" ? "unknown" : "unavailable",
-        );
       }
       yield* dictation
-        .setEnabled(nextAuthMethod === "chatgpt")
+        .setEnabled((yield* policy.read).global)
         .pipe(
           Effect.catch((error) =>
             Effect.logWarning("Global dictation activation failed").pipe(
@@ -445,6 +539,7 @@ export const live: Layer.Layer<
           ),
         );
       yield* publishDictationState(yield* makeDictationState(nextAuthMethod));
+      yield* policy.refresh.pipe(Effect.forkScoped());
     });
 
     const refreshAuth = chatgpt.authMethod.pipe(
@@ -456,28 +551,22 @@ export const live: Layer.Layer<
       Effect.flatMap((method) => makeDictationState(method)),
       Effect.flatMap(publishDictationState),
     );
-    const setStreamingAvailability = Effect.fn("CodexMedia.setStreamingAvailability")(function* (
-      next: CodexDictationStateSnapshot["capabilities"]["streaming"],
-    ) {
-      const current = yield* SubscriptionRef.get(streamingAvailability);
-      if (current === next) return;
-      yield* SubscriptionRef.set(streamingAvailability, next);
-      yield* refreshCurrent;
-    });
-
+    yield* policy.changes.pipe(
+      Stream.runForEach((flags) =>
+        Effect.gen(function* () {
+          yield* dictation.setEnabled(flags.global).pipe(Effect.catch(() => Effect.void));
+          yield* refreshCurrent;
+        }),
+      ),
+      Effect.forkScoped({ startImmediately: true }),
+    );
     yield* refreshAuth;
     yield* SubscriptionRef.changes(account.snapshot).pipe(
       Stream.runForEach(() => refreshAuth),
       Effect.forkScoped({ startImmediately: true }),
     );
     yield* connection.changes.pipe(
-      Stream.runForEach(() =>
-        SubscriptionRef.get(authMethod).pipe(
-          Effect.flatMap((method) =>
-            setStreamingAvailability(method === "chatgpt" ? "unknown" : "unavailable"),
-          ),
-        ),
-      ),
+      Stream.runForEach((status) => (status.status === "connected" ? refreshAuth : Effect.void)),
       Effect.forkScoped({ startImmediately: true }),
     );
     yield* dictation.changes.pipe(
@@ -494,7 +583,18 @@ export const live: Layer.Layer<
           status: 401,
         });
       }
-      const auth = yield* chatgpt.authStatus(true, false).pipe(
+      const flags = yield* policy.refresh;
+      if (!flags.streaming) {
+        return yield* new CodexMediaError({
+          operation: "streaming-policy",
+          message: "Dictation streaming is not enabled",
+          status: 403,
+        });
+      }
+      const auth = yield* readChatGptBackendRequestAuth(gateway, false).pipe(
+        Effect.provideService(CodexAppServerCapabilities, appServerCapabilities),
+        Effect.provideService(CodexWorkspaceRouting, workspaceRouting),
+        Effect.provideService(CodexExecutionHostAuthState, hostAuthState),
         Effect.mapError(
           (cause) =>
             new CodexMediaError({
@@ -504,19 +604,22 @@ export const live: Layer.Layer<
             }),
         ),
       );
-      const token = auth.authToken?.trim();
-      if (
-        normalizeAuthMethod(typeof auth.authMethod === "string" ? auth.authMethod : null) !==
-          "chatgpt" ||
-        !token
-      ) {
+      if (auth.routing.kind === "workspace") {
+        return yield* new CodexMediaError({
+          operation: "streaming-routing",
+          message: "Dictation streaming is unavailable for this account routing",
+          status: 403,
+        });
+      }
+      const token = auth.token;
+      const baseUrl = yield* readBaseUrl;
+      if (auth.signal.aborted) {
         return yield* new CodexMediaError({
           operation: "streaming-auth",
-          message: "ChatGPT authentication is required for dictation",
+          message: "Dictation authentication changed while preparing the stream",
           status: 401,
         });
       }
-      const baseUrl = yield* readBaseUrl;
       const info = yield* Effect.try({
         try: () => buildDictationStreamConnectInfo(baseUrl, token),
         catch: () =>
@@ -525,7 +628,6 @@ export const live: Layer.Layer<
             message: "Unable to prepare the dictation stream",
           }),
       });
-      yield* setStreamingAvailability("available");
       return info;
     });
 
@@ -595,6 +697,9 @@ export const live: Layer.Layer<
 
     return CodexMedia.of({
       dictationState: SubscriptionRef.get(dictationState),
+      dictationPolicySnapshot: policy.read,
+      readVoiceLanguage,
+      updateVoiceLanguage,
       transcribe,
       cleanupTranscript,
       prepareStreamingConnectInfo,

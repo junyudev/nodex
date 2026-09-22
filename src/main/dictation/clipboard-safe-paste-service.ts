@@ -1,6 +1,10 @@
 import type { DictationError } from "../../shared/dictation";
 import type { GlobalDictationTarget } from "../../shared/global-dictation";
-import type { MacDictationNativeHelperClient } from "./mac-dictation-native-helper-client";
+import type {
+  DictationNativePastePort,
+  DictationNativePasteOptions,
+  DictationNativePasteResult,
+} from "./dictation-native-helper-port";
 
 export class ClipboardSafePasteError extends Error {
   readonly dictationError: DictationError;
@@ -16,28 +20,49 @@ export class ClipboardSafePasteError extends Error {
   }
 }
 
-/** Delegates the complete pasteboard transaction to one native NSPasteboard authority. */
+/** Delegates each clipboard transaction to its platform authority. */
 export class ClipboardSafePasteService {
-  readonly #helper: Pick<MacDictationNativeHelperClient, "capabilities" | "safePaste">;
+  #settled: Promise<void> = Promise.resolve();
+  readonly #helper: DictationNativePastePort;
 
-  constructor(options: {
-    readonly helper: Pick<MacDictationNativeHelperClient, "capabilities" | "safePaste">;
-  }) {
+  constructor(options: { readonly helper: DictationNativePastePort }) {
     this.#helper = options.helper;
+  }
+
+  async captureClipboardFingerprint(): Promise<string> {
+    return await this.#helper.captureClipboardFingerprint();
+  }
+
+  async copy(transcript: string): Promise<void> {
+    await this.#mutate(() => this.#helper.copy(transcript));
   }
 
   async paste(
     transcript: string,
-    target: GlobalDictationTarget,
-  ): Promise<{ readonly clipboardRestoreMs: number }> {
+    target?: GlobalDictationTarget,
+    options: DictationNativePasteOptions = {},
+  ): Promise<DictationNativePasteResult> {
+    options.signal?.throwIfAborted();
     const insertedText = `${transcript.trim()} `;
     if (!insertedText.trim()) throw new ClipboardSafePasteError("paste-failed");
-    const capabilities = await this.#helper.capabilities(false);
-    if (!capabilities.accessibility) throw new ClipboardSafePasteError("accessibility-denied");
     try {
-      return await this.#helper.safePaste(insertedText, target);
-    } catch {
+      return await this.#mutate(async () => {
+        options.signal?.throwIfAborted();
+        return await this.#helper.safePaste(insertedText, target, options);
+      });
+    } catch (error) {
+      if (error instanceof Error && error.name === "AbortError") throw error;
       throw new ClipboardSafePasteError("paste-failed");
     }
+  }
+
+  /** A replacement waits for the cancelled native transaction's restore/grace acknowledgement. */
+  #mutate<T>(operation: () => Promise<T>): Promise<T> {
+    const result = this.#settled.then(operation);
+    this.#settled = result.then(
+      () => {},
+      () => {},
+    );
+    return result;
   }
 }

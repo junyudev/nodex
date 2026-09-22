@@ -6,11 +6,15 @@ All notable changes to this project will be documented in this file.
 
 ### Added
 
+- Dictation streams into your draft by default, preserves edits when the cursor moves, and offers captured speech for recovery after an interruption.
+- Voice settings can manage an account dictionary when available.
+
 ### Changed
 
 ### Fixed
 
 - Retained edits that cannot be received can now be removed from this device after confirmation, clearing their warning without changing current documents.
+- Dictation recovers incomplete streams without duplicating completed segments, respects account availability and language settings, and preserves newer clipboard contents during global paste recovery.
 
 ## [0.3.0] - 2026-09-20
 

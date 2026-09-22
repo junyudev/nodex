@@ -108,21 +108,47 @@ describe("renderer dictation WebSocket", () => {
     expect(JSON.stringify(diagnostics)).not.toContain("test-secret");
   });
 
-  it("accepts a normal close after startup but retains an abnormal close for buffered recovery", async () => {
-    for (const code of [1000, 1006]) {
+  it.each([false, true])(
+    "requires session completion before socket closure (finishing: %s)",
+    async (finishing) => {
+      for (const code of [1000, 1006]) {
+        const { client, diagnostics } = createFixture();
+        const connecting = client.connect(48_000);
+        await flush();
+        const socket = Socket.instances.at(-1)!;
+        socket.open();
+        socket.receive(session("active"));
+        await connecting;
+        const result = finishing ? client.finish().catch((error: unknown) => error) : null;
+        socket.end(code);
+        const expected = { code: code === 1000 ? "unexpected-close" : "abnormal-close" };
+        if (result) expect(await result).toMatchObject(expected);
+        else await expect(client.finish()).rejects.toMatchObject(expected);
+        expect(diagnostics.closeCode).toBe(code);
+        expect(diagnostics.failureCode).toBe(expected.code);
+      }
+    },
+  );
+
+  it.each([1000, 1005, 1006])(
+    "does not mark an acknowledged session as failed on socket close %s",
+    async (code) => {
       const { client, diagnostics } = createFixture();
       const connecting = client.connect(48_000);
       await flush();
-      const socket = Socket.instances.at(-1)!;
+      const socket = Socket.instances[0]!;
       socket.open();
       socket.receive(session("active"));
       await connecting;
+      const finishing = client.finish();
+      socket.receive(session("closed"));
+      await finishing;
       socket.end(code);
-      if (code === 1000) await expect(client.finish()).resolves.toBeUndefined();
-      else await expect(client.finish()).rejects.toMatchObject({ code: "abnormal-close" });
+      await expect(client.finish()).resolves.toBeUndefined();
       expect(diagnostics.closeCode).toBe(code);
-    }
-  });
+      expect(diagnostics.failureCode).toBeUndefined();
+    },
+  );
 
   it("bounds startup and finalization waits", async () => {
     vi.useFakeTimers();
@@ -212,4 +238,79 @@ it("freezes finalization timing when the result completes before the socket clos
   await vi.advanceTimersByTimeAsync(2000);
   socket.end();
   expect(diagnostics.finishMs).toBe(250);
+});
+
+it.each([true, false])(
+  "keeps startup PCM private until the admission gate resolves (%s)",
+  async (allowed) => {
+    let admit!: (allowed: boolean) => void;
+    const gate = new Promise<boolean>((resolve) => {
+      admit = resolve;
+    });
+    const { client } = createFixture();
+    const connecting = client.connect(48_000, true, gate);
+    client.appendPCM16(new Uint8Array([1, 2]).buffer);
+    await flush();
+    const socket = Socket.instances[0]!;
+    socket.open();
+    socket.receive(session("active"));
+    await flush();
+    expect(socket.sent).toEqual([
+      expect.objectContaining({
+        type: "session.start",
+        config: expect.objectContaining({ transcript_delivery_mode: "segment" }),
+      }),
+    ]);
+    admit(allowed);
+    await connecting;
+    expect(
+      socket.sent.filter((message) => (message as { type: string }).type === "audio.append"),
+    ).toHaveLength(allowed ? 1 : 0);
+    expect(socket.readyState).toBe(allowed ? Socket.OPEN : 3);
+    client.close();
+    socket.end();
+  },
+);
+
+it("does not drain audio when a late gate resolves after startup timed out", async () => {
+  vi.useFakeTimers();
+  let admit!: (allowed: boolean) => void;
+  const { client } = createFixture();
+  const result = client
+    .connect(
+      48_000,
+      true,
+      new Promise<boolean>((resolve) => {
+        admit = resolve;
+      }),
+    )
+    .catch((error: unknown) => error);
+  client.appendPCM16(new Uint8Array([1, 2]).buffer);
+  await flush();
+  const socket = Socket.instances[0]!;
+  socket.open();
+  socket.receive(session("active"));
+  await vi.advanceTimersByTimeAsync(10_000);
+  expect(await result).toMatchObject({ code: "start-timeout" });
+  admit(true);
+  await flush();
+  expect(socket.sent).toHaveLength(1);
+  socket.end();
+});
+
+it("keeps an acknowledged result authoritative if the closing transport emits an error", async () => {
+  const { client, diagnostics } = createFixture();
+  const connecting = client.connect(48_000);
+  await flush();
+  const socket = Socket.instances[0]!;
+  socket.open();
+  socket.receive(session("active"));
+  await connecting;
+  const finishing = client.finish();
+  socket.receive(session("closed"));
+  await finishing;
+  socket.dispatchEvent(new Event("error"));
+  socket.end(1006);
+  expect(diagnostics.failureCode).toBeUndefined();
+  await expect(client.finish()).resolves.toBeUndefined();
 });

@@ -7,6 +7,7 @@ import {
   useCommandKeymapState,
 } from "@/lib/use-command-keymap-state";
 import { cn } from "@/lib/utils";
+import { captureGlobalDictationBareModifierHotkey } from "@/features/dictation/dictation-settings-runtime";
 import { NodexButton } from "../ui/button";
 import { HotkeySettingControl, type HotkeyCaptureMode } from "../ui/hotkey-setting-control";
 import {
@@ -429,6 +430,7 @@ function ShortcutTableRow({
           allowsSequences={entry.allowsSequences}
           canAppend={entry.allowsMultiple}
           captureAriaLabel={`${entry.title} hotkey capture`}
+          captureBareModifierHotkey={captureGlobalDictationBareModifierHotkey}
           conflict={capture?.conflict}
           disabled={pending}
           hotkeyName={entry.title}

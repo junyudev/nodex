@@ -677,11 +677,13 @@ it.effect("invalidates host auth at the common typed and raw request boundary", 
     const sendProtocolError = Effect.fn("CodexRuntimeTest.sendProtocolError")(function* (
       request: Effect.Effect<unknown, CodexRuntimeError>,
       data: unknown,
+      onWire: () => void = () => {},
     ) {
       const fiber = yield* request.pipe(Effect.result, Effect.forkScoped);
       const wire = yield* Schema.decodeEffect(
         Schema.fromJsonString(Schema.Struct({ id: Schema.Union([Schema.String, Schema.Int]) })),
       )((yield* Queue.take(attempt.output)).trim());
+      onWire();
       const encoded = yield* Schema.encodeEffect(Schema.fromJsonString(Schema.Unknown))({
         id: wire.id,
         error: { code: -32_000, message: "configuration rejected", data },
@@ -712,6 +714,18 @@ it.effect("invalidates host auth at the common typed and raw request boundary", 
     });
     assert.isTrue(Result.isFailure(nonAuth));
     assert.isFalse(yield* authState.isLoginRequired("local"));
+    for (const method of ["account/logout", "account/sessions/switch"]) {
+      const lease = yield* authState.backendLease("local");
+      const result = yield* sendProtocolError(
+        method === "account/logout"
+          ? gateway.requestLocal("account/logout", undefined)
+          : gateway.requestRawOnHost("local", method, {}),
+        {},
+        () => assert.isTrue(lease.aborted),
+      );
+      assert.isTrue(Result.isFailure(result));
+      assert.isFalse((yield* authState.backendLease("local")).aborted);
+    }
   }),
 );
 

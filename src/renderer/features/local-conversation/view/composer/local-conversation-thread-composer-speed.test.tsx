@@ -299,6 +299,8 @@ function buildModel(overrides?: Partial<ThreadFooterModel>): ThreadFooterModel {
         history: true,
         streaming: "unavailable",
         semanticCleanup: false,
+        sounds: false,
+        voiceDictionary: false,
         microphoneOwner: "none",
         auth: "chatgpt",
       },

@@ -8,6 +8,7 @@ import { resolveBundledElectronPreload } from "../electron-preload-path";
 
 const WIDTH = 720;
 const HEIGHT = 84;
+const RECOVERY_HEIGHT = 180;
 const BOTTOM_MARGIN = 16;
 
 export const withGlobalDictationRoute = (rendererUrl: string): string => {
@@ -16,16 +17,22 @@ export const withGlobalDictationRoute = (rendererUrl: string): string => {
   return url.toString();
 };
 
-export const resolveGlobalDictationBounds = (workArea: {
-  readonly x: number;
-  readonly y: number;
-  readonly width: number;
-  readonly height: number;
-}) => ({
+export const resolveGlobalDictationBounds = (
+  workArea: {
+    readonly x: number;
+    readonly y: number;
+    readonly width: number;
+    readonly height: number;
+  },
+  recoveryVisible = false,
+) => ({
   x: Math.round(workArea.x + (workArea.width - WIDTH) / 2),
-  y: Math.max(workArea.y, workArea.y + workArea.height - HEIGHT - BOTTOM_MARGIN),
+  y: Math.max(
+    workArea.y,
+    workArea.y + workArea.height - (recoveryVisible ? RECOVERY_HEIGHT : HEIGHT) - BOTTOM_MARGIN,
+  ),
   width: WIDTH,
-  height: HEIGHT,
+  height: recoveryVisible ? RECOVERY_HEIGHT : HEIGHT,
 });
 
 type GlobalDictationNativeWindow = Pick<
@@ -97,6 +104,7 @@ export class GlobalDictationWindowController {
   readonly #presentationGate = new GlobalDictationPresentationGate();
   #window: BrowserWindow | null = null;
   #windowGeneration = 0;
+  #recoveryVisible = false;
   #rendererReadyWebContentsId: number | null = null;
   #resolveRendererReady: ((ready: boolean) => void) | null = null;
   #rendererReady: Promise<boolean> = Promise.resolve(false);
@@ -131,9 +139,18 @@ export class GlobalDictationWindowController {
       this.#resolveRendererReady = resolve;
     });
     let terminalReported = false;
+    const repositionVisible = (): void => {
+      if (!window.isDestroyed() && window.isVisible()) this.reposition();
+    };
+    screen.on("display-added", repositionVisible);
+    screen.on("display-removed", repositionVisible);
+    screen.on("display-metrics-changed", repositionVisible);
     const reportTerminal = (): void => {
       if (terminalReported) return;
       terminalReported = true;
+      screen.off("display-added", repositionVisible);
+      screen.off("display-removed", repositionVisible);
+      screen.off("display-metrics-changed", repositionVisible);
       if (this.#window === window && this.#windowGeneration === generation) {
         this.#window = null;
         this.#rendererReadyWebContentsId = null;
@@ -176,15 +193,23 @@ export class GlobalDictationWindowController {
     }
   }
 
-  async showIdle(
-    command: Extract<GlobalDictationRendererCommand, { type: "idle" }>,
+  async showPasteFailure(
+    command: Extract<GlobalDictationRendererCommand, { type: "paste-failed" }>,
   ): Promise<boolean> {
+    this.#recoveryVisible = false;
     return await this.#showWithCommand(command, true, this.#presentationGate.begin());
+  }
+
+  showRecovery(): void {
+    this.#recoveryVisible = true;
+    this.reposition();
+    this.setInteractive(true);
   }
 
   async showAndStart(
     command: Extract<GlobalDictationRendererCommand, { type: "start" }>,
   ): Promise<boolean> {
+    this.#recoveryVisible = false;
     return await this.#showWithCommand(command, false, this.#presentationGate.begin());
   }
 
@@ -269,7 +294,10 @@ export class GlobalDictationWindowController {
   reposition(): void {
     if (!this.#window || this.#window.isDestroyed()) return;
     const display = screen.getDisplayNearestPoint(screen.getCursorScreenPoint());
-    this.#window.setBounds(resolveGlobalDictationBounds(display.workArea), false);
+    this.#window.setBounds(
+      resolveGlobalDictationBounds(display.workArea, this.#recoveryVisible),
+      false,
+    );
   }
 
   dispose(): void {

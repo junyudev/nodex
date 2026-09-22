@@ -23,9 +23,9 @@ afterEach(async () => {
 describe("DictationSettingsStore", () => {
   test("persists strict typed patches and rejects unknown settings", async () => {
     const { store } = await createStore();
-    expect(await store.readKeepGlobalBarVisiblePreference()).toBeNull();
     expect(await store.read()).toMatchObject({
       microphoneInputDeviceId: null,
+      dictationSoundsEnabled: true,
       globalShortcutNudgeDismissed: false,
       dictionary: [],
     });
@@ -33,7 +33,11 @@ describe("DictationSettingsStore", () => {
     await expect(store.update({ microphoneInputDeviceId: "mic-1" })).resolves.toMatchObject({
       microphoneInputDeviceId: "mic-1",
     });
-    expect(await store.readKeepGlobalBarVisiblePreference()).toBeNull();
+    await expect(store.update({ dictationSoundsEnabled: false })).resolves.toMatchObject({
+      dictationSoundsEnabled: false,
+    });
+    expect(() => store.update({ microphoneInputDeviceId: "" })).toThrow();
+    expect(() => store.update({ dictationSoundsEnabled: "yes" })).toThrow();
     expect(() => store.update({ unknown: true })).toThrow("Unknown dictation setting");
     expect((await store.read()).microphoneInputDeviceId).toBe("mic-1");
   });
@@ -53,9 +57,6 @@ describe("DictationSettingsStore", () => {
       join(directory, "dictation-settings.json"),
       JSON.stringify({
         microphoneInputDeviceId: null,
-        keepGlobalBarVisible: false,
-        playStartSound: true,
-        playStopSound: true,
         globalShortcutNudgeDismissed: false,
       }),
       { mode: 0o600 },
@@ -74,7 +75,6 @@ describe("DictationSettingsStore", () => {
 
     expect(claims.filter(Boolean)).toHaveLength(1);
     expect((await store.read()).globalShortcutNudgeDismissed).toBe(true);
-    expect(await store.readKeepGlobalBarVisiblePreference()).toBeNull();
   });
 
   test("reads settings written before the nudge flag existed", async () => {
@@ -83,9 +83,6 @@ describe("DictationSettingsStore", () => {
       join(directory, "dictation-settings.json"),
       JSON.stringify({
         microphoneInputDeviceId: null,
-        keepGlobalBarVisible: false,
-        playStartSound: true,
-        playStopSound: true,
       }),
       { mode: 0o600 },
     );

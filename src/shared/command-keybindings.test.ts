@@ -3,6 +3,7 @@ import {
   applyCommandKeybindingUpdate,
   CODEX_COMMAND_REGISTRY,
   compileMacNativeHotkey,
+  validateGlobalDictationShortcut,
   createKeyboardLayoutSnapshot,
   createCommandKeymapState,
   findCommandKeybindingConflict,
@@ -39,6 +40,43 @@ function keyboardEvent(
 }
 
 describe("command keybindings", () => {
+  test("preserves Windows global modifier spelling through admission and storage", () => {
+    for (const key of ["Meta+K", "CommandOrControl+K", "Super+K"]) {
+      expect(() =>
+        applyCommandKeybindingUpdate(
+          {},
+          "globalDictationHold",
+          { type: "set", keybinding: { key } },
+          "windows",
+        ),
+      ).toThrow();
+      expect(
+        normalizeCommandKeybindingOverrides({ globalDictationHold: [key] }, "windows"),
+      ).toEqual({});
+    }
+    const updated = applyCommandKeybindingUpdate(
+      {},
+      "globalDictationHold",
+      { type: "set", keybinding: { key: "Super+Shift+K" } },
+      "windows",
+    );
+    const restored = normalizeCommandKeybindingOverrides(updated, "windows");
+    expect(restored.globalDictationHold).toEqual(["Super+Shift+K"]);
+    expect(
+      createCommandKeymapState(restored, "windows").entries.find(
+        (entry) => entry.id === "globalDictationHold",
+      )?.keybindings,
+    ).toEqual([{ key: "Super+Shift+K" }]);
+    expect(
+      applyCommandKeybindingUpdate(
+        {},
+        "toggleSidebar",
+        { type: "set", keybinding: { key: "Meta+K" } },
+        "windows",
+      ).toggleSidebar,
+    ).toEqual(["Command+K"]);
+  });
+
   test("formats platform labels and normalizes CmdOrCtrl accelerators", () => {
     expect(normalizeAccelerator("CommandOrControl+Alt+r")).toBe("CmdOrCtrl+Alt+R");
     expect(formatAcceleratorLabel("CmdOrCtrl+Alt+R", "macOS")).toBe("⌘⌥R");
@@ -266,6 +304,28 @@ describe("command keybindings", () => {
     expect(threw).toBe(true);
   });
 
+  test("allows hold and toggle dictation to share one shortcut", () => {
+    const overrides = { globalDictationHold: ["Fn"] };
+    expect(
+      applyCommandKeybindingUpdate(
+        overrides,
+        "globalDictationToggle",
+        {
+          type: "set",
+          keybinding: { key: "Fn" },
+        },
+        "macOS",
+      ),
+    ).toMatchObject({ globalDictationHold: ["Fn"], globalDictationToggle: ["Fn"] });
+    expect(
+      findCommandKeybindingConflict(
+        createCommandKeymapState(overrides, "macOS"),
+        "renameThread",
+        "Fn",
+      )?.commandId,
+    ).toBe("globalDictationHold");
+  });
+
   test("requires Cmd/Ctrl or Alt for ordinary global dictation shortcuts", () => {
     const setGlobalHold = (key: string) =>
       applyCommandKeybindingUpdate(
@@ -298,6 +358,7 @@ describe("command keybindings", () => {
       spec: {
         bindingId: "global-dictation-hold",
         mode: "hold",
+        registrationAccelerator: "Alt+Y",
         modifiers: ["option"],
         keyCode: 16,
         bareModifierKeyCodes: null,
@@ -317,7 +378,33 @@ describe("command keybindings", () => {
         mode: "toggle",
         layout: dvorak,
       }),
-    ).toMatchObject({ type: "compiled", spec: { keyCode: 16 } });
+    ).toMatchObject({
+      type: "compiled",
+      spec: { keyCode: 16, registrationAccelerator: "Alt+Y" },
+    });
+  });
+
+  test("compiles modifier-family gestures independently of modifier side", () => {
+    for (const [accelerator, modifiers] of [
+      ["Ctrl+Alt", ["control", "option"]],
+      ["Shift+Fn", ["shift", "function"]],
+      ["Meta+Control+Option", ["control", "command", "option"]],
+    ] as const) {
+      expect(validateGlobalDictationShortcut(accelerator, "macOS")).toBeNull();
+      expect(compileMacNativeHotkey({ accelerator, bindingId: "hold", mode: "hold" })).toEqual({
+        type: "compiled",
+        spec: {
+          bindingId: "hold",
+          mode: "hold",
+          registrationAccelerator: null,
+          modifiers,
+          keyCode: null,
+          bareModifierKeyCodes: null,
+        },
+      });
+      expect(validateGlobalDictationShortcut(accelerator, "windows")).not.toBeNull();
+    }
+    expect(validateGlobalDictationShortcut("Ctrl+Control", "macOS")).not.toBeNull();
   });
 
   test("drops persisted global bindings outside the finite native key domain", () => {
@@ -342,6 +429,28 @@ describe("command keybindings", () => {
       isCustom: false,
       keybindings: [],
     });
+  });
+
+  test("admits Windows global chords without exposing macOS bare modifiers", () => {
+    const overrides = applyCommandKeybindingUpdate(
+      {},
+      "globalDictationHold",
+      { type: "set", keybinding: { key: "Ctrl+Alt+D" } },
+      "windows",
+    );
+    expect(
+      createCommandKeymapState(overrides, "windows").entries.find(
+        (entry) => entry.id === "globalDictationHold",
+      ),
+    ).toMatchObject({ available: true, keybindings: [{ key: "Ctrl+Alt+D" }] });
+    expect(normalizeCommandKeybindingOverrides({ globalDictationHold: ["Fn"] }, "windows")).toEqual(
+      {},
+    );
+    expect(
+      createCommandKeymapState({}, "linux").entries.find(
+        (entry) => entry.id === "globalDictationHold",
+      )?.available,
+    ).toBe(false);
   });
 
   test("accepts only supported macOS bare global modifiers", () => {

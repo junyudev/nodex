@@ -245,8 +245,10 @@ function ensureStorybookElectronBridge({
         case "reset-codex-command-keybindings":
           commandKeybindingOverrides = {};
           return { type: "applied", state: createCommandKeymapState(commandKeybindingOverrides) };
-        case "global-dictation-capture-fn-hotkey":
+        case "global-dictation-capture-bare-modifier-hotkey":
           return null;
+        case "global-dictation-hotkey-capture:cancel":
+          return true;
         case "codex:dictation:state:read":
           return {
             isEnabled: true,
@@ -258,6 +260,8 @@ function ensureStorybookElectronBridge({
               history: true,
               streaming: "available",
               semanticCleanup: true,
+              sounds: false,
+              voiceDictionary: false,
               microphoneOwner: "none",
               auth: "chatgpt",
             },

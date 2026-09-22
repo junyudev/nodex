@@ -1,5 +1,7 @@
 import { expect, it } from "vitest";
 import { DictationDiagnosticsRecorder } from "./dictation-diagnostics-recorder";
+import { dictationTextResult } from "../../../../tests/fixtures/dictation-diagnostics";
+import { MAX_DICTATION_DIAGNOSTIC_REQUESTS } from "../../../shared/dictation-diagnostics";
 
 it("keeps recording and overlapping work out of stop-to-text latency and separates clipboard restoration", async () => {
   let now = 0;
@@ -41,4 +43,21 @@ it("measures a retry from its own start and preserves failed phase timing", asyn
     phases: [{ stage: "buffered", offsetMs: 0, durationMs: 120, outcome: "failed" }],
   });
   expect(recorder.snapshot("failed").stopToTextMs).toBeUndefined();
+});
+
+it("retains separate segment recovery requests and bounds repeated request reports", () => {
+  const recorder = new DictationDiagnosticsRecorder(() => 0, "composer");
+  const request = dictationTextResult("segment").diagnostics;
+  for (let index = 0; index <= MAX_DICTATION_DIAGNOSTIC_REQUESTS; index += 1) {
+    recorder.request({
+      ...request,
+      requestId: `00000000-0000-4000-8000-${String(index).padStart(12, "0")}`,
+    });
+  }
+  const requests = recorder.snapshot("completed").requests;
+  expect(requests).toHaveLength(MAX_DICTATION_DIAGNOSTIC_REQUESTS);
+  expect(requests[0]?.requestId).toBe("00000000-0000-4000-8000-000000000001");
+  recorder.request({ ...requests[0]!, outcome: "failed" });
+  expect(recorder.snapshot("failed").requests).toHaveLength(MAX_DICTATION_DIAGNOSTIC_REQUESTS);
+  expect(recorder.snapshot("failed").requests.at(-1)?.outcome).toBe("failed");
 });

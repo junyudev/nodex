@@ -33,6 +33,49 @@ const browserWindow = (id: number, sent: string[] = []): BrowserWindow =>
   }) as unknown as BrowserWindow;
 
 describe("application window coordinator", () => {
+  test("reopens a primary window and delivers recording navigation after renderer readiness", () => {
+    const sent: string[] = [];
+    const window = browserWindow(7, sent);
+    const send = vi.spyOn(window.webContents, "send");
+    let current: BrowserWindow | null = null;
+    let initialized = false;
+    const create = vi.fn(() => {
+      current = window;
+      return window;
+    });
+    const coordinator = createApplicationWindowCoordinator({
+      closeAll: () => Effect.succeed(cleanReport),
+      create,
+      focusedWindow: () => null,
+      reportFailure: vi.fn(),
+      syncTitle: vi.fn(),
+      windows: {
+        acquireSessionForNewWindow: () => ({ kind: "new", session: session("recovery") }),
+        getLastFocused: () => current,
+        get: () => current,
+        isRendererInitialized: () => initialized,
+      } as unknown as WindowRuntimeService,
+    });
+    expect(coordinator.openDictationRecording("recording-a")).toBe(true);
+    expect(create).toHaveBeenCalledOnce();
+    expect(send).not.toHaveBeenCalled();
+    initialized = true;
+    coordinator.flushDictationRecording(8);
+    expect(send).not.toHaveBeenCalled();
+    coordinator.flushDictationRecording(7);
+    coordinator.flushDictationRecording(7);
+    expect(send).toHaveBeenCalledExactlyOnceWith("dictation:open-recording", {
+      recordingId: "recording-a",
+    });
+    expect(coordinator.openDictationRecording("recording-b")).toBe(true);
+    expect(create).toHaveBeenCalledOnce();
+    expect(send).toHaveBeenLastCalledWith("dictation:open-recording", {
+      recordingId: "recording-b",
+    });
+    coordinator.stop();
+    expect(coordinator.openDictationRecording("recording-c")).toBe(false);
+  });
+
   test("delegates a new-window request to an initialized renderer and stops ingress", () => {
     const sent: string[] = [];
     const source = browserWindow(7, sent);

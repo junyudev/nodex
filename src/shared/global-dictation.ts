@@ -8,6 +8,12 @@ export interface GlobalDictationTarget {
   readonly bundleIdentifier: string;
 }
 
+export interface GlobalDictationPasteFailure {
+  readonly text: string;
+  readonly copied: boolean;
+  readonly reason: "accessibility" | "clipboard-changed" | "paste";
+}
+
 export type GlobalDictationDeclineReason =
   | "busy"
   | "deadline-expired"
@@ -27,6 +33,7 @@ export type GlobalDictationRendererCommand =
       readonly requestId: string;
       readonly deadlineAtMs: number;
       readonly gesture: Extract<DictationGesture, "hold" | "toggle">;
+      readonly activationStartedAtMs?: number;
     }
   | { readonly type: "stop"; readonly sessionId: string }
   | { readonly type: "cancel"; readonly sessionId: string }
@@ -36,7 +43,12 @@ export type GlobalDictationRendererCommand =
       readonly sessionId: string;
       readonly clipboardRestoreMs: number;
     }
-  | { readonly type: "paste-failed"; readonly sessionId: string; readonly error: DictationError };
+  | {
+      readonly type: "paste-failed";
+      readonly sessionId: string;
+      readonly error: DictationError;
+      readonly failure: GlobalDictationPasteFailure;
+    };
 
 export type GlobalDictationRendererEvent =
   | { readonly type: "ready" }
@@ -58,6 +70,12 @@ export type GlobalDictationRendererEvent =
       readonly state: "listening" | "transcribing";
     }
   | { readonly type: "completed"; readonly sessionId: string; readonly transcript: string }
+  | { readonly type: "recording-stopped"; readonly sessionId: string }
+  | { readonly type: "stop-requested"; readonly sessionId: string }
+  | { readonly type: "copy-transcript"; readonly sessionId: string }
+  | { readonly type: "open-accessibility-settings"; readonly sessionId: string }
+  | { readonly type: "view-recording"; readonly sessionId: string; readonly recordingId: string }
+  | { readonly type: "copy-recovered-text"; readonly sessionId: string; readonly text: string }
   | { readonly type: "cancelled"; readonly sessionId: string }
   | { readonly type: "failed"; readonly sessionId: string; readonly error: DictationError }
   | { readonly type: "dismiss"; readonly sessionId: string }

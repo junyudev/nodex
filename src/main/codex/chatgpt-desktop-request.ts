@@ -27,6 +27,8 @@ export interface ChatGptDesktopRequestInput {
   refreshOn401?: boolean;
   missingAuthErrorMessage?: string;
   signal?: AbortSignal;
+  /** Frozen target for account-scoped operations, including same-user workspace changes. */
+  expectedAccount?: { readonly accountId: string; readonly userId: string };
   /** Local-only observation; callers must select safe fields rather than retain credentials. */
   onRequestHeaders?: (headers: Headers) => void;
 }
@@ -50,7 +52,9 @@ export function resolveChatGptDesktopRequestUrl(baseUrl: string, path: string): 
 }
 
 export function buildChatGptDesktopUserAgent(appVersion: string): string {
-  return `${CHATGPT_DESKTOP_ORIGINATOR}/${appVersion} (${platform}; ${arch})`;
+  const systemName =
+    platform === "darwin" ? "Mac OS" : platform === "win32" ? "Windows NT 10.0" : "X11; Linux";
+  return `${CHATGPT_DESKTOP_ORIGINATOR}/${appVersion} (${systemName}; ${arch})`;
 }
 
 export function extractChatGptAccountIdFromAuthToken(token: string): string | null {
