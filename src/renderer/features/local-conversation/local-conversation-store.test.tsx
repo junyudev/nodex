@@ -2883,6 +2883,35 @@ describe("local-conversation-store", () => {
     }
   });
 
+  test("publishes sound and dictionary capability changes independently", async () => {
+    const { CodexAppServerManager, __resetLocalConversationStoreForTests } =
+      await import("./local-conversation-store");
+    resetLocalConversationStoreTestHarness(__resetLocalConversationStoreForTests);
+    const manager = trackNativeTestManager(new CodexAppServerManager("local"));
+    const changed = vi.fn();
+    const unsubscribe = manager.subscribeControl(changed);
+
+    try {
+      for (const capability of ["sounds", "voiceDictionary"] as const) {
+        const current = manager.readDictationState();
+        const state = {
+          ...current,
+          capabilities: {
+            ...current.capabilities,
+            [capability]: !current.capabilities[capability],
+          },
+        };
+        changed.mockClear();
+        for (const listener of codexEventListeners) listener({ type: "dictationState", state });
+        expect(manager.readDictationState()).toEqual(state);
+        expect(changed).toHaveBeenCalledOnce();
+      }
+    } finally {
+      unsubscribe();
+      manager.destroy();
+    }
+  });
+
   test("hydrates account and connection through the external store bootstrap", async () => {
     invokeCalls = [];
     hostMessageListener = null;

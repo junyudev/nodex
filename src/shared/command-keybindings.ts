@@ -163,12 +163,14 @@ export interface KeyboardLayoutSnapshot {
 
 export type MacNativeHotkeyModifier = "command" | "control" | "function" | "option" | "shift";
 
-/** Transport shape consumed by the signed macOS helper. Display accelerators never cross this seam. */
+/** Physical shortcut registration and native key observation share one compiled binding. */
 export interface MacNativeHotkeySpec {
   readonly bindingId: string;
   readonly mode: "hold" | "toggle";
+  readonly registrationAccelerator: string | null;
   readonly modifiers: readonly MacNativeHotkeyModifier[];
   readonly keyCode: number | null;
+  /** Null with no keyCode observes modifier families regardless of left/right side. */
   readonly bareModifierKeyCodes: readonly number[] | null;
 }
 
@@ -284,6 +286,26 @@ const UNSUPPORTED_MAC_BARE_MODIFIERS = new Set([
   "leftshift",
   "rightshift",
 ]);
+
+const MAC_BARE_MODIFIER_FAMILIES: Readonly<Record<string, string>> = {
+  ctrl: "Ctrl",
+  control: "Ctrl",
+  command: "Command",
+  cmd: "Command",
+  meta: "Command",
+  alt: "Alt",
+  option: "Alt",
+  shift: "Shift",
+  fn: "Fn",
+};
+const MAC_BARE_MODIFIER_ORDER = ["Ctrl", "Command", "Alt", "Shift", "Fn"] as const;
+const MAC_NATIVE_MODIFIER_BY_NAME: Readonly<Record<string, MacNativeHotkeyModifier>> = {
+  Ctrl: "control",
+  Command: "command",
+  Alt: "option",
+  Shift: "shift",
+  Fn: "function",
+};
 
 const KEY_ALIASES = new Map<string, string>([
   ["esc", "Escape"],
@@ -1018,17 +1040,17 @@ export function normalizeCommandKeybindingOverrides(
   return Object.entries(value as Record<string, unknown>).reduce<CommandKeybindingOverrides>(
     (acc, [commandId, rawKeys]) => {
       if (!Array.isArray(rawKeys)) return acc;
+      const isGlobalDictationCommand =
+        commandId === "globalDictationHold" || commandId === "globalDictationToggle";
       const normalized = rawKeys
         .filter((rawKey): rawKey is string => typeof rawKey === "string")
-        .map((rawKey) => normalizeAccelerator(rawKey))
+        .map((rawKey) => normalizeCommandAccelerator(rawKey, isGlobalDictationCommand, platform))
         .filter((key) => key.length > 0)
         .filter(
           (key) =>
             (commandId !== "globalDictationHold" && commandId !== "globalDictationToggle") ||
             validateGlobalDictationShortcutRejection(key, platform) === null,
         );
-      const isGlobalDictationCommand =
-        commandId === "globalDictationHold" || commandId === "globalDictationToggle";
       if (isGlobalDictationCommand && rawKeys.length > 0 && normalized.length === 0) {
         return acc;
       }
@@ -1050,14 +1072,18 @@ export function createCommandKeymapState(
         ? (overrides[entry.id] ?? [])
         : null;
       const customKeybindings =
-        override === null ? null : override.map((key) => ({ key: normalizeAccelerator(key) }));
+        override === null
+          ? null
+          : override.map((key) => ({
+              key: normalizeCommandAccelerator(key, entry.shortcutScope === "os-global", platform),
+            }));
       const keybindings = customKeybindings ?? entry.defaultKeybindings;
 
       return {
         ...entry,
         available:
           entry.available ||
-          (platform === "macOS" &&
+          ((platform === "macOS" || platform === "windows") &&
             (entry.id === "globalDictationHold" || entry.id === "globalDictationToggle")),
         defaultKeybindings: entry.defaultKeybindings.map(cloneKeybinding),
         keybindings: keybindings.map(cloneKeybinding),
@@ -1095,7 +1121,9 @@ export function applyCommandKeybindingUpdate(
   const current = Object.prototype.hasOwnProperty.call(overrides, commandId)
     ? (overrides[commandId] ?? [])
     : entry.defaultKeybindings.map((binding) => binding.key).filter(isString);
-  const nextKeys = resolveNextOverrideKeys(current, entry, update);
+  const nextKeys = resolveNextOverrideKeys(current, entry, update, (key) =>
+    normalizeCommandAccelerator(key, entry.shortcutScope === "os-global", platform),
+  );
   validateCommandKeybindings(nextKeys, entry, overrides, commandId, platform);
 
   return {
@@ -1111,7 +1139,9 @@ export function validateCommandKeybindings(
   commandId: string,
   platform: RuntimePlatform = resolveRuntimePlatform(),
 ): void {
-  const normalizedKeys = keys.map((key) => normalizeAccelerator(key));
+  const normalizedKeys = keys.map((key) =>
+    normalizeCommandAccelerator(key, entry.shortcutScope === "os-global", platform),
+  );
   const seen = new Set<string>();
 
   normalizedKeys.forEach((key) => {
@@ -1190,6 +1220,19 @@ export function validateGlobalDictationShortcutRejection(
   }
   if (parts.length === 0) {
     return { kind: "invalid-accelerator", message: "Shortcut cannot be empty." };
+  }
+  if (platform === "windows") {
+    const unsupported = parts.some(
+      (part) => part.toLowerCase() === "meta" || part.toLowerCase() === "commandorcontrol",
+    );
+    const hasReleaseModifier = parts.some((part) =>
+      ["cmdorctrl", "command", "cmd", "control", "ctrl", "alt", "option", "shift"].includes(
+        part.toLowerCase(),
+      ),
+    );
+    if (unsupported || !hasReleaseModifier) {
+      return { kind: "unsupported-key", message: "This shortcut key is not supported." };
+    }
   }
 
   let hasPrimaryModifier = false;
@@ -1288,9 +1331,25 @@ export function compileMacNativeHotkey(input: {
       spec: {
         bindingId: input.bindingId,
         mode: input.mode,
+        registrationAccelerator: null,
         modifiers: bare.modifiers,
         keyCode: null,
         bareModifierKeyCodes: bare.bareModifierKeyCodes,
+      },
+    };
+  }
+
+  const bareFamilies = normalizeMacBareModifier(normalized);
+  if (bareFamilies) {
+    return {
+      type: "compiled",
+      spec: {
+        bindingId: input.bindingId,
+        mode: input.mode,
+        registrationAccelerator: null,
+        modifiers: bareFamilies.split("+").map((name) => MAC_NATIVE_MODIFIER_BY_NAME[name]!),
+        keyCode: null,
+        bareModifierKeyCodes: null,
       },
     };
   }
@@ -1325,6 +1384,10 @@ export function compileMacNativeHotkey(input: {
     spec: {
       bindingId: input.bindingId,
       mode: input.mode,
+      registrationAccelerator: [
+        ...parsed.modifiers,
+        /^[A-Z0-9]$/.test(parsed.key) ? code.replace(/^(Key|Digit)/, "") : parsed.key,
+      ].join("+"),
       modifiers,
       keyCode: MAC_KEY_CODE_BY_CODE[code],
       bareModifierKeyCodes: null,
@@ -1343,6 +1406,12 @@ export function findCommandKeybindingConflict(
 
   for (const entry of state.entries) {
     if (entry.id === commandId || !entry.available) continue;
+    // One global shortcut can distinguish a hold from a double tap.
+    if (
+      (commandId === "globalDictationHold" && entry.id === "globalDictationToggle") ||
+      (commandId === "globalDictationToggle" && entry.id === "globalDictationHold")
+    )
+      continue;
     for (const binding of entry.keybindings) {
       const key = binding.key ? normalizeAccelerator(binding.key) : "";
       if (!key) continue;
@@ -1640,31 +1709,32 @@ function resolveNextOverrideKeys(
   current: string[],
   entry: CommandRegistryEntry,
   update: Exclude<CommandKeybindingUpdate, { type: "reset" }>,
+  normalize: (key: string | null | undefined) => string = normalizeAccelerator,
 ): string[] {
   if (update.type === "set") {
-    return [requiredKey(update.keybinding)];
+    return [requiredKey(update.keybinding, normalize)];
   }
   if (update.type === "append") {
     if (!entry.allowsMultiple) {
       throw new Error(`${entry.title} only supports one keyboard shortcut`);
     }
-    return [...current, requiredKey(update.keybinding)].map(normalizeAccelerator);
+    return [...current, requiredKey(update.keybinding, normalize)].map(normalize);
   }
   if (update.type === "replace") {
-    const oldKey = requiredKey(update.oldKeybinding);
-    const newKey = requiredKey(update.newKeybinding);
+    const oldKey = requiredKey(update.oldKeybinding, normalize);
+    const newKey = requiredKey(update.newKeybinding, normalize);
     const replaced = current.map((key) =>
       normalizeAccelerator(key) === normalizeAccelerator(oldKey) ? newKey : key,
     );
     return replaced.some((key) => normalizeAccelerator(key) === normalizeAccelerator(newKey))
-      ? replaced.map(normalizeAccelerator)
+      ? replaced.map(normalize)
       : [newKey];
   }
 
-  const keyToRemove = requiredKey(update.keybinding);
+  const keyToRemove = requiredKey(update.keybinding, normalize);
   return current
     .filter((key) => normalizeAccelerator(key) !== normalizeAccelerator(keyToRemove))
-    .map(normalizeAccelerator);
+    .map(normalize);
 }
 
 function omitOverride(
@@ -1680,12 +1750,27 @@ function cloneKeybinding(binding: CommandKeybindingRecord): CommandKeybindingRec
   return { key: binding.key };
 }
 
-function requiredKey(binding: CommandKeybindingRecord): string {
-  const key = normalizeAccelerator(binding.key);
+function requiredKey(
+  binding: CommandKeybindingRecord,
+  normalize: (key: string | null | undefined) => string = normalizeAccelerator,
+): string {
+  const key = normalize(binding.key);
   if (!key) {
     throw new Error("Keyboard shortcut is required");
   }
   return key;
+}
+
+function normalizeCommandAccelerator(
+  accelerator: string | null | undefined,
+  global: boolean,
+  platform: RuntimePlatform,
+): string {
+  // Windows release monitoring recognizes a narrower modifier vocabulary than Electron.
+  // Preserve it through storage so an alias cannot silently change the release condition.
+  return global && platform === "windows"
+    ? (accelerator?.trim() ?? "")
+    : normalizeAccelerator(accelerator);
 }
 
 function normalizeChord(chord: string): string {
@@ -1727,8 +1812,14 @@ function normalizedBareModifierLookupKey(value: string): string {
   return value.replace(/[\s_-]/g, "").toLowerCase();
 }
 
-function normalizeMacBareModifier(value: string): string | null {
-  return MAC_BARE_MODIFIER_ALIASES.get(normalizedBareModifierLookupKey(value)) ?? null;
+export function normalizeMacBareModifier(value: string): string | null {
+  const named = MAC_BARE_MODIFIER_ALIASES.get(normalizedBareModifierLookupKey(value));
+  if (named) return named;
+  const families = value
+    .split("+")
+    .map((part) => MAC_BARE_MODIFIER_FAMILIES[part.trim().toLowerCase()]);
+  if (families.some((family) => family === undefined) || new Set(families).size < 2) return null;
+  return MAC_BARE_MODIFIER_ORDER.filter((family) => families.includes(family)).join("+");
 }
 
 function isKnownMacBareModifierPart(value: string): boolean {

@@ -1,3 +1,4 @@
+import { CodexExecutionHostAuthState } from "../codex-runtime/CodexExecutionHostAuthState";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 import {
@@ -20,7 +21,13 @@ import { CodexConnection } from "../codex-application/CodexConnection";
 import { CodexRendererPresentationRegistry } from "../codex-application/CodexRendererPresentationRegistry";
 import { CodexUserInputAutoResolution } from "../codex-application/CodexUserInputAutoResolution";
 import { CodexMedia, live as codexMediaLive } from "../codex-application/CodexMedia";
+import {
+  DictationDictionary,
+  live as dictationDictionaryLive,
+} from "../codex-application/DictationDictionary";
 import { CodexGateway, CodexThreadHostResolver } from "../codex-runtime/CodexGateway";
+import { CodexAppServerCapabilities } from "../codex-runtime/CodexAppServerCapabilities";
+import { CodexWorkspaceRouting } from "../codex-runtime/CodexWorkspaceRouting";
 import { CoreAuthority } from "../core-runtime/CoreAuthority";
 import { DatabaseModule } from "../database-application/DatabaseModule";
 import { DesktopDocumentSessionRuntime } from "../core-client/desktop-document-sync-bridge";
@@ -109,6 +116,7 @@ import { MainConfig } from "./MainConfig";
 import { MainCleanup } from "./MainCleanup";
 import { ScopedCallbackRuntime } from "./ScopedCallbackRuntime";
 import { ApplicationSettings } from "../settings/ApplicationSettings";
+import { CodexPlatform } from "./CodexApplicationLive";
 
 const appUpdates = appUpdateRuntimeLive;
 const desktopNotifications = desktopNotificationRuntimeLive;
@@ -120,9 +128,6 @@ const nodexAgentAuthorization = nodexAgentAuthorizationRuntimeLive.pipe(
   Layer.provideMerge(rendererClients),
 );
 const privacy = electronPrivacyLive;
-const dictation = dictationRuntimeLive({
-  preloadPath: resolveBundledElectronPreload(__dirname, "global-dictation.js"),
-}).pipe(Layer.provideMerge(Layer.mergeAll(privacy, rendererClients)));
 const databaseNotifier = DatabaseNotifierRuntime.live;
 const structuralClipboard = structuralClipboardRuntimeLive.pipe(
   Layer.provideMerge(Layer.merge(electronClipboardLive, rendererClients)),
@@ -138,7 +143,6 @@ const mcpAppSandbox = Layer.unwrap(
     });
   }),
 );
-const codexMedia = codexMediaLive.pipe(Layer.provideMerge(dictation));
 const remoteHostedPip = Layer.unwrap(
   Effect.gen(function* () {
     const browser = yield* BrowserApplication;
@@ -236,6 +240,12 @@ const applicationWindows = Layer.unwrap(
   ),
 );
 
+const dictation = dictationRuntimeLive({
+  preloadPath: resolveBundledElectronPreload(__dirname, "global-dictation.js"),
+}).pipe(Layer.provideMerge(Layer.mergeAll(privacy, rendererClients, applicationWindows)));
+const codexMedia = codexMediaLive.pipe(Layer.provideMerge(dictation));
+const dictationDictionary = dictationDictionaryLive.pipe(Layer.provideMerge(codexMedia));
+
 const applicationMenu = Layer.unwrap(
   Effect.gen(function* () {
     const appUpdates = yield* AppUpdateRuntime;
@@ -284,6 +294,7 @@ export const live: Layer.Layer<
   | ComposerAppshotRuntime
   | ComputerUseSettingsRuntime
   | CodexMedia
+  | DictationDictionary
   | DatabaseNotifierRuntime.DatabaseNotifierRuntime
   | DesktopNotificationRuntime
   | DeepLinkRuntime
@@ -311,6 +322,10 @@ export const live: Layer.Layer<
   | CodexApplicationEventHub
   | CodexConnection
   | CodexGateway
+  | CodexAppServerCapabilities
+  | CodexExecutionHostAuthState
+  | CodexWorkspaceRouting
+  | CodexPlatform
   | CodexThreadHostResolver
   | CodexRendererPresentationRegistry
   | CodexUserInputAutoResolution
@@ -341,6 +356,7 @@ export const live: Layer.Layer<
   computerUseSettings,
   remoteHostedPipIntegration,
   codexMedia,
+  dictationDictionary,
   databaseNotifier,
   deepLinks,
   dictation,

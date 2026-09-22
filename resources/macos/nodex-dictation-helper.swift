@@ -2,13 +2,15 @@ import ApplicationServices
 import AppKit
 import CoreAudio
 import CoreGraphics
+import CryptoKit
 import Foundation
 
-private let protocolVersion = 3
+private let protocolVersion = 4
 private let maximumMessageBytes = 64 * 1024
 private let maximumPasteboardFormatBytes = 8 * 1024 * 1024
 private let maximumPasteboardSnapshotBytes = 32 * 1024 * 1024
 private let relevantFlags: CGEventFlags = [.maskCommand, .maskControl, .maskAlternate, .maskShift, .maskSecondaryFn]
+private let modifierKeyCodes: Set<CGKeyCode> = [54, 55, 56, 58, 59, 60, 61, 62, 63]
 
 private struct Hotkey {
     let id: String
@@ -18,6 +20,7 @@ private struct Hotkey {
     let keyCode: CGKeyCode?
     let bareModifierKeyCodes: Set<CGKeyCode>?
     var pressed: Bool
+    var suppressed = false
 }
 
 private final class HelperState {
@@ -28,10 +31,15 @@ private final class HelperState {
     var generation: UInt64 = 0
     var captureRequestId: String?
     var captureTimer: Timer?
+    var modifierCapture = ModifierCapture()
+    var heldKeys: Set<CGKeyCode> = []
+    var paste: PasteTransaction?
+    var shuttingDown = false
 }
 
 private let outputLock = NSLock()
 
+#if !DICTATION_HELPER_TESTS
 @main
 private enum NodexDictationHelper {
     static func main() {
@@ -46,22 +54,33 @@ private enum NodexDictationHelper {
     }
 }
 
+#endif
+
 private func readCommands() {
-    while let line = readLine(strippingNewline: true) {
-        guard line.utf8.count <= maximumMessageBytes,
-              let data = line.data(using: .utf8),
-              let request = try? JSONSerialization.jsonObject(with: data) as? [String: Any]
-        else {
-            emitError(id: nil, code: "invalid-message")
-            continue
-        }
-        DispatchQueue.main.async {
-            handle(request)
+    var line = Data()
+    var oversized = false
+    while let chunk = try? FileHandle.standardInput.read(upToCount: maximumMessageBytes), !chunk.isEmpty {
+        for byte in chunk {
+            if byte != 0x0A {
+                if !oversized { line.append(byte) }
+                if line.count > maximumMessageBytes { line.removeAll(keepingCapacity: true); oversized = true }
+                continue
+            }
+            if !oversized, let request = try? JSONSerialization.jsonObject(with: line) as? [String: Any] {
+                // Backpressure the reader rather than queueing unbounded commands on Main.
+                DispatchQueue.main.sync { handle(request) }
+            } else {
+                emitError(id: nil, code: "invalid-message")
+            }
+            line.removeAll(keepingCapacity: true)
+            oversized = false
         }
     }
     DispatchQueue.main.async {
         uninstallEventTap()
-        exit(EXIT_SUCCESS)
+        HelperState.shared.shuttingDown = true
+        guard let paste = HelperState.shared.paste else { exit(EXIT_SUCCESS) }
+        paste.cancel()
     }
 }
 
@@ -110,13 +129,32 @@ private func handle(_ request: [String: Any]) {
             emitError(id: id, code: "input-monitoring-denied")
             return
         }
-        HelperState.shared.hotkeys = bindings
-        if bindings.isEmpty && HelperState.shared.captureRequestId == nil { uninstallEventTap() }
+        HelperState.shared.hotkeys = preservingHotkeyState(bindings, previous: HelperState.shared.hotkeys)
+        uninstallEventTapIfUnused()
         emitResponse(id: id, value: [
             "applied": true,
             "generation": generationValue,
         ])
-    case "captureFn":
+    case "armRegularRelease":
+        guard let bindingId = request["bindingId"] as? String,
+              let generation = request["generation"] as? NSNumber,
+              var hotkey = HelperState.shared.hotkeys[bindingId],
+              hotkey.keyCode != nil,
+              hotkey.configurationGeneration == generation.uint64Value else {
+            emitError(id: id, code: "invalid-hotkey")
+            return
+        }
+        hotkey.pressed = true
+        // The modifier may have been released while Electron's press crossed the pipe.
+        let transition = transitionHotkey(
+            &hotkey, type: .flagsChanged, keyCode: 0,
+            flags: CGEventSource.flagsState(.combinedSessionState).intersection(relevantFlags),
+            repeated: false, hasOtherKey: false, keyDown: { _ in false }
+        )
+        HelperState.shared.hotkeys[bindingId] = hotkey
+        emitResponse(id: id, value: true)
+        if let transition { emitHotkeyEvent(hotkey: hotkey, type: transition) }
+    case "captureBareModifier":
         guard installEventTapIfNeeded() else {
             emitError(id: id, code: "input-monitoring-denied")
             return
@@ -125,72 +163,78 @@ private func handle(_ request: [String: Any]) {
             emitError(id: previousId, code: "capture-replaced")
         }
         HelperState.shared.captureRequestId = id
+        HelperState.shared.modifierCapture = ModifierCapture(
+            flags: CGEventSource.flagsState(.combinedSessionState).intersection(relevantFlags),
+            keys: currentModifierKeys(),
+            cancelled: !HelperState.shared.heldKeys.isEmpty
+        )
         HelperState.shared.captureTimer?.invalidate()
         HelperState.shared.captureTimer = Timer.scheduledTimer(withTimeInterval: 10, repeats: false) { _ in
             guard HelperState.shared.captureRequestId == id else { return }
             HelperState.shared.captureRequestId = nil
             HelperState.shared.captureTimer = nil
             emitError(id: id, code: "capture-timeout")
-            if HelperState.shared.hotkeys.isEmpty { uninstallEventTap() }
+            uninstallEventTapIfUnused()
         }
+    case "cancelCapture":
+        if let captureId = HelperState.shared.captureRequestId,
+           request["requestId"] as? String == captureId {
+            HelperState.shared.captureRequestId = nil
+            HelperState.shared.captureTimer?.invalidate()
+            HelperState.shared.captureTimer = nil
+            HelperState.shared.modifierCapture = ModifierCapture()
+            emitError(id: captureId, code: "aborted")
+            uninstallEventTapIfUnused()
+        }
+        emitResponse(id: id, value: true)
+    case "captureClipboardFingerprint":
+        guard let snapshot = snapshotPasteboard(.general) else {
+            emitError(id: id, code: "clipboard-unavailable")
+            return
+        }
+        emitResponse(id: id, value: snapshot.fingerprint)
+    case "copy":
+        guard let text = validPasteText(request), HelperState.shared.paste == nil else {
+            emitError(id: id, code: "paste-unavailable")
+            return
+        }
+        NSPasteboard.general.clearContents()
+        guard NSPasteboard.general.setString(text, forType: .string) else {
+            emitError(id: id, code: "paste-failed")
+            return
+        }
+        emitResponse(id: id, value: true)
     case "safePaste":
-        guard let target = request["target"] as? [String: Any],
-              let pidValue = target["pid"] as? NSNumber,
-              let bundleIdentifier = target["bundleIdentifier"] as? String,
-              let text = request["text"] as? String,
-              !text.isEmpty,
-              text.utf8.count <= maximumMessageBytes / 2
-        else {
-            emitError(id: id, code: "invalid-target")
+        guard let text = validPasteText(request), HelperState.shared.paste == nil else {
+            emitError(id: id, code: "paste-unavailable")
             return
         }
-        let pid = pid_t(pidValue.int32Value)
-        guard foregroundMatches(pid: pid, bundleIdentifier: bundleIdentifier) else {
-            emitError(id: id, code: "target-changed")
-            return
-        }
-        guard AXIsProcessTrusted() else {
-            emitError(id: id, code: "accessibility-denied")
-            return
-        }
-        guard let snapshot = snapshotPasteboard() else {
-            emitError(id: id, code: "paste-failed")
-            return
-        }
-        let pasteboard = NSPasteboard.general
-        pasteboard.clearContents()
-        guard pasteboard.setString(text, forType: .string) else {
-            restorePasteboard(snapshot)
-            emitError(id: id, code: "paste-failed")
-            return
-        }
-        let dictationChangeCount = pasteboard.changeCount
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) {
-            guard foregroundMatches(pid: pid, bundleIdentifier: bundleIdentifier),
-                  AXIsProcessTrusted(),
-                  postPasteShortcut(pid: pid)
-            else {
-                restorePasteboardIfUnchanged(
-                    snapshot,
-                    insertedText: text,
-                    expectedChangeCount: dictationChangeCount
-                )
-                emitError(id: id, code: "paste-failed")
-                return
+        let transaction = PasteTransaction(
+            text: text,
+            pasteboard: .general,
+            trusted: AXIsProcessTrusted,
+            dispatch: dispatchFocusedPaste,
+            completion: { result in
+                HelperState.shared.paste = nil
+                switch result {
+                case .success(let value): emitResponse(id: id, value: value)
+                case .failure: emitError(id: id, code: "aborted")
+                }
+                if HelperState.shared.shuttingDown { exit(EXIT_SUCCESS) }
             }
-            let pasteDispatchedAt = DispatchTime.now().uptimeNanoseconds
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.7) {
-                restorePasteboardIfUnchanged(
-                    snapshot,
-                    insertedText: text,
-                    expectedChangeCount: dictationChangeCount
-                )
-                emitResponse(id: id, value: [
-                    "pasted": true,
-                    "clipboardRestoreMs": Double(DispatchTime.now().uptimeNanoseconds - pasteDispatchedAt) / 1_000_000,
-                ])
-            }
+        )
+        transaction.requestId = id
+        HelperState.shared.paste = transaction
+        transaction.start(
+            expectedFingerprint: request["clipboardFingerprint"] as? String,
+            recordingStoppedAtMs: (request["recordingStoppedAtMs"] as? NSNumber)?.doubleValue
+        )
+    case "cancelPaste":
+        if let requestId = request["requestId"] as? String,
+           HelperState.shared.paste?.requestId == requestId {
+            HelperState.shared.paste?.cancel()
         }
+        emitResponse(id: id, value: true)
     case "queryBuiltInMic":
         emitResponse(id: id, value: preferredBuiltInMicrophoneName() ?? NSNull())
     default:
@@ -198,41 +242,193 @@ private func handle(_ request: [String: Any]) {
     }
 }
 
-private func snapshotPasteboard() -> [NSPasteboardItem]? {
-    let pasteboard = NSPasteboard.general
+private func validPasteText(_ request: [String: Any]) -> String? {
+    guard let text = request["text"] as? String, !text.isEmpty,
+          text.utf8.count <= maximumMessageBytes / 2 else { return nil }
+    return text
+}
+
+private struct PasteboardSnapshot {
+    let items: [[NSPasteboard.PasteboardType: Data]]
+
+    var fingerprint: String {
+        var hash = SHA256()
+        // Length prefixes preserve item/format boundaries, including empty formats.
+        func append(_ data: Data) {
+            var length = UInt64(data.count).bigEndian
+            withUnsafeBytes(of: &length) { hash.update(data: Data($0)) }
+            hash.update(data: data)
+        }
+        append(Data(String(items.count).utf8))
+        for item in items {
+            append(Data(String(item.count).utf8))
+            for type in item.keys.sorted(by: { $0.rawValue < $1.rawValue }) {
+                append(Data(type.rawValue.utf8))
+                append(item[type]!)
+            }
+        }
+        return hash.finalize().map { String(format: "%02x", $0) }.joined()
+    }
+}
+
+private func snapshotPasteboard(_ pasteboard: NSPasteboard) -> PasteboardSnapshot? {
+    let changeCount = pasteboard.changeCount
+    let sourceItems = pasteboard.pasteboardItems ?? []
+    guard sourceItems.count <= 256 else { return nil }
     var totalBytes = 0
-    var snapshot: [NSPasteboardItem] = []
-    for sourceItem in pasteboard.pasteboardItems ?? [] {
-        let item = NSPasteboardItem()
+    var formatCount = 0
+    var items: [[NSPasteboard.PasteboardType: Data]] = []
+    for sourceItem in sourceItems {
+        var item: [NSPasteboard.PasteboardType: Data] = [:]
+        formatCount += sourceItem.types.count
+        guard formatCount <= 1024 else { return nil }
         for type in sourceItem.types {
-            guard let data = sourceItem.data(forType: type),
-                  data.count <= maximumPasteboardFormatBytes
-            else { return nil }
+            guard type.rawValue.utf8.count <= 1024,
+                  let data = sourceItem.data(forType: type),
+                  data.count <= maximumPasteboardFormatBytes else { return nil }
             totalBytes += data.count
             guard totalBytes <= maximumPasteboardSnapshotBytes else { return nil }
-            guard item.setData(data, forType: type) else { return nil }
+            item[type] = data
         }
-        snapshot.append(item)
+        items.append(item)
     }
-    return snapshot
+    guard pasteboard.changeCount == changeCount else { return nil }
+    return PasteboardSnapshot(items: items)
 }
 
-private func restorePasteboard(_ snapshot: [NSPasteboardItem]) {
-    let pasteboard = NSPasteboard.general
+private func restorePasteboard(_ snapshot: PasteboardSnapshot, to pasteboard: NSPasteboard) {
+    let items = snapshot.items.map { formats in
+        let item = NSPasteboardItem()
+        for (type, data) in formats { item.setData(data, forType: type) }
+        return item
+    }
     pasteboard.clearContents()
-    _ = pasteboard.writeObjects(snapshot)
+    if !items.isEmpty { _ = pasteboard.writeObjects(items) }
 }
 
-private func restorePasteboardIfUnchanged(
-    _ snapshot: [NSPasteboardItem],
-    insertedText: String,
-    expectedChangeCount: Int
-) {
-    let pasteboard = NSPasteboard.general
-    guard pasteboard.changeCount == expectedChangeCount,
-          pasteboard.string(forType: .string) == insertedText
-    else { return }
-    restorePasteboard(snapshot)
+private final class PasteCancellation {
+    private let lock = NSLock()
+    private var value = false
+    var cancelled: Bool {
+        lock.lock()
+        defer { lock.unlock() }
+        return value
+    }
+    func cancel() {
+        lock.lock()
+        value = true
+        lock.unlock()
+    }
+}
+
+private enum PasteFailure: Error { case aborted }
+
+/** Main-thread pasteboard authority. Accessibility work runs separately so Escape stays responsive. */
+private final class PasteTransaction {
+    var requestId = ""
+    private let text: String
+    private let pasteboard: NSPasteboard
+    private let trusted: () -> Bool
+    private let dispatch: (PasteCancellation, @escaping (Bool) -> Void) -> Void
+    private let completion: (Result<[String: Any], PasteFailure>) -> Void
+    private let cancellation = PasteCancellation()
+    private var snapshot: PasteboardSnapshot?
+    private var insertedFingerprint: String?
+    private var dispatched = false
+    private var finished = false
+
+    init(text: String, pasteboard: NSPasteboard, trusted: @escaping () -> Bool,
+         dispatch: @escaping (PasteCancellation, @escaping (Bool) -> Void) -> Void,
+         completion: @escaping (Result<[String: Any], PasteFailure>) -> Void) {
+        self.text = text
+        self.pasteboard = pasteboard
+        self.trusted = trusted
+        self.dispatch = dispatch
+        self.completion = completion
+    }
+
+    func start(expectedFingerprint: String?, recordingStoppedAtMs: Double?) {
+        guard !finished else { return }
+        guard let original = snapshotPasteboard(pasteboard) else {
+            fail(reason: trusted() ? "paste" : "accessibility", copied: false)
+            return
+        }
+        guard expectedFingerprint == nil || expectedFingerprint == original.fingerprint else {
+            fail(reason: trusted() ? "clipboard-changed" : "accessibility", copied: false)
+            return
+        }
+        snapshot = original
+        pasteboard.clearContents()
+        guard pasteboard.setString(text, forType: .string) else {
+            restorePasteboard(original, to: pasteboard)
+            fail(reason: "paste", copied: false)
+            return
+        }
+        insertedFingerprint = snapshotPasteboard(pasteboard)?.fingerprint
+        guard trusted() else {
+            fail(reason: "accessibility", copied: true)
+            return
+        }
+        let elapsed = recordingStoppedAtMs.flatMap { $0.isFinite ? max(0, Date().timeIntervalSince1970 * 1000 - $0) : nil } ?? 0
+        DispatchQueue.main.asyncAfter(deadline: .now() + max(0, 150 - elapsed) / 1000) {
+            self.pasteAfterDelay()
+        }
+    }
+
+    func cancel() {
+        guard !finished else { return }
+        cancellation.cancel()
+        // Once dispatch begins, its completion owns the 700 ms consumption grace.
+        if !dispatched { finishRestoring(aborted: true, restoreMs: 0) }
+    }
+
+    private func ownsClipboard() -> Bool {
+        guard let insertedFingerprint else { return false }
+        return snapshotPasteboard(pasteboard)?.fingerprint == insertedFingerprint
+    }
+
+    private func pasteAfterDelay() {
+        guard !finished else { return }
+        guard ownsClipboard() else {
+            fail(reason: "clipboard-changed", copied: false)
+            return
+        }
+        guard trusted() else {
+            fail(reason: "accessibility", copied: true)
+            return
+        }
+        dispatched = true
+        dispatch(cancellation) { success in
+            guard !self.finished else { return }
+            if !success && !self.cancellation.cancelled {
+                self.fail(reason: self.trusted() ? "paste" : "accessibility", copied: self.ownsClipboard())
+                return
+            }
+            let started = DispatchTime.now().uptimeNanoseconds
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.7) {
+                let elapsed = Double(DispatchTime.now().uptimeNanoseconds - started) / 1_000_000
+                self.finishRestoring(aborted: self.cancellation.cancelled, restoreMs: elapsed)
+            }
+        }
+    }
+
+    private func finishRestoring(aborted: Bool, restoreMs: Double) {
+        guard !finished else { return }
+        if ownsClipboard(), let snapshot { restorePasteboard(snapshot, to: pasteboard) }
+        finished = true
+        completion(aborted ? .failure(.aborted) : .success([
+            "pasted": true, "clipboardRestoreMs": restoreMs,
+        ]))
+    }
+
+    private func fail(reason: String, copied: Bool) {
+        finished = true
+        // Failed dispatch deliberately leaves copied text available for manual paste.
+        completion(.success([
+            "pasted": false, "clipboardRestoreMs": 0,
+            "failure": ["text": text, "copied": copied, "reason": reason],
+        ]))
+    }
 }
 
 private func audioDeviceId(selector: AudioObjectPropertySelector) -> AudioDeviceID? {
@@ -353,9 +549,18 @@ private func installEventTapIfNeeded() -> Bool {
     let source = CFMachPortCreateRunLoopSource(kCFAllocatorDefault, tap, 0)
     CFRunLoopAddSource(CFRunLoopGetMain(), source, .commonModes)
     CGEvent.tapEnable(tap: tap, enable: true)
+    HelperState.shared.heldKeys = Set((0...127).map { CGKeyCode($0) }.filter {
+        !modifierKeyCodes.contains($0) && CGEventSource.keyState(.combinedSessionState, key: $0)
+    })
     HelperState.shared.eventTap = tap
     HelperState.shared.runLoopSource = source
     return true
+}
+
+private func uninstallEventTapIfUnused() {
+    guard HelperState.shared.hotkeys.isEmpty,
+          HelperState.shared.captureRequestId == nil else { return }
+    uninstallEventTap()
 }
 
 private func uninstallEventTap() {
@@ -367,6 +572,7 @@ private func uninstallEventTap() {
     }
     HelperState.shared.eventTap = nil
     HelperState.shared.runLoopSource = nil
+    HelperState.shared.heldKeys.removeAll()
 }
 
 private let eventTapCallback: CGEventTapCallBack = { _, type, event, _ in
@@ -383,53 +589,102 @@ private func handleKeyboardEvent(type: CGEventType, event: CGEvent) {
     let keyCode = CGKeyCode(event.getIntegerValueField(.keyboardEventKeycode))
 
     if let captureId = HelperState.shared.captureRequestId,
-       type == .flagsChanged,
-       keyCode == 63,
-       flags.contains(.maskSecondaryFn) {
+       let accelerator = HelperState.shared.modifierCapture.transition(type: type, flags: flags, keys: currentModifierKeys()) {
         HelperState.shared.captureRequestId = nil
         HelperState.shared.captureTimer?.invalidate()
         HelperState.shared.captureTimer = nil
-        emitResponse(id: captureId, value: ["accelerator": "Fn"])
-        if HelperState.shared.hotkeys.isEmpty { uninstallEventTap() }
-        return
+        emitResponse(id: captureId, value: ["accelerator": accelerator])
+        uninstallEventTapIfUnused()
     }
 
+    let repeated = event.getIntegerValueField(.keyboardEventAutorepeat) != 0
+    if type == .keyDown { HelperState.shared.heldKeys.insert(keyCode) }
+    if type == .keyUp { HelperState.shared.heldKeys.remove(keyCode) }
     for (id, var hotkey) in HelperState.shared.hotkeys {
-        if let bareModifierKeyCodes = hotkey.bareModifierKeyCodes {
-            guard type == .flagsChanged, bareModifierKeyCodes.contains(keyCode) else { continue }
-            let allKeysDown = bareModifierKeyCodes.count == 1
-                ? flags.contains(hotkey.modifiers)
-                : bareModifierKeyCodes.allSatisfy {
-                    CGEventSource.keyState(.combinedSessionState, key: $0)
-                }
-            let isPressed = allKeysDown
-            let isReleased = hotkey.pressed && !allKeysDown
-            if isPressed && !hotkey.pressed {
-                hotkey.pressed = true
-                HelperState.shared.hotkeys[id] = hotkey
-                emitHotkeyEvent(hotkey: hotkey, type: "pressed")
-            } else if isReleased {
-                hotkey.pressed = false
-                HelperState.shared.hotkeys[id] = hotkey
-                emitHotkeyEvent(hotkey: hotkey, type: "released")
-            }
-            continue
-        }
-
-        let modifiersMatch = flags == hotkey.modifiers
-        let keyMatches = hotkey.keyCode == keyCode
-        let isPressed = modifiersMatch && keyMatches && type == .keyDown
-        let isReleased = hotkey.pressed && keyMatches && type == .keyUp
-        if isPressed && !hotkey.pressed {
-            hotkey.pressed = true
-            HelperState.shared.hotkeys[id] = hotkey
-            emitHotkeyEvent(hotkey: hotkey, type: "pressed")
-        } else if isReleased {
-            hotkey.pressed = false
-            HelperState.shared.hotkeys[id] = hotkey
-            emitHotkeyEvent(hotkey: hotkey, type: "released")
-        }
+        let transition = transitionHotkey(
+            &hotkey, type: type, keyCode: keyCode, flags: flags, repeated: repeated,
+            hasOtherKey: !HelperState.shared.heldKeys.isEmpty,
+            keyDown: { CGEventSource.keyState(.combinedSessionState, key: $0) }
+        )
+        HelperState.shared.hotkeys[id] = hotkey
+        if let transition { emitHotkeyEvent(hotkey: hotkey, type: transition) }
     }
+}
+
+private func currentModifierKeys() -> Set<CGKeyCode> {
+    Set(modifierKeyCodes.filter { CGEventSource.keyState(.combinedSessionState, key: $0) })
+}
+
+/** One native authority captures both physical sides and family chords at first release. */
+private struct ModifierCapture {
+    var flags: CGEventFlags = []
+    var keys: Set<CGKeyCode> = []
+    var cancelled = false
+
+    mutating func transition(type: CGEventType, flags next: CGEventFlags, keys nextKeys: Set<CGKeyCode> = []) -> String? {
+        if type == .keyDown { cancelled = true; return nil }
+        guard type == .flagsChanged else { return nil }
+        let previous = flags
+        let previousKeys = keys
+        flags = next
+        keys = nextKeys
+        if cancelled {
+            if next.isEmpty { cancelled = false }
+            return nil
+        }
+        guard !previous.subtracting(next).isEmpty || !previousKeys.subtracting(nextKeys).isEmpty else { return nil }
+        let families: [(CGEventFlags, String)] = [
+            (.maskControl, "Ctrl"), (.maskCommand, "Command"), (.maskAlternate, "Alt"),
+            (.maskShift, "Shift"), (.maskSecondaryFn, "Fn"),
+        ]
+        let names = families.compactMap { previous.contains($0.0) ? $0.1 : nil }
+        if names.count >= 2 { return names.joined(separator: "+") }
+        if previous == .maskSecondaryFn { return "Fn" }
+        let named: [(Set<CGKeyCode>, String)] = [
+            ([58], "LeftOption"), ([61], "RightOption"), ([58, 61], "DoubleOption"),
+            ([55], "LeftCommand"), ([54], "RightCommand"), ([54, 55], "DoubleCommand"),
+            ([59], "LeftControl"), ([56, 60], "DoubleShift"),
+        ]
+        return named.first { $0.0 == previousKeys }?.1
+    }
+}
+
+/** Modifier-only gestures are invalidated by chords until their required keys are released. */
+private func transitionHotkey(
+    _ hotkey: inout Hotkey, type: CGEventType, keyCode: CGKeyCode,
+    flags: CGEventFlags, repeated: Bool, hasOtherKey: Bool,
+    keyDown: (CGKeyCode) -> Bool
+) -> String? {
+    if hotkey.keyCode != nil {
+        guard hotkey.pressed, type == .flagsChanged, !flags.contains(hotkey.modifiers) else { return nil }
+        hotkey.pressed = false
+        return "released"
+    }
+    let bareKeys = hotkey.bareModifierKeyCodes
+    let allDown = bareKeys?.allSatisfy(keyDown) ?? flags.contains(hotkey.modifiers)
+    let anyDown = bareKeys?.contains(where: keyDown) ?? !flags.intersection(hotkey.modifiers).isEmpty
+    if hotkey.suppressed {
+        if !anyDown { hotkey.suppressed = false }
+        return nil
+    }
+    let chord = hasOtherKey || !flags.subtracting(hotkey.modifiers).isEmpty
+        || (bareKeys.map { modifierKeyCodes.subtracting($0).contains(where: keyDown) } ?? false)
+    if hotkey.pressed && chord {
+        hotkey.pressed = false
+        hotkey.suppressed = anyDown
+        return "cancelled"
+    }
+    if hotkey.pressed && !allDown {
+        hotkey.pressed = false
+        return "released"
+    }
+    guard type == .flagsChanged, bareKeys?.contains(keyCode) ?? true, allDown, !hotkey.pressed else { return nil }
+    if chord {
+        hotkey.suppressed = true
+        return nil
+    }
+    hotkey.pressed = true
+    return "pressed"
 }
 
 private func emitHotkeyEvent(hotkey: Hotkey, type: String) {
@@ -479,7 +734,8 @@ private func parseBindings(
         let bareKeyCodes = bareNumbers.map { Set($0.map { CGKeyCode($0.uint16Value) }) }
         let hasKey = keyCode != nil
         let hasBareKeys = !(bareKeyCodes?.isEmpty ?? true)
-        guard hasKey != hasBareKeys else { return nil }
+        let hasBareFamilies = keyCode == nil && bareKeyCodes == nil && modifierNames.count >= 2
+        guard (hasKey && !hasBareKeys) || (!hasKey && hasBareKeys) || hasBareFamilies else { return nil }
 
         let hotkey = Hotkey(
             id: bindingId,
@@ -493,6 +749,19 @@ private func parseBindings(
         result[bindingId] = hotkey
     }
     return result
+}
+
+/** Replacing an unchanged registration updates its generation without synthesizing a fresh press. */
+private func preservingHotkeyState(_ bindings: [String: Hotkey], previous: [String: Hotkey]) -> [String: Hotkey] {
+    bindings.mapValues { binding in
+        guard let old = previous[binding.id], old.mode == binding.mode,
+              old.modifiers == binding.modifiers, old.keyCode == binding.keyCode,
+              old.bareModifierKeyCodes == binding.bareModifierKeyCodes else { return binding }
+        var next = binding
+        next.pressed = old.pressed
+        next.suppressed = old.suppressed
+        return next
+    }
 }
 
 private func hasHotkeyConflict(_ bindings: [String: Hotkey]) -> Bool {
@@ -531,22 +800,103 @@ private func parseModifiers(_ values: [String]) -> CGEventFlags? {
     return modifiers
 }
 
-private func foregroundMatches(pid: pid_t, bundleIdentifier: String) -> Bool {
-    guard let app = NSWorkspace.shared.frontmostApplication else { return false }
-    let actualBundle = app.bundleIdentifier ?? "pid.\(app.processIdentifier)"
-    return app.processIdentifier == pid && actualBundle == bundleIdentifier
+private let maximumMenuElements = 1000
+
+private func axValue(_ element: AXUIElement, _ attribute: String, deadline: Date) -> CFTypeRef? {
+    let remaining = deadline.timeIntervalSinceNow
+    guard remaining > 0 else { return nil }
+    AXUIElementSetMessagingTimeout(element, Float(min(0.2, remaining)))
+    var value: CFTypeRef?
+    guard AXUIElementCopyAttributeValue(element, attribute as CFString, &value) == .success else { return nil }
+    return value
 }
 
-private func postPasteShortcut(pid: pid_t) -> Bool {
-    guard let source = CGEventSource(stateID: .combinedSessionState),
-          let down = CGEvent(keyboardEventSource: source, virtualKey: 9, keyDown: true),
-          let up = CGEvent(keyboardEventSource: source, virtualKey: 9, keyDown: false)
-    else { return false }
-    down.flags = .maskCommand
-    up.flags = .maskCommand
-    down.postToPid(pid)
-    up.postToPid(pid)
-    return true
+private func axElement(_ value: CFTypeRef?) -> AXUIElement? {
+    guard let value, CFGetTypeID(value) == AXUIElementGetTypeID() else { return nil }
+    return unsafeBitCast(value, to: AXUIElement.self)
+}
+
+/** Depth-first search prefers an explicit Paste command; an ambiguous Cmd-V fallback is rejected. */
+private func findPasteCommand<Node>(root: Node, localizedTitle: String,
+    attributes: (Node) -> (role: String?, enabled: Bool, identifier: String?, title: String?, character: String?, modifiers: Int?),
+    children: (Node, Int) -> [Node]?, shouldContinue: () -> Bool
+) -> Node? {
+    var stack = [root]
+    var visited = 0
+    var shortcut: Node?
+    var ambiguous = false
+    while let node = stack.popLast() {
+        visited += 1
+        guard visited <= maximumMenuElements, shouldContinue() else { return nil }
+        let value = attributes(node)
+        if value.role == "AXMenuItem" {
+            if !value.enabled { continue }
+            if value.identifier?.range(of: "(?:^|[./_-])paste:?$", options: [.regularExpression, .caseInsensitive]) != nil { return node }
+            if value.title == "Paste" || value.title == localizedTitle { return node }
+            if value.character?.lowercased() == "v" && value.modifiers == 0 {
+                if shortcut == nil { shortcut = node } else { ambiguous = true }
+            }
+        }
+        let remaining = maximumMenuElements - visited - stack.count
+        guard let descendants = children(node, remaining), descendants.count <= remaining else { return nil }
+        stack.append(contentsOf: descendants.reversed())
+    }
+    return ambiguous ? nil : shortcut
+}
+
+private func pressFocusedPaste(_ cancellation: PasteCancellation) -> Bool {
+    let deadline = Date().addingTimeInterval(2)
+    let system = AXUIElementCreateSystemWide()
+    guard let app = axElement(axValue(system, "AXFocusedApplication", deadline: deadline)),
+          let menu = axElement(axValue(app, "AXMenuBar", deadline: deadline)) else { return false }
+    let title = Bundle(identifier: "com.apple.AppKit")?.localizedString(forKey: "Paste", value: "Paste", table: "MenuCommands") ?? "Paste"
+    let command = findPasteCommand(root: menu, localizedTitle: title, attributes: { element in
+        func value(_ key: String) -> CFTypeRef? { axValue(element, key, deadline: deadline) }
+        return (value("AXRole") as? String, (value("AXEnabled") as? NSNumber)?.boolValue ?? false,
+                value("AXIdentifier") as? String, value("AXTitle") as? String,
+                value("AXMenuItemCmdChar") as? String, (value("AXMenuItemCmdModifiers") as? NSNumber)?.intValue)
+    }, children: { element, remaining in
+        guard Date() < deadline else { return nil }
+        var count: CFIndex = 0
+        let status = AXUIElementGetAttributeValueCount(element, "AXChildren" as CFString, &count)
+        if status == .attributeUnsupported || status == .noValue { return [] }
+        guard status == .success, count >= 0, count <= remaining else { return nil }
+        if count == 0 { return [] }
+        var values: CFArray?
+        guard AXUIElementCopyAttributeValues(element, "AXChildren" as CFString, 0, count, &values) == .success,
+              let values = values as? [AXUIElement] else { return nil }
+        return values
+    }, shouldContinue: { !cancellation.cancelled && Date() < deadline })
+    guard let command, !cancellation.cancelled, Date() < deadline else { return false }
+    let result = AXUIElementPerformAction(command, "AXPress" as CFString)
+    return result == .success || result.rawValue == -25204 || result.rawValue == -25205
+}
+
+private func dispatchFocusedPaste(_ cancellation: PasteCancellation, completion: @escaping (Bool) -> Void) {
+    DispatchQueue.global(qos: .userInitiated).async {
+        let succeeded = !cancellation.cancelled &&
+            (pressFocusedPaste(cancellation) || runPasteScript(cancellation))
+        DispatchQueue.main.async { completion(succeeded) }
+    }
+}
+
+private func runPasteScript(_ cancellation: PasteCancellation) -> Bool {
+    guard !cancellation.cancelled, AXIsProcessTrusted() else { return false }
+    let process = Process()
+    process.executableURL = URL(fileURLWithPath: "/usr/bin/osascript")
+    process.arguments = ["-e", "tell application \"System Events\" to keystroke \"v\" using command down"]
+    process.standardOutput = FileHandle.nullDevice
+    process.standardError = FileHandle.nullDevice
+    do { try process.run() } catch { return false }
+    let deadline = Date().addingTimeInterval(3)
+    while process.isRunning && !cancellation.cancelled && Date() < deadline { Thread.sleep(forTimeInterval: 0.01) }
+    if process.isRunning {
+        process.terminate()
+        if process.isRunning { kill(process.processIdentifier, SIGKILL) }
+        process.waitUntilExit()
+        return false
+    }
+    return process.terminationStatus == 0
 }
 
 private func emitResponse(id: String, value: Any) {

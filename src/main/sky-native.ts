@@ -27,6 +27,11 @@ export interface SkyRemoteHostedPipHostRegistration {
 }
 
 export interface SkyNativeAddon {
+  /** Focused-window capture; available only when present in the verified export inventory. */
+  startModifierCapture?(
+    nativeWindowHandle: Buffer,
+    onAccelerator: (accelerator: string) => void,
+  ): { dispose(): void } | null;
   completeRemoteHostedPIPContentThread(threadId: string): boolean;
   computerUseServiceProcessMatchesExecutablePath(pid: number, executablePath: string): boolean;
   connectRemoteHostedPIPContentHost(pid: number): boolean;

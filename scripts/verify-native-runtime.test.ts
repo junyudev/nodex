@@ -17,6 +17,7 @@ import {
   smokeDictationHelper,
 } from "./verify-native-runtime";
 import { NATIVE_RUNTIME_BINARY_PATHS, parseNativeRuntimeManifest } from "./native-runtime-manifest";
+import { MAC_DICTATION_HELPER_PROTOCOL_VERSION } from "../src/main/dictation/mac-dictation-native-helper-client";
 import {
   isPreservedBrowserRuntimeVendorCode,
   isPreservedCodexRuntimeVendorCode,
@@ -66,12 +67,17 @@ readline.createInterface({ input: process.stdin }).on("line", (line) => {
   };
 
   test("smokes the current dictation handshake, empty bindings, capabilities and clean exit", async () => {
-    await expect(smokeDictationHelper(createDictationHelperApp(3))).resolves.toBeUndefined();
+    await expect(
+      smokeDictationHelper(createDictationHelperApp(MAC_DICTATION_HELPER_PROTOCOL_VERSION)),
+    ).resolves.toBeUndefined();
   });
 
   test("rejects an incompatible dictation handshake with its version instead of timing out", async () => {
-    await expect(smokeDictationHelper(createDictationHelperApp(2))).rejects.toThrow(
-      "protocol is 2, expected 3",
+    const incompatibleVersion = MAC_DICTATION_HELPER_PROTOCOL_VERSION - 1;
+    await expect(
+      smokeDictationHelper(createDictationHelperApp(incompatibleVersion)),
+    ).rejects.toThrow(
+      `protocol is ${incompatibleVersion}, expected ${MAC_DICTATION_HELPER_PROTOCOL_VERSION}`,
     );
   });
 

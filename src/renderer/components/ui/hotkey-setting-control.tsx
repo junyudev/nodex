@@ -9,6 +9,7 @@ import { DeleteIcon, EditIcon, ResetIcon } from "../shared/icons";
 import {
   formatAcceleratorLabel,
   keyboardEventToAccelerator,
+  normalizeMacBareModifier,
   type RuntimePlatform,
 } from "../../../shared/command-keybindings";
 import { cn } from "@/lib/utils";
@@ -103,6 +104,14 @@ function doubleModifierIdentity(pressedModifiers: ReadonlySet<string>): string |
   return null;
 }
 
+function modifierFamilyChord(pressedModifiers: ReadonlySet<string>): string | null {
+  const families = new Set(
+    [...pressedModifiers].map((modifier) => modifier.replace(/^(Left|Right)/, "")),
+  );
+  if (families.size < 2) return null;
+  return normalizeMacBareModifier([...families].join("+"));
+}
+
 function preventCaptureButtonBlur(event: ReactMouseEvent<HTMLButtonElement>): void {
   event.preventDefault();
 }
@@ -115,7 +124,10 @@ export interface HotkeySettingControlProps {
   readonly ariaLabelledBy?: string;
   readonly canAppend?: boolean;
   readonly captureAriaLabel: string;
-  readonly captureFnHotkey?: () => Promise<string | null>;
+  readonly captureBareModifierHotkey?: (
+    signal: AbortSignal,
+    allowsBareModifiers: boolean,
+  ) => Promise<string | null>;
   readonly className?: string;
   readonly conflict?: string | null;
   readonly disabled?: boolean;
@@ -140,7 +152,7 @@ export function HotkeySettingControl({
   ariaLabelledBy,
   canAppend = false,
   captureAriaLabel,
-  captureFnHotkey,
+  captureBareModifierHotkey,
   className,
   conflict = null,
   disabled = false,
@@ -157,10 +169,13 @@ export function HotkeySettingControl({
 }: HotkeySettingControlProps) {
   const keyboardLayout = useKeyboardLayoutSnapshot();
   const nativeCaptureGenerationRef = useRef(0);
+  const nativeBareCaptureActiveRef = useRef(false);
+  const nativeCaptureAbortRef = useRef<AbortController | null>(null);
   const pressedBareModifiersRef = useRef(new Set<string>());
   const pendingSequenceRef = useRef<string | null>(null);
   const sequenceTimerRef = useRef<ReturnType<typeof globalThis.setTimeout> | null>(null);
   const [captureValue, setCaptureValue] = useState<string | null>(null);
+  const [captureAttempt, setCaptureAttempt] = useState(0);
   const [appendHintVisible, setAppendHintVisible] = useState(false);
 
   const resetCaptureState = (): void => {
@@ -175,12 +190,20 @@ export function HotkeySettingControl({
 
   const commitCapture = (nextAccelerator: string): void => {
     nativeCaptureGenerationRef.current += 1;
+    nativeBareCaptureActiveRef.current = false;
+    nativeCaptureAbortRef.current?.abort();
+    nativeCaptureAbortRef.current = null;
     resetCaptureState();
     onCapture(nextAccelerator);
+    // Conflict validation can keep the recorder open after a one-shot native result.
+    setCaptureAttempt((attempt) => attempt + 1);
   };
 
   const cancelCapture = (): void => {
     nativeCaptureGenerationRef.current += 1;
+    nativeBareCaptureActiveRef.current = false;
+    nativeCaptureAbortRef.current?.abort();
+    nativeCaptureAbortRef.current = null;
     resetCaptureState();
     onCancelCapture();
   };
@@ -207,24 +230,43 @@ export function HotkeySettingControl({
     nativeCaptureGenerationRef.current += 1;
     const generation = nativeCaptureGenerationRef.current;
     const pressedBareModifiers = pressedBareModifiersRef.current;
-    if (isCapturing && allowsBareModifiers && platform === "macOS" && captureFnHotkey) {
-      void captureFnHotkey()
+    const controller = new AbortController();
+    nativeCaptureAbortRef.current = controller;
+    nativeBareCaptureActiveRef.current = false;
+    if (isCapturing && !disabled && captureBareModifierHotkey) {
+      nativeBareCaptureActiveRef.current = allowsBareModifiers && platform === "macOS";
+      void captureBareModifierHotkey(controller.signal, allowsBareModifiers)
         .then((hotkey) => {
-          if (hotkey === "Fn" && nativeCaptureGenerationRef.current === generation) {
-            commitCapture(hotkey);
-          }
+          if (nativeCaptureGenerationRef.current !== generation) return;
+          nativeBareCaptureActiveRef.current = false;
+          const bareModifier = hotkey === null ? null : normalizeMacBareModifier(hotkey);
+          if (allowsBareModifiers && platform === "macOS" && bareModifier)
+            commitCapture(bareModifier);
         })
-        .catch(() => undefined);
+        .catch(() => {
+          if (nativeCaptureGenerationRef.current === generation)
+            nativeBareCaptureActiveRef.current = false;
+        });
     }
     return () => {
       nativeCaptureGenerationRef.current += 1;
+      nativeBareCaptureActiveRef.current = false;
+      controller.abort();
+      if (nativeCaptureAbortRef.current === controller) nativeCaptureAbortRef.current = null;
       pressedBareModifiers.clear();
       pendingSequenceRef.current = null;
       if (sequenceTimerRef.current !== null) globalThis.clearTimeout(sequenceTimerRef.current);
     };
     // commitCapture intentionally follows the active capture generation rather than its render.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [allowsBareModifiers, captureFnHotkey, isCapturing, platform]);
+  }, [
+    allowsBareModifiers,
+    captureAttempt,
+    captureBareModifierHotkey,
+    disabled,
+    isCapturing,
+    platform,
+  ]);
 
   const handleCaptureKeyDown = (event: ReactKeyboardEvent<HTMLInputElement>): void => {
     if (event.repeat) return;
@@ -243,7 +285,7 @@ export function HotkeySettingControl({
     }
 
     if (MODIFIER_KEYS.has(event.key)) {
-      if (!allowsBareModifiers) return;
+      if (!allowsBareModifiers || nativeBareCaptureActiveRef.current) return;
       const physicalModifier = physicalBareModifierIdentity(event.nativeEvent);
       if (physicalModifier) pressedBareModifiersRef.current.add(physicalModifier);
       return;
@@ -259,10 +301,19 @@ export function HotkeySettingControl({
   const handleCaptureKeyUp = (event: ReactKeyboardEvent<HTMLInputElement>): void => {
     event.preventDefault();
     event.stopPropagation();
-    if (!allowsBareModifiers) return;
+    // Native capture observes Fn and every physical modifier together. DOM keyup may arrive
+    // before its result crosses IPC, so it must not commit a partial modifier chord.
+    if (!allowsBareModifiers || nativeBareCaptureActiveRef.current) return;
 
     const physicalModifier = physicalBareModifierIdentity(event.nativeEvent);
     if (!physicalModifier || !pressedBareModifiersRef.current.has(physicalModifier)) return;
+
+    const familyChord =
+      platform === "macOS" ? modifierFamilyChord(pressedBareModifiersRef.current) : null;
+    if (familyChord) {
+      commitCapture(familyChord);
+      return;
+    }
 
     const doubleModifier = doubleModifierIdentity(pressedBareModifiersRef.current);
     if (doubleModifier) {

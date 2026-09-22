@@ -324,6 +324,12 @@ export const live = (
         syncTitle: (window) => syncMacWindowTitle(options.platform, window),
         windows: options.windows,
       });
+      yield* options.rendererLoaded.pipe(
+        Stream.runForEach((webContentsId) =>
+          Effect.sync(() => coordinator.flushDictationRecording(webContentsId)),
+        ),
+        Effect.forkScoped,
+      );
       const prepareQuit = yield* Effect.cached(
         coordinator.prepareQuit.pipe(
           Effect.tap((report) =>

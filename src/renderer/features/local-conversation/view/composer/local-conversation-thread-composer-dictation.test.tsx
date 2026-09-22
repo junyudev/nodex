@@ -13,10 +13,49 @@ import { RendererStateProvider } from "@/app-providers";
 import { TestComposerScopePath } from "@/test/maitai-scope-harness";
 import { TestQueryProvider } from "@/test/query";
 import { createCommandKeymapState } from "../../../../../shared/command-keybindings";
-import {
-  __getNodexToastSnapshotForTests,
-  __resetNodexToastStoreForTests,
-} from "@/components/ui/toast";
+import { __resetNodexToastStoreForTests } from "@/components/ui/toast";
+
+const streamFixture = vi.hoisted(() => ({
+  enabled: false,
+  failFinish: false,
+  text: "",
+  onTranscript: null as ((text: string, segment?: { id: number; text: string }) => void) | null,
+}));
+vi.mock("@/features/dictation/dictation-streaming-client", async (importOriginal) => {
+  const original =
+    await importOriginal<typeof import("@/features/dictation/dictation-streaming-client")>();
+  return {
+    ...original,
+    createBrowserDictationStreamingPort: (
+      ...args: Parameters<typeof original.createBrowserDictationStreamingPort>
+    ) => {
+      if (!streamFixture.enabled) return original.createBrowserDictationStreamingPort(...args);
+      return {
+        prepare: async (
+          _sessionId: string,
+          options?: {
+            onTranscript?: (text: string, segment?: { id: number; text: string }) => void;
+          },
+        ) => {
+          streamFixture.onTranscript = options?.onTranscript ?? null;
+          let id = 0;
+          return {
+            start: async () => {},
+            stopAndFlush: async () => {},
+            finish: async () => {
+              if (streamFixture.failFinish) throw new Error("stream interrupted");
+              return streamFixture.text;
+            },
+            split: () => ++id,
+            hasBoundaries: () => id > 0,
+            recover: async () => streamFixture.text,
+            abort: () => {},
+          };
+        },
+      };
+    },
+  };
+});
 
 class MockMediaRecorder {
   public mimeType = "audio/webm";
@@ -176,6 +215,8 @@ function buildModel(overrides?: Partial<ThreadFooterModel>): ThreadFooterModel {
         history: true,
         streaming: "available",
         semanticCleanup: false,
+        sounds: false,
+        voiceDictionary: false,
         microphoneOwner: "none",
         auth: "chatgpt",
       },
@@ -272,6 +313,10 @@ describe("ThreadComposer dictation", () => {
   let dictationNow = 0;
 
   beforeEach(() => {
+    streamFixture.enabled = false;
+    streamFixture.failFinish = false;
+    streamFixture.text = "";
+    streamFixture.onTranscript = null;
     transcribeCallCount = 0;
     transcribeResult = "";
     transcribePromise = null;
@@ -291,9 +336,6 @@ describe("ThreadComposer dictation", () => {
         if (channel === "codex:dictation:settings:read") {
           return {
             microphoneInputDeviceId: null,
-            keepGlobalBarVisible: false,
-            playStartSound: true,
-            playStopSound: true,
             globalShortcutNudgeDismissed: false,
             dictionary: [],
           };
@@ -364,6 +406,8 @@ describe("ThreadComposer dictation", () => {
             history: true,
             streaming: "unavailable",
             semanticCleanup: false,
+            sounds: false,
+            voiceDictionary: false,
             microphoneOwner: "none",
             auth: "unsupported",
           },
@@ -387,6 +431,8 @@ describe("ThreadComposer dictation", () => {
             history: true,
             streaming: "available",
             semanticCleanup: false,
+            sounds: false,
+            voiceDictionary: false,
             microphoneOwner: "realtime-voice",
             auth: "chatgpt",
           },
@@ -427,7 +473,14 @@ describe("ThreadComposer dictation", () => {
       resolveTranscription = resolve;
     });
 
-    const { container, getByLabelText, getByRole } = await renderThreadComposer();
+    const { container, getByLabelText, getByRole } = await renderThreadComposer({
+      model: {
+        dictation: {
+          ...buildModel().dictation,
+          capabilities: { ...buildModel().dictation.capabilities, streaming: "unavailable" },
+        },
+      },
+    });
 
     await act(async () => {
       fireEvent.click(getByLabelText("Dictate"));
@@ -447,7 +500,7 @@ describe("ThreadComposer dictation", () => {
     });
     expect((getByLabelText("Cancel transcription") as HTMLButtonElement).disabled).toBe(false);
     expect((getByLabelText("Stop dictation") as HTMLButtonElement).disabled).toBe(true);
-    expect((getByLabelText("Transcribe and send") as HTMLButtonElement).disabled).toBe(true);
+    expect((getByLabelText("Transcribe and send") as HTMLButtonElement).disabled).toBe(false);
 
     await act(async () => {
       resolveTranscription?.("transcribed later");
@@ -459,47 +512,31 @@ describe("ThreadComposer dictation", () => {
     });
   });
 
-  test("reports transcription failures through the app toast system", async () => {
+  test("shows failed recovery and appends an explicit retry result without recording again", async () => {
     transcribeFailure = new Error("transcription failed");
     const openVoiceSettings = vi.fn();
-    const { getByLabelText } = await renderThreadComposer({
+    const { container, getByLabelText, getByRole } = await renderThreadComposer({
       actions: { onOpenVoiceSettings: openVoiceSettings },
     });
-
     await act(async () => {
       fireEvent.click(getByLabelText("Dictate"));
     });
-    await waitFor(() => {
-      expect(Boolean(document.querySelector('[aria-label="Stop dictation"]'))).toBe(true);
-    });
-
+    await waitFor(() => expect(getByLabelText("Stop dictation")).toBeTruthy());
     await act(async () => {
       dictationNow += 260;
       fireEvent.click(getByLabelText("Stop dictation"));
+    });
+    await waitFor(() => expect(getByRole("status").textContent).toContain("Dictation stopped"));
+    expect(transcribeCallCount).toBe(2);
+    const editor = container.querySelector<HTMLElement>("[data-codex-composer='true']")!;
+    await act(async () => {
+      transcribeFailure = null;
+      transcribeResult = "Recovered words";
+      fireEvent.click(getByRole("button", { name: /^Retry$/ }));
       await Promise.resolve();
     });
-
-    await waitFor(() => {
-      expect(
-        __getNodexToastSnapshotForTests().some(
-          (record) =>
-            record.kind === "plain" &&
-            record.level === "danger" &&
-            record.title === "Unable to transcribe audio" &&
-            record.secondaryAction?.label === "View recording" &&
-            record.action?.label === "Retry",
-        ),
-      ).toBe(true);
-    });
-
-    const toastRecord = __getNodexToastSnapshotForTests().find(
-      (record) => record.kind === "plain" && record.title === "Unable to transcribe audio",
-    );
-    if (!toastRecord || toastRecord.kind !== "plain") {
-      throw new Error("Expected transcription recovery toast");
-    }
-    toastRecord.secondaryAction?.onClick();
-    expect(openVoiceSettings).toHaveBeenCalledOnce();
+    await waitFor(() => expect(editor.textContent).toBe("Recovered words"));
+    expect(transcribeCallCount).toBe(3);
   });
 
   test("stops a microphone stream that resolves after the composer unmounts", async () => {
@@ -611,12 +648,12 @@ describe("ThreadComposer dictation", () => {
       fireEvent.click(getByLabelText("Dictate"));
     });
     await waitFor(() => {
-      expect(Boolean(document.querySelector('[aria-label="Transcribe and send"]'))).toBe(true);
+      expect(Boolean(document.querySelector('[aria-label="Send"]'))).toBe(true);
     });
 
     await act(async () => {
       dictationNow += 260;
-      fireEvent.click(getByLabelText("Transcribe and send"));
+      fireEvent.click(getByLabelText("Send"));
       await Promise.resolve();
     });
 
@@ -624,5 +661,147 @@ describe("ThreadComposer dictation", () => {
       expect(onSendPromptCalls.length).toBe(1);
     });
     expect(onSendPromptCalls[0]).toBe("send me");
+  });
+  test("keeps the editor mounted and inserts streaming revisions without duplicating final text", async () => {
+    streamFixture.enabled = true;
+    streamFixture.text = "Hello world.";
+    const { container, getByLabelText } = await renderThreadComposer();
+    const editor = container.querySelector<HTMLElement>("[data-codex-composer='true']")!;
+    await act(async () => {
+      fireEvent.click(getByLabelText("Dictate"));
+    });
+    await waitFor(() => expect(streamFixture.onTranscript).not.toBeNull());
+    await act(async () => {
+      streamFixture.onTranscript?.("Hello", { id: 0, text: "Hello" });
+      await Promise.resolve();
+    });
+    expect(container.querySelector("[data-codex-composer='true']")).toBe(editor);
+    expect(editor.textContent).toBe("Hello");
+    await act(async () => {
+      streamFixture.onTranscript?.("Hello world", { id: 0, text: "Hello world" });
+      dictationNow += 300;
+      fireEvent.click(getByLabelText("Stop dictation"));
+      await Promise.resolve();
+    });
+    await waitFor(() => expect(editor.textContent).toBe("Hello world."));
+    expect(transcribeCallCount).toBe(0);
+  });
+
+  test("Enter finishes dictation before sending the latest transcript", async () => {
+    streamFixture.enabled = true;
+    streamFixture.text = "Send the final words";
+    const onSendPrompt = vi.fn(async (_prompt: string) => {});
+    const { container, getByLabelText } = await renderThreadComposer({ actions: { onSendPrompt } });
+    const editor = container.querySelector<HTMLElement>("[data-codex-composer='true']")!;
+    await act(async () => {
+      fireEvent.click(getByLabelText("Dictate"));
+    });
+    await waitFor(() => expect(streamFixture.onTranscript).not.toBeNull());
+    await act(async () => {
+      streamFixture.onTranscript?.("Send", { id: 0, text: "Send" });
+      await Promise.resolve();
+    });
+    await act(async () => {
+      dictationNow += 300;
+      fireEvent.keyDown(editor, { key: "Enter" });
+      await Promise.resolve();
+    });
+    await waitFor(() => expect(onSendPrompt).toHaveBeenCalledTimes(1));
+    expect(onSendPrompt.mock.calls[0]?.[0]).toBe("Send the final words");
+  });
+
+  test("Escape removes streaming text and ignores late revisions", async () => {
+    streamFixture.enabled = true;
+    const { container, getByLabelText } = await renderThreadComposer();
+    const editor = container.querySelector<HTMLElement>("[data-codex-composer='true']")!;
+    await act(async () => {
+      fireEvent.click(getByLabelText("Dictate"));
+    });
+    await waitFor(() => expect(streamFixture.onTranscript).not.toBeNull());
+    await act(async () => {
+      streamFixture.onTranscript?.("Discard this", { id: 0, text: "Discard this" });
+      await Promise.resolve();
+    });
+    expect(editor.textContent).toBe("Discard this");
+    await act(async () => {
+      fireEvent.keyDown(editor, { key: "Escape" });
+      await Promise.resolve();
+    });
+    await waitFor(() => expect(editor.textContent).toBe(""));
+    await act(async () => {
+      streamFixture.onTranscript?.("Late text", { id: 0, text: "Late text" });
+      await Promise.resolve();
+    });
+    expect(editor.textContent).toBe("");
+    expect(transcribeCallCount).toBe(0);
+  });
+
+  test("upgrades pending insertion to send without transcribing or submitting twice", async () => {
+    let resolve!: (text: string) => void;
+    transcribePromise = new Promise<string>((accept) => {
+      resolve = accept;
+    });
+    const onSendPrompt = vi.fn(async (_prompt: string) => {});
+    const { getByLabelText } = await renderThreadComposer({ actions: { onSendPrompt } });
+    await act(async () => {
+      fireEvent.click(getByLabelText("Dictate"));
+    });
+    await waitFor(() => expect(getByLabelText("Stop dictation")).toBeTruthy());
+    await act(async () => {
+      dictationNow += 300;
+      fireEvent.click(getByLabelText("Stop dictation"));
+    });
+    await waitFor(() =>
+      expect((getByLabelText("Finishing dictation") as HTMLButtonElement).disabled).toBe(true),
+    );
+    await act(async () => {
+      fireEvent.click(getByLabelText("Send"));
+      resolve("Ready to send");
+      await Promise.resolve();
+    });
+    await waitFor(() => expect(onSendPrompt).toHaveBeenCalledTimes(1));
+    expect(onSendPrompt.mock.calls[0]?.[0]).toBe("Ready to send");
+    expect(transcribeCallCount).toBe(1);
+  });
+  test("offers segmented recovery for explicit insertion while preserving the current draft", async () => {
+    streamFixture.enabled = true;
+    streamFixture.failFinish = true;
+    streamFixture.text = "All recovered speech";
+    const onSendPrompt = vi.fn(async (_prompt: string) => {});
+    const { container, getByLabelText, getByRole } = await renderThreadComposer({
+      actions: { onSendPrompt },
+    });
+    const editor = container.querySelector<HTMLElement>("[data-codex-composer='true']")!;
+    await act(async () => {
+      fireEvent.click(getByLabelText("Dictate"));
+    });
+    await waitFor(() => expect(streamFixture.onTranscript).not.toBeNull());
+    await act(async () => {
+      streamFixture.onTranscript?.("Partial words", { id: 0, text: "Partial words" });
+      await Promise.resolve();
+    });
+    await act(async () => {
+      fireEvent.paste(editor, {
+        clipboardData: {
+          files: [],
+          items: [],
+          getData: (type: string) => (type === "text/plain" ? " edited" : ""),
+        },
+      });
+      dictationNow += 300;
+      fireEvent.click(getByLabelText("Send"));
+      await Promise.resolve();
+    });
+    await waitFor(() => expect(getByRole("button", { name: "Add to message" })).toBeTruthy());
+    expect(editor.textContent).toBe("Partial words edited");
+    expect(onSendPrompt).not.toHaveBeenCalled();
+    await act(async () => {
+      fireEvent.click(getByRole("button", { name: "Add to message" }));
+      await Promise.resolve();
+    });
+    await waitFor(() =>
+      expect(editor.textContent).toBe("Partial words edited All recovered speech"),
+    );
+    expect(onSendPrompt).not.toHaveBeenCalled();
   });
 });

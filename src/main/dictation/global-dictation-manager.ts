@@ -1,7 +1,6 @@
 import { randomUUID } from "node:crypto";
 import type { BrowserWindow } from "electron";
 import {
-  compileMacNativeHotkey,
   DEFAULT_KEYBOARD_LAYOUT_SNAPSHOT,
   getPrimaryCommandAccelerator,
   type CommandKeybindingRejection,
@@ -9,25 +8,20 @@ import {
   type KeyboardLayoutSnapshot,
   type MacNativeHotkeySpec,
 } from "../../shared/command-keybindings";
-import type {
-  DictationError,
-  DictationSettings,
-  GlobalDictationPermissionSnapshot,
-} from "../../shared/dictation";
+import type { DictationError, GlobalDictationPermissionSnapshot } from "../../shared/dictation";
 import {
   GLOBAL_DICTATION_COMMAND_CHANNEL,
   type GlobalDictationManagerSnapshot,
-  type GlobalDictationRendererCommand,
+  type GlobalDictationPasteFailure,
   type GlobalDictationRendererEvent,
   type GlobalDictationTarget,
 } from "../../shared/global-dictation";
-import type {
-  MacDictationHelperEvent,
-  MacDictationNativeHelperClient,
-} from "./mac-dictation-native-helper-client";
-import { MacDictationHelperRequestError } from "./mac-dictation-native-helper-client";
+import {
+  DictationNativeHelperRequestError,
+  type DictationNativeHelperEvent,
+  type DictationNativeHelperPort,
+} from "./dictation-native-helper-port";
 import type { ClipboardSafePasteService } from "./clipboard-safe-paste-service";
-import { ClipboardSafePasteError } from "./clipboard-safe-paste-service";
 import type { GlobalDictationWindowController } from "./global-dictation-window-controller";
 import {
   acquireGlobalDictationOwnership,
@@ -35,6 +29,8 @@ import {
 } from "./global-dictation-ownership-lock";
 
 const IN_APP_ACCEPT_TIMEOUT_MS = 150;
+const HOLD_ACTIVATION_DELAY_MS = 250;
+const DOUBLE_TAP_WINDOW_MS = 400;
 const GLOBAL_BINDINGS = [
   { commandId: "globalDictationHold", bindingId: "global-dictation-hold", mode: "hold" },
   { commandId: "globalDictationToggle", bindingId: "global-dictation-toggle", mode: "toggle" },
@@ -43,27 +39,23 @@ const GLOBAL_BINDINGS = [
 interface ActiveGlobalSession {
   readonly sessionId: string;
   readonly requestId: string;
-  readonly target: GlobalDictationTarget;
+  readonly target?: GlobalDictationTarget;
   readonly gesture: "hold" | "toggle";
   owner: "pending-in-app" | "in-app" | "overlay";
   senderWebContentsId: number | null;
   acceptTimer: ReturnType<typeof setTimeout> | null;
   transcript: string | null;
   stopRequested: boolean;
+  isStarting: boolean;
+  readonly activationStartedAtMs?: number;
+  clipboardFingerprint?: Promise<string>;
+  recordingStoppedAtMs?: number;
+  releaseWindowListeners?: () => void;
 }
 
 type RuntimeHealth = "starting" | "ready" | "degraded" | "stopped";
 
-type GlobalDictationHelperPort = Pick<
-  MacDictationNativeHelperClient,
-  | "captureFn"
-  | "queryBuiltInMicrophoneName"
-  | "capabilities"
-  | "requestAccessibility"
-  | "requestInputMonitoring"
-  | "replaceBindings"
-  | "subscribe"
->;
+type GlobalDictationBinding = Pick<MacNativeHotkeySpec, "bindingId" | "mode">;
 
 type GlobalDictationWindowPort = Pick<
   GlobalDictationWindowController,
@@ -76,12 +68,13 @@ type GlobalDictationWindowPort = Pick<
   | "send"
   | "setInteractive"
   | "showAndStart"
-  | "showIdle"
+  | "showPasteFailure"
+  | "showRecovery"
   | "subscribeTerminal"
 >;
 
 const helperRejection = (error: unknown): CommandKeybindingRejection | null => {
-  if (!(error instanceof MacDictationHelperRequestError)) return null;
+  if (!(error instanceof DictationNativeHelperRequestError)) return null;
   if (error.code === "input-monitoring-denied") {
     return {
       kind: "permission-required",
@@ -98,22 +91,51 @@ const helperRejection = (error: unknown): CommandKeybindingRejection | null => {
 };
 
 /** Owns global-dictation policy; helper/window lifetimes belong to the surrounding Effect Scope. */
-export class GlobalDictationManager {
-  readonly #helper: GlobalDictationHelperPort;
+export type GlobalDictationManagerInterface = Pick<
+  GlobalDictationManager,
+  keyof GlobalDictationManager
+>;
+
+type CompileHotkey<Binding> = (input: {
+  readonly accelerator: string;
+  readonly bindingId: string;
+  readonly mode: "hold" | "toggle";
+  readonly layout: KeyboardLayoutSnapshot;
+}) =>
+  | { readonly type: "compiled"; readonly spec: Binding }
+  | { readonly type: "rejected"; readonly reason: CommandKeybindingRejection };
+
+export class GlobalDictationManager<Binding extends GlobalDictationBinding = MacNativeHotkeySpec> {
+  readonly #helper: DictationNativeHelperPort<Binding>;
+  readonly #compileHotkey: CompileHotkey<Binding>;
+  readonly #isBareHotkey: (binding: Binding) => boolean;
   readonly #windowController: GlobalDictationWindowPort;
-  readonly #pasteService: Pick<ClipboardSafePasteService, "paste">;
-  readonly #readKeepVisiblePreference: () => Promise<boolean | null>;
-  readonly #writeKeepVisiblePreference: (value: boolean) => Promise<void>;
+  readonly #pasteService: Pick<
+    ClipboardSafePasteService,
+    "paste" | "copy" | "captureClipboardFingerprint"
+  >;
+  readonly #openAccessibilitySettings: () => Promise<void>;
+  readonly #openRecording: (recordingId: string) => Promise<void>;
   readonly #acquireOwnership: (onLost: () => void) => GlobalDictationOwnershipLease | null;
   readonly #getFocusedAppWindow: () => BrowserWindow | null;
   readonly #getAppWindowByWebContentsId: (webContentsId: number) => BrowserWindow | null;
   readonly #onRecoveryNeeded: () => void;
   readonly #platform: NodeJS.Platform;
   readonly #listeners = new Set<() => void>();
-  readonly #appliedBindings = new Map<string, MacNativeHotkeySpec>();
+  readonly #appliedBindings = new Map<string, Binding>();
   #snapshot: GlobalDictationManagerSnapshot = { kind: "idle" };
   #active: ActiveGlobalSession | null = null;
-  #keepVisible = false;
+  #pendingPaste: { readonly sessionId: string; readonly abort: AbortController } | null = null;
+  #pasteFailure: {
+    readonly sessionId: string;
+    readonly failure: GlobalDictationPasteFailure;
+  } | null = null;
+  #holdPressedAtMs: number | null = null;
+  #togglePressedAtMs: number | null = null;
+  #toggleStopsSession = false;
+  #lastToggleTapAtMs: number | null = null;
+  #pendingActivation: ReturnType<typeof setTimeout> | null = null;
+  #escapeEnabled = false;
   #health: RuntimeHealth;
   #enabled = false;
   #desiredCommandKeymap: CommandKeymapState | null = null;
@@ -126,12 +148,16 @@ export class GlobalDictationManager {
   readonly #unsubscribeWindowTerminal: () => void;
 
   constructor(options: {
-    readonly helper: GlobalDictationHelperPort;
+    readonly helper: DictationNativeHelperPort<Binding>;
+    readonly compileHotkey: CompileHotkey<Binding>;
+    readonly isBareHotkey: (binding: Binding) => boolean;
     readonly windowController: GlobalDictationWindowPort;
-    readonly pasteService: Pick<ClipboardSafePasteService, "paste">;
-    readonly readSettings: () => Promise<DictationSettings>;
-    readonly readKeepVisiblePreference?: () => Promise<boolean | null>;
-    readonly writeKeepVisiblePreference?: (value: boolean) => Promise<void>;
+    readonly pasteService: Pick<
+      ClipboardSafePasteService,
+      "paste" | "copy" | "captureClipboardFingerprint"
+    >;
+    readonly openAccessibilitySettings: () => Promise<void>;
+    readonly openRecording: (recordingId: string) => Promise<void>;
     readonly acquireOwnership?: (onLost: () => void) => GlobalDictationOwnershipLease | null;
     readonly getFocusedAppWindow: () => BrowserWindow | null;
     readonly getAppWindowByWebContentsId: (webContentsId: number) => BrowserWindow | null;
@@ -139,20 +165,19 @@ export class GlobalDictationManager {
     readonly platform?: NodeJS.Platform;
   }) {
     this.#helper = options.helper;
+    this.#compileHotkey = options.compileHotkey;
+    this.#isBareHotkey = options.isBareHotkey;
     this.#windowController = options.windowController;
     this.#pasteService = options.pasteService;
-    this.#readKeepVisiblePreference =
-      options.readKeepVisiblePreference ??
-      (async () => (await options.readSettings()).keepGlobalBarVisible);
-    this.#writeKeepVisiblePreference =
-      options.writeKeepVisiblePreference ?? (async () => undefined);
+    this.#openAccessibilitySettings = options.openAccessibilitySettings;
+    this.#openRecording = options.openRecording;
     this.#acquireOwnership =
       options.acquireOwnership ?? ((onLost) => acquireGlobalDictationOwnership({ onLost }));
     this.#getFocusedAppWindow = options.getFocusedAppWindow;
     this.#getAppWindowByWebContentsId = options.getAppWindowByWebContentsId;
     this.#onRecoveryNeeded = options.onRecoveryNeeded ?? (() => undefined);
     this.#platform = options.platform ?? process.platform;
-    this.#health = this.#platform === "darwin" ? "starting" : "stopped";
+    this.#health = this.#supportsGlobalDictation() ? "starting" : "stopped";
     this.#unsubscribeHelper = this.#helper.subscribe((event) => this.#onHelperEvent(event));
     this.#unsubscribeWindowTerminal = this.#windowController.subscribeTerminal(
       (webContentsId, reason) => {
@@ -169,17 +194,15 @@ export class GlobalDictationManager {
 
   readonly getSnapshot = (): GlobalDictationManagerSnapshot => this.#snapshot;
 
-  readonly isAvailable = (): boolean => this.#platform === "darwin" && this.#health === "ready";
+  readonly isAvailable = (): boolean => this.#supportsGlobalDictation() && this.#health === "ready";
 
   readonly ownsRenderer = (webContentsId: number): boolean =>
     this.#windowController.ownsWebContents(webContentsId);
 
   async initialize(state: CommandKeymapState): Promise<CommandKeybindingRejection | null> {
     return await this.#withConfigurationLease(async () => {
-      if (this.#platform !== "darwin" || this.#disposed) return null;
+      if (!this.#supportsGlobalDictation() || this.#disposed) return null;
       this.#desiredCommandKeymap = state;
-      this.#keepVisible =
-        (await this.#readKeepVisiblePreference()) ?? this.#hasConfiguredHotkey(state);
       const rejection = await this.#applyDesiredBindings();
       this.#syncIdlePresentation();
       return rejection;
@@ -188,14 +211,29 @@ export class GlobalDictationManager {
 
   async syncCommandKeymap(state: CommandKeymapState): Promise<CommandKeybindingRejection | null> {
     return await this.#withConfigurationLease(async () => {
-      if (this.#platform !== "darwin" || this.#disposed) return null;
+      if (!this.#supportsGlobalDictation() || this.#disposed) return null;
       const compiled = this.#compileBindings(state);
       if (compiled.type === "rejected") return compiled.reason;
-      const hadConfiguredHotkey = this.#hasConfiguredHotkey(this.#desiredCommandKeymap);
+      const changedHotkeys = GLOBAL_BINDINGS.filter(({ commandId }) => {
+        const previous = this.#desiredCommandKeymap
+          ? getPrimaryCommandAccelerator(this.#desiredCommandKeymap, commandId)
+          : null;
+        return getPrimaryCommandAccelerator(state, commandId) !== previous;
+      });
+      if (changedHotkeys.length === 0 && this.#health === "ready") {
+        this.#desiredCommandKeymap = state;
+        return null;
+      }
+      if (
+        this.#platform === "darwin" &&
+        changedHotkeys.some(({ commandId }) => getPrimaryCommandAccelerator(state, commandId))
+      ) {
+        await this.#helper.requestInputMonitoring();
+        await this.#helper.requestAccessibility();
+      }
       const hasConfiguredHotkey = compiled.bindings.length > 0;
       if (!this.#enabled) {
         this.#desiredCommandKeymap = state;
-        await this.#syncKeepVisibleForHotkeyTransition(hadConfiguredHotkey, hasConfiguredHotkey);
         return null;
       }
       if (hasConfiguredHotkey && !this.#ensureOwnership()) {
@@ -218,7 +256,6 @@ export class GlobalDictationManager {
       }
       this.#desiredCommandKeymap = state;
       this.#adoptBindings(compiled.bindings, generation);
-      await this.#syncKeepVisibleForHotkeyTransition(hadConfiguredHotkey, hasConfiguredHotkey);
       return null;
     });
   }
@@ -226,15 +263,12 @@ export class GlobalDictationManager {
   /** Makes a durable rollback authoritative even when the helper cannot apply it immediately. */
   async restoreCommandKeymap(state: CommandKeymapState): Promise<void> {
     await this.#withConfigurationLease(async () => {
-      if (this.#platform !== "darwin" || this.#disposed) return;
-      const hadConfiguredHotkey = this.#hasConfiguredHotkey(this.#desiredCommandKeymap);
-      const hasConfiguredHotkey = this.#hasConfiguredHotkey(state);
+      if (!this.#supportsGlobalDictation() || this.#disposed) return;
       this.#desiredCommandKeymap = state;
       if (this.#enabled) {
         const rejection = await this.#applyDesiredBindings();
-        if (rejection) throw new MacDictationHelperRequestError(rejection.kind, rejection.message);
+        if (rejection) throw new Error(rejection.message);
       }
-      await this.#syncKeepVisibleForHotkeyTransition(hadConfiguredHotkey, hasConfiguredHotkey);
     });
   }
 
@@ -251,7 +285,7 @@ export class GlobalDictationManager {
   /** Recreates helper transport state from durable desired configuration after a crash. */
   async recover(): Promise<void> {
     await this.#withConfigurationLease(async () => {
-      if (this.#disposed || this.#platform !== "darwin" || !this.#enabled) return;
+      if (this.#disposed || !this.#supportsGlobalDictation() || !this.#enabled) return;
       this.#health = "starting";
       this.#publish(this.#snapshot);
       const rejection = await this.#applyDesiredBindings(false);
@@ -262,11 +296,29 @@ export class GlobalDictationManager {
     });
   }
 
-  captureFnHotkey(): Promise<"Fn"> {
-    if (this.#platform !== "darwin") {
-      return Promise.reject(new Error("Global dictation is macOS-only"));
-    }
-    return this.#helper.captureFn();
+  async captureBareModifierHotkey(
+    signal: AbortSignal,
+    capture: () => Promise<string | null>,
+    allowsBareModifiers: boolean,
+  ): Promise<string | null> {
+    return await this.#withConfigurationLease(async () => {
+      signal.throwIfAborted();
+      if (this.#disposed) throw new Error("Global dictation was disposed");
+      this.#cancelDictation();
+      const generation = this.#configurationGeneration + 1;
+      await this.#helper.replaceBindings({ generation, bindings: [] });
+      this.#configurationGeneration = generation;
+      this.#appliedBindings.clear();
+      try {
+        signal.throwIfAborted();
+        if (allowsBareModifiers && this.#platform === "darwin") return await capture();
+        return await new Promise<string | null>((_resolve, reject) => {
+          signal.addEventListener("abort", () => reject(signal.reason), { once: true });
+        });
+      } finally {
+        if (!this.#disposed) await this.#applyDesiredBindings();
+      }
+    });
   }
 
   queryBuiltInMicrophoneName(): Promise<string | null> {
@@ -274,8 +326,12 @@ export class GlobalDictationManager {
     return this.#helper.queryBuiltInMicrophoneName();
   }
 
+  #supportsGlobalDictation(): boolean {
+    return this.#platform === "darwin" || this.#platform === "win32";
+  }
+
   async readPermissions(): Promise<GlobalDictationPermissionSnapshot> {
-    if (this.#platform !== "darwin") {
+    if (!this.#supportsGlobalDictation()) {
       return { available: false, inputMonitoring: false, accessibility: false };
     }
     const capabilities = await this.#helper.capabilities(false);
@@ -312,16 +368,29 @@ export class GlobalDictationManager {
     }
     if (event.type === "close") {
       if (!this.#windowController.ownsWebContents(senderWebContentsId)) return false;
-      const active = this.#active;
-      if (event.sessionId !== (active?.sessionId ?? null)) return false;
-      if (active) {
-        this.#sendToOwner(active, { type: "cancel", sessionId: active.sessionId });
-        if (active.acceptTimer) clearTimeout(active.acceptTimer);
-        this.#active = null;
-        this.#publish({ kind: "idle" });
-      }
+      if (event.sessionId !== (this.#active?.sessionId ?? this.#pasteFailure?.sessionId ?? null))
+        return false;
+      this.#cancelDictation();
       this.#windowController.close();
       return true;
+    }
+    const failure = this.#pasteFailure;
+    if (failure && "sessionId" in event && event.sessionId === failure.sessionId) {
+      if (!this.#windowController.ownsWebContents(senderWebContentsId)) return false;
+      if (event.type === "copy-transcript") {
+        void this.#copyFailure(failure);
+        return true;
+      }
+      if (event.type === "open-accessibility-settings") {
+        void this.#openAccessibilitySettings().catch(() => undefined);
+        return true;
+      }
+      if (event.type === "dismiss") {
+        this.#pasteFailure = null;
+        this.#publish({ kind: "idle" });
+        this.#windowController.hide();
+        return true;
+      }
     }
     const active = this.#active;
     if (!active || ("sessionId" in event && event.sessionId !== active.sessionId)) return false;
@@ -342,6 +411,7 @@ export class GlobalDictationManager {
         if (active.acceptTimer) clearTimeout(active.acceptTimer);
         active.acceptTimer = null;
         active.owner = "in-app";
+        active.isStarting = false;
         this.#publish({ kind: "recording", sessionId: active.sessionId, owner: "in-app" });
         return true;
       }
@@ -349,12 +419,35 @@ export class GlobalDictationManager {
         active.owner === "overlay" &&
         this.#windowController.ownsWebContents(senderWebContentsId)
       ) {
+        active.isStarting = false;
         this.#publish({ kind: "recording", sessionId: active.sessionId, owner: "overlay" });
         return true;
       }
       return false;
     }
     if (senderWebContentsId !== active.senderWebContentsId) return false;
+    if (event.type === "view-recording" || event.type === "copy-recovered-text") {
+      if (active.owner !== "overlay" || this.#snapshot.kind !== "retryable-error") return false;
+      if (event.type === "view-recording") {
+        void this.#openRecording(event.recordingId).catch(() => undefined);
+      } else {
+        void this.#pasteService.copy(event.text).catch(() => undefined);
+      }
+      return true;
+    }
+    if (event.type === "recording-stopped") {
+      active.stopRequested = true;
+      if (active.owner === "overlay") {
+        this.#captureClipboardAtStop(active);
+        active.recordingStoppedAtMs = Date.now();
+      }
+      return true;
+    }
+    if (event.type === "stop-requested") {
+      if (active.owner !== "overlay") return false;
+      this.#stopActive();
+      return true;
+    }
     if (event.type === "state") {
       this.#publish({
         kind: event.state === "listening" ? "recording" : "transcribing",
@@ -374,7 +467,12 @@ export class GlobalDictationManager {
       return true;
     }
     if (event.type === "failed") {
+      if (event.error.operation !== "transcribe") {
+        this.#finishActive();
+        return true;
+      }
       this.#publish({ kind: "retryable-error", sessionId: active.sessionId, error: event.error });
+      if (active.owner === "overlay") this.#windowController.showRecovery();
       return true;
     }
     if (event.type === "cancelled" || event.type === "dismiss") {
@@ -389,10 +487,7 @@ export class GlobalDictationManager {
       if (this.#disposed || this.#enabled === enabled) return;
       this.#enabled = enabled;
       if (!enabled) {
-        if (this.#active) {
-          this.#sendToOwner(this.#active, { type: "cancel", sessionId: this.#active.sessionId });
-          this.#finishActive();
-        }
+        this.#cancelDictation();
         const generation = this.#configurationGeneration + 1;
         await this.#helper.replaceBindings({ generation, bindings: [] });
         this.#adoptBindings([], generation);
@@ -401,22 +496,14 @@ export class GlobalDictationManager {
       }
       if (!this.#desiredCommandKeymap) return;
       const rejection = await this.#applyDesiredBindings();
-      if (rejection) throw new MacDictationHelperRequestError(rejection.kind, rejection.message);
+      if (rejection) throw new Error(rejection.message);
     });
-  }
-
-  syncSettings(settings: DictationSettings): void {
-    if (this.#disposed || this.#platform !== "darwin") return;
-    this.#keepVisible = settings.keepGlobalBarVisible;
-    this.#syncIdlePresentation();
   }
 
   handleWebContentsGone(webContentsId: number): void {
     const active = this.#active;
     if (active?.senderWebContentsId !== webContentsId) return;
-    if (active.acceptTimer) clearTimeout(active.acceptTimer);
-    this.#active = null;
-    this.#publish({ kind: "idle" });
+    this.#cancelDictation();
     this.#syncIdlePresentation();
   }
 
@@ -426,10 +513,9 @@ export class GlobalDictationManager {
     this.#health = "stopped";
     this.#unsubscribeHelper();
     this.#unsubscribeWindowTerminal();
-    const active = this.#active;
-    if (active?.acceptTimer) clearTimeout(active.acceptTimer);
-    if (active) this.#sendToOwner(active, { type: "cancel", sessionId: active.sessionId });
-    this.#active = null;
+    this.#cancelDictation();
+    this.#holdPressedAtMs = null;
+    this.#togglePressedAtMs = null;
     this.#appliedBindings.clear();
     this.#publish({ kind: "idle" });
     this.#listeners.clear();
@@ -440,13 +526,18 @@ export class GlobalDictationManager {
   #compileBindings(
     state: CommandKeymapState,
   ):
-    | { readonly type: "compiled"; readonly bindings: readonly MacNativeHotkeySpec[] }
+    | { readonly type: "compiled"; readonly bindings: readonly Binding[] }
     | { readonly type: "rejected"; readonly reason: CommandKeybindingRejection } {
-    const bindings: MacNativeHotkeySpec[] = [];
+    const bindings: Binding[] = [];
     for (const binding of GLOBAL_BINDINGS) {
       const accelerator = getPrimaryCommandAccelerator(state, binding.commandId);
       if (!accelerator) continue;
-      const compiled = compileMacNativeHotkey({
+      if (
+        binding.mode === "toggle" &&
+        accelerator === getPrimaryCommandAccelerator(state, "globalDictationHold")
+      )
+        continue;
+      const compiled = this.#compileHotkey({
         accelerator,
         bindingId: binding.bindingId,
         mode: binding.mode,
@@ -486,12 +577,11 @@ export class GlobalDictationManager {
     return null;
   }
 
-  #adoptBindings(bindings: readonly MacNativeHotkeySpec[], generation: number): void {
+  #adoptBindings(bindings: readonly Binding[], generation: number): void {
     if (this.#disposed) return;
-    if (this.#active) {
-      this.#sendToOwner(this.#active, { type: "cancel", sessionId: this.#active.sessionId });
-      this.#finishActive();
-    }
+    this.#cancelDictation();
+    this.#holdPressedAtMs = null;
+    this.#togglePressedAtMs = null;
     this.#configurationGeneration = generation;
     this.#appliedBindings.clear();
     for (const binding of bindings) this.#appliedBindings.set(binding.bindingId, binding);
@@ -505,10 +595,9 @@ export class GlobalDictationManager {
     if (this.#disposed) return;
     this.#health = "degraded";
     this.#appliedBindings.clear();
-    if (this.#active) {
-      this.#sendToOwner(this.#active, { type: "cancel", sessionId: this.#active.sessionId });
-      this.#finishActive();
-    }
+    this.#cancelDictation();
+    this.#holdPressedAtMs = null;
+    this.#togglePressedAtMs = null;
     this.#publish(this.#snapshot);
     if (requestRecovery) this.#onRecoveryNeeded();
   }
@@ -520,10 +609,9 @@ export class GlobalDictationManager {
       this.#ownership = null;
       void this.#withConfigurationLease(async () => {
         if (this.#disposed) return;
-        const active = this.#active;
-        if (active?.acceptTimer) clearTimeout(active.acceptTimer);
-        if (active) this.#sendToOwner(active, { type: "cancel", sessionId: active.sessionId });
-        this.#active = null;
+        this.#cancelDictation();
+        this.#holdPressedAtMs = null;
+        this.#togglePressedAtMs = null;
         const generation = this.#configurationGeneration + 1;
         try {
           await this.#helper.replaceBindings({ generation, bindings: [] });
@@ -554,29 +642,6 @@ export class GlobalDictationManager {
     };
   }
 
-  #hasConfiguredHotkey(state: CommandKeymapState | null): boolean {
-    if (!state) return false;
-    return GLOBAL_BINDINGS.some(
-      ({ commandId }) => getPrimaryCommandAccelerator(state, commandId) !== null,
-    );
-  }
-
-  async #syncKeepVisibleForHotkeyTransition(
-    hadConfiguredHotkey: boolean,
-    hasConfiguredHotkey: boolean,
-  ): Promise<void> {
-    const nextKeepVisible =
-      !hadConfiguredHotkey && hasConfiguredHotkey
-        ? true
-        : hasConfiguredHotkey
-          ? this.#keepVisible
-          : false;
-    if (nextKeepVisible === this.#keepVisible) return;
-    this.#keepVisible = nextKeepVisible;
-    this.#syncIdlePresentation();
-    await this.#writeKeepVisiblePreference(nextKeepVisible);
-  }
-
   #hasKeyboardLayout(snapshot: KeyboardLayoutSnapshot): boolean {
     const currentEntries = this.#keyboardLayout.entries;
     const nextEntries = snapshot.entries;
@@ -593,31 +658,142 @@ export class GlobalDictationManager {
     );
   }
 
-  #onHelperEvent(event: MacDictationHelperEvent): void {
+  #onHelperEvent(event: DictationNativeHelperEvent): void {
     if (this.#disposed) return;
     if (event.type === "crashed") {
       this.#markDegraded();
       return;
     }
+    if (event.type === "escape") {
+      if (this.#escapeEnabled) this.#cancelDictation();
+      return;
+    }
     if (event.configurationGeneration !== this.#configurationGeneration) return;
     const binding = this.#appliedBindings.get(event.bindingId);
     if (!binding || binding.mode !== event.mode) return;
-    if (event.type === "pressed") {
-      if (binding.mode === "toggle" && this.#active) {
-        this.#stopActive();
+    if (event.type === "cancelled") {
+      this.#lastToggleTapAtMs = null;
+      if (binding.mode === "toggle") {
+        this.#togglePressedAtMs = null;
         return;
       }
-      if (!this.#enabled || this.#active || !event.target) return;
-      this.#begin({ target: event.target, gesture: binding.mode });
+      this.#holdPressedAtMs = null;
+      this.#clearPendingActivation();
+      if (this.#active?.gesture === "hold") this.#cancelDictation();
       return;
     }
-    if (binding.mode === "hold") this.#stopActive();
+    if (!this.#enabled) return;
+    if (binding.mode === "toggle") {
+      this.#handleToggleEvent(event);
+      return;
+    }
+    if (event.type === "released") {
+      const pressedAt = this.#holdPressedAtMs;
+      if (pressedAt === null) return;
+      this.#holdPressedAtMs = null;
+      const wasPending = this.#pendingActivation !== null;
+      this.#clearPendingActivation();
+      if (this.#active?.gesture === "hold") this.#stopActive();
+      else if (wasPending && this.#hasSharedHotkey()) {
+        this.#handleToggleTap(pressedAt, event.target);
+      }
+      return;
+    }
+    if (this.#holdPressedAtMs !== null) return;
+    this.#holdPressedAtMs = Date.now();
+    if (this.#active) {
+      if (this.#hasSharedHotkey() && this.#active.gesture === "toggle") this.#stopActive();
+      return;
+    }
+    const target = event.target;
+    const focused = this.#getFocusedAppWindow();
+    if (this.#hasSharedHotkey() || (focused && this.#isBareHotkey(binding))) {
+      this.#pendingActivation = setTimeout(() => {
+        this.#pendingActivation = null;
+        this.#lastToggleTapAtMs = null;
+        this.#begin({ target, gesture: "hold" });
+      }, HOLD_ACTIVATION_DELAY_MS);
+      this.#syncEscapeRegistration();
+      return;
+    }
+    this.#begin({ target, gesture: "hold" });
+  }
+
+  #handleToggleEvent(
+    event: Extract<DictationNativeHelperEvent, { readonly bindingId: string }>,
+  ): void {
+    if (event.type === "pressed") {
+      if (this.#togglePressedAtMs !== null) return;
+      this.#togglePressedAtMs = Date.now();
+      this.#toggleStopsSession = this.#active !== null || this.#pendingActivation !== null;
+      if (this.#active?.gesture === "toggle") this.#stopActive();
+      else if (!this.#active && this.#toggleStopsSession) this.#cancelDictation();
+      return;
+    }
+    const pressedAt = this.#togglePressedAtMs;
+    this.#togglePressedAtMs = null;
+    if (pressedAt === null || this.#toggleStopsSession) return;
+    this.#handleToggleTap(pressedAt, event.target);
+  }
+
+  #handleToggleTap(pressedAt: number, target?: GlobalDictationTarget): void {
+    const now = Date.now();
+    const previousTap = this.#lastToggleTapAtMs;
+    this.#lastToggleTapAtMs = null;
+    if (now - pressedAt >= HOLD_ACTIVATION_DELAY_MS) return;
+    if (previousTap !== null && now - previousTap <= DOUBLE_TAP_WINDOW_MS) {
+      this.#begin({ target, gesture: "toggle" });
+      return;
+    }
+    this.#lastToggleTapAtMs = now;
+  }
+
+  #hasSharedHotkey(): boolean {
+    const state = this.#desiredCommandKeymap;
+    if (!state) return false;
+    const hold = getPrimaryCommandAccelerator(state, "globalDictationHold");
+    return hold !== null && hold === getPrimaryCommandAccelerator(state, "globalDictationToggle");
+  }
+
+  #clearPendingActivation(): void {
+    if (this.#pendingActivation) clearTimeout(this.#pendingActivation);
+    this.#pendingActivation = null;
+    this.#syncEscapeRegistration();
+  }
+
+  #syncEscapeRegistration(): void {
+    const enabled =
+      !this.#disposed &&
+      (this.#active !== null || this.#pendingActivation !== null || this.#pendingPaste !== null);
+    if (enabled === this.#escapeEnabled) return;
+    this.#escapeEnabled = enabled;
+    void this.#helper.setEscapeEnabled(enabled).catch(() => undefined);
+  }
+
+  #cancelPendingPaste(): void {
+    this.#pendingPaste?.abort.abort();
+    this.#pendingPaste = null;
+    this.#pasteFailure = null;
+    this.#syncEscapeRegistration();
+  }
+
+  #cancelDictation(): void {
+    this.#clearPendingActivation();
+    this.#lastToggleTapAtMs = null;
+    this.#cancelPendingPaste();
+    const active = this.#active;
+    if (active) this.#sendToOwner(active, { type: "cancel", sessionId: active.sessionId });
+    this.#finishActive();
+    this.#publish({ kind: "idle" });
+    this.#windowController.hide();
   }
 
   #begin(input: {
-    readonly target: GlobalDictationTarget;
+    readonly target?: GlobalDictationTarget;
     readonly gesture: "hold" | "toggle";
   }): void {
+    if (this.#active || this.#disposed || !this.#enabled) return;
+    this.#cancelPendingPaste();
     const session: ActiveGlobalSession = {
       sessionId: randomUUID(),
       requestId: randomUUID(),
@@ -628,12 +804,33 @@ export class GlobalDictationManager {
       acceptTimer: null,
       transcript: null,
       stopRequested: false,
+      isStarting: true,
+      ...(input.gesture === "hold" && this.#holdPressedAtMs !== null
+        ? { activationStartedAtMs: this.#holdPressedAtMs }
+        : {}),
     };
     this.#active = session;
-    const focused = input.target.pid === process.pid ? this.#getFocusedAppWindow() : null;
+    this.#syncEscapeRegistration();
+    const focused = this.#getFocusedAppWindow();
     if (focused && !focused.isDestroyed()) {
       session.owner = "pending-in-app";
       session.senderWebContentsId = focused.webContents.id;
+      const cancel = (): void => {
+        if (this.#active === session) this.#cancelDictation();
+      };
+      const onNavigation = (
+        details: Electron.Event<Electron.WebContentsDidStartNavigationEventParams>,
+      ): void => {
+        if (details.isMainFrame && !details.isSameDocument) cancel();
+      };
+      focused.webContents.on("did-start-navigation", onNavigation);
+      focused.webContents.once("destroyed", cancel);
+      focused.webContents.once("render-process-gone", cancel);
+      session.releaseWindowListeners = () => {
+        focused.webContents.removeListener("did-start-navigation", onNavigation);
+        focused.webContents.removeListener("destroyed", cancel);
+        focused.webContents.removeListener("render-process-gone", cancel);
+      };
       this.#publish({ kind: "routing-in-app", sessionId: session.sessionId });
       focused.webContents.send(GLOBAL_DICTATION_COMMAND_CHANNEL, {
         type: "start",
@@ -656,8 +853,14 @@ export class GlobalDictationManager {
       this.#sendToOwner(session, { type: "cancel", sessionId: session.sessionId });
       if (this.#active !== session) return;
     }
+    if (session.stopRequested) {
+      this.#finishActive();
+      return;
+    }
     if (session.acceptTimer) clearTimeout(session.acceptTimer);
     session.acceptTimer = null;
+    session.releaseWindowListeners?.();
+    session.releaseWindowListeners = undefined;
     session.owner = "overlay";
     let window: BrowserWindow;
     try {
@@ -679,28 +882,33 @@ export class GlobalDictationManager {
       requestId: session.requestId,
       deadlineAtMs: Number.MAX_SAFE_INTEGER,
       gesture: session.gesture,
+      activationStartedAtMs: session.activationStartedAtMs,
     });
     if (this.#active !== session || session.owner !== "overlay") return;
     if (!shown) {
       this.#finishActive();
       return;
     }
-    if (session.stopRequested) {
-      this.#windowController.send({ type: "stop", sessionId: session.sessionId });
-    }
+    session.isStarting = false;
   }
 
   #stopActive(): void {
     const active = this.#active;
-    if (!active) return;
+    if (!active || active.stopRequested) return;
     active.stopRequested = true;
-    if (active.owner === "pending-in-app") {
-      this.#routeToOverlay(active);
+    if (active.owner === "overlay" && active.isStarting) {
+      this.#sendToOwner(active, { type: "cancel", sessionId: active.sessionId });
+      this.#finishActive();
       return;
     }
-    if (active.owner !== "overlay" || active.senderWebContentsId !== null) {
-      this.#sendToOwner(active, { type: "stop", sessionId: active.sessionId });
-    }
+    if (active.owner === "overlay") this.#captureClipboardAtStop(active);
+    this.#sendToOwner(active, { type: "stop", sessionId: active.sessionId });
+  }
+
+  #captureClipboardAtStop(active: ActiveGlobalSession): void {
+    active.clipboardFingerprint ??= this.#pasteService.captureClipboardFingerprint();
+    // Keep a rejected native read observed until completion handles it as a paste failure.
+    void active.clipboardFingerprint.catch(() => undefined);
   }
 
   #sendToOwner(
@@ -722,70 +930,90 @@ export class GlobalDictationManager {
   }
 
   async #pasteActive(active: ActiveGlobalSession): Promise<void> {
-    if (this.#active !== active || !active.transcript) return;
+    if (this.#active !== active) return;
+    const transcript = active.transcript?.trim();
+    const pending = { sessionId: active.sessionId, abort: new AbortController() };
+    if (transcript) this.#pendingPaste = pending;
+    this.#finishActive();
+    if (!transcript) return;
     this.#publish({ kind: "pasting", sessionId: active.sessionId });
+    let failure: GlobalDictationPasteFailure | undefined;
     try {
-      const result = await this.#pasteService.paste(active.transcript, active.target);
-      if (this.#active !== active) return;
-      this.#windowController.send({
-        type: "paste-completed",
-        sessionId: active.sessionId,
-        clipboardRestoreMs: result.clipboardRestoreMs,
+      const clipboardFingerprint = await active.clipboardFingerprint;
+      if (this.#pendingPaste !== pending) return;
+      const result = await this.#pasteService.paste(transcript, active.target, {
+        clipboardFingerprint,
+        recordingStoppedAtMs: active.recordingStoppedAtMs,
+        signal: pending.abort.signal,
       });
-      this.#finishActive();
-    } catch (error) {
-      if (this.#active !== active) return;
-      const dictationError: DictationError =
-        error instanceof ClipboardSafePasteError
-          ? error.dictationError
-          : { kind: "paste-failed", operation: "paste", retryable: true };
-      this.#publish({
-        kind: "retryable-error",
-        sessionId: active.sessionId,
-        error: dictationError,
-      });
-      this.#windowController.send({
-        type: "paste-failed",
-        sessionId: active.sessionId,
-        error: dictationError,
-      });
+      if (this.#pendingPaste !== pending) return;
+      failure = result.failure;
+      if (!failure)
+        this.#windowController.send({
+          type: "paste-completed",
+          sessionId: active.sessionId,
+          clipboardRestoreMs: result.clipboardRestoreMs,
+        });
+    } catch {
+      if (this.#pendingPaste !== pending) return;
+      failure = { text: `${transcript} `, copied: false, reason: "paste" };
     }
+    if (failure) {
+      this.#pasteFailure = { sessionId: active.sessionId, failure };
+      await this.#showPasteFailure(this.#pasteFailure);
+    }
+    if (this.#pendingPaste !== pending) return;
+    this.#pendingPaste = null;
+    this.#syncEscapeRegistration();
+    if (!failure) this.#publish({ kind: "idle" });
+  }
+
+  async #showPasteFailure(presentation: {
+    readonly sessionId: string;
+    readonly failure: GlobalDictationPasteFailure;
+  }): Promise<void> {
+    const error: DictationError = {
+      kind:
+        presentation.failure.reason === "accessibility" ? "accessibility-denied" : "paste-failed",
+      operation: "paste",
+      retryable: true,
+    };
+    this.#publish({ kind: "retryable-error", sessionId: presentation.sessionId, error });
+    await this.#windowController.showPasteFailure({ type: "paste-failed", ...presentation, error });
+  }
+
+  async #copyFailure(presentation: {
+    readonly sessionId: string;
+    readonly failure: GlobalDictationPasteFailure;
+  }): Promise<void> {
+    try {
+      await this.#pasteService.copy(presentation.failure.text);
+    } catch {
+      return;
+    }
+    if (this.#pasteFailure !== presentation) return;
+    this.#pasteFailure = { ...presentation, failure: { ...presentation.failure, copied: true } };
+    await this.#showPasteFailure(this.#pasteFailure);
   }
 
   #finishActive(): void {
     const active = this.#active;
     if (!active) return;
     if (active.acceptTimer) clearTimeout(active.acceptTimer);
+    active.releaseWindowListeners?.();
     this.#active = null;
+    this.#lastToggleTapAtMs = null;
+    this.#syncEscapeRegistration();
     this.#publish({ kind: "idle" });
     if (active.owner !== "overlay") return;
-    if (this.#enabled && this.#keepVisible && this.#appliedBindings.size > 0) {
-      void this.#windowController.showIdle(this.#idleCommand());
-      return;
-    }
     this.#windowController.send({ type: "finish", sessionId: active.sessionId });
     this.#windowController.hide();
   }
 
-  #idleCommand(): Extract<GlobalDictationRendererCommand, { type: "idle" }> {
-    const state = this.#desiredCommandKeymap;
-    return {
-      type: "idle",
-      configuredHotkey: state ? getPrimaryCommandAccelerator(state, "globalDictationHold") : null,
-      configuredToggleHotkey: state
-        ? getPrimaryCommandAccelerator(state, "globalDictationToggle")
-        : null,
-    };
-  }
-
   #syncIdlePresentation(): void {
-    if (this.#disposed || this.#active) return;
+    if (this.#disposed || this.#active || this.#pasteFailure || this.#pendingPaste) return;
     if (!this.#enabled || this.#appliedBindings.size === 0) {
       this.#windowController.close();
-      return;
-    }
-    if (this.#keepVisible) {
-      void this.#windowController.showIdle(this.#idleCommand());
       return;
     }
     this.#windowController.prewarm();

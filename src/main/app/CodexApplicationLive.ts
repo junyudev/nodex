@@ -1,3 +1,4 @@
+import { CodexExecutionHostAuthState } from "../codex-runtime/CodexExecutionHostAuthState";
 import {
   CodexMainConversationManagers,
   make as makeMainConversationManagers,
@@ -319,6 +320,7 @@ export const live: Layer.Layer<
   | ConversationEntityMap
   | CodexGateway
   | CodexAppServerCapabilities
+  | CodexExecutionHostAuthState
   | CodexRequestScheduler
   | CodexEndpointMap
   | CodexEventHub

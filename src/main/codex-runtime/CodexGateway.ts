@@ -511,7 +511,12 @@ export const live = (
                 resolved,
                 endpoint.metrics.transportKind,
                 rendererCaller,
-                (requestOptions) => invoke(session, requestOptions),
+                (requestOptions) =>
+                  authState.withAccountMutation(
+                    normalizedHostId,
+                    method,
+                    invoke(session, requestOptions),
+                  ),
                 caller.requestId,
               ).pipe(
                 Effect.tapError((cause) =>

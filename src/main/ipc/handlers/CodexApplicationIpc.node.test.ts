@@ -103,6 +103,8 @@ it.effect("registers application channels directly against their owning modules"
           history: true,
           streaming: "unknown",
           semanticCleanup: false,
+          sounds: false,
+          voiceDictionary: false,
           microphoneOwner: "none",
           auth: "chatgpt",
         },
@@ -111,6 +113,9 @@ it.effect("registers application channels directly against their owning modules"
       cleanupTranscript: (input) =>
         Effect.succeed(dictationTextResult(input.transcript, "cleanup")),
       prepareStreamingConnectInfo: Effect.die("unused"),
+      readVoiceLanguage: Effect.die("unused"),
+      dictationPolicySnapshot: Effect.die("unused"),
+      updateVoiceLanguage: () => Effect.die("unused"),
       resolveImage: () => Effect.succeed({ ok: false, message: "not available", status: null }),
     });
     const reviewResponse = {

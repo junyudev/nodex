@@ -9,6 +9,10 @@ import { assert, it } from "@effect/vitest";
 import type { IpcMainInvokeEvent } from "electron";
 import { testLayer as mainConfigLayer } from "../../app/MainConfig";
 import { CodexMedia, CodexMediaError } from "../../codex-application/CodexMedia";
+import {
+  DictationDictionary,
+  DictationDictionaryError,
+} from "../../codex-application/DictationDictionary";
 import { DictationRuntime } from "../../host-runtime/DictationRuntime";
 import { ElectronDesktop } from "../../platform/electron/ElectronDesktop";
 import { makeTestElectronIpc } from "../../platform/electron/ElectronIpc.test-support";
@@ -19,12 +23,20 @@ import { DictationIpcError, live } from "./DictationIpc";
 type Handler = (
   event: IpcMainInvokeEvent,
   ...args: readonly unknown[]
-) => Effect.Effect<unknown, DictationIpcError | CodexMediaError>;
+) => Effect.Effect<unknown, DictationIpcError | CodexMediaError | DictationDictionaryError>;
 
 it.effect("cancels only the owning renderer's active transcription fiber", () =>
   Effect.gen(function* () {
     const handlers = new Map<string, Handler>();
     const interrupted = yield* Deferred.make<void>();
+    const dictionaryCancelled = yield* Deferred.make<void>();
+    const dictionary = DictationDictionary.of({
+      read: () => Effect.die("unused"),
+      add: () => Deferred.await(dictionaryCancelled),
+      remove: () => Effect.die("unused"),
+      importWords: () => Effect.die("unused"),
+      cancel: () => Deferred.succeed(dictionaryCancelled, undefined),
+    });
     const ipc = makeTestElectronIpc({
       handle: (channel, handler) =>
         Effect.acquireRelease(
@@ -35,6 +47,9 @@ it.effect("cancels only the owning renderer's active transcription fiber", () =>
     });
     const media = CodexMedia.of({
       dictationState: Effect.die("unused"),
+      dictationPolicySnapshot: Effect.die("unused"),
+      readVoiceLanguage: Effect.succeed("auto"),
+      updateVoiceLanguage: (language) => Effect.succeed(language),
       transcribe: () =>
         Effect.never.pipe(Effect.onInterrupt(() => Deferred.succeed(interrupted, undefined))),
       cleanupTranscript: ({ transcript }) =>
@@ -47,6 +62,9 @@ it.effect("cancels only the owning renderer's active transcription fiber", () =>
     });
     const dictation = DictationRuntime.of({
       ownsGlobalRenderer: () => false,
+      captureBareModifierHotkey: (webContentsId: number, allowsBareModifiers: boolean) =>
+        Effect.succeed(webContentsId === 7 && allowsBareModifiers ? "Ctrl+Fn" : null),
+      cancelHotkeyCapture: (webContentsId: number) => Effect.succeed(webContentsId === 7),
     } as unknown as DictationRuntime["Service"]);
     const desktop = ElectronDesktop.of({
       dialog: null as never,
@@ -65,13 +83,19 @@ it.effect("cancels only the owning renderer's active transcription fiber", () =>
     yield* Layer.buildWithScope(
       live({
         authorize: (event, capability) => {
-          if (capability === "Dictation streaming connection" && event.sender.id !== 7)
+          if (
+            (capability === "Dictation streaming connection" ||
+              capability.startsWith("Voice language") ||
+              capability === "Global dictation shortcut") &&
+            event.sender.id !== 7
+          )
             throw new Error("Untrusted renderer");
         },
       }).pipe(
         Layer.provide(
           Layer.mergeAll(
             Layer.succeed(CodexMedia, media),
+            Layer.succeed(DictationDictionary, dictionary),
             Layer.succeed(DictationRuntime, dictation),
             Layer.succeed(ElectronDesktop, desktop),
             Layer.succeed(ElectronIpc, ipc),
@@ -86,6 +110,77 @@ it.effect("cancels only the owning renderer's active transcription fiber", () =>
     const requestId = "44ad6887-2d86-4e3a-a9ed-d9397907ffad";
     const owner = { sender: { id: 7 } } as IpcMainInvokeEvent;
     const stranger = { sender: { id: 8 } } as IpcMainInvokeEvent;
+    assert.strictEqual(
+      yield* handlers.get("global-dictation-capture-bare-modifier-hotkey")!(owner, true),
+      "Ctrl+Fn",
+    );
+    assert.strictEqual(
+      yield* handlers.get("global-dictation-capture-bare-modifier-hotkey")!(owner, false),
+      null,
+    );
+    assert.isTrue(
+      Exit.isFailure(
+        yield* Effect.exit(
+          handlers.get("global-dictation-capture-bare-modifier-hotkey")!(owner, "false"),
+        ),
+      ),
+    );
+    assert.strictEqual(yield* handlers.get("global-dictation-hotkey-capture:cancel")!(owner), true);
+    assert.isTrue(
+      Exit.isFailure(
+        yield* Effect.exit(
+          handlers.get("global-dictation-capture-bare-modifier-hotkey")!(stranger, true),
+        ),
+      ),
+    );
+    const dictionaryOperationId = "a60a7efa-0983-42be-8b20-e00e394adf13";
+    const dictionaryFiber = yield* Effect.forkChild(
+      handlers.get("codex:dictation:dictionary:add")!(owner, {
+        operationId: dictionaryOperationId,
+        target: { accountId: "account", userId: "user" },
+        text: "Nodex",
+      }),
+    );
+    yield* Effect.yieldNow;
+    assert.isFalse(
+      (yield* handlers.get("codex:dictation:dictionary:cancel")!(
+        stranger,
+        dictionaryOperationId,
+      )) as boolean,
+    );
+    assert.isTrue(
+      (yield* handlers.get("codex:dictation:dictionary:cancel")!(
+        owner,
+        dictionaryOperationId,
+      )) as boolean,
+    );
+    yield* Fiber.join(dictionaryFiber);
+    assert.isFalse(
+      (yield* handlers.get("codex:dictation:dictionary:cancel")!(
+        owner,
+        dictionaryOperationId,
+      )) as boolean,
+    );
+    assert.strictEqual(yield* handlers.get("codex:dictation:voice-language:read")!(owner), "auto");
+    assert.strictEqual(
+      yield* handlers.get("codex:dictation:voice-language:update")!(owner, "en"),
+      "en",
+    );
+    assert.isTrue(
+      Exit.isFailure(
+        yield* Effect.exit(handlers.get("codex:dictation:voice-language:update")!(owner, 42)),
+      ),
+    );
+    assert.isTrue(
+      Exit.isFailure(
+        yield* Effect.exit(handlers.get("codex:dictation:voice-language:read")!(stranger)),
+      ),
+    );
+    assert.isTrue(
+      Exit.isFailure(
+        yield* Effect.exit(handlers.get("codex:dictation:voice-language:update")!(stranger, "en")),
+      ),
+    );
     assert.deepEqual(yield* handlers.get("codex:dictation:streaming-connect-info:read")!(owner), {
       websocketUrl: "wss://chatgpt.com/backend-api/dictation/stream",
       protocols: ["chatgpt-dictation", "openai-bearer.fixture-token", "codex-desktop"],

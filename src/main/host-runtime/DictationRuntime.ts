@@ -7,6 +7,7 @@ import * as Queue from "effect/Queue";
 import * as Schedule from "effect/Schedule";
 import * as Schema from "effect/Schema";
 import * as Stream from "effect/Stream";
+import { compileMacNativeHotkey } from "../../shared/command-keybindings";
 import type {
   CommandKeybindingRejection,
   CommandKeymapState,
@@ -32,21 +33,31 @@ import type {
 import type { GlobalDictationRendererEvent } from "../../shared/global-dictation";
 import { APP_RENDERER_URL } from "../../shared/app-renderer-policy";
 import { MainConfig } from "../app/MainConfig";
+import { CodexPlatform } from "../app/CodexApplicationLive";
 import { ClipboardSafePasteService } from "../dictation/clipboard-safe-paste-service";
 import { DictationMicrophoneLease } from "../dictation/dictation-microphone-lease";
+import { makeDictationHotkeyCapture } from "../dictation/DictationHotkeyCapture";
 import { FileDictationRecordingStore } from "../dictation/dictation-recording-store";
 import { DictationSettingsStore } from "../dictation/dictation-settings-store";
-import { GlobalDictationManager } from "../dictation/global-dictation-manager";
+import {
+  GlobalDictationManager,
+  type GlobalDictationManagerInterface,
+} from "../dictation/global-dictation-manager";
 import { GlobalDictationWindowController } from "../dictation/global-dictation-window-controller";
 import {
   MacDictationNativeHelperClient,
   resolveMacDictationHelperExecutable,
 } from "../dictation/mac-dictation-native-helper-client";
+import { createWindowsDictationNativeHelperClient } from "../platform/electron/WindowsDictationNative";
+import { captureMacBareModifier } from "../platform/electron/MacBareModifierCapture";
+import { compileWindowsDictationHotkey } from "../dictation/windows-dictation-native-helper-client";
 import { createSystemMicrophonePermissionService } from "../dictation/system-microphone-permission-service";
 import { ApplicationSettings } from "../settings/ApplicationSettings";
 import { ElectronPrivacy } from "../platform/electron/ElectronPrivacy";
+import { ElectronDesktop } from "../platform/electron/ElectronDesktop";
 import { RendererClientRuntime } from "./RendererClientRuntime";
 import { WindowRuntime } from "../window-runtime/WindowRuntime";
+import { ApplicationWindowRuntime } from "../window-runtime/ApplicationWindowRuntime";
 import { MAIN_OBSERVATION_EVENT_CAPACITY } from "../runtime-limits";
 
 export class DictationRuntimeError extends Schema.TaggedError<DictationRuntimeError>()(
@@ -73,7 +84,11 @@ export class DictationRuntime extends Context.Service<
     readonly updateKeyboardLayout: (
       snapshot: KeyboardLayoutSnapshot,
     ) => Effect.Effect<boolean, DictationRuntimeError>;
-    readonly captureFnHotkey: Effect.Effect<"Fn" | null, DictationRuntimeError>;
+    readonly captureBareModifierHotkey: (
+      webContentsId: number,
+      allowsBareModifiers: boolean,
+    ) => Effect.Effect<string | null, DictationRuntimeError>;
+    readonly cancelHotkeyCapture: (webContentsId: number) => Effect.Effect<boolean>;
     readonly handleRendererEvent: (
       webContentsId: number,
       event: GlobalDictationRendererEvent,
@@ -152,16 +167,26 @@ export const live = (options: {
 }): Layer.Layer<
   DictationRuntime,
   never,
-  ApplicationSettings | MainConfig | ElectronPrivacy | RendererClientRuntime | WindowRuntime
+  | ApplicationSettings
+  | MainConfig
+  | CodexPlatform
+  | ElectronPrivacy
+  | ElectronDesktop
+  | RendererClientRuntime
+  | WindowRuntime
+  | ApplicationWindowRuntime
 > =>
   Layer.effect(
     DictationRuntime,
     Effect.gen(function* () {
       const applicationSettings = yield* ApplicationSettings;
       const config = yield* MainConfig;
+      const codex = yield* CodexPlatform;
       const privacy = yield* ElectronPrivacy;
+      const desktop = yield* ElectronDesktop;
       const rendererClients = yield* RendererClientRuntime;
       const windows = yield* WindowRuntime;
+      const applicationWindows = yield* ApplicationWindowRuntime;
       const events = yield* PubSub.sliding<void>(MAIN_OBSERVATION_EVENT_CAPACITY);
       const settings = new DictationSettingsStore(config.nodexHome);
       const recordings = new FileDictationRecordingStore({ profileRoot: config.nodexHome });
@@ -175,23 +200,30 @@ export const live = (options: {
         if (accepting) PubSub.publishUnsafe(events, undefined);
       };
       const releaseMicrophoneSubscription = microphone.subscribe(publish);
-      let globalManager: GlobalDictationManager | null = null;
+      let globalManager: GlobalDictationManagerInterface | null = null;
       let releaseGlobalSubscription = (): void => undefined;
       let releaseGlobalWindowSubscription = (): void => undefined;
 
-      if (config.platform === "darwin") {
-        const helper = yield* Effect.acquireRelease(
-          Effect.sync(
-            () =>
-              new MacDictationNativeHelperClient(
-                resolveMacDictationHelperExecutable({
-                  isPackaged: config.isPackaged,
-                  repositoryRoot: config.projectRootPath,
-                  resourcesPath: config.resourcesPath,
-                }),
-              ),
+      if (config.platform === "darwin" || config.platform === "win32") {
+        const native = yield* Effect.acquireRelease(
+          Effect.sync(() =>
+            config.platform === "darwin"
+              ? {
+                  platform: "darwin" as const,
+                  helper: new MacDictationNativeHelperClient(
+                    resolveMacDictationHelperExecutable({
+                      isPackaged: config.isPackaged,
+                      repositoryRoot: config.projectRootPath,
+                      resourcesPath: config.resourcesPath,
+                    }),
+                  ),
+                }
+              : {
+                  platform: "win32" as const,
+                  helper: createWindowsDictationNativeHelperClient(),
+                },
           ),
-          (client) => Effect.sync(() => client.dispose()),
+          ({ helper }) => Effect.sync(() => helper.dispose()),
         );
         const windowController = yield* Effect.acquireRelease(
           Effect.sync(
@@ -206,23 +238,40 @@ export const live = (options: {
         const recoveryWake = yield* Queue.sliding<void>(1);
         const recoveryCallbacks = yield* FiberSet.make();
         const runRecoveryCallback = yield* FiberSet.runtime(recoveryCallbacks)();
-        globalManager = new GlobalDictationManager({
-          helper,
+        const managerOptions = {
           windowController,
-          pasteService: new ClipboardSafePasteService({ helper }),
-          readSettings: () => settings.read(),
-          readKeepVisiblePreference: () => settings.readKeepGlobalBarVisiblePreference(),
-          writeKeepVisiblePreference: async (value) => {
-            await settings.update({ keepGlobalBarVisible: value });
+          pasteService: new ClipboardSafePasteService({ helper: native.helper }),
+          openRecording: async (recordingId: string) => {
+            if (!applicationWindows.openDictationRecording(recordingId)) {
+              throw new Error("Could not open the dictation recording");
+            }
           },
+          openAccessibilitySettings: () =>
+            desktop.shell.openExternal(
+              "x-apple.systempreferences:com.apple.preference.security?Privacy_Accessibility",
+            ),
           getFocusedAppWindow: () =>
             windows.all().find((window) => !window.isDestroyed() && window.isFocused()) ?? null,
-          getAppWindowByWebContentsId: (webContentsId) => windows.get(webContentsId),
+          getAppWindowByWebContentsId: (webContentsId: number) => windows.get(webContentsId),
           onRecoveryNeeded: () => {
             void runRecoveryCallback(Queue.offer(recoveryWake, undefined).pipe(Effect.asVoid));
           },
-          platform: "darwin",
-        });
+          platform: native.platform,
+        };
+        globalManager =
+          native.platform === "darwin"
+            ? new GlobalDictationManager({
+                ...managerOptions,
+                helper: native.helper,
+                compileHotkey: compileMacNativeHotkey,
+                isBareHotkey: (binding) => binding.keyCode === null,
+              })
+            : new GlobalDictationManager({
+                ...managerOptions,
+                helper: native.helper,
+                compileHotkey: compileWindowsDictationHotkey,
+                isBareHotkey: () => false,
+              });
         releaseGlobalSubscription = globalManager.subscribe(publish);
         releaseGlobalWindowSubscription = windowController.subscribeTerminal((webContentsId) => {
           microphone.releaseOwner(webContentsId);
@@ -252,13 +301,29 @@ export const live = (options: {
         );
       }
 
+      const hotkeyCapture = yield* makeDictationHotkeyCapture({
+        primaryWindows: windows.all,
+        capture: (window, signal, allowsBareModifiers) =>
+          globalManager
+            ? globalManager.captureBareModifierHotkey(
+                signal,
+                () =>
+                  captureMacBareModifier({
+                    browserRuntime: codex.runtime.browserRuntime,
+                    nativeWindowHandle: window.getNativeWindowHandle(),
+                    signal,
+                  }),
+                allowsBareModifiers,
+              )
+            : Promise.reject(new Error("Global shortcut capture is unavailable")),
+      });
       yield* rendererClients.events.pipe(
         Stream.runForEach((event) =>
           event.kind === "disposed"
             ? Effect.sync(() => {
                 microphone.releaseOwner(event.webContentsId);
                 globalManager?.handleWebContentsGone(event.webContentsId);
-              })
+              }).pipe(Effect.andThen(hotkeyCapture.cancel(event.webContentsId)))
             : Effect.void,
         ),
         Effect.forkScoped({ startImmediately: true }),
@@ -279,7 +344,9 @@ export const live = (options: {
 
       const globalPermissions = (
         operation: string,
-        read: (manager: GlobalDictationManager) => Promise<GlobalDictationPermissionSnapshot>,
+        read: (
+          manager: GlobalDictationManagerInterface,
+        ) => Promise<GlobalDictationPermissionSnapshot>,
       ) =>
         globalManager
           ? attemptPromise(operation, () => read(globalManager!))
@@ -313,11 +380,8 @@ export const live = (options: {
                 globalManager!.updateKeyboardLayout(snapshot),
               )
             : Effect.succeed(false),
-        captureFnHotkey: globalManager
-          ? attemptPromise("capture-global-dictation-fn-hotkey", () =>
-              globalManager!.captureFnHotkey(),
-            )
-          : Effect.succeed(null),
+        captureBareModifierHotkey: hotkeyCapture.capture,
+        cancelHotkeyCapture: hotkeyCapture.cancel,
         handleRendererEvent: (webContentsId, event) =>
           Effect.sync(() => globalManager?.handleRendererEvent(webContentsId, event) ?? false),
         ownsGlobalRenderer: (webContentsId) => globalManager?.ownsRenderer(webContentsId) ?? false,
@@ -325,7 +389,7 @@ export const live = (options: {
           Effect.sync(() => {
             microphone.releaseOwner(webContentsId);
             globalManager?.handleWebContentsGone(webContentsId);
-          }),
+          }).pipe(Effect.andThen(hotkeyCapture.cancel(webContentsId)), Effect.asVoid),
         readMicrophoneAccess: Effect.sync(permission.readStatus),
         requestMicrophoneAccess: attemptPromise("request-microphone-access", () =>
           permission.requestAccess(),
@@ -349,11 +413,7 @@ export const live = (options: {
         ),
         readSettings: attemptPromise("read-dictation-settings", () => settings.read()),
         updateSettings: (patch) =>
-          attemptPromise("update-dictation-settings", () => settings.update(patch)).pipe(
-            Effect.tap((nextSettings) =>
-              Effect.sync(() => globalManager?.syncSettings(nextSettings)),
-            ),
-          ),
+          attemptPromise("update-dictation-settings", () => settings.update(patch)),
         consumeGlobalShortcutNudge: attemptPromise("consume-global-shortcut-nudge", () =>
           settings.consumeGlobalShortcutNudge(),
         ),

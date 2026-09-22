@@ -7,19 +7,23 @@ import {
   DictationRetryIcon,
 } from "@/components/shared/icons";
 import { ShortcutKeycaps } from "@/components/ui/shortcut-keycaps";
+import { NodexButton } from "@/components/ui/button";
 import { NodexTooltip } from "@/components/ui/tooltip";
 import { cn } from "@/lib/utils";
 import { formatAcceleratorLabel } from "../../../shared/command-keybindings";
-import type { DictationError, DictationSettings } from "../../../shared/dictation";
+import type { DictationError } from "../../../shared/dictation";
 import { DEFAULT_DICTATION_SETTINGS } from "../../../shared/dictation";
-import type { GlobalDictationRendererEvent } from "../../../shared/global-dictation";
-import { cleanupDictationTranscript } from "./dictation-cleanup-client";
+import type {
+  GlobalDictationPasteFailure,
+  GlobalDictationRendererEvent,
+} from "../../../shared/global-dictation";
 import { transcribeDictationBlob } from "./dictation-buffered-client";
 import { createDictationHistoryPort } from "./dictation-history-client";
 import { browserDictationRecorderFactory } from "./dictation-recorder";
 import {
   DictationSessionController,
   type DictationControllerPorts,
+  type DictationRecovery,
 } from "./dictation-session-controller";
 import { createBrowserDictationStreamingPort } from "./dictation-streaming-client";
 import {
@@ -32,6 +36,7 @@ import { acquireMicrophone } from "./microphone-acquirer";
 import { useDictationSession } from "./use-dictation-session";
 import { useFloatingWindowPointerInteractivity } from "./use-floating-window-pointer-interactivity";
 import { globalDictationTransport } from "./global-dictation-transport";
+import { playDictationSound } from "./dictation-sounds";
 
 const sendEvent = (event: GlobalDictationRendererEvent): Promise<boolean> =>
   window.globalDictation?.sendEvent(event) ?? Promise.resolve(false);
@@ -88,27 +93,6 @@ const errorMessage = (kind: string): string => {
   if (kind === "accessibility-denied") return "Accessibility access is required";
   if (kind === "paste-failed") return "Couldn’t paste text";
   return "Dictation stopped unexpectedly";
-};
-
-const playFeedbackTone = (frequency: number): void => {
-  try {
-    const context = new AudioContext();
-    const oscillator = context.createOscillator();
-    const gain = context.createGain();
-    const startAt = context.currentTime;
-    const stopAt = startAt + 0.09;
-    oscillator.frequency.setValueAtTime(frequency, startAt);
-    gain.gain.setValueAtTime(0.0001, startAt);
-    gain.gain.exponentialRampToValueAtTime(0.08, startAt + 0.012);
-    gain.gain.exponentialRampToValueAtTime(0.0001, stopAt);
-    oscillator.connect(gain);
-    gain.connect(context.destination);
-    oscillator.addEventListener("ended", () => void context.close(), { once: true });
-    oscillator.start(startAt);
-    oscillator.stop(stopAt);
-  } catch {
-    // Capture does not depend on best-effort audible feedback.
-  }
 };
 
 export type GlobalDictationBarState =
@@ -371,15 +355,22 @@ export function GlobalDictationRoot() {
   const activeSessionIdRef = useRef<string | null>(null);
   const completionReportedRef = useRef(false);
   const lastStateEventRef = useRef<string | null>(null);
-  const previousSnapshotKindRef = useRef("idle");
   const appliedCompletionIdsRef = useRef(new Set<string>());
-  const [settings, setSettings] = useState<DictationSettings>(DEFAULT_DICTATION_SETTINGS);
+  const captureSettingsRef = useRef(DEFAULT_DICTATION_SETTINGS);
+  const playSoundsRef = useRef(false);
+  const recoveryRef = useRef<DictationRecovery | null>(null);
+  const pasteRecoveryRef = useRef(false);
+  const [recovery, setRecovery] = useState<DictationRecovery | null>(null);
   const [presentationState, setPresentationState] =
     useState<GlobalDictationBarState>("initializing");
   const [configuredHotkey, setConfiguredHotkey] = useState<string | null>(null);
   const [configuredToggleHotkey, setConfiguredToggleHotkey] = useState<string | null>(null);
   const [activationNonce, setActivationNonce] = useState(0);
   const [externalError, setExternalError] = useState<DictationError | null>(null);
+  const [pasteRecovery, setPasteRecovery] = useState<{
+    readonly sessionId: string;
+    readonly failure: GlobalDictationPasteFailure;
+  } | null>(null);
   const [controller] = useState(
     () =>
       new DictationSessionController({
@@ -395,14 +386,12 @@ export function GlobalDictationRoot() {
         },
         devices: {
           acquire: async () => {
-            const [nextSettings, builtInMicrophoneLabelHint] = await Promise.all([
-              globalDictationTransport.readSettings().catch(() => DEFAULT_DICTATION_SETTINGS),
-              globalDictationTransport.readMicrophoneRouteHint().catch(() => null),
-            ]);
-            setSettings(nextSettings);
+            const builtInMicrophoneLabelHint = await globalDictationTransport
+              .readMicrophoneRouteHint()
+              .catch(() => null);
             return await acquireMicrophone({
               mediaDevices: navigator.mediaDevices,
-              selectedDeviceId: nextSettings.microphoneInputDeviceId,
+              selectedDeviceId: captureSettingsRef.current.microphoneInputDeviceId,
               builtInMicrophoneLabelHint,
             });
           },
@@ -413,15 +402,28 @@ export function GlobalDictationRoot() {
           globalDictationTransport.readStreamingConnectInfo,
         ),
         buffered: { transcribe },
-        cleanup: {
-          enabled: true,
-          transcript: async (transcript, signal, _sessionId, onDiagnostics) =>
-            await cleanupDictationTranscript(transcript, {
-              signal,
-              onDiagnostics,
-              cleanup: globalDictationTransport.cleanup,
-              cancel: globalDictationTransport.cancelTranscription,
-            }),
+        cleanup: { enabled: false, transcript: async (text) => text },
+        onRecoveryChange: (next) => {
+          const sessionId = activeSessionIdRef.current;
+          if (!sessionId || pasteRecoveryRef.current) return;
+          recoveryRef.current = next;
+          setRecovery(next);
+          setPresentationState("error");
+          void sendEvent({
+            type: "failed",
+            sessionId,
+            error: { kind: "transcription-service", operation: "transcribe", retryable: true },
+          });
+        },
+        onStopRequested: () => {
+          const sessionId = activeSessionIdRef.current;
+          if (sessionId) void sendEvent({ type: "recording-stopped", sessionId });
+        },
+        onRecordingStarted: () => {
+          if (playSoundsRef.current) playDictationSound("start");
+        },
+        onRecordingStopped: () => {
+          if (playSoundsRef.current) playDictationSound("stop");
         },
         history: createGlobalHistoryPort(),
         completion: {
@@ -450,10 +452,6 @@ export function GlobalDictationRoot() {
   const snapshot = useDictationSession(controller);
 
   useEffect(() => {
-    void globalDictationTransport
-      .readSettings()
-      .then(setSettings)
-      .catch(() => undefined);
     void sendEvent({ type: "ready" });
   }, [controller]);
 
@@ -461,11 +459,20 @@ export function GlobalDictationRoot() {
     const bridge = window.globalDictation;
     if (!bridge) return;
     return bridge.onCommand((command) => {
+      if (command.type === "paste-failed") {
+        pasteRecoveryRef.current = true;
+        setPasteRecovery({ sessionId: command.sessionId, failure: command.failure });
+        return;
+      }
       if (command.type === "idle") {
         activeSessionIdRef.current = null;
         setConfiguredHotkey(command.configuredHotkey);
         setConfiguredToggleHotkey(command.configuredToggleHotkey);
         setExternalError(null);
+        setPasteRecovery(null);
+        pasteRecoveryRef.current = false;
+        recoveryRef.current = null;
+        setRecovery(null);
         setActivationNonce((nonce) => nonce + 1);
         setPresentationState(
           command.configuredHotkey || command.configuredToggleHotkey ? "idle" : "initializing",
@@ -473,10 +480,17 @@ export function GlobalDictationRoot() {
         return;
       }
       if (command.type === "start") {
-        if (controller.getSnapshot().kind !== "idle") return;
+        if (controller.getSnapshot().kind !== "idle") {
+          if (!recoveryRef.current && !pasteRecoveryRef.current) return;
+          controller.cancel();
+        }
         activeSessionIdRef.current = command.sessionId;
         completionReportedRef.current = false;
         setExternalError(null);
+        setPasteRecovery(null);
+        pasteRecoveryRef.current = false;
+        recoveryRef.current = null;
+        setRecovery(null);
         setActivationNonce((nonce) => nonce + 1);
         setPresentationState("listening");
         lastStateEventRef.current = null;
@@ -490,27 +504,42 @@ export function GlobalDictationRoot() {
             if (activeSessionIdRef.current === command.sessionId) activeSessionIdRef.current = null;
             return;
           }
-          await controller.start({ surface: "global", gesture: command.gesture });
+          const [settings, capabilities] = await Promise.all([
+            globalDictationTransport.readSettings().catch(() => DEFAULT_DICTATION_SETTINGS),
+            globalDictationTransport.readCapabilities().catch(() => null),
+          ]);
+          if (activeSessionIdRef.current !== command.sessionId) return;
+          captureSettingsRef.current = settings;
+          playSoundsRef.current = capabilities?.capabilities.sounds === true;
+          await controller.start({
+            surface: "global",
+            gesture: command.gesture,
+            activationStartedAtMs: command.activationStartedAtMs,
+            streamingEnabled: capabilities?.capabilities.streaming === "available",
+          });
         });
         return;
       }
       if (command.sessionId !== activeSessionIdRef.current) return;
       if (command.type === "paste-completed") return;
-      if (command.type === "paste-failed") {
-        setExternalError(command.error);
-        setPresentationState("error");
-        return;
-      }
       if (command.type === "finish") {
         activeSessionIdRef.current = null;
         setExternalError(null);
         return;
       }
       if (command.type === "stop") {
+        if (recoveryRef.current) return;
+        if (controller.getSnapshot().kind === "idle") {
+          activeSessionIdRef.current = null;
+          void sendEvent({ type: "cancelled", sessionId: command.sessionId });
+          return;
+        }
         setPresentationState("transcribing");
         controller.stop("insert");
       } else {
         controller.cancel();
+        recoveryRef.current = null;
+        setRecovery(null);
       }
     });
   }, [controller]);
@@ -531,30 +560,20 @@ export function GlobalDictationRoot() {
       return;
     }
     if (snapshot.kind === "retryable-error") {
+      if (pasteRecoveryRef.current) return;
       const identity = `failed:${snapshot.error.kind}`;
       setPresentationState("error");
       if (lastStateEventRef.current === identity) return;
       lastStateEventRef.current = identity;
+      if (playSoundsRef.current) playDictationSound("error");
       void sendEvent({ type: "failed", sessionId, error: snapshot.error });
       return;
     }
-    if (snapshot.kind === "idle" && !completionReportedRef.current) {
+    if (snapshot.kind === "idle" && !completionReportedRef.current && !recoveryRef.current) {
       activeSessionIdRef.current = null;
       void sendEvent({ type: "cancelled", sessionId });
     }
   }, [snapshot]);
-
-  useEffect(() => {
-    const previousKind = previousSnapshotKindRef.current;
-    previousSnapshotKindRef.current = snapshot.kind;
-    if (snapshot.kind === "recording" && previousKind !== "recording") {
-      if (settings.playStartSound) playFeedbackTone(660);
-      return;
-    }
-    if (snapshot.kind !== "recording" && previousKind === "recording" && settings.playStopSound) {
-      playFeedbackTone(440);
-    }
-  }, [settings.playStartSound, settings.playStopSound, snapshot.kind]);
 
   const retry = (): void => {
     if (externalError) setExternalError(null);
@@ -567,9 +586,12 @@ export function GlobalDictationRoot() {
   const dismiss = (): void => {
     const sessionId = activeSessionIdRef.current;
     controller.cancel();
+    const recovering = recoveryRef.current !== null;
+    recoveryRef.current = null;
+    setRecovery(null);
     if (!sessionId) return;
     activeSessionIdRef.current = null;
-    void sendEvent({ type: externalError ? "dismiss" : "cancelled", sessionId });
+    void sendEvent({ type: externalError || recovering ? "dismiss" : "cancelled", sessionId });
   };
 
   const close = (): void => {
@@ -583,6 +605,49 @@ export function GlobalDictationRoot() {
     ? externalError.retryable
     : snapshot.kind === "retryable-error" && snapshot.canRetryRecording;
   const barState = visibleError ? "error" : presentationState;
+
+  if (pasteRecovery) {
+    const { sessionId, failure } = pasteRecovery;
+    return (
+      <GlobalDictationPasteRecovery
+        failure={failure}
+        onCopy={() => void sendEvent({ type: "copy-transcript", sessionId })}
+        onOpenSettings={() => void sendEvent({ type: "open-accessibility-settings", sessionId })}
+        onDismiss={() => {
+          controller.cancel();
+          activeSessionIdRef.current = null;
+          pasteRecoveryRef.current = false;
+          setPasteRecovery(null);
+          recoveryRef.current = null;
+          setRecovery(null);
+          void sendEvent({ type: "close", sessionId });
+        }}
+      />
+    );
+  }
+
+  if (recovery) {
+    const sessionId = activeSessionIdRef.current;
+    return (
+      <GlobalDictationTranscriptionRecovery
+        recovery={recovery}
+        onCopy={() => {
+          if (sessionId && recovery.text)
+            void sendEvent({ type: "copy-recovered-text", sessionId, text: recovery.text });
+        }}
+        onViewRecording={() => {
+          if (sessionId && recovery.recordingId)
+            void sendEvent({
+              type: "view-recording",
+              sessionId,
+              recordingId: recovery.recordingId,
+            });
+        }}
+        onRetry={retry}
+        onDismiss={dismiss}
+      />
+    );
+  }
 
   return (
     <main
@@ -603,6 +668,127 @@ export function GlobalDictationRoot() {
         onRetry={retry}
         onClose={close}
       />
+    </main>
+  );
+}
+
+export function GlobalDictationPasteRecovery({
+  failure,
+  onCopy,
+  onOpenSettings,
+  onDismiss,
+}: {
+  readonly failure: GlobalDictationPasteFailure;
+  readonly onCopy: () => void;
+  readonly onOpenSettings: () => void;
+  readonly onDismiss: () => void;
+}) {
+  const interactiveRegionRef = useRef<HTMLDivElement>(null);
+  useFloatingWindowPointerInteractivity({
+    activationNonce: 0,
+    interactiveRegionRef,
+    onInteractiveChange: publishPointerInteractivity,
+  });
+  return (
+    <main className="flex h-screen w-screen items-end justify-center overflow-hidden bg-transparent text-token-text-primary">
+      <div ref={interactiveRegionRef} className="w-full max-w-xl p-2 select-none">
+        <section
+          role="status"
+          aria-live="polite"
+          className="flex items-center gap-3 rounded-xl border-[0.5px] border-token-border bg-token-dropdown-background p-3 shadow-lg"
+        >
+          <div className="min-w-0 flex-1">
+            <div className="text-sm font-medium">
+              {failure.copied ? (
+                <span className="flex items-center gap-1">
+                  Text copied — <ShortcutHint accelerator="Command+V" /> to paste
+                </span>
+              ) : (
+                "Your clipboard changed"
+              )}
+            </div>
+            <div className="text-xs text-token-text-secondary">
+              {!failure.copied
+                ? "Copy your transcript to paste it"
+                : failure.reason === "accessibility"
+                  ? "Enable Accessibility to paste automatically"
+                  : "Couldn't paste automatically"}
+            </div>
+          </div>
+          {failure.reason === "accessibility" ? (
+            <NodexButton size="xs" variant="secondary" onClick={onOpenSettings}>
+              Open Settings
+            </NodexButton>
+          ) : null}
+          {!failure.copied ? (
+            <NodexButton size="xs" variant="secondary" onClick={onCopy}>
+              Copy transcript
+            </NodexButton>
+          ) : null}
+          <NodexButton size="icon-xs" variant="ghost" aria-label="Dismiss" onClick={onDismiss}>
+            <DictationDismissIcon className="size-3.5" />
+          </NodexButton>
+        </section>
+      </div>
+    </main>
+  );
+}
+
+export function GlobalDictationTranscriptionRecovery({
+  recovery,
+  onCopy,
+  onViewRecording,
+  onRetry,
+  onDismiss,
+}: {
+  readonly recovery: DictationRecovery;
+  readonly onCopy: () => void;
+  readonly onViewRecording: () => void;
+  readonly onRetry: () => void;
+  readonly onDismiss: () => void;
+}) {
+  const interactiveRegionRef = useRef<HTMLDivElement>(null);
+  useFloatingWindowPointerInteractivity({
+    activationNonce: 0,
+    interactiveRegionRef,
+    onInteractiveChange: publishPointerInteractivity,
+  });
+  return (
+    <main className="flex h-screen w-screen items-end justify-center overflow-hidden bg-transparent text-token-text-primary">
+      <div ref={interactiveRegionRef} className="w-full max-w-xl p-2 select-none">
+        <section
+          role="status"
+          aria-live="polite"
+          className="flex flex-wrap items-center gap-2 rounded-xl border-[0.5px] border-token-border bg-token-dropdown-background p-3 shadow-lg"
+        >
+          {recovery.phase === "recovering" ? <ActivitySpinnerIcon className="size-4" /> : null}
+          <span className="min-w-0 flex-1 text-sm font-medium">
+            {recovery.phase === "recovering"
+              ? "Recovering text…"
+              : recovery.phase === "recovered"
+                ? "Text recovered"
+                : "Dictation stopped"}
+          </span>
+          {recovery.phase === "recovered" && recovery.text ? (
+            <NodexButton size="xs" variant="secondary" onClick={onCopy}>
+              Copy text
+            </NodexButton>
+          ) : null}
+          {recovery.phase === "failed" ? (
+            <NodexButton size="xs" variant="secondary" onClick={onRetry}>
+              Retry
+            </NodexButton>
+          ) : null}
+          {recovery.recordingId && recovery.saveState === "saved" ? (
+            <NodexButton size="xs" variant="ghost" onClick={onViewRecording}>
+              View recording
+            </NodexButton>
+          ) : null}
+          <NodexButton size="icon-xs" variant="ghost" aria-label="Dismiss" onClick={onDismiss}>
+            <DictationDismissIcon className="size-3.5" />
+          </NodexButton>
+        </section>
+      </div>
     </main>
   );
 }

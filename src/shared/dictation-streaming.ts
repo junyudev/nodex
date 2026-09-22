@@ -199,11 +199,7 @@ export function parseDictationStreamingServerEvent(
   } catch {
     return null;
   }
-  if (
-    !isRecord(parsed) ||
-    !isSequenceNumber(parsed.sequence_no) ||
-    typeof parsed.type !== "string"
-  ) {
+  if (!isRecord(parsed) || !isFiniteNumber(parsed.sequence_no) || typeof parsed.type !== "string") {
     return null;
   }
 
@@ -231,7 +227,7 @@ export function parseDictationStreamingServerEvent(
     case "transcript.final":
       if (
         typeof parsed.utterance_id !== "string" ||
-        !isSequenceNumber(parsed.revision) ||
+        !isFiniteNumber(parsed.revision) ||
         typeof parsed.text !== "string"
       ) {
         return null;
@@ -368,6 +364,6 @@ function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
-function isSequenceNumber(value: unknown): value is number {
-  return typeof value === "number" && Number.isSafeInteger(value) && value >= 0;
+function isFiniteNumber(value: unknown): value is number {
+  return typeof value === "number" && Number.isFinite(value);
 }

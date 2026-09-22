@@ -18,6 +18,8 @@ import {
   scopedAtomFamily,
   scopedWritableAtom,
   usePersistedAtomValue,
+  useMaitaiStore,
+  getConcretePersistedAtom,
   useScopeHandle,
   useSetPersistedAtom,
   type PersistedLoadable,
@@ -331,6 +333,7 @@ export interface ComposerPromptDraftController {
   readonly loadable: PersistedLoadable<ComposerPromptDraftMap>;
   readonly aliases: readonly string[];
   readonly prompt: string;
+  readPrompt(): string;
   setPrompt(prompt: string): Promise<void>;
   clear(): Promise<void>;
 }
@@ -339,6 +342,7 @@ export function useComposerPromptDraft(
   threadId: string | null | undefined,
 ): ComposerPromptDraftController {
   const composerHandle = useScopeHandle(ComposerScope);
+  const store = useMaitaiStore();
   const loadable = usePersistedAtomValue(composerPromptDraftsAtom);
   const setDrafts = useSetPersistedAtom(composerPromptDraftsAtom);
   const aliases = useMemo(
@@ -358,9 +362,17 @@ export function useComposerPromptDraft(
     [aliases, setDrafts],
   );
   const clear = useCallback(() => setPrompt(""), [setPrompt]);
+  const readPrompt = useCallback(
+    () =>
+      readComposerPromptDraft(
+        store.jotaiStore.get(getConcretePersistedAtom(store, composerPromptDraftsAtom)).value,
+        aliases,
+      ),
+    [aliases, store],
+  );
   return useMemo(
-    () => ({ loadable, aliases, prompt, setPrompt, clear }),
-    [aliases, clear, loadable, prompt, setPrompt],
+    () => ({ loadable, aliases, prompt, readPrompt, setPrompt, clear }),
+    [aliases, clear, loadable, prompt, readPrompt, setPrompt],
   );
 }
 

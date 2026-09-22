@@ -13,9 +13,7 @@ export const MAX_DICTATION_DICTIONARY_ENTRIES = 100;
 export const MAX_DICTATION_DICTIONARY_ENTRY_LENGTH = 512;
 const PATCH_KEYS = new Set<keyof DictationSettings>([
   "microphoneInputDeviceId",
-  "keepGlobalBarVisible",
-  "playStartSound",
-  "playStopSound",
+  "dictationSoundsEnabled",
   "globalShortcutNudgeDismissed",
   "dictionary",
 ]);
@@ -40,28 +38,25 @@ const parseSettings = (value: unknown): DictationSettings => {
   const input = value as Record<string, unknown>;
   const microphoneInputDeviceId =
     input.microphoneInputDeviceId ?? DEFAULT_DICTATION_SETTINGS.microphoneInputDeviceId;
-  const keepGlobalBarVisible =
-    input.keepGlobalBarVisible ?? DEFAULT_DICTATION_SETTINGS.keepGlobalBarVisible;
-  const playStartSound = input.playStartSound ?? DEFAULT_DICTATION_SETTINGS.playStartSound;
-  const playStopSound = input.playStopSound ?? DEFAULT_DICTATION_SETTINGS.playStopSound;
   const globalShortcutNudgeDismissed = input.globalShortcutNudgeDismissed ?? false;
+  const dictationSoundsEnabled =
+    input.dictationSoundsEnabled ?? DEFAULT_DICTATION_SETTINGS.dictationSoundsEnabled;
   const dictionary = parseDictionary(input.dictionary);
-  if (microphoneInputDeviceId !== null && typeof microphoneInputDeviceId !== "string") {
+  if (
+    microphoneInputDeviceId !== null &&
+    (typeof microphoneInputDeviceId !== "string" || !microphoneInputDeviceId)
+  ) {
     throw new Error("Dictation microphone selection is invalid");
   }
   if (
-    typeof keepGlobalBarVisible !== "boolean" ||
-    typeof playStartSound !== "boolean" ||
-    typeof playStopSound !== "boolean" ||
-    typeof globalShortcutNudgeDismissed !== "boolean"
+    typeof globalShortcutNudgeDismissed !== "boolean" ||
+    typeof dictationSoundsEnabled !== "boolean"
   ) {
     throw new Error("Dictation settings flags are invalid");
   }
   return {
     microphoneInputDeviceId,
-    keepGlobalBarVisible,
-    playStartSound,
-    playStopSound,
+    dictationSoundsEnabled,
     globalShortcutNudgeDismissed,
     dictionary,
   };
@@ -80,21 +75,20 @@ export const parseDictationSettingsPatch = (value: unknown): DictationSettingsPa
   if (
     "microphoneInputDeviceId" in input &&
     input.microphoneInputDeviceId !== null &&
-    typeof input.microphoneInputDeviceId !== "string"
+    (typeof input.microphoneInputDeviceId !== "string" || !input.microphoneInputDeviceId)
   ) {
     throw new Error("Dictation microphone selection is invalid");
   }
-  for (const key of [
-    "keepGlobalBarVisible",
-    "playStartSound",
-    "playStopSound",
-    "globalShortcutNudgeDismissed",
-  ] as const) {
-    if (key in input && typeof input[key] !== "boolean") {
-      throw new Error(`Dictation setting ${key} must be a boolean`);
-    }
+  if (
+    "globalShortcutNudgeDismissed" in input &&
+    typeof input.globalShortcutNudgeDismissed !== "boolean"
+  ) {
+    throw new Error("Dictation setting globalShortcutNudgeDismissed must be a boolean");
   }
   if ("dictionary" in input) parseDictionary(input.dictionary);
+  if ("dictationSoundsEnabled" in input && typeof input.dictationSoundsEnabled !== "boolean") {
+    throw new Error("Dictation setting dictationSoundsEnabled must be a boolean");
+  }
   return input as DictationSettingsPatch;
 };
 
@@ -110,34 +104,13 @@ export class DictationSettingsStore {
     return this.#serialize(() => this.#readCurrent());
   }
 
-  /** Distinguishes an explicit user choice from the first-run derived default. */
-  readKeepGlobalBarVisiblePreference(): Promise<boolean | null> {
-    return this.#serialize(async () => {
-      const stored = await this.#readStored();
-      if (stored === null) return null;
-      if (!stored || typeof stored !== "object" || Array.isArray(stored)) {
-        throw new Error("Dictation settings must be an object");
-      }
-      const value = (stored as Record<string, unknown>).keepGlobalBarVisible;
-      if (value === undefined) return null;
-      if (typeof value !== "boolean") {
-        throw new Error("Dictation keep-visible preference is invalid");
-      }
-      return value;
-    });
-  }
-
   update(value: unknown): Promise<DictationSettings> {
     const patch = parseDictationSettingsPatch(value);
     return this.#serialize(async () => {
       const stored = await this.#readStored();
       const current = stored === null ? DEFAULT_DICTATION_SETTINGS : parseSettings(stored);
       const next = { ...current, ...patch };
-      await writeDurableJson(
-        this.#filePath,
-        { ...(stored === null ? {} : (stored as Record<string, unknown>)), ...patch },
-        MAX_SETTINGS_BYTES,
-      );
+      await writeDurableJson(this.#filePath, next, MAX_SETTINGS_BYTES);
       return next;
     });
   }
@@ -150,7 +123,7 @@ export class DictationSettingsStore {
       await writeDurableJson(
         this.#filePath,
         {
-          ...(stored === null ? {} : (stored as Record<string, unknown>)),
+          ...current,
           globalShortcutNudgeDismissed: true,
         },
         MAX_SETTINGS_BYTES,

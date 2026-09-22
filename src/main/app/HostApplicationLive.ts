@@ -1,3 +1,4 @@
+import { CodexExecutionHostAuthState } from "../codex-runtime/CodexExecutionHostAuthState";
 import * as Effect from "effect/Effect";
 import * as FileSystem from "effect/FileSystem";
 import * as Layer from "effect/Layer";
@@ -10,6 +11,12 @@ import { BrowserProfileHelperPlatform } from "../browser/browser-profile-helper-
 import { ApplicationSettings } from "../settings/ApplicationSettings";
 import { TemporaryAssets } from "../local-store/TemporaryAssets";
 import { ChatGptDesktop, live as chatGptDesktopLive } from "../codex-application/ChatGptDesktop";
+import { CodexAppServerCapabilities } from "../codex-runtime/CodexAppServerCapabilities";
+import {
+  CodexWorkspaceRouting,
+  live as workspaceRoutingLive,
+} from "../codex-runtime/CodexWorkspaceRouting";
+import * as CodexSessionTransport from "../platform/node/CodexSessionTransport";
 import {
   CodexAttachments,
   live as codexAttachmentsLive,
@@ -94,7 +101,19 @@ import { CodexPlatform } from "./CodexApplicationLive";
 
 const logger = getLogger({ subsystem: "app" });
 
-const chatGpt = chatGptDesktopLive.pipe(Layer.provideMerge(ElectronNet.live));
+const workspaceRouting = Layer.unwrap(
+  Effect.gen(function* () {
+    const codex = yield* CodexPlatform;
+    const config = yield* MainConfig;
+    return workspaceRoutingLive({
+      browserRuntime: codex.runtime.browserRuntime,
+      environment: config.environment,
+    });
+  }),
+).pipe(Layer.provide(CodexSessionTransport.nodeLive));
+const chatGpt = chatGptDesktopLive.pipe(
+  Layer.provideMerge(Layer.merge(ElectronNet.live, workspaceRouting)),
+);
 const browserSiteStatus = browserSiteStatusRuntimeLive.pipe(Layer.provideMerge(chatGpt));
 const browserApplication = Layer.unwrap(
   Effect.gen(function* () {
@@ -237,6 +256,7 @@ const gitActions = gitActionsLive.pipe(
 export const live: Layer.Layer<
   | ElectronNet.ElectronNet
   | ChatGptDesktop
+  | CodexWorkspaceRouting
   | ComposerExternalSuggestions
   | BrowserSiteStatusRuntime
   | BrowserApplication
@@ -262,6 +282,8 @@ export const live: Layer.Layer<
   | BrowserUseRuntimeError
   | ExecutionHostRuntimeError,
   | CodexGateway
+  | CodexAppServerCapabilities
+  | CodexExecutionHostAuthState
   | ApplicationSettings
   | TemporaryAssets
   | CodexPlatform

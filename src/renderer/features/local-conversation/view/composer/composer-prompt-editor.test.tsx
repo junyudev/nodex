@@ -1,7 +1,8 @@
-import { act, fireEvent, render } from "@testing-library/react";
+import { act, fireEvent, render, waitFor } from "@testing-library/react";
 import { createRef } from "react";
 import { describe, expect, test, vi } from "vite-plus/test";
 import {
+  appendComposerDictationText,
   buildPromptDoc,
   classifyComposerPaste,
   ComposerPromptEditor,
@@ -91,6 +92,49 @@ function createClipboardData(initial: Record<string, string> = {}) {
 }
 
 describe("ComposerPromptEditor", () => {
+  test.each([
+    ["Draft", " next ", "Draft next"],
+    ["Draft ", "next", "Draft next"],
+    ["Draft\n", "next", "Draft\nnext"],
+    ["Draft", " \n ", "Draft"],
+  ])(
+    "appends recovered text without replacing existing whitespace",
+    (draft, transcript, expected) => {
+      expect(appendComposerDictationText(draft, transcript)).toBe(expected);
+    },
+  );
+  test.each([
+    ["Keep my draft.", "end", "Keep my draft. More words."],
+    ["Keep my draft. ", "end", "Keep my draft. More words."],
+    ["leftright", "middle", "left More words. right"],
+    ["Keep my draft.", "outside", "Keep my draft. More words."],
+    ["", "end", "More words."],
+  ] as const)(
+    "inserts dictation with word boundaries for %s at %s",
+    async (value, position, expected) => {
+      const { editor, editorRef, onChange } = renderPromptEditor({ value });
+      await act(async () => {
+        if (position === "end") editorRef.current!.focusAtEnd();
+        else editorRef.current!.focus();
+        if (position === "middle") {
+          const node = editor.firstChild!.firstChild!;
+          document.getSelection()!.setBaseAndExtent(node, 4, node, 4);
+          document.dispatchEvent(new Event("selectionchange"));
+        }
+        if (position === "outside") document.getSelection()!.removeAllRanges();
+      });
+      if (position === "middle")
+        await waitFor(() => expect(editorRef.current!.getSelection()?.from).toBe(5));
+      await act(async () => {
+        editorRef.current!.insertDictationText("  More words.  ");
+      });
+      expect(editorRef.current!.getText()).toBe(expected);
+      expect(onChange).toHaveBeenLastCalledWith(expected);
+      const cursor = position === "middle" ? 18 : expected.length + 1;
+      expect(editorRef.current!.getSelection()).toEqual({ from: cursor, to: cursor });
+    },
+  );
+
   test("measures the longest unwrapped prompt width without mutating editor styles", () => {
     const editor = document.createElement("div");
     editor.textContent = "A prompt that may wrap";

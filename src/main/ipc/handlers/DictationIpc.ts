@@ -20,6 +20,14 @@ import {
 import type { DictationSurface } from "../../../shared/dictation";
 import { MainConfig } from "../../app/MainConfig";
 import { CodexMedia } from "../../codex-application/CodexMedia";
+import { DictationDictionary } from "../../codex-application/DictationDictionary";
+import {
+  DictationDictionaryReadSchema,
+  DictationDictionaryAddSchema,
+  DictationDictionaryRemoveSchema,
+  DictationDictionaryImportSchema,
+  DictationDictionaryOperationIdSchema,
+} from "../../../shared/dictation-dictionary";
 import { validateDictationTranscriptionInput } from "../../dictation-transcription-input";
 import { parseDictationSettingsPatch } from "../../dictation/dictation-settings-store";
 import { DictationRuntime } from "../../host-runtime/DictationRuntime";
@@ -95,6 +103,24 @@ const GlobalRendererEvent = z.discriminatedUnion("type", [
     })
     .strict(),
   z.object({ type: z.literal("cancelled"), sessionId: SessionId }).strict(),
+  z.object({ type: z.literal("recording-stopped"), sessionId: SessionId }).strict(),
+  z.object({ type: z.literal("stop-requested"), sessionId: SessionId }).strict(),
+  z.object({ type: z.literal("copy-transcript"), sessionId: SessionId }).strict(),
+  z.object({ type: z.literal("open-accessibility-settings"), sessionId: SessionId }).strict(),
+  z
+    .object({
+      type: z.literal("view-recording"),
+      sessionId: SessionId,
+      recordingId: DictationRecordingIdSchema,
+    })
+    .strict(),
+  z
+    .object({
+      type: z.literal("copy-recovered-text"),
+      sessionId: SessionId,
+      text: z.string().max(1_000_000),
+    })
+    .strict(),
   z.object({ type: z.literal("failed"), sessionId: SessionId, error: DictationError }).strict(),
   z.object({ type: z.literal("dismiss"), sessionId: SessionId }).strict(),
   z.object({ type: z.literal("close"), sessionId: SessionId.nullable() }).strict(),
@@ -157,7 +183,13 @@ export const live = (
 ): Layer.Layer<
   never,
   never,
-  CodexMedia | DictationRuntime | ElectronDesktop | ElectronIpc | MainConfig | WindowRuntime
+  | CodexMedia
+  | DictationDictionary
+  | DictationRuntime
+  | ElectronDesktop
+  | ElectronIpc
+  | MainConfig
+  | WindowRuntime
 > =>
   Layer.effectDiscard(
     Effect.gen(function* () {
@@ -166,9 +198,11 @@ export const live = (
       const dictation = yield* DictationRuntime;
       const ipc = yield* ElectronIpc;
       const media = yield* CodexMedia;
+      const dictionary = yield* DictationDictionary;
       const windows = yield* WindowRuntime;
       const transcriptionFibers = yield* FiberMap.make<string, DictationTextResult>();
       const transcriptionOwners = new Map<string, number>();
+      const dictionaryOwners = new Map<string, number>();
       const authorizeRenderer = options.authorize ?? requireTrustedAppRendererSender;
       const trusted = (event: IpcMainInvokeEvent, capability: string) =>
         validate("authorize-renderer", () =>
@@ -209,6 +243,80 @@ export const live = (
           ),
         );
       });
+
+      const runOwnedDictionaryTask = Effect.fn("DictationIpc.runOwnedDictionaryTask")(function* <
+        A,
+        E,
+      >(event: IpcMainInvokeEvent, operationId: string, task: Effect.Effect<A, E>) {
+        if (dictionaryOwners.has(operationId))
+          return yield* new DictationIpcError({
+            operation: "reserve-dictionary-operation",
+            cause: new Error("Dictionary operation already exists"),
+          });
+        dictionaryOwners.set(operationId, event.sender.id);
+        return yield* task.pipe(
+          Effect.ensuring(
+            Effect.sync(() => {
+              dictionaryOwners.delete(operationId);
+            }),
+          ),
+        );
+      });
+
+      yield* ipc.handleQuery("codex:dictation:dictionary:read", (event, input: unknown) =>
+        trusted(event, "Voice dictionary").pipe(
+          Effect.andThen(
+            validate("parse-dictionary-read", () => DictationDictionaryReadSchema.parse(input)),
+          ),
+          Effect.flatMap((request) =>
+            runOwnedDictionaryTask(event, request.operationId, dictionary.read(request)),
+          ),
+        ),
+      );
+      yield* ipc.handlePlainCommand("codex:dictation:dictionary:add", (event, input: unknown) =>
+        trusted(event, "Voice dictionary update").pipe(
+          Effect.andThen(
+            validate("parse-dictionary-add", () => DictationDictionaryAddSchema.parse(input)),
+          ),
+          Effect.flatMap((request) =>
+            runOwnedDictionaryTask(event, request.operationId, dictionary.add(request)),
+          ),
+        ),
+      );
+      yield* ipc.handlePlainCommand("codex:dictation:dictionary:remove", (event, input: unknown) =>
+        trusted(event, "Voice dictionary update").pipe(
+          Effect.andThen(
+            validate("parse-dictionary-remove", () => DictationDictionaryRemoveSchema.parse(input)),
+          ),
+          Effect.flatMap((request) =>
+            runOwnedDictionaryTask(event, request.operationId, dictionary.remove(request)),
+          ),
+        ),
+      );
+      yield* ipc.handlePlainCommand("codex:dictation:dictionary:import", (event, input: unknown) =>
+        trusted(event, "Voice dictionary import").pipe(
+          Effect.andThen(
+            validate("parse-dictionary-import", () => DictationDictionaryImportSchema.parse(input)),
+          ),
+          Effect.flatMap((request) =>
+            runOwnedDictionaryTask(event, request.operationId, dictionary.importWords(request)),
+          ),
+        ),
+      );
+      yield* ipc.handleControl("codex:dictation:dictionary:cancel", (event, input: unknown) =>
+        trusted(event, "Voice dictionary cancellation").pipe(
+          Effect.andThen(
+            validate("parse-dictionary-operation-id", () =>
+              DictationDictionaryOperationIdSchema.parse(input),
+            ),
+          ),
+          Effect.flatMap((operationId) =>
+            dictionaryOwners.get(operationId) === event.sender.id
+              ? dictionary.cancel(operationId)
+              : Effect.succeed(false),
+          ),
+        ),
+      );
 
       yield* ipc.handleQuery("codex:dictation:streaming-connect-info:read", (event) =>
         authorized(event, "Dictation streaming connection", media.prepareStreamingConnectInfo),
@@ -319,6 +427,17 @@ export const live = (
       );
       yield* ipc.handleQuery("codex:dictation:settings:read", (event) =>
         authorized(event, "Dictation settings", dictation.readSettings),
+      );
+      yield* ipc.handleQuery("codex:dictation:voice-language:read", (event) =>
+        authorized(event, "Voice language settings", media.readVoiceLanguage),
+      );
+      yield* ipc.handlePlainCommand(
+        "codex:dictation:voice-language:update",
+        (event, input: unknown) =>
+          trusted(event, "Voice language settings update").pipe(
+            Effect.andThen(validate("parse-voice-language", () => z.string().max(80).parse(input))),
+            Effect.flatMap(media.updateVoiceLanguage),
+          ),
       );
       yield* ipc.handlePlainCommand("codex:dictation:settings:update", (event, input: unknown) =>
         trusted(event, "Dictation settings update").pipe(
@@ -441,8 +560,25 @@ export const live = (
           Effect.flatMap(dictation.deleteRecording),
         ),
       );
-      yield* ipc.handleQuery("global-dictation-capture-fn-hotkey", (event) =>
-        authorized(event, "Global dictation shortcut", dictation.captureFnHotkey),
+      yield* ipc.handleQuery(
+        "global-dictation-capture-bare-modifier-hotkey",
+        (event, input: unknown) =>
+          authorized(
+            event,
+            "Global dictation shortcut",
+            validate("parse-hotkey-capture-mode", () => z.boolean().parse(input)).pipe(
+              Effect.flatMap((allowsBareModifiers) =>
+                dictation.captureBareModifierHotkey(event.sender.id, allowsBareModifiers),
+              ),
+            ),
+          ),
+      );
+      yield* ipc.handleControl("global-dictation-hotkey-capture:cancel", (event) =>
+        authorized(
+          event,
+          "Global dictation shortcut",
+          dictation.cancelHotkeyCapture(event.sender.id),
+        ),
       );
       yield* ipc.handleControl("global-dictation:event", (event, input: unknown) =>
         trusted(event, "Global dictation").pipe(

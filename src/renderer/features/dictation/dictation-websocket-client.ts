@@ -32,9 +32,14 @@ export class DictationWebSocketClient {
     private readonly readConnectInfo: () => Promise<DictationStreamingConnectInfo>,
     private readonly onEvent: (event: DictationStreamingServerEvent) => void,
     private readonly diagnostics: DictationStreamDiagnostics,
+    private readonly onFailure?: (error: DictationStreamingError) => void,
   ) {}
 
-  async connect(sampleRateHz: number, receiveSegments = false): Promise<void> {
+  async connect(
+    sampleRateHz: number,
+    receiveSegments = false,
+    sendAudio: Promise<boolean> = Promise.resolve(true),
+  ): Promise<void> {
     this.#terminalError = null;
     this.#sessionClosed = false;
     this.diagnostics.attempted = true;
@@ -102,11 +107,23 @@ export class DictationWebSocketClient {
           this.diagnostics.started = true;
           this.diagnostics.providerMode = event.session.config.provider_mode;
           this.diagnostics.sessionStartMs = performance.now() - (openedAt ?? connectingAt);
-          if (settled) return;
-          clearTimeout(startTimer);
-          this.drainAudio();
-          settled = true;
-          resolve();
+          void sendAudio.then(
+            (allowed) => {
+              if (settled) return;
+              clearTimeout(startTimer);
+              if (allowed) this.drainAudio();
+              settled = true;
+              resolve();
+              if (!allowed) this.close();
+            },
+            () => {
+              if (settled) return;
+              clearTimeout(startTimer);
+              const cause = new DictationStreamingError("aborted");
+              rejectStart(cause);
+              this.close();
+            },
+          );
           return;
         }
         if (event.type === "session.updated" && event.session.status === "closed") {
@@ -127,6 +144,7 @@ export class DictationWebSocketClient {
       socket.addEventListener(
         "error",
         () => {
+          if (this.#sessionClosed) return;
           error ??= this.failure("websocket-failed");
         },
         { once: true },
@@ -209,7 +227,9 @@ export class DictationWebSocketClient {
 
   private failure(code: FailureCode): Error {
     this.diagnostics.failureCode ??= code;
-    return new DictationStreamingError(code);
+    const error = new DictationStreamingError(code);
+    this.onFailure?.(error);
+    return error;
   }
   private drainAudio(): void {
     const pending = this.#pendingAudio ?? [];

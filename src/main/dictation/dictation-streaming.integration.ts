@@ -10,12 +10,14 @@ import { _electron as electron, type ElectronApplication } from "playwright";
 import { WebSocketServer } from "ws";
 import { expect, test } from "vitest";
 
-test.each(["complete", "incomplete"] as const)(
+test.each(["complete", "incomplete", "segmented-recovery"] as const)(
   "streams real AudioWorklet PCM and accepts only complete transcripts (%s)",
   verifyStreamingCompletion,
 );
 
-async function verifyStreamingCompletion(completion: "complete" | "incomplete"): Promise<void> {
+async function verifyStreamingCompletion(
+  completion: "complete" | "incomplete" | "segmented-recovery",
+): Promise<void> {
   const directory = mkdtempSync(path.join(tmpdir(), "nodex-dictation-stream-"));
   let application: ElectronApplication | null = null;
   const keyPath = path.join(directory, "key.pem");
@@ -43,17 +45,27 @@ async function verifyStreamingCompletion(completion: "complete" | "incomplete"):
   const sockets = new WebSocketServer({ server, handleProtocols: () => "chatgpt-dictation" });
   const frames: Buffer[] = [];
   const requests: string[] = [];
+  const segmentFrames: Buffer[][] = [];
+  const sampleRates: number[] = [];
   let protocols: string | undefined;
   sockets.on("connection", (socket, request) => {
     protocols = request.headers["sec-websocket-protocol"];
+    const segmentIndex = segmentFrames.length;
+    const segmentAudio: Buffer[] = [];
+    segmentFrames.push(segmentAudio);
     socket.on("message", (data) => {
-      const message = JSON.parse(data.toString()) as { type: string; audio?: string };
+      const message = JSON.parse(data.toString()) as {
+        type: string;
+        audio?: string;
+        config?: { sample_rate_hz: number };
+      };
       requests.push(message.type);
       const session = {
         session_id: "fixture-session",
         config: { provider_mode: "streaming_sse", transcript_delivery_mode: "final_only" },
       };
       if (message.type === "session.start") {
+        sampleRates[segmentIndex] = message.config!.sample_rate_hz;
         socket.send(
           JSON.stringify({
             type: "session.started",
@@ -64,20 +76,26 @@ async function verifyStreamingCompletion(completion: "complete" | "incomplete"):
         return;
       }
       if (message.type === "audio.append") {
-        frames.push(Buffer.from(message.audio!, "base64"));
+        const frame = Buffer.from(message.audio!, "base64");
+        frames.push(frame);
+        segmentAudio.push(frame);
         return;
       }
       if (message.type !== "session.close") return;
-      socket.send(
-        JSON.stringify({
-          type: "transcript.final",
-          sequence_no: 1,
-          utterance_id: "u1",
-          revision: 1,
-          text: "Streaming works.",
-        }),
-      );
-      if (completion === "incomplete") {
+      if (completion !== "segmented-recovery" || segmentIndex === 0)
+        socket.send(
+          JSON.stringify({
+            type: "transcript.final",
+            sequence_no: 1,
+            utterance_id: "u1",
+            revision: 1,
+            text: completion === "segmented-recovery" ? "First segment." : "Streaming works.",
+          }),
+        );
+      if (
+        completion === "incomplete" ||
+        (completion === "segmented-recovery" && segmentIndex === 1)
+      ) {
         socket.send(JSON.stringify({ type: "speech.started", sequence_no: 2, utterance_id: "u2" }));
       }
       socket.send(
@@ -141,7 +159,7 @@ async function verifyStreamingCompletion(completion: "complete" | "incomplete"):
     );
     writeFileSync(
       path.join(rendererDirectory, "index.html"),
-      `<!doctype html><meta http-equiv="Content-Security-Policy" content="${csp}"><button>Stream synthetic audio</button><output></output><script type="module" src="renderer.js"></script>`,
+      `<!doctype html><meta http-equiv="Content-Security-Policy" content="${csp}"><button data-segmented="${completion === "segmented-recovery"}">Stream synthetic audio</button><output></output><script type="module" src="renderer.js"></script>`,
     );
     const environment = Object.fromEntries(
       Object.entries(process.env).filter(
@@ -164,6 +182,14 @@ async function verifyStreamingCompletion(completion: "complete" | "incomplete"):
         timeout: 12_000,
       })
       .toBe(true);
+    if (completion === "segmented-recovery") {
+      await page.getByRole("button", { name: "Split synthetic audio" }).click();
+      await expect
+        .poll(() => segmentFrames[1]?.some((frame) => frame.some((byte) => byte !== 0)) ?? false, {
+          timeout: 12_000,
+        })
+        .toBe(true);
+    }
     await page.getByRole("button", { name: "Finish synthetic audio" }).click();
     await expect.poll(() => page.locator("output").textContent(), { timeout: 12_000 }).not.toBe("");
     const result = JSON.parse((await page.locator("output").textContent())!);
@@ -174,6 +200,22 @@ async function verifyStreamingCompletion(completion: "complete" | "incomplete"):
     expect(result.diagnostics.failureCode).toBe(
       completion === "complete" ? undefined : "incomplete-transcript",
     );
+    if (completion === "segmented-recovery") {
+      expect(result.recovered).toBe("First segment. Recovered segment.");
+      expect(result.recoveryAudio).toHaveLength(1);
+      expect(Buffer.from(result.recoveryAudio[0].pcm, "base64")).toEqual(
+        Buffer.concat(segmentFrames[1]!),
+      );
+      expect(result.recoveryAudio[0]).toMatchObject({
+        sampleRate: sampleRates[1],
+        channels: 1,
+        bitsPerSample: 16,
+      });
+      expect(result.updates).toContainEqual({
+        text: "First segment. Recovered segment.",
+        segment: { id: 1, text: "Recovered segment." },
+      });
+    }
     expect(result.diagnostics.sentAudioFrames).toBe(frames.length);
     expect(frames.length).toBeGreaterThan(2);
     expect(

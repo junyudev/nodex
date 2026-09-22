@@ -77,6 +77,7 @@ export async function transcribeDictationBlob(
     }) => Promise<DictationTextResult>;
   },
 ): Promise<string> {
+  options?.signal?.throwIfAborted();
   const contentType = resolveDictationContentType(blob, options?.contentType);
   const filename = resolveDictationFilename(contentType, options?.filename);
   const boundary = createDictationBoundary();
@@ -93,14 +94,19 @@ export async function transcribeDictationBlob(
   };
   const readResult = (result: DictationTextResult): string => {
     options?.onDiagnostics?.(result.diagnostics);
-    if (result.diagnostics.outcome !== "completed") {
+    if (result.diagnostics.outcome === "failed") {
       throw Object.assign(new Error("Unable to transcribe dictation"), {
         status: result.diagnostics.status === 200 ? 502 : result.diagnostics.status,
       });
     }
     return result.text;
   };
-  if (options?.transcribe) return readResult(await options.transcribe(input));
+  if (options?.transcribe) {
+    options.signal?.throwIfAborted();
+    const result = await options.transcribe(input);
+    options.signal?.throwIfAborted();
+    return readResult(result);
+  }
   if (options?.signal?.aborted) {
     throw options.signal.reason ?? new DOMException("Dictation was aborted", "AbortError");
   }

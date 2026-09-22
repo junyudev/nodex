@@ -1,7 +1,12 @@
 import { StrictMode } from "react";
 import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
-import { GlobalDictationBar, GlobalDictationRoot } from "./global-dictation-page";
+import {
+  GlobalDictationBar,
+  GlobalDictationRoot,
+  GlobalDictationPasteRecovery,
+  GlobalDictationTranscriptionRecovery,
+} from "./global-dictation-page";
 
 describe("GlobalDictationBar", () => {
   it("exposes retry and dismiss actions in an actionable error state", () => {
@@ -91,9 +96,7 @@ describe("GlobalDictationRoot", () => {
             : channel === "codex:dictation:settings:read"
               ? {
                   microphoneInputDeviceId: null,
-                  keepGlobalBarVisible: false,
-                  playStartSound: true,
-                  playStopSound: true,
+                  dictationSoundsEnabled: true,
                   globalShortcutNudgeDismissed: false,
                   dictionary: [],
                 }
@@ -144,5 +147,76 @@ describe("GlobalDictationRoot", () => {
       if (descriptor) Object.defineProperty(window, "globalDictation", descriptor);
       else Reflect.deleteProperty(window, "globalDictation");
     }
+  });
+});
+
+describe("global dictation recovery actions", () => {
+  it("requires an explicit copy after recovery and reveals only saved recordings", async () => {
+    const onCopy = vi.fn();
+    const onViewRecording = vi.fn();
+    const onRetry = vi.fn();
+    const onDismiss = vi.fn();
+    const props = { onCopy, onViewRecording, onRetry, onDismiss };
+    const { rerender } = render(
+      <GlobalDictationTranscriptionRecovery
+        {...props}
+        recovery={{
+          recordingId: "recording",
+          phase: "recovering",
+          text: null,
+          saveState: "saving",
+        }}
+      />,
+    );
+    expect(screen.queryByRole("button", { name: "Copy text" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "View recording" })).toBeNull();
+    rerender(
+      <GlobalDictationTranscriptionRecovery
+        {...props}
+        recovery={{
+          recordingId: "recording",
+          phase: "recovered",
+          text: "Recovered words",
+          saveState: "saved",
+        }}
+      />,
+    );
+    expect(onCopy).not.toHaveBeenCalled();
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: "Copy text" }));
+      fireEvent.click(screen.getByRole("button", { name: "View recording" }));
+    });
+    expect(onCopy).toHaveBeenCalledOnce();
+    expect(onViewRecording).toHaveBeenCalledOnce();
+    expect(onRetry).not.toHaveBeenCalled();
+  });
+
+  it("offers clipboard recovery without overwriting a changed clipboard automatically", async () => {
+    const onCopy = vi.fn();
+    const onOpenSettings = vi.fn();
+    const onDismiss = vi.fn();
+    const props = { onCopy, onOpenSettings, onDismiss };
+    const { rerender } = render(
+      <GlobalDictationPasteRecovery
+        {...props}
+        failure={{ text: "words", copied: false, reason: "clipboard-changed" }}
+      />,
+    );
+    expect(onCopy).not.toHaveBeenCalled();
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: "Copy transcript" }));
+    });
+    expect(onCopy).toHaveBeenCalledOnce();
+    rerender(
+      <GlobalDictationPasteRecovery
+        {...props}
+        failure={{ text: "words", copied: true, reason: "accessibility" }}
+      />,
+    );
+    expect(screen.queryByRole("button", { name: "Copy transcript" })).toBeNull();
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: "Open Settings" }));
+    });
+    expect(onOpenSettings).toHaveBeenCalledOnce();
   });
 });

@@ -312,7 +312,7 @@ export interface ThreadStageActions {
   onRefreshNewThreadStartInEnvironments?: () => Promise<void>;
   onOpenNewThreadLocalEnvironmentsSettings?: (configPath?: string | null) => void;
   onOpenHooksSettings?: (target: CodexHooksSettingsTarget) => void;
-  onOpenVoiceSettings?: () => void;
+  onOpenVoiceSettings?: (recordingId?: string) => void;
   onNewThreadProjectChange?: (projectId: string | null) => void;
   onRequestNewChatProjectCreate?: () => void;
   onStartNewChatWithPrompt?: (input: { projectId: string | null; prompt: string }) => Promise<void>;
