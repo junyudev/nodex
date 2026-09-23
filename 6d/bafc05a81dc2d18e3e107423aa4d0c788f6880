@@ -1,0 +1,32 @@
+Cargo.toml
+  s_65497187370b0f::t_0af915cfd625ce 20
+NOTICE
+  s_65497187370b0f::t_0af915cfd625ce 1
+  s_65497187370b0f::t_dbf46a482aa0f8 2
+packages/core-protocol/openapi.json
+  s_65497187370b0f::t_4f49fde8746ae4 7-8
+README.md
+  s_65497187370b0f::t_0af915cfd625ce 22,103
+CHANGELOG.md
+  s_65497187370b0f::t_0af915cfd625ce 14-15
+package.json
+  s_65497187370b0f::t_0af915cfd625ce 6
+LICENSE
+  s_65497187370b0f::t_3aecd80965ad07 1-202
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "6dbafc05a81dc2d18e3e107423aa4d0c788f6880",
+  "prompts": {},
+  "sessions": {
+    "s_65497187370b0f": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a0cc56-891c-73c0-977f-306bd799bc6a",
+        "model": "gpt-6-sol"
+      },
+      "human_author": null
+    }
+  }
+}
