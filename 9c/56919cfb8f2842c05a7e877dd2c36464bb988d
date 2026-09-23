@@ -1,0 +1,30 @@
+NOTICE
+  s_65497187370b0f::t_0af915cfd625ce 1
+  s_65497187370b0f::t_dbf46a482aa0f8 2
+README.md
+  s_65497187370b0f::t_0af915cfd625ce 22,103
+LICENSE
+  s_65497187370b0f::t_3aecd80965ad07 1-202
+Cargo.toml
+  s_65497187370b0f::t_0af915cfd625ce 20
+package.json
+  s_65497187370b0f::t_0af915cfd625ce 6
+CHANGELOG.md
+  s_65497187370b0f::t_0af915cfd625ce 14-15
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "9c56919cfb8f2842c05a7e877dd2c36464bb988d",
+  "prompts": {},
+  "sessions": {
+    "s_65497187370b0f": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a0cc56-891c-73c0-977f-306bd799bc6a",
+        "model": "gpt-6-sol"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    }
+  }
+}
