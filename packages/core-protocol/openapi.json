@@ -4,8 +4,8 @@
     "title": "Nodex Core private protocol",
     "description": "",
     "license": {
-      "name": "MIT",
-      "identifier": "MIT"
+      "name": "Apache-2.0",
+      "identifier": "Apache-2.0"
     },
     "version": "1.0.0"
   },

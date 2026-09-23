@@ -17,7 +17,7 @@ resolver = "3"
 version = "0.3.0"
 edition = "2024"
 rust-version = "1.97.1"
-license = "MIT"
+license = "Apache-2.0"
 
 [workspace.dependencies]
 nodex-profile = { path = "crates/nodex-profile" }

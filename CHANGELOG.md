@@ -11,6 +11,8 @@ All notable changes to this project will be documented in this file.
 
 ### Changed
 
+- Nodex is now distributed under the Apache License 2.0.
+
 ### Fixed
 
 - Retained edits that cannot be received can now be removed from this device after confirmation, clearing their warning without changing current documents.

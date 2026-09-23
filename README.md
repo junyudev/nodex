@@ -19,7 +19,7 @@
 <!-- <p align="center">
   <a href="https://github.com/junyudev/nodex/releases/latest"><img alt="Latest release" src="https://img.shields.io/github/v/release/junyudev/nodex?style=flat-square" /></a>
   <img alt="macOS 15+" src="https://img.shields.io/badge/macOS-15%2B-black?style=flat-square&amp;logo=apple" />
-  <a href="LICENSE"><img alt="MIT License" src="https://img.shields.io/badge/license-MIT-blue?style=flat-square" /></a>
+  <a href="LICENSE"><img alt="Apache 2.0 License" src="https://img.shields.io/badge/license-Apache%202.0-blue?style=flat-square" /></a>
 </p> -->
 
 <picture>
@@ -100,4 +100,4 @@ The Skill supports local, shell-capable agents such as Codex and Claude Code. Se
 
 ## License
 
-Nodex is open source under the [MIT License](LICENSE).
+Nodex is open source under the [Apache License 2.0](LICENSE).

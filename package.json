@@ -3,7 +3,7 @@
   "version": "0.3.0",
   "private": true,
   "description": "Block-based Agent Orchestrator",
-  "license": "MIT",
+  "license": "Apache-2.0",
   "workspaces": [
     "packages/*",
     "third_party/blocknote/packages/*"
