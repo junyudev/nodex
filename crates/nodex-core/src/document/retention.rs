@@ -2142,6 +2142,7 @@ mod tests {
                     persist_yjs_genesis(
                         connection,
                         PersistYjsGenesis {
+                            file_access_context: None,
                             authority: &authority,
                             actor_project_id: Some(PROJECT_ID),
                             materialization: &genesis.materialization,
@@ -2216,6 +2217,7 @@ mod tests {
                             persist_yjs_genesis(
                                 connection,
                                 PersistYjsGenesis {
+                                    file_access_context: None,
                                     authority: &authority,
                                     actor_project_id: Some(PROJECT_ID),
                                     materialization: &genesis.materialization,

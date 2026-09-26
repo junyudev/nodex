@@ -329,6 +329,7 @@ fn promote_synced_source(
     let source_persisted = persist_yjs_genesis_with_local_commit(
         connection,
         PersistYjsGenesis {
+            file_access_context: Some(context),
             authority: &source_authority,
             actor_project_id: scope.actor_project_id,
             materialization: &source_prepared.materialization,
@@ -730,6 +731,7 @@ fn persist_prepared_update(
     let persisted = persist_yjs_commit_with_local_commit(
         connection,
         PersistYjsCommit {
+            file_access_context: Some(write.context),
             authority: &loaded.authority,
             actor_project_id: write
                 .context
@@ -977,6 +979,7 @@ fn create_yjs_owner(
     let persisted = persist_yjs_genesis_with_local_commit(
         connection,
         PersistYjsGenesis {
+            file_access_context: Some(context),
             authority: &authority,
             actor_project_id: scope.actor_project_id,
             materialization: &prepared.materialization,

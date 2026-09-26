@@ -4686,6 +4686,7 @@ pub(super) fn prepare_fresh_page_genesis(
 #[allow(clippy::too_many_arguments)]
 pub(super) fn stage_fresh_page_in_library(
     connection: &Connection,
+    context: &BoundModuleContext,
     commit_context: &local_commit::CommitContext,
     library_id: &str,
     actor_project_id: Option<&str>,
@@ -4708,6 +4709,7 @@ pub(super) fn stage_fresh_page_in_library(
     )?;
     stage_prepared_fresh_page_in_library(
         connection,
+        context,
         commit_context,
         library_id,
         actor_project_id,
@@ -4724,6 +4726,7 @@ pub(super) fn stage_fresh_page_in_library(
 #[allow(clippy::too_many_arguments)]
 pub(super) fn stage_prepared_fresh_page_in_library(
     connection: &Connection,
+    context: &BoundModuleContext,
     commit_context: &local_commit::CommitContext,
     library_id: &str,
     actor_project_id: Option<&str>,
@@ -4789,6 +4792,7 @@ pub(super) fn stage_prepared_fresh_page_in_library(
     let persisted = persist_yjs_genesis_with_local_commit(
         connection,
         PersistYjsGenesis {
+            file_access_context: Some(context),
             authority: &authority,
             actor_project_id,
             materialization: &prepared.materialization,
@@ -4998,6 +5002,7 @@ fn persist_page_parent_genesis(
     let persisted = persist_yjs_genesis_with_local_commit(
         connection,
         PersistYjsGenesis {
+            file_access_context: Some(command.context),
             authority: &authority,
             actor_project_id: Some(actor_project_id),
             materialization: &stage.prepared.materialization,
@@ -5298,6 +5303,7 @@ fn persist_prepared_update(
     };
     let authorized_file_ids = update.materialization.file_ids();
     let input = PersistYjsCommit {
+        file_access_context: None,
         authority,
         actor_project_id,
         base_materialization,

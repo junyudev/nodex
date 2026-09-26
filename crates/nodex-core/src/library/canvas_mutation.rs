@@ -169,6 +169,7 @@ fn create_internal(
                     persist_parent_operations_detailed_with_local_commit(
                         connection,
                         ParentDocumentWriteContext {
+                            context,
                             actor_project_id: actor_project_id.as_deref(),
                             store_epoch,
                             operation_id,
@@ -355,6 +356,7 @@ pub(super) fn move_canvas(
 
             let mut document_commits = Vec::new();
             let parent_write = ParentDocumentWriteContext {
+                context,
                 actor_project_id: actor_project_id.as_deref(),
                 store_epoch,
                 operation_id,
@@ -600,6 +602,7 @@ pub(super) fn delete(
                     persist_parent_operations_detailed_with_local_commit(
                         connection,
                         ParentDocumentWriteContext {
+                            context,
                             actor_project_id: actor_project_id.as_deref(),
                             store_epoch,
                             operation_id,

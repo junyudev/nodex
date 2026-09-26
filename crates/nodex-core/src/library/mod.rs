@@ -50,7 +50,9 @@ mod resource_access;
 mod search_match;
 mod search_snapshot;
 
-fn require_trusted_library_authority(context: &BoundModuleContext) -> Result<(), StoreError> {
+pub(crate) fn require_trusted_library_authority(
+    context: &BoundModuleContext,
+) -> Result<(), StoreError> {
     if context.project_id.is_none()
         && matches!(
             context.adapter,

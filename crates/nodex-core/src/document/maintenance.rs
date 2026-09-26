@@ -428,6 +428,7 @@ mod tests {
                 let persisted = persist_yjs_genesis(
                     connection,
                     PersistYjsGenesis {
+                        file_access_context: None,
                         authority: &authority,
                         actor_project_id: Some("project:revision-maintenance"),
                         materialization: &genesis.materialization,

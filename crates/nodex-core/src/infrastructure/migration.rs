@@ -5021,6 +5021,7 @@ mod tests {
             crate::document::persist_yjs_genesis(
                 transaction,
                 crate::document::PersistYjsGenesis {
+                    file_access_context: None,
                     authority: &authority,
                     actor_project_id: Some("project:file-migration"),
                     materialization: &genesis.materialization,

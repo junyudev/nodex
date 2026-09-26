@@ -14,6 +14,7 @@ const MAX_ID_BYTES: usize = 512;
 const MAX_PAGE_TITLE_BYTES: usize = 10_000;
 
 pub(crate) struct PageGenesisInput<'a> {
+    pub(crate) context: &'a nodex_core_contracts::BoundModuleContext,
     pub(crate) commit_context: &'a CommitContext,
     pub(crate) library_id: &'a str,
     pub(crate) actor_project_id: Option<&'a str>,
@@ -48,6 +49,7 @@ pub(crate) fn create_page_in_data_source(
         .map_err(|error| invalid(error.to_string()))?;
     let staged = super::block_transfer::stage_fresh_page_in_library(
         connection,
+        input.context,
         input.commit_context,
         input.library_id,
         input.actor_project_id,

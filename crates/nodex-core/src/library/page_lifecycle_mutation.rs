@@ -514,6 +514,7 @@ fn create_page(
             let persisted = persist_yjs_genesis_with_local_commit(
                 connection,
                 PersistYjsGenesis {
+                    file_access_context: Some(context),
                     authority: &authority,
                     actor_project_id: Some(project_id),
                     materialization: &prepared.materialization,
@@ -1673,6 +1674,7 @@ fn delete_page(
                     persist_parent_operations_detailed_with_local_commit(
                         connection,
                         ParentDocumentWriteContext {
+                            context,
                             actor_project_id: Some(
                                 context
                                     .project_id
@@ -1975,6 +1977,7 @@ fn restore_page(
                     Some(persist_parent_operations_detailed_with_local_commit(
                         connection,
                         ParentDocumentWriteContext {
+                            context,
                             actor_project_id: Some(
                                 context
                                     .project_id

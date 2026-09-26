@@ -539,6 +539,7 @@ pub(super) fn execute_page_copy(
             persist_parent_insert(
                 connection,
                 ParentDocumentWriteContext {
+                    context,
                     actor_project_id: requesting_project_id,
                     store_epoch,
                     operation_id,
@@ -1055,6 +1056,7 @@ fn persist_copy_documents(
         let persisted = persist_yjs_genesis_with_local_commit(
             connection,
             PersistYjsGenesis {
+                file_access_context: None,
                 authority: &target_authority,
                 actor_project_id,
                 materialization: &prepared.materialization,
