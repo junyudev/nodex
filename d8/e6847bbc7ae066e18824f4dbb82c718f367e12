@@ -1,0 +1,71 @@
+crates/nodex-core/src/document/retention.rs
+  s_d5d9adaec430f9::t_a449f3c5e1d851 2145,2220
+crates/nodex-core/src/infrastructure/migration.rs
+  s_d5d9adaec430f9::t_a449f3c5e1d851 5024
+crates/nodex-core/src/library/mutation.rs
+  s_d5d9adaec430f9::t_a449f3c5e1d851 135,2382,2745
+  s_d5d9adaec430f9::t_0a97e3bf1fd52f 859,2546,3173,4381,4418,6764,6825
+tests/e2e/standalone-page-files.spec.ts
+  s_d5d9adaec430f9::t_0a97e3bf1fd52f 58-60,70-79
+  s_d5d9adaec430f9::t_c041ff7baf7288 1-57,61-69,80-83
+crates/nodex-core/src/document/module.rs
+  s_d5d9adaec430f9::t_0a97e3bf1fd52f 6010,6948-6956
+  s_d5d9adaec430f9::t_a449f3c5e1d851 1725,1854,3842
+  s_d5d9adaec430f9::t_f9b82e0c4ba857 6974,6986
+crates/nodex-core/src/library/structural_edit.rs
+  s_d5d9adaec430f9::t_a449f3c5e1d851 2264,2483,2682,2833,5410,5512,5609,6607,6642,6824,6910
+  s_d5d9adaec430f9::t_0a97e3bf1fd52f 2187,2527,3255,6535
+crates/nodex-core/src/document/maintenance.rs
+  s_d5d9adaec430f9::t_a449f3c5e1d851 431
+crates/nodex-core/src/library/canvas_mutation.rs
+  s_d5d9adaec430f9::t_0a97e3bf1fd52f 172,359,605
+crates/nodex-core/src/workspace/mutation.rs
+  s_d5d9adaec430f9::t_0a97e3bf1fd52f 1276-1280
+  s_d5d9adaec430f9::t_54e34221019e1d 85,2253
+crates/nodex-core/src/document/module/tests/file_placements.rs
+  s_d5d9adaec430f9::t_221dc49b832868 79-85,97-101,105-109,114-115,120,125,140,152-164,176-183,187-192,223,227,234
+  s_d5d9adaec430f9::t_89ca1837151da3 7-23
+  s_d5d9adaec430f9::t_0a97e3bf1fd52f 28-76,86-96,102-104,110-113,116-119,121-124,126-139,141-151,165-175,184-186,193-222,224-226,228-233
+  s_d5d9adaec430f9::t_b0c5d5161c2951 1-6,24-27,77-78
+crates/nodex-core/src/library/page_lifecycle_mutation.rs
+  s_d5d9adaec430f9::t_0a97e3bf1fd52f 1677,1980
+  s_d5d9adaec430f9::t_a449f3c5e1d851 517
+crates/nodex-core/src/document/owners.rs
+  s_d5d9adaec430f9::t_a449f3c5e1d851 332,734,982
+crates/nodex-core/src/document/persistence.rs
+  s_d5d9adaec430f9::t_a449f3c5e1d851 196-197,219-220,434,731,1868
+  s_d5d9adaec430f9::t_0a97e3bf1fd52f 7-9,1924-1925,1928,1941-1972
+  s_d5d9adaec430f9::t_5714591a6e6c67 1973-1974
+crates/nodex-core/src/library/block_transfer.rs
+  s_d5d9adaec430f9::t_a449f3c5e1d851 4689,4712,4729,4795,5005,5306
+crates/nodex-core/src/library/structural_edit/editor_history.rs
+  s_d5d9adaec430f9::t_a449f3c5e1d851 177
+crates/nodex-core/src/library/mod.rs
+  s_d5d9adaec430f9::t_0a97e3bf1fd52f 53-55
+crates/nodex-core/src/library/page_copy.rs
+  s_d5d9adaec430f9::t_0a97e3bf1fd52f 542
+  s_d5d9adaec430f9::t_a449f3c5e1d851 1059
+docs/product-specs/page-files-behavior.md
+  s_d5d9adaec430f9::t_0a97e3bf1fd52f 5,121-127
+  s_d5d9adaec430f9::t_100a04034d53ef 128
+crates/nodex-core/src/library/agent_page_create.rs
+  s_d5d9adaec430f9::t_a449f3c5e1d851 710
+crates/nodex-core/src/library/page_genesis.rs
+  s_d5d9adaec430f9::t_01174a54f73fab 17,52
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "d8e6847bbc7ae066e18824f4dbb82c718f367e12",
+  "prompts": {},
+  "sessions": {
+    "s_d5d9adaec430f9": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a0dd4e-86f7-7752-af2e-42652a892271",
+        "model": "gpt-6-astra"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    }
+  }
+}
