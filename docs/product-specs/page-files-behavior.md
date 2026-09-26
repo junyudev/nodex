@@ -2,7 +2,7 @@
 
 Status: Active
 
-Last Updated: 2026-09-06
+Last Updated: 2026-09-26
 
 Page Files is the Page-local view of Library Files related to one Page. It lets a
 person organize a File under a portable path, see Files used in the Page body,
@@ -117,6 +117,14 @@ bytes only while its canonical entry or body projection contains the File. This
 access does not expose arbitrary File versions, global usages, other Page paths,
 or File mutation. Core rejects missing, retired, cross-Library, trashed, or
 unauthorized File references before committing a Document change.
+
+Standalone Pages opened from the Sidebar use trusted Library access. They can
+insert live Files from that Library without a Project grant or an explicit Page
+entry. Collaborative edits, structural replacement, and new Page bodies use the
+bound caller's File read authority; an actor Project recorded for provenance is
+not a permission source. Project-scoped writes still require a direct File read
+grant, a currently readable Page relationship, or exact authorized structural
+source evidence. An absent Project alone never establishes Library authority.
 
 Body labels may carry a local explicit name or caption. When no local value is
 present, they display the File presentation name. Historical and recovery

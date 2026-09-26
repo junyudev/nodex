@@ -4,7 +4,9 @@ use rusqlite::{Connection, OptionalExtension, params};
 use serde_json::json;
 use sha2::{Digest, Sha256};
 
-use nodex_core_contracts::{ProjectionImpact, document::PageFileReferenceChange};
+use nodex_core_contracts::{
+    BoundModuleContext, ProjectionImpact, document::PageFileReferenceChange,
+};
 
 use crate::domain::derived_records::{BlockDocumentAssetKind, BlockDocumentReference};
 use crate::infrastructure::document_repository::{DocumentHeadRow, DocumentReadRepository};
@@ -191,6 +193,8 @@ struct ReconciledDocumentBlocks {
 pub(crate) struct PersistYjsCommit<'a> {
     pub authority: &'a DocumentAuthorityRow,
     pub actor_project_id: Option<&'a str>,
+    /// None permits only retained references or exact structural File evidence.
+    pub file_access_context: Option<&'a BoundModuleContext>,
     pub base_materialization: &'a DocumentMaterialization,
     pub materialization: &'a DocumentMaterialization,
     pub update_id: &'a str,
@@ -212,6 +216,8 @@ pub(crate) struct PersistYjsCommit<'a> {
 pub(crate) struct PersistYjsGenesis<'a> {
     pub authority: &'a DocumentAuthorityRow,
     pub actor_project_id: Option<&'a str>,
+    /// None permits only retained references or exact structural File evidence.
+    pub file_access_context: Option<&'a BoundModuleContext>,
     pub materialization: &'a DocumentMaterialization,
     pub update_id: &'a str,
     pub client_session_id: &'a str,
@@ -425,7 +431,7 @@ fn persist_yjs_commit_inner(
     validate_page_file_placements(
         connection,
         input.authority,
-        input.actor_project_id,
+        input.file_access_context,
         Some(input.base_materialization),
         input.materialization,
         input.placement.authorized_file_ids,
@@ -722,7 +728,7 @@ fn persist_yjs_genesis_inner(
     validate_page_file_placements(
         connection,
         input.authority,
-        input.actor_project_id,
+        input.file_access_context,
         None,
         input.materialization,
         input.placement.authorized_file_ids,
@@ -1859,7 +1865,7 @@ fn page_file_reference_change(
 fn validate_page_file_placements(
     connection: &Connection,
     authority: &DocumentAuthorityRow,
-    actor_project_id: Option<&str>,
+    access_context: Option<&BoundModuleContext>,
     base_materialization: Option<&DocumentMaterialization>,
     materialization: &DocumentMaterialization,
     authorized_file_ids: &[String],
@@ -1915,24 +1921,13 @@ fn validate_page_file_placements(
                 "Page Document references an unavailable File".to_owned(),
             ));
         }
-        if authorized.contains(file_id) {
-            continue;
-        }
-        if let Some(project_id) = actor_project_id
-            && (crate::library::file_grant_authorization_proof(
+        if authorized.contains(file_id)
+            || context_can_read_file_placement(
                 connection,
                 &authority.head.library_id,
-                project_id,
+                access_context,
                 file_id,
-                false,
             )?
-            .is_some()
-                || project_can_read_existing_file_placement(
-                    connection,
-                    &authority.head.library_id,
-                    project_id,
-                    file_id,
-                )?)
         {
             continue;
         }
@@ -1941,6 +1936,40 @@ fn validate_page_file_placements(
         ));
     }
     Ok(())
+}
+
+/// File read authority comes from the bound caller, never receipt provenance.
+/// Source-only structural writes must supply their exact File evidence instead.
+fn context_can_read_file_placement(
+    connection: &Connection,
+    library_id: &str,
+    context: Option<&BoundModuleContext>,
+    file_id: &str,
+) -> Result<bool, StoreError> {
+    let Some(context) = context else {
+        return Ok(false);
+    };
+    if context.library_id.0 != library_id {
+        return Err(invalid(
+            "File access context belongs to another Library".to_owned(),
+        ));
+    }
+    let Some(project_id) = &context.project_id else {
+        crate::library::require_trusted_library_authority(context)?;
+        return Ok(true);
+    };
+    if crate::library::file_grant_authorization_proof(
+        connection,
+        library_id,
+        &project_id.0,
+        file_id,
+        false,
+    )?
+    .is_some()
+    {
+        return Ok(true);
+    }
+    project_can_read_existing_file_placement(connection, library_id, &project_id.0, file_id)
 }
 
 fn project_can_read_page(

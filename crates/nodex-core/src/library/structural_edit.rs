@@ -2184,6 +2184,7 @@ fn turn_active_selection(
             let commit_result = persist_parent_relocation_source_with_placeholder(
                 connection,
                 ParentDocumentWriteContext {
+                    context,
                     actor_project_id: structural_actor_project_id(connection, context)?.as_deref(),
                     store_epoch,
                     operation_id,
@@ -2260,6 +2261,7 @@ fn turn_active_selection(
     let host_commit = persist_parent_operations_detailed_with_local_commit(
         connection,
         ParentDocumentWriteContext {
+            context,
             actor_project_id: structural_actor_project_id(connection, context)?.as_deref(),
             store_epoch,
             operation_id,
@@ -2478,6 +2480,7 @@ fn restore_turned_selection(
     let host_commit = persist_parent_relocation_source_with_local_commit(
         connection,
         ParentDocumentWriteContext {
+            context,
             actor_project_id: structural_actor_project_id(connection, context)?.as_deref(),
             store_epoch,
             operation_id,
@@ -2521,6 +2524,7 @@ fn restore_turned_selection(
         let commit_result = persist_parent_operations_detailed_with_local_commit(
             connection,
             ParentDocumentWriteContext {
+                context,
                 actor_project_id: structural_actor_project_id(connection, context)?.as_deref(),
                 store_epoch,
                 operation_id,
@@ -2675,6 +2679,7 @@ fn apply_backward_merge(
     let document_commit = persist_parent_operations_detailed_with_local_commit(
         connection,
         ParentDocumentWriteContext {
+            context,
             actor_project_id: structural_actor_project_id(connection, context)?.as_deref(),
             store_epoch,
             operation_id,
@@ -2825,6 +2830,7 @@ fn restore_backward_merge(
     let document_commit = persist_parent_operations_from_source_with_local_commit(
         connection,
         ParentDocumentWriteContext {
+            context,
             actor_project_id: structural_actor_project_id(connection, context)?.as_deref(),
             store_epoch,
             operation_id,
@@ -3246,6 +3252,7 @@ fn apply_recipe_action(
             let content_commit = persist_parent_operations_detailed_with_local_commit(
                 connection,
                 ParentDocumentWriteContext {
+                    context,
                     actor_project_id: structural_actor_project_id(connection, context)?.as_deref(),
                     store_epoch,
                     operation_id,
@@ -5400,6 +5407,7 @@ fn insert_ordinary_replacement(
     let document_commit = persist_parent_operations_detailed_with_local_commit(
         connection,
         ParentDocumentWriteContext {
+            context,
             actor_project_id: structural_actor_project_id(connection, context)?.as_deref(),
             store_epoch,
             operation_id,
@@ -5501,6 +5509,7 @@ fn delete_snapshot(
     let document_commit = persist_parent_operations_detailed_with_local_commit(
         connection,
         ParentDocumentWriteContext {
+            context,
             actor_project_id: structural_actor_project_id(connection, context)?.as_deref(),
             store_epoch,
             operation_id,
@@ -5597,6 +5606,7 @@ fn restore_snapshot(
     let document_commit = persist_parent_operations_from_source_with_local_commit(
         connection,
         ParentDocumentWriteContext {
+            context,
             actor_project_id: structural_actor_project_id(connection, context)?.as_deref(),
             store_epoch,
             operation_id,
@@ -6522,6 +6532,7 @@ fn move_active_snapshot(
         let document_commit = persist_parent_operations_detailed_with_local_commit(
             connection,
             ParentDocumentWriteContext {
+                context,
                 actor_project_id: structural_actor_project_id(connection, context)?.as_deref(),
                 store_epoch,
                 operation_id,
@@ -6593,6 +6604,7 @@ fn move_active_snapshot(
     let source_commit = persist_parent_relocation_source_with_placeholder(
         connection,
         ParentDocumentWriteContext {
+            context,
             actor_project_id: structural_actor_project_id(connection, context)?.as_deref(),
             store_epoch,
             operation_id,
@@ -6627,6 +6639,7 @@ fn move_active_snapshot(
     let target_commit = persist_parent_operations_from_source_with_local_commit(
         connection,
         ParentDocumentWriteContext {
+            context,
             actor_project_id: structural_actor_project_id(connection, context)?.as_deref(),
             store_epoch,
             operation_id,
@@ -6808,6 +6821,7 @@ fn clone_snapshot_into_target(
                 let persisted = persist_yjs_genesis_with_local_commit(
                     connection,
                     PersistYjsGenesis {
+                        file_access_context: Some(context),
                         authority: &target_authority,
                         actor_project_id: structural_actor_project_id(connection, context)?
                             .as_deref(),
@@ -6893,6 +6907,7 @@ fn clone_snapshot_into_target(
     let host_commit = persist_parent_operations_from_source_with_local_commit(
         connection,
         ParentDocumentWriteContext {
+            context,
             actor_project_id: structural_actor_project_id(connection, context)?.as_deref(),
             store_epoch,
             operation_id,

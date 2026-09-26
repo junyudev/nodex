@@ -174,6 +174,7 @@ pub(super) fn transition(
     let commit = persist_parent_operations_detailed_with_local_commit(
         write.connection,
         ParentDocumentWriteContext {
+            context: write.context,
             actor_project_id: structural_actor_project_id(write.connection, write.context)?
                 .as_deref(),
             store_epoch: write.store_epoch,

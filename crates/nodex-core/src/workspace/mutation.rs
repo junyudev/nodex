@@ -82,6 +82,7 @@ struct CreatedProjectAggregate {
 }
 
 struct StarterPageGenesisRequest<'a> {
+    context: &'a BoundModuleContext,
     page: &'a ProjectWorkspaceStarterPage,
     store_epoch: &'a str,
 }
@@ -1272,7 +1273,11 @@ fn create_project(
                 page_key_prefix,
                 operation_id,
                 assets_root,
-                starter_page.map(|page| StarterPageGenesisRequest { page, store_epoch }),
+                starter_page.map(|page| StarterPageGenesisRequest {
+                    context,
+                    page,
+                    store_epoch,
+                }),
             )?;
             let mut block_ids = vec![
                 created.identities.database_id.clone(),
@@ -2245,6 +2250,7 @@ fn create_project_records(
             crate::library::page_genesis::create_page_in_data_source(
                 connection,
                 crate::library::page_genesis::PageGenesisInput {
+                    context: request.context,
                     commit_context,
                     library_id,
                     actor_project_id: Some(project_id),

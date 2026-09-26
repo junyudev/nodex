@@ -132,6 +132,7 @@ pub(super) struct ResolvedParentDocument {
 /// explicit at the persistence seam.
 #[derive(Clone, Copy)]
 pub(super) struct ParentDocumentWriteContext<'a> {
+    pub(super) context: &'a BoundModuleContext,
     pub(super) actor_project_id: Option<&'a str>,
     pub(super) store_epoch: &'a str,
     pub(super) operation_id: &'a str,
@@ -855,6 +856,7 @@ fn move_block(
 
             let mut committed_document_heads = BTreeMap::new();
             let parent_write = ParentDocumentWriteContext {
+                context,
                 actor_project_id: actor_project_id.as_deref(),
                 store_epoch,
                 operation_id,
@@ -2377,6 +2379,7 @@ fn persist_parent_operations_detailed(
     let persisted = persist_yjs_commit_with_local_commit(
         connection,
         PersistYjsCommit {
+            file_access_context: Some(write.context),
             authority: &parent.authority,
             actor_project_id: write.actor_project_id,
             base_materialization: &parent.base_materialization,
@@ -2540,6 +2543,7 @@ fn create_database(
                     persist_parent_insert(
                         connection,
                         ParentDocumentWriteContext {
+                            context,
                             actor_project_id: project_id.as_deref(),
                             store_epoch,
                             operation_id,
@@ -2738,6 +2742,7 @@ fn create_page_records_and_genesis(
     let persisted = persist_yjs_genesis_with_local_commit(
         connection,
         PersistYjsGenesis {
+            file_access_context: None,
             authority: &authority,
             actor_project_id: project_id,
             materialization: &prepared.materialization,
@@ -3165,6 +3170,7 @@ fn create_page_mention(
                 scope.evidence(),
             )?;
             let write = ParentDocumentWriteContext {
+                context,
                 actor_project_id: project_id.as_deref(),
                 store_epoch,
                 operation_id,
@@ -4372,7 +4378,7 @@ fn internal(message: &str) -> StoreError {
 #[allow(clippy::too_many_arguments)]
 fn execute_page_create(
     connection: &Connection,
-    _context: &BoundModuleContext,
+    context: &BoundModuleContext,
     store_epoch: &str,
     library_id: &str,
     operation_id: &str,
@@ -4409,6 +4415,7 @@ fn execute_page_create(
         .as_ref()
         .map(|parent| {
             let write = ParentDocumentWriteContext {
+                context,
                 actor_project_id: project_id.as_deref(),
                 store_epoch,
                 operation_id,
@@ -6754,6 +6761,7 @@ mod tests {
                     persist_parent_operations(
                         transaction,
                         ParentDocumentWriteContext {
+                            context: &context(),
                             actor_project_id: Some("project-1"),
                             store_epoch: "epoch-1",
                             operation_id: "operation:add-guard-paragraph",
@@ -6814,6 +6822,7 @@ mod tests {
                     persist_parent_operations(
                         transaction,
                         ParentDocumentWriteContext {
+                            context: &context(),
                             actor_project_id: Some("project-1"),
                             store_epoch: "epoch-1",
                             operation_id: "operation:ordinary-canvas-delete",

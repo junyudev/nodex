@@ -707,6 +707,7 @@ fn apply_pages(
         let document_id = page.document_id.clone();
         let staged = super::block_transfer::stage_prepared_fresh_page_in_library(
             connection,
+            context,
             scope.evidence(),
             library_id,
             preflight.actor_project_id.as_deref(),

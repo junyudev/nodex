@@ -1722,6 +1722,7 @@ impl OwnedDocumentModule {
                                     let persisted = persist_yjs_genesis_with_local_commit(
                                         &transaction,
                                         PersistYjsGenesis {
+                                            file_access_context: Some(&context),
                                             authority: &authority,
                                             actor_project_id: Some(bound_actor_project_id(
                                                 &context,
@@ -1850,6 +1851,7 @@ impl OwnedDocumentModule {
                                     let persisted = persist_yjs_commit_with_local_commit(
                                         &transaction,
                                         PersistYjsCommit {
+                                            file_access_context: Some(&context),
                                             authority: &authority,
                                             actor_project_id: Some(bound_actor_project_id(
                                                 &context,
@@ -3837,6 +3839,7 @@ impl OwnedDocumentModule {
                         let persisted = persist_yjs_commit_with_local_commit(
                             &transaction,
                             PersistYjsCommit {
+                                file_access_context: Some(&job.context),
                                 authority: &authority,
                                 actor_project_id: actor_project_id.as_deref(),
                                 base_materialization: &base_materialization,
@@ -6004,6 +6007,7 @@ fn sqlite_now(connection: &rusqlite::Connection) -> Result<String, StoreError> {
 #[cfg(test)]
 mod tests {
     mod asset_migration;
+    mod file_placements;
     mod recovery;
     mod reference_lifecycle;
     use std::fs;
@@ -6941,6 +6945,15 @@ mod tests {
     }
 
     fn create_canvas_file(seeded: &SeededModule, file_id: &str, bytes: &[u8]) {
+        create_file(seeded, &context(), file_id, bytes);
+    }
+
+    fn create_file(
+        seeded: &SeededModule,
+        access: &BoundModuleContext,
+        file_id: &str,
+        bytes: &[u8],
+    ) {
         use crate::infrastructure::managed_blobs::BlobWriter;
         use nodex_core_contracts::library::{
             LIBRARY_CONTRACT_VERSION, LibraryFileChange, LibraryIntent,
@@ -6958,7 +6971,7 @@ mod tests {
             + 60_000;
         let receipt = library
             .register_prepared_file_blob(
-                &context(),
+                access,
                 STORE_EPOCH,
                 &operation,
                 &operation,
@@ -6970,7 +6983,7 @@ mod tests {
             .unwrap();
         library
             .apply(
-                &context(),
+                access,
                 ModuleApplyRequest {
                     contract_version: LIBRARY_CONTRACT_VERSION,
                     operation_id: operation,
