@@ -92,7 +92,7 @@ impl IdleWriters {
                 continue;
             }
             let file = files::read_file(&entry.path())?;
-            file.try_lock().map_err(|_| invalid("Source Agent still owns a conversation writer; stop its runtime before cloning the Profile"))?;
+            file.try_lock().map_err(|_| invalid("Source Agent still owns a conversation writer. Use a source Nodex Desktop with Profile snapshot coordination, or stop the source Agent runtime before cloning"))?;
         }
         Ok(Self {
             _coordination: lock,
@@ -227,7 +227,8 @@ pub(crate) fn capture(
     files::require_directory(&source)?;
     validate_config(&source)?;
     validate_database_layout(&source)?;
-    let _writers = IdleWriters::acquire(&source)?;
+    let lease = crate::control::SnapshotLease::acquire(source_profile)?;
+    let writers = IdleWriters::acquire(&source)?;
     let before = files::inventory(&source, DIRECTORIES, FILES)?;
     let databases = DATABASES
         .iter()
@@ -242,6 +243,33 @@ pub(crate) fn capture(
     }
     for relative in before.keys() {
         files::copy_file(&source.join(relative), &staging.join(relative))?;
+    }
+    // Finish source verification while its Desktop lease and native writer fence still hold.
+    // All relocation and semantic validation below operate only on the detached snapshot.
+    for database in &databases {
+        database.verify_unchanged()?;
+    }
+    validate_database_layout(&source)?;
+    for name in DATABASES {
+        if files::exists(&source.join(name))?
+            != databases
+                .iter()
+                .any(|database| database.path == source.join(name))
+        {
+            return Err(invalid(
+                "Source conversation database set changed during capture",
+            ));
+        }
+    }
+    if before != files::inventory(&source, DIRECTORIES, FILES)? {
+        return Err(invalid(
+            "Source conversation files changed during capture; retry after stopping its Agent runtime",
+        ));
+    }
+    drop(databases);
+    drop(writers);
+    if let Some(lease) = lease {
+        lease.finish()?;
     }
     crate::goals::relocate_managed_references(&source, &staging, &target)?;
     let rollouts = read_rollouts(&staging, before.keys(), METADATA_BUDGET)?;
@@ -277,26 +305,6 @@ pub(crate) fn capture(
         .filter(|id| !recoverable(id, &selected, &rollouts, &invalid_prefixes, &projections))
         .cloned()
         .collect::<Vec<_>>();
-    for database in &databases {
-        database.verify_unchanged()?;
-    }
-    validate_database_layout(&source)?;
-    for name in DATABASES {
-        if files::exists(&source.join(name))?
-            != databases
-                .iter()
-                .any(|database| database.path == source.join(name))
-        {
-            return Err(invalid(
-                "Source conversation database set changed during capture",
-            ));
-        }
-    }
-    if before != files::inventory(&source, DIRECTORIES, FILES)? {
-        return Err(invalid(
-            "Source conversation files changed during capture; retry after stopping its Agent runtime",
-        ));
-    }
     receipt(
         started,
         &staging,

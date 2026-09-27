@@ -205,9 +205,20 @@ revert, native metadata, pagination indexes, goals, and managed Agent attachment
 Native SQLite uses online backup rather than raw database/WAL copying. Selected
 rollout paths, current managed goal references, and managed attachment ownership
 are relocated into the destination. Core Session/Thread IDs remain unchanged.
-Execution queues, locks, credentials, and Agent configuration are excluded. Stop
-the source Agent runtime if it owns conversation writers; the clone fails rather
-than copying an in-flight rollout.
+Execution queues, locks, credentials, and Agent configuration are excluded.
+An open source Nodex coordinates capture automatically: new Agent requests wait,
+existing requests and active conversations drain, and its owned local Agent closes
+normally before copying. Stop controls remain available while waiting for active
+work, including Agent background terminals. Source windows and Core remain open.
+After copying and checking the source files, the Agent reconnects before the CLI
+continues with validation of the detached copy. Cancellation or a disconnected
+clone client releases the pause too. Busy work times out without being interrupted.
+
+Both the clone command and the source Desktop must support this coordination.
+An older source Desktop, an external daemon, or another process retaining native
+writer locks still requires stopping that Agent before cloning; no live writer
+check is bypassed. Once a development home is initialized, reopening it does not
+pause or recapture the source.
 
 Every local Codex Thread referenced by the selected Store must have recoverable
 native history. Missing rollouts or inherited history reject the clone before

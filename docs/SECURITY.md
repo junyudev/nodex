@@ -448,6 +448,12 @@ CI` push run. The privileged release `workflow_run` additionally validates the
   only after acquiring the lifetime lock and proving the existing entry is the
   current user's Unix socket. Runtime cleanup similarly removes only the exact
   start-nonce generation after validating every target.
+- Profile clone coordination uses a current-user-owned `0700` IPC directory and
+  `0600` Unix socket. Its bounded, versioned protocol grants only a connection-bound
+  idle Agent snapshot window; it accepts no executable, capture path, credentials,
+  or content. The Endpoint supervisor controls only its owned local stdio process,
+  preserves active work, and resumes after release or disconnect. Native capture
+  still requires its independent writer fence and source consistency checks.
 - Core lifecycle diagnostics use the same private runtime ancestry and atomic
   regular-file publication rules. The fixed-size `lifecycle.json` breadcrumb
   contains only bounded generation identity, phase, typed drain reason, and

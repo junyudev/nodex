@@ -535,6 +535,13 @@ export const live = (
                   }),
                 ),
               ),
+          ).pipe((request) =>
+            endpoint.withRequest(
+              request,
+              method === "turn/interrupt" ||
+                method === "thread/backgroundTerminals/terminate" ||
+                method === "thread/backgroundTerminals/clean",
+            ),
           );
         });
 
@@ -599,19 +606,21 @@ export const live = (
         notifyLocal: (method, params) =>
           Effect.gen(function* () {
             const endpoint = yield* endpoints.endpoint(endpoints.localHostId);
-            const session = yield* endpoint.session;
-            yield* session.client.notify(method, params).pipe(
-              Effect.mapError((cause) =>
-                classifyCodexClientError({
-                  operation: "gateway.notify",
-                  cause,
-                  hostId: endpoints.localHostId,
-                  generation: session.generation,
-                  pid: session.pid,
-                  method,
-                }),
-              ),
-            );
+            yield* Effect.gen(function* () {
+              const session = yield* endpoint.session;
+              yield* session.client.notify(method, params).pipe(
+                Effect.mapError((cause) =>
+                  classifyCodexClientError({
+                    operation: "gateway.notify",
+                    cause,
+                    hostId: endpoints.localHostId,
+                    generation: session.generation,
+                    pid: session.pid,
+                    method,
+                  }),
+                ),
+              );
+            }).pipe(endpoint.withRequest);
           }),
         connection: (hostId) =>
           endpoints

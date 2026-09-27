@@ -16,7 +16,7 @@ rank, Yjs storage coordinate, or Desktop renderer state.
 ## Local Profile clones
 
 `nodex profile clone --from <profile-home> --to <new-profile-home>` is the
-offline provisioning command for production-shape local testing. It selects the
+provisioning command for production-shape local testing. It selects the
 latest current evidence-backed, assets-inclusive published backup by default;
 `--backup <id>` selects an exact current backup. Create a fresh backup when only
 an older manifest exists. The target and its parent must be local real paths,
@@ -35,8 +35,12 @@ paths. It checks every local Codex Thread from the Store against its complete
 rollout ancestry. Missing native history rejects the clone; explicitly use
 `--allow-missing-conversations` only for incomplete diagnostic reproduction.
 The receipt records missing Thread IDs, external-host/backend counts, capture
-timestamps, and a native-artifact digest. Stop the source Agent runtime when
-conversation writer locks prevent capture.
+timestamps, and a native-artifact digest. An open source Desktop coordinates a
+temporary pause of its idle local Agent and reconnects it after source capture;
+windows and Core stay open. Active conversations and Agent background terminals
+are allowed to finish, and cancellation releases the pause. Both the source Desktop
+and clone command must support coordination. Older Desktops and external Agent
+runtimes still require stopping the source Agent when its writers prevent capture.
 
 The selected Store backup and current native conversation capture have separate
 timestamps: `--backup` does not select historical native state. Native pagination
