@@ -28,6 +28,7 @@ export interface CodexAppServerSessionService {
   readonly client: CodexAppServerClient["Service"];
   readonly initialize: V1InitializeResponse;
   readonly termination: Effect.Effect<never, CodexRuntimeError>;
+  readonly closeForSnapshot?: Effect.Effect<void, CodexRuntimeError>;
 }
 
 export class CodexAppServerSession extends Context.Service<
@@ -115,6 +116,7 @@ export const live = (
         nativeAppTools: options.nativeAppTools === true,
         initialize,
         termination: opened.termination,
+        closeForSnapshot: opened.closeForSnapshot,
       });
     }),
   );

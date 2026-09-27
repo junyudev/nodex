@@ -89,7 +89,7 @@ restored Store.
 
 ## Development Profile clones
 
-Offline development provisioning may materialize a current evidence-backed
+Development provisioning may materialize a current evidence-backed
 published backup into a new Profile home. The source Core is never launched:
 Core reads only the backup package, copies `nodex.db` and its managed-asset
 closure into a private sibling staging directory, and rejects symlinks,
@@ -117,10 +117,30 @@ recreated from the source inputs. Failed provisioning removes only the owned
 staging directory and never modifies the source backup. This is a local
 development input path, not a restore into a running Profile.
 
+When the source Desktop is open, its Endpoint supervisor lends a connection-bound
+snapshot window over a private local control socket. Gateway admission excludes
+new work and drains logical and retained physical requests. Active conversations
+and Agent background terminals must finish; their stop controls remain available
+during this drain. The supervisor closes the owned stdio input and waits for normal
+native process exit before acknowledging capture readiness. Closing a process Scope
+or sending a termination signal is not snapshot readiness. No second reconnect owner
+or external process killer participates. The Desktop windows and Core keep running.
+
+The CLI releases native locks before releasing its Desktop lease. Source database
+and file stability checks complete under both leases; relocation and semantic
+validation then continue solely against the detached copy while the source Agent
+reconnects. The release acknowledgement requires a ready replacement Endpoint.
+Client disconnect, capture failure, and cancellation also release the pause. Active
+work that does not drain fails the request without being interrupted. Absent or
+stale Desktop coordination leaves the offline writer checks in force. A running
+Desktop that cannot own the source Agent refuses the lease; the CLI does not
+fall back after a refusal.
+
 The Codex persistence Adapter holds the native home coordination lock while
 checking that all per-Thread writers are idle and capturing active/archived
 rollouts, inherited ancestors, attachments, session metadata, pagination indexes,
-and goals. Existing writers cause immediate failure. The Adapter uses SQLite
+and goals. Writers remaining after Desktop coordination, or in an offline capture,
+cause failure. The Adapter uses SQLite
 online backup and checks source data versions, file identity/inventory, and
 database-set stability before
 publication. It preserves selected histories after revert and rewrites their

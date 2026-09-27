@@ -111,6 +111,10 @@ const fakeEndpoint = (input: {
   readonly physicalJsonl?: boolean;
   readonly framing?: "message";
   readonly ready?: Effect.Effect<void, CodexRuntimeError>;
+  readonly snapshot?: {
+    readonly active: () => boolean;
+    readonly close: Effect.Effect<void, CodexRuntimeError>;
+  };
 }): FakeEndpoint => {
   const attempts: FakeAttempt[] = [];
   const releases: number[] = [];
@@ -155,7 +159,10 @@ const fakeEndpoint = (input: {
           yield* Effect.forever(
             Queue.take(io.output).pipe(
               Effect.flatMap((line) => {
-                const request = JSON.parse(line.trim()) as { readonly id?: string | number };
+                const request = JSON.parse(line.trim()) as {
+                  readonly id?: string | number;
+                  readonly method: string;
+                };
                 requests.push(request);
                 if (request.id === undefined) return Effect.void;
                 return Queue.offer(
@@ -163,14 +170,58 @@ const fakeEndpoint = (input: {
                   encoder.encode(
                     `${JSON.stringify({
                       id: request.id,
-                      result: {
-                        account: {
-                          type: "chatgpt",
-                          email: input.accountEmail ?? `${input.hostId}@example.com`,
-                          planType: "plus",
-                        },
-                        requiresOpenaiAuth: false,
-                      },
+                      result:
+                        request.method === "thread/backgroundTerminals/list" && input.snapshot
+                          ? { data: [], nextCursor: null }
+                          : request.method === "thread/loaded/list" && input.snapshot
+                            ? { data: ["snapshot-thread"], nextCursor: null }
+                            : request.method === "thread/read" && input.snapshot
+                              ? {
+                                  thread: {
+                                    id: "snapshot-thread",
+                                    environments: null,
+                                    extra: null,
+                                    sessionId: "snapshot-thread",
+                                    forkedFromId: null,
+                                    parentThreadId: null,
+                                    preview: "",
+                                    ephemeral: false,
+                                    section: null,
+                                    sectionEnteredAt: null,
+                                    projectId: null,
+                                    historyMode: "paginated",
+                                    modelProvider: "openai",
+                                    model: null,
+                                    reasoningEffort: null,
+                                    createdAt: 1,
+                                    updatedAt: 1,
+                                    recencyAt: 1,
+                                    status: input.snapshot.active()
+                                      ? { type: "active", activeFlags: [] }
+                                      : { type: "idle" },
+                                    path: null,
+                                    cwd: "/repo",
+                                    cliVersion: "test",
+                                    originator: null,
+                                    source: "unknown",
+                                    canAcceptDirectInput: true,
+                                    threadSource: "user",
+                                    agentNickname: null,
+                                    agentRole: null,
+                                    gitInfo: null,
+                                    name: null,
+                                    daybreakEnabled: null,
+                                    turns: [],
+                                  } satisfies Thread,
+                                }
+                              : {
+                                  account: {
+                                    type: "chatgpt",
+                                    email: input.accountEmail ?? `${input.hostId}@example.com`,
+                                    planType: "plus",
+                                  },
+                                  requiresOpenaiAuth: false,
+                                },
                     })}\n`,
                   ),
                 ).pipe(Effect.asVoid);
@@ -193,6 +244,7 @@ const fakeEndpoint = (input: {
             userAgent: "fake-codex",
           },
           termination: Deferred.await(termination),
+          closeForSnapshot: input.snapshot?.close,
         });
       }),
     );
@@ -233,6 +285,161 @@ const endpointDependencies = Layer.mergeAll(
   applicationRequestInboxLive,
   fakeTransport,
   requestSchedulerLive,
+);
+
+it.effect(
+  "Profile capture waits for active work, stops gracefully, and blocks new requests until resumed",
+  () =>
+    Effect.gen(function* () {
+      let active = true;
+      let closed = 0;
+      const fake = fakeEndpoint({
+        hostId: "local",
+        snapshot: {
+          active: () => active,
+          close: Effect.sync(() => {
+            closed += 1;
+          }),
+        },
+      });
+      const context = yield* Layer.buildWithScope(
+        endpointLive(fake.config).pipe(Layer.provideMerge(endpointDependencies)),
+        yield* Scope.Scope,
+      );
+      const endpoint = Context.get(context, CodexEndpoint);
+      yield* endpoint.session;
+      const captured = yield* Deferred.make<void>();
+      const release = yield* Deferred.make<void>();
+      const capture = yield* endpoint
+        .withProfileSnapshot(
+          Deferred.succeed(captured, undefined).pipe(Effect.andThen(Deferred.await(release))),
+        )
+        .pipe(Effect.forkScoped);
+      yield* TestClock.adjust("1 second");
+      assert.strictEqual(closed, 0);
+      assert.isFalse(yield* Deferred.isDone(captured));
+      active = false;
+      yield* TestClock.adjust("100 millis");
+      yield* Deferred.await(captured);
+      assert.strictEqual(closed, 1);
+      assert.deepEqual(fake.releases, [1]);
+      assert.strictEqual(fake.attempts.length, 1);
+      const request = yield* endpoint.withRequest(endpoint.session).pipe(Effect.forkScoped);
+      yield* Effect.yieldNow;
+      assert.strictEqual(fake.attempts.length, 1);
+      yield* Deferred.succeed(release, undefined);
+      yield* Fiber.join(capture);
+      assert.strictEqual((yield* Fiber.join(request)).generation, 2);
+    }),
+);
+
+it.effect("Profile capture failure and cancellation both restore the source Endpoint", () =>
+  Effect.gen(function* () {
+    const fake = fakeEndpoint({
+      hostId: "local",
+      snapshot: { active: () => false, close: Effect.void },
+    });
+    const context = yield* Layer.buildWithScope(
+      endpointLive(fake.config).pipe(Layer.provideMerge(endpointDependencies)),
+      yield* Scope.Scope,
+    );
+    const endpoint = Context.get(context, CodexEndpoint);
+    yield* endpoint.session;
+    const failed = yield* endpoint
+      .withProfileSnapshot(Effect.fail("copy failed"))
+      .pipe(Effect.result);
+    assert.deepEqual(failed, Result.fail("copy failed"));
+    assert.strictEqual((yield* endpoint.session).generation, 2);
+    const captured = yield* Deferred.make<void>();
+    const pending = yield* endpoint
+      .withProfileSnapshot(Deferred.succeed(captured, undefined).pipe(Effect.andThen(Effect.never)))
+      .pipe(Effect.forkScoped);
+    yield* Deferred.await(captured);
+    yield* Fiber.interrupt(pending);
+    assert.strictEqual((yield* endpoint.session).generation, 3);
+  }),
+);
+
+it.effect("an active Thread times out without being stopped or publishing a snapshot", () =>
+  Effect.gen(function* () {
+    let closed = false;
+    const fake = fakeEndpoint({
+      hostId: "local",
+      snapshot: {
+        active: () => true,
+        close: Effect.sync(() => {
+          closed = true;
+        }),
+      },
+    });
+    const context = yield* Layer.buildWithScope(
+      endpointLive(fake.config).pipe(Layer.provideMerge(endpointDependencies)),
+      yield* Scope.Scope,
+    );
+    const endpoint = Context.get(context, CodexEndpoint);
+    const session = yield* endpoint.session;
+    const capture = yield* endpoint
+      .withProfileSnapshot(Effect.die("Must not capture active work"))
+      .pipe(Effect.result, Effect.forkScoped);
+    yield* TestClock.adjust("61 seconds");
+    assert.isTrue(Result.isFailure(yield* Fiber.join(capture)));
+    assert.isFalse(closed);
+    assert.strictEqual(yield* endpoint.withRequest(endpoint.session), session);
+  }),
+);
+
+it.effect("failed graceful shutdown refuses capture and restores the source Endpoint", () =>
+  Effect.gen(function* () {
+    const shutdownError = codexRuntimeError({
+      operation: "session.snapshot-shutdown",
+      reason: "session-lost",
+      retryable: false,
+      hostId: "local",
+    });
+    const fake = fakeEndpoint({
+      hostId: "local",
+      snapshot: { active: () => false, close: Effect.fail(shutdownError) },
+    });
+    const context = yield* Layer.buildWithScope(
+      endpointLive(fake.config).pipe(Layer.provideMerge(endpointDependencies)),
+      yield* Scope.Scope,
+    );
+    const endpoint = Context.get(context, CodexEndpoint);
+    yield* endpoint.session;
+    const captured = yield* Deferred.make<void>();
+    const result = yield* endpoint
+      .withProfileSnapshot(Deferred.succeed(captured, undefined))
+      .pipe(Effect.result);
+    assert.deepEqual(result, Result.fail(shutdownError));
+    assert.isFalse(yield* Deferred.isDone(captured));
+    assert.strictEqual((yield* endpoint.withRequest(endpoint.session)).generation, 2);
+  }),
+);
+
+it.effect("closing the Endpoint owner during capture releases the waiting client", () =>
+  Effect.gen(function* () {
+    const owner = yield* Effect.acquireRelease(Scope.make(), (scope) =>
+      Scope.close(scope, Exit.void),
+    );
+    const fake = fakeEndpoint({
+      hostId: "local",
+      snapshot: { active: () => false, close: Effect.void },
+    });
+    const context = yield* Layer.buildWithScope(
+      endpointLive(fake.config).pipe(Layer.provideMerge(endpointDependencies)),
+      owner,
+    );
+    const endpoint = Context.get(context, CodexEndpoint);
+    yield* endpoint.session;
+    const captured = yield* Deferred.make<void>();
+    const pending = yield* endpoint
+      .withProfileSnapshot(Deferred.succeed(captured, undefined).pipe(Effect.andThen(Effect.never)))
+      .pipe(Effect.forkScoped);
+    yield* Deferred.await(captured);
+    yield* Scope.close(owner, Exit.void);
+    assert.isTrue(Exit.isFailure(yield* Fiber.await(pending)));
+    assert.deepEqual(fake.releases, [1]);
+  }),
 );
 
 it.effect("connection provenance follows the selected physical session across retries", () =>

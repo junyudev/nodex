@@ -1,7 +1,9 @@
 import { randomUUID } from "node:crypto";
 import * as Clock from "effect/Clock";
+import * as Cause from "effect/Cause";
 import * as Context from "effect/Context";
 import * as Duration from "effect/Duration";
+import * as Deferred from "effect/Deferred";
 import * as Effect from "effect/Effect";
 import * as Exit from "effect/Exit";
 import * as Layer from "effect/Layer";
@@ -17,6 +19,7 @@ import { CodexAppServerRequestError } from "@nodex/effect-codex-app-server/error
 import { getCodexReceivedAtMs } from "@nodex/effect-codex-app-server/transport-values";
 import { toCodexThreadStartedMetadataNotification } from "../../shared/codex-thread-start-metadata";
 import type { CodexSessionTransport } from "../platform/node/CodexSessionTransport";
+import { makeCodexSnapshotAdmission } from "./CodexSnapshotAdmission";
 import {
   CodexApplicationRequestInbox,
   type CodexApplicationRequestSettlement,
@@ -65,6 +68,13 @@ interface ActiveSession {
   readonly termination: Effect.Effect<never, CodexRuntimeError>;
 }
 
+interface SnapshotPause {
+  readonly generation: number;
+  readonly ready: Deferred.Deferred<void, CodexRuntimeError>;
+  readonly release: Deferred.Deferred<void>;
+  readonly resumed: Deferred.Deferred<void>;
+}
+
 export const sanitizeCodexEndpointNotification = <
   T extends {
     readonly protocol: string;
@@ -108,6 +118,14 @@ export class CodexEndpoint extends Context.Service<
     readonly state: SubscriptionRef.SubscriptionRef<CodexEndpointConnection>;
     readonly session: Effect.Effect<CodexAppServerSessionService, CodexRuntimeError>;
     readonly admission: Effect.Effect<number, CodexRuntimeError>;
+    readonly withRequest: <A, E, R>(
+      operation: Effect.Effect<A, E, R>,
+      settleActiveWork?: boolean,
+    ) => Effect.Effect<A, E, R>;
+    /** Drains ordinary work, gracefully closes the owned process, and resumes after capture. */
+    readonly withProfileSnapshot: <A, E, R>(
+      capture: Effect.Effect<A, E, R>,
+    ) => Effect.Effect<A, E | CodexRuntimeError, R>;
     /** Rotates the physical generation without replacing the stable host state cell. */
     readonly restart: Effect.Effect<void>;
     /** Publishes a new host config, then rotates the physical generation atomically. */
@@ -156,7 +174,9 @@ export const live = (
       const generation = yield* Ref.make(0);
       const admissionState = yield* SubscriptionRef.make<number | null>(null);
       const active = yield* Ref.make<Option.Option<ActiveSession>>(Option.none());
-      const restartWake = yield* Queue.sliding<void>(1);
+      const restartWake = yield* Queue.unbounded<SnapshotPause | undefined>();
+      const snapshotAdmission = yield* makeCodexSnapshotAdmission();
+      const supervisorStopped = yield* Deferred.make<void>();
       const endpointScope = yield* Effect.scope;
 
       const publishConnection = Effect.fn("CodexEndpoint.publishConnection")(function* (
@@ -522,14 +542,63 @@ export const live = (
           }),
         ),
       );
-      const runUntilRestart = Effect.raceFirst(cycle, Queue.take(restartWake)).pipe(
+      const handleSnapshot = Effect.fn("CodexEndpoint.handleSnapshot")(function* (
+        pause: SnapshotPause,
+      ) {
+        const current = yield* Ref.get(active);
+        const shutdown =
+          Option.isSome(current) && current.value.session.generation === pause.generation
+            ? current.value.session.closeForSnapshot
+            : undefined;
+        const error = codexRuntimeError({
+          operation: "endpoint.snapshot",
+          reason: "host-unavailable",
+          retryable: false,
+          hostId,
+          cause: new Error("The drained local Agent is no longer owned by this Desktop"),
+        });
+        if (!shutdown) {
+          yield* Deferred.fail(pause.ready, error);
+          return;
+        }
+        yield* publishConnection({
+          kind: "connecting",
+          hostId,
+          generation: (yield* Ref.get(generation)) + 1,
+        });
+        const stopped = yield* Effect.exit(shutdown);
+        yield* closeActive();
+        yield* Deferred.done(pause.ready, stopped);
+        if (Exit.isSuccess(stopped)) yield* Deferred.await(pause.release);
+      });
+      const runUntilRestart = Effect.raceFirst(
+        cycle.pipe(Effect.as(undefined)),
+        Queue.take(restartWake),
+      ).pipe(
+        Effect.flatMap((pause) =>
+          pause
+            ? handleSnapshot(pause).pipe(
+                Effect.ensuring(Deferred.succeed(pause.resumed, undefined)),
+              )
+            : Effect.void,
+        ),
         Effect.ensuring(closeActive()),
       );
       const supervisor = Effect.forever(
         runUntilRestart.pipe(
           Effect.catch((error) =>
             publishConnection({ kind: "failed", hostId, error }).pipe(
-              Effect.andThen(Queue.take(restartWake)),
+              Effect.andThen(
+                Queue.take(restartWake).pipe(
+                  Effect.flatMap((pause) =>
+                    pause
+                      ? Deferred.fail(pause.ready, error).pipe(
+                          Effect.andThen(Deferred.succeed(pause.resumed, undefined)),
+                        )
+                      : Effect.void,
+                  ),
+                ),
+              ),
             ),
           ),
         ),
@@ -541,7 +610,9 @@ export const live = (
           Effect.andThen(publishConnection({ kind: "stopped", hostId })),
         ),
       );
-      yield* Effect.forkScoped(supervisor);
+      yield* Effect.forkScoped(
+        supervisor.pipe(Effect.ensuring(Deferred.succeed(supervisorStopped, undefined))),
+      );
 
       const admissionSignal = SubscriptionRef.changes(admissionState).pipe(
         Stream.filter((value): value is number => value !== null),
@@ -565,6 +636,112 @@ export const live = (
         currentSession.pipe(Effect.map((current) => current.generation)),
       );
       const restart = Queue.offer(restartWake, undefined).pipe(Effect.asVoid);
+      const withProfileSnapshot = <A, E, R>(capture: Effect.Effect<A, E, R>) =>
+        Effect.scoped(
+          Effect.gen(function* () {
+            const session = yield* currentSession;
+            if (!session.closeForSnapshot) {
+              return yield* codexRuntimeError({
+                operation: "endpoint.snapshot",
+                reason: "host-unavailable",
+                retryable: false,
+                hostId,
+                cause: new Error("This Agent connection cannot provide a Profile snapshot"),
+              });
+            }
+            const idle = Effect.gen(function* () {
+              let cursor: string | undefined;
+              do {
+                const page = yield* session.client.request("thread/loaded/list", { cursor });
+                for (const threadId of page.data) {
+                  const { thread } = yield* session.client.request("thread/read", {
+                    threadId,
+                    includeTurns: false,
+                  });
+                  if (thread.status.type === "active") return false;
+                  const terminals = yield* session.client.request(
+                    "thread/backgroundTerminals/list",
+                    {
+                      threadId,
+                      limit: 1,
+                    },
+                  );
+                  if (terminals.data.length > 0) return false;
+                }
+                cursor = page.nextCursor ?? undefined;
+              } while (cursor);
+              return true;
+            }).pipe(
+              Effect.mapError((cause) =>
+                classifyCodexClientError({ operation: "endpoint.snapshot-idle", hostId, cause }),
+              ),
+            );
+            yield* Effect.gen(function* () {
+              yield* requestScheduler.awaitIdle(hostId, session.generation);
+              while (!(yield* idle)) yield* Effect.sleep("100 millis");
+            }).pipe(
+              Effect.timeout("60 seconds"),
+              Effect.mapError((cause) =>
+                Cause.isTimeoutError(cause)
+                  ? codexRuntimeError({
+                      operation: "endpoint.snapshot-drain",
+                      reason: "timeout",
+                      retryable: true,
+                      hostId,
+                      cause,
+                    })
+                  : cause,
+              ),
+            );
+            yield* snapshotAdmission.seal;
+            yield* requestScheduler.awaitIdle(hostId, session.generation);
+            const pause: SnapshotPause = {
+              generation: session.generation,
+              ready: yield* Deferred.make<void, CodexRuntimeError>(),
+              release: yield* Deferred.make<void>(),
+              resumed: yield* Deferred.make<void>(),
+            };
+            const ownerStopped = Deferred.await(supervisorStopped).pipe(
+              Effect.andThen(
+                Effect.fail(
+                  codexRuntimeError({
+                    operation: "endpoint.snapshot",
+                    reason: "closing",
+                    retryable: false,
+                    hostId,
+                  }),
+                ),
+              ),
+            );
+            return yield* Effect.acquireUseRelease(
+              Queue.offer(restartWake, pause),
+              () =>
+                Deferred.await(pause.ready).pipe(
+                  Effect.andThen(capture),
+                  Effect.raceFirst(ownerStopped),
+                ),
+              () =>
+                Deferred.succeed(pause.release, undefined).pipe(
+                  Effect.andThen(Deferred.await(pause.resumed)),
+                  Effect.andThen(currentSession),
+                  Effect.raceFirst(ownerStopped),
+                  Effect.timeout("20 seconds"),
+                  Effect.mapError((cause) =>
+                    Cause.isTimeoutError(cause)
+                      ? codexRuntimeError({
+                          operation: "endpoint.snapshot-resume",
+                          reason: "timeout",
+                          retryable: true,
+                          hostId,
+                          cause,
+                        })
+                      : cause,
+                  ),
+                  Effect.asVoid,
+                ),
+            );
+          }),
+        ).pipe(snapshotAdmission.snapshot);
       const reconcile = (next: CodexEndpointConfig) => {
         const nextHostId = next.hostId.trim();
         if (nextHostId !== hostId) {
@@ -587,6 +764,8 @@ export const live = (
         state,
         session: currentSession,
         admission,
+        withRequest: snapshotAdmission.request,
+        withProfileSnapshot,
         restart,
         reconcile,
       });

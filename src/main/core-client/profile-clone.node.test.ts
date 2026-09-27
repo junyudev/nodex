@@ -5,6 +5,9 @@ import { mkdir, readFile, readdir, rename, rm, writeFile } from "node:fs/promise
 import { basename, dirname, join, resolve } from "node:path";
 import { promisify } from "node:util";
 import * as Effect from "effect/Effect";
+import * as Context from "effect/Context";
+import * as Layer from "effect/Layer";
+import * as Scope from "effect/Scope";
 import { expect, test } from "vite-plus/test";
 import type {
   ThreadForkResponse,
@@ -25,6 +28,16 @@ import {
 import { withCodexProbeSession, type CodexProbeClient } from "../../../scripts/codex-probe-session";
 import { ScopedCallbackRuntime, layer } from "../app/ScopedCallbackRuntime";
 import { initializeStandaloneDataAuthority } from "./index";
+import { CodexEndpoint, live as endpointLive } from "../codex-runtime/CodexEndpoint";
+import { live as sessionLive } from "../codex-runtime/CodexAppServerSession";
+import { live as eventHubLive } from "../codex-runtime/CodexEventHub";
+import { live as schedulerLive } from "../codex-runtime/CodexRequestScheduler";
+import {
+  CodexApplicationRequestInbox,
+  make as makeInbox,
+} from "../codex-runtime/CodexApplicationRequestInbox";
+import { nodeLive as transportLive } from "../platform/node/CodexSessionTransport";
+import { serveProfileSnapshotControl } from "../platform/node/ProfileSnapshotControl";
 import {
   PastedTextAttachmentManager,
   ThreadGoalAttachmentDirectoryManager,
@@ -132,6 +145,64 @@ const withNative = <A>(
         use,
       );
     }).pipe(Effect.scoped, Effect.provide(layer)),
+  );
+
+const cloneWithOpenDesktop = (
+  binaryPath: string,
+  source: string,
+  target: string,
+  threadId: string,
+) =>
+  Effect.runPromise(
+    Effect.scoped(
+      Effect.gen(function* () {
+        const agentHome = join(source, "agent");
+        const context = yield* Layer.buildWithScope(
+          endpointLive({
+            hostId: "local",
+            sessionLayer: (generation) =>
+              sessionLive({
+                hostId: "local",
+                generation,
+                command: binaryPath,
+                args: ["app-server"],
+                env: { PATH: process.env.PATH, HOME: dirname(agentHome), CODEX_HOME: agentHome },
+                expectedCodexHome: agentHome,
+                forceTermination: "2 seconds",
+                initializeTimeout: "20 seconds",
+                initializeParams: {
+                  clientInfo: { name: "nodex-profile-clone-test", version: "1" },
+                  capabilities: { experimentalApi: true },
+                },
+              }),
+          }).pipe(
+            Layer.provide(
+              Layer.mergeAll(
+                transportLive,
+                eventHubLive,
+                schedulerLive,
+                Layer.effect(CodexApplicationRequestInbox, makeInbox),
+              ),
+            ),
+          ),
+          yield* Scope.Scope,
+        );
+        const endpoint = Context.get(context, CodexEndpoint);
+        const original = yield* endpoint.session;
+        yield* original.client.request("thread/resume", { threadId, excludeTurns: true });
+        yield* serveProfileSnapshotControl(source, endpoint.withProfileSnapshot);
+        const receipt = yield* Effect.tryPromise(() => clone(source, target));
+        const recovered = yield* endpoint.session;
+        expect(recovered.generation).toBeGreaterThan(original.generation);
+        expect(recovered.pid).not.toBe(original.pid);
+        const resumed = yield* recovered.client.request("thread/resume", {
+          threadId,
+          excludeTurns: true,
+        });
+        expect(resumed.thread.id).toBe(threadId);
+        return receipt;
+      }),
+    ),
   );
 
 const verifyClone = async (binaryPath?: string) => {
@@ -251,7 +322,9 @@ const verifyClone = async (binaryPath?: string) => {
       await rename(hiddenAgent, profile.codexHome);
       await rm(missingTarget, { recursive: true, force: true });
     }
-    const receipt = await clone(profile.nodexHome, target);
+    const receipt = binaryPath
+      ? await cloneWithOpenDesktop(binaryPath, profile.nodexHome, target, selectedId)
+      : await clone(profile.nodexHome, target);
     expect(receipt.requiredThreadCount).toBe(1);
     expect(receipt.capturedThreadCount).toBe(1);
     expect(receipt.missingThreadIds).toEqual([]);
@@ -349,7 +422,7 @@ test(
 );
 
 test.runIf(Boolean(process.env.NODEX_TEST_PROFILE_CODEX_BINARY))(
-  "the pinned native runtime restores inherited history after the source Profile is removed",
+  "clones an open native runtime and restores inherited history after the source Profile is removed",
   () => verifyClone(process.env.NODEX_TEST_PROFILE_CODEX_BINARY),
   120_000,
 );

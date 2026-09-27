@@ -1,7 +1,8 @@
-//! Offline Profile provisioning composes persistence owners before publishing a new home.
+//! Profile provisioning composes persistence owners before publishing a new home.
 #![forbid(unsafe_code)]
 
 mod codex;
+mod control;
 mod files;
 mod goals;
 

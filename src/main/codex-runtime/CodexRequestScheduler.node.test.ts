@@ -84,10 +84,17 @@ it.effect(
           { requestId: "turn/start:wire-main", method: "turn/start", stage: "outcome-unknown" },
         ]);
         assert.strictEqual((yield* scheduler.snapshot).current.inFlight, 0);
+        const drained = yield* Deferred.make<void>();
+        const drain = yield* scheduler
+          .awaitIdle("local", 1)
+          .pipe(Effect.andThen(Deferred.succeed(drained, undefined)), Effect.forkScoped);
         yield* TestClock.adjust(100);
         assert.strictEqual(deliveries.length, 1);
+        assert.isFalse(yield* Deferred.isDone(drained));
         yield* Deferred.succeed(response, "accepted");
         assert.strictEqual(yield* Fiber.join(pending), "accepted");
+        yield* TestClock.adjust(10);
+        yield* Fiber.join(drain);
         assert.strictEqual((yield* scheduler.snapshot).totals.completed, 1);
       }),
     ),

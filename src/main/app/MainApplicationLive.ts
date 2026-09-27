@@ -66,6 +66,8 @@ import * as WindowApplicationLive from "./WindowApplicationLive";
 import { ApplicationSettings } from "../settings/ApplicationSettings";
 import { TemporaryAssets } from "../local-store/TemporaryAssets";
 import * as CodexConversationPeerRuntime from "../platform/node/CodexConversationPeerRuntime";
+import { serveProfileSnapshotControl } from "../platform/node/ProfileSnapshotControl";
+import { CodexEndpointMap } from "../codex-runtime/CodexEndpointMap";
 
 const runtimeError = (operation: string, cause: unknown) =>
   new MainApplicationError({ phase: "startup", operation, cause });
@@ -152,6 +154,13 @@ export const live: Layer.Layer<
         const sidebarSync = yield* CodexSidebarSyncRuntime;
         const managedWorktreeRetention = yield* ManagedWorktreeRetentionRuntime;
         const threadHandoffRuntime = yield* CodexThreadHandoffRuntime;
+        if (config.platform !== "win32") {
+          const endpoints = yield* CodexEndpointMap;
+          const local = yield* endpoints.endpoint(endpoints.localHostId);
+          yield* serveProfileSnapshotControl(config.nodexHome, local.withProfileSnapshot).pipe(
+            Effect.mapError((cause) => runtimeError("profile-snapshot-control", cause)),
+          );
+        }
         yield* terminals.events.pipe(
           Stream.runForEach((event) => {
             if (event.channel !== "terminal-data") return Effect.void;
