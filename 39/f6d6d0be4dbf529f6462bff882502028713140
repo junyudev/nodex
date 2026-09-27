@@ -1,0 +1,88 @@
+docs/reliability/backup-restore-and-maintenance.md
+  s_1c74702db8011c::t_867c8bc6724d94 134-137
+  s_1c74702db8011c::t_1a7d7dc0089691 92,120-133,138,142-143
+src/main/codex-runtime/CodexEndpoint.ts
+  s_1c74702db8011c::t_867c8bc6724d94 72,558,699
+  s_1c74702db8011c::t_34d11878c3ea53 121-124,613-615,662-668,684-693,705-714,718-721,723-741
+  s_1c74702db8011c::t_e2eaba6ee4a8a0 549-552
+  s_1c74702db8011c::t_db5e031c3f861a 669,696-697
+  s_1c74702db8011c::t_4b2349a7986035 3
+  s_1c74702db8011c::t_8c179f3455a129 179,704,715-717,722
+  s_1c74702db8011c::t_a27d00d08ed574 6,22,71,73-77,125-128,177-178,545-548,553-557,559-584,591-601,639-661,670-679,681-683,694-695,698,700-703,742-744,767-768
+  s_1c74702db8011c::t_072a1040591ce9 680
+src/main/app/MainApplicationLive.ts
+  s_1c74702db8011c::t_afa05e1c491ca7 69-70,157-163
+src/main/codex-runtime/CodexRequestScheduler.node.test.ts
+  s_1c74702db8011c::t_59286ab76d849a 88-90
+  s_1c74702db8011c::t_650ff73b5c12a0 87,93,96-97
+src/main/core-client/profile-clone.node.test.ts
+  s_1c74702db8011c::t_f1d9528e8aefd1 8-10,31-34,39-40,204,207,325-327,425
+  s_1c74702db8011c::t_34d11878c3ea53 35-38,150-203,205-206
+src/main/platform/node/CodexSessionTransport.ts
+  s_1c74702db8011c::t_a27d00d08ed574 11,43-44,148-153,163-176
+  s_1c74702db8011c::t_34d11878c3ea53 154-162
+src/main/codex-runtime/CodexSnapshotAdmission.ts
+  s_1c74702db8011c::t_db5e031c3f861a 11,15-20,32,38
+  s_1c74702db8011c::t_a27d00d08ed574 1-10,12,21-26,31,33-37,49,53-54
+  s_1c74702db8011c::t_34d11878c3ea53 13-14,27-30,39-48,50-52
+crates/nodex-profile/src/lib.rs
+  s_1c74702db8011c::t_650ff73b5c12a0 1
+  s_1c74702db8011c::t_036cfb619f20d5 5
+docs/CLI.md
+  s_1c74702db8011c::t_1a7d7dc0089691 19,38-43
+src/main/codex-runtime/CodexAppServerSession.ts
+  s_1c74702db8011c::t_a27d00d08ed574 31,119
+src/main/platform/node/ProfileSnapshotControl.node.test.ts
+  s_1c74702db8011c::t_d79d82af2b57d7 1-16,27,29-70
+  s_1c74702db8011c::t_34d11878c3ea53 17-26,28
+docs/SECURITY.md
+  s_1c74702db8011c::t_1a7d7dc0089691 451-456
+src/main/codex-runtime/CodexRuntime.node.test.ts
+  s_1c74702db8011c::t_59286ab76d849a 410-412,421-423,435-437
+  s_1c74702db8011c::t_b2bd07315798b3 389,391-409,413-420,424-434,438-444
+  s_1c74702db8011c::t_08d8fbaa36ccaa 114-117,247,334-337,342,345-347,352-353,357-365,375,378-380,383-388
+  s_1c74702db8011c::t_34d11878c3ea53 162-165,173-224,290-333,338-341,343-344,348-350,354-356,366-374,376-377,381-382
+  s_1c74702db8011c::t_15156696d67aaa 351
+  s_1c74702db8011c::t_9a2447bf5cbbff 390
+src/main/codex-runtime/CodexGateway.ts
+  s_1c74702db8011c::t_e6d5b32b7a13de 609-623
+  s_1c74702db8011c::t_34d11878c3ea53 538-544
+crates/nodex-profile/src/codex.rs
+  s_1c74702db8011c::t_8c179f3455a129 95
+  s_1c74702db8011c::t_036cfb619f20d5 230-231,247-254,258,262-264,268-273
+  s_1c74702db8011c::t_34d11878c3ea53 255-257,259-261,265-267
+src/main/codex-runtime/CodexRequestScheduler.ts
+  s_1c74702db8011c::t_072a1040591ce9 215,1220-1225,1236-1239
+  s_1c74702db8011c::t_34d11878c3ea53 216-219,1226-1235,1240-1246
+src/main/codex-runtime/CodexSnapshotAdmission.node.test.ts
+  s_1c74702db8011c::t_6de3876a63a31f 71-78,90-94,98-104
+  s_1c74702db8011c::t_34d11878c3ea53 15-21,23-29,31-33,51-53
+  s_1c74702db8011c::t_072a1040591ce9 1-14,22,30,34-50,54-70
+  s_1c74702db8011c::t_59286ab76d849a 79-89,95-97
+docs/ARCHITECTURE.md
+  s_1c74702db8011c::t_1a7d7dc0089691 566
+crates/nodex-profile/src/control.rs
+  s_1c74702db8011c::t_34d11878c3ea53 43-45,50-57,76-78,80-82,86-88,114-118,121-123,125-127,129-131,139-143
+  s_1c74702db8011c::t_036cfb619f20d5 1-42,46-49,58-75,79,83-85,89-113,119-120,124,128,132-138,144-173
+docs/development.md
+  s_1c74702db8011c::t_1a7d7dc0089691 208-221
+src/main/platform/node/ProfileSnapshotControl.ts
+  s_1c74702db8011c::t_afa05e1c491ca7 1-23,33-104,107-121,125-126,132-141,146-151,158-167,176-179
+  s_1c74702db8011c::t_34d11878c3ea53 24-32,105-106,122-124,127-131,142-145,152-157,168-175
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "39f6d6d0be4dbf529f6462bff882502028713140",
+  "prompts": {},
+  "sessions": {
+    "s_1c74702db8011c": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a0e1ac-98e2-7881-a09f-aa2a5bacab90",
+        "model": "gpt-6-astra"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    }
+  }
+}
