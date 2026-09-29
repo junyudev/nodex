@@ -1,5 +1,6 @@
 import { useDeferredValue, useMemo, useState, type Ref } from "react";
 import { FastModeIcon } from "@/components/shared/icons";
+import { toast } from "@/components/ui/toast";
 import {
   NodexDropdownItem,
   NodexDropdownMenu,
@@ -18,8 +19,9 @@ import {
   resolveCodexReasoningEffortOptions,
 } from "@/lib/codex-thread-settings";
 import type { CodexExecutionProfileChange } from "../../../../shared/codex-execution-profile";
+import { isClaudeEffortLevel, type ClaudeEffortLevel } from "../../../../shared/claude-models";
 import type {
-  CodexModelOption,
+  AgentModelOption,
   CodexReasoningEffort,
   CodexServiceTier,
 } from "../../../../shared/types";
@@ -39,14 +41,38 @@ export interface AgentIntelligenceSelection {
 
 export type AgentIntelligenceInheritance = "explicit" | "inherited";
 
+/** Null clears an override; omitted fields keep the current native choice. */
+export interface AgentNativeIntelligencePatch {
+  readonly effort?: ClaudeEffortLevel;
+  readonly fast?: boolean | null;
+  readonly thinking?: boolean | null;
+  readonly context?: string | null;
+}
+
+export interface AgentNativeIntelligencePresentation {
+  readonly selected: {
+    readonly fast?: boolean | null;
+    readonly thinking?: boolean | null;
+    readonly context?: string | null;
+  };
+  readonly capabilities: {
+    readonly fastMode?: boolean;
+    readonly disableThinking?: boolean;
+    readonly contextWindows?: readonly string[];
+  };
+  readonly change: (patch: AgentNativeIntelligencePatch) => Promise<void>;
+}
+
 export interface AgentIntelligenceDropdownProps {
   readonly provider?: {
     readonly label: string;
     readonly selection: string;
     readonly options: readonly { value: string; label: string }[];
     readonly select: (value: string) => void;
+    readonly nativeIntelligence?: AgentNativeIntelligencePresentation;
   };
-  readonly models: readonly CodexModelOption[];
+  readonly models: readonly AgentModelOption[];
+  readonly disabled?: boolean;
   readonly selection: AgentIntelligenceSelection;
   readonly inheritance?: AgentIntelligenceInheritance;
   readonly allowInherit?: boolean;
@@ -77,7 +103,7 @@ const effortLabel = (kind: AgentIntelligenceSelection["kind"], effort: string) =
 export function resolveReasoningEffortForModelChange(input: {
   currentReasoningEffort: CodexReasoningEffort;
   nextModelId: string;
-  models: readonly CodexModelOption[];
+  models: readonly AgentModelOption[];
 }): CodexReasoningEffort | null {
   const nextModel = input.models.find(
     (candidate) => candidate.id === input.nextModelId && !candidate.hidden,
@@ -100,7 +126,7 @@ function ModelLabel({
   fast,
 }: {
   modelId: string;
-  models: readonly CodexModelOption[];
+  models: readonly AgentModelOption[];
   fast: boolean;
 }) {
   return (
@@ -113,6 +139,7 @@ function ModelLabel({
 
 export function AgentIntelligenceDropdown({
   models,
+  disabled = false,
   provider,
   selection,
   inheritance = "explicit",
@@ -127,6 +154,7 @@ export function AgentIntelligenceDropdown({
 }: AgentIntelligenceDropdownProps) {
   const [uncontrolledOpen, setUncontrolledOpen] = useState(false);
   const [query, setQuery] = useState("");
+  const [nativePending, setNativePending] = useState(false);
   const menuOpen = open ?? uncontrolledOpen;
   const setMenuOpen = onOpenChange ?? setUncontrolledOpen;
   const normalizedQuery = useDeferredValue(query).trim().toLocaleLowerCase();
@@ -138,14 +166,41 @@ export function AgentIntelligenceDropdown({
   );
   const visibleModels = matchingModels.slice(0, 50);
   const hiddenMatchCount = matchingModels.length - visibleModels.length;
-  const modelLabel = formatCodexModelLabel(selection.model, models);
   const isCodex = selection.kind === "codex";
+  const modelLabel =
+    selection.kind === "claude" && (!selection.model || selection.model === "default")
+      ? (provider?.label ?? "Agent")
+      : formatCodexModelLabel(selection.model, models);
+  const native = isCodex ? undefined : provider?.nativeIntelligence;
+  const showFastIndicator = isCodex
+    ? selection.serviceTier === "fast"
+    : native?.selected.fast === true;
   const reasoningOptions = isCodex
     ? resolveCodexReasoningEffortOptions(selection.model, models)
     : (models.find(({ id }) => id === selection.model)?.supportedReasoningEfforts ?? []);
-  const reasoningLabel = reasoningOptions.length
-    ? effortLabel(selection.kind, selection.reasoningEffort)
-    : "";
+  const thinkingOff = native?.selected.thinking === false;
+  const reasoningLabel = thinkingOff
+    ? "Off"
+    : reasoningOptions.length
+      ? selection.reasoningEffort === "default" && !isCodex
+        ? "—"
+        : effortLabel(selection.kind, selection.reasoningEffort)
+      : native?.capabilities.disableThinking
+        ? native.selected.thinking === true
+          ? "On"
+          : "—"
+        : "";
+  const changeNative = async (patch: AgentNativeIntelligencePatch) => {
+    if (!native || nativePending) return;
+    setNativePending(true);
+    try {
+      await native.change(patch);
+    } catch (error) {
+      toast.danger(error instanceof Error ? error.message : "Could not update model options");
+    } finally {
+      setNativePending(false);
+    }
+  };
   const labelCandidates = useMemo<readonly IntelligenceSelectorLabelCandidate[]>(
     () => [
       ...visibleCatalog.flatMap((candidate) => {
@@ -187,6 +242,7 @@ export function AgentIntelligenceDropdown({
 
   return (
     <NodexDropdownMenu
+      disabled={disabled}
       open={menuOpen}
       onOpenChange={setMenuOpen}
       triggerButton={
@@ -196,7 +252,7 @@ export function AgentIntelligenceDropdown({
             aria-label="Agent intelligence"
             className="w-full min-w-0 justify-between"
           >
-            {selection.serviceTier === "fast" && inheritance === "explicit" ? (
+            {showFastIndicator && inheritance === "explicit" ? (
               <FastModeIcon className="icon-2xs shrink-0" />
             ) : null}
             <span className="min-w-0 flex-1 truncate text-left">{settingsLabel}</span>
@@ -209,7 +265,7 @@ export function AgentIntelligenceDropdown({
             labelCandidates={labelCandidates}
             modelLabel={modelLabel}
             reasoningLabel={reasoningLabel}
-            showFastIndicator={selection.serviceTier === "fast"}
+            showFastIndicator={showFastIndicator}
             aria-keyshortcuts={shortcut?.ariaKeyShortcuts}
           />
         )
@@ -311,11 +367,7 @@ export function AgentIntelligenceDropdown({
                     data-model-selected={selected ? "true" : undefined}
                   >
                     <span className="flex min-w-0 flex-col">
-                      <ModelLabel
-                        modelId={candidate.id}
-                        models={models}
-                        fast={selection.serviceTier === "fast"}
-                      />
+                      <ModelLabel modelId={candidate.id} models={models} fast={showFastIndicator} />
                       {selection.kind === "claude" &&
                       candidate.id !== "default" &&
                       candidate.displayName !== candidate.id ? (
@@ -337,7 +389,7 @@ export function AgentIntelligenceDropdown({
         </NodexDropdownSection>
       </NodexDropdownSummarySubmenuItem>
 
-      {reasoningOptions.length > 0 ? (
+      {reasoningOptions.length > 0 || native?.capabilities.disableThinking ? (
         <NodexDropdownSummarySubmenuItem
           ariaLabel={`Effort ${reasoningLabel}`}
           label="Effort"
@@ -346,18 +398,51 @@ export function AgentIntelligenceDropdown({
         >
           <NodexDropdownSection className="flex min-w-[180px] flex-col overflow-hidden">
             <NodexDropdownTitle>Effort</NodexDropdownTitle>
+            {native?.capabilities.disableThinking ? (
+              <NodexDropdownItem
+                disabled={nativePending}
+                onSelect={(event) => {
+                  event.preventDefault();
+                  void changeNative({ thinking: false });
+                }}
+                rightSlot={thinkingOff ? <NodexDropdownSelectedIcon /> : null}
+              >
+                Off
+              </NodexDropdownItem>
+            ) : null}
+            {native?.capabilities.disableThinking && reasoningOptions.length === 0 ? (
+              <NodexDropdownItem
+                disabled={nativePending}
+                onSelect={(event) => {
+                  event.preventDefault();
+                  void changeNative({ thinking: true });
+                }}
+                rightSlot={native.selected.thinking === true ? <NodexDropdownSelectedIcon /> : null}
+              >
+                On
+              </NodexDropdownItem>
+            ) : null}
             {reasoningOptions.map((option) => (
               <NodexDropdownItem
                 key={option.reasoningEffort}
+                disabled={nativePending}
                 onSelect={(event) => {
                   event.preventDefault();
+                  if (native && selection.kind === "claude") {
+                    if (!isClaudeEffortLevel(option.reasoningEffort)) return;
+                    void changeNative({
+                      effort: option.reasoningEffort,
+                      thinking: true,
+                    });
+                    return;
+                  }
                   onSelectionChange(
                     { ...selection, reasoningEffort: option.reasoningEffort },
                     "reasoningEffort",
                   );
                 }}
                 rightSlot={
-                  option.reasoningEffort === selection.reasoningEffort ? (
+                  !thinkingOff && option.reasoningEffort === selection.reasoningEffort ? (
                     <NodexDropdownSelectedIcon />
                   ) : null
                 }
@@ -403,6 +488,85 @@ export function AgentIntelligenceDropdown({
           </NodexDropdownSection>
         </NodexDropdownSummarySubmenuItem>
       ) : null}
+
+      {native ? (
+        <NativeIntelligenceOptions native={native} pending={nativePending} change={changeNative} />
+      ) : null}
     </NodexDropdownMenu>
+  );
+}
+
+const nativeBooleanChoices = [
+  { label: "On", value: true },
+  { label: "Off", value: false },
+] as const;
+
+function NativeIntelligenceOptions({
+  native,
+  pending,
+  change,
+}: {
+  native: AgentNativeIntelligencePresentation;
+  pending: boolean;
+  change: (patch: AgentNativeIntelligencePatch) => Promise<void>;
+}) {
+  const contextWindows = [...new Set(native.capabilities.contextWindows ?? [])];
+  const booleanControls = [
+    { key: "fast", label: "Fast", advertised: native.capabilities.fastMode },
+  ] as const;
+  return (
+    <>
+      {booleanControls
+        .filter((control) => control.advertised)
+        .map(({ key, label }) => {
+          const selected = native.selected[key] ?? null;
+          const value = selected === null ? "—" : selected ? "On" : "Off";
+          return (
+            <NodexDropdownSummarySubmenuItem
+              key={key}
+              label={label}
+              value={value}
+              ariaLabel={`${label} ${value}`}
+            >
+              {nativeBooleanChoices.map((option) => (
+                <NodexDropdownItem
+                  key={option.label}
+                  disabled={pending}
+                  onSelect={(event) => {
+                    event.preventDefault();
+                    void change({ [key]: option.value });
+                  }}
+                  rightSlot={selected === option.value ? <NodexDropdownSelectedIcon /> : null}
+                >
+                  {option.label}
+                </NodexDropdownItem>
+              ))}
+            </NodexDropdownSummarySubmenuItem>
+          );
+        })}
+      {contextWindows.length > 1 ? (
+        <NodexDropdownSummarySubmenuItem
+          label="Context"
+          value={native.selected.context ?? "—"}
+          ariaLabel={`Context ${native.selected.context ?? "—"}`}
+        >
+          {contextWindows.map((value) => (
+            <NodexDropdownItem
+              key={value}
+              disabled={pending}
+              onSelect={(event) => {
+                event.preventDefault();
+                void change({ context: value });
+              }}
+              rightSlot={
+                (native.selected.context ?? null) === value ? <NodexDropdownSelectedIcon /> : null
+              }
+            >
+              {value}
+            </NodexDropdownItem>
+          ))}
+        </NodexDropdownSummarySubmenuItem>
+      ) : null}
+    </>
   );
 }

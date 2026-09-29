@@ -26,6 +26,7 @@ export {
 export {
   MaitaiProvider,
   ScopeProvider,
+  ScopeContextBridge,
   useMaitaiStore,
   useScopeHandle,
   useScopedAtom,

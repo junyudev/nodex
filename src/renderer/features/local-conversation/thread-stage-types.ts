@@ -39,7 +39,7 @@ import type {
   CodexConversationSnapshot,
   CodexConversationTurn,
   CodexConversationTurnPagination,
-  CodexModelOption,
+  AgentModelOption,
   CodexPermissionMode,
   CodexPersonality,
   CodexPermissionRequestResponse,
@@ -218,6 +218,33 @@ export interface ThreadOpenThreadContext {
 
 /** Capabilities vary by provider; the stage, timeline, editor and request UI are shared. */
 export interface ConversationProviderPresentation {
+  readonly nativeIntelligence?: import("@/components/shared/agent-runtime/agent-intelligence-dropdown").AgentNativeIntelligencePresentation;
+  readonly diagnostics?: () => Promise<
+    import("../../../shared/claude-models").ClaudeRuntimeDiagnostics
+  >;
+  readonly generateTitle?: () => Promise<string | null>;
+  readonly resolveHistoryImage?: (
+    reference: import("../../../shared/agent-history-images").AgentHistoryImageReference,
+  ) => Promise<string>;
+  readonly readToolOutput?: (
+    reference: import("../../../shared/agent-tool-output").AgentToolOutputReference,
+  ) => Promise<import("../../../shared/agent-tool-output").AgentToolOutput>;
+  readonly history?: {
+    readonly windowFull?: boolean;
+    readonly hasOlder: boolean;
+    readonly loading: boolean;
+    readonly loadOlder: () => Promise<void>;
+  };
+  readonly controls?: {
+    readonly steer?: boolean;
+    readonly permissionMode?: boolean;
+    readonly skills?: boolean;
+    readonly nativeTaskDetails?: boolean;
+    readonly images?: boolean;
+    readonly stopTask?: boolean;
+  };
+  readonly skills?: readonly CodexComposerSkill[];
+  readonly stopTask?: (taskId: string) => Promise<void>;
   readonly kind: "codex" | "claude" | "acp";
   readonly label: string;
   readonly selection: string;
@@ -271,7 +298,7 @@ export interface ThreadStageRouteInput {
   knownConversationsById: Record<string, CodexConversationSnapshot>;
   connection: CodexConnectionState;
   account: CodexAccountSnapshot | null;
-  availableModels: CodexModelOption[];
+  availableModels: AgentModelOption[];
   selectedExecutionProfile?: CodexExecutionProfile | null;
   collaborationModes: CodexCollaborationModePreset[];
   selectedCollaborationMode: CodexCollaborationModeKind;
@@ -467,6 +494,34 @@ export interface ThreadStageActions {
   onRetryThreadAttachment?: (threadId: string) => void | Promise<void>;
   onCleanBackgroundTerminals: (threadId: string) => Promise<void>;
 }
+
+/** Presentation and Session metadata actions are shared without inheriting provider execution. */
+export type ThreadStageHostActions = Pick<
+  ThreadStageActions,
+  | "onQueueingEnabledChange"
+  | "onNewThreadProjectChange"
+  | "onRequestNewChatProjectCreate"
+  | "onNewThreadStartInTargetChange"
+  | "onNewThreadStartInEnvironmentChange"
+  | "onRefreshNewThreadStartInEnvironments"
+  | "onOpenNewThreadLocalEnvironmentsSettings"
+  | "onOpenVoiceSettings"
+  | "onOpenSummaryBrowserRow"
+  | "onOpenSummaryScheduledAutomation"
+  | "onOpenSummaryOutputInSidePanel"
+  | "onOpenSummaryGitReview"
+  | "onOpenProcessManager"
+  | "onOpenBackgroundTerminalOutput"
+  | "onRequestRenameThread"
+  | "onArchiveThread"
+  | "onToggleThreadPin"
+  | "onConsumeNewThreadComposerIntent"
+  | "onOpenThread"
+  | "onOpenTurnDiffReview"
+  | "onOpenTurnDiffFileInSidePanel"
+>;
+
+export type ThreadStageExecutionActions = Omit<ThreadStageActions, keyof ThreadStageHostActions>;
 
 export interface ThreadSummaryPanelAuxiliaryRowOpenInput {
   rowId: string;
@@ -1143,7 +1198,7 @@ export interface ThreadFooterModel {
   selectedCollaborationMode: CodexCollaborationModeKind;
   selectedModel: string;
   modelPickerShortcut: CommandShortcutPresentation | null;
-  availableModels: CodexModelOption[];
+  availableModels: AgentModelOption[];
   executionProfile?: CodexExecutionProfile | null;
   executionIdentityLocked?: boolean;
   selectedReasoningEffort: CodexReasoningEffort;

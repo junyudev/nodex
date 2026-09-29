@@ -6,6 +6,9 @@ interface ConversationImageAssetContextValue {
   conversationId: string | null;
   hostId: string;
   composerTarget: ImageEditComposerTarget | null;
+  resolveHistoryImage?: (
+    reference: import("../../../../shared/agent-history-images").AgentHistoryImageReference,
+  ) => Promise<string>;
 }
 
 const ConversationImageAssetContext = createContext<ConversationImageAssetContextValue>({
@@ -19,13 +22,14 @@ export function ConversationImageAssetProvider({
   composerTarget = null,
   conversationId,
   hostId,
+  resolveHistoryImage,
 }: Omit<ConversationImageAssetContextValue, "composerTarget"> & {
   children: ReactNode;
   composerTarget?: ImageEditComposerTarget | null;
 }) {
   const value = useMemo(
-    () => ({ composerTarget, conversationId, hostId }),
-    [composerTarget, conversationId, hostId],
+    () => ({ composerTarget, conversationId, hostId, resolveHistoryImage }),
+    [composerTarget, conversationId, hostId, resolveHistoryImage],
   );
   return (
     <ConversationImageAssetContext.Provider value={value}>

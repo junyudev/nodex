@@ -16,6 +16,15 @@ const operationFields = {
   operationId: z.string().max(512).refine(isBoundedOperationId).optional(),
 };
 const definitionFields = {
+  backendBinding: z
+    .discriminatedUnion("kind", [
+      z.strictObject({ kind: z.literal("codex") }),
+      z.strictObject({ kind: z.literal("claude"), instanceConfigId: id }),
+    ])
+    .optional()
+    .describe(
+      "Native backend and exact Claude instance. Creation defaults to the calling Session's backend; a Heartbeat uses its target Session's backend.",
+    ),
   name: z
     .string()
     .trim()
@@ -105,7 +114,7 @@ export type AutomationProposal = Extract<
 export const automationTool: Tool = {
   name: "automation_update",
   description:
-    "List, view, propose, create, replace, or delete a scheduled Codex task. suggested_create and suggested_update return review proposals without saving or scheduling; the user reviews and explicitly saves them. Use heartbeat for follow-ups in a Session; its omitted targetSessionId defaults to the calling Session. Use cron for standalone runs in an explicit Project or with projectId null; Project runs require cwds from that Project, and projectless runs require local execution with no folders or Environment. Creation starts ACTIVE. Use list with an optional name/prompt/ID query and follow nextCursor to find existing tasks. View before update or delete and supply the returned definitionRevision as expectedRevision. Update replaces the complete definition: preserve existing values explicitly; omitted optional fields reset to defaults except notificationPolicy, which preserves the current setting when omitted; pass null to restore normal notifications. Reuse operationId and identical arguments to reconcile an uncertain mutation. Project-scoped Turns can manage only their own Project's tasks and Heartbeat targets. Only the native Codex backend is supported.",
+    "List, view, propose, create, replace, or delete a scheduled native Agent task. suggested_create and suggested_update return review proposals without saving or scheduling; the user reviews and explicitly saves them. Use heartbeat for follow-ups in a Session; its omitted targetSessionId defaults to the calling Session. Use cron for standalone runs in an explicit Project or with projectId null; Project runs require cwds from that Project, and projectless runs require local execution with no folders or Environment. Creation starts ACTIVE. Use list with an optional name/prompt/ID query and follow nextCursor to find existing tasks. View before update or delete and supply the returned definitionRevision as expectedRevision. Update replaces the complete definition: preserve existing values explicitly; omitted optional fields reset to defaults except notificationPolicy, which preserves the current setting when omitted; pass null to restore normal notifications. Reuse operationId and identical arguments to reconcile an uncertain mutation. Project-scoped Turns can manage only their own Project's tasks and Heartbeat targets. Claude tasks deny requests that require interactive approval.",
   inputSchema: { ...z.toJSONSchema(automationSchema), type: "object" } as Tool["inputSchema"],
   annotations: { readOnlyHint: false, destructiveHint: true, openWorldHint: true },
 };

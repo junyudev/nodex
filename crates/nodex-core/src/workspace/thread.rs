@@ -5,7 +5,8 @@ use nodex_core_contracts::BoundModuleContext;
 use nodex_core_contracts::agent::AgentBackendBinding;
 use nodex_core_contracts::workspace::{
     CodexPermissionMode, CodexThreadActiveFlag, CodexThreadStatusType,
-    ProjectSessionInvalidationScope, ProjectWorkspaceDynamicToolCatalog, ProjectWorkspaceThread,
+    ProjectSessionInvalidationScope, ProjectWorkspaceDynamicToolCatalog,
+    ProjectWorkspaceNativeAgentState, ProjectWorkspaceNativeTurnFact, ProjectWorkspaceThread,
     ProjectWorkspaceThreadBackendSession, ProjectWorkspaceThreadExecutionLocation,
     ProjectWorkspaceThreadPatch, ProjectWorkspaceThreadPlacement, ProjectWorkspaceThreadStatus,
 };
@@ -32,6 +33,7 @@ const MAX_CATALOG_NAMESPACE_BYTES: usize = 256;
 const MAX_THREADS: usize = 100_000;
 const MAX_APP_SERVER_SWEEP_WINDOW: usize = 200;
 const MAX_SAFE_INTEGER: i64 = 9_007_199_254_740_991;
+const MAX_NATIVE_TIMESTAMP: i64 = 8_640_000_000_000_000;
 
 const THREAD_COLUMNS: &str = "
   thread.thread_id,
@@ -132,7 +134,7 @@ pub(super) fn read_thread_backend_session(
     let stored = connection
         .query_row(
             "SELECT backend_kind, agent_definition_id, instance_config_id, \
-                    backend_session_id, updated_at \
+                    backend_session_id, updated_at, native_state_json \
              FROM thread_backend_sessions WHERE thread_id = ?1",
             [thread_id],
             |row| {
@@ -144,6 +146,12 @@ pub(super) fn read_thread_backend_session(
                     backend_binding: binding,
                     backend_session_id: row.get(3)?,
                     updated_at: row.get(4)?,
+                    native_state: row
+                        .get::<_, Option<String>>(5)?
+                        .map(|json| {
+                            serde_json::from_str(&json).map_err(|_| rusqlite::Error::InvalidQuery)
+                        })
+                        .transpose()?,
                 })
             },
         )
@@ -171,6 +179,8 @@ pub(super) fn bind_thread_backend_session(
     thread_id: &str,
     backend_binding: &AgentBackendBinding,
     backend_session_id: &str,
+    expected_backend_session_id: Option<&str>,
+    native_state: Option<&ProjectWorkspaceNativeAgentState>,
 ) -> Result<ProjectWorkspaceApplyOutcome, StoreError> {
     validate_id("thread_id", thread_id)?;
     validate_id("backend_session_id", backend_session_id)?;
@@ -186,18 +196,35 @@ pub(super) fn bind_thread_backend_session(
             "Native Codex Threads do not persist a backend protocol session",
         ));
     }
+    if let Some(expected) = expected_backend_session_id {
+        validate_id("expected_backend_session_id", expected)?;
+        let previous = read_thread_backend_session(connection, library_id, thread_id)?;
+        if previous
+            .as_ref()
+            .map(|session| session.backend_session_id.as_str())
+            != Some(expected)
+        {
+            return Err(conflict(
+                "Native session identity changed before this transition",
+            ));
+        }
+    }
+    let native_state_json = native_state
+        .map(|state| validate_native_agent_state(state, storage.kind))
+        .transpose()?;
     let now = unix_time_millis()?;
     connection.execute(
         "INSERT INTO thread_backend_sessions(\
            thread_id, backend_kind, agent_definition_id, instance_config_id, \
-           backend_session_id, updated_at\
-         ) VALUES (?1, ?2, ?3, ?4, ?5, ?6) \
+           backend_session_id, updated_at, native_state_json\
+         ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7) \
          ON CONFLICT(thread_id) DO UPDATE SET \
            backend_kind = excluded.backend_kind, \
            agent_definition_id = excluded.agent_definition_id, \
            instance_config_id = excluded.instance_config_id, \
            backend_session_id = excluded.backend_session_id, \
-           updated_at = excluded.updated_at",
+           updated_at = excluded.updated_at, \
+           native_state_json = COALESCE(excluded.native_state_json, thread_backend_sessions.native_state_json)",
         params![
             thread_id,
             storage.kind,
@@ -205,6 +232,7 @@ pub(super) fn bind_thread_backend_session(
             storage.instance_config_id,
             backend_session_id,
             now,
+            native_state_json,
         ],
     )?;
     let session_ids = linked_session_ids(
@@ -228,6 +256,145 @@ pub(super) fn bind_thread_backend_session(
         session_ids,
         vec![thread_id.to_owned()],
     )
+}
+
+fn validate_native_agent_state(
+    state: &ProjectWorkspaceNativeAgentState,
+    backend_kind: &str,
+) -> Result<String, StoreError> {
+    if backend_kind != "claude" {
+        return Err(invalid(
+            "Native conversation state requires the Claude backend",
+        ));
+    }
+    validate_id("model", &state.preferences.model)?;
+    if !["default", "low", "medium", "high", "xhigh", "max"]
+        .contains(&state.preferences.effort.as_str())
+    {
+        return Err(invalid("Unsupported native reasoning effort"));
+    }
+    if let Some(context) = &state.preferences.context {
+        validate_id("context", context)?;
+        let Some(digits) = context
+            .strip_suffix('k')
+            .or_else(|| context.strip_suffix('m'))
+        else {
+            return Err(invalid("Native context window must use a k or m suffix"));
+        };
+        if digits.is_empty() || !digits.bytes().all(|digit| digit.is_ascii_digit()) {
+            return Err(invalid("Native context window is invalid"));
+        }
+    }
+    if state.turns.len() > 64 {
+        return Err(invalid("Native turn facts exceed the retained window"));
+    }
+    let mut identities = BTreeSet::new();
+    for turn in &state.turns {
+        validate_id("client_user_message_id", &turn.client_user_message_id)?;
+        if !identities.insert(&turn.client_user_message_id) {
+            return Err(invalid("Native turn facts contain duplicate identities"));
+        }
+        if let Some(id) = &turn.native_user_message_id {
+            validate_id("native_user_message_id", id)?;
+        }
+        validate_text("stop_reason", &turn.stop_reason, MAX_REASONING_EFFORT_BYTES)?;
+        if let Some(error) = &turn.error {
+            validate_text("error", error, MAX_SHORT_TEXT_BYTES)?;
+        }
+        for timestamp in [turn.created_at, turn.completed_at].into_iter().flatten() {
+            if !(0..=MAX_NATIVE_TIMESTAMP).contains(&timestamp) {
+                return Err(invalid("Native turn timestamp is invalid"));
+            }
+        }
+        validate_native_turn_metadata(turn)?;
+    }
+    let json = serde_json::to_string(state)
+        .map_err(|_| invalid("Native conversation state could not be encoded"))?;
+    if json.len() > 262_144 {
+        return Err(invalid("Native conversation state exceeds its byte budget"));
+    }
+    Ok(json)
+}
+
+fn validate_native_turn_metadata(turn: &ProjectWorkspaceNativeTurnFact) -> Result<(), StoreError> {
+    if let Some(usage) = &turn.usage {
+        validate_native_integer("usage.used", usage.used)?;
+        validate_native_integer("usage.size", usage.size)?;
+        if let Some(cost) = usage.cost_micros {
+            validate_native_integer("usage.cost_micros", cost)?;
+        }
+        if let Some(currency) = &usage.currency {
+            validate_text("usage.currency", currency, 64)?;
+        }
+        if let Some(model) = &usage.model {
+            validate_id("usage.model", model)?;
+        }
+        for tokens in [usage.tokens.as_ref(), usage.cumulative_tokens.as_ref()]
+            .into_iter()
+            .flatten()
+        {
+            for value in [
+                tokens.input,
+                tokens.output,
+                tokens.cache_read,
+                tokens.cache_write,
+            ] {
+                validate_native_integer("usage.tokens", value)?;
+            }
+        }
+    }
+    if turn.compactions.len() > 8 {
+        return Err(invalid(
+            "Native compaction facts exceed the retained window",
+        ));
+    }
+    for compaction in &turn.compactions {
+        validate_id("compaction.id", &compaction.id)?;
+        if !["completed", "failed", "cancelled"].contains(&compaction.status.as_str()) {
+            return Err(invalid("Unsupported native compaction status"));
+        }
+        validate_text("compaction.summary", &compaction.summary, 1_024)?;
+        if let Some(error) = &compaction.error {
+            validate_text("compaction.error", error, 1_024)?;
+        }
+        if let Some(trigger) = &compaction.trigger {
+            if !["auto", "manual"].contains(&trigger.as_str()) {
+                return Err(invalid("Unsupported native compaction trigger"));
+            }
+        }
+        for value in [
+            compaction.pre_tokens,
+            compaction.post_tokens,
+            compaction.duration_ms,
+        ]
+        .into_iter()
+        .flatten()
+        {
+            validate_native_integer("compaction.amount", value)?;
+        }
+    }
+    if turn.artifacts.len() > 32 {
+        return Err(invalid("Native artifact facts exceed the retained window"));
+    }
+    for artifact in &turn.artifacts {
+        validate_id("artifact.filename", &artifact.filename)?;
+        if let Some(id) = &artifact.file_id {
+            validate_id("artifact.file_id", id)?;
+        }
+        if let Some(error) = &artifact.error {
+            validate_text("artifact.error", error, 1_024)?;
+        }
+    }
+    Ok(())
+}
+
+fn validate_native_integer(field: &str, value: u64) -> Result<(), StoreError> {
+    if value <= MAX_SAFE_INTEGER as u64 {
+        return Ok(());
+    }
+    Err(invalid(format!(
+        "{field} must be a non-negative safe integer"
+    )))
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -2617,6 +2784,177 @@ mod tests {
         });
     }
 
+    fn native_metadata_fixture() -> serde_json::Value {
+        serde_json::json!({
+            "preferences": { "model": "default", "effort": "high", "interaction_mode": "plan", "fast": false, "context": "1m" },
+            "ever_saved": true,
+            "turns": [{
+                "client_user_message_id": "client-1", "native_user_message_id": "native-1",
+                "stop_reason": "end_turn", "created_at": 100, "completed_at": 200,
+                "usage": {
+                    "used": 220, "size": 200_000, "cost_micros": 17_234, "currency": "USD",
+                    "tokens": { "input": 160, "output": 60, "cache_read": 80, "cache_write": 20 },
+                    "cumulative_tokens": { "input": 480, "output": 180, "cache_read": 240, "cache_write": 60 },
+                    "model": "opaque-provider-model", "context_estimated": true
+                },
+                "compactions": [{
+                    "id": "compact-1", "status": "completed", "summary": "Earlier context compacted",
+                    "trigger": "auto", "pre_tokens": 180_000, "post_tokens": 24_000, "duration_ms": 125
+                }],
+                "artifacts": [{ "filename": "report.pdf", "file_id": "native-file-1" }]
+            }]
+        })
+    }
+
+    fn validate_native_fixture(
+        value: serde_json::Value,
+    ) -> Result<String, crate::infrastructure::sqlite::StoreError> {
+        let state = serde_json::from_value(value).expect("typed native state");
+        super::validate_native_agent_state(&state, "claude")
+    }
+
+    #[test]
+    fn native_metadata_keeps_safe_integer_boundaries_and_defaults_absent_facts() {
+        let mut value = native_metadata_fixture();
+        value["turns"][0]["usage"]["cost_micros"] = serde_json::json!(super::MAX_SAFE_INTEGER);
+        value["turns"][0]["usage"]["tokens"]["input"] = serde_json::json!(0);
+        value["turns"][0]["completed_at"] = serde_json::json!(super::MAX_NATIVE_TIMESTAMP);
+        assert!(validate_native_fixture(value).is_ok());
+
+        let mut value = native_metadata_fixture();
+        let turn = value["turns"][0].as_object_mut().expect("turn");
+        turn.remove("usage");
+        turn.remove("compactions");
+        turn.remove("artifacts");
+        let state: nodex_core_contracts::workspace::ProjectWorkspaceNativeAgentState =
+            serde_json::from_value(value).expect("state without optional observations");
+        assert_eq!(state.turns[0].usage, None);
+        assert!(state.turns[0].compactions.is_empty());
+        assert!(state.turns[0].artifacts.is_empty());
+        assert!(super::validate_native_agent_state(&state, "claude").is_ok());
+    }
+
+    #[test]
+    fn native_turn_dates_reject_safe_integers_outside_the_date_range() {
+        for timestamp in [-1, super::MAX_NATIVE_TIMESTAMP + 1, super::MAX_SAFE_INTEGER] {
+            for field in ["created_at", "completed_at"] {
+                let mut value = native_metadata_fixture();
+                value["turns"][0][field] = serde_json::json!(timestamp);
+                assert!(
+                    validate_native_fixture(value).is_err(),
+                    "{field}: {timestamp}"
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn native_metadata_rejects_unsafe_and_non_integer_amounts() {
+        let numeric_fields = [
+            "/turns/0/usage/used",
+            "/turns/0/usage/size",
+            "/turns/0/usage/cost_micros",
+            "/turns/0/usage/tokens/input",
+            "/turns/0/usage/tokens/output",
+            "/turns/0/usage/tokens/cache_read",
+            "/turns/0/usage/tokens/cache_write",
+            "/turns/0/usage/cumulative_tokens/input",
+            "/turns/0/usage/cumulative_tokens/output",
+            "/turns/0/usage/cumulative_tokens/cache_read",
+            "/turns/0/usage/cumulative_tokens/cache_write",
+            "/turns/0/compactions/0/pre_tokens",
+            "/turns/0/compactions/0/post_tokens",
+            "/turns/0/compactions/0/duration_ms",
+        ];
+        for pointer in numeric_fields {
+            let mut value = native_metadata_fixture();
+            *value.pointer_mut(pointer).expect("amount field") =
+                serde_json::json!(super::MAX_SAFE_INTEGER + 1);
+            assert!(validate_native_fixture(value).is_err(), "{pointer}");
+            for amount in [serde_json::json!(-1), serde_json::json!(1.5)] {
+                let mut value = native_metadata_fixture();
+                *value.pointer_mut(pointer).expect("amount field") = amount;
+                assert!(
+                    serde_json::from_value::<
+                        nodex_core_contracts::workspace::ProjectWorkspaceNativeAgentState,
+                    >(value)
+                    .is_err(),
+                    "{pointer}"
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn native_metadata_rejects_unbounded_text_collections_and_nonterminal_compaction() {
+        let invalid_values = [
+            ("/turns/0/usage/model", serde_json::json!("x".repeat(513))),
+            ("/turns/0/usage/currency", serde_json::json!("x".repeat(65))),
+            (
+                "/turns/0/compactions/0/id",
+                serde_json::json!("x".repeat(513)),
+            ),
+            (
+                "/turns/0/compactions/0/summary",
+                serde_json::json!("中".repeat(342)),
+            ),
+            (
+                "/turns/0/compactions/0/error",
+                serde_json::json!("x".repeat(1_025)),
+            ),
+            (
+                "/turns/0/compactions/0/status",
+                serde_json::json!("inProgress"),
+            ),
+            (
+                "/turns/0/compactions/0/trigger",
+                serde_json::json!("unknown"),
+            ),
+            (
+                "/turns/0/artifacts/0/filename",
+                serde_json::json!("x".repeat(513)),
+            ),
+            (
+                "/turns/0/artifacts/0/file_id",
+                serde_json::json!("x".repeat(513)),
+            ),
+            (
+                "/turns/0/artifacts/0/error",
+                serde_json::json!("x".repeat(1_025)),
+            ),
+        ];
+        for (pointer, replacement) in invalid_values {
+            let mut value = native_metadata_fixture();
+            let (parent, key) = pointer.rsplit_once('/').expect("field pointer");
+            value.pointer_mut(parent).expect("metadata object")[key] = replacement;
+            assert!(validate_native_fixture(value).is_err(), "{pointer}");
+        }
+        for (field, count) in [("compactions", 9), ("artifacts", 33)] {
+            let mut value = native_metadata_fixture();
+            let fact = value["turns"][0][field][0].clone();
+            value["turns"][0][field] = serde_json::json!(vec![fact; count]);
+            assert!(validate_native_fixture(value).is_err(), "{field}");
+        }
+
+        let mut value = native_metadata_fixture();
+        let mut turn = value["turns"][0].clone();
+        turn["compactions"][0]["summary"] = serde_json::json!("x".repeat(1_024));
+        turn["compactions"] = serde_json::json!(vec![turn["compactions"][0].clone(); 8]);
+        value["turns"] = serde_json::Value::Array(
+            (0..64)
+                .map(|index| {
+                    let mut fact = turn.clone();
+                    fact["client_user_message_id"] = serde_json::json!(format!("client-{index}"));
+                    fact
+                })
+                .collect(),
+        );
+        assert!(
+            validate_native_fixture(value).is_err(),
+            "aggregate state byte budget"
+        );
+    }
+
     fn assert_backend_identity_survives_restart(binding: AgentBackendBinding) {
         let (directory, kernel, module) = seeded_module();
         create_thread(
@@ -2636,6 +2974,12 @@ mod tests {
         };
         assert_eq!(thread.backend_binding, AgentBackendBinding::Codex);
 
+        let native_state = matches!(&binding, AgentBackendBinding::Claude { .. }).then(|| {
+            serde_json::from_value::<
+                nodex_core_contracts::workspace::ProjectWorkspaceNativeAgentState,
+            >(native_metadata_fixture())
+            .expect("native fixture")
+        });
         module
             .apply(
                 &context(),
@@ -2660,10 +3004,30 @@ mod tests {
                         thread_id: "thread-backend".to_owned(),
                         backend_binding: binding.clone(),
                         backend_session_id: "native-session-1".to_owned(),
+                        expected_backend_session_id: None,
+                        native_state: native_state.clone(),
                     },
                 ),
             )
             .expect("bind Agent session");
+
+        let stale = module.apply(
+            &context(),
+            request(
+                "thread-backend-stale-identity",
+                ProjectWorkspaceIntent::BindThreadBackendSession {
+                    thread_id: "thread-backend".to_owned(),
+                    backend_binding: binding.clone(),
+                    backend_session_id: "wrong-session".to_owned(),
+                    expected_backend_session_id: Some("stale-session".to_owned()),
+                    native_state: None,
+                },
+            ),
+        );
+        assert!(
+            stale.is_err(),
+            "stale identity cannot overwrite a confirmed session"
+        );
 
         drop(module);
         drop(kernel);
@@ -2682,6 +3046,7 @@ mod tests {
         let session = session.expect("persisted Agent session");
         assert_eq!(session.backend_binding, binding);
         assert_eq!(session.backend_session_id, "native-session-1");
+        assert_eq!(session.native_state, native_state);
 
         reopened
             .apply(

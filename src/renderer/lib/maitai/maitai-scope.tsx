@@ -2,10 +2,12 @@ import { createContext, useContext, useLayoutEffect, useMemo, useRef, type React
 import { Provider, useAtomValue, useSetAtom } from "jotai";
 import {
   acquirePreparedScope,
+  acquireScopeContext,
   commitPreparedDescriptor,
   createScopeHandle,
   findScopeView,
   getMaitaiRootView,
+  getScopeContextView,
   prepareScope,
   publishPreparedScope,
   resolveConcreteAtom,
@@ -77,6 +79,20 @@ export function useMaitaiStore(): MaitaiStore {
   const store = useContext(MaitaiStoreContext);
   if (!store) throw new Error("Maitai hooks require MaitaiProvider");
   return store;
+}
+
+/** App-level overlays borrow their mounted caller's committed context until dismissal. */
+export function ScopeContextBridge({
+  handle,
+  children,
+}: {
+  readonly handle: ScopeHandle;
+  readonly children: ReactNode;
+}) {
+  const store = useMaitaiStore();
+  const view = getScopeContextView(handle, store);
+  useLayoutEffect(() => acquireScopeContext(view), [view]);
+  return <ScopeViewContext.Provider value={view}>{children}</ScopeViewContext.Provider>;
 }
 
 export function useScopeHandle(definition: ScopeDefinition<unknown, never>): ScopeHandle {

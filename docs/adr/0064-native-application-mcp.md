@@ -18,6 +18,22 @@ backend connection generation and canonical tool observations establish invocati
 identity; tool arguments and renderer presentation coordinates cannot grant authority.
 Core continues to validate frozen Turn policy and resource access for each operation.
 
+Claude Code connections acquire their own scoped private bridge. Main freezes the
+exact accepted foreground Turn from current Core Thread and Project authority;
+the bridge issues invocation claims from that record rather than accepting Thread,
+Turn or Agent coordinates from stdio requests. Settlement, admission failure,
+connection replacement and shutdown revoke those claims. Every operation verifies
+the current native identity, profile and execution location, then rereads the exact
+persisted authority before executing or replaying a receipt. A new input cannot reuse
+an already accepted Turn identity; operation retries return their original admission.
+
+A shared stdio connection cannot reliably distinguish a foreground Claude caller
+from a native background Agent or watcher. While any such task is live, all Claude
+application-tool claims are suspended, including foreground calls. Clearing the
+roster permits new claims only for a still-active foreground Turn; older claims
+remain invalid. Native background application tools stay unavailable until the
+transport establishes trusted actor correlation for every invocation.
+
 Keep the CLI as the default shell content Interface and share the existing content
 contracts and Core owners with MCP. Retire local dynamic execution while preserving
 historical transcript rendering. One catalog drives native discovery, capability

@@ -12,6 +12,7 @@ import { CoreModules } from "../core-runtime/CoreModules";
 import { coreRuntimeError } from "../core-runtime/CoreRuntimeError";
 import type { AppToolInvocation } from "./AppToolInvocationInbox";
 import { make } from "./SessionMessageAppTools";
+import { NativeConversationExtension } from "./NativeConversationExtension";
 
 const authority: FrozenNodexAgentTurnAuthority = {
   threadId: "caller",
@@ -46,6 +47,8 @@ const setup = (
     threadId?: string | null;
     archived?: boolean;
     afterAdmission?: () => void;
+    native?: boolean;
+    busy?: boolean;
   } = {},
 ) => {
   const admitted: ProjectWorkspaceApplyInput[] = [];
@@ -55,6 +58,34 @@ const setup = (
     admitted,
     starts,
     execute: make.pipe(
+      Effect.provideService(NativeConversationExtension, {
+        read: () =>
+          Effect.succeed({
+            threadId: "target-thread",
+            busy: options.busy ?? false,
+            archived: false,
+            backendBinding: { kind: "claude", instanceConfigId: "work" },
+          }),
+        submit: ({
+          threadId,
+          prompt,
+          operationId,
+          model,
+        }: {
+          threadId: string;
+          prompt: string;
+          operationId: string;
+          model?: string;
+        }) =>
+          Effect.sync(() => {
+            starts.push({
+              threadId,
+              prompt,
+              overrides: { clientUserMessageId: operationId, ...(model ? { model } : {}) },
+            });
+            return { turnId: "native-accepted" };
+          }),
+      } as never),
       Effect.provideService(CoreAuthority, { identity: { profileId: "profile" } } as never),
       Effect.provideService(CodexTurnAuthority, {
         capture: () => Effect.succeed({ ...authority, readOnly: options.readOnly ?? false }),
@@ -71,7 +102,9 @@ const setup = (
                     ? null
                     : {
                         thread_id: options.threadId ?? "target-thread",
-                        backend_binding: { kind: options.backend ?? "codex" },
+                        backend_binding: {
+                          kind: options.native ? "claude" : (options.backend ?? "codex"),
+                        },
                       },
               },
             }),
@@ -133,6 +166,33 @@ it.effect("reserves one dispatch and never resends a repeated operation", () =>
     assert.strictEqual(fixture.starts[0]?.threadId, "target-thread");
     assert.isUndefined(fixture.starts[0]?.overrides?.model);
   }),
+);
+
+it.effect(
+  "cross-Session dispatch uses native admission and rejects a busy native target before reservation",
+  () =>
+    Effect.gen(function* () {
+      const fixture = setup({ native: true });
+      const execute = yield* fixture.execute;
+      const first = yield* execute({ ...input, arguments: { ...input.arguments, model: "opus" } });
+      assert.equal(first.structuredContent?.turnId, "native-accepted");
+      assert.equal(fixture.starts[0]?.overrides?.model, "opus");
+      yield* execute({
+        ...input,
+        arguments: {
+          ...input.arguments,
+          model: "opus",
+          operationId: first.structuredContent?.operationId,
+        },
+      });
+      assert.lengthOf(fixture.starts, 1);
+      const busy = setup({ native: true, busy: true });
+      const send = yield* busy.execute;
+      const rejected = yield* send(input);
+      assert.deepEqual(rejected.structuredContent, { error: { code: "session_busy" } });
+      assert.lengthOf(busy.admitted, 0);
+      assert.lengthOf(busy.starts, 0);
+    }),
 );
 
 it.effect("does not dispatch denied, inactive, unsupported or self-targeted messages", () =>

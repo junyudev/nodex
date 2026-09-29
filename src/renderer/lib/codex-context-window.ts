@@ -22,7 +22,9 @@ export function resolveContextWindowIndicatorState(
 ): ContextWindowIndicatorState {
   const tokenUsage =
     conversation?.resumeState === "resumed" ? conversation.latestTokenUsageInfo : null;
-  if (!tokenUsage) {
+  const contextUsage =
+    conversation?.resumeState === "resumed" ? conversation.contextUsage : undefined;
+  if (!tokenUsage && !contextUsage) {
     return {
       status: "unavailable",
       percentFull: 0,
@@ -31,8 +33,8 @@ export function resolveContextWindowIndicatorState(
     };
   }
 
-  const usedTokens = normalizeTokenCount(tokenUsage.last.totalTokens);
-  const windowTokensRaw = tokenUsage.modelContextWindow;
+  const usedTokens = normalizeTokenCount(contextUsage?.used ?? tokenUsage?.last.totalTokens ?? 0);
+  const windowTokensRaw = contextUsage?.size ?? tokenUsage?.modelContextWindow;
   if (
     typeof windowTokensRaw === "number" &&
     Number.isFinite(windowTokensRaw) &&

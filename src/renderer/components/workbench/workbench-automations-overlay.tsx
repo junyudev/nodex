@@ -79,12 +79,6 @@ import {
   updateCodexScheduledAutomation,
 } from "@/lib/codex-automation-runtime";
 import {
-  formatCodexModelLabel,
-  formatCodexReasoningEffortLabel,
-  getVisibleCodexModels,
-  resolveCodexReasoningEffortOptions,
-} from "@/lib/codex-thread-settings";
-import {
   formatCodexScheduledAutomationNextRunLabel,
   sortCodexScheduledAutomationsForDisplay,
 } from "@/lib/codex-scheduled-automation-display";
@@ -96,13 +90,13 @@ import { useLocalEnvironmentOptions } from "@/lib/use-local-environment-queries"
 import type {
   CodexScheduledAutomation,
   CodexModelOption,
-  CodexScheduledAutomationReasoningEffort,
   CodexScheduledAutomationCreateInput,
   CodexScheduledAutomationUpdateInput,
   Project,
   WorktreeEnvironmentOption,
 } from "@/lib/types";
 import { cn } from "@/lib/utils";
+import { AutomationIntelligenceDropdown } from "./workbench-automation-intelligence";
 import {
   buildCodexScheduledAutomationCreateInput,
   buildCodexScheduledAutomationUpdateInput,
@@ -940,191 +934,6 @@ function AutomationEnvironmentDropdown({
         >
           Create local environment
         </NodexDropdownItem>
-      </div>
-    </NodexDropdownMenu>
-  );
-}
-
-function isAutomationCodexReasoningEffort(
-  reasoningEffort: string,
-): reasoningEffort is CodexScheduledAutomationReasoningEffort {
-  return (
-    reasoningEffort === "none" ||
-    reasoningEffort === "minimal" ||
-    reasoningEffort === "low" ||
-    reasoningEffort === "medium" ||
-    reasoningEffort === "high" ||
-    reasoningEffort === "xhigh" ||
-    reasoningEffort === "max"
-  );
-}
-
-function resolveAutomationSelectorReasoningEffort(
-  reasoningEffort: WorkbenchAutomationDraft["reasoningEffort"],
-): CodexScheduledAutomationReasoningEffort {
-  if (isAutomationCodexReasoningEffort(reasoningEffort)) return reasoningEffort;
-  return "medium";
-}
-
-function resolveAutomationReasoningForModelChange(input: {
-  currentReasoningEffort: CodexScheduledAutomationReasoningEffort;
-  models: readonly CodexModelOption[];
-  nextModelId: string;
-}): CodexScheduledAutomationReasoningEffort {
-  const selectedModel =
-    input.models.find((candidate) => candidate.id === input.nextModelId && !candidate.hidden) ??
-    null;
-  const supportedOptions = resolveCodexReasoningEffortOptions(input.nextModelId, [
-    ...input.models,
-  ]).filter(
-    (
-      option,
-    ): option is typeof option & {
-      reasoningEffort: CodexScheduledAutomationReasoningEffort;
-    } => isAutomationCodexReasoningEffort(option.reasoningEffort),
-  );
-  const supportedEfforts = new Set(supportedOptions.map((option) => option.reasoningEffort));
-
-  if (supportedEfforts.has(input.currentReasoningEffort)) {
-    return input.currentReasoningEffort;
-  }
-
-  const preferredEfforts: Array<CodexScheduledAutomationReasoningEffort | null | undefined> = [
-    selectedModel && isAutomationCodexReasoningEffort(selectedModel.defaultReasoningEffort)
-      ? selectedModel.defaultReasoningEffort
-      : null,
-    supportedEfforts.has("high") ? "high" : null,
-    supportedOptions[0]?.reasoningEffort,
-  ];
-
-  for (const effort of preferredEfforts) {
-    if (effort && supportedEfforts.has(effort)) {
-      return effort;
-    }
-  }
-
-  return "medium";
-}
-
-function AutomationModelReasoningDropdown({
-  draft,
-  models,
-  modelsLoading,
-  modelsError,
-  disabled,
-  onSelect,
-}: {
-  draft: WorkbenchAutomationDraft;
-  models: readonly CodexModelOption[];
-  modelsLoading: boolean;
-  modelsError: boolean;
-  disabled: boolean;
-  onSelect: (model: string, reasoningEffort: CodexScheduledAutomationReasoningEffort) => void;
-}) {
-  const selectedModel = draft.model;
-  const selectedReasoningEffort = draft.reasoningEffort;
-  const visibleModels = useMemo(() => getVisibleCodexModels(models), [models]);
-  const effectiveReasoningEffort =
-    resolveAutomationSelectorReasoningEffort(selectedReasoningEffort);
-  const reasoningOptions = useMemo(
-    () =>
-      resolveCodexReasoningEffortOptions(selectedModel, [...models]).filter(
-        (
-          option,
-        ): option is typeof option & {
-          reasoningEffort: CodexScheduledAutomationReasoningEffort;
-        } => isAutomationCodexReasoningEffort(option.reasoningEffort),
-      ),
-    [models, selectedModel],
-  );
-  const hasModelChoices = visibleModels.length > 0;
-  const selectedModelMissing = selectedModel.trim().length === 0;
-  const triggerDisabled = disabled || modelsLoading || selectedModelMissing || !hasModelChoices;
-  const modelLabel =
-    modelsLoading || selectedModelMissing
-      ? "Loading model"
-      : hasModelChoices
-        ? formatCodexModelLabel(selectedModel, [...models])
-        : modelsError
-          ? "Model unavailable"
-          : "No models available";
-  const reasoningLabel = formatCodexReasoningEffortLabel(effectiveReasoningEffort);
-
-  return (
-    <NodexDropdownMenu
-      align="end"
-      side="bottom"
-      contentWidth="menu"
-      disabled={triggerDisabled}
-      triggerButton={
-        <button
-          type="button"
-          aria-label="Model and reasoning"
-          disabled={triggerDisabled}
-          className={cn(
-            AUTOMATION_FIELD_TRIGGER_CLASS,
-            "inline-flex w-auto max-w-full justify-end",
-            triggerDisabled && "cursor-default opacity-25 hover:bg-transparent",
-            selectedModelMissing && !modelsLoading && "text-token-text-tertiary",
-          )}
-        >
-          <span className="flex max-w-48 min-w-0 items-center gap-1.5 text-left">
-            <span className="min-w-0 truncate text-token-foreground">{modelLabel}</span>
-            {!modelsLoading && !selectedModelMissing && hasModelChoices ? (
-              <span className="shrink-0 text-token-description-foreground">{reasoningLabel}</span>
-            ) : null}
-          </span>
-          {modelsLoading ? (
-            <AutomationLoadingIcon className="icon-2xs shrink-0 text-token-text-tertiary" />
-          ) : (
-            <CompactChevronDownIcon className="icon-2xs shrink-0 text-token-text-tertiary" />
-          )}
-        </button>
-      }
-    >
-      <NodexDropdownTitle>Reasoning</NodexDropdownTitle>
-      {reasoningOptions.map((option) => (
-        <NodexDropdownItem
-          key={option.reasoningEffort}
-          rightSlot={
-            option.reasoningEffort === effectiveReasoningEffort ? (
-              <NodexDropdownSelectedIcon />
-            ) : null
-          }
-          tooltipText={option.description}
-          onSelect={() => onSelect(selectedModel, option.reasoningEffort)}
-        >
-          {formatCodexReasoningEffortLabel(option.reasoningEffort)}
-        </NodexDropdownItem>
-      ))}
-      <NodexDropdownSeparator />
-      <NodexDropdownTitle>Model</NodexDropdownTitle>
-      <div className="vertical-scroll-fade-mask flex max-h-[250px] flex-col overflow-y-auto">
-        {visibleModels.length === 0 ? (
-          <NodexDropdownMessage compact>No models available</NodexDropdownMessage>
-        ) : (
-          visibleModels.map((model) => {
-            const selected = model.id === selectedModel;
-            const description = model.description.trim().replace(/\.$/u, "");
-            return (
-              <NodexDropdownItem
-                key={model.id}
-                rightSlot={selected ? <NodexDropdownSelectedIcon /> : null}
-                tooltipText={description || undefined}
-                onSelect={() => {
-                  const reasoningEffort = resolveAutomationReasoningForModelChange({
-                    currentReasoningEffort: effectiveReasoningEffort,
-                    models,
-                    nextModelId: model.id,
-                  });
-                  onSelect(model.id, reasoningEffort);
-                }}
-              >
-                {formatCodexModelLabel(model.id, [...models])}
-              </NodexDropdownItem>
-            );
-          })
-        )}
       </div>
     </NodexDropdownMenu>
   );
@@ -2340,8 +2149,6 @@ function AutomationDetailSurface({
   validation,
   createDraftTemplate,
   codexModels,
-  codexModelsLoading,
-  codexModelsError,
   previousRunRows,
   previousRunsLoading,
   loading,
@@ -2368,8 +2175,6 @@ function AutomationDetailSurface({
   validation: WorkbenchAutomationDraftValidation;
   createDraftTemplate: WorkbenchAutomationTemplate | null;
   codexModels: readonly CodexModelOption[];
-  codexModelsLoading: boolean;
-  codexModelsError: boolean;
   previousRunRows: WorkbenchAutomationPreviousRunRowModel[];
   previousRunsLoading: boolean;
   loading: boolean;
@@ -2446,8 +2251,6 @@ function AutomationDetailSurface({
       validation={validation}
       createDraftTemplate={createDraftTemplate}
       codexModels={codexModels}
-      codexModelsLoading={codexModelsLoading}
-      codexModelsError={codexModelsError}
       previousRunRows={previousRunRows}
       previousRunsLoading={previousRunsLoading}
       onSave={onSave}
@@ -2475,8 +2278,6 @@ function AutomationDraftEditor({
   validation,
   createDraftTemplate,
   codexModels,
-  codexModelsLoading,
-  codexModelsError,
   formId = "automation-detail-form",
   manualSubmit = false,
   showHeaderCreateAction = true,
@@ -2503,8 +2304,6 @@ function AutomationDraftEditor({
   validation: WorkbenchAutomationDraftValidation;
   createDraftTemplate: WorkbenchAutomationTemplate | null;
   codexModels: readonly CodexModelOption[];
-  codexModelsLoading: boolean;
-  codexModelsError: boolean;
   formId?: string;
   manualSubmit?: boolean;
   showHeaderCreateAction?: boolean;
@@ -2600,7 +2399,11 @@ function AutomationDraftEditor({
         executionEnvironment: target,
         localEnvironmentConfigPath: target === "worktree" ? current.localEnvironmentConfigPath : "",
         model: current.model,
-        reasoningEffort: current.reasoningEffort || DEFAULT_WORKBENCH_AUTOMATION_REASONING_EFFORT,
+        reasoningEffort:
+          current.reasoningEffort ||
+          (current.backendBinding.kind === "claude"
+            ? "default"
+            : DEFAULT_WORKBENCH_AUTOMATION_REASONING_EFFORT),
       };
 
       return codexModels.length > 0
@@ -2758,7 +2561,9 @@ function AutomationDraftEditor({
             </AutomationDetailRow>
           ) : (
             <>
-              {draft.executionEnvironment === "worktree" && draft.cwds.length === 1 ? (
+              {draft.backendBinding.kind === "codex" &&
+              draft.executionEnvironment === "worktree" &&
+              draft.cwds.length === 1 ? (
                 <AutomationDetailRow label="Environment">
                   <AutomationEnvironmentDropdown
                     projects={projects.filter((project) => project.id === draft.projectId)}
@@ -2799,24 +2604,14 @@ function AutomationDraftEditor({
             />
           </AutomationDetailRow>
 
-          {draft.kind === "cron" ? (
-            <AutomationDetailRow label="Model">
-              <AutomationModelReasoningDropdown
-                draft={draft}
-                models={codexModels}
-                modelsLoading={codexModelsLoading}
-                modelsError={codexModelsError}
-                disabled={isMutating}
-                onSelect={(model, reasoningEffort) =>
-                  updateDraft({
-                    model,
-                    reasoningEffort,
-                    serviceTier: "",
-                  })
-                }
-              />
-            </AutomationDetailRow>
-          ) : null}
+          <AutomationDetailRow label={draft.kind === "heartbeat" ? "Agent" : "Model"}>
+            <AutomationIntelligenceDropdown
+              draft={draft}
+              codexModels={codexModels}
+              disabled={isMutating}
+              onChange={setDraft}
+            />
+          </AutomationDetailRow>
         </AutomationDetailSection>
 
         {automation && automation.kind === "cron" ? (
@@ -3095,8 +2890,6 @@ export function WorkbenchAutomationSidePanelTab({
         validation={validation}
         createDraftTemplate={null}
         codexModels={modelsQuery.data ?? []}
-        codexModelsLoading={modelsQuery.isLoading}
-        codexModelsError={modelsQuery.isError}
         formId={AUTOMATION_SIDE_PANEL_FORM_ID}
         manualSubmit={isProposal}
         showHeaderCreateAction={false}
@@ -3972,8 +3765,6 @@ export function WorkbenchAutomationsRouteShell({
               validation={draftValidation}
               createDraftTemplate={detailMode === "create" ? createDraftTemplate : null}
               codexModels={modelsQuery.data ?? []}
-              codexModelsLoading={modelsQuery.isLoading}
-              codexModelsError={modelsQuery.isError}
               previousRunRows={previousRunRows}
               previousRunsLoading={automationRunsQuery.isLoading || automationRunsQuery.isFetching}
               loading={automationsQuery.isLoading}

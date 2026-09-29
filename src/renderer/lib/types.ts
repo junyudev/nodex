@@ -131,6 +131,7 @@ export type {
   CodexComposerSiteListResult,
   CodexComposerSkill,
   CodexModelOption,
+  AgentModelOption,
   CodexCollaborationModeKind,
   CodexCollaborationModeState,
   CodexCollaborationModePreset,

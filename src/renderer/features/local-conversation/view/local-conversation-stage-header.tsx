@@ -1,4 +1,4 @@
-import { memo, useCallback, useState } from "react";
+import { memo, useCallback, useRef, useState } from "react";
 import {
   ArchiveIcon,
   EditIcon,
@@ -7,6 +7,9 @@ import {
   SessionPinIcon,
   SidePanelSideChatIcon,
   CopyIcon,
+  SlashModelIcon,
+  SlashStatusIcon,
+  ProjectTaskIcon,
 } from "@/components/shared/icons";
 import {
   NodexDropdownFlyoutSubmenuItem,
@@ -18,22 +21,45 @@ import { toast } from "@/components/ui/toast";
 import { writeTextToClipboardStrict } from "@/lib/clipboard";
 import { buildSessionDeepLink } from "../../../../shared/nodex-deeplink";
 import { cn } from "../../../lib/utils";
-import type { ThreadStageActions, ThreadStageHeaderModel } from "../thread-stage-types";
+import type {
+  ConversationProviderPresentation,
+  ThreadStageActions,
+  ThreadStageHeaderModel,
+} from "../thread-stage-types";
+import { useOpenNativeRuntimeDiagnostics } from "@/components/shared/agent-runtime/native-runtime-diagnostics";
 
 interface ThreadStageHeaderProps {
   model: ThreadStageHeaderModel;
   actions: ThreadStageActions;
   onErrorMessage: (message: string | null) => void;
+  provider?: ConversationProviderPresentation;
 }
 
 const menuIconClassName = "icon-xs shrink-0";
 
-function ThreadStageHeaderComponent({ model, actions, onErrorMessage }: ThreadStageHeaderProps) {
+function ThreadStageHeaderComponent({
+  model,
+  actions,
+  onErrorMessage,
+  provider,
+}: ThreadStageHeaderProps) {
   const [menuOpen, setMenuOpen] = useState(false);
+  const [generatingTitle, setGeneratingTitle] = useState(false);
+  const pendingModal = useRef<(() => void) | null>(null);
   const canRenameThread = Boolean(model.threadId && actions.onRequestRenameThread);
   const canArchiveThread = Boolean(model.threadId && actions.onArchiveThread);
   const canTogglePin = Boolean(model.threadId && actions.onToggleThreadPin);
-  const hasTopActions = canTogglePin || canRenameThread || canArchiveThread;
+  const canGenerateTitle = Boolean(model.threadId && provider?.generateTitle);
+  const canOpenNativeTasks = Boolean(
+    model.threadId && provider?.controls?.nativeTaskDetails && actions.onOpenSubagentsPanel,
+  );
+  const hasTopActions =
+    canTogglePin ||
+    canRenameThread ||
+    canArchiveThread ||
+    canGenerateTitle ||
+    canOpenNativeTasks ||
+    provider?.diagnostics;
   const showThreadActions = Boolean(
     model.threadId || model.cwd || model.showSideChatAction || actions.onCopyConversationMarkdown,
   );
@@ -61,6 +87,16 @@ function ThreadStageHeaderComponent({ model, actions, onErrorMessage }: ThreadSt
     }
   }, []);
 
+  const generateTitle = async () => {
+    if (!provider?.generateTitle || generatingTitle) return;
+    setGeneratingTitle(true);
+    await handleAction(async () => {
+      const title = await provider.generateTitle?.();
+      if (!title) throw new Error("Could not generate a title");
+    }, "Could not generate a title");
+    setGeneratingTitle(false);
+  };
+
   return (
     <div
       className={cn(
@@ -79,6 +115,13 @@ function ThreadStageHeaderComponent({ model, actions, onErrorMessage }: ThreadSt
             <NodexDropdownMenu
               open={menuOpen}
               onOpenChange={setMenuOpen}
+              finalFocus={() => {
+                if (!pendingModal.current) return true;
+                const showDiagnostics = pendingModal.current;
+                pendingModal.current = null;
+                showDiagnostics();
+                return false;
+              }}
               align="start"
               sideOffset={1}
               contentWidth="menu"
@@ -134,6 +177,35 @@ function ThreadStageHeaderComponent({ model, actions, onErrorMessage }: ThreadSt
                 >
                   Archive
                 </NodexDropdownItem>
+              ) : null}
+              {canGenerateTitle ? (
+                <NodexDropdownItem
+                  leftSlot={<SlashModelIcon className={menuIconClassName} />}
+                  disabled={generatingTitle}
+                  onSelect={() => void generateTitle()}
+                >
+                  {generatingTitle ? "Generating title…" : "Generate title"}
+                </NodexDropdownItem>
+              ) : null}
+              {canOpenNativeTasks ? (
+                <NodexDropdownItem
+                  leftSlot={<ProjectTaskIcon className={menuIconClassName} />}
+                  onSelect={() => {
+                    pendingModal.current = () => {
+                      void handleAction(actions.onOpenSubagentsPanel, "Could not open tasks");
+                    };
+                  }}
+                >
+                  Tasks
+                </NodexDropdownItem>
+              ) : null}
+              {provider?.diagnostics ? (
+                <NativeStatusMenuItem
+                  read={provider.diagnostics}
+                  onSelect={(show) => {
+                    pendingModal.current = show;
+                  }}
+                />
               ) : null}
               {hasTopActions ? <NodexDropdownSeparator /> : null}
               {model.showSideChatAction ? (
@@ -198,10 +270,29 @@ function ThreadStageHeaderComponent({ model, actions, onErrorMessage }: ThreadSt
   );
 }
 
+function NativeStatusMenuItem({
+  read,
+  onSelect,
+}: {
+  readonly read: NonNullable<ConversationProviderPresentation["diagnostics"]>;
+  readonly onSelect: (show: () => void) => void;
+}) {
+  const showDiagnostics = useOpenNativeRuntimeDiagnostics(read);
+  return (
+    <NodexDropdownItem
+      leftSlot={<SlashStatusIcon className={menuIconClassName} />}
+      onSelect={() => onSelect(showDiagnostics)}
+    >
+      Status
+    </NodexDropdownItem>
+  );
+}
+
 export const ThreadStageHeader = memo(
   ThreadStageHeaderComponent,
   (left, right) =>
     left.actions === right.actions &&
+    left.provider === right.provider &&
     left.onErrorMessage === right.onErrorMessage &&
     left.model.title === right.model.title &&
     left.model.projectId === right.model.projectId &&

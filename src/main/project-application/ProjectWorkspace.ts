@@ -323,6 +323,8 @@ export interface ProjectWorkspaceService {
     readonly threadId: string;
     readonly backendBinding: DesktopProjectWorkspaceThreadBackendSession["backendBinding"];
     readonly backendSessionId: string;
+    readonly expectedBackendSessionId?: string;
+    readonly nativeState?: NonNullable<DesktopProjectWorkspaceThreadBackendSession["nativeState"]>;
   }) => ProjectWorkspaceEffect<DesktopProjectWorkspaceThreadBackendSession>;
   readonly clearThreadBackendSession: (input: {
     readonly threadId: string;
@@ -593,6 +595,10 @@ export const make: Effect.Effect<ProjectWorkspaceService, never, CoreModules | S
         readonly threadId: string;
         readonly backendBinding: DesktopProjectWorkspaceThreadBackendSession["backendBinding"];
         readonly backendSessionId: string;
+        readonly expectedBackendSessionId?: string;
+        readonly nativeState?: NonNullable<
+          DesktopProjectWorkspaceThreadBackendSession["nativeState"]
+        >;
       }) {
         yield* apply(
           "thread.backend-session.bind",

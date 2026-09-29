@@ -1,3 +1,4 @@
+import { captureAppToolAuthority } from "./AppToolCaller";
 import * as Effect from "effect/Effect";
 import * as Cause from "effect/Cause";
 import { nodexAgentAuthorityFingerprint } from "../../shared/nodex-agent-authority";
@@ -22,9 +23,7 @@ export const make = Effect.gen(function* () {
     const parsed = contract.inputSchema.safeParse(input.arguments);
     if (!parsed.success) return toolFailure("invalid_arguments");
     if (!input.caller.isActive()) return toolFailure("call_withdrawn");
-    const capture = turns
-      .capture(input.caller.threadId, input.caller.turnId)
-      .pipe(Effect.catch(() => Effect.succeed(null)));
+    const capture = captureAppToolAuthority(input.caller, turns);
     const authority = yield* capture;
     if (!authority) return toolFailure("authority_unavailable");
     const fingerprint = nodexAgentAuthorityFingerprint(authority);

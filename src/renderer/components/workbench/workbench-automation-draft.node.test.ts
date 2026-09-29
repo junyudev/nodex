@@ -83,6 +83,69 @@ function makeAutomation(
 }
 
 describe("workbench automation draft", () => {
+  test("preserves a reviewed Claude profile and its Default intent when Codex models reload", () => {
+    const draft = createWorkbenchAutomationDraftFromCreateInput({
+      kind: "cron",
+      backendBinding: { kind: "claude", instanceConfigId: "gateway" },
+      name: "Review",
+      prompt: "Check progress",
+      rrule: "FREQ=DAILY",
+      projectId: "project",
+      cwds: ["/workspace"],
+      executionEnvironment: "local",
+    });
+    const resolved = resolveWorkbenchAutomationDraftModelSettings({ draft, models: MODELS });
+    expect(resolved).toBe(draft);
+    expect(buildCodexScheduledAutomationCreateInput({ draft: resolved })).toMatchObject({
+      backendBinding: { kind: "claude", instanceConfigId: "gateway" },
+      model: "default",
+      reasoningEffort: "default",
+      serviceTier: null,
+    });
+    const definition = makeAutomation({
+      kind: "cron",
+      targetThreadId: null,
+      projectId: "project",
+      cwds: ["/workspace"],
+      backendBinding: { kind: "claude", instanceConfigId: "gateway" },
+      model: "vendor-sonnet",
+      reasoningEffort: "max",
+    });
+    const edit = createWorkbenchAutomationDraft({ automation: definition });
+    expect(isWorkbenchAutomationDraftDirty({ draft: edit, existing: definition })).toBe(false);
+    const inherited = { ...definition, model: null, reasoningEffort: null };
+    expect(
+      isWorkbenchAutomationDraftDirty({
+        draft: createWorkbenchAutomationDraft({ automation: inherited }),
+        existing: inherited,
+      }),
+    ).toBe(false);
+    expect(
+      resolveWorkbenchAutomationDraftModelSettings({ draft: edit, models: MODELS }).model,
+    ).toBe("vendor-sonnet");
+    edit.backendBinding = { kind: "claude", instanceConfigId: "other" };
+    expect(isWorkbenchAutomationDraftDirty({ draft: edit, existing: definition })).toBe(true);
+  });
+
+  test("retains a Claude heartbeat's exact profile and omits per-run model overrides", () => {
+    const draft = createWorkbenchAutomationDraftFromCreateInput({
+      kind: "heartbeat",
+      backendBinding: { kind: "claude", instanceConfigId: "gateway" },
+      targetSessionId: "session",
+      name: "Follow up",
+      prompt: "Check progress",
+      rrule: "FREQ=HOURLY",
+      model: "unused",
+    });
+    expect(buildCodexScheduledAutomationCreateInput({ draft })).toMatchObject({
+      backendBinding: { kind: "claude", instanceConfigId: "gateway" },
+      targetSessionId: "session",
+      model: null,
+      reasoningEffort: null,
+      serviceTier: null,
+    });
+  });
+
   test("uses a revisioned replacement's omitted execution fields instead of inheriting a newer definition", () => {
     const draft = createWorkbenchAutomationDraftFromUpdateInput({
       update: {

@@ -12,6 +12,8 @@ import {
 } from "@/features/local-conversation";
 import type { RightPanelComposerOverlayVisibility } from "@/features/local-conversation/view/right-panel-composer-overlay";
 import { createThreadStageActions } from "@/features/local-conversation/thread-action-controller";
+import { composeNativeThreadStageActions } from "@/features/local-conversation/native-thread-stage-actions";
+import { useOpenNativeRuntimeDiagnostics } from "@/components/shared/agent-runtime/native-runtime-diagnostics";
 import type {
   NewChatStartInSelectorModel,
   ThreadOpenSideChatInput,
@@ -23,6 +25,7 @@ import type {
 } from "@/features/local-conversation/thread-stage-types";
 import { getGitWorkerClient } from "@/lib/api";
 import { readAcpAgentSettings, readClaudeAgentSettings } from "@/lib/workbench-settings-runtime";
+import { resolveRendererTransport } from "@/lib/renderer-transport";
 import {
   newThreadBackendSelectionOwner,
   type NewThreadBackendSelection,
@@ -595,7 +598,13 @@ function SharedConnectedSessionThread({
     ],
   );
 
-  const actions: ThreadStageActions = agent ? { ...codexActions, ...agent.actions } : codexActions;
+  const openNativeDiagnostics = useOpenNativeRuntimeDiagnostics(provider?.diagnostics);
+  const actions = agent
+    ? composeNativeThreadStageActions(codexActions, {
+        ...agent.actions,
+        ...(provider?.diagnostics ? { onOpenStatusPanel: openNativeDiagnostics } : {}),
+      })
+    : codexActions;
 
   const connectedStageProps = {
     provider,
@@ -645,7 +654,7 @@ function SharedConnectedSessionThread({
       agent?.selectedEffort ?? codexControl.threadSettings.reasoningEffort ?? "medium",
     selectedPersonality: codexControl.personality,
     reasoningEffortOptions: agent?.reasoningEffortOptions ?? codexControl.reasoningEffortOptions,
-    permissionMode: codexControl.permissionMode,
+    permissionMode: agent?.permissionMode ?? codexControl.permissionMode,
     isQueueingEnabled: agent ? false : threadQueueFollowUpsEnabled,
     composerEnterBehavior,
     searchOpenTick,
@@ -716,7 +725,7 @@ function ConnectedSessionThread(props: ConnectedSessionThreadProps) {
   const thread = props.session.thread;
   const canChooseBackend = thread === null;
   const [instances, setInstances] = useState<
-    readonly { id: string; kind: "acp" | "claude"; label: string }[]
+    readonly { id: string; kind: "acp" | "claude"; label: string; enabled: boolean }[]
   >([]);
   const selection = useSyncExternalStore(
     (listener) => newThreadBackendSelectionOwner.subscribe(props.session.id, listener),
@@ -725,39 +734,39 @@ function ConnectedSessionThread(props: ConnectedSessionThreadProps) {
   );
 
   useEffect(() => {
-    if (!canChooseBackend) {
-      setInstances([]);
-      return;
-    }
-
     let disposed = false;
-    void Promise.all([readAcpAgentSettings(), readClaudeAgentSettings()])
-      .then(([acp, claude]) => {
-        if (disposed) return;
-        setInstances([
-          ...claude.instances
-            .filter(({ enabled }) => enabled)
-            .map((instance) => ({
+    let generation = 0;
+    const reload = () => {
+      const requestGeneration = ++generation;
+      void Promise.all([readAcpAgentSettings(), readClaudeAgentSettings()])
+        .then(([acp, claude]) => {
+          if (disposed || requestGeneration !== generation) return;
+          setInstances([
+            ...claude.instances.map((instance) => ({
               id: instance.id,
               kind: "claude" as const,
               label: instance.displayName,
+              enabled: instance.enabled,
             })),
-          ...acp.instances
-            .filter(({ enabled }) => enabled)
-            .map((instance) => ({
+            ...acp.instances.map((instance) => ({
               id: instance.id,
               kind: "acp" as const,
               label: formatAcpAgentInstanceLabel(instance, acp.instances.length),
+              enabled: instance.enabled,
             })),
-        ]);
-      })
-      .catch(() => {
-        if (!disposed) setInstances([]);
-      });
+          ]);
+        })
+        .catch(() => {
+          if (!disposed && requestGeneration === generation) setInstances([]);
+        });
+    };
+    const release = resolveRendererTransport().subscribeClaudeAgentSettingsChanges(reload);
+    reload();
     return () => {
       disposed = true;
+      release();
     };
-  }, [canChooseBackend, props.session.id]);
+  }, [props.session.id]);
 
   const binding =
     thread?.backendBinding.kind === "claude" || thread?.backendBinding.kind === "acp"
@@ -778,6 +787,7 @@ function ConnectedSessionThread(props: ConnectedSessionThreadProps) {
     binding,
     summary: thread ? projectSessionThreadLinkToSummary(thread) : null,
     onRefresh: props.onRefreshProjectSessions,
+    onOpenThread: props.onOpenThread,
     sessionProjectId: props.session.projectId,
     modelProjectId,
     sessionId: props.session.id,
@@ -796,10 +806,12 @@ function ConnectedSessionThread(props: ConnectedSessionThreadProps) {
     options: canChooseBackend
       ? [
           { value: "codex", label: "Codex" },
-          ...instances.map((instance) => ({
-            value: `${instance.kind}:${instance.id}`,
-            label: instance.label,
-          })),
+          ...instances
+            .filter((instance) => instance.enabled)
+            .map((instance) => ({
+              value: `${instance.kind}:${instance.id}`,
+              label: instance.label,
+            })),
         ]
       : [],
     select: (value) =>
@@ -813,6 +825,15 @@ function ConnectedSessionThread(props: ConnectedSessionThreadProps) {
             },
       ),
     commands: adapter.commands,
+    controls: adapter.controls,
+    skills: adapter.skills,
+    stopTask: adapter.stopTask,
+    nativeIntelligence: adapter.nativeIntelligence,
+    history: adapter.history,
+    resolveHistoryImage: adapter.resolveHistoryImage,
+    readToolOutput: adapter.readToolOutput,
+    diagnostics: adapter.diagnostics,
+    generateTitle: adapter.generateTitle,
     authentication:
       binding && adapter.state.presentation?.snapshot.status === "authentication-required"
         ? {

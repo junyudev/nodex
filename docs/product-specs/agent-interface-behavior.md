@@ -44,7 +44,8 @@ CLI access remains checked by Core for every operation.
 
 ## Native application MCP
 
-Native application MCP currently supports local Codex execution. ACP and remote
+Native application MCP supports local Codex and Claude Code execution through
+backend-specific catalogs. ACP and remote
 execution integration, sharing and publishing services, Cloud task destinations,
 realtime voice, and `fire_confetti` remain unsupported application-tool capabilities.
 Voice-session screen capture and ending a realtime voice call are also unavailable.
@@ -63,6 +64,18 @@ runs refresh that catalog through the same configuration boundary. New local Thr
 no dynamic tools. Internal title generation has no application tools. An execution endpoint
 without the native bridge receives no application catalog or private connection configuration.
 Tool visibility never substitutes for the calling Turn's authority.
+
+Claude connections issue claims only for a Main-admitted foreground Turn with exact
+persisted Core authority. Native stdio metadata cannot supply that identity. Every call
+rechecks the frozen authority; settlement, failed admission and connection closure revoke
+it. While a native background task or ambient watcher is live, all Claude application calls
+are suspended because the shared transport does not establish trusted actor identity for
+each invocation. Clearing the roster enables fresh calls only for a still-active foreground
+Turn and never restores old claims. `get_app_capabilities` reports this foreground lifetime
+and explicitly marks background application tools, live Workbench controls and pull-request
+attachment unavailable. Claude's catalog includes content operations, Project SQL, Project
+and Session metadata/history, messaging, scheduling, terminal observation and workspace
+dependencies; Codex-only execution and account tools are not exposed.
 
 Historical dynamic tool results remain readable. Local `nodex_app` content calls and `codex_app`
 application calls are rejected before renderer forwarding or pending request storage. Interactive setup
@@ -94,7 +107,9 @@ execution identity, Project SQL reads, live Workbench access, and unavailable sh
 and cloud capabilities.
 
 `automation_update` lists, searches, reads, creates, replaces and deletes scheduled
-Codex tasks. List results contain only currently authorized targets and use bounded
+Codex and Claude tasks. The definition retains an explicit backend/Profile binding.
+An omitted cron binding selects the caller's native backend; an omitted Heartbeat
+binding selects its resolved target's backend. List results contain only currently authorized targets and use bounded
 cursors. Cron tasks select an explicit Project and its folders, or a projectless
 local run. Heartbeats target a stable Session; omitting the target selects the
 caller’s Session. Notification preferences are separate from the task prompt.
@@ -219,7 +234,7 @@ The same caller Thread can reuse an operation ID and unchanged launch arguments 
 Turn, including after restart. Every retry revalidates the current Turn's authority; read-only
 or out-of-scope callers cannot replay a write receipt.
 
-`send_message_to_session` starts a follow-up Turn in an existing, unarchived Codex Session.
+`send_message_to_session` starts a follow-up Turn in an existing, unarchived Codex or Claude Session.
 It retains the destination's settings unless a model is explicitly supplied. Threadless and
 ACP Sessions are unavailable for this command, and a caller cannot message its own Session.
 Core checks the caller's current writable authority, target Project access, and exact active

@@ -22,7 +22,12 @@ import type {
 import { withCanonicalState } from "../../../test/canonical-conversation-fixture";
 import type { ConversationCoordinationHost } from "../../../../shared/codex-client-coordination";
 import type { CodexAppServerManager } from "../local-conversation-store";
-import type { ThreadStageActions, ThreadStageRouteInput } from "../thread-stage-types";
+import type {
+  ThreadStageActions,
+  ThreadStageRouteInput,
+  ConversationProviderPresentation,
+} from "../thread-stage-types";
+import { ConversationRuntimeContext, type ConversationRuntime } from "../conversation-runtime";
 import type { RightPanelComposerOverlayVisibility } from "./right-panel-composer-overlay";
 import { sessionFirstSubmissionOwner } from "../../conversation-launch/session-first-submission-owner";
 
@@ -494,6 +499,8 @@ async function renderStage(
     rightPanelComposerOverlayEnabled?: boolean;
     rightPanelComposerOverlayVisibility?: RightPanelComposerOverlayVisibility;
     threadBodyVisible?: boolean;
+    runtime?: ConversationRuntime;
+    provider?: ConversationProviderPresentation;
   } = {},
 ) {
   const { __resetLocalConversationStoreForTests, LocalConversationProvider } =
@@ -506,33 +513,36 @@ async function renderStage(
       <ThreadStageScope>
         <TooltipProvider>
           <LocalConversationProvider>
-            <ConnectedThreadStage
-              projectId="project_1"
-              projectWorkspacePath="/tmp/project"
-              isNewThreadTab={false}
-              newThreadTarget={null}
-              newThreadProjectSelector={null}
-              newThreadStartInSelector={null}
-              threadStartProgress={null}
-              activeThreadId={summary.threadId}
-              activeThreadSummary={summary}
-              availableModels={[]}
-              collaborationModes={[]}
-              selectedCollaborationMode="default"
-              selectedModel=""
-              selectedReasoningEffort="medium"
-              reasoningEffortOptions={[]}
-              permissionMode="auto"
-              isQueueingEnabled={false}
-              composerEnterBehavior="enter"
-              searchOpenTick={0}
-              backgroundAgentDetail={options.backgroundAgentDetail === true}
-              routeActive={options.routeActive}
-              rightPanelComposerOverlayEnabled={options.rightPanelComposerOverlayEnabled}
-              rightPanelComposerOverlayVisibility={options.rightPanelComposerOverlayVisibility}
-              threadBodyVisible={options.threadBodyVisible}
-              actions={buildActions()}
-            />
+            <ConversationRuntimeContext.Provider value={options.runtime ?? null}>
+              <ConnectedThreadStage
+                projectId="project_1"
+                projectWorkspacePath="/tmp/project"
+                isNewThreadTab={false}
+                newThreadTarget={null}
+                newThreadProjectSelector={null}
+                newThreadStartInSelector={null}
+                threadStartProgress={null}
+                activeThreadId={summary.threadId}
+                activeThreadSummary={summary}
+                availableModels={[]}
+                collaborationModes={[]}
+                selectedCollaborationMode="default"
+                selectedModel=""
+                selectedReasoningEffort="medium"
+                reasoningEffortOptions={[]}
+                permissionMode="auto"
+                isQueueingEnabled={false}
+                composerEnterBehavior="enter"
+                searchOpenTick={0}
+                backgroundAgentDetail={options.backgroundAgentDetail === true}
+                routeActive={options.routeActive}
+                rightPanelComposerOverlayEnabled={options.rightPanelComposerOverlayEnabled}
+                rightPanelComposerOverlayVisibility={options.rightPanelComposerOverlayVisibility}
+                threadBodyVisible={options.threadBodyVisible}
+                provider={options.provider}
+                actions={buildActions()}
+              />
+            </ConversationRuntimeContext.Provider>
           </LocalConversationProvider>
         </TooltipProvider>
       </ThreadStageScope>
@@ -837,6 +847,106 @@ async function renderNewThreadHome(overrides?: {
 }
 
 describe("ConnectedThreadStage archived resume behavior", () => {
+  test("shared child selectors subscribe to native observations and release their owner on unmount", async () => {
+    const { useConversationSubset } = await import("../local-conversation-store");
+    const childId = "agent-task:thread:review";
+    const ids = [childId];
+    let child = buildConversation(childId, { threadName: "Review", statusType: "active" });
+    const listeners = new Set<() => void>();
+    const subscribe = vi.fn((id: string | null, listener: () => void) => {
+      expect(id).toBe(childId);
+      listeners.add(listener);
+      return () => {
+        listeners.delete(listener);
+      };
+    });
+    const runtime = {
+      kind: "claude",
+      read: (id: string | null) => (id === childId ? child : null),
+      subscribe,
+    } as unknown as ConversationRuntime;
+    function ChildProbe() {
+      const observations = useConversationSubset(ids);
+      return (
+        <output role="status">
+          {observations[childId]?.threadName}:{observations[childId]?.statusType}
+        </output>
+      );
+    }
+    const view = render(
+      <ConversationRuntimeContext.Provider value={runtime}>
+        <ChildProbe />
+      </ConversationRuntimeContext.Provider>,
+    );
+    expect(view.getByRole("status").textContent).toBe("Review:active");
+    expect(listeners.size).toBe(1);
+    await act(async () => {
+      child = { ...child, statusType: "idle" };
+      for (const listener of [...listeners]) listener();
+    });
+    expect(view.getByRole("status").textContent).toBe("Review:idle");
+    view.unmount();
+    expect(listeners.size).toBe(0);
+  });
+  test.each([false, true])(
+    "loads earlier native messages through the shared history owner without a Codex resume (full=%s)",
+    async (windowFull) => {
+      invokeCalls = [];
+      const conversation = withCanonicalState(
+        buildConversation("thread_active", { statusType: "idle" }),
+      );
+      const emptyChildren: ReturnType<ConversationRuntime["children"]> = [];
+      const attachment = { status: "attached" } as const;
+      const connection = { status: "connected", retries: 0 } as const;
+      const loadOlder = vi.fn(async () => {});
+      const runtime: ConversationRuntime = {
+        kind: "claude",
+        hostId: "local",
+        read: (id) => (id === "thread_active" ? conversation : null),
+        subscribe: () => () => {},
+        attachment: () => attachment,
+        connection: () => connection,
+        role: () => "follower",
+        primaryRequest: () => null,
+        children: () => emptyChildren,
+        retain: () => () => {},
+        resume: vi.fn(async () => {}),
+        markRead: async () => {},
+        setPresented: async () => {},
+      };
+      const view = await renderStage(buildThreadSummary(false), {
+        runtime,
+        provider: {
+          kind: "claude",
+          label: "Claude",
+          selection: "claude:work",
+          options: [],
+          select: () => {},
+          commands: [],
+          error: null,
+          history: { hasOlder: true, loading: false, windowFull, loadOlder },
+        },
+      });
+      const button = await view.findByRole("button", {
+        name: windowFull ? "History window full" : "Load earlier messages",
+      });
+      if (windowFull) expect((button as HTMLButtonElement).disabled).toBe(true);
+      await act(async () => {
+        fireEvent.click(button);
+      });
+      await waitFor(() => {
+        expect(loadOlder).toHaveBeenCalledTimes(windowFull ? 0 : 1);
+      });
+      expect(runtime.resume).not.toHaveBeenCalled();
+      expect(
+        invokeCalls.filter((call) =>
+          ["codex:thread:history-hydration:prepare", "codex:thread:resume:prepare"].includes(
+            call.channel,
+          ),
+        ),
+      ).toEqual([]);
+    },
+  );
   test("follows the conversation while its view is retained and releases it on unmount", async () => {
     installAsyncRequestAnimationFrame();
     invokeCalls = [];

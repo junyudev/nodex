@@ -37,6 +37,25 @@ async function openPermissionMenu(view: ReturnType<typeof renderPermissionDropdo
 }
 
 describe("permission mode dropdown", () => {
+  test("offers the native permission policies without Codex configuration choices", async () => {
+    const onSelect = vi.fn(async () => {});
+    const view = renderPermissionDropdown({
+      nativePermissions: true,
+      availableModes: ["auto", "guardian-approvals", "full-access"],
+      confirmFullAccess: false,
+      onSelect,
+    });
+    await openPermissionMenu(view);
+    expect(view.queryByRole("menuitem", { name: /Custom/u })).toBeNull();
+    const fullAccess = view.getByRole("menuitem", {
+      name: /Full access.*Skip tool permission prompts/u,
+    });
+    expect(fullAccess.getAttribute("aria-disabled")).not.toBe("true");
+    await act(async () => {
+      fireEvent.click(fullAccess);
+    });
+    expect(onSelect).toHaveBeenCalledWith("full-access");
+  });
   test("uses the compact Nodex permission menu copy", async () => {
     const view = renderPermissionDropdown({ selectedMode: "guardian-approvals" });
 

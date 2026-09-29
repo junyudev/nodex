@@ -39,6 +39,13 @@ import { live as acpBackendSessionManagerLive } from "../agent-backend/acp/AcpBa
 import { live as acpAgentLaunchProbeLive } from "../platform/node/AcpAgentLaunchProbe";
 import { live as acpSessionTransportLive } from "../platform/node/AcpSessionTransport";
 import { live as workspaceDependencyLive } from "../host-runtime/WorkspaceDependencyRuntime";
+import { bindingLayer as nativeConversationBindingLive } from "../app-tools/NativeConversationExtension";
+import { layer as nativeAppToolsLive } from "../app-tools/NativeAppToolSession";
+import { layer as callbackRuntimeLive } from "./ScopedCallbackRuntime";
+import { layer as nativeTurnAuthorityLive } from "../agent-backend/NativeTurnAuthority";
+import { layer as claudeTextGenerationLive } from "../agent-backend/ClaudeTextGeneration";
+import { layer as nativePromptImagesLive } from "../agent-backend/NativePromptImages";
+import { layer as nativeAutomationWorkspaceLive } from "../automation-application/NativeAutomationWorkspace";
 
 const workspaceDependencies = Layer.unwrap(
   Effect.gen(function* () {
@@ -69,7 +76,7 @@ const automationExecution = Layer.unwrap(
       runtimeStateHome: codex.runtimeStateHome,
     });
   }),
-);
+).pipe(Layer.provideMerge(nativeConversationBindingLive));
 const backgroundProcesses = Layer.effect(
   CodexBackgroundProcesses,
   makeCodexBackgroundProcesses,
@@ -122,6 +129,15 @@ const coreEvents = coreEventHubLive({}).pipe(Layer.provideMerge(projectionDelive
 const reminders = reminderSchedulerLive({}).pipe(Layer.provideMerge(coreEvents));
 const storeSchedulers = storeAdministrationSchedulerLive({}).pipe(Layer.provideMerge(reminders));
 const agentBackends = agentBackendApplicationLive.pipe(
+  Layer.provideMerge(
+    Layer.mergeAll(
+      nativeAppToolsLive.pipe(Layer.provideMerge(callbackRuntimeLive)),
+      nativeTurnAuthorityLive,
+      claudeTextGenerationLive.pipe(Layer.provideMerge(claudeSdkLive)),
+      nativePromptImagesLive,
+      nativeAutomationWorkspaceLive,
+    ),
+  ),
   Layer.provideMerge(Layer.merge(agentBackendRegistryLive, agentSessions)),
   Layer.provideMerge(storeSchedulers),
 );

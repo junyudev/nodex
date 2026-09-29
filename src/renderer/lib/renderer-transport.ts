@@ -10,6 +10,7 @@ import type { ResourceRevocationMessage } from "../../shared/resource-revocation
 import type { ContentAccessIdentity } from "../../shared/content-access-context";
 
 export interface RendererTransport {
+  subscribeClaudeAgentSettingsChanges: (callback: () => void) => () => void;
   sendGitWorkerMessage: (
     message: import("../../shared/git-worker-protocol").GitWorkerMessageFromView,
   ) => Promise<void>;

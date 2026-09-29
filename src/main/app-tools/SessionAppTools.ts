@@ -1,3 +1,4 @@
+import { captureAppToolAuthority } from "./AppToolCaller";
 import * as Effect from "effect/Effect";
 import { sessionObservationSchemas } from "../../shared/nodex-app-tools/session-observation-schemas";
 import { CodexTurnAuthority } from "../codex-application/CodexTurnAuthority";
@@ -17,9 +18,7 @@ export const make = Effect.gen(function* () {
   const waiter = yield* SessionWaiter;
   return Effect.fn("SessionAppTools.execute")(function* (input: AppToolInvocation) {
     if (!input.caller.isActive()) return toolFailure("call_withdrawn");
-    const authority = yield* turns
-      .capture(input.caller.threadId, input.caller.turnId)
-      .pipe(Effect.catch(() => Effect.succeed(null)));
+    const authority = yield* captureAppToolAuthority(input.caller, turns);
     if (!authority) return toolFailure("authority_unavailable");
     if (!input.caller.isActive()) return toolFailure("call_withdrawn");
     if (input.name === "wait_sessions") {

@@ -42,6 +42,9 @@ type CoreThreadBackendSession = Extract<
   ProjectWorkspaceReadSnapshot["value"],
   { kind: "thread_backend_session" }
 >["session"];
+export type DesktopProjectWorkspaceNativeAgentState = NonNullable<
+  NonNullable<CoreThreadBackendSession>["native_state"]
+>;
 type CoreBackgroundProcess = Extract<
   ProjectWorkspaceReadSnapshot["value"],
   { kind: "background_process_window" }
@@ -279,6 +282,7 @@ export interface DesktopProjectWorkspaceThreadBackendSession {
   readonly backendBinding: Exclude<AgentBackendBinding, { readonly kind: "codex" }>;
   readonly backendSessionId: string;
   readonly updatedAt: number;
+  readonly nativeState: DesktopProjectWorkspaceNativeAgentState | null;
 }
 
 export const projectWorkspaceThreadBackendSessionFromCore = (
@@ -293,6 +297,7 @@ export const projectWorkspaceThreadBackendSessionFromCore = (
     backendBinding,
     backendSessionId: session.backend_session_id,
     updatedAt: session.updated_at,
+    nativeState: session.native_state ?? null,
   };
 };
 
@@ -305,11 +310,17 @@ export const projectWorkspaceBindThreadBackendSessionIntent = (input: {
   readonly threadId: string;
   readonly backendBinding: Exclude<AgentBackendBinding, { readonly kind: "codex" }>;
   readonly backendSessionId: string;
+  readonly expectedBackendSessionId?: string;
+  readonly nativeState?: DesktopProjectWorkspaceNativeAgentState;
 }) => ({
   kind: "bind_thread_backend_session" as const,
   thread_id: input.threadId,
   backend_binding: projectAgentBackendBindingToCore(input.backendBinding),
   backend_session_id: input.backendSessionId,
+  ...(input.expectedBackendSessionId
+    ? { expected_backend_session_id: input.expectedBackendSessionId }
+    : {}),
+  ...(input.nativeState ? { native_state: input.nativeState } : {}),
 });
 
 export const projectWorkspaceClearThreadBackendSessionIntent = (input: {

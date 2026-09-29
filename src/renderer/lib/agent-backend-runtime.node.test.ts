@@ -37,6 +37,46 @@ const presentation: AgentBackendSessionPresentation = {
 
 afterEach(() => vi.unstubAllGlobals());
 
+it("cancels the exact discovery request and rejects locally even while Main finishes cleanup", async () => {
+  const controller = new AbortController();
+  const invoke = vi.fn((channel: string) =>
+    channel === "agent-backend:claude:discover"
+      ? new Promise(() => {})
+      : Promise.resolve(undefined),
+  );
+  vi.stubGlobal("window", { api: { invoke, on: vi.fn() } });
+  const pending = agentBackendRuntime.claudeDiscovery(
+    { instanceConfigId: "work", projectId: "project" },
+    controller.signal,
+  );
+  const rejection = expect(pending).rejects.toMatchObject({ name: "AbortError" });
+  const request = invoke.mock.calls[0] as unknown as [string, { requestId: string }];
+  expect(request[0]).toBe("agent-backend:claude:discover");
+  controller.abort();
+  await rejection;
+  expect(invoke).toHaveBeenLastCalledWith("agent-backend:claude:cancel-discovery", {
+    requestId: request[1].requestId,
+  });
+  const alreadyAborted = agentBackendRuntime.claudeDiscovery(
+    { instanceConfigId: "work", projectId: null },
+    controller.signal,
+  );
+  await expect(alreadyAborted).rejects.toMatchObject({ name: "AbortError" });
+  expect(invoke).toHaveBeenCalledTimes(2);
+});
+
+it("completed discovery unregisters its cancellation consumer", async () => {
+  const controller = new AbortController();
+  const invoke = vi.fn(async () => ({ models: [] }));
+  vi.stubGlobal("window", { api: { invoke, on: vi.fn() } });
+  await agentBackendRuntime.claudeDiscovery(
+    { instanceConfigId: "work", projectId: null },
+    controller.signal,
+  );
+  controller.abort();
+  expect(invoke).toHaveBeenCalledOnce();
+});
+
 it("routes typed lifecycle commands through the named ACP boundary", async () => {
   const invoke = vi.fn(async (channel: string) => {
     if (channel === "agent-backend:session:open") return presentation;

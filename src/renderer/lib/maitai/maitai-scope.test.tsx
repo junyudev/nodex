@@ -4,6 +4,7 @@ import { describe, expect, test } from "vite-plus/test";
 import {
   MaitaiProvider,
   ScopeProvider,
+  ScopeContextBridge,
   appScope,
   createMaitaiStore,
   defineScope,
@@ -64,6 +65,91 @@ function ThreadProbe({ onHandle }: { onHandle(handle: ScopeHandle): void }) {
 }
 
 describe("Maitai scoped lifecycle", () => {
+  test("an overlay borrows one retained owner, pins it across route changes, and releases on close", async () => {
+    const store = createMaitaiStore();
+    const scope = defineScope({
+      debugLabel: "OverlayOwner",
+      parent: appScope,
+      retain: { max: 1 },
+      getKey: (descriptor: { key: string }) => descriptor.key,
+    });
+    const state = scopedAtom(scope, 0, { debugLabel: "overlay-owner-state" });
+    let owner: ScopeHandle | null = null;
+    function Capture() {
+      const handle = useScopeHandle(scope);
+      useLayoutEffect(() => {
+        owner ??= handle;
+      }, [handle]);
+      return null;
+    }
+    function Detail() {
+      return <output aria-label="Borrowed state">{useScopedAtomValue(state)}</output>;
+    }
+    const tree = (key: string, bridge: boolean) => (
+      <StrictMode>
+        <MaitaiProvider store={store}>
+          <ScopeProvider scope={scope} descriptor={{ key }}>
+            <Capture />
+          </ScopeProvider>
+          {bridge && owner ? (
+            <ScopeContextBridge handle={owner}>
+              <Detail />
+            </ScopeContextBridge>
+          ) : null}
+        </MaitaiProvider>
+      </StrictMode>
+    );
+    const view = render(tree("parent", false));
+    const parent = owner as ScopeHandle | null;
+    if (!parent) throw new Error("Expected captured owner");
+    await act(async () => {
+      parent.set(state, 7);
+    });
+    view.rerender(tree("parent", true));
+    expect(view.getByLabelText("Borrowed state").textContent).toBe("7");
+    view.rerender(tree("other", true));
+    expect(view.getByLabelText("Borrowed state").textContent).toBe("7");
+    expect(parent.get(state)).toBe(7);
+    expect(
+      getMaitaiDebugSnapshot(store).find((entry) => entry.path === parent.path)?.eligible,
+    ).toBe(false);
+    view.rerender(tree("other", false));
+    expect(() => parent.get(state)).toThrow(/disposed/i);
+    expect(store.cleanupErrors).toEqual([]);
+    view.unmount();
+  });
+
+  test("an overlay cannot borrow a scope from another renderer store", () => {
+    const firstStore = createMaitaiStore();
+    let owner: ScopeHandle | null = null;
+    function Capture() {
+      const handle = useScopeHandle(threadScope);
+      useLayoutEffect(() => {
+        owner = handle;
+      }, [handle]);
+      return null;
+    }
+    const first = render(
+      <MaitaiProvider store={firstStore}>
+        <ScopeProvider scope={threadScope} descriptor={{ stableKey: "parent", label: "Parent" }}>
+          <Capture />
+        </ScopeProvider>
+      </MaitaiProvider>,
+    );
+    const parent = owner as ScopeHandle | null;
+    if (!parent) throw new Error("Expected captured owner");
+    expect(() =>
+      render(
+        <MaitaiProvider store={createMaitaiStore()}>
+          <ScopeContextBridge handle={parent}>
+            <span>Other store</span>
+          </ScopeContextBridge>
+        </MaitaiProvider>,
+      ),
+    ).toThrow("A scope context must belong to the current Maitai store");
+    first.unmount();
+  });
+
   test("initializes lazy signal values once per renderer store", () => {
     let initializationCount = 0;
     const initializedAtom = scopedAtomWithInitializer(

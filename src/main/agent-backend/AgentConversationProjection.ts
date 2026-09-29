@@ -5,6 +5,8 @@ import type {
   AgentConversationStatus,
   AgentConversationTurn,
   AgentConversationUpdateDelta,
+  AgentHistoryFact,
+  AgentSessionMetadata,
 } from "../../shared/agent-conversation";
 export const AGENT_CONVERSATION_MAX_TURNS = 64;
 export const AGENT_CONVERSATION_MAX_UPDATES_PER_TURN = 128;
@@ -30,7 +32,14 @@ const mergeUpdate = (
   incoming: AgentCanonicalSessionUpdate,
 ): AgentCanonicalSessionUpdate => {
   if (previous.kind === "message" && incoming.kind === "message") {
-    return { ...incoming, text: boundedString(`${previous.text}${incoming.text}`) };
+    const text = `${previous.text}${incoming.text}`;
+    return {
+      ...incoming,
+      ...(incoming.truncated || previous.truncated || text.length > MAX_TEXT_CHARACTERS
+        ? { truncated: true }
+        : {}),
+      text: boundedString(text),
+    };
   }
   if (previous.kind === "tool-call" && incoming.kind === "tool-call") {
     return {
@@ -84,11 +93,19 @@ const boundCanonicalUpdate = (
   maximumBytes: number,
 ): AgentCanonicalSessionUpdate => {
   if (encodedBytes(update) <= maximumBytes) return update;
+  update = { ...update, truncated: true };
   switch (update.kind) {
     case "message":
       return truncateStringToFit(update.text, maximumBytes, (text) => ({ ...update, text }));
     case "tool-call": {
       let candidate = update;
+      if (candidate.output !== undefined) candidate = { ...candidate, output: undefined };
+      if (candidate.resources?.length) candidate = { ...candidate, resources: [] };
+      if (candidate.changes?.length)
+        candidate = {
+          ...candidate,
+          changes: candidate.changes.map((change) => ({ ...change, diff: undefined })),
+        };
       while (candidate.locations.length > 0 && encodedBytes(candidate) > maximumBytes) {
         candidate = { ...candidate, locations: candidate.locations.slice(0, -1) };
       }
@@ -140,7 +157,14 @@ const boundCanonicalUpdate = (
     case "mode":
     case "session-info":
     case "usage":
+    case "rate-limit":
       return update;
+    case "diagnostic":
+      return truncateStringToFit(update.message, maximumBytes, (message) => ({
+        ...update,
+        message,
+        details: undefined,
+      }));
   }
 };
 
@@ -188,8 +212,11 @@ const boundTurn = (turn: AgentConversationTurn): AgentConversationTurn => {
 
 export const boundAgentConversationTurns = (
   turns: readonly AgentConversationTurn[],
+  maximumTurns = AGENT_CONVERSATION_MAX_TURNS,
 ): readonly AgentConversationTurn[] => {
-  let bounded = turns.slice(-AGENT_CONVERSATION_MAX_TURNS).map(boundTurn);
+  let bounded = turns
+    .slice(-Math.min(512, Math.max(AGENT_CONVERSATION_MAX_TURNS, maximumTurns)))
+    .map(boundTurn);
   while (bounded.length > 1 && encodedBytes(bounded) > AGENT_CONVERSATION_MAX_SESSION_BYTES) {
     bounded = bounded.slice(1);
   }
@@ -232,16 +259,21 @@ export const beginAgentConversationTurn = (
     status: "running",
     error: null,
     revision: snapshot.revision + 1,
-    turns: boundAgentConversationTurns([
-      ...snapshot.turns.filter(({ sequence: candidate }) => candidate !== sequence),
-      {
-        sequence,
-        clientUserMessageId,
-        promptText: boundedString(prompt),
-        updates: [],
-        stopReason: null,
-      },
-    ]),
+    turns: boundAgentConversationTurns(
+      [
+        ...snapshot.turns.filter(({ sequence: candidate }) => candidate !== sequence),
+        {
+          sequence,
+          clientUserMessageId,
+          promptText: boundedString(prompt),
+          updates: [],
+          stopReason: null,
+          status: "running",
+          error: null,
+        },
+      ],
+      snapshot.history?.windowSize,
+    ),
   };
 };
 
@@ -264,6 +296,16 @@ export const recoverAgentConversationTurnFailure = (
         ...snapshot,
         status,
         error: boundedString(error instanceof Error ? error.message : String(error), 8_192),
+        turns: snapshot.turns.map((turn, index) =>
+          index === snapshot.turns.length - 1
+            ? {
+                ...turn,
+                status: "failed",
+                stopReason: "error",
+                error: boundedString(error instanceof Error ? error.message : String(error), 8_192),
+              }
+            : turn,
+        ),
         revision: snapshot.revision + 1,
       };
 
@@ -281,25 +323,143 @@ export const completeAgentConversationAuthentication = (
         revision: snapshot.revision + 1,
       };
 
+/** A dead native process cannot keep any task or tool running in the live registry. */
+const settleAgentRuntime = (
+  snapshot: AgentConversationSnapshot,
+  status: "failed" | "cancelled",
+  error: string | null,
+): AgentConversationSnapshot => {
+  const settleTool = (update: AgentCanonicalSessionUpdate): AgentCanonicalSessionUpdate =>
+    update.kind === "tool-call" && (update.status === "pending" || update.status === "in_progress")
+      ? { ...update, status, detail: error ?? update.detail }
+      : update;
+  return {
+    ...snapshot,
+    liveBackgroundTaskIds: [],
+    tasks: snapshot.tasks?.map((task) =>
+      ["pending", "running", "paused"].includes(task.status)
+        ? { ...task, status, error: error ?? task.error }
+        : task,
+    ),
+    toolCalls: snapshot.toolCalls?.map((call) => ({
+      ...call,
+      update: settleTool(call.update) as Extract<
+        AgentCanonicalSessionUpdate,
+        { kind: "tool-call" }
+      >,
+    })),
+    turns: snapshot.turns.map((turn) => ({
+      ...turn,
+      ...(turn.status === "running"
+        ? { status, error, stopReason: status === "failed" ? "error" : "cancelled" }
+        : {}),
+      updates: turn.updates.map(settleTool),
+    })),
+  };
+};
+
 export const failAgentConversation = (
   snapshot: AgentConversationSnapshot,
   error: unknown,
-): AgentConversationSnapshot =>
-  snapshot.status === "closed"
-    ? snapshot
-    : {
-        ...snapshot,
-        status: "failed",
-        error: boundedString(error instanceof Error ? error.message : String(error), 8_192),
-        revision: snapshot.revision + 1,
-      };
+): AgentConversationSnapshot => {
+  if (snapshot.status === "closed") return snapshot;
+  const message = boundedString(error instanceof Error ? error.message : String(error), 8_192);
+  return {
+    ...settleAgentRuntime(snapshot, "failed", message),
+    status: "failed",
+    error: message,
+    revision: snapshot.revision + 1,
+  };
+};
 
 export const closeAgentConversation = (
   snapshot: AgentConversationSnapshot,
 ): AgentConversationSnapshot =>
   snapshot.status === "closed"
     ? snapshot
-    : { ...snapshot, status: "closed", revision: snapshot.revision + 1 };
+    : {
+        ...settleAgentRuntime(snapshot, "cancelled", null),
+        status: "closed",
+        revision: snapshot.revision + 1,
+      };
+
+export const updateAgentSessionMetadata = (
+  snapshot: AgentConversationSnapshot,
+  metadata: Omit<AgentSessionMetadata, "revision">,
+): AgentConversationSnapshot => {
+  const { revision: _revision, ...previous } = snapshot.metadata ?? { revision: 0 };
+  if (JSON.stringify(previous) === JSON.stringify(metadata)) return snapshot;
+  return {
+    ...snapshot,
+    metadata: { ...metadata, revision: (snapshot.metadata?.revision ?? 0) + 1 },
+    revision: snapshot.revision + 1,
+  };
+};
+
+export interface AgentConversationTurnOutcome {
+  readonly status: "completed" | "failed" | "cancelled";
+  readonly stopReason: string;
+  readonly error: string | null;
+  readonly authenticationRequired?: boolean;
+}
+
+/** A turn outcome survives later background events; only foreground tools are settled. */
+export const completeAgentConversationTurn = (
+  snapshot: AgentConversationSnapshot,
+  sequence: number,
+  outcome: AgentConversationTurnOutcome,
+): AgentConversationSnapshot => {
+  if (snapshot.status === "closed") return snapshot;
+  const liveTaskToolIds = new Set(
+    (snapshot.tasks ?? [])
+      .filter(
+        (task) =>
+          task.status === "pending" || task.status === "running" || task.status === "paused",
+      )
+      .map((task) => task.toolUseId),
+  );
+  const turns = snapshot.turns.map((turn) => {
+    if (turn.sequence !== sequence) return turn;
+    return {
+      ...turn,
+      status: outcome.status,
+      stopReason: outcome.stopReason,
+      error: outcome.error,
+      updates: turn.updates.map((value): AgentCanonicalSessionUpdate => {
+        if (
+          value.kind !== "tool-call" ||
+          (value.status !== "in_progress" && value.status !== "pending") ||
+          liveTaskToolIds.has(value.toolCallId)
+        )
+          return value;
+        if (value.actor?.parentToolUseId || value.actor?.taskId) return value;
+        return {
+          ...value,
+          status:
+            outcome.status === "completed"
+              ? "completed"
+              : outcome.status === "cancelled"
+                ? "cancelled"
+                : "failed",
+        };
+      }),
+    };
+  });
+  return {
+    ...snapshot,
+    turns,
+    requests: [],
+    toolCalls: snapshot.toolCalls?.map((entry) => {
+      const projected = turns
+        .find((turn) => turn.sequence === entry.turnSequence)
+        ?.updates.find((value) => value.key === entry.update.key);
+      return projected?.kind === "tool-call" ? { ...entry, update: projected } : entry;
+    }),
+    status: outcome.authenticationRequired ? "authentication-required" : "idle",
+    error: outcome.error,
+    revision: snapshot.revision + 1,
+  };
+};
 
 export const reduceAgentConversationEvent = (
   snapshot: AgentConversationSnapshot,
@@ -321,7 +481,16 @@ export const reduceAgentConversationEvent = (
           ...selected,
           updates: reduceUpdate(selected.updates, event.update, event.append ?? false),
         }
-      : { ...selected, stopReason: event.stopReason };
+      : {
+          ...selected,
+          stopReason: event.stopReason,
+          status:
+            event.stopReason === "error"
+              ? ("failed" as const)
+              : event.stopReason === "cancelled" || event.stopReason === "interrupted"
+                ? ("cancelled" as const)
+                : ("failed" as const),
+        };
   const turns =
     existingIndex >= 0
       ? snapshot.turns.map((entry, index) => (index === existingIndex ? turn : entry))
@@ -329,8 +498,8 @@ export const reduceAgentConversationEvent = (
   return {
     ...snapshot,
     status: event.kind === "turn_stopped" ? "idle" : snapshot.status,
-    error: null,
-    turns: boundAgentConversationTurns(turns),
+    error: snapshot.error,
+    turns: boundAgentConversationTurns(turns, snapshot.history?.windowSize),
     revision: snapshot.revision + 1,
   };
 };
@@ -345,13 +514,22 @@ export const diffAgentConversationSnapshots = (
   previous: AgentConversationSnapshot,
   next: AgentConversationSnapshot,
 ): AgentConversationDelta | null => {
-  if (
-    previous.threadId !== next.threadId ||
-    previous.sessionId !== next.sessionId ||
-    next.revision !== previous.revision + 1
-  ) {
-    return null;
-  }
+  if (previous.threadId !== next.threadId || previous.backend !== next.backend) return null;
+  const resync = (): AgentConversationDelta => ({
+    resync: true,
+    backend: next.backend,
+    threadId: next.threadId,
+    sessionId: next.sessionId,
+    baseRevision: previous.revision,
+    revision: next.revision,
+    status: next.status,
+    error: null,
+    removedTurnSequences: [],
+    turns: [],
+  });
+  if (previous.sessionId !== next.sessionId || next.revision > previous.revision + 1)
+    return resync();
+  if (next.revision !== previous.revision + 1) return null;
   const removedTurnSequences = previous.turns
     .filter(({ sequence }) => !next.turns.some((candidate) => candidate.sequence === sequence))
     .map(({ sequence }) => sequence);
@@ -368,6 +546,8 @@ export const diffAgentConversationSnapshots = (
         update.kind === "message" &&
         previousUpdate.role === update.role &&
         previousUpdate.messageId === update.messageId &&
+        JSON.stringify({ ...previousUpdate, text: null }) ===
+          JSON.stringify({ ...update, text: null }) &&
         update.text.startsWith(previousUpdate.text)
       ) {
         return [
@@ -384,14 +564,34 @@ export const diffAgentConversationSnapshots = (
       existing === undefined ||
       existing.clientUserMessageId !== turn.clientUserMessageId ||
       existing.promptText !== turn.promptText ||
+      JSON.stringify(existing.promptImages) !== JSON.stringify(turn.promptImages) ||
       existing.stopReason !== turn.stopReason;
-    if (!scalarChanged && removedUpdateKeys.length === 0 && updates.length === 0) return [];
+    const outcomeChanged =
+      existing?.status !== turn.status ||
+      existing?.error !== turn.error ||
+      existing?.createdAt !== turn.createdAt ||
+      existing?.completedAt !== turn.completedAt;
+    const identityChanged = existing?.nativeUserMessageId !== turn.nativeUserMessageId;
+    if (
+      !scalarChanged &&
+      !outcomeChanged &&
+      !identityChanged &&
+      removedUpdateKeys.length === 0 &&
+      updates.length === 0
+    )
+      return [];
     return [
       {
         sequence: turn.sequence,
         clientUserMessageId: turn.clientUserMessageId,
+        nativeUserMessageId: turn.nativeUserMessageId,
         promptText: turn.promptText,
+        promptImages: turn.promptImages,
         stopReason: turn.stopReason,
+        status: turn.status,
+        error: turn.error,
+        createdAt: turn.createdAt,
+        completedAt: turn.completedAt,
         removedUpdateKeys,
         updates,
       },
@@ -405,12 +605,180 @@ export const diffAgentConversationSnapshots = (
     revision: next.revision,
     status: next.status,
     error: next.error,
-    ...(next.requests === undefined ? {} : { requests: next.requests }),
+    ...(next.requests === undefined ||
+    JSON.stringify(previous.requests) === JSON.stringify(next.requests)
+      ? {}
+      : { requests: next.requests }),
+    ...(next.metadata === undefined ||
+    JSON.stringify(previous.metadata) === JSON.stringify(next.metadata)
+      ? {}
+      : { metadata: next.metadata }),
+    ...(next.tasks === undefined || JSON.stringify(previous.tasks) === JSON.stringify(next.tasks)
+      ? {}
+      : { tasks: next.tasks }),
+    ...(next.liveBackgroundTaskIds === undefined ||
+    JSON.stringify(previous.liveBackgroundTaskIds) === JSON.stringify(next.liveBackgroundTaskIds)
+      ? {}
+      : { liveBackgroundTaskIds: next.liveBackgroundTaskIds }),
+    ...(next.toolCalls === undefined ||
+    JSON.stringify(previous.toolCalls) === JSON.stringify(next.toolCalls)
+      ? {}
+      : { toolCalls: next.toolCalls }),
+    ...(next.history === undefined ||
+    JSON.stringify(previous.history) === JSON.stringify(next.history)
+      ? {}
+      : { history: next.history }),
     removedTurnSequences,
     turns,
   };
   if (encodedBytes(delta) > AGENT_CONVERSATION_MAX_DELTA_BYTES) {
-    throw new RangeError("ACP conversation delta exceeded its transport byte budget");
+    return resync();
   }
   return delta;
 };
+
+/** Extracts observations for an exact native-history join, without retaining content bodies. */
+export const agentHistoryFactFromTurn = (turn: AgentConversationTurn): AgentHistoryFact | null => {
+  if (!turn.clientUserMessageId) return null;
+  const usage = turn.updates.findLast((update) => update.kind === "usage");
+  const compactions = turn.updates.flatMap((update) =>
+    update.kind === "compaction" && ["completed", "failed", "cancelled"].includes(update.status)
+      ? [
+          {
+            compactionId: update.compactionId,
+            status: update.status,
+            summary: update.summary,
+            error: update.error,
+            trigger: update.trigger,
+            preTokens: update.preTokens,
+            postTokens: update.postTokens,
+            durationMs: update.durationMs,
+          },
+        ]
+      : [],
+  );
+  const artifacts = new Map<string, NonNullable<AgentHistoryFact["artifacts"]>[number]>();
+  for (const update of turn.updates) {
+    if (
+      update.kind !== "diagnostic" ||
+      !(update.code.startsWith("files:") || update.code === "restored-files")
+    )
+      continue;
+    const values = [
+      update.details?.files,
+      update.details?.failed,
+      update.details?.artifacts,
+    ].flatMap((items) => (Array.isArray(items) ? items : []));
+    for (const value of values) {
+      if (!value || typeof value !== "object" || typeof value.filename !== "string") continue;
+      const fileId =
+        typeof value.fileId === "string"
+          ? value.fileId
+          : typeof value.file_id === "string"
+            ? value.file_id
+            : undefined;
+      artifacts.set(fileId ?? value.filename, {
+        filename: value.filename,
+        ...(fileId ? { fileId } : {}),
+        ...(typeof value.error === "string" ? { error: value.error } : {}),
+      });
+    }
+  }
+  return {
+    clientUserMessageId: turn.clientUserMessageId,
+    nativeUserMessageId: turn.nativeUserMessageId,
+    stopReason: turn.stopReason,
+    error: turn.error,
+    createdAt: turn.createdAt,
+    completedAt: turn.completedAt,
+    ...(usage
+      ? {
+          usage: {
+            used: usage.used,
+            size: usage.size,
+            cost: usage.cost,
+            tokens: usage.tokens,
+            cumulativeTokens: usage.cumulativeTokens,
+            model: usage.model,
+            contextEstimated: usage.contextEstimated,
+          },
+        }
+      : {}),
+    ...(compactions.length ? { compactions } : {}),
+    ...(artifacts.size ? { artifacts: [...artifacts.values()] } : {}),
+  };
+};
+
+/** Rejoins durable turn outcomes to Claude's native history by UUID, never transcript position. */
+export const applyAgentHistoryFacts = (
+  snapshot: AgentConversationSnapshot,
+  facts: readonly AgentHistoryFact[],
+): AgentConversationSnapshot => ({
+  ...snapshot,
+  turns: snapshot.turns.map((turn) => {
+    const fact = facts.find(
+      (candidate) =>
+        (candidate.nativeUserMessageId === turn.nativeUserMessageId &&
+          turn.nativeUserMessageId !== undefined) ||
+        (candidate.clientUserMessageId === turn.clientUserMessageId &&
+          turn.clientUserMessageId !== null),
+    );
+    if (!fact) return turn;
+    const { usage, compactions, artifacts, ...outcome } = fact;
+    let updates = [...turn.updates];
+    if (usage)
+      updates = [
+        ...updates.filter((update) => update.kind !== "usage"),
+        { ...usage, kind: "usage", key: "usage" },
+      ];
+    for (const compaction of compactions ?? []) {
+      const key = `compaction:${compaction.compactionId}`;
+      updates = [
+        ...updates.filter(
+          (update) =>
+            update.kind !== "compaction" || update.compactionId !== compaction.compactionId,
+        ),
+        {
+          ...compaction,
+          kind: "compaction",
+          key,
+          summary: compaction.summary ?? "",
+          error: compaction.error ?? null,
+        },
+      ];
+    }
+    if (artifacts?.length) {
+      const key = "diagnostic:restored-files";
+      updates = [
+        ...updates.filter((update) => update.key !== key),
+        {
+          kind: "diagnostic",
+          key,
+          code: "restored-files",
+          severity: artifacts.some((artifact) => artifact.error) ? "error" : "info",
+          message: artifacts
+            .map((artifact) =>
+              artifact.error
+                ? `${artifact.filename}: ${artifact.error}`
+                : `Saved ${artifact.filename}`,
+            )
+            .join("\n"),
+          details: { artifacts },
+        },
+      ];
+    }
+    return {
+      ...turn,
+      ...outcome,
+      updates,
+      status:
+        fact.error || fact.stopReason === "error"
+          ? "failed"
+          : fact.stopReason === "cancelled" || fact.stopReason === "interrupted"
+            ? "cancelled"
+            : fact.stopReason
+              ? "completed"
+              : undefined,
+    };
+  }),
+});

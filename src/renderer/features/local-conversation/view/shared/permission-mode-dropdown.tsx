@@ -1,4 +1,5 @@
-import { useRef } from "react";
+import { useRef, useState } from "react";
+import { toast } from "@/components/ui/toast";
 import type { CodexPermissionMode } from "../../../../lib/types";
 import {
   PermissionDefaultIcon,
@@ -146,6 +147,7 @@ export function PermissionModeDropdown({
   allowInherit = false,
   confirmFullAccess = true,
   fullAccessDisabledReason,
+  nativePermissions = false,
   onInherit,
   onSelect,
 }: {
@@ -158,11 +160,24 @@ export function PermissionModeDropdown({
   allowInherit?: boolean;
   confirmFullAccess?: boolean;
   fullAccessDisabledReason?: string;
+  nativePermissions?: boolean;
   onInherit?: () => void;
-  onSelect: (mode: CodexPermissionMode) => void;
+  onSelect: (mode: CodexPermissionMode) => void | Promise<void>;
 }) {
   const appHandle = useScopeHandle(appScope);
   const pendingFullAccessConfirmationRef = useRef(false);
+  const [pending, setPending] = useState(false);
+  const selectMode = async (mode: CodexPermissionMode) => {
+    if (pending) return;
+    setPending(true);
+    try {
+      await onSelect(mode);
+    } catch (error) {
+      toast.danger(error instanceof Error ? error.message : "Could not change permissions");
+    } finally {
+      setPending(false);
+    }
+  };
   const allowedModes = new Set(availableModes ?? ["auto", "full-access", "custom"]);
   const currentModeAccentClass = resolvePermissionModeAccentClass(selectedMode);
   const triggerLabel = formatPermissionModeLabel(selectedMode);
@@ -237,7 +252,9 @@ export function PermissionModeDropdown({
         if (!pendingFullAccessConfirmationRef.current) return true;
         pendingFullAccessConfirmationRef.current = false;
         openModal(appHandle, FullAccessPermissionConfirmationDialog, {
-          onConfirm: () => onSelect("full-access"),
+          onConfirm: () => {
+            void selectMode("full-access");
+          },
         });
         return false;
       }}
@@ -285,13 +302,21 @@ export function PermissionModeDropdown({
         const fullAccessDisabled =
           item.value === "full-access" && fullAccessDisabledReason !== undefined;
         const disabled =
-          autoReviewDisabled || customDisabled || presetDisabled || fullAccessDisabled;
+          pending || autoReviewDisabled || customDisabled || presetDisabled || fullAccessDisabled;
 
         return (
           <PermissionModeOption
             key={item.value}
             item={item}
-            description={item.description}
+            description={
+              nativePermissions
+                ? item.value === "auto"
+                  ? "Ask before actions requiring approval"
+                  : item.value === "guardian-approvals"
+                    ? "Approve eligible tool requests automatically"
+                    : "Skip tool permission prompts"
+                : item.description
+            }
             disabled={disabled}
             disabledTooltip={item.value === "full-access" ? fullAccessDisabledReason : undefined}
             selected={item.value === selectedMode}
@@ -303,7 +328,7 @@ export function PermissionModeDropdown({
                 pendingFullAccessConfirmationRef.current = true;
                 return true;
               }
-              onSelect(item.value);
+              void selectMode(item.value);
               return true;
             }}
           />

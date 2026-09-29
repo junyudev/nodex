@@ -31,10 +31,14 @@ import { make as makeWorkbenchTools } from "./WorkbenchAppTools";
 import { workbenchObservationSchemas } from "../../shared/nodex-app-tools/workbench-observation-schemas";
 import { workbenchControlSchemas } from "../../shared/nodex-app-tools/workbench-control-schemas";
 import { sessionPresentationSchemas } from "../../shared/nodex-app-tools/session-presentation-schemas";
+import { isNativeAppTool, nativeAppToolCatalog } from "./NativeAppToolSession";
+import { captureAppToolAuthority } from "./AppToolCaller";
+import { CodexTurnAuthority } from "../codex-application/CodexTurnAuthority";
 
 export const make = Effect.gen(function* () {
   const workspace = yield* ProjectWorkspace;
   const git = yield* GitWorkerRuntime;
+  const turns = yield* CodexTurnAuthority;
   const contentQueries = yield* makeContentQueries;
   const contentTools = yield* makeContentTools;
   const terminalTools = yield* makeTerminalTools;
@@ -54,6 +58,13 @@ export const make = Effect.gen(function* () {
     input: AppToolInvocation,
   ): Effect.fn.Return<CallToolResult> {
     if (!input.caller.isActive()) return failure("call_withdrawn");
+    if (input.caller.backend === "claudeCode" && !isNativeAppTool(input.name))
+      return failure("tool_unavailable");
+    if (
+      input.caller.backend === "claudeCode" &&
+      !(yield* captureAppToolAuthority(input.caller, turns))
+    )
+      return failure("authority_unavailable");
     if (!appToolCatalog.some((tool) => tool.name === input.name)) return failure("unknown_tool");
     if (input.name === "load_workspace_dependencies") return yield* dependencyTools(input);
     const isContentQuery =
@@ -105,14 +116,27 @@ export const make = Effect.gen(function* () {
     if (input.name === "send_message_to_session") return yield* sessionMessageTools(input);
     if (input.name === "get_app_capabilities")
       return success({
-        backend: "codex",
+        backend: input.caller.backend === "claudeCode" ? "claude" : "codex",
         transport: "native_mcp",
         hostId: input.caller.hostId,
-        tools: appToolCatalog.map((tool) => tool.name),
-        sessionContext: "authorized_workbench_observation",
+        tools: (input.caller.backend === "claudeCode" ? nativeAppToolCatalog : appToolCatalog).map(
+          (tool) => tool.name,
+        ),
+        sessionContext:
+          input.caller.backend === "claudeCode"
+            ? "authorized_session_history"
+            : "authorized_workbench_observation",
         contentAccess: "project_sql",
-        workbenchControl: "revision_fenced_commands",
+        workbenchControl:
+          input.caller.backend === "claudeCode" ? "unavailable" : "revision_fenced_commands",
         publicSharing: "unavailable",
+        pullRequestAttachment: "unavailable",
+        ...(input.caller.backend === "claudeCode"
+          ? {
+              applicationToolLifetime: "foreground_without_background_tasks",
+              backgroundApplicationTools: "unavailable",
+            }
+          : {}),
         cloudTasks: "unavailable",
       });
     if (input.name === "list_projects") {

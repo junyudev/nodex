@@ -146,6 +146,14 @@ component/props descriptors, different components stack, and reopening one
 component replaces its props while preserving its mounted key. One root host
 renders the stack; it is presentation state, not durable data or runtime
 authority.
+
+When an application modal needs its caller's scoped presentation, it borrows
+its existing committed, retained `ScopeHandle` through `ScopeContextBridge`. The bridge checks the
+renderer store and pins the existing scope and retained ancestors until unmount;
+it creates no second provider, identity, descriptor, or writable conversation.
+Native Task details use their parent's presentation scope and read-only task
+observation, so opening or selecting a Task cannot attach or execute a Thread.
+
 Persistent Composer/worktree/summary preferences were removed from the shell and
 now live in `use-workbench-preferences.ts` App atoms with same-window storage
 Adapters. Project/Session/Pages Scene layout, including projectless exact-file

@@ -436,14 +436,20 @@ it.effect("rejects unsupported Automation backends during preparation and execut
       }),
     );
     assert.strictEqual(preparationError.operation, "prepare-definition");
-    assert.match(String(preparationError.cause), /only the Codex Agent Backend/);
+    assert.match(
+      String(preparationError.cause),
+      /cannot execute automations|Native automation runtime is unavailable/,
+    );
     assert.strictEqual(modelReads, 0);
 
     const executionError = yield* Effect.flip(
       execution.executeClaimed({ ...heartbeatDefinition, backendBinding }, heartbeatContext),
     );
     assert.strictEqual(executionError.operation, "execute");
-    assert.match(String(executionError.cause), /only the Codex Agent Backend/);
+    assert.match(
+      String(executionError.cause),
+      /cannot execute automations|Native automation runtime is unavailable/,
+    );
     assert.strictEqual(gatewayReady, 0);
     yield* Scope.close(scope, Exit.void);
   }),

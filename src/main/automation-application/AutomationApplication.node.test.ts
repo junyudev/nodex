@@ -607,7 +607,7 @@ it.effect("rejects unsupported backend bindings before Definition mutations reac
       }),
     );
     assert.strictEqual(createError.operation, "definitions.create");
-    assert.match(String(createError.cause), /only the Codex Agent Backend/);
+    assert.match(String(createError.cause), /native Codex or Claude Agent Backends/);
     assert.strictEqual(reads, 0);
 
     const updateError = yield* Effect.flip(
@@ -621,7 +621,7 @@ it.effect("rejects unsupported backend bindings before Definition mutations reac
       }),
     );
     assert.strictEqual(updateError.operation, "definitions.update");
-    assert.match(String(updateError.cause), /only the Codex Agent Backend/);
+    assert.match(String(updateError.cause), /native Codex or Claude Agent Backends/);
     assert.strictEqual(reads, 1);
     assert.strictEqual(applies, 0);
   }),
@@ -656,7 +656,7 @@ it.effect("rejects unsupported durable Definitions at the projection boundary", 
 
     const projectionError = yield* Effect.flip(application.definitions.list());
     assert.strictEqual(projectionError.operation, "definitions.list");
-    assert.match(String(projectionError.cause), /only the Codex Agent Backend/);
+    assert.match(String(projectionError.cause), /native Codex or Claude Agent Backends/);
   }),
 );
 

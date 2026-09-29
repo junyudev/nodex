@@ -7,7 +7,7 @@ import { toolFailure } from "./app-tool-result";
 import * as Queue from "effect/Queue";
 import * as Schema from "effect/Schema";
 import * as Stream from "effect/Stream";
-import type { CodexAppCallClaim } from "../codex-runtime/codex-app-call-admission";
+import type { AppToolCaller } from "./AppToolCaller";
 
 export class AppToolInvocationUnavailable extends Schema.TaggedError<AppToolInvocationUnavailable>()(
   "AppToolInvocationUnavailable",
@@ -15,7 +15,7 @@ export class AppToolInvocationUnavailable extends Schema.TaggedError<AppToolInvo
 ) {}
 
 export interface AppToolInvocation {
-  readonly caller: CodexAppCallClaim & { readonly hostId: string; readonly generation: number };
+  readonly caller: AppToolCaller;
   readonly name: string;
   readonly arguments: Record<string, unknown>;
 }

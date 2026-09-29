@@ -9004,7 +9004,9 @@ export function useConversationChildMemberships(
   const runtime = useConversationRuntime(threadId);
   return useExternalSelector(
     (listener) => runtime.subscribe(threadId, listener),
-    () => runtime.children(threadId),
+    () => [...runtime.children(threadId)],
+    (left, right) =>
+      left.length === right.length && left.every((entry, index) => entry === right[index]),
   );
 }
 
@@ -9081,10 +9083,17 @@ export function useConversationSubset(
   threadIds: readonly string[],
 ): Record<string, CodexConversationSnapshot> {
   const registry = useCodexAppServerRegistry();
+  const runtime = useConversationRuntimeOverride();
   return useExternalSelector(
     (listener) => {
       if (threadIds.length === 0) {
         return () => {};
+      }
+      if (runtime && runtime.kind !== "codex") {
+        const unsubs = threadIds.map((threadId) => runtime.subscribe(threadId, listener));
+        return () => {
+          for (const unsubscribe of unsubs) unsubscribe();
+        };
       }
 
       const unsubs = threadIds.map((threadId) => {
@@ -9110,8 +9119,12 @@ export function useConversationSubset(
       let hasConversation = false;
       const conversations: Record<string, CodexConversationSnapshot> = {};
       for (const threadId of threadIds) {
-        const manager = registry.getMaybeForConversationId(threadId) ?? registry.getDefault();
-        const conversation = manager.readConversation(threadId);
+        const conversation =
+          runtime && runtime.kind !== "codex"
+            ? runtime.read(threadId)
+            : (
+                registry.getMaybeForConversationId(threadId) ?? registry.getDefault()
+              ).readConversation(threadId);
         if (!conversation) {
           continue;
         }

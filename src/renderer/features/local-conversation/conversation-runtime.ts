@@ -17,7 +17,7 @@ export interface ConversationRuntime {
   readonly connection: () => CodexConnectionState;
   readonly role: (threadId: string | null) => "owner" | "follower" | null;
   readonly primaryRequest: (threadId: string | null) => CodexConversationLiveRequest | null;
-  readonly children: (threadId: string | null) => CodexConversationChildMembership[];
+  readonly children: (threadId: string | null) => readonly CodexConversationChildMembership[];
   readonly retain: (threadId: string, foreground: boolean) => () => void;
   readonly resume: (threadId: string) => Promise<void>;
   readonly markRead: (threadId: string) => Promise<void>;

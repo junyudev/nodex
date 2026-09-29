@@ -271,6 +271,11 @@ const MIGRATION_STEPS: &[MigrationStep] = &[
         to_revision: 172,
         apply: migrate_v171_to_v172,
     },
+    MigrationStep {
+        from_revision: 172,
+        to_revision: 173,
+        apply: migrate_v172_to_v173,
+    },
 ];
 
 fn resolve_migration_path(
@@ -2262,6 +2267,21 @@ fn migrate_v171_to_v172(
         params![context.source_revision, context.target_revision, context.source_schema_fingerprint,
             context.target_schema_fingerprint, context.backup_name, context.completed_at_unix_ms,
             r#"{"native_claude_backend":true}"#],
+    )?;
+    connection.pragma_update(None, "user_version", context.target_revision)?;
+    Ok(())
+}
+
+fn migrate_v172_to_v173(
+    connection: &Connection,
+    context: &MigrationContext,
+) -> Result<(), StoreError> {
+    connection.execute_batch(include_str!("../../schema/migrations/v172_to_v173.sql"))?;
+    connection.execute(
+        "INSERT INTO core_store_migration_history(source_revision,target_revision,source_schema_fingerprint,target_schema_fingerprint,backup_name,completed_at_unix_ms,evidence_json) VALUES (?1,?2,?3,?4,?5,?6,?7)",
+        params![context.source_revision, context.target_revision, context.source_schema_fingerprint,
+            context.target_schema_fingerprint, context.backup_name, context.completed_at_unix_ms,
+            r#"{"native_conversation_preferences_and_turn_facts":true}"#],
     )?;
     connection.pragma_update(None, "user_version", context.target_revision)?;
     Ok(())
@@ -6312,6 +6332,27 @@ mod tests {
         connection.execute("UPDATE codex_threads SET agent_backend_kind='claude',agent_backend_instance_config_id='native-work' WHERE thread_id='codex'", []).expect("select native backend");
         connection.execute("INSERT INTO thread_backend_sessions VALUES ('codex','claude',NULL,'native-work','native-session',2)", []).expect("bind native session");
         assert!(connection.execute("UPDATE thread_backend_sessions SET instance_config_id=NULL WHERE thread_id='codex'", []).is_err());
+        with_schema_rebuild_transaction(&mut connection, |transaction| {
+            migrate_v172_to_v173(
+                transaction,
+                &MigrationContext {
+                    source_revision: 172,
+                    target_revision: 173,
+                    backup_name: "native-state-test.db".to_owned(),
+                    source_schema_fingerprint: published_format(172)?.schema_fingerprint,
+                    target_schema_fingerprint: published_format(173)?.schema_fingerprint,
+                    completed_at_unix_ms: 3,
+                },
+            )?;
+            validate_schema_identity(transaction, 173)
+        })
+        .expect("native state migration");
+        let native_session: (String, Option<String>) = connection.query_row(
+            "SELECT backend_session_id,native_state_json FROM thread_backend_sessions WHERE thread_id='codex'", [],
+            |row| Ok((row.get(0)?, row.get(1)?))
+        ).expect("preserved native session");
+        assert_eq!(native_session, ("native-session".to_owned(), None));
+        assert!(connection.execute("UPDATE thread_backend_sessions SET native_state_json='invalid' WHERE thread_id='codex'", []).is_err());
     }
 
     #[test]

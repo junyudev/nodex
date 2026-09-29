@@ -365,8 +365,33 @@ export function buildComposerSlashCommands(input: BuildSlashCommandsInput): Comp
   const provider = input.model.provider;
   if (!provider || provider.kind === "codex") return commands;
   const sharedCommands = commands.filter((command) =>
-    ["model", "plan-mode", "pet", "expanded-slash-command-dialog"].includes(command.id),
+    ["model", "reasoning", "plan-mode", "pet", "expanded-slash-command-dialog"].includes(
+      command.id,
+    ),
   );
+  if (provider.diagnostics && input.actions.onOpenStatusPanel && threadId) {
+    const inspect = () => input.actions.onOpenStatusPanel?.(threadId);
+    sharedCommands.push(
+      {
+        id: "status",
+        title: "Status",
+        description: "Inspect the native runtime",
+        group: "Commands",
+        icon: <SlashStatusIcon className={iconClassName} />,
+        requiresEmptyComposer: true,
+        onSelect: inspect,
+      },
+      {
+        id: "mcp",
+        title: "MCP",
+        description: "Inspect native MCP servers",
+        group: "Commands",
+        icon: <SlashMcpIcon className={iconClassName} />,
+        requiresEmptyComposer: true,
+        onSelect: inspect,
+      },
+    );
+  }
   return [
     ...sharedCommands,
     ...provider.commands

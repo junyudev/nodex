@@ -1,3 +1,4 @@
+import { captureAppToolAuthority } from "./AppToolCaller";
 import * as Effect from "effect/Effect";
 import { CodexTurnAuthority } from "../codex-application/CodexTurnAuthority";
 import { WorkspaceDependencyRuntime } from "../host-runtime/WorkspaceDependencyRuntime";
@@ -10,9 +11,7 @@ export const make = Effect.gen(function* () {
   return Effect.fn("WorkspaceDependencyAppTools.execute")(function* (input: AppToolInvocation) {
     if (!input.caller.isActive()) return toolFailure("call_withdrawn");
     if (Object.keys(input.arguments).length !== 0) return toolFailure("invalid_arguments");
-    const authority = yield* turns
-      .capture(input.caller.threadId, input.caller.turnId)
-      .pipe(Effect.catch(() => Effect.succeed(null)));
+    const authority = yield* captureAppToolAuthority(input.caller, turns);
     if (!authority) return toolFailure("authority_unavailable");
     const result = yield* runtime.read;
     return input.caller.isActive() ? toolSuccess(result) : toolFailure("call_withdrawn");

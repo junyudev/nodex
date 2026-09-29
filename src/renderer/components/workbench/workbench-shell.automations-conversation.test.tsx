@@ -51,6 +51,25 @@ function expectFirstSubmissionIdentity(input: unknown): void {
   expect(isUuidV7(firstSubmission?.clientUserMessageId ?? "")).toBe(true);
 }
 
+async function selectScheduledModel(screen: ReturnType<typeof renderWorkbench>, name: string) {
+  const trigger = await screen.findByRole("button", { name: "Agent intelligence" });
+  await waitFor(() => expect((trigger as HTMLButtonElement).disabled).toBe(false));
+  await act(async () => {
+    fireEvent.click(trigger);
+    await Promise.resolve();
+  });
+  const modelMenu = await screen.findByRole("menuitem", { name: /^Model /u });
+  await act(async () => {
+    fireEvent.click(modelMenu);
+    await Promise.resolve();
+  });
+  const model = await screen.findByRole("menuitem", { name });
+  await act(async () => {
+    fireEvent.click(model);
+    await Promise.resolve();
+  });
+}
+
 describe("workbench session shell / automations-conversation", () => {
   test("surfaces pending heartbeat handoff failure from the app-level coordinator", async () => {
     renderWorkbench();
@@ -202,19 +221,7 @@ describe("workbench session shell / automations-conversation", () => {
         await Promise.resolve();
       });
       await settleAsyncRender();
-      const modelTrigger = await screen.findByLabelText("Model and reasoning");
-      await waitFor(() => {
-        expect((modelTrigger as HTMLButtonElement).disabled).toBe(false);
-      });
-      await act(async () => {
-        fireEvent.mouseDown(modelTrigger, { button: 0, ctrlKey: false });
-        await Promise.resolve();
-      });
-      const highModelItem = await screen.findByRole("menuitem", { name: "GPT-5.5 High" });
-      await act(async () => {
-        fireEvent.click(highModelItem);
-        await Promise.resolve();
-      });
+      await selectScheduledModel(screen, "GPT-5.5 High");
       await settleAsyncRender();
 
       await act(async () => {
@@ -423,19 +430,7 @@ describe("workbench session shell / automations-conversation", () => {
     });
     await settleAsyncRender();
 
-    const modelTrigger = await screen.findByLabelText("Model and reasoning");
-    await waitFor(() => {
-      expect((modelTrigger as HTMLButtonElement).disabled).toBe(false);
-    });
-    await act(async () => {
-      fireEvent.mouseDown(modelTrigger, { button: 0, ctrlKey: false });
-      await Promise.resolve();
-    });
-    const highModelItem = await screen.findByRole("menuitem", { name: "GPT-5.5 High" });
-    await act(async () => {
-      fireEvent.click(highModelItem);
-      await Promise.resolve();
-    });
+    await selectScheduledModel(screen, "GPT-5.5 High");
     await act(async () => {
       fireEvent.click(screen.getByRole("button", { name: "Templates" }));
       await Promise.resolve();
@@ -511,19 +506,7 @@ describe("workbench session shell / automations-conversation", () => {
       expect(textContent(screen.container).includes("Openable history run")).toBe(true);
     });
 
-    const modelTrigger = await screen.findByLabelText("Model and reasoning");
-    await waitFor(() => {
-      expect((modelTrigger as HTMLButtonElement).disabled).toBe(false);
-    });
-    await act(async () => {
-      fireEvent.mouseDown(modelTrigger, { button: 0, ctrlKey: false });
-      await Promise.resolve();
-    });
-    const highModelItem = await screen.findByRole("menuitem", { name: "GPT-5.5 High" });
-    await act(async () => {
-      fireEvent.click(highModelItem);
-      await Promise.resolve();
-    });
+    await selectScheduledModel(screen, "GPT-5.5 High");
 
     const runButton = within(
       screen.getByTestId("automation-previous-run-thread-run-open"),

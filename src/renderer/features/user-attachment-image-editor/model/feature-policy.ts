@@ -4,13 +4,12 @@ import type {
   NormalizedUserAttachmentImageEditorOptions,
   OpenUserAttachmentImagePreviewOptions,
 } from "./types";
-import type { CodexModelOption } from "../../../../shared/types";
+import type { AgentModelOption } from "../../../../shared/types";
 
 /** Unknown catalogs stay permissive; a known model must advertise image input. */
-export function resolveImageInputSupport(args: {
-  models: readonly CodexModelOption[];
-  selectedModel: string | null;
-}): boolean {
+export function resolveImageInputSupport<
+  Model extends Pick<AgentModelOption, "id" | "model" | "inputModalities">,
+>(args: { models: readonly Model[]; selectedModel: string | null }): boolean {
   if (!args.selectedModel) return true;
   const model = args.models.find(
     (candidate) => candidate.id === args.selectedModel || candidate.model === args.selectedModel,

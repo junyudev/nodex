@@ -1,5 +1,5 @@
 import { fireEvent, waitFor } from "@testing-library/react";
-import { describe, expect, test } from "vite-plus/test";
+import { describe, expect, test, vi } from "vite-plus/test";
 import { installWindowApi } from "@/test/browser-globals";
 import { render } from "@/test/dom";
 import { queryKeys } from "@/lib/query-keys";
@@ -61,6 +61,44 @@ function buildActions(): ThreadStageActions {
 }
 
 describe("buildComposerSlashCommands", () => {
+  test("routes native status and MCP commands to the live runtime inspector", async () => {
+    const onOpenStatusPanel = vi.fn();
+    const onSendPrompt = vi.fn();
+    const model = buildModel();
+    model.provider = {
+      kind: "claude",
+      label: "Claude",
+      selection: "claude:work",
+      options: [],
+      select: () => {},
+      commands: [{ name: "mcp", description: "Native command", inputHint: null }],
+      error: null,
+      diagnostics: async () => ({
+        health: { status: "ready", executable: null, version: null, account: null, error: null },
+        mcpServers: [],
+        agents: [],
+        capabilities: [],
+      }),
+    };
+    const commands = buildComposerSlashCommands({
+      model,
+      actions: { ...buildActions(), onOpenStatusPanel, onSendPrompt },
+      serviceTier: null,
+      setServiceTier: () => {},
+      openExpandedDialog: () => {},
+      onPetToggle: () => {},
+      activateGoalMode: () => {},
+    });
+    for (const name of ["status", "mcp"]) {
+      const matching = commands.filter((command) => command.id === name);
+      expect(matching).toHaveLength(1);
+      expect(matching[0]?.Content).toBeUndefined();
+      await matching[0]?.onSelect?.({ source: "dialog" });
+    }
+    expect(onOpenStatusPanel).toHaveBeenCalledTimes(2);
+    expect(onOpenStatusPanel).toHaveBeenLastCalledWith("thread_1");
+    expect(onSendPrompt).not.toHaveBeenCalled();
+  });
   test("delegates Pet visibility to the native avatar overlay owner", async () => {
     let toggles = 0;
     const commands = buildComposerSlashCommands({
