@@ -1,0 +1,407 @@
+src/shared/agent-backend.ts
+  s_866b56c9561631::t_60bf40032ee0fa 6
+src/shared/agent-backend-api.ts
+  s_866b56c9561631::t_d901f288181a59 2-6,26,53,58,62-63,67,70
+  s_866b56c9561631::t_9131239cbeb48c 10,14,17,24,29,35,40,46,51,56,61,66
+  s_866b56c9561631::t_bd8511424eb8d4 18-19
+src/shared/agent-conversation.ts
+  s_866b56c9561631::t_8323cdbac28cf4 1-17,127,165
+  s_866b56c9561631::t_d901f288181a59 18-55,57-126,128-152,154-164,166-236,238-316
+  s_866b56c9561631::t_64971e0a64d74f 237
+  s_866b56c9561631::t_40497757933bfb 153
+  s_866b56c9561631::t_88496bcb34f655 56
+src/renderer/lib/agent-backend-runtime.ts
+  s_866b56c9561631::t_9131239cbeb48c 3-9,20-22,24,29-31,33,38-40,42,47-49,51,56-58,60,65-67,69,74-76,78,83-85,87,101,108-109,111-113,115-116,119-120,122-123,125-126,130,134-135,138-146,148,155,165
+  s_866b56c9561631::t_2e380f4efc98cd 1,92-100,102-104,106,136-137
+  s_866b56c9561631::t_d6d38505591c33 105,117,127
+crates/nodex-core/src/infrastructure/migration.rs
+  s_866b56c9561631::t_c30292819abae8 269-273,2255-2260
+  s_866b56c9561631::t_2528b8d4f1b1a3 2261-2269,6261-6316
+docs/CONFIGURATION.md
+  s_866b56c9561631::t_cfb9cbc3891486 31-43
+  s_866b56c9561631::t_24fe4d84366606 30
+src/renderer/features/local-conversation/agent-conversation-owner.node.test.ts
+  s_866b56c9561631::t_9131239cbeb48c 2,4-8,12-13,23,57-58,79-81,102,107,111,130,133,154,172,187,204,224,238
+  s_866b56c9561631::t_88496bcb34f655 248-269
+crates/nodex-core-contracts/src/agent.rs
+  s_866b56c9561631::t_60bf40032ee0fa 14-16
+src/renderer/lib/renderer-transport.ts
+  s_866b56c9561631::t_9131239cbeb48c 112,114
+src/main/agent-backend/acp/AcpWorkspaceFileOwner.node.test.ts
+  s_866b56c9561631::t_8323cdbac28cf4 18
+src/renderer/features/conversation-launch/session-first-submission-owner.ts
+  s_866b56c9561631::t_8a8414959f0161 4
+  s_866b56c9561631::t_a977ea0dc337f0 104
+src/renderer/components/workbench/workbench-session-thread-route.tsx
+  s_866b56c9561631::t_8a8414959f0161 25,715-717,731-732,734-739,741-746,749
+  s_866b56c9561631::t_fb3f39d6e9838f 740,747-748
+  s_866b56c9561631::t_ee66cafae842f5 1-3,62-64,130-131,468-471,481,596-597,599,619-621,631,637-641,646,695-698,710,759-767,774-777,781-787,790-799,801-811,813-814,816-822
+  s_866b56c9561631::t_4eb5bc3f38118b 688,770
+  s_866b56c9561631::t_e069607aa196f2 254,324,329
+  s_866b56c9561631::t_4ec1e2741e45a3 251,768-769,771-773,778-780,788-789,800,812
+src/renderer/lib/workbench-settings-runtime.ts
+  s_866b56c9561631::t_0740dba9c1d069 89-96,199-202
+  s_866b56c9561631::t_89b22343eb29a2 2-6
+src/main/agent-backend/AgentBackendApplication.ts
+  s_866b56c9561631::t_64971e0a64d74f 283-288,290-291
+  s_866b56c9561631::t_8f46c8d7ecb8bf 1-3,11,52,86-88,90,95-99,196-222,225-232,252,257-258,267,277,299,323,327-348,355,374,431,484,493,498,596,647-655,657-659,661,669
+  s_866b56c9561631::t_9131239cbeb48c 14-24,57-61,63,66-71,74-75,77-83,91,315-316,400,417-418,458,470-471,519,553,559-569,579,589,602,645
+  s_866b56c9561631::t_8323cdbac28cf4 39,350
+  s_866b56c9561631::t_cfb9cbc3891486 278,403,462
+  s_866b56c9561631::t_d901f288181a59 27-30,62,65,73,76,112,114,126,128-129
+  s_866b56c9561631::t_f970801639dd86 89,223-224,279-282,292,349,351-354,356-366,368,371-373,375,497,499,656,660
+  s_866b56c9561631::t_d9beaefcba63b0 523-538
+src/main/agent-backend/AgentBackendApplication.node.test.ts
+  s_866b56c9561631::t_d901f288181a59 11,25-26,30-31,65,125,137,481-482
+  s_866b56c9561631::t_9131239cbeb48c 233,280,330,436,634-635,644,658
+  s_866b56c9561631::t_e8bf10afbc08fa 1-2,22,24,437
+src/main/platform/node/ClaudeSdk.ts
+  s_866b56c9561631::t_8f46c8d7ecb8bf 43
+  s_866b56c9561631::t_64971e0a64d74f 42,166,168-169
+  s_866b56c9561631::t_286f26d7a991ae 2-17,19-41,44-53,55-60,62-63,65-90,92-106,108-128,130-145,147-154,156-165,170-189,192-200,214,225-227
+  s_866b56c9561631::t_9d1a08956f8276 190-191
+  s_866b56c9561631::t_c714beb402b5f3 1,18,54,61,64,91,107,129,146,155,167,201-213,215-224
+src/main/platform/node/AcpAgentLaunchProbe.ts
+  s_866b56c9561631::t_8323cdbac28cf4 9,40-41,54-55,72,89-90
+src/main/project-application/ProjectLifecycleCommands.ts
+  s_866b56c9561631::t_0740dba9c1d069 1,64,74,133-135
+docs/adr/0065-native-claude-code-backend.md
+  s_866b56c9561631::t_cfb9cbc3891486 1-21,27-48,50-51
+  s_866b56c9561631::t_a1470bafd1dadb 22-26,49
+src/main/app/ApplicationOperationsLive.ts
+  s_866b56c9561631::t_cfb9cbc3891486 81-82,84,86,89,125
+  s_866b56c9561631::t_8f46c8d7ecb8bf 1-2
+  s_866b56c9561631::t_6000573c3f44c8 83
+src/main/app-tools/SessionObservation.ts
+  s_866b56c9561631::t_8a8414959f0161 48,108
+  s_866b56c9561631::t_9131239cbeb48c 288,321
+  s_866b56c9561631::t_d901f288181a59 7,158
+  s_866b56c9561631::t_0740dba9c1d069 319,337
+  s_866b56c9561631::t_fb54364ded7ac7 161,318,338,377
+src/main/project-application/ProjectSessionCommands.ts
+  s_866b56c9561631::t_0740dba9c1d069 1,78,85,169-172,174,215-218,220
+  s_866b56c9561631::t_c52dfb943f61a3 173,219
+src/main/agent-backend/claude/ClaudeConversationProjection.ts
+  s_866b56c9561631::t_e9e697ccb64d11 1-4,6-8,10-14,16-18,20-33,35-49,51-55,57-63,65-77,79-82,87-93,95-98,100-107,110-111,113-114,123-127,129-152,155-157,159-170,172,174-177,185-188,196-197,209-215,217-227,229-236,238-248,250-257,259-271,273-295,297-300
+  s_866b56c9561631::t_cfb9cbc3891486 198-204,207-208
+  s_866b56c9561631::t_75abb8699bd510 108,115-122,178-182,184,189-193,195
+  s_866b56c9561631::t_626a8f53ed4437 5,9,15,19,34,50,56,64,78,94,99,109,112,128,153-154,158,171,173,183,194,205-206,216,228,237,249,258,272,296
+  s_866b56c9561631::t_88496bcb34f655 83-84,86
+  s_866b56c9561631::t_f5f23dca0423fe 85
+src/main/app-tools/SessionObservation.node.test.ts
+  s_866b56c9561631::t_d901f288181a59 3,153
+  s_866b56c9561631::t_8a8414959f0161 32
+  s_866b56c9561631::t_9131239cbeb48c 57,69
+src/renderer/features/local-conversation/agent-conversation-owner.ts
+  s_866b56c9561631::t_9131239cbeb48c 3-6,9-13,22,24,26,30,33,50-51,55,58,60,62,72,75,85,120,168,182,193-195,247,263,275,286,309,320,343
+  s_866b56c9561631::t_2e380f4efc98cd 1,15,17-20,42,190-192
+  s_866b56c9561631::t_cfb9cbc3891486 292,306
+  s_866b56c9561631::t_8798a84b28c522 16
+  s_866b56c9561631::t_a977ea0dc337f0 70,88,97,134-147,348-355,357-366,372-379,381
+  s_866b56c9561631::t_31aa7534afe735 37
+  s_866b56c9561631::t_d35fafe7780714 356,367-371,380,382
+src/shared/ipc-api.ts
+  s_866b56c9561631::t_0740dba9c1d069 1,231,429,1263-1267,1273-1276
+  s_866b56c9561631::t_9131239cbeb48c 28-37,1277-1278,1281-1283,1285,1289,1293,1297-1299,1301,1305-1306,1309-1311,1313-1315,1317,2766
+  s_866b56c9561631::t_d901f288181a59 39-40,42,1279,1287,1303,1307
+  s_866b56c9561631::t_3f118a9590f8cf 41
+crates/nodex-core/src/workspace/thread.rs
+  s_866b56c9561631::t_60bf40032ee0fa 184
+  s_866b56c9561631::t_49142af31e19a8 2607-2620,2647,2653,2661-2662,2666,2682-2684
+src/renderer/lib/electron-renderer-transport.ts
+  s_866b56c9561631::t_9131239cbeb48c 23,375,377-379
+  s_866b56c9561631::t_ac552d2a6ddd31 376,380
+crates/nodex-core/schema/current.sql
+  s_866b56c9561631::t_c30292819abae8 71-72,74-76,791,5004
+src/main/agent-backend/acp/AcpInteractionAuthority.ts
+  s_866b56c9561631::t_8323cdbac28cf4 11,19,22,25
+src/shared/types.ts
+  s_866b56c9561631::t_d273aeaf5700ec 1657-1671
+  s_866b56c9561631::t_205d5c931d5ca1 3477-3478
+CHANGELOG.md
+  s_866b56c9561631::t_cfb9cbc3891486 10
+  s_866b56c9561631::t_ff2a4c09408598 9
+docs/product-specs/agent-backend-behavior.md
+  s_866b56c9561631::t_cfb9cbc3891486 6,33-35,47-49,51-65,67-80,121,125-129,134,136-138,159-160
+  s_866b56c9561631::t_8dc4304273d0cf 44
+  s_866b56c9561631::t_279c968022476f 10-28,31,66
+src/main/agent-backend/acp/AcpSessionRuntime.ts
+  s_866b56c9561631::t_8323cdbac28cf4 33,94,97,100-104,108-109,176,180,192,198,204,220,233,247-248,253,333-334,336,372,376,415,448,463,473,585,616,671,713
+  s_866b56c9561631::t_d901f288181a59 35,37,89,137,139,434
+src/shared/schemas/agent-backend.ts
+  s_866b56c9561631::t_31f957d6c3d419 1-13,15-17,19-23,25
+  s_866b56c9561631::t_8e8eb61b38bae2 14,18,24
+docs/SECURITY.md
+  s_866b56c9561631::t_cfb9cbc3891486 191-199
+src/main/agent-backend/AgentSessionHandle.ts
+  s_866b56c9561631::t_075c4d98133c95 1-21,23-27,29-32,34-36,38-40,42-43
+  s_866b56c9561631::t_49a717858fd7f4 22,28,33,37,41
+src/main/agent-backend/acp/AgentConversationProjection.node.test.ts
+  s_866b56c9561631::t_d901f288181a59 2-4,8-13,16-20,22,24-33,35-44,46-69,71-72,74-79,81-94,97-112,114-124,126-128,130-152,154-164,166-195,197-203
+  s_866b56c9561631::t_d273aeaf5700ec 1,15,21,23,34,45,80,153,165
+  s_866b56c9561631::t_f0c5d69d8a93ca 5-7,70,73,95-96,125,196
+  s_866b56c9561631::t_749c0af73ae97d 14,204-230
+src/main/core-client/project-workspace-adapter.ts
+  s_866b56c9561631::t_9131239cbeb48c 73-79,84-90,279,288,306,317
+src/main/settings/application-settings-persistence.ts
+  s_866b56c9561631::t_d273aeaf5700ec 1,24,26,41,949-969,971-973,975-984,987-991,993-996,998-1000
+  s_866b56c9561631::t_9d1a08956f8276 96
+  s_866b56c9561631::t_f4e1c20d285cb1 970,974,985-986,992,997,1001
+src/main/agent-backend/claude/ClaudeSessionManager.ts
+  s_866b56c9561631::t_ccce965fa6a2b8 1-20,22-35,37-39,41-53,55-66,68-78,81-82,84-85,87-100,102-105,107-113,115-121,123-127,130-136,138-145,147-175,178-179,182-183,185-208,211-212,217-228,233-240,242-243,245-246,248-262,265,289-301,304-307,309-310,312-316,318-322,325-326,328-335,339-344,348,369-378,380-387,389,391-409,412,414-415,419,421-440,443-449,452-459,461-468,470-500,502-510,512-522,525-534,537-540,542-548,553-555,566-570,572-576,578,583-586,588-594,596-597,599-603,605-610,612-615,617-621
+  s_866b56c9561631::t_8f46c8d7ecb8bf 266,268
+  s_866b56c9561631::t_64971e0a64d74f 269-271,273-283,285,287-288
+  s_866b56c9561631::t_cfb9cbc3891486 349-361,365,368,420
+  s_866b56c9561631::t_03e8ffa0670c3c 21,36,40,54,67,79-80,83,86,101,106,114,122,128-129,137,146,176-177,180-181,184,209-210,213-216,229-232,241,244,247,263-264,267,272,284,286,302-303,308,311,317,323-324,327,336-338,345-347,362-364,366-367,379,388,390,410-411,413,416-418,441-442,450-451,460,469,501,511,523-524,535-536,541,549-552,556-565,571,577,579-582,587,595,598,604,611,616
+src/main/platform/node/AcpSessionTransport.ts
+  s_866b56c9561631::t_8323cdbac28cf4 47-50,76,79,82,85,88,91,94,97,100,103-104,107-108,110,113,121,147,154,169,185,290,294,314,329,344,359,375,384,418,483,500,517,539
+src/main/project-application/ProjectLifecycleCommands.test.ts
+  s_866b56c9561631::t_9131239cbeb48c 118,136,169,242
+  s_866b56c9561631::t_84b4bf0d6437ec 1,15,18-19
+src/renderer/components/workbench/session-context-menu-model.ts
+  s_866b56c9561631::t_0740dba9c1d069 105-106
+tests/e2e/acp-backend-lifecycle.spec.ts
+  s_866b56c9561631::t_9131239cbeb48c 94,97,214,246
+  s_866b56c9561631::t_4eb5bc3f38118b 170,178,232,234-235,249
+  s_866b56c9561631::t_56fabd8783562a 167-169,171-177,179-191,193-204
+src/main/agent-backend/acp/AcpSessionRuntime.node.test.ts
+  s_866b56c9561631::t_8323cdbac28cf4 56,204,246,369
+src/main/agent-backend/acp/ClaudeAcpAgentDefinition.ts
+  s_866b56c9561631::t_8323cdbac28cf4 3,81
+src/renderer/components/workbench/workbench-settings-section-pages.tsx
+  s_866b56c9561631::t_8a8414959f0161 1,437
+src/renderer/lib/workbench-panel-capabilities.ts
+  s_866b56c9561631::t_8a8414959f0161 40
+src/main/agent-backend/claude/ClaudeSessionManager.node.test.ts
+  s_866b56c9561631::t_7ad3ad3024a2e9 32-288,290,296,313
+  s_866b56c9561631::t_023ec70dc83548 1-31,289,291-295,297-312
+src/renderer/lib/agent-backend-runtime.node.test.ts
+  s_866b56c9561631::t_9131239cbeb48c 2-3,5,42-43,48-50,53,67,86,89
+src/main/ipc/handlers/AgentBackendIpc.ts
+  s_866b56c9561631::t_9131239cbeb48c 92,96,152-153,155-156,158-159,161,180,191-192,194-195,197-198,200,206,209,215,218-219,234
+  s_866b56c9561631::t_0740dba9c1d069 33,52-62,64-65,67-68,220-223,225
+  s_866b56c9561631::t_db8f20cc61bdf4 63,66,224
+  s_866b56c9561631::t_45e5c9a55d4555 34-35
+src/main/agent-backend/acp/AcpBackendSessionManager.ts
+  s_866b56c9561631::t_9131239cbeb48c 24,116,166
+  s_866b56c9561631::t_8323cdbac28cf4 1,33,52,57-58,86,88,92-93,97-99,103,111,127,188,193,381,420-421,427,437,451,547
+  s_866b56c9561631::t_d901f288181a59 25,37,45-51,80,84,182,397-398,405,445,469,479,482,559,584
+  s_866b56c9561631::t_89d7a19636bc6e 87,587
+src/main/agent-backend/acp/AcpClientCapabilityOwner.ts
+  s_866b56c9561631::t_8323cdbac28cf4 26,69,72,75,78,81,84,87,90,93,96
+src/main/agent-backend/AgentRuntimeError.ts
+  s_866b56c9561631::t_8323cdbac28cf4 1-32,34-91
+  s_866b56c9561631::t_946c768f50719d 33
+CONTEXT.md
+  s_866b56c9561631::t_cfb9cbc3891486 29,31
+docs/ARCHITECTURE.md
+  s_866b56c9561631::t_cfb9cbc3891486 25,222-225,231
+  s_866b56c9561631::t_cc98aa18fe2151 147-168,706-714
+tests/e2e/claude-backend-lifecycle.spec.ts
+  s_866b56c9561631::t_31f957d6c3d419 7-66,83-86,88-92,93-97,99-103,105,109-113,115-124,128,150-155,161
+  s_866b56c9561631::t_91a9ac5ed54111 1,3-6,73,87,98,114,157-160,162-168
+  s_866b56c9561631::t_7c863107159c01 126
+  s_866b56c9561631::t_4eb5bc3f38118b 108
+  s_866b56c9561631::t_31aa7534afe735 156
+  s_866b56c9561631::t_ee9694d39c9466 2,67-72,74-82,104,106-107,125,127,129-149
+src/main/ipc/handlers/AgentBackendIpc.node.test.ts
+  s_866b56c9561631::t_9131239cbeb48c 43,47,85-86
+crates/nodex-core/schema/migrations/v171_to_v172.sql
+  s_866b56c9561631::t_c30292819abae8 1-22,24-29
+  s_866b56c9561631::t_8b689d3a67d98f 23
+src/main/agent-backend/acp/AcpSessionCapabilities.node.test.ts
+  s_866b56c9561631::t_d901f288181a59 22,58
+  s_866b56c9561631::t_8323cdbac28cf4 101
+src/main/agent-backend/acp/AcpWorkspaceFileOwner.ts
+  s_866b56c9561631::t_8323cdbac28cf4 13,23,26,29,44,92
+src/main/agent-backend/AgentBackendRegistry.ts
+  s_866b56c9561631::t_8f46c8d7ecb8bf 10,19-24,58,87,92-93,95-101,169,225
+  s_866b56c9561631::t_950b55bcc21470 94
+scripts/probe-acp-agent.ts
+  s_866b56c9561631::t_9d1a08956f8276 22,182
+src/renderer/components/workbench/claude-agent-settings-control.tsx
+  s_866b56c9561631::t_8a8414959f0161 1-7,9-15,17-44,46-53,55-93,95-97,99-108,110
+  s_866b56c9561631::t_c89147945ce883 8,16,45,54,94,98,109
+src/shared/ipc-endpoint-policy.ts
+  s_866b56c9561631::t_0740dba9c1d069 203,406,569
+  s_866b56c9561631::t_9131239cbeb48c 77,236-237,401-405,407-409
+src/main/agent-backend/acp/AcpConversationProjection.ts
+  s_866b56c9561631::t_d273aeaf5700ec 1,3-5,8,72,80-81,94-98,136,138,284,286-292,294-300,303-304
+  s_866b56c9561631::t_eef3a9816550f0 293,301-302
+src/main/settings/ApplicationSettings.ts
+  s_866b56c9561631::t_d273aeaf5700ec 16,29,45,61,89,118,219,259-260
+  s_866b56c9561631::t_6abf3f4ac6964e 261
+src/renderer/components/workbench/workbench-settings-overlay-deps.ts
+  s_866b56c9561631::t_0740dba9c1d069 4,19
+src/main/agent-backend/AgentConversationProjection.ts
+  s_866b56c9561631::t_8323cdbac28cf4 1-8,14-23,25-60,62-95,97-99,106-149,151-154,156-159,162-163,165-169,171-172,174-176,178-180,182-184,186-189,191,194-195,197-201,203-297,299-321,323-407,409-411,413-416
+  s_866b56c9561631::t_64971e0a64d74f 408
+  s_866b56c9561631::t_0e2275307d3455 9-13,24,61,150,155,160-161,164,170,173,177,181,185,190,192-193,196,202,298,322,412
+  s_866b56c9561631::t_02e80c233a61e8 96,100-105
+src/renderer/lib/new-thread-backend-selection.ts
+  s_866b56c9561631::t_8a8414959f0161 1,3,12-13
+  s_866b56c9561631::t_f740ee83dd404d 2
+src/main/agent-backend/acp/AcpTerminalOwner.ts
+  s_866b56c9561631::t_8323cdbac28cf4 20,36,39,42,45,48,57-58
+crates/nodex-core/src/domain/agent_backend.rs
+  s_866b56c9561631::t_60bf40032ee0fa 25-34,64-66
+  s_866b56c9561631::t_192b14d726e8de 67
+src/main/ipc/handlers/ApplicationSettingsIpc.ts
+  s_866b56c9561631::t_0740dba9c1d069 51,69-80,82,84-86,330-346,348
+  s_866b56c9561631::t_6dba7da02ccfaf 81,83,347
+crates/nodex-core/src/infrastructure/schema.rs
+  s_866b56c9561631::t_55007f7c2b1164 222
+crates/nodex-store-format/src/lib.rs
+  s_866b56c9561631::t_0b74536aad65ee 157-160
+docs/adr/0056-native-codex-and-capability-negotiated-agent-backends.md
+  s_866b56c9561631::t_e8c1b44db26655 6
+package.json
+  s_866b56c9561631::t_2af0e081af38b7 196
+pnpm-lock.yaml
+  s_866b56c9561631::t_e3d74a55c28c26 148-150,917-977,3679-3681,5821-5823,6333-6336,7908-7910,8119-8121,8607-8652,11019-11020,13386-13387,13961-13965,15992-15996,16246-16247
+scripts/scenarios/runtime/scripted-claude-agent.mjs
+  s_866b56c9561631::t_ddf31ebdda5916 1-22,29-85,87-92,95-125,145-173
+  s_866b56c9561631::t_f16373029a34f6 23-28,86,93-94,126-144
+src/main/agent-backend/AgentBackendRegistry.node.test.ts
+  s_866b56c9561631::t_33ee1fbbd11a22 18-27,37,90
+src/main/agent-backend/acp/AcpBackendSessionManager.node.test.ts
+  s_866b56c9561631::t_6176b776d81749 199
+src/main/agent-backend/claude/ClaudeConversationProjection.node.test.ts
+  s_866b56c9561631::t_8cf4647abdd58b 1-63,65-99
+  s_866b56c9561631::t_953548f2eb145c 64
+src/main/agent-backend/claude/ClaudeSessionManager.test-fixtures.ts
+  s_866b56c9561631::t_27c60ccd6a8391 1-17
+src/main/platform/node/ClaudeSdk.node.test.ts
+  s_866b56c9561631::t_4ccc510fe631bf 1-46
+src/main/project-application/ProjectSessionCommands.test.ts
+  s_866b56c9561631::t_31f50a6a6b8d23 1,18,25-26
+src/renderer/lib/new-thread-backend-selection.node.test.ts
+  s_866b56c9561631::t_9e036c304da137 12,14
+src/shared/schemas/project-sessions.ts
+  s_866b56c9561631::t_17ca70ead9f78a 1,215
+packages/core-protocol/openapi.json
+  s_48f27d618666af::t_ef826a754299d8 1850-1867
+packages/core-protocol/src/compatibility.generated.ts
+  s_48f27d618666af::t_5862677340cbcb 42-43
+packages/core-protocol/src/generated.ts
+  s_48f27d618666af::t_3f3ec0b45b99d4 456-459
+src/renderer/features/local-conversation/projection/agent-activity-v2.ts
+  s_866b56c9561631::t_3d6e6fc79dd6e8 179,221,321,563-564
+src/renderer/features/local-conversation/view/shared/tools/generic-tool-call.tsx
+  s_866b56c9561631::t_2358fb0cf97c78 1-21
+src/renderer/features/local-conversation/view/composer/local-conversation-thread-composer.tsx
+  s_866b56c9561631::t_e069607aa196f2 2099,2606,3235,3282,3333
+  s_866b56c9561631::t_6db697e1e9ced8 909,914,3699-3707,3715-3722,4190-4212
+src/renderer/features/local-conversation/view/shared/request-cards/request-card-questionnaire-state.ts
+  s_866b56c9561631::t_205d5c931d5ca1 15,69,90,106-109,112,178,180-187,270-273
+  s_866b56c9561631::t_aca74f4d27fd92 68,110-111,251-252
+src/renderer/features/local-conversation/view/composer/slash-command-menu/slash-command-registry.tsx
+  s_866b56c9561631::t_e069607aa196f2 64,365-366,370-383,385
+  s_866b56c9561631::t_31aa7534afe735 367,369
+  s_866b56c9561631::t_16d96a379e845b 368,384
+src/shared/agent-conversation-presentation.node.test.ts
+  s_866b56c9561631::t_a806d415567ece 6-11,13-27,29-32,34,38-40,44,51,53-57,59,62-75,83-90,93-95,97-99,104,113-120,122-123,133-134,136-138,140,143-157,162-171,173
+  s_866b56c9561631::t_3d6e6fc79dd6e8 1-3,5,124,126-130,132
+  s_866b56c9561631::t_e97ef3ceea0c47 4,47,58,60-61,76-77,91,96,121,125,131,135,139,158-161,172
+src/renderer/features/local-conversation/agent-conversation-adapter.ts
+  s_866b56c9561631::t_a4d265cb89f178 13,18-22,24-28,30-34,36-49,51-54,57,59-78,89-91,93-95,108-110,112-116,118-120,122-124,139-140,165,168-169,171-175,177-179,182-193,197,199-203,205-212,214-220,222-229,232-234,241-243,248-249,255-258,260-261,285-286,289-291,293,301-303,305,393-394
+  s_866b56c9561631::t_e069607aa196f2 144,250-251
+  s_866b56c9561631::t_31aa7534afe735 4,55,58,235-240,254,281-283,395-403,405
+  s_866b56c9561631::t_a977ea0dc337f0 134,138,143
+  s_866b56c9561631::t_4eb5bc3f38118b 3,56,79-86,88,96-107,127,132,145
+  s_866b56c9561631::t_8e374426209a14 1-2,5-12,14-17,23,35,87,92,117,125-126,128-131,133,135-136,141,146-147,149-151,153-164,166-167,170,176,180-181,194-196,198,204,213,221,230-231,244-247,252-253,259,262-280,284,287-288,292,294-300,304,306-392,404,406
+src/renderer/features/local-conversation/projection/build-renderer-item-stream.ts
+  s_866b56c9561631::t_a977ea0dc337f0 290-291
+src/renderer/features/local-conversation/view/shared/tools/get-tool-component.tsx
+  s_866b56c9561631::t_e069607aa196f2 1,55
+src/renderer/features/local-conversation/conversation-runtime.ts
+  s_866b56c9561631::t_b19195cb2c8788 1-28
+src/renderer/features/local-conversation/thread-stage-types.ts
+  s_866b56c9561631::t_a977ea0dc337f0 583
+  s_866b56c9561631::t_ee66cafae842f5 219-234,236,1121
+src/shared/agent-prompt.ts
+  s_866b56c9561631::t_e49af0c2f30c71 1-2,4-5,7,11-17,19-26,28-41,43-46,48-51
+  s_866b56c9561631::t_b90e0d049bbc23 3,6,8-10,18,27,42,47
+src/renderer/features/local-conversation/use-background-subagent-rows.ts
+  s_866b56c9561631::t_e069607aa196f2 1,41-42,57,62,70,72
+src/renderer/features/local-conversation/local-conversation-store.ts
+  s_866b56c9561631::t_9e538f981f618f 1,8655-8657,8659-8671,8673-8675,8677-8679,8682-8697,8699-8702,8708,8710-8711,8959,8961-8962,8970,8972-8973,9004,9006-9007,9054,9056-9057,9165,9167
+  s_866b56c9561631::t_6d1029b540aa64 8658,8672,8676,8680-8681,8698,9168
+src/renderer/features/local-conversation/view/shared/composer-action.ts
+  s_866b56c9561631::t_e069607aa196f2 23,78-81
+src/renderer/features/local-conversation/projection/bucketize-turn-items.ts
+  s_866b56c9561631::t_3d6e6fc79dd6e8 83
+src/renderer/features/local-conversation/projection/build-renderer-item-stream.node.test.ts
+  s_866b56c9561631::t_f3e93e9930125b 883,929,937
+src/renderer/features/local-conversation/view/connected-thread-stage.tsx
+  s_866b56c9561631::t_e069607aa196f2 1479-1480
+  s_866b56c9561631::t_c8e7b07599f9c2 44,124,127-128,135,158,256-258,331,363,366,523,584,588-591,593-595,597-599,719,726,851-852,898,944,1028,1039,1053,1089,1233,1235,1330,1342,1389,1494
+  s_866b56c9561631::t_4eb5bc3f38118b 139,144-148,150,154-155,605,607,808,810,812,814-818,820,822-824
+  s_866b56c9561631::t_c618aab3651489 149,592,596,600,807,809,811,813,819
+src/renderer/features/local-conversation/view/shared/request-cards/local-conversation-request-cards.tsx
+  s_866b56c9561631::t_205d5c931d5ca1 360,414,419-421,430,839,842,1042-1045,1114-1116
+  s_866b56c9561631::t_88496bcb34f655 763,1003-1004,1006
+  s_866b56c9561631::t_31aa7534afe735 1024
+  s_866b56c9561631::t_1f5c536ec49010 968,1005
+src/shared/agent-conversation-presentation.ts
+  s_866b56c9561631::t_b19195cb2c8788 1-35,38-48,57-69,72-81,84-91,93-99,101-110,113,121-129,132-140,142-152,155-157,160-166,177-181,183-186,195-201,203-209,214-218,221,223-228,231-241,243-247,250-251
+  s_866b56c9561631::t_9e538f981f618f 114-117
+  s_866b56c9561631::t_88496bcb34f655 49-52,54,167-172,175
+  s_866b56c9561631::t_e069607aa196f2 187-192,194,210-213
+  s_866b56c9561631::t_d40f8d07d990f7 36-37,53,55-56,70-71,82-83,92,100,111-112,118-120,130-131,141,153-154,158-159,173-174,176,182,193,202,219-220,222,229-230,242,248-249
+src/renderer/features/local-conversation/view/blocks/local-conversation-block-leaves.tsx
+  s_866b56c9561631::t_a977ea0dc337f0 318
+src/renderer/features/local-conversation/view/blocks/local-conversation-block-renderer.tsx
+  s_866b56c9561631::t_a977ea0dc337f0 140
+src/renderer/features/local-conversation/view/shared/request-cards/request-card-questionnaire-state.node.test.ts
+  s_866b56c9561631::t_b984d0867ab984 60-64,67-75,77-79
+  s_866b56c9561631::t_16abd9f594c631 65-66,76
+src/renderer/features/local-conversation/view/composer/request-cards/codex-user-input-request-card.test.tsx
+  s_866b56c9561631::t_88496bcb34f655 75-85,87-101,103-111
+  s_866b56c9561631::t_8191f88289f1fe 86,102
+src/shared/agent-prompt.node.test.ts
+  s_866b56c9561631::t_bb01d4edd628f2 2-3,7,9-13,15-17,20-21,23,27-32,55
+  s_866b56c9561631::t_198e97e99bc1b8 4-6,8,14,18-19,22,24-26,33-35,37-54
+src/main/ipc/handlers/ApplicationSettingsIpc.test.ts
+  s_866b56c9561631::t_aef6e1f684c6e0 95-96
+src/renderer/components/shared/agent-runtime/agent-intelligence-dropdown.tsx
+  s_866b56c9561631::t_cf292f8705df72 34,43-48,113,139-140,152,162,173-175,226-246,275-281,310-346,348-375
+src/renderer/features/local-conversation/view/composer/composer-intelligence-selection.ts
+  s_866b56c9561631::t_6faeed82104964 12,14-19,28
+src/renderer/features/local-conversation/view/composer/composer-intelligence-types.ts
+  s_866b56c9561631::t_06e9f23f9e9e4a 4
+src/renderer/features/local-conversation/view/composer/request-cards/codex-approval-request-card.test.tsx
+  s_866b56c9561631::t_f2b8a07090046b 29-50
+src/renderer/features/local-conversation/view/composer/request-cards/codex-approval-request-card.tsx
+  s_866b56c9561631::t_7eb676b2d32c7e 139-145
+src/renderer/features/local-conversation/view/composer/use-composer-intelligence-controller.test.tsx
+  s_866b56c9561631::t_2d3e759d5951d2 144-185
+src/renderer/features/local-conversation/view/composer/use-composer-intelligence-controller.ts
+  s_866b56c9561631::t_d028351a9438ea 72-80,84,88,105,151-154
+src/renderer/features/local-conversation/view/shared/composer-action.node.test.ts
+  s_866b56c9561631::t_5335ace4a4dd23 30-45
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "d3ec8174ad9db6d78ecbb515ed3ea6415a9752fa",
+  "prompts": {},
+  "sessions": {
+    "s_48f27d618666af": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a0ed87-dc0e-7f23-85fd-18bf23c56291",
+        "model": "unknown"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    },
+    "s_866b56c9561631": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a0ed85-b2b4-78e1-b3ec-1946f1bfca69",
+        "model": "gpt-6-astra"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    }
+  }
+}
