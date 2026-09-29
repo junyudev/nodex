@@ -815,6 +815,8 @@ pub(super) fn apply(
                     thread_id,
                     backend_binding,
                     backend_session_id,
+                    expected_backend_session_id,
+                    native_state,
                 } => thread::bind_thread_backend_session(
                     transaction,
                     &library_id,
@@ -825,6 +827,8 @@ pub(super) fn apply(
                     thread_id,
                     backend_binding,
                     backend_session_id,
+                    expected_backend_session_id.as_deref(),
+                    native_state.as_ref(),
                 ),
                 ProjectWorkspaceIntent::ClearThreadBackendSession {
                     thread_id,

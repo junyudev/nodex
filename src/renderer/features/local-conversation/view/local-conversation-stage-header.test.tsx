@@ -1,5 +1,5 @@
 import { act, fireEvent } from "@testing-library/react";
-import { describe, expect, test } from "vite-plus/test";
+import { describe, expect, test, vi } from "vite-plus/test";
 import { render, openNodexMenu, settleAsyncRender, textContent } from "../../../test/dom";
 import type { ThreadStageActions, ThreadStageHeaderModel } from "../thread-stage-types";
 
@@ -44,6 +44,34 @@ function buildActions(): ThreadStageActions {
 }
 
 describe("ThreadStageHeader", () => {
+  test("requests a native generated title only after its explicit menu action", async () => {
+    const { ThreadStageHeader } = await import("./local-conversation-stage-header");
+    const generateTitle = vi.fn(async () => "Generated task title");
+    const view = render(
+      <ThreadStageHeader
+        model={buildModel()}
+        actions={buildActions()}
+        onErrorMessage={() => {}}
+        provider={{
+          kind: "claude",
+          label: "Claude",
+          selection: "claude:work",
+          options: [],
+          select: () => {},
+          commands: [],
+          error: null,
+          generateTitle,
+        }}
+      />,
+    );
+    expect(generateTitle).not.toHaveBeenCalled();
+    await openNodexMenu(view.getByRole("button", { name: "Task actions" }));
+    expect(generateTitle).not.toHaveBeenCalled();
+    await act(async () => {
+      fireEvent.click(view.getByRole("menuitem", { name: "Generate title" }));
+    });
+    expect(generateTitle).toHaveBeenCalledTimes(1);
+  });
   test("renders the global thread title", async () => {
     const { ThreadStageHeader } = await import("./local-conversation-stage-header");
     const { container } = render(

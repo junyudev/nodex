@@ -22,10 +22,14 @@ import {
 import { emptyAgentConversationSnapshot } from "./AgentConversationProjection";
 import {
   make as makeApplication,
+  resolveAcpPermissionPolicy,
+  resolveClaudePermissionPolicy,
+} from "./AgentBackendApplication";
+
+import {
   projectAgentSessionConfigOptions,
   projectAgentSessionModes,
-  resolveAcpPermissionPolicy,
-} from "./AgentBackendApplication";
+} from "./AgentSessionDirectory";
 
 const make = makeApplication.pipe(Effect.provide(inactiveClaudeSessions));
 
@@ -47,6 +51,14 @@ const project = {
   id: "project-1",
   lifecycle: "active",
   primaryWorkspaceRoot: "/workspace",
+};
+
+const resolution = {
+  kind: "acp" as const,
+  binding,
+  displayName: "Claude Agent",
+  definition: {} as never,
+  instance: {} as never,
 };
 
 const firstSubmission = {
@@ -110,13 +122,18 @@ const makeHandleFor = (input?: {
 const makeHandle = makeHandleFor();
 
 describe("AgentBackendApplication authority", () => {
-  it.effect("maps every Project permission mode to the ACP approval policy", () =>
+  it.effect("keeps native Full access distinct from the ACP approval policy", () =>
     Effect.sync(() => {
       expect(resolveAcpPermissionPolicy("auto")).toBe("ask");
       expect(resolveAcpPermissionPolicy("guardian-approvals")).toBe("approve-for-me");
       expect(resolveAcpPermissionPolicy("full-access")).toBe("approve-for-me");
       expect(resolveAcpPermissionPolicy("custom")).toBe("ask");
       expect(resolveAcpPermissionPolicy(null)).toBe("ask");
+      expect(resolveClaudePermissionPolicy("auto")).toBe("ask");
+      expect(resolveClaudePermissionPolicy("guardian-approvals")).toBe("approve-for-me");
+      expect(resolveClaudePermissionPolicy("full-access")).toBe("full-access");
+      expect(resolveClaudePermissionPolicy("custom")).toBe("ask");
+      expect(resolveClaudePermissionPolicy(null)).toBe("ask");
     }),
   );
 
@@ -253,9 +270,13 @@ describe("AgentBackendApplication authority", () => {
     const updateThread = vi.fn(() => Effect.succeed(thread));
     const workspace = {
       updateThread,
+      readThreadBackendSession: () => Effect.succeed(null),
+      getThread: () => Effect.succeed(thread),
+      getProject: () => Effect.succeed(project),
+      readProjectPermissionMode: () => Effect.succeed("auto" as const),
     } as unknown as ProjectWorkspaceService;
     const registry = AgentBackendRegistry.of({
-      resolve: () => Effect.die("not used"),
+      resolve: () => Effect.succeed(resolution),
       resolveAcpInstance: () => Effect.die("not used"),
     });
 
@@ -295,6 +316,10 @@ describe("AgentBackendApplication authority", () => {
       const becameActive = yield* Deferred.make<void>();
       const statusTypes: string[] = [];
       const workspace = {
+        readThreadBackendSession: () => Effect.succeed(null),
+        getThread: () => Effect.succeed(thread),
+        getProject: () => Effect.succeed(project),
+        readProjectPermissionMode: () => Effect.succeed("auto" as const),
         updateThread: (_threadId: string, patch: { status: { statusType: string } }) =>
           Effect.sync(() => {
             statusTypes.push(patch.status.statusType);
@@ -308,7 +333,7 @@ describe("AgentBackendApplication authority", () => {
           ),
       } as unknown as ProjectWorkspaceService;
       const registry = AgentBackendRegistry.of({
-        resolve: () => Effect.die("not used"),
+        resolve: () => Effect.succeed(resolution),
         resolveAcpInstance: () => Effect.die("not used"),
       });
       const handle = yield* makeHandleFor({ prompt: () => Effect.never });

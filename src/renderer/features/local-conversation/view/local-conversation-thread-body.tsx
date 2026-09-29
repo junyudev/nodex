@@ -18,6 +18,7 @@ import {
 } from "./local-conversation-thread-scroll-controller";
 import { HookFeedbackSettingsNavigationProvider } from "./hook-feedback-settings-navigation";
 import { ConversationImageAssetProvider } from "./conversation-image-asset-context";
+import { ConversationToolOutputProvider } from "./conversation-tool-output-context";
 import { McpAppFollowUpProvider } from "../../../lib/mcp-app/mcp-app-follow-up-context";
 import {
   buildMcpAppFollowUpPrompt,
@@ -37,6 +38,8 @@ interface LocalConversationThreadBodyProps {
   isWorktreeThread?: boolean;
   onForkFromTurnIntoWorktree?: LocalConversationForkIntoWorktreeHandler;
   planSidePanelState?: ThreadPlanSidePanelState | null;
+  resolveHistoryImage?: import("../thread-stage-types").ConversationProviderPresentation["resolveHistoryImage"];
+  readToolOutput?: import("../thread-stage-types").ConversationProviderPresentation["readToolOutput"];
   onErrorMessage: (message: string | null) => void;
   contentShiftX?: number;
   footer?: ReactNode;
@@ -186,22 +189,29 @@ function LocalConversationThreadBodyScopedRoot(props: LocalConversationThreadBod
         composerTarget={composerTarget}
         hostId={model.hostId}
         conversationId={model.threadId}
+        resolveHistoryImage={props.resolveHistoryImage}
       >
-        <EnsureLocalConversationThreadScrollController>
-          {model.threadId ? (
-            <AttachedLocalConversationThreadBody
-              key={model.threadId}
-              {...props}
-              conversationId={model.threadId}
-            />
-          ) : (
-            <LocalConversationThreadBodyLayout
-              {...props}
-              initialRestoreSnapshot={EMPTY_LOCAL_CONVERSATION_THREAD_RESTORE_SNAPSHOT}
-              onRestoreSnapshotChange={ignoreRestoreSnapshotUpdate}
-            />
-          )}
-        </EnsureLocalConversationThreadScrollController>
+        <ConversationToolOutputProvider
+          readToolOutput={props.readToolOutput}
+          conversationId={model.threadId}
+        >
+          <EnsureLocalConversationThreadScrollController>
+            {model.threadId ? (
+              <AttachedLocalConversationThreadBody
+                key={model.threadId}
+                {...props}
+                conversationId={model.threadId}
+                resolveHistoryImage={props.resolveHistoryImage}
+              />
+            ) : (
+              <LocalConversationThreadBodyLayout
+                {...props}
+                initialRestoreSnapshot={EMPTY_LOCAL_CONVERSATION_THREAD_RESTORE_SNAPSHOT}
+                onRestoreSnapshotChange={ignoreRestoreSnapshotUpdate}
+              />
+            )}
+          </EnsureLocalConversationThreadScrollController>
+        </ConversationToolOutputProvider>
       </ConversationImageAssetProvider>
     </HookFeedbackSettingsNavigationProvider>
   );
@@ -224,6 +234,8 @@ export const LocalConversationThreadBody = memo(
     left.actions === right.actions &&
     left.isWorktreeThread === right.isWorktreeThread &&
     left.onForkFromTurnIntoWorktree === right.onForkFromTurnIntoWorktree &&
+    left.resolveHistoryImage === right.resolveHistoryImage &&
+    left.readToolOutput === right.readToolOutput &&
     left.planSidePanelState === right.planSidePanelState &&
     left.onErrorMessage === right.onErrorMessage &&
     left.contentShiftX === right.contentShiftX &&

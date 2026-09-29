@@ -1,4 +1,10 @@
+import { ConversationTaskDialog } from "./conversation-task-dialog";
+import { ConversationRuntimeContext } from "../conversation-runtime";
+import { appScope, useScopeHandle } from "@/lib/maitai";
+import { ThreadScope } from "@/lib/workbench-ui-scopes";
+import { openModal } from "@/lib/modal-registry";
 import { useBackgroundSubagentRows } from "../use-background-subagent-rows";
+import { supportsConversationProviderControl } from "../conversation-provider-controls";
 import { isLocalConversationWriterConflict } from "../conversation-attachment-state";
 import { collectCodexSubagentInteractionReferences } from "../../../../shared/codex-subagent-interaction";
 import { conversationTurnsWithOverlay } from "../../../../shared/codex-conversation-state/codex-conversation-state";
@@ -277,7 +283,12 @@ function ConnectedThreadStageHeader({
   );
 
   return (
-    <ThreadStageHeader model={model} actions={headerActions} onErrorMessage={onErrorMessage} />
+    <ThreadStageHeader
+      model={model}
+      actions={headerActions}
+      provider={input.provider}
+      onErrorMessage={onErrorMessage}
+    />
   );
 }
 
@@ -357,7 +368,8 @@ function ConnectedThreadStageBody({
       onRetryThreadAttachment: async (threadId) => {
         onErrorMessage(null);
         if (readOnly) {
-          await manager.hydrateReadOnlyHistory(threadId).catch(() => null);
+          if (runtime.kind === "codex")
+            await manager.hydrateReadOnlyHistory(threadId).catch(() => null);
           return;
         }
         await runtime.resume(threadId).catch(() => null);
@@ -475,7 +487,35 @@ function ConnectedThreadStageBody({
       onErrorMessage={onErrorMessage}
       contentShiftX={contentShiftX}
       footer={footer}
-      leadingContent={leadingContent}
+      leadingContent={
+        <>
+          {input.provider?.history?.hasOlder && !readOnly ? (
+            <button
+              type="button"
+              className="mx-auto my-2 cursor-interaction px-3 py-1 text-sm text-token-description-foreground hover:text-token-foreground disabled:opacity-50"
+              disabled={input.provider.history.loading || input.provider.history.windowFull}
+              onClick={() => {
+                void input.provider?.history
+                  ?.loadOlder()
+                  .catch((cause: unknown) =>
+                    onErrorMessage(
+                      cause instanceof Error ? cause.message : "Could not load earlier messages",
+                    ),
+                  );
+              }}
+            >
+              {input.provider.history.windowFull
+                ? "History window full"
+                : input.provider.history.loading
+                  ? "Loading…"
+                  : "Load earlier messages"}
+            </button>
+          ) : null}
+          {leadingContent}
+        </>
+      }
+      resolveHistoryImage={input.provider?.resolveHistoryImage}
+      readToolOutput={input.provider?.readToolOutput}
       initialUiState={initialUiState}
       transcriptVisible={transcriptVisible}
       planSidePanelState={input.planSidePanelState ?? null}
@@ -601,10 +641,14 @@ export function ConnectedThreadStageFooter({
   });
   const { refetch: refetchComposerPlugins } = composerPluginsQuery;
   const { refetch: refetchComposerSkills } = composerSkillsQuery;
+  const onComposerCapabilitiesChanged = actions.onComposerCapabilitiesChanged;
   const refreshComposerCapabilities = useCallback(async () => {
-    if (runtime.kind !== "codex") return;
+    if (runtime.kind !== "codex") {
+      await onComposerCapabilitiesChanged?.();
+      return;
+    }
     await Promise.all([refetchComposerPlugins(), refetchComposerSkills()]);
-  }, [runtime.kind, refetchComposerPlugins, refetchComposerSkills]);
+  }, [runtime.kind, refetchComposerPlugins, refetchComposerSkills, onComposerCapabilitiesChanged]);
   const actionsWithComposerCapabilityRefresh = useMemo<ThreadStageActions>(
     () => ({
       ...actions,
@@ -806,7 +850,12 @@ export function ConnectedThreadStageFooter({
       dictation,
       composerPlugins: runtime.kind === "codex" ? (composerPluginsQuery.data ?? []) : [],
       composerPluginsLoading: runtime.kind === "codex" && composerPluginsQuery.isPending,
-      composerSkills: runtime.kind === "codex" ? (composerSkillsQuery.data ?? []) : [],
+      composerSkills:
+        runtime.kind === "codex"
+          ? (composerSkillsQuery.data ?? [])
+          : supportsConversationProviderControl(input.provider, "skills")
+            ? [...(input.provider?.skills ?? [])]
+            : [],
       composerSkillsLoading: runtime.kind === "codex" && composerSkillsQuery.isPending,
       composerApps: runtime.kind === "codex" ? (composerAppsQuery.data ?? []) : [],
       composerAppsLoading: runtime.kind === "codex" && composerAppsQuery.isPending,
@@ -1063,7 +1112,7 @@ export function ConnectedThreadComposerDock({
 }
 
 export function ConnectedThreadStage({
-  actions,
+  actions: providedActions,
   composerScopeIdentity = null,
   onForkFromTurnIntoWorktree,
   initialUiState,
@@ -1087,6 +1136,49 @@ export function ConnectedThreadStage({
   const activeThreadId = resolveConnectedStageActiveThreadId(input);
   const preferredHostId = input.activeThreadSummary?.executionHostId ?? null;
   const runtime = useConversationRuntime(activeThreadId, preferredHostId);
+  const appHandle = useScopeHandle(appScope);
+  const parentThreadScope = useScopeHandle(ThreadScope);
+  const actions = useMemo<ThreadStageActions>(() => {
+    if (
+      !activeThreadId ||
+      backgroundAgentDetail ||
+      input.provider?.controls?.nativeTaskDetails !== true
+    )
+      return providedActions;
+    return {
+      ...providedActions,
+      onOpenSubagentsPanel: () =>
+        openModal(appHandle, ConversationTaskDialog, {
+          runtime,
+          parentThreadId: activeThreadId,
+          parentThreadScope,
+          stopTask: input.provider?.controls?.stopTask ? input.provider.stopTask : undefined,
+          renderDetail: (child) => (
+            <ConversationRuntimeContext.Provider value={runtime}>
+              <ConnectedThreadStage
+                {...input}
+                activeThreadId={child.threadId}
+                activeThreadSummary={child}
+                isNewThreadTab={false}
+                newThreadTarget={null}
+                actions={providedActions}
+                backgroundAgentDetail
+                backgroundAgentCanInteract={false}
+                presentation="panel"
+              />
+            </ConversationRuntimeContext.Provider>
+          ),
+        }),
+    };
+  }, [
+    activeThreadId,
+    backgroundAgentDetail,
+    input,
+    providedActions,
+    appHandle,
+    parentThreadScope,
+    runtime,
+  ]);
   const connection = useLocalConversationConnection(activeThreadId);
   const isSideChat = Boolean(input.sideChatContext);
   const isNewThreadRoute = input.isNewThreadTab && activeThreadId === null && !isSideChat;
@@ -1347,6 +1439,7 @@ export function ConnectedThreadStage({
   useEffect(() => {
     if (!activeThreadId || !threadLifecycleActive || connection.status !== "connected") return;
     if (!subagentReadOnly && !writerConflict) return;
+    if (runtime.kind !== "codex") return;
     const historyIds = [activeThreadId, parentThreadId].filter((id): id is string => id !== null);
     void Promise.all(historyIds.map((id) => historyManager.hydrateReadOnlyHistory(id))).catch(
       (cause: unknown) =>
@@ -1360,6 +1453,7 @@ export function ConnectedThreadStage({
     subagentReadOnly,
     writerConflict,
     historyManager,
+    runtime.kind,
   ]);
 
   const ownsRemoteHostedPipHost =

@@ -488,6 +488,110 @@ pub struct ProjectWorkspaceThreadBackendSession {
     pub backend_binding: AgentBackendBinding,
     pub backend_session_id: String,
     pub updated_at: i64,
+    /// Host-observed native facts; transcript content remains owned by the Agent.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub native_state: Option<ProjectWorkspaceNativeAgentState>,
+}
+
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize, ToSchema)]
+pub struct ProjectWorkspaceNativeAgentPreferences {
+    pub model: String,
+    pub effort: String,
+    pub interaction_mode: ProjectWorkspaceNativeInteractionMode,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub fast: Option<bool>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub thinking: Option<bool>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub context: Option<String>,
+}
+
+#[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize, ToSchema)]
+#[serde(rename_all = "snake_case")]
+pub enum ProjectWorkspaceNativeInteractionMode {
+    Default,
+    Plan,
+}
+
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize, ToSchema)]
+pub struct ProjectWorkspaceNativeAgentState {
+    pub preferences: ProjectWorkspaceNativeAgentPreferences,
+    #[serde(default)]
+    pub ever_saved: bool,
+    #[serde(default)]
+    pub turns: Vec<ProjectWorkspaceNativeTurnFact>,
+}
+
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize, ToSchema)]
+pub struct ProjectWorkspaceNativeTurnFact {
+    pub client_user_message_id: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub native_user_message_id: Option<String>,
+    pub stop_reason: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub error: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub created_at: Option<i64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub completed_at: Option<i64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub usage: Option<ProjectWorkspaceNativeUsageFact>,
+    #[serde(default)]
+    pub compactions: Vec<ProjectWorkspaceNativeCompactionFact>,
+    #[serde(default)]
+    pub artifacts: Vec<ProjectWorkspaceNativeArtifactFact>,
+}
+
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize, ToSchema)]
+pub struct ProjectWorkspaceNativeUsageFact {
+    pub used: u64,
+    pub size: u64,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub cost_micros: Option<u64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub currency: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub tokens: Option<ProjectWorkspaceNativeTokenFact>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub cumulative_tokens: Option<ProjectWorkspaceNativeTokenFact>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub model: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub context_estimated: Option<bool>,
+}
+
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize, ToSchema)]
+pub struct ProjectWorkspaceNativeTokenFact {
+    pub input: u64,
+    pub output: u64,
+    pub cache_read: u64,
+    pub cache_write: u64,
+}
+
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize, ToSchema)]
+pub struct ProjectWorkspaceNativeCompactionFact {
+    pub id: String,
+    pub status: String,
+    pub summary: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub error: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub trigger: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub pre_tokens: Option<u64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub post_tokens: Option<u64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub duration_ms: Option<u64>,
+}
+
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize, ToSchema)]
+pub struct ProjectWorkspaceNativeArtifactFact {
+    pub filename: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub file_id: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub error: Option<String>,
 }
 
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize, ToSchema)]
@@ -1277,6 +1381,10 @@ pub enum ProjectWorkspaceIntent {
         thread_id: String,
         backend_binding: AgentBackendBinding,
         backend_session_id: String,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        expected_backend_session_id: Option<String>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        native_state: Option<ProjectWorkspaceNativeAgentState>,
     },
     ClearThreadBackendSession {
         thread_id: String,

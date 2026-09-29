@@ -32,19 +32,23 @@ See [the distribution and verification contract](../resources/workspace-runtime/
 
 Agent settings expose Claude Code with an enabled default instance, executable `claude`, and the
 normal Claude configuration directory. Select an explicit executable when the desktop PATH does
-not include the installation. An optional absolute config directory sets `CLAUDE_CONFIG_DIR` for
+not include the installation. Add separate profiles for independent accounts or gateways. An optional
+absolute or `~/` config directory sets `CLAUDE_CONFIG_DIR` for
 that instance without changing HOME or copying credentials. Run `claude auth login` with the same
 config directory to sign in. Restart the task connection after changing executable or account paths.
 
 The official Claude Agent SDK loads user, project, and local configuration, including instructions,
 skills, hooks, and MCP servers. Nodex stores instance identity, display name, executable,
-config directory, enabled state, and environment overrides in the Profile's `claude_agent_instances`
+config directory, enabled state, custom model declarations and environment overrides in the Profile's `claude_agent_instances`
 setting. Use **Agent > Claude Code > Environment variables** for API endpoints, authentication tokens,
 and other instance variables. Paste literal `export KEY="value"` or `KEY=value` lines into a row to
 import them. Sensitive values are encrypted separately under the selected Profile's `agent-secrets/claude`;
 ordinary settings contain only references. Saved secrets can be retained, replaced, or removed.
 An empty value overrides inheritance with an empty string; deleting the row restores inheritance.
-Changes apply when Claude next connects, without restarting Nodex. See
+Custom models pair a concrete ID with a display name and explicit supported effort, Fast, Thinking
+and context traits. Adaptive thinking and support for disabling thinking are separate capabilities;
+the latter enables Off in the Effort menu. Changes refresh discovery and apply when Claude next
+connects, without restarting Nodex. See
 [Agent Backend Behavior](product-specs/agent-backend-behavior.md#native-claude-code).
 
 The executable and configuration select trusted user-managed code; enabling an instance does not

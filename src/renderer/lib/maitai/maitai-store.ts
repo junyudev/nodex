@@ -127,6 +127,7 @@ export interface ScopeNode {
 export interface RetainedScopeEntry {
   readonly node: ScopeNode;
   readonly activeLeases: Set<symbol>;
+  readonly contextLeases: Set<symbol>;
   lastUsed: number;
   committed: boolean;
 }
@@ -464,6 +465,7 @@ export function prepareScope<Descriptor>(
   const entry: RetainedScopeEntry = {
     node,
     activeLeases: new Set(),
+    contextLeases: new Set(),
     lastUsed: 0,
     committed: false,
   };
@@ -564,7 +566,7 @@ export function trimRetainedSiblings(parent: ScopeNode, childDefinition: AnyScop
     let candidate: [unknown, RetainedScopeEntry] | null = null;
     for (const pair of entries) {
       const entry = pair[1];
-      if (entry.activeLeases.size > 0) continue;
+      if (entry.activeLeases.size > 0 || entry.contextLeases.size > 0) continue;
       if (!candidate || entry.lastUsed < candidate[1].lastUsed) candidate = pair;
     }
     if (!candidate) return;
@@ -641,7 +643,7 @@ export function disposeScopeNode(node: ScopeNode, reason: DisposalReason, force 
 function findActiveLeaseCount(node: ScopeNode): number {
   if (!node.parent) return 0;
   const entry = node.parent.retainedScopeEntries.get(node.token)?.get(node.keyToken);
-  return entry?.node === node ? entry.activeLeases.size : 0;
+  return entry?.node === node ? entry.activeLeases.size + entry.contextLeases.size : 0;
 }
 
 export function createScopeHandle(view: ScopeView): ScopeHandle {
@@ -689,6 +691,40 @@ export function createScopeHandle(view: ScopeView): ScopeHandle {
 }
 
 const scopeHandleViews = new WeakMap<object, ScopeView>();
+
+export function getScopeContextView(handle: ScopeHandle, store: MaitaiStore): ScopeView {
+  const view = scopeHandleViews.get(handle);
+  if (!view) throw new Error("Unknown Maitai ScopeHandle");
+  assertNodeLive(view.node);
+  if (view.node.store !== asInternalStore(store)) {
+    throw new Error("A scope context must belong to the current Maitai store");
+  }
+  return view;
+}
+
+/** Borrow retained context without creating a second state owner or changing its descriptor. */
+export function acquireScopeContext(view: ScopeView): () => void {
+  const entries: RetainedScopeEntry[] = [];
+  let node = view.node;
+  while (node.parent) {
+    const entry = node.parent.retainedScopeEntries.get(node.token)?.get(node.keyToken);
+    if (!entry || entry.node !== node) {
+      throw new Error(`A scope context requires a committed retained owner: ${node.path}`);
+    }
+    assertNodeLive(node);
+    entries.push(entry);
+    node = node.parent;
+  }
+  const lease = Symbol("scope-context");
+  for (const entry of entries) entry.contextLeases.add(lease);
+  return () => {
+    for (const entry of entries) {
+      if (!entry.contextLeases.delete(lease) || entry.node.phase !== "live") continue;
+      touchEntry(entry);
+      if (entry.node.parent) trimRetainedSiblings(entry.node.parent, entry.node.token);
+    }
+  };
+}
 
 export function registerScopeDisposer(view: ScopeView, dispose: () => void): () => void {
   assertNodeLive(view.node);
@@ -888,7 +924,7 @@ export function getMaitaiDebugSnapshot(store: MaitaiStore): MaitaiDebugEntry[] {
       mountedCount:
         entry?.activeLeases.size ?? (node === internal.rootNode && !internal.disposed ? 1 : 0),
       retained: node.token.retain !== null,
-      eligible: Boolean(entry && entry.activeLeases.size === 0),
+      eligible: Boolean(entry && entry.activeLeases.size === 0 && entry.contextLeases.size === 0),
       lastUsed: entry?.lastUsed ?? 0,
       childCount,
       concreteBindingCount: node.signalBindings.size + node.cachedBindings.size,

@@ -329,6 +329,12 @@ export const live: Layer.Layer<
             "update-claude-agent-settings",
             { type: "update-claude-agents", input: parsed },
             (value) => value.claudeAgents,
+          ).pipe(
+            Effect.tap(() =>
+              Effect.sync(() =>
+                safeBroadcastToWindows(windows.all(), "claude-agent-settings-changed", [undefined]),
+              ),
+            ),
           ),
         ),
       ),

@@ -30155,10 +30155,26 @@
                   "backend_session_id": {
                     "type": "string"
                   },
+                  "expected_backend_session_id": {
+                    "type": [
+                      "string",
+                      "null"
+                    ]
+                  },
                   "kind": {
                     "type": "string",
                     "enum": [
                       "bind_thread_backend_session"
+                    ]
+                  },
+                  "native_state": {
+                    "oneOf": [
+                      {
+                        "type": "null"
+                      },
+                      {
+                        "$ref": "#/components/schemas/ProjectWorkspaceNativeAgentState"
+                      }
                     ]
                   },
                   "thread_id": {
@@ -38147,10 +38163,26 @@
               "backend_session_id": {
                 "type": "string"
               },
+              "expected_backend_session_id": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
               "kind": {
                 "type": "string",
                 "enum": [
                   "bind_thread_backend_session"
+                ]
+              },
+              "native_state": {
+                "oneOf": [
+                  {
+                    "type": "null"
+                  },
+                  {
+                    "$ref": "#/components/schemas/ProjectWorkspaceNativeAgentState"
+                  }
                 ]
               },
               "thread_id": {
@@ -38935,6 +38967,307 @@
             "items": {
               "$ref": "#/components/schemas/ProjectSource"
             }
+          }
+        }
+      },
+      "ProjectWorkspaceNativeAgentPreferences": {
+        "type": "object",
+        "required": [
+          "model",
+          "effort",
+          "interaction_mode"
+        ],
+        "properties": {
+          "context": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "effort": {
+            "type": "string"
+          },
+          "fast": {
+            "type": [
+              "boolean",
+              "null"
+            ]
+          },
+          "interaction_mode": {
+            "$ref": "#/components/schemas/ProjectWorkspaceNativeInteractionMode"
+          },
+          "model": {
+            "type": "string"
+          },
+          "thinking": {
+            "type": [
+              "boolean",
+              "null"
+            ]
+          }
+        }
+      },
+      "ProjectWorkspaceNativeAgentState": {
+        "type": "object",
+        "required": [
+          "preferences"
+        ],
+        "properties": {
+          "ever_saved": {
+            "type": "boolean"
+          },
+          "preferences": {
+            "$ref": "#/components/schemas/ProjectWorkspaceNativeAgentPreferences"
+          },
+          "turns": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ProjectWorkspaceNativeTurnFact"
+            }
+          }
+        }
+      },
+      "ProjectWorkspaceNativeArtifactFact": {
+        "type": "object",
+        "required": [
+          "filename"
+        ],
+        "properties": {
+          "error": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "file_id": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "filename": {
+            "type": "string"
+          }
+        }
+      },
+      "ProjectWorkspaceNativeCompactionFact": {
+        "type": "object",
+        "required": [
+          "id",
+          "status",
+          "summary"
+        ],
+        "properties": {
+          "duration_ms": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int64",
+            "minimum": 0
+          },
+          "error": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "id": {
+            "type": "string"
+          },
+          "post_tokens": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int64",
+            "minimum": 0
+          },
+          "pre_tokens": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int64",
+            "minimum": 0
+          },
+          "status": {
+            "type": "string"
+          },
+          "summary": {
+            "type": "string"
+          },
+          "trigger": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        }
+      },
+      "ProjectWorkspaceNativeInteractionMode": {
+        "type": "string",
+        "enum": [
+          "default",
+          "plan"
+        ]
+      },
+      "ProjectWorkspaceNativeTokenFact": {
+        "type": "object",
+        "required": [
+          "input",
+          "output",
+          "cache_read",
+          "cache_write"
+        ],
+        "properties": {
+          "cache_read": {
+            "type": "integer",
+            "format": "int64",
+            "minimum": 0
+          },
+          "cache_write": {
+            "type": "integer",
+            "format": "int64",
+            "minimum": 0
+          },
+          "input": {
+            "type": "integer",
+            "format": "int64",
+            "minimum": 0
+          },
+          "output": {
+            "type": "integer",
+            "format": "int64",
+            "minimum": 0
+          }
+        }
+      },
+      "ProjectWorkspaceNativeTurnFact": {
+        "type": "object",
+        "required": [
+          "client_user_message_id",
+          "stop_reason"
+        ],
+        "properties": {
+          "artifacts": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ProjectWorkspaceNativeArtifactFact"
+            }
+          },
+          "client_user_message_id": {
+            "type": "string"
+          },
+          "compactions": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ProjectWorkspaceNativeCompactionFact"
+            }
+          },
+          "completed_at": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int64"
+          },
+          "created_at": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int64"
+          },
+          "error": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "native_user_message_id": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "stop_reason": {
+            "type": "string"
+          },
+          "usage": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/ProjectWorkspaceNativeUsageFact"
+              }
+            ]
+          }
+        }
+      },
+      "ProjectWorkspaceNativeUsageFact": {
+        "type": "object",
+        "required": [
+          "used",
+          "size"
+        ],
+        "properties": {
+          "context_estimated": {
+            "type": [
+              "boolean",
+              "null"
+            ]
+          },
+          "cost_micros": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int64",
+            "minimum": 0
+          },
+          "cumulative_tokens": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/ProjectWorkspaceNativeTokenFact"
+              }
+            ]
+          },
+          "currency": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "model": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "size": {
+            "type": "integer",
+            "format": "int64",
+            "minimum": 0
+          },
+          "tokens": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/ProjectWorkspaceNativeTokenFact"
+              }
+            ]
+          },
+          "used": {
+            "type": "integer",
+            "format": "int64",
+            "minimum": 0
           }
         }
       },
@@ -40042,6 +40375,17 @@
           },
           "backend_session_id": {
             "type": "string"
+          },
+          "native_state": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/ProjectWorkspaceNativeAgentState",
+                "description": "Host-observed native facts; transcript content remains owned by the Agent."
+              }
+            ]
           },
           "thread_id": {
             "type": "string"

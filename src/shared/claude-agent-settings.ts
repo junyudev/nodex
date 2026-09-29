@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { CLAUDE_EFFORT_LEVELS } from "./claude-models";
 
 export const CLAUDE_ENVIRONMENT_LIMIT = 64;
 export const ENVIRONMENT_VALUE_LIMIT = 32_768;
@@ -55,12 +56,57 @@ export type ClaudeEnvironmentVariable =
   | { name: string; sensitive: false; value: string }
   | { name: string; sensitive: true; value: null };
 
+export const ClaudeModelTraitsSchema = z
+  .object({
+    effortLevels: z.array(z.enum(CLAUDE_EFFORT_LEVELS)).max(5).optional(),
+    fastMode: z.boolean().optional(),
+    adaptiveThinking: z.boolean().optional(),
+    disableThinking: z.boolean().optional(),
+    disabledThinkingEfforts: z.array(z.enum(CLAUDE_EFFORT_LEVELS)).max(5).optional(),
+    contextWindows: z
+      .array(z.string().regex(/^\d+[km]$/u))
+      .max(8)
+      .optional(),
+  })
+  .strict();
+export const ClaudeCustomModelSchema = z
+  .object({
+    id: z
+      .string()
+      .trim()
+      .min(1)
+      .max(256)
+      .refine((value) => value !== "default", "Default follows Claude configuration."),
+    displayName: z.string().trim().min(1).max(128),
+    traits: ClaudeModelTraitsSchema.default({}),
+  })
+  .strict();
 export const ClaudeAgentInstanceFields = {
   id: z.string().trim().min(1).max(128),
   displayName: z.string().trim().min(1).max(128),
   binaryPath: z.string().trim().min(1).max(4096),
-  configDirectory: z.string().trim().max(4096),
+  configDirectory: z
+    .string()
+    .trim()
+    .max(4096)
+    .refine(
+      (value) =>
+        value === "" ||
+        value.startsWith("~/") ||
+        value.startsWith("/") ||
+        /^[A-Za-z]:[\\\\/]/u.test(value) ||
+        value.startsWith("\\\\"),
+      "Use an absolute path or a path starting with ~/.",
+    ),
   enabled: z.boolean(),
+  customModels: z
+    .array(ClaudeCustomModelSchema)
+    .max(64)
+    .refine(
+      (models) => new Set(models.map(({ id }) => id)).size === models.length,
+      "Custom model IDs must be unique.",
+    )
+    .default([]),
 };
 export const ClaudeAgentSettingsUpdateSchema = z
   .object({
@@ -104,4 +150,5 @@ export const defaultClaudeInstance = (): ClaudeAgentInstanceConfig => ({
   configDirectory: "",
   enabled: true,
   environment: [],
+  customModels: [],
 });

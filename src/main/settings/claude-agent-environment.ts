@@ -66,6 +66,7 @@ const SecretPayloadSchema = z
 
 export interface ClaudeEnvironmentStorage {
   readonly settingsPath: string;
+  readonly hostHomeDirectory?: string;
   readonly secretEncryption?: SecretEncryptionAdapter;
 }
 
@@ -200,16 +201,23 @@ export function writeClaudeInstances(
     throw new Error(
       "Invalid Claude environment. Check names, duplicate variables and value limits.",
     );
-  if (
-    result.data.instances.some(
-      ({ configDirectory }) => configDirectory !== "" && !path.isAbsolute(configDirectory),
-    )
-  )
-    throw new Error("Claude config directory must be absolute.");
+  const normalized = result.data.instances.map((instance) => {
+    const directory = instance.configDirectory;
+    if (directory.startsWith("~/") && !source.hostHomeDirectory)
+      throw new Error(
+        "The host home directory is unavailable. Use an absolute Claude config path.",
+      );
+    const configDirectory = directory.startsWith("~/")
+      ? path.resolve(source.hostHomeDirectory!, directory.slice(2))
+      : directory;
+    if (configDirectory && !path.isAbsolute(configDirectory))
+      throw new Error("Claude config directory must be absolute or start with ~/.");
+    return { ...instance, configDirectory };
+  });
   const staged: string[] = [];
   let next: StoredInstances;
   try {
-    next = result.data.instances.map((instance) => ({
+    next = normalized.map((instance) => ({
       ...instance,
       environment: instance.environment.map((variable) => {
         if (!variable.sensitive) return variable;

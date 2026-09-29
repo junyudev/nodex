@@ -13,9 +13,9 @@ history remains available through its bounded Core window. Renderer mutations
 use the same Core revision fence and committed update event as agent-driven
 `automation_update` mutations.
 
-Scheduled tasks currently execute only with the Codex Agent Backend. Creation,
-editing, loading, and execution reject every other backend binding; Nodex never
-routes an unsupported scheduled task through Codex as an implicit fallback.
+Scheduled tasks execute with an explicit Codex or configured Claude Code binding.
+Creation, editing and execution retain that binding; ACP and remote-host execution
+remain unavailable. An unavailable Profile or runtime never selects another backend.
 
 Core Agent definition access carries exact persisted Turn provenance. A
 Project-scoped Turn can read and manage Cron tasks in that Project and Heartbeats
@@ -87,9 +87,9 @@ The detail rail edits one coherent draft with these fields:
 - title and prompt;
 - `Runs in` target kind;
 - Chat or Project target;
-- optional local Environment;
+- optional local Environment for Codex worktree tasks;
 - repeat/interval schedule;
-- Codex model, reasoning effort, and service tier;
+- Agent Profile, model and supported effort, plus Codex service tier;
 - Previous runs for cron tasks.
 
 Cron tasks require title, prompt, schedule, and model. They target either one
@@ -107,16 +107,28 @@ not retarget or delete the definition; a run without an active, attached Session
 waits for an available target. Reattaching a Thread does not require recreating
 the Heartbeat. Only one active Heartbeat may target a given Session.
 
-The Environment field appears only for a cron worktree task with exactly one
+The Environment field appears only for a Codex cron worktree task with exactly one
 selected Project source. It offers `No environment`, identifies the preferred
 `environment.toml` definition, and can open Settings → Environments with the
 selected Project/config context.
 
-Scheduled tasks currently execute only on the native Codex backend. The model
-control uses the runtime-owned Codex model catalog and preserves its exact model,
-reasoning, and service-tier tuple. ACP-backed scheduled tasks are rejected at
-creation and execution boundaries until the automation runtime has a real ACP
-execution path; they are never redirected to Codex.
+The shared Agent menu offers Codex and enabled Claude Profiles. Codex uses its runtime
+model catalog and exact model, reasoning and service-tier tuple. Claude uses discovery
+from the selected Profile and Project, or the trusted host directory for a projectless
+task. It displays concrete native model IDs and only advertised effort levels. Inherited preferences
+display their resolved native values. Changing Profile clears settings that do not apply to the new
+backend, while a Codex catalog refresh cannot rewrite Claude choices. Claude launches
+use the Profile environment, without Codex service tiers or local Environment files.
+Heartbeat definitions retain the exact Profile of their target Session; a mismatched
+current attachment is unavailable for execution.
+
+Claude cron execution creates and durably links its local, managed worktree or fresh
+projectless workspace before submission. The existing Core due lease and run inbox
+own the entire run. Native Heartbeats consume eligibility from the shared conversation
+owner and recheck the target, cadence, busy state and background tasks before launch.
+Scheduled native turns do not wait for interactive approvals or questions. They are
+bounded within the due lease; failure, timeout and interruption cancel only their exact
+accepted Turn, settle the run and retain its review record.
 
 ## Notification preferences
 

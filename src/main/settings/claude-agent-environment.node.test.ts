@@ -85,6 +85,46 @@ it("encrypts secrets outside config, redacts reads, and resolves the exact launc
   ).toBe("test-only-secret");
 });
 
+it("normalizes account paths against the host home and preserves explicit custom model traits", () => {
+  const source = { ...fixture(), hostHomeDirectory: "/host/home" };
+  const model = {
+    id: "gateway/private-opus",
+    displayName: "Private Opus",
+    traits: {
+      effortLevels: ["high" as const],
+      fastMode: true,
+      adaptiveThinking: false,
+      contextWindows: ["1m"],
+    },
+  };
+  const saved = updateClaudeAgentSettings(
+    {
+      instances: [
+        { ...defaultClaudeInstance(), configDirectory: "~/claude-work", customModels: [model] },
+      ],
+    },
+    source,
+  );
+  expect(saved.instances[0]?.configDirectory).toBe("/host/home/claude-work");
+  expect(getClaudeLaunchConfiguration(source, "claude-default").instance.customModels).toEqual([
+    model,
+  ]);
+  updateClaudeAgentSettings(saved, source);
+  expect(getClaudeAgentSettings(source).instances[0]?.customModels).toEqual([model]);
+  expect(() =>
+    updateClaudeAgentSettings(
+      { instances: [{ ...defaultClaudeInstance(), configDirectory: "relative/config" }] },
+      source,
+    ),
+  ).toThrow();
+  expect(() =>
+    updateClaudeAgentSettings(
+      { instances: [{ ...defaultClaudeInstance(), customModels: [model, model] }] },
+      source,
+    ),
+  ).toThrow();
+});
+
 it("replaces secrets with an explicit empty string and deletes only removed overrides", () => {
   const source = fixture();
   const saved = updateClaudeAgentSettings(configuration(), source);

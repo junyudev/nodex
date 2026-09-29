@@ -1,4 +1,6 @@
+import { captureAppToolAuthority } from "./AppToolCaller";
 import * as Effect from "effect/Effect";
+import * as Option from "effect/Option";
 import {
   automationSchema,
   type AutomationToolInput,
@@ -17,6 +19,7 @@ import { createStableOperationId } from "../core-runtime/operation-identity";
 import { ProjectWorkspace } from "../project-application/ProjectWorkspace";
 import type { AppToolInvocation } from "./AppToolInvocationInbox";
 import { toolFailure, toolSuccess } from "./app-tool-result";
+import { NativeConversationExtension } from "./NativeConversationExtension";
 
 const definitionInput = (request: Extract<AutomationToolInput, { kind: "cron" | "heartbeat" }>) => {
   if (request.mode === "update" || request.mode === "suggested_update") {
@@ -39,6 +42,7 @@ export const make = Effect.gen(function* () {
   const workspace = yield* ProjectWorkspace;
   const turns = yield* CodexTurnAuthority;
   const identity = yield* CoreAuthority;
+  const native = yield* Effect.serviceOption(NativeConversationExtension);
 
   const dispatch = Effect.fn("AutomationAppTools.dispatch")(function* (
     input: AppToolInvocation,
@@ -73,7 +77,43 @@ export const make = Effect.gen(function* () {
     if (request.kind === "heartbeat" && !targetSessionId) return toolFailure("session_unavailable");
     if (!input.caller.isActive()) return toolFailure("call_withdrawn", undefined, { operationId });
     const fields = definitionInput(request);
-    const definition = request.kind === "heartbeat" ? { ...fields, targetSessionId } : fields;
+    const current =
+      request.mode === "update" || request.mode === "suggested_update"
+        ? yield* application.definitions.get(request.id)
+        : null;
+    const target =
+      request.kind === "heartbeat" && targetSessionId
+        ? (yield* workspace.getProjectSession(targetSessionId))?.thread
+        : yield* workspace.getThread(input.caller.threadId);
+    const backendBinding =
+      fields.backendBinding ?? current?.backendBinding ?? target?.backendBinding;
+    if (!backendBinding || backendBinding.kind === "acp")
+      return toolFailure("automation_backend_unavailable");
+    const definition =
+      request.kind === "heartbeat"
+        ? { ...fields, backendBinding, targetSessionId }
+        : { ...fields, backendBinding };
+    if (backendBinding.kind === "claude") {
+      if (Option.isNone(native)) return toolFailure("automation_backend_unavailable");
+      yield* native.value
+        .validateAutomation({
+          backendBinding,
+          model: "model" in fields ? (fields.model ?? null) : null,
+          reasoningEffort: "reasoningEffort" in fields ? (fields.reasoningEffort ?? null) : null,
+          serviceTier: "serviceTier" in fields ? (fields.serviceTier ?? null) : null,
+          executionEnvironment:
+            "executionEnvironment" in fields ? fields.executionEnvironment : "local",
+          localEnvironmentConfigPath:
+            "localEnvironmentConfigPath" in fields
+              ? (fields.localEnvironmentConfigPath ?? null)
+              : null,
+        })
+        .pipe(
+          Effect.mapError(
+            (cause) => new AutomationApplicationError({ operation: "validate-native", cause }),
+          ),
+        );
+    }
     if (request.mode === "suggested_create" || request.mode === "suggested_update") {
       if (request.mode === "suggested_update") {
         const current = yield* application.definitions.get(request.id);
@@ -111,9 +151,7 @@ export const make = Effect.gen(function* () {
     const parsed = automationSchema.safeParse(input.arguments);
     if (!parsed.success) return toolFailure("invalid_arguments");
     if (!input.caller.isActive()) return toolFailure("call_withdrawn");
-    const authority = yield* turns
-      .capture(input.caller.threadId, input.caller.turnId)
-      .pipe(Effect.catch(() => Effect.succeed(null)));
+    const authority = yield* captureAppToolAuthority(input.caller, turns);
     if (!authority) return toolFailure("authority_unavailable");
     const request = parsed.data;
     const writes =
@@ -133,7 +171,7 @@ export const make = Effect.gen(function* () {
         CoreApplicationAgent,
         toCoreAgentTurnProvenance(identity.identity.profileId, authority),
       ),
-      Effect.catch((error: AutomationApplicationError) => {
+      Effect.catch((error) => {
         const cause = error.cause instanceof CoreRuntimeError ? error.cause.cause : error.cause;
         return Effect.succeed(
           cause instanceof CoreModuleResponseError

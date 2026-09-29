@@ -100,8 +100,15 @@ const setup = (
   } = {},
 ) =>
   make.pipe(
-    Effect.provideService(AutomationApplication, { definitions } as never),
-    Effect.provideService(ProjectWorkspace, (options.workspace ?? {}) as ProjectWorkspaceService),
+    Effect.provideService(AutomationApplication, {
+      definitions: { get: () => Effect.succeed(item), ...definitions },
+    } as never),
+    Effect.provideService(ProjectWorkspace, {
+      getThread: () => Effect.succeed({ backendBinding: { kind: "codex" } } as never),
+      getProjectSession: () =>
+        Effect.succeed({ thread: { backendBinding: { kind: "codex" } } } as never),
+      ...options.workspace,
+    } as ProjectWorkspaceService),
     Effect.provideService(CoreAuthority, { identity: { profileId: "profile:a" } } as never),
     Effect.provideService(CodexTurnAuthority, {
       capture: () => Effect.succeed({ ...authority, readOnly: options.readOnly ?? false }),
@@ -203,7 +210,7 @@ it.effect("relays exact definition commands, revision fences, and stable retry p
     assert.deepStrictEqual(calls[0], calls[2]);
     assert.deepStrictEqual(calls[0], {
       mode: "create",
-      definition: cron,
+      definition: { ...cron, backendBinding: { kind: "codex" } },
       command: { operationId },
       provenance,
     });
@@ -223,7 +230,13 @@ it.effect("relays exact definition commands, revision fences, and stable retry p
     assert.strictEqual(updated.structuredContent?.operationId, updateId);
     assert.deepStrictEqual(calls[3], {
       mode: "update",
-      definition: { ...cron, id: item.id, status: "PAUSED", notificationPolicy: null },
+      definition: {
+        ...cron,
+        id: item.id,
+        status: "PAUSED",
+        notificationPolicy: null,
+        backendBinding: { kind: "codex" },
+      },
       command: { operationId: updateId, expectedRevision: 1 },
       provenance,
     });
@@ -293,8 +306,8 @@ it.effect("defaults Heartbeats to the caller's stable Session and preserves expl
     );
     assert.deepStrictEqual(lookups, [{ threadId: "thread:a", provenance }]);
     assert.deepStrictEqual(targets, [
-      { ...definition, targetSessionId: "session:caller" },
-      { ...definition, targetSessionId: "session:other" },
+      { ...definition, targetSessionId: "session:caller", backendBinding: { kind: "codex" } },
+      { ...definition, targetSessionId: "session:other", backendBinding: { kind: "codex" } },
     ]);
   }),
 );
@@ -378,7 +391,7 @@ it.effect("returns review proposals without mutation and rejects stale update pr
     const execute = yield* setup({ get: () => Effect.succeed(item) }, { readOnly: true });
     const created = yield* execute(input({ ...cron, mode: "suggested_create" }));
     assert.deepStrictEqual(created.structuredContent, {
-      proposal: { ...cron, mode: "suggested_create" },
+      proposal: { ...cron, mode: "suggested_create", backendBinding: { kind: "codex" } },
       committed: false,
     });
     const args = {
@@ -389,7 +402,7 @@ it.effect("returns review proposals without mutation and rejects stale update pr
       status: "PAUSED",
     };
     assert.deepStrictEqual((yield* execute(input(args))).structuredContent, {
-      proposal: args,
+      proposal: { ...args, backendBinding: { kind: "codex" } },
       committed: false,
     });
     assert.deepStrictEqual(

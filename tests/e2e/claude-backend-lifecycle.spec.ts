@@ -1,8 +1,11 @@
 import { expect, test, type Page } from "@playwright/test";
-import { readFileSync, writeFileSync } from "node:fs";
+import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { pathToFileURL } from "node:url";
-import { ElectronScenarioHarness } from "../../scripts/scenarios/harness/electron-e2e-harness";
+import {
+  ElectronScenarioHarness,
+  readBoundedElectronRuntimeLogs,
+} from "../../scripts/scenarios/harness/electron-e2e-harness";
 import type { AgentBackendSessionPresentation } from "../../src/shared/agent-conversation";
 import type { ProjectSession } from "../../src/shared/types";
 import { createBoundedOperationId } from "../../src/shared/operation-identity";
@@ -19,9 +22,16 @@ const invoke = async <Result>(page: Page, channel: string, ...args: unknown[]): 
     { channel, args },
   );
 
-test("runs Claude with selected effort and restores its configuration and transcript after restart", async () => {
+test("applies native permissions and intelligence and restores the Claude conversation after restart", async () => {
   test.setTimeout(120_000);
-  const harness = await ElectronScenarioHarness.create({ label: "claude-backend-lifecycle" });
+  const harness = await ElectronScenarioHarness.create({
+    label: "claude-backend-lifecycle",
+    environment: {
+      NODEX_TEST_AGENT_RUNTIME_PROJECT_ROOT: path.resolve("."),
+      NODEX_LOG_FILE: "1",
+      NODEX_LOG_FILE_LEVEL: "debug",
+    },
+  });
   const binaryPath = path.join(harness.profile.runRoot, "claude");
   const fixtureUrl = pathToFileURL(
     path.resolve("scripts/scenarios/runtime/scripted-claude-agent.mjs"),
@@ -29,8 +39,23 @@ test("runs Claude with selected effort and restores its configuration and transc
   writeFileSync(binaryPath, `#!${process.execPath}\nimport(${JSON.stringify(fixtureUrl)});\n`, {
     mode: 0o755,
   });
+  const rendererErrors: string[] = [];
+  let linkedThreadId: string | undefined;
+  const observations = () => {
+    const observationPath = path.join(
+      harness.profile.runRoot,
+      "claude-config",
+      "observations.jsonl",
+    );
+    if (!existsSync(observationPath)) return [];
+    return readFileSync(observationPath, "utf8")
+      .trim()
+      .split("\n")
+      .map((line) => JSON.parse(line));
+  };
   try {
     let page = await harness.launch();
+    page.on("pageerror", (error) => rendererErrors.push(error.message));
     await invoke(page, "settings:claude-agents:update", {
       instances: [
         {
@@ -111,22 +136,41 @@ test("runs Claude with selected effort and restores its configuration and transc
     await page.keyboard.press("Escape");
     await expect(composer).toHaveText("Native Claude lifecycle");
     await page.getByRole("button", { name: "Select model", exact: true }).click();
-    await page
-      .getByRole("menuitem", { name: "Model Claude Opus 5 (default)", exact: true })
-      .hover();
+    await page.getByRole("menuitem", { name: "Model Claude Opus 5", exact: true }).hover();
     const sonnet = page.getByRole("menuitem", {
-      name: /Claude Sonnet 5\s*claude-sonnet-5/u,
+      name: /Claude Sonnet 5\.5\s*claude-sonnet-5-5/u,
       exact: true,
     });
     await expect(sonnet).toBeVisible();
+    await expect(page.getByRole("menuitem", { name: "Default", exact: true })).toHaveCount(0);
     await page.screenshot({ path: test.info().outputPath("claude-model-picker.png") });
-    await sonnet.click();
-    await page.getByRole("menuitem", { name: "Effort Default", exact: true }).hover();
+    await page.keyboard.press("Escape");
+    await page.getByRole("menuitem", { name: "Effort High", exact: true }).hover();
     await expect(page.getByRole("menuitem", { name: "Max", exact: true })).toBeVisible();
+    await expect(page.getByRole("menuitem", { name: "Default", exact: true })).toHaveCount(0);
     await page.screenshot({ path: test.info().outputPath("claude-effort-picker.png") });
     await page.getByRole("menuitem", { name: "Max", exact: true }).click();
+    await expect(page.getByRole("menuitem", { name: "Effort Max", exact: true })).toBeVisible();
+    await page.keyboard.press("Escape");
+    await page.getByRole("menuitem", { name: "Fast Off", exact: true }).hover();
+    await page.getByRole("menuitem", { name: "On", exact: true }).click();
+    await expect(page.getByRole("menuitem", { name: "Fast On", exact: true })).toBeVisible();
+    await expect(page.getByRole("menuitem", { name: "Default", exact: true })).toHaveCount(0);
     await page.keyboard.press("Escape");
     await page.keyboard.press("Escape");
+    await page.getByRole("button", { name: "Change permissions", exact: true }).click();
+    const fullAccess = page.getByRole("menuitem", { name: /^Full access/u });
+    await expect(fullAccess).toBeEnabled();
+    await fullAccess.click();
+    const fullAccessDialog = page.getByRole("dialog", {
+      name: "Turn on Full Access?",
+      exact: true,
+    });
+    await expect(fullAccessDialog).toBeVisible();
+    await fullAccessDialog.getByRole("button", { name: "Confirm", exact: true }).click();
+    await expect(page.getByRole("button", { name: "Change permissions", exact: true })).toHaveText(
+      "Full access",
+    );
     await page.getByRole("button", { name: "Send prompt", exact: true }).click();
     await expect
       .poll(
@@ -138,6 +182,7 @@ test("runs Claude with selected effort and restores its configuration and transc
     const linked = await invoke<ProjectSession>(page, "project-sessions:get", sessionId);
     if (!linked.thread) throw new Error("Native task was not attached");
     const threadId = linked.thread.threadId;
+    linkedThreadId = threadId;
     await expect
       .poll(async () => {
         const current = await invoke<AgentBackendSessionPresentation | null>(
@@ -152,8 +197,6 @@ test("runs Claude with selected effort and restores its configuration and transc
     await expect(page.getByRole("radiogroup", { name: "Which target?" })).toBeVisible();
     await expect(page.getByText("That chat is not available", { exact: true })).toHaveCount(0);
     await page.getByRole("radio", { name: "Desktop", exact: true }).click();
-    await page.getByRole("radio", { name: "Yes", exact: true }).click();
-    await page.getByRole("button", { name: "Submit ⏎", exact: true }).click();
     await expect(page.getByText("Native Claude workflow complete", { exact: true })).toBeVisible();
     await page.screenshot({ path: test.info().outputPath("claude-conversation.png") });
     const completed = await invoke<AgentBackendSessionPresentation>(
@@ -162,40 +205,158 @@ test("runs Claude with selected effort and restores its configuration and transc
       threadId,
     );
     expect(completed.configOptions.find(({ category }) => category === "model")).toMatchObject({
-      currentValue: "claude-sonnet-5",
+      currentValue: "claude-opus-5",
     });
     expect(completed.configOptions.find(({ id }) => id === "effort")).toMatchObject({
       currentValue: "max",
+    });
+    expect(completed.snapshot.metadata?.effectiveSelection).toMatchObject({
+      model: "claude-opus-5",
+      effort: "max",
+      fast: true,
+      thinking: true,
+      permissionMode: "bypassPermissions",
     });
     expect(completed.snapshot.turns.flatMap(({ updates }) => updates)).toEqual(
       expect.arrayContaining([
         expect.objectContaining({
           kind: "tool-call",
-          title: "Inspect workspace",
+          name: "Bash",
           status: "completed",
+          output: expect.objectContaining({ stdout: "Workspace inspected" }),
+        }),
+        expect.objectContaining({
+          kind: "message",
+          role: "thought",
+          text: "Inspecting workspace carefully",
         }),
       ]),
     );
-    await page.getByText("Inspect workspace", { exact: true }).click();
-    await expect(page.getByText("Workspace inspected")).toBeVisible();
+    expect(completed.snapshot.tasks).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ id: "subtask-1", status: "completed", toolUseId: "spawn-1" }),
+      ]),
+    );
+    await expect(page.getByText("Native child workspace report", { exact: true })).toHaveCount(0);
+    await page.getByRole("button", { name: "Task actions", exact: true }).click();
+    await page.getByRole("menuitem", { name: "Tasks", exact: true }).click();
+    const taskDialog = page.getByRole("dialog", { name: "Tasks", exact: true });
+    await expect(taskDialog).toBeVisible();
+    await taskDialog
+      .getByRole("button", { name: "Inspect workspace, Completed", exact: true })
+      .click();
+    await expect(
+      taskDialog.getByText("Native child workspace report", { exact: true }),
+    ).toBeVisible();
+    await page.screenshot({ path: test.info().outputPath("claude-task-details.png") });
+    await taskDialog.getByRole("button", { name: "Stop Watch build", exact: true }).click();
+    await expect(
+      taskDialog.getByRole("button", { name: "Stop Watch build", exact: true }),
+    ).toHaveCount(0);
+    await page.keyboard.press("Escape");
+    await expect(taskDialog).toHaveCount(0);
     await expect(page.getByRole("button", { name: "Send prompt", exact: true })).toBeVisible();
     await page.screenshot({ path: test.info().outputPath("claude-conversation.png") });
-    const observations = () =>
-      readFileSync(
-        path.join(harness.profile.runRoot, "claude-config", "observations.jsonl"),
-        "utf8",
-      )
-        .trim()
-        .split("\n")
-        .map((line) => JSON.parse(line));
     expect(observations().find(({ type }) => type === "prompt")).toMatchObject({
-      model: "claude-sonnet-5",
+      model: "claude-opus-5",
       effort: "max",
+      permissionMode: "bypassPermissions",
+      fast: true,
+      thinking: true,
       content: "Native Claude lifecycle",
       environment: { baseUrl: "https://router.example/", tokenMatches: true, apiKeyEmpty: true },
     });
+    expect(
+      observations().find(
+        ({ type, permissionMode }) => type === "launch" && permissionMode === "bypassPermissions",
+      ),
+    ).toMatchObject({ allowsBypass: true });
+    await page.getByRole("button", { name: "Change permissions", exact: true }).click();
+    await page.getByRole("menuitem", { name: /^Ask for approval/u }).click();
+    await expect
+      .poll(() =>
+        observations()
+          .filter(({ type }) => type === "permission")
+          .at(-1),
+      )
+      .toMatchObject({ permissionMode: "default" });
+    await page.getByRole("button", { name: "Change permissions", exact: true }).click();
+    await fullAccess.click();
+    await fullAccessDialog.getByRole("button", { name: "Confirm", exact: true }).click();
+    await expect
+      .poll(() =>
+        observations()
+          .filter(({ type }) => type === "permission")
+          .at(-1),
+      )
+      .toMatchObject({ permissionMode: "bypassPermissions" });
+    await page.getByRole("button", { name: "Change permissions", exact: true }).click();
+    await page.getByRole("menuitem", { name: /^Ask for approval/u }).click();
+    await expect
+      .poll(() =>
+        observations()
+          .filter(({ type }) => type === "permission")
+          .at(-1),
+      )
+      .toMatchObject({ permissionMode: "default" });
     await page.getByRole("button", { name: "Select model", exact: true }).click();
     await page.getByRole("menuitem", { name: "Effort Max", exact: true }).hover();
+    await page.getByRole("menuitem", { name: "Off", exact: true }).click();
+    await expect(page.getByRole("menuitem", { name: "Effort Off", exact: true })).toBeVisible();
+    await page.keyboard.press("Escape");
+    await page.getByRole("menuitem", { name: "Fast On", exact: true }).hover();
+    await page.getByRole("menuitem", { name: "Off", exact: true }).click();
+    await expect(page.getByRole("menuitem", { name: "Fast Off", exact: true })).toBeVisible();
+    await page.keyboard.press("Escape");
+    await page.keyboard.press("Escape");
+    await composer.fill("Verify thinking disabled");
+    await page.getByRole("button", { name: "Send prompt", exact: true }).click();
+    await expect(page.getByRole("radio", { name: "Yes", exact: true })).toBeVisible();
+    await page.getByRole("radio", { name: "Yes", exact: true }).click();
+    await page.getByRole("button", { name: "Submit ⏎", exact: true }).click();
+    await expect(page.getByText("Native thinking disabled", { exact: true })).toBeVisible();
+    expect(
+      observations()
+        .filter(({ type }) => type === "prompt")
+        .at(-1),
+    ).toMatchObject({
+      model: "claude-opus-5",
+      effort: "high",
+      permissionMode: "default",
+      thinking: false,
+      fast: false,
+    });
+    await page.getByRole("button", { name: "Select model", exact: true }).click();
+    await page.getByRole("menuitem", { name: "Effort Off", exact: true }).hover();
+    await page.getByRole("menuitem", { name: "Medium", exact: true }).click();
+    await expect(page.getByRole("menuitem", { name: "Effort Medium", exact: true })).toBeVisible();
+    await page.keyboard.press("Escape");
+    await page.keyboard.press("Escape");
+    await composer.fill("Verify thinking enabled");
+    await page.getByRole("button", { name: "Send prompt", exact: true }).click();
+    await expect(page.getByText("Native thinking enabled", { exact: true })).toBeVisible();
+    expect(
+      observations()
+        .filter(({ type }) => type === "prompt")
+        .at(-1),
+    ).toMatchObject({
+      model: "claude-opus-5",
+      effort: "medium",
+      thinking: true,
+      permissionMode: "default",
+    });
+    await page.getByRole("button", { name: "Select model", exact: true }).click();
+    await page.getByRole("menuitem", { name: "Model Claude Opus 5", exact: true }).hover();
+    await sonnet.click();
+    await expect(
+      page.getByRole("menuitem", { name: "Model Claude Sonnet 5.5", exact: true }),
+    ).toBeVisible();
+    await page.keyboard.press("Escape");
+    await page.getByRole("menuitem", { name: "Effort Medium", exact: true }).hover();
+    await expect(page.getByRole("menuitem", { name: "Off", exact: true })).toHaveCount(0);
+    await expect(page.getByRole("menuitem", { name: "Max", exact: true })).toHaveCount(0);
+    await expect(page.getByRole("menuitem", { name: "Extra High", exact: true })).toHaveCount(0);
+    await expect(page.getByRole("menuitem", { name: "Default", exact: true })).toHaveCount(0);
     await page.getByRole("menuitem", { name: "Low", exact: true }).click();
     await page.keyboard.press("Escape");
     await page.keyboard.press("Escape");
@@ -209,12 +370,12 @@ test("runs Claude with selected effort and restores its configuration and transc
           .at(-1),
       )
       .toMatchObject({
-        model: "claude-sonnet-5",
+        model: "claude-sonnet-5-5",
         effort: "low",
         content: "Wait for cancellation",
       });
-    await composer.fill("Keep this draft");
     await page.getByRole("button", { name: "Stop", exact: true }).click();
+    await composer.fill("Keep this draft");
     await expect(page.getByRole("button", { name: "Send prompt", exact: true })).toBeVisible();
     await expect(composer).toHaveText("Keep this draft");
     const cancelled = await invoke<AgentBackendSessionPresentation>(
@@ -236,14 +397,51 @@ test("runs Claude with selected effort and restores its configuration and transc
       ]),
     );
     expect(reopened.snapshot.status).toBe("idle");
+    expect(reopened.snapshot.turns.at(-1)).toMatchObject({
+      promptText: "Wait for cancellation",
+      status: "cancelled",
+      stopReason: "cancelled",
+    });
     expect(reopened.configOptions.find(({ category }) => category === "model")).toMatchObject({
-      currentValue: "claude-sonnet-5",
+      currentValue: "claude-sonnet-5-5",
     });
     expect(reopened.configOptions.find(({ id }) => id === "effort")).toMatchObject({
       currentValue: "low",
     });
     expect(reopened.snapshot.requests ?? []).toEqual([]);
     await expect(page.getByText("Native Claude workflow complete", { exact: true })).toBeVisible();
+  } catch (error) {
+    const observationPath = path.join(
+      harness.profile.runRoot,
+      "claude-config",
+      "observations.jsonl",
+    );
+    await test.info().attach("claude-peer", {
+      body: existsSync(observationPath)
+        ? readFileSync(observationPath, "utf8")
+        : "No native user messages were received",
+      contentType: "text/plain",
+    });
+    if (linkedThreadId) {
+      const sessionError = await invoke(
+        harness.page,
+        "agent-backend:session:read",
+        linkedThreadId,
+      ).catch((cause: unknown) => String(cause));
+      await test.info().attach("claude-session", {
+        body: JSON.stringify(sessionError),
+        contentType: "text/plain",
+      });
+    }
+    await test.info().attach("claude-runtime", {
+      body: await readBoundedElectronRuntimeLogs(harness.profile),
+      contentType: "text/plain",
+    });
+    await test.info().attach("claude-renderer", {
+      body: `${rendererErrors.join("\n")}\n${await harness.page.locator("body").innerText()}`,
+      contentType: "text/plain",
+    });
+    throw error;
   } finally {
     await harness.close();
   }

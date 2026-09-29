@@ -1,3 +1,4 @@
+import { captureAppToolAuthority } from "./AppToolCaller";
 import { createHash } from "node:crypto";
 import type { CallToolResult } from "@modelcontextprotocol/sdk/types.js";
 import * as Effect from "effect/Effect";
@@ -310,9 +311,7 @@ export const make = Effect.gen(function* () {
       return yield* dispatch(input, "").pipe(
         Effect.catch(() => Effect.succeed(toolFailure("sidebar_unavailable"))),
       );
-    const authority = yield* turns
-      .capture(input.caller.threadId, input.caller.turnId)
-      .pipe(Effect.catch(() => Effect.succeed(null)));
+    const authority = yield* captureAppToolAuthority(input.caller, turns);
     if (!authority) return toolFailure("authority_unavailable");
     if (authority.readOnly) return toolFailure("read_only_turn");
     if (!input.caller.isActive()) return toolFailure("call_withdrawn");

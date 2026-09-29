@@ -6,7 +6,9 @@ import type {
 } from "./agent-conversation";
 import type { ProjectSessionThreadLink } from "./types";
 import type { ConversationFirstSubmissionIdentity } from "./types";
-import type { ClaudeEffortSelection } from "./claude-models";
+import type { ClaudeEffortSelection, ClaudeModelSelection } from "./claude-models";
+
+export type NativePermissionMode = Exclude<import("./types").CodexPermissionMode, "custom">;
 
 export interface AgentBackendSessionOpenInput {
   readonly threadId: string;
@@ -18,8 +20,10 @@ export interface AgentBackendThreadStartInput {
   readonly backendKind: "acp" | "claude";
   readonly model?: string;
   readonly effort?: ClaudeEffortSelection;
+  readonly selection?: ClaudeModelSelection;
   readonly mode?: "default" | "plan";
   readonly prompt: string;
+  readonly images?: readonly import("./types").CodexPromptImageInput[];
   readonly firstSubmission: ConversationFirstSubmissionIdentity;
 }
 
@@ -31,12 +35,53 @@ export interface AgentBackendThreadStartResult {
 export interface AgentBackendPromptInput {
   readonly threadId: string;
   readonly prompt: string;
+  readonly images?: readonly import("./types").CodexPromptImageInput[];
   readonly clientUserMessageId?: string;
 }
 
 export interface AgentBackendModeInput {
   readonly threadId: string;
   readonly modeId: string;
+}
+
+export interface AgentBackendIntelligenceInput {
+  readonly threadId: string;
+  readonly selection: ClaudeModelSelection;
+}
+
+export type AgentBackendControlInput = { readonly threadId: string } & (
+  | {
+      readonly kind: "steer";
+      readonly prompt: string;
+      readonly images?: readonly import("./types").CodexPromptImageInput[];
+      readonly clientUserMessageId: string;
+    }
+  | { readonly kind: "stop-task"; readonly taskId: string }
+  | { readonly kind: "rollback"; readonly numTurns: number }
+  | { readonly kind: "compact" }
+  | { readonly kind: "permission-mode"; readonly mode: import("./types").CodexPermissionMode }
+  | { readonly kind: "load-older"; readonly before?: string; readonly limit?: number }
+);
+type WithoutThreadId<T> = T extends { readonly threadId: string } ? Omit<T, "threadId"> : never;
+export type AgentBackendControlCommand = WithoutThreadId<AgentBackendControlInput>;
+
+export interface AgentBackendForkInput {
+  readonly threadId: string;
+  readonly nativeMessageId: string;
+}
+
+export interface AgentBackendHistoryImageInput {
+  readonly threadId: string;
+  readonly expectedSessionId: string;
+  readonly nativeMessageId: string;
+  readonly index: number;
+}
+
+export interface AgentBackendToolOutputInput {
+  readonly threadId: string;
+  readonly expectedSessionId: string;
+  readonly nativeMessageId: string;
+  readonly toolUseId: string;
 }
 
 export interface AgentBackendConfigOptionInput {

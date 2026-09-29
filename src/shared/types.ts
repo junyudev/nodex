@@ -3353,6 +3353,8 @@ export interface CodexItemView extends CodexCommandExecutionAttachmentFields {
 }
 
 export interface CodexTranscriptEntry extends CodexCommandExecutionAttachmentFields {
+  /** Owner-bound lazy output, separate from the resident transcript and its byte budget. */
+  toolOutputReference?: import("./agent-tool-output").AgentToolOutputReference;
   threadId: string;
   turnId: string | null;
   entryId?: string;
@@ -3417,6 +3419,8 @@ export interface CodexConversationItem extends CodexTranscriptEntry {
 }
 
 export interface CodexConversationTurn extends CodexTurnSummary {
+  /** Historical content is available, but its native terminal outcome was never observed. */
+  outcomeUnknown?: true;
   items: CodexConversationItem[];
 }
 
@@ -3457,6 +3461,8 @@ export interface CodexApprovalRequest {
   proposedExecpolicyAmendment?: ProtocolExecPolicyAmendment | null;
   proposedNetworkPolicyAmendments?: CodexNetworkPolicyAmendment[] | null;
   availableDecisions?: string[] | null;
+  defaultToNo?: boolean;
+  suppressAlwaysAllowRule?: boolean;
   grantRoot?: string | null;
   commandActions?: CodexCommandAction[] | null;
   createdAt: number;
@@ -4420,6 +4426,8 @@ export interface CodexConversationChildThreadMetadata {
 }
 
 export interface CodexConversationChildMembership {
+  /** Native task observation; this ID does not acquire Core Thread authority. */
+  task?: import("./agent-conversation").AgentConversationTask;
   /** Undefined means unavailable; null authoritatively clears the selected pending request. */
   pendingRequest?: {
     request: CodexConversationLiveRequest;
@@ -4460,6 +4468,12 @@ export type CodexConversationLiveRequest =
   | CodexSetupCodexStepRequest;
 
 export interface CodexConversationSnapshot extends CodexThreadSummary {
+  /** Current context occupancy is distinct from token billing totals. */
+  contextUsage?: {
+    used: number;
+    size: number;
+    cost?: { amount: number; currency: string } | null;
+  } | null;
   latestCollaborationMode?: CodexCollaborationModeState;
   latestThreadSettings?: CodexConversationThreadSettings | null;
   latestTokenUsageInfo?: CodexThreadTokenUsage | null;
@@ -4855,3 +4869,5 @@ export type CodexHostMessage =
     }
   | CodexMcpNotificationMessage
   | { type: "error"; hostId: string; message: string; detail?: string };
+
+export type { AgentModelOption } from "./agent-model";

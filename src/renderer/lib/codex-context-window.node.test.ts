@@ -41,6 +41,41 @@ function makeConversation(): CodexConversationSnapshot {
 }
 
 describe("codex context window indicator", () => {
+  test("uses measured current context independently of cumulative and per-turn token accounting", () => {
+    const conversation = makeConversation();
+    conversation.contextUsage = { used: 15, size: 200000 };
+    conversation.latestTokenUsageInfo = {
+      total: {
+        totalTokens: 900000,
+        inputTokens: 900000,
+        cachedInputTokens: 0,
+        cacheWriteInputTokens: 0,
+        outputTokens: 0,
+        reasoningOutputTokens: 0,
+      },
+      last: {
+        totalTokens: 300000,
+        inputTokens: 300000,
+        cachedInputTokens: 0,
+        cacheWriteInputTokens: 0,
+        outputTokens: 0,
+        reasoningOutputTokens: 0,
+      },
+      modelContextWindow: 1000000,
+    };
+    expect(resolveContextWindowIndicatorState(conversation)).toEqual({
+      status: "ready",
+      percentFull: 0,
+      usedTokens: 15,
+      windowTokens: 200000,
+    });
+    conversation.contextUsage = { used: 20, size: 0 };
+    expect(resolveContextWindowIndicatorState(conversation)).toMatchObject({
+      status: "usageOnly",
+      usedTokens: 20,
+      windowTokens: null,
+    });
+  });
   test("keeps the raw token count when usage exceeds the model context window", () => {
     const conversation = makeConversation();
     conversation.latestTokenUsageInfo = {

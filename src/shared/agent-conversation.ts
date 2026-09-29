@@ -3,17 +3,51 @@ export interface AgentInteractionRequest {
   readonly toolName: string;
   readonly title: string;
   readonly detail: string;
+  readonly kind?: "tool" | "dialog" | "elicitation";
+  readonly toolUseId?: string;
+  readonly actor?: AgentConversationActor;
+  readonly blockedPath?: string;
+  readonly decisionReason?: string;
+  readonly mcpServer?: { readonly name: string; readonly source?: string };
+  readonly displayName?: string;
+  readonly description?: string;
+  readonly constraints?: {
+    readonly defaultToNo?: boolean;
+    readonly suppressAlwaysAllowRule?: boolean;
+    readonly allowForSession?: boolean;
+  };
+  readonly dialog?: { readonly kind: string; readonly payload: Readonly<Record<string, unknown>> };
+  readonly elicitation?: {
+    readonly mode: "form" | "url";
+    readonly message: string;
+    readonly requestedSchema?: Readonly<Record<string, unknown>>;
+    readonly url?: string;
+    readonly elicitationId?: string;
+  };
   readonly questions: readonly {
     readonly id: string;
     readonly question: string;
+    readonly header?: string;
     readonly multiSelect: boolean;
     readonly options: readonly { readonly label: string; readonly description: string }[];
   }[];
 }
 
 export type AgentInteractionResponse =
-  | { readonly decision: "allow" | "deny" }
-  | { readonly decision: "answer"; readonly answers: Readonly<Record<string, string>> };
+  | { readonly decision: "allow" | "allow-for-session" | "deny" }
+  | { readonly decision: "answer"; readonly answers: Readonly<Record<string, string>> }
+  | { readonly decision: "dialog"; readonly result: unknown }
+  | {
+      readonly decision: "elicitation";
+      readonly action: "accept" | "decline" | "cancel";
+      readonly content?: Readonly<Record<string, unknown>>;
+    };
+
+/** Prepared by Main from owned assets; never accepted directly from renderer controls. */
+export interface AgentPromptImage {
+  readonly mediaType: "image/png" | "image/jpeg" | "image/gif" | "image/webp";
+  readonly data: string;
+}
 
 export type AgentConversationStatus =
   | "idle"
@@ -34,88 +68,226 @@ export type AgentCanonicalToolKind =
   | "switch_mode"
   | "other";
 
-export type AgentCanonicalToolCallStatus = "pending" | "in_progress" | "completed" | "failed";
+export type AgentCanonicalToolCallStatus =
+  | "pending"
+  | "in_progress"
+  | "completed"
+  | "failed"
+  | "cancelled";
 
-export type AgentCanonicalSessionUpdate =
-  | {
-      readonly kind: "message";
-      readonly key: string;
-      readonly role: "user" | "agent" | "thought" | "compaction";
-      readonly messageId: string | null;
-      readonly text: string;
-    }
-  | {
-      readonly kind: "tool-call";
-      readonly key: string;
-      readonly toolCallId: string;
-      readonly title: string;
-      readonly name: string | null;
-      readonly toolKind: AgentCanonicalToolKind | null;
-      readonly status: AgentCanonicalToolCallStatus;
-      readonly detail: string;
-      readonly input?: string;
-      readonly locations: readonly string[];
-    }
-  | {
-      readonly kind: "plan";
-      readonly key: string;
-      readonly planId: string | null;
-      readonly state: "present" | "removed";
-      readonly entries: readonly {
-        readonly content: string;
-        readonly priority: "high" | "medium" | "low";
-        readonly status: "pending" | "in_progress" | "completed";
-      }[];
-      readonly markdown: string | null;
-      readonly uri: string | null;
-    }
-  | {
-      readonly kind: "mode";
-      readonly key: "mode";
-      readonly currentModeId: string;
-    }
-  | {
-      readonly kind: "config";
-      readonly key: "config";
-      readonly optionIds: readonly string[];
-    }
-  | {
-      readonly kind: "session-info";
-      readonly key: "session-info";
-      readonly title: string | null;
-      readonly updatedAt: string | null;
-    }
-  | {
-      readonly kind: "usage";
-      readonly key: "usage";
-      readonly used: number;
-      readonly size: number;
-      readonly cost: { readonly amount: number; readonly currency: string } | null;
-    }
-  | {
-      readonly kind: "commands";
-      readonly key: "commands";
-      readonly commands: readonly {
-        readonly name: string;
-        readonly description: string;
-        readonly inputHint: string | null;
-      }[];
-    }
-  | {
-      readonly kind: "compaction";
-      readonly key: string;
-      readonly compactionId: string;
-      readonly status: string;
-      readonly summary: string;
-      readonly error: string | null;
-    };
+export interface AgentConversationActor {
+  readonly taskId?: string;
+  readonly parentToolUseId?: string;
+  readonly agentId?: string;
+}
+
+export interface AgentConversationTokenUsage {
+  readonly input: number;
+  readonly output: number;
+  readonly cacheRead: number;
+  readonly cacheWrite: number;
+}
+
+export interface AgentConversationTask {
+  readonly id: string;
+  readonly bornTurnSequence: number | null;
+  readonly toolUseId?: string;
+  readonly parentTaskId?: string;
+  readonly agentId?: string;
+  readonly description: string;
+  readonly taskType?: string;
+  readonly spawnDepth?: number;
+  readonly workflowName?: string;
+  readonly role?: string;
+  readonly model?: string;
+  readonly effort?: string;
+  readonly status: "pending" | "running" | "paused" | "completed" | "failed" | "cancelled";
+  readonly backgrounded?: boolean;
+  readonly ambient?: boolean;
+  readonly hidden?: boolean;
+  readonly summary?: string;
+  readonly outputFile?: string;
+  readonly error?: string;
+  readonly lastToolName?: string;
+  readonly elapsedSeconds?: number;
+  readonly usage?: AgentConversationTokenUsage & {
+    readonly totalTokens?: number;
+    readonly toolUses?: number;
+  };
+  readonly resourceLinks?: readonly { readonly uri: string; readonly name?: string }[];
+}
+
+interface AgentCanonicalUpdateIdentity {
+  readonly truncated?: boolean;
+  readonly actor?: AgentConversationActor;
+  /** SDK record UUIDs are distinct from API message IDs and support native retractions. */
+  readonly recordIds?: readonly string[];
+}
+
+export type AgentCanonicalSessionUpdate = AgentCanonicalUpdateIdentity &
+  (
+    | {
+        readonly kind: "message";
+        readonly key: string;
+        readonly role: "user" | "agent" | "thought" | "compaction";
+        readonly messageId: string | null;
+        readonly text: string;
+      }
+    | {
+        readonly kind: "tool-call";
+        readonly key: string;
+        readonly toolCallId: string;
+        readonly title: string;
+        readonly name: string | null;
+        readonly toolKind: AgentCanonicalToolKind | null;
+        readonly status: AgentCanonicalToolCallStatus;
+        readonly detail: string;
+        readonly input?: string;
+        readonly locations: readonly string[];
+        readonly output?: unknown;
+        /** Native user record containing this result, for authority-bound lazy expansion. */
+        readonly outputRecordId?: string;
+        readonly presentation?:
+          | "command"
+          | "file-change"
+          | "search"
+          | "image"
+          | "web-search"
+          | "mcp"
+          | "generic";
+        readonly elapsedSeconds?: number;
+        readonly progress?: string;
+        readonly changes?: readonly {
+          readonly path: string;
+          readonly kind: "add" | "update" | "delete";
+          readonly diff?: string;
+        }[];
+        readonly resources?: readonly {
+          readonly uri: string;
+          readonly name?: string;
+          readonly mimeType?: string;
+        }[];
+      }
+    | {
+        readonly kind: "plan";
+        readonly key: string;
+        readonly planId: string | null;
+        readonly state: "present" | "removed";
+        readonly entries: readonly {
+          readonly content: string;
+          readonly priority: "high" | "medium" | "low";
+          readonly status: "pending" | "in_progress" | "completed";
+        }[];
+        readonly markdown: string | null;
+        readonly uri: string | null;
+      }
+    | {
+        readonly kind: "mode";
+        readonly key: "mode";
+        readonly currentModeId: string;
+      }
+    | {
+        readonly kind: "config";
+        readonly key: "config";
+        readonly optionIds: readonly string[];
+      }
+    | {
+        readonly kind: "session-info";
+        readonly key: "session-info";
+        readonly title: string | null;
+        readonly updatedAt: string | null;
+      }
+    | {
+        readonly kind: "usage";
+        readonly key: "usage";
+        readonly used: number;
+        readonly size: number;
+        readonly cost: { readonly amount: number; readonly currency: string } | null;
+        readonly tokens?: AgentConversationTokenUsage;
+        readonly cumulativeTokens?: AgentConversationTokenUsage;
+        readonly model?: string;
+        readonly contextEstimated?: boolean;
+      }
+    | {
+        readonly kind: "commands";
+        readonly key: "commands";
+        readonly commands: readonly {
+          readonly name: string;
+          readonly description: string;
+          readonly inputHint: string | null;
+        }[];
+      }
+    | {
+        readonly kind: "compaction";
+        readonly key: string;
+        readonly compactionId: string;
+        readonly status: string;
+        readonly summary: string;
+        readonly error: string | null;
+        readonly trigger?: "manual" | "auto";
+        readonly preTokens?: number;
+        readonly postTokens?: number;
+        readonly durationMs?: number;
+      }
+    | {
+        readonly kind: "rate-limit";
+        readonly key: string;
+        readonly status: "allowed" | "allowed_warning" | "rejected";
+        readonly limitType?: string;
+        readonly resetsAt?: number;
+        readonly utilization?: number;
+        readonly overageStatus?: string;
+        readonly overageReason?: string;
+        readonly usingOverage?: boolean;
+      }
+    | {
+        readonly kind: "diagnostic";
+        readonly key: string;
+        readonly severity: "info" | "warning" | "error";
+        readonly code: string;
+        readonly message: string;
+        readonly details?: Readonly<Record<string, unknown>>;
+      }
+  );
 
 export interface AgentConversationTurn {
   readonly sequence: number | null;
   readonly clientUserMessageId: string | null;
+  readonly nativeUserMessageId?: string;
   readonly promptText: string | null;
+  readonly promptImages?: readonly import("./agent-history-images").AgentPromptImageDescriptor[];
   readonly updates: readonly AgentCanonicalSessionUpdate[];
   readonly stopReason: string | null;
+  readonly status?: "running" | "completed" | "failed" | "cancelled";
+  readonly error?: string | null;
+  readonly createdAt?: string;
+  readonly completedAt?: string;
+}
+
+/** Durable observations join native history by UUID; they contain no transcript or media bytes. */
+export interface AgentHistoryFact {
+  readonly clientUserMessageId: string;
+  readonly nativeUserMessageId?: string;
+  readonly stopReason: string | null;
+  readonly error?: string | null;
+  readonly createdAt?: string;
+  readonly completedAt?: string;
+  readonly usage?: Omit<Extract<AgentCanonicalSessionUpdate, { kind: "usage" }>, "kind" | "key">;
+  readonly compactions?: readonly {
+    readonly compactionId: string;
+    readonly status: string;
+    readonly summary?: string;
+    readonly error?: string | null;
+    readonly trigger?: "manual" | "auto";
+    readonly preTokens?: number;
+    readonly postTokens?: number;
+    readonly durationMs?: number;
+  }[];
+  readonly artifacts?: readonly {
+    readonly filename: string;
+    readonly fileId?: string;
+    readonly error?: string;
+  }[];
 }
 
 export interface AgentConversationSnapshot {
@@ -125,6 +297,22 @@ export interface AgentConversationSnapshot {
   readonly status: AgentConversationStatus;
   readonly error: string | null;
   readonly requests?: readonly AgentInteractionRequest[];
+  readonly metadata?: AgentSessionMetadata;
+  readonly tasks?: readonly AgentConversationTask[];
+  /** Native level signal; undefined means this CLI has not advertised a level snapshot. */
+  readonly liveBackgroundTaskIds?: readonly string[];
+  readonly toolCalls?: readonly {
+    readonly turnSequence: number | null;
+    readonly update: Extract<AgentCanonicalSessionUpdate, { kind: "tool-call" }>;
+  }[];
+  readonly history?: {
+    readonly hasOlder: boolean;
+    readonly oldestSequence: number | null;
+    readonly cursor?: string;
+    readonly windowSize?: number;
+    /** The bounded read window cannot retain another older turn without evicting current content. */
+    readonly windowFull?: boolean;
+  };
   readonly turns: readonly AgentConversationTurn[];
   readonly revision: number;
 }
@@ -132,8 +320,14 @@ export interface AgentConversationSnapshot {
 export interface AgentConversationTurnDelta {
   readonly sequence: number | null;
   readonly clientUserMessageId: string | null;
+  readonly nativeUserMessageId?: string;
   readonly promptText: string | null;
+  readonly promptImages?: readonly import("./agent-history-images").AgentPromptImageDescriptor[];
   readonly stopReason: string | null;
+  readonly status?: AgentConversationTurn["status"];
+  readonly error?: string | null;
+  readonly createdAt?: string;
+  readonly completedAt?: string;
   readonly removedUpdateKeys: readonly string[];
   readonly updates: readonly AgentConversationUpdateDelta[];
 }
@@ -155,6 +349,8 @@ export type AgentConversationUpdateDelta =
  * session and revision.
  */
 export interface AgentConversationDelta {
+  /** Explicit invalidation: query the exact snapshot rather than apply a partial oversized delta. */
+  readonly resync?: true;
   readonly backend: "acp" | "claude";
   readonly threadId: string;
   readonly sessionId: string;
@@ -163,6 +359,11 @@ export interface AgentConversationDelta {
   readonly status: AgentConversationStatus;
   readonly error: string | null;
   readonly requests?: readonly AgentInteractionRequest[];
+  readonly metadata?: AgentSessionMetadata;
+  readonly tasks?: readonly AgentConversationTask[];
+  readonly liveBackgroundTaskIds?: readonly string[];
+  readonly toolCalls?: AgentConversationSnapshot["toolCalls"];
+  readonly history?: AgentConversationSnapshot["history"];
   readonly removedTurnSequences: readonly (number | null)[];
   readonly turns: readonly AgentConversationTurnDelta[];
 }
@@ -192,9 +393,15 @@ const updateSnapshotTurn = (
   return {
     sequence: delta.sequence,
     clientUserMessageId: delta.clientUserMessageId,
+    nativeUserMessageId: delta.nativeUserMessageId,
     promptText: delta.promptText,
+    promptImages: delta.promptImages,
     updates,
     stopReason: delta.stopReason,
+    status: delta.status,
+    error: delta.error,
+    createdAt: delta.createdAt,
+    completedAt: delta.completedAt,
   };
 };
 
@@ -204,6 +411,7 @@ export const applyAgentConversationDelta = (
   delta: AgentConversationDelta,
 ): AgentConversationSnapshot | null => {
   if (
+    delta.resync ||
     delta.backend !== snapshot.backend ||
     snapshot.threadId !== delta.threadId ||
     snapshot.sessionId !== delta.sessionId ||
@@ -235,6 +443,13 @@ export const applyAgentConversationDelta = (
     status: delta.status,
     error: delta.error,
     ...(delta.requests === undefined ? {} : { requests: delta.requests }),
+    ...(delta.metadata === undefined ? {} : { metadata: delta.metadata }),
+    ...(delta.tasks === undefined ? {} : { tasks: delta.tasks }),
+    ...(delta.liveBackgroundTaskIds === undefined
+      ? {}
+      : { liveBackgroundTaskIds: delta.liveBackgroundTaskIds }),
+    ...(delta.toolCalls === undefined ? {} : { toolCalls: delta.toolCalls }),
+    ...(delta.history === undefined ? {} : { history: delta.history }),
     turns,
     revision: delta.revision,
   };
@@ -271,6 +486,11 @@ export interface AgentSessionConfigSelectOption {
   readonly description: string | null;
   /** Advertised reasoning controls when this option selects a model. */
   readonly reasoningEfforts?: readonly string[];
+  readonly fastMode?: boolean;
+  readonly adaptiveThinking?: boolean;
+  readonly disableThinking?: boolean;
+  readonly disabledThinkingEfforts?: readonly string[];
+  readonly contextWindows?: readonly string[];
 }
 
 export interface AgentSessionConfigSelectGroup {
@@ -298,6 +518,13 @@ export type AgentSessionConfigOption =
     });
 
 export interface AgentBackendCapabilityProfile {
+  readonly controls?: {
+    readonly steer?: boolean;
+    readonly compact?: boolean;
+    readonly rollback?: boolean;
+    readonly fork?: boolean;
+    readonly stopTask?: boolean;
+  };
   readonly prompt: {
     readonly text: true;
     readonly resourceLink: true;
@@ -316,3 +543,50 @@ export interface AgentBackendCapabilityProfile {
   };
   readonly authMethods: readonly AgentAuthenticationMethod[];
 }
+
+/** Native observations published with the same revision as the transcript. */
+export interface AgentSessionMetadata {
+  readonly revision: number;
+  readonly configOptions: readonly AgentSessionConfigOption[];
+  readonly modes: AgentSessionModeState | null;
+  readonly capabilities: AgentBackendCapabilityProfile;
+  readonly permissionMode?: import("./agent-backend-api").NativePermissionMode;
+  readonly effectiveSelection?: {
+    readonly model: string | null;
+    readonly effort: string | null;
+    readonly fast?: boolean | null;
+    readonly thinking?: boolean | null;
+    readonly permissionMode?: string;
+  };
+  readonly requestedSelection?: {
+    readonly model: string;
+    readonly effort: string;
+    readonly fast?: boolean;
+    readonly thinking?: boolean;
+    readonly context?: string;
+  };
+  readonly requestedMode?: "default" | "plan";
+  readonly commands?: readonly {
+    readonly name: string;
+    readonly description: string;
+    readonly inputHint: string | null;
+  }[];
+  readonly diagnostics?: readonly {
+    readonly severity: "info" | "warning" | "error";
+    readonly code: string;
+    readonly message: string;
+  }[];
+}
+
+export const isAgentConversationTaskLive = (task: AgentConversationTask): boolean =>
+  task.status === "pending" || task.status === "running" || task.status === "paused";
+
+/** A background level roster is authoritative even when a terminal bookend was missed. */
+export const isAgentConversationTaskLiveInSnapshot = (
+  task: AgentConversationTask,
+  snapshot: Pick<AgentConversationSnapshot, "liveBackgroundTaskIds">,
+): boolean => {
+  if (!isAgentConversationTaskLive(task)) return false;
+  if (!task.backgrounded || snapshot.liveBackgroundTaskIds === undefined) return true;
+  return snapshot.liveBackgroundTaskIds.includes(task.id);
+};

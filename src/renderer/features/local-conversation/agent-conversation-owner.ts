@@ -4,7 +4,12 @@ import type {
   AgentBackendConfigOptionResult,
   AgentBackendPromptResult,
   AgentBackendSessionPresentation,
+  AgentBackendControlInput,
+  AgentBackendControlCommand,
 } from "../../../shared/agent-backend-api";
+import type { ClaudeModelSelection } from "../../../shared/claude-models";
+import { createUuidV7 } from "../../../shared/uuid-v7";
+import type { CodexPromptImageInput } from "../../../shared/types";
 import {
   applyAgentConversationDelta,
   type AgentConversationDelta,
@@ -33,11 +38,13 @@ export interface AgentConversationOwnerPort {
   readonly getSnapshot: () => AgentConversationOwnerSnapshot;
   readonly connect: () => () => void;
   readonly retry: () => void;
-  readonly prompt: (prompt: string) => Promise<boolean>;
-  readonly submit: (prompt: string) => Promise<boolean>;
+  readonly prompt: (prompt: string, images?: readonly CodexPromptImageInput[]) => Promise<boolean>;
+  readonly submit: (prompt: string, images?: readonly CodexPromptImageInput[]) => Promise<boolean>;
   readonly cancel: () => Promise<boolean>;
   readonly setMode: (modeId: string) => Promise<boolean>;
   readonly setConfigOption: (configId: string, value: string | boolean) => Promise<boolean>;
+  readonly setIntelligence: (selection: ClaudeModelSelection) => Promise<boolean>;
+  readonly control: (input: AgentBackendControlCommand) => Promise<boolean>;
   readonly authenticate: (methodId: string) => Promise<boolean>;
   readonly respond: (requestId: string, response: AgentInteractionResponse) => Promise<boolean>;
   readonly close: () => Promise<void>;
@@ -49,7 +56,10 @@ const errorMessage = (cause: unknown): string =>
 const shouldAcceptSnapshot = (
   current: AgentConversationSnapshot | undefined,
   incoming: AgentConversationSnapshot,
-): boolean => current === undefined || incoming.revision >= current.revision;
+): boolean =>
+  current === undefined ||
+  current.sessionId !== incoming.sessionId ||
+  incoming.revision >= current.revision;
 
 /**
  * Owns one attached Agent thread's renderer lifecycle. React is only a subscriber;
@@ -71,6 +81,8 @@ export class AgentConversationOwner implements AgentConversationOwnerPort {
   #releaseSubscription: (() => void) | null = null;
   #pendingDeltas: AgentConversationDelta[] = [];
   #resyncPending = false;
+  #resyncDirty = false;
+  readonly #retiredSessions = new Set<string>();
 
   constructor(threadId: string, runtime: AgentBackendRuntime = agentBackendRuntime) {
     this.threadId = threadId;
@@ -91,13 +103,24 @@ export class AgentConversationOwner implements AgentConversationOwnerPort {
     this.#releaseSubscription = null;
     this.#pendingDeltas = [];
     this.#resyncPending = false;
-    this.#patch({ connection: "connecting", presentation: null, error: null });
+    this.#resyncDirty = false;
+    this.#retiredSessions.clear();
+    this.#patch({
+      connection: "connecting",
+      presentation: null,
+      promptPending: false,
+      controlPending: null,
+      error: null,
+    });
     void this.#subscribeAndOpen(generation);
     return () => {
       if (lease !== this.#connectionLease) return;
       this.#generation += 1;
       this.#releaseSubscription?.();
       this.#releaseSubscription = null;
+      this.#pendingDeltas = [];
+      this.#resyncPending = false;
+      this.#resyncDirty = false;
     };
   };
 
@@ -107,32 +130,47 @@ export class AgentConversationOwner implements AgentConversationOwnerPort {
     this.#releaseSubscription = null;
     this.#pendingDeltas = [];
     this.#resyncPending = false;
-    this.#patch({ connection: "connecting", presentation: null, error: null });
+    this.#resyncDirty = false;
+    this.#retiredSessions.clear();
+    this.#patch({
+      connection: "connecting",
+      presentation: null,
+      promptPending: false,
+      controlPending: null,
+      error: null,
+    });
     void this.#subscribeAndOpen(generation);
   };
 
-  readonly prompt = async (rawPrompt: string): Promise<boolean> => {
+  readonly prompt = async (
+    rawPrompt: string,
+    images?: readonly CodexPromptImageInput[],
+  ): Promise<boolean> => {
     const prompt = rawPrompt.trim();
-    if (!prompt || this.#state.promptPending) return false;
+    if ((!prompt && !images?.length) || this.#state.promptPending) return false;
     if (this.#state.presentation?.snapshot.status !== "idle") return false;
+    const generation = this.#generation;
     this.#patch({ promptPending: true, error: null });
     try {
       const result: AgentBackendPromptResult = await this.#runtime.prompt({
         threadId: this.threadId,
         prompt,
+        clientUserMessageId: createUuidV7(),
+        ...(images?.length ? { images } : {}),
       });
+      if (generation !== this.#generation) return false;
       this.#acceptSnapshot(result.snapshot);
       return true;
     } catch (cause) {
-      this.#patch({ error: errorMessage(cause) });
+      if (generation === this.#generation) this.#patch({ error: errorMessage(cause) });
       return false;
     } finally {
-      this.#patch({ promptPending: false });
+      if (generation === this.#generation) this.#patch({ promptPending: false });
     }
   };
 
   /** Resolve after admission, while the Main-owned turn continues and publishes completion. */
-  readonly submit = (text: string): Promise<boolean> =>
+  readonly submit = (text: string, images?: readonly CodexPromptImageInput[]): Promise<boolean> =>
     new Promise((resolve) => {
       let release = () => {};
       const finish = (accepted: boolean) => {
@@ -142,65 +180,91 @@ export class AgentConversationOwner implements AgentConversationOwnerPort {
       release = this.subscribe(() => {
         if (this.#state.presentation?.snapshot.status === "running") finish(true);
       });
-      void this.prompt(text).then(finish);
+      void this.prompt(text, images).then(finish);
     });
 
   readonly cancel = (): Promise<boolean> =>
-    this.#runControl("cancel", async () => {
-      this.#acceptSnapshot(await this.#runtime.cancel(this.threadId));
+    this.#runControl("cancel", async (generation) => {
+      const snapshot = await this.#runtime.cancel(this.threadId);
+      if (generation === this.#generation) this.#acceptSnapshot(snapshot);
     });
 
   readonly setMode = (modeId: string): Promise<boolean> =>
-    this.#runControl("mode", async () => {
+    this.#runControl("mode", async (generation) => {
       const snapshot = await this.#runtime.setMode({ threadId: this.threadId, modeId });
+      if (generation !== this.#generation) return;
       this.#acceptSnapshot(snapshot);
-      const presentation = this.#state.presentation;
-      if (presentation?.modes) {
-        this.#acceptPresentation({
-          ...presentation,
-          modes: { ...presentation.modes, currentModeId: modeId },
-        });
-      }
+      if (!snapshot.metadata) await this.#refreshPresentation(generation);
     });
 
   readonly setConfigOption = (configId: string, value: string | boolean): Promise<boolean> =>
-    this.#runControl("config", async () => {
+    this.#runControl("config", async (generation) => {
       const result: AgentBackendConfigOptionResult = await this.#runtime.setConfigOption({
         threadId: this.threadId,
         configId,
         value,
       });
+      if (generation !== this.#generation) return;
       this.#acceptSnapshot(result.snapshot);
-      const presentation = this.#state.presentation;
-      if (presentation) {
-        this.#acceptPresentation({ ...presentation, configOptions: result.configOptions });
-      }
+      if (!result.snapshot.metadata) await this.#refreshPresentation(generation);
+    });
+
+  readonly setIntelligence = (selection: ClaudeModelSelection): Promise<boolean> =>
+    this.#runControl("config", async () => {
+      const generation = this.#generation;
+      const presentation = await this.#runtime.setIntelligence({
+        threadId: this.threadId,
+        selection,
+      });
+      if (generation === this.#generation) this.#acceptPresentation(presentation);
+    });
+
+  readonly control = (input: AgentBackendControlCommand): Promise<boolean> =>
+    this.#runControl("config", async () => {
+      const generation = this.#generation;
+      const presentation = await this.#runtime.control({
+        ...input,
+        threadId: this.threadId,
+      } as AgentBackendControlInput);
+      if (generation === this.#generation) this.#acceptPresentation(presentation);
     });
 
   readonly authenticate = (methodId: string): Promise<boolean> =>
-    this.#runControl("authenticate", async () => {
+    this.#runControl("authenticate", async (generation) => {
       const result: AgentBackendAuthenticateResult = await this.#runtime.authenticate({
         threadId: this.threadId,
         methodId,
       });
+      if (generation !== this.#generation) return;
+      if (methodId === "reconnect") {
+        this.retry();
+        return;
+      }
       this.#acceptSnapshot(result.snapshot);
-      await this.#refreshPresentation();
+      await this.#refreshPresentation(generation);
     });
 
   readonly respond = (requestId: string, response: AgentInteractionResponse): Promise<boolean> =>
-    this.#runControl("response", async () => {
+    this.#runControl("response", async (generation) => {
       await this.#runtime.respond(this.threadId, requestId, response);
-      await this.#refreshPresentation();
+      if (generation === this.#generation) await this.#refreshPresentation(generation);
     });
 
   readonly close = async (): Promise<void> => {
+    const generation = this.#generation;
     await this.#runtime.close(this.threadId);
-    const presentation = this.#state.presentation;
-    if (!presentation) return;
-    this.#acceptSnapshot({
-      ...presentation.snapshot,
-      status: "closed",
-      revision: presentation.snapshot.revision + 1,
+    if (generation !== this.#generation) return;
+    this.#generation += 1;
+    this.#releaseSubscription?.();
+    this.#releaseSubscription = null;
+    this.#pendingDeltas = [];
+    this.#resyncPending = false;
+    this.#resyncDirty = false;
+    this.#patch({
+      presentation: null,
+      connection: "connecting",
+      promptPending: false,
+      controlPending: null,
     });
   };
 
@@ -240,28 +304,35 @@ export class AgentConversationOwner implements AgentConversationOwnerPort {
   async #refreshPresentation(generation = this.#generation): Promise<void> {
     const presentation = await this.#runtime.read(this.threadId);
     if (generation !== this.#generation) return;
-    if (presentation) this.#acceptPresentation(presentation);
+    if (!presentation) throw new Error("Agent session is not available");
+    this.#acceptPresentation(presentation);
   }
 
   async #runControl(
     operation: AgentConversationControlOperation,
-    run: () => Promise<void>,
+    run: (generation: number) => Promise<void>,
   ): Promise<boolean> {
     if (this.#state.controlPending) return false;
+    const generation = this.#generation;
     this.#patch({ controlPending: operation, error: null });
     try {
-      await run();
-      return true;
+      await run(generation);
+      return generation === this.#generation;
     } catch (cause) {
-      this.#patch({ error: errorMessage(cause) });
+      if (generation === this.#generation) this.#patch({ error: errorMessage(cause) });
       return false;
     } finally {
-      this.#patch({ controlPending: null });
+      if (generation === this.#generation) this.#patch({ controlPending: null });
     }
   }
 
   #acceptPresentation(presentation: AgentBackendSessionPresentation): void {
     const currentSnapshot = this.#state.presentation?.snapshot;
+    if (
+      presentation.snapshot.sessionId &&
+      this.#retiredSessions.has(presentation.snapshot.sessionId)
+    )
+      return;
     let snapshot =
       currentSnapshot &&
       currentSnapshot.sessionId === presentation.snapshot.sessionId &&
@@ -279,7 +350,15 @@ export class AgentConversationOwner implements AgentConversationOwnerPort {
       }
       snapshot = next;
     }
-    this.#patch({ presentation: { ...presentation, snapshot } });
+    if (currentSnapshot?.sessionId && snapshot.sessionId !== currentSnapshot.sessionId)
+      this.#retireSession(currentSnapshot.sessionId);
+    const base =
+      currentSnapshot &&
+      currentSnapshot.sessionId === presentation.snapshot.sessionId &&
+      currentSnapshot.revision > presentation.snapshot.revision
+        ? (this.#state.presentation ?? presentation)
+        : presentation;
+    this.#patch({ presentation: this.#withMetadata({ ...base, snapshot }) });
     if (this.#pendingDeltas.length > 0) this.#requestResync();
   }
 
@@ -288,35 +367,58 @@ export class AgentConversationOwner implements AgentConversationOwnerPort {
     if (!presentation) {
       return;
     }
+    if (snapshot.sessionId && this.#retiredSessions.has(snapshot.sessionId)) return;
     if (!shouldAcceptSnapshot(presentation.snapshot, snapshot)) return;
+    if (presentation.snapshot.sessionId && snapshot.sessionId !== presentation.snapshot.sessionId)
+      this.#retireSession(presentation.snapshot.sessionId);
     const becameIdle = presentation.snapshot.status === "running" && snapshot.status === "idle";
     const currentModeId = snapshot.turns
       .flatMap(({ updates }) => updates)
       .findLast((update) => update.kind === "mode")?.currentModeId;
     this.#patch({
-      presentation: {
+      presentation: this.#withMetadata({
         ...presentation,
         snapshot,
         modes:
           presentation.modes && currentModeId
             ? { ...presentation.modes, currentModeId }
             : presentation.modes,
-      },
+      }),
     });
     if (becameIdle) this.#requestResync();
   }
 
+  #withMetadata(presentation: AgentBackendSessionPresentation): AgentBackendSessionPresentation {
+    const metadata = presentation.snapshot.metadata;
+    if (!metadata) return presentation;
+    return {
+      ...presentation,
+      capabilities: metadata.capabilities,
+      modes: metadata.modes,
+      configOptions: metadata.configOptions,
+    };
+  }
+
+  #retireSession(sessionId: string): void {
+    this.#retiredSessions.add(sessionId);
+    if (this.#retiredSessions.size > 64)
+      this.#retiredSessions.delete(this.#retiredSessions.values().next().value!);
+  }
+
   #acceptDelta(delta: AgentConversationDelta): void {
+    if (this.#retiredSessions.has(delta.sessionId)) return;
     const presentation = this.#state.presentation;
     if (!presentation) {
       this.#pendingDeltas = [...this.#pendingDeltas.slice(-127), delta];
       return;
     }
     if (delta.sessionId !== presentation.snapshot.sessionId) {
+      if (this.#resyncPending) this.#resyncDirty = true;
       this.#requestResync();
       return;
     }
     if (delta.revision <= presentation.snapshot.revision) return;
+    if (this.#resyncPending) this.#resyncDirty = true;
     const snapshot = applyAgentConversationDelta(presentation.snapshot, delta);
     if (!snapshot) {
       this.#pendingDeltas = [...this.#pendingDeltas.slice(-127), delta];
@@ -330,13 +432,22 @@ export class AgentConversationOwner implements AgentConversationOwnerPort {
     if (this.#resyncPending) return;
     const generation = this.#generation;
     this.#resyncPending = true;
+    this.#resyncDirty = false;
+    let succeeded = false;
     void this.#refreshPresentation(generation)
+      .then(() => {
+        succeeded = true;
+      })
       .catch((cause) => {
         if (generation !== this.#generation) return;
         this.#patch({ connection: "failed", error: errorMessage(cause) });
       })
       .finally(() => {
-        if (generation === this.#generation) this.#resyncPending = false;
+        if (generation !== this.#generation) return;
+        const followUp = succeeded && this.#resyncDirty;
+        this.#resyncPending = false;
+        this.#resyncDirty = false;
+        if (followUp) this.#requestResync();
       });
   }
 

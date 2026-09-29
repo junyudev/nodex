@@ -53,3 +53,24 @@ it("rejects unsupported inputs and unavailable paste sources before submission",
     ),
   ).rejects.toThrow("Paste source unavailable");
 });
+
+it("dispatches the selected native skill at the start of the text block with all context as arguments", async () => {
+  const result = await prepareAgentPrompt(
+    "fallback",
+    {
+      text: "fallback",
+      documentItems: [
+        { type: "text", text: "First inspect " },
+        { type: "skill", name: "review", path: "/skills/review" },
+        { type: "text", text: " then " },
+        { type: "skill", name: "audit", path: "/skills/audit" },
+        { type: "text", text: " the change" },
+      ],
+      textAttachments: [{ text: "Full evidence" }],
+      images: [{ source: "data:image/png;base64,AA==" }],
+    },
+    vi.fn(),
+    { images: true, nativeSkills: true },
+  );
+  expect(result).toBe("/audit First inspect /review then  the change\n\nFull evidence");
+});

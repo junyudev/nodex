@@ -1,3 +1,4 @@
+import { buildAgentHistoryImageSource } from "../../../../../shared/agent-history-images";
 import { act } from "react";
 import { fireEvent, waitFor } from "@testing-library/react";
 import { describe, expect, test, vi } from "vite-plus/test";
@@ -12,6 +13,76 @@ import {
 } from "@/features/user-attachment-image-editor";
 
 describe("UserAttachmentStrip", () => {
+  test("resolves native history image descriptors through their owning session without arbitrary file reads", async () => {
+    const invoke = vi.fn(async () => {
+      throw new Error("Unexpected file read");
+    });
+    installWindowApi({
+      invoke,
+      on: () => () => {},
+      resolveManagedAssetPath: () => "/tmp/native-image.png",
+    });
+    const reference = { sessionId: "native-session", nativeMessageId: "native-message", index: 2 };
+    const resolveHistoryImage = vi.fn(async () => "nodex://assets/native-image.png");
+    const view = render(
+      <TestQueryProvider>
+        <ConversationImageAssetProvider
+          conversationId="thread"
+          hostId="local"
+          resolveHistoryImage={resolveHistoryImage}
+        >
+          <UserAttachmentStrip
+            attachments={[
+              {
+                type: "image",
+                id: "native",
+                source: buildAgentHistoryImageSource(reference),
+                sourceKind: "remote-pointer",
+              },
+            ]}
+          />
+        </ConversationImageAssetProvider>
+      </TestQueryProvider>,
+    );
+    await view.findByRole("button", { name: "Open image preview" });
+    expect(resolveHistoryImage).toHaveBeenCalledExactlyOnceWith(reference);
+    expect(invoke).not.toHaveBeenCalled();
+    expect(view.container.querySelector("img")?.getAttribute("src")).toContain("native-image.png");
+  });
+  test("rejects a native image resolver result that is not an owned asset", async () => {
+    const invoke = vi.fn(async () => {
+      throw new Error("Unexpected file read");
+    });
+    installWindowApi({ invoke, on: () => () => {} });
+    const view = render(
+      <TestQueryProvider>
+        <ConversationImageAssetProvider
+          conversationId="thread"
+          hostId="local"
+          resolveHistoryImage={async () => "/private/secret.png"}
+        >
+          <UserAttachmentStrip
+            attachments={[
+              {
+                type: "image",
+                id: "native",
+                source: buildAgentHistoryImageSource({
+                  sessionId: "session",
+                  nativeMessageId: "message",
+                  index: 0,
+                }),
+                sourceKind: "remote-pointer",
+              },
+            ]}
+          />
+        </ConversationImageAssetProvider>
+      </TestQueryProvider>,
+    );
+    await view.findByRole("button", { name: "Retry image" });
+    expect(invoke).not.toHaveBeenCalled();
+    expect(view.queryByRole("button", { name: "Open image preview" })).toBeNull();
+  });
+
   test("renders remote thumbnails with preview action", async () => {
     const view = render(
       <TestQueryProvider>

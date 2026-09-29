@@ -16,6 +16,7 @@ import {
   useDefaultCodexAppServerManager,
   useLocalConversationConnection,
 } from "./local-conversation-store";
+import { NativeHeartbeatAutomationTarget } from "./native-heartbeat-automation";
 
 const HEARTBEAT_RESUME_RETRY_MS = 750;
 
@@ -79,7 +80,12 @@ export function HeartbeatAutomationController() {
   const connection = useLocalConversationConnection();
   const automationsQuery = useCodexScheduledAutomations();
   const targetThreadIds = useMemo(
-    () => listHeartbeatAutomationTargetThreadIds(automationsQuery.data ?? []),
+    () =>
+      listHeartbeatAutomationTargetThreadIds(
+        (automationsQuery.data ?? []).filter(
+          (automation) => automation.backendBinding.kind === "codex",
+        ),
+      ),
     [automationsQuery.data],
   );
   const targetThreadIdsKey = targetThreadIds.join("\n");
@@ -170,7 +176,18 @@ export function HeartbeatAutomationController() {
     lastPublishedStateByThreadId.current = nextPublishedStateByThreadId;
   }, [conversations, electronAvailable, manager, targetThreadIds, targetThreadIdsKey]);
 
-  return null;
+  const nativeTargetThreadIds = listHeartbeatAutomationTargetThreadIds(
+    (automationsQuery.data ?? []).filter(
+      (automation) => automation.backendBinding.kind === "claude",
+    ),
+  );
+  return (
+    <>
+      {nativeTargetThreadIds.map((threadId) => (
+        <NativeHeartbeatAutomationTarget key={threadId} threadId={threadId} />
+      ))}
+    </>
+  );
 }
 
 function resolveHeartbeatAutomationEligibility(conversation: CodexConversationSnapshot | null): {

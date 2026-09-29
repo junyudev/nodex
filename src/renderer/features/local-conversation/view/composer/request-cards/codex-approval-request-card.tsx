@@ -126,6 +126,15 @@ function buildRequestQuestion(
           { label: "Yes, and don't ask again this session", description: "" },
         ];
 
+  const supportedOptions = options.filter((option) => {
+    const decision = mapApprovalResponse(request, option.label).decision;
+    if (request.suppressAlwaysAllowRule && decision !== "accept" && decision !== "decline")
+      return false;
+    if (!request.availableDecisions) return true;
+    return request.availableDecisions.includes(
+      typeof decision === "string" ? decision : Object.keys(decision)[0]!,
+    );
+  });
   return {
     requestId: request.requestId,
     questions: [
@@ -133,16 +142,13 @@ function buildRequestQuestion(
         id: questionId,
         header: prompt,
         question: prompt,
-        isOther: true,
+        isOther: !request.defaultToNo,
         isSecret: false,
         otherPlaceholder: "No, and tell Nodex what to do differently",
-        options: options.filter((option) => {
-          if (!request.availableDecisions) return true;
-          const decision = mapApprovalResponse(request, option.label).decision;
-          return request.availableDecisions.includes(
-            typeof decision === "string" ? decision : Object.keys(decision)[0]!,
-          );
-        }),
+        // Native deny-default requests must never have an accepting keyboard default.
+        options: request.defaultToNo
+          ? [{ label: "No", description: "" }, ...supportedOptions]
+          : supportedOptions,
       },
     ],
   };

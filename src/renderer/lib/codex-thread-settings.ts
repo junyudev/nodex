@@ -1,4 +1,5 @@
 import type {
+  AgentModelOption,
   CodexModelOption,
   CodexReasoningEffort,
   CodexReasoningEffortOption,
@@ -52,7 +53,7 @@ export interface CodexModelSelection {
 export interface CodexModelSelectionInput {
   model?: string | null;
   reasoningEffort?: string | null;
-  models: readonly CodexModelOption[];
+  models: readonly AgentModelOption[];
   fallbackReasoningEffort?: CodexReasoningEffort | "";
   preferHighReasoning?: boolean;
 }
@@ -79,13 +80,15 @@ export function writeCodexThreadSettings(value: CodexThreadSettings): void {
   }
 }
 
-export function getVisibleCodexModels(models: readonly CodexModelOption[]): CodexModelOption[] {
+export function getVisibleCodexModels<Model extends AgentModelOption>(
+  models: readonly Model[],
+): Model[] {
   return models.filter((model) => !model.hidden);
 }
 
-export function resolveDefaultCodexModel(
-  models: readonly CodexModelOption[],
-): CodexModelOption | null {
+export function resolveDefaultCodexModel<Model extends AgentModelOption>(
+  models: readonly Model[],
+): Model | null {
   const visibleModels = getVisibleCodexModels(models);
   if (visibleModels.length === 0) return null;
 
@@ -98,9 +101,9 @@ function normalizeModelId(value: string | null | undefined): string | null {
 }
 
 function findVisibleCodexModel(
-  models: readonly CodexModelOption[],
+  models: readonly AgentModelOption[],
   modelId: string | null,
-): CodexModelOption | null {
+): AgentModelOption | null {
   if (!modelId) return null;
   return (
     models.find((model) => !model.hidden && (model.id === modelId || model.model === modelId)) ??
@@ -186,7 +189,7 @@ function formatCodexModelLabelFromId(modelId: string): string {
 
 export function resolveCodexReasoningEffortOptions(
   modelId: string | undefined,
-  models: readonly CodexModelOption[],
+  models: readonly Pick<AgentModelOption, "id" | "hidden" | "supportedReasoningEfforts">[],
 ): CodexReasoningEffortOption[] {
   if (!modelId) return FALLBACK_REASONING_OPTIONS;
 
@@ -220,9 +223,9 @@ export function resolveCodexThreadSettings(
   };
 }
 
-export function formatCodexModelLabel(
+export function formatCodexModelLabel<Model extends Pick<AgentModelOption, "id" | "displayName">>(
   modelId: string | undefined,
-  models: readonly CodexModelOption[],
+  models: readonly Model[],
 ): string {
   if (!modelId) return DEFAULT_MODEL_LABEL;
 

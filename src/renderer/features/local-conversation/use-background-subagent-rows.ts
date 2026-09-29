@@ -1,5 +1,6 @@
 import { useConversationRuntimeOverride } from "./conversation-runtime";
-import { useCallback, useEffect } from "react";
+import { useCallback, useEffect, useMemo, useSyncExternalStore } from "react";
+import { projectNativeTaskRows } from "./native-task-presentation";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { subscribeCodexEvents } from "@/lib/api";
 import type { CodexSubagentRow } from "../../../shared/codex-subagent-row-model";
@@ -40,6 +41,23 @@ export function useBackgroundSubagentRows(
 ) {
   const runtime = useConversationRuntimeOverride();
   const enabled = !runtime || runtime.kind === "codex";
+  const subscribeNative = useCallback(
+    (listener: () => void) =>
+      !enabled && runtime ? runtime.subscribe(rootThreadId, listener) : () => {},
+    [enabled, runtime, rootThreadId],
+  );
+  const readNative = useCallback(
+    () => (!enabled && runtime ? runtime.read(rootThreadId) : null),
+    [enabled, runtime, rootThreadId],
+  );
+  const nativeSnapshot = useSyncExternalStore(subscribeNative, readNative, readNative);
+  const nativeRows = useMemo(
+    () =>
+      !enabled && runtime && nativeSnapshot
+        ? projectNativeTaskRows(runtime.children(rootThreadId), runtime.read)
+        : EMPTY_ROWS,
+    [enabled, runtime, rootThreadId, nativeSnapshot],
+  );
   const manager = useCodexAppServerManagerForConversationId(rootThreadId, preferredHostId);
   const client = useQueryClient();
   const hostId = manager.getHostId();
@@ -69,5 +87,5 @@ export function useBackgroundSubagentRows(
     });
   }, [client, enabled, hostId, rootThreadId]);
   const rows = query.data ?? EMPTY_ROWS;
-  return enabled ? rows : EMPTY_ROWS;
+  return enabled ? rows : nativeRows;
 }

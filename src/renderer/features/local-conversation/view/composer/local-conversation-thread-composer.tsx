@@ -1,3 +1,4 @@
+import { supportsConversationProviderControl } from "../../conversation-provider-controls";
 import {
   useCallback,
   useEffect,
@@ -1365,10 +1366,12 @@ function HydratedThreadComposer({
     getImageEditDraftSnapshot,
     getImageEditDraftSnapshot,
   );
-  const imageInputSupported = resolveImageInputSupport({
-    models: model.availableModels,
-    selectedModel: model.selectedModel,
-  });
+  const imageInputSupported =
+    supportsConversationProviderControl(model.provider, "images") &&
+    resolveImageInputSupport({
+      models: model.availableModels,
+      selectedModel: model.selectedModel,
+    });
   const imageAttachmentsRef = useRef(imageAttachments);
   imageAttachmentsRef.current = imageAttachments;
   const handleOpenComposerImage = useCallback(
@@ -2603,7 +2606,7 @@ function HydratedThreadComposer({
           nextPrompt.trim().length > 0 || hasSubmittableAttachments || goalModeActive,
         hasThreadGoal: goalModeActive || Boolean(model.conversation?.threadGoal),
         isQueueingEnabled: model.isQueueingEnabled,
-        supportsRunningFollowUps: !model.provider || model.provider.kind === "codex",
+        supportsRunningFollowUps: supportsConversationProviderControl(model.provider, "steer"),
         latestTurnStatus,
         canResumeInterruptedTurn: false,
       });
@@ -2722,6 +2725,10 @@ function HydratedThreadComposer({
   }, [commandKeymapQuery.data, composerVisible, isDictationSupported, isRealtimeVoiceActive]);
 
   useEffect(() => {
+    if (model.provider?.kind && model.provider.kind !== "codex") {
+      setPermissionState(null);
+      return;
+    }
     let cancelled = false;
 
     void readComposerPermissionState(model.projectId)
@@ -2737,7 +2744,7 @@ function HydratedThreadComposer({
     return () => {
       cancelled = true;
     };
-  }, [model.permissionMode, model.permissionState, model.projectId]);
+  }, [model.provider?.kind, model.permissionMode, model.permissionState, model.projectId]);
 
   const handleInterrupt = useCallback(async () => {
     if (!model.conversation || !model.isThreadRunning) return;
@@ -3232,7 +3239,7 @@ function HydratedThreadComposer({
         hasDraftContent: prompt.trim().length > 0 || hasAttachments || goalModeActive,
         hasThreadGoal: goalModeActive || Boolean(model.conversation?.threadGoal),
         isQueueingEnabled: model.isQueueingEnabled,
-        supportsRunningFollowUps: !model.provider || model.provider.kind === "codex",
+        supportsRunningFollowUps: supportsConversationProviderControl(model.provider, "steer"),
         latestTurnStatus,
         canResumeInterruptedTurn,
       });
@@ -3330,7 +3337,7 @@ function HydratedThreadComposer({
     hasDraftContent: hasComposerContent,
     hasThreadGoal: goalModeActive || Boolean(model.conversation?.threadGoal),
     isQueueingEnabled: model.isQueueingEnabled,
-    supportsRunningFollowUps: !model.provider || model.provider.kind === "codex",
+    supportsRunningFollowUps: supportsConversationProviderControl(model.provider, "steer"),
     latestTurnStatus,
     canResumeInterruptedTurn,
   });
@@ -3696,11 +3703,18 @@ function HydratedThreadComposer({
       <ActiveComposerModeChip model={model} onToggle={togglePlanMode} />
       <ActiveGoalModeChip active={hasFooterGoalChip} onClear={clearFooterGoal} />
       <div className="flex min-w-0 items-center gap-1">{intelligenceControls}</div>
-      {!model.provider || model.provider.kind === "codex" ? (
+      {supportsConversationProviderControl(model.provider, "permissionMode") ? (
         <PermissionModeDropdown
           selectedMode={model.permissionMode}
-          availableModes={permissionState?.availableModes}
-          autoReviewAvailable={permissionState?.autoReviewAvailable ?? false}
+          availableModes={
+            model.provider?.kind === "claude"
+              ? ["auto", "guardian-approvals", "full-access"]
+              : permissionState?.availableModes
+          }
+          autoReviewAvailable={
+            model.provider?.kind === "claude" || (permissionState?.autoReviewAvailable ?? false)
+          }
+          nativePermissions={model.provider?.kind === "claude"}
           triggerVariant="icon"
           onSelect={actions.onPermissionModeChange}
         />
@@ -3712,11 +3726,18 @@ function HydratedThreadComposer({
   const standardLeadingControls = (
     <div className="flex min-w-0 items-center gap-[5px]">
       {addContextControl}
-      {!model.provider || model.provider.kind === "codex" ? (
+      {supportsConversationProviderControl(model.provider, "permissionMode") ? (
         <PermissionModeDropdown
           selectedMode={model.permissionMode}
-          availableModes={permissionState?.availableModes}
-          autoReviewAvailable={permissionState?.autoReviewAvailable ?? false}
+          availableModes={
+            model.provider?.kind === "claude"
+              ? ["auto", "guardian-approvals", "full-access"]
+              : permissionState?.availableModes
+          }
+          autoReviewAvailable={
+            model.provider?.kind === "claude" || (permissionState?.autoReviewAvailable ?? false)
+          }
+          nativePermissions={model.provider?.kind === "claude"}
           onSelect={actions.onPermissionModeChange}
         />
       ) : null}

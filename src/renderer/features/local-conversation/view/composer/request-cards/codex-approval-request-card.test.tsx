@@ -26,6 +26,50 @@ const approvalRequest: CodexApprovalRequest = {
 };
 
 describe("CodexApprovalRequestCard", () => {
+  test("honors a native deny default when submitted without changing the selection", async () => {
+    const responses: unknown[] = [];
+    const view = render(
+      <TooltipProvider>
+        <CodexApprovalRequestCard
+          request={{
+            ...approvalRequest,
+            defaultToNo: true,
+            availableDecisions: ["accept", "decline"],
+          }}
+          onRespond={async (_id, response) => {
+            responses.push(response);
+          }}
+        />
+      </TooltipProvider>,
+    );
+    expect(view.getByRole("radio", { name: "No" }).getAttribute("aria-checked")).toBe("true");
+    await act(async () => {
+      fireEvent.click(view.getByRole("button", { name: /Submit/ }));
+      await Promise.resolve();
+    });
+    expect(responses).toEqual([{ kind: "command", decision: "decline" }]);
+  });
+
+  test("suppresses session and permanent permission rules when the native request forbids them", async () => {
+    const responses: unknown[] = [];
+    const view = render(
+      <TooltipProvider>
+        <CodexApprovalRequestCard
+          request={{ ...approvalRequest, suppressAlwaysAllowRule: true }}
+          onRespond={async (_id, response) => {
+            responses.push(response);
+          }}
+        />
+      </TooltipProvider>,
+    );
+    expect(view.getAllByRole("radio")).toHaveLength(1);
+    await act(async () => {
+      fireEvent.click(view.getByRole("button", { name: /Submit/ }));
+      await Promise.resolve();
+    });
+    expect(responses).toEqual([{ kind: "command", decision: "accept" }]);
+  });
+
   test("offers only decisions supported by the request's runtime", async () => {
     const responses: unknown[] = [];
     const view = render(

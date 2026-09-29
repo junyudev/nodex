@@ -7267,8 +7267,10 @@ export interface components {
             } | {
                 readonly backend_binding: components["schemas"]["AgentBackendBinding"];
                 readonly backend_session_id: string;
+                readonly expected_backend_session_id?: string | null;
                 /** @enum {string} */
                 readonly kind: "bind_thread_backend_session";
+                readonly native_state?: null | components["schemas"]["ProjectWorkspaceNativeAgentState"];
                 readonly thread_id: string;
             } | {
                 readonly backend_binding: components["schemas"]["AgentBackendBinding"];
@@ -9179,8 +9181,10 @@ export interface components {
         } | {
             readonly backend_binding: components["schemas"]["AgentBackendBinding"];
             readonly backend_session_id: string;
+            readonly expected_backend_session_id?: string | null;
             /** @enum {string} */
             readonly kind: "bind_thread_backend_session";
+            readonly native_state?: null | components["schemas"]["ProjectWorkspaceNativeAgentState"];
             readonly thread_id: string;
         } | {
             readonly backend_binding: components["schemas"]["AgentBackendBinding"];
@@ -9352,6 +9356,75 @@ export interface components {
             readonly primary_workspace_root?: string | null;
             readonly project_id: string;
             readonly sources: readonly components["schemas"]["ProjectSource"][];
+        };
+        readonly ProjectWorkspaceNativeAgentPreferences: {
+            readonly context?: string | null;
+            readonly effort: string;
+            readonly fast?: boolean | null;
+            readonly interaction_mode: components["schemas"]["ProjectWorkspaceNativeInteractionMode"];
+            readonly model: string;
+            readonly thinking?: boolean | null;
+        };
+        readonly ProjectWorkspaceNativeAgentState: {
+            readonly ever_saved?: boolean;
+            readonly preferences: components["schemas"]["ProjectWorkspaceNativeAgentPreferences"];
+            readonly turns?: readonly components["schemas"]["ProjectWorkspaceNativeTurnFact"][];
+        };
+        readonly ProjectWorkspaceNativeArtifactFact: {
+            readonly error?: string | null;
+            readonly file_id?: string | null;
+            readonly filename: string;
+        };
+        readonly ProjectWorkspaceNativeCompactionFact: {
+            /** Format: int64 */
+            readonly duration_ms?: number | null;
+            readonly error?: string | null;
+            readonly id: string;
+            /** Format: int64 */
+            readonly post_tokens?: number | null;
+            /** Format: int64 */
+            readonly pre_tokens?: number | null;
+            readonly status: string;
+            readonly summary: string;
+            readonly trigger?: string | null;
+        };
+        /** @enum {string} */
+        readonly ProjectWorkspaceNativeInteractionMode: "default" | "plan";
+        readonly ProjectWorkspaceNativeTokenFact: {
+            /** Format: int64 */
+            readonly cache_read: number;
+            /** Format: int64 */
+            readonly cache_write: number;
+            /** Format: int64 */
+            readonly input: number;
+            /** Format: int64 */
+            readonly output: number;
+        };
+        readonly ProjectWorkspaceNativeTurnFact: {
+            readonly artifacts?: readonly components["schemas"]["ProjectWorkspaceNativeArtifactFact"][];
+            readonly client_user_message_id: string;
+            readonly compactions?: readonly components["schemas"]["ProjectWorkspaceNativeCompactionFact"][];
+            /** Format: int64 */
+            readonly completed_at?: number | null;
+            /** Format: int64 */
+            readonly created_at?: number | null;
+            readonly error?: string | null;
+            readonly native_user_message_id?: string | null;
+            readonly stop_reason: string;
+            readonly usage?: null | components["schemas"]["ProjectWorkspaceNativeUsageFact"];
+        };
+        readonly ProjectWorkspaceNativeUsageFact: {
+            readonly context_estimated?: boolean | null;
+            /** Format: int64 */
+            readonly cost_micros?: number | null;
+            readonly cumulative_tokens?: null | components["schemas"]["ProjectWorkspaceNativeTokenFact"];
+            readonly currency?: string | null;
+            readonly model?: string | null;
+            /** Format: int64 */
+            readonly size: number;
+            readonly tokens?: null | components["schemas"]["ProjectWorkspaceNativeTokenFact"];
+            /** Format: int64 */
+            readonly used: number;
         };
         readonly ProjectWorkspacePageChatActivitySummary: {
             /** Format: int32 */
@@ -9632,6 +9705,7 @@ export interface components {
         readonly ProjectWorkspaceThreadBackendSession: {
             readonly backend_binding: components["schemas"]["AgentBackendBinding"];
             readonly backend_session_id: string;
+            readonly native_state?: null | components["schemas"]["ProjectWorkspaceNativeAgentState"];
             readonly thread_id: string;
             /** Format: int64 */
             readonly updated_at: number;

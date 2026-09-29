@@ -9,6 +9,8 @@ import {
   completeAgentConversationAuthentication,
   diffAgentConversationSnapshots,
   emptyAgentConversationSnapshot,
+  failAgentConversation,
+  closeAgentConversation,
   rebindAgentConversationSession,
   recoverAgentConversationTurnFailure,
   reduceAgentConversationEvent,
@@ -178,6 +180,54 @@ it("sends only the changed canonical update instead of the resident transcript",
   expect(applyAgentConversationDelta(snapshot, delta!)).toEqual(next);
 });
 
+it.each(["claude", "acp"] as const)(
+  "resynchronizes oversized %s deltas and identity changes without losing later updates",
+  (backend) => {
+    const before = emptyAgentConversationSnapshot({
+      backend,
+      threadId: "thread",
+      sessionId: "session",
+    });
+    const loaded = {
+      ...before,
+      revision: 1,
+      turns: Array.from({ length: 20 }, (_, index) => ({
+        sequence: index + 1,
+        clientUserMessageId: null,
+        promptText: "History",
+        stopReason: null,
+        updates: [
+          {
+            kind: "message" as const,
+            key: `message-${index}`,
+            messageId: `message-${index}`,
+            role: "agent" as const,
+            text: "x".repeat(60000),
+          },
+        ],
+      })),
+    };
+    const invalidation = diffAgentConversationSnapshots(before, loaded)!;
+    expect(invalidation).toMatchObject({ resync: true, revision: 1, turns: [] });
+    expect(encodedBytes(invalidation)).toBeLessThan(1024);
+    expect(applyAgentConversationDelta(before, invalidation)).toBeNull();
+    const later = beginAgentConversationTurn(loaded, 21, "Next");
+    expect(
+      applyAgentConversationDelta(loaded, diffAgentConversationSnapshots(loaded, later)!),
+    ).toEqual(later);
+    expect(
+      diffAgentConversationSnapshots(later, {
+        ...later,
+        sessionId: "reset",
+        revision: later.revision + 1,
+      }),
+    ).toMatchObject({ resync: true, sessionId: "reset" });
+    expect(
+      diffAgentConversationSnapshots(later, { ...later, revision: later.revision + 2 }),
+    ).toMatchObject({ resync: true });
+  },
+);
+
 it("keeps session recovery transitions monotone without reviving terminal projections", () => {
   const initial = emptyAgentConversationSnapshot({ threadId: "thread-1", sessionId: "pending" });
   const rebound = rebindAgentConversationSession(initial, "session-1");
@@ -227,4 +277,49 @@ it("retains tool identity within the turn budget when input and output are overs
   expect(bounded.turns[0]?.updates).toHaveLength(1);
   expect(bounded.turns[0]?.updates[0]).toMatchObject({ toolCallId: "tool", status: "completed" });
   expect(encodedBytes(bounded.turns[0])).toBeLessThanOrEqual(AGENT_CONVERSATION_MAX_TURN_BYTES);
+  expect(bounded.turns[0]?.updates[0]).toMatchObject({ truncated: true });
+});
+
+it("settles background tasks and tools when their native process fails or closes", () => {
+  let snapshot = beginAgentConversationTurn(
+    emptyAgentConversationSnapshot({ threadId: "thread", sessionId: "session" }),
+    1,
+    "Watch",
+  );
+  snapshot = reduceAcpConversationEvent(snapshot, {
+    kind: "session_update",
+    sessionId: "session",
+    turnSequence: 1,
+    update: {
+      sessionUpdate: "tool_call",
+      toolCallId: "watch",
+      title: "Watch",
+      status: "in_progress",
+    },
+  });
+  const tool = snapshot.turns[0]!.updates.find((update) => update.kind === "tool-call")!;
+  snapshot = {
+    ...snapshot,
+    tasks: [
+      {
+        id: "watch-task",
+        bornTurnSequence: 1,
+        status: "running",
+        description: "Watch",
+        backgrounded: true,
+      },
+    ],
+    liveBackgroundTaskIds: ["watch-task"],
+    toolCalls: [{ turnSequence: 1, update: tool }],
+  };
+  const failed = failAgentConversation(snapshot, new Error("Native process exited"));
+  expect(failed.liveBackgroundTaskIds).toEqual([]);
+  expect(failed.tasks?.[0]).toMatchObject({ status: "failed", error: "Native process exited" });
+  expect(failed.toolCalls?.[0]?.update.status).toBe("failed");
+  expect(failed.turns[0]?.updates[0]).toMatchObject({ status: "failed" });
+  const closed = closeAgentConversation(snapshot);
+  expect(closed.liveBackgroundTaskIds).toEqual([]);
+  expect(closed.tasks?.[0]?.status).toBe("cancelled");
+  expect(closed.toolCalls?.[0]?.update.status).toBe("cancelled");
+  expect(closed.turns[0]?.stopReason).toBe("cancelled");
 });

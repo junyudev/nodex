@@ -39,7 +39,8 @@ const dispatchMockInvoke = async (channel: string, ...args: unknown[]) => {
   return await mockInvokeImpl(channel, ...args);
 };
 
-vi.mock("./workbench-settings-overlay-deps", () => ({
+vi.mock("./workbench-settings-overlay-deps", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("./workbench-settings-overlay-deps")>()),
   applyAgentImport: async (scanId: string, itemIds: readonly string[]) =>
     await dispatchMockInvoke("agent-import:apply", { itemIds, scanId }),
   backupRuntimePort: {

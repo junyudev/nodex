@@ -1,3 +1,4 @@
+import { captureAppToolAuthority } from "./AppToolCaller";
 import * as Effect from "effect/Effect";
 import { handoffStatusSchema } from "../../shared/nodex-app-tools/session-handoff-schemas";
 import { CodexThreadHandoffRuntime } from "../codex-application/CodexThreadHandoffRuntime";
@@ -17,9 +18,7 @@ export const make = Effect.gen(function* () {
     const parsed = handoffStatusSchema.safeParse(input.arguments);
     if (!parsed.success) return toolFailure("invalid_arguments");
     if (!input.caller.isActive()) return toolFailure("call_withdrawn");
-    const authority = yield* turns
-      .capture(input.caller.threadId, input.caller.turnId)
-      .pipe(Effect.catch(() => Effect.succeed(null)));
+    const authority = yield* captureAppToolAuthority(input.caller, turns);
     if (!authority) return toolFailure("authority_unavailable");
     const provenance = toCoreAgentTurnProvenance(identity.identity.profileId, authority);
     const { sessionId, operationId, afterRevision, waitMs } = parsed.data;

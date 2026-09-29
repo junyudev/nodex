@@ -283,11 +283,13 @@ function applyCommand(
 }
 
 export const make = Effect.fn("ApplicationSettings.make")(function* (input: {
+  readonly hostHomeDirectory?: string;
   readonly environment: Readonly<NodeJS.ProcessEnv>;
   readonly settingsPath: string;
   readonly secretEncryption?: SecretEncryptionAdapter;
 }) {
   const source: ApplicationSettingsDocumentSource = {
+    ...(input.hostHomeDirectory ? { hostHomeDirectory: input.hostHomeDirectory } : {}),
     environment: Object.freeze({ ...input.environment }),
     settingsPath: input.settingsPath,
     ...(input.secretEncryption ? { secretEncryption: input.secretEncryption } : {}),
@@ -341,6 +343,7 @@ export const live: Layer.Layer<ApplicationSettings, never, MainConfig | SecretEn
     Effect.gen(function* () {
       const config = yield* MainConfig;
       return yield* make({
+        hostHomeDirectory: config.homeDirectory,
         environment: config.environment,
         settingsPath: config.profileSettingsPath,
         secretEncryption: yield* SecretEncryption,

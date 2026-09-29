@@ -1,3 +1,4 @@
+import { captureAppToolAuthority } from "./AppToolCaller";
 import * as Effect from "effect/Effect";
 import { accountSchemas } from "../../shared/nodex-app-tools/account-schemas";
 import { CodexAccount } from "../codex-application/CodexAccount";
@@ -15,9 +16,7 @@ export const make = Effect.gen(function* () {
       input.arguments,
     );
     if (!parsed.success) return toolFailure("invalid_arguments");
-    const authority = yield* turns
-      .capture(input.caller.threadId, input.caller.turnId)
-      .pipe(Effect.catch(() => Effect.succeed(null)));
+    const authority = yield* captureAppToolAuthority(input.caller, turns);
     if (!authority) return toolFailure("authority_unavailable");
     if (!input.caller.isActive()) return toolFailure("call_withdrawn");
     if (input.name === "get_usage_limits")

@@ -8,6 +8,7 @@ import * as Layer from "effect/Layer";
 import * as Scope from "effect/Scope";
 import * as Stream from "effect/Stream";
 import type { IpcMainInvokeEvent } from "electron";
+import type { NativePermissionMode } from "../../../shared/agent-backend-api";
 import { AgentBackendApplication } from "../../agent-backend/AgentBackendApplication";
 import { testLayer as mainConfigLayer } from "../../app/MainConfig";
 import { ElectronIpc } from "../../platform/electron/ElectronIpc";
@@ -121,4 +122,102 @@ it.effect("bridges renderer observation reference counts and destruction into se
     expect(closingSender.listenerCount("destroyed")).toBe(0);
     expect(handlers.size).toBe(0);
   }),
+);
+
+it.effect(
+  "native permission endpoints validate trusted scope and supported choices before Core dispatch",
+  () =>
+    Effect.scoped(
+      Effect.gen(function* () {
+        type PermissionHandler = (
+          event: IpcMainInvokeEvent,
+          ...args: unknown[]
+        ) => Effect.Effect<unknown, AgentBackendIpcError>;
+        const handlers = new Map<string, PermissionHandler>();
+        const calls: Array<{ projectId: string | null; mode?: NativePermissionMode }> = [];
+        const selected = new Map<string | null, NativePermissionMode>();
+        const ipc = makeTestElectronIpc({
+          handle: (channel: string, handler: PermissionHandler) =>
+            Effect.acquireRelease(
+              Effect.sync(() => {
+                handlers.set(channel, handler);
+              }),
+              () =>
+                Effect.sync(() => {
+                  handlers.delete(channel);
+                }),
+            ).pipe(Effect.asVoid),
+          on: () => Effect.void,
+        });
+        const application = AgentBackendApplication.of({
+          readNativePermissionMode: (projectId: string | null) =>
+            Effect.sync(() => {
+              calls.push({ projectId });
+              return selected.get(projectId) ?? "auto";
+            }),
+          setNativePermissionMode: (projectId: string | null, mode: NativePermissionMode) =>
+            Effect.sync(() => {
+              calls.push({ projectId, mode });
+              selected.set(projectId, mode);
+              return mode;
+            }),
+          changes: Stream.empty,
+          observeAgentSession: () => Effect.void,
+          unobserveAgentSession: () => Effect.void,
+        } as unknown as AgentBackendApplication["Service"]);
+        yield* Layer.buildWithScope(
+          live.pipe(
+            Layer.provide(
+              Layer.mergeAll(
+                Layer.succeed(AgentBackendApplication, application),
+                Layer.succeed(ElectronIpc, ipc),
+                mainConfigLayer(),
+                Layer.succeed(
+                  WindowRuntime,
+                  WindowRuntime.of({
+                    has: (id: number) => id === 77,
+                  } as unknown as WindowRuntime["Service"]),
+                ),
+              ),
+            ),
+          ),
+          yield* Effect.scope,
+        );
+        const frame = { url: "app://-/index.html" };
+        const sender = Object.assign(new EventEmitter(), {
+          id: 77,
+          mainFrame: frame,
+          getType: () => "window",
+          isDestroyed: () => false,
+        });
+        const event = { sender, senderFrame: frame } as unknown as IpcMainInvokeEvent;
+        const get = handlers.get("agent-backend:permission-mode:get")!;
+        const set = handlers.get("agent-backend:permission-mode:set")!;
+        expect(yield* get(event, "project")).toBe("auto");
+        expect(yield* set(event, "project", "full-access")).toBe("full-access");
+        expect(yield* get(event, "project")).toBe("full-access");
+        expect(yield* set(event, null, "guardian-approvals")).toBe("guardian-approvals");
+        expect(yield* get(event, null)).toBe("guardian-approvals");
+        const dispatched = calls.length;
+        for (const input of [
+          ["project", "custom"],
+          ["project", "bypassPermissions"],
+          ["", "full-access"],
+        ])
+          expect(Exit.isFailure(yield* Effect.exit(set(event, ...input)))).toBe(true);
+        const childFrame = { url: frame.url };
+        expect(
+          Exit.isFailure(
+            yield* Effect.exit(
+              set(
+                { sender, senderFrame: childFrame } as unknown as IpcMainInvokeEvent,
+                "project",
+                "full-access",
+              ),
+            ),
+          ),
+        ).toBe(true);
+        expect(calls.length).toBe(dispatched);
+      }),
+    ),
 );

@@ -7,6 +7,7 @@ import { ClaudeSessionManager } from "./ClaudeSessionManager";
 export const inactiveClaudeSessions = Layer.succeed(
   ClaudeSessionManager,
   ClaudeSessionManager.of({
+    discover: () => Effect.die(new Error("Unexpected Claude discovery")),
     models: () => Effect.die(new Error("Unexpected Claude model discovery")),
     open: () => Effect.die(new Error("Unexpected native Claude launch")),
     get: () => Effect.succeed(null),

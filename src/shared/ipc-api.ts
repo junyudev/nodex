@@ -1292,6 +1292,50 @@ export interface IpcApi {
     args: [input: ClaudeModelCatalogInput];
     result: readonly AgentSessionConfigSelectOption[];
   };
+  "agent-backend:claude:discover": {
+    args: [input: ClaudeModelCatalogInput];
+    result: import("./claude-models").ClaudeDiscovery;
+  };
+  "agent-backend:permission-mode:get": {
+    args: [projectId: string | null];
+    result: import("./agent-backend-api").NativePermissionMode;
+  };
+  "agent-backend:permission-mode:set": {
+    args: [projectId: string | null, mode: import("./agent-backend-api").NativePermissionMode];
+    result: import("./agent-backend-api").NativePermissionMode;
+  };
+  "agent-backend:claude:cancel-discovery": {
+    args: [input: { readonly requestId: string }];
+    result: void;
+  };
+  "agent-backend:session:inspect": {
+    args: [threadId: string];
+    result: import("./claude-models").ClaudeRuntimeDiagnostics;
+  };
+  "agent-backend:session:history-image": {
+    args: [input: import("./agent-backend-api").AgentBackendHistoryImageInput];
+    result: string;
+  };
+  "agent-backend:session:tool-output": {
+    args: [input: import("./agent-backend-api").AgentBackendToolOutputInput];
+    result: import("./agent-tool-output").AgentToolOutput;
+  };
+  "agent-backend:session:set-intelligence": {
+    args: [input: import("./agent-backend-api").AgentBackendIntelligenceInput];
+    result: AgentBackendSessionPresentation;
+  };
+  "agent-backend:session:control": {
+    args: [input: import("./agent-backend-api").AgentBackendControlInput];
+    result: AgentBackendSessionPresentation;
+  };
+  "agent-backend:session:fork": {
+    args: [input: import("./agent-backend-api").AgentBackendForkInput];
+    result: AgentBackendThreadStartResult;
+  };
+  "agent-backend:session:generate-title": {
+    args: [threadId: string];
+    result: string | null;
+  };
   "agent-backend:session:observe": {
     args: [threadId: string];
     result: void;
@@ -2823,6 +2867,7 @@ export interface IpcEvents {
   "browser-local-server-preferences-changed": BrowserLocalServerPreferences;
   "remote-hosted-pip:revision": RemoteHostedPipRevisionEvent;
   "chrome-control-settings-changed": ChromeControlRuntimeSnapshot;
+  "claude-agent-settings-changed": void;
   "desktop-notification:action": DesktopNotificationActionInvocation;
   "electron-window:focus-changed": { isFocused: boolean };
   "electron-window-opaque-surface-changed": {

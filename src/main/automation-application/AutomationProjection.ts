@@ -60,10 +60,17 @@ export const requireCodexAutomationBackendBinding = (
   throw new Error("Scheduled automations currently support only the Codex Agent Backend");
 };
 
+const requireNativeAutomationBackendBinding = (
+  binding: AgentBackendBinding,
+): AgentBackendBinding => {
+  if (binding.kind === "codex" || binding.kind === "claude") return binding;
+  throw new Error("Scheduled automations support native Codex or Claude Agent Backends");
+};
+
 export const projectAutomationDefinition = (
   definition: CoreAutomationDefinition,
 ): CodexScheduledAutomation => {
-  const backendBinding = requireCodexAutomationBackendBinding(
+  const backendBinding = requireNativeAutomationBackendBinding(
     projectAgentBackendBindingFromCore(definition.backend_binding),
   );
   return {
@@ -216,7 +223,7 @@ export const projectPageOccurrence = (occurrence: CoreScheduledPageOccurrence): 
 };
 
 export const toCoreAutomationDefinitionInput = (input: CodexScheduledAutomationCreateInput) => {
-  const backendBinding = requireCodexAutomationBackendBinding(
+  const backendBinding = requireNativeAutomationBackendBinding(
     input.backendBinding ?? CODEX_AGENT_BACKEND_BINDING,
   );
   return {

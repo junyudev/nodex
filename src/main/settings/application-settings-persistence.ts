@@ -110,6 +110,7 @@ interface RootTomlConfig extends Record<string, unknown> {
 }
 
 export interface ApplicationSettingsDocumentSource {
+  readonly hostHomeDirectory?: string;
   readonly secretEncryption?: SecretEncryptionAdapter;
   readonly environment: Readonly<NodeJS.ProcessEnv>;
   readonly settingsPath: string;

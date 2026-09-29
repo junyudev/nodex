@@ -1,3 +1,4 @@
+import { captureAppToolAuthority } from "./AppToolCaller";
 import { sameWorkbenchObservedTarget } from "../../shared/nodex-app-tools/workbench";
 import * as Effect from "effect/Effect";
 import { nodexAgentAuthorityFingerprint } from "../../shared/nodex-agent-authority";
@@ -48,16 +49,12 @@ export const make = Effect.gen(function* () {
     if (!Object.hasOwn(schemas, input.name)) return toolFailure("unknown_tool");
     const inputSchema = schemas[input.name as keyof typeof schemas];
     if (!inputSchema.safeParse(input.arguments).success) return toolFailure("invalid_arguments");
-    const authority = yield* turns
-      .capture(input.caller.threadId, input.caller.turnId)
-      .pipe(Effect.catch(() => Effect.succeed(null)));
+    const authority = yield* captureAppToolAuthority(input.caller, turns);
     if (!authority) return toolFailure("authority_unavailable");
     const fingerprint = nodexAgentAuthorityFingerprint(authority);
     const isCurrent = Effect.gen(function* () {
       if (!input.caller.isActive()) return false;
-      const current = yield* turns
-        .capture(input.caller.threadId, input.caller.turnId)
-        .pipe(Effect.catch(() => Effect.succeed(null)));
+      const current = yield* captureAppToolAuthority(input.caller, turns);
       return (
         current !== null &&
         nodexAgentAuthorityFingerprint(current) === fingerprint &&

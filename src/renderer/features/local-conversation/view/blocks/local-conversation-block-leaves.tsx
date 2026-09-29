@@ -39,6 +39,7 @@ import {
 } from "../shared/thread-message-actions";
 import { TodoListSurface } from "../shared/todo-list-surface";
 import { getToolComponent } from "../shared/tools/get-tool-component";
+import { LazyToolOutput } from "../shared/tools/lazy-tool-output";
 import { DynamicToolCallSummary } from "../shared/tools/dynamic-tool-call";
 import { WorktreeInitActivityList } from "../shared/tools/worktree-init-activity-list";
 import {
@@ -506,19 +507,27 @@ export function ThreadToolSurfaceBlock({
   if (!ToolComponent) return null;
 
   return (
-    <ToolComponent
-      item={item}
-      projectWorkspacePath={projectWorkspacePath ?? undefined}
-      threadCwd={threadCwd ?? undefined}
-      isTurnCancelled={block.isTurnCancelled === true}
-      isStreamingTurn={isStreamingTurn}
-      automaticApprovalReviews={block.automaticApprovalReviews ?? []}
-      showDiffDetails={threadDetailLevel !== "STEPS_PROSE"}
-      onOpenFileInSidePanel={onOpenTurnDiffFileInSidePanel}
-      onOpenSummaryScheduledAutomation={onOpenSummaryScheduledAutomation}
-      onOpenThread={onOpenThread}
-      onOpenMcpAppSidePanel={onOpenMcpAppSidePanel}
-    />
+    <>
+      <ToolComponent
+        item={item}
+        projectWorkspacePath={projectWorkspacePath ?? undefined}
+        threadCwd={threadCwd ?? undefined}
+        isTurnCancelled={block.isTurnCancelled === true}
+        isStreamingTurn={isStreamingTurn}
+        automaticApprovalReviews={block.automaticApprovalReviews ?? []}
+        showDiffDetails={threadDetailLevel !== "STEPS_PROSE"}
+        onOpenFileInSidePanel={onOpenTurnDiffFileInSidePanel}
+        onOpenSummaryScheduledAutomation={onOpenSummaryScheduledAutomation}
+        onOpenThread={onOpenThread}
+        onOpenMcpAppSidePanel={onOpenMcpAppSidePanel}
+      />
+      {item.toolOutputReference ? (
+        <LazyToolOutput
+          key={`${item.toolOutputReference.sessionId}:${item.toolOutputReference.nativeMessageId}:${item.toolOutputReference.toolUseId}`}
+          reference={item.toolOutputReference}
+        />
+      ) : null}
+    </>
   );
 }
 

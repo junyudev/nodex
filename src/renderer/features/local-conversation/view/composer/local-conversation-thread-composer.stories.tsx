@@ -10,6 +10,7 @@ import { NodexModalHost } from "@/lib/modal-registry";
 import type {
   CodexCollaborationModeKind,
   CodexModelOption,
+  AgentModelOption,
   CodexPermissionMode,
   CodexReasoningEffortOption,
 } from "@/lib/types";
@@ -92,7 +93,7 @@ function resolveStoryAvailableModels(input: {
   args: ComposerSendButtonStoryProps;
   footerModel: ThreadFooterModel;
   selectedModelOption: CodexModelOption;
-}): CodexModelOption[] {
+}): AgentModelOption[] {
   if (input.args.modelCatalog === "loading") {
     return [];
   }

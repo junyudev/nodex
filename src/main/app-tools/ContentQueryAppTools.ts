@@ -1,3 +1,4 @@
+import { captureAppToolAuthority } from "./AppToolCaller";
 import * as Effect from "effect/Effect";
 import {
   describeContentSchemaInput,
@@ -18,9 +19,7 @@ export const make = Effect.gen(function* () {
   const core = yield* CoreModules;
   return Effect.fn("ContentQueryAppTools.execute")(function* (input: AppToolInvocation) {
     if (!input.caller.isActive()) return toolFailure("call_withdrawn");
-    const authority = yield* turns
-      .capture(input.caller.threadId, input.caller.turnId)
-      .pipe(Effect.catch(() => Effect.succeed(null)));
+    const authority = yield* captureAppToolAuthority(input.caller, turns);
     if (!authority) return toolFailure("authority_unavailable");
     if (authority.actorProjectId === null)
       return toolFailure(

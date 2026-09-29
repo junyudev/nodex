@@ -6,7 +6,7 @@ import * as Stream from "effect/Stream";
 import type { IpcMainInvokeEvent } from "electron";
 import { z } from "zod";
 import type { IpcEvents } from "../../../shared/ipc-api";
-import { isUuidV7 } from "../../../shared/uuid-v7";
+import { createUuidV7, isUuidV7 } from "../../../shared/uuid-v7";
 import { CLAUDE_EFFORT_LEVELS } from "../../../shared/claude-models";
 import { AgentBackendApplication } from "../../agent-backend/AgentBackendApplication";
 import { MainConfig } from "../../app/MainConfig";
@@ -18,16 +18,107 @@ import {
   AcpRendererObservationRegistry,
   type AcpRendererObservationChanges,
 } from "./AcpRendererObservationRegistry";
+import { makeClaudeDiscoveryRequests } from "./ClaudeDiscoveryRequests";
 
 const id = z.string().trim().min(1).max(512);
 const prompt = z
   .string()
   .trim()
-  .min(1)
   .max(256 * 1024);
+const Images = z
+  .array(
+    z
+      .object({
+        source: z
+          .string()
+          .min(1)
+          .max(7 * 1024 * 1024),
+        caption: z.string().max(8192).optional(),
+      })
+      .strict(),
+  )
+  .max(20)
+  .refine(
+    (images) => images.reduce((total, image) => total + image.source.length, 0) <= 28 * 1024 * 1024,
+  );
 const OpenInput = z.object({ threadId: id }).strict();
-const ClaudeModelsInput = z.object({ projectId: id, instanceConfigId: id }).strict();
+const NativePermissionMode = z.enum(["auto", "guardian-approvals", "full-access"]);
+const NativePermissionSelection = z.tuple([id.nullable(), NativePermissionMode]);
+const ClaudeModelsInput = z
+  .object({
+    projectId: id.nullable(),
+    instanceConfigId: id,
+    requestId: z.string().refine(isUuidV7).optional(),
+  })
+  .strict();
+const Selection = z
+  .object({
+    model: id,
+    effort: z.enum(["default", ...CLAUDE_EFFORT_LEVELS]),
+    fast: z.boolean().optional(),
+    thinking: z.boolean().optional(),
+    context: z
+      .string()
+      .regex(/^\d+[km]$/u)
+      .optional(),
+  })
+  .strict();
+const IntelligenceInput = z.object({ threadId: id, selection: Selection }).strict();
+const ControlInput = z.discriminatedUnion("kind", [
+  z
+    .object({
+      threadId: id,
+      kind: z.literal("steer"),
+      prompt,
+      images: Images.optional(),
+      clientUserMessageId: z.string().refine(isUuidV7),
+    })
+    .strict(),
+  z.object({ threadId: id, kind: z.literal("stop-task"), taskId: id }).strict(),
+  z
+    .object({
+      threadId: id,
+      kind: z.literal("rollback"),
+      numTurns: z.number().int().min(1).max(1000),
+    })
+    .strict(),
+  z.object({ threadId: id, kind: z.literal("compact") }).strict(),
+  z
+    .object({
+      threadId: id,
+      kind: z.literal("permission-mode"),
+      mode: NativePermissionMode,
+    })
+    .strict(),
+  z
+    .object({
+      threadId: id,
+      kind: z.literal("load-older"),
+      before: id.optional(),
+      limit: z.number().int().min(1).max(500).optional(),
+    })
+    .strict(),
+]);
+const ForkInput = z.object({ threadId: id, nativeMessageId: id }).strict();
+const HistoryImageInput = z
+  .object({
+    threadId: id,
+    expectedSessionId: id,
+    nativeMessageId: id,
+    index: z.number().int().min(0).max(9999),
+  })
+  .strict();
+const ToolOutputInput = z
+  .object({ threadId: id, expectedSessionId: id, nativeMessageId: id, toolUseId: id })
+  .strict();
+const BoundedJson = z
+  .json()
+  .refine(
+    (value) => JSON.stringify(value).length <= 64 * 1024,
+    "Interaction response is too large",
+  );
 const uuidV7 = z.string().refine(isUuidV7, "Expected canonical lowercase UUID-v7");
+const CancelDiscoveryInput = z.object({ requestId: uuidV7 }).strict();
 const StartInput = z
   .object({
     sessionId: id,
@@ -35,8 +126,10 @@ const StartInput = z
     backendKind: z.enum(["acp", "claude"]),
     model: id.optional(),
     effort: z.enum(["default", ...CLAUDE_EFFORT_LEVELS]).optional(),
+    selection: Selection.optional(),
     mode: z.enum(["default", "plan"]).optional(),
     prompt,
+    images: Images.optional(),
     firstSubmission: z
       .object({
         launchId: uuidV7,
@@ -46,7 +139,12 @@ const StartInput = z
   })
   .strict();
 const PromptInput = z
-  .object({ threadId: id, prompt, clientUserMessageId: uuidV7.optional() })
+  .object({
+    threadId: id,
+    prompt,
+    images: Images.optional(),
+    clientUserMessageId: uuidV7.optional(),
+  })
   .strict();
 const ModeInput = z.object({ threadId: id, modeId: id }).strict();
 const ConfigInput = z
@@ -57,7 +155,15 @@ const RespondInput = z
     threadId: id,
     requestId: id,
     response: z.discriminatedUnion("decision", [
-      z.object({ decision: z.enum(["allow", "deny"]) }).strict(),
+      z.object({ decision: z.enum(["allow", "allow-for-session", "deny"]) }).strict(),
+      z.object({ decision: z.literal("dialog"), result: BoundedJson }).strict(),
+      z
+        .object({
+          decision: z.literal("elicitation"),
+          action: z.enum(["accept", "decline", "cancel"]),
+          content: z.record(z.string().max(1024), BoundedJson).optional(),
+        })
+        .strict(),
       z
         .object({
           decision: z.literal("answer"),
@@ -89,6 +195,7 @@ export const live: Layer.Layer<
     const config = yield* MainConfig;
     const ipc = yield* ElectronIpc;
     const windows = yield* WindowRuntime;
+    const discoveryRequests = yield* makeClaudeDiscoveryRequests;
     const observers = new AcpRendererObservationRegistry<IpcMainInvokeEvent["sender"]>();
     const runObservationLifecycle = yield* FiberSet.makeRuntime<never, void, never>();
     const applyObservationChanges = (changes: AcpRendererObservationChanges) =>
@@ -151,6 +258,22 @@ export const live: Layer.Layer<
           cause instanceof AgentBackendIpcError ? cause : failure(operation, cause),
         ),
       );
+    const interruptWhenRendererIsDestroyed = <A, E, R>(
+      event: IpcMainInvokeEvent,
+      operation: Effect.Effect<A, E, R>,
+    ): Effect.Effect<A, E, R> =>
+      Effect.raceFirst(
+        operation,
+        Effect.callback<never>((resume) => {
+          if (event.sender.isDestroyed()) {
+            resume(Effect.interrupt);
+            return;
+          }
+          const interrupt = (): void => resume(Effect.interrupt);
+          event.sender.once("destroyed", interrupt);
+          return Effect.sync(() => event.sender.removeListener("destroyed", interrupt));
+        }),
+      );
 
     yield* ipc.handlePlainCommand("agent-backend:thread:start", (event, input) =>
       handle(event, "thread.start", StartInput, input, application.startAgentThread),
@@ -158,11 +281,78 @@ export const live: Layer.Layer<
     yield* ipc.handlePlainCommand("agent-backend:session:open", (event, input) =>
       handle(event, "session.open", OpenInput, input, application.openAgentSession),
     );
+    yield* ipc.handleQuery("agent-backend:permission-mode:get", (event, projectId) =>
+      handle(
+        event,
+        "permission.read",
+        id.nullable(),
+        projectId,
+        application.readNativePermissionMode,
+      ),
+    );
+    yield* ipc.handlePlainCommand("agent-backend:permission-mode:set", (event, projectId, mode) =>
+      handle(
+        event,
+        "permission.write",
+        NativePermissionSelection,
+        [projectId, mode],
+        ([scope, selected]) => application.setNativePermissionMode(scope, selected),
+      ),
+    );
     yield* ipc.handleQuery("agent-backend:session:read", (event, value) =>
       threadId(event, "session.read", value).pipe(Effect.flatMap(application.readAgentSession)),
     );
     yield* ipc.handleQuery("agent-backend:claude:models", (event, input) =>
-      handle(event, "claude.models", ClaudeModelsInput, input, application.claudeModels),
+      handle(event, "claude.models", ClaudeModelsInput, input, (parsed) =>
+        discoveryRequests.run(
+          event.sender.id,
+          parsed.requestId ?? createUuidV7(),
+          interruptWhenRendererIsDestroyed(event, application.claudeModels(parsed)),
+        ),
+      ),
+    );
+    yield* ipc.handleQuery("agent-backend:claude:discover", (event, input) =>
+      handle(event, "claude.discover", ClaudeModelsInput, input, (parsed) =>
+        discoveryRequests.run(
+          event.sender.id,
+          parsed.requestId ?? createUuidV7(),
+          interruptWhenRendererIsDestroyed(event, application.claudeDiscovery(parsed)),
+        ),
+      ),
+    );
+    yield* ipc.handleControl("agent-backend:claude:cancel-discovery", (event, input) =>
+      handle(event, "claude.cancel-discovery", CancelDiscoveryInput, input, (parsed) =>
+        discoveryRequests.cancel(event.sender.id, parsed.requestId),
+      ),
+    );
+    yield* ipc.handleQuery("agent-backend:session:history-image", (event, value) =>
+      handle(event, "history-image", HistoryImageInput, value, application.readAgentHistoryImage),
+    );
+    yield* ipc.handleQuery("agent-backend:session:tool-output", (event, value) =>
+      handle(event, "tool-output", ToolOutputInput, value, application.readAgentToolOutput),
+    );
+    yield* ipc.handleQuery("agent-backend:session:inspect", (event, value) =>
+      threadId(event, "session.inspect", value).pipe(
+        Effect.flatMap(application.inspectAgentSession),
+      ),
+    );
+    yield* ipc.handlePlainCommand("agent-backend:session:set-intelligence", (event, input) =>
+      handle(
+        event,
+        "session.intelligence",
+        IntelligenceInput,
+        input,
+        application.setAgentIntelligence,
+      ),
+    );
+    yield* ipc.handlePlainCommand("agent-backend:session:control", (event, input) =>
+      handle(event, "session.control", ControlInput, input, application.controlAgentSession),
+    );
+    yield* ipc.handlePlainCommand("agent-backend:session:fork", (event, input) =>
+      handle(event, "session.fork", ForkInput, input, application.forkAgentSession),
+    );
+    yield* ipc.handlePlainCommand("agent-backend:session:generate-title", (event, value) =>
+      threadId(event, "session.title", value).pipe(Effect.flatMap(application.generateAgentTitle)),
     );
     yield* ipc.handleControl("agent-backend:session:observe", (event, value) =>
       threadId(event, "session.observe", value).pipe(

@@ -16,6 +16,7 @@ import * as Effect from "effect/Effect";
 import * as Exit from "effect/Exit";
 import * as Layer from "effect/Layer";
 import * as Result from "effect/Result";
+import * as Option from "effect/Option";
 import * as Schema from "effect/Schema";
 import {
   CODEX_AGENT_BACKEND_BINDING,
@@ -91,6 +92,8 @@ import { ManagedWorktreeRetentionRuntime } from "../codex-application/ManagedWor
 import { ManagedWorktreeRuntime } from "../codex-application/ManagedWorktreeRuntime";
 import { AutomationApplication } from "./AutomationApplication";
 import { requireCodexAutomationBackendBinding } from "./AutomationProjection";
+import { make as makeNativeAutomationExecution } from "./NativeAutomationExecution";
+import { NativeConversationExtension } from "../app-tools/NativeConversationExtension";
 import {
   hasCompleteAutomationArchiveExchange,
   readBoundedAutomationArchiveExcerpt,
@@ -281,6 +284,8 @@ export const live = (
       const retention = yield* ManagedWorktreeRetentionRuntime;
       const managedWorktrees = yield* ManagedWorktreeRuntime;
       const workspace = yield* ProjectWorkspace;
+      const nativeExecution = yield* makeNativeAutomationExecution;
+      const nativeExtension = yield* Effect.serviceOption(NativeConversationExtension);
       const logger = getLogger({ component: "automation-execution" });
       const runtimeStateHome = path.resolve(options.runtimeStateHome);
       const error = (operation: string, cause: unknown) =>
@@ -359,6 +364,23 @@ export const live = (
         protect(
           "prepare-definition",
           Effect.gen(function* () {
+            const binding =
+              input.backendBinding ?? current?.backendBinding ?? CODEX_AGENT_BACKEND_BINDING;
+            if (!isCodexAgentBackendBinding(binding)) {
+              if (binding.kind !== "claude" || Option.isNone(nativeExtension))
+                return yield* fail("prepare-definition", "This backend cannot execute automations");
+              yield* nativeExtension.value.validateAutomation({
+                backendBinding: binding,
+                model: input.model ?? current?.model ?? null,
+                reasoningEffort: input.reasoningEffort ?? current?.reasoningEffort ?? null,
+                serviceTier: input.serviceTier ?? current?.serviceTier ?? null,
+                executionEnvironment:
+                  input.executionEnvironment ?? current?.executionEnvironment ?? "local",
+                localEnvironmentConfigPath:
+                  input.localEnvironmentConfigPath ?? current?.localEnvironmentConfigPath ?? null,
+              });
+              return input;
+            }
             yield* requireCodexAutomationBackend(
               "prepare-definition",
               input.backendBinding ?? current?.backendBinding ?? CODEX_AGENT_BACKEND_BINDING,
@@ -1162,15 +1184,17 @@ export const live = (
       const execute = (definition: CodexScheduledAutomation, context: AutomationRunContext) =>
         protect(
           "execute",
-          requireCodexAutomationBackend("execute", definition.backendBinding).pipe(
-            Effect.andThen(
-              definition.kind === "heartbeat"
-                ? startHeartbeat(definition, context)
-                : gateway
-                    .awaitReady(gateway.localHostId)
-                    .pipe(Effect.andThen(startCron(definition, context))),
-            ),
-          ),
+          !isCodexAgentBackendBinding(definition.backendBinding)
+            ? nativeExecution(definition, context).pipe(Effect.timeout(14 * 60_000))
+            : requireCodexAutomationBackend("execute", definition.backendBinding).pipe(
+                Effect.andThen(
+                  definition.kind === "heartbeat"
+                    ? startHeartbeat(definition, context)
+                    : gateway
+                        .awaitReady(gateway.localHostId)
+                        .pipe(Effect.andThen(startCron(definition, context))),
+                ),
+              ),
         );
 
       const resolveArchiveMessages = (
