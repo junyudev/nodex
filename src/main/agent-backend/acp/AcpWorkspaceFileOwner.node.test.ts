@@ -15,7 +15,7 @@ const withOwner = <A, E>(
     readonly root: string;
     readonly outside: string;
   }) => Effect.Effect<A, E>,
-): Effect.Effect<A, E | import("./AcpRuntimeError").AcpRuntimeError, Scope.Scope> =>
+): Effect.Effect<A, E | import("../AgentRuntimeError").AgentRuntimeError, Scope.Scope> =>
   Effect.acquireRelease(
     Effect.promise(async () => {
       const root = await mkdtemp(join(tmpdir(), "nodex-acp-fs-"));

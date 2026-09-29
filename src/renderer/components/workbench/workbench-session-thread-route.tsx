@@ -1,6 +1,7 @@
+import { ConversationRuntimeContext } from "@/features/local-conversation/conversation-runtime";
+import { useAgentConversationAdapter } from "@/features/local-conversation/agent-conversation-adapter";
+import type { ConversationProviderPresentation } from "@/features/local-conversation/thread-stage-types";
 import { useCallback, useEffect, useMemo, useState, useSyncExternalStore } from "react";
-import { AcpConversationStage } from "@/features/acp-conversation/acp-conversation-stage";
-import { AcpNewConversationStage } from "@/features/acp-conversation/acp-new-conversation-stage";
 import {
   ConnectedThreadComposerDock,
   ConnectedThreadStage,
@@ -21,8 +22,7 @@ import type {
   ThreadSummaryPanelScheduledAutomationRow,
 } from "@/features/local-conversation/thread-stage-types";
 import { getGitWorkerClient } from "@/lib/api";
-import { NodexDropdownButtonTrigger, NodexOptionPicker } from "@/components/ui/dropdown";
-import { readAcpAgentSettings } from "@/lib/workbench-settings-runtime";
+import { readAcpAgentSettings, readClaudeAgentSettings } from "@/lib/workbench-settings-runtime";
 import {
   newThreadBackendSelectionOwner,
   type NewThreadBackendSelection,
@@ -59,7 +59,11 @@ import {
 } from "./local-environment-selection";
 import { projectSessionThreadLinkToSummary } from "./thread-summary-projection";
 
-function CodexConnectedSessionThread({
+function SharedConnectedSessionThread({
+  agent,
+  selectedNewThreadProjectId,
+  setSelectedNewThreadProjectId,
+  provider,
   session,
   project,
   projects,
@@ -125,6 +129,10 @@ function CodexConnectedSessionThread({
   onMaterializeProjectDraft,
   onCommitMaterializedProjectDraft,
 }: {
+  agent?: ReturnType<typeof useAgentConversationAdapter>;
+  selectedNewThreadProjectId: string | null;
+  setSelectedNewThreadProjectId: (projectId: string | null) => void;
+  provider?: ConversationProviderPresentation;
   session: WorkbenchSessionRenderProjection;
   project: Project | null;
   projects: Project[];
@@ -209,9 +217,6 @@ function CodexConnectedSessionThread({
   onCommitMaterializedProjectDraft?: ThreadActionControllerInput["onCommitMaterializedProjectDraft"];
 }) {
   const attachedSummary = session.thread ? projectSessionThreadLinkToSummary(session.thread) : null;
-  const [selectedNewThreadProjectId, setSelectedNewThreadProjectId] = useState<string | null>(
-    session.projectId,
-  );
   const [selectedNewThreadRunInTarget, setSelectedNewThreadRunInTarget] =
     useState<PageRunInTarget>("localProject");
   const [selectedNewThreadEnvironmentPath, setSelectedNewThreadEnvironmentPath] = useState<
@@ -244,9 +249,10 @@ function CodexConnectedSessionThread({
   const effectiveProjectId = summary ? session.projectId : (selectedNewThreadProject?.id ?? null);
   const codexControl = useCodexAppServerControl(
     effectiveProjectId,
-    summary?.threadId ?? null,
+    agent ? null : (summary?.threadId ?? null),
     session.thread?.executionHostId ?? null,
   );
+  const usesExternalAgent = Boolean(agent);
   const loadModels = codexControl.loadModels;
   const listCollaborationModes = codexControl.listCollaborationModes;
   const [collaborationModes, setCollaborationModes] = useState<CodexCollaborationModePreset[]>([]);
@@ -305,7 +311,7 @@ function CodexConnectedSessionThread({
     setSelectedNewThreadEnvironmentPath(null);
     setSelectedNewThreadStartingState(undefined);
     setNewThreadEnvironmentResolution(null);
-  }, [session.id, session.projectId, summary]);
+  }, [session.id, session.projectId, summary, setSelectedNewThreadProjectId]);
 
   useEffect(() => {
     if (selectedNewThreadProjectId === null) return;
@@ -313,14 +319,15 @@ function CodexConnectedSessionThread({
       return;
     }
     setSelectedNewThreadProjectId(session.projectId);
-  }, [projects, selectedNewThreadProjectId, session.projectId]);
+  }, [projects, selectedNewThreadProjectId, session.projectId, setSelectedNewThreadProjectId]);
 
   useEffect(() => {
+    if (usesExternalAgent) return;
     void loadModels().catch(() => undefined);
     void listCollaborationModes()
       .then(setCollaborationModes)
       .catch(() => setCollaborationModes([]));
-  }, [listCollaborationModes, loadModels]);
+  }, [usesExternalAgent, listCollaborationModes, loadModels]);
 
   useEffect(() => {
     const cwd = summary?.cwd?.trim();
@@ -459,7 +466,10 @@ function CodexConnectedSessionThread({
   ]);
   const effectiveNewThreadStartBlockedReason =
     newThreadStartBlockedReason ??
-    (selectedNewThreadRunInTarget !== "newWorktree"
+    (agent && !projectWorkspaceRootOrNull(selectedNewThreadProject) && !summary
+      ? "Choose a local Project to start this Agent."
+      : null) ??
+    (agent || selectedNewThreadRunInTarget !== "newWorktree"
       ? null
       : newThreadEnvironmentsLoading || newThreadEnvironmentResolution === null
         ? "Wait for worktree environments to finish loading."
@@ -469,7 +479,7 @@ function CodexConnectedSessionThread({
             ? "Worktree environments could not be resolved."
             : null);
 
-  const actions = useMemo<ThreadStageActions>(
+  const codexActions = useMemo<ThreadStageActions>(
     () => ({
       ...createThreadStageActions({
         activeThreadId: summary?.threadId ?? null,
@@ -578,13 +588,17 @@ function CodexConnectedSessionThread({
       refreshNewThreadEnvironments,
       effectiveProjectId,
       selectedCollaborationMode,
+      setSelectedNewThreadProjectId,
       onMaterializeProjectDraft,
       onCommitMaterializedProjectDraft,
       summary?.threadId,
     ],
   );
 
+  const actions: ThreadStageActions = agent ? { ...codexActions, ...agent.actions } : codexActions;
+
   const connectedStageProps = {
+    provider,
     projectWorkspaceRoots:
       (summary ? project : selectedNewThreadProject)?.sources.map((source) => source.root) ?? [],
     projectId: effectiveProjectId,
@@ -604,9 +618,9 @@ function CodexConnectedSessionThread({
           sessionId: session.id,
           ...(projectDraftId ? { projectDraftId } : {}),
           threadTitle: "New thread",
-          runInTarget: selectedNewThreadRunInTarget,
-          runInEnvironmentPath: selectedNewThreadEnvironmentPath,
-          worktreeStartingState: selectedNewThreadStartingState,
+          runInTarget: agent ? "localProject" : selectedNewThreadRunInTarget,
+          runInEnvironmentPath: agent ? null : selectedNewThreadEnvironmentPath,
+          worktreeStartingState: agent ? undefined : selectedNewThreadStartingState,
         },
     newThreadProjectSelector: summary
       ? null
@@ -616,22 +630,23 @@ function CodexConnectedSessionThread({
           disabled: Boolean(projectDraftId),
           canAddProject: !projectDraftId,
         },
-    newThreadStartInSelector: startInSelectorModel,
+    newThreadStartInSelector: agent ? null : startInSelectorModel,
     newThreadStartBlockedReason: effectiveNewThreadStartBlockedReason,
     newThreadComposerIntent: summary ? null : (newThreadComposerIntent ?? null),
     threadStartProgress,
     activeThreadId: summary?.threadId ?? null,
     activeThreadSummary: summary,
-    availableModels: codexControl.availableModels,
-    selectedExecutionProfile: codexControl.executionProfile,
-    collaborationModes,
-    selectedCollaborationMode,
-    selectedModel: codexControl.threadSettings.model ?? "",
-    selectedReasoningEffort: codexControl.threadSettings.reasoningEffort ?? "medium",
+    availableModels: agent?.models ?? codexControl.availableModels,
+    selectedExecutionProfile: agent ? null : codexControl.executionProfile,
+    collaborationModes: agent?.modes ?? collaborationModes,
+    selectedCollaborationMode: agent?.selectedMode ?? selectedCollaborationMode,
+    selectedModel: agent?.selectedModel ?? codexControl.threadSettings.model ?? "",
+    selectedReasoningEffort:
+      agent?.selectedEffort ?? codexControl.threadSettings.reasoningEffort ?? "medium",
     selectedPersonality: codexControl.personality,
-    reasoningEffortOptions: codexControl.reasoningEffortOptions,
+    reasoningEffortOptions: agent?.reasoningEffortOptions ?? codexControl.reasoningEffortOptions,
     permissionMode: codexControl.permissionMode,
-    isQueueingEnabled: threadQueueFollowUpsEnabled,
+    isQueueingEnabled: agent ? false : threadQueueFollowUpsEnabled,
     composerEnterBehavior,
     searchOpenTick,
     summarySideChatRows,
@@ -673,14 +688,17 @@ function CodexConnectedSessionThread({
         threadBodyVisible={threadBodyVisible}
         presentation={presentation}
         onForkFromTurnIntoWorktree={
-          canForkCurrentThreadIntoWorktree ? onForkFromTurnIntoWorktree : undefined
+          !agent && canForkCurrentThreadIntoWorktree ? onForkFromTurnIntoWorktree : undefined
         }
       />
     </div>
   );
 }
 
-type ConnectedSessionThreadProps = Parameters<typeof CodexConnectedSessionThread>[0];
+type ConnectedSessionThreadProps = Omit<
+  Parameters<typeof SharedConnectedSessionThread>[0],
+  "agent" | "provider" | "selectedNewThreadProjectId" | "setSelectedNewThreadProjectId"
+>;
 
 function formatAcpAgentInstanceLabel(
   instance: AcpAgentInstanceConfig,
@@ -692,13 +710,14 @@ function formatAcpAgentInstanceLabel(
 }
 
 /**
- * Owns the backend choice without changing the Codex subtree's React position
- * while a fresh Session acquires its durable Thread binding.
+ * Backend selection changes the runtime Adapter, never the conversation surface or draft owner.
  */
 function ConnectedSessionThread(props: ConnectedSessionThreadProps) {
   const thread = props.session.thread;
   const canChooseBackend = thread === null;
-  const [instances, setInstances] = useState<readonly AcpAgentInstanceConfig[]>([]);
+  const [instances, setInstances] = useState<
+    readonly { id: string; kind: "acp" | "claude"; label: string }[]
+  >([]);
   const selection = useSyncExternalStore(
     (listener) => newThreadBackendSelectionOwner.subscribe(props.session.id, listener),
     () => newThreadBackendSelectionOwner.read(props.session.id),
@@ -712,10 +731,25 @@ function ConnectedSessionThread(props: ConnectedSessionThreadProps) {
     }
 
     let disposed = false;
-    void readAcpAgentSettings()
-      .then((settings) => {
+    void Promise.all([readAcpAgentSettings(), readClaudeAgentSettings()])
+      .then(([acp, claude]) => {
         if (disposed) return;
-        setInstances(settings.instances.filter(({ enabled }) => enabled));
+        setInstances([
+          ...claude.instances
+            .filter(({ enabled }) => enabled)
+            .map((instance) => ({
+              id: instance.id,
+              kind: "claude" as const,
+              label: instance.displayName,
+            })),
+          ...acp.instances
+            .filter(({ enabled }) => enabled)
+            .map((instance) => ({
+              id: instance.id,
+              kind: "acp" as const,
+              label: formatAcpAgentInstanceLabel(instance, acp.instances.length),
+            })),
+        ]);
       })
       .catch(() => {
         if (!disposed) setInstances([]);
@@ -725,78 +759,84 @@ function ConnectedSessionThread(props: ConnectedSessionThreadProps) {
     };
   }, [canChooseBackend, props.session.id]);
 
-  const selectedInstance =
-    !canChooseBackend || selection === "codex"
-      ? null
-      : (instances.find(({ id }) => id === selection.acpInstanceId) ?? null);
-  const attachedAcpThread =
-    thread?.backendBinding.kind === "acp"
-      ? { thread, backendBinding: thread.backendBinding }
-      : null;
-
-  if (props.composerDock) {
-    if (attachedAcpThread || selectedInstance) return null;
-    return <CodexConnectedSessionThread {...props} />;
-  }
-
-  const instanceLabel = (instance: AcpAgentInstanceConfig) =>
-    formatAcpAgentInstanceLabel(instance, instances.length);
-  const content = attachedAcpThread ? (
-    <AcpConversationStage
-      threadId={attachedAcpThread.thread.threadId}
-      agentLabel={
-        attachedAcpThread.backendBinding.agentDefinitionId === "claude-agent-acp"
-          ? "Claude Agent"
-          : attachedAcpThread.backendBinding.agentDefinitionId
-      }
-      cwd={attachedAcpThread.thread.cwd}
-      projectWorkspacePath={projectWorkspaceRootOrNull(props.project)}
-    />
-  ) : selectedInstance ? (
-    <AcpNewConversationStage
-      sessionId={props.session.id}
-      projectId={props.session.projectId}
-      instanceConfigId={selectedInstance.id}
-      agentLabel={instanceLabel(selectedInstance)}
-      projectName={props.project?.name ?? null}
-      onStarted={async (threadId) => {
-        await props.onRefreshProjectSessions(props.session.projectId);
-        await props.onOpenThread(threadId);
-      }}
-    />
-  ) : (
-    <CodexConnectedSessionThread {...props} />
+  const binding =
+    thread?.backendBinding.kind === "claude" || thread?.backendBinding.kind === "acp"
+      ? thread.backendBinding
+      : !thread && selection !== "codex"
+        ? selection
+        : null;
+  const [selectedNewThreadProjectId, setSelectedNewThreadProjectId] = useState<string | null>(
+    props.session.projectId,
   );
-
+  const modelProjectId =
+    selectedNewThreadProjectId === null
+      ? null
+      : (props.projects.find(({ id }) => id === selectedNewThreadProjectId)?.id ??
+        props.project?.id ??
+        null);
+  const adapter = useAgentConversationAdapter({
+    binding,
+    summary: thread ? projectSessionThreadLinkToSummary(thread) : null,
+    onRefresh: props.onRefreshProjectSessions,
+    sessionProjectId: props.session.projectId,
+    modelProjectId,
+    sessionId: props.session.id,
+    ensureDraft: props.onEnsureDefaultDraftSessionForProject,
+    materializeDraft: props.onMaterializeProjectDraft,
+    commitDraft: props.onCommitMaterializedProjectDraft,
+  });
+  const provider: ConversationProviderPresentation = {
+    kind: binding?.kind ?? "codex",
+    label: binding
+      ? (instances.find(
+          (instance) => instance.id === binding.instanceConfigId && instance.kind === binding.kind,
+        )?.label ?? (binding.kind === "claude" ? "Claude Code" : "Agent"))
+      : "Codex",
+    selection: binding ? `${binding.kind}:${binding.instanceConfigId}` : "codex",
+    options: canChooseBackend
+      ? [
+          { value: "codex", label: "Codex" },
+          ...instances.map((instance) => ({
+            value: `${instance.kind}:${instance.id}`,
+            label: instance.label,
+          })),
+        ]
+      : [],
+    select: (value) =>
+      newThreadBackendSelectionOwner.write(
+        props.session.id,
+        value === "codex"
+          ? "codex"
+          : {
+              kind: value.startsWith("claude:") ? "claude" : "acp",
+              instanceConfigId: value.slice(value.indexOf(":") + 1),
+            },
+      ),
+    commands: adapter.commands,
+    authentication:
+      binding && adapter.state.presentation?.snapshot.status === "authentication-required"
+        ? {
+            methods: adapter.state.presentation.capabilities.authMethods,
+            pending: adapter.state.controlPending === "authenticate",
+            signIn: adapter.authenticate,
+          }
+        : undefined,
+    error: binding
+      ? (adapter.state.error ??
+        adapter.state.presentation?.snapshot.error ??
+        adapter.modelCatalogError)
+      : null,
+  };
   return (
-    <div className="relative h-full min-h-0">
-      {canChooseBackend && instances.length > 0 ? (
-        <div className="absolute top-3 right-4 z-30" data-new-thread-backend-selector="true">
-          <NodexOptionPicker
-            value={selection === "codex" ? "codex" : selection.acpInstanceId}
-            options={[
-              { value: "codex", label: "Codex" },
-              ...instances.map((instance) => ({
-                value: instance.id,
-                label: instanceLabel(instance),
-              })),
-            ]}
-            onValueChange={(value) =>
-              newThreadBackendSelectionOwner.write(
-                props.session.id,
-                value === "codex" ? "codex" : { acpInstanceId: value },
-              )
-            }
-            triggerButton={
-              <NodexDropdownButtonTrigger chrome="transparent" muted size="sm">
-                {selectedInstance ? instanceLabel(selectedInstance) : "Codex"}
-              </NodexDropdownButtonTrigger>
-            }
-          />
-        </div>
-      ) : null}
-      {content}
-    </div>
+    <ConversationRuntimeContext value={adapter.runtime}>
+      <SharedConnectedSessionThread
+        {...props}
+        agent={binding ? adapter : undefined}
+        selectedNewThreadProjectId={selectedNewThreadProjectId}
+        setSelectedNewThreadProjectId={setSelectedNewThreadProjectId}
+        provider={provider}
+      />
+    </ConversationRuntimeContext>
   );
 }
 

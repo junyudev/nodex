@@ -181,7 +181,7 @@ pub(super) fn bind_thread_backend_session(
         ));
     }
     let storage = binding_storage(backend_binding).map_err(invalid)?;
-    if storage.kind != "acp" {
+    if storage.kind == "codex" {
         return Err(invalid(
             "Native Codex Threads do not persist a backend protocol session",
         ));
@@ -2604,6 +2604,20 @@ mod tests {
 
     #[test]
     fn persists_backend_binding_and_acp_session_identity_across_restart() {
+        assert_backend_identity_survives_restart(AgentBackendBinding::Acp {
+            agent_definition_id: "claude-agent-acp".to_owned(),
+            instance_config_id: Some("claude-work".to_owned()),
+        });
+    }
+
+    #[test]
+    fn persists_backend_binding_and_claude_session_identity_across_restart() {
+        assert_backend_identity_survives_restart(AgentBackendBinding::Claude {
+            instance_config_id: "claude-work".to_owned(),
+        });
+    }
+
+    fn assert_backend_identity_survives_restart(binding: AgentBackendBinding) {
         let (directory, kernel, module) = seeded_module();
         create_thread(
             &module,
@@ -2622,10 +2636,6 @@ mod tests {
         };
         assert_eq!(thread.backend_binding, AgentBackendBinding::Codex);
 
-        let acp_binding = AgentBackendBinding::Acp {
-            agent_definition_id: "claude-agent-acp".to_owned(),
-            instance_config_id: Some("claude-work".to_owned()),
-        };
         module
             .apply(
                 &context(),
@@ -2634,13 +2644,13 @@ mod tests {
                     ProjectWorkspaceIntent::UpdateThread {
                         thread_id: "thread-backend".to_owned(),
                         patch: Box::new(ProjectWorkspaceThreadPatch {
-                            backend_binding: Some(acp_binding.clone()),
+                            backend_binding: Some(binding.clone()),
                             ..ProjectWorkspaceThreadPatch::default()
                         }),
                     },
                 ),
             )
-            .expect("select ACP backend");
+            .expect("select Agent backend");
         module
             .apply(
                 &context(),
@@ -2648,12 +2658,12 @@ mod tests {
                     "thread-backend-bind-session",
                     ProjectWorkspaceIntent::BindThreadBackendSession {
                         thread_id: "thread-backend".to_owned(),
-                        backend_binding: acp_binding.clone(),
-                        backend_session_id: "acp-session-1".to_owned(),
+                        backend_binding: binding.clone(),
+                        backend_session_id: "native-session-1".to_owned(),
                     },
                 ),
             )
-            .expect("bind ACP session");
+            .expect("bind Agent session");
 
         drop(module);
         drop(kernel);
@@ -2669,9 +2679,9 @@ mod tests {
         ) else {
             panic!("backend session read");
         };
-        let session = session.expect("persisted ACP session");
-        assert_eq!(session.backend_binding, acp_binding);
-        assert_eq!(session.backend_session_id, "acp-session-1");
+        let session = session.expect("persisted Agent session");
+        assert_eq!(session.backend_binding, binding);
+        assert_eq!(session.backend_session_id, "native-session-1");
 
         reopened
             .apply(

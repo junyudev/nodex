@@ -176,6 +176,7 @@ export type ThreadClassifiableActivityTranscriptType =
   | "hook"
   | "imageView"
   | "mcpServerElicitation"
+  | "toolCall"
   | "mcpToolCall"
   | "modelChanged"
   | "modelRerouted"
@@ -217,6 +218,7 @@ const THREAD_CLASSIFIABLE_ACTIVITY_TYPES = new Set<ThreadTranscriptBlockModel["t
   "hook",
   "imageView",
   "mcpServerElicitation",
+  "toolCall",
   "mcpToolCall",
   "modelChanged",
   "modelRerouted",
@@ -316,6 +318,7 @@ export function classifyThreadAgentActivityItem<TItem extends ThreadClassifiable
       return classifyThreadMcpServerElicitationActivityItem(item);
     case "automaticApprovalReview":
       return classifyThreadAutomaticApprovalReviewActivityItem(item);
+    case "toolCall":
     case "assistantMessage":
     case "autoReviewInterruptionWarning":
     case "contextCompaction":
@@ -557,6 +560,8 @@ function resolveThreadAgentActivityBundleType(
       return "image-view";
     case "mcpServerElicitation":
       return "mcp-server-elicitation";
+    case "toolCall":
+      return "tool-call";
     case "mcpToolCall":
       return "mcp-tool-call";
     case "modelChanged":

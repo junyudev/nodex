@@ -91,10 +91,10 @@ const beginAcpDeltaCapture = async (page: Page, threadId: string): Promise<void>
     scope.__releaseAcpLifecycleDeltas?.();
     scope.__acpLifecycleDeltas = [];
     scope.__releaseAcpLifecycleDeltas = window.api.on(
-      "agent-backend:acp:session-changed",
+      "agent-backend:session-changed",
       (event: unknown) => scope.__acpLifecycleDeltas?.push(event),
     );
-    await window.api.invoke("agent-backend:acp:session:observe", targetThreadId);
+    await window.api.invoke("agent-backend:session:observe", targetThreadId);
   }, threadId);
 };
 
@@ -164,38 +164,54 @@ test("persists an ACP backend and resumes its protocol session after restart", a
       throw new Error(created.error?.message ?? "Could not create ACP scenario Session");
     }
 
-    const started = await invoke<{
-      readonly thread: {
-        readonly threadId: string;
-        readonly backendBinding: unknown;
-      };
-      readonly presentation: {
-        readonly snapshot: {
-          readonly sessionId: string;
-          readonly turns: readonly unknown[];
-        };
-      };
-    }>(page, "agent-backend:acp:thread:start", {
-      sessionId,
-      instanceConfigId,
-      prompt: "Start the ACP lifecycle scenario",
-      firstSubmission: {
-        launchId: createUuidV7(),
-        clientUserMessageId: createUuidV7(),
-      },
-    });
+    await page.getByText("ACP lifecycle E2E", { exact: true }).first().click();
+    const composer = page
+      .locator('[data-codex-composer="true"][contenteditable="true"]:visible')
+      .first();
+    await composer.fill("Start the ACP lifecycle scenario");
+    await page.getByRole("button", { name: "Select model", exact: true }).click();
+    await page.getByRole("menuitem", { name: "Agent Codex", exact: true }).hover();
+    await page.getByRole("menuitem", { name: "Claude Agent", exact: true }).click();
+    await page.keyboard.press("Escape");
+    await page.keyboard.press("Escape");
+    await expect(composer).toHaveText("Start the ACP lifecycle scenario");
+    await page.getByRole("button", { name: "Send prompt", exact: true }).click();
+    type LinkedSession = { thread: { threadId: string; backendBinding: unknown } };
+    await expect
+      .poll(
+        async () =>
+          (await invoke<LinkedSession>(page, "project-sessions:get", sessionId)).thread
+            ?.backendBinding,
+      )
+      .toEqual({
+        kind: "acp",
+        agentDefinitionId: "claude-agent-acp",
+        instanceConfigId,
+      });
+    const started = await invoke<LinkedSession>(page, "project-sessions:get", sessionId);
     const threadId = started.thread.threadId;
+    await expect
+      .poll(
+        async () =>
+          (
+            await invoke<{ snapshot: { sessionId: string } } | null>(
+              page,
+              "agent-backend:session:read",
+              threadId,
+            )
+          )?.snapshot.sessionId,
+      )
+      .toBe(protocolSessionId);
     expect(started.thread.backendBinding).toEqual({
       kind: "acp",
       agentDefinitionId: "claude-agent-acp",
       instanceConfigId,
     });
-    expect(started.presentation.snapshot.sessionId).toBe(protocolSessionId);
     await expect
       .poll(async () => {
         const current = await invoke<{
           readonly snapshot: { readonly turns: readonly unknown[] };
-        } | null>(page, "agent-backend:acp:session:read", threadId);
+        } | null>(page, "agent-backend:session:read", threadId);
         return containsText(current?.snapshot.turns, liveMessage);
       })
       .toBe(true);
@@ -213,11 +229,10 @@ test("persists an ACP backend and resumes its protocol session after restart", a
         ]),
       );
 
+    await expect(page.getByText(liveMessage, { exact: true })).toBeVisible();
     await beginAcpDeltaCapture(page, threadId);
-    await invoke(page, "agent-backend:acp:session:prompt", {
-      threadId,
-      prompt: "Emit a live delta through Main and preload",
-    });
+    await composer.fill("Emit a live delta through Main and preload");
+    await page.getByRole("button", { name: "Send prompt", exact: true }).click();
     await expect
       .poll(async () => containsText(await capturedAcpDeltas(page), liveMessage))
       .toBe(true);
@@ -228,9 +243,10 @@ test("persists an ACP backend and resumes its protocol session after restart", a
         readonly sessionId: string;
         readonly turns: readonly unknown[];
       };
-    }>(page, "agent-backend:acp:session:open", { threadId });
+    }>(page, "agent-backend:session:open", { threadId });
     expect(reopened.snapshot.sessionId).toBe(protocolSessionId);
     expect(containsText(reopened.snapshot.turns, restoredMessage)).toBe(true);
+    await expect(page.getByText(restoredMessage, { exact: true })).toBeVisible();
     await expect
       .poll(() => readObservations(observationPath))
       .toEqual(

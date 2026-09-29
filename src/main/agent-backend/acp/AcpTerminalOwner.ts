@@ -17,7 +17,7 @@ import * as Layer from "effect/Layer";
 import * as Ref from "effect/Ref";
 import * as SubscriptionRef from "effect/SubscriptionRef";
 import { TerminalRuntime, TerminalRuntimeMap } from "../../terminal-runtime/TerminalRuntimeMap";
-import { acpRuntimeError, type AcpRuntimeError } from "./AcpRuntimeError";
+import { agentRuntimeError, type AgentRuntimeError } from "../AgentRuntimeError";
 import { AcpWorkspaceFileOwner } from "./AcpWorkspaceFileOwner";
 
 export const ACP_DEFAULT_TERMINAL_OUTPUT_BYTE_LIMIT = 64 * 1024;
@@ -33,19 +33,19 @@ export class AcpTerminalOwner extends Context.Service<
   {
     readonly create: (
       request: CreateTerminalRequest,
-    ) => Effect.Effect<CreateTerminalResponse, AcpRuntimeError>;
+    ) => Effect.Effect<CreateTerminalResponse, AgentRuntimeError>;
     readonly output: (
       request: TerminalOutputRequest,
-    ) => Effect.Effect<TerminalOutputResponse, AcpRuntimeError>;
+    ) => Effect.Effect<TerminalOutputResponse, AgentRuntimeError>;
     readonly waitForExit: (
       request: WaitForTerminalExitRequest,
-    ) => Effect.Effect<WaitForTerminalExitResponse, AcpRuntimeError>;
+    ) => Effect.Effect<WaitForTerminalExitResponse, AgentRuntimeError>;
     readonly kill: (
       request: KillTerminalRequest,
-    ) => Effect.Effect<KillTerminalResponse, AcpRuntimeError>;
+    ) => Effect.Effect<KillTerminalResponse, AgentRuntimeError>;
     readonly release: (
       request: ReleaseTerminalRequest,
-    ) => Effect.Effect<ReleaseTerminalResponse, AcpRuntimeError>;
+    ) => Effect.Effect<ReleaseTerminalResponse, AgentRuntimeError>;
   }
 >()("nodex/main/agent-backend/acp/AcpTerminalOwner") {}
 
@@ -54,8 +54,8 @@ export interface AcpTerminalOwnerOptions {
   readonly maximumOutputByteLimit?: number;
 }
 
-const mapFailure = (operation: string, cause: unknown): AcpRuntimeError =>
-  acpRuntimeError({ operation, reason: "request", retryable: false, cause });
+const mapFailure = (operation: string, cause: unknown): AgentRuntimeError =>
+  agentRuntimeError({ operation, reason: "request", retryable: false, cause });
 
 const normalizeOutputLimit = (requested: number | null | undefined, maximum: number): number => {
   const value = requested ?? ACP_DEFAULT_TERMINAL_OUTPUT_BYTE_LIMIT;

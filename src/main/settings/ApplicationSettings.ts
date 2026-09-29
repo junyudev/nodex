@@ -13,6 +13,7 @@ import {
 } from "../../shared/command-keybindings";
 import type {
   AcpAgentSettings,
+  ClaudeAgentSettings,
   AppUpdateSettings,
   BackupSettings,
   CodexDeveloperInstructionSettings,
@@ -25,6 +26,7 @@ import type {
   ThreadNotificationSettings,
   UpdateAppUpdateSettingsInput,
   UpdateAcpAgentSettingsInput,
+  UpdateClaudeAgentSettingsInput,
   UpdateBackupSettingsInput,
   UpdateCodexDeveloperInstructionSettingsInput,
   UpdateCodexExecutionHostSettingsInput,
@@ -38,8 +40,11 @@ import type {
   WindowRestoreSettings,
 } from "../../shared/types";
 import { MainConfig } from "../app/MainConfig";
+import { SecretEncryption, type SecretEncryptionAdapter } from "../platform/SecretEncryption";
 import {
   getAcpAgentSettings,
+  getClaudeAgentSettings,
+  getClaudeLaunchConfiguration,
   getAppUpdateSettings,
   getBackupSettings,
   getCodexDeveloperInstructionSettings,
@@ -55,6 +60,7 @@ import {
   resetCommandKeybindings,
   updateAppUpdateSettings,
   updateAcpAgentSettings,
+  updateClaudeAgentSettings,
   updateBackupSettings,
   updateCodexDeveloperInstructionSettings,
   updateCodexExecutionHostSettings,
@@ -82,6 +88,7 @@ export interface ApplicationSettingsSnapshot {
   readonly managedWorktrees: ManagedWorktreeSettings;
   readonly executionHosts: CodexExecutionHostSettings;
   readonly acpAgents: AcpAgentSettings;
+  readonly claudeAgents: ClaudeAgentSettings;
   readonly commandKeymap: CommandKeymapState;
   readonly appUpdate: AppUpdateSettings;
   readonly windowRestore: WindowRestoreSettings;
@@ -110,6 +117,7 @@ export type ApplicationSettingsCommand =
       readonly input: UpdateCodexExecutionHostSettingsInput;
     }
   | { readonly type: "update-acp-agents"; readonly input: UpdateAcpAgentSettingsInput }
+  | { readonly type: "update-claude-agents"; readonly input: UpdateClaudeAgentSettingsInput }
   | {
       readonly type: "update-command-keybinding";
       readonly commandId: string;
@@ -132,6 +140,9 @@ export class ApplicationSettingsConflictError extends Schema.TaggedError<Applica
 export class ApplicationSettings extends Context.Service<
   ApplicationSettings,
   {
+    readonly claudeLaunchConfiguration: (
+      instanceId: string,
+    ) => Effect.Effect<ReturnType<typeof getClaudeLaunchConfiguration>, ApplicationSettingsError>;
     readonly snapshot: (
       buildDefaultChannel?: AppUpdateSettings["channel"],
     ) => Effect.Effect<ApplicationSettingsSnapshot, ApplicationSettingsError>;
@@ -210,6 +221,7 @@ function makeSnapshot(
     managedWorktrees: getManagedWorktreeSettings(snapshotSource),
     executionHosts: getCodexExecutionHostSettings(snapshotSource),
     acpAgents: getAcpAgentSettings(snapshotSource),
+    claudeAgents: getClaudeAgentSettings(snapshotSource),
     commandKeymap: getCommandKeymapState(snapshotSource),
     appUpdate: getAppUpdateSettings(snapshotSource, buildDefaultChannel),
     windowRestore: getWindowRestoreSettings(snapshotSource),
@@ -249,6 +261,9 @@ function applyCommand(
     case "update-execution-hosts":
       updateCodexExecutionHostSettings(command.input, source);
       return;
+    case "update-claude-agents":
+      updateClaudeAgentSettings(command.input, source);
+      return;
     case "update-acp-agents":
       updateAcpAgentSettings(command.input, source);
       return;
@@ -270,10 +285,12 @@ function applyCommand(
 export const make = Effect.fn("ApplicationSettings.make")(function* (input: {
   readonly environment: Readonly<NodeJS.ProcessEnv>;
   readonly settingsPath: string;
+  readonly secretEncryption?: SecretEncryptionAdapter;
 }) {
   const source: ApplicationSettingsDocumentSource = {
     environment: Object.freeze({ ...input.environment }),
     settingsPath: input.settingsPath,
+    ...(input.secretEncryption ? { secretEncryption: input.secretEncryption } : {}),
   };
   const writes = yield* Semaphore.make(1);
   const attempt = <A>(operation: string, evaluate: () => A) =>
@@ -285,6 +302,12 @@ export const make = Effect.fn("ApplicationSettings.make")(function* (input: {
     attempt("read", () => makeSnapshot(source, buildDefaultChannel));
 
   return ApplicationSettings.of({
+    claudeLaunchConfiguration: (instanceId) =>
+      writes.withPermits(1)(
+        attempt("claude-launch-configuration", () =>
+          getClaudeLaunchConfiguration(source, instanceId),
+        ),
+      ),
     snapshot: (buildDefaultChannel = "stable") =>
       writes.withPermits(1)(readUnlocked(buildDefaultChannel)),
     update: (command, options = {}) =>
@@ -312,13 +335,15 @@ export const make = Effect.fn("ApplicationSettings.make")(function* (input: {
   });
 });
 
-export const live: Layer.Layer<ApplicationSettings, never, MainConfig> = Layer.effect(
-  ApplicationSettings,
-  Effect.gen(function* () {
-    const config = yield* MainConfig;
-    return yield* make({
-      environment: config.environment,
-      settingsPath: config.profileSettingsPath,
-    });
-  }),
-);
+export const live: Layer.Layer<ApplicationSettings, never, MainConfig | SecretEncryption> =
+  Layer.effect(
+    ApplicationSettings,
+    Effect.gen(function* () {
+      const config = yield* MainConfig;
+      return yield* make({
+        environment: config.environment,
+        settingsPath: config.profileSettingsPath,
+        secretEncryption: yield* SecretEncryption,
+      });
+    }),
+  );

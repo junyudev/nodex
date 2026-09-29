@@ -5,6 +5,7 @@ import * as Semaphore from "effect/Semaphore";
 import type { IpcMainInvokeEvent } from "electron";
 import { z } from "zod";
 import type { IpcApi } from "../../../shared/ipc-api";
+import { ClaudeAgentSettingsUpdateSchema } from "../../../shared/claude-agent-settings";
 import {
   COMMAND_KEYBINDINGS_CHANGED_CHANNEL,
   CommandKeybindingValidationError,
@@ -48,6 +49,7 @@ export class ApplicationSettingsIpcError extends Schema.TaggedError<ApplicationS
 type SettingsReadChannel =
   | "codex-command-keymap-state"
   | "settings:acp-agents:get"
+  | "settings:claude-agents:get"
   | "settings:backup:get"
   | "settings:codex-developer:get"
   | "settings:diagnostics:get"
@@ -306,6 +308,29 @@ export const live: Layer.Layer<
           ),
         ),
         Effect.tap((value) => schedulers.configureBackup(value)),
+      ),
+    );
+    yield* handleRead(
+      "settings:claude-agents:get",
+      "Claude Code settings",
+      (value) => value.claudeAgents,
+    );
+    yield* ipc.handlePlainCommand("settings:claude-agents:update", (event, input: unknown) =>
+      authorize(event, "Claude Code settings").pipe(
+        Effect.andThen(
+          parse("parse-claude-agent-settings", () => {
+            const parsed = ClaudeAgentSettingsUpdateSchema.safeParse(input);
+            if (!parsed.success) throw new Error("Invalid Claude Code settings.");
+            return parsed.data;
+          }),
+        ),
+        Effect.flatMap((parsed) =>
+          update(
+            "update-claude-agent-settings",
+            { type: "update-claude-agents", input: parsed },
+            (value) => value.claudeAgents,
+          ),
+        ),
       ),
     );
     yield* handleRead("settings:acp-agents:get", "ACP Agent settings", (value) => value.acpAgents);

@@ -3,6 +3,7 @@
 - Status: Accepted
 - Date: 2026-09-02
 - Owners: Nodex maintainers
+- Refined by: [ADR 0065: Native Claude Code backend](0065-native-claude-code-backend.md)
 
 ## Context
 

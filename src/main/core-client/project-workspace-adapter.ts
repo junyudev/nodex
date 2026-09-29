@@ -70,20 +70,24 @@ export const projectAgentBackendBindingFromCore = (
 ): AgentBackendBinding =>
   binding.kind === "codex"
     ? { kind: "codex" }
-    : {
-        kind: "acp",
-        agentDefinitionId: binding.agent_definition_id,
-        instanceConfigId: binding.instance_config_id ?? null,
-      };
+    : binding.kind === "claude"
+      ? { kind: "claude", instanceConfigId: binding.instance_config_id }
+      : {
+          kind: "acp",
+          agentDefinitionId: binding.agent_definition_id,
+          instanceConfigId: binding.instance_config_id ?? null,
+        };
 
 export const projectAgentBackendBindingToCore = (binding: AgentBackendBinding) =>
   binding.kind === "codex"
     ? { kind: "codex" as const }
-    : {
-        kind: "acp" as const,
-        agent_definition_id: binding.agentDefinitionId,
-        instance_config_id: binding.instanceConfigId,
-      };
+    : binding.kind === "claude"
+      ? { kind: "claude" as const, instance_config_id: binding.instanceConfigId }
+      : {
+          kind: "acp" as const,
+          agent_definition_id: binding.agentDefinitionId,
+          instance_config_id: binding.instanceConfigId,
+        };
 
 export const projectWorkspaceSidebarSectionSummaryFromCore = (
   section: CoreSidebarSectionSummary,
@@ -272,7 +276,7 @@ export interface DesktopProjectWorkspaceThreadWorkspaceState {
 
 export interface DesktopProjectWorkspaceThreadBackendSession {
   readonly threadId: string;
-  readonly backendBinding: Extract<AgentBackendBinding, { readonly kind: "acp" }>;
+  readonly backendBinding: Exclude<AgentBackendBinding, { readonly kind: "codex" }>;
   readonly backendSessionId: string;
   readonly updatedAt: number;
 }
@@ -281,7 +285,7 @@ export const projectWorkspaceThreadBackendSessionFromCore = (
   session: NonNullable<CoreThreadBackendSession>,
 ): DesktopProjectWorkspaceThreadBackendSession => {
   const backendBinding = projectAgentBackendBindingFromCore(session.backend_binding);
-  if (backendBinding.kind !== "acp") {
+  if (backendBinding.kind === "codex") {
     throw new Error("Core returned a native backend protocol session");
   }
   return {
@@ -299,7 +303,7 @@ export const projectWorkspaceThreadBackendSessionRead = (threadId: string) => ({
 
 export const projectWorkspaceBindThreadBackendSessionIntent = (input: {
   readonly threadId: string;
-  readonly backendBinding: Extract<AgentBackendBinding, { readonly kind: "acp" }>;
+  readonly backendBinding: Exclude<AgentBackendBinding, { readonly kind: "codex" }>;
   readonly backendSessionId: string;
 }) => ({
   kind: "bind_thread_backend_session" as const,
@@ -310,7 +314,7 @@ export const projectWorkspaceBindThreadBackendSessionIntent = (input: {
 
 export const projectWorkspaceClearThreadBackendSessionIntent = (input: {
   readonly threadId: string;
-  readonly backendBinding: Extract<AgentBackendBinding, { readonly kind: "acp" }>;
+  readonly backendBinding: Exclude<AgentBackendBinding, { readonly kind: "codex" }>;
 }) => ({
   kind: "clear_thread_backend_session" as const,
   thread_id: input.threadId,

@@ -1,3 +1,4 @@
+import { AgentBackendBindingSchema } from "./agent-backend";
 import { z } from "zod";
 import type {
   WorkbenchProjectionBrowserTabConfig,
@@ -211,18 +212,7 @@ export const ProjectSessionThreadLinkInputSchema = z.object({
     })
     .nullable()
     .optional(),
-  backendBinding: z
-    .discriminatedUnion("kind", [
-      z.object({ kind: z.literal("codex") }).strict(),
-      z
-        .object({
-          kind: z.literal("acp"),
-          agentDefinitionId: z.string().trim().min(1).max(512),
-          instanceConfigId: z.string().trim().min(1).max(512).nullable(),
-        })
-        .strict(),
-    ])
-    .optional(),
+  backendBinding: AgentBackendBindingSchema.optional(),
   executionHostId: z.string().trim().min(1).max(512).optional(),
   runtimeWorkspaceRoots: z.array(z.string()).max(128).optional(),
   cwd: z.string().nullable().optional(),

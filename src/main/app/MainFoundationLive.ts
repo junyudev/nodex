@@ -3,6 +3,7 @@ import * as Layer from "effect/Layer";
 import { BrowserProfileHelperPlatform } from "../browser/browser-profile-helper-client";
 import * as ElectronApp from "../platform/electron/ElectronApp";
 import * as ElectronDesktop from "../platform/electron/ElectronDesktop";
+import * as SecretEncryption from "../platform/electron/SecretEncryption";
 import * as ElectronIpc from "../platform/electron/ElectronIpc";
 import * as ElectronSessionHost from "../platform/electron/ElectronSessionHost";
 import * as ElectronWindowHost from "../platform/electron/ElectronWindowHost";
@@ -51,8 +52,9 @@ export const make = (config: unknown): Layer.Layer<MainFoundation, MainConfig.Ma
     ScopedCallbackRuntime.layer,
     nodePlatform,
   );
-  const profileServices = Layer.merge(ApplicationSettings.live, TemporaryAssets.live).pipe(
-    Layer.provideMerge(base),
-  );
+  const profileServices = Layer.merge(
+    ApplicationSettings.live.pipe(Layer.provide(SecretEncryption.live)),
+    TemporaryAssets.live,
+  ).pipe(Layer.provideMerge(base));
   return electronPlatform.pipe(Layer.provideMerge(profileServices));
 };

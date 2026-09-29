@@ -141,6 +141,48 @@ describe("useComposerIntelligenceController", () => {
     expect(mocks.toastDanger).not.toHaveBeenCalled();
   });
 
+  test("drops pending selections and failures when the draft switches backend", async () => {
+    const pending = deferred();
+    const codexCommit = vi.fn(() => pending.promise);
+    const nativeCommit = vi.fn(async () => {});
+    const hook = renderHook(
+      ({ model, commit }) =>
+        useComposerIntelligenceController(model, {
+          onIntelligenceSelectionChange: commit,
+        } as unknown as ThreadStageActions),
+      {
+        wrapper: provider,
+        initialProps: { model: buildModel(), commit: codexCommit },
+      },
+    );
+    await act(async () => {
+      hook.result.current.select(FIRST_SELECTION);
+      hook.result.current.select(LATEST_SELECTION);
+    });
+    const nativeModel = {
+      ...buildModel(),
+      selectedModel: "sonnet",
+      provider: {
+        kind: "claude",
+        selection: "claude:local",
+        label: "Claude Code",
+        options: [],
+        select: () => {},
+        commands: [],
+        error: null,
+      },
+    } satisfies ThreadFooterModel;
+    hook.rerender({ model: nativeModel, commit: nativeCommit });
+    await act(async () => {
+      pending.reject(new Error("Old backend failed"));
+      await hook.result.current.flush();
+    });
+    expect(hook.result.current.selection).toMatchObject({ kind: "claude", model: "sonnet" });
+    expect(codexCommit).toHaveBeenCalledTimes(1);
+    expect(nativeCommit).not.toHaveBeenCalled();
+    expect(mocks.toastDanger).not.toHaveBeenCalled();
+  });
+
   test("rolls back the final failed selection and makes flush report the failure", async () => {
     const actions = {
       onIntelligenceSelectionChange: vi.fn(async () => {

@@ -20,7 +20,7 @@ import type { DatabaseChangeEvent } from "../../shared/database-events";
 import type { ProjectionScope, ProjectionStreamMessage } from "../../shared/projection-stream";
 import type { ResourceRevocationMessage } from "../../shared/resource-revocation-stream";
 import type { ContentAccessIdentity } from "../../shared/content-access-context";
-import type { AcpBackendSessionChangedEvent } from "../../shared/agent-backend-api";
+import type { AgentBackendSessionChangedEvent } from "../../shared/agent-backend-api";
 import {
   RECIPIENT_DELIVERY_VERSION,
   deliveryAddressKey,
@@ -372,10 +372,12 @@ export function createElectronRendererTransport(bridge: ElectronRendererBridge):
         callback(payload);
       });
     },
-    subscribeAcpBackendSessionChanges(callback: (event: AcpBackendSessionChangedEvent) => void) {
-      return bridge.on("agent-backend:acp:session-changed", (...args: unknown[]) => {
-        const payload = args[0] as AcpBackendSessionChangedEvent | undefined;
-        if (!payload || payload.delta.backend !== "acp") return;
+    subscribeAgentBackendSessionChanges(
+      callback: (event: AgentBackendSessionChangedEvent) => void,
+    ) {
+      return bridge.on("agent-backend:session-changed", (...args: unknown[]) => {
+        const payload = args[0] as AgentBackendSessionChangedEvent | undefined;
+        if (!payload) return;
         callback(payload);
       });
     },

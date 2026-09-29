@@ -8,6 +8,7 @@ export function makeTestApplicationSettings(input?: {
   readonly pullRequestInstructions?: string;
 }): ApplicationSettings["Service"] {
   return ApplicationSettings.of({
+    claudeLaunchConfiguration: () => Effect.die("Unused Claude launch configuration"),
     snapshot: () =>
       Effect.succeed({
         developer: { detailLevel: input?.detailLevel ?? "STEPS_COMMANDS" },

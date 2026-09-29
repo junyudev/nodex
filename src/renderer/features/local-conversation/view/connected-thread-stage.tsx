@@ -36,14 +36,12 @@ import type {
   ThreadStageRouteInput,
 } from "../thread-stage-types";
 import {
-  requestLocalConversationResume,
-  markLocalConversationAsRead,
-  setLocalConversationThreadPresented,
   useComposerIntent,
   useConversationBackgroundTerminalRows,
   useConversationCapabilityFlags,
   useConversationChildMemberships,
   useConversation,
+  useConversationRuntime,
   useConversationAttachmentState,
   useConversationCollaborationMode,
   useConversationThreadSettings,
@@ -123,47 +121,41 @@ function useRetainedConversation(
   foreground = false,
   preferredHostId?: string | null,
 ): void {
-  const manager = useCodexAppServerManagerForConversationId(conversationId, preferredHostId);
+  const runtime = useConversationRuntime(conversationId, preferredHostId);
   useEffect(() => {
     if (!conversationId || !active) return;
-    const interest = manager.retainActiveConversation(conversationId, { foreground });
-    return () => interest[Symbol.dispose]();
-  }, [manager, conversationId, active, foreground]);
+    return runtime.retain(conversationId, foreground);
+  }, [runtime, conversationId, active, foreground]);
 }
 
 function usePresentedConversationIds(
   conversationIds: readonly string[],
   preferredHostId?: string | null,
 ): void {
+  const runtime = useConversationRuntime(conversationIds[0] ?? null, preferredHostId);
   const [surfaceId] = useState(
     () => `connected-thread-stage:${++presentedConversationSurfaceSequence}`,
   );
-  const currentIdsRef = useRef<ReadonlySet<string>>(new Set());
+  const currentIdsRef = useRef(new Map<string, typeof runtime>());
   const updateQueueRef = useRef<Promise<void>>(Promise.resolve());
   const updatePresentedIds = useEffectEvent((nextIds: readonly string[]) => {
     const next = new Set(nextIds.map((conversationId) => conversationId.trim()).filter(Boolean));
     const current = currentIdsRef.current;
-    const removed = [...current].filter((conversationId) => !next.has(conversationId));
-    const added = [...next].filter((conversationId) => !current.has(conversationId));
-    currentIdsRef.current = next;
+    const sameSource = (previous: typeof runtime | undefined) =>
+      previous?.kind === runtime.kind && previous.hostId === runtime.hostId;
+    const removed = [...current].filter(([id, source]) => !next.has(id) || !sameSource(source));
+    const added = [...next].filter((id) => !sameSource(current.get(id)));
+    currentIdsRef.current = new Map(
+      [...next].map((id) => [id, sameSource(current.get(id)) ? current.get(id)! : runtime]),
+    );
     updateQueueRef.current = updateQueueRef.current
       .catch(() => undefined)
       .then(async () => {
-        for (const conversationId of removed) {
-          await setLocalConversationThreadPresented(
-            conversationId,
-            surfaceId,
-            false,
-            preferredHostId,
-          ).catch(() => undefined);
+        for (const [conversationId, source] of removed) {
+          await source.setPresented(conversationId, surfaceId, false).catch(() => undefined);
         }
         for (const conversationId of added) {
-          await setLocalConversationThreadPresented(
-            conversationId,
-            surfaceId,
-            true,
-            preferredHostId,
-          ).catch(() => undefined);
+          await runtime.setPresented(conversationId, surfaceId, true).catch(() => undefined);
         }
       });
   });
@@ -261,7 +253,9 @@ function ConnectedThreadStageHeader({
   const headerActions = useMemo<ThreadStageActions>(
     () => ({
       ...actions,
-      ...(activeThreadId ? { onCopyConversationMarkdown: handleCopyConversationMarkdown } : {}),
+      ...(activeThreadId && !actions.onCopyConversationMarkdown
+        ? { onCopyConversationMarkdown: handleCopyConversationMarkdown }
+        : {}),
     }),
     [actions, activeThreadId, handleCopyConversationMarkdown],
   );
@@ -334,6 +328,7 @@ function ConnectedThreadStageBody({
     activeThreadId !== null && !input.isNewThreadTab,
   );
   const preferredHostId = input.activeThreadSummary?.executionHostId ?? null;
+  const runtime = useConversationRuntime(activeThreadId, preferredHostId);
   const manager = useCodexAppServerManagerForConversationId(activeThreadId, preferredHostId);
   const hostId = manager.getHostId();
   const conversationSnapshot = useConversation(activeThreadId);
@@ -365,10 +360,10 @@ function ConnectedThreadStageBody({
           await manager.hydrateReadOnlyHistory(threadId).catch(() => null);
           return;
         }
-        await requestLocalConversationResume(threadId, preferredHostId).catch(() => null);
+        await runtime.resume(threadId).catch(() => null);
       },
     }),
-    [actions, onErrorMessage, preferredHostId, readOnly, manager],
+    [actions, onErrorMessage, runtime, readOnly, manager],
   );
 
   const body = useMemo(
@@ -525,6 +520,7 @@ export function ConnectedThreadStageFooter({
   worktreeRuntimeAvailable?: boolean;
 }) {
   const preferredHostId = input.activeThreadSummary?.executionHostId ?? null;
+  const runtime = useConversationRuntime(activeThreadId, preferredHostId);
   const hostId = useCodexAppServerManagerForConversationId(
     activeThreadId,
     preferredHostId,
@@ -585,22 +581,30 @@ export function ConnectedThreadStageFooter({
   const composerPluginCwds = workspaceSearchContext?.skillRoots ?? [];
   const composerPluginsQuery = useQuery({
     ...codexComposerPluginsListQueryOptions(composerPluginCwds, hostId),
-    enabled: workspaceSearchContext !== null,
+    enabled: runtime.kind === "codex" && workspaceSearchContext !== null,
   });
   const composerSkillsQuery = useQuery({
     ...codexComposerSkillsListQueryOptions(composerPluginCwds, hostId),
-    enabled: workspaceSearchContext !== null,
+    enabled: runtime.kind === "codex" && workspaceSearchContext !== null,
   });
-  const composerAppsQuery = useQuery(mcpAppsQueryOptions());
-  const composerSitesQuery = useQuery(codexComposerSitesListQueryOptions());
-  const composerChatGptConversationsQuery = useQuery(
-    codexComposerChatGptConversationsListQueryOptions(""),
-  );
+  const composerAppsQuery = useQuery({
+    ...mcpAppsQueryOptions(),
+    enabled: runtime.kind === "codex",
+  });
+  const composerSitesQuery = useQuery({
+    ...codexComposerSitesListQueryOptions(),
+    enabled: runtime.kind === "codex",
+  });
+  const composerChatGptConversationsQuery = useQuery({
+    ...codexComposerChatGptConversationsListQueryOptions(""),
+    enabled: runtime.kind === "codex",
+  });
   const { refetch: refetchComposerPlugins } = composerPluginsQuery;
   const { refetch: refetchComposerSkills } = composerSkillsQuery;
   const refreshComposerCapabilities = useCallback(async () => {
+    if (runtime.kind !== "codex") return;
     await Promise.all([refetchComposerPlugins(), refetchComposerSkills()]);
-  }, [refetchComposerPlugins, refetchComposerSkills]);
+  }, [runtime.kind, refetchComposerPlugins, refetchComposerSkills]);
   const actionsWithComposerCapabilityRefresh = useMemo<ThreadStageActions>(
     () => ({
       ...actions,
@@ -712,13 +716,14 @@ export function ConnectedThreadStageFooter({
   );
   const model = useMemo<ThreadFooterModel>(
     () => ({
+      provider: input.provider,
       workspaceSearchContext,
       projectId: input.projectId,
       hostId,
       projectWorkspacePath: input.projectWorkspacePath ?? null,
       threadId: activeThreadId,
       cwd,
-      account,
+      account: runtime.kind === "codex" ? account : null,
       conversation: activeThreadId
         ? {
             ...(conversationSnapshot ?? {}),
@@ -799,19 +804,24 @@ export function ConnectedThreadStageFooter({
       newThreadComposerIntent: input.newThreadComposerIntent ?? null,
       composerScopeIdentity,
       dictation,
-      composerPlugins: composerPluginsQuery.data ?? [],
-      composerPluginsLoading: composerPluginsQuery.isPending,
-      composerSkills: composerSkillsQuery.data ?? [],
-      composerSkillsLoading: composerSkillsQuery.isPending,
-      composerApps: composerAppsQuery.data ?? [],
-      composerAppsLoading: composerAppsQuery.isPending,
-      composerSites: composerSitesQuery.data?.sites ?? [],
-      composerSitesAvailable: composerSitesQuery.data?.available === true,
-      composerSitesLoading: composerSitesQuery.isPending,
-      composerChatGptConversations: composerChatGptConversationsQuery.data?.conversations ?? [],
+      composerPlugins: runtime.kind === "codex" ? (composerPluginsQuery.data ?? []) : [],
+      composerPluginsLoading: runtime.kind === "codex" && composerPluginsQuery.isPending,
+      composerSkills: runtime.kind === "codex" ? (composerSkillsQuery.data ?? []) : [],
+      composerSkillsLoading: runtime.kind === "codex" && composerSkillsQuery.isPending,
+      composerApps: runtime.kind === "codex" ? (composerAppsQuery.data ?? []) : [],
+      composerAppsLoading: runtime.kind === "codex" && composerAppsQuery.isPending,
+      composerSites: runtime.kind === "codex" ? (composerSitesQuery.data?.sites ?? []) : [],
+      composerSitesAvailable:
+        runtime.kind === "codex" && composerSitesQuery.data?.available === true,
+      composerSitesLoading: runtime.kind === "codex" && composerSitesQuery.isPending,
+      composerChatGptConversations:
+        runtime.kind === "codex"
+          ? (composerChatGptConversationsQuery.data?.conversations ?? [])
+          : [],
       composerChatGptConversationsAvailable:
-        composerChatGptConversationsQuery.data?.available === true,
-      composerChatGptConversationsLoading: composerChatGptConversationsQuery.isPending,
+        runtime.kind === "codex" && composerChatGptConversationsQuery.data?.available === true,
+      composerChatGptConversationsLoading:
+        runtime.kind === "codex" && composerChatGptConversationsQuery.isPending,
     }),
     [
       activeThreadId,
@@ -838,6 +848,8 @@ export function ConnectedThreadStageFooter({
       dictation,
       composerShell,
       cwd,
+      input.provider,
+      runtime,
       input.availableModels,
       input.collaborationModes,
       input.composerEnterBehavior,
@@ -883,7 +895,7 @@ export function ConnectedThreadStageFooter({
         model={model}
         actions={actionsWithComposerCapabilityRefresh}
         worktreeRuntimeAvailable={worktreeRuntimeAvailable}
-        errorMessage={errorMessage}
+        errorMessage={errorMessage ?? input.provider?.error ?? null}
         onErrorMessage={onErrorMessage}
         variant={variant}
         rightPanelComposerOverlay={{
@@ -929,6 +941,7 @@ export function ConnectedThreadComposerDock({
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const activeThreadId = resolveConnectedStageActiveThreadId(input);
   const preferredHostId = input.activeThreadSummary?.executionHostId ?? null;
+  const runtime = useConversationRuntime(activeThreadId, preferredHostId);
   const connection = useLocalConversationConnection(activeThreadId);
   const firstSubmission = useSessionFirstSubmission({
     projectId: input.projectId,
@@ -1012,7 +1025,7 @@ export function ConnectedThreadComposerDock({
     if (resumeState === "resumed" && (streamRole === "owner" || streamRole === "follower")) {
       return;
     }
-    void requestLocalConversationResume(input.activeThreadId, preferredHostId).catch(() => {});
+    void runtime.resume(input.activeThreadId).catch(() => {});
   }, [
     archived,
     connection.status,
@@ -1023,6 +1036,7 @@ export function ConnectedThreadComposerDock({
     input.isNewThreadTab,
     lifecycleActive,
     preferredHostId,
+    runtime,
     resumeState,
     streamRole,
   ]);
@@ -1036,7 +1050,7 @@ export function ConnectedThreadComposerDock({
         input={input}
         actions={actions}
         composerScopeIdentity={composerScopeIdentity}
-        errorMessage={errorMessage}
+        errorMessage={errorMessage ?? input.provider?.error ?? null}
         onErrorMessage={setErrorMessage}
         rightPanelComposerOverlayEnabled
         rightPanelComposerOverlayTarget={overlayTarget}
@@ -1072,6 +1086,7 @@ export function ConnectedThreadStage({
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const activeThreadId = resolveConnectedStageActiveThreadId(input);
   const preferredHostId = input.activeThreadSummary?.executionHostId ?? null;
+  const runtime = useConversationRuntime(activeThreadId, preferredHostId);
   const connection = useLocalConversationConnection(activeThreadId);
   const isSideChat = Boolean(input.sideChatContext);
   const isNewThreadRoute = input.isNewThreadTab && activeThreadId === null && !isSideChat;
@@ -1215,9 +1230,9 @@ export function ConnectedThreadStage({
       if (!routeActive || !threadBodyVisible || !activeThreadId || !conversation?.hasUnreadTurn)
         return;
       if (requireWindowFocus && typeof document !== "undefined" && !document.hasFocus()) return;
-      void markLocalConversationAsRead(activeThreadId, preferredHostId).catch(() => {});
+      void runtime.markRead(activeThreadId).catch(() => {});
     },
-    [activeThreadId, conversation?.hasUnreadTurn, preferredHostId, routeActive, threadBodyVisible],
+    [activeThreadId, conversation?.hasUnreadTurn, runtime, routeActive, threadBodyVisible],
   );
   const markActiveConversationAsReadOnFocus = useEffectEvent(() => {
     markActiveConversationAsRead(true);
@@ -1312,7 +1327,7 @@ export function ConnectedThreadStage({
       return;
     }
 
-    void requestLocalConversationResume(input.activeThreadId, preferredHostId).catch(() => {});
+    void runtime.resume(input.activeThreadId).catch(() => {});
   }, [
     isActiveThreadArchived,
     connection.status,
@@ -1324,6 +1339,7 @@ export function ConnectedThreadStage({
     input.activeThreadId,
     input.isNewThreadTab,
     preferredHostId,
+    runtime,
     threadLifecycleActive,
     worktreeRuntimeAvailable,
   ]);
@@ -1370,7 +1386,7 @@ export function ConnectedThreadStage({
               input={input}
               actions={actions}
               composerScopeIdentity={composerScopeIdentity}
-              errorMessage={errorMessage}
+              errorMessage={errorMessage ?? input.provider?.error ?? null}
               onErrorMessage={setErrorMessage}
               variant="newThreadHome"
               rightPanelComposerOverlayEnabled={false}
@@ -1460,7 +1476,8 @@ export function ConnectedThreadStage({
                     onClick={() => {
                       if (!activeThreadId) return;
                       setWriterRetryPending(true);
-                      void requestLocalConversationResume(activeThreadId, preferredHostId)
+                      void runtime
+                        .resume(activeThreadId)
                         .catch(() => {})
                         .finally(() => setWriterRetryPending(false));
                     }}
@@ -1474,7 +1491,7 @@ export function ConnectedThreadStage({
                   input={input}
                   actions={actions}
                   composerScopeIdentity={composerScopeIdentity}
-                  errorMessage={errorMessage}
+                  errorMessage={errorMessage ?? input.provider?.error ?? null}
                   onErrorMessage={setErrorMessage}
                   rightPanelComposerOverlayEnabled={rightPanelComposerOverlayEnabled && !isSideChat}
                   rightPanelComposerOverlayCompact={rightPanelComposerOverlayCompact}

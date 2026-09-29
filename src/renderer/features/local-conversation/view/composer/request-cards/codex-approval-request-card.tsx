@@ -136,7 +136,13 @@ function buildRequestQuestion(
         isOther: true,
         isSecret: false,
         otherPlaceholder: "No, and tell Nodex what to do differently",
-        options,
+        options: options.filter((option) => {
+          if (!request.availableDecisions) return true;
+          const decision = mapApprovalResponse(request, option.label).decision;
+          return request.availableDecisions.includes(
+            typeof decision === "string" ? decision : Object.keys(decision)[0]!,
+          );
+        }),
       },
     ],
   };

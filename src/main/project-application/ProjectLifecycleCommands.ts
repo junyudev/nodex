@@ -1,3 +1,4 @@
+import { ClaudeSessionManager } from "../agent-backend/claude/ClaudeSessionManager";
 import * as Cause from "effect/Cause";
 import * as Context from "effect/Context";
 import * as Effect from "effect/Effect";
@@ -60,6 +61,7 @@ export const live: Layer.Layer<
   never,
   | BrowserApplication
   | AcpBackendSessionManager
+  | ClaudeSessionManager
   | ProjectArchiveBlockers
   | ProjectRuntimeLifecycleRuntime
   | ProjectWorkspace
@@ -69,6 +71,7 @@ export const live: Layer.Layer<
   Effect.gen(function* () {
     const blockers = yield* ProjectArchiveBlockers;
     const acpSessions = yield* AcpBackendSessionManager;
+    const claudeSessions = yield* ClaudeSessionManager;
     const browser = yield* BrowserApplication;
     const lifecycleRuntime = yield* ProjectRuntimeLifecycleRuntime;
     const workspace = yield* ProjectWorkspace;
@@ -127,7 +130,9 @@ export const live: Layer.Layer<
             ? [
                 {
                   label: `acp-session:${session.thread.threadId}`,
-                  effect: acpSessions.close(session.thread.threadId),
+                  effect: acpSessions
+                    .close(session.thread.threadId)
+                    .pipe(Effect.andThen(claudeSessions.close(session.thread.threadId))),
                 },
               ]
             : [],

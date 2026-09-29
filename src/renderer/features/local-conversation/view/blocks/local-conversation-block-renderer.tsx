@@ -137,6 +137,7 @@ export function ThreadBlockRenderer({
     block.type === "exec" ||
     block.type === "fileChange" ||
     block.type === "mcpToolCall" ||
+    block.type === "toolCall" ||
     block.type === "dynamicToolCall" ||
     block.type === "webSearch"
   ) {

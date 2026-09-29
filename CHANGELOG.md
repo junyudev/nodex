@@ -6,6 +6,8 @@ All notable changes to this project will be documented in this file.
 
 ### Added
 
+- Local tasks can use Claude Code with its existing login, settings, skills, tools and subtasks in the same conversation UI as Codex, including interactive approvals, questions, concrete model and effort selection, cancellation and session recovery. Agent settings support per-instance environment variables, pasted shell assignments and encrypted tokens.
+
 - Dictation streams into your draft by default, preserves edits when the cursor moves, and offers captured speech for recovery after an interruption.
 - Voice settings can manage an account dictionary when available.
 

@@ -1,3 +1,4 @@
+import { inactiveClaudeSessions } from "../agent-backend/claude/ClaudeSessionManager.test-fixtures";
 import { assert, it } from "@effect/vitest";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
@@ -11,8 +12,10 @@ import { live as projectRuntimeLifecycleLive } from "../host-runtime/ProjectRunt
 import { TerminalSessions } from "../terminal-runtime/TerminalSessions";
 import type { ProjectWorkspaceApplyResult } from "../core-client/types";
 import { ProjectArchiveBlockers } from "./ProjectArchiveBlockers";
-import { ProjectLifecycleCommands, live } from "./ProjectLifecycleCommands";
+import { ProjectLifecycleCommands, live as productionLive } from "./ProjectLifecycleCommands";
 import { ProjectWorkspace, type ProjectWorkspaceService } from "./ProjectWorkspace";
+
+const live = productionLive.pipe(Layer.provide(inactiveClaudeSessions));
 
 const makeProject = (lifecycle: Project["lifecycle"] = "active"): Project => ({
   id: "project-1",
@@ -112,7 +115,7 @@ const testRuntime = (
   const closeBrowserConversation = vi.fn(() => Effect.void);
   const closeBrowserProject = vi.fn(() => Effect.void);
   const discardExitedSessionsForOwners = vi.fn(() => Effect.succeed<readonly string[]>([]));
-  const closeAcpSession = vi.fn(() => Effect.void);
+  const closeAgentSession = vi.fn(() => Effect.void);
   const workspace = ProjectWorkspace.of({
     getProject: () => Effect.succeed(project),
     listProjectSessionSummaryWindow: () =>
@@ -130,7 +133,7 @@ const testRuntime = (
         Layer.succeed(
           AcpBackendSessionManager,
           AcpBackendSessionManager.of({
-            close: closeAcpSession,
+            close: closeAgentSession,
           } as unknown as AcpBackendSessionManager["Service"]),
         ),
         Layer.succeed(
@@ -163,7 +166,7 @@ const testRuntime = (
     closeBrowserConversation,
     closeBrowserProject,
     discardExitedSessionsForOwners,
-    closeAcpSession,
+    closeAgentSession,
     blockerReads: () => blockerRead,
   };
 };
@@ -236,7 +239,7 @@ it.effect("archives, cleans Project-owned runtimes, and restores through one com
     assert.strictEqual(runtime.closeBrowserConversation.mock.calls.length, 2);
     assert.strictEqual(runtime.closeBrowserProject.mock.calls.length, 1);
     assert.strictEqual(runtime.discardExitedSessionsForOwners.mock.calls.length, 1);
-    assert.deepStrictEqual(runtime.closeAcpSession.mock.calls, [["thread-2"]]);
+    assert.deepStrictEqual(runtime.closeAgentSession.mock.calls, [["thread-2"]]);
 
     const restored = yield* commands.setLifecycle(lifecycleCommand("active"));
     assert.strictEqual(restored.kind, "committed");

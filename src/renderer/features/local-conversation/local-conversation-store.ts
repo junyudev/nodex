@@ -1,3 +1,4 @@
+import { useConversationRuntimeOverride, type ConversationRuntime } from "./conversation-runtime";
 import {
   buildCodexCommandApprovalRequest,
   buildCodexFileApprovalRequest,
@@ -8651,20 +8652,63 @@ export function useCodexAppServerManagerForConversationId(
   return manager ?? preferredManager ?? defaultManager;
 }
 
+/** Adapts the existing owner/follower manager without changing its protocol authority. */
+export function useConversationRuntime(
+  conversationId: string | null,
+  preferredHostId?: string | null,
+): ConversationRuntime {
+  const override = useConversationRuntimeOverride();
+  const manager = useCodexAppServerManagerForConversationId(conversationId, preferredHostId);
+  const codex = useMemo<ConversationRuntime>(
+    () => ({
+      kind: "codex",
+      hostId: manager.getHostId(),
+      subscribe: (id, listener) => {
+        const releases = [manager.subscribeConnection(listener)];
+        if (id)
+          releases.push(
+            manager.addConversationCallback(id, listener),
+            manager.subscribeConversationAttachment(id, listener),
+            manager.subscribeConversationChildMemberships(id, listener),
+          );
+        return () => releases.forEach((release) => release());
+      },
+      read: (id) => (id ? manager.readConversation(id) : null),
+      attachment: (id) =>
+        id ? manager.readConversationAttachmentState(id) : IDLE_LOCAL_CONVERSATION_ATTACHMENT_STATE,
+      connection: () => manager.readConnection(),
+      role: (id) => (id ? manager.readConversationStreamRole(id) : null),
+      primaryRequest: (id) => (id ? manager.readPrimaryConversationRequest(id) : null),
+      children: (id) =>
+        id ? manager.readConversationChildMemberships(id) : EMPTY_CHILD_MEMBERSHIPS,
+      retain: (id, foreground) => {
+        const interest = manager.retainActiveConversation(id, { foreground });
+        return () => interest[Symbol.dispose]();
+      },
+      resume: async (id) => {
+        await requestLocalConversationResume(id, manager.getHostId());
+      },
+      markRead: async (id) => {
+        await markLocalConversationAsRead(id, manager.getHostId());
+      },
+      setPresented: async (id, surface, presented) => {
+        await setLocalConversationThreadPresented(id, surface, presented, manager.getHostId());
+      },
+    }),
+    [manager],
+  );
+  return override ?? codex;
+}
+
 export function useCodexConversationValue<T>(
   conversationId: string | null,
   selector: (conversation: CodexConversationSnapshot | null) => T,
   isEqual: (left: T, right: T) => boolean = Object.is,
 ): T {
-  const manager = useCodexAppServerManagerForConversationId(conversationId);
+  const runtime = useConversationRuntime(conversationId);
   return useExternalSelector(
-    (listener) =>
-      conversationId
-        ? manager.addConversationCallback(conversationId, () => {
-            listener();
-          })
-        : () => {},
-    () => selector(conversationId ? manager.readConversation(conversationId) : null),
+    (listener) => runtime.subscribe(conversationId, listener),
+    () => selector(runtime.read(conversationId)),
     isEqual,
   );
 }
@@ -8912,14 +8956,10 @@ export function useConversationResumeState(
 export function useConversationAttachmentState(
   threadId: string | null,
 ): LocalConversationAttachmentState {
-  const manager = useCodexAppServerManagerForConversationId(threadId);
+  const runtime = useConversationRuntime(threadId);
   return useExternalSelector(
-    (listener) =>
-      threadId ? manager.subscribeConversationAttachment(threadId, listener) : () => {},
-    () =>
-      threadId
-        ? manager.readConversationAttachmentState(threadId)
-        : IDLE_LOCAL_CONVERSATION_ATTACHMENT_STATE,
+    (listener) => runtime.subscribe(threadId, listener),
+    () => runtime.attachment(threadId),
     areLocalConversationAttachmentStatesEqual,
   );
 }
@@ -8927,10 +8967,10 @@ export function useConversationAttachmentState(
 export function useConversationStreamRole(
   threadId: string | null,
 ): LocalConversationStreamRole["role"] | null {
-  const manager = useCodexAppServerManagerForConversationId(threadId);
+  const runtime = useConversationRuntime(threadId);
   return useExternalSelector(
-    (listener) => (threadId ? manager.addConversationCallback(threadId, listener) : () => {}),
-    () => (threadId ? manager.readConversationStreamRole(threadId) : null),
+    (listener) => runtime.subscribe(threadId, listener),
+    () => runtime.role(threadId),
   );
 }
 
@@ -8961,11 +9001,10 @@ export function useConversationCapabilityFlags(
 export function useConversationChildMemberships(
   threadId: string | null,
 ): CodexConversationChildMembership[] {
-  const manager = useCodexAppServerManagerForConversationId(threadId);
+  const runtime = useConversationRuntime(threadId);
   return useExternalSelector(
-    (listener) =>
-      threadId ? manager.subscribeConversationChildMemberships(threadId, listener) : () => {},
-    () => (threadId ? manager.readConversationChildMemberships(threadId) : EMPTY_CHILD_MEMBERSHIPS),
+    (listener) => runtime.subscribe(threadId, listener),
+    () => runtime.children(threadId),
   );
 }
 
@@ -9012,15 +9051,10 @@ export function useConversationParentThreadId(threadId: string | null): string |
 export function useConversationPrimaryRequest(
   threadId: string | null,
 ): CodexConversationLiveRequest | null {
-  const manager = useCodexAppServerManagerForConversationId(threadId);
+  const runtime = useConversationRuntime(threadId);
   return useExternalSelector(
-    (listener) =>
-      threadId
-        ? manager.addConversationCallback(threadId, () => {
-            listener();
-          })
-        : () => {},
-    () => (threadId ? manager.readPrimaryConversationRequest(threadId) : null),
+    (listener) => runtime.subscribe(threadId, listener),
+    () => runtime.primaryRequest(threadId),
     areConversationLiveRequestsEqual,
   );
 }
@@ -9128,10 +9162,10 @@ export function useComposerIntent(threadId: string | null): CodexComposerIntent 
 export function useLocalConversationConnection(
   conversationId: string | null = null,
 ): CodexConnectionState {
-  const manager = useCodexAppServerManagerForConversationId(conversationId);
+  const runtime = useConversationRuntime(conversationId);
   return useExternalSelector(
-    (listener) => manager.subscribeConnection(listener),
-    () => manager.readConnection(),
+    (listener) => runtime.subscribe(conversationId, listener),
+    runtime.connection,
   );
 }
 

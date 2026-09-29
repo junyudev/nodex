@@ -188,6 +188,20 @@ CI` push run. The privileged release `workflow_run` additionally validates the
   installs packages or substitutes system runtimes during discovery. Python import isolation
   is not a sandbox; subsequent execution remains subject to the task's execution permissions.
 
+- Native Claude Code instances run user-managed executables through the official Agent SDK.
+  Inherited user/project/local settings may execute hooks, skills, subagents, and MCP servers as the
+  current user. Claude Code owns filesystem and shell permissions; Nodex's ACP workspace callback
+  restrictions do not apply to native tools. The optional account config directory changes only the
+  child/worker environment. Existing Claude credentials are never copied into Nodex settings. Explicit instance environment
+  secrets use OS-backed encryption, with immutable ciphertext outside ordinary settings and references
+  published only after encryption and storage succeed. Settings reads never return secret plaintext;
+  retaining a secret requires the same instance and variable name. Only Main's launch read decrypts
+  values, shared by the new connection's history worker and child process. Encryption failure has no
+  plaintext fallback. Reserved account-location and nesting variables remain launcher-owned. Main's
+  HOME and environment remain unchanged. Pending SDK decisions are Thread-scoped, bounded, and invalidated
+  on completion, stop, or close; renderer input cannot name an arbitrary tool or replace its input.
+  Native tools do not inherit Codex-only Nodex application/desktop capabilities.
+
 - ACP Agent definitions are compatibility allowlists, not supply-chain attestations. The current
   Claude Agent integration launches only an explicitly enabled, user-managed absolute package root
   and Node executable after canonical path, entry containment, package/version, executable-version,

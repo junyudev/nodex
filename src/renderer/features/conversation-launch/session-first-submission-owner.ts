@@ -1,7 +1,7 @@
 import type { CodexConversationTurn, CodexPromptInput, CodexUserAttachment } from "../../lib/types";
 import { createUuidV7 } from "../../../shared/uuid-v7";
 
-export type FirstSubmissionBackend = "codex" | "acp";
+export type FirstSubmissionBackend = "codex" | "acp" | "claude";
 
 export type FirstSubmissionPhase =
   | "accepted"
@@ -101,6 +101,7 @@ function isStalePhase(
 }
 
 function readCanonicalClientUserMessageId(turn: CodexConversationTurn): string | null {
+  if (turn.clientUserMessageId) return turn.clientUserMessageId;
   for (const item of turn.items) {
     if (item.semanticKind !== "userMessage" && item.kind !== "userMessage") continue;
     if (!item.rawItem || typeof item.rawItem !== "object") continue;

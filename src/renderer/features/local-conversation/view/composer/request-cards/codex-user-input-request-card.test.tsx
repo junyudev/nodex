@@ -72,6 +72,43 @@ beforeEach(() => {
 });
 
 describe("CodexUserInputRequestCard", () => {
+  test("collects multiple choices without auto-submitting and omits deselected choices", async () => {
+    const responses: Record<string, string[]>[] = [];
+    const view = renderWithMaitai(
+      <TooltipProvider>
+        <CodexUserInputRequestCard
+          conversationId="native-multiple"
+          request={{
+            ...ordinaryRequest,
+            questions: ordinaryRequest.questions.map((question) => ({
+              ...question,
+              multiSelect: true,
+              isOther: true,
+            })),
+          }}
+          onRespond={async (_id, answers) => {
+            responses.push(answers);
+          }}
+        />
+      </TooltipProvider>,
+    );
+    await act(async () => {
+      fireEvent.click(view.getByRole("checkbox", { name: "Focused" }));
+      fireEvent.click(view.getByRole("checkbox", { name: "Broad" }));
+      await Promise.resolve();
+    });
+    expect(responses).toEqual([]);
+    expect(view.getByRole("checkbox", { name: "Focused" }).getAttribute("aria-checked")).toBe(
+      "true",
+    );
+    await act(async () => {
+      fireEvent.click(view.getByRole("checkbox", { name: "Focused" }));
+      fireEvent.click(view.getByRole("button", { name: /Submit/ }));
+      await Promise.resolve();
+    });
+    expect(responses).toEqual([{ scope: ["Broad"] }]);
+  });
+
   test("responds with the activated choice once after the acknowledgement window", async () => {
     vi.useFakeTimers();
     try {

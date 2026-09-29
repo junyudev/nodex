@@ -287,6 +287,8 @@ function resolveSemanticRendererType(entry: CodexConversationItem): RendererTran
       return "exec";
     case "diff":
       return "turnDiff";
+    case "toolCall":
+      return "toolCall";
     case "mcpToolCall":
       return "mcpToolCall";
     case "dynamicToolCall":

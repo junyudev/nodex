@@ -1850,6 +1850,24 @@
           {
             "type": "object",
             "required": [
+              "instance_config_id",
+              "kind"
+            ],
+            "properties": {
+              "instance_config_id": {
+                "type": "string"
+              },
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "claude"
+                ]
+              }
+            }
+          },
+          {
+            "type": "object",
+            "required": [
               "agent_definition_id",
               "kind"
             ],

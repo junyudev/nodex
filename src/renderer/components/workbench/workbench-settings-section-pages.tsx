@@ -1,3 +1,4 @@
+import { ClaudeAgentSettingsControl } from "./claude-agent-settings-control";
 import { RecoveryEntry } from "@/features/document-recovery/recovery-entry";
 import { useLibraryMetadata } from "@/lib/use-library-navigation";
 import { startTransition, useCallback, useEffect, useState } from "react";
@@ -433,6 +434,7 @@ export function AgentSettingsPage({ activeProjectId, open }: SettingsSectionPage
       </SectionBlock>
 
       <SectionBlock title="Agent backends">
+        <ClaudeAgentSettingsControl open={open} />
         <AcpAgentSettingsControl open={open} />
       </SectionBlock>
 

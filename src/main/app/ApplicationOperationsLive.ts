@@ -1,3 +1,5 @@
+import { live as claudeSdkLive } from "../platform/node/ClaudeSdk";
+import { live as claudeSessionManagerLive } from "../agent-backend/claude/ClaudeSessionManager";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 import { live as appToolInterpreterLive } from "../app-tools/AppToolInterpreter";
@@ -76,12 +78,15 @@ const projectArchiveBlockers = projectArchiveBlockersLive.pipe(
   Layer.provideMerge(backgroundProcesses),
 );
 const acpPlatform = Layer.merge(acpAgentLaunchProbeLive, acpSessionTransportLive);
-const acpSessions = acpBackendSessionManagerLive.pipe(Layer.provideMerge(acpPlatform));
+const agentSessions = Layer.merge(
+  acpBackendSessionManagerLive.pipe(Layer.provideMerge(acpPlatform)),
+  claudeSessionManagerLive.pipe(Layer.provideMerge(claudeSdkLive)),
+);
 const projectLifecycle = projectLifecycleCommandsLive.pipe(
-  Layer.provideMerge(Layer.merge(projectArchiveBlockers, acpSessions)),
+  Layer.provideMerge(Layer.merge(projectArchiveBlockers, agentSessions)),
 );
 const projectSessions = projectSessionCommandsLive.pipe(
-  Layer.provideMerge(Layer.merge(projectLifecycle, acpSessions)),
+  Layer.provideMerge(Layer.merge(projectLifecycle, agentSessions)),
 );
 const managedWorktreeCatalog = Layer.unwrap(
   Effect.gen(function* () {
@@ -117,7 +122,7 @@ const coreEvents = coreEventHubLive({}).pipe(Layer.provideMerge(projectionDelive
 const reminders = reminderSchedulerLive({}).pipe(Layer.provideMerge(coreEvents));
 const storeSchedulers = storeAdministrationSchedulerLive({}).pipe(Layer.provideMerge(reminders));
 const agentBackends = agentBackendApplicationLive.pipe(
-  Layer.provideMerge(Layer.merge(agentBackendRegistryLive, acpSessions)),
+  Layer.provideMerge(Layer.merge(agentBackendRegistryLive, agentSessions)),
   Layer.provideMerge(storeSchedulers),
 );
 

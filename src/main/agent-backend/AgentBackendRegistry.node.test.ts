@@ -15,13 +15,16 @@ const instance = (overrides: Partial<AcpAgentInstanceConfig> = {}): AcpAgentInst
 
 describe("AgentBackendRegistry", () => {
   it("resolves the explicit native Codex binding without ACP configuration", () => {
-    expect(resolveAgentBackendBinding({ kind: "codex" }, { acpAgents: { instances: [] } })).toEqual(
-      {
-        kind: "codex",
-        binding: { kind: "codex" },
-        displayName: "Codex",
-      },
-    );
+    expect(
+      resolveAgentBackendBinding(
+        { kind: "codex" },
+        { claudeAgents: { instances: [] }, acpAgents: { instances: [] } },
+      ),
+    ).toEqual({
+      kind: "codex",
+      binding: { kind: "codex" },
+      displayName: "Codex",
+    });
   });
 
   it("resolves a supported ACP definition only through its enabled matching instance", () => {
@@ -31,7 +34,7 @@ describe("AgentBackendRegistry", () => {
         agentDefinitionId: "claude-agent-acp",
         instanceConfigId: "claude-work",
       },
-      { acpAgents: { instances: [instance()] } },
+      { claudeAgents: { instances: [] }, acpAgents: { instances: [instance()] } },
     );
 
     expect(resolved).toMatchObject({
@@ -84,6 +87,7 @@ describe("AgentBackendRegistry", () => {
     },
   ] as const)("fails closed for $label", ({ binding, instances, reason }) => {
     const result = resolveAgentBackendBinding(binding, {
+      claudeAgents: { instances: [] },
       acpAgents: { instances: [...instances] },
     });
 

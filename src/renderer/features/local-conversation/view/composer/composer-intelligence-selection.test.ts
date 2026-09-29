@@ -15,6 +15,23 @@ const CODEX_SELECTION: ComposerIntelligenceSelection = {
 };
 
 describe("composer intelligence selection", () => {
+  test("preserves Claude effort without inheriting a Codex service tier", () => {
+    expect(
+      deriveComposerIntelligenceSelection(
+        {
+          provider: { kind: "claude" },
+          selectedModel: "claude-sonnet-5",
+          selectedReasoningEffort: "max",
+        } as ThreadFooterModel,
+        "fast",
+      ),
+    ).toEqual({
+      kind: "claude",
+      model: "claude-sonnet-5",
+      reasoningEffort: "max",
+      serviceTier: null,
+    });
+  });
   test("derives active-thread speed ahead of the renderer default", () => {
     const selection = deriveComposerIntelligenceSelection(
       {

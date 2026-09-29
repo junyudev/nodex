@@ -1,3 +1,4 @@
+import { inactiveClaudeSessions } from "../agent-backend/claude/ClaudeSessionManager.test-fixtures";
 import { assert, it } from "@effect/vitest";
 import * as Deferred from "effect/Deferred";
 import * as Effect from "effect/Effect";
@@ -14,12 +15,14 @@ import { ConversationCommands } from "../codex-application/ConversationCommands"
 import { CodexConversationArchiveError } from "../codex-application/CodexConversationArchive";
 import type { ProjectWorkspaceApplyResult } from "../core-client/types";
 import { CoreApplicationAgent } from "../core-runtime/CoreApplicationAgent";
-import { ProjectSessionCommands, live } from "./ProjectSessionCommands";
+import { ProjectSessionCommands, live as productionLive } from "./ProjectSessionCommands";
 import {
   ProjectWorkspace,
   ProjectWorkspaceError,
   type ProjectWorkspaceService,
 } from "./ProjectWorkspace";
+
+const live = productionLive.pipe(Layer.provide(inactiveClaudeSessions));
 
 const session: ProjectSession = {
   id: "session:one",

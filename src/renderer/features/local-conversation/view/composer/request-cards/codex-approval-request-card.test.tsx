@@ -26,6 +26,28 @@ const approvalRequest: CodexApprovalRequest = {
 };
 
 describe("CodexApprovalRequestCard", () => {
+  test("offers only decisions supported by the request's runtime", async () => {
+    const responses: unknown[] = [];
+    const view = render(
+      <TooltipProvider>
+        <CodexApprovalRequestCard
+          request={{ ...approvalRequest, availableDecisions: ["accept", "decline"] }}
+          onRespond={async (_id, response) => {
+            responses.push(response);
+          }}
+          onSubmitLocalFollowup={async () => {}}
+        />
+      </TooltipProvider>,
+    );
+    expect(view.getAllByRole("radio")).toHaveLength(1);
+    await act(async () => {
+      fireEvent.click(view.getByRole("radio", { name: "Yes" }));
+      fireEvent.click(view.getByRole("button", { name: /Submit/ }));
+      await Promise.resolve();
+    });
+    expect(responses).toEqual([{ kind: "command", decision: "accept" }]);
+  });
+
   test("renders the codex approval shell with command preview and skip action", async () => {
     const { container } = render(
       <TooltipProvider>

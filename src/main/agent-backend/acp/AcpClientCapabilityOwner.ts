@@ -23,7 +23,7 @@ import type {
 import * as Context from "effect/Context";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
-import type { AcpRuntimeError } from "./AcpRuntimeError";
+import type { AgentRuntimeError } from "../AgentRuntimeError";
 import { AcpInteractionAuthority } from "./AcpInteractionAuthority";
 import { AcpTerminalOwner } from "./AcpTerminalOwner";
 import { AcpWorkspaceFileOwner } from "./AcpWorkspaceFileOwner";
@@ -66,34 +66,34 @@ export const interactiveWorkspaceAcpClientCapabilities: AcpStableClientCapabilit
 export interface AcpClientCapabilityHandlers {
   readonly requestPermission: (
     request: RequestPermissionRequest,
-  ) => Effect.Effect<RequestPermissionResponse, AcpRuntimeError>;
+  ) => Effect.Effect<RequestPermissionResponse, AgentRuntimeError>;
   readonly readTextFile?: (
     request: ReadTextFileRequest,
-  ) => Effect.Effect<ReadTextFileResponse, AcpRuntimeError>;
+  ) => Effect.Effect<ReadTextFileResponse, AgentRuntimeError>;
   readonly writeTextFile?: (
     request: WriteTextFileRequest,
-  ) => Effect.Effect<WriteTextFileResponse, AcpRuntimeError>;
+  ) => Effect.Effect<WriteTextFileResponse, AgentRuntimeError>;
   readonly createTerminal?: (
     request: CreateTerminalRequest,
-  ) => Effect.Effect<CreateTerminalResponse, AcpRuntimeError>;
+  ) => Effect.Effect<CreateTerminalResponse, AgentRuntimeError>;
   readonly terminalOutput?: (
     request: TerminalOutputRequest,
-  ) => Effect.Effect<TerminalOutputResponse, AcpRuntimeError>;
+  ) => Effect.Effect<TerminalOutputResponse, AgentRuntimeError>;
   readonly waitForTerminalExit?: (
     request: WaitForTerminalExitRequest,
-  ) => Effect.Effect<WaitForTerminalExitResponse, AcpRuntimeError>;
+  ) => Effect.Effect<WaitForTerminalExitResponse, AgentRuntimeError>;
   readonly killTerminal?: (
     request: KillTerminalRequest,
-  ) => Effect.Effect<KillTerminalResponse, AcpRuntimeError>;
+  ) => Effect.Effect<KillTerminalResponse, AgentRuntimeError>;
   readonly releaseTerminal?: (
     request: ReleaseTerminalRequest,
-  ) => Effect.Effect<ReleaseTerminalResponse, AcpRuntimeError>;
+  ) => Effect.Effect<ReleaseTerminalResponse, AgentRuntimeError>;
   readonly createElicitation?: (
     request: CreateElicitationRequest,
-  ) => Effect.Effect<CreateElicitationResponse, AcpRuntimeError>;
+  ) => Effect.Effect<CreateElicitationResponse, AgentRuntimeError>;
   readonly completeElicitation?: (
     notification: CompleteElicitationNotification,
-  ) => Effect.Effect<void, AcpRuntimeError>;
+  ) => Effect.Effect<void, AgentRuntimeError>;
 }
 
 export class AcpClientCapabilityOwner extends Context.Service<

@@ -216,7 +216,24 @@ export interface ThreadOpenThreadContext {
   subagent?: ThreadOpenSubagentPayload;
 }
 
+/** Capabilities vary by provider; the stage, timeline, editor and request UI are shared. */
+export interface ConversationProviderPresentation {
+  readonly kind: "codex" | "claude" | "acp";
+  readonly label: string;
+  readonly selection: string;
+  readonly options: readonly { value: string; label: string }[];
+  readonly select: (value: string) => void;
+  readonly commands: readonly { name: string; description: string; inputHint: string | null }[];
+  readonly authentication?: {
+    readonly methods: readonly { id: string; name: string }[];
+    readonly pending: boolean;
+    readonly signIn: (methodId: string) => Promise<void>;
+  };
+  readonly error: string | null;
+}
+
 export interface ThreadStageRouteInput {
+  provider?: ConversationProviderPresentation;
   readonly projectWorkspaceRoots?: readonly string[];
   projectId: string | null;
   sessionId?: string | null;
@@ -563,6 +580,7 @@ export interface ThreadTranscriptBlockModel extends ThreadRenderKeyedBlockFields
     | "fileChange"
     | "turnDiff"
     | "mcpToolCall"
+    | "toolCall"
     | "dynamicToolCall"
     | "webSearch"
     | "hook"
@@ -1100,6 +1118,7 @@ export interface ThreadBodySurfaceModel {
 }
 
 export interface ThreadFooterModel {
+  provider?: ConversationProviderPresentation;
   readonly workspaceSearchContext: WorkspaceSearchContext | null;
   projectId: string | null;
   hostId: string;

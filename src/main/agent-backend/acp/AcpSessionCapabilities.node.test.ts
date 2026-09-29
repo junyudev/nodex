@@ -19,7 +19,7 @@ import { AcpInteractionAuthority } from "./AcpInteractionAuthority";
 import {
   AcpSessionRuntime,
   layer,
-  toAcpBackendCapabilityProfile,
+  toAgentBackendCapabilityProfile,
   type AcpSessionRuntimeOptions,
 } from "./AcpSessionRuntime";
 import { live as terminalOwnerLive } from "./AcpTerminalOwner";
@@ -55,7 +55,7 @@ const makeOptions = (
 
 it("projects authentication methods without leaking protocol launch metadata", () => {
   expect(
-    toAcpBackendCapabilityProfile({
+    toAgentBackendCapabilityProfile({
       protocolVersion: 1,
       authMethods: [
         {
@@ -98,7 +98,7 @@ const withFixture = <A, E>(
     readonly observationPath: string;
     readonly completedElicitations: readonly string[];
   }) => Effect.Effect<A, E>,
-): Effect.Effect<A, E | import("./AcpRuntimeError").AcpRuntimeError, Scope.Scope> =>
+): Effect.Effect<A, E | import("../AgentRuntimeError").AgentRuntimeError, Scope.Scope> =>
   Effect.acquireRelease(
     Effect.promise(() => mkdtemp(join(tmpdir(), "nodex-acp-capability-"))),
     (directory) => Effect.promise(() => rm(directory, { recursive: true, force: true })),

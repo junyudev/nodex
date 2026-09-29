@@ -196,7 +196,7 @@ it.effect("keeps ordinary prompt rejection recoverable", () =>
         expect(yield* SubscriptionRef.get(session.status)).toEqual({ kind: "idle" });
         expect(yield* SubscriptionRef.get(session.snapshot)).toMatchObject({
           status: "idle",
-          error: "ACP session.request failed",
+          error: "session.request: Internal error: Scripted prompt rejection",
         });
 
         const response = yield* session.prompt([{ type: "text", text: "retry" }]);

@@ -27,6 +27,22 @@ describe("resolveStageThreadsComposerActionState", () => {
     expect(result.disabled).toBe(false);
   });
 
+  test("preserves stop with a draft when the runtime cannot steer or queue", () => {
+    expect(
+      resolveStageThreadsComposerActionState({
+        ...baseInput,
+        isThreadRunning: true,
+        hasDraftContent: true,
+        supportsRunningFollowUps: false,
+      }),
+    ).toMatchObject({
+      action: "stop",
+      disabled: false,
+      primarySubmitAction: null,
+      alternateSubmitAction: null,
+    });
+  });
+
   test("disables stop action while an interrupt request is pending", () => {
     const result = resolveStageThreadsComposerActionState({
       ...baseInput,

@@ -30,11 +30,11 @@ import {
   AcpSessionTransport,
   type AcpSessionProcessConfig,
 } from "../../platform/node/AcpSessionTransport";
-import { acpRuntimeError, type AcpRuntimeError } from "./AcpRuntimeError";
+import { agentRuntimeError, type AgentRuntimeError } from "../AgentRuntimeError";
 import { AcpClientCapabilityOwner } from "./AcpClientCapabilityOwner";
-import type { AcpBackendCapabilityProfile } from "../../../shared/acp-conversation";
+import type { AgentBackendCapabilityProfile } from "../../../shared/agent-conversation";
 
-export type { AcpBackendCapabilityProfile } from "../../../shared/acp-conversation";
+export type { AgentBackendCapabilityProfile } from "../../../shared/agent-conversation";
 
 export const ACP_DEFAULT_EVENT_CAPACITY = 128;
 export const ACP_DEFAULT_INITIALIZE_TIMEOUT = "20 seconds";
@@ -86,27 +86,27 @@ export class AcpSessionRuntime extends Context.Service<
     readonly sessionId: string | null;
     readonly initializeResponse: InitializeResponse;
     readonly openResponse: AcpSessionOpenResponse | null;
-    readonly capabilities: AcpBackendCapabilityProfile;
+    readonly capabilities: AgentBackendCapabilityProfile;
     readonly modes: SessionModeState | null;
     readonly configOptions: readonly SessionConfigOption[];
     readonly events: Stream.Stream<AcpSessionRuntimeEvent>;
     /** Waits until every runtime event already accepted by this Session has reached its consumer. */
-    readonly drainEvents: Effect.Effect<void, AcpRuntimeError>;
+    readonly drainEvents: Effect.Effect<void, AgentRuntimeError>;
     readonly prompt: (
       prompt: PromptRequest["prompt"],
-    ) => Effect.Effect<PromptResponse, AcpRuntimeError>;
+    ) => Effect.Effect<PromptResponse, AgentRuntimeError>;
     readonly authenticate: (
       methodId: string,
-    ) => Effect.Effect<AuthenticateResponse, AcpRuntimeError>;
-    readonly cancel: Effect.Effect<void, AcpRuntimeError>;
-    readonly listSessions: Effect.Effect<ListSessionsResponse, AcpRuntimeError>;
-    readonly deleteSession: (sessionId: string) => Effect.Effect<void, AcpRuntimeError>;
-    readonly setMode: (modeId: string) => Effect.Effect<void, AcpRuntimeError>;
+    ) => Effect.Effect<AuthenticateResponse, AgentRuntimeError>;
+    readonly cancel: Effect.Effect<void, AgentRuntimeError>;
+    readonly listSessions: Effect.Effect<ListSessionsResponse, AgentRuntimeError>;
+    readonly deleteSession: (sessionId: string) => Effect.Effect<void, AgentRuntimeError>;
+    readonly setMode: (modeId: string) => Effect.Effect<void, AgentRuntimeError>;
     readonly setConfigOption: (
       configId: string,
       value: string | boolean,
-    ) => Effect.Effect<readonly SessionConfigOption[], AcpRuntimeError>;
-    readonly termination: Effect.Effect<never, AcpRuntimeError>;
+    ) => Effect.Effect<readonly SessionConfigOption[], AgentRuntimeError>;
+    readonly termination: Effect.Effect<never, AgentRuntimeError>;
   }
 >()("nodex/main/agent-backend/acp/AcpSessionRuntime") {}
 
@@ -134,9 +134,9 @@ const promptInvariant = Schema.Struct({
   ]),
 });
 
-export const toAcpBackendCapabilityProfile = (
+export const toAgentBackendCapabilityProfile = (
   response: InitializeResponse,
-): AcpBackendCapabilityProfile => {
+): AgentBackendCapabilityProfile => {
   const capabilities = response.agentCapabilities;
   const sessions = capabilities?.sessionCapabilities;
   const prompt = capabilities?.promptCapabilities;
@@ -173,11 +173,11 @@ const validateInvariant = <S extends Schema.Top>(input: {
   readonly reason: "initialize" | "protocol";
   readonly pid: number;
   readonly method: string;
-}): Effect.Effect<void, AcpRuntimeError, S["DecodingServices"]> =>
+}): Effect.Effect<void, AgentRuntimeError, S["DecodingServices"]> =>
   Schema.decodeUnknownEffect(input.schema)(input.value).pipe(
     Effect.asVoid,
     Effect.mapError((cause) =>
-      acpRuntimeError({
+      agentRuntimeError({
         operation: input.operation,
         reason: input.reason,
         retryable: false,
@@ -189,19 +189,19 @@ const validateInvariant = <S extends Schema.Top>(input: {
   );
 
 const withDeadline = <A>(input: {
-  readonly effect: Effect.Effect<A, AcpRuntimeError>;
+  readonly effect: Effect.Effect<A, AgentRuntimeError>;
   readonly duration: Duration.Input;
   readonly operation: string;
   readonly pid: number;
   readonly method: string;
   readonly sessionId?: string;
-}): Effect.Effect<A, AcpRuntimeError> =>
+}): Effect.Effect<A, AgentRuntimeError> =>
   input.effect.pipe(
     Effect.timeoutOrElse({
       duration: input.duration,
       orElse: () =>
         Effect.fail(
-          acpRuntimeError({
+          agentRuntimeError({
             operation: input.operation,
             reason: "timeout",
             retryable: false,
@@ -217,7 +217,7 @@ export const layer = (
   options: AcpSessionRuntimeOptions,
 ): Layer.Layer<
   AcpSessionRuntime,
-  AcpRuntimeError,
+  AgentRuntimeError,
   AcpSessionTransport | AcpClientCapabilityOwner
 > =>
   Layer.effect(
@@ -230,7 +230,7 @@ export const layer = (
           throw new RangeError("ACP event capacity must be a positive safe integer");
         },
         catch: (cause) =>
-          acpRuntimeError({
+          agentRuntimeError({
             operation: "session.configure",
             reason: "protocol",
             retryable: false,
@@ -244,13 +244,13 @@ export const layer = (
       const requireRootSession = <A extends { readonly sessionId: string }, B>(
         request: A,
         operation: string,
-        evaluate: (request: A) => Effect.Effect<B, AcpRuntimeError>,
-      ): Effect.Effect<B, AcpRuntimeError> =>
+        evaluate: (request: A) => Effect.Effect<B, AgentRuntimeError>,
+      ): Effect.Effect<B, AgentRuntimeError> =>
         Ref.get(rootSessionId).pipe(
           Effect.flatMap((root) => {
             if (root !== null && request.sessionId === root) return evaluate(request);
             return Effect.fail(
-              acpRuntimeError({
+              agentRuntimeError({
                 operation,
                 reason: "authorization",
                 retryable: false,
@@ -330,10 +330,10 @@ export const layer = (
             : { completeElicitation: handlers.completeElicitation }),
         },
       });
-      const fatal = yield* Deferred.make<never, AcpRuntimeError>();
-      const failRuntime = (error: AcpRuntimeError): Effect.Effect<void> =>
+      const fatal = yield* Deferred.make<never, AgentRuntimeError>();
+      const failRuntime = (error: AgentRuntimeError): Effect.Effect<void> =>
         Deferred.fail(fatal, error).pipe(Effect.andThen(transport.close(error)), Effect.asVoid);
-      const raceRuntime = <A>(effect: Effect.Effect<A, AcpRuntimeError>) =>
+      const raceRuntime = <A>(effect: Effect.Effect<A, AgentRuntimeError>) =>
         Effect.raceFirst(effect, Deferred.await(fatal));
 
       yield* transport.termination.pipe(
@@ -369,11 +369,11 @@ export const layer = (
       const nextTurnSequence = yield* Ref.make(1);
       const activePrompt = yield* Ref.make<ActivePrompt | null>(null);
 
-      const emit = (event: AcpSessionRuntimeEvent): Effect.Effect<void, AcpRuntimeError> =>
+      const emit = (event: AcpSessionRuntimeEvent): Effect.Effect<void, AgentRuntimeError> =>
         Queue.offer(events, { kind: "event", event }).pipe(
           Effect.flatMap((accepted) => {
             if (accepted) return Effect.void;
-            const error = acpRuntimeError({
+            const error = agentRuntimeError({
               operation: "session.events",
               reason: "pressure",
               retryable: false,
@@ -412,7 +412,7 @@ export const layer = (
         const acknowledged = yield* Deferred.make<void>();
         const accepted = yield* Queue.offer(events, { kind: "barrier", acknowledged });
         if (!accepted) {
-          const error = acpRuntimeError({
+          const error = agentRuntimeError({
             operation: "session.events.drain",
             reason: "pressure",
             retryable: false,
@@ -431,7 +431,7 @@ export const layer = (
         Stream.filter((event): event is AcpSessionRuntimeEvent => event !== null),
       );
 
-      const capabilities = toAcpBackendCapabilityProfile(initializeResponse);
+      const capabilities = toAgentBackendCapabilityProfile(initializeResponse);
       const openRequest = options.open ?? { kind: "new" as const };
       if (openRequest.kind === "load" || openRequest.kind === "resume") {
         yield* validateInvariant({
@@ -445,7 +445,7 @@ export const layer = (
         yield* Ref.set(rootSessionId, openRequest.sessionId);
       }
       const unsupported = (operation: string, sessionId?: string) =>
-        acpRuntimeError({
+        agentRuntimeError({
           operation,
           reason: "capability",
           retryable: false,
@@ -460,7 +460,7 @@ export const layer = (
           (candidate) => candidate.id === methodId,
         );
         if (method === undefined) {
-          return yield* acpRuntimeError({
+          return yield* agentRuntimeError({
             operation: "session.authenticate",
             reason: "authorization",
             retryable: false,
@@ -470,7 +470,7 @@ export const layer = (
           });
         }
         if ("type" in method && method.type === "terminal") {
-          return yield* acpRuntimeError({
+          return yield* agentRuntimeError({
             operation: "session.authenticate",
             reason: "capability",
             retryable: false,
@@ -582,7 +582,7 @@ export const layer = (
           // methods remain initialized so the renderer can let the user choose one explicitly.
           if (methods.length === 0) {
             return Effect.fail(
-              acpRuntimeError({
+              agentRuntimeError({
                 operation: "session.authenticate",
                 reason: "capability",
                 retryable: false,
@@ -613,7 +613,7 @@ export const layer = (
         Effect.suspend(() => {
           if (opened !== null) return Effect.succeed(opened);
           return Effect.fail(
-            acpRuntimeError({
+            agentRuntimeError({
               operation,
               reason: "authentication-required",
               retryable: false,
@@ -668,7 +668,7 @@ export const layer = (
                 ] as const,
             );
             if (cancelRequested && response.stopReason !== "cancelled") {
-              const error = acpRuntimeError({
+              const error = agentRuntimeError({
                 operation: "session.cancel-response",
                 reason: "protocol",
                 retryable: false,
@@ -710,7 +710,7 @@ export const layer = (
           Effect.andThen(Ref.get(activePrompt)),
           Effect.flatMap((current) => {
             if (current?.turnSequence !== active.turnSequence) return Effect.void;
-            const error = acpRuntimeError({
+            const error = agentRuntimeError({
               operation: "session.cancel",
               reason: "timeout",
               retryable: false,

@@ -1,3 +1,4 @@
+import { useConversationRuntimeOverride } from "./conversation-runtime";
 import { useCallback, useEffect } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { subscribeCodexEvents } from "@/lib/api";
@@ -37,6 +38,8 @@ export function useBackgroundSubagentRows(
   rootThreadId: string | null,
   preferredHostId?: string | null,
 ) {
+  const runtime = useConversationRuntimeOverride();
+  const enabled = !runtime || runtime.kind === "codex";
   const manager = useCodexAppServerManagerForConversationId(rootThreadId, preferredHostId);
   const client = useQueryClient();
   const hostId = manager.getHostId();
@@ -51,12 +54,12 @@ export function useBackgroundSubagentRows(
   }, [manager, rootThreadId]);
   const query = useQuery({
     queryKey,
-    enabled: rootThreadId !== null,
+    enabled: enabled && rootThreadId !== null,
     staleTime: Infinity,
     queryFn: loadRows,
   });
   useEffect(() => {
-    if (!rootThreadId) return;
+    if (!rootThreadId || !enabled) return;
     return subscribeCodexEvents((event) => {
       if (event.type !== "subagentOverviewInvalidated" || event.rootThreadId !== rootThreadId)
         return;
@@ -64,7 +67,7 @@ export function useBackgroundSubagentRows(
         queryKey: ["codex", "background-subagent-rows", hostId, rootThreadId],
       });
     });
-  }, [client, hostId, rootThreadId]);
+  }, [client, enabled, hostId, rootThreadId]);
   const rows = query.data ?? EMPTY_ROWS;
-  return rows;
+  return enabled ? rows : EMPTY_ROWS;
 }

@@ -1,5 +1,9 @@
 import type { AgentImportSourceKind } from "../../shared/agent-import";
-import type { UpdateAcpAgentSettingsInput, UpdateCodexGitSettingsInput } from "../../shared/types";
+import type {
+  UpdateClaudeAgentSettingsInput,
+  UpdateAcpAgentSettingsInput,
+  UpdateCodexGitSettingsInput,
+} from "../../shared/types";
 import type {
   RestoreBackupInput,
   UpdateBackupSettingsInput,
@@ -79,6 +83,14 @@ const updateGitSettingsCommand = defineRendererCommand({
   channel: "settings:git:update",
   authority: "main",
   owner: "WorkbenchSettings",
+  protocol: { kind: "returned_value" },
+});
+
+const updateClaudeAgentSettingsCommand = defineRendererCommand({
+  key: "workbench_settings.claude_agents.update",
+  channel: "settings:claude-agents:update",
+  authority: "main",
+  owner: "AgentBackendSettings",
   protocol: { kind: "returned_value" },
 });
 
@@ -184,3 +196,7 @@ export const unarchiveChat = (threadId: string) =>
 
 export const deleteArchivedChat = (threadId: string) =>
   invokePlainCommand(deleteArchivedChatCommand, threadId);
+
+export const readClaudeAgentSettings = () => invokeRendererQuery("settings:claude-agents:get");
+export const updateClaudeAgentSettings = (input: UpdateClaudeAgentSettingsInput) =>
+  invokePlainCommand(updateClaudeAgentSettingsCommand, input);

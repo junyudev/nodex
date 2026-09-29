@@ -1,3 +1,6 @@
+import { ClaudeSessionManager } from "./claude/ClaudeSessionManager";
+import type { AgentSessionHandle } from "./AgentSessionHandle";
+import type { AgentInteractionResponse } from "../../shared/agent-conversation";
 import * as Context from "effect/Context";
 import * as Cause from "effect/Cause";
 import * as Effect from "effect/Effect";
@@ -5,26 +8,26 @@ import * as Exit from "effect/Exit";
 import * as Layer from "effect/Layer";
 import * as Schema from "effect/Schema";
 import * as Scope from "effect/Scope";
-import type * as Stream from "effect/Stream";
+import * as Stream from "effect/Stream";
 import * as SubscriptionRef from "effect/SubscriptionRef";
 import type {
-  AcpBackendAuthenticateInput,
-  AcpBackendAuthenticateResult,
-  AcpBackendConfigOptionInput,
-  AcpBackendConfigOptionResult,
-  AcpBackendModeInput,
-  AcpBackendPromptInput,
-  AcpBackendPromptResult,
-  AcpBackendSessionOpenInput,
-  AcpBackendThreadStartInput,
-  AcpBackendThreadStartResult,
-  AcpBackendSessionChangedEvent,
+  AgentBackendAuthenticateInput,
+  AgentBackendAuthenticateResult,
+  AgentBackendConfigOptionInput,
+  AgentBackendConfigOptionResult,
+  AgentBackendModeInput,
+  AgentBackendPromptInput,
+  AgentBackendPromptResult,
+  AgentBackendSessionOpenInput,
+  AgentBackendThreadStartInput,
+  AgentBackendThreadStartResult,
+  AgentBackendSessionChangedEvent,
 } from "../../shared/agent-backend-api";
 import type {
-  AcpBackendSessionPresentation,
-  AcpSessionConfigOption,
-  AcpSessionModeState,
-} from "../../shared/acp-conversation";
+  AgentBackendSessionPresentation,
+  AgentSessionConfigOption,
+  AgentSessionModeState,
+} from "../../shared/agent-conversation";
 import type { AgentBackendBinding } from "../../shared/agent-backend";
 import { createUuidV7 } from "../../shared/uuid-v7";
 import type { CodexPermissionMode, ProjectSessionThreadLink } from "../../shared/types";
@@ -33,8 +36,10 @@ import {
   AcpBackendSessionManager,
   type AcpBackendSessionHandle,
 } from "./acp/AcpBackendSessionManager";
-import type { AcpRuntimeError } from "./acp/AcpRuntimeError";
+import type { AgentRuntimeError } from "./AgentRuntimeError";
 import { ProjectWorkspace } from "../project-application/ProjectWorkspace";
+import type { ClaudeModelCatalogInput } from "../../shared/claude-models";
+import type { AgentSessionConfigSelectOption } from "../../shared/agent-conversation";
 
 export class AgentBackendApplicationError extends Schema.TaggedError<AgentBackendApplicationError>()(
   "AgentBackendApplicationError",
@@ -46,47 +51,57 @@ export class AgentBackendApplicationError extends Schema.TaggedError<AgentBacken
   },
 ) {}
 
-type AcpBinding = Extract<AgentBackendBinding, { readonly kind: "acp" }>;
+type ExternalBinding = Exclude<AgentBackendBinding, { readonly kind: "codex" }>;
 
 export class AgentBackendApplication extends Context.Service<
   AgentBackendApplication,
   {
-    readonly startAcpThread: (
-      input: AcpBackendThreadStartInput,
-    ) => Effect.Effect<AcpBackendThreadStartResult, AgentBackendApplicationError>;
-    readonly openAcpSession: (
-      input: AcpBackendSessionOpenInput,
-    ) => Effect.Effect<AcpBackendSessionPresentation, AgentBackendApplicationError>;
-    readonly readAcpSession: (
+    readonly claudeModels: (
+      input: ClaudeModelCatalogInput,
+    ) => Effect.Effect<readonly AgentSessionConfigSelectOption[], AgentBackendApplicationError>;
+    readonly startAgentThread: (
+      input: AgentBackendThreadStartInput,
+    ) => Effect.Effect<AgentBackendThreadStartResult, AgentBackendApplicationError>;
+    readonly openAgentSession: (
+      input: AgentBackendSessionOpenInput,
+    ) => Effect.Effect<AgentBackendSessionPresentation, AgentBackendApplicationError>;
+    readonly readAgentSession: (
       threadId: string,
-    ) => Effect.Effect<AcpBackendSessionPresentation | null, AgentBackendApplicationError>;
-    readonly observeAcpSession: (threadId: string) => Effect.Effect<void>;
-    readonly unobserveAcpSession: (threadId: string) => Effect.Effect<void>;
-    readonly promptAcpSession: (
-      input: AcpBackendPromptInput,
-    ) => Effect.Effect<AcpBackendPromptResult, AgentBackendApplicationError>;
-    readonly cancelAcpSession: (
+    ) => Effect.Effect<AgentBackendSessionPresentation | null, AgentBackendApplicationError>;
+    readonly observeAgentSession: (threadId: string) => Effect.Effect<void>;
+    readonly unobserveAgentSession: (threadId: string) => Effect.Effect<void>;
+    readonly promptAgentSession: (
+      input: AgentBackendPromptInput,
+    ) => Effect.Effect<AgentBackendPromptResult, AgentBackendApplicationError>;
+    readonly cancelAgentSession: (
       threadId: string,
-    ) => Effect.Effect<AcpBackendSessionPresentation["snapshot"], AgentBackendApplicationError>;
-    readonly setAcpMode: (
-      input: AcpBackendModeInput,
-    ) => Effect.Effect<AcpBackendSessionPresentation["snapshot"], AgentBackendApplicationError>;
-    readonly setAcpConfigOption: (
-      input: AcpBackendConfigOptionInput,
-    ) => Effect.Effect<AcpBackendConfigOptionResult, AgentBackendApplicationError>;
-    readonly authenticateAcpSession: (
-      input: AcpBackendAuthenticateInput,
-    ) => Effect.Effect<AcpBackendAuthenticateResult, AgentBackendApplicationError>;
-    readonly closeAcpSession: (
+    ) => Effect.Effect<AgentBackendSessionPresentation["snapshot"], AgentBackendApplicationError>;
+    readonly setAgentMode: (
+      input: AgentBackendModeInput,
+    ) => Effect.Effect<AgentBackendSessionPresentation["snapshot"], AgentBackendApplicationError>;
+    readonly setAgentConfigOption: (
+      input: AgentBackendConfigOptionInput,
+    ) => Effect.Effect<AgentBackendConfigOptionResult, AgentBackendApplicationError>;
+    readonly authenticateAgentSession: (
+      input: AgentBackendAuthenticateInput,
+    ) => Effect.Effect<AgentBackendAuthenticateResult, AgentBackendApplicationError>;
+    readonly closeAgentSession: (
       threadId: string,
     ) => Effect.Effect<void, AgentBackendApplicationError>;
-    readonly changes: Stream.Stream<AcpBackendSessionChangedEvent>;
+    readonly respondToInteraction: (
+      threadId: string,
+      requestId: string,
+      response: AgentInteractionResponse,
+    ) => Effect.Effect<void, AgentBackendApplicationError>;
+    readonly changes: Stream.Stream<AgentBackendSessionChangedEvent>;
   }
 >()("nodex/main/agent-backend/AgentBackendApplication") {}
 
-const sameBinding = (left: AcpBinding, right: AcpBinding): boolean =>
-  left.agentDefinitionId === right.agentDefinitionId &&
-  left.instanceConfigId === right.instanceConfigId;
+const sameBinding = (left: ExternalBinding, right: ExternalBinding): boolean =>
+  left.kind === right.kind &&
+  left.instanceConfigId === right.instanceConfigId &&
+  (left.kind === "claude" ||
+    (right.kind === "acp" && left.agentDefinitionId === right.agentDefinitionId));
 
 const ACP_PERMISSION_POLICY_BY_MODE = {
   auto: "ask",
@@ -99,9 +114,9 @@ export const resolveAcpPermissionPolicy = (
   mode: CodexPermissionMode | null,
 ): "approve-for-me" | "ask" => (mode === null ? "ask" : ACP_PERMISSION_POLICY_BY_MODE[mode]);
 
-export const projectAcpSessionModes = (
+export const projectAgentSessionModes = (
   modes: AcpBackendSessionHandle["modes"],
-): AcpSessionModeState | null =>
+): AgentSessionModeState | null =>
   modes
     ? {
         currentModeId: modes.currentModeId,
@@ -113,10 +128,10 @@ export const projectAcpSessionModes = (
       }
     : null;
 
-export const projectAcpSessionConfigOptions = (
+export const projectAgentSessionConfigOptions = (
   options: AcpBackendSessionHandle["configOptions"],
-): readonly AcpSessionConfigOption[] =>
-  options.map((option): AcpSessionConfigOption => {
+): readonly AgentSessionConfigOption[] =>
+  options.map((option): AgentSessionConfigOption => {
     const common = {
       id: option.id,
       name: option.name,
@@ -183,7 +198,43 @@ const isInterruptedOnly = (cause: Cause.Cause<unknown>): boolean =>
 
 export const make = Effect.gen(function* () {
   const backends = yield* AgentBackendRegistry;
-  const sessions = yield* AcpBackendSessionManager;
+  const acpSessions = yield* AcpBackendSessionManager;
+  const claudeSessions = yield* ClaudeSessionManager;
+  const adaptAcp = (handle: AcpBackendSessionHandle): AgentSessionHandle => ({
+    ...handle,
+    get sessionId() {
+      return handle.sessionId;
+    },
+    get modes() {
+      return projectAgentSessionModes(handle.modes);
+    },
+    get configOptions() {
+      return projectAgentSessionConfigOptions(handle.configOptions);
+    },
+    prompt: (text, options) => handle.prompt([{ type: "text", text }], options),
+    setConfigOption: (id, value) =>
+      handle.setConfigOption(id, value).pipe(Effect.map(projectAgentSessionConfigOptions)),
+  });
+  const sessions = {
+    get: (id: string) =>
+      claudeSessions
+        .get(id)
+        .pipe(
+          Effect.flatMap((native) =>
+            native
+              ? Effect.succeed(native)
+              : acpSessions
+                  .get(id)
+                  .pipe(Effect.map((handle) => (handle ? adaptAcp(handle) : null))),
+          ),
+        ),
+    observe: (id: string) =>
+      acpSessions.observe(id).pipe(Effect.andThen(claudeSessions.observe(id))),
+    unobserve: (id: string) =>
+      acpSessions.unobserve(id).pipe(Effect.andThen(claudeSessions.unobserve(id))),
+    close: (id: string) => acpSessions.close(id).pipe(Effect.andThen(claudeSessions.close(id))),
+    changes: Stream.merge(acpSessions.changes, claudeSessions.changes),
+  };
   const workspace = yield* ProjectWorkspace;
   const ownerScope = yield* Scope.Scope;
 
@@ -203,13 +254,13 @@ export const make = Effect.gen(function* () {
       ),
     );
 
-  const presentation = (handle: AcpBackendSessionHandle) =>
+  const presentation = (handle: AgentSessionHandle) =>
     SubscriptionRef.get(handle.snapshot).pipe(
       Effect.map((snapshot) => ({
         snapshot,
         capabilities: handle.capabilities,
-        modes: projectAcpSessionModes(handle.modes),
-        configOptions: projectAcpSessionConfigOptions(handle.configOptions),
+        modes: handle.modes,
+        configOptions: handle.configOptions,
       })),
     );
 
@@ -218,7 +269,7 @@ export const make = Effect.gen(function* () {
       const thread = yield* workspace.getThread(threadId);
       if (!thread)
         return yield* fail("thread.read", new Error("Agent Thread was not found"), { threadId });
-      if (thread.backendBinding.kind !== "acp") {
+      if (thread.backendBinding.kind === "codex") {
         return yield* fail(
           "thread.backend",
           new Error("Thread is owned by the native Codex backend"),
@@ -228,21 +279,29 @@ export const make = Effect.gen(function* () {
         );
       }
       const resolution = yield* backends.resolve(thread.backendBinding);
-      if (resolution.kind !== "acp") {
-        return yield* fail(
-          "thread.backend",
-          new Error("ACP binding resolved to the native backend"),
-          {
-            threadId,
-          },
-        );
+      if (resolution.kind === "codex") {
+        return yield* fail("thread.backend", new Error("Agent binding resolved to Codex"), {
+          threadId,
+        });
       }
       const project = thread.projectId ? yield* workspace.getProject(thread.projectId) : null;
+      if (
+        !project ||
+        project.lifecycle !== "active" ||
+        thread.archived ||
+        (thread.executionHostId && thread.executionHostId !== "local")
+      ) {
+        return yield* fail(
+          "thread.workspace",
+          new Error("Agent execution requires an active local Project and task"),
+          { threadId },
+        );
+      }
       const workspaceRoot = thread.cwd?.trim() || project?.primaryWorkspaceRoot?.trim();
       if (!workspaceRoot) {
         return yield* fail(
           "thread.workspace",
-          new Error("ACP Threads require a local Project workspace"),
+          new Error("Agent Threads require a local Project workspace"),
           { threadId },
         );
       }
@@ -258,55 +317,69 @@ export const make = Effect.gen(function* () {
     },
   );
 
-  const openAcpSession = Effect.fn("AgentBackendApplication.openAcpSession")(function* (
-    input: AcpBackendSessionOpenInput,
+  const openAgentSession = Effect.fn("AgentBackendApplication.openAgentSession")(function* (
+    input: AgentBackendSessionOpenInput,
   ) {
     const authority = yield* resolveThreadAuthority(input.threadId);
     const durable = yield* workspace.readThreadBackendSession(input.threadId);
     if (durable && !sameBinding(durable.backendBinding, authority.binding)) {
       return yield* fail(
         "session.binding",
-        new Error("Durable ACP session belongs to a stale backend binding"),
+        new Error("Durable Agent session belongs to a stale backend binding"),
         { threadId: input.threadId },
       );
     }
-    const handle = yield* sessions
-      .open({
-        threadId: input.threadId,
-        agentDefinitionId: authority.binding.agentDefinitionId,
-        instanceConfigId: authority.binding.instanceConfigId,
-        workspaceRoot: authority.workspaceRoot,
-        permissionPolicy: authority.permissionPolicy,
-        open: durable ? { kind: "load", sessionId: durable.backendSessionId } : { kind: "new" },
-      })
-      .pipe(
-        Effect.catch(
-          (cause): Effect.Effect<never, AcpRuntimeError | AgentBackendApplicationError> => {
-            if (!durable || requestErrorCode(cause) !== -32002) return Effect.fail(cause);
-            return ownFailure(
-              "session.restore.clear",
-              workspace.clearThreadBackendSession({
-                threadId: input.threadId,
-                backendBinding: authority.binding,
-              }),
-              { threadId: input.threadId },
-            ).pipe(
-              Effect.andThen(
-                Effect.fail(
-                  fail(
-                    "session.restore",
-                    new Error(
-                      "The ACP Agent no longer has the durable session. Start a new task instead of replaying the previous prompt.",
-                      { cause },
-                    ),
-                    { threadId: input.threadId },
+    const handle = yield* (
+      authority.binding.kind === "claude"
+        ? claudeSessions.open({
+            threadId: input.threadId,
+            instanceConfigId: authority.binding.instanceConfigId,
+            workspaceRoot: authority.workspaceRoot,
+            permissionPolicy: authority.permissionPolicy,
+            model: authority.thread.executionProfile?.modelId,
+            effort: authority.thread.executionProfile?.reasoningEffort,
+            ...(durable ? { sessionId: durable.backendSessionId } : {}),
+          })
+        : acpSessions
+            .open({
+              threadId: input.threadId,
+              agentDefinitionId: authority.binding.agentDefinitionId,
+              instanceConfigId: authority.binding.instanceConfigId!,
+              workspaceRoot: authority.workspaceRoot,
+              permissionPolicy: authority.permissionPolicy,
+              open: durable
+                ? { kind: "load", sessionId: durable.backendSessionId }
+                : { kind: "new" },
+            })
+            .pipe(Effect.map(adaptAcp))
+    ).pipe(
+      Effect.catch(
+        (cause): Effect.Effect<never, AgentRuntimeError | AgentBackendApplicationError> => {
+          if (!durable || requestErrorCode(cause) !== -32002) return Effect.fail(cause);
+          return ownFailure(
+            "session.restore.clear",
+            workspace.clearThreadBackendSession({
+              threadId: input.threadId,
+              backendBinding: authority.binding,
+            }),
+            { threadId: input.threadId },
+          ).pipe(
+            Effect.andThen(
+              Effect.fail(
+                fail(
+                  "session.restore",
+                  new Error(
+                    "The ACP Agent no longer has the durable session. Start a new task instead of replaying the previous prompt.",
+                    { cause },
                   ),
+                  { threadId: input.threadId },
                 ),
               ),
-            );
-          },
-        ),
-      );
+            ),
+          );
+        },
+      ),
+    );
     const openedSessionId = handle.sessionId;
     if (durable && openedSessionId !== null && durable.backendSessionId !== openedSessionId) {
       yield* sessions.close(input.threadId);
@@ -331,13 +404,33 @@ export const make = Effect.gen(function* () {
   ) {
     const existing = yield* sessions.get(threadId);
     if (existing) return existing;
-    yield* openAcpSession({ threadId });
+    yield* openAgentSession({ threadId });
     const opened = yield* sessions.get(threadId);
     if (opened) return opened;
-    return yield* fail("session.open", new Error("ACP session did not become available"), {
+    return yield* fail("session.open", new Error("Agent session did not become available"), {
       threadId,
     });
   });
+
+  const persistClaudeIntelligence = Effect.fn("AgentBackendApplication.persistClaudeIntelligence")(
+    function* (handle: AgentSessionHandle) {
+      if ((yield* SubscriptionRef.get(handle.snapshot)).backend !== "claude") return;
+      const value = (id: string) => {
+        const option = handle.configOptions.find((entry) => entry.id === id);
+        return option?.type === "select" ? option.currentValue : null;
+      };
+      const effort = value("effort");
+      yield* workspace
+        .updateThread(handle.threadId, {
+          executionProfile: {
+            modelId: value("model") ?? "default",
+            reasoningEffort: effort === "default" ? null : effort,
+            serviceTier: null,
+          },
+        })
+        .pipe(Effect.tapError(() => sessions.close(handle.threadId)));
+    },
+  );
 
   const setThreadStatus = (threadId: string, statusType: "active" | "idle" | "systemError") =>
     workspace
@@ -348,8 +441,8 @@ export const make = Effect.gen(function* () {
       })
       .pipe(Effect.asVoid);
 
-  const promptAcpSession = Effect.fn("AgentBackendApplication.promptAcpSession")(function* (
-    input: AcpBackendPromptInput,
+  const promptAgentSession = Effect.fn("AgentBackendApplication.promptAgentSession")(function* (
+    input: AgentBackendPromptInput,
   ) {
     const text = input.prompt.trim();
     if (!text)
@@ -362,7 +455,7 @@ export const make = Effect.gen(function* () {
         Effect.andThen(
           restore(
             handle.prompt(
-              [{ type: "text", text }],
+              text,
               input.clientUserMessageId
                 ? { clientUserMessageId: input.clientUserMessageId }
                 : undefined,
@@ -389,11 +482,11 @@ export const make = Effect.gen(function* () {
 
   const launchInitialPrompt = (threadId: string, prompt: string, clientUserMessageId: string) =>
     Effect.yieldNow.pipe(
-      Effect.andThen(promptAcpSession({ threadId, prompt, clientUserMessageId })),
+      Effect.andThen(promptAgentSession({ threadId, prompt, clientUserMessageId })),
       Effect.catchCause((cause) =>
         isInterruptedOnly(cause)
           ? Effect.void
-          : Effect.logError("ACP initial prompt failed").pipe(
+          : Effect.logError("Agent initial prompt failed").pipe(
               Effect.annotateLogs({ cause: Cause.pretty(cause), threadId }),
             ),
       ),
@@ -401,8 +494,8 @@ export const make = Effect.gen(function* () {
       Effect.asVoid,
     );
 
-  const startAcpThread = Effect.fn("AgentBackendApplication.startAcpThread")(function* (
-    input: AcpBackendThreadStartInput,
+  const startAgentThread = Effect.fn("AgentBackendApplication.startAgentThread")(function* (
+    input: AgentBackendThreadStartInput,
   ) {
     const session = yield* workspace.getProjectSession(input.sessionId);
     if (!session || session.thread) {
@@ -415,7 +508,7 @@ export const make = Effect.gen(function* () {
     if (!session.projectId) {
       return yield* fail(
         "thread.start.workspace",
-        new Error("ACP Threads currently require a local Project"),
+        new Error("Agent Threads currently require a local Project"),
         { sessionId: input.sessionId },
       );
     }
@@ -424,11 +517,13 @@ export const make = Effect.gen(function* () {
     if (!project || project.lifecycle !== "active" || !workspaceRoot) {
       return yield* fail(
         "thread.start.workspace",
-        new Error("ACP Threads require an active Project with a primary workspace"),
+        new Error("Agent Threads require an active Project with a primary workspace"),
         { sessionId: input.sessionId },
       );
     }
-    const resolution = yield* backends.resolveAcpInstance(input.instanceConfigId);
+    const resolution = yield* input.backendKind === "claude"
+      ? backends.resolve({ kind: "claude", instanceConfigId: input.instanceConfigId })
+      : backends.resolveAcpInstance(input.instanceConfigId);
     const threadId = createUuidV7();
     const now = Date.now();
     const linked = yield* workspace.upsertProjectSessionThreadLink({
@@ -448,10 +543,29 @@ export const make = Effect.gen(function* () {
       updatedAt: now,
       recencyAt: now,
     });
-    const opened = yield* openAcpSession({ threadId });
+    const opened = yield* openAgentSession({ threadId });
     const currentSession = yield* workspace.getProjectSession(input.sessionId);
     const thread: ProjectSessionThreadLink = currentSession?.thread ?? linked;
     const handle = yield* requireHandle(threadId);
+    const modelConfig = handle.configOptions.find((option) => option.category === "model");
+    if (
+      input.model &&
+      modelConfig &&
+      modelConfig.type === "select" &&
+      modelConfig.currentValue !== input.model
+    ) {
+      yield* handle.setConfigOption(modelConfig.id, input.model);
+    }
+    if (input.backendKind === "claude" && input.effort)
+      yield* handle.setConfigOption("effort", input.effort);
+    yield* persistClaudeIntelligence(handle);
+    const mode = handle.modes?.availableModes.find((candidate) =>
+      input.mode === "plan"
+        ? candidate.id === "plan"
+        : candidate.id === "code" || candidate.id === "default",
+    );
+    if (input.mode && mode && handle.modes?.currentModeId !== mode.id)
+      yield* handle.setMode(mode.id);
     const result = { thread, presentation: yield* presentation(handle) };
     // The first prompt remains process-owned and single-consume. Interactive authentication may
     // defer its first submission, but a Main restart never replays it and risks a duplicate.
@@ -466,23 +580,38 @@ export const make = Effect.gen(function* () {
     return result;
   });
 
-  const readAcpSession = (threadId: string) =>
+  const readAgentSession = (threadId: string) =>
     sessions
       .get(threadId)
       .pipe(Effect.flatMap((handle) => (handle ? presentation(handle) : Effect.succeed(null))));
 
   return AgentBackendApplication.of({
-    startAcpThread: (input) =>
-      ownFailure("thread.start", startAcpThread(input), { sessionId: input.sessionId }),
-    openAcpSession: (input) =>
-      ownFailure("session.open", openAcpSession(input), { threadId: input.threadId }),
-    readAcpSession: (threadId) =>
-      ownFailure("session.read", readAcpSession(threadId), { threadId }),
-    observeAcpSession: sessions.observe,
-    unobserveAcpSession: sessions.unobserve,
-    promptAcpSession: (input) =>
-      ownFailure("session.prompt", promptAcpSession(input), { threadId: input.threadId }),
-    cancelAcpSession: (threadId) =>
+    claudeModels: (input) =>
+      ownFailure(
+        "claude.models",
+        Effect.gen(function* () {
+          const project = yield* workspace.getProject(input.projectId);
+          const root = project?.primaryWorkspaceRoot?.trim();
+          if (!project || project.lifecycle !== "active" || !root)
+            return yield* fail(
+              "claude.models",
+              new Error("Choose an active local Project to load Claude models"),
+            );
+          yield* backends.resolve({ kind: "claude", instanceConfigId: input.instanceConfigId });
+          return yield* claudeSessions.models(input.instanceConfigId, root);
+        }),
+      ),
+    startAgentThread: (input) =>
+      ownFailure("thread.start", startAgentThread(input), { sessionId: input.sessionId }),
+    openAgentSession: (input) =>
+      ownFailure("session.open", openAgentSession(input), { threadId: input.threadId }),
+    readAgentSession: (threadId) =>
+      ownFailure("session.read", readAgentSession(threadId), { threadId }),
+    observeAgentSession: sessions.observe,
+    unobserveAgentSession: sessions.unobserve,
+    promptAgentSession: (input) =>
+      ownFailure("session.prompt", promptAgentSession(input), { threadId: input.threadId }),
+    cancelAgentSession: (threadId) =>
       ownFailure(
         "session.cancel",
         Effect.gen(function* () {
@@ -492,7 +621,7 @@ export const make = Effect.gen(function* () {
         }),
         { threadId },
       ),
-    setAcpMode: (input) =>
+    setAgentMode: (input) =>
       ownFailure(
         "session.set-mode",
         Effect.gen(function* () {
@@ -502,20 +631,21 @@ export const make = Effect.gen(function* () {
         }),
         { threadId: input.threadId },
       ),
-    setAcpConfigOption: (input) =>
+    setAgentConfigOption: (input) =>
       ownFailure(
         "session.set-config-option",
         Effect.gen(function* () {
           const handle = yield* requireHandle(input.threadId);
           const configOptions = yield* handle.setConfigOption(input.configId, input.value);
+          yield* persistClaudeIntelligence(handle);
           return {
-            configOptions: projectAcpSessionConfigOptions(configOptions),
+            configOptions,
             snapshot: yield* SubscriptionRef.get(handle.snapshot),
           };
         }),
         { threadId: input.threadId },
       ),
-    authenticateAcpSession: (input) =>
+    authenticateAgentSession: (input) =>
       ownFailure(
         "session.authenticate",
         Effect.gen(function* () {
@@ -558,8 +688,23 @@ export const make = Effect.gen(function* () {
         }),
         { threadId: input.threadId },
       ),
-    closeAcpSession: (threadId) =>
+    closeAgentSession: (threadId) =>
       ownFailure("session.close", sessions.close(threadId), { threadId }),
+    respondToInteraction: (threadId, requestId, response) =>
+      ownFailure(
+        "session.respond",
+        Effect.gen(function* () {
+          const handle = yield* requireHandle(threadId);
+          if (!handle.respond)
+            return yield* fail(
+              "session.respond",
+              new Error("This Agent has no pending interactive controls"),
+              { threadId },
+            );
+          yield* handle.respond(requestId, response);
+        }),
+        { threadId },
+      ),
     changes: sessions.changes,
   });
 });
@@ -567,5 +712,5 @@ export const make = Effect.gen(function* () {
 export const live: Layer.Layer<
   AgentBackendApplication,
   never,
-  AgentBackendRegistry | AcpBackendSessionManager | ProjectWorkspace
+  AgentBackendRegistry | AcpBackendSessionManager | ClaudeSessionManager | ProjectWorkspace
 > = Layer.effect(AgentBackendApplication, make);

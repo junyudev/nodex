@@ -104,6 +104,7 @@ const buildHarness = (input: {
     } as unknown as ElectronWindowHost["Service"]);
     const scope = yield* Scope.make();
     const settings = ApplicationSettings.of({
+      claudeLaunchConfiguration: () => Effect.die("Unused Claude launch configuration"),
       snapshot: () =>
         Effect.succeed({ appUpdate: persistedSettings } as ApplicationSettingsSnapshot),
       update: (command) => {

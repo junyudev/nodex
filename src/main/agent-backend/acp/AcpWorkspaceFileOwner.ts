@@ -10,7 +10,7 @@ import type {
 import * as Context from "effect/Context";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
-import { acpRuntimeError, type AcpRuntimeError } from "./AcpRuntimeError";
+import { agentRuntimeError, type AgentRuntimeError } from "../AgentRuntimeError";
 
 export const ACP_DEFAULT_FILE_BYTE_LIMIT = 4 * 1024 * 1024;
 
@@ -20,13 +20,13 @@ export class AcpWorkspaceFileOwner extends Context.Service<
     readonly workspaceRoot: string;
     readonly readTextFile: (
       request: ReadTextFileRequest,
-    ) => Effect.Effect<ReadTextFileResponse, AcpRuntimeError>;
+    ) => Effect.Effect<ReadTextFileResponse, AgentRuntimeError>;
     readonly writeTextFile: (
       request: WriteTextFileRequest,
-    ) => Effect.Effect<WriteTextFileResponse, AcpRuntimeError>;
+    ) => Effect.Effect<WriteTextFileResponse, AgentRuntimeError>;
     readonly resolveDirectory: (
       path: string | null | undefined,
-    ) => Effect.Effect<string, AcpRuntimeError>;
+    ) => Effect.Effect<string, AgentRuntimeError>;
   }
 >()("nodex/main/agent-backend/acp/AcpWorkspaceFileOwner") {}
 
@@ -41,7 +41,7 @@ const isInside = (root: string, target: string): boolean => {
 };
 
 const fail = (operation: string, reason: "authorization" | "protocol", cause: unknown) =>
-  acpRuntimeError({ operation, reason, retryable: false, cause });
+  agentRuntimeError({ operation, reason, retryable: false, cause });
 
 const validatePositiveInteger = (value: number, label: string): number => {
   if (Number.isSafeInteger(value) && value > 0) return value;
@@ -89,7 +89,7 @@ const sliceLines = (
 
 export const live = (
   options: AcpWorkspaceFileOwnerOptions,
-): Layer.Layer<AcpWorkspaceFileOwner, AcpRuntimeError> =>
+): Layer.Layer<AcpWorkspaceFileOwner, AgentRuntimeError> =>
   Layer.effect(
     AcpWorkspaceFileOwner,
     Effect.tryPromise({

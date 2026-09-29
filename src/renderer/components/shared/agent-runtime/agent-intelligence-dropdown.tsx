@@ -31,7 +31,7 @@ import {
 } from "./intelligence-selector-trigger";
 
 export interface AgentIntelligenceSelection {
-  readonly kind: "codex";
+  readonly kind: "codex" | "claude" | "acp";
   readonly model: string;
   readonly reasoningEffort: CodexReasoningEffort;
   readonly serviceTier: CodexServiceTier;
@@ -40,6 +40,12 @@ export interface AgentIntelligenceSelection {
 export type AgentIntelligenceInheritance = "explicit" | "inherited";
 
 export interface AgentIntelligenceDropdownProps {
+  readonly provider?: {
+    readonly label: string;
+    readonly selection: string;
+    readonly options: readonly { value: string; label: string }[];
+    readonly select: (value: string) => void;
+  };
   readonly models: readonly CodexModelOption[];
   readonly selection: AgentIntelligenceSelection;
   readonly inheritance?: AgentIntelligenceInheritance;
@@ -64,6 +70,9 @@ const SERVICE_TIER_OPTIONS: readonly {
   { value: null, label: "Standard", description: "Default speed, normal usage" },
   { value: "fast", label: "Fast", description: "1.5x speed · More usage" },
 ];
+
+const effortLabel = (kind: AgentIntelligenceSelection["kind"], effort: string) =>
+  kind === "claude" && effort === "low" ? "Low" : formatCodexReasoningEffortLabel(effort);
 
 export function resolveReasoningEffortForModelChange(input: {
   currentReasoningEffort: CodexReasoningEffort;
@@ -104,6 +113,7 @@ function ModelLabel({
 
 export function AgentIntelligenceDropdown({
   models,
+  provider,
   selection,
   inheritance = "explicit",
   allowInherit = false,
@@ -129,8 +139,13 @@ export function AgentIntelligenceDropdown({
   const visibleModels = matchingModels.slice(0, 50);
   const hiddenMatchCount = matchingModels.length - visibleModels.length;
   const modelLabel = formatCodexModelLabel(selection.model, models);
-  const reasoningLabel = formatCodexReasoningEffortLabel(selection.reasoningEffort);
-  const reasoningOptions = resolveCodexReasoningEffortOptions(selection.model, models);
+  const isCodex = selection.kind === "codex";
+  const reasoningOptions = isCodex
+    ? resolveCodexReasoningEffortOptions(selection.model, models)
+    : (models.find(({ id }) => id === selection.model)?.supportedReasoningEfforts ?? []);
+  const reasoningLabel = reasoningOptions.length
+    ? effortLabel(selection.kind, selection.reasoningEffort)
+    : "";
   const labelCandidates = useMemo<readonly IntelligenceSelectorLabelCandidate[]>(
     () => [
       ...visibleCatalog.flatMap((candidate) => {
@@ -141,7 +156,10 @@ export function AgentIntelligenceDropdown({
         return efforts.map((effort) => ({
           id: `${candidate.id}:${effort}`,
           modelLabel: formatCodexModelLabel(candidate.id, models),
-          reasoningLabel: formatCodexReasoningEffortLabel(effort),
+          reasoningLabel:
+            isCodex || candidate.supportedReasoningEfforts.length
+              ? effortLabel(selection.kind, effort)
+              : "",
         }));
       }),
       {
@@ -151,17 +169,21 @@ export function AgentIntelligenceDropdown({
       },
     ],
     [
+      isCodex,
       modelLabel,
       models,
       reasoningLabel,
       selection.model,
       selection.reasoningEffort,
+      selection.kind,
       visibleCatalog,
     ],
   );
   const triggerGeometry = useIntelligenceSelectorTriggerGeometry(labelCandidates);
   const settingsLabel =
-    inheritance === "inherited" ? "Use current/default" : `${modelLabel} · ${reasoningLabel}`;
+    inheritance === "inherited"
+      ? "Use current/default"
+      : [modelLabel, reasoningLabel].filter(Boolean).join(" · ");
 
   return (
     <NodexDropdownMenu
@@ -212,6 +234,27 @@ export function AgentIntelligenceDropdown({
         </>
       ) : null}
 
+      {provider && provider.options.length > 1 ? (
+        <NodexDropdownSummarySubmenuItem
+          label="Agent"
+          value={provider.label}
+          ariaLabel={`Agent ${provider.label}`}
+        >
+          {provider.options.map((option) => (
+            <NodexDropdownItem
+              key={option.value}
+              onSelect={(event) => {
+                event.preventDefault();
+                provider.select(option.value);
+              }}
+              rightSlot={provider.selection === option.value ? <NodexDropdownSelectedIcon /> : null}
+            >
+              {option.label}
+            </NodexDropdownItem>
+          ))}
+        </NodexDropdownSummarySubmenuItem>
+      ) : null}
+
       <NodexDropdownSummarySubmenuItem
         ariaLabel={`Model ${modelLabel}`}
         label="Model"
@@ -240,11 +283,19 @@ export function AgentIntelligenceDropdown({
                     key={candidate.id}
                     onSelect={(event) => {
                       event.preventDefault();
-                      const reasoningEffort = resolveReasoningEffortForModelChange({
-                        currentReasoningEffort: selection.reasoningEffort,
-                        nextModelId: candidate.id,
-                        models,
-                      });
+                      const reasoningEffort = isCodex
+                        ? resolveReasoningEffortForModelChange({
+                            currentReasoningEffort: selection.reasoningEffort,
+                            nextModelId: candidate.id,
+                            models,
+                          })
+                        : selection.kind === "claude"
+                          ? candidate.supportedReasoningEfforts.some(
+                              (option) => option.reasoningEffort === selection.reasoningEffort,
+                            )
+                            ? selection.reasoningEffort
+                            : candidate.defaultReasoningEffort
+                          : "none";
                       if (!reasoningEffort) return;
                       onSelectionChange(
                         { ...selection, model: candidate.id, reasoningEffort },
@@ -252,14 +303,27 @@ export function AgentIntelligenceDropdown({
                       );
                     }}
                     rightSlot={selected ? <NodexDropdownSelectedIcon /> : null}
-                    tooltipText={candidate.description.trim().replace(/\.$/u, "") || undefined}
+                    tooltipText={
+                      selection.kind === "claude" && candidate.id !== "default"
+                        ? candidate.id
+                        : candidate.description.trim().replace(/\.$/u, "") || undefined
+                    }
                     data-model-selected={selected ? "true" : undefined}
                   >
-                    <ModelLabel
-                      modelId={candidate.id}
-                      models={models}
-                      fast={selection.serviceTier === "fast"}
-                    />
+                    <span className="flex min-w-0 flex-col">
+                      <ModelLabel
+                        modelId={candidate.id}
+                        models={models}
+                        fast={selection.serviceTier === "fast"}
+                      />
+                      {selection.kind === "claude" &&
+                      candidate.id !== "default" &&
+                      candidate.displayName !== candidate.id ? (
+                        <span className="truncate text-xs text-token-description-foreground">
+                          {candidate.id}
+                        </span>
+                      ) : null}
+                    </span>
                   </NodexDropdownItem>
                 );
               })
@@ -273,68 +337,72 @@ export function AgentIntelligenceDropdown({
         </NodexDropdownSection>
       </NodexDropdownSummarySubmenuItem>
 
-      <NodexDropdownSummarySubmenuItem
-        ariaLabel={`Effort ${reasoningLabel}`}
-        label="Effort"
-        value={reasoningLabel}
-        contentClassName="min-w-[180px]"
-      >
-        <NodexDropdownSection className="flex min-w-[180px] flex-col overflow-hidden">
-          <NodexDropdownTitle>Effort</NodexDropdownTitle>
-          {reasoningOptions.map((option) => (
-            <NodexDropdownItem
-              key={option.reasoningEffort}
-              onSelect={(event) => {
-                event.preventDefault();
-                onSelectionChange(
-                  { ...selection, reasoningEffort: option.reasoningEffort },
-                  "reasoningEffort",
-                );
-              }}
-              rightSlot={
-                option.reasoningEffort === selection.reasoningEffort ? (
-                  <NodexDropdownSelectedIcon />
-                ) : null
-              }
-              tooltipText={option.description || undefined}
-              subText={
-                option.reasoningEffort === "ultra" ? "Consumes usage limits faster" : undefined
-              }
-              allowWrap={option.reasoningEffort === "ultra"}
-              data-intelligence-option={option.reasoningEffort}
-            >
-              {formatCodexReasoningEffortLabel(option.reasoningEffort)}
-            </NodexDropdownItem>
-          ))}
-        </NodexDropdownSection>
-      </NodexDropdownSummarySubmenuItem>
+      {reasoningOptions.length > 0 ? (
+        <NodexDropdownSummarySubmenuItem
+          ariaLabel={`Effort ${reasoningLabel}`}
+          label="Effort"
+          value={reasoningLabel}
+          contentClassName="min-w-[180px]"
+        >
+          <NodexDropdownSection className="flex min-w-[180px] flex-col overflow-hidden">
+            <NodexDropdownTitle>Effort</NodexDropdownTitle>
+            {reasoningOptions.map((option) => (
+              <NodexDropdownItem
+                key={option.reasoningEffort}
+                onSelect={(event) => {
+                  event.preventDefault();
+                  onSelectionChange(
+                    { ...selection, reasoningEffort: option.reasoningEffort },
+                    "reasoningEffort",
+                  );
+                }}
+                rightSlot={
+                  option.reasoningEffort === selection.reasoningEffort ? (
+                    <NodexDropdownSelectedIcon />
+                  ) : null
+                }
+                tooltipText={option.description || undefined}
+                subText={
+                  option.reasoningEffort === "ultra" ? "Consumes usage limits faster" : undefined
+                }
+                allowWrap={option.reasoningEffort === "ultra"}
+                data-intelligence-option={option.reasoningEffort}
+              >
+                {effortLabel(selection.kind, option.reasoningEffort)}
+              </NodexDropdownItem>
+            ))}
+          </NodexDropdownSection>
+        </NodexDropdownSummarySubmenuItem>
+      ) : null}
 
-      <NodexDropdownSummarySubmenuItem
-        ariaLabel={`Speed ${selection.serviceTier === "fast" ? "Fast" : "Standard"}`}
-        label="Speed"
-        value={selection.serviceTier === "fast" ? "Fast" : "Standard"}
-        contentClassName="w-[233px]"
-      >
-        <NodexDropdownSection className="flex w-full min-w-0 flex-col overflow-hidden">
-          <NodexDropdownTitle>Speed</NodexDropdownTitle>
-          {SERVICE_TIER_OPTIONS.map((option) => (
-            <NodexDropdownItem
-              key={option.label}
-              onSelect={(event) => {
-                event.preventDefault();
-                onSelectionChange({ ...selection, serviceTier: option.value }, "serviceTier");
-              }}
-              rightSlot={
-                option.value === selection.serviceTier ? <NodexDropdownSelectedIcon /> : null
-              }
-              subText={option.description}
-              allowWrap
-            >
-              {option.label}
-            </NodexDropdownItem>
-          ))}
-        </NodexDropdownSection>
-      </NodexDropdownSummarySubmenuItem>
+      {isCodex ? (
+        <NodexDropdownSummarySubmenuItem
+          ariaLabel={`Speed ${selection.serviceTier === "fast" ? "Fast" : "Standard"}`}
+          label="Speed"
+          value={selection.serviceTier === "fast" ? "Fast" : "Standard"}
+          contentClassName="w-[233px]"
+        >
+          <NodexDropdownSection className="flex w-full min-w-0 flex-col overflow-hidden">
+            <NodexDropdownTitle>Speed</NodexDropdownTitle>
+            {SERVICE_TIER_OPTIONS.map((option) => (
+              <NodexDropdownItem
+                key={option.label}
+                onSelect={(event) => {
+                  event.preventDefault();
+                  onSelectionChange({ ...selection, serviceTier: option.value }, "serviceTier");
+                }}
+                rightSlot={
+                  option.value === selection.serviceTier ? <NodexDropdownSelectedIcon /> : null
+                }
+                subText={option.description}
+                allowWrap
+              >
+                {option.label}
+              </NodexDropdownItem>
+            ))}
+          </NodexDropdownSection>
+        </NodexDropdownSummarySubmenuItem>
+      ) : null}
     </NodexDropdownMenu>
   );
 }
