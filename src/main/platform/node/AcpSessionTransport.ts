@@ -44,10 +44,10 @@ import * as Semaphore from "effect/Semaphore";
 import * as Scope from "effect/Scope";
 import * as Stream from "effect/Stream";
 import {
-  acpRuntimeError,
-  classifyAcpRuntimeError,
-  type AcpRuntimeError,
-} from "../../agent-backend/acp/AcpRuntimeError";
+  agentRuntimeError,
+  classifyAgentRuntimeError,
+  type AgentRuntimeError,
+} from "../../agent-backend/AgentRuntimeError";
 import type { AcpClientCapabilityHandlers } from "../../agent-backend/acp/AcpClientCapabilityOwner";
 
 export const ACP_DEFAULT_INGRESS_CAPACITY = 128;
@@ -73,44 +73,44 @@ export interface AcpSessionTransportHandle {
   readonly protocolVersion: typeof PROTOCOL_VERSION;
   readonly initialize: (
     request: InitializeRequest,
-  ) => Effect.Effect<InitializeResponse, AcpRuntimeError>;
+  ) => Effect.Effect<InitializeResponse, AgentRuntimeError>;
   readonly newSession: (
     request: NewSessionRequest,
-  ) => Effect.Effect<NewSessionResponse, AcpRuntimeError>;
+  ) => Effect.Effect<NewSessionResponse, AgentRuntimeError>;
   readonly loadSession: (
     request: LoadSessionRequest,
-  ) => Effect.Effect<LoadSessionResponse, AcpRuntimeError>;
+  ) => Effect.Effect<LoadSessionResponse, AgentRuntimeError>;
   readonly listSessions: (
     request: ListSessionsRequest,
-  ) => Effect.Effect<ListSessionsResponse, AcpRuntimeError>;
+  ) => Effect.Effect<ListSessionsResponse, AgentRuntimeError>;
   readonly deleteSession: (
     request: DeleteSessionRequest,
-  ) => Effect.Effect<DeleteSessionResponse, AcpRuntimeError>;
+  ) => Effect.Effect<DeleteSessionResponse, AgentRuntimeError>;
   readonly forkSession: (
     request: ForkSessionRequest,
-  ) => Effect.Effect<ForkSessionResponse, AcpRuntimeError>;
+  ) => Effect.Effect<ForkSessionResponse, AgentRuntimeError>;
   readonly resumeSession: (
     request: ResumeSessionRequest,
-  ) => Effect.Effect<ResumeSessionResponse, AcpRuntimeError>;
+  ) => Effect.Effect<ResumeSessionResponse, AgentRuntimeError>;
   readonly closeSession: (
     request: CloseSessionRequest,
-  ) => Effect.Effect<CloseSessionResponse, AcpRuntimeError>;
+  ) => Effect.Effect<CloseSessionResponse, AgentRuntimeError>;
   readonly setSessionMode: (
     request: SetSessionModeRequest,
-  ) => Effect.Effect<SetSessionModeResponse, AcpRuntimeError>;
+  ) => Effect.Effect<SetSessionModeResponse, AgentRuntimeError>;
   readonly setSessionConfigOption: (
     request: SetSessionConfigOptionRequest,
-  ) => Effect.Effect<SetSessionConfigOptionResponse, AcpRuntimeError>;
-  readonly prompt: (request: PromptRequest) => Effect.Effect<PromptResponse, AcpRuntimeError>;
+  ) => Effect.Effect<SetSessionConfigOptionResponse, AgentRuntimeError>;
+  readonly prompt: (request: PromptRequest) => Effect.Effect<PromptResponse, AgentRuntimeError>;
   readonly authenticate: (
     request: AuthenticateRequest,
-  ) => Effect.Effect<AuthenticateResponse, AcpRuntimeError>;
-  readonly cancel: (sessionId: string) => Effect.Effect<void, AcpRuntimeError>;
+  ) => Effect.Effect<AuthenticateResponse, AgentRuntimeError>;
+  readonly cancel: (sessionId: string) => Effect.Effect<void, AgentRuntimeError>;
   readonly updates: Stream.Stream<SessionNotification>;
-  readonly drainUpdates: Effect.Effect<void, AcpRuntimeError>;
+  readonly drainUpdates: Effect.Effect<void, AgentRuntimeError>;
   readonly close: (cause?: unknown) => Effect.Effect<void>;
   readonly stderrTail: Effect.Effect<string>;
-  readonly termination: Effect.Effect<never, AcpRuntimeError>;
+  readonly termination: Effect.Effect<never, AgentRuntimeError>;
 }
 
 export class AcpSessionTransport extends Context.Service<
@@ -118,7 +118,7 @@ export class AcpSessionTransport extends Context.Service<
   {
     readonly open: (
       config: AcpSessionProcessConfig,
-    ) => Effect.Effect<AcpSessionTransportHandle, AcpRuntimeError, Scope.Scope>;
+    ) => Effect.Effect<AcpSessionTransportHandle, AgentRuntimeError, Scope.Scope>;
   }
 >()("nodex/main/platform/node/AcpSessionTransport") {}
 
@@ -144,14 +144,14 @@ const positiveInteger = (value: number | undefined, fallback: number, name: stri
 const spawnChild = (
   config: AcpSessionProcessConfig,
   runCallback: (effect: Effect.Effect<boolean>) => Promise<unknown>,
-): Effect.Effect<SpawnedChild, AcpRuntimeError, Scope.Scope> =>
+): Effect.Effect<SpawnedChild, AgentRuntimeError, Scope.Scope> =>
   Effect.gen(function* () {
     const exit = yield* Deferred.make<{
       readonly code: number | null;
       readonly signal: NodeJS.Signals | null;
       readonly error?: Error;
     }>();
-    const child = yield* Effect.callback<ChildProcessWithoutNullStreams, AcpRuntimeError>(
+    const child = yield* Effect.callback<ChildProcessWithoutNullStreams, AgentRuntimeError>(
       (resume) => {
         let child: ChildProcessWithoutNullStreams | undefined;
         let acquired = false;
@@ -166,7 +166,7 @@ const spawnChild = (
         } catch (cause) {
           resume(
             Effect.fail(
-              acpRuntimeError({
+              agentRuntimeError({
                 operation: "session.spawn",
                 reason: "spawn",
                 retryable: true,
@@ -182,7 +182,7 @@ const spawnChild = (
           if (acquired) return;
           resume(
             Effect.fail(
-              acpRuntimeError({
+              agentRuntimeError({
                 operation: "session.spawn",
                 reason: "spawn",
                 retryable: true,
@@ -287,11 +287,11 @@ const makeRequest = <A>(input: {
   readonly pid: number;
   readonly method: string;
   readonly evaluate: () => Promise<A>;
-}): Effect.Effect<A, AcpRuntimeError> =>
+}): Effect.Effect<A, AgentRuntimeError> =>
   Effect.tryPromise({
     try: input.evaluate,
     catch: (cause) =>
-      classifyAcpRuntimeError({
+      classifyAgentRuntimeError({
         operation: "session.request",
         cause,
         pid: input.pid,
@@ -311,7 +311,7 @@ export const live: Layer.Layer<AcpSessionTransport> = Layer.succeed(
             "ACP ingress capacity",
           ),
         catch: (cause) =>
-          acpRuntimeError({
+          agentRuntimeError({
             operation: "session.configure",
             reason: "protocol",
             retryable: false,
@@ -326,7 +326,7 @@ export const live: Layer.Layer<AcpSessionTransport> = Layer.succeed(
             "ACP maximum line bytes",
           ),
         catch: (cause) =>
-          acpRuntimeError({
+          agentRuntimeError({
             operation: "session.configure",
             reason: "protocol",
             retryable: false,
@@ -341,7 +341,7 @@ export const live: Layer.Layer<AcpSessionTransport> = Layer.succeed(
             "ACP stderr tail characters",
           ),
         catch: (cause) =>
-          acpRuntimeError({
+          agentRuntimeError({
             operation: "session.configure",
             reason: "protocol",
             retryable: false,
@@ -356,7 +356,7 @@ export const live: Layer.Layer<AcpSessionTransport> = Layer.succeed(
             "ACP callback capacity",
           ),
         catch: (cause) =>
-          acpRuntimeError({
+          agentRuntimeError({
             operation: "session.configure",
             reason: "protocol",
             retryable: false,
@@ -372,7 +372,7 @@ export const live: Layer.Layer<AcpSessionTransport> = Layer.succeed(
       );
       const pid = Number(spawned.child.pid);
       const callbackPermits = yield* Semaphore.make(callbackCapacity);
-      const runBoundedCallback = <A>(effect: Effect.Effect<A, AcpRuntimeError>) =>
+      const runBoundedCallback = <A>(effect: Effect.Effect<A, AgentRuntimeError>) =>
         runCallback(
           callbackPermits
             .withPermitsIfAvailable(1)(effect)
@@ -381,7 +381,7 @@ export const live: Layer.Layer<AcpSessionTransport> = Layer.succeed(
                 Option.match({
                   onNone: () =>
                     Effect.fail(
-                      acpRuntimeError({
+                      agentRuntimeError({
                         operation: "session.callback",
                         reason: "pressure",
                         retryable: false,
@@ -415,7 +415,7 @@ export const live: Layer.Layer<AcpSessionTransport> = Layer.succeed(
             Queue.offer(ingress, { kind: "update", notification: context.params }).pipe(
               Effect.flatMap((accepted) => {
                 if (accepted) return Effect.void;
-                const error = acpRuntimeError({
+                const error = agentRuntimeError({
                   operation: "session.ingress",
                   reason: "pressure",
                   retryable: false,
@@ -480,7 +480,7 @@ export const live: Layer.Layer<AcpSessionTransport> = Layer.succeed(
       const connectionClosed = Effect.tryPromise({
         try: () => ownedConnection.closed,
         catch: (cause) =>
-          classifyAcpRuntimeError({
+          classifyAgentRuntimeError({
             operation: "session.protocol",
             reason: "session-lost",
             retryable: true,
@@ -497,7 +497,7 @@ export const live: Layer.Layer<AcpSessionTransport> = Layer.succeed(
       const childTermination = Deferred.await(spawned.exit).pipe(
         Effect.flatMap(({ code, signal, error }) =>
           Effect.fail(
-            acpRuntimeError({
+            agentRuntimeError({
               operation: "session.exit",
               reason: "session-lost",
               retryable: true,
@@ -514,7 +514,7 @@ export const live: Layer.Layer<AcpSessionTransport> = Layer.succeed(
       const protocolTermination = connectionClosed.pipe(
         Effect.flatMap(() =>
           Effect.fail(
-            classifyAcpRuntimeError({
+            classifyAgentRuntimeError({
               operation: "session.protocol",
               reason: "session-lost",
               retryable: true,
@@ -536,7 +536,7 @@ export const live: Layer.Layer<AcpSessionTransport> = Layer.succeed(
         const acknowledged = yield* Deferred.make<void>();
         const accepted = yield* Queue.offer(ingress, { kind: "barrier", acknowledged });
         if (!accepted) {
-          const error = acpRuntimeError({
+          const error = agentRuntimeError({
             operation: "session.drain-updates",
             reason: "pressure",
             retryable: false,

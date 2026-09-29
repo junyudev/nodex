@@ -1,3 +1,4 @@
+import { ClaudeSessionManager } from "../agent-backend/claude/ClaudeSessionManager";
 import * as Cause from "effect/Cause";
 import * as Context from "effect/Context";
 import * as Effect from "effect/Effect";
@@ -74,12 +75,14 @@ export const live: Layer.Layer<
   | CodexThreadTitlePersistence
   | ConversationCommands
   | AcpBackendSessionManager
+  | ClaudeSessionManager
   | ProjectWorkspace
 > = Layer.effect(
   ProjectSessionCommands,
   Effect.gen(function* () {
     const browser = yield* BrowserApplication;
     const acpSessions = yield* AcpBackendSessionManager;
+    const claudeSessions = yield* ClaudeSessionManager;
     const conversation = yield* ConversationCommands;
     const sections = yield* CodexSidebarSectionSync;
     const threadTitles = yield* CodexThreadTitlePersistence;
@@ -163,7 +166,12 @@ export const live: Layer.Layer<
     ) {
       const existing = yield* read(command.payload.sessionId);
       if (existing?.thread && !isCodexAgentBackendBinding(existing.thread.backendBinding)) {
-        yield* attempt("close-backend-session", acpSessions.close(existing.thread.threadId));
+        yield* attempt(
+          "close-backend-session",
+          acpSessions
+            .close(existing.thread.threadId)
+            .pipe(Effect.andThen(claudeSessions.close(existing.thread.threadId))),
+        );
       }
       const result = yield* attempt("delete-session", workspace.deleteProjectSession(command));
       yield* closeBrowserConversation(command.payload.sessionId);
@@ -204,7 +212,12 @@ export const live: Layer.Layer<
               yield* attempt("unarchive-conversation", conversation.unarchive(thread.threadId));
             }
           } else if (archived) {
-            yield* attempt("close-backend-session", acpSessions.close(thread.threadId));
+            yield* attempt(
+              "close-backend-session",
+              acpSessions
+                .close(thread.threadId)
+                .pipe(Effect.andThen(claudeSessions.close(thread.threadId))),
+            );
           }
         }).pipe(Effect.provideService(CoreApplicationAgent, null)),
       );

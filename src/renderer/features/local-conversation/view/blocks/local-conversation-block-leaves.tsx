@@ -315,6 +315,7 @@ function renderCollapsedActivityEntry({
     entry.type === "exec" ||
     entry.type === "fileChange" ||
     entry.type === "mcpToolCall" ||
+    entry.type === "toolCall" ||
     entry.type === "dynamicToolCall" ||
     entry.type === "webSearch"
   ) {

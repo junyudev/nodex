@@ -80,6 +80,7 @@ function isRenderableAgentItem(item: ThreadRendererItemModel): item is ThreadAge
     case "assistantMessage":
     case "exec":
     case "fileChange":
+    case "toolCall":
     case "mcpToolCall":
     case "dynamicToolCall":
     case "automaticApprovalReview":

@@ -1,3 +1,4 @@
+import type { AgentInteractionResponse } from "./agent-conversation";
 import type { CodexRendererResumePreparation } from "./codex-renderer-resume";
 import type {
   CodexRendererRequestCaller,
@@ -21,21 +22,26 @@ import type {
   WorkbenchWindowReference,
 } from "./nodex-app-tools/workbench";
 import type { DictationTextResult } from "./dictation-diagnostics";
+import type { ClaudeModelCatalogInput } from "./claude-models";
+import type { AgentSessionConfigSelectOption } from "./agent-conversation";
 import type { ReadFileBytesInput, SaveFileInput } from "./library-files";
 import type { ThreadBackgroundTerminal } from "@nodex/codex-app-server-protocol/v2/ThreadBackgroundTerminal";
 import type {
-  AcpBackendAuthenticateInput,
-  AcpBackendAuthenticateResult,
-  AcpBackendConfigOptionInput,
-  AcpBackendConfigOptionResult,
-  AcpBackendModeInput,
-  AcpBackendPromptInput,
-  AcpBackendPromptResult,
-  AcpBackendSessionOpenInput,
-  AcpBackendThreadStartInput,
-  AcpBackendThreadStartResult,
+  AgentBackendAuthenticateInput,
+  AgentBackendAuthenticateResult,
+  AgentBackendConfigOptionInput,
+  AgentBackendConfigOptionResult,
+  AgentBackendModeInput,
+  AgentBackendPromptInput,
+  AgentBackendPromptResult,
+  AgentBackendSessionOpenInput,
+  AgentBackendThreadStartInput,
+  AgentBackendThreadStartResult,
 } from "./agent-backend-api";
-import type { AcpBackendSessionPresentation, AcpConversationSnapshot } from "./acp-conversation";
+import type {
+  AgentBackendSessionPresentation,
+  AgentConversationSnapshot,
+} from "./agent-conversation";
 import type { CodexPersistedHistorySearchResult } from "./codex-persisted-history-search";
 
 import type { GitRepositoryIdentity } from "./git-repository-identity";
@@ -224,6 +230,7 @@ import type {
 
 import type {
   AcpAgentSettings,
+  ClaudeAgentSettings,
   BackupRecord,
   BackupCapacity,
   SnapshotStorageOptimization,
@@ -421,6 +428,7 @@ import type {
   TerminalViewLeaseResult,
   ThreadNotificationSettings,
   UpdateAcpAgentSettingsInput,
+  UpdateClaudeAgentSettingsInput,
   UpdateDiagnosticsSettingsInput,
   UpdateTelemetrySettingsInput,
   UpdateBackupSettingsInput,
@@ -1254,52 +1262,65 @@ export interface IpcApi {
     args: [input: UpdateBackupSettingsInput];
     result: BackupSettings;
   };
+  "settings:claude-agents:get": { args: []; result: ClaudeAgentSettings };
+  "settings:claude-agents:update": {
+    args: [input: UpdateClaudeAgentSettingsInput];
+    result: ClaudeAgentSettings;
+  };
   "settings:acp-agents:get": { args: []; result: AcpAgentSettings };
   "settings:acp-agents:update": {
     args: [input: UpdateAcpAgentSettingsInput];
     result: AcpAgentSettings;
   };
-  "agent-backend:acp:session:open": {
-    args: [input: AcpBackendSessionOpenInput];
-    result: AcpBackendSessionPresentation;
+  "agent-backend:session:respond": {
+    args: [input: { threadId: string; requestId: string; response: AgentInteractionResponse }];
+    result: void;
   };
-  "agent-backend:acp:thread:start": {
-    args: [input: AcpBackendThreadStartInput];
-    result: AcpBackendThreadStartResult;
+  "agent-backend:session:open": {
+    args: [input: AgentBackendSessionOpenInput];
+    result: AgentBackendSessionPresentation;
   };
-  "agent-backend:acp:session:read": {
+  "agent-backend:thread:start": {
+    args: [input: AgentBackendThreadStartInput];
+    result: AgentBackendThreadStartResult;
+  };
+  "agent-backend:session:read": {
     args: [threadId: string];
-    result: AcpBackendSessionPresentation | null;
+    result: AgentBackendSessionPresentation | null;
   };
-  "agent-backend:acp:session:observe": {
+  "agent-backend:claude:models": {
+    args: [input: ClaudeModelCatalogInput];
+    result: readonly AgentSessionConfigSelectOption[];
+  };
+  "agent-backend:session:observe": {
     args: [threadId: string];
     result: void;
   };
-  "agent-backend:acp:session:unobserve": {
+  "agent-backend:session:unobserve": {
     args: [threadId: string];
     result: void;
   };
-  "agent-backend:acp:session:prompt": {
-    args: [input: AcpBackendPromptInput];
-    result: AcpBackendPromptResult;
+  "agent-backend:session:prompt": {
+    args: [input: AgentBackendPromptInput];
+    result: AgentBackendPromptResult;
   };
-  "agent-backend:acp:session:cancel": {
+  "agent-backend:session:cancel": {
     args: [threadId: string];
-    result: AcpConversationSnapshot;
+    result: AgentConversationSnapshot;
   };
-  "agent-backend:acp:session:set-mode": {
-    args: [input: AcpBackendModeInput];
-    result: AcpConversationSnapshot;
+  "agent-backend:session:set-mode": {
+    args: [input: AgentBackendModeInput];
+    result: AgentConversationSnapshot;
   };
-  "agent-backend:acp:session:set-config-option": {
-    args: [input: AcpBackendConfigOptionInput];
-    result: AcpBackendConfigOptionResult;
+  "agent-backend:session:set-config-option": {
+    args: [input: AgentBackendConfigOptionInput];
+    result: AgentBackendConfigOptionResult;
   };
-  "agent-backend:acp:session:authenticate": {
-    args: [input: AcpBackendAuthenticateInput];
-    result: AcpBackendAuthenticateResult;
+  "agent-backend:session:authenticate": {
+    args: [input: AgentBackendAuthenticateInput];
+    result: AgentBackendAuthenticateResult;
   };
-  "agent-backend:acp:session:close": {
+  "agent-backend:session:close": {
     args: [threadId: string];
     result: void;
   };
@@ -2748,7 +2769,7 @@ export interface IpcEvents {
   "global-dictation:command": import("./global-dictation").GlobalDictationRendererCommand;
   "dictation:open-recording": { readonly recordingId: string };
   "agent-import:progress": AgentImportProgress;
-  "agent-backend:acp:session-changed": import("./agent-backend-api").AcpBackendSessionChangedEvent;
+  "agent-backend:session-changed": import("./agent-backend-api").AgentBackendSessionChangedEvent;
   "workspace-file:changed": import("./types").WorkspaceFileChangedEvent;
   "document-sync:event": DocumentSyncRealtimeEvent;
   "persisted-atom:updated": PersistedAtomEvent;

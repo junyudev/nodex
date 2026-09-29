@@ -7,6 +7,7 @@ import type { IpcMainInvokeEvent } from "electron";
 import { z } from "zod";
 import type { IpcEvents } from "../../../shared/ipc-api";
 import { isUuidV7 } from "../../../shared/uuid-v7";
+import { CLAUDE_EFFORT_LEVELS } from "../../../shared/claude-models";
 import { AgentBackendApplication } from "../../agent-backend/AgentBackendApplication";
 import { MainConfig } from "../../app/MainConfig";
 import { isTrustedAppRendererIpcSender } from "../../app-renderer-ipc-authorization";
@@ -25,11 +26,16 @@ const prompt = z
   .min(1)
   .max(256 * 1024);
 const OpenInput = z.object({ threadId: id }).strict();
+const ClaudeModelsInput = z.object({ projectId: id, instanceConfigId: id }).strict();
 const uuidV7 = z.string().refine(isUuidV7, "Expected canonical lowercase UUID-v7");
 const StartInput = z
   .object({
     sessionId: id,
     instanceConfigId: id,
+    backendKind: z.enum(["acp", "claude"]),
+    model: id.optional(),
+    effort: z.enum(["default", ...CLAUDE_EFFORT_LEVELS]).optional(),
+    mode: z.enum(["default", "plan"]).optional(),
     prompt,
     firstSubmission: z
       .object({
@@ -45,6 +51,23 @@ const PromptInput = z
 const ModeInput = z.object({ threadId: id, modeId: id }).strict();
 const ConfigInput = z
   .object({ threadId: id, configId: id, value: z.union([z.string().max(16_384), z.boolean()]) })
+  .strict();
+const RespondInput = z
+  .object({
+    threadId: id,
+    requestId: id,
+    response: z.discriminatedUnion("decision", [
+      z.object({ decision: z.enum(["allow", "deny"]) }).strict(),
+      z
+        .object({
+          decision: z.literal("answer"),
+          answers: z
+            .record(z.string().max(8192), z.string().max(16384))
+            .refine((value) => Object.keys(value).length <= 8),
+        })
+        .strict(),
+    ]),
+  })
   .strict();
 const AuthenticateInput = z.object({ threadId: id, methodId: id }).strict();
 
@@ -69,11 +92,11 @@ export const live: Layer.Layer<
     const observers = new AcpRendererObservationRegistry<IpcMainInvokeEvent["sender"]>();
     const runObservationLifecycle = yield* FiberSet.makeRuntime<never, void, never>();
     const applyObservationChanges = (changes: AcpRendererObservationChanges) =>
-      Effect.forEach(changes.unobservedThreadIds, application.unobserveAcpSession, {
+      Effect.forEach(changes.unobservedThreadIds, application.unobserveAgentSession, {
         discard: true,
       }).pipe(
         Effect.andThen(
-          Effect.forEach(changes.observedThreadIds, application.observeAcpSession, {
+          Effect.forEach(changes.observedThreadIds, application.observeAgentSession, {
             discard: true,
           }),
         ),
@@ -129,16 +152,19 @@ export const live: Layer.Layer<
         ),
       );
 
-    yield* ipc.handlePlainCommand("agent-backend:acp:thread:start", (event, input) =>
-      handle(event, "thread.start", StartInput, input, application.startAcpThread),
+    yield* ipc.handlePlainCommand("agent-backend:thread:start", (event, input) =>
+      handle(event, "thread.start", StartInput, input, application.startAgentThread),
     );
-    yield* ipc.handlePlainCommand("agent-backend:acp:session:open", (event, input) =>
-      handle(event, "session.open", OpenInput, input, application.openAcpSession),
+    yield* ipc.handlePlainCommand("agent-backend:session:open", (event, input) =>
+      handle(event, "session.open", OpenInput, input, application.openAgentSession),
     );
-    yield* ipc.handleQuery("agent-backend:acp:session:read", (event, value) =>
-      threadId(event, "session.read", value).pipe(Effect.flatMap(application.readAcpSession)),
+    yield* ipc.handleQuery("agent-backend:session:read", (event, value) =>
+      threadId(event, "session.read", value).pipe(Effect.flatMap(application.readAgentSession)),
     );
-    yield* ipc.handleControl("agent-backend:acp:session:observe", (event, value) =>
+    yield* ipc.handleQuery("agent-backend:claude:models", (event, input) =>
+      handle(event, "claude.models", ClaudeModelsInput, input, application.claudeModels),
+    );
+    yield* ipc.handleControl("agent-backend:session:observe", (event, value) =>
       threadId(event, "session.observe", value).pipe(
         Effect.flatMap((observedThreadId) =>
           Effect.try({
@@ -157,7 +183,7 @@ export const live: Layer.Layer<
         Effect.asVoid,
       ),
     );
-    yield* ipc.handleControl("agent-backend:acp:session:unobserve", (event, value) =>
+    yield* ipc.handleControl("agent-backend:session:unobserve", (event, value) =>
       threadId(event, "session.unobserve", value).pipe(
         Effect.flatMap((observedThreadId) =>
           Effect.sync(() => observers.unobserve(event.sender.id, observedThreadId)).pipe(
@@ -168,35 +194,41 @@ export const live: Layer.Layer<
         Effect.asVoid,
       ),
     );
-    yield* ipc.handlePlainCommand("agent-backend:acp:session:prompt", (event, input) =>
-      handle(event, "session.prompt", PromptInput, input, application.promptAcpSession),
+    yield* ipc.handlePlainCommand("agent-backend:session:prompt", (event, input) =>
+      handle(event, "session.prompt", PromptInput, input, application.promptAgentSession),
     );
-    yield* ipc.handlePlainCommand("agent-backend:acp:session:cancel", (event, value) =>
-      threadId(event, "session.cancel", value).pipe(Effect.flatMap(application.cancelAcpSession)),
+    yield* ipc.handlePlainCommand("agent-backend:session:cancel", (event, value) =>
+      threadId(event, "session.cancel", value).pipe(Effect.flatMap(application.cancelAgentSession)),
     );
-    yield* ipc.handlePlainCommand("agent-backend:acp:session:set-mode", (event, input) =>
-      handle(event, "session.set-mode", ModeInput, input, application.setAcpMode),
+    yield* ipc.handlePlainCommand("agent-backend:session:set-mode", (event, input) =>
+      handle(event, "session.set-mode", ModeInput, input, application.setAgentMode),
     );
-    yield* ipc.handlePlainCommand("agent-backend:acp:session:set-config-option", (event, input) =>
+    yield* ipc.handlePlainCommand("agent-backend:session:set-config-option", (event, input) =>
       handle(
         event,
         "session.set-config-option",
         ConfigInput,
         input,
-        application.setAcpConfigOption,
+        application.setAgentConfigOption,
       ),
     );
-    yield* ipc.handlePlainCommand("agent-backend:acp:session:authenticate", (event, input) =>
+    yield* ipc.handlePlainCommand("agent-backend:session:authenticate", (event, input) =>
       handle(
         event,
         "session.authenticate",
         AuthenticateInput,
         input,
-        application.authenticateAcpSession,
+        application.authenticateAgentSession,
       ),
     );
-    yield* ipc.handlePlainCommand("agent-backend:acp:session:close", (event, value) =>
-      threadId(event, "session.close", value).pipe(Effect.flatMap(application.closeAcpSession)),
+    yield* ipc.handlePlainCommand("agent-backend:session:close", (event, value) =>
+      threadId(event, "session.close", value).pipe(Effect.flatMap(application.closeAgentSession)),
+    );
+
+    yield* ipc.handlePlainCommand("agent-backend:session:respond", (event, input) =>
+      handle(event, "session.respond", RespondInput, input, ({ threadId, requestId, response }) =>
+        application.respondToInteraction(threadId, requestId, response),
+      ),
     );
 
     yield* application.changes.pipe(
@@ -205,7 +237,7 @@ export const live: Layer.Layer<
           for (const [webContentsId, sender] of observers.matching(event.threadId)) {
             const delivered = safeSendToWebContents(
               sender,
-              "agent-backend:acp:session-changed" satisfies keyof IpcEvents,
+              "agent-backend:session-changed" satisfies keyof IpcEvents,
               [event],
             );
             if (!delivered && sender.isDestroyed()) yield* releaseObserver(webContentsId);

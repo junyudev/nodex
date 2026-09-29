@@ -454,6 +454,10 @@ export interface components {
             /** @enum {string} */
             readonly kind: "codex";
         } | {
+            readonly instance_config_id: string;
+            /** @enum {string} */
+            readonly kind: "claude";
+        } | {
             readonly agent_definition_id: string;
             readonly instance_config_id?: string | null;
             /** @enum {string} */

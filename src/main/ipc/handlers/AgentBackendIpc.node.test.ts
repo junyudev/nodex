@@ -40,11 +40,11 @@ it.effect("bridges renderer observation reference counts and destruction into se
     const unobserved: string[] = [];
     const destructionReleased = yield* Deferred.make<void>();
     const application = AgentBackendApplication.of({
-      observeAcpSession: (threadId: string) =>
+      observeAgentSession: (threadId: string) =>
         Effect.sync(() => {
           observed.push(threadId);
         }),
-      unobserveAcpSession: (threadId: string) =>
+      unobserveAgentSession: (threadId: string) =>
         Effect.sync(() => {
           unobserved.push(threadId);
         }).pipe(
@@ -82,8 +82,8 @@ it.effect("bridges renderer observation reference counts and destruction into se
     const frame = { url: "app://-/index.html" };
     Object.assign(sender, { mainFrame: frame });
     const event = { sender, senderFrame: frame } as unknown as IpcMainInvokeEvent;
-    const observe = handlers.get("agent-backend:acp:session:observe");
-    const unobserve = handlers.get("agent-backend:acp:session:unobserve");
+    const observe = handlers.get("agent-backend:session:observe");
+    const unobserve = handlers.get("agent-backend:session:unobserve");
     expect(observe).toBeDefined();
     expect(unobserve).toBeDefined();
 

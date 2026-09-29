@@ -12,6 +12,7 @@ export interface RequestComposerRequest {
 }
 
 export interface RequestQuestionnaireAnswer {
+  selectedOptionIds?: string[];
   selectedOptionId: string | null;
   freeformText: string | null;
 }
@@ -64,7 +65,8 @@ export const EXPLICIT_REQUEST_FORM_POLICY: RequestQuestionnairePolicy = {
 
 function createInitialAnswer(question: RequestComposerQuestion): RequestQuestionnaireAnswer {
   return {
-    selectedOptionId: question.options?.[0]?.label ?? null,
+    selectedOptionId: question.multiSelect ? null : (question.options?.[0]?.label ?? null),
+    ...(question.multiSelect ? { selectedOptionIds: [] } : {}),
     freeformText: null,
   };
 }
@@ -85,6 +87,7 @@ export function buildRequestQuestionSignature(request: RequestComposerRequest): 
       options: question.options?.map((option) => option.label) ?? [],
       isOther: question.isOther,
       isSecret: question.isSecret,
+      multiSelect: question.multiSelect,
     })),
   );
 }
@@ -100,6 +103,13 @@ export function reconcileRequestQuestionnaireDraft(
   const answers = request.questions.map((question, index) => {
     const saved = draft.answers[index];
     if (!saved) return createInitialAnswer(question);
+    if (question.multiSelect)
+      return {
+        ...saved,
+        selectedOptionIds: (saved.selectedOptionIds ?? []).filter((label) =>
+          question.options?.some((option) => option.label === label),
+        ),
+      };
 
     const selectedOptionId = question.options?.some(
       (option) => option.label === saved.selectedOptionId,
@@ -165,7 +175,16 @@ export function selectRequestQuestionnaireOption(
   draft: RequestQuestionnaireDraft,
   questionIndex: number,
   optionId: string,
+  multiSelect = false,
 ): RequestQuestionnaireDraft {
+  if (multiSelect)
+    return updateAnswer(draft, questionIndex, (answer) => ({
+      ...answer,
+      selectedOptionId: optionId,
+      selectedOptionIds: answer.selectedOptionIds?.includes(optionId)
+        ? answer.selectedOptionIds.filter((selected) => selected !== optionId)
+        : [...(answer.selectedOptionIds ?? []), optionId],
+    }));
   return updateAnswer(draft, questionIndex, (answer) => ({
     ...answer,
     selectedOptionId: optionId,
@@ -229,6 +248,8 @@ export function resolveRequestQuestionnaireAnswerValue(
   answer: RequestQuestionnaireAnswer | null | undefined,
 ): string | null {
   if (!answer) return null;
+  if (question.multiSelect)
+    return answer.selectedOptionIds?.join(", ") || answer.freeformText?.trim() || null;
   if (question.options?.length && answer.selectedOptionId) {
     return answer.selectedOptionId;
   }
@@ -246,7 +267,10 @@ export function buildUserInputAnswers(
     const value = resolveRequestQuestionnaireAnswerValue(question, draft.answers[index]);
     if (!value) return answers;
 
-    answers[question.id] = [value];
+    answers[question.id] =
+      question.multiSelect && draft.answers[index]?.selectedOptionIds?.length
+        ? [...draft.answers[index]!.selectedOptionIds!]
+        : [value];
     return answers;
   }, {});
 }

@@ -102,7 +102,8 @@ export function buildSessionContextMenuItems(
   const { session } = input;
   const hasCodexThread =
     session.thread !== null && isCodexAgentBackendBinding(session.thread.backendBinding);
-  const supportsCodexConversationActions = session.thread?.backendBinding.kind !== "acp";
+  const supportsCodexConversationActions =
+    session.thread === null || session.thread?.backendBinding.kind === "codex";
   const currentProject = input.projects?.find((project) => project.id === session.projectId);
   const projectMoveItems: NativeContextMenuItem[] = hasCodexThread
     ? (input.projects ?? [])

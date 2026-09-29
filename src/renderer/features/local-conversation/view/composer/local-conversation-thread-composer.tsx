@@ -906,14 +906,12 @@ export function ModelSelectorDropdown({
   model: ThreadFooterModel;
   controller: ComposerIntelligenceController;
 }) {
-  const selection = controller.selection as Extract<
-    ComposerIntelligenceController["selection"],
-    { kind: "codex" }
-  >;
+  const selection = controller.selection;
 
   return (
     <AgentIntelligenceDropdown
       models={model.availableModels}
+      provider={model.provider}
       selection={selection}
       open={controller.isOpen}
       onOpenChange={controller.setOpen}
@@ -2098,6 +2096,7 @@ function HydratedThreadComposer({
               onErrorMessage("Session thread creation is not available.");
               return false;
             }
+            await intelligenceController.flush();
             const startCompletion = actions.onStartThreadForSession({
               projectId: target.projectId,
               sessionId: target.sessionId,
@@ -2604,6 +2603,7 @@ function HydratedThreadComposer({
           nextPrompt.trim().length > 0 || hasSubmittableAttachments || goalModeActive,
         hasThreadGoal: goalModeActive || Boolean(model.conversation?.threadGoal),
         isQueueingEnabled: model.isQueueingEnabled,
+        supportsRunningFollowUps: !model.provider || model.provider.kind === "codex",
         latestTurnStatus,
         canResumeInterruptedTurn: false,
       });
@@ -3232,6 +3232,7 @@ function HydratedThreadComposer({
         hasDraftContent: prompt.trim().length > 0 || hasAttachments || goalModeActive,
         hasThreadGoal: goalModeActive || Boolean(model.conversation?.threadGoal),
         isQueueingEnabled: model.isQueueingEnabled,
+        supportsRunningFollowUps: !model.provider || model.provider.kind === "codex",
         latestTurnStatus,
         canResumeInterruptedTurn,
       });
@@ -3278,6 +3279,7 @@ function HydratedThreadComposer({
       model.composerEnterBehavior,
       model.conversation,
       model.isQueueingEnabled,
+      model.provider,
       model.isThreadRunning,
       latestTurnStatus,
       canResumeInterruptedTurn,
@@ -3328,6 +3330,7 @@ function HydratedThreadComposer({
     hasDraftContent: hasComposerContent,
     hasThreadGoal: goalModeActive || Boolean(model.conversation?.threadGoal),
     isQueueingEnabled: model.isQueueingEnabled,
+    supportsRunningFollowUps: !model.provider || model.provider.kind === "codex",
     latestTurnStatus,
     canResumeInterruptedTurn,
   });
@@ -3693,13 +3696,15 @@ function HydratedThreadComposer({
       <ActiveComposerModeChip model={model} onToggle={togglePlanMode} />
       <ActiveGoalModeChip active={hasFooterGoalChip} onClear={clearFooterGoal} />
       <div className="flex min-w-0 items-center gap-1">{intelligenceControls}</div>
-      <PermissionModeDropdown
-        selectedMode={model.permissionMode}
-        availableModes={permissionState?.availableModes}
-        autoReviewAvailable={permissionState?.autoReviewAvailable ?? false}
-        triggerVariant="icon"
-        onSelect={actions.onPermissionModeChange}
-      />
+      {!model.provider || model.provider.kind === "codex" ? (
+        <PermissionModeDropdown
+          selectedMode={model.permissionMode}
+          availableModes={permissionState?.availableModes}
+          autoReviewAvailable={permissionState?.autoReviewAvailable ?? false}
+          triggerVariant="icon"
+          onSelect={actions.onPermissionModeChange}
+        />
+      ) : null}
       {dictationControl}
       {primaryActionControl}
     </div>
@@ -3707,12 +3712,14 @@ function HydratedThreadComposer({
   const standardLeadingControls = (
     <div className="flex min-w-0 items-center gap-[5px]">
       {addContextControl}
-      <PermissionModeDropdown
-        selectedMode={model.permissionMode}
-        availableModes={permissionState?.availableModes}
-        autoReviewAvailable={permissionState?.autoReviewAvailable ?? false}
-        onSelect={actions.onPermissionModeChange}
-      />
+      {!model.provider || model.provider.kind === "codex" ? (
+        <PermissionModeDropdown
+          selectedMode={model.permissionMode}
+          availableModes={permissionState?.availableModes}
+          autoReviewAvailable={permissionState?.autoReviewAvailable ?? false}
+          onSelect={actions.onPermissionModeChange}
+        />
+      ) : null}
       {model.selectedCollaborationMode === "plan" || goalModeActive ? (
         <ComposerFooterAccessoryDivider />
       ) : null}
@@ -4180,6 +4187,29 @@ function HydratedThreadComposer({
                   <ComposerInput layout={composerLayout}>
                     {renderPromptEditor(floatingComposerSingleLine)}
                   </ComposerInput>
+                  {model.provider?.authentication ? (
+                    <div className="flex items-center gap-2 px-3 pb-2">
+                      {model.provider.authentication.methods.map((method) => (
+                        <button
+                          key={method.id}
+                          type="button"
+                          disabled={model.provider?.authentication?.pending}
+                          className="text-sm text-token-text-link-foreground disabled:opacity-50"
+                          onClick={() => {
+                            void model.provider?.authentication
+                              ?.signIn(method.id)
+                              .catch((cause: unknown) =>
+                                onErrorMessage(
+                                  cause instanceof Error ? cause.message : "Could not sign in",
+                                ),
+                              );
+                          }}
+                        >
+                          Sign in with {method.name}
+                        </button>
+                      ))}
+                    </div>
+                  ) : null}
                   {errorMessage ? (
                     <div className="px-3 pb-2 text-xs text-(--destructive)">{errorMessage}</div>
                   ) : null}

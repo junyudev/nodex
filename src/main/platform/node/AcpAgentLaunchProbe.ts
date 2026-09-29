@@ -6,7 +6,7 @@ import * as Context from "effect/Context";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 import * as Schema from "effect/Schema";
-import { acpRuntimeError, type AcpRuntimeError } from "../../agent-backend/acp/AcpRuntimeError";
+import { agentRuntimeError, type AgentRuntimeError } from "../../agent-backend/AgentRuntimeError";
 
 const PackageManifest = Schema.Struct({
   name: Schema.String,
@@ -37,8 +37,8 @@ export class AcpAgentLaunchProbe extends Context.Service<
     /** Checks protocol compatibility for user-authorized local code; it does not attest its bytes. */
     readonly probeUserManagedNodePackage: (
       request: AcpNodePackageProbeRequest,
-    ) => Effect.Effect<AcpNodePackageProbeResult, AcpRuntimeError>;
-    readonly canonicalDirectory: (path: string) => Effect.Effect<string, AcpRuntimeError>;
+    ) => Effect.Effect<AcpNodePackageProbeResult, AgentRuntimeError>;
+    readonly canonicalDirectory: (path: string) => Effect.Effect<string, AgentRuntimeError>;
   }
 >()("nodex/main/platform/node/AcpAgentLaunchProbe") {}
 
@@ -51,8 +51,8 @@ const run = (input: {
   readonly command: string;
   readonly args: readonly string[];
   readonly timeoutMs: number;
-}): Effect.Effect<string, AcpRuntimeError> =>
-  Effect.callback<string, AcpRuntimeError>((resume) => {
+}): Effect.Effect<string, AgentRuntimeError> =>
+  Effect.callback<string, AgentRuntimeError>((resume) => {
     const child = execFile(
       input.command,
       [...input.args],
@@ -69,7 +69,7 @@ const run = (input: {
         }
         resume(
           Effect.fail(
-            acpRuntimeError({
+            agentRuntimeError({
               operation: "agent.probe",
               reason: "spawn",
               retryable: false,
@@ -86,8 +86,8 @@ const run = (input: {
     });
   });
 
-const platformFailure = (operation: string, cause: unknown): AcpRuntimeError =>
-  acpRuntimeError({ operation, reason: "spawn", retryable: false, cause });
+const platformFailure = (operation: string, cause: unknown): AgentRuntimeError =>
+  agentRuntimeError({ operation, reason: "spawn", retryable: false, cause });
 
 export const makeAcpAgentLaunchProbe = AcpAgentLaunchProbe.of({
   canonicalDirectory: (path) =>

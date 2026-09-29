@@ -1,37 +1,45 @@
+import type { AgentInteractionResponse } from "../../../shared/agent-conversation";
 import type {
-  AcpBackendAuthenticateResult,
-  AcpBackendConfigOptionResult,
-  AcpBackendPromptResult,
-  AcpBackendSessionPresentation,
+  AgentBackendAuthenticateResult,
+  AgentBackendConfigOptionResult,
+  AgentBackendPromptResult,
+  AgentBackendSessionPresentation,
 } from "../../../shared/agent-backend-api";
 import {
-  applyAcpConversationDelta,
-  type AcpConversationDelta,
-  type AcpConversationSnapshot,
-} from "../../../shared/acp-conversation";
-import { acpBackendRuntime, type AcpBackendRuntime } from "../../lib/acp-backend-runtime";
+  applyAgentConversationDelta,
+  type AgentConversationDelta,
+  type AgentConversationSnapshot,
+} from "../../../shared/agent-conversation";
+import { agentBackendRuntime, type AgentBackendRuntime } from "../../lib/agent-backend-runtime";
 
-export type AcpConversationControlOperation = "authenticate" | "cancel" | "config" | "mode";
+export type AgentConversationControlOperation =
+  | "authenticate"
+  | "cancel"
+  | "config"
+  | "mode"
+  | "response";
 
-export interface AcpConversationOwnerSnapshot {
+export interface AgentConversationOwnerSnapshot {
   readonly connection: "connecting" | "failed" | "ready";
-  readonly presentation: AcpBackendSessionPresentation | null;
+  readonly presentation: AgentBackendSessionPresentation | null;
   readonly promptPending: boolean;
-  readonly controlPending: AcpConversationControlOperation | null;
+  readonly controlPending: AgentConversationControlOperation | null;
   readonly error: string | null;
 }
 
-export interface AcpConversationOwnerPort {
+export interface AgentConversationOwnerPort {
   readonly threadId: string;
   readonly subscribe: (listener: () => void) => () => void;
-  readonly getSnapshot: () => AcpConversationOwnerSnapshot;
+  readonly getSnapshot: () => AgentConversationOwnerSnapshot;
   readonly connect: () => () => void;
   readonly retry: () => void;
   readonly prompt: (prompt: string) => Promise<boolean>;
+  readonly submit: (prompt: string) => Promise<boolean>;
   readonly cancel: () => Promise<boolean>;
   readonly setMode: (modeId: string) => Promise<boolean>;
   readonly setConfigOption: (configId: string, value: string | boolean) => Promise<boolean>;
   readonly authenticate: (methodId: string) => Promise<boolean>;
+  readonly respond: (requestId: string, response: AgentInteractionResponse) => Promise<boolean>;
   readonly close: () => Promise<void>;
 }
 
@@ -39,19 +47,19 @@ const errorMessage = (cause: unknown): string =>
   cause instanceof Error && cause.message.trim() ? cause.message : String(cause);
 
 const shouldAcceptSnapshot = (
-  current: AcpConversationSnapshot | undefined,
-  incoming: AcpConversationSnapshot,
+  current: AgentConversationSnapshot | undefined,
+  incoming: AgentConversationSnapshot,
 ): boolean => current === undefined || incoming.revision >= current.revision;
 
 /**
- * Owns one attached ACP thread's renderer lifecycle. React is only a subscriber;
+ * Owns one attached Agent thread's renderer lifecycle. React is only a subscriber;
  * unmounting releases event delivery but does not close the durable backend session.
  */
-export class AcpConversationOwner implements AcpConversationOwnerPort {
+export class AgentConversationOwner implements AgentConversationOwnerPort {
   readonly threadId: string;
-  readonly #runtime: AcpBackendRuntime;
+  readonly #runtime: AgentBackendRuntime;
   readonly #listeners = new Set<() => void>();
-  #state: AcpConversationOwnerSnapshot = {
+  #state: AgentConversationOwnerSnapshot = {
     connection: "connecting",
     presentation: null,
     promptPending: false,
@@ -59,11 +67,12 @@ export class AcpConversationOwner implements AcpConversationOwnerPort {
     error: null,
   };
   #generation = 0;
+  #connectionLease = 0;
   #releaseSubscription: (() => void) | null = null;
-  #pendingDeltas: AcpConversationDelta[] = [];
+  #pendingDeltas: AgentConversationDelta[] = [];
   #resyncPending = false;
 
-  constructor(threadId: string, runtime: AcpBackendRuntime = acpBackendRuntime) {
+  constructor(threadId: string, runtime: AgentBackendRuntime = agentBackendRuntime) {
     this.threadId = threadId;
     this.#runtime = runtime;
   }
@@ -73,9 +82,10 @@ export class AcpConversationOwner implements AcpConversationOwnerPort {
     return () => this.#listeners.delete(listener);
   };
 
-  readonly getSnapshot = (): AcpConversationOwnerSnapshot => this.#state;
+  readonly getSnapshot = (): AgentConversationOwnerSnapshot => this.#state;
 
   readonly connect = (): (() => void) => {
+    const lease = ++this.#connectionLease;
     const generation = ++this.#generation;
     this.#releaseSubscription?.();
     this.#releaseSubscription = null;
@@ -84,7 +94,7 @@ export class AcpConversationOwner implements AcpConversationOwnerPort {
     this.#patch({ connection: "connecting", presentation: null, error: null });
     void this.#subscribeAndOpen(generation);
     return () => {
-      if (generation !== this.#generation) return;
+      if (lease !== this.#connectionLease) return;
       this.#generation += 1;
       this.#releaseSubscription?.();
       this.#releaseSubscription = null;
@@ -107,7 +117,7 @@ export class AcpConversationOwner implements AcpConversationOwnerPort {
     if (this.#state.presentation?.snapshot.status !== "idle") return false;
     this.#patch({ promptPending: true, error: null });
     try {
-      const result: AcpBackendPromptResult = await this.#runtime.prompt({
+      const result: AgentBackendPromptResult = await this.#runtime.prompt({
         threadId: this.threadId,
         prompt,
       });
@@ -120,6 +130,20 @@ export class AcpConversationOwner implements AcpConversationOwnerPort {
       this.#patch({ promptPending: false });
     }
   };
+
+  /** Resolve after admission, while the Main-owned turn continues and publishes completion. */
+  readonly submit = (text: string): Promise<boolean> =>
+    new Promise((resolve) => {
+      let release = () => {};
+      const finish = (accepted: boolean) => {
+        release();
+        resolve(accepted);
+      };
+      release = this.subscribe(() => {
+        if (this.#state.presentation?.snapshot.status === "running") finish(true);
+      });
+      void this.prompt(text).then(finish);
+    });
 
   readonly cancel = (): Promise<boolean> =>
     this.#runControl("cancel", async () => {
@@ -141,7 +165,7 @@ export class AcpConversationOwner implements AcpConversationOwnerPort {
 
   readonly setConfigOption = (configId: string, value: string | boolean): Promise<boolean> =>
     this.#runControl("config", async () => {
-      const result: AcpBackendConfigOptionResult = await this.#runtime.setConfigOption({
+      const result: AgentBackendConfigOptionResult = await this.#runtime.setConfigOption({
         threadId: this.threadId,
         configId,
         value,
@@ -155,11 +179,17 @@ export class AcpConversationOwner implements AcpConversationOwnerPort {
 
   readonly authenticate = (methodId: string): Promise<boolean> =>
     this.#runControl("authenticate", async () => {
-      const result: AcpBackendAuthenticateResult = await this.#runtime.authenticate({
+      const result: AgentBackendAuthenticateResult = await this.#runtime.authenticate({
         threadId: this.threadId,
         methodId,
       });
       this.#acceptSnapshot(result.snapshot);
+      await this.#refreshPresentation();
+    });
+
+  readonly respond = (requestId: string, response: AgentInteractionResponse): Promise<boolean> =>
+    this.#runControl("response", async () => {
+      await this.#runtime.respond(this.threadId, requestId, response);
       await this.#refreshPresentation();
     });
 
@@ -214,7 +244,7 @@ export class AcpConversationOwner implements AcpConversationOwnerPort {
   }
 
   async #runControl(
-    operation: AcpConversationControlOperation,
+    operation: AgentConversationControlOperation,
     run: () => Promise<void>,
   ): Promise<boolean> {
     if (this.#state.controlPending) return false;
@@ -230,7 +260,7 @@ export class AcpConversationOwner implements AcpConversationOwnerPort {
     }
   }
 
-  #acceptPresentation(presentation: AcpBackendSessionPresentation): void {
+  #acceptPresentation(presentation: AgentBackendSessionPresentation): void {
     const currentSnapshot = this.#state.presentation?.snapshot;
     let snapshot =
       currentSnapshot &&
@@ -242,7 +272,7 @@ export class AcpConversationOwner implements AcpConversationOwnerPort {
     this.#pendingDeltas = [];
     for (const delta of pending) {
       if (delta.sessionId !== snapshot.sessionId || delta.revision <= snapshot.revision) continue;
-      const next = applyAcpConversationDelta(snapshot, delta);
+      const next = applyAgentConversationDelta(snapshot, delta);
       if (!next) {
         this.#pendingDeltas.push(delta);
         continue;
@@ -253,12 +283,13 @@ export class AcpConversationOwner implements AcpConversationOwnerPort {
     if (this.#pendingDeltas.length > 0) this.#requestResync();
   }
 
-  #acceptSnapshot(snapshot: AcpConversationSnapshot): void {
+  #acceptSnapshot(snapshot: AgentConversationSnapshot): void {
     const presentation = this.#state.presentation;
     if (!presentation) {
       return;
     }
     if (!shouldAcceptSnapshot(presentation.snapshot, snapshot)) return;
+    const becameIdle = presentation.snapshot.status === "running" && snapshot.status === "idle";
     const currentModeId = snapshot.turns
       .flatMap(({ updates }) => updates)
       .findLast((update) => update.kind === "mode")?.currentModeId;
@@ -272,9 +303,10 @@ export class AcpConversationOwner implements AcpConversationOwnerPort {
             : presentation.modes,
       },
     });
+    if (becameIdle) this.#requestResync();
   }
 
-  #acceptDelta(delta: AcpConversationDelta): void {
+  #acceptDelta(delta: AgentConversationDelta): void {
     const presentation = this.#state.presentation;
     if (!presentation) {
       this.#pendingDeltas = [...this.#pendingDeltas.slice(-127), delta];
@@ -285,7 +317,7 @@ export class AcpConversationOwner implements AcpConversationOwnerPort {
       return;
     }
     if (delta.revision <= presentation.snapshot.revision) return;
-    const snapshot = applyAcpConversationDelta(presentation.snapshot, delta);
+    const snapshot = applyAgentConversationDelta(presentation.snapshot, delta);
     if (!snapshot) {
       this.#pendingDeltas = [...this.#pendingDeltas.slice(-127), delta];
       this.#requestResync();
@@ -308,8 +340,43 @@ export class AcpConversationOwner implements AcpConversationOwnerPort {
       });
   }
 
-  #patch(patch: Partial<AcpConversationOwnerSnapshot>): void {
+  #patch(patch: Partial<AgentConversationOwnerSnapshot>): void {
     this.#state = { ...this.#state, ...patch };
     for (const listener of this.#listeners) listener();
   }
+}
+
+const owners = new Map<
+  string,
+  { owner: AgentConversationOwner; references: number; release: (() => void) | null }
+>();
+
+export function acquireAgentConversationOwner(threadId: string): {
+  owner: AgentConversationOwner;
+  retain: () => () => void;
+} {
+  let entry = owners.get(threadId);
+  if (!entry) {
+    entry = { owner: new AgentConversationOwner(threadId), references: 0, release: null };
+    owners.set(threadId, entry);
+  }
+  const shared = entry;
+  return {
+    owner: shared.owner,
+    retain: () => {
+      if (shared.references++ === 0) {
+        owners.set(threadId, shared);
+        shared.release = shared.owner.connect();
+      }
+      let released = false;
+      return () => {
+        if (released) return;
+        released = true;
+        if (--shared.references !== 0) return;
+        shared.release?.();
+        shared.release = null;
+        if (owners.get(threadId) === shared) owners.delete(threadId);
+      };
+    },
+  };
 }

@@ -357,6 +357,7 @@ function UserInputQuestionSection({
 }: {
   question: RequestComposerQuestion;
   answer: {
+    selectedOptionIds?: string[];
     selectedOptionId: string | null;
     freeformText: string | null;
   };
@@ -410,12 +411,14 @@ function UserInputQuestionSection({
             <div
               ref={optionsRef}
               className="flex flex-col gap-1 rounded-xl outline-none"
-              role="radiogroup"
+              role={question.multiSelect ? "group" : "radiogroup"}
               aria-label={question.question || question.header}
               data-user-input-focus-target="options"
             >
               {question.options.map((option, index) => {
-                const isSelected = mode === "option" && selectedOption === option.label;
+                const isSelected = question.multiSelect
+                  ? answer.selectedOptionIds?.includes(option.label) === true
+                  : mode === "option" && selectedOption === option.label;
                 const isAdvancing = advancingChoiceId === option.label;
                 const descriptionId = option.description
                   ? `request-option-${question.id.replace(/[^a-zA-Z0-9_-]/g, "-")}-${index}-description`
@@ -424,7 +427,7 @@ function UserInputQuestionSection({
                   <button
                     key={option.label}
                     type="button"
-                    role="radio"
+                    role={question.multiSelect ? "checkbox" : "radio"}
                     tabIndex={isSelected || (selectedOption === null && index === 0) ? 0 : -1}
                     aria-checked={isSelected}
                     aria-label={option.label}
@@ -757,6 +760,7 @@ function RequestComposerViewInstance({
   };
 
   const selectOption = (optionLabel: string) => {
+    if (question.multiSelect) return;
     commitDraft(
       selectRequestQuestionnaireOption(
         stateRef.current,
@@ -832,9 +836,10 @@ function RequestComposerViewInstance({
       stateRef.current,
       stateRef.current.questionIndex,
       optionLabel,
+      question.multiSelect,
     );
     commitDraft(nextDraft);
-    if (policy.choiceBehavior.kind === "selectOnly") return;
+    if (question.multiSelect || policy.choiceBehavior.kind === "selectOnly") return;
 
     const lockToken = Symbol("request-choice-activation");
     activationLockRef.current = lockToken;
@@ -960,8 +965,7 @@ function RequestComposerViewInstance({
 
     const targetElement = target instanceof Element ? target : null;
     const targetRadio =
-      targetElement?.closest<HTMLButtonElement>('[role="radio"][data-request-option-label]') ??
-      null;
+      targetElement?.closest<HTMLButtonElement>("[data-request-option-label]") ?? null;
     const isQuestionnaireShortcutTarget = target === event.currentTarget || targetRadio !== null;
     const options = question.options ?? [];
     if (isQuestionnaireShortcutTarget && /^[1-9]$/.test(event.key)) {
@@ -996,7 +1000,10 @@ function RequestComposerViewInstance({
       event.preventDefault();
       const selectedIndex = Math.max(
         0,
-        options.findIndex((option) => option.label === answer.selectedOptionId),
+        options.findIndex(
+          (option) =>
+            option.label === (targetRadio?.dataset.requestOptionLabel ?? answer.selectedOptionId),
+        ),
       );
       const nextIndex =
         event.key === "ArrowUp"
@@ -1014,7 +1021,7 @@ function RequestComposerViewInstance({
 
       const nextOption = options[nextIndex];
       if (!nextOption) return;
-      selectOption(nextOption.label);
+      if (!question.multiSelect) selectOption(nextOption.label);
       focusOption(nextOption.label);
       return;
     }
@@ -1032,7 +1039,10 @@ function RequestComposerViewInstance({
   const handleInlineAction = () => {
     if (busyAction !== null || activationLockRef.current !== null) return;
     const currentAnswer = stateRef.current.answers[stateRef.current.questionIndex];
-    if (currentAnswer?.freeformText?.trim()) {
+    if (
+      currentAnswer?.freeformText?.trim() ||
+      (question.multiSelect && currentAnswer?.selectedOptionIds?.length)
+    ) {
       advanceOrSubmit(stateRef.current);
       return;
     }
@@ -1101,7 +1111,9 @@ function RequestComposerViewInstance({
       onClick={handleInlineAction}
       disabled={isBusy}
     >
-      <span className="text-sm font-medium">{answer.freeformText?.trim() ? "Next" : "Skip"}</span>
+      <span className="text-sm font-medium">
+        {question.multiSelect ? primaryLabel : answer.freeformText?.trim() ? "Next" : "Skip"}
+      </span>
       <span className="inline-flex items-center rounded-sm bg-token-dropdown-background/15 px-1.5 py-px text-sm leading-none text-token-dropdown-background">
         <span className="font-mono">⏎</span>
       </span>

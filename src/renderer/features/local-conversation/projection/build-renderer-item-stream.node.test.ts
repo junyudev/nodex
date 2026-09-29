@@ -880,7 +880,7 @@ describe("buildRendererItemStream", () => {
     expect(items.length).toBe(0);
   });
 
-  test("keeps Codex tool rows but omits generic tool fallback entries", () => {
+  test("preserves specialized and generic tools in the shared transcript", () => {
     const items = buildRendererItemStream({
       entries: [
         buildEntry({
@@ -926,7 +926,7 @@ describe("buildRendererItemStream", () => {
             subtype: "generic",
             toolName: "summarize_stage_shell",
             args: { section: "footer" },
-            result: { summary: "legacy fallback" },
+            result: { summary: "Shared tool result" },
           },
         }),
       ],
@@ -934,7 +934,7 @@ describe("buildRendererItemStream", () => {
       turnStatus: "completed",
     });
 
-    expect(items.map((item) => item.type).join(",")).toBe("fileChange,mcpToolCall");
+    expect(items.map((item) => item.type).join(",")).toBe("fileChange,mcpToolCall,toolCall");
   });
 
   test("omits fileChange rows without canonical patch entries", () => {

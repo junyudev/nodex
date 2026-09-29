@@ -19,7 +19,7 @@ import { live as terminalOwnerLive } from "../src/main/agent-backend/acp/AcpTerm
 import { live as workspaceFileOwnerLive } from "../src/main/agent-backend/acp/AcpWorkspaceFileOwner";
 import { live as terminalPtyLive } from "../src/main/platform/node/TerminalPty";
 import { live as terminalRuntimeMapLive } from "../src/main/terminal-runtime/TerminalRuntimeMap";
-import { acpRuntimeError } from "../src/main/agent-backend/acp/AcpRuntimeError";
+import { agentRuntimeError } from "../src/main/agent-backend/AgentRuntimeError";
 import {
   AcpSessionRuntime,
   layer as sessionRuntimeLayer,
@@ -179,7 +179,7 @@ const program = Effect.scoped(
     if (options.prompt === undefined) return report;
     if (runtime.sessionId === null) {
       return yield* Effect.fail(
-        acpRuntimeError({
+        agentRuntimeError({
           operation: "probe.prompt",
           reason: "authentication-required",
           retryable: false,

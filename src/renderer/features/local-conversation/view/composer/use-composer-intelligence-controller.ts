@@ -69,13 +69,23 @@ export function useComposerIntelligenceController(
   const drainRef = useRef<Promise<void> | null>(null);
   const lastFailureRef = useRef<Error | null>(null);
 
+  const scopeKey = `${model.hostId}:${model.provider?.selection ?? "codex"}:${model.conversation?.threadId ?? "draft"}`;
+  const scopeRef = useRef(scopeKey);
+  scopeRef.current = scopeKey;
+  useEffect(() => {
+    desiredRef.current = null;
+    lastFailureRef.current = null;
+    setOptimisticSelection(null);
+  }, [scopeKey]);
+
   const drain = useCallback((): Promise<void> => {
     if (drainRef.current) return drainRef.current;
 
+    const scope = scopeRef.current;
     const operation = (async () => {
       setPending(true);
       try {
-        while (desiredRef.current) {
+        while (desiredRef.current && scope === scopeRef.current) {
           const candidate = desiredRef.current;
           desiredRef.current = null;
           const commit = actionsRef.current.onIntelligenceSelectionChange;
@@ -92,6 +102,7 @@ export function useComposerIntelligenceController(
             }
             lastFailureRef.current = null;
           } catch (error) {
+            if (scope !== scopeRef.current) return;
             if (desiredRef.current) continue;
             lastFailureRef.current = toError(error);
             displayedSelectionRef.current = authoritativeRef.current;
@@ -137,7 +148,10 @@ export function useComposerIntelligenceController(
     triggerElementRef.current = element;
   }, []);
 
-  const selection = optimisticSelection ?? authoritativeSelection;
+  const selection =
+    optimisticSelection?.kind === authoritativeSelection.kind
+      ? optimisticSelection
+      : authoritativeSelection;
   displayedSelectionRef.current = selection;
   useEffect(() => {
     if (!optimisticSelection || isPending) return;

@@ -1,67 +1,72 @@
 import type {
-  AcpBackendSessionPresentation,
-  AcpConversationDelta,
-  AcpConversationSnapshot,
-  AcpSessionConfigOption,
-} from "./acp-conversation";
+  AgentBackendSessionPresentation,
+  AgentConversationDelta,
+  AgentConversationSnapshot,
+  AgentSessionConfigOption,
+} from "./agent-conversation";
 import type { ProjectSessionThreadLink } from "./types";
 import type { ConversationFirstSubmissionIdentity } from "./types";
+import type { ClaudeEffortSelection } from "./claude-models";
 
-export interface AcpBackendSessionOpenInput {
+export interface AgentBackendSessionOpenInput {
   readonly threadId: string;
 }
 
-export interface AcpBackendThreadStartInput {
+export interface AgentBackendThreadStartInput {
   readonly sessionId: string;
   readonly instanceConfigId: string;
+  readonly backendKind: "acp" | "claude";
+  readonly model?: string;
+  readonly effort?: ClaudeEffortSelection;
+  readonly mode?: "default" | "plan";
   readonly prompt: string;
   readonly firstSubmission: ConversationFirstSubmissionIdentity;
 }
 
-export interface AcpBackendThreadStartResult {
+export interface AgentBackendThreadStartResult {
   readonly thread: ProjectSessionThreadLink;
-  readonly presentation: AcpBackendSessionPresentation;
+  readonly presentation: AgentBackendSessionPresentation;
 }
 
-export interface AcpBackendPromptInput {
+export interface AgentBackendPromptInput {
   readonly threadId: string;
   readonly prompt: string;
   readonly clientUserMessageId?: string;
 }
 
-export interface AcpBackendModeInput {
+export interface AgentBackendModeInput {
   readonly threadId: string;
   readonly modeId: string;
 }
 
-export interface AcpBackendConfigOptionInput {
+export interface AgentBackendConfigOptionInput {
   readonly threadId: string;
   readonly configId: string;
   readonly value: string | boolean;
 }
 
-export interface AcpBackendAuthenticateInput {
+export interface AgentBackendAuthenticateInput {
   readonly threadId: string;
   readonly methodId: string;
 }
 
-export interface AcpBackendSessionChangedEvent {
+export interface AgentBackendSessionChangedEvent {
   readonly threadId: string;
-  readonly delta: AcpConversationDelta;
+  readonly delta: AgentConversationDelta;
 }
 
-export interface AcpBackendPromptResult {
+export interface AgentBackendPromptResult {
   readonly stopReason: string;
-  readonly snapshot: AcpConversationSnapshot;
+  readonly snapshot: AgentConversationSnapshot;
 }
 
-export interface AcpBackendConfigOptionResult {
-  readonly configOptions: readonly AcpSessionConfigOption[];
-  readonly snapshot: AcpConversationSnapshot;
+export interface AgentBackendConfigOptionResult {
+  readonly configOptions: readonly AgentSessionConfigOption[];
+  readonly snapshot: AgentConversationSnapshot;
 }
 
-export interface AcpBackendAuthenticateResult {
-  readonly snapshot: AcpConversationSnapshot;
+export interface AgentBackendAuthenticateResult {
+  readonly snapshot: AgentConversationSnapshot;
 }
 
-export type { AcpBackendSessionPresentation };
+export type { AgentBackendSessionPresentation };

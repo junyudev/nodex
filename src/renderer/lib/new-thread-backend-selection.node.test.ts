@@ -9,9 +9,9 @@ describe("NewThreadBackendSelectionOwner", () => {
     owner.subscribe("session-1", page);
     owner.subscribe("session-1", dock);
 
-    owner.write("session-1", { acpInstanceId: "claude-local" });
+    owner.write("session-1", { kind: "acp", instanceConfigId: "claude-local" });
 
-    expect(owner.read("session-1")).toEqual({ acpInstanceId: "claude-local" });
+    expect(owner.read("session-1")).toEqual({ kind: "acp", instanceConfigId: "claude-local" });
     expect(page).toHaveBeenCalledOnce();
     expect(dock).toHaveBeenCalledOnce();
     expect(owner.read("session-2")).toBe("codex");

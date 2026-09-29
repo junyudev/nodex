@@ -4,7 +4,7 @@ import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 import * as Schema from "effect/Schema";
 import type { components } from "@nodex/core-protocol";
-import type { AcpConversationSnapshot } from "../../shared/acp-conversation";
+import type { AgentConversationSnapshot } from "../../shared/agent-conversation";
 import {
   hasPendingConversationTurnStart,
   latestConversationTurn,
@@ -45,7 +45,7 @@ export interface SessionObservationResult {
   readonly projectId: string | null;
   readonly threadId: string | null;
   readonly title: string;
-  readonly backend: "codex" | "acp" | null;
+  readonly backend: "codex" | "acp" | "claude" | null;
   readonly archived: boolean;
   readonly pinned: boolean;
   readonly status: { readonly type: string; readonly activeFlags: readonly string[] };
@@ -105,7 +105,7 @@ type SessionListResult = {
 export interface SessionInspection {
   readonly sessionId: string;
   readonly title: string;
-  readonly backend: "codex" | "acp" | null;
+  readonly backend: "codex" | "acp" | "claude" | null;
   readonly status: string;
   readonly activeFlags: readonly string[];
   readonly disposition: "running" | "complete" | "needs_attention" | "unavailable";
@@ -155,10 +155,10 @@ const truncate = (value: string | null, maximum: number) => {
 
 /** ACP cursors are tied to one retained snapshot; changed or evicted history never shifts a page silently. */
 export const readAcpHistoryPage = (
-  snapshot: AcpConversationSnapshot,
+  snapshot: AgentConversationSnapshot,
   input: SessionHistoryInput,
 ): AvailableHistory | null => {
-  const prefix = `acp:${snapshot.sessionId}:${snapshot.revision}:`;
+  const prefix = `${snapshot.backend}:${snapshot.sessionId}:${snapshot.revision}:`;
   const encodedIndex = input.cursor?.startsWith(prefix) ? input.cursor.slice(prefix.length) : null;
   const end = input.cursor
     ? encodedIndex && /^\d+$/.test(encodedIndex)
@@ -285,7 +285,7 @@ export const make = Effect.gen(function* () {
       };
     }
     const presentation = yield* backends
-      .readAcpSession(session.thread.thread_id)
+      .readAgentSession(session.thread.thread_id)
       .pipe(
         Effect.mapError(
           (cause) => new SessionObservationError({ reason: "history_unavailable", cause }),
@@ -315,10 +315,10 @@ export const make = Effect.gen(function* () {
                 ),
               )
           : null;
-      const acp =
-        thread?.backend_binding.kind === "acp"
+      const agent =
+        thread && thread.backend_binding.kind !== "codex"
           ? yield* backends
-              .readAcpSession(thread.thread_id)
+              .readAgentSession(thread.thread_id)
               .pipe(
                 Effect.mapError(
                   (cause) => new SessionObservationError({ reason: "history_unavailable", cause }),
@@ -334,8 +334,8 @@ export const make = Effect.gen(function* () {
       const snapshot = retained?.snapshot;
       const canonicalStatus = retained?.canonical?.threadRuntimeStatus;
       const status =
-        thread?.backend_binding.kind === "acp"
-          ? (acp?.snapshot.status ?? "notLoaded")
+        thread && thread.backend_binding.kind !== "codex"
+          ? (agent?.snapshot.status ?? "notLoaded")
           : (canonicalStatus?.type ??
             snapshot?.statusType ??
             after.thread?.status.status_type ??
@@ -374,7 +374,7 @@ export const make = Effect.gen(function* () {
                 submission.stage,
               ]),
               requestIds: snapshot?.requests.map((request) => request.requestId),
-              acpRevision: acp?.snapshot.revision,
+              agentRevision: agent?.snapshot.revision,
             }),
           )
           .digest("base64url");

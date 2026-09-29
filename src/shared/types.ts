@@ -1654,6 +1654,12 @@ export interface UpdateCodexExecutionHostSettingsInput {
   sshHosts: CodexSshExecutionHostConfig[];
 }
 
+export type {
+  ClaudeAgentInstanceConfig,
+  ClaudeAgentSettings,
+  UpdateClaudeAgentSettingsInput,
+} from "./claude-agent-settings";
+
 export interface AcpAgentInstanceConfig {
   /** Stable Profile-local identity referenced by AgentBackendBinding.instanceConfigId. */
   id: string;
@@ -3459,6 +3465,8 @@ export interface CodexApprovalRequest {
 export type CodexUserInputOption = CodexAppServerUserInputOption;
 
 export interface CodexUserInputQuestion {
+  /** A provider may ask for several choices in one question. */
+  multiSelect?: boolean;
   id: string;
   header: string;
   question: string;

@@ -282,6 +282,20 @@ const SETTINGS_SEARCH_PANELS = {
     subtitle: "Configuration and raw config.toml settings.",
     groups: [
       {
+        title: "Claude Code",
+        entries: [
+          entry("Environment variables", "Configure the Claude instance environment.", [
+            "ANTHROPIC_BASE_URL",
+            "ANTHROPIC_AUTH_TOKEN",
+            "ANTHROPIC_API_KEY",
+            "export",
+            "token",
+            "proxy",
+            "Config directory",
+          ]),
+        ],
+      },
+      {
         title: "Agent",
         messages: [
           "Open a project workspace to edit agent permissions.",

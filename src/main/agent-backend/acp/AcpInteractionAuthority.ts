@@ -8,7 +8,7 @@ import type {
 import * as Context from "effect/Context";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
-import type { AcpRuntimeError } from "./AcpRuntimeError";
+import type { AgentRuntimeError } from "../AgentRuntimeError";
 
 /** Product policy owner for ACP interactions that require a human or authorization decision. */
 export class AcpInteractionAuthority extends Context.Service<
@@ -16,13 +16,13 @@ export class AcpInteractionAuthority extends Context.Service<
   {
     readonly requestPermission: (
       request: RequestPermissionRequest,
-    ) => Effect.Effect<RequestPermissionResponse, AcpRuntimeError>;
+    ) => Effect.Effect<RequestPermissionResponse, AgentRuntimeError>;
     readonly createElicitation: (
       request: CreateElicitationRequest,
-    ) => Effect.Effect<CreateElicitationResponse, AcpRuntimeError>;
+    ) => Effect.Effect<CreateElicitationResponse, AgentRuntimeError>;
     readonly completeElicitation: (
       notification: CompleteElicitationNotification,
-    ) => Effect.Effect<void, AcpRuntimeError>;
+    ) => Effect.Effect<void, AgentRuntimeError>;
   }
 >()("nodex/main/agent-backend/acp/AcpInteractionAuthority") {}
 

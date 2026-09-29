@@ -1,11 +1,28 @@
-export type AcpConversationStatus =
+export interface AgentInteractionRequest {
+  readonly id: string;
+  readonly toolName: string;
+  readonly title: string;
+  readonly detail: string;
+  readonly questions: readonly {
+    readonly id: string;
+    readonly question: string;
+    readonly multiSelect: boolean;
+    readonly options: readonly { readonly label: string; readonly description: string }[];
+  }[];
+}
+
+export type AgentInteractionResponse =
+  | { readonly decision: "allow" | "deny" }
+  | { readonly decision: "answer"; readonly answers: Readonly<Record<string, string>> };
+
+export type AgentConversationStatus =
   | "idle"
   | "running"
   | "authentication-required"
   | "failed"
   | "closed";
 
-export type AcpCanonicalToolKind =
+export type AgentCanonicalToolKind =
   | "read"
   | "edit"
   | "delete"
@@ -17,9 +34,9 @@ export type AcpCanonicalToolKind =
   | "switch_mode"
   | "other";
 
-export type AcpCanonicalToolCallStatus = "pending" | "in_progress" | "completed" | "failed";
+export type AgentCanonicalToolCallStatus = "pending" | "in_progress" | "completed" | "failed";
 
-export type AcpCanonicalSessionUpdate =
+export type AgentCanonicalSessionUpdate =
   | {
       readonly kind: "message";
       readonly key: string;
@@ -33,9 +50,10 @@ export type AcpCanonicalSessionUpdate =
       readonly toolCallId: string;
       readonly title: string;
       readonly name: string | null;
-      readonly toolKind: AcpCanonicalToolKind | null;
-      readonly status: AcpCanonicalToolCallStatus;
+      readonly toolKind: AgentCanonicalToolKind | null;
+      readonly status: AgentCanonicalToolCallStatus;
       readonly detail: string;
+      readonly input?: string;
       readonly locations: readonly string[];
     }
   | {
@@ -92,37 +110,38 @@ export type AcpCanonicalSessionUpdate =
       readonly error: string | null;
     };
 
-export interface AcpConversationTurn {
+export interface AgentConversationTurn {
   readonly sequence: number | null;
   readonly clientUserMessageId: string | null;
   readonly promptText: string | null;
-  readonly updates: readonly AcpCanonicalSessionUpdate[];
+  readonly updates: readonly AgentCanonicalSessionUpdate[];
   readonly stopReason: string | null;
 }
 
-export interface AcpConversationSnapshot {
-  readonly backend: "acp";
+export interface AgentConversationSnapshot {
+  readonly backend: "acp" | "claude";
   readonly threadId: string;
   readonly sessionId: string;
-  readonly status: AcpConversationStatus;
+  readonly status: AgentConversationStatus;
   readonly error: string | null;
-  readonly turns: readonly AcpConversationTurn[];
+  readonly requests?: readonly AgentInteractionRequest[];
+  readonly turns: readonly AgentConversationTurn[];
   readonly revision: number;
 }
 
-export interface AcpConversationTurnDelta {
+export interface AgentConversationTurnDelta {
   readonly sequence: number | null;
   readonly clientUserMessageId: string | null;
   readonly promptText: string | null;
   readonly stopReason: string | null;
   readonly removedUpdateKeys: readonly string[];
-  readonly updates: readonly AcpConversationUpdateDelta[];
+  readonly updates: readonly AgentConversationUpdateDelta[];
 }
 
-export type AcpConversationUpdateDelta =
+export type AgentConversationUpdateDelta =
   | {
       readonly kind: "replace";
-      readonly update: AcpCanonicalSessionUpdate;
+      readonly update: AgentCanonicalSessionUpdate;
     }
   | {
       readonly kind: "append-message";
@@ -131,26 +150,27 @@ export type AcpConversationUpdateDelta =
     };
 
 /**
- * One exact, consecutive mutation of a canonical ACP snapshot. Deltas never carry
+ * One exact, consecutive mutation of a canonical Agent snapshot. Deltas never carry
  * raw protocol values and are rejected unless they continue the receiver's exact
  * session and revision.
  */
-export interface AcpConversationDelta {
-  readonly backend: "acp";
+export interface AgentConversationDelta {
+  readonly backend: "acp" | "claude";
   readonly threadId: string;
   readonly sessionId: string;
   readonly baseRevision: number;
   readonly revision: number;
-  readonly status: AcpConversationStatus;
+  readonly status: AgentConversationStatus;
   readonly error: string | null;
+  readonly requests?: readonly AgentInteractionRequest[];
   readonly removedTurnSequences: readonly (number | null)[];
-  readonly turns: readonly AcpConversationTurnDelta[];
+  readonly turns: readonly AgentConversationTurnDelta[];
 }
 
 const updateSnapshotTurn = (
-  current: AcpConversationTurn | undefined,
-  delta: AcpConversationTurnDelta,
-): AcpConversationTurn | null => {
+  current: AgentConversationTurn | undefined,
+  delta: AgentConversationTurnDelta,
+): AgentConversationTurn | null => {
   const removed = new Set(delta.removedUpdateKeys);
   const updates = (current?.updates ?? []).filter(({ key }) => !removed.has(key));
   for (const incoming of delta.updates) {
@@ -179,12 +199,12 @@ const updateSnapshotTurn = (
 };
 
 /** Applies a delta only when it is the exact next value for this local replica. */
-export const applyAcpConversationDelta = (
-  snapshot: AcpConversationSnapshot,
-  delta: AcpConversationDelta,
-): AcpConversationSnapshot | null => {
+export const applyAgentConversationDelta = (
+  snapshot: AgentConversationSnapshot,
+  delta: AgentConversationDelta,
+): AgentConversationSnapshot | null => {
   if (
-    delta.backend !== "acp" ||
+    delta.backend !== snapshot.backend ||
     snapshot.threadId !== delta.threadId ||
     snapshot.sessionId !== delta.sessionId ||
     snapshot.revision !== delta.baseRevision ||
@@ -214,67 +234,70 @@ export const applyAcpConversationDelta = (
     ...snapshot,
     status: delta.status,
     error: delta.error,
+    ...(delta.requests === undefined ? {} : { requests: delta.requests }),
     turns,
     revision: delta.revision,
   };
 };
 
-export interface AcpBackendSessionPresentation {
-  readonly snapshot: AcpConversationSnapshot;
-  readonly capabilities: AcpBackendCapabilityProfile;
-  readonly modes: AcpSessionModeState | null;
-  readonly configOptions: readonly AcpSessionConfigOption[];
+export interface AgentBackendSessionPresentation {
+  readonly snapshot: AgentConversationSnapshot;
+  readonly capabilities: AgentBackendCapabilityProfile;
+  readonly modes: AgentSessionModeState | null;
+  readonly configOptions: readonly AgentSessionConfigOption[];
 }
 
-export interface AcpAuthenticationMethod {
+export interface AgentAuthenticationMethod {
   readonly id: string;
   readonly name: string;
   readonly description: string | null;
   readonly kind: "agent" | "terminal";
 }
 
-export interface AcpSessionMode {
+export interface AgentSessionMode {
   readonly id: string;
   readonly name: string;
   readonly description: string | null;
 }
 
-export interface AcpSessionModeState {
+export interface AgentSessionModeState {
   readonly currentModeId: string;
-  readonly availableModes: readonly AcpSessionMode[];
+  readonly availableModes: readonly AgentSessionMode[];
 }
 
-export interface AcpSessionConfigSelectOption {
+export interface AgentSessionConfigSelectOption {
   readonly value: string;
   readonly name: string;
   readonly description: string | null;
+  /** Advertised reasoning controls when this option selects a model. */
+  readonly reasoningEfforts?: readonly string[];
 }
 
-export interface AcpSessionConfigSelectGroup {
+export interface AgentSessionConfigSelectGroup {
   readonly group: string;
   readonly name: string;
-  readonly options: readonly AcpSessionConfigSelectOption[];
+  readonly options: readonly AgentSessionConfigSelectOption[];
 }
 
-interface AcpSessionConfigOptionBase {
+interface AgentSessionConfigOptionBase {
   readonly id: string;
   readonly name: string;
   readonly description: string | null;
   readonly category: string | null;
 }
 
-export type AcpSessionConfigOption =
-  | (AcpSessionConfigOptionBase & {
+export type AgentSessionConfigOption =
+  | (AgentSessionConfigOptionBase & {
       readonly type: "boolean";
       readonly currentValue: boolean;
     })
-  | (AcpSessionConfigOptionBase & {
+  | (AgentSessionConfigOptionBase & {
       readonly type: "select";
       readonly currentValue: string;
-      readonly options: readonly (AcpSessionConfigSelectOption | AcpSessionConfigSelectGroup)[];
+      readonly options: readonly (AgentSessionConfigSelectOption | AgentSessionConfigSelectGroup)[];
     });
 
-export interface AcpBackendCapabilityProfile {
+export interface AgentBackendCapabilityProfile {
   readonly prompt: {
     readonly text: true;
     readonly resourceLink: true;
@@ -291,5 +314,5 @@ export interface AcpBackendCapabilityProfile {
     readonly close: boolean;
     readonly additionalDirectories: boolean;
   };
-  readonly authMethods: readonly AcpAuthenticationMethod[];
+  readonly authMethods: readonly AgentAuthenticationMethod[];
 }

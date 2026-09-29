@@ -26,9 +26,9 @@ Accepted system-wide decisions live in `docs/adr/`.
 ### Agent Backend
 
 An Agent Backend is the runtime and protocol family that executes a Thread or Scheduled
-Automation. Every durable execution owner has an explicit Backend Binding: native Codex, or ACP
+Automation. Every durable execution owner has an explicit Backend Binding: native Codex, native Claude Code with one enabled Profile instance, or ACP
 with one supported Agent Definition and one enabled Profile instance. The binding selects runtime
-configuration; an ACP backend session ID is a separate durable resume coordinate and is cleared
+configuration; a Claude Code or ACP backend session ID is a separate durable resume coordinate and is cleared
 when the Thread changes bindings. A model provider is backend diagnostic data, not user-owned
 configuration.
 

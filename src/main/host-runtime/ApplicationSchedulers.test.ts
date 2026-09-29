@@ -333,6 +333,7 @@ const buildHarness = (input: {
             Layer.succeed(
               ApplicationSettings,
               ApplicationSettings.of({
+                claudeLaunchConfiguration: () => Effect.die("Unused Claude launch configuration"),
                 snapshot: () =>
                   Effect.succeed({
                     backup: input.initialBackup ?? {

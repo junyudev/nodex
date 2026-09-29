@@ -129,3 +129,80 @@ describe("shared Codex intelligence dropdown", () => {
     );
   });
 });
+
+test("shows and selects the concrete Claude model ID in the shared picker", async () => {
+  const onSelectionChange = vi.fn();
+  const model = {
+    ...MODELS[0]!,
+    id: "claude-sonnet-5",
+    model: "claude-sonnet-5",
+    displayName: "Claude Sonnet 5",
+    supportedReasoningEfforts: [],
+    defaultReasoningEffort: "default",
+  };
+  const view = renderSelector({
+    models: [model],
+    selection: { ...SELECTION, kind: "claude", model: model.id },
+    onSelectionChange,
+  });
+  await openSelector(view);
+  await act(async () => {
+    fireEvent.click(view.getByLabelText("Model Claude Sonnet 5"));
+  });
+  const row = await within(view.container.ownerDocument.body).findByRole("menuitem", {
+    name: /Claude Sonnet 5\s*claude-sonnet-5/u,
+  });
+  await act(async () => {
+    fireEvent.click(row);
+  });
+  expect(onSelectionChange).toHaveBeenCalledWith(
+    { ...SELECTION, kind: "claude", model: "claude-sonnet-5", reasoningEffort: "default" },
+    "model",
+  );
+});
+
+test("selects native Claude effort levels and resets them for an unsupported model", async () => {
+  const onSelectionChange = vi.fn();
+  const selection = { ...SELECTION, kind: "claude" as const, reasoningEffort: "high" };
+  const view = renderSelector({
+    models: [
+      {
+        ...MODELS[0]!,
+        supportedReasoningEfforts: [
+          { reasoningEffort: "default", description: "" },
+          { reasoningEffort: "high", description: "" },
+          { reasoningEffort: "max", description: "" },
+        ],
+        defaultReasoningEffort: "default",
+      },
+      { ...MODELS[1]!, supportedReasoningEfforts: [], defaultReasoningEffort: "default" },
+    ],
+    selection,
+    onSelectionChange,
+  });
+  await openSelector(view);
+  await act(async () => {
+    fireEvent.click(view.getByLabelText("Effort High"));
+  });
+  const body = within(view.container.ownerDocument.body);
+  const max = await body.findByRole("menuitem", { name: "Max" });
+  expect(body.queryByRole("menuitem", { name: "Medium" })).toBeNull();
+  await act(async () => {
+    fireEvent.click(max);
+  });
+  expect(onSelectionChange).toHaveBeenLastCalledWith(
+    { ...selection, reasoningEffort: "max" },
+    "reasoningEffort",
+  );
+  await act(async () => {
+    fireEvent.click(view.getByLabelText("Model Model A"));
+  });
+  const nextModel = await body.findByRole("menuitem", { name: /Model B/u });
+  await act(async () => {
+    fireEvent.click(nextModel);
+  });
+  expect(onSelectionChange).toHaveBeenLastCalledWith(
+    { ...selection, model: "model-b", reasoningEffort: "default" },
+    "model",
+  );
+});

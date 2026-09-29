@@ -53,7 +53,7 @@ const withFixture = <A, E>(
     readonly observationPath: string;
   }) => Effect.Effect<A, E>,
   overrides?: Partial<AcpSessionRuntimeOptions>,
-): Effect.Effect<A, E | import("./AcpRuntimeError").AcpRuntimeError, Scope.Scope> =>
+): Effect.Effect<A, E | import("../AgentRuntimeError").AgentRuntimeError, Scope.Scope> =>
   Effect.acquireRelease(
     Effect.promise(() => mkdtemp(join(tmpdir(), "nodex-acp-"))),
     (directory) => Effect.promise(() => rm(directory, { recursive: true, force: true })),
@@ -201,7 +201,7 @@ it.effect("terminates a session whose bounded event queue overflows", () =>
           Effect.flip,
           Effect.map((error) => {
             expect(error).toMatchObject({
-              _tag: "AcpRuntimeError",
+              _tag: "AgentRuntimeError",
               operation: "session.events",
               reason: "pressure",
             });
@@ -243,7 +243,7 @@ it.effect("rejects an incompatible stable-v1 initialization response", () =>
       Effect.flip,
       Effect.map((error) => {
         expect(error).toMatchObject({
-          _tag: "AcpRuntimeError",
+          _tag: "AgentRuntimeError",
           operation: "session.initialize-response",
           reason: "initialize",
         });
@@ -366,7 +366,7 @@ it.effect("surfaces unexpected agent termination through the typed session failu
         const error = yield* runtime.termination.pipe(Effect.flip);
 
         expect(error).toMatchObject({
-          _tag: "AcpRuntimeError",
+          _tag: "AgentRuntimeError",
           reason: "session-lost",
           retryable: true,
           pid: runtime.pid,

@@ -1,6 +1,6 @@
 import * as Effect from "effect/Effect";
 import type { AcpSessionRuntimeOptions } from "./AcpSessionRuntime";
-import type { AcpRuntimeError } from "./AcpRuntimeError";
+import type { AgentRuntimeError } from "../AgentRuntimeError";
 import { workspaceAcpClientCapabilities } from "./AcpClientCapabilityOwner";
 import { AcpAgentLaunchProbe } from "../../platform/node/AcpAgentLaunchProbe";
 import { CLAUDE_ACP_AGENT_DEFINITION } from "../../../shared/acp-agent-definitions";
@@ -78,7 +78,7 @@ const selectEnvironment = (
 
 export const resolveClaudeAcpLaunch = Effect.fn("resolveClaudeAcpLaunch")(function* (
   input: ResolveClaudeAcpLaunchInput,
-): Effect.fn.Return<ResolvedClaudeAcpLaunch, AcpRuntimeError, AcpAgentLaunchProbe> {
+): Effect.fn.Return<ResolvedClaudeAcpLaunch, AgentRuntimeError, AcpAgentLaunchProbe> {
   const probe = yield* AcpAgentLaunchProbe;
   const workspaceRoot = yield* probe.canonicalDirectory(input.workspaceRoot);
   const isolatedHome =

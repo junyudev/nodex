@@ -57,6 +57,26 @@ const optionOnlyRequest: RequestComposerRequest = {
 };
 
 describe("request card questionnaire state", () => {
+  test("preserves multiple choices and does not submit a deselected choice", () => {
+    const multiple: RequestComposerRequest = {
+      ...optionOnlyRequest,
+      questions: optionOnlyRequest.questions.map((question) => ({
+        ...question,
+        multiSelect: true,
+      })),
+    };
+    let draft = createInitialRequestQuestionnaireDraft(multiple);
+    expect(buildUserInputAnswers(multiple, draft)).toEqual({});
+    draft = selectRequestQuestionnaireOption(draft, 0, "First", true);
+    draft = selectRequestQuestionnaireOption(draft, 0, "Second", true);
+    expect(buildUserInputAnswers(multiple, draft)).toEqual({ q_option_only: ["First", "Second"] });
+    draft = selectRequestQuestionnaireOption(draft, 0, "First", true);
+    draft = selectRequestQuestionnaireOption(draft, 0, "Second", true);
+    expect(isRequestQuestionnaireSubmittable(multiple, draft, EXPLICIT_REQUEST_FORM_POLICY)).toBe(
+      false,
+    );
+    expect(buildUserInputAnswers(multiple, draft)).toEqual({});
+  });
   test("builds a selected option answer and accepts it for explicit forms", () => {
     const draft = {
       answers: [{ selectedOptionId: "First", freeformText: null }],

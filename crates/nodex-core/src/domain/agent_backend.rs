@@ -22,6 +22,16 @@ pub(crate) fn binding_storage(
             agent_definition_id: None,
             instance_config_id: None,
         }),
+        AgentBackendBinding::Claude { instance_config_id } => {
+            if !validate_id(instance_config_id) {
+                return Err("Claude backend binding identity is invalid");
+            }
+            Ok(AgentBackendStorage {
+                kind: "claude",
+                agent_definition_id: None,
+                instance_config_id: Some(instance_config_id),
+            })
+        }
         AgentBackendBinding::Acp {
             agent_definition_id,
             instance_config_id,
@@ -51,6 +61,10 @@ pub(crate) fn binding_from_storage(
         "codex" if agent_definition_id.is_none() && instance_config_id.is_none() => {
             AgentBackendBinding::Codex
         }
+        "claude" if agent_definition_id.is_none() => AgentBackendBinding::Claude {
+            instance_config_id: instance_config_id
+                .ok_or("Claude backend binding requires an instance")?,
+        },
         "acp" => AgentBackendBinding::Acp {
             agent_definition_id: agent_definition_id
                 .ok_or("ACP backend binding is missing its Agent definition")?,

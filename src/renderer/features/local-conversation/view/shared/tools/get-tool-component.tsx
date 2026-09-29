@@ -1,3 +1,4 @@
+import { GenericToolCall } from "./generic-tool-call";
 import { resolveNativeSessionHandoffScope } from "../../../projection/tool-metadata/native-session-handoff";
 import { NativeSessionHandoffToolCall } from "./native-session-handoff-tool-call";
 import type { ComponentType } from "react";
@@ -51,5 +52,5 @@ export function getToolComponent(item: CodexTranscriptEntry): ToolComponent | nu
     return DynamicToolCall;
   }
 
-  return null;
+  return item.toolCall ? GenericToolCall : null;
 }

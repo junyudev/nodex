@@ -9,10 +9,13 @@ export function deriveComposerIntelligenceSelection(
   defaultServiceTier: CodexServiceTier,
 ): ComposerIntelligenceSelection {
   return {
-    kind: "codex",
+    kind: model.provider?.kind ?? "codex",
     model: model.selectedModel,
-    reasoningEffort: model.selectedReasoningEffort,
-    serviceTier: model.conversation?.latestThreadSettings?.serviceTier ?? defaultServiceTier,
+    reasoningEffort: model.provider?.kind === "acp" ? "none" : model.selectedReasoningEffort,
+    serviceTier:
+      model.provider && model.provider.kind !== "codex"
+        ? null
+        : (model.conversation?.latestThreadSettings?.serviceTier ?? defaultServiceTier),
   };
 }
 
@@ -21,6 +24,7 @@ export function areComposerIntelligenceSelectionsEqual(
   right: ComposerIntelligenceSelection,
 ): boolean {
   return (
+    left.kind === right.kind &&
     left.model === right.model &&
     left.reasoningEffort === right.reasoningEffort &&
     left.serviceTier === right.serviceTier

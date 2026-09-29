@@ -1,16 +1,16 @@
 import { expect, it, vi } from "vite-plus/test";
-import type { AcpBackendSessionPresentation } from "../../../shared/agent-backend-api";
+import type { AgentBackendSessionPresentation } from "../../../shared/agent-backend-api";
 import type {
-  AcpConversationDelta,
-  AcpConversationSnapshot,
-} from "../../../shared/acp-conversation";
-import type { AcpBackendRuntime } from "../../lib/acp-backend-runtime";
-import { AcpConversationOwner } from "./acp-conversation-owner";
+  AgentConversationDelta,
+  AgentConversationSnapshot,
+} from "../../../shared/agent-conversation";
+import type { AgentBackendRuntime } from "../../lib/agent-backend-runtime";
+import { AgentConversationOwner } from "./agent-conversation-owner";
 
 const snapshot = (
   revision: number,
-  status: AcpConversationSnapshot["status"] = "idle",
-): AcpConversationSnapshot => ({
+  status: AgentConversationSnapshot["status"] = "idle",
+): AgentConversationSnapshot => ({
   backend: "acp",
   threadId: "thread-1",
   sessionId: "session-1",
@@ -20,7 +20,7 @@ const snapshot = (
   revision,
 });
 
-const presentation = (revision: number): AcpBackendSessionPresentation => ({
+const presentation = (revision: number): AgentBackendSessionPresentation => ({
   snapshot: snapshot(revision),
   capabilities: {
     prompt: {
@@ -54,8 +54,8 @@ const presentation = (revision: number): AcpBackendSessionPresentation => ({
 const delta = (
   baseRevision: number,
   revision: number,
-  status: AcpConversationSnapshot["status"] = "idle",
-): AcpConversationDelta => ({
+  status: AgentConversationSnapshot["status"] = "idle",
+): AgentConversationDelta => ({
   backend: "acp",
   threadId: "thread-1",
   sessionId: "session-1",
@@ -76,8 +76,10 @@ const deferred = <Value>() => {
 };
 
 const createRuntime = () => {
-  let publish: ((event: { threadId: string; delta: AcpConversationDelta }) => void) | null = null;
-  const runtime: AcpBackendRuntime = {
+  let publish: ((event: { threadId: string; delta: AgentConversationDelta }) => void) | null = null;
+  const runtime: AgentBackendRuntime = {
+    claudeModels: async () => [],
+    respond: vi.fn(async () => {}),
     startThread: vi.fn(async () => {
       throw new Error("not used by an attached conversation owner");
     }),
@@ -98,16 +100,16 @@ const createRuntime = () => {
   };
   return {
     runtime,
-    publish: (next: AcpConversationDelta) => publish?.({ threadId: "thread-1", delta: next }),
+    publish: (next: AgentConversationDelta) => publish?.({ threadId: "thread-1", delta: next }),
   };
 };
 
 it("subscribes before opening and never regresses a newer streamed projection", async () => {
-  const opening = deferred<AcpBackendSessionPresentation>();
+  const opening = deferred<AgentBackendSessionPresentation>();
   const { runtime, publish } = createRuntime();
   vi.mocked(runtime.open).mockReturnValue(opening.promise);
   vi.mocked(runtime.read).mockResolvedValue(presentation(1));
-  const owner = new AcpConversationOwner("thread-1", runtime);
+  const owner = new AgentConversationOwner("thread-1", runtime);
 
   const disconnect = owner.connect();
   publish(delta(1, 2, "running"));
@@ -126,10 +128,10 @@ it("subscribes before opening and never regresses a newer streamed projection", 
 });
 
 it("keeps cancellation available while a prompt is awaiting the external Agent", async () => {
-  const prompting = deferred<{ stopReason: string; snapshot: AcpConversationSnapshot }>();
+  const prompting = deferred<{ stopReason: string; snapshot: AgentConversationSnapshot }>();
   const { runtime, publish } = createRuntime();
   vi.mocked(runtime.prompt).mockReturnValue(prompting.promise);
-  const owner = new AcpConversationOwner("thread-1", runtime);
+  const owner = new AgentConversationOwner("thread-1", runtime);
   owner.connect();
   await vi.waitFor(() => expect(owner.getSnapshot().connection).toBe("ready"));
 
@@ -150,7 +152,7 @@ it("keeps cancellation available while a prompt is awaiting the external Agent",
 
 it("retains the latest projection while applying returned mode state", async () => {
   const { runtime, publish } = createRuntime();
-  const owner = new AcpConversationOwner("thread-1", runtime);
+  const owner = new AgentConversationOwner("thread-1", runtime);
   owner.connect();
   await vi.waitFor(() => expect(owner.getSnapshot().connection).toBe("ready"));
   publish(delta(2, 3));
@@ -168,7 +170,7 @@ it("reads a fresh snapshot instead of applying a non-consecutive delta", async (
   vi.mocked(runtime.read)
     .mockResolvedValueOnce(presentation(2))
     .mockResolvedValueOnce(presentation(5));
-  const owner = new AcpConversationOwner("thread-1", runtime);
+  const owner = new AgentConversationOwner("thread-1", runtime);
   owner.connect();
   await vi.waitFor(() => expect(owner.getSnapshot().presentation?.snapshot.revision).toBe(2));
 
@@ -183,7 +185,7 @@ it("fails visibly when a revision-gap resync cannot read the authoritative snaps
   vi.mocked(runtime.read)
     .mockResolvedValueOnce(presentation(2))
     .mockRejectedValueOnce(new Error("ACP session is no longer available"));
-  const owner = new AcpConversationOwner("thread-1", runtime);
+  const owner = new AgentConversationOwner("thread-1", runtime);
   owner.connect();
   await vi.waitFor(() => expect(owner.getSnapshot().presentation?.snapshot.revision).toBe(2));
 
@@ -200,7 +202,7 @@ it("fails visibly when a revision-gap resync cannot read the authoritative snaps
 
 it("starts a new projection epoch when retrying a failed durable session", async () => {
   const { runtime, publish } = createRuntime();
-  const owner = new AcpConversationOwner("thread-1", runtime);
+  const owner = new AgentConversationOwner("thread-1", runtime);
   owner.connect();
   await vi.waitFor(() => expect(owner.getSnapshot().presentation?.snapshot.revision).toBe(2));
   publish(delta(2, 3, "failed"));
@@ -220,7 +222,7 @@ it("starts a new projection epoch when retrying a failed durable session", async
 it("surfaces expected command failures without rejecting the owning interaction", async () => {
   const { runtime } = createRuntime();
   vi.mocked(runtime.authenticate).mockRejectedValue(new Error("Authentication was declined"));
-  const owner = new AcpConversationOwner("thread-1", runtime);
+  const owner = new AgentConversationOwner("thread-1", runtime);
   owner.connect();
   await vi.waitFor(() => expect(owner.getSnapshot().connection).toBe("ready"));
 
@@ -234,7 +236,7 @@ it("surfaces expected command failures without rejecting the owning interaction"
 
 it("never forwards prompts while authentication or fatal recovery is required", async () => {
   const { runtime, publish } = createRuntime();
-  const owner = new AcpConversationOwner("thread-1", runtime);
+  const owner = new AgentConversationOwner("thread-1", runtime);
   owner.connect();
   await vi.waitFor(() => expect(owner.getSnapshot().connection).toBe("ready"));
 
@@ -243,4 +245,26 @@ it("never forwards prompts while authentication or fatal recovery is required", 
   publish(delta(3, 4, "failed"));
   expect(await owner.prompt("blocked after failure")).toBe(false);
   expect(runtime.prompt).not.toHaveBeenCalled();
+});
+
+it("releases the composer after admission and retains turn completion and cancellation", async () => {
+  const pending = deferred<{ stopReason: string; snapshot: AgentConversationSnapshot }>();
+  const { runtime, publish } = createRuntime();
+  vi.mocked(runtime.prompt).mockReturnValue(pending.promise);
+  const owner = new AgentConversationOwner("thread-1", runtime);
+  const disconnect = owner.connect();
+  await vi.waitFor(() => expect(owner.getSnapshot().connection).toBe("ready"));
+  const accepted = owner.submit("Investigate");
+  publish(delta(2, 3, "running"));
+  expect(await accepted).toBe(true);
+  expect(owner.getSnapshot().promptPending).toBe(true);
+  expect(await owner.cancel()).toBe(true);
+  pending.resolve({ stopReason: "cancelled", snapshot: snapshot(5) });
+  await vi.waitFor(() => expect(owner.getSnapshot().promptPending).toBe(false));
+  expect(owner.getSnapshot().presentation?.snapshot.status).toBe("idle");
+  owner.retry();
+  await vi.waitFor(() => expect(owner.getSnapshot().connection).toBe("ready"));
+  disconnect();
+  publish(delta(2, 3, "running"));
+  expect(owner.getSnapshot().presentation?.snapshot.status).toBe("idle");
 });

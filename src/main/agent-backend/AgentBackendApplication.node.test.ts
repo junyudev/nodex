@@ -1,3 +1,5 @@
+// @effect-diagnostics strictEffectProvide:off
+import { inactiveClaudeSessions } from "./claude/ClaudeSessionManager.test-fixtures";
 import { it } from "@effect/vitest";
 import { describe, expect, vi } from "vite-plus/test";
 import * as Deferred from "effect/Deferred";
@@ -6,7 +8,7 @@ import * as Fiber from "effect/Fiber";
 import * as Ref from "effect/Ref";
 import * as Stream from "effect/Stream";
 import * as SubscriptionRef from "effect/SubscriptionRef";
-import type { AcpConversationSnapshot } from "../../shared/acp-conversation";
+import type { AgentConversationSnapshot } from "../../shared/agent-conversation";
 import type { ProjectWorkspaceService } from "../project-application/ProjectWorkspace";
 import { ProjectWorkspace } from "../project-application/ProjectWorkspace";
 import { AgentBackendRegistry } from "./AgentBackendRegistry";
@@ -17,13 +19,15 @@ import {
   type AcpBackendSessionHandle,
   type OpenAcpBackendSessionInput,
 } from "./acp/AcpBackendSessionManager";
-import { emptyAcpConversationSnapshot } from "./acp/AcpConversationProjection";
+import { emptyAgentConversationSnapshot } from "./AgentConversationProjection";
 import {
-  make,
-  projectAcpSessionConfigOptions,
-  projectAcpSessionModes,
+  make as makeApplication,
+  projectAgentSessionConfigOptions,
+  projectAgentSessionModes,
   resolveAcpPermissionPolicy,
 } from "./AgentBackendApplication";
+
+const make = makeApplication.pipe(Effect.provide(inactiveClaudeSessions));
 
 const binding = {
   kind: "acp" as const,
@@ -58,7 +62,7 @@ const makeHandleFor = (input?: {
     const threadId = input?.threadId ?? thread.threadId;
     const status = yield* SubscriptionRef.make<AcpBackendSessionState>({ kind: "idle" });
     const snapshot = yield* SubscriptionRef.make(
-      emptyAcpConversationSnapshot({ threadId, sessionId: "protocol-session-1" }),
+      emptyAgentConversationSnapshot({ threadId, sessionId: "protocol-session-1" }),
     );
     const deferredInitialPrompt = yield* Ref.make<AcpDeferredInitialPrompt | null>(null);
     return {
@@ -118,7 +122,7 @@ describe("AgentBackendApplication authority", () => {
 
   it.effect("projects protocol-owned session controls into canonical renderer values", () =>
     Effect.sync(() => {
-      const modes = projectAcpSessionModes({
+      const modes = projectAgentSessionModes({
         currentModeId: "code",
         availableModes: [
           {
@@ -130,7 +134,7 @@ describe("AgentBackendApplication authority", () => {
         ],
         _meta: { protocolOnly: true },
       });
-      const configOptions = projectAcpSessionConfigOptions([
+      const configOptions = projectAgentSessionConfigOptions([
         {
           id: "model",
           name: "Model",
@@ -226,7 +230,7 @@ describe("AgentBackendApplication authority", () => {
     });
 
     return make.pipe(
-      Effect.flatMap((application) => application.openAcpSession({ threadId: thread.threadId })),
+      Effect.flatMap((application) => application.openAgentSession({ threadId: thread.threadId })),
       Effect.provideService(AgentBackendRegistry, registry),
       Effect.provideService(AcpBackendSessionManager, manager),
       Effect.provideService(ProjectWorkspace, ProjectWorkspace.of(workspace)),
@@ -273,7 +277,7 @@ describe("AgentBackendApplication authority", () => {
           changes: Stream.empty,
         });
         return make.pipe(
-          Effect.flatMap((application) => application.cancelAcpSession(thread.threadId)),
+          Effect.flatMap((application) => application.cancelAgentSession(thread.threadId)),
           Effect.provideService(AcpBackendSessionManager, manager),
         );
       }),
@@ -323,7 +327,7 @@ describe("AgentBackendApplication authority", () => {
       );
 
       const running = yield* application
-        .promptAcpSession({ threadId: thread.threadId, prompt: "wait" })
+        .promptAgentSession({ threadId: thread.threadId, prompt: "wait" })
         .pipe(Effect.forkChild);
       yield* Deferred.await(becameActive);
       yield* Fiber.interrupt(running);
@@ -429,7 +433,8 @@ describe("AgentBackendApplication authority", () => {
           );
 
           const start = yield* application
-            .startAcpThread({
+            .startAgentThread({
+              backendKind: "acp",
               sessionId: "session-1",
               instanceConfigId: binding.instanceConfigId,
               prompt: "Run a slow task",
@@ -473,8 +478,8 @@ describe("AgentBackendApplication authority", () => {
             kind: "authentication-required",
             error: {} as never,
           });
-          const snapshot = yield* SubscriptionRef.make<AcpConversationSnapshot>({
-            ...emptyAcpConversationSnapshot({
+          const snapshot = yield* SubscriptionRef.make<AgentConversationSnapshot>({
+            ...emptyAgentConversationSnapshot({
               threadId: "thread-pending",
               sessionId: "pending:thread-pending",
             }),
@@ -626,7 +631,8 @@ describe("AgentBackendApplication authority", () => {
             Effect.provideService(ProjectWorkspace, ProjectWorkspace.of(workspace)),
           );
 
-          const started = yield* application.startAcpThread({
+          const started = yield* application.startAgentThread({
+            backendKind: "acp",
             sessionId: "session-1",
             instanceConfigId: binding.instanceConfigId,
             prompt: "Create the requested file",
@@ -635,7 +641,7 @@ describe("AgentBackendApplication authority", () => {
           expect(started.presentation.snapshot.status).toBe("authentication-required");
           expect(prompt).not.toHaveBeenCalled();
 
-          yield* application.authenticateAcpSession({
+          yield* application.authenticateAgentSession({
             threadId: started.thread.threadId,
             methodId: "claude-account",
           });
@@ -649,7 +655,7 @@ describe("AgentBackendApplication authority", () => {
             },
           );
 
-          yield* application.authenticateAcpSession({
+          yield* application.authenticateAgentSession({
             threadId: started.thread.threadId,
             methodId: "claude-account",
           });

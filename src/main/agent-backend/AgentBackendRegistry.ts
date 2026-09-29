@@ -7,7 +7,7 @@ import {
   type AcpAgentDefinitionId,
 } from "../../shared/acp-agent-definitions";
 import type { AgentBackendBinding } from "../../shared/agent-backend";
-import type { AcpAgentInstanceConfig } from "../../shared/types";
+import type { AcpAgentInstanceConfig, ClaudeAgentInstanceConfig } from "../../shared/types";
 import {
   ApplicationSettings,
   type ApplicationSettingsSnapshot,
@@ -16,6 +16,12 @@ import {
 type SupportedAcpAgentDefinition = (typeof ACP_AGENT_DEFINITIONS)[number];
 
 export type AgentBackendResolution =
+  | {
+      readonly kind: "claude";
+      readonly binding: Extract<AgentBackendBinding, { kind: "claude" }>;
+      readonly displayName: string;
+      readonly instance: ClaudeAgentInstanceConfig;
+    }
   | {
       readonly kind: "codex";
       readonly binding: Extract<AgentBackendBinding, { readonly kind: "codex" }>;
@@ -49,7 +55,7 @@ export class AgentBackendRegistryError extends Schema.TaggedError<AgentBackendRe
   {
     message: Schema.String,
     reason: AgentBackendRegistryFailureReason,
-    backendKind: Schema.Literals(["codex", "acp"]),
+    backendKind: Schema.Literals(["codex", "acp", "claude"]),
     agentDefinitionId: Schema.optionalKey(Schema.String),
     instanceConfigId: Schema.optionalKey(Schema.String),
     cause: Schema.optionalKey(Schema.Defect()),
@@ -78,10 +84,20 @@ const unavailable = (
 /** Resolves supported metadata and explicit Profile configuration; it never starts a process. */
 export const resolveAgentBackendBinding = (
   binding: AgentBackendBinding,
-  settings: Pick<ApplicationSettingsSnapshot, "acpAgents">,
+  settings: Pick<ApplicationSettingsSnapshot, "acpAgents" | "claudeAgents">,
 ): AgentBackendResolution | AgentBackendRegistryError => {
   if (binding.kind === "codex") {
     return { kind: "codex", binding, displayName: "Codex" };
+  }
+  if (binding.kind === "claude") {
+    const instance = settings.claudeAgents.instances.find(
+      ({ id }) => id === binding.instanceConfigId,
+    );
+    if (!instance)
+      return unavailable(binding, "instance-unavailable", "Claude instance is unavailable");
+    if (!instance.enabled)
+      return unavailable(binding, "instance-disabled", "Claude instance is disabled");
+    return { kind: "claude", binding, displayName: instance.displayName, instance };
   }
   const definition = ACP_AGENT_DEFINITIONS.find(({ id }) => id === binding.agentDefinitionId);
   if (definition === undefined) {
@@ -150,7 +166,7 @@ export class AgentBackendRegistry extends Context.Service<
 
 export const make = Effect.gen(function* () {
   const settings = yield* ApplicationSettings;
-  const readSnapshot = (backendKind: "codex" | "acp") =>
+  const readSnapshot = (backendKind: AgentBackendBinding["kind"]) =>
     settings.snapshot().pipe(
       Effect.mapError(
         (cause) =>
@@ -206,7 +222,7 @@ export const make = Effect.gen(function* () {
           snapshot,
         );
         if (resolution instanceof AgentBackendRegistryError) return yield* resolution;
-        if (resolution.kind === "codex") {
+        if (resolution.kind !== "acp") {
           return yield* new AgentBackendRegistryError({
             message: "ACP instance resolved to the native backend",
             reason: "instance-definition-mismatch",

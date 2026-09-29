@@ -1,6 +1,6 @@
 import { assert, it } from "@effect/vitest";
 import * as Effect from "effect/Effect";
-import type { AcpConversationSnapshot } from "../../shared/acp-conversation";
+import type { AgentConversationSnapshot } from "../../shared/agent-conversation";
 import { AgentBackendApplication } from "../agent-backend/AgentBackendApplication";
 import { CodexThreadDirectory } from "../codex-application/CodexThreadDirectory";
 import { CodexReadThreadHistory } from "../codex-application/CodexReadThreadHistory";
@@ -29,7 +29,7 @@ const provenance = {
   },
 } as const;
 const snapshot = (
-  backend: "codex" | "acp" | null = "codex",
+  backend: "codex" | "acp" | "claude" | null = "codex",
   projectId = "project:a",
 ): ProjectWorkspaceReadSnapshot =>
   ({
@@ -54,7 +54,7 @@ const snapshot = (
 const setup = (options: {
   read: CoreModules["Service"]["workspace"]["read"];
   codexRead?: CodexReadThreadHistory["Service"]["read"];
-  acpRead?: AgentBackendApplication["Service"]["readAcpSession"];
+  acpRead?: AgentBackendApplication["Service"]["readAgentSession"];
   directoryRead?: CodexThreadDirectory["Service"]["resolve"];
 }) =>
   make.pipe(
@@ -66,7 +66,7 @@ const setup = (options: {
       read: options.codexRead ?? (() => Effect.die("Codex history must not be read")),
     }),
     Effect.provideService(AgentBackendApplication, {
-      readAcpSession: options.acpRead ?? (() => Effect.die("ACP history must not be read")),
+      readAgentSession: options.acpRead ?? (() => Effect.die("ACP history must not be read")),
     } as never),
   );
 
@@ -150,7 +150,7 @@ it.effect("distinguishes empty drafts from unloaded ACP history without creating
 );
 
 it("bounds ACP pages and outputs and rejects cursors after snapshot changes", () => {
-  const acp: AcpConversationSnapshot = {
+  const acp: AgentConversationSnapshot = {
     backend: "acp",
     threadId: "thread:a",
     sessionId: "acp:a",

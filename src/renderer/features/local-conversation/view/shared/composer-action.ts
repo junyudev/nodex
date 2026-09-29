@@ -20,6 +20,7 @@ interface ResolveComposerActionInput {
   hasDraftContent: boolean;
   hasThreadGoal: boolean;
   isQueueingEnabled: boolean;
+  supportsRunningFollowUps?: boolean;
   latestTurnStatus: "inProgress" | "completed" | "interrupted" | "failed" | null;
   canResumeInterruptedTurn: boolean;
 }
@@ -74,7 +75,10 @@ export function resolveStageThreadsComposerActionState(
     };
   }
 
-  if (input.isThreadRunning && !input.hasDraftContent) {
+  if (
+    input.isThreadRunning &&
+    (!input.hasDraftContent || input.supportsRunningFollowUps === false)
+  ) {
     return {
       action: "stop",
       primarySubmitAction: null,

@@ -1,4 +1,6 @@
-export type NewThreadBackendSelection = "codex" | { readonly acpInstanceId: string };
+export type NewThreadBackendSelection =
+  | "codex"
+  | { readonly instanceConfigId: string; readonly kind: "acp" | "claude" };
 
 const sameSelection = (
   left: NewThreadBackendSelection,
@@ -7,7 +9,8 @@ const sameSelection = (
   left === right ||
   (typeof left === "object" &&
     typeof right === "object" &&
-    left.acpInstanceId === right.acpInstanceId);
+    left.instanceConfigId === right.instanceConfigId &&
+    left.kind === right.kind);
 
 /**
  * Shares the ephemeral backend choice between a Session's primary page and its composer dock.

@@ -1,3 +1,10 @@
+import {
+  presentClaudeInstances,
+  readStoredClaudeInstances,
+  resolveClaudeLaunchConfiguration,
+  writeClaudeInstances,
+} from "./claude-agent-environment";
+import type { SecretEncryptionAdapter } from "../platform/SecretEncryption";
 import * as path from "path";
 import {
   closeSync,
@@ -21,6 +28,7 @@ import {
 import type {
   AcpAgentInstanceConfig,
   AcpAgentSettings,
+  ClaudeAgentSettings,
   AppUpdateSettings,
   BackupSettings,
   CodexDeveloperInstructionSettings,
@@ -35,6 +43,7 @@ import type {
   ThreadNotificationTurnMode,
   UpdateAppUpdateSettingsInput,
   UpdateAcpAgentSettingsInput,
+  UpdateClaudeAgentSettingsInput,
   UpdateBackupSettingsInput,
   UpdateCodexDeveloperInstructionSettingsInput,
   UpdateCodexGitSettingsInput,
@@ -49,7 +58,11 @@ import type {
   WindowRestoreSettings,
 } from "../../shared/types";
 import { normalizeCodexSshExecutionHostConfig } from "../codex/codex-ssh-execution-host";
-import { readSettingsTomlDocument, type SettingsTomlDocument } from "./settings-document";
+import {
+  readSettingsTomlDocument,
+  SETTINGS_DOCUMENT_MAX_BYTES,
+  type SettingsTomlDocument,
+} from "./settings-document";
 
 // ─── Profile-local TOML [server] settings ───
 
@@ -89,6 +102,7 @@ interface ServerTomlConfig {
   worktree_auto_delete_limit?: number;
   execution_hosts?: unknown[];
   acp_agent_instances?: unknown[];
+  claude_agent_instances?: unknown[];
 }
 
 interface RootTomlConfig extends Record<string, unknown> {
@@ -96,6 +110,7 @@ interface RootTomlConfig extends Record<string, unknown> {
 }
 
 export interface ApplicationSettingsDocumentSource {
+  readonly secretEncryption?: SecretEncryptionAdapter;
   readonly environment: Readonly<NodeJS.ProcessEnv>;
   readonly settingsPath: string;
   readonly document?: SettingsTomlDocument;
@@ -164,6 +179,9 @@ function readTomlConfig(configPath: string): RootTomlConfig {
 }
 
 function writeTomlConfig(configPath: string, nextToml: RootTomlConfig): void {
+  const serialized = stringifyToml(nextToml as Record<string, unknown>);
+  if (Buffer.byteLength(serialized, "utf8") > SETTINGS_DOCUMENT_MAX_BYTES)
+    throw new Error(`Settings document exceeds ${SETTINGS_DOCUMENT_MAX_BYTES} bytes.`);
   const configDirectory = path.dirname(configPath);
   mkdirSync(configDirectory, { recursive: true });
   const temporaryPath = path.join(
@@ -173,7 +191,7 @@ function writeTomlConfig(configPath: string, nextToml: RootTomlConfig): void {
   let descriptor: number | null = null;
   try {
     descriptor = openSync(temporaryPath, "wx", 0o600);
-    writeFileSync(descriptor, stringifyToml(nextToml as Record<string, unknown>), "utf8");
+    writeFileSync(descriptor, serialized, "utf8");
     fsyncSync(descriptor);
     closeSync(descriptor);
     descriptor = null;
@@ -939,6 +957,41 @@ export function updateCodexExecutionHostSettings(
   const next = { ...loadProfileServerTomlConfig(source), execution_hosts: normalized };
   writeProfileServerTomlConfig(source, next);
   return getCodexExecutionHostSettings(source);
+}
+
+export function getClaudeAgentSettings(
+  source: ApplicationSettingsDocumentSource,
+): ClaudeAgentSettings {
+  return presentClaudeInstances(
+    readStoredClaudeInstances(loadProfileServerTomlConfig(source).claude_agent_instances),
+  );
+}
+
+export function getClaudeLaunchConfiguration(
+  source: ApplicationSettingsDocumentSource,
+  instanceId: string,
+) {
+  return resolveClaudeLaunchConfiguration(
+    source,
+    readStoredClaudeInstances(loadProfileServerTomlConfig(source).claude_agent_instances),
+    instanceId,
+  );
+}
+
+export function updateClaudeAgentSettings(
+  input: UpdateClaudeAgentSettingsInput,
+  source: ApplicationSettingsDocumentSource,
+): ClaudeAgentSettings {
+  const previous = loadProfileServerTomlConfig(source);
+  writeClaudeInstances(
+    source,
+    input,
+    readStoredClaudeInstances(previous.claude_agent_instances),
+    (instances) => {
+      writeProfileServerTomlConfig(source, { ...previous, claude_agent_instances: instances });
+    },
+  );
+  return getClaudeAgentSettings(source);
 }
 
 function normalizeAcpAgentInstanceConfig(value: unknown): AcpAgentInstanceConfig {

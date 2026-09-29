@@ -1,8 +1,8 @@
 import { afterEach, expect, it, vi } from "vite-plus/test";
-import type { AcpBackendSessionPresentation } from "../../shared/acp-conversation";
-import { acpBackendRuntime } from "./acp-backend-runtime";
+import type { AgentBackendSessionPresentation } from "../../shared/agent-conversation";
+import { agentBackendRuntime } from "./agent-backend-runtime";
 
-const presentation: AcpBackendSessionPresentation = {
+const presentation: AgentBackendSessionPresentation = {
   snapshot: {
     backend: "acp",
     threadId: "thread-1",
@@ -39,18 +39,18 @@ afterEach(() => vi.unstubAllGlobals());
 
 it("routes typed lifecycle commands through the named ACP boundary", async () => {
   const invoke = vi.fn(async (channel: string) => {
-    if (channel === "agent-backend:acp:session:open") return presentation;
-    if (channel === "agent-backend:acp:session:read") return presentation;
+    if (channel === "agent-backend:session:open") return presentation;
+    if (channel === "agent-backend:session:read") return presentation;
     throw new Error(`Unexpected channel: ${channel}`);
   });
   vi.stubGlobal("window", { api: { invoke, on: vi.fn() } });
 
-  await expect(acpBackendRuntime.open({ threadId: "thread-1" })).resolves.toEqual(presentation);
-  await expect(acpBackendRuntime.read("thread-1")).resolves.toEqual(presentation);
-  expect(invoke).toHaveBeenNthCalledWith(1, "agent-backend:acp:session:open", {
+  await expect(agentBackendRuntime.open({ threadId: "thread-1" })).resolves.toEqual(presentation);
+  await expect(agentBackendRuntime.read("thread-1")).resolves.toEqual(presentation);
+  expect(invoke).toHaveBeenNthCalledWith(1, "agent-backend:session:open", {
     threadId: "thread-1",
   });
-  expect(invoke).toHaveBeenNthCalledWith(2, "agent-backend:acp:session:read", "thread-1");
+  expect(invoke).toHaveBeenNthCalledWith(2, "agent-backend:session:read", "thread-1");
 });
 
 it("observes only the attached thread and releases both delivery paths", async () => {
@@ -64,7 +64,7 @@ it("observes only the attached thread and releases both delivery paths", async (
   vi.stubGlobal("window", { api: { invoke, on } });
   const listener = vi.fn();
 
-  const unsubscribe = await acpBackendRuntime.subscribe("thread-1", listener);
+  const unsubscribe = await agentBackendRuntime.subscribe("thread-1", listener);
   const publish = eventListener as ((...args: unknown[]) => void) | null;
   expect(publish).not.toBeNull();
   const delta = {
@@ -83,8 +83,8 @@ it("observes only the attached thread and releases both delivery paths", async (
 
   expect(listener).toHaveBeenCalledOnce();
   expect(listener).toHaveBeenCalledWith({ threadId: "thread-1", delta });
-  expect(invoke).toHaveBeenCalledWith("agent-backend:acp:session:observe", "thread-1");
+  expect(invoke).toHaveBeenCalledWith("agent-backend:session:observe", "thread-1");
   unsubscribe();
   expect(release).toHaveBeenCalledOnce();
-  expect(invoke).toHaveBeenCalledWith("agent-backend:acp:session:unobserve", "thread-1");
+  expect(invoke).toHaveBeenCalledWith("agent-backend:session:unobserve", "thread-1");
 });

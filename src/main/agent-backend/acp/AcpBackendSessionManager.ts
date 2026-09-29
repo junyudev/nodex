@@ -1,3 +1,4 @@
+import { reduceAcpConversationEvent } from "./AcpConversationProjection";
 import type {
   AuthenticateResponse,
   ListSessionsResponse,
@@ -20,8 +21,8 @@ import * as Scope from "effect/Scope";
 import * as Semaphore from "effect/Semaphore";
 import * as Stream from "effect/Stream";
 import * as SubscriptionRef from "effect/SubscriptionRef";
-import type { AcpBackendSessionChangedEvent } from "../../../shared/agent-backend-api";
-import type { AcpConversationSnapshot } from "../../../shared/acp-conversation";
+import type { AgentBackendSessionChangedEvent } from "../../../shared/agent-backend-api";
+import type { AgentConversationSnapshot } from "../../../shared/agent-conversation";
 import { MainConfig } from "../../app/MainConfig";
 import { ApplicationSettings } from "../../settings/ApplicationSettings";
 import { TerminalRuntimeMap } from "../../terminal-runtime/TerminalRuntimeMap";
@@ -29,11 +30,11 @@ import { AcpAgentLaunchProbe } from "../../platform/node/AcpAgentLaunchProbe";
 import { AcpSessionTransport } from "../../platform/node/AcpSessionTransport";
 import { live as capabilityOwnerLive } from "./AcpClientCapabilityOwner";
 import { AcpInteractionAuthority } from "./AcpInteractionAuthority";
-import { acpRuntimeError, type AcpRuntimeError } from "./AcpRuntimeError";
+import { agentRuntimeError, type AgentRuntimeError } from "../AgentRuntimeError";
 import {
   AcpSessionRuntime,
   layer as acpSessionRuntimeLayer,
-  type AcpBackendCapabilityProfile,
+  type AgentBackendCapabilityProfile,
   type AcpSessionOpenRequest,
   type AcpSessionRuntimeEvent,
 } from "./AcpSessionRuntime";
@@ -41,21 +42,20 @@ import { live as terminalOwnerLive } from "./AcpTerminalOwner";
 import { live as workspaceFileOwnerLive } from "./AcpWorkspaceFileOwner";
 import { resolveClaudeAcpLaunch } from "./ClaudeAcpAgentDefinition";
 import {
-  beginAcpConversationTurn,
-  closeAcpConversation,
-  completeAcpConversationAuthentication,
-  diffAcpConversationSnapshots,
-  emptyAcpConversationSnapshot,
-  failAcpConversation,
-  recoverAcpConversationTurnFailure,
-  reduceAcpConversationEvent,
-} from "./AcpConversationProjection";
+  beginAgentConversationTurn,
+  closeAgentConversation,
+  completeAgentConversationAuthentication,
+  diffAgentConversationSnapshots,
+  emptyAgentConversationSnapshot,
+  failAgentConversation,
+  recoverAgentConversationTurnFailure,
+} from "../AgentConversationProjection";
 
 export type AcpBackendSessionState =
   | { readonly kind: "idle" }
   | { readonly kind: "running" }
-  | { readonly kind: "authentication-required"; readonly error: AcpRuntimeError }
-  | { readonly kind: "failed"; readonly error: AcpRuntimeError }
+  | { readonly kind: "authentication-required"; readonly error: AgentRuntimeError }
+  | { readonly kind: "failed"; readonly error: AgentRuntimeError }
   | { readonly kind: "closed" };
 
 export interface OpenAcpBackendSessionInput {
@@ -77,28 +77,30 @@ export interface AcpBackendSessionHandle {
   readonly agentDefinitionId: string;
   readonly instanceConfigId: string;
   readonly sessionId: string | null;
-  readonly capabilities: AcpBackendCapabilityProfile;
+  readonly capabilities: AgentBackendCapabilityProfile;
   readonly modes: SessionModeState | null;
   readonly configOptions: readonly SessionConfigOption[];
   readonly status: SubscriptionRef.SubscriptionRef<AcpBackendSessionState>;
-  readonly snapshot: SubscriptionRef.SubscriptionRef<AcpConversationSnapshot>;
+  readonly snapshot: SubscriptionRef.SubscriptionRef<AgentConversationSnapshot>;
   readonly events: Stream.Stream<AcpSessionRuntimeEvent>;
-  readonly authenticate: (methodId: string) => Effect.Effect<AuthenticateResponse, AcpRuntimeError>;
+  readonly authenticate: (
+    methodId: string,
+  ) => Effect.Effect<AuthenticateResponse, AgentRuntimeError>;
   /** Holds a not-yet-submitted first prompt only while interactive authentication is pending. */
   readonly deferInitialPrompt: (prompt: AcpDeferredInitialPrompt) => Effect.Effect<void>;
   readonly takeDeferredInitialPrompt: Effect.Effect<AcpDeferredInitialPrompt | null>;
-  readonly listSessions: Effect.Effect<ListSessionsResponse, AcpRuntimeError>;
-  readonly deleteSession: (sessionId: string) => Effect.Effect<void, AcpRuntimeError>;
+  readonly listSessions: Effect.Effect<ListSessionsResponse, AgentRuntimeError>;
+  readonly deleteSession: (sessionId: string) => Effect.Effect<void, AgentRuntimeError>;
   readonly prompt: (
     prompt: PromptRequest["prompt"],
     options?: { readonly clientUserMessageId?: string },
-  ) => Effect.Effect<PromptResponse, AcpRuntimeError>;
-  readonly cancel: Effect.Effect<void, AcpRuntimeError>;
-  readonly setMode: (modeId: string) => Effect.Effect<void, AcpRuntimeError>;
+  ) => Effect.Effect<PromptResponse, AgentRuntimeError>;
+  readonly cancel: Effect.Effect<void, AgentRuntimeError>;
+  readonly setMode: (modeId: string) => Effect.Effect<void, AgentRuntimeError>;
   readonly setConfigOption: (
     configId: string,
     value: string | boolean,
-  ) => Effect.Effect<readonly SessionConfigOption[], AcpRuntimeError>;
+  ) => Effect.Effect<readonly SessionConfigOption[], AgentRuntimeError>;
 }
 
 export class AcpBackendSessionManager extends Context.Service<
@@ -106,12 +108,12 @@ export class AcpBackendSessionManager extends Context.Service<
   {
     readonly open: (
       input: OpenAcpBackendSessionInput,
-    ) => Effect.Effect<AcpBackendSessionHandle, AcpRuntimeError>;
+    ) => Effect.Effect<AcpBackendSessionHandle, AgentRuntimeError>;
     readonly get: (threadId: string) => Effect.Effect<AcpBackendSessionHandle | null>;
     readonly observe: (threadId: string) => Effect.Effect<void>;
     readonly unobserve: (threadId: string) => Effect.Effect<void>;
     readonly close: (threadId: string) => Effect.Effect<void>;
-    readonly changes: Stream.Stream<AcpBackendSessionChangedEvent>;
+    readonly changes: Stream.Stream<AgentBackendSessionChangedEvent>;
   }
 >()("nodex/main/agent-backend/acp/AcpBackendSessionManager") {}
 
@@ -122,7 +124,7 @@ interface OwnedSession {
 }
 
 const fail = (operation: string, reason: "capability" | "authorization", cause: unknown) =>
-  acpRuntimeError({ operation, reason, retryable: false, cause });
+  agentRuntimeError({ operation, reason, retryable: false, cause });
 
 export const DEFAULT_ACP_SESSION_IDLE_RETENTION = "2 minutes";
 export const DEFAULT_ACP_SESSION_MAX_LIVE = 32;
@@ -161,7 +163,7 @@ export const make = (
       Math.floor(options.maxLiveSessions ?? DEFAULT_ACP_SESSION_MAX_LIVE),
     );
     const idleEvictions = yield* FiberMap.make<string, void, never>();
-    const changes = yield* PubSub.sliding<AcpBackendSessionChangedEvent>(256);
+    const changes = yield* PubSub.sliding<AgentBackendSessionChangedEvent>(256);
 
     const runExclusive = <A, E, R>(threadId: string, effect: Effect.Effect<A, E, R>) =>
       Effect.scoped(
@@ -177,18 +179,18 @@ export const make = (
       }).pipe(
         Effect.andThen(Ref.set(owned.active, false)),
         Effect.andThen(SubscriptionRef.set(owned.handle.status, { kind: "closed" })),
-        Effect.andThen(SubscriptionRef.update(owned.handle.snapshot, closeAcpConversation)),
+        Effect.andThen(SubscriptionRef.update(owned.handle.snapshot, closeAgentConversation)),
         Effect.andThen(Scope.close(owned.scope, Exit.void)),
         Effect.asVoid,
         Effect.uninterruptible,
       );
 
-    const reserveCapacity = (threadId: string): Effect.Effect<void, AcpRuntimeError> =>
+    const reserveCapacity = (threadId: string): Effect.Effect<void, AgentRuntimeError> =>
       capacityLock.withPermits(1)(
         Effect.suspend(() => {
           if (sessions.size + reservations.size >= maxLiveSessions) {
             return Effect.fail(
-              acpRuntimeError({
+              agentRuntimeError({
                 operation: "session.capacity",
                 reason: "pressure",
                 retryable: true,
@@ -376,7 +378,7 @@ export const make = (
               Effect.map((context) => Context.get(context, AcpSessionRuntime)),
               Effect.tapError(() => Scope.close(sessionScope, Exit.void)),
             );
-            const authenticationRequired = acpRuntimeError({
+            const authenticationRequired = agentRuntimeError({
               operation: "session.open",
               reason: "authentication-required",
               retryable: false,
@@ -392,15 +394,15 @@ export const make = (
             );
             const conversationSnapshot = yield* SubscriptionRef.make(
               runtime.sessionId === null
-                ? recoverAcpConversationTurnFailure(
-                    emptyAcpConversationSnapshot({
+                ? recoverAgentConversationTurnFailure(
+                    emptyAgentConversationSnapshot({
                       threadId: input.threadId,
                       sessionId: `pending:${input.threadId}`,
                     }),
                     authenticationRequired,
                     "authentication-required",
                   )
-                : emptyAcpConversationSnapshot({
+                : emptyAgentConversationSnapshot({
                     threadId: input.threadId,
                     sessionId: runtime.sessionId,
                   }),
@@ -415,14 +417,14 @@ export const make = (
             let currentConfigOptions = runtime.configOptions;
             const requireActive = <A>(
               operation: string,
-              effect: Effect.Effect<A, AcpRuntimeError>,
-            ): Effect.Effect<A, AcpRuntimeError> =>
+              effect: Effect.Effect<A, AgentRuntimeError>,
+            ): Effect.Effect<A, AgentRuntimeError> =>
               Ref.get(active).pipe(
                 Effect.flatMap((isActive) =>
                   isActive
                     ? effect
                     : Effect.fail(
-                        acpRuntimeError({
+                        agentRuntimeError({
                           operation,
                           reason: "request",
                           retryable: false,
@@ -432,7 +434,7 @@ export const make = (
                       ),
                 ),
               );
-            const projectFailure = (error: AcpRuntimeError) =>
+            const projectFailure = (error: AgentRuntimeError) =>
               SubscriptionRef.get(status).pipe(
                 Effect.flatMap((current) =>
                   current.kind === "closed" || current.kind === "failed"
@@ -440,13 +442,13 @@ export const make = (
                     : SubscriptionRef.set(status, { kind: "failed", error }).pipe(
                         Effect.andThen(
                           SubscriptionRef.update(conversationSnapshot, (snapshot) =>
-                            failAcpConversation(snapshot, error),
+                            failAgentConversation(snapshot, error),
                           ),
                         ),
                       ),
                 ),
               );
-            const projectPromptFailure = (error: AcpRuntimeError) => {
+            const projectPromptFailure = (error: AgentRuntimeError) => {
               const recoverableStatus =
                 error.reason === "authentication-required"
                   ? ("authentication-required" as const)
@@ -464,7 +466,7 @@ export const make = (
                   return SubscriptionRef.set(status, next).pipe(
                     Effect.andThen(
                       SubscriptionRef.update(conversationSnapshot, (snapshot) =>
-                        recoverAcpConversationTurnFailure(snapshot, error, recoverableStatus),
+                        recoverAgentConversationTurnFailure(snapshot, error, recoverableStatus),
                       ),
                     ),
                   );
@@ -474,10 +476,10 @@ export const make = (
 
             yield* SubscriptionRef.changes(conversationSnapshot).pipe(
               Stream.mapAccum(
-                () => null as AcpConversationSnapshot | null,
+                () => null as AgentConversationSnapshot | null,
                 (previous, snapshot) => {
                   if (previous === null) return [snapshot, []] as const;
-                  const delta = diffAcpConversationSnapshots(previous, snapshot);
+                  const delta = diffAgentConversationSnapshots(previous, snapshot);
                   return [
                     snapshot,
                     delta === null ? [] : [{ threadId: input.threadId, delta }],
@@ -542,7 +544,7 @@ export const make = (
                     const sessionId = runtime.sessionId;
                     if (sessionId === null) {
                       return Effect.fail(
-                        acpRuntimeError({
+                        agentRuntimeError({
                           operation: "session.authenticate",
                           reason: "protocol",
                           retryable: false,
@@ -554,7 +556,7 @@ export const make = (
                     return SubscriptionRef.set(status, { kind: "idle" }).pipe(
                       Effect.andThen(
                         SubscriptionRef.update(conversationSnapshot, (snapshot) =>
-                          completeAcpConversationAuthentication(snapshot, sessionId),
+                          completeAgentConversationAuthentication(snapshot, sessionId),
                         ),
                       ),
                     );
@@ -579,10 +581,10 @@ export const make = (
                       projectedTurns.set(turnSequence, projected);
                       yield* SubscriptionRef.set(status, { kind: "running" });
                       yield* SubscriptionRef.update(conversationSnapshot, (current) =>
-                        beginAcpConversationTurn(
+                        beginAgentConversationTurn(
                           current,
                           turnSequence,
-                          prompt,
+                          prompt.map((part) => (part.type === "text" ? part.text : "")).join("\n"),
                           options?.clientUserMessageId ?? null,
                         ),
                       );

@@ -61,6 +61,7 @@ function canStartNewThreadGoalDraft(
 }
 
 export function canUseComposerGoal(model: ThreadFooterModel, actions: ThreadStageActions): boolean {
+  if (model.provider && model.provider.kind !== "codex") return false;
   if (model.conversation === null) {
     return canStartNewThreadGoalDraft(model, actions);
   }
@@ -361,7 +362,27 @@ export function buildComposerSlashCommands(input: BuildSlashCommandsInput): Comp
     },
   ];
 
-  return commands;
+  const provider = input.model.provider;
+  if (!provider || provider.kind === "codex") return commands;
+  const sharedCommands = commands.filter((command) =>
+    ["model", "plan-mode", "pet", "expanded-slash-command-dialog"].includes(command.id),
+  );
+  return [
+    ...sharedCommands,
+    ...provider.commands
+      .filter((command) => !sharedCommands.some((shared) => shared.id === command.name))
+      .map((command): ComposerSlashCommand => ({
+        id: command.name,
+        title: command.name,
+        description: command.description,
+        group: "Commands",
+        icon: <SendIcon className={iconClassName} />,
+        onSelectFromInlineSlash: (selection) => selection.replaceTrigger(`/${command.name} `),
+        onSelect: async () => {
+          await input.actions.onSendPrompt(`/${command.name}`);
+        },
+      })),
+  ];
 }
 
 function ModelCommandContent({

@@ -11,6 +11,9 @@ use crate::workspace::ProjectWorkspaceTurnAuthority;
 pub enum AgentBackendBinding {
     #[default]
     Codex,
+    Claude {
+        instance_config_id: String,
+    },
     Acp {
         agent_definition_id: String,
         instance_config_id: Option<String>,
