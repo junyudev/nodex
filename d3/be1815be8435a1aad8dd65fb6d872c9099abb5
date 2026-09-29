@@ -1,0 +1,96 @@
+src/main/platform/node/ClaudeSdk.node.test.ts
+  s_866b56c9561631::t_c3bc859908bc3e 10
+src/renderer/lib/claude-environment-editor.test.ts
+  s_866b56c9561631::t_dce9dc48566bd7 1-6,8-10,15,39-64,66-69,71-81,83-85
+  s_866b56c9561631::t_0592546a3b23f9 7,11-14,16-38,65,70,82
+docs/CONFIGURATION.md
+  s_866b56c9561631::t_99ba70f1258b10 40-48
+  s_866b56c9561631::t_40501a9d7725dc 49-51
+src/renderer/components/workbench/claude-agent-settings-control.test.tsx
+  s_866b56c9561631::t_07b1c0ff4a87df 3-6,8-11,14-25,27-42,44-46,53-63,65-75,77-80,84-97,99-106,109-111
+  s_866b56c9561631::t_ec7e5aaa1ece09 1-2,7,12-13,26,43,47-52,64,76,81-83,98,107-108,112-114
+docs/ARCHITECTURE.md
+  s_866b56c9561631::t_99ba70f1258b10 973-976
+src/main/settings/ApplicationSettings.test-support.ts
+  s_866b56c9561631::t_c3bc859908bc3e 11
+src/main/agent-backend/claude/ClaudeSessionManager.ts
+  s_866b56c9561631::t_3a136fcb5eeccc 92,99,568-569,576
+src/main/ipc/handlers/ApplicationSettingsIpc.ts
+  s_866b56c9561631::t_c3bc859908bc3e 321-325
+  s_866b56c9561631::t_5ffdeb86009033 8
+src/main/host-runtime/ApplicationSchedulers.test.ts
+  s_866b56c9561631::t_c3bc859908bc3e 336
+docs/adr/0065-native-claude-code-backend.md
+  s_866b56c9561631::t_99ba70f1258b10 30-33
+tests/e2e/claude-backend-lifecycle.spec.ts
+  s_866b56c9561631::t_99ba70f1258b10 37,42,46-63
+  s_866b56c9561631::t_856311d5baf1e2 64-80,125,172-176
+src/main/host-runtime/AppUpdateRuntime.test.ts
+  s_866b56c9561631::t_c3bc859908bc3e 107
+src/renderer/components/workbench/workbench-settings-search-catalog.ts
+  s_866b56c9561631::t_c3bc859908bc3e 284-288,296-297
+  s_866b56c9561631::t_2ef2e79aa22224 289-295
+src/main/settings/claude-agent-environment.node.test.ts
+  s_866b56c9561631::t_dce9dc48566bd7 1-5,10,16-33,37-40,56-74,78-82,86-91,106-115,146-152,158-159,209
+  s_866b56c9561631::t_07b1c0ff4a87df 6-9,11-15,34-36,41-55,75-77,83-85,92-105,116-145,153-157,160-208
+docs/product-specs/agent-backend-behavior.md
+  s_866b56c9561631::t_99ba70f1258b10 56-73
+src/main/settings/claude-agent-environment.ts
+  s_866b56c9561631::t_7b9a11a437112c 2-13,29-42,44-61,63-65,81-83,87-90,93-94,102-103,107-112,116-120,130-140,144-149,156-158,161-168,172-176,179-184,194-202,211-213,233-237,242-249
+  s_866b56c9561631::t_52a81560c85052 1,14-28,43,62,66-80,84-86,91-92,95-101,104-106,113-115,121-129,141-143,150-155,159-160,169-171,177-178,185-193,203-210,214-232,238-241,250-251
+  s_866b56c9561631::t_227b10df159d79 252-256
+CHANGELOG.md
+  s_866b56c9561631::t_99ba70f1258b10 9
+scripts/scenarios/runtime/scripted-claude-agent.mjs
+  s_866b56c9561631::t_99ba70f1258b10 93-97
+  s_866b56c9561631::t_2680bdcc215f8e 98-102
+src/shared/claude-agent-settings.ts
+  s_866b56c9561631::t_07b1c0ff4a87df 8-13,16-21,25-35,37-50,65-88,90-93,96-98,101-106
+  s_866b56c9561631::t_1597af2d412b1d 1-7,14-15,22-24,36,51-64,89,94-95,99-100,107
+src/main/settings/application-settings-persistence.ts
+  s_866b56c9561631::t_7b9a11a437112c 1-6,61-65,113,182-184,194,965-978,985-989
+  s_866b56c9561631::t_3a136fcb5eeccc 7
+  s_866b56c9561631::t_9e4a7b1a9eec21 990-993
+docs/SECURITY.md
+  s_866b56c9561631::t_99ba70f1258b10 195-201
+src/main/platform/SecretEncryption.ts
+  s_866b56c9561631::t_1597af2d412b1d 1-12
+src/renderer/lib/claude-environment-editor.ts
+  s_866b56c9561631::t_2061f6d0856fdb 1-17,22-24,27-99,101-107,109-114,116-126,128-129
+  s_866b56c9561631::t_604d343b1fb8f3 18-21,25-26,100,108,115,127
+src/main/settings/ApplicationSettings.ts
+  s_866b56c9561631::t_3a136fcb5eeccc 47,143,145,288,293,305-307,310,338-346
+  s_866b56c9561631::t_e9f181a0b5b580 43,144,308-309,347-349
+src/renderer/components/workbench/claude-environment-editor.tsx
+  s_866b56c9561631::t_2061f6d0856fdb 1-19,21-29,31,33,35-48,50-73,76,78,80,82-92,94-96,98-137,139,142-144,146,148
+  s_866b56c9561631::t_7acd5700e69179 20,30,32,34,49,74-75,77,79,81,93,97,138,140-141,145,147
+src/main/agent-backend/claude/ClaudeSessionManager.node.test.ts
+  s_866b56c9561631::t_a772d8c41a47b6 49,78,118-119,319-334,339-345,347-356
+  s_866b56c9561631::t_ec42963d507c53 19,335-338,346,357
+src/renderer/components/workbench/claude-agent-settings-control.tsx
+  s_866b56c9561631::t_a772d8c41a47b6 1-7,9,18-32,34-36,42-45,49-55,58-60,65,67-72,76-80,83-84
+  s_866b56c9561631::t_635d500b267512 85-89,105,114,130,138-142,152
+src/shared/types.ts
+  s_866b56c9561631::t_3a136fcb5eeccc 1657-1661
+src/main/platform/electron/SecretEncryption.ts
+  s_866b56c9561631::t_1597af2d412b1d 1-10
+  s_866b56c9561631::t_8f9f6d033e3d81 11-14
+src/main/app/MainFoundationLive.ts
+  s_866b56c9561631::t_cf80dd95ce0d28 6,55-58
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "d3be1815be8435a1aad8dd65fb6d872c9099abb5",
+  "prompts": {},
+  "sessions": {
+    "s_866b56c9561631": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a0ed85-b2b4-78e1-b3ec-1946f1bfca69",
+        "model": "gpt-6-astra"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    }
+  }
+}
