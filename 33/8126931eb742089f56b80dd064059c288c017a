@@ -1,0 +1,83 @@
+src/main/agent-backend/claude/ClaudeSessionManager.node.test.ts
+  s_866b56c9561631::t_526b96c4620a81 83-85,419-441
+  s_866b56c9561631::t_3e536a3a8981c8 20,52,66-67,78,81-82,144
+  s_866b56c9561631::t_78fa3ad92e35cf 128,134,397,418,442-460,462
+  s_866b56c9561631::t_49c8e7e37dcbc7 461
+docs/product-specs/agent-backend-behavior.md
+  s_866b56c9561631::t_d08d6998d04d94 89-95,106-108
+  s_866b56c9561631::t_177ee585816ad4 109-110
+src/main/platform/node/ClaudeSdk.ts
+  s_866b56c9561631::t_00ca38190b0110 28,44-45
+  s_866b56c9561631::t_64606aa1486844 46-48,59,131,193-205
+src/renderer/features/local-conversation/agent-conversation-adapter.ts
+  s_866b56c9561631::t_3b69571a0ae3ca 30-31,40,43-46,54,171-172,175,197-198,276-277,285-287,441-442
+  s_866b56c9561631::t_526b96c4620a81 256-259
+  s_866b56c9561631::t_3e536a3a8981c8 48-53,166-168,180-184,195,199-200,253-255,260-261,271,278-284,323-325
+src/main/ipc/handlers/AgentBackendIpc.ts
+  s_866b56c9561631::t_2f9f7a669ea736 10,37
+src/renderer/components/workbench/workbench-session-thread-route.tsx
+  s_866b56c9561631::t_3b69571a0ae3ca 644
+  s_866b56c9561631::t_32419c53cfb2d5 645,647
+src/main/platform/node/ClaudeSdk.node.test.ts
+  s_866b56c9561631::t_57a63adba5e932 33,46
+tests/e2e/claude-backend-lifecycle.spec.ts
+  s_866b56c9561631::t_d08d6998d04d94 22,124-127,167-169,191,193,197-201,242-244
+  s_866b56c9561631::t_526b96c4620a81 183-190,205-215
+scripts/scenarios/runtime/scripted-claude-agent.mjs
+  s_866b56c9561631::t_57a63adba5e932 24,86-87,94-95,102-106,116
+  s_866b56c9561631::t_d08d6998d04d94 131
+src/shared/agent-conversation.ts
+  s_866b56c9561631::t_00ca38190b0110 272-273
+src/main/agent-backend/claude/ClaudeSessionManager.ts
+  s_866b56c9561631::t_2f9f7a669ea736 26-27,52-53,120-121,212-213,217-226,279-286,432,435-436
+  s_866b56c9561631::t_687e894066c917 438-457,459
+src/main/agent-backend/AgentBackendApplication.ts
+  s_866b56c9561631::t_526b96c4620a81 425-429
+  s_866b56c9561631::t_837a735f80b608 434,559-561,640
+  s_866b56c9561631::t_57a63adba5e932 339-340,415-424,430-433
+src/main/agent-backend/claude/ClaudeModels.node.test.ts
+  s_866b56c9561631::t_78fa3ad92e35cf 3,6,8-13,15-20,22,24-32,39-46
+  s_866b56c9561631::t_2728f4743be970 2,7,14,21,23
+  s_866b56c9561631::t_526b96c4620a81 33-38
+src/main/agent-backend/claude/ClaudeModels.ts
+  s_866b56c9561631::t_3e536a3a8981c8 2-11,22-25,36,76-90,94-98
+  s_866b56c9561631::t_00ca38190b0110 26,42,56,68-75,91-93,99-101
+  s_866b56c9561631::t_b4cb235cb128da 102-103
+src/renderer/features/local-conversation/view/composer/composer-intelligence-selection.test.ts
+  s_866b56c9561631::t_78fa3ad92e35cf 18,33-34
+  s_866b56c9561631::t_526b96c4620a81 19-32
+src/shared/agent-backend-api.ts
+  s_866b56c9561631::t_2f9f7a669ea736 9,20
+src/renderer/components/shared/agent-runtime/agent-intelligence-dropdown.test.tsx
+  s_866b56c9561631::t_526b96c4620a81 169-177,190-192,194-195,197-199,201-203,205
+  s_866b56c9561631::t_3e536a3a8981c8 141,159
+  s_866b56c9561631::t_63574c1795301d 161,163-168,178-187,193,196,200,204
+  s_866b56c9561631::t_2728f4743be970 188-189
+  s_866b56c9561631::t_d851e32833b7fa 160
+  s_866b56c9561631::t_fcc382c4b35372 162
+src/shared/claude-models.ts
+  s_866b56c9561631::t_00ca38190b0110 3-8
+CHANGELOG.md
+  s_866b56c9561631::t_d08d6998d04d94 9
+src/renderer/components/shared/agent-runtime/agent-intelligence-dropdown.tsx
+  s_866b56c9561631::t_3b69571a0ae3ca 74-76,143-145
+  s_866b56c9561631::t_8f8a5378dfb009 146-148,159-162,178,292-298,340,371
+src/renderer/features/local-conversation/view/composer/composer-intelligence-selection.ts
+  s_866b56c9561631::t_56170d0eb04661 14
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "338126931eb742089f56b80dd064059c288c017a",
+  "prompts": {},
+  "sessions": {
+    "s_866b56c9561631": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a0ed85-b2b4-78e1-b3ec-1946f1bfca69",
+        "model": "gpt-6-astra"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    }
+  }
+}
