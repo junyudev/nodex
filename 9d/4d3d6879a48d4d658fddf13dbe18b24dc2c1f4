@@ -1,0 +1,320 @@
+src/main/settings/ApplicationSettings.test.ts
+  s_327046e8a7d75e::t_22cfaadb4e905c 2-10,38-86,171-175,215-219,241-245,270-274,318-322,339-343
+  s_327046e8a7d75e::t_cc3a4b8225f40b 89-143,148
+  s_327046e8a7d75e::t_28ecb79cb8c7e2 144-147,149-167
+  s_327046e8a7d75e::t_29559623590683 87-88
+src/main/app/HostApplicationLive.ts
+  s_327046e8a7d75e::t_651a42d2ee8fd4 128,136
+  s_327046e8a7d75e::t_a63646770dbcc8 214,232
+src/main/platform/electron/ComputerUseHostPlatform.ts
+  s_327046e8a7d75e::t_b4e34c8f5cfb55 367-368
+src/main/codex-application/ComposerCatalog.ts
+  s_327046e8a7d75e::t_07477224b8c3e4 41-44,136-147,153-155
+  s_327046e8a7d75e::t_208fdb4c5e3809 124-126,132-135
+  s_327046e8a7d75e::t_28f233703c546c 181,185-187
+  s_327046e8a7d75e::t_e386587e41e64a 148-152,309
+crates/nodex-core-contracts/src/collection_audit.rs
+  s_327046e8a7d75e::t_1f022e4b3e5385 38-39
+src/renderer/components/workbench/codex-home-settings-control.tsx
+  s_327046e8a7d75e::t_b9f207f8908f9d 1-76,82-89,91-110
+  s_327046e8a7d75e::t_cc3a4b8225f40b 77-81
+  s_327046e8a7d75e::t_9cb10fb9c27e46 90
+src/renderer/components/workbench/workbench-settings-overlay-deps.ts
+  s_327046e8a7d75e::t_324341960f9400 5,21
+src/main/app/CodexApplicationLive.ts
+  s_327046e8a7d75e::t_6c64118e7e4542 9-12,109-114,125-149,152,154-162,164-168,171-175,177,179-191,193-208,210,283-289,356-361
+  s_327046e8a7d75e::t_ed85da33e68c1d 115-124
+  s_327046e8a7d75e::t_a3cd53792cc05c 264,370
+  s_327046e8a7d75e::t_a63646770dbcc8 21,104,153,290,295,298,300,306-307,319
+  s_327046e8a7d75e::t_36d695907e7b25 13,178,192,346,411
+src/main/codex-application/CodexHomeContinuity.node.test.ts
+  s_327046e8a7d75e::t_f6f7b86469609e 2-7,10-12,17-19,21-23,45,120
+  s_327046e8a7d75e::t_b7372912a3c3c3 9
+  s_327046e8a7d75e::t_34c56852031709 38-43
+  s_327046e8a7d75e::t_ac2c016f20ee93 13-16,24-37,44,46-108,113-119,121-136,141-148
+  s_327046e8a7d75e::t_68915f08448b2a 109-112,137-140
+  s_327046e8a7d75e::t_eac3ed5250783c 1,20
+  s_327046e8a7d75e::t_4d4949c74a695a 8
+src/main/codex-application/CodexPermissions.ts
+  s_327046e8a7d75e::t_5e42f5101b78b8 346
+  s_327046e8a7d75e::t_2a732b478f72eb 18
+  s_327046e8a7d75e::t_a3cd53792cc05c 90,97,161,168,177,190,311,314,330,400,415,420
+docs/product-specs/codex-subagent-behavior.md
+  s_327046e8a7d75e::t_2a732b478f72eb 139-141
+docs/ARCHITECTURE.md
+  s_327046e8a7d75e::t_8ae05dc62564c7 226-229,233
+src/main/codex/bundled-desktop-tool-marketplace.ts
+  s_327046e8a7d75e::t_00c2131618d3ad 7-8,27,31-34,65,75,276,293,305,321
+  s_327046e8a7d75e::t_cae20f47fd5b85 35-36,41-42
+  s_327046e8a7d75e::t_0af8847bf231ed 37-39
+  s_327046e8a7d75e::t_67554d6950e8e1 40
+docs/adr/0056-native-codex-and-capability-negotiated-agent-backends.md
+  s_327046e8a7d75e::t_8ae05dc62564c7 24-29
+src/main/codex/agent-import-operations.ts
+  s_327046e8a7d75e::t_9790d9afd2df7e 51
+  s_327046e8a7d75e::t_6611c80025a6e4 110,171,495,753,756,772-775
+  s_327046e8a7d75e::t_f543ef09e23c31 1397
+  s_327046e8a7d75e::t_4cd75e12332a24 1386-1387
+  s_327046e8a7d75e::t_e6632072f56203 910-911
+  s_327046e8a7d75e::t_1868c3a989f633 1396
+  s_327046e8a7d75e::t_f2501c5d2fd4ed 899,906,954,999-1000,1252,1374-1382,1394-1395,1398-1400
+  s_327046e8a7d75e::t_1c329985498034 757-771,780-798,1371-1373,1383-1385
+  s_327046e8a7d75e::t_bf39bb859650aa 37-40,307-311,1388-1393
+  s_327046e8a7d75e::t_671c8ec146a893 1401-1402
+src/renderer/lib/workbench-settings-runtime.ts
+  s_327046e8a7d75e::t_324341960f9400 3,98-105,210-212
+src/main/codex/codex-feature-defaults.ts
+  s_327046e8a7d75e::t_c8f7918a3294e3 1-3
+  s_327046e8a7d75e::t_a63646770dbcc8 86-99,101
+src/shared/ipc-api.ts
+  s_327046e8a7d75e::t_324341960f9400 1269-1272
+  s_327046e8a7d75e::t_cc3a4b8225f40b 2-5
+  s_327046e8a7d75e::t_8083ceb4b5be06 1273
+src/main/ipc/handlers/ApplicationSettingsIpc.test.ts
+  s_327046e8a7d75e::t_28ecb79cb8c7e2 131-132,193-205
+  s_327046e8a7d75e::t_458d61a0d6f888 5,11-13,35,39,54-75,103,107-111,206,218-221,225-230
+  s_327046e8a7d75e::t_b6d68077aba79a 38
+  s_327046e8a7d75e::t_22cfaadb4e905c 207-217,222-224
+src/renderer/components/workbench/workbench-settings-overlay.backups.test.tsx
+  s_327046e8a7d75e::t_1ba587237b3658 57-63
+src/main/codex/codex-home.test.ts
+  s_327046e8a7d75e::t_22cfaadb4e905c 6-12,20-26,34-39
+  s_327046e8a7d75e::t_29559623590683 1-5,13-19,27-33,40-54
+src/renderer/components/workbench/workbench-settings-search-catalog.ts
+  s_327046e8a7d75e::t_b9f207f8908f9d 310-315
+src/main/platform/node/CodexProcessEnvironment.ts
+  s_327046e8a7d75e::t_1bb7aa2d134c96 10-11
+  s_327046e8a7d75e::t_a63646770dbcc8 7-8,12,14-15
+crates/nodex-core-contracts/src/workspace.rs
+  s_327046e8a7d75e::t_1f022e4b3e5385 8,13-15,129-131
+crates/nodex-core/src/workspace/read.rs
+  s_327046e8a7d75e::t_1f022e4b3e5385 58-67
+src/main/codex/browser-use-thread-config.test.ts
+  s_327046e8a7d75e::t_fdbefa68b1f8f2 102-111,207-216
+  s_327046e8a7d75e::t_71b8f805b59db9 157-162
+  s_327046e8a7d75e::t_40f15518e8419d 16-17,48,69,95,129,169
+  s_327046e8a7d75e::t_b7eee6208c112e 144-156,163-164
+src/main/host-runtime/CodexThreadNotificationRuntime.test.ts
+  s_327046e8a7d75e::t_9af0201dc8da18 37
+src/main/agent-backend/acp/AcpBackendSessionManager.node.test.ts
+  s_327046e8a7d75e::t_9af0201dc8da18 75
+src/main/host-runtime/BrowserProfileRuntime.test.ts
+  s_327046e8a7d75e::t_8b02e9cd79a4c0 21,93,196-205
+crates/nodex-core/src/workspace/mod.rs
+  s_327046e8a7d75e::t_88a84e6b3bdc85 4
+src/main/settings/ApplicationSettings.ts
+  s_327046e8a7d75e::t_ab60039cd026be 6,24-25,58,74,95,119,219,231,269-271,313,319-321,341-350
+  s_327046e8a7d75e::t_97aa07704e354a 2,47,322-340
+  s_327046e8a7d75e::t_c2f6a6e85ed693 312
+  s_327046e8a7d75e::t_9f568ca948ece9 364-365
+  s_327046e8a7d75e::t_9af0201dc8da18 300,306
+CHANGELOG.md
+  s_327046e8a7d75e::t_8ae05dc62564c7 16
+src/main/ipc/handlers/ApplicationSettingsIpc.ts
+  s_327046e8a7d75e::t_45a7f26eb382a7 29-31,164,173,181,357-366,375-376,378-383
+  s_327046e8a7d75e::t_22cfaadb4e905c 367-374,377
+  s_327046e8a7d75e::t_9f568ca948ece9 9,57,350-356,385
+  s_327046e8a7d75e::t_8c8107ec231b82 384,386-387
+src/main/codex-application/CodexSidebarCapabilities.node.test.ts
+  s_327046e8a7d75e::t_f23154d27db8a8 495,538-542,572
+  s_327046e8a7d75e::t_2a732b478f72eb 492-494,496-537,543-571,573-581
+  s_327046e8a7d75e::t_5b6a1324ef9671 415-416,434
+  s_327046e8a7d75e::t_824741a7e37a55 491,582-583
+src/main/host-runtime/DesktopToolRuntime.ts
+  s_327046e8a7d75e::t_cae20f47fd5b85 8,21,86-88,159-162,184,187,264
+  s_327046e8a7d75e::t_1a4c179876d8d3 170-174,176-179,185-186,265-275
+  s_327046e8a7d75e::t_208fdb4c5e3809 62,72,223
+  s_327046e8a7d75e::t_7529778ab09af7 17-20,175,180-183
+  s_327046e8a7d75e::t_6bf966e2c1ac47 163-169
+  s_327046e8a7d75e::t_c355ce1391c8b0 276
+src/main/codex/browser-use-thread-config.ts
+  s_327046e8a7d75e::t_00c2131618d3ad 11,71,79,87-97,111
+  s_327046e8a7d75e::t_7529778ab09af7 53-54,134
+  s_327046e8a7d75e::t_cae20f47fd5b85 72,80
+  s_327046e8a7d75e::t_fb07fb83146f65 135-139
+  s_327046e8a7d75e::t_6bf966e2c1ac47 50-52
+  s_327046e8a7d75e::t_b8ba73188b8719 140-144,175-176,184-185,224-225
+src/main/codex-application/ComposerCatalog.node.test.ts
+  s_327046e8a7d75e::t_fdbefa68b1f8f2 383-389
+  s_327046e8a7d75e::t_40f15518e8419d 48-52,54,335-336,392
+  s_327046e8a7d75e::t_33295e6472a3e9 127-138,240
+  s_327046e8a7d75e::t_e386587e41e64a 105,108,239,250
+docs/product-specs/codex-workspace-behavior.md
+  s_327046e8a7d75e::t_2a732b478f72eb 17-20,53-56
+  s_327046e8a7d75e::t_1372d42a038e92 57
+src/main/platform/node/CodexHomeContinuity.ts
+  s_327046e8a7d75e::t_82275fe7d9ad23 4-7,9-10,16,29,33-35,41-43,46-47,50-52,55-68
+  s_327046e8a7d75e::t_2c28ca1da84c8b 44-45,48-49,53-54
+  s_327046e8a7d75e::t_e203e20b8a071e 101,143,151-153
+  s_327046e8a7d75e::t_76be62ed470ce2 245-246
+  s_327046e8a7d75e::t_6d666f6e2c8f43 163-175,184-186,193-197,200-201,204-205,207-209,212-221,223-229,247
+  s_327046e8a7d75e::t_2f179b73d72dce 178-179,181-182
+  s_327046e8a7d75e::t_b736c8dbb98244 71-75,176-177,180,183
+  s_327046e8a7d75e::t_df55a939eec785 232-244
+  s_327046e8a7d75e::t_01cab574bc0a10 17,40
+  s_327046e8a7d75e::t_c2c08e993591f6 1-3,8,11-15,18-28,30-32,36-39,69-70,76-100,102-142,144-150,154-162,187-192,198-199,202-203,206,210-211,222,230-231
+src/main/agent-backend/claude/ClaudeSessionManager.node.test.ts
+  s_327046e8a7d75e::t_9af0201dc8da18 57
+src/renderer/components/workbench/codex-home-settings-control.test.tsx
+  s_327046e8a7d75e::t_28ecb79cb8c7e2 1-28,32-53,57-65
+  s_327046e8a7d75e::t_cc3a4b8225f40b 29-31,54-56
+src/main/host-runtime/BrowserProfileRuntime.ts
+  s_327046e8a7d75e::t_8b02e9cd79a4c0 79,136
+scripts/testing/probe-agent-cli-bootstrap.ts
+  s_327046e8a7d75e::t_a3cd53792cc05c 168
+src/main/host-runtime/DesktopToolRuntime.node.test.ts
+  s_327046e8a7d75e::t_6bf966e2c1ac47 98-110
+  s_327046e8a7d75e::t_40f15518e8419d 115,200
+  s_327046e8a7d75e::t_4300565da5fa1c 14-37,49-53,94-97,111-114,116
+  s_327046e8a7d75e::t_61d70e903db74f 130-135
+src/shared/ipc-endpoint-policy.ts
+  s_327046e8a7d75e::t_324341960f9400 210,583
+docs/product-specs/agent-interface-behavior.md
+  s_327046e8a7d75e::t_6aa9579b457cbc 140-148
+src/main/platform/node/NodexCliBootstrap.node.test.ts
+  s_327046e8a7d75e::t_a3cd53792cc05c 111
+src/renderer/components/workbench/workbench-settings-section-pages.tsx
+  s_327046e8a7d75e::t_b9f207f8908f9d 2,372
+crates/nodex-core/src/workspace/local_codex_thread_ids.rs
+  s_327046e8a7d75e::t_88a84e6b3bdc85 51-59,93,104-145,147-161,163-173,175-185
+  s_327046e8a7d75e::t_7685ea967a81d5 89-92,94-103,146,162,174,186-189
+  s_327046e8a7d75e::t_b736c8dbb98244 72
+  s_327046e8a7d75e::t_1f022e4b3e5385 1-50,60-71,73-88
+src/main/codex/agent-import-operations.test.ts
+  s_327046e8a7d75e::t_0718bcb0ce9c81 116
+  s_327046e8a7d75e::t_1868c3a989f633 73
+src/main/codex-application/CodexSidebarSyncRuntime.ts
+  s_327046e8a7d75e::t_2a732b478f72eb 694-753,768-771,773-778,781
+  s_327046e8a7d75e::t_73e8ad93bef8a5 1,150,759-767,772,779-780,782-783,968
+  s_327046e8a7d75e::t_96f16fa59d4ceb 756
+src/main/platform/node/CodexNodeReplCleanup.ts
+  s_327046e8a7d75e::t_73e8ad93bef8a5 253
+src/main/settings/application-settings-persistence.ts
+  s_327046e8a7d75e::t_ab60039cd026be 19-20,38-39,75,242-244,246,254-261,263-267
+  s_327046e8a7d75e::t_9af0201dc8da18 237-241,245,247-253,262
+  s_327046e8a7d75e::t_5c22600ccbe2bc 268
+scripts/probe-browser-runtime.ts
+  s_327046e8a7d75e::t_cd37029a524c26 470
+  s_327046e8a7d75e::t_4c811077b0bea8 24,248
+src/main/app/ConversationApplicationLive.ts
+  s_327046e8a7d75e::t_a63646770dbcc8 654
+  s_327046e8a7d75e::t_0718bcb0ce9c81 350-352
+  s_327046e8a7d75e::t_74a48ee32958d9 581,655-657
+src/main/codex/bundled-desktop-tool-marketplace.test.ts
+  s_327046e8a7d75e::t_fdbefa68b1f8f2 11-12,14-15,96-101
+  s_327046e8a7d75e::t_b7eee6208c112e 13,58-63,67-72
+  s_327046e8a7d75e::t_0af8847bf231ed 64-66
+  s_327046e8a7d75e::t_40f15518e8419d 119-120,152
+src/main/codex-application/CodexConversationArchive.node.test.ts
+  s_327046e8a7d75e::t_2a732b478f72eb 961-981
+  s_327046e8a7d75e::t_5b6a1324ef9671 982
+crates/nodex-profile/src/codex/tests.rs
+  s_327046e8a7d75e::t_2d54725f190522 64-75,81-86,95,100-107,113-114,120-121,128-129,135,142-143
+  s_327046e8a7d75e::t_803dd8e07c97ff 76-80,87-94,96-99,108-112,115-119,122-127,130-134,136-141
+  s_327046e8a7d75e::t_f543ef09e23c31 768
+src/main/codex/codex-feature-defaults.test.ts
+  s_327046e8a7d75e::t_40a6f001e877dd 1,5,15,19-20,22-24,26,28,31-42,44,47-48,50-52
+  s_327046e8a7d75e::t_4b197e34c36bc3 49,53,55,60
+docs/SECURITY.md
+  s_327046e8a7d75e::t_5cc41ab22a1a3b 548-549
+tests/e2e/settings-authority.spec.ts
+  s_327046e8a7d75e::t_c52b20c24331c9 114-116,129-131,137,139
+  s_327046e8a7d75e::t_09c9809cb06eb1 7
+  s_327046e8a7d75e::t_411cdad141b984 113,117-122,124,132-134,140-142,149
+  s_327046e8a7d75e::t_e6632072f56203 123,125-128,135,138,143-148
+  s_327046e8a7d75e::t_7486c6ec207975 136
+src/main/codex/codex-home.ts
+  s_327046e8a7d75e::t_013eb6a5b61dcd 1-13,22-23
+  s_327046e8a7d75e::t_ed85da33e68c1d 14-21
+src/main/codex-application/AgentImportRuntime.node.test.ts
+  s_327046e8a7d75e::t_4cd75e12332a24 30,85,100-106,251,253-295,299-328
+  s_327046e8a7d75e::t_0718bcb0ce9c81 26-27,78,84,136
+  s_327046e8a7d75e::t_f02ddb9d720874 296-298
+  s_327046e8a7d75e::t_bf39bb859650aa 329-361
+  s_327046e8a7d75e::t_4b3b5844778999 252
+src/shared/codex-home-settings.ts
+  s_327046e8a7d75e::t_f68adee73f6b39 1-14,22-24
+  s_327046e8a7d75e::t_cc3a4b8225f40b 15-21
+src/main/platform/node/NodexCliShell.ts
+  s_327046e8a7d75e::t_a3cd53792cc05c 65,72
+src/shared/types.ts
+  s_327046e8a7d75e::t_f68adee73f6b39 1663-1668
+docs/development.md
+  s_327046e8a7d75e::t_8ae05dc62564c7 205-209
+src/renderer/components/workbench/workbench-settings-overlay.stories.tsx
+  s_327046e8a7d75e::t_1ba587237b3658 217-234
+src/main/codex-application/CodexHomeContinuity.ts
+  s_327046e8a7d75e::t_262dd9bd2adbc4 46
+  s_327046e8a7d75e::t_c93c1c642ad6ac 5
+  s_327046e8a7d75e::t_1f022e4b3e5385 1-4,6,11-12,14-16,27-31
+  s_327046e8a7d75e::t_6d666f6e2c8f43 7-10,17-26,32-45,47-77,82-88
+  s_327046e8a7d75e::t_b736c8dbb98244 13,78-81
+src/main/platform/node/CodexHomeContinuity.node.test.ts
+  s_327046e8a7d75e::t_262dd9bd2adbc4 29-36,46-48,51-53,63-65,68-72,75-77,80-98,108-111,113-115,156-161,164,170,175-187,206-207,212-223,227-238,240-251,253-259,261,263-265,267,269-275,277-278,280-283,286-288,290-295,297-305
+  s_327046e8a7d75e::t_2c28ca1da84c8b 133-135,150-152
+  s_327046e8a7d75e::t_ac2c016f20ee93 310-317,320-324,332-342
+  s_327046e8a7d75e::t_b4f27efa69689c 118-132,136-149,153-154
+  s_327046e8a7d75e::t_bcf44bba6efd0d 11-17,19-27,37-45,49-50,54-62,66-67,73-74,78-79,99-107,112,116-117,155,162-163,171-174,224-226,289
+  s_327046e8a7d75e::t_0381e5cb4cf46a 1-5,7-10
+  s_327046e8a7d75e::t_f6f7b86469609e 306-309,318-319,325-331,343-347
+  s_327046e8a7d75e::t_01cab574bc0a10 6
+  s_327046e8a7d75e::t_650240f25abefb 18,208,239,252,260,262,266,268,276,279,284-285,296
+  s_327046e8a7d75e::t_eac3ed5250783c 28
+  s_327046e8a7d75e::t_2f179b73d72dce 165-169,188-205,209-211
+docs/CONFIGURATION.md
+  s_327046e8a7d75e::t_8ae05dc62564c7 31-39,41-58,63,150,171
+  s_327046e8a7d75e::t_7486c6ec207975 40
+  s_327046e8a7d75e::t_4cd75e12332a24 59
+  s_327046e8a7d75e::t_6bc486c83252bc 60-62
+crates/nodex-profile/src/codex.rs
+  s_327046e8a7d75e::t_803dd8e07c97ff 215-217,221-222,299-301
+  s_327046e8a7d75e::t_1c329985498034 298,302
+  s_327046e8a7d75e::t_1bb7aa2d134c96 200-214,218-220,223-228,241
+src/main/codex-application/ExecutionHostRuntime.ts
+  s_327046e8a7d75e::t_a63646770dbcc8 89,214,337,345,546
+src/main/codex-application/ExecutionHostRuntime.node.test.ts
+  s_327046e8a7d75e::t_1bb7aa2d134c96 204
+src/main/platform/node/CodexNodeReplCleanup.node.test.ts
+  s_327046e8a7d75e::t_2a732b478f72eb 104-108
+  s_327046e8a7d75e::t_96f16fa59d4ceb 97-103,109-113
+crates/nodex-profile/src/files.rs
+  s_327046e8a7d75e::t_1bb7aa2d134c96 92
+src/main/codex/browser-plugin-reconciler.test.ts
+  s_327046e8a7d75e::t_30fe636cb516fc 238,301,359,396,423,429,501,572,619,717,723
+  s_327046e8a7d75e::t_fdbefa68b1f8f2 92-99,101-129,131-132,134-155,157-159,161-167,190,192-204,206-219,235-237,239-242,298-300,302-305,358,422,428,500,571,618,716,722
+  s_327046e8a7d75e::t_0af8847bf231ed 53-61,130,156,234,297,355,419,519,568,615,713
+  s_327046e8a7d75e::t_40f15518e8419d 9,46,51,68,76,233,296,341,354,418,484,496,511,514,521,567,614,629,712,803
+  s_327046e8a7d75e::t_71b8f805b59db9 170-176
+  s_327046e8a7d75e::t_d063e851277d6b 191,220-221
+  s_327046e8a7d75e::t_33295e6472a3e9 100,133,160,168-169,177-189,205,373-379,444-450,637-643,742-748
+src/main/codex-application/CodexPermissions.node.test.ts
+  s_327046e8a7d75e::t_a3cd53792cc05c 36,40,177,224,251,276,302,325,369
+  s_327046e8a7d75e::t_96f16fa59d4ceb 219,237-241
+src/main/codex/browser-plugin-reconciler.ts
+  s_327046e8a7d75e::t_00c2131618d3ad 16,124,225,433,545
+  s_327046e8a7d75e::t_78c27ecd31c660 92,270-273,282-288,380-381,540
+  s_327046e8a7d75e::t_b7eee6208c112e 427-430
+  s_327046e8a7d75e::t_fb07fb83146f65 23,205,269,274-281,289-294,352
+packages/core-protocol/openapi.json
+  s_327046e8a7d75e::t_935ce3f0b08a65 8140-8163,34678-34695,47311-47328
+packages/core-protocol/src/compatibility.generated.ts
+  s_327046e8a7d75e::t_8262eeda962bf8 24
+packages/core-protocol/src/generated.ts
+  s_327046e8a7d75e::t_89da94868eab53 1942-1946,8290-8293,11097-11100
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "9d4d3d6879a48d4d658fddf13dbe18b24dc2c1f4",
+  "prompts": {},
+  "sessions": {
+    "s_327046e8a7d75e": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a0ee9b-616a-7f23-9854-d0e96d7078de",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    }
+  }
+}
