@@ -13,12 +13,14 @@ import type { BrowserRuntimeAvailability } from "./browser-runtime-bundle";
 import { resolveAvailableBrowserUseBackends } from "./browser-use-backends";
 import {
   materializeBundledDesktopToolMarketplace,
+  nodexDesktopToolMarketplaceName,
   type MaterializedDesktopToolMarketplace,
 } from "./bundled-desktop-tool-marketplace";
 
 type BrowserPluginRequestMethod =
   | "marketplace/add"
   | "marketplace/remove"
+  | "config/batchWrite"
   | "plugin/install"
   | "plugin/list"
   | "plugin/uninstall"
@@ -87,7 +89,7 @@ export interface BrowserPluginReconcilerOptions {
   readonly browserRuntime: BrowserRuntimeAvailability;
   readonly client: BrowserPluginRequestPort;
   readonly computerUseAvailable?: () => boolean;
-  readonly runtimeStateHome?: string;
+  readonly runtimeStateHome: string;
 }
 
 type BrowserPluginDesiredState =
@@ -119,6 +121,7 @@ type ReconcileEnvironment = {
   readonly browserRuntime: BrowserRuntimeAvailability;
   readonly client: BrowserPluginRequestPort;
   readonly runtimeStateHome: string;
+  readonly marketplaceName: string;
 };
 
 function resolveDesiredState(
@@ -199,7 +202,7 @@ const findPlugin = (
 
 const isPluginReady = (plugin: MarketplacePlugin | null, version: string): boolean =>
   Boolean(
-    plugin?.installed && plugin.enabled && (plugin.localVersion ?? plugin.version) === version,
+    plugin?.installed && !plugin.enabled && (plugin.localVersion ?? plugin.version) === version,
   );
 
 function canonicalPath(value: string): string {
@@ -219,7 +222,7 @@ function readBundledMarketplace(
   return environment.client.request("plugin/list", { cwds: [], marketplaceKinds: ["local"] }).pipe(
     Effect.map((response) => {
       for (const marketplace of response.marketplaces) {
-        if (marketplace.name !== "openai-bundled" || !marketplace.path) continue;
+        if (marketplace.name !== environment.marketplaceName || !marketplace.path) continue;
         return {
           marketplacePath: marketplace.path,
           plugins: marketplace.plugins,
@@ -263,12 +266,32 @@ function reconcilePlugin(
       ),
     );
   }
-  return environment.client
-    .request("plugin/install", {
-      marketplacePath: input.marketplacePath,
-      pluginName: input.pluginName,
-    })
-    .pipe(Effect.as(true));
+  return Effect.gen(function* () {
+    if (
+      !input.current?.installed ||
+      (input.current.localVersion ?? input.current.version) !== input.version
+    ) {
+      yield* environment.client.request("plugin/install", {
+        marketplacePath: input.marketplacePath,
+        pluginName: input.pluginName,
+      });
+    }
+    // Installation persists only this Profile's namespace. Native clients leave these
+    // desktop peers off; Nodex activates them in each Thread's own runtime config.
+    yield* environment.client.request("config/batchWrite", {
+      edits: [
+        {
+          keyPath: `plugins.${input.pluginName}@${environment.marketplaceName}.enabled`,
+          value: false,
+          mergeStrategy: "replace",
+        },
+      ],
+      expectedVersion: null,
+      filePath: null,
+      reloadUserConfig: true,
+    });
+    return true;
+  });
 }
 
 function removeInstalledPlugins(
@@ -326,7 +349,7 @@ function resolveChromeResult(input: {
   }
   if (!isPluginReady(input.plugin, input.version)) {
     return {
-      message: "Chrome plugin reconciliation did not produce the verified enabled version",
+      message: "Chrome plugin reconciliation did not produce the verified Thread-scoped version",
       reason: "reconciliation-failed",
       status: "unavailable",
     };
@@ -354,7 +377,8 @@ function resolveComputerUseResult(input: {
   }
   if (!isPluginReady(input.plugin, input.version)) {
     return {
-      message: "Computer Use plugin reconciliation did not produce the verified enabled version",
+      message:
+        "Computer Use plugin reconciliation did not produce the verified Thread-scoped version",
       reason: "reconciliation-failed",
       status: "unavailable",
     };
@@ -400,10 +424,13 @@ function reconcile(
     let marketplace = yield* readBundledMarketplace(environment);
     if (
       marketplace &&
-      !pathsReferToSameLocation(marketplace.marketplacePath, materialized.rootPath)
+      !pathsReferToSameLocation(
+        marketplace.marketplacePath,
+        path.join(materialized.rootPath, ".agents", "plugins", "marketplace.json"),
+      )
     ) {
       yield* environment.client.request("marketplace/remove", {
-        marketplaceName: "openai-bundled",
+        marketplaceName: environment.marketplaceName,
       });
       marketplace = null;
     }
@@ -510,19 +537,12 @@ export const makeBrowserPluginReconciler = (
   Effect.gen(function* () {
     const availableBackends = options.availableBackends ?? (() => ["iab"] as const);
     const computerUseAvailable = options.computerUseAvailable ?? (() => false);
-    const runtimeStateHome = path.resolve(
-      options.runtimeStateHome ??
-        path.join(
-          options.browserRuntime.status === "available"
-            ? options.browserRuntime.bundle.rootPath
-            : process.cwd(),
-          ".state",
-        ),
-    );
+    const runtimeStateHome = path.resolve(options.runtimeStateHome);
     const environment: ReconcileEnvironment = {
       browserRuntime: options.browserRuntime,
       client: options.client,
       runtimeStateHome,
+      marketplaceName: nodexDesktopToolMarketplaceName(runtimeStateHome),
     };
     const cached = yield* Ref.make<{
       readonly key: string;

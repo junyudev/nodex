@@ -250,12 +250,7 @@ export async function cleanupNodeReplExecutions(input: {
       signal?.throwIfAborted();
       const record = await readRecord(path);
       signal?.throwIfAborted();
-      if (!record)
-        return {
-          ...empty(),
-          failedCount: Number(!(await remove(path, dependencies))),
-          staleCount: 1,
-        };
+      if (!record) return { ...empty(), scannedCount: 1 };
       if (record.sessionId !== sessionId || record.turnId !== turnId)
         return { ...empty(), scannedCount: 1 };
       const outcome = await killRecord(record, dependencies, signal);

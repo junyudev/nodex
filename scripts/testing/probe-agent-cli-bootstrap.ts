@@ -165,7 +165,7 @@ const main = async () => {
     const nativeHome = join(scenario.profile.runRoot, "private codex home");
     const launchArgs = await nodexCliShellLaunchArgs({
       nodexHome: scenario.profile.nodexHome,
-      runtimeStateHome: nativeHome,
+      codexHome: nativeHome,
       searchPaths: [],
       inheritedPath: process.env.PATH ?? "/usr/bin:/bin",
       homeDirectory: process.env.HOME!,

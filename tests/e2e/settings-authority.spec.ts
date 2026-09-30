@@ -4,6 +4,7 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { parse as parseToml } from "smol-toml";
+import type { CodexHomeSettingsSnapshot } from "../../src/shared/codex-home-settings";
 import {
   ElectronScenarioHarness,
   readBoundedElectronRuntimeLogs,
@@ -109,6 +110,43 @@ test("isolates Profile settings without replacing the launcher HOME", async () =
     expect(externalAfter.size).toBe(externalBefore.size);
     expect(externalAfter.mtimeMs).toBe(externalBefore.mtimeMs);
     expect(fs.existsSync(externalProfilePath)).toBe(false);
+
+    const activeHome = (await page.evaluate(() =>
+      window.api!.invoke("settings:codex-home:get"),
+    )) as CodexHomeSettingsSnapshot;
+    expect(activeHome.source).toBe("environment");
+    expect(activeHome.resolvedHomePath).toBe(fs.realpathSync(harness.profile.codexHome));
+    expect(activeHome.restartRequired).toBe(false);
+    const selectedHome = path.join(harness.profile.runRoot, "selected-codex-home");
+    await page.getByRole("button", { name: "Settings", exact: true }).click();
+    await page.getByRole("link", { name: "Agent", exact: true }).click();
+    const homeInput = page.getByRole("textbox", { name: "Codex home", exact: true });
+    await homeInput.fill(selectedHome);
+    await homeInput.locator("..").getByRole("button", { name: "Save", exact: true }).click();
+    await expect(
+      page.getByRole("status").filter({ hasText: `Restart Nodex to use ${selectedHome}.` }),
+    ).toBeVisible();
+    const pendingHome = (await page.evaluate(() =>
+      window.api!.invoke("settings:codex-home:get"),
+    )) as CodexHomeSettingsSnapshot;
+    expect(pendingHome.activeHomePath).toBe(activeHome.activeHomePath);
+    expect(pendingHome.resolvedHomePath).toBe(selectedHome);
+    expect(pendingHome.restartRequired).toBe(true);
+    await page.screenshot({ path: test.info().outputPath("codex-home-pending.png") });
+    const reopened = await harness.restart();
+    const restartedHome = (await reopened.evaluate(() =>
+      window.api!.invoke("settings:codex-home:get"),
+    )) as CodexHomeSettingsSnapshot;
+    expect(restartedHome.source).toBe("settings");
+    expect(restartedHome.activeHomePath).toBe(fs.realpathSync(selectedHome));
+    expect(restartedHome.restartRequired).toBe(false);
+    const homeReceipt = JSON.parse(
+      fs.readFileSync(
+        path.join(harness.profile.nodexHome, "runtime", "agent", "codex-home.json"),
+        "utf8",
+      ),
+    );
+    expect(homeReceipt.codexHome).toBe(restartedHome.activeHomePath);
   } catch (error) {
     console.error(await readBoundedElectronRuntimeLogs(harness.profile));
     throw error;

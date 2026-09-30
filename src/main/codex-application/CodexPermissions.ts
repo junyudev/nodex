@@ -15,10 +15,7 @@ import type {
 import { CodexGateway } from "../codex-runtime/CodexGateway";
 import { CoreModules } from "../core-runtime/CoreModules";
 import { createOperationId } from "../core-runtime/operation-identity";
-import {
-  buildPermissionModeConfigEdits,
-  resolveCodexPermissionState,
-} from "../codex/codex-permission-resolver";
+import { resolveCodexPermissionState } from "../codex/codex-permission-resolver";
 
 interface CodexPermissionConfigSnapshot {
   readonly config: ConfigReadResponse["config"];
@@ -90,14 +87,14 @@ export class CodexPermissions extends Context.Service<
 >()("nodex/main/codex-application/CodexPermissions") {}
 
 const fallbackState = (
-  runtimeStateHome: string,
+  codexHome: string,
   mode: CodexPermissionMode,
   workspaceRoots: readonly string[],
   previous: CodexPermissionState | null,
 ): CodexPermissionState => {
   const configTarget = previous?.configTarget ?? {
     source: "user" as const,
-    filePath: path.join(runtimeStateHome, "config.toml"),
+    filePath: path.join(codexHome, "config.toml"),
   };
 
   if (mode === "custom") {
@@ -161,14 +158,14 @@ const fallbackState = (
 };
 
 export const resolvePermissionMode = (
-  runtimeStateHome: string,
+  codexHome: string,
   permissionState: CodexPermissionState,
   requestedMode: CodexPermissionMode | undefined,
   workspaceRoots: readonly string[],
 ): CodexPermissionState => {
   if (!requestedMode || requestedMode === permissionState.mode) return permissionState;
   if (!permissionState.availableModes.includes(requestedMode)) return permissionState;
-  return fallbackState(runtimeStateHome, requestedMode, workspaceRoots, permissionState);
+  return fallbackState(codexHome, requestedMode, workspaceRoots, permissionState);
 };
 
 const permissionModeIsAvailable = (
@@ -177,7 +174,7 @@ const permissionModeIsAvailable = (
 ): boolean => state.availableModes.includes(mode);
 
 export const live = (options: {
-  readonly runtimeStateHome: string;
+  readonly codexHome: string;
 }): Layer.Layer<CodexPermissions, never, CodexGateway | CoreModules> =>
   Layer.effect(
     CodexPermissions,
@@ -190,7 +187,7 @@ export const live = (options: {
       const verifiedModeByScope = yield* Ref.make<ReadonlyMap<string | null, CodexPermissionMode>>(
         new Map(),
       );
-      const runtimeStateHome = path.resolve(options.runtimeStateHome);
+      const codexHome = path.resolve(options.codexHome);
       const error = (operation: string, cause: unknown) =>
         new CodexPermissionsError({ operation, cause });
 
@@ -311,10 +308,10 @@ export const live = (options: {
           });
           if (selection === null) return state;
           if (selection === "custom") {
-            return fallbackState(runtimeStateHome, selection, workspaceRoots, state);
+            return fallbackState(codexHome, selection, workspaceRoots, state);
           }
           if (!available) return state;
-          return fallbackState(runtimeStateHome, selection, workspaceRoots, state);
+          return fallbackState(codexHome, selection, workspaceRoots, state);
         },
       );
 
@@ -330,7 +327,7 @@ export const live = (options: {
           const config = yield* readConfig();
           const resolved = resolveCodexPermissionState({
             ...config,
-            defaultUserConfigPath: path.join(runtimeStateHome, "config.toml"),
+            defaultUserConfigPath: path.join(codexHome, "config.toml"),
             workspaceRoots: [...workspaceRoots],
           });
           return yield* applyPersistedSelection(projectId, resolved, workspaceRoots);
@@ -346,12 +343,7 @@ export const live = (options: {
               }),
               Effect.as({
                 cacheable: false as const,
-                state: fallbackState(
-                  runtimeStateHome,
-                  previous?.mode ?? "auto",
-                  workspaceRoots,
-                  previous,
-                ),
+                state: fallbackState(codexHome, previous?.mode ?? "auto", workspaceRoots, previous),
               }),
             ),
           ),
@@ -370,19 +362,6 @@ export const live = (options: {
         function* (projectId, mode) {
           const current = yield* snapshot(projectId);
           if (!current.availableModes.includes(mode)) return current;
-          const edits = buildPermissionModeConfigEdits(mode);
-          if (edits.length > 0) {
-            const params = {
-              edits,
-              filePath: current.configTarget.filePath,
-              reloadUserConfig: current.configTarget.source === "user",
-            } as unknown as ClientRequestParamsByMethod["config/batchWrite"];
-            const written = yield* gateway.requestLocal("config/batchWrite", params).pipe(
-              Effect.as(true),
-              Effect.catch(() => Effect.succeed(false)),
-            );
-            if (!written) return current;
-          }
           yield* writePersistedMode(projectId, mode).pipe(
             Effect.tapError(() => invalidate(projectId)),
           );
@@ -418,7 +397,7 @@ export const live = (options: {
         resolve: Effect.fn("CodexPermissions.resolve")(function* (input) {
           const state = yield* snapshot(input.projectId);
           const resolved = resolvePermissionMode(
-            runtimeStateHome,
+            codexHome,
             state,
             input.requestedMode,
             input.workspaceRoots,
@@ -433,12 +412,12 @@ export const live = (options: {
             Effect.map((config) =>
               resolveCodexPermissionState({
                 ...config,
-                defaultUserConfigPath: path.join(runtimeStateHome, "config.toml"),
+                defaultUserConfigPath: path.join(codexHome, "config.toml"),
                 workspaceRoots: [...workspaceRoots],
               }),
             ),
             Effect.catch(() =>
-              Effect.succeed(fallbackState(runtimeStateHome, "auto", workspaceRoots, null)),
+              Effect.succeed(fallbackState(codexHome, "auto", workspaceRoots, null)),
             ),
           ),
         setMode,

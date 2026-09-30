@@ -33,11 +33,11 @@ const makeHarness = (
   const origins = options.explicitPermissionChoice
     ? {
         approval_policy: {
-          name: { type: "user", file: "/profile/agent/config.toml", profile: null },
+          name: { type: "user", file: "/native/codex/config.toml", profile: null },
           version: "test",
         },
         sandbox_mode: {
-          name: { type: "user", file: "/profile/agent/config.toml", profile: null },
+          name: { type: "user", file: "/native/codex/config.toml", profile: null },
           version: "test",
         },
       }
@@ -174,7 +174,7 @@ it.effect("owns permission config, persisted selection, cache, and verification"
     const harness = makeHarness();
     const scope = yield* Scope.make();
     const context = yield* Layer.buildWithScope(
-      codexPermissionsLive({ runtimeStateHome: "/profile/agent" }).pipe(
+      codexPermissionsLive({ codexHome: "/native/codex" }).pipe(
         Layer.provide(
           Layer.merge(
             Layer.succeed(CodexGateway, harness.gateway),
@@ -216,12 +216,12 @@ it.effect("owns permission config, persisted selection, cache, and verification"
   }),
 );
 
-it.effect("does not persist a mode when the app-server config write fails", () =>
+it.effect("persists permission choices without writing the shared Codex config", () =>
   Effect.gen(function* () {
     const harness = makeHarness({ rejectConfigWrite: true });
     const scope = yield* Scope.make();
     const context = yield* Layer.buildWithScope(
-      codexPermissionsLive({ runtimeStateHome: "/profile/agent" }).pipe(
+      codexPermissionsLive({ codexHome: "/native/codex" }).pipe(
         Layer.provide(
           Layer.merge(
             Layer.succeed(CodexGateway, harness.gateway),
@@ -234,8 +234,11 @@ it.effect("does not persist a mode when the app-server config write fails", () =
     const permissions = Context.get(context, CodexPermissions);
     const state = yield* permissions.setMode("project:one", "full-access");
 
-    assert.strictEqual(state.mode, "guardian-approvals");
-    assert.isFalse(harness.selections.has("project:one"));
+    assert.strictEqual(state.mode, "full-access");
+    assert.strictEqual(harness.selections.get("project:one"), "full-access");
+    assert.strictEqual(harness.config.sandbox_mode, "workspace-write");
+    assert.isFalse(harness.requests.includes("config/batchWrite"));
+    assert.strictEqual((yield* permissions.snapshot("project:two")).mode, "guardian-approvals");
     yield* Scope.close(scope, Exit.void);
   }),
 );
@@ -245,7 +248,7 @@ it.effect("uses the safe fallback when the fresh Profile default is unavailable"
     const harness = makeHarness({ autoReviewAvailable: false });
     const scope = yield* Scope.make();
     const context = yield* Layer.buildWithScope(
-      codexPermissionsLive({ runtimeStateHome: "/profile/agent" }).pipe(
+      codexPermissionsLive({ codexHome: "/native/codex" }).pipe(
         Layer.provide(
           Layer.merge(
             Layer.succeed(CodexGateway, harness.gateway),
@@ -270,7 +273,7 @@ it.effect("keeps a persisted built-in selection authoritative over the fresh Pro
       harness.selections.set("project:one", mode);
       const scope = yield* Scope.make();
       const context = yield* Layer.buildWithScope(
-        codexPermissionsLive({ runtimeStateHome: "/profile/agent" }).pipe(
+        codexPermissionsLive({ codexHome: "/native/codex" }).pipe(
           Layer.provide(
             Layer.merge(
               Layer.succeed(CodexGateway, harness.gateway),
@@ -296,7 +299,7 @@ it.effect("preserves an explicit config choice when no Nodex selection exists", 
     const harness = makeHarness({ explicitPermissionChoice: true });
     const scope = yield* Scope.make();
     const context = yield* Layer.buildWithScope(
-      codexPermissionsLive({ runtimeStateHome: "/profile/agent" }).pipe(
+      codexPermissionsLive({ codexHome: "/native/codex" }).pipe(
         Layer.provide(
           Layer.merge(
             Layer.succeed(CodexGateway, harness.gateway),
@@ -319,7 +322,7 @@ it.effect("does not cache a transient fallback as permission authority", () =>
     const harness = makeHarness({ failFirstConfigRead: true });
     const scope = yield* Scope.make();
     const context = yield* Layer.buildWithScope(
-      codexPermissionsLive({ runtimeStateHome: "/profile/agent" }).pipe(
+      codexPermissionsLive({ codexHome: "/native/codex" }).pipe(
         Layer.provide(
           Layer.merge(
             Layer.succeed(CodexGateway, harness.gateway),
@@ -363,7 +366,7 @@ it.effect("verifies projectless Full Access only from an available persisted sel
       if (entry.selection) harness.selections.set(null, entry.selection);
       const scope = yield* Scope.make();
       const context = yield* Layer.buildWithScope(
-        codexPermissionsLive({ runtimeStateHome: "/profile/agent" }).pipe(
+        codexPermissionsLive({ codexHome: "/native/codex" }).pipe(
           Layer.provide(
             Layer.merge(
               Layer.succeed(CodexGateway, harness.gateway),

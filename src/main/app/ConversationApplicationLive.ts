@@ -1,4 +1,3 @@
-import { live as inactiveThreadArchiveLive } from "../platform/node/CodexInactiveThreadArchive";
 import { randomUUID } from "node:crypto";
 import {
   CodexRendererSessionLaunch,
@@ -348,15 +347,9 @@ const conversationRelationships = Layer.effect(
   makeCodexConversationRelationships,
 ).pipe(Layer.provideMerge(threadDirectory));
 
-const sidebarSync = Layer.unwrap(
-  Effect.gen(function* () {
-    const config = yield* MainConfig;
-    return Layer.effect(
-      CodexSidebarSyncRuntime,
-      makeCodexSidebarSyncRuntime({ foldPathCase: config.platform === "win32" }),
-    );
-  }),
-).pipe(Layer.provideMerge(Layer.mergeAll(threadDirectory, internalThreadRegistry)));
+const sidebarSync = Layer.effect(CodexSidebarSyncRuntime, makeCodexSidebarSyncRuntime()).pipe(
+  Layer.provideMerge(Layer.mergeAll(threadDirectory, internalThreadRegistry)),
+);
 
 const externalAgentImport = Layer.effect(
   CodexExternalAgentImportRuntime,
@@ -585,10 +578,7 @@ const freshThreadLaunch = Layer.effect(
 const conversationArchive = Layer.effect(
   CodexConversationArchive,
   makeCodexConversationArchive,
-).pipe(
-  Layer.provide(inactiveThreadArchiveLive),
-  Layer.provideMerge(Layer.merge(freshThreadLaunch, conversationLifecycle)),
-);
+).pipe(Layer.provideMerge(Layer.merge(freshThreadLaunch, conversationLifecycle)));
 const commands = conversationCommandsLive.pipe(Layer.provideMerge(conversationArchive));
 const threadExecution = codexThreadExecutionLive.pipe(Layer.provideMerge(commands));
 
@@ -661,7 +651,10 @@ const agentImport = Layer.unwrap(
     const platform = yield* CodexPlatform;
     return Layer.effect(
       AgentImportRuntime,
-      makeAgentImportRuntime({ runtimeStateHome: platform.runtimeStateHome }),
+      makeAgentImportRuntime({
+        runtimeStateHome: platform.runtimeStateHome,
+        codexHome: platform.codexHome,
+      }),
     );
   }),
 ).pipe(Layer.provideMerge(threadHandoff));

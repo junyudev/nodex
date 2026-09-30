@@ -1,4 +1,8 @@
 import type { AgentInteractionResponse } from "./agent-conversation";
+import type {
+  CodexHomeSettingsSnapshot,
+  CodexHomeSettingsUpdateInput,
+} from "./codex-home-settings";
 import type { CodexRendererResumePreparation } from "./codex-renderer-resume";
 import type {
   CodexRendererRequestCaller,
@@ -1261,6 +1265,11 @@ export interface IpcApi {
   "settings:backup:update": {
     args: [input: UpdateBackupSettingsInput];
     result: BackupSettings;
+  };
+  "settings:codex-home:get": { args: []; result: CodexHomeSettingsSnapshot };
+  "settings:codex-home:update": {
+    args: [input: CodexHomeSettingsUpdateInput];
+    result: CodexHomeSettingsSnapshot;
   };
   "settings:claude-agents:get": { args: []; result: ClaudeAgentSettings };
   "settings:claude-agents:update": {

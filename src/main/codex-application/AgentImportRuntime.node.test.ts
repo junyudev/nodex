@@ -23,8 +23,11 @@ const SOURCE_THREAD_ID = "019c0000-0000-7000-8000-000000000003";
 const TARGET_THREAD_ID = "019c0000-0000-7000-8000-000000000004";
 
 interface ImportHarnessOptions {
+  readonly codexHome?: string;
+  readonly onObserveMetadata?: CodexThreadDirectory["Service"]["observeMetadata"];
   readonly onAcceptImport?: CodexThreadDirectory["Service"]["acceptImportResult"];
   readonly returnsTranscript?: boolean;
+  readonly parentThreadId?: string;
 }
 
 const temporaryRoot = Effect.acquireRelease(
@@ -72,13 +75,14 @@ const makeHarness = (runtimeStateHome: string, cwd: string, options: ImportHarne
   const requestLocal = ((method: string, params: unknown, scheduling: unknown) =>
     Effect.sync(() => {
       requests.push({ method, params, scheduling });
-      if (method === "thread/fork") {
+      if (method === "thread/fork" || method === "thread/read") {
         return {
           cwd,
           thread: {
             cwd,
             historyMode: "paginated",
-            id: TARGET_THREAD_ID,
+            id: method === "thread/read" ? SOURCE_THREAD_ID : TARGET_THREAD_ID,
+            parentThreadId: options.parentThreadId ?? null,
             name: null,
             turns: options.returnsTranscript ? [{ id: "poison-turn", items: [] }] : [],
           },
@@ -93,6 +97,13 @@ const makeHarness = (runtimeStateHome: string, cwd: string, options: ImportHarne
     requestLocal,
   } as unknown as CodexGateway["Service"]);
   const directory = CodexThreadDirectory.of({
+    observeMetadata:
+      options.onObserveMetadata ??
+      ((input) =>
+        Effect.sync(() => {
+          acceptedImports.push(input);
+          return {} as never;
+        })),
     acceptImportResult:
       options.onAcceptImport ??
       ((input) =>
@@ -122,7 +133,7 @@ const makeHarness = (runtimeStateHome: string, cwd: string, options: ImportHarne
     requests,
     sidebarSyncs: () => sidebarSyncs,
     titles,
-    runtime: make({ runtimeStateHome }).pipe(
+    runtime: make({ runtimeStateHome, codexHome: options.codexHome ?? runtimeStateHome }).pipe(
       Effect.provideService(
         CodexAppServerCapabilities,
         CodexAppServerCapabilities.of({
@@ -235,6 +246,117 @@ it.effect("deletes a fork when canonical materialization fails", () =>
       assert.strictEqual(result.outcomes[0]?.failureCount, 1);
       assert.match(result.outcomes[0]?.messages[0] ?? "", /projection failed/u);
       assert.strictEqual(harness.sidebarSyncs(), 0);
+    }),
+  ),
+);
+
+it.effect(
+  "attaches native conversations in the active home without forking or copying configuration",
+  () =>
+    Effect.scoped(
+      Effect.gen(function* () {
+        const root = yield* temporaryRoot;
+        const source = prepareSession(root);
+        const configPath = path.join(source.sourceHome, "config.toml");
+        const config = "# Existing native preferences\nmodel = 'native-model'\n";
+        writeFileSync(configPath, config);
+        const harness = makeHarness(source.runtimeStateHome, source.cwd, {
+          codexHome: source.sourceHome,
+        });
+        const runtime = yield* harness.runtime;
+        const scan = yield* runtime.scan("codex", source.sourceHome);
+        assert.deepEqual(
+          scan.items.map((item) => item.kind),
+          ["sessions"],
+        );
+        const result = yield* runtime.apply({ scanId: scan.scanId, itemIds: [scan.items[0]!.id] });
+        assert.deepEqual(result.importedThreadIds, [SOURCE_THREAD_ID]);
+        assert.deepEqual(
+          harness.requests.map((request) => request.method),
+          ["thread/read"],
+        );
+        assert.deepEqual(harness.requests[0]?.params, {
+          threadId: SOURCE_THREAD_ID,
+          includeTurns: false,
+        });
+        assert.strictEqual(readFileSync(configPath, "utf8"), config);
+        assert.deepEqual(harness.titles, []);
+        const ledger = JSON.parse(
+          readFileSync(
+            path.join(source.runtimeStateHome, "imports", "session-imports-v1.json"),
+            "utf8",
+          ),
+        );
+        assert.strictEqual(ledger.sessions[0].targetThreadId, SOURCE_THREAD_ID);
+        const next = yield* runtime.scan("codex", source.sourceHome);
+        assert.strictEqual(next.items.length, 0);
+        assert.strictEqual(next.skippedAlreadyImportedSessions, 1);
+      }),
+    ),
+);
+
+it.effect("never deletes native history when attachment fails", () =>
+  Effect.scoped(
+    Effect.gen(function* () {
+      const root = yield* temporaryRoot;
+      const source = prepareSession(root);
+      const harness = makeHarness(source.runtimeStateHome, source.cwd, {
+        codexHome: source.sourceHome,
+        onObserveMetadata: () =>
+          Effect.fail(
+            new CodexThreadDirectoryError({
+              operation: "materialize",
+              threadId: SOURCE_THREAD_ID,
+              cause: new Error("projection failed"),
+            }),
+          ),
+      });
+      const runtime = yield* harness.runtime;
+      const scan = yield* runtime.scan("codex", source.sourceHome);
+      const result = yield* runtime.apply({ scanId: scan.scanId, itemIds: [scan.items[0]!.id] });
+      assert.deepEqual(
+        harness.requests.map((request) => request.method),
+        ["thread/read"],
+      );
+      assert.deepEqual(result.importedThreadIds, []);
+      assert.strictEqual(result.outcomes[0]?.failureCount, 1);
+      assert.strictEqual(harness.sidebarSyncs(), 0);
+    }),
+  ),
+);
+
+it.effect("offers root conversations and refuses to attach an orphan subagent", () =>
+  Effect.scoped(
+    Effect.gen(function* () {
+      const root = yield* temporaryRoot;
+      const source = prepareSession(root);
+      writeFileSync(
+        path.join(source.sourceHome, "sessions", "child.jsonl"),
+        `${JSON.stringify({
+          type: "session_meta",
+          payload: {
+            id: "child",
+            cwd: source.cwd,
+            source: { subagent: { thread_spawn: { parent_thread_id: SOURCE_THREAD_ID } } },
+          },
+        })}\n`,
+      );
+      const harness = makeHarness(source.runtimeStateHome, source.cwd, {
+        codexHome: source.sourceHome,
+        parentThreadId: "unowned-parent",
+      });
+      const runtime = yield* harness.runtime;
+      const scan = yield* runtime.scan("codex", source.sourceHome);
+      assert.strictEqual(scan.items[0]?.count, 1);
+      const result = yield* runtime.apply({ scanId: scan.scanId, itemIds: [scan.items[0]!.id] });
+      assert.deepEqual(result.importedThreadIds, []);
+      assert.strictEqual(result.outcomes[0]?.failureCount, 1);
+      assert.match(result.outcomes[0]?.messages[0] ?? "", /Attach the parent conversation/u);
+      assert.strictEqual(harness.acceptedImports.length, 0);
+      assert.deepEqual(
+        harness.requests.map((request) => request.method),
+        ["thread/read"],
+      );
     }),
   ),
 );

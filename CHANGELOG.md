@@ -13,6 +13,7 @@ All notable changes to this project will be documented in this file.
 
 ### Changed
 
+- New Profiles reuse native Codex login, settings and skills by default, with an explicit directory override, safe directory switching, selected native chat attachment, and desktop tools scoped to each Nodex Profile.
 - Nodex is now distributed under the Apache License 2.0.
 
 ### Fixed

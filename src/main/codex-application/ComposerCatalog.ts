@@ -38,6 +38,10 @@ import {
 } from "../codex/composer-skill-inventory";
 import { parseModelOption } from "../../shared/codex-composer-catalog";
 import { AppProtocolRuntime } from "../host-runtime/AppProtocolRuntime";
+import {
+  isForeignDesktopToolPlugin,
+  nodexDesktopToolMarketplaceName,
+} from "../codex/bundled-desktop-tool-marketplace";
 
 export class ComposerCatalogInputError extends Schema.TaggedError<ComposerCatalogInputError>()(
   "ComposerCatalogInputError",
@@ -68,12 +72,6 @@ export type PluginRemovalResult =
       readonly status: "selection_required";
       readonly candidates: readonly { readonly pluginId: string; readonly name: string }[];
     };
-
-const managedDesktopPlugins = new Set([
-  "browser@openai-bundled",
-  "chrome@openai-bundled",
-  "computer-use@openai-bundled",
-]);
 
 export class ComposerCatalog extends Context.Service<
   ComposerCatalog,
@@ -123,12 +121,38 @@ const asPlainSkillsResponse = (
   response: ClientRequestResponsesByMethod["skills/list"],
 ): SkillsListResponse => response as unknown as SkillsListResponse;
 
-export const live: Layer.Layer<ComposerCatalog, never, CodexGateway | AppProtocolRuntime> =
+export const live = (options: {
+  readonly runtimeStateHome: string;
+}): Layer.Layer<ComposerCatalog, never, CodexGateway | AppProtocolRuntime> =>
   Layer.effect(
     ComposerCatalog,
     Effect.gen(function* () {
       const gateway = yield* CodexGateway;
       const protocol = yield* AppProtocolRuntime;
+      const marketplaceName = nodexDesktopToolMarketplaceName(options.runtimeStateHome);
+      const managedDesktopPlugins = new Set(
+        ["browser", "chrome", "computer-use"].map((name) => `${name}@${marketplaceName}`),
+      );
+      const pluginProjection = (
+        response: ClientRequestResponsesByMethod["plugin/installed"],
+        hostId: string,
+      ): PluginInstalledResponse => {
+        const plain = asPlainPluginResponse(response);
+        if (hostId !== gateway.localHostId) return plain;
+        return {
+          ...plain,
+          marketplaces: plain.marketplaces.map((marketplace) => ({
+            ...marketplace,
+            plugins: marketplace.plugins
+              .filter((plugin) => !isForeignDesktopToolPlugin(plugin.id, options.runtimeStateHome))
+              .map((plugin) =>
+                managedDesktopPlugins.has(plugin.id) && plugin.installed
+                  ? { ...plugin, enabled: true }
+                  : plugin,
+              ),
+          })),
+        };
+      };
       const iconResolver = (hostId: string) => (path: string) =>
         hostId === gateway.localHostId
           ? resolveComposerInventoryIconUrl(path)
@@ -154,10 +178,13 @@ export const live: Layer.Layer<ComposerCatalog, never, CodexGateway | AppProtoco
           const cwds = normalizeCwds(input.cwds);
           const installed = yield* readInstalled(cwds, hostId);
           const activation = yield* Effect.try({
-            try: () => resolveComposerPluginActivation(asPlainPluginResponse(installed), id),
+            try: () => resolveComposerPluginActivation(pluginProjection(installed, hostId), id),
             catch: (cause) => new ComposerCatalogInputError({ message: String(cause) }),
           });
           if (activation.kind === "active") return;
+          if (hostId === gateway.localHostId && managedDesktopPlugins.has(id)) {
+            return yield* new ComposerCatalogInputError({ message: "Desktop tool is unavailable" });
+          }
           if (activation.kind === "enable") {
             yield* gateway.requestOnHost(
               hostId,
@@ -279,7 +306,7 @@ export const live: Layer.Layer<ComposerCatalog, never, CodexGateway | AppProtoco
             yield* gateway.awaitReady(hostId);
             const cwds = normalizeCwds(input.cwds);
             const response = yield* readInstalled(cwds, hostId);
-            const plain = asPlainPluginResponse(response);
+            const plain = pluginProjection(response, hostId);
             return yield* Effect.tryPromise({
               try: () =>
                 hydrateComposerPluginInventoryIcons(

@@ -62,14 +62,14 @@ export async function prepareNodexCliShell(nodexHome: string): Promise<void> {
 /** Pin PATH in the runtime shell policy so login-shell snapshots cannot lose the host entrypoint. */
 export async function nodexCliShellLaunchArgs(input: {
   nodexHome: string;
-  runtimeStateHome: string;
+  codexHome: string;
   searchPaths: readonly string[];
   inheritedPath: string;
   homeDirectory: string;
   inheritedZdotdir?: string;
   inheritedBashEnv?: string;
 }): Promise<string[]> {
-  const source = await readFile(join(input.runtimeStateHome, "config.toml"), "utf8").catch(
+  const source = await readFile(join(input.codexHome, "config.toml"), "utf8").catch(
     (error: unknown) => {
       if (error instanceof Error && "code" in error && error.code === "ENOENT") return "";
       throw error;

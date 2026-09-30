@@ -34,6 +34,7 @@ it.effect("releases every Codex notification listener with the Main Scope", () =
     const settingsRoot = mkdtempSync(path.join(tmpdir(), "nodex-notification-settings-"));
     const settings = yield* makeApplicationSettings({
       environment: {},
+      hostHomeDirectory: settingsRoot,
       settingsPath: path.join(settingsRoot, "config.toml"),
     });
     const scope = yield* Scope.make();

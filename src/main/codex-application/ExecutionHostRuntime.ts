@@ -86,6 +86,7 @@ export interface ExecutionHostRuntimeFactories {
 }
 
 export interface ExecutionHostRuntimeOptions {
+  readonly codexHome: string;
   readonly runtimeStateHome: string;
   readonly nodexHome: string;
   readonly remoteWorktreeWorkerBundlePath: string;
@@ -210,6 +211,7 @@ export const live = (
       const factories = options.factories ?? defaultFactories;
       const logger = getLogger({ component: "execution-host-runtime" });
       const runtimeStateHome = path.resolve(options.runtimeStateHome);
+      const codexHome = path.resolve(options.codexHome);
       const nodexHome = path.resolve(options.nodexHome);
       const remoteWorktreeWorkerBundlePath = path.resolve(options.remoteWorktreeWorkerBundlePath);
       const error = (operation: string, cause: unknown, hostId?: string) =>
@@ -332,7 +334,7 @@ export const live = (
       const localFileTransfer = new CodexLocalExecutionHostFileTransfer({
         hostId: CODEX_APP_LOCAL_HOST_ID,
         stagingRoot: handoffStagingRoot,
-        allowedReadRoots: [runtimeStateHome, localManagedRoot],
+        allowedReadRoots: [codexHome, runtimeStateHome, localManagedRoot],
       });
       yield* register({
         descriptor: {
@@ -340,7 +342,7 @@ export const live = (
           displayName: CODEX_APP_LOCAL_HOST_DISPLAY_NAME ?? "Local",
           kind: "local",
           nodexHome,
-          codexHome: runtimeStateHome,
+          codexHome,
           managedRoot: localManagedRoot,
           handoffStagingRoot,
           repositoryRoots: [],
@@ -541,7 +543,7 @@ export const live = (
                 transfer: new CodexLocalExecutionHostFileTransfer({
                   hostId: CODEX_APP_LOCAL_HOST_ID,
                   stagingRoot: handoffStagingRoot,
-                  allowedReadRoots: [runtimeStateHome, normalized],
+                  allowedReadRoots: [codexHome, runtimeStateHome, normalized],
                 }),
               });
             });

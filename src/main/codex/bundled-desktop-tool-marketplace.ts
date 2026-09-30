@@ -4,8 +4,8 @@ import path from "node:path";
 import type { BrowserRuntimeArtifact } from "../../shared/browser-runtime-metadata";
 import type { VerifiedBrowserRuntimeBundle } from "./browser-runtime-bundle";
 
-const MARKETPLACE_NAME = "openai-bundled";
-const MATERIALIZATION_SCHEMA_VERSION = 2;
+const SOURCE_MARKETPLACE_NAME = "openai-bundled";
+const MATERIALIZATION_SCHEMA_VERSION = 3;
 const MATERIALIZATION_KEY_FILENAME = ".materialization-key";
 const COMPUTER_USE_VARIANT_SOURCE = path.join(".codex-plugin", "computer-use-node-repl.md");
 const COMPUTER_USE_SKILL_TARGET = path.join("skills", "computer-use", "SKILL.md");
@@ -24,7 +24,20 @@ export type MaterializedDesktopToolMarketplace = {
   chromePluginRoot: string | null;
   computerUsePluginRoot: string | null;
   materializationKey: string;
+  marketplaceName: string;
   rootPath: string;
+};
+
+/** Profile ownership remains distinct when multiple Nodex Profiles share one native home. */
+export const nodexDesktopToolMarketplaceName = (runtimeStateHome: string): string =>
+  `nodex-desktop-${createHash("sha256").update(path.resolve(runtimeStateHome)).digest("hex").slice(0, 12)}`;
+
+/** Known desktop peers from another host must not load beside this Profile's signed peers. */
+export const isForeignDesktopToolPlugin = (pluginId: string, runtimeStateHome: string): boolean => {
+  const match = /^(browser|chrome|computer-use)@(openai-bundled|nodex-desktop-[a-f0-9]{12})$/u.exec(
+    pluginId,
+  );
+  return match !== null && match[2] !== nodexDesktopToolMarketplaceName(runtimeStateHome);
 };
 
 type MaterializeDesktopToolMarketplaceOptions = {
@@ -49,7 +62,7 @@ function parseRecord(value: unknown, label: string): Record<string, unknown> {
 
 function parseMarketplaceManifest(value: unknown): MarketplaceManifest {
   const record = parseRecord(value, "Bundled marketplace manifest");
-  if (record.name !== MARKETPLACE_NAME || !Array.isArray(record.plugins)) {
+  if (record.name !== SOURCE_MARKETPLACE_NAME || !Array.isArray(record.plugins)) {
     throw new Error("Bundled marketplace manifest has an unexpected shape");
   }
   const plugins = record.plugins.map((plugin) => {
@@ -59,7 +72,7 @@ function parseMarketplaceManifest(value: unknown): MarketplaceManifest {
     }
     return candidate as MarketplaceManifest["plugins"][number];
   });
-  return { ...record, name: MARKETPLACE_NAME, plugins } as MarketplaceManifest;
+  return { ...record, name: SOURCE_MARKETPLACE_NAME, plugins } as MarketplaceManifest;
 }
 
 async function readJson(filePath: string): Promise<unknown> {
@@ -260,6 +273,7 @@ async function materializeFresh(
     });
     await writeJson(path.join(stagingPath, ".agents", "plugins", "marketplace.json"), {
       ...marketplaceManifest,
+      name: nodexDesktopToolMarketplaceName(options.runtimeStateHome),
       plugins,
     });
     await fs.writeFile(path.join(stagingPath, MATERIALIZATION_KEY_FILENAME), `${key}\n`, "utf8");
@@ -276,6 +290,7 @@ async function materializeFresh(
       ? path.join(targetPath, "plugins", "computer-use")
       : null,
     materializationKey: key,
+    marketplaceName: nodexDesktopToolMarketplaceName(options.runtimeStateHome),
     rootPath: targetPath,
   };
 }
@@ -287,7 +302,7 @@ export async function materializeBundledDesktopToolMarketplace(
     path.resolve(options.runtimeStateHome),
     ".tmp",
     "bundled-marketplaces",
-    MARKETPLACE_NAME,
+    nodexDesktopToolMarketplaceName(options.runtimeStateHome),
   );
   const includeComputerUse =
     options.includeComputerUse &&
@@ -303,6 +318,7 @@ export async function materializeBundledDesktopToolMarketplace(
         ? path.join(targetPath, "plugins", "computer-use")
         : null,
       materializationKey: key,
+      marketplaceName: nodexDesktopToolMarketplaceName(options.runtimeStateHome),
       rootPath: targetPath,
     };
   }

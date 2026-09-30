@@ -36,8 +36,6 @@ import { CodexThreadDirectory } from "./CodexThreadDirectory";
 import { ConversationEntityMap } from "./internal/ConversationEntityMap";
 import { ManagedWorktreeRuntime } from "./ManagedWorktreeRuntime";
 import { NodexAgentAuthorizationRuntime } from "./NodexAgentAuthorizationRuntime";
-import { ExecutionHostRuntime } from "./ExecutionHostRuntime";
-import { CodexInactiveThreadArchive } from "../platform/node/CodexInactiveThreadArchive";
 import { RemoteHostedPipRuntime } from "../host-runtime/RemoteHostedPipRuntime";
 
 export class CodexConversationArchiveError extends Data.TaggedError(
@@ -91,8 +89,6 @@ export const make: Effect.Effect<
   | NodexAgentAuthorizationRuntime
   | ProjectWorkspace
   | RemoteHostedPipRuntime
-  | ExecutionHostRuntime
-  | CodexInactiveThreadArchive
 > = Effect.gen(function* () {
   const automation = yield* AutomationApplication;
   const automationRouting = yield* AutomationRoutingIndex;
@@ -108,8 +104,6 @@ export const make: Effect.Effect<
   const authorizations = yield* NodexAgentAuthorizationRuntime;
   const workspace = yield* ProjectWorkspace;
   const remoteHostedPip = yield* RemoteHostedPipRuntime;
-  const executionHosts = yield* ExecutionHostRuntime;
-  const inactiveArchive = yield* CodexInactiveThreadArchive;
 
   const fail = (
     operation: ArchiveOperation,
@@ -139,19 +133,6 @@ export const make: Effect.Effect<
         !nativeMessage(physicalCause).includes(`no rollout found for thread id ${thread.threadId}`)
       )
         return yield* fail("archive", thread.threadId, physicalCause);
-      const host = yield* executionHosts
-        .resolve(thread.executionHostId)
-        .pipe(Effect.mapError((cause) => fail("archive", thread.threadId, cause)));
-      if (host.descriptor.kind !== "local")
-        return yield* fail("archive", thread.threadId, physicalCause);
-      const result = yield* inactiveArchive
-        .archive({
-          codexHome: host.descriptor.codexHome,
-          threadId: thread.threadId,
-        })
-        .pipe(Effect.mapError((cause) => fail("archive", thread.threadId, cause)));
-      if (result === "archived") return false;
-      if (result !== "missing") return yield* fail("archive", thread.threadId, physicalCause);
       // A stale catalog identity is retired only after the native owner confirms it is absent.
       const missing = yield* gateway
         .requestForThread(thread.threadId, "thread/read", {

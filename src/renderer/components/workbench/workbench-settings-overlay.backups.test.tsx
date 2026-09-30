@@ -54,6 +54,13 @@ vi.mock("./workbench-settings-overlay-deps", async (importOriginal) => ({
   deleteBackup: async (backupId: string) => await dispatchMockInvoke("backup:delete", backupId),
   readBackupSettings: async () => await dispatchMockInvoke("settings:backup:get"),
   readAcpAgentSettings: async () => ({ instances: [] }),
+  readCodexHomeSettings: async () => ({
+    homePath: "",
+    resolvedHomePath: "/Users/asc/.codex",
+    source: "default",
+    activeHomePath: "/Users/asc/.codex",
+    restartRequired: false,
+  }),
   readCodexPermissionState: async (projectId: string | null) =>
     await dispatchMockInvoke("codex:permission:state:get", projectId),
   readDiagnosticsSettings: async () => await dispatchMockInvoke("settings:diagnostics:get"),

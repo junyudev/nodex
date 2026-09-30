@@ -18,6 +18,7 @@ import {
   type BrowserProjection,
 } from "../browser-application/BrowserApplication";
 import { BrowserProfileHelperPlatform } from "../browser/browser-profile-helper-client";
+import { makeBrowserUsePolicyRuntime } from "../browser-use/browser-use-policy-store";
 import { makeBrowserRuntimeRegistry } from "../browser/browser-runtime-registry";
 import { makeBrowserPageEmulationRuntimeUnsafe } from "../browser/browser-page-emulation";
 import { makeBrowserEarlyPageRestoreRuntime } from "../browser/BrowserEarlyPageRestoreRuntime";
@@ -89,6 +90,7 @@ it.layer(NodeServices.layer)("BrowserProfileRuntime", (it) => {
               projectRootPath: root,
               platform: "darwin",
               resourcesPath: `${root}/resources`,
+              runtimeStateHome: `${root}/runtime-resources`,
               userDataPath: `${root}/user-data`,
             }).pipe(
               Layer.provide(
@@ -191,6 +193,16 @@ it.layer(NodeServices.layer)("BrowserProfileRuntime", (it) => {
           assert.isObject(runtime.extensions);
           assert.isObject(runtime.siteInfo);
           assert.isObject(runtime.download);
+          yield* runtime.policy.updateOriginRule({
+            resource: "origin",
+            kind: "denied",
+            action: "add",
+            origin: "https://example.com",
+          });
+          const savedPolicy = yield* makeBrowserUsePolicyRuntime(
+            `${root}/runtime-resources/browser/config.toml`,
+          );
+          assert.deepEqual(savedPolicy.snapshot().deniedOrigins, ["https://example.com"]);
           assert.deepEqual(yield* runtime.localServerPreferences.snapshot, {
             showMode: "online",
             sortMode: "recently-used",

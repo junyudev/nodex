@@ -364,6 +364,8 @@ export async function spawnComputerUseServiceInContext(
         env: {
           ...process.env,
           CODEX_CLI_PATH: context.codexCliPath,
+          // The overlay service uses this variable for its local config root,
+          // rather than native Codex credentials or conversation storage.
           CODEX_HOME: context.runtimeStateHome,
         },
         timeout: 10_000,

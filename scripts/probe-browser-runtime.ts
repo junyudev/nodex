@@ -21,6 +21,7 @@ import {
   makeBrowserPluginReconciler,
 } from "../src/main/codex/browser-plugin-reconciler";
 import { BrowserUseThreadConfigBuilder } from "../src/main/codex/browser-use-thread-config";
+import { nodexDesktopToolMarketplaceName } from "../src/main/codex/bundled-desktop-tool-marketplace";
 import { resolveBrowserRuntimeBundle } from "../src/main/codex/browser-runtime-bundle";
 import { createBrowserRuntimePlatformArtifactVerifier } from "../src/main/codex/browser-runtime-platform-verifier";
 import {
@@ -244,7 +245,7 @@ function resolveInstalledComputerUsePluginRoot(runtimeStateHome: string, version
     runtimeStateHome,
     "plugins",
     "cache",
-    "openai-bundled",
+    nodexDesktopToolMarketplaceName(runtimeStateHome),
     "computer-use",
     version,
   );
@@ -466,6 +467,7 @@ async function probeBrowserRuntimePromise(
           const browserConfig = await new BrowserUseThreadConfigBuilder({
             availableBackends: () => ["iab"],
             browserRuntime: runtime.browserRuntime,
+            codexHome: stateHome,
             computerUsePluginReady: () =>
               reconciliation.status === "ready" && reconciliation.computerUse.status === "ready",
             computerUseRuntime: () => computerUseRuntimeResult,

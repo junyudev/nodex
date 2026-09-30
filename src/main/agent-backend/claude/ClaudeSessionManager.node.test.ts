@@ -54,6 +54,7 @@ const fixture = (ignoreInterrupt = false) =>
     );
     const settings = yield* makeSettings({
       environment: {},
+      hostHomeDirectory: root,
       settingsPath: join(root, "settings.toml"),
     });
     const events = yield* Queue.unbounded<SDKMessage>();

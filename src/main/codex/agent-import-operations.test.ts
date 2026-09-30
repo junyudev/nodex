@@ -70,6 +70,7 @@ describe("agent import config policy", () => {
               type: "sessions",
               sessions: [
                 {
+                  sourceHome: root,
                   sourcePath,
                   sourceContentSha256,
                   sourceThreadId: "source-thread",
@@ -112,7 +113,7 @@ describe("agent import config policy", () => {
             cwd: root,
           };
           const operations = makeAgentImportOperations(
-            { runtimeStateHome: path.join(root, "runtime") },
+            { runtimeStateHome: path.join(root, "runtime"), codexHome: path.join(root, "runtime") },
             {
               capabilities: { forHost: () => Effect.succeed(capability) },
               events: { publish: () => undefined },

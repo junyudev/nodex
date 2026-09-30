@@ -3,7 +3,6 @@ import type { ConfigReadResponse } from "@nodex/codex-app-server-protocol/v2/Con
 import type { ConfigRequirements } from "@nodex/codex-app-server-protocol/v2/ConfigRequirements";
 import {
   buildThreadPermissionOverrides,
-  buildPermissionModeConfigEdits,
   resolveCodexPermissionState,
 } from "./codex-permission-resolver";
 
@@ -131,13 +130,6 @@ describe("codex-permission-resolver", () => {
     expect(state.mode).toBe("guardian-approvals");
     expect(state.effectivePreset).toBe("guardian-approvals");
     expect(state.approvalsReviewer).toBe("auto_review");
-  });
-
-  test("writes the canonical auto_review reviewer for Auto-review", () => {
-    const edits = buildPermissionModeConfigEdits("guardian-approvals");
-    const reviewerEdit = edits.find((edit) => edit.keyPath === "approvals_reviewer");
-
-    expect(reviewerEdit?.value).toBe("auto_review");
   });
 
   test("keeps Auto-review available when the feature key is absent", () => {

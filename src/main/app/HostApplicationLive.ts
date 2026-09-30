@@ -125,6 +125,7 @@ const browserApplication = Layer.unwrap(
 const browserProfile = Layer.unwrap(
   Effect.gen(function* () {
     const config = yield* MainConfig;
+    const codex = yield* CodexPlatform;
     const electron = yield* ElectronApp;
     const userDataPath = yield* electron.userDataPath;
     return browserProfileRuntimeLive({
@@ -132,6 +133,7 @@ const browserProfile = Layer.unwrap(
       homeDirectory: config.homeDirectory,
       isPackaged: config.isPackaged,
       nodexHome: config.nodexHome,
+      runtimeStateHome: codex.runtimeStateHome,
       projectRootPath: config.projectRootPath,
       platform: config.platform,
       resourcesPath: config.resourcesPath,
@@ -209,6 +211,7 @@ const desktopTools = Layer.unwrap(
       projectRootPath: config.projectRootPath,
       resourcesPath: config.resourcesPath,
       runtimeStateHome: codex.runtimeStateHome,
+      codexHome: codex.codexHome,
     });
   }),
 ).pipe(Layer.provideMerge(Layer.mergeAll(browserPresentation, computerUse)));
@@ -226,6 +229,7 @@ const executionHosts = Layer.unwrap(
     const codex = yield* CodexPlatform;
     return executionHostRuntimeLive({
       runtimeStateHome: codex.runtimeStateHome,
+      codexHome: codex.codexHome,
       nodexHome: config.nodexHome,
       remoteWorktreeWorkerBundlePath: `${__dirname}/remote-worktree-worker.cjs`,
     });

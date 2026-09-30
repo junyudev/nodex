@@ -1,7 +1,9 @@
 import { createHash } from "node:crypto";
+import { dirname } from "node:path";
 import * as Context from "effect/Context";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
+import * as Ref from "effect/Ref";
 import * as Schema from "effect/Schema";
 import * as Semaphore from "effect/Semaphore";
 import {
@@ -19,6 +21,8 @@ import type {
   CodexDeveloperInstructionSettings,
   CodexExecutionHostSettings,
   CodexGitSettings,
+  CodexHomeSettingsSnapshot,
+  CodexHomeSettingsUpdateInput,
   DiagnosticsSettings,
   HistorySettings,
   ManagedWorktreeSettings,
@@ -40,6 +44,7 @@ import type {
   WindowRestoreSettings,
 } from "../../shared/types";
 import { MainConfig } from "../app/MainConfig";
+import { initializeCodexHomeContinuity } from "../platform/node/CodexHomeContinuity";
 import { SecretEncryption, type SecretEncryptionAdapter } from "../platform/SecretEncryption";
 import {
   getAcpAgentSettings,
@@ -50,6 +55,7 @@ import {
   getCodexDeveloperInstructionSettings,
   getCodexExecutionHostSettings,
   getCodexGitSettings,
+  getCodexHomeSettings,
   getCommandKeymapState,
   getDiagnosticsSettings,
   getHistorySettings,
@@ -65,6 +71,7 @@ import {
   updateCodexDeveloperInstructionSettings,
   updateCodexExecutionHostSettings,
   updateCodexGitSettings,
+  updateCodexHomeSettings,
   updateCommandKeybinding,
   updateDiagnosticsSettings,
   updateHistorySettings,
@@ -85,6 +92,7 @@ export interface ApplicationSettingsSnapshot {
   readonly notifications: ThreadNotificationSettings;
   readonly developer: CodexDeveloperInstructionSettings;
   readonly git: CodexGitSettings;
+  readonly codexHome: CodexHomeSettingsSnapshot;
   readonly managedWorktrees: ManagedWorktreeSettings;
   readonly executionHosts: CodexExecutionHostSettings;
   readonly acpAgents: AcpAgentSettings;
@@ -108,6 +116,7 @@ export type ApplicationSettingsCommand =
       readonly input: UpdateCodexDeveloperInstructionSettingsInput;
     }
   | { readonly type: "update-git"; readonly input: UpdateCodexGitSettingsInput }
+  | { readonly type: "update-codex-home"; readonly input: CodexHomeSettingsUpdateInput }
   | {
       readonly type: "update-managed-worktrees";
       readonly input: UpdateManagedWorktreeSettingsInput;
@@ -207,6 +216,7 @@ function makeSnapshot(
     ...source,
     document: document.document,
   };
+  const codexHome = getCodexHomeSettings(snapshotSource);
   return {
     revision: document.bytes
       ? createHash("sha256").update(document.bytes).digest("hex")
@@ -218,6 +228,7 @@ function makeSnapshot(
     notifications: getThreadNotificationSettings(snapshotSource),
     developer: getCodexDeveloperInstructionSettings(snapshotSource),
     git: getCodexGitSettings(snapshotSource),
+    codexHome: { ...codexHome, activeHomePath: codexHome.resolvedHomePath, restartRequired: false },
     managedWorktrees: getManagedWorktreeSettings(snapshotSource),
     executionHosts: getCodexExecutionHostSettings(snapshotSource),
     acpAgents: getAcpAgentSettings(snapshotSource),
@@ -255,6 +266,9 @@ function applyCommand(
     case "update-git":
       updateCodexGitSettings(command.input, source);
       return;
+    case "update-codex-home":
+      updateCodexHomeSettings(command.input, source);
+      return;
     case "update-managed-worktrees":
       updateManagedWorktreeSettings(command.input, source);
       return;
@@ -283,25 +297,57 @@ function applyCommand(
 }
 
 export const make = Effect.fn("ApplicationSettings.make")(function* (input: {
-  readonly hostHomeDirectory?: string;
+  readonly hostHomeDirectory: string;
   readonly environment: Readonly<NodeJS.ProcessEnv>;
   readonly settingsPath: string;
   readonly secretEncryption?: SecretEncryptionAdapter;
 }) {
   const source: ApplicationSettingsDocumentSource = {
-    ...(input.hostHomeDirectory ? { hostHomeDirectory: input.hostHomeDirectory } : {}),
+    hostHomeDirectory: input.hostHomeDirectory,
     environment: Object.freeze({ ...input.environment }),
     settingsPath: input.settingsPath,
     ...(input.secretEncryption ? { secretEncryption: input.secretEncryption } : {}),
   };
   const writes = yield* Semaphore.make(1);
+  // The native runtime keeps one home for this Main lifetime; saved changes apply after restart.
+  const activeCodexHome = yield* Ref.make<string | undefined>(undefined);
   const attempt = <A>(operation: string, evaluate: () => A) =>
     Effect.try({
       try: evaluate,
       catch: (cause) => new ApplicationSettingsError({ operation, cause }),
     });
-  const readUnlocked = (buildDefaultChannel: AppUpdateSettings["channel"] = "stable") =>
-    attempt("read", () => makeSnapshot(source, buildDefaultChannel));
+  const readUnlocked = Effect.fn("ApplicationSettings.readUnlocked")(function* (
+    buildDefaultChannel: AppUpdateSettings["channel"] = "stable",
+  ) {
+    let snapshot = yield* attempt("read", () => makeSnapshot(source, buildDefaultChannel));
+    const previousHome = yield* Ref.get(activeCodexHome);
+    if (previousHome === undefined) {
+      const continuity = yield* attempt("initialize-codex-home", () =>
+        initializeCodexHomeContinuity({
+          profileHome: dirname(source.settingsPath),
+          selectedHome: snapshot.codexHome.resolvedHomePath,
+          hasConfiguredHome: Boolean(snapshot.codexHome.homePath),
+          hasInheritedCodexHome: Boolean(source.environment.CODEX_HOME?.trim()),
+        }),
+      );
+      if (continuity.pinLegacyHome) {
+        yield* attempt("retain-codex-history", () =>
+          updateCodexHomeSettings({ homePath: continuity.codexHome }, source),
+        );
+        snapshot = yield* attempt("read", () => makeSnapshot(source, buildDefaultChannel));
+      }
+      yield* Ref.set(activeCodexHome, snapshot.codexHome.resolvedHomePath);
+    }
+    const activeHomePath = previousHome ?? snapshot.codexHome.resolvedHomePath;
+    return {
+      ...snapshot,
+      codexHome: {
+        ...snapshot.codexHome,
+        activeHomePath,
+        restartRequired: activeHomePath !== snapshot.codexHome.resolvedHomePath,
+      },
+    };
+  });
 
   return ApplicationSettings.of({
     claudeLaunchConfiguration: (instanceId) =>
@@ -315,9 +361,8 @@ export const make = Effect.fn("ApplicationSettings.make")(function* (input: {
     update: (command, options = {}) =>
       writes.withPermits(1)(
         Effect.gen(function* () {
-          const actualRevision = yield* attempt(
-            "read-revision",
-            () => makeSnapshot(source, options.buildDefaultChannel ?? "stable").revision,
+          const { revision: actualRevision } = yield* readUnlocked(
+            options.buildDefaultChannel ?? "stable",
           );
           if (
             options.expectedRevision !== undefined &&

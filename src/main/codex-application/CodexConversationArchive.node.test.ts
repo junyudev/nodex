@@ -1,8 +1,3 @@
-import { ExecutionHostRuntime } from "./ExecutionHostRuntime";
-import {
-  CodexInactiveThreadArchive,
-  CodexInactiveThreadArchiveError,
-} from "../platform/node/CodexInactiveThreadArchive";
 import { assert, it } from "@effect/vitest";
 import { CodexAppServerRequestError } from "@nodex/effect-codex-app-server/errors";
 import * as Effect from "effect/Effect";
@@ -110,8 +105,6 @@ const makeArchive = (input: {
   readonly deleteRecoveryFailure?: unknown;
   readonly archiveTransportFailure?: unknown;
   readonly nativeReadFailure?: unknown;
-  readonly inactiveArchiveResult?: "archived" | "missing" | "unrecoverable";
-  readonly inactiveArchiveFailure?: CodexInactiveThreadArchiveError;
   readonly deleteTransportFailure?: unknown;
   readonly archivePersistenceFailure?: unknown;
   readonly deletePersistenceFailure?: unknown;
@@ -181,22 +174,6 @@ const makeArchive = (input: {
   });
   const current = input.currentThread ?? thread();
   return make.pipe(
-    Effect.provideService(ExecutionHostRuntime, {
-      resolve: () => Effect.succeed({ descriptor: { kind: "local", codexHome: "/codex-home" } }),
-    } as unknown as ExecutionHostRuntime["Service"]),
-    Effect.provideService(CodexInactiveThreadArchive, {
-      archive: (inputValue) =>
-        Effect.sync(() => {
-          input.events.push("inactive:archive");
-          assert.deepEqual(inputValue, { threadId: "thread-a", codexHome: "/codex-home" });
-        }).pipe(
-          Effect.andThen(
-            input.inactiveArchiveFailure
-              ? Effect.fail(input.inactiveArchiveFailure)
-              : Effect.succeed(input.inactiveArchiveResult ?? "unrecoverable"),
-          ),
-        ),
-    }),
     Effect.provideService(
       AutomationApplication,
       AutomationApplication.of({
@@ -946,31 +923,6 @@ it.effect("does not report successful deletion when missing-rollout recovery fai
   }),
 );
 
-it.effect("persists a local inactive rollout before reporting recovered archive success", () =>
-  Effect.gen(function* () {
-    const events: string[] = [];
-    const currentThread = thread({ cwd: "/repo", managedWorktreePath: null });
-    const archive = yield* makeArchive({
-      events,
-      currentThread,
-      lifecycleConsumers: [currentThread],
-      archiveTransportFailure: lifecycleRequestFailure(
-        "thread/archive",
-        -32603,
-        "no rollout found for thread id thread-a",
-      ),
-      inactiveArchiveResult: "archived",
-    });
-    assert.isTrue(yield* archive.archive("thread-a"));
-    assert.deepEqual(events, [
-      "gateway:thread/archive",
-      "inactive:archive",
-      "revoke",
-      "core:archive",
-    ]);
-  }),
-);
-
 it.effect("retires a missing local catalog identity only after native absence confirmation", () =>
   Effect.gen(function* () {
     const events: string[] = [];
@@ -986,7 +938,6 @@ it.effect("retires a missing local catalog identity only after native absence co
         -32603,
         "no rollout found for thread id thread-a",
       ),
-      inactiveArchiveResult: "missing",
       nativeReadFailure: lifecycleRequestFailure(
         "thread/read",
         -32603,
@@ -996,7 +947,6 @@ it.effect("retires a missing local catalog identity only after native absence co
     assert.isTrue(yield* archive.archive("thread-a"));
     assert.deepEqual(events, [
       "gateway:thread/archive",
-      "inactive:archive",
       "gateway:thread/read",
       "revoke",
       "core:delete",
@@ -1008,33 +958,28 @@ it.effect("retires a missing local catalog identity only after native absence co
   }),
 );
 
-for (const result of ["missing", "unrecoverable"] as const) {
-  it.effect(
-    `rejects inactive archive without positive persistence or absence evidence (${result})`,
-    () =>
-      Effect.gen(function* () {
-        const events: string[] = [];
-        const currentThread = thread({ cwd: "/repo", managedWorktreePath: null });
-        const physicalCause = lifecycleRequestFailure(
-          "thread/archive",
-          -32603,
-          "no rollout found for thread id thread-a",
-        );
-        const archive = yield* makeArchive({
-          events,
-          currentThread,
-          lifecycleConsumers: [currentThread],
-          archiveTransportFailure: physicalCause,
-          inactiveArchiveResult: result,
-        });
-        const failure = yield* archive.archive("thread-a").pipe(Effect.flip);
-        assert.strictEqual(failure.cause, physicalCause);
-        assert.notInclude(events, "core:archive");
-        assert.notInclude(events, "core:delete");
-        assert.notInclude(events, "revoke");
-      }),
-  );
-}
+it.effect(
+  "preserves a stored conversation when native archive fails and history remains readable",
+  () =>
+    Effect.gen(function* () {
+      const events: string[] = [];
+      const currentThread = thread({ cwd: "/repo", managedWorktreePath: null });
+      const physicalCause = lifecycleRequestFailure(
+        "thread/archive",
+        -32603,
+        "no rollout found for thread id thread-a",
+      );
+      const archive = yield* makeArchive({
+        events,
+        currentThread,
+        lifecycleConsumers: [currentThread],
+        archiveTransportFailure: physicalCause,
+      });
+      const failure = yield* archive.archive("thread-a").pipe(Effect.flip);
+      assert.strictEqual(failure.cause, physicalCause);
+      assert.deepEqual(events, ["gateway:thread/archive", "gateway:thread/read"]);
+    }),
+);
 
 it.effect("does not use local inactive-rollout repair for a remote execution host", () =>
   Effect.gen(function* () {
@@ -1058,26 +1003,5 @@ it.effect("does not use local inactive-rollout repair for a remote execution hos
     const failure = yield* archive.archive("thread-a").pipe(Effect.flip);
     assert.strictEqual(failure.cause, physicalCause);
     assert.deepEqual(events, ["gateway:thread/archive"]);
-  }),
-);
-
-it.effect("does not report archive success when inactive persistence fails", () =>
-  Effect.gen(function* () {
-    const events: string[] = [];
-    const currentThread = thread({ cwd: "/repo", managedWorktreePath: null });
-    const failure = new CodexInactiveThreadArchiveError({ cause: new Error("database locked") });
-    const archive = yield* makeArchive({
-      events,
-      currentThread,
-      lifecycleConsumers: [currentThread],
-      archiveTransportFailure: lifecycleRequestFailure(
-        "thread/archive",
-        -32603,
-        "no rollout found for thread id thread-a",
-      ),
-      inactiveArchiveFailure: failure,
-    });
-    assert.strictEqual((yield* archive.archive("thread-a").pipe(Effect.flip)).cause, failure);
-    assert.deepEqual(events, ["gateway:thread/archive", "inactive:archive"]);
   }),
 );

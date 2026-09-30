@@ -6,6 +6,7 @@ import type { IpcMainInvokeEvent } from "electron";
 import { z } from "zod";
 import type { IpcApi } from "../../../shared/ipc-api";
 import { ClaudeAgentSettingsUpdateSchema } from "../../../shared/claude-agent-settings";
+import { CodexHomeSettingsUpdateSchema } from "../../../shared/codex-home-settings";
 import {
   COMMAND_KEYBINDINGS_CHANGED_CHANNEL,
   CommandKeybindingValidationError,
@@ -25,6 +26,9 @@ import type {
   UpdateWindowRestoreSettingsInput,
 } from "../../../shared/types";
 import { MainConfig } from "../../app/MainConfig";
+import { readActionableErrorMessage } from "../../actionable-error-message";
+import { CodexHomeContinuity } from "../../codex-application/CodexHomeContinuity";
+import { resolveCodexHome } from "../../codex/codex-home";
 import { isTrustedAppRendererIpcSender } from "../../app-renderer-ipc-authorization";
 import { ApplicationMenuRuntime } from "../../host-runtime/ApplicationMenuRuntime";
 import { DictationRuntime } from "../../host-runtime/DictationRuntime";
@@ -50,6 +54,7 @@ type SettingsReadChannel =
   | "codex-command-keymap-state"
   | "settings:acp-agents:get"
   | "settings:claude-agents:get"
+  | "settings:codex-home:get"
   | "settings:backup:get"
   | "settings:codex-developer:get"
   | "settings:diagnostics:get"
@@ -156,6 +161,7 @@ export const live: Layer.Layer<
   never,
   | ApplicationMenuRuntime
   | ApplicationSettings
+  | CodexHomeContinuity
   | DictationRuntime
   | StoreAdministrationSchedulerRuntime
   | ElectronIpc
@@ -164,6 +170,7 @@ export const live: Layer.Layer<
 > = Layer.effectDiscard(
   Effect.gen(function* () {
     const applicationSettings = yield* ApplicationSettings;
+    const codexHomeContinuity = yield* CodexHomeContinuity;
     const config = yield* MainConfig;
     const dictation = yield* DictationRuntime;
     const ipc = yield* ElectronIpc;
@@ -171,6 +178,7 @@ export const live: Layer.Layer<
     const schedulers = yield* StoreAdministrationSchedulerRuntime;
     const windows = yield* WindowRuntime;
     const keybindingMutations = yield* Semaphore.make(1);
+    const codexHomeMutations = yield* Semaphore.make(1);
     const authorize = (event: IpcMainInvokeEvent, capability: string) =>
       Effect.try({
         try: () => {
@@ -335,6 +343,44 @@ export const live: Layer.Layer<
                 safeBroadcastToWindows(windows.all(), "claude-agent-settings-changed", [undefined]),
               ),
             ),
+          ),
+        ),
+      ),
+    );
+    yield* handleRead("settings:codex-home:get", "Codex home settings", (value) => value.codexHome);
+    yield* ipc.handlePlainCommand("settings:codex-home:update", (event, input: unknown) =>
+      authorize(event, "Codex home settings").pipe(
+        Effect.andThen(
+          parse("parse-codex-home-settings", () => CodexHomeSettingsUpdateSchema.parse(input)),
+        ),
+        Effect.flatMap((parsed) =>
+          codexHomeMutations.withPermits(1)(
+            Effect.gen(function* () {
+              const current = yield* read("read-active-codex-home", (value) => value.codexHome);
+              const target = yield* parse("resolve-codex-home", () =>
+                resolveCodexHome({
+                  configuredHome: parsed.homePath,
+                  environment: config.environment,
+                  homeDirectory: config.homeDirectory,
+                }),
+              );
+              yield* codexHomeContinuity
+                .assertChange(target.resolvedHomePath)
+                .pipe(
+                  Effect.mapError((cause) =>
+                    settingsError("validate-codex-home-continuity")(
+                      new Error(
+                        `Cannot use ${target.resolvedHomePath}. Current chats remain in ${current.activeHomePath}. ${readActionableErrorMessage(cause, { fallback: "The selected directory could not be validated." })}`,
+                      ),
+                    ),
+                  ),
+                );
+              return yield* update(
+                "update-codex-home-settings",
+                { type: "update-codex-home", input: parsed },
+                (value) => value.codexHome,
+              );
+            }),
           ),
         ),
       ),

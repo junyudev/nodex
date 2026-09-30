@@ -72,6 +72,7 @@ const withManagerScenario = <A, E>(
       Effect.gen(function* () {
         const settings = yield* makeApplicationSettings({
           environment: {},
+          hostHomeDirectory: root,
           settingsPath: join(root, "config.toml"),
         });
         yield* settings.update({

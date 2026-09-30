@@ -28,6 +28,39 @@ through `load_workspace_dependencies`. Development checkouts stage their archite
 already checked. Runtime selection does not search `PATH` or user Python environments.
 See [the distribution and verification contract](../resources/workspace-runtime/README.md).
 
+## Codex home
+
+Codex uses the pinned official executable and the user's native account and configuration.
+Its home resolves in this order:
+
+1. nonblank `server.codex_home` in the selected Nodex Profile;
+2. inherited `CODEX_HOME`;
+3. `~/.codex`.
+
+Use **Agent > Configuration > Codex home** to choose an absolute or `~/` path. Clearing
+the field restores environment/default resolution. The control shows the active directory;
+saved changes apply after restarting Nodex. Switching directories requires all local Codex chats
+already associated with this Profile to remain readable in the destination. The check uses the
+official app-server and does not run a model request. It rejects a switch that would strand chats.
+
+Profiles with history in their previous `${NODEX_HOME}/agent` directory retain that directory as
+an explicit setting. Nodex does not move native history between homes or copy credentials.
+New Profiles reuse the native home by default. Development launchers explicitly select their own
+disposable Codex home.
+
+The native home owns login, configuration, skills, plugins, and conversation persistence. Nodex
+owns its helper resources, import receipts, and desktop tool source copies under
+`${NODEX_HOME}/runtime/agent`. Startup supplies missing feature defaults as process options and
+leaves native configuration bytes intact. Permission presets remain Project/Profile choices;
+only an explicit native configuration edit updates Codex settings. Nodex desktop plugins use a
+distinct namespace per Profile and are enabled only in its chats.
+
+Sharing a native home does not add all native conversations to the Nodex sidebar. **Import from
+Codex** explicitly associates selected root conversations in the active home with this Profile,
+preserving their native IDs. Supported imports from another directory create independent chats;
+unsupported native history reports a failure and leaves the source intact. Import receipts remain
+in the Nodex Profile.
+
 ## Claude Code instances
 
 Agent settings expose Claude Code with an enabled default instance, executable `claude`, and the
@@ -114,6 +147,7 @@ Desktop runs continue to use the packaged application origin.
 The `[server]` table currently owns these product setting families:
 
 - `home` for Profile selection;
+- `codex_home` for the selected native Codex directory;
 - automatic backup enablement, interval, count retention, and automatic-snapshot byte budget;
 - deleted-content history retention compatibility setting;
 - automatic app-update checks;
@@ -134,6 +168,7 @@ that require restart say so in the UI.
 Supported operational overrides include:
 
 - `NODEX_HOME`;
+- `CODEX_HOME` when the Profile has no explicit `server.codex_home`;
 - `NODEX_BACKUP_AUTO_ENABLED`, `NODEX_BACKUP_INTERVAL_HOURS`,
   `NODEX_BACKUP_RETENTION`, and `NODEX_BACKUP_RETENTION_GIB`;
 - `NODEX_HISTORY_RETENTION` for the retained compatibility setting;

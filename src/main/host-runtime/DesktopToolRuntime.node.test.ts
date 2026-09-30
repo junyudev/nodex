@@ -11,6 +11,30 @@ import path from "node:path";
 import { ComputerUseRuntime } from "./ComputerUseRuntime";
 import { DesktopToolRuntime, testLayer } from "./DesktopToolRuntime";
 import type { BrowserPluginReconcileResult } from "../codex/browser-plugin-reconciler";
+import type { PluginSummary } from "@nodex/codex-app-server-protocol/v2/PluginSummary";
+import { nodexDesktopToolMarketplaceName } from "../codex/bundled-desktop-tool-marketplace";
+
+const installedPlugin = (id: string): PluginSummary => ({
+  id,
+  name: id.split("@")[0]!,
+  remotePluginId: null,
+  version: "1.0.0",
+  localVersion: "1.0.0",
+  shareContext: null,
+  source: { type: "local", path: "/fixture/plugin" },
+  installed: true,
+  installedAt: null,
+  enabled: true,
+  installPolicy: "AVAILABLE",
+  installPolicySource: null,
+  mustShowInstallationInterstitial: null,
+  authPolicy: "ON_INSTALL",
+  availability: "AVAILABLE",
+  disabledReason: null,
+  eligiblePlanTypes: null,
+  interface: null,
+  keywords: [],
+});
 
 it.effect("owns desktop plugin readiness and derives one coherent snapshot", () =>
   Effect.gen(function* () {
@@ -22,6 +46,11 @@ it.effect("owns desktop plugin readiness and derives one coherent snapshot", () 
     };
     let pluginResult: BrowserPluginReconcileResult | null = null;
     let requestedBackends: readonly string[] = [];
+    let includeForeignPlugins = false;
+    let listedCwd: string | null | undefined;
+    const runtimeStateHome = "/tmp/nodex-desktop-tools-test";
+    const currentPluginId = `browser@${nodexDesktopToolMarketplaceName(runtimeStateHome)}`;
+    const otherPluginId = `chrome@${nodexDesktopToolMarketplaceName("/other-profile/runtime/agent")}`;
     const context = yield* Layer.buildWithScope(
       testLayer({
         availableBackends: () => ["iab"],
@@ -62,7 +91,29 @@ it.effect("owns desktop plugin readiness and derives one coherent snapshot", () 
             result: Effect.sync(() => pluginResult),
           }),
         readConfigRequirements: Effect.succeed({ requirements: null }),
-        runtimeStateHome: "/tmp/nodex-desktop-tools-test",
+        listPlugins: (cwd) => {
+          listedCwd = cwd;
+          return Effect.succeed({
+            marketplaces: includeForeignPlugins
+              ? [
+                  {
+                    name: "fixture",
+                    path: null,
+                    interface: null,
+                    plugins: [
+                      installedPlugin("browser@openai-bundled"),
+                      installedPlugin(otherPluginId),
+                      installedPlugin(currentPluginId),
+                      installedPlugin("pdf@openai-bundled"),
+                    ],
+                  },
+                ]
+              : [],
+            marketplaceLoadErrors: [],
+          });
+        },
+        codexHome: "/tmp/native-codex-home",
+        runtimeStateHome,
       }),
       scope,
     );
@@ -76,6 +127,12 @@ it.effect("owns desktop plugin readiness and derives one coherent snapshot", () 
     assert.isFalse(ready.computerUsePluginReady);
     assert.strictEqual(ready.computerUse, computerUse);
     assert.isNull(yield* runtime.threadConfig());
+    includeForeignPlugins = true;
+    assert.deepEqual(yield* runtime.threadConfig("/workspace/project"), {
+      "plugins.browser@openai-bundled.enabled": false,
+      [`plugins.${otherPluginId}.enabled`]: false,
+    });
+    assert.strictEqual(listedCwd, "/workspace/project");
     yield* Scope.close(scope, Exit.void);
   }),
 );
@@ -140,6 +197,7 @@ it.effect("builds the gated artifact template picker from cwd-scoped app-server 
           });
         },
         readConfigRequirements: Effect.succeed({ requirements: null }),
+        codexHome: "/tmp/native-codex-home",
         runtimeStateHome: "/tmp/nodex-desktop-tools-test",
       }),
       scope,

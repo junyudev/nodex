@@ -8,6 +8,7 @@ import type {
 import type { BrowserRuntimeBackend } from "../../shared/browser-runtime-metadata";
 import { resolveAvailableBrowserUseBackends } from "./browser-use-backends";
 import type { ComputerUseRuntimeResult } from "../host-runtime/ComputerUseRuntime";
+import { nodexDesktopToolMarketplaceName } from "./bundled-desktop-tool-marketplace";
 
 const BROWSER_USE_IN_APP_INSTRUCTIONS =
   "Control the in-app browser in conjunction with the Browser Plugin.";
@@ -46,6 +47,11 @@ child.once("exit", (code, signal) => {
 
 type BrowserUseThreadConfig = NonNullable<ThreadStartParams["config"]>;
 
+export const buildDesktopToolPluginOverrides = (
+  pluginIds: readonly string[],
+): BrowserUseThreadConfig =>
+  Object.fromEntries(pluginIds.map((id) => [`plugins.${id}.enabled`, false]));
+
 export type BrowserUseThreadConfigResult =
   | {
       message: string;
@@ -62,22 +68,33 @@ type BrowserUseThreadConfigBuilderOptions = {
   browserRuntime: BrowserRuntimeAvailability;
   computerUsePluginReady?: () => boolean;
   computerUseRuntime?: () => ComputerUseRuntimeResult | null;
+  codexHome: string;
+  disabledDesktopPluginIds?: readonly string[];
   runtimeStateHome: string;
 };
 
 function buildAvailableConfig(
   bundle: VerifiedBrowserRuntimeBundle,
   runtimeStateHome: string,
+  codexHome: string,
+  disabledDesktopPluginIds: readonly string[],
   availableBackends: readonly BrowserRuntimeBackend[],
   computerUseRuntime: Extract<ComputerUseRuntimeResult, { status: "available" }> | null,
 ): BrowserUseThreadConfig {
   const availableBackendsValue = availableBackends.join(",");
   // app-server installs local marketplace plugins into versioned directories
   // beneath CODEX_HOME/plugins/cache and exposes skill paths from that cache.
-  // Trust the app-server-owned home so both the marketplace source and the
-  // effective installed copy can load dependencies. Privileged operations stay
-  // behind the reviewed services from the verified runtime closure.
-  const trustedCodePaths = [runtimeStateHome, bundle.rootPath].join(path.delimiter);
+  // Trust only this Profile's materialized source and native installed cache.
+  // Other clients' plugins in the shared home do not gain trusted RPC access.
+  const installedPluginCache = path.join(
+    codexHome,
+    "plugins",
+    "cache",
+    nodexDesktopToolMarketplaceName(runtimeStateHome),
+  );
+  const trustedCodePaths = [runtimeStateHome, installedPluginCache, bundle.rootPath].join(
+    path.delimiter,
+  );
   const trustedServices: Record<string, string> = {};
   if (availableBackends.length > 0) {
     trustedServices.browser = bundle.paths.browserPluginService;
@@ -91,7 +108,7 @@ function buildAvailableConfig(
     BROWSER_USE_CODEX_APP_VERSION: bundle.manifest.desktopBuild,
     BROWSER_USE_DISABLE_AMBIENT_NETWORK: "1",
     CODEX_CLI_PATH: bundle.paths.codexCli,
-    CODEX_HOME: runtimeStateHome,
+    CODEX_HOME: codexHome,
     NODE_REPL_DISABLE_ANALYTICS: "1",
     NODE_REPL_NATIVE_PIPE_CONNECT_TIMEOUT_MS: "1000",
     NODE_REPL_NODE_MODULE_DIRS: bundle.nodeModuleDirs.join(path.delimiter),
@@ -114,6 +131,17 @@ function buildAvailableConfig(
   }
 
   const config: BrowserUseThreadConfig = {
+    ...buildDesktopToolPluginOverrides(disabledDesktopPluginIds),
+    ...Object.fromEntries(
+      [
+        ["browser", availableBackends.length > 0],
+        ["chrome", availableBackends.includes("chrome")],
+        ["computer-use", computerUseRuntime !== null],
+      ].map(([name, enabled]) => [
+        `plugins.${name}@${nodexDesktopToolMarketplaceName(runtimeStateHome)}.enabled`,
+        enabled,
+      ]),
+    ),
     "features.js_repl": false,
     "mcp_servers.node_repl": {
       args: [
@@ -144,6 +172,8 @@ export class BrowserUseThreadConfigBuilder {
   private readonly browserRuntime: BrowserRuntimeAvailability;
   private readonly computerUsePluginReady: () => boolean;
   private readonly computerUseRuntime: () => ComputerUseRuntimeResult | null;
+  private readonly codexHome: string;
+  private readonly disabledDesktopPluginIds: readonly string[];
   private readonly runtimeStateHome: string;
 
   constructor(options: BrowserUseThreadConfigBuilderOptions) {
@@ -151,6 +181,8 @@ export class BrowserUseThreadConfigBuilder {
     this.browserRuntime = options.browserRuntime;
     this.computerUsePluginReady = options.computerUsePluginReady ?? (() => false);
     this.computerUseRuntime = options.computerUseRuntime ?? (() => null);
+    this.codexHome = path.resolve(options.codexHome);
+    this.disabledDesktopPluginIds = options.disabledDesktopPluginIds ?? [];
     this.runtimeStateHome = path.resolve(options.runtimeStateHome);
   }
 
@@ -189,6 +221,8 @@ export class BrowserUseThreadConfigBuilder {
       config: buildAvailableConfig(
         this.browserRuntime.bundle,
         this.runtimeStateHome,
+        this.codexHome,
+        this.disabledDesktopPluginIds,
         availableBackends,
         availableComputerUseRuntime,
       ),

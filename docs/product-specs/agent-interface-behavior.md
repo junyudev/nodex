@@ -137,6 +137,15 @@ user authorization and a stable idempotency key for uncertain retries.
 returns candidates for ambiguous names, and verifies removal by reading the inventory
 again. Nodex-managed desktop plugins are protected.
 
+Each Nodex Profile installs its Browser, Chrome, and Computer Use peers in a separate
+marketplace namespace inside the selected native Codex home. These peers stay disabled in
+the shared user configuration and are enabled only in Nodex Thread configuration, so other
+Codex clients retain their existing desktop tools. Nodex Threads disable foreign copies of
+these peers without changing their native installation or enablement. The local composer
+shows the current Profile's peers as active and omits foreign desktop copies; unrelated user
+plugins remain available. Signed runtime resources and overlay configuration remain in the
+Nodex Profile, separate from native credentials, configuration, and sessions.
+
 `describe_content_schema` and `query_content` expose the same public SQL relations as the CLI,
 using the calling Project's durable resource grants. Core verifies the exact frozen Turn before
 querying within one read snapshot. Library scope and temporary call/task consent do not expand

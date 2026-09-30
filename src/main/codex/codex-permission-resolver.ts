@@ -1,7 +1,6 @@
 import * as path from "node:path";
 import type { ConfigReadResponse } from "@nodex/codex-app-server-protocol/v2/ConfigReadResponse";
 import type { ConfigRequirements } from "@nodex/codex-app-server-protocol/v2/ConfigRequirements";
-import type { ConfigEdit } from "@nodex/codex-app-server-protocol/v2/ConfigEdit";
 import type { SandboxPolicy } from "@nodex/codex-app-server-protocol/v2/SandboxPolicy";
 import type { SandboxWorkspaceWrite } from "@nodex/codex-app-server-protocol/v2/SandboxWorkspaceWrite";
 import type {
@@ -425,37 +424,6 @@ export function resolveCodexPermissionState(input: {
     autoReviewAvailable,
     configTarget,
   };
-}
-
-export function buildPermissionModeConfigEdits(mode: CodexPermissionMode): ConfigEdit[] {
-  if (mode === "custom") {
-    return [];
-  }
-
-  const preset =
-    mode === "guardian-approvals"
-      ? GUARDIAN_PRESET
-      : mode === "full-access"
-        ? FULL_ACCESS_PRESET
-        : AUTO_PRESET;
-
-  return [
-    {
-      keyPath: "sandbox_mode",
-      value: preset.sandboxMode,
-      mergeStrategy: "replace",
-    },
-    {
-      keyPath: "approval_policy",
-      value: preset.approvalPolicy,
-      mergeStrategy: "replace",
-    },
-    {
-      keyPath: APPROVALS_REVIEWER_KEY,
-      value: preset.approvalsReviewer,
-      mergeStrategy: "replace",
-    },
-  ];
 }
 
 export function buildTurnPermissionOverrides(input: {

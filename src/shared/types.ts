@@ -1660,6 +1660,12 @@ export type {
   UpdateClaudeAgentSettingsInput,
 } from "./claude-agent-settings";
 
+export type {
+  CodexHomeSettings,
+  CodexHomeSettingsSnapshot,
+  CodexHomeSettingsUpdateInput,
+} from "./codex-home-settings";
+
 export interface AcpAgentInstanceConfig {
   /** Stable Profile-local identity referenced by AgentBackendBinding.instanceConfigId. */
   id: string;
