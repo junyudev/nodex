@@ -1,0 +1,143 @@
+src/main/agent-backend/AgentBackendApplication.node.test.ts
+  s_327046e8a7d75e::t_d86ad047a2222a 47
+  s_327046e8a7d75e::t_70c220cb30af9d 28,35-46,48-51
+tests/e2e/claude-backend-lifecycle.spec.ts
+  s_327046e8a7d75e::t_f066a8e2d4e9a9 1-3,10-12,14-18,33-42,49-51,62-63,95-119,122-131,188,215-216,225-226,245,251-252,257-261,266-272,301-302,304-305,309,386,393-399,403-406,446-448,538-544
+  s_327046e8a7d75e::t_75193c5760be02 195
+  s_327046e8a7d75e::t_c8b33b10a6f617 247-250,256,262-265,273-276
+  s_327046e8a7d75e::t_95d2ebc99e34b3 246
+  s_327046e8a7d75e::t_14d4755c311be7 303
+  s_327046e8a7d75e::t_da6e570b1b92f4 86-92,204-206,212-214,217,223
+  s_327046e8a7d75e::t_aac3d0d525dec6 159-162
+  s_327046e8a7d75e::t_30b4dae2812c39 43-48,120-121,306-308,400-402,533-537
+  s_327046e8a7d75e::t_cdcff26364cbd5 196-198
+  s_327046e8a7d75e::t_e2e64ce8ee73e2 56,218,224
+  s_327046e8a7d75e::t_4d6d84d651720c 219-222
+src/main/agent-backend/AgentBackendApplication.start.node.test.ts
+  s_327046e8a7d75e::t_7c1c49224da194 315-316
+  s_327046e8a7d75e::t_37567161dd273b 393-401,406-416,425
+  s_327046e8a7d75e::t_63a46abef2d621 7,11-12,20-23,54-57,238
+  s_327046e8a7d75e::t_6bec7d17e97ce9 1-6,8-10,13-18,24,31-53,58-65,68-99,104-136,138-143,146-151,154-171,181-194,209-210,221-237,239-252,256-259,303-314,317-338,383-392,426-428
+  s_327046e8a7d75e::t_03e2e8543de750 25-29,402-405
+  s_327046e8a7d75e::t_4f6e96df713b6c 137,144-145,152-153
+  s_327046e8a7d75e::t_2f1993c2559031 174-179,260-302,339-362,364-365
+  s_327046e8a7d75e::t_b24bd59515724d 363,381-382
+  s_327046e8a7d75e::t_89063588924f3d 368-380
+  s_327046e8a7d75e::t_69d89504e55ea1 19,67,100-103,172-173,180,195-208,215-220,253-255
+  s_327046e8a7d75e::t_c8140c1aa656d7 30,417-420
+  s_327046e8a7d75e::t_6106b061ad097e 421-424
+  s_327046e8a7d75e::t_e4ac8e2ed216b3 66,211-214,366-367
+scripts/scenarios/runtime/scripted-claude-agent.mjs
+  s_327046e8a7d75e::t_f066a8e2d4e9a9 54-55,62,223,234
+src/main/project-application/ProjectWorkspace.node.test.ts
+  s_327046e8a7d75e::t_b4d6ea0338e6c6 154-157,159-168,170,172-177,188-213,218-220
+  s_327046e8a7d75e::t_a5d547f2cc1afc 169,171,178,221-222
+  s_327046e8a7d75e::t_89063588924f3d 158,179-187,214-217
+src/main/app/ApplicationOperationsLive.ts
+  s_327046e8a7d75e::t_e0380003b588a1 48,138
+src/renderer/features/local-conversation/view/composer/local-conversation-thread-composer-status-strip.tsx
+  s_327046e8a7d75e::t_6cd15d5bf5aea6 245
+  s_327046e8a7d75e::t_db1e4dcd556524 2,238,241
+src/main/agent-backend/claude/ClaudeSessionManager.node.test.ts
+  s_327046e8a7d75e::t_7a55831cb38f7c 808,810-846
+  s_327046e8a7d75e::t_1ac05caf59d6d1 25,38-41,760,785
+  s_327046e8a7d75e::t_b26c735e3baab2 55,334
+  s_327046e8a7d75e::t_0555bd2d97a420 745-759,761-784,786-807
+  s_327046e8a7d75e::t_fae7ac02216cb0 809
+src/main/codex/codex-worktree-shell-environment.ts
+  s_327046e8a7d75e::t_b26c735e3baab2 62,68,101
+  s_327046e8a7d75e::t_6772c20687dffb 3,7-11,20-29,97-100,102-112,653-681
+  s_327046e8a7d75e::t_e842d4b5db292b 682
+src/main/agent-backend/NativeSessionWorkspace.ts
+  s_327046e8a7d75e::t_b66e06172f80e8 54-56,67-82,84-85,87-90,93-101,104-107,113-114,117-125,127-130,134,136-226,228-231,237-252
+  s_327046e8a7d75e::t_e4a342addf7d99 253
+  s_327046e8a7d75e::t_57c3f2aa813fa4 8-9,15,17-29,86,91-92
+  s_327046e8a7d75e::t_e0380003b588a1 1-7,10-14,16,30-39,42-53,57-66,83,102,115-116,135,254-257
+  s_327046e8a7d75e::t_25ff5b7e67c16b 40-41
+  s_327046e8a7d75e::t_2f1993c2559031 103,108-112,126,131-133,227,232-236
+docs/product-specs/agent-backend-behavior.md
+  s_327046e8a7d75e::t_33929d3d899243 102,125-127
+  s_327046e8a7d75e::t_3197dc84134191 107-119,208-210
+src/renderer/features/local-conversation/thread-stage-types.ts
+  s_327046e8a7d75e::t_6cd15d5bf5aea6 88
+src/renderer/components/shared/agent-runtime/agent-intelligence-dropdown.test.tsx
+  s_327046e8a7d75e::t_33929d3d899243 205,226,228-231,233,236-239,250-275
+  s_327046e8a7d75e::t_874a9e80427c4b 276-277
+src/main/project-application/ProjectWorkspace.ts
+  s_327046e8a7d75e::t_8ea81aaea1baeb 158-161,165
+  s_327046e8a7d75e::t_53f07e564b5b61 1770
+  s_327046e8a7d75e::t_2f1993c2559031 162-164,1652-1653,1655-1677,1679-1744,1746-1759,1761-1769,1771-1774,1776-1782
+  s_327046e8a7d75e::t_3902e388e66d28 1650-1651,1775,1783
+src/main/ipc/handlers/AgentBackendIpc.ts
+  s_327046e8a7d75e::t_db1e4dcd556524 131-145
+src/renderer/components/workbench/workbench-session-thread-route.tsx
+  s_327046e8a7d75e::t_db1e4dcd556524 597,599,609
+  s_327046e8a7d75e::t_b3a2dd6390df57 226-228,266-269
+  s_327046e8a7d75e::t_6cd15d5bf5aea6 250,417,434,445,598
+  s_327046e8a7d75e::t_48fe5fbb845c25 386,388-391,400,402,447
+  s_327046e8a7d75e::t_7cd369f629cdc7 34,251-253,258-265,270-278,337-339
+  s_327046e8a7d75e::t_696414953e783f 254-257
+  s_327046e8a7d75e::t_e7d0cc14be54be 340
+src/renderer/features/local-conversation/agent-conversation-adapter.ts
+  s_327046e8a7d75e::t_db1e4dcd556524 424-425,460-462
+src/main/agent-backend/claude/ClaudeSessionManager.ts
+  s_327046e8a7d75e::t_6772c20687dffb 98-101,108,243,261-263,265,274,279
+  s_327046e8a7d75e::t_b26c735e3baab2 264,268-273,275-278,280-283
+CHANGELOG.md
+  s_327046e8a7d75e::t_d5e8be40015eec 9
+src/main/ipc/handlers/AgentBackendIpc.node.test.ts
+  s_327046e8a7d75e::t_6714bd9999f4d5 11-15,47,49-53,96-115
+src/shared/agent-backend-api.ts
+  s_327046e8a7d75e::t_db1e4dcd556524 10-11,27-29
+src/main/agent-backend/AgentBackendApplication.native.node.test.ts
+  s_327046e8a7d75e::t_70530c99cc96b5 19,1216-1220
+src/main/agent-backend/AgentBackendApplication.ts
+  s_327046e8a7d75e::t_3a1a26a41e106b 1181-1196,1232-1264,1288,1292-1294
+  s_327046e8a7d75e::t_480b4c8e8eb385 1501,1517,1540-1543,1799,1814,1818
+  s_327046e8a7d75e::t_e0380003b588a1 17,19-20,273-274,287,469,1500,1768,1777
+  s_327046e8a7d75e::t_927eff532f489c 1778-1781,1783-1789,1810-1813,2029-2033
+  s_327046e8a7d75e::t_2f1993c2559031 65,1170-1172,1265-1287
+  s_327046e8a7d75e::t_caa11b95344e65 1134-1136,1138-1143
+  s_327046e8a7d75e::t_b25bd631ca73f3 1137,1165
+  s_327046e8a7d75e::t_0735ed24cf433f 18,56-60
+  s_327046e8a7d75e::t_e0e980a939f1c2 275,1131-1133,1144-1164,1166-1169,1173-1177,1289-1291
+  s_327046e8a7d75e::t_43ab5a3ccdd5b7 13-15,276-278,576-603,810
+  s_327046e8a7d75e::t_3b6cc077d4780e 1815
+src/main/agent-backend/NativeSessionWorkspace.node.test.ts
+  s_327046e8a7d75e::t_09ecb94233a10e 7,17-18,20-21,24-26,281-283,315
+  s_327046e8a7d75e::t_b66e06172f80e8 201-219,316-317
+  s_327046e8a7d75e::t_e0380003b588a1 1,3-6,8-14,16,19,22-23,27-28,36-40,49-97,99-117,119-144,146-152,240-245,247-254,269-280,284-314,318-332
+  s_327046e8a7d75e::t_9e2ebee1f272d8 2,15,29-35,41-48,98
+  s_327046e8a7d75e::t_e4a342addf7d99 118,145,246
+  s_327046e8a7d75e::t_9e877149669533 255-268
+  s_327046e8a7d75e::t_ec4e6d11905589 153-200,220-239
+src/renderer/features/local-conversation/agent-conversation-adapter.test.tsx
+  s_327046e8a7d75e::t_6714bd9999f4d5 22,34,195-225
+  s_327046e8a7d75e::t_6edb90a390b32f 226
+src/main/codex/codex-worktree-shell-environment.test.ts
+  s_327046e8a7d75e::t_0555bd2d97a420 388-390
+  s_327046e8a7d75e::t_1ac05caf59d6d1 2,7,10,154-180,355-360,391-413
+src/renderer/lib/use-local-environment-queries.test.tsx
+  s_327046e8a7d75e::t_7b33da4dd2ceee 50-56
+  s_327046e8a7d75e::t_31df2c20b9eab8 1-49,57-75
+src/renderer/components/shared/agent-runtime/agent-intelligence-dropdown.tsx
+  s_327046e8a7d75e::t_c2b3e3d3d78a64 91-94,172-173,468,475,478-481,484
+  s_327046e8a7d75e::t_8f1f9c15065eb2 171,483
+  s_327046e8a7d75e::t_18ea4e9a81dfe0 459,461,463-464,471,474,476-477,495,501
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "220c1c083b9afd57260349990679f5a1f0fca8f5",
+  "prompts": {},
+  "sessions": {
+    "s_327046e8a7d75e": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a0ee9b-616a-7f23-9854-d0e96d7078de",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    }
+  }
+}
