@@ -92,6 +92,11 @@ catalog for that same scope. The model menu has no manual refresh action. Changi
 the consumer cancels its request and releases its process. At most two discovery processes run
 concurrently. An executable/version check does not claim authentication succeeded.
 
+`Force reload skills` refreshes the selected conversation provider's advertised
+skills and commands. For Claude it bypasses the native discovery cache and
+updates the same scoped composer catalog; it never reloads another provider.
+Providers without a refresh capability do not expose that command.
+
 The shared model menu displays versioned names and concrete IDs returned by Claude, including
 gateway-specific IDs. SDK aliases resolve to those IDs before selection; context suffixes and
 plan-routing aliases retain their meaning. Older executables that do not report a resolved ID
@@ -99,19 +104,47 @@ retain their advertised name and value without an invented version. Native confi
 the initial model; discovery identifies its concrete value before the first prompt. Failed discovery
 reports the failure without inventing model choices. Project or instance changes cannot reuse another
 scope's catalog. Live metadata distinguishes requested preferences from applied native settings.
-The menu shows the resolved model, effort and Fast state without inherited-default choices; an
+The menu shows the resolved model, effort and Speed state without inherited-default choices; an
 unobserved value remains unresolved. Profile custom models specify a concrete ID and explicit effort,
 Fast, adaptive thinking, thinking-disable and context traits. Nodex does not guess gateway capabilities
 from a model name.
+
+New Claude chats use the shared execution-location selector. Work locally runs in the selected
+Project's primary folder; New worktree creates an owned managed worktree from the selected branch,
+ref or working-tree state. The selected local Environment runs its setup in that worktree before
+Claude starts. Setup environment changes are retained with the worktree and reloaded when the chat
+reopens; explicit Claude Profile values take precedence, and setup cannot change the native account
+or history directory. The chat retains its exact execution folder and allowed Project sources.
+Attached local chats can move between that folder and a managed worktree through
+the shared [handoff transaction](codex-managed-worktree-lifecycle-behavior.md#moving-a-chat).
+The same Nodex Chat and exact native session UUID retain their history. Native
+history lookup remains scoped to that session's account and history directory,
+independently of its current working directory.
+
+Core admission precedes Agent launch and worktree ownership publication. Failed preparation or an
+explicitly rejected admission removes the unowned allocation. A committed link survives cancellation
+and readback failure. An uncertain Core reply retains the allocation and its cleanup protection while
+Nodex checks the original Session and exact execution location; uncertainty never causes deletion of
+a potentially attached worktree.
 
 Effort offers only the levels supported by the selected model: Low, Medium, High, Extra High, and Max.
 Off belongs to Effort and appears only when that model can completely disable thinking. Adaptive
 thinking support alone does not imply this capability. Selecting a regular effort reenables thinking,
 including when that effort was already selected. Models that can disable thinking but have no effort
 levels offer Off and On. A model's limits may lower the backing effort when disabling thinking.
-Fast shows On or Off. Context appears only when multiple distinct supported values are available.
+Speed offers Standard and Fast when the selected model supports native Fast mode; those choices
+disable or enable that native preference. Context appears only when multiple distinct supported values
+are available.
+Context applies to the concrete model resolved by the active native Query,
+including a model inherited from Claude's configuration. Nodex verifies the
+reported context before saving it; an unresolved model or refused context fails
+explicitly. Default clears the override, reopening the same idle native session
+without a model flag when necessary to restore inheritance. Draft choices remain
+unsent preferences, while live Context reflects applied native state.
 Changing a model or effort retains independent settings and drops an incompatible thinking-disable
-override. Native defaults and policy limits determine the effective values. Requested preferences
+override. Changing models also clears a Context override that the destination
+model does not advertise; compatible Context choices remain intact. Native defaults
+and policy limits determine the effective values. Requested preferences
 and Code/Plan mode are saved with the task without changing Claude's global settings. Changes that
 require rebuilding a Query wait for no foreground turn, pending decision, queued steering or live
 background work.
@@ -132,8 +165,9 @@ Query from idle eviction, and have explicit task stop controls. Background reque
 when the foreground finishes. SDK result correlation decides which accepted user inputs settled;
 queued steering can become a subsequent native turn and retains its own admission receipt.
 
-Core retains the native session UUID independently of the instance binding. Reopening reads a
-bounded recent transcript and resumes that exact UUID without submitting a prompt. Claude Code
+Core retains the native session UUID and canonical history directory independently of the instance
+binding. Reopening reads a bounded recent transcript and resumes that exact UUID without submitting
+a prompt. Forked chats inherit their source's native history directory. Claude Code
 retains the complete history. Earlier turns can be loaded into the bounded presentation window.
 The live window retains up to 64 recent turns; loading history can expand it to 512 turns within
 a 2 MiB transcript budget. Each older page admits at most 512 KiB of content, or one bounded turn,
@@ -158,7 +192,9 @@ controls. Read-only task details remain observations rather than durable Codex T
 
 Diagnostics expose native health, account, agents and MCP status. An explicit title action uses a
 bounded auxiliary Query with tools, hooks, MCP and persistence disabled; ordinary sends do not run a
-hidden paid helper. Existing CLI conversation catalog import, audio, remote-host execution and Codex
+hidden paid helper. Existing CLI conversations can be connected through the shared
+[native conversation chooser](native-conversation-connection-behavior.md), retaining their native UUID
+and history directory. Audio, remote-host execution and Codex
 desktop/review controls remain outside the native backend's current capability contract.
 
 ## Native application tools
@@ -187,8 +223,9 @@ application tools are an explicit unavailable capability.
 
 Scheduled Claude tasks retain an explicit configured Profile binding. The existing Scheduled
 editor selects that Profile, concrete model and supported effort through the shared Agent menu;
-Inherited preferences display their resolved native values. Profile environment values apply to launches. Codex service
-tiers and local Environment configurations do not apply to Claude.
+Inherited preferences display their resolved native values. Profile environment values apply to launches.
+Project worktree runs can use a local Environment configuration; local checkout and projectless runs
+cannot. Codex service tiers do not apply to Claude.
 
 Cron execution uses the ordinary durable definition, due lease, run inbox and Session owners.
 Project runs use the selected local folder or an owned managed worktree; projectless runs use a

@@ -811,11 +811,17 @@ pub(super) fn apply(
                     thread_id,
                     location,
                 ),
+                ProjectWorkspaceIntent::AttachNativeSession {session_id,thread_id,project_id,backend_binding,native_session_id,native_home,title,cwd,created_at,updated_at} => thread::attach_native_session(
+                    transaction, &library_id, &context, &store_epoch, &request.operation_id, &request_hash,
+                    session_id, thread_id, project_id.as_deref(), backend_binding, native_session_id, native_home,
+                    title, cwd, *created_at, *updated_at,
+                ),
                 ProjectWorkspaceIntent::BindThreadBackendSession {
                     thread_id,
                     backend_binding,
                     backend_session_id,
                     expected_backend_session_id,
+                    native_home,
                     native_state,
                 } => thread::bind_thread_backend_session(
                     transaction,
@@ -828,6 +834,7 @@ pub(super) fn apply(
                     backend_binding,
                     backend_session_id,
                     expected_backend_session_id.as_deref(),
+                    native_home.as_deref(),
                     native_state.as_ref(),
                 ),
                 ProjectWorkspaceIntent::ClearThreadBackendSession {

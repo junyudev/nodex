@@ -85,6 +85,17 @@ function makeCommandContext(
 }
 
 describe("buildCommandPaletteCommands", () => {
+  test("offers skill reload only when the selected conversation has a discovery action", () => {
+    const commands = (canReloadSkills?: boolean) =>
+      buildCommandPaletteCommands(makeCommandContext({ canReloadSkills })).filter(
+        (command) => command.id === "forceReloadSkills",
+      );
+    expect(commands(true)).toHaveLength(1);
+    expect(commands(true)[0]?.disabled).not.toBe(true);
+    expect(commands(false)).toEqual([]);
+    expect(commands()).toEqual([]);
+  });
+
   test("exposes Create Page with contextual availability", () => {
     const available = buildCommandPaletteCommands(makeCommandContext()).find(
       (command) => command.id === "createPage",

@@ -417,7 +417,7 @@ describe("LocalConversationTurnEntry", () => {
     expect(view.queryByText("Steered conversation")).toBeNull();
   });
 
-  test("renders copy, rating, and fork actions in order and forks with an empty composer draft", async () => {
+  test("renders copy before fork and forks with an empty composer draft", async () => {
     const stableRequests: [] = [];
     const forkInputs: Array<{
       threadId: string;
@@ -459,12 +459,10 @@ describe("LocalConversationTurnEntry", () => {
       (button) => button.getAttribute("aria-label") ?? "",
     );
     const assistantCopyIndex = labels.lastIndexOf("Copy");
-    const ratingIndex = labels.indexOf("Rate response");
     const forkIndex = labels.indexOf("Fork chat from here");
 
     expect(assistantCopyIndex >= 0).toBe(true);
-    expect(ratingIndex > assistantCopyIndex).toBe(true);
-    expect(forkIndex > ratingIndex).toBe(true);
+    expect(forkIndex > assistantCopyIndex).toBe(true);
     expect(labels.includes("Ask in side chat")).toBe(false);
     expect(Boolean(view.container.textContent?.includes(expectedTime))).toBe(true);
     expect(Boolean(view.container.textContent?.includes(staleCompletedTime))).toBe(false);
@@ -528,7 +526,7 @@ describe("LocalConversationTurnEntry", () => {
     ).toBe(true);
   });
 
-  test("hides streaming actions and keeps rating and fork available for an empty completed reply", async () => {
+  test("hides streaming actions and permits forking an empty completed reply", async () => {
     const stableRequests: [] = [];
     const { LocalConversationTurnEntry } = await import("./local-conversation-turn-entry");
     const streamingTurn: CodexConversationTurn = {
@@ -558,7 +556,6 @@ describe("LocalConversationTurnEntry", () => {
     );
 
     expect(view.queryByLabelText("Copy")).toBeNull();
-    expect(view.queryByLabelText("Rate response") === null).toBe(true);
     expect(view.queryByLabelText("Fork chat from here") === null).toBe(true);
 
     view.rerender(
@@ -577,7 +574,6 @@ describe("LocalConversationTurnEntry", () => {
     );
 
     expect(view.queryByLabelText("Copy")).toBeNull();
-    expect(Boolean(view.getByLabelText("Rate response"))).toBe(true);
     expect(Boolean(view.getByLabelText("Fork chat from here"))).toBe(true);
   });
 

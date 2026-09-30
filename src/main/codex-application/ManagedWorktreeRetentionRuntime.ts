@@ -30,6 +30,8 @@ import { ManagedWorktreeConfiguration } from "./ExecutionHostConfiguration";
 import { ExecutionHostRuntime } from "./ExecutionHostRuntime";
 import { ManagedWorktreeRuntime } from "./ManagedWorktreeRuntime";
 import { MAIN_RELIABLE_COMMAND_CAPACITY } from "../runtime-limits";
+import type { CodexThreadHandoffJournalStorage } from "../platform/CodexThreadHandoffJournalStorage";
+import { isTerminalCodexThreadHandoff } from "../codex/codex-thread-handoff-journal";
 
 export class ManagedWorktreeRetentionRuntimeError extends Schema.TaggedError<ManagedWorktreeRetentionRuntimeError>()(
   "ManagedWorktreeRetentionRuntimeError",
@@ -41,6 +43,7 @@ export class ManagedWorktreeRetentionRuntimeError extends Schema.TaggedError<Man
 
 export interface ManagedWorktreeRetentionRuntimeOptions {
   readonly debounce?: Duration.Input;
+  readonly handoffJournal: CodexThreadHandoffJournalStorage;
 }
 
 interface RetentionCommand {
@@ -119,7 +122,7 @@ export const live = (
         nowMs: number,
         phase: "read" | "revalidate",
       ) {
-        const [lifecycle, physicalByHost] = yield* Effect.all(
+        const [lifecycle, physicalByHost, handoffs] = yield* Effect.all(
           [
             workspace.readManagedWorktreeLifecycleSnapshot.pipe(
               Effect.mapError((cause) => error(`${phase}-lifecycle`, cause)),
@@ -137,6 +140,9 @@ export const live = (
                 ),
               ),
             ),
+            options.handoffJournal.load.pipe(
+              Effect.mapError((cause) => error(`${phase}-handoff-journal`, cause)),
+            ),
           ] as const,
           { concurrency: "unbounded" },
         );
@@ -152,6 +158,28 @@ export const live = (
           ),
         );
         const pathProtections: CodexManagedWorktreeRetentionPathProtection[] = [];
+        for (const handoff of handoffs) {
+          if (isTerminalCodexThreadHandoff(handoff)) continue;
+          const paths = [
+            handoff.source.managedWorktreePath
+              ? {
+                  hostId: handoff.source.hostId,
+                  worktreeGitRoot: handoff.source.managedWorktreePath,
+                }
+              : null,
+            handoff.destination?.managedWorktreePath
+              ? {
+                  hostId: handoff.destination.hostId,
+                  worktreeGitRoot: handoff.destination.managedWorktreePath,
+                }
+              : null,
+            handoff.allocatedDestination,
+          ];
+          for (const protectedPath of paths) {
+            if (!protectedPath) continue;
+            pathProtections.push({ ...protectedPath, reason: "handoff" });
+          }
+        }
         for (const { hostId, entry } of physicalEntries) {
           if (hostId !== CODEX_APP_LOCAL_HOST_ID) continue;
           const comparisonKey = yield* fromPromise(`${phase}-worktree-root`, () =>

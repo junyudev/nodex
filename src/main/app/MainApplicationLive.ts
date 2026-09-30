@@ -154,6 +154,9 @@ export const live: Layer.Layer<
         const sidebarSync = yield* CodexSidebarSyncRuntime;
         const managedWorktreeRetention = yield* ManagedWorktreeRetentionRuntime;
         const threadHandoffRuntime = yield* CodexThreadHandoffRuntime;
+        yield* threadHandoffRuntime.prepareRecovery.pipe(
+          Effect.mapError((cause) => runtimeError("handoff-recovery-protection", cause)),
+        );
         if (config.platform !== "win32") {
           const endpoints = yield* CodexEndpointMap;
           const local = yield* endpoints.endpoint(endpoints.localHostId);

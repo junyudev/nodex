@@ -3,7 +3,8 @@
 ## Intent
 
 This document owns the product contract after a managed Git worktree has been
-allocated for a Codex Chat. It covers durable execution-location identity,
+allocated for a Codex Chat. Local Claude Chats share the execution-location and
+moving contracts below. This document covers durable execution-location identity,
 sidebar presentation, snapshot-before-removal, Environment cleanup, restore,
 archive ownership transfer, automatic retention, permanent-worktree
 protection, and moving an existing Chat between checkouts, worktrees, and
@@ -23,12 +24,14 @@ operation.
 
 ## Execution location
 
-Every Codex Chat has one canonical execution location:
+Every Chat has one canonical execution location. Codex supports:
 
 - a local checkout;
 - a local managed worktree;
 - a checkout on a registered remote execution host; or
 - a managed worktree on a registered remote execution host.
+
+Claude supports the local checkout and local managed worktree locations.
 
 Core Workspace owns the durable host id, cwd, managed-worktree path, runtime
 workspace roots, and Project assignment for the Chat. A location change commits
@@ -323,6 +326,19 @@ Moving a Chat is a real execution-location transaction. It retains the same Chat
 identity and history while moving its Git state and subsequent execution
 between a checkout, a managed worktree, or a registered execution host.
 
+The attached Chat's `Continue in` selector requests a confirmed local move and
+shows the actual execution location until Core commits the destination. Its
+requested destination is checked against the current durable location, so a
+stale menu cannot reverse a move. Unsupported backends and host combinations fail
+before stopping execution or preparing files.
+
+The backend owner seals new turn and steering admission throughout the
+transaction after draining requests already admitted. Claude also suspends its
+idle native Query, preventing autonomous timers from writing while Git state
+moves. Live background tasks must finish or be stopped before that Query can
+be suspended. Interruption, relocation and rollback remain available within the
+same owner; no command lane is held across unrelated filesystem preparation.
+
 The transaction:
 
 1. Stops or waits for an active Turn according to the user-visible operation.
@@ -331,7 +347,7 @@ The transaction:
 3. Transfers missing Git objects and rollout state when hosts differ.
 4. Applies the destination state and resolves branch or dirty-destination
    conflicts without destructive reset.
-5. Switches the app-server's cwd and runtime roots.
+5. Switches the backend runtime's cwd and writable roots.
 6. Commits the complete durable execution location in Core.
 7. Refreshes runtime caches, ownership, sidebar, browser/diff context, and other
    path-sensitive Chat metadata.
@@ -353,7 +369,10 @@ local checkout, detaches the managed worktree from its branch, checks that any
 same-named local branch still identifies the expected commit, and applies the
 complete materialized state locally. A conflicting branch or dirty destination
 fails before overwriting either copy. Compensation reverses the same Git
-operation and removes only a destination created by that handoff.
+operation and removes only a destination created by that handoff. Transfers and
+compensation preserve the staged index as well as tracked and untracked files.
+After a rejected preparation, the original Chat resumes only when the worker
+proves that the source was untouched or completely restored.
 
 The originating tool activity observes a revisioned Main-owned operation snapshot. Repeated delivery of the same tool call reuses its operation; another conversation cannot claim that operation through presentation state. Snapshots retain the requesting Chat, target Chat, Project, execution hosts, title, direction, and available branch context. Progress and terminal results are restored from the journal on restart. Failed steps do not mark subsequent unperformed phases as successful.
 
@@ -363,12 +382,43 @@ replace. On restart it reads Core's canonical location to decide whether to
 finish destination ownership/cleanup or restore the source; an unavailable or
 ambiguous canonical read defers recovery without mutating Git.
 
+Rollback rereads the exact durable execution location even when commit
+acknowledgement failed. A destination is removed only after the source location,
+runtime and Git state are confirmed restored. An unreadable or unexpected
+location, or failed restoration, retains the journal and destination artifacts
+with recovery required; both new execution and another move stay blocked.
+Native Queries remain suspended until verified repair. Startup restores these
+admission seals before exposing execution, and restart retries recovery.
+Cleanup retry does not repeat a Git rollback already confirmed complete.
+
+Destination allocation is checkpointed before the worker may mutate source Git
+state. If preparation was interrupted without a proven restoration outcome,
+recovery keeps the operation unresolved even when Core still names the source.
+The durable journal protects source and destination worktrees from automatic
+retention until verified completion or cleanup; process lifetime is not that
+protection's authority.
+
+Prepared turn, steering and tool-output requests retain their execution
+admission epoch. Every handoff invalidates earlier receipts, including receipts
+already materialized before the move. A delayed request cannot execute with its
+previous directory after the new location is committed; it must be prepared
+again under the current owner. Queued messages prepared after a move use the
+Chat’s current location rather than their earlier captured directory; independent
+permission and model choices remain retained.
+
 Progress queries restore retained operation outcomes from the handoff journal after
 restart, including success, warning, and failure. Reading an outcome never resumes
 the move or sends its follow-up again. Terminal outcomes return immediately even
 when the caller supplies a revision from the previous application process.
 
-The app-server owns Thread runtime methods but not worktree lifecycle. A loaded
+Claude relocation retains the same handle, Profile and native session UUID,
+reopens that exact conversation at the destination with its worktree environment,
+and commits Core only after the native runtime is ready. Native history remains
+bound to its canonical history directory across cwd changes. A failed native
+switch restores the source Query; a failed durable-location check cannot grant
+an obsolete source or provisional destination new execution authority.
+
+The Codex app-server owns Thread runtime methods but not worktree lifecycle. A loaded
 Chat is first interrupted when it has an active Turn, then receives
 `thread/settings/update` for cwd and sandbox policy and a same-rollout
 `thread/resume` for the complete cwd/runtime-root projection. An unloaded Chat

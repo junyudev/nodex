@@ -6,24 +6,9 @@ import { AssistantMessageActionsRow } from "./assistant-message-actions";
 import { formatThreadMessageTimestamp } from "./thread-message-timestamp";
 import { ThreadForkSubmissionContext } from "./thread-fork-state";
 
-const base = { copyText: null, sentAtMs: null, canRate: false, canFork: true };
+const base = { copyText: null, sentAtMs: null, canFork: true };
 
 describe("assistant action capabilities", () => {
-  test("rating does not require copyable text", () => {
-    const { getByRole, queryByRole } = render(
-      <NodexTooltipProvider>
-        <AssistantMessageActionsRow
-          actions={{ ...base, canRate: true, canFork: false }}
-          threadId="thread"
-          turnId="turn"
-          isLatestTurn
-        />
-      </NodexTooltipProvider>,
-    );
-    expect(getByRole("button", { name: "Rate response" })).toBeTruthy();
-    expect(queryByRole("button", { name: "Copy" })).toBeNull();
-  });
-
   test("renders a requested timestamp without inventing an action", () => {
     const sentAtMs = new Date(2026, 8, 22, 9, 30).getTime();
     const { getByText, queryByRole } = render(

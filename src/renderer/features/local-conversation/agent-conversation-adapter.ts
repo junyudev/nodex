@@ -43,7 +43,10 @@ import {
 } from "../../../shared/claude-models";
 import type { AgentNativeIntelligencePresentation } from "../../components/shared/agent-runtime/agent-intelligence-dropdown";
 import type { NativePermissionMode } from "../../../shared/agent-backend-api";
-import { resolveNativeIntelligenceSelection } from "../../lib/native-intelligence-selection";
+import {
+  resolveNativeIntelligenceSelection,
+  selectNativeModel,
+} from "../../lib/native-intelligence-selection";
 
 export type ExternalAgentBinding = Exclude<AgentBackendBinding, { kind: "codex" }>;
 type AgentSelection = Pick<ExternalAgentBinding, "kind" | "instanceConfigId">;
@@ -261,7 +264,7 @@ export function useAgentConversationAdapter(input: {
   const draftMode = draft.mode;
   const draftEffort = draft.selection.effort;
   const setDraftModel = (model: string, effort: ClaudeEffortSelection = "default") => {
-    const selection = { ...draft.selection, model, effort };
+    const selection = { ...selectNativeModel(draft.selection, model, effort, options) };
     const target = options.find((option) => option.value === model);
     if (selection.thinking === false && !target?.disableThinking) delete selection.thinking;
     if (selection.fast === true && target?.fastMode === false) selection.fast = false;
@@ -352,7 +355,9 @@ export function useAgentConversationAdapter(input: {
     }
     if (!modelConfig) throw new Error("This Agent does not expose model selection");
     if (binding?.kind === "claude") {
-      await requireSuccess(owner.setIntelligence({ ...requested, model, effort: "default" }));
+      await requireSuccess(
+        owner.setIntelligence(selectNativeModel(requested, model, "default", options)),
+      );
       return;
     }
     await requireSuccess(owner.setConfigOption(modelConfig.id, model));
@@ -415,12 +420,14 @@ export function useAgentConversationAdapter(input: {
             return;
           }
           await requireSuccess(
-            owner.setIntelligence({ ...requested, model: selection.model, effort }),
+            owner.setIntelligence(selectNativeModel(requested, selection.model, effort, options)),
           );
         },
         onStartThreadForSession: async (request) => {
           if (!binding.instanceConfigId)
             throw new Error("Select an Agent instance before starting");
+          if (request.runInTarget === "cloud")
+            throw new Error("This Agent requires a local workspace");
           const prompt = await prepareAgentPrompt(
             request.prompt,
             request.promptInput,
@@ -455,6 +462,9 @@ export function useAgentConversationAdapter(input: {
               sessionId: targetSessionId,
               instanceConfigId: binding.instanceConfigId,
               backendKind: binding.kind,
+              runInTarget: request.runInTarget,
+              runInEnvironmentPath: request.runInEnvironmentPath,
+              worktreeStartingState: request.worktreeStartingState,
               prompt,
               ...(binding.kind === "claude"
                 ? { images: agentPromptImages(request.promptInput) }
@@ -678,7 +688,8 @@ export function useAgentConversationAdapter(input: {
           selected: {
             fast: intelligence.fast,
             thinking: intelligence.thinking,
-            context: requested.context,
+            context: intelligence.context,
+            contextInherited: requested.context === undefined,
           },
           capabilities: {
             fastMode: selectedOption?.fastMode,
@@ -779,6 +790,7 @@ export function useAgentConversationAdapter(input: {
     actions,
     authenticate,
     modelCatalogError: claudeCatalog.error,
+    refreshSkills: binding?.kind === "claude" ? claudeCatalog.refresh : undefined,
     skills:
       claudeCatalog.discovery?.skills
         .filter((skill) => skill.enabled && skill.userInvocable)

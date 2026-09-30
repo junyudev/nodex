@@ -49,6 +49,11 @@ export class CodexThreadExecution extends Context.Service<
       threadId: string,
     ) => Effect.Effect<CodexThreadExecutionLocation, CodexThreadExecutionError>;
     readonly stop: (threadId: string) => Effect.Effect<void, CodexThreadExecutionError>;
+    readonly setRecoveryRequired: (threadId: string, required: boolean) => Effect.Effect<void>;
+    readonly withHandoff: <A, E, R>(
+      threadId: string,
+      use: Effect.Effect<A, E, R>,
+    ) => Effect.Effect<A, E | CodexThreadExecutionError, R>;
     readonly switchRuntime: (
       threadId: string,
       location: CodexThreadExecutionLocation,
@@ -361,6 +366,15 @@ export const live: Layer.Layer<
       );
 
     return CodexThreadExecution.of({
+      setRecoveryRequired: conversationRuntimes.setRecoveryRequired,
+      withHandoff: (threadId, use) =>
+        conversationRuntimes
+          .withExecutionHandoff(threadId, use)
+          .pipe(
+            Effect.mapError((cause) =>
+              cause instanceof Error ? error("handoff-admission", threadId, cause) : cause,
+            ),
+          ),
       read,
       stop: (threadId) =>
         projection.read(threadId).pipe(

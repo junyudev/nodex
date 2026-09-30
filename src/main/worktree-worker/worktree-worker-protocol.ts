@@ -30,7 +30,7 @@ import {
   CODEX_WORKTREE_WORKER_OPERATIONS,
 } from "../codex/codex-worktree-worker-protocol";
 
-export const CODEX_WORKTREE_WORKER_PROTOCOL_VERSION = 7 as const;
+export const CODEX_WORKTREE_WORKER_PROTOCOL_VERSION = 8 as const;
 
 export type CodexWorktreeWorkerHostMessage =
   | {
@@ -74,6 +74,7 @@ export type CodexWorktreeWorkerThreadMessage =
             readonly code: "canceled" | "invalid-request" | "operation-failed";
             readonly message: string;
             readonly retryable: boolean;
+            readonly preparationRestored?: boolean;
           };
     };
 
@@ -315,6 +316,7 @@ function isPrepareHandoffInput(value: unknown): value is CodexWorktreeWorkerPrep
       "requestId",
       "hostId",
       "managedRoot",
+      "allocatedWorktreePath",
       "nodexHome",
       "projectId",
       "threadId",
@@ -326,6 +328,10 @@ function isPrepareHandoffInput(value: unknown): value is CodexWorktreeWorkerPrep
     ]) &&
     isIdentity(value) &&
     isAbsolutePath(value.managedRoot) &&
+    (value.allocatedWorktreePath === null ||
+      (isAbsolutePath(value.allocatedWorktreePath) &&
+        value.allocatedWorktreePath !== value.managedRoot &&
+        isPathWithin(value.managedRoot, value.allocatedWorktreePath))) &&
     isAbsolutePath(value.nodexHome) &&
     isNonEmptyString(value.projectId, 1_024) &&
     isNonEmptyString(value.threadId, 1_024) &&
@@ -333,6 +339,9 @@ function isPrepareHandoffInput(value: unknown): value is CodexWorktreeWorkerPrep
     isAbsolutePath(value.sourceCwd) &&
     isAbsolutePath(value.sourceWorkspaceRoot) &&
     isPathWithin(value.sourceWorkspaceRoot, value.sourceCwd) &&
+    (value.sourceManagedWorktreePath === null
+      ? value.allocatedWorktreePath !== null
+      : value.allocatedWorktreePath === null) &&
     (value.sourceManagedWorktreePath === null || isAbsolutePath(value.sourceManagedWorktreePath)) &&
     (value.destinationCheckoutRoot === null || isAbsolutePath(value.destinationCheckoutRoot))
   );
@@ -413,6 +422,7 @@ function isImportHandoffInput(value: unknown): value is CodexWorktreeWorkerImpor
       "repositoryIdentity",
       "candidateRepositoryPaths",
       "managedRoot",
+      "allocatedWorktreePath",
       "nodexHome",
       "projectId",
       "threadId",
@@ -431,6 +441,9 @@ function isImportHandoffInput(value: unknown): value is CodexWorktreeWorkerImpor
     isCandidateRepositoryPaths(value.candidateRepositoryPaths) &&
     value.candidateRepositoryPaths.length > 0 &&
     isAbsolutePath(value.managedRoot) &&
+    isAbsolutePath(value.allocatedWorktreePath) &&
+    value.allocatedWorktreePath !== value.managedRoot &&
+    isPathWithin(value.managedRoot, value.allocatedWorktreePath) &&
     isAbsolutePath(value.nodexHome) &&
     isNonEmptyString(value.projectId, 1_024) &&
     isNonEmptyString(value.threadId, 1_024) &&
@@ -767,7 +780,10 @@ export function isCodexWorktreeWorkerThreadMessage(
         value.result.code === "invalid-request" ||
         value.result.code === "operation-failed") &&
       typeof value.result.message === "string" &&
-      typeof value.result.retryable === "boolean"
+      typeof value.result.retryable === "boolean" &&
+      (value.result.preparationRestored === undefined ||
+        (value.operation === "prepare-handoff" &&
+          typeof value.result.preparationRestored === "boolean"))
     );
   }
   return value.result.type === "ok" && isSuccess(value.result.success, value.operation);

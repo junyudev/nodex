@@ -1,6 +1,6 @@
 /** Deterministic native stream-json peer. The production SDK owns all transport behavior. */
 import { createInterface } from "node:readline";
-import { appendFileSync, mkdirSync } from "node:fs";
+import { appendFileSync, existsSync, mkdirSync, readFileSync, readdirSync } from "node:fs";
 import { join } from "node:path";
 import { randomUUID } from "node:crypto";
 
@@ -24,7 +24,28 @@ const directory = join(
   cwd.replace(/[^a-zA-Z0-9]/g, "-"),
 );
 mkdirSync(directory, { recursive: true });
-let parentUuid = null;
+const projectDirectories = join(process.env.CLAUDE_CONFIG_DIR, "projects");
+const transcriptPath =
+  (argument("--resume") &&
+    readdirSync(projectDirectories, { withFileTypes: true })
+      .filter((entry) => entry.isDirectory())
+      .map((entry) => join(projectDirectories, entry.name, `${sessionId}.jsonl`))
+      .find((candidate) => existsSync(candidate))) ||
+  join(directory, `${sessionId}.jsonl`);
+const readTranscript = () =>
+  existsSync(transcriptPath)
+    ? readFileSync(transcriptPath, "utf8")
+        .split("\n")
+        .filter(Boolean)
+        .map((line) => JSON.parse(line))
+    : [];
+const promptTexts = (entries) =>
+  entries
+    .filter((entry) => entry.type === "user" && typeof entry.message?.content === "string")
+    .map((entry) => entry.message.content);
+const retainedTranscript = readTranscript();
+let parentUuid =
+  retainedTranscript.findLast((entry) => entry.uuid && !entry.isSidechain)?.uuid ?? null;
 const resolveModel = (value) =>
   value === "sonnet"
     ? "claude-sonnet-5-5"
@@ -49,7 +70,19 @@ const observe = (event) =>
     `${JSON.stringify(event)}\n`,
   );
 const send = (message) => process.stdout.write(`${JSON.stringify(message)}\n`);
-observe({ type: "launch", model, effort, permissionMode, allowsBypass });
+observe({
+  type: "launch",
+  cwd,
+  persistent: !process.argv.includes("--no-session-persistence"),
+  sessionId,
+  resumed: Boolean(argument("--resume")),
+  model,
+  effort,
+  permissionMode,
+  allowsBypass,
+  worktreeEnv: process.env.NODEX_E2E_WORKTREE_ENV,
+  historyPromptTexts: promptTexts(retainedTranscript),
+});
 const record = (type, message, fields = {}) => {
   const uuid = randomUUID();
   const entry = {
@@ -65,7 +98,7 @@ const record = (type, message, fields = {}) => {
     version: "2.1.284",
     ...fields,
   };
-  appendFileSync(join(directory, `${sessionId}.jsonl`), `${JSON.stringify(entry)}\n`);
+  appendFileSync(transcriptPath, `${JSON.stringify(entry)}\n`);
   parentUuid = uuid;
   return uuid;
 };
@@ -199,6 +232,7 @@ for await (const line of createInterface({ input: process.stdin })) {
     continue;
   }
   if (incoming.type === "user") {
+    const priorPromptTexts = promptTexts(readTranscript());
     const userUuid = record("user", incoming.message);
     send({
       type: "user",
@@ -209,18 +243,45 @@ for await (const line of createInterface({ input: process.stdin })) {
     });
     observe({
       type: "prompt",
+      sessionId,
+      cwd,
       model,
       effort,
       permissionMode,
       thinking: thinkingEnabled(),
       fast: fastState() === "on",
       content: incoming.message.content,
+      priorPromptTexts,
       environment: {
         baseUrl: process.env.ANTHROPIC_BASE_URL,
         tokenMatches: process.env.ANTHROPIC_AUTH_TOKEN === "e2e-environment-token",
         apiKeyEmpty: process.env.ANTHROPIC_API_KEY === "",
+        worktreeEnv: process.env.NODEX_E2E_WORKTREE_ENV,
       },
     });
+    if (
+      typeof incoming.message.content === "string" &&
+      incoming.message.content.startsWith("Verify handoff ")
+    ) {
+      const message = {
+        id: `handoff-check-${randomUUID()}`,
+        role: "assistant",
+        model,
+        content: [
+          { type: "text", text: `Native handoff verified: ${incoming.message.content.slice(15)}` },
+        ],
+        usage: { input_tokens: 12, output_tokens: 4 },
+      };
+      send({
+        type: "assistant",
+        session_id: sessionId,
+        uuid: record("assistant", message),
+        parent_tool_use_id: null,
+        message,
+      });
+      result();
+      continue;
+    }
     if (incoming.message.content === "Wait for cancellation") continue;
     if (incoming.message.content === "Verify thinking disabled") {
       if (permissionMode !== "default") throw new Error("Expected native manual permission mode");

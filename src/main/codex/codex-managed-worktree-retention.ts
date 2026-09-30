@@ -8,6 +8,7 @@ export type CodexManagedWorktreeProtectionReason =
   | "pinned"
   | "pending"
   | "newborn"
+  | "handoff"
   | "in-progress"
   | "automation"
   | "young-ownerless"

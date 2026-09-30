@@ -16,6 +16,7 @@ import type { FrozenNodexAgentTurnAuthority } from "../../shared/nodex-agent-aut
 import type { CodexPermissionMode, ProjectSessionThreadLinkInput } from "../../shared/types";
 import type { NativePermissionMode } from "../../shared/agent-backend-api";
 import { CodexPlatform } from "../app/CodexApplicationLive";
+import { CodexGitProbe } from "../codex-application/CodexGitProbe";
 import { testLayer as configLayer } from "../app/MainConfig";
 import {
   createNativeAppToolClaimIssuer,
@@ -31,7 +32,10 @@ import {
 import type { DesktopProjectWorkspaceNativeAgentState } from "../core-client/project-workspace-adapter";
 import { ProjectWorkspace } from "../project-application/ProjectWorkspace";
 import { AgentBackendRegistry } from "./AgentBackendRegistry";
-import { make as makeApplication } from "./AgentBackendApplication";
+import {
+  make as makeApplication,
+  type AgentBackendApplicationError,
+} from "./AgentBackendApplication";
 import {
   emptyAgentConversationSnapshot,
   beginAgentConversationTurn,
@@ -42,6 +46,7 @@ import type { AgentSessionHandle, AgentSessionPermissionPolicy } from "./AgentSe
 import { AcpBackendSessionManager } from "./acp/AcpBackendSessionManager";
 import { ClaudeSessionManager, type OpenClaudeSessionInput } from "./claude/ClaudeSessionManager";
 import { NativeTurnAuthority } from "./NativeTurnAuthority";
+import { createUuidV7 } from "../../shared/uuid-v7";
 
 const binding = { kind: "claude" as const, instanceConfigId: "work" };
 const durableId = "native-session";
@@ -76,6 +81,7 @@ const makeFixtureWithInitialBinding = (initiallyBound: boolean) =>
     let projectActive = true;
     let intelligenceCalls = 0;
     let openCalls = 0;
+    let currentNativeHome = "/native-home";
     let freezeCalls = 0;
     const toolOutputReads: Array<[string, string]> = [];
     let onToolOutputRead: Effect.Effect<void> = Effect.void;
@@ -108,6 +114,15 @@ const makeFixtureWithInitialBinding = (initiallyBound: boolean) =>
     let nativeId = durableId;
     let onPrepareImages: Effect.Effect<void> = Effect.void;
     let extraRoot = "/workspace";
+    let currentCwd = "/workspace";
+    let currentManagedWorktreePath: string | null = null;
+    let runtimeCwd = "/workspace";
+    let runtimeSuspended = false;
+    let executionHandoff = false;
+    let executionRecoveryRequired = false;
+    let suspendedCalls = 0;
+    const runtimeLocations: string[] = [];
+    const launchDirectories: string[][] = [];
     let currentProjectId: string | null = "project";
     let onOpen: Effect.Effect<void> = Effect.void;
     let threadBinding: typeof binding = binding;
@@ -117,6 +132,18 @@ const makeFixtureWithInitialBinding = (initiallyBound: boolean) =>
     let runtimeScope: Scope.Closeable | null = null;
     let issuer: ReturnType<typeof createNativeAppToolClaimIssuer> | null = null;
     let live: AgentSessionHandle | null = null;
+    const reinitialize = (cwd: string) =>
+      Effect.gen(function* () {
+        if (runtimeScope) yield* Scope.close(runtimeScope, Exit.void);
+        runtimeScope = yield* Scope.fork(ownerScope);
+        runtimeCwd = cwd;
+        runtimeSuspended = false;
+        runtimeLocations.push(cwd);
+        if (hooks?.acquireLaunchContext) {
+          const context = yield* hooks.acquireLaunchContext(cwd).pipe(Scope.provide(runtimeScope));
+          launchDirectories.push([...(context.additionalDirectories ?? [])]);
+        }
+      });
     const handle: AgentSessionHandle = {
       threadId: "native",
       get sessionId() {
@@ -166,6 +193,45 @@ const makeFixtureWithInitialBinding = (initiallyBound: boolean) =>
           return { stopReason: "end_turn" };
         }),
       cancel: Effect.void,
+      suspendExecution: Effect.gen(function* () {
+        if (runtimeScope) yield* Scope.close(runtimeScope, Exit.void);
+        runtimeScope = null;
+        runtimeSuspended = true;
+        suspendedCalls += 1;
+      }),
+      setExecutionRecoveryRequired: (required) =>
+        Effect.sync(() => {
+          executionRecoveryRequired = required;
+        }),
+      withExecutionHandoff: (use) =>
+        Effect.sync(() => {
+          executionHandoff = true;
+        }).pipe(
+          Effect.andThen(use),
+          Effect.onExit(() =>
+            Effect.suspend(() =>
+              runtimeSuspended && !executionRecoveryRequired
+                ? reinitialize(runtimeCwd)
+                : Effect.void,
+            ),
+          ),
+          Effect.ensuring(
+            Effect.sync(() => {
+              executionHandoff = false;
+            }),
+          ),
+        ),
+      withExecutionLocation: (location, use) =>
+        Effect.uninterruptibleMask((restore) => {
+          const source = runtimeCwd;
+          return reinitialize(location.workspaceRoot).pipe(
+            Effect.andThen(restore(use)),
+            Effect.onExit((exit) => (Exit.isFailure(exit) ? reinitialize(source) : Effect.void)),
+            Effect.onExit(() =>
+              Effect.suspend(() => (executionHandoff ? handle.suspendExecution! : Effect.void)),
+            ),
+          );
+        }),
       setIntelligence: (selected) =>
         Effect.gen(function* () {
           intelligenceCalls += 1;
@@ -235,16 +301,30 @@ const makeFixtureWithInitialBinding = (initiallyBound: boolean) =>
       live = null;
     });
     const manager = ClaudeSessionManager.of({
+      nativeHome: () => Effect.sync(() => currentNativeHome),
+      nativeCatalog: () => Effect.die("No catalog request"),
+      nativeSessionInfo: () => Effect.die("No metadata request"),
       discover: () => Effect.die("No discovery"),
       models: () => Effect.die("No discovery"),
       open: (input) =>
         Effect.gen(function* () {
           openCalls += 1;
           hooks = input;
+          executionRecoveryRequired = input.executionRecoveryRequired === true;
+          runtimeSuspended = executionRecoveryRequired;
+          if (executionRecoveryRequired)
+            yield* SubscriptionRef.update(snapshot, (current) => ({
+              ...current,
+              status: "idle" as const,
+              error: null,
+            }));
           yield* onOpen;
-          runtimeScope = yield* Scope.fork(ownerScope);
-          if (input.acquireLaunchContext)
-            yield* input.acquireLaunchContext.pipe(Scope.provide(runtimeScope));
+          runtimeCwd = input.workspaceRoot;
+          if (!executionRecoveryRequired) runtimeScope = yield* Scope.fork(ownerScope);
+          if (input.acquireLaunchContext && runtimeScope)
+            yield* input
+              .acquireLaunchContext(input.workspaceRoot)
+              .pipe(Scope.provide(runtimeScope));
           live = handle;
           return handle;
         }),
@@ -294,7 +374,8 @@ const makeFixtureWithInitialBinding = (initiallyBound: boolean) =>
               projectId: currentProjectId,
               sessionId: "session",
               backendBinding: threadBinding,
-              cwd: "/workspace",
+              cwd: currentCwd,
+              managedWorktreePath: currentManagedWorktreePath,
               archived: false,
               executionHostId: "local",
               statusType: statuses.at(-1) ?? "idle",
@@ -346,6 +427,7 @@ const makeFixtureWithInitialBinding = (initiallyBound: boolean) =>
                   threadId: "native",
                   backendBinding: binding,
                   backendSessionId: currentId,
+                  nativeHome: "/native-home",
                   nativeState,
                   updatedAt: 1,
                 }
@@ -442,9 +524,20 @@ const makeFixtureWithInitialBinding = (initiallyBound: boolean) =>
       Effect.provide(configLayer()),
     );
     return {
+      executionRecoveryRequired: () => executionRecoveryRequired,
+      runtimeSuspended: () => runtimeSuspended,
+      suspendedCalls: () => suspendedCalls,
       application,
       snapshot,
       statuses,
+      runtimeLocations,
+      launchDirectories,
+      commitExecutionLocation: (cwd: string, managedWorktreePath: string | null = null) =>
+        Effect.sync(() => {
+          currentCwd = cwd;
+          extraRoot = cwd;
+          currentManagedWorktreePath = managedWorktreePath;
+        }),
       bound,
       setFailStatus: (value: boolean) => {
         failStatus = value;
@@ -455,6 +548,9 @@ const makeFixtureWithInitialBinding = (initiallyBound: boolean) =>
       claim: () => issuer?.claim() ?? null,
       identity: () => currentId,
       openCalls: () => openCalls,
+      changeNativeHome: () => {
+        currentNativeHome = "/other-home";
+      },
       pauseInitialBind: () => {
         pauseInitialBind = true;
       },
@@ -533,6 +629,452 @@ const makeFixtureWithInitialBinding = (initiallyBound: boolean) =>
     };
   });
 const makeFixture = makeFixtureWithInitialBinding(true);
+
+const nativeDestination = {
+  hostId: "local",
+  projectId: "project",
+  cwd: "/destination",
+  workspaceRoots: ["/destination"],
+  managedWorktreePath: null,
+  projectlessOutputDirectory: null,
+  projectlessWorkspaceBrowserRoot: null,
+} as const;
+
+it.effect("failed Git recovery seals the retained source until the verified retry completes", () =>
+  Effect.scoped(
+    Effect.gen(function* () {
+      const fixture = yield* makeFixture;
+      const app = yield* fixture.application;
+      yield* app.openAgentSession({ threadId: "native" });
+      const submission = {
+        threadId: "native",
+        operationId: "retry-recovered-files",
+        prompt: "resume safely",
+      };
+      const failed = yield* Effect.result(
+        app.withAgentExecutionHandoff(
+          "native",
+          Effect.gen(function* () {
+            yield* app.setExecutionRecoveryRequired("native", true);
+            yield* app.nativeConversations.stopExecution("native");
+            return yield* agentRuntimeError({
+              operation: "Git rollback",
+              reason: "request",
+              retryable: false,
+              cause: new Error("Source files need recovery"),
+            });
+          }),
+        ),
+      );
+      assert.equal(failed._tag, "Failure");
+      assert.isTrue(fixture.runtimeSuspended());
+      assert.isTrue(fixture.executionRecoveryRequired());
+      assert.deepEqual(fixture.runtimeLocations, []);
+      assert.equal((yield* app.readAgentSession("native"))?.snapshot.sessionId, durableId);
+      assert.equal(
+        (yield* Effect.result(app.nativeConversations.submit(submission)))._tag,
+        "Failure",
+      );
+      assert.equal(
+        (yield* Effect.result(app.controlAgentSession({ threadId: "native", kind: "compact" })))
+          ._tag,
+        "Failure",
+      );
+      yield* app.withAgentExecutionHandoff(
+        "native",
+        Effect.gen(function* () {
+          yield* app.nativeConversations.stopExecution("native");
+          yield* app.withAgentExecutionLocation(
+            "native",
+            { ...nativeDestination, cwd: "/workspace", workspaceRoots: ["/workspace"] },
+            Effect.void,
+          );
+          yield* app.setExecutionRecoveryRequired("native", false);
+        }),
+      );
+      assert.isFalse(fixture.runtimeSuspended());
+      assert.isFalse(fixture.executionRecoveryRequired());
+      const accepted = yield* app.nativeConversations.submit(submission);
+      yield* fixture.finishPrompt;
+      assert.equal(
+        (yield* app.nativeConversations.wait("native", accepted.turnId)).outcome,
+        "completed",
+      );
+    }),
+  ),
+);
+
+it.effect(
+  "unresolved runtime and Core locations retain their sealed native owner for recovery",
+  () =>
+    Effect.scoped(
+      Effect.gen(function* () {
+        const fixture = yield* makeFixture;
+        const app = yield* fixture.application;
+        yield* app.openAgentSession({ threadId: "native" });
+        yield* app.withAgentExecutionHandoff(
+          "native",
+          Effect.gen(function* () {
+            yield* app.setExecutionRecoveryRequired("native", true);
+            yield* app.nativeConversations.stopExecution("native");
+            const failed = yield* Effect.result(
+              app.withAgentExecutionLocation(
+                "native",
+                nativeDestination,
+                fixture.commitExecutionLocation("/destination").pipe(
+                  Effect.andThen(
+                    Effect.fail(
+                      agentRuntimeError({
+                        operation: "Core rollback",
+                        reason: "authorization",
+                        retryable: false,
+                        cause: new Error("Core still retains destination"),
+                      }),
+                    ),
+                  ),
+                ),
+              ),
+            );
+            assert.equal(failed._tag, "Failure");
+          }),
+        );
+        assert.isTrue(fixture.runtimeSuspended());
+        assert.isTrue(fixture.nativeLive());
+        assert.equal((yield* app.readAgentSession("native"))?.snapshot.sessionId, durableId);
+        assert.equal(
+          (yield* Effect.result(app.setExecutionRecoveryRequired("native", false)))._tag,
+          "Failure",
+        );
+        assert.isTrue(fixture.nativeLive());
+        yield* app.withAgentExecutionHandoff(
+          "native",
+          Effect.gen(function* () {
+            const unrelated = {
+              ...nativeDestination,
+              cwd: "/unrelated",
+              workspaceRoots: ["/unrelated"],
+            };
+            assert.equal(
+              (yield* Effect.result(
+                app.withAgentExecutionLocation("native", unrelated, Effect.void),
+              ))._tag,
+              "Failure",
+            );
+            yield* app.withAgentExecutionLocation("native", nativeDestination, Effect.void);
+            yield* app.setExecutionRecoveryRequired("native", false);
+          }),
+        );
+        assert.isTrue(fixture.nativeLive());
+        assert.isFalse(fixture.runtimeSuspended());
+        assert.isFalse(fixture.executionRecoveryRequired());
+        assert.deepEqual(fixture.launchDirectories, [
+          ["/destination"],
+          ["/workspace"],
+          ["/destination"],
+          ["/destination"],
+        ]);
+      }),
+    ),
+);
+
+it.effect("startup recovery seals unopened native sessions without launching their runtime", () =>
+  Effect.scoped(
+    Effect.gen(function* () {
+      const fixture = yield* makeFixture;
+      const app = yield* fixture.application;
+      yield* app.nativeConversations.setExecutionRecoveryRequired("native", true);
+      assert.equal(fixture.openCalls(), 0);
+      assert.equal(
+        (yield* Effect.result(app.openAgentSession({ threadId: "native" })))._tag,
+        "Failure",
+      );
+      assert.equal(
+        (yield* Effect.result(
+          app.promptAgentSession({ threadId: "native", prompt: "unsafe source" }),
+        ))._tag,
+        "Failure",
+      );
+      yield* app.nativeConversations.withExecutionHandoff(
+        "native",
+        Effect.gen(function* () {
+          assert.isTrue(fixture.hooks().executionRecoveryRequired);
+          assert.isTrue(fixture.runtimeSuspended());
+          assert.deepEqual(fixture.runtimeLocations, []);
+          yield* app.nativeConversations.stopExecution("native");
+          yield* app.withAgentExecutionLocation(
+            "native",
+            nativeDestination,
+            fixture.commitExecutionLocation("/destination"),
+          );
+          yield* app.nativeConversations.setExecutionRecoveryRequired("native", false);
+        }),
+      );
+      assert.isFalse(fixture.runtimeSuspended());
+      assert.isTrue(fixture.nativeLive());
+    }),
+  ),
+);
+
+it.effect("internal recovery replaces a failed native runtime with the same deferred UUID", () =>
+  Effect.scoped(
+    Effect.gen(function* () {
+      const fixture = yield* makeFixture;
+      const app = yield* fixture.application;
+      yield* app.openAgentSession({ threadId: "native" });
+      yield* app.setExecutionRecoveryRequired("native", true);
+      yield* SubscriptionRef.update(fixture.snapshot, (snapshot) => ({
+        ...snapshot,
+        status: "failed" as const,
+        error: "Native transport stopped",
+      }));
+      yield* app.withAgentExecutionHandoff(
+        "native",
+        Effect.gen(function* () {
+          assert.equal(fixture.openCalls(), 2);
+          assert.isTrue(fixture.hooks().executionRecoveryRequired);
+          assert.isTrue(fixture.runtimeSuspended());
+          assert.equal((yield* app.readAgentSession("native"))?.snapshot.sessionId, durableId);
+          yield* app.withAgentExecutionLocation(
+            "native",
+            nativeDestination,
+            fixture.commitExecutionLocation("/destination"),
+          );
+          yield* app.setExecutionRecoveryRequired("native", false);
+        }),
+      );
+      assert.isTrue(fixture.nativeLive());
+      assert.isFalse(fixture.runtimeSuspended());
+      const accepted = yield* app.nativeConversations.submit({
+        threadId: "native",
+        operationId: "reopened-recovery",
+        prompt: "after reconnect",
+      });
+      yield* fixture.finishPrompt;
+      assert.equal(
+        (yield* app.nativeConversations.wait("native", accepted.turnId)).outcome,
+        "completed",
+      );
+    }),
+  ),
+);
+
+it.effect("native handoff rejects submissions and mutations through preparation and cleanup", () =>
+  Effect.scoped(
+    Effect.gen(function* () {
+      const fixture = yield* makeFixture;
+      const app = yield* fixture.application;
+      yield* app.openAgentSession({ threadId: "native" });
+      const prepared = yield* Deferred.make<void>();
+      const move = yield* Deferred.make<void>();
+      const committed = yield* Deferred.make<void>();
+      const clean = yield* Deferred.make<void>();
+      const input = {
+        threadId: "native",
+        prompt: "retained draft",
+        operationId: "retry-after-handoff",
+      };
+      const handoff = yield* app.nativeConversations
+        .withExecutionHandoff(
+          "native",
+          Effect.gen(function* () {
+            yield* app.nativeConversations.stopExecution("native");
+            yield* Deferred.succeed(prepared, undefined);
+            yield* Deferred.await(move);
+            yield* app.withAgentExecutionLocation(
+              "native",
+              nativeDestination,
+              fixture.commitExecutionLocation("/destination"),
+            );
+            yield* Deferred.succeed(committed, undefined);
+            yield* Deferred.await(clean);
+          }),
+        )
+        .pipe(Effect.forkChild);
+      yield* Deferred.await(prepared);
+      assert.isTrue(fixture.runtimeSuspended());
+      assert.equal((yield* app.readAgentSession("native"))?.snapshot.sessionId, durableId);
+      assert.isNotNull(yield* app.nativeConversations.read("native"));
+      const mutations: readonly Effect.Effect<unknown, AgentBackendApplicationError | Error>[] = [
+        app.promptAgentSession({ threadId: "native", prompt: "blocked draft" }),
+        app.nativeConversations.submit(input),
+        app.setAgentIntelligence({
+          threadId: "native",
+          selection: { model: "default", effort: "default" },
+        }),
+        app.setAgentMode({ threadId: "native", modeId: "plan" }),
+        app.setAgentConfigOption({ threadId: "native", configId: "effort", value: "high" }),
+        app.controlAgentSession({ threadId: "native", kind: "compact" }),
+        app.controlAgentSession({
+          threadId: "native",
+          kind: "steer",
+          prompt: "blocked steer",
+          clientUserMessageId: createUuidV7(),
+        }),
+        app.forkAgentSession({ threadId: "native", nativeMessageId: "message" }),
+        app.authenticateAgentSession({ threadId: "native", methodId: "reconnect" }),
+        app.closeAgentSession("native"),
+      ];
+      for (const mutation of mutations)
+        assert.equal((yield* Effect.result(mutation))._tag, "Failure");
+      assert.equal(fixture.promptCalls(), 0);
+      assert.equal(fixture.intelligenceCalls(), 0);
+      yield* Deferred.succeed(move, undefined);
+      yield* Deferred.await(committed);
+      assert.isTrue(fixture.runtimeSuspended());
+      assert.equal((yield* Effect.result(app.nativeConversations.submit(input)))._tag, "Failure");
+      yield* Deferred.succeed(clean, undefined);
+      yield* Fiber.join(handoff);
+      assert.isFalse(fixture.runtimeSuspended());
+      assert.equal(fixture.suspendedCalls(), 2);
+      assert.equal((yield* app.readAgentSession("native"))?.snapshot.sessionId, durableId);
+      const submission = yield* app.nativeConversations.submit(input);
+      assert.isString(submission.turnId);
+      assert.equal(fixture.promptCalls(), 1);
+      yield* fixture.finishPrompt;
+      assert.equal(
+        (yield* app.nativeConversations.wait("native", submission.turnId)).outcome,
+        "completed",
+      );
+    }),
+  ),
+);
+
+it.effect("cancelled native preparation releases admission and restores the source Query", () =>
+  Effect.scoped(
+    Effect.gen(function* () {
+      const fixture = yield* makeFixture;
+      const app = yield* fixture.application;
+      yield* app.openAgentSession({ threadId: "native" });
+      const prepared = yield* Deferred.make<void>();
+      const paused = yield* Deferred.make<void>();
+      const handoff = yield* app
+        .withAgentExecutionHandoff(
+          "native",
+          app.nativeConversations
+            .stopExecution("native")
+            .pipe(
+              Effect.andThen(Deferred.succeed(prepared, undefined)),
+              Effect.andThen(Deferred.await(paused)),
+            ),
+        )
+        .pipe(Effect.forkChild);
+      yield* Deferred.await(prepared);
+      assert.equal(
+        (yield* Effect.result(app.withAgentExecutionHandoff("native", Effect.void)))._tag,
+        "Failure",
+      );
+      yield* Fiber.interrupt(handoff);
+      assert.isFalse(fixture.runtimeSuspended());
+      assert.deepEqual(fixture.runtimeLocations, ["/workspace"]);
+      const accepted = yield* app.nativeConversations.submit({
+        threadId: "native",
+        operationId: "after-cancel",
+        prompt: "continue source",
+      });
+      yield* fixture.finishPrompt;
+      assert.equal(
+        (yield* app.nativeConversations.wait("native", accepted.turnId)).outcome,
+        "completed",
+      );
+    }),
+  ),
+);
+
+it.effect(
+  "native execution commits the exact prepared location while external reads stay fenced",
+  () =>
+    Effect.scoped(
+      Effect.gen(function* () {
+        const fixture = yield* makeFixture;
+        const app = yield* fixture.application;
+        yield* app.openAgentSession({ threadId: "native" });
+        const result = yield* app.withAgentExecutionLocation(
+          "native",
+          nativeDestination,
+          Effect.gen(function* () {
+            assert.deepEqual(fixture.runtimeLocations, ["/destination"]);
+            assert.deepEqual(fixture.launchDirectories, [["/destination"]]);
+            assert.equal((yield* Effect.result(app.readAgentSession("native")))._tag, "Failure");
+            assert.isTrue(fixture.nativeLive());
+            yield* fixture.commitExecutionLocation("/destination");
+            return "committed";
+          }),
+        );
+        assert.equal(result, "committed");
+        assert.equal((yield* app.readAgentSession("native"))?.snapshot.sessionId, durableId);
+        assert.equal(fixture.openCalls(), 1);
+        assert.equal(fixture.sentCalls(), 0);
+        assert.isTrue(fixture.nativeLive());
+      }),
+    ),
+);
+
+it.effect("native relocation rejects unrelated Core location and restores source Query", () =>
+  Effect.scoped(
+    Effect.gen(function* () {
+      const fixture = yield* makeFixture;
+      const app = yield* fixture.application;
+      yield* app.openAgentSession({ threadId: "native" });
+      assert.equal(
+        (yield* Effect.result(
+          app.withAgentExecutionLocation("native", nativeDestination, Effect.void),
+        ))._tag,
+        "Failure",
+      );
+      assert.deepEqual(fixture.runtimeLocations, ["/destination", "/workspace"]);
+      assert.deepEqual(fixture.launchDirectories, [["/destination"], ["/workspace"]]);
+      assert.equal((yield* app.readAgentSession("native"))?.snapshot.sessionId, durableId);
+      assert.isTrue(fixture.nativeLive());
+      assert.equal(fixture.sentCalls(), 0);
+    }),
+  ),
+);
+
+it.effect(
+  "native relocation rejects changed Project and remote destinations before runtime switch",
+  () =>
+    Effect.scoped(
+      Effect.gen(function* () {
+        const fixture = yield* makeFixture;
+        const app = yield* fixture.application;
+        yield* app.openAgentSession({ threadId: "native" });
+        for (const destination of [
+          { ...nativeDestination, projectId: "other-project" },
+          { ...nativeDestination, hostId: "remote" },
+          { ...nativeDestination, cwd: "/workspace", workspaceRoots: ["/workspace", "/unrelated"] },
+        ])
+          assert.equal(
+            (yield* Effect.result(
+              app.withAgentExecutionLocation("native", destination, Effect.void),
+            ))._tag,
+            "Failure",
+          );
+        assert.deepEqual(fixture.runtimeLocations, []);
+        assert.isTrue(fixture.nativeLive());
+      }),
+    ),
+);
+
+it.effect(
+  "native profile changes block resume and close an already opened conversation before execution",
+  () =>
+    Effect.scoped(
+      Effect.gen(function* () {
+        const unopened = yield* makeFixture;
+        const unopenedApp = yield* unopened.application;
+        unopened.changeNativeHome();
+        yield* Effect.flip(unopenedApp.openAgentSession({ threadId: "native" }));
+        assert.equal(unopened.openCalls(), 0);
+        const opened = yield* makeFixture;
+        const app = yield* opened.application;
+        yield* app.openAgentSession({ threadId: "native" });
+        opened.changeNativeHome();
+        yield* Effect.flip(app.promptAgentSession({ threadId: "native", prompt: "continue" }));
+        assert.equal(opened.promptCalls(), 0);
+        assert.isFalse(opened.nativeLive());
+      }),
+    ),
+);
 
 it.effect("native tool output is fenced before and after its exact history read", () =>
   Effect.scoped(
@@ -1151,9 +1693,14 @@ const makeForkFixture = (projectless = false) =>
     const threads = new Map([["source", source]]);
     const roots = new Map([["source", ["/managed/work", "/extra", "/repo/.git"]]]);
     const identities = new Map([["source", "source-native"]]);
+    const nativeHomes = new Map([["source", "/native-home"]]);
     const handles = new Map<string, AgentSessionHandle>();
     const published: ProjectSessionThreadLinkInput[] = [];
+    const forkBindings: { threadId: string; backendSessionId: string; nativeHome?: string }[] = [];
+    const opened: string[] = [];
     let createdSessions = 0;
+    let currentNativeHome = "/native-home";
+    let changeProfileDuringAdmission = false;
     let onFork: Effect.Effect<void> = Effect.void;
     const newHandle = (threadId: string, sessionId: string) =>
       Effect.gen(function* () {
@@ -1178,12 +1725,23 @@ const makeForkFixture = (projectless = false) =>
         return handle;
       });
     const app = yield* makeApplication.pipe(
+      Effect.provideService(CodexGitProbe, {
+        readPath: () => Effect.succeed("/tmp/nodex-missing-worktree-environment.json"),
+        isNonGitWorkspace: () => Effect.succeed(false),
+        isNonGitWorkspaceOnHost: () => Effect.succeed(false),
+      }),
       Effect.provideService(ClaudeSessionManager, {
+        nativeHome: () => Effect.sync(() => currentNativeHome),
+        nativeCatalog: () => Effect.die("No catalog request"),
+        nativeSessionInfo: () => Effect.die("No metadata request"),
         get: (threadId) => Effect.succeed(handles.get(threadId) ?? null),
         open: (input) =>
-          handles.has(input.threadId)
-            ? Effect.succeed(handles.get(input.threadId)!)
-            : newHandle(input.threadId, input.sessionId!),
+          Effect.gen(function* () {
+            const existing = handles.get(input.threadId);
+            if (existing) return existing;
+            opened.push(input.threadId);
+            return yield* newHandle(input.threadId, input.sessionId!);
+          }),
         close: (threadId) =>
           Effect.sync(() => {
             handles.delete(threadId);
@@ -1242,6 +1800,7 @@ const makeForkFixture = (projectless = false) =>
                   threadId,
                   backendBinding: binding,
                   backendSessionId: identities.get(threadId),
+                  nativeHome: nativeHomes.get(threadId),
                   nativeState: null,
                   updatedAt: 1,
                 }
@@ -1250,6 +1809,7 @@ const makeForkFixture = (projectless = false) =>
         createProjectSession: () =>
           Effect.sync(() => {
             createdSessions += 1;
+            if (changeProfileDuringAdmission) currentNativeHome = "/changed-native-home";
             return {};
           }),
         upsertProjectSessionThreadLink: (input: ProjectSessionThreadLinkInput) =>
@@ -1270,9 +1830,15 @@ const makeForkFixture = (projectless = false) =>
             return thread;
           }),
         updateThread: () => Effect.succeed({}),
-        bindThreadBackendSession: (input: { threadId: string; backendSessionId: string }) =>
+        bindThreadBackendSession: (input: {
+          threadId: string;
+          backendSessionId: string;
+          nativeHome?: string;
+        }) =>
           Effect.sync(() => {
             identities.set(input.threadId, input.backendSessionId);
+            if (input.nativeHome) nativeHomes.set(input.threadId, input.nativeHome);
+            if (input.threadId !== "source") forkBindings.push(input);
           }),
       } as never),
     );
@@ -1280,7 +1846,12 @@ const makeForkFixture = (projectless = false) =>
     return {
       app,
       published,
+      forkBindings,
+      opened,
       createdSessions: () => createdSessions,
+      changeProfileDuringAdmission: () => {
+        changeProfileDuringAdmission = true;
+      },
       driftAfterFork: (kind: "identity" | "roots") => {
         onFork = Effect.sync(() => {
           if (kind === "identity") identities.set("source", "rebound-native");
@@ -1317,6 +1888,25 @@ it.effect(
         }
       }),
     ),
+);
+
+it.effect("native forks preserve their source home when the profile changes during admission", () =>
+  Effect.scoped(
+    Effect.gen(function* () {
+      const fixture = yield* makeForkFixture();
+      fixture.changeProfileDuringAdmission();
+      const error = yield* Effect.flip(
+        fixture.app.forkAgentSession({ threadId: "source", nativeMessageId: "native-message" }),
+      );
+      assert.equal(error.operation, "session.profile");
+      assert.lengthOf(fixture.forkBindings, 1);
+      assert.deepInclude(fixture.forkBindings[0]!, {
+        backendSessionId: "fork-native",
+        nativeHome: "/native-home",
+      });
+      assert.deepEqual(fixture.opened, ["source"]);
+    }),
+  ),
 );
 
 it.effect(

@@ -19,6 +19,8 @@ export const CODEX_THREAD_HANDOFF_PHASES = [
   "completed",
   "completed-with-warning",
   "rolling-back",
+  "cleaning-rolled-back",
+  "recovery-required",
   "failed",
 ] as const;
 
@@ -82,6 +84,7 @@ export interface CodexThreadHandoffJournalEntry {
   readonly phase: CodexThreadHandoffPhase;
   readonly source: CodexThreadExecutionLocation;
   readonly requestedDestinationHostId: string | null;
+  readonly allocatedDestination?: { readonly hostId: string; readonly worktreeGitRoot: string };
   readonly destination: CodexThreadExecutionLocation | null;
   readonly prepared: CodexThreadHandoffPreparedArtifact | null;
   readonly runtimeSwitched: boolean;
@@ -201,6 +204,10 @@ const entrySchema = z
     phase: z.enum(CODEX_THREAD_HANDOFF_PHASES),
     source: locationSchema,
     requestedDestinationHostId: z.string().min(1).max(512).nullable().default(null),
+    allocatedDestination: z
+      .object({ hostId: z.string().min(1).max(512), worktreeGitRoot: absolutePath })
+      .strict()
+      .optional(),
     destination: locationSchema.nullable(),
     prepared: preparedSchema.nullable(),
     runtimeSwitched: z.boolean(),

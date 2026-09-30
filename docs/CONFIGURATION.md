@@ -43,6 +43,22 @@ saved changes apply after restarting Nodex. Switching directories requires all l
 already associated with this Profile to remain readable in the destination. The check uses the
 official app-server and does not run a model request. It rejects a switch that would strand chats.
 
+**Account directory** selects an independent native login while retaining the Codex home's
+configuration and conversation history. It is stored as `server.codex_account_home`; clearing it
+uses the native home account. Sign into that directory using
+`CODEX_HOME=/path/to/account codex -c 'cli_auth_credentials_store="file"' login`.
+Account selection applies after restart and
+preserves existing native conversation IDs. Nodex supports one active local Codex account;
+independent account directories are available on macOS and Linux. Authentication and account model
+caches remain private to the selected directory; source credentials are never copied. An empty
+account directory can also be signed into from Nodex after restart.
+
+To continue the same shared history from an external terminal with that account, use
+`CODEX_HOME=/path/to/account CODEX_SQLITE_HOME=/path/to/shared-home codex -c 'cli_auth_credentials_store="file"'`.
+Nodex supplies that SQLite fallback when none is inherited; an explicit native `sqlite_home`
+configuration takes precedence. CLI name indexes remain local to each account; native conversation
+IDs and paginated history remain shared.
+
 Profiles with history in their previous `${NODEX_HOME}/agent` directory retain that directory as
 an explicit setting. Nodex does not move native history between homes or copy credentials.
 New Profiles reuse the native home by default. Development launchers explicitly select their own
@@ -55,9 +71,9 @@ leaves native configuration bytes intact. Permission presets remain Project/Prof
 only an explicit native configuration edit updates Codex settings. Nodex desktop plugins use a
 distinct namespace per Profile and are enabled only in its chats.
 
-Sharing a native home does not add all native conversations to the Nodex sidebar. **Import from
-Codex** explicitly associates selected root conversations in the active home with this Profile,
-preserving their native IDs. Supported imports from another directory create independent chats;
+Sharing a native home does not add all native conversations to the Nodex sidebar. **Settings >
+Conversations** explicitly associates selected root conversations in the active home with this Profile,
+preserving their native IDs and chosen Project. Supported copies from another directory create independent chats;
 unsupported native history reports a failure and leaves the source intact. Import receipts remain
 in the Nodex Profile.
 
@@ -69,6 +85,10 @@ not include the installation. Add separate profiles for independent accounts or 
 absolute or `~/` config directory sets `CLAUDE_CONFIG_DIR` for
 that instance without changing HOME or copying credentials. Run `claude auth login` with the same
 config directory to sign in. Restart the task connection after changing executable or account paths.
+
+Use **Settings > Conversations** to connect existing Claude Code conversations from the selected
+profile to a Project or projectless chat. The native UUID and history directory remain bound to the
+chat across restarts; changing the profile's directory cannot redirect that chat to another history.
 
 The official Claude Agent SDK loads user, project, and local configuration, including instructions,
 skills, hooks, and MCP servers. Nodex stores instance identity, display name, executable,

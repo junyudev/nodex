@@ -201,6 +201,45 @@ test("native task details select read-only observations and stop the exact live 
   });
 });
 
+test("opening a specific task selects its observation and retargets an already open dialog", async () => {
+  const source = fixture();
+  function Dialog({ taskId }: { readonly taskId: string }) {
+    const parentHandle = useScopeHandle(ThreadScope);
+    const [open, setOpen] = useState(false);
+    if (!open)
+      return (
+        <button type="button" onClick={() => setOpen(true)}>
+          Open selected task
+        </button>
+      );
+    return (
+      <ConversationTaskDialog
+        runtime={source.runtime}
+        parentThreadId="parent"
+        parentThreadScope={parentHandle}
+        initialTaskId={taskId}
+        renderDetail={(child) => <output aria-label="Task detail">{child.threadId}</output>}
+        onClose={() => {}}
+      />
+    );
+  }
+  const view = renderWithMaitai(<Dialog taskId="agent-task:parent:review" />);
+  await act(async () => {
+    fireEvent.click(view.getByRole("button", { name: "Open selected task" }));
+    await Promise.resolve();
+  });
+  expect(view.getByRole("button", { name: "Review, Completed" }).getAttribute("aria-pressed")).toBe(
+    "true",
+  );
+  expect(view.getByLabelText("Task detail").textContent).toBe("agent-task:parent:review");
+  view.rerender(<Dialog taskId="agent-task:parent:watch" />);
+  expect(
+    view.getByRole("button", { name: "Watch build, Watching" }).getAttribute("aria-pressed"),
+  ).toBe("true");
+  expect(view.getByLabelText("Task detail").textContent).toBe("agent-task:parent:watch");
+  expect(source.resume).not.toHaveBeenCalled();
+});
+
 test("the registered task dialog survives its trigger unmount and Escape dismisses it", async () => {
   const source = fixture();
   let ownerPath: string | null = null;

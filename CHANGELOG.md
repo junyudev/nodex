@@ -6,14 +6,14 @@ All notable changes to this project will be documented in this file.
 
 ### Added
 
-- Local tasks can use Claude Code with its existing login, configuration, skills and tools in the shared conversation UI, including images, native model and effort choices, approvals, questions, task details, steering, compaction, forks and session recovery. Separate profiles support environment variables, encrypted tokens and custom models. Authorized application tools and scheduled tasks use the selected native profile.
+- Local tasks can use Claude Code with its existing login, configuration, skills and tools in the shared conversation UI, including images, native model and effort choices, approvals, questions, task details, steering, compaction, forks and session recovery. Chats can start in the Project folder or a managed worktree with the selected starting state and setup environment, then move between them while retaining the same native conversation and uncommitted changes. Existing CLI conversations can be connected to a Project or projectless chat and continued with their native history. Separate profiles support environment variables, encrypted tokens and custom models. Authorized application tools and scheduled tasks use the selected native profile.
 
 - Dictation streams into your draft by default, preserves edits when the cursor moves, and offers captured speech for recovery after an interruption.
 - Voice settings can manage an account dictionary when available.
 
 ### Changed
 
-- New Profiles reuse native Codex login, settings and skills by default, with an explicit directory override, safe directory switching, selected native chat attachment, and desktop tools scoped to each Nodex Profile.
+- New Profiles reuse native Codex login, settings and skills by default, with safe directory switching, a shared native conversation chooser, and desktop tools scoped to each Nodex Profile. An independent account directory can change the active login after restart while retaining the same conversation history.
 - Nodex is now distributed under the Apache License 2.0.
 
 ### Fixed

@@ -100,6 +100,55 @@ export function useSelectedWorkspaceSearchContext() {
   return useSyncExternalStore(subscribe, getSnapshot, getSnapshot);
 }
 
+export interface ConversationSkillsReloadControl {
+  readonly provider: "codex" | "claude";
+  readonly reload: () => Promise<void>;
+}
+
+const skillsReloadControlsAtom = scopedAtom<
+  readonly {
+    readonly owner: symbol;
+    readonly control: ConversationSkillsReloadControl | null;
+  }[]
+>(RouteScope, [], { debugLabel: "conversation-skills-reload-controls" });
+
+/** Mounted conversation owners publish their real discovery action for the selected route. */
+export function ConversationSkillsReloadRegistrar({
+  control,
+}: {
+  readonly control: ConversationSkillsReloadControl | null;
+}) {
+  const owner = useRef(Symbol("conversation-skills-reload"));
+  const setControls = useSetScopedAtom(skillsReloadControlsAtom);
+  useLayoutEffect(() => {
+    const identity = owner.current;
+    return () => setControls((previous) => previous.filter((entry) => entry.owner !== identity));
+  }, [setControls]);
+  useLayoutEffect(() => {
+    const identity = owner.current;
+    setControls((previous) => {
+      const next = { owner: identity, control };
+      if (!previous.some((entry) => entry.owner === identity)) return [...previous, next];
+      return previous.map((entry) => (entry.owner === identity ? next : entry));
+    });
+  }, [control, setControls]);
+  return null;
+}
+
+export function useSelectedConversationSkillsReloadControl() {
+  const selectedRoute = useScopedAtomValue(selectedRouteScopeHandleAtom);
+  const subscribe = useCallback(
+    (listener: () => void) =>
+      selectedRoute?.sub(skillsReloadControlsAtom, listener) ?? (() => undefined),
+    [selectedRoute],
+  );
+  const getSnapshot = useCallback(
+    () => selectedRoute?.get(skillsReloadControlsAtom).at(-1)?.control ?? null,
+    [selectedRoute],
+  );
+  return useSyncExternalStore(subscribe, getSnapshot, getSnapshot);
+}
+
 export class IdentityPromotionConflict extends Error {
   constructor(readonly stableKeys: readonly ThreadScopeStableKey[]) {
     super(`Thread scope identity promotion conflict: ${stableKeys.join(" versus ")}`);

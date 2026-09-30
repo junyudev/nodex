@@ -440,6 +440,11 @@ const makeDirectoryHarness = Effect.fn("SubagentScale.makeDirectoryHarness")(fun
       ...entities,
       entity: entities.acquire,
       runCommand: (_id, operation) => operation,
+      assertExecutionAvailable: () => Effect.void,
+      admitExecution: (_threadId, operation) => operation,
+      withExecutionHandoff: (_threadId, operation) => operation,
+      executionEpoch: () => Effect.succeed(0),
+      setRecoveryRequired: () => Effect.void,
       retire: () => Effect.void,
     }),
     Effect.provideService(

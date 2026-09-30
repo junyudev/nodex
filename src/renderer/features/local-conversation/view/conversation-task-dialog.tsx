@@ -15,16 +15,27 @@ export interface ConversationTaskDialogProps {
   readonly runtime: ConversationRuntime;
   readonly parentThreadId: string;
   readonly parentThreadScope: ScopeHandle;
+  readonly initialTaskId?: string;
   readonly renderDetail: (conversation: CodexConversationSnapshot) => ReactNode;
   readonly stopTask?: (taskId: string) => Promise<void>;
   readonly onClose: () => void;
 }
 
 /** Task details observe the native session; selection cannot attach or execute a Thread. */
-export function ConversationTaskDialog({
+export function ConversationTaskDialog(props: ConversationTaskDialogProps) {
+  return (
+    <ConversationTaskDialogContent
+      key={`${props.parentThreadId}:${props.initialTaskId ?? "all"}`}
+      {...props}
+    />
+  );
+}
+
+function ConversationTaskDialogContent({
   runtime,
   parentThreadId,
   parentThreadScope,
+  initialTaskId,
   renderDetail,
   stopTask,
   onClose,
@@ -35,7 +46,7 @@ export function ConversationTaskDialog({
   );
   const readParent = useCallback(() => runtime.read(parentThreadId), [runtime, parentThreadId]);
   useSyncExternalStore(subscribe, readParent, readParent);
-  const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [selectedId, setSelectedId] = useState<string | null>(initialTaskId ?? null);
   const [stopping, setStopping] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const tasks = runtime.children(parentThreadId);

@@ -1,3 +1,8 @@
+import { createUuidV7 } from "../../shared/uuid-v7";
+import type {
+  NativeSessionAttachResult,
+  NativeSessionBackendKind,
+} from "../../shared/native-session-catalog";
 import * as Context from "effect/Context";
 import * as Effect from "effect/Effect";
 import * as Fiber from "effect/Fiber";
@@ -150,7 +155,14 @@ export type {
 
 export class ProjectWorkspaceError extends Schema.TaggedError<ProjectWorkspaceError>()(
   "ProjectWorkspaceError",
-  { operation: Schema.String, cause: Schema.Defect() },
+  {
+    operation: Schema.String,
+    cause: Schema.Defect(),
+    /** An execution-location owner must retain resources after a committed or uncertain admission. */
+    threadAdmissionOutcome: Schema.optional(
+      Schema.Literals(["rejected", "uncertain", "committed"]),
+    ),
+  },
 ) {}
 
 type ProjectWorkspaceEffect<A> = Effect.Effect<A, ProjectWorkspaceError>;
@@ -316,6 +328,29 @@ export interface ProjectWorkspaceService {
   readonly getThread: (
     threadId: string,
   ) => ProjectWorkspaceEffect<DesktopProjectWorkspaceThread | null>;
+  readonly readNativeSessionBindings: (input: {
+    readonly backendKind: NativeSessionBackendKind;
+    readonly nativeHome: string;
+    readonly nativeSessionIds: readonly string[];
+  }) => ProjectWorkspaceEffect<
+    readonly {
+      readonly nativeSessionId: string;
+      readonly threadId: string;
+      readonly sessionId: string | null;
+      readonly projectId: string | null;
+    }[]
+  >;
+  readonly attachNativeSession: (input: {
+    readonly backendKind: NativeSessionBackendKind;
+    readonly instanceConfigId?: string;
+    readonly nativeSessionId: string;
+    readonly nativeHome: string;
+    readonly projectId: string | null;
+    readonly title: string;
+    readonly cwd: string;
+    readonly createdAt: number;
+    readonly updatedAt: number;
+  }) => ProjectWorkspaceEffect<NativeSessionAttachResult>;
   readonly readThreadBackendSession: (
     threadId: string,
   ) => ProjectWorkspaceEffect<DesktopProjectWorkspaceThreadBackendSession | null>;
@@ -323,6 +358,7 @@ export interface ProjectWorkspaceService {
     readonly threadId: string;
     readonly backendBinding: DesktopProjectWorkspaceThreadBackendSession["backendBinding"];
     readonly backendSessionId: string;
+    readonly nativeHome?: string;
     readonly expectedBackendSessionId?: string;
     readonly nativeState?: NonNullable<DesktopProjectWorkspaceThreadBackendSession["nativeState"]>;
   }) => ProjectWorkspaceEffect<DesktopProjectWorkspaceThreadBackendSession>;
@@ -595,6 +631,7 @@ export const make: Effect.Effect<ProjectWorkspaceService, never, CoreModules | S
         readonly threadId: string;
         readonly backendBinding: DesktopProjectWorkspaceThreadBackendSession["backendBinding"];
         readonly backendSessionId: string;
+        readonly nativeHome?: string;
         readonly expectedBackendSessionId?: string;
         readonly nativeState?: NonNullable<
           DesktopProjectWorkspaceThreadBackendSession["nativeState"]
@@ -1610,115 +1647,140 @@ export const make: Effect.Effect<ProjectWorkspaceService, never, CoreModules | S
       markProjectSessionUnread,
       upsertProjectSessionThreadLink: Effect.fn("ProjectWorkspace.upsertProjectSessionThreadLink")(
         function* (input) {
-          const parsed = yield* evaluate("session.thread.link", () =>
-            ProjectSessionThreadLinkInputSchema.parse(input),
-          );
-          const session = yield* readSession(parsed.sessionId);
-          if (!session) {
-            return yield* projectWorkspaceError(
-              "session.thread.link",
-              new Error(`Project session not found: ${parsed.sessionId}`),
+          let outcome: "rejected" | "uncertain" | "committed" = "rejected";
+          return yield* Effect.gen(function* () {
+            const parsed = yield* evaluate("session.thread.link", () =>
+              ProjectSessionThreadLinkInputSchema.parse(input),
             );
-          }
-          if (session.projectId !== parsed.projectId) {
-            return yield* projectWorkspaceError(
-              "session.thread.link",
-              new Error("Thread project must match the owning session project"),
+            const session = yield* readSession(parsed.sessionId);
+            if (!session) {
+              return yield* projectWorkspaceError(
+                "session.thread.link",
+                new Error(`Project session not found: ${parsed.sessionId}`),
+              );
+            }
+            if (session.projectId !== parsed.projectId) {
+              return yield* projectWorkspaceError(
+                "session.thread.link",
+                new Error("Thread project must match the owning session project"),
+              );
+            }
+            const existing = yield* readCoreThread(parsed.threadId);
+            const hasForkedFromId = Object.prototype.hasOwnProperty.call(input, "forkedFromId");
+            const hasThreadSource = Object.prototype.hasOwnProperty.call(input, "threadSource");
+            const hasServiceName = Object.prototype.hasOwnProperty.call(input, "serviceName");
+            const hasAgentNickname = Object.prototype.hasOwnProperty.call(input, "agentNickname");
+            const hasAgentRole = Object.prototype.hasOwnProperty.call(input, "agentRole");
+            const hasAgentPath = Object.prototype.hasOwnProperty.call(input, "agentPath");
+            const hasManagedWorktreePath = Object.prototype.hasOwnProperty.call(
+              input,
+              "managedWorktreePath",
             );
-          }
-          const existing = yield* readCoreThread(parsed.threadId);
-          const hasForkedFromId = Object.prototype.hasOwnProperty.call(input, "forkedFromId");
-          const hasThreadSource = Object.prototype.hasOwnProperty.call(input, "threadSource");
-          const hasServiceName = Object.prototype.hasOwnProperty.call(input, "serviceName");
-          const hasAgentNickname = Object.prototype.hasOwnProperty.call(input, "agentNickname");
-          const hasAgentRole = Object.prototype.hasOwnProperty.call(input, "agentRole");
-          const hasAgentPath = Object.prototype.hasOwnProperty.call(input, "agentPath");
-          const hasManagedWorktreePath = Object.prototype.hasOwnProperty.call(
-            input,
-            "managedWorktreePath",
-          );
-          const hasExecutionProfile = Object.prototype.hasOwnProperty.call(
-            input,
-            "executionProfile",
-          );
-          const hasBackendBinding = Object.prototype.hasOwnProperty.call(input, "backendBinding");
-          const hasExecutionHostId = Object.prototype.hasOwnProperty.call(input, "executionHostId");
-          yield* apply("session.thread.link", {
-            kind: "mutate_session",
-            session_id: parsed.sessionId,
-            intent: {
-              kind: "link_thread",
-              thread_id: parsed.threadId,
-              expected_project_id: parsed.projectId,
-              thread_patch: {
-                project_id: parsed.projectId,
-                ...(hasForkedFromId ? { forked_from_id: parsed.forkedFromId ?? null } : {}),
-                ...(parsed.parentThreadId ? { parent_thread_id: parsed.parentThreadId } : {}),
-                ...(hasThreadSource ? { thread_source: parsed.threadSource ?? null } : {}),
-                ...(hasServiceName ? { service_name: parsed.serviceName ?? null } : {}),
-                ...(hasAgentNickname ? { agent_nickname: parsed.agentNickname ?? null } : {}),
-                ...(hasAgentRole ? { agent_role: parsed.agentRole ?? null } : {}),
-                ...(hasAgentPath ? { agent_path: parsed.agentPath ?? null } : {}),
-                ...(parsed.threadName != null ? { thread_name: parsed.threadName } : {}),
-                thread_preview: parsed.threadPreview ?? existing?.thread_preview ?? "",
-                ...(hasExecutionProfile
-                  ? projectWorkspaceExecutionProfilePatchToCore(
-                      parsed.executionProfile as CodexExecutionProfile | null,
-                    )
-                  : {}),
-                ...(hasBackendBinding && parsed.backendBinding
-                  ? { backend_binding: projectAgentBackendBindingToCore(parsed.backendBinding) }
-                  : {}),
-                ...(parsed.runtimeWorkspaceRoots === undefined
-                  ? {
-                      ...(hasExecutionHostId ? { execution_host_id: parsed.executionHostId } : {}),
-                      ...(parsed.cwd != null ? { cwd: parsed.cwd } : {}),
-                      ...(hasManagedWorktreePath
-                        ? { managed_worktree_path: parsed.managedWorktreePath ?? null }
-                        : {}),
-                      ...(parsed.projectlessOutputDirectory != null
-                        ? { projectless_output_directory: parsed.projectlessOutputDirectory }
-                        : {}),
-                      ...(parsed.projectlessWorkspaceBrowserRoot != null
-                        ? {
-                            projectless_workspace_browser_root:
-                              parsed.projectlessWorkspaceBrowserRoot,
-                          }
-                        : {}),
-                    }
-                  : {}),
-                status: {
-                  status_type: parsed.statusType ?? "notLoaded",
-                  active_flags: parsed.statusActiveFlags ?? [],
+            const hasExecutionProfile = Object.prototype.hasOwnProperty.call(
+              input,
+              "executionProfile",
+            );
+            const hasBackendBinding = Object.prototype.hasOwnProperty.call(input, "backendBinding");
+            const hasExecutionHostId = Object.prototype.hasOwnProperty.call(
+              input,
+              "executionHostId",
+            );
+            outcome = "uncertain";
+            yield* apply("session.thread.link", {
+              kind: "mutate_session",
+              session_id: parsed.sessionId,
+              intent: {
+                kind: "link_thread",
+                thread_id: parsed.threadId,
+                expected_project_id: parsed.projectId,
+                thread_patch: {
+                  project_id: parsed.projectId,
+                  ...(hasForkedFromId ? { forked_from_id: parsed.forkedFromId ?? null } : {}),
+                  ...(parsed.parentThreadId ? { parent_thread_id: parsed.parentThreadId } : {}),
+                  ...(hasThreadSource ? { thread_source: parsed.threadSource ?? null } : {}),
+                  ...(hasServiceName ? { service_name: parsed.serviceName ?? null } : {}),
+                  ...(hasAgentNickname ? { agent_nickname: parsed.agentNickname ?? null } : {}),
+                  ...(hasAgentRole ? { agent_role: parsed.agentRole ?? null } : {}),
+                  ...(hasAgentPath ? { agent_path: parsed.agentPath ?? null } : {}),
+                  ...(parsed.threadName != null ? { thread_name: parsed.threadName } : {}),
+                  thread_preview: parsed.threadPreview ?? existing?.thread_preview ?? "",
+                  ...(hasExecutionProfile
+                    ? projectWorkspaceExecutionProfilePatchToCore(
+                        parsed.executionProfile as CodexExecutionProfile | null,
+                      )
+                    : {}),
+                  ...(hasBackendBinding && parsed.backendBinding
+                    ? { backend_binding: projectAgentBackendBindingToCore(parsed.backendBinding) }
+                    : {}),
+                  ...(parsed.runtimeWorkspaceRoots === undefined
+                    ? {
+                        ...(hasExecutionHostId
+                          ? { execution_host_id: parsed.executionHostId }
+                          : {}),
+                        ...(parsed.cwd != null ? { cwd: parsed.cwd } : {}),
+                        ...(hasManagedWorktreePath
+                          ? { managed_worktree_path: parsed.managedWorktreePath ?? null }
+                          : {}),
+                        ...(parsed.projectlessOutputDirectory != null
+                          ? { projectless_output_directory: parsed.projectlessOutputDirectory }
+                          : {}),
+                        ...(parsed.projectlessWorkspaceBrowserRoot != null
+                          ? {
+                              projectless_workspace_browser_root:
+                                parsed.projectlessWorkspaceBrowserRoot,
+                            }
+                          : {}),
+                      }
+                    : {}),
+                  status: {
+                    status_type: parsed.statusType ?? "notLoaded",
+                    active_flags: parsed.statusActiveFlags ?? [],
+                  },
+                  archived: parsed.archived ?? existing?.archived ?? false,
+                  ...(!existing && parsed.createdAt !== undefined
+                    ? { created_at: parsed.createdAt }
+                    : {}),
+                  ...(parsed.updatedAt !== undefined ? { updated_at: parsed.updatedAt } : {}),
+                  ...(parsed.recencyAt !== undefined ? { recency_at: parsed.recencyAt } : {}),
                 },
-                archived: parsed.archived ?? existing?.archived ?? false,
-                ...(!existing && parsed.createdAt !== undefined
-                  ? { created_at: parsed.createdAt }
-                  : {}),
-                ...(parsed.updatedAt !== undefined ? { updated_at: parsed.updatedAt } : {}),
-                ...(parsed.recencyAt !== undefined ? { recency_at: parsed.recencyAt } : {}),
+                ...(parsed.runtimeWorkspaceRoots === undefined
+                  ? {}
+                  : {
+                      execution_location: {
+                        execution_host_id:
+                          parsed.executionHostId ?? existing?.execution_host_id ?? "local",
+                        cwd: parsed.cwd ?? null,
+                        managed_worktree_path: parsed.managedWorktreePath ?? null,
+                        runtime_workspace_roots: [...parsed.runtimeWorkspaceRoots],
+                        projectless_output_directory: parsed.projectlessOutputDirectory ?? null,
+                        projectless_workspace_browser_root:
+                          parsed.projectlessWorkspaceBrowserRoot ?? null,
+                      },
+                    }),
               },
-              ...(parsed.runtimeWorkspaceRoots === undefined
-                ? {}
-                : {
-                    execution_location: {
-                      execution_host_id:
-                        parsed.executionHostId ?? existing?.execution_host_id ?? "local",
-                      cwd: parsed.cwd ?? null,
-                      managed_worktree_path: parsed.managedWorktreePath ?? null,
-                      runtime_workspace_roots: [...parsed.runtimeWorkspaceRoots],
-                      projectless_output_directory: parsed.projectlessOutputDirectory ?? null,
-                      projectless_workspace_browser_root:
-                        parsed.projectlessWorkspaceBrowserRoot ?? null,
-                    },
-                  }),
-            },
-          });
-          const linked = yield* readSession(parsed.sessionId);
-          if (linked?.thread) return linked.thread;
-          return yield* projectWorkspaceError(
-            "session.thread.link",
-            new Error("Unable to attach project session thread"),
+            }).pipe(
+              Effect.tapError((cause) =>
+                Effect.sync(() => {
+                  if (coreCause(cause) instanceof CoreModuleResponseError) outcome = "rejected";
+                }),
+              ),
+            );
+            outcome = "committed";
+            const linked = yield* readSession(parsed.sessionId);
+            if (linked?.thread?.threadId === parsed.threadId) return linked.thread;
+            return yield* projectWorkspaceError(
+              "session.thread.link",
+              new Error("Unable to attach project session thread"),
+            );
+          }).pipe(
+            Effect.mapError(
+              (cause) =>
+                new ProjectWorkspaceError({
+                  operation: "session.thread.link",
+                  cause,
+                  threadAdmissionOutcome: outcome,
+                }),
+            ),
           );
         },
       ),
@@ -1735,6 +1797,64 @@ export const make: Effect.Effect<ProjectWorkspaceService, never, CoreModules | S
         },
       ),
       getThread,
+      readNativeSessionBindings: Effect.fn("ProjectWorkspace.readNativeSessionBindings")(
+        function* (input) {
+          const snapshot = yield* read("native.sessions.bindings", {
+            kind: "native_session_bindings",
+            backend_kind: input.backendKind,
+            native_home: input.nativeHome,
+            native_session_ids: [...input.nativeSessionIds],
+          });
+          return expectVariant(snapshot, "native_session_bindings").bindings.map((binding) => ({
+            nativeSessionId: binding.native_session_id,
+            threadId: binding.thread_id,
+            sessionId: binding.session_id ?? null,
+            projectId: binding.project_id ?? null,
+          }));
+        },
+      ),
+      attachNativeSession: Effect.fn("ProjectWorkspace.attachNativeSession")(function* (input) {
+        if (input.backendKind === "claude" && !input.instanceConfigId)
+          return yield* projectWorkspaceError(
+            "native.sessions.attach",
+            new Error("Choose a Claude profile"),
+          );
+        const candidateSessionId = createUuidV7();
+        const threadId = input.backendKind === "codex" ? input.nativeSessionId : createUuidV7();
+        const applied = yield* apply("native.sessions.attach", {
+          kind: "attach_native_session",
+          session_id: candidateSessionId,
+          thread_id: threadId,
+          project_id: input.projectId,
+          backend_binding:
+            input.backendKind === "codex"
+              ? { kind: "codex" }
+              : { kind: "claude", instance_config_id: input.instanceConfigId! },
+          native_session_id: input.nativeSessionId,
+          native_home: input.nativeHome,
+          title: input.title,
+          cwd: input.cwd,
+          created_at: input.createdAt,
+          updated_at: input.updatedAt,
+        });
+        const [sessionId, ...unexpected] = applied.outcome.affected_session_ids;
+        if (!sessionId || unexpected.length)
+          return yield* projectWorkspaceError(
+            "native.sessions.attach",
+            new Error("Native attachment did not return one Session"),
+          );
+        const session = yield* requireSession(sessionId);
+        if (!session.thread?.threadId)
+          return yield* projectWorkspaceError(
+            "native.sessions.attach",
+            new Error("Native attachment has no Thread"),
+          );
+        return {
+          sessionId,
+          threadId: session.thread.threadId,
+          alreadyAttached: sessionId !== candidateSessionId,
+        };
+      }),
       readThreadBackendSession,
       bindThreadBackendSession,
       clearThreadBackendSession,

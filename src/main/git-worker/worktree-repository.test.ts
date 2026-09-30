@@ -151,4 +151,48 @@ describe("WorktreeRepository", () => {
       expect(host.disposals).toBe(started);
     }),
   );
+
+  it.effect("refreshes retained reads when observation resumes after an unobserved change", () =>
+    Effect.gen(function* () {
+      const host = new CountingWatchHost();
+      const repository = yield* makeWorktreeRepository(identity, unusedRunner, { watchHost: host });
+      let currentBranch = "main";
+      let reads = 0;
+      const read = () =>
+        repository.query({
+          key: ["current-branch"],
+          meta: { gitReadDomains: ["head"] },
+          run: Effect.sync(() => {
+            reads += 1;
+            return currentBranch;
+          }),
+        });
+      const observe = (ready: Deferred.Deferred<string>) =>
+        Stream.runForEach(repository.watchEvents, (event) =>
+          event._tag === "RecoveryChanged"
+            ? read().pipe(Effect.flatMap((branch) => Deferred.succeed(ready, branch)))
+            : Effect.void,
+        );
+      expect(yield* read()).toBe("main");
+      const firstReady = yield* Deferred.make<string>();
+      const first = yield* Effect.forkChild(observe(firstReady));
+      expect(yield* Deferred.await(firstReady)).toBe("main");
+      const observedReads = reads;
+      const concurrentReady = yield* Deferred.make<string>();
+      const concurrent = yield* Effect.forkChild(observe(concurrentReady));
+      expect(yield* Deferred.await(concurrentReady)).toBe("main");
+      expect(reads).toBe(observedReads);
+      yield* Fiber.interrupt(first);
+      yield* Fiber.interrupt(concurrent);
+      const oldGeneration = repository.generation;
+
+      currentBranch = "task-work";
+      const resumedReady = yield* Deferred.make<string>();
+      const resumed = yield* Effect.forkChild(observe(resumedReady));
+      expect(yield* Deferred.await(resumedReady)).toBe("task-work");
+      expect(repository.generation).toBeGreaterThan(oldGeneration);
+      expect(reads).toBe(observedReads + 1);
+      yield* Fiber.interrupt(resumed);
+    }),
+  );
 });

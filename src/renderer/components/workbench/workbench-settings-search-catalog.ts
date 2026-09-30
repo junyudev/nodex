@@ -339,22 +339,25 @@ const SETTINGS_SEARCH_PANELS = {
     ],
   },
   "agent-import": {
-    title: "Import agent data",
-    subtitle: "Copy selected history and setup into Nodex without changing the source.",
+    title: "Connect conversations",
     groups: [
       {
-        title: "Sources",
+        title: "Conversations",
         entries: [
-          entry("Claude Code", "Import recent conversations and supported setup.", ["CLAUDE.md"]),
-          entry("Codex", "Import rollout history and safe native configuration.", [
-            "CODEX_HOME",
-            ".codex",
-          ]),
+          entry("Claude Code", "Continue existing native conversations.", ["CLAUDE_CONFIG_DIR"]),
+          entry("Codex", "Continue existing native conversations.", ["CODEX_HOME", ".codex"]),
         ],
       },
       {
         title: "Import preview",
         messages: [
+          "Agent",
+          "Destination",
+          "Projectless",
+          "Browse",
+          "Connect",
+          "Connected",
+          "Copy data to Codex",
           "Choose folder",
           "Recent conversations",
           "Instructions",

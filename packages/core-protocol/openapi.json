@@ -30166,6 +30166,65 @@
               },
               {
                 "type": "object",
+                "description": "Admits one existing native conversation without creating or replaying Agent messages.",
+                "required": [
+                  "session_id",
+                  "thread_id",
+                  "backend_binding",
+                  "native_session_id",
+                  "native_home",
+                  "title",
+                  "cwd",
+                  "created_at",
+                  "updated_at",
+                  "kind"
+                ],
+                "properties": {
+                  "backend_binding": {
+                    "$ref": "#/components/schemas/AgentBackendBinding"
+                  },
+                  "created_at": {
+                    "type": "integer",
+                    "format": "int64"
+                  },
+                  "cwd": {
+                    "type": "string"
+                  },
+                  "kind": {
+                    "type": "string",
+                    "enum": [
+                      "attach_native_session"
+                    ]
+                  },
+                  "native_home": {
+                    "type": "string"
+                  },
+                  "native_session_id": {
+                    "type": "string"
+                  },
+                  "project_id": {
+                    "type": [
+                      "string",
+                      "null"
+                    ]
+                  },
+                  "session_id": {
+                    "type": "string"
+                  },
+                  "thread_id": {
+                    "type": "string"
+                  },
+                  "title": {
+                    "type": "string"
+                  },
+                  "updated_at": {
+                    "type": "integer",
+                    "format": "int64"
+                  }
+                }
+              },
+              {
+                "type": "object",
                 "required": [
                   "thread_id",
                   "backend_binding",
@@ -30189,6 +30248,12 @@
                     "type": "string",
                     "enum": [
                       "bind_thread_backend_session"
+                    ]
+                  },
+                  "native_home": {
+                    "type": [
+                      "string",
+                      "null"
                     ]
                   },
                   "native_state": {
@@ -35164,6 +35229,35 @@
               {
                 "type": "object",
                 "required": [
+                  "backend_kind",
+                  "native_home",
+                  "native_session_ids",
+                  "kind"
+                ],
+                "properties": {
+                  "backend_kind": {
+                    "$ref": "#/components/schemas/ProjectWorkspaceNativeBackendKind"
+                  },
+                  "kind": {
+                    "type": "string",
+                    "enum": [
+                      "native_session_bindings"
+                    ]
+                  },
+                  "native_home": {
+                    "type": "string"
+                  },
+                  "native_session_ids": {
+                    "type": "array",
+                    "items": {
+                      "type": "string"
+                    }
+                  }
+                }
+              },
+              {
+                "type": "object",
+                "required": [
                   "parent_thread_id",
                   "window",
                   "kind"
@@ -38192,6 +38286,65 @@
           },
           {
             "type": "object",
+            "description": "Admits one existing native conversation without creating or replaying Agent messages.",
+            "required": [
+              "session_id",
+              "thread_id",
+              "backend_binding",
+              "native_session_id",
+              "native_home",
+              "title",
+              "cwd",
+              "created_at",
+              "updated_at",
+              "kind"
+            ],
+            "properties": {
+              "backend_binding": {
+                "$ref": "#/components/schemas/AgentBackendBinding"
+              },
+              "created_at": {
+                "type": "integer",
+                "format": "int64"
+              },
+              "cwd": {
+                "type": "string"
+              },
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "attach_native_session"
+                ]
+              },
+              "native_home": {
+                "type": "string"
+              },
+              "native_session_id": {
+                "type": "string"
+              },
+              "project_id": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "session_id": {
+                "type": "string"
+              },
+              "thread_id": {
+                "type": "string"
+              },
+              "title": {
+                "type": "string"
+              },
+              "updated_at": {
+                "type": "integer",
+                "format": "int64"
+              }
+            }
+          },
+          {
+            "type": "object",
             "required": [
               "thread_id",
               "backend_binding",
@@ -38215,6 +38368,12 @@
                 "type": "string",
                 "enum": [
                   "bind_thread_backend_session"
+                ]
+              },
+              "native_home": {
+                "type": [
+                  "string",
+                  "null"
                 ]
               },
               "native_state": {
@@ -39092,6 +39251,13 @@
           }
         }
       },
+      "ProjectWorkspaceNativeBackendKind": {
+        "type": "string",
+        "enum": [
+          "codex",
+          "claude"
+        ]
+      },
       "ProjectWorkspaceNativeCompactionFact": {
         "type": "object",
         "required": [
@@ -39153,6 +39319,33 @@
           "default",
           "plan"
         ]
+      },
+      "ProjectWorkspaceNativeSessionBinding": {
+        "type": "object",
+        "required": [
+          "native_session_id",
+          "thread_id"
+        ],
+        "properties": {
+          "native_session_id": {
+            "type": "string"
+          },
+          "project_id": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "session_id": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "thread_id": {
+            "type": "string"
+          }
+        }
       },
       "ProjectWorkspaceNativeTokenFact": {
         "type": "object",
@@ -40417,6 +40610,12 @@
           },
           "backend_session_id": {
             "type": "string"
+          },
+          "native_home": {
+            "type": [
+              "string",
+              "null"
+            ]
           },
           "native_state": {
             "oneOf": [
@@ -47775,6 +47974,27 @@
                               {
                                 "$ref": "#/components/schemas/ProjectWorkspaceThreadBackendSession"
                               }
+                            ]
+                          }
+                        }
+                      },
+                      {
+                        "type": "object",
+                        "required": [
+                          "bindings",
+                          "kind"
+                        ],
+                        "properties": {
+                          "bindings": {
+                            "type": "array",
+                            "items": {
+                              "$ref": "#/components/schemas/ProjectWorkspaceNativeSessionBinding"
+                            }
+                          },
+                          "kind": {
+                            "type": "string",
+                            "enum": [
+                              "native_session_bindings"
                             ]
                           }
                         }

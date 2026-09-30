@@ -79,6 +79,11 @@ import type {
 import { openNodexMenu, render, settleAsyncRender } from "../../../test/dom";
 import { TestQueryProvider } from "../../../test/query";
 import { RendererStateProvider } from "../../../app-providers";
+import { NewChatProjectSelector } from "@/features/local-conversation/view/composer/new-chat-project-selector";
+import type {
+  NewChatProjectSelectorModel,
+  ThreadStageActions,
+} from "@/features/local-conversation/thread-stage-types";
 import { NodexModalHost } from "@/lib/modal-registry";
 import { AppShellHeaderContentRegistrar } from "@/lib/workbench-ui-scopes";
 import { useWorkbenchWindowOwner } from "@/lib/use-workbench-window-state";
@@ -1792,6 +1797,12 @@ vi.mock("@/features/local-conversation", () => ({
       "div",
       { "data-project-agent-dock": "true" },
       props.leadingContent as ReactNode,
+      props.newThreadProjectSelector
+        ? createElement(NewChatProjectSelector, {
+            model: props.newThreadProjectSelector as NewChatProjectSelectorModel,
+            actions: props.actions as ThreadStageActions,
+          })
+        : null,
       createElement("textarea", {
         "aria-label": "Project Agent Dock prompt",
         defaultValue: "",
@@ -2427,6 +2438,7 @@ export function renderWorkbench({
   libraryRoots = [],
   defaultDraftSessionIdsByScope = {},
   initialWindowLayoutSnapshot,
+  onCreateProject,
 }: {
   projects?: Project[];
   sessionsByProject?: Record<string, ProjectSession[]>;
@@ -2461,6 +2473,7 @@ export function renderWorkbench({
   libraryRoots?: readonly LibraryNavigationNode[];
   defaultDraftSessionIdsByScope?: Readonly<Record<string, string>>;
   initialWindowLayoutSnapshot?: WorkbenchLayoutSnapshot;
+  onCreateProject?: ComponentProps<typeof WorkbenchShell>["onCreateProject"];
 } = {}) {
   const resolvedInitialSelectedSessionId =
     initialSelectedSessionId === undefined
@@ -2878,6 +2891,7 @@ export function renderWorkbench({
       };
     }
     if (channel === "codex:pending-worktrees:list") return pendingWorktrees;
+    if (channel === "codex:thread-handoffs:list") return { revision: 0, operations: [] };
     if (channel === "pages:search-metadata") {
       const projectIds = [...new Set((args[0] as string[] | undefined) ?? [])];
       const requestedPageIds = args[1] as string[] | undefined;
@@ -4180,6 +4194,7 @@ export function renderWorkbench({
 
   function WorkbenchShellTestHarness() {
     const [renderedProjects, setRenderedProjects] = useState(projects);
+    const [projectPickerOpenTick, setProjectPickerOpenTick] = useState(0);
     const scenesByOwnerKey = Object.fromEntries(
       [...Object.values(sessionsByProject).flat(), ...projectlessSessions].map((session) => {
         const scene = makeSessionSceneFixture(session);
@@ -4283,13 +4298,14 @@ export function renderWorkbench({
         onViewDeepLinkHandled={() => setPendingViewOpen(null)}
         openPageStage={() => undefined}
         onLeavePageStage={() => undefined}
-        onCreateProject={async () => null}
+        onCreateProject={onCreateProject ?? (async () => null)}
         onUpdateProject={async () => null}
         onArchiveProject={async () => ({ kind: "not-found" })}
         onReorderProjects={async () => undefined}
         onSetProjectPinned={async () => null}
         onSetPinnedProjectOrder={async () => undefined}
-        onRequestProjectPickerOpen={() => undefined}
+        onRequestProjectPickerOpen={() => setProjectPickerOpenTick((tick) => tick + 1)}
+        projectPickerOpenTick={projectPickerOpenTick}
         threadSearchOpenTick={0}
         setSidebarCollapsed={(collapsed) => {
           setSidebarState((current) => ({ ...current, collapsed }));

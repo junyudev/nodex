@@ -222,6 +222,8 @@ import {
   CodexThreadHandoffRuntime,
   make as makeCodexThreadHandoffRuntime,
 } from "../codex-application/CodexThreadHandoffRuntime";
+import { live as threadExecutionLive } from "../host-runtime/ThreadExecution";
+import { bindingLayer as nativeConversationBindingLive } from "../app-tools/NativeConversationExtension";
 import {
   AgentImportRuntime,
   make as makeAgentImportRuntime,
@@ -621,9 +623,16 @@ const pendingWorktrees = Layer.effect(
   CodexPendingWorktreeRuntime,
   makeCodexPendingWorktreeRuntime,
 ).pipe(Layer.provideMerge(conversationCreation));
-const managedWorktreeRetention = managedWorktreeRetentionLive({}).pipe(
-  Layer.provideMerge(pendingWorktrees),
-);
+const managedWorktreeRetention = Layer.unwrap(
+  Effect.gen(function* () {
+    const platform = yield* CodexPlatform;
+    return managedWorktreeRetentionLive({
+      handoffJournal: makeCodexThreadHandoffJournalStorage(
+        resolveCodexThreadHandoffJournalPath(platform.runtimeStateHome),
+      ),
+    });
+  }),
+).pipe(Layer.provideMerge(pendingWorktrees));
 const crossHostThreadHandoff = Layer.unwrap(
   Effect.gen(function* () {
     const platform = yield* CodexPlatform;
@@ -632,6 +641,10 @@ const crossHostThreadHandoff = Layer.unwrap(
 ).pipe(Layer.provideMerge(managedWorktreeRetention));
 const managedWorktreeHandoff = managedWorktreeHandoffLive.pipe(
   Layer.provideMerge(crossHostThreadHandoff),
+);
+const handoffExecution = threadExecutionLive.pipe(
+  Layer.provideMerge(nativeConversationBindingLive),
+  Layer.provideMerge(managedWorktreeHandoff),
 );
 const threadHandoff = Layer.unwrap(
   Effect.gen(function* () {
@@ -645,7 +658,7 @@ const threadHandoff = Layer.unwrap(
       }),
     );
   }),
-).pipe(Layer.provideMerge(managedWorktreeHandoff));
+).pipe(Layer.provideMerge(handoffExecution));
 const agentImport = Layer.unwrap(
   Effect.gen(function* () {
     const platform = yield* CodexPlatform;

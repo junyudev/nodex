@@ -34,7 +34,7 @@ const SOURCE_OPTIONS: readonly {
     description:
       "Conversations, instructions, skills, MCP servers, hooks, commands, subagents, and plugins.",
     kind: "claude-code",
-    label: "Claude Code",
+    label: "Claude Code → Codex",
     supportsPicker: false,
   },
   {
@@ -115,9 +115,11 @@ function formatOutcomeSummary(result: AgentImportResult): string {
 export function AgentImportSettingsPage({
   open,
   runtime = DEFAULT_RUNTIME,
+  embedded = false,
 }: {
   readonly open: boolean;
   readonly runtime?: AgentImportSettingsRuntime;
+  readonly embedded?: boolean;
 }) {
   const [scan, setScan] = useState<AgentImportScan | null>(null);
   const [selectedItemIds, setSelectedItemIds] = useState<Set<string>>(new Set());
@@ -178,11 +180,8 @@ export function AgentImportSettingsPage({
     }
   }, [importing, runtime, scan, selectedItemIds]);
 
-  return (
-    <SettingsPageSurface
-      title="Import agent data"
-      subtitle="Copy selected history and setup into Nodex without changing the source."
-    >
+  const content = (
+    <>
       <SectionBlock title="Sources">
         {SOURCE_OPTIONS.map((source) => (
           <SettingRow description={source.description} key={source.kind} label={source.label}>
@@ -252,7 +251,7 @@ export function AgentImportSettingsPage({
               description={
                 scan.skippedAlreadyImportedSessions > 0
                   ? `${scan.skippedAlreadyImportedSessions} unchanged conversation${scan.skippedAlreadyImportedSessions === 1 ? " was" : "s were"} already imported.`
-                  : "Imported conversations become independent Nodex history with new thread IDs."
+                  : "Selected conversations become available in Chats."
               }
               label={
                 importing && progress?.activeItemLabel
@@ -301,6 +300,17 @@ export function AgentImportSettingsPage({
       ) : null}
 
       {error ? <div className="text-sm text-[var(--red-text)]">{error}</div> : null}
-    </SettingsPageSurface>
+    </>
   );
+  if (embedded) {
+    return (
+      <div className="flex flex-col gap-3">
+        <p className="text-token-text-secondary">
+          Claude conversations copied here become Codex conversations.
+        </p>
+        {content}
+      </div>
+    );
+  }
+  return <SettingsPageSurface title="Copy data to Codex">{content}</SettingsPageSurface>;
 }

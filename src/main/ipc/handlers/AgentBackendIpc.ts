@@ -49,6 +49,7 @@ const ClaudeModelsInput = z
     projectId: id.nullable(),
     instanceConfigId: id,
     requestId: z.string().refine(isUuidV7).optional(),
+    forceReload: z.boolean().optional(),
   })
   .strict();
 const Selection = z
@@ -128,6 +129,21 @@ const StartInput = z
     effort: z.enum(["default", ...CLAUDE_EFFORT_LEVELS]).optional(),
     selection: Selection.optional(),
     mode: z.enum(["default", "plan"]).optional(),
+    runInTarget: z.enum(["localProject", "newWorktree"]).optional(),
+    runInEnvironmentPath: id.nullable().optional(),
+    worktreeStartingState: z
+      .discriminatedUnion("type", [
+        z
+          .object({
+            type: z.literal("branch"),
+            branchName: id,
+            remoteRef: id.optional(),
+            onMissing: z.enum(["error", "create-branch"]).optional(),
+          })
+          .strict(),
+        z.object({ type: z.literal("working-tree") }).strict(),
+      ])
+      .optional(),
     prompt,
     images: Images.optional(),
     firstSubmission: z

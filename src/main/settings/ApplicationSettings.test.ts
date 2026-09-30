@@ -102,7 +102,10 @@ describe("ApplicationSettings", () => {
           homePath: "",
           resolvedHomePath: "/host/native-codex",
           source: "environment",
+          accountHomePath: "",
+          resolvedAccountHomePath: null,
           activeHomePath: "/host/native-codex",
+          activeAccountHomePath: null,
           restartRequired: false,
         });
         environment.CODEX_HOME = "/changed-after-startup";
@@ -114,7 +117,10 @@ describe("ApplicationSettings", () => {
           homePath: "/host/user/work-codex",
           resolvedHomePath: "/host/user/work-codex",
           source: "settings",
+          accountHomePath: "",
+          resolvedAccountHomePath: null,
           activeHomePath: "/host/native-codex",
+          activeAccountHomePath: null,
           restartRequired: true,
         });
         const document = parseToml(readFileSync(settingsPath, "utf8")) as {
@@ -140,6 +146,51 @@ describe("ApplicationSettings", () => {
           server: { codex_home?: string };
         };
         assert.isUndefined(resetDocument.server.codex_home);
+      }),
+  );
+
+  it.effect(
+    "stages account changes independently while retaining shared home and unrelated config",
+    () =>
+      Effect.gen(function* () {
+        const { settingsPath } = fixture('[plugin]\nname = "keep"\n');
+        const input = { environment: {}, hostHomeDirectory: "/host/user", settingsPath };
+        const settings = yield* makeApplicationSettings(input);
+        const initial = yield* settings.snapshot();
+        const staged = yield* settings.update({
+          type: "update-codex-home",
+          input: {
+            homePath: "",
+            accountHomePath: " ~/codex-personal ",
+          },
+        });
+        assert.strictEqual(staged.codexHome.activeHomePath, initial.codexHome.activeHomePath);
+        assert.isNull(staged.codexHome.activeAccountHomePath);
+        assert.strictEqual(staged.codexHome.resolvedAccountHomePath, "/host/user/codex-personal");
+        assert.isTrue(staged.codexHome.restartRequired);
+        const homeOnly = yield* settings.update({
+          type: "update-codex-home",
+          input: { homePath: "" },
+        });
+        assert.strictEqual(
+          homeOnly.codexHome.resolvedAccountHomePath,
+          staged.codexHome.resolvedAccountHomePath,
+        );
+        const document = parseToml(readFileSync(settingsPath, "utf8")) as {
+          server: { codex_account_home: string };
+          plugin: { name: string };
+        };
+        assert.strictEqual(document.server.codex_account_home, "/host/user/codex-personal");
+        assert.strictEqual(document.plugin.name, "keep");
+        const reopened = yield* makeApplicationSettings(input);
+        const active = yield* reopened.snapshot();
+        assert.strictEqual(active.codexHome.activeAccountHomePath, "/host/user/codex-personal");
+        assert.isFalse(active.codexHome.restartRequired);
+        const reset = yield* settings.update({
+          type: "update-codex-home",
+          input: { homePath: "", accountHomePath: "" },
+        });
+        assert.deepEqual(reset.codexHome, initial.codexHome);
       }),
   );
 

@@ -7,6 +7,7 @@ export function buildThreadHandoffOperation(
     operationId: "operation-1",
     revision: 1,
     status: "running",
+    recoveryRequired: false,
     threadId: "thread-target",
     sourceThreadId: "thread-target",
     requestThreadId: "thread-1",

@@ -1,12 +1,23 @@
+import { nativeSessionCatalogTitle } from "../../shared/native-session-catalog";
 import { ClaudeSessionManager } from "./claude/ClaudeSessionManager";
+import type {
+  NativeSessionAttachInput,
+  NativeSessionAttachResult,
+  NativeSessionCatalogInput,
+  NativeSessionCatalogPage,
+} from "../../shared/native-session-catalog";
 import type { AgentSessionHandle, AgentSessionPermissionPolicy } from "./AgentSessionHandle";
 import type { AgentInteractionResponse } from "../../shared/agent-conversation";
 import type { AgentPromptImage } from "../../shared/agent-conversation";
 import { NativePromptImages } from "./NativePromptImages";
+import { CodexGitProbe } from "../codex-application/CodexGitProbe";
+import { loadCodexWorktreeShellEnvironmentAtGitPath } from "../codex/codex-worktree-shell-environment";
+import { ProjectRuntimeLifecycleRuntime } from "../host-runtime/ProjectRuntimeLifecycleRuntime";
 import {
-  NativeAutomationWorkspace,
-  type NativeAutomationWorkspaceLocation,
-} from "../automation-application/NativeAutomationWorkspace";
+  NativeSessionWorkspace,
+  type NativeSessionWorkspaceLease,
+  type NativeSessionWorkspaceLocation,
+} from "./NativeSessionWorkspace";
 import * as Context from "effect/Context";
 import * as Cause from "effect/Cause";
 import * as Effect from "effect/Effect";
@@ -42,15 +53,16 @@ import type {
 import type { AgentBackendSessionPresentation } from "../../shared/agent-conversation";
 import type { AgentBackendBinding } from "../../shared/agent-backend";
 import { createUuidV7 } from "../../shared/uuid-v7";
-import type { CodexPermissionMode, ProjectSessionThreadLink } from "../../shared/types";
+import type {
+  CodexPermissionMode,
+  ProjectSessionThreadLink,
+  ProjectSessionThreadLinkInput,
+} from "../../shared/types";
 import { AgentBackendRegistry, type AgentBackendRegistryError } from "./AgentBackendRegistry";
 import { AcpBackendSessionManager } from "./acp/AcpBackendSessionManager";
 import { make as makeSessionDirectory } from "./AgentSessionDirectory";
-import { agentRuntimeError, type AgentRuntimeError } from "./AgentRuntimeError";
-import {
-  ProjectWorkspace,
-  type ProjectWorkspaceError,
-} from "../project-application/ProjectWorkspace";
+import { agentRuntimeError, AgentRuntimeError } from "./AgentRuntimeError";
+import { ProjectWorkspace, ProjectWorkspaceError } from "../project-application/ProjectWorkspace";
 import {
   isClaudeEffortLevel,
   type ClaudeModelCatalogInput,
@@ -79,7 +91,9 @@ import { MainConfig } from "../app/MainConfig";
 import { appToolsEntrypoint } from "../codex/app-tools-launch-config";
 import { ClaudeTextGeneration } from "./ClaudeTextGeneration";
 import { isDeepStrictEqual } from "node:util";
+import { isAbsolute } from "node:path";
 import type { DesktopProjectWorkspaceExecutionContext } from "../core-client/project-workspace-adapter";
+import type { CodexThreadExecutionLocation } from "../codex/codex-thread-handoff-journal";
 
 export class AgentBackendApplicationError extends Schema.TaggedError<AgentBackendApplicationError>()(
   "AgentBackendApplicationError",
@@ -101,6 +115,12 @@ type SessionOpenError =
 export class AgentBackendApplication extends Context.Service<
   AgentBackendApplication,
   {
+    readonly listClaudeNativeSessions: (
+      input: NativeSessionCatalogInput,
+    ) => Effect.Effect<NativeSessionCatalogPage, AgentBackendApplicationError>;
+    readonly attachClaudeNativeSession: (
+      input: NativeSessionAttachInput,
+    ) => Effect.Effect<NativeSessionAttachResult, AgentBackendApplicationError>;
     readonly readNativePermissionMode: (
       projectId: string | null,
     ) => Effect.Effect<NativePermissionMode, AgentBackendApplicationError>;
@@ -117,6 +137,19 @@ export class AgentBackendApplication extends Context.Service<
     readonly setAgentIntelligence: (
       input: AgentBackendIntelligenceInput,
     ) => Effect.Effect<AgentBackendSessionPresentation, AgentBackendApplicationError>;
+    readonly withAgentExecutionLocation: <A, E, R>(
+      threadId: string,
+      location: CodexThreadExecutionLocation,
+      use: Effect.Effect<A, E, R>,
+    ) => Effect.Effect<A, E | AgentBackendApplicationError, R>;
+    readonly withAgentExecutionHandoff: <A, E, R>(
+      threadId: string,
+      use: Effect.Effect<A, E, R>,
+    ) => Effect.Effect<A, E | AgentBackendApplicationError, R>;
+    readonly setExecutionRecoveryRequired: (
+      threadId: string,
+      required: boolean,
+    ) => Effect.Effect<void, AgentBackendApplicationError>;
     readonly controlAgentSession: (
       input: AgentBackendControlInput,
     ) => Effect.Effect<AgentBackendSessionPresentation, AgentBackendApplicationError>;
@@ -252,8 +285,12 @@ export const make = Effect.gen(function* () {
   const config = Option.getOrNull(yield* Effect.serviceOption(MainConfig));
   const textGeneration = Option.getOrNull(yield* Effect.serviceOption(ClaudeTextGeneration));
   const nativeImages = Option.getOrNull(yield* Effect.serviceOption(NativePromptImages));
-  const nativeAutomationWorkspace = Option.getOrNull(
-    yield* Effect.serviceOption(NativeAutomationWorkspace),
+  const nativeSessionWorkspace = Option.getOrNull(
+    yield* Effect.serviceOption(NativeSessionWorkspace),
+  );
+  const git = Option.getOrNull(yield* Effect.serviceOption(CodexGitProbe));
+  const projectLifecycle = Option.getOrNull(
+    yield* Effect.serviceOption(ProjectRuntimeLifecycleRuntime),
   );
   const unattendedTurns = new Set<string>();
   const launchAuthorities = new WeakMap<
@@ -262,12 +299,25 @@ export const make = Effect.gen(function* () {
       binding: ExternalBinding;
       workspaceRoot: string;
       projectId: string | null;
-      nativeLocation?: NativeAutomationWorkspaceLocation;
+      nativeLocation?: NativeSessionWorkspaceLocation;
     }
   >();
   const nativeIdentityTransitions = new WeakMap<
     AgentSessionHandle,
     { previousSessionId: string; sessionId: string }
+  >();
+  const nativeExecutionTransitions = new WeakMap<
+    AgentSessionHandle,
+    {
+      readonly source: NativeSessionWorkspaceLocation;
+      readonly destination: NativeSessionWorkspaceLocation;
+    }
+  >();
+  const nativeExecutionHandoffs = new Set<string>();
+  const nativeExecutionRecoveryRequired = new Set<string>();
+  const nativeExecutionRecoveryLocations = new WeakMap<
+    AgentSessionHandle,
+    readonly NativeSessionWorkspaceLocation[]
   >();
   const pendingSessionOpens = new Map<
     string,
@@ -338,6 +388,24 @@ export const make = Effect.gen(function* () {
       Effect.mapError((cause) =>
         cause instanceof AgentBackendApplicationError ? cause : fail(operation, cause, identity),
       ),
+    );
+  const requireExecutionAdmission = (threadId: string) =>
+    Effect.suspend(() =>
+      nativeExecutionHandoffs.has(threadId) || nativeExecutionRecoveryRequired.has(threadId)
+        ? Effect.fail(
+            fail(
+              "session.execution",
+              new Error(
+                nativeExecutionRecoveryRequired.has(threadId)
+                  ? "Recover this task's execution location before continuing"
+                  : "Wait for this task's execution handoff to finish",
+              ),
+              {
+                threadId,
+              },
+            ),
+          )
+        : Effect.void,
     );
 
   const presentation = (handle: AgentSessionHandle) =>
@@ -444,7 +512,7 @@ export const make = Effect.gen(function* () {
     >,
     workspaceRoot: string,
     context: DesktopProjectWorkspaceExecutionContext,
-  ): NativeAutomationWorkspaceLocation => ({
+  ): NativeSessionWorkspaceLocation => ({
     cwd: workspaceRoot,
     workspaceRoots: context.workspaceState?.applied?.runtimeWorkspaceRoots ?? context.writableRoots,
     managedWorktreePath: thread.managedWorktreePath ?? null,
@@ -452,12 +520,48 @@ export const make = Effect.gen(function* () {
     projectlessWorkspaceBrowserRoot: thread.projectlessWorkspaceBrowserRoot ?? null,
   });
 
+  const worktreeEnvironment = Effect.fn("AgentBackendApplication.worktreeEnvironment")(function* (
+    cwd: string,
+    managedWorktreePath: string | null | undefined,
+  ) {
+    if (!managedWorktreePath) return null;
+    if (!git)
+      return yield* fail(
+        "session.environment",
+        new Error("The worktree environment runtime is unavailable"),
+      );
+    const gitPath = yield* git
+      .readPath(cwd, ["rev-parse", "--git-path", "codex-shell-environment.json"])
+      .pipe(Effect.mapError((cause) => fail("session.environment", cause)));
+    if (!gitPath)
+      return yield* fail(
+        "session.environment",
+        new Error("The worktree environment location is unavailable"),
+      );
+    return yield* Effect.tryPromise({
+      try: () => loadCodexWorktreeShellEnvironmentAtGitPath({ cwd, gitPath }),
+      catch: (cause) => fail("session.environment", cause),
+    });
+  });
+
   // A trusted reset/rollback commits Core before the manager publishes its new identity.
   // Controls wait for that handoff; unrelated Core rebinding closes the stale native owner.
   const assertNativeSessionIdentity = Effect.fn(
     "AgentBackendApplication.assertNativeSessionIdentity",
-  )(function* (handle: AgentSessionHandle) {
+  )(function* (handle: AgentSessionHandle, allowRecovery = true) {
     const durable = yield* workspace.readThreadBackendSession(handle.threadId);
+    if (
+      durable?.backendBinding.kind === "claude" &&
+      durable.nativeHome &&
+      (yield* claudeSessions.nativeHome(durable.backendBinding.instanceConfigId)) !==
+        durable.nativeHome
+    ) {
+      yield* sessions.close(handle.threadId);
+      return yield* fail(
+        "session.profile",
+        new Error("The Claude profile changed. Restore this conversation's original profile."),
+      );
+    }
     const transition = nativeIdentityTransitions.get(handle);
     if (
       transition &&
@@ -476,21 +580,33 @@ export const make = Effect.gen(function* () {
         { threadId: handle.threadId },
       );
     }
+    if (nativeExecutionTransitions.has(handle))
+      return yield* fail(
+        "session.workspace",
+        new Error("The native execution context is changing"),
+      );
     const launched = launchAuthorities.get(handle);
     if (launched?.nativeLocation) {
       const current = yield* resolveThreadAuthority(handle.threadId);
       const context = yield* workspace.readThreadExecutionContext(handle.threadId);
+      const currentLocation = context
+        ? nativeExecutionLocation(current.thread, current.workspaceRoot, context)
+        : null;
+      const recovering =
+        allowRecovery &&
+        nativeExecutionRecoveryRequired.has(handle.threadId) &&
+        nativeExecutionRecoveryLocations
+          .get(handle)
+          ?.some((location) => isDeepStrictEqual(currentLocation, location));
       if (
         !context ||
         context.projectId !== current.thread.projectId ||
         current.thread.projectId !== launched.projectId ||
         !sameBinding(current.binding, launched.binding) ||
-        !isDeepStrictEqual(
-          nativeExecutionLocation(current.thread, current.workspaceRoot, context),
-          launched.nativeLocation,
-        )
+        (!isDeepStrictEqual(currentLocation, launched.nativeLocation) && !recovering)
       ) {
-        yield* sessions.close(handle.threadId);
+        if (!nativeExecutionRecoveryRequired.has(handle.threadId))
+          yield* sessions.close(handle.threadId);
         return yield* fail("session.workspace", new Error("The native execution context changed"));
       }
     }
@@ -505,8 +621,26 @@ export const make = Effect.gen(function* () {
   )(function* (input: AgentBackendSessionOpenInput) {
     const cached = yield* sessions.get(input.threadId);
     if (cached) return yield* presentation(yield* requireOpenedHandle(input.threadId));
+    if (
+      nativeExecutionRecoveryRequired.has(input.threadId) &&
+      !nativeExecutionHandoffs.has(input.threadId)
+    )
+      return yield* fail(
+        "session.execution",
+        new Error("Recover this task's execution location before reopening"),
+        { threadId: input.threadId },
+      );
     const authority = yield* resolveThreadAuthority(input.threadId);
     const durable = yield* workspace.readThreadBackendSession(input.threadId);
+    const nativeHome =
+      authority.binding.kind === "claude"
+        ? yield* claudeSessions.nativeHome(authority.binding.instanceConfigId)
+        : null;
+    if (durable?.nativeHome && durable.nativeHome !== nativeHome)
+      return yield* fail(
+        "session.profile",
+        new Error("The Claude profile changed. Restore this conversation's original profile."),
+      );
     if (durable && !sameBinding(durable.backendBinding, authority.binding)) {
       return yield* fail(
         "session.binding",
@@ -527,9 +661,13 @@ export const make = Effect.gen(function* () {
         "session.workspace",
         new Error("The native execution context is unavailable"),
       );
-    const nativeLocation = initialContext
+    let nativeLocation = initialContext
       ? nativeExecutionLocation(authority.thread, authority.workspaceRoot, initialContext)
       : undefined;
+    const workspaceEnvironment =
+      authority.binding.kind === "claude"
+        ? yield* worktreeEnvironment(authority.workspaceRoot, authority.thread.managedWorktreePath)
+        : null;
     let lease: NativeAppToolSessionLease | null = null;
     let leaseGeneration = 0;
     let nativeHandle: AgentSessionHandle | null = null;
@@ -549,50 +687,74 @@ export const make = Effect.gen(function* () {
         Effect.map((current) => current.permissionPolicy),
       ),
     );
-    const acquireLaunchContext = Effect.gen(function* () {
-      const browser = platform?.runtime.browserRuntime;
-      if (!nativeTools || !nativeAuthority || !config) return {};
-      const context = yield* runtimeHook(workspace.readThreadExecutionContext(input.threadId));
-      const additionalDirectories =
-        context?.workspaceState?.applied?.runtimeWorkspaceRoots ?? context?.writableRoots ?? [];
-      if (browser?.status !== "available")
-        return yield* agentRuntimeError({
-          operation: "Claude app tools",
-          reason: "capability",
-          retryable: false,
-          cause: new Error("The bundled Nodex tool runtime is unavailable"),
-        });
-      lease = yield* runtimeHook(
-        nativeTools.acquire({
-          threadId: input.threadId,
-          hostId: "local",
-          generation: ++leaseGeneration,
-          isCurrent: Effect.gen(function* () {
-            if (!nativeHandle || (yield* claudeSessions.get(input.threadId)) !== nativeHandle)
-              return false;
-            const current = yield* resolveThreadAuthority(input.threadId);
-            const currentSession = yield* workspace.readThreadBackendSession(input.threadId);
-            const executionContext = yield* workspace.readThreadExecutionContext(input.threadId);
-            return Boolean(
-              currentSession &&
-              executionContext &&
-              currentSession.backendSessionId === nativeHandle.sessionId &&
-              sameBinding(currentSession.backendBinding, authority.binding) &&
-              sameBinding(current.binding, authority.binding) &&
-              current.thread.projectId === authority.thread.projectId &&
-              executionContext.projectId === current.thread.projectId &&
-              nativeLocation &&
-              isDeepStrictEqual(
-                nativeExecutionLocation(current.thread, current.workspaceRoot, executionContext),
-                nativeLocation,
-              ),
-            );
-          }).pipe(Effect.catch(() => Effect.succeed(false))),
-          runtime: { runtime: browser.bundle, entrypoint: appToolsEntrypoint(config) },
-        }),
-      );
-      return { ...lease.launchContext, additionalDirectories };
-    });
+    const acquireLaunchContext = (workspaceRoot: string) =>
+      Effect.gen(function* () {
+        const transition = nativeHandle ? nativeExecutionTransitions.get(nativeHandle) : undefined;
+        const provisional = transition
+          ? workspaceRoot === transition.destination.cwd
+            ? transition.destination
+            : workspaceRoot === transition.source.cwd
+              ? transition.source
+              : undefined
+          : undefined;
+        if (transition && !provisional)
+          return yield* agentRuntimeError({
+            operation: "Claude execution location",
+            reason: "authorization",
+            retryable: false,
+            cause: new Error("The native Query requested an unrelated working directory"),
+          });
+        if (provisional) nativeLocation = provisional;
+        const browser = platform?.runtime.browserRuntime;
+        if (!nativeTools || !nativeAuthority || !config) return {};
+        const context = yield* runtimeHook(workspace.readThreadExecutionContext(input.threadId));
+        const additionalDirectories =
+          provisional?.workspaceRoots ??
+          context?.workspaceState?.applied?.runtimeWorkspaceRoots ??
+          context?.writableRoots ??
+          [];
+        if (browser?.status !== "available")
+          return yield* agentRuntimeError({
+            operation: "Claude app tools",
+            reason: "capability",
+            retryable: false,
+            cause: new Error("The bundled Nodex tool runtime is unavailable"),
+          });
+        lease = yield* runtimeHook(
+          nativeTools.acquire({
+            threadId: input.threadId,
+            hostId: "local",
+            generation: ++leaseGeneration,
+            isCurrent: Effect.gen(function* () {
+              if (!nativeHandle || (yield* claudeSessions.get(input.threadId)) !== nativeHandle)
+                return false;
+              const current = yield* resolveThreadAuthority(input.threadId);
+              const currentSession = yield* workspace.readThreadBackendSession(input.threadId);
+              const executionContext = yield* workspace.readThreadExecutionContext(input.threadId);
+              const pending = nativeExecutionTransitions.get(nativeHandle);
+              const currentLocation = executionContext
+                ? nativeExecutionLocation(current.thread, current.workspaceRoot, executionContext)
+                : null;
+              return Boolean(
+                currentSession &&
+                executionContext &&
+                currentSession.backendSessionId === nativeHandle.sessionId &&
+                sameBinding(currentSession.backendBinding, authority.binding) &&
+                sameBinding(current.binding, authority.binding) &&
+                current.thread.projectId === authority.thread.projectId &&
+                executionContext.projectId === current.thread.projectId &&
+                nativeLocation &&
+                (pending
+                  ? isDeepStrictEqual(currentLocation, pending.source) ||
+                    isDeepStrictEqual(currentLocation, pending.destination)
+                  : isDeepStrictEqual(currentLocation, nativeLocation)),
+              );
+            }).pipe(Effect.catch(() => Effect.succeed(false))),
+            runtime: { runtime: browser.bundle, entrypoint: appToolsEntrypoint(config) },
+          }),
+        );
+        return { ...lease.launchContext, additionalDirectories };
+      });
     const nativeHooks = {
       acquireLaunchContext,
       readPermissionPolicy,
@@ -734,11 +896,14 @@ export const make = Effect.gen(function* () {
         ? claudeSessions.open({
             threadId: input.threadId,
             instanceConfigId: authority.binding.instanceConfigId,
+            ...(nativeHome ? { expectedHome: nativeHome } : {}),
             workspaceRoot: authority.workspaceRoot,
+            workspaceEnvironment,
             permissionPolicy: authority.permissionPolicy,
             ...selection,
             interactionMode: durable?.nativeState?.preferences.interaction_mode ?? "default",
             everSaved: durable?.nativeState?.ever_saved ?? Boolean(durable),
+            executionRecoveryRequired: nativeExecutionRecoveryRequired.has(input.threadId),
             historyFacts: nativeHistoryFacts(durable?.nativeState ?? null),
             ...nativeHooks,
             ...(durable ? { sessionId: durable.backendSessionId } : {}),
@@ -822,17 +987,22 @@ export const make = Effect.gen(function* () {
         { threadId: input.threadId },
       );
     }
-    if (!durable && openedSessionId !== null) {
+    if (
+      (!durable || (authority.binding.kind === "claude" && !durable.nativeHome)) &&
+      openedSessionId !== null
+    ) {
       yield* workspace.bindThreadBackendSession({
         threadId: input.threadId,
         backendBinding: authority.binding,
         backendSessionId: openedSessionId,
+        ...(durable ? { expectedBackendSessionId: durable.backendSessionId } : {}),
+        ...(nativeHome ? { nativeHome } : {}),
         ...(authority.binding.kind === "claude"
           ? {
               nativeState: nativeStateFromSnapshot(
                 yield* SubscriptionRef.get(handle.snapshot),
-                null,
-                false,
+                durable?.nativeState ?? null,
+                durable?.nativeState?.ever_saved ?? Boolean(durable),
               ),
             }
           : {}),
@@ -865,7 +1035,8 @@ export const make = Effect.gen(function* () {
         (launched &&
           (launched.projectId !== authority.thread.projectId ||
             !sameBinding(launched.binding, authority.binding) ||
-            launched.workspaceRoot !== authority.workspaceRoot))
+            (launched.workspaceRoot !== authority.workspaceRoot &&
+              !nativeExecutionRecoveryRequired.has(threadId))))
       ) {
         yield* sessions.close(threadId);
         return yield* fail(
@@ -874,7 +1045,7 @@ export const make = Effect.gen(function* () {
           { threadId },
         );
       }
-      if (existing.setPermissionPolicy)
+      if (existing.setPermissionPolicy && !nativeExecutionRecoveryRequired.has(threadId))
         yield* existing.setPermissionPolicy(authority.permissionPolicy);
       return existing;
     }
@@ -926,6 +1097,16 @@ export const make = Effect.gen(function* () {
     const pending = pendingSessionOpens.get(threadId);
     if (pending) yield* Deferred.await(pending);
     const existing = yield* sessions.get(threadId);
+    if (
+      !existing &&
+      nativeExecutionRecoveryRequired.has(threadId) &&
+      !nativeExecutionHandoffs.has(threadId)
+    )
+      return yield* fail(
+        "session.execution",
+        new Error("Recover this task's execution location before reopening"),
+        { threadId },
+      );
     if (!existing) yield* openAgentSession({ threadId });
     return yield* requireOpenedHandle(threadId);
   });
@@ -979,6 +1160,7 @@ export const make = Effect.gen(function* () {
       return yield* fail("prompt.validate", new Error("Prompt is required"), {
         threadId: input.threadId,
       });
+    yield* requireExecutionAdmission(input.threadId);
     const handle = yield* requireHandle(input.threadId);
     if ((yield* SubscriptionRef.get(handle.snapshot)).backend === "claude") {
       const images =
@@ -1050,9 +1232,72 @@ export const make = Effect.gen(function* () {
       Effect.asVoid,
     );
 
+  const admitNativeThread = Effect.fn("AgentBackendApplication.admitNativeThread")(
+    (input: ProjectSessionThreadLinkInput, lease: NativeSessionWorkspaceLease) =>
+      workspace.upsertProjectSessionThreadLink(input).pipe(
+        Effect.flatMap((linked) =>
+          linked.threadId === input.threadId &&
+          linked.cwd === lease.location.cwd &&
+          (linked.managedWorktreePath ?? null) === lease.location.managedWorktreePath
+            ? Effect.succeed(linked)
+            : fail(
+                "thread.start.admit",
+                new Error("The Thread execution location changed during admission"),
+              ),
+        ),
+        Effect.onExit((exit) =>
+          Effect.gen(function* () {
+            if (Exit.isSuccess(exit)) {
+              yield* lease.attach(input.threadId);
+              return;
+            }
+            const failure = Cause.squash(exit.cause);
+            if (
+              failure instanceof ProjectWorkspaceError &&
+              failure.threadAdmissionOutcome === "rejected"
+            )
+              return;
+            // A lost response or failed readback never proves the Core mutation was rejected.
+            yield* lease.retain;
+            const linked = yield* workspace.getProjectSession(input.sessionId).pipe(
+              Effect.timeout("5 seconds"),
+              Effect.catchCause(() => Effect.succeed(null)),
+            );
+            if (
+              linked?.thread?.threadId === input.threadId &&
+              linked.thread.cwd === lease.location.cwd &&
+              (linked.thread.managedWorktreePath ?? null) === lease.location.managedWorktreePath
+            ) {
+              yield* lease.attach(input.threadId);
+              return;
+            }
+            yield* Effect.logWarning(
+              "Native workspace retained after uncertain Thread admission",
+            ).pipe(Effect.annotateLogs({ sessionId: input.sessionId, threadId: input.threadId }));
+          }),
+        ),
+      ),
+  );
+
   const startAgentThread = Effect.fn("AgentBackendApplication.startAgentThread")(function* (
     input: AgentBackendThreadStartInput,
   ) {
+    if (
+      input.runInTarget !== undefined &&
+      input.runInTarget !== "localProject" &&
+      input.runInTarget !== "newWorktree"
+    )
+      return yield* fail("thread.start.workspace", new Error("Choose a local execution location"));
+    if (input.backendKind === "acp" && input.runInEnvironmentPath)
+      return yield* fail(
+        "thread.start.environment",
+        new Error("This Agent does not support worktree Environment configurations"),
+      );
+    if (!nativeSessionWorkspace)
+      return yield* fail(
+        "thread.start.workspace",
+        new Error("The native workspace runtime is unavailable"),
+      );
     if (!input.prompt.trim() && !input.images?.length)
       return yield* fail("thread.start.validate", new Error("Attach an image or enter a message"));
     if (input.images?.length && (input.backendKind !== "claude" || !nativeImages))
@@ -1088,23 +1333,69 @@ export const make = Effect.gen(function* () {
       : backends.resolveAcpInstance(input.instanceConfigId);
     const threadId = createUuidV7();
     const now = Date.now();
-    const linked = yield* workspace.upsertProjectSessionThreadLink({
-      sessionId: session.id,
-      projectId: project.id,
-      threadId,
-      threadName: titleFromPrompt(input.prompt),
-      threadPreview: input.prompt.trim().slice(0, 512),
-      backendBinding: resolution.binding,
-      executionHostId: "local",
-      runtimeWorkspaceRoots: project.sources.map(({ root }) => root),
-      cwd: workspaceRoot,
-      statusType: "idle",
-      statusActiveFlags: [],
-      archived: false,
-      createdAt: now,
-      updatedAt: now,
-      recencyAt: now,
-    });
+    const linked = yield* Effect.scoped(
+      Effect.uninterruptibleMask((restore) =>
+        Effect.gen(function* () {
+          const lease = yield* restore(
+            nativeSessionWorkspace.prepare({
+              projectId: project.id,
+              targetId: threadId,
+              title: titleFromPrompt(input.prompt),
+              prompt: input.prompt,
+              sourceCwd: workspaceRoot,
+              sourceRoots: project.sources.map(({ root }) => root),
+              runInTarget: input.runInTarget ?? "localProject",
+              worktreeStartingState: input.worktreeStartingState,
+              localEnvironmentConfigPath: input.runInEnvironmentPath,
+              operationId: `native-thread:${input.firstSubmission.launchId}`,
+            }),
+          );
+          const admit = Effect.gen(function* () {
+            const currentSession = yield* workspace.getProjectSession(session.id);
+            const currentProject = yield* workspace.getProject(project.id);
+            if (
+              !currentSession ||
+              currentSession.projectId !== project.id ||
+              currentSession.thread ||
+              !currentProject ||
+              currentProject.lifecycle !== "active" ||
+              currentProject.primaryWorkspaceRoot?.trim() !== workspaceRoot ||
+              !isDeepStrictEqual(currentProject.sources, project.sources)
+            )
+              return yield* fail(
+                "thread.start.admit",
+                new Error("The Project or Session changed while preparing its workspace"),
+              );
+            return yield* admitNativeThread(
+              {
+                sessionId: session.id,
+                projectId: project.id,
+                threadId,
+                threadName: titleFromPrompt(input.prompt),
+                threadPreview: input.prompt.trim().slice(0, 512),
+                backendBinding: resolution.binding,
+                executionHostId: "local",
+                runtimeWorkspaceRoots: [...lease.location.workspaceRoots],
+                cwd: lease.location.cwd,
+                managedWorktreePath: lease.location.managedWorktreePath,
+                projectlessOutputDirectory: lease.location.projectlessOutputDirectory,
+                projectlessWorkspaceBrowserRoot: lease.location.projectlessWorkspaceBrowserRoot,
+                statusType: "idle",
+                statusActiveFlags: [],
+                archived: false,
+                createdAt: now,
+                updatedAt: now,
+                recencyAt: now,
+              },
+              lease,
+            );
+          });
+          return yield* projectLifecycle
+            ? projectLifecycle.runExclusive(project.id, Effect.uninterruptible(admit))
+            : admit;
+        }),
+      ),
+    );
     const opened = yield* openAgentSession({ threadId });
     const currentSession = yield* workspace.getProjectSession(input.sessionId);
     const thread: ProjectSessionThreadLink = currentSession?.thread ?? linked;
@@ -1180,8 +1471,230 @@ export const make = Effect.gen(function* () {
             threadId,
           }),
         );
+  const withAgentExecutionHandoff = <A, E, R>(
+    threadId: string,
+    use: Effect.Effect<A, E, R>,
+  ): Effect.Effect<A, E | AgentBackendApplicationError, R> =>
+    Effect.acquireUseRelease(
+      Effect.suspend(() => {
+        if (nativeExecutionHandoffs.has(threadId))
+          return Effect.fail(
+            fail("session.execution", new Error("A native execution handoff is already active"), {
+              threadId,
+            }),
+          );
+        nativeExecutionHandoffs.add(threadId);
+        return Effect.void;
+      }),
+      () =>
+        Effect.gen(function* () {
+          const authority = yield* ownFailure(
+            "session.execution",
+            resolveThreadAuthority(threadId),
+          );
+          if (authority.binding.kind !== "claude")
+            return yield* fail("session.execution", new Error("Native execution is unavailable"), {
+              threadId,
+            });
+          const previous = yield* claudeSessions.get(threadId);
+          if (previous && nativeExecutionRecoveryRequired.has(threadId)) {
+            const state = yield* SubscriptionRef.get(previous.snapshot);
+            if (state.status === "failed" || state.status === "closed")
+              yield* sessions.close(threadId);
+          }
+          const handle = yield* ownFailure("session.execution", requireHandle(threadId));
+          const handoff = yield* requireControl(
+            handle.withExecutionHandoff,
+            "execution handoff",
+            threadId,
+          );
+          return yield* handoff(use).pipe(
+            Effect.mapError((cause) =>
+              Schema.is(AgentRuntimeError)(cause)
+                ? fail("session.execution", cause, { threadId })
+                : cause,
+            ),
+          );
+        }),
+      () =>
+        Effect.gen(function* () {
+          nativeExecutionHandoffs.delete(threadId);
+          if (nativeExecutionRecoveryRequired.has(threadId)) return;
+          const handle = yield* claudeSessions.get(threadId);
+          if (handle) nativeExecutionRecoveryLocations.delete(handle);
+        }),
+    );
+  const setExecutionRecoveryRequired = (threadId: string, required: boolean) =>
+    ownFailure(
+      "session.execution.recovery",
+      Effect.gen(function* () {
+        if (required) nativeExecutionRecoveryRequired.add(threadId);
+        const handle = yield* claudeSessions.get(threadId);
+        if (!handle) {
+          if (!required) nativeExecutionRecoveryRequired.delete(threadId);
+          return;
+        }
+        if (!required) yield* assertNativeSessionIdentity(handle, false);
+        const setRequired = yield* requireControl(
+          handle.setExecutionRecoveryRequired,
+          "execution recovery",
+          threadId,
+        );
+        yield* setRequired(required);
+        if (required) return;
+        nativeExecutionRecoveryRequired.delete(threadId);
+        nativeExecutionRecoveryLocations.delete(handle);
+      }),
+      { threadId },
+    );
+  const withAgentExecutionLocation = <A, E, R>(
+    threadId: string,
+    location: CodexThreadExecutionLocation,
+    use: Effect.Effect<A, E, R>,
+  ): Effect.Effect<A, E | AgentBackendApplicationError, R> =>
+    serializeControl(
+      threadId,
+      Effect.gen(function* () {
+        const authority = yield* ownFailure("session.execution", resolveThreadAuthority(threadId));
+        if (
+          authority.binding.kind !== "claude" ||
+          location.hostId !== "local" ||
+          location.projectId !== authority.thread.projectId ||
+          !isAbsolute(location.cwd)
+        )
+          return yield* fail(
+            "session.execution",
+            new Error("Native execution relocation requires the same local Claude Project."),
+            { threadId },
+          );
+        const handle = yield* ownFailure("session.execution", requireHandle(threadId));
+        const move = yield* requireControl(
+          handle.withExecutionLocation,
+          "execution relocation",
+          threadId,
+        );
+        const launched = launchAuthorities.get(handle);
+        if (!launched?.nativeLocation)
+          return yield* fail(
+            "session.execution",
+            new Error("The native execution authority is unavailable"),
+            { threadId },
+          );
+        const destination: NativeSessionWorkspaceLocation = {
+          cwd: location.cwd,
+          workspaceRoots: location.workspaceRoots,
+          managedWorktreePath: location.managedWorktreePath,
+          projectlessOutputDirectory: location.projectlessOutputDirectory,
+          projectlessWorkspaceBrowserRoot: location.projectlessWorkspaceBrowserRoot,
+        };
+        const recoveryLocations = nativeExecutionRecoveryLocations.get(handle);
+        if (
+          nativeExecutionRecoveryRequired.has(threadId) &&
+          recoveryLocations &&
+          !recoveryLocations.some((known) => isDeepStrictEqual(known, destination))
+        )
+          return yield* fail(
+            "session.execution",
+            new Error("Recover the recorded source or destination before moving elsewhere"),
+            { threadId },
+          );
+        if (
+          destination.cwd === launched.nativeLocation.cwd &&
+          !isDeepStrictEqual(destination, launched.nativeLocation)
+        )
+          return yield* fail(
+            "session.execution",
+            new Error(
+              "A native relocation must name a distinct working directory or retain its exact execution roots",
+            ),
+            { threadId },
+          );
+        const nativeSessionId = handle.sessionId;
+        const workspaceEnvironment = yield* worktreeEnvironment(
+          location.cwd,
+          location.managedWorktreePath,
+        );
+        nativeExecutionTransitions.set(handle, { source: launched.nativeLocation, destination });
+        nativeExecutionRecoveryLocations.set(
+          handle,
+          recoveryLocations ?? [launched.nativeLocation, destination],
+        );
+        return yield* move(
+          { workspaceRoot: location.cwd, workspaceEnvironment },
+          use.pipe(
+            Effect.flatMap((value) =>
+              Effect.gen(function* () {
+                const current = yield* ownFailure(
+                  "session.execution",
+                  resolveThreadAuthority(threadId),
+                );
+                const durable = yield* ownFailure(
+                  "session.execution",
+                  workspace.readThreadBackendSession(threadId),
+                );
+                const context = yield* ownFailure(
+                  "session.execution",
+                  workspace.readThreadExecutionContext(threadId),
+                );
+                const nativeHome = yield* ownFailure(
+                  "session.execution",
+                  claudeSessions.nativeHome(authority.binding.instanceConfigId),
+                );
+                if (
+                  (yield* claudeSessions.get(threadId)) !== handle ||
+                  handle.sessionId !== nativeSessionId ||
+                  durable?.backendSessionId !== nativeSessionId ||
+                  durable.backendBinding.kind !== "claude" ||
+                  !sameBinding(durable.backendBinding, authority.binding) ||
+                  (durable.nativeHome && durable.nativeHome !== nativeHome) ||
+                  !sameBinding(current.binding, authority.binding) ||
+                  current.thread.projectId !== authority.thread.projectId ||
+                  !context ||
+                  context.projectId !== current.thread.projectId ||
+                  !isDeepStrictEqual(
+                    nativeExecutionLocation(current.thread, current.workspaceRoot, context),
+                    destination,
+                  )
+                )
+                  return yield* fail(
+                    "session.execution",
+                    new Error(
+                      "The committed native execution location or identity did not match the prepared destination",
+                    ),
+                    { threadId },
+                  );
+                launchAuthorities.set(handle, {
+                  ...launched,
+                  workspaceRoot: location.cwd,
+                  nativeLocation: destination,
+                });
+                return value;
+              }),
+            ),
+          ),
+        ).pipe(
+          Effect.mapError((cause) =>
+            Schema.is(AgentRuntimeError)(cause)
+              ? fail("session.execution", cause, { threadId })
+              : cause,
+          ),
+          Effect.onExit((exit) =>
+            Effect.sync(() => {
+              if (Exit.isFailure(exit)) launchAuthorities.set(handle, launched);
+              nativeExecutionTransitions.delete(handle);
+              if (
+                !nativeExecutionHandoffs.has(threadId) &&
+                !nativeExecutionRecoveryRequired.has(threadId)
+              )
+                nativeExecutionRecoveryLocations.delete(handle);
+            }),
+          ),
+        );
+      }),
+    );
   const applyAgentIntelligence = (input: AgentBackendIntelligenceInput) =>
     Effect.gen(function* () {
+      yield* requireExecutionAdmission(input.threadId);
       const handle = yield* requireHandle(input.threadId);
       const apply = yield* requireControl(
         handle.setIntelligence,
@@ -1193,115 +1706,135 @@ export const make = Effect.gen(function* () {
       return yield* presentation(handle);
     });
   const setAgentIntelligence = (input: AgentBackendIntelligenceInput) =>
-    serializeControl(input.threadId, applyAgentIntelligence(input));
+    requireExecutionAdmission(input.threadId).pipe(
+      Effect.andThen(serializeControl(input.threadId, applyAgentIntelligence(input))),
+    );
   const controlAgentSession = (input: AgentBackendControlInput) =>
-    serializeControl(
-      input.threadId,
-      Effect.gen(function* () {
-        const handle = yield* requireHandle(input.threadId);
-        switch (input.kind) {
-          case "steer": {
-            if (!input.prompt.trim() && !input.images?.length)
-              return yield* fail("steer.validate", new Error("Attach an image or enter a message"));
-            if (input.images?.length && !nativeImages)
-              return yield* fail("steer.images", new Error("Image preparation is unavailable"));
-            const images =
-              input.images?.length && nativeImages
-                ? yield* nativeImages.prepare(input.images)
-                : undefined;
-            yield* (yield* requireControl(handle.steer, "steering", input.threadId))(input.prompt, {
-              clientUserMessageId: input.clientUserMessageId,
-              images,
-            });
-            break;
-          }
-          case "stop-task":
-            yield* (yield* requireControl(handle.stopTask, "stopping tasks", input.threadId))(
-              input.taskId,
-            );
-            break;
-          case "rollback":
-            yield* (yield* requireControl(handle.rollback, "rollback", input.threadId))(
-              input.numTurns,
-            );
-            yield* persistClaudeIntelligence(handle);
-            break;
-          case "compact":
-            yield* yield* requireControl(handle.compact, "compaction", input.threadId);
-            break;
-          case "permission-mode": {
-            const authority = yield* resolveThreadAuthority(input.threadId);
-            const requestedMode = input.mode;
-            if (authority.binding.kind !== "claude" || requestedMode === "custom")
-              return yield* fail(
-                "permission.mode",
-                new Error("This native permission mode is unavailable"),
-              );
-            const setPolicy = yield* requireControl(
-              handle.setPermissionPolicy,
-              "permission selection",
-              input.threadId,
-            );
-            let persistenceStarted = false;
-            let synchronized = false;
-            yield* Effect.uninterruptibleMask((restore) =>
-              Effect.gen(function* () {
-                yield* restore(
-                  setPolicy(resolveAgentPermissionPolicy(authority.binding, requestedMode)),
-                );
-                yield* restore(assertNativeSessionIdentity(handle));
-                persistenceStarted = true;
-                // A write may commit before its following read returns. Finish this handoff
-                // before honoring caller cancellation; uncertain commits close the owner.
-                yield* Effect.gen(function* () {
-                  const selected = yield* setNativePermissionMode(
-                    authority.thread.projectId,
-                    requestedMode,
+    (input.kind !== "stop-task" && input.kind !== "load-older"
+      ? requireExecutionAdmission(input.threadId)
+      : Effect.void
+    ).pipe(
+      Effect.andThen(
+        serializeControl(
+          input.threadId,
+          Effect.gen(function* () {
+            if (input.kind !== "stop-task" && input.kind !== "load-older")
+              yield* requireExecutionAdmission(input.threadId);
+            const handle = yield* requireHandle(input.threadId);
+            switch (input.kind) {
+              case "steer": {
+                if (!input.prompt.trim() && !input.images?.length)
+                  return yield* fail(
+                    "steer.validate",
+                    new Error("Attach an image or enter a message"),
                   );
-                  yield* assertNativeSessionIdentity(handle);
-                  if (selected !== requestedMode)
-                    yield* setPolicy(resolveAgentPermissionPolicy(authority.binding, selected));
-                }).pipe(
-                  Effect.timeoutOrElse({
-                    duration: "10 seconds",
-                    orElse: () =>
-                      fail("permission.commit", new Error("Permission persistence did not finish")),
-                  }),
+                if (input.images?.length && !nativeImages)
+                  return yield* fail("steer.images", new Error("Image preparation is unavailable"));
+                const images =
+                  input.images?.length && nativeImages
+                    ? yield* nativeImages.prepare(input.images)
+                    : undefined;
+                yield* (yield* requireControl(handle.steer, "steering", input.threadId))(
+                  input.prompt,
+                  {
+                    clientUserMessageId: input.clientUserMessageId,
+                    images,
+                  },
                 );
-                synchronized = true;
-              }),
-            ).pipe(
-              Effect.onExit((exit) =>
-                Exit.isFailure(exit) && !synchronized
-                  ? (persistenceStarted
-                      ? Effect.gen(function* () {
-                          if ((yield* sessions.get(input.threadId)) === handle)
-                            yield* sessions.close(input.threadId);
-                        })
-                      : setPolicy(authority.permissionPolicy)
-                    ).pipe(
-                      Effect.catch(() =>
-                        Effect.gen(function* () {
-                          if ((yield* sessions.get(input.threadId)) === handle)
-                            yield* sessions.close(input.threadId);
-                        }),
-                      ),
-                    )
-                  : Effect.void,
-              ),
-            );
-            break;
-          }
-          case "load-older":
-            yield* (yield* requireControl(
-              handle.loadHistory,
-              "history pagination",
-              input.threadId,
-            ))({ before: input.before, limit: input.limit });
-            break;
-        }
-        return yield* presentation(handle);
-      }),
+                break;
+              }
+              case "stop-task":
+                yield* (yield* requireControl(handle.stopTask, "stopping tasks", input.threadId))(
+                  input.taskId,
+                );
+                break;
+              case "rollback":
+                yield* (yield* requireControl(handle.rollback, "rollback", input.threadId))(
+                  input.numTurns,
+                );
+                yield* persistClaudeIntelligence(handle);
+                break;
+              case "compact":
+                yield* yield* requireControl(handle.compact, "compaction", input.threadId);
+                break;
+              case "permission-mode": {
+                const authority = yield* resolveThreadAuthority(input.threadId);
+                const requestedMode = input.mode;
+                if (authority.binding.kind !== "claude" || requestedMode === "custom")
+                  return yield* fail(
+                    "permission.mode",
+                    new Error("This native permission mode is unavailable"),
+                  );
+                const setPolicy = yield* requireControl(
+                  handle.setPermissionPolicy,
+                  "permission selection",
+                  input.threadId,
+                );
+                let persistenceStarted = false;
+                let synchronized = false;
+                yield* Effect.uninterruptibleMask((restore) =>
+                  Effect.gen(function* () {
+                    yield* restore(
+                      setPolicy(resolveAgentPermissionPolicy(authority.binding, requestedMode)),
+                    );
+                    yield* restore(assertNativeSessionIdentity(handle));
+                    persistenceStarted = true;
+                    // A write may commit before its following read returns. Finish this handoff
+                    // before honoring caller cancellation; uncertain commits close the owner.
+                    yield* Effect.gen(function* () {
+                      const selected = yield* setNativePermissionMode(
+                        authority.thread.projectId,
+                        requestedMode,
+                      );
+                      yield* assertNativeSessionIdentity(handle);
+                      if (selected !== requestedMode)
+                        yield* setPolicy(resolveAgentPermissionPolicy(authority.binding, selected));
+                    }).pipe(
+                      Effect.timeoutOrElse({
+                        duration: "10 seconds",
+                        orElse: () =>
+                          fail(
+                            "permission.commit",
+                            new Error("Permission persistence did not finish"),
+                          ),
+                      }),
+                    );
+                    synchronized = true;
+                  }),
+                ).pipe(
+                  Effect.onExit((exit) =>
+                    Exit.isFailure(exit) && !synchronized
+                      ? (persistenceStarted
+                          ? Effect.gen(function* () {
+                              if ((yield* sessions.get(input.threadId)) === handle)
+                                yield* sessions.close(input.threadId);
+                            })
+                          : setPolicy(authority.permissionPolicy)
+                        ).pipe(
+                          Effect.catch(() =>
+                            Effect.gen(function* () {
+                              if ((yield* sessions.get(input.threadId)) === handle)
+                                yield* sessions.close(input.threadId);
+                            }),
+                          ),
+                        )
+                      : Effect.void,
+                  ),
+                );
+                break;
+              }
+              case "load-older":
+                yield* (yield* requireControl(
+                  handle.loadHistory,
+                  "history pagination",
+                  input.threadId,
+                ))({ before: input.before, limit: input.limit });
+                break;
+            }
+            return yield* presentation(handle);
+          }),
+        ),
+      ),
     );
   const createNativeThread = Effect.fn("AgentBackendApplication.createNativeThread")(
     function* (input: {
@@ -1310,7 +1843,8 @@ export const make = Effect.gen(function* () {
       title: string;
       cwd: string;
       parentThreadId?: string;
-      location?: NativeAutomationWorkspaceLocation;
+      location?: NativeSessionWorkspaceLocation;
+      lease?: NativeSessionWorkspaceLease;
     }) {
       const sessionId = createUuidV7();
       yield* workspace.createProjectSession({
@@ -1326,7 +1860,7 @@ export const make = Effect.gen(function* () {
       });
       const threadId = createUuidV7();
       const now = Date.now();
-      const thread = yield* workspace.upsertProjectSessionThreadLink({
+      const threadInput: ProjectSessionThreadLinkInput = {
         sessionId,
         projectId: input.projectId,
         threadId,
@@ -1349,7 +1883,10 @@ export const make = Effect.gen(function* () {
         createdAt: now,
         updatedAt: now,
         recencyAt: now,
-      });
+      };
+      const thread = yield* input.lease
+        ? admitNativeThread(threadInput, input.lease)
+        : workspace.upsertProjectSessionThreadLink(threadInput);
       if (input.parentThreadId)
         yield* workspace.updateThread(threadId, { forkedFromId: input.parentThreadId });
       return thread;
@@ -1358,6 +1895,7 @@ export const make = Effect.gen(function* () {
   const forkAgentSession = Effect.fn("AgentBackendApplication.forkAgentSession")(function* (
     input: AgentBackendForkInput,
   ) {
+    yield* requireExecutionAdmission(input.threadId);
     const authority = yield* resolveThreadAuthority(input.threadId);
     const handle = yield* requireHandle(input.threadId);
     const sourceSessionId = handle.sessionId;
@@ -1398,6 +1936,7 @@ export const make = Effect.gen(function* () {
       threadId: thread.threadId,
       backendBinding: authority.binding,
       backendSessionId: forked.sessionId,
+      ...(durable?.nativeHome ? { nativeHome: durable.nativeHome } : {}),
       nativeState: remapNativeState(
         nativeStateFromSnapshot(
           yield* SubscriptionRef.get(handle.snapshot),
@@ -1410,6 +1949,19 @@ export const make = Effect.gen(function* () {
     return { thread, presentation: yield* openAgentSession({ threadId: thread.threadId }) };
   });
   const nativeConversations: NativeConversationExtension["Service"] = {
+    withExecutionLocation: withAgentExecutionLocation,
+    withExecutionHandoff: withAgentExecutionHandoff,
+    setExecutionRecoveryRequired,
+    stopExecution: (threadId) =>
+      ownFailure(
+        "native.execution.stop",
+        Effect.gen(function* () {
+          const handle = yield* requireHandle(threadId);
+          yield* handle.cancel;
+          if (!nativeExecutionHandoffs.has(threadId)) return;
+          yield* yield* requireControl(handle.suspendExecution, "execution suspension", threadId);
+        }),
+      ),
     read: (threadId) =>
       Effect.gen(function* () {
         const thread = yield* workspace.getThread(threadId);
@@ -1428,6 +1980,7 @@ export const make = Effect.gen(function* () {
       }).pipe(Effect.mapError((cause) => fail("native.read", cause))),
     submit: (input) =>
       Effect.gen(function* () {
+        yield* requireExecutionAdmission(input.threadId);
         const operationKey = receiptKey(input.threadId, input.operationId);
         const fingerprint = JSON.stringify([
           input.prompt,
@@ -1467,6 +2020,7 @@ export const make = Effect.gen(function* () {
         const result = yield* serializeControl(
           input.threadId,
           Effect.gen(function* () {
+            yield* requireExecutionAdmission(input.threadId);
             const handle = yield* requireHandle(input.threadId);
             if (!handle.setIntelligence)
               return yield* fail("native.submit", new Error("Native execution is unavailable"));
@@ -1536,6 +2090,8 @@ export const make = Effect.gen(function* () {
                   Effect.andThen(
                     Effect.sync(() => {
                       operation.settled = true;
+                      if (nativeOperations.get(operationKey) === operation)
+                        nativeOperations.delete(operationKey);
                     }),
                   ),
                 )
@@ -1573,7 +2129,7 @@ export const make = Effect.gen(function* () {
         if (input.definition.projectId && (!project || project.lifecycle !== "active"))
           return yield* fail("automation.create", new Error("Project workspace is unavailable"));
         const cwd = input.cwd ?? project?.primaryWorkspaceRoot ?? null;
-        if (!nativeAutomationWorkspace)
+        if (!nativeSessionWorkspace)
           return yield* fail(
             "automation.create",
             new Error("Native automation workspace runtime is unavailable"),
@@ -1582,9 +2138,19 @@ export const make = Effect.gen(function* () {
           Effect.uninterruptibleMask((restore) =>
             Effect.gen(function* () {
               const lease = yield* restore(
-                nativeAutomationWorkspace.prepare({
-                  definition: input.definition,
+                nativeSessionWorkspace.prepare({
+                  projectId: input.definition.projectId,
+                  targetId: input.definition.id,
+                  title: input.definition.name,
+                  prompt: input.definition.prompt,
                   sourceCwd: cwd,
+                  sourceRoots: project?.sources.map(({ root }) => root),
+                  runInTarget:
+                    input.definition.projectId &&
+                    input.definition.executionEnvironment === "worktree"
+                      ? "newWorktree"
+                      : "localProject",
+                  localEnvironmentConfigPath: input.definition.localEnvironmentConfigPath,
                   operationId: input.operationId,
                 }),
               );
@@ -1594,8 +2160,8 @@ export const make = Effect.gen(function* () {
                 title: input.definition.name,
                 cwd: lease.location.cwd,
                 location: lease.location,
+                lease,
               });
-              yield* lease.attach(thread.threadId);
               return { threadId: thread.threadId };
             }),
           ),
@@ -1605,10 +2171,15 @@ export const make = Effect.gen(function* () {
       Effect.gen(function* () {
         if (definition.backendBinding.kind !== "claude")
           return yield* fail("automation.backend", new Error("Select a native Claude profile"));
-        if (definition.serviceTier || definition.localEnvironmentConfigPath)
+        if (definition.serviceTier)
           return yield* fail(
             "automation.settings",
-            new Error("Claude automation uses its profile environment"),
+            new Error("Codex service tiers are unavailable for Claude"),
+          );
+        if (definition.localEnvironmentConfigPath && definition.executionEnvironment !== "worktree")
+          return yield* fail(
+            "automation.settings",
+            new Error("A Claude Environment requires a managed Project worktree"),
           );
         yield* backends.resolve(definition.backendBinding);
         if (
@@ -1623,6 +2194,68 @@ export const make = Effect.gen(function* () {
   const nativeBinding = Option.getOrNull(yield* Effect.serviceOption(NativeConversationBinding));
   if (nativeBinding) yield* nativeBinding.bind(nativeConversations).pipe(Effect.orDie);
   return AgentBackendApplication.of({
+    listClaudeNativeSessions: (input) =>
+      ownFailure(
+        "native.sessions.list",
+        Effect.gen(function* () {
+          if (input.backendKind !== "claude" || !input.instanceConfigId)
+            return yield* fail("native.sessions.list", new Error("Choose a Claude profile"));
+          yield* backends.resolve({ kind: "claude", instanceConfigId: input.instanceConfigId });
+          const page = yield* claudeSessions.nativeCatalog({
+            instanceConfigId: input.instanceConfigId,
+            ...(input.cursor ? { cursor: input.cursor } : {}),
+          });
+          const bindings = yield* workspace.readNativeSessionBindings({
+            backendKind: "claude",
+            nativeHome: page.nativeHome,
+            nativeSessionIds: page.entries.map((entry) => entry.nativeSessionId),
+          });
+          const attached = new Map(bindings.map((binding) => [binding.nativeSessionId, binding]));
+          return {
+            ...page,
+            entries: page.entries.map((entry) => {
+              const binding = attached.get(entry.nativeSessionId);
+              return {
+                ...entry,
+                ...(binding
+                  ? {
+                      attachedThreadId: binding.threadId,
+                      ...(binding.sessionId ? { attachedSessionId: binding.sessionId } : {}),
+                    }
+                  : {}),
+              };
+            }),
+          };
+        }),
+      ),
+    attachClaudeNativeSession: (input) =>
+      ownFailure(
+        "native.sessions.attach",
+        Effect.gen(function* () {
+          if (input.backendKind !== "claude" || !input.instanceConfigId)
+            return yield* fail("native.sessions.attach", new Error("Choose a Claude profile"));
+          yield* backends.resolve({ kind: "claude", instanceConfigId: input.instanceConfigId });
+          const info = yield* claudeSessions.nativeSessionInfo({
+            instanceConfigId: input.instanceConfigId,
+            nativeSessionId: input.nativeSessionId,
+            expectedHome: input.expectedHome,
+          });
+          return yield* workspace.attachNativeSession({
+            backendKind: "claude",
+            instanceConfigId: input.instanceConfigId,
+            nativeSessionId: info.sessionId,
+            nativeHome: info.nativeHome,
+            projectId: input.projectId,
+            title: nativeSessionCatalogTitle(
+              info.customTitle || info.summary,
+              "Claude conversation",
+            ),
+            cwd: info.cwd,
+            createdAt: info.createdAt ?? info.lastModified,
+            updatedAt: info.lastModified,
+          });
+        }),
+      ),
     nativeConversations,
     readNativePermissionMode: (projectId) =>
       ownFailure("permission.read", readNativePermissionMode(projectId)),
@@ -1693,11 +2326,14 @@ export const make = Effect.gen(function* () {
               new Error("The host configuration is unavailable"),
             );
           yield* backends.resolve({ kind: "claude", instanceConfigId: input.instanceConfigId });
-          return yield* claudeSessions.discover(input.instanceConfigId, cwd);
+          return yield* claudeSessions.discover(input.instanceConfigId, cwd, input.forceReload);
         }),
       ),
     setAgentIntelligence: (input) =>
       ownFailure("session.intelligence", setAgentIntelligence(input)),
+    withAgentExecutionLocation,
+    withAgentExecutionHandoff,
+    setExecutionRecoveryRequired,
     controlAgentSession: (input) => ownFailure("session.control", controlAgentSession(input)),
     forkAgentSession: (input) => ownFailure("session.fork", forkAgentSession(input)),
     inspectAgentSession: (threadId) =>
@@ -1753,11 +2389,15 @@ export const make = Effect.gen(function* () {
               new Error("Choose an active local Project to load Claude models"),
             );
           yield* backends.resolve({ kind: "claude", instanceConfigId: input.instanceConfigId });
-          return yield* claudeSessions.models(input.instanceConfigId, root);
+          return yield* claudeSessions.models(input.instanceConfigId, root, input.forceReload);
         }),
       ),
     startAgentThread: (input) =>
-      ownFailure("thread.start", startAgentThread(input), { sessionId: input.sessionId }),
+      ownFailure(
+        "thread.start",
+        serializeControl(`start:${input.sessionId}`, startAgentThread(input)),
+        { sessionId: input.sessionId },
+      ),
     openAgentSession: (input) =>
       ownFailure("session.open", openAgentSession(input), { threadId: input.threadId }),
     readAgentSession: (threadId) =>
@@ -1782,6 +2422,7 @@ export const make = Effect.gen(function* () {
         serializeControl(
           input.threadId,
           Effect.gen(function* () {
+            yield* requireExecutionAdmission(input.threadId);
             const handle = yield* requireHandle(input.threadId);
             yield* handle.setMode(input.modeId);
             yield* persistClaudeIntelligence(handle);
@@ -1796,6 +2437,7 @@ export const make = Effect.gen(function* () {
         serializeControl(
           input.threadId,
           Effect.gen(function* () {
+            yield* requireExecutionAdmission(input.threadId);
             const handle = yield* requireHandle(input.threadId);
             const configOptions = yield* handle.setConfigOption(input.configId, input.value);
             yield* persistClaudeIntelligence(handle);
@@ -1811,6 +2453,7 @@ export const make = Effect.gen(function* () {
       ownFailure(
         "session.authenticate",
         Effect.gen(function* () {
+          yield* requireExecutionAdmission(input.threadId);
           const handle = yield* requireHandle(input.threadId);
           if (
             (yield* SubscriptionRef.get(handle.snapshot)).backend === "claude" &&
@@ -1867,7 +2510,11 @@ export const make = Effect.gen(function* () {
         { threadId: input.threadId },
       ),
     closeAgentSession: (threadId) =>
-      ownFailure("session.close", sessions.close(threadId), { threadId }),
+      ownFailure(
+        "session.close",
+        requireExecutionAdmission(threadId).pipe(Effect.andThen(sessions.close(threadId))),
+        { threadId },
+      ),
     respondToInteraction: (threadId, requestId, response) =>
       ownFailure(
         "session.respond",

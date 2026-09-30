@@ -14,6 +14,7 @@ import {
   type SDKMessage,
   type SDKUserMessage,
   type SessionMessage,
+  type SDKSessionInfo,
   type ModelInfo,
   type SlashCommand,
   type UserDialogRequest,
@@ -44,6 +45,7 @@ import type {
   ClaudeRuntimeDiagnostics,
   ClaudeResolvedIntelligence,
 } from "../../../shared/claude-models";
+import { claudeModelWithContext } from "../../../shared/claude-models";
 import { agentRuntimeError, AgentRuntimeError } from "../../agent-backend/AgentRuntimeError";
 import { isClaudeHistoryPrompt } from "../../../shared/claude-history";
 import { claudeNativeHome, resolveClaudeExecutable } from "./ClaudeExecutable";
@@ -123,9 +125,21 @@ export interface ClaudeSdkOpenInput {
   ) => Effect.Effect<ElicitationResult, AgentRuntimeError>;
 }
 type HistoryInput = Omit<ClaudeSdkOpenInput, "canUseTool" | "permissionMode">;
+export type ClaudeNativeScopeInput = Pick<ClaudeSdkOpenInput, "instance" | "environment">;
 export class ClaudeSdk extends Context.Service<
   ClaudeSdk,
   {
+    readonly nativeHome: (
+      input: ClaudeNativeScopeInput,
+    ) => Effect.Effect<string, AgentRuntimeError>;
+    readonly listSessions: (
+      input: ClaudeNativeScopeInput,
+      offset: number,
+    ) => Effect.Effect<readonly SDKSessionInfo[], AgentRuntimeError>;
+    readonly sessionInfo: (
+      input: ClaudeNativeScopeInput,
+      sessionId: string,
+    ) => Effect.Effect<SDKSessionInfo | null, AgentRuntimeError>;
     readonly open: (
       input: ClaudeSdkOpenInput,
     ) => Effect.Effect<ClaudeSdkSession, AgentRuntimeError, Scope.Scope>;
@@ -377,6 +391,8 @@ const open = Effect.fn("ClaudeSdk.open")(function* (input: ClaudeSdkOpenInput) {
     ),
   );
   let intelligence = yield* inspectIntelligence;
+  // Capture the model selected by this Query's native configuration before any flag override.
+  const inheritedModel = input.model === undefined ? intelligence.model : null;
   const diagnostics: ClaudeRuntimeDiagnostics = {
     health: {
       status: "unknown",
@@ -446,8 +462,18 @@ const open = Effect.fn("ClaudeSdk.open")(function* (input: ClaudeSdkOpenInput) {
     interrupt: call("interrupt", () => session.interrupt()),
     setIntelligence: (selection) =>
       Effect.suspend(() => {
+        const model =
+          selection.model !== "default"
+            ? claudeModelWithContext(selection.model, selection.context)
+            : selection.context && inheritedModel
+              ? claudeModelWithContext(inheritedModel, selection.context)
+              : undefined;
+        if (selection.model === "default" && selection.context && !inheritedModel)
+          return Effect.fail(
+            failure("intelligence", new Error("Claude has not reported the inherited model.")),
+          );
         if (
-          (flags.model !== undefined && selection.model === "default") ||
+          (flags.model !== undefined && model === undefined) ||
           (flags.effort !== undefined && selection.effort === "default")
         )
           return Effect.fail(
@@ -460,13 +486,7 @@ const open = Effect.fn("ClaudeSdk.open")(function* (input: ClaudeSdkOpenInput) {
           );
         return call("intelligence", () =>
           session.applyFlagSettings({
-            ...(selection.model !== "default"
-              ? {
-                  model: selection.context
-                    ? `${selection.model.replace(/\[[^\]]+\]$/u, "")}[${selection.context}]`
-                    : selection.model,
-                }
-              : {}),
+            ...(model !== undefined ? { model } : {}),
             ...(selection.effort !== "default" ? { effortLevel: selection.effort } : {}),
             ...(selection.fast !== undefined
               ? { fastMode: selection.fast }
@@ -484,7 +504,7 @@ const open = Effect.fn("ClaudeSdk.open")(function* (input: ClaudeSdkOpenInput) {
             Effect.sync(() => {
               if (selection.fast !== flags.fast) fastState = undefined;
               flags = {
-                model: selection.model === "default" ? undefined : selection.model,
+                model,
                 effort: selection.effort === "default" ? undefined : selection.effort,
                 fast: selection.fast,
                 thinking: selection.thinking,
@@ -637,8 +657,17 @@ export const claudeHistoryToolOutput = (
 
 // Native history/mutations read process.env; a bounded worker isolates each account without mutating Main.
 const nativeOperation = <A>(
-  input: HistoryInput,
-  operation: "history" | "fork" | "configuration" | "image" | "exists" | "tool-output",
+  input: ClaudeNativeScopeInput & Partial<HistoryInput>,
+  operation:
+    | "home"
+    | "catalog"
+    | "session-info"
+    | "history"
+    | "fork"
+    | "configuration"
+    | "image"
+    | "exists"
+    | "tool-output",
   options: {
     readonly before?: string;
     readonly limit?: number;
@@ -647,6 +676,7 @@ const nativeOperation = <A>(
     readonly nativeMessageId?: string;
     readonly index?: number;
     readonly toolUseId?: string;
+    readonly offset?: number;
   } = {},
 ) =>
   Effect.callback<A, AgentRuntimeError>((resume) => {
@@ -661,6 +691,15 @@ const nativeOperation = <A>(
     const AGENT_TOOL_OUTPUT_MAX_BYTES = ${AGENT_TOOL_OUTPUT_MAX_BYTES};
     const boundOutput = ${boundAgentToolOutput.toString()};
     const readToolOutput = ${claudeHistoryToolOutput.toString()};
+    const metadata = info => info ? {
+      sessionId:info.sessionId,
+      summary:String(info.summary??"").slice(0,2000),
+      lastModified:info.lastModified,
+      ...(info.customTitle?{customTitle:info.customTitle.slice(0,2000)}:{}),
+      ...(info.firstPrompt?{firstPrompt:info.firstPrompt.slice(0,1024)}:{}),
+      ...(info.cwd?{cwd:info.cwd}:{}),
+      ...(info.createdAt===undefined?{}:{createdAt:info.createdAt})
+    } : null;
     const post = value => { if (Buffer.byteLength(JSON.stringify(value),"utf8") > 8 * 1024 * 1024) throw new Error("Native history exceeds the page size limit. Load a smaller history page.");parentPort.postMessage(value);};
     const withoutInlineImages = value => {
       if (Array.isArray(value)) return value.map(withoutInlineImages);
@@ -668,23 +707,47 @@ const nativeOperation = <A>(
       if (value.type === "image" && value.source?.type === "base64") { const {data,...source}=value.source; return {...value,source}; }
       return Object.fromEntries(Object.entries(value).map(([key,entry])=>[key,withoutInlineImages(entry)]));
     };
-    import(workerData.moduleUrl).then(async sdk => {
+    Promise.resolve().then(async()=>{
+      if(workerData.operation!=="home") return import(workerData.moduleUrl);
+      const {basename,dirname,isAbsolute,join,resolve}=require("node:path");
+      const {lstat,realpath,stat}=require("node:fs/promises");
+      const root=process.env.CLAUDE_CONFIG_DIR||join(require("node:os").homedir(),".claude");
+      if(!isAbsolute(root)) throw new Error("Claude Code configuration directories must be absolute paths.");
+      const present=path=>lstat(path).catch(error=>{if(error.code!=="ENOENT")throw error;return null;});
+      const suffix=[];
+      let ancestor=resolve(root);
+      // Bind the physical ancestor before Claude creates its missing configuration directory.
+      while(await present(ancestor)===null){
+        suffix.unshift(basename(ancestor));
+        const parent=dirname(ancestor);
+        if(parent===ancestor) throw new Error("Claude Code configuration directory has no existing ancestor.");
+        ancestor=parent;
+      }
+      if(!(await stat(ancestor)).isDirectory()) throw new Error("Claude Code configuration home must be a directory.");
+      post(join(await realpath(ancestor),...suffix));
+    }).then(async sdk => {
+      if (workerData.operation === "home") return;
+      if (workerData.operation === "catalog") {
+        post((await sdk.listSessions({limit:51,offset:workerData.options.offset,includeProgrammatic:true})).map(metadata));return;
+      }
       if (workerData.operation === "configuration") {
         const resolved = await sdk.resolveSettings({cwd:workerData.cwd,settingSources:["user","project","local"]});
         post({skillOverrides:resolved.effective.skillOverrides??{}}); return;
       }
-      const info = await sdk.getSessionInfo(workerData.sessionId, {dir:workerData.cwd});
+      // Exact native identity is account-scoped; moving execution must not move or lose history.
+      const info = await sdk.getSessionInfo(workerData.sessionId);
+      if (workerData.operation === "session-info") {post(metadata(info));return;}
       if (workerData.operation === "exists") {post(Boolean(info));return;}
       if (!info) {const error=new Error("Claude Code no longer has this session. Start a new task.");error.code="NODEX_NATIVE_SESSION_NOT_FOUND";throw error;}
       if (workerData.operation === "fork") {
-        const entries = await sdk.getSessionMessages(workerData.sessionId,{dir:workerData.cwd,includeSystemMessages:true});
+        const entries = await sdk.getSessionMessages(workerData.sessionId,{includeSystemMessages:true});
         if (workerData.options.upToMessageId && !entries.some(entry=>entry.uuid===workerData.options.upToMessageId)) throw new Error("The selected message is no longer in native history.");
-        const forked = await sdk.forkSession(workerData.sessionId,{dir:workerData.cwd,upToMessageId:workerData.options.upToMessageId});
-        const retained = await sdk.getSessionMessages(forked.sessionId,{dir:workerData.cwd,includeSystemMessages:true});
+        const forked = await sdk.forkSession(workerData.sessionId,{upToMessageId:workerData.options.upToMessageId});
+        const retained = await sdk.getSessionMessages(forked.sessionId,{includeSystemMessages:true});
         post({...forked,messageIdMap:mapFork(entries,retained,isDeepStrictEqual)}); return;
       }
 
-      const entries = await sdk.getSessionMessages(workerData.sessionId,{dir:workerData.cwd,includeSystemMessages:true});
+      const entries = await sdk.getSessionMessages(workerData.sessionId,{includeSystemMessages:true});
       if (workerData.operation === "image") { post(readImage(entries,workerData.options.nativeMessageId,workerData.options.index,isPrompt));return; }
       if (workerData.operation === "tool-output") { post(readToolOutput(entries,workerData.options.nativeMessageId,workerData.options.toolUseId,boundOutput));return; }
       post(withoutInlineImages(windowHistory(entries,workerData.options,isPrompt)));
@@ -751,9 +814,17 @@ const historyToolOutput: ClaudeSdk["Service"]["historyToolOutput"] = (
 ) => nativeOperation(input, "tool-output", { nativeMessageId, toolUseId });
 const configuration: ClaudeSdk["Service"]["configuration"] = (input) =>
   nativeOperation({ ...input, sessionId: "", resume: false }, "configuration");
+const nativeHome: ClaudeSdk["Service"]["nativeHome"] = (input) => nativeOperation(input, "home");
+const listSessions: ClaudeSdk["Service"]["listSessions"] = (input, offset) =>
+  nativeOperation(input, "catalog", { offset });
+const sessionInfo: ClaudeSdk["Service"]["sessionInfo"] = (input, sessionId) =>
+  nativeOperation({ ...input, sessionId }, "session-info");
 export const live = Layer.succeed(
   ClaudeSdk,
   ClaudeSdk.of({
+    nativeHome,
+    listSessions,
+    sessionInfo,
     open,
     history,
     historyPage,

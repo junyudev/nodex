@@ -24,6 +24,8 @@ import {
   ManagedWorktreeRetentionRuntime,
   live as managedWorktreeRetentionRuntimeLive,
 } from "./ManagedWorktreeRetentionRuntime";
+import type { CodexThreadHandoffJournalStorage } from "../platform/CodexThreadHandoffJournalStorage";
+import type { CodexThreadHandoffJournalEntry } from "../codex/codex-thread-handoff-journal";
 
 const disabledSettings: ManagedWorktreeSettings = {
   worktreeRoot: null,
@@ -85,12 +87,18 @@ const buildRuntime = (
     readonly managedWorktrees?: ManagedWorktreeRuntime["Service"];
     readonly pendingWorktrees?: CodexPendingWorktreeRuntime["Service"];
     readonly automation?: AutomationApplication["Service"];
+    readonly handoffJournal?: CodexThreadHandoffJournalStorage;
   } = {},
 ) =>
   Effect.gen(function* () {
     const scope = yield* Scope.make();
     const context = yield* Layer.buildWithScope(
-      managedWorktreeRetentionRuntimeLive({}).pipe(
+      managedWorktreeRetentionRuntimeLive({
+        handoffJournal: options.handoffJournal ?? {
+          load: Effect.succeed([]),
+          persist: () => Effect.void,
+        },
+      }).pipe(
         Layer.provide(
           Layer.mergeAll(
             Layer.succeed(AutomationApplication, options.automation ?? automationApplication()),
@@ -319,6 +327,84 @@ it.effect("revalidates current inventory and new pending protection before delet
     assert.strictEqual(plan.status, "planned");
     assert.strictEqual(listCalls, 2);
     assert.deepEqual(removed, []);
+    yield* Scope.close(scope, Exit.void);
+  }),
+);
+
+it.effect("retains unfinished handoff paths from the durable journal after restart", () =>
+  Effect.gen(function* () {
+    const roots = [
+      "/managed/source",
+      "/managed/destination",
+      "/managed/allocated",
+      "/managed/unused",
+      "/managed/keep",
+    ];
+    const location = (cwd: string) => ({
+      hostId: "local",
+      cwd,
+      workspaceRoots: [cwd],
+      managedWorktreePath: cwd,
+      projectId: "project",
+      projectlessOutputDirectory: null,
+      projectlessWorkspaceBrowserRoot: null,
+    });
+    const entry: CodexThreadHandoffJournalEntry = {
+      schemaVersion: 1,
+      operationId: "retained",
+      threadId: "thread",
+      phase: "recovery-required",
+      source: location(roots[0]!),
+      destination: location(roots[1]!),
+      allocatedDestination: { hostId: "local", worktreeGitRoot: roots[2]! },
+      requestedDestinationHostId: null,
+      prepared: null,
+      runtimeSwitched: false,
+      coreCommitted: false,
+      followUpPrompt: null,
+      followUpDispatchStarted: false,
+      warnings: [],
+      lastError: "Reply lost",
+      failedPhase: "preparing-destination",
+      createdAt: 1,
+      updatedAt: 2,
+      completedAt: null,
+    };
+    const removed: string[] = [];
+    let journalReads = 0;
+    const { runtime, scope } = yield* buildRuntime({
+      settings: () => ({ ...disabledSettings, autoDeleteEnabled: true }),
+      executionHosts: executionHosts(["local"]),
+      handoffJournal: {
+        load: Effect.sync(() => {
+          journalReads += 1;
+          return [entry];
+        }),
+        persist: () => Effect.void,
+      },
+      managedWorktrees: managedWorktrees({
+        list: () =>
+          Effect.succeed({
+            entries: roots.map((worktreeGitRoot, index) => ({
+              worktreeGitRoot,
+              repositoryPath: "/repo",
+              createdAtMs: Date.parse("2026-08-13T00:00:00.000Z") + index,
+              ownerThreadId: null,
+              ownerReadFailed: false,
+            })),
+          }),
+        remove: (input) =>
+          Effect.sync(() => {
+            removed.push(input.worktreeGitRoot);
+            return { removed: true, alreadyMissing: false, snapshot: null, warnings: [] };
+          }),
+      }),
+    });
+    yield* TestClock.setTime(Date.parse("2026-08-14T00:00:00.000Z"));
+    const plan = yield* runtime.run;
+    assert.strictEqual(plan.status, "planned");
+    assert.strictEqual(journalReads, 2);
+    assert.deepEqual(removed, [roots[3]]);
     yield* Scope.close(scope, Exit.void);
   }),
 );

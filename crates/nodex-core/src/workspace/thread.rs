@@ -134,7 +134,7 @@ pub(super) fn read_thread_backend_session(
     let stored = connection
         .query_row(
             "SELECT backend_kind, agent_definition_id, instance_config_id, \
-                    backend_session_id, updated_at, native_state_json \
+                    backend_session_id, updated_at, native_state_json, native_home \
              FROM thread_backend_sessions WHERE thread_id = ?1",
             [thread_id],
             |row| {
@@ -145,6 +145,7 @@ pub(super) fn read_thread_backend_session(
                     thread_id: thread_id.to_owned(),
                     backend_binding: binding,
                     backend_session_id: row.get(3)?,
+                    native_home: row.get(6)?,
                     updated_at: row.get(4)?,
                     native_state: row
                         .get::<_, Option<String>>(5)?
@@ -180,6 +181,7 @@ pub(super) fn bind_thread_backend_session(
     backend_binding: &AgentBackendBinding,
     backend_session_id: &str,
     expected_backend_session_id: Option<&str>,
+    native_home: Option<&str>,
     native_state: Option<&ProjectWorkspaceNativeAgentState>,
 ) -> Result<ProjectWorkspaceApplyOutcome, StoreError> {
     validate_id("thread_id", thread_id)?;
@@ -209,6 +211,43 @@ pub(super) fn bind_thread_backend_session(
             ));
         }
     }
+    let previous = read_thread_backend_session(connection, library_id, thread_id)?;
+    if storage.kind == "claude"
+        && expected_backend_session_id.is_none()
+        && previous
+            .as_ref()
+            .is_some_and(|session| session.backend_session_id != backend_session_id)
+    {
+        return Err(conflict(
+            "Native session replacement requires its expected previous identity",
+        ));
+    }
+    if let Some(native_home) = native_home {
+        validate_native_home(native_home)?;
+        if storage.kind != "claude" {
+            return Err(invalid("Native history scope requires the Claude backend"));
+        }
+        if previous
+            .as_ref()
+            .and_then(|session| session.native_home.as_deref())
+            .is_some_and(|home| home != native_home)
+        {
+            return Err(conflict("Native history scope changed before binding"));
+        }
+    }
+    let native_home = native_home.or_else(|| {
+        previous
+            .as_ref()
+            .and_then(|session| session.native_home.as_deref())
+    });
+    if let Some(home) = native_home
+        && native_binding(connection, library_id, home, backend_session_id)?
+            .is_some_and(|binding| binding.thread_id != thread_id)
+    {
+        return Err(conflict(
+            "This native conversation is already attached to another Thread",
+        ));
+    }
     let native_state_json = native_state
         .map(|state| validate_native_agent_state(state, storage.kind))
         .transpose()?;
@@ -216,15 +255,16 @@ pub(super) fn bind_thread_backend_session(
     connection.execute(
         "INSERT INTO thread_backend_sessions(\
            thread_id, backend_kind, agent_definition_id, instance_config_id, \
-           backend_session_id, updated_at, native_state_json\
-         ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7) \
+           backend_session_id, updated_at, native_state_json, native_home\
+         ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8) \
          ON CONFLICT(thread_id) DO UPDATE SET \
            backend_kind = excluded.backend_kind, \
            agent_definition_id = excluded.agent_definition_id, \
            instance_config_id = excluded.instance_config_id, \
            backend_session_id = excluded.backend_session_id, \
            updated_at = excluded.updated_at, \
-           native_state_json = COALESCE(excluded.native_state_json, thread_backend_sessions.native_state_json)",
+           native_state_json = COALESCE(excluded.native_state_json, thread_backend_sessions.native_state_json), \
+           native_home = COALESCE(excluded.native_home, thread_backend_sessions.native_home)",
         params![
             thread_id,
             storage.kind,
@@ -233,6 +273,7 @@ pub(super) fn bind_thread_backend_session(
             backend_session_id,
             now,
             native_state_json,
+            native_home,
         ],
     )?;
     let session_ids = linked_session_ids(
@@ -255,6 +296,308 @@ pub(super) fn bind_thread_backend_session(
         project_ids,
         session_ids,
         vec![thread_id.to_owned()],
+    )
+}
+
+fn validate_native_home(home: &str) -> Result<(), StoreError> {
+    validate_text("native_home", home, MAX_PATH_BYTES)?;
+    if home.trim() != home || !std::path::Path::new(home).is_absolute() {
+        return Err(invalid(
+            "Native history scope must be an absolute directory",
+        ));
+    }
+    Ok(())
+}
+
+fn native_binding(
+    connection: &Connection,
+    library_id: &str,
+    native_home: &str,
+    native_session_id: &str,
+) -> Result<Option<nodex_core_contracts::workspace::ProjectWorkspaceNativeSessionBinding>, StoreError>
+{
+    let thread_id = connection.query_row(
+        "SELECT thread_id FROM thread_backend_sessions WHERE backend_kind='claude' AND native_home=?1 AND backend_session_id=?2",
+        params![native_home, native_session_id], |row| row.get::<_, String>(0),
+    ).optional()?;
+    thread_id
+        .map(|thread_id| {
+            let thread = require_thread(connection, library_id, &thread_id)?;
+            read_thread_backend_session(connection, library_id, &thread_id)?;
+            Ok(
+                nodex_core_contracts::workspace::ProjectWorkspaceNativeSessionBinding {
+                    native_session_id: native_session_id.to_owned(),
+                    thread_id,
+                    session_id: thread.session_id,
+                    project_id: thread.project_id,
+                },
+            )
+        })
+        .transpose()
+}
+
+pub(super) fn read_native_session_bindings(
+    connection: &Connection,
+    library_id: &str,
+    backend_kind: nodex_core_contracts::workspace::ProjectWorkspaceNativeBackendKind,
+    native_home: &str,
+    native_session_ids: &[String],
+) -> Result<Vec<nodex_core_contracts::workspace::ProjectWorkspaceNativeSessionBinding>, StoreError>
+{
+    validate_native_home(native_home)?;
+    if native_session_ids.len() > 50 {
+        return Err(invalid("Native session lookup exceeds its bound"));
+    }
+    let mut bindings = Vec::new();
+    for native_session_id in native_session_ids {
+        validate_id("native_session_id", native_session_id)?;
+        match backend_kind {
+            nodex_core_contracts::workspace::ProjectWorkspaceNativeBackendKind::Claude => {
+                if let Some(binding) =
+                    native_binding(connection, library_id, native_home, native_session_id)?
+                {
+                    bindings.push(binding);
+                }
+            }
+            nodex_core_contracts::workspace::ProjectWorkspaceNativeBackendKind::Codex => {
+                if let Some(thread) = read_thread(connection, library_id, native_session_id)?
+                    && thread.backend_binding == AgentBackendBinding::Codex
+                    && thread.execution_host_id == "local"
+                    && thread.parent_thread_id.is_none()
+                {
+                    bindings.push(
+                        nodex_core_contracts::workspace::ProjectWorkspaceNativeSessionBinding {
+                            native_session_id: native_session_id.clone(),
+                            thread_id: thread.thread_id,
+                            session_id: thread.session_id,
+                            project_id: thread.project_id,
+                        },
+                    );
+                }
+            }
+        }
+    }
+    Ok(bindings)
+}
+
+#[allow(clippy::too_many_arguments)]
+pub(super) fn attach_native_session(
+    connection: &Connection,
+    library_id: &str,
+    context: &BoundModuleContext,
+    store_epoch: &str,
+    operation_id: &str,
+    request_hash: &str,
+    session_id: &str,
+    thread_id: &str,
+    project_id: Option<&str>,
+    backend_binding: &AgentBackendBinding,
+    native_session_id: &str,
+    native_home: &str,
+    title: &str,
+    cwd: &str,
+    created_at: i64,
+    updated_at: i64,
+) -> Result<ProjectWorkspaceApplyOutcome, StoreError> {
+    validate_id("session_id", session_id)?;
+    validate_id("thread_id", thread_id)?;
+    validate_id("native_session_id", native_session_id)?;
+    validate_native_home(native_home)?;
+    validate_text("cwd", cwd, MAX_PATH_BYTES)?;
+    if !std::path::Path::new(cwd).is_absolute() {
+        return Err(invalid("Native working directory must be absolute"));
+    }
+    if let Some(project_id) = project_id {
+        super::session_lifecycle::require_project(connection, library_id, project_id, true)?;
+    }
+    let title = super::session_lifecycle::normalize_session_title(title)?;
+    let mut legacy_home_claim = false;
+    let existing = match backend_binding {
+        AgentBackendBinding::Claude { instance_config_id } => {
+            let bound = native_binding(connection, library_id, native_home, native_session_id)?;
+            if bound.is_some() {
+                bound
+            } else {
+                let legacy=connection.prepare("SELECT thread_id FROM thread_backend_sessions WHERE backend_kind='claude' AND native_home IS NULL AND instance_config_id=?1 AND backend_session_id=?2 LIMIT 2")?.query_map(params![instance_config_id,native_session_id],|row|row.get::<_,String>(0))?.collect::<rusqlite::Result<Vec<_>>>()?;
+                if legacy.is_empty() && connection.query_row("SELECT EXISTS(SELECT 1 FROM thread_backend_sessions WHERE backend_kind='claude' AND native_home IS NULL AND backend_session_id=?1)",[native_session_id],|row|row.get::<_,bool>(0))? {
+                    return Err(conflict("Reconnect the older chat with its original Claude profile before connecting this conversation"));
+                }
+                if legacy.len() > 1 {
+                    return Err(conflict(
+                        "Multiple older chats reference this native conversation",
+                    ));
+                }
+                legacy
+                    .first()
+                    .map(|thread_id| -> Result<_, StoreError> {
+                        let thread = require_thread(connection, library_id, thread_id)?;
+                        read_thread_backend_session(connection, library_id, thread_id)?;
+                        legacy_home_claim = true;
+                        Ok(
+                            nodex_core_contracts::workspace::ProjectWorkspaceNativeSessionBinding {
+                                native_session_id: native_session_id.to_owned(),
+                                thread_id: thread_id.to_owned(),
+                                session_id: thread.session_id,
+                                project_id: thread.project_id,
+                            },
+                        )
+                    })
+                    .transpose()?
+            }
+        }
+        AgentBackendBinding::Codex => {
+            if thread_id != native_session_id {
+                return Err(invalid(
+                    "Codex attachment must preserve the native Thread identity",
+                ));
+            }
+            read_thread(connection, library_id, thread_id)?.map(|thread| {
+                nodex_core_contracts::workspace::ProjectWorkspaceNativeSessionBinding {
+                    native_session_id: native_session_id.to_owned(),
+                    thread_id: thread.thread_id,
+                    session_id: thread.session_id,
+                    project_id: thread.project_id,
+                }
+            })
+        }
+        AgentBackendBinding::Acp { .. } => {
+            return Err(invalid("Only native Agent conversations can be attached"));
+        }
+    };
+    let effective_thread_id = existing
+        .as_ref()
+        .map(|binding| binding.thread_id.as_str())
+        .unwrap_or(thread_id);
+    if let Some(thread) = read_thread(connection, library_id, effective_thread_id)? {
+        if existing.is_none() {
+            return Err(conflict(
+                "The proposed Nodex Thread identity already exists",
+            ));
+        }
+        if thread.project_id.as_deref() != project_id
+            || &thread.backend_binding != backend_binding
+                && !(matches!(backend_binding, AgentBackendBinding::Claude { .. })
+                    && matches!(thread.backend_binding, AgentBackendBinding::Claude { .. }))
+        {
+            return Err(conflict(
+                "This native conversation is attached to another Project or backend",
+            ));
+        }
+        if thread.parent_thread_id.is_some() || thread.execution_host_id != "local" {
+            return Err(invalid("Only local root conversations can be attached"));
+        }
+        if let Some(existing_session_id) = thread.session_id {
+            if legacy_home_claim {
+                connection.execute("UPDATE thread_backend_sessions SET native_home=?1 WHERE thread_id=?2 AND native_home IS NULL",params![native_home,effective_thread_id])?;
+                return finish_thread_mutation(
+                    connection,
+                    library_id,
+                    context,
+                    store_epoch,
+                    operation_id,
+                    request_hash,
+                    "attach_native_session",
+                    vec![project_session_scope(project_id)],
+                    project_id.into_iter().map(str::to_owned).collect(),
+                    vec![existing_session_id],
+                    vec![effective_thread_id.to_owned()],
+                );
+            }
+            return super::mutation::finish_no_op(
+                connection,
+                context,
+                store_epoch,
+                operation_id,
+                request_hash,
+                "attach_native_session",
+                project_id.into_iter().map(str::to_owned).collect(),
+                vec![existing_session_id],
+                &super::session_mutation::sqlite_now(connection)?,
+            );
+        }
+    }
+    let now = super::session_lifecycle::insert_session_records(
+        connection, session_id, project_id, &title, false,
+    )?;
+    if existing.is_none() {
+        upsert_thread_records(
+            connection,
+            library_id,
+            effective_thread_id,
+            &ProjectWorkspaceThreadPatch {
+                project_id: Some(project_id.map(str::to_owned)),
+                backend_binding: Some(backend_binding.clone()),
+                execution_host_id: Some("local".to_owned()),
+                cwd: Some(Some(cwd.to_owned())),
+                thread_name: Some(Some(title)),
+                thread_preview: Some(String::new()),
+                status: Some(ProjectWorkspaceThreadStatus {
+                    status_type: CodexThreadStatusType::Idle,
+                    active_flags: Vec::new(),
+                }),
+                created_at: Some(created_at),
+                updated_at: Some(updated_at),
+                recency_at: Some(updated_at),
+                linked_at: Some(now.clone()),
+                ..ProjectWorkspaceThreadPatch::default()
+            },
+        )?;
+    }
+    if existing.is_none() {
+        replace_thread_execution_location_records(
+            connection,
+            effective_thread_id,
+            &ProjectWorkspaceThreadExecutionLocation {
+                execution_host_id: "local".to_owned(),
+                cwd: Some(cwd.to_owned()),
+                managed_worktree_path: None,
+                runtime_workspace_roots: vec![cwd.to_owned()],
+                projectless_output_directory: None,
+                projectless_workspace_browser_root: None,
+            },
+        )?;
+    }
+    connection.execute(
+        "INSERT INTO project_session_threads(session_id,thread_id,linked_at) VALUES (?1,?2,?3)",
+        params![session_id, effective_thread_id, now],
+    )?;
+    if matches!(backend_binding, AgentBackendBinding::Claude { .. }) {
+        let previous = read_thread_backend_session(connection, library_id, effective_thread_id)?;
+        let native_state=previous.as_ref().and_then(|binding|binding.native_state.clone()).unwrap_or(
+            serde_json::from_value(serde_json::json!({"preferences":{"model":"default","effort":"default","interaction_mode":"default"},"ever_saved":true,"turns":[]}))
+                .map_err(|_| invalid("Native defaults are invalid"))?
+        );
+        let effective_binding = previous
+            .as_ref()
+            .map(|binding| &binding.backend_binding)
+            .unwrap_or(backend_binding);
+        return bind_thread_backend_session(
+            connection,
+            library_id,
+            context,
+            store_epoch,
+            operation_id,
+            request_hash,
+            effective_thread_id,
+            effective_binding,
+            native_session_id,
+            None,
+            Some(native_home),
+            Some(&native_state),
+        );
+    }
+    finish_thread_mutation(
+        connection,
+        library_id,
+        context,
+        store_epoch,
+        operation_id,
+        request_hash,
+        "attach_native_session",
+        vec![project_session_scope(project_id)],
+        project_id.into_iter().map(str::to_owned).collect(),
+        vec![session_id.to_owned()],
+        vec![effective_thread_id.to_owned()],
     )
 }
 
@@ -357,10 +700,10 @@ fn validate_native_turn_metadata(turn: &ProjectWorkspaceNativeTurnFact) -> Resul
         if let Some(error) = &compaction.error {
             validate_text("compaction.error", error, 1_024)?;
         }
-        if let Some(trigger) = &compaction.trigger {
-            if !["auto", "manual"].contains(&trigger.as_str()) {
-                return Err(invalid("Unsupported native compaction trigger"));
-            }
+        if let Some(trigger) = &compaction.trigger
+            && !["auto", "manual"].contains(&trigger.as_str())
+        {
+            return Err(invalid("Unsupported native compaction trigger"));
         }
         for value in [
             compaction.pre_tokens,
@@ -2769,6 +3112,357 @@ mod tests {
             .expect("create Session");
     }
 
+    fn native_attach_intent(
+        session_id: &str,
+        thread_id: &str,
+        instance: &str,
+    ) -> ProjectWorkspaceIntent {
+        ProjectWorkspaceIntent::AttachNativeSession {
+            session_id: session_id.to_owned(),
+            thread_id: thread_id.to_owned(),
+            project_id: Some("project:default".to_owned()),
+            backend_binding: AgentBackendBinding::Claude {
+                instance_config_id: instance.to_owned(),
+            },
+            native_session_id: "native-uuid".to_owned(),
+            native_home: "/native/home".to_owned(),
+            title: "Native conversation".to_owned(),
+            cwd: "/workspace/worktree".to_owned(),
+            created_at: 10,
+            updated_at: 20,
+        }
+    }
+
+    #[test]
+    fn native_attachment_is_atomic_and_deduplicates_same_home_aliases() {
+        let (_directory, kernel, module) = seeded_module();
+        let first = module
+            .apply(
+                &context(),
+                request(
+                    "native:attach:1",
+                    native_attach_intent("session-1", "thread-1", "claude-a"),
+                ),
+            )
+            .expect("attach native conversation");
+        let second = module
+            .apply(
+                &context(),
+                request(
+                    "native:attach:2",
+                    native_attach_intent("session-2", "thread-2", "claude-b"),
+                ),
+            )
+            .expect("deduplicate same native home");
+        assert_eq!(
+            first.committed.value.affected_session_ids,
+            vec!["session-1"]
+        );
+        assert_eq!(
+            second.committed.value.affected_session_ids,
+            vec!["session-1"]
+        );
+        assert!(
+            matches!(read(&module,ProjectWorkspaceRead::Thread {thread_id:"thread-1".to_owned()}),ProjectWorkspaceReadValue::Thread {thread} if thread.session_id.as_deref()==Some("session-1") && thread.cwd.as_deref()==Some("/workspace/worktree"))
+        );
+        assert!(
+            matches!(read(&module,ProjectWorkspaceRead::ThreadBackendSession {thread_id:"thread-1".to_owned()}),ProjectWorkspaceReadValue::ThreadBackendSession {session:Some(session)} if session.backend_session_id=="native-uuid" && session.native_home.as_deref()==Some("/native/home") && session.native_state.as_ref().is_some_and(|state|state.ever_saved))
+        );
+        let mut other_project = native_attach_intent("session-3", "thread-3", "claude-a");
+        if let ProjectWorkspaceIntent::AttachNativeSession { project_id, .. } = &mut other_project {
+            *project_id = None;
+        }
+        assert!(
+            module
+                .apply(&context(), request("native:other-project", other_project))
+                .is_err()
+        );
+        kernel
+            .writer()
+            .call(|connection| {
+                assert_eq!(
+                    connection.query_row("SELECT count(*) FROM project_sessions", [], |row| row
+                        .get::<_, i64>(0))?,
+                    1
+                );
+                assert_eq!(
+                    connection.query_row("SELECT count(*) FROM codex_threads", [], |row| row
+                        .get::<_, i64>(0))?,
+                    1
+                );
+                assert_eq!(
+                    connection.query_row(
+                        "SELECT count(*) FROM thread_backend_sessions",
+                        [],
+                        |row| row.get::<_, i64>(0)
+                    )?,
+                    1
+                );
+                Ok(())
+            })
+            .expect("one durable binding");
+    }
+
+    #[test]
+    fn concurrent_native_attachments_admit_one_session() {
+        let (_directory, kernel, module) = seeded_module();
+        let (first, second) = std::thread::scope(|scope| {
+            let first = scope.spawn(|| {
+                module
+                    .apply(
+                        &context(),
+                        request(
+                            "native:concurrent:1",
+                            native_attach_intent("session-1", "thread-1", "claude-a"),
+                        ),
+                    )
+                    .expect("first attachment")
+            });
+            let second = scope.spawn(|| {
+                module
+                    .apply(
+                        &context(),
+                        request(
+                            "native:concurrent:2",
+                            native_attach_intent("session-2", "thread-2", "claude-b"),
+                        ),
+                    )
+                    .expect("second attachment")
+            });
+            (
+                first.join().expect("first client"),
+                second.join().expect("second client"),
+            )
+        });
+        assert_eq!(
+            first.committed.value.affected_session_ids,
+            second.committed.value.affected_session_ids
+        );
+        kernel
+            .writer()
+            .call(|connection| {
+                assert_eq!(
+                    connection.query_row("SELECT count(*) FROM project_sessions", [], |row| row
+                        .get::<_, i64>(0))?,
+                    1
+                );
+                assert_eq!(
+                    connection.query_row(
+                        "SELECT count(*) FROM thread_backend_sessions",
+                        [],
+                        |row| row.get::<_, i64>(0)
+                    )?,
+                    1
+                );
+                Ok(())
+            })
+            .expect("concurrent clients share one binding");
+    }
+
+    #[test]
+    fn native_attachment_claims_its_older_same_instance_binding_without_duplication() {
+        let (_directory, kernel, module) = seeded_module();
+        module
+            .apply(
+                &context(),
+                request(
+                    "native:attach:initial",
+                    native_attach_intent("session-1", "thread-1", "claude-a"),
+                ),
+            )
+            .expect("original conversation");
+        kernel.writer().call(|connection| {
+            connection.execute("UPDATE thread_backend_sessions SET native_home=NULL WHERE thread_id='thread-1'",[])?;
+            Ok(())
+        }).expect("older native binding");
+        let attached = module
+            .apply(
+                &context(),
+                request(
+                    "native:attach:older",
+                    native_attach_intent("session-2", "thread-2", "claude-a"),
+                ),
+            )
+            .expect("claim older native scope");
+        assert_eq!(
+            attached.committed.value.affected_session_ids,
+            vec!["session-1"]
+        );
+        assert!(
+            matches!(read(&module,ProjectWorkspaceRead::ThreadBackendSession {thread_id:"thread-1".to_owned()}),ProjectWorkspaceReadValue::ThreadBackendSession {session:Some(session)} if session.native_home.as_deref()==Some("/native/home") && session.backend_session_id=="native-uuid")
+        );
+        kernel
+            .writer()
+            .call(|connection| {
+                assert_eq!(
+                    connection.query_row("SELECT count(*) FROM project_sessions", [], |row| row
+                        .get::<_, i64>(0))?,
+                    1
+                );
+                assert_eq!(
+                    connection.query_row("SELECT count(*) FROM codex_threads", [], |row| row
+                        .get::<_, i64>(0))?,
+                    1
+                );
+                Ok(())
+            })
+            .expect("no duplicate legacy attachment");
+    }
+
+    #[test]
+    fn native_attachment_rejects_existing_proposed_thread_identity() {
+        let (_directory, kernel, module) = seeded_module();
+        create_thread(
+            &module,
+            "foreign:create",
+            "foreign-thread",
+            Some("project:default"),
+            None,
+        );
+        assert!(
+            module
+                .apply(
+                    &context(),
+                    request(
+                        "native:collision",
+                        native_attach_intent("session-1", "foreign-thread", "claude-a")
+                    )
+                )
+                .is_err()
+        );
+        assert!(
+            matches!(read(&module,ProjectWorkspaceRead::Thread {thread_id:"foreign-thread".to_owned()}),ProjectWorkspaceReadValue::Thread {thread} if thread.backend_binding==AgentBackendBinding::Codex && thread.session_id.is_none())
+        );
+        kernel
+            .writer()
+            .call(|connection| {
+                assert_eq!(
+                    connection.query_row("SELECT count(*) FROM project_sessions", [], |row| row
+                        .get::<_, i64>(0))?,
+                    0
+                );
+                assert_eq!(
+                    connection.query_row(
+                        "SELECT count(*) FROM thread_backend_sessions",
+                        [],
+                        |row| row.get::<_, i64>(0)
+                    )?,
+                    0
+                );
+                Ok(())
+            })
+            .expect("collision leaves existing Thread untouched");
+    }
+
+    #[test]
+    fn native_home_is_immutable_and_uuid_replacement_preserves_it() {
+        let (_directory, _kernel, module) = seeded_module();
+        module
+            .apply(
+                &context(),
+                request(
+                    "native:attach",
+                    native_attach_intent("session-1", "thread-1", "claude-a"),
+                ),
+            )
+            .expect("attach");
+        let binding = AgentBackendBinding::Claude {
+            instance_config_id: "claude-a".to_owned(),
+        };
+        let rebind =
+            |home: Option<String>, uuid: &str| ProjectWorkspaceIntent::BindThreadBackendSession {
+                thread_id: "thread-1".to_owned(),
+                backend_binding: binding.clone(),
+                backend_session_id: uuid.to_owned(),
+                expected_backend_session_id: Some("native-uuid".to_owned()),
+                native_home: home,
+                native_state: None,
+            };
+        assert!(
+            module
+                .apply(
+                    &context(),
+                    request(
+                        "native:wrong-home",
+                        rebind(Some("/other/home".to_owned()), "other-uuid")
+                    )
+                )
+                .is_err()
+        );
+        let mut unguarded = rebind(None, "unguarded-uuid");
+        if let ProjectWorkspaceIntent::BindThreadBackendSession {
+            expected_backend_session_id,
+            ..
+        } = &mut unguarded
+        {
+            *expected_backend_session_id = None;
+        }
+        assert!(
+            module
+                .apply(&context(), request("native:unguarded", unguarded))
+                .is_err()
+        );
+        module
+            .apply(
+                &context(),
+                request("native:replace", rebind(None, "replaced-uuid")),
+            )
+            .expect("trusted UUID replacement");
+        assert!(
+            matches!(read(&module,ProjectWorkspaceRead::ThreadBackendSession {thread_id:"thread-1".to_owned()}),ProjectWorkspaceReadValue::ThreadBackendSession {session:Some(session)} if session.backend_session_id=="replaced-uuid" && session.native_home.as_deref()==Some("/native/home"))
+        );
+    }
+
+    #[test]
+    fn codex_native_attachment_preserves_uuid_and_does_not_make_protocol_binding() {
+        let (_directory, kernel, module) = seeded_module();
+        let intent = |session_id: &str| ProjectWorkspaceIntent::AttachNativeSession {
+            session_id: session_id.to_owned(),
+            thread_id: "codex-uuid".to_owned(),
+            project_id: None,
+            backend_binding: AgentBackendBinding::Codex,
+            native_session_id: "codex-uuid".to_owned(),
+            native_home: "/native/codex".to_owned(),
+            title: "CLI conversation".to_owned(),
+            cwd: "/workspace".to_owned(),
+            created_at: 10,
+            updated_at: 20,
+        };
+        module
+            .apply(
+                &context(),
+                request("codex:attach:1", intent("codex-session-1")),
+            )
+            .expect("attach Codex");
+        let duplicate = module
+            .apply(
+                &context(),
+                request("codex:attach:2", intent("codex-session-2")),
+            )
+            .expect("repeated attachment");
+        assert_eq!(
+            duplicate.committed.value.affected_session_ids,
+            vec!["codex-session-1"]
+        );
+        assert!(
+            matches!(read(&module,ProjectWorkspaceRead::Thread {thread_id:"codex-uuid".to_owned()}),ProjectWorkspaceReadValue::Thread {thread} if thread.session_id.as_deref()==Some("codex-session-1") && thread.backend_binding==AgentBackendBinding::Codex)
+        );
+        kernel
+            .writer()
+            .call(|connection| {
+                assert_eq!(
+                    connection.query_row(
+                        "SELECT count(*) FROM thread_backend_sessions",
+                        [],
+                        |row| row.get::<_, i64>(0)
+                    )?,
+                    0
+                );
+                Ok(())
+            })
+            .expect("native Codex identity stays a Thread");
+    }
+
     #[test]
     fn persists_backend_binding_and_acp_session_identity_across_restart() {
         assert_backend_identity_survives_restart(AgentBackendBinding::Acp {
@@ -3001,6 +3695,7 @@ mod tests {
                 request(
                     "thread-backend-bind-session",
                     ProjectWorkspaceIntent::BindThreadBackendSession {
+                        native_home: None,
                         thread_id: "thread-backend".to_owned(),
                         backend_binding: binding.clone(),
                         backend_session_id: "native-session-1".to_owned(),
@@ -3016,6 +3711,7 @@ mod tests {
             request(
                 "thread-backend-stale-identity",
                 ProjectWorkspaceIntent::BindThreadBackendSession {
+                    native_home: None,
                     thread_id: "thread-backend".to_owned(),
                     backend_binding: binding.clone(),
                     backend_session_id: "wrong-session".to_owned(),

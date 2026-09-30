@@ -24,7 +24,10 @@ import { NodexPopover, NodexPopoverContent, NodexPopoverTrigger } from "@/compon
 import { NodexTooltip } from "@/components/ui/tooltip";
 import { useResolvedReducedMotion } from "@/lib/use-reduced-motion";
 import { BranchSelectorPopover } from "../shared/branch-selector-popover";
-import { NewChatStartInSelector, StartInIcon } from "../shared/new-chat-start-in-selector";
+import {
+  ThreadExecutionLocationSelector,
+  type ThreadExecutionLocationModel,
+} from "./thread-execution-location-selector";
 import { ToolActivityIcon, type ToolActivityIconDescriptor } from "../shared/tools/tool-call-icons";
 import {
   EMPTY_BRANCH_SELECTOR_STATE,
@@ -93,7 +96,6 @@ import {
 import type {
   ThreadComposerShellBackgroundAgentRowModel,
   ThreadStageActions,
-  ThreadStageRouteInput,
   ThreadSummaryPanelComputerUsePipState,
   ThreadSummaryPanelAuxiliaryRow,
   ThreadSummaryPanelBrowserRow,
@@ -151,8 +153,9 @@ export interface ThreadSummaryPanelContentProps {
   scheduledAutomation?: ThreadSummaryPanelScheduledAutomationRow | null;
   computerUsePip?: ThreadSummaryPanelComputerUsePipState | null;
   isVisible?: boolean;
-  newThreadStartInSelector?: ThreadStageRouteInput["newThreadStartInSelector"];
+  executionLocation?: ThreadExecutionLocationModel | null;
   actions?: Partial<ThreadStageActions>;
+  taskDetailsKind?: "thread" | "observation";
   onOpenThread?: ThreadStageActions["onOpenThread"];
   onErrorMessage: (message: string | null) => void;
 }
@@ -928,8 +931,9 @@ export function ThreadSummaryPanelSurface({
   scheduledAutomation = null,
   computerUsePip = null,
   isVisible = true,
-  newThreadStartInSelector,
+  executionLocation,
   actions,
+  taskDetailsKind = "thread",
   onOpenThread,
   onErrorMessage,
 }: Omit<ThreadFloatingSummaryPanelProps, "mounted" | "open">) {
@@ -1147,8 +1151,7 @@ export function ThreadSummaryPanelSurface({
     ],
   );
   const primaryGitSource = gitSummary.primarySource;
-  const runTargetLabel =
-    newThreadStartInSelector?.target.runInTarget === "newWorktree" ? "New worktree" : "Local";
+  const runTargetLabel = activeThreadIsManagedWorktree ? "Worktree" : "Local";
   const worktreeAvailable = Boolean(
     branchCwd &&
     (branchState.currentBranch || branchState.defaultBranch || branchState.branches.length > 0),
@@ -1401,34 +1404,13 @@ export function ThreadSummaryPanelSurface({
                       }
                       trailingVisible
                     />
-                    {newThreadStartInSelector && actions ? (
-                      <NewChatStartInSelector
-                        model={newThreadStartInSelector}
-                        actions={actions}
+                    {executionLocation ? (
+                      <ThreadExecutionLocationSelector
+                        key={executionLocation.threadId}
+                        model={executionLocation}
                         disabled={!isVisible}
                         worktreeAvailable={worktreeAvailable}
-                        side="left"
-                        align="start"
-                        sideOffset={4}
-                        menuTitle="Continue in"
-                        tooltipContent="Select where to run the task"
-                        renderTrigger={({ iconKey, title, disabled }) => (
-                          <ThreadSummaryPanelRow
-                            label={<SummaryDropdownRowLabel label={runTargetLabel} />}
-                            labelClassName="flex min-w-0 items-center"
-                            title={title}
-                            icon={
-                              <span className="shrink-0">
-                                <StartInIcon
-                                  iconKey={iconKey}
-                                  className="icon-sm text-token-foreground"
-                                />
-                              </span>
-                            }
-                            disabled={disabled}
-                            interactive
-                          />
-                        )}
+                        onErrorMessage={onErrorMessage}
                       />
                     ) : (
                       <ThreadSummaryPanelRow
@@ -1679,16 +1661,24 @@ export function ThreadSummaryPanelSurface({
                         key={row.conversationId}
                         label={<BackgroundSubagentRowLabel row={row} />}
                         title={getBackgroundSubagentTitle(row)}
-                        interactive={Boolean(onOpenThread)}
+                        interactive={Boolean(
+                          taskDetailsKind === "observation"
+                            ? actions?.onOpenTaskObservation
+                            : onOpenThread,
+                        )}
                         onClick={
-                          onOpenThread
-                            ? () => {
-                                void onOpenThread(
-                                  row.conversationId,
-                                  buildBackgroundAgentOpenContext(row),
-                                );
-                              }
-                            : undefined
+                          taskDetailsKind === "observation"
+                            ? actions?.onOpenTaskObservation
+                              ? () => actions.onOpenTaskObservation?.(row.conversationId)
+                              : undefined
+                            : onOpenThread
+                              ? () => {
+                                  void onOpenThread(
+                                    row.conversationId,
+                                    buildBackgroundAgentOpenContext(row),
+                                  );
+                                }
+                              : undefined
                         }
                         trailing={<BackgroundSubagentRowTrailing row={row} />}
                         trailingVisible={Boolean(row.diffStats)}

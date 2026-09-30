@@ -5,6 +5,7 @@ import * as Layer from "effect/Layer";
 import * as Schema from "effect/Schema";
 import type { AgentBackendBinding } from "../../shared/agent-backend";
 import type { CodexScheduledAutomation } from "../../shared/types";
+import type { CodexThreadExecutionLocation } from "../codex/codex-thread-handoff-journal";
 
 export interface NativeConversationState {
   readonly threadId: string;
@@ -37,6 +38,20 @@ export class NativeConversationExtension extends Context.Service<
     }) => Effect.Effect<{ readonly turnId: string }, Error>;
     readonly wait: (threadId: string, turnId: string) => Effect.Effect<NativeTurnOutcome, Error>;
     readonly cancel: (threadId: string, turnId: string) => Effect.Effect<void, Error>;
+    readonly setExecutionRecoveryRequired: (
+      threadId: string,
+      required: boolean,
+    ) => Effect.Effect<void, Error>;
+    readonly stopExecution: (threadId: string) => Effect.Effect<void, Error>;
+    readonly withExecutionHandoff: <A, E, R>(
+      threadId: string,
+      use: Effect.Effect<A, E, R>,
+    ) => Effect.Effect<A, E | Error, R>;
+    readonly withExecutionLocation: <A, E, R>(
+      threadId: string,
+      location: CodexThreadExecutionLocation,
+      use: Effect.Effect<A, E, R>,
+    ) => Effect.Effect<A, E | Error, R>;
     readonly createAutomationSession: (input: {
       readonly definition: CodexScheduledAutomation;
       readonly cwd: string | null;
@@ -82,13 +97,13 @@ export const makeBinding = Effect.gen(function* () {
       yield* Deferred.fail(closed, new NativeConversationBindingError({ reason: "closed" }));
     }),
   );
-  const invoke = <A>(
-    use: (service: NativeConversationExtension["Service"]) => Effect.Effect<A, Error>,
-  ): Effect.Effect<A, Error> =>
-    Effect.suspend(() => {
+  const invoke = <A, E, R>(
+    use: (service: NativeConversationExtension["Service"]) => Effect.Effect<A, E, R>,
+  ): Effect.Effect<A, E | NativeConversationBindingError, R> =>
+    Effect.suspend((): Effect.Effect<A, E | NativeConversationBindingError, R> => {
       if (!open) return new NativeConversationBindingError({ reason: "closed" });
       return Deferred.await(ready).pipe(
-        Effect.flatMap((service) =>
+        Effect.flatMap((service): Effect.Effect<A, E | NativeConversationBindingError, R> =>
           open ? use(service) : new NativeConversationBindingError({ reason: "closed" }),
         ),
         Effect.raceFirst(Deferred.await(closed)),
@@ -99,6 +114,13 @@ export const makeBinding = Effect.gen(function* () {
     submit: (input) => invoke((service) => service.submit(input)),
     wait: (threadId, turnId) => invoke((service) => service.wait(threadId, turnId)),
     cancel: (threadId, turnId) => invoke((service) => service.cancel(threadId, turnId)),
+    setExecutionRecoveryRequired: (threadId, required) =>
+      invoke((service) => service.setExecutionRecoveryRequired(threadId, required)),
+    stopExecution: (threadId) => invoke((service) => service.stopExecution(threadId)),
+    withExecutionHandoff: (threadId, use) =>
+      invoke((service) => service.withExecutionHandoff(threadId, use)),
+    withExecutionLocation: (threadId, location, use) =>
+      invoke((service) => service.withExecutionLocation(threadId, location, use)),
     createAutomationSession: (input) => invoke((service) => service.createAutomationSession(input)),
     validateAutomation: (definition) => invoke((service) => service.validateAutomation(definition)),
   });

@@ -13,7 +13,11 @@ import type { FileSearchStartInput } from "./file-search";
 import type { FuzzyFileSearchSessionUpdateParams } from "@nodex/codex-app-server-protocol";
 import type { FuzzyFileSearchSessionStopParams } from "@nodex/codex-app-server-protocol";
 import type { FileSearchEvent } from "./file-search";
-import type { CodexThreadHandoffSnapshot } from "./codex-thread-handoff";
+import type {
+  CodexAppHandoffOperation,
+  CodexThreadHandoffSnapshot,
+  ThreadExecutionHandoffInput,
+} from "./codex-thread-handoff";
 import type { DictationStreamingConnectInfo } from "./dictation-streaming";
 import type {
   CodexTurnPresentationCaptureInput,
@@ -197,6 +201,12 @@ import type {
   AgentImportScan,
   AgentImportScanInput,
 } from "./agent-import";
+import type {
+  NativeSessionAttachInput,
+  NativeSessionAttachResult,
+  NativeSessionCatalogInput,
+  NativeSessionCatalogPage,
+} from "./native-session-catalog";
 import type { ThirdPartyNotices } from "./third-party-notices";
 import type {
   CreatePastedTextAttachmentInput,
@@ -2161,6 +2171,14 @@ export interface IpcApi {
     args: [input: AgentImportApplyInput];
     result: AgentImportResult;
   };
+  "native-sessions:list": {
+    args: [input: NativeSessionCatalogInput];
+    result: NativeSessionCatalogPage;
+  };
+  "native-sessions:attach": {
+    args: [input: NativeSessionAttachInput];
+    result: NativeSessionAttachResult;
+  };
   "codex:hooks:list": {
     args: [input: CodexHooksListInput];
     result: CodexHooksListResponse;
@@ -2405,6 +2423,10 @@ export interface IpcApi {
   "codex:thread-handoffs:list": {
     args: [];
     result: CodexThreadHandoffSnapshot;
+  };
+  "thread-execution:handoff": {
+    args: [input: ThreadExecutionHandoffInput];
+    result: CodexAppHandoffOperation;
   };
   "codex:pending-worktrees:list": {
     args: [];

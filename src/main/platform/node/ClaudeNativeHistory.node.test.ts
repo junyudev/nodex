@@ -1,6 +1,6 @@
 // @effect-diagnostics processEnv:off - This boundary test proves worker reads do not mutate the ambient native account.
 // @effect-diagnostics strictEffectProvide:off
-import { mkdtemp, mkdir, writeFile, rm, realpath } from "node:fs/promises";
+import { mkdtemp, mkdir, writeFile, rm, realpath, symlink } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { it } from "@effect/vitest";
@@ -20,6 +20,63 @@ const ambientNativeConfiguration = () => process.env.CLAUDE_CONFIG_DIR;
 const id = "01991e60-b800-7000-8000-000000000012";
 const user = "01991e60-b800-7000-8000-000000000014";
 const assistant = "01991e60-b800-7000-8000-000000000016";
+
+it.effect("native home identity survives creating its missing directory under a symlink", () =>
+  Effect.gen(function* () {
+    const root = yield* Effect.acquireRelease(
+      Effect.promise(() => mkdtemp(join(tmpdir(), "nodex-native-home-"))),
+      (path) => Effect.promise(() => rm(path, { recursive: true, force: true })),
+    );
+    const physicalParent = join(root, "physical");
+    const alias = join(root, "alias");
+    yield* Effect.promise(() => mkdir(physicalParent));
+    yield* Effect.promise(() => symlink(physicalParent, alias, "dir"));
+    const configDirectory = join(alias, "nested", "claude");
+    const input = {
+      instance: { ...defaultClaudeInstance(), configDirectory },
+      environment: { HOME: root },
+    };
+    const sdk = yield* ClaudeSdk;
+    const before = yield* sdk.nativeHome(input);
+    yield* Effect.promise(() => mkdir(configDirectory, { recursive: true }));
+    const after = yield* sdk.nativeHome(input);
+    const expected = join(
+      yield* Effect.promise(() => realpath(physicalParent)),
+      "nested",
+      "claude",
+    );
+    expect(before).toBe(expected);
+    expect(after).toBe(before);
+  }).pipe(Effect.scoped, Effect.provide(live)),
+);
+
+it.effect("native home rejects relative paths and non-directory ancestors", () =>
+  Effect.gen(function* () {
+    const root = yield* Effect.acquireRelease(
+      Effect.promise(() => mkdtemp(join(tmpdir(), "nodex-native-home-"))),
+      (path) => Effect.promise(() => rm(path, { recursive: true, force: true })),
+    );
+    const file = join(root, "file");
+    yield* Effect.promise(() => writeFile(file, "Not a directory"));
+    const sdk = yield* ClaudeSdk;
+    for (const configDirectory of [file, join(file, "claude")]) {
+      const result = yield* Effect.result(
+        sdk.nativeHome({
+          instance: { ...defaultClaudeInstance(), configDirectory },
+          environment: { HOME: root },
+        }),
+      );
+      expect(result._tag).toBe("Failure");
+    }
+    const relative = yield* Effect.result(
+      sdk.nativeHome({
+        instance: defaultClaudeInstance(),
+        environment: { HOME: root, CLAUDE_CONFIG_DIR: "relative/claude" },
+      }),
+    );
+    expect(relative._tag).toBe("Failure");
+  }).pipe(Effect.scoped, Effect.provide(live)),
+);
 
 it.effect(
   "native history workers isolate account environments and remap forks without a Claude query",
@@ -107,6 +164,22 @@ it.effect(
       const second = yield* prepare("account-b", "Account B");
       const sdk = yield* ClaudeSdk;
       const ambient = ambientNativeConfiguration();
+      expect(yield* sdk.nativeHome(first)).toBe(
+        yield* Effect.promise(() => realpath(first.instance.configDirectory!)),
+      );
+      const catalogA = yield* sdk.listSessions(first, 0);
+      const catalogB = yield* sdk.listSessions(second, 0);
+      expect(catalogA.map(({ sessionId }) => sessionId)).toEqual([id]);
+      expect(catalogA[0]?.summary).toBe("Account A");
+      expect(catalogB[0]?.summary).toBe("Account B");
+      expect(yield* sdk.listSessions(first, 1)).toEqual([]);
+      expect(yield* sdk.sessionInfo(first, id)).toMatchObject({
+        sessionId: id,
+        cwd,
+        summary: "Account A",
+      });
+      expect(yield* sdk.sessionInfo(first, "01991e60-b800-7000-8000-000000000020")).toBeNull();
+
       expect(yield* sdk.hasSession(first)).toBe(true);
       expect(
         yield* sdk.hasSession({ ...first, sessionId: "01991e60-b800-7000-8000-000000000020" }),
@@ -132,7 +205,14 @@ it.effect(
       expect(b.messages[0]?.message).toMatchObject({
         content: [{ type: "image" }, { type: "text", text: "Account B" }],
       });
-      const fork = yield* sdk.fork(first, assistant);
+      const relocated = { ...first, cwd: join(root, "destination-worktree") };
+      expect(yield* sdk.hasSession(relocated)).toBe(true);
+      expect((yield* sdk.historyPage(relocated)).messages).toEqual(a.messages);
+      expect(yield* sdk.historyImage(relocated, user, 0)).toEqual({
+        mediaType: "image/png",
+        data: "AA==",
+      });
+      const fork = yield* sdk.fork(relocated, assistant);
       expect(fork.sessionId).not.toBe(id);
       expect(fork.messageIdMap?.[user]).toBeTruthy();
       expect(fork.messageIdMap?.[user]).not.toBe(user);

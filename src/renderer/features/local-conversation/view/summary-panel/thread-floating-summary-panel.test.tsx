@@ -25,6 +25,8 @@ import { buildReviewFileSafety } from "../../../../../shared/review-file-safety"
 import { render, textContent } from "../../../../test/dom";
 import { TestQueryProvider } from "../../../../test/query";
 import type { ThreadPlanSidePanelTarget, ThreadStageActions } from "../../thread-stage-types";
+import { projectNativeTaskRows } from "../../native-task-presentation";
+import { buildThreadHandoffOperation } from "../../../../test/thread-handoff-fixture";
 
 let invokeCalls: unknown[][] = [];
 let gitWorkerCalls: Array<{ method: string; params: unknown }> = [];
@@ -71,6 +73,7 @@ vi.mock("../../../../lib/api", () => ({
   subscribeProjectChanges: () => () => undefined,
   subscribeCodexHostMessages: () => () => undefined,
   subscribeCodexEvents: () => () => undefined,
+  subscribeCodexThreadHandoffsChanged: () => () => undefined,
   subscribeDesktopNotificationActions: () => () => undefined,
   subscribeAppUpdateStatus: () => () => undefined,
   getWindowFocusState: async () => true,
@@ -2573,70 +2576,85 @@ describe("ThreadFloatingSummaryPanel", () => {
     expect(opened).toEqual(["runtime-only"]);
   });
 
-  test("renders the start-in row as a summary-panel dropdown trigger", async () => {
-    const { ThreadFloatingSummaryPanel } = await import("./thread-floating-summary-panel");
-    mockInvokeImpl = async (channel: string, input?: unknown) => {
-      if (channel !== "review-summary") return null;
-      return makeSnapshot((input as { source: GitReviewSource }).source, 0, 0);
-    };
-    const actions = {
-      onNewThreadStartInTargetChange: () => undefined,
-    } as Partial<ThreadStageActions> as ThreadStageActions;
-
-    const view = renderSummary(
-      <ThreadFloatingSummaryPanel
-        mounted
-        open
-        activeThreadId="thread-1"
-        cwd="/repo/project"
-        projectWorkspacePath="/repo/project"
-        turns={[]}
-        actions={actions}
-        newThreadStartInSelector={{
-          target: {
-            runInTarget: "localProject",
-            runInEnvironmentPath: null,
-          },
-          disabled: false,
-          worktreeAvailable: true,
-          environments: [],
-          environmentsLoading: false,
-          environmentsError: false,
-          selectedEnvironmentPath: null,
-          defaultEnvironmentPath: null,
-          environmentNeedsAttention: false,
-          environmentRepairConfigPath: null,
-        }}
-        onErrorMessage={() => undefined}
-      />,
-    );
-
-    const trigger = await waitFor(() => {
-      const row = view.getByText("Local").closest("[role='button']");
-      if (!(row instanceof HTMLElement)) throw new Error("Expected start-in trigger");
-      return row;
-    });
-    expect(trigger.getAttribute("role")).toBe("button");
-    expect(trigger.getAttribute("aria-haspopup")).toBe("menu");
-    expect(trigger.getAttribute("aria-expanded")).toBe("false");
-    await expectTooltipContent(trigger, "Select where to run the task");
-    expect(textContent(trigger).includes("Local")).toBe(true);
-
-    await act(async () => {
-      fireEvent.pointerDown(trigger, { button: 0, ctrlKey: false });
-      fireEvent.click(trigger);
-    });
-
-    await waitFor(() => {
-      const menuText = view.container.ownerDocument.body.textContent ?? "";
-      const localOption = view.container.ownerDocument.body.querySelector(
-        '[data-new-chat-start-in-option="localProject"]',
+  for (const kind of ["local", "worktree"] as const) {
+    test(`moves the attached ${kind} chat through its execution owner`, async () => {
+      const { ThreadFloatingSummaryPanel } = await import("./thread-floating-summary-panel");
+      mockInvokeImpl = async (channel: string, input?: unknown) => {
+        if (channel === "codex:thread-handoffs:list") return { revision: 0, operations: [] };
+        if (channel === "branch-metadata")
+          return {
+            currentBranch: "feature/summary-panel",
+            defaultBranch: "main",
+            branches: ["main", "feature/summary-panel"],
+          };
+        if (channel === "thread-execution:handoff")
+          return buildThreadHandoffOperation({
+            operationId: (input as { operationId: string }).operationId,
+            threadId: "thread-1",
+            sourceThreadId: "thread-1",
+            requestThreadId: "thread-1",
+          });
+        if (channel !== "review-summary") return null;
+        return makeSnapshot((input as { source: GitReviewSource }).source, 0, 0);
+      };
+      const view = renderSummary(
+        <ThreadFloatingSummaryPanel
+          mounted
+          open
+          activeThreadId="thread-1"
+          cwd="/repo/project"
+          projectWorkspacePath="/repo/project"
+          turns={[]}
+          activeThreadIsManagedWorktree={kind === "worktree"}
+          executionLocation={{ threadId: "thread-1", kind, canMove: true }}
+          onErrorMessage={() => undefined}
+        />,
       );
-      expect(menuText.includes("Continue in")).toBe(true);
-      expect(localOption?.textContent?.includes("Local") ?? false).toBe(true);
-      expect(menuText.includes("New worktree")).toBe(true);
+
+      const trigger = await waitFor(() => {
+        const row = view
+          .getByText(kind === "local" ? "Local" : "Worktree")
+          .closest("[role='button']");
+        if (!(row instanceof HTMLElement)) throw new Error("Expected execution-location trigger");
+        return row;
+      });
+      expect(trigger.getAttribute("role")).toBe("button");
+      expect(trigger.getAttribute("aria-haspopup")).toBe("menu");
+      expect(trigger.getAttribute("aria-expanded")).toBe("false");
+      await expectTooltipContent(trigger, "Select where to run the task");
+      await act(async () => {
+        fireEvent.pointerDown(trigger, { button: 0, ctrlKey: false });
+        fireEvent.click(trigger);
+      });
+
+      const destination = kind === "local" ? "worktree" : "local";
+      const option = await view.findByRole("menuitem", {
+        name: destination === "worktree" ? "Worktree" : "Local",
+      });
+      await act(async () => {
+        fireEvent.click(option);
+        await Promise.resolve();
+      });
+      const moveButton = await view.findByRole("button", {
+        name: destination === "worktree" ? "Move to worktree" : "Move to local",
+      });
+      expect(invokeCalls.filter(([channel]) => channel === "thread-execution:handoff")).toEqual([]);
+      await act(async () => {
+        fireEvent.click(moveButton);
+        await Promise.resolve();
+      });
+      await waitFor(() =>
+        expect(invokeCalls.filter(([channel]) => channel === "thread-execution:handoff")).toEqual([
+          [
+            "thread-execution:handoff",
+            { threadId: "thread-1", operationId: expect.any(String), destination },
+          ],
+        ]),
+      );
+      expect(trigger.getAttribute("aria-disabled")).toBe("true");
+      expect(textContent(trigger)).toBe(kind === "local" ? "Local" : "Worktree");
     });
-  });
+  }
 
   test("renders the Sources section with the reference empty state", async () => {
     const { ThreadFloatingSummaryPanel } = await import("./thread-floating-summary-panel");
@@ -3396,6 +3414,46 @@ describe("ThreadFloatingSummaryPanel", () => {
       });
     }
   });
+
+  for (const projectless of [false, true]) {
+    test(`native task rows select observations without Thread navigation (projectless=${projectless})`, async () => {
+      const { ThreadFloatingSummaryPanel } = await import("./thread-floating-summary-panel");
+      const membership = makeSubagentMembership({
+        threadId: "agent-task:thread-1:review",
+        displayName: "Review changes",
+        task: {
+          id: "review",
+          description: "Review changes",
+          bornTurnSequence: 1,
+          status: "completed",
+        },
+      });
+      const backgroundAgentRows = projectNativeTaskRows([membership], () => null);
+      const onOpenThread = vi.fn();
+      const onOpenTaskObservation = vi.fn();
+      const view = renderSummary(
+        <ThreadFloatingSummaryPanel
+          mounted
+          open
+          activeThreadId="thread-1"
+          activeThreadProjectless={projectless}
+          cwd={null}
+          projectWorkspacePath={null}
+          turns={[]}
+          backgroundAgentRows={backgroundAgentRows}
+          taskDetailsKind="observation"
+          actions={{ onOpenTaskObservation }}
+          onOpenThread={onOpenThread}
+          onErrorMessage={() => {}}
+        />,
+      );
+      const row = view.getByText("Review changes").closest("[role='button']");
+      if (!row) throw new Error("Expected selectable task observation");
+      await clickAndAct(row);
+      expect(onOpenTaskObservation).toHaveBeenCalledExactlyOnceWith("agent-task:thread-1:review");
+      expect(onOpenThread).not.toHaveBeenCalled();
+    });
+  }
 
   test("opens background subagent rows with subagent opener context", async () => {
     const { ThreadFloatingSummaryPanel } = await import("./thread-floating-summary-panel");

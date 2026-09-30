@@ -21,6 +21,7 @@ import {
   type ExecutionHostRuntimeError,
 } from "./ExecutionHostRuntime";
 import { ManagedWorktreeRuntime } from "./ManagedWorktreeRuntime";
+import { allocateManagedWorktreePath } from "../codex/codex-managed-worktree-allocation";
 
 export interface PrepareCrossHostThreadHandoffInput {
   readonly operationId: string;
@@ -37,6 +38,7 @@ export interface PrepareCrossHostThreadHandoffInput {
 }
 
 export interface CrossHostThreadHandoffProgress {
+  readonly allocatedDestination?: { readonly hostId: string; readonly worktreeGitRoot: string };
   readonly branchContext?: CodexThreadHandoffBranches;
   readonly phase: string;
   readonly status: "running" | "success" | "error";
@@ -57,7 +59,7 @@ export class CrossHostThreadHandoff extends Context.Service<
   {
     readonly prepare: (
       input: PrepareCrossHostThreadHandoffInput,
-      onProgress?: (progress: CrossHostThreadHandoffProgress) => Effect.Effect<void>,
+      onProgress?: (progress: CrossHostThreadHandoffProgress) => Effect.Effect<void, Error>,
     ) => Effect.Effect<CodexCrossHostPreparedHandoff, CrossHostThreadHandoffError>;
     readonly cleanup: (
       prepared: CodexCrossHostPreparedHandoff,
@@ -420,7 +422,7 @@ export const live = (options: {
 
       const prepare = (
         input: PrepareCrossHostThreadHandoffInput,
-        onProgress: (progress: CrossHostThreadHandoffProgress) => Effect.Effect<void> = () =>
+        onProgress: (progress: CrossHostThreadHandoffProgress) => Effect.Effect<void, Error> = () =>
           Effect.void,
       ): Effect.Effect<CodexCrossHostPreparedHandoff, CrossHostThreadHandoffError> =>
         Effect.gen(function* () {
@@ -558,6 +560,25 @@ export const live = (options: {
               { concurrency: "unbounded" },
             ).pipe(mapHostError("upload", input.sourceHostId, input.destinationHostId));
             yield* onProgress({ phase: "transfer-state", status: "success" });
+            const allocatedWorktreePath = allocateManagedWorktreePath(
+              destination.descriptor.managedRoot,
+            );
+            yield* onProgress({
+              phase: "create-new-worktree",
+              status: "running",
+              allocatedDestination: {
+                hostId: input.destinationHostId,
+                worktreeGitRoot: allocatedWorktreePath,
+              },
+            });
+            yield* managedWorktrees.registerNewborn({
+              hostId: input.destinationHostId,
+              worktreeGitRoot: allocatedWorktreePath,
+            });
+            yield* Ref.update(partial, (state) => ({
+              ...state,
+              allocatedWorktreeGitRoot: allocatedWorktreePath,
+            }));
             const imported = yield* destination
               .request(
                 {
@@ -574,6 +595,7 @@ export const live = (options: {
                     repositoryIdentity: exported.repositoryIdentity,
                     candidateRepositoryPaths: input.destinationRepositoryPaths,
                     managedRoot: destination.descriptor.managedRoot,
+                    allocatedWorktreePath,
                     nodexHome: destination.descriptor.nodexHome,
                     projectId: input.projectId,
                     threadId: input.threadId,
@@ -640,7 +662,13 @@ export const live = (options: {
               }),
             ),
           );
-        });
+        }).pipe(
+          Effect.mapError((cause) =>
+            Schema.is(CrossHostThreadHandoffError)(cause)
+              ? cause
+              : handoffError("prepare", input.sourceHostId, input.destinationHostId, cause),
+          ),
+        );
 
       return CrossHostThreadHandoff.of({ prepare, cleanup });
     }),

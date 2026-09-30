@@ -71,6 +71,82 @@ test("releases an unfinished discovery when its consumer unmounts", async () => 
   });
 });
 
+test("force reload refreshes the current profile's skills and ignores a superseded automatic reply", async () => {
+  const automatic = deferred();
+  const refreshed = {
+    ...discovery(options("updated")),
+    skills: [
+      {
+        name: "review",
+        description: "Review changes",
+        path: "/skills/review",
+        enabled: true,
+        userInvocable: true,
+      },
+    ],
+  };
+  const read = vi.fn().mockReturnValueOnce(automatic.promise).mockResolvedValueOnce(refreshed);
+  const { result } = renderHook(() => useClaudeModelCatalog("work", "project", read, subscribe));
+  await act(async () => {
+    await result.current.refresh?.();
+  });
+  expect(read.mock.calls[1]?.[0]).toEqual({
+    instanceConfigId: "work",
+    projectId: "project",
+    forceReload: true,
+  });
+  expect((read.mock.calls[0]?.[1] as AbortSignal).aborted).toBe(true);
+  expect(result.current.discovery?.skills.map((skill) => skill.name)).toEqual(["review"]);
+  await act(async () => {
+    automatic.resolve(discovery(options("stale")));
+  });
+  expect(result.current.options).toEqual(options("updated"));
+});
+
+test("an in-flight manual reload cannot publish across profile or Project changes", async () => {
+  const first = deferred();
+  const read = vi
+    .fn()
+    .mockResolvedValueOnce(discovery(options("original")))
+    .mockReturnValueOnce(first.promise)
+    .mockResolvedValueOnce(discovery(options("current")));
+  const { result, rerender } = renderHook(
+    ({ instance, project }) => useClaudeModelCatalog(instance, project, read, subscribe),
+    { initialProps: { instance: "personal", project: "one" } },
+  );
+  await waitFor(() => expect(result.current.options).toEqual(options("original")));
+  const previousRefresh = result.current.refresh;
+  let pending: Promise<void> | undefined;
+  await act(async () => {
+    pending = previousRefresh?.();
+    await Promise.resolve();
+  });
+  rerender({ instance: "work", project: "two" });
+  await waitFor(() => expect(result.current.options).toEqual(options("current")));
+  await act(async () => {
+    first.resolve(discovery(options("late")));
+    await pending;
+    await previousRefresh?.();
+  });
+  expect(result.current.options).toEqual(options("current"));
+  expect(read).toHaveBeenCalledTimes(3);
+  expect((read.mock.calls[1]?.[1] as AbortSignal).aborted).toBe(true);
+});
+
+test("manual reload reports failure while retaining the current inventory", async () => {
+  const read = vi
+    .fn()
+    .mockResolvedValueOnce(discovery(options("known")))
+    .mockRejectedValueOnce(new Error("private launch details"));
+  const { result } = renderHook(() => useClaudeModelCatalog("work", null, read, subscribe));
+  await waitFor(() => expect(result.current.options).toEqual(options("known")));
+  await act(async () => {
+    await expect(result.current.refresh?.()).rejects.toThrow("Could not discover Claude models");
+  });
+  expect(result.current.options).toEqual(options("known"));
+  expect(result.current.error).not.toContain("private launch details");
+});
+
 test("keeps discovery failures explicit without inventing model choices", async () => {
   const read = vi.fn().mockRejectedValue(new Error("private launch details"));
   const { result } = renderHook(() => useClaudeModelCatalog("work", "project", read, subscribe));

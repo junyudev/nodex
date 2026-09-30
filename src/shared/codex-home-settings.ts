@@ -4,10 +4,13 @@ export interface CodexHomeSettings {
   readonly homePath: string;
   readonly resolvedHomePath: string;
   readonly source: "settings" | "environment" | "default";
+  readonly accountHomePath: string;
+  readonly resolvedAccountHomePath: string | null;
 }
 
 export interface CodexHomeSettingsSnapshot extends CodexHomeSettings {
   readonly activeHomePath: string;
+  readonly activeAccountHomePath: string | null;
   readonly restartRequired: boolean;
 }
 
@@ -18,6 +21,12 @@ export const CodexHomeSettingsUpdateSchema = z
       .trim()
       .max(4_096)
       .refine((value) => !value.includes("\0")),
+    accountHomePath: z
+      .string()
+      .trim()
+      .max(4_096)
+      .refine((value) => !value.includes("\0"))
+      .optional(),
   })
   .strict();
 

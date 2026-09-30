@@ -8,7 +8,12 @@ import * as Layer from "effect/Layer";
 import * as Scope from "effect/Scope";
 import * as Stream from "effect/Stream";
 import type { IpcMainInvokeEvent } from "electron";
-import type { NativePermissionMode } from "../../../shared/agent-backend-api";
+import type {
+  AgentBackendThreadStartInput,
+  NativePermissionMode,
+} from "../../../shared/agent-backend-api";
+import { createUuidV7 } from "../../../shared/uuid-v7";
+import type { ClaudeModelCatalogInput } from "../../../shared/claude-models";
 import { AgentBackendApplication } from "../../agent-backend/AgentBackendApplication";
 import { testLayer as mainConfigLayer } from "../../app/MainConfig";
 import { ElectronIpc } from "../../platform/electron/ElectronIpc";
@@ -40,7 +45,19 @@ it.effect("bridges renderer observation reference counts and destruction into se
     const observed: string[] = [];
     const unobserved: string[] = [];
     const destructionReleased = yield* Deferred.make<void>();
+    const started: AgentBackendThreadStartInput[] = [];
+    const discoveries: ClaudeModelCatalogInput[] = [];
     const application = AgentBackendApplication.of({
+      startAgentThread: (input: AgentBackendThreadStartInput) =>
+        Effect.sync(() => {
+          started.push(input);
+          return null;
+        }),
+      claudeDiscovery: (input: ClaudeModelCatalogInput) =>
+        Effect.sync(() => {
+          discoveries.push(input);
+          return null;
+        }),
       observeAgentSession: (threadId: string) =>
         Effect.sync(() => {
           observed.push(threadId);
@@ -83,6 +100,41 @@ it.effect("bridges renderer observation reference counts and destruction into se
     const frame = { url: "app://-/index.html" };
     Object.assign(sender, { mainFrame: frame });
     const event = { sender, senderFrame: frame } as unknown as IpcMainInvokeEvent;
+    const start = handlers.get("agent-backend:thread:start")!;
+    const launch: AgentBackendThreadStartInput = {
+      sessionId: "draft",
+      instanceConfigId: "claude-default",
+      backendKind: "claude",
+      prompt: "Inspect workspace",
+      runInTarget: "newWorktree",
+      runInEnvironmentPath: ".codex/environments/development.toml",
+      worktreeStartingState: { type: "branch", branchName: "main", onMissing: "error" },
+      firstSubmission: { launchId: createUuidV7(), clientUserMessageId: createUuidV7() },
+    };
+    yield* start(event, launch);
+    expect(started).toEqual([launch]);
+    const discover = handlers.get("agent-backend:claude:discover")!;
+    const discoveryInput: ClaudeModelCatalogInput = {
+      instanceConfigId: "claude-default",
+      projectId: null,
+      requestId: createUuidV7(),
+      forceReload: true,
+    };
+    yield* discover(event, discoveryInput);
+    expect(discoveries).toEqual([discoveryInput]);
+    expect(
+      Exit.isFailure(
+        yield* Effect.exit(discover(event, { ...discoveryInput, forceReload: "yes" })),
+      ),
+    ).toBe(true);
+    expect(discoveries).toEqual([discoveryInput]);
+    for (const invalid of [
+      { ...launch, runInTarget: "cloud" },
+      { ...launch, worktreeStartingState: { type: "branch", branchName: "" } },
+      { ...launch, worktreeStartingState: { type: "working-tree", branchName: "main" } },
+    ])
+      expect(Exit.isFailure(yield* Effect.exit(start(event, invalid)))).toBe(true);
+    expect(started).toEqual([launch]);
     const observe = handlers.get("agent-backend:session:observe");
     const unobserve = handlers.get("agent-backend:session:unobserve");
     expect(observe).toBeDefined();

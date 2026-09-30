@@ -202,7 +202,7 @@ test("selects native Claude effort levels and resets them for an unsupported mod
   );
 });
 
-test("shows actual native Fast state and selects explicit On without an inheritance option", async () => {
+test("maps Claude Speed choices to native Fast preferences without changing Codex service tier", async () => {
   const change = vi.fn(async () => {});
   const onSelectionChange = vi.fn();
   const view = renderSelector({
@@ -223,12 +223,20 @@ test("shows actual native Fast state and selects explicit On without an inherita
   await openSelector(view);
   expect(view.queryByLabelText(/Thinking/u)).toBeNull();
   await act(async () => {
-    fireEvent.click(view.getByLabelText("Fast Off"));
+    fireEvent.click(view.getByLabelText("Speed Standard"));
   });
+  const body = within(document.body);
+  const fast = await body.findByRole("menuitem", { name: "Fast" });
+  expect(body.queryByRole("menuitem", { name: "On" })).toBeNull();
+  expect(body.queryByRole("menuitem", { name: "Off" })).toBeNull();
   await act(async () => {
-    fireEvent.click(await within(document.body).findByRole("menuitem", { name: "On" }));
+    fireEvent.click(fast);
   });
   expect(change).toHaveBeenLastCalledWith({ fast: true });
+  await act(async () => {
+    fireEvent.click(await body.findByRole("menuitem", { name: "Standard" }));
+  });
+  expect(change).toHaveBeenLastCalledWith({ fast: false });
   expect(onSelectionChange).not.toHaveBeenCalled();
   await act(async () => {
     fireEvent.click(view.getByLabelText("Context 200k"));
@@ -237,6 +245,38 @@ test("shows actual native Fast state and selects explicit On without an inherita
     fireEvent.click(await within(document.body).findByRole("menuitem", { name: "1m" }));
   });
   expect(change).toHaveBeenLastCalledWith({ context: "1m" });
+  await act(async () => {
+    fireEvent.click(await within(document.body).findByRole("menuitem", { name: "Default" }));
+  });
+  expect(change).toHaveBeenLastCalledWith({ context: null });
+});
+
+test("keeps an unobserved Claude Speed unresolved until an explicit choice", async () => {
+  const change = vi.fn(async () => {});
+  const view = renderSelector({
+    selection: { ...SELECTION, kind: "claude" },
+    provider: {
+      label: "Claude",
+      selection: "claude:work",
+      options: [],
+      select: () => {},
+      nativeIntelligence: {
+        selected: { fast: null },
+        capabilities: { fastMode: true },
+        change,
+      },
+    },
+  });
+  await openSelector(view);
+  await act(async () => {
+    fireEvent.click(view.getByLabelText("Speed —"));
+  });
+  expect(change).not.toHaveBeenCalled();
+  const standard = await within(document.body).findByRole("menuitem", { name: "Standard" });
+  await act(async () => {
+    fireEvent.click(standard);
+  });
+  expect(change).toHaveBeenCalledWith({ fast: false });
 });
 
 test("puts thinking Off in Effort and reenables thinking even when selecting the same effort", async () => {

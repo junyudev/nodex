@@ -45,7 +45,6 @@ interface BuildTurnViewModelInput {
   isBlocked: boolean;
   canEditTurnUserPrefix?: boolean;
   canForkTurn?: boolean;
-  canRateTurn?: boolean;
   allowCopyWhileStreaming?: boolean;
   showTimestampWithoutActions?: boolean;
   timestampHoverOnly?: boolean;
@@ -61,7 +60,6 @@ interface BuildTurnViewModelInput {
 type TurnActionInput = Pick<
   BuildTurnViewModelInput,
   | "canForkTurn"
-  | "canRateTurn"
   | "allowCopyWhileStreaming"
   | "showTimestampWithoutActions"
   | "timestampHoverOnly"
@@ -293,18 +291,10 @@ function buildAssistantMessageActionsModel(
   const hasCopyableContent = copyText.length > 0;
   const isCompleted = !input.isStreamingTurn && assistantItem.status !== "inProgress";
   const canFork = isCompleted && Boolean(input.canForkTurn);
-  const canRate = isCompleted && input.turn?.turnId != null && input.canRateTurn !== false;
   const canCopy = hasCopyableContent && (isCompleted || input.allowCopyWhileStreaming === true);
 
   const hookStats = isCompleted ? input.hookStats : null;
-  if (
-    !canFork &&
-    !canRate &&
-    !canCopy &&
-    !hookStats &&
-    !input.metadata &&
-    !input.showTimestampWithoutActions
-  )
+  if (!canFork && !canCopy && !hookStats && !input.metadata && !input.showTimestampWithoutActions)
     return null;
 
   return {
@@ -312,7 +302,6 @@ function buildAssistantMessageActionsModel(
     copyText: canCopy ? copyText : null,
     ...(input.metadata ? { metadata: input.metadata } : {}),
     sentAtMs: resolveAssistantMessageSentAt(input.turn),
-    canRate,
     canFork,
     ...(input.showTimestampWithoutActions ? { showTimestampWithoutActions: true } : {}),
     ...(input.timestampHoverOnly ? { timestampHoverOnly: true } : {}),
@@ -374,14 +363,7 @@ function buildGeneratedImageActionsBlock(
 ): ThreadAssistantActionsBlockModel | null {
   if (!source || input.isStreamingTurn) return null;
   const canFork = Boolean(input.canForkTurn);
-  const canRate = input.turn?.turnId != null && input.canRateTurn !== false;
-  if (
-    !input.hookStats &&
-    !canFork &&
-    !canRate &&
-    !input.metadata &&
-    !input.showTimestampWithoutActions
-  )
+  if (!input.hookStats && !canFork && !input.metadata && !input.showTimestampWithoutActions)
     return null;
   return {
     id: `${source.id}:actions`,
@@ -396,7 +378,6 @@ function buildGeneratedImageActionsBlock(
       sentAtMs: resolveAssistantMessageSentAt(input.turn),
       ...(input.showTimestampWithoutActions ? { showTimestampWithoutActions: true } : {}),
       ...(input.timestampHoverOnly ? { timestampHoverOnly: true } : {}),
-      canRate,
       canFork,
       ...(input.metadata ? { metadata: input.metadata } : {}),
       ...(input.hookStats ? { hookStats: input.hookStats } : {}),

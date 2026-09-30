@@ -213,6 +213,7 @@ export interface CodexWorktreeWorkerSetOwnerResult {
 
 export interface CodexWorktreeWorkerPrepareHandoffInput extends CodexWorktreeWorkerRequestIdentity {
   readonly managedRoot: string;
+  readonly allocatedWorktreePath: string | null;
   readonly nodexHome: string;
   readonly projectId: string;
   readonly threadId: string;
@@ -298,6 +299,7 @@ export interface CodexWorktreeWorkerImportHandoffInput extends CodexWorktreeWork
   readonly repositoryIdentity: CodexRepositoryIdentity;
   readonly candidateRepositoryPaths: readonly string[];
   readonly managedRoot: string;
+  readonly allocatedWorktreePath: string;
   readonly nodexHome: string;
   readonly projectId: string;
   readonly threadId: string;

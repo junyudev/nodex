@@ -4139,6 +4139,7 @@ export function WorkbenchRuntime({
               );
             }}
             onOpenLocalEnvironmentsSettings={openLocalEnvironmentsSettings}
+            onRequestProjectPickerOpen={onRequestProjectPickerOpen}
             onOpenHooksSettings={openHooksSettings}
             onOpenVoiceSettings={openVoiceSettings}
             threadQueueFollowUpsEnabled={threadQueueFollowUpsEnabled}

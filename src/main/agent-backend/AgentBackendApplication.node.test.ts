@@ -25,13 +25,30 @@ import {
   resolveAcpPermissionPolicy,
   resolveClaudePermissionPolicy,
 } from "./AgentBackendApplication";
+import { NativeSessionWorkspace } from "./NativeSessionWorkspace";
 
 import {
   projectAgentSessionConfigOptions,
   projectAgentSessionModes,
 } from "./AgentSessionDirectory";
 
-const make = makeApplication.pipe(Effect.provide(inactiveClaudeSessions));
+const make = makeApplication.pipe(
+  Effect.provide(inactiveClaudeSessions),
+  Effect.provideService(NativeSessionWorkspace, {
+    prepare: (input) =>
+      Effect.succeed({
+        location: {
+          cwd: input.sourceCwd!,
+          workspaceRoots: input.sourceRoots ?? [input.sourceCwd!],
+          managedWorktreePath: null,
+          projectlessOutputDirectory: null,
+          projectlessWorkspaceBrowserRoot: null,
+        },
+        retain: Effect.void,
+        attach: () => Effect.void,
+      }),
+  }),
+);
 
 const binding = {
   kind: "acp" as const,

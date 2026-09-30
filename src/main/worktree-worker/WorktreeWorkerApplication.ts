@@ -5,6 +5,7 @@ import * as FiberMap from "effect/FiberMap";
 import * as FiberSet from "effect/FiberSet";
 import * as Schema from "effect/Schema";
 import { executeCodexWorktreeWorkerOperation } from "../codex/codex-worktree-worker-operation";
+import { LocalThreadHandoffPreparationError } from "../codex/codex-local-thread-handoff-git";
 import {
   type CodexLocalShellEnvironmentRuntimeError,
   make as makeShellEnvironment,
@@ -114,6 +115,7 @@ export const runWorktreeWorkerApplication = (
                 ? Effect.sync(() => transport.post(canceledResult(message)))
                 : Effect.void;
             }
+            const error = Cause.squash(cause);
             return Effect.sync(() =>
               transport.post({
                 type: "result",
@@ -122,8 +124,12 @@ export const runWorktreeWorkerApplication = (
                 result: {
                   type: "error",
                   code: "operation-failed",
-                  message: String(Cause.squash(cause)),
+                  message: String(error),
                   retryable: true,
+                  ...(message.request.operation === "prepare-handoff" &&
+                  error instanceof LocalThreadHandoffPreparationError
+                    ? { preparationRestored: error.preparationRestored }
+                    : {}),
                 },
               }),
             );

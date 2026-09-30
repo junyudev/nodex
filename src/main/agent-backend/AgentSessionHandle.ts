@@ -17,6 +17,13 @@ import type {
 
 export type AgentSessionPermissionPolicy = "ask" | "approve-for-me" | "full-access";
 
+export interface NativeAgentExecutionLocation {
+  readonly workspaceRoot: string;
+  readonly workspaceEnvironment?:
+    | import("../codex/codex-worktree-shell-environment").CodexStoredShellEnvironment
+    | null;
+}
+
 /** Conversation controls shared by native Claude and ACP, independent of either wire protocol. */
 export interface AgentSessionHandle {
   readonly threadId: string;
@@ -33,6 +40,20 @@ export interface AgentSessionHandle {
     },
   ) => Effect.Effect<{ readonly stopReason: string }, AgentRuntimeError>;
   readonly cancel: Effect.Effect<void, AgentRuntimeError>;
+  /** Suspends an idle native runtime inside a handoff; the handoff restores it after cleanup. */
+  readonly suspendExecution?: Effect.Effect<void, AgentRuntimeError>;
+  /** Seals new input and mutating controls through file preparation, commit, and cleanup. */
+  readonly withExecutionHandoff?: <A, E, R>(
+    use: Effect.Effect<A, E, R>,
+  ) => Effect.Effect<A, E | AgentRuntimeError, R>;
+  readonly setExecutionRecoveryRequired?: (
+    required: boolean,
+  ) => Effect.Effect<void, AgentRuntimeError>;
+  /** Holds turn admission while the same native conversation moves and its durable location commits. */
+  readonly withExecutionLocation?: <A, E, R>(
+    location: NativeAgentExecutionLocation,
+    use: Effect.Effect<A, E, R>,
+  ) => Effect.Effect<A, E | AgentRuntimeError, R>;
   readonly setIntelligence?: (
     selection: ClaudeModelSelection,
   ) => Effect.Effect<void, AgentRuntimeError>;

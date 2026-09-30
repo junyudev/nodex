@@ -27,6 +27,7 @@ export function CodexHomeSettingsControl({
 }) {
   const [settings, setSettings] = useState<CodexHomeSettingsSnapshot | null>(null);
   const [draft, setDraft] = useState("");
+  const [accountDraft, setAccountDraft] = useState("");
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -40,6 +41,7 @@ export function CodexHomeSettingsControl({
         if (!active) return;
         setSettings(value);
         setDraft(value.homePath);
+        setAccountDraft(value.accountHomePath);
       },
       (cause: unknown) => {
         if (active) setError(cause instanceof Error ? cause.message : String(cause));
@@ -50,14 +52,19 @@ export function CodexHomeSettingsControl({
     };
   }, [open, runtime]);
 
+  const changed = Boolean(
+    settings &&
+    (draft.trim() !== settings.homePath || accountDraft.trim() !== settings.accountHomePath),
+  );
   const save = async () => {
-    if (!settings || saving || draft.trim() === settings.homePath) return;
+    if (!settings || saving || !changed) return;
     setSaving(true);
     setError(null);
     try {
-      const next = await runtime.update({ homePath: draft });
+      const next = await runtime.update({ homePath: draft, accountHomePath: accountDraft });
       setSettings(next);
       setDraft(next.homePath);
+      setAccountDraft(next.accountHomePath);
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : String(cause));
     } finally {
@@ -66,23 +73,8 @@ export function CodexHomeSettingsControl({
   };
 
   return (
-    <NodexSettingsRow
-      label="Codex home"
-      description={
-        <>
-          {settings?.activeHomePath}
-          {settings?.restartRequired ? (
-            <div role="status">Restart Nodex to use {settings.resolvedHomePath}.</div>
-          ) : null}
-          {error ? (
-            <div role="alert" className="text-destructive">
-              {error}
-            </div>
-          ) : null}
-        </>
-      }
-    >
-      <div className="flex min-w-0 items-center gap-2">
+    <>
+      <NodexSettingsRow label="Codex home" description={settings?.activeHomePath}>
         <Input
           aria-label="Codex home"
           className="w-64 max-w-full"
@@ -96,15 +88,47 @@ export function CodexHomeSettingsControl({
             void save();
           }}
         />
-        <NodexButton
-          variant="secondary"
-          size="sm"
-          disabled={!settings || saving || draft.trim() === settings.homePath}
-          onClick={() => void save()}
-        >
-          {saving ? "Saving…" : "Save"}
-        </NodexButton>
-      </div>
-    </NodexSettingsRow>
+      </NodexSettingsRow>
+      <NodexSettingsRow
+        label="Account directory"
+        description={
+          <>
+            {settings?.activeAccountHomePath ?? "Uses Codex home"}
+            {settings?.restartRequired ? (
+              <div role="status">Restart Nodex to apply the saved directories.</div>
+            ) : null}
+            {error ? (
+              <div role="alert" className="text-destructive">
+                {error}
+              </div>
+            ) : null}
+          </>
+        }
+      >
+        <div className="flex min-w-0 items-center gap-2">
+          <Input
+            aria-label="Codex account directory"
+            className="w-64 max-w-full"
+            value={accountDraft}
+            placeholder="Same as Codex home"
+            disabled={!settings || saving}
+            onChange={(event) => setAccountDraft(event.target.value)}
+            onKeyDown={(event) => {
+              if (event.key !== "Enter") return;
+              event.preventDefault();
+              void save();
+            }}
+          />
+          <NodexButton
+            variant="secondary"
+            size="sm"
+            disabled={!settings || saving || !changed}
+            onClick={() => void save()}
+          >
+            {saving ? "Saving…" : "Save"}
+          </NodexButton>
+        </div>
+      </NodexSettingsRow>
+    </>
   );
 }

@@ -5,7 +5,7 @@ import { useLibraryMetadata } from "@/lib/use-library-navigation";
 import { startTransition, useCallback, useEffect, useState } from "react";
 import { AppUpdateSettingsControl } from "./app-update-settings-control";
 import { AcpAgentSettingsControl } from "./acp-agent-settings-control";
-import { AgentImportSettingsPage } from "./agent-import-settings-page";
+import { NativeSessionSettingsPage } from "./native-session-settings-page";
 import { ArchivedChatsSettingsPage } from "./archived-chats-settings-page";
 import { ComputerUseSettingsPage } from "./computer-use-settings-page";
 import { KeyboardShortcutsSettingsPage } from "./keyboard-shortcuts-settings-page";
@@ -710,7 +710,7 @@ export const SETTINGS_PAGE_COMPONENTS: SettingsPageComponentRegistry = {
   "computer-use": ComputerUseSettingsPage,
   "keyboard-shortcuts": KeyboardShortcutsSettingsPage,
   agent: AgentSettingsPage,
-  import: AgentImportSettingsPage,
+  import: NativeSessionSettingsPage,
   page: PageSettingsPage,
   git: GitSettingsPage,
   worktrees: WorktreesSettingsPage,

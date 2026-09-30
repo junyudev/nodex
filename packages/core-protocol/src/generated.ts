@@ -7271,10 +7271,26 @@ export interface components {
                 readonly thread_id: string;
             } | {
                 readonly backend_binding: components["schemas"]["AgentBackendBinding"];
+                /** Format: int64 */
+                readonly created_at: number;
+                readonly cwd: string;
+                /** @enum {string} */
+                readonly kind: "attach_native_session";
+                readonly native_home: string;
+                readonly native_session_id: string;
+                readonly project_id?: string | null;
+                readonly session_id: string;
+                readonly thread_id: string;
+                readonly title: string;
+                /** Format: int64 */
+                readonly updated_at: number;
+            } | {
+                readonly backend_binding: components["schemas"]["AgentBackendBinding"];
                 readonly backend_session_id: string;
                 readonly expected_backend_session_id?: string | null;
                 /** @enum {string} */
                 readonly kind: "bind_thread_backend_session";
+                readonly native_home?: string | null;
                 readonly native_state?: null | components["schemas"]["ProjectWorkspaceNativeAgentState"];
                 readonly thread_id: string;
             } | {
@@ -8392,6 +8408,12 @@ export interface components {
                 readonly kind: "thread_backend_session";
                 readonly thread_id: string;
             } | {
+                readonly backend_kind: components["schemas"]["ProjectWorkspaceNativeBackendKind"];
+                /** @enum {string} */
+                readonly kind: "native_session_bindings";
+                readonly native_home: string;
+                readonly native_session_ids: readonly string[];
+            } | {
                 readonly include_archived?: boolean | null;
                 /** @enum {string} */
                 readonly kind: "child_thread_window";
@@ -9189,10 +9211,26 @@ export interface components {
             readonly thread_id: string;
         } | {
             readonly backend_binding: components["schemas"]["AgentBackendBinding"];
+            /** Format: int64 */
+            readonly created_at: number;
+            readonly cwd: string;
+            /** @enum {string} */
+            readonly kind: "attach_native_session";
+            readonly native_home: string;
+            readonly native_session_id: string;
+            readonly project_id?: string | null;
+            readonly session_id: string;
+            readonly thread_id: string;
+            readonly title: string;
+            /** Format: int64 */
+            readonly updated_at: number;
+        } | {
+            readonly backend_binding: components["schemas"]["AgentBackendBinding"];
             readonly backend_session_id: string;
             readonly expected_backend_session_id?: string | null;
             /** @enum {string} */
             readonly kind: "bind_thread_backend_session";
+            readonly native_home?: string | null;
             readonly native_state?: null | components["schemas"]["ProjectWorkspaceNativeAgentState"];
             readonly thread_id: string;
         } | {
@@ -9384,6 +9422,8 @@ export interface components {
             readonly file_id?: string | null;
             readonly filename: string;
         };
+        /** @enum {string} */
+        readonly ProjectWorkspaceNativeBackendKind: "codex" | "claude";
         readonly ProjectWorkspaceNativeCompactionFact: {
             /** Format: int64 */
             readonly duration_ms?: number | null;
@@ -9399,6 +9439,12 @@ export interface components {
         };
         /** @enum {string} */
         readonly ProjectWorkspaceNativeInteractionMode: "default" | "plan";
+        readonly ProjectWorkspaceNativeSessionBinding: {
+            readonly native_session_id: string;
+            readonly project_id?: string | null;
+            readonly session_id?: string | null;
+            readonly thread_id: string;
+        };
         readonly ProjectWorkspaceNativeTokenFact: {
             /** Format: int64 */
             readonly cache_read: number;
@@ -9714,6 +9760,7 @@ export interface components {
         readonly ProjectWorkspaceThreadBackendSession: {
             readonly backend_binding: components["schemas"]["AgentBackendBinding"];
             readonly backend_session_id: string;
+            readonly native_home?: string | null;
             readonly native_state?: null | components["schemas"]["ProjectWorkspaceNativeAgentState"];
             readonly thread_id: string;
             /** Format: int64 */
@@ -11193,6 +11240,10 @@ export interface components {
                     /** @enum {string} */
                     readonly kind: "thread_backend_session";
                     readonly session?: null | components["schemas"]["ProjectWorkspaceThreadBackendSession"];
+                } | {
+                    readonly bindings: readonly components["schemas"]["ProjectWorkspaceNativeSessionBinding"][];
+                    /** @enum {string} */
+                    readonly kind: "native_session_bindings";
                 } | {
                     /** @enum {string} */
                     readonly kind: "child_thread_window";

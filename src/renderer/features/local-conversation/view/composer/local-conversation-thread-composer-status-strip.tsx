@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
-import { ChevronDownIcon, LocalStatusIcon } from "@/components/shared/icons";
+import { LocalStatusIcon } from "@/components/shared/icons";
 import type { ThreadFooterModel, ThreadStageActions } from "../../thread-stage-types";
 import {
   EMPTY_BRANCH_SELECTOR_STATE,
@@ -235,18 +235,14 @@ function ThreadComposerStatusStripContent({
             worktreeAvailable={worktreeAvailable}
           />
         ) : (
-          <button
-            type="button"
-            className="inline-flex h-7 items-center gap-1 rounded-full border border-transparent px-1.5 text-sm/4.5 text-(--foreground-tertiary) hover:bg-(--background-tertiary) hover:text-(--foreground-secondary)"
-            aria-label="Run target"
-          >
+          <span className="inline-flex h-7 items-center gap-1 px-1.5 text-sm/4.5 text-(--foreground-tertiary)">
             <LocalStatusIcon className="size-3.5 shrink-0" />
             <span className="max-w-40 truncate text-sm">Work locally</span>
-            <ChevronDownIcon />
-          </button>
+          </span>
         )}
         {showNewChatStartInSelector &&
         model.newThreadStartInSelector &&
+        model.newThreadStartInSelector.environmentAvailable !== false &&
         model.newThreadStartInSelector.target.runInTarget === "newWorktree" ? (
           <EnvironmentSelectorPopover
             configs={model.newThreadStartInSelector.environments}

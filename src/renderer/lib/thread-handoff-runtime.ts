@@ -2,9 +2,22 @@ import { createContext, useContext, useSyncExternalStore } from "react";
 import type {
   CodexAppHandoffOperation,
   CodexThreadHandoffSnapshot,
+  ThreadExecutionHandoffInput,
 } from "../../shared/codex-thread-handoff";
 import { subscribeCodexThreadHandoffsChanged } from "./api";
-import { invokeRendererQuery } from "./renderer-command";
+import { defineRendererCommand, invokePlainCommand, invokeRendererQuery } from "./renderer-command";
+
+const moveThreadExecutionCommand = defineRendererCommand({
+  key: "thread_execution.handoff",
+  channel: "thread-execution:handoff",
+  authority: "main",
+  owner: "ThreadExecutionLocation",
+  protocol: { kind: "pending_operation" },
+});
+
+export function moveThreadExecution(input: ThreadExecutionHandoffInput) {
+  return invokePlainCommand(moveThreadExecutionCommand, input);
+}
 
 export interface ThreadHandoffScope {
   readonly operationId: string;
@@ -92,4 +105,21 @@ export function useThreadHandoffOperation(scope: ThreadHandoffScope | null) {
     () => EMPTY_SNAPSHOT,
   );
   return selectThreadHandoffOperation(snapshot, scope);
+}
+
+/** Attached chats also observe operations started in another window or before a restart. */
+export function useThreadExecutionHandoff(threadId: string | null) {
+  const store = useContext(ThreadHandoffStoreContext);
+  const snapshot = useSyncExternalStore(
+    threadId ? store.subscribe : subscribeToNothing,
+    store.getSnapshot,
+    () => EMPTY_SNAPSHOT,
+  );
+  return snapshot.operations
+    .filter((operation) => operation.sourceThreadId === threadId)
+    .reduce<CodexAppHandoffOperation | null>(
+      (latest, operation) =>
+        !latest || operation.createdAt > latest.createdAt ? operation : latest,
+      null,
+    );
 }

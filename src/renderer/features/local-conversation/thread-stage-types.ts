@@ -85,6 +85,7 @@ export interface NewChatStartInSelectorModel {
   target: NewChatStartInTarget;
   disabled: boolean;
   worktreeAvailable: boolean;
+  environmentAvailable?: boolean;
   environments: WorktreeEnvironmentConfigRecord[];
   environmentsLoading: boolean;
   environmentsError: boolean;
@@ -244,6 +245,7 @@ export interface ConversationProviderPresentation {
     readonly stopTask?: boolean;
   };
   readonly skills?: readonly CodexComposerSkill[];
+  readonly refreshSkills?: () => Promise<void>;
   readonly stopTask?: (taskId: string) => Promise<void>;
   readonly kind: "codex" | "claude" | "acp";
   readonly label: string;
@@ -336,6 +338,8 @@ export interface ThreadStageActions {
   onPermissionModeChange: (mode: CodexPermissionMode) => void | Promise<void>;
   onQueueingEnabledChange: (enabled: boolean) => void;
   onOpenSubagentsPanel?: () => void | Promise<void>;
+  /** Native task identities select observations without entering Thread navigation. */
+  onOpenTaskObservation?: (observationId: string) => void;
   onCaptureSubmissionPresentation?: () => WorkbenchSubmitPresentation;
   onStartThreadForSession?: (input: {
     submittedPresentation?: WorkbenchSubmitPresentation;
@@ -569,7 +573,6 @@ export interface ThreadAssistantMessageActionsModel {
   hookStats?: HookStats | null;
   copyText: string | null;
   sentAtMs: number | null;
-  canRate: boolean;
   canFork: boolean;
 }
 

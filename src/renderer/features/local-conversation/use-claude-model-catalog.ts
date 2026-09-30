@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import type { AgentSessionConfigSelectOption } from "../../../shared/agent-conversation";
 import { agentBackendRuntime } from "../../lib/agent-backend-runtime";
 import { resolveRendererTransport } from "../../lib/renderer-transport";
@@ -25,6 +25,14 @@ export function useClaudeModelCatalog(
     discovery: ClaudeDiscovery | null;
   } | null>(null);
   const [revision, setRevision] = useState(0);
+  const refreshOwner = useRef<{
+    readonly key: string;
+    readonly refresh: () => Promise<void>;
+  } | null>(null);
+  const refreshCatalog = useCallback(async () => {
+    const owner = refreshOwner.current;
+    if (owner?.key === key) await owner.refresh();
+  }, [key]);
   useEffect(() => subscribe(() => setRevision((current) => current + 1)), [subscribe]);
   useEffect(() => {
     if (!instanceConfigId) return;
@@ -42,25 +50,32 @@ export function useClaudeModelCatalog(
         refreshWhenDue();
       }, delay);
     };
-    const refresh = async () => {
-      if (disposed || controller) return;
-      controller = new AbortController();
+    const refresh = async (force = false) => {
+      if (disposed || (controller && !force)) return;
+      controller?.abort();
+      const request = new AbortController();
+      controller = request;
       try {
-        const discovery = await read({ instanceConfigId, projectId }, controller.signal);
-        if (disposed) return;
+        const discovery = await read(
+          { instanceConfigId, projectId, ...(force ? { forceReload: true } : {}) },
+          request.signal,
+        );
+        if (disposed || controller !== request) return;
         failures = 0;
         setCatalog({ key, options: discovery.models, discovery, error: discovery.health.error });
         schedule(freshnessMs);
       } catch {
-        if (disposed) return;
+        if (disposed || controller !== request) return;
+        const error = "Could not discover Claude models. Reconnect or update the selected profile.";
         setCatalog((previous) => ({
           ...(previous?.key === key ? previous : { options: defaultOptions, discovery: null }),
           key,
-          error: "Could not discover Claude models. Reconnect or update the selected profile.",
+          error,
         }));
         schedule(failureDelaysMs[failures++] ?? freshnessMs);
+        if (force) throw new Error(error);
       } finally {
-        controller = null;
+        if (controller === request) controller = null;
       }
     };
     const refreshWhenDue = () => {
@@ -69,14 +84,20 @@ export function useClaudeModelCatalog(
     };
     window.addEventListener("focus", refreshWhenDue);
     document.addEventListener("visibilitychange", refreshWhenDue);
+    const owner = { key, refresh: () => refresh(true) };
+    refreshOwner.current = owner;
     void refresh();
     return () => {
       disposed = true;
+      if (refreshOwner.current === owner) refreshOwner.current = null;
       controller?.abort();
       if (timer !== null) clearTimeout(timer);
       window.removeEventListener("focus", refreshWhenDue);
       document.removeEventListener("visibilitychange", refreshWhenDue);
     };
   }, [instanceConfigId, projectId, key, read, revision]);
-  return catalog?.key === key ? catalog : { options: defaultOptions, error: null, discovery: null };
+  return {
+    ...(catalog?.key === key ? catalog : { options: defaultOptions, error: null, discovery: null }),
+    refresh: instanceConfigId ? refreshCatalog : undefined,
+  };
 }

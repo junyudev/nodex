@@ -1,6 +1,12 @@
 /** Profile-owned handoff progress projected into conversation tool activity. */
 export type CodexAppHandoffStatusType = "running" | "success" | "warning" | "error";
 
+export interface ThreadExecutionHandoffInput {
+  readonly threadId: string;
+  readonly operationId: string;
+  readonly destination: "local" | "worktree";
+}
+
 export interface CodexAppHandoffStep {
   readonly id: string;
   readonly label: string;
@@ -13,6 +19,7 @@ export interface CodexAppHandoffOperation {
   readonly operationId: string;
   readonly revision: number;
   readonly status: CodexAppHandoffStatusType;
+  readonly recoveryRequired: boolean;
   readonly threadId: string;
   readonly sourceThreadId: string;
   readonly requestThreadId: string | null;

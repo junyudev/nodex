@@ -42,7 +42,6 @@ export interface BuildTurnRenderModelInput {
   surface?: TurnRenderSurface;
   canEditTurnUserPrefix?: boolean;
   canForkTurn?: boolean;
-  canRateTurn?: boolean;
   goalTimeUsedSeconds?: number;
   timestampHoverOnly?: boolean;
   showFullTranscript?: boolean;
@@ -63,7 +62,6 @@ export interface SelectTurnRenderModelInput {
   surface?: TurnRenderSurface;
   canEditTurnUserPrefix?: boolean;
   canForkTurn?: boolean;
-  canRateTurn?: boolean;
   goalTimeUsedSeconds?: number;
   timestampHoverOnly?: boolean;
   showFullTranscript?: boolean;
@@ -394,7 +392,6 @@ export function buildTurnRenderModel(input: BuildTurnRenderModelInput): ThreadTu
     subagentActivityState: rendererProjection.subagentActivityState,
     canEditTurnUserPrefix: input.turn.turnId !== null && input.canEditTurnUserPrefix,
     canForkTurn: input.turn.turnId !== null && input.canForkTurn,
-    canRateTurn: input.canRateTurn,
     allowCopyWhileStreaming: input.surface === "preview",
     showTimestampWithoutActions: input.surface === "preview",
     timestampHoverOnly: input.timestampHoverOnly ?? false,
@@ -441,7 +438,6 @@ export function createTurnRenderModelSelector(
     );
     const cacheKey = JSON.stringify([
       surface,
-      input.canRateTurn,
       input.goalTimeUsedSeconds,
       input.timestampHoverOnly,
       canEditTurnUserPrefix,
@@ -477,7 +473,6 @@ export function createTurnRenderModelSelector(
       isLatestTurn: input.entry.isMostRecentTurn,
       isStreamingTurn: input.entry.turn.status === "inProgress",
       surface,
-      canRateTurn: input.canRateTurn,
       goalTimeUsedSeconds: input.goalTimeUsedSeconds,
       timestampHoverOnly: input.timestampHoverOnly,
       canEditTurnUserPrefix,

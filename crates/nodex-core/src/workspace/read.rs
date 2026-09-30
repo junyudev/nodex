@@ -303,6 +303,19 @@ pub(super) fn read(
                 ),
             })
         }
+        ProjectWorkspaceRead::NativeSessionBindings {
+            backend_kind,
+            native_home,
+            native_session_ids,
+        } => Ok(ProjectWorkspaceReadValue::NativeSessionBindings {
+            bindings: super::thread::read_native_session_bindings(
+                connection,
+                library_id,
+                backend_kind,
+                &native_home,
+                &native_session_ids,
+            )?,
+        }),
         ProjectWorkspaceRead::ThreadBackendSession { thread_id } => {
             validate_id("thread_id", &thread_id)?;
             Ok(ProjectWorkspaceReadValue::ThreadBackendSession {
