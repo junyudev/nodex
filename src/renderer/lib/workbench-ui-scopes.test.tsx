@@ -1,10 +1,12 @@
 import { StrictMode, useLayoutEffect } from "react";
-import { render } from "@testing-library/react";
+import { act, fireEvent, render } from "@testing-library/react";
 import { describe, expect, test, vi } from "vite-plus/test";
 import type { ProjectSession } from "../../shared/types";
 import {
   AppShellHeaderContentRegistrar,
   ComposerScope,
+  ConversationSkillsReloadRegistrar,
+  useSelectedConversationSkillsReloadControl,
   IdentityPromotionConflict,
   promoteThreadScopeToPending,
   SelectedAppShellHeaderContent,
@@ -71,6 +73,77 @@ function projectSession(threadId: string | null = null): ProjectSession {
 }
 
 describe("Workbench Maitai scopes", () => {
+  test("skill reload follows the selected route and restores the previous mounted owner on disposal", async () => {
+    const store = createMaitaiStore();
+    const reloadCodex = vi.fn(async () => {});
+    const reloadClaude = vi.fn(async () => {});
+    const codex = { provider: "codex" as const, reload: reloadCodex };
+    const claude = { provider: "claude" as const, reload: reloadClaude };
+    function Probe() {
+      const control = useSelectedConversationSkillsReloadControl();
+      return (
+        <button
+          type="button"
+          disabled={!control}
+          onClick={() => {
+            void control?.reload();
+          }}
+        >
+          {control?.provider ?? "Unavailable"}
+        </button>
+      );
+    }
+    const tree = (selected: "a" | "b", overlay: "claude" | "unsupported" | null = null) => (
+      <StrictMode>
+        <MaitaiProvider store={store}>
+          <Probe />
+          <WorkbenchSessionScopePath
+            thread={descriptor("session:a", "thread-a")}
+            route={{ routeKey: "/thread", kind: "thread" }}
+            selected={selected === "a"}
+          >
+            <ConversationSkillsReloadRegistrar control={codex} />
+            {overlay ? (
+              <ConversationSkillsReloadRegistrar control={overlay === "claude" ? claude : null} />
+            ) : null}
+          </WorkbenchSessionScopePath>
+          <WorkbenchSessionScopePath
+            thread={descriptor("session:b", "thread-b")}
+            route={{ routeKey: "/thread", kind: "thread" }}
+            selected={selected === "b"}
+          >
+            <ConversationSkillsReloadRegistrar control={claude} />
+          </WorkbenchSessionScopePath>
+        </MaitaiProvider>
+      </StrictMode>
+    );
+    const view = render(tree("a"));
+    await act(async () => {
+      fireEvent.click(view.getByRole("button", { name: "codex" }));
+    });
+    expect(reloadCodex).toHaveBeenCalledOnce();
+    expect(reloadClaude).not.toHaveBeenCalled();
+    view.rerender(tree("b"));
+    await act(async () => {
+      fireEvent.click(view.getByRole("button", { name: "claude" }));
+    });
+    expect(reloadClaude).toHaveBeenCalledOnce();
+    view.rerender(tree("a", "unsupported"));
+    expect((view.getByRole("button", { name: "Unavailable" }) as HTMLButtonElement).disabled).toBe(
+      true,
+    );
+    view.rerender(tree("a", "claude"));
+    await act(async () => {
+      fireEvent.click(view.getByRole("button", { name: "claude" }));
+    });
+    expect(reloadClaude).toHaveBeenCalledTimes(2);
+    view.rerender(tree("a"));
+    await act(async () => {
+      fireEvent.click(view.getByRole("button", { name: "codex" }));
+    });
+    expect(reloadCodex).toHaveBeenCalledTimes(2);
+  });
+
   test("keeps client identity stable when a server thread attaches", () => {
     const registry = createThreadScopeIdentityRegistry();
     expect(registry.resolve({ clientThreadId: "pending-1" })).toBe("client:pending-1");

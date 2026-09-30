@@ -11,7 +11,11 @@ import { render, settleAsyncRender, textContent } from "../../../test/dom";
 import { createTestQueryClient, TestQueryProvider } from "../../../test/query";
 import { queryKeys } from "../../../lib/query-keys";
 import { RendererStateProvider } from "../../../app-providers";
-import { WorkbenchSessionScopePath } from "../../../lib/workbench-ui-scopes";
+import {
+  WorkbenchSessionScopePath,
+  useSelectedConversationSkillsReloadControl,
+} from "../../../lib/workbench-ui-scopes";
+import { NodexModalHost } from "../../../lib/modal-registry";
 import type {
   CodexConnectionState,
   CodexConversationItem,
@@ -41,6 +45,14 @@ let invokeCalls: Array<{
 let readStateWrites: ThreadReadStateChange[] = [];
 let overviewChild = false;
 beforeEach(() => {
+  const previousApi = window.api;
+  installWindowApi({
+    ...previousApi,
+    invoke: async (channel: string, ...args: unknown[]) =>
+      channel === "codex:thread-handoffs:list"
+        ? { revision: 0, operations: [] }
+        : await previousApi?.invoke(channel, ...args),
+  });
   readStateWrites = [];
   overviewChild = false;
   coordination.resumeError = null;
@@ -501,6 +513,10 @@ async function renderStage(
     threadBodyVisible?: boolean;
     runtime?: ConversationRuntime;
     provider?: ConversationProviderPresentation;
+    projectId?: string | null;
+    summaryPanelOpen?: boolean;
+    onOpenThread?: ThreadStageActions["onOpenThread"];
+    skillsControlProbe?: boolean;
   } = {},
 ) {
   const { __resetLocalConversationStoreForTests, LocalConversationProvider } =
@@ -515,7 +531,7 @@ async function renderStage(
           <LocalConversationProvider>
             <ConversationRuntimeContext.Provider value={options.runtime ?? null}>
               <ConnectedThreadStage
-                projectId="project_1"
+                projectId={options.projectId === undefined ? "project_1" : options.projectId}
                 projectWorkspacePath="/tmp/project"
                 isNewThreadTab={false}
                 newThreadTarget={null}
@@ -540,16 +556,37 @@ async function renderStage(
                 rightPanelComposerOverlayVisibility={options.rightPanelComposerOverlayVisibility}
                 threadBodyVisible={options.threadBodyVisible}
                 provider={options.provider}
-                actions={buildActions()}
+                summaryPanelMounted={options.summaryPanelOpen}
+                summaryPanelOpen={options.summaryPanelOpen}
+                actions={{
+                  ...buildActions(),
+                  ...(options.onOpenThread ? { onOpenThread: options.onOpenThread } : {}),
+                }}
               />
             </ConversationRuntimeContext.Provider>
           </LocalConversationProvider>
+          {options.skillsControlProbe ? <SkillsReloadProbe /> : null}
+          {options.summaryPanelOpen ? <NodexModalHost /> : null}
         </TooltipProvider>
       </ThreadStageScope>
     </ConnectedThreadStageQueryProvider>,
   );
   await settleAsyncRender();
   return view;
+}
+
+function SkillsReloadProbe() {
+  const control = useSelectedConversationSkillsReloadControl();
+  return (
+    <button
+      type="button"
+      disabled={!control}
+      onClick={() => {
+        void control?.reload();
+      }}
+      aria-label="Reload active skills"
+    />
+  );
 }
 
 async function renderPrimaryAndAuxiliaryThread(
@@ -656,6 +693,7 @@ async function renderNewThreadHome(overrides?: {
   installWindowApi({
     invoke: async (channel: string, ...args: unknown[]) => {
       if (channel === "codex-command-keymap-state") return createCommandKeymapState({}, "macOS");
+      if (channel === "codex:thread-handoffs:list") return { revision: 0, operations: [] };
       if (channel === "branch-metadata") {
         return {
           currentBranch: "dev-redesign",
@@ -847,6 +885,167 @@ async function renderNewThreadHome(overrides?: {
 }
 
 describe("ConnectedThreadStage archived resume behavior", () => {
+  test.each(["project_1", null])(
+    "native task summary opens the selected observation without Codex hydration (project=%s)",
+    async (projectId) => {
+      invokeCalls = [];
+      const children: ReturnType<ConversationRuntime["children"]> = [
+        "Build docs",
+        "Review changes",
+      ].map((displayName, index) => ({
+        threadId: `agent-task:thread_active:${index}`,
+        parentThreadId: "thread_active",
+        role: "backgroundChild",
+        displayName,
+        statusType: "idle",
+        task: {
+          id: `${index}`,
+          description: displayName,
+          bornTurnSequence: 1,
+          status: "completed",
+        },
+      }));
+      const emptyChildren: ReturnType<ConversationRuntime["children"]> = [];
+      const parent = withCanonicalState(
+        buildConversation("thread_active", {
+          projectId,
+          statusType: "idle",
+          turns: [],
+        }),
+      );
+      const observations = new Map(
+        children.map((child) => [
+          child.threadId,
+          withCanonicalState(
+            buildConversation(child.threadId, {
+              projectId,
+              threadName: child.displayName,
+              source: { parentThreadId: "thread_active" },
+              statusType: "idle",
+              turns: [],
+            }),
+          ),
+        ]),
+      );
+      const attachment = { status: "attached" } as const;
+      const connection = { status: "connected", retries: 0 } as const;
+      const runtime: ConversationRuntime = {
+        kind: "claude",
+        hostId: "local",
+        read: (id) => (id === parent.threadId ? parent : (observations.get(id ?? "") ?? null)),
+        subscribe: () => () => {},
+        children: (id) => (id === parent.threadId ? children : emptyChildren),
+        attachment: () => attachment,
+        connection: () => connection,
+        role: () => "follower",
+        primaryRequest: () => null,
+        retain: () => () => {},
+        resume: vi.fn(async () => {}),
+        markRead: async () => {},
+        setPresented: async () => {},
+      };
+      const onOpenThread = vi.fn();
+      const view = await renderStage(
+        { ...buildThreadSummary(false), projectId },
+        {
+          projectId,
+          runtime,
+          onOpenThread,
+          summaryPanelOpen: true,
+          provider: {
+            kind: "claude",
+            label: "Claude",
+            selection: "claude:work",
+            options: [],
+            select: () => {},
+            commands: [],
+            error: null,
+            controls: { nativeTaskDetails: true },
+          },
+        },
+      );
+      const row = (await view.findByText("Review changes")).closest("[role='button']");
+      if (!row) throw new Error("Expected task summary row");
+      await act(async () => {
+        fireEvent.click(row);
+        await Promise.resolve();
+      });
+      await view.findByRole("dialog", { name: "Tasks" });
+      expect(
+        view
+          .getByRole("button", { name: "Review changes, Completed" })
+          .getAttribute("aria-pressed"),
+      ).toBe("true");
+      expect(
+        view.getByRole("button", { name: "Build docs, Completed" }).getAttribute("aria-pressed"),
+      ).toBe("false");
+      expect(onOpenThread).not.toHaveBeenCalled();
+      expect(runtime.resume).not.toHaveBeenCalled();
+      expect(
+        invokeCalls.filter((call) =>
+          [
+            "codex:thread:history-hydration:prepare",
+            "codex:thread:resume:prepare",
+            "codex:subagent:hydrate",
+          ].includes(call.channel),
+        ),
+      ).toEqual([]);
+    },
+  );
+
+  test.each(["claude", "acp"] as const)(
+    "active skill reload uses the provider's discovery owner (%s)",
+    async (kind) => {
+      invokeCalls = [];
+      const conversation = withCanonicalState(
+        buildConversation("thread_active", { statusType: "idle" }),
+      );
+      const emptyChildren: ReturnType<ConversationRuntime["children"]> = [];
+      const attachment = { status: "attached" } as const;
+      const connection = { status: "connected", retries: 0 } as const;
+      const refreshSkills = vi.fn(async () => {});
+      const runtime: ConversationRuntime = {
+        kind,
+        hostId: "local",
+        read: (id) => (id === conversation.threadId ? conversation : null),
+        subscribe: () => () => {},
+        children: () => emptyChildren,
+        attachment: () => attachment,
+        connection: () => connection,
+        role: () => "follower",
+        primaryRequest: () => null,
+        retain: () => () => {},
+        resume: vi.fn(async () => {}),
+        markRead: async () => {},
+        setPresented: async () => {},
+      };
+      const view = await renderStage(buildThreadSummary(false), {
+        runtime,
+        skillsControlProbe: true,
+        provider: {
+          kind,
+          label: kind,
+          selection: `${kind}:work`,
+          options: [],
+          select: () => {},
+          commands: [],
+          error: null,
+          refreshSkills,
+        },
+      });
+      const button = view.getByRole("button", { name: "Reload active skills" });
+      expect((button as HTMLButtonElement).disabled).toBe(kind === "acp");
+      await act(async () => {
+        fireEvent.click(button);
+        await Promise.resolve();
+      });
+      expect(refreshSkills).toHaveBeenCalledTimes(kind === "claude" ? 1 : 0);
+      expect(invokeCalls.filter((call) => call.channel === "codex:composer-skills:list")).toEqual(
+        [],
+      );
+    },
+  );
+
   test("shared child selectors subscribe to native observations and release their owner on unmount", async () => {
     const { useConversationSubset } = await import("../local-conversation-store");
     const childId = "agent-task:thread:review";

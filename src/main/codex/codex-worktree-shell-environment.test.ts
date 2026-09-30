@@ -1,11 +1,13 @@
 import { describe, expect, test } from "vite-plus/test";
-import { mkdtemp, readFile, rm } from "node:fs/promises";
+import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import {
   buildCodexPosixSetupCaptureWrapper,
+  applyCodexWorktreeShellEnvironment,
   captureCodexShellEnvironmentDelta,
   loadCodexLocalShellEnvironment,
+  loadCodexWorktreeShellEnvironmentAtGitPath,
   parseCodexCapturedEnvironment,
   parseCodexInteractiveShellEnvironment,
   persistCodexWorktreeShellEnvironment,
@@ -147,6 +149,33 @@ describe("Codex worktree shell environment", () => {
 
   test("returns null when setup leaves no stable environment difference", () => {
     expect(captureCodexShellEnvironmentDelta({ A: "1" }, { A: "1" }, "darwin")).toBe(null);
+  });
+
+  test("applies persisted additions and removals without changing the host environment", () => {
+    const environment = { KEEP: "same", REMOVE: "old", UPDATE: "old", UNDEFINED: undefined };
+    expect(
+      applyCodexWorktreeShellEnvironment(environment, {
+        version: 1,
+        set: { ADDED: "new", UPDATE: "new" },
+        exclude: ["REMOVE"],
+      }),
+    ).toEqual({ KEEP: "same", UPDATE: "new", ADDED: "new" });
+    expect(environment).toEqual({
+      KEEP: "same",
+      REMOVE: "old",
+      UPDATE: "old",
+      UNDEFINED: undefined,
+    });
+  });
+
+  test("applies Windows setup keys case-insensitively without leaving duplicate variables", () => {
+    expect(
+      applyCodexWorktreeShellEnvironment(
+        { Path: "old", REMOVE: "old" },
+        { version: 1, set: { PATH: "new" }, exclude: ["remove"] },
+        "win32",
+      ),
+    ).toEqual({ PATH: "new" });
   });
 
   test("builds the exact POSIX source-and-trap wrapper with safe path quoting", () => {
@@ -323,6 +352,12 @@ describe("Codex worktree shell environment", () => {
         },
         resolveGitPath,
       });
+      expect(
+        await loadCodexWorktreeShellEnvironmentAtGitPath({
+          cwd,
+          gitPath: "codex-shell-environment.json",
+        }),
+      ).toEqual({ version: 1, set: { CAPTURED: "yes" }, exclude: ["REMOVED"] });
       expect(await readFile(configPath, "utf8")).toBe(
         [
           "{",
@@ -350,6 +385,32 @@ describe("Codex worktree shell environment", () => {
         exists = false;
       }
       expect(exists).toBe(false);
+      expect(
+        await loadCodexWorktreeShellEnvironmentAtGitPath({ cwd, gitPath: configPath }),
+      ).toBeNull();
+    } finally {
+      await rm(cwd, { recursive: true, force: true });
+    }
+  });
+
+  test.each([
+    ["invalid JSON", "{"],
+    ["unsupported version", JSON.stringify({ version: 2, set: {}, exclude: [] })],
+    [
+      "invalid variable name",
+      JSON.stringify({ version: 1, set: { "BAD-NAME": "value" }, exclude: [] }),
+    ],
+    [
+      "null-containing value",
+      JSON.stringify({ version: 1, set: { KEY: "bad\0value" }, exclude: [] }),
+    ],
+    ["oversized payload", " ".repeat(1024 * 1024 + 1)],
+  ])("rejects a stored setup environment with %s", async (_label, contents) => {
+    const cwd = await mkdtemp(path.join(tmpdir(), "nodex-shell-invalid-test-"));
+    const gitPath = path.join(cwd, "codex-shell-environment.json");
+    try {
+      await writeFile(gitPath, contents);
+      await expect(loadCodexWorktreeShellEnvironmentAtGitPath({ cwd, gitPath })).rejects.toThrow();
     } finally {
       await rm(cwd, { recursive: true, force: true });
     }

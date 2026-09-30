@@ -1,6 +1,5 @@
 import { footerText } from "./thread-footer-i18n";
-import { AssistantRatingMenu } from "./assistant-rating-menu";
-import { useState, type MouseEvent } from "react";
+import type { MouseEvent } from "react";
 import { motion } from "motion/react";
 import {
   DownloadIcon,
@@ -11,11 +10,7 @@ import {
 import { BudgetedMarkdownRenderer } from "./markdown/budgeted-markdown-renderer";
 import { CodexShimmerText } from "./codex-shimmer-text";
 import { cn } from "../../../../lib/utils";
-import {
-  type AssistantMessageRating,
-  CopyMessageActionButton,
-  ThreadActionIconButton,
-} from "./thread-message-actions";
+import { CopyMessageActionButton, ThreadActionIconButton } from "./thread-message-actions";
 import { CODEX_THREAD_ACCORDION_TRANSITION } from "./thread-motion";
 
 const PLAN_PREVIEW_MAX_HEIGHT_PX = 160;
@@ -42,7 +37,6 @@ export function PlanMessage({
   onOpenInSidePanel,
   onCloseSidePanel,
 }: PlanMessageProps) {
-  const [selectedRating, setSelectedRating] = useState<AssistantMessageRating | null>(null);
   const canExport = completed && content.trim().length > 0;
   const canOpenSidePanel = completed && Boolean(onOpenInSidePanel);
 
@@ -139,19 +133,14 @@ export function PlanMessage({
               />
             </>
           ) : null}
-          {completed ? (
-            <>
-              <AssistantRatingMenu selectedRating={selectedRating} onSelect={setSelectedRating} />
-              {canOpenSidePanel ? (
-                <ThreadActionIconButton
-                  label={footerText("Open plan in side panel")}
-                  tooltip={footerText("Open side panel")}
-                  onClick={handleOpenSidePanel}
-                >
-                  <PlanSidePanelOpenIcon className="icon-2xs shrink-0" />
-                </ThreadActionIconButton>
-              ) : null}
-            </>
+          {canOpenSidePanel ? (
+            <ThreadActionIconButton
+              label={footerText("Open plan in side panel")}
+              tooltip={footerText("Open side panel")}
+              onClick={handleOpenSidePanel}
+            >
+              <PlanSidePanelOpenIcon className="icon-2xs shrink-0" />
+            </ThreadActionIconButton>
           ) : null}
         </div>
       </div>

@@ -322,7 +322,10 @@ export const makeWorktreeRepository = (
                 ),
                 Effect.asVoid,
               ),
-          }),
+          }).pipe(
+            // Changes made while the lazy watcher was released cannot produce events.
+            Effect.tap(() => advanceGeneration()),
+          ),
         ),
       { idleTimeToLive: Duration.zero },
     );
@@ -333,10 +336,11 @@ export const makeWorktreeRepository = (
         const subscription = yield* PubSub.subscribe(watchEvents);
         const requiresRecovery = yield* Ref.get(recovery);
         return Stream.concat(
-          Stream.succeed<GitRepositoryWatchEvent>({
-            _tag: "RecoveryChanged",
-            requiresRecovery,
-          }),
+          // Repeat reads that may have started before watcher acquisition settled.
+          Stream.fromArray<GitRepositoryWatchEvent>([
+            { _tag: "Changed", event: { changeType: "head" } },
+            { _tag: "RecoveryChanged", requiresRecovery },
+          ]),
           Stream.fromSubscription(subscription),
         );
       }),

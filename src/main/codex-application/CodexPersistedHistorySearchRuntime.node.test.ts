@@ -36,6 +36,11 @@ const makeFixture = () => {
     forHost: registry.forHost,
     subscribeCanonicalMutations: registry.subscribeCanonicalMutations,
     runCommand: (_threadId, operation) => operation,
+    assertExecutionAvailable: () => Effect.void,
+    admitExecution: (_threadId, operation) => operation,
+    withExecutionHandoff: (_threadId, operation) => operation,
+    executionEpoch: () => Effect.succeed(0),
+    setRecoveryRequired: () => Effect.void,
     markAllNeedsResume: registry.markAllNeedsResume,
     retire: () => Effect.void,
   });

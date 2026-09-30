@@ -19,11 +19,14 @@ import {
   useState,
   type ReactNode,
 } from "react";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   AppShellHeaderContentRegistrar,
+  ConversationSkillsReloadRegistrar,
   WorkspaceSearchContextRegistrar,
+  type ConversationSkillsReloadControl,
 } from "@/lib/workbench-ui-scopes";
+import { composerContextOperations } from "../composer-context-operations";
 import { resolveCodexElectronDisplayThreadTitle } from "../../../../shared/codex-thread-title";
 import { buildCodexTurnOccurrenceKey } from "../../../../shared/codex-turn-identity";
 import { buildComposerShellModel } from "../projection/build-composer-shell-model";
@@ -619,6 +622,7 @@ export function ConnectedThreadStageFooter({
     ],
   );
   const composerPluginCwds = workspaceSearchContext?.skillRoots ?? [];
+  const queryClient = useQueryClient();
   const composerPluginsQuery = useQuery({
     ...codexComposerPluginsListQueryOptions(composerPluginCwds, hostId),
     enabled: runtime.kind === "codex" && workspaceSearchContext !== null,
@@ -641,6 +645,31 @@ export function ConnectedThreadStageFooter({
   });
   const { refetch: refetchComposerPlugins } = composerPluginsQuery;
   const { refetch: refetchComposerSkills } = composerSkillsQuery;
+  const skillsReloadControl = useMemo<ConversationSkillsReloadControl | null>(() => {
+    if (runtime.kind !== "codex") {
+      return runtime.kind === "claude" &&
+        input.provider?.kind === "claude" &&
+        input.provider.refreshSkills
+        ? { provider: "claude", reload: input.provider.refreshSkills }
+        : null;
+    }
+    if (!workspaceSearchContext) return null;
+    const { hostId: executionHostId, skillRoots } = workspaceSearchContext;
+    const options = codexComposerSkillsListQueryOptions(skillRoots, executionHostId);
+    return {
+      provider: "codex",
+      reload: async () => {
+        const skills = await composerContextOperations.reloadSkills(executionHostId, skillRoots);
+        queryClient.setQueryData(options.queryKey, skills);
+      },
+    };
+  }, [
+    runtime.kind,
+    input.provider?.kind,
+    input.provider?.refreshSkills,
+    workspaceSearchContext,
+    queryClient,
+  ]);
   const onComposerCapabilitiesChanged = actions.onComposerCapabilitiesChanged;
   const refreshComposerCapabilities = useCallback(async () => {
     if (runtime.kind !== "codex") {
@@ -938,7 +967,10 @@ export function ConnectedThreadStageFooter({
   return (
     <>
       {!input.sideChatContext ? (
-        <WorkspaceSearchContextRegistrar context={workspaceSearchContext} />
+        <>
+          <WorkspaceSearchContextRegistrar context={workspaceSearchContext} />
+          <ConversationSkillsReloadRegistrar control={skillsReloadControl} />
+        </>
       ) : null}
       <LocalConversationFooter
         model={model}
@@ -1145,30 +1177,39 @@ export function ConnectedThreadStage({
       input.provider?.controls?.nativeTaskDetails !== true
     )
       return providedActions;
+    const openTasks = (initialTaskId?: string) => {
+      if (
+        initialTaskId !== undefined &&
+        !runtime.children(activeThreadId).some((task) => task.threadId === initialTaskId)
+      )
+        return;
+      openModal(appHandle, ConversationTaskDialog, {
+        runtime,
+        parentThreadId: activeThreadId,
+        parentThreadScope,
+        initialTaskId,
+        stopTask: input.provider?.controls?.stopTask ? input.provider.stopTask : undefined,
+        renderDetail: (child) => (
+          <ConversationRuntimeContext.Provider value={runtime}>
+            <ConnectedThreadStage
+              {...input}
+              activeThreadId={child.threadId}
+              activeThreadSummary={child}
+              isNewThreadTab={false}
+              newThreadTarget={null}
+              actions={providedActions}
+              backgroundAgentDetail
+              backgroundAgentCanInteract={false}
+              presentation="panel"
+            />
+          </ConversationRuntimeContext.Provider>
+        ),
+      });
+    };
     return {
       ...providedActions,
-      onOpenSubagentsPanel: () =>
-        openModal(appHandle, ConversationTaskDialog, {
-          runtime,
-          parentThreadId: activeThreadId,
-          parentThreadScope,
-          stopTask: input.provider?.controls?.stopTask ? input.provider.stopTask : undefined,
-          renderDetail: (child) => (
-            <ConversationRuntimeContext.Provider value={runtime}>
-              <ConnectedThreadStage
-                {...input}
-                activeThreadId={child.threadId}
-                activeThreadSummary={child}
-                isNewThreadTab={false}
-                newThreadTarget={null}
-                actions={providedActions}
-                backgroundAgentDetail
-                backgroundAgentCanInteract={false}
-                presentation="panel"
-              />
-            </ConversationRuntimeContext.Provider>
-          ),
-        }),
+      onOpenSubagentsPanel: () => openTasks(),
+      onOpenTaskObservation: openTasks,
     };
   }, [
     activeThreadId,
@@ -1347,8 +1388,16 @@ export function ConnectedThreadStage({
       browserRows: input.summaryBrowserRows ?? [],
       scheduledAutomation: input.summaryScheduledAutomation ?? null,
       computerUsePip: input.summaryComputerUsePip ?? null,
-      newThreadStartInSelector: input.newThreadStartInSelector,
+      executionLocation: activeThreadId
+        ? {
+            threadId: activeThreadId,
+            kind: activeThreadIsManagedWorktree ? ("worktree" as const) : ("local" as const),
+            canMove:
+              !activeThreadProjectless && runtime.kind !== "acp" && runtime.hostId === "local",
+          }
+        : null,
       actions,
+      taskDetailsKind: runtime.kind === "codex" ? ("thread" as const) : ("observation" as const),
       onOpenThread: actions.onOpenThread,
       onErrorMessage: setErrorMessage,
     }),
@@ -1367,7 +1416,8 @@ export function ConnectedThreadStage({
       knownConversationsById,
       cwd,
       summaryFields.projectlessOutputDirectory,
-      input.newThreadStartInSelector,
+      runtime.kind,
+      runtime.hostId,
       input.projectWorkspacePath,
       actions,
       turns,

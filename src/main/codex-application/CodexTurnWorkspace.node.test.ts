@@ -173,3 +173,25 @@ test("workspace state target membership determines the final workspace kind", ()
     }),
   ).toBe("projectless");
 });
+
+test("delayed requests and queued messages follow the Chat's committed execution location", () => {
+  const prepared = prepareCodexTurnWorkspace({
+    conversationCwd: "/managed/current",
+    requestCwd: "/previous/checkout",
+    environment: undefined,
+    currentPermissionRoots: ["/managed/current"],
+    state: null,
+  });
+  expect(prepared.cwd).toBe("/managed/current");
+});
+
+test("an unbound conversation can still use its requested initial workspace", () => {
+  const prepared = prepareCodexTurnWorkspace({
+    conversationCwd: null,
+    requestCwd: "/initial/checkout",
+    environment: undefined,
+    currentPermissionRoots: undefined,
+    state: null,
+  });
+  expect(prepared.cwd).toBe("/initial/checkout");
+});

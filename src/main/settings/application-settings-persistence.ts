@@ -73,6 +73,7 @@ import {
 interface ServerTomlConfig {
   home?: string;
   codex_home?: string;
+  codex_account_home?: string;
   backup_auto_enabled?: boolean;
   backup_interval_hours?: number;
   backup_retention?: number;
@@ -237,20 +238,25 @@ function writeProfileServerTomlConfig(
 function resolveConfiguredCodexHome(
   configuredHome: string | undefined,
   source: ApplicationSettingsDocumentSource,
+  configuredAccountHome?: string,
 ): CodexHomeSettings {
   if (!source.hostHomeDirectory) throw new Error("The host home directory is unavailable.");
   return resolveCodexHome({
     configuredHome,
+    configuredAccountHome,
     environment: source.environment,
     homeDirectory: source.hostHomeDirectory,
   });
 }
 
 export function getCodexHomeSettings(source: ApplicationSettingsDocumentSource): CodexHomeSettings {
-  const configuredHome = loadProfileServerTomlConfig(source).codex_home;
+  const config = loadProfileServerTomlConfig(source);
+  const configuredHome = config.codex_home;
   if (configuredHome !== undefined && typeof configuredHome !== "string")
     throw new Error("Codex home must be a string");
-  return resolveConfiguredCodexHome(configuredHome, source);
+  if (config.codex_account_home !== undefined && typeof config.codex_account_home !== "string")
+    throw new Error("Codex account directory must be a string");
+  return resolveConfiguredCodexHome(configuredHome, source, config.codex_account_home);
 }
 
 export function updateCodexHomeSettings(
@@ -259,9 +265,16 @@ export function updateCodexHomeSettings(
 ): CodexHomeSettings {
   const parsed = CodexHomeSettingsUpdateSchema.parse(input);
   const next = { ...loadProfileServerTomlConfig(source) };
-  const resolved = resolveConfiguredCodexHome(parsed.homePath, source);
+  const resolved = resolveConfiguredCodexHome(
+    parsed.homePath,
+    source,
+    parsed.accountHomePath ?? next.codex_account_home,
+  );
   if (resolved.homePath) next.codex_home = resolved.resolvedHomePath;
   else delete next.codex_home;
+  if (resolved.accountHomePath)
+    next.codex_account_home = resolved.resolvedAccountHomePath ?? undefined;
+  else delete next.codex_account_home;
   writeProfileServerTomlConfig(source, next);
   return getCodexHomeSettings(source);
 }

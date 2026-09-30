@@ -161,6 +161,7 @@ describe("worktree worker protocol", () => {
           input: {
             ...removeRequest.request.input,
             managedRoot: "/current-managed-root",
+            allocatedWorktreePath: null,
           },
         },
       }),
@@ -179,6 +180,7 @@ describe("worktree worker protocol", () => {
             requestId: "prepare-handoff:1",
             hostId: "local",
             managedRoot: "/current-managed-root",
+            allocatedWorktreePath: null,
             nodexHome: "/nodex-home",
             projectId: "project-1",
             threadId: "thread-1",
@@ -365,6 +367,7 @@ describe("worktree worker protocol", () => {
           },
           candidateRepositoryPaths: ["/remote/src/repo"],
           managedRoot: "/remote/.nodex/worktrees",
+          allocatedWorktreePath: "/remote/.nodex/worktrees/260930-1200-deadbeef",
           nodexHome: "/remote/.nodex",
           projectId: "project",
           threadId: "thread",
@@ -373,6 +376,15 @@ describe("worktree worker protocol", () => {
       },
     } as const;
     expect(isCodexWorktreeWorkerHostMessage(importRequest)).toBe(true);
+    expect(
+      isCodexWorktreeWorkerHostMessage({
+        ...importRequest,
+        request: {
+          ...importRequest.request,
+          input: { ...importRequest.request.input, allocatedWorktreePath: "/outside/task" },
+        },
+      }),
+    ).toBe(false);
     expect(
       isCodexWorktreeWorkerHostMessage({
         ...importRequest,
@@ -443,6 +455,29 @@ test("validates handoff branch context before forwarding worker progress", () =>
     isCodexWorktreeWorkerThreadMessage({
       ...message,
       event: { ...message.event, branchContext: { sourceBranch: "main" } },
+    }),
+  ).toBe(false);
+});
+
+test("accepts restoration proof only for a typed handoff preparation failure", () => {
+  const message = {
+    type: "result",
+    id: "handoff:proof",
+    operation: "prepare-handoff",
+    result: {
+      type: "error",
+      code: "operation-failed",
+      message: "Destination dirty",
+      retryable: true,
+      preparationRestored: true,
+    },
+  };
+  expect(isCodexWorktreeWorkerThreadMessage(message)).toBe(true);
+  expect(isCodexWorktreeWorkerThreadMessage({ ...message, operation: "create" })).toBe(false);
+  expect(
+    isCodexWorktreeWorkerThreadMessage({
+      ...message,
+      result: { ...message.result, preparationRestored: "yes" },
     }),
   ).toBe(false);
 });

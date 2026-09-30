@@ -21,6 +21,13 @@ export interface ClaudeResolvedIntelligence {
   readonly fast: boolean | null;
   readonly thinking: boolean | null;
 }
+
+/** Native context is a decoration of a concrete model identity, never of `default`. */
+export const claudeModelContext = (model: string | null | undefined): string | undefined =>
+  /\[(\d+[km])\]$/iu.exec(model ?? "")?.[1]?.toLowerCase();
+
+export const claudeModelWithContext = (model: string, context?: string): string =>
+  context ? `${model.replace(/\[(?:\d+[km])\]$/iu, "")}[${context}]` : model;
 export interface ClaudeModelTraits {
   readonly effortLevels?: ClaudeEffortLevel[];
   readonly fastMode?: boolean;
@@ -127,6 +134,7 @@ export interface ClaudeRuntimeDiagnostics {
 
 export interface ClaudeModelCatalogInput {
   readonly requestId?: string;
+  readonly forceReload?: boolean;
   readonly instanceConfigId: string;
   readonly projectId: string | null;
 }

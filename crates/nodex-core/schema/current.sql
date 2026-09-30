@@ -77,7 +77,8 @@ CREATE TABLE "thread_backend_sessions" (
   backend_session_id TEXT NOT NULL CHECK (backend_session_id = trim(backend_session_id) AND length(backend_session_id) BETWEEN 1 AND 512),
   updated_at INTEGER NOT NULL CHECK (updated_at >= 0),
   native_state_json TEXT CHECK (native_state_json IS NULL OR (json_valid(native_state_json) AND length(native_state_json) <= 262144))
-) WITHOUT ROWID, STRICT;
+, native_home TEXT
+  CHECK (native_home IS NULL OR (backend_kind = 'claude' AND length(native_home) BETWEEN 1 AND 16384 AND native_home = trim(native_home)))) WITHOUT ROWID, STRICT;
 CREATE TABLE codex_thread_dynamic_tool_catalogs (
       thread_id TEXT NOT NULL REFERENCES codex_threads(thread_id) ON DELETE CASCADE,
       namespace TEXT NOT NULL,
@@ -5002,7 +5003,7 @@ CREATE TABLE codex_queued_message_state (
   state_json TEXT NOT NULL CHECK (json_valid(state_json))
 ) STRICT;
 
-PRAGMA user_version = 173;
+PRAGMA user_version = 174;
 
 CREATE TABLE document_recovery_drafts (
     library_id TEXT NOT NULL REFERENCES libraries(id) ON DELETE CASCADE,
@@ -5335,3 +5336,7 @@ BEGIN
   FROM (SELECT EXISTS(SELECT 1 FROM data_source_page_memberships
     WHERE data_source_id = NEW.data_source_id AND removed_at IS NULL) AS has_members);
 END;
+
+CREATE UNIQUE INDEX thread_backend_sessions_native_identity
+  ON thread_backend_sessions(backend_kind, native_home, backend_session_id)
+  WHERE native_home IS NOT NULL;

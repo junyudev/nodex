@@ -4,11 +4,19 @@ import * as Effect from "effect/Effect";
 import * as Exit from "effect/Exit";
 import * as Layer from "effect/Layer";
 import * as Scope from "effect/Scope";
+import * as Stream from "effect/Stream";
 import * as SubscriptionRef from "effect/SubscriptionRef";
 import { vi } from "vite-plus/test";
-import type { CodexThreadHandoffSnapshot } from "../../../shared/codex-thread-handoff";
+import type {
+  CodexAppHandoffOperation,
+  CodexThreadHandoffSnapshot,
+} from "../../../shared/codex-thread-handoff";
 import { testLayer as mainConfigLayer } from "../../app/MainConfig";
-import { CodexThreadHandoffRuntime } from "../../codex-application/CodexThreadHandoffRuntime";
+import {
+  CodexThreadHandoffRuntime,
+  type CodexLaunchThreadHandoffInput,
+  type CodexThreadHandoffRuntimeError,
+} from "../../codex-application/CodexThreadHandoffRuntime";
 import { ElectronIpc } from "../../platform/electron/ElectronIpc";
 import { makeTestElectronIpc } from "../../platform/electron/ElectronIpc.test-support";
 import { WindowRuntime } from "../../window-runtime/WindowRuntime";
@@ -98,4 +106,103 @@ it.effect(
       assert.strictEqual(delivered.length, deliveredCount);
       assert.strictEqual(handlers.size, 0);
     }),
+);
+
+it.effect("admits only a trusted, bounded attached-thread destination intent", () =>
+  Effect.gen(function* () {
+    const handlers = new Map<
+      string,
+      (
+        event: IpcMainInvokeEvent,
+        input: unknown,
+      ) => Effect.Effect<unknown, CodexThreadHandoffIpcError | CodexThreadHandoffRuntimeError>
+    >();
+    const launches: CodexLaunchThreadHandoffInput[] = [];
+    const result: CodexAppHandoffOperation = {
+      operationId: "move-1",
+      revision: 0,
+      status: "running",
+      recoveryRequired: false,
+      threadId: "thread-1",
+      sourceThreadId: "thread-1",
+      requestThreadId: "thread-1",
+      threadTitle: null,
+      projectId: "project-1",
+      sourceHostId: "local",
+      direction: "local-to-worktree",
+      localBranch: null,
+      sourceBranch: null,
+      worktreeBranch: null,
+      destinationHostId: "local",
+      destinationHostDisplayName: "This Mac",
+      message: null,
+      steps: [],
+      createdAt: 1,
+      updatedAt: 1,
+      completedAt: null,
+    };
+    const ipc = makeTestElectronIpc({
+      handle: (channel, handler) =>
+        Effect.acquireRelease(
+          Effect.sync(() => handlers.set(channel, handler as never)),
+          () => Effect.sync(() => handlers.delete(channel)),
+        ).pipe(Effect.asVoid),
+      on: () => Effect.die("unused"),
+    });
+    const scope = yield* Scope.make();
+    yield* Layer.buildWithScope(
+      live.pipe(
+        Layer.provide(
+          Layer.mergeAll(
+            Layer.succeed(ElectronIpc, ipc),
+            Layer.succeed(CodexThreadHandoffRuntime, {
+              snapshot: Effect.succeed({ revision: 0, operations: [] }),
+              changes: Stream.empty,
+              launch: (input: CodexLaunchThreadHandoffInput) =>
+                Effect.sync(() => {
+                  launches.push(input);
+                  return result;
+                }),
+            } as unknown as CodexThreadHandoffRuntime["Service"]),
+            Layer.succeed(WindowRuntime, {
+              has: (id: number) => id === 7,
+              all: () => [],
+            } as unknown as WindowRuntime["Service"]),
+            mainConfigLayer(),
+          ),
+        ),
+      ),
+      scope,
+    );
+    const handoff = handlers.get("thread-execution:handoff")!;
+    const valid = { threadId: " thread-1 ", operationId: " move-1 ", destination: "worktree" };
+    assert.deepEqual(yield* handoff(rendererEvent(7), valid), result);
+    assert.deepEqual(launches, [
+      {
+        threadId: "thread-1",
+        operationId: "move-1",
+        requestThreadId: "thread-1",
+        expectedDestination: "worktree",
+        destinationHostId: null,
+        followUpPrompt: null,
+      },
+    ]);
+    for (const input of [
+      { ...valid, destination: "remote" },
+      { ...valid, threadId: " " },
+      { ...valid, operationId: "" },
+      { ...valid, threadId: "t".repeat(1025) },
+      { ...valid, operationId: "o".repeat(1025) },
+      { ...valid, destinationHostId: "ssh-host" },
+      { ...valid, followUpPrompt: "run shell" },
+    ])
+      assert.isTrue(Exit.isFailure(yield* Effect.exit(handoff(rendererEvent(7), input))));
+    const subframe = rendererEvent(7);
+    Object.assign(subframe, { senderFrame: { url: "app://-/index.html" } });
+    for (const event of [rendererEvent(8), rendererEvent(7, "https://untrusted.example"), subframe])
+      assert.isTrue(Exit.isFailure(yield* Effect.exit(handoff(event, valid))));
+    assert.lengthOf(launches, 1);
+    yield* Scope.close(scope, Exit.void);
+    assert.strictEqual(handlers.size, 0);
+  }),
 );

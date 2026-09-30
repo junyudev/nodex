@@ -134,7 +134,7 @@ const appliedWorkspaceRoots = (
   return unionRoots(workspace.runtimeWorkspaceRoots, workspace.projectSources);
 };
 
-/** Mirrors the desktop owner-time applied/pending workspace selection before permission materialization. */
+/** Selects the Chat's current or pending execution workspace before materializing permissions. */
 export function prepareCodexTurnWorkspace(input: {
   readonly conversationCwd: string | null;
   readonly requestCwd: string | null | undefined;
@@ -158,8 +158,8 @@ export function prepareCodexTurnWorkspace(input: {
   const cwd =
     environment?.cwd ??
     pendingWorkspace?.cwd ??
-    input.requestCwd ??
     input.conversationCwd ??
+    input.requestCwd ??
     applied?.cwd ??
     null;
   const permissionTransition =

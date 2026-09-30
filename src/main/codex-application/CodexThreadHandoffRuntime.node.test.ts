@@ -1,5 +1,6 @@
 import * as Deferred from "effect/Deferred";
 import * as Effect from "effect/Effect";
+import * as Exit from "effect/Exit";
 import * as Fiber from "effect/Fiber";
 import * as Scope from "effect/Scope";
 import * as Stream from "effect/Stream";
@@ -11,10 +12,11 @@ import type {
   CodexThreadHandoffJournalEntry,
 } from "../codex/codex-thread-handoff-journal";
 import type { CodexThreadHandoffJournalStorage } from "../platform/CodexThreadHandoffJournalStorage";
-import { CodexThreadExecution, CodexThreadExecutionError } from "./CodexThreadExecution";
+import { ThreadExecution, ThreadExecutionError } from "../host-runtime/ThreadExecution";
 import { ExecutionHostRuntime } from "./ExecutionHostRuntime";
 import {
   ManagedWorktreeHandoff,
+  ManagedWorktreeHandoffError,
   type ManagedWorktreeHandoffPreparation,
 } from "./ManagedWorktreeHandoff";
 import { make, type CodexThreadHandoffRuntime } from "./CodexThreadHandoffRuntime";
@@ -124,16 +126,28 @@ const makeHarness = (input: {
   readonly initial?: readonly CodexThreadHandoffJournalEntry[];
   readonly stopGate?: Deferred.Deferred<void>;
   readonly prepareGate?: Deferred.Deferred<void>;
+  readonly loseCommitReply?: boolean;
+  readonly readFailureAfterCommit?: "unavailable" | "ambiguous";
+  readonly rollbackWarnings?: readonly string[];
+  readonly cleanupWarnings?: readonly string[];
+  readonly safety?: { required: boolean; readonly changes: boolean[] };
+  readonly preparationFailure?: "restored" | "uncertain";
+  readonly onRead?: () => void;
 }) =>
   Effect.gen(function* () {
     const executionHosts = yield* makeExecutionHosts;
-    const record = (name: string): Effect.Effect<void, CodexThreadExecutionError> =>
+    let canonical = input.canonical ?? source;
+    let destinationCommitAttempted = false;
+    let handoffActive = false;
+    const safety = input.safety ?? { required: false, changes: [] };
+    const isSource = (location: CodexThreadExecutionLocation) => location.cwd === source.cwd;
+    const record = (name: string): Effect.Effect<void, ThreadExecutionError> =>
       Effect.sync(() => input.calls.push(name)).pipe(
         Effect.asVoid,
         Effect.andThen(
           input.failAt === name
             ? Effect.fail(
-                new CodexThreadExecutionError({
+                new ThreadExecutionError({
                   operation: name,
                   threadId: "thread-1",
                   cause: new Error(`${name} failed`),
@@ -142,24 +156,85 @@ const makeHarness = (input: {
             : Effect.void,
         ),
       );
-    const execution = CodexThreadExecution.of({
-      read: () => Effect.succeed(input.canonical ?? source),
+    const execution = ThreadExecution.of({
+      setRecoveryRequired: (_threadId, required) =>
+        Effect.sync(() => {
+          safety.required = required;
+          safety.changes.push(required);
+          if (!required)
+            assert.isTrue(handoffActive, "Safety releases only within the handoff lease");
+        }),
+      read: () =>
+        Effect.suspend(() => {
+          input.onRead?.();
+          if (!destinationCommitAttempted || !input.readFailureAfterCommit)
+            return Effect.succeed(canonical);
+          if (input.readFailureAfterCommit === "ambiguous")
+            return Effect.succeed({ ...canonical, cwd: "/elsewhere" });
+          return Effect.fail(
+            new ThreadExecutionError({
+              operation: "read",
+              threadId: "thread-1",
+              cause: new Error("Core unavailable"),
+            }),
+          );
+        }),
+      withHandoff: (_threadId, use) =>
+        Effect.acquireUseRelease(
+          Effect.sync(() => {
+            handoffActive = true;
+          }),
+          () => use,
+          () =>
+            Effect.sync(() => {
+              handoffActive = false;
+            }),
+        ),
       stop: () =>
         record("stop").pipe(
           Effect.andThen(input.stopGate ? Deferred.await(input.stopGate) : Effect.void),
         ),
-      switchRuntime: (_threadId, location) =>
-        record(location === source ? "runtime:source" : "runtime:destination"),
-      relocate: ({ location }) =>
-        record(location === source ? "runtime:source" : "runtime:destination"),
+      withRuntimeLocation: (_threadId, location, _preparation, use) =>
+        record(isSource(location) ? "runtime:source" : "runtime:destination").pipe(
+          Effect.andThen(use),
+        ),
       commit: (_threadId, location) =>
-        record(location === source ? "core:source" : "core:destination"),
-      followUp: () => record("follow-up"),
+        Effect.gen(function* () {
+          if (!isSource(location)) destinationCommitAttempted = true;
+          if (input.loseCommitReply && !isSource(location)) canonical = location;
+          yield* record(isSource(location) ? "core:source" : "core:destination");
+          canonical = location;
+          if (input.loseCommitReply && !isSource(location))
+            return yield* new ThreadExecutionError({
+              operation: "commit",
+              threadId: "thread-1",
+              cause: new Error("Commit reply lost"),
+            });
+        }),
+      followUp: () =>
+        Effect.suspend(() => {
+          assert.isFalse(
+            handoffActive,
+            "Follow-up must be admitted after the handoff guard releases",
+          );
+          assert.isFalse(safety.required, "Follow-up requires verified recovery");
+          return record("follow-up");
+        }),
     });
     const handoff = ManagedWorktreeHandoff.of({
       prepare: (_entry, onProgress) =>
         Effect.gen(function* () {
           input.calls.push("prepare");
+          yield* (
+            onProgress?.({
+              phase: "create-new-worktree",
+              status: "running",
+              allocatedDestination: {
+                hostId: destination.hostId,
+                worktreeGitRoot: destination.cwd,
+              },
+            }) ?? Effect.void
+          );
           yield* (
             onProgress?.({
               phase: "create-new-worktree",
@@ -172,17 +247,50 @@ const makeHarness = (input: {
             }) ?? Effect.void
           );
           yield* input.prepareGate ? Deferred.await(input.prepareGate) : Effect.void;
+          if (input.preparationFailure)
+            return yield* new ManagedWorktreeHandoffError({
+              operation: "prepare",
+              threadId: "thread-1",
+              cause: new Error("Preparation did not complete"),
+              preparationRestored: input.preparationFailure === "restored" ? true : undefined,
+            });
           yield* onProgress?.({ phase: "create-new-worktree", status: "success" }) ?? Effect.void;
           return preparation;
-        }),
+        }).pipe(
+          Effect.mapError((cause) =>
+            cause instanceof ManagedWorktreeHandoffError
+              ? cause
+              : new ManagedWorktreeHandoffError({
+                  operation: "progress",
+                  threadId: "thread-1",
+                  cause,
+                  preparationRestored: true,
+                }),
+          ),
+        ),
       transferOwner: () => Effect.sync(() => input.calls.push("owner")),
-      rollback: () => Effect.sync(() => input.calls.push("git:rollback")).pipe(Effect.as([])),
+      rollback: () =>
+        Effect.sync(() => input.calls.push("git:rollback")).pipe(
+          Effect.andThen(
+            input.failAt === "git:rollback"
+              ? Effect.fail(
+                  new ManagedWorktreeHandoffError({
+                    operation: "rollback",
+                    threadId: "thread-1",
+                    cause: new Error("Git restore failed"),
+                  }),
+                )
+              : Effect.succeed(input.rollbackWarnings ?? []),
+          ),
+        ),
       cleanup: (_threadId, _preparation, outcome) =>
-        Effect.sync(() => input.calls.push(`cleanup:${outcome}`)).pipe(Effect.as([])),
+        Effect.sync(() => input.calls.push(`cleanup:${outcome}`)).pipe(
+          Effect.as(input.cleanupWarnings ?? []),
+        ),
     });
     const runtimeScope = yield* Scope.make();
     return yield* make({ storage: makeStorage(input.initial) }).pipe(
-      Effect.provideService(CodexThreadExecution, execution),
+      Effect.provideService(ThreadExecution, execution),
       Effect.provideService(ExecutionHostRuntime, executionHosts),
       Effect.provideService(ManagedWorktreeHandoff, handoff),
       Effect.provideService(Scope.Scope, runtimeScope),
@@ -371,4 +479,305 @@ it.effect("recovers committed state once and enforces per-thread single-flight",
     yield* Deferred.succeed(stopGate, undefined);
     assert.strictEqual((yield* Fiber.join(running)).phase, "completed");
   }),
+);
+
+it.effect("rejects a stale location selection before stopping execution or preparing Git", () =>
+  Effect.gen(function* () {
+    for (const [canonical, expectedDestination] of [
+      [source, "local"],
+      [destination, "worktree"],
+    ] as const) {
+      const calls: string[] = [];
+      const runtime = yield* makeHarness({ calls, canonical });
+      const failure = yield* Effect.flip(
+        runtime.start({
+          operationId: "stale-operation",
+          threadId: "thread-1",
+          destinationHostId: null,
+          expectedDestination,
+          followUpPrompt: null,
+        }),
+      );
+      assert.include(failure.message, "execution location changed");
+      assert.deepEqual(calls, []);
+      assert.isNull(yield* runtime.get("stale-operation"));
+    }
+  }),
+);
+
+it.effect("reconciles a lost destination commit reply before deleting prepared files", () =>
+  Effect.gen(function* () {
+    const calls: string[] = [];
+    const runtime = yield* makeHarness({ calls, loseCommitReply: true });
+    const entry = yield* start(runtime);
+    assert.strictEqual(entry.phase, "failed");
+    assert.isFalse(entry.coreCommitted);
+    assert.isFalse((yield* runtime.get(entry.operationId))?.recoveryRequired);
+    assert.isBelow(calls.indexOf("core:source"), calls.indexOf("git:rollback"));
+    assert.isBelow(calls.indexOf("git:rollback"), calls.indexOf("cleanup:rolled-back"));
+    assert.notInclude(calls, "follow-up");
+  }),
+);
+
+it.effect("retains prepared files when canonical location is unavailable or ambiguous", () =>
+  Effect.gen(function* () {
+    for (const readFailureAfterCommit of ["unavailable", "ambiguous"] as const) {
+      const calls: string[] = [];
+      const runtime = yield* makeHarness({ calls, loseCommitReply: true, readFailureAfterCommit });
+      const entry = yield* start(runtime);
+      assert.strictEqual(entry.phase, "recovery-required");
+      assert.isNull(entry.completedAt);
+      assert.notInclude(calls, "runtime:source");
+      assert.notInclude(calls, "git:rollback");
+      assert.notInclude(calls, "cleanup:rolled-back");
+      const operation = yield* runtime.get(entry.operationId);
+      assert.strictEqual(operation?.status, "error");
+      assert.isTrue(operation?.recoveryRequired);
+      assert.isNull(operation?.completedAt);
+      assert.include(operation?.message ?? "", "Prepared files are retained");
+      assert.isTrue(Exit.isFailure(yield* Effect.exit(start(runtime, "another-operation"))));
+      const restartCalls: string[] = [];
+      const restarted = yield* makeHarness({
+        calls: restartCalls,
+        canonical: source,
+        initial: [entry],
+      });
+      assert.strictEqual((yield* restarted.recover())[0]?.phase, "failed");
+      assert.include(restartCalls, "git:rollback");
+      assert.include(restartCalls, "cleanup:rolled-back");
+      assert.isFalse((yield* restarted.get(entry.operationId))?.recoveryRequired);
+    }
+  }),
+);
+
+it.effect("recovers a verified durable destination forward without rolling back its worktree", () =>
+  Effect.gen(function* () {
+    const initial = yield* makeHarness({
+      calls: [],
+      loseCommitReply: true,
+      readFailureAfterCommit: "unavailable",
+    });
+    const retained = yield* start(initial);
+    const calls: string[] = [];
+    const restarted = yield* makeHarness({ calls, canonical: destination, initial: [retained] });
+    const entry = (yield* restarted.recover())[0]!;
+    assert.strictEqual(entry.phase, "completed-with-warning");
+    assert.notInclude(calls, "core:source");
+    assert.notInclude(calls, "git:rollback");
+    assert.notInclude(calls, "cleanup:rolled-back");
+    assert.include(calls, "cleanup:committed");
+    assert.include(calls, "follow-up");
+    assert.isFalse((yield* restarted.get(entry.operationId))?.recoveryRequired);
+  }),
+);
+
+it.effect("retains artifacts after runtime, Core, or Git rollback fails", () =>
+  Effect.gen(function* () {
+    for (const failAt of ["runtime:source", "core:source", "git:rollback"]) {
+      const calls: string[] = [];
+      const runtime = yield* makeHarness({ calls, failAt, loseCommitReply: true });
+      const entry = yield* start(runtime);
+      assert.strictEqual(entry.phase, "recovery-required", failAt);
+      assert.isNull(entry.completedAt);
+      assert.notInclude(calls, "cleanup:rolled-back");
+      if (failAt !== "git:rollback") assert.notInclude(calls, "git:rollback");
+      assert.isTrue((yield* runtime.get(entry.operationId))?.recoveryRequired);
+    }
+  }),
+);
+
+it.effect("treats incomplete Git restoration as recovery, not permission to clean files", () =>
+  Effect.gen(function* () {
+    const calls: string[] = [];
+    const runtime = yield* makeHarness({
+      calls,
+      failAt: "core:destination",
+      rollbackWarnings: ["Source patch could not be restored"],
+    });
+    const entry = yield* start(runtime);
+    assert.strictEqual(entry.phase, "recovery-required");
+    assert.include(calls, "git:rollback");
+    assert.notInclude(calls, "cleanup:rolled-back");
+  }),
+);
+
+it.effect("checkpoints successful Git rollback so recovery retries only pending cleanup", () =>
+  Effect.gen(function* () {
+    const runtime = yield* makeHarness({
+      calls: [],
+      failAt: "core:destination",
+      cleanupWarnings: ["Staging directory is busy"],
+    });
+    const entry = yield* start(runtime);
+    assert.strictEqual(entry.phase, "recovery-required");
+    assert.strictEqual(entry.failedPhase, "cleaning-rolled-back");
+    const calls: string[] = [];
+    const restarted = yield* makeHarness({ calls, canonical: source, initial: [entry] });
+    const recovered = (yield* restarted.recover())[0]!;
+    assert.strictEqual(recovered.phase, "failed");
+    assert.notInclude(calls, "git:rollback");
+    assert.include(calls, "cleanup:rolled-back");
+    assert.isFalse((yield* restarted.get(entry.operationId))?.recoveryRequired);
+  }),
+);
+
+it.effect(
+  "a retained operation cannot be claimed by another chat, caller, host, or selection",
+  () =>
+    Effect.gen(function* () {
+      const calls: string[] = [];
+      const runtime = yield* makeHarness({ calls });
+      const input = {
+        operationId: "owned-operation",
+        threadId: "thread-1",
+        requestThreadId: "caller",
+        destinationHostId: null,
+        expectedDestination: "worktree" as const,
+        followUpPrompt: null,
+      };
+      const recorded = yield* runtime.start(input);
+      calls.length = 0;
+      for (const changed of [
+        { ...input, threadId: "other-thread" },
+        { ...input, requestThreadId: "other-caller" },
+        { ...input, requestThreadId: undefined },
+        { ...input, destinationHostId: "remote" },
+        { ...input, expectedDestination: "local" as const },
+      ]) {
+        assert.isTrue(Exit.isFailure(yield* Effect.exit(runtime.start(changed))));
+        assert.isTrue(Exit.isFailure(yield* Effect.exit(runtime.launch(changed))));
+      }
+      assert.deepEqual(yield* runtime.start({ ...input, destinationHostId: "local" }), recorded);
+      assert.strictEqual((yield* runtime.launch(input)).threadId, "thread-1");
+      assert.deepEqual(calls, []);
+      const restarted = yield* makeHarness({ calls, initial: [recorded] });
+      assert.isTrue(
+        Exit.isFailure(yield* Effect.exit(restarted.start({ ...input, threadId: "other-thread" }))),
+      );
+      assert.isTrue(
+        Exit.isFailure(
+          yield* Effect.exit(restarted.launch({ ...input, requestThreadId: "other-caller" })),
+        ),
+      );
+      assert.deepEqual(calls, []);
+    }),
+);
+
+it.effect("reserves operation ownership while execution admission is still pending", () =>
+  Effect.gen(function* () {
+    const stopGate = yield* Deferred.make<void>();
+    const calls: string[] = [];
+    const runtime = yield* makeHarness({ calls, stopGate });
+    const input = {
+      operationId: "in-flight-operation",
+      threadId: "thread-1",
+      requestThreadId: "caller",
+      destinationHostId: null,
+      followUpPrompt: null,
+    };
+    const running = yield* Effect.forkChild(runtime.start(input), { startImmediately: true });
+    yield* Effect.yieldNow;
+    for (const changed of [
+      { ...input, threadId: "other-thread" },
+      { ...input, requestThreadId: "other-caller" },
+    ]) {
+      assert.isTrue(Exit.isFailure(yield* Effect.exit(runtime.start(changed))));
+      assert.isTrue(Exit.isFailure(yield* Effect.exit(runtime.launch(changed))));
+    }
+    assert.deepEqual(calls, ["stop"]);
+    yield* Deferred.succeed(stopGate, undefined);
+    assert.strictEqual((yield* Fiber.join(running)).phase, "completed");
+    assert.lengthOf(
+      calls.filter((call) => call === "prepare"),
+      1,
+    );
+  }),
+);
+
+it.effect("keeps execution sealed through incomplete rollback until verified recovery", () =>
+  Effect.gen(function* () {
+    const safety = { required: false, changes: [] as boolean[] };
+    const runtime = yield* makeHarness({
+      calls: [],
+      failAt: "git:rollback",
+      loseCommitReply: true,
+      safety,
+    });
+    const entry = yield* start(runtime);
+    assert.strictEqual(entry.phase, "recovery-required");
+    assert.isTrue(safety.required);
+    assert.notInclude(safety.changes, false);
+    const restarted = yield* makeHarness({
+      calls: [],
+      initial: [entry],
+      canonical: source,
+      safety,
+      onRead: () => assert.isTrue(safety.required, "Recovery seals execution before reading Core"),
+    });
+    assert.strictEqual((yield* restarted.recover())[0]?.phase, "failed");
+    assert.isFalse(safety.required);
+    assert.strictEqual(safety.changes.at(-1), false);
+  }),
+);
+
+it.effect(
+  "an uncertain preparation remains recoverable even when Core still points to source",
+  () =>
+    Effect.gen(function* () {
+      const safety = { required: false, changes: [] as boolean[] };
+      const calls: string[] = [];
+      const runtime = yield* makeHarness({ calls, preparationFailure: "uncertain", safety });
+      const entry = yield* start(runtime);
+      assert.strictEqual(entry.phase, "recovery-required");
+      assert.strictEqual(entry.failedPhase, "preparing-destination");
+      assert.deepEqual(entry.allocatedDestination, {
+        hostId: "local",
+        worktreeGitRoot: "/managed/task",
+      });
+      assert.isNull(entry.prepared);
+      assert.isTrue(safety.required);
+      assert.notInclude(calls, "git:rollback");
+      assert.notInclude(calls, "cleanup:rolled-back");
+      const restarted = yield* makeHarness({ calls, initial: [entry], canonical: source, safety });
+      assert.strictEqual((yield* restarted.recover())[0]?.phase, "recovery-required");
+      assert.isTrue(safety.required);
+      assert.notInclude(safety.changes, false);
+    }),
+);
+
+it.effect("a preparation owner may prove a preflight failure restored source safety", () =>
+  Effect.gen(function* () {
+    const safety = { required: false, changes: [] as boolean[] };
+    const calls: string[] = [];
+    const runtime = yield* makeHarness({ calls, preparationFailure: "restored", safety });
+    const entry = yield* start(runtime);
+    assert.strictEqual(entry.phase, "failed");
+    assert.isFalse(safety.required);
+    assert.notInclude(calls, "runtime:destination");
+    assert.notInclude(calls, "git:rollback");
+  }),
+);
+
+it.effect(
+  "startup seals durable unfinished execution before restoring or reading its location",
+  () =>
+    Effect.gen(function* () {
+      const safety = { required: false, changes: [] as boolean[] };
+      const calls: string[] = [];
+      let reads = 0;
+      const runtime = yield* makeHarness({
+        calls,
+        safety,
+        initial: [makeEntry()],
+        onRead: () => {
+          reads++;
+          assert.isTrue(safety.required);
+        },
+      });
+      yield* runtime.prepareRecovery;
+      assert.isTrue(safety.required);
+      assert.strictEqual(reads, 0);
+      assert.deepEqual(calls, []);
+      assert.notInclude(safety.changes, false);
+    }),
 );

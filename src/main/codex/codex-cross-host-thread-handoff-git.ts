@@ -308,6 +308,7 @@ export async function importCrossHostThreadHandoff(
       repositoryPath,
       nodexHome: input.nodexHome,
       managedRoot: input.managedRoot,
+      allocatedWorktreePath: input.allocatedWorktreePath,
       projectId: input.projectId,
       targetId: input.threadId,
       threadTitle: input.threadTitle,

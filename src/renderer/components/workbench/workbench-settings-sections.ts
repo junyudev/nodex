@@ -79,10 +79,10 @@ export const SETTINGS_SECTIONS: SettingsSectionDefinition[] = [
   },
   {
     id: "agent-import",
-    label: "Import",
+    label: "Conversations",
     pageKey: "import",
     icon: SettingsImportIcon,
-    groupKey: "personal",
+    groupKey: "coding",
     searchMessages: SETTINGS_SEARCH_CATALOG["agent-import"].messages,
   },
   {

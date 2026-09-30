@@ -13,6 +13,8 @@ describe("native Codex home selection", () => {
       homePath: "~/work-codex",
       resolvedHomePath: "/host/user/work-codex",
       source: "settings",
+      accountHomePath: "",
+      resolvedAccountHomePath: null,
     });
   });
 
@@ -27,6 +29,8 @@ describe("native Codex home selection", () => {
       homePath: "",
       resolvedHomePath: "/host/codex",
       source: "environment",
+      accountHomePath: "",
+      resolvedAccountHomePath: null,
     });
   });
 
@@ -40,7 +44,32 @@ describe("native Codex home selection", () => {
       homePath: "",
       resolvedHomePath: "/host/user/.codex",
       source: "default",
+      accountHomePath: "",
+      resolvedAccountHomePath: null,
     });
+  });
+
+  it("selects account credentials without changing shared native history identity", () => {
+    expect(
+      resolveCodexHome({
+        configuredAccountHome: " ~/codex-personal ",
+        environment: {},
+        homeDirectory: "/host/user",
+      }),
+    ).toEqual({
+      homePath: "",
+      resolvedHomePath: "/host/user/.codex",
+      source: "default",
+      accountHomePath: "~/codex-personal",
+      resolvedAccountHomePath: "/host/user/codex-personal",
+    });
+    expect(() =>
+      resolveCodexHome({
+        configuredAccountHome: "relative/account",
+        environment: {},
+        homeDirectory: "/host/user",
+      }),
+    ).toThrow("Codex account directory must be an absolute path or start with ~/.");
   });
 
   it.each([

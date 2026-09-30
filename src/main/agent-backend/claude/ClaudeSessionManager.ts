@@ -38,6 +38,13 @@ import {
   type AgentPromptImage,
 } from "../../../shared/agent-conversation";
 import type { ClaudeAgentInstanceConfig } from "../../../shared/types";
+import type { SDKSessionInfo } from "@anthropic-ai/claude-agent-sdk";
+import {
+  nativeSessionCatalogTitle,
+  type NativeSessionCatalogPage,
+} from "../../../shared/native-session-catalog";
+import { isAbsolute } from "node:path";
+import { nativeSessionCwdAvailable } from "../../platform/node/NativeSessionCatalogPaths";
 import { MainConfig } from "../../app/MainConfig";
 import {
   claudeHistoryModel,
@@ -47,6 +54,8 @@ import {
   normalizeClaudeSelection,
 } from "./ClaudeModels";
 import {
+  claudeModelContext,
+  claudeModelWithContext,
   isClaudeEffortLevel,
   type ClaudeModelSelection,
   type ClaudeRuntimeDiagnostics,
@@ -88,13 +97,20 @@ import * as Clock from "effect/Clock";
 import { deriveClaudeTurnOutcome } from "./ClaudeEventHelpers";
 import type { AgentSessionPermissionPolicy } from "../AgentSessionHandle";
 import { unknownClaudeIntelligence } from "../../platform/node/ClaudeIntelligence";
+import {
+  applyCodexWorktreeShellEnvironment,
+  type CodexStoredShellEnvironment,
+} from "../../codex/codex-worktree-shell-environment";
 
 export interface OpenClaudeSessionInput {
   readonly threadId: string;
   readonly instanceConfigId: string;
+  readonly expectedHome?: string;
   readonly workspaceRoot: string;
+  readonly workspaceEnvironment?: CodexStoredShellEnvironment | null;
   readonly sessionId?: string;
   readonly everSaved?: boolean;
+  readonly executionRecoveryRequired?: boolean;
   readonly permissionPolicy: AgentSessionPermissionPolicy;
   readonly model?: string | null;
   readonly effort?: string | null;
@@ -104,11 +120,9 @@ export interface OpenClaudeSessionInput {
   readonly context?: string;
   readonly restoredTurns?: readonly AgentConversationTurn[];
   readonly launchContext?: ClaudeLaunchContext;
-  readonly acquireLaunchContext?: Effect.Effect<
-    ClaudeLaunchContext,
-    AgentRuntimeError,
-    Scope.Scope
-  >;
+  readonly acquireLaunchContext?: (
+    workspaceRoot: string,
+  ) => Effect.Effect<ClaudeLaunchContext, AgentRuntimeError, Scope.Scope>;
   readonly historyFacts?: Parameters<typeof applyAgentHistoryFacts>[1];
   readonly isUnattended?: Effect.Effect<boolean>;
   readonly readPermissionPolicy?: Effect.Effect<AgentSessionPermissionPolicy, AgentRuntimeError>;
@@ -140,13 +154,28 @@ export interface OpenClaudeSessionInput {
 export class ClaudeSessionManager extends Context.Service<
   ClaudeSessionManager,
   {
+    readonly nativeHome: (instanceConfigId: string) => Effect.Effect<string, AgentRuntimeError>;
+    readonly nativeCatalog: (input: {
+      readonly instanceConfigId: string;
+      readonly cursor?: string;
+    }) => Effect.Effect<NativeSessionCatalogPage, AgentRuntimeError>;
+    readonly nativeSessionInfo: (input: {
+      readonly instanceConfigId: string;
+      readonly nativeSessionId: string;
+      readonly expectedHome: string;
+    }) => Effect.Effect<
+      SDKSessionInfo & { readonly cwd: string; readonly nativeHome: string },
+      AgentRuntimeError
+    >;
     readonly models: (
       instanceConfigId: string,
       workspaceRoot: string,
+      forceReload?: boolean,
     ) => Effect.Effect<readonly AgentSessionConfigSelectOption[], AgentRuntimeError>;
     readonly discover: (
       instanceConfigId: string,
       workspaceRoot: string,
+      forceReload?: boolean,
     ) => Effect.Effect<ClaudeDiscovery, AgentRuntimeError>;
     readonly open: (
       input: OpenClaudeSessionInput,
@@ -214,6 +243,7 @@ const capabilities: AgentBackendCapabilityProfile = {
   ],
 };
 const MAX_KNOWN_CLIENT_MESSAGE_IDS = 1024;
+const CLAUDE_ACCOUNT_ENVIRONMENT_NAMES = new Set(["HOME", "USERPROFILE", "CLAUDE_CONFIG_DIR"]);
 const nativePermissionMode = (
   mode: "default" | "plan",
   policy: AgentSessionPermissionPolicy,
@@ -231,13 +261,40 @@ const makeSession = Effect.fn("ClaudeSessionManager.session")(function* (
   const controls = yield* Semaphore.make(1);
   let sessionId = input.sessionId ?? createUuidV7();
   let everSaved = Boolean(input.sessionId && input.everSaved !== false);
-  const baseInput = {
-    instance,
-    environment: { ...config.environment, ...environmentOverrides },
-    cwd: input.workspaceRoot,
-    ...(input.launchContext ? { launchContext: input.launchContext } : {}),
+  const executionInput = (
+    location: import("../AgentSessionHandle").NativeAgentExecutionLocation,
+  ) => {
+    const workspaceEnvironment = applyCodexWorktreeShellEnvironment(
+      config.environment,
+      location.workspaceEnvironment,
+      config.platform,
+    );
+    return {
+      instance,
+      environment: applyCodexWorktreeShellEnvironment(
+        {
+          ...Object.fromEntries(
+            Object.entries(workspaceEnvironment).filter(
+              ([name]) => !CLAUDE_ACCOUNT_ENVIRONMENT_NAMES.has(name.toUpperCase()),
+            ),
+          ),
+          ...Object.fromEntries(
+            Object.entries(config.environment).filter(([name]) =>
+              CLAUDE_ACCOUNT_ENVIRONMENT_NAMES.has(name.toUpperCase()),
+            ),
+          ),
+        },
+        { version: 1, set: environmentOverrides, exclude: [] },
+        config.platform,
+      ),
+      cwd: location.workspaceRoot,
+      ...(input.launchContext ? { launchContext: input.launchContext } : {}),
+    };
   };
+  let baseInput = executionInput(input);
   const nativeInput = () => ({ ...baseInput, sessionId, resume: everSaved });
+  // A crash can precede Core's first saved-turn observation; native metadata owns existence.
+  if (input.sessionId && !everSaved) everSaved = yield* sdk.hasSession(nativeInput());
   let initial = emptyAgentConversationSnapshot({
     backend: "claude",
     threadId: input.threadId,
@@ -319,8 +376,11 @@ const makeSession = Effect.fn("ClaudeSessionManager.session")(function* (
     { readonly text: string; readonly images?: readonly AgentPromptImage[] }
   >();
   let configOptions: readonly AgentSessionConfigOption[] = [];
-  let runtime: ClaudeSdkSession;
+  let runtime: ClaudeSdkSession | null = null;
   let runtimeScope: Scope.Closeable | null = null;
+  let runtimeSuspended = input.executionRecoveryRequired === true;
+  let executionHandoff = false;
+  let executionRecoveryRequired = input.executionRecoveryRequired === true;
   let generation = 0;
   let active = true;
   let sequence = Math.max(0, ...initial.turns.map((entry) => entry.sequence ?? 0));
@@ -339,7 +399,11 @@ const makeSession = Effect.fn("ClaudeSessionManager.session")(function* (
   >();
   const publishMetadata = () =>
     Effect.sync(() => {
-      configOptions = claudeSessionConfigOptions(runtime.models, effective, instance.customModels);
+      configOptions = claudeSessionConfigOptions(
+        runtime?.models ?? [],
+        effective,
+        instance.customModels,
+      );
     }).pipe(
       Effect.andThen(
         SubscriptionRef.update(snapshot, (current) =>
@@ -581,12 +645,13 @@ const makeSession = Effect.fn("ClaudeSessionManager.session")(function* (
   )(function* () {
     generation += 1;
     const ownGeneration = generation;
+    runtimeSuspended = true;
     if (runtimeScope) yield* Scope.close(runtimeScope, Exit.void);
     const scope = yield* Scope.fork(ownerScope);
     runtimeScope = scope;
     if (input.readPermissionPolicy) policy = yield* input.readPermissionPolicy;
     const launchContext = input.acquireLaunchContext
-      ? yield* input.acquireLaunchContext.pipe(Scope.provide(scope))
+      ? yield* input.acquireLaunchContext(baseInput.cwd).pipe(Scope.provide(scope))
       : input.launchContext;
     yield* (
       input.onBackgroundTasksChanged?.(
@@ -599,9 +664,7 @@ const makeSession = Effect.fn("ClaudeSessionManager.session")(function* (
         ...(launchContext ? { launchContext } : {}),
         ...(requested.model !== "default"
           ? {
-              model: requested.context
-                ? `${requested.model.replace(/\[[^\]]+\]$/u, "")}[${requested.context}]`
-                : requested.model,
+              model: claudeModelWithContext(requested.model, requested.context),
             }
           : {}),
         ...(requested.effort !== "default" ? { effort: requested.effort } : {}),
@@ -613,10 +676,34 @@ const makeSession = Effect.fn("ClaudeSessionManager.session")(function* (
         onElicitation,
       })
       .pipe(Scope.provide(scope));
+    runtimeSuspended = false;
     effective = {
       ...runtime.intelligence,
       permissionMode: nativePermissionMode(requestedMode, policy),
     };
+    if (requested.context !== undefined) {
+      if (requested.model === "default" && !effective.model)
+        return yield* failure(
+          "intelligence",
+          new Error("Claude has not reported the inherited model."),
+        );
+      const invalid = validateClaudeSelection(
+        { model: requested.model, effort: "default", context: requested.context },
+        runtime.models,
+        instance.customModels,
+        effective.model ?? undefined,
+      );
+      if (invalid) return yield* failure("intelligence", new Error(invalid));
+      if (requested.model === "default") {
+        yield* runtime.setIntelligence(requested);
+        effective = { ...effective, ...(yield* runtime.inspectIntelligence) };
+      }
+      if (claudeModelContext(effective.model) !== requested.context)
+        return yield* failure(
+          "intelligence",
+          new Error("Claude did not apply the requested context window."),
+        );
+    }
     configOptions = claudeSessionConfigOptions(runtime.models, effective, instance.customModels);
     const options = claudeModelOptions(
       runtime.models,
@@ -824,7 +911,8 @@ const makeSession = Effect.fn("ClaudeSessionManager.session")(function* (
       Effect.forkIn(scope),
     );
   });
-  yield* startRuntime();
+  if (executionRecoveryRequired) yield* publishMetadata();
+  else yield* startRuntime();
   yield* Effect.addFinalizer(() =>
     Effect.gen(function* () {
       active = false;
@@ -857,6 +945,30 @@ const makeSession = Effect.fn("ClaudeSessionManager.session")(function* (
       ),
     ),
   );
+  const requireInputAdmission = Effect.suspend(() =>
+    executionHandoff || runtimeSuspended || executionRecoveryRequired
+      ? Effect.fail(
+          failure(
+            "execution.handoff",
+            new Error(
+              executionRecoveryRequired
+                ? "Recover this task's execution location before continuing"
+                : "Wait for this task's execution handoff to finish",
+            ),
+          ),
+        )
+      : Effect.void,
+  );
+  const requireRuntime = Effect.suspend(() =>
+    runtime
+      ? Effect.succeed(runtime)
+      : Effect.fail(
+          failure(
+            "execution.recovery",
+            new Error("Recover this task's execution location before continuing"),
+          ),
+        ),
+  );
   const requireNewMessageId = (messageId: string) =>
     knownClientMessageIds.has(messageId) ||
     turn?.messageIds.has(messageId) ||
@@ -877,7 +989,8 @@ const makeSession = Effect.fn("ClaudeSessionManager.session")(function* (
     yield* requireActive;
     const mode = nativePermissionMode(requestedMode, next);
     if (policy === next && effective.permissionMode === mode) return;
-    yield* runtime.setMode(mode);
+    yield* requireInputAdmission;
+    yield* (yield* requireRuntime).setMode(mode);
     policy = next;
     effective = { ...effective, permissionMode: mode };
     yield* publishMetadata();
@@ -896,7 +1009,7 @@ const makeSession = Effect.fn("ClaudeSessionManager.session")(function* (
         turn.cancelled = true;
         const completion = turn.completion;
         return cancelRequests(true).pipe(
-          Effect.andThen(runtime.interrupt),
+          Effect.andThen(requireRuntime.pipe(Effect.flatMap((current) => current.interrupt))),
           Effect.tap((receipt) =>
             receipt?.still_queued?.length
               ? SubscriptionRef.update(snapshot, (current) => ({
@@ -930,7 +1043,9 @@ const makeSession = Effect.fn("ClaudeSessionManager.session")(function* (
   const setIntelligence = (choice: ClaudeModelSelection) =>
     controls.withPermits(1)(
       Effect.gen(function* () {
+        yield* requireInputAdmission;
         yield* requireIdle;
+        const runtime = yield* requireRuntime;
         const targetModel = claudeModelOptions(
           runtime.models,
           undefined,
@@ -952,16 +1067,22 @@ const makeSession = Effect.fn("ClaudeSessionManager.session")(function* (
           instance.customModels,
           effective,
         );
-        const invalid = validateClaudeSelection(
-          selection,
-          runtime.models,
-          instance.customModels,
-          requested.model === "default" ? (effective.model ?? undefined) : requested.model,
-        );
-        if (invalid) return yield* failure("intelligence", new Error(invalid));
         const restart =
           (requested.model !== "default" && selection.model === "default") ||
-          (requested.effort !== "default" && selection.effort === "default");
+          (requested.effort !== "default" && selection.effort === "default") ||
+          (requested.model === "default" &&
+            requested.context !== undefined &&
+            selection.context === undefined);
+        const invalid =
+          restart && selection.model === "default"
+            ? null
+            : validateClaudeSelection(
+                selection,
+                runtime.models,
+                instance.customModels,
+                requested.model === "default" ? (effective.model ?? undefined) : requested.model,
+              );
+        if (invalid) return yield* failure("intelligence", new Error(invalid));
         if (restart) {
           yield* requireNoBackground;
           const previous = requested;
@@ -976,11 +1097,118 @@ const makeSession = Effect.fn("ClaudeSessionManager.session")(function* (
           );
         } else {
           yield* runtime.setIntelligence(selection);
-          requested = selection;
           effective = { ...effective, ...(yield* runtime.inspectIntelligence) };
+          if (
+            selection.context !== undefined &&
+            claudeModelContext(effective.model) !== selection.context
+          ) {
+            const error = failure(
+              "intelligence",
+              new Error("Claude did not apply the requested context window."),
+            );
+            yield* publishMetadata();
+            yield* failStream(error);
+            return yield* error;
+          }
+          requested = selection;
         }
         yield* publishMetadata();
         return configOptions;
+      }),
+    );
+  const suspendRuntime = Effect.gen(function* () {
+    generation += 1;
+    if (runtimeScope) yield* Scope.close(runtimeScope, Exit.void);
+    runtimeScope = null;
+    runtimeSuspended = true;
+  });
+  const suspendExecution = controls.withPermits(1)(
+    Effect.gen(function* () {
+      if (!executionHandoff)
+        return yield* failure(
+          "execution.handoff",
+          new Error("Suspend native execution only during a handoff"),
+        );
+      yield* requireIdle;
+      yield* requireNoBackground;
+      yield* suspendRuntime;
+    }),
+  );
+  const withExecutionHandoff = <A, E, R>(
+    use: Effect.Effect<A, E, R>,
+  ): Effect.Effect<A, E | AgentRuntimeError, R> =>
+    Effect.acquireUseRelease(
+      controls.withPermits(1)(
+        Effect.gen(function* () {
+          yield* requireActive;
+          if (executionHandoff)
+            return yield* failure(
+              "execution.handoff",
+              new Error("A native execution handoff is already active."),
+            );
+          executionHandoff = true;
+        }),
+      ),
+      () => use,
+      () =>
+        controls
+          .withPermits(1)(
+            Effect.suspend(() =>
+              active && runtimeSuspended && !executionRecoveryRequired
+                ? startRuntime().pipe(Effect.tapError(failStream))
+                : Effect.void,
+            ),
+          )
+          .pipe(
+            Effect.ensuring(
+              Effect.sync(() => {
+                executionHandoff = false;
+              }),
+            ),
+          ),
+    );
+  const withExecutionLocation = <A, E, R>(
+    location: import("../AgentSessionHandle").NativeAgentExecutionLocation,
+    use: Effect.Effect<A, E, R>,
+  ): Effect.Effect<A, E | AgentRuntimeError, R> =>
+    controls.withPermits(1)(
+      Effect.gen(function* () {
+        yield* requireIdle;
+        yield* requireNoBackground;
+        if (!isAbsolute(location.workspaceRoot))
+          return yield* failure(
+            "execution.location",
+            new Error("A native working directory must be absolute."),
+          );
+        const source = baseInput;
+        return yield* Effect.uninterruptibleMask((restore) =>
+          Effect.sync(() => {
+            baseInput = executionInput(location);
+          }).pipe(
+            Effect.andThen(
+              restore(
+                startRuntime().pipe(
+                  Effect.andThen(use),
+                  Effect.tap(() => requireActive),
+                ),
+              ),
+            ),
+            Effect.onExit((exit) =>
+              Exit.isFailure(exit)
+                ? Effect.sync(() => {
+                    baseInput = source;
+                  }).pipe(
+                    Effect.andThen(Effect.suspend(() => (active ? startRuntime() : Effect.void))),
+                    Effect.tapError(failStream),
+                  )
+                : Effect.void,
+            ),
+          ),
+        ).pipe(
+          Effect.ensuring(
+            Effect.suspend(() => (active && executionHandoff ? suspendRuntime : Effect.void)),
+          ),
+        );
       }),
     );
   const prompt = (
@@ -994,7 +1222,9 @@ const makeSession = Effect.fn("ClaudeSessionManager.session")(function* (
       Effect.gen(function* () {
         const admitted = yield* controls.withPermits(1)(
           Effect.gen(function* () {
+            yield* requireInputAdmission;
             yield* requireIdle;
+            const runtime = yield* requireRuntime;
             const messageId = options?.clientUserMessageId ?? createUuidV7();
             yield* requireNewMessageId(messageId);
             yield* refreshPermissionPolicy();
@@ -1061,14 +1291,26 @@ const makeSession = Effect.fn("ClaudeSessionManager.session")(function* (
     },
     prompt,
     cancel,
+    suspendExecution,
+    withExecutionHandoff,
+    setExecutionRecoveryRequired: (required: boolean) =>
+      controls.withPermits(1)(
+        Effect.gen(function* () {
+          executionRecoveryRequired = required;
+          if (required && !executionHandoff && !turn) yield* suspendRuntime;
+        }),
+      ),
     setIntelligence: (selection: ClaudeModelSelection) =>
       setIntelligence(selection).pipe(Effect.asVoid),
+    withExecutionLocation,
     setPermissionPolicy: (next: AgentSessionPermissionPolicy) =>
       controls.withPermits(1)(applyPermissionPolicy(next)),
     setMode: (id: string) =>
       controls.withPermits(1)(
         Effect.gen(function* () {
+          yield* requireInputAdmission;
           yield* requireIdle;
+          const runtime = yield* requireRuntime;
           if (id !== "default" && id !== "plan")
             return yield* failure("mode", new Error("Unsupported Claude mode"));
           if (input.readPermissionPolicy) policy = yield* input.readPermissionPolicy;
@@ -1098,7 +1340,7 @@ const makeSession = Effect.fn("ClaudeSessionManager.session")(function* (
               };
       if (
         id === "model" &&
-        validateClaudeSelection(next, runtime.models, instance.customModels, requested.model)
+        validateClaudeSelection(next, runtime?.models ?? [], instance.customModels, requested.model)
       )
         return setIntelligence({ model: value, effort: "default" });
       return setIntelligence(next);
@@ -1112,7 +1354,9 @@ const makeSession = Effect.fn("ClaudeSessionManager.session")(function* (
     ) =>
       controls.withPermits(1)(
         Effect.gen(function* () {
+          yield* requireInputAdmission;
           yield* requireActive;
+          const runtime = yield* requireRuntime;
           if (!turn) return yield* failure("steer", new Error("Start a turn before steering it"));
           const queuedBytes = [...queuedSteers.values()].reduce(
             (size, entry) =>
@@ -1148,7 +1392,7 @@ const makeSession = Effect.fn("ClaudeSessionManager.session")(function* (
         const task = current.tasks?.find(({ id }) => id === taskId);
         if (!task || !isAgentConversationTaskLiveInSnapshot(task, current))
           return yield* failure("stop task", new Error("This task is no longer running"));
-        yield* runtime.stopTask(taskId);
+        yield* (yield* requireRuntime).stopTask(taskId);
       }),
     loadHistory: (page?: { readonly before?: string; readonly limit?: number }) =>
       controls.withPermits(1)(
@@ -1195,11 +1439,15 @@ const makeSession = Effect.fn("ClaudeSessionManager.session")(function* (
       ),
     forkAt: (nativeMessageId: string) =>
       controls.withPermits(1)(
-        requireIdle.pipe(Effect.andThen(sdk.fork(nativeInput(), nativeMessageId))),
+        requireInputAdmission.pipe(
+          Effect.andThen(requireIdle),
+          Effect.andThen(sdk.fork(nativeInput(), nativeMessageId)),
+        ),
       ),
     rollback: (numTurns: number) =>
       controls.withPermits(1)(
         Effect.gen(function* () {
+          yield* requireInputAdmission;
           yield* requireIdle;
           yield* requireNoBackground;
           if (!Number.isInteger(numTurns) || numTurns < 1)
@@ -1281,7 +1529,22 @@ const makeSession = Effect.fn("ClaudeSessionManager.session")(function* (
       ),
     compact: Effect.suspend(() => prompt("/compact")).pipe(Effect.asVoid),
     inspectRuntime: Effect.suspend(() =>
-      active ? runtime.inspectRuntime : Effect.succeed(runtime.diagnostics),
+      active && !runtimeSuspended && runtime
+        ? runtime.inspectRuntime
+        : Effect.succeed(
+            runtime?.diagnostics ?? {
+              health: {
+                status: "unknown",
+                executable: null,
+                version: null,
+                account: null,
+                error: null,
+              },
+              mcpServers: [],
+              agents: [],
+              capabilities: [],
+            },
+          ),
     ).pipe(
       Effect.map((diagnostics): ClaudeRuntimeDiagnostics => ({
         ...diagnostics,
@@ -1289,7 +1552,7 @@ const makeSession = Effect.fn("ClaudeSessionManager.session")(function* (
         health: {
           ...diagnostics.health,
           version: observedVersion ?? diagnostics.health.version,
-          status: healthError ? "error" : effective.model ? "ready" : "unknown",
+          status: healthError ? "error" : runtime && effective.model ? "ready" : "unknown",
           error: healthError,
         },
       })),
@@ -1351,6 +1614,126 @@ export const make = Effect.gen(function* () {
   const opening = new Set<string>();
   const evictions = yield* FiberMap.make<string>();
   const changes = yield* PubSub.sliding<AgentBackendSessionChangedEvent>(256);
+  const nativeScope = Effect.fn("ClaudeSessionManager.nativeScope")(function* (
+    instanceConfigId: string,
+  ) {
+    const launch = yield* settings
+      .claudeLaunchConfiguration(instanceConfigId)
+      .pipe(Effect.mapError((cause) => failure("settings", cause)));
+    const input = {
+      instance: launch.instance,
+      environment: { ...config.environment, ...launch.environment },
+    };
+    const nativeHome = yield* sdk.nativeHome(input);
+    return { input, nativeHome };
+  });
+  const nativeHome = (instanceConfigId: string) =>
+    nativeScope(instanceConfigId).pipe(Effect.map((scope) => scope.nativeHome));
+  const nativeCatalog = Effect.fn("ClaudeSessionManager.nativeCatalog")(function* (input: {
+    readonly instanceConfigId: string;
+    readonly cursor?: string;
+  }) {
+    const scope = yield* nativeScope(input.instanceConfigId);
+    const offset = yield* Effect.try({
+      try: () => {
+        if (!input.cursor) return 0;
+        const cursor = z
+          .object({
+            home: z.string(),
+            instance: z.string(),
+            offset: z.number().int().min(0).max(100_000),
+          })
+          .strict()
+          .parse(JSON.parse(Buffer.from(input.cursor, "base64url").toString("utf8")));
+        if (cursor.home !== scope.nativeHome || cursor.instance !== input.instanceConfigId)
+          throw new Error("The Claude profile changed. Refresh the session list.");
+        return cursor.offset;
+      },
+      catch: (cause) => failure("catalog cursor", cause),
+    });
+    const sessions = yield* sdk.listSessions(scope.input, offset);
+    if ((yield* nativeHome(input.instanceConfigId)) !== scope.nativeHome)
+      return yield* failure(
+        "catalog",
+        new Error("The Claude profile changed. Refresh the session list."),
+      );
+    const candidates = yield* Effect.forEach(
+      sessions.slice(0, 50),
+      (session) =>
+        Effect.gen(function* () {
+          if (
+            !session.cwd ||
+            !Number.isSafeInteger(session.lastModified) ||
+            session.lastModified < 0
+          )
+            return null;
+          const available = yield* Effect.tryPromise({
+            try: () => nativeSessionCwdAvailable(session.cwd!),
+            catch: (cause) => failure("catalog working directory", cause),
+          });
+          if (!available) return null;
+          return {
+            nativeSessionId: session.sessionId,
+            title: nativeSessionCatalogTitle(
+              session.customTitle || session.summary,
+              "Claude conversation",
+            ),
+            cwd: session.cwd,
+            updatedAt: session.lastModified,
+          };
+        }),
+      { concurrency: 4 },
+    );
+    return {
+      nativeHome: scope.nativeHome,
+      entries: candidates.filter((candidate) => candidate !== null),
+      nextCursor:
+        sessions.length > 50
+          ? Buffer.from(
+              JSON.stringify({
+                home: scope.nativeHome,
+                instance: input.instanceConfigId,
+                offset: offset + 50,
+              }),
+            ).toString("base64url")
+          : null,
+    } satisfies NativeSessionCatalogPage;
+  });
+  const nativeSessionInfo = Effect.fn("ClaudeSessionManager.nativeSessionInfo")(function* (input: {
+    readonly instanceConfigId: string;
+    readonly nativeSessionId: string;
+    readonly expectedHome: string;
+  }) {
+    const scope = yield* nativeScope(input.instanceConfigId);
+    if (scope.nativeHome !== input.expectedHome)
+      return yield* failure(
+        "attachment",
+        new Error("The Claude profile changed. Refresh the session list."),
+      );
+    const info = yield* sdk.sessionInfo(scope.input, input.nativeSessionId);
+    if (!info || info.sessionId !== input.nativeSessionId || !info.cwd || !isAbsolute(info.cwd))
+      return yield* failure(
+        "attachment",
+        new Error("This native conversation is no longer available."),
+        "resource-not-found",
+      );
+    const cwd = info.cwd;
+    const available = yield* Effect.tryPromise({
+      try: () => nativeSessionCwdAvailable(cwd),
+      catch: (cause) => failure("working directory", cause),
+    });
+    if (!available)
+      return yield* failure(
+        "working directory",
+        new Error("The native working directory is unavailable."),
+      );
+    if ((yield* nativeHome(input.instanceConfigId)) !== scope.nativeHome)
+      return yield* failure(
+        "attachment",
+        new Error("The Claude profile changed. Refresh the session list."),
+      );
+    return { ...info, cwd, nativeHome: scope.nativeHome };
+  });
   const exclusive = <A, E, R>(id: string, action: Effect.Effect<A, E, R>) =>
     Effect.scoped(
       Effect.gen(function* () {
@@ -1389,7 +1772,7 @@ export const make = Effect.gen(function* () {
   yield* Effect.addFinalizer(() =>
     Effect.forEach([...sessions.keys()], close, { discard: true, concurrency: 4 }),
   );
-  const discover = (instanceConfigId: string, workspaceRoot: string) =>
+  const discover = (instanceConfigId: string, workspaceRoot: string, forceReload = false) =>
     Effect.gen(function* () {
       const { instance, environment } = yield* settings
         .claudeLaunchConfiguration(instanceConfigId)
@@ -1400,6 +1783,7 @@ export const make = Effect.gen(function* () {
         `discovery:${key}`,
         Effect.gen(function* () {
           const now = yield* Clock.currentTimeMillis;
+          if (forceReload) catalogCache.delete(key);
           const cached = catalogCache.get(key);
           if (cached && cached.expires > now) return cached.value;
           const value = yield* discovery.withPermits(1)(
@@ -1455,8 +1839,13 @@ export const make = Effect.gen(function* () {
       );
     });
   return ClaudeSessionManager.of({
-    models: (instanceConfigId, workspaceRoot) =>
-      discover(instanceConfigId, workspaceRoot).pipe(Effect.map(({ models }) => models)),
+    nativeHome,
+    nativeCatalog,
+    nativeSessionInfo,
+    models: (instanceConfigId, workspaceRoot, forceReload) =>
+      discover(instanceConfigId, workspaceRoot, forceReload).pipe(
+        Effect.map(({ models }) => models),
+      ),
     discover,
     open: (input) =>
       exclusive(
@@ -1502,6 +1891,20 @@ export const make = Effect.gen(function* () {
           const { instance, environment } = yield* settings
             .claudeLaunchConfiguration(input.instanceConfigId)
             .pipe(Effect.mapError((cause) => failure("settings", cause)));
+          if (
+            input.expectedHome &&
+            (yield* sdk.nativeHome({
+              instance,
+              environment: { ...config.environment, ...environment },
+            })) !== input.expectedHome
+          )
+            return yield* failure(
+              "binding",
+              new Error(
+                "The Claude profile changed. Restore this conversation's original profile.",
+              ),
+              "authorization",
+            );
           const scope = yield* Effect.acquireRelease(Scope.fork(ownerScope), (owned) =>
             sessions.get(input.threadId)?.scope === owned
               ? Effect.void

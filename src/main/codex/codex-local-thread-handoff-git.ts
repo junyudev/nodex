@@ -59,6 +59,19 @@ interface MoveToCheckoutInput {
 const STASH_MESSAGE_PREFIX = "Nodex thread handoff";
 const MAX_BRANCH_ATTEMPTS = 100;
 
+/** A worker may claim a healthy source only after untouched validation or verified restoration. */
+export class LocalThreadHandoffPreparationError extends Error {
+  constructor(
+    cause: unknown,
+    readonly preparationRestored: boolean,
+    warnings: readonly string[] = [],
+  ) {
+    const suffix = warnings.length > 0 ? ` Rollback issues: ${warnings.join(", ")}.` : "";
+    super(`${cause instanceof Error ? cause.message : String(cause)}${suffix}`, { cause });
+    this.name = "LocalThreadHandoffPreparationError";
+  }
+}
+
 async function readOptionalRef(
   cwd: string,
   ref: string,
@@ -153,7 +166,11 @@ async function applyStash(
   signal: AbortSignal,
 ): Promise<void> {
   const selector = await resolveStashSelector(cwd, stashRef, signal);
-  await runCodexGitCommand(["stash", mode, selector], cwd, { signal });
+  await runCodexGitCommand(
+    ["stash", mode, ...(mode === "drop" ? [] : ["--index"]), selector],
+    cwd,
+    { signal },
+  );
 }
 
 async function stashWorkingTree(
@@ -205,7 +222,8 @@ async function stashAndCheckout(
       options.onProgress(input.stashStep, stashRef ? "completed" : "skipped");
     } catch (error) {
       options.onProgress(input.stashStep, "failed");
-      throw error;
+      // A failed stash command can have changed Git even when its acknowledgement was lost.
+      throw new LocalThreadHandoffPreparationError(error, false);
     }
   } else {
     options.onProgress(input.stashStep, "skipped");
@@ -218,10 +236,13 @@ async function stashAndCheckout(
     return { previousBranch, stashRef };
   } catch (error) {
     options.onProgress(input.checkoutStep, "failed");
-    if (stashRef) {
-      await applyStash(input.cwd, stashRef, "pop", options.signal).catch(() => undefined);
-    }
-    throw error;
+    const warnings = await restoreCheckout({
+      cwd: input.cwd,
+      previousBranch,
+      stashRef,
+      signal: options.signal,
+    });
+    throw new LocalThreadHandoffPreparationError(error, warnings.length === 0, warnings);
   }
 }
 
@@ -332,6 +353,8 @@ async function moveToWorktree(
         () => warnings.push("restore-target-stash-failed"),
       );
     }
+    let sourceRestored =
+      error instanceof LocalThreadHandoffPreparationError && error.preparationRestored;
     if (source) {
       warnings.push(
         ...(await restoreCheckout({
@@ -341,16 +364,18 @@ async function moveToWorktree(
           signal: options.signal,
         })),
       );
+      sourceRestored = !sourceApplied && warnings.length === 0;
     }
-    if (input.createdWorktree && !sourceApplied) {
+    if (input.createdWorktree && sourceRestored) {
       await removeManagedWorktree(input.worktreeGitRoot).catch(() =>
         warnings.push("cleanup-created-worktree-failed"),
       );
     }
-    const suffix = warnings.length > 0 ? ` Rollback issues: ${warnings.join(", ")}.` : "";
-    throw new Error(`${error instanceof Error ? error.message : String(error)}${suffix}`, {
-      cause: error,
-    });
+    throw new LocalThreadHandoffPreparationError(
+      error,
+      sourceRestored && warnings.length === 0,
+      warnings,
+    );
   }
 }
 
@@ -413,6 +438,8 @@ async function moveToCheckout(
         () => warnings.push("restore-local-branch-failed"),
       );
     }
+    let sourceRestored =
+      error instanceof LocalThreadHandoffPreparationError && error.preparationRestored;
     if (source) {
       warnings.push(
         ...(await restoreCheckout({
@@ -422,11 +449,13 @@ async function moveToCheckout(
           signal: options.signal,
         })),
       );
+      sourceRestored = !sourceApplied && warnings.length === 0;
     }
-    const suffix = warnings.length > 0 ? ` Rollback issues: ${warnings.join(", ")}.` : "";
-    throw new Error(`${error instanceof Error ? error.message : String(error)}${suffix}`, {
-      cause: error,
-    });
+    throw new LocalThreadHandoffPreparationError(
+      error,
+      sourceRestored && warnings.length === 0,
+      warnings,
+    );
   }
 }
 
@@ -435,111 +464,134 @@ export async function prepareLocalThreadHandoff(
   input: CodexWorktreeWorkerPrepareHandoffInput,
   options: HandoffGitOptions,
 ): Promise<CodexWorktreeWorkerPreparedHandoff> {
-  throwIfCodexRequestAborted(options.signal);
-  const sourceBranch = await readCurrentBranch(input.sourceCwd, options.signal);
-  if (!sourceBranch) {
-    throw new Error("The task must be on a branch before it can be handed off.");
-  }
-
-  if (input.sourceManagedWorktreePath) {
-    if (!input.destinationCheckoutRoot) {
-      throw new Error("The task has no local Project checkout destination.");
-    }
-    const moved = await moveToCheckout(
-      {
-        localGitRoot: input.destinationCheckoutRoot,
-        sourceBranch,
-        sourceWorktreeCwd: input.sourceCwd,
-        sourceWorktreeRoot: input.sourceManagedWorktreePath,
-      },
-      input.requestId,
-      withHandoffBranches(options, {
-        sourceBranch,
-        localBranch: sourceBranch,
-        worktreeBranch: sourceBranch,
-      }),
-    );
-    return {
-      direction: "to-checkout",
-      sourceBranch,
-      localCheckoutPreviousBranch: moved.localCheckoutPreviousBranch,
-      sourceWorkspaceRoot: input.sourceWorkspaceRoot,
-      destinationWorkspaceRoot: input.destinationCheckoutRoot,
-      destinationGitRoot: input.destinationCheckoutRoot,
-      managedWorktreePath: input.sourceManagedWorktreePath,
-      createdWorktree: false,
-      warnings: moved.warnings,
-    };
-  }
-
-  const defaultBranch = await resolveDefaultBranch(input.sourceCwd, sourceBranch, options.signal);
-  const destinationBranch =
-    defaultBranch === sourceBranch
-      ? await allocateHandoffBranch(input.sourceCwd, input.threadTitle, options.signal)
-      : sourceBranch;
-  const localCheckoutBranch = destinationBranch === sourceBranch ? defaultBranch : sourceBranch;
-  if (!localCheckoutBranch) {
-    throw new Error("No safe local checkout branch is available for this handoff.");
-  }
-
-  const progressOptions = withHandoffBranches(options, {
-    sourceBranch,
-    localBranch: localCheckoutBranch,
-    worktreeBranch: destinationBranch,
-  });
-  progressOptions.onProgress("create-new-worktree", "started");
-  const created = await createManagedWorktree({
-    repositoryPath: input.sourceWorkspaceRoot,
-    nodexHome: input.nodexHome,
-    managedRoot: input.managedRoot,
-    projectId: input.projectId,
-    targetId: input.threadId,
-    threadTitle: input.threadTitle,
-    mode: "detachedHead",
-    startingState: { type: "branch", branchName: sourceBranch },
-    localEnvironmentConfigPath: null,
-    setUpSyncedBranch: false,
-    propagateLocalWorkspaceFiles: true,
-    signal: options.signal,
-    onPathAllocated: options.onPathAllocated,
-  });
-  progressOptions.onProgress("create-new-worktree", "completed");
+  let sourceMayChange = false;
   try {
-    await ensureBranchAtCommit({
-      branch: destinationBranch,
-      commit: await readHead(input.sourceCwd, options.signal),
-      cwd: created.worktreeWorkspaceRoot,
-      signal: options.signal,
-    });
-    const warnings = await moveToWorktree(
-      {
-        createdWorktree: true,
-        localCheckoutBranch,
-        localCwd: input.sourceCwd,
+    throwIfCodexRequestAborted(options.signal);
+    const sourceBranch = await readCurrentBranch(input.sourceCwd, options.signal);
+    if (!sourceBranch) {
+      throw new Error("The task must be on a branch before it can be handed off.");
+    }
+
+    if (input.sourceManagedWorktreePath) {
+      if (!input.destinationCheckoutRoot) {
+        throw new Error("The task has no local Project checkout destination.");
+      }
+      sourceMayChange = true;
+      const moved = await moveToCheckout(
+        {
+          localGitRoot: input.destinationCheckoutRoot,
+          sourceBranch,
+          sourceWorktreeCwd: input.sourceCwd,
+          sourceWorktreeRoot: input.sourceManagedWorktreePath,
+        },
+        input.requestId,
+        withHandoffBranches(options, {
+          sourceBranch,
+          localBranch: sourceBranch,
+          worktreeBranch: sourceBranch,
+        }),
+      );
+      return {
+        direction: "to-checkout",
         sourceBranch,
-        stashTargetWorktree: false,
-        worktreeCheckoutBranch: destinationBranch,
-        worktreeGitRoot: created.worktreeGitRoot,
-        worktreeWorkspaceRoot: created.worktreeWorkspaceRoot,
-      },
-      input.requestId,
-      progressOptions,
-    );
-    return {
-      direction: "to-worktree",
+        localCheckoutPreviousBranch: moved.localCheckoutPreviousBranch,
+        sourceWorkspaceRoot: input.sourceWorkspaceRoot,
+        destinationWorkspaceRoot: input.destinationCheckoutRoot,
+        destinationGitRoot: input.destinationCheckoutRoot,
+        managedWorktreePath: input.sourceManagedWorktreePath,
+        createdWorktree: false,
+        warnings: moved.warnings,
+      };
+    }
+
+    if (!input.allocatedWorktreePath) {
+      throw new Error("A destination worktree must be checkpointed before preparing a handoff.");
+    }
+
+    const defaultBranch = await resolveDefaultBranch(input.sourceCwd, sourceBranch, options.signal);
+    const destinationBranch =
+      defaultBranch === sourceBranch
+        ? await allocateHandoffBranch(input.sourceCwd, input.threadTitle, options.signal)
+        : sourceBranch;
+    const localCheckoutBranch = destinationBranch === sourceBranch ? defaultBranch : sourceBranch;
+    if (!localCheckoutBranch) {
+      throw new Error("No safe local checkout branch is available for this handoff.");
+    }
+
+    const progressOptions = withHandoffBranches(options, {
       sourceBranch,
-      localCheckoutBranch,
-      destinationBranch,
-      sourceWorkspaceRoot: input.sourceWorkspaceRoot,
-      destinationWorkspaceRoot: created.worktreeWorkspaceRoot,
-      destinationGitRoot: created.worktreeGitRoot,
-      managedWorktreePath: created.worktreeGitRoot,
-      createdWorktree: true,
-      warnings,
-    };
+      localBranch: localCheckoutBranch,
+      worktreeBranch: destinationBranch,
+    });
+    progressOptions.onProgress("create-new-worktree", "started");
+    const created = await createManagedWorktree({
+      repositoryPath: input.sourceWorkspaceRoot,
+      nodexHome: input.nodexHome,
+      managedRoot: input.managedRoot,
+      ...(input.allocatedWorktreePath
+        ? { allocatedWorktreePath: input.allocatedWorktreePath }
+        : {}),
+      projectId: input.projectId,
+      targetId: input.threadId,
+      threadTitle: input.threadTitle,
+      mode: "detachedHead",
+      startingState: { type: "branch", branchName: sourceBranch },
+      localEnvironmentConfigPath: null,
+      setUpSyncedBranch: false,
+      propagateLocalWorkspaceFiles: true,
+      signal: options.signal,
+      onPathAllocated: options.onPathAllocated,
+    });
+    progressOptions.onProgress("create-new-worktree", "completed");
+    try {
+      await ensureBranchAtCommit({
+        branch: destinationBranch,
+        commit: await readHead(input.sourceCwd, options.signal),
+        cwd: created.worktreeWorkspaceRoot,
+        signal: options.signal,
+      });
+      sourceMayChange = true;
+      const warnings = await moveToWorktree(
+        {
+          createdWorktree: true,
+          localCheckoutBranch,
+          localCwd: input.sourceCwd,
+          sourceBranch,
+          stashTargetWorktree: false,
+          worktreeCheckoutBranch: destinationBranch,
+          worktreeGitRoot: created.worktreeGitRoot,
+          worktreeWorkspaceRoot: created.worktreeWorkspaceRoot,
+        },
+        input.requestId,
+        progressOptions,
+      );
+      return {
+        direction: "to-worktree",
+        sourceBranch,
+        localCheckoutBranch,
+        destinationBranch,
+        sourceWorkspaceRoot: input.sourceWorkspaceRoot,
+        destinationWorkspaceRoot: created.worktreeWorkspaceRoot,
+        destinationGitRoot: created.worktreeGitRoot,
+        managedWorktreePath: created.worktreeGitRoot,
+        createdWorktree: true,
+        warnings,
+      };
+    } catch (error) {
+      const sourceRestored =
+        !sourceMayChange ||
+        (error instanceof LocalThreadHandoffPreparationError && error.preparationRestored);
+      let cleanupComplete = true;
+      if (sourceRestored) {
+        await removeManagedWorktree(created.worktreeGitRoot).catch(() => {
+          cleanupComplete = false;
+        });
+      }
+      throw new LocalThreadHandoffPreparationError(error, sourceRestored && cleanupComplete);
+    }
   } catch (error) {
-    await removeManagedWorktree(created.worktreeGitRoot).catch(() => undefined);
-    throw error;
+    if (error instanceof LocalThreadHandoffPreparationError) throw error;
+    throw new LocalThreadHandoffPreparationError(error, !sourceMayChange);
   }
 }
 

@@ -568,6 +568,7 @@ const makeHarness = (input: {
       presentation,
       aggregate,
       commands,
+      conversations,
       events,
       forwarded,
       dispatchFences,
@@ -2321,4 +2322,89 @@ it.effect(
       assert.strictEqual(result.turn.id, "resumed-turn");
       yield* Scope.close(harness.scope, Exit.void);
     }),
+);
+
+it.effect("rejects a new turn during workspace handoff before preparation or dispatch", () =>
+  Effect.scoped(
+    Effect.gen(function* () {
+      const fixture = yield* makeHarness({ request: () => Effect.die("must not dispatch") });
+      yield* fixture.conversations.withExecutionHandoff(
+        "thread-a",
+        Effect.gen(function* () {
+          const result = yield* fixture.commands
+            .start("thread-a", "during move")
+            .pipe(Effect.result);
+          assert.strictEqual(result._tag, "Failure");
+          assert.deepEqual(fixture.preparationInputs, []);
+          assert.strictEqual(fixture.requests(), 0);
+        }),
+      );
+    }),
+  ),
+);
+
+it.effect("rechecks a previously prepared native turn at dispatch while execution is moving", () =>
+  Effect.gen(function* () {
+    const fixture = yield* makeHarness({ request: () => Effect.die("must not dispatch") });
+    const operation = yield* fixture.commands.prepareNativeStart(
+      "thread-a",
+      "prepared before move",
+    );
+    const prepared = yield* fixture.commands.inspectPreparedNativeStart(operation);
+    yield* fixture.conversations.withExecutionHandoff(
+      "thread-a",
+      Effect.gen(function* () {
+        const result = yield* fixture.commands
+          .executePreparedNativeStart(prepared.request)
+          .pipe(Effect.result);
+        assert.strictEqual(result._tag, "Failure");
+        assert.strictEqual(fixture.requests(), 0);
+      }),
+    );
+    yield* Scope.close(fixture.scope, Exit.void);
+  }),
+);
+
+it.effect("rejects pre-handoff materialized turns after the workspace move finishes", () =>
+  Effect.gen(function* () {
+    const fixture = yield* makeHarness({ request: () => Effect.succeed(response()) });
+    const operation = yield* fixture.commands.prepareNativeStart("thread-a", "old workspace");
+    const prepared = yield* fixture.commands.inspectPreparedNativeStart(operation);
+    yield* fixture.conversations.withExecutionHandoff("thread-a", Effect.void);
+    const stale = yield* fixture.commands
+      .executePreparedNativeStart(prepared.request)
+      .pipe(Effect.result);
+    assert.strictEqual(stale._tag, "Failure");
+    assert.strictEqual(fixture.requests(), 0);
+    yield* fixture.commands.start("thread-a", "new workspace");
+    assert.strictEqual(fixture.requests(), 1);
+    yield* Scope.close(fixture.scope, Exit.void);
+  }),
+);
+
+it.effect("rejects tool-output steering prepared before a completed workspace handoff", () =>
+  Effect.gen(function* () {
+    const fixture = yield* makeHarness({
+      request: () => Effect.die("old workspace must not execute"),
+    });
+    const prepared = yield* fixture.commands.prepareNativeToolMessage(
+      "thread-a",
+      "source",
+      "old output",
+      "steer",
+    );
+    yield* fixture.conversations.withExecutionHandoff("thread-a", Effect.void);
+    const stale = yield* fixture.commands
+      .executePreparedNativeSteer(
+        {
+          method: "turn/start",
+          params: { threadId: "thread-a", input: [], toolOutput: prepared.steer.toolOutput },
+        },
+        prepared.steer.clientUserMessageId,
+      )
+      .pipe(Effect.result);
+    assert.strictEqual(stale._tag, "Failure");
+    assert.strictEqual(fixture.requests(), 0);
+    yield* Scope.close(fixture.scope, Exit.void);
+  }),
 );

@@ -20,6 +20,8 @@ import * as CoreAuthorityIpc from "../ipc/handlers/CoreAuthorityIpc";
 import * as ApplicationLocalStateIpc from "../ipc/handlers/ApplicationLocalStateIpc";
 import * as ApplicationSettingsIpc from "../ipc/handlers/ApplicationSettingsIpc";
 import * as AgentBackendIpc from "../ipc/handlers/AgentBackendIpc";
+import * as NativeSessionCatalogIpc from "../ipc/handlers/NativeSessionCatalogIpc";
+import * as NativeSessionCatalog from "../agent-backend/NativeSessionCatalog";
 import * as AutomationIpc from "../ipc/handlers/AutomationIpc";
 import * as AvatarOverlayIpc from "../ipc/handlers/AvatarOverlayIpc";
 import * as CodexPendingWorktreeIpc from "../ipc/handlers/CodexPendingWorktreeIpc";
@@ -82,6 +84,7 @@ export const live = Layer.mergeAll(
   ApplicationLocalStateIpc.live,
   ApplicationSettingsIpc.live,
   AgentBackendIpc.live,
+  NativeSessionCatalogIpc.live.pipe(Layer.provide(NativeSessionCatalog.live)),
   AutomationIpc.live,
   CodexPendingWorktreeIpc.live,
   CodexThreadHandoffIpc.live,

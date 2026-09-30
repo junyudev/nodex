@@ -11,6 +11,14 @@ import {
   live as codexHomeContinuityLive,
 } from "../codex-application/CodexHomeContinuity";
 import { initializeCodexHomeContinuity } from "../platform/node/CodexHomeContinuity";
+import {
+  assertCodexAccountHomeIdentity,
+  codexAccountHomeEnvironment,
+  codexAccountHomeLaunchArgs,
+  inspectCodexAccountHome,
+  prepareCodexAccountHome,
+  type CodexAccountHome,
+} from "../platform/node/CodexAccountHome";
 import { CodexAppServerRequestError } from "@nodex/effect-codex-app-server/errors";
 import * as Context from "effect/Context";
 import * as Effect from "effect/Effect";
@@ -96,12 +104,14 @@ import {
 import { make as makeAppToolSession } from "../app-tools/CodexAppToolSession";
 import { appToolsEntrypoint } from "../codex/app-tools-launch-config";
 import type { CodexAppServerSessionOptions } from "../codex-runtime/CodexAppServerSession";
+import { codexRuntimeError } from "../codex-runtime/CodexRuntimeError";
 
 export class CodexPlatform extends Context.Service<
   CodexPlatform,
   {
     readonly runtime: ReturnType<typeof resolveCodexRuntime>;
     readonly codexHome: string;
+    readonly accountHome: CodexAccountHome;
     readonly runtimeStateHome: string;
   }
 >()("nodex/main/app/CodexPlatform") {}
@@ -136,9 +146,20 @@ const platform: Layer.Layer<CodexPlatform, MainApplicationError, MainConfig | Ap
         catch: (cause) =>
           new MainApplicationError({ phase: "startup", operation: "resolve-codex-runtime", cause }),
       });
+      const accountHome = yield* Effect.try({
+        try: () =>
+          inspectCodexAccountHome({
+            sharedHome: snapshot.codexHome.activeHomePath,
+            accountHome: snapshot.codexHome.activeAccountHomePath,
+            platform: config.platform,
+          }),
+        catch: (cause) =>
+          new MainApplicationError({ phase: "startup", operation: "resolve-codex-account", cause }),
+      });
       return CodexPlatform.of({
         runtime,
-        codexHome: snapshot.codexHome.activeHomePath,
+        codexHome: accountHome.sharedHome,
+        accountHome,
         runtimeStateHome: `${config.nodexHome}/runtime/agent`,
       });
     }),
@@ -253,6 +274,19 @@ const runtime = Layer.unwrap(
     const config = yield* MainConfig;
     const codex = yield* CodexPlatform;
     const codexAttestation = yield* CodexAttestation;
+    // Continuity activation precedes this runtime layer. Account links are applied
+    // only after the selected shared home has retained every bound native session.
+    const accountHome = yield* Effect.try({
+      try: () =>
+        prepareCodexAccountHome({
+          sharedHome: codex.codexHome,
+          accountHome:
+            codex.accountHome.mode === "overlay" ? codex.accountHome.effectiveHome : null,
+          platform: config.platform,
+        }),
+      catch: (cause) =>
+        new MainApplicationError({ phase: "startup", operation: "prepare-codex-account", cause }),
+    });
     const cliArgs =
       config.platform === "win32"
         ? []
@@ -288,24 +322,47 @@ const runtime = Layer.unwrap(
           new MainApplicationError({ phase: "startup", operation: "read-codex-defaults", cause }),
       ),
     );
+    const accountArgs = codexAccountHomeLaunchArgs(accountHome);
     const local: Omit<CodexAppServerSessionOptions, "generation"> = {
       hostId: "local",
       command: codex.runtime.binaryPath,
       localDaemon: {
-        codexHome: codex.codexHome,
+        codexHome: accountHome.effectiveHome,
         platform: config.platform,
         resourcesPath: config.resourcesPath,
-        configOverrides: [...featureArgs, ...cliArgs],
+        configOverrides: [...featureArgs, ...cliArgs, ...accountArgs],
       },
-      args: [...codexCliAppServerArgs(config.environment), ...featureArgs, ...cliArgs],
+      args: [
+        ...codexCliAppServerArgs(config.environment),
+        ...featureArgs,
+        ...cliArgs,
+        ...accountArgs,
+      ],
       env: {},
       resolveEnv: () =>
-        resolveCodexProcessEnvironment({
-          additionalSearchPaths: codex.runtime.additionalSearchPaths,
-          pathDelimiter: config.platform === "win32" ? ";" : ":",
-          codexHome: codex.codexHome,
-          environment: config.environment,
-        }),
+        Effect.try({
+          try: () => {
+            assertCodexAccountHomeIdentity(accountHome, config.platform);
+            return codexAccountHomeEnvironment(accountHome, config.environment);
+          },
+          catch: (cause) =>
+            codexRuntimeError({
+              operation: "session.validate-account-home",
+              reason: "spawn",
+              retryable: false,
+              hostId: "local",
+              cause,
+            }),
+        }).pipe(
+          Effect.flatMap((environment) =>
+            resolveCodexProcessEnvironment({
+              additionalSearchPaths: codex.runtime.additionalSearchPaths,
+              pathDelimiter: config.platform === "win32" ? ";" : ":",
+              codexHome: accountHome.effectiveHome,
+              environment,
+            }),
+          ),
+        ),
       forceTermination: "2 seconds",
       initializeParams: {
         clientInfo: { name: "nodex", title: "Nodex", version: "0.5.0" },
@@ -316,7 +373,7 @@ const runtime = Layer.unwrap(
         },
       },
       initializeTimeout: "20 seconds",
-      expectedCodexHome: codex.codexHome,
+      expectedCodexHome: accountHome.effectiveHome,
     };
     const browserRuntime = codex.runtime.browserRuntime;
     return CodexRuntimeLive.live({

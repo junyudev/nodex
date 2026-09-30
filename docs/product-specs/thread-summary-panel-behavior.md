@@ -92,10 +92,20 @@ active PR workflow disables the action with a specific explanation. The summary
 row shows the active phase and cancellation state and refreshes Git/PR state
 after success.
 
-Branch and start-location selectors are full-row controls: the selected value
+Branch and execution-location selectors are full-row controls: the selected value
 appears once in the row label and the trailing icon communicates only menu
 affordance. The attached-Chat menu is titled `Continue in`; the new-Chat
 composer continues to use `Start in`.
+
+For an attached local Codex or Claude Chat, `Continue in` opens the actual
+execution handoff workflow. Confirming moves the same Chat, native conversation
+and uncommitted Git state between the Project checkout and a managed worktree.
+The row derives Local or Worktree from the Chat's durable location; selecting or
+confirming a destination never changes that label before commit. New-Chat
+preferences and unsent drafts remain independent. Progress follows the shared
+handoff owner, and an unresolved recovery disables another move. Unsupported
+backends and execution hosts have a location row without an interactive menu.
+See [Moving a Chat](codex-managed-worktree-lifecycle-behavior.md#moving-a-chat).
 
 ## Plan, Outputs, and Sources
 

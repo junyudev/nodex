@@ -1014,6 +1014,8 @@ export interface CreateManagedWorktreeInput {
   repositoryPath: string;
   nodexHome: string;
   managedRoot?: string;
+  /** A durable handoff checkpoint reserves this exact destination before creation. */
+  allocatedWorktreePath?: string;
   projectId: string;
   targetId: string;
   threadTitle?: string | null;
@@ -1169,6 +1171,18 @@ export async function createManagedWorktree(
   const worktreesRoot = input.managedRoot?.trim()
     ? path.resolve(input.managedRoot)
     : path.join(nodexHome, "worktrees");
+  const allocatedPath = input.allocatedWorktreePath;
+  if (allocatedPath) {
+    const relative = path.relative(worktreesRoot, allocatedPath);
+    if (
+      !path.isAbsolute(allocatedPath) ||
+      !relative ||
+      relative.startsWith("..") ||
+      path.isAbsolute(relative)
+    ) {
+      throw new Error("The allocated handoff worktree must be inside its managed root");
+    }
+  }
   await runAbortChecked(signal, () => mkdir(worktreesRoot, { recursive: true }));
   if (process.platform === "darwin") {
     await runAbortChecked(signal, () =>
@@ -1179,13 +1193,14 @@ export async function createManagedWorktree(
   for (let attempt = 0; attempt < 10; attempt += 1) {
     throwIfRequestAborted(signal);
     const token = randomUUID().slice(0, 4);
-    const worktreeGitRoot = path.join(worktreesRoot, token, worktreePathLeaf);
+    const worktreeGitRoot = allocatedPath ?? path.join(worktreesRoot, token, worktreePathLeaf);
     const worktreeWorkspaceRoot = resolveWorktreeWorkspaceRoot(
       worktreeGitRoot,
       sourceWorkspace.workspacePrefix,
     );
     const existing = await stat(worktreeGitRoot).catch(() => null);
     throwIfRequestAborted(signal);
+    if (existing && allocatedPath) throw new Error("The allocated handoff worktree already exists");
     if (existing) continue;
     await runAbortChecked(signal, () => mkdir(path.dirname(worktreeGitRoot), { recursive: true }));
 

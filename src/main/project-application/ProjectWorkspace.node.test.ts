@@ -151,6 +151,75 @@ const open = (modules: CoreModules["Service"]) =>
     return { scope, workspace };
   });
 
+it.effect(
+  "Thread admission distinguishes Core rejection, lost replies, and committed readback failure",
+  () =>
+    Effect.gen(function* () {
+      for (const outcome of ["rejected", "uncertain", "committed", "relinked"] as const) {
+        let applied = false;
+        const transportFailure = new CoreRuntimeError({
+          operation: "workspace.apply",
+          message: "Core connection lost",
+          reason: "operation",
+          retryable: false,
+          cause: new Error("Connection lost"),
+        });
+        const rejection = new CoreRuntimeError({
+          operation: "workspace.apply",
+          message: "Session already owns a Thread",
+          reason: "operation",
+          retryable: false,
+          cause: new CoreModuleResponseError({
+            code: "conflict",
+            message: "Session already owns a Thread",
+            retryable: false,
+            recovery: { kind: "none" },
+          }),
+        });
+        const reads: CoreModuleClients["workspace"]["read"] = (input) => {
+          if (applied && outcome === "relinked") {
+            return Effect.succeed({
+              value:
+                input.kind === "session"
+                  ? { kind: "session", session: session({ thread_id: "thread:other" }) }
+                  : { kind: "thread", thread: thread({ thread_id: "thread:other" }) },
+            } as ProjectWorkspaceReadSnapshot);
+          }
+          if (input.kind === "thread") return Effect.fail(notFound(input.thread_id));
+          if (input.kind !== "session") return Effect.die("Unexpected read");
+          if (applied) return Effect.fail(transportFailure);
+          return Effect.succeed({
+            value: { kind: "session", session: session({ thread_id: null }) },
+          } as ProjectWorkspaceReadSnapshot);
+        };
+        const apply: CoreModuleClients["workspace"]["apply"] = () =>
+          Effect.gen(function* () {
+            if (outcome === "rejected") return yield* rejection;
+            if (outcome === "uncertain") return yield* transportFailure;
+            applied = true;
+            return committed();
+          });
+        const { scope, workspace } = yield* open(core(reads, apply));
+        const failure = yield* workspace
+          .upsertProjectSessionThreadLink({
+            sessionId: "session:one",
+            projectId: "project:one",
+            threadId: "thread:new",
+            backendBinding: { kind: "claude", instanceConfigId: "work" },
+            cwd: "/managed/work",
+            managedWorktreePath: "/managed/work",
+            runtimeWorkspaceRoots: ["/managed/work"],
+          })
+          .pipe(Effect.flip);
+        assert.equal(
+          failure.threadAdmissionOutcome,
+          outcome === "relinked" ? "committed" : outcome,
+        );
+        yield* Scope.close(scope, Exit.void);
+      }
+    }),
+);
+
 it.effect("maps Core products and treats not-found as an optional domain result", () =>
   Effect.gen(function* () {
     const reads: CoreModuleClients["workspace"]["read"] = (input) => {

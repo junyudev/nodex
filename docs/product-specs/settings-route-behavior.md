@@ -36,9 +36,9 @@ keyed by page key rather than by route slug.
 
 The desktop groups are:
 
-- Personal: General, Import, Appearance, Agent, Keyboard shortcuts.
+- Personal: General, Appearance, Agent, Keyboard shortcuts.
 - Integrations: Browser, Computer use.
-- Coding: Hooks, Git, Environments, Worktrees.
+- Coding: Conversations, Hooks, Git, Environments, Worktrees.
 - Workspace: Pages.
 - Data & recovery: Backups.
 
@@ -48,6 +48,10 @@ for root preferences, automatic retention, grouped inventory, and safe removal.
 
 Browser subsections and detail pages remain children of Browser and do not
 become independent rail entries.
+
+Conversations owns the shared native Agent chooser, destination selection and explicit connection
+workflow described in [Native Conversation Connection Behavior](native-conversation-connection-behavior.md).
+The optional Copy data to Codex workflow remains visibly separate from continuing native conversations.
 
 General owns Permissions, general behavior, Composer, Files & links, Notifications, and app-server
 request diagnostics. Request diagnostics are captured only while the General page is open and show

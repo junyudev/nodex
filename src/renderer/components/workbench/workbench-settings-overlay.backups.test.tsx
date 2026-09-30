@@ -59,6 +59,9 @@ vi.mock("./workbench-settings-overlay-deps", async (importOriginal) => ({
     resolvedHomePath: "/Users/asc/.codex",
     source: "default",
     activeHomePath: "/Users/asc/.codex",
+    accountHomePath: "",
+    resolvedAccountHomePath: null,
+    activeAccountHomePath: null,
     restartRequired: false,
   }),
   readCodexPermissionState: async (projectId: string | null) =>

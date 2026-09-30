@@ -29,6 +29,7 @@ import { MainConfig } from "../../app/MainConfig";
 import { readActionableErrorMessage } from "../../actionable-error-message";
 import { CodexHomeContinuity } from "../../codex-application/CodexHomeContinuity";
 import { resolveCodexHome } from "../../codex/codex-home";
+import { inspectCodexAccountHome } from "../../platform/node/CodexAccountHome";
 import { isTrustedAppRendererIpcSender } from "../../app-renderer-ipc-authorization";
 import { ApplicationMenuRuntime } from "../../host-runtime/ApplicationMenuRuntime";
 import { DictationRuntime } from "../../host-runtime/DictationRuntime";
@@ -360,8 +361,16 @@ export const live: Layer.Layer<
               const target = yield* parse("resolve-codex-home", () =>
                 resolveCodexHome({
                   configuredHome: parsed.homePath,
+                  configuredAccountHome: parsed.accountHomePath ?? current.accountHomePath,
                   environment: config.environment,
                   homeDirectory: config.homeDirectory,
+                }),
+              );
+              yield* parse("validate-codex-account-home", () =>
+                inspectCodexAccountHome({
+                  sharedHome: target.resolvedHomePath,
+                  accountHome: target.resolvedAccountHomePath,
+                  platform: config.platform,
                 }),
               );
               yield* codexHomeContinuity

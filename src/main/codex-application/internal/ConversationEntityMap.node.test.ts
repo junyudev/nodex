@@ -212,3 +212,111 @@ it.effect("Main Scope close interrupts every lane and releases aggregate generat
     assert.isNull(conversations.current("thread-a"));
   }),
 );
+
+it.effect(
+  "drains accepted execution before sealing handoff and leaves recovery commands available",
+  () =>
+    Effect.gen(function* () {
+      const scope = yield* Scope.make();
+      const conversations = yield* build(scope);
+      const started = yield* Deferred.make<void>();
+      const release = yield* Deferred.make<void>();
+      const moving = yield* Deferred.make<void>();
+      const finishMove = yield* Deferred.make<void>();
+      const admission = yield* conversations
+        .admitExecution(
+          "thread-a",
+          Deferred.succeed(started, undefined).pipe(Effect.andThen(Deferred.await(release))),
+        )
+        .pipe(Effect.forkChild);
+      yield* Deferred.await(started);
+      const move = yield* conversations
+        .withExecutionHandoff(
+          "thread-a",
+          Deferred.succeed(moving, undefined).pipe(Effect.andThen(Deferred.await(finishMove))),
+        )
+        .pipe(Effect.forkChild);
+      yield* Effect.yieldNow;
+      assert.isFalse(yield* Deferred.isDone(moving));
+      yield* Deferred.succeed(release, undefined);
+      yield* Fiber.join(admission);
+      yield* Deferred.await(moving);
+      const rejected = yield* conversations
+        .admitExecution("thread-a", Effect.die("must not submit"))
+        .pipe(Effect.result);
+      assert.strictEqual(rejected._tag, "Failure");
+      let recovered = false;
+      yield* conversations.runCommand(
+        "thread-a",
+        Effect.sync(() => {
+          recovered = true;
+        }),
+      );
+      assert.isTrue(recovered);
+      yield* conversations.admitExecution("other-thread", Effect.void);
+      yield* Deferred.succeed(finishMove, undefined);
+      yield* Fiber.join(move);
+      yield* conversations.admitExecution("thread-a", Effect.void);
+      yield* Scope.close(scope, Exit.void);
+    }),
+);
+
+it.effect("reopens admission after handoff fails or is interrupted", () =>
+  Effect.gen(function* () {
+    const scope = yield* Scope.make();
+    const conversations = yield* build(scope);
+    const failed = yield* conversations
+      .withExecutionHandoff("thread-a", Effect.fail("move failed"))
+      .pipe(Effect.result);
+    assert.strictEqual(failed._tag, "Failure");
+    yield* conversations.admitExecution("thread-a", Effect.void);
+    const started = yield* Deferred.make<void>();
+    const moving = yield* conversations
+      .withExecutionHandoff(
+        "thread-a",
+        Deferred.succeed(started, undefined).pipe(Effect.andThen(Effect.never)),
+      )
+      .pipe(Effect.forkChild);
+    yield* Deferred.await(started);
+    yield* Fiber.interrupt(moving);
+    yield* conversations.admitExecution("thread-a", Effect.void);
+    yield* Scope.close(scope, Exit.void);
+  }),
+);
+
+it.effect(
+  "retains recovery admission protection across Thread retirement until verified repair",
+  () =>
+    Effect.gen(function* () {
+      const scope = yield* Scope.make();
+      const conversations = yield* build(scope);
+      const before = yield* conversations.executionEpoch("thread-a");
+      yield* conversations.withExecutionHandoff(
+        "thread-a",
+        conversations.setRecoveryRequired("thread-a", true),
+      );
+      const rejected = yield* conversations
+        .admitExecution("thread-a", Effect.die("must not execute"))
+        .pipe(Effect.result);
+      assert.strictEqual(rejected._tag, "Failure");
+      yield* conversations.retire("thread-a");
+      const reopened = yield* conversations
+        .admitExecution("thread-a", Effect.die("must remain blocked"))
+        .pipe(Effect.result);
+      assert.strictEqual(reopened._tag, "Failure");
+      yield* conversations.withExecutionHandoff(
+        "thread-a",
+        conversations.setRecoveryRequired("thread-a", false),
+      );
+      const stale = yield* conversations
+        .admitExecution("thread-a", Effect.die("old receipt"), before)
+        .pipe(Effect.result);
+      assert.strictEqual(stale._tag, "Failure");
+      yield* conversations.admitExecution(
+        "thread-a",
+        Effect.void,
+        yield* conversations.executionEpoch("thread-a"),
+      );
+      yield* Scope.close(scope, Exit.void);
+    }),
+);

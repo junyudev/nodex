@@ -34,6 +34,13 @@ port.on("message", (message) => {
   }
   if (message.type === "cancel") return;
   const request = message.request;
+  if (request.operation === "prepare-handoff") {
+    port.postMessage({ type: "result", id: message.id, operation: "prepare-handoff", result: {
+      type: "error", code: "operation-failed", message: "Destination dirty", retryable: true,
+      ...(request.input.threadTitle === "unknown" ? {} : { preparationRestored: request.input.threadTitle === "restored" }),
+    } });
+    return;
+  }
   if (request.operation !== "create") throw new Error("unexpected fixture operation");
   if (request.input.threadTitle === "crash") process.exit(23);
   const roots = {
@@ -142,6 +149,40 @@ it.effect("streams events and replaces a crashed worker generation", () =>
     );
     assert.deepEqual(events, ["path-allocated"]);
     assert.strictEqual(result.worktreeWorkspaceRoot, "/worktrees/abcd/repo/packages/app");
+    yield* Scope.close(scope, Exit.void);
+  }),
+);
+
+it.effect("preserves explicit preparation proof and keeps unknown failures uncertain", () =>
+  Effect.gen(function* () {
+    const { runtime, scope } = yield* acquire();
+    for (const title of ["restored", "uncertain", "unknown"]) {
+      const result = yield* runtime
+        .request({
+          operation: "prepare-handoff",
+          input: {
+            requestId: `proof:${title}`,
+            hostId: "local",
+            managedRoot: "/managed",
+            allocatedWorktreePath: "/managed/260930-1200-deadbeef",
+            nodexHome: "/nodex",
+            projectId: "project",
+            threadId: "thread",
+            threadTitle: title,
+            sourceCwd: "/repo",
+            sourceWorkspaceRoot: "/repo",
+            sourceManagedWorktreePath: null,
+            destinationCheckoutRoot: null,
+          },
+        })
+        .pipe(Effect.result);
+      assert.isTrue(Result.isFailure(result));
+      if (Result.isFailure(result))
+        assert.strictEqual(
+          result.failure.preparationRestored,
+          title === "unknown" ? undefined : title === "restored",
+        );
+    }
     yield* Scope.close(scope, Exit.void);
   }),
 );

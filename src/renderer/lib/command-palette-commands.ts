@@ -630,19 +630,18 @@ export function buildCommandPaletteCommands(
       ["skills", "plugins"],
       660,
     ),
-    command(
-      "forceReloadSkills",
-      "Skills",
-      "Force reload skills",
-      "Reload installed skills",
-      ["skills", "reload"],
-      650,
-      {
-        disabled: context.canReloadSkills === false,
-        disabledReason:
-          context.canReloadSkills === false ? "Select a task to reload its skills" : undefined,
-      },
-    ),
+    ...(context.canReloadSkills === true
+      ? [
+          command(
+            "forceReloadSkills",
+            "Skills",
+            "Force reload skills",
+            "Reload installed skills",
+            ["skills", "reload"],
+            650,
+          ),
+        ]
+      : []),
     command(
       "manageTasks",
       "App",

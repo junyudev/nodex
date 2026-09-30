@@ -5,7 +5,7 @@ use crate::agent::AgentBackendBinding;
 use crate::collection::{CollectionWindow, CollectionWindowRequest};
 use crate::{ModuleMutationReceipt, ModuleName, VersionedModuleContract};
 
-pub const PROJECT_WORKSPACE_CONTRACT_VERSION: u32 = 33;
+pub const PROJECT_WORKSPACE_CONTRACT_VERSION: u32 = 34;
 
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize, ToSchema)]
 #[serde(tag = "kind", rename_all = "snake_case")]
@@ -88,6 +88,11 @@ pub enum ProjectWorkspaceRead {
     },
     ThreadBackendSession {
         thread_id: String,
+    },
+    NativeSessionBindings {
+        backend_kind: ProjectWorkspaceNativeBackendKind,
+        native_home: String,
+        native_session_ids: Vec<String>,
     },
     ChildThreadWindow {
         parent_thread_id: String,
@@ -198,6 +203,9 @@ pub enum ProjectWorkspaceReadValue {
     },
     ThreadBackendSession {
         session: Option<ProjectWorkspaceThreadBackendSession>,
+    },
+    NativeSessionBindings {
+        bindings: Vec<ProjectWorkspaceNativeSessionBinding>,
     },
     ChildThreadWindow {
         threads: CollectionWindow<ProjectWorkspaceThreadSummary>,
@@ -493,10 +501,27 @@ pub struct ProjectWorkspaceThreadBackendSession {
     pub thread_id: String,
     pub backend_binding: AgentBackendBinding,
     pub backend_session_id: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub native_home: Option<String>,
     pub updated_at: i64,
     /// Host-observed native facts; transcript content remains owned by the Agent.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub native_state: Option<ProjectWorkspaceNativeAgentState>,
+}
+
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize, ToSchema)]
+pub struct ProjectWorkspaceNativeSessionBinding {
+    pub native_session_id: String,
+    pub thread_id: String,
+    pub session_id: Option<String>,
+    pub project_id: Option<String>,
+}
+
+#[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize, ToSchema)]
+#[serde(rename_all = "snake_case")]
+pub enum ProjectWorkspaceNativeBackendKind {
+    Codex,
+    Claude,
 }
 
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize, ToSchema)]
@@ -1383,10 +1408,25 @@ pub enum ProjectWorkspaceIntent {
         thread_id: String,
         location: ProjectWorkspaceThreadExecutionLocation,
     },
+    /// Admits one existing native conversation without creating or replaying Agent messages.
+    AttachNativeSession {
+        session_id: String,
+        thread_id: String,
+        project_id: Option<String>,
+        backend_binding: AgentBackendBinding,
+        native_session_id: String,
+        native_home: String,
+        title: String,
+        cwd: String,
+        created_at: i64,
+        updated_at: i64,
+    },
     BindThreadBackendSession {
         thread_id: String,
         backend_binding: AgentBackendBinding,
         backend_session_id: String,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        native_home: Option<String>,
         #[serde(default, skip_serializing_if = "Option::is_none")]
         expected_backend_session_id: Option<String>,
         #[serde(default, skip_serializing_if = "Option::is_none")]

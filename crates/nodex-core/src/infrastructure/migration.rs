@@ -276,6 +276,11 @@ const MIGRATION_STEPS: &[MigrationStep] = &[
         to_revision: 173,
         apply: migrate_v172_to_v173,
     },
+    MigrationStep {
+        from_revision: 173,
+        to_revision: 174,
+        apply: migrate_v173_to_v174,
+    },
 ];
 
 fn resolve_migration_path(
@@ -2267,6 +2272,21 @@ fn migrate_v171_to_v172(
         params![context.source_revision, context.target_revision, context.source_schema_fingerprint,
             context.target_schema_fingerprint, context.backup_name, context.completed_at_unix_ms,
             r#"{"native_claude_backend":true}"#],
+    )?;
+    connection.pragma_update(None, "user_version", context.target_revision)?;
+    Ok(())
+}
+
+fn migrate_v173_to_v174(
+    connection: &Connection,
+    context: &MigrationContext,
+) -> Result<(), StoreError> {
+    connection.execute_batch(include_str!("../../schema/migrations/v173_to_v174.sql"))?;
+    connection.execute(
+        "INSERT INTO core_store_migration_history(source_revision,target_revision,source_schema_fingerprint,target_schema_fingerprint,backup_name,completed_at_unix_ms,evidence_json) VALUES (?1,?2,?3,?4,?5,?6,?7)",
+        params![context.source_revision, context.target_revision, context.source_schema_fingerprint,
+            context.target_schema_fingerprint, context.backup_name, context.completed_at_unix_ms,
+            r#"{"native_session_scope":true}"#],
     )?;
     connection.pragma_update(None, "user_version", context.target_revision)?;
     Ok(())
@@ -6353,6 +6373,26 @@ mod tests {
         ).expect("preserved native session");
         assert_eq!(native_session, ("native-session".to_owned(), None));
         assert!(connection.execute("UPDATE thread_backend_sessions SET native_state_json='invalid' WHERE thread_id='codex'", []).is_err());
+        with_schema_rebuild_transaction(&mut connection, |transaction| {
+            migrate_v173_to_v174(
+                transaction,
+                &MigrationContext {
+                    source_revision: 173,
+                    target_revision: 174,
+                    backup_name: "native-home-test.db".to_owned(),
+                    source_schema_fingerprint: published_format(173)?.schema_fingerprint,
+                    target_schema_fingerprint: published_format(174)?.schema_fingerprint,
+                    completed_at_unix_ms: 4,
+                },
+            )?;
+            validate_schema_identity(transaction, 174)
+        })
+        .expect("native scope migration");
+        let preserved:(String,Option<String>)=connection.query_row("SELECT backend_session_id,native_home FROM thread_backend_sessions WHERE thread_id='codex'",[],|row|Ok((row.get(0)?,row.get(1)?))).expect("unclaimed older scope");
+        assert_eq!(preserved, ("native-session".to_owned(), None));
+        connection.execute("UPDATE thread_backend_sessions SET native_home='/native/home' WHERE thread_id='codex'",[]).expect("claim native home");
+        connection.execute_batch("INSERT INTO codex_threads(thread_id,created_at,updated_at,linked_at,agent_backend_kind,agent_backend_instance_config_id) VALUES ('duplicate',1,1,'today','claude','native-work');").expect("second metadata identity");
+        assert!(connection.execute("INSERT INTO thread_backend_sessions(thread_id,backend_kind,instance_config_id,backend_session_id,updated_at,native_home) VALUES ('duplicate','claude','native-work','native-session',2,'/native/home')",[]).is_err());
     }
 
     #[test]

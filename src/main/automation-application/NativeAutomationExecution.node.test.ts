@@ -120,6 +120,10 @@ const setup = (
           Effect.sync(() => {
             cancelled.push(threadId);
           }),
+        stopExecution: () => Effect.void,
+        withExecutionHandoff: (_threadId, use) => use,
+        setExecutionRecoveryRequired: () => Effect.void,
+        withExecutionLocation: (_threadId, _location, use) => use,
       }),
     ),
   };

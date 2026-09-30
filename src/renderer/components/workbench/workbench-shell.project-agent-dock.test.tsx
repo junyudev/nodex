@@ -1,7 +1,7 @@
 import "./workbench-testkit/workbench-shell-harness";
 import { act, fireEvent, waitFor, within } from "@testing-library/react";
 import { describe, expect, test } from "vite-plus/test";
-import { settleAsyncRender } from "../../test/dom";
+import { openNodexMenu, settleAsyncRender } from "../../test/dom";
 import {
   makeAttachedSession,
   makeBlankSession,
@@ -15,6 +15,7 @@ import {
   startThreadForSessionCalls,
 } from "./workbench-testkit/workbench-shell-harness";
 import type { ProjectAgentDockPendingWorktreeEntry } from "@/lib/project-agent-dock-model";
+import type { ProjectCreateInput } from "@/lib/types";
 
 function pendingWorktree(
   overrides: Partial<ProjectAgentDockPendingWorktreeEntry> = {},
@@ -181,6 +182,76 @@ describe("workbench session shell / Project Agent Dock", () => {
     ]);
     expect(screen.queryByTestId("project-database-surface") !== null).toBe(true);
     expect(screen.queryByTestId("session-thread-page")).toBe(null);
+  });
+
+  test("opens project creation from a selected draft in the Dock and resets the dialog after cancel", async () => {
+    const submitted: ProjectCreateInput[] = [];
+    const draft = makeBlankSession({
+      displayTitle: "Draft task",
+      noThreadFallbackTitle: "Draft task",
+    });
+    const screen = renderWorkbench({
+      projects: [makeProject()],
+      sessionsByProject: { alpha: [draft] },
+      initialSelectedSessionId: null,
+      onCreateProject: async (input) => {
+        submitted.push(input);
+        return makeProject("lab", input.name);
+      },
+    });
+    await settleAsyncRender();
+    await settleAsyncRender();
+
+    await act(async () => {
+      fireEvent.click(screen.getByLabelText("Connected chat: New chat"));
+      await Promise.resolve();
+    });
+    const picker = await screen.findByRole("listbox", { name: "Project chats" });
+    await act(async () => {
+      fireEvent.click(within(picker).getByRole("option", { name: /Draft task/ }));
+      await Promise.resolve();
+    });
+    await settleAsyncRender();
+
+    const openCreateDialog = async () => {
+      await openNodexMenu(screen.getByRole("button", { name: "Select project" }));
+      const newProject = await screen.findByRole("menuitem", { name: "New project" });
+      await act(async () => {
+        fireEvent.click(newProject);
+        await Promise.resolve();
+      });
+      return await screen.findByRole("dialog", { name: "Create project" });
+    };
+
+    const cancelledDialog = await openCreateDialog();
+    await act(async () => {
+      fireEvent.change(within(cancelledDialog).getByRole("textbox", { name: "Project name" }), {
+        target: { value: "Discarded" },
+      });
+      fireEvent.click(within(cancelledDialog).getByRole("button", { name: "Cancel" }));
+      await Promise.resolve();
+    });
+    await waitFor(() => {
+      expect(screen.queryByRole("dialog", { name: "Create project" })).toBeNull();
+    });
+    expect(submitted).toHaveLength(0);
+
+    const createDialog = await openCreateDialog();
+    expect(
+      within(createDialog).getByRole<HTMLInputElement>("textbox", { name: "Project name" }).value,
+    ).toBe("");
+    await act(async () => {
+      fireEvent.change(within(createDialog).getByRole("textbox", { name: "Project name" }), {
+        target: { value: "Lab" },
+      });
+      fireEvent.click(within(createDialog).getByRole("button", { name: "Create project" }));
+      await Promise.resolve();
+    });
+    await waitFor(() => {
+      expect(submitted).toEqual([expect.objectContaining({ name: "Lab", sources: [] })]);
+      expect(screen.queryByRole("dialog", { name: "Create project" })).toBeNull();
+    });
+    expect(startThreadForSessionCalls).toHaveLength(0);
   });
 
   test("recovers an exact pending worktree from canonical state and blocks another start", async () => {

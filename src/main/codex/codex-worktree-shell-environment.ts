@@ -1,9 +1,14 @@
 import { spawn } from "node:child_process";
 import { randomUUID } from "node:crypto";
-import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { mkdtemp, open, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir, userInfo } from "node:os";
 import path from "node:path";
 import { StringDecoder } from "node:string_decoder";
+import { z } from "zod";
+import {
+  ClaudeEnvironmentValueSchema,
+  ENVIRONMENT_NAME_PATTERN,
+} from "../../shared/claude-agent-settings";
 import { killChildProcessTree } from "../process-tree";
 
 export interface CodexStoredShellEnvironment {
@@ -11,6 +16,16 @@ export interface CodexStoredShellEnvironment {
   readonly set: Readonly<Record<string, string>>;
   readonly exclude: readonly string[];
 }
+
+const storedEnvironmentNameSchema = z.string().max(128).regex(ENVIRONMENT_NAME_PATTERN);
+const storedShellEnvironmentSchema = z
+  .object({
+    version: z.literal(1),
+    set: z.record(storedEnvironmentNameSchema, ClaudeEnvironmentValueSchema),
+    exclude: z.array(storedEnvironmentNameSchema),
+  })
+  .strict();
+const MAX_STORED_SHELL_ENVIRONMENT_BYTES = 1024 * 1024;
 
 const CODEX_SHELL_ENVIRONMENT_DELIMITER = "_SHELL_ENV_DELIMITER_";
 const CODEX_SHELL_ENVIRONMENT_COMMAND = [
@@ -44,13 +59,13 @@ interface CodexEnvironmentEntry {
   readonly value: string;
 }
 
-function normalizeCodexEnvironmentKey(key: string, platform: NodeJS.Platform): string {
+function normalizeCodexEnvironmentKey(key: string, platform: string): string {
   return platform === "win32" ? key.toUpperCase() : key;
 }
 
 function indexCodexEnvironment(
   environment: Readonly<Record<string, string>>,
-  platform: NodeJS.Platform,
+  platform: string,
 ): Map<string, CodexEnvironmentEntry> {
   const entries = new Map<string, CodexEnvironmentEntry>();
   for (const [key, value] of Object.entries(environment)) {
@@ -77,6 +92,22 @@ function compactProcessEnvironment(environment: NodeJS.ProcessEnv): Record<strin
       (entry): entry is [string, string] => typeof entry[1] === "string",
     ),
   );
+}
+
+/** Apply captured setup changes and removals without mutating the host environment. */
+export function applyCodexWorktreeShellEnvironment(
+  environment: Readonly<NodeJS.ProcessEnv>,
+  shellEnvironment: CodexStoredShellEnvironment | null | undefined,
+  platform: string = process.platform,
+): Record<string, string> {
+  const entries = indexCodexEnvironment(compactProcessEnvironment(environment), platform);
+  for (const key of shellEnvironment?.exclude ?? []) {
+    entries.delete(normalizeCodexEnvironmentKey(key, platform));
+  }
+  for (const [key, value] of Object.entries(shellEnvironment?.set ?? {})) {
+    entries.set(normalizeCodexEnvironmentKey(key, platform), { key, value });
+  }
+  return Object.fromEntries([...entries.values()].map(({ key, value }) => [key, value]));
 }
 
 function withoutCodexShellEnvironment(environment: NodeJS.ProcessEnv): Record<string, string> {
@@ -618,4 +649,34 @@ export async function persistCodexWorktreeShellEnvironmentAtGitPath(input: {
     return;
   }
   await writeFile(configPath, `${JSON.stringify(input.shellEnvironment, null, 2)}\n`, "utf8");
+}
+
+/** Read a bounded, validated setup delta after the Git owner has resolved its worktree-local path. */
+export async function loadCodexWorktreeShellEnvironmentAtGitPath(input: {
+  readonly cwd: string;
+  readonly gitPath: string;
+}): Promise<CodexStoredShellEnvironment | null> {
+  const configPath = path.isAbsolute(input.gitPath)
+    ? input.gitPath
+    : path.resolve(input.cwd, input.gitPath);
+  const file = await open(configPath, "r").catch((error: unknown) => {
+    if (error instanceof Error && "code" in error && error.code === "ENOENT") return null;
+    throw error;
+  });
+  if (!file) return null;
+  try {
+    const buffer = Buffer.alloc(MAX_STORED_SHELL_ENVIRONMENT_BYTES + 1);
+    let length = 0;
+    while (length < buffer.length) {
+      const { bytesRead } = await file.read(buffer, length, buffer.length - length, length);
+      if (bytesRead === 0) break;
+      length += bytesRead;
+    }
+    if (length > MAX_STORED_SHELL_ENVIRONMENT_BYTES) {
+      throw new Error("Worktree shell environment exceeds the supported size.");
+    }
+    return storedShellEnvironmentSchema.parse(JSON.parse(buffer.toString("utf8", 0, length)));
+  } finally {
+    await file.close();
+  }
 }

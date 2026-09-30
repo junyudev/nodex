@@ -1,9 +1,9 @@
 import { DEFAULT_CODEX_HOST_ID } from "../../../shared/codex-host";
-import { useQueryClient } from "@tanstack/react-query";
 import { toast } from "@/components/ui/toast";
-import { composerContextOperations } from "@/features/local-conversation/composer-context-operations";
-import { codexComposerSkillsListQueryOptions } from "@/lib/query-options";
-import { useSelectedWorkspaceSearchContext } from "@/lib/workbench-ui-scopes";
+import {
+  useSelectedConversationSkillsReloadControl,
+  useSelectedWorkspaceSearchContext,
+} from "@/lib/workbench-ui-scopes";
 import type { Dispatch, SetStateAction } from "react";
 import { copyConversationMarkdown } from "@/features/local-conversation/copy-conversation-markdown";
 import type { useWorkbenchPanelCommandRouter } from "@/lib/use-workbench-panel-command-router";
@@ -106,12 +106,12 @@ export function WorkbenchCommandPaletteHost({
   openKeyboardShortcuts,
   onOpenSessionInNewWindow,
 }: WorkbenchCommandPaletteHostProps) {
-  const queryClient = useQueryClient();
   const workspaceSearchContext = useSelectedWorkspaceSearchContext();
+  const skillsReloadControl = useSelectedConversationSkillsReloadControl();
   const pageCreateTargetResolution = usePageCreateTargetResolution(activeProjectId);
   const panelCapabilities = panelCommands.resolveActivePanelCapabilities("right");
   const commandContext: Omit<CommandPaletteShellCommandContext, "isMac" | "showMockCommands"> = {
-    canReloadSkills: workspaceSearchContext !== null,
+    canReloadSkills: skillsReloadControl !== null,
     canSearchFiles:
       workspaceSearchContext?.hostId === DEFAULT_CODEX_HOST_ID &&
       workspaceSearchContext.roots.length > 0,
@@ -220,15 +220,10 @@ export function WorkbenchCommandPaletteHost({
       sessionCommands.requestContentSearchOpen("command_palette");
     },
     forceReloadSkills: () => {
-      if (!workspaceSearchContext) return;
-      const { hostId, skillRoots } = workspaceSearchContext;
-      const options = codexComposerSkillsListQueryOptions(skillRoots, hostId);
-      void composerContextOperations
-        .reloadSkills(hostId, skillRoots)
-        .then((skills) => queryClient.setQueryData(options.queryKey, skills))
-        .catch((error: unknown) => {
-          toast.danger(error instanceof Error ? error.message : "Could not reload skills");
-        });
+      if (!skillsReloadControl) return;
+      void skillsReloadControl.reload().catch((error: unknown) => {
+        toast.danger(error instanceof Error ? error.message : "Could not reload skills");
+      });
     },
     manageTasks: openAutomations,
     openLibraryFiles,

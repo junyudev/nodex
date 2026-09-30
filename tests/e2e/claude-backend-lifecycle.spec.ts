@@ -1,13 +1,21 @@
-import { expect, test, type Page } from "@playwright/test";
-import { existsSync, readFileSync, writeFileSync } from "node:fs";
+import { expect, test, type Locator, type Page } from "@playwright/test";
+import { execFileSync } from "node:child_process";
+import { existsSync, mkdirSync, readFileSync, realpathSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { pathToFileURL } from "node:url";
 import {
   ElectronScenarioHarness,
   readBoundedElectronRuntimeLogs,
 } from "../../scripts/scenarios/harness/electron-e2e-harness";
+import { RendererIpcSeedAdapter } from "../../scripts/scenarios/adapters/renderer-ipc-seed-adapter";
+import { materializeScenario } from "../../scripts/scenarios/seed/scenario-seed";
+import { AGENT_CLI_SCENARIO_ID } from "../../scripts/scenarios/scenarios/agent-cli-workflow";
 import type { AgentBackendSessionPresentation } from "../../src/shared/agent-conversation";
-import type { ProjectSession } from "../../src/shared/types";
+import type {
+  ProjectSession,
+  WorktreeEnvironmentSaveResult,
+  WorktreeEnvironmentSettingsSnapshot,
+} from "../../src/shared/types";
 import { createBoundedOperationId } from "../../src/shared/operation-identity";
 import { createUuidV7 } from "../../src/shared/uuid-v7";
 
@@ -22,16 +30,37 @@ const invoke = async <Result>(page: Page, channel: string, ...args: unknown[]): 
     { channel, args },
   );
 
-test("applies native permissions and intelligence and restores the Claude conversation after restart", async () => {
+const runGit = (cwd: string, args: readonly string[]): string =>
+  execFileSync("git", [...args], { cwd, encoding: "utf8" }).trim();
+
+const chevronGeometry = async (trigger: Locator) =>
+  await trigger
+    .locator("svg")
+    .last()
+    .evaluate((element) => {
+      const style = getComputedStyle(element);
+      const bounds = element.getBoundingClientRect();
+      return {
+        width: bounds.width,
+        height: bounds.height,
+        cssWidth: style.width,
+        cssHeight: style.height,
+      };
+    });
+
+test("runs Claude in the selected worktree environment and restores its native conversation and controls after restart", async () => {
   test.setTimeout(120_000);
   const harness = await ElectronScenarioHarness.create({
     label: "claude-backend-lifecycle",
     environment: {
+      // This locates tool resources; writable Profile and Git sources stay in the harness.
       NODEX_TEST_AGENT_RUNTIME_PROJECT_ROOT: path.resolve("."),
       NODEX_LOG_FILE: "1",
       NODEX_LOG_FILE_LEVEL: "debug",
     },
   });
+  const sourceRoot = realpathSync(harness.profile.initialProjectsDirectory);
+  const managedRoot = path.join(harness.profile.runRoot, "managed worktrees");
   const binaryPath = path.join(harness.profile.runRoot, "claude");
   const fixtureUrl = pathToFileURL(
     path.resolve("scripts/scenarios/runtime/scripted-claude-agent.mjs"),
@@ -54,8 +83,52 @@ test("applies native permissions and intelligence and restores the Claude conver
       .map((line) => JSON.parse(line));
   };
   try {
+    mkdirSync(managedRoot, { recursive: true });
+    writeFileSync(path.join(sourceRoot, "README.md"), "Isolated Claude workspace\n");
+    runGit(sourceRoot, ["init", "--initial-branch=main"]);
+    runGit(sourceRoot, ["config", "user.name", "Nodex Claude E2E"]);
+    runGit(sourceRoot, ["config", "user.email", "claude-e2e@nodex.invalid"]);
+    runGit(sourceRoot, ["add", "."]);
+    runGit(sourceRoot, ["commit", "-m", "Prepare isolated Claude workspace"]);
     let page = await harness.launch();
     page.on("pageerror", (error) => rendererErrors.push(error.message));
+    const manifest = await materializeScenario(
+      AGENT_CLI_SCENARIO_ID,
+      new RendererIpcSeedAdapter(page),
+      sourceRoot,
+    );
+    await invoke(page, "worktrees:settings:update", {
+      worktreeRoot: managedRoot,
+      autoDeleteEnabled: false,
+    });
+    const environment = await invoke<WorktreeEnvironmentSettingsSnapshot>(
+      page,
+      "worktrees:environments:config:read",
+      manifest.projectId,
+    );
+    const environmentSaved = await invoke<WorktreeEnvironmentSaveResult>(
+      page,
+      "worktrees:environments:config:save",
+      {
+        projectId: manifest.projectId,
+        configPath: environment.configPath,
+        expectedRevision: environment.revision,
+        environment: {
+          version: 1,
+          name: "Claude lifecycle",
+          setup: {
+            script:
+              "export NODEX_E2E_WORKTREE_ENV=prepared\nprintf 'prepared\\n' > .claude-worktree-ready",
+            platformScripts: {},
+          },
+          cleanup: { script: null, platformScripts: {} },
+          actions: [],
+        },
+      },
+    );
+    expect(environmentSaved).toEqual({ type: "success" });
+    runGit(sourceRoot, ["add", ".codex"]);
+    runGit(sourceRoot, ["commit", "-m", "Configure isolated worktree environment"]);
     await invoke(page, "settings:claude-agents:update", {
       instances: [
         {
@@ -83,7 +156,10 @@ test("applies native permissions and intelligence and restores the Claude conver
     });
     await expect(page.getByLabel("Variable value 1")).toHaveValue("https://router.example/");
     await expect(page.getByLabel("Variable value 2")).toHaveAttribute("type", "password");
-    await page.getByRole("button", { name: "Save", exact: true }).click();
+    await page
+      .getByLabel("Agent backends", { exact: true })
+      .getByRole("button", { name: "Save", exact: true })
+      .click();
     await expect(page.getByLabel("Variable value 2")).toHaveValue("");
     await expect(page.getByLabel("Variable value 2")).toHaveAttribute(
       "placeholder",
@@ -103,37 +179,51 @@ test("applies native permissions and intelligence and restores the Claude conver
       "e2e-environment-token",
     );
     await page.getByRole("button", { name: "Back to app" }).click();
-    const projects = await invoke<{ items: { id: string; primaryWorkspaceRoot: string | null }[] }>(
-      page,
-      "projects:list",
-    );
-    const project = projects.items.find(
-      ({ primaryWorkspaceRoot }) => primaryWorkspaceRoot !== null,
-    );
-    if (!project) throw new Error("A local Project is required");
     const sessionId = createUuidV7();
     const created = await invoke<{ ok: boolean }>(page, "project-sessions:create", {
       operationId: createBoundedOperationId("e2e.claude.create"),
       payload: {
         sessionId,
         input: {
-          projectId: project.id,
+          projectId: manifest.projectId,
           noThreadFallbackTitle: "Native Claude lifecycle",
           initialPageIds: [],
         },
       },
     });
     expect(created.ok).toBe(true);
+    const projectRow = page.locator(`[data-app-action-sidebar-project-id="${manifest.projectId}"]`);
+    await projectRow.hover();
+    const expandProject = projectRow.getByRole("button", { name: "Expand project", exact: true });
+    if (await expandProject.count()) await expandProject.click();
     await page.getByText("Native Claude lifecycle", { exact: true }).first().click();
     const composer = page
       .locator('[data-codex-composer="true"][contenteditable="true"]:visible')
       .first();
     await composer.fill("Native Claude lifecycle");
+    const startIn = page.getByRole("button", { name: "Start in", exact: true });
+    await expect(startIn).toHaveText("Work locally");
+    const codexChevron = await chevronGeometry(startIn);
     await page.getByRole("button", { name: "Select model", exact: true }).click();
     await page.getByRole("menuitem", { name: "Agent Codex", exact: true }).hover();
     await page.getByRole("menuitem", { name: "Claude Code", exact: true }).click();
     await page.keyboard.press("Escape");
     await page.keyboard.press("Escape");
+    await expect(startIn).toBeEnabled();
+    await expect(startIn).toHaveText("Work locally");
+    const claudeChevron = await chevronGeometry(startIn);
+    expect(claudeChevron).toEqual(codexChevron);
+    expect(claudeChevron.width).toBeGreaterThan(0);
+    expect(claudeChevron.height).toBeGreaterThan(0);
+    const geometryEvidence = JSON.stringify({ codex: codexChevron, claude: claudeChevron });
+    writeFileSync(
+      test.info().outputPath("shared-location-chevron-geometry.json"),
+      geometryEvidence,
+    );
+    await test.info().attach("shared-location-chevron-geometry", {
+      body: geometryEvidence,
+      contentType: "application/json",
+    });
     await expect(composer).toHaveText("Native Claude lifecycle");
     await page.getByRole("button", { name: "Select model", exact: true }).click();
     await page.getByRole("menuitem", { name: "Model Claude Opus 5", exact: true }).hover();
@@ -152,12 +242,38 @@ test("applies native permissions and intelligence and restores the Claude conver
     await page.getByRole("menuitem", { name: "Max", exact: true }).click();
     await expect(page.getByRole("menuitem", { name: "Effort Max", exact: true })).toBeVisible();
     await page.keyboard.press("Escape");
-    await page.getByRole("menuitem", { name: "Fast Off", exact: true }).hover();
-    await page.getByRole("menuitem", { name: "On", exact: true }).click();
-    await expect(page.getByRole("menuitem", { name: "Fast On", exact: true })).toBeVisible();
+    await page.getByRole("menuitem", { name: "Speed Standard", exact: true }).hover();
+    await expect(page.getByRole("menuitem", { name: "Standard", exact: true })).toBeVisible();
+    await page.screenshot({
+      animations: "disabled",
+      path: test.info().outputPath("claude-speed-picker.png"),
+    });
+    await page.getByRole("menuitem", { name: "Fast", exact: true }).click();
+    await expect(page.getByRole("menuitem", { name: "Speed Fast", exact: true })).toBeVisible();
     await expect(page.getByRole("menuitem", { name: "Default", exact: true })).toHaveCount(0);
     await page.keyboard.press("Escape");
     await page.keyboard.press("Escape");
+    await expect(page.getByRole("menuitem", { name: "Speed Fast", exact: true })).toHaveCount(0);
+    await expect(startIn).toHaveText("Work locally");
+    await expect(startIn).toBeEnabled();
+    await startIn.click();
+    const newWorktree = page.locator('[data-new-chat-start-in-option="newWorktree"]');
+    await expect(newWorktree).toBeEnabled();
+    await page.screenshot({
+      animations: "disabled",
+      path: test.info().outputPath("claude-start-in-menu.png"),
+    });
+    await newWorktree.click();
+    await expect(startIn).toHaveText("New worktree");
+    await page.getByRole("button", { name: "Select worktree environment", exact: true }).click();
+    await page.getByRole("menuitem", { name: "Claude lifecycle", exact: true }).click();
+    await expect(
+      page.getByRole("button", { name: "Select worktree environment", exact: true }),
+    ).toContainText("Claude lifecycle");
+    await page.screenshot({
+      animations: "disabled",
+      path: test.info().outputPath("claude-shared-controls.png"),
+    });
     await page.getByRole("button", { name: "Change permissions", exact: true }).click();
     const fullAccess = page.getByRole("menuitem", { name: /^Full access/u });
     await expect(fullAccess).toBeEnabled();
@@ -182,6 +298,15 @@ test("applies native permissions and intelligence and restores the Claude conver
     const linked = await invoke<ProjectSession>(page, "project-sessions:get", sessionId);
     if (!linked.thread) throw new Error("Native task was not attached");
     const threadId = linked.thread.threadId;
+    const worktreePath = linked.thread.managedWorktreePath;
+    if (!worktreePath) throw new Error("Claude did not retain its managed worktree");
+    expect(worktreePath.startsWith(`${realpathSync(managedRoot)}${path.sep}`)).toBe(true);
+    expect(worktreePath).not.toBe(sourceRoot);
+    expect(linked.thread.cwd).toBe(worktreePath);
+    expect(readFileSync(path.join(worktreePath, ".claude-worktree-ready"), "utf8")).toBe(
+      "prepared\n",
+    );
+    expect(runGit(worktreePath, ["rev-parse", "--show-toplevel"])).toBe(worktreePath);
     linkedThreadId = threadId;
     await expect
       .poll(async () => {
@@ -258,13 +383,27 @@ test("applies native permissions and intelligence and restores the Claude conver
     await expect(page.getByRole("button", { name: "Send prompt", exact: true })).toBeVisible();
     await page.screenshot({ path: test.info().outputPath("claude-conversation.png") });
     expect(observations().find(({ type }) => type === "prompt")).toMatchObject({
+      cwd: worktreePath,
       model: "claude-opus-5",
       effort: "max",
       permissionMode: "bypassPermissions",
       fast: true,
       thinking: true,
       content: "Native Claude lifecycle",
-      environment: { baseUrl: "https://router.example/", tokenMatches: true, apiKeyEmpty: true },
+      environment: {
+        baseUrl: "https://router.example/",
+        tokenMatches: true,
+        apiKeyEmpty: true,
+        worktreeEnv: "prepared",
+      },
+    });
+    expect(
+      observations().find(({ type, persistent }) => type === "launch" && persistent),
+    ).toMatchObject({
+      cwd: worktreePath,
+      sessionId: completed.snapshot.sessionId,
+      resumed: false,
+      worktreeEnv: "prepared",
     });
     expect(
       observations().find(
@@ -304,9 +443,9 @@ test("applies native permissions and intelligence and restores the Claude conver
     await page.getByRole("menuitem", { name: "Off", exact: true }).click();
     await expect(page.getByRole("menuitem", { name: "Effort Off", exact: true })).toBeVisible();
     await page.keyboard.press("Escape");
-    await page.getByRole("menuitem", { name: "Fast On", exact: true }).hover();
-    await page.getByRole("menuitem", { name: "Off", exact: true }).click();
-    await expect(page.getByRole("menuitem", { name: "Fast Off", exact: true })).toBeVisible();
+    await page.getByRole("menuitem", { name: "Speed Fast", exact: true }).hover();
+    await page.getByRole("menuitem", { name: "Standard", exact: true }).click();
+    await expect(page.getByRole("menuitem", { name: "Speed Standard", exact: true })).toBeVisible();
     await page.keyboard.press("Escape");
     await page.keyboard.press("Escape");
     await composer.fill("Verify thinking disabled");
@@ -391,6 +530,18 @@ test("applies native permissions and intelligence and restores the Claude conver
       { threadId },
     );
     expect(reopened.snapshot.sessionId).toBe(completed.snapshot.sessionId);
+    expect(
+      observations()
+        .filter(({ type, persistent }) => type === "launch" && persistent)
+        .at(-1),
+    ).toMatchObject({
+      sessionId: completed.snapshot.sessionId,
+      resumed: true,
+      cwd: worktreePath,
+      worktreeEnv: "prepared",
+    });
+    const restored = await invoke<ProjectSession>(page, "project-sessions:get", sessionId);
+    expect(restored.thread).toMatchObject({ cwd: worktreePath, managedWorktreePath: worktreePath });
     expect(reopened.snapshot.turns.flatMap(({ updates }) => updates)).toEqual(
       expect.arrayContaining([
         expect.objectContaining({ kind: "message", text: "Native Claude workflow complete" }),

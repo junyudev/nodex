@@ -25,6 +25,7 @@ The palette is a transient overlay and does not become part of durable navigatio
 - The palette searches the complete authorized Page corpus of every available Project context, not only Pages already loaded by a Board or the active Project.
 - The palette combines the current non-archived local chat catalog with eligible root chats returned by app-server search. A server-only result is materialized locally only when opened.
 - `Search files` is available when the selected context has local workspace roots. It shares native search lifecycle and ranking with the Composer and Files panel. `Tab` or `Enter` on a directory completes its path; accepting a file opens a preview. Remote contexts do not expose local file opening.
+- `Force reload skills` is available when the selected chat supports skill discovery. It refreshes that chat's provider and scope, including its Claude Profile and Project or Codex execution host and skill roots. Unsupported providers do not expose the command. A pending refresh cannot replace another chat's inventory after selection changes.
 - The palette closes after executing a result.
 - Pressing `Enter` on a selected Page result materializes and selects that Page as a durable
   surface: in the active Session when one owns the workbench, otherwise in the target Project

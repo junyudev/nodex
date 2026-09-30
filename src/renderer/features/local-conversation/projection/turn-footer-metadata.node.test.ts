@@ -131,18 +131,7 @@ describe("turn footer metadata", () => {
     expect(metadata?.memories).toEqual([citation]);
   });
 
-  test("rating does not depend on copyable text and preview permits streaming copy", () => {
-    const answer = item("answer", { assistantPhase: "final_answer" });
-    const completed = buildTurnRenderModel({
-      turn: turn([answer]),
-      requests: [],
-      isLatestTurn: true,
-      isStreamingTurn: false,
-    });
-    expect(completed.buckets.assistantItem?.assistantMessageActions).toMatchObject({
-      copyText: null,
-      canRate: true,
-    });
+  test("preview permits streaming copy without enabling main transcript actions", () => {
     const running = turn(
       [
         item("answer", {
@@ -162,7 +151,6 @@ describe("turn footer metadata", () => {
     });
     expect(preview.buckets.assistantItem?.assistantMessageActions).toMatchObject({
       copyText: "Partial reply",
-      canRate: false,
       showTimestampWithoutActions: true,
     });
     const main = buildTurnRenderModel({

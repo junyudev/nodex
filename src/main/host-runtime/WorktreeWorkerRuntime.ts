@@ -54,7 +54,7 @@ interface QueuedPendingMessage {
 
 interface PendingRequest {
   readonly operation: CodexWorktreeWorkerOperation;
-  readonly onEvent: (event: CodexWorktreeWorkerEvent) => Effect.Effect<void>;
+  readonly onEvent: (event: CodexWorktreeWorkerEvent) => Effect.Effect<void, Error>;
   readonly messages: Queue.Queue<QueuedPendingMessage>;
   readonly reply: Deferred.Deferred<CodexWorktreeWorkerSuccess, WorktreeWorkerError>;
   readonly session: WorkerSession;
@@ -72,6 +72,7 @@ export class WorktreeWorkerError extends Schema.TaggedError<WorktreeWorkerError>
     operation: Schema.String,
     message: Schema.String,
     cause: Schema.Defect(),
+    preparationRestored: Schema.optional(Schema.Boolean),
   },
 ) {}
 
@@ -92,7 +93,7 @@ export class WorktreeWorkerRuntime extends Context.Service<
 >()("nodex/main/host-runtime/WorktreeWorkerRuntime") {}
 
 export interface WorktreeWorkerRequestOptions {
-  readonly onEvent?: (event: CodexWorktreeWorkerEvent) => Effect.Effect<void>;
+  readonly onEvent?: (event: CodexWorktreeWorkerEvent) => Effect.Effect<void, Error>;
 }
 
 export interface LocalWorktreeWorkerOptions {
@@ -296,7 +297,14 @@ export const makeWorktreeWorkerClient = (options: WorktreeWorkerClientOptions) =
           if (message.result.type === "error") {
             yield* Deferred.fail(
               pending.reply,
-              failure("worker-result", message.result.message, new Error(message.result.message)),
+              new WorktreeWorkerError({
+                operation: "worker-result",
+                message: message.result.message,
+                cause: new Error(message.result.message),
+                ...(message.result.preparationRestored !== undefined
+                  ? { preparationRestored: message.result.preparationRestored }
+                  : {}),
+              }),
             );
             return;
           }

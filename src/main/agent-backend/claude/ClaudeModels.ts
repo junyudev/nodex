@@ -172,7 +172,7 @@ export function validateClaudeSelection(
     return null;
   const modelId =
     selection.model === "default"
-      ? (models.find(({ value }) => value === "default")?.resolvedModel ?? retainedModel)
+      ? (retainedModel ?? models.find(({ value }) => value === "default")?.resolvedModel)
       : selection.model;
   const model = claudeModelOptions(models, retainedModel, customModels).find(
     ({ value }) => value === modelId,

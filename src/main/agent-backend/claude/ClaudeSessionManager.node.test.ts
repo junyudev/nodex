@@ -7,6 +7,7 @@ import type {
   SessionMessage,
   ModelInfo,
   PermissionMode,
+  SDKSessionInfo,
 } from "@anthropic-ai/claude-agent-sdk";
 import { it } from "@effect/vitest";
 import { expect } from "vite-plus/test";
@@ -21,18 +22,27 @@ import { testLayer as mainConfigLayer } from "../../app/MainConfig";
 import { ApplicationSettings, make as makeSettings } from "../../settings/ApplicationSettings";
 import {
   ClaudeSdk,
+  claudeEnvironment,
   claudeHistoryWindow,
   type ClaudeSdkOpenInput,
   type ClaudeSdkSession,
 } from "../../platform/node/ClaudeSdk";
 import { make as makeManager, type OpenClaudeSessionInput } from "./ClaudeSessionManager";
-import { agentRuntimeError } from "../AgentRuntimeError";
+import { agentRuntimeError, type AgentRuntimeError } from "../AgentRuntimeError";
 import type { AgentSessionHandle } from "../AgentSessionHandle";
 import { defaultClaudeInstance } from "../../../shared/claude-agent-settings";
 import { createUuidV7 } from "../../../shared/uuid-v7";
-import type { ClaudeEffortSelection, ClaudeModelSelection } from "../../../shared/claude-models";
+import {
+  claudeModelWithContext,
+  type ClaudeEffortSelection,
+  type ClaudeModelSelection,
+} from "../../../shared/claude-models";
 import type { ClaudeResolvedIntelligence } from "../../../shared/claude-models";
 import type { AgentSessionPermissionPolicy } from "../AgentSessionHandle";
+import {
+  loadCodexWorktreeShellEnvironmentAtGitPath,
+  persistCodexWorktreeShellEnvironmentAtGitPath,
+} from "../../codex/codex-worktree-shell-environment";
 
 const id = "01991e60-b800-7000-8000-000000000012";
 const result = (sessionId: string) =>
@@ -46,7 +56,7 @@ const result = (sessionId: string) =>
     modelUsage: {},
     total_cost_usd: 0,
   }) as unknown as SDKMessage;
-const fixture = (ignoreInterrupt = false) =>
+const fixture = (ignoreInterrupt = false, platform = "darwin") =>
   Effect.gen(function* () {
     const root = yield* Effect.acquireRelease(
       Effect.promise(() => mkdtemp(join(tmpdir(), "nodex-claude-test-"))),
@@ -65,10 +75,16 @@ const fixture = (ignoreInterrupt = false) =>
     let mutationFailure = false;
     let modeFailure = false;
     let reopenFailure = false;
+    const rejectedDirectories = new Set<string>();
     let historyFailure = false;
     let forkFailure = false;
     let forkMessageIds: Readonly<Record<string, string>> | undefined;
     let nativeSaved = true;
+    let nativeMetadataFailure = false;
+    let inheritedModel: string | null = "claude-sonnet-5";
+    let ignoreContext = false;
+    const nativeMetadataIds: string[] = [];
+    let catalog: SDKSessionInfo[] = [];
     const openedInputs: ClaudeSdkOpenInput[] = [];
     const sentInputs: {
       text: string;
@@ -137,7 +153,24 @@ const fixture = (ignoreInterrupt = false) =>
         );
       });
     const sdk = ClaudeSdk.of({
-      hasSession: () => Effect.sync(() => nativeSaved),
+      nativeHome: (input) => Effect.succeed(input.instance.configDirectory || "/native-home"),
+      listSessions: (_input, offset) => Effect.succeed(catalog.slice(offset, offset + 51)),
+      sessionInfo: (_input, sessionId) =>
+        Effect.succeed(catalog.find((entry) => entry.sessionId === sessionId) ?? null),
+      hasSession: (input) =>
+        Effect.suspend(() => {
+          nativeMetadataIds.push(input.sessionId);
+          if (nativeMetadataFailure)
+            return Effect.fail(
+              agentRuntimeError({
+                operation: "fixture.metadata",
+                reason: "request",
+                retryable: false,
+                cause: new Error("Native metadata is unreadable"),
+              }),
+            );
+          return Effect.succeed(nativeSaved);
+        }),
       historyImage: () => Effect.succeed({ mediaType: "image/png" as const, data: "AA==" }),
       historyToolOutput: () =>
         Effect.succeed({ text: "full native tool output", truncated: false, originalBytes: 23 }),
@@ -186,7 +219,7 @@ const fixture = (ignoreInterrupt = false) =>
             opened = input;
             openedInputs.push(input);
             let intelligence: ClaudeResolvedIntelligence = {
-              model: input.model ?? "claude-sonnet-5",
+              model: input.model ?? inheritedModel,
               effort: input.effort ?? "high",
               fast: input.fast ?? false,
               thinking: input.thinking ?? true,
@@ -244,7 +277,18 @@ const fixture = (ignoreInterrupt = false) =>
                     );
                     selectedEfforts.push(selection.effort);
                     intelligence = {
-                      model: selection.model === "default" ? "claude-sonnet-5" : selection.model,
+                      model:
+                        selection.model === "default"
+                          ? inheritedModel
+                            ? claudeModelWithContext(
+                                inheritedModel,
+                                ignoreContext ? undefined : selection.context,
+                              )
+                            : null
+                          : claudeModelWithContext(
+                              selection.model,
+                              ignoreContext ? undefined : selection.context,
+                            ),
                       effort: selection.effort === "default" ? "high" : selection.effort,
                       fast: selection.fast ?? false,
                       thinking: selection.thinking ?? true,
@@ -289,7 +333,7 @@ const fixture = (ignoreInterrupt = false) =>
             }),
         ).pipe(
           Effect.tap(() =>
-            reopenFailure && openedInputs.length > 1
+            (reopenFailure && openedInputs.length > 1) || rejectedDirectories.has(input.cwd)
               ? Effect.fail(
                   agentRuntimeError({
                     operation: "fixture.initialize",
@@ -305,7 +349,7 @@ const fixture = (ignoreInterrupt = false) =>
     const manager = yield* makeManager.pipe(
       Effect.provideService(ApplicationSettings, settings),
       Effect.provideService(ClaudeSdk, sdk),
-      Effect.provide(mainConfigLayer({ environment: { HOME: root, PATH: "/usr/bin" } })),
+      Effect.provide(mainConfigLayer({ platform, environment: { HOME: root, PATH: "/usr/bin" } })),
     );
     const open = (sessionId?: string, selection?: Partial<OpenClaudeSessionInput>) =>
       manager.open({
@@ -322,10 +366,18 @@ const fixture = (ignoreInterrupt = false) =>
     };
     return {
       manager,
+      root,
+      setCatalog: (entries: SDKSessionInfo[]) => {
+        catalog = entries;
+      },
       openedInputs,
       sentInputs,
       stoppedTasks,
       historyPages,
+      nativeMetadataIds,
+      rejectNativeMetadata: () => {
+        nativeMetadataFailure = true;
+      },
       setNativeSaved: (value: boolean) => {
         nativeSaved = value;
       },
@@ -334,6 +386,9 @@ const fixture = (ignoreInterrupt = false) =>
       },
       rejectReopen: () => {
         reopenFailure = true;
+      },
+      rejectDirectory: (cwd: string) => {
+        rejectedDirectories.add(cwd);
       },
       rejectHistory: () => {
         historyFailure = true;
@@ -357,6 +412,12 @@ const fixture = (ignoreInterrupt = false) =>
       setModels: (value: readonly ModelInfo[]) => {
         models = value;
       },
+      setInheritedModel: (value: string | null) => {
+        inheritedModel = value;
+      },
+      ignoreContext: () => {
+        ignoreContext = true;
+      },
       rejectMode: () => {
         modeFailure = true;
       },
@@ -376,6 +437,104 @@ const waitForRequest = (handle: AgentSessionHandle) =>
     Stream.filter((snapshot) => (snapshot.requests?.length ?? 0) > 0),
     Stream.runHead,
   );
+
+it.effect(
+  "native catalogs paginate without launching and reject changed profiles or missing sessions",
+  () =>
+    Effect.gen(function* () {
+      const f = yield* fixture();
+      f.setCatalog(
+        Array.from({ length: 52 }, (_entry, index) => ({
+          sessionId: `native-${index}`,
+          summary: `Native ${index}`,
+          cwd: f.root,
+          lastModified: 100 - index,
+        })),
+      );
+      const first = yield* f.manager.nativeCatalog({ instanceConfigId: "claude-default" });
+      expect(first.entries).toHaveLength(50);
+      expect(first.nextCursor).not.toBeNull();
+      const second = yield* f.manager.nativeCatalog({
+        instanceConfigId: "claude-default",
+        cursor: first.nextCursor!,
+      });
+      expect(second.entries.map(({ nativeSessionId }) => nativeSessionId)).toEqual([
+        "native-50",
+        "native-51",
+      ]);
+      expect(second.nextCursor).toBeNull();
+      expect(
+        yield* f.manager.nativeSessionInfo({
+          instanceConfigId: "claude-default",
+          nativeSessionId: "native-1",
+          expectedHome: first.nativeHome,
+        }),
+      ).toMatchObject({ sessionId: "native-1", cwd: f.root, nativeHome: first.nativeHome });
+      expect(
+        (yield* Effect.result(
+          f.manager.nativeSessionInfo({
+            instanceConfigId: "claude-default",
+            nativeSessionId: "missing",
+            expectedHome: first.nativeHome,
+          }),
+        ))._tag,
+      ).toBe("Failure");
+      yield* f.settings.update({
+        type: "update-claude-agents",
+        input: { instances: [{ ...defaultClaudeInstance(), configDirectory: "/other-home" }] },
+      });
+      expect(
+        (yield* Effect.result(
+          f.manager.nativeCatalog({
+            instanceConfigId: "claude-default",
+            cursor: first.nextCursor!,
+          }),
+        ))._tag,
+      ).toBe("Failure");
+      expect(
+        (yield* Effect.result(
+          f.manager.nativeSessionInfo({
+            instanceConfigId: "claude-default",
+            nativeSessionId: "native-1",
+            expectedHome: first.nativeHome,
+          }),
+        ))._tag,
+      ).toBe("Failure");
+      expect(f.openedInputs).toEqual([]);
+    }).pipe(Effect.scoped),
+);
+
+it.effect("recovers native history saved before the first Core turn observation", () =>
+  Effect.gen(function* () {
+    const f = yield* fixture();
+    const handle = yield* f.open(id, { everSaved: false, expectedHome: "/native-home" });
+    expect(f.nativeMetadataIds).toEqual([id]);
+    expect(f.historySession()).toBe(id);
+    expect(f.sdkInput()).toMatchObject({ sessionId: id, resume: true });
+    expect((yield* SubscriptionRef.get(handle.snapshot)).turns[0]?.promptText).toBe("Remember 42");
+    expect(f.sentInputs).toEqual([]);
+  }).pipe(Effect.scoped),
+);
+
+it.effect("keeps a truly unsaved allocated UUID new and fails closed on unreadable metadata", () =>
+  Effect.gen(function* () {
+    const fresh = yield* fixture();
+    fresh.setNativeSaved(false);
+    yield* fresh.open(id, { everSaved: false, expectedHome: "/native-home" });
+    expect(fresh.nativeMetadataIds).toEqual([id]);
+    expect(fresh.historySession()).toBeNull();
+    expect(fresh.sdkInput()).toMatchObject({ sessionId: id, resume: false });
+    expect(fresh.sentInputs).toEqual([]);
+    const unreadable = yield* fixture();
+    unreadable.rejectNativeMetadata();
+    const error = yield* Effect.flip(
+      unreadable.open(id, { everSaved: false, expectedHome: "/native-home" }),
+    );
+    expect(error.reason).toBe("request");
+    expect(unreadable.openedInputs).toEqual([]);
+    expect(unreadable.historySession()).toBeNull();
+  }).pipe(Effect.scoped),
+);
 
 it.effect("loads the exact native session and resumes without submitting an old prompt", () =>
   Effect.gen(function* () {
@@ -608,6 +767,108 @@ it.effect(
       expect(f.sdkInput().environment.ANTHROPIC_BASE_URL).toBe("https://second.example");
       expect(f.historyEnvironment()).toEqual(f.sdkInput().environment);
     }).pipe(Effect.scoped),
+);
+
+it.effect(
+  "restores worktree setup variables on native resume while preserving Claude profile identity",
+  () =>
+    Effect.gen(function* () {
+      const f = yield* fixture();
+      yield* f.settings.update({
+        type: "update-claude-agents",
+        input: {
+          instances: [
+            {
+              ...defaultClaudeInstance(),
+              configDirectory: "~/native-profile",
+              environment: [
+                { name: "ANTHROPIC_BASE_URL", value: "https://profile.example", sensitive: false },
+              ],
+            },
+          ],
+        },
+      });
+      const gitPath = join(f.root, "codex-shell-environment.json");
+      const persist = (value: string) =>
+        Effect.tryPromise(() =>
+          persistCodexWorktreeShellEnvironmentAtGitPath({
+            cwd: f.root,
+            gitPath,
+            shellEnvironment: {
+              version: 1,
+              set: {
+                WORKTREE_SETUP: value,
+                ANTHROPIC_BASE_URL: "https://workspace.example",
+                HOME: "/workspace-account",
+                CLAUDE_CONFIG_DIR: "/workspace-claude-config",
+                USERPROFILE: "/workspace-user-profile",
+              },
+              exclude: ["PATH", "HOME", "CLAUDE_CONFIG_DIR"],
+            },
+          }),
+        );
+      const load = Effect.tryPromise(() =>
+        loadCodexWorktreeShellEnvironmentAtGitPath({ cwd: f.root, gitPath }),
+      );
+      yield* persist("initial");
+      yield* f.open(id, { workspaceEnvironment: yield* load });
+      expect(f.sdkInput().environment).toMatchObject({
+        WORKTREE_SETUP: "initial",
+        ANTHROPIC_BASE_URL: "https://profile.example",
+        HOME: f.root,
+      });
+      expect(f.sdkInput().environment.PATH).toBeUndefined();
+      expect(f.sdkInput().environment.CLAUDE_CONFIG_DIR).toBeUndefined();
+      expect(f.sdkInput().environment.USERPROFILE).toBeUndefined();
+      expect(
+        claudeEnvironment(f.sdkInput().environment, f.sdkInput().instance).CLAUDE_CONFIG_DIR,
+      ).toBe(join(f.root, "native-profile"));
+      expect(f.historyEnvironment()).toEqual(f.sdkInput().environment);
+      yield* f.manager.close("thread-1");
+      yield* persist("reopened");
+      yield* f.open(id, { workspaceEnvironment: yield* load });
+      expect(f.sdkInput()).toMatchObject({ sessionId: id, resume: true });
+      expect(f.sdkInput().environment.WORKTREE_SETUP).toBe("reopened");
+      expect(f.historyEnvironment()).toEqual(f.sdkInput().environment);
+      expect(f.sentInputs).toHaveLength(0);
+    }).pipe(Effect.scoped),
+);
+
+it.effect("Windows profile overrides replace differently cased workspace environment keys", () =>
+  Effect.gen(function* () {
+    const f = yield* fixture(false, "win32");
+    yield* f.settings.update({
+      type: "update-claude-agents",
+      input: {
+        instances: [
+          {
+            ...defaultClaudeInstance(),
+            environment: [
+              { name: "Path", value: "C:\\profile\\bin", sensitive: false },
+              { name: "anthropic_base_url", value: "https://profile.example", sensitive: false },
+            ],
+          },
+        ],
+      },
+    });
+    yield* f.open(id, {
+      workspaceEnvironment: {
+        version: 1,
+        set: {
+          PATH: "C:\\workspace\\bin",
+          ANTHROPIC_BASE_URL: "https://workspace.example",
+          home: "C:\\workspace-account",
+        },
+        exclude: [],
+      },
+    });
+    expect(f.sdkInput().environment).toEqual({
+      Path: "C:\\profile\\bin",
+      anthropic_base_url: "https://profile.example",
+      HOME: f.root,
+    });
+    expect(f.historyEnvironment()).toEqual(f.sdkInput().environment);
+  }).pipe(Effect.scoped),
 );
 
 it.effect("discovers the configured catalog without sending a prompt or retaining a session", () =>
@@ -856,12 +1117,416 @@ it.effect("restores the saved model and effort before the next prompt", () =>
 );
 
 const nextId = "01991e60-b800-7000-8000-000000000020";
+const configureInheritedContextModel = (f: Effect.Success<ReturnType<typeof fixture>>) =>
+  f.settings.update({
+    type: "update-claude-agents",
+    input: {
+      instances: [
+        {
+          ...defaultClaudeInstance(),
+          customModels: [
+            {
+              id: "gateway/private",
+              displayName: "Private",
+              traits: { contextWindows: ["200k", "1m"] },
+            },
+          ],
+        },
+      ],
+    },
+  });
+
+it.effect("inherited Context applies before prompts and remains reversible across reopen", () =>
+  Effect.gen(function* () {
+    const f = yield* fixture();
+    yield* configureInheritedContextModel(f);
+    f.setInheritedModel("gateway/private");
+    const handle = yield* f.open(id, { model: "default", context: "1m" });
+    expect(f.sdkInput().model).toBeUndefined();
+    expect(f.selectedIntelligence).toEqual([
+      { model: "default", effort: "default", context: "1m" },
+    ]);
+    expect((yield* SubscriptionRef.get(handle.snapshot)).metadata).toMatchObject({
+      requestedSelection: { model: "default", context: "1m" },
+      effectiveSelection: { model: "gateway/private[1m]" },
+    });
+    expect(f.sentInputs).toHaveLength(0);
+    yield* handle.setIntelligence!({ model: "default", effort: "default", context: "200k" });
+    expect((yield* SubscriptionRef.get(handle.snapshot)).metadata?.effectiveSelection?.model).toBe(
+      "gateway/private[200k]",
+    );
+    yield* handle.setIntelligence!({ model: "default", effort: "default" });
+    expect(f.openedInputs).toHaveLength(2);
+    expect(f.sdkInput()).toMatchObject({ sessionId: id, resume: true, cwd: f.root });
+    expect(f.sdkInput().model).toBeUndefined();
+    expect((yield* SubscriptionRef.get(handle.snapshot)).metadata?.requestedSelection).toEqual({
+      model: "default",
+      effort: "default",
+    });
+    expect((yield* SubscriptionRef.get(handle.snapshot)).metadata?.effectiveSelection?.model).toBe(
+      "gateway/private",
+    );
+    yield* f.manager.close("thread-1");
+    const reopened = yield* f.open(id, { model: "default", context: "1m" });
+    expect(
+      (yield* SubscriptionRef.get(reopened.snapshot)).metadata?.effectiveSelection?.model,
+    ).toBe("gateway/private[1m]");
+    expect(f.sentInputs).toHaveLength(0);
+  }),
+);
+
+it.effect("unresolved inherited models cannot claim a Context override", () =>
+  Effect.gen(function* () {
+    const f = yield* fixture();
+    yield* configureInheritedContextModel(f);
+    f.setInheritedModel(null);
+    expect((yield* Effect.result(f.open(id, { model: "default", context: "1m" })))._tag).toBe(
+      "Failure",
+    );
+    expect(f.selectedIntelligence).toHaveLength(0);
+    expect(f.sentInputs).toHaveLength(0);
+  }),
+);
+
+it.effect("unadvertised and unacknowledged Context choices cannot become applied intent", () =>
+  Effect.gen(function* () {
+    const f = yield* fixture();
+    yield* configureInheritedContextModel(f);
+    f.setInheritedModel("gateway/private");
+    const handle = yield* f.open();
+    expect(
+      (yield* Effect.result(
+        handle.setIntelligence!({ model: "default", effort: "default", context: "2m" }),
+      ))._tag,
+    ).toBe("Failure");
+    expect(f.selectedIntelligence).toHaveLength(0);
+    f.ignoreContext();
+    expect(
+      (yield* Effect.result(
+        handle.setIntelligence!({ model: "default", effort: "default", context: "1m" }),
+      ))._tag,
+    ).toBe("Failure");
+    const snapshot = yield* SubscriptionRef.get(handle.snapshot);
+    expect(snapshot.status).toBe("failed");
+    expect(snapshot.metadata?.requestedSelection).toEqual({ model: "default", effort: "default" });
+    expect(snapshot.metadata?.effectiveSelection?.model).toBe("gateway/private");
+    expect(f.terminated()).toBe(1);
+  }),
+);
+
 const waitForSnapshot = (
   handle: AgentSessionHandle,
   predicate: (
     snapshot: import("../../../shared/agent-conversation").AgentConversationSnapshot,
   ) => boolean,
 ) => SubscriptionRef.changes(handle.snapshot).pipe(Stream.filter(predicate), Stream.runHead);
+
+it.effect("failed Git rollback keeps native execution suspended until verified recovery", () =>
+  Effect.gen(function* () {
+    const f = yield* fixture();
+    const handle = yield* f.open(id);
+    const messageId = createUuidV7();
+    const failed = yield* Effect.result(
+      handle.withExecutionHandoff!(
+        Effect.gen(function* () {
+          yield* handle.setExecutionRecoveryRequired!(true);
+          yield* handle.suspendExecution!;
+          return yield* agentRuntimeError({
+            operation: "Git rollback",
+            reason: "request",
+            retryable: false,
+            cause: new Error("Files still require recovery"),
+          });
+        }),
+      ),
+    );
+    expect(failed._tag).toBe("Failure");
+    expect(f.openedInputs).toHaveLength(1);
+    expect(f.released()).toBe(1);
+    expect((yield* SubscriptionRef.get(handle.snapshot)).status).toBe("idle");
+    expect(
+      (yield* Effect.result(
+        handle.prompt("retry after recovery", { clientUserMessageId: messageId }),
+      ))._tag,
+    ).toBe("Failure");
+    expect(
+      (yield* Effect.result(handle.setIntelligence!({ model: "default", effort: "high" })))._tag,
+    ).toBe("Failure");
+    expect((yield* Effect.result(handle.compact!))._tag).toBe("Failure");
+    yield* handle.withExecutionHandoff!(
+      Effect.gen(function* () {
+        yield* handle.withExecutionLocation!({ workspaceRoot: f.root }, Effect.void);
+        yield* handle.setExecutionRecoveryRequired!(false);
+      }),
+    );
+    expect(f.openedInputs).toHaveLength(3);
+    expect(f.sdkInput()).toMatchObject({ cwd: f.root, sessionId: id, resume: true });
+    const prompt = yield* Effect.forkChild(
+      handle.prompt("retry after recovery", { clientUserMessageId: messageId }),
+    );
+    yield* Queue.take(f.sent);
+    yield* Queue.offer(f.events, result(id));
+    yield* Fiber.join(prompt);
+    expect(yield* f.manager.get("thread-1")).toBe(handle);
+  }).pipe(Effect.scoped),
+);
+
+it.effect("reopening a recovery-sealed native owner reads history without launching a Query", () =>
+  Effect.gen(function* () {
+    const f = yield* fixture();
+    const handle = yield* f.open(id, { executionRecoveryRequired: true });
+    expect(f.openedInputs).toEqual([]);
+    expect((yield* handle.inspectRuntime!).health.status).toBe("unknown");
+    expect((yield* SubscriptionRef.get(handle.snapshot)).turns.length).toBeGreaterThan(0);
+    expect((yield* Effect.result(handle.prompt("unsafe source")))._tag).toBe("Failure");
+    yield* handle.withExecutionHandoff!(
+      Effect.gen(function* () {
+        yield* handle.suspendExecution!;
+        expect(f.openedInputs).toEqual([]);
+        yield* handle.withExecutionLocation!({ workspaceRoot: "/safe-destination" }, Effect.void);
+        yield* handle.setExecutionRecoveryRequired!(false);
+      }),
+    );
+    expect(f.openedInputs).toHaveLength(2);
+    expect(f.sdkInput()).toMatchObject({ cwd: "/safe-destination", sessionId: id, resume: true });
+    const prompt = yield* Effect.forkChild(handle.prompt("safe destination"));
+    yield* Queue.take(f.sent);
+    yield* Queue.offer(f.events, result(id));
+    yield* Fiber.join(prompt);
+  }).pipe(Effect.scoped),
+);
+
+it.effect("execution handoff suspends native timers and rejects inputs through cleanup", () =>
+  Effect.gen(function* () {
+    const f = yield* fixture();
+    const handle = yield* f.open(id);
+    const before = yield* SubscriptionRef.get(handle.snapshot);
+    const prepared = yield* Deferred.make<void>();
+    const cleaned = yield* Deferred.make<void>();
+    const messageId = createUuidV7();
+    const handoff = yield* Effect.forkChild(
+      handle.withExecutionHandoff!(
+        Effect.gen(function* () {
+          yield* handle.suspendExecution!;
+          expect(f.released()).toBe(1);
+          yield* handle.withExecutionLocation!(
+            { workspaceRoot: "/destination-worktree" },
+            Effect.sync(() => {
+              expect(f.sdkInput()).toMatchObject({
+                cwd: "/destination-worktree",
+                sessionId: id,
+                resume: true,
+              });
+              expect(f.released()).toBe(1);
+            }),
+          );
+          expect(f.released()).toBe(2);
+          yield* Deferred.succeed(prepared, undefined);
+          yield* Deferred.await(cleaned);
+        }),
+      ),
+    );
+    yield* Deferred.await(prepared);
+    for (const change of [
+      handle.prompt("keep draft", { clientUserMessageId: messageId }),
+      handle.steer!("late steering"),
+      handle.setIntelligence!({ model: "default", effort: "default" }),
+      handle.setMode("plan"),
+      handle.compact!,
+      handle.forkAt!("native-message"),
+      handle.rollback!(1),
+    ])
+      expect((yield* Effect.result(change))._tag).toBe("Failure");
+    expect(f.sentInputs).toEqual([]);
+    expect((yield* SubscriptionRef.get(handle.snapshot)).status).toBe("idle");
+    expect((yield* SubscriptionRef.get(handle.snapshot)).turns).toEqual(before.turns);
+    yield* Deferred.succeed(cleaned, undefined);
+    yield* Fiber.join(handoff);
+    expect(f.openedInputs).toHaveLength(3);
+    expect(f.sdkInput()).toMatchObject({
+      cwd: "/destination-worktree",
+      sessionId: id,
+      resume: true,
+    });
+    const next = yield* Effect.forkChild(
+      handle.prompt("keep draft", { clientUserMessageId: messageId }),
+    );
+    expect(yield* Queue.take(f.sent)).toBe("keep draft");
+    yield* Queue.offer(f.events, result(id));
+    yield* Fiber.join(next);
+    expect(yield* f.manager.get("thread-1")).toBe(handle);
+  }).pipe(Effect.scoped),
+);
+
+it.effect(
+  "preparation failure and cancellation resume the source without losing the native owner",
+  () =>
+    Effect.gen(function* () {
+      for (const cancelled of [false, true]) {
+        const f = yield* fixture();
+        const handle = yield* f.open(id);
+        const suspended = yield* Deferred.make<void>();
+        const pending = yield* Deferred.make<void>();
+        const handoff = yield* Effect.forkChild(
+          handle.withExecutionHandoff!(
+            handle.suspendExecution!.pipe(
+              Effect.andThen(Deferred.succeed(suspended, undefined)),
+              Effect.andThen(
+                cancelled
+                  ? Deferred.await(pending)
+                  : Effect.fail(
+                      agentRuntimeError({
+                        operation: "Git preparation",
+                        reason: "request",
+                        retryable: false,
+                        cause: new Error("Git preparation refused"),
+                      }),
+                    ),
+              ),
+            ),
+          ),
+        );
+        yield* Deferred.await(suspended);
+        if (cancelled) yield* Fiber.interrupt(handoff);
+        else expect((yield* Fiber.await(handoff))._tag).toBe("Failure");
+        expect(f.openedInputs).toHaveLength(2);
+        expect(f.sdkInput()).toMatchObject({ cwd: f.root, sessionId: id, resume: true });
+        expect(f.released()).toBe(1);
+        expect((yield* SubscriptionRef.get(handle.snapshot)).status).toBe("idle");
+        expect(yield* f.manager.get("thread-1")).toBe(handle);
+        const next = yield* Effect.forkChild(handle.prompt("after failed preparation"));
+        yield* Queue.take(f.sent);
+        yield* Queue.offer(f.events, result(id));
+        yield* Fiber.join(next);
+      }
+    }).pipe(Effect.scoped),
+);
+
+it.effect(
+  "execution relocation retains native history and holds new prompts until location commits",
+  () =>
+    Effect.gen(function* () {
+      const f = yield* fixture();
+      const initialized = yield* Deferred.make<void>();
+      const committed = yield* Deferred.make<void>();
+      const roots: string[] = [];
+      const handle = yield* f.open(id, {
+        acquireLaunchContext: (root) =>
+          Effect.sync(() => {
+            roots.push(root);
+            return { additionalDirectories: [root, "/additional-source"] };
+          }),
+      });
+      const before = yield* SubscriptionRef.get(handle.snapshot);
+      const destination = "/destination-worktree";
+      const moved = yield* Effect.forkChild(
+        handle.withExecutionLocation!(
+          {
+            workspaceRoot: destination,
+            workspaceEnvironment: { version: 1, set: { SETUP_VALUE: "destination" }, exclude: [] },
+          },
+          Deferred.succeed(initialized, undefined).pipe(Effect.andThen(Deferred.await(committed))),
+        ),
+      );
+      yield* Deferred.await(initialized);
+      expect(f.sdkInput()).toMatchObject({
+        cwd: destination,
+        sessionId: id,
+        resume: true,
+        environment: { SETUP_VALUE: "destination" },
+        launchContext: { additionalDirectories: [destination, "/additional-source"] },
+      });
+      expect((yield* SubscriptionRef.get(handle.snapshot)).turns).toEqual(before.turns);
+      const prompt = yield* Effect.forkChild(handle.prompt("after handoff"));
+      yield* Effect.yieldNow;
+      expect(yield* Queue.size(f.sent)).toBe(0);
+      yield* Deferred.succeed(committed, undefined);
+      yield* Fiber.join(moved);
+      expect(yield* Queue.take(f.sent)).toBe("after handoff");
+      yield* Queue.offer(f.events, result(id));
+      yield* Fiber.join(prompt);
+      expect(yield* f.manager.get("thread-1")).toBe(handle);
+      expect(handle.sessionId).toBe(id);
+      expect(roots).toEqual([f.root, destination]);
+    }).pipe(Effect.scoped),
+);
+
+it.effect("failed or cancelled location commits restore the original Query and environment", () =>
+  Effect.gen(function* () {
+    const f = yield* fixture();
+    const roots: string[] = [];
+    const handle = yield* f.open(id, {
+      acquireLaunchContext: (root) =>
+        Effect.sync(() => {
+          roots.push(root);
+          return {};
+        }),
+    });
+    const move = (use: Effect.Effect<void, AgentRuntimeError>) =>
+      handle.withExecutionLocation!(
+        {
+          workspaceRoot: "/destination-worktree",
+          workspaceEnvironment: { version: 1, set: { SETUP_VALUE: "destination" }, exclude: [] },
+        },
+        use,
+      );
+    expect(
+      (yield* Effect.result(
+        move(
+          Effect.fail(
+            agentRuntimeError({
+              operation: "Core destination",
+              reason: "authorization",
+              retryable: false,
+              cause: new Error("Core rejected destination"),
+            }),
+          ),
+        ),
+      ))._tag,
+    ).toBe("Failure");
+    expect(f.sdkInput()).toMatchObject({ cwd: f.root, sessionId: id, resume: true });
+    expect(f.sdkInput().environment.SETUP_VALUE).toBeUndefined();
+    const entered = yield* Deferred.make<void>();
+    const neverCommitted = yield* Deferred.make<void>();
+    const pending = yield* Effect.forkChild(
+      move(
+        Deferred.succeed(entered, undefined).pipe(Effect.andThen(Deferred.await(neverCommitted))),
+      ),
+    );
+    yield* Deferred.await(entered);
+    yield* Fiber.interrupt(pending);
+    expect(f.sdkInput()).toMatchObject({ cwd: f.root, sessionId: id, resume: true });
+    expect(f.sdkInput().environment.SETUP_VALUE).toBeUndefined();
+    expect((yield* SubscriptionRef.get(handle.snapshot)).status).toBe("idle");
+    expect(roots).toEqual([
+      f.root,
+      "/destination-worktree",
+      f.root,
+      "/destination-worktree",
+      f.root,
+    ]);
+  }).pipe(Effect.scoped),
+);
+
+it.effect("destination initialization failure restores source before admitting further work", () =>
+  Effect.gen(function* () {
+    const f = yield* fixture();
+    const handle = yield* f.open(id);
+    f.rejectDirectory("/destination-worktree");
+    const commit = yield* Deferred.make<void>();
+    expect(
+      (yield* Effect.result(
+        handle.withExecutionLocation!(
+          { workspaceRoot: "/destination-worktree" },
+          Deferred.succeed(commit, undefined),
+        ),
+      ))._tag,
+    ).toBe("Failure");
+    expect(yield* Deferred.isDone(commit)).toBe(false);
+    expect(f.sdkInput()).toMatchObject({ cwd: f.root, sessionId: id, resume: true });
+    expect((yield* SubscriptionRef.get(handle.snapshot)).status).toBe("idle");
+  }),
+);
 const nativeMessage = (sessionId: string, message: Readonly<Record<string, unknown>>): SDKMessage =>
   ({ ...message, uuid: createUuidV7(), session_id: sessionId }) as unknown as SDKMessage;
 
@@ -1469,6 +2134,26 @@ it.effect("cached discovery is isolated and settings changes invalidate its acco
   }).pipe(Effect.scoped),
 );
 
+it.effect("explicit discovery reload bypasses a fresh cache and replaces its catalog", () =>
+  Effect.gen(function* () {
+    const f = yield* fixture();
+    yield* f.manager.discover("claude-default", "/workspace");
+    yield* f.manager.discover("claude-default", "/workspace");
+    expect(f.openedInputs).toHaveLength(1);
+    f.setModels([
+      { value: "claude-opus-5", displayName: "Opus 5", description: "Updated catalog" },
+    ]);
+    const updated = yield* f.manager.discover("claude-default", "/workspace", true);
+    expect(updated.models.map((model) => model.value)).toEqual(["claude-opus-5"]);
+    expect(f.openedInputs).toHaveLength(2);
+    expect(f.released()).toBe(2);
+    const cached = yield* f.manager.discover("claude-default", "/workspace");
+    expect(cached.models).toEqual(updated.models);
+    expect(f.openedInputs).toHaveLength(2);
+    expect(yield* Queue.size(f.sent)).toBe(0);
+  }).pipe(Effect.scoped),
+);
+
 it.effect("prepared images reach native prompts and steering without converting to text", () =>
   Effect.gen(function* () {
     const f = yield* fixture();
@@ -1882,16 +2567,17 @@ it.effect(
       let admissions = 0;
       let settlements = 0;
       const handle = yield* f.open(undefined, {
-        acquireLaunchContext: Effect.acquireRelease(
-          Effect.sync(() => {
-            openLeases++;
-            return {};
-          }),
-          () =>
+        acquireLaunchContext: () =>
+          Effect.acquireRelease(
             Effect.sync(() => {
-              openLeases--;
+              openLeases++;
+              return {};
             }),
-        ),
+            () =>
+              Effect.sync(() => {
+                openLeases--;
+              }),
+          ),
         onTurnAdmitted: () =>
           Effect.sync(() => {
             admissions++;

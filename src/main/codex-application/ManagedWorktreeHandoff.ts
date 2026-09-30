@@ -5,7 +5,6 @@ import * as Context from "effect/Context";
 import * as Effect from "effect/Effect";
 import * as Exit from "effect/Exit";
 import * as Layer from "effect/Layer";
-import * as Ref from "effect/Ref";
 import * as Schema from "effect/Schema";
 import { CodexGateway, codexGatewayGenerationFence } from "../codex-runtime/CodexGateway";
 import { CodexAppServerCapabilities } from "../codex-runtime/CodexAppServerCapabilities";
@@ -27,6 +26,8 @@ import {
 import { ExecutionHostRuntime } from "./ExecutionHostRuntime";
 import { ManagedWorktreeRetentionRuntime } from "./ManagedWorktreeRetentionRuntime";
 import { ManagedWorktreeRuntime } from "./ManagedWorktreeRuntime";
+import { allocateManagedWorktreePath } from "../codex/codex-managed-worktree-allocation";
+import { WorktreeWorkerError } from "../host-runtime/WorktreeWorkerRuntime";
 
 export interface ManagedWorktreeHandoffPreparation {
   readonly destination: CodexThreadExecutionLocation;
@@ -39,6 +40,7 @@ export class ManagedWorktreeHandoffError extends Schema.TaggedError<ManagedWorkt
     operation: Schema.String,
     threadId: Schema.String,
     cause: Schema.Defect(),
+    preparationRestored: Schema.optional(Schema.Boolean),
   },
 ) {}
 
@@ -47,7 +49,7 @@ export class ManagedWorktreeHandoff extends Context.Service<
   {
     readonly prepare: (
       entry: CodexThreadHandoffJournalEntry,
-      onProgress?: (progress: CrossHostThreadHandoffProgress) => Effect.Effect<void>,
+      onProgress?: (progress: CrossHostThreadHandoffProgress) => Effect.Effect<void, Error>,
     ) => Effect.Effect<ManagedWorktreeHandoffPreparation, ManagedWorktreeHandoffError>;
     readonly transferOwner: (
       threadId: string,
@@ -117,7 +119,7 @@ export const live: Layer.Layer<
       new ManagedWorktreeHandoffError({ operation, threadId, cause });
     const publish = (
       event: CodexWorktreeWorkerEvent,
-      onProgress: (progress: CrossHostThreadHandoffProgress) => Effect.Effect<void>,
+      onProgress: (progress: CrossHostThreadHandoffProgress) => Effect.Effect<void, Error>,
     ) => {
       const progress = progressFromEvent(event);
       return progress ? onProgress(progress) : Effect.void;
@@ -175,225 +177,265 @@ export const live: Layer.Layer<
 
     const prepare = (
       entry: CodexThreadHandoffJournalEntry,
-      onProgress: (progress: CrossHostThreadHandoffProgress) => Effect.Effect<void> = () =>
+      onProgress: (progress: CrossHostThreadHandoffProgress) => Effect.Effect<void, Error> = () =>
         Effect.void,
     ): Effect.Effect<ManagedWorktreeHandoffPreparation, ManagedWorktreeHandoffError> =>
-      Effect.gen(function* () {
-        const owningProject = yield* project(entry);
-        const title = yield* threadTitle(entry);
-        const destinationHostId = entry.requestedDestinationHostId ?? entry.source.hostId;
-        const destinationHost = yield* executionHosts
-          .resolve(
-            destinationHostId,
-            destinationHostId === entry.source.hostId ? "prepare-handoff" : "import-handoff",
-          )
-          .pipe(
-            Effect.mapError((cause) => error("resolve-destination-host", entry.threadId, cause)),
-          );
-        const sourcePrimary =
-          entry.source.workspaceRoots[0] ?? entry.source.managedWorktreePath ?? entry.source.cwd;
-
-        if (destinationHostId !== entry.source.hostId) {
-          const capability = yield* capabilities
-            .forHost(entry.source.hostId)
-            .pipe(Effect.mapError((cause) => error("read-source-rollout", entry.threadId, cause)));
-          const currentBeforeRead = yield* capabilities
-            .isCurrent(capability)
-            .pipe(Effect.mapError((cause) => error("read-source-rollout", entry.threadId, cause)));
-          if (!capability.flags.paginatedHistory || !currentBeforeRead) {
-            return yield* error(
-              "read-source-rollout",
-              entry.threadId,
-              new Error("Cross-host handoff requires a current bounded-history source host"),
-            );
-          }
-          const metadata = yield* gateway
-            .requestOnHost(
-              entry.source.hostId,
-              "thread/read",
-              {
-                threadId: entry.threadId,
-                includeTurns: false,
-              },
-              codexGatewayGenerationFence(capability),
+      Effect.suspend(() => {
+        let workerStarted = false;
+        return Effect.gen(function* () {
+          const owningProject = yield* project(entry);
+          const title = yield* threadTitle(entry);
+          const destinationHostId = entry.requestedDestinationHostId ?? entry.source.hostId;
+          const destinationHost = yield* executionHosts
+            .resolve(
+              destinationHostId,
+              destinationHostId === entry.source.hostId ? "prepare-handoff" : "import-handoff",
             )
-            .pipe(Effect.mapError((cause) => error("read-source-rollout", entry.threadId, cause)));
-          const currentAfterRead = yield* capabilities
-            .isCurrent(capability)
-            .pipe(Effect.mapError((cause) => error("read-source-rollout", entry.threadId, cause)));
-          if (!currentAfterRead) {
-            return yield* error(
-              "read-source-rollout",
-              entry.threadId,
-              new Error("Source host generation changed while reading the rollout path"),
+            .pipe(
+              Effect.mapError((cause) => error("resolve-destination-host", entry.threadId, cause)),
             );
-          }
-          const sourceRolloutPath = metadata.thread.path?.trim() ?? "";
-          if (!sourceRolloutPath || !path.isAbsolute(sourceRolloutPath)) {
-            return yield* error(
-              "read-source-rollout",
-              entry.threadId,
-              new Error("Cross-host handoff requires a persisted source rollout"),
+          const sourcePrimary =
+            entry.source.workspaceRoots[0] ?? entry.source.managedWorktreePath ?? entry.source.cwd;
+
+          if (destinationHostId !== entry.source.hostId) {
+            const capability = yield* capabilities
+              .forHost(entry.source.hostId)
+              .pipe(
+                Effect.mapError((cause) => error("read-source-rollout", entry.threadId, cause)),
+              );
+            const currentBeforeRead = yield* capabilities
+              .isCurrent(capability)
+              .pipe(
+                Effect.mapError((cause) => error("read-source-rollout", entry.threadId, cause)),
+              );
+            if (!capability.flags.paginatedHistory || !currentBeforeRead) {
+              return yield* error(
+                "read-source-rollout",
+                entry.threadId,
+                new Error("Cross-host handoff requires a current bounded-history source host"),
+              );
+            }
+            const metadata = yield* gateway
+              .requestOnHost(
+                entry.source.hostId,
+                "thread/read",
+                {
+                  threadId: entry.threadId,
+                  includeTurns: false,
+                },
+                codexGatewayGenerationFence(capability),
+              )
+              .pipe(
+                Effect.mapError((cause) => error("read-source-rollout", entry.threadId, cause)),
+              );
+            const currentAfterRead = yield* capabilities
+              .isCurrent(capability)
+              .pipe(
+                Effect.mapError((cause) => error("read-source-rollout", entry.threadId, cause)),
+              );
+            if (!currentAfterRead) {
+              return yield* error(
+                "read-source-rollout",
+                entry.threadId,
+                new Error("Source host generation changed while reading the rollout path"),
+              );
+            }
+            const sourceRolloutPath = metadata.thread.path?.trim() ?? "";
+            if (!sourceRolloutPath || !path.isAbsolute(sourceRolloutPath)) {
+              return yield* error(
+                "read-source-rollout",
+                entry.threadId,
+                new Error("Cross-host handoff requires a persisted source rollout"),
+              );
+            }
+            const destinationRepositoryPaths =
+              destinationHost.descriptor.kind === "local"
+                ? owningProject.sources
+                    .map((source) => source.root.trim())
+                    .filter((root) => path.isAbsolute(root))
+                : destinationHost.descriptor.repositoryRoots;
+            const additionalRoots = entry.source.workspaceRoots.filter(
+              (root) => !isExecutionWorkspacePathWithinRoot(root, sourcePrimary),
             );
-          }
-          const destinationRepositoryPaths =
-            destinationHost.descriptor.kind === "local"
-              ? owningProject.sources
-                  .map((source) => source.root.trim())
-                  .filter((root) => path.isAbsolute(root))
-              : destinationHost.descriptor.repositoryRoots;
-          const additionalRoots = entry.source.workspaceRoots.filter(
-            (root) => !isExecutionWorkspacePathWithinRoot(root, sourcePrimary),
-          );
-          yield* Effect.forEach(
-            additionalRoots,
-            (root) =>
-              gateway.requestOnHost(destinationHostId, "fs/getMetadata", { path: root }).pipe(
-                Effect.mapError((cause) =>
-                  error(
-                    "validate-additional-root",
-                    entry.threadId,
-                    new Error(
-                      `Destination host cannot preserve additional workspace root ${root}`,
-                      { cause },
+            yield* Effect.forEach(
+              additionalRoots,
+              (root) =>
+                gateway.requestOnHost(destinationHostId, "fs/getMetadata", { path: root }).pipe(
+                  Effect.mapError((cause) =>
+                    error(
+                      "validate-additional-root",
+                      entry.threadId,
+                      new Error(
+                        `Destination host cannot preserve additional workspace root ${root}`,
+                        { cause },
+                      ),
                     ),
                   ),
-                ),
-                Effect.flatMap((metadata) =>
-                  metadata.isDirectory && !metadata.isSymlink
-                    ? Effect.void
-                    : Effect.fail(
-                        error(
-                          "validate-additional-root",
-                          entry.threadId,
-                          new Error(
-                            `Destination host additional workspace root is not a safe directory: ${root}`,
+                  Effect.flatMap((metadata) =>
+                    metadata.isDirectory && !metadata.isSymlink
+                      ? Effect.void
+                      : Effect.fail(
+                          error(
+                            "validate-additional-root",
+                            entry.threadId,
+                            new Error(
+                              `Destination host additional workspace root is not a safe directory: ${root}`,
+                            ),
                           ),
                         ),
-                      ),
+                  ),
                 ),
-              ),
-            { discard: true },
-          );
-          const prepared = yield* crossHost
-            .prepare(
-              {
-                operationId: entry.operationId,
-                threadId: entry.threadId,
-                threadTitle: title,
-                projectId: entry.source.projectId!,
-                sourceHostId: entry.source.hostId,
-                destinationHostId,
-                sourceCwd: entry.source.cwd,
-                sourceWorkspaceRoot: sourcePrimary,
-                sourceManagedWorktreePath: entry.source.managedWorktreePath,
-                sourceRolloutPath,
-                destinationRepositoryPaths,
+              { discard: true },
+            );
+            workerStarted = true;
+            const prepared = yield* crossHost
+              .prepare(
+                {
+                  operationId: entry.operationId,
+                  threadId: entry.threadId,
+                  threadTitle: title,
+                  projectId: entry.source.projectId!,
+                  sourceHostId: entry.source.hostId,
+                  destinationHostId,
+                  sourceCwd: entry.source.cwd,
+                  sourceWorkspaceRoot: sourcePrimary,
+                  sourceManagedWorktreePath: entry.source.managedWorktreePath,
+                  sourceRolloutPath,
+                  destinationRepositoryPaths,
+                },
+                onProgress,
+              )
+              .pipe(Effect.mapError((cause) => error("prepare-cross-host", entry.threadId, cause)));
+            const targetPrimary = prepared.destinationWorkspaceRoot;
+            return {
+              prepared,
+              destination: {
+                ...entry.source,
+                hostId: destinationHostId,
+                cwd: resolveDestinationCwd({ source: entry.source, sourcePrimary, targetPrimary }),
+                workspaceRoots: rewriteExecutionWorkspaceRoots({
+                  sourcePrimary,
+                  targetPrimary,
+                  workspaceRoots: entry.source.workspaceRoots,
+                }),
+                managedWorktreePath: prepared.managedWorktreePath,
               },
-              onProgress,
+            };
+          }
+
+          if (destinationHost.descriptor.kind !== "local") {
+            return yield* error(
+              "prepare-current-host",
+              entry.threadId,
+              new Error("Current-host checkout/worktree toggling is only configured locally"),
+            );
+          }
+          const checkoutRoot = owningProject.sources[0]?.root.trim() ?? "";
+          if (!checkoutRoot || !path.isAbsolute(checkoutRoot)) {
+            return yield* error(
+              "prepare-current-host",
+              entry.threadId,
+              new Error("The task Project has no local checkout destination"),
+            );
+          }
+          const localSourcePrimary =
+            entry.source.workspaceRoots[0] ?? entry.source.managedWorktreePath ?? checkoutRoot;
+          const allocatedWorktreePath = entry.source.managedWorktreePath
+            ? null
+            : allocateManagedWorktreePath(destinationHost.descriptor.managedRoot);
+          if (allocatedWorktreePath) {
+            yield* onProgress({
+              phase: "create-new-worktree",
+              status: "running",
+              allocatedDestination: {
+                hostId: destinationHostId,
+                worktreeGitRoot: allocatedWorktreePath,
+              },
+            });
+            yield* managedWorktrees.registerNewborn({
+              hostId: destinationHostId,
+              worktreeGitRoot: allocatedWorktreePath,
+            });
+          }
+          workerStarted = true;
+          const prepared = yield* destinationHost
+            .request(
+              {
+                operation: "prepare-handoff",
+                input: {
+                  requestId: entry.operationId,
+                  hostId: destinationHostId,
+                  managedRoot: destinationHost.descriptor.managedRoot,
+                  allocatedWorktreePath,
+                  nodexHome: destinationHost.descriptor.nodexHome,
+                  projectId: entry.source.projectId!,
+                  threadId: entry.threadId,
+                  threadTitle: title,
+                  sourceCwd: entry.source.cwd,
+                  sourceWorkspaceRoot: localSourcePrimary,
+                  sourceManagedWorktreePath: entry.source.managedWorktreePath,
+                  destinationCheckoutRoot: entry.source.managedWorktreePath ? checkoutRoot : null,
+                },
+              },
+              {
+                onEvent: (event) => {
+                  if (event.type !== "path-allocated") return publish(event, onProgress);
+                  return managedWorktrees.registerNewborn({
+                    hostId: destinationHostId,
+                    worktreeGitRoot: event.worktreeGitRoot,
+                  });
+                },
+              },
             )
-            .pipe(Effect.mapError((cause) => error("prepare-cross-host", entry.threadId, cause)));
+            .pipe(
+              Effect.mapError(
+                (cause) =>
+                  new ManagedWorktreeHandoffError({
+                    operation: "prepare-current-host",
+                    threadId: entry.threadId,
+                    cause,
+                    ...(Schema.is(WorktreeWorkerError)(cause.cause) &&
+                    cause.cause.operation === "worker-result" &&
+                    cause.cause.preparationRestored === true
+                      ? { preparationRestored: true }
+                      : {}),
+                  }),
+              ),
+            );
           const targetPrimary = prepared.destinationWorkspaceRoot;
           return {
             prepared,
             destination: {
               ...entry.source,
-              hostId: destinationHostId,
-              cwd: resolveDestinationCwd({ source: entry.source, sourcePrimary, targetPrimary }),
+              cwd: resolveDestinationCwd({
+                source: entry.source,
+                sourcePrimary: localSourcePrimary,
+                targetPrimary,
+              }),
               workspaceRoots: rewriteExecutionWorkspaceRoots({
-                sourcePrimary,
+                sourcePrimary: localSourcePrimary,
                 targetPrimary,
                 workspaceRoots: entry.source.workspaceRoots,
               }),
-              managedWorktreePath: prepared.managedWorktreePath,
+              managedWorktreePath:
+                prepared.direction === "to-worktree" ? prepared.managedWorktreePath : null,
             },
           };
-        }
-
-        if (destinationHost.descriptor.kind !== "local") {
-          return yield* error(
-            "prepare-current-host",
-            entry.threadId,
-            new Error("Current-host checkout/worktree toggling is only configured locally"),
-          );
-        }
-        const checkoutRoot = owningProject.sources[0]?.root.trim() ?? "";
-        if (!checkoutRoot || !path.isAbsolute(checkoutRoot)) {
-          return yield* error(
-            "prepare-current-host",
-            entry.threadId,
-            new Error("The task Project has no local checkout destination"),
-          );
-        }
-        const localSourcePrimary =
-          entry.source.workspaceRoots[0] ?? entry.source.managedWorktreePath ?? checkoutRoot;
-        const allocated = yield* Ref.make<string | null>(null);
-        const prepared = yield* destinationHost
-          .request(
-            {
-              operation: "prepare-handoff",
-              input: {
-                requestId: entry.operationId,
-                hostId: destinationHostId,
-                managedRoot: destinationHost.descriptor.managedRoot,
-                nodexHome: destinationHost.descriptor.nodexHome,
-                projectId: entry.source.projectId!,
-                threadId: entry.threadId,
-                threadTitle: title,
-                sourceCwd: entry.source.cwd,
-                sourceWorkspaceRoot: localSourcePrimary,
-                sourceManagedWorktreePath: entry.source.managedWorktreePath,
-                destinationCheckoutRoot: entry.source.managedWorktreePath ? checkoutRoot : null,
-              },
-            },
-            {
-              onEvent: (event) => {
-                if (event.type !== "path-allocated") return publish(event, onProgress);
-                return Ref.set(allocated, event.worktreeGitRoot).pipe(
-                  Effect.andThen(
-                    managedWorktrees.registerNewborn({
-                      hostId: destinationHostId,
-                      worktreeGitRoot: event.worktreeGitRoot,
-                    }),
-                  ),
-                );
-              },
-            },
-          )
-          .pipe(
-            Effect.mapError((cause) => error("prepare-current-host", entry.threadId, cause)),
-            Effect.onError(() =>
-              Ref.get(allocated).pipe(
-                Effect.flatMap((worktreeGitRoot) =>
-                  worktreeGitRoot
-                    ? managedWorktrees.releaseNewborn({
-                        hostId: destinationHostId,
-                        worktreeGitRoot,
-                      })
-                    : Effect.void,
-                ),
-              ),
-            ),
-          );
-        const targetPrimary = prepared.destinationWorkspaceRoot;
-        return {
-          prepared,
-          destination: {
-            ...entry.source,
-            cwd: resolveDestinationCwd({
-              source: entry.source,
-              sourcePrimary: localSourcePrimary,
-              targetPrimary,
-            }),
-            workspaceRoots: rewriteExecutionWorkspaceRoots({
-              sourcePrimary: localSourcePrimary,
-              targetPrimary,
-              workspaceRoots: entry.source.workspaceRoots,
-            }),
-            managedWorktreePath:
-              prepared.direction === "to-worktree" ? prepared.managedWorktreePath : null,
-          },
-        };
+        }).pipe(
+          Effect.mapError((failure) => {
+            const cause = Schema.is(ManagedWorktreeHandoffError)(failure)
+              ? failure
+              : error("prepare", entry.threadId, failure);
+            return workerStarted
+              ? cause
+              : new ManagedWorktreeHandoffError({
+                  operation: cause.operation,
+                  threadId: entry.threadId,
+                  cause: cause.cause,
+                  preparationRestored: true,
+                });
+          }),
+        );
       });
 
     const transferOwner = (threadId: string, preparation: ManagedWorktreeHandoffPreparation) =>
@@ -439,8 +481,8 @@ export const live: Layer.Layer<
           .pipe(
             Effect.map((result) => result.warnings),
             Effect.mapError((cause) => error("rollback", threadId, cause)),
-            Effect.ensuring(
-              preparation.prepared.direction === "to-worktree"
+            Effect.tap((warnings) =>
+              preparation.prepared.direction === "to-worktree" && warnings.length === 0
                 ? managedWorktrees.releaseNewborn({
                     hostId: preparation.destination.hostId,
                     worktreeGitRoot: preparation.prepared.managedWorktreePath,

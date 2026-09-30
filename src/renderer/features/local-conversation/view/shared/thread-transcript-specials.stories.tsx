@@ -345,7 +345,7 @@ export const ProposedPlanCompletedPreview: Story = {
 1. Audit the proposed-plan transcript item.
 2. Open the side-panel tab with full markdown.
 3. Keep todo-list progress separate from the proposed-plan card.
-4. Verify download, copy, rating, and close affordances.`,
+4. Verify download, copy, and close affordances.`,
             },
           }}
           isLatestTurn

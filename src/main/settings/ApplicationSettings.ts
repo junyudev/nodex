@@ -228,7 +228,12 @@ function makeSnapshot(
     notifications: getThreadNotificationSettings(snapshotSource),
     developer: getCodexDeveloperInstructionSettings(snapshotSource),
     git: getCodexGitSettings(snapshotSource),
-    codexHome: { ...codexHome, activeHomePath: codexHome.resolvedHomePath, restartRequired: false },
+    codexHome: {
+      ...codexHome,
+      activeHomePath: codexHome.resolvedHomePath,
+      activeAccountHomePath: codexHome.resolvedAccountHomePath,
+      restartRequired: false,
+    },
     managedWorktrees: getManagedWorktreeSettings(snapshotSource),
     executionHosts: getCodexExecutionHostSettings(snapshotSource),
     acpAgents: getAcpAgentSettings(snapshotSource),
@@ -310,7 +315,13 @@ export const make = Effect.fn("ApplicationSettings.make")(function* (input: {
   };
   const writes = yield* Semaphore.make(1);
   // The native runtime keeps one home for this Main lifetime; saved changes apply after restart.
-  const activeCodexHome = yield* Ref.make<string | undefined>(undefined);
+  const activeCodexHome = yield* Ref.make<
+    | {
+        readonly home: string;
+        readonly account: string | null;
+      }
+    | undefined
+  >(undefined);
   const attempt = <A>(operation: string, evaluate: () => A) =>
     Effect.try({
       try: evaluate,
@@ -336,15 +347,24 @@ export const make = Effect.fn("ApplicationSettings.make")(function* (input: {
         );
         snapshot = yield* attempt("read", () => makeSnapshot(source, buildDefaultChannel));
       }
-      yield* Ref.set(activeCodexHome, snapshot.codexHome.resolvedHomePath);
+      yield* Ref.set(activeCodexHome, {
+        home: snapshot.codexHome.resolvedHomePath,
+        account: snapshot.codexHome.resolvedAccountHomePath,
+      });
     }
-    const activeHomePath = previousHome ?? snapshot.codexHome.resolvedHomePath;
+    const activeHomePath = previousHome?.home ?? snapshot.codexHome.resolvedHomePath;
+    const activeAccountHomePath = previousHome
+      ? previousHome.account
+      : snapshot.codexHome.resolvedAccountHomePath;
     return {
       ...snapshot,
       codexHome: {
         ...snapshot.codexHome,
         activeHomePath,
-        restartRequired: activeHomePath !== snapshot.codexHome.resolvedHomePath,
+        activeAccountHomePath,
+        restartRequired:
+          activeHomePath !== snapshot.codexHome.resolvedHomePath ||
+          activeAccountHomePath !== snapshot.codexHome.resolvedAccountHomePath,
       },
     };
   });

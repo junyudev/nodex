@@ -475,7 +475,7 @@ fn finish_lifecycle_mutation(
     )
 }
 
-fn require_project(
+pub(super) fn require_project(
     connection: &Connection,
     library_id: &str,
     project_id: &str,
@@ -495,7 +495,7 @@ fn require_project(
     Err(invalid("New Sessions require an active Project"))
 }
 
-fn normalize_session_title(value: &str) -> Result<String, StoreError> {
+pub(super) fn normalize_session_title(value: &str) -> Result<String, StoreError> {
     let value = value.trim();
     if value.is_empty()
         || value.len() > MAX_SESSION_TITLE_BYTES

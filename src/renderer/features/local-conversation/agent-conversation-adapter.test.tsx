@@ -19,6 +19,7 @@ const mocks = vi.hoisted(() => ({
   setPermission: vi.fn(async (_projectId: string | null, mode: string) => mode),
   acquire: vi.fn(),
   catalog: vi.fn(),
+  startThread: vi.fn(),
 }));
 
 vi.mock("../../lib/api", () => ({ readPastedTextAttachment: vi.fn() }));
@@ -30,6 +31,7 @@ vi.mock("../../lib/agent-backend-runtime", () => ({
   agentBackendRuntime: {
     readPermissionMode: mocks.readPermission,
     setPermissionMode: mocks.setPermission,
+    startThread: mocks.startThread,
   },
 }));
 vi.mock("./use-claude-model-catalog", () => ({ useClaudeModelCatalog: mocks.catalog }));
@@ -190,6 +192,38 @@ const configureCatalog = () =>
     },
   });
 
+test("native first submission preserves the selected worktree, environment, and starting state", async () => {
+  configureCatalog();
+  mocks.startThread.mockResolvedValueOnce({ thread: { threadId: "native-worktree" } });
+  const refresh = vi.fn(async () => {});
+  const { result } = renderHook(() =>
+    useAgentConversationAdapter({ ...hookInput("worktree-draft"), onRefresh: refresh }),
+  );
+  await waitFor(() => expect(result.current.controls.permissionMode).toBe(true));
+  await act(async () => {
+    await result.current.actions.onStartThreadForSession?.({
+      projectId: "project",
+      sessionId: "worktree-draft",
+      prompt: "Build in a worktree",
+      runInTarget: "newWorktree",
+      runInEnvironmentPath: ".codex/environments/development.toml",
+      worktreeStartingState: { type: "working-tree" },
+    });
+  });
+  expect(mocks.startThread).toHaveBeenLastCalledWith(
+    expect.objectContaining({
+      sessionId: "worktree-draft",
+      backendKind: "claude",
+      instanceConfigId: "work",
+      prompt: "Build in a worktree",
+      runInTarget: "newWorktree",
+      runInEnvironmentPath: ".codex/environments/development.toml",
+      worktreeStartingState: { type: "working-tree" },
+    }),
+  );
+  expect(refresh).toHaveBeenLastCalledWith("project");
+});
+
 test("native drafts display resolved choices and save permissions before a first prompt", async () => {
   configureCatalog();
   mocks.readPermission.mockResolvedValueOnce("guardian-approvals");
@@ -197,6 +231,8 @@ test("native drafts display resolved choices and save permissions before a first
   await waitFor(() => expect(result.current.permissionMode).toBe("guardian-approvals"));
   expect(result.current.selectedModel).toBe("opus");
   expect(result.current.selectedEffort).toBe("medium");
+  expect(result.current.nativeIntelligence?.selected.context).toBeUndefined();
+  expect(result.current.nativeIntelligence?.selected.contextInherited).toBe(true);
   expect(result.current.nativeIntelligence?.selected).toMatchObject({
     fast: false,
     thinking: true,
@@ -272,7 +308,6 @@ test("native drafts preserve independent settings while changing model or effort
     model: "sonnet",
     effort: "medium",
     fast: true,
-    context: "1m",
   });
   await act(async () => {
     await result.current.nativeIntelligence?.change({ effort: "high", thinking: true });
@@ -282,7 +317,6 @@ test("native drafts preserve independent settings while changing model or effort
     effort: "high",
     fast: true,
     thinking: true,
-    context: "1m",
   });
   await act(async () => {
     nativeAgentDraftOwner.clear(key);
@@ -339,6 +373,8 @@ test("live native presentation shows applied choices while preserving requested 
   await waitFor(() => expect(result.current.permissionMode).toBe("full-access"));
   expect(result.current.selectedModel).toBe("opus");
   expect(result.current.selectedEffort).toBe("medium");
+  expect(result.current.nativeIntelligence?.selected.context).toBeUndefined();
+  expect(result.current.nativeIntelligence?.selected.contextInherited).toBe(false);
   await act(async () => {
     await result.current.nativeIntelligence?.change({ effort: "high", thinking: true });
   });
@@ -348,6 +384,14 @@ test("live native presentation shows applied choices while preserving requested 
     fast: true,
     context: "1m",
     thinking: true,
+  });
+  await act(async () => {
+    await result.current.nativeIntelligence?.change({ context: null });
+  });
+  expect(setIntelligence).toHaveBeenLastCalledWith({
+    model: "default",
+    effort: "default",
+    fast: true,
   });
   await act(async () => {
     await expect(result.current.actions.onPermissionModeChange?.("auto")).rejects.toThrow(

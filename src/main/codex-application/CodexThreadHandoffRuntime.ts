@@ -24,8 +24,8 @@ import {
   type CodexThreadHandoffPhase,
 } from "../codex/codex-thread-handoff-journal";
 import type { CodexThreadHandoffJournalStorage } from "../platform/CodexThreadHandoffJournalStorage";
-import { CodexThreadExecution } from "./CodexThreadExecution";
-import { ManagedWorktreeHandoff } from "./ManagedWorktreeHandoff";
+import { ThreadExecution } from "../host-runtime/ThreadExecution";
+import { ManagedWorktreeHandoff, ManagedWorktreeHandoffError } from "./ManagedWorktreeHandoff";
 import { ExecutionHostRuntime } from "./ExecutionHostRuntime";
 
 export interface CodexThreadHandoffProgress {
@@ -37,6 +37,8 @@ export interface CodexStartThreadHandoffInput {
   readonly operationId: string;
   readonly threadId: string;
   readonly destinationHostId: string | null;
+  /** Reject a stale attached selector rather than toggling the opposite way. */
+  readonly expectedDestination?: "local" | "worktree";
   readonly followUpPrompt: string | null;
   readonly requestThreadId?: string;
   readonly threadTitle?: string;
@@ -64,6 +66,7 @@ export class CodexThreadHandoffRuntime extends Context.Service<
     readonly start: (
       input: CodexStartThreadHandoffInput,
     ) => Effect.Effect<CodexThreadHandoffJournalEntry, CodexThreadHandoffRuntimeError>;
+    readonly prepareRecovery: Effect.Effect<void, CodexThreadHandoffRuntimeError>;
     readonly recover: (
       onProgress?: (progress: CodexThreadHandoffProgress) => void,
     ) => Effect.Effect<readonly CodexThreadHandoffJournalEntry[], CodexThreadHandoffRuntimeError>;
@@ -109,6 +112,13 @@ const locationsEqual = (
   left.workspaceRoots.length === right.workspaceRoots.length &&
   left.workspaceRoots.every((root, index) => root === right.workspaceRoots[index]);
 
+const preparationRestored = (cause: unknown): boolean => {
+  if (cause instanceof ManagedWorktreeHandoffError) return cause.preparationRestored === true;
+  if (typeof cause === "object" && cause !== null && "cause" in cause && cause.cause !== cause)
+    return preparationRestored(cause.cause);
+  return false;
+};
+
 const isTerminalStatus = (status: CodexAppHandoffStatusType): boolean => status !== "running";
 
 const retainStatusOperations = (
@@ -118,9 +128,11 @@ const retainStatusOperations = (
   if (all.length <= MAX_STATUS_OPERATIONS) {
     return new Map(all.map((operation) => [operation.operationId, operation]));
   }
-  const active = all.filter((operation) => !isTerminalStatus(operation.status));
+  const active = all.filter(
+    (operation) => operation.recoveryRequired || !isTerminalStatus(operation.status),
+  );
   const terminal = all
-    .filter((operation) => isTerminalStatus(operation.status))
+    .filter((operation) => !operation.recoveryRequired && isTerminalStatus(operation.status))
     .sort((left, right) => right.updatedAt - left.updatedAt)
     .slice(0, Math.max(0, MAX_STATUS_OPERATIONS - active.length));
   return new Map([...active, ...terminal].map((operation) => [operation.operationId, operation]));
@@ -144,6 +156,7 @@ const buildInitialOperation = (
   operationId: input.operationId,
   revision: 0,
   status: "running",
+  recoveryRequired: false,
   threadId: input.threadId,
   sourceThreadId: input.threadId,
   requestThreadId: input.requestThreadId ?? null,
@@ -201,9 +214,13 @@ const buildOperationFromJournal = (input: {
         ? entry.prepared.destinationBranch
         : (entry.prepared?.sourceBranch ?? entry.branchContext?.worktreeBranch ?? null),
   };
-  const terminal = terminalPhases.has(entry.phase);
+  const terminal = terminalPhases.has(entry.phase) || entry.phase === "recovery-required";
   const failedPhase =
-    entry.phase === "failed" || entry.phase === "rolling-back" ? entry.failedPhase : null;
+    entry.phase === "failed" ||
+    entry.phase === "rolling-back" ||
+    entry.phase === "recovery-required"
+      ? entry.failedPhase
+      : null;
   const steps = (entry.preparationSteps ?? []).map((step) =>
     buildStep(
       step.id,
@@ -226,20 +243,29 @@ const buildOperationFromJournal = (input: {
       buildStep(
         "switching-thread",
         resolveCodexThreadHandoffStepLabel("switching-thread", context)!,
-        terminal ? (entry.phase === "failed" ? "error" : "success") : "running",
+        terminal
+          ? entry.phase === "failed" || entry.phase === "recovery-required"
+            ? "error"
+            : "success"
+          : "running",
         entry.lastError,
         entry.updatedAt,
       ),
     );
   }
-  if (entry.phase === "rolling-back" || entry.phase === "failed") {
+  if (
+    entry.phase === "rolling-back" ||
+    entry.phase === "cleaning-rolled-back" ||
+    entry.phase === "failed" ||
+    entry.phase === "recovery-required"
+  ) {
     steps.push(
       buildStep(
         "rolling-back-changes",
         "Rolling back changes",
         entry.phase === "rolling-back"
           ? "running"
-          : entry.warnings.length > 0
+          : entry.phase === "recovery-required" || entry.warnings.length > 0
             ? "warning"
             : "success",
         entry.warnings.at(-1) ?? null,
@@ -252,13 +278,14 @@ const buildOperationFromJournal = (input: {
       ? "success"
       : entry.phase === "completed-with-warning"
         ? "warning"
-        : entry.phase === "failed"
+        : entry.phase === "failed" || entry.phase === "recovery-required"
           ? "error"
           : "running";
   return {
     operationId: entry.operationId,
     revision: (existing?.revision ?? -1) + 1,
     status,
+    recoveryRequired: entry.phase === "recovery-required",
     threadId: entry.threadId,
     sourceThreadId: entry.threadId,
     requestThreadId: entry.requestThreadId ?? existing?.requestThreadId ?? null,
@@ -269,13 +296,15 @@ const buildOperationFromJournal = (input: {
     destinationHostId,
     destinationHostDisplayName: input.destinationHostDisplayName,
     message:
-      status === "success"
-        ? "Task handoff completed."
-        : status === "warning"
-          ? (entry.warnings.at(-1) ?? "Task handoff completed with a warning.")
-          : status === "error"
-            ? (entry.lastError ?? "Task handoff failed.")
-            : (input.detail ?? "Moving task to its destination."),
+      entry.phase === "recovery-required"
+        ? (entry.warnings.at(-1) ?? "Recovery required. Prepared files are retained.")
+        : status === "success"
+          ? "Task handoff completed."
+          : status === "warning"
+            ? (entry.warnings.at(-1) ?? "Task handoff completed with a warning.")
+            : status === "error"
+              ? (entry.lastError ?? "Task handoff failed.")
+              : (input.detail ?? "Moving task to its destination."),
     steps,
     createdAt: existing?.createdAt ?? entry.createdAt,
     updatedAt: entry.updatedAt,
@@ -285,6 +314,7 @@ const buildOperationFromJournal = (input: {
 
 interface ActiveHandoff {
   readonly operationId: string;
+  readonly requestThreadId: string | null;
   readonly result: Deferred.Deferred<
     CodexThreadHandoffJournalEntry,
     CodexThreadHandoffRuntimeError
@@ -305,13 +335,13 @@ export const make = (options: {
 }): Effect.Effect<
   CodexThreadHandoffRuntime["Service"],
   never,
-  Scope.Scope | ExecutionHostRuntime | ManagedWorktreeHandoff | CodexThreadExecution
+  Scope.Scope | ExecutionHostRuntime | ManagedWorktreeHandoff | ThreadExecution
 > =>
   Effect.gen(function* () {
     const ownerScope = yield* Scope.Scope;
     const executionHosts = yield* ExecutionHostRuntime;
     const managedWorktrees = yield* ManagedWorktreeHandoff;
-    const threadExecution = yield* CodexThreadExecution;
+    const threadExecution = yield* ThreadExecution;
     const journalLock = yield* Semaphore.make(1);
     const journalLoaded = yield* Ref.make(false);
     const journalEntries = yield* Ref.make<ReadonlyMap<string, CodexThreadHandoffJournalEntry>>(
@@ -348,6 +378,83 @@ export const make = (options: {
       identity?: { readonly operationId?: string; readonly threadId?: string },
     ): Effect.Effect<A, CodexThreadHandoffRuntimeError> =>
       effect.pipe(Effect.mapError((cause) => runtimeError(operation, cause, identity)));
+
+    const requireOwnership = (
+      input: CodexStartThreadHandoffInput,
+      recorded: {
+        readonly threadId: string;
+        readonly requestThreadId: string | null | undefined;
+        readonly destinationHostId?: string;
+        readonly destination?: "local" | "worktree" | null;
+      },
+    ): Effect.Effect<void, CodexThreadHandoffRuntimeError> => {
+      if (
+        input.threadId === recorded.threadId &&
+        (input.requestThreadId ?? null) === (recorded.requestThreadId ?? null) &&
+        (input.destinationHostId === null ||
+          recorded.destinationHostId === undefined ||
+          input.destinationHostId === recorded.destinationHostId) &&
+        (!input.expectedDestination ||
+          recorded.destination === undefined ||
+          input.expectedDestination === recorded.destination)
+      )
+        return Effect.void;
+      return Effect.fail(
+        runtimeError(
+          "admit",
+          new Error("This handoff operation belongs to another chat or destination intent."),
+          {
+            operationId: input.operationId,
+            threadId: input.threadId,
+          },
+        ),
+      );
+    };
+    const requireJournalOwnership = (
+      input: CodexStartThreadHandoffInput,
+      entry: CodexThreadHandoffJournalEntry,
+    ) =>
+      requireOwnership(input, {
+        threadId: entry.threadId,
+        requestThreadId: entry.requestThreadId,
+        destinationHostId: entry.requestedDestinationHostId ?? entry.source.hostId,
+        destination: entry.source.managedWorktreePath ? "local" : "worktree",
+      });
+    const requireStatusOwnership = (
+      input: CodexStartThreadHandoffInput,
+      operation: CodexAppHandoffOperation,
+    ) =>
+      requireOwnership(input, {
+        threadId: operation.threadId,
+        requestThreadId: operation.requestThreadId,
+        destinationHostId: operation.destinationHostId,
+        destination:
+          operation.direction === "local-to-worktree"
+            ? "worktree"
+            : operation.direction === "worktree-to-local"
+              ? "local"
+              : null,
+      });
+    const requireActiveOwnership = (
+      input: Pick<CodexStartThreadHandoffInput, "threadId" | "operationId" | "requestThreadId">,
+    ) =>
+      Effect.gen(function* () {
+        const current = yield* Ref.get(activeByThreadId);
+        const owner = [...current].find(
+          ([_threadId, active]) => active.operationId === input.operationId,
+        );
+        if (
+          !owner ||
+          (owner[0] === input.threadId &&
+            owner[1].requestThreadId === (input.requestThreadId ?? null))
+        )
+          return;
+        return yield* runtimeError(
+          "admit",
+          new Error("This handoff operation belongs to another chat."),
+          { operationId: input.operationId, threadId: input.threadId },
+        );
+      });
 
     const loadJournalUnlocked = Effect.gen(function* () {
       if (yield* Ref.get(journalLoaded)) return;
@@ -479,82 +586,233 @@ export const make = (options: {
       return patchEntry(entry, { warnings: [...entry.warnings, warning] }, observer, warning);
     };
 
+    const readCanonical = (entry: CodexThreadHandoffJournalEntry) =>
+      invoke(
+        "read-canonical-location",
+        threadExecution
+          .read(entry.threadId)
+          .pipe(Effect.interruptible, Effect.timeout("5 seconds")),
+        { operationId: entry.operationId, threadId: entry.threadId },
+      ).pipe(
+        Effect.map((location) => {
+          if (locationsEqual(location, entry.source)) return { kind: "source" as const };
+          if (entry.destination && locationsEqual(location, entry.destination))
+            return { kind: "destination" as const };
+          return { kind: "ambiguous" as const };
+        }),
+        Effect.catch((cause) => Effect.succeed({ kind: "unavailable" as const, cause })),
+      );
+
+    const requireRecovery = (
+      entry: CodexThreadHandoffJournalEntry,
+      cause: unknown,
+      detail: string,
+      observer?: (progress: CodexThreadHandoffProgress) => void,
+    ) =>
+      invoke("seal-recovery", threadExecution.setRecoveryRequired(entry.threadId, true), {
+        operationId: entry.operationId,
+        threadId: entry.threadId,
+      }).pipe(
+        Effect.andThen(
+          patchEntry(
+            entry,
+            {
+              phase: "recovery-required",
+              failedPhase: entry.phase === "recovery-required" ? entry.failedPhase : entry.phase,
+              lastError: entry.lastError ?? failureMessage(cause),
+              warnings: [...new Set([...entry.warnings, detail])].slice(-128),
+              completedAt: null,
+            },
+            observer,
+            detail,
+          ),
+        ),
+      );
+
+    const releaseVerifiedRecovery = (
+      entry: CodexThreadHandoffJournalEntry,
+      observer?: (progress: CodexThreadHandoffProgress) => void,
+    ) => {
+      if (entry.phase !== "cleaning-source" && entry.phase !== "failed")
+        return Effect.succeed(entry);
+      return invoke(
+        "release-recovery",
+        threadExecution.setRecoveryRequired(entry.threadId, false),
+        {
+          operationId: entry.operationId,
+          threadId: entry.threadId,
+        },
+      ).pipe(
+        Effect.as(entry),
+        Effect.catch((cause) =>
+          requireRecovery(
+            entry,
+            cause,
+            "Recovery required: execution admission could not be restored.",
+            observer,
+          ),
+        ),
+      );
+    };
+
     const rollback = Effect.fn("CodexThreadHandoffRuntime.rollback")(function* (
       initial: CodexThreadHandoffJournalEntry,
       cause: unknown,
       observer?: (progress: CodexThreadHandoffProgress) => void,
     ) {
+      const cleanupOnly =
+        initial.phase === "cleaning-rolled-back" ||
+        (initial.phase === "recovery-required" && initial.failedPhase === "cleaning-rolled-back");
+      if (
+        !initial.prepared &&
+        (initial.phase === "preparing-destination" ||
+          initial.failedPhase === "preparing-destination") &&
+        !preparationRestored(cause)
+      )
+        return yield* requireRecovery(
+          initial,
+          cause,
+          "Recovery required: workspace preparation did not return a verified result. Prepared files are retained.",
+          observer,
+        );
+      const canonical = yield* readCanonical(initial);
+      if (canonical.kind === "unavailable" || canonical.kind === "ambiguous")
+        return yield* requireRecovery(
+          initial,
+          cause,
+          `Recovery required: ${canonical.kind === "ambiguous" ? "chat execution location changed" : failureMessage(canonical.cause)}. Prepared files are retained.`,
+          observer,
+        );
+      if (cleanupOnly && canonical.kind !== "source")
+        return yield* requireRecovery(
+          initial,
+          cause,
+          "Recovery required: chat execution moved after Git rollback. Prepared files are retained.",
+          observer,
+        );
       let entry = yield* patchEntry(
         initial,
         {
           phase: "rolling-back",
-          lastError: failureMessage(cause),
-          failedPhase: initial.phase,
+          coreCommitted: canonical.kind === "destination",
+          lastError: initial.lastError ?? failureMessage(cause),
+          failedPhase: initial.failedPhase ?? initial.phase,
         },
         observer,
         "Rolling back task handoff.",
       );
-      const warnings: string[] = [];
       const preparation =
         entry.destination && entry.prepared
           ? { destination: entry.destination, prepared: entry.prepared }
           : null;
-      const collectFailure = (label: string) => (rollbackCause: unknown) =>
-        Effect.sync(() => {
-          warnings.push(`${label}: ${failureMessage(rollbackCause)}`);
-        });
-
-      if (preparation) {
-        yield* invoke(
-          "switch-runtime-source",
-          threadExecution.switchRuntime(entry.threadId, entry.source, preparation),
-          { operationId: entry.operationId, threadId: entry.threadId },
-        ).pipe(Effect.catch(collectFailure("runtime rollback")));
-      }
-      if (entry.coreCommitted) {
-        yield* invoke(
-          "commit-source-location",
-          threadExecution.commit(entry.threadId, entry.source),
-          { operationId: entry.operationId, threadId: entry.threadId },
-        ).pipe(Effect.catch(collectFailure("Core rollback")));
-      }
-      if (preparation) {
-        const preparedWarnings = yield* invoke(
+      const restoreSource = entry.coreCommitted
+        ? invoke("commit-source-location", threadExecution.commit(entry.threadId, entry.source), {
+            operationId: entry.operationId,
+            threadId: entry.threadId,
+          })
+        : Effect.void;
+      const runtimeRollback = yield* invoke(
+        "switch-runtime-source",
+        preparation
+          ? threadExecution.withRuntimeLocation(
+              entry.threadId,
+              entry.source,
+              preparation,
+              restoreSource,
+            )
+          : restoreSource,
+        { operationId: entry.operationId, threadId: entry.threadId },
+      ).pipe(
+        Effect.as({ kind: "restored" as const }),
+        Effect.catch((rollbackCause) =>
+          Effect.succeed({ kind: "failed" as const, cause: rollbackCause }),
+        ),
+      );
+      if (runtimeRollback.kind === "failed")
+        return yield* requireRecovery(
+          entry,
+          runtimeRollback.cause,
+          `Recovery required: runtime rollback failed: ${failureMessage(runtimeRollback.cause)}. Prepared files are retained.`,
+          observer,
+        );
+      const restored = yield* readCanonical(entry);
+      if (restored.kind !== "source")
+        return yield* requireRecovery(
+          entry,
+          cause,
+          "Recovery required: the original chat execution location could not be verified. Prepared files are retained.",
+          observer,
+        );
+      entry = yield* patchEntry(
+        entry,
+        { runtimeSwitched: false, coreCommitted: false },
+        observer,
+        null,
+      );
+      if (preparation && !cleanupOnly) {
+        const gitRollback = yield* invoke(
           "rollback-preparation",
           managedWorktrees.rollback(entry.threadId, preparation),
-          { operationId: entry.operationId, threadId: entry.threadId },
+          {
+            operationId: entry.operationId,
+            threadId: entry.threadId,
+          },
         ).pipe(
+          Effect.map((warnings) => ({ kind: "restored" as const, warnings })),
           Effect.catch((rollbackCause) =>
-            Effect.sync(() => {
-              warnings.push(`Git rollback: ${failureMessage(rollbackCause)}`);
-              return [] as readonly string[];
-            }),
+            Effect.succeed({ kind: "failed" as const, cause: rollbackCause }),
           ),
         );
-        warnings.push(...preparedWarnings);
-        yield* invoke(
+        if (gitRollback.kind === "failed" || gitRollback.warnings.length > 0) {
+          const detail =
+            gitRollback.kind === "failed"
+              ? failureMessage(gitRollback.cause)
+              : gitRollback.warnings.join("; ");
+          return yield* requireRecovery(
+            entry,
+            cause,
+            `Recovery required: Git rollback failed: ${detail}. Prepared files are retained.`,
+            observer,
+          );
+        }
+      }
+      if (preparation) {
+        entry = yield* phase(entry, "cleaning-rolled-back", observer);
+        const cleanup = yield* invoke(
           "cleanup-rolled-back",
           managedWorktrees.cleanup(entry.threadId, preparation, "rolled-back"),
           {
             operationId: entry.operationId,
             threadId: entry.threadId,
           },
-        ).pipe(Effect.catch(collectFailure("artifact cleanup")));
+        ).pipe(
+          Effect.map((warnings) => ({ kind: "cleaned" as const, warnings })),
+          Effect.catch((cleanupCause) =>
+            Effect.succeed({ kind: "failed" as const, cause: cleanupCause }),
+          ),
+        );
+        if (cleanup.kind === "failed" || cleanup.warnings.length > 0) {
+          const detail =
+            cleanup.kind === "failed" ? failureMessage(cleanup.cause) : cleanup.warnings.join("; ");
+          return yield* requireRecovery(
+            entry,
+            cause,
+            `Recovery required: artifact cleanup failed: ${detail}. Remaining files are retained.`,
+            observer,
+          );
+        }
       }
-
-      entry = yield* patchEntry(
+      return yield* patchEntry(
         entry,
         {
           phase: "failed",
           runtimeSwitched: false,
           coreCommitted: false,
-          warnings: [...entry.warnings, ...warnings],
           completedAt: yield* Clock.currentTimeMillis,
         },
         observer,
-        warnings.at(-1) ?? entry.lastError,
+        entry.lastError,
       );
-      return entry;
     });
 
     const finishCommitted = Effect.fn("CodexThreadHandoffRuntime.finishCommitted")(function* (
@@ -590,6 +848,16 @@ export const make = (options: {
         ),
         Effect.catch((cleanupCause) => addWarning(entry, cleanupCause, observer)),
       );
+      return entry;
+    });
+
+    // Follow-up admission happens after the native execution handoff lease is released.
+    const completeHandoff = Effect.fn("CodexThreadHandoffRuntime.completeHandoff")(function* (
+      initial: CodexThreadHandoffJournalEntry,
+      observer?: (progress: CodexThreadHandoffProgress) => void,
+    ) {
+      if (initial.phase !== "cleaning-source") return initial;
+      let entry = initial;
       const followUpPrompt = entry.followUpPrompt;
       if (followUpPrompt && !entry.followUpDispatchStarted) {
         entry = yield* patchEntry(
@@ -649,12 +917,15 @@ export const make = (options: {
               entry = {
                 ...entry,
                 branchContext: progress.branchContext ?? entry.branchContext,
+                allocatedDestination: progress.allocatedDestination ?? entry.allocatedDestination,
                 preparationSteps: steps.some((step) => step.id === id)
                   ? steps.map((step) => (step.id === id ? nextStep : step))
                   : [...steps, nextStep],
                 updatedAt,
               };
-              yield* emitProgress({ entry, detail: null }, observer);
+              yield* progress.allocatedDestination
+                ? save(entry, observer, null)
+                : emitProgress({ entry, detail: null }, observer);
             }),
           ),
           { operationId: entry.operationId, threadId: entry.threadId },
@@ -672,17 +943,23 @@ export const make = (options: {
         entry = yield* phase(entry, "switching-runtime", observer);
         yield* invoke(
           "switch-runtime-destination",
-          threadExecution.switchRuntime(entry.threadId, preparation.destination, preparation),
+          threadExecution.withRuntimeLocation(
+            entry.threadId,
+            preparation.destination,
+            preparation,
+            Effect.gen(function* () {
+              entry = yield* patchEntry(entry, { runtimeSwitched: true }, observer, null);
+              entry = yield* phase(entry, "committing-location", observer);
+              yield* invoke(
+                "commit-destination-location",
+                threadExecution.commit(entry.threadId, preparation.destination),
+                { operationId: entry.operationId, threadId: entry.threadId },
+              );
+              entry = yield* patchEntry(entry, { coreCommitted: true }, observer, null);
+            }),
+          ),
           { operationId: entry.operationId, threadId: entry.threadId },
         );
-        entry = yield* patchEntry(entry, { runtimeSwitched: true }, observer, null);
-        entry = yield* phase(entry, "committing-location", observer);
-        yield* invoke(
-          "commit-destination-location",
-          threadExecution.commit(entry.threadId, preparation.destination),
-          { operationId: entry.operationId, threadId: entry.threadId },
-        );
-        entry = yield* patchEntry(entry, { coreCommitted: true }, observer, null);
         entry = yield* phase(entry, "transferring-owner", observer);
         entry = yield* invoke(
           "transfer-owner",
@@ -712,7 +989,12 @@ export const make = (options: {
       return yield* Effect.gen(function* () {
         yield* invoke(
           "recover-runtime-destination",
-          threadExecution.switchRuntime(entry.threadId, preparation.destination, preparation),
+          threadExecution.withRuntimeLocation(
+            entry.threadId,
+            preparation.destination,
+            preparation,
+            Effect.void,
+          ),
           { operationId: entry.operationId, threadId: entry.threadId },
         );
         entry = yield* phase(entry, "transferring-owner", observer);
@@ -732,41 +1014,17 @@ export const make = (options: {
       entry: CodexThreadHandoffJournalEntry,
       observer?: (progress: CodexThreadHandoffProgress) => void,
     ) {
-      const canonicalRead = yield* invoke(
-        "read-canonical-location",
-        threadExecution.read(entry.threadId),
-        { operationId: entry.operationId, threadId: entry.threadId },
-      ).pipe(
-        Effect.map((canonical) => ({ kind: "read" as const, canonical })),
-        Effect.catch((canonicalCause) =>
-          emitProgress(
-            {
-              entry,
-              detail: `Recovery deferred: ${failureMessage(canonicalCause)}`,
-            },
-            observer,
-          ).pipe(Effect.as({ kind: "failed" as const })),
-        ),
-      );
-      if (canonicalRead.kind === "failed") return entry;
-      if (!canonicalRead.canonical) {
-        yield* emitProgress(
-          { entry, detail: "Recovery deferred: canonical task location is unavailable." },
+      const canonical = yield* readCanonical(entry);
+      if (canonical.kind === "unavailable" || canonical.kind === "ambiguous")
+        return yield* requireRecovery(
+          entry,
+          canonical.kind === "unavailable"
+            ? canonical.cause
+            : new Error("Chat execution location is ambiguous"),
+          `Recovery required: ${canonical.kind === "unavailable" ? failureMessage(canonical.cause) : "chat execution location is ambiguous"}. Prepared files are retained.`,
           observer,
         );
-        return entry;
-      }
-      const canonical = canonicalRead.canonical;
-      const coreCommitted =
-        entry.destination !== null && locationsEqual(canonical, entry.destination);
-      const coreAtSource = locationsEqual(canonical, entry.source);
-      if (!coreCommitted && !coreAtSource) {
-        yield* emitProgress(
-          { entry, detail: "Recovery deferred: canonical task location is ambiguous." },
-          observer,
-        );
-        return entry;
-      }
+      const coreCommitted = canonical.kind === "destination";
       const reconciled =
         entry.coreCommitted === coreCommitted
           ? entry
@@ -776,12 +1034,20 @@ export const make = (options: {
               observer,
               coreCommitted ? "Recovered durable location." : "Recovered source location.",
             );
-      if (reconciled.coreCommitted && reconciled.destination && reconciled.prepared) {
+      if (
+        entry.phase === "cleaning-rolled-back" ||
+        (entry.phase === "recovery-required" && entry.failedPhase === "cleaning-rolled-back")
+      )
+        return yield* rollback(
+          reconciled,
+          new Error(entry.lastError ?? "Recovering rollback cleanup"),
+          observer,
+        );
+      if (reconciled.coreCommitted && reconciled.destination && reconciled.prepared)
         return yield* resumeCommitted(reconciled, observer);
-      }
       return yield* rollback(
         reconciled,
-        new Error("Recovered an interrupted task handoff."),
+        new Error(entry.lastError ?? "Recovered an interrupted task handoff."),
         observer,
       );
     });
@@ -789,11 +1055,17 @@ export const make = (options: {
     const runOwned = (
       threadId: string,
       operationId: string,
+      requestThreadId: string | null,
       operation: Effect.Effect<CodexThreadHandoffJournalEntry, CodexThreadHandoffRuntimeError>,
     ) =>
       Effect.gen(function* () {
         const allocation = yield* activeLock.withPermits(1)(
           Effect.gen(function* () {
+            yield* requireActiveOwnership({
+              threadId,
+              operationId,
+              requestThreadId: requestThreadId ?? undefined,
+            });
             const current = yield* Ref.get(activeByThreadId);
             const existing = current.get(threadId);
             if (existing?.operationId === operationId) {
@@ -809,6 +1081,7 @@ export const make = (options: {
             }
             const active: ActiveHandoff = {
               operationId,
+              requestThreadId,
               result: yield* Deferred.make<
                 CodexThreadHandoffJournalEntry,
                 CodexThreadHandoffRuntimeError
@@ -840,9 +1113,13 @@ export const make = (options: {
       runOwned(
         input.threadId,
         input.operationId,
+        input.requestThreadId ?? null,
         Effect.gen(function* () {
+          const status = (yield* SubscriptionRef.get(statuses)).operations.get(input.operationId);
+          if (status) yield* requireStatusOwnership(input, status);
           const existing = yield* getJournal(input.operationId);
           if (existing) {
+            yield* requireJournalOwnership(input, existing);
             yield* emitProgress({ entry: existing, detail: null }, input.onProgress);
             return existing;
           }
@@ -858,40 +1135,85 @@ export const make = (options: {
               ),
             );
           }
-          const source = yield* invoke("resolve-source", threadExecution.read(input.threadId), {
-            operationId: input.operationId,
-            threadId: input.threadId,
-          });
-          const now = yield* Clock.currentTimeMillis;
-          const entry: CodexThreadHandoffJournalEntry = {
-            schemaVersion: 1,
-            operationId: input.operationId,
-            threadId: input.threadId,
-            requestThreadId: input.requestThreadId ?? null,
-            threadTitle: input.threadTitle?.trim() || input.threadId,
-            phase: "queued",
-            source,
-            requestedDestinationHostId: input.destinationHostId,
-            destination: null,
-            prepared: null,
-            runtimeSwitched: false,
-            coreCommitted: false,
-            followUpPrompt: input.followUpPrompt,
-            followUpDispatchStarted: false,
-            warnings: [],
-            lastError: null,
-            failedPhase: null,
-            createdAt: now,
-            updatedAt: now,
-            completedAt: null,
-          };
-          yield* save(entry, input.onProgress, null);
-          return yield* runTransaction(entry, input.onProgress);
+          return yield* invoke(
+            "handoff-admission",
+            threadExecution.withHandoff(
+              input.threadId,
+              Effect.gen(function* () {
+                const source = yield* invoke(
+                  "resolve-source",
+                  threadExecution.read(input.threadId, input.destinationHostId),
+                  {
+                    operationId: input.operationId,
+                    threadId: input.threadId,
+                  },
+                );
+                if (
+                  input.expectedDestination &&
+                  (source.managedWorktreePath ? "local" : "worktree") !== input.expectedDestination
+                ) {
+                  return yield* runtimeError(
+                    "admit",
+                    new Error("Chat execution location changed. Reopen the location menu."),
+                    {
+                      operationId: input.operationId,
+                      threadId: input.threadId,
+                    },
+                  );
+                }
+                const now = yield* Clock.currentTimeMillis;
+                const entry: CodexThreadHandoffJournalEntry = {
+                  schemaVersion: 1,
+                  operationId: input.operationId,
+                  threadId: input.threadId,
+                  requestThreadId: input.requestThreadId ?? null,
+                  threadTitle: input.threadTitle?.trim() || input.threadId,
+                  phase: "queued",
+                  source,
+                  requestedDestinationHostId: input.destinationHostId,
+                  destination: null,
+                  prepared: null,
+                  runtimeSwitched: false,
+                  coreCommitted: false,
+                  followUpPrompt: input.followUpPrompt,
+                  followUpDispatchStarted: false,
+                  warnings: [],
+                  lastError: null,
+                  failedPhase: null,
+                  createdAt: now,
+                  updatedAt: now,
+                  completedAt: null,
+                };
+                yield* save(entry, input.onProgress, null);
+                yield* invoke(
+                  "seal-recovery",
+                  threadExecution.setRecoveryRequired(entry.threadId, true),
+                  { operationId: entry.operationId, threadId: entry.threadId },
+                );
+                return yield* runTransaction(entry, input.onProgress).pipe(
+                  Effect.flatMap((entry) => releaseVerifiedRecovery(entry, input.onProgress)),
+                );
+              }),
+            ),
+            { operationId: input.operationId, threadId: input.threadId },
+          ).pipe(Effect.flatMap((entry) => completeHandoff(entry, input.onProgress)));
         }),
-      );
+      ).pipe(Effect.tap((entry) => requireJournalOwnership(input, entry)));
+
+    const prepareRecovery = Effect.gen(function* () {
+      const entries = yield* listJournal;
+      for (const entry of entries) {
+        if (isTerminalCodexThreadHandoff(entry)) continue;
+        yield* invoke("seal-recovery", threadExecution.setRecoveryRequired(entry.threadId, true), {
+          operationId: entry.operationId,
+          threadId: entry.threadId,
+        });
+      }
+    });
 
     const recover = (observer?: (progress: CodexThreadHandoffProgress) => void) =>
       Effect.gen(function* () {
+        yield* prepareRecovery;
         const entries = yield* listJournal;
         const recovered: CodexThreadHandoffJournalEntry[] = [];
         for (const entry of entries) {
@@ -900,7 +1222,24 @@ export const make = (options: {
             continue;
           }
           recovered.push(
-            yield* runOwned(entry.threadId, entry.operationId, recoverEntry(entry, observer)),
+            yield* runOwned(
+              entry.threadId,
+              entry.operationId,
+              entry.requestThreadId ?? null,
+              invoke(
+                "recover-admission",
+                threadExecution.withHandoff(
+                  entry.threadId,
+                  recoverEntry(entry, observer).pipe(
+                    Effect.flatMap((recovered) => releaseVerifiedRecovery(recovered, observer)),
+                  ),
+                ),
+                {
+                  operationId: entry.operationId,
+                  threadId: entry.threadId,
+                },
+              ).pipe(Effect.flatMap((recovered) => completeHandoff(recovered, observer))),
+            ),
           );
         }
         return recovered;
@@ -964,33 +1303,53 @@ export const make = (options: {
     const launch = (input: CodexLaunchThreadHandoffInput) =>
       Effect.gen(function* () {
         const existing = yield* get(input.operationId);
-        if (existing) return existing;
-        const source = yield* threadExecution
-          .read(input.threadId)
-          .pipe(Effect.catch(() => Effect.succeed(null)));
+        if (existing) {
+          yield* requireStatusOwnership(input, existing);
+          return existing;
+        }
+        const source = yield* invoke(
+          "resolve-source",
+          threadExecution.read(input.threadId, input.destinationHostId),
+          {
+            operationId: input.operationId,
+            threadId: input.threadId,
+          },
+        );
         const destinationHostId = input.destinationHostId ?? source?.hostId ?? "local";
         const host = yield* executionHosts.get(destinationHostId);
         const now = yield* Clock.currentTimeMillis;
-        const admitted = yield* SubscriptionRef.modify(
-          statuses,
-          (current): readonly [StatusAdmission, HandoffStatusState] => {
-            const existing = current.operations.get(input.operationId);
-            if (existing) return [{ isNew: false as const, operation: existing }, current];
-            const operation = buildInitialOperation(
-              input,
-              now,
-              source,
-              destinationHostId,
-              host?.descriptor.displayName ?? destinationHostId,
-            );
-            const next = new Map(current.operations).set(operation.operationId, operation);
-            return [
-              { isNew: true as const, operation },
-              { revision: current.revision + 1, operations: retainStatusOperations(next.values()) },
-            ];
-          },
+        const admitted = yield* activeLock.withPermits(1)(
+          requireActiveOwnership(input).pipe(
+            Effect.andThen(
+              SubscriptionRef.modify(
+                statuses,
+                (current): readonly [StatusAdmission, HandoffStatusState] => {
+                  const existing = current.operations.get(input.operationId);
+                  if (existing) return [{ isNew: false as const, operation: existing }, current];
+                  const operation = buildInitialOperation(
+                    input,
+                    now,
+                    source,
+                    destinationHostId,
+                    host?.descriptor.displayName ?? destinationHostId,
+                  );
+                  const next = new Map(current.operations).set(operation.operationId, operation);
+                  return [
+                    { isNew: true as const, operation },
+                    {
+                      revision: current.revision + 1,
+                      operations: retainStatusOperations(next.values()),
+                    },
+                  ];
+                },
+              ),
+            ),
+          ),
         );
-        if (!admitted.isNew) return admitted.operation;
+        if (!admitted.isNew) {
+          yield* requireStatusOwnership(input, admitted.operation);
+          return admitted.operation;
+        }
         const background = start(input).pipe(
           Effect.catch((cause) =>
             Effect.gen(function* () {
@@ -1027,6 +1386,7 @@ export const make = (options: {
 
     return CodexThreadHandoffRuntime.of({
       start,
+      prepareRecovery,
       recover,
       launch,
       get,

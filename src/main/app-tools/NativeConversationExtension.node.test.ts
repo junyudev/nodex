@@ -10,6 +10,10 @@ const service = NativeConversationExtension.of({
   submit: () => Effect.succeed({ turnId: "accepted" }),
   wait: () => Effect.never,
   cancel: () => Effect.void,
+  stopExecution: () => Effect.void,
+  withExecutionHandoff: (_threadId, use) => use,
+  setExecutionRecoveryRequired: () => Effect.void,
+  withExecutionLocation: (_threadId, _location, use) => use,
   createAutomationSession: () => Effect.succeed({ threadId: "created" }),
   validateAutomation: () => Effect.void,
 });

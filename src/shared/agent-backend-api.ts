@@ -7,6 +7,8 @@ import type {
 import type { ProjectSessionThreadLink } from "./types";
 import type { ConversationFirstSubmissionIdentity } from "./types";
 import type { ClaudeEffortSelection, ClaudeModelSelection } from "./claude-models";
+import type { PageRunInTarget } from "./types";
+import type { CodexPendingWorktreeStartingState } from "./codex-pending-worktree";
 
 export type NativePermissionMode = Exclude<import("./types").CodexPermissionMode, "custom">;
 
@@ -22,6 +24,9 @@ export interface AgentBackendThreadStartInput {
   readonly effort?: ClaudeEffortSelection;
   readonly selection?: ClaudeModelSelection;
   readonly mode?: "default" | "plan";
+  readonly runInTarget?: Exclude<PageRunInTarget, "cloud">;
+  readonly runInEnvironmentPath?: string | null;
+  readonly worktreeStartingState?: CodexPendingWorktreeStartingState;
   readonly prompt: string;
   readonly images?: readonly import("./types").CodexPromptImageInput[];
   readonly firstSubmission: ConversationFirstSubmissionIdentity;

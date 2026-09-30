@@ -716,6 +716,11 @@ Adapters retain backend identity and capability boundaries. Presentation reuse n
 Codex protocol authority for another backend. Product capabilities belong to
 [Agent Backend Behavior](product-specs/agent-backend-behavior.md).
 
+Native conversation discovery belongs to Main's backend-neutral catalog. Provider Adapters read
+native metadata; Core atomically owns connection to a Nodex Session, destination and immutable
+native recovery identity. Authentication location never substitutes for history identity. See
+[Native Conversation Connection Behavior](product-specs/native-conversation-connection-behavior.md).
+
 ### Codex conversation ownership
 
 Codex has four distinct authorities that must not collapse into one another:
@@ -834,6 +839,16 @@ admission. A transaction that already owns the Thread lane performs its entity t
 directly; it never re-enters the lane through a sibling public command. Optimistic state is
 committed or compensated within the owning transaction, and interruption reaches the same physical
 Gateway, worker, or Core operation.
+
+The handoff owner composes backend-specific execution capabilities with one journaled Git and
+Core location transaction. Codex admission belongs to its canonical Thread generation; Claude
+admission, exact native identity, Query suspension and provisional location belong to its existing
+native conversation owner. The transaction seals new execution while retaining internal interruption
+and rollback capability. Unresolved recovery seals survive Thread retirement and are restored
+from the journal before execution startup; durable journal paths also protect recovery worktrees
+from retention. Prepared requests are fenced by their execution admission epoch across moves.
+Native application construction is reached through the existing scoped,
+bound native extension; the handoff does not construct a second Agent runtime.
 
 Long-running handoff preparation may perform reversible filesystem and host work outside the Thread
 lane, but its durable execution-location commit enters that lane. Persistent fork holds the same

@@ -51,7 +51,7 @@ it.effect(
         if(message.type!=="control_request")return;
         if(message.request.subtype==="set_permission_mode"&&message.request.mode==="bypassPermissions"&&!args.includes("--allow-dangerously-skip-permissions")){process.stdout.write(JSON.stringify({type:"control_response",response:{subtype:"error",request_id:message.request_id,error:"bypass unavailable"}})+"\\n");return;}
         if(message.request.subtype==="apply_flag_settings")for(const[key,value]of Object.entries(message.request.settings)){if(value===null)delete settings[key];else settings[key]=value;}
-        const response=message.request.subtype==="initialize"?{commands:[],agents:[],models:[{value:"default",resolvedModel:"claude-opus-5",displayName:"Opus",description:"",supportsAdaptiveThinking:true}],fast_mode_state:"off",output_style:"default",available_output_styles:["default"],account:{tokenSource:"fixture"}}:message.request.subtype==="get_settings"?{effective:{alwaysThinkingEnabled:true,fastMode:false,...settings},sources:[],applied:{model:settings.model??"claude-opus-5",effort:settings.effortLevel??"medium"}}:message.request.subtype==="mcp_status"?{mcpServers:[]}:{};
+        const response=message.request.subtype==="initialize"?{commands:[],agents:[],models:[{value:"default",resolvedModel:"claude-opus-5",displayName:"Opus",description:"",supportsAdaptiveThinking:true}],fast_mode_state:"off",output_style:"default",available_output_styles:["default"],account:{tokenSource:"fixture"}}:message.request.subtype==="get_settings"?{effective:{alwaysThinkingEnabled:true,fastMode:false,...settings},sources:[],applied:{model:settings.model??process.env.NODEX_TEST_NATIVE_MODEL??"claude-opus-5",effort:settings.effortLevel??"medium"}}:message.request.subtype==="mcp_status"?{mcpServers:[]}:{};
         process.stdout.write(JSON.stringify({type:"control_response",response:{subtype:"success",request_id:message.request_id,response}})+"\\n");
       });
     `,
@@ -96,6 +96,14 @@ it.effect(
             thinking: true,
           });
           expect((yield* Effect.result(session.setMode("bypassPermissions")))._tag).toBe("Failure");
+          yield* session.setIntelligence({ model: "default", effort: "default", context: "1m" });
+          expect((yield* session.inspectIntelligence).model).toBe("claude-opus-5[1m]");
+          yield* session.setIntelligence({ model: "default", effort: "default", context: "200k" });
+          expect((yield* session.inspectIntelligence).model).toBe("claude-opus-5[200k]");
+          expect(
+            (yield* Effect.result(session.setIntelligence({ model: "default", effort: "default" })))
+              ._tag,
+          ).toBe("Failure");
           yield* session.setIntelligence({
             model: "gateway/private",
             effort: "high",
@@ -209,6 +217,8 @@ it.effect(
           (request) => (request as { subtype: string }).subtype === "apply_flag_settings",
         ),
       ).toEqual([
+        { subtype: "apply_flag_settings", settings: { model: "claude-opus-5[1m]" } },
+        { subtype: "apply_flag_settings", settings: { model: "claude-opus-5[200k]" } },
         {
           subtype: "apply_flag_settings",
           settings: {
@@ -247,6 +257,41 @@ it.effect(
           ],
         },
       });
+      yield* Effect.scoped(
+        Effect.gen(function* () {
+          const sdk = yield* ClaudeSdk;
+          const session = yield* sdk.open({
+            instance: { ...defaultClaudeInstance(), binaryPath: executable },
+            environment: {
+              HOME: root,
+              PATH: "/usr/bin:/bin",
+              NODEX_TEST_NODE: process.execPath,
+              NODEX_TEST_CLI: script,
+              NODEX_TEST_INVOCATION: invocation,
+              NODEX_TEST_MESSAGES: messages,
+              NODEX_TEST_NATIVE_MODEL: "",
+            },
+            cwd,
+            sessionId: "01991e60-b800-7000-8000-000000000020",
+            resume: true,
+            permissionMode: "default",
+            canUseTool: () => Effect.succeed({ behavior: "deny", message: "No tools" }),
+          });
+          expect(session.intelligence.model).toBeNull();
+          expect(
+            (yield* Effect.result(
+              session.setIntelligence({ model: "default", effort: "default", context: "1m" }),
+            ))._tag,
+          ).toBe("Failure");
+        }),
+      );
+      const afterUnresolved = (yield* Effect.promise(() => readFile(messages, "utf8")))
+        .trim()
+        .split("\n")
+        .map((line) => JSON.parse(line) as { type: string; request?: { subtype: string } });
+      expect(
+        afterUnresolved.filter((entry) => entry.request?.subtype === "apply_flag_settings"),
+      ).toHaveLength(5);
     }).pipe(Effect.scoped, Effect.provide(live)),
 );
 

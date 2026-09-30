@@ -211,7 +211,7 @@ const desktopTools = Layer.unwrap(
       projectRootPath: config.projectRootPath,
       resourcesPath: config.resourcesPath,
       runtimeStateHome: codex.runtimeStateHome,
-      codexHome: codex.codexHome,
+      codexHome: codex.accountHome.effectiveHome,
     });
   }),
 ).pipe(Layer.provideMerge(Layer.mergeAll(browserPresentation, computerUse)));

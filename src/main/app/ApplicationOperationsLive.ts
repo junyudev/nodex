@@ -45,7 +45,7 @@ import { layer as callbackRuntimeLive } from "./ScopedCallbackRuntime";
 import { layer as nativeTurnAuthorityLive } from "../agent-backend/NativeTurnAuthority";
 import { layer as claudeTextGenerationLive } from "../agent-backend/ClaudeTextGeneration";
 import { layer as nativePromptImagesLive } from "../agent-backend/NativePromptImages";
-import { layer as nativeAutomationWorkspaceLive } from "../automation-application/NativeAutomationWorkspace";
+import { layer as nativeSessionWorkspaceLive } from "../agent-backend/NativeSessionWorkspace";
 
 const workspaceDependencies = Layer.unwrap(
   Effect.gen(function* () {
@@ -135,7 +135,7 @@ const agentBackends = agentBackendApplicationLive.pipe(
       nativeTurnAuthorityLive,
       claudeTextGenerationLive.pipe(Layer.provideMerge(claudeSdkLive)),
       nativePromptImagesLive,
-      nativeAutomationWorkspaceLive,
+      nativeSessionWorkspaceLive,
     ),
   ),
   Layer.provideMerge(Layer.merge(agentBackendRegistryLive, agentSessions)),

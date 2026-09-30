@@ -1,36 +1,51 @@
 // @effect-diagnostics strictEffectProvide:off
-import { access, mkdtemp, readdir, rm } from "node:fs/promises";
+import { access, mkdtemp, readFile, readdir, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import * as path from "node:path";
 import { assert, it } from "@effect/vitest";
 import * as Effect from "effect/Effect";
-import type { CodexScheduledAutomation } from "../../shared/types";
+import type { NativeSessionWorkspaceInput } from "./NativeSessionWorkspace";
 import { testLayer as configLayer } from "../app/MainConfig";
 import { CodexGitProbe } from "../codex-application/CodexGitProbe";
 import { ExecutionHostRuntime } from "../codex-application/ExecutionHostRuntime";
 import { ManagedWorktreeRuntime } from "../codex-application/ManagedWorktreeRuntime";
 import type { CodexWorktreeWorkerRequest } from "../codex/codex-worktree-worker-protocol";
 import type { WorktreeWorkerRequestOptions } from "../host-runtime/WorktreeWorkerRuntime";
-import { make, NativeAutomationWorkspaceError } from "./NativeAutomationWorkspace";
+import { make, NativeSessionWorkspaceError } from "./NativeSessionWorkspace";
+import type { CodexStoredShellEnvironment } from "../codex/codex-worktree-shell-environment";
 
-const definition = {
-  id: "definition",
+const input: NativeSessionWorkspaceInput = {
+  targetId: "session",
   projectId: "project",
-  backendBinding: { kind: "claude", instanceConfigId: "work" },
-  executionEnvironment: "worktree",
-  name: "Review source",
+  runInTarget: "newWorktree",
+  title: "Review source",
   prompt: "Review source",
   localEnvironmentConfigPath: null,
-} as CodexScheduledAutomation;
+  sourceCwd: "/source",
+  operationId: "run:create",
+};
 
 const fixture = (
-  options: { homeDirectory?: string; setupError?: string; ownerFailure?: boolean } = {},
+  options: {
+    homeDirectory?: string;
+    setupError?: string;
+    ownerFailure?: boolean;
+    environmentPath?: string;
+    shellEnvironment?: CodexStoredShellEnvironment;
+  } = {},
 ) => {
   const events: string[] = [];
   const requests: CodexWorktreeWorkerRequest[] = [];
   const owner = make.pipe(
     Effect.provideService(CodexGitProbe, {
-      readPath: (_cwd, args) => Effect.succeed(args[0] === "branch" ? "main" : "../source/.git"),
+      readPath: (_cwd, args) =>
+        Effect.succeed(
+          args[0] === "branch"
+            ? "main"
+            : args[1] === "--git-path"
+              ? (options.environmentPath ?? null)
+              : "../source/.git",
+        ),
       isNonGitWorkspace: () => Effect.succeed(false),
       isNonGitWorkspaceOnHost: () => Effect.succeed(false),
     }),
@@ -52,7 +67,7 @@ const fixture = (
         Effect.gen(function* () {
           events.push(`owner:${input.ownerThreadId}`);
           if (options.ownerFailure)
-            return yield* new NativeAutomationWorkspaceError({
+            return yield* new NativeSessionWorkspaceError({
               operation: "owner",
               cause: new Error("metadata failed"),
             });
@@ -80,7 +95,7 @@ const fixture = (
                 worktreeGitRoot: "/worktrees/review",
                 worktreeWorkspaceRoot: "/worktrees/review/packages/app",
                 setupError: options.setupError ?? null,
-                shellEnvironment: null,
+                shellEnvironment: options.shellEnvironment ?? null,
               };
             }),
         }),
@@ -93,18 +108,14 @@ const fixture = (
 };
 
 it.effect(
-  "native automation records and owns the managed workspace before releasing its newborn protection",
+  "native session records and owns the managed workspace before releasing its newborn protection",
   () =>
     Effect.gen(function* () {
       const f = fixture();
       const owner = yield* f.owner;
       yield* Effect.scoped(
         Effect.gen(function* () {
-          const lease = yield* owner.prepare({
-            definition,
-            sourceCwd: "/source",
-            operationId: "run:create",
-          });
+          const lease = yield* owner.prepare(input);
           assert.equal(lease.location.cwd, "/worktrees/review/packages/app");
           assert.equal(lease.location.managedWorktreePath, "/worktrees/review");
           assert.include(lease.location.workspaceRoots, "/worktrees/review/packages/source/.git");
@@ -131,14 +142,99 @@ it.effect(
       for (const setupError of [undefined, "setup failed"]) {
         const f = fixture({ setupError });
         const owner = yield* f.owner;
-        const prepared = Effect.scoped(
-          owner.prepare({ definition, sourceCwd: "/source", operationId: "run:create" }),
-        );
+        const prepared = Effect.scoped(owner.prepare(input));
         if (setupError) assert.equal((yield* Effect.flip(prepared)).operation, "worktree.setup");
         else yield* prepared;
         assert.deepEqual(f.events, ["register", "remove", "release"]);
       }
     }),
+);
+
+it.effect("selected worktree state and Environment reach the worker and survive attachment", () =>
+  Effect.scoped(
+    Effect.gen(function* () {
+      const directory = yield* Effect.acquireRelease(
+        Effect.promise(() => mkdtemp(path.join(tmpdir(), "nodex-native-worktree-environment-"))),
+        (root) => Effect.promise(() => rm(root, { recursive: true, force: true })),
+      );
+      const environmentPath = path.join(directory, "codex-shell-environment.json");
+      const shellEnvironment: CodexStoredShellEnvironment = {
+        version: 1,
+        set: { PROJECT_ENV: "worktree", PATH: "/worktree/bin" },
+        exclude: ["OLD_PROJECT_ENV"],
+      };
+      const f = fixture({ environmentPath, shellEnvironment });
+      const owner = yield* f.owner;
+      const startingState = { type: "working-tree" } as const;
+      const lease = yield* owner.prepare({
+        ...input,
+        sourceRoots: ["/source", "/additional"],
+        worktreeStartingState: startingState,
+        localEnvironmentConfigPath: ".codex/environments/setup.toml",
+      });
+      assert.include(lease.location.workspaceRoots, "/additional");
+      assert.notInclude(lease.location.workspaceRoots, "/source");
+      const request = f.requests[0];
+      if (request?.operation !== "create") return yield* Effect.die("Expected create request");
+      assert.deepEqual(request.input.startingState, startingState);
+      assert.equal(request.input.localEnvironmentConfigPath, ".codex/environments/setup.toml");
+      assert.deepEqual(
+        JSON.parse(yield* Effect.promise(() => readFile(environmentPath, "utf8"))),
+        shellEnvironment,
+      );
+      yield* lease.attach("native-thread");
+      assert.notInclude(f.events, "remove");
+    }),
+  ),
+);
+
+it.effect("environment persistence failure cleans an unowned worktree before Agent launch", () =>
+  Effect.gen(function* () {
+    const f = fixture({ shellEnvironment: { version: 1, set: { READY: "yes" }, exclude: [] } });
+    const owner = yield* f.owner;
+    const failure = yield* Effect.scoped(owner.prepare(input)).pipe(Effect.flip);
+    assert.equal(failure.operation, "worktree.environment");
+    assert.deepEqual(f.events, ["register", "remove", "release"]);
+  }),
+);
+
+it.effect(
+  "local execution retains every selected Project source without allocating a worktree",
+  () =>
+    Effect.scoped(
+      Effect.gen(function* () {
+        const f = fixture();
+        const owner = yield* f.owner;
+        const lease = yield* owner.prepare({
+          ...input,
+          runInTarget: "localProject",
+          sourceRoots: ["/source", "/additional"],
+        });
+        assert.equal(lease.location.cwd, "/source");
+        assert.equal(lease.location.managedWorktreePath, null);
+        assert.deepEqual(lease.location.workspaceRoots, ["/source", "/additional"]);
+        assert.lengthOf(f.requests, 0);
+        assert.deepEqual(f.events, []);
+      }),
+    ),
+);
+
+it.effect("a local Environment cannot silently apply to the source checkout", () =>
+  Effect.scoped(
+    Effect.gen(function* () {
+      const f = fixture();
+      const owner = yield* f.owner;
+      const failure = yield* owner
+        .prepare({
+          ...input,
+          runInTarget: "localProject",
+          localEnvironmentConfigPath: ".codex/environments/setup.toml",
+        })
+        .pipe(Effect.flip);
+      assert.equal(failure.operation, "workspace.environment");
+      assert.lengthOf(f.requests, 0);
+    }),
+  ),
 );
 
 it.effect("a Core-owned native worktree survives a later owner metadata repair failure", () =>
@@ -147,11 +243,7 @@ it.effect("a Core-owned native worktree survives a later owner metadata repair f
     const owner = yield* f.owner;
     yield* Effect.scoped(
       Effect.gen(function* () {
-        const lease = yield* owner.prepare({
-          definition,
-          sourceCwd: "/source",
-          operationId: "run:create",
-        });
+        const lease = yield* owner.prepare(input);
         yield* lease.attach("durable-thread");
       }),
     );
@@ -160,8 +252,22 @@ it.effect("a Core-owned native worktree survives a later owner metadata repair f
   }),
 );
 
+it.effect("uncertain Core ownership retains the workspace and its newborn protection", () =>
+  Effect.gen(function* () {
+    const f = fixture();
+    const owner = yield* f.owner;
+    yield* Effect.scoped(
+      Effect.gen(function* () {
+        const lease = yield* owner.prepare(input);
+        yield* lease.retain;
+      }),
+    );
+    assert.deepEqual(f.events, ["register"]);
+  }),
+);
+
 it.effect(
-  "projectless native automation uses a disposable dedicated workspace and output directory",
+  "projectless native session uses a disposable dedicated workspace and output directory",
   () =>
     Effect.scoped(
       Effect.gen(function* () {
@@ -172,7 +278,9 @@ it.effect(
         const f = fixture({ homeDirectory });
         const owner = yield* f.owner;
         const lease = yield* owner.prepare({
-          definition: { ...definition, projectId: null },
+          ...input,
+          projectId: null,
+          runInTarget: "localProject",
           sourceCwd: null,
           operationId: "run:create",
         });
@@ -204,7 +312,9 @@ it.effect("projectless workspace ownership removes only a failed unlinked alloca
         const directory = yield* Effect.scoped(
           Effect.gen(function* () {
             const lease = yield* owner.prepare({
-              definition: { ...definition, projectId: null },
+              ...input,
+              projectId: null,
+              runInTarget: "localProject",
               sourceCwd: null,
               operationId: "run:create",
             });

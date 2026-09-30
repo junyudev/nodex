@@ -227,7 +227,6 @@ export function CopyMessageActionButton({
 export function EditMessageIcon({ className }: { className?: string }) {
   return <EditIcon className={cn("shrink-0", className ?? "icon-xs electron:icon-sm")} />;
 }
-export type AssistantMessageRating = "thumbs_up" | "thumbs_down";
 
 export function ForkMessageIcon({ className }: { className?: string }) {
   return <ForkIcon className={cn("shrink-0", className ?? "icon-xs electron:icon-sm")} />;

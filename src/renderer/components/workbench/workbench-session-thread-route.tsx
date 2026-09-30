@@ -1,7 +1,14 @@
 import { ConversationRuntimeContext } from "@/features/local-conversation/conversation-runtime";
 import { useAgentConversationAdapter } from "@/features/local-conversation/agent-conversation-adapter";
 import type { ConversationProviderPresentation } from "@/features/local-conversation/thread-stage-types";
-import { useCallback, useEffect, useMemo, useState, useSyncExternalStore } from "react";
+import {
+  useCallback,
+  useEffect,
+  useEffectEvent,
+  useMemo,
+  useState,
+  useSyncExternalStore,
+} from "react";
 import {
   ConnectedThreadComposerDock,
   ConnectedThreadStage,
@@ -31,7 +38,7 @@ import {
   type NewThreadBackendSelection,
 } from "@/lib/new-thread-backend-selection";
 import type { AcpAgentInstanceConfig } from "../../../shared/types";
-import { listWorktreeEnvironmentConfigs } from "@/lib/managed-worktree-runtime";
+import { useLocalEnvironmentConfigs } from "@/lib/use-local-environment-queries";
 import {
   createCommandKeymapState,
   formatCommandShortcutLabel,
@@ -46,7 +53,6 @@ import type {
   CodexComposerIntent,
   PageRunInTarget,
   Project,
-  WorktreeEnvironmentConfigRecord,
 } from "@/lib/types";
 import type { CodexPendingWorktreeStartingState } from "../../../shared/codex-pending-worktree";
 import type { WorkbenchSessionRenderProjection } from "@/lib/workbench-session-presentation";
@@ -57,10 +63,10 @@ import {
 import {
   readLocalEnvironmentSelections,
   resolveLocalEnvironmentSelection,
-  type LocalEnvironmentSelectionResolution,
   writeLocalEnvironmentSelection,
 } from "./local-environment-selection";
 import { projectSessionThreadLinkToSummary } from "./thread-summary-projection";
+import { useThreadExecutionHandoff } from "@/lib/thread-handoff-runtime";
 
 function SharedConnectedSessionThread({
   agent,
@@ -222,19 +228,12 @@ function SharedConnectedSessionThread({
   const attachedSummary = session.thread ? projectSessionThreadLinkToSummary(session.thread) : null;
   const [selectedNewThreadRunInTarget, setSelectedNewThreadRunInTarget] =
     useState<PageRunInTarget>("localProject");
-  const [selectedNewThreadEnvironmentPath, setSelectedNewThreadEnvironmentPath] = useState<
-    string | null
-  >(null);
   const [selectedNewThreadStartingState, setSelectedNewThreadStartingState] = useState<
     CodexPendingWorktreeStartingState | undefined
   >(undefined);
-  const [newThreadEnvironmentConfigs, setNewThreadEnvironmentConfigs] = useState<
-    WorktreeEnvironmentConfigRecord[]
-  >([]);
-  const [newThreadEnvironmentResolution, setNewThreadEnvironmentResolution] =
-    useState<LocalEnvironmentSelectionResolution | null>(null);
-  const [newThreadEnvironmentsLoading, setNewThreadEnvironmentsLoading] = useState(false);
-  const [newThreadEnvironmentsError, setNewThreadEnvironmentsError] = useState(false);
+  const [environmentSelections, setEnvironmentSelections] = useState(
+    readLocalEnvironmentSelections,
+  );
   const [canForkCurrentThreadIntoWorktree, setCanForkCurrentThreadIntoWorktree] = useState(false);
   const selectedNewThreadProject =
     selectedNewThreadProjectId === null
@@ -247,6 +246,18 @@ function SharedConnectedSessionThread({
     : (selectedNewThreadProject?.id ?? null);
   const threadStartProgress = useCodexThreadStartProgress(progressProjectId, session.id);
   const summary = attachedSummary;
+  const executionHandoff = useThreadExecutionHandoff(summary?.threadId ?? null);
+  const executionHandoffCompletion =
+    executionHandoff && executionHandoff.status !== "running"
+      ? `${executionHandoff.operationId}:${executionHandoff.revision}`
+      : null;
+  const refreshExecutionSession = useEffectEvent(() => {
+    void onRefreshProjectSessions(session.projectId).catch(() => undefined);
+  });
+  useEffect(() => {
+    if (!executionHandoffCompletion) return;
+    refreshExecutionSession();
+  }, [executionHandoffCompletion]);
   const startInSelectorProject = summary ? project : selectedNewThreadProject;
   const newThreadEnvironmentWorkspaceRoot = projectWorkspaceRootOrNull(startInSelectorProject);
   const effectiveProjectId = summary ? session.projectId : (selectedNewThreadProject?.id ?? null);
@@ -256,6 +267,35 @@ function SharedConnectedSessionThread({
     session.thread?.executionHostId ?? null,
   );
   const usesExternalAgent = Boolean(agent);
+  const environmentAvailable = provider?.kind !== "acp";
+  const environmentConfigsQuery = useLocalEnvironmentConfigs(effectiveProjectId ?? "", {
+    enabled: environmentAvailable && selectedNewThreadRunInTarget === "newWorktree",
+  });
+  const newThreadEnvironmentConfigs = useMemo(
+    () => environmentConfigsQuery.data ?? [],
+    [environmentConfigsQuery.data],
+  );
+  const newThreadEnvironmentsLoading = environmentConfigsQuery.isFetching;
+  const newThreadEnvironmentsError = environmentConfigsQuery.isError;
+  const newThreadEnvironmentResolution = resolveLocalEnvironmentSelection({
+    candidateSource: environmentConfigsQuery.isError
+      ? { status: "unresolved", reason: "load-error", error: environmentConfigsQuery.error }
+      : environmentConfigsQuery.data
+        ? {
+            status: "loaded",
+            candidates: environmentConfigsQuery.data.map(({ configPath, state }) => ({
+              configPath,
+              state,
+            })),
+          }
+        : { status: "unresolved", reason: "loading", error: null },
+    selectionsByWorkspace: environmentSelections,
+    workspaceRoot: newThreadEnvironmentWorkspaceRoot,
+  });
+  const selectedNewThreadEnvironmentPath =
+    environmentAvailable && selectedNewThreadRunInTarget === "newWorktree"
+      ? newThreadEnvironmentResolution.resolvedConfigPath
+      : null;
   const loadModels = codexControl.loadModels;
   const listCollaborationModes = codexControl.listCollaborationModes;
   const [collaborationModes, setCollaborationModes] = useState<CodexCollaborationModePreset[]>([]);
@@ -311,10 +351,12 @@ function SharedConnectedSessionThread({
     if (summary) return;
     setSelectedNewThreadProjectId(session.projectId);
     setSelectedNewThreadRunInTarget("localProject");
-    setSelectedNewThreadEnvironmentPath(null);
     setSelectedNewThreadStartingState(undefined);
-    setNewThreadEnvironmentResolution(null);
   }, [session.id, session.projectId, summary, setSelectedNewThreadProjectId]);
+
+  useEffect(() => {
+    setSelectedNewThreadStartingState(undefined);
+  }, [effectiveProjectId, newThreadEnvironmentWorkspaceRoot]);
 
   useEffect(() => {
     if (selectedNewThreadProjectId === null) return;
@@ -361,78 +403,24 @@ function SharedConnectedSessionThread({
     };
   }, [summary?.cwd]);
 
+  const refetchEnvironmentConfigs = environmentConfigsQuery.refetch;
   const refreshNewThreadEnvironments = useCallback(async () => {
-    if (effectiveProjectId === null) {
-      setNewThreadEnvironmentsLoading(false);
-      setNewThreadEnvironmentConfigs([]);
-      setSelectedNewThreadEnvironmentPath(null);
-      setNewThreadEnvironmentResolution(null);
-      return;
-    }
-    setNewThreadEnvironmentsLoading(true);
-    setNewThreadEnvironmentsError(false);
-    try {
-      const configs = await listWorktreeEnvironmentConfigs(effectiveProjectId);
-      const resolution = resolveLocalEnvironmentSelection({
-        candidateSource: {
-          status: "loaded",
-          candidates: configs.map((config) => ({
-            configPath: config.configPath,
-            state: config.state,
-          })),
-        },
-        selectionsByWorkspace: readLocalEnvironmentSelections(),
-        workspaceRoot: newThreadEnvironmentWorkspaceRoot,
-      });
-      setNewThreadEnvironmentConfigs(configs);
-      setNewThreadEnvironmentResolution(resolution);
-      setSelectedNewThreadEnvironmentPath(
-        resolution.status === "selected" ? resolution.resolvedConfigPath : null,
-      );
-    } catch (error) {
-      setNewThreadEnvironmentConfigs([]);
-      setNewThreadEnvironmentsError(true);
-      setNewThreadEnvironmentResolution(
-        resolveLocalEnvironmentSelection({
-          candidateSource: { status: "unresolved", reason: "load-error", error },
-          selectionsByWorkspace: readLocalEnvironmentSelections(),
-          workspaceRoot: newThreadEnvironmentWorkspaceRoot,
-        }),
-      );
-    } finally {
-      setNewThreadEnvironmentsLoading(false);
-    }
-  }, [effectiveProjectId, newThreadEnvironmentWorkspaceRoot]);
+    if (effectiveProjectId === null || !environmentAvailable) return;
+    await refetchEnvironmentConfigs();
+    setEnvironmentSelections(readLocalEnvironmentSelections());
+  }, [effectiveProjectId, environmentAvailable, refetchEnvironmentConfigs]);
 
   const changeNewThreadEnvironment = useCallback(
     (configPath: string | null) => {
-      setSelectedNewThreadEnvironmentPath(configPath);
       if (!newThreadEnvironmentWorkspaceRoot) return;
       writeLocalEnvironmentSelection({
         workspaceRoot: newThreadEnvironmentWorkspaceRoot,
         configPath,
       });
-      setNewThreadEnvironmentResolution(
-        resolveLocalEnvironmentSelection({
-          candidateSource: {
-            status: "loaded",
-            candidates: newThreadEnvironmentConfigs.map((config) => ({
-              configPath: config.configPath,
-              state: config.state,
-            })),
-          },
-          selectionsByWorkspace: readLocalEnvironmentSelections(),
-          workspaceRoot: newThreadEnvironmentWorkspaceRoot,
-        }),
-      );
+      setEnvironmentSelections(readLocalEnvironmentSelections());
     },
-    [newThreadEnvironmentConfigs, newThreadEnvironmentWorkspaceRoot],
+    [newThreadEnvironmentWorkspaceRoot],
   );
-
-  useEffect(() => {
-    if (selectedNewThreadRunInTarget !== "newWorktree") return;
-    void refreshNewThreadEnvironments();
-  }, [refreshNewThreadEnvironments, selectedNewThreadRunInTarget]);
 
   const startInSelectorModel = useMemo<NewChatStartInSelectorModel>(() => {
     const workspaceRoot = normalizeProjectPrimaryWorkspaceRoot(startInSelectorProject);
@@ -446,6 +434,7 @@ function SharedConnectedSessionThread({
       },
       disabled: effectiveProjectId === null,
       worktreeAvailable: Boolean(workspaceRoot),
+      environmentAvailable,
       environments: newThreadEnvironmentConfigs,
       environmentsLoading: newThreadEnvironmentsLoading,
       environmentsError: newThreadEnvironmentsError,
@@ -462,6 +451,7 @@ function SharedConnectedSessionThread({
     newThreadEnvironmentsError,
     newThreadEnvironmentResolution,
     effectiveProjectId,
+    environmentAvailable,
     selectedNewThreadEnvironmentPath,
     selectedNewThreadRunInTarget,
     selectedNewThreadStartingState,
@@ -472,9 +462,9 @@ function SharedConnectedSessionThread({
     (agent && !projectWorkspaceRootOrNull(selectedNewThreadProject) && !summary
       ? "Choose a local Project to start this Agent."
       : null) ??
-    (agent || selectedNewThreadRunInTarget !== "newWorktree"
+    (!environmentAvailable || selectedNewThreadRunInTarget !== "newWorktree"
       ? null
-      : newThreadEnvironmentsLoading || newThreadEnvironmentResolution === null
+      : newThreadEnvironmentsLoading
         ? "Wait for worktree environments to finish loading."
         : newThreadEnvironmentResolution.status === "needs-attention"
           ? "Repair the selected worktree environment before starting."
@@ -507,9 +497,6 @@ function SharedConnectedSessionThread({
         onNewThreadStartInTargetChange: (target) => {
           setSelectedNewThreadRunInTarget(target.runInTarget);
           setSelectedNewThreadStartingState(target.worktreeStartingState);
-          if (target.runInTarget !== "newWorktree") {
-            setSelectedNewThreadEnvironmentPath(null);
-          }
         },
         onNewThreadStartInEnvironmentChange: changeNewThreadEnvironment,
         onRefreshNewThreadStartInEnvironments: refreshNewThreadEnvironments,
@@ -627,9 +614,9 @@ function SharedConnectedSessionThread({
           sessionId: session.id,
           ...(projectDraftId ? { projectDraftId } : {}),
           threadTitle: "New thread",
-          runInTarget: agent ? "localProject" : selectedNewThreadRunInTarget,
-          runInEnvironmentPath: agent ? null : selectedNewThreadEnvironmentPath,
-          worktreeStartingState: agent ? undefined : selectedNewThreadStartingState,
+          runInTarget: selectedNewThreadRunInTarget,
+          runInEnvironmentPath: environmentAvailable ? selectedNewThreadEnvironmentPath : null,
+          worktreeStartingState: selectedNewThreadStartingState,
         },
     newThreadProjectSelector: summary
       ? null
@@ -639,7 +626,7 @@ function SharedConnectedSessionThread({
           disabled: Boolean(projectDraftId),
           canAddProject: !projectDraftId,
         },
-    newThreadStartInSelector: agent ? null : startInSelectorModel,
+    newThreadStartInSelector: summary ? null : startInSelectorModel,
     newThreadStartBlockedReason: effectiveNewThreadStartBlockedReason,
     newThreadComposerIntent: summary ? null : (newThreadComposerIntent ?? null),
     threadStartProgress,
@@ -827,6 +814,7 @@ function ConnectedSessionThread(props: ConnectedSessionThreadProps) {
     commands: adapter.commands,
     controls: adapter.controls,
     skills: adapter.skills,
+    refreshSkills: adapter.refreshSkills,
     stopTask: adapter.stopTask,
     nativeIntelligence: adapter.nativeIntelligence,
     history: adapter.history,
@@ -892,6 +880,7 @@ export function ProjectSessionThreadComposerDock({
   onRefreshProjectSessions,
   onEnsureDefaultDraftSessionForProject,
   onOpenPendingWorktree,
+  onRequestProjectPickerOpen,
   onOpenLocalEnvironmentsSettings,
   onOpenHooksSettings,
   onOpenVoiceSettings,
@@ -918,6 +907,7 @@ export function ProjectSessionThreadComposerDock({
   readonly onRefreshProjectSessions: ConnectedSessionThreadProps["onRefreshProjectSessions"];
   readonly onEnsureDefaultDraftSessionForProject: ConnectedSessionThreadProps["onEnsureDefaultDraftSessionForProject"];
   readonly onOpenPendingWorktree: ConnectedSessionThreadProps["onOpenPendingWorktree"];
+  readonly onRequestProjectPickerOpen: ConnectedSessionThreadProps["onRequestProjectPickerOpen"];
   readonly onOpenLocalEnvironmentsSettings: ConnectedSessionThreadProps["onOpenLocalEnvironmentsSettings"];
   readonly onOpenHooksSettings: ConnectedSessionThreadProps["onOpenHooksSettings"];
   readonly onOpenVoiceSettings?: ConnectedSessionThreadProps["onOpenVoiceSettings"];
@@ -944,7 +934,7 @@ export function ProjectSessionThreadComposerDock({
       onRefreshProjectSessions={onRefreshProjectSessions}
       onEnsureDefaultDraftSessionForProject={onEnsureDefaultDraftSessionForProject}
       onOpenPendingWorktree={onOpenPendingWorktree}
-      onRequestProjectPickerOpen={noOp}
+      onRequestProjectPickerOpen={onRequestProjectPickerOpen}
       onOpenLocalEnvironmentsSettings={onOpenLocalEnvironmentsSettings}
       onOpenHooksSettings={onOpenHooksSettings}
       onOpenVoiceSettings={onOpenVoiceSettings}

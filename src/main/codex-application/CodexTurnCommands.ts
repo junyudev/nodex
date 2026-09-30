@@ -258,6 +258,7 @@ export const make: Effect.Effect<
     NativeTurnConnection & {
       original: TurnStartParams;
       context: ConversationFollowerTurnStart["context"];
+      readonly executionEpoch: number;
       prompt: string;
       overrides: CodexTurnStartOverrides;
       plan: CodexTurnStartPlan | null;
@@ -429,6 +430,7 @@ export const make: Effect.Effect<
     plan: CodexTurnStartPlan,
     options: {
       readonly connection: NativeTurnConnection;
+      readonly executionEpoch: number;
       readonly acceptAutomationRun: boolean;
       readonly returnNativeResponse?: boolean;
       readonly assertCurrentOwner: () => void;
@@ -711,7 +713,11 @@ export const make: Effect.Effect<
               : Effect.void,
           ),
         );
-      }),
+      }).pipe(
+        (transaction) =>
+          conversations.admitExecution(plan.threadId, transaction, options.executionEpoch),
+        Effect.mapError((cause) => commandError("start", plan.threadId, cause)),
+      ),
     );
 
   const prepareStart = (
@@ -722,15 +728,20 @@ export const make: Effect.Effect<
     originalRequest?: TurnStartParams,
     originalContext?: ConversationFollowerTurnStart["context"],
   ) =>
-    preparation
-      .start({
-        threadId,
-        prompt,
-        ...(overrides ? { overrides } : {}),
-        rendererOwnsState,
-        ...(originalRequest ? { originalRequest } : {}),
-        ...(originalContext ? { originalContext } : {}),
-      })
+    conversations
+      .assertExecutionAvailable(threadId)
+      .pipe(
+        Effect.andThen(
+          preparation.start({
+            threadId,
+            prompt,
+            ...(overrides ? { overrides } : {}),
+            rendererOwnsState,
+            ...(originalRequest ? { originalRequest } : {}),
+            ...(originalContext ? { originalContext } : {}),
+          }),
+        ),
+      )
       .pipe(Effect.mapError((cause) => commandError("start", threadId, cause)));
 
   const scheduleFirstTurnTitle = (plan: CodexTurnStartPlan, hostId: string) =>
@@ -748,6 +759,9 @@ export const make: Effect.Effect<
 
   const prepareSteer = (input: CodexSteerTurnInput) =>
     Effect.gen(function* () {
+      yield* conversations
+        .assertExecutionAvailable(input.threadId)
+        .pipe(Effect.mapError((cause) => commandError("steer", input.threadId, cause)));
       const now = yield* Clock.currentTimeMillis;
       const nonce = yield* Random.nextIntBetween(0, 36 ** 6);
       const intent =
@@ -876,6 +890,7 @@ export const make: Effect.Effect<
     string,
     NativeTurnConnection & {
       readonly input: CanonicalOwnerSteerInput;
+      readonly executionEpoch: number;
       readonly presentationClaim: CodexTurnPresentationClaim | undefined;
       readonly disposal: Disposable;
       readonly lock: Semaphore.Semaphore;
@@ -987,7 +1002,20 @@ export const make: Effect.Effect<
           throw new Error("Native preparation retired");
       },
       catch: (cause) => commandError("start", entry.original.threadId, cause),
-    });
+    }).pipe(
+      Effect.andThen(conversations.executionEpoch(entry.original.threadId)),
+      Effect.flatMap((epoch) =>
+        epoch === entry.executionEpoch
+          ? Effect.void
+          : Effect.fail(
+              commandError(
+                "start",
+                entry.original.threadId,
+                new Error("The chat’s workspace changed. Prepare the request again."),
+              ),
+            ),
+      ),
+    );
 
   // Peer dispatch must remain outside the Thread lane: the selected owner's native
   // execution acquires that lane after its canonical preparation is complete.
@@ -1175,6 +1203,8 @@ export const make: Effect.Effect<
   const commands: CodexTurnCommandsService = CodexTurnCommands.of({
     prepareNativeToolMessage: (threadId, sourceThreadId, prompt, mode, overrides) =>
       Effect.gen(function* () {
+        yield* conversations.assertExecutionAvailable(threadId);
+        const executionEpoch = yield* conversations.executionEpoch(threadId);
         const escape = (value: string) =>
           value.replaceAll("&", "&amp;").replaceAll("<", "&lt;").replaceAll(">", "&gt;");
         const output = [
@@ -1219,6 +1249,7 @@ export const make: Effect.Effect<
         if (mode === "steer") {
           const lock = yield* Semaphore.make(1);
           nativeSteers.set(id, {
+            executionEpoch,
             input: steer,
             ...connection,
             presentationClaim: undefined,
@@ -1252,51 +1283,61 @@ export const make: Effect.Effect<
     injectPreparedNativeStart: (operation, executingPeerClientId) =>
       Effect.gen(function* () {
         const entry = yield* readNativePreparation(operation.request, false);
-        return yield* entry.lock.withPermit(
-          Effect.gen(function* () {
-            const owner = yield* validateExecutingOwner(entry, executingPeerClientId);
-            yield* assertReceipt(entry);
-            if (
-              !entry.plan ||
-              entry.ownerId !== owner ||
-              !isDeepStrictEqual(operation.context, entry.context)
-            )
-              return yield* commandError(
-                "start",
+        return yield* entry.lock
+          .withPermit(
+            Effect.gen(function* () {
+              const owner = yield* validateExecutingOwner(entry, executingPeerClientId);
+              yield* assertReceipt(entry);
+              if (
+                !entry.plan ||
+                entry.ownerId !== owner ||
+                !isDeepStrictEqual(operation.context, entry.context)
+              )
+                return yield* commandError(
+                  "start",
+                  operation.request.threadId,
+                  new Error("App context no longer matches its prepared owner"),
+                );
+              if (entry.injection !== "pending")
+                return yield* commandError(
+                  "start",
+                  operation.request.threadId,
+                  new Error("App context injection already dispatched"),
+                );
+              const items = entry.context?.responseItems;
+              if (!Array.isArray(items) || !items.every(isAppContextJson))
+                return yield* commandError(
+                  "start",
+                  operation.request.threadId,
+                  new Error("Invalid app context response items"),
+                );
+              entry.injection = "in-flight";
+              yield* gateway.requestForThread(
                 operation.request.threadId,
-                new Error("App context no longer matches its prepared owner"),
+                "thread/inject_items",
+                {
+                  threadId: operation.request.threadId,
+                  items,
+                },
+                turnConnectionFence(entry),
               );
-            if (entry.injection !== "pending")
-              return yield* commandError(
-                "start",
-                operation.request.threadId,
-                new Error("App context injection already dispatched"),
-              );
-            const items = entry.context?.responseItems;
-            if (!Array.isArray(items) || !items.every(isAppContextJson))
-              return yield* commandError(
-                "start",
-                operation.request.threadId,
-                new Error("Invalid app context response items"),
-              );
-            entry.injection = "in-flight";
-            yield* gateway.requestForThread(
+              yield* Effect.try(() => assertTurnConnection(entry));
+              yield* assertReceipt(entry);
+              entry.injection = "complete";
+            }),
+          )
+          .pipe((dispatch) =>
+            conversations.admitExecution(
               operation.request.threadId,
-              "thread/inject_items",
-              {
-                threadId: operation.request.threadId,
-                items,
-              },
-              turnConnectionFence(entry),
-            );
-            yield* Effect.try(() => assertTurnConnection(entry));
-            yield* assertReceipt(entry);
-            entry.injection = "complete";
-          }),
-        );
+              dispatch,
+              entry.executionEpoch,
+            ),
+          );
       }).pipe(Effect.mapError((cause) => commandError("start", operation.request.threadId, cause))),
     prepareNativeQueuedMessage: (threadId, message, mode, preparationContext) =>
       Effect.gen(function* () {
+        yield* conversations.assertExecutionAvailable(threadId);
+        const executionEpoch = yield* conversations.executionEpoch(threadId);
         const clientUserMessageId = preparationContext.clientUserMessageId ?? message.id;
         const hostId = yield* hosts.resolve(threadId);
         const manager = yield* managers.get(hostId);
@@ -1338,6 +1379,7 @@ export const make: Effect.Effect<
             if (nativeSteers.has(clientUserMessageId))
               throw new Error("Steer identity already prepared");
             nativeSteers.set(clientUserMessageId, {
+              executionEpoch,
               input: steer,
               ...connection,
               presentationClaim: presentation.readQueued(threadId, message.id),
@@ -1447,6 +1489,8 @@ export const make: Effect.Effect<
     releasePreparedNativeStart,
     prepareNativeStart: (threadId, prompt, overrides, originalRequest, sourceContext) =>
       Effect.gen(function* () {
+        yield* conversations.assertExecutionAvailable(threadId);
+        const executionEpoch = yield* conversations.executionEpoch(threadId);
         const hostId = yield* hosts.resolve(threadId);
         const manager = yield* managers.get(hostId);
         const connection = captureTurnConnection(manager);
@@ -1508,6 +1552,7 @@ export const make: Effect.Effect<
               }),
             ) as ConversationFollowerTurnStart;
             nativePreparations.set(clientUserMessageId, {
+              executionEpoch,
               original: admitted.request,
               context: admitted.context,
               prompt,
@@ -1674,6 +1719,7 @@ export const make: Effect.Effect<
               request.threadId,
               startTransaction(plan, {
                 connection: entry,
+                executionEpoch: entry.executionEpoch,
                 acceptAutomationRun: entry.acceptAutomationRun,
                 returnNativeResponse: true,
                 assertCurrentOwner,
@@ -1719,6 +1765,8 @@ export const make: Effect.Effect<
       ),
     prepareNativeSteer: (input) =>
       Effect.gen(function* () {
+        yield* conversations.assertExecutionAvailable(input.threadId);
+        const executionEpoch = yield* conversations.executionEpoch(input.threadId);
         const hostId = yield* hosts.resolve(input.threadId);
         const manager = yield* managers.get(hostId);
         const connection = captureTurnConnection(manager);
@@ -1731,6 +1779,7 @@ export const make: Effect.Effect<
             if (nativeSteers.has(clientUserMessageId))
               throw new Error("Steer identity already prepared");
             nativeSteers.set(clientUserMessageId, {
+              executionEpoch,
               input: structuredClone(prepared),
               ...connection,
               presentationClaim,
@@ -1790,92 +1839,96 @@ export const make: Effect.Effect<
           },
           catch: (cause) => commandError("steer", request.params.threadId, cause),
         });
-        return yield* entry.lock.withPermit(
-          Effect.gen(function* () {
-            yield* validateExecutingOwner(
-              { ...entry, original: { threadId: entry.input.conversationId } },
-              executingPeerClientId,
-            );
-            if (
-              nativeSteers.get(clientUserMessageId) !== entry ||
-              entry.completed ||
-              entry.outcomeUnknown
-            )
-              return yield* commandError(
-                "steer",
-                entry.input.conversationId,
-                new Error("Native steer preparation retired"),
+        return yield* entry.lock
+          .withPermit(
+            Effect.gen(function* () {
+              yield* validateExecutingOwner(
+                { ...entry, original: { threadId: entry.input.conversationId } },
+                executingPeerClientId,
               );
-            const assertExecution = () => {
-              assertTurnOwner(entry, entry.input.conversationId, executingPeerClientId);
-              const entity = conversations.current(entry.input.conversationId);
-              const owner = entry.manager.stream.getRole(entry.input.conversationId);
-              if (!entity || !owner) throw new Error("Steering conversation is unavailable");
-              entry.execution ??= { entity, owner };
               if (
-                entry.execution.entity !== entity ||
-                entry.execution.owner !== owner ||
-                nativeSteers.get(clientUserMessageId) !== entry
+                nativeSteers.get(clientUserMessageId) !== entry ||
+                entry.completed ||
+                entry.outcomeUnknown
               )
-                throw new Error("Steering execution owner has retired");
-            };
-            yield* Effect.try(assertExecution);
-            entry.launch ??= yield* presentation.begin(
-              entry.presentationClaim,
-              entry.input.conversationId,
-              clientUserMessageId,
-            );
-            yield* Effect.try(assertExecution);
-            const scheduling: CodexGatewayRequestOptions = {
-              ...turnConnectionFence(entry),
-              priority: "critical",
-              timeoutMs: requestOptions?.timeoutMs ?? 30_000,
-              onOutcomeUnknown: requestOptions?.onOutcomeUnknown
-                ? (delivery) =>
-                    Effect.sync(assertExecution).pipe(
-                      Effect.andThen(requestOptions.onOutcomeUnknown!(delivery)),
-                    )
-                : undefined,
-            };
-            const nativeRequest =
-              request.method === "turn/steer"
-                ? gateway.requestForThread(
-                    entry.input.conversationId,
-                    "turn/steer",
-                    request.params as GatewayTurnSteerParams,
-                    scheduling,
-                  )
-                : gateway
-                    .requestForThread(
+                return yield* commandError(
+                  "steer",
+                  entry.input.conversationId,
+                  new Error("Native steer preparation retired"),
+                );
+              const assertExecution = () => {
+                assertTurnOwner(entry, entry.input.conversationId, executingPeerClientId);
+                const entity = conversations.current(entry.input.conversationId);
+                const owner = entry.manager.stream.getRole(entry.input.conversationId);
+                if (!entity || !owner) throw new Error("Steering conversation is unavailable");
+                entry.execution ??= { entity, owner };
+                if (
+                  entry.execution.entity !== entity ||
+                  entry.execution.owner !== owner ||
+                  nativeSteers.get(clientUserMessageId) !== entry
+                )
+                  throw new Error("Steering execution owner has retired");
+              };
+              yield* Effect.try(assertExecution);
+              entry.launch ??= yield* presentation.begin(
+                entry.presentationClaim,
+                entry.input.conversationId,
+                clientUserMessageId,
+              );
+              yield* Effect.try(assertExecution);
+              const scheduling: CodexGatewayRequestOptions = {
+                ...turnConnectionFence(entry),
+                priority: "critical",
+                timeoutMs: requestOptions?.timeoutMs ?? 30_000,
+                onOutcomeUnknown: requestOptions?.onOutcomeUnknown
+                  ? (delivery) =>
+                      Effect.sync(assertExecution).pipe(
+                        Effect.andThen(requestOptions.onOutcomeUnknown!(delivery)),
+                      )
+                  : undefined,
+              };
+              const nativeRequest =
+                request.method === "turn/steer"
+                  ? gateway.requestForThread(
                       entry.input.conversationId,
-                      "turn/start",
-                      request.params as GatewayTurnStartParams,
+                      "turn/steer",
+                      request.params as GatewayTurnSteerParams,
                       scheduling,
                     )
-                    .pipe(Effect.map((response) => ({ turnId: response.turn.id })));
-            const response = yield* nativeRequest.pipe(
-              Effect.tapError((error) =>
-                Effect.sync(() => {
-                  entry.outcomeUnknown =
-                    encodeCodexNativeRequestFailure(error).delivery?.stage === "outcome-unknown";
-                }),
-              ),
-            );
-            yield* Effect.try({
-              try: assertExecution,
-              catch: (cause) => commandError("steer", entry.input.conversationId, cause),
-            });
-            yield* presentation
-              .bind(entry.launch, response.turnId)
-              .pipe(
-                Effect.catch((error) =>
-                  Effect.logWarning("Accepted steer presentation could not bind", error),
+                  : gateway
+                      .requestForThread(
+                        entry.input.conversationId,
+                        "turn/start",
+                        request.params as GatewayTurnStartParams,
+                        scheduling,
+                      )
+                      .pipe(Effect.map((response) => ({ turnId: response.turn.id })));
+              const response = yield* nativeRequest.pipe(
+                Effect.tapError((error) =>
+                  Effect.sync(() => {
+                    entry.outcomeUnknown =
+                      encodeCodexNativeRequestFailure(error).delivery?.stage === "outcome-unknown";
+                  }),
                 ),
               );
-            entry.completed = true;
-            return response as TurnSteerResponse;
-          }),
-        );
+              yield* Effect.try({
+                try: assertExecution,
+                catch: (cause) => commandError("steer", entry.input.conversationId, cause),
+              });
+              yield* presentation
+                .bind(entry.launch, response.turnId)
+                .pipe(
+                  Effect.catch((error) =>
+                    Effect.logWarning("Accepted steer presentation could not bind", error),
+                  ),
+                );
+              entry.completed = true;
+              return response as TurnSteerResponse;
+            }),
+          )
+          .pipe((dispatch) =>
+            conversations.admitExecution(request.params.threadId, dispatch, entry.executionEpoch),
+          );
       }).pipe(Effect.mapError((cause) => commandError("steer", request.params.threadId, cause))),
     releasePreparedNativeSteer,
     steer: (input) =>

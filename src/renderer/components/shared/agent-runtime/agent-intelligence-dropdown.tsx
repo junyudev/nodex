@@ -54,6 +54,7 @@ export interface AgentNativeIntelligencePresentation {
     readonly fast?: boolean | null;
     readonly thinking?: boolean | null;
     readonly context?: string | null;
+    readonly contextInherited?: boolean;
   };
   readonly capabilities: {
     readonly fastMode?: boolean;
@@ -88,14 +89,10 @@ export interface AgentIntelligenceDropdownProps {
   readonly shortcut?: { readonly label?: string; readonly ariaKeyShortcuts?: string } | null;
 }
 
-const SERVICE_TIER_OPTIONS: readonly {
-  readonly value: CodexServiceTier;
-  readonly label: string;
-  readonly description: string;
-}[] = [
-  { value: null, label: "Standard", description: "Default speed, normal usage" },
-  { value: "fast", label: "Fast", description: "1.5x speed · More usage" },
-];
+const SPEED_OPTIONS = [
+  { fast: false, label: "Standard", codexDescription: "Default speed, normal usage" },
+  { fast: true, label: "Fast", codexDescription: "1.5x speed · More usage" },
+] as const;
 
 const effortLabel = (kind: AgentIntelligenceSelection["kind"], effort: string) =>
   kind === "claude" && effort === "low" ? "Low" : formatCodexReasoningEffortLabel(effort);
@@ -172,9 +169,9 @@ export function AgentIntelligenceDropdown({
       ? (provider?.label ?? "Agent")
       : formatCodexModelLabel(selection.model, models);
   const native = isCodex ? undefined : provider?.nativeIntelligence;
-  const showFastIndicator = isCodex
-    ? selection.serviceTier === "fast"
-    : native?.selected.fast === true;
+  const selectedFast = isCodex ? selection.serviceTier === "fast" : native?.selected.fast;
+  const showFastIndicator = selectedFast === true;
+  const speedLabel = selectedFast == null ? "—" : selectedFast ? "Fast" : "Standard";
   const reasoningOptions = isCodex
     ? resolveCodexReasoningEffortOptions(selection.model, models)
     : (models.find(({ id }) => id === selection.model)?.supportedReasoningEfforts ?? []);
@@ -460,26 +457,32 @@ export function AgentIntelligenceDropdown({
         </NodexDropdownSummarySubmenuItem>
       ) : null}
 
-      {isCodex ? (
+      {isCodex || native?.capabilities.fastMode ? (
         <NodexDropdownSummarySubmenuItem
-          ariaLabel={`Speed ${selection.serviceTier === "fast" ? "Fast" : "Standard"}`}
+          ariaLabel={`Speed ${speedLabel}`}
           label="Speed"
-          value={selection.serviceTier === "fast" ? "Fast" : "Standard"}
-          contentClassName="w-[233px]"
+          value={speedLabel}
+          contentClassName={isCodex ? "w-[233px]" : undefined}
         >
           <NodexDropdownSection className="flex w-full min-w-0 flex-col overflow-hidden">
             <NodexDropdownTitle>Speed</NodexDropdownTitle>
-            {SERVICE_TIER_OPTIONS.map((option) => (
+            {SPEED_OPTIONS.map((option) => (
               <NodexDropdownItem
                 key={option.label}
+                disabled={nativePending}
                 onSelect={(event) => {
                   event.preventDefault();
-                  onSelectionChange({ ...selection, serviceTier: option.value }, "serviceTier");
+                  if (native) {
+                    void changeNative({ fast: option.fast });
+                    return;
+                  }
+                  onSelectionChange(
+                    { ...selection, serviceTier: option.fast ? "fast" : null },
+                    "serviceTier",
+                  );
                 }}
-                rightSlot={
-                  option.value === selection.serviceTier ? <NodexDropdownSelectedIcon /> : null
-                }
-                subText={option.description}
+                rightSlot={selectedFast === option.fast ? <NodexDropdownSelectedIcon /> : null}
+                subText={isCodex ? option.codexDescription : undefined}
                 allowWrap
               >
                 {option.label}
@@ -490,18 +493,13 @@ export function AgentIntelligenceDropdown({
       ) : null}
 
       {native ? (
-        <NativeIntelligenceOptions native={native} pending={nativePending} change={changeNative} />
+        <NativeContextOptions native={native} pending={nativePending} change={changeNative} />
       ) : null}
     </NodexDropdownMenu>
   );
 }
 
-const nativeBooleanChoices = [
-  { label: "On", value: true },
-  { label: "Off", value: false },
-] as const;
-
-function NativeIntelligenceOptions({
+function NativeContextOptions({
   native,
   pending,
   change,
@@ -511,45 +509,24 @@ function NativeIntelligenceOptions({
   change: (patch: AgentNativeIntelligencePatch) => Promise<void>;
 }) {
   const contextWindows = [...new Set(native.capabilities.contextWindows ?? [])];
-  const booleanControls = [
-    { key: "fast", label: "Fast", advertised: native.capabilities.fastMode },
-  ] as const;
   return (
     <>
-      {booleanControls
-        .filter((control) => control.advertised)
-        .map(({ key, label }) => {
-          const selected = native.selected[key] ?? null;
-          const value = selected === null ? "—" : selected ? "On" : "Off";
-          return (
-            <NodexDropdownSummarySubmenuItem
-              key={key}
-              label={label}
-              value={value}
-              ariaLabel={`${label} ${value}`}
-            >
-              {nativeBooleanChoices.map((option) => (
-                <NodexDropdownItem
-                  key={option.label}
-                  disabled={pending}
-                  onSelect={(event) => {
-                    event.preventDefault();
-                    void change({ [key]: option.value });
-                  }}
-                  rightSlot={selected === option.value ? <NodexDropdownSelectedIcon /> : null}
-                >
-                  {option.label}
-                </NodexDropdownItem>
-              ))}
-            </NodexDropdownSummarySubmenuItem>
-          );
-        })}
       {contextWindows.length > 1 ? (
         <NodexDropdownSummarySubmenuItem
           label="Context"
           value={native.selected.context ?? "—"}
           ariaLabel={`Context ${native.selected.context ?? "—"}`}
         >
+          <NodexDropdownItem
+            disabled={pending}
+            onSelect={(event) => {
+              event.preventDefault();
+              void change({ context: null });
+            }}
+            rightSlot={native.selected.contextInherited ? <NodexDropdownSelectedIcon /> : null}
+          >
+            Default
+          </NodexDropdownItem>
           {contextWindows.map((value) => (
             <NodexDropdownItem
               key={value}
@@ -559,7 +536,9 @@ function NativeIntelligenceOptions({
                 void change({ context: value });
               }}
               rightSlot={
-                (native.selected.context ?? null) === value ? <NodexDropdownSelectedIcon /> : null
+                !native.selected.contextInherited && native.selected.context === value ? (
+                  <NodexDropdownSelectedIcon />
+                ) : null
               }
             >
               {value}
