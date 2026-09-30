@@ -1,0 +1,23 @@
+src/renderer/components/shared/agent-runtime/agent-intelligence-dropdown.tsx
+  s_398a5f829664b8::t_c3f824dabe57b1 513
+  s_398a5f829664b8::t_bb7352f5b1bae5 547,553
+docs/product-specs/agent-backend-behavior.md
+  s_398a5f829664b8::t_c3f824dabe57b1 112-113
+  s_398a5f829664b8::t_4df0f72f10c12d 114-117
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "43ce42d6070fad3d240b478e7d06f0ba6a6ec83d",
+  "prompts": {},
+  "sessions": {
+    "s_398a5f829664b8": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a0ee70-819d-7cc1-834a-902e2f9eb37f",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    }
+  }
+}
