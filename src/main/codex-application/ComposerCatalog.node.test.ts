@@ -45,8 +45,13 @@ const testProtocol = AppProtocolRuntime.of({
   registerHostFileReader: () => Effect.void,
 });
 
+import { nodexDesktopToolMarketplaceName } from "../codex/bundled-desktop-tool-marketplace";
+
+const runtimeStateHome = "/tmp/nodex-composer-test";
+const managedBrowserPluginId = `browser@${nodexDesktopToolMarketplaceName(runtimeStateHome)}`;
+
 const catalogLayer = (gateway: CodexGateway["Service"]) =>
-  composerCatalogLive.pipe(
+  composerCatalogLive({ runtimeStateHome }).pipe(
     Layer.provide(
       Layer.merge(
         Layer.succeed(CodexGateway, gateway),
@@ -97,10 +102,10 @@ it.effect("projects models, plugins, and skills through one composer interface",
               interface: null,
               plugins: [
                 {
-                  id: "browser@openai-bundled",
+                  id: managedBrowserPluginId,
                   name: "browser",
                   installed: true,
-                  enabled: true,
+                  enabled: false,
                   availability: "AVAILABLE",
                   disabledReason: null,
                   installPolicy: null,
@@ -118,6 +123,18 @@ it.effect("projects models, plugins, and skills through one composer interface",
                     logoUrlDark: null,
                     brandColor: null,
                   },
+                },
+                {
+                  id: "browser@openai-bundled",
+                  name: "browser",
+                  installed: true,
+                  enabled: true,
+                  availability: "AVAILABLE",
+                  disabledReason: null,
+                  installPolicy: "AVAILABLE",
+                  installPolicySource: null,
+                  authPolicy: "ON_USE",
+                  interface: null,
                 },
               ],
             },
@@ -219,7 +236,8 @@ it.effect("projects models, plugins, and skills through one composer interface",
     assert.strictEqual((experimentalRequests[0] as { readonly limit?: number }).limit, 100);
     assert.isFalse(Object.hasOwn(experimentalRequests[0] as object, "threadId"));
     const plugins = yield* catalog.listPlugins({ hostId: "local", cwds: ["/repo"] });
-    assert.strictEqual(plugins[0]?.id, "browser@openai-bundled");
+    assert.strictEqual(plugins[0]?.id, managedBrowserPluginId);
+    assert.strictEqual(plugins.length, 1);
     const skills = yield* catalog.listSkills({ hostId: "local", cwds: ["/repo"] });
     assert.strictEqual(skills[0]?.path, "/skills/pdf/SKILL.md");
     yield* catalog.listSkills({ hostId: "local", cwds: [] });
@@ -229,7 +247,7 @@ it.effect("projects models, plugins, and skills through one composer interface",
     assert.isFalse(Object.hasOwn(skillsRequests[1] as object, "cwds"));
     yield* catalog.activatePlugin({
       hostId: "local",
-      id: "browser@openai-bundled",
+      id: managedBrowserPluginId,
       cwds: ["/repo"],
     });
     assert.deepEqual(yield* catalog.listHooks({ hostId: "local", cwds: ["/repo"] }), {
@@ -314,7 +332,8 @@ it.effect("uninstalls only an unambiguous user plugin and verifies the installed
       const plugins = [
         { id: "same@one", name: "Same", installed: true },
         { id: "same@two", name: "Same", installed: true },
-        { id: "browser@openai-bundled", name: "Browser", installed: true },
+        { id: managedBrowserPluginId, name: "Browser", installed: true },
+        { id: "browser@openai-bundled", name: "External Browser", installed: true },
       ];
       const request = ((method: string, params: unknown) =>
         Effect.sync(() => {
@@ -361,9 +380,16 @@ it.effect("uninstalls only an unambiguous user plugin and verifies the installed
         (yield* catalog.uninstallPlugin({ ...input, plugin: "same@one" })).status,
         "not_installed",
       );
+      assert.deepStrictEqual(
+        yield* catalog.uninstallPlugin({ ...input, plugin: "browser@openai-bundled" }),
+        {
+          status: "uninstalled",
+          pluginId: "browser@openai-bundled",
+        },
+      );
       unavailable = true;
       assert.strictEqual((yield* catalog.uninstallPlugin(input)).status, "inventory_unavailable");
-      assert.deepStrictEqual(removed, ["same@one"]);
+      assert.deepStrictEqual(removed, ["same@one", "browser@openai-bundled"]);
     }),
   ),
 );

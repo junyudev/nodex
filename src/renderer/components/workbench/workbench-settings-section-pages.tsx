@@ -1,4 +1,5 @@
 import { ClaudeAgentSettingsControl } from "./claude-agent-settings-control";
+import { CodexHomeSettingsControl } from "./codex-home-settings-control";
 import { RecoveryEntry } from "@/features/document-recovery/recovery-entry";
 import { useLibraryMetadata } from "@/lib/use-library-navigation";
 import { startTransition, useCallback, useEffect, useState } from "react";
@@ -368,6 +369,7 @@ export function AgentSettingsPage({ activeProjectId, open }: SettingsSectionPage
   return (
     <SettingsPageSurface title="Agent" subtitle="Configuration and raw config.toml settings.">
       <SectionBlock title="Configuration">
+        <CodexHomeSettingsControl open={open} />
         <SettingRow
           label="Approval policy"
           description="Raw `approval_policy` value for this config target."

@@ -94,6 +94,23 @@ test("another turn's valid record survives without process inspection", async ()
     await access(path);
   }));
 
+test("preserves invalid records whose execution owner cannot be proven", async () =>
+  fixture(async (codexHome, path) => {
+    await writeFile(path, "invalid external record");
+    const result = await cleanupNodeReplExecutions({
+      codexHome,
+      sessionId: "session",
+      turnId: "turn",
+      dependencies: {
+        listChildProcesses: async () => {
+          throw new Error("must not inspect");
+        },
+      },
+    });
+    expect(result).toEqual({ failedCount: 0, killedCount: 0, scannedCount: 1, staleCount: 0 });
+    await access(path);
+  }));
+
 test("failed descendant enumeration kills only verified kernel and preserves retry record", async () =>
   fixture(async (codexHome, path) => {
     const killed: number[] = [];

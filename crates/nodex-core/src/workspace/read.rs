@@ -55,6 +55,16 @@ pub(super) fn read(
     request: ProjectWorkspaceRead,
 ) -> Result<ProjectWorkspaceReadValue, StoreError> {
     match request {
+        ProjectWorkspaceRead::LocalCodexThreadIds { window } => {
+            Ok(ProjectWorkspaceReadValue::LocalCodexThreadIds {
+                thread_ids: super::local_codex_thread_ids::read_window(
+                    connection,
+                    library_id,
+                    commit_head,
+                    &window,
+                )?,
+            })
+        }
         ProjectWorkspaceRead::ThreadReadState {
             identity_key,
             window,

@@ -1,3 +1,4 @@
+import { isCodexAgentBackendBinding } from "../../shared/agent-backend";
 import { randomUUID } from "node:crypto";
 import type { Thread } from "@nodex/codex-app-server-protocol/v2";
 import * as Clock from "effect/Clock";
@@ -19,7 +20,6 @@ import type {
   CodexSidebarRefreshReason,
   CodexSidebarSnapshot,
   CodexSidebarSyncResult,
-  Project,
   ProjectSession,
 } from "../../shared/types";
 import { cappedApproximateValueBytes } from "../../shared/codex-bounded-value-size";
@@ -40,9 +40,7 @@ import {
   isNonSidebarThreadWithoutParent,
   normalizeSidebarSessionFallbackTitle,
   projectCodexCatalogDisplayTitle,
-  projectCoreWorkspaceProject,
   projectCoreWorkspaceTask,
-  resolveSidebarProjectIdForCwd,
 } from "./CodexThreadCatalogProjection";
 import { CodexThreadDirectory, type CodexThreadDirectoryEntry } from "./CodexThreadDirectory";
 
@@ -91,7 +89,6 @@ export class CodexSidebarSyncError extends Data.TaggedError("CodexSidebarSyncErr
 }> {}
 
 export interface CodexSidebarSyncRuntimeOptions {
-  readonly foldPathCase?: boolean;
   readonly staleAfter?: Duration.Input;
   readonly backoffInitial?: Duration.Input;
   readonly backoffMax?: Duration.Input;
@@ -150,7 +147,7 @@ interface SweepState {
   readonly cursor: string | null;
   readonly archived: boolean;
   readonly includeArchived: boolean;
-  readonly projects: readonly Project[];
+  readonly pendingThreads: Map<string, Thread>;
   readonly reason: CodexSidebarRefreshReason;
   readonly metadata: MutableSyncMetadata;
   readonly pages: number;
@@ -315,36 +312,6 @@ export const make = (
       catalogStates.set(includeArchived, created);
       return created;
     };
-
-    const readProjects = Effect.fn("CodexSidebarSync.readProjects")(function* () {
-      const loaded = yield* core.workspace
-        .read({
-          kind: "project_window",
-          include_archived: false,
-          window: { after: null, first: CODEX_SIDEBAR_SYNC_PINNED_PAGE_SIZE },
-        })
-        .pipe(Effect.timeoutOption(sweepPageDeadline));
-      if (Option.isNone(loaded)) {
-        return yield* fail(new Error("Available Project read exceeded its bounded deadline"));
-      }
-      const response = loaded.value;
-      if (response.value.kind !== "project_window") {
-        return yield* fail(new Error("Core returned a non-project-window read variant"));
-      }
-      if (response.value.projects.next_cursor) {
-        return yield* fail(new Error("Available Project collection exceeded its Core bound"));
-      }
-      if (
-        response.value.projects.items.length > CODEX_SIDEBAR_SYNC_PINNED_PAGE_SIZE ||
-        cappedApproximateValueBytes(response.value.projects.items, sweepMaxPageBytes) >
-          sweepMaxPageBytes
-      ) {
-        return yield* fail(
-          new Error("Available Project collection exceeded its bounded admission budget"),
-        );
-      }
-      return response.value.projects.items.map(projectCoreWorkspaceProject);
-    });
 
     const readSession = Effect.fn("CodexSidebarSync.readSession")(function* (
       sessionId: string,
@@ -724,72 +691,96 @@ export const make = (
       return existing;
     });
 
+    const materializeOwnedThread = Effect.fn("CodexSidebarSync.materializeOwnedThread")(
+      function* (input: {
+        readonly thread: Thread;
+        readonly owner: CodexThreadDirectoryEntry;
+        readonly previous: CodexThreadDirectoryEntry | null;
+        readonly state: Pick<SweepState, "includeArchived" | "metadata">;
+        readonly observedThreadIds: string[];
+      }) {
+        const { thread, owner, previous, state, observedThreadIds } = input;
+        const threadId = thread.id.trim();
+        const parentThreadId = thread.parentThreadId?.trim() || null;
+        return yield* Effect.gen(function* () {
+          if (!threadId.trim()) return;
+          const internalKind = internalThreads.observeStarted(thread);
+          if (thread.ephemeral) {
+            const hidden = yield* archiveExisting(threadId);
+            if (hidden) markScope(state.metadata, hidden.durable.projectId);
+            return;
+          }
+          if (
+            !parentThreadId &&
+            (internalKind ||
+              isNonSidebarThreadWithoutParent(thread as unknown as Record<string, unknown>))
+          ) {
+            const hidden = yield* archiveExisting(threadId);
+            if (hidden) markScope(state.metadata, hidden.durable.projectId);
+            return;
+          }
+          const entry = yield* directory.observeMetadata({
+            thread,
+            inferredInitialProjectId: owner.durable.projectId,
+            executionHostId: gateway.localHostId,
+          });
+          const summary = entry.summary;
+          if (hasSidebarThreadSummaryChanged(previous?.summary ?? null, summary)) {
+            markScope(state.metadata, previous?.summary.projectId ?? summary.projectId);
+            markScope(state.metadata, summary.projectId);
+          }
+          if (parentThreadId) return;
+          observedThreadIds.push(threadId);
+          if (!state.includeArchived && summary.archived) return;
+          const session = yield* ensureEntrySession(entry);
+          if (session && entry.durable.sessionId !== session.id) {
+            state.metadata.materializedSessionIds.add(session.id);
+            markScope(state.metadata, session.projectId);
+          }
+        }).pipe(
+          Effect.catchCause((cause) =>
+            Effect.sync(() => {
+              state.metadata.failedThreadIds.add(threadId);
+              logger.warn("Could not materialize app-server Thread for the sidebar", {
+                threadId,
+                cause,
+              });
+            }),
+          ),
+        );
+      },
+    );
+
     const materializePage = Effect.fn("CodexSidebarSync.materializePage")(function* (
       response: ClientRequestResponsesByMethod["thread/list"],
-      state: Pick<SweepState, "projects" | "includeArchived" | "metadata">,
+      state: Pick<SweepState, "includeArchived" | "metadata" | "pendingThreads">,
     ) {
       const observedThreadIds: string[] = [];
-      yield* Effect.forEach(
-        response.data,
-        (thread) =>
-          Effect.gen(function* () {
-            const threadId = thread.id.trim();
-            if (!threadId) return;
-            const internalKind = internalThreads.observeStarted(thread as Thread);
-            if (thread.ephemeral) {
-              const hidden = yield* archiveExisting(threadId);
-              if (hidden) markScope(state.metadata, hidden.durable.projectId);
-              return;
-            }
-            const parentThreadId = thread.parentThreadId?.trim() || null;
-            if (
-              !parentThreadId &&
-              (internalKind ||
-                isNonSidebarThreadWithoutParent(thread as unknown as Record<string, unknown>))
-            ) {
-              const hidden = yield* archiveExisting(threadId);
-              if (hidden) markScope(state.metadata, hidden.durable.projectId);
-              return;
-            }
-            const previous = yield* directory.resolve({ threadId, fidelity: "durable" });
-            const inferredProjectId = parentThreadId
-              ? null
-              : resolveSidebarProjectIdForCwd(
-                  thread.cwd,
-                  state.projects,
-                  options.foldPathCase === true,
-                );
-            const entry = yield* directory.observeMetadata({
-              thread: thread as Thread,
-              inferredInitialProjectId: inferredProjectId,
-              executionHostId: gateway.localHostId,
-            });
-            const summary = entry.summary;
-            if (hasSidebarThreadSummaryChanged(previous?.summary ?? null, summary)) {
-              markScope(state.metadata, previous?.summary.projectId ?? summary.projectId);
-              markScope(state.metadata, summary.projectId);
-            }
-            if (parentThreadId) return;
-            observedThreadIds.push(threadId);
-            if (!state.includeArchived && summary.archived) return;
-            const session = yield* ensureEntrySession(entry);
-            if (session && entry.durable.sessionId !== session.id) {
-              state.metadata.materializedSessionIds.add(session.id);
-              markScope(state.metadata, session.projectId);
-            }
-          }).pipe(
-            Effect.catchCause((cause) =>
-              Effect.sync(() => {
-                state.metadata.failedThreadIds.add(thread.id);
-                logger.warn("Could not materialize app-server Thread for the sidebar", {
-                  threadId: thread.id,
-                  cause,
-                });
-              }),
-            ),
-          ),
-        { concurrency: 8, discard: true },
-      );
+      for (const thread of response.data) state.pendingThreads.set(thread.id, thread as Thread);
+      // A shared Codex home contains other clients' history. Only Profile-owned roots and their
+      // descendants may acquire Nodex metadata; cwd proximity is not an admission grant.
+      let admitted = true;
+      while (admitted) {
+        admitted = false;
+        for (const [threadId, thread] of state.pendingThreads) {
+          const previous = yield* directory.resolve({ threadId, fidelity: "durable" });
+          const parentThreadId = thread.parentThreadId?.trim() || null;
+          const parent =
+            !previous && parentThreadId
+              ? yield* directory.resolve({ threadId: parentThreadId, fidelity: "durable" })
+              : null;
+          const owner = previous ?? parent;
+          if (
+            !owner ||
+            owner.durable.executionHostId !== gateway.localHostId ||
+            !isCodexAgentBackendBinding(owner.durable.backendBinding)
+          )
+            continue;
+          state.pendingThreads.delete(threadId);
+          admitted = true;
+          yield* materializeOwnedThread({ thread, owner, previous, state, observedThreadIds });
+        }
+      }
       return observedThreadIds;
     });
 
@@ -965,7 +956,6 @@ export const make = (
       readonly reason: CodexSidebarRefreshReason;
     }) {
       yield* FiberHandle.clear(activeSweep);
-      const projects = yield* readProjects();
       const metadata = emptyMetadata();
       const sweepId = randomUUID();
       const response = yield* requestPage({ cursor: null, archived: false });
@@ -975,7 +965,7 @@ export const make = (
         cursor: null,
         archived: false,
         includeArchived: input.includeArchived,
-        projects,
+        pendingThreads: new Map(),
         reason: input.reason,
         metadata,
         pages: 0,

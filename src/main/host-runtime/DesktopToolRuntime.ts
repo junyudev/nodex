@@ -5,6 +5,7 @@ import * as Schema from "effect/Schema";
 import type { ThreadStartParams } from "@nodex/codex-app-server-protocol/v2/ThreadStartParams";
 import type { ConfigRequirementsReadResponse } from "@nodex/codex-app-server-protocol/v2/ConfigRequirementsReadResponse";
 import type { SkillsListResponse } from "@nodex/codex-app-server-protocol/v2/SkillsListResponse";
+import type { PluginInstalledResponse } from "@nodex/codex-app-server-protocol/v2/PluginInstalledResponse";
 import type { BrowserRuntimeBackend } from "../../shared/browser-runtime-metadata";
 import {
   BrowserPluginReconcileError,
@@ -13,7 +14,11 @@ import {
   type BrowserPluginReconcileResult,
 } from "../codex/browser-plugin-reconciler";
 import type { BrowserRuntimeAvailability } from "../codex/browser-runtime-bundle";
-import { BrowserUseThreadConfigBuilder } from "../codex/browser-use-thread-config";
+import {
+  BrowserUseThreadConfigBuilder,
+  buildDesktopToolPluginOverrides,
+} from "../codex/browser-use-thread-config";
+import { isForeignDesktopToolPlugin } from "../codex/bundled-desktop-tool-marketplace";
 import {
   buildArtifactTemplatePickerConfig,
   flattenArtifactTemplateSkills,
@@ -54,6 +59,7 @@ export class DesktopToolRuntime extends Context.Service<
 
 interface DesktopToolRuntimeOptions {
   readonly browserRuntime: BrowserRuntimeAvailability;
+  readonly codexHome: string;
   readonly isPackaged: boolean;
   readonly projectRootPath: string;
   readonly resourcesPath: string;
@@ -63,6 +69,7 @@ interface DesktopToolRuntimeOptions {
 interface DesktopToolRuntimeLayerOptions {
   readonly availableBackends: () => readonly BrowserRuntimeBackend[];
   readonly browserRuntime: BrowserRuntimeAvailability;
+  readonly codexHome: string;
   readonly artifactTemplatePickerEnabled?: Effect.Effect<boolean, DesktopToolRuntimeError>;
   readonly artifactTemplatePickerRuntime?: ArtifactTemplatePickerRuntime | null;
   readonly computerUse: ComputerUseRuntime["Service"];
@@ -76,6 +83,9 @@ interface DesktopToolRuntimeLayerOptions {
   readonly listSkills?: (
     cwd?: string | null,
   ) => Effect.Effect<SkillsListResponse, DesktopToolRuntimeError>;
+  readonly listPlugins?: (
+    cwd?: string | null,
+  ) => Effect.Effect<PluginInstalledResponse, DesktopToolRuntimeError>;
   readonly runtimeStateHome: string;
 }
 
@@ -146,19 +156,35 @@ const make = (options: DesktopToolRuntimeLayerOptions) =>
       threadConfig: (cwd) =>
         ensureReady.pipe(
           Effect.flatMap((current) =>
-            Effect.try({
-              try: () => {
-                const result = new BrowserUseThreadConfigBuilder({
-                  availableBackends: () =>
-                    current.browserPluginReady ? options.availableBackends() : [],
-                  browserRuntime: options.browserRuntime,
-                  computerUsePluginReady: () => current.computerUsePluginReady,
-                  computerUseRuntime: () => current.computerUse,
-                  runtimeStateHome: options.runtimeStateHome,
-                }).buildResult();
-                return result.status === "available" ? result.config : null;
-              },
-              catch: (cause) => new DesktopToolRuntimeError({ operation: "thread-config", cause }),
+            Effect.gen(function* () {
+              const inventory = yield* options.listPlugins?.(cwd) ?? Effect.succeed(null);
+              return yield* Effect.try({
+                try: () => {
+                  const disabledDesktopPluginIds =
+                    inventory?.marketplaces
+                      .flatMap((marketplace) => marketplace.plugins)
+                      .filter((plugin) =>
+                        isForeignDesktopToolPlugin(plugin.id, options.runtimeStateHome),
+                      )
+                      .map((plugin) => plugin.id) ?? [];
+                  const result = new BrowserUseThreadConfigBuilder({
+                    availableBackends: () =>
+                      current.browserPluginReady ? options.availableBackends() : [],
+                    browserRuntime: options.browserRuntime,
+                    codexHome: options.codexHome,
+                    disabledDesktopPluginIds,
+                    computerUsePluginReady: () => current.computerUsePluginReady,
+                    computerUseRuntime: () => current.computerUse,
+                    runtimeStateHome: options.runtimeStateHome,
+                  }).buildResult();
+                  if (result.status === "available") return result.config;
+                  return disabledDesktopPluginIds.length > 0
+                    ? buildDesktopToolPluginOverrides(disabledDesktopPluginIds)
+                    : null;
+                },
+                catch: (cause) =>
+                  new DesktopToolRuntimeError({ operation: "thread-config", cause }),
+              });
             }),
           ),
           Effect.zipWith(artifactTemplatePickerConfig(cwd), (desktop, artifactTemplates) => {
@@ -194,6 +220,7 @@ export const live = (
       return yield* make({
         availableBackends: browserUse.availableBackends,
         browserRuntime: options.browserRuntime,
+        codexHome: options.codexHome,
         artifactTemplatePickerEnabled: Effect.succeed(true),
         artifactTemplatePickerRuntime,
         computerUse,
@@ -234,6 +261,19 @@ export const live = (
                 }),
             ),
           ),
+        listPlugins: (cwd) =>
+          gateway
+            .requestLocal("plugin/installed", {
+              cwds: cwd == null ? null : [cwd],
+              installSuggestionPluginNames: [],
+            })
+            .pipe(
+              Effect.map((response) => response as unknown as PluginInstalledResponse),
+              Effect.mapError(
+                (cause) =>
+                  new DesktopToolRuntimeError({ operation: "desktop-plugins.list", cause }),
+              ),
+            ),
         runtimeStateHome: options.runtimeStateHome,
       });
     }),

@@ -6,6 +6,11 @@ import {
 import { CodexConversationPeerRuntime } from "../platform/node/CodexConversationPeerRuntime";
 import { ScopedCallbackRuntime } from "./ScopedCallbackRuntime";
 import { ApplicationSettings } from "../settings/ApplicationSettings";
+import {
+  CodexHomeContinuity,
+  live as codexHomeContinuityLive,
+} from "../codex-application/CodexHomeContinuity";
+import { initializeCodexHomeContinuity } from "../platform/node/CodexHomeContinuity";
 import { CodexAppServerRequestError } from "@nodex/effect-codex-app-server/errors";
 import * as Context from "effect/Context";
 import * as Effect from "effect/Effect";
@@ -13,6 +18,7 @@ import * as Layer from "effect/Layer";
 import { CODEX_INTEGRATION_CAPABILITIES } from "../../shared/codex-integration-capabilities";
 import { codexCliAppServerArgs } from "../../shared/codex-app-server-launch";
 import { resolveCodexRuntime } from "../codex/codex-runtime";
+import { codexFeatureDefaultLaunchArgs } from "../codex/codex-feature-defaults";
 import { CodexAccount, live as codexAccountLive } from "../codex-application/CodexAccount";
 import {
   CodexAttestation,
@@ -95,36 +101,113 @@ export class CodexPlatform extends Context.Service<
   CodexPlatform,
   {
     readonly runtime: ReturnType<typeof resolveCodexRuntime>;
+    readonly codexHome: string;
     readonly runtimeStateHome: string;
   }
 >()("nodex/main/app/CodexPlatform") {}
 
-const platform: Layer.Layer<CodexPlatform, MainApplicationError, MainConfig> = Layer.effect(
-  CodexPlatform,
-  Effect.gen(function* () {
-    const config = yield* MainConfig;
-    const testRuntimeProjectRoot =
-      config.environment.NODE_ENV === "test"
-        ? config.environment.NODEX_TEST_AGENT_RUNTIME_PROJECT_ROOT?.trim()
-        : undefined;
-    const runtime = yield* Effect.try({
-      try: () =>
-        resolveCodexRuntime({
-          isPackaged: config.isPackaged,
-          projectRootPath: testRuntimeProjectRoot || config.projectRootPath,
-          resourcesPath: config.resourcesPath,
-        }),
-      catch: (cause) =>
-        new MainApplicationError({ phase: "startup", operation: "resolve-codex-runtime", cause }),
-    });
-    return CodexPlatform.of({
-      runtime,
-      runtimeStateHome: `${config.nodexHome}/agent`,
-    });
-  }),
-);
+const platform: Layer.Layer<CodexPlatform, MainApplicationError, MainConfig | ApplicationSettings> =
+  Layer.effect(
+    CodexPlatform,
+    Effect.gen(function* () {
+      const config = yield* MainConfig;
+      const settings = yield* ApplicationSettings;
+      const snapshot = yield* settings.snapshot().pipe(
+        Effect.mapError(
+          (cause) =>
+            new MainApplicationError({
+              phase: "startup",
+              operation: "resolve-codex-home",
+              cause,
+            }),
+        ),
+      );
+      const testRuntimeProjectRoot =
+        config.environment.NODE_ENV === "test"
+          ? config.environment.NODEX_TEST_AGENT_RUNTIME_PROJECT_ROOT?.trim()
+          : undefined;
+      const runtime = yield* Effect.try({
+        try: () =>
+          resolveCodexRuntime({
+            isPackaged: config.isPackaged,
+            projectRootPath: testRuntimeProjectRoot || config.projectRootPath,
+            resourcesPath: config.resourcesPath,
+          }),
+        catch: (cause) =>
+          new MainApplicationError({ phase: "startup", operation: "resolve-codex-runtime", cause }),
+      });
+      return CodexPlatform.of({
+        runtime,
+        codexHome: snapshot.codexHome.activeHomePath,
+        runtimeStateHome: `${config.nodexHome}/runtime/agent`,
+      });
+    }),
+  );
 
 const requestInbox = Layer.effect(CodexApplicationRequestInbox, makeCodexApplicationRequestInbox);
+
+const continuity = Layer.unwrap(
+  Effect.gen(function* () {
+    const config = yield* MainConfig;
+    const codex = yield* CodexPlatform;
+    const settings = yield* ApplicationSettings;
+    const snapshot = yield* settings
+      .snapshot()
+      .pipe(
+        Effect.mapError(
+          (cause) =>
+            new MainApplicationError({ phase: "startup", operation: "read-codex-home", cause }),
+        ),
+      );
+    const previous = yield* Effect.try({
+      try: () =>
+        initializeCodexHomeContinuity({
+          profileHome: config.nodexHome,
+          selectedHome: codex.codexHome,
+          hasConfiguredHome: Boolean(snapshot.codexHome.homePath),
+          hasInheritedCodexHome: Boolean(config.environment.CODEX_HOME?.trim()),
+        }),
+      catch: (cause) =>
+        new MainApplicationError({
+          phase: "startup",
+          operation: "read-codex-home-continuity",
+          cause,
+        }),
+    });
+    return codexHomeContinuityLive({
+      profileHome: config.nodexHome,
+      currentHome: codex.codexHome,
+      processConfig: {
+        hostId: "local",
+        generation: 0,
+        command: codex.runtime.binaryPath,
+        args: codexCliAppServerArgs(config.environment),
+        env: {
+          ...config.environment,
+          PATH: [...codex.runtime.additionalSearchPaths, config.environmentPath ?? ""]
+            .filter(Boolean)
+            .join(config.platform === "win32" ? ";" : ":"),
+        },
+        forceTermination: "2 seconds",
+      },
+    }).pipe(
+      Layer.tap((context) =>
+        Context.get(context, CodexHomeContinuity)
+          .activate(codex.codexHome, previous.previousHome)
+          .pipe(
+            Effect.mapError(
+              (cause) =>
+                new MainApplicationError({
+                  phase: "startup",
+                  operation: "validate-codex-home-continuity",
+                  cause,
+                }),
+            ),
+          ),
+      ),
+    );
+  }),
+).pipe(Layer.provideMerge(Layer.merge(platform, CodexSessionTransport.nodeLive)));
 
 const attestation = Layer.unwrap(
   Effect.gen(function* () {
@@ -178,7 +261,7 @@ const runtime = Layer.unwrap(
               Effect.tryPromise(() =>
                 nodexCliShellLaunchArgs({
                   nodexHome: config.nodexHome,
-                  runtimeStateHome: codex.runtimeStateHome,
+                  codexHome: codex.codexHome,
                   searchPaths: codex.runtime.additionalSearchPaths,
                   inheritedPath: config.environmentPath ?? "",
                   homeDirectory: config.homeDirectory,
@@ -197,22 +280,31 @@ const runtime = Layer.unwrap(
             ),
           );
     const appToolSession = yield* makeAppToolSession;
+    const featureArgs = yield* Effect.tryPromise(() =>
+      codexFeatureDefaultLaunchArgs(codex.codexHome),
+    ).pipe(
+      Effect.mapError(
+        (cause) =>
+          new MainApplicationError({ phase: "startup", operation: "read-codex-defaults", cause }),
+      ),
+    );
     const local: Omit<CodexAppServerSessionOptions, "generation"> = {
       hostId: "local",
       command: codex.runtime.binaryPath,
       localDaemon: {
-        codexHome: codex.runtimeStateHome,
+        codexHome: codex.codexHome,
         platform: config.platform,
         resourcesPath: config.resourcesPath,
-        configOverrides: cliArgs,
+        configOverrides: [...featureArgs, ...cliArgs],
       },
-      args: [...codexCliAppServerArgs(config.environment), ...cliArgs],
+      args: [...codexCliAppServerArgs(config.environment), ...featureArgs, ...cliArgs],
       env: {},
       resolveEnv: () =>
         resolveCodexProcessEnvironment({
           additionalSearchPaths: codex.runtime.additionalSearchPaths,
           pathDelimiter: config.platform === "win32" ? ";" : ":",
-          runtimeStateHome: codex.runtimeStateHome,
+          codexHome: codex.codexHome,
+          environment: config.environment,
         }),
       forceTermination: "2 seconds",
       initializeParams: {
@@ -224,7 +316,7 @@ const runtime = Layer.unwrap(
         },
       },
       initializeTimeout: "20 seconds",
-      expectedCodexHome: codex.runtimeStateHome,
+      expectedCodexHome: codex.codexHome,
     };
     const browserRuntime = codex.runtime.browserRuntime;
     return CodexRuntimeLive.live({
@@ -251,18 +343,22 @@ const conversationEntities = conversationEntityMapLive;
 const conversations = codexConversationsLive.pipe(Layer.provideMerge(conversationEntities));
 const appToolInvocations = Layer.effect(AppToolInvocationInbox, makeAppToolInvocationInbox);
 const foundations = Layer.mergeAll(
-  platform,
+  continuity,
   attestation,
   requestInbox,
   appToolInvocations,
   conversations,
-  CodexSessionTransport.nodeLive,
 );
 const transport = runtime.pipe(Layer.provideMerge(foundations));
 const kernel = pendingRequests.pipe(Layer.provideMerge(transport));
 
 const account = codexAccountLive({ pollInterval: "60 seconds" }).pipe(Layer.provideMerge(kernel));
-const catalog = composerCatalogLive.pipe(Layer.provideMerge(kernel));
+const catalog = Layer.unwrap(
+  Effect.gen(function* () {
+    const codex = yield* CodexPlatform;
+    return composerCatalogLive({ runtimeStateHome: codex.runtimeStateHome });
+  }),
+).pipe(Layer.provideMerge(kernel));
 const events = Layer.effect(CodexApplicationEventHub, makeCodexApplicationEventHub);
 const connection = codexConnectionLive.pipe(Layer.provideMerge(Layer.mergeAll(kernel, events)));
 const tools = codexToolRuntimeLive({
@@ -271,7 +367,7 @@ const tools = codexToolRuntimeLive({
 const permissions = Layer.unwrap(
   Effect.gen(function* () {
     const codex = yield* CodexPlatform;
-    return codexPermissionsLive({ runtimeStateHome: codex.runtimeStateHome });
+    return codexPermissionsLive({ codexHome: codex.codexHome });
   }),
 ).pipe(Layer.provideMerge(kernel));
 
@@ -312,6 +408,7 @@ const applicationServices = Layer.mergeAll(
 /** Stable Codex host generations and application-owned conversation foundations. */
 export const live: Layer.Layer<
   | CodexPlatform
+  | CodexHomeContinuity
   | CodexAttestation
   | AppToolInvocationInbox
   | CodexApplicationRequestInbox

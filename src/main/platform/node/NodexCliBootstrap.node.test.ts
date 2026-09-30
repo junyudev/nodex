@@ -108,7 +108,7 @@ describe("Nodex per-Turn CLI connection", () => {
           await writeFile(join(userShellHome, "bash-env"), startup);
           const shellArgs = await nodexCliShellLaunchArgs({
             nodexHome: first.profile.nodexHome,
-            runtimeStateHome: first.profile.codexHome,
+            codexHome: first.profile.codexHome,
             homeDirectory: userShellHome,
             inheritedZdotdir: userShellHome,
             inheritedBashEnv: join(userShellHome, "bash-env"),

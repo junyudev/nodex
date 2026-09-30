@@ -14,8 +14,10 @@ Multi-window publication and recovery are specified in
 
 Project Chats belong to durable Project Sessions and link to one app-server
 Thread. A Page may mention a Chat or send an immutable Page snapshot to it but
-never owns the Chat. The sidebar may discover interactive root Threads created
-by other local app-server clients and materializes them into Sessions.
+never owns the Chat. The sidebar refreshes only Codex Threads already admitted
+to this Profile and discovers descendants of those Threads. Sharing a Codex
+home never adds another client's root Chats implicitly; native history enters
+Nodex through an explicit import or attachment.
 
 A Workspace-owned **Linked chat** edge may associate a Page with a durable
 Project Session. It records an explicit user action only: Open in new chat,
@@ -47,6 +49,11 @@ Archived, deleted, internal helper, Side chat, reviewer, and parent-linked child
 Threads do not become root sidebar Chats. If late ancestry proves that a row is
 a child agent, Nodex removes its root-Chat presentation while preserving it for
 the parent conversation.
+
+Permission mode selections belong to the current Nodex Project or projectless
+scope. Changing a mode saves that Profile preference and applies it to native
+requests without rewriting the shared Codex configuration. Explicit Codex
+configuration edits still target the selected native configuration.
 
 ## Starting and resuming
 

@@ -197,6 +197,35 @@ struct Rollout {
     paginated: bool,
 }
 
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+struct ActiveHomeReceipt {
+    version: u32,
+    codex_home: PathBuf,
+}
+
+/// Desktop publishes the active native home only after checking its bound chats.
+/// Profiles from earlier versions still keep their history under `agent`.
+fn source_codex_home(profile: &Path) -> Result<PathBuf> {
+    let path = profile.join("runtime/agent/codex-home.json");
+    if !files::exists(&path)? {
+        return Ok(profile.join("agent"));
+    }
+    let mut bytes = Vec::new();
+    files::read_file(&path)?
+        .take(16_385)
+        .read_to_end(&mut bytes)?;
+    if bytes.len() > 16_384 {
+        return Err(invalid("Active Codex home receipt exceeds its byte bound"));
+    }
+    let receipt: ActiveHomeReceipt =
+        serde_json::from_slice(&bytes).map_err(|_| invalid("Invalid active Codex home receipt"))?;
+    if receipt.version != 1 || !receipt.codex_home.is_absolute() {
+        return Err(invalid("Invalid active Codex home receipt"));
+    }
+    Ok(receipt.codex_home)
+}
+
 pub(crate) fn capture(
     source_profile: &Path,
     staging_profile: &Path,
@@ -209,7 +238,7 @@ pub(crate) fn capture(
         .map(|thread| thread.thread_id.clone())
         .collect();
     let started = now();
-    let source = source_profile.join("agent");
+    let source = source_codex_home(source_profile)?;
     let staging = staging_profile.join("agent");
     let target = target_profile.join("agent");
     files::private_directory(&staging)?;
@@ -264,6 +293,11 @@ pub(crate) fn capture(
     if before != files::inventory(&source, DIRECTORIES, FILES)? {
         return Err(invalid(
             "Source conversation files changed during capture; retry after stopping its Agent runtime",
+        ));
+    }
+    if source_codex_home(source_profile)? != source {
+        return Err(invalid(
+            "Source Profile's active Codex home changed during capture",
         ));
     }
     drop(databases);

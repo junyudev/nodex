@@ -16,6 +16,8 @@ import {
   writeFileSync,
 } from "fs";
 import { randomUUID } from "crypto";
+import { CodexHomeSettingsUpdateSchema } from "../../shared/codex-home-settings";
+import { resolveCodexHome } from "../codex/codex-home";
 import { stringify as stringifyToml } from "smol-toml";
 import {
   applyCommandKeybindingUpdate,
@@ -33,6 +35,8 @@ import type {
   BackupSettings,
   CodexDeveloperInstructionSettings,
   CodexGitSettings,
+  CodexHomeSettings,
+  CodexHomeSettingsUpdateInput,
   CodexExecutionHostSettings,
   CodexThreadDetailLevel,
   DiagnosticsSettings,
@@ -68,6 +72,7 @@ import {
 
 interface ServerTomlConfig {
   home?: string;
+  codex_home?: string;
   backup_auto_enabled?: boolean;
   backup_interval_hours?: number;
   backup_retention?: number;
@@ -227,6 +232,38 @@ function writeProfileServerTomlConfig(
   const nextToml = readTomlConfig(profileSettingsPath);
   nextToml.server = nextServer;
   writeTomlConfig(profileSettingsPath, nextToml);
+}
+
+function resolveConfiguredCodexHome(
+  configuredHome: string | undefined,
+  source: ApplicationSettingsDocumentSource,
+): CodexHomeSettings {
+  if (!source.hostHomeDirectory) throw new Error("The host home directory is unavailable.");
+  return resolveCodexHome({
+    configuredHome,
+    environment: source.environment,
+    homeDirectory: source.hostHomeDirectory,
+  });
+}
+
+export function getCodexHomeSettings(source: ApplicationSettingsDocumentSource): CodexHomeSettings {
+  const configuredHome = loadProfileServerTomlConfig(source).codex_home;
+  if (configuredHome !== undefined && typeof configuredHome !== "string")
+    throw new Error("Codex home must be a string");
+  return resolveConfiguredCodexHome(configuredHome, source);
+}
+
+export function updateCodexHomeSettings(
+  input: CodexHomeSettingsUpdateInput,
+  source: ApplicationSettingsDocumentSource,
+): CodexHomeSettings {
+  const parsed = CodexHomeSettingsUpdateSchema.parse(input);
+  const next = { ...loadProfileServerTomlConfig(source) };
+  const resolved = resolveConfiguredCodexHome(parsed.homePath, source);
+  if (resolved.homePath) next.codex_home = resolved.resolvedHomePath;
+  else delete next.codex_home;
+  writeProfileServerTomlConfig(source, next);
+  return getCodexHomeSettings(source);
 }
 
 // ─── Getters (resolution: env → Profile TOML → default) ───

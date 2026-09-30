@@ -202,6 +202,11 @@ a fresh backup first when the Profile has only an older manifest.
 The Profile materializer also captures the source's idle local Codex history:
 active and archived rollouts, inherited fork history, selected history after
 revert, native metadata, pagination indexes, goals, and managed Agent attachments.
+Capture reads the source Profile's verified active Codex home, including a shared native home.
+Earlier Profiles without an active-home receipt use their `${NODEX_HOME}/agent` directory.
+The destination always uses its own disposable Agent directory and never shares writable native
+history with the source.
+
 Native SQLite uses online backup rather than raw database/WAL copying. Selected
 rollout paths, current managed goal references, and managed attachment ownership
 are relocated into the destination. Core Session/Thread IDs remain unchanged.

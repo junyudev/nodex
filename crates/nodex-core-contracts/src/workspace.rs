@@ -5,11 +5,14 @@ use crate::agent::AgentBackendBinding;
 use crate::collection::{CollectionWindow, CollectionWindowRequest};
 use crate::{ModuleMutationReceipt, ModuleName, VersionedModuleContract};
 
-pub const PROJECT_WORKSPACE_CONTRACT_VERSION: u32 = 32;
+pub const PROJECT_WORKSPACE_CONTRACT_VERSION: u32 = 33;
 
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize, ToSchema)]
 #[serde(tag = "kind", rename_all = "snake_case")]
 pub enum ProjectWorkspaceRead {
+    LocalCodexThreadIds {
+        window: CollectionWindowRequest,
+    },
     QueuedMessageState,
     ThreadReadState {
         identity_key: String,
@@ -123,6 +126,9 @@ pub enum ProjectWorkspaceRead {
 #[derive(Clone, Debug, Deserialize, PartialEq, Serialize, ToSchema)]
 #[serde(tag = "kind", rename_all = "snake_case")]
 pub enum ProjectWorkspaceReadValue {
+    LocalCodexThreadIds {
+        thread_ids: CollectionWindow<String>,
+    },
     QueuedMessageState {
         state: std::collections::BTreeMap<String, Vec<serde_json::Value>>,
     },

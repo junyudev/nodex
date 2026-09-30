@@ -214,6 +214,24 @@ function ensureStorybookElectronBridge({
   window.api = {
     invoke: async (channel: string, ...args: unknown[]) => {
       switch (channel) {
+        case "settings:codex-home:get":
+          return {
+            homePath: "",
+            resolvedHomePath: "/Users/asc/.codex",
+            source: "default",
+            activeHomePath: "/Users/asc/.codex",
+            restartRequired: false,
+          };
+        case "settings:codex-home:update": {
+          const homePath = (args[0] as { homePath: string }).homePath;
+          return {
+            homePath,
+            resolvedHomePath: homePath || "/Users/asc/.codex",
+            source: homePath ? "settings" : "default",
+            activeHomePath: "/Users/asc/.codex",
+            restartRequired: Boolean(homePath),
+          };
+        }
         case "settings:git:get":
           return gitSettings;
         case "settings:third-party-notices:get":

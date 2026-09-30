@@ -6,6 +6,7 @@ import {
   writeBrowserRuntimeFixture,
 } from "./browser-runtime-test-fixture";
 import { resolveBrowserRuntimeBundle } from "./browser-runtime-bundle";
+import { nodexDesktopToolMarketplaceName } from "./bundled-desktop-tool-marketplace";
 import {
   browserPluginRequestPortFromPromise,
   makeBrowserPluginReconciler,
@@ -42,19 +43,29 @@ function makeRuntime() {
   });
   if (browserRuntime.status === "unavailable") throw new Error(browserRuntime.message);
   const runtimeStateHome = path.join(root, "state");
+  const marketplaceName = nodexDesktopToolMarketplaceName(runtimeStateHome);
   const marketplaceRoot = path.join(
     runtimeStateHome,
     ".tmp",
     "bundled-marketplaces",
-    "openai-bundled",
+    marketplaceName,
   );
-  return { browserRuntime, marketplaceRoot, root, runtimeStateHome };
+  const marketplacePath = path.join(marketplaceRoot, ".agents", "plugins", "marketplace.json");
+  return {
+    browserRuntime,
+    marketplaceName,
+    marketplacePath,
+    marketplaceRoot,
+    root,
+    runtimeStateHome,
+  };
 }
 
 function plugin(input: {
   enabled: boolean;
   installed: boolean;
   name?: "browser" | "chrome" | "computer-use";
+  marketplaceName?: string;
   version: string;
 }) {
   const name = input.name ?? "browser";
@@ -62,7 +73,7 @@ function plugin(input: {
     authPolicy: "ON_INSTALL",
     availability: "AVAILABLE",
     enabled: input.enabled,
-    id: `${name}@openai-bundled`,
+    id: `${name}@${input.marketplaceName ?? "openai-bundled"}`,
     installPolicy: "AVAILABLE",
     installPolicySource: null,
     installed: input.installed,
@@ -78,6 +89,136 @@ function plugin(input: {
 }
 
 describe("BrowserPluginReconciler", () => {
+  it.effect(
+    "leaves external and other Profile plugins intact while reconciling its own tools",
+    () =>
+      Effect.gen(function* () {
+        const fixture = makeRuntime();
+        let availableBackends: Array<"iab"> = ["iab"];
+        let registered = false;
+        let installed = false;
+        let globallyEnabled = false;
+        const externalMarketplaces = ["openai-bundled", "nodex-desktop-other-profile"].map(
+          (marketplaceName) => ({
+            interface: null,
+            name: marketplaceName,
+            path: `/external/${marketplaceName}`,
+            plugins: ["browser", "chrome", "computer-use"].map((name) =>
+              plugin({
+                enabled: true,
+                installed: true,
+                marketplaceName,
+                name: name as "browser" | "chrome" | "computer-use",
+                version: "external-version",
+              }),
+            ),
+          }),
+        );
+        const externalBefore = structuredClone(externalMarketplaces);
+        const request = vi.fn(async (method: string, params?: unknown) => {
+          if (method === "plugin/list") {
+            return {
+              featuredPluginIds: [],
+              marketplaceLoadErrors: [],
+              marketplaces: [
+                ...externalMarketplaces,
+                ...(registered
+                  ? [
+                      {
+                        interface: null,
+                        name: fixture.marketplaceName,
+                        path: fixture.marketplacePath,
+                        plugins: [
+                          plugin({
+                            enabled: globallyEnabled,
+                            installed,
+                            marketplaceName: fixture.marketplaceName,
+                            version: "1.0.0-test",
+                          }),
+                        ],
+                      },
+                    ]
+                  : []),
+              ],
+            };
+          }
+          if (method === "marketplace/add") {
+            expect(params).toEqual({ source: fixture.marketplaceRoot });
+            registered = true;
+            return {
+              marketplaceName: fixture.marketplaceName,
+              installedRoot: fixture.marketplaceRoot,
+              alreadyAdded: false,
+            };
+          }
+          if (method === "plugin/install") {
+            expect(params).toEqual({
+              marketplacePath: fixture.marketplacePath,
+              pluginName: "browser",
+            });
+            installed = true;
+            globallyEnabled = true;
+            return { appsNeedingAuth: [], authPolicy: "ON_INSTALL" };
+          }
+          if (method === "plugin/uninstall") {
+            expect(params).toEqual({ pluginId: `browser@${fixture.marketplaceName}` });
+            installed = false;
+            return {};
+          }
+          if (method === "config/batchWrite") {
+            expect(params).toEqual({
+              edits: [
+                {
+                  keyPath: `plugins.browser@${fixture.marketplaceName}.enabled`,
+                  value: false,
+                  mergeStrategy: "replace",
+                },
+              ],
+              expectedVersion: null,
+              filePath: null,
+              reloadUserConfig: true,
+            });
+            globallyEnabled = false;
+            return {
+              status: "ok",
+              version: "test",
+              filePath: "/fixture/config.toml",
+              overriddenMetadata: null,
+            };
+          }
+          if (method === "skills/list") return { data: [] };
+          throw new Error(`Unexpected request: ${method}`);
+        });
+
+        try {
+          const reconciler = yield* makeTestBrowserPluginReconciler({
+            availableBackends: () => availableBackends,
+            browserRuntime: fixture.browserRuntime,
+            client: { request },
+            runtimeStateHome: fixture.runtimeStateHome,
+          });
+          expect(yield* reconciler.ensureInstalled).toMatchObject({
+            status: "ready",
+            enabled: true,
+          });
+          expect(installed).toBe(true);
+          expect(globallyEnabled).toBe(false);
+          availableBackends = [];
+          expect(yield* reconciler.ensureInstalled).toMatchObject({
+            status: "unavailable",
+            reason: "backend-unavailable",
+          });
+          expect(installed).toBe(false);
+          expect(externalMarketplaces).toEqual(externalBefore);
+          expect(request.mock.calls.some(([method]) => method === "marketplace/remove")).toBe(
+            false,
+          );
+        } finally {
+          fs.rmSync(fixture.root, { force: true, recursive: true });
+        }
+      }),
+  );
+
   it.effect("reuses the exact installed bundled plugin without reinstalling", () =>
     Effect.gen(function* () {
       const fixture = makeRuntime();
@@ -89,9 +230,16 @@ describe("BrowserPluginReconciler", () => {
             marketplaces: [
               {
                 interface: null,
-                name: "openai-bundled",
-                path: fixture.marketplaceRoot,
-                plugins: [plugin({ enabled: true, installed: true, version: "1.0.0-test" })],
+                name: fixture.marketplaceName,
+                path: fixture.marketplacePath,
+                plugins: [
+                  plugin({
+                    marketplaceName: fixture.marketplaceName,
+                    enabled: false,
+                    installed: true,
+                    version: "1.0.0-test",
+                  }),
+                ],
               },
             ],
           };
@@ -145,9 +293,16 @@ describe("BrowserPluginReconciler", () => {
             marketplaces: [
               {
                 interface: null,
-                name: "openai-bundled",
-                path: fixture.marketplaceRoot,
-                plugins: [plugin({ enabled: true, installed: true, version: "1.0.0-test" })],
+                name: fixture.marketplaceName,
+                path: fixture.marketplacePath,
+                plugins: [
+                  plugin({
+                    marketplaceName: fixture.marketplaceName,
+                    enabled: false,
+                    installed: true,
+                    version: "1.0.0-test",
+                  }),
+                ],
               },
             ],
           };
@@ -183,7 +338,7 @@ describe("BrowserPluginReconciler", () => {
         if (method === "marketplace/add") {
           marketplaceAdded = true;
           return {
-            marketplaceName: "openai-bundled",
+            marketplaceName: fixture.marketplaceName,
             installedRoot: fixture.marketplaceRoot,
             alreadyAdded: false,
           };
@@ -196,11 +351,12 @@ describe("BrowserPluginReconciler", () => {
               ? [
                   {
                     interface: null,
-                    name: "openai-bundled",
-                    path: fixture.marketplaceRoot,
+                    name: fixture.marketplaceName,
+                    path: fixture.marketplacePath,
                     plugins: [
                       plugin({
-                        enabled: installed,
+                        marketplaceName: fixture.marketplaceName,
+                        enabled: false,
                         installed,
                         version: installed ? "1.0.0-test" : "0.9.0",
                       }),
@@ -214,6 +370,13 @@ describe("BrowserPluginReconciler", () => {
           installed = true;
           return { appsNeedingAuth: [], authPolicy: "ON_INSTALL" };
         }
+        if (method === "config/batchWrite")
+          return {
+            status: "ok",
+            version: "test",
+            filePath: "/fixture/config.toml",
+            overriddenMetadata: null,
+          };
         if (method === "skills/list") return { data: [] };
         throw new Error(`Unexpected request: ${method}`);
       });
@@ -230,6 +393,7 @@ describe("BrowserPluginReconciler", () => {
           "marketplace/add",
           "plugin/list",
           "plugin/install",
+          "config/batchWrite",
           "skills/list",
           "plugin/list",
         ]);
@@ -251,16 +415,18 @@ describe("BrowserPluginReconciler", () => {
             marketplaces: [
               {
                 interface: null,
-                name: "openai-bundled",
-                path: fixture.marketplaceRoot,
+                name: fixture.marketplaceName,
+                path: fixture.marketplacePath,
                 plugins: [
                   plugin({
-                    enabled: installed.has("browser"),
+                    marketplaceName: fixture.marketplaceName,
+                    enabled: false,
                     installed: installed.has("browser"),
                     version: "1.0.0-test",
                   }),
                   plugin({
-                    enabled: installed.has("computer-use"),
+                    marketplaceName: fixture.marketplaceName,
+                    enabled: false,
                     installed: installed.has("computer-use"),
                     name: "computer-use",
                     version: "1.0.0-test",
@@ -275,6 +441,13 @@ describe("BrowserPluginReconciler", () => {
           installed.add(pluginName);
           return { appsNeedingAuth: [], authPolicy: "ON_INSTALL" };
         }
+        if (method === "config/batchWrite")
+          return {
+            status: "ok",
+            version: "test",
+            filePath: "/fixture/config.toml",
+            overriddenMetadata: null,
+          };
         if (method === "skills/list") return { data: [] };
         throw new Error(`Unexpected request: ${method}`);
       });
@@ -308,7 +481,7 @@ describe("BrowserPluginReconciler", () => {
     }),
   );
 
-  it.effect("replaces a stale bundled marketplace source before verification", () =>
+  it.effect("replaces only the current Profile marketplace source before verification", () =>
     Effect.gen(function* () {
       const fixture = makeRuntime();
       let source = "/tmp/obsolete-openai-bundled";
@@ -320,11 +493,12 @@ describe("BrowserPluginReconciler", () => {
             marketplaces: [
               {
                 interface: null,
-                name: "openai-bundled",
+                name: fixture.marketplaceName,
                 path: source,
                 plugins: [
                   plugin({
-                    enabled: true,
+                    marketplaceName: fixture.marketplaceName,
+                    enabled: false,
                     installed: true,
                     version: "1.0.0-test",
                   }),
@@ -334,17 +508,17 @@ describe("BrowserPluginReconciler", () => {
           };
         }
         if (method === "marketplace/remove") {
-          expect(params).toEqual({ marketplaceName: "openai-bundled" });
+          expect(params).toEqual({ marketplaceName: fixture.marketplaceName });
           source = "";
           return {
-            marketplaceName: "openai-bundled",
+            marketplaceName: fixture.marketplaceName,
             installedRoot: "/tmp/obsolete-openai-bundled",
           };
         }
         if (method === "marketplace/add") {
-          source = fixture.marketplaceRoot;
+          source = fixture.marketplacePath;
           return {
-            marketplaceName: "openai-bundled",
+            marketplaceName: fixture.marketplaceName,
             installedRoot: source,
             alreadyAdded: false,
           };
@@ -390,11 +564,12 @@ describe("BrowserPluginReconciler", () => {
                   marketplaces: [
                     {
                       interface: null,
-                      name: "openai-bundled",
-                      path: fixture.marketplaceRoot,
+                      name: fixture.marketplaceName,
+                      path: fixture.marketplacePath,
                       plugins: [
                         plugin({
-                          enabled: true,
+                          marketplaceName: fixture.marketplaceName,
+                          enabled: false,
                           installed: true,
                           version: "1.0.0-test",
                         }),
@@ -436,11 +611,12 @@ describe("BrowserPluginReconciler", () => {
             marketplaces: [
               {
                 interface: null,
-                name: "openai-bundled",
-                path: fixture.marketplaceRoot,
+                name: fixture.marketplaceName,
+                path: fixture.marketplacePath,
                 plugins: [
                   plugin({
-                    enabled: installed,
+                    marketplaceName: fixture.marketplaceName,
+                    enabled: false,
                     installed,
                     version: "1.0.0-test",
                   }),
@@ -450,7 +626,7 @@ describe("BrowserPluginReconciler", () => {
           };
         }
         if (method === "plugin/uninstall") {
-          expect(params).toEqual({ pluginId: "browser@openai-bundled" });
+          expect(params).toEqual({ pluginId: `browser@${fixture.marketplaceName}` });
           installed = false;
           return {};
         }
@@ -458,6 +634,13 @@ describe("BrowserPluginReconciler", () => {
           installed = true;
           return { appsNeedingAuth: [], authPolicy: "ON_INSTALL" };
         }
+        if (method === "config/batchWrite")
+          return {
+            status: "ok",
+            version: "test",
+            filePath: "/fixture/config.toml",
+            overriddenMetadata: null,
+          };
         if (method === "skills/list") return { data: [] };
         throw new Error(`Unexpected request: ${method}`);
       });
@@ -526,16 +709,18 @@ describe("BrowserPluginReconciler", () => {
               marketplaces: [
                 {
                   interface: null,
-                  name: "openai-bundled",
-                  path: fixture.marketplaceRoot,
+                  name: fixture.marketplaceName,
+                  path: fixture.marketplacePath,
                   plugins: [
                     plugin({
-                      enabled: installed.has("browser"),
+                      marketplaceName: fixture.marketplaceName,
+                      enabled: false,
                       installed: installed.has("browser"),
                       version: "1.0.0-test",
                     }),
                     plugin({
-                      enabled: installed.has("chrome"),
+                      marketplaceName: fixture.marketplaceName,
+                      enabled: false,
                       installed: installed.has("chrome"),
                       name: "chrome",
                       version: "1.0.0-test",
@@ -554,6 +739,13 @@ describe("BrowserPluginReconciler", () => {
             installed.delete(pluginId.split("@")[0]!);
             return {};
           }
+          if (method === "config/batchWrite")
+            return {
+              status: "ok",
+              version: "test",
+              filePath: "/fixture/config.toml",
+              overriddenMetadata: null,
+            };
           if (method === "skills/list") return { data: [] };
           throw new Error(`Unexpected request: ${method}`);
         });
@@ -608,7 +800,7 @@ describe("BrowserPluginReconciler", () => {
             request.mock.calls
               .filter(([method]) => method === "plugin/uninstall")
               .map(([, params]) => (params as { pluginId: string }).pluginId),
-          ).toEqual(["chrome@openai-bundled"]);
+          ).toEqual([`chrome@${fixture.marketplaceName}`]);
         } finally {
           fs.rmSync(fixture.root, { force: true, recursive: true });
         }

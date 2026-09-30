@@ -8,7 +8,11 @@ import {
   makeTestedBrowserAppServerPair,
   writeBrowserRuntimeFixture,
 } from "./browser-runtime-test-fixture";
-import { materializeBundledDesktopToolMarketplace } from "./bundled-desktop-tool-marketplace";
+import {
+  materializeBundledDesktopToolMarketplace,
+  isForeignDesktopToolPlugin,
+  nodexDesktopToolMarketplaceName,
+} from "./bundled-desktop-tool-marketplace";
 
 const temporaryRoots: string[] = [];
 
@@ -51,6 +55,21 @@ afterEach(() => {
 });
 
 describe("materializeBundledDesktopToolMarketplace", () => {
+  test("scopes desktop peers to their owning Profile while preserving unrelated plugins", () => {
+    const runtimeStateHome = "/profiles/current/runtime/agent";
+    const currentMarketplace = nodexDesktopToolMarketplaceName(runtimeStateHome);
+    const otherMarketplace = nodexDesktopToolMarketplaceName("/profiles/other/runtime/agent");
+
+    expect(currentMarketplace).not.toBe(otherMarketplace);
+    expect(isForeignDesktopToolPlugin(`browser@${currentMarketplace}`, runtimeStateHome)).toBe(
+      false,
+    );
+    expect(isForeignDesktopToolPlugin(`chrome@${otherMarketplace}`, runtimeStateHome)).toBe(true);
+    expect(isForeignDesktopToolPlugin("computer-use@openai-bundled", runtimeStateHome)).toBe(true);
+    expect(isForeignDesktopToolPlugin("pdf@openai-bundled", runtimeStateHome)).toBe(false);
+    expect(isForeignDesktopToolPlugin("browser@external-tools", runtimeStateHome)).toBe(false);
+  });
+
   test("atomically materializes Browser, Chrome, and the Computer Use Node REPL variant", async () => {
     const fixture = makeRuntime();
     const sourceSkill = path.join(
@@ -74,7 +93,12 @@ describe("materializeBundledDesktopToolMarketplace", () => {
     });
 
     expect(result.rootPath).toBe(
-      path.join(fixture.runtimeStateHome, ".tmp", "bundled-marketplaces", "openai-bundled"),
+      path.join(
+        fixture.runtimeStateHome,
+        ".tmp",
+        "bundled-marketplaces",
+        nodexDesktopToolMarketplaceName(fixture.runtimeStateHome),
+      ),
     );
     expect(
       fs.readFileSync(
@@ -92,7 +116,8 @@ describe("materializeBundledDesktopToolMarketplace", () => {
     ).toMatchObject({ bundledContentVariant: "node-repl" });
     const marketplace = JSON.parse(
       fs.readFileSync(path.join(result.rootPath, ".agents", "plugins", "marketplace.json"), "utf8"),
-    ) as { plugins: Array<{ name: string; source: unknown }> };
+    ) as { name: string; plugins: Array<{ name: string; source: unknown }> };
+    expect(marketplace.name).toBe(nodexDesktopToolMarketplaceName(fixture.runtimeStateHome));
     expect(marketplace.plugins.map(({ name }) => name)).toEqual([
       "browser",
       "computer-use",
@@ -124,7 +149,7 @@ describe("materializeBundledDesktopToolMarketplace", () => {
         expect.objectContaining({ relativePath: "scripts/installManifest.mjs" }),
       ]),
       chromePluginVersion: "1.0.0-test",
-      schemaVersion: 2,
+      schemaVersion: 3,
     });
     expect(fs.readFileSync(sourceSkill, "utf8")).toBe(originalSkill);
     expect(fs.readFileSync(sourceManifest, "utf8")).toBe(originalManifest);

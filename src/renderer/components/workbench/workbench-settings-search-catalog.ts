@@ -307,6 +307,12 @@ const SETTINGS_SEARCH_PANELS = {
       {
         title: "Custom config.toml settings",
         entries: [
+          entry("Codex home", "Select the Codex configuration and account directory.", [
+            "CODEX_HOME",
+            "~/.codex",
+            "profile",
+            "restart",
+          ]),
           entry("Approval policy", "Raw `approval_policy` value for this config target.", [
             "granular",
             "untrusted",

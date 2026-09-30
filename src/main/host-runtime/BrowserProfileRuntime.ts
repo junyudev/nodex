@@ -76,6 +76,7 @@ export interface BrowserProfileRuntimeOptions {
   readonly projectRootPath: string;
   readonly platform: string;
   readonly resourcesPath: string;
+  readonly runtimeStateHome: string;
   readonly userDataPath: string;
 }
 
@@ -132,7 +133,7 @@ export const live = (
       const browserSession = yield* sessions.fromPartition(BROWSER_SIDEBAR_PARTITION);
       const logger = getLogger({ component: "browser-profile-runtime" });
       const policy = yield* makeBrowserUsePolicyRuntime(
-        `${options.nodexHome}/agent/browser/config.toml`,
+        `${options.runtimeStateHome}/browser/config.toml`,
       ).pipe(
         Effect.mapError(
           (cause) => new BrowserProfileRuntimeError({ operation: "initialize-policy", cause }),

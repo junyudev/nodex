@@ -1939,6 +1939,11 @@ export interface components {
             }[];
             readonly next_cursor?: string | null;
         };
+        readonly CollectionWindow_String: {
+            readonly authority: components["schemas"]["CollectionWindowAuthority"];
+            readonly items: readonly string[];
+            readonly next_cursor?: string | null;
+        };
         readonly CollectionWindow_ThreadUnreadEntry: {
             readonly authority: components["schemas"]["CollectionWindowAuthority"];
             readonly items: readonly {
@@ -8283,6 +8288,10 @@ export interface components {
             readonly contract_version: number;
             readonly read: {
                 /** @enum {string} */
+                readonly kind: "local_codex_thread_ids";
+                readonly window: components["schemas"]["CollectionWindowRequest"];
+            } | {
+                /** @enum {string} */
                 readonly kind: "queued_message_state";
             } | {
                 readonly identity_key: string;
@@ -11085,6 +11094,10 @@ export interface components {
                 readonly contract_version: number;
                 readonly store_epoch: components["schemas"]["StoreEpoch"];
                 readonly value: {
+                    /** @enum {string} */
+                    readonly kind: "local_codex_thread_ids";
+                    readonly thread_ids: components["schemas"]["CollectionWindow_String"];
+                } | {
                     /** @enum {string} */
                     readonly kind: "queued_message_state";
                     readonly state: {

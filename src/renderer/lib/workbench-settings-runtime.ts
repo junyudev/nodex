@@ -1,5 +1,6 @@
 import type { AgentImportSourceKind } from "../../shared/agent-import";
 import type {
+  CodexHomeSettingsUpdateInput,
   UpdateClaudeAgentSettingsInput,
   UpdateAcpAgentSettingsInput,
   UpdateCodexGitSettingsInput,
@@ -89,6 +90,14 @@ const updateGitSettingsCommand = defineRendererCommand({
 const updateClaudeAgentSettingsCommand = defineRendererCommand({
   key: "workbench_settings.claude_agents.update",
   channel: "settings:claude-agents:update",
+  authority: "main",
+  owner: "AgentBackendSettings",
+  protocol: { kind: "returned_value" },
+});
+
+const updateCodexHomeSettingsCommand = defineRendererCommand({
+  key: "workbench_settings.codex_home.update",
+  channel: "settings:codex-home:update",
   authority: "main",
   owner: "AgentBackendSettings",
   protocol: { kind: "returned_value" },
@@ -198,5 +207,8 @@ export const deleteArchivedChat = (threadId: string) =>
   invokePlainCommand(deleteArchivedChatCommand, threadId);
 
 export const readClaudeAgentSettings = () => invokeRendererQuery("settings:claude-agents:get");
+export const readCodexHomeSettings = () => invokeRendererQuery("settings:codex-home:get");
+export const updateCodexHomeSettings = (input: CodexHomeSettingsUpdateInput) =>
+  invokePlainCommand(updateCodexHomeSettingsCommand, input);
 export const updateClaudeAgentSettings = (input: UpdateClaudeAgentSettingsInput) =>
   invokePlainCommand(updateClaudeAgentSettingsCommand, input);

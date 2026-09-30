@@ -89,7 +89,7 @@ pub(crate) fn read_file(path: &Path) -> Result<File> {
 pub(crate) fn relative_path(root: &Path, path: &Path) -> Result<PathBuf> {
     let relative = path.strip_prefix(root).map_err(|_| {
         invalid(format!(
-            "Native conversation path is outside its Profile: {}",
+            "Native conversation path is outside its Codex home: {}",
             path.display()
         ))
     })?;

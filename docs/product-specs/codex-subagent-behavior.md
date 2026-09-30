@@ -136,8 +136,9 @@ active Goal; nonresident fallback interrupts only the Turn.
 Archive sends the native root archive operation without requiring a complete
 descendant graph or persisting an expected closure. Native archive notifications
 and normal local cleanup update affected identities. A failed physical operation
-cannot be reported as successful local archive. The inactive-rollout fallback
-remains an explicit native recovery path.
+cannot be reported as successful local archive. Archive recovery uses the
+native API; Nodex does not rewrite Codex's private SQLite archive index. A stale
+local identity is retired only after native absence is confirmed.
 
 Permanent deletion checks the native archived state-database listing before
 issuing thread/delete. A missing target is a no-op. Missing-rollout recovery is

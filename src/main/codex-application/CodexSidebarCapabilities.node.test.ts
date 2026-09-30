@@ -412,6 +412,8 @@ it.effect(
               threadId,
               projectId: "project:source",
               sessionId: null,
+              backendBinding: { kind: "codex" },
+              executionHostId: "local",
             },
             summary: {
               threadId,
@@ -429,6 +431,7 @@ it.effect(
         const existing = new Map([
           ["thread:ephemeral", durable("thread:ephemeral")],
           ["thread:internal", durable("thread:internal")],
+          ["thread:root", durable("thread:root")],
         ]);
         let observedChild = false;
         const directory = CodexThreadDirectory.of({
@@ -483,6 +486,99 @@ it.effect(
         );
       }),
     ),
+);
+
+it.effect("admits only Profile-linked roots and descendants across native history pages", () =>
+  Effect.scoped(
+    Effect.gen(function* () {
+      const observed: string[] = [];
+      const observedAll = yield* Deferred.make<void>();
+      const durable = (
+        threadId: string,
+        options: {
+          readonly parentThreadId?: string;
+          readonly backend?: "codex" | "claude";
+          readonly host?: string;
+        } = {},
+      ) =>
+        ({
+          fidelity: "durable",
+          durable: {
+            threadId,
+            projectId: "project:source",
+            sessionId: null,
+            backendBinding:
+              options.backend === "claude"
+                ? { kind: "claude", instanceConfigId: "claude" }
+                : { kind: "codex" },
+            executionHostId: options.host ?? "local",
+            parentThreadId: options.parentThreadId ?? null,
+            archived: true,
+          },
+          summary: { threadId, projectId: "project:source", archived: true },
+        }) as never;
+      const existing = new Map([
+        ["owned", durable("owned")],
+        ["other-backend", durable("other-backend", { backend: "claude" })],
+        ["other-host", durable("other-host", { host: "remote" })],
+      ]);
+      const directory = CodexThreadDirectory.of({
+        resolve: ({ threadId }: { readonly threadId: string; readonly hostId?: string }) =>
+          Effect.succeed(existing.get(threadId) ?? null),
+        observeMetadata: ({
+          thread: native,
+        }: {
+          readonly thread: { readonly id: string; readonly parentThreadId?: string };
+        }) =>
+          Effect.sync(() => {
+            observed.push(native.id);
+            const entry = durable(native.id, { parentThreadId: native.parentThreadId });
+            existing.set(native.id, entry);
+            return entry;
+          }).pipe(
+            Effect.tap(() =>
+              observed.length === 3 ? Deferred.succeed(observedAll, undefined) : Effect.void,
+            ),
+          ),
+      } as unknown as CodexThreadDirectory["Service"]);
+      const harness = sidebarHarness({
+        directory,
+        requestList: ({ archived, cursor }) =>
+          Effect.succeed(
+            archived
+              ? { data: [], nextCursor: null }
+              : {
+                  data: cursor
+                    ? [
+                        { id: "child", parentThreadId: "owned", archived: true },
+                        { id: "owned", archived: true },
+                      ]
+                    : [
+                        { id: "grandchild", parentThreadId: "child", archived: true },
+                        { id: "external", cwd: "/workspace/source" },
+                        { id: "external-child", parentThreadId: "external" },
+                        { id: "other-backend" },
+                        { id: "other-host" },
+                      ],
+                  nextCursor: cursor ? null : "next",
+                },
+          ),
+      });
+      const internalThreads = yield* makeInternalThreadRegistry;
+      const runtime = yield* harness.runtime.pipe(
+        Effect.provideService(CodexInternalThreadRegistry, internalThreads),
+      );
+      yield* runtime.sync({ policy: "force" });
+      yield* Deferred.await(observedAll);
+      assert.sameMembers(observed, ["owned", "child", "grandchild"]);
+      assert.isFalse(existing.has("external"));
+      assert.isFalse(existing.has("external-child"));
+      assert.strictEqual(
+        harness.applied.filter((request) => request.intent.kind === "create_session").length,
+        0,
+      );
+    }),
+  ),
 );
 
 it.effect("requires a grant fenced by the target Project binding revision", () =>

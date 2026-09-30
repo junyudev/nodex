@@ -201,6 +201,7 @@ const makeHarness = (
   });
   const layer = executionHostRuntimeLive({
     runtimeStateHome: "/profile/agent",
+    codexHome: "/native/.codex",
     nodexHome: "/profile",
     remoteWorktreeWorkerBundlePath: "/app/remote-worktree-worker.cjs",
     factories,

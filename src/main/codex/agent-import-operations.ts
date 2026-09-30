@@ -34,6 +34,10 @@ import type {
   AgentImportSourceKind,
 } from "../../shared/agent-import";
 import { resolveCodexCanonicalHydratedCwd } from "../../shared/codex-conversation-state/codex-conversation-state";
+import {
+  extractCodexThreadSubagentMetadata,
+  hasCodexSubagentSource,
+} from "../../shared/codex-subagent-metadata";
 import { CodexApplicationEventHub } from "../codex-application/CodexApplicationEventHub";
 import { CodexExternalAgentImportRuntime } from "../codex-application/CodexExternalAgentImportRuntime";
 import { CodexSidebarSyncRuntime } from "../codex-application/CodexSidebarSyncRuntime";
@@ -44,6 +48,7 @@ import { CodexAppServerCapabilities } from "../codex-runtime/CodexAppServerCapab
 import { CodexGateway, codexGatewayGenerationFence } from "../codex-runtime/CodexGateway";
 import { getLogger } from "../logging/logger";
 import { buildCodexThreadConfig } from "./codex-thread-config";
+import { projectCodexGatewayThreadReadThread } from "../codex-runtime/CodexGatewayProtocolProjection";
 
 const SCAN_TTL_MS = 10 * 60 * 1_000;
 const SESSION_LOOKBACK_MS = 30 * 24 * 60 * 60 * 1_000;
@@ -102,6 +107,7 @@ const SAFE_CONFIG_KEYS = [
 ] as const;
 
 export interface NativeSessionCandidate {
+  readonly sourceHome: string;
   readonly sourcePath: string;
   readonly sourceContentSha256: string;
   readonly sourceThreadId: string;
@@ -162,6 +168,7 @@ interface NativeScanResult {
 }
 
 export interface AgentImportFileConfiguration {
+  readonly codexHome: string;
   readonly runtimeStateHome: string;
   readonly sourceHomes?: Partial<Record<AgentImportSourceKind, string>>;
 }
@@ -240,12 +247,6 @@ function createPendingItem(
   };
 }
 
-function defaultSourceHome(sourceKind: AgentImportSourceKind): string {
-  if (sourceKind === "claude-code") return path.join(homedir(), ".claude");
-  const configured = process.env.CODEX_HOME?.trim();
-  return path.resolve(configured || path.join(homedir(), ".codex"));
-}
-
 async function canonicalizeExistingDirectory(directoryPath: string): Promise<string> {
   const resolved = path.resolve(directoryPath);
   const metadata = await stat(resolved);
@@ -303,6 +304,11 @@ function parseSessionHeader(raw: string): {
     if (!isRecord(parsed) || parsed.type !== "session_meta" || !isRecord(parsed.payload)) {
       continue;
     }
+    if (
+      hasCodexSubagentSource(parsed.payload.source) ||
+      extractCodexThreadSubagentMetadata(parsed.payload).parentThreadId !== null
+    )
+      return null;
     const sourceThreadId = typeof parsed.payload.id === "string" ? parsed.payload.id.trim() : "";
     const cwd = typeof parsed.payload.cwd === "string" ? parsed.payload.cwd.trim() : "";
     if (!sourceThreadId || !path.isAbsolute(cwd)) return null;
@@ -486,6 +492,7 @@ async function discoverSessions(input: {
     );
     if (!header) continue;
     const session: NativeSessionCandidate = {
+      sourceHome: input.sourceHome,
       cwd: header.cwd,
       sourceContentSha256: await hashFile(canonicalSourcePath),
       sourcePath: canonicalSourcePath,
@@ -743,49 +750,54 @@ async function scanNativeHome(input: {
   readonly sourceHome: string;
   readonly sourceKind: "codex";
   readonly runtimeStateHome: string;
+  readonly codexHome: string;
   readonly now: number;
 }): Promise<NativeScanResult> {
-  const targetSkillsHome = path.join(path.dirname(input.runtimeStateHome), ".agents", "skills");
+  const sessions = await discoverSessions(input);
+  const items: PendingImportItem[] =
+    sessions.sessions.length === 0
+      ? []
+      : [
+          createPendingItem({
+            count: sessions.sessions.length,
+            description:
+              input.sourceHome === input.codexHome
+                ? "Add recent Codex conversations to Nodex."
+                : "Copy recent conversations into the active Codex home.",
+            kind: "sessions",
+            label: ITEM_LABELS.sessions,
+            payload: { sessions: sessions.sessions, type: "sessions" },
+          }),
+        ];
+  if (input.sourceHome === input.codexHome) {
+    return { items, skippedAlreadyImportedSessions: sessions.skipped };
+  }
+  const targetSkillsHome = path.join(path.dirname(input.codexHome), ".agents", "skills");
   const sourceSkillsHomes = [
     path.join(input.sourceHome, "skills"),
     path.join(path.dirname(input.sourceHome), ".agents", "skills"),
   ];
-  const [sessions, sourceConfig, targetConfig, skills, subagents, instructions, hooks] =
-    await Promise.all([
-      discoverSessions(input),
-      readTomlRecord(path.join(input.sourceHome, "config.toml")),
-      readTomlRecord(path.join(input.runtimeStateHome, "config.toml")),
-      listMissingDirectoryCopies(sourceSkillsHomes, targetSkillsHome),
-      listMissingDirectoryCopies(
-        [path.join(input.sourceHome, "agents")],
-        path.join(input.runtimeStateHome, "agents"),
-      ),
-      buildSingleFileCopy(
-        path.join(input.sourceHome, "AGENTS.md"),
-        path.join(input.runtimeStateHome, "AGENTS.md"),
-        "AGENTS.md",
-      ),
-      buildSingleFileCopy(
-        path.join(input.sourceHome, "hooks.json"),
-        path.join(input.runtimeStateHome, "hooks.json"),
-        "hooks.json",
-      ),
-    ]);
+  const [sourceConfig, targetConfig, skills, subagents, instructions, hooks] = await Promise.all([
+    readTomlRecord(path.join(input.sourceHome, "config.toml")),
+    readTomlRecord(path.join(input.codexHome, "config.toml")),
+    listMissingDirectoryCopies(sourceSkillsHomes, targetSkillsHome),
+    listMissingDirectoryCopies(
+      [path.join(input.sourceHome, "agents")],
+      path.join(input.codexHome, "agents"),
+    ),
+    buildSingleFileCopy(
+      path.join(input.sourceHome, "AGENTS.md"),
+      path.join(input.codexHome, "AGENTS.md"),
+      "AGENTS.md",
+    ),
+    buildSingleFileCopy(
+      path.join(input.sourceHome, "hooks.json"),
+      path.join(input.codexHome, "hooks.json"),
+      "hooks.json",
+    ),
+  ]);
   const safeConfigEdits = buildSafeConfigEdits(sourceConfig, targetConfig);
   const mcpConfigEdits = buildMcpConfigEdits(sourceConfig, targetConfig);
-  const items: PendingImportItem[] = [];
-
-  if (sessions.sessions.length > 0) {
-    items.push(
-      createPendingItem({
-        count: sessions.sessions.length,
-        description: `Copy ${sessions.sessions.length} recent conversation${sessions.sessions.length === 1 ? "" : "s"} into Nodex-owned history.`,
-        kind: "sessions",
-        label: ITEM_LABELS.sessions,
-        payload: { sessions: sessions.sessions, type: "sessions" },
-      }),
-    );
-  }
   if (instructions.length > 0) {
     items.push(
       createPendingItem({
@@ -884,16 +896,19 @@ function outcomeFromExternalResult(
  * module owns source discovery and the complete import transaction.
  */
 class AgentImportOperations {
+  private readonly codexHome: string;
   private readonly runtimeStateHome: string;
   private readonly services: AgentImportEffectServices;
   private readonly resolveSourceHome: (sourceKind: AgentImportSourceKind) => string;
   private readonly logger = getLogger({ component: "agent-import" });
 
   constructor(options: AgentImportFileConfiguration, services: AgentImportEffectServices) {
+    this.codexHome = path.resolve(options.codexHome);
     this.runtimeStateHome = path.resolve(options.runtimeStateHome);
     this.services = services;
     this.resolveSourceHome = (sourceKind) =>
-      options.sourceHomes?.[sourceKind] ?? defaultSourceHome(sourceKind);
+      options.sourceHomes?.[sourceKind] ??
+      (sourceKind === "codex" ? this.codexHome : path.join(homedir(), ".claude"));
   }
 
   makeImportId(): string {
@@ -936,10 +951,7 @@ class AgentImportOperations {
     const sourceHome = selectedSourceHome
       ? await canonicalizeExistingDirectory(requestedHome)
       : await canonicalizeDirectoryIfPresent(requestedHome);
-    const targetHome = await canonicalizeDirectoryIfPresent(this.runtimeStateHome);
-    if (sourceHome === targetHome) {
-      throw new Error("The selected source is already Nodex's writable agent home");
-    }
+    const targetHome = await canonicalizeDirectoryIfPresent(this.codexHome);
 
     let items: readonly PendingImportItem[];
     let skippedAlreadyImportedSessions = 0;
@@ -984,7 +996,8 @@ class AgentImportOperations {
     } else {
       const result = await scanNativeHome({
         now,
-        runtimeStateHome: targetHome,
+        runtimeStateHome: this.runtimeStateHome,
+        codexHome: targetHome,
         sourceHome,
         sourceKind,
       });
@@ -1236,7 +1249,7 @@ class AgentImportOperations {
       const edits = item.payload.edits;
       return Effect.gen({ self: this }, function* () {
         const revalidated = yield* Effect.tryPromise(() =>
-          revalidateConfigEdits(this.runtimeStateHome, edits),
+          revalidateConfigEdits(this.codexHome, edits),
         );
         if (revalidated.edits.length > 0) {
           yield* this.services.gateway.requestLocal("config/batchWrite", {
@@ -1353,6 +1366,38 @@ class AgentImportOperations {
             new Error("Native session import requires bounded paginated history support"),
           ),
         );
+      }
+
+      const activeHome = yield* Effect.tryPromise(() =>
+        canonicalizeDirectoryIfPresent(this.codexHome),
+      );
+      if (session.sourceHome === activeHome) {
+        // Native history is already in the active home. Attach its metadata without
+        // creating a fork, resuming another client's live turn, or deleting its history.
+        const response = yield* this.services.gateway.requestLocal(
+          "thread/read",
+          { threadId: session.sourceThreadId, includeTurns: false },
+          codexGatewayGenerationFence(capability),
+        );
+        if (response.thread.id !== session.sourceThreadId) {
+          return yield* Effect.fail(
+            operationError("apply", new Error("Codex returned a different conversation identity")),
+          );
+        }
+        if (extractCodexThreadSubagentMetadata(response.thread).parentThreadId !== null) {
+          return yield* Effect.fail(
+            operationError(
+              "apply",
+              new Error("Attach the parent conversation to access this subagent."),
+            ),
+          );
+        }
+        yield* this.services.threadDirectory.observeMetadata({
+          thread: projectCodexGatewayThreadReadThread(response.thread),
+          inferredInitialProjectId: null,
+          executionHostId: capability.hostId,
+        });
+        return response.thread.id;
       }
 
       let createdThreadId: string | null = null;

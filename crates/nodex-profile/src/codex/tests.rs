@@ -62,6 +62,86 @@ fn state(home: &Path, selections: &[(&str, &Path)]) {
 }
 
 #[test]
+fn captures_the_active_native_home_into_an_independent_profile_home() {
+    let root = tempfile::tempdir().unwrap();
+    let source = root.path().join("profile");
+    let native = root.path().join("native/.codex");
+    let target = root.path().join("snapshot");
+    let (relative, _) = write_rollout(&native, ROOT, ROOT, Value::Null, false, false);
+    state(&native, &[(ROOT, &relative)]);
+    fs::write(native.join("auth.json"), "private").unwrap();
+    fs::write(native.join("config.toml"), "model = 'native-model'\n").unwrap();
+    let receipt = source.join("runtime/agent/codex-home.json");
+    files::private_directory(receipt.parent().unwrap()).unwrap();
+    fs::write(
+        &receipt,
+        json!({"version":1,"codexHome":native}).to_string(),
+    )
+    .unwrap();
+    let captured = capture(&source, &target, &target, &[thread(ROOT)]).unwrap();
+    assert_eq!(captured.captured_thread_count, 1);
+    assert!(captured.missing_thread_ids.is_empty());
+    assert!(target.join("agent").join(&relative).is_file());
+    assert!(!target.join("agent/auth.json").exists());
+    assert!(!target.join("agent/config.toml").exists());
+    let target_path: String = Connection::open(target.join("agent/state_5.sqlite"))
+        .unwrap()
+        .query_row(
+            "SELECT rollout_path FROM threads WHERE id=?1",
+            [ROOT],
+            |row| row.get(0),
+        )
+        .unwrap();
+    assert_eq!(Path::new(&target_path), target.join("agent").join(relative));
+    assert_eq!(
+        fs::read_to_string(native.join("auth.json")).unwrap(),
+        "private"
+    );
+}
+
+#[test]
+fn rejects_invalid_active_home_receipts_instead_of_falling_back_to_legacy_history() {
+    let root = tempfile::tempdir().unwrap();
+    let source = root.path().join("source");
+    let receipt = source.join("runtime/agent/codex-home.json");
+    files::private_directory(receipt.parent().unwrap()).unwrap();
+    for value in [
+        json!({"version":2,"codexHome":"/native"}),
+        json!({"version":1,"codexHome":"relative"}),
+        json!({"version":1}),
+    ] {
+        fs::write(&receipt, value.to_string()).unwrap();
+        let error = source_codex_home(&source).unwrap_err();
+        assert!(
+            error
+                .to_string()
+                .contains("Invalid active Codex home receipt")
+        );
+    }
+    fs::write(&receipt, " ".repeat(16_385)).unwrap();
+    assert!(
+        source_codex_home(&source)
+            .unwrap_err()
+            .to_string()
+            .contains("byte bound")
+    );
+    fs::remove_file(&receipt).unwrap();
+    let other = root.path().join("receipt.json");
+    fs::write(
+        &other,
+        json!({"version":1,"codexHome":"/native"}).to_string(),
+    )
+    .unwrap();
+    symlink(&other, &receipt).unwrap();
+    assert!(
+        source_codex_home(&source)
+            .unwrap_err()
+            .to_string()
+            .contains("regular file")
+    );
+}
+
+#[test]
 fn accepts_absent_and_known_history_modes_but_rejects_malformed_present_values() {
     let root = tempfile::tempdir().unwrap();
     let source = root.path().join("source");
@@ -685,7 +765,7 @@ fn rejects_symlinks_and_native_paths_into_another_home() {
         )
         .unwrap_err()
         .to_string()
-        .contains("outside its Profile")
+        .contains("outside its Codex home")
     );
     fs::remove_file(agent.join("state_5.sqlite")).unwrap();
     let file = agent.join(&relative);

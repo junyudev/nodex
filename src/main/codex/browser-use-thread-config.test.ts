@@ -13,6 +13,8 @@ import {
   SIGNED_NODE_REPL_LAUNCHER_SOURCE,
 } from "./browser-use-thread-config";
 
+import { nodexDesktopToolMarketplaceName } from "./bundled-desktop-tool-marketplace";
+
 const temporaryRoots: string[] = [];
 
 function makeVerifiedRuntime() {
@@ -43,6 +45,7 @@ afterEach(() => {
 describe("BrowserUseThreadConfigBuilder", () => {
   test("returns null with a queryable reason when the bundle is unavailable", async () => {
     const builder = new BrowserUseThreadConfigBuilder({
+      codexHome: "/tmp/native-codex-home",
       browserRuntime: {
         message: "Browser bundle is not installed",
         reason: "manifest-missing",
@@ -63,6 +66,7 @@ describe("BrowserUseThreadConfigBuilder", () => {
     const { browserRuntime, bundleRoot } = makeVerifiedRuntime();
     const runtimeStateHome = path.join(bundleRoot, "..", "state");
     const builder = new BrowserUseThreadConfigBuilder({
+      codexHome: "/tmp/native-codex-home",
       browserRuntime,
       runtimeStateHome,
     });
@@ -88,16 +92,23 @@ describe("BrowserUseThreadConfigBuilder", () => {
         BROWSER_USE_AVAILABLE_BACKENDS: "iab",
         BROWSER_USE_DISABLE_AMBIENT_NETWORK: "1",
         CODEX_CLI_PATH: path.join(bundleRoot, "bin", "codex"),
-        CODEX_HOME: path.resolve(runtimeStateHome),
+        CODEX_HOME: "/tmp/native-codex-home",
         NODE_REPL_DISABLE_ANALYTICS: "1",
         NODE_REPL_NODE_MODULE_DIRS: [
           path.join(bundleRoot, "marketplace", "plugins", "browser", "node_modules"),
           path.join(bundleRoot, "runtime", "lib", "node_modules"),
         ].join(path.delimiter),
         NODE_REPL_NODE_PATH: path.join(bundleRoot, "bin", "node"),
-        NODE_REPL_TRUSTED_CODE_PATHS: [path.resolve(runtimeStateHome), bundleRoot].join(
-          path.delimiter,
-        ),
+        NODE_REPL_TRUSTED_CODE_PATHS: [
+          path.resolve(runtimeStateHome),
+          path.join(
+            "/tmp/native-codex-home",
+            "plugins",
+            "cache",
+            nodexDesktopToolMarketplaceName(runtimeStateHome),
+          ),
+          bundleRoot,
+        ].join(path.delimiter),
         NODE_REPL_TRUSTED_RPC_ENABLED: "1",
         NODE_REPL_TRUSTED_SERVICES: JSON.stringify({
           browser: path.join(bundleRoot, "marketplace", "plugins", "browser", "service.js"),
@@ -115,6 +126,7 @@ describe("BrowserUseThreadConfigBuilder", () => {
   test("advertises Chrome only when an active backend resolver supplies it", async () => {
     const { browserRuntime } = makeVerifiedRuntime();
     const builder = new BrowserUseThreadConfigBuilder({
+      codexHome: "/tmp/native-codex-home",
       availableBackends: () => ["iab", "chrome"],
       browserRuntime,
       runtimeStateHome: "/tmp/nodex-agent",
@@ -129,10 +141,32 @@ describe("BrowserUseThreadConfigBuilder", () => {
     expect(nodeRepl.env?.NODE_REPL_INSTRUCTIONS_USE_CASE_CHROME).toContain("Chrome browser");
   });
 
+  test("disables foreign desktop peers only for the current Thread", async () => {
+    const { browserRuntime } = makeVerifiedRuntime();
+    const builder = new BrowserUseThreadConfigBuilder({
+      browserRuntime,
+      codexHome: "/tmp/native-codex-home",
+      disabledDesktopPluginIds: ["browser@openai-bundled", "chrome@nodex-desktop-012345abcdef"],
+      runtimeStateHome: "/tmp/nodex-agent",
+    });
+
+    const config = await builder.build();
+    expect(config?.["plugins.browser@openai-bundled.enabled"]).toBe(false);
+    expect(config?.["plugins.chrome@nodex-desktop-012345abcdef.enabled"]).toBe(false);
+    expect(config?.["plugins.pdf@openai-bundled.enabled"]).toBeUndefined();
+    expect(
+      config?.[`plugins.browser@${nodexDesktopToolMarketplaceName("/tmp/nodex-agent")}.enabled`],
+    ).toBe(true);
+    expect(
+      config?.[`plugins.chrome@${nodexDesktopToolMarketplaceName("/tmp/nodex-agent")}.enabled`],
+    ).toBe(false);
+  });
+
   test("builds Computer Use config independently of Browser backend availability", async () => {
     const { browserRuntime, bundleRoot } = makeVerifiedRuntime();
     const runtimeStateHome = "/tmp/nodex-agent";
     const builder = new BrowserUseThreadConfigBuilder({
+      codexHome: "/tmp/native-codex-home",
       availableBackends: () => [],
       browserRuntime,
       computerUsePluginReady: () => true,
@@ -170,9 +204,16 @@ describe("BrowserUseThreadConfigBuilder", () => {
       NODE_REPL_HOST_SERVICES_PIPE_PATH: "/tmp/nodex-host-services/runtime.sock",
       NODE_REPL_INSTRUCTIONS_USE_CASE_COMPUTER_USE:
         "Control desktop apps on macOS through Computer Use.",
-      NODE_REPL_TRUSTED_CODE_PATHS: [path.resolve(runtimeStateHome), bundleRoot].join(
-        path.delimiter,
-      ),
+      NODE_REPL_TRUSTED_CODE_PATHS: [
+        path.resolve(runtimeStateHome),
+        path.join(
+          "/tmp/native-codex-home",
+          "plugins",
+          "cache",
+          nodexDesktopToolMarketplaceName(runtimeStateHome),
+        ),
+        bundleRoot,
+      ].join(path.delimiter),
       SKY_CUA_SERVICE_PATH: "/tmp/nodex-agent/computer-use/Codex Computer Use.app",
     });
     expect(nodeRepl.env?.BROWSER_USE_AVAILABLE_BACKENDS).toBe("");

@@ -21,8 +21,12 @@ Version equality between those executables is not a protocol contract.
 ## Decision
 
 Codex is Nodex's native primary Agent Backend. Electron Main launches the exact staged
-`codex-app-server` executable directly with an isolated `CODEX_HOME`; it does not launch a wrapper
-CLI or inject third-party model credentials. The runtime lock records the exact official
+`codex-app-server` executable directly with the selected native Codex home; it does not launch a wrapper
+CLI or inject third-party model credentials. The Profile setting overrides inherited `CODEX_HOME`,
+which overrides `~/.codex`. Nodex runtime resources and desktop plugins retain separate Profile
+ownership; development launchers explicitly isolate their native home. See
+[Configuration](../CONFIGURATION.md#codex-home) for history continuity and directory changes.
+The runtime lock records the exact official
 `openai/codex` tag and source commit, checksum manifest, per-architecture package, artifact, schema,
 license, and launch identities. TypeScript and JSON protocol schemas come from the same release's
 schema-authoring CLI with experimental definitions enabled.
