@@ -268,6 +268,33 @@ it.each([false, true])(
   },
 );
 
+it.each([false, true])(
+  "preserves buffered recovery when startup fails after partial silent PCM (flush pending: %s)",
+  async (flushing) => {
+    const { createBrowserDictationStreamingPort } = await import("./dictation-streaming-client");
+    const attempt = await createBrowserDictationStreamingPort(
+      "global",
+      async () => () => new Socket(),
+    ).prepare("failed-start");
+    await flush();
+    const starting = attempt.start({} as MediaStream);
+    const rejected = expect(starting).rejects.toMatchObject({ code: "websocket-failed" });
+    await flush();
+    const processor = Processor.instances[0]!;
+    processor.emit(Float32Array.of(0, 0));
+    await flush();
+    processor.port.postMessage.mockImplementation(() => undefined);
+    const stopping = flushing ? attempt.stopAndFlush() : null;
+    Socket.instances[0]!.dispatchEvent(new Event("error"));
+    await rejected;
+    await stopping;
+    await attempt.stopAndFlush();
+    await expect(attempt.finish()).resolves.toBeNull();
+    expect(attempt.diagnostics?.().failureCode).toBe("websocket-failed");
+    attempt.abort();
+  },
+);
+
 it("times out stalled audio flushing and retains captured PCM for segment recovery", async () => {
   const f = await createAttempt();
   await split(f);
