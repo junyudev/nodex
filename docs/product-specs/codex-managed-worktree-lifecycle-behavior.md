@@ -462,6 +462,13 @@ and installs the rollout at the same Codex-home-relative sessions path before
 the destination app-server resumes the unchanged Chat id. It never keeps a
 runtime dependent on a temporary staging rollout.
 
+For a local source, the native selected rollout may use an account home's
+session-directory alias. Main verifies that its physical parent is inside the
+shared Codex home and transfers the same regular file through its shared-home
+path. The destination retains the shared-home-relative path. Directory aliases
+outside that home and file symlinks are rejected; remote source paths are
+validated by their owning host.
+
 Only the primary workspace root is replaced. Additional roots retain their
 authored order and path identity, and each must already resolve to a non-symlink
 directory on the destination host; otherwise preparation fails before Core

@@ -463,11 +463,33 @@ export const live = (options: {
             requireTransfer(source, input.sourceHostId, input.destinationHostId),
             requireTransfer(destination, input.sourceHostId, input.destinationHostId),
           ] as const);
-          const relativeRolloutPath = yield* Effect.try({
-            try: () => rolloutRelativePath(source.descriptor.codexHome, input.sourceRolloutPath),
-            catch: (cause) =>
+          const sourceRolloutLocation = yield* Effect.gen(function* () {
+            if (source.descriptor.kind !== "local") {
+              return yield* Effect.try(() => ({
+                path: input.sourceRolloutPath,
+                relative: rolloutRelativePath(source.descriptor.codexHome, input.sourceRolloutPath),
+              }));
+            }
+            const canonicalHome = yield* fs.realPath(source.descriptor.codexHome);
+            // Native account homes alias shared session directories. Resolve the directory,
+            // retaining the leaf so the transfer Adapter still rejects file symlinks.
+            const canonicalParent = yield* fs.realPath(path.dirname(input.sourceRolloutPath));
+            const relative = yield* Effect.try(() =>
+              rolloutRelativePath(
+                canonicalHome,
+                path.join(canonicalParent, path.basename(input.sourceRolloutPath)),
+              ),
+            );
+            return {
+              path: path.resolve(source.descriptor.codexHome, relative),
+              relative,
+            };
+          }).pipe(
+            Effect.mapError((cause) =>
               handoffError("resolve-rollout", input.sourceHostId, input.destinationHostId, cause),
-          });
+            ),
+          );
+          const relativeRolloutPath = sourceRolloutLocation.relative;
           const transferId = transferIdForOperation(input.operationId);
           const relayRoot = path.join(relayBaseRoot, transferId, "relay");
           if (!isWithin(relayBaseRoot, relayRoot)) {
@@ -524,7 +546,7 @@ export const live = (options: {
                 Effect.tap((exported) => Ref.update(partial, (state) => ({ ...state, exported }))),
               );
             const sourceRollout = yield* sourceTransfer
-              .describe(input.sourceRolloutPath)
+              .describe(sourceRolloutLocation.path)
               .pipe(mapHostError("describe-rollout", input.sourceHostId, input.destinationHostId));
             yield* onProgress({ phase: "transfer-state", status: "running" });
             const [relayBundle, relayRollout] = yield* Effect.all(

@@ -4,7 +4,7 @@ use std::collections::{BTreeMap, BTreeSet};
 use std::fs::{self, File, OpenOptions};
 use std::io::{BufRead, BufReader, Read};
 use std::os::unix::fs::OpenOptionsExt;
-use std::path::{Path, PathBuf};
+use std::path::{Component, Path, PathBuf};
 use std::time::Duration;
 
 use nodex_core::administration::ProfileCloneThread;
@@ -273,6 +273,10 @@ pub(crate) fn capture(
     for relative in before.keys() {
         files::copy_file(&source.join(relative), &staging.join(relative))?;
     }
+    // Account homes index new rollouts through their session directory aliases.
+    // Resolve those aliases against the captured physical inventory while source
+    // coordination still holds, without changing its original SQLite evidence.
+    normalize_staged_selections(&source, &staging, &before)?;
     // Finish source verification while its Desktop lease and native writer fence still hold.
     // All relocation and semantic validation below operate only on the detached snapshot.
     for database in &databases {
@@ -621,6 +625,80 @@ fn table_exists(connection: &Connection, table: &str) -> Result<bool> {
         [table],
         |row| row.get(0),
     )?)
+}
+
+fn normalize_staged_selections(
+    source: &Path,
+    staging: &Path,
+    captured: &BTreeMap<PathBuf, files::Fingerprint>,
+) -> Result<()> {
+    let database = staging.join("state_5.sqlite");
+    if !files::exists(&database)? {
+        return Ok(());
+    }
+    let physical_source = fs::canonicalize(source)?;
+    let mut connection = Connection::open(database)?;
+    let transaction = connection.transaction()?;
+    let mut budget = METADATA_BUDGET;
+    let mut after = None;
+    while let Some((thread, path)) = next_selection(&transaction, after.as_deref(), &mut budget)? {
+        let path = Path::new(&path);
+        if path.starts_with(source) {
+            files::relative_path(source, path)?;
+            after = Some(thread);
+            continue;
+        }
+        let relative = captured_alias_path(&physical_source, path, captured)?;
+        transaction.execute(
+            "UPDATE threads SET rollout_path = ?1 WHERE id = ?2",
+            (source.join(relative).to_string_lossy().as_ref(), &thread),
+        )?;
+        after = Some(thread);
+    }
+    transaction.commit()?;
+    Ok(())
+}
+
+/// Directory aliases may name captured history; symlink leaves and uncaptured files cannot.
+fn captured_alias_path(
+    physical_source: &Path,
+    selected: &Path,
+    captured: &BTreeMap<PathBuf, files::Fingerprint>,
+) -> Result<PathBuf> {
+    if !selected.is_absolute()
+        || selected
+            .components()
+            .any(|part| !matches!(part, Component::RootDir | Component::Normal(_)))
+    {
+        return Err(invalid(
+            "Native conversation path is not a contained artifact",
+        ));
+    }
+    // Native compression can retain the plain selected path after publishing its sibling.
+    let compressed = !files::exists(selected)?;
+    let artifact = if compressed {
+        PathBuf::from(format!("{}.zst", selected.display()))
+    } else {
+        selected.to_owned()
+    };
+    if !files::exists(&artifact)? {
+        return Err(invalid(format!(
+            "Native conversation path is outside its Codex home: {}",
+            selected.display()
+        )));
+    }
+    let fingerprint = files::fingerprint(&artifact)?;
+    let relative = files::relative_path(physical_source, &fs::canonicalize(&artifact)?)?;
+    if captured.get(&relative) != Some(&fingerprint) {
+        return Err(invalid(
+            "Native conversation alias does not select the captured physical artifact",
+        ));
+    }
+    Ok(if compressed {
+        relative.with_extension("")
+    } else {
+        relative
+    })
 }
 
 fn relocate_state(

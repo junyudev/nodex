@@ -100,6 +100,129 @@ fn captures_the_active_native_home_into_an_independent_profile_home() {
 }
 
 #[test]
+fn captures_new_account_overlay_conversations_from_the_shared_physical_history() {
+    for compressed in [false, true] {
+        let root = tempfile::tempdir().unwrap();
+        let source = root.path().join("profile");
+        let shared = root.path().join("shared");
+        let account = root.path().join("account");
+        let target = root.path().join("snapshot");
+        let (parent, parent_bytes) = write_rollout(&shared, ROOT, ROOT, Value::Null, false, false);
+        let (child, _) = write_rollout(
+            &shared,
+            CHILD,
+            CHILD,
+            json!({"thread_id":ROOT,"end_byte_offset":parent_bytes,"end_ordinal_exclusive":1}),
+            false,
+            compressed,
+        );
+        state(&shared, &[(ROOT, &parent), (CHILD, &child)]);
+        files::private_directory(&account).unwrap();
+        symlink(shared.join("sessions"), account.join("sessions")).unwrap();
+        // Native account homes index a new conversation through their sessions alias.
+        // Compressed histories may still retain the original plain path in SQLite.
+        let selected_child = if compressed {
+            child.with_extension("")
+        } else {
+            child.clone()
+        };
+        Connection::open(shared.join("state_5.sqlite"))
+            .unwrap()
+            .execute(
+                "UPDATE threads SET rollout_path=?1 WHERE id=?2",
+                (
+                    account.join(&selected_child).to_string_lossy().as_ref(),
+                    CHILD,
+                ),
+            )
+            .unwrap();
+        let home_receipt = source.join("runtime/agent/codex-home.json");
+        files::private_directory(home_receipt.parent().unwrap()).unwrap();
+        fs::write(
+            &home_receipt,
+            json!({"version":1,"codexHome":shared}).to_string(),
+        )
+        .unwrap();
+        let captured = capture(&source, &target, &target, &[thread(ROOT), thread(CHILD)]).unwrap();
+        assert_eq!(captured.captured_thread_count, 2);
+        assert!(captured.missing_thread_ids.is_empty());
+        assert!(target.join("agent").join(&child).is_file());
+        let selected: String = Connection::open(target.join("agent/state_5.sqlite"))
+            .unwrap()
+            .query_row(
+                "SELECT rollout_path FROM threads WHERE id=?1",
+                [CHILD],
+                |row| row.get(0),
+            )
+            .unwrap();
+        assert_eq!(
+            Path::new(&selected),
+            target.join("agent").join(&selected_child)
+        );
+        let original: String = Connection::open(shared.join("state_5.sqlite"))
+            .unwrap()
+            .query_row(
+                "SELECT rollout_path FROM threads WHERE id=?1",
+                [CHILD],
+                |row| row.get(0),
+            )
+            .unwrap();
+        assert_eq!(Path::new(&original), account.join(selected_child));
+    }
+}
+
+#[test]
+fn rejects_account_aliases_that_select_history_outside_the_shared_tree() {
+    let root = tempfile::tempdir().unwrap();
+    let source = root.path().join("source");
+    let shared = source.join("agent");
+    let (relative, _) = write_rollout(&shared, ROOT, ROOT, Value::Null, false, false);
+    state(&shared, &[(ROOT, &relative)]);
+    let outside = root.path().join("outside");
+    write_rollout(&outside, ROOT, ROOT, Value::Null, false, false);
+    let account = root.path().join("account");
+    files::private_directory(&account).unwrap();
+    symlink(outside.join("sessions"), account.join("sessions")).unwrap();
+    Connection::open(shared.join("state_5.sqlite"))
+        .unwrap()
+        .execute(
+            "UPDATE threads SET rollout_path=?1 WHERE id=?2",
+            (account.join(relative).to_string_lossy().as_ref(), ROOT),
+        )
+        .unwrap();
+    let error = capture(
+        &source,
+        &root.path().join("snapshot"),
+        &root.path().join("snapshot"),
+        &[thread(ROOT)],
+    )
+    .unwrap_err();
+    assert!(error.to_string().contains("outside its Codex home"));
+}
+
+#[test]
+fn rejects_account_aliases_with_symlinked_rollout_artifacts() {
+    let root = tempfile::tempdir().unwrap();
+    let source = root.path().join("source");
+    let shared = source.join("agent");
+    let (relative, _) = write_rollout(&shared, ROOT, ROOT, Value::Null, false, false);
+    state(&shared, &[(ROOT, &relative)]);
+    let selected = root.path().join("account").join(&relative);
+    files::private_directory(selected.parent().unwrap()).unwrap();
+    symlink(shared.join(relative), &selected).unwrap();
+    Connection::open(shared.join("state_5.sqlite"))
+        .unwrap()
+        .execute(
+            "UPDATE threads SET rollout_path=?1 WHERE id=?2",
+            (selected.to_string_lossy().as_ref(), ROOT),
+        )
+        .unwrap();
+    let target = root.path().join("snapshot");
+    let error = capture(&source, &target, &target, &[thread(ROOT)]).unwrap_err();
+    assert!(error.to_string().contains("regular file"));
+}
+
+#[test]
 fn rejects_invalid_active_home_receipts_instead_of_falling_back_to_legacy_history() {
     let root = tempfile::tempdir().unwrap();
     let source = root.path().join("source");
