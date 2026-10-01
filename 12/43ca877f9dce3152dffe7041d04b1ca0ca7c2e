@@ -1,0 +1,25 @@
+docs/product-specs/dictation-behavior.md
+  s_42d4908e8724c1::t_b6b6764543de9b 47
+src/renderer/features/dictation/dictation-streaming-client.ts
+  s_42d4908e8724c1::t_a92a49415395f6 202-204
+  s_42d4908e8724c1::t_14d19dbbde255a 101,201,321
+src/renderer/features/dictation/dictation-streaming-client.test.tsx
+  s_42d4908e8724c1::t_d8836af7f8a9d3 271,273-297
+  s_42d4908e8724c1::t_ce85297348bb17 272
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "1243ca877f9dce3152dffe7041d04b1ca0ca7c2e",
+  "prompts": {},
+  "sessions": {
+    "s_42d4908e8724c1": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a0f7ce-30b7-7042-a099-99c4199381ae",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    }
+  }
+}
