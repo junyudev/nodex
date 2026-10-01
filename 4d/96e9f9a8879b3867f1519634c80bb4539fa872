@@ -1,0 +1,40 @@
+docs/product-specs/codex-managed-worktree-lifecycle-behavior.md
+  s_42d4908e8724c1::t_570f20c431ca5a 465-471
+src/main/codex-application/CrossHostThreadHandoff.node.test.ts
+  s_42d4908e8724c1::t_a12d2816d1957d 278-285
+  s_42d4908e8724c1::t_d7d5e880aafa70 163-171,252,262,264-275,277,287-294,296-305,336
+  s_42d4908e8724c1::t_4e327c52782bb5 2,76,286
+  s_42d4908e8724c1::t_fcd510a117a5b3 119,337-340
+  s_42d4908e8724c1::t_2088163c662540 276,295
+src/main/codex-application/CrossHostThreadHandoff.ts
+  s_42d4908e8724c1::t_9ee0366195363e 468,471,477-481
+  s_42d4908e8724c1::t_08b4a9f4151ed8 466-467,469-470,472-476,482-488,490-492,549
+crates/nodex-profile/src/codex/tests.rs
+  s_42d4908e8724c1::t_56ca8fe9e6bea4 102,162-163,169-170,201-209,211,213-222
+  s_42d4908e8724c1::t_f58ca70ec6152b 110,124-128,133-136,141-145,152-156,158-161,164-168,193-199
+  s_42d4908e8724c1::t_72119701191d48 115
+  s_42d4908e8724c1::t_2c31609aa74c0f 210,212
+  s_42d4908e8724c1::t_d733ef5d5b2f12 103-109,111-114,116-123,129-132,137-140,146-151,157,171-192,200,223-224
+crates/nodex-profile/src/codex.rs
+  s_42d4908e8724c1::t_60cf8c7bc58511 7,276-279,629-672,676-702
+  s_42d4908e8724c1::t_f58ca70ec6152b 673-675
+docs/reliability/backup-restore-and-maintenance.md
+  s_42d4908e8724c1::t_4eced4b5262f9b 165-167
+  s_42d4908e8724c1::t_bf446edec74547 156-160
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "4d96e9f9a8879b3867f1519634c80bb4539fa872",
+  "prompts": {},
+  "sessions": {
+    "s_42d4908e8724c1": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a0f7ce-30b7-7042-a099-99c4199381ae",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    }
+  }
+}
