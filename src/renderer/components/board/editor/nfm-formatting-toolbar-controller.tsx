@@ -1,6 +1,5 @@
 import { defaultProps, isTableCellSelection, type DefaultProps } from "@blocknote/core";
 import { FormattingToolbarExtension } from "@blocknote/core/extensions";
-import { flip, offset, shift } from "@floating-ui/react";
 import {
   FormattingToolbar,
   PositionPopover,
@@ -20,6 +19,7 @@ import {
 } from "./nfm-text-action-menu-model";
 import { NFM_TEXT_ACTION_MENU_FLOATING_OPTIONS } from "./nfm-text-action-menu-floating";
 import {
+  createNfmEditorFloatingMiddleware,
   NFM_EDITOR_FLOATING_UI_PORTAL_ELEMENT,
   NFM_EDITOR_FLOATING_UI_Z_INDEX,
 } from "./nfm-blocknote-floating-ui";
@@ -292,7 +292,7 @@ export function NfmFormattingToolbarController(props: {
         },
         placement: currentPlacement,
         strategy: "fixed",
-        middleware: [offset(10), shift({ padding: 8 }), flip({ padding: 8 })],
+        middleware: createNfmEditorFloatingMiddleware(10),
         ...props.floatingUIOptions?.useFloatingOptions,
         ...textActionFloatingOptions?.useFloatingOptions,
       },

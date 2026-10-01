@@ -1,7 +1,7 @@
 # NFM Block Side Menu Behavior
 
 Status: Active
-Last updated: 2026-08-26
+Last updated: 2026-10-01
 
 ## Purpose
 
@@ -87,15 +87,18 @@ Deleting a `pageRef` removes only its non-owning shell and never deletes the tar
 The side menu surface is a compact dialog:
 
 - Width: `265px`
+- Preferred placement: left of the side handle; flips right when the left side cannot fit
+- Window boundary: `12px` inset; when neither side fits, the menu shifts inside that boundary and its width is capped to the available space
 - Max height: `70vh`
+- The available height bounds the action scroller, keeping every action reachable in a short window
 - Row height: `28px`
 - Section title: `12px`, subdued token color
 - Search input at the top
 - Listbox semantics for rows
 - Group separators at visual group boundaries
-- Right-side submenu flyouts for `Turn into`, `Color`, `Move to`, `Send to chat`, and Code `Language`
+- Submenu flyouts prefer the right side for `Turn into`, `Color`, `Move to`, `Send to chat`, and Code `Language`, with their shared Popover collision handling
 - Entry/exit motion: `200ms` opacity/scale, with reduced-motion fallback
-- Transform origin follows popup placement, including right-side `50%` origin behavior
+- Transform origin follows the resolved placement: right center on the left side, left center on the right side
 
 The hover-only drag handle remains attached to the same Block and DOM node from
 primary-button `pointerdown` until the click/cancel settles or the native drag

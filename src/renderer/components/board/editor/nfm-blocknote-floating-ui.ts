@@ -1,5 +1,15 @@
 import type { FloatingUIOptions } from "@blocknote/react";
+import { flip, offset, shift, type OffsetOptions } from "@floating-ui/react";
 import { APP_SHELL_EDITOR_FLOATING_UI_LAYER_INDEX } from "@/lib/app-shell-layers";
+
+/** Try the opposite side before overlapping an anchor that leaves neither side enough room. */
+export function createNfmEditorFloatingMiddleware(distance: OffsetOptions, padding = 8) {
+  return [
+    offset(distance),
+    flip({ padding, crossAxis: false }),
+    shift({ padding, crossAxis: true }),
+  ];
+}
 
 /**
  * Interactive editor chrome must escape scroll containers and modal clipping.

@@ -13,7 +13,7 @@ import {
   useExtensionState,
   type FloatingUIOptions,
 } from "@blocknote/react";
-import { offset, shift, size } from "@floating-ui/react";
+import { size } from "@floating-ui/react";
 
 import {
   Fragment,
@@ -78,6 +78,7 @@ import {
 import { NfmEditorPopoverContent } from "./nfm-editor-popover-content";
 import { NfmStructuredClipboardExtension, type NfmClipboardCommand } from "./nfm-editor-extensions";
 import { NfmFloatingPopover, type NfmPopoverReference } from "./nfm-floating-popover";
+import { createNfmEditorFloatingMiddleware } from "./nfm-blocknote-floating-ui";
 import { NfmSendToThreadMenu } from "./nfm-send-to-thread-menu";
 import type {
   NfmSendToThreadPreferredTarget,
@@ -1336,9 +1337,10 @@ export function NfmSideMenuSurface({
       role="dialog"
       aria-modal="true"
       aria-label="Block actions"
-      className="relative w-[265px] min-w-[180px] max-w-[calc(100vw-24px)] overflow-hidden rounded-xl bg-token-dropdown-background/90 p-0 text-[14px] leading-[1.2] text-token-foreground shadow-xl-spread ring-[0.5px] ring-token-border backdrop-blur-xl"
+      className="relative min-h-0 w-[265px] min-w-0 max-w-[calc(100vw-24px)] overflow-hidden rounded-xl bg-token-dropdown-background/90 p-0 text-[14px] leading-[1.2] text-token-foreground shadow-xl-spread ring-[0.5px] ring-token-border backdrop-blur-xl"
+      style={{ maxHeight: "var(--nfm-side-menu-max-height, 70vh)" }}
     >
-      <div className="flex max-h-[70vh] flex-col overflow-hidden">
+      <div className="flex max-h-[inherit] flex-col overflow-hidden">
         <div className="p-1.5 pb-1">
           <input
             id={comboboxId}
@@ -1886,17 +1888,19 @@ function NfmSideMenuPopup({
         strategy: "fixed",
         transform: false,
         middleware: [
-          offset(NFM_SIDE_MENU_GAP),
-          shift({ padding: NFM_SIDE_MENU_VIEWPORT_MARGIN }),
+          ...createNfmEditorFloatingMiddleware(NFM_SIDE_MENU_GAP, NFM_SIDE_MENU_VIEWPORT_MARGIN),
           size({
             padding: NFM_SIDE_MENU_VIEWPORT_MARGIN,
-            apply({ availableHeight, elements }) {
+            apply({ availableWidth, availableHeight, elements }) {
               const availableMaxHeight = Math.max(0, availableHeight);
               const viewportMaxHeight =
                 typeof window === "undefined"
                   ? availableMaxHeight
                   : Math.max(0, window.innerHeight * NFM_SIDE_MENU_MAX_HEIGHT_VH);
-              elements.floating.style.maxHeight = `${Math.min(availableMaxHeight, viewportMaxHeight)}px`;
+              const maxHeight = `${Math.min(availableMaxHeight, viewportMaxHeight)}px`;
+              elements.floating.style.maxWidth = `${Math.max(0, availableWidth)}px`;
+              elements.floating.style.maxHeight = maxHeight;
+              elements.floating.style.setProperty("--nfm-side-menu-max-height", maxHeight);
             },
           }),
         ],
@@ -1923,17 +1927,18 @@ function NfmSideMenuPopup({
           opacity: 0,
           transform: `scale(${SIDE_MENU_CLOSED_SCALE})`,
         },
-        common: {
-          transformOrigin: "right center",
+        common: ({ side }) => ({
+          transformOrigin: side === "left" ? "right center" : "left center",
           transitionDelay: `${SIDE_MENU_MOTION_DELAY_MS}ms`,
           transitionTimingFunction: "ease",
-        },
+        }),
       },
       elementProps: {
         className:
           "fixed z-50 opacity-100 transition-[opacity,transform] duration-200 ease-[ease] motion-reduce:transition-none",
         style: {
           width: NFM_SIDE_MENU_WIDTH,
+          maxWidth: "calc(100vw - 24px)",
           maxHeight: "70vh",
           pointerEvents: visible ? "auto" : "none",
           zIndex: 50,
