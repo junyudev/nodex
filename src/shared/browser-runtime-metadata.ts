@@ -1,7 +1,8 @@
 export const BROWSER_RUNTIME_BUNDLE_DIRECTORY = "browser-runtime";
 export const BROWSER_RUNTIME_MANIFEST_FILENAME = "browser-runtime-manifest.json";
-export const BROWSER_RUNTIME_SCHEMA_VERSION = 6;
+export const BROWSER_RUNTIME_SCHEMA_VERSION = 7;
 const LEGACY_BROWSER_RUNTIME_SCHEMA_VERSION = 5;
+const RPC_BROWSER_RUNTIME_SCHEMA_VERSION = 6;
 export const BROWSER_RUNTIME_PRODUCT_MINIMUM_MACOS_VERSION = "15.0";
 export const BROWSER_PLUGIN_NODE_MODULE_DIR = "marketplace/plugins/browser/node_modules";
 
@@ -29,7 +30,6 @@ export type BrowserRuntimeComputerUseCapability =
       appBundle: string;
       appBundleIdentifier: string;
       artifactMinimumMacOSVersion: "14.4";
-      client: string;
       ipcProtocol: "CodexComputerUseIPC-5";
       plugin: BrowserRuntimeBundledPlugin;
       productMinimumMacOSVersion: typeof BROWSER_RUNTIME_PRODUCT_MINIMUM_MACOS_VERSION;
@@ -462,7 +462,6 @@ function parseComputerUseCapability(
   }
   const appBundle = parseNonEmptyString(value.appBundle);
   const appBundleIdentifier = parseNonEmptyString(value.appBundleIdentifier);
-  const client = parseNonEmptyString(value.client);
   const rpcService = parseNonEmptyString(value.rpcService);
   const serviceExecutable = parseNonEmptyString(value.serviceExecutable);
   const signingTeamId = parseNonEmptyString(value.signingTeamId);
@@ -470,7 +469,6 @@ function parseComputerUseCapability(
   if (
     !appBundle ||
     !appBundleIdentifier ||
-    !client ||
     !rpcService ||
     !serviceExecutable ||
     !signingTeamId ||
@@ -478,17 +476,15 @@ function parseComputerUseCapability(
   ) {
     return null;
   }
-  if (![appBundle, client, rpcService, serviceExecutable].every(isSafeBrowserRuntimeRelativePath)) {
+  if (![appBundle, rpcService, serviceExecutable].every(isSafeBrowserRuntimeRelativePath)) {
     return null;
   }
   if (!serviceExecutable.startsWith(`${appBundle}/`)) return null;
-  if (!client.startsWith(`${plugin.root}/`)) return null;
   if (!rpcService.startsWith(`${plugin.nodeModuleDirs[0]}/`)) return null;
   return {
     appBundle,
     appBundleIdentifier,
     artifactMinimumMacOSVersion: "14.4",
-    client,
     ipcProtocol: "CodexComputerUseIPC-5",
     plugin,
     productMinimumMacOSVersion: BROWSER_RUNTIME_PRODUCT_MINIMUM_MACOS_VERSION,
@@ -638,7 +634,8 @@ export function parseBrowserRuntimeManifest(value: unknown): BrowserRuntimeManif
   if (!isObject(value)) return null;
   if (
     value.schemaVersion !== BROWSER_RUNTIME_SCHEMA_VERSION &&
-    value.schemaVersion !== LEGACY_BROWSER_RUNTIME_SCHEMA_VERSION
+    value.schemaVersion !== LEGACY_BROWSER_RUNTIME_SCHEMA_VERSION &&
+    value.schemaVersion !== RPC_BROWSER_RUNTIME_SCHEMA_VERSION
   ) {
     return null;
   }
@@ -757,20 +754,13 @@ export function parseBrowserRuntimeManifest(value: unknown): BrowserRuntimeManif
       artifactsByPath.get(capabilities.computerUse.plugin.manifest),
       artifactsByPath.get(capabilities.computerUse.plugin.docs),
       artifactsByPath.get(capabilities.computerUse.plugin.marketplaceManifest),
-      artifactsByPath.get(capabilities.computerUse.client),
       artifactsByPath.get(capabilities.computerUse.rpcService),
       artifactsByPath.get(capabilities.computerUse.serviceExecutable),
     ];
     if (computerUseArtifacts.some((artifact) => artifact === undefined)) return null;
     if (computerUseArtifacts.slice(0, 3).some((artifact) => artifact?.kind !== "data")) return null;
-    if (
-      computerUseArtifacts[3]?.kind !== "data" &&
-      computerUseArtifacts[3]?.kind !== "executable"
-    ) {
-      return null;
-    }
-    if (computerUseArtifacts[4]?.kind !== "data") return null;
-    if (computerUseArtifacts[5]?.kind !== "executable") return null;
+    if (computerUseArtifacts[3]?.kind !== "data") return null;
+    if (computerUseArtifacts[4]?.kind !== "executable") return null;
   }
   if (targetArch === "x64" && capabilities.computerUse.status !== "unavailable") return null;
 

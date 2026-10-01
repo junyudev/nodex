@@ -17,6 +17,13 @@ capabilities available to a thread, resolves them from the verified closure,
 and keeps service code inside the trusted runtime roots. Adding another trusted
 service requires a new manifest contract and runtime review.
 
+The Browser peer CLI retains its complete signed Codex package. Node REPL launches
+through the package's signed native executable so native peer authorization can
+verify its process ancestry. Computer Use imports `@oai/sky` through the trusted
+RPC service; its plugin supplies the skill and has no separate client launcher.
+The client and native helper share a short Profile-specific socket path, so they
+cannot connect through another desktop application's ambient helper endpoint.
+
 Normal development, CI, and packaging must use
 `vp run materialize:browser-runtime:mac`. They must not inspect an installed
 desktop application.

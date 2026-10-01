@@ -9,6 +9,7 @@ import type { BrowserRuntimeBackend } from "../../shared/browser-runtime-metadat
 import { resolveAvailableBrowserUseBackends } from "./browser-use-backends";
 import type { ComputerUseRuntimeResult } from "../host-runtime/ComputerUseRuntime";
 import { nodexDesktopToolMarketplaceName } from "./bundled-desktop-tool-marketplace";
+import { computerUseNativePipePath } from "./computer-use-runtime-config";
 
 const BROWSER_USE_IN_APP_INSTRUCTIONS =
   "Control the in-app browser in conjunction with the Browser Plugin.";
@@ -127,6 +128,7 @@ function buildAvailableConfig(
   if (computerUseRuntime) {
     env.NODE_REPL_HOST_SERVICES_PIPE_PATH = computerUseRuntime.hostServicesPipePath;
     env.NODE_REPL_INSTRUCTIONS_USE_CASE_COMPUTER_USE = COMPUTER_USE_INSTRUCTIONS;
+    env.SKY_CUA_SERVICE_NATIVE_PIPE_PATH = computerUseNativePipePath(runtimeStateHome);
     env.SKY_CUA_SERVICE_PATH = computerUseRuntime.appPath;
   }
 

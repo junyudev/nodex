@@ -130,18 +130,6 @@ const COMPUTER_USE_FIXTURE_FILES = [
     architecture: "any",
     executable: false,
     kind: "data",
-    path: "marketplace/plugins/computer-use/client.mjs",
-  },
-  {
-    architecture: "any",
-    executable: false,
-    kind: "data",
-    path: "marketplace/plugins/computer-use/docs/SKILL.md",
-  },
-  {
-    architecture: "any",
-    executable: false,
-    kind: "data",
     path: "marketplace/plugins/computer-use/skills/computer-use/SKILL.md",
   },
   {
@@ -149,12 +137,6 @@ const COMPUTER_USE_FIXTURE_FILES = [
     executable: false,
     kind: "data",
     path: "marketplace/plugins/computer-use/.codex-plugin/plugin.json",
-  },
-  {
-    architecture: "any",
-    executable: false,
-    kind: "data",
-    path: "marketplace/plugins/computer-use/.codex-plugin/computer-use-node-repl.md",
   },
   {
     architecture: "arm64",
@@ -226,12 +208,6 @@ function fixtureContent(relativePath: string): string {
         ? "chrome"
         : "browser";
     return `${JSON.stringify({ name, version: "1.0.0-test" }, null, 2)}\n`;
-  }
-  if (relativePath.endsWith("/computer-use-node-repl.md")) {
-    return "---\nname: computer-use\n---\n\nNode REPL variant\n";
-  }
-  if (relativePath.endsWith("/computer-use/docs/SKILL.md")) {
-    return "---\nname: computer-use\n---\n\nNative MCP variant\n";
   }
   return `fixture:${relativePath}\n`;
 }
@@ -316,10 +292,9 @@ export function writeBrowserRuntimeFixture(
               appBundle: "runtime/lib/node_modules/@oai/sky/Codex Computer Use.app",
               appBundleIdentifier: "com.openai.CodexComputerUse",
               artifactMinimumMacOSVersion: "14.4",
-              client: "marketplace/plugins/computer-use/client.mjs",
               ipcProtocol: "CodexComputerUseIPC-5",
               plugin: {
-                docs: "marketplace/plugins/computer-use/docs/SKILL.md",
+                docs: "marketplace/plugins/computer-use/skills/computer-use/SKILL.md",
                 id: "computer-use@openai-bundled",
                 manifest: "marketplace/plugins/computer-use/manifest.json",
                 marketplaceManifest: "marketplace/.agents/plugins/marketplace.json",

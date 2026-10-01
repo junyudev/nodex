@@ -228,11 +228,7 @@ export async function cleanupBrowserRuntime(
   if (hasError) throw firstError;
 }
 
-function makeComputerUseProbeCode(computerUsePluginRoot: string): string {
-  const launcherPath = path.join(computerUsePluginRoot, "bin", "computer-use-client-launcher");
-  if (!fs.existsSync(launcherPath)) {
-    throw new Error(`Installed Computer Use launcher is missing: ${launcherPath}`);
-  }
+function makeComputerUseProbeCode(): string {
   return `
 globalThis.sky = (await import("@oai/sky")).sky;
 var computerUseApps = await sky.list_apps();
@@ -249,9 +245,9 @@ function resolveInstalledComputerUsePluginRoot(runtimeStateHome: string, version
     "computer-use",
     version,
   );
-  if (!fs.existsSync(path.join(pluginRoot, "bin", "computer-use-client-launcher"))) {
+  if (!fs.existsSync(path.join(pluginRoot, "skills", "computer-use", "SKILL.md"))) {
     throw new Error(
-      `Installed Computer Use client is missing from the app-server plugin cache: ${pluginRoot}`,
+      `Installed Computer Use skill is missing from the app-server plugin cache: ${pluginRoot}`,
     );
   }
   return pluginRoot;
@@ -531,7 +527,7 @@ async function probeBrowserRuntimePromise(
             computerUseRuntimeResult.status === "available" &&
             reconciliation.computerUse.status === "ready"
           ) {
-            const installedComputerUsePluginRoot = resolveInstalledComputerUsePluginRoot(
+            resolveInstalledComputerUsePluginRoot(
               stateHome,
               reconciliation.computerUse.installedVersion,
             );
@@ -547,7 +543,7 @@ async function probeBrowserRuntimePromise(
                   },
                 },
                 arguments: {
-                  code: makeComputerUseProbeCode(installedComputerUsePluginRoot),
+                  code: makeComputerUseProbeCode(),
                   timeout_ms: 30_000,
                 },
                 server: "node_repl",
@@ -560,6 +556,13 @@ async function probeBrowserRuntimePromise(
               computerUseText,
               computerUseResponse.isError === true,
             );
+            const managedService = computerUseRuntime.managedServiceSnapshot();
+            if (
+              managedService.status !== "running" ||
+              managedService.executablePath !== computerUseRuntimeResult.serviceExecutablePath
+            ) {
+              throw new Error("Computer Use probe did not start this Profile's verified helper");
+            }
           } else {
             computerUse = {
               reason:

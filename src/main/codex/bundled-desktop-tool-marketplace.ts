@@ -5,9 +5,8 @@ import type { BrowserRuntimeArtifact } from "../../shared/browser-runtime-metada
 import type { VerifiedBrowserRuntimeBundle } from "./browser-runtime-bundle";
 
 const SOURCE_MARKETPLACE_NAME = "openai-bundled";
-const MATERIALIZATION_SCHEMA_VERSION = 3;
+const MATERIALIZATION_SCHEMA_VERSION = 4;
 const MATERIALIZATION_KEY_FILENAME = ".materialization-key";
-const COMPUTER_USE_VARIANT_SOURCE = path.join(".codex-plugin", "computer-use-node-repl.md");
 const COMPUTER_USE_SKILL_TARGET = path.join("skills", "computer-use", "SKILL.md");
 
 type MarketplaceManifest = {
@@ -171,23 +170,6 @@ async function isCurrentMaterialization(
   }
 }
 
-async function applyComputerUseNodeReplVariant(pluginRoot: string): Promise<void> {
-  const variantSource = path.join(pluginRoot, COMPUTER_USE_VARIANT_SOURCE);
-  const skillTarget = path.join(pluginRoot, COMPUTER_USE_SKILL_TARGET);
-  await fs.mkdir(path.dirname(skillTarget), { recursive: true });
-  await fs.copyFile(variantSource, skillTarget);
-
-  const pluginManifestPath = path.join(pluginRoot, ".codex-plugin", "plugin.json");
-  const pluginManifest = parseRecord(
-    await readJson(pluginManifestPath),
-    "Computer Use plugin manifest",
-  );
-  await writeJson(pluginManifestPath, {
-    ...pluginManifest,
-    bundledContentVariant: "node-repl",
-  });
-}
-
 async function replaceDirectoryAtomically(stagingPath: string, targetPath: string): Promise<void> {
   const previousPath = `${targetPath}.previous-${randomUUID()}`;
   let movedPrevious = false;
@@ -247,7 +229,6 @@ async function materializeFresh(
       await fs.cp(bundle.paths.computerUsePluginRoot, computerUsePluginTarget, {
         recursive: true,
       });
-      await applyComputerUseNodeReplVariant(computerUsePluginTarget);
     }
 
     const sourceManifestPath = path.join(

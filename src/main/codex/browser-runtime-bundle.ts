@@ -46,7 +46,6 @@ export type VerifiedBrowserRuntimeBundle = {
     chromePluginRoot: string | null;
     codexCli: string;
     computerUseApp: string | null;
-    computerUseClient: string | null;
     computerUsePluginRoot: string | null;
     computerUseRpcService: string | null;
     computerUseService: string | null;
@@ -308,10 +307,6 @@ export function resolveBrowserRuntimeBundle(
         computerUseApp:
           manifest.capabilities.computerUse.status === "available"
             ? resolve(manifest.capabilities.computerUse.appBundle)
-            : null,
-        computerUseClient:
-          manifest.capabilities.computerUse.status === "available"
-            ? resolve(manifest.capabilities.computerUse.client)
             : null,
         computerUsePluginRoot:
           manifest.capabilities.computerUse.status === "available"

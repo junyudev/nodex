@@ -224,7 +224,6 @@ function makeManifest(): BrowserRuntimeManifest {
         appBundle: "runtime/lib/node_modules/@oai/sky/Codex Computer Use.app",
         appBundleIdentifier: "com.openai.CodexComputerUse",
         artifactMinimumMacOSVersion: "14.4",
-        client: "marketplace/plugins/computer-use/client.mjs",
         ipcProtocol: "CodexComputerUseIPC-5",
         plugin: {
           docs: "marketplace/plugins/computer-use/docs/SKILL.md",
@@ -290,21 +289,19 @@ describe("parseBrowserRuntimeManifest", () => {
     expect(parseBrowserRuntimeManifest(makeManifest())).toEqual(makeManifest());
   });
 
-  test("accepts an executable Computer Use launcher entrypoint", () => {
+  test("admits Computer Use through its trusted RPC service without a separate client launcher", () => {
     const manifest = makeManifest();
     if (manifest.capabilities.computerUse.status !== "available") {
       throw new Error("Computer Use fixture is unavailable");
     }
-    const computerUse = manifest.capabilities.computerUse;
-    const client = manifest.artifacts.find((artifact) => artifact.path === computerUse.client);
-    if (!client) throw new Error("Computer Use fixture client is missing");
-    client.kind = "executable";
-    client.executable = true;
+    manifest.artifacts = manifest.artifacts.filter(
+      (artifact) => artifact.path !== "marketplace/plugins/computer-use/client.mjs",
+    );
 
     expect(parseBrowserRuntimeManifest(manifest)).toEqual(manifest);
   });
 
-  test("upgrades archived schema-v5 metadata to the verified schema-v6 contract", () => {
+  test("upgrades archived schema-v5 metadata to the current runtime contract", () => {
     const current = makeManifest();
     const computerUse = current.capabilities.computerUse;
     if (computerUse.status !== "available") throw new Error("Computer Use fixture is unavailable");
@@ -329,7 +326,7 @@ describe("parseBrowserRuntimeManifest", () => {
     };
 
     const parsed = parseBrowserRuntimeManifest(legacy);
-    expect(parsed?.schemaVersion).toBe(6);
+    expect(parsed?.schemaVersion).toBe(BROWSER_RUNTIME_SCHEMA_VERSION);
     expect(parsed?.capabilities.computerUse).toMatchObject({
       artifactMinimumMacOSVersion: "14.4",
       ipcProtocol: "CodexComputerUseIPC-5",

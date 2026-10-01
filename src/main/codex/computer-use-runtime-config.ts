@@ -1,4 +1,4 @@
-import { randomUUID } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 import { readFileSync } from "node:fs";
 import { mkdir, rename, unlink, writeFile } from "node:fs/promises";
 import path from "node:path";
@@ -34,6 +34,12 @@ export interface ComputerUseRuntimeConfigInput {
 export type ComputerUseRuntimeConfigWriteInput = ComputerUseRuntimeConfigInput & {
   readonly runtimeStateHome: string;
 };
+
+/** Keep the native socket Profile-scoped and below macOS's Unix socket path limit. */
+export function computerUseNativePipePath(runtimeStateHome: string): string {
+  const profileKey = createHash("sha256").update(path.resolve(runtimeStateHome)).digest("hex");
+  return path.join("/tmp", `nodex-cua-${process.getuid?.() ?? "user"}`, `${profileKey}.sock`);
+}
 
 function nonEmptyString(value: string | null | undefined): string | null {
   const normalized = value?.trim();

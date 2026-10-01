@@ -4,6 +4,7 @@ import path from "node:path";
 import { afterEach, describe, expect, test } from "vite-plus/test";
 import {
   buildComputerUseRuntimeConfig,
+  computerUseNativePipePath,
   writeComputerUseRuntimeConfig,
 } from "./computer-use-runtime-config";
 
@@ -22,6 +23,17 @@ afterEach(() => {
 });
 
 describe("Computer Use runtime config", () => {
+  test("isolates native sockets by Profile while bounding Unix socket path length", () => {
+    const firstProfile = path.join(makeTemporaryRoot(), "first");
+    const firstSocket = computerUseNativePipePath(firstProfile);
+    expect(computerUseNativePipePath(path.join(firstProfile, "nested", ".."))).toBe(firstSocket);
+    expect(computerUseNativePipePath(`${firstProfile}-other`)).not.toBe(firstSocket);
+    expect(Buffer.byteLength(firstSocket)).toBeLessThanOrEqual(103);
+    expect(
+      Buffer.byteLength(computerUseNativePipePath(`/profiles/${"long/".repeat(200)}`)),
+    ).toBeLessThanOrEqual(103);
+  });
+
   test("resolves locale strings, direction, and a validated accent", () => {
     const localesDirectory = path.join(makeTemporaryRoot(), "locales");
     fs.mkdirSync(localesDirectory);

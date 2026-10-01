@@ -14,6 +14,7 @@ import {
 } from "./browser-use-thread-config";
 
 import { nodexDesktopToolMarketplaceName } from "./bundled-desktop-tool-marketplace";
+import { computerUseNativePipePath } from "./computer-use-runtime-config";
 
 const temporaryRoots: string[] = [];
 
@@ -215,6 +216,7 @@ describe("BrowserUseThreadConfigBuilder", () => {
         bundleRoot,
       ].join(path.delimiter),
       SKY_CUA_SERVICE_PATH: "/tmp/nodex-agent/computer-use/Codex Computer Use.app",
+      SKY_CUA_SERVICE_NATIVE_PIPE_PATH: computerUseNativePipePath(runtimeStateHome),
     });
     expect(nodeRepl.env?.BROWSER_USE_AVAILABLE_BACKENDS).toBe("");
     expect(nodeRepl.env?.NODE_REPL_TRUSTED_SERVICES).toBe(

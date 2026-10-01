@@ -12,6 +12,7 @@ import type { ScopedCallbackRuntime } from "../../app/ScopedCallbackRuntime";
 import { makeBrowserUseNativePipeServer } from "../../browser-use/browser-use-native-pipe-server";
 import { createBrowserUsePeerAuthorizer } from "../../browser-use/browser-use-peer-authorizer";
 import {
+  computerUseNativePipePath,
   writeComputerUseRuntimeConfig,
   type ComputerUseRuntimeConfigWriteInput,
 } from "../../codex/computer-use-runtime-config";
@@ -343,6 +344,8 @@ export async function spawnComputerUseServiceInContext(
   executablePath: string,
   context: ComputerUseServiceLaunchContext,
 ): Promise<number | null> {
+  const nativePipePath = computerUseNativePipePath(context.runtimeStateHome);
+  await fs.mkdir(path.dirname(nativePipePath), { recursive: true, mode: 0o700 });
   const receiptDirectory = await fs.mkdtemp(path.join(context.runtimeStateHome, "service-launch-"));
   const receiptPath = path.join(receiptDirectory, "pid.json");
   try {
@@ -367,6 +370,7 @@ export async function spawnComputerUseServiceInContext(
           // The overlay service uses this variable for its local config root,
           // rather than native Codex credentials or conversation storage.
           CODEX_HOME: context.runtimeStateHome,
+          SKY_CUA_SERVICE_NATIVE_PIPE_PATH: nativePipePath,
         },
         timeout: 10_000,
       },
