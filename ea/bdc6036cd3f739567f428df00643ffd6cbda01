@@ -1,0 +1,27 @@
+scripts/macos-dictation-helper.test.ts
+  s_42d4908e8724c1::t_a73e7345cb8cc1 12-17
+src/renderer/features/local-conversation/view/shared/tools/lazy-tool-output.test.tsx
+  s_42d4908e8724c1::t_9fb8f3ed0261d1 49,51-52
+docs/product-specs/index.md
+  s_42d4908e8724c1::t_72891ac7009eac 3-58
+docs/product-specs/codex-workspace-behavior.md
+  s_42d4908e8724c1::t_9fb8f3ed0261d1 102-103
+src/main/codex-application/CodexTurnPermissionMaterialization.node.test.ts
+  s_42d4908e8724c1::t_9fb8f3ed0261d1 319,586,597-598
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "eabdc6036cd3f739567f428df00643ffd6cbda01",
+  "prompts": {},
+  "sessions": {
+    "s_42d4908e8724c1": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a0f7ce-30b7-7042-a099-99c4199381ae",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    }
+  }
+}
