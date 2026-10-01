@@ -98,6 +98,7 @@ interface StreamingSegment {
 class BrowserDictationStreamingAttempt implements DictationStreamingAttempt {
   #closed = false;
   #captureStopped = false;
+  #captureFlushed = false;
   #aborted = false;
   #segments: StreamingSegment[] = [];
   #captureSegment = 0;
@@ -197,7 +198,10 @@ class BrowserDictationStreamingAttempt implements DictationStreamingAttempt {
   }
 
   isSilent(): boolean {
-    return this.#hasSignal === false && this.transcriptText(true).length === 0;
+    // Partial startup silence cannot classify the independently retained recording.
+    return (
+      this.#captureFlushed && this.#hasSignal === false && this.transcriptText(true).length === 0
+    );
   }
 
   async recover(transcribe: (blob: Blob) => Promise<string>, signal: AbortSignal): Promise<string> {
@@ -314,6 +318,7 @@ class BrowserDictationStreamingAttempt implements DictationStreamingAttempt {
       ) => {
         if (this.#closed || this.#processor !== processor) return;
         if (event.data === "stopped") {
+          if (this.#completeAudioStop) this.#captureFlushed = true;
           this.#completeAudioStop?.();
           return;
         }
