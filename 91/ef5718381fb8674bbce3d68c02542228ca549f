@@ -1,0 +1,35 @@
+src/shared/nfm/date-mention.ts
+  s_156657e4133590::t_66bcec08108f37 338-340,343,345-346,521-534
+  s_e226c998562446::t_117982396f9fd6 535-536
+docs/product-specs/nfm-editor-date-mention-behavior.md
+  s_156657e4133590::t_66bcec08108f37 4,36
+src/shared/nfm/date-mention.test.ts
+  s_156657e4133590::t_37eee563454185 26,31
+  s_156657e4133590::t_66bcec08108f37 1-25,27-30,32-62
+src/renderer/components/board/editor/date-mention-chip.test.tsx
+  s_156657e4133590::t_89e62599b59439 111-136
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "91ef5718381fb8674bbce3d68c02542228ca549f",
+  "prompts": {},
+  "sessions": {
+    "s_156657e4133590": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a0f6ac-6a1f-7030-8808-5881a494280a",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    },
+    "s_e226c998562446": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a0f5f4-b242-7d00-bc82-f6354923bf6e",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    }
+  }
+}
