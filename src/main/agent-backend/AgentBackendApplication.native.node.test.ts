@@ -11,7 +11,7 @@ import * as Scope from "effect/Scope";
 import * as Stream from "effect/Stream";
 import * as SubscriptionRef from "effect/SubscriptionRef";
 import type { AgentConversationSnapshot } from "../../shared/agent-conversation";
-import type { ClaudeModelSelection } from "../../shared/claude-models";
+import type { ClaudeDiscovery, ClaudeModelSelection } from "../../shared/claude-models";
 import type { FrozenNodexAgentTurnAuthority } from "../../shared/nodex-agent-authority";
 import type { CodexPermissionMode, ProjectSessionThreadLinkInput } from "../../shared/types";
 import type { NativePermissionMode } from "../../shared/agent-backend-api";
@@ -85,6 +85,9 @@ const makeFixtureWithInitialBinding = (initiallyBound: boolean) =>
     let freezeCalls = 0;
     const toolOutputReads: Array<[string, string]> = [];
     let onToolOutputRead: Effect.Effect<void> = Effect.void;
+    const discoveryCalls: Array<{ instanceConfigId: string; cwd: string; forceReload?: boolean }> =
+      [];
+    let beforeDiscovery: Effect.Effect<void> = Effect.void;
     const snapshot = yield* SubscriptionRef.make<AgentConversationSnapshot>({
       ...emptyAgentConversationSnapshot({
         threadId: "native",
@@ -304,7 +307,33 @@ const makeFixtureWithInitialBinding = (initiallyBound: boolean) =>
       nativeHome: () => Effect.sync(() => currentNativeHome),
       nativeCatalog: () => Effect.die("No catalog request"),
       nativeSessionInfo: () => Effect.die("No metadata request"),
-      discover: () => Effect.die("No discovery"),
+      discover: (instanceConfigId, { workspaceRoot: cwd }, forceReload) =>
+        Effect.gen(function* () {
+          discoveryCalls.push({ instanceConfigId, cwd, ...(forceReload ? { forceReload } : {}) });
+          yield* beforeDiscovery;
+          return {
+            models: [],
+            intelligence: { model: null, effort: null, fast: null, thinking: null },
+            commands: [],
+            skills: [
+              {
+                name: "review",
+                path: `${cwd}/.claude/skills/review/SKILL.md`,
+                description: "Review",
+                enabled: true,
+                userInvocable: true,
+              },
+            ],
+            health: {
+              status: "ready",
+              executable: "/claude",
+              version: "1",
+              account: null,
+              error: null,
+            },
+            revision: cwd,
+          } satisfies ClaudeDiscovery;
+        }),
       models: () => Effect.die("No discovery"),
       open: (input) =>
         Effect.gen(function* () {
@@ -611,6 +640,10 @@ const makeFixtureWithInitialBinding = (initiallyBound: boolean) =>
         onPrepareImages = effect;
       },
       toolOutputReads,
+      discoveryCalls,
+      beforeDiscovery: (effect: Effect.Effect<void>) => {
+        beforeDiscovery = effect;
+      },
       onToolOutputRead: (effect: Effect.Effect<void>) => {
         onToolOutputRead = effect;
       },
@@ -639,6 +672,94 @@ const nativeDestination = {
   projectlessOutputDirectory: null,
   projectlessWorkspaceBrowserRoot: null,
 } as const;
+
+it.effect("Claude discovery follows connected execution directories and committed handoffs", () =>
+  Effect.scoped(
+    Effect.gen(function* () {
+      const fixture = yield* makeFixture;
+      yield* fixture.commitExecutionLocation("/external-native");
+      const app = yield* fixture.application;
+      yield* app.claudeDiscovery({
+        scope: { kind: "project", instanceConfigId: "work", projectId: "project" },
+      });
+      const connected = yield* app.claudeDiscovery({
+        scope: { kind: "thread", threadId: "native" },
+      });
+      assert.equal(connected.skills[0]?.path, "/external-native/.claude/skills/review/SKILL.md");
+      yield* app.openAgentSession({ threadId: "native" });
+      yield* app.withAgentExecutionHandoff(
+        "native",
+        Effect.gen(function* () {
+          assert.equal(
+            (yield* Effect.result(
+              app.claudeDiscovery({ scope: { kind: "thread", threadId: "native" } }),
+            ))._tag,
+            "Failure",
+          );
+          yield* app.withAgentExecutionLocation(
+            "native",
+            nativeDestination,
+            fixture.commitExecutionLocation("/destination"),
+          );
+        }),
+      );
+      const moved = yield* app.claudeDiscovery({
+        scope: { kind: "thread", threadId: "native" },
+        forceReload: true,
+      });
+      assert.equal(moved.skills[0]?.path, "/destination/.claude/skills/review/SKILL.md");
+      assert.deepEqual(fixture.discoveryCalls, [
+        { instanceConfigId: "work", cwd: "/workspace" },
+        { instanceConfigId: "work", cwd: "/external-native" },
+        { instanceConfigId: "work", cwd: "/destination", forceReload: true },
+      ]);
+      yield* app.setExecutionRecoveryRequired("native", true);
+      assert.equal(
+        (yield* Effect.result(
+          app.claudeDiscovery({ scope: { kind: "thread", threadId: "native" } }),
+        ))._tag,
+        "Failure",
+      );
+      assert.equal(fixture.discoveryCalls.length, 3);
+    }),
+  ),
+);
+
+it.effect("Claude discovery rejects an old workspace result after execution moves", () =>
+  Effect.scoped(
+    Effect.gen(function* () {
+      const fixture = yield* makeFixture;
+      const app = yield* fixture.application;
+      yield* app.openAgentSession({ threadId: "native" });
+      const started = yield* Deferred.make<void>();
+      const finish = yield* Deferred.make<void>();
+      fixture.beforeDiscovery(
+        Deferred.succeed(started, undefined).pipe(Effect.andThen(Deferred.await(finish))),
+      );
+      const pending = yield* app
+        .claudeDiscovery({ scope: { kind: "thread", threadId: "native" } })
+        .pipe(Effect.forkChild);
+      yield* Deferred.await(started);
+      yield* app.withAgentExecutionHandoff(
+        "native",
+        app.withAgentExecutionLocation(
+          "native",
+          nativeDestination,
+          fixture.commitExecutionLocation("/destination"),
+        ),
+      );
+      yield* Deferred.succeed(finish, undefined);
+      assert.isTrue(Exit.isFailure(yield* Fiber.await(pending)));
+      fixture.beforeDiscovery(Effect.void);
+      const current = yield* app.claudeDiscovery({ scope: { kind: "thread", threadId: "native" } });
+      assert.equal(current.revision, "/destination");
+      assert.deepEqual(fixture.discoveryCalls, [
+        { instanceConfigId: "work", cwd: "/workspace" },
+        { instanceConfigId: "work", cwd: "/destination" },
+      ]);
+    }),
+  ),
+);
 
 it.effect("failed Git recovery seals the retained source until the verified retry completes", () =>
   Effect.scoped(

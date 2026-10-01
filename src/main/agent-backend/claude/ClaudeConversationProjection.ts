@@ -166,6 +166,79 @@ const promptImages = (nativeMessageId: string | undefined, message: unknown) =>
         .slice(0, 32)
     : [];
 
+export const claudeAcceptedInputKey = (messageId: string): string => `input:${messageId}`;
+interface ClaudeAcceptedInput {
+  readonly messageId: string;
+  readonly text: string;
+  readonly images?: readonly import("../../../shared/agent-history-images").AgentPromptImageDescriptor[];
+}
+
+/** Accepted steering stays visible before the native echo and keeps one exact user record. */
+export const projectClaudeAcceptedInput = (
+  snapshot: AgentConversationSnapshot,
+  sequence: number,
+  input: ClaudeAcceptedInput,
+): AgentConversationSnapshot =>
+  update(snapshot, sequence, {
+    kind: "message",
+    key: claudeAcceptedInputKey(input.messageId),
+    messageId: input.messageId,
+    role: "user",
+    text: input.text || (input.images?.length ? "[Image]" : ""),
+  });
+
+/** A queued batch moves its user records to the native Turn that actually consumes it. */
+export const beginClaudeAcceptedInputTurn = (
+  snapshot: AgentConversationSnapshot,
+  sequence: number,
+  inputs: readonly ClaudeAcceptedInput[],
+): AgentConversationSnapshot => {
+  const primary = inputs[0];
+  if (!primary) return snapshot;
+  const keys = new Set(inputs.map((input) => claudeAcceptedInputKey(input.messageId)));
+  const acknowledged = new Map(
+    snapshot.turns
+      .flatMap((turn) => turn.updates)
+      .filter((value) => value.kind === "message" && keys.has(value.key))
+      .map((value) => [value.key, value] as const),
+  );
+  const primaryRecord = acknowledged.get(claudeAcceptedInputKey(primary.messageId));
+  let next = beginAgentConversationTurn(
+    {
+      ...snapshot,
+      turns: snapshot.turns.map((turn) => ({
+        ...turn,
+        updates: turn.updates.filter((value) => !keys.has(value.key)),
+      })),
+    },
+    sequence,
+    primary.text || (primary.images?.length ? "[Image]" : ""),
+    primary.messageId,
+  );
+  if (primaryRecord?.kind === "message")
+    next = {
+      ...next,
+      turns: next.turns.map((turn) =>
+        turn.sequence === sequence
+          ? {
+              ...turn,
+              promptImages: primaryRecord.promptImages,
+              ...(primaryRecord.recordIds?.includes(primary.messageId)
+                ? { nativeUserMessageId: primary.messageId }
+                : {}),
+            }
+          : turn,
+      ),
+    };
+  for (const input of inputs.slice(1)) {
+    const record = acknowledged.get(claudeAcceptedInputKey(input.messageId));
+    next = record
+      ? update(next, sequence, record)
+      : projectClaudeAcceptedInput(next, sequence, input);
+  }
+  return next;
+};
+
 const locations = (input: unknown): string[] => {
   const data = claudeRecord(input);
   return [data.file_path, data.notebook_path, data.path].filter(
@@ -693,11 +766,30 @@ export const createClaudeMessageProjection = () => {
         !string(claudeRecord(message).parent_agent_id) &&
         message.isSynthetic !== true &&
         claudeRecord(message).isMeta !== true &&
-        claudeRecord(message).isReplay !== true &&
         blocksOf(message.message).every((part) => part.type === "text" || part.type === "image")
       ) {
         const turn = snapshot.turns.find((value) => value.sequence === sequence);
-        if (turn)
+        const acceptedTurn = snapshot.turns.find((value) =>
+          value.updates.some(
+            (entry) => message.uuid && entry.key === claudeAcceptedInputKey(message.uuid),
+          ),
+        );
+        const accepted = acceptedTurn?.updates.find(
+          (value) => message.uuid && value.key === claudeAcceptedInputKey(message.uuid),
+        );
+        if (accepted?.kind === "message" && message.uuid && acceptedTurn)
+          return update(snapshot, acceptedTurn.sequence, {
+            ...accepted,
+            text: claudeHistoryPromptText(message),
+            promptImages: promptImages(message.uuid, message.message),
+            recordIds: [message.uuid],
+          });
+        if (
+          turn &&
+          (turn.nativeUserMessageId === message.uuid ||
+            turn.clientUserMessageId === message.uuid ||
+            (!turn.nativeUserMessageId && claudeRecord(message).isReplay !== true))
+        )
           return {
             ...snapshot,
             turns: snapshot.turns.map((value) =>
@@ -710,6 +802,7 @@ export const createClaudeMessageProjection = () => {
                 : value,
             ),
           };
+        if (claudeRecord(message).isReplay === true) return snapshot;
       }
       return projectContent(
         snapshot,

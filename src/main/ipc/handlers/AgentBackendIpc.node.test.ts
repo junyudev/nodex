@@ -13,7 +13,7 @@ import type {
   NativePermissionMode,
 } from "../../../shared/agent-backend-api";
 import { createUuidV7 } from "../../../shared/uuid-v7";
-import type { ClaudeModelCatalogInput } from "../../../shared/claude-models";
+import type { ClaudeDiscoveryInput } from "../../../shared/claude-models";
 import { AgentBackendApplication } from "../../agent-backend/AgentBackendApplication";
 import { testLayer as mainConfigLayer } from "../../app/MainConfig";
 import { ElectronIpc } from "../../platform/electron/ElectronIpc";
@@ -46,14 +46,14 @@ it.effect("bridges renderer observation reference counts and destruction into se
     const unobserved: string[] = [];
     const destructionReleased = yield* Deferred.make<void>();
     const started: AgentBackendThreadStartInput[] = [];
-    const discoveries: ClaudeModelCatalogInput[] = [];
+    const discoveries: ClaudeDiscoveryInput[] = [];
     const application = AgentBackendApplication.of({
       startAgentThread: (input: AgentBackendThreadStartInput) =>
         Effect.sync(() => {
           started.push(input);
           return null;
         }),
-      claudeDiscovery: (input: ClaudeModelCatalogInput) =>
+      claudeDiscovery: (input: ClaudeDiscoveryInput) =>
         Effect.sync(() => {
           discoveries.push(input);
           return null;
@@ -114,20 +114,33 @@ it.effect("bridges renderer observation reference counts and destruction into se
     yield* start(event, launch);
     expect(started).toEqual([launch]);
     const discover = handlers.get("agent-backend:claude:discover")!;
-    const discoveryInput: ClaudeModelCatalogInput = {
-      instanceConfigId: "claude-default",
-      projectId: null,
+    const discoveryInput: ClaudeDiscoveryInput = {
+      scope: { kind: "project", instanceConfigId: "claude-default", projectId: null },
       requestId: createUuidV7(),
       forceReload: true,
     };
     yield* discover(event, discoveryInput);
     expect(discoveries).toEqual([discoveryInput]);
+    const threadDiscovery: ClaudeDiscoveryInput = {
+      scope: { kind: "thread", threadId: "attached" },
+      requestId: createUuidV7(),
+    };
+    yield* discover(event, threadDiscovery);
+    expect(discoveries).toEqual([discoveryInput, threadDiscovery]);
+    for (const scope of [
+      { ...threadDiscovery.scope, cwd: "/untrusted" },
+      { ...threadDiscovery.scope, instanceConfigId: "untrusted" },
+      { kind: "thread", threadId: "" },
+    ])
+      expect(
+        Exit.isFailure(yield* Effect.exit(discover(event, { ...threadDiscovery, scope }))),
+      ).toBe(true);
     expect(
       Exit.isFailure(
         yield* Effect.exit(discover(event, { ...discoveryInput, forceReload: "yes" })),
       ),
     ).toBe(true);
-    expect(discoveries).toEqual([discoveryInput]);
+    expect(discoveries).toEqual([discoveryInput, threadDiscovery]);
     for (const invalid of [
       { ...launch, runInTarget: "cloud" },
       { ...launch, worktreeStartingState: { type: "branch", branchName: "" } },

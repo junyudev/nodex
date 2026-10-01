@@ -66,6 +66,7 @@ import { ProjectWorkspace, ProjectWorkspaceError } from "../project-application/
 import {
   isClaudeEffortLevel,
   type ClaudeModelCatalogInput,
+  type ClaudeDiscoveryInput,
   type ClaudeDiscovery,
   type ClaudeRuntimeDiagnostics,
 } from "../../shared/claude-models";
@@ -132,7 +133,7 @@ export class AgentBackendApplication extends Context.Service<
       input: ClaudeModelCatalogInput,
     ) => Effect.Effect<readonly AgentSessionConfigSelectOption[], AgentBackendApplicationError>;
     readonly claudeDiscovery: (
-      input: ClaudeModelCatalogInput,
+      input: ClaudeDiscoveryInput,
     ) => Effect.Effect<ClaudeDiscovery, AgentBackendApplicationError>;
     readonly setAgentIntelligence: (
       input: AgentBackendIntelligenceInput,
@@ -2313,9 +2314,39 @@ export const make = Effect.gen(function* () {
       ownFailure(
         "claude.discover",
         Effect.gen(function* () {
-          const project = input.projectId ? yield* workspace.getProject(input.projectId) : null;
+          const scope = input.scope;
+          if (scope.kind === "thread") {
+            yield* requireExecutionAdmission(scope.threadId);
+            const authority = yield* resolveThreadAuthority(scope.threadId);
+            if (authority.binding.kind !== "claude")
+              return yield* fail("claude.discover", new Error("Thread is not owned by Claude"));
+            const workspaceEnvironment = yield* worktreeEnvironment(
+              authority.workspaceRoot,
+              authority.thread.managedWorktreePath,
+            );
+            const discovery = yield* claudeSessions.discover(
+              authority.binding.instanceConfigId,
+              { workspaceRoot: authority.workspaceRoot, workspaceEnvironment },
+              input.forceReload,
+            );
+            yield* requireExecutionAdmission(scope.threadId);
+            const current = yield* resolveThreadAuthority(scope.threadId);
+            if (
+              current.binding.kind !== "claude" ||
+              current.binding.instanceConfigId !== authority.binding.instanceConfigId ||
+              current.workspaceRoot !== authority.workspaceRoot ||
+              current.thread.managedWorktreePath !== authority.thread.managedWorktreePath ||
+              current.thread.projectId !== authority.thread.projectId
+            )
+              return yield* fail(
+                "claude.discover",
+                new Error("The task's execution location changed"),
+              );
+            return discovery;
+          }
+          const project = scope.projectId ? yield* workspace.getProject(scope.projectId) : null;
           if (
-            input.projectId &&
+            scope.projectId &&
             (!project || project.lifecycle !== "active" || !project.primaryWorkspaceRoot)
           )
             return yield* fail("claude.discover", new Error("Choose an active local Project"));
@@ -2325,8 +2356,12 @@ export const make = Effect.gen(function* () {
               "claude.discover",
               new Error("The host configuration is unavailable"),
             );
-          yield* backends.resolve({ kind: "claude", instanceConfigId: input.instanceConfigId });
-          return yield* claudeSessions.discover(input.instanceConfigId, cwd, input.forceReload);
+          yield* backends.resolve({ kind: "claude", instanceConfigId: scope.instanceConfigId });
+          return yield* claudeSessions.discover(
+            scope.instanceConfigId,
+            { workspaceRoot: cwd },
+            input.forceReload,
+          );
         }),
       ),
     setAgentIntelligence: (input) =>

@@ -84,6 +84,8 @@ import {
 } from "../AgentConversationProjection";
 import {
   createClaudeMessageProjection,
+  beginClaudeAcceptedInputTurn,
+  projectClaudeAcceptedInput,
   projectClaudeHistory,
   prependAgentHistory,
 } from "./ClaudeConversationProjection";
@@ -95,7 +97,10 @@ import {
 import { claudeEnvironment } from "../../platform/node/ClaudeSdk";
 import * as Clock from "effect/Clock";
 import { deriveClaudeTurnOutcome } from "./ClaudeEventHelpers";
-import type { AgentSessionPermissionPolicy } from "../AgentSessionHandle";
+import type {
+  AgentSessionPermissionPolicy,
+  NativeAgentExecutionLocation,
+} from "../AgentSessionHandle";
 import { unknownClaudeIntelligence } from "../../platform/node/ClaudeIntelligence";
 import {
   applyCodexWorktreeShellEnvironment,
@@ -174,7 +179,7 @@ export class ClaudeSessionManager extends Context.Service<
     ) => Effect.Effect<readonly AgentSessionConfigSelectOption[], AgentRuntimeError>;
     readonly discover: (
       instanceConfigId: string,
-      workspaceRoot: string,
+      location: NativeAgentExecutionLocation,
       forceReload?: boolean,
     ) => Effect.Effect<ClaudeDiscovery, AgentRuntimeError>;
     readonly open: (
@@ -243,7 +248,41 @@ const capabilities: AgentBackendCapabilityProfile = {
   ],
 };
 const MAX_KNOWN_CLIENT_MESSAGE_IDS = 1024;
+const inputImageDescriptors = (messageId: string, images: readonly AgentPromptImage[] = []) =>
+  images.map((image, index) => ({
+    nativeMessageId: messageId,
+    index,
+    mediaType: image.mediaType,
+  }));
 const CLAUDE_ACCOUNT_ENVIRONMENT_NAMES = new Set(["HOME", "USERPROFILE", "CLAUDE_CONFIG_DIR"]);
+/** Worktree setup cannot select a different Claude account; explicit profile values win. */
+const claudeLaunchEnvironment = (
+  config: Pick<MainConfig["Service"], "environment" | "platform">,
+  workspaceEnvironment: CodexStoredShellEnvironment | null | undefined,
+  environmentOverrides: Readonly<Record<string, string>>,
+) => {
+  const environment = applyCodexWorktreeShellEnvironment(
+    config.environment,
+    workspaceEnvironment,
+    config.platform,
+  );
+  return applyCodexWorktreeShellEnvironment(
+    {
+      ...Object.fromEntries(
+        Object.entries(environment).filter(
+          ([name]) => !CLAUDE_ACCOUNT_ENVIRONMENT_NAMES.has(name.toUpperCase()),
+        ),
+      ),
+      ...Object.fromEntries(
+        Object.entries(config.environment).filter(([name]) =>
+          CLAUDE_ACCOUNT_ENVIRONMENT_NAMES.has(name.toUpperCase()),
+        ),
+      ),
+    },
+    { version: 1, set: environmentOverrides, exclude: [] },
+    config.platform,
+  );
+};
 const nativePermissionMode = (
   mode: "default" | "plan",
   policy: AgentSessionPermissionPolicy,
@@ -261,36 +300,16 @@ const makeSession = Effect.fn("ClaudeSessionManager.session")(function* (
   const controls = yield* Semaphore.make(1);
   let sessionId = input.sessionId ?? createUuidV7();
   let everSaved = Boolean(input.sessionId && input.everSaved !== false);
-  const executionInput = (
-    location: import("../AgentSessionHandle").NativeAgentExecutionLocation,
-  ) => {
-    const workspaceEnvironment = applyCodexWorktreeShellEnvironment(
-      config.environment,
+  const executionInput = (location: NativeAgentExecutionLocation) => ({
+    instance,
+    environment: claudeLaunchEnvironment(
+      config,
       location.workspaceEnvironment,
-      config.platform,
-    );
-    return {
-      instance,
-      environment: applyCodexWorktreeShellEnvironment(
-        {
-          ...Object.fromEntries(
-            Object.entries(workspaceEnvironment).filter(
-              ([name]) => !CLAUDE_ACCOUNT_ENVIRONMENT_NAMES.has(name.toUpperCase()),
-            ),
-          ),
-          ...Object.fromEntries(
-            Object.entries(config.environment).filter(([name]) =>
-              CLAUDE_ACCOUNT_ENVIRONMENT_NAMES.has(name.toUpperCase()),
-            ),
-          ),
-        },
-        { version: 1, set: environmentOverrides, exclude: [] },
-        config.platform,
-      ),
-      cwd: location.workspaceRoot,
-      ...(input.launchContext ? { launchContext: input.launchContext } : {}),
-    };
-  };
+      environmentOverrides,
+    ),
+    cwd: location.workspaceRoot,
+    ...(input.launchContext ? { launchContext: input.launchContext } : {}),
+  });
   let baseInput = executionInput(input);
   const nativeInput = () => ({ ...baseInput, sessionId, resume: everSaved });
   // A crash can precede Core's first saved-turn observation; native metadata owns existence.
@@ -386,6 +405,8 @@ const makeSession = Effect.fn("ClaudeSessionManager.session")(function* (
   let sequence = Math.max(0, ...initial.turns.map((entry) => entry.sequence ?? 0));
   let turn: {
     sequence: number;
+    /** Native consumption echoes cannot replace the foreground authority admitted by Main. */
+    readonly authorityTurnId: string;
     completion: Deferred.Deferred<{ stopReason: string }, AgentRuntimeError>;
     cancelled: boolean;
     messageIds: Set<string>;
@@ -603,7 +624,7 @@ const makeSession = Effect.fn("ClaudeSessionManager.session")(function* (
     yield* (
       input.onTurnSettled?.({
         sequence: completed.sequence,
-        clientUserMessageIds: [...completed.messageIds],
+        clientUserMessageIds: [...new Set([completed.authorityTurnId, ...completed.messageIds])],
         stopReason: outcome.stopReason,
         status: outcome.status,
         ...(outcome.error ? { error: outcome.error } : {}),
@@ -867,6 +888,10 @@ const makeSession = Effect.fn("ClaudeSessionManager.session")(function* (
           const consumed =
             message.user_message_uuids ??
             (message.user_message_uuid ? [message.user_message_uuid] : [...turn.messageIds]);
+          const consumedImageIds = consumed.filter(
+            (uuid) => queuedSteers.get(uuid)?.images?.length,
+          );
+          const completedSequence = turn.sequence;
           for (const uuid of consumed) queuedSteers.delete(uuid);
           turn.messageIds = new Set(consumed.filter((uuid) => turn!.messageIds.has(uuid)));
 
@@ -876,6 +901,33 @@ const makeSession = Effect.fn("ClaudeSessionManager.session")(function* (
           });
           healthError = outcome.authenticationRequired ? outcome.error : null;
           yield* settle(outcome);
+          if (consumedImageIds.length) {
+            const historyInput = nativeInput();
+            yield* sdk.historyPage(historyInput).pipe(
+              Effect.catch(() => Effect.succeed({ messages: [] })),
+              Effect.flatMap((page) =>
+                SubscriptionRef.update(snapshot, (current) =>
+                  current.sessionId !== historyInput.sessionId || current.status === "closed"
+                    ? current
+                    : page.messages
+                        .filter(
+                          (entry) =>
+                            consumedImageIds.includes(entry.uuid) && isClaudeHistoryPrompt(entry),
+                        )
+                        .reduce(
+                          (next, entry) =>
+                            project(
+                              next,
+                              { ...entry, isReplay: true } as SDKMessage,
+                              completedSequence,
+                            ),
+                          current,
+                        ),
+                ),
+              ),
+              Effect.forkIn(scope),
+            );
+          }
           if (!queuedSteers.size) return;
           const queuedIds = [...queuedSteers.keys()];
           const nextUuid = queuedIds[0]!;
@@ -885,6 +937,7 @@ const makeSession = Effect.fn("ClaudeSessionManager.session")(function* (
           const completion = yield* Deferred.make<{ stopReason: string }, AgentRuntimeError>();
           turn = {
             sequence: ++sequence,
+            authorityTurnId: nextUuid,
             completion,
             cancelled: false,
             messageIds: new Set(queuedIds),
@@ -896,7 +949,18 @@ const makeSession = Effect.fn("ClaudeSessionManager.session")(function* (
             input.onTurnAdmitted?.({ sequence, clientUserMessageId: nextUuid, text }) ?? Effect.void
           );
           yield* SubscriptionRef.update(snapshot, (current) =>
-            beginAgentConversationTurn(current, sequence, text, nextUuid),
+            beginClaudeAcceptedInputTurn(
+              current,
+              sequence,
+              queuedIds.map((uuid) => {
+                const queued = queuedSteers.get(uuid)!;
+                return {
+                  messageId: uuid,
+                  text: queued.text,
+                  images: inputImageDescriptors(uuid, queued.images),
+                };
+              }),
+            ),
           );
         }),
       ),
@@ -1231,6 +1295,7 @@ const makeSession = Effect.fn("ClaudeSessionManager.session")(function* (
             const completion = yield* Deferred.make<{ stopReason: string }, AgentRuntimeError>();
             const next = {
               sequence: sequence + 1,
+              authorityTurnId: messageId,
               completion,
               cancelled: false,
               messageIds: new Set([messageId]),
@@ -1380,6 +1445,13 @@ const makeSession = Effect.fn("ClaudeSessionManager.session")(function* (
           rememberClientMessageId(uuid);
           turn.messageIds.add(uuid);
           queuedSteers.set(uuid, { text, ...(options?.images ? { images: options.images } : {}) });
+          yield* SubscriptionRef.update(snapshot, (current) =>
+            projectClaudeAcceptedInput(current, turn!.sequence, {
+              messageId: uuid,
+              text,
+              images: inputImageDescriptors(uuid, options?.images),
+            }),
+          );
           yield* runtime
             .send(text, uuid, sessionId, "now", options?.images)
             .pipe(Effect.tapError(failStream));
@@ -1772,12 +1844,17 @@ export const make = Effect.gen(function* () {
   yield* Effect.addFinalizer(() =>
     Effect.forEach([...sessions.keys()], close, { discard: true, concurrency: 4 }),
   );
-  const discover = (instanceConfigId: string, workspaceRoot: string, forceReload = false) =>
+  const discover = (
+    instanceConfigId: string,
+    location: NativeAgentExecutionLocation,
+    forceReload = false,
+  ) =>
     Effect.gen(function* () {
+      const { workspaceRoot, workspaceEnvironment } = location;
       const { instance, environment } = yield* settings
         .claudeLaunchConfiguration(instanceConfigId)
         .pipe(Effect.mapError((cause) => failure("settings", cause)));
-      const launchEnvironment = { ...config.environment, ...environment };
+      const launchEnvironment = claudeLaunchEnvironment(config, workspaceEnvironment, environment);
       const key = claudeDiscoveryFingerprint(instance, launchEnvironment, workspaceRoot);
       return yield* exclusive(
         `discovery:${key}`,
@@ -1843,7 +1920,7 @@ export const make = Effect.gen(function* () {
     nativeCatalog,
     nativeSessionInfo,
     models: (instanceConfigId, workspaceRoot, forceReload) =>
-      discover(instanceConfigId, workspaceRoot, forceReload).pipe(
+      discover(instanceConfigId, { workspaceRoot }, forceReload).pipe(
         Effect.map(({ models }) => models),
       ),
     discover,

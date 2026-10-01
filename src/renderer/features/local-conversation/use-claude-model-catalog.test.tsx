@@ -36,7 +36,11 @@ test("keeps model discovery scoped to the current instance and Project when repl
   const second = deferred();
   const read = vi.fn().mockReturnValueOnce(first.promise).mockReturnValueOnce(second.promise);
   const { result, rerender } = renderHook(
-    ({ instance, project }) => useClaudeModelCatalog(instance, project, read, subscribe),
+    ({ instance, project }) =>
+      useClaudeModelCatalog(
+        { kind: "project", instanceConfigId: instance, projectId: project },
+        { read, subscribe },
+      ),
     {
       initialProps: { instance: "personal", project: "project-a" },
     },
@@ -51,8 +55,8 @@ test("keeps model discovery scoped to the current instance and Project when repl
   });
   expect(result.current.options).toEqual(options("gateway/model-b"));
   expect(read.mock.calls.map(([input]) => input)).toEqual([
-    { instanceConfigId: "personal", projectId: "project-a" },
-    { instanceConfigId: "work", projectId: "project-b" },
+    { scope: { kind: "project", instanceConfigId: "personal", projectId: "project-a" } },
+    { scope: { kind: "project", instanceConfigId: "work", projectId: "project-b" } },
   ]);
   expect((read.mock.calls[0]?.[1] as AbortSignal).aborted).toBe(true);
   expect((read.mock.calls[1]?.[1] as AbortSignal).aborted).toBe(false);
@@ -61,13 +65,63 @@ test("keeps model discovery scoped to the current instance and Project when repl
 test("releases an unfinished discovery when its consumer unmounts", async () => {
   const pending = deferred();
   const read = vi.fn().mockReturnValue(pending.promise);
-  const { unmount } = renderHook(() => useClaudeModelCatalog("work", "project", read, subscribe));
+  const { unmount } = renderHook(() =>
+    useClaudeModelCatalog(
+      { kind: "project", instanceConfigId: "work", projectId: "project" },
+      { read, subscribe },
+    ),
+  );
   const signal = read.mock.calls[0]?.[1] as AbortSignal;
   expect(signal.aborted).toBe(false);
   unmount();
   expect(signal.aborted).toBe(true);
   await act(async () => {
     pending.resolve(discovery(options("late")));
+  });
+});
+
+test("refreshes attached skills after execution moves and discards the source workspace reply", async () => {
+  const source = deferred();
+  const destination = {
+    ...discovery(options("worktree-model")),
+    skills: [
+      {
+        name: "review",
+        description: "Review this worktree",
+        path: "/worktree/.claude/skills/review/SKILL.md",
+        enabled: true,
+        userInvocable: true,
+      },
+    ],
+  };
+  const read = vi.fn().mockReturnValueOnce(source.promise).mockResolvedValue(destination);
+  const { result, rerender } = renderHook(
+    ({ cwd }) =>
+      useClaudeModelCatalog(
+        { kind: "thread", threadId: "attached" },
+        { read, subscribe, observedExecutionLocation: cwd },
+      ),
+    { initialProps: { cwd: "/workspace" } },
+  );
+  rerender({ cwd: "/workspace" });
+  expect(read).toHaveBeenCalledOnce();
+  rerender({ cwd: "/worktree" });
+  await waitFor(() => expect(result.current.discovery?.skills).toEqual(destination.skills));
+  expect((read.mock.calls[0]?.[1] as AbortSignal).aborted).toBe(true);
+  expect(read.mock.calls.map(([input]) => input)).toEqual([
+    { scope: { kind: "thread", threadId: "attached" } },
+    { scope: { kind: "thread", threadId: "attached" } },
+  ]);
+  await act(async () => {
+    source.resolve(discovery(options("source-model")));
+  });
+  expect(result.current.options).toEqual(destination.models);
+  await act(async () => {
+    await result.current.refresh?.();
+  });
+  expect(read.mock.lastCall?.[0]).toEqual({
+    scope: { kind: "thread", threadId: "attached" },
+    forceReload: true,
   });
 });
 
@@ -86,13 +140,17 @@ test("force reload refreshes the current profile's skills and ignores a supersed
     ],
   };
   const read = vi.fn().mockReturnValueOnce(automatic.promise).mockResolvedValueOnce(refreshed);
-  const { result } = renderHook(() => useClaudeModelCatalog("work", "project", read, subscribe));
+  const { result } = renderHook(() =>
+    useClaudeModelCatalog(
+      { kind: "project", instanceConfigId: "work", projectId: "project" },
+      { read, subscribe },
+    ),
+  );
   await act(async () => {
     await result.current.refresh?.();
   });
   expect(read.mock.calls[1]?.[0]).toEqual({
-    instanceConfigId: "work",
-    projectId: "project",
+    scope: { kind: "project", instanceConfigId: "work", projectId: "project" },
     forceReload: true,
   });
   expect((read.mock.calls[0]?.[1] as AbortSignal).aborted).toBe(true);
@@ -111,7 +169,11 @@ test("an in-flight manual reload cannot publish across profile or Project change
     .mockReturnValueOnce(first.promise)
     .mockResolvedValueOnce(discovery(options("current")));
   const { result, rerender } = renderHook(
-    ({ instance, project }) => useClaudeModelCatalog(instance, project, read, subscribe),
+    ({ instance, project }) =>
+      useClaudeModelCatalog(
+        { kind: "project", instanceConfigId: instance, projectId: project },
+        { read, subscribe },
+      ),
     { initialProps: { instance: "personal", project: "one" } },
   );
   await waitFor(() => expect(result.current.options).toEqual(options("original")));
@@ -138,7 +200,12 @@ test("manual reload reports failure while retaining the current inventory", asyn
     .fn()
     .mockResolvedValueOnce(discovery(options("known")))
     .mockRejectedValueOnce(new Error("private launch details"));
-  const { result } = renderHook(() => useClaudeModelCatalog("work", null, read, subscribe));
+  const { result } = renderHook(() =>
+    useClaudeModelCatalog(
+      { kind: "project", instanceConfigId: "work", projectId: null },
+      { read, subscribe },
+    ),
+  );
   await waitFor(() => expect(result.current.options).toEqual(options("known")));
   await act(async () => {
     await expect(result.current.refresh?.()).rejects.toThrow("Could not discover Claude models");
@@ -149,7 +216,12 @@ test("manual reload reports failure while retaining the current inventory", asyn
 
 test("keeps discovery failures explicit without inventing model choices", async () => {
   const read = vi.fn().mockRejectedValue(new Error("private launch details"));
-  const { result } = renderHook(() => useClaudeModelCatalog("work", "project", read, subscribe));
+  const { result } = renderHook(() =>
+    useClaudeModelCatalog(
+      { kind: "project", instanceConfigId: "work", projectId: "project" },
+      { read, subscribe },
+    ),
+  );
   await waitFor(() => expect(result.current.error).toBeTruthy());
   expect(result.current.options).toEqual([]);
   expect(result.current.error).not.toContain("private launch details");
@@ -167,7 +239,10 @@ test("refreshes after settings publication while preserving the same scope's pre
     .mockResolvedValueOnce(discovery(options("old")))
     .mockReturnValueOnce(updated.promise);
   const { result } = renderHook(() =>
-    useClaudeModelCatalog("work", "project", read, subscribeChanges),
+    useClaudeModelCatalog(
+      { kind: "project", instanceConfigId: "work", projectId: "project" },
+      { read, subscribe: subscribeChanges },
+    ),
   );
   await waitFor(() => expect(result.current.options).toEqual(options("old")));
   await act(async () => {
@@ -192,7 +267,10 @@ test("revalidates expired native configuration automatically without probing on 
     .mockReturnValueOnce(update.promise)
     .mockResolvedValue(discovery(options("new")));
   const { result, unmount } = renderHook(() =>
-    useClaudeModelCatalog("work", "project", read, subscribe),
+    useClaudeModelCatalog(
+      { kind: "project", instanceConfigId: "work", projectId: "project" },
+      { read, subscribe },
+    ),
   );
   try {
     await advance(0);
@@ -238,7 +316,10 @@ test("recovers from transient discovery failures with bounded backoff and retain
     .mockResolvedValueOnce(discovery(options("known")))
     .mockRejectedValue(new Error("private details"));
   const { result, unmount } = renderHook(() =>
-    useClaudeModelCatalog("work", "project", read, subscribe),
+    useClaudeModelCatalog(
+      { kind: "project", instanceConfigId: "work", projectId: "project" },
+      { read, subscribe },
+    ),
   );
   try {
     await advance(0);

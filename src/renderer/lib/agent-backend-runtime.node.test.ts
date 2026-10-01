@@ -46,7 +46,7 @@ it("cancels the exact discovery request and rejects locally even while Main fini
   );
   vi.stubGlobal("window", { api: { invoke, on: vi.fn() } });
   const pending = agentBackendRuntime.claudeDiscovery(
-    { instanceConfigId: "work", projectId: "project" },
+    { scope: { kind: "project", instanceConfigId: "work", projectId: "project" } },
     controller.signal,
   );
   const rejection = expect(pending).rejects.toMatchObject({ name: "AbortError" });
@@ -58,7 +58,7 @@ it("cancels the exact discovery request and rejects locally even while Main fini
     requestId: request[1].requestId,
   });
   const alreadyAborted = agentBackendRuntime.claudeDiscovery(
-    { instanceConfigId: "work", projectId: null },
+    { scope: { kind: "project", instanceConfigId: "work", projectId: null } },
     controller.signal,
   );
   await expect(alreadyAborted).rejects.toMatchObject({ name: "AbortError" });
@@ -70,7 +70,7 @@ it("completed discovery unregisters its cancellation consumer", async () => {
   const invoke = vi.fn(async () => ({ models: [] }));
   vi.stubGlobal("window", { api: { invoke, on: vi.fn() } });
   await agentBackendRuntime.claudeDiscovery(
-    { instanceConfigId: "work", projectId: null },
+    { scope: { kind: "project", instanceConfigId: "work", projectId: null } },
     controller.signal,
   );
   controller.abort();

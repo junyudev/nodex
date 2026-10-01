@@ -39,6 +39,7 @@ import {
 } from "../../../shared/claude-models";
 import type { ClaudeResolvedIntelligence } from "../../../shared/claude-models";
 import type { AgentSessionPermissionPolicy } from "../AgentSessionHandle";
+import { createNativeAppToolClaimIssuer } from "../../app-tools/AppToolCaller";
 import {
   loadCodexWorktreeShellEnvironmentAtGitPath,
   persistCodexWorktreeShellEnvironmentAtGitPath,
@@ -1981,6 +1982,225 @@ it.effect("typed dialogs return native action while unsupported dialogs fail clo
 );
 
 it.effect(
+  "folded steering remains visible once through native echoes, settlement, and reopen",
+  () =>
+    Effect.gen(function* () {
+      const f = yield* fixture();
+      const handle = yield* f.open();
+      const running = yield* Effect.forkChild(handle.prompt("first", { clientUserMessageId: id }));
+      yield* Queue.take(f.sent);
+      const images = [{ mediaType: "image/png" as const, data: "AA==" }];
+      yield* handle.steer!("follow up", { clientUserMessageId: nextId, images });
+      yield* Queue.take(f.sent);
+      const accepted = (yield* SubscriptionRef.get(handle.snapshot)).turns[0]?.updates.find(
+        (update) => update.kind === "message" && update.messageId === nextId,
+      );
+      expect(accepted).toMatchObject({
+        role: "user",
+        text: "follow up",
+      });
+      expect(accepted?.kind === "message" ? accepted.promptImages : null).toBeUndefined();
+      const history: SessionMessage[] = [
+        {
+          type: "user",
+          uuid: id,
+          session_id: handle.sessionId!,
+          parent_tool_use_id: null,
+          parent_agent_id: null,
+          message: { content: "first" },
+        },
+        {
+          type: "user",
+          uuid: nextId,
+          session_id: handle.sessionId!,
+          parent_tool_use_id: null,
+          parent_agent_id: null,
+          message: {
+            content: [
+              { type: "image", source: { type: "base64", media_type: "image/png" } },
+              { type: "text", text: "follow up" },
+            ],
+          },
+        },
+      ];
+      for (const message of history)
+        yield* Queue.offer(f.events, { ...message, isReplay: true } as SDKMessage);
+      yield* Queue.offer(
+        f.events,
+        nativeMessage(handle.sessionId!, {
+          ...result(handle.sessionId!),
+          user_message_uuids: [id, nextId],
+          queued_turn_count: 0,
+        }),
+      );
+      yield* Fiber.join(running);
+      const userTexts = (
+        snapshot: import("../../../shared/agent-conversation").AgentConversationSnapshot,
+      ) =>
+        snapshot.turns.flatMap((turn) => [
+          ...(turn.promptText ? [turn.promptText] : []),
+          ...turn.updates.flatMap((update) =>
+            update.kind === "message" && update.role === "user" ? [update.text] : [],
+          ),
+        ]);
+      const settled = yield* SubscriptionRef.get(handle.snapshot);
+      expect(userTexts(settled)).toEqual(["first", "follow up"]);
+      expect(settled.turns).toHaveLength(1);
+      expect(
+        settled.turns[0]?.updates.find((update) => update.key === accepted?.key),
+      ).toMatchObject({
+        recordIds: [nextId],
+        promptImages: [{ nativeMessageId: nextId, index: 0, mediaType: "image/png" }],
+      });
+      const sessionId = handle.sessionId!;
+      yield* f.manager.close("thread-1");
+      f.setInitialHistory(history);
+      const reopened = yield* f.open(sessionId);
+      expect(userTexts(yield* SubscriptionRef.get(reopened.snapshot))).toEqual([
+        "first",
+        "follow up",
+      ]);
+    }).pipe(Effect.scoped),
+);
+
+it.effect(
+  "image-only steering exposes a native pointer only after its consumed history is available",
+  () =>
+    Effect.gen(function* () {
+      const f = yield* fixture();
+      const handle = yield* f.open();
+      const running = yield* Effect.forkChild(handle.prompt("first", { clientUserMessageId: id }));
+      yield* Queue.take(f.sent);
+      yield* handle.steer!("", {
+        clientUserMessageId: nextId,
+        images: [{ mediaType: "image/png", data: "AA==" }],
+      });
+      yield* Queue.take(f.sent);
+      expect((yield* SubscriptionRef.get(handle.snapshot)).turns[0]?.updates).toContainEqual({
+        kind: "message",
+        key: `input:${nextId}`,
+        messageId: nextId,
+        role: "user",
+        text: "[Image]",
+      });
+      f.setInitialHistory([
+        {
+          type: "user",
+          uuid: nextId,
+          session_id: handle.sessionId!,
+          parent_tool_use_id: null,
+          parent_agent_id: null,
+          message: {
+            content: [
+              {
+                type: "image",
+                source: { type: "base64", media_type: "image/png" },
+              },
+            ],
+          },
+        },
+      ]);
+      yield* Queue.offer(
+        f.events,
+        nativeMessage(handle.sessionId!, {
+          ...result(handle.sessionId!),
+          user_message_uuids: [id, nextId],
+        }),
+      );
+      yield* Fiber.join(running);
+      yield* waitForSnapshot(
+        handle,
+        (snapshot) =>
+          snapshot.turns[0]?.updates.some(
+            (update) =>
+              update.kind === "message" &&
+              update.messageId === nextId &&
+              Boolean(update.promptImages?.length),
+          ) ?? false,
+      );
+      expect((yield* SubscriptionRef.get(handle.snapshot)).turns[0]?.updates).toContainEqual({
+        kind: "message",
+        key: `input:${nextId}`,
+        messageId: nextId,
+        role: "user",
+        text: "",
+        promptImages: [{ nativeMessageId: nextId, index: 0, mediaType: "image/png" }],
+        recordIds: [nextId],
+      });
+    }).pipe(Effect.scoped),
+);
+
+it.effect(
+  "a singular folded result revokes its original admitted authority before the next turn",
+  () =>
+    Effect.gen(function* () {
+      const f = yield* fixture();
+      const issuer = createNativeAppToolClaimIssuer({
+        threadId: "thread-1",
+        hostId: "local",
+        generation: 1,
+        capture: () => Effect.succeed(true),
+      });
+      const settledIds: string[][] = [];
+      const handle = yield* f.open(undefined, {
+        onTurnAdmitted: (input) =>
+          Effect.sync(() => {
+            expect(
+              issuer.beginTurn({
+                threadId: "thread-1",
+                turnId: input.clientUserMessageId,
+                rootThreadId: "thread-1",
+                libraryId: "library",
+                storeEpoch: "epoch",
+                frozenAtMs: 1,
+                readOnly: false,
+                source: "project_turn",
+                scope: "project",
+                actorProjectId: "project",
+              }),
+            ).toBe(true);
+          }),
+        onTurnSettled: (input) =>
+          Effect.sync(() => {
+            settledIds.push([...input.clientUserMessageIds]);
+            for (const turnId of input.clientUserMessageIds) issuer.endTurn(turnId);
+          }),
+      });
+      const running = yield* Effect.forkChild(handle.prompt("first", { clientUserMessageId: id }));
+      yield* Queue.take(f.sent);
+      yield* handle.steer!("follow up", { clientUserMessageId: nextId });
+      yield* Queue.take(f.sent);
+      expect(issuer.claim()?.turnId).toBe(id);
+      yield* Queue.offer(
+        f.events,
+        nativeMessage(handle.sessionId!, {
+          ...result(handle.sessionId!),
+          user_message_uuid: nextId,
+          queued_turn_count: 0,
+        }),
+      );
+      yield* Fiber.join(running);
+      expect(settledIds).toEqual([[id, nextId]]);
+      expect(issuer.claim()).toBeNull();
+      const freshId = createUuidV7();
+      const fresh = yield* Effect.forkChild(
+        handle.prompt("next", { clientUserMessageId: freshId }),
+      );
+      yield* Queue.take(f.sent);
+      expect(issuer.claim()?.turnId).toBe(freshId);
+      yield* Queue.offer(
+        f.events,
+        nativeMessage(handle.sessionId!, {
+          ...result(handle.sessionId!),
+          user_message_uuid: freshId,
+        }),
+      );
+      yield* Fiber.join(fresh);
+      expect(issuer.claim()).toBeNull();
+    }).pipe(Effect.scoped),
+);
+
+it.effect(
   "steered input settles only when consumed and queued continuation acquires a new turn",
   () =>
     Effect.gen(function* () {
@@ -2025,6 +2245,13 @@ it.effect(
       expect(admitted).toEqual([id, nextId]);
       expect(settled).toEqual([[id]]);
       expect((yield* SubscriptionRef.get(handle.snapshot)).status).toBe("running");
+      const continued = yield* SubscriptionRef.get(handle.snapshot);
+      expect(
+        continued.turns[0]?.updates.some(
+          (update) => update.kind === "message" && update.role === "user",
+        ),
+      ).toBe(false);
+      expect(continued.turns.at(-1)?.promptText).toBe("follow up");
       yield* Queue.offer(
         f.events,
         nativeMessage(handle.sessionId!, {
@@ -2107,11 +2334,74 @@ it.effect(
     }).pipe(Effect.scoped),
 );
 
+it.effect(
+  "discovery shares worktree launch configuration and refreshes when its environment changes",
+  () =>
+    Effect.gen(function* () {
+      const f = yield* fixture();
+      yield* f.settings.update({
+        type: "update-claude-agents",
+        input: {
+          instances: [
+            {
+              ...defaultClaudeInstance(),
+              configDirectory: "~/native-profile",
+              environment: [
+                { name: "ANTHROPIC_BASE_URL", value: "https://profile.example", sensitive: false },
+              ],
+            },
+          ],
+        },
+      });
+      const location = {
+        workspaceRoot: f.root,
+        workspaceEnvironment: {
+          version: 1 as const,
+          set: {
+            WORKTREE_SETUP: "initial",
+            ANTHROPIC_BASE_URL: "https://workspace.example",
+            HOME: "/workspace-account",
+            CLAUDE_CONFIG_DIR: "/workspace-config",
+          },
+          exclude: ["PATH", "HOME"],
+        },
+      };
+      yield* f.open(id, location);
+      const sessionInput = f.sdkInput();
+      yield* f.manager.discover("claude-default", location);
+      const discoveryInput = f.sdkInput();
+      expect(discoveryInput.environment).toEqual(sessionInput.environment);
+      expect(discoveryInput.environment).toEqual({
+        WORKTREE_SETUP: "initial",
+        ANTHROPIC_BASE_URL: "https://profile.example",
+        HOME: f.root,
+      });
+      expect(discoveryInput.cwd).toBe(sessionInput.cwd);
+      expect(
+        claudeEnvironment(discoveryInput.environment, discoveryInput.instance).CLAUDE_CONFIG_DIR,
+      ).toBe(join(f.root, "native-profile"));
+      expect(discoveryInput).toMatchObject({ purpose: "discovery", persistSession: false });
+      expect(f.openedInputs).toHaveLength(2);
+      yield* f.manager.discover("claude-default", location);
+      expect(f.openedInputs).toHaveLength(2);
+      yield* f.manager.discover("claude-default", {
+        ...location,
+        workspaceEnvironment: {
+          ...location.workspaceEnvironment,
+          set: { ...location.workspaceEnvironment.set, WORKTREE_SETUP: "updated" },
+        },
+      });
+      expect(f.sdkInput().environment.WORKTREE_SETUP).toBe("updated");
+      expect(f.openedInputs).toHaveLength(3);
+      expect(yield* Queue.size(f.sent)).toBe(0);
+    }).pipe(Effect.scoped),
+);
+
 it.effect("cached discovery is isolated and settings changes invalidate its account catalog", () =>
   Effect.gen(function* () {
     const f = yield* fixture();
-    yield* f.manager.discover("claude-default", "/workspace");
-    yield* f.manager.discover("claude-default", "/workspace");
+    yield* f.manager.discover("claude-default", { workspaceRoot: "/workspace" });
+    yield* f.manager.discover("claude-default", { workspaceRoot: "/workspace" });
     expect(f.openedInputs).toHaveLength(1);
     expect(f.sdkInput().purpose).toBe("discovery");
     expect(f.released()).toBe(1);
@@ -2128,7 +2418,7 @@ it.effect("cached discovery is isolated and settings changes invalidate its acco
         ],
       },
     });
-    yield* f.manager.discover("claude-default", "/workspace");
+    yield* f.manager.discover("claude-default", { workspaceRoot: "/workspace" });
     expect(f.openedInputs).toHaveLength(2);
     expect(f.sdkInput().environment.ANTHROPIC_BASE_URL).toBe("https://other.example");
   }).pipe(Effect.scoped),
@@ -2137,17 +2427,21 @@ it.effect("cached discovery is isolated and settings changes invalidate its acco
 it.effect("explicit discovery reload bypasses a fresh cache and replaces its catalog", () =>
   Effect.gen(function* () {
     const f = yield* fixture();
-    yield* f.manager.discover("claude-default", "/workspace");
-    yield* f.manager.discover("claude-default", "/workspace");
+    yield* f.manager.discover("claude-default", { workspaceRoot: "/workspace" });
+    yield* f.manager.discover("claude-default", { workspaceRoot: "/workspace" });
     expect(f.openedInputs).toHaveLength(1);
     f.setModels([
       { value: "claude-opus-5", displayName: "Opus 5", description: "Updated catalog" },
     ]);
-    const updated = yield* f.manager.discover("claude-default", "/workspace", true);
+    const updated = yield* f.manager.discover(
+      "claude-default",
+      { workspaceRoot: "/workspace" },
+      true,
+    );
     expect(updated.models.map((model) => model.value)).toEqual(["claude-opus-5"]);
     expect(f.openedInputs).toHaveLength(2);
     expect(f.released()).toBe(2);
-    const cached = yield* f.manager.discover("claude-default", "/workspace");
+    const cached = yield* f.manager.discover("claude-default", { workspaceRoot: "/workspace" });
     expect(cached.models).toEqual(updated.models);
     expect(f.openedInputs).toHaveLength(2);
     expect(yield* Queue.size(f.sent)).toBe(0);

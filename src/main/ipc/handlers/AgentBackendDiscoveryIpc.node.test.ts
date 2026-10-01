@@ -27,7 +27,10 @@ vi.mock("../../agent-backend/AgentBackendApplication", async () => {
 });
 type Handler = (event: IpcMainInvokeEvent, input: unknown) => Effect.Effect<unknown, object>;
 const requestId = "01991e60-b800-7000-8000-000000000012";
-const input = { instanceConfigId: "claude-default", projectId: "project", requestId };
+const input = {
+  scope: { kind: "project", instanceConfigId: "claude-default", projectId: "project" },
+  requestId,
+};
 const makeEvent = (id: number) => {
   const mainFrame = { url: "http://localhost:5173/index.html" };
   let destroyed = false;

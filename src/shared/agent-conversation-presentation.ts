@@ -184,6 +184,17 @@ function projectUpdate(
         kind,
         semanticKind: kind,
         markdownText: update.text,
+        userAttachments: update.promptImages?.map((image) => ({
+          type: "image" as const,
+          id: `${update.key}:image:${image.index}`,
+          source: buildAgentHistoryImageSource({
+            sessionId,
+            nativeMessageId: image.nativeMessageId,
+            index: image.index,
+          }),
+          sourceKind: "remote-pointer" as const,
+          caption: image.mediaType,
+        })),
         role: update.role === "user" ? "user" : "assistant",
         status: running && update.role !== "user" ? "inProgress" : "completed",
       },
@@ -514,31 +525,32 @@ export function projectAgentConversation(
             ? Date.parse(turn.completedAt)
             : summary.updatedAt,
       };
-      const items: CodexConversationItem[] = turn.promptText
-        ? [
-            {
-              ...base,
-              itemId: `${turnId}:user`,
-              type: "userMessage",
-              kind: "userMessage",
-              semanticKind: "userMessage",
-              role: "user",
-              markdownText: turn.promptText,
-              userAttachments: turn.promptImages?.map((image) => ({
-                type: "image" as const,
-                id: `${turnId}:image:${image.index}`,
-                source: buildAgentHistoryImageSource({
-                  sessionId: snapshot.sessionId,
-                  nativeMessageId: image.nativeMessageId,
-                  index: image.index,
-                }),
-                sourceKind: "remote-pointer" as const,
-                caption: image.mediaType,
-              })),
-              status: "completed",
-            },
-          ]
-        : [];
+      const items: CodexConversationItem[] =
+        turn.promptText || turn.promptImages?.length
+          ? [
+              {
+                ...base,
+                itemId: `${turnId}:user`,
+                type: "userMessage",
+                kind: "userMessage",
+                semanticKind: "userMessage",
+                role: "user",
+                markdownText: turn.promptText ?? "",
+                userAttachments: turn.promptImages?.map((image) => ({
+                  type: "image" as const,
+                  id: `${turnId}:image:${image.index}`,
+                  source: buildAgentHistoryImageSource({
+                    sessionId: snapshot.sessionId,
+                    nativeMessageId: image.nativeMessageId,
+                    index: image.index,
+                  }),
+                  sourceKind: "remote-pointer" as const,
+                  caption: image.mediaType,
+                })),
+                status: "completed",
+              },
+            ]
+          : [];
       items.push(
         ...turn.updates
           .filter(

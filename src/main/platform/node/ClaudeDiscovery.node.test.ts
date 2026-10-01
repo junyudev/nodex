@@ -1,4 +1,4 @@
-import { mkdtemp, mkdir, writeFile, chmod, rm } from "node:fs/promises";
+import { mkdtemp, mkdir, writeFile, chmod, realpath, rm, symlink } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { it } from "@effect/vitest";
@@ -59,6 +59,66 @@ it.effect("skill paths follow native user precedence and init commands decide in
     });
   }).pipe(Effect.scoped),
 );
+
+for (const gitMarker of ["directory", "file"] as const)
+  it.effect(
+    `nested skills inherit through the repository root with a .git ${gitMarker} boundary`,
+    () =>
+      Effect.gen(function* () {
+        const createdRoot = yield* Effect.acquireRelease(
+          Effect.promise(() => mkdtemp(join(tmpdir(), "nodex-claude-nested-skills-"))),
+          (root) => Effect.promise(() => rm(root, { recursive: true, force: true })),
+        );
+        const root = yield* Effect.promise(() => realpath(createdRoot));
+        const repository = join(root, "repository");
+        const parent = join(repository, "packages");
+        const cwd = join(parent, "app");
+        const alias = join(root, "linked-workspace");
+        yield* Effect.promise(() => mkdir(cwd, { recursive: true }));
+        yield* Effect.promise(() => symlink(cwd, alias, "dir"));
+        if (gitMarker === "directory") yield* Effect.promise(() => mkdir(join(repository, ".git")));
+        else
+          yield* Effect.promise(() =>
+            writeFile(join(repository, ".git"), `gitdir: ${join(root, "external-git")}\n`),
+          );
+        for (const [directory, name, description] of [
+          [root, "outside", "Outside repository"],
+          [repository, "ancestor", "Repository skill"],
+          [repository, "same", "Root duplicate"],
+          [repository, "unadvertised", "Unavailable command"],
+          [parent, "middle", "Parent skill"],
+          [cwd, "same", "Nested duplicate"],
+        ] as const) {
+          const skillDirectory = join(directory, ".claude", "skills", name);
+          yield* Effect.promise(() => mkdir(skillDirectory, { recursive: true }));
+          yield* Effect.promise(() =>
+            writeFile(
+              join(skillDirectory, "SKILL.md"),
+              `---\ndescription: ${description}\n---\nbody`,
+            ),
+          );
+        }
+        const skills = yield* discoverClaudeSkills(
+          { HOME: join(root, "account") },
+          gitMarker === "file" ? alias : cwd,
+          [{ name: "ancestor" }, { name: "middle" }, { name: "same" }, { name: "outside" }],
+        );
+        expect(skills.find(({ name }) => name === "ancestor")).toMatchObject({
+          path: join(repository, ".claude", "skills", "ancestor", "SKILL.md"),
+          userInvocable: true,
+        });
+        expect(skills.find(({ name }) => name === "middle")).toMatchObject({
+          path: join(parent, ".claude", "skills", "middle", "SKILL.md"),
+          userInvocable: true,
+        });
+        expect(skills.find(({ name }) => name === "same")).toMatchObject({
+          description: "Nested duplicate",
+          path: join(cwd, ".claude", "skills", "same", "SKILL.md"),
+        });
+        expect(skills.find(({ name }) => name === "unadvertised")?.userInvocable).toBe(false);
+        expect(skills.find(({ name }) => name === "outside")).toBeUndefined();
+      }).pipe(Effect.scoped),
+  );
 
 test("catalog identity reacts to secret and workspace changes without publishing a secret", () => {
   const instance = defaultClaudeInstance();

@@ -2,7 +2,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import type { AgentSessionConfigSelectOption } from "../../../shared/agent-conversation";
 import { agentBackendRuntime } from "../../lib/agent-backend-runtime";
 import { resolveRendererTransport } from "../../lib/renderer-transport";
-import type { ClaudeDiscovery } from "../../../shared/claude-models";
+import type { ClaudeDiscovery, ClaudeDiscoveryScope } from "../../../shared/claude-models";
 
 const defaultOptions: readonly AgentSessionConfigSelectOption[] = [];
 const freshnessMs = 60_000;
@@ -10,14 +10,23 @@ const failureDelaysMs = [1_000, 4_000, 15_000] as const;
 const subscribeSettings = (listener: () => void) =>
   resolveRendererTransport().subscribeClaudeAgentSettingsChanges(listener);
 
-/** Discovery follows the draft's Project and Claude instance; late replies cannot cross scopes. */
+/** Main resolves attached execution locations; late replies cannot cross scopes or handoffs. */
 export function useClaudeModelCatalog(
-  instanceConfigId: string | null,
-  projectId: string | null,
-  read = agentBackendRuntime.claudeDiscovery,
-  subscribe = subscribeSettings,
+  scope: ClaudeDiscoveryScope | null,
+  {
+    read = agentBackendRuntime.claudeDiscovery,
+    subscribe = subscribeSettings,
+    observedExecutionLocation = null,
+  }: {
+    readonly read?: typeof agentBackendRuntime.claudeDiscovery;
+    readonly subscribe?: typeof subscribeSettings;
+    readonly observedExecutionLocation?: string | null;
+  } = {},
 ) {
-  const key = JSON.stringify([instanceConfigId, projectId]);
+  const threadId = scope?.kind === "thread" ? scope.threadId : null;
+  const instanceConfigId = scope?.kind === "project" ? scope.instanceConfigId : null;
+  const projectId = scope?.kind === "project" ? scope.projectId : null;
+  const key = JSON.stringify([threadId, instanceConfigId, projectId, observedExecutionLocation]);
   const [catalog, setCatalog] = useState<{
     key: string;
     options: readonly AgentSessionConfigSelectOption[];
@@ -35,7 +44,12 @@ export function useClaudeModelCatalog(
   }, [key]);
   useEffect(() => subscribe(() => setRevision((current) => current + 1)), [subscribe]);
   useEffect(() => {
-    if (!instanceConfigId) return;
+    const requestScope: ClaudeDiscoveryScope | null = threadId
+      ? { kind: "thread", threadId }
+      : instanceConfigId
+        ? { kind: "project", instanceConfigId, projectId }
+        : null;
+    if (!requestScope) return;
     let disposed = false;
     let controller: AbortController | null = null;
     let timer: ReturnType<typeof setTimeout> | null = null;
@@ -57,7 +71,7 @@ export function useClaudeModelCatalog(
       controller = request;
       try {
         const discovery = await read(
-          { instanceConfigId, projectId, ...(force ? { forceReload: true } : {}) },
+          { scope: requestScope, ...(force ? { forceReload: true } : {}) },
           request.signal,
         );
         if (disposed || controller !== request) return;
@@ -95,9 +109,9 @@ export function useClaudeModelCatalog(
       window.removeEventListener("focus", refreshWhenDue);
       document.removeEventListener("visibilitychange", refreshWhenDue);
     };
-  }, [instanceConfigId, projectId, key, read, revision]);
+  }, [threadId, instanceConfigId, projectId, key, read, revision]);
   return {
     ...(catalog?.key === key ? catalog : { options: defaultOptions, error: null, discovery: null }),
-    refresh: instanceConfigId ? refreshCatalog : undefined,
+    refresh: scope ? refreshCatalog : undefined,
   };
 }

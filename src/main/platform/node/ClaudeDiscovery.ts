@@ -1,8 +1,8 @@
 // @effect-diagnostics asyncFunction:off
 import { createHash } from "node:crypto";
 import { execFile } from "node:child_process";
-import { readdir, readFile, stat } from "node:fs/promises";
-import { join, resolve } from "node:path";
+import { readdir, readFile, realpath, stat } from "node:fs/promises";
+import { dirname, join, resolve } from "node:path";
 import { load } from "js-yaml";
 import { claudeNativeHome } from "./ClaudeExecutable";
 import * as Effect from "effect/Effect";
@@ -51,6 +51,20 @@ export const parseClaudeSkillFrontmatter = (
     return null;
   }
 };
+/** Native startup searches nearest parents through the repository/worktree boundary. */
+const projectSkillDirectories = async (cwd: string): Promise<readonly string[]> => {
+  const directories: string[] = [];
+  let current = await realpath(cwd).catch(() => resolve(cwd));
+  for (let depth = 0; depth < 128; depth++) {
+    directories.push(join(current, ".claude", "skills"));
+    const git = await stat(join(current, ".git")).catch(() => null);
+    if (git?.isDirectory() || git?.isFile()) break;
+    const parent = dirname(current);
+    if (parent === current) break;
+    current = parent;
+  }
+  return directories;
+};
 /** Native init commands decide invocation availability; filesystem scans contribute paths and labels. */
 export const discoverClaudeSkills = (
   environment: Readonly<Record<string, string | undefined>>,
@@ -65,7 +79,7 @@ export const discoverClaudeSkills = (
     const advertised = new Set(commands.map(({ name }) => name.replace(/^\//u, "")));
     for (const directory of [
       ...(root ? [join(root, "skills")] : []),
-      join(cwd, ".claude", "skills"),
+      ...(await projectSkillDirectories(cwd)),
     ]) {
       const entries = await readdir(directory).catch(() => []);
       for (const entry of entries.toSorted((a, b) => a.localeCompare(b))) {
