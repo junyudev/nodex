@@ -1,0 +1,126 @@
+src/renderer/features/local-conversation/use-claude-model-catalog.test.tsx
+  s_42d4908e8724c1::t_2e31bdf31953b0 58-59,153
+  s_42d4908e8724c1::t_29b756bd236caa 39-43,68-73,87-95,99-103,143-148,172-176,203-208,219-224,242-245,270-273,319-322
+  s_42d4908e8724c1::t_f7883c7af4c5d6 83-86,96-98,104-125
+  s_42d4908e8724c1::t_3f9091620fb354 126-127
+src/main/agent-backend/AgentBackendApplication.native.node.test.ts
+  s_42d4908e8724c1::t_c85e67c0dc2e54 676,726-728,762
+  s_42d4908e8724c1::t_29b756bd236caa 88-89,311-336,677-725,729-761
+  s_42d4908e8724c1::t_11de747dd6b56e 310
+  s_42d4908e8724c1::t_dbae1e525f1b00 14,90,643-646
+  s_42d4908e8724c1::t_8281c0b3c2e85e 763
+src/shared/agent-conversation-presentation.ts
+  s_42d4908e8724c1::t_f313de6c993a9f 187-197
+  s_42d4908e8724c1::t_62e1c4bd5fc3dc 528-553
+src/main/agent-backend/claude/ClaudeSessionManager.node.test.ts
+  s_42d4908e8724c1::t_fa8d31fdec37c9 42,1984-2001,2003-2026,2028-2036,2040-2048,2052-2058,2063-2065,2180,2196,2201-2202,2248,2254,2398
+  s_42d4908e8724c1::t_b10b02733aed72 2403-2404,2421,2430-2431,2444
+  s_42d4908e8724c1::t_3d73f6526bc650 2115-2120
+  s_42d4908e8724c1::t_ed9c26c15652c4 2066-2110,2122-2132
+  s_42d4908e8724c1::t_0db86b13a1ec3f 2027,2337-2396,2436-2440
+  s_42d4908e8724c1::t_62e1c4bd5fc3dc 2037-2039,2049-2051,2059-2062,2133-2179,2181-2195,2197-2200,2249-2253,2397
+  s_42d4908e8724c1::t_1d9876d0c6579c 2111-2114,2121
+  s_42d4908e8724c1::t_30047f2f868a2d 2002
+  s_42d4908e8724c1::t_83f9e58f863373 2399
+src/main/ipc/handlers/AgentBackendIpc.ts
+  s_42d4908e8724c1::t_45bd6a8112e937 55-57,61-66
+  s_42d4908e8724c1::t_29b756bd236caa 58-60
+  s_42d4908e8724c1::t_35cdf6d4d517a8 343
+src/main/ipc/handlers/AgentBackendDiscoveryIpc.node.test.ts
+  s_42d4908e8724c1::t_29b756bd236caa 30-33
+src/main/ipc/handlers/AgentBackendIpc.node.test.ts
+  s_42d4908e8724c1::t_f7883c7af4c5d6 124-134,143
+  s_42d4908e8724c1::t_29b756bd236caa 135-137
+  s_42d4908e8724c1::t_2e31bdf31953b0 16,49,56,117-118
+src/main/agent-backend/claude/ClaudeConversationProjection.ts
+  s_42d4908e8724c1::t_f313de6c993a9f 169,175-179,181-186,188,241,782,784-786
+  s_42d4908e8724c1::t_c2dce080c18db6 205,218-220,232-234,238
+  s_42d4908e8724c1::t_114e8c56dc93c6 199-204,221-231,235-237
+  s_42d4908e8724c1::t_dbef4a9f1bf1ee 787-792,805
+  s_42d4908e8724c1::t_56e62bd87c8e03 170-174,180,189-198,206-214,216-217,239-240
+  s_42d4908e8724c1::t_714c06e71db990 187,215,772-781,783
+src/shared/claude-models.ts
+  s_42d4908e8724c1::t_45bd6a8112e937 142-156
+src/shared/agent-conversation-presentation.node.test.ts
+  s_42d4908e8724c1::t_01f27c695a4934 610-619,630,633-637,645-647
+  s_42d4908e8724c1::t_9b774092a96b33 578-609
+  s_42d4908e8724c1::t_62e1c4bd5fc3dc 620-629,631-632,638-644
+src/renderer/components/workbench/workbench-automation-intelligence.test.tsx
+  s_42d4908e8724c1::t_29b756bd236caa 83-87
+src/shared/ipc-api.ts
+  s_42d4908e8724c1::t_45bd6a8112e937 32,1314
+src/renderer/components/workbench/workbench-session-thread-route.tsx
+  s_42d4908e8724c1::t_d8e269df934c91 767,773
+src/main/agent-backend/AgentBackendApplication.ts
+  s_42d4908e8724c1::t_0db86b13a1ec3f 2360-2364
+  s_42d4908e8724c1::t_29b756bd236caa 2341-2344
+  s_42d4908e8724c1::t_11de747dd6b56e 2323-2326,2329,2338
+  s_42d4908e8724c1::t_35cdf6d4d517a8 69,136,2317-2322,2327-2328,2330-2337,2339-2340,2345-2347,2349,2359
+src/renderer/components/workbench/workbench-automation-intelligence.tsx
+  s_42d4908e8724c1::t_35cdf6d4d517a8 63-65
+src/main/agent-backend/claude/ClaudeConversationProjection.node.test.ts
+  s_42d4908e8724c1::t_01f27c695a4934 14-15,49-66,74,140
+  s_42d4908e8724c1::t_62e1c4bd5fc3dc 67-73
+  s_42d4908e8724c1::t_96b6ca2db40233 77-83,97-105
+  s_42d4908e8724c1::t_30047f2f868a2d 75-76,106-139
+  s_42d4908e8724c1::t_114e8c56dc93c6 84-96
+  s_42d4908e8724c1::t_02e2301228064c 141
+src/renderer/lib/agent-backend-runtime.node.test.ts
+  s_42d4908e8724c1::t_2e31bdf31953b0 49,61,73
+src/main/agent-backend/claude/ClaudeSessionManager.ts
+  s_42d4908e8724c1::t_f313de6c993a9f 88,409,627,940,1298,1448-1454
+  s_42d4908e8724c1::t_56e62bd87c8e03 87
+  s_42d4908e8724c1::t_d84aca75953fdb 251-256
+  s_42d4908e8724c1::t_6ab22a30c84e6b 894
+  s_42d4908e8724c1::t_62e1c4bd5fc3dc 952-963
+  s_42d4908e8724c1::t_3d73f6526bc650 905-928
+  s_42d4908e8724c1::t_11de747dd6b56e 182,258-285,303,1853,1857,1923
+  s_42d4908e8724c1::t_49cac6bf96f699 408
+  s_42d4908e8724c1::t_0db86b13a1ec3f 100-103,304-306,308-312,1847-1851
+  s_42d4908e8724c1::t_714c06e71db990 891-893,904,929-930
+docs/product-specs/agent-backend-behavior.md
+  s_42d4908e8724c1::t_dbae1e525f1b00 87-90,93,97-98
+  s_42d4908e8724c1::t_4854a61b4222a4 84-85
+  s_42d4908e8724c1::t_d84aca75953fdb 197-201
+src/main/platform/node/ClaudeDiscovery.ts
+  s_42d4908e8724c1::t_4854a61b4222a4 4-5,54-67,82
+src/renderer/features/local-conversation/use-claude-model-catalog.ts
+  s_42d4908e8724c1::t_dbae1e525f1b00 16-24
+  s_42d4908e8724c1::t_f7883c7af4c5d6 47,49-52
+  s_42d4908e8724c1::t_35cdf6d4d517a8 5,13,15,26-29,48,74,112,115
+src/shared/agent-conversation.ts
+  s_42d4908e8724c1::t_f313de6c993a9f 135
+src/main/platform/node/ClaudeDiscovery.node.test.ts
+  s_42d4908e8724c1::t_0b43c1a0f64065 76,78
+  s_42d4908e8724c1::t_4854a61b4222a4 1
+  s_42d4908e8724c1::t_67ab098e239a07 101-105
+  s_42d4908e8724c1::t_f3d601f2e02d0f 63,121-122
+  s_42d4908e8724c1::t_9bf0f1dd295b44 64-75,77,79-100,106-120
+src/renderer/lib/agent-backend-runtime.ts
+  s_42d4908e8724c1::t_45bd6a8112e937 16,153
+src/renderer/components/workbench/workbench-shell.native-conversation.test.tsx
+  s_42d4908e8724c1::t_2e31bdf31953b0 51,70
+  s_42d4908e8724c1::t_bb2d938c3ac2df 41-44
+  s_42d4908e8724c1::t_0011d8d70f40ff 1-40,45-50,52-69,71-75
+src/renderer/features/local-conversation/agent-conversation-adapter.ts
+  s_42d4908e8724c1::t_d710f3762a583b 260,262,265
+  s_42d4908e8724c1::t_29b756bd236caa 261,263-264
+  s_42d4908e8724c1::t_dbae1e525f1b00 266
+  s_42d4908e8724c1::t_1d2a7fb193a09b 255,257-259
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "352af5a438d352b49c7714604b6d0b995ade78f4",
+  "prompts": {},
+  "sessions": {
+    "s_42d4908e8724c1": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a0f7ce-30b7-7042-a099-99c4199381ae",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    }
+  }
+}
