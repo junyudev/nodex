@@ -99,7 +99,8 @@ retention, owner-transfer, and handoff contracts live in
 Turn preparation treats workspace selection as one owner-time transition. A selected native
 Environment supplies its own cwd and runtime workspace roots and suppresses any pending workspace
 transition for that Turn. Without an Environment, a pending Project workspace takes precedence
-over the caller cwd, and its accepted revision commits the pending workspace as the new applied
+over the Chat's committed cwd, which takes precedence over a delayed caller's cwd. Only an unbound
+Chat uses its requested initial cwd. The accepted pending revision commits that workspace as the new applied
 workspace after native Turn acceptance. The writable-root update uses replacement semantics for
 that transition so roots from the previous applied workspace do not leak into the new workspace.
 Legacy Threads without durable workspace state may merge newly observed durable roots instead.

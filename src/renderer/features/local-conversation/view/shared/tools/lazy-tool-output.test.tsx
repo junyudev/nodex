@@ -46,8 +46,10 @@ test("reports the lazy display cap and retries failed owner reads without adding
   await act(async () => {
     fireEvent.click(view.getByRole("button", { name: "Show full output" }));
   });
+  const retry = await view.findByRole("button", { name: "Retry output" });
   await act(async () => {
-    fireEvent.click(await view.findByRole("button", { name: "Retry output" }));
+    fireEvent.click(retry);
+    await Promise.resolve();
   });
   await view.findByText("Bounded output");
   expect(read).toHaveBeenCalledTimes(2);

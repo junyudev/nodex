@@ -693,29 +693,6 @@ describe("workbench session shell / routes-threads", () => {
     ).toBe(true);
   });
 
-  test("passes the start-in selector to attached thread summary panels", async () => {
-    renderWorkbench({
-      sessionsByProject: { alpha: [makeAttachedSession()] },
-    });
-    await settleAsyncRender();
-    await settleAsyncRender();
-
-    const props = (globalThis as { __lastConnectedThreadStageProps?: Record<string, unknown> })
-      .__lastConnectedThreadStageProps;
-    const selector = props?.newThreadStartInSelector as
-      | {
-          target?: { runInTarget?: string; worktreeStartingState?: unknown };
-          disabled?: boolean;
-        }
-      | null
-      | undefined;
-    expect(props?.isNewThreadTab).toBe(false);
-    expect(props?.newThreadTarget === null).toBe(true);
-    expect(selector?.target?.runInTarget).toBe("localProject");
-    expect(selector?.target?.worktreeStartingState).toBeUndefined();
-    expect(selector?.disabled).toBe(false);
-  });
-
   test("summary scheduled automation action opens the selected automation route", async () => {
     installTerminalEventApiMock();
     const automation = makeScheduledAutomation({

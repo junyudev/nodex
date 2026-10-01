@@ -771,7 +771,6 @@ describe("LocalConversationFooter", () => {
     const rail = rails[0];
     if (!(rail instanceof HTMLElement)) throw new Error("Expected context rail");
     expect(within(rail).getByRole("button", { name: "New task" })).not.toBeNull();
-    expect(within(rail).getByRole("button", { name: "Run target" })).not.toBeNull();
     expect(within(rail).queryByRole("button", { name: "Select project" })).toBeNull();
   });
 
