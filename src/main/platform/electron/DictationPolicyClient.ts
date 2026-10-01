@@ -203,10 +203,7 @@ export const makeDictationPolicyClient = Effect.fn("DictationPolicyClient.make")
     )(dictionary);
     return {
       composer: gate("4100906017"),
-      global: gate("1244621283"),
       workspacePermissions: gate("770071981"),
-      streaming: gate("codex-app-dictation-streaming"),
-      sounds: gate("codex-app-dictation-sounds"),
       voiceDictionary:
         parsed._tag === "Some" && parsed.value.dictation_custom_dictionary_enabled === true,
     };

@@ -21,6 +21,7 @@ import { CodexConnection } from "../codex-application/CodexConnection";
 import { CodexRendererPresentationRegistry } from "../codex-application/CodexRendererPresentationRegistry";
 import { CodexUserInputAutoResolution } from "../codex-application/CodexUserInputAutoResolution";
 import { CodexMedia, live as codexMediaLive } from "../codex-application/CodexMedia";
+import { live as dictationNetworkLive } from "../platform/electron/DictationNetwork";
 import {
   DictationDictionary,
   live as dictationDictionaryLive,
@@ -243,7 +244,10 @@ const applicationWindows = Layer.unwrap(
 const dictation = dictationRuntimeLive({
   preloadPath: resolveBundledElectronPreload(__dirname, "global-dictation.js"),
 }).pipe(Layer.provideMerge(Layer.mergeAll(privacy, rendererClients, applicationWindows)));
-const codexMedia = codexMediaLive.pipe(Layer.provideMerge(dictation));
+const codexMedia = codexMediaLive.pipe(
+  Layer.provide(dictationNetworkLive),
+  Layer.provideMerge(dictation),
+);
 const dictationDictionary = dictationDictionaryLive.pipe(Layer.provideMerge(codexMedia));
 
 const applicationMenu = Layer.unwrap(

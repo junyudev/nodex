@@ -26,6 +26,7 @@ const RELEASE_KEYS: Readonly<Record<string, readonly number[]>> = {
   cmdorctrl: [17],
   command: [91, 92],
   cmd: [91, 92],
+  super: [91, 92],
   control: [17],
   ctrl: [17],
   alt: [18],
@@ -33,7 +34,43 @@ const RELEASE_KEYS: Readonly<Record<string, readonly number[]>> = {
   shift: [16],
 };
 
-/** Windows watches modifier release after Electron recognizes the complete shortcut. */
+// Win32 virtual-key codes for the finite ordinary keys admitted by global shortcuts.
+const ORDINARY_RELEASE_KEYS: Readonly<Record<string, number>> = {
+  backspace: 0x08,
+  tab: 0x09,
+  enter: 0x0d,
+  escape: 0x1b,
+  space: 0x20,
+  pageup: 0x21,
+  pagedown: 0x22,
+  end: 0x23,
+  home: 0x24,
+  left: 0x25,
+  up: 0x26,
+  right: 0x27,
+  down: 0x28,
+  delete: 0x2e,
+  ";": 0xba,
+  "=": 0xbb,
+  ",": 0xbc,
+  "-": 0xbd,
+  ".": 0xbe,
+  "/": 0xbf,
+  "`": 0xc0,
+  "[": 0xdb,
+  "\\": 0xdc,
+  "]": 0xdd,
+  "'": 0xde,
+};
+
+const ordinaryReleaseKey = (key: string): number | null => {
+  if (/^[A-Z0-9]$/.test(key)) return key.charCodeAt(0);
+  const functionKey = /^F([1-9]|1\d|20)$/.exec(key);
+  if (functionKey) return 0x6f + Number(functionKey[1]);
+  return ORDINARY_RELEASE_KEYS[key.toLowerCase()] ?? null;
+};
+
+/** Windows ends the chord on ordinary-key or required-modifier release. */
 export function compileWindowsDictationHotkey(input: {
   readonly accelerator: string;
   readonly bindingId: string;
@@ -52,13 +89,15 @@ export function compileWindowsDictationHotkey(input: {
       type: "rejected",
       reason: { kind: "unsupported-key", message: "This shortcut key is not supported." },
     };
-  const reason = validateGlobalDictationShortcutRejection(accelerator, "windows");
+  const reason = validateGlobalDictationShortcutRejection(input.accelerator, "windows");
   if (reason) return { type: "rejected", reason };
   const releaseKeyGroups = parts.flatMap((part) => {
     const group = RELEASE_KEYS[part];
     return group ? [group] : [];
   });
-  if (!releaseKeyGroups.length)
+  const ordinaryKey = accelerator.split("+").find((part) => !RELEASE_KEYS[part.toLowerCase()]);
+  const ordinaryKeyCode = ordinaryKey ? ordinaryReleaseKey(ordinaryKey) : null;
+  if (!releaseKeyGroups.length || ordinaryKeyCode === null)
     return {
       type: "rejected",
       reason: {
@@ -68,7 +107,12 @@ export function compileWindowsDictationHotkey(input: {
     };
   return {
     type: "compiled",
-    spec: { bindingId: input.bindingId, mode: input.mode, accelerator, releaseKeyGroups },
+    spec: {
+      bindingId: input.bindingId,
+      mode: input.mode,
+      accelerator,
+      releaseKeyGroups: [...releaseKeyGroups, [ordinaryKeyCode]],
+    },
   };
 }
 

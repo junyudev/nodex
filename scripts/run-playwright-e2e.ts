@@ -72,6 +72,7 @@ const runCommand = (
 const runPlaywrightE2e = (arguments_: readonly string[]): void => {
   const invocation = resolvePlaywrightE2eInvocation(arguments_);
   runCommand("vp", ["run", "core:binaries:build:dev"]);
+  if (process.platform === "darwin") runCommand("vp", ["run", "dictation-helper:build:dev"]);
   runCommand("vp", ["run", "build"]);
   runCommand(
     "pnpm",

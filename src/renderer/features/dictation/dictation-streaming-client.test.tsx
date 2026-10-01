@@ -5,7 +5,13 @@ class Socket extends EventTarget {
   static instances: Socket[] = [];
   readyState = 0;
   protocol = "chatgpt-dictation";
-  sent: Array<{ type: string; audio?: string; config?: { transcript_delivery_mode: string } }> = [];
+  sent: Array<{
+    type: string;
+    audio?: string;
+    dictation_session_id?: string;
+    attempt_id?: string;
+    config?: { transcript_delivery_mode: string };
+  }> = [];
   constructor() {
     super();
     Socket.instances.push(this);
@@ -81,14 +87,13 @@ const transcript = (
 const flush = async () => {
   for (let index = 0; index < 15; index++) await Promise.resolve();
 };
-const createAttempt = async () => {
+const createAttempt = async (surface: "composer" | "global" = "composer") => {
   const onTranscript = vi.fn();
   const { createBrowserDictationStreamingPort } = await import("./dictation-streaming-client");
-  const port = createBrowserDictationStreamingPort(async () => ({
-    websocketUrl: "wss://example.test/dictation",
-    protocols: [],
-  }));
-  const attempt = await port.prepare("session", { onTranscript });
+  const port = createBrowserDictationStreamingPort(surface, async () => () => new Socket());
+  const attempt = await port.prepare("session", {
+    onTranscript: surface === "composer" ? onTranscript : undefined,
+  });
   await flush();
   const socket = Socket.instances[0]!;
   const processor = Processor.instances[0]!;
@@ -122,7 +127,6 @@ beforeEach(() => {
   Processor.instances = [];
   vi.stubGlobal("AudioContext", Context);
   vi.stubGlobal("AudioWorkletNode", Processor);
-  vi.stubGlobal("WebSocket", Socket);
 });
 afterEach(() => {
   vi.unstubAllGlobals();
@@ -245,10 +249,10 @@ it.each([false, true])(
   "uses transcript evidence when classifying low-energy audio (has text: %s)",
   async (hasText) => {
     const { createBrowserDictationStreamingPort } = await import("./dictation-streaming-client");
-    const attempt = await createBrowserDictationStreamingPort(async () => ({
-      websocketUrl: "wss://example.test/dictation",
-      protocols: [],
-    })).prepare("silent");
+    const attempt = await createBrowserDictationStreamingPort(
+      "composer",
+      async () => () => new Socket(),
+    ).prepare("silent");
     await flush();
     const starting = attempt.start({} as MediaStream);
     await flush();
@@ -333,10 +337,10 @@ it("retains a transport failure when capture is subsequently cancelled", async (
 
 it("reports audio readiness before the WebSocket starts and waits for both before resolving start", async () => {
   const { createBrowserDictationStreamingPort } = await import("./dictation-streaming-client");
-  const attempt = await createBrowserDictationStreamingPort(async () => ({
-    websocketUrl: "wss://example.test/dictation",
-    protocols: [],
-  })).prepare("ready");
+  const attempt = await createBrowserDictationStreamingPort(
+    "composer",
+    async () => () => new Socket(),
+  ).prepare("ready");
   await flush();
   const onReady = vi.fn();
   let started = false;
@@ -359,10 +363,10 @@ it("reports audio readiness before the WebSocket starts and waits for both befor
 
 it("suppresses the audio-ready callback when capture stops before the first frame settles", async () => {
   const { createBrowserDictationStreamingPort } = await import("./dictation-streaming-client");
-  const attempt = await createBrowserDictationStreamingPort(async () => ({
-    websocketUrl: "wss://example.test/dictation",
-    protocols: [],
-  })).prepare("stopping");
+  const attempt = await createBrowserDictationStreamingPort(
+    "composer",
+    async () => () => new Socket(),
+  ).prepare("stopping");
   await flush();
   const onReady = vi.fn();
   const starting = attempt.start({} as MediaStream, undefined, onReady);
@@ -381,10 +385,10 @@ it.each([true, false])(
   "retains early PCM while waiting for global confirmation (%s)",
   async (allowed) => {
     const { createBrowserDictationStreamingPort } = await import("./dictation-streaming-client");
-    const attempt = await createBrowserDictationStreamingPort(async () => ({
-      websocketUrl: "wss://example.test/dictation",
-      protocols: [],
-    })).prepare("confirmation");
+    const attempt = await createBrowserDictationStreamingPort(
+      "composer",
+      async () => () => new Socket(),
+    ).prepare("confirmation");
     let confirm!: (value: boolean) => void;
     const confirmed = new Promise<boolean>((resolve) => {
       confirm = resolve;
@@ -404,5 +408,42 @@ it.each([true, false])(
     expect(frames).toHaveLength(allowed ? 1 : 0);
     if (allowed) expect(atob(frames[0]!.audio!)).toHaveLength(4);
     attempt.abort();
+  },
+);
+
+it("keeps one Composer session identity with a distinct attempt identity for each segment", async () => {
+  const f = await createAttempt();
+  const second = await split(f);
+  expect(f.socket.sent[0]?.dictation_session_id).toBe("session");
+  expect(second.socket.sent[0]?.dictation_session_id).toBe("session");
+  expect(f.socket.sent[0]?.attempt_id).toEqual(expect.any(String));
+  expect(second.socket.sent[0]?.attempt_id).not.toBe(f.socket.sent[0]?.attempt_id);
+  f.attempt.abort();
+});
+
+it.each(["global", "composer"] as const)(
+  "uses the %s session options and finalization deadline",
+  async (surface) => {
+    const f = await createAttempt(surface);
+    if (surface === "global") {
+      expect(f.socket.sent[0]?.dictation_session_id).toBeUndefined();
+      expect(f.socket.sent[0]?.attempt_id).toBeUndefined();
+      expect(f.socket.sent[0]?.config?.transcript_delivery_mode).toBe("final_only");
+    }
+    vi.useFakeTimers();
+    let settled = false;
+    const finishing = f.attempt.finish().then((text) => {
+      settled = true;
+      return text;
+    });
+    await vi.advanceTimersByTimeAsync(8_000);
+    expect(settled).toBe(surface === "global");
+    if (surface === "global") await expect(finishing).resolves.toBeNull();
+    else {
+      f.socket.receive(transcript("transcript.final", "recognized"));
+      f.socket.receive(session("closed"));
+      await expect(finishing).resolves.toBe("recognized");
+    }
+    f.attempt.abort();
   },
 );

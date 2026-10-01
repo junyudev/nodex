@@ -74,7 +74,7 @@ export function buildTopLevelRendererCsp(input: {
     "img-src 'self' app: blob: data: https:",
     "media-src 'self' app: blob: data:",
     "worker-src 'self' blob:",
-    `connect-src 'self' ${APP_FILESYSTEM_ORIGIN} blob: wss://chatgpt.com wss://ws.chatgpt.com wss://ws.chatgpt-staging.com https://*.ingest.sentry.io https://*.ingest.us.sentry.io ${STATSIG_CONNECT_ORIGINS.join(" ")} ${developmentConnections.join(" ")}`.trim(),
+    `connect-src 'self' ${APP_FILESYSTEM_ORIGIN} blob: https://*.ingest.sentry.io https://*.ingest.us.sentry.io ${STATSIG_CONNECT_ORIGINS.join(" ")} ${developmentConnections.join(" ")}`.trim(),
     "frame-src 'self' blob: nodex-mcp-sandbox: https: http:",
     "child-src 'self' blob: nodex-mcp-sandbox: https: http:",
   ];

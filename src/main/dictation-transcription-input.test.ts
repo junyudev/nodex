@@ -40,4 +40,16 @@ describe("validateDictationTranscriptionInput", () => {
       ),
     ).toThrow("oversized");
   });
+
+  test("admits retained audio after multipart and Base64 expansion", () => {
+    // A 48 MiB recording already expands to 64 MiB before adding multipart headers.
+    const base64Payload = "A".repeat(64 * 1024 * 1024 + 1024);
+    expect(
+      validateDictationTranscriptionInput({
+        contentType: "multipart/form-data; boundary=nodex-test",
+        base64Payload,
+        requestId: "00000000-0000-4000-8000-000000000000",
+      }).base64Payload,
+    ).toBe(base64Payload);
+  });
 });

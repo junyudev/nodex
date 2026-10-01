@@ -52,9 +52,12 @@ const response = () =>
         user: { userID: "user-a", customIDs: { account_id: "account-a" } },
         feature_gates: {
           "4100906017": { value: true },
-          "1244621283": { value: true },
-          "codex-app-dictation-streaming": { value: true },
-          "codex-app-dictation-sounds": { value: true },
+          "1244621283": { value: false },
+          "codex-app-dictation-streaming": { value: false },
+          "codex-app-dictation-sounds": { value: false },
+        },
+        dynamic_configs: {
+          "3845962714": { value: { dictation_custom_dictionary_enabled: true } },
         },
       }),
     }),
@@ -117,6 +120,7 @@ const make = Effect.fn("DictationPolicyTest.make")(function* (
       isCurrent: () => Effect.succeed(true),
     }),
     Effect.provideService(ChatGptDesktop, {
+      prepareRequest: () => Effect.die("unused"),
       request,
       authStatus: () => Effect.succeed(currentAuth),
       authMethod: Effect.succeed("chatgpt"),
@@ -143,6 +147,7 @@ it.effect(
       assert.deepEqual(yield* policy.read, EMPTY_DICTATION_POLICY);
       assert.strictEqual(count, 0);
       assert.isTrue((yield* policy.refresh).streaming);
+      assert.isTrue((yield* policy.read).global);
       assert.isTrue((yield* policy.read).sounds);
       assert.strictEqual(count, 1);
       assert.isFalse((yield* policy.refresh).streaming);
@@ -194,36 +199,39 @@ it.effect("coalesces refreshes and discards completion after account invalidatio
   }).pipe(Effect.scoped),
 );
 
-it.effect("admits streaming through SDK fallback without a remote streaming value", () =>
-  Effect.gen(function* () {
-    let bootstrapCalls = 0;
-    let sdkCalls = 0;
-    const { policy } = yield* make(
-      (input) =>
-        Effect.sync(() => {
-          if (input.path === "/wham/statsig/bootstrap") bootstrapCalls += 1;
-          return new Response(null, { status: 403 });
-        }),
-      true,
-      () =>
-        Effect.sync(() => {
-          sdkCalls += 1;
-          return new Response(
-            '{"has_updates":true,"time":1,"feature_gates":{"4100906017":{"value":true},"codex-app-dictation-sounds":{"value":true}},"dynamic_configs":{},"layer_configs":{}}',
-          );
-        }),
-    );
-    const flags = yield* policy.refresh;
-    assert.isTrue(flags.composer);
-    assert.isTrue(flags.sounds);
-    assert.isTrue(flags.streaming);
-    assert.strictEqual(bootstrapCalls, 1);
-    assert.strictEqual(sdkCalls, 1);
-  }).pipe(Effect.scoped),
+it.effect(
+  "admits desktop capture and bundled sounds through fallback without secondary rollouts",
+  () =>
+    Effect.gen(function* () {
+      let bootstrapCalls = 0;
+      let sdkCalls = 0;
+      const { policy } = yield* make(
+        (input) =>
+          Effect.sync(() => {
+            if (input.path === "/wham/statsig/bootstrap") bootstrapCalls += 1;
+            return new Response(null, { status: 403 });
+          }),
+        true,
+        () =>
+          Effect.sync(() => {
+            sdkCalls += 1;
+            return new Response(
+              '{"has_updates":true,"time":1,"feature_gates":{"4100906017":{"value":true}},"dynamic_configs":{},"layer_configs":{}}',
+            );
+          }),
+      );
+      const flags = yield* policy.refresh;
+      assert.isTrue(flags.composer);
+      assert.isTrue(flags.global);
+      assert.isTrue(flags.sounds);
+      assert.isTrue(flags.streaming);
+      assert.strictEqual(bootstrapCalls, 1);
+      assert.strictEqual(sdkCalls, 1);
+    }).pipe(Effect.scoped),
 );
 
 it.effect(
-  "keeps streaming admitted while publishing other live changes without a new bootstrap",
+  "keeps local capture and sounds admitted while account dictionary changes independently",
   () =>
     Effect.gen(function* () {
       let bootstrapCalls = 0;
@@ -241,17 +249,20 @@ it.effect(
         () =>
           Effect.succeed(
             new Response(
-              '{"response_mode":"live_overlay","time":2,"live_entity_names":{"feature_gates":["codex-app-dictation-streaming","codex-app-dictation-sounds"]},"feature_gates":{"codex-app-dictation-streaming":{"value":false},"codex-app-dictation-sounds":{"value":false}}}',
+              '{"response_mode":"live_overlay","time":2,"live_entity_names":{"feature_gates":["1244621283","codex-app-dictation-streaming","codex-app-dictation-sounds"],"dynamic_configs":["3845962714"]},"feature_gates":{"1244621283":{"value":false},"codex-app-dictation-streaming":{"value":false},"codex-app-dictation-sounds":{"value":false}},"dynamic_configs":{"3845962714":{"value":{"dictation_custom_dictionary_enabled":false}}}}',
             ),
           ),
       );
       assert.isTrue((yield* policy.refresh).streaming);
+      assert.isTrue((yield* policy.read).voiceDictionary);
       yield* TestClock.adjust("1 second");
       yield* policy.changes.pipe(
-        Stream.filter((value) => value.composer && !value.sounds),
+        Stream.filter((value) => value.composer && !value.voiceDictionary),
         Stream.runHead,
       );
       assert.isTrue((yield* policy.read).streaming);
+      assert.isTrue((yield* policy.read).global);
+      assert.isTrue((yield* policy.read).sounds);
       assert.strictEqual(bootstrapCalls, 1);
     }).pipe(Effect.scoped),
 );

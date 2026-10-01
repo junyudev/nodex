@@ -1,13 +1,17 @@
 import type { BrowserWindow } from "electron";
 import { EventEmitter } from "node:events";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   compileMacNativeHotkey,
   createCommandKeymapState,
   createKeyboardLayoutSnapshot,
   type MacNativeHotkeySpec,
 } from "../../shared/command-keybindings";
-import type { GlobalDictationPasteFailure } from "../../shared/global-dictation";
+import type {
+  GlobalDictationPasteFailure,
+  GlobalDictationRendererCommand,
+} from "../../shared/global-dictation";
+import { deliverGlobalDictation } from "../../renderer/features/dictation/global-dictation-delivery";
 import { GlobalDictationManager } from "./global-dictation-manager";
 import type { GlobalDictationWindowTerminalReason } from "./global-dictation-window-controller";
 import {
@@ -55,6 +59,12 @@ const createFixture = (
     setEscapeEnabled: vi.fn(async (_enabled: boolean) => undefined),
   };
   const commands: unknown[] = [];
+  const commandListeners = new Set<(command: GlobalDictationRendererCommand) => void>();
+  const sendCommand = (command: GlobalDictationRendererCommand): boolean => {
+    commands.push(command);
+    for (const listener of commandListeners) listener(command);
+    return true;
+  };
   const overlayWindow = { webContents: { id: 99 } } as BrowserWindow;
   const windowController = {
     ensureWindow: vi.fn(() => overlayWindow),
@@ -63,18 +73,11 @@ const createFixture = (
     hide: vi.fn(),
     markRendererReady: vi.fn((id: number) => id === 99),
     prewarm: vi.fn(),
-    send: vi.fn((command: unknown) => {
-      commands.push(command);
-      return true;
-    }),
-    showAndStart: vi.fn(async (command: unknown) => {
-      commands.push(command);
-      return true;
-    }),
-    showPasteFailure: vi.fn(async (command: unknown) => {
-      commands.push(command);
-      return true;
-    }),
+    send: vi.fn(sendCommand),
+    showAndStart: vi.fn(async (command: GlobalDictationRendererCommand) => sendCommand(command)),
+    showPasteFailure: vi.fn(async (command: GlobalDictationRendererCommand) =>
+      sendCommand(command),
+    ),
     setInteractive: vi.fn(),
     showRecovery: vi.fn(),
     subscribeTerminal: vi.fn(
@@ -112,7 +115,6 @@ const createFixture = (
   const manager = new GlobalDictationManager({
     helper,
     compileHotkey: compileMacNativeHotkey,
-    isBareHotkey: (binding) => binding.keyCode === null,
     windowController,
     pasteService: { paste, copy, captureClipboardFingerprint },
     openAccessibilitySettings,
@@ -127,6 +129,10 @@ const createFixture = (
   fixtures.push(manager);
   return {
     commands,
+    onCommand: (listener: (command: GlobalDictationRendererCommand) => void) => {
+      commandListeners.add(listener);
+      return () => commandListeners.delete(listener);
+    },
     emit: (event: MacDictationHelperEvent) => helperListener?.(event),
     emitWindowTerminal: (
       webContentsId: number,
@@ -172,11 +178,34 @@ const doubleTap = (
   target = { pid: 7, bundleIdentifier: "example.app" },
 ): void => {
   for (const [index, type] of (["pressed", "released", "pressed", "released"] as const).entries()) {
-    fixture.emit(hotkeyEvent(type, "global-dictation-toggle", "toggle", index + 1, target));
+    fixture.emit(hotkeyEvent(type, "global-dictation-hold", "hold", index + 1, target));
   }
 };
 
+const startHold = async (
+  fixture: ReturnType<typeof createFixture>,
+  target = { pid: 7, bundleIdentifier: "example.app" },
+): Promise<void> => {
+  fixture.emit(hotkeyEvent("pressed", "global-dictation-hold", "hold", 1, target));
+  await vi.advanceTimersByTimeAsync(250);
+};
+
+const deliverOverlay = (fixture: ReturnType<typeof createFixture>, sessionId: string) => {
+  const delivery = deliverGlobalDictation({
+    sessionId,
+    transcript: "hello",
+    signal: new AbortController().signal,
+    sendEvent: async (event) => fixture.manager.handleRendererEvent(99, event),
+    onCommand: fixture.onCommand,
+  });
+  // Cancellation tests observe the result after the manager has processed native events.
+  void delivery.catch(() => undefined);
+  return delivery;
+};
+
 describe("GlobalDictationManager", () => {
+  beforeEach(() => vi.useFakeTimers());
+
   afterEach(() => {
     for (const manager of fixtures.splice(0)) manager.dispose();
     vi.useRealTimers();
@@ -309,7 +338,7 @@ describe("GlobalDictationManager", () => {
   it("keeps a recording active when an unrelated command shortcut changes", async () => {
     const fixture = createFixture();
     await activate(fixture);
-    fixture.emit(hotkeyEvent("pressed", "global-dictation-hold", "hold", 1));
+    await startHold(fixture);
     const active = fixture.manager.getSnapshot();
     fixture.helper.replaceBindings.mockClear();
     await fixture.manager.syncCommandKeymap(
@@ -393,7 +422,7 @@ describe("GlobalDictationManager", () => {
       ]),
     });
 
-    fixture.emit(hotkeyEvent("pressed", "global-dictation-hold", "hold", 1));
+    await startHold(fixture);
     const snapshot = fixture.manager.getSnapshot();
     if (snapshot.kind !== "overlay-starting") throw new Error("Expected overlay session");
     fixture.manager.handleRendererEvent(99, { type: "ready" });
@@ -524,7 +553,7 @@ describe("GlobalDictationManager", () => {
       ),
     ).resolves.toMatchObject({ kind: "conflict" });
     expect(fixture.manager.isAvailable()).toBe(true);
-    fixture.emit(hotkeyEvent("pressed", "global-dictation-hold", "hold", 1));
+    await startHold(fixture);
     expect(fixture.manager.getSnapshot().kind).toBe("overlay-starting");
   });
 
@@ -616,7 +645,7 @@ describe("GlobalDictationManager", () => {
   it("cancels an active hold session before adopting a new binding generation", async () => {
     const fixture = createFixture();
     await activate(fixture);
-    fixture.emit(hotkeyEvent("pressed", "global-dictation-hold", "hold", 1));
+    await startHold(fixture);
     const active = fixture.manager.getSnapshot();
     if (active.kind !== "overlay-starting") throw new Error("Expected active overlay");
 
@@ -647,7 +676,7 @@ describe("GlobalDictationManager", () => {
   it("recovers the desired complete set after a helper crash", async () => {
     const fixture = createFixture();
     await activate(fixture);
-    fixture.emit(hotkeyEvent("pressed", "global-dictation-hold", "hold", 1));
+    await startHold(fixture);
     const active = fixture.manager.getSnapshot();
     if (active.kind !== "overlay-starting") throw new Error("Expected active overlay");
     fixture.emit({
@@ -725,77 +754,80 @@ describe("GlobalDictationManager", () => {
     expect(fixture.windowController.hide).toHaveBeenCalled();
   });
 
-  it("requires two short toggle taps within 400ms and ignores a repeated press", async () => {
-    vi.useFakeTimers();
+  it("starts hands-free on the second primary press at the 400ms boundary", async () => {
     const fixture = createFixture();
     await activate(fixture);
-    fixture.emit(hotkeyEvent("pressed", "global-dictation-toggle", "toggle", 1));
-    fixture.emit(hotkeyEvent("pressed", "global-dictation-toggle", "toggle", 2));
-    fixture.emit(hotkeyEvent("released", "global-dictation-toggle", "toggle", 3));
-    expect(fixture.manager.getSnapshot().kind).toBe("idle");
-    await vi.advanceTimersByTimeAsync(401);
-    fixture.emit(hotkeyEvent("pressed", "global-dictation-toggle", "toggle", 4));
-    fixture.emit(hotkeyEvent("released", "global-dictation-toggle", "toggle", 5));
+    fixture.emit(hotkeyEvent("pressed", "global-dictation-hold", "hold", 1));
+    await vi.advanceTimersByTimeAsync(249);
+    fixture.emit(hotkeyEvent("released", "global-dictation-hold", "hold", 2));
     expect(fixture.manager.getSnapshot().kind).toBe("idle");
     await vi.advanceTimersByTimeAsync(400);
-    fixture.emit(hotkeyEvent("pressed", "global-dictation-toggle", "toggle", 6));
-    fixture.emit(hotkeyEvent("released", "global-dictation-toggle", "toggle", 7));
+    fixture.emit(hotkeyEvent("pressed", "global-dictation-hold", "hold", 3));
     expect(fixture.manager.getSnapshot().kind).toBe("overlay-starting");
+    expect(fixture.windowController.showAndStart).toHaveBeenCalledExactlyOnceWith(
+      expect.objectContaining({ gesture: "toggle" }),
+    );
+    fixture.emit(hotkeyEvent("pressed", "global-dictation-hold", "hold", 4));
+    await vi.advanceTimersByTimeAsync(500);
+    fixture.emit(hotkeyEvent("released", "global-dictation-hold", "hold", 5));
+    expect(fixture.windowController.showAndStart).toHaveBeenCalledOnce();
+    expect(fixture.commands).not.toContainEqual(expect.objectContaining({ type: "stop" }));
   });
 
-  it("does not count a 250ms toggle press as a tap", async () => {
-    vi.useFakeTimers();
+  it("expires a first primary tap after 400ms and waits for a hold", async () => {
     const fixture = createFixture();
     await activate(fixture);
-    fixture.emit(hotkeyEvent("pressed", "global-dictation-toggle", "toggle", 1));
-    await vi.advanceTimersByTimeAsync(250);
-    fixture.emit(hotkeyEvent("released", "global-dictation-toggle", "toggle", 2));
-    fixture.emit(hotkeyEvent("pressed", "global-dictation-toggle", "toggle", 3));
-    fixture.emit(hotkeyEvent("released", "global-dictation-toggle", "toggle", 4));
-    expect(fixture.manager.getSnapshot().kind).toBe("idle");
-  });
-
-  it("uses one shared binding for a delayed hold or double tap", async () => {
-    vi.useFakeTimers();
-    const fixture = createFixture();
-    await fixture.manager.initialize(
-      createCommandKeymapState(
-        { globalDictationHold: ["Fn"], globalDictationToggle: ["Fn"] },
-        "macOS",
-      ),
-    );
-    await fixture.manager.setEnabled(true);
-    expect(fixture.helper.replaceBindings).toHaveBeenLastCalledWith({
-      generation: 1,
-      bindings: [expect.objectContaining({ mode: "hold" })],
-    });
     fixture.emit(hotkeyEvent("pressed", "global-dictation-hold", "hold", 1));
-    const activatedAt = Date.now();
+    fixture.emit(hotkeyEvent("released", "global-dictation-hold", "hold", 2));
+    await vi.advanceTimersByTimeAsync(401);
+    fixture.emit(hotkeyEvent("pressed", "global-dictation-hold", "hold", 3));
     await vi.advanceTimersByTimeAsync(249);
     expect(fixture.manager.getSnapshot().kind).toBe("idle");
     await vi.advanceTimersByTimeAsync(1);
-    expect(fixture.windowController.showAndStart).toHaveBeenCalledWith(
-      expect.objectContaining({ gesture: "hold", activationStartedAtMs: activatedAt }),
-    );
-    fixture.emit({ type: "escape", processGeneration: 1, sequence: 100 });
-    fixture.emit(hotkeyEvent("released", "global-dictation-hold", "hold", 2));
-    for (const [index, type] of (["pressed", "released", "pressed", "released"] as const).entries())
-      fixture.emit(hotkeyEvent(type, "global-dictation-hold", "hold", index + 3));
-    expect(fixture.windowController.showAndStart).toHaveBeenLastCalledWith(
-      expect.objectContaining({ gesture: "toggle" }),
+    expect(fixture.windowController.showAndStart).toHaveBeenCalledExactlyOnceWith(
+      expect.objectContaining({ gesture: "hold" }),
     );
   });
 
-  it("cancels pending activation on Escape and on modifier chord cancellation", async () => {
-    vi.useFakeTimers();
+  it("does not count a 250ms press as a short tap when the hold timer is delayed", async () => {
+    const fixture = createFixture();
+    await activate(fixture);
+    fixture.emit(hotkeyEvent("pressed", "global-dictation-hold", "hold", 1));
+    vi.setSystemTime(Date.now() + 250);
+    fixture.emit(hotkeyEvent("released", "global-dictation-hold", "hold", 2));
+    fixture.emit(hotkeyEvent("pressed", "global-dictation-hold", "hold", 3));
+    expect(fixture.windowController.showAndStart).not.toHaveBeenCalled();
+    await vi.advanceTimersByTimeAsync(250);
+    expect(fixture.windowController.showAndStart).toHaveBeenCalledExactlyOnceWith(
+      expect.objectContaining({ gesture: "hold" }),
+    );
+  });
+
+  it.each(["Fn", "Ctrl+Space"])("delays %s holds for 250ms and ignores autorepeat", async (key) => {
     const fixture = createFixture();
     await fixture.manager.initialize(
-      createCommandKeymapState(
-        { globalDictationHold: ["Fn"], globalDictationToggle: ["Fn"] },
-        "macOS",
-      ),
+      createCommandKeymapState({ globalDictationHold: [key] }, "macOS"),
     );
     await fixture.manager.setEnabled(true);
+    fixture.emit(hotkeyEvent("pressed", "global-dictation-hold", "hold", 1));
+    const activatedAt = Date.now();
+    await vi.advanceTimersByTimeAsync(200);
+    fixture.emit(hotkeyEvent("pressed", "global-dictation-hold", "hold", 2));
+    await vi.advanceTimersByTimeAsync(49);
+    expect(fixture.manager.getSnapshot().kind).toBe("idle");
+    await vi.advanceTimersByTimeAsync(1);
+    expect(fixture.windowController.showAndStart).toHaveBeenCalledExactlyOnceWith(
+      expect.objectContaining({ gesture: "hold", activationStartedAtMs: activatedAt }),
+    );
+    fixture.emit(hotkeyEvent("released", "global-dictation-hold", "hold", 3));
+    expect(
+      fixture.commands.filter((command) => (command as { type: string }).type === "stop"),
+    ).toHaveLength(1);
+  });
+
+  it("cancels pending activation on Escape and on modifier chord cancellation", async () => {
+    const fixture = createFixture();
+    await activate(fixture);
     fixture.emit(hotkeyEvent("pressed", "global-dictation-hold", "hold", 1));
     expect(fixture.helper.setEscapeEnabled).toHaveBeenLastCalledWith(true);
     fixture.emit({ type: "escape", processGeneration: 1, sequence: 100 });
@@ -812,21 +844,208 @@ describe("GlobalDictationManager", () => {
     expect(fixture.helper.setEscapeEnabled).toHaveBeenLastCalledWith(false);
   });
 
-  it("ignores hold release during toggle recording and toggle presses during hold recording", async () => {
+  it("cancels a second primary press if its native chord is cancelled", async () => {
     const fixture = createFixture();
     await activate(fixture);
-    doubleTap(fixture);
-    await Promise.resolve();
-    fixture.commands.length = 0;
+    fixture.emit(hotkeyEvent("pressed", "global-dictation-hold", "hold", 1));
+    fixture.emit(hotkeyEvent("released", "global-dictation-hold", "hold", 2));
+    fixture.emit(hotkeyEvent("pressed", "global-dictation-hold", "hold", 3));
+    const active = fixture.manager.getSnapshot();
+    if (active.kind !== "overlay-starting") throw new Error("Expected hands-free session");
+    fixture.emit({
+      ...hotkeyEvent("pressed", "global-dictation-hold", "hold", 4),
+      type: "cancelled",
+    });
+    expect(fixture.manager.getSnapshot().kind).toBe("idle");
+    expect(fixture.commands).toContainEqual({ type: "cancel", sessionId: active.sessionId });
     fixture.emit(hotkeyEvent("pressed", "global-dictation-hold", "hold", 5));
-    fixture.emit(hotkeyEvent("released", "global-dictation-hold", "hold", 6));
-    expect(fixture.commands).toEqual([]);
-    fixture.emit({ type: "escape", processGeneration: 1, sequence: 100 });
-    fixture.emit(hotkeyEvent("pressed", "global-dictation-hold", "hold", 7));
-    await Promise.resolve();
-    fixture.commands.length = 0;
-    doubleTap(fixture);
-    expect(fixture.commands).toEqual([]);
+    expect(fixture.windowController.showAndStart).toHaveBeenCalledOnce();
+  });
+
+  it("starts single-tap dictation on press and stops on the next press regardless of duration", async () => {
+    const fixture = createFixture();
+    await activate(fixture);
+    fixture.emit(hotkeyEvent("pressed", "global-dictation-toggle", "toggle", 1));
+    expect(fixture.windowController.showAndStart).toHaveBeenCalledExactlyOnceWith(
+      expect.objectContaining({ gesture: "toggle" }),
+    );
+    await vi.advanceTimersByTimeAsync(500);
+    fixture.emit(hotkeyEvent("pressed", "global-dictation-toggle", "toggle", 2));
+    fixture.emit(hotkeyEvent("released", "global-dictation-toggle", "toggle", 3));
+    expect(fixture.commands).not.toContainEqual(expect.objectContaining({ type: "stop" }));
+    fixture.emit(hotkeyEvent("pressed", "global-dictation-toggle", "toggle", 4));
+    fixture.emit(hotkeyEvent("pressed", "global-dictation-toggle", "toggle", 5));
+    fixture.emit(hotkeyEvent("released", "global-dictation-toggle", "toggle", 6));
+    expect(
+      fixture.commands.filter((command) => (command as { type: string }).type === "stop"),
+    ).toHaveLength(1);
+    expect(fixture.windowController.showAndStart).toHaveBeenCalledOnce();
+  });
+
+  it("cancels a single-tap session when its starting native chord is cancelled", async () => {
+    const fixture = createFixture();
+    await activate(fixture);
+    fixture.emit(hotkeyEvent("pressed", "global-dictation-toggle", "toggle", 1));
+    const active = fixture.manager.getSnapshot();
+    if (active.kind !== "overlay-starting") throw new Error("Expected single-tap session");
+    fixture.emit({
+      ...hotkeyEvent("pressed", "global-dictation-toggle", "toggle", 2),
+      type: "cancelled",
+    });
+    expect(fixture.manager.getSnapshot().kind).toBe("idle");
+    expect(fixture.commands).toContainEqual({ type: "cancel", sessionId: active.sessionId });
+    fixture.emit(hotkeyEvent("pressed", "global-dictation-toggle", "toggle", 3));
+    expect(fixture.windowController.showAndStart).toHaveBeenCalledTimes(2);
+  });
+
+  it.each(["hold", "toggle"] as const)(
+    "preserves stopped hands-free transcription when the stopping %s chord is cancelled",
+    async (mode) => {
+      const fixture = createFixture();
+      await activate(fixture);
+      doubleTap(fixture);
+      await Promise.resolve();
+      const active = fixture.manager.getSnapshot();
+      if (active.kind !== "overlay-starting") throw new Error("Expected hands-free session");
+      const bindingId = mode === "hold" ? "global-dictation-hold" : "global-dictation-toggle";
+      fixture.emit(hotkeyEvent("pressed", bindingId, mode, 5));
+      fixture.emit({ ...hotkeyEvent("pressed", bindingId, mode, 6), type: "cancelled" });
+      expect(fixture.commands).toContainEqual({ type: "stop", sessionId: active.sessionId });
+      expect(fixture.commands).not.toContainEqual({ type: "cancel", sessionId: active.sessionId });
+      expect(fixture.manager.getSnapshot()).toEqual(active);
+    },
+  );
+
+  it.each(["hold", "toggle"] as const)(
+    "stops hands-free dictation once when %s is pressed",
+    async (mode) => {
+      const fixture = createFixture();
+      await activate(fixture);
+      doubleTap(fixture);
+      await Promise.resolve();
+      const bindingId = mode === "hold" ? "global-dictation-hold" : "global-dictation-toggle";
+      fixture.emit(hotkeyEvent("pressed", bindingId, mode, 5));
+      fixture.emit(hotkeyEvent("pressed", bindingId, mode, 6));
+      fixture.emit(hotkeyEvent("released", bindingId, mode, 7));
+      expect(
+        fixture.commands.filter((command) => (command as { type: string }).type === "stop"),
+      ).toHaveLength(1);
+      expect(fixture.windowController.showAndStart).toHaveBeenCalledOnce();
+    },
+  );
+
+  it("stops a hold session on a single-tap press without waiting for either release", async () => {
+    const fixture = createFixture();
+    await activate(fixture);
+    await startHold(fixture);
+    fixture.emit(hotkeyEvent("pressed", "global-dictation-toggle", "toggle", 2));
+    expect(
+      fixture.commands.filter((command) => (command as { type: string }).type === "stop"),
+    ).toHaveLength(1);
+    fixture.emit(hotkeyEvent("released", "global-dictation-hold", "hold", 3));
+    fixture.emit(hotkeyEvent("released", "global-dictation-toggle", "toggle", 4));
+    expect(
+      fixture.commands.filter((command) => (command as { type: string }).type === "stop"),
+    ).toHaveLength(1);
+  });
+
+  it("cancels a pending primary hold on a single-tap press", async () => {
+    const fixture = createFixture();
+    await activate(fixture);
+    fixture.emit(hotkeyEvent("pressed", "global-dictation-hold", "hold", 1));
+    fixture.emit(hotkeyEvent("pressed", "global-dictation-toggle", "toggle", 2));
+    fixture.emit(hotkeyEvent("released", "global-dictation-toggle", "toggle", 3));
+    fixture.emit(hotkeyEvent("released", "global-dictation-hold", "hold", 4));
+    await vi.advanceTimersByTimeAsync(250);
+    expect(fixture.windowController.showAndStart).not.toHaveBeenCalled();
+    fixture.emit(hotkeyEvent("pressed", "global-dictation-hold", "hold", 5));
+    expect(fixture.windowController.showAndStart).not.toHaveBeenCalled();
+    await vi.advanceTimersByTimeAsync(250);
+    expect(fixture.windowController.showAndStart).toHaveBeenCalledExactlyOnceWith(
+      expect.objectContaining({ gesture: "hold" }),
+    );
+  });
+
+  it("rejects duplicate persisted shortcuts before native registration or permission requests", async () => {
+    const fixture = createFixture();
+    const duplicate = createCommandKeymapState(
+      { globalDictationHold: ["Fn"], globalDictationToggle: ["Fn"] },
+      "macOS",
+    );
+    await expect(fixture.manager.syncCommandKeymap(duplicate)).resolves.toEqual({
+      kind: "conflict",
+      message: "Choose a different shortcut for single-tap dictation.",
+    });
+    await fixture.manager.initialize(duplicate);
+    await expect(fixture.manager.setEnabled(true)).rejects.toThrow(
+      "Choose a different shortcut for single-tap dictation.",
+    );
+    expect(fixture.helper.replaceBindings).not.toHaveBeenCalled();
+    expect(fixture.helper.requestInputMonitoring).not.toHaveBeenCalled();
+    expect(fixture.helper.requestAccessibility).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    { platform: "windows" as const, primary: "Ctrl+Alt+Space", single: "Alt+Ctrl+Space" },
+    { platform: "windows" as const, primary: "CmdOrCtrl+Space", single: "Control+Space" },
+    { platform: "macOS" as const, primary: "CmdOrCtrl+Space", single: "Command+Space" },
+  ])(
+    "rejects equivalent persisted $platform shortcuts ($primary / $single)",
+    async ({ platform, primary, single }) => {
+      const fixture = createFixture(null, {
+        platform: platform === "windows" ? "win32" : "darwin",
+      });
+      await expect(
+        fixture.manager.syncCommandKeymap(
+          createCommandKeymapState(
+            { globalDictationHold: [primary], globalDictationToggle: [single] },
+            platform,
+          ),
+        ),
+      ).resolves.toMatchObject({ kind: "conflict" });
+      expect(fixture.helper.replaceBindings).not.toHaveBeenCalled();
+      expect(fixture.helper.requestInputMonitoring).not.toHaveBeenCalled();
+      expect(fixture.helper.requestAccessibility).not.toHaveBeenCalled();
+    },
+  );
+
+  it("keeps distinct shortcuts active when a duplicate replacement is rejected", async () => {
+    const fixture = createFixture();
+    await activate(fixture);
+    fixture.helper.replaceBindings.mockClear();
+    await expect(
+      fixture.manager.syncCommandKeymap(
+        createCommandKeymapState(
+          { globalDictationHold: ["Fn"], globalDictationToggle: ["Fn"] },
+          "macOS",
+        ),
+      ),
+    ).resolves.toMatchObject({ kind: "conflict" });
+    expect(fixture.helper.replaceBindings).not.toHaveBeenCalled();
+    fixture.emit(hotkeyEvent("pressed", "global-dictation-toggle", "toggle", 1));
+    expect(fixture.windowController.showAndStart).toHaveBeenCalledExactlyOnceWith(
+      expect.objectContaining({ gesture: "toggle" }),
+    );
+  });
+
+  it("discards a first tap and a pending hold when native bindings are reconfigured", async () => {
+    const fixture = createFixture();
+    await activate(fixture);
+    fixture.emit(hotkeyEvent("pressed", "global-dictation-hold", "hold", 1));
+    fixture.emit(hotkeyEvent("released", "global-dictation-hold", "hold", 2));
+    await fixture.manager.syncCommandKeymap(
+      createCommandKeymapState({ globalDictationHold: ["Ctrl+Space"] }, "macOS"),
+    );
+    fixture.emit(hotkeyEvent("pressed", "global-dictation-hold", "hold", 3));
+    expect(fixture.windowController.showAndStart).not.toHaveBeenCalled();
+    fixture.emit({
+      ...hotkeyEvent("pressed", "global-dictation-hold", "hold", 4),
+      configurationGeneration: 2,
+    });
+    expect(fixture.windowController.showAndStart).not.toHaveBeenCalled();
+    await fixture.manager.setEnabled(false);
+    await vi.advanceTimersByTimeAsync(250);
+    expect(fixture.windowController.showAndStart).not.toHaveBeenCalled();
   });
 
   it("cancels a hold released while the overlay is still starting", async () => {
@@ -839,7 +1058,7 @@ describe("GlobalDictationManager", () => {
         }),
     );
     await activate(fixture);
-    fixture.emit(hotkeyEvent("pressed", "global-dictation-hold", "hold", 1));
+    await startHold(fixture);
     const snapshot = fixture.manager.getSnapshot();
     if (snapshot.kind !== "overlay-starting") throw new Error("Expected pending overlay");
     fixture.emit(hotkeyEvent("released", "global-dictation-hold", "hold", 2));
@@ -919,6 +1138,116 @@ describe("GlobalDictationManager", () => {
     expect(fixture.manager.getSnapshot()).toEqual(next);
     expect(fixture.windowController.showPasteFailure).not.toHaveBeenCalled();
   });
+
+  it("settles overlay delivery with the native paste receipt before finishing its session", async () => {
+    const fixture = createFixture();
+    let settle!: (value: { clipboardRestoreMs: number }) => void;
+    fixture.paste.mockImplementationOnce(
+      () =>
+        new Promise((resolve) => {
+          settle = resolve;
+        }),
+    );
+    await activate(fixture);
+    doubleTap(fixture);
+    const snapshot = fixture.manager.getSnapshot();
+    if (snapshot.kind !== "overlay-starting") throw new Error("Expected overlay session");
+    const delivery = deliverOverlay(fixture, snapshot.sessionId);
+    const delivered = vi.fn();
+    void delivery.then(delivered, () => undefined);
+
+    await vi.waitFor(() => expect(fixture.paste).toHaveBeenCalledOnce());
+    expect(fixture.manager.getSnapshot()).toEqual({
+      kind: "pasting",
+      sessionId: snapshot.sessionId,
+    });
+    expect(delivered).not.toHaveBeenCalled();
+    expect(fixture.commands).not.toContainEqual({ type: "finish", sessionId: snapshot.sessionId });
+    settle({ clipboardRestoreMs: 710 });
+
+    await expect(delivery).resolves.toEqual({ clipboardRestoreMs: 710 });
+    expect(fixture.commands.slice(-2)).toEqual([
+      { type: "paste-completed", sessionId: snapshot.sessionId, clipboardRestoreMs: 710 },
+      { type: "finish", sessionId: snapshot.sessionId },
+    ]);
+    expect(fixture.manager.getSnapshot().kind).toBe("idle");
+  });
+
+  it("reports native paste failure without cancelling the retained overlay recovery", async () => {
+    const fixture = createFixture();
+    const failure = { text: "hello ", copied: false, reason: "clipboard-changed" as const };
+    fixture.paste.mockResolvedValueOnce({ clipboardRestoreMs: 0, failure });
+    await activate(fixture);
+    doubleTap(fixture);
+    const snapshot = fixture.manager.getSnapshot();
+    if (snapshot.kind !== "overlay-starting") throw new Error("Expected overlay session");
+
+    await expect(deliverOverlay(fixture, snapshot.sessionId)).rejects.toThrow(
+      "Could not paste dictation",
+    );
+    await vi.waitFor(() => expect(fixture.manager.getSnapshot().kind).toBe("retryable-error"));
+    expect(fixture.commands).not.toContainEqual({ type: "finish", sessionId: snapshot.sessionId });
+    expect(
+      fixture.manager.handleRendererEvent(99, {
+        type: "copy-transcript",
+        sessionId: snapshot.sessionId,
+      }),
+    ).toBe(true);
+    await vi.waitFor(() => expect(fixture.copy).toHaveBeenCalledWith("hello "));
+    expect(
+      fixture.manager.handleRendererEvent(99, { type: "dismiss", sessionId: snapshot.sessionId }),
+    ).toBe(true);
+    expect(fixture.manager.getSnapshot().kind).toBe("idle");
+  });
+
+  it.each(["escape", "close", "renderer-loss", "replacement"] as const)(
+    "cancels pending overlay delivery on %s and fences late paste receipts",
+    async (cancellation) => {
+      const fixture = createFixture();
+      let settle!: (value: { clipboardRestoreMs: number }) => void;
+      fixture.paste.mockImplementationOnce(
+        () =>
+          new Promise((resolve) => {
+            settle = resolve;
+          }),
+      );
+      await activate(fixture);
+      doubleTap(fixture);
+      const snapshot = fixture.manager.getSnapshot();
+      if (snapshot.kind !== "overlay-starting") throw new Error("Expected overlay session");
+      const delivery = deliverOverlay(fixture, snapshot.sessionId);
+      await vi.waitFor(() => expect(fixture.paste).toHaveBeenCalledOnce());
+      const pasteSignal = fixture.paste.mock.calls[0]?.[2]?.signal;
+      expect(
+        fixture.manager.handleRendererEvent(55, { type: "close", sessionId: snapshot.sessionId }),
+      ).toBe(false);
+      expect(fixture.manager.handleRendererEvent(99, { type: "close", sessionId: "stale" })).toBe(
+        false,
+      );
+
+      if (cancellation === "escape")
+        fixture.emit({ type: "escape", processGeneration: 1, sequence: 100 });
+      if (cancellation === "close")
+        expect(
+          fixture.manager.handleRendererEvent(99, { type: "close", sessionId: snapshot.sessionId }),
+        ).toBe(true);
+      if (cancellation === "renderer-loss") fixture.emitWindowTerminal(99);
+      if (cancellation === "replacement") doubleTap(fixture);
+
+      await expect(delivery).rejects.toMatchObject({ name: "AbortError" });
+      expect(pasteSignal?.aborted).toBe(true);
+      const afterCancellation = fixture.manager.getSnapshot();
+      settle({ clipboardRestoreMs: 710 });
+      await Promise.resolve();
+      expect(fixture.manager.getSnapshot()).toEqual(afterCancellation);
+      expect(fixture.commands).not.toContainEqual({
+        type: "paste-completed",
+        sessionId: snapshot.sessionId,
+        clipboardRestoreMs: 710,
+      });
+      expect(fixture.windowController.showPasteFailure).not.toHaveBeenCalled();
+    },
+  );
 
   it("hides successful empty completions without attempting paste", async () => {
     const fixture = createFixture();
@@ -1010,6 +1339,7 @@ describe("GlobalDictationManager", () => {
     await activate(fixture);
     const event = hotkeyEvent("pressed", "global-dictation-hold", "hold", 1);
     fixture.emit({ ...event, target: undefined });
+    await vi.advanceTimersByTimeAsync(250);
     expect(fixture.manager.getSnapshot().kind).toBe("overlay-starting");
   });
 });

@@ -40,6 +40,13 @@ export type ChatGptDesktopError =
   | ChatGptDesktopAuthError
   | ChatGptBackendAuthError;
 
+/** Main-only request authority shared by HTTP and streaming transports. */
+export interface ChatGptDesktopPreparedRequest {
+  readonly url: string;
+  readonly headers: Headers;
+  readonly signal: AbortSignal;
+}
+
 export class ChatGptDesktop extends Context.Service<
   ChatGptDesktop,
   {
@@ -48,6 +55,9 @@ export class ChatGptDesktop extends Context.Service<
       refreshToken: boolean,
     ) => Effect.Effect<ClientRequestResponsesByMethod["getAuthStatus"], CodexRuntimeError>;
     readonly authMethod: Effect.Effect<string | null, CodexRuntimeError>;
+    readonly prepareRequest: (
+      input: ChatGptDesktopRequestInput,
+    ) => Effect.Effect<ChatGptDesktopPreparedRequest, ChatGptDesktopError>;
     readonly request: (
       input: ChatGptDesktopRequestInput,
     ) => Effect.Effect<Response, ChatGptDesktopError>;
@@ -155,11 +165,12 @@ export const live: Layer.Layer<
       );
     });
 
-    const perform = Effect.fn("ChatGptDesktop.perform")(function* (
+    const prepareRequest = Effect.fn("ChatGptDesktop.prepareRequest")(function* (
       input: ChatGptDesktopRequestInput,
-      auth: ChatGptBackendRequestAuth,
-      accountSignal: AbortSignal,
+      refreshToken: boolean,
     ) {
+      const auth = yield* readBackendAuth(input, refreshToken);
+      const accountSignal = AbortSignal.any([auth.signal, yield* guardAccount(input, auth)]);
       const prepared = prepareChatGptDesktopBody(input);
       const headers = buildChatGptDesktopHeaders(
         auth.token,
@@ -167,21 +178,39 @@ export const live: Layer.Layer<
         () => electron.appVersion,
       );
       headers.set("ChatGPT-Account-Id", auth.identity.accountId);
-      const url = routeChatGptBackendRequest(
-        resolveChatGptDesktopRequestUrl(input.baseUrl, input.path),
-        headers,
-        auth,
-      );
+      const url = yield* Effect.try({
+        try: () =>
+          routeChatGptBackendRequest(
+            resolveChatGptDesktopRequestUrl(input.baseUrl, input.path),
+            headers,
+            auth,
+          ),
+        catch: (error) =>
+          Schema.is(ChatGptBackendAuthError)(error)
+            ? error
+            : new ChatGptBackendAuthError({ message: "Unable to resolve the backend destination" }),
+      });
       input.onRequestHeaders?.(headers);
       const signal = input.signal ? AbortSignal.any([accountSignal, input.signal]) : accountSignal;
-      const response = yield* electron.fetch(url, {
+      if (signal.aborted)
+        return yield* new ChatGptBackendAuthError({ message: "Authenticated workspace changed" });
+      return { url, headers, signal, auth, body: prepared.body };
+    });
+
+    const perform = Effect.fn("ChatGptDesktop.perform")(function* (
+      input: ChatGptDesktopRequestInput,
+      prepared: ChatGptDesktopPreparedRequest & {
+        readonly body: ReturnType<typeof prepareChatGptDesktopBody>["body"];
+      },
+    ) {
+      const response = yield* electron.fetch(prepared.url, {
         method: input.method,
-        headers,
+        headers: prepared.headers,
         body: toChatGptDesktopFetchBody(prepared.body),
         redirect: "error",
-        signal,
+        signal: prepared.signal,
       });
-      if (signal.aborted)
+      if (prepared.signal.aborted)
         return yield* new ChatGptBackendAuthError({ message: "Authenticated workspace changed" });
       return response;
     });
@@ -204,11 +233,15 @@ export const live: Layer.Layer<
       authMethod: readAuth(false, false).pipe(
         Effect.map((status) => (typeof status.authMethod === "string" ? status.authMethod : null)),
       ),
+      prepareRequest: (input) =>
+        prepareRequest(input, false).pipe(
+          Effect.map(({ url, headers, signal }) => ({ url, headers, signal })),
+        ),
       request: (input) =>
         Effect.gen(function* () {
-          const auth = yield* readBackendAuth(input, false);
-          const signal = AbortSignal.any([auth.signal, yield* guardAccount(input, auth)]);
-          const response = yield* perform(input, auth, signal);
+          const prepared = yield* prepareRequest(input, false);
+          const { auth, signal } = prepared;
+          const response = yield* perform(input, prepared);
           if (response.status !== 401 || input.refreshOn401 === false)
             return bindResponse(response, signal, input);
           yield* Effect.tryPromise({
@@ -218,17 +251,16 @@ export const live: Layer.Layer<
           if (signal.aborted || input.signal?.aborted) {
             return yield* new ChatGptBackendAuthError({ message: "The request was canceled" });
           }
-          const refreshed = yield* readBackendAuth(input, true);
+          const refreshed = yield* prepareRequest(input, true);
           if (
-            auth.identity.accountId !== refreshed.identity.accountId ||
-            auth.identity.userId !== refreshed.identity.userId
+            auth.identity.accountId !== refreshed.auth.identity.accountId ||
+            auth.identity.userId !== refreshed.auth.identity.userId
           ) {
             return yield* new ChatGptBackendAuthError({
               message: "Authenticated workspace changed",
             });
           }
-          yield* guardAccount(input, refreshed);
-          return bindResponse(yield* perform(input, refreshed, signal), signal, input);
+          return bindResponse(yield* perform(input, refreshed), refreshed.signal, input);
         }),
     });
   }),

@@ -6,6 +6,7 @@ import {
 } from "../../../../../shared/command-keybindings";
 import {
   DEFAULT_DICTATION_SETTINGS,
+  type DictationCapabilitySnapshot,
   type DictationError,
   type DictationGesture,
   type DictationStopAction,
@@ -18,7 +19,6 @@ import {
   acquireDictationMicrophoneLease,
   readBuiltInMicrophoneRouteHint,
   readDictationSettings,
-  readDictationStreamingConnectInfo,
   requestMicrophoneAccess,
   releaseDictationMicrophoneLease,
 } from "@/lib/api";
@@ -28,6 +28,7 @@ import { mainDictationHistoryPort } from "@/features/dictation/dictation-history
 import { createBrowserDictationStreamingPort } from "@/features/dictation/dictation-streaming-client";
 import {
   DictationSessionController,
+  MAXIMUM_DICTATION_DURATION_MS,
   type DictationControllerPorts,
   type DictationRecovery,
 } from "@/features/dictation/dictation-session-controller";
@@ -69,7 +70,7 @@ export interface ComposerDictationController {
 
 interface UseComposerDictationInput {
   readonly enabled: boolean;
-  readonly streamingEnabled?: boolean;
+  readonly streamingAvailability?: DictationCapabilitySnapshot["streaming"];
   readonly soundsEnabled?: boolean;
   readonly globalTarget: {
     readonly id: string;
@@ -138,6 +139,7 @@ export function useComposerDictation(
   const [controller] = useState(
     () =>
       new DictationSessionController({
+        recordingDurationLimitMs: MAXIMUM_DICTATION_DURATION_MS,
         lease: {
           acquire: acquireDictationMicrophoneLease,
           release: async (sessionId) => void (await releaseDictationMicrophoneLease(sessionId)),
@@ -167,12 +169,12 @@ export function useComposerDictation(
         recorder: browserDictationRecorderFactory,
         waveform: {
           start: (stream, onSamples) =>
-            (callbacksRef.current.streamingEnabled === true
+            (callbacksRef.current.streamingAvailability === "available"
               ? browserInlineDictationWaveformPort
               : browserDictationWaveformPort
             ).start(stream, onSamples),
         },
-        streaming: createBrowserDictationStreamingPort(readDictationStreamingConnectInfo),
+        streaming: createBrowserDictationStreamingPort("composer"),
         buffered: {
           transcribe: async (blob, signal, _sessionId, onDiagnostics, language) => {
             if (signal.aborted) throw new DOMException("Dictation was aborted", "AbortError");
@@ -269,7 +271,7 @@ export function useComposerDictation(
       await controller.start({
         surface: "global",
         gesture,
-        streamingEnabled: callbacksRef.current.streamingEnabled,
+        streamingAvailability: callbacksRef.current.streamingAvailability,
       });
     },
     stop: () => {
@@ -293,7 +295,7 @@ export function useComposerDictation(
       const canvas = waveformCanvasRef.current;
       if (canvas) {
         const elapsedMs = Math.max(0, performance.now() - waveformAdvancedAtRef.current);
-        if (callbacksRef.current.streamingEnabled === true) {
+        if (callbacksRef.current.streamingAvailability === "available") {
           drawInlineDictationWaveform(canvas, waveformLevelsRef.current);
         } else
           drawComposerDictationWaveform(
@@ -372,7 +374,7 @@ export function useComposerDictation(
     await controller.start({
       surface: "composer",
       gesture,
-      streamingEnabled: callbacksRef.current.streamingEnabled,
+      streamingAvailability: callbacksRef.current.streamingAvailability,
       getLanguage: callbacksRef.current.getLanguage,
     });
   };

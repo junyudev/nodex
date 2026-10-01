@@ -2,6 +2,7 @@ import { randomUUID } from "node:crypto";
 import type { BrowserWindow } from "electron";
 import {
   DEFAULT_KEYBOARD_LAYOUT_SNAPSHOT,
+  areGlobalDictationShortcutsEqual,
   getPrimaryCommandAccelerator,
   type CommandKeybindingRejection,
   type CommandKeymapState,
@@ -108,7 +109,6 @@ type CompileHotkey<Binding> = (input: {
 export class GlobalDictationManager<Binding extends GlobalDictationBinding = MacNativeHotkeySpec> {
   readonly #helper: DictationNativeHelperPort<Binding>;
   readonly #compileHotkey: CompileHotkey<Binding>;
-  readonly #isBareHotkey: (binding: Binding) => boolean;
   readonly #windowController: GlobalDictationWindowPort;
   readonly #pasteService: Pick<
     ClipboardSafePasteService,
@@ -125,15 +125,20 @@ export class GlobalDictationManager<Binding extends GlobalDictationBinding = Mac
   readonly #appliedBindings = new Map<string, Binding>();
   #snapshot: GlobalDictationManagerSnapshot = { kind: "idle" };
   #active: ActiveGlobalSession | null = null;
-  #pendingPaste: { readonly sessionId: string; readonly abort: AbortController } | null = null;
+  #pendingPaste: {
+    readonly sessionId: string;
+    readonly senderWebContentsId: number | null;
+    readonly abort: AbortController;
+  } | null = null;
   #pasteFailure: {
     readonly sessionId: string;
     readonly failure: GlobalDictationPasteFailure;
   } | null = null;
   #holdPressedAtMs: number | null = null;
+  #holdHotkeyStartsToggle = false;
   #togglePressedAtMs: number | null = null;
-  #toggleStopsSession = false;
-  #lastToggleTapAtMs: number | null = null;
+  #toggleStartsSession = false;
+  #lastHoldTapAtMs: number | null = null;
   #pendingActivation: ReturnType<typeof setTimeout> | null = null;
   #escapeEnabled = false;
   #health: RuntimeHealth;
@@ -150,7 +155,6 @@ export class GlobalDictationManager<Binding extends GlobalDictationBinding = Mac
   constructor(options: {
     readonly helper: DictationNativeHelperPort<Binding>;
     readonly compileHotkey: CompileHotkey<Binding>;
-    readonly isBareHotkey: (binding: Binding) => boolean;
     readonly windowController: GlobalDictationWindowPort;
     readonly pasteService: Pick<
       ClipboardSafePasteService,
@@ -166,7 +170,6 @@ export class GlobalDictationManager<Binding extends GlobalDictationBinding = Mac
   }) {
     this.#helper = options.helper;
     this.#compileHotkey = options.compileHotkey;
-    this.#isBareHotkey = options.isBareHotkey;
     this.#windowController = options.windowController;
     this.#pasteService = options.pasteService;
     this.#openAccessibilitySettings = options.openAccessibilitySettings;
@@ -368,7 +371,13 @@ export class GlobalDictationManager<Binding extends GlobalDictationBinding = Mac
     }
     if (event.type === "close") {
       if (!this.#windowController.ownsWebContents(senderWebContentsId)) return false;
-      if (event.sessionId !== (this.#active?.sessionId ?? this.#pasteFailure?.sessionId ?? null))
+      if (
+        event.sessionId !==
+        (this.#active?.sessionId ??
+          this.#pendingPaste?.sessionId ??
+          this.#pasteFailure?.sessionId ??
+          null)
+      )
         return false;
       this.#cancelDictation();
       this.#windowController.close();
@@ -501,8 +510,11 @@ export class GlobalDictationManager<Binding extends GlobalDictationBinding = Mac
   }
 
   handleWebContentsGone(webContentsId: number): void {
-    const active = this.#active;
-    if (active?.senderWebContentsId !== webContentsId) return;
+    if (
+      this.#active?.senderWebContentsId !== webContentsId &&
+      this.#pendingPaste?.senderWebContentsId !== webContentsId
+    )
+      return;
     this.#cancelDictation();
     this.#syncIdlePresentation();
   }
@@ -528,15 +540,21 @@ export class GlobalDictationManager<Binding extends GlobalDictationBinding = Mac
   ):
     | { readonly type: "compiled"; readonly bindings: readonly Binding[] }
     | { readonly type: "rejected"; readonly reason: CommandKeybindingRejection } {
+    const hold = getPrimaryCommandAccelerator(state, "globalDictationHold");
+    const toggle = getPrimaryCommandAccelerator(state, "globalDictationToggle");
+    if (areGlobalDictationShortcutsEqual(hold, toggle, state.platform)) {
+      return {
+        type: "rejected",
+        reason: {
+          kind: "conflict",
+          message: "Choose a different shortcut for single-tap dictation.",
+        },
+      };
+    }
     const bindings: Binding[] = [];
     for (const binding of GLOBAL_BINDINGS) {
       const accelerator = getPrimaryCommandAccelerator(state, binding.commandId);
       if (!accelerator) continue;
-      if (
-        binding.mode === "toggle" &&
-        accelerator === getPrimaryCommandAccelerator(state, "globalDictationHold")
-      )
-        continue;
       const compiled = this.#compileHotkey({
         accelerator,
         bindingId: binding.bindingId,
@@ -672,14 +690,19 @@ export class GlobalDictationManager<Binding extends GlobalDictationBinding = Mac
     const binding = this.#appliedBindings.get(event.bindingId);
     if (!binding || binding.mode !== event.mode) return;
     if (event.type === "cancelled") {
-      this.#lastToggleTapAtMs = null;
+      this.#lastHoldTapAtMs = null;
       if (binding.mode === "toggle") {
         this.#togglePressedAtMs = null;
+        const wasStartingSession = this.#toggleStartsSession;
+        this.#toggleStartsSession = false;
+        if (wasStartingSession) this.#cancelDictation();
         return;
       }
       this.#holdPressedAtMs = null;
+      const wasStartingToggle = this.#holdHotkeyStartsToggle;
+      this.#holdHotkeyStartsToggle = false;
       this.#clearPendingActivation();
-      if (this.#active?.gesture === "hold") this.#cancelDictation();
+      if (wasStartingToggle || this.#active?.gesture === "hold") this.#cancelDictation();
       return;
     }
     if (!this.#enabled) return;
@@ -693,66 +716,61 @@ export class GlobalDictationManager<Binding extends GlobalDictationBinding = Mac
       this.#holdPressedAtMs = null;
       const wasPending = this.#pendingActivation !== null;
       this.#clearPendingActivation();
+      if (this.#holdHotkeyStartsToggle) {
+        this.#holdHotkeyStartsToggle = false;
+        return;
+      }
       if (this.#active?.gesture === "hold") this.#stopActive();
-      else if (wasPending && this.#hasSharedHotkey()) {
-        this.#handleToggleTap(pressedAt, event.target);
+      else if (wasPending && !this.#active && Date.now() - pressedAt < HOLD_ACTIVATION_DELAY_MS) {
+        this.#lastHoldTapAtMs = Date.now();
       }
       return;
     }
     if (this.#holdPressedAtMs !== null) return;
-    this.#holdPressedAtMs = Date.now();
+    const now = Date.now();
+    const previousTap = this.#lastHoldTapAtMs;
+    this.#holdPressedAtMs = now;
+    this.#holdHotkeyStartsToggle = false;
+    this.#lastHoldTapAtMs = null;
     if (this.#active) {
-      if (this.#hasSharedHotkey() && this.#active.gesture === "toggle") this.#stopActive();
+      if (this.#active.gesture === "toggle") this.#stopActive();
       return;
     }
-    const target = event.target;
-    const focused = this.#getFocusedAppWindow();
-    if (this.#hasSharedHotkey() || (focused && this.#isBareHotkey(binding))) {
-      this.#pendingActivation = setTimeout(() => {
-        this.#pendingActivation = null;
-        this.#lastToggleTapAtMs = null;
-        this.#begin({ target, gesture: "hold" });
-      }, HOLD_ACTIVATION_DELAY_MS);
-      this.#syncEscapeRegistration();
+    // A second press enters hands-free mode immediately; its eventual release is inert.
+    if (previousTap !== null && now - previousTap <= DOUBLE_TAP_WINDOW_MS) {
+      this.#holdHotkeyStartsToggle = true;
+      this.#begin({ target: event.target, gesture: "toggle" });
       return;
     }
-    this.#begin({ target, gesture: "hold" });
+    this.#pendingActivation = setTimeout(() => {
+      this.#pendingActivation = null;
+      this.#begin({ target: event.target, gesture: "hold" });
+    }, HOLD_ACTIVATION_DELAY_MS);
+    this.#syncEscapeRegistration();
   }
 
   #handleToggleEvent(
     event: Extract<DictationNativeHelperEvent, { readonly bindingId: string }>,
   ): void {
-    if (event.type === "pressed") {
-      if (this.#togglePressedAtMs !== null) return;
-      this.#togglePressedAtMs = Date.now();
-      this.#toggleStopsSession = this.#active !== null || this.#pendingActivation !== null;
-      if (this.#active?.gesture === "toggle") this.#stopActive();
-      else if (!this.#active && this.#toggleStopsSession) this.#cancelDictation();
+    if (event.type === "released") {
+      this.#togglePressedAtMs = null;
+      this.#toggleStartsSession = false;
       return;
     }
-    const pressedAt = this.#togglePressedAtMs;
-    this.#togglePressedAtMs = null;
-    if (pressedAt === null || this.#toggleStopsSession) return;
-    this.#handleToggleTap(pressedAt, event.target);
-  }
-
-  #handleToggleTap(pressedAt: number, target?: GlobalDictationTarget): void {
-    const now = Date.now();
-    const previousTap = this.#lastToggleTapAtMs;
-    this.#lastToggleTapAtMs = null;
-    if (now - pressedAt >= HOLD_ACTIVATION_DELAY_MS) return;
-    if (previousTap !== null && now - previousTap <= DOUBLE_TAP_WINDOW_MS) {
-      this.#begin({ target, gesture: "toggle" });
+    if (this.#togglePressedAtMs !== null) return;
+    this.#togglePressedAtMs = Date.now();
+    this.#toggleStartsSession = false;
+    this.#lastHoldTapAtMs = null;
+    if (this.#active) {
+      this.#stopActive();
       return;
     }
-    this.#lastToggleTapAtMs = now;
-  }
-
-  #hasSharedHotkey(): boolean {
-    const state = this.#desiredCommandKeymap;
-    if (!state) return false;
-    const hold = getPrimaryCommandAccelerator(state, "globalDictationHold");
-    return hold !== null && hold === getPrimaryCommandAccelerator(state, "globalDictationToggle");
+    if (this.#pendingActivation !== null) {
+      this.#cancelDictation();
+      return;
+    }
+    this.#toggleStartsSession = true;
+    this.#begin({ target: event.target, gesture: "toggle" });
   }
 
   #clearPendingActivation(): void {
@@ -771,15 +789,22 @@ export class GlobalDictationManager<Binding extends GlobalDictationBinding = Mac
   }
 
   #cancelPendingPaste(): void {
-    this.#pendingPaste?.abort.abort();
+    const pending = this.#pendingPaste;
+    pending?.abort.abort();
     this.#pendingPaste = null;
     this.#pasteFailure = null;
+    if (pending) {
+      this.#windowController.send({ type: "cancel", sessionId: pending.sessionId });
+      this.#windowController.send({ type: "finish", sessionId: pending.sessionId });
+    }
     this.#syncEscapeRegistration();
   }
 
   #cancelDictation(): void {
     this.#clearPendingActivation();
-    this.#lastToggleTapAtMs = null;
+    this.#lastHoldTapAtMs = null;
+    this.#holdHotkeyStartsToggle = false;
+    this.#toggleStartsSession = false;
     this.#cancelPendingPaste();
     const active = this.#active;
     if (active) this.#sendToOwner(active, { type: "cancel", sessionId: active.sessionId });
@@ -932,10 +957,18 @@ export class GlobalDictationManager<Binding extends GlobalDictationBinding = Mac
   async #pasteActive(active: ActiveGlobalSession): Promise<void> {
     if (this.#active !== active) return;
     const transcript = active.transcript?.trim();
-    const pending = { sessionId: active.sessionId, abort: new AbortController() };
-    if (transcript) this.#pendingPaste = pending;
-    this.#finishActive();
-    if (!transcript) return;
+    if (!transcript) {
+      this.#finishActive();
+      return;
+    }
+    const pending = {
+      sessionId: active.sessionId,
+      senderWebContentsId: active.senderWebContentsId,
+      abort: new AbortController(),
+    };
+    this.#pendingPaste = pending;
+    this.#releaseActive();
+    this.#windowController.hide();
     this.#publish({ kind: "pasting", sessionId: active.sessionId });
     let failure: GlobalDictationPasteFailure | undefined;
     try {
@@ -948,12 +981,15 @@ export class GlobalDictationManager<Binding extends GlobalDictationBinding = Mac
       });
       if (this.#pendingPaste !== pending) return;
       failure = result.failure;
-      if (!failure)
+      if (!failure) {
+        // Settle renderer delivery before its session identity is cleared by finish.
         this.#windowController.send({
           type: "paste-completed",
           sessionId: active.sessionId,
           clipboardRestoreMs: result.clipboardRestoreMs,
         });
+        this.#windowController.send({ type: "finish", sessionId: active.sessionId });
+      }
     } catch {
       if (this.#pendingPaste !== pending) return;
       failure = { text: `${transcript} `, copied: false, reason: "paste" };
@@ -996,14 +1032,22 @@ export class GlobalDictationManager<Binding extends GlobalDictationBinding = Mac
     await this.#showPasteFailure(this.#pasteFailure);
   }
 
-  #finishActive(): void {
+  #releaseActive(): ActiveGlobalSession | null {
     const active = this.#active;
-    if (!active) return;
+    if (!active) return null;
     if (active.acceptTimer) clearTimeout(active.acceptTimer);
     active.releaseWindowListeners?.();
     this.#active = null;
-    this.#lastToggleTapAtMs = null;
+    this.#lastHoldTapAtMs = null;
+    this.#holdHotkeyStartsToggle = false;
+    this.#toggleStartsSession = false;
     this.#syncEscapeRegistration();
+    return active;
+  }
+
+  #finishActive(): void {
+    const active = this.#releaseActive();
+    if (!active) return;
     this.#publish({ kind: "idle" });
     if (active.owner !== "overlay") return;
     this.#windowController.send({ type: "finish", sessionId: active.sessionId });

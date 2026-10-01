@@ -163,6 +163,9 @@ importers:
       effect:
         specifier: 4.0.0-rc.111
         version: 4.0.0-rc.111(patch_hash=63cbfffaa0faff45748857ee145980f088f57945c0e2078240a3f4d00876b983)
+      https-proxy-agent:
+        specifier: 7.0.6
+        version: 7.0.6(supports-color@10.2.2)
       immer:
         specifier: 11.1.8
         version: 11.1.8
@@ -199,6 +202,9 @@ importers:
       smol-toml:
         specifier: 1.6.1
         version: 1.6.1
+      socks-proxy-agent:
+        specifier: 8.0.5
+        version: 8.0.5(supports-color@10.2.2)
       stream-json:
         specifier: 2.1.0
         version: 2.1.0
@@ -7881,9 +7887,21 @@ packages:
     resolution: {integrity: sha512-VZBmZP8WU3sMOZm1bdgTadsQbcscK0UM8oKxKVBs4XAhUo2Xxzm/OFMGBkPusxw9xL3Uy8LrzEqGqJhclsr0yA==}
     deprecated: Unsupported
 
+  smart-buffer@4.2.0:
+    resolution: {integrity: sha512-94hK0Hh8rPqQl2xXc3HsaBoOXKV20MToPkcXvwbISWLEs+64sBq5kFgn2kJDHb1Pry9yrP0dxrCI9RRci7RXKg==}
+    engines: {node: '>= 6.0.0', npm: '>= 3.0.0'}
+
   smol-toml@1.6.1:
     resolution: {integrity: sha512-dWUG8F5sIIARXih1DTaQAX4SsiTXhInKf1buxdY9DIg4ZYPZK5nGM1VRIYmEbDbsHt7USo99xSLFu5Q1IqTmsg==}
     engines: {node: '>= 18'}
+
+  socks-proxy-agent@8.0.5:
+    resolution: {integrity: sha512-HehCEsotFqbPW9sJ8WVYB6UbmIMv7kUUORIF2Nncq4VQvBfNBLibW9YZR5dlYCSUhwcD628pRllm7n+E+YTzJw==}
+    engines: {node: '>= 14'}
+
+  socks@2.8.10:
+    resolution: {integrity: sha512-e0VyvkVTwVYViNovRkZ9aodhxVlyoMn7eJhVUPxZ+eK9P/7CBkxvvsBOHqFPEH416726W8tLXXXjKwqgTErrCQ==}
+    engines: {node: '>= 10.0.0', npm: '>= 3.0.0'}
 
   source-map-js@1.2.1:
     resolution: {integrity: sha512-UXWMKhLOwVKb728IUtQPXxfYU+usdybtUrK/8uGE8CQMvrhOpwvzDBwj0QhSL7MQc7vIsISBG8VQ8+IDQxpfQA==}
@@ -15971,7 +15989,22 @@ snapshots:
 
   sliced@1.0.1: {}
 
+  smart-buffer@4.2.0: {}
+
   smol-toml@1.6.1: {}
+
+  socks-proxy-agent@8.0.5(supports-color@10.2.2):
+    dependencies:
+      agent-base: 7.1.4
+      debug: 4.4.3(supports-color@10.2.2)
+      socks: 2.8.10
+    transitivePeerDependencies:
+      - supports-color
+
+  socks@2.8.10:
+    dependencies:
+      ip-address: 10.7.0
+      smart-buffer: 4.2.0
 
   source-map-js@1.2.1: {}
 

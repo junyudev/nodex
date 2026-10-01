@@ -962,8 +962,8 @@ export const CODEX_COMMAND_REGISTRY = [
   }),
   command(
     "globalDictationHold",
-    "Hold to dictate",
-    "Hold the global dictation hotkey",
+    "Dictation shortcut",
+    "Hold to dictate or double-tap for hands-free dictation",
     320,
     "os-global",
     [],
@@ -974,8 +974,8 @@ export const CODEX_COMMAND_REGISTRY = [
   ),
   command(
     "globalDictationToggle",
-    "Toggle dictation",
-    "Toggle global dictation",
+    "Single-tap shortcut",
+    "Press to start dictation, then press again to stop",
     330,
     "os-global",
     [],
@@ -1406,15 +1406,18 @@ export function findCommandKeybindingConflict(
 
   for (const entry of state.entries) {
     if (entry.id === commandId || !entry.available) continue;
-    // One global shortcut can distinguish a hold from a double tap.
-    if (
-      (commandId === "globalDictationHold" && entry.id === "globalDictationToggle") ||
-      (commandId === "globalDictationToggle" && entry.id === "globalDictationHold")
-    )
-      continue;
     for (const binding of entry.keybindings) {
       const key = binding.key ? normalizeAccelerator(binding.key) : "";
       if (!key) continue;
+      const isGlobalDictationPair =
+        (commandId === "globalDictationHold" && entry.id === "globalDictationToggle") ||
+        (commandId === "globalDictationToggle" && entry.id === "globalDictationHold");
+      if (
+        isGlobalDictationPair &&
+        areGlobalDictationShortcutsEqual(normalized, key, state.platform)
+      ) {
+        return { commandId: entry.id, commandTitle: entry.title, key };
+      }
       if (key === normalized || isSequencePrefix(key.split(/\s+/), normalizedParts)) {
         return { commandId: entry.id, commandTitle: entry.title, key };
       }
@@ -1425,6 +1428,23 @@ export function findCommandKeybindingConflict(
   }
 
   return null;
+}
+
+/** Compares global gesture shortcuts by canonical aliases and the platform's Cmd/Ctrl mapping. */
+export function areGlobalDictationShortcutsEqual(
+  hold: string | null,
+  toggle: string | null,
+  platform: RuntimePlatform,
+): boolean {
+  if (!hold || !toggle) return false;
+  const normalize = (accelerator: string): string =>
+    normalizeAccelerator(
+      normalizeAccelerator(accelerator).replaceAll(
+        "CmdOrCtrl",
+        platform === "macOS" ? "Command" : "Ctrl",
+      ),
+    );
+  return normalize(hold) === normalize(toggle);
 }
 
 export function getCommandEntry(

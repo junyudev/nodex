@@ -2550,7 +2550,7 @@ function HydratedThreadComposer({
     cancelDictation,
   } = useComposerDictation({
     enabled: isDictationSupported,
-    streamingEnabled: model.dictation.capabilities.streaming === "available",
+    streamingAvailability: model.dictation.capabilities.streaming,
     soundsEnabled: model.dictation.capabilities.sounds,
     globalTarget: {
       id: globalDictationTargetId,

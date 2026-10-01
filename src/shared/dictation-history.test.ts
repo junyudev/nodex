@@ -68,4 +68,27 @@ describe("dictation history contract", () => {
       }).success,
     ).toBe(false);
   });
+
+  test("keeps imported file identity separate from microphone capture", () => {
+    const imported = { ...VALID_METADATA, surface: "file", fileName: "Interview.webm" };
+    expect(DictationRecordingMetadataSchema.parse(imported)).toEqual(imported);
+    expect(
+      DictationRecordingMetadataSchema.safeParse({ ...VALID_METADATA, surface: "file" }).success,
+    ).toBe(false);
+    expect(
+      DictationRecordingMetadataSchema.safeParse({ ...VALID_METADATA, fileName: "capture.webm" })
+        .success,
+    ).toBe(false);
+    for (const fileName of [
+      "",
+      "../audio.webm",
+      "folder\\audio.webm",
+      "audio\n.webm",
+      "a".repeat(256),
+    ]) {
+      expect(DictationRecordingMetadataSchema.safeParse({ ...imported, fileName }).success).toBe(
+        false,
+      );
+    }
+  });
 });

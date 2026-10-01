@@ -4,7 +4,7 @@ import { resolveDictationPolicy } from "./DictationPolicyState";
 const identity = { accountId: "account-a", userId: "user-a", isFedramp: false };
 
 describe("authenticated dictation policy", () => {
-  test("combines the default-host feature, workspace permission and child gates", () => {
+  test("combines the default-host feature, workspace permission and account dictionary gate", () => {
     const input = {
       identity,
       featureEnabled: true,
@@ -12,9 +12,6 @@ describe("authenticated dictation policy", () => {
       permissions: null,
       gates: {
         composer: true,
-        global: true,
-        streaming: false,
-        sounds: true,
         voiceDictionary: true,
         workspacePermissions: true,
       },
@@ -38,13 +35,10 @@ describe("authenticated dictation policy", () => {
     expect(resolveDictationPolicy({ ...input, featureEnabled: false, plan: "plus" })).toMatchObject(
       { composer: false, global: false },
     );
-    expect(
-      resolveDictationPolicy({ ...input, plan: "plus", gates: { ...input.gates, global: false } }),
-    ).toMatchObject({ composer: true, global: false });
   });
 
-  test("keeps streaming enabled for admitted dictation regardless of its rollout value", () => {
-    for (const streaming of [false, true]) {
+  test("admits desktop capture and bundled sounds without secondary rollout assignments", () => {
+    for (const assigned of [false, true]) {
       const input = {
         identity,
         featureEnabled: true,
@@ -52,15 +46,25 @@ describe("authenticated dictation policy", () => {
         permissions: null,
         gates: {
           composer: true,
-          global: true,
-          streaming,
-          sounds: false,
+          global: assigned,
+          streaming: assigned,
+          sounds: assigned,
           voiceDictionary: false,
           workspacePermissions: false,
         },
       };
-      expect(resolveDictationPolicy(input).streaming).toBe(true);
-      expect(resolveDictationPolicy({ ...input, featureEnabled: false }).streaming).toBe(false);
+      expect(resolveDictationPolicy(input)).toMatchObject({
+        composer: true,
+        global: true,
+        streaming: true,
+        sounds: true,
+      });
+      expect(resolveDictationPolicy({ ...input, featureEnabled: false })).toMatchObject({
+        composer: false,
+        global: false,
+        streaming: false,
+        sounds: true,
+      });
       expect(
         resolveDictationPolicy({
           ...input,
@@ -74,9 +78,6 @@ describe("authenticated dictation policy", () => {
 describe("global policy authentication", () => {
   const gates = {
     composer: true,
-    global: true,
-    streaming: true,
-    sounds: true,
     voiceDictionary: true,
     workspacePermissions: true,
   };
@@ -91,10 +92,9 @@ describe("global policy authentication", () => {
       expect(result.composer).toBe(false);
       expect(result.voiceDictionary).toBe(false);
       expect(resolveDictationPolicy({ ...policy, auth, featureEnabled: false }).global).toBe(false);
-      for (const key of ["composer", "global"] as const)
-        expect(
-          resolveDictationPolicy({ ...policy, auth, gates: { ...gates, [key]: false } }).global,
-        ).toBe(false);
+      expect(
+        resolveDictationPolicy({ ...policy, auth, gates: { ...gates, composer: false } }).global,
+      ).toBe(false);
     }
     expect(
       resolveDictationPolicy({

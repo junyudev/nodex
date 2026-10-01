@@ -14,7 +14,7 @@ export const EMPTY_DICTATION_POLICY: DictationPolicySnapshot = {
   composer: false,
   global: false,
   streaming: false,
-  sounds: false,
+  sounds: true,
   voiceDictionary: false,
   accountId: null,
   userId: null,
@@ -22,10 +22,7 @@ export const EMPTY_DICTATION_POLICY: DictationPolicySnapshot = {
 
 export interface DictationGateValues {
   readonly composer: boolean;
-  readonly global: boolean;
   readonly workspacePermissions: boolean;
-  readonly streaming: boolean;
-  readonly sounds: boolean;
   readonly voiceDictionary: boolean;
 }
 
@@ -87,12 +84,13 @@ export const resolveDictationPolicy = (input: {
     composer,
     global:
       parent &&
-      input.gates.global &&
       (auth.method !== null || !auth.requiresAuth) &&
       (auth.method !== "chatgpt" || auth.hasToken),
-    // Streaming is a standard dictation capability, independent of remote rollout assignment.
+    // Capture surfaces and streaming are local capabilities after service admission; native
+    // runtime readiness separately decides whether desktop shortcuts can currently operate.
     streaming: composer,
-    sounds: input.gates.sounds,
+    // Sound assets ship with the app. Their device-local preference needs no service rollout.
+    sounds: true,
     voiceDictionary: composer && input.identity !== null && input.gates.voiceDictionary,
     accountId: input.identity?.accountId ?? null,
     userId: input.identity?.userId ?? null,

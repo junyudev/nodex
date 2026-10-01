@@ -6,6 +6,7 @@ import {
 } from "../../../shared/dictation-diagnostics";
 import { DictationDiagnosticsRecorder } from "./dictation-diagnostics-recorder";
 import type {
+  DictationCapabilitySnapshot,
   DictationError,
   DictationGesture,
   DictationStopAction,
@@ -23,6 +24,7 @@ export const MAXIMUM_DICTATION_DURATION_MS = 595_000;
 export const DICTATION_HISTORY_CHUNK_INTERVAL_MS = 5_000;
 
 type Timer = ReturnType<typeof globalThis.setTimeout>;
+type StreamingAvailability = DictationCapabilitySnapshot["streaming"] | "read-failed";
 
 export type DictationSessionSnapshot =
   | { readonly kind: "idle" }
@@ -95,6 +97,8 @@ export interface DictationRecovery {
 }
 
 export interface DictationControllerPorts {
+  /** Capture ownership selects the deadline; a global gesture can still belong to Composer. */
+  readonly recordingDurationLimitMs: typeof MAXIMUM_DICTATION_DURATION_MS | null;
   readonly lease: {
     acquire(sessionId: string, surface: DictationSurface): Promise<boolean>;
     release(sessionId: string): Promise<void>;
@@ -194,7 +198,7 @@ interface ActiveSession {
   readonly generation: number;
   readonly chunks: Blob[];
   language: string | undefined;
-  streamingEnabled: boolean;
+  readonly streamingAvailability: StreamingAvailability;
   stream: MediaStream | null;
   recorder: DictationRecorderHandle | null;
   waveform: DictationWaveformSession | null;
@@ -228,6 +232,20 @@ interface ActiveSession {
 }
 
 const IDLE: DictationSessionSnapshot = { kind: "idle" };
+
+const isStreamingEnabled = (session: ActiveSession): boolean =>
+  session.streamingAvailability === "available" && session.language === undefined;
+
+/** A skipped or failed capability read must remain distinguishable from a network attempt. */
+const unstartedStreamingDiagnostics = (session: ActiveSession): DictationStreamDiagnostics => {
+  const diagnostics = emptyDictationStreamDiagnostics();
+  if (session.streamingAvailability === "read-failed")
+    return { ...diagnostics, failureCode: "capability-read-failed" };
+  if (session.streamingAvailability !== "available")
+    return { ...diagnostics, skipReason: session.streamingAvailability };
+  if (session.language !== undefined) return { ...diagnostics, skipReason: "language-selected" };
+  return { ...diagnostics, failureCode: "stream-unavailable" };
+};
 
 const permissionError = (
   result: Exclude<MicrophoneAccessResult, { kind: "granted" }>,
@@ -277,7 +295,7 @@ export class DictationSessionController {
     readonly gesture: DictationGesture;
     readonly language?: string;
     readonly getLanguage?: () => Promise<string | undefined>;
-    readonly streamingEnabled?: boolean;
+    readonly streamingAvailability?: StreamingAvailability;
     readonly activationStartedAtMs?: number;
   }): Promise<void> {
     if (this.#disposed) return;
@@ -298,7 +316,7 @@ export class DictationSessionController {
       generation,
       chunks: [],
       language,
-      streamingEnabled: input.streamingEnabled !== false && language === undefined,
+      streamingAvailability: input.streamingAvailability ?? "available",
       stream: null,
       recorder: null,
       waveform: null,
@@ -365,15 +383,13 @@ export class DictationSessionController {
         const selectedLanguage = await input.getLanguage();
         if (!this.#isCurrent(session)) return;
         session.language = selectedLanguage === "auto" ? undefined : selectedLanguage;
-        session.streamingEnabled =
-          input.streamingEnabled !== false && session.language === undefined;
       } catch (error) {
         this.#failWithoutAudio(session, classifyDictationTranscriptionError(error));
         return;
       }
     }
 
-    const streamingPromise = session.streamingEnabled
+    const streamingPromise = isStreamingEnabled(session)
       ? this.#ports.streaming
           .prepare(session.id, {
             onTranscript: this.#ports.transcript
@@ -486,7 +502,7 @@ export class DictationSessionController {
           confirmationDelay,
         );
       } else this.#confirmRecording(session);
-      if (session.streamingEnabled && this.#ports.transcript) {
+      if (isStreamingEnabled(session) && this.#ports.transcript) {
         session.transcriptStarted = true;
         this.#ports.transcript.start(
           session.streaming
@@ -498,9 +514,13 @@ export class DictationSessionController {
             : undefined,
         );
       }
-      session.maximumTimer = this.#ports.clock.setTimeout(() => {
-        this.stop("insert", "max-duration");
-      }, MAXIMUM_DICTATION_DURATION_MS);
+      const durationLimit = this.#ports.recordingDurationLimitMs;
+      if (durationLimit !== null) {
+        session.maximumTimer = this.#ports.clock.setTimeout(() => {
+          if (!this.#isCurrent(session) || session.stoppedAtMs !== null) return;
+          this.stop("insert", "max-duration");
+        }, durationLimit);
+      }
     } catch (error) {
       session.streaming?.abort();
       this.#releaseCapture(session);
@@ -938,10 +958,7 @@ export class DictationSessionController {
   ): Promise<void> {
     const streaming =
       session.diagnostics.attempt === 1
-        ? (session.streaming?.diagnostics?.() ?? {
-            ...emptyDictationStreamDiagnostics(),
-            ...(session.streamingEnabled ? { failureCode: "stream-unavailable" as const } : {}),
-          })
+        ? (session.streaming?.diagnostics?.() ?? unstartedStreamingDiagnostics(session))
         : undefined;
     const report = session.diagnostics.snapshot(outcome, streaming);
     await session.historyQueue;

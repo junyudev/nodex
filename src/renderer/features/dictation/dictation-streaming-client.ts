@@ -7,9 +7,15 @@ import {
   applyDictationStreamingServerEvent,
   createDictationStreamingTranscriptState,
   readDictationStreamingFinalText,
-  type DictationStreamingConnectInfo,
+  DICTATION_STREAM_COMPOSER_FINISH_TIMEOUT_MS,
+  type DictationStreamingSessionOptions,
   type DictationStreamingTranscriptState,
 } from "../../../shared/dictation-streaming";
+import type { DictationSurface } from "../../../shared/dictation";
+import {
+  prepareDictationStreamConnection,
+  type PrepareDictationStreamConnection,
+} from "./dictation-stream-connection";
 import type {
   DictationControllerPorts,
   DictationStreamingAttempt,
@@ -72,7 +78,8 @@ export function prepareDictationAudio(): Promise<void> {
   return preparingAudio;
 }
 
-interface StreamingOptions {
+interface StreamingOptions extends DictationStreamingSessionOptions {
+  readonly finishTimeoutMs?: number;
   readonly onTranscript?: (text: string, segment?: { id: number; text: string }) => void;
 }
 
@@ -109,7 +116,7 @@ class BrowserDictationStreamingAttempt implements DictationStreamingAttempt {
   #hasSignal: boolean | null = null;
   #diagnostics = emptyDictationStreamDiagnostics();
   constructor(
-    private readonly readConnectInfo: () => Promise<DictationStreamingConnectInfo>,
+    private readonly prepareConnection: PrepareDictationStreamConnection,
     private readonly options: StreamingOptions = {},
   ) {
     void this.#admission.promise.catch(() => undefined);
@@ -121,7 +128,7 @@ class BrowserDictationStreamingAttempt implements DictationStreamingAttempt {
     const transcript = createDictationStreamingTranscriptState();
     const diagnostics = emptyDictationStreamDiagnostics();
     const client = new DictationWebSocketClient(
-      this.readConnectInfo,
+      this.prepareConnection,
       (event) => {
         if (this.#closed) return;
         applyDictationStreamingServerEvent(transcript, event);
@@ -141,6 +148,10 @@ class BrowserDictationStreamingAttempt implements DictationStreamingAttempt {
       },
       diagnostics,
       (error) => this.recordFailure(error),
+      {
+        ...this.options,
+        attemptId: this.options.dictationSessionId ? crypto.randomUUID() : undefined,
+      },
     );
     const segment: StreamingSegment = {
       client,
@@ -437,10 +448,16 @@ class BrowserDictationStreamingAttempt implements DictationStreamingAttempt {
 }
 
 export const createBrowserDictationStreamingPort = (
-  readConnectInfo: () => Promise<DictationStreamingConnectInfo>,
+  surface: DictationSurface,
+  prepareConnection: PrepareDictationStreamConnection = prepareDictationStreamConnection(surface),
 ): DictationControllerPorts["streaming"] => ({
-  prepare: async (_sessionId, options?: StreamingOptions) => {
-    const attempt = new BrowserDictationStreamingAttempt(readConnectInfo, options);
+  prepare: async (sessionId, options?: StreamingOptions) => {
+    const attempt = new BrowserDictationStreamingAttempt(prepareConnection, {
+      ...options,
+      dictationSessionId: surface === "composer" ? sessionId : undefined,
+      finishTimeoutMs:
+        surface === "composer" ? DICTATION_STREAM_COMPOSER_FINISH_TIMEOUT_MS : undefined,
+    });
     attempt.prepare();
     return attempt;
   },

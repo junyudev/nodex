@@ -13,12 +13,19 @@ import { assert, it } from "@effect/vitest";
 import { CodexGateway } from "../codex-runtime/CodexGateway";
 import { DEFAULT_DICTATION_SETTINGS } from "../../shared/dictation";
 import { ElectronNet } from "../platform/electron/ElectronNet";
+import { DictationNetwork } from "../platform/electron/DictationNetwork";
+import type { openDictationWebSocket } from "../platform/node/DictationWebSocket";
+import type { DictationStreamTransportEvent } from "../../shared/dictation-stream-transport";
 import { DictationRuntime } from "../host-runtime/DictationRuntime";
-import { ChatGptDesktop } from "./ChatGptDesktop";
+import { ChatGptDesktop, ChatGptDesktopAuthError } from "./ChatGptDesktop";
 import { CodexAccount } from "./CodexAccount";
 import { CodexApplicationEventHub } from "./CodexApplicationEventHub";
 import { CodexConnection } from "./CodexConnection";
 import { CodexMedia, live as codexMediaLive } from "./CodexMedia";
+import {
+  resolveDictationPolicy,
+  type DictationPolicySnapshot,
+} from "../dictation/DictationPolicyState";
 
 const policyFlags = vi.hoisted(() => ({
   composer: true,
@@ -29,41 +36,49 @@ const policyFlags = vi.hoisted(() => ({
   token: "test-token" as string | null,
   authReads: 0,
   authController: new AbortController(),
+  preparedUrl: null as string | null,
+  resolvedPolicy: null as DictationPolicySnapshot | null,
 }));
+type SocketOptions = Parameters<typeof openDictationWebSocket>[0];
+const sockets = vi.hoisted(() => ({
+  open: vi.fn<(options: SocketOptions) => void>(),
+  routes: [] as string[],
+  released: 0,
+}));
+
+vi.mock("../platform/node/DictationWebSocket", async () => {
+  const Effect = await import("effect/Effect");
+  return {
+    openDictationWebSocket: (options: SocketOptions) =>
+      Effect.acquireRelease(
+        Effect.sync(() => {
+          sockets.open(options);
+          return { send: () => Effect.void, close: Effect.void };
+        }),
+        () =>
+          Effect.sync(() => {
+            sockets.released++;
+          }),
+      ),
+  };
+});
 
 vi.mock("../dictation/DictationPolicy", async () => {
   const Effect = await import("effect/Effect");
   const Stream = await import("effect/Stream");
-  const read = Effect.sync(() => ({
-    composer: policyFlags.composer,
-    global: policyFlags.global,
-    streaming: policyFlags.streaming,
-    sounds: policyFlags.sounds,
-    voiceDictionary: false,
-    accountId: null,
-    userId: null,
-  }));
+  const read = Effect.sync(
+    () =>
+      policyFlags.resolvedPolicy ?? {
+        composer: policyFlags.composer,
+        global: policyFlags.global,
+        streaming: policyFlags.streaming,
+        sounds: policyFlags.sounds,
+        voiceDictionary: false,
+        accountId: null,
+        userId: null,
+      },
+  );
   return { makeDictationPolicy: Effect.succeed({ read, refresh: read, changes: Stream.empty }) };
-});
-vi.mock("../codex/chatgpt-backend-auth", async () => {
-  const Effect = await import("effect/Effect");
-  return {
-    readChatGptBackendRequestAuth: () =>
-      Effect.gen(function* () {
-        policyFlags.authReads += 1;
-        if (!policyFlags.token)
-          return yield* Effect.fail({ _tag: "TestAuthError" as const, message: "Missing token" });
-        return {
-          token: policyFlags.token,
-          identity: { accountId: "account", userId: "user", isFedramp: false },
-          routing: policyFlags.workspace
-            ? { kind: "workspace" as const }
-            : { kind: "legacy" as const },
-          planType: "plus",
-          signal: policyFlags.authController.signal,
-        };
-      }),
-  };
 });
 beforeEach(() => {
   policyFlags.composer = true;
@@ -74,9 +89,41 @@ beforeEach(() => {
   policyFlags.token = "test-token";
   policyFlags.authReads = 0;
   policyFlags.authController = new AbortController();
+  policyFlags.preparedUrl = null;
+  policyFlags.resolvedPolicy = null;
+  sockets.open.mockClear();
+  sockets.routes = [];
+  sockets.released = 0;
 });
 
 const unsupported = () => Effect.die(new Error("Unsupported test operation"));
+
+/** Fixture request authority returns a fully routed URL and keeps desktop credentials in Main. */
+const desktop = (options: Partial<ChatGptDesktop["Service"]>): ChatGptDesktop["Service"] =>
+  ChatGptDesktop.of({
+    authStatus: unsupported,
+    authMethod: Effect.succeed("chatgpt"),
+    request: unsupported,
+    prepareRequest: Effect.fn("CodexMediaTest.prepareRequest")(function* (
+      input: Parameters<ChatGptDesktop["Service"]["prepareRequest"]>[0],
+    ) {
+      policyFlags.authReads++;
+      if (policyFlags.token === null)
+        return yield* new ChatGptDesktopAuthError({ message: "Missing token" });
+      const headers = new Headers(input.headers);
+      headers.set("Authorization", `Bearer ${policyFlags.token}`);
+      headers.set("ChatGPT-Account-Id", "account");
+      headers.set("originator", "Codex Desktop");
+      headers.set("User-Agent", "Codex Desktop/test (darwin; arm64)");
+      if (policyFlags.workspace) headers.set("X-OpenAI-Workspace-Token", "private-workspace-token");
+      return {
+        url: policyFlags.preparedUrl ?? `${input.baseUrl}${input.path}`,
+        headers,
+        signal: policyFlags.authController.signal,
+      };
+    }),
+    ...options,
+  });
 
 const gateway = CodexGateway.of({
   localHostId: "local",
@@ -125,6 +172,17 @@ const build = Effect.fn("CodexMediaTest.build")(function* (
             }),
           ),
           Layer.succeed(ChatGptDesktop, chatgpt),
+          Layer.succeed(
+            DictationNetwork,
+            DictationNetwork.of({
+              acceptLanguage: "zh-CN",
+              prepare: (url) =>
+                Effect.sync(() => {
+                  sockets.routes.push(url);
+                  return { proxyMode: "http" as const };
+                }),
+            }),
+          ),
           Layer.succeed(
             CodexAccount,
             CodexAccount.of({ snapshot: accountSnapshot } as CodexAccount["Service"]),
@@ -182,13 +240,60 @@ const build = Effect.fn("CodexMediaTest.build")(function* (
   );
 });
 
+it.effect(
+  "activates native desktop dictation after admission without secondary rollout assignments",
+  () =>
+    Effect.gen(function* () {
+      const remoteGates = {
+        composer: true,
+        workspacePermissions: false,
+        voiceDictionary: false,
+        global: false,
+        streaming: false,
+        sounds: false,
+      };
+      policyFlags.resolvedPolicy = resolveDictationPolicy({
+        identity: { accountId: "account", userId: "user", isFedramp: false },
+        gates: remoteGates,
+        featureEnabled: true,
+        plan: "plus",
+        permissions: null,
+        auth: { method: "chatgpt", requiresAuth: true, hasToken: true },
+      });
+      const activated: boolean[] = [];
+      const scope = yield* Scope.make();
+      try {
+        const context = yield* build(desktop({}), scope, (enabled) =>
+          Effect.sync(() => {
+            activated.push(enabled);
+          }),
+        );
+        const media = Context.get(context, CodexMedia);
+        assert.strictEqual(activated.at(-1), true);
+        assert.deepEqual((yield* media.dictationState).capabilities, {
+          composer: true,
+          global: true,
+          history: true,
+          streaming: "available",
+          semanticCleanup: true,
+          sounds: true,
+          voiceDictionary: false,
+          microphoneOwner: "none",
+          auth: "chatgpt",
+        });
+      } finally {
+        yield* Scope.close(scope, Exit.void);
+      }
+    }),
+);
+
 it.effect("owns dictation projection and transcription", () =>
   Effect.gen(function* () {
     const requests: string[] = [];
     const requestBodies: string[] = [];
     const scope = yield* Scope.make();
     const context = yield* build(
-      ChatGptDesktop.of({
+      desktop({
         authStatus: () => Effect.die(new Error("unused")),
         authMethod: Effect.succeed("chatgptAuthTokens"),
         request: (input) => {
@@ -256,7 +361,7 @@ it.effect("resolves generated images without leaking transport failures", () =>
   Effect.gen(function* () {
     const scope = yield* Scope.make();
     const context = yield* build(
-      ChatGptDesktop.of({
+      desktop({
         authStatus: () => Effect.die(new Error("unused")),
         authMethod: Effect.succeed("chatgpt"),
         request: () =>
@@ -283,13 +388,13 @@ it.effect("resolves generated images without leaking transport failures", () =>
 );
 
 it.effect(
-  "prepares authenticated WebSocket connections locally without a connect-info HTTP request",
+  "opens authenticated streams in Main without exposing connection credentials to the renderer",
   () =>
     Effect.gen(function* () {
       const scope = yield* Scope.make();
       policyFlags.token = null;
       const context = yield* build(
-        ChatGptDesktop.of({
+        desktop({
           authMethod: Effect.succeed("chatgpt"),
           authStatus: () => Effect.die("auth handled by backend boundary"),
           request: () => Effect.die("Connection preparation must not make an HTTP request"),
@@ -298,14 +403,43 @@ it.effect(
       );
       const media = Context.get(context, CodexMedia);
       assert.strictEqual((yield* media.dictationState).capabilities.streaming, "available");
-      assert.isTrue(Exit.isFailure(yield* Effect.exit(media.prepareStreamingConnectInfo)));
+      assert.isTrue(
+        Exit.isFailure(
+          yield* Effect.exit(Effect.scoped(media.openStreaming("composer", () => {}))),
+        ),
+      );
       assert.strictEqual((yield* media.dictationState).capabilities.streaming, "available");
       policyFlags.token = "test-token";
-      assert.deepEqual(yield* media.prepareStreamingConnectInfo, {
-        websocketUrl: "wss://chatgpt.test/dictation/stream",
-        protocols: ["chatgpt-dictation", "openai-bearer.test-token", "codex-desktop"],
-      });
+      const events: DictationStreamTransportEvent[] = [];
+      yield* Effect.scoped(
+        media.openStreaming("composer", (event) => {
+          events.push(event);
+        }),
+      );
+      const options = sockets.open.mock.calls[0]![0];
+      assert.strictEqual(
+        options.url,
+        "wss://chatgpt.test/dictation/stream?dictation_surface=composer",
+      );
+      assert.strictEqual(options.headers.authorization, "Bearer test-token");
+      assert.strictEqual(options.headers["chatgpt-account-id"], "account");
+      assert.strictEqual(options.headers["accept-language"], "zh-CN");
+      assert.strictEqual(options.signal, policyFlags.authController.signal);
+      assert.deepEqual(sockets.routes, [options.url]);
+      assert.deepEqual(events, [
+        {
+          type: "prepared",
+          headers: {
+            originator: "Codex Desktop",
+            userAgent: "Codex Desktop/test (darwin; arm64)",
+            authorizationPresent: true,
+            accountHeaderPresent: true,
+          },
+          proxyMode: "http",
+        },
+      ]);
       assert.strictEqual(policyFlags.authReads, 2);
+      assert.strictEqual(sockets.released, 1);
       yield* Scope.close(scope, Exit.void);
     }),
 );
@@ -316,7 +450,7 @@ it.effect(
     Effect.gen(function* () {
       const scope = yield* Scope.make();
       const context = yield* build(
-        ChatGptDesktop.of({
+        desktop({
           authMethod: Effect.succeed("chatgpt"),
           authStatus: () => Effect.die("unused"),
           request: () => Effect.succeed(new Response("private service error", { status: 429 })),
@@ -351,7 +485,7 @@ it.effect("reads and updates the account voice language through typed requests",
     const requests: Array<{ path: string; method: string }> = [];
     let remoteLanguage = "ja";
     const context = yield* build(
-      ChatGptDesktop.of({
+      desktop({
         authMethod: Effect.succeed("chatgpt"),
         authStatus: () => Effect.die("unused"),
         request: (input) => {
@@ -382,11 +516,11 @@ it.effect("reads and updates the account voice language through typed requests",
   }),
 );
 
-it.effect("denies streams when the account policy or workspace routing disallows them", () =>
+it.effect("honors streaming policy and supports authenticated workspace routes", () =>
   Effect.gen(function* () {
     const scope = yield* Scope.make();
     const context = yield* build(
-      ChatGptDesktop.of({
+      desktop({
         authMethod: Effect.succeed("chatgpt"),
         authStatus: () => {
           return Effect.succeed({
@@ -401,18 +535,100 @@ it.effect("denies streams when the account policy or workspace routing disallows
     );
     const media = Context.get(context, CodexMedia);
     policyFlags.streaming = false;
-    assert.isTrue(Exit.isFailure(yield* Effect.exit(media.prepareStreamingConnectInfo)));
+    assert.isTrue(
+      Exit.isFailure(yield* Effect.exit(Effect.scoped(media.openStreaming("global", () => {})))),
+    );
     assert.strictEqual(policyFlags.authReads, 0);
     policyFlags.streaming = true;
     policyFlags.workspace = true;
-    assert.isTrue(Exit.isFailure(yield* Effect.exit(media.prepareStreamingConnectInfo)));
+    policyFlags.preparedUrl =
+      "https://workspace.test/backend-api/workspace/account/dictation/stream?dictation_surface=global";
+    const events: DictationStreamTransportEvent[] = [];
+    yield* Effect.scoped(
+      media.openStreaming("global", (event) => {
+        events.push(event);
+      }),
+    );
+    assert.strictEqual(
+      sockets.open.mock.calls[0]![0].url,
+      "wss://workspace.test/backend-api/workspace/account/dictation/stream?dictation_surface=global",
+    );
+    assert.strictEqual(
+      sockets.open.mock.calls[0]![0].headers["x-openai-workspace-token"],
+      "private-workspace-token",
+    );
+    assert.strictEqual(events.length, 1);
+    assert.strictEqual(events[0]!.type, "prepared");
     assert.strictEqual(policyFlags.authReads, 1);
     policyFlags.workspace = false;
     policyFlags.authController.abort();
-    assert.isTrue(Exit.isFailure(yield* Effect.exit(media.prepareStreamingConnectInfo)));
+    assert.isTrue(
+      Exit.isFailure(yield* Effect.exit(Effect.scoped(media.openStreaming("global", () => {})))),
+    );
     assert.strictEqual(policyFlags.authReads, 2);
+    assert.strictEqual(sockets.open.mock.calls.length, 1);
     yield* Scope.close(scope, Exit.void);
   }),
+);
+
+it.effect("keeps each stream in its caller Scope and forwards account cancellation", () =>
+  Effect.gen(function* () {
+    const owner = yield* Effect.acquireRelease(Scope.make(), (scope) =>
+      Scope.close(scope, Exit.void),
+    );
+    const context = yield* build(desktop({}), owner);
+    const media = Context.get(context, CodexMedia);
+    const streamScope = yield* Scope.fork(owner, "sequential");
+    yield* media
+      .openStreaming("composer", () => {})
+      .pipe(Effect.provideService(Scope.Scope, streamScope));
+    const signal = sockets.open.mock.calls[0]![0].signal;
+    assert.isFalse(signal.aborted);
+    policyFlags.authController.abort();
+    assert.isTrue(signal.aborted);
+    yield* Scope.close(streamScope, Exit.void);
+    assert.strictEqual(sockets.released, 1);
+    yield* Scope.close(owner, Exit.void);
+    assert.strictEqual(sockets.released, 1);
+  }),
+);
+
+it.effect(
+  "rejects unsafe routed endpoints before proxy resolution and permits local development",
+  () =>
+    Effect.gen(function* () {
+      const scope = yield* Effect.acquireRelease(Scope.make(), (scope) =>
+        Scope.close(scope, Exit.void),
+      );
+      const context = yield* build(desktop({}), scope);
+      const media = Context.get(context, CodexMedia);
+      for (const url of [
+        "http://remote.test/dictation/stream",
+        "https://user:secret@chatgpt.test/dictation/stream",
+        "https://chatgpt.test/dictation/stream#private",
+        "wss://chatgpt.test/dictation/stream",
+        "file:///dictation/stream",
+        "not-a-url",
+      ]) {
+        policyFlags.preparedUrl = url;
+        assert.isTrue(
+          Exit.isFailure(
+            yield* Effect.exit(Effect.scoped(media.openStreaming("global", () => {}))),
+          ),
+        );
+      }
+      assert.deepEqual(sockets.routes, []);
+      assert.strictEqual(sockets.open.mock.calls.length, 0);
+      for (const hostname of ["localhost", "127.0.0.1", "[::1]"]) {
+        policyFlags.preparedUrl = `http://${hostname}:8080/dictation/stream?dictation_surface=global`;
+        yield* Effect.scoped(media.openStreaming("global", () => {}));
+        assert.strictEqual(
+          sockets.open.mock.calls.at(-1)![0].url,
+          `ws://${hostname}:8080/dictation/stream?dictation_surface=global`,
+        );
+      }
+      assert.strictEqual(sockets.released, 3);
+    }),
 );
 
 it.effect(
@@ -425,7 +641,7 @@ it.effect(
       const activated: boolean[] = [];
       const scope = yield* Scope.make();
       const context = yield* build(
-        ChatGptDesktop.of({
+        desktop({
           authMethod: Effect.succeed("apiKey"),
           authStatus: unsupported,
           request: unsupported,
@@ -454,7 +670,11 @@ it.effect(
         },
       });
       assert.strictEqual(activated.at(-1), true);
-      assert.isTrue(Exit.isFailure(yield* Effect.exit(media.prepareStreamingConnectInfo)));
+      assert.isTrue(
+        Exit.isFailure(
+          yield* Effect.exit(Effect.scoped(media.openStreaming("composer", () => {}))),
+        ),
+      );
       assert.strictEqual(policyFlags.authReads, 0);
       yield* Scope.close(scope, Exit.void);
     }),

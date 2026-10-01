@@ -31,6 +31,7 @@ import * as DocumentRecoveryIpc from "../ipc/handlers/DocumentRecoveryIpc";
 import * as CoreMutationIpc from "../ipc/handlers/CoreMutationIpc";
 import * as DatabaseProjectionIpc from "../ipc/handlers/DatabaseProjectionIpc";
 import * as DictationIpc from "../ipc/handlers/DictationIpc";
+import * as DictationStreamingIpc from "../ipc/handlers/DictationStreamingIpc";
 import * as ExecutionHostIpc from "../ipc/handlers/ExecutionHostIpc";
 import * as GitApplicationIpc from "../ipc/handlers/GitApplicationIpc";
 import * as GitWorkerIpc from "../ipc/handlers/GitWorkerIpc";
@@ -64,6 +65,7 @@ export const live = Layer.mergeAll(
   ComputerUseSettingsIpc.live,
   GitWorkerIpc.live,
   DictationIpc.live(),
+  DictationStreamingIpc.live(),
   ApplicationSyncIpc.live,
   WorkspaceFileIpc.live(),
   FileSearchIpc.live,

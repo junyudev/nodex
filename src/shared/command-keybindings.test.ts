@@ -304,27 +304,61 @@ describe("command keybindings", () => {
     expect(threw).toBe(true);
   });
 
-  test("allows hold and toggle dictation to share one shortcut", () => {
-    const overrides = { globalDictationHold: ["Fn"] };
+  test.each([
+    ["globalDictationHold", "globalDictationToggle"],
+    ["globalDictationToggle", "globalDictationHold"],
+  ])("rejects assigning %s's shortcut to %s", (configured, edited) => {
+    const overrides = { [configured]: ["Fn"] };
     expect(
+      findCommandKeybindingConflict(createCommandKeymapState(overrides, "macOS"), edited, "Fn")
+        ?.commandId,
+    ).toBe(configured);
+    expect(() =>
       applyCommandKeybindingUpdate(
         overrides,
-        "globalDictationToggle",
-        {
-          type: "set",
-          keybinding: { key: "Fn" },
-        },
+        edited,
+        { type: "set", keybinding: { key: "Fn" } },
         "macOS",
       ),
-    ).toMatchObject({ globalDictationHold: ["Fn"], globalDictationToggle: ["Fn"] });
-    expect(
-      findCommandKeybindingConflict(
-        createCommandKeymapState(overrides, "macOS"),
-        "renameThread",
-        "Fn",
-      )?.commandId,
-    ).toBe("globalDictationHold");
+    ).toThrow();
   });
+
+  test("allows independent primary and single-tap dictation shortcuts", () => {
+    expect(
+      applyCommandKeybindingUpdate(
+        { globalDictationHold: ["Fn"] },
+        "globalDictationToggle",
+        { type: "set", keybinding: { key: "Ctrl+Space" } },
+        "macOS",
+      ),
+    ).toMatchObject({ globalDictationHold: ["Fn"], globalDictationToggle: ["Ctrl+Space"] });
+  });
+
+  test.each([
+    { platform: "windows" as const, primary: "Ctrl+Alt+Space", single: "Alt+Ctrl+Space" },
+    { platform: "windows" as const, primary: "CmdOrCtrl+Space", single: "Control+Space" },
+    { platform: "macOS" as const, primary: "CmdOrCtrl+Space", single: "Command+Space" },
+  ])(
+    "rejects equivalent global shortcuts on $platform ($primary / $single)",
+    ({ platform, primary, single }) => {
+      const overrides = { globalDictationHold: [primary] };
+      expect(
+        findCommandKeybindingConflict(
+          createCommandKeymapState(overrides, platform),
+          "globalDictationToggle",
+          single,
+        )?.commandId,
+      ).toBe("globalDictationHold");
+      expect(() =>
+        applyCommandKeybindingUpdate(
+          overrides,
+          "globalDictationToggle",
+          { type: "set", keybinding: { key: single } },
+          platform,
+        ),
+      ).toThrow();
+    },
+  );
 
   test("requires Cmd/Ctrl or Alt for ordinary global dictation shortcuts", () => {
     const setGlobalHold = (key: string) =>

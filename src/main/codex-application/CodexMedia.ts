@@ -6,17 +6,18 @@ import * as Stream from "effect/Stream";
 import * as SubscriptionRef from "effect/SubscriptionRef";
 import type { ConfigReadResponse } from "@nodex/codex-app-server-protocol/v2/ConfigReadResponse";
 import { DEFAULT_CODEX_HOST_ID } from "../../shared/codex-host";
-import type { DictationStreamingConnectInfo } from "../../shared/dictation-streaming";
+import type * as Scope from "effect/Scope";
+import type { DictationSurface } from "../../shared/dictation";
+import type { DictationStreamTransportEvent } from "../../shared/dictation-stream-transport";
+import { CodexWorkspaceRouting } from "../codex-runtime/CodexWorkspaceRouting";
+import { CodexAppServerCapabilities } from "../codex-runtime/CodexAppServerCapabilities";
+import { CodexExecutionHostAuthState } from "../codex-runtime/CodexExecutionHostAuthState";
 import type {
   CodexConversationImageAssetResolveInput,
   CodexConversationImageAssetResolveResult,
   CodexDictationStateSnapshot,
 } from "../../shared/types";
-import { CodexWorkspaceRouting } from "../codex-runtime/CodexWorkspaceRouting";
-import { CodexAppServerCapabilities } from "../codex-runtime/CodexAppServerCapabilities";
-import { CodexExecutionHostAuthState } from "../codex-runtime/CodexExecutionHostAuthState";
 import { makeDictationPolicy, type DictationPolicySnapshot } from "../dictation/DictationPolicy";
-import { readChatGptBackendRequestAuth } from "../codex/chatgpt-backend-auth";
 import { CodexGateway } from "../codex-runtime/CodexGateway";
 import { resolveChatGptBaseUrl } from "../codex/chatgpt-base-url";
 import { ElectronNet } from "../platform/electron/ElectronNet";
@@ -26,8 +27,15 @@ import { CodexAccount } from "./CodexAccount";
 import { CodexConnection } from "./CodexConnection";
 import { ChatGptDesktop } from "./ChatGptDesktop";
 import type { DictationTextResult } from "../../shared/dictation-diagnostics";
-import { DictationRequestDiagnostics } from "../dictation/dictation-request-diagnostics";
-import { buildDictationStreamConnectInfo } from "../dictation/dictation-stream-connect-info";
+import {
+  DictationRequestDiagnostics,
+  selectDictationRequestHeaders,
+} from "../dictation/dictation-request-diagnostics";
+import { DictationNetwork } from "../platform/electron/DictationNetwork";
+import {
+  openDictationWebSocket,
+  type DictationWebSocketHandle,
+} from "../platform/node/DictationWebSocket";
 import { DICTATION_VOICE_LANGUAGES } from "../../shared/dictation";
 
 const CODEX_DICTATION_SHORTCUT_LABEL = "Ctrl+M";
@@ -94,10 +102,10 @@ export class CodexMedia extends Context.Service<
       readonly transcript: string;
       readonly surroundingText: string | null;
     }) => Effect.Effect<DictationTextResult>;
-    readonly prepareStreamingConnectInfo: Effect.Effect<
-      DictationStreamingConnectInfo,
-      CodexMediaError
-    >;
+    readonly openStreaming: (
+      surface: DictationSurface,
+      onEvent: (event: DictationStreamTransportEvent) => void,
+    ) => Effect.Effect<DictationWebSocketHandle, CodexMediaError, Scope.Scope>;
     readonly resolveImage: (
       input: CodexConversationImageAssetResolveInput,
     ) => Effect.Effect<CodexConversationImageAssetResolveResult>;
@@ -238,13 +246,12 @@ export const live: Layer.Layer<
   | CodexConnection
   | CodexApplicationEventHub
   | DictationRuntime
+  | DictationNetwork
 > = Layer.effect(
   CodexMedia,
   Effect.gen(function* () {
     const gateway = yield* CodexGateway;
-    const appServerCapabilities = yield* CodexAppServerCapabilities;
-    const hostAuthState = yield* CodexExecutionHostAuthState;
-    const workspaceRouting = yield* CodexWorkspaceRouting;
+    const network = yield* DictationNetwork;
     const chatgpt = yield* ChatGptDesktop;
     const electron = yield* ElectronNet;
     const account = yield* CodexAccount;
@@ -574,7 +581,10 @@ export const live: Layer.Layer<
       Effect.forkScoped({ startImmediately: true }),
     );
 
-    const prepareStreamingConnectInfo = Effect.gen(function* () {
+    const openStreaming = Effect.fn("CodexMedia.openStreaming")(function* (
+      surface: DictationSurface,
+      onEvent: (event: DictationStreamTransportEvent) => void,
+    ) {
       const method = yield* SubscriptionRef.get(authMethod);
       if (method !== "chatgpt") {
         return yield* new CodexMediaError({
@@ -591,44 +601,83 @@ export const live: Layer.Layer<
           status: 403,
         });
       }
-      const auth = yield* readChatGptBackendRequestAuth(gateway, false).pipe(
-        Effect.provideService(CodexAppServerCapabilities, appServerCapabilities),
-        Effect.provideService(CodexWorkspaceRouting, workspaceRouting),
-        Effect.provideService(CodexExecutionHostAuthState, hostAuthState),
-        Effect.mapError(
-          (cause) =>
-            new CodexMediaError({
-              operation: "streaming-auth",
-              message: "Unable to prepare dictation authentication",
-              cause,
-            }),
-        ),
-      );
-      if (auth.routing.kind === "workspace") {
-        return yield* new CodexMediaError({
-          operation: "streaming-routing",
-          message: "Dictation streaming is unavailable for this account routing",
-          status: 403,
-        });
-      }
-      const token = auth.token;
       const baseUrl = yield* readBaseUrl;
-      if (auth.signal.aborted) {
+      const request = yield* chatgpt
+        .prepareRequest({
+          action: "stream dictation",
+          baseUrl,
+          path: `/dictation/stream?dictation_surface=${surface}`,
+          method: "GET",
+          headers: network.acceptLanguage ? { "Accept-Language": network.acceptLanguage } : {},
+          missingAuthErrorMessage: "ChatGPT authentication is required for dictation.",
+        })
+        .pipe(
+          Effect.mapError(
+            (cause) =>
+              new CodexMediaError({
+                operation: "streaming-auth",
+                message: "Unable to prepare dictation authentication",
+                cause,
+              }),
+          ),
+        );
+      if (request.signal.aborted) {
         return yield* new CodexMediaError({
           operation: "streaming-auth",
           message: "Dictation authentication changed while preparing the stream",
           status: 401,
         });
       }
-      const info = yield* Effect.try({
-        try: () => buildDictationStreamConnectInfo(baseUrl, token),
+      const websocketUrl = yield* Effect.try({
+        try: () => {
+          const url = new URL(request.url);
+          if (url.username || url.password || url.hash) throw new Error("Invalid stream URL");
+          if (url.protocol === "https:") url.protocol = "wss:";
+          else if (
+            url.protocol === "http:" &&
+            ["localhost", "127.0.0.1", "[::1]"].includes(url.hostname)
+          )
+            url.protocol = "ws:";
+          else throw new Error("Dictation streaming requires a secure endpoint");
+          return url.toString();
+        },
         catch: () =>
           new CodexMediaError({
-            operation: "streaming-connect-info",
+            operation: "streaming-endpoint",
             message: "Unable to prepare the dictation stream",
           }),
       });
-      return info;
+      const route = yield* network.prepare(websocketUrl).pipe(
+        Effect.mapError(
+          () =>
+            new CodexMediaError({
+              operation: "streaming-proxy",
+              message: "Unable to resolve the dictation network route",
+            }),
+        ),
+      );
+      yield* Effect.sync(() =>
+        onEvent({
+          type: "prepared",
+          headers: selectDictationRequestHeaders(request.headers),
+          proxyMode: route.proxyMode,
+        }),
+      );
+      return yield* openDictationWebSocket({
+        url: websocketUrl,
+        headers: Object.fromEntries(request.headers.entries()),
+        signal: request.signal,
+        agent: route.agent,
+        onEvent,
+      }).pipe(
+        Effect.mapError(
+          () =>
+            new CodexMediaError({
+              operation: "streaming-connect",
+              message: "Unable to connect the dictation stream",
+            }),
+        ),
+      );
     });
 
     const resolveImage: CodexMedia["Service"]["resolveImage"] = (input) => {
@@ -702,7 +751,7 @@ export const live: Layer.Layer<
       updateVoiceLanguage,
       transcribe,
       cleanupTranscript,
-      prepareStreamingConnectInfo,
+      openStreaming,
       resolveImage,
     });
   }),

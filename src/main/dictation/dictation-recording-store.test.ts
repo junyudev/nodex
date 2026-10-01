@@ -1,9 +1,10 @@
 import { dictationDiagnosticsFixture } from "../../../tests/fixtures/dictation-diagnostics";
 import { createHash } from "node:crypto";
+import { rename } from "node:fs/promises";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import { afterEach, describe, expect, test } from "vite-plus/test";
+import { afterEach, describe, expect, test, vi } from "vite-plus/test";
 import {
   DICTATION_HISTORY_DIRECTORY_NAME,
   DICTATION_HISTORY_MAX_CHUNK_BYTES,
@@ -17,7 +18,13 @@ import {
 
 const roots: string[] = [];
 
+vi.mock("node:fs/promises", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("node:fs/promises")>();
+  return { ...actual, rename: vi.fn(actual.rename) };
+});
+
 afterEach(() => {
+  vi.restoreAllMocks();
   for (const root of roots.splice(0)) {
     fs.rmSync(root, { recursive: true, force: true });
   }
@@ -70,6 +77,84 @@ async function createCompletedRecording(input: {
 }
 
 describe("FileDictationRecordingStore", () => {
+  test("imports complete private audio, preserves the selected filename, and retries after restart", async () => {
+    const { profileRoot, store } = createStore();
+    const bytes = new Uint8Array(DICTATION_HISTORY_MAX_CHUNK_BYTES + 3).fill(7);
+    const expected = Uint8Array.from(bytes);
+    const pending = store.importFile({ id: "file:interview", fileName: "Interview.webm", bytes });
+    bytes.fill(9);
+    const recording = await pending;
+    expect(recording).toMatchObject({
+      id: "file:interview",
+      fileName: "Interview.webm",
+      surface: "file",
+      status: "completed",
+      mimeType: "audio/webm",
+      sizeBytes: expected.byteLength,
+      chunkCount: 2,
+    });
+    expect(
+      Buffer.from((await store.readAudio(recording.id)).bytes).equals(Buffer.from(expected)),
+    ).toBe(true);
+    const restarted = new FileDictationRecordingStore({ profileRoot });
+    expect(await restarted.list()).toEqual([recording]);
+    await restarted.setTranscript({ id: recording.id, transcript: "Imported interview" });
+    expect((await restarted.readAudio(recording.id)).recording.transcript).toBe(
+      "Imported interview",
+    );
+    expect(fileMode(recordingDirectory(profileRoot, recording.id))).toBe(0o700);
+    expect(
+      fileMode(path.join(recordingDirectory(profileRoot, recording.id), "0000000000.chunk")),
+    ).toBe(0o600);
+  });
+
+  test("discards failed and abandoned imports without exposing partial recordings", async () => {
+    const { profileRoot, store } = createStore();
+    await store.list();
+    vi.mocked(rename).mockRejectedValueOnce(new Error("disk unavailable"));
+    await expect(
+      store.importFile({ id: "file:failed", fileName: "Failed.webm", bytes: new Uint8Array([1]) }),
+    ).rejects.toThrow("disk unavailable");
+    expect(await store.list()).toEqual([]);
+    const historyRoot = path.join(profileRoot, DICTATION_HISTORY_DIRECTORY_NAME);
+    expect(fs.readdirSync(historyRoot)).toEqual([]);
+    const abandoned = path.join(
+      historyRoot,
+      `.${"a".repeat(64)}.11111111-1111-4111-8111-111111111111.import`,
+    );
+    fs.mkdirSync(abandoned, { mode: 0o700 });
+    fs.writeFileSync(path.join(abandoned, "0000000000.chunk"), new Uint8Array([2]));
+    expect(await new FileDictationRecordingStore({ profileRoot }).list()).toEqual([]);
+    expect(fs.existsSync(abandoned)).toBe(false);
+  });
+
+  test("includes imports in the same twenty-entry retention limit", async () => {
+    let nowMs = 0;
+    const { store } = createStore({ now: () => nowMs });
+    for (let index = 0; index < DICTATION_HISTORY_MAX_RECORDINGS; index += 1) {
+      nowMs = index + 1;
+      await createCompletedRecording({ store, id: `capture:${index}` });
+    }
+    nowMs += 1;
+    await store.importFile({
+      id: "file:newest",
+      fileName: "Newest.webm",
+      bytes: new Uint8Array([1]),
+    });
+    const recordings = await store.list();
+    expect(recordings).toHaveLength(DICTATION_HISTORY_MAX_RECORDINGS);
+    expect(recordings[0]?.surface).toBe("file");
+    expect(recordings.some((recording) => recording.id === "capture:0")).toBe(false);
+    await expect(
+      store.importFile({
+        id: "file:newest",
+        fileName: "Duplicate.webm",
+        bytes: new Uint8Array([2]),
+      }),
+    ).rejects.toMatchObject({ code: "recording_exists" });
+    expect((await store.readAudio("file:newest")).bytes).toEqual(new Uint8Array([1]));
+  });
+
   test("durably creates, appends, finalizes, lists, reads, and updates a recording", async () => {
     let nowMs = 1_000;
     const { profileRoot, store } = createStore({ now: () => nowMs });

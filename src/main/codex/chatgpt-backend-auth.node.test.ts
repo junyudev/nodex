@@ -1,5 +1,6 @@
 import * as Context from "effect/Context";
 import * as Layer from "effect/Layer";
+import type { ApplicationNetworkRequirements } from "@nodex/codex-app-server-protocol/v2/ApplicationNetworkRequirements";
 import {
   CodexExecutionHostAuthState,
   live as authStateLive,
@@ -90,6 +91,7 @@ describe("ChatGPT backend routing", () => {
         signal: new AbortController().signal,
         routing,
         planType: "plus",
+        network: null,
       }),
     ).toBe("https://workspace.example/backend-api/transcribe?x=1");
     expect(headers.get("X-OpenAI-Account-Routing-Override")).toBe("us");
@@ -99,6 +101,7 @@ describe("ChatGPT backend routing", () => {
       token: "unused",
       routing: { kind: "legacy" },
       planType: "plus",
+      network: null,
       signal: new AbortController().signal,
     });
     expect(headers.has("X-OpenAI-Account-Routing-Override")).toBe(false);
@@ -144,10 +147,42 @@ it.effect("uses the companion only for the verified public runtime's omitted ext
   Effect.gen(function* () {
     const token = `x.${Buffer.from(JSON.stringify({ exp: 9999999999, "https://api.openai.com/auth": { chatgpt_account_id: identity.accountId, user_id: identity.userId } })).toString("base64url")}.x`;
     const authState = Context.get(yield* Layer.build(authStateLive), CodexExecutionHostAuthState);
-    const cases = [
+    const network = { enabled: true, domains: { "workspace.example": "allow" } } as const;
+    const cases: ReadonlyArray<{
+      readonly version: string;
+      readonly account: unknown;
+      readonly requirements?: unknown;
+      readonly network?: ApplicationNetworkRequirements;
+      readonly success: boolean;
+      readonly calls: number;
+    }> = [
       { version: "0.155.0", account: input.account, success: true, calls: 1 },
       { version: "0.154.0", account: input.account, success: true, calls: 0 },
       { version: "0.156.0", account: input.account, success: false, calls: 0 },
+      {
+        version: "0.155.0",
+        account: input.account,
+        requirements: { requirements: { application: { network } } },
+        network,
+        success: true,
+        calls: 1,
+      },
+      {
+        version: "0.155.0",
+        account: input.account,
+        requirements: {
+          requirements: { application: { network: { enabled: false, domains: { "*": "allow" } } } },
+        },
+        success: false,
+        calls: 0,
+      },
+      {
+        version: "0.155.0",
+        account: input.account,
+        requirements: { requirements: {} },
+        success: false,
+        calls: 0,
+      },
       {
         version: "0.155.0",
         account: { ...input.account, workspaceRouting: null },
@@ -182,7 +217,11 @@ it.effect("uses the companion only for the verified public runtime's omitted ext
         localHostId: "local",
         requestLocal: () => Effect.succeed({ authMethod: "chatgpt", authToken: token }),
         requestRawOnHost: (_host: string, method: string) =>
-          Effect.succeed(method === "account/read" ? example.account : input.requirements),
+          Effect.succeed(
+            method === "account/read"
+              ? example.account
+              : (example.requirements ?? input.requirements),
+          ),
       } as unknown as CodexGateway["Service"];
       const result = yield* Effect.exit(
         readChatGptBackendRequestAuth(gateway).pipe(
@@ -202,6 +241,7 @@ it.effect("uses the companion only for the verified public runtime's omitted ext
         ),
       );
       expect(Exit.isSuccess(result)).toBe(example.success);
+      if (Exit.isSuccess(result)) expect(result.value.network).toEqual(example.network ?? null);
       expect(calls).toBe(example.calls);
     }
   }).pipe(Effect.scoped),
