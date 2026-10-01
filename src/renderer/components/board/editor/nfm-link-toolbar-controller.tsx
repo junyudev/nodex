@@ -1,7 +1,6 @@
 import { LinkToolbarExtension } from "@blocknote/core/extensions";
 import type { Range } from "@tiptap/core";
 import { useEffect, useMemo, useState, type FC } from "react";
-import { flip, offset, shift } from "@floating-ui/react";
 import { NodexFloatingLayerProvider } from "@/components/ui/floating-layer";
 import {
   NfmFloatingPopover,
@@ -12,6 +11,7 @@ import {
   type NfmPopoverReference,
 } from "./nfm-link-toolbar-controller-deps";
 import {
+  createNfmEditorFloatingMiddleware,
   NFM_EDITOR_FLOATING_UI_PORTAL_ELEMENT,
   NFM_EDITOR_FLOATING_UI_Z_INDEX,
 } from "./nfm-blocknote-floating-ui";
@@ -125,7 +125,7 @@ export function NfmLinkToolbarController(props: {
         },
         placement: "bottom-start",
         strategy: "fixed",
-        middleware: [offset(6), shift({ padding: 8 }), flip({ padding: 8 })],
+        middleware: createNfmEditorFloatingMiddleware(6),
         ...props.floatingUIOptions?.useFloatingOptions,
       },
       useHoverProps: {

@@ -14,10 +14,9 @@ const baseUiRoots = [
 
 const floatingUiAllowlist = new Set([
   "src/renderer/components/board/editor/nfm-floating-popover.tsx",
-  "src/renderer/components/board/editor/nfm-formatting-toolbar-controller.tsx",
-  "src/renderer/components/board/editor/nfm-link-toolbar-controller.tsx",
+  "src/renderer/components/board/editor/nfm-blocknote-floating-ui.ts",
+  "src/renderer/components/board/editor/nfm-editor-floating-positioning.test.ts",
   "src/renderer/components/board/editor/nfm-side-menu.tsx",
-  "src/renderer/components/board/editor/nfm-text-action-menu-floating.ts",
   "src/renderer/components/ui/hover-card.tsx",
   "third_party/blocknote/packages/react/src/components/AttributionTooltip/AttributionTooltipController.tsx",
   "third_party/blocknote/packages/react/src/components/Comments/FloatingComposerController.tsx",

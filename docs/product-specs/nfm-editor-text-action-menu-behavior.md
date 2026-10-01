@@ -1,7 +1,7 @@
 # NFM Editor Text Action Menu Behavior
 
 Status: Active
-Last updated: 2026-08-26
+Last updated: 2026-10-01
 
 ## Purpose
 
@@ -33,6 +33,13 @@ Closing, accepting, or unmounting a child surface releases its lease. The
 editor either restores an eligible live inline selection or clears both the
 selection presentation and command target. A CSS highlight without a live
 selection or active lease is invalid state.
+
+## Window boundaries
+
+Editor action and formatting menus retain their preferred placement when it fits
+within an `8px` window inset. They try the opposite side before shifting along
+both axes. A tall multi-line selection may leave neither side enough room;
+the menu then overlaps the selection as needed to keep its actions visible.
 
 ## Chat submission
 
