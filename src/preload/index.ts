@@ -73,13 +73,24 @@ const CONVERSATION_SERVICE_CHANNEL: typeof import("../shared/codex-client-coordi
   "codex:conversation-service:connect";
 const CONVERSATION_SERVICE_CONNECT: typeof import("../shared/codex-client-coordination").CODEX_CONVERSATION_SERVICE_CONNECT =
   "connect-conversation-host";
+const DICTATION_STREAM_CHANNEL: typeof import("../shared/dictation-stream-transport").DICTATION_STREAM_CONNECT_CHANNEL =
+  "codex:dictation:stream:connect";
+const DICTATION_STREAM_CONNECT: typeof import("../shared/dictation-stream-transport").DICTATION_STREAM_CONNECT_MESSAGE =
+  "connect-dictation-stream";
 
 window.addEventListener("message", (event: MessageEvent<unknown>) => {
   if (event.source !== window || event.data === null || typeof event.data !== "object") return;
-  if (!("type" in event.data) || event.data.type !== CONVERSATION_SERVICE_CONNECT) return;
+  if (!("type" in event.data)) return;
+  const channel =
+    event.data.type === CONVERSATION_SERVICE_CONNECT
+      ? CONVERSATION_SERVICE_CHANNEL
+      : event.data.type === DICTATION_STREAM_CONNECT
+        ? DICTATION_STREAM_CHANNEL
+        : null;
+  if (channel === null) return;
   if (event.ports.length !== 1) return;
   const port = event.ports[0];
-  if (port) ipcRenderer.postMessage(CONVERSATION_SERVICE_CHANNEL, undefined, [port]);
+  if (port) ipcRenderer.postMessage(channel, undefined, [port]);
 });
 
 ipcRenderer.on(MCP_APP_SANDBOX_HOST_MESSAGE_CHANNEL, (event, message) => {

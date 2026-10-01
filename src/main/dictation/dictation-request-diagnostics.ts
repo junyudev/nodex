@@ -1,5 +1,12 @@
 import type { DictationHttpDiagnostics } from "../../shared/dictation-diagnostics";
 
+export const selectDictationRequestHeaders = (headers: Headers) => ({
+  originator: (headers.get("originator") ?? "").slice(0, 160),
+  userAgent: (headers.get("user-agent") ?? "").slice(0, 256),
+  authorizationPresent: headers.has("authorization"),
+  accountHeaderPresent: headers.has("chatgpt-account-id"),
+});
+
 /** Measures the client boundary. Header wait includes authentication, upload and server wait. */
 export class DictationRequestDiagnostics {
   readonly #startedAt: number;
@@ -25,12 +32,7 @@ export class DictationRequestDiagnostics {
 
   readonly sentHeaders = (headers: Headers): void => {
     this.#value.attempts += 1;
-    this.#value.headers = {
-      originator: (headers.get("originator") ?? "").slice(0, 160),
-      userAgent: (headers.get("user-agent") ?? "").slice(0, 256),
-      authorizationPresent: headers.has("authorization"),
-      accountHeaderPresent: headers.has("chatgpt-account-id"),
-    };
+    this.#value.headers = selectDictationRequestHeaders(headers);
   };
 
   response(response: Response): void {

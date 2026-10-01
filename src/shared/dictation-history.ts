@@ -22,7 +22,13 @@ export const DictationRecordingStatusSchema = z.enum([
   "cancelled",
   "interrupted",
 ]);
-export const DictationRecordingSurfaceSchema = z.enum(["composer", "global"]);
+export const DictationRecordingSurfaceSchema = z.enum(["composer", "global", "file"]);
+export const DictationRecordingFileNameSchema = z
+  .string()
+  .min(1)
+  .max(255)
+  .regex(/^[^/\\\x00-\x1f\x7f]+$/u)
+  .refine((name) => name !== "." && name !== "..", "File name must be a basename");
 export const DictationRecordingMimeTypeSchema = z
   .string()
   .min(1)
@@ -48,11 +54,19 @@ export const DictationRecordingMetadataSchema = z
     chunkCount: z.number().int().nonnegative().max(DICTATION_HISTORY_MAX_CHUNKS).safe(),
     status: DictationRecordingStatusSchema,
     surface: DictationRecordingSurfaceSchema,
+    fileName: DictationRecordingFileNameSchema.optional(),
     transcript: DictationTranscriptSchema.optional(),
     diagnostics: DictationDiagnosticsSchema.optional(),
   })
   .strict()
   .superRefine((metadata, context) => {
+    if ((metadata.surface === "file") !== (metadata.fileName !== undefined)) {
+      context.addIssue({
+        code: "custom",
+        message: "Only imported recordings must include a file name",
+        path: ["fileName"],
+      });
+    }
     if (metadata.updatedAtMs < metadata.createdAtMs) {
       context.addIssue({
         code: "custom",
@@ -63,13 +77,19 @@ export const DictationRecordingMetadataSchema = z
   });
 
 export type DictationRecordingStatus = z.infer<typeof DictationRecordingStatusSchema>;
-export type DictationRecordingSurface = DictationSurface;
+export type DictationRecordingSurface = z.infer<typeof DictationRecordingSurfaceSchema>;
 export type DictationRecordingMetadata = z.infer<typeof DictationRecordingMetadataSchema>;
 
 export interface DictationRecordingCreateInput {
   readonly id: string;
   readonly mimeType: string;
-  readonly surface: DictationRecordingSurface;
+  readonly surface: DictationSurface;
+}
+
+export interface DictationRecordingImportInput {
+  readonly id: string;
+  readonly fileName: string;
+  readonly bytes: Uint8Array;
 }
 
 export interface DictationRecordingAppendInput {

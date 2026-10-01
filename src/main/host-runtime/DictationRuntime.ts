@@ -26,6 +26,7 @@ import type {
   DictationRecordingAudio,
   DictationRecordingCreateInput,
   DictationRecordingFinalizeInput,
+  DictationRecordingImportInput,
   DictationRecordingMetadata,
   DictationRecordingSetTranscriptInput,
   DictationRecordingSetDiagnosticsInput,
@@ -126,6 +127,9 @@ export class DictationRuntime extends Context.Service<
     readonly consumeGlobalShortcutNudge: Effect.Effect<boolean, DictationRuntimeError>;
     readonly createRecording: (
       input: DictationRecordingCreateInput,
+    ) => Effect.Effect<DictationRecordingMetadata, DictationRuntimeError>;
+    readonly importRecording: (
+      input: DictationRecordingImportInput,
     ) => Effect.Effect<DictationRecordingMetadata, DictationRuntimeError>;
     readonly appendRecording: (
       input: DictationRecordingAppendInput,
@@ -264,13 +268,11 @@ export const live = (options: {
                 ...managerOptions,
                 helper: native.helper,
                 compileHotkey: compileMacNativeHotkey,
-                isBareHotkey: (binding) => binding.keyCode === null,
               })
             : new GlobalDictationManager({
                 ...managerOptions,
                 helper: native.helper,
                 compileHotkey: compileWindowsDictationHotkey,
-                isBareHotkey: () => false,
               });
         releaseGlobalSubscription = globalManager.subscribe(publish);
         releaseGlobalWindowSubscription = windowController.subscribeTerminal((webContentsId) => {
@@ -419,6 +421,8 @@ export const live = (options: {
         ),
         createRecording: (input) =>
           attemptPromise("create-dictation-recording", () => recordings.create(input)),
+        importRecording: (input) =>
+          attemptPromise("import-dictation-recording", () => recordings.importFile(input)),
         appendRecording: (input) =>
           attemptPromise("append-dictation-recording", () => recordings.append(input)),
         finalizeRecording: (input) =>

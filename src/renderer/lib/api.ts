@@ -1,4 +1,3 @@
-import type { DictationStreamingConnectInfo } from "../../shared/dictation-streaming";
 import type { ReadFileBytesInput, SaveFileInput } from "../../shared/library-files";
 import { resolveRendererTransport } from "./renderer-transport";
 import type {
@@ -240,6 +239,14 @@ const createDictationRecordingCommand = defineRendererCommand({
   protocol: { kind: "returned_value" },
 });
 
+const importDictationRecordingCommand = defineRendererCommand({
+  key: "dictation_history.import_file",
+  channel: "codex:dictation:history:import-file",
+  authority: "external",
+  owner: "DictationHistory",
+  protocol: { kind: "pending_operation" },
+});
+
 const setDictationTranscriptCommand = defineRendererCommand({
   key: "dictation_history.set_transcript",
   channel: "codex:dictation:history:set-transcript",
@@ -428,6 +435,10 @@ export function createDictationRecording(
   input: DictationRecordingCreateInput,
 ): Promise<DictationRecordingMetadata> {
   return invokePlainCommand(createDictationRecordingCommand, input);
+}
+
+export function importDictationRecordingFile(): Promise<DictationRecordingMetadata | null> {
+  return invokePlainCommand(importDictationRecordingCommand);
 }
 
 export function appendDictationRecording(
@@ -1060,8 +1071,4 @@ export function subscribeUserInputAutoResolutionChanges(
   ) => void,
 ): () => void {
   return resolveRendererTransport().subscribeUserInputAutoResolutionChanges(callback);
-}
-
-export function readDictationStreamingConnectInfo(): Promise<DictationStreamingConnectInfo> {
-  return invokeRendererQuery("codex:dictation:streaming-connect-info:read");
 }

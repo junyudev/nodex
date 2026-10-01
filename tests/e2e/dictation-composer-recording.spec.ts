@@ -1,8 +1,13 @@
 import { expect, test, type Page } from "@playwright/test";
 import { mkdir, writeFile } from "node:fs/promises";
 import { createRequire } from "node:module";
+import { createServer } from "node:http";
+import { WebSocketServer } from "ws";
 import path from "node:path";
-import { ElectronScenarioHarness } from "../../scripts/scenarios/harness/electron-e2e-harness";
+import {
+  ElectronScenarioHarness,
+  readBoundedElectronRuntimeLogs,
+} from "../../scripts/scenarios/harness/electron-e2e-harness";
 import type { DictationRecordingMetadata } from "../../src/shared/dictation-history";
 import type { CodexDictationStateSnapshot } from "../../src/shared/types";
 import {
@@ -59,7 +64,7 @@ const microphoneWave = (): Buffer => {
   return buffer;
 };
 
-const installStreamService = async (page: Page) => {
+const installStreamService = async () => {
   const evidence = {
     sessions: 0,
     closed: 0,
@@ -70,15 +75,30 @@ const installStreamService = async (page: Page) => {
     sampleRates: [] as number[],
     invalidMessages: [] as string[],
   };
-  await page.routeWebSocket("wss://chatgpt.com/backend-api/dictation/stream", (socket) => {
-    const protocols = socket.protocols();
+  const server = createServer((_request, response) => {
+    response.writeHead(404).end();
+  });
+  const sockets = new WebSocketServer({ server });
+  sockets.on("connection", (socket, request) => {
+    const protocols =
+      request.headers["sec-websocket-protocol"]?.split(",").map((protocol) => protocol.trim()) ??
+      [];
+    const url = new URL(request.url ?? "/", "http://fixture.local");
     if (
-      protocols.length !== 3 ||
+      protocols.length !== 2 ||
       protocols[0] !== "chatgpt-dictation" ||
-      !protocols[1]?.startsWith("openai-bearer.fixture.") ||
-      protocols[2] !== "codex-desktop"
+      protocols[1] !== "codex-desktop" ||
+      !request.headers.authorization?.startsWith("Bearer fixture.") ||
+      request.headers["chatgpt-account-id"] !== "queue-scenario" ||
+      request.headers.originator !== "Codex Desktop" ||
+      !request.headers["user-agent"]?.startsWith("Codex Desktop/") ||
+      request.headers.origin !== undefined ||
+      url.pathname !== "/backend-api/dictation/stream" ||
+      url.searchParams.get("dictation_surface") !== "composer"
     ) {
-      evidence.invalidMessages.push("Invalid authenticated socket subprotocols");
+      evidence.invalidMessages.push("Invalid authenticated Main streaming handshake");
+      socket.close(1008);
+      return;
     }
     evidence.sessions += 1;
     const sessionId = `fixture-${evidence.sessions}`;
@@ -99,13 +119,20 @@ const installStreamService = async (page: Page) => {
           },
         }),
       );
-    socket.onClose(() => {
+    socket.on("close", () => {
       evidence.closed += 1;
     });
-    socket.onMessage((message) => {
+    socket.on("message", (message, binary) => {
+      if (binary) {
+        evidence.invalidMessages.push("Expected JSON text frames");
+        socket.close(1003);
+        return;
+      }
       const value = JSON.parse(message.toString()) as {
         type: string;
         audio?: string;
+        dictation_session_id?: string;
+        attempt_id?: string;
         config?: {
           input_audio_format?: string;
           sample_rate_hz?: number;
@@ -116,6 +143,8 @@ const installStreamService = async (page: Page) => {
       if (value.type === "session.start") {
         const config = value.config;
         if (
+          typeof value.dictation_session_id !== "string" ||
+          typeof value.attempt_id !== "string" ||
           config?.input_audio_format !== "pcm16" ||
           config.num_channels !== 1 ||
           config.transcript_delivery_mode !== "segment" ||
@@ -163,7 +192,21 @@ const installStreamService = async (page: Page) => {
       evidence.invalidMessages.push(`Unexpected message: ${value.type}`);
     });
   });
-  return evidence;
+  await new Promise<void>((resolve, reject) => {
+    server.once("error", reject);
+    server.listen(0, "127.0.0.1", () => resolve());
+  });
+  const address = server.address();
+  if (!address || typeof address === "string")
+    throw new Error("Dictation fixture has no listening port");
+  return Object.assign(evidence, {
+    backendUrl: `http://127.0.0.1:${address.port}/backend-api`,
+    close: async () => {
+      for (const socket of sockets.clients) socket.terminate();
+      await new Promise<void>((resolve) => sockets.close(() => resolve()));
+      await new Promise<void>((resolve) => server.close(() => resolve()));
+    },
+  });
 };
 
 test("streams, cancels and inserts dictation regardless of the remote streaming gate", async ({}, testInfo) => {
@@ -185,11 +228,15 @@ test("streams, cancels and inserts dictation regardless of the remote streaming 
 
   for (const remoteStreamingGate of [false, true]) {
     const mode = remoteStreamingGate ? "remote-gate-on" : "remote-gate-off";
+    const service = await installStreamService();
     const harness = await ElectronScenarioHarness.create({
       label: `dictation-composer-${mode}`,
       executablePath: launcher,
+      environment: { NODEX_FAKE_CODEX_CHATGPT_BASE_URL: service.backendUrl },
+    }).catch(async (error: unknown) => {
+      await service.close();
+      throw error;
     });
-    let service: Awaited<ReturnType<typeof installStreamService>> | undefined;
     const rendererErrors: string[] = [];
     try {
       const page = await harness.launch({ phase: "first-window" });
@@ -207,6 +254,7 @@ test("streams, cancels and inserts dictation regardless of the remote streaming 
       await installDictationPolicyHttpFixture(harness.application, {
         streaming: remoteStreamingGate,
         transcription: unexpectedFallbackTranscript,
+        baseUrl: service.backendUrl,
       });
       await harness.waitForApplicationReady();
       await expect
@@ -220,11 +268,17 @@ test("streams, cancels and inserts dictation regardless of the remote streaming 
         .toMatchObject({
           capabilities: { composer: true, streaming: "available" },
         });
-      service = await installStreamService(page);
       const streamEvidence = service;
-      // Playwright installs its WebSocket boundary as an init script; activate it before capture.
-      await page.reload();
-      await harness.waitForApplicationReady();
+      const readiness = await page.evaluate(async () => ({
+        microphone: await window.api!.invoke("codex:dictation:microphone-access:read"),
+        settings: await window.api!.invoke("codex:dictation:settings:read"),
+        state: await window.api!.invoke("codex:dictation:state:read"),
+      }));
+      await writeFile(
+        testInfo.outputPath(`${mode}-readiness.json`),
+        JSON.stringify(readiness, null, 2),
+      );
+      expect(readiness.microphone).toBe("granted");
       await page.getByRole("button", { name: "New chat", exact: true }).first().click();
       const composer = page.locator('[data-codex-composer="true"][aria-label="Do anything"]');
       await expect(composer).toBeVisible();
@@ -308,6 +362,10 @@ test("streams, cancels and inserts dictation regardless of the remote streaming 
           await harness.page.locator('[data-codex-composer="true"]').press("Escape");
         }
         await writeFile(
+          testInfo.outputPath(`${mode}-runtime.log`),
+          await readBoundedElectronRuntimeLogs(harness.profile),
+        );
+        await writeFile(
           testInfo.outputPath(`${mode}-runtime-evidence.json`),
           JSON.stringify(
             {
@@ -322,7 +380,11 @@ test("streams, cancels and inserts dictation regardless of the remote streaming 
           ),
         );
       } finally {
-        await harness.close();
+        try {
+          await harness.close();
+        } finally {
+          await service.close();
+        }
       }
     }
   }

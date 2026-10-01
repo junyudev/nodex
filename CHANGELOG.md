@@ -8,8 +8,9 @@ All notable changes to this project will be documented in this file.
 
 - Local tasks can use Claude Code with its existing login, configuration, skills and tools in the shared conversation UI, including images, native model and effort choices, approvals, questions, task details, steering, compaction, forks and session recovery. Chats can start in the Project folder or a managed worktree with the selected starting state and setup environment, then move between them while retaining the same native conversation and uncommitted changes. Existing CLI conversations can be connected to a Project or projectless chat and continued with their native history. Separate profiles support environment variables, encrypted tokens and custom models. Authorized application tools and scheduled tasks use the selected native profile.
 
-- Dictation streams into your draft by default, preserves edits when the cursor moves, and offers captured speech for recovery after an interruption.
+- Dictation streams into your draft by default, preserves edits when the cursor moves, and offers captured speech for recovery after an interruption. Streaming uses authenticated desktop connections with workspace and system-proxy routing, and performance details identify handshake rejections and timeouts.
 - Voice settings can manage an account dictionary when available.
+- Voice settings can transcribe a selected WebM file and retain its audio and text with recent recordings for copying or retrying.
 
 ### Changed
 
@@ -20,6 +21,7 @@ All notable changes to this project will be documented in this file.
 
 - Retained edits that cannot be received can now be removed from this device after confirmation, clearing their warning without changing current documents.
 - Dictation recovers incomplete streams without duplicating completed segments, respects account availability and language settings, and preserves newer clipboard contents during global paste recovery.
+- Global dictation no longer disappears with service rollout changes. Voice retains global shortcut and dictionary settings, and its sound preference applies to both capture surfaces.
 
 ## [0.3.0] - 2026-09-20
 
@@ -37,7 +39,7 @@ All notable changes to this project will be documented in this file.
 - Equations now support first-class block and inline TeX authoring, while Mermaid Code Blocks add secure local code, preview, and split views with fullscreen, copy, and image export.
 - Code Blocks now offer a compact hover Action Bar, an exact searchable language catalog, plain-code copy, local line wrapping, and on-demand formatting, with matching read-only previews and no document changes from presentation state.
 - Pages can now keep durable relationships to one or more chats, show working and unread activity directly in Board and List, and manage those chats from Page Stage across restarts. Sending Page text and images from selection or Block menus uses the same chat picker and preserves the submitted image content.
-- Added reliable Composer and macOS global dictation with microphone selection, streaming-to-buffered recovery, recoverable recent recordings, inline Voice shortcut capture with validated global chords, dictionary-aware cleanup, app-level recovery notifications, clipboard-safe cross-application paste, and per-recording performance details showing the actual transcription route, cleanup latency, and connection failures.
+- Added reliable Composer and macOS global dictation with microphone selection, streaming-to-buffered recovery, recoverable recent recordings, inline Voice shortcuts for hold, double-tap hands-free, or single-tap activation with validated global chords, dictionary-aware cleanup, app-level recovery notifications, clipboard-safe cross-application paste, and per-recording performance details showing the actual transcription route, cleanup latency, and connection failures.
 - Added atomic mixed selection editing for Page, Canvas, and Database owners, including complete selection- and caret-targeted copy/cut/paste across consecutive commands, nested editors, and multiple windows; portable HTML/text fallback outside Nodex; preserved nesting when copying File references as local paths; race-safe native clipboard handoff; identity-preserving first cut paste; structural Duplicate/Move/drag; semantic Backspace merges across atomic Blocks; and chronological Undo/Redo that keeps later text edits ahead of earlier structural actions, including while commands are pending, and preserves earlier local edits through structural restoration. Cut and Database View drops show immediate progress while content is being saved, with source and destination indicators clearing independently.
 - Subpages can now be turned into text, headings, toggles, lists, quotes, callouts, or code without losing their title or body; Undo restores the original Page and its identity.
 - Page mentions now support `+` and `[[`, can create a child Page from the current query or under another Page, and keep Page creation, inline mention, and Undo/Redo atomic.

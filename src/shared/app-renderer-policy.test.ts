@@ -26,6 +26,18 @@ describe("top-level renderer CSP", () => {
     expect(csp).not.toContain("nodex-asset:");
   });
 
+  test("keeps authenticated WebSocket connections in Main", () => {
+    const csp = buildTopLevelRendererCsp({ mode: "production" });
+    const connections = csp
+      .split("; ")
+      .find((directive) => directive.startsWith("connect-src "))!
+      .split(" ")
+      .slice(1);
+    expect(
+      connections.some((source) => source.startsWith("ws:") || source.startsWith("wss:")),
+    ).toBe(false);
+  });
+
   test("limits development connections to the Vite origin", () => {
     const csp = buildTopLevelRendererCsp({ mode: "development" });
     expect(csp).toContain("http://localhost:*");

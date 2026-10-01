@@ -33,6 +33,7 @@ const input = {
 const make = Effect.fn("ChatGptDesktopTest.make")(function* (
   fetch: ElectronNet["Service"]["fetch"],
   readAccount: (refresh: boolean) => string = () => "account-a",
+  requirements: unknown = null,
 ) {
   const events = yield* PubSub.unbounded<CodexEndpointEvent>();
   const capability = createCodexAppServerCapabilitySnapshot({
@@ -60,7 +61,7 @@ const make = Effect.fn("ChatGptDesktopTest.make")(function* (
                 accountRoutingOverride: "us",
               },
             }
-          : { requirements: null },
+          : { requirements },
       ),
   } as unknown as CodexGateway["Service"]);
   const context = yield* Layer.build(
@@ -236,4 +237,80 @@ it.effect("fences response bodies and new requests before account mutation notif
     yield* Fiber.join(request);
     assert.strictEqual(count, 2);
   }).pipe(Effect.scoped),
+);
+
+it.effect("prepares desktop stream headers and routing without an HTTP request", () =>
+  Effect.gen(function* () {
+    let calls = 0;
+    const { desktop, authState } = yield* make(() => {
+      calls += 1;
+      return Effect.die("Streaming preparation must not fetch");
+    });
+    const prepared = yield* desktop.prepareRequest({
+      ...input,
+      path: "/dictation/stream?dictation_surface=composer",
+      headers: { "Accept-Language": "zh-CN", "ChatGPT-Account-Id": "incorrect" },
+    });
+    assert.strictEqual(
+      prepared.url,
+      "https://workspace.example/backend-api/dictation/stream?dictation_surface=composer",
+    );
+    assert.strictEqual(prepared.headers.get("Authorization"), `Bearer ${token("account-a")}`);
+    assert.strictEqual(prepared.headers.get("ChatGPT-Account-Id"), "account-a");
+    assert.strictEqual(prepared.headers.get("originator"), "Codex Desktop");
+    assert.isTrue(prepared.headers.get("User-Agent")?.startsWith("Codex Desktop/1.0.0 (") ?? false);
+    assert.strictEqual(prepared.headers.get("Accept-Language"), "zh-CN");
+    assert.strictEqual(prepared.headers.get("X-OpenAI-Account-Routing-Override"), "us");
+    assert.strictEqual(calls, 0);
+    assert.isFalse(prepared.signal.aborted);
+    yield* authState.withAccountMutation("local", "account/sessions/switch", Effect.void);
+    assert.isTrue(prepared.signal.aborted);
+  }).pipe(Effect.scoped),
+);
+
+it.effect(
+  "applies destination permissions to the workspace route before HTTP or stream preparation",
+  () =>
+    Effect.gen(function* () {
+      let calls = 0;
+      const { desktop } = yield* make(
+        () => {
+          calls += 1;
+          return Effect.succeed(new Response(null));
+        },
+        () => "account-a",
+        {
+          application: {
+            network: {
+              enabled: true,
+              domains: { "chatgpt.com": "allow", "workspace.example": "deny" },
+            },
+          },
+        },
+      );
+      const deniedStream = yield* Effect.flip(
+        desktop.prepareRequest({ ...input, path: "/dictation/stream?dictation_surface=composer" }),
+      );
+      assert.strictEqual(deniedStream._tag, "ChatGptBackendAuthError");
+      const deniedHttp = yield* Effect.flip(desktop.request(input));
+      assert.strictEqual(deniedHttp._tag, "ChatGptBackendAuthError");
+      assert.strictEqual(calls, 0);
+      const allowed = yield* make(
+        () => {
+          calls += 1;
+          return Effect.succeed(new Response(null));
+        },
+        () => "account-a",
+        {
+          application: {
+            network: {
+              enabled: true,
+              domains: { "chatgpt.com": "deny", "workspace.example": "allow" },
+            },
+          },
+        },
+      );
+      assert.strictEqual((yield* allowed.desktop.request(input)).status, 200);
+      assert.strictEqual(calls, 1);
+    }).pipe(Effect.scoped),
 );

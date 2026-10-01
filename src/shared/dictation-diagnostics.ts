@@ -5,6 +5,15 @@ const milliseconds = z.number().finite().nonnegative().max(86_400_000);
 const count = z.number().int().nonnegative().max(1_000_000_000);
 export const MAX_DICTATION_DIAGNOSTIC_REQUESTS = 128;
 
+const requestHeaders = z
+  .object({
+    originator: z.string().max(160),
+    userAgent: z.string().max(256),
+    authorizationPresent: z.boolean(),
+    accountHeaderPresent: z.boolean(),
+  })
+  .strict();
+
 export const DictationStreamDiagnosticsSchema = z
   .object({
     attempted: z.boolean(),
@@ -14,6 +23,7 @@ export const DictationStreamDiagnosticsSchema = z
     sentAudioBytes: count,
     sentAudioFrames: count,
     transcriptEvents: count,
+    skipReason: z.enum(["unavailable", "unknown", "language-selected"]).optional(),
     connectInfoMs: milliseconds.optional(),
     handshakeMs: milliseconds.optional(),
     sessionStartMs: milliseconds.optional(),
@@ -21,16 +31,25 @@ export const DictationStreamDiagnosticsSchema = z
     closeCode: z.number().int().min(0).max(65_535).optional(),
     selectedProtocol: z.enum(["chatgpt-dictation", "codex-desktop", "other", "none"]).optional(),
     providerMode: z.enum(["buffered", "streaming_sse"]).optional(),
+    headers: requestHeaders.optional(),
+    proxyMode: z.enum(["direct", "http", "https", "socks"]).optional(),
+    httpStatus: z.number().int().min(100).max(599).optional(),
+    edgeChallenge: z.literal("cloudflare").optional(),
+    networkError: z.enum(["dns", "tls", "proxy", "reset", "timeout", "other"]).optional(),
     failureCode: z
       .enum([
         ...DICTATION_STREAMING_FAILURE_CODES,
         // Persisted recordings retain diagnostic outcomes from retired transports.
+        "connect-info-failed",
+        "invalid-connect-info",
+        "start-timeout",
         "backpressure-overflow",
         "invalid-audio-frame",
         "audio-worklet-failed",
         "audio-start-timeout",
         "audio-flush-timeout",
         "stream-unavailable",
+        "capability-read-failed",
         "aborted",
       ])
       .optional(),
@@ -54,15 +73,7 @@ export const DictationHttpDiagnosticsSchema = z
       .regex(/^[A-Za-z0-9_-]{1,160}$/u)
       .optional(),
     // Only these explicitly selected headers may leave the request adapter.
-    headers: z
-      .object({
-        originator: z.string().max(160),
-        userAgent: z.string().max(256),
-        authorizationPresent: z.boolean(),
-        accountHeaderPresent: z.boolean(),
-      })
-      .strict()
-      .optional(),
+    headers: requestHeaders.optional(),
   })
   .strict();
 
@@ -90,7 +101,7 @@ export const DictationDiagnosticsSchema = z
   .object({
     version: z.literal(1),
     attempt: z.number().int().positive().max(1_000_000),
-    source: z.enum(["capture", "retry", "recovery"]),
+    source: z.enum(["capture", "file", "retry", "recovery"]),
     outcome: z.enum(["completed", "failed", "cancelled"]),
     transport: z.enum(["websocket", "buffered", "retained", "none"]),
     delivery: z.enum(["composer", "global", "history"]),

@@ -1,6 +1,6 @@
 import { DictationPerformanceDetails } from "./dictation-performance-details";
 import { DictationDiagnosticsRecorder } from "./dictation-diagnostics-recorder";
-import { lazy, Suspense, useEffect, useRef, useState } from "react";
+import { lazy, Suspense, useEffect, useId, useRef, useState, type ReactNode } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { NodexButton } from "@/components/ui/button";
 import {
@@ -11,6 +11,7 @@ import {
 } from "@/components/ui/dropdown";
 import { HotkeySettingControl } from "@/components/ui/hotkey-setting-control";
 import { Input } from "@/components/ui/input";
+import { NodexTooltip } from "@/components/ui/tooltip";
 import {
   NodexSettingsPageSurface,
   NodexSettingsRow,
@@ -23,6 +24,7 @@ import {
   DeleteIcon,
   DownloadIcon,
   CopyIcon,
+  ChevronRightIcon,
   MoreActionsIcon,
   PlusIcon,
 } from "@/components/shared/icons";
@@ -31,6 +33,7 @@ import { updateCommandKeybinding, useCommandKeymapState } from "@/lib/use-comman
 import {
   deleteDictationRecording,
   downloadDictationRecording,
+  importDictationRecordingFile,
   listDictationRecordings,
   readDictationRecordingAudio,
   readDictationCapabilityState,
@@ -41,6 +44,8 @@ import {
   updateDictationSettings,
 } from "@/lib/api";
 import type { DictationSettings } from "../../../shared/dictation";
+import type { DictationRecordingMetadata } from "../../../shared/dictation-history";
+import { DICTATION_HISTORY_MAX_RECORDINGS } from "../../../shared/dictation-history";
 import { DICTATION_VOICE_LANGUAGES } from "../../../shared/dictation";
 import {
   findCommandKeybindingConflict,
@@ -171,6 +176,23 @@ export function VoiceSettingsPage({
   const hasDictation =
     capabilityQuery.data?.capabilities.composer === true ||
     capabilityQuery.data?.capabilities.global === true;
+  // Capture policy can change without removing the platform's configurable shortcuts.
+  const globalShortcutEntries = (["globalDictationHold", "globalDictationToggle"] as const)
+    .map((commandId) =>
+      commandKeymapQuery.data?.entries.find((entry) => entry.id === commandId && entry.available),
+    )
+    .filter((entry) => entry !== undefined);
+  const canConfigureGlobalDictation = globalShortcutEntries.length > 0;
+  const primaryShortcutEntry = globalShortcutEntries.find(
+    (entry) => entry.id === "globalDictationHold",
+  );
+  const singleTapShortcutEntry = globalShortcutEntries.find(
+    (entry) => entry.id === "globalDictationToggle",
+  );
+  const hasDictationSettings =
+    capabilityQuery.data?.capabilities.sounds === true || canConfigureGlobalDictation;
+  const hasHistory = capabilityQuery.data?.capabilities.history === true;
+  const canTranscribeRecordings = capabilityQuery.data?.capabilities.auth === "chatgpt";
   const languageQuery = useQuery({
     queryKey: LANGUAGE_QUERY_KEY,
     queryFn: async ({ signal }) => {
@@ -204,9 +226,12 @@ export function VoiceSettingsPage({
     readonly conflict: string | null;
   } | null>(null);
   const [shortcutErrors, setShortcutErrors] = useState<Record<string, string>>({});
+  const [advancedOpen, setAdvancedOpen] = useState(false);
+  const advancedId = useId();
   const [dictionaryOpen, setDictionaryOpen] = useState(false);
   const [dictionaryDraft, setDictionaryDraft] = useState<readonly string[] | null>(null);
   const [historyAction, setHistoryAction] = useState<string | null>(null);
+  const historyTaskRef = useRef<AbortController | null>(null);
   const suppressNextDictionaryBlurRef = useRef(false);
   const selectedRecordingRef = useRef<HTMLDivElement>(null);
 
@@ -214,18 +239,22 @@ export function VoiceSettingsPage({
     () =>
       subscribeDictationSettingsUpdates((event) => {
         if (event.type === "capabilities") {
+          if (event.state.capabilities.auth !== "chatgpt") historyTaskRef.current?.abort();
           void queryClient
             .cancelQueries({ queryKey: CAPABILITY_QUERY_KEY })
             .then(() => queryClient.setQueryData(CAPABILITY_QUERY_KEY, event.state));
           return;
         }
         accountGenerationRef.current += 1;
+        historyTaskRef.current?.abort();
         setDictionaryOpen(false);
         void queryClient.resetQueries({ queryKey: LANGUAGE_QUERY_KEY });
         void queryClient.invalidateQueries({ queryKey: CAPABILITY_QUERY_KEY });
       }),
     [queryClient],
   );
+
+  useEffect(() => () => historyTaskRef.current?.abort(), []);
 
   useEffect(() => {
     if (!recordingId || historyQuery.isPending) return;
@@ -316,6 +345,70 @@ export function VoiceSettingsPage({
     }
   };
 
+  const renderShortcutSetting = (
+    entry: CommandKeymapEntry,
+    label: string,
+    description: string,
+    descriptionExtra?: ReactNode,
+  ) => {
+    const error = shortcutErrors[entry.id];
+    const accelerator = entry.keybindings[0]?.key ?? null;
+    return (
+      <NodexSettingsRow
+        label={label}
+        description={
+          <div className="flex flex-col gap-1">
+            <span>{description}</span>
+            {error ? <span className="text-token-error-foreground">{error}</span> : null}
+            {descriptionExtra}
+          </div>
+        }
+      >
+        <HotkeySettingControl
+          accelerator={accelerator}
+          acceleratorLabel={
+            accelerator ? formatAcceleratorLabel(accelerator, commandPlatform) : null
+          }
+          allowsBareModifiers
+          captureAriaLabel={`${label} capture`}
+          captureBareModifierHotkey={captureGlobalDictationBareModifierHotkey}
+          conflict={shortcutCapture?.commandId === entry.id ? shortcutCapture.conflict : null}
+          disabled={updateShortcut.isPending}
+          emptyLabel="Off"
+          hotkeyName={label}
+          isCapturing={shortcutCapture?.commandId === entry.id}
+          onCancelCapture={() => setShortcutCapture(null)}
+          onCapture={(nextAccelerator) => void commitShortcut(entry, nextAccelerator)}
+          onClear={() => void commitShortcut(entry, null)}
+          onStartCapture={() => {
+            setShortcutErrors((current) => ({ ...current, [entry.id]: "" }));
+            setShortcutCapture({ commandId: entry.id, conflict: null });
+          }}
+          platform={commandPlatform}
+        />
+      </NodexSettingsRow>
+    );
+  };
+
+  const advancedControl = singleTapShortcutEntry ? (
+    <NodexButton
+      size="xs"
+      variant="ghost"
+      aria-expanded={advancedOpen}
+      aria-controls={advancedId}
+      className="self-start gap-1 px-0 text-token-text-secondary hover:text-token-text-primary"
+      onClick={() => {
+        if (advancedOpen && shortcutCapture?.commandId === singleTapShortcutEntry.id) {
+          setShortcutCapture(null);
+        }
+        setAdvancedOpen(!advancedOpen);
+      }}
+    >
+      Advanced
+      <ChevronRightIcon className={`icon-2xs ${advancedOpen ? "rotate-90" : ""}`} />
+    </NodexButton>
+  ) : null;
+
   const refreshMicrophones = async (): Promise<void> => {
     await requestMicrophoneAccess();
     const stream = await navigator.mediaDevices.getUserMedia({ audio: true }).catch(() => null);
@@ -326,66 +419,127 @@ export function VoiceSettingsPage({
     }
   };
 
-  const retryRecording = async (id: string): Promise<void> => {
+  const updateRecording = (recording: DictationRecordingMetadata): void => {
+    queryClient.setQueryData<DictationRecordingMetadata[]>(HISTORY_QUERY_KEY, (current = []) =>
+      current.some((entry) => entry.id === recording.id)
+        ? current.map((entry) => (entry.id === recording.id ? recording : entry))
+        : [recording, ...current].slice(0, DICTATION_HISTORY_MAX_RECORDINGS),
+    );
+  };
+
+  const beginHistoryAction = (action: string): AbortController | null => {
+    if (historyTaskRef.current) return null;
+    const controller = new AbortController();
+    historyTaskRef.current = controller;
+    setHistoryAction(action);
+    return controller;
+  };
+
+  const finishHistoryAction = (controller: AbortController): void => {
+    if (historyTaskRef.current !== controller) return;
+    historyTaskRef.current = null;
+    setHistoryAction(null);
+  };
+
+  const transcribeRecording = async (
+    id: string,
+    signal: AbortSignal,
+    source: "file" | "recovery" = "recovery",
+  ): Promise<void> => {
+    signal.throwIfAborted();
     setHistoryAction(`retry:${id}`);
     const previousAttempt =
       historyQuery.data?.find((recording) => recording.id === id)?.diagnostics?.attempt ?? 0;
     const diagnostics = new DictationDiagnosticsRecorder(
       () => performance.now(),
       "history",
-      "recovery",
+      source,
       previousAttempt + 1,
     );
-    let outcome: "completed" | "failed" = "failed";
+    let outcome: "completed" | "failed" | "cancelled" = "failed";
     try {
       const audio = await readDictationRecordingAudio(id);
+      signal.throwIfAborted();
       const rawTranscript = await diagnostics.measure("buffered", () =>
         transcribeDictationBlob(
           new Blob([Uint8Array.from(audio.bytes).buffer], { type: audio.recording.mimeType }),
-          { onDiagnostics: diagnostics.request },
+          { filename: audio.recording.fileName, signal, onDiagnostics: diagnostics.request },
         ),
       );
+      signal.throwIfAborted();
       diagnostics.useTransport("buffered");
       const transcript = rawTranscript.trim();
       if (!transcript) throw new Error("The recording returned an empty transcript");
-      await diagnostics.measure("history", () =>
+      const recording = await diagnostics.measure("history", () =>
         setDictationRecordingTranscript({ id, transcript }),
       );
+      updateRecording(recording);
       diagnostics.delivered();
       outcome = "completed";
-      toast.success("Recording transcribed");
+      if (!signal.aborted) toast.success("Recording transcribed");
     } catch {
-      toast.danger("Could not transcribe this recording");
+      if (signal.aborted) outcome = "cancelled";
+      else toast.danger("Could not transcribe this recording");
     } finally {
       await setDictationRecordingDiagnostics({
         id,
         diagnostics: diagnostics.snapshot(outcome),
       }).catch(() => undefined);
-      await queryClient.invalidateQueries({ queryKey: HISTORY_QUERY_KEY });
-      setHistoryAction(null);
+      await queryClient.invalidateQueries({ queryKey: HISTORY_QUERY_KEY }).catch(() => undefined);
+    }
+  };
+
+  const retryRecording = async (id: string): Promise<void> => {
+    if (!canTranscribeRecordings) return;
+    const controller = beginHistoryAction(`retry:${id}`);
+    if (!controller) return;
+    try {
+      await transcribeRecording(id, controller.signal);
+    } finally {
+      finishHistoryAction(controller);
+    }
+  };
+
+  const importRecording = async (): Promise<void> => {
+    if (!canTranscribeRecordings) return;
+    const controller = beginHistoryAction("import");
+    if (!controller) return;
+    try {
+      const recording = await importDictationRecordingFile();
+      if (!recording) return;
+      await queryClient.cancelQueries({ queryKey: HISTORY_QUERY_KEY });
+      updateRecording(recording);
+      controller.signal.throwIfAborted();
+      await transcribeRecording(recording.id, controller.signal, "file");
+    } catch {
+      if (!controller.signal.aborted) toast.danger("Could not import this WebM file");
+    } finally {
+      finishHistoryAction(controller);
     }
   };
 
   const downloadRecording = async (id: string): Promise<void> => {
-    setHistoryAction(`download:${id}`);
+    const controller = beginHistoryAction(`download:${id}`);
+    if (!controller) return;
     try {
       await downloadDictationRecording(id);
     } catch {
       toast.danger("Could not download this recording");
     } finally {
-      setHistoryAction(null);
+      finishHistoryAction(controller);
     }
   };
 
   const removeRecording = async (id: string): Promise<void> => {
-    setHistoryAction(`delete:${id}`);
+    const controller = beginHistoryAction(`delete:${id}`);
+    if (!controller) return;
     try {
       await deleteDictationRecording(id);
       await queryClient.invalidateQueries({ queryKey: HISTORY_QUERY_KEY });
     } catch {
       toast.danger("Could not delete this recording");
     } finally {
-      setHistoryAction(null);
+      finishHistoryAction(controller);
     }
   };
 
@@ -482,7 +636,7 @@ export function VoiceSettingsPage({
         ) : null}
       </NodexSettingsSection>
 
-      {hasDictation ? (
+      {hasDictationSettings ? (
         <NodexSettingsSection title="Dictation">
           {capabilityQuery.data?.capabilities.sounds ? (
             <NodexSettingsRow
@@ -497,62 +651,31 @@ export function VoiceSettingsPage({
               />
             </NodexSettingsRow>
           ) : null}
-          {(capabilityQuery.data?.capabilities.global
-            ? (["globalDictationHold", "globalDictationToggle"] as const)
-            : []
-          ).map((commandId) => {
-            const entry = commandKeymapQuery.data?.entries.find(
-              (candidate) => candidate.id === commandId,
-            );
-            if (!entry) return null;
-            const isToggle = commandId === "globalDictationToggle";
-            const description = isToggle
-              ? "Double-tap anywhere on desktop to dictate, then press again to stop"
-              : "Hold anywhere on desktop to dictate where your cursor is";
-            const error = shortcutErrors[commandId];
-            const accelerator = entry.keybindings[0]?.key ?? null;
-            return (
-              <NodexSettingsRow
-                key={commandId}
-                label={isToggle ? "Hands-free dictation hotkey" : "Hold-to-dictate hotkey"}
-                description={
-                  <div className="flex flex-col gap-1">
-                    <span>{description}</span>
-                    {error ? <span className="text-token-error-foreground">{error}</span> : null}
-                  </div>
-                }
+          {canConfigureGlobalDictation ? (
+            <div>
+              {primaryShortcutEntry
+                ? renderShortcutSetting(
+                    primaryShortcutEntry,
+                    "Dictation shortcut",
+                    "Hold to dictate, or double-tap for hands-free",
+                    advancedControl,
+                  )
+                : advancedControl}
+              <div
+                id={advancedId}
+                hidden={!advancedOpen}
+                className="relative before:pointer-events-none before:absolute before:inset-x-4 before:top-0 before:h-[0.5px] before:bg-token-border before:content-['']"
               >
-                <HotkeySettingControl
-                  accelerator={accelerator}
-                  acceleratorLabel={
-                    accelerator ? formatAcceleratorLabel(accelerator, commandPlatform) : null
-                  }
-                  allowsBareModifiers
-                  captureAriaLabel={
-                    isToggle
-                      ? "Hands-free dictation hotkey capture"
-                      : "Hold-to-dictate hotkey capture"
-                  }
-                  captureBareModifierHotkey={captureGlobalDictationBareModifierHotkey}
-                  conflict={
-                    shortcutCapture?.commandId === commandId ? shortcutCapture.conflict : null
-                  }
-                  disabled={updateShortcut.isPending}
-                  emptyLabel="Off"
-                  hotkeyName={isToggle ? "Hands-free dictation hotkey" : "Hold-to-dictate hotkey"}
-                  isCapturing={shortcutCapture?.commandId === commandId}
-                  onCancelCapture={() => setShortcutCapture(null)}
-                  onCapture={(nextAccelerator) => void commitShortcut(entry, nextAccelerator)}
-                  onClear={() => void commitShortcut(entry, null)}
-                  onStartCapture={() => {
-                    setShortcutErrors((current) => ({ ...current, [entry.id]: "" }));
-                    setShortcutCapture({ commandId: entry.id, conflict: null });
-                  }}
-                  platform={commandPlatform}
-                />
-              </NodexSettingsRow>
-            );
-          })}
+                {advancedOpen && singleTapShortcutEntry
+                  ? renderShortcutSetting(
+                      singleTapShortcutEntry,
+                      "Single-tap shortcut",
+                      "Press once to start, and again to finish",
+                    )
+                  : null}
+              </div>
+            </div>
+          ) : null}
         </NodexSettingsSection>
       ) : null}
 
@@ -567,7 +690,7 @@ export function VoiceSettingsPage({
             </NodexButton>
           </NodexSettingsRow>
         </NodexSettingsSection>
-      ) : capabilityQuery.data?.capabilities.global ? (
+      ) : canConfigureGlobalDictation ? (
         <NodexSettingsSection>
           <NodexSettingsRow
             label="Dictation dictionary"
@@ -660,13 +783,28 @@ export function VoiceSettingsPage({
         </NodexSettingsSection>
       ) : null}
 
-      {hasDictation ? (
+      {hasHistory ? (
         <NodexSettingsSection>
           <NodexSettingsRow
             label="Recent recordings"
             description="Your last 20 recordings are saved on this device"
           >
-            {null}
+            <NodexTooltip
+              tooltipContent={
+                canTranscribeRecordings
+                  ? "Choose a WebM file up to 64 MiB"
+                  : "Sign in with ChatGPT to transcribe audio"
+              }
+            >
+              <NodexButton
+                size="xs"
+                variant="secondary"
+                disabled={historyAction !== null || !canTranscribeRecordings}
+                onClick={() => void importRecording()}
+              >
+                Transcribe WebM…
+              </NodexButton>
+            </NodexTooltip>
           </NodexSettingsRow>
           {historyQuery.isLoading ? (
             <div className="px-4 py-3 text-sm text-token-text-secondary">Loading recordings…</div>
@@ -681,8 +819,17 @@ export function VoiceSettingsPage({
                 }
               >
                 <NodexSettingsRow
-                  label={recording.transcript?.trim() || recordingFallbackLabel(recording.status)}
-                  description={formatRecordingTimestamp(recording.createdAtMs)}
+                  label={
+                    historyAction === `retry:${recording.id}`
+                      ? "Transcribing…"
+                      : recording.transcript?.trim() || recordingFallbackLabel(recording.status)
+                  }
+                  description={
+                    recording.fileName
+                      ? `${recording.fileName} · ${formatRecordingTimestamp(recording.createdAtMs)}`
+                      : formatRecordingTimestamp(recording.createdAtMs)
+                  }
+                  className="items-start whitespace-pre-wrap break-words"
                 >
                   {recording.transcript ? (
                     <NodexButton
@@ -697,7 +844,7 @@ export function VoiceSettingsPage({
                     <NodexButton
                       size="xs"
                       variant="secondary"
-                      disabled={historyAction !== null}
+                      disabled={historyAction !== null || !canTranscribeRecordings}
                       onClick={() => void retryRecording(recording.id)}
                     >
                       Retry

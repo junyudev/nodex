@@ -33,7 +33,13 @@ export function dictationPerformanceSummary(value: DictationDiagnostics): string
   }[value.transport];
   if (value.outcome !== "completed")
     return `${transport} · ${value.outcome === "failed" ? "Failed" : "Cancelled"}`;
-  return `${transport} · ${formatDictationTime(value.stopToTextMs)} ${value.source === "capture" ? "after stop" : "after retry"}`;
+  const timing = {
+    capture: "after stop",
+    file: "total",
+    retry: "after retry",
+    recovery: "after retry",
+  } satisfies Record<DictationDiagnostics["source"], string>;
+  return `${transport} · ${formatDictationTime(value.stopToTextMs)} ${timing[value.source]}`;
 }
 
 function DiagnosticRow({ label, value }: { label: string; value: string }) {
@@ -42,6 +48,23 @@ function DiagnosticRow({ label, value }: { label: string; value: string }) {
       <dt className="shrink-0 text-token-text-secondary">{label}</dt>
       <dd className="min-w-0 break-all text-right tabular-nums">{value}</dd>
     </div>
+  );
+}
+
+function RequestHeaders({
+  headers,
+}: {
+  headers: NonNullable<DictationHttpDiagnostics["headers"]>;
+}) {
+  return (
+    <>
+      <DiagnosticRow label="Originator" value={headers.originator || "Absent"} />
+      <DiagnosticRow label="User-Agent" value={headers.userAgent || "Absent"} />
+      <DiagnosticRow
+        label="Authentication"
+        value={`Bearer ${headers.authorizationPresent ? "present" : "absent"} · Account header ${headers.accountHeaderPresent ? "present" : "absent"}`}
+      />
+    </>
   );
 }
 
@@ -65,16 +88,7 @@ function RequestDetails({ request }: { request: DictationHttpDiagnostics }) {
         <DiagnosticRow label="Read response body" value={formatDictationTime(request.bodyMs)} />
         <DiagnosticRow label="Total request" value={formatDictationTime(request.totalMs)} />
         <DiagnosticRow label="HTTP attempts" value={String(request.attempts)} />
-        {request.headers ? (
-          <>
-            <DiagnosticRow label="Originator" value={request.headers.originator || "Absent"} />
-            <DiagnosticRow label="User-Agent" value={request.headers.userAgent || "Absent"} />
-            <DiagnosticRow
-              label="Authentication"
-              value={`Bearer ${request.headers.authorizationPresent ? "present" : "absent"} · Account header ${request.headers.accountHeaderPresent ? "present" : "absent"}`}
-            />
-          </>
-        ) : null}
+        {request.headers ? <RequestHeaders headers={request.headers} /> : null}
         <DiagnosticRow label="Request ID" value={request.requestId} />
         {request.responseId ? (
           <DiagnosticRow label="Server request ID" value={request.responseId} />
@@ -157,7 +171,11 @@ export function DictationPerformanceDetails({
         <dl className="border-t border-token-border pt-2">
           <DiagnosticRow
             label={
-              diagnostics.source === "capture" ? "Stop → text delivery" : "Retry → text delivery"
+              diagnostics.source === "file"
+                ? "Transcription → saved text"
+                : diagnostics.source === "capture"
+                  ? "Stop → text delivery"
+                  : "Retry → text delivery"
             }
             value={formatDictationTime(diagnostics.stopToTextMs)}
           />
@@ -177,6 +195,9 @@ export function DictationPerformanceDetails({
             <p className="mb-1 font-medium">Streaming connection</p>
             <dl>
               <DiagnosticRow label="WebSocket attempted" value={stream.attempted ? "Yes" : "No"} />
+              {stream.skipReason ? (
+                <DiagnosticRow label="Streaming skipped" value={stream.skipReason} />
+              ) : null}
               <DiagnosticRow label="Handshake completed" value={stream.opened ? "Yes" : "No"} />
               <DiagnosticRow label="Session started" value={stream.started ? "Yes" : "No"} />
               <DiagnosticRow
@@ -205,16 +226,26 @@ export function DictationPerformanceDetails({
                 value={`${stream.transcriptEvents} · Final ${stream.finalReceived ? "received" : "not received"}`}
               />
               <DiagnosticRow label="Endpoint" value="WSS /dictation/stream" />
-              <DiagnosticRow
-                label="Authentication"
-                value="WebSocket subprotocol · Bearer redacted"
-              />
+              {stream.headers ? (
+                <RequestHeaders headers={stream.headers} />
+              ) : (
+                <DiagnosticRow label="WS request headers" value="Not captured" />
+              )}
+              {stream.proxyMode ? <DiagnosticRow label="Proxy" value={stream.proxyMode} /> : null}
+              {stream.httpStatus ? (
+                <DiagnosticRow label="Handshake response" value={`HTTP ${stream.httpStatus}`} />
+              ) : null}
+              {stream.edgeChallenge ? (
+                <DiagnosticRow label="Edge challenge" value="Cloudflare" />
+              ) : null}
+              {stream.networkError ? (
+                <DiagnosticRow label="Network failure" value={stream.networkError} />
+              ) : null}
               <DiagnosticRow
                 label="Negotiated protocol"
                 value={stream.selectedProtocol ?? "Not observed"}
               />
               <DiagnosticRow label="Provider mode" value={stream.providerMode ?? "Not observed"} />
-              <DiagnosticRow label="WS request headers" value="Runtime-managed · Not captured" />
               <DiagnosticRow
                 label="Close code"
                 value={stream.closeCode === undefined ? "Not observed" : String(stream.closeCode)}

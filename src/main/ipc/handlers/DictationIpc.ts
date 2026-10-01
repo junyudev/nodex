@@ -8,6 +8,7 @@ import * as FiberMap from "effect/FiberMap";
 import * as Layer from "effect/Layer";
 import * as Schema from "effect/Schema";
 import { writeFile } from "node:fs/promises";
+import { randomUUID } from "node:crypto";
 import type { IpcMainEvent, IpcMainInvokeEvent } from "electron";
 import { z } from "zod";
 import { createKeyboardLayoutSnapshot } from "../../../shared/command-keybindings";
@@ -15,7 +16,6 @@ import type { GlobalDictationContextMenuAction } from "../../../shared/global-di
 import {
   DictationRecordingIdSchema,
   DictationRecordingMimeTypeSchema,
-  DictationRecordingSurfaceSchema,
 } from "../../../shared/dictation-history";
 import type { DictationSurface } from "../../../shared/dictation";
 import { MainConfig } from "../../app/MainConfig";
@@ -31,6 +31,7 @@ import {
 import { validateDictationTranscriptionInput } from "../../dictation-transcription-input";
 import { parseDictationSettingsPatch } from "../../dictation/dictation-settings-store";
 import { DictationRuntime } from "../../host-runtime/DictationRuntime";
+import { readDictationWebmFile } from "../../dictation/dictation-file-import";
 import { ElectronDesktop } from "../../platform/electron/ElectronDesktop";
 import { ElectronIpc } from "../../platform/electron/ElectronIpc";
 import { requireTrustedAppRendererSender } from "../../platform/electron/TrustedRendererSender";
@@ -133,7 +134,7 @@ const RecordingCreate = z
   .object({
     id: DictationRecordingIdSchema,
     mimeType: DictationRecordingMimeTypeSchema,
-    surface: DictationRecordingSurfaceSchema,
+    surface: z.enum(["composer", "global"]),
   })
   .strict();
 const RecordingAppend = z
@@ -318,10 +319,6 @@ export const live = (
         ),
       );
 
-      yield* ipc.handleQuery("codex:dictation:streaming-connect-info:read", (event) =>
-        authorized(event, "Dictation streaming connection", media.prepareStreamingConnectInfo),
-      );
-
       yield* ipc.handleQuery("codex:dictation:state:read", (event) =>
         authorized(event, "Dictation capability state", media.dictationState),
       );
@@ -461,6 +458,45 @@ export const live = (
           Effect.andThen(validate("parse-recording-create", () => RecordingCreate.parse(input))),
           Effect.flatMap(dictation.createRecording),
         ),
+      );
+      yield* ipc.handlePlainCommand(
+        "codex:dictation:history:import-file",
+        Effect.fn("DictationIpc.importRecordingFile")(function* (event) {
+          yield* trusted(event, "Dictation recording file import");
+          const owner = windows.get(event.sender.id);
+          if (!owner || owner.isDestroyed()) {
+            return yield* new DictationIpcError({
+              operation: "resolve-import-owner",
+              cause: new Error("Dictation file import requires an owned window"),
+            });
+          }
+          const result = yield* Effect.tryPromise({
+            try: () =>
+              desktop.dialog.showOpenDialog(owner, {
+                title: "Transcribe WebM file",
+                buttonLabel: "Transcribe",
+                filters: [{ name: "WebM audio", extensions: ["webm"] }],
+                properties: ["openFile"],
+              }),
+            catch: (cause) => new DictationIpcError({ operation: "choose-dictation-file", cause }),
+          });
+          if (result.canceled || result.filePaths.length === 0) return null;
+          if (
+            result.filePaths.length !== 1 ||
+            owner.isDestroyed() ||
+            windows.get(event.sender.id) !== owner
+          ) {
+            return yield* new DictationIpcError({
+              operation: "resolve-import-selection",
+              cause: new Error("Dictation file import requires one file in its owned window"),
+            });
+          }
+          const selected = yield* Effect.tryPromise({
+            try: (signal) => readDictationWebmFile(result.filePaths[0]!, signal),
+            catch: (cause) => new DictationIpcError({ operation: "read-dictation-file", cause }),
+          });
+          return yield* dictation.importRecording({ id: randomUUID(), ...selected });
+        }),
       );
       yield* ipc.handleControl("codex:dictation:history:append", (event, input: unknown) =>
         trusted(event, "Dictation recording history").pipe(

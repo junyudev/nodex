@@ -35,6 +35,7 @@ const makeHarness = (
         Layer.succeed(
           ChatGptDesktop,
           ChatGptDesktop.of({
+            prepareRequest: () => Effect.die("unused"),
             authStatus: () =>
               Effect.sync(() => ({
                 authMethod: "chatgpt",

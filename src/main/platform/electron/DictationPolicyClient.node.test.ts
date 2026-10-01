@@ -50,7 +50,7 @@ const bootstrap = encodeJson({
   sdk_configs: { live_values_auto_refresh_interval_seconds: 1 },
   feature_gates: {
     "4100906017": { value: true },
-    "codex-app-dictation-streaming": { value: false },
+    "770071981": { value: false },
   },
   dynamic_configs: {},
   layer_configs: {},
@@ -93,11 +93,11 @@ it.effect("publishes live overlays without replacing non-live session values", (
               response_mode: "live_overlay",
               time: 2,
               live_entity_names: {
-                feature_gates: ["codex-app-dictation-streaming"],
+                feature_gates: ["770071981"],
                 dynamic_configs: [],
               },
               feature_gates: {
-                "codex-app-dictation-streaming": { value: true },
+                "770071981": { value: true },
                 "4100906017": { value: false },
               },
             }),
@@ -105,7 +105,7 @@ it.effect("publishes live overlays without replacing non-live session values", (
         }),
       ),
     );
-    assert.isFalse((yield* client.read).streaming);
+    assert.isFalse((yield* client.read).workspacePermissions);
     yield* TestClock.adjust("1 second");
     yield* Deferred.await(received);
     yield* Effect.yieldNow;
@@ -113,7 +113,7 @@ it.effect("publishes live overlays without replacing non-live session values", (
     assert.strictEqual(count, 1);
     // Await the SDK promise continuation before reading the published overlay.
     const next = yield* client.changes.pipe(
-      Stream.filter((value) => value.streaming),
+      Stream.filter((value) => value.workspacePermissions),
       Stream.runHead,
     );
     assert.strictEqual(next._tag, "Some");
@@ -149,7 +149,7 @@ it.effect(
               encodeJson({
                 has_updates: true,
                 time: 1,
-                feature_gates: { "codex-app-dictation-sounds": { value: true } },
+                feature_gates: { "770071981": { value: true } },
                 dynamic_configs: {},
                 layer_configs: {},
               }),
@@ -157,8 +157,8 @@ it.effect(
           }),
         ),
       );
-      assert.isTrue((yield* client.read).sounds);
-      assert.isFalse((yield* client.read).streaming);
+      assert.isTrue((yield* client.read).workspacePermissions);
+      assert.isFalse((yield* client.read).composer);
     }).pipe(Effect.scoped),
 );
 
@@ -207,9 +207,6 @@ it.effect("delegates V1, compact V2 and absent evaluations to the installed SDK"
   Effect.gen(function* () {
     const defaults = {
       composer: false,
-      global: false,
-      streaming: false,
-      sounds: false,
       voiceDictionary: false,
       workspacePermissions: false,
     };
@@ -220,13 +217,13 @@ it.effect("delegates V1, compact V2 and absent evaluations to the installed SDK"
           feature_gates: {
             "4100906017": { value: false },
             [statsigNameHash("4100906017")]: { value: true },
-            [statsigNameHash("codex-app-dictation-sounds")]: { value: true },
+            [statsigNameHash("770071981")]: { value: true },
           },
           dynamic_configs: {
             "3845962714": { value: { dictation_custom_dictionary_enabled: true } },
           },
         },
-        expected: { ...defaults, sounds: true, voiceDictionary: true },
+        expected: { ...defaults, workspacePermissions: true, voiceDictionary: true },
       },
       {
         payload: {
@@ -234,8 +231,7 @@ it.effect("delegates V1, compact V2 and absent evaluations to the installed SDK"
           response_format: "init-v2",
           feature_gates: {
             [statsigNameHash("4100906017")]: { v: true },
-            "codex-app-dictation-streaming": { v: true },
-            [statsigNameHash("codex-app-dictation-sounds")]: { v: true },
+            [statsigNameHash("770071981")]: { v: true },
             "1244621283": { v: "true" },
           },
           dynamic_configs: { [statsigNameHash("3845962714")]: { v: 1 } },
@@ -244,8 +240,7 @@ it.effect("delegates V1, compact V2 and absent evaluations to the installed SDK"
         expected: {
           ...defaults,
           composer: true,
-          streaming: true,
-          sounds: true,
+          workspacePermissions: true,
           voiceDictionary: true,
         },
       },

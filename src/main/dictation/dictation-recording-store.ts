@@ -16,6 +16,7 @@ import {
   type DictationRecordingAudio,
   type DictationRecordingCreateInput,
   type DictationRecordingFinalizeInput,
+  type DictationRecordingImportInput,
   type DictationRecordingMetadata,
   type DictationRecordingSetTranscriptInput,
   type DictationRecordingSetDiagnosticsInput,
@@ -26,6 +27,7 @@ const METADATA_FILE_NAME = "metadata.json";
 const CHUNK_FILE_NAME = /^(\d{10})\.chunk$/u;
 const OWNED_TEMP_FILE_NAME = /^\.(?:metadata\.json|\d{10}\.chunk)\.\d+\.[^.]+\.tmp$/u;
 const HASH_DIRECTORY_NAME = /^[a-f0-9]{64}$/u;
+const IMPORT_DIRECTORY_NAME = /^\.[a-f0-9]{64}\.[a-f0-9-]{36}\.import$/u;
 const NO_FOLLOW_FLAG = constants.O_NOFOLLOW ?? 0;
 
 export type DictationRecordingStoreErrorCode =
@@ -50,6 +52,7 @@ export class DictationRecordingStoreError extends Error {
 
 export interface DictationRecordingStore {
   create(input: DictationRecordingCreateInput): Promise<DictationRecordingMetadata>;
+  importFile(input: DictationRecordingImportInput): Promise<DictationRecordingMetadata>;
   append(input: DictationRecordingAppendInput): Promise<DictationRecordingMetadata>;
   finalize(input: DictationRecordingFinalizeInput): Promise<DictationRecordingMetadata>;
   setDiagnostics(input: DictationRecordingSetDiagnosticsInput): Promise<DictationRecordingMetadata>;
@@ -209,6 +212,77 @@ export class FileDictationRecordingStore implements DictationRecordingStore {
     });
   }
 
+  /** Publishes a complete imported recording only after its private audio and metadata are durable. */
+  async importFile(input: DictationRecordingImportInput): Promise<DictationRecordingMetadata> {
+    const id = parseRecordingId(input.id);
+    if (!(input.bytes instanceof Uint8Array) || input.bytes.byteLength === 0) {
+      throw new DictationRecordingStoreError("invalid_input", "The WebM file is empty");
+    }
+    if (input.bytes.byteLength > DICTATION_HISTORY_MAX_AUDIO_BYTES) {
+      throw new DictationRecordingStoreError("limit_exceeded", "The WebM file exceeds 64 MiB");
+    }
+    const bytes = Uint8Array.from(input.bytes);
+    const timestamp = this.readNow();
+    const metadata = parseInputMetadata({
+      schemaVersion: DICTATION_RECORDING_SCHEMA_VERSION,
+      id,
+      createdAtMs: timestamp,
+      updatedAtMs: timestamp,
+      durationMs: 0,
+      mimeType: "audio/webm",
+      sizeBytes: bytes.byteLength,
+      chunkCount: Math.ceil(bytes.byteLength / DICTATION_HISTORY_MAX_CHUNK_BYTES),
+      status: "completed",
+      surface: "file",
+      fileName: input.fileName,
+    });
+    await this.ensureInitialized();
+    const imported = await this.serializeSession(id, async () => {
+      const directoryPath = this.recordingDirectoryPath(id);
+      if (this.recordings.has(id) || (await pathExists(directoryPath))) {
+        throw new DictationRecordingStoreError(
+          "recording_exists",
+          "A dictation recording already exists for this file",
+        );
+      }
+      const stagingPath = join(this.historyRoot, `.${hashRecordingId(id)}.${randomUUID()}.import`);
+      await mkdir(stagingPath, { mode: 0o700 });
+      try {
+        const chunks: ChunkDescriptor[] = [];
+        for (
+          let offset = 0;
+          offset < bytes.byteLength;
+          offset += DICTATION_HISTORY_MAX_CHUNK_BYTES
+        ) {
+          chunks.push(
+            await this.writeChunk(
+              stagingPath,
+              chunks.length,
+              bytes.subarray(offset, offset + DICTATION_HISTORY_MAX_CHUNK_BYTES),
+            ),
+          );
+        }
+        await this.writeMetadata(stagingPath, metadata);
+        await syncDirectory(stagingPath);
+        await rename(stagingPath, directoryPath);
+        await syncDirectory(this.requireCanonicalHistoryRoot());
+        this.recordings.set(id, {
+          directoryPath,
+          metadata,
+          chunks: chunks.map((chunk) => ({
+            ...chunk,
+            filePath: join(directoryPath, basename(chunk.filePath)),
+          })),
+        });
+        return cloneMetadata(metadata);
+      } finally {
+        await rm(stagingPath, { recursive: true, force: true });
+      }
+    });
+    await this.enforceRetention();
+    return imported;
+  }
+
   async finalize(input: DictationRecordingFinalizeInput): Promise<DictationRecordingMetadata> {
     const id = parseRecordingId(input.id);
     if (!Number.isSafeInteger(input.durationMs) || input.durationMs < 0) {
@@ -358,6 +432,13 @@ export class FileDictationRecordingStore implements DictationRecordingStore {
 
     const entries = await readdir(this.historyRoot, { withFileTypes: true });
     for (const entry of entries) {
+      if (IMPORT_DIRECTORY_NAME.test(entry.name)) {
+        const stagingPath = join(this.historyRoot, entry.name);
+        await this.assertSafeRecordingDirectory(stagingPath);
+        await rm(stagingPath, { recursive: true });
+        await syncDirectory(this.requireCanonicalHistoryRoot());
+        continue;
+      }
       if (!HASH_DIRECTORY_NAME.test(entry.name)) {
         throw new DictationRecordingStoreError(
           "unsafe_path",

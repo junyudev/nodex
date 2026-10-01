@@ -6,7 +6,6 @@ import {
   createDictationStreamingTranscriptState,
   parseDictationStreamingServerEvent,
   readDictationStreamingFinalText,
-  validateDictationStreamingConnectInfo,
 } from "./dictation-streaming";
 
 describe("dictation streaming wire contract", () => {
@@ -33,36 +32,27 @@ describe("dictation streaming wire contract", () => {
     expect(DICTATION_STREAM_MAX_OUTSTANDING_AUDIO_BYTES).toBe(4_194_304);
   });
 
-  test("accepts only secure, credential-free endpoints and valid unique protocols", () => {
+  test("adds explicitly supplied session identity, attempt identity, and language to the wire payload", () => {
     expect(
-      validateDictationStreamingConnectInfo({
-        websocketUrl: "wss://example.test/dictation?token=opaque",
-        protocols: ["realtime-v1", "openai.beta"],
+      buildDictationStreamingSessionStartMessage(24_000, true, {
+        dictationSessionId: "capture-id",
+        attemptId: "attempt-id",
+        language: "zh",
       }),
-    ).toEqual({
-      ok: true,
-      value: {
-        websocketUrl: "wss://example.test/dictation?token=opaque",
-        protocols: ["realtime-v1", "openai.beta"],
-      },
+    ).toMatchObject({
+      type: "session.start",
+      dictation_session_id: "capture-id",
+      attempt_id: "attempt-id",
+      config: { language: "zh", sample_rate_hz: 24_000, transcript_delivery_mode: "segment" },
     });
-    expect(
-      validateDictationStreamingConnectInfo({
-        websocketUrl: "wss://example.test/dictation",
-        protocols: [],
-      }).ok,
-    ).toBe(true);
-
-    for (const input of [
-      { websocketUrl: "https://example.test/socket", protocols: ["realtime-v1"] },
-      { websocketUrl: "ws://example.test/socket", protocols: ["realtime-v1"] },
-      { websocketUrl: "wss://user:secret@example.test/socket", protocols: ["realtime-v1"] },
-      { websocketUrl: "wss://example.test/socket#secret", protocols: ["realtime-v1"] },
-      { websocketUrl: "wss://example.test/socket", protocols: ["bad protocol"] },
-      { websocketUrl: "wss://example.test/socket", protocols: ["same", "same"] },
-    ]) {
-      expect(validateDictationStreamingConnectInfo(input).ok).toBe(false);
-    }
+    const optional = buildDictationStreamingSessionStartMessage(48_000, false, {
+      dictationSessionId: undefined,
+      attemptId: undefined,
+      language: undefined,
+    });
+    expect(optional).not.toHaveProperty("dictation_session_id");
+    expect(optional).not.toHaveProperty("attempt_id");
+    expect(optional.config).not.toHaveProperty("language");
   });
 
   test("parses every supported server event and rejects partial or unknown payloads", () => {

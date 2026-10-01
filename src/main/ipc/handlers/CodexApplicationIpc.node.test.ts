@@ -112,7 +112,7 @@ it.effect("registers application channels directly against their owning modules"
       transcribe: () => Effect.succeed(dictationTextResult("hello")),
       cleanupTranscript: (input) =>
         Effect.succeed(dictationTextResult(input.transcript, "cleanup")),
-      prepareStreamingConnectInfo: Effect.die("unused"),
+      openStreaming: () => Effect.die("unused"),
       readVoiceLanguage: Effect.die("unused"),
       dictationPolicySnapshot: Effect.die("unused"),
       updateVoiceLanguage: () => Effect.die("unused"),

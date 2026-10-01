@@ -18,7 +18,6 @@ import type {
   CodexThreadHandoffSnapshot,
   ThreadExecutionHandoffInput,
 } from "./codex-thread-handoff";
-import type { DictationStreamingConnectInfo } from "./dictation-streaming";
 import type {
   CodexTurnPresentationCaptureInput,
   CodexTurnPresentationTicket,
@@ -1873,10 +1872,6 @@ export interface IpcApi {
     args: [input: CodexRateLimitResetInput];
     result: CodexRateLimitResetResult;
   };
-  "codex:dictation:streaming-connect-info:read": {
-    args: [];
-    result: DictationStreamingConnectInfo;
-  };
   "codex:dictation:state:read": {
     args: [];
     result: CodexDictationStateSnapshot;
@@ -1965,6 +1960,10 @@ export interface IpcApi {
   "codex:dictation:history:create": {
     args: [input: DictationRecordingCreateInput];
     result: DictationRecordingMetadata;
+  };
+  "codex:dictation:history:import-file": {
+    args: [];
+    result: DictationRecordingMetadata | null;
   };
   "codex:dictation:history:append": {
     args: [input: DictationRecordingAppendInput];

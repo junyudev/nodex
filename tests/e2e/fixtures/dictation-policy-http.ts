@@ -10,7 +10,14 @@ interface DictationPolicyHttpEvidence {
 /** An account-matched HTTP response at Electron's network edge; the real policy owner decodes it. */
 export async function installDictationPolicyHttpFixture(
   application: ElectronApplication,
-  options: { readonly streaming?: boolean; readonly transcription?: string } = {},
+  options: {
+    readonly composer?: boolean;
+    readonly streaming?: boolean;
+    readonly sounds?: boolean;
+    readonly transcription?: string;
+    readonly baseUrl?: string;
+    readonly expectedAudioBytes?: readonly number[];
+  } = {},
 ): Promise<void> {
   await application.evaluate(({ net }, options) => {
     const originalFetch = net.fetch.bind(net);
@@ -37,7 +44,10 @@ export async function installDictationPolicyHttpFixture(
       const settings = url.pathname === "/backend-api/settings/user";
       const transcription =
         options.transcription !== undefined && url.pathname === "/backend-api/transcribe";
-      if (url.origin !== "https://chatgpt.com" || (!bootstrap && !settings && !transcription))
+      const origin = transcription
+        ? new URL(options.baseUrl ?? "https://chatgpt.com/backend-api").origin
+        : "https://chatgpt.com";
+      if (url.origin !== origin || (!bootstrap && !settings && !transcription))
         return originalFetch(input, init);
       const headers = new Headers(init?.headers);
       const expectedMethod = bootstrap || transcription ? "POST" : "GET";
@@ -68,11 +78,11 @@ export async function installDictationPolicyHttpFixture(
             hash_used: "none",
             user: { userID: userId, customIDs: { account_id: accountId } },
             feature_gates: {
-              "4100906017": { value: true },
+              "4100906017": { value: options.composer ?? true },
               "1244621283": { value: false },
               "770071981": { value: false },
               "codex-app-dictation-streaming": { value: options.streaming ?? false },
-              "codex-app-dictation-sounds": { value: true },
+              "codex-app-dictation-sounds": { value: options.sounds ?? true },
             },
             dynamic_configs: {
               "3845962714": { value: { dictation_custom_dictionary_enabled: false } },
@@ -88,10 +98,12 @@ export async function installDictationPolicyHttpFixture(
           !headers.get("content-type")?.startsWith("multipart/form-data; boundary=") ||
           mediaOffset < 0 ||
           !payload.includes(Buffer.from('name="file"')) ||
-          payload.includes(Buffer.from('name="language"'))
+          payload.includes(Buffer.from('name="language"')) ||
+          (options.expectedAudioBytes !== undefined &&
+            !payload.includes(Buffer.from(options.expectedAudioBytes)))
         ) {
           evidence.invalidRequests.push(
-            "Expected the native WebM recorder multipart payload without a language override",
+            "Expected the exact WebM multipart payload without a language override",
           );
           return Response.json({ error: "Invalid recording" }, { status: 400 });
         }

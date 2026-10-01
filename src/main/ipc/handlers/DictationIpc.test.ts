@@ -6,7 +6,20 @@ import * as Fiber from "effect/Fiber";
 import * as Layer from "effect/Layer";
 import * as Scope from "effect/Scope";
 import { assert, it } from "@effect/vitest";
-import type { IpcMainInvokeEvent } from "electron";
+import type {
+  BrowserWindow,
+  IpcMainInvokeEvent,
+  OpenDialogOptions,
+  OpenDialogReturnValue,
+} from "electron";
+import * as fs from "node:fs";
+import * as os from "node:os";
+import * as path from "node:path";
+import { vi } from "vite-plus/test";
+import type {
+  DictationRecordingImportInput,
+  DictationRecordingMetadata,
+} from "../../../shared/dictation-history";
 import { testLayer as mainConfigLayer } from "../../app/MainConfig";
 import { CodexMedia, CodexMediaError } from "../../codex-application/CodexMedia";
 import {
@@ -24,6 +37,115 @@ type Handler = (
   event: IpcMainInvokeEvent,
   ...args: readonly unknown[]
 ) => Effect.Effect<unknown, DictationIpcError | CodexMediaError | DictationDictionaryError>;
+
+it.effect(
+  "imports only a trusted window's single native WebM selection and preserves cancellation",
+  () =>
+    Effect.gen(function* () {
+      const root = fs.mkdtempSync(path.join(os.tmpdir(), "nodex-dictation-import-ipc-"));
+      const scope = yield* Scope.make();
+      try {
+        const selected = path.join(root, "Interview.webm");
+        const bytes = new Uint8Array([
+          0x1a, 0x45, 0xdf, 0xa3, 0x87, 0x42, 0x82, 0x84, 0x77, 0x65, 0x62, 0x6d, 0x18, 0x53, 0x80,
+          0x67, 0xff, 0xe7, 0x81, 0,
+        ]);
+        fs.writeFileSync(selected, bytes);
+        const handlers = new Map<string, Handler>();
+        const imports: DictationRecordingImportInput[] = [];
+        let selection: OpenDialogReturnValue = { canceled: true, filePaths: [] };
+        const showOpenDialog = vi.fn(
+          async (_owner: BrowserWindow, _options: OpenDialogOptions) => selection,
+        );
+        let destroyed = false;
+        const owner = { isDestroyed: () => destroyed } as BrowserWindow;
+        const ipc = makeTestElectronIpc({
+          handle: (channel, handler) =>
+            Effect.acquireRelease(
+              Effect.sync(() => handlers.set(channel, handler as Handler)),
+              () => Effect.sync(() => handlers.delete(channel)),
+            ).pipe(Effect.asVoid),
+          on: () => Effect.void,
+        });
+        yield* Layer.buildWithScope(
+          live({
+            authorize: (event) => {
+              if (event.sender.id === 9) throw new Error("Untrusted renderer");
+            },
+          }).pipe(
+            Layer.provide(
+              Layer.mergeAll(
+                Layer.succeed(ElectronIpc, ipc),
+                mainConfigLayer(),
+                Layer.succeed(CodexMedia, {} as CodexMedia["Service"]),
+                Layer.succeed(DictationDictionary, {} as DictationDictionary["Service"]),
+                Layer.succeed(DictationRuntime, {
+                  importRecording: (input: DictationRecordingImportInput) =>
+                    Effect.sync(() => {
+                      imports.push(input);
+                      return {
+                        schemaVersion: 1,
+                        id: input.id,
+                        fileName: input.fileName,
+                        createdAtMs: 1,
+                        updatedAtMs: 1,
+                        durationMs: 0,
+                        mimeType: "audio/webm",
+                        sizeBytes: input.bytes.byteLength,
+                        chunkCount: 1,
+                        status: "completed",
+                        surface: "file",
+                      } satisfies DictationRecordingMetadata;
+                    }),
+                } as unknown as DictationRuntime["Service"]),
+                Layer.succeed(ElectronDesktop, {
+                  dialog: { showOpenDialog },
+                } as unknown as ElectronDesktop["Service"]),
+                Layer.succeed(WindowRuntime, {
+                  get: (id: number) => (id === 7 ? owner : null),
+                } as WindowRuntime["Service"]),
+              ),
+            ),
+          ),
+          scope,
+        );
+        const invoke = (id: number) =>
+          handlers.get("codex:dictation:history:import-file")!({
+            sender: { id },
+          } as IpcMainInvokeEvent);
+        assert.isTrue(Exit.isFailure(yield* Effect.exit(invoke(9))));
+        assert.isTrue(Exit.isFailure(yield* Effect.exit(invoke(8))));
+        assert.strictEqual(showOpenDialog.mock.calls.length, 0);
+        assert.strictEqual(yield* invoke(7), null);
+        assert.strictEqual(imports.length, 0);
+        selection = { canceled: false, filePaths: [selected] };
+        const imported = (yield* invoke(7)) as DictationRecordingMetadata;
+        assert.strictEqual(imported.fileName, "Interview.webm");
+        assert.strictEqual(imported.surface, "file");
+        assert.match(imported.id, /^[a-f0-9-]{36}$/u);
+        assert.deepStrictEqual(imports[0]?.bytes, bytes);
+        assert.deepStrictEqual(Object.keys(imports[0]!).sort(), ["bytes", "fileName", "id"]);
+        assert.strictEqual(showOpenDialog.mock.calls[0]?.[0], owner);
+        const invalid = path.join(root, "NotAudio.webm");
+        fs.writeFileSync(invalid, new Uint8Array([1, 2, 3]));
+        selection = { canceled: false, filePaths: [invalid] };
+        assert.isTrue(Exit.isFailure(yield* Effect.exit(invoke(7))));
+        selection = { canceled: false, filePaths: [selected, invalid] };
+        assert.isTrue(Exit.isFailure(yield* Effect.exit(invoke(7))));
+        assert.strictEqual(imports.length, 1);
+        selection = { canceled: false, filePaths: [selected] };
+        showOpenDialog.mockImplementationOnce(async () => {
+          destroyed = true;
+          return selection;
+        });
+        assert.isTrue(Exit.isFailure(yield* Effect.exit(invoke(7))));
+        assert.strictEqual(imports.length, 1);
+      } finally {
+        yield* Scope.close(scope, Exit.void);
+        fs.rmSync(root, { recursive: true, force: true });
+      }
+    }),
+);
 
 it.effect("cancels only the owning renderer's active transcription fiber", () =>
   Effect.gen(function* () {
@@ -54,10 +176,7 @@ it.effect("cancels only the owning renderer's active transcription fiber", () =>
         Effect.never.pipe(Effect.onInterrupt(() => Deferred.succeed(interrupted, undefined))),
       cleanupTranscript: ({ transcript }) =>
         Effect.succeed(dictationTextResult(`cleaned:${transcript}`, "cleanup")),
-      prepareStreamingConnectInfo: Effect.succeed({
-        websocketUrl: "wss://chatgpt.com/backend-api/dictation/stream",
-        protocols: ["chatgpt-dictation", "openai-bearer.fixture-token", "codex-desktop"],
-      }),
+      openStreaming: () => Effect.die("unused"),
       resolveImage: () => Effect.die("unused"),
     });
     const dictation = DictationRuntime.of({
@@ -179,15 +298,6 @@ it.effect("cancels only the owning renderer's active transcription fiber", () =>
     assert.isTrue(
       Exit.isFailure(
         yield* Effect.exit(handlers.get("codex:dictation:voice-language:update")!(stranger, "en")),
-      ),
-    );
-    assert.deepEqual(yield* handlers.get("codex:dictation:streaming-connect-info:read")!(owner), {
-      websocketUrl: "wss://chatgpt.com/backend-api/dictation/stream",
-      protocols: ["chatgpt-dictation", "openai-bearer.fixture-token", "codex-desktop"],
-    });
-    assert.isTrue(
-      Exit.isFailure(
-        yield* Effect.exit(handlers.get("codex:dictation:streaming-connect-info:read")!(stranger)),
       ),
     );
     const requestFiber = yield* Effect.forkChild(

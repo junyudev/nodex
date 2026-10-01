@@ -1,4 +1,4 @@
-import { MAX_MANAGED_RESOURCE_BYTES } from "../shared/managed-assets";
+import { DICTATION_HISTORY_MAX_AUDIO_BYTES } from "../shared/dictation-history";
 
 export interface DictationTranscriptionInput {
   readonly contentType: string;
@@ -8,10 +8,12 @@ export interface DictationTranscriptionInput {
 
 const MULTIPART_CONTENT_TYPE = /^multipart\/form-data;\s*boundary=[^;\s]+$/iu;
 const BASE64_PAYLOAD = /^[A-Za-z0-9+/]+={0,2}$/u;
+// Multipart headers and fields fit within 4 KiB; Base64 expands the complete envelope.
+const MAX_ENCODED_PAYLOAD_BYTES = Math.ceil((DICTATION_HISTORY_MAX_AUDIO_BYTES + 4 * 1024) / 3) * 4;
 
 export function validateDictationTranscriptionInput(
   input: unknown,
-  maxEncodedBytes = MAX_MANAGED_RESOURCE_BYTES,
+  maxEncodedBytes = MAX_ENCODED_PAYLOAD_BYTES,
 ): DictationTranscriptionInput {
   if (!input || typeof input !== "object" || Array.isArray(input)) {
     throw new Error("Invalid dictation content type");

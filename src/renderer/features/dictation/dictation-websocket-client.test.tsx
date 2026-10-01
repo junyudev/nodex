@@ -8,10 +8,7 @@ class Socket extends EventTarget {
   readyState = 0;
   protocol = "chatgpt-dictation";
   sent: unknown[] = [];
-  constructor(
-    readonly url: string,
-    readonly protocols: string[],
-  ) {
+  constructor() {
     super();
     Socket.instances.push(this);
   }
@@ -42,17 +39,14 @@ const session = (status: "active" | "closed") => ({
     config: { provider_mode: "streaming_sse", transcript_delivery_mode: "final_only" },
   },
 });
-const info = {
-  websocketUrl: "wss://chatgpt.com/backend-api/transcribe/dictation/stream",
-  protocols: ["chatgpt-dictation", "openai-bearer.test-secret", "codex-desktop"],
-};
+const prepareConnection = async () => () => new Socket();
 const createFixture = () => {
   const diagnostics = emptyDictationStreamDiagnostics();
   const onEvent = vi.fn();
   return {
     diagnostics,
     onEvent,
-    client: new DictationWebSocketClient(async () => info, onEvent, diagnostics),
+    client: new DictationWebSocketClient(prepareConnection, onEvent, diagnostics),
   };
 };
 const flush = async () => {
@@ -62,21 +56,19 @@ const flush = async () => {
 };
 beforeEach(() => {
   Socket.instances = [];
-  vi.stubGlobal("WebSocket", Socket);
 });
 afterEach(() => {
   vi.unstubAllGlobals();
   vi.useRealTimers();
 });
 
-describe("renderer dictation WebSocket", () => {
+describe("renderer dictation session", () => {
   it("buffers audio until session.started, sends PCM directly, and completes on session closure", async () => {
     const { client, diagnostics, onEvent } = createFixture();
     const connecting = client.connect(48_000);
     client.appendPCM16(new Uint8Array([0, 1, 2, 3]).buffer);
     await flush();
     const socket = Socket.instances[0]!;
-    expect(socket.protocols).toEqual(info.protocols);
     socket.open();
     expect(socket.sent).toEqual([
       expect.objectContaining({
@@ -105,7 +97,6 @@ describe("renderer dictation WebSocket", () => {
       sentAudioFrames: 1,
     });
     expect(diagnostics.failureCode).toBeUndefined();
-    expect(JSON.stringify(diagnostics)).not.toContain("test-secret");
   });
 
   it.each([false, true])(
@@ -156,7 +147,7 @@ describe("renderer dictation WebSocket", () => {
     const connecting = startup.client.connect(48_000).catch((error: unknown) => error);
     await flush();
     await vi.advanceTimersByTimeAsync(10_000);
-    expect(await connecting).toMatchObject({ code: "start-timeout" });
+    expect(await connecting).toMatchObject({ code: "handshake-timeout" });
     const ending = createFixture();
     const ready = ending.client.connect(48_000);
     await flush();
@@ -169,8 +160,8 @@ describe("renderer dictation WebSocket", () => {
     expect(await finishing).toMatchObject({ code: "finish-timeout" });
   });
 
-  it("cancels pending credential preparation without opening a late socket", async () => {
-    let resolve!: (value: typeof info) => void;
+  it("cancels pending connection preparation without opening a late socket", async () => {
+    let resolve!: (value: () => Socket) => void;
     const client = new DictationWebSocketClient(
       () =>
         new Promise((done) => {
@@ -182,7 +173,7 @@ describe("renderer dictation WebSocket", () => {
     const connecting = client.connect(48_000).catch((error: unknown) => error);
     client.close();
     expect(await connecting).toMatchObject({ code: "aborted" });
-    resolve(info);
+    resolve(() => new Socket());
     await flush();
     expect(Socket.instances).toHaveLength(0);
   });
@@ -291,7 +282,7 @@ it("does not drain audio when a late gate resolves after startup timed out", asy
   socket.open();
   socket.receive(session("active"));
   await vi.advanceTimersByTimeAsync(10_000);
-  expect(await result).toMatchObject({ code: "start-timeout" });
+  expect(await result).toMatchObject({ code: "session-start-timeout" });
   admit(true);
   await flush();
   expect(socket.sent).toHaveLength(1);
@@ -313,4 +304,119 @@ it("keeps an acknowledged result authoritative if the closing transport emits an
   socket.end(1006);
   expect(diagnostics.failureCode).toBeUndefined();
   await expect(client.finish()).resolves.toBeUndefined();
+});
+
+it("rejects a stalled preparation and never creates its late transport", async () => {
+  vi.useFakeTimers();
+  let accept!: (factory: () => Socket) => void;
+  const factory = vi.fn(() => new Socket());
+  const client = new DictationWebSocketClient(
+    () =>
+      new Promise((resolve) => {
+        accept = resolve;
+      }),
+    () => undefined,
+    emptyDictationStreamDiagnostics(),
+  );
+  const connecting = client.connect(48_000).catch((error: unknown) => error);
+  await vi.advanceTimersByTimeAsync(10_000);
+  expect(await connecting).toMatchObject({ code: "prepare-timeout" });
+  accept(factory);
+  await flush();
+  expect(factory).not.toHaveBeenCalled();
+  client.close();
+});
+
+it("distinguishes an upgraded socket from an unacknowledged session start", async () => {
+  vi.useFakeTimers();
+  const { client } = createFixture();
+  const connecting = client.connect(48_000).catch((error: unknown) => error);
+  await flush();
+  const socket = Socket.instances[0]!;
+  socket.open();
+  await vi.advanceTimersByTimeAsync(10_000);
+  expect(await connecting).toMatchObject({ code: "session-start-timeout" });
+  expect(socket.readyState).toBe(3);
+});
+
+it("rejects immediately on transport error without waiting for its close or startup deadline", async () => {
+  const { client, diagnostics } = createFixture();
+  const connecting = client.connect(48_000).catch((error: unknown) => error);
+  await flush();
+  const socket = Socket.instances[0]!;
+  socket.dispatchEvent(new Event("error"));
+  expect(await connecting).toMatchObject({ code: "websocket-failed" });
+  expect(diagnostics.failureCode).toBe("websocket-failed");
+  expect(socket.readyState).toBe(3);
+});
+
+it("cancels active startup and ignores late admission, open, and transcript events", async () => {
+  let accept!: (allowed: boolean) => void;
+  const gate = new Promise<boolean>((resolve) => {
+    accept = resolve;
+  });
+  const { client, diagnostics, onEvent } = createFixture();
+  const connecting = client.connect(48_000, true, gate).catch((error: unknown) => error);
+  await flush();
+  const socket = Socket.instances[0]!;
+  client.appendPCM16(new Uint8Array([1, 2]).buffer);
+  client.close();
+  expect(await connecting).toMatchObject({ code: "aborted" });
+  socket.open();
+  socket.receive(session("active"));
+  accept(true);
+  await flush();
+  expect(socket.sent).toEqual([]);
+  expect(onEvent).not.toHaveBeenCalled();
+  expect(diagnostics.opened).toBe(false);
+});
+
+it("rejects finalization on cancellation and ignores late server completion", async () => {
+  const { client } = createFixture();
+  const connecting = client.connect(48_000);
+  await flush();
+  const socket = Socket.instances[0]!;
+  socket.open();
+  socket.receive(session("active"));
+  await connecting;
+  const finishing = client.finish().catch((error: unknown) => error);
+  client.close();
+  expect(await finishing).toMatchObject({ code: "aborted" });
+  socket.receive(session("closed"));
+});
+
+it("honors the Composer finalization budget and serializes its session identifiers", async () => {
+  vi.useFakeTimers();
+  const client = new DictationWebSocketClient(
+    prepareConnection,
+    () => undefined,
+    emptyDictationStreamDiagnostics(),
+    undefined,
+    {
+      finishTimeoutMs: 60_000,
+      dictationSessionId: "capture",
+      attemptId: "segment",
+      language: "zh",
+    },
+  );
+  const connecting = client.connect(48_000, true);
+  await flush();
+  const socket = Socket.instances[0]!;
+  socket.open();
+  expect(socket.sent[0]).toMatchObject({
+    dictation_session_id: "capture",
+    attempt_id: "segment",
+    config: { language: "zh", transcript_delivery_mode: "segment" },
+  });
+  socket.receive(session("active"));
+  await connecting;
+  let settled = false;
+  const finishing = client.finish().catch((error: unknown) => {
+    settled = true;
+    return error;
+  });
+  await vi.advanceTimersByTimeAsync(59_999);
+  expect(settled).toBe(false);
+  await vi.advanceTimersByTimeAsync(1);
+  expect(await finishing).toMatchObject({ code: "finish-timeout" });
 });

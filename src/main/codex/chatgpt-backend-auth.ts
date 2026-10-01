@@ -8,6 +8,7 @@ import {
   AccountRoutingResponse,
   ChatGptBackendAuthError,
   resolveChatGptBackendRouting,
+  resolveChatGptApplicationNetwork,
   type ChatGptBackendIdentity,
   type ChatGptBackendRequestAuth,
 } from "./chatgpt-backend-routing";
@@ -70,6 +71,13 @@ export const readChatGptBackendRequestAuth = Effect.fn("ChatGptDesktop.readBacke
       gateway.requestRawOnHost(gateway.localHostId, "account/read", { refreshToken: false }),
       gateway.requestRawOnHost(gateway.localHostId, "configRequirements/read", {}),
     ]);
+    const network = yield* Effect.try({
+      try: () => resolveChatGptApplicationNetwork({ requirements, version: version.version }),
+      catch: () =>
+        new ChatGptBackendAuthError({
+          message: "Application network requirements are invalid or unavailable",
+        }),
+    });
     const decodedAccount = yield* Schema.decodeUnknownEffect(AccountRoutingResponse)(account).pipe(
       Effect.mapError(() => new ChatGptBackendAuthError({ message: "Invalid account response" })),
     );
@@ -131,6 +139,7 @@ export const readChatGptBackendRequestAuth = Effect.fn("ChatGptDesktop.readBacke
       identity,
       routing,
       planType: decodedAccount.account?.planType ?? null,
+      network,
     } satisfies ChatGptBackendRequestAuth;
   },
 );

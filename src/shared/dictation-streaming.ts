@@ -1,23 +1,20 @@
 export const DICTATION_STREAM_START_TIMEOUT_MS = 10_000;
 export const DICTATION_STREAM_FINISH_TIMEOUT_MS = 8_000;
+export const DICTATION_STREAM_COMPOSER_FINISH_TIMEOUT_MS = 60_000;
 export const DICTATION_STREAM_MAX_OUTSTANDING_AUDIO_BYTES = 4_194_304 as const;
-export interface DictationStreamingConnectInfo {
-  readonly websocketUrl: string;
-  readonly protocols: readonly string[];
-}
 
-export interface ValidatedDictationStreamingConnectInfo {
-  readonly websocketUrl: string;
-  readonly protocols: readonly string[];
+export interface DictationStreamingSessionOptions {
+  readonly dictationSessionId?: string;
+  readonly attemptId?: string;
+  readonly language?: string;
 }
-
-export type DictationStreamingConnectInfoValidation =
-  | { readonly ok: true; readonly value: ValidatedDictationStreamingConnectInfo }
-  | { readonly ok: false; readonly reason: string };
 
 export interface DictationStreamingSessionStartMessage {
   readonly type: "session.start";
+  readonly dictation_session_id?: string;
+  readonly attempt_id?: string;
   readonly config: {
+    readonly language?: string;
     readonly input_audio_format: "pcm16";
     readonly sample_rate_hz: number;
     readonly num_channels: 1;
@@ -45,9 +42,12 @@ export interface DictationStreamingSessionCloseMessage {
 }
 
 export const DICTATION_STREAMING_FAILURE_CODES = [
-  "connect-info-failed",
-  "invalid-connect-info",
-  "start-timeout",
+  "prepare-failed",
+  "prepare-timeout",
+  "handshake-timeout",
+  "session-start-timeout",
+  "http-rejected",
+  "edge-challenge",
   "websocket-failed",
   "invalid-server-event",
   "transcript-failed",
@@ -120,56 +120,19 @@ export type DictationStreamingTranscriptState = Map<
   }
 >;
 
-const WEBSOCKET_SUBPROTOCOL_PATTERN = /^[!#$%&'*+\-.^_`|~0-9A-Za-z]+$/;
-
-export function validateDictationStreamingConnectInfo(
-  input: DictationStreamingConnectInfo,
-): DictationStreamingConnectInfoValidation {
-  let websocketUrl: URL;
-  try {
-    websocketUrl = new URL(input.websocketUrl);
-  } catch {
-    return { ok: false, reason: "The streaming endpoint is not a valid URL." };
-  }
-
-  if (websocketUrl.protocol !== "wss:" || websocketUrl.host.length === 0) {
-    return { ok: false, reason: "The streaming endpoint must use wss with a host." };
-  }
-  if (
-    websocketUrl.username.length > 0 ||
-    websocketUrl.password.length > 0 ||
-    websocketUrl.hash.length > 0
-  ) {
-    return { ok: false, reason: "The streaming endpoint must not contain credentials or a hash." };
-  }
-  if (!Array.isArray(input.protocols)) {
-    return { ok: false, reason: "The streaming endpoint must return a subprotocol array." };
-  }
-
-  const protocols = [...input.protocols];
-  if (protocols.some((protocol) => !WEBSOCKET_SUBPROTOCOL_PATTERN.test(protocol))) {
-    return { ok: false, reason: "The streaming endpoint returned an invalid subprotocol." };
-  }
-  if (new Set(protocols).size !== protocols.length) {
-    return { ok: false, reason: "The streaming endpoint returned duplicate subprotocols." };
-  }
-
-  return {
-    ok: true,
-    value: {
-      websocketUrl: websocketUrl.toString(),
-      protocols,
-    },
-  };
-}
-
 export function buildDictationStreamingSessionStartMessage(
   sampleRateHz: number,
   receiveSegments = false,
+  options: DictationStreamingSessionOptions = {},
 ): DictationStreamingSessionStartMessage {
   return {
     type: "session.start",
+    ...(options.dictationSessionId === undefined
+      ? {}
+      : { dictation_session_id: options.dictationSessionId }),
+    ...(options.attemptId === undefined ? {} : { attempt_id: options.attemptId }),
     config: {
+      ...(options.language === undefined ? {} : { language: options.language }),
       input_audio_format: "pcm16",
       sample_rate_hz: sampleRateHz,
       num_channels: 1,

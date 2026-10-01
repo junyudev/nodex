@@ -1,4 +1,8 @@
 import { describe, expect, it, vi } from "vitest";
+import {
+  DEFAULT_KEYBOARD_LAYOUT_SNAPSHOT,
+  validateGlobalDictationShortcutRejection,
+} from "../../shared/command-keybindings";
 import type { DictationNativeHelperEvent } from "./dictation-native-helper-port";
 import {
   compileWindowsDictationHotkey,
@@ -29,7 +33,11 @@ function harness() {
   let now = 1_000;
   const events: DictationNativeHelperEvent[] = [];
   const shortcuts = new Map<string, () => void>();
-  const watchers: { active: boolean; release: () => void }[] = [];
+  const watchers: {
+    active: boolean;
+    groups: readonly (readonly number[])[];
+    release: () => void;
+  }[] = [];
   const ports: WindowsDictationNativePorts = {
     clipboard: {
       read: vi.fn(async () => current),
@@ -48,9 +56,10 @@ function harness() {
     unregisterShortcut: vi.fn((key) => {
       shortcuts.delete(key);
     }),
-    watchRelease: vi.fn((_groups, onReleased) => {
+    watchRelease: vi.fn((groups, onReleased) => {
       const watcher = {
         active: true,
+        groups,
         release: () => {
           if (watcher.active) onReleased();
         },
@@ -79,6 +88,14 @@ function harness() {
     events,
     shortcuts,
     watchers,
+    releaseKeys: (downKeys: readonly number[]) => {
+      const down = new Set(downKeys);
+      for (const watcher of watchers) {
+        if (!watcher.groups.every((group) => group.some((key) => down.has(key)))) {
+          watcher.release();
+        }
+      }
+    },
     current: () => current,
     change: (value: WindowsDictationClipboardSnapshot) => {
       current = value;
@@ -88,12 +105,35 @@ function harness() {
 
 describe("Windows global dictation", () => {
   it.each([
-    ["CmdOrCtrl+K", [[17]]],
-    ["Command+Shift+K", [[91, 92], [16]]],
-    ["Ctrl+Alt+K", [[17], [18]]],
-    ["Super+Shift+K", [[16]]],
-  ])("watches the supported modifiers of %s", (accelerator, groups) => {
+    ["CmdOrCtrl+K", [[17], [75]]],
+    ["Command+Shift+K", [[91, 92], [16], [75]]],
+    ["Ctrl+Alt+K", [[17], [18], [75]]],
+    ["Super+Shift+K", [[91, 92], [16], [75]]],
+    ["Ctrl+Space", [[17], [32]]],
+    ["Ctrl+0", [[17], [48]]],
+    ["Ctrl+F1", [[17], [112]]],
+    ["Ctrl+F20", [[17], [131]]],
+    ["Alt+PageDown", [[18], [34]]],
+    ["Alt+ArrowLeft", [[18], [37]]],
+    ["Ctrl+;", [[17], [186]]],
+    ["Ctrl+=", [[17], [187]]],
+    ["Ctrl+[", [[17], [219]]],
+    ["Ctrl+\\", [[17], [220]]],
+    ["Ctrl+'", [[17], [222]]],
+  ])("watches the complete chord of %s", (accelerator, groups) => {
     expect(binding(accelerator).releaseKeyGroups).toEqual(groups);
+  });
+
+  it("provides release observation for every admitted ordinary key", () => {
+    for (const key of Object.values(DEFAULT_KEYBOARD_LAYOUT_SNAPSHOT.entries)) {
+      const accelerator = `Ctrl+${key}`;
+      expect(validateGlobalDictationShortcutRejection(accelerator, "windows")).toBeNull();
+      const compiled = binding(accelerator);
+      const ordinaryGroup = compiled.releaseKeyGroups.at(-1);
+      expect(ordinaryGroup).toHaveLength(1);
+      expect(ordinaryGroup?.[0]).toBeGreaterThan(0);
+      expect(ordinaryGroup?.[0]).toBeLessThanOrEqual(255);
+    }
   });
 
   it.each(["Fn", "LeftOption", "Ctrl", "Shift+K", "K", "Meta+K", "Super+K"])(
@@ -133,6 +173,31 @@ describe("Windows global dictation", () => {
     expect(h.events.map((e) => ("sequence" in e ? e.sequence : null))).toEqual([1, 2, 3, 4, 5, 6]);
     expect(h.events.every((e) => !("target" in e))).toBe(true);
     expect(h.shortcuts.size).toBe(0);
+  });
+
+  it("rearms on Space release while Ctrl remains held and also stops on Ctrl release", async () => {
+    const h = harness();
+    await h.client.replaceBindings({ generation: 1, bindings: [binding("Ctrl+Space")] });
+    const press = h.shortcuts.get("Ctrl+Space")!;
+    press();
+    h.releaseKeys([17, 32]);
+    press();
+    expect(h.events.map((event) => event.type)).toEqual(["pressed"]);
+    h.releaseKeys([17]);
+    press();
+    h.releaseKeys([32]);
+    h.releaseKeys([]);
+    expect(h.events.map((event) => event.type)).toEqual([
+      "pressed",
+      "released",
+      "pressed",
+      "released",
+    ]);
+    expect(h.ports.watchRelease).toHaveBeenCalledExactlyOnceWith(
+      [[17], [32]],
+      expect.any(Function),
+    );
+    h.client.dispose();
   });
 
   it("retains working registrations when a replacement conflicts", async () => {

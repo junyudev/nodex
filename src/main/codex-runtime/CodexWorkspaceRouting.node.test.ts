@@ -135,7 +135,9 @@ it.effect(
       yield* service.discover({ ...input, identity: { ...input.identity, userId: "u2" } });
       yield* service.discover({
         ...input,
-        requirements: { requirements: { featureRequirements: { in_app_dictation: true } } },
+        requirements: {
+          requirements: { application: null, featureRequirements: { in_app_dictation: true } },
+        },
       });
       assert.strictEqual(calls.filter((call) => call === "open").length, 4);
     }).pipe(Effect.scoped),

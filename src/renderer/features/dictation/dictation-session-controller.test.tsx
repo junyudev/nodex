@@ -5,6 +5,7 @@ import { emptyDictationStreamDiagnostics } from "../../../shared/dictation-diagn
 import { describe, expect, it, test, vi } from "vitest";
 import {
   DICTATION_HISTORY_CHUNK_INTERVAL_MS,
+  MAXIMUM_DICTATION_DURATION_MS,
   DictationSessionController,
   type DictationControllerPorts,
   type DictationRecorderHandle,
@@ -32,11 +33,19 @@ const createFixture = (
     readonly transcribe?: DictationControllerPorts["buffered"]["transcribe"];
     readonly cleanup?: DictationControllerPorts["cleanup"]["transcript"];
     readonly onRecoveryChange?: DictationControllerPorts["onRecoveryChange"];
+    readonly recordingDurationLimitMs?: DictationControllerPorts["recordingDurationLimitMs"];
   } = {},
 ) => {
   let now = 0;
   let nextTimer = 0;
-  const timers = new Map<number, { readonly callback: () => void; readonly delayMs: number }>();
+  const timers = new Map<
+    number,
+    {
+      readonly callback: () => void;
+      readonly delayMs: number;
+      readonly dueAtMs: number;
+    }
+  >();
   let callbacks: Parameters<DictationControllerPorts["recorder"]["create"]>[1] | null = null;
   let streamingOptions: Parameters<DictationControllerPorts["streaming"]["prepare"]>[1];
   const track = { stop: vi.fn() };
@@ -97,6 +106,10 @@ const createFixture = (
   const onRecordingStarted = vi.fn();
   const onStopRequested = vi.fn();
   const ports: DictationControllerPorts = {
+    recordingDurationLimitMs:
+      options.recordingDurationLimitMs === undefined
+        ? MAXIMUM_DICTATION_DURATION_MS
+        : options.recordingDurationLimitMs,
     lease,
     permissions: {
       request: options.requestPermission ?? (async () => ({ kind: "granted", status: "granted" })),
@@ -131,7 +144,7 @@ const createFixture = (
       wallNow: () => now,
       setTimeout: (callback, delayMs) => {
         nextTimer += 1;
-        timers.set(nextTimer, { callback, delayMs });
+        timers.set(nextTimer, { callback, delayMs, dueAtMs: now + delayMs });
         return nextTimer as never;
       },
       clearTimeout: (timer) => {
@@ -153,6 +166,23 @@ const createFixture = (
     onRecordingStarted,
     onStopRequested,
     recorder,
+    timerCallback: (delayMs: number) => {
+      const timer = [...timers.values()].find((value) => value.delayMs === delayMs);
+      if (!timer) throw new Error(`Missing ${delayMs}ms timer`);
+      return timer.callback;
+    },
+    advanceTo: (value: number) => {
+      for (;;) {
+        const timer = [...timers.entries()]
+          .filter(([, timer]) => timer.dueAtMs <= value)
+          .sort(([, left], [, right]) => left.dueAtMs - right.dueAtMs)[0];
+        if (!timer) break;
+        now = timer[1].dueAtMs;
+        timers.delete(timer[0]);
+        timer[1].callback();
+      }
+      now = value;
+    },
     runTimer: (delayMs: number) => {
       const timer = [...timers.entries()].find(([, value]) => value.delayMs === delayMs);
       if (!timer) throw new Error(`Missing ${delayMs}ms timer`);
@@ -330,16 +360,88 @@ describe("DictationSessionController", () => {
     );
   });
 
-  it("stops once at 595 seconds", async () => {
-    const fixture = createFixture();
-    await fixture.controller.start({ surface: "composer", gesture: "click" });
-    fixture.setNow(595_000);
-    fixture.runTimer(595_000);
-    await vi.waitFor(() => expect(fixture.controller.getSnapshot().kind).toBe("idle"));
+  it.each([
+    { surface: "composer", transport: "buffered" },
+    { surface: "composer", transport: "streaming" },
+    { surface: "global", transport: "buffered" },
+    { surface: "global", transport: "streaming" },
+  ] as const)(
+    "inserts and preserves $transport audio at the Composer deadline for $surface metadata",
+    async ({ surface, transport }) => {
+      const fixture = createFixture();
+      if (transport === "streaming")
+        fixture.streamingAttempt.finish.mockResolvedValue("final text");
+      await fixture.controller.start({ surface, gesture: "toggle" });
+      fixture.emitChunk(new Blob(["opening"], { type: "audio/webm" }));
+      fixture.emitChunk(new Blob(["middle"], { type: "audio/webm" }));
+      fixture.advanceTo(594_999);
+      expect(fixture.controller.getSnapshot().kind).toBe("recording");
+      expect(fixture.recorder.stop).not.toHaveBeenCalled();
+      fixture.advanceTo(595_000);
+      await vi.waitFor(() => expect(fixture.controller.getSnapshot().kind).toBe("idle"));
+      const text = transport === "streaming" ? "final text" : "hello world";
+      expect(fixture.recorder.stop).toHaveBeenCalledOnce();
+      expect(fixture.track.stop).toHaveBeenCalledOnce();
+      expect(fixture.history.append).toHaveBeenCalledTimes(3);
+      expect(fixture.history.finalize).toHaveBeenLastCalledWith({
+        sessionId: "session-1",
+        status: "completed",
+        durationMs: 595_000,
+        transcript: text,
+      });
+      expect(fixture.completion.apply).toHaveBeenCalledExactlyOnceWith({
+        sessionId: "session-1",
+        signal: expect.any(AbortSignal),
+        action: "insert",
+        transcript: text,
+      });
+      if (transport === "streaming") {
+        expect(fixture.buffered.transcribe).not.toHaveBeenCalled();
+        return;
+      }
+      const audio = fixture.buffered.transcribe.mock.calls[0]?.[0];
+      expect(audio).toBeInstanceOf(Blob);
+      expect(await audio?.text()).toBe("openingmiddleaudio");
+    },
+  );
 
-    expect(fixture.recorder.stop).toHaveBeenCalledOnce();
-    expect(fixture.completion.apply).toHaveBeenCalledOnce();
+  it("keeps the global overlay recording past the Composer deadline and preserves its full audio", async () => {
+    const fixture = createFixture({ recordingDurationLimitMs: null });
+    await fixture.controller.start({ surface: "global", gesture: "toggle" });
+    fixture.emitChunk(new Blob(["opening"], { type: "audio/webm" }));
+    fixture.advanceTo(600_000);
+    expect(fixture.controller.getSnapshot().kind).toBe("recording");
+    expect(fixture.recorder.stop).not.toHaveBeenCalled();
+    fixture.emitChunk(new Blob(["after deadline"], { type: "audio/webm" }));
+    fixture.controller.stop("insert");
+    await vi.waitFor(() => expect(fixture.controller.getSnapshot().kind).toBe("idle"));
+    expect(await fixture.buffered.transcribe.mock.calls[0]?.[0].text()).toBe(
+      "openingafter deadlineaudio",
+    );
+    expect(fixture.completion.apply).toHaveBeenCalledExactlyOnceWith(
+      expect.objectContaining({ action: "insert" }),
+    );
   });
+
+  it.each(["manual-stop", "cancel"] as const)(
+    "ignores a queued Composer deadline from a session ended by %s",
+    async (terminalAction) => {
+      const fixture = createFixture();
+      await fixture.controller.start({ surface: "composer", gesture: "click" });
+      const queuedDeadline = fixture.timerCallback(595_000);
+      fixture.setNow(595_000);
+      if (terminalAction === "cancel") fixture.controller.cancel();
+      else fixture.controller.stop("insert");
+      await vi.waitFor(() => expect(fixture.controller.getSnapshot().kind).toBe("idle"));
+      await fixture.controller.start({ surface: "composer", gesture: "click" });
+      const stops = vi.mocked(fixture.recorder.stop).mock.calls.length;
+      queuedDeadline();
+      await flush();
+      expect(fixture.controller.getSnapshot().kind).toBe("recording");
+      expect(fixture.recorder.stop).toHaveBeenCalledTimes(stops);
+      fixture.controller.cancel();
+    },
+  );
 
   it("upgrades insert to send during one idempotent finalization", async () => {
     let resolveTranscript: (value: string) => void = () => undefined;
@@ -580,6 +682,10 @@ it("routes explicit language through buffered transcription and leaves auto elig
   fixture.controller.stop("insert");
   await vi.waitFor(() => expect(fixture.controller.getSnapshot().kind).toBe("idle"));
   expect(fixture.streamingAttempt.start).not.toHaveBeenCalled();
+  expect(fixture.history.diagnostics.mock.calls[0]?.[1].streaming).toMatchObject({
+    attempted: false,
+    skipReason: "language-selected",
+  });
   expect(fixture.transcript.start).not.toHaveBeenCalled();
   expect(fixture.buffered.transcribe).toHaveBeenCalledWith(
     expect.any(Blob),
@@ -592,6 +698,35 @@ it("routes explicit language through buffered transcription and leaves auto elig
   expect(fixture.streamingAttempt.start).toHaveBeenCalledOnce();
   fixture.controller.cancel();
 });
+
+it.each([
+  { availability: "unavailable", reason: { skipReason: "unavailable" } },
+  { availability: "unknown", reason: { skipReason: "unknown" } },
+  { availability: "read-failed", reason: { failureCode: "capability-read-failed" } },
+] as const)(
+  "retains why streaming was not attempted when capability is $availability",
+  async ({ availability, reason }) => {
+    const fixture = createFixture();
+    await fixture.controller.start({
+      surface: "global",
+      gesture: "toggle",
+      streamingAvailability: availability,
+    });
+    fixture.setNow(300);
+    fixture.controller.stop("insert");
+    await vi.waitFor(() => expect(fixture.controller.getSnapshot().kind).toBe("idle"));
+    expect(fixture.streamingAttempt.start).not.toHaveBeenCalled();
+    expect(fixture.buffered.transcribe).toHaveBeenCalledOnce();
+    expect(fixture.completion.apply).toHaveBeenCalledWith(
+      expect.objectContaining({ transcript: "hello world" }),
+    );
+    expect(fixture.history.diagnostics.mock.calls[0]?.[1]).toMatchObject({
+      outcome: "completed",
+      transport: "buffered",
+      streaming: { ...emptyDictationStreamDiagnostics(), ...reason },
+    });
+  },
+);
 
 it("starts stream finalization before the recorder's terminal chunk arrives", async () => {
   const fixture = createFixture();

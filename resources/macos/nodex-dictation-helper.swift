@@ -4,6 +4,7 @@ import CoreAudio
 import CoreGraphics
 import CryptoKit
 import Foundation
+import Darwin
 
 private let protocolVersion = 4
 private let maximumMessageBytes = 64 * 1024
@@ -56,11 +57,21 @@ private enum NodexDictationHelper {
 
 #endif
 
+// POSIX read returns the currently available pipe bytes. Foundation's bounded read
+// can wait for the entire requested count or EOF, delaying complete newline requests.
 private func readCommands() {
     var line = Data()
     var oversized = false
-    while let chunk = try? FileHandle.standardInput.read(upToCount: maximumMessageBytes), !chunk.isEmpty {
-        for byte in chunk {
+    var bytes = [UInt8](repeating: 0, count: maximumMessageBytes)
+    while true {
+        let count = bytes.withUnsafeMutableBytes { buffer in
+            Darwin.read(STDIN_FILENO, buffer.baseAddress, buffer.count)
+        }
+        guard count > 0 else {
+            if count < 0 && errno == EINTR { continue }
+            break
+        }
+        for byte in bytes.prefix(count) {
             if byte != 0x0A {
                 if !oversized { line.append(byte) }
                 if line.count > maximumMessageBytes { line.removeAll(keepingCapacity: true); oversized = true }
@@ -144,12 +155,10 @@ private func handle(_ request: [String: Any]) {
             emitError(id: id, code: "invalid-hotkey")
             return
         }
-        hotkey.pressed = true
-        // The modifier may have been released while Electron's press crossed the pipe.
-        let transition = transitionHotkey(
-            &hotkey, type: .flagsChanged, keyCode: 0,
+        let transition = armRegularHotkeyRelease(
+            &hotkey,
             flags: CGEventSource.flagsState(.combinedSessionState).intersection(relevantFlags),
-            repeated: false, hasOtherKey: false, keyDown: { _ in false }
+            keyDown: { CGEventSource.keyState(.combinedSessionState, key: $0) }
         )
         HelperState.shared.hotkeys[bindingId] = hotkey
         emitResponse(id: id, value: true)
@@ -649,14 +658,29 @@ private struct ModifierCapture {
     }
 }
 
-/** Modifier-only gestures are invalidated by chords until their required keys are released. */
+/** Reconcile a regular chord that may have ended while its activation crossed the pipe. */
+private func armRegularHotkeyRelease(
+    _ hotkey: inout Hotkey, flags: CGEventFlags, keyDown: (CGKeyCode) -> Bool
+) -> String? {
+    guard let keyCode = hotkey.keyCode else { return nil }
+    hotkey.pressed = true
+    return transitionHotkey(
+        &hotkey, type: keyDown(keyCode) ? .flagsChanged : .keyUp, keyCode: keyCode,
+        flags: flags, repeated: false, hasOtherKey: false, keyDown: keyDown
+    )
+}
+
+/** Chords end on key or required-modifier release; bare gestures cancel on unrelated chords. */
 private func transitionHotkey(
     _ hotkey: inout Hotkey, type: CGEventType, keyCode: CGKeyCode,
     flags: CGEventFlags, repeated: Bool, hasOtherKey: Bool,
     keyDown: (CGKeyCode) -> Bool
 ) -> String? {
-    if hotkey.keyCode != nil {
-        guard hotkey.pressed, type == .flagsChanged, !flags.contains(hotkey.modifiers) else { return nil }
+    if let regularKeyCode = hotkey.keyCode {
+        guard hotkey.pressed else { return nil }
+        let keyReleased = type == .keyUp && keyCode == regularKeyCode
+        let modifierReleased = type == .flagsChanged && !flags.contains(hotkey.modifiers)
+        guard keyReleased || modifierReleased else { return nil }
         hotkey.pressed = false
         return "released"
     }

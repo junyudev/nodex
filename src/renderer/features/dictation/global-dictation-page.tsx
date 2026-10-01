@@ -122,7 +122,7 @@ function GlobalDictationReadyTooltip({
   if (configuredHotkey && configuredToggleHotkey) {
     return (
       <span className="inline-flex items-center gap-1.5 whitespace-nowrap">
-        Hold <ShortcutHint accelerator={configuredHotkey} /> or press
+        Hold or double-tap <ShortcutHint accelerator={configuredHotkey} />, or press
         <ShortcutHint accelerator={configuredToggleHotkey} /> to dictate
       </span>
     );
@@ -130,7 +130,7 @@ function GlobalDictationReadyTooltip({
   if (configuredHotkey) {
     return (
       <span className="inline-flex items-center gap-1.5 whitespace-nowrap">
-        Hold <ShortcutHint accelerator={configuredHotkey} /> to dictate
+        Hold or double-tap <ShortcutHint accelerator={configuredHotkey} /> to dictate
       </span>
     );
   }
@@ -374,6 +374,7 @@ export function GlobalDictationRoot() {
   const [controller] = useState(
     () =>
       new DictationSessionController({
+        recordingDurationLimitMs: null,
         lease: {
           acquire: async (sessionId, surface) =>
             await globalDictationTransport.acquireMicrophoneLease({ sessionId, surface }),
@@ -398,9 +399,7 @@ export function GlobalDictationRoot() {
         },
         recorder: browserDictationRecorderFactory,
         waveform: browserGlobalDictationCompactWaveformPort,
-        streaming: createBrowserDictationStreamingPort(
-          globalDictationTransport.readStreamingConnectInfo,
-        ),
+        streaming: createBrowserDictationStreamingPort("global"),
         buffered: { transcribe },
         cleanup: { enabled: false, transcript: async (text) => text },
         onRecoveryChange: (next) => {
@@ -510,12 +509,13 @@ export function GlobalDictationRoot() {
           ]);
           if (activeSessionIdRef.current !== command.sessionId) return;
           captureSettingsRef.current = settings;
-          playSoundsRef.current = capabilities?.capabilities.sounds === true;
+          playSoundsRef.current =
+            settings.dictationSoundsEnabled && capabilities?.capabilities.sounds === true;
           await controller.start({
             surface: "global",
             gesture: command.gesture,
             activationStartedAtMs: command.activationStartedAtMs,
-            streamingEnabled: capabilities?.capabilities.streaming === "available",
+            streamingAvailability: capabilities?.capabilities.streaming ?? "read-failed",
           });
         });
         return;

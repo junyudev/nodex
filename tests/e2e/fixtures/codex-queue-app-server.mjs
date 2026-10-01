@@ -333,6 +333,7 @@ startQueuedSubmission = (queuedSubmissionId = null) => {
 };
 
 const emptyConfig = {
+  ...(process.env.NODEX_FAKE_CODEX_CHATGPT_BASE_URL ? { chatgpt_base_url: process.env.NODEX_FAKE_CODEX_CHATGPT_BASE_URL } : {}),
   model: null,
   review_model: null,
   model_context_window: null,

@@ -845,12 +845,19 @@ private enum NativeTests {
         check(key(.keyDown, 0, [.maskControl, .maskShift]) == nil, "native regular key never starts")
         check(key(.keyDown, 0, [.maskControl, .maskShift], repeated: true) == nil, "native repeat never starts")
         regular.pressed = true // Electron's armRegularRelease request owns activation.
-        check(key(.keyUp, 0, [.maskControl, .maskShift]) == nil && regular.pressed, "K up does not release regular gesture")
+        check(key(.keyUp, 1, [.maskControl, .maskShift]) == nil && regular.pressed, "unrelated key up does not release regular gesture")
+        check(key(.keyUp, 0, [.maskControl, .maskShift]) == "released" && !regular.pressed, "regular key up releases while modifiers stay held")
+        check(key(.flagsChanged, 59, []) == nil, "modifier up cannot duplicate key release")
+        regular.pressed = true
+        check(key(.keyDown, 0, [.maskControl, .maskShift], repeated: true) == nil && regular.pressed, "repeat cannot create another regular press")
         check(key(.flagsChanged, 58, [.maskControl, .maskShift, .maskAlternate]) == nil, "extra modifier does not end regular gesture")
         check(key(.flagsChanged, 56, .maskControl) == "released", "required modifier release")
         check(key(.flagsChanged, 59, []) == nil, "release emitted once")
         regular.pressed = true
         check(key(.flagsChanged, 0, []) == "released", "arm detects modifier release during IPC")
+        check(armRegularHotkeyRelease(&regular, flags: [.maskControl, .maskShift], keyDown: { $0 == 0 }) == nil && regular.pressed, "arm preserves a held regular chord")
+        check(armRegularHotkeyRelease(&regular, flags: [.maskControl, .maskShift], keyDown: { _ in false }) == "released" && !regular.pressed, "arm detects key release during IPC while modifiers stay held")
+        check(armRegularHotkeyRelease(&regular, flags: .maskControl, keyDown: { $0 == 0 }) == "released" && !regular.pressed, "arm detects modifier release during IPC while key stays held")
         let old = Hotkey(id: "hold", mode: "hold", configurationGeneration: 1, modifiers: .maskSecondaryFn,
                          keyCode: nil, bareModifierKeyCodes: [63], pressed: true, suppressed: true)
         let new = Hotkey(id: "hold", mode: "hold", configurationGeneration: 2, modifiers: .maskSecondaryFn,
