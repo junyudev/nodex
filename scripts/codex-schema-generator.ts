@@ -45,48 +45,53 @@ export function parseCodexNotificationEntries(
 
 /**
  * Effect's JSON Schema importer cannot represent an object intersected with a
- * discriminated oneOf. Distributing the shared object fields over each branch
+ * oneOf or anyOf. Distributing the shared object fields over each branch
  * preserves the JSON Schema contract while keeping the discriminator useful.
  */
-export function distributeObjectOneOf(value: SchemaJson): SchemaJson {
+export function distributeObjectUnions(value: SchemaJson): SchemaJson {
   if (Array.isArray(value)) {
-    return value.map(distributeObjectOneOf);
+    return value.map(distributeObjectUnions);
   }
   if (!isSchemaObject(value)) {
     return value;
   }
 
   const normalized = Object.fromEntries(
-    Object.entries(value).map(([key, child]) => [key, distributeObjectOneOf(child)]),
+    Object.entries(value).map(([key, child]) => [key, distributeObjectUnions(child)]),
   ) as Record<string, SchemaJson>;
-  if (normalized.type !== "object" || !Array.isArray(normalized.oneOf)) {
+  if (normalized.type !== "object") {
     return normalized;
   }
 
-  const branches = normalized.oneOf;
-  if (!branches.every((branch) => isSchemaObject(branch) && branch.type === "object")) {
-    return normalized;
+  for (const union of ["oneOf", "anyOf"] as const) {
+    const branches = normalized[union];
+    if (
+      !Array.isArray(branches) ||
+      !branches.every((branch) => isSchemaObject(branch) && branch.type === "object")
+    ) {
+      continue;
+    }
+
+    const sharedProperties = isSchemaObject(normalized.properties) ? normalized.properties : {};
+    const sharedRequired = Array.isArray(normalized.required) ? normalized.required : [];
+    const sharedSchema = Object.fromEntries(
+      Object.entries(normalized).filter(([key]) => key !== union),
+    );
+
+    return {
+      [union]: branches.map((branch) => {
+        if (!isSchemaObject(branch)) return branch;
+        const branchProperties = isSchemaObject(branch.properties) ? branch.properties : {};
+        const branchRequired = Array.isArray(branch.required) ? branch.required : [];
+        return {
+          ...sharedSchema,
+          ...branch,
+          properties: { ...sharedProperties, ...branchProperties },
+          required: [...new Set([...sharedRequired, ...branchRequired])],
+        };
+      }),
+    };
   }
 
-  const sharedProperties = isSchemaObject(normalized.properties) ? normalized.properties : {};
-  const sharedRequired = Array.isArray(normalized.required) ? normalized.required : [];
-  const sharedSchema = Object.fromEntries(
-    Object.entries(normalized).filter(([key]) => key !== "oneOf"),
-  );
-
-  return {
-    oneOf: branches.map((branch) => {
-      if (!isSchemaObject(branch)) {
-        return branch;
-      }
-      const branchProperties = isSchemaObject(branch.properties) ? branch.properties : {};
-      const branchRequired = Array.isArray(branch.required) ? branch.required : [];
-      return {
-        ...sharedSchema,
-        ...branch,
-        properties: { ...sharedProperties, ...branchProperties },
-        required: [...new Set([...sharedRequired, ...branchRequired])],
-      };
-    }),
-  };
+  return normalized;
 }

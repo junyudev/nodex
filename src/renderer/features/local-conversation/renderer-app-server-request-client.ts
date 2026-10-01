@@ -108,7 +108,7 @@ const THREAD_ACTION_METHODS = new Set([
   "thread/name/set",
   "thread/metadata/update",
   "thread/settings/update",
-  "thread/rollback",
+  "thread/revert",
   "thread/compact/start",
 ]);
 

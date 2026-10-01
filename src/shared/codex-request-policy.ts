@@ -116,7 +116,6 @@ const REQUEST_SOURCES: Readonly<Record<string, string>> = {
   "thread/read": `thread`,
   "thread/resume": `thread`,
   "thread/revert": `thread`,
-  "thread/rollback": `thread`,
   "thread/search": `thread`,
   "thread/searchOccurrences": `thread`,
   "thread/section/move": `thread`,

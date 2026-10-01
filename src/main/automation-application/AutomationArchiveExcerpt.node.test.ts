@@ -14,6 +14,7 @@ import {
   AUTOMATION_ARCHIVE_ITEM_CAPTURE_LIMIT,
   AUTOMATION_ARCHIVE_PROJECTED_BYTE_LIMIT,
   readBoundedAutomationArchiveExcerpt,
+  resolveAutomationArchiveMessagesFromTranscript,
 } from "./AutomationArchiveExcerpt";
 
 const completedTurn = (id: string): Turn => ({
@@ -116,6 +117,46 @@ const makePagedHistory = (input: {
   } as unknown as CodexGateway["Service"]);
   return makeHistoryPageAdapter.pipe(Effect.provideService(CodexGateway, gateway));
 };
+
+it.effect("retains hosted image references in projected and native archive excerpts", () =>
+  Effect.gen(function* () {
+    const item = {
+      type: "userMessage",
+      id: "user-image",
+      clientId: null,
+      content: [
+        { type: "text", text: "Inspect this image", text_elements: [] },
+        { type: "image", fileId: "file_image" },
+      ],
+    } satisfies ThreadItem;
+    const expected = {
+      archivedUserMessage: "Inspect this image\nimage: file-service://file_image",
+      archivedAssistantMessage: null,
+    };
+    const projected = resolveAutomationArchiveMessagesFromTranscript([
+      {
+        threadId: "thread-image",
+        turnId: "turn-image",
+        itemId: item.id,
+        type: item.type,
+        kind: "userMessage",
+        rawItem: item,
+        createdAt: 1_000,
+        updatedAt: 1_000,
+      },
+    ]);
+    assert.deepStrictEqual(projected, expected);
+
+    const pages = yield* makePagedHistory({ items: [item], requests: [] });
+    const native = yield* readBoundedAutomationArchiveExcerpt(
+      pages,
+      makeCapabilities(),
+      "thread-image",
+    );
+    assert.deepStrictEqual(native.messages, expected);
+    assert.strictEqual(native.resolution, "exhausted");
+  }),
+);
 
 it.effect("finds the newest semantic exchange without hydrating the giant Turn", () =>
   Effect.gen(function* () {

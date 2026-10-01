@@ -9,6 +9,7 @@ describe("buildCodexUserAttachmentsFromContent", () => {
           { type: "image", url: "data:image/png;base64,aW1hZ2U=" },
           { type: "localImage", path: "/workspace/screenshot.png" },
           { type: "image_asset_pointer", asset_pointer: "file-service://asset-1" },
+          { type: "image", fileId: "asset-2", detail: "original" },
         ],
         "user-1",
       ),
@@ -30,7 +31,14 @@ describe("buildCodexUserAttachmentsFromContent", () => {
       {
         type: "image",
         id: "user-1:attachment:remote-image:2",
-        source: "asset-1",
+        source: "file-service://asset-1",
+        sourceKind: "remote-pointer",
+        caption: undefined,
+      },
+      {
+        type: "image",
+        id: "user-1:attachment:image:3",
+        source: "file-service://asset-2",
         sourceKind: "remote-pointer",
         caption: undefined,
       },

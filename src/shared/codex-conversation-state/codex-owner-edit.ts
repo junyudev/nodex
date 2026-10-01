@@ -1,9 +1,4 @@
-import type {
-  Thread,
-  ThreadRevertResponse,
-  ThreadRollbackResponse,
-  TurnStartParams,
-} from "@nodex/codex-app-server-protocol/v2";
+import type { ThreadRevertResponse, TurnStartParams } from "@nodex/codex-app-server-protocol/v2";
 import {
   mergeCodexCanonicalTurnStates,
   type CodexCanonicalConversationState,
@@ -42,16 +37,10 @@ export interface CanonicalEditClient {
     | null
   >;
   readonly revert: (id: string, beforeTurnId: string) => Promise<ThreadRevertResponse>;
-  readonly rollback: (id: string, numTurns: number) => Promise<ThreadRollbackResponse>;
   readonly applyRevert: (
     id: string,
     response: ThreadRevertResponse,
     turns: readonly CodexCanonicalTurnState[],
-  ) => void;
-  readonly applyRollback: (
-    id: string,
-    before: CodexCanonicalConversationState,
-    response: ThreadRollbackResponse,
   ) => void;
   readonly start: (
     request: TurnStartParams,
@@ -84,18 +73,23 @@ export async function editCanonicalLastUserTurn(
   const state = client.getConversation(id);
   if (!state) throw new Error("Conversation state not found.");
   const textIndex = original.params.input.findIndex((item) => item.type === "text");
-  const input = original.params.input.map((item, index) =>
-    item.type === "text" && index === textIndex
-      ? {
-          ...item,
-          text: replaceCanonicalEditedPrompt(item.text, options.message),
-          text_elements: [],
-        }
-      : item,
-  );
-  const useRevert = state.historyMode === "paginated" && client.supportsRevert();
-  if (!useRevert && state.historyMode === "paginated")
-    throw new Error("Editing messages is not available for threads using paginated history yet.");
+  const input =
+    textIndex < 0
+      ? [
+          { type: "text" as const, text: options.message, text_elements: [] },
+          ...original.params.input,
+        ]
+      : original.params.input.map((item, index) =>
+          item.type === "text" && index === textIndex
+            ? {
+                ...item,
+                text: replaceCanonicalEditedPrompt(item.text, options.message),
+                text_elements: [],
+              }
+            : item,
+        );
+  if (state.ephemeral || state.historyMode !== "paginated" || !client.supportsRevert())
+    throw new Error("Editing messages requires a host with paginated history and message revert.");
   const turns = mergeCodexCanonicalTurnStates(residentConversationTurns(state), state.turns);
   const index = turns.findIndex((turn) => turn.turnId === original.turnId);
   const removed = turns.slice(index);
@@ -110,19 +104,9 @@ export async function editCanonicalLastUserTurn(
   const permissionFactory = options.shouldSendPermissionOverrides
     ? await client.readPermissionOverrides(id, state, options)
     : null;
-  let thread: Thread;
-  if (useRevert) {
-    const response = await client.revert(id, original.turnId);
-    thread = response.thread;
-    client.applyRevert(id, response, removed);
-  } else {
-    const response = await client.rollback(
-      id,
-      removed.filter((turn) => turn.turnId !== null).length,
-    );
-    thread = response.thread;
-    client.applyRollback(id, state, response);
-  }
+  const response = await client.revert(id, original.turnId);
+  const { thread } = response;
+  client.applyRevert(id, response, removed);
   const cwd = thread.cwd || state.cwd || undefined;
   const permissions = permissionFactory?.(cwd) ?? null;
   await client.start(

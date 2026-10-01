@@ -29,8 +29,8 @@ function buildUserAttachmentId(itemId: string, kind: string, index: number): str
   return `${itemId}:attachment:${kind}:${index}`;
 }
 
-function normalizeRemotePointerId(value: string): string {
-  return value.replace(/^file-service:\/\//, "").replace(/^sediment:\/\//, "");
+function normalizeRemotePointerSource(value: string): string {
+  return /^(?:file-service|sediment):\/\//u.test(value) ? value : `file-service://${value}`;
 }
 
 export function buildCodexUserAttachmentsFromContent(
@@ -46,13 +46,15 @@ export function buildCodexUserAttachmentsFromContent(
 
     const type = getString(input, ["type"]) ?? "";
     if (isType(type, ["image"])) {
+      const fileId = getString(input, ["fileId"]);
       const source = getString(input, ["url", "source"]);
-      if (!source) return;
+      const imageSource = source || fileId;
+      if (!imageSource) return;
       imageAttachments.push({
         type: "image",
         id: buildUserAttachmentId(itemId, "image", index),
-        source,
-        sourceKind: "inline-image",
+        source: source || normalizeRemotePointerSource(imageSource),
+        sourceKind: source ? "inline-image" : "remote-pointer",
         caption: getString(input, ["caption", "name"]),
       });
       return;
@@ -83,7 +85,7 @@ export function buildCodexUserAttachmentsFromContent(
       imageAttachments.push({
         type: "image",
         id: buildUserAttachmentId(itemId, "remote-image", index),
-        source: normalizeRemotePointerId(pointer),
+        source: normalizeRemotePointerSource(pointer),
         sourceKind: "remote-pointer",
         caption: getString(input, ["caption", "name"]),
       });

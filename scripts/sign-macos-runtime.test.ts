@@ -287,6 +287,25 @@ describe("Sparkle code signing", () => {
 });
 
 describe("refreshSignedBrowserRuntimeManifest", () => {
+  test.each([BROWSER_RUNTIME_SCHEMA_VERSION - 1, BROWSER_RUNTIME_SCHEMA_VERSION + 1])(
+    "rejects schema-v%i before resealing the manifest",
+    (schemaVersion) => {
+      const appPath = fs.mkdtempSync(path.join(os.tmpdir(), "nodex-browser-signing-"));
+      temporaryRoots.push(appPath);
+      const browserRoot = path.join(appPath, "Contents/Resources/browser-runtime");
+      fs.mkdirSync(browserRoot, { recursive: true });
+      const manifestPath = path.join(browserRoot, "browser-runtime-manifest.json");
+      const manifestBytes = JSON.stringify({ schemaVersion, artifacts: [] });
+      fs.writeFileSync(manifestPath, manifestBytes);
+
+      expect(() => refreshSignedBrowserRuntimeManifest(appPath)).toThrow(
+        "Unsupported Browser runtime manifest",
+      );
+      expect(fs.readFileSync(manifestPath, "utf8")).toBe(manifestBytes);
+      expect(fs.existsSync(`${manifestPath}.signed-runtime.tmp`)).toBe(false);
+    },
+  );
+
   test("reseals the current Browser runtime manifest schema", () => {
     const appPath = fs.mkdtempSync(path.join(os.tmpdir(), "nodex-browser-signing-"));
     temporaryRoots.push(appPath);

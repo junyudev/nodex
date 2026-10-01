@@ -1,13 +1,15 @@
 import {
-  buildRollbackResponseFromConversation,
+  buildThreadFromConversation,
+  buildRevertResponseFromConversation,
   withCanonicalState,
+  withPaginatedCanonicalState,
   ensureCanonicalResumeFixture,
 } from "../../test/canonical-conversation-fixture";
 import { mutateCodexConversationEvent } from "../../../shared/codex-conversation-state/codex-conversation-reducer";
 import type { CodexPreparedTurnExecution } from "../../../shared/codex-conversation-state/codex-turn-execution";
 import { encodeCodexNativeRequestFailure } from "../../../shared/codex-native-request-outcome";
 import { rendererQueuedMessageStorage } from "./renderer-queued-message-storage";
-import type { ThreadRollbackResponse } from "@nodex/codex-app-server-protocol/v2";
+import type { ThreadRevertResponse } from "@nodex/codex-app-server-protocol/v2";
 import { useDefaultCodexAppServerManager } from "./local-conversation-store";
 import { residentConversationTurns } from "../../../shared/codex-conversation-state/codex-turn-mutation";
 import { applyPatches, produceWithPatches, enablePatches } from "immer";
@@ -105,7 +107,7 @@ let resumeThreadRole: "owner" | "follower" = "owner";
 let resumeThreadOwnerClientId = "renderer-owner";
 let resumeThreadRevision = 0;
 let resumeThreadGeneration = 1;
-let ownerEditRollbackResult: ThreadRollbackResponse | null = null;
+let ownerEditRevertResult: ThreadRevertResponse | null = null;
 let nativeTurnsListResult:
   | import("@nodex/codex-app-server-protocol/v2").ThreadTurnsListResponse
   | null = null;
@@ -441,7 +443,7 @@ vi.mock("./local-conversation-deps", () => ({
           sourceEpoch: "test-native",
           supportsPaginatedHistory: nativeSupportsPaginatedHistory,
           supportsTurnApprovalsReviewer: false,
-          supportsThreadRevert: false,
+          supportsThreadRevert: true,
           supportsThreadQueue: nativeSupportsThreadQueue,
           accountContext: { hostId: args[0], accountId: null, userId: null },
         };
@@ -527,14 +529,13 @@ vi.mock("./local-conversation-deps", () => ({
             request,
           });
         }
-        const raw = buildRollbackResponseFromConversation(conversation).thread;
+        const raw = buildThreadFromConversation(conversation);
         const base = buildAgentActivityV2CorpusThread([]);
         const thread = {
           ...base,
           ...raw,
           status: typeof raw.status === "string" ? { type: raw.status } : raw.status,
-          historyMode:
-            nativeResumeHistoryModeOverride ?? conversation.canonicalState?.historyMode ?? "legacy",
+          historyMode: nativeResumeHistoryModeOverride ?? raw.historyMode,
           turns: raw.turns,
         };
         return {
@@ -551,7 +552,8 @@ vi.mock("./local-conversation-deps", () => ({
           activePermissionProfile: null,
           reasoningEffort: "high",
           multiAgentMode: "explicitRequestOnly",
-          turnsBackwardsCursor: null,
+          turnsBackwardsCursor:
+            thread.historyMode === "paginated" && thread.turns.length > 0 ? "fixture-tail" : null,
           itemsBackwardsCursor: null,
           initialTurnsPage: {
             data: [...thread.turns].reverse(),
@@ -756,18 +758,46 @@ vi.mock("./local-conversation-deps", () => ({
             method?: string;
             params?: {
               expectedTurnId?: string;
+              turnId?: string;
             };
           };
         };
-        if (input.request?.method === "thread/turns/list") return nativeTurnsListResult;
+        if (input.request?.method === "thread/turns/list") {
+          if (nativeTurnsListResult) return nativeTurnsListResult;
+          const conversation = await Promise.resolve(resumeThreadResult);
+          return {
+            data: conversation
+              ? [...buildThreadFromConversation(conversation).turns]
+                  .reverse()
+                  .map((turn) => ({ ...turn, items: [], itemsView: "notLoaded" }))
+              : [],
+            nextCursor: null,
+            backwardsCursor: null,
+          };
+        }
+        if (input.request?.method === "thread/items/list") {
+          const conversation = await Promise.resolve(resumeThreadResult);
+          const turn = conversation
+            ? buildThreadFromConversation(conversation).turns.find(
+                (candidate) => candidate.id === input.request?.params?.turnId,
+              )
+            : undefined;
+          return {
+            data: [...(turn?.items ?? [])].reverse().map((item) => ({
+              turnId: turn!.id,
+              item,
+              startedAtMs: null,
+              completedAtMs: null,
+            })),
+            nextCursor: null,
+            backwardsCursor: null,
+          };
+        }
         if (input.request?.method?.startsWith("thread/queue/") && serverQueueRequestHandler) {
           return await serverQueueRequestHandler(input.request.method, input.request.params);
         }
-        if (
-          input.request?.method === "thread/revert" ||
-          input.request?.method === "thread/rollback"
-        ) {
-          return ownerEditRollbackResult;
+        if (input.request?.method === "thread/revert") {
+          return ownerEditRevertResult;
         }
         if (
           input.request?.method === "turn/start" ||
@@ -1253,7 +1283,7 @@ function ConversationUserMessages({
 }
 
 function buildNativeThreadStartFixture(conversation: CodexConversationSnapshot) {
-  const raw = buildRollbackResponseFromConversation(conversation).thread;
+  const raw = buildThreadFromConversation(conversation);
   const thread = {
     ...buildAgentActivityV2CorpusThread([]),
     ...raw,
@@ -3698,7 +3728,7 @@ describe("local-conversation-store", () => {
     threadListByProject = {};
     snapshotByThread = {};
     resumeThreadResult = null;
-    ownerEditRollbackResult = null;
+    ownerEditRevertResult = null;
     ownerTurnStartResult = null;
     followerActionResult = null;
     followerActionError = null;
@@ -3774,15 +3804,13 @@ describe("local-conversation-store", () => {
         markdownText: "1. Ship the parity plan",
         rawItem: {
           id: "implement-plan:turn-plan",
-          type: "planImplementation",
-          turnId: "turn-plan",
-          planContent: "1. Ship the parity plan",
-          isCompleted: false,
+          type: "plan",
+          text: "1. Ship the parity plan",
         },
         createdAt: 1,
         updatedAt: 1,
       };
-      const initialConversation: CodexConversationSnapshot = withCanonicalState({
+      const initialConversation: CodexConversationSnapshot = withPaginatedCanonicalState({
         ...buildConversation("thread-1", "project-1"),
         turns: [
           {
@@ -3813,11 +3841,11 @@ describe("local-conversation-store", () => {
           },
         ],
       });
-      const rollbackConversation: CodexConversationSnapshot = {
+      const revertConversation: CodexConversationSnapshot = {
         ...initialConversation,
         turns: [initialConversation.turns[0]!],
       };
-      ownerEditRollbackResult = buildRollbackResponseFromConversation(rollbackConversation);
+      ownerEditRevertResult = buildRevertResponseFromConversation(revertConversation);
       ownerTurnStartResult = {
         turn: {
           id: "turn-replacement",
@@ -4104,7 +4132,7 @@ describe("local-conversation-store", () => {
       followerActionResult = null;
       followerActionError = null;
       resumeThreadResult = null;
-      ownerEditRollbackResult = null;
+      ownerEditRevertResult = null;
       ownerTurnStartResult = null;
       queuedFollowUpCommandHandler = null;
       if (browserWindow) {
@@ -7184,6 +7212,7 @@ describe("local-conversation-store", () => {
           params: {
             threadId: "thread-1",
             threadSettings: {
+              disabledPluginIds: [],
               cwd: "/repo-next",
               approvalPolicy: "on-request",
               approvalsReviewer: "user",
@@ -7322,7 +7351,7 @@ describe("local-conversation-store", () => {
             method: "thread/started",
             params: {
               thread: {
-                ...buildRollbackResponseFromConversation(
+                ...buildRevertResponseFromConversation(
                   buildConversation("collab-child", "project-1"),
                 ).thread,
                 name: "Raw server title",
@@ -7388,7 +7417,7 @@ describe("local-conversation-store", () => {
             method: "thread/started",
             params: {
               thread: {
-                ...buildRollbackResponseFromConversation(
+                ...buildRevertResponseFromConversation(
                   buildConversation("collab-child", "project-1"),
                 ).thread,
                 name: "Updated raw title",
@@ -19731,7 +19760,7 @@ describe("local-conversation-store", () => {
           },
         ],
       };
-      const rollbackConversation: CodexConversationSnapshot = {
+      const revertConversation: CodexConversationSnapshot = {
         ...partialConversation,
         turns: [],
       };
@@ -19761,7 +19790,7 @@ describe("local-conversation-store", () => {
         change: {
           type: "snapshot",
           revision: 1,
-          conversationState: rollbackConversation,
+          conversationState: revertConversation,
         },
         sourceClientId: "owner-a",
       });
@@ -20720,7 +20749,7 @@ describe("local-conversation-store", () => {
     rendererClientRequestListener = null;
     threadListByProject = {};
     resumeThreadResult = null;
-    ownerEditRollbackResult = null;
+    ownerEditRevertResult = null;
     const { CodexAppServerManager, __resetLocalConversationStoreForTests } =
       await import("./local-conversation-store");
     resetLocalConversationStoreTestHarness(__resetLocalConversationStoreForTests);
@@ -20728,7 +20757,7 @@ describe("local-conversation-store", () => {
     const manager = trackNativeTestManager(new CodexAppServerManager("local"));
     try {
       const olderUser = buildUserMessage("thread-1", "turn-older", "user-older", "Older prompt");
-      const rollbackSpecialItems: CodexConversationItem[] = [
+      const revertSpecialItems: CodexConversationItem[] = [
         {
           ...olderUser,
           itemId: "hook-feedback",
@@ -20804,8 +20833,8 @@ describe("local-conversation-store", () => {
             threadId: "thread-1",
             turnId: "turn-older",
             status: "completed",
-            itemIds: ["user-older", ...rollbackSpecialItems.map((item) => item.itemId)],
-            items: [olderUser, ...rollbackSpecialItems],
+            itemIds: ["user-older", ...revertSpecialItems.map((item) => item.itemId)],
+            items: [olderUser, ...revertSpecialItems],
           },
           {
             threadId: "thread-1",
@@ -20816,12 +20845,12 @@ describe("local-conversation-store", () => {
           },
         ],
       };
-      const rollbackConversation: CodexConversationSnapshot = {
+      const revertConversation: CodexConversationSnapshot = {
         ...currentConversation,
         turns: [currentConversation.turns[0]!],
       };
-      resumeThreadResult = currentConversation;
-      ownerEditRollbackResult = buildRollbackResponseFromConversation(rollbackConversation);
+      resumeThreadResult = withPaginatedCanonicalState(currentConversation);
+      ownerEditRevertResult = buildRevertResponseFromConversation(revertConversation);
 
       const result = await manager.editLastUserTurn(
         "thread-1",
@@ -20832,7 +20861,7 @@ describe("local-conversation-store", () => {
       const resumeIndex = invokeRecords.findIndex(
         (record) => record.channel === "codex:thread:resume:prepare",
       );
-      const rollbackIndex = recordedNativeRequests().findIndex(
+      const revertIndex = recordedNativeRequests().findIndex(
         (record) =>
           record.channel === "codex:app-server:request" &&
           (
@@ -20841,7 +20870,7 @@ describe("local-conversation-store", () => {
                 method?: string;
               };
             }
-          ).request?.method === "thread/rollback",
+          ).request?.method === "thread/revert",
       );
       const startIndex = recordedNativeRequests().findIndex(
         (record) =>
@@ -20855,19 +20884,17 @@ describe("local-conversation-store", () => {
           ).request?.method === "turn/start",
       );
       expect(resumeIndex >= 0).toBe(true);
-      expect(rollbackIndex > resumeIndex).toBe(true);
-      expect(startIndex > rollbackIndex).toBe(true);
-      const rollbackItems = manager.readConversation("thread-1")?.turns[0]?.items ?? [];
-      expect(rollbackItems.find((item) => item.itemId === "hook-feedback")?.hookFeedback).toBe(
-        true,
-      );
+      expect(revertIndex > resumeIndex).toBe(true);
+      expect(startIndex > revertIndex).toBe(true);
+      const revertItems = manager.readConversation("thread-1")?.turns[0]?.items ?? [];
+      expect(revertItems.find((item) => item.itemId === "hook-feedback")?.hookFeedback).toBe(true);
       expect(
-        rollbackItems
+        revertItems
           .filter((item) => item.semanticKind === "imageView")
           .map((item) => item.imageViewPaths),
       ).toEqual([["/tmp/one.png", "/tmp/two.png"], ["/tmp/three.png"]]);
       expect(
-        rollbackItems.find((item) => item.itemId === "generated-image")?.generatedImage?.src,
+        revertItems.find((item) => item.itemId === "generated-image")?.generatedImage?.src,
       ).toBe("data:image/png;base64,aW1hZ2U=");
       expect(result.streamRevision).toBeGreaterThan(0);
       expect(
@@ -20878,7 +20905,7 @@ describe("local-conversation-store", () => {
       );
     } finally {
       resumeThreadResult = null;
-      ownerEditRollbackResult = null;
+      ownerEditRevertResult = null;
       manager.destroy();
     }
   });
@@ -20890,7 +20917,7 @@ describe("local-conversation-store", () => {
     rendererClientRequestListener = null;
     threadListByProject = {};
     resumeThreadResult = null;
-    ownerEditRollbackResult = null;
+    ownerEditRevertResult = null;
     const { CodexAppServerManager, __resetLocalConversationStoreForTests } =
       await import("./local-conversation-store");
     const { dispatchCodexAppServerMessage } = await import("./app-server-message-bus");
@@ -20963,19 +20990,19 @@ describe("local-conversation-store", () => {
       expect(result.threadId).toBe("thread-1");
     } finally {
       resumeThreadResult = null;
-      ownerEditRollbackResult = null;
+      ownerEditRevertResult = null;
       manager.destroy();
     }
   });
 
-  test("owner edit replicates rollback, optimistic replacement, and native turn identity in order", async () => {
+  test("owner edit replicates revert, optimistic replacement, and native turn identity in order", async () => {
     invokeCalls = [];
     invokeRecords = [];
     hostMessageListener = null;
     rendererClientRequestListener = null;
     threadListByProject = {};
     resumeThreadResult = null;
-    ownerEditRollbackResult = null;
+    ownerEditRevertResult = null;
     const { CodexAppServerManager, __resetLocalConversationStoreForTests } =
       await import("./local-conversation-store");
     resetLocalConversationStoreTestHarness(__resetLocalConversationStoreForTests);
@@ -21008,12 +21035,12 @@ describe("local-conversation-store", () => {
           },
         ],
       };
-      const rollbackConversation: CodexConversationSnapshot = {
+      const revertConversation: CodexConversationSnapshot = {
         ...currentConversation,
         turns: [currentConversation.turns[0]!],
       };
-      resumeThreadResult = currentConversation;
-      ownerEditRollbackResult = buildRollbackResponseFromConversation(rollbackConversation);
+      resumeThreadResult = withPaginatedCanonicalState(currentConversation);
+      ownerEditRevertResult = buildRevertResponseFromConversation(revertConversation);
 
       await manager.requestThreadStreamResume("thread-1");
       await flushAsyncWork();
@@ -21035,7 +21062,7 @@ describe("local-conversation-store", () => {
         "Rewrite latest prompt",
       );
 
-      const rollbackIndex = recordedNativeRequests().findIndex(
+      const revertIndex = recordedNativeRequests().findIndex(
         (record) =>
           record.channel === "codex:app-server:request" &&
           (
@@ -21044,7 +21071,7 @@ describe("local-conversation-store", () => {
                 method?: string;
               };
             }
-          ).request?.method === "thread/rollback",
+          ).request?.method === "thread/revert",
       );
       const publishIndex = invokeRecords.findIndex(
         (record) => record.channel === "peer:threadStreamStateChanged",
@@ -21074,18 +21101,18 @@ describe("local-conversation-store", () => {
             : applyPatches(replicated, change.patches);
         return [{ index, turns: residentConversationTurns(replicated) }];
       });
-      expect(rollbackIndex).toBeGreaterThanOrEqual(0);
-      expect(publishIndex).toBeGreaterThan(rollbackIndex);
-      const rollbackStage = stages.find((stage) => stage.turns.length === 1);
+      expect(revertIndex).toBeGreaterThanOrEqual(0);
+      expect(publishIndex).toBeGreaterThan(revertIndex);
+      const revertStage = stages.find((stage) => stage.turns.length === 1);
       const optimisticStage = stages.find(
         (stage) => stage.turns.length === 2 && stage.turns.at(-1)?.turnId == null,
       );
       const reboundStage = stages.find(
         (stage) => stage.turns.at(-1)?.turnId === "turn-owner-start",
       );
-      expect(rollbackStage?.turns.map((turn) => turn.turnId)).toEqual(["turn-older"]);
-      expect(optimisticStage?.index).toBeGreaterThan(rollbackStage!.index);
-      expect(startIndex).toBeGreaterThan(rollbackIndex);
+      expect(revertStage?.turns.map((turn) => turn.turnId)).toEqual(["turn-older"]);
+      expect(optimisticStage?.index).toBeGreaterThan(revertStage!.index);
+      expect(startIndex).toBeGreaterThan(revertIndex);
       expect(reboundStage?.index).toBeGreaterThan(optimisticStage!.index);
       expect(replicated).toEqual(manager.readConversation("thread-1")?.canonicalState);
       expect(result.streamRevision).toBeGreaterThan(0);
@@ -21095,7 +21122,7 @@ describe("local-conversation-store", () => {
     } finally {
       ownerTurnStartHandler = null;
       resumeThreadResult = null;
-      ownerEditRollbackResult = null;
+      ownerEditRevertResult = null;
       manager.destroy();
     }
   });
@@ -21107,7 +21134,7 @@ describe("local-conversation-store", () => {
     rendererClientRequestListener = null;
     threadListByProject = {};
     resumeThreadResult = null;
-    ownerEditRollbackResult = null;
+    ownerEditRevertResult = null;
     ownerTurnStartHandler = null;
     const { CodexAppServerManager, __resetLocalConversationStoreForTests } =
       await import("./local-conversation-store");
@@ -21141,11 +21168,11 @@ describe("local-conversation-store", () => {
           },
         ],
       };
-      ownerEditRollbackResult = buildRollbackResponseFromConversation({
+      ownerEditRevertResult = buildRevertResponseFromConversation({
         ...currentConversation,
         turns: [currentConversation.turns[0]!],
       });
-      resumeThreadResult = currentConversation;
+      resumeThreadResult = withPaginatedCanonicalState(currentConversation);
       await manager.requestThreadStreamResume("thread-1");
 
       const committedMessages: string[][] = [];
@@ -21176,7 +21203,7 @@ describe("local-conversation-store", () => {
     } finally {
       ownerTurnStartHandler = null;
       resumeThreadResult = null;
-      ownerEditRollbackResult = null;
+      ownerEditRevertResult = null;
       manager.destroy();
     }
   });
@@ -21188,7 +21215,7 @@ describe("local-conversation-store", () => {
     rendererClientRequestListener = null;
     threadListByProject = {};
     resumeThreadResult = null;
-    ownerEditRollbackResult = null;
+    ownerEditRevertResult = null;
     const { CodexAppServerManager, __resetLocalConversationStoreForTests } =
       await import("./local-conversation-store");
     const { dispatchCodexAppServerMessage } = await import("./app-server-message-bus");
@@ -21214,11 +21241,11 @@ describe("local-conversation-store", () => {
           },
         ],
       };
-      ownerEditRollbackResult = buildRollbackResponseFromConversation({
+      ownerEditRevertResult = buildRevertResponseFromConversation({
         ...currentConversation,
         turns: [],
       });
-      resumeThreadResult = currentConversation;
+      resumeThreadResult = withPaginatedCanonicalState(currentConversation);
       await manager.requestThreadStreamResume("thread-1");
       invokeRecords = [];
 
@@ -21258,12 +21285,12 @@ describe("local-conversation-store", () => {
                   method?: string;
                 };
               }
-            )?.request?.method === "thread/rollback",
+            )?.request?.method === "thread/revert",
         ),
       ).toBe(false);
     } finally {
       resumeThreadResult = null;
-      ownerEditRollbackResult = null;
+      ownerEditRevertResult = null;
       manager.destroy();
     }
   });
@@ -21552,7 +21579,7 @@ describe("local-conversation-store", () => {
           },
         ],
       };
-      resumeThreadResult = currentConversation;
+      resumeThreadResult = withPaginatedCanonicalState(currentConversation);
       await manager.requestThreadStreamResume("thread-1");
       expect(manager.readConversation("thread-1")?.capabilityFlags.canEditLastUserTurn).toBe(false);
       invokeRecords = [];

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vite-plus/test";
-import { distributeObjectOneOf, parseCodexRequestEntries } from "./codex-schema-generator";
+import { distributeObjectUnions, parseCodexRequestEntries } from "./codex-schema-generator";
 
 describe("Effect Codex schema generation", () => {
   it("keeps requests whose generated params property is optional", () => {
@@ -14,13 +14,13 @@ describe("Effect Codex schema generation", () => {
     ]);
   });
 
-  it("distributes shared object fields over discriminated oneOf branches", () => {
+  it.each(["oneOf", "anyOf"])("distributes shared object fields over %s branches", (union) => {
     expect(
-      distributeObjectOneOf({
+      distributeObjectUnions({
         type: "object",
         properties: { key: { type: "string" } },
         required: ["key"],
-        oneOf: [
+        [union]: [
           {
             type: "object",
             title: "CommandHook",
@@ -38,7 +38,7 @@ describe("Effect Codex schema generation", () => {
         ],
       }),
     ).toEqual({
-      oneOf: [
+      [union]: [
         {
           type: "object",
           title: "CommandHook",

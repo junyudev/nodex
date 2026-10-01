@@ -587,7 +587,9 @@ export function projectCodexMcpToolCall(
     {
       callId: item.id,
       functionName: `${item.server}__${item.tool}`,
-      mcpAppResourceUri: item.appContext?.resourceUri ?? item.mcpAppResourceUri,
+      mcpAppResourceUri:
+        item.mcpAppUi?.resourceUri ?? item.appContext?.resourceUri ?? item.mcpAppResourceUri,
+      ...(item.mcpAppUi == null ? {} : { mcpAppUi: item.mcpAppUi }),
       pluginId: item.pluginId,
       readOnlyHint: item.readOnlyHint,
       source: resolveCodexMcpToolCallSource(item.server, item.result?._meta ?? null),
@@ -665,6 +667,7 @@ export function resolveCodexMcpAppResourceMetadata(input: {
   payload: CodexMcpToolCallView;
   mcpServerStatuses: ProtocolListMcpServerStatusResponse | null;
 }): { resourceUri: string } | null {
+  if (input.payload.mcpAppUi != null) return { resourceUri: input.payload.mcpAppUi.resourceUri };
   const toolResourceUri = resolveCodexMcpResourceUriFromMetadata(
     resolveToolMetadata(input.payload, input.mcpServerStatuses),
   );

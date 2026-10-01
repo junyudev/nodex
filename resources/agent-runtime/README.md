@@ -19,7 +19,7 @@ asset fails its locked size or digest before extraction.
 
 The bundled CLI runs the native app-server command and supports daemon discovery without a second executable or an external PATH dependency. Local daemon selection is opt-in, requires an already-running compatible daemon, and is disabled when launch configuration overrides or bundled Git require a dedicated process.
 
-The current package closure is exactly:
+Every package includes these runtime entrypoints and resources:
 
 - `codex-package.json`
 - `bin/codex`
@@ -27,9 +27,13 @@ The current package closure is exactly:
 - `codex-path/rg`
 - `codex-resources/zsh/bin/zsh`
 
+The release lock also enumerates the complete voice runtime, shared libraries,
+plugins, manifests, and license files supplied by that release. Staging requires
+the exact locked inventory, including these resources.
+
 The official package is signed by OpenAI before publication. Nodex checks the
 complete archive independently, stages only the locked closure, and excludes
-its four executable artifacts from Electron's nested-code signing pass. Release
+its native artifacts from Electron's nested-code signing pass. Release
 packaging preserves the exact upstream bytes and OpenAI Developer ID signatures
 while independently signing and notarizing the containing Nodex application.
 
@@ -47,7 +51,7 @@ Staging is fail-closed. It:
    immutable cache;
 2. checks byte length and SHA-256 before extraction;
 3. rejects absolute/traversal paths, symlinks, hard links, devices, and FIFOs;
-4. requires the exact five-file package closure and canonical file modes;
+4. requires the exact locked package closure and canonical file modes;
 5. validates package variant, version, target triple, entrypoint, architecture,
    and macOS compatibility;
 6. records per-file hashes plus upstream release/source evidence in

@@ -38,6 +38,7 @@ export const CLIENT_REQUEST_METHODS = {
   "thread/memoryMode/set": "thread/memoryMode/set",
   "memory/status": "memory/status",
   "memory/reset": "memory/reset",
+  "rollout/compress": "rollout/compress",
   "thread/unarchive": "thread/unarchive",
   "thread/compact/start": "thread/compact/start",
   "thread/shellCommand": "thread/shellCommand",
@@ -45,7 +46,6 @@ export const CLIENT_REQUEST_METHODS = {
   "thread/backgroundTerminals/clean": "thread/backgroundTerminals/clean",
   "thread/backgroundTerminals/list": "thread/backgroundTerminals/list",
   "thread/backgroundTerminals/terminate": "thread/backgroundTerminals/terminate",
-  "thread/rollback": "thread/rollback",
   "thread/revert": "thread/revert",
   "thread/list": "thread/list",
   "project/list": "project/list",
@@ -111,6 +111,9 @@ export const CLIENT_REQUEST_METHODS = {
   "thread/realtime/listVoices": "thread/realtime/listVoices",
   "review/start": "review/start",
   "model/list": "model/list",
+  "account/gatewayOAuth/read": "account/gatewayOAuth/read",
+  "account/gatewayOAuth/login": "account/gatewayOAuth/login",
+  "account/gatewayOAuth/cancel": "account/gatewayOAuth/cancel",
   "modelProvider/capabilities/read": "modelProvider/capabilities/read",
   "experimentalFeature/list": "experimentalFeature/list",
   "permissionProfile/list": "permissionProfile/list",
@@ -240,6 +243,7 @@ export const SERVER_NOTIFICATION_METHODS = {
   "mcpServer/startupStatus/updated": "mcpServer/startupStatus/updated",
   "mcpServer/event/stream/notification": "mcpServer/event/stream/notification",
   "account/updated": "account/updated",
+  "account/gatewayOAuth/changed": "account/gatewayOAuth/changed",
   "account/rateLimits/updated": "account/rateLimits/updated",
   "app/list/updated": "app/list/updated",
   "remoteControl/status/changed": "remoteControl/status/changed",
@@ -318,6 +322,7 @@ export interface ClientRequestParamsByMethod {
   readonly "thread/memoryMode/set": CodexSchema.V2ThreadMemoryModeSetParams;
   readonly "memory/status": CodexSchema.V2MemoryStatusParams;
   readonly "memory/reset": undefined;
+  readonly "rollout/compress": undefined;
   readonly "thread/unarchive": CodexSchema.V2ThreadUnarchiveParams;
   readonly "thread/compact/start": CodexSchema.V2ThreadCompactStartParams;
   readonly "thread/shellCommand": CodexSchema.V2ThreadShellCommandParams;
@@ -325,7 +330,6 @@ export interface ClientRequestParamsByMethod {
   readonly "thread/backgroundTerminals/clean": CodexSchema.V2ThreadBackgroundTerminalsCleanParams;
   readonly "thread/backgroundTerminals/list": CodexSchema.V2ThreadBackgroundTerminalsListParams;
   readonly "thread/backgroundTerminals/terminate": CodexSchema.V2ThreadBackgroundTerminalsTerminateParams;
-  readonly "thread/rollback": CodexSchema.V2ThreadRollbackParams;
   readonly "thread/revert": CodexSchema.V2ThreadRevertParams;
   readonly "thread/list": CodexSchema.V2ThreadListParams;
   readonly "project/list": CodexSchema.V2ProjectListParams;
@@ -391,6 +395,9 @@ export interface ClientRequestParamsByMethod {
   readonly "thread/realtime/listVoices": CodexSchema.V2ThreadRealtimeListVoicesParams;
   readonly "review/start": CodexSchema.V2ReviewStartParams;
   readonly "model/list": CodexSchema.V2ModelListParams;
+  readonly "account/gatewayOAuth/read": undefined;
+  readonly "account/gatewayOAuth/login": undefined;
+  readonly "account/gatewayOAuth/cancel": undefined;
   readonly "modelProvider/capabilities/read": CodexSchema.V2ModelProviderCapabilitiesReadParams;
   readonly "experimentalFeature/list": CodexSchema.V2ExperimentalFeatureListParams;
   readonly "permissionProfile/list": CodexSchema.V2PermissionProfileListParams;
@@ -492,6 +499,7 @@ export interface ClientRequestResponsesByMethod {
   readonly "thread/memoryMode/set": CodexSchema.V2ThreadMemoryModeSetResponse;
   readonly "memory/status": CodexSchema.V2MemoryStatusResponse;
   readonly "memory/reset": CodexSchema.V2MemoryResetResponse;
+  readonly "rollout/compress": CodexSchema.V2RolloutCompressResponse;
   readonly "thread/unarchive": CodexSchema.V2ThreadUnarchiveResponse;
   readonly "thread/compact/start": CodexSchema.V2ThreadCompactStartResponse;
   readonly "thread/shellCommand": CodexSchema.V2ThreadShellCommandResponse;
@@ -499,7 +507,6 @@ export interface ClientRequestResponsesByMethod {
   readonly "thread/backgroundTerminals/clean": CodexSchema.V2ThreadBackgroundTerminalsCleanResponse;
   readonly "thread/backgroundTerminals/list": CodexSchema.V2ThreadBackgroundTerminalsListResponse;
   readonly "thread/backgroundTerminals/terminate": CodexSchema.V2ThreadBackgroundTerminalsTerminateResponse;
-  readonly "thread/rollback": CodexSchema.V2ThreadRollbackResponse;
   readonly "thread/revert": CodexSchema.V2ThreadRevertResponse;
   readonly "thread/list": CodexSchema.V2ThreadListResponse;
   readonly "project/list": CodexSchema.V2ProjectListResponse;
@@ -565,6 +572,9 @@ export interface ClientRequestResponsesByMethod {
   readonly "thread/realtime/listVoices": CodexSchema.V2ThreadRealtimeListVoicesResponse;
   readonly "review/start": CodexSchema.V2ReviewStartResponse;
   readonly "model/list": CodexSchema.V2ModelListResponse;
+  readonly "account/gatewayOAuth/read": CodexSchema.V2GatewayOAuthReadResponse;
+  readonly "account/gatewayOAuth/login": CodexSchema.V2GatewayOAuthLoginResponse;
+  readonly "account/gatewayOAuth/cancel": CodexSchema.V2GatewayOAuthCancelResponse;
   readonly "modelProvider/capabilities/read": CodexSchema.V2ModelProviderCapabilitiesReadResponse;
   readonly "experimentalFeature/list": CodexSchema.V2ExperimentalFeatureListResponse;
   readonly "permissionProfile/list": CodexSchema.V2PermissionProfileListResponse;
@@ -708,6 +718,7 @@ export interface ServerNotificationParamsByMethod {
   readonly "mcpServer/startupStatus/updated": CodexSchema.V2McpServerStatusUpdatedNotification;
   readonly "mcpServer/event/stream/notification": CodexSchema.V2McpServerEventStreamNotification;
   readonly "account/updated": CodexSchema.V2AccountUpdatedNotification;
+  readonly "account/gatewayOAuth/changed": CodexSchema.V2GatewayOAuthChangedNotification;
   readonly "account/rateLimits/updated": CodexSchema.V2AccountRateLimitsUpdatedNotification;
   readonly "app/list/updated": CodexSchema.V2AppListUpdatedNotification;
   readonly "remoteControl/status/changed": CodexSchema.V2RemoteControlStatusChangedNotification;
@@ -781,6 +792,7 @@ export const CLIENT_REQUEST_PARAMS = {
   "thread/memoryMode/set": CodexSchema.V2ThreadMemoryModeSetParams,
   "memory/status": CodexSchema.V2MemoryStatusParams,
   "memory/reset": undefined,
+  "rollout/compress": undefined,
   "thread/unarchive": CodexSchema.V2ThreadUnarchiveParams,
   "thread/compact/start": CodexSchema.V2ThreadCompactStartParams,
   "thread/shellCommand": CodexSchema.V2ThreadShellCommandParams,
@@ -788,7 +800,6 @@ export const CLIENT_REQUEST_PARAMS = {
   "thread/backgroundTerminals/clean": CodexSchema.V2ThreadBackgroundTerminalsCleanParams,
   "thread/backgroundTerminals/list": CodexSchema.V2ThreadBackgroundTerminalsListParams,
   "thread/backgroundTerminals/terminate": CodexSchema.V2ThreadBackgroundTerminalsTerminateParams,
-  "thread/rollback": CodexSchema.V2ThreadRollbackParams,
   "thread/revert": CodexSchema.V2ThreadRevertParams,
   "thread/list": CodexSchema.V2ThreadListParams,
   "project/list": CodexSchema.V2ProjectListParams,
@@ -854,6 +865,9 @@ export const CLIENT_REQUEST_PARAMS = {
   "thread/realtime/listVoices": CodexSchema.V2ThreadRealtimeListVoicesParams,
   "review/start": CodexSchema.V2ReviewStartParams,
   "model/list": CodexSchema.V2ModelListParams,
+  "account/gatewayOAuth/read": undefined,
+  "account/gatewayOAuth/login": undefined,
+  "account/gatewayOAuth/cancel": undefined,
   "modelProvider/capabilities/read": CodexSchema.V2ModelProviderCapabilitiesReadParams,
   "experimentalFeature/list": CodexSchema.V2ExperimentalFeatureListParams,
   "permissionProfile/list": CodexSchema.V2PermissionProfileListParams,
@@ -960,6 +974,7 @@ export const CLIENT_REQUEST_RESPONSES = {
   "thread/memoryMode/set": CodexSchema.V2ThreadMemoryModeSetResponse,
   "memory/status": CodexSchema.V2MemoryStatusResponse,
   "memory/reset": CodexSchema.V2MemoryResetResponse,
+  "rollout/compress": CodexSchema.V2RolloutCompressResponse,
   "thread/unarchive": CodexSchema.V2ThreadUnarchiveResponse,
   "thread/compact/start": CodexSchema.V2ThreadCompactStartResponse,
   "thread/shellCommand": CodexSchema.V2ThreadShellCommandResponse,
@@ -967,7 +982,6 @@ export const CLIENT_REQUEST_RESPONSES = {
   "thread/backgroundTerminals/clean": CodexSchema.V2ThreadBackgroundTerminalsCleanResponse,
   "thread/backgroundTerminals/list": CodexSchema.V2ThreadBackgroundTerminalsListResponse,
   "thread/backgroundTerminals/terminate": CodexSchema.V2ThreadBackgroundTerminalsTerminateResponse,
-  "thread/rollback": CodexSchema.V2ThreadRollbackResponse,
   "thread/revert": CodexSchema.V2ThreadRevertResponse,
   "thread/list": CodexSchema.V2ThreadListResponse,
   "project/list": CodexSchema.V2ProjectListResponse,
@@ -1033,6 +1047,9 @@ export const CLIENT_REQUEST_RESPONSES = {
   "thread/realtime/listVoices": CodexSchema.V2ThreadRealtimeListVoicesResponse,
   "review/start": CodexSchema.V2ReviewStartResponse,
   "model/list": CodexSchema.V2ModelListResponse,
+  "account/gatewayOAuth/read": CodexSchema.V2GatewayOAuthReadResponse,
+  "account/gatewayOAuth/login": CodexSchema.V2GatewayOAuthLoginResponse,
+  "account/gatewayOAuth/cancel": CodexSchema.V2GatewayOAuthCancelResponse,
   "modelProvider/capabilities/read": CodexSchema.V2ModelProviderCapabilitiesReadResponse,
   "experimentalFeature/list": CodexSchema.V2ExperimentalFeatureListResponse,
   "permissionProfile/list": CodexSchema.V2PermissionProfileListResponse,
@@ -1179,6 +1196,7 @@ export const SERVER_NOTIFICATION_PARAMS = {
   "mcpServer/startupStatus/updated": CodexSchema.V2McpServerStatusUpdatedNotification,
   "mcpServer/event/stream/notification": CodexSchema.V2McpServerEventStreamNotification,
   "account/updated": CodexSchema.V2AccountUpdatedNotification,
+  "account/gatewayOAuth/changed": CodexSchema.V2GatewayOAuthChangedNotification,
   "account/rateLimits/updated": CodexSchema.V2AccountRateLimitsUpdatedNotification,
   "app/list/updated": CodexSchema.V2AppListUpdatedNotification,
   "remoteControl/status/changed": CodexSchema.V2RemoteControlStatusChangedNotification,

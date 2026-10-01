@@ -162,7 +162,6 @@ const RENDERER_NATIVE_REQUEST_METHODS = new Set([
   "thread/backgroundTerminals/list",
   "thread/backgroundTerminals/terminate",
   "thread/revert",
-  "thread/rollback",
   "config/read",
   "thread/unsubscribe",
   ...RENDERER_NATIVE_THREAD_QUEUE_METHODS,

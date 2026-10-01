@@ -1070,6 +1070,7 @@
         {
           "description": "A device-authenticated approval; accepted responses contain the proof in `content`.",
           "properties": {
+            "_meta": true,
             "challenge": {
               "type": "string"
             },

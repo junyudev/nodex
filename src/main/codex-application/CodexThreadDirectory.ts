@@ -196,19 +196,6 @@ export class CodexThreadDirectory extends Context.Service<
       readonly threadId: string;
       readonly hostId?: string;
     }) => Effect.Effect<CodexThreadDirectoryEntry | null, CodexThreadDirectoryError>;
-    /**
-     * Accepts a Thread returned by a protocol mutation while the caller owns the Thread lane.
-     * The Directory commits durable identity and refreshes the canonical aggregate as one
-     * application projection outcome.
-     */
-    readonly acceptRollbackResult: (input: {
-      readonly expectedThreadId: string;
-      readonly thread: Thread;
-      readonly executionHostId?: string;
-      readonly fallbackCwd?: string | null;
-      readonly pagination: CodexConversationTurnPagination;
-      readonly itemsPaginationByTurnId?: Readonly<Record<string, CodexHistoryTurnItemsPagination>>;
-    }) => Effect.Effect<CodexThreadDirectoryEntry, CodexThreadDirectoryError>;
     /** Accepts an exact persistent fork and inherits its durable execution authority. */
     readonly acceptForkResult: (input: {
       readonly sourceThreadId: string;
@@ -645,6 +632,9 @@ export const make: Effect.Effect<
           serviceTier: normalizeCodexServiceTier(input.context.serviceTier),
           effort: input.context.reasoningEffort,
           multiAgentMode: input.context.multiAgentMode,
+          ...(input.context.collaborationMode == null
+            ? {}
+            : { collaborationMode: input.context.collaborationMode }),
         }
       : (existingHydrationContext?.latestThreadSettings ?? null);
     const history = yield* Effect.try({
@@ -734,6 +724,9 @@ export const make: Effect.Effect<
                 serviceTier: normalizeCodexServiceTier(input.context.serviceTier),
                 effort: input.context.reasoningEffort,
                 multiAgentMode: input.context.multiAgentMode,
+                ...(input.context.collaborationMode == null
+                  ? {}
+                  : { collaborationMode: input.context.collaborationMode }),
               }
             : undefined,
         })
@@ -1356,41 +1349,6 @@ export const make: Effect.Effect<
     );
   });
 
-  const acceptRollbackResult = Effect.fn("CodexThreadDirectory.acceptRollbackResult")(
-    function* (input: {
-      readonly expectedThreadId: string;
-      readonly thread: Thread;
-      readonly executionHostId?: string;
-      readonly fallbackCwd?: string | null;
-      readonly pagination: CodexConversationTurnPagination;
-      readonly itemsPaginationByTurnId?: Readonly<Record<string, CodexHistoryTurnItemsPagination>>;
-    }): Effect.fn.Return<CodexThreadDirectoryEntry, CodexThreadDirectoryError> {
-      const expectedThreadId = input.expectedThreadId.trim();
-      if (!expectedThreadId || input.thread.id !== expectedThreadId) {
-        return yield* error(
-          "materialize",
-          expectedThreadId || input.thread.id,
-          new Error(`Expected Thread '${expectedThreadId}' but received '${input.thread.id}'`),
-        );
-      }
-      const thread = normalizeThread(input.thread);
-      const durable = yield* persistObservation({
-        thread,
-        ...(input.executionHostId ? { executionHostId: input.executionHostId } : {}),
-        ...(input.fallbackCwd !== undefined ? { fallbackCwd: input.fallbackCwd } : {}),
-        hasUnreadTurn: false,
-      });
-      return yield* hydrate({
-        durable,
-        thread,
-        pagination: input.pagination,
-        itemsPaginationByTurnId: input.itemsPaginationByTurnId,
-        pendingRequests: [],
-        hasUnreadTurn: false,
-      });
-    },
-  );
-
   const acceptForkResult = Effect.fn("CodexThreadDirectory.acceptForkResult")(function* (input: {
     readonly sourceThreadId: string;
     readonly destinationSessionId?: string;
@@ -1919,7 +1877,6 @@ export const make: Effect.Effect<
           fidelity: "materialized",
         });
       }),
-    acceptRollbackResult: (input) => runOwned(acceptRollbackResult(input)),
     acceptForkResult: (input) => runOwned(acceptForkResult(input)),
     acceptImportResult: (input) => runOwned(acceptImportResult(input)),
     acceptSessionStart: (input) => runOwned(acceptSessionStart(input)),

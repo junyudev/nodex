@@ -759,9 +759,11 @@
             "sessionBudgetExceeded",
             "usageLimitExceeded",
             "rateLimitExceeded",
+            "flexUnavailable",
             "serverOverloaded",
             "cyberPolicy",
             "misalignmentPolicyViolation",
+            "tooManyDenials",
             "internalServerError",
             "unauthorized",
             "badRequest",
@@ -1880,6 +1882,32 @@
           "type": "object"
         },
         {
+          "anyOf": [
+            {
+              "properties": {
+                "image_url": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "image_url"
+              ],
+              "title": "ImageUrlFunctionCallOutputContentItem",
+              "type": "object"
+            },
+            {
+              "properties": {
+                "file_id": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "file_id"
+              ],
+              "title": "FileIdFunctionCallOutputContentItem",
+              "type": "object"
+            }
+          ],
           "properties": {
             "detail": {
               "anyOf": [
@@ -1891,9 +1919,6 @@
                 }
               ]
             },
-            "image_url": {
-              "type": "string"
-            },
             "type": {
               "enum": [
                 "input_image"
@@ -1903,7 +1928,6 @@
             }
           },
           "required": [
-            "image_url",
             "type"
           ],
           "title": "InputImageFunctionCallOutputContentItem",
@@ -1950,6 +1974,45 @@
           "type": "object"
         }
       ]
+    },
+    "definitions__v2__GatewayOAuthChangedNotification": {
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "properties": {
+        "authUrl": {
+          "description": "Authorization handoff, sent only to the connection that started login.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "error": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "providerId": {
+          "type": "string"
+        },
+        "status": {
+          "$ref": "#/definitions/definitions__v2__GatewayOAuthStatus"
+        }
+      },
+      "required": [
+        "providerId",
+        "status"
+      ],
+      "title": "GatewayOAuthChangedNotification",
+      "type": "object"
+    },
+    "definitions__v2__GatewayOAuthStatus": {
+      "enum": [
+        "notReady",
+        "started",
+        "succeeded",
+        "failed"
+      ],
+      "type": "string"
     },
     "definitions__v2__GitInfo": {
       "properties": {
@@ -2725,6 +2788,29 @@
     "definitions__v2__LegacyAppPathString": {
       "type": "string"
     },
+    "definitions__v2__McpAppDisplayMode": {
+      "enum": [
+        "inline",
+        "fullscreen"
+      ],
+      "type": "string"
+    },
+    "definitions__v2__McpAppUi": {
+      "description": "UI resource and display preference for model invocations, captured from the tool descriptor.",
+      "properties": {
+        "preferredModelDisplayMode": {
+          "$ref": "#/definitions/definitions__v2__McpAppDisplayMode"
+        },
+        "resourceUri": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "preferredModelDisplayMode",
+        "resourceUri"
+      ],
+      "type": "object"
+    },
     "definitions__v2__McpServerEventNotification": {
       "properties": {
         "method": {
@@ -3273,6 +3359,7 @@
       ]
     },
     "definitions__v2__Personality": {
+      "description": "Deprecated: `friendly` and `pragmatic` no longer select a style.",
       "enum": [
         "none",
         "friendly",
@@ -3313,6 +3400,7 @@
         "plus",
         "pro",
         "prolite",
+        "promax",
         "team",
         "self_serve_business_prolite",
         "self_serve_business_usage_based",
@@ -4404,7 +4492,7 @@
           "description": "Optional analytics source classification for this thread."
         },
         "turns": {
-          "description": "Only populated on `thread/resume`, `thread/rollback`, `thread/fork`, and `thread/read` (when `includeTurns` is true) responses. For all other responses and notifications returning a Thread, the turns field will be an empty list.",
+          "description": "Only populated on `thread/resume`, `thread/fork`, and `thread/read` (when `includeTurns` is true) responses. For all other responses and notifications returning a Thread, the turns field will be an empty list.",
           "items": {
             "$ref": "#/definitions/definitions__v2__Turn"
           },
@@ -5035,11 +5123,22 @@
               "type": "string"
             },
             "mcpAppResourceUri": {
-              "description": "Deprecated: use `appContext.resourceUri` instead.",
+              "description": "Legacy compatibility field; prefer `mcpAppUi.resourceUri` when available.",
               "type": [
                 "string",
                 "null"
               ]
+            },
+            "mcpAppUi": {
+              "anyOf": [
+                {
+                  "$ref": "#/definitions/definitions__v2__McpAppUi"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Presentation captured from the invoked descriptor; absent in older history."
             },
             "pluginId": {
               "type": [
@@ -6065,6 +6164,14 @@
         "cwd": {
           "$ref": "#/definitions/definitions__v2__AbsolutePathBuf"
         },
+        "disabledPluginIds": {
+          "default": [],
+          "description": "Saved list of disabled plugin IDs. Does not yet filter plugin capabilities.",
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
         "effort": {
           "anyOf": [
             {
@@ -6098,7 +6205,8 @@
             {
               "type": "null"
             }
-          ]
+          ],
+          "description": "@deprecated Reports the saved setting; `friendly` and `pragmatic` no longer select a style."
         },
         "sandboxPolicy": {
           "$ref": "#/definitions/definitions__v2__SandboxPolicy"
@@ -6376,7 +6484,7 @@
               "type": "null"
             }
           ],
-          "description": "Only populated when the Turn's status is failed."
+          "description": "Error associated with a failed or interrupted turn."
         },
         "id": {
           "description": "Identifier for this turn. Codex-generated turn IDs are UUIDv7.",
@@ -6650,6 +6758,32 @@
           "type": "object"
         },
         {
+          "anyOf": [
+            {
+              "properties": {
+                "url": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "url"
+              ],
+              "title": "UrlUserInput",
+              "type": "object"
+            },
+            {
+              "properties": {
+                "fileId": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "fileId"
+              ],
+              "title": "FileIdUserInput",
+              "type": "object"
+            }
+          ],
           "properties": {
             "detail": {
               "anyOf": [
@@ -6668,14 +6802,10 @@
               ],
               "title": "ImageUserInputType",
               "type": "string"
-            },
-            "url": {
-              "type": "string"
             }
           },
           "required": [
-            "type",
-            "url"
+            "type"
           ],
           "title": "ImageUserInput",
           "type": "object"
@@ -7906,6 +8036,26 @@
         "params"
       ],
       "title": "Account/updatedNotification",
+      "type": "object"
+    },
+    {
+      "properties": {
+        "method": {
+          "enum": [
+            "account/gatewayOAuth/changed"
+          ],
+          "title": "Account/gatewayOAuth/changedNotificationMethod",
+          "type": "string"
+        },
+        "params": {
+          "$ref": "#/definitions/definitions__v2__GatewayOAuthChangedNotification"
+        }
+      },
+      "required": [
+        "method",
+        "params"
+      ],
+      "title": "Account/gatewayOAuth/changedNotification",
       "type": "object"
     },
     {

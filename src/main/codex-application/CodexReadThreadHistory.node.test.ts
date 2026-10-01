@@ -151,7 +151,10 @@ test("output budget does not truncate user/assistant input and structured output
         type: "userMessage",
         id: "input",
         clientId: null,
-        content: [{ type: "localImage", path: "/image.png" }],
+        content: [
+          { type: "localImage", path: "/image.png" },
+          { type: "image", fileId: "file-123" },
+        ],
       },
       false,
       0,
@@ -159,7 +162,10 @@ test("output budget does not truncate user/assistant input and structured output
   ).toEqual({
     type: "userMessage",
     id: "input",
-    content: [{ type: "localImage", path: "/image.png" }],
+    content: [
+      { type: "localImage", path: "/image.png" },
+      { type: "image", fileId: "file-123" },
+    ],
   });
 });
 

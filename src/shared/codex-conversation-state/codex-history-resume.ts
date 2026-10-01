@@ -15,13 +15,32 @@ import type { CodexHistoryTurnItemsPagination } from "./codex-history-topology";
 
 type PaginationByTurnId = Readonly<Record<string, CodexHistoryTurnItemsPagination>>;
 
+/** Native resume reports the effective mode; omitted metadata preserves the requested fallback. */
+export function resumedConversationCollaborationMode(
+  response: Pick<ThreadResumeResponse, "model" | "reasoningEffort"> &
+    Partial<Pick<ThreadResumeResponse, "collaborationMode">>,
+  requested?: ThreadResumeResponse["collaborationMode"],
+): NonNullable<ThreadResumeResponse["collaborationMode"]> | undefined {
+  if (response.collaborationMode != null) return response.collaborationMode;
+  if (requested == null) return undefined;
+  return {
+    mode: "default",
+    settings: {
+      ...requested.settings,
+      model: response.model,
+      reasoning_effort: response.reasoningEffort,
+    },
+  };
+}
+
 /** Resume refreshes server-owned Turn fields without replacing profile provenance or output. */
 export function refreshResumedConversationTurnParams(
   state: Draft<CodexCanonicalConversationState>,
   response: Pick<
     ThreadResumeResponse,
     "approvalPolicy" | "approvalsReviewer" | "sandbox" | "model" | "reasoningEffort"
-  >,
+  > &
+    Partial<Pick<ThreadResumeResponse, "collaborationMode">>,
   cwd: string | null,
 ): void {
   for (const { address } of residentConversationTurnEntries(state)) {
@@ -35,6 +54,9 @@ export function refreshResumedConversationTurnParams(
       model: response.model,
       cwd,
       effort: response.reasoningEffort,
+      ...(response.collaborationMode != null
+        ? { collaborationMode: castDraft(response.collaborationMode) }
+        : {}),
     };
   }
 }

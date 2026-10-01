@@ -11,6 +11,11 @@ conformance-tested app-server/Browser artifact identity committed in
 `src/shared/browser-app-server-compatibility.mjs`; any untested combination
 fails closed.
 
+Manifest producers, runtime decoders, and macOS packaging hooks share the schema
+authority in `src/shared/browser-runtime-schema.mjs`. Packaging restoration and
+signature resealing require the current schema; they reject older and unknown
+schemas before modifying the runtime closure.
+
 The sealed closure includes unprivileged Browser and Computer Use clients plus
 their trusted Node REPL RPC services. Nodex enables only the named services for
 capabilities available to a thread, resolves them from the verified closure,

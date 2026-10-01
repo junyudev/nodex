@@ -33,6 +33,31 @@ describe("generated Codex ThreadItem runtime boundary", () => {
     ).toBe(false);
   });
 
+  it.each([{ url: "https://example.com/image.png" }, { fileId: "file_123" }])(
+    "preserves the image source %j through the runtime boundary",
+    (source) => {
+      const item = {
+        type: "userMessage",
+        id: "image-1",
+        clientId: null,
+        content: [{ type: "image", detail: "original", ...source }],
+      } satisfies ThreadItem;
+
+      expect(parseCodexProtocolThreadItem(item)).toEqual(item);
+    },
+  );
+
+  it("rejects an image without a source", () => {
+    expect(
+      parseCodexProtocolThreadItem({
+        type: "userMessage",
+        id: "image-1",
+        clientId: null,
+        content: [{ type: "image", detail: "original" }],
+      }),
+    ).toBeNull();
+  });
+
   it("rejects an unknown variant instead of casting it into the generated union", () => {
     expect(
       parseCodexProtocolThreadItem({

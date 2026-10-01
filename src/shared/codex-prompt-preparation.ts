@@ -1,4 +1,5 @@
 import type { UserInput } from "@nodex/codex-app-server-protocol/v2";
+import { codexImageFileIdFromSource } from "./codex-image-input";
 import { dedupeCodexLiveFileAttachments } from "./codex-live-file-attachments";
 import { parseInlineContent } from "./nfm";
 import {
@@ -198,7 +199,11 @@ export async function prepareCodexPrompt(
     ...(attachment.file === undefined ? {} : { file: { ...attachment.file } }),
   }));
   const imageItems = await Promise.all(
-    (promptInput?.images ?? []).map((image) => options.resolveImageInput(image.source)),
+    (promptInput?.images ?? []).map((image): UserInput | Promise<UserInput> => {
+      const fileId = codexImageFileIdFromSource(image.source);
+      if (fileId !== null) return { type: "image", fileId };
+      return options.resolveImageInput(image.source);
+    }),
   );
   const appshots = (promptInput?.appshots ?? []).map((appshot) => ({
     ...appshot,

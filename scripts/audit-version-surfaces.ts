@@ -576,7 +576,7 @@ const VERSION_SURFACES: readonly Surface[] = [
     "src/shared/browser-runtime-metadata.ts:BROWSER_RUNTIME_SCHEMA_VERSION",
     "durableFormat",
     "browser runtime manifest",
-    "decode or reject manifests",
+    "alias the shared manifest schema for decoding and packaging",
   ],
   [
     "src/shared/browser/browser-use-capability-projection.ts:BROWSER_USE_CAPABILITY_FORMAT_VERSION",

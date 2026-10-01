@@ -4,8 +4,25 @@ import {
   prepareCodexPrompt,
   splitCodexPromptAgentConfigLines,
 } from "./codex-prompt-preparation";
+import { codexImageInputSource } from "./codex-image-input";
 
 describe("Codex prompt preparation", () => {
+  test("preserves hosted image identity through reconstructed queued prompts", async () => {
+    const source = codexImageInputSource({ type: "image", fileId: "file-123" });
+    const resolveImageInput = vi.fn(() => {
+      throw new Error("Hosted images must not resolve as local files");
+    });
+    const prepared = await prepareCodexPrompt(
+      "Inspect",
+      { text: "Inspect", images: [{ source }] },
+      { resolveImageInput },
+    );
+    expect(prepared.inputItems.filter((input) => input.type === "image")).toEqual([
+      { type: "image", fileId: "file-123" },
+    ]);
+    expect(resolveImageInput).not.toHaveBeenCalled();
+  });
+
   test("keeps pasted text as a bounded sidecar until the main command boundary", async () => {
     const resolveImageInput = vi.fn(async (source: string) => ({
       type: "localImage" as const,

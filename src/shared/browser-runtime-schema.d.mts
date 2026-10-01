@@ -1,0 +1,1 @@
+export const BROWSER_RUNTIME_SCHEMA_VERSION: 7;

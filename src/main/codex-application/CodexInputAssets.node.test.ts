@@ -174,3 +174,20 @@ it.effect("never probes a remote host's local media path", () =>
     assert.strictEqual(blobs.size, 0);
   }),
 );
+
+it.effect("retains hosted image identity without creating a local Blob", () =>
+  Effect.gen(function* () {
+    const { store, retained, blobs } = fixture();
+    const prepared = emptyPrepared();
+    prepared.inputItems = [{ type: "image", fileId: "file-123", detail: "original" }];
+    const captured = yield* store.retainPrepared("thread-1", "hosted-input", prepared, true);
+    assert.deepStrictEqual(captured, prepared);
+    const prompt = yield* store.retainCaptured("thread-1", "hosted-queue", {
+      text: "Inspect",
+      images: [{ source: "file-service://file-123" }],
+    });
+    assert.deepStrictEqual(prompt.images, [{ source: "file-service://file-123" }]);
+    assert.strictEqual(retained.length, 0);
+    assert.strictEqual(blobs.size, 0);
+  }),
+);

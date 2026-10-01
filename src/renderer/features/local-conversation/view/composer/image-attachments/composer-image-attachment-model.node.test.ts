@@ -1,6 +1,7 @@
 import { describe, expect, test } from "vite-plus/test";
 import {
   buildComposerImagePromptInputs,
+  createResolvedComposerImageAttachment,
   resolveComposerImageAttachmentSize,
   selectComposerImagePromptSource,
   type ComposerImageAttachment,
@@ -76,7 +77,28 @@ describe("composer image attachment model", () => {
     expect(selectComposerImagePromptSource(value, "ssh:remote")).toBeNull();
   });
 
-  test("does not mistake renderer-only pointers for app-server image URLs", () => {
+  test("retains native hosted file IDs on their restored execution host", () => {
+    const value = createResolvedComposerImageAttachment({
+      id: "image-1",
+      generation: 0,
+      value: {
+        src: "file-service://asset-1",
+        filename: "diagram.png",
+        origin: "restored",
+        hostId: "ssh:owner",
+      },
+    });
+    expect(value).not.toBeNull();
+    if (!value) throw new Error("Missing hosted attachment");
+
+    expect(buildComposerImagePromptInputs([value], "ssh:owner")).toEqual([
+      { source: "file-service://asset-1", caption: "diagram.png" },
+    ]);
+    expect(buildComposerImagePromptInputs([value], "local")).toEqual([]);
+    expect(buildComposerImagePromptInputs([value], null)).toEqual([]);
+  });
+
+  test("does not submit hosted pointers without execution-host evidence", () => {
     const value = attachment({
       src: "file-service://asset-1",
       materialization: null,

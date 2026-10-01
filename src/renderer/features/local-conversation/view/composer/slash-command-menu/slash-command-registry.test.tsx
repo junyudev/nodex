@@ -1,4 +1,4 @@
-import { fireEvent, waitFor } from "@testing-library/react";
+import { waitFor } from "@testing-library/react";
 import { describe, expect, test, vi } from "vite-plus/test";
 import { installWindowApi } from "@/test/browser-globals";
 import { render } from "@/test/dom";
@@ -149,48 +149,6 @@ describe("buildComposerSlashCommands", () => {
     });
 
     expect(commands.some((command) => command.id.startsWith("plugin:"))).toBe(false);
-  });
-
-  test("selects the exact friendly and pragmatic personality values", async () => {
-    const selected: string[] = [];
-    let closeCount = 0;
-    const model = { ...buildModel(), selectedPersonality: "friendly" as const };
-    const commands = buildComposerSlashCommands({
-      model,
-      actions: {
-        ...buildActions(),
-        onPersonalityChange: async (personality) => {
-          selected.push(personality);
-        },
-      },
-      serviceTier: null,
-      setServiceTier: () => undefined,
-      openExpandedDialog: () => undefined,
-      onPetToggle: () => undefined,
-      activateGoalMode: () => undefined,
-    });
-    const personality = commands.find((command) => command.id === "personality");
-    if (!personality?.Content) throw new Error("Expected Personality command content.");
-    const Content = personality.Content;
-    const view = render(
-      <Content
-        close={() => {
-          closeCount += 1;
-        }}
-        back={() => undefined}
-      />,
-    );
-
-    expect(personality.description).toBe("Friendly");
-    expect(view.getByText("Warm, collaborative, and helpful").textContent).toBe(
-      "Warm, collaborative, and helpful",
-    );
-    fireEvent.click(view.getByRole("button", { name: /Pragmatic/ }));
-
-    await waitFor(() => {
-      expect(JSON.stringify(selected)).toBe(JSON.stringify(["pragmatic"]));
-      expect(closeCount).toBe(1);
-    });
   });
 
   test("renders MCP server rows from the paginated status response", async () => {

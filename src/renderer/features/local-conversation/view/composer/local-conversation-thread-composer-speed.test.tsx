@@ -2560,6 +2560,30 @@ describe("ThreadComposer speed menu", () => {
     ).toBe("Open [notes.md](docs/notes.md) then [$PDF](/skills/pdf/SKILL.md)");
   });
 
+  test("round-trips native queued images through Composer editing on the owning host", () => {
+    const attachments = __composerAddContextTestUtils.buildComposerAttachmentStateFromPromptInput(
+      {
+        text: "original",
+        images: [{ source: "file-service://asset-1", caption: "diagram.png" }],
+      },
+      "ssh:owner",
+    );
+
+    const edited = __composerAddContextTestUtils.buildComposerPromptInput({
+      prompt: "edited",
+      attachments,
+      executionHostId: "ssh:owner",
+    });
+    expect(edited?.images).toEqual([{ source: "file-service://asset-1", caption: "diagram.png" }]);
+
+    const anotherHost = __composerAddContextTestUtils.buildComposerPromptInput({
+      prompt: "edited",
+      attachments,
+      executionHostId: "local",
+    });
+    expect(anotherHost).toBeUndefined();
+  });
+
   test("does not demote document mentions into footer file attachments", () => {
     const attachmentState =
       __composerAddContextTestUtils.buildComposerAttachmentStateFromPromptInput({

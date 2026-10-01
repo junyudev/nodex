@@ -1,3 +1,7 @@
+import {
+  codexImageFileIdFromSource,
+  codexImageInputSource,
+} from "../../../../../../shared/codex-image-input";
 import { parseAssetSource } from "../../../../../../shared/assets";
 
 export type ComposerImageAttachmentOrigin =
@@ -18,6 +22,11 @@ export type ComposerImageAttachmentMaterialization = {
   | {
       readonly localPath: null;
       readonly managedSource: string;
+    }
+  | {
+      readonly localPath: null;
+      readonly managedSource: null;
+      readonly fileId: string;
     }
 );
 
@@ -101,6 +110,9 @@ export function selectComposerImagePromptSource(
 ): string | null {
   const materialization = attachment.materialization;
   if (materialization && executionHostId !== null && materialization.hostId === executionHostId) {
+    if ("fileId" in materialization) {
+      return codexImageInputSource({ type: "image", fileId: materialization.fileId });
+    }
     const localPath = materialization.localPath?.trim() ?? "";
     if (isAbsoluteComposerImagePath(localPath)) return localPath;
     const managedSource = materialization.managedSource?.trim() ?? "";
@@ -137,12 +149,14 @@ export function createResolvedComposerImageAttachment(input: {
   const managedSource = isManagedComposerImageSource(candidateManagedSource)
     ? candidateManagedSource
     : null;
-  const materialization: ComposerImageAttachmentMaterialization | null =
-    hostId && localPath
-      ? { hostId, localPath, managedSource }
-      : hostId && managedSource
-        ? { hostId, localPath: null, managedSource }
-        : null;
+  const fileId = codexImageFileIdFromSource(src);
+  const materialization: ComposerImageAttachmentMaterialization | null = (() => {
+    if (!hostId) return null;
+    if (localPath) return { hostId, localPath, managedSource };
+    if (managedSource) return { hostId, localPath: null, managedSource };
+    if (fileId) return { hostId, localPath: null, managedSource: null, fileId };
+    return null;
+  })();
 
   return {
     id: input.value.id?.trim() || input.id,

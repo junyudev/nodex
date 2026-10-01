@@ -1,6 +1,8 @@
+import { BROWSER_RUNTIME_SCHEMA_VERSION as schemaVersion } from "./browser-runtime-schema.mjs";
+
 export const BROWSER_RUNTIME_BUNDLE_DIRECTORY = "browser-runtime";
 export const BROWSER_RUNTIME_MANIFEST_FILENAME = "browser-runtime-manifest.json";
-export const BROWSER_RUNTIME_SCHEMA_VERSION = 7;
+export const BROWSER_RUNTIME_SCHEMA_VERSION = schemaVersion;
 const LEGACY_BROWSER_RUNTIME_SCHEMA_VERSION = 5;
 const RPC_BROWSER_RUNTIME_SCHEMA_VERSION = 6;
 export const BROWSER_RUNTIME_PRODUCT_MINIMUM_MACOS_VERSION = "15.0";

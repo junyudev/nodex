@@ -13,7 +13,7 @@ import * as Path from "effect/Path";
 import * as Schema from "effect/Schema";
 import { ChildProcess, ChildProcessSpawner } from "effect/unstable/process";
 import {
-  distributeObjectOneOf,
+  distributeObjectUnions,
   parseCodexNotificationEntries,
   parseCodexRequestEntries,
   type CodexMethodEntry,
@@ -350,6 +350,9 @@ function resolveResponseTypeName(
   generatedSchemaNames: ReadonlySet<string>,
 ): string {
   const overrides: Record<string, string> = {
+    "account/gatewayOAuth/read": "GatewayOAuthReadResponse",
+    "account/gatewayOAuth/login": "GatewayOAuthLoginResponse",
+    "account/gatewayOAuth/cancel": "GatewayOAuthCancelResponse",
     "account/logout": "LogoutAccountResponse",
     "account/rateLimits/read": "GetAccountRateLimitsResponse",
     "account/usage/read": "GetAccountTokenUsageResponse",
@@ -547,7 +550,7 @@ const generateFiles = Effect.fn("generateFiles")(function* () {
     );
 
     for (const [definitionName, definitionSchema] of Object.entries(parsed.definitions ?? {})) {
-      aggregateSchemas[localDefinitionNames.get(definitionName)!] = distributeObjectOneOf(
+      aggregateSchemas[localDefinitionNames.get(definitionName)!] = distributeObjectUnions(
         stripNullDefaults(
           normalizeNullableTypes(
             rewriteExternalRefs(
@@ -568,7 +571,7 @@ const generateFiles = Effect.fn("generateFiles")(function* () {
       }
     }
 
-    aggregateSchemas[file.exportName] = distributeObjectOneOf(
+    aggregateSchemas[file.exportName] = distributeObjectUnions(
       stripNullDefaults(
         normalizeNullableTypes(
           rewriteExternalRefs(

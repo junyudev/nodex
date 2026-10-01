@@ -13,7 +13,7 @@ function sha256(value: string): string {
   return createHash("sha256").update(value).digest("hex");
 }
 
-function createFixture(): {
+function createFixture(schemaVersion: number = BROWSER_RUNTIME_SCHEMA_VERSION): {
   packagedBrowserRoot: string;
   placeholderPath: string;
   sourceBrowserRoot: string;
@@ -39,7 +39,7 @@ function createFixture(): {
         size: 0,
       },
     ],
-    schemaVersion: BROWSER_RUNTIME_SCHEMA_VERSION,
+    schemaVersion,
   };
   const manifestBytes = `${JSON.stringify(manifest)}\n`;
   fs.writeFileSync(path.join(sourceBrowserRoot, "browser-runtime-manifest.json"), manifestBytes);
@@ -65,6 +65,18 @@ describe("restorePackagedBrowserRuntimeClosure", () => {
     expect(fs.readFileSync(fixture.placeholderPath, "utf8")).toBe("");
     expect(restorePackagedBrowserRuntimeClosure(fixture)).toBe(0);
   });
+
+  test.each([BROWSER_RUNTIME_SCHEMA_VERSION - 1, BROWSER_RUNTIME_SCHEMA_VERSION + 1])(
+    "rejects schema-v%i before restoring a placeholder",
+    (schemaVersion) => {
+      const fixture = createFixture(schemaVersion);
+
+      expect(() => restorePackagedBrowserRuntimeClosure(fixture)).toThrow(
+        "Unsupported Browser runtime manifest",
+      );
+      expect(fs.existsSync(fixture.placeholderPath)).toBe(false);
+    },
+  );
 
   test("rejects a staged placeholder that does not match the verified manifest", () => {
     const fixture = createFixture();

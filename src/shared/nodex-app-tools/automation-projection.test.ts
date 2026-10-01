@@ -25,6 +25,7 @@ function item(overrides: Partial<McpItem> = {}): McpItem {
     status: "completed",
     arguments: { ...proposal, targetSessionId: "session:raw" },
     appContext: null,
+    mcpAppUi: null,
     pluginId: null,
     readOnlyHint: false,
     result: {

@@ -210,7 +210,6 @@ const makeHarness = (options: HarnessOptions = {}) => {
           snapshot: options.sourceCanonicalLoaded === false ? null : sourceSnapshot,
         } as never;
       }),
-    acceptRollbackResult: () => Effect.die("unused"),
     acceptImportResult: () => Effect.die("unused"),
     acceptForkResult: ({ sourceThreadId: acceptedSource, response }) =>
       Effect.sync(() => {

@@ -360,6 +360,8 @@ function buildResumeResponse(threadId: string): ThreadResumeResponse {
     activePermissionProfile: null,
     reasoningEffort: "high",
     multiAgentMode: "explicitRequestOnly",
+    disabledPluginIds: [],
+    collaborationMode: null,
     initialTurnsPage: { data: [], nextCursor: null, backwardsCursor: null },
     turnsBackwardsCursor: null,
     itemsBackwardsCursor: null,

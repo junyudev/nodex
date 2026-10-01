@@ -110,7 +110,6 @@ const directory = (
         events.push(`thread:${threadId}`);
         return threadId === entry.durable.threadId ? entry : null;
       }),
-    acceptRollbackResult: unsupported,
     acceptForkResult: unsupported,
     observeMetadata: () => Effect.die("unused"),
     acceptStandaloneStart: () => Effect.die("unused"),

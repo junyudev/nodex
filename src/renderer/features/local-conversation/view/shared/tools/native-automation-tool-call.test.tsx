@@ -37,6 +37,7 @@ describe("native automation proposal card", () => {
             status: "completed",
             arguments: { ...proposal, targetSessionId: "session:raw" },
             appContext: null,
+            mcpAppUi: null,
             pluginId: null,
             readOnlyHint: false,
             result: {

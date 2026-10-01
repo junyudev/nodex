@@ -1,4 +1,3 @@
-import { replaceCodexCanonicalRollbackThread } from "./codex-rollback-state";
 import { describe, expect, test } from "vite-plus/test";
 import type { ServerRequest } from "@nodex/codex-app-server-protocol";
 import type {
@@ -199,92 +198,6 @@ function hydrateCanonicalFixtureTurns(
 }
 
 describe("protocol-backed canonical conversation state", () => {
-  test("rollback replaces protocol history while retaining conversation context", () => {
-    const thread = buildAgentActivityV2CorpusThread([]);
-    const params = buildCompleteFixtureTurnParams(thread.id, thread.cwd);
-    const state = {
-      ...createCodexCanonicalConversationState(thread, {
-        hostId: "local",
-        ...{
-          turnParamsById: { [AGENT_ACTIVITY_V2_CORPUS_TURN_ID]: params },
-          pendingRequests: [agentActivityV2CommandApprovalRequest],
-          hasUnreadTurn: true,
-        },
-      }),
-      previousTurnModel: "previous-model",
-      title: "Local title",
-      latestModel: "local-model",
-      rolloutPath: "/previous/rollout",
-    };
-    const rolledBack = replaceCodexCanonicalRollbackThread(state, {
-      ...thread,
-      name: "After rollback",
-      model: "server-model",
-      updatedAt: 123,
-      recencyAt: 456,
-      path: null,
-      cwd: "",
-      sessionId: "rollback-session",
-      turns: [],
-    });
-    expect(rolledBack?.title).toBe("Local title");
-    expect(rolledBack?.latestModel).toBe("local-model");
-    expect(rolledBack?.createdAt).toBe(state.createdAt);
-    expect(rolledBack?.recencyAt).toBe(state.recencyAt);
-    expect(rolledBack?.updatedAt).toBe(123000);
-    expect(rolledBack?.sessionId).toBe("rollback-session");
-    expect(rolledBack?.rolloutPath).toBe("/previous/rollout");
-    expect(rolledBack?.cwd).toBe(state.cwd);
-    expect(rolledBack?.resumeState).toBe("resumed");
-    expect(rolledBack?.turns).toEqual([]);
-    expect(rolledBack?.requests).toEqual([]);
-    expect(rolledBack?.hasUnreadTurn).toBe(false);
-    expect(rolledBack?.previousTurnModel).toBe("previous-model");
-    expect(rolledBack?.hydrationContext).toBe(state.hydrationContext);
-    expect(state.turns).toHaveLength(1);
-    expect(state.requests).toHaveLength(1);
-    expect(state.hasUnreadTurn).toBe(true);
-  });
-
-  test("rollback hydrates previously nonresident turns using current model and inferred workspace permissions", () => {
-    const thread = buildAgentActivityV2CorpusThread([]);
-    const state = {
-      ...hydrateCanonicalFixtureTurns([]),
-      latestModel: "current-model",
-      latestReasoningEffort: "high" as const,
-      cwd: "/before",
-    };
-    const responseTurn = {
-      ...thread.turns[0]!,
-      id: "nonresident",
-      items: [
-        {
-          type: "userMessage" as const,
-          id: "opening",
-          content: [{ type: "text" as const, text: "retained input", text_elements: [] }],
-          clientId: "client-opening",
-        },
-      ],
-    };
-    const result = replaceCodexCanonicalRollbackThread(state, {
-      ...thread,
-      id: state.id,
-      cwd: "/after",
-      turns: [responseTurn],
-    });
-    expect(result?.turns[0]?.params).toMatchObject({
-      input: responseTurn.items[0]!.content,
-      clientUserMessageId: "client-opening",
-      model: "current-model",
-      effort: "high",
-      cwd: "/after",
-      permissions: ":workspace",
-      runtimeWorkspaceRoots: ["/before"],
-      approvalPolicy: "on-request",
-    });
-    expect(result?.turns[0]?.turnId).toBe("nonresident");
-  });
-
   test.each([null, 0, 1.25, 1730000000.125])(
     "preserves protocol timestamp %s across repeated hydration and projection",
     (startedAt) => {
@@ -1434,7 +1347,7 @@ describe("protocol-backed canonical conversation state", () => {
     expect(canonical.appContext === agentActivityV2McpAppContextPrecedenceItem.appContext).toBe(
       true,
     );
-    expect(Object.keys(canonical.appContext).length).toBe(6);
+    expect(Object.keys(canonical.appContext).length).toBe(5);
     expect(canonical.appContext.actionName).toBe("Lookup fixture");
   });
 });

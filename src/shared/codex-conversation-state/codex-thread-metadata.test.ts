@@ -86,6 +86,7 @@ function buildThread(name: string | null): Omit<Thread, "turns"> {
 }
 
 const settings: ThreadSettings = {
+  disabledPluginIds: [],
   cwd: "/new",
   approvalPolicy: "on-request",
   approvalsReviewer: "user",

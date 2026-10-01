@@ -3,7 +3,7 @@ import { produce } from "immer";
 import { createCodexCanonicalHydratedConversationState } from "./codex-conversation-state";
 import { buildAgentActivityV2CorpusThread } from "./test-fixtures/agent-activity-v2-corpus-provenance";
 import { replaceCanonicalHistoryDraft } from "./codex-canonical-history-loader";
-import { mutateCodexCanonicalRevert } from "./codex-rollback-state";
+import { mutateCodexCanonicalRevert } from "./codex-revert-state";
 import { residentConversationTurns } from "./codex-turn-mutation";
 import {
   editCanonicalLastUserTurn,
@@ -12,11 +12,19 @@ import {
 } from "./codex-owner-edit";
 import type {
   ThreadRevertResponse,
+  Thread,
   Turn,
   TurnStartParams,
 } from "@nodex/codex-app-server-protocol/v2";
 
-function harness() {
+function harness(
+  options: {
+    historyMode?: "legacy" | "paginated";
+    ephemeral?: boolean;
+    supportsRevert?: boolean;
+    input?: TurnStartParams["input"];
+  } = {},
+) {
   const turn = (id: string): Turn => ({
     id,
     status: "completed",
@@ -27,9 +35,10 @@ function harness() {
     completedAt: null,
     durationMs: null,
   });
-  const thread = {
+  const thread: Thread = {
     ...buildAgentActivityV2CorpusThread([]),
-    historyMode: "paginated" as const,
+    historyMode: options.historyMode ?? "paginated",
+    ephemeral: options.ephemeral ?? false,
     turns: [turn("message"), turn("automatic")],
   };
   let state = createCodexCanonicalHydratedConversationState(thread, {
@@ -44,7 +53,7 @@ function harness() {
     runtimeWorkspaceRoots: [],
   });
   state = produce(state, (draft) => {
-    draft.turns[0]!.params.input = [
+    draft.turns[0]!.params.input = options.input ?? [
       { type: "text", text: "# Files\n## My request for Codex:\nold", text_elements: [] },
       { type: "localImage", path: "/image.png" },
     ];
@@ -63,7 +72,7 @@ function harness() {
     awaitSettings: async () => {
       calls.push("settings");
     },
-    supportsRevert: () => true,
+    supportsRevert: () => options.supportsRevert ?? true,
     readPermissionOverrides: async () => {
       calls.push("config");
       return (cwd) => {
@@ -75,15 +84,11 @@ function harness() {
       calls.push(`revert:${before}`);
       return response;
     },
-    rollback: async () => {
-      throw new Error("unexpected rollback");
-    },
     applyRevert: (_id, result, turns) => {
       state = produce(state, (draft) =>
         mutateCodexCanonicalRevert(draft, result, new Set(turns.map((turn) => turn.turnId))),
       );
     },
-    applyRollback: () => {},
     start: async (request) => {
       starts.push(request);
     },
@@ -111,6 +116,28 @@ test("editing the latest message also reverts trailing automatic turns and keeps
   });
   expect(f.read().paginatedHistory).toEqual({ itemsBackwardsCursor: "items" });
 });
+
+test("editing an attachment-only message sends the new text alongside its image", async () => {
+  const f = harness({ input: [{ type: "image", fileId: "file_123" }] });
+  await editCanonicalLastUserTurn(f.client, "id", { turnId: "message", message: "Describe it" });
+
+  expect(f.starts[0]?.input).toEqual([
+    { type: "text", text: "Describe it", text_elements: [] },
+    { type: "image", fileId: "file_123" },
+  ]);
+});
+
+test.each([{ historyMode: "legacy" as const }, { ephemeral: true }, { supportsRevert: false }])(
+  "rejects unsupported message edits before native mutation (%j)",
+  async (options) => {
+    const f = harness(options);
+    await expect(
+      editCanonicalLastUserTurn(f.client, "id", { turnId: "message", message: "new" }),
+    ).rejects.toThrow("Editing messages requires");
+    expect(f.calls).toEqual(["settings"]);
+    expect(f.starts).toEqual([]);
+  },
+);
 
 test("prompt editing replaces only the last request marker and resets plain text", () => {
   expect(

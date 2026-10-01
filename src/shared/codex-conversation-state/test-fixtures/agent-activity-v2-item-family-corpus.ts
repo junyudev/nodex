@@ -200,7 +200,6 @@ const FULL_MCP_APP_CONTEXT = {
   linkId: "link-fixture",
   resourceUri: null,
   appName: "Fixture App",
-  templateId: "template-fixture",
   actionName: "Lookup fixture",
 } as const;
 
@@ -217,6 +216,7 @@ export const agentActivityV2McpAppContextPrecedenceItem = {
     ...FULL_MCP_APP_CONTEXT,
     resourceUri: "ui://fixture/preferred",
   },
+  mcpAppUi: null,
   mcpAppResourceUri: "ui://fixture/deprecated",
   pluginId: "plugin-fixture",
   readOnlyHint: true,
@@ -246,6 +246,7 @@ export const agentActivityV2McpBrowserSourceItem = {
     code: "fixture()",
   },
   appContext: FULL_MCP_APP_CONTEXT,
+  mcpAppUi: null,
   pluginId: "plugin-browser-fixture",
   readOnlyHint: false,
   result: {
@@ -281,6 +282,7 @@ export const agentActivityV2McpComputerUseItem = {
     action: "screenshot",
   },
   appContext: null,
+  mcpAppUi: null,
   pluginId: null,
   readOnlyHint: false,
   result: null,
@@ -298,6 +300,7 @@ export const agentActivityV2McpErrorItem = {
     fixture: true,
   },
   appContext: null,
+  mcpAppUi: null,
   pluginId: null,
   readOnlyHint: null,
   result: {
@@ -326,6 +329,7 @@ export const agentActivityV2McpStatusResolvedAppItem = {
   status: "completed",
   arguments: {},
   appContext: null,
+  mcpAppUi: null,
   pluginId: null,
   readOnlyHint: true,
   result: {
@@ -340,7 +344,12 @@ export const agentActivityV2McpStatusResolvedAppItem = {
 const MCP_STATUS_APP_CONTEXT = {
   data: [{
     name: "status_server",
+    runtimeStatus: null,
+    pluginId: null,
+    httpOrigin: null,
     serverInfo: null,
+    serverCapabilities: null,
+    toolsError: null,
     tools: {
       status_tool: {
         name: "status_tool",

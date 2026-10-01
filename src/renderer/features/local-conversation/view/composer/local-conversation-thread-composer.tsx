@@ -24,6 +24,7 @@ import type {
 } from "@/lib/types";
 import type { ComposerPickedFile } from "../../../../../shared/ipc-api";
 import { DEFAULT_CODEX_HOST_ID } from "../../../../../shared/codex-host";
+import { codexImageFileIdFromSource } from "../../../../../shared/codex-image-input";
 import { dedupeCodexLiveFileAttachments } from "../../../../../shared/codex-live-file-attachments";
 import { useCodexServiceTierSettings } from "@/lib/use-codex-service-tier-settings";
 import { useCommandKeymapState } from "@/lib/use-command-keymap-state";
@@ -518,6 +519,7 @@ function removePersistedMentionPrompt(prompt: string): string {
 
 function buildComposerAttachmentStateFromPromptInput(
   promptInput?: CodexPromptInput,
+  executionHostId: string | null = DEFAULT_CODEX_HOST_ID,
 ): ComposerAttachmentState {
   const fileAttachments = dedupeCodexLiveFileAttachments(promptInput?.fileAttachments ?? []).map(
     (attachment) => ({
@@ -548,7 +550,9 @@ function buildComposerAttachmentStateFromPromptInput(
                 hostId: DEFAULT_CODEX_HOST_ID,
                 localPath: source,
               }
-            : {}),
+            : codexImageFileIdFromSource(source)
+              ? { hostId: executionHostId }
+              : {}),
         },
       });
       return restored ? [restored] : [];
@@ -1056,7 +1060,10 @@ function ControlledThreadComposer(
     if (intent && consumedIntentNonceRef.current !== intent.focusNonce) {
       consumedIntentNonceRef.current = intent.focusNonce;
       if (intent.queuedFollowUpEdit) setQueuedFollowUpEdit(intent.queuedFollowUpEdit);
-      const restored = buildComposerAttachmentStateFromPromptInput(intent.promptInput);
+      const restored = buildComposerAttachmentStateFromPromptInput(
+        intent.promptInput,
+        model.isCloudNewThreadTarget ? null : model.hostId,
+      );
       const mentionPrompt = buildPersistedMentionPrompt(intent.promptInput);
       const documentPrompt = buildPersistedPromptDocument(intent.promptInput);
       const append = intent.attachmentMode === "append";
@@ -1157,6 +1164,8 @@ function ControlledThreadComposer(
     composerThreadId,
     initialized,
     intent,
+    model.hostId,
+    model.isCloudNewThreadTarget,
     model.newThreadTarget?.sessionId,
     onErrorMessage,
     promptDraft,

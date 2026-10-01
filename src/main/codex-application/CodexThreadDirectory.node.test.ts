@@ -525,56 +525,6 @@ it.effect("prepareResume keeps the applied workspace until the pending move is a
   ),
 );
 
-it.effect("accepts rollback as one durable and canonical replacement", () =>
-  Effect.scoped(
-    Effect.gen(function* () {
-      const threads = new Map([["thread-a", coreThread("thread-a", { has_unread_turn: true })]]);
-      const core = makeCore(threads);
-      const conversations = makeConversations();
-      conversations.entity("thread-a").seedHasUnreadTurn(true);
-      const eventHub = CodexApplicationEventHub.of({
-        events: Stream.empty,
-        publish: () => undefined,
-      });
-      const projection = yield* makeConversationProjection.pipe(
-        Effect.provideService(ConversationEntityMap, conversations),
-        Effect.provideService(CodexApplicationEventHub, eventHub),
-        Effect.provideService(CoreModules, core),
-      );
-      const directory = yield* directoryFoundations.pipe(
-        Effect.provideService(CodexApplicationEventHub, eventHub),
-        Effect.provideService(CodexConversationProjection, projection),
-        Effect.provideService(
-          CodexGateway,
-          makeGateway((() => Effect.die("unused")) as RequestOnHost),
-        ),
-        Effect.provideService(ConversationEntityMap, conversations),
-        Effect.provideService(CoreModules, core),
-      );
-
-      const accepted = yield* directory.acceptRollbackResult({
-        expectedThreadId: "thread-a",
-        thread: appThread("thread-a"),
-        fallbackCwd: "/repo",
-        pagination: {
-          olderCursor: null,
-          backwardsCursor: null,
-          oldestLoadedTurnId: null,
-          isLoadingOlder: false,
-          hasLoadedOldest: true,
-          loadedTurnCount: 0,
-          itemsView: "full",
-        },
-      });
-
-      assert.isFalse(accepted.durable.hasUnreadTurn);
-      assert.isFalse(accepted.canonical?.hasUnreadTurn ?? true);
-      assert.deepEqual(accepted.canonical?.requests, []);
-      assert.deepEqual(conversations.current("thread-a")?.readSnapshot(), accepted.snapshot);
-    }),
-  ),
-);
-
 it.effect("accepts a concrete paginated start contract without trusting the version label", () =>
   Effect.scoped(
     Effect.gen(function* () {
@@ -1100,6 +1050,7 @@ it.effect("keeps an excluded paginated fork lazy until the child is opened", () 
           model: "gpt-test",
           modelProvider: "openai",
           serviceTier: null,
+          disabledPluginIds: [],
           cwd: "/repo",
           runtimeWorkspaceRoots: ["/repo"],
           instructionSources: [],
@@ -1817,10 +1768,22 @@ it.effect("reads authoritative history when an unversioned resume omits its page
         completedAt: 2,
         durationMs: 1,
       };
-      yield* directory.acceptRollbackResult({
-        expectedThreadId: "thread-a",
-        thread: appThread("thread-a", [residentTurn]),
-        pagination: {
+      const resident = conversations.entity("thread-a");
+      resident.acceptCanonicalState(
+        createCodexCanonicalHydratedConversationState(appThread("thread-a", [residentTurn]), {
+          hostId: "remote-a",
+          model: "gpt-test",
+          reasoningEffort: "high",
+          cwd: "/repo",
+          approvalPolicy: "on-request",
+          approvalsReviewer: "user",
+          sandboxPolicy: { type: "readOnly", networkAccess: false },
+          activePermissionProfile: null,
+          runtimeWorkspaceRoots: ["/repo"],
+        }),
+      );
+      resident.initializeHistory(
+        {
           olderCursor: "cursor:resident-older",
           backwardsCursor: "cursor:resident-newer",
           oldestLoadedTurnId: residentTurn.id,
@@ -1829,7 +1792,8 @@ it.effect("reads authoritative history when an unversioned resume omits its page
           loadedTurnCount: 1,
           itemsView: "full",
         },
-      });
+        120_000,
+      );
 
       const resolved = yield* directory.resolve({ threadId: "thread-a", fidelity: "live" });
 
@@ -1978,6 +1942,7 @@ it.effect.each([false, true])(
           model: "gpt-test",
           modelProvider: "openai",
           serviceTier: null,
+          disabledPluginIds: [],
           cwd: "/repo",
           runtimeWorkspaceRoots: ["/repo"],
           instructionSources: [],
@@ -1986,6 +1951,7 @@ it.effect.each([false, true])(
           sandbox: { type: "readOnly", networkAccess: false },
           activePermissionProfile: null,
           reasoningEffort: "high",
+          collaborationMode: null,
           multiAgentMode: "explicitRequestOnly",
           initialTurnsPage: null,
           turnsBackwardsCursor: null,
@@ -2132,6 +2098,7 @@ it.effect.each([false, true])(
           model: "gpt-test",
           modelProvider: "openai",
           serviceTier: null,
+          disabledPluginIds: [],
           cwd: "/repo",
           runtimeWorkspaceRoots: ["/repo"],
           instructionSources: [],
@@ -2140,6 +2107,7 @@ it.effect.each([false, true])(
           sandbox: { type: "readOnly", networkAccess: false },
           activePermissionProfile: null,
           reasoningEffort: "high",
+          collaborationMode: null,
           multiAgentMode: "explicitRequestOnly",
           initialTurnsPage: null,
           turnsBackwardsCursor: null,

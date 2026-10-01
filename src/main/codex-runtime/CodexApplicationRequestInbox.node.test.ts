@@ -504,6 +504,7 @@ it.effect(
               status: "inProgress",
               arguments: { pageId: "page-1" },
               appContext: null,
+              mcpAppUi: null,
               pluginId: null,
               readOnlyHint: true,
               result: null,

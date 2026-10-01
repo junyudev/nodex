@@ -15,7 +15,10 @@ import {
   prepareConversationResumePermissionContext,
   type ConversationResumePreparationOptions,
 } from "./codex-resume-request";
-import { refreshResumedConversationTurnParams } from "./codex-history-resume";
+import {
+  refreshResumedConversationTurnParams,
+  resumedConversationCollaborationMode,
+} from "./codex-history-resume";
 import { replaceCanonicalHistoryDraft } from "./codex-canonical-history-loader";
 import { residentConversationTurns } from "./codex-turn-mutation";
 import { buildAgentActivityV2CorpusThread } from "./test-fixtures/agent-activity-v2-corpus-provenance";
@@ -383,7 +386,20 @@ test("resume refreshes resident Turn fields while keeping profile grants, output
     replaceCanonicalHistoryDraft(draft, [resident], true, null);
     draft.turns = castDraft([overlay]);
   });
-  const raw = { ...response(), model: "server-model", reasoningEffort: "high" as const };
+  const collaborationMode = {
+    mode: "plan" as const,
+    settings: {
+      model: "server-model",
+      reasoning_effort: "high" as const,
+      developer_instructions: "Plan first",
+    },
+  };
+  const raw = {
+    ...response(),
+    model: "server-model",
+    reasoningEffort: "high" as const,
+    collaborationMode,
+  };
   const resumed = produce(canonical, (draft) =>
     refreshResumedConversationTurnParams(draft, raw, "/workspace/subdir"),
   );
@@ -396,9 +412,34 @@ test("resume refreshes resident Turn fields while keeping profile grants, output
     model: "server-model",
     cwd: "/workspace/subdir",
     effort: "high",
+    collaborationMode,
   });
   expect(turn.items).toBe(resident.items);
   expect(turn.status).toBe(resident.status);
   expect(resumed.turns[0]).toBe(overlay);
   expect(resident.params.model).toBe("before");
+});
+
+test("resume adopts the native collaboration mode before requested fallback settings", () => {
+  const requested = {
+    mode: "default" as const,
+    settings: {
+      model: "requested-model",
+      reasoning_effort: "low" as const,
+      developer_instructions: null,
+    },
+  };
+  const effective = {
+    ...requested,
+    mode: "plan" as const,
+    settings: { ...requested.settings, model: "native-model", reasoning_effort: "high" as const },
+  };
+  const response = { model: "native-model", reasoningEffort: "high" as const };
+  expect(
+    resumedConversationCollaborationMode({ ...response, collaborationMode: effective }, requested),
+  ).toBe(effective);
+  expect(
+    resumedConversationCollaborationMode({ ...response, collaborationMode: null }, requested),
+  ).toEqual({ ...requested, settings: effective.settings });
+  expect(resumedConversationCollaborationMode(response)).toBeUndefined();
 });

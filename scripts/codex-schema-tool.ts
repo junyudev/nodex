@@ -111,7 +111,7 @@ function currentTargetKey(): AgentRuntimeTargetKey {
 
 /**
  * Runs a callback with the exact-release primary Codex CLI used only for schema export.
- * The production runtime remains the smaller standalone app-server package.
+ * The production runtime uses the full official Codex package and its resource closure.
  */
 export async function withPinnedCodexSchemaTool<A>(
   projectRoot: string,

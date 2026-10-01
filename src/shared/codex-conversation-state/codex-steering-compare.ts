@@ -120,7 +120,7 @@ function imageMatches(
   dataUrl: string,
   localPath?: string | null,
 ): boolean {
-  if (image.type === "image") return image.url === dataUrl;
+  if (image.type === "image") return "url" in image && image.url === dataUrl;
   return image.path === (localPath ?? dataUrl);
 }
 

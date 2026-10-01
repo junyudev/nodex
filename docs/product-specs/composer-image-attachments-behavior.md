@@ -31,7 +31,7 @@ Native file drag uses copy semantics and a nested drag counter, so entering chil
 
 For pasted and dropped File objects, preview reading and local materialization start in parallel. The attachment becomes visible only after a valid image source is readable. A late materialization patches that same id in place. Materialization failure retains the portable source and does not block submission. Removing, clearing, changing Composer scope, or unmounting invalidates late results; they cannot recreate an attachment. Repeating the same explicit paste or drop creates distinct attachments.
 
-Browser `Send to chat` publishes one canonical managed-asset source. The Composer records that value as host-owned materialization metadata; it never relabels the managed URI as an inline data URL or absolute filesystem path. Display-only `file-service://` and `sediment://` pointers remain resolver inputs and are never sent directly to app-server.
+Browser `Send to chat` publishes one canonical managed-asset source. The Composer records that value as host-owned materialization metadata; it never relabels the managed URI as an inline data URL or absolute filesystem path. Native hosted image references retain their file ID and the execution host that supplied them when a queued prompt is restored. Their `file-service://` preview source compiles to native image input on that host; display-only pointers without owner evidence and `sediment://` sources remain resolver inputs.
 
 Draft transfer, queued follow-up, completed-draft, image-edit follow-up, and thread-goal paths capture immutable attachment values. Image bytes are session-scoped and are not written to localStorage.
 
@@ -57,7 +57,7 @@ Composer thumbnails always open the right-panel image editor directly, regardles
 
 ## Submission and execution host
 
-One pure source selector compiles every attachment-bearing Composer action. A ready materialization belonging to the current execution host may supply its local path or managed-asset URI. Otherwise the source must be portable data or HTTP content. Main freezes images from the current machine and inline media, retains their exact bytes for the Thread through Core, and sends portable app-server media input. Media detail settings remain unchanged. A remote host's local image or audio path remains remote; Main never opens that path on the current machine.
+One pure source selector compiles every attachment-bearing Composer action. A ready materialization belonging to the current execution host may supply its local path or managed-asset URI. A restored native hosted image can supply its file ID only on its captured execution host. Otherwise the source must be portable data or HTTP content. Main freezes images from the current machine and inline media, retains their exact bytes for the Thread through Core, and sends portable app-server media input. Media detail settings remain unchanged. A remote host's local image or audio path remains remote; Main never opens that path on the current machine.
 
 Ordinary sends and steers complete Thread retention before transport. Captured managed file attachments point to immutable materialized bytes, while ordinary workspace file attachments keep their filesystem semantics. Repeating the same submission uses the same retention identity, and failure leaves captured bytes available for retry. Thread input retention creates no Library Files.
 
@@ -69,9 +69,9 @@ Image editing binds to a stable root-or-side Composer channel rather than to a n
 
 User-image projection preserves three source kinds:
 
-- `inline-image` for app-server `image`
+- `inline-image` for URL-based app-server `image`
 - `local-image` for app-server `localImage`
-- `remote-pointer` for generated or remote asset pointers
+- `remote-pointer` for file-ID app-server `image` and generated or remote asset pointers
 
 Inline images resolve without filesystem access. A `local-image` may read its exact path only when the owning conversation host is the trusted local host; another host receives a named unavailable state and never probes the local machine. Remote pointers use the conversation asset resolver and its retry/object-URL lifecycle. A failed but resolvable thumbnail shows a named retry action instead of an unexplained punctuation placeholder.
 
@@ -79,4 +79,4 @@ Inline images resolve without filesystem access. A `local-image` may read its ex
 
 Thumbnail open, remove, upload, retry, dialog navigation, edit, and download controls have accessible names. Enter and Space open focused thumbnails, while Escape behavior remains owned by the preview/editor surface. Removal never steals prompt focus.
 
-Unreadable image bytes report an attachment error and create no shell. Managed-path failure falls back only when a portable source exists. Unsupported-model rejection creates no partial draft. Remote-host local paths, malformed managed URIs, renderer-only pointers, and invalid sources remain unavailable without filesystem IPC. The Composer is the single error owner for a channel-routed send failure, so the editor must not add a duplicate toast. Submission failures preserve the attachment draft so the user can retry or remove it.
+Unreadable image bytes report an attachment error and create no shell. Managed-path failure falls back only when a portable source exists. Unsupported-model rejection creates no partial draft. Remote-host local paths, malformed managed URIs, pointers without execution-host evidence, and invalid sources remain unavailable without filesystem IPC. The Composer is the single error owner for a channel-routed send failure, so the editor must not add a duplicate toast. Submission failures preserve the attachment draft so the user can retry or remove it.

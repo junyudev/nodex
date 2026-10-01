@@ -190,6 +190,7 @@ function mcpToolCall(id: string): McpToolCallItem {
     status: "inProgress",
     arguments: {},
     appContext: null,
+    mcpAppUi: null,
     pluginId: null,
     readOnlyHint: null,
     result: null,

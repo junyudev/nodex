@@ -42,6 +42,7 @@ function buildItem(server = "node_repl"): ProtocolMcpToolCallItem {
     durationMs: 10,
     pluginId: null,
     appContext: null,
+    mcpAppUi: null,
     readOnlyHint: null,
   };
 }

@@ -628,6 +628,7 @@ describe("Codex 30751 server-request lifecycle", () => {
           status: "inProgress",
           arguments: {},
           appContext: null,
+          mcpAppUi: null,
           pluginId: "messages@openai-bundled",
           readOnlyHint: null,
           result: null,

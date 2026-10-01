@@ -1,73 +1,96 @@
-import type { ThreadRollbackResponse, ThreadSettings } from "@nodex/codex-app-server-protocol/v2";
+import type {
+  Thread,
+  ThreadItem,
+  ThreadRevertResponse,
+  ThreadSettings,
+} from "@nodex/codex-app-server-protocol/v2";
 import type { CodexConversationSnapshot } from "../../shared/types";
+import { buildAgentActivityV2CorpusThread } from "../../shared/codex-conversation-state/test-fixtures/agent-activity-v2-corpus-provenance";
 import { createCodexCanonicalHydratedConversationState } from "../../shared/codex-conversation-state/codex-conversation-state";
 
-export function buildRollbackResponseFromConversation(
-  conversation: CodexConversationSnapshot,
-): ThreadRollbackResponse {
+export function buildThreadFromConversation(conversation: CodexConversationSnapshot): Thread {
+  const seconds = (milliseconds: number) =>
+    conversation.canonicalState?.historyMode === "paginated"
+      ? Math.floor(milliseconds / 1000)
+      : milliseconds / 1000;
   return {
-    thread: {
-      id: conversation.threadId,
-      sessionId: `session-${conversation.threadId}`,
-      forkedFromId: null,
-      parentThreadId: conversation.source?.parentThreadId ?? null,
-      preview: conversation.threadPreview,
-      ephemeral: conversation.ephemeral ?? false,
-      modelProvider: conversation.modelProvider,
-      createdAt: conversation.createdAt / 1000,
-      updatedAt: conversation.updatedAt / 1000,
-      recencyAt: conversation.updatedAt / 1000,
-      status:
-        conversation.statusType === "active"
-          ? { type: "active", activeFlags: conversation.statusActiveFlags }
-          : conversation.statusType,
-      path: null,
-      cwd: conversation.cwd ?? "",
-      cliVersion: "test",
-      source: "codex-app-server",
-      threadSource: null,
-      agentNickname: null,
-      agentRole: null,
-      gitInfo: null,
-      name: conversation.threadName,
-      turns: conversation.turns.map((turn) => ({
-        id: turn.turnId,
-        items: turn.items.map((item) => {
-          if (item.rawItem && typeof item.rawItem === "object") {
-            return item.rawItem;
+    ...buildAgentActivityV2CorpusThread([]),
+    historyMode: conversation.canonicalState?.historyMode ?? "legacy",
+    id: conversation.threadId,
+    sessionId: `session-${conversation.threadId}`,
+    forkedFromId: null,
+    parentThreadId: conversation.source?.parentThreadId ?? null,
+    preview: conversation.threadPreview,
+    ephemeral: conversation.ephemeral ?? false,
+    modelProvider: conversation.modelProvider ?? "openai",
+    createdAt: seconds(conversation.createdAt),
+    updatedAt: seconds(conversation.updatedAt),
+    recencyAt: seconds(conversation.updatedAt),
+    status:
+      conversation.statusType === "active"
+        ? { type: "active", activeFlags: conversation.statusActiveFlags }
+        : { type: conversation.statusType },
+    path: null,
+    cwd: conversation.cwd ?? "",
+    cliVersion: "test",
+    source: "appServer",
+    threadSource: null,
+    agentNickname: null,
+    agentRole: null,
+    gitInfo: null,
+    name: conversation.threadName,
+    turns: conversation.turns.map((turn) => ({
+      id: turn.turnId!,
+      items: turn.items.map((item) => {
+        if (item.rawItem && typeof item.rawItem === "object") {
+          return item.rawItem;
+        }
+        return {
+          id: item.itemId,
+          type: item.kind === "userMessage" ? "userMessage" : "agentMessage",
+          ...(item.kind === "userMessage"
+            ? {
+                clientId: null,
+                content: [{ type: "text", text: item.markdownText ?? "", text_elements: [] }],
+              }
+            : {
+                text: item.markdownText ?? "",
+                phase: null,
+                memoryCitation: null,
+                delivery: null,
+              }),
+        };
+      }) as ThreadItem[],
+      itemsView: "full",
+      status: turn.status,
+      error: turn.errorMessage
+        ? {
+            message: turn.errorMessage,
+            codexErrorInfo: null,
+            additionalDetails: null,
+            misalignment: null,
           }
-          return {
-            id: item.itemId,
-            type: item.kind === "userMessage" ? "userMessage" : "agentMessage",
-            ...(item.kind === "userMessage"
-              ? {
-                  clientId: null,
-                  content: [{ type: "text", text: item.markdownText ?? "", text_elements: [] }],
-                }
-              : {
-                  text: item.markdownText ?? "",
-                  phase: null,
-                  memoryCitation: null,
-                  delivery: null,
-                }),
-          };
-        }) as never[],
-        itemsView: "full",
-        status: turn.status,
-        error: turn.errorMessage
-          ? { message: turn.errorMessage, codexErrorInfo: null, additionalDetails: null }
-          : null,
-        startedAt: (turn.startedAt ?? turn.turnStartedAtMs ?? conversation.createdAt) / 1000,
-        completedAt: turn.completedAt ? turn.completedAt / 1000 : null,
-        durationMs: turn.durationMs ?? null,
-      })),
-    },
-  } as unknown as ThreadRollbackResponse;
+        : null,
+      startedAt: seconds(turn.startedAt ?? turn.turnStartedAtMs ?? conversation.createdAt),
+      completedAt: turn.completedAt ? seconds(turn.completedAt) : null,
+      durationMs: turn.durationMs ?? null,
+    })),
+  };
+}
+export function buildRevertResponseFromConversation(
+  conversation: CodexConversationSnapshot,
+): ThreadRevertResponse {
+  return {
+    thread: { ...buildThreadFromConversation(conversation), turns: [] },
+    turnsBackwardsCursor: null,
+    itemsBackwardsCursor: null,
+  };
 }
 export function withCanonicalState(
   conversation: CodexConversationSnapshot,
+  historyMode = conversation.canonicalState?.historyMode ?? "legacy",
 ): CodexConversationSnapshot {
-  const thread = buildRollbackResponseFromConversation(conversation).thread;
+  const thread = { ...buildThreadFromConversation(conversation), historyMode };
   const canonical = createCodexCanonicalHydratedConversationState(thread, {
     hostId: "local",
     ...{
@@ -105,6 +128,7 @@ export function withCanonicalState(
     summary: null,
     collaborationMode: latestCollaborationMode,
     multiAgentMode: "explicitRequestOnly" as const,
+    disabledPluginIds: [],
     personality: latestConversationSettings?.personality ?? null,
   } satisfies ThreadSettings;
   const canonicalTurns = canonical.turns.map((turn, index) => {
@@ -174,6 +198,11 @@ export function withCanonicalState(
       turns: canonicalTurns,
     },
   };
+}
+export function withPaginatedCanonicalState(
+  conversation: CodexConversationSnapshot,
+): CodexConversationSnapshot {
+  return withCanonicalState(conversation, "paginated");
 }
 export function ensureCanonicalResumeFixture(
   value: CodexConversationSnapshot | null,

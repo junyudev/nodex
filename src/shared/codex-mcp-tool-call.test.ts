@@ -28,6 +28,7 @@ function buildMcpItem(overrides: Partial<ProtocolMcpToolCallItem> = {}): Protoco
     status: "inProgress",
     arguments: { query: "projection contract" },
     appContext: null,
+    mcpAppUi: null,
     pluginId: null,
     readOnlyHint: null,
     result: null,
@@ -46,7 +47,9 @@ function buildStatuses(
         name: "docs",
         runtimeStatus: null,
         pluginId: null,
+        httpOrigin: null,
         serverInfo: null,
+        serverCapabilities: null,
         toolsError: null,
         tools,
         resources: [],
@@ -84,13 +87,47 @@ function buildApp(
 }
 
 describe("Codex MCP tool-call projection", () => {
+  test("keeps the invoked UI resource authoritative when discovery metadata changes", () => {
+    const mcpAppUi = {
+      resourceUri: "ui://invoked.html",
+      preferredModelDisplayMode: "inline" as const,
+    };
+    const view = projectCodexMcpToolCall(
+      buildMcpItem({
+        mcpAppUi,
+        appContext: {
+          connectorId: "docs",
+          linkId: null,
+          resourceUri: "ui://context.html",
+          appName: null,
+          actionName: null,
+        },
+        mcpAppResourceUri: "ui://legacy.html",
+      }),
+      "inProgress",
+    );
+    const statuses = buildStatuses({
+      search: {
+        name: "search",
+        inputSchema: {},
+        _meta: { ui: { resourceUri: "ui://new-descriptor.html" } },
+      },
+    });
+    expect(view.mcpAppResourceUri).toBe("ui://invoked.html");
+    expect(view.mcpAppUi).toBe(mcpAppUi);
+    expect(
+      resolveCodexMcpAppResourceMetadata({ payload: view, mcpServerStatuses: statuses }),
+    ).toEqual({
+      resourceUri: "ui://invoked.html",
+    });
+  });
+
   test("keeps appContext only on canonical raw state and projects its URI with exact precedence", () => {
     const appContext = {
       connectorId: "connector-docs",
       linkId: "link-1",
       resourceUri: "ui://context.html",
       appName: "Docs",
-      templateId: "template-1",
       actionName: "Search",
     };
     const item = buildMcpItem({

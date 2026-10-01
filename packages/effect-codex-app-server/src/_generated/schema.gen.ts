@@ -56,6 +56,7 @@ export const ClientRequest__RequestId = Schema.Union([
 
 export type ClientRequest__InitializeCapabilities = {
   readonly experimentalApi?: boolean;
+  readonly explicitGatewayOauth?: boolean;
   readonly extensions?: { readonly [x: string]: Schema.Json } | null;
   readonly mcpServerOpenaiFormElicitation?: boolean;
   readonly optOutNotificationMethods?: ReadonlyArray<string> | null;
@@ -66,6 +67,12 @@ export const ClientRequest__InitializeCapabilities = Schema.Struct({
     Schema.Boolean.annotate({
       description: "Opt into receiving experimental API methods and fields.",
       default: false,
+    }),
+  ),
+  explicitGatewayOauth: Schema.optionalKey(
+    Schema.Boolean.annotate({
+      description:
+        "Use explicit gateway OAuth login instead of automatic browser authorization. Applies to this app-server's gateway runtime; later connections cannot undo it.",
     }),
   ),
   extensions: Schema.optionalKey(
@@ -248,7 +255,10 @@ export const ClientRequest__Personality = Schema.Literals([
   "none",
   "friendly",
   "pragmatic",
-]).annotate({ identifier: "ClientRequest__Personality" });
+]).annotate({
+  description: "Deprecated: `friendly` and `pragmatic` no longer select a style.",
+  identifier: "ClientRequest__Personality",
+});
 
 export type ClientRequest__AbsolutePathBuf = string;
 export const ClientRequest__AbsolutePathBuf = Schema.String.annotate({
@@ -905,26 +915,6 @@ export const ClientRequest__ThreadBackgroundTerminalsTerminateParams = Schema.St
   threadId: Schema.String,
 }).annotate({ identifier: "ClientRequest__ThreadBackgroundTerminalsTerminateParams" });
 
-export type ClientRequest__ThreadRollbackParams = {
-  readonly numTurns: number;
-  readonly threadId: string;
-};
-export const ClientRequest__ThreadRollbackParams = Schema.Struct({
-  numTurns: Schema.Number.annotate({
-    description:
-      "The number of turns to drop from the end of the thread. Must be >= 1.\n\nThis only modifies the thread's history and does not revert local file changes that have been made by the agent. Clients are responsible for reverting these changes.",
-    format: "uint32",
-  })
-    .check(Schema.isInt().annotate({ expected: "an integer" }))
-    .check(
-      Schema.isGreaterThanOrEqualTo(0).annotate({ expected: "a value greater than or equal to 0" }),
-    ),
-  threadId: Schema.String,
-}).annotate({
-  description: "DEPRECATED: `thread/rollback` will be removed soon.",
-  identifier: "ClientRequest__ThreadRollbackParams",
-});
-
 export type ClientRequest__ThreadRevertParams = {
   readonly beforeTurnId: string;
   readonly threadId: string;
@@ -1149,6 +1139,23 @@ export const ClientRequest__ThreadReadParams = Schema.Struct({
   ),
   threadId: Schema.String,
 }).annotate({ identifier: "ClientRequest__ThreadReadParams" });
+
+export type ClientRequest__ThreadItemsListAnchor = {
+  readonly itemId: string;
+  readonly type: "item";
+};
+export const ClientRequest__ThreadItemsListAnchor = Schema.Union(
+  [
+    Schema.Struct({
+      itemId: Schema.String,
+      type: Schema.Literal("item").annotate({ title: "ItemThreadItemsListAnchorType" }),
+    }).annotate({ title: "ItemThreadItemsListAnchor" }),
+  ],
+  { mode: "oneOf" },
+).annotate({
+  description: "An exclusive item position within the requested visible turn.",
+  identifier: "ClientRequest__ThreadItemsListAnchor",
+});
 
 export type ClientRequest__ThreadInjectItemsParams = {
   readonly items: ReadonlyArray<Schema.Json>;
@@ -1875,11 +1882,21 @@ export const ClientRequest__MockExperimentalMethodParams = Schema.Struct({
 }).annotate({ identifier: "ClientRequest__MockExperimentalMethodParams" });
 
 export type ClientRequest__EnvironmentAddParams = {
+  readonly authBearerToken?: string | null;
   readonly connectTimeoutMs?: number | null;
   readonly environmentId: string;
   readonly execServerUrl: string;
 };
 export const ClientRequest__EnvironmentAddParams = Schema.Struct({
+  authBearerToken: Schema.optionalKey(
+    Schema.Union([
+      Schema.String.annotate({
+        description:
+          "Optional raw bearer token for executor authentication, including reconnects. Requires a secure transport or a loopback destination.",
+      }),
+      Schema.Null,
+    ]),
+  ),
   connectTimeoutMs: Schema.optionalKey(
     Schema.Union([
       Schema.Number.annotate({
@@ -1926,27 +1943,19 @@ export const ClientRequest__McpServerStatusDetail = Schema.Literals([
   "toolsAndAuthOnly",
 ]).annotate({ identifier: "ClientRequest__McpServerStatusDetail" });
 
-export type ClientRequest__McpResourceReadParams = {
-  readonly connectorId?: string | null;
-  readonly originCallId?: string | null;
-  readonly server: string;
-  readonly threadId?: string | null;
-  readonly uri: string;
+export type ClientRequest__McpResourceReadTarget = {
+  readonly connectorId: string;
+  readonly linkId: string | null;
 };
-export const ClientRequest__McpResourceReadParams = Schema.Struct({
-  connectorId: Schema.optionalKey(Schema.Union([Schema.String, Schema.Null])),
-  originCallId: Schema.optionalKey(
-    Schema.Union([
-      Schema.String.annotate({
-        description: "Originating MCP tool call used to select the resource's app.",
-      }),
-      Schema.Null,
-    ]),
-  ),
-  server: Schema.String,
-  threadId: Schema.optionalKey(Schema.Union([Schema.String, Schema.Null])),
-  uri: Schema.String,
-}).annotate({ identifier: "ClientRequest__McpResourceReadParams" });
+export const ClientRequest__McpResourceReadTarget = Schema.Struct({
+  connectorId: Schema.String,
+  linkId: Schema.Union([
+    Schema.String.annotate({
+      description: "Null explicitly requests no-auth access, subject to the app's resource policy.",
+    }),
+    Schema.Null,
+  ]),
+}).annotate({ identifier: "ClientRequest__McpResourceReadTarget" });
 
 export type ClientRequest__McpServerEventStreamStartParams = {
   readonly _meta?: Schema.Json;
@@ -3042,6 +3051,12 @@ export const ServerNotification__McpToolCallError = Schema.Struct({
   message: Schema.String,
 }).annotate({ identifier: "ServerNotification__McpToolCallError" });
 
+export type ServerNotification__McpAppDisplayMode = "inline" | "fullscreen";
+export const ServerNotification__McpAppDisplayMode = Schema.Literals([
+  "inline",
+  "fullscreen",
+]).annotate({ identifier: "ServerNotification__McpAppDisplayMode" });
+
 export type ServerNotification__McpToolCallResult = {
   readonly _meta?: Schema.Json;
   readonly content: ReadonlyArray<Schema.Json>;
@@ -3432,7 +3447,10 @@ export const ServerNotification__Personality = Schema.Literals([
   "none",
   "friendly",
   "pragmatic",
-]).annotate({ identifier: "ServerNotification__Personality" });
+]).annotate({
+  description: "Deprecated: `friendly` and `pragmatic` no longer select a style.",
+  identifier: "ServerNotification__Personality",
+});
 
 export type ServerNotification__NetworkAccess = "restricted" | "enabled";
 export const ServerNotification__NetworkAccess = Schema.Literals([
@@ -3945,6 +3963,7 @@ export type ServerNotification__PlanType =
   | "plus"
   | "pro"
   | "prolite"
+  | "promax"
   | "team"
   | "self_serve_business_prolite"
   | "self_serve_business_usage_based"
@@ -3963,6 +3982,7 @@ export const ServerNotification__PlanType = Schema.Literals([
   "plus",
   "pro",
   "prolite",
+  "promax",
   "team",
   "self_serve_business_prolite",
   "self_serve_business_usage_based",
@@ -3976,6 +3996,18 @@ export const ServerNotification__PlanType = Schema.Literals([
   "edu_pro",
   "unknown",
 ]).annotate({ identifier: "ServerNotification__PlanType" });
+
+export type ServerNotification__GatewayOAuthStatus =
+  | "notReady"
+  | "started"
+  | "succeeded"
+  | "failed";
+export const ServerNotification__GatewayOAuthStatus = Schema.Literals([
+  "notReady",
+  "started",
+  "succeeded",
+  "failed",
+]).annotate({ identifier: "ServerNotification__GatewayOAuthStatus" });
 
 export type ServerNotification__CreditsSnapshot = {
   readonly balance?: string | null;
@@ -4781,6 +4813,7 @@ export const ToolRequestUserInputResponse__ToolRequestUserInputAnswer = Schema.S
 
 export type V1InitializeParams__InitializeCapabilities = {
   readonly experimentalApi?: boolean;
+  readonly explicitGatewayOauth?: boolean;
   readonly extensions?: { readonly [x: string]: Schema.Json } | null;
   readonly mcpServerOpenaiFormElicitation?: boolean;
   readonly optOutNotificationMethods?: ReadonlyArray<string> | null;
@@ -4791,6 +4824,12 @@ export const V1InitializeParams__InitializeCapabilities = Schema.Struct({
     Schema.Boolean.annotate({
       description: "Opt into receiving experimental API methods and fields.",
       default: false,
+    }),
+  ),
+  explicitGatewayOauth: Schema.optionalKey(
+    Schema.Boolean.annotate({
+      description:
+        "Use explicit gateway OAuth login instead of automatic browser authorization. Applies to this app-server's gateway runtime; later connections cannot undo it.",
     }),
   ),
   extensions: Schema.optionalKey(
@@ -4884,6 +4923,7 @@ export type V2AccountRateLimitsUpdatedNotification__PlanType =
   | "plus"
   | "pro"
   | "prolite"
+  | "promax"
   | "team"
   | "self_serve_business_prolite"
   | "self_serve_business_usage_based"
@@ -4902,6 +4942,7 @@ export const V2AccountRateLimitsUpdatedNotification__PlanType = Schema.Literals(
   "plus",
   "pro",
   "prolite",
+  "promax",
   "team",
   "self_serve_business_prolite",
   "self_serve_business_usage_based",
@@ -5006,6 +5047,7 @@ export type V2AccountUpdatedNotification__PlanType =
   | "plus"
   | "pro"
   | "prolite"
+  | "promax"
   | "team"
   | "self_serve_business_prolite"
   | "self_serve_business_usage_based"
@@ -5024,6 +5066,7 @@ export const V2AccountUpdatedNotification__PlanType = Schema.Literals([
   "plus",
   "pro",
   "prolite",
+  "promax",
   "team",
   "self_serve_business_prolite",
   "self_serve_business_usage_based",
@@ -5475,6 +5518,25 @@ export const V2ConfigReadResponse__AppLinksConfig = Schema.Record(
   identifier: "V2ConfigReadResponse__AppLinksConfig",
 });
 
+export type V2ConfigReadResponse__ToolExposureSurface = "code_mode" | "deferred" | "direct";
+export const V2ConfigReadResponse__ToolExposureSurface = Schema.Union(
+  [
+    Schema.Literal("code_mode").annotate({
+      description: "Nested tools available to Code Mode scripts.",
+    }),
+    Schema.Literal("deferred").annotate({
+      description: "Tools discovered later through tool search.",
+    }),
+    Schema.Literal("direct").annotate({
+      description: "Tools present in the model's initial tool list.",
+    }),
+  ],
+  { mode: "oneOf" },
+).annotate({
+  description: "A model-facing surface on which a tool can be exposed.",
+  identifier: "V2ConfigReadResponse__ToolExposureSurface",
+});
+
 export type V2ConfigReadResponse__AppToolsConfig = { readonly [x: string]: never };
 export const V2ConfigReadResponse__AppToolsConfig = Schema.Record(
   Schema.String,
@@ -5524,6 +5586,12 @@ export const V2ConfigRequirementsReadResponse__ApprovalsReviewer = Schema.Litera
   identifier: "V2ConfigRequirementsReadResponse__ApprovalsReviewer",
 });
 
+export type V2ConfigRequirementsReadResponse__ForcedLoginMethod = "chatgpt" | "api";
+export const V2ConfigRequirementsReadResponse__ForcedLoginMethod = Schema.Literals([
+  "chatgpt",
+  "api",
+]).annotate({ identifier: "V2ConfigRequirementsReadResponse__ForcedLoginMethod" });
+
 export type V2ConfigRequirementsReadResponse__SandboxMode =
   | "read-only"
   | "workspace-write"
@@ -5546,11 +5614,15 @@ export const V2ConfigRequirementsReadResponse__WebSearchMode = Schema.Literals([
   "live",
 ]).annotate({ identifier: "V2ConfigRequirementsReadResponse__WebSearchMode" });
 
-export type V2ConfigRequirementsReadResponse__WindowsSandboxSetupMode = "elevated" | "unelevated";
-export const V2ConfigRequirementsReadResponse__WindowsSandboxSetupMode = Schema.Literals([
+export type V2ConfigRequirementsReadResponse__WindowsSandboxImplementation =
+  | "elevated"
+  | "unelevated"
+  | "mxc";
+export const V2ConfigRequirementsReadResponse__WindowsSandboxImplementation = Schema.Literals([
   "elevated",
   "unelevated",
-]).annotate({ identifier: "V2ConfigRequirementsReadResponse__WindowsSandboxSetupMode" });
+  "mxc",
+]).annotate({ identifier: "V2ConfigRequirementsReadResponse__WindowsSandboxImplementation" });
 
 export type V2ConfigRequirementsReadResponse__NetworkDomainPermission = "allow" | "deny";
 export const V2ConfigRequirementsReadResponse__NetworkDomainPermission = Schema.Literals([
@@ -6242,6 +6314,30 @@ export const V2FsWriteFileParams__AbsolutePathBuf = Schema.String.annotate({
   identifier: "V2FsWriteFileParams__AbsolutePathBuf",
 });
 
+export type V2GatewayOAuthChangedNotification__GatewayOAuthStatus =
+  | "notReady"
+  | "started"
+  | "succeeded"
+  | "failed";
+export const V2GatewayOAuthChangedNotification__GatewayOAuthStatus = Schema.Literals([
+  "notReady",
+  "started",
+  "succeeded",
+  "failed",
+]).annotate({ identifier: "V2GatewayOAuthChangedNotification__GatewayOAuthStatus" });
+
+export type V2GatewayOAuthReadResponse__GatewayOAuthStatus =
+  | "notReady"
+  | "started"
+  | "succeeded"
+  | "failed";
+export const V2GatewayOAuthReadResponse__GatewayOAuthStatus = Schema.Literals([
+  "notReady",
+  "started",
+  "succeeded",
+  "failed",
+]).annotate({ identifier: "V2GatewayOAuthReadResponse__GatewayOAuthStatus" });
+
 export type V2GetAccountRateLimitsResponse__RateLimitResetType = "codexRateLimits" | "unknown";
 export const V2GetAccountRateLimitsResponse__RateLimitResetType = Schema.Literals([
   "codexRateLimits",
@@ -6294,6 +6390,7 @@ export type V2GetAccountRateLimitsResponse__PlanType =
   | "plus"
   | "pro"
   | "prolite"
+  | "promax"
   | "team"
   | "self_serve_business_prolite"
   | "self_serve_business_usage_based"
@@ -6312,6 +6409,7 @@ export const V2GetAccountRateLimitsResponse__PlanType = Schema.Literals([
   "plus",
   "pro",
   "prolite",
+  "promax",
   "team",
   "self_serve_business_prolite",
   "self_serve_business_usage_based",
@@ -6373,6 +6471,7 @@ export type V2GetAccountResponse__PlanType =
   | "plus"
   | "pro"
   | "prolite"
+  | "promax"
   | "team"
   | "self_serve_business_prolite"
   | "self_serve_business_usage_based"
@@ -6391,6 +6490,7 @@ export const V2GetAccountResponse__PlanType = Schema.Literals([
   "plus",
   "pro",
   "prolite",
+  "promax",
   "team",
   "self_serve_business_prolite",
   "self_serve_business_usage_based",
@@ -6404,6 +6504,16 @@ export const V2GetAccountResponse__PlanType = Schema.Literals([
   "edu_pro",
   "unknown",
 ]).annotate({ identifier: "V2GetAccountResponse__PlanType" });
+
+export type V2GetAccountResponse__AccountRoutingOverride = "NO_CONSTRAINT" | "us" | "us_cr";
+export const V2GetAccountResponse__AccountRoutingOverride = Schema.Literals([
+  "NO_CONSTRAINT",
+  "us",
+  "us_cr",
+]).annotate({
+  description: "Backend routing policy. Wire values match the accounts/check contract.",
+  identifier: "V2GetAccountResponse__AccountRoutingOverride",
+});
 
 export type V2GetAccountTokenUsageResponse__AccountTokenUsageDailyBucket = {
   readonly startDate: string;
@@ -7002,6 +7112,12 @@ export const V2ItemCompletedNotification__McpToolCallError = Schema.Struct({
   message: Schema.String,
 }).annotate({ identifier: "V2ItemCompletedNotification__McpToolCallError" });
 
+export type V2ItemCompletedNotification__McpAppDisplayMode = "inline" | "fullscreen";
+export const V2ItemCompletedNotification__McpAppDisplayMode = Schema.Literals([
+  "inline",
+  "fullscreen",
+]).annotate({ identifier: "V2ItemCompletedNotification__McpAppDisplayMode" });
+
 export type V2ItemCompletedNotification__McpToolCallResult = {
   readonly _meta?: Schema.Json;
   readonly content: ReadonlyArray<Schema.Json>;
@@ -7543,6 +7659,12 @@ export const V2ItemStartedNotification__McpToolCallError = Schema.Struct({
   message: Schema.String,
 }).annotate({ identifier: "V2ItemStartedNotification__McpToolCallError" });
 
+export type V2ItemStartedNotification__McpAppDisplayMode = "inline" | "fullscreen";
+export const V2ItemStartedNotification__McpAppDisplayMode = Schema.Literals([
+  "inline",
+  "fullscreen",
+]).annotate({ identifier: "V2ItemStartedNotification__McpAppDisplayMode" });
+
 export type V2ItemStartedNotification__McpToolCallResult = {
   readonly _meta?: Schema.Json;
   readonly content: ReadonlyArray<Schema.Json>;
@@ -7913,6 +8035,20 @@ export const V2MarketplaceUpgradeResponse__AbsolutePathBuf = Schema.String.annot
   identifier: "V2MarketplaceUpgradeResponse__AbsolutePathBuf",
 });
 
+export type V2McpResourceReadParams__McpResourceReadTarget = {
+  readonly connectorId: string;
+  readonly linkId: string | null;
+};
+export const V2McpResourceReadParams__McpResourceReadTarget = Schema.Struct({
+  connectorId: Schema.String,
+  linkId: Schema.Union([
+    Schema.String.annotate({
+      description: "Null explicitly requests no-auth access, subject to the app's resource policy.",
+    }),
+    Schema.Null,
+  ]),
+}).annotate({ identifier: "V2McpResourceReadParams__McpResourceReadTarget" });
+
 export type V2McpResourceReadResponse__ResourceContent =
   | {
       readonly _meta?: Schema.Json;
@@ -7982,6 +8118,17 @@ export type V2ModelListResponse__ModelAvailabilityNux = { readonly message: stri
 export const V2ModelListResponse__ModelAvailabilityNux = Schema.Struct({
   message: Schema.String,
 }).annotate({ identifier: "V2ModelListResponse__ModelAvailabilityNux" });
+
+export type V2ModelListResponse__CyberAccessProgram = "standard" | "daybreakBlue" | "daybreakRed";
+export const V2ModelListResponse__CyberAccessProgram = Schema.Literals([
+  "standard",
+  "daybreakBlue",
+  "daybreakRed",
+]).annotate({
+  description:
+    "Requested cyber treatment for a ChatGPT-authenticated Codex turn. Authorization and model-tier restrictions remain server-owned.",
+  identifier: "V2ModelListResponse__CyberAccessProgram",
+});
 
 export type V2ModelListResponse__ReasoningEffort = string;
 export const V2ModelListResponse__ReasoningEffort = Schema.String.annotate({
@@ -9489,6 +9636,12 @@ export const V2ReviewStartResponse__McpToolCallError = Schema.Struct({
   message: Schema.String,
 }).annotate({ identifier: "V2ReviewStartResponse__McpToolCallError" });
 
+export type V2ReviewStartResponse__McpAppDisplayMode = "inline" | "fullscreen";
+export const V2ReviewStartResponse__McpAppDisplayMode = Schema.Literals([
+  "inline",
+  "fullscreen",
+]).annotate({ identifier: "V2ReviewStartResponse__McpAppDisplayMode" });
+
 export type V2ReviewStartResponse__McpToolCallResult = {
   readonly _meta?: Schema.Json;
   readonly content: ReadonlyArray<Schema.Json>;
@@ -10297,6 +10450,12 @@ export const V2ThreadForkResponse__McpToolCallError = Schema.Struct({
   message: Schema.String,
 }).annotate({ identifier: "V2ThreadForkResponse__McpToolCallError" });
 
+export type V2ThreadForkResponse__McpAppDisplayMode = "inline" | "fullscreen";
+export const V2ThreadForkResponse__McpAppDisplayMode = Schema.Literals([
+  "inline",
+  "fullscreen",
+]).annotate({ identifier: "V2ThreadForkResponse__McpAppDisplayMode" });
+
 export type V2ThreadForkResponse__McpToolCallResult = {
   readonly _meta?: Schema.Json;
   readonly content: ReadonlyArray<Schema.Json>;
@@ -10564,6 +10723,23 @@ export const V2ThreadGoalUpdatedNotification__ThreadGoalStatus = Schema.Literals
   "complete",
 ]).annotate({ identifier: "V2ThreadGoalUpdatedNotification__ThreadGoalStatus" });
 
+export type V2ThreadItemsListParams__ThreadItemsListAnchor = {
+  readonly itemId: string;
+  readonly type: "item";
+};
+export const V2ThreadItemsListParams__ThreadItemsListAnchor = Schema.Union(
+  [
+    Schema.Struct({
+      itemId: Schema.String,
+      type: Schema.Literal("item").annotate({ title: "ItemThreadItemsListAnchorType" }),
+    }).annotate({ title: "ItemThreadItemsListAnchor" }),
+  ],
+  { mode: "oneOf" },
+).annotate({
+  description: "An exclusive item position within the requested visible turn.",
+  identifier: "V2ThreadItemsListParams__ThreadItemsListAnchor",
+});
+
 export type V2ThreadItemsListParams__SortDirection = "asc" | "desc";
 export const V2ThreadItemsListParams__SortDirection = Schema.Literals(["asc", "desc"]).annotate({
   identifier: "V2ThreadItemsListParams__SortDirection",
@@ -10733,6 +10909,12 @@ export type V2ThreadItemsListResponse__McpToolCallError = { readonly message: st
 export const V2ThreadItemsListResponse__McpToolCallError = Schema.Struct({
   message: Schema.String,
 }).annotate({ identifier: "V2ThreadItemsListResponse__McpToolCallError" });
+
+export type V2ThreadItemsListResponse__McpAppDisplayMode = "inline" | "fullscreen";
+export const V2ThreadItemsListResponse__McpAppDisplayMode = Schema.Literals([
+  "inline",
+  "fullscreen",
+]).annotate({ identifier: "V2ThreadItemsListResponse__McpAppDisplayMode" });
 
 export type V2ThreadItemsListResponse__McpToolCallResult = {
   readonly _meta?: Schema.Json;
@@ -11226,6 +11408,12 @@ export type V2ThreadListResponse__McpToolCallError = { readonly message: string 
 export const V2ThreadListResponse__McpToolCallError = Schema.Struct({
   message: Schema.String,
 }).annotate({ identifier: "V2ThreadListResponse__McpToolCallError" });
+
+export type V2ThreadListResponse__McpAppDisplayMode = "inline" | "fullscreen";
+export const V2ThreadListResponse__McpAppDisplayMode = Schema.Literals([
+  "inline",
+  "fullscreen",
+]).annotate({ identifier: "V2ThreadListResponse__McpAppDisplayMode" });
 
 export type V2ThreadListResponse__McpToolCallResult = {
   readonly _meta?: Schema.Json;
@@ -11728,6 +11916,12 @@ export const V2ThreadMetadataUpdateResponse__McpToolCallError = Schema.Struct({
   message: Schema.String,
 }).annotate({ identifier: "V2ThreadMetadataUpdateResponse__McpToolCallError" });
 
+export type V2ThreadMetadataUpdateResponse__McpAppDisplayMode = "inline" | "fullscreen";
+export const V2ThreadMetadataUpdateResponse__McpAppDisplayMode = Schema.Literals([
+  "inline",
+  "fullscreen",
+]).annotate({ identifier: "V2ThreadMetadataUpdateResponse__McpAppDisplayMode" });
+
 export type V2ThreadMetadataUpdateResponse__McpToolCallResult = {
   readonly _meta?: Schema.Json;
   readonly content: ReadonlyArray<Schema.Json>;
@@ -12181,6 +12375,12 @@ export type V2ThreadQueueStartResponse__McpToolCallError = { readonly message: s
 export const V2ThreadQueueStartResponse__McpToolCallError = Schema.Struct({
   message: Schema.String,
 }).annotate({ identifier: "V2ThreadQueueStartResponse__McpToolCallError" });
+
+export type V2ThreadQueueStartResponse__McpAppDisplayMode = "inline" | "fullscreen";
+export const V2ThreadQueueStartResponse__McpAppDisplayMode = Schema.Literals([
+  "inline",
+  "fullscreen",
+]).annotate({ identifier: "V2ThreadQueueStartResponse__McpAppDisplayMode" });
 
 export type V2ThreadQueueStartResponse__McpToolCallResult = {
   readonly _meta?: Schema.Json;
@@ -12703,6 +12903,12 @@ export type V2ThreadReadResponse__McpToolCallError = { readonly message: string 
 export const V2ThreadReadResponse__McpToolCallError = Schema.Struct({
   message: Schema.String,
 }).annotate({ identifier: "V2ThreadReadResponse__McpToolCallError" });
+
+export type V2ThreadReadResponse__McpAppDisplayMode = "inline" | "fullscreen";
+export const V2ThreadReadResponse__McpAppDisplayMode = Schema.Literals([
+  "inline",
+  "fullscreen",
+]).annotate({ identifier: "V2ThreadReadResponse__McpAppDisplayMode" });
 
 export type V2ThreadReadResponse__McpToolCallResult = {
   readonly _meta?: Schema.Json;
@@ -13507,7 +13713,10 @@ export const V2ThreadResumeParams__Personality = Schema.Literals([
   "none",
   "friendly",
   "pragmatic",
-]).annotate({ identifier: "V2ThreadResumeParams__Personality" });
+]).annotate({
+  description: "Deprecated: `friendly` and `pragmatic` no longer select a style.",
+  identifier: "V2ThreadResumeParams__Personality",
+});
 
 export type V2ThreadResumeParams__AbsolutePathBuf = string;
 export const V2ThreadResumeParams__AbsolutePathBuf = Schema.String.annotate({
@@ -13588,6 +13797,22 @@ export const V2ThreadResumeResponse__ApprovalsReviewer = Schema.Literals([
     "Configures who approval requests are routed to for review. Examples include sandbox escapes, blocked network access, MCP approval prompts, and ARC escalations. Defaults to `user`. `auto_review` uses a carefully prompted subagent to gather relevant context and apply a risk-based decision framework before approving or denying the request. The legacy value `guardian_subagent` is accepted for compatibility.",
   identifier: "V2ThreadResumeResponse__ApprovalsReviewer",
 });
+
+export type V2ThreadResumeResponse__ModeKind = "plan" | "default";
+export const V2ThreadResumeResponse__ModeKind = Schema.Literals(["plan", "default"]).annotate({
+  description: "Initial collaboration mode to use when the TUI starts.",
+  identifier: "V2ThreadResumeResponse__ModeKind",
+});
+
+export type V2ThreadResumeResponse__ReasoningEffort = string;
+export const V2ThreadResumeResponse__ReasoningEffort = Schema.String.annotate({
+  description: "A non-empty reasoning effort value advertised by the model.",
+}).check(
+  Schema.isMinLength(1).annotate({
+    expected: "a value with a length of at least 1",
+    identifier: "V2ThreadResumeResponse__ReasoningEffort",
+  }),
+);
 
 export type V2ThreadResumeResponse__AbsolutePathBuf = string;
 export const V2ThreadResumeResponse__AbsolutePathBuf = Schema.String.annotate({
@@ -13772,6 +13997,12 @@ export const V2ThreadResumeResponse__McpToolCallError = Schema.Struct({
   message: Schema.String,
 }).annotate({ identifier: "V2ThreadResumeResponse__McpToolCallError" });
 
+export type V2ThreadResumeResponse__McpAppDisplayMode = "inline" | "fullscreen";
+export const V2ThreadResumeResponse__McpAppDisplayMode = Schema.Literals([
+  "inline",
+  "fullscreen",
+]).annotate({ identifier: "V2ThreadResumeResponse__McpAppDisplayMode" });
+
 export type V2ThreadResumeResponse__McpToolCallResult = {
   readonly _meta?: Schema.Json;
   readonly content: ReadonlyArray<Schema.Json>;
@@ -13842,16 +14073,6 @@ export const V2ThreadResumeResponse__CollabAgentStatus = Schema.Literals([
   "shutdown",
   "notFound",
 ]).annotate({ identifier: "V2ThreadResumeResponse__CollabAgentStatus" });
-
-export type V2ThreadResumeResponse__ReasoningEffort = string;
-export const V2ThreadResumeResponse__ReasoningEffort = Schema.String.annotate({
-  description: "A non-empty reasoning effort value advertised by the model.",
-}).check(
-  Schema.isMinLength(1).annotate({
-    expected: "a value with a length of at least 1",
-    identifier: "V2ThreadResumeResponse__ReasoningEffort",
-  }),
-);
 
 export type V2ThreadResumeResponse__CollabAgentToolCallStatus =
   | "inProgress"
@@ -14318,6 +14539,12 @@ export const V2ThreadRevertResponse__McpToolCallError = Schema.Struct({
   message: Schema.String,
 }).annotate({ identifier: "V2ThreadRevertResponse__McpToolCallError" });
 
+export type V2ThreadRevertResponse__McpAppDisplayMode = "inline" | "fullscreen";
+export const V2ThreadRevertResponse__McpAppDisplayMode = Schema.Literals([
+  "inline",
+  "fullscreen",
+]).annotate({ identifier: "V2ThreadRevertResponse__McpAppDisplayMode" });
+
 export type V2ThreadRevertResponse__McpToolCallResult = {
   readonly _meta?: Schema.Json;
   readonly content: ReadonlyArray<Schema.Json>;
@@ -14520,461 +14747,6 @@ export const V2ThreadRevertResponse__TurnStatus = Schema.Literals([
   "failed",
   "inProgress",
 ]).annotate({ identifier: "V2ThreadRevertResponse__TurnStatus" });
-
-export type V2ThreadRollbackResponse__AbsolutePathBuf = string;
-export const V2ThreadRollbackResponse__AbsolutePathBuf = Schema.String.annotate({
-  description:
-    "A path that is guaranteed to be absolute and normalized (though it is not guaranteed to be canonicalized or exist on the filesystem).\n\nIMPORTANT: When deserializing an `AbsolutePathBuf`, a base path must be set using [AbsolutePathBufGuard::new]. If no base path is set, the deserialization will fail unless the path being deserialized is already absolute.",
-  identifier: "V2ThreadRollbackResponse__AbsolutePathBuf",
-});
-
-export type V2ThreadRollbackResponse__LegacyAppPathString = string;
-export const V2ThreadRollbackResponse__LegacyAppPathString = Schema.String.annotate({
-  identifier: "V2ThreadRollbackResponse__LegacyAppPathString",
-});
-
-export type V2ThreadRollbackResponse__ThreadExtra = { readonly [x: string]: never };
-export const V2ThreadRollbackResponse__ThreadExtra = Schema.Record(
-  Schema.String,
-  Schema.Never,
-).annotate({
-  description: "Extra app-server data for a thread.",
-  identifier: "V2ThreadRollbackResponse__ThreadExtra",
-});
-
-export type V2ThreadRollbackResponse__GitInfo = {
-  readonly branch?: string | null;
-  readonly originUrl?: string | null;
-  readonly sha?: string | null;
-};
-export const V2ThreadRollbackResponse__GitInfo = Schema.Struct({
-  branch: Schema.optionalKey(Schema.Union([Schema.String, Schema.Null])),
-  originUrl: Schema.optionalKey(Schema.Union([Schema.String, Schema.Null])),
-  sha: Schema.optionalKey(Schema.Union([Schema.String, Schema.Null])),
-}).annotate({ identifier: "V2ThreadRollbackResponse__GitInfo" });
-
-export type V2ThreadRollbackResponse__ThreadHistoryMode = "legacy" | "paginated";
-export const V2ThreadRollbackResponse__ThreadHistoryMode = Schema.Literals([
-  "legacy",
-  "paginated",
-]).annotate({ identifier: "V2ThreadRollbackResponse__ThreadHistoryMode" });
-
-export type V2ThreadRollbackResponse__ReasoningEffort = string;
-export const V2ThreadRollbackResponse__ReasoningEffort = Schema.String.annotate({
-  description: "A non-empty reasoning effort value advertised by the model.",
-}).check(
-  Schema.isMinLength(1).annotate({
-    expected: "a value with a length of at least 1",
-    identifier: "V2ThreadRollbackResponse__ReasoningEffort",
-  }),
-);
-
-export type V2ThreadRollbackResponse__ThreadSectionAppearance = {
-  readonly color?: string | null;
-  readonly icon?: string | null;
-};
-export const V2ThreadRollbackResponse__ThreadSectionAppearance = Schema.Struct({
-  color: Schema.optionalKey(Schema.Union([Schema.String, Schema.Null])),
-  icon: Schema.optionalKey(Schema.Union([Schema.String, Schema.Null])),
-}).annotate({
-  description: "Extensible visual presentation for a custom thread section.",
-  identifier: "V2ThreadRollbackResponse__ThreadSectionAppearance",
-});
-
-export type V2ThreadRollbackResponse__AgentPath = string;
-export const V2ThreadRollbackResponse__AgentPath = Schema.String.annotate({
-  identifier: "V2ThreadRollbackResponse__AgentPath",
-});
-
-export type V2ThreadRollbackResponse__ThreadId = string;
-export const V2ThreadRollbackResponse__ThreadId = Schema.String.annotate({
-  identifier: "V2ThreadRollbackResponse__ThreadId",
-});
-
-export type V2ThreadRollbackResponse__ThreadActiveFlag = "waitingOnApproval" | "waitingOnUserInput";
-export const V2ThreadRollbackResponse__ThreadActiveFlag = Schema.Literals([
-  "waitingOnApproval",
-  "waitingOnUserInput",
-]).annotate({ identifier: "V2ThreadRollbackResponse__ThreadActiveFlag" });
-
-export type V2ThreadRollbackResponse__ThreadSource = string;
-export const V2ThreadRollbackResponse__ThreadSource = Schema.String.annotate({
-  identifier: "V2ThreadRollbackResponse__ThreadSource",
-});
-
-export type V2ThreadRollbackResponse__NonSteerableTurnKind = "review" | "compact";
-export const V2ThreadRollbackResponse__NonSteerableTurnKind = Schema.Literals([
-  "review",
-  "compact",
-]).annotate({ identifier: "V2ThreadRollbackResponse__NonSteerableTurnKind" });
-
-export type V2ThreadRollbackResponse__MisalignmentSteer = { readonly message: string };
-export const V2ThreadRollbackResponse__MisalignmentSteer = Schema.Struct({
-  message: Schema.String,
-}).annotate({ identifier: "V2ThreadRollbackResponse__MisalignmentSteer" });
-
-export type V2ThreadRollbackResponse__ByteRange = { readonly end: number; readonly start: number };
-export const V2ThreadRollbackResponse__ByteRange = Schema.Struct({
-  end: Schema.Number.annotate({ format: "uint" })
-    .check(Schema.isInt().annotate({ expected: "an integer" }))
-    .check(
-      Schema.isGreaterThanOrEqualTo(0).annotate({ expected: "a value greater than or equal to 0" }),
-    ),
-  start: Schema.Number.annotate({ format: "uint" })
-    .check(Schema.isInt().annotate({ expected: "an integer" }))
-    .check(
-      Schema.isGreaterThanOrEqualTo(0).annotate({ expected: "a value greater than or equal to 0" }),
-    ),
-}).annotate({ identifier: "V2ThreadRollbackResponse__ByteRange" });
-
-export type V2ThreadRollbackResponse__ImageDetail = "auto" | "low" | "high" | "original";
-export const V2ThreadRollbackResponse__ImageDetail = Schema.Literals([
-  "auto",
-  "low",
-  "high",
-  "original",
-]).annotate({ identifier: "V2ThreadRollbackResponse__ImageDetail" });
-
-export type V2ThreadRollbackResponse__HookPromptFragment = {
-  readonly hookRunId: string;
-  readonly text: string;
-};
-export const V2ThreadRollbackResponse__HookPromptFragment = Schema.Struct({
-  hookRunId: Schema.String,
-  text: Schema.String,
-}).annotate({ identifier: "V2ThreadRollbackResponse__HookPromptFragment" });
-
-export type V2ThreadRollbackResponse__AgentMessageDelivery = "async";
-export const V2ThreadRollbackResponse__AgentMessageDelivery = Schema.Literal("async").annotate({
-  identifier: "V2ThreadRollbackResponse__AgentMessageDelivery",
-});
-
-export type V2ThreadRollbackResponse__MemoryCitationEntry = {
-  readonly lineEnd: number;
-  readonly lineStart: number;
-  readonly note: string;
-  readonly path: string;
-};
-export const V2ThreadRollbackResponse__MemoryCitationEntry = Schema.Struct({
-  lineEnd: Schema.Number.annotate({ format: "uint32" })
-    .check(Schema.isInt().annotate({ expected: "an integer" }))
-    .check(
-      Schema.isGreaterThanOrEqualTo(0).annotate({ expected: "a value greater than or equal to 0" }),
-    ),
-  lineStart: Schema.Number.annotate({ format: "uint32" })
-    .check(Schema.isInt().annotate({ expected: "an integer" }))
-    .check(
-      Schema.isGreaterThanOrEqualTo(0).annotate({ expected: "a value greater than or equal to 0" }),
-    ),
-  note: Schema.String,
-  path: Schema.String,
-}).annotate({ identifier: "V2ThreadRollbackResponse__MemoryCitationEntry" });
-
-export type V2ThreadRollbackResponse__MessagePhase = "commentary" | "final_answer";
-export const V2ThreadRollbackResponse__MessagePhase = Schema.Union(
-  [
-    Schema.Literal("commentary").annotate({
-      description:
-        "Mid-turn assistant text (for example preamble/progress narration).\n\nAdditional tool calls or assistant output may follow before turn completion.",
-    }),
-    Schema.Literal("final_answer").annotate({
-      description: "The assistant's terminal answer text for the current turn.",
-    }),
-  ],
-  { mode: "oneOf" },
-).annotate({
-  description:
-    'Classifies an assistant message as interim commentary or final answer text.\n\nProviders do not emit this consistently, so callers must treat `None` as "phase unknown" and keep compatibility behavior for legacy models.',
-  identifier: "V2ThreadRollbackResponse__MessagePhase",
-});
-
-export type V2ThreadRollbackResponse__AsyncUserInputQuestion = {
-  readonly options?: ReadonlyArray<string> | null;
-  readonly title: string;
-};
-export const V2ThreadRollbackResponse__AsyncUserInputQuestion = Schema.Struct({
-  options: Schema.optionalKey(Schema.Union([Schema.Array(Schema.String), Schema.Null])),
-  title: Schema.String,
-}).annotate({ identifier: "V2ThreadRollbackResponse__AsyncUserInputQuestion" });
-
-export type V2ThreadRollbackResponse__CommandExecutionSource =
-  | "agent"
-  | "userShell"
-  | "unifiedExecStartup"
-  | "unifiedExecInteraction";
-export const V2ThreadRollbackResponse__CommandExecutionSource = Schema.Literals([
-  "agent",
-  "userShell",
-  "unifiedExecStartup",
-  "unifiedExecInteraction",
-]).annotate({ identifier: "V2ThreadRollbackResponse__CommandExecutionSource" });
-
-export type V2ThreadRollbackResponse__CommandExecutionStatus =
-  | "inProgress"
-  | "completed"
-  | "failed"
-  | "declined";
-export const V2ThreadRollbackResponse__CommandExecutionStatus = Schema.Literals([
-  "inProgress",
-  "completed",
-  "failed",
-  "declined",
-]).annotate({ identifier: "V2ThreadRollbackResponse__CommandExecutionStatus" });
-
-export type V2ThreadRollbackResponse__PatchChangeKind =
-  | { readonly type: "add" }
-  | { readonly type: "delete" }
-  | { readonly move_path?: string | null; readonly type: "update" };
-export const V2ThreadRollbackResponse__PatchChangeKind = Schema.Union(
-  [
-    Schema.Struct({
-      type: Schema.Literal("add").annotate({ title: "AddPatchChangeKindType" }),
-    }).annotate({ title: "AddPatchChangeKind" }),
-    Schema.Struct({
-      type: Schema.Literal("delete").annotate({ title: "DeletePatchChangeKindType" }),
-    }).annotate({ title: "DeletePatchChangeKind" }),
-    Schema.Struct({
-      move_path: Schema.optionalKey(Schema.Union([Schema.String, Schema.Null])),
-      type: Schema.Literal("update").annotate({ title: "UpdatePatchChangeKindType" }),
-    }).annotate({ title: "UpdatePatchChangeKind" }),
-  ],
-  { mode: "oneOf" },
-).annotate({ identifier: "V2ThreadRollbackResponse__PatchChangeKind" });
-
-export type V2ThreadRollbackResponse__PatchApplyStatus =
-  | "inProgress"
-  | "completed"
-  | "failed"
-  | "declined";
-export const V2ThreadRollbackResponse__PatchApplyStatus = Schema.Literals([
-  "inProgress",
-  "completed",
-  "failed",
-  "declined",
-]).annotate({ identifier: "V2ThreadRollbackResponse__PatchApplyStatus" });
-
-export type V2ThreadRollbackResponse__McpToolCallAppContext = {
-  readonly actionName?: string | null;
-  readonly appName?: string | null;
-  readonly connectorId: string;
-  readonly linkId?: string | null;
-  readonly resourceUri?: string | null;
-};
-export const V2ThreadRollbackResponse__McpToolCallAppContext = Schema.Struct({
-  actionName: Schema.optionalKey(Schema.Union([Schema.String, Schema.Null])),
-  appName: Schema.optionalKey(Schema.Union([Schema.String, Schema.Null])),
-  connectorId: Schema.String,
-  linkId: Schema.optionalKey(Schema.Union([Schema.String, Schema.Null])),
-  resourceUri: Schema.optionalKey(Schema.Union([Schema.String, Schema.Null])),
-}).annotate({ identifier: "V2ThreadRollbackResponse__McpToolCallAppContext" });
-
-export type V2ThreadRollbackResponse__McpToolCallError = { readonly message: string };
-export const V2ThreadRollbackResponse__McpToolCallError = Schema.Struct({
-  message: Schema.String,
-}).annotate({ identifier: "V2ThreadRollbackResponse__McpToolCallError" });
-
-export type V2ThreadRollbackResponse__McpToolCallResult = {
-  readonly _meta?: Schema.Json;
-  readonly content: ReadonlyArray<Schema.Json>;
-  readonly structuredContent?: Schema.Json;
-};
-export const V2ThreadRollbackResponse__McpToolCallResult = Schema.Struct({
-  _meta: Schema.optionalKey(Schema.Json.annotate({ expected: "JSON value" })),
-  content: Schema.Array(Schema.Json.annotate({ expected: "JSON value" })),
-  structuredContent: Schema.optionalKey(Schema.Json.annotate({ expected: "JSON value" })),
-}).annotate({ identifier: "V2ThreadRollbackResponse__McpToolCallResult" });
-
-export type V2ThreadRollbackResponse__McpToolCallStatus = "inProgress" | "completed" | "failed";
-export const V2ThreadRollbackResponse__McpToolCallStatus = Schema.Literals([
-  "inProgress",
-  "completed",
-  "failed",
-]).annotate({ identifier: "V2ThreadRollbackResponse__McpToolCallStatus" });
-
-export type V2ThreadRollbackResponse__DynamicToolCallOutputContentItem =
-  | { readonly text: string; readonly type: "inputText" }
-  | { readonly imageUrl: string; readonly type: "inputImage" }
-  | { readonly audioUrl: string; readonly type: "inputAudio" };
-export const V2ThreadRollbackResponse__DynamicToolCallOutputContentItem = Schema.Union(
-  [
-    Schema.Struct({
-      text: Schema.String,
-      type: Schema.Literal("inputText").annotate({
-        title: "InputTextDynamicToolCallOutputContentItemType",
-      }),
-    }).annotate({ title: "InputTextDynamicToolCallOutputContentItem" }),
-    Schema.Struct({
-      imageUrl: Schema.String,
-      type: Schema.Literal("inputImage").annotate({
-        title: "InputImageDynamicToolCallOutputContentItemType",
-      }),
-    }).annotate({ title: "InputImageDynamicToolCallOutputContentItem" }),
-    Schema.Struct({
-      audioUrl: Schema.String,
-      type: Schema.Literal("inputAudio").annotate({
-        title: "InputAudioDynamicToolCallOutputContentItemType",
-      }),
-    }).annotate({ title: "InputAudioDynamicToolCallOutputContentItem" }),
-  ],
-  { mode: "oneOf" },
-).annotate({ identifier: "V2ThreadRollbackResponse__DynamicToolCallOutputContentItem" });
-
-export type V2ThreadRollbackResponse__DynamicToolCallStatus = "inProgress" | "completed" | "failed";
-export const V2ThreadRollbackResponse__DynamicToolCallStatus = Schema.Literals([
-  "inProgress",
-  "completed",
-  "failed",
-]).annotate({ identifier: "V2ThreadRollbackResponse__DynamicToolCallStatus" });
-
-export type V2ThreadRollbackResponse__CollabAgentStatus =
-  | "pendingInit"
-  | "running"
-  | "interrupted"
-  | "completed"
-  | "errored"
-  | "shutdown"
-  | "notFound";
-export const V2ThreadRollbackResponse__CollabAgentStatus = Schema.Literals([
-  "pendingInit",
-  "running",
-  "interrupted",
-  "completed",
-  "errored",
-  "shutdown",
-  "notFound",
-]).annotate({ identifier: "V2ThreadRollbackResponse__CollabAgentStatus" });
-
-export type V2ThreadRollbackResponse__CollabAgentToolCallStatus =
-  | "inProgress"
-  | "completed"
-  | "failed"
-  | "interrupted";
-export const V2ThreadRollbackResponse__CollabAgentToolCallStatus = Schema.Literals([
-  "inProgress",
-  "completed",
-  "failed",
-  "interrupted",
-]).annotate({ identifier: "V2ThreadRollbackResponse__CollabAgentToolCallStatus" });
-
-export type V2ThreadRollbackResponse__CollabAgentTool =
-  | "spawnAgent"
-  | "sendInput"
-  | "resumeAgent"
-  | "wait"
-  | "closeAgent"
-  | "sendMessage"
-  | "followupTask"
-  | "interruptAgent"
-  | "listAgents";
-export const V2ThreadRollbackResponse__CollabAgentTool = Schema.Literals([
-  "spawnAgent",
-  "sendInput",
-  "resumeAgent",
-  "wait",
-  "closeAgent",
-  "sendMessage",
-  "followupTask",
-  "interruptAgent",
-  "listAgents",
-]).annotate({ identifier: "V2ThreadRollbackResponse__CollabAgentTool" });
-
-export type V2ThreadRollbackResponse__SubAgentActivityKind =
-  | "started"
-  | "interacted"
-  | "interrupted"
-  | "completed";
-export const V2ThreadRollbackResponse__SubAgentActivityKind = Schema.Literals([
-  "started",
-  "interacted",
-  "interrupted",
-  "completed",
-]).annotate({ identifier: "V2ThreadRollbackResponse__SubAgentActivityKind" });
-
-export type V2ThreadRollbackResponse__WebSearchAction =
-  | {
-      readonly queries?: ReadonlyArray<string> | null;
-      readonly query?: string | null;
-      readonly type: "search";
-    }
-  | { readonly type: "openPage"; readonly url?: string | null }
-  | { readonly pattern?: string | null; readonly type: "findInPage"; readonly url?: string | null }
-  | { readonly type: "other" };
-export const V2ThreadRollbackResponse__WebSearchAction = Schema.Union(
-  [
-    Schema.Struct({
-      queries: Schema.optionalKey(Schema.Union([Schema.Array(Schema.String), Schema.Null])),
-      query: Schema.optionalKey(Schema.Union([Schema.String, Schema.Null])),
-      type: Schema.Literal("search").annotate({ title: "SearchWebSearchActionType" }),
-    }).annotate({ title: "SearchWebSearchAction" }),
-    Schema.Struct({
-      type: Schema.Literal("openPage").annotate({ title: "OpenPageWebSearchActionType" }),
-      url: Schema.optionalKey(Schema.Union([Schema.String, Schema.Null])),
-    }).annotate({ title: "OpenPageWebSearchAction" }),
-    Schema.Struct({
-      pattern: Schema.optionalKey(Schema.Union([Schema.String, Schema.Null])),
-      type: Schema.Literal("findInPage").annotate({ title: "FindInPageWebSearchActionType" }),
-      url: Schema.optionalKey(Schema.Union([Schema.String, Schema.Null])),
-    }).annotate({ title: "FindInPageWebSearchAction" }),
-    Schema.Struct({
-      type: Schema.Literal("other").annotate({ title: "OtherWebSearchActionType" }),
-    }).annotate({ title: "OtherWebSearchAction" }),
-  ],
-  { mode: "oneOf" },
-).annotate({ identifier: "V2ThreadRollbackResponse__WebSearchAction" });
-
-export type V2ThreadRollbackResponse__ImageGenerationFailure = {
-  readonly limitId: string;
-  readonly resetsAt?: number | null;
-  readonly type: "usageLimitExceeded";
-};
-export const V2ThreadRollbackResponse__ImageGenerationFailure = Schema.Union(
-  [
-    Schema.Struct({
-      limitId: Schema.String,
-      resetsAt: Schema.optionalKey(
-        Schema.Union([
-          Schema.Number.annotate({ format: "int64" }).check(
-            Schema.isInt().annotate({ expected: "an integer" }),
-          ),
-          Schema.Null,
-        ]),
-      ),
-      type: Schema.Literal("usageLimitExceeded").annotate({
-        title: "UsageLimitExceededImageGenerationFailureType",
-      }),
-    }).annotate({ title: "UsageLimitExceededImageGenerationFailure" }),
-  ],
-  { mode: "oneOf" },
-).annotate({ identifier: "V2ThreadRollbackResponse__ImageGenerationFailure" });
-
-export type V2ThreadRollbackResponse__TurnItemsView = "notLoaded" | "summary" | "full";
-export const V2ThreadRollbackResponse__TurnItemsView = Schema.Union(
-  [
-    Schema.Literal("notLoaded").annotate({
-      description: "`items` was not loaded for this turn. The field is intentionally empty.",
-    }),
-    Schema.Literal("summary").annotate({
-      description: "`items` contains only a display summary for this turn.",
-    }),
-    Schema.Literal("full").annotate({
-      description:
-        "`items` contains every ThreadItem available from persisted app-server history for this turn.",
-    }),
-  ],
-  { mode: "oneOf" },
-).annotate({ identifier: "V2ThreadRollbackResponse__TurnItemsView" });
-
-export type V2ThreadRollbackResponse__TurnStatus =
-  | "completed"
-  | "interrupted"
-  | "failed"
-  | "inProgress";
-export const V2ThreadRollbackResponse__TurnStatus = Schema.Literals([
-  "completed",
-  "interrupted",
-  "failed",
-  "inProgress",
-]).annotate({ identifier: "V2ThreadRollbackResponse__TurnStatus" });
 
 export type V2ThreadSearchOccurrencesResponse__ThreadSearchTextRange = {
   readonly end: number;
@@ -15289,6 +15061,12 @@ export type V2ThreadSearchResponse__McpToolCallError = { readonly message: strin
 export const V2ThreadSearchResponse__McpToolCallError = Schema.Struct({
   message: Schema.String,
 }).annotate({ identifier: "V2ThreadSearchResponse__McpToolCallError" });
+
+export type V2ThreadSearchResponse__McpAppDisplayMode = "inline" | "fullscreen";
+export const V2ThreadSearchResponse__McpAppDisplayMode = Schema.Literals([
+  "inline",
+  "fullscreen",
+]).annotate({ identifier: "V2ThreadSearchResponse__McpAppDisplayMode" });
 
 export type V2ThreadSearchResponse__McpToolCallResult = {
   readonly _meta?: Schema.Json;
@@ -15663,7 +15441,10 @@ export const V2ThreadSettingsUpdatedNotification__Personality = Schema.Literals(
   "none",
   "friendly",
   "pragmatic",
-]).annotate({ identifier: "V2ThreadSettingsUpdatedNotification__Personality" });
+]).annotate({
+  description: "Deprecated: `friendly` and `pragmatic` no longer select a style.",
+  identifier: "V2ThreadSettingsUpdatedNotification__Personality",
+});
 
 export type V2ThreadSettingsUpdatedNotification__NetworkAccess = "restricted" | "enabled";
 export const V2ThreadSettingsUpdatedNotification__NetworkAccess = Schema.Literals([
@@ -15770,7 +15551,10 @@ export const V2ThreadSettingsUpdateParams__Personality = Schema.Literals([
   "none",
   "friendly",
   "pragmatic",
-]).annotate({ identifier: "V2ThreadSettingsUpdateParams__Personality" });
+]).annotate({
+  description: "Deprecated: `friendly` and `pragmatic` no longer select a style.",
+  identifier: "V2ThreadSettingsUpdateParams__Personality",
+});
 
 export type V2ThreadSettingsUpdateParams__NetworkAccess = "restricted" | "enabled";
 export const V2ThreadSettingsUpdateParams__NetworkAccess = Schema.Literals([
@@ -16058,6 +15842,12 @@ export type V2ThreadStartedNotification__McpToolCallError = { readonly message: 
 export const V2ThreadStartedNotification__McpToolCallError = Schema.Struct({
   message: Schema.String,
 }).annotate({ identifier: "V2ThreadStartedNotification__McpToolCallError" });
+
+export type V2ThreadStartedNotification__McpAppDisplayMode = "inline" | "fullscreen";
+export const V2ThreadStartedNotification__McpAppDisplayMode = Schema.Literals([
+  "inline",
+  "fullscreen",
+]).annotate({ identifier: "V2ThreadStartedNotification__McpAppDisplayMode" });
 
 export type V2ThreadStartedNotification__McpToolCallResult = {
   readonly _meta?: Schema.Json;
@@ -16357,7 +16147,10 @@ export const V2ThreadStartParams__Personality = Schema.Literals([
   "none",
   "friendly",
   "pragmatic",
-]).annotate({ identifier: "V2ThreadStartParams__Personality" });
+]).annotate({
+  description: "Deprecated: `friendly` and `pragmatic` no longer select a style.",
+  identifier: "V2ThreadStartParams__Personality",
+});
 
 export type V2ThreadStartParams__AbsolutePathBuf = string;
 export const V2ThreadStartParams__AbsolutePathBuf = Schema.String.annotate({
@@ -16747,6 +16540,12 @@ export const V2ThreadStartResponse__McpToolCallError = Schema.Struct({
   message: Schema.String,
 }).annotate({ identifier: "V2ThreadStartResponse__McpToolCallError" });
 
+export type V2ThreadStartResponse__McpAppDisplayMode = "inline" | "fullscreen";
+export const V2ThreadStartResponse__McpAppDisplayMode = Schema.Literals([
+  "inline",
+  "fullscreen",
+]).annotate({ identifier: "V2ThreadStartResponse__McpAppDisplayMode" });
+
 export type V2ThreadStartResponse__McpToolCallResult = {
   readonly _meta?: Schema.Json;
   readonly content: ReadonlyArray<Schema.Json>;
@@ -17125,6 +16924,12 @@ export type V2ThreadTimelineListResponse__McpToolCallError = { readonly message:
 export const V2ThreadTimelineListResponse__McpToolCallError = Schema.Struct({
   message: Schema.String,
 }).annotate({ identifier: "V2ThreadTimelineListResponse__McpToolCallError" });
+
+export type V2ThreadTimelineListResponse__McpAppDisplayMode = "inline" | "fullscreen";
+export const V2ThreadTimelineListResponse__McpAppDisplayMode = Schema.Literals([
+  "inline",
+  "fullscreen",
+]).annotate({ identifier: "V2ThreadTimelineListResponse__McpAppDisplayMode" });
 
 export type V2ThreadTimelineListResponse__McpToolCallResult = {
   readonly _meta?: Schema.Json;
@@ -17619,6 +17424,12 @@ export const V2ThreadTurnsListResponse__McpToolCallError = Schema.Struct({
   message: Schema.String,
 }).annotate({ identifier: "V2ThreadTurnsListResponse__McpToolCallError" });
 
+export type V2ThreadTurnsListResponse__McpAppDisplayMode = "inline" | "fullscreen";
+export const V2ThreadTurnsListResponse__McpAppDisplayMode = Schema.Literals([
+  "inline",
+  "fullscreen",
+]).annotate({ identifier: "V2ThreadTurnsListResponse__McpAppDisplayMode" });
+
 export type V2ThreadTurnsListResponse__McpToolCallResult = {
   readonly _meta?: Schema.Json;
   readonly content: ReadonlyArray<Schema.Json>;
@@ -18096,6 +17907,12 @@ export const V2ThreadUnarchiveResponse__McpToolCallError = Schema.Struct({
   message: Schema.String,
 }).annotate({ identifier: "V2ThreadUnarchiveResponse__McpToolCallError" });
 
+export type V2ThreadUnarchiveResponse__McpAppDisplayMode = "inline" | "fullscreen";
+export const V2ThreadUnarchiveResponse__McpAppDisplayMode = Schema.Literals([
+  "inline",
+  "fullscreen",
+]).annotate({ identifier: "V2ThreadUnarchiveResponse__McpAppDisplayMode" });
+
 export type V2ThreadUnarchiveResponse__McpToolCallResult = {
   readonly _meta?: Schema.Json;
   readonly content: ReadonlyArray<Schema.Json>;
@@ -18490,6 +18307,12 @@ export type V2TurnCompletedNotification__McpToolCallError = { readonly message: 
 export const V2TurnCompletedNotification__McpToolCallError = Schema.Struct({
   message: Schema.String,
 }).annotate({ identifier: "V2TurnCompletedNotification__McpToolCallError" });
+
+export type V2TurnCompletedNotification__McpAppDisplayMode = "inline" | "fullscreen";
+export const V2TurnCompletedNotification__McpAppDisplayMode = Schema.Literals([
+  "inline",
+  "fullscreen",
+]).annotate({ identifier: "V2TurnCompletedNotification__McpAppDisplayMode" });
 
 export type V2TurnCompletedNotification__McpToolCallResult = {
   readonly _meta?: Schema.Json;
@@ -18953,6 +18776,12 @@ export const V2TurnStartedNotification__McpToolCallError = Schema.Struct({
   message: Schema.String,
 }).annotate({ identifier: "V2TurnStartedNotification__McpToolCallError" });
 
+export type V2TurnStartedNotification__McpAppDisplayMode = "inline" | "fullscreen";
+export const V2TurnStartedNotification__McpAppDisplayMode = Schema.Literals([
+  "inline",
+  "fullscreen",
+]).annotate({ identifier: "V2TurnStartedNotification__McpAppDisplayMode" });
+
 export type V2TurnStartedNotification__McpToolCallResult = {
   readonly _meta?: Schema.Json;
   readonly content: ReadonlyArray<Schema.Json>;
@@ -19297,7 +19126,10 @@ export const V2TurnStartParams__Personality = Schema.Literals([
   "none",
   "friendly",
   "pragmatic",
-]).annotate({ identifier: "V2TurnStartParams__Personality" });
+]).annotate({
+  description: "Deprecated: `friendly` and `pragmatic` no longer select a style.",
+  identifier: "V2TurnStartParams__Personality",
+});
 
 export type V2TurnStartParams__AbsolutePathBuf = string;
 export const V2TurnStartParams__AbsolutePathBuf = Schema.String.annotate({
@@ -19499,6 +19331,12 @@ export type V2TurnStartResponse__McpToolCallError = { readonly message: string }
 export const V2TurnStartResponse__McpToolCallError = Schema.Struct({
   message: Schema.String,
 }).annotate({ identifier: "V2TurnStartResponse__McpToolCallError" });
+
+export type V2TurnStartResponse__McpAppDisplayMode = "inline" | "fullscreen";
+export const V2TurnStartResponse__McpAppDisplayMode = Schema.Literals([
+  "inline",
+  "fullscreen",
+]).annotate({ identifier: "V2TurnStartResponse__McpAppDisplayMode" });
 
 export type V2TurnStartResponse__McpToolCallResult = {
   readonly _meta?: Schema.Json;
@@ -20284,8 +20122,13 @@ export type ClientRequest__ContentItem =
   | { readonly text: string; readonly type: "input_text" }
   | {
       readonly detail?: ClientRequest__ImageDetail | null;
-      readonly image_url: string;
       readonly type: "input_image";
+      readonly image_url: string;
+    }
+  | {
+      readonly detail?: ClientRequest__ImageDetail | null;
+      readonly type: "input_image";
+      readonly file_id: string;
     }
   | { readonly audio_url: string; readonly type: "input_audio" }
   | { readonly text: string; readonly type: "output_text" };
@@ -20295,11 +20138,18 @@ export const ClientRequest__ContentItem = Schema.Union(
       text: Schema.String,
       type: Schema.Literal("input_text").annotate({ title: "InputTextContentItemType" }),
     }).annotate({ title: "InputTextContentItem" }),
-    Schema.Struct({
-      detail: Schema.optionalKey(Schema.Union([ClientRequest__ImageDetail, Schema.Null])),
-      image_url: Schema.String,
-      type: Schema.Literal("input_image").annotate({ title: "InputImageContentItemType" }),
-    }).annotate({ title: "InputImageContentItem" }),
+    Schema.Union([
+      Schema.Struct({
+        detail: Schema.optionalKey(Schema.Union([ClientRequest__ImageDetail, Schema.Null])),
+        type: Schema.Literal("input_image").annotate({ title: "InputImageContentItemType" }),
+        image_url: Schema.String,
+      }).annotate({ title: "ImageUrlContentItem" }),
+      Schema.Struct({
+        detail: Schema.optionalKey(Schema.Union([ClientRequest__ImageDetail, Schema.Null])),
+        type: Schema.Literal("input_image").annotate({ title: "InputImageContentItemType" }),
+        file_id: Schema.String,
+      }).annotate({ title: "FileIdContentItem" }),
+    ]),
     Schema.Struct({
       audio_url: Schema.String,
       type: Schema.Literal("input_audio").annotate({ title: "InputAudioContentItemType" }),
@@ -20316,8 +20166,13 @@ export type ClientRequest__FunctionCallOutputContentItem =
   | { readonly text: string; readonly type: "input_text" }
   | {
       readonly detail?: ClientRequest__ImageDetail | null;
-      readonly image_url: string;
       readonly type: "input_image";
+      readonly image_url: string;
+    }
+  | {
+      readonly detail?: ClientRequest__ImageDetail | null;
+      readonly type: "input_image";
+      readonly file_id: string;
     }
   | { readonly audio_url: string; readonly type: "input_audio" }
   | { readonly encrypted_content: string; readonly type: "encrypted_content" };
@@ -20329,13 +20184,22 @@ export const ClientRequest__FunctionCallOutputContentItem = Schema.Union(
         title: "InputTextFunctionCallOutputContentItemType",
       }),
     }).annotate({ title: "InputTextFunctionCallOutputContentItem" }),
-    Schema.Struct({
-      detail: Schema.optionalKey(Schema.Union([ClientRequest__ImageDetail, Schema.Null])),
-      image_url: Schema.String,
-      type: Schema.Literal("input_image").annotate({
-        title: "InputImageFunctionCallOutputContentItemType",
-      }),
-    }).annotate({ title: "InputImageFunctionCallOutputContentItem" }),
+    Schema.Union([
+      Schema.Struct({
+        detail: Schema.optionalKey(Schema.Union([ClientRequest__ImageDetail, Schema.Null])),
+        type: Schema.Literal("input_image").annotate({
+          title: "InputImageFunctionCallOutputContentItemType",
+        }),
+        image_url: Schema.String,
+      }).annotate({ title: "ImageUrlFunctionCallOutputContentItem" }),
+      Schema.Struct({
+        detail: Schema.optionalKey(Schema.Union([ClientRequest__ImageDetail, Schema.Null])),
+        type: Schema.Literal("input_image").annotate({
+          title: "InputImageFunctionCallOutputContentItemType",
+        }),
+        file_id: Schema.String,
+      }).annotate({ title: "FileIdFunctionCallOutputContentItem" }),
+    ]),
     Schema.Struct({
       audio_url: Schema.String,
       type: Schema.Literal("input_audio").annotate({
@@ -20450,51 +20314,6 @@ export const ClientRequest__ThreadTurnsListParams = Schema.Struct({
   ),
   threadId: Schema.String,
 }).annotate({ identifier: "ClientRequest__ThreadTurnsListParams" });
-
-export type ClientRequest__ThreadItemsListParams = {
-  readonly cursor?: string | null;
-  readonly limit?: number | null;
-  readonly sortDirection?: ClientRequest__SortDirection | null;
-  readonly threadId: string;
-  readonly turnId?: string | null;
-};
-export const ClientRequest__ThreadItemsListParams = Schema.Struct({
-  cursor: Schema.optionalKey(
-    Schema.Union([
-      Schema.String.annotate({
-        description: "Opaque cursor to pass to the next call to continue after the last item.",
-      }),
-      Schema.Null,
-    ]),
-  ),
-  limit: Schema.optionalKey(
-    Schema.Union([
-      Schema.Number.annotate({ description: "Optional item page size.", format: "uint32" })
-        .check(Schema.isInt().annotate({ expected: "an integer" }))
-        .check(
-          Schema.isGreaterThanOrEqualTo(0).annotate({
-            expected: "a value greater than or equal to 0",
-          }),
-        ),
-      Schema.Null,
-    ]),
-  ),
-  sortDirection: Schema.optionalKey(
-    Schema.Union([ClientRequest__SortDirection, Schema.Null]).annotate({
-      description: "Optional item pagination direction; defaults to ascending.",
-    }),
-  ),
-  threadId: Schema.String,
-  turnId: Schema.optionalKey(
-    Schema.Union([
-      Schema.String.annotate({
-        description:
-          "Optional turn id to filter by. When omitted, returns items across the thread.",
-      }),
-      Schema.Null,
-    ]),
-  ),
-}).annotate({ identifier: "ClientRequest__ThreadItemsListParams" });
 
 export type ClientRequest__ThreadGoalSetParams = {
   readonly objective?: string | null;
@@ -20947,6 +20766,15 @@ export const ClientRequest__ThreadSearchParams = Schema.Struct({
   ),
 }).annotate({ identifier: "ClientRequest__ThreadSearchParams" });
 
+export type ClientRequest__ThreadItemsListCursor = string | ClientRequest__ThreadItemsListAnchor;
+export const ClientRequest__ThreadItemsListCursor = Schema.Union([
+  Schema.String,
+  ClientRequest__ThreadItemsListAnchor,
+]).annotate({
+  description: "Starting position for an item-history page.",
+  identifier: "ClientRequest__ThreadItemsListCursor",
+});
+
 export type ClientRequest__PluginListParams = {
   readonly cwds?: ReadonlyArray<ClientRequest__AbsolutePathBuf> | null;
   readonly forceRefetch?: boolean;
@@ -21141,6 +20969,7 @@ export type ClientRequest__ListMcpServerStatusParams = {
   readonly cursor?: string | null;
   readonly detail?: ClientRequest__McpServerStatusDetail | null;
   readonly limit?: number | null;
+  readonly serverName?: string | null;
   readonly threadId?: string | null;
 };
 export const ClientRequest__ListMcpServerStatusParams = Schema.Struct({
@@ -21173,8 +21002,45 @@ export const ClientRequest__ListMcpServerStatusParams = Schema.Struct({
       Schema.Null,
     ]),
   ),
+  serverName: Schema.optionalKey(
+    Schema.Union([
+      Schema.String.annotate({
+        description:
+          "Limit discovery to one server. With a thread ID, reuse that thread's MCP connection.",
+      }),
+      Schema.Null,
+    ]),
+  ),
   threadId: Schema.optionalKey(Schema.Union([Schema.String, Schema.Null])),
 }).annotate({ identifier: "ClientRequest__ListMcpServerStatusParams" });
+
+export type ClientRequest__McpResourceReadParams = {
+  readonly connectorId?: string | null;
+  readonly originCallId?: string | null;
+  readonly server: string;
+  readonly target?: ClientRequest__McpResourceReadTarget | null;
+  readonly threadId?: string | null;
+  readonly uri: string;
+};
+export const ClientRequest__McpResourceReadParams = Schema.Struct({
+  connectorId: Schema.optionalKey(Schema.Union([Schema.String, Schema.Null])),
+  originCallId: Schema.optionalKey(
+    Schema.Union([
+      Schema.String.annotate({
+        description: "Originating MCP tool call used to select the resource's app.",
+      }),
+      Schema.Null,
+    ]),
+  ),
+  server: Schema.String,
+  target: Schema.optionalKey(
+    Schema.Union([ClientRequest__McpResourceReadTarget, Schema.Null]).annotate({
+      description: "Explicit hosted app/account. Omit to retain legacy resource discovery.",
+    }),
+  ),
+  threadId: Schema.optionalKey(Schema.Union([Schema.String, Schema.Null])),
+  uri: Schema.String,
+}).annotate({ identifier: "ClientRequest__McpResourceReadParams" });
 
 export type ClientRequest__WindowsSandboxSetupStartParams = {
   readonly cwd?: ClientRequest__AbsolutePathBuf | null;
@@ -22010,9 +21876,11 @@ export type ServerNotification__CodexErrorInfo =
   | "sessionBudgetExceeded"
   | "usageLimitExceeded"
   | "rateLimitExceeded"
+  | "flexUnavailable"
   | "serverOverloaded"
   | "cyberPolicy"
   | "misalignmentPolicyViolation"
+  | "tooManyDenials"
   | "internalServerError"
   | "unauthorized"
   | "badRequest"
@@ -22035,9 +21903,11 @@ export const ServerNotification__CodexErrorInfo = Schema.Union(
       "sessionBudgetExceeded",
       "usageLimitExceeded",
       "rateLimitExceeded",
+      "flexUnavailable",
       "serverOverloaded",
       "cyberPolicy",
       "misalignmentPolicyViolation",
+      "tooManyDenials",
       "internalServerError",
       "unauthorized",
       "badRequest",
@@ -22401,8 +22271,13 @@ export type ServerNotification__FunctionCallOutputContentItem =
   | { readonly text: string; readonly type: "input_text" }
   | {
       readonly detail?: ServerNotification__ImageDetail | null;
-      readonly image_url: string;
       readonly type: "input_image";
+      readonly image_url: string;
+    }
+  | {
+      readonly detail?: ServerNotification__ImageDetail | null;
+      readonly type: "input_image";
+      readonly file_id: string;
     }
   | { readonly audio_url: string; readonly type: "input_audio" }
   | { readonly encrypted_content: string; readonly type: "encrypted_content" };
@@ -22414,13 +22289,22 @@ export const ServerNotification__FunctionCallOutputContentItem = Schema.Union(
         title: "InputTextFunctionCallOutputContentItemType",
       }),
     }).annotate({ title: "InputTextFunctionCallOutputContentItem" }),
-    Schema.Struct({
-      detail: Schema.optionalKey(Schema.Union([ServerNotification__ImageDetail, Schema.Null])),
-      image_url: Schema.String,
-      type: Schema.Literal("input_image").annotate({
-        title: "InputImageFunctionCallOutputContentItemType",
-      }),
-    }).annotate({ title: "InputImageFunctionCallOutputContentItem" }),
+    Schema.Union([
+      Schema.Struct({
+        detail: Schema.optionalKey(Schema.Union([ServerNotification__ImageDetail, Schema.Null])),
+        type: Schema.Literal("input_image").annotate({
+          title: "InputImageFunctionCallOutputContentItemType",
+        }),
+        image_url: Schema.String,
+      }).annotate({ title: "ImageUrlFunctionCallOutputContentItem" }),
+      Schema.Struct({
+        detail: Schema.optionalKey(Schema.Union([ServerNotification__ImageDetail, Schema.Null])),
+        type: Schema.Literal("input_image").annotate({
+          title: "InputImageFunctionCallOutputContentItemType",
+        }),
+        file_id: Schema.String,
+      }).annotate({ title: "FileIdFunctionCallOutputContentItem" }),
+    ]),
     Schema.Struct({
       audio_url: Schema.String,
       type: Schema.Literal("input_audio").annotate({
@@ -22460,6 +22344,19 @@ export const ServerNotification__FileUpdateChange = Schema.Struct({
   kind: ServerNotification__PatchChangeKind,
   path: Schema.String,
 }).annotate({ identifier: "ServerNotification__FileUpdateChange" });
+
+export type ServerNotification__McpAppUi = {
+  readonly preferredModelDisplayMode: ServerNotification__McpAppDisplayMode;
+  readonly resourceUri: string;
+};
+export const ServerNotification__McpAppUi = Schema.Struct({
+  preferredModelDisplayMode: ServerNotification__McpAppDisplayMode,
+  resourceUri: Schema.String,
+}).annotate({
+  description:
+    "UI resource and display preference for model invocations, captured from the tool descriptor.",
+  identifier: "ServerNotification__McpAppUi",
+});
 
 export type ServerNotification__CollabAgentState = {
   readonly message?: string | null;
@@ -22726,6 +22623,26 @@ export const ServerNotification__AccountUpdatedNotification = Schema.Struct({
   authMode: Schema.optionalKey(Schema.Union([ServerNotification__AuthMode, Schema.Null])),
   planType: Schema.optionalKey(Schema.Union([ServerNotification__PlanType, Schema.Null])),
 }).annotate({ identifier: "ServerNotification__AccountUpdatedNotification" });
+
+export type ServerNotification__GatewayOAuthChangedNotification = {
+  readonly authUrl?: string | null;
+  readonly error?: string | null;
+  readonly providerId: string;
+  readonly status: ServerNotification__GatewayOAuthStatus;
+};
+export const ServerNotification__GatewayOAuthChangedNotification = Schema.Struct({
+  authUrl: Schema.optionalKey(
+    Schema.Union([
+      Schema.String.annotate({
+        description: "Authorization handoff, sent only to the connection that started login.",
+      }),
+      Schema.Null,
+    ]),
+  ),
+  error: Schema.optionalKey(Schema.Union([Schema.String, Schema.Null])),
+  providerId: Schema.String,
+  status: ServerNotification__GatewayOAuthStatus,
+}).annotate({ identifier: "ServerNotification__GatewayOAuthChangedNotification" });
 
 export type ServerNotification__RateLimitSnapshot = {
   readonly credits?: ServerNotification__CreditsSnapshot | null;
@@ -24202,9 +24119,11 @@ export type V2ErrorNotification__CodexErrorInfo =
   | "sessionBudgetExceeded"
   | "usageLimitExceeded"
   | "rateLimitExceeded"
+  | "flexUnavailable"
   | "serverOverloaded"
   | "cyberPolicy"
   | "misalignmentPolicyViolation"
+  | "tooManyDenials"
   | "internalServerError"
   | "unauthorized"
   | "badRequest"
@@ -24227,9 +24146,11 @@ export const V2ErrorNotification__CodexErrorInfo = Schema.Union(
       "sessionBudgetExceeded",
       "usageLimitExceeded",
       "rateLimitExceeded",
+      "flexUnavailable",
       "serverOverloaded",
       "cyberPolicy",
       "misalignmentPolicyViolation",
+      "tooManyDenials",
       "internalServerError",
       "unauthorized",
       "badRequest",
@@ -24868,6 +24789,17 @@ export const V2GetAccountResponse__Account = Schema.Union(
   { mode: "oneOf" },
 ).annotate({ identifier: "V2GetAccountResponse__Account" });
 
+export type V2GetAccountResponse__WorkspaceRouting = {
+  readonly accountRoutingOverride: V2GetAccountResponse__AccountRoutingOverride;
+  readonly backendOrigin: string;
+  readonly chatgptAccountId: string;
+};
+export const V2GetAccountResponse__WorkspaceRouting = Schema.Struct({
+  accountRoutingOverride: V2GetAccountResponse__AccountRoutingOverride,
+  backendOrigin: Schema.String,
+  chatgptAccountId: Schema.String,
+}).annotate({ identifier: "V2GetAccountResponse__WorkspaceRouting" });
+
 export type V2GetAccountTokenUsageResponse__ThreadUsage = {
   readonly estimatedUsageCreditsMicros: number;
   readonly estimatedUsageUsdMicros?: number | null;
@@ -25205,8 +25137,13 @@ export type V2ItemCompletedNotification__FunctionCallOutputContentItem =
   | { readonly text: string; readonly type: "input_text" }
   | {
       readonly detail?: V2ItemCompletedNotification__ImageDetail | null;
-      readonly image_url: string;
       readonly type: "input_image";
+      readonly image_url: string;
+    }
+  | {
+      readonly detail?: V2ItemCompletedNotification__ImageDetail | null;
+      readonly type: "input_image";
+      readonly file_id: string;
     }
   | { readonly audio_url: string; readonly type: "input_audio" }
   | { readonly encrypted_content: string; readonly type: "encrypted_content" };
@@ -25218,15 +25155,26 @@ export const V2ItemCompletedNotification__FunctionCallOutputContentItem = Schema
         title: "InputTextFunctionCallOutputContentItemType",
       }),
     }).annotate({ title: "InputTextFunctionCallOutputContentItem" }),
-    Schema.Struct({
-      detail: Schema.optionalKey(
-        Schema.Union([V2ItemCompletedNotification__ImageDetail, Schema.Null]),
-      ),
-      image_url: Schema.String,
-      type: Schema.Literal("input_image").annotate({
-        title: "InputImageFunctionCallOutputContentItemType",
-      }),
-    }).annotate({ title: "InputImageFunctionCallOutputContentItem" }),
+    Schema.Union([
+      Schema.Struct({
+        detail: Schema.optionalKey(
+          Schema.Union([V2ItemCompletedNotification__ImageDetail, Schema.Null]),
+        ),
+        type: Schema.Literal("input_image").annotate({
+          title: "InputImageFunctionCallOutputContentItemType",
+        }),
+        image_url: Schema.String,
+      }).annotate({ title: "ImageUrlFunctionCallOutputContentItem" }),
+      Schema.Struct({
+        detail: Schema.optionalKey(
+          Schema.Union([V2ItemCompletedNotification__ImageDetail, Schema.Null]),
+        ),
+        type: Schema.Literal("input_image").annotate({
+          title: "InputImageFunctionCallOutputContentItemType",
+        }),
+        file_id: Schema.String,
+      }).annotate({ title: "FileIdFunctionCallOutputContentItem" }),
+    ]),
     Schema.Struct({
       audio_url: Schema.String,
       type: Schema.Literal("input_audio").annotate({
@@ -25308,6 +25256,19 @@ export const V2ItemCompletedNotification__FileUpdateChange = Schema.Struct({
   kind: V2ItemCompletedNotification__PatchChangeKind,
   path: Schema.String,
 }).annotate({ identifier: "V2ItemCompletedNotification__FileUpdateChange" });
+
+export type V2ItemCompletedNotification__McpAppUi = {
+  readonly preferredModelDisplayMode: V2ItemCompletedNotification__McpAppDisplayMode;
+  readonly resourceUri: string;
+};
+export const V2ItemCompletedNotification__McpAppUi = Schema.Struct({
+  preferredModelDisplayMode: V2ItemCompletedNotification__McpAppDisplayMode,
+  resourceUri: Schema.String,
+}).annotate({
+  description:
+    "UI resource and display preference for model invocations, captured from the tool descriptor.",
+  identifier: "V2ItemCompletedNotification__McpAppUi",
+});
 
 export type V2ItemCompletedNotification__CollabAgentState = {
   readonly message?: string | null;
@@ -25503,8 +25464,13 @@ export type V2ItemStartedNotification__FunctionCallOutputContentItem =
   | { readonly text: string; readonly type: "input_text" }
   | {
       readonly detail?: V2ItemStartedNotification__ImageDetail | null;
-      readonly image_url: string;
       readonly type: "input_image";
+      readonly image_url: string;
+    }
+  | {
+      readonly detail?: V2ItemStartedNotification__ImageDetail | null;
+      readonly type: "input_image";
+      readonly file_id: string;
     }
   | { readonly audio_url: string; readonly type: "input_audio" }
   | { readonly encrypted_content: string; readonly type: "encrypted_content" };
@@ -25516,15 +25482,26 @@ export const V2ItemStartedNotification__FunctionCallOutputContentItem = Schema.U
         title: "InputTextFunctionCallOutputContentItemType",
       }),
     }).annotate({ title: "InputTextFunctionCallOutputContentItem" }),
-    Schema.Struct({
-      detail: Schema.optionalKey(
-        Schema.Union([V2ItemStartedNotification__ImageDetail, Schema.Null]),
-      ),
-      image_url: Schema.String,
-      type: Schema.Literal("input_image").annotate({
-        title: "InputImageFunctionCallOutputContentItemType",
-      }),
-    }).annotate({ title: "InputImageFunctionCallOutputContentItem" }),
+    Schema.Union([
+      Schema.Struct({
+        detail: Schema.optionalKey(
+          Schema.Union([V2ItemStartedNotification__ImageDetail, Schema.Null]),
+        ),
+        type: Schema.Literal("input_image").annotate({
+          title: "InputImageFunctionCallOutputContentItemType",
+        }),
+        image_url: Schema.String,
+      }).annotate({ title: "ImageUrlFunctionCallOutputContentItem" }),
+      Schema.Struct({
+        detail: Schema.optionalKey(
+          Schema.Union([V2ItemStartedNotification__ImageDetail, Schema.Null]),
+        ),
+        type: Schema.Literal("input_image").annotate({
+          title: "InputImageFunctionCallOutputContentItemType",
+        }),
+        file_id: Schema.String,
+      }).annotate({ title: "FileIdFunctionCallOutputContentItem" }),
+    ]),
     Schema.Struct({
       audio_url: Schema.String,
       type: Schema.Literal("input_audio").annotate({
@@ -25607,6 +25584,19 @@ export const V2ItemStartedNotification__FileUpdateChange = Schema.Struct({
   path: Schema.String,
 }).annotate({ identifier: "V2ItemStartedNotification__FileUpdateChange" });
 
+export type V2ItemStartedNotification__McpAppUi = {
+  readonly preferredModelDisplayMode: V2ItemStartedNotification__McpAppDisplayMode;
+  readonly resourceUri: string;
+};
+export const V2ItemStartedNotification__McpAppUi = Schema.Struct({
+  preferredModelDisplayMode: V2ItemStartedNotification__McpAppDisplayMode,
+  resourceUri: Schema.String,
+}).annotate({
+  description:
+    "UI resource and display preference for model invocations, captured from the tool descriptor.",
+  identifier: "V2ItemStartedNotification__McpAppUi",
+});
+
 export type V2ItemStartedNotification__CollabAgentState = {
   readonly message?: string | null;
   readonly status: V2ItemStartedNotification__CollabAgentStatus;
@@ -25618,17 +25608,28 @@ export const V2ItemStartedNotification__CollabAgentState = Schema.Struct({
 
 export type V2ListMcpServerStatusResponse__McpServerStatus = {
   readonly authStatus: V2ListMcpServerStatusResponse__McpAuthStatus;
+  readonly httpOrigin?: string | null;
   readonly name: string;
   readonly pluginId?: string | null;
   readonly resourceTemplates: ReadonlyArray<V2ListMcpServerStatusResponse__ResourceTemplate>;
   readonly resources: ReadonlyArray<V2ListMcpServerStatusResponse__Resource>;
   readonly runtimeStatus?: V2ListMcpServerStatusResponse__McpServerConnectionStatus | null;
+  readonly serverCapabilities?: Schema.Json;
   readonly serverInfo?: V2ListMcpServerStatusResponse__McpServerInfo | null;
   readonly tools: { readonly [x: string]: V2ListMcpServerStatusResponse__Tool };
   readonly toolsError?: string | null;
 };
 export const V2ListMcpServerStatusResponse__McpServerStatus = Schema.Struct({
   authStatus: V2ListMcpServerStatusResponse__McpAuthStatus,
+  httpOrigin: Schema.optionalKey(
+    Schema.Union([
+      Schema.String.annotate({
+        description:
+          "HTTP origin of the effective configured endpoint, including plugin servers. Excludes credentials, path, query, and fragment; null for non-HTTP transports.",
+      }),
+      Schema.Null,
+    ]),
+  ),
   name: Schema.String,
   pluginId: Schema.optionalKey(Schema.Union([Schema.String, Schema.Null])),
   resourceTemplates: Schema.Array(V2ListMcpServerStatusResponse__ResourceTemplate),
@@ -25637,6 +25638,12 @@ export const V2ListMcpServerStatusResponse__McpServerStatus = Schema.Struct({
     Schema.Union([V2ListMcpServerStatusResponse__McpServerConnectionStatus, Schema.Null]).annotate({
       description:
         "Current thread-runtime connection state; null when unavailable or the configuration changed.",
+    }),
+  ),
+  serverCapabilities: Schema.optionalKey(
+    Schema.Json.annotate({
+      expected: "JSON value",
+      description: "Capabilities advertised by the initialized MCP server; null when unavailable.",
     }),
   ),
   serverInfo: Schema.optionalKey(
@@ -25653,6 +25660,18 @@ export const V2ListMcpServerStatusResponse__McpServerStatus = Schema.Struct({
     ]),
   ),
 }).annotate({ identifier: "V2ListMcpServerStatusResponse__McpServerStatus" });
+
+export type V2ModelListResponse__ModelAccessPrograms = {
+  readonly cyber: ReadonlyArray<V2ModelListResponse__CyberAccessProgram>;
+};
+export const V2ModelListResponse__ModelAccessPrograms = Schema.Struct({
+  cyber: Schema.Array(V2ModelListResponse__CyberAccessProgram).annotate({
+    description: "Accepted explicit selections.",
+  }),
+}).annotate({
+  description: "Caller-specific explicit access programs advertised by model discovery.",
+  identifier: "V2ModelListResponse__ModelAccessPrograms",
+});
 
 export type V2ModelListResponse__ReasoningEffortOption = {
   readonly description: string;
@@ -26656,8 +26675,13 @@ export type V2RawResponseItemCompletedNotification__ContentItem =
   | { readonly text: string; readonly type: "input_text" }
   | {
       readonly detail?: V2RawResponseItemCompletedNotification__ImageDetail | null;
-      readonly image_url: string;
       readonly type: "input_image";
+      readonly image_url: string;
+    }
+  | {
+      readonly detail?: V2RawResponseItemCompletedNotification__ImageDetail | null;
+      readonly type: "input_image";
+      readonly file_id: string;
     }
   | { readonly audio_url: string; readonly type: "input_audio" }
   | { readonly text: string; readonly type: "output_text" };
@@ -26667,13 +26691,22 @@ export const V2RawResponseItemCompletedNotification__ContentItem = Schema.Union(
       text: Schema.String,
       type: Schema.Literal("input_text").annotate({ title: "InputTextContentItemType" }),
     }).annotate({ title: "InputTextContentItem" }),
-    Schema.Struct({
-      detail: Schema.optionalKey(
-        Schema.Union([V2RawResponseItemCompletedNotification__ImageDetail, Schema.Null]),
-      ),
-      image_url: Schema.String,
-      type: Schema.Literal("input_image").annotate({ title: "InputImageContentItemType" }),
-    }).annotate({ title: "InputImageContentItem" }),
+    Schema.Union([
+      Schema.Struct({
+        detail: Schema.optionalKey(
+          Schema.Union([V2RawResponseItemCompletedNotification__ImageDetail, Schema.Null]),
+        ),
+        type: Schema.Literal("input_image").annotate({ title: "InputImageContentItemType" }),
+        image_url: Schema.String,
+      }).annotate({ title: "ImageUrlContentItem" }),
+      Schema.Struct({
+        detail: Schema.optionalKey(
+          Schema.Union([V2RawResponseItemCompletedNotification__ImageDetail, Schema.Null]),
+        ),
+        type: Schema.Literal("input_image").annotate({ title: "InputImageContentItemType" }),
+        file_id: Schema.String,
+      }).annotate({ title: "FileIdContentItem" }),
+    ]),
     Schema.Struct({
       audio_url: Schema.String,
       type: Schema.Literal("input_audio").annotate({ title: "InputAudioContentItemType" }),
@@ -26690,8 +26723,13 @@ export type V2RawResponseItemCompletedNotification__FunctionCallOutputContentIte
   | { readonly text: string; readonly type: "input_text" }
   | {
       readonly detail?: V2RawResponseItemCompletedNotification__ImageDetail | null;
-      readonly image_url: string;
       readonly type: "input_image";
+      readonly image_url: string;
+    }
+  | {
+      readonly detail?: V2RawResponseItemCompletedNotification__ImageDetail | null;
+      readonly type: "input_image";
+      readonly file_id: string;
     }
   | { readonly audio_url: string; readonly type: "input_audio" }
   | { readonly encrypted_content: string; readonly type: "encrypted_content" };
@@ -26703,15 +26741,26 @@ export const V2RawResponseItemCompletedNotification__FunctionCallOutputContentIt
         title: "InputTextFunctionCallOutputContentItemType",
       }),
     }).annotate({ title: "InputTextFunctionCallOutputContentItem" }),
-    Schema.Struct({
-      detail: Schema.optionalKey(
-        Schema.Union([V2RawResponseItemCompletedNotification__ImageDetail, Schema.Null]),
-      ),
-      image_url: Schema.String,
-      type: Schema.Literal("input_image").annotate({
-        title: "InputImageFunctionCallOutputContentItemType",
-      }),
-    }).annotate({ title: "InputImageFunctionCallOutputContentItem" }),
+    Schema.Union([
+      Schema.Struct({
+        detail: Schema.optionalKey(
+          Schema.Union([V2RawResponseItemCompletedNotification__ImageDetail, Schema.Null]),
+        ),
+        type: Schema.Literal("input_image").annotate({
+          title: "InputImageFunctionCallOutputContentItemType",
+        }),
+        image_url: Schema.String,
+      }).annotate({ title: "ImageUrlFunctionCallOutputContentItem" }),
+      Schema.Struct({
+        detail: Schema.optionalKey(
+          Schema.Union([V2RawResponseItemCompletedNotification__ImageDetail, Schema.Null]),
+        ),
+        type: Schema.Literal("input_image").annotate({
+          title: "InputImageFunctionCallOutputContentItemType",
+        }),
+        file_id: Schema.String,
+      }).annotate({ title: "FileIdFunctionCallOutputContentItem" }),
+    ]),
     Schema.Struct({
       audio_url: Schema.String,
       type: Schema.Literal("input_audio").annotate({
@@ -26747,9 +26796,11 @@ export type V2ReviewStartResponse__CodexErrorInfo =
   | "sessionBudgetExceeded"
   | "usageLimitExceeded"
   | "rateLimitExceeded"
+  | "flexUnavailable"
   | "serverOverloaded"
   | "cyberPolicy"
   | "misalignmentPolicyViolation"
+  | "tooManyDenials"
   | "internalServerError"
   | "unauthorized"
   | "badRequest"
@@ -26772,9 +26823,11 @@ export const V2ReviewStartResponse__CodexErrorInfo = Schema.Union(
       "sessionBudgetExceeded",
       "usageLimitExceeded",
       "rateLimitExceeded",
+      "flexUnavailable",
       "serverOverloaded",
       "cyberPolicy",
       "misalignmentPolicyViolation",
+      "tooManyDenials",
       "internalServerError",
       "unauthorized",
       "badRequest",
@@ -26927,8 +26980,13 @@ export type V2ReviewStartResponse__FunctionCallOutputContentItem =
   | { readonly text: string; readonly type: "input_text" }
   | {
       readonly detail?: V2ReviewStartResponse__ImageDetail | null;
-      readonly image_url: string;
       readonly type: "input_image";
+      readonly image_url: string;
+    }
+  | {
+      readonly detail?: V2ReviewStartResponse__ImageDetail | null;
+      readonly type: "input_image";
+      readonly file_id: string;
     }
   | { readonly audio_url: string; readonly type: "input_audio" }
   | { readonly encrypted_content: string; readonly type: "encrypted_content" };
@@ -26940,13 +26998,22 @@ export const V2ReviewStartResponse__FunctionCallOutputContentItem = Schema.Union
         title: "InputTextFunctionCallOutputContentItemType",
       }),
     }).annotate({ title: "InputTextFunctionCallOutputContentItem" }),
-    Schema.Struct({
-      detail: Schema.optionalKey(Schema.Union([V2ReviewStartResponse__ImageDetail, Schema.Null])),
-      image_url: Schema.String,
-      type: Schema.Literal("input_image").annotate({
-        title: "InputImageFunctionCallOutputContentItemType",
-      }),
-    }).annotate({ title: "InputImageFunctionCallOutputContentItem" }),
+    Schema.Union([
+      Schema.Struct({
+        detail: Schema.optionalKey(Schema.Union([V2ReviewStartResponse__ImageDetail, Schema.Null])),
+        type: Schema.Literal("input_image").annotate({
+          title: "InputImageFunctionCallOutputContentItemType",
+        }),
+        image_url: Schema.String,
+      }).annotate({ title: "ImageUrlFunctionCallOutputContentItem" }),
+      Schema.Struct({
+        detail: Schema.optionalKey(Schema.Union([V2ReviewStartResponse__ImageDetail, Schema.Null])),
+        type: Schema.Literal("input_image").annotate({
+          title: "InputImageFunctionCallOutputContentItemType",
+        }),
+        file_id: Schema.String,
+      }).annotate({ title: "FileIdFunctionCallOutputContentItem" }),
+    ]),
     Schema.Struct({
       audio_url: Schema.String,
       type: Schema.Literal("input_audio").annotate({
@@ -27028,6 +27095,19 @@ export const V2ReviewStartResponse__FileUpdateChange = Schema.Struct({
   kind: V2ReviewStartResponse__PatchChangeKind,
   path: Schema.String,
 }).annotate({ identifier: "V2ReviewStartResponse__FileUpdateChange" });
+
+export type V2ReviewStartResponse__McpAppUi = {
+  readonly preferredModelDisplayMode: V2ReviewStartResponse__McpAppDisplayMode;
+  readonly resourceUri: string;
+};
+export const V2ReviewStartResponse__McpAppUi = Schema.Struct({
+  preferredModelDisplayMode: V2ReviewStartResponse__McpAppDisplayMode,
+  resourceUri: Schema.String,
+}).annotate({
+  description:
+    "UI resource and display preference for model invocations, captured from the tool descriptor.",
+  identifier: "V2ReviewStartResponse__McpAppUi",
+});
 
 export type V2ReviewStartResponse__CollabAgentState = {
   readonly message?: string | null;
@@ -27316,9 +27396,11 @@ export type V2ThreadForkResponse__CodexErrorInfo =
   | "sessionBudgetExceeded"
   | "usageLimitExceeded"
   | "rateLimitExceeded"
+  | "flexUnavailable"
   | "serverOverloaded"
   | "cyberPolicy"
   | "misalignmentPolicyViolation"
+  | "tooManyDenials"
   | "internalServerError"
   | "unauthorized"
   | "badRequest"
@@ -27341,9 +27423,11 @@ export const V2ThreadForkResponse__CodexErrorInfo = Schema.Union(
       "sessionBudgetExceeded",
       "usageLimitExceeded",
       "rateLimitExceeded",
+      "flexUnavailable",
       "serverOverloaded",
       "cyberPolicy",
       "misalignmentPolicyViolation",
+      "tooManyDenials",
       "internalServerError",
       "unauthorized",
       "badRequest",
@@ -27496,8 +27580,13 @@ export type V2ThreadForkResponse__FunctionCallOutputContentItem =
   | { readonly text: string; readonly type: "input_text" }
   | {
       readonly detail?: V2ThreadForkResponse__ImageDetail | null;
-      readonly image_url: string;
       readonly type: "input_image";
+      readonly image_url: string;
+    }
+  | {
+      readonly detail?: V2ThreadForkResponse__ImageDetail | null;
+      readonly type: "input_image";
+      readonly file_id: string;
     }
   | { readonly audio_url: string; readonly type: "input_audio" }
   | { readonly encrypted_content: string; readonly type: "encrypted_content" };
@@ -27509,13 +27598,22 @@ export const V2ThreadForkResponse__FunctionCallOutputContentItem = Schema.Union(
         title: "InputTextFunctionCallOutputContentItemType",
       }),
     }).annotate({ title: "InputTextFunctionCallOutputContentItem" }),
-    Schema.Struct({
-      detail: Schema.optionalKey(Schema.Union([V2ThreadForkResponse__ImageDetail, Schema.Null])),
-      image_url: Schema.String,
-      type: Schema.Literal("input_image").annotate({
-        title: "InputImageFunctionCallOutputContentItemType",
-      }),
-    }).annotate({ title: "InputImageFunctionCallOutputContentItem" }),
+    Schema.Union([
+      Schema.Struct({
+        detail: Schema.optionalKey(Schema.Union([V2ThreadForkResponse__ImageDetail, Schema.Null])),
+        type: Schema.Literal("input_image").annotate({
+          title: "InputImageFunctionCallOutputContentItemType",
+        }),
+        image_url: Schema.String,
+      }).annotate({ title: "ImageUrlFunctionCallOutputContentItem" }),
+      Schema.Struct({
+        detail: Schema.optionalKey(Schema.Union([V2ThreadForkResponse__ImageDetail, Schema.Null])),
+        type: Schema.Literal("input_image").annotate({
+          title: "InputImageFunctionCallOutputContentItemType",
+        }),
+        file_id: Schema.String,
+      }).annotate({ title: "FileIdFunctionCallOutputContentItem" }),
+    ]),
     Schema.Struct({
       audio_url: Schema.String,
       type: Schema.Literal("input_audio").annotate({
@@ -27555,6 +27653,19 @@ export const V2ThreadForkResponse__FileUpdateChange = Schema.Struct({
   kind: V2ThreadForkResponse__PatchChangeKind,
   path: Schema.String,
 }).annotate({ identifier: "V2ThreadForkResponse__FileUpdateChange" });
+
+export type V2ThreadForkResponse__McpAppUi = {
+  readonly preferredModelDisplayMode: V2ThreadForkResponse__McpAppDisplayMode;
+  readonly resourceUri: string;
+};
+export const V2ThreadForkResponse__McpAppUi = Schema.Struct({
+  preferredModelDisplayMode: V2ThreadForkResponse__McpAppDisplayMode,
+  resourceUri: Schema.String,
+}).annotate({
+  description:
+    "UI resource and display preference for model invocations, captured from the tool descriptor.",
+  identifier: "V2ThreadForkResponse__McpAppUi",
+});
 
 export type V2ThreadForkResponse__CollabAgentState = {
   readonly message?: string | null;
@@ -27673,6 +27784,17 @@ export const V2ThreadGoalUpdatedNotification__ThreadGoal = Schema.Struct({
   ),
 }).annotate({ identifier: "V2ThreadGoalUpdatedNotification__ThreadGoal" });
 
+export type V2ThreadItemsListParams__ThreadItemsListCursor =
+  | string
+  | V2ThreadItemsListParams__ThreadItemsListAnchor;
+export const V2ThreadItemsListParams__ThreadItemsListCursor = Schema.Union([
+  Schema.String,
+  V2ThreadItemsListParams__ThreadItemsListAnchor,
+]).annotate({
+  description: "Starting position for an item-history page.",
+  identifier: "V2ThreadItemsListParams__ThreadItemsListCursor",
+});
+
 export type V2ThreadItemsListResponse__TextElement = {
   readonly byteRange: V2ThreadItemsListResponse__ByteRange;
   readonly placeholder?: string | null;
@@ -27695,8 +27817,13 @@ export type V2ThreadItemsListResponse__FunctionCallOutputContentItem =
   | { readonly text: string; readonly type: "input_text" }
   | {
       readonly detail?: V2ThreadItemsListResponse__ImageDetail | null;
-      readonly image_url: string;
       readonly type: "input_image";
+      readonly image_url: string;
+    }
+  | {
+      readonly detail?: V2ThreadItemsListResponse__ImageDetail | null;
+      readonly type: "input_image";
+      readonly file_id: string;
     }
   | { readonly audio_url: string; readonly type: "input_audio" }
   | { readonly encrypted_content: string; readonly type: "encrypted_content" };
@@ -27708,15 +27835,26 @@ export const V2ThreadItemsListResponse__FunctionCallOutputContentItem = Schema.U
         title: "InputTextFunctionCallOutputContentItemType",
       }),
     }).annotate({ title: "InputTextFunctionCallOutputContentItem" }),
-    Schema.Struct({
-      detail: Schema.optionalKey(
-        Schema.Union([V2ThreadItemsListResponse__ImageDetail, Schema.Null]),
-      ),
-      image_url: Schema.String,
-      type: Schema.Literal("input_image").annotate({
-        title: "InputImageFunctionCallOutputContentItemType",
-      }),
-    }).annotate({ title: "InputImageFunctionCallOutputContentItem" }),
+    Schema.Union([
+      Schema.Struct({
+        detail: Schema.optionalKey(
+          Schema.Union([V2ThreadItemsListResponse__ImageDetail, Schema.Null]),
+        ),
+        type: Schema.Literal("input_image").annotate({
+          title: "InputImageFunctionCallOutputContentItemType",
+        }),
+        image_url: Schema.String,
+      }).annotate({ title: "ImageUrlFunctionCallOutputContentItem" }),
+      Schema.Struct({
+        detail: Schema.optionalKey(
+          Schema.Union([V2ThreadItemsListResponse__ImageDetail, Schema.Null]),
+        ),
+        type: Schema.Literal("input_image").annotate({
+          title: "InputImageFunctionCallOutputContentItemType",
+        }),
+        file_id: Schema.String,
+      }).annotate({ title: "FileIdFunctionCallOutputContentItem" }),
+    ]),
     Schema.Struct({
       audio_url: Schema.String,
       type: Schema.Literal("input_audio").annotate({
@@ -27798,6 +27936,19 @@ export const V2ThreadItemsListResponse__FileUpdateChange = Schema.Struct({
   kind: V2ThreadItemsListResponse__PatchChangeKind,
   path: Schema.String,
 }).annotate({ identifier: "V2ThreadItemsListResponse__FileUpdateChange" });
+
+export type V2ThreadItemsListResponse__McpAppUi = {
+  readonly preferredModelDisplayMode: V2ThreadItemsListResponse__McpAppDisplayMode;
+  readonly resourceUri: string;
+};
+export const V2ThreadItemsListResponse__McpAppUi = Schema.Struct({
+  preferredModelDisplayMode: V2ThreadItemsListResponse__McpAppDisplayMode,
+  resourceUri: Schema.String,
+}).annotate({
+  description:
+    "UI resource and display preference for model invocations, captured from the tool descriptor.",
+  identifier: "V2ThreadItemsListResponse__McpAppUi",
+});
 
 export type V2ThreadItemsListResponse__CollabAgentState = {
   readonly message?: string | null;
@@ -27951,9 +28102,11 @@ export type V2ThreadListResponse__CodexErrorInfo =
   | "sessionBudgetExceeded"
   | "usageLimitExceeded"
   | "rateLimitExceeded"
+  | "flexUnavailable"
   | "serverOverloaded"
   | "cyberPolicy"
   | "misalignmentPolicyViolation"
+  | "tooManyDenials"
   | "internalServerError"
   | "unauthorized"
   | "badRequest"
@@ -27976,9 +28129,11 @@ export const V2ThreadListResponse__CodexErrorInfo = Schema.Union(
       "sessionBudgetExceeded",
       "usageLimitExceeded",
       "rateLimitExceeded",
+      "flexUnavailable",
       "serverOverloaded",
       "cyberPolicy",
       "misalignmentPolicyViolation",
+      "tooManyDenials",
       "internalServerError",
       "unauthorized",
       "badRequest",
@@ -28131,8 +28286,13 @@ export type V2ThreadListResponse__FunctionCallOutputContentItem =
   | { readonly text: string; readonly type: "input_text" }
   | {
       readonly detail?: V2ThreadListResponse__ImageDetail | null;
-      readonly image_url: string;
       readonly type: "input_image";
+      readonly image_url: string;
+    }
+  | {
+      readonly detail?: V2ThreadListResponse__ImageDetail | null;
+      readonly type: "input_image";
+      readonly file_id: string;
     }
   | { readonly audio_url: string; readonly type: "input_audio" }
   | { readonly encrypted_content: string; readonly type: "encrypted_content" };
@@ -28144,13 +28304,22 @@ export const V2ThreadListResponse__FunctionCallOutputContentItem = Schema.Union(
         title: "InputTextFunctionCallOutputContentItemType",
       }),
     }).annotate({ title: "InputTextFunctionCallOutputContentItem" }),
-    Schema.Struct({
-      detail: Schema.optionalKey(Schema.Union([V2ThreadListResponse__ImageDetail, Schema.Null])),
-      image_url: Schema.String,
-      type: Schema.Literal("input_image").annotate({
-        title: "InputImageFunctionCallOutputContentItemType",
-      }),
-    }).annotate({ title: "InputImageFunctionCallOutputContentItem" }),
+    Schema.Union([
+      Schema.Struct({
+        detail: Schema.optionalKey(Schema.Union([V2ThreadListResponse__ImageDetail, Schema.Null])),
+        type: Schema.Literal("input_image").annotate({
+          title: "InputImageFunctionCallOutputContentItemType",
+        }),
+        image_url: Schema.String,
+      }).annotate({ title: "ImageUrlFunctionCallOutputContentItem" }),
+      Schema.Struct({
+        detail: Schema.optionalKey(Schema.Union([V2ThreadListResponse__ImageDetail, Schema.Null])),
+        type: Schema.Literal("input_image").annotate({
+          title: "InputImageFunctionCallOutputContentItemType",
+        }),
+        file_id: Schema.String,
+      }).annotate({ title: "FileIdFunctionCallOutputContentItem" }),
+    ]),
     Schema.Struct({
       audio_url: Schema.String,
       type: Schema.Literal("input_audio").annotate({
@@ -28190,6 +28359,19 @@ export const V2ThreadListResponse__FileUpdateChange = Schema.Struct({
   kind: V2ThreadListResponse__PatchChangeKind,
   path: Schema.String,
 }).annotate({ identifier: "V2ThreadListResponse__FileUpdateChange" });
+
+export type V2ThreadListResponse__McpAppUi = {
+  readonly preferredModelDisplayMode: V2ThreadListResponse__McpAppDisplayMode;
+  readonly resourceUri: string;
+};
+export const V2ThreadListResponse__McpAppUi = Schema.Struct({
+  preferredModelDisplayMode: V2ThreadListResponse__McpAppDisplayMode,
+  resourceUri: Schema.String,
+}).annotate({
+  description:
+    "UI resource and display preference for model invocations, captured from the tool descriptor.",
+  identifier: "V2ThreadListResponse__McpAppUi",
+});
 
 export type V2ThreadListResponse__CollabAgentState = {
   readonly message?: string | null;
@@ -28343,9 +28525,11 @@ export type V2ThreadMetadataUpdateResponse__CodexErrorInfo =
   | "sessionBudgetExceeded"
   | "usageLimitExceeded"
   | "rateLimitExceeded"
+  | "flexUnavailable"
   | "serverOverloaded"
   | "cyberPolicy"
   | "misalignmentPolicyViolation"
+  | "tooManyDenials"
   | "internalServerError"
   | "unauthorized"
   | "badRequest"
@@ -28368,9 +28552,11 @@ export const V2ThreadMetadataUpdateResponse__CodexErrorInfo = Schema.Union(
       "sessionBudgetExceeded",
       "usageLimitExceeded",
       "rateLimitExceeded",
+      "flexUnavailable",
       "serverOverloaded",
       "cyberPolicy",
       "misalignmentPolicyViolation",
+      "tooManyDenials",
       "internalServerError",
       "unauthorized",
       "badRequest",
@@ -28524,8 +28710,13 @@ export type V2ThreadMetadataUpdateResponse__FunctionCallOutputContentItem =
   | { readonly text: string; readonly type: "input_text" }
   | {
       readonly detail?: V2ThreadMetadataUpdateResponse__ImageDetail | null;
-      readonly image_url: string;
       readonly type: "input_image";
+      readonly image_url: string;
+    }
+  | {
+      readonly detail?: V2ThreadMetadataUpdateResponse__ImageDetail | null;
+      readonly type: "input_image";
+      readonly file_id: string;
     }
   | { readonly audio_url: string; readonly type: "input_audio" }
   | { readonly encrypted_content: string; readonly type: "encrypted_content" };
@@ -28537,15 +28728,26 @@ export const V2ThreadMetadataUpdateResponse__FunctionCallOutputContentItem = Sch
         title: "InputTextFunctionCallOutputContentItemType",
       }),
     }).annotate({ title: "InputTextFunctionCallOutputContentItem" }),
-    Schema.Struct({
-      detail: Schema.optionalKey(
-        Schema.Union([V2ThreadMetadataUpdateResponse__ImageDetail, Schema.Null]),
-      ),
-      image_url: Schema.String,
-      type: Schema.Literal("input_image").annotate({
-        title: "InputImageFunctionCallOutputContentItemType",
-      }),
-    }).annotate({ title: "InputImageFunctionCallOutputContentItem" }),
+    Schema.Union([
+      Schema.Struct({
+        detail: Schema.optionalKey(
+          Schema.Union([V2ThreadMetadataUpdateResponse__ImageDetail, Schema.Null]),
+        ),
+        type: Schema.Literal("input_image").annotate({
+          title: "InputImageFunctionCallOutputContentItemType",
+        }),
+        image_url: Schema.String,
+      }).annotate({ title: "ImageUrlFunctionCallOutputContentItem" }),
+      Schema.Struct({
+        detail: Schema.optionalKey(
+          Schema.Union([V2ThreadMetadataUpdateResponse__ImageDetail, Schema.Null]),
+        ),
+        type: Schema.Literal("input_image").annotate({
+          title: "InputImageFunctionCallOutputContentItemType",
+        }),
+        file_id: Schema.String,
+      }).annotate({ title: "FileIdFunctionCallOutputContentItem" }),
+    ]),
     Schema.Struct({
       audio_url: Schema.String,
       type: Schema.Literal("input_audio").annotate({
@@ -28585,6 +28787,19 @@ export const V2ThreadMetadataUpdateResponse__FileUpdateChange = Schema.Struct({
   kind: V2ThreadMetadataUpdateResponse__PatchChangeKind,
   path: Schema.String,
 }).annotate({ identifier: "V2ThreadMetadataUpdateResponse__FileUpdateChange" });
+
+export type V2ThreadMetadataUpdateResponse__McpAppUi = {
+  readonly preferredModelDisplayMode: V2ThreadMetadataUpdateResponse__McpAppDisplayMode;
+  readonly resourceUri: string;
+};
+export const V2ThreadMetadataUpdateResponse__McpAppUi = Schema.Struct({
+  preferredModelDisplayMode: V2ThreadMetadataUpdateResponse__McpAppDisplayMode,
+  resourceUri: Schema.String,
+}).annotate({
+  description:
+    "UI resource and display preference for model invocations, captured from the tool descriptor.",
+  identifier: "V2ThreadMetadataUpdateResponse__McpAppUi",
+});
 
 export type V2ThreadMetadataUpdateResponse__CollabAgentState = {
   readonly message?: string | null;
@@ -28654,9 +28869,11 @@ export type V2ThreadQueueStartResponse__CodexErrorInfo =
   | "sessionBudgetExceeded"
   | "usageLimitExceeded"
   | "rateLimitExceeded"
+  | "flexUnavailable"
   | "serverOverloaded"
   | "cyberPolicy"
   | "misalignmentPolicyViolation"
+  | "tooManyDenials"
   | "internalServerError"
   | "unauthorized"
   | "badRequest"
@@ -28679,9 +28896,11 @@ export const V2ThreadQueueStartResponse__CodexErrorInfo = Schema.Union(
       "sessionBudgetExceeded",
       "usageLimitExceeded",
       "rateLimitExceeded",
+      "flexUnavailable",
       "serverOverloaded",
       "cyberPolicy",
       "misalignmentPolicyViolation",
+      "tooManyDenials",
       "internalServerError",
       "unauthorized",
       "badRequest",
@@ -28835,8 +29054,13 @@ export type V2ThreadQueueStartResponse__FunctionCallOutputContentItem =
   | { readonly text: string; readonly type: "input_text" }
   | {
       readonly detail?: V2ThreadQueueStartResponse__ImageDetail | null;
-      readonly image_url: string;
       readonly type: "input_image";
+      readonly image_url: string;
+    }
+  | {
+      readonly detail?: V2ThreadQueueStartResponse__ImageDetail | null;
+      readonly type: "input_image";
+      readonly file_id: string;
     }
   | { readonly audio_url: string; readonly type: "input_audio" }
   | { readonly encrypted_content: string; readonly type: "encrypted_content" };
@@ -28848,15 +29072,26 @@ export const V2ThreadQueueStartResponse__FunctionCallOutputContentItem = Schema.
         title: "InputTextFunctionCallOutputContentItemType",
       }),
     }).annotate({ title: "InputTextFunctionCallOutputContentItem" }),
-    Schema.Struct({
-      detail: Schema.optionalKey(
-        Schema.Union([V2ThreadQueueStartResponse__ImageDetail, Schema.Null]),
-      ),
-      image_url: Schema.String,
-      type: Schema.Literal("input_image").annotate({
-        title: "InputImageFunctionCallOutputContentItemType",
-      }),
-    }).annotate({ title: "InputImageFunctionCallOutputContentItem" }),
+    Schema.Union([
+      Schema.Struct({
+        detail: Schema.optionalKey(
+          Schema.Union([V2ThreadQueueStartResponse__ImageDetail, Schema.Null]),
+        ),
+        type: Schema.Literal("input_image").annotate({
+          title: "InputImageFunctionCallOutputContentItemType",
+        }),
+        image_url: Schema.String,
+      }).annotate({ title: "ImageUrlFunctionCallOutputContentItem" }),
+      Schema.Struct({
+        detail: Schema.optionalKey(
+          Schema.Union([V2ThreadQueueStartResponse__ImageDetail, Schema.Null]),
+        ),
+        type: Schema.Literal("input_image").annotate({
+          title: "InputImageFunctionCallOutputContentItemType",
+        }),
+        file_id: Schema.String,
+      }).annotate({ title: "FileIdFunctionCallOutputContentItem" }),
+    ]),
     Schema.Struct({
       audio_url: Schema.String,
       type: Schema.Literal("input_audio").annotate({
@@ -28938,6 +29173,19 @@ export const V2ThreadQueueStartResponse__FileUpdateChange = Schema.Struct({
   kind: V2ThreadQueueStartResponse__PatchChangeKind,
   path: Schema.String,
 }).annotate({ identifier: "V2ThreadQueueStartResponse__FileUpdateChange" });
+
+export type V2ThreadQueueStartResponse__McpAppUi = {
+  readonly preferredModelDisplayMode: V2ThreadQueueStartResponse__McpAppDisplayMode;
+  readonly resourceUri: string;
+};
+export const V2ThreadQueueStartResponse__McpAppUi = Schema.Struct({
+  preferredModelDisplayMode: V2ThreadQueueStartResponse__McpAppDisplayMode,
+  resourceUri: Schema.String,
+}).annotate({
+  description:
+    "UI resource and display preference for model invocations, captured from the tool descriptor.",
+  identifier: "V2ThreadQueueStartResponse__McpAppUi",
+});
 
 export type V2ThreadQueueStartResponse__CollabAgentState = {
   readonly message?: string | null;
@@ -29128,9 +29376,11 @@ export type V2ThreadReadResponse__CodexErrorInfo =
   | "sessionBudgetExceeded"
   | "usageLimitExceeded"
   | "rateLimitExceeded"
+  | "flexUnavailable"
   | "serverOverloaded"
   | "cyberPolicy"
   | "misalignmentPolicyViolation"
+  | "tooManyDenials"
   | "internalServerError"
   | "unauthorized"
   | "badRequest"
@@ -29153,9 +29403,11 @@ export const V2ThreadReadResponse__CodexErrorInfo = Schema.Union(
       "sessionBudgetExceeded",
       "usageLimitExceeded",
       "rateLimitExceeded",
+      "flexUnavailable",
       "serverOverloaded",
       "cyberPolicy",
       "misalignmentPolicyViolation",
+      "tooManyDenials",
       "internalServerError",
       "unauthorized",
       "badRequest",
@@ -29308,8 +29560,13 @@ export type V2ThreadReadResponse__FunctionCallOutputContentItem =
   | { readonly text: string; readonly type: "input_text" }
   | {
       readonly detail?: V2ThreadReadResponse__ImageDetail | null;
-      readonly image_url: string;
       readonly type: "input_image";
+      readonly image_url: string;
+    }
+  | {
+      readonly detail?: V2ThreadReadResponse__ImageDetail | null;
+      readonly type: "input_image";
+      readonly file_id: string;
     }
   | { readonly audio_url: string; readonly type: "input_audio" }
   | { readonly encrypted_content: string; readonly type: "encrypted_content" };
@@ -29321,13 +29578,22 @@ export const V2ThreadReadResponse__FunctionCallOutputContentItem = Schema.Union(
         title: "InputTextFunctionCallOutputContentItemType",
       }),
     }).annotate({ title: "InputTextFunctionCallOutputContentItem" }),
-    Schema.Struct({
-      detail: Schema.optionalKey(Schema.Union([V2ThreadReadResponse__ImageDetail, Schema.Null])),
-      image_url: Schema.String,
-      type: Schema.Literal("input_image").annotate({
-        title: "InputImageFunctionCallOutputContentItemType",
-      }),
-    }).annotate({ title: "InputImageFunctionCallOutputContentItem" }),
+    Schema.Union([
+      Schema.Struct({
+        detail: Schema.optionalKey(Schema.Union([V2ThreadReadResponse__ImageDetail, Schema.Null])),
+        type: Schema.Literal("input_image").annotate({
+          title: "InputImageFunctionCallOutputContentItemType",
+        }),
+        image_url: Schema.String,
+      }).annotate({ title: "ImageUrlFunctionCallOutputContentItem" }),
+      Schema.Struct({
+        detail: Schema.optionalKey(Schema.Union([V2ThreadReadResponse__ImageDetail, Schema.Null])),
+        type: Schema.Literal("input_image").annotate({
+          title: "InputImageFunctionCallOutputContentItemType",
+        }),
+        file_id: Schema.String,
+      }).annotate({ title: "FileIdFunctionCallOutputContentItem" }),
+    ]),
     Schema.Struct({
       audio_url: Schema.String,
       type: Schema.Literal("input_audio").annotate({
@@ -29367,6 +29633,19 @@ export const V2ThreadReadResponse__FileUpdateChange = Schema.Struct({
   kind: V2ThreadReadResponse__PatchChangeKind,
   path: Schema.String,
 }).annotate({ identifier: "V2ThreadReadResponse__FileUpdateChange" });
+
+export type V2ThreadReadResponse__McpAppUi = {
+  readonly preferredModelDisplayMode: V2ThreadReadResponse__McpAppDisplayMode;
+  readonly resourceUri: string;
+};
+export const V2ThreadReadResponse__McpAppUi = Schema.Struct({
+  preferredModelDisplayMode: V2ThreadReadResponse__McpAppDisplayMode,
+  resourceUri: Schema.String,
+}).annotate({
+  description:
+    "UI resource and display preference for model invocations, captured from the tool descriptor.",
+  identifier: "V2ThreadReadResponse__McpAppUi",
+});
 
 export type V2ThreadReadResponse__CollabAgentState = {
   readonly message?: string | null;
@@ -29564,8 +29843,13 @@ export type V2ThreadResumeParams__ContentItem =
   | { readonly text: string; readonly type: "input_text" }
   | {
       readonly detail?: V2ThreadResumeParams__ImageDetail | null;
-      readonly image_url: string;
       readonly type: "input_image";
+      readonly image_url: string;
+    }
+  | {
+      readonly detail?: V2ThreadResumeParams__ImageDetail | null;
+      readonly type: "input_image";
+      readonly file_id: string;
     }
   | { readonly audio_url: string; readonly type: "input_audio" }
   | { readonly text: string; readonly type: "output_text" };
@@ -29575,11 +29859,18 @@ export const V2ThreadResumeParams__ContentItem = Schema.Union(
       text: Schema.String,
       type: Schema.Literal("input_text").annotate({ title: "InputTextContentItemType" }),
     }).annotate({ title: "InputTextContentItem" }),
-    Schema.Struct({
-      detail: Schema.optionalKey(Schema.Union([V2ThreadResumeParams__ImageDetail, Schema.Null])),
-      image_url: Schema.String,
-      type: Schema.Literal("input_image").annotate({ title: "InputImageContentItemType" }),
-    }).annotate({ title: "InputImageContentItem" }),
+    Schema.Union([
+      Schema.Struct({
+        detail: Schema.optionalKey(Schema.Union([V2ThreadResumeParams__ImageDetail, Schema.Null])),
+        type: Schema.Literal("input_image").annotate({ title: "InputImageContentItemType" }),
+        image_url: Schema.String,
+      }).annotate({ title: "ImageUrlContentItem" }),
+      Schema.Struct({
+        detail: Schema.optionalKey(Schema.Union([V2ThreadResumeParams__ImageDetail, Schema.Null])),
+        type: Schema.Literal("input_image").annotate({ title: "InputImageContentItemType" }),
+        file_id: Schema.String,
+      }).annotate({ title: "FileIdContentItem" }),
+    ]),
     Schema.Struct({
       audio_url: Schema.String,
       type: Schema.Literal("input_audio").annotate({ title: "InputAudioContentItemType" }),
@@ -29596,8 +29887,13 @@ export type V2ThreadResumeParams__FunctionCallOutputContentItem =
   | { readonly text: string; readonly type: "input_text" }
   | {
       readonly detail?: V2ThreadResumeParams__ImageDetail | null;
-      readonly image_url: string;
       readonly type: "input_image";
+      readonly image_url: string;
+    }
+  | {
+      readonly detail?: V2ThreadResumeParams__ImageDetail | null;
+      readonly type: "input_image";
+      readonly file_id: string;
     }
   | { readonly audio_url: string; readonly type: "input_audio" }
   | { readonly encrypted_content: string; readonly type: "encrypted_content" };
@@ -29609,13 +29905,22 @@ export const V2ThreadResumeParams__FunctionCallOutputContentItem = Schema.Union(
         title: "InputTextFunctionCallOutputContentItemType",
       }),
     }).annotate({ title: "InputTextFunctionCallOutputContentItem" }),
-    Schema.Struct({
-      detail: Schema.optionalKey(Schema.Union([V2ThreadResumeParams__ImageDetail, Schema.Null])),
-      image_url: Schema.String,
-      type: Schema.Literal("input_image").annotate({
-        title: "InputImageFunctionCallOutputContentItemType",
-      }),
-    }).annotate({ title: "InputImageFunctionCallOutputContentItem" }),
+    Schema.Union([
+      Schema.Struct({
+        detail: Schema.optionalKey(Schema.Union([V2ThreadResumeParams__ImageDetail, Schema.Null])),
+        type: Schema.Literal("input_image").annotate({
+          title: "InputImageFunctionCallOutputContentItemType",
+        }),
+        image_url: Schema.String,
+      }).annotate({ title: "ImageUrlFunctionCallOutputContentItem" }),
+      Schema.Struct({
+        detail: Schema.optionalKey(Schema.Union([V2ThreadResumeParams__ImageDetail, Schema.Null])),
+        type: Schema.Literal("input_image").annotate({
+          title: "InputImageFunctionCallOutputContentItemType",
+        }),
+        file_id: Schema.String,
+      }).annotate({ title: "FileIdFunctionCallOutputContentItem" }),
+    ]),
     Schema.Struct({
       audio_url: Schema.String,
       type: Schema.Literal("input_audio").annotate({
@@ -29676,14 +29981,32 @@ export const V2ThreadResumeParams__ThreadResumeInitialTurnsPageParams = Schema.S
   ),
 }).annotate({ identifier: "V2ThreadResumeParams__ThreadResumeInitialTurnsPageParams" });
 
+export type V2ThreadResumeResponse__Settings = {
+  readonly developer_instructions?: string | null;
+  readonly model: string;
+  readonly reasoning_effort?: V2ThreadResumeResponse__ReasoningEffort | null;
+};
+export const V2ThreadResumeResponse__Settings = Schema.Struct({
+  developer_instructions: Schema.optionalKey(Schema.Union([Schema.String, Schema.Null])),
+  model: Schema.String,
+  reasoning_effort: Schema.optionalKey(
+    Schema.Union([V2ThreadResumeResponse__ReasoningEffort, Schema.Null]),
+  ),
+}).annotate({
+  description: "Settings for a collaboration mode.",
+  identifier: "V2ThreadResumeResponse__Settings",
+});
+
 export type V2ThreadResumeResponse__CodexErrorInfo =
   | "contextWindowExceeded"
   | "sessionBudgetExceeded"
   | "usageLimitExceeded"
   | "rateLimitExceeded"
+  | "flexUnavailable"
   | "serverOverloaded"
   | "cyberPolicy"
   | "misalignmentPolicyViolation"
+  | "tooManyDenials"
   | "internalServerError"
   | "unauthorized"
   | "badRequest"
@@ -29706,9 +30029,11 @@ export const V2ThreadResumeResponse__CodexErrorInfo = Schema.Union(
       "sessionBudgetExceeded",
       "usageLimitExceeded",
       "rateLimitExceeded",
+      "flexUnavailable",
       "serverOverloaded",
       "cyberPolicy",
       "misalignmentPolicyViolation",
+      "tooManyDenials",
       "internalServerError",
       "unauthorized",
       "badRequest",
@@ -29861,8 +30186,13 @@ export type V2ThreadResumeResponse__FunctionCallOutputContentItem =
   | { readonly text: string; readonly type: "input_text" }
   | {
       readonly detail?: V2ThreadResumeResponse__ImageDetail | null;
-      readonly image_url: string;
       readonly type: "input_image";
+      readonly image_url: string;
+    }
+  | {
+      readonly detail?: V2ThreadResumeResponse__ImageDetail | null;
+      readonly type: "input_image";
+      readonly file_id: string;
     }
   | { readonly audio_url: string; readonly type: "input_audio" }
   | { readonly encrypted_content: string; readonly type: "encrypted_content" };
@@ -29874,13 +30204,26 @@ export const V2ThreadResumeResponse__FunctionCallOutputContentItem = Schema.Unio
         title: "InputTextFunctionCallOutputContentItemType",
       }),
     }).annotate({ title: "InputTextFunctionCallOutputContentItem" }),
-    Schema.Struct({
-      detail: Schema.optionalKey(Schema.Union([V2ThreadResumeResponse__ImageDetail, Schema.Null])),
-      image_url: Schema.String,
-      type: Schema.Literal("input_image").annotate({
-        title: "InputImageFunctionCallOutputContentItemType",
-      }),
-    }).annotate({ title: "InputImageFunctionCallOutputContentItem" }),
+    Schema.Union([
+      Schema.Struct({
+        detail: Schema.optionalKey(
+          Schema.Union([V2ThreadResumeResponse__ImageDetail, Schema.Null]),
+        ),
+        type: Schema.Literal("input_image").annotate({
+          title: "InputImageFunctionCallOutputContentItemType",
+        }),
+        image_url: Schema.String,
+      }).annotate({ title: "ImageUrlFunctionCallOutputContentItem" }),
+      Schema.Struct({
+        detail: Schema.optionalKey(
+          Schema.Union([V2ThreadResumeResponse__ImageDetail, Schema.Null]),
+        ),
+        type: Schema.Literal("input_image").annotate({
+          title: "InputImageFunctionCallOutputContentItemType",
+        }),
+        file_id: Schema.String,
+      }).annotate({ title: "FileIdFunctionCallOutputContentItem" }),
+    ]),
     Schema.Struct({
       audio_url: Schema.String,
       type: Schema.Literal("input_audio").annotate({
@@ -29976,6 +30319,19 @@ export const V2ThreadResumeResponse__FileUpdateChange = Schema.Struct({
   kind: V2ThreadResumeResponse__PatchChangeKind,
   path: Schema.String,
 }).annotate({ identifier: "V2ThreadResumeResponse__FileUpdateChange" });
+
+export type V2ThreadResumeResponse__McpAppUi = {
+  readonly preferredModelDisplayMode: V2ThreadResumeResponse__McpAppDisplayMode;
+  readonly resourceUri: string;
+};
+export const V2ThreadResumeResponse__McpAppUi = Schema.Struct({
+  preferredModelDisplayMode: V2ThreadResumeResponse__McpAppDisplayMode,
+  resourceUri: Schema.String,
+}).annotate({
+  description:
+    "UI resource and display preference for model invocations, captured from the tool descriptor.",
+  identifier: "V2ThreadResumeResponse__McpAppUi",
+});
 
 export type V2ThreadResumeResponse__CollabAgentState = {
   readonly message?: string | null;
@@ -30260,9 +30616,11 @@ export type V2ThreadRevertResponse__CodexErrorInfo =
   | "sessionBudgetExceeded"
   | "usageLimitExceeded"
   | "rateLimitExceeded"
+  | "flexUnavailable"
   | "serverOverloaded"
   | "cyberPolicy"
   | "misalignmentPolicyViolation"
+  | "tooManyDenials"
   | "internalServerError"
   | "unauthorized"
   | "badRequest"
@@ -30285,9 +30643,11 @@ export const V2ThreadRevertResponse__CodexErrorInfo = Schema.Union(
       "sessionBudgetExceeded",
       "usageLimitExceeded",
       "rateLimitExceeded",
+      "flexUnavailable",
       "serverOverloaded",
       "cyberPolicy",
       "misalignmentPolicyViolation",
+      "tooManyDenials",
       "internalServerError",
       "unauthorized",
       "badRequest",
@@ -30440,8 +30800,13 @@ export type V2ThreadRevertResponse__FunctionCallOutputContentItem =
   | { readonly text: string; readonly type: "input_text" }
   | {
       readonly detail?: V2ThreadRevertResponse__ImageDetail | null;
-      readonly image_url: string;
       readonly type: "input_image";
+      readonly image_url: string;
+    }
+  | {
+      readonly detail?: V2ThreadRevertResponse__ImageDetail | null;
+      readonly type: "input_image";
+      readonly file_id: string;
     }
   | { readonly audio_url: string; readonly type: "input_audio" }
   | { readonly encrypted_content: string; readonly type: "encrypted_content" };
@@ -30453,13 +30818,26 @@ export const V2ThreadRevertResponse__FunctionCallOutputContentItem = Schema.Unio
         title: "InputTextFunctionCallOutputContentItemType",
       }),
     }).annotate({ title: "InputTextFunctionCallOutputContentItem" }),
-    Schema.Struct({
-      detail: Schema.optionalKey(Schema.Union([V2ThreadRevertResponse__ImageDetail, Schema.Null])),
-      image_url: Schema.String,
-      type: Schema.Literal("input_image").annotate({
-        title: "InputImageFunctionCallOutputContentItemType",
-      }),
-    }).annotate({ title: "InputImageFunctionCallOutputContentItem" }),
+    Schema.Union([
+      Schema.Struct({
+        detail: Schema.optionalKey(
+          Schema.Union([V2ThreadRevertResponse__ImageDetail, Schema.Null]),
+        ),
+        type: Schema.Literal("input_image").annotate({
+          title: "InputImageFunctionCallOutputContentItemType",
+        }),
+        image_url: Schema.String,
+      }).annotate({ title: "ImageUrlFunctionCallOutputContentItem" }),
+      Schema.Struct({
+        detail: Schema.optionalKey(
+          Schema.Union([V2ThreadRevertResponse__ImageDetail, Schema.Null]),
+        ),
+        type: Schema.Literal("input_image").annotate({
+          title: "InputImageFunctionCallOutputContentItemType",
+        }),
+        file_id: Schema.String,
+      }).annotate({ title: "FileIdFunctionCallOutputContentItem" }),
+    ]),
     Schema.Struct({
       audio_url: Schema.String,
       type: Schema.Literal("input_audio").annotate({
@@ -30500,6 +30878,19 @@ export const V2ThreadRevertResponse__FileUpdateChange = Schema.Struct({
   path: Schema.String,
 }).annotate({ identifier: "V2ThreadRevertResponse__FileUpdateChange" });
 
+export type V2ThreadRevertResponse__McpAppUi = {
+  readonly preferredModelDisplayMode: V2ThreadRevertResponse__McpAppDisplayMode;
+  readonly resourceUri: string;
+};
+export const V2ThreadRevertResponse__McpAppUi = Schema.Struct({
+  preferredModelDisplayMode: V2ThreadRevertResponse__McpAppDisplayMode,
+  resourceUri: Schema.String,
+}).annotate({
+  description:
+    "UI resource and display preference for model invocations, captured from the tool descriptor.",
+  identifier: "V2ThreadRevertResponse__McpAppUi",
+});
+
 export type V2ThreadRevertResponse__CollabAgentState = {
   readonly message?: string | null;
   readonly status: V2ThreadRevertResponse__CollabAgentStatus;
@@ -30508,400 +30899,6 @@ export const V2ThreadRevertResponse__CollabAgentState = Schema.Struct({
   message: Schema.optionalKey(Schema.Union([Schema.String, Schema.Null])),
   status: V2ThreadRevertResponse__CollabAgentStatus,
 }).annotate({ identifier: "V2ThreadRevertResponse__CollabAgentState" });
-
-export type V2ThreadRollbackResponse__ThreadEnvironment = {
-  readonly cwd: V2ThreadRollbackResponse__LegacyAppPathString;
-  readonly environmentId: string;
-  readonly runtimeWorkspaceRoots: ReadonlyArray<V2ThreadRollbackResponse__LegacyAppPathString>;
-};
-export const V2ThreadRollbackResponse__ThreadEnvironment = Schema.Struct({
-  cwd: V2ThreadRollbackResponse__LegacyAppPathString,
-  environmentId: Schema.String,
-  runtimeWorkspaceRoots: Schema.Array(V2ThreadRollbackResponse__LegacyAppPathString),
-}).annotate({
-  description: "An environment selected by a loaded thread, independent of connection status.",
-  identifier: "V2ThreadRollbackResponse__ThreadEnvironment",
-});
-
-export type V2ThreadRollbackResponse__CommandAction =
-  | {
-      readonly command: string;
-      readonly name: string;
-      readonly path: V2ThreadRollbackResponse__LegacyAppPathString;
-      readonly type: "read";
-    }
-  | { readonly command: string; readonly path?: string | null; readonly type: "listFiles" }
-  | {
-      readonly command: string;
-      readonly path?: string | null;
-      readonly query?: string | null;
-      readonly type: "search";
-    }
-  | { readonly command: string; readonly type: "unknown" };
-export const V2ThreadRollbackResponse__CommandAction = Schema.Union(
-  [
-    Schema.Struct({
-      command: Schema.String,
-      name: Schema.String,
-      path: V2ThreadRollbackResponse__LegacyAppPathString,
-      type: Schema.Literal("read").annotate({ title: "ReadCommandActionType" }),
-    }).annotate({ title: "ReadCommandAction" }),
-    Schema.Struct({
-      command: Schema.String,
-      path: Schema.optionalKey(Schema.Union([Schema.String, Schema.Null])),
-      type: Schema.Literal("listFiles").annotate({ title: "ListFilesCommandActionType" }),
-    }).annotate({ title: "ListFilesCommandAction" }),
-    Schema.Struct({
-      command: Schema.String,
-      path: Schema.optionalKey(Schema.Union([Schema.String, Schema.Null])),
-      query: Schema.optionalKey(Schema.Union([Schema.String, Schema.Null])),
-      type: Schema.Literal("search").annotate({ title: "SearchCommandActionType" }),
-    }).annotate({ title: "SearchCommandAction" }),
-    Schema.Struct({
-      command: Schema.String,
-      type: Schema.Literal("unknown").annotate({ title: "UnknownCommandActionType" }),
-    }).annotate({ title: "UnknownCommandAction" }),
-  ],
-  { mode: "oneOf" },
-).annotate({ identifier: "V2ThreadRollbackResponse__CommandAction" });
-
-export type V2ThreadRollbackResponse__ThreadSection = {
-  readonly appearance?: V2ThreadRollbackResponse__ThreadSectionAppearance | null;
-  readonly id: string;
-  readonly name: string;
-};
-export const V2ThreadRollbackResponse__ThreadSection = Schema.Struct({
-  appearance: Schema.optionalKey(
-    Schema.Union([V2ThreadRollbackResponse__ThreadSectionAppearance, Schema.Null]).annotate({
-      description: "Optional appearance synchronized across clients.",
-    }),
-  ),
-  id: Schema.String.annotate({
-    description: "Opaque UUIDv7 identity that remains stable when the section is renamed.",
-  }),
-  name: Schema.String.annotate({ description: "The current user-visible section name." }),
-}).annotate({
-  description: "An independently persisted, user-visible thread section.",
-  identifier: "V2ThreadRollbackResponse__ThreadSection",
-});
-
-export type V2ThreadRollbackResponse__SubAgentSource =
-  | "review"
-  | "compact"
-  | "memory_consolidation"
-  | {
-      readonly thread_spawn: {
-        readonly agent_nickname?: string | null;
-        readonly agent_path?: V2ThreadRollbackResponse__AgentPath | null;
-        readonly agent_role?: string | null;
-        readonly depth: number;
-        readonly parent_thread_id: V2ThreadRollbackResponse__ThreadId;
-      };
-    }
-  | { readonly other: string };
-export const V2ThreadRollbackResponse__SubAgentSource = Schema.Union(
-  [
-    Schema.Literals(["review", "compact", "memory_consolidation"]),
-    Schema.Struct({
-      thread_spawn: Schema.Struct({
-        agent_nickname: Schema.optionalKey(Schema.Union([Schema.String, Schema.Null])),
-        agent_path: Schema.optionalKey(
-          Schema.Union([V2ThreadRollbackResponse__AgentPath, Schema.Null]),
-        ),
-        agent_role: Schema.optionalKey(Schema.Union([Schema.String, Schema.Null])),
-        depth: Schema.Number.annotate({ format: "int32" }).check(
-          Schema.isInt().annotate({ expected: "an integer" }),
-        ),
-        parent_thread_id: V2ThreadRollbackResponse__ThreadId,
-      }),
-    }).annotate({ title: "ThreadSpawnSubAgentSource" }),
-    Schema.Struct({ other: Schema.String }).annotate({ title: "OtherSubAgentSource" }),
-  ],
-  { mode: "oneOf" },
-).annotate({ identifier: "V2ThreadRollbackResponse__SubAgentSource" });
-
-export type V2ThreadRollbackResponse__ThreadStatus =
-  | { readonly type: "notLoaded" }
-  | { readonly type: "idle" }
-  | { readonly type: "systemError" }
-  | {
-      readonly activeFlags: ReadonlyArray<V2ThreadRollbackResponse__ThreadActiveFlag>;
-      readonly type: "active";
-    };
-export const V2ThreadRollbackResponse__ThreadStatus = Schema.Union(
-  [
-    Schema.Struct({
-      type: Schema.Literal("notLoaded").annotate({ title: "NotLoadedThreadStatusType" }),
-    }).annotate({ title: "NotLoadedThreadStatus" }),
-    Schema.Struct({
-      type: Schema.Literal("idle").annotate({ title: "IdleThreadStatusType" }),
-    }).annotate({ title: "IdleThreadStatus" }),
-    Schema.Struct({
-      type: Schema.Literal("systemError").annotate({ title: "SystemErrorThreadStatusType" }),
-    }).annotate({ title: "SystemErrorThreadStatus" }),
-    Schema.Struct({
-      activeFlags: Schema.Array(V2ThreadRollbackResponse__ThreadActiveFlag),
-      type: Schema.Literal("active").annotate({ title: "ActiveThreadStatusType" }),
-    }).annotate({ title: "ActiveThreadStatus" }),
-  ],
-  { mode: "oneOf" },
-).annotate({ identifier: "V2ThreadRollbackResponse__ThreadStatus" });
-
-export type V2ThreadRollbackResponse__CodexErrorInfo =
-  | "contextWindowExceeded"
-  | "sessionBudgetExceeded"
-  | "usageLimitExceeded"
-  | "rateLimitExceeded"
-  | "serverOverloaded"
-  | "cyberPolicy"
-  | "misalignmentPolicyViolation"
-  | "internalServerError"
-  | "unauthorized"
-  | "badRequest"
-  | "threadRollbackFailed"
-  | "sandboxError"
-  | "other"
-  | { readonly httpConnectionFailed: { readonly httpStatusCode?: number | null } }
-  | { readonly responseStreamConnectionFailed: { readonly httpStatusCode?: number | null } }
-  | { readonly responseStreamDisconnected: { readonly httpStatusCode?: number | null } }
-  | { readonly responseTooManyFailedAttempts: { readonly httpStatusCode?: number | null } }
-  | {
-      readonly activeTurnNotSteerable: {
-        readonly turnKind: V2ThreadRollbackResponse__NonSteerableTurnKind;
-      };
-    };
-export const V2ThreadRollbackResponse__CodexErrorInfo = Schema.Union(
-  [
-    Schema.Literals([
-      "contextWindowExceeded",
-      "sessionBudgetExceeded",
-      "usageLimitExceeded",
-      "rateLimitExceeded",
-      "serverOverloaded",
-      "cyberPolicy",
-      "misalignmentPolicyViolation",
-      "internalServerError",
-      "unauthorized",
-      "badRequest",
-      "threadRollbackFailed",
-      "sandboxError",
-      "other",
-    ]),
-    Schema.Struct({
-      httpConnectionFailed: Schema.Struct({
-        httpStatusCode: Schema.optionalKey(
-          Schema.Union([
-            Schema.Number.annotate({ format: "uint16" })
-              .check(Schema.isInt().annotate({ expected: "an integer" }))
-              .check(
-                Schema.isGreaterThanOrEqualTo(0).annotate({
-                  expected: "a value greater than or equal to 0",
-                }),
-              ),
-            Schema.Null,
-          ]),
-        ),
-      }),
-    }).annotate({ title: "HttpConnectionFailedCodexErrorInfo" }),
-    Schema.Struct({
-      responseStreamConnectionFailed: Schema.Struct({
-        httpStatusCode: Schema.optionalKey(
-          Schema.Union([
-            Schema.Number.annotate({ format: "uint16" })
-              .check(Schema.isInt().annotate({ expected: "an integer" }))
-              .check(
-                Schema.isGreaterThanOrEqualTo(0).annotate({
-                  expected: "a value greater than or equal to 0",
-                }),
-              ),
-            Schema.Null,
-          ]),
-        ),
-      }),
-    }).annotate({
-      title: "ResponseStreamConnectionFailedCodexErrorInfo",
-      description: "Failed to connect to the response SSE stream.",
-    }),
-    Schema.Struct({
-      responseStreamDisconnected: Schema.Struct({
-        httpStatusCode: Schema.optionalKey(
-          Schema.Union([
-            Schema.Number.annotate({ format: "uint16" })
-              .check(Schema.isInt().annotate({ expected: "an integer" }))
-              .check(
-                Schema.isGreaterThanOrEqualTo(0).annotate({
-                  expected: "a value greater than or equal to 0",
-                }),
-              ),
-            Schema.Null,
-          ]),
-        ),
-      }),
-    }).annotate({
-      title: "ResponseStreamDisconnectedCodexErrorInfo",
-      description:
-        "The response SSE stream disconnected in the middle of a turn before completion.",
-    }),
-    Schema.Struct({
-      responseTooManyFailedAttempts: Schema.Struct({
-        httpStatusCode: Schema.optionalKey(
-          Schema.Union([
-            Schema.Number.annotate({ format: "uint16" })
-              .check(Schema.isInt().annotate({ expected: "an integer" }))
-              .check(
-                Schema.isGreaterThanOrEqualTo(0).annotate({
-                  expected: "a value greater than or equal to 0",
-                }),
-              ),
-            Schema.Null,
-          ]),
-        ),
-      }),
-    }).annotate({
-      title: "ResponseTooManyFailedAttemptsCodexErrorInfo",
-      description: "Reached the retry limit for responses.",
-    }),
-    Schema.Struct({
-      activeTurnNotSteerable: Schema.Struct({
-        turnKind: V2ThreadRollbackResponse__NonSteerableTurnKind,
-      }),
-    }).annotate({
-      title: "ActiveTurnNotSteerableCodexErrorInfo",
-      description:
-        "Returned when `turn/start` or `turn/steer` is submitted while the current active turn cannot accept same-turn steering, for example `/review` or manual `/compact`.",
-    }),
-  ],
-  { mode: "oneOf" },
-).annotate({
-  description:
-    "This translation layer make sure that we expose codex error code in camel case.\n\nWhen an upstream HTTP status is available (for example, from the Responses API or a provider), it is forwarded in `httpStatusCode` on the relevant `codexErrorInfo` variant.",
-  identifier: "V2ThreadRollbackResponse__CodexErrorInfo",
-});
-
-export type V2ThreadRollbackResponse__MisalignmentErrorDetails = {
-  readonly detailedExplanation?: string | null;
-  readonly errorType?: string | null;
-  readonly steer?: V2ThreadRollbackResponse__MisalignmentSteer | null;
-};
-export const V2ThreadRollbackResponse__MisalignmentErrorDetails = Schema.Struct({
-  detailedExplanation: Schema.optionalKey(
-    Schema.Union([
-      Schema.String.annotate({
-        description:
-          "A substantive localized explanation is required before offering continuation.",
-      }),
-      Schema.Null,
-    ]),
-  ),
-  errorType: Schema.optionalKey(
-    Schema.Union([
-      Schema.String.annotate({
-        description:
-          "Open-ended classification; clients must accept categories added by Responses.",
-      }),
-      Schema.Null,
-    ]),
-  ),
-  steer: Schema.optionalKey(
-    Schema.Union([V2ThreadRollbackResponse__MisalignmentSteer, Schema.Null]).annotate({
-      description:
-        "Instruction to submit as the next turn's user input if continuation is confirmed.",
-    }),
-  ),
-}).annotate({ identifier: "V2ThreadRollbackResponse__MisalignmentErrorDetails" });
-
-export type V2ThreadRollbackResponse__TextElement = {
-  readonly byteRange: V2ThreadRollbackResponse__ByteRange;
-  readonly placeholder?: string | null;
-};
-export const V2ThreadRollbackResponse__TextElement = Schema.Struct({
-  byteRange: Schema.suspend(
-    (): Schema.Codec<V2ThreadRollbackResponse__ByteRange> => V2ThreadRollbackResponse__ByteRange,
-  ).annotate({ description: "Byte range in the parent `text` buffer that this element occupies." }),
-  placeholder: Schema.optionalKey(
-    Schema.Union([
-      Schema.String.annotate({
-        description: "Optional human-readable placeholder for the element, displayed in the UI.",
-      }),
-      Schema.Null,
-    ]),
-  ),
-}).annotate({ identifier: "V2ThreadRollbackResponse__TextElement" });
-
-export type V2ThreadRollbackResponse__FunctionCallOutputContentItem =
-  | { readonly text: string; readonly type: "input_text" }
-  | {
-      readonly detail?: V2ThreadRollbackResponse__ImageDetail | null;
-      readonly image_url: string;
-      readonly type: "input_image";
-    }
-  | { readonly audio_url: string; readonly type: "input_audio" }
-  | { readonly encrypted_content: string; readonly type: "encrypted_content" };
-export const V2ThreadRollbackResponse__FunctionCallOutputContentItem = Schema.Union(
-  [
-    Schema.Struct({
-      text: Schema.String,
-      type: Schema.Literal("input_text").annotate({
-        title: "InputTextFunctionCallOutputContentItemType",
-      }),
-    }).annotate({ title: "InputTextFunctionCallOutputContentItem" }),
-    Schema.Struct({
-      detail: Schema.optionalKey(
-        Schema.Union([V2ThreadRollbackResponse__ImageDetail, Schema.Null]),
-      ),
-      image_url: Schema.String,
-      type: Schema.Literal("input_image").annotate({
-        title: "InputImageFunctionCallOutputContentItemType",
-      }),
-    }).annotate({ title: "InputImageFunctionCallOutputContentItem" }),
-    Schema.Struct({
-      audio_url: Schema.String,
-      type: Schema.Literal("input_audio").annotate({
-        title: "InputAudioFunctionCallOutputContentItemType",
-      }),
-    }).annotate({ title: "InputAudioFunctionCallOutputContentItem" }),
-    Schema.Struct({
-      encrypted_content: Schema.String,
-      type: Schema.Literal("encrypted_content").annotate({
-        title: "EncryptedContentFunctionCallOutputContentItemType",
-      }),
-    }).annotate({ title: "EncryptedContentFunctionCallOutputContentItem" }),
-  ],
-  { mode: "oneOf" },
-).annotate({
-  description:
-    "Responses API compatible content items that can be returned by a tool call. This is a subset of ContentItem with the types we support as function call outputs.",
-  identifier: "V2ThreadRollbackResponse__FunctionCallOutputContentItem",
-});
-
-export type V2ThreadRollbackResponse__MemoryCitation = {
-  readonly entries: ReadonlyArray<V2ThreadRollbackResponse__MemoryCitationEntry>;
-  readonly threadIds: ReadonlyArray<string>;
-};
-export const V2ThreadRollbackResponse__MemoryCitation = Schema.Struct({
-  entries: Schema.Array(V2ThreadRollbackResponse__MemoryCitationEntry),
-  threadIds: Schema.Array(Schema.String),
-}).annotate({ identifier: "V2ThreadRollbackResponse__MemoryCitation" });
-
-export type V2ThreadRollbackResponse__FileUpdateChange = {
-  readonly diff: string;
-  readonly kind: V2ThreadRollbackResponse__PatchChangeKind;
-  readonly path: string;
-};
-export const V2ThreadRollbackResponse__FileUpdateChange = Schema.Struct({
-  diff: Schema.String,
-  kind: V2ThreadRollbackResponse__PatchChangeKind,
-  path: Schema.String,
-}).annotate({ identifier: "V2ThreadRollbackResponse__FileUpdateChange" });
-
-export type V2ThreadRollbackResponse__CollabAgentState = {
-  readonly message?: string | null;
-  readonly status: V2ThreadRollbackResponse__CollabAgentStatus;
-};
-export const V2ThreadRollbackResponse__CollabAgentState = Schema.Struct({
-  message: Schema.optionalKey(Schema.Union([Schema.String, Schema.Null])),
-  status: V2ThreadRollbackResponse__CollabAgentStatus,
-}).annotate({ identifier: "V2ThreadRollbackResponse__CollabAgentState" });
 
 export type V2ThreadSearchOccurrencesResponse__ThreadSearchOccurrence = {
   readonly itemId: string;
@@ -31069,9 +31066,11 @@ export type V2ThreadSearchResponse__CodexErrorInfo =
   | "sessionBudgetExceeded"
   | "usageLimitExceeded"
   | "rateLimitExceeded"
+  | "flexUnavailable"
   | "serverOverloaded"
   | "cyberPolicy"
   | "misalignmentPolicyViolation"
+  | "tooManyDenials"
   | "internalServerError"
   | "unauthorized"
   | "badRequest"
@@ -31094,9 +31093,11 @@ export const V2ThreadSearchResponse__CodexErrorInfo = Schema.Union(
       "sessionBudgetExceeded",
       "usageLimitExceeded",
       "rateLimitExceeded",
+      "flexUnavailable",
       "serverOverloaded",
       "cyberPolicy",
       "misalignmentPolicyViolation",
+      "tooManyDenials",
       "internalServerError",
       "unauthorized",
       "badRequest",
@@ -31249,8 +31250,13 @@ export type V2ThreadSearchResponse__FunctionCallOutputContentItem =
   | { readonly text: string; readonly type: "input_text" }
   | {
       readonly detail?: V2ThreadSearchResponse__ImageDetail | null;
-      readonly image_url: string;
       readonly type: "input_image";
+      readonly image_url: string;
+    }
+  | {
+      readonly detail?: V2ThreadSearchResponse__ImageDetail | null;
+      readonly type: "input_image";
+      readonly file_id: string;
     }
   | { readonly audio_url: string; readonly type: "input_audio" }
   | { readonly encrypted_content: string; readonly type: "encrypted_content" };
@@ -31262,13 +31268,26 @@ export const V2ThreadSearchResponse__FunctionCallOutputContentItem = Schema.Unio
         title: "InputTextFunctionCallOutputContentItemType",
       }),
     }).annotate({ title: "InputTextFunctionCallOutputContentItem" }),
-    Schema.Struct({
-      detail: Schema.optionalKey(Schema.Union([V2ThreadSearchResponse__ImageDetail, Schema.Null])),
-      image_url: Schema.String,
-      type: Schema.Literal("input_image").annotate({
-        title: "InputImageFunctionCallOutputContentItemType",
-      }),
-    }).annotate({ title: "InputImageFunctionCallOutputContentItem" }),
+    Schema.Union([
+      Schema.Struct({
+        detail: Schema.optionalKey(
+          Schema.Union([V2ThreadSearchResponse__ImageDetail, Schema.Null]),
+        ),
+        type: Schema.Literal("input_image").annotate({
+          title: "InputImageFunctionCallOutputContentItemType",
+        }),
+        image_url: Schema.String,
+      }).annotate({ title: "ImageUrlFunctionCallOutputContentItem" }),
+      Schema.Struct({
+        detail: Schema.optionalKey(
+          Schema.Union([V2ThreadSearchResponse__ImageDetail, Schema.Null]),
+        ),
+        type: Schema.Literal("input_image").annotate({
+          title: "InputImageFunctionCallOutputContentItemType",
+        }),
+        file_id: Schema.String,
+      }).annotate({ title: "FileIdFunctionCallOutputContentItem" }),
+    ]),
     Schema.Struct({
       audio_url: Schema.String,
       type: Schema.Literal("input_audio").annotate({
@@ -31308,6 +31327,19 @@ export const V2ThreadSearchResponse__FileUpdateChange = Schema.Struct({
   kind: V2ThreadSearchResponse__PatchChangeKind,
   path: Schema.String,
 }).annotate({ identifier: "V2ThreadSearchResponse__FileUpdateChange" });
+
+export type V2ThreadSearchResponse__McpAppUi = {
+  readonly preferredModelDisplayMode: V2ThreadSearchResponse__McpAppDisplayMode;
+  readonly resourceUri: string;
+};
+export const V2ThreadSearchResponse__McpAppUi = Schema.Struct({
+  preferredModelDisplayMode: V2ThreadSearchResponse__McpAppDisplayMode,
+  resourceUri: Schema.String,
+}).annotate({
+  description:
+    "UI resource and display preference for model invocations, captured from the tool descriptor.",
+  identifier: "V2ThreadSearchResponse__McpAppUi",
+});
 
 export type V2ThreadSearchResponse__CollabAgentState = {
   readonly message?: string | null;
@@ -31653,9 +31685,11 @@ export type V2ThreadStartedNotification__CodexErrorInfo =
   | "sessionBudgetExceeded"
   | "usageLimitExceeded"
   | "rateLimitExceeded"
+  | "flexUnavailable"
   | "serverOverloaded"
   | "cyberPolicy"
   | "misalignmentPolicyViolation"
+  | "tooManyDenials"
   | "internalServerError"
   | "unauthorized"
   | "badRequest"
@@ -31678,9 +31712,11 @@ export const V2ThreadStartedNotification__CodexErrorInfo = Schema.Union(
       "sessionBudgetExceeded",
       "usageLimitExceeded",
       "rateLimitExceeded",
+      "flexUnavailable",
       "serverOverloaded",
       "cyberPolicy",
       "misalignmentPolicyViolation",
+      "tooManyDenials",
       "internalServerError",
       "unauthorized",
       "badRequest",
@@ -31834,8 +31870,13 @@ export type V2ThreadStartedNotification__FunctionCallOutputContentItem =
   | { readonly text: string; readonly type: "input_text" }
   | {
       readonly detail?: V2ThreadStartedNotification__ImageDetail | null;
-      readonly image_url: string;
       readonly type: "input_image";
+      readonly image_url: string;
+    }
+  | {
+      readonly detail?: V2ThreadStartedNotification__ImageDetail | null;
+      readonly type: "input_image";
+      readonly file_id: string;
     }
   | { readonly audio_url: string; readonly type: "input_audio" }
   | { readonly encrypted_content: string; readonly type: "encrypted_content" };
@@ -31847,15 +31888,26 @@ export const V2ThreadStartedNotification__FunctionCallOutputContentItem = Schema
         title: "InputTextFunctionCallOutputContentItemType",
       }),
     }).annotate({ title: "InputTextFunctionCallOutputContentItem" }),
-    Schema.Struct({
-      detail: Schema.optionalKey(
-        Schema.Union([V2ThreadStartedNotification__ImageDetail, Schema.Null]),
-      ),
-      image_url: Schema.String,
-      type: Schema.Literal("input_image").annotate({
-        title: "InputImageFunctionCallOutputContentItemType",
-      }),
-    }).annotate({ title: "InputImageFunctionCallOutputContentItem" }),
+    Schema.Union([
+      Schema.Struct({
+        detail: Schema.optionalKey(
+          Schema.Union([V2ThreadStartedNotification__ImageDetail, Schema.Null]),
+        ),
+        type: Schema.Literal("input_image").annotate({
+          title: "InputImageFunctionCallOutputContentItemType",
+        }),
+        image_url: Schema.String,
+      }).annotate({ title: "ImageUrlFunctionCallOutputContentItem" }),
+      Schema.Struct({
+        detail: Schema.optionalKey(
+          Schema.Union([V2ThreadStartedNotification__ImageDetail, Schema.Null]),
+        ),
+        type: Schema.Literal("input_image").annotate({
+          title: "InputImageFunctionCallOutputContentItemType",
+        }),
+        file_id: Schema.String,
+      }).annotate({ title: "FileIdFunctionCallOutputContentItem" }),
+    ]),
     Schema.Struct({
       audio_url: Schema.String,
       type: Schema.Literal("input_audio").annotate({
@@ -31895,6 +31947,19 @@ export const V2ThreadStartedNotification__FileUpdateChange = Schema.Struct({
   kind: V2ThreadStartedNotification__PatchChangeKind,
   path: Schema.String,
 }).annotate({ identifier: "V2ThreadStartedNotification__FileUpdateChange" });
+
+export type V2ThreadStartedNotification__McpAppUi = {
+  readonly preferredModelDisplayMode: V2ThreadStartedNotification__McpAppDisplayMode;
+  readonly resourceUri: string;
+};
+export const V2ThreadStartedNotification__McpAppUi = Schema.Struct({
+  preferredModelDisplayMode: V2ThreadStartedNotification__McpAppDisplayMode,
+  resourceUri: Schema.String,
+}).annotate({
+  description:
+    "UI resource and display preference for model invocations, captured from the tool descriptor.",
+  identifier: "V2ThreadStartedNotification__McpAppUi",
+});
 
 export type V2ThreadStartedNotification__CollabAgentState = {
   readonly message?: string | null;
@@ -32165,9 +32230,11 @@ export type V2ThreadStartResponse__CodexErrorInfo =
   | "sessionBudgetExceeded"
   | "usageLimitExceeded"
   | "rateLimitExceeded"
+  | "flexUnavailable"
   | "serverOverloaded"
   | "cyberPolicy"
   | "misalignmentPolicyViolation"
+  | "tooManyDenials"
   | "internalServerError"
   | "unauthorized"
   | "badRequest"
@@ -32190,9 +32257,11 @@ export const V2ThreadStartResponse__CodexErrorInfo = Schema.Union(
       "sessionBudgetExceeded",
       "usageLimitExceeded",
       "rateLimitExceeded",
+      "flexUnavailable",
       "serverOverloaded",
       "cyberPolicy",
       "misalignmentPolicyViolation",
+      "tooManyDenials",
       "internalServerError",
       "unauthorized",
       "badRequest",
@@ -32345,8 +32414,13 @@ export type V2ThreadStartResponse__FunctionCallOutputContentItem =
   | { readonly text: string; readonly type: "input_text" }
   | {
       readonly detail?: V2ThreadStartResponse__ImageDetail | null;
-      readonly image_url: string;
       readonly type: "input_image";
+      readonly image_url: string;
+    }
+  | {
+      readonly detail?: V2ThreadStartResponse__ImageDetail | null;
+      readonly type: "input_image";
+      readonly file_id: string;
     }
   | { readonly audio_url: string; readonly type: "input_audio" }
   | { readonly encrypted_content: string; readonly type: "encrypted_content" };
@@ -32358,13 +32432,22 @@ export const V2ThreadStartResponse__FunctionCallOutputContentItem = Schema.Union
         title: "InputTextFunctionCallOutputContentItemType",
       }),
     }).annotate({ title: "InputTextFunctionCallOutputContentItem" }),
-    Schema.Struct({
-      detail: Schema.optionalKey(Schema.Union([V2ThreadStartResponse__ImageDetail, Schema.Null])),
-      image_url: Schema.String,
-      type: Schema.Literal("input_image").annotate({
-        title: "InputImageFunctionCallOutputContentItemType",
-      }),
-    }).annotate({ title: "InputImageFunctionCallOutputContentItem" }),
+    Schema.Union([
+      Schema.Struct({
+        detail: Schema.optionalKey(Schema.Union([V2ThreadStartResponse__ImageDetail, Schema.Null])),
+        type: Schema.Literal("input_image").annotate({
+          title: "InputImageFunctionCallOutputContentItemType",
+        }),
+        image_url: Schema.String,
+      }).annotate({ title: "ImageUrlFunctionCallOutputContentItem" }),
+      Schema.Struct({
+        detail: Schema.optionalKey(Schema.Union([V2ThreadStartResponse__ImageDetail, Schema.Null])),
+        type: Schema.Literal("input_image").annotate({
+          title: "InputImageFunctionCallOutputContentItemType",
+        }),
+        file_id: Schema.String,
+      }).annotate({ title: "FileIdFunctionCallOutputContentItem" }),
+    ]),
     Schema.Struct({
       audio_url: Schema.String,
       type: Schema.Literal("input_audio").annotate({
@@ -32404,6 +32487,19 @@ export const V2ThreadStartResponse__FileUpdateChange = Schema.Struct({
   kind: V2ThreadStartResponse__PatchChangeKind,
   path: Schema.String,
 }).annotate({ identifier: "V2ThreadStartResponse__FileUpdateChange" });
+
+export type V2ThreadStartResponse__McpAppUi = {
+  readonly preferredModelDisplayMode: V2ThreadStartResponse__McpAppDisplayMode;
+  readonly resourceUri: string;
+};
+export const V2ThreadStartResponse__McpAppUi = Schema.Struct({
+  preferredModelDisplayMode: V2ThreadStartResponse__McpAppDisplayMode,
+  resourceUri: Schema.String,
+}).annotate({
+  description:
+    "UI resource and display preference for model invocations, captured from the tool descriptor.",
+  identifier: "V2ThreadStartResponse__McpAppUi",
+});
 
 export type V2ThreadStartResponse__CollabAgentState = {
   readonly message?: string | null;
@@ -32464,8 +32560,13 @@ export type V2ThreadTimelineListResponse__FunctionCallOutputContentItem =
   | { readonly text: string; readonly type: "input_text" }
   | {
       readonly detail?: V2ThreadTimelineListResponse__ImageDetail | null;
-      readonly image_url: string;
       readonly type: "input_image";
+      readonly image_url: string;
+    }
+  | {
+      readonly detail?: V2ThreadTimelineListResponse__ImageDetail | null;
+      readonly type: "input_image";
+      readonly file_id: string;
     }
   | { readonly audio_url: string; readonly type: "input_audio" }
   | { readonly encrypted_content: string; readonly type: "encrypted_content" };
@@ -32477,15 +32578,26 @@ export const V2ThreadTimelineListResponse__FunctionCallOutputContentItem = Schem
         title: "InputTextFunctionCallOutputContentItemType",
       }),
     }).annotate({ title: "InputTextFunctionCallOutputContentItem" }),
-    Schema.Struct({
-      detail: Schema.optionalKey(
-        Schema.Union([V2ThreadTimelineListResponse__ImageDetail, Schema.Null]),
-      ),
-      image_url: Schema.String,
-      type: Schema.Literal("input_image").annotate({
-        title: "InputImageFunctionCallOutputContentItemType",
-      }),
-    }).annotate({ title: "InputImageFunctionCallOutputContentItem" }),
+    Schema.Union([
+      Schema.Struct({
+        detail: Schema.optionalKey(
+          Schema.Union([V2ThreadTimelineListResponse__ImageDetail, Schema.Null]),
+        ),
+        type: Schema.Literal("input_image").annotate({
+          title: "InputImageFunctionCallOutputContentItemType",
+        }),
+        image_url: Schema.String,
+      }).annotate({ title: "ImageUrlFunctionCallOutputContentItem" }),
+      Schema.Struct({
+        detail: Schema.optionalKey(
+          Schema.Union([V2ThreadTimelineListResponse__ImageDetail, Schema.Null]),
+        ),
+        type: Schema.Literal("input_image").annotate({
+          title: "InputImageFunctionCallOutputContentItemType",
+        }),
+        file_id: Schema.String,
+      }).annotate({ title: "FileIdFunctionCallOutputContentItem" }),
+    ]),
     Schema.Struct({
       audio_url: Schema.String,
       type: Schema.Literal("input_audio").annotate({
@@ -32567,6 +32679,19 @@ export const V2ThreadTimelineListResponse__FileUpdateChange = Schema.Struct({
   kind: V2ThreadTimelineListResponse__PatchChangeKind,
   path: Schema.String,
 }).annotate({ identifier: "V2ThreadTimelineListResponse__FileUpdateChange" });
+
+export type V2ThreadTimelineListResponse__McpAppUi = {
+  readonly preferredModelDisplayMode: V2ThreadTimelineListResponse__McpAppDisplayMode;
+  readonly resourceUri: string;
+};
+export const V2ThreadTimelineListResponse__McpAppUi = Schema.Struct({
+  preferredModelDisplayMode: V2ThreadTimelineListResponse__McpAppDisplayMode,
+  resourceUri: Schema.String,
+}).annotate({
+  description:
+    "UI resource and display preference for model invocations, captured from the tool descriptor.",
+  identifier: "V2ThreadTimelineListResponse__McpAppUi",
+});
 
 export type V2ThreadTimelineListResponse__CollabAgentState = {
   readonly message?: string | null;
@@ -32661,9 +32786,11 @@ export type V2ThreadTimelineListResponse__CodexErrorInfo =
   | "sessionBudgetExceeded"
   | "usageLimitExceeded"
   | "rateLimitExceeded"
+  | "flexUnavailable"
   | "serverOverloaded"
   | "cyberPolicy"
   | "misalignmentPolicyViolation"
+  | "tooManyDenials"
   | "internalServerError"
   | "unauthorized"
   | "badRequest"
@@ -32686,9 +32813,11 @@ export const V2ThreadTimelineListResponse__CodexErrorInfo = Schema.Union(
       "sessionBudgetExceeded",
       "usageLimitExceeded",
       "rateLimitExceeded",
+      "flexUnavailable",
       "serverOverloaded",
       "cyberPolicy",
       "misalignmentPolicyViolation",
+      "tooManyDenials",
       "internalServerError",
       "unauthorized",
       "badRequest",
@@ -32842,9 +32971,11 @@ export type V2ThreadTurnsListResponse__CodexErrorInfo =
   | "sessionBudgetExceeded"
   | "usageLimitExceeded"
   | "rateLimitExceeded"
+  | "flexUnavailable"
   | "serverOverloaded"
   | "cyberPolicy"
   | "misalignmentPolicyViolation"
+  | "tooManyDenials"
   | "internalServerError"
   | "unauthorized"
   | "badRequest"
@@ -32867,9 +32998,11 @@ export const V2ThreadTurnsListResponse__CodexErrorInfo = Schema.Union(
       "sessionBudgetExceeded",
       "usageLimitExceeded",
       "rateLimitExceeded",
+      "flexUnavailable",
       "serverOverloaded",
       "cyberPolicy",
       "misalignmentPolicyViolation",
+      "tooManyDenials",
       "internalServerError",
       "unauthorized",
       "badRequest",
@@ -33022,8 +33155,13 @@ export type V2ThreadTurnsListResponse__FunctionCallOutputContentItem =
   | { readonly text: string; readonly type: "input_text" }
   | {
       readonly detail?: V2ThreadTurnsListResponse__ImageDetail | null;
-      readonly image_url: string;
       readonly type: "input_image";
+      readonly image_url: string;
+    }
+  | {
+      readonly detail?: V2ThreadTurnsListResponse__ImageDetail | null;
+      readonly type: "input_image";
+      readonly file_id: string;
     }
   | { readonly audio_url: string; readonly type: "input_audio" }
   | { readonly encrypted_content: string; readonly type: "encrypted_content" };
@@ -33035,15 +33173,26 @@ export const V2ThreadTurnsListResponse__FunctionCallOutputContentItem = Schema.U
         title: "InputTextFunctionCallOutputContentItemType",
       }),
     }).annotate({ title: "InputTextFunctionCallOutputContentItem" }),
-    Schema.Struct({
-      detail: Schema.optionalKey(
-        Schema.Union([V2ThreadTurnsListResponse__ImageDetail, Schema.Null]),
-      ),
-      image_url: Schema.String,
-      type: Schema.Literal("input_image").annotate({
-        title: "InputImageFunctionCallOutputContentItemType",
-      }),
-    }).annotate({ title: "InputImageFunctionCallOutputContentItem" }),
+    Schema.Union([
+      Schema.Struct({
+        detail: Schema.optionalKey(
+          Schema.Union([V2ThreadTurnsListResponse__ImageDetail, Schema.Null]),
+        ),
+        type: Schema.Literal("input_image").annotate({
+          title: "InputImageFunctionCallOutputContentItemType",
+        }),
+        image_url: Schema.String,
+      }).annotate({ title: "ImageUrlFunctionCallOutputContentItem" }),
+      Schema.Struct({
+        detail: Schema.optionalKey(
+          Schema.Union([V2ThreadTurnsListResponse__ImageDetail, Schema.Null]),
+        ),
+        type: Schema.Literal("input_image").annotate({
+          title: "InputImageFunctionCallOutputContentItemType",
+        }),
+        file_id: Schema.String,
+      }).annotate({ title: "FileIdFunctionCallOutputContentItem" }),
+    ]),
     Schema.Struct({
       audio_url: Schema.String,
       type: Schema.Literal("input_audio").annotate({
@@ -33125,6 +33274,19 @@ export const V2ThreadTurnsListResponse__FileUpdateChange = Schema.Struct({
   kind: V2ThreadTurnsListResponse__PatchChangeKind,
   path: Schema.String,
 }).annotate({ identifier: "V2ThreadTurnsListResponse__FileUpdateChange" });
+
+export type V2ThreadTurnsListResponse__McpAppUi = {
+  readonly preferredModelDisplayMode: V2ThreadTurnsListResponse__McpAppDisplayMode;
+  readonly resourceUri: string;
+};
+export const V2ThreadTurnsListResponse__McpAppUi = Schema.Struct({
+  preferredModelDisplayMode: V2ThreadTurnsListResponse__McpAppDisplayMode,
+  resourceUri: Schema.String,
+}).annotate({
+  description:
+    "UI resource and display preference for model invocations, captured from the tool descriptor.",
+  identifier: "V2ThreadTurnsListResponse__McpAppUi",
+});
 
 export type V2ThreadTurnsListResponse__CollabAgentState = {
   readonly message?: string | null;
@@ -33278,9 +33440,11 @@ export type V2ThreadUnarchiveResponse__CodexErrorInfo =
   | "sessionBudgetExceeded"
   | "usageLimitExceeded"
   | "rateLimitExceeded"
+  | "flexUnavailable"
   | "serverOverloaded"
   | "cyberPolicy"
   | "misalignmentPolicyViolation"
+  | "tooManyDenials"
   | "internalServerError"
   | "unauthorized"
   | "badRequest"
@@ -33303,9 +33467,11 @@ export const V2ThreadUnarchiveResponse__CodexErrorInfo = Schema.Union(
       "sessionBudgetExceeded",
       "usageLimitExceeded",
       "rateLimitExceeded",
+      "flexUnavailable",
       "serverOverloaded",
       "cyberPolicy",
       "misalignmentPolicyViolation",
+      "tooManyDenials",
       "internalServerError",
       "unauthorized",
       "badRequest",
@@ -33458,8 +33624,13 @@ export type V2ThreadUnarchiveResponse__FunctionCallOutputContentItem =
   | { readonly text: string; readonly type: "input_text" }
   | {
       readonly detail?: V2ThreadUnarchiveResponse__ImageDetail | null;
-      readonly image_url: string;
       readonly type: "input_image";
+      readonly image_url: string;
+    }
+  | {
+      readonly detail?: V2ThreadUnarchiveResponse__ImageDetail | null;
+      readonly type: "input_image";
+      readonly file_id: string;
     }
   | { readonly audio_url: string; readonly type: "input_audio" }
   | { readonly encrypted_content: string; readonly type: "encrypted_content" };
@@ -33471,15 +33642,26 @@ export const V2ThreadUnarchiveResponse__FunctionCallOutputContentItem = Schema.U
         title: "InputTextFunctionCallOutputContentItemType",
       }),
     }).annotate({ title: "InputTextFunctionCallOutputContentItem" }),
-    Schema.Struct({
-      detail: Schema.optionalKey(
-        Schema.Union([V2ThreadUnarchiveResponse__ImageDetail, Schema.Null]),
-      ),
-      image_url: Schema.String,
-      type: Schema.Literal("input_image").annotate({
-        title: "InputImageFunctionCallOutputContentItemType",
-      }),
-    }).annotate({ title: "InputImageFunctionCallOutputContentItem" }),
+    Schema.Union([
+      Schema.Struct({
+        detail: Schema.optionalKey(
+          Schema.Union([V2ThreadUnarchiveResponse__ImageDetail, Schema.Null]),
+        ),
+        type: Schema.Literal("input_image").annotate({
+          title: "InputImageFunctionCallOutputContentItemType",
+        }),
+        image_url: Schema.String,
+      }).annotate({ title: "ImageUrlFunctionCallOutputContentItem" }),
+      Schema.Struct({
+        detail: Schema.optionalKey(
+          Schema.Union([V2ThreadUnarchiveResponse__ImageDetail, Schema.Null]),
+        ),
+        type: Schema.Literal("input_image").annotate({
+          title: "InputImageFunctionCallOutputContentItemType",
+        }),
+        file_id: Schema.String,
+      }).annotate({ title: "FileIdFunctionCallOutputContentItem" }),
+    ]),
     Schema.Struct({
       audio_url: Schema.String,
       type: Schema.Literal("input_audio").annotate({
@@ -33520,6 +33702,19 @@ export const V2ThreadUnarchiveResponse__FileUpdateChange = Schema.Struct({
   path: Schema.String,
 }).annotate({ identifier: "V2ThreadUnarchiveResponse__FileUpdateChange" });
 
+export type V2ThreadUnarchiveResponse__McpAppUi = {
+  readonly preferredModelDisplayMode: V2ThreadUnarchiveResponse__McpAppDisplayMode;
+  readonly resourceUri: string;
+};
+export const V2ThreadUnarchiveResponse__McpAppUi = Schema.Struct({
+  preferredModelDisplayMode: V2ThreadUnarchiveResponse__McpAppDisplayMode,
+  resourceUri: Schema.String,
+}).annotate({
+  description:
+    "UI resource and display preference for model invocations, captured from the tool descriptor.",
+  identifier: "V2ThreadUnarchiveResponse__McpAppUi",
+});
+
 export type V2ThreadUnarchiveResponse__CollabAgentState = {
   readonly message?: string | null;
   readonly status: V2ThreadUnarchiveResponse__CollabAgentStatus;
@@ -33534,9 +33729,11 @@ export type V2TurnCompletedNotification__CodexErrorInfo =
   | "sessionBudgetExceeded"
   | "usageLimitExceeded"
   | "rateLimitExceeded"
+  | "flexUnavailable"
   | "serverOverloaded"
   | "cyberPolicy"
   | "misalignmentPolicyViolation"
+  | "tooManyDenials"
   | "internalServerError"
   | "unauthorized"
   | "badRequest"
@@ -33559,9 +33756,11 @@ export const V2TurnCompletedNotification__CodexErrorInfo = Schema.Union(
       "sessionBudgetExceeded",
       "usageLimitExceeded",
       "rateLimitExceeded",
+      "flexUnavailable",
       "serverOverloaded",
       "cyberPolicy",
       "misalignmentPolicyViolation",
+      "tooManyDenials",
       "internalServerError",
       "unauthorized",
       "badRequest",
@@ -33715,8 +33914,13 @@ export type V2TurnCompletedNotification__FunctionCallOutputContentItem =
   | { readonly text: string; readonly type: "input_text" }
   | {
       readonly detail?: V2TurnCompletedNotification__ImageDetail | null;
-      readonly image_url: string;
       readonly type: "input_image";
+      readonly image_url: string;
+    }
+  | {
+      readonly detail?: V2TurnCompletedNotification__ImageDetail | null;
+      readonly type: "input_image";
+      readonly file_id: string;
     }
   | { readonly audio_url: string; readonly type: "input_audio" }
   | { readonly encrypted_content: string; readonly type: "encrypted_content" };
@@ -33728,15 +33932,26 @@ export const V2TurnCompletedNotification__FunctionCallOutputContentItem = Schema
         title: "InputTextFunctionCallOutputContentItemType",
       }),
     }).annotate({ title: "InputTextFunctionCallOutputContentItem" }),
-    Schema.Struct({
-      detail: Schema.optionalKey(
-        Schema.Union([V2TurnCompletedNotification__ImageDetail, Schema.Null]),
-      ),
-      image_url: Schema.String,
-      type: Schema.Literal("input_image").annotate({
-        title: "InputImageFunctionCallOutputContentItemType",
-      }),
-    }).annotate({ title: "InputImageFunctionCallOutputContentItem" }),
+    Schema.Union([
+      Schema.Struct({
+        detail: Schema.optionalKey(
+          Schema.Union([V2TurnCompletedNotification__ImageDetail, Schema.Null]),
+        ),
+        type: Schema.Literal("input_image").annotate({
+          title: "InputImageFunctionCallOutputContentItemType",
+        }),
+        image_url: Schema.String,
+      }).annotate({ title: "ImageUrlFunctionCallOutputContentItem" }),
+      Schema.Struct({
+        detail: Schema.optionalKey(
+          Schema.Union([V2TurnCompletedNotification__ImageDetail, Schema.Null]),
+        ),
+        type: Schema.Literal("input_image").annotate({
+          title: "InputImageFunctionCallOutputContentItemType",
+        }),
+        file_id: Schema.String,
+      }).annotate({ title: "FileIdFunctionCallOutputContentItem" }),
+    ]),
     Schema.Struct({
       audio_url: Schema.String,
       type: Schema.Literal("input_audio").annotate({
@@ -33819,6 +34034,19 @@ export const V2TurnCompletedNotification__FileUpdateChange = Schema.Struct({
   path: Schema.String,
 }).annotate({ identifier: "V2TurnCompletedNotification__FileUpdateChange" });
 
+export type V2TurnCompletedNotification__McpAppUi = {
+  readonly preferredModelDisplayMode: V2TurnCompletedNotification__McpAppDisplayMode;
+  readonly resourceUri: string;
+};
+export const V2TurnCompletedNotification__McpAppUi = Schema.Struct({
+  preferredModelDisplayMode: V2TurnCompletedNotification__McpAppDisplayMode,
+  resourceUri: Schema.String,
+}).annotate({
+  description:
+    "UI resource and display preference for model invocations, captured from the tool descriptor.",
+  identifier: "V2TurnCompletedNotification__McpAppUi",
+});
+
 export type V2TurnCompletedNotification__CollabAgentState = {
   readonly message?: string | null;
   readonly status: V2TurnCompletedNotification__CollabAgentStatus;
@@ -33842,9 +34070,11 @@ export type V2TurnStartedNotification__CodexErrorInfo =
   | "sessionBudgetExceeded"
   | "usageLimitExceeded"
   | "rateLimitExceeded"
+  | "flexUnavailable"
   | "serverOverloaded"
   | "cyberPolicy"
   | "misalignmentPolicyViolation"
+  | "tooManyDenials"
   | "internalServerError"
   | "unauthorized"
   | "badRequest"
@@ -33867,9 +34097,11 @@ export const V2TurnStartedNotification__CodexErrorInfo = Schema.Union(
       "sessionBudgetExceeded",
       "usageLimitExceeded",
       "rateLimitExceeded",
+      "flexUnavailable",
       "serverOverloaded",
       "cyberPolicy",
       "misalignmentPolicyViolation",
+      "tooManyDenials",
       "internalServerError",
       "unauthorized",
       "badRequest",
@@ -34022,8 +34254,13 @@ export type V2TurnStartedNotification__FunctionCallOutputContentItem =
   | { readonly text: string; readonly type: "input_text" }
   | {
       readonly detail?: V2TurnStartedNotification__ImageDetail | null;
-      readonly image_url: string;
       readonly type: "input_image";
+      readonly image_url: string;
+    }
+  | {
+      readonly detail?: V2TurnStartedNotification__ImageDetail | null;
+      readonly type: "input_image";
+      readonly file_id: string;
     }
   | { readonly audio_url: string; readonly type: "input_audio" }
   | { readonly encrypted_content: string; readonly type: "encrypted_content" };
@@ -34035,15 +34272,26 @@ export const V2TurnStartedNotification__FunctionCallOutputContentItem = Schema.U
         title: "InputTextFunctionCallOutputContentItemType",
       }),
     }).annotate({ title: "InputTextFunctionCallOutputContentItem" }),
-    Schema.Struct({
-      detail: Schema.optionalKey(
-        Schema.Union([V2TurnStartedNotification__ImageDetail, Schema.Null]),
-      ),
-      image_url: Schema.String,
-      type: Schema.Literal("input_image").annotate({
-        title: "InputImageFunctionCallOutputContentItemType",
-      }),
-    }).annotate({ title: "InputImageFunctionCallOutputContentItem" }),
+    Schema.Union([
+      Schema.Struct({
+        detail: Schema.optionalKey(
+          Schema.Union([V2TurnStartedNotification__ImageDetail, Schema.Null]),
+        ),
+        type: Schema.Literal("input_image").annotate({
+          title: "InputImageFunctionCallOutputContentItemType",
+        }),
+        image_url: Schema.String,
+      }).annotate({ title: "ImageUrlFunctionCallOutputContentItem" }),
+      Schema.Struct({
+        detail: Schema.optionalKey(
+          Schema.Union([V2TurnStartedNotification__ImageDetail, Schema.Null]),
+        ),
+        type: Schema.Literal("input_image").annotate({
+          title: "InputImageFunctionCallOutputContentItemType",
+        }),
+        file_id: Schema.String,
+      }).annotate({ title: "FileIdFunctionCallOutputContentItem" }),
+    ]),
     Schema.Struct({
       audio_url: Schema.String,
       type: Schema.Literal("input_audio").annotate({
@@ -34126,6 +34374,19 @@ export const V2TurnStartedNotification__FileUpdateChange = Schema.Struct({
   path: Schema.String,
 }).annotate({ identifier: "V2TurnStartedNotification__FileUpdateChange" });
 
+export type V2TurnStartedNotification__McpAppUi = {
+  readonly preferredModelDisplayMode: V2TurnStartedNotification__McpAppDisplayMode;
+  readonly resourceUri: string;
+};
+export const V2TurnStartedNotification__McpAppUi = Schema.Struct({
+  preferredModelDisplayMode: V2TurnStartedNotification__McpAppDisplayMode,
+  resourceUri: Schema.String,
+}).annotate({
+  description:
+    "UI resource and display preference for model invocations, captured from the tool descriptor.",
+  identifier: "V2TurnStartedNotification__McpAppUi",
+});
+
 export type V2TurnStartedNotification__CollabAgentState = {
   readonly message?: string | null;
   readonly status: V2TurnStartedNotification__CollabAgentStatus;
@@ -34200,8 +34461,13 @@ export type V2TurnStartParams__FunctionCallOutputContentItem =
   | { readonly text: string; readonly type: "input_text" }
   | {
       readonly detail?: V2TurnStartParams__ImageDetail | null;
-      readonly image_url: string;
       readonly type: "input_image";
+      readonly image_url: string;
+    }
+  | {
+      readonly detail?: V2TurnStartParams__ImageDetail | null;
+      readonly type: "input_image";
+      readonly file_id: string;
     }
   | { readonly audio_url: string; readonly type: "input_audio" }
   | { readonly encrypted_content: string; readonly type: "encrypted_content" };
@@ -34213,13 +34479,22 @@ export const V2TurnStartParams__FunctionCallOutputContentItem = Schema.Union(
         title: "InputTextFunctionCallOutputContentItemType",
       }),
     }).annotate({ title: "InputTextFunctionCallOutputContentItem" }),
-    Schema.Struct({
-      detail: Schema.optionalKey(Schema.Union([V2TurnStartParams__ImageDetail, Schema.Null])),
-      image_url: Schema.String,
-      type: Schema.Literal("input_image").annotate({
-        title: "InputImageFunctionCallOutputContentItemType",
-      }),
-    }).annotate({ title: "InputImageFunctionCallOutputContentItem" }),
+    Schema.Union([
+      Schema.Struct({
+        detail: Schema.optionalKey(Schema.Union([V2TurnStartParams__ImageDetail, Schema.Null])),
+        type: Schema.Literal("input_image").annotate({
+          title: "InputImageFunctionCallOutputContentItemType",
+        }),
+        image_url: Schema.String,
+      }).annotate({ title: "ImageUrlFunctionCallOutputContentItem" }),
+      Schema.Struct({
+        detail: Schema.optionalKey(Schema.Union([V2TurnStartParams__ImageDetail, Schema.Null])),
+        type: Schema.Literal("input_image").annotate({
+          title: "InputImageFunctionCallOutputContentItemType",
+        }),
+        file_id: Schema.String,
+      }).annotate({ title: "FileIdFunctionCallOutputContentItem" }),
+    ]),
     Schema.Struct({
       audio_url: Schema.String,
       type: Schema.Literal("input_audio").annotate({
@@ -34290,9 +34565,11 @@ export type V2TurnStartResponse__CodexErrorInfo =
   | "sessionBudgetExceeded"
   | "usageLimitExceeded"
   | "rateLimitExceeded"
+  | "flexUnavailable"
   | "serverOverloaded"
   | "cyberPolicy"
   | "misalignmentPolicyViolation"
+  | "tooManyDenials"
   | "internalServerError"
   | "unauthorized"
   | "badRequest"
@@ -34315,9 +34592,11 @@ export const V2TurnStartResponse__CodexErrorInfo = Schema.Union(
       "sessionBudgetExceeded",
       "usageLimitExceeded",
       "rateLimitExceeded",
+      "flexUnavailable",
       "serverOverloaded",
       "cyberPolicy",
       "misalignmentPolicyViolation",
+      "tooManyDenials",
       "internalServerError",
       "unauthorized",
       "badRequest",
@@ -34470,8 +34749,13 @@ export type V2TurnStartResponse__FunctionCallOutputContentItem =
   | { readonly text: string; readonly type: "input_text" }
   | {
       readonly detail?: V2TurnStartResponse__ImageDetail | null;
-      readonly image_url: string;
       readonly type: "input_image";
+      readonly image_url: string;
+    }
+  | {
+      readonly detail?: V2TurnStartResponse__ImageDetail | null;
+      readonly type: "input_image";
+      readonly file_id: string;
     }
   | { readonly audio_url: string; readonly type: "input_audio" }
   | { readonly encrypted_content: string; readonly type: "encrypted_content" };
@@ -34483,13 +34767,22 @@ export const V2TurnStartResponse__FunctionCallOutputContentItem = Schema.Union(
         title: "InputTextFunctionCallOutputContentItemType",
       }),
     }).annotate({ title: "InputTextFunctionCallOutputContentItem" }),
-    Schema.Struct({
-      detail: Schema.optionalKey(Schema.Union([V2TurnStartResponse__ImageDetail, Schema.Null])),
-      image_url: Schema.String,
-      type: Schema.Literal("input_image").annotate({
-        title: "InputImageFunctionCallOutputContentItemType",
-      }),
-    }).annotate({ title: "InputImageFunctionCallOutputContentItem" }),
+    Schema.Union([
+      Schema.Struct({
+        detail: Schema.optionalKey(Schema.Union([V2TurnStartResponse__ImageDetail, Schema.Null])),
+        type: Schema.Literal("input_image").annotate({
+          title: "InputImageFunctionCallOutputContentItemType",
+        }),
+        image_url: Schema.String,
+      }).annotate({ title: "ImageUrlFunctionCallOutputContentItem" }),
+      Schema.Struct({
+        detail: Schema.optionalKey(Schema.Union([V2TurnStartResponse__ImageDetail, Schema.Null])),
+        type: Schema.Literal("input_image").annotate({
+          title: "InputImageFunctionCallOutputContentItemType",
+        }),
+        file_id: Schema.String,
+      }).annotate({ title: "FileIdFunctionCallOutputContentItem" }),
+    ]),
     Schema.Struct({
       audio_url: Schema.String,
       type: Schema.Literal("input_audio").annotate({
@@ -34571,6 +34864,19 @@ export const V2TurnStartResponse__FileUpdateChange = Schema.Struct({
   kind: V2TurnStartResponse__PatchChangeKind,
   path: Schema.String,
 }).annotate({ identifier: "V2TurnStartResponse__FileUpdateChange" });
+
+export type V2TurnStartResponse__McpAppUi = {
+  readonly preferredModelDisplayMode: V2TurnStartResponse__McpAppDisplayMode;
+  readonly resourceUri: string;
+};
+export const V2TurnStartResponse__McpAppUi = Schema.Struct({
+  preferredModelDisplayMode: V2TurnStartResponse__McpAppDisplayMode,
+  resourceUri: Schema.String,
+}).annotate({
+  description:
+    "UI resource and display preference for model invocations, captured from the tool descriptor.",
+  identifier: "V2TurnStartResponse__McpAppUi",
+});
 
 export type V2TurnStartResponse__CollabAgentState = {
   readonly message?: string | null;
@@ -34777,6 +35083,7 @@ export type ClientRequest__ThreadStartParams = {
   readonly baseInstructions?: string | null;
   readonly config?: { readonly [x: string]: Schema.Json } | null;
   readonly cwd?: string | null;
+  readonly daybreakEnabled?: boolean | null;
   readonly developerInstructions?: string | null;
   readonly dynamicTools?: ReadonlyArray<ClientRequest__DynamicToolSpec> | null;
   readonly environments?: ReadonlyArray<ClientRequest__TurnEnvironmentParams> | null;
@@ -34820,6 +35127,15 @@ export const ClientRequest__ThreadStartParams = Schema.Struct({
     ]),
   ),
   cwd: Schema.optionalKey(Schema.Union([Schema.String, Schema.Null])),
+  daybreakEnabled: Schema.optionalKey(
+    Schema.Union([
+      Schema.Boolean.annotate({
+        description:
+          "Initial Daybreak choice for this persistent thread. Omitted or null leaves it unset. This does not select a turn's `cyberAccessProgram` or grant access. Not supported for ephemeral threads.",
+      }),
+      Schema.Null,
+    ]),
+  ),
   developerInstructions: Schema.optionalKey(Schema.Union([Schema.String, Schema.Null])),
   dynamicTools: Schema.optionalKey(
     Schema.Union([Schema.Array(ClientRequest__DynamicToolSpec), Schema.Null]),
@@ -34870,7 +35186,11 @@ export const ClientRequest__ThreadStartParams = Schema.Struct({
       Schema.Null,
     ]),
   ),
-  personality: Schema.optionalKey(Schema.Union([ClientRequest__Personality, Schema.Null])),
+  personality: Schema.optionalKey(
+    Schema.Union([ClientRequest__Personality, Schema.Null]).annotate({
+      description: "@deprecated `friendly` and `pragmatic` no longer select a style.",
+    }),
+  ),
   projectId: Schema.optionalKey(
     Schema.Union([
       Schema.String.annotate({
@@ -34942,6 +35262,11 @@ export type ClientRequest__UserInput =
     }
   | {
       readonly detail?: ClientRequest__ImageDetail | null;
+      readonly type: "image";
+      readonly fileId: string;
+    }
+  | {
+      readonly detail?: ClientRequest__ImageDetail | null;
       readonly path: string;
       readonly type: "localImage";
     }
@@ -34961,11 +35286,18 @@ export const ClientRequest__UserInput = Schema.Union(
       ),
       type: Schema.Literal("text").annotate({ title: "TextUserInputType" }),
     }).annotate({ title: "TextUserInput" }),
-    Schema.Struct({
-      detail: Schema.optionalKey(Schema.Union([ClientRequest__ImageDetail, Schema.Null])),
-      type: Schema.Literal("image").annotate({ title: "ImageUserInputType" }),
-      url: Schema.String,
-    }).annotate({ title: "ImageUserInput" }),
+    Schema.Union([
+      Schema.Struct({
+        detail: Schema.optionalKey(Schema.Union([ClientRequest__ImageDetail, Schema.Null])),
+        type: Schema.Literal("image").annotate({ title: "ImageUserInputType" }),
+        url: Schema.String,
+      }).annotate({ title: "UrlUserInput" }),
+      Schema.Struct({
+        detail: Schema.optionalKey(Schema.Union([ClientRequest__ImageDetail, Schema.Null])),
+        type: Schema.Literal("image").annotate({ title: "ImageUserInputType" }),
+        fileId: Schema.String,
+      }).annotate({ title: "FileIdUserInput" }),
+    ]),
     Schema.Struct({
       detail: Schema.optionalKey(Schema.Union([ClientRequest__ImageDetail, Schema.Null])),
       path: Schema.String,
@@ -35120,6 +35452,49 @@ export const ClientRequest__CommandExecParams = Schema.Struct({
   identifier: "ClientRequest__CommandExecParams",
 });
 
+export type ClientRequest__ThreadItemsListParams = {
+  readonly cursor?: ClientRequest__ThreadItemsListCursor | null;
+  readonly limit?: number | null;
+  readonly sortDirection?: ClientRequest__SortDirection | null;
+  readonly threadId: string;
+  readonly turnId?: string | null;
+};
+export const ClientRequest__ThreadItemsListParams = Schema.Struct({
+  cursor: Schema.optionalKey(
+    Schema.Union([ClientRequest__ThreadItemsListCursor, Schema.Null]).annotate({
+      description:
+        "Opaque continuation cursor or an exclusive item anchor in the requested visible turn. An item anchor requires a non-empty `turnId`; ascending (the default) returns items after it, and descending returns items before it. Continue with the returned string cursor.",
+    }),
+  ),
+  limit: Schema.optionalKey(
+    Schema.Union([
+      Schema.Number.annotate({ description: "Optional item page size.", format: "uint32" })
+        .check(Schema.isInt().annotate({ expected: "an integer" }))
+        .check(
+          Schema.isGreaterThanOrEqualTo(0).annotate({
+            expected: "a value greater than or equal to 0",
+          }),
+        ),
+      Schema.Null,
+    ]),
+  ),
+  sortDirection: Schema.optionalKey(
+    Schema.Union([ClientRequest__SortDirection, Schema.Null]).annotate({
+      description: "Optional item pagination direction; defaults to ascending.",
+    }),
+  ),
+  threadId: Schema.String,
+  turnId: Schema.optionalKey(
+    Schema.Union([
+      Schema.String.annotate({
+        description:
+          "Optional turn id to filter by. When omitted, returns items across the thread.",
+      }),
+      Schema.Null,
+    ]),
+  ),
+}).annotate({ identifier: "ClientRequest__ThreadItemsListParams" });
+
 export type ClientRequest__PluginShareSaveParams = {
   readonly discoverability?: ClientRequest__PluginShareDiscoverability | null;
   readonly pluginPath: ClientRequest__AbsolutePathBuf;
@@ -35149,6 +35524,7 @@ export const ClientRequest__PluginShareUpdateTargetsParams = Schema.Struct({
 }).annotate({ identifier: "ClientRequest__PluginShareUpdateTargetsParams" });
 
 export type ClientRequest__ThreadRealtimeStartParams = {
+  readonly backendReasoningStatus?: boolean;
   readonly clientManagedHandoffs?: boolean | null;
   readonly codexResponseHandoffChannelPrefixes?: {
     readonly [x: string]: ReadonlyArray<string>;
@@ -35172,6 +35548,12 @@ export type ClientRequest__ThreadRealtimeStartParams = {
   readonly voice?: ClientRequest__RealtimeVoice | null;
 };
 export const ClientRequest__ThreadRealtimeStartParams = Schema.Struct({
+  backendReasoningStatus: Schema.optionalKey(
+    Schema.Boolean.annotate({
+      description:
+        "Relays public reasoning summaries as quiet context for realtime V3 delegations. Defaults to false.",
+    }),
+  ),
   clientManagedHandoffs: Schema.optionalKey(
     Schema.Union([
       Schema.Boolean.annotate({
@@ -35355,7 +35737,7 @@ export const ClientRequest__ConfigBatchWriteParams = Schema.Struct({
   reloadUserConfig: Schema.optionalKey(
     Schema.Boolean.annotate({
       description:
-        "When true, hot-reload updated runtime settings into loaded threads after writing. Session-static model, reasoning-effort, Plan-mode reasoning-effort, service-tier, and personality defaults are not reloaded.",
+        "When true, hot-reload updated runtime settings into loaded threads after writing. Session-static model, reasoning-effort, Plan-mode reasoning-effort, and service-tier defaults are not reloaded. The deprecated personality setting is also not reloaded.",
     }),
   ),
 }).annotate({ identifier: "ClientRequest__ConfigBatchWriteParams" });
@@ -35806,6 +36188,11 @@ export type ServerNotification__UserInput =
     }
   | {
       readonly detail?: ServerNotification__ImageDetail | null;
+      readonly type: "image";
+      readonly fileId: string;
+    }
+  | {
+      readonly detail?: ServerNotification__ImageDetail | null;
       readonly path: string;
       readonly type: "localImage";
     }
@@ -35825,11 +36212,18 @@ export const ServerNotification__UserInput = Schema.Union(
       ),
       type: Schema.Literal("text").annotate({ title: "TextUserInputType" }),
     }).annotate({ title: "TextUserInput" }),
-    Schema.Struct({
-      detail: Schema.optionalKey(Schema.Union([ServerNotification__ImageDetail, Schema.Null])),
-      type: Schema.Literal("image").annotate({ title: "ImageUserInputType" }),
-      url: Schema.String,
-    }).annotate({ title: "ImageUserInput" }),
+    Schema.Union([
+      Schema.Struct({
+        detail: Schema.optionalKey(Schema.Union([ServerNotification__ImageDetail, Schema.Null])),
+        type: Schema.Literal("image").annotate({ title: "ImageUserInputType" }),
+        url: Schema.String,
+      }).annotate({ title: "UrlUserInput" }),
+      Schema.Struct({
+        detail: Schema.optionalKey(Schema.Union([ServerNotification__ImageDetail, Schema.Null])),
+        type: Schema.Literal("image").annotate({ title: "ImageUserInputType" }),
+        fileId: Schema.String,
+      }).annotate({ title: "FileIdUserInput" }),
+    ]),
     Schema.Struct({
       detail: Schema.optionalKey(Schema.Union([ServerNotification__ImageDetail, Schema.Null])),
       path: Schema.String,
@@ -36904,6 +37298,11 @@ export type V2ItemCompletedNotification__UserInput =
     }
   | {
       readonly detail?: V2ItemCompletedNotification__ImageDetail | null;
+      readonly type: "image";
+      readonly fileId: string;
+    }
+  | {
+      readonly detail?: V2ItemCompletedNotification__ImageDetail | null;
       readonly path: string;
       readonly type: "localImage";
     }
@@ -36923,13 +37322,22 @@ export const V2ItemCompletedNotification__UserInput = Schema.Union(
       ),
       type: Schema.Literal("text").annotate({ title: "TextUserInputType" }),
     }).annotate({ title: "TextUserInput" }),
-    Schema.Struct({
-      detail: Schema.optionalKey(
-        Schema.Union([V2ItemCompletedNotification__ImageDetail, Schema.Null]),
-      ),
-      type: Schema.Literal("image").annotate({ title: "ImageUserInputType" }),
-      url: Schema.String,
-    }).annotate({ title: "ImageUserInput" }),
+    Schema.Union([
+      Schema.Struct({
+        detail: Schema.optionalKey(
+          Schema.Union([V2ItemCompletedNotification__ImageDetail, Schema.Null]),
+        ),
+        type: Schema.Literal("image").annotate({ title: "ImageUserInputType" }),
+        url: Schema.String,
+      }).annotate({ title: "UrlUserInput" }),
+      Schema.Struct({
+        detail: Schema.optionalKey(
+          Schema.Union([V2ItemCompletedNotification__ImageDetail, Schema.Null]),
+        ),
+        type: Schema.Literal("image").annotate({ title: "ImageUserInputType" }),
+        fileId: Schema.String,
+      }).annotate({ title: "FileIdUserInput" }),
+    ]),
     Schema.Struct({
       detail: Schema.optionalKey(
         Schema.Union([V2ItemCompletedNotification__ImageDetail, Schema.Null]),
@@ -37036,6 +37444,11 @@ export type V2ItemStartedNotification__UserInput =
     }
   | {
       readonly detail?: V2ItemStartedNotification__ImageDetail | null;
+      readonly type: "image";
+      readonly fileId: string;
+    }
+  | {
+      readonly detail?: V2ItemStartedNotification__ImageDetail | null;
       readonly path: string;
       readonly type: "localImage";
     }
@@ -37055,13 +37468,22 @@ export const V2ItemStartedNotification__UserInput = Schema.Union(
       ),
       type: Schema.Literal("text").annotate({ title: "TextUserInputType" }),
     }).annotate({ title: "TextUserInput" }),
-    Schema.Struct({
-      detail: Schema.optionalKey(
-        Schema.Union([V2ItemStartedNotification__ImageDetail, Schema.Null]),
-      ),
-      type: Schema.Literal("image").annotate({ title: "ImageUserInputType" }),
-      url: Schema.String,
-    }).annotate({ title: "ImageUserInput" }),
+    Schema.Union([
+      Schema.Struct({
+        detail: Schema.optionalKey(
+          Schema.Union([V2ItemStartedNotification__ImageDetail, Schema.Null]),
+        ),
+        type: Schema.Literal("image").annotate({ title: "ImageUserInputType" }),
+        url: Schema.String,
+      }).annotate({ title: "UrlUserInput" }),
+      Schema.Struct({
+        detail: Schema.optionalKey(
+          Schema.Union([V2ItemStartedNotification__ImageDetail, Schema.Null]),
+        ),
+        type: Schema.Literal("image").annotate({ title: "ImageUserInputType" }),
+        fileId: Schema.String,
+      }).annotate({ title: "FileIdUserInput" }),
+    ]),
     Schema.Struct({
       detail: Schema.optionalKey(
         Schema.Union([V2ItemStartedNotification__ImageDetail, Schema.Null]),
@@ -37102,6 +37524,7 @@ export const V2ItemStartedNotification__FunctionCallOutputBody = Schema.Union([
 export type V2ModelListResponse__Model = {
   readonly additionalSpeedTiers?: ReadonlyArray<string>;
   readonly availabilityNux?: V2ModelListResponse__ModelAvailabilityNux | null;
+  readonly availableAccessPrograms?: V2ModelListResponse__ModelAccessPrograms | null;
   readonly defaultReasoningEffort: V2ModelListResponse__ReasoningEffort;
   readonly defaultServiceTier?: string | null;
   readonly description: string;
@@ -37128,6 +37551,11 @@ export const V2ModelListResponse__Model = Schema.Struct({
   ),
   availabilityNux: Schema.optionalKey(
     Schema.Union([V2ModelListResponse__ModelAvailabilityNux, Schema.Null]),
+  ),
+  availableAccessPrograms: Schema.optionalKey(
+    Schema.Union([V2ModelListResponse__ModelAccessPrograms, Schema.Null]).annotate({
+      description: "Null when the catalog does not provide access-program metadata.",
+    }),
   ),
   defaultReasoningEffort: V2ModelListResponse__ReasoningEffort,
   defaultServiceTier: Schema.optionalKey(
@@ -37157,7 +37585,12 @@ export const V2ModelListResponse__Model = Schema.Struct({
     Schema.Array(V2ModelListResponse__ModelServiceTier).annotate({ default: [] }),
   ),
   supportedReasoningEfforts: Schema.Array(V2ModelListResponse__ReasoningEffortOption),
-  supportsPersonality: Schema.optionalKey(Schema.Boolean.annotate({ default: false })),
+  supportsPersonality: Schema.optionalKey(
+    Schema.Boolean.annotate({
+      description: "@deprecated Always false; models no longer support personality selection.",
+      default: false,
+    }),
+  ),
   upgrade: Schema.optionalKey(Schema.Union([Schema.String, Schema.Null])),
   upgradeInfo: Schema.optionalKey(
     Schema.Union([V2ModelListResponse__ModelUpgradeInfo, Schema.Null]),
@@ -37575,6 +38008,11 @@ export type V2ReviewStartResponse__UserInput =
     }
   | {
       readonly detail?: V2ReviewStartResponse__ImageDetail | null;
+      readonly type: "image";
+      readonly fileId: string;
+    }
+  | {
+      readonly detail?: V2ReviewStartResponse__ImageDetail | null;
       readonly path: string;
       readonly type: "localImage";
     }
@@ -37594,11 +38032,18 @@ export const V2ReviewStartResponse__UserInput = Schema.Union(
       ),
       type: Schema.Literal("text").annotate({ title: "TextUserInputType" }),
     }).annotate({ title: "TextUserInput" }),
-    Schema.Struct({
-      detail: Schema.optionalKey(Schema.Union([V2ReviewStartResponse__ImageDetail, Schema.Null])),
-      type: Schema.Literal("image").annotate({ title: "ImageUserInputType" }),
-      url: Schema.String,
-    }).annotate({ title: "ImageUserInput" }),
+    Schema.Union([
+      Schema.Struct({
+        detail: Schema.optionalKey(Schema.Union([V2ReviewStartResponse__ImageDetail, Schema.Null])),
+        type: Schema.Literal("image").annotate({ title: "ImageUserInputType" }),
+        url: Schema.String,
+      }).annotate({ title: "UrlUserInput" }),
+      Schema.Struct({
+        detail: Schema.optionalKey(Schema.Union([V2ReviewStartResponse__ImageDetail, Schema.Null])),
+        type: Schema.Literal("image").annotate({ title: "ImageUserInputType" }),
+        fileId: Schema.String,
+      }).annotate({ title: "FileIdUserInput" }),
+    ]),
     Schema.Struct({
       detail: Schema.optionalKey(Schema.Union([V2ReviewStartResponse__ImageDetail, Schema.Null])),
       path: Schema.String,
@@ -37726,6 +38171,11 @@ export type V2ThreadForkResponse__UserInput =
     }
   | {
       readonly detail?: V2ThreadForkResponse__ImageDetail | null;
+      readonly type: "image";
+      readonly fileId: string;
+    }
+  | {
+      readonly detail?: V2ThreadForkResponse__ImageDetail | null;
       readonly path: string;
       readonly type: "localImage";
     }
@@ -37745,11 +38195,18 @@ export const V2ThreadForkResponse__UserInput = Schema.Union(
       ),
       type: Schema.Literal("text").annotate({ title: "TextUserInputType" }),
     }).annotate({ title: "TextUserInput" }),
-    Schema.Struct({
-      detail: Schema.optionalKey(Schema.Union([V2ThreadForkResponse__ImageDetail, Schema.Null])),
-      type: Schema.Literal("image").annotate({ title: "ImageUserInputType" }),
-      url: Schema.String,
-    }).annotate({ title: "ImageUserInput" }),
+    Schema.Union([
+      Schema.Struct({
+        detail: Schema.optionalKey(Schema.Union([V2ThreadForkResponse__ImageDetail, Schema.Null])),
+        type: Schema.Literal("image").annotate({ title: "ImageUserInputType" }),
+        url: Schema.String,
+      }).annotate({ title: "UrlUserInput" }),
+      Schema.Struct({
+        detail: Schema.optionalKey(Schema.Union([V2ThreadForkResponse__ImageDetail, Schema.Null])),
+        type: Schema.Literal("image").annotate({ title: "ImageUserInputType" }),
+        fileId: Schema.String,
+      }).annotate({ title: "FileIdUserInput" }),
+    ]),
     Schema.Struct({
       detail: Schema.optionalKey(Schema.Union([V2ThreadForkResponse__ImageDetail, Schema.Null])),
       path: Schema.String,
@@ -37798,6 +38255,11 @@ export type V2ThreadItemsListResponse__UserInput =
     }
   | {
       readonly detail?: V2ThreadItemsListResponse__ImageDetail | null;
+      readonly type: "image";
+      readonly fileId: string;
+    }
+  | {
+      readonly detail?: V2ThreadItemsListResponse__ImageDetail | null;
       readonly path: string;
       readonly type: "localImage";
     }
@@ -37817,13 +38279,22 @@ export const V2ThreadItemsListResponse__UserInput = Schema.Union(
       ),
       type: Schema.Literal("text").annotate({ title: "TextUserInputType" }),
     }).annotate({ title: "TextUserInput" }),
-    Schema.Struct({
-      detail: Schema.optionalKey(
-        Schema.Union([V2ThreadItemsListResponse__ImageDetail, Schema.Null]),
-      ),
-      type: Schema.Literal("image").annotate({ title: "ImageUserInputType" }),
-      url: Schema.String,
-    }).annotate({ title: "ImageUserInput" }),
+    Schema.Union([
+      Schema.Struct({
+        detail: Schema.optionalKey(
+          Schema.Union([V2ThreadItemsListResponse__ImageDetail, Schema.Null]),
+        ),
+        type: Schema.Literal("image").annotate({ title: "ImageUserInputType" }),
+        url: Schema.String,
+      }).annotate({ title: "UrlUserInput" }),
+      Schema.Struct({
+        detail: Schema.optionalKey(
+          Schema.Union([V2ThreadItemsListResponse__ImageDetail, Schema.Null]),
+        ),
+        type: Schema.Literal("image").annotate({ title: "ImageUserInputType" }),
+        fileId: Schema.String,
+      }).annotate({ title: "FileIdUserInput" }),
+    ]),
     Schema.Struct({
       detail: Schema.optionalKey(
         Schema.Union([V2ThreadItemsListResponse__ImageDetail, Schema.Null]),
@@ -37913,6 +38384,11 @@ export type V2ThreadListResponse__UserInput =
     }
   | {
       readonly detail?: V2ThreadListResponse__ImageDetail | null;
+      readonly type: "image";
+      readonly fileId: string;
+    }
+  | {
+      readonly detail?: V2ThreadListResponse__ImageDetail | null;
       readonly path: string;
       readonly type: "localImage";
     }
@@ -37932,11 +38408,18 @@ export const V2ThreadListResponse__UserInput = Schema.Union(
       ),
       type: Schema.Literal("text").annotate({ title: "TextUserInputType" }),
     }).annotate({ title: "TextUserInput" }),
-    Schema.Struct({
-      detail: Schema.optionalKey(Schema.Union([V2ThreadListResponse__ImageDetail, Schema.Null])),
-      type: Schema.Literal("image").annotate({ title: "ImageUserInputType" }),
-      url: Schema.String,
-    }).annotate({ title: "ImageUserInput" }),
+    Schema.Union([
+      Schema.Struct({
+        detail: Schema.optionalKey(Schema.Union([V2ThreadListResponse__ImageDetail, Schema.Null])),
+        type: Schema.Literal("image").annotate({ title: "ImageUserInputType" }),
+        url: Schema.String,
+      }).annotate({ title: "UrlUserInput" }),
+      Schema.Struct({
+        detail: Schema.optionalKey(Schema.Union([V2ThreadListResponse__ImageDetail, Schema.Null])),
+        type: Schema.Literal("image").annotate({ title: "ImageUserInputType" }),
+        fileId: Schema.String,
+      }).annotate({ title: "FileIdUserInput" }),
+    ]),
     Schema.Struct({
       detail: Schema.optionalKey(Schema.Union([V2ThreadListResponse__ImageDetail, Schema.Null])),
       path: Schema.String,
@@ -38024,6 +38507,11 @@ export type V2ThreadMetadataUpdateResponse__UserInput =
     }
   | {
       readonly detail?: V2ThreadMetadataUpdateResponse__ImageDetail | null;
+      readonly type: "image";
+      readonly fileId: string;
+    }
+  | {
+      readonly detail?: V2ThreadMetadataUpdateResponse__ImageDetail | null;
       readonly path: string;
       readonly type: "localImage";
     }
@@ -38043,13 +38531,22 @@ export const V2ThreadMetadataUpdateResponse__UserInput = Schema.Union(
       ),
       type: Schema.Literal("text").annotate({ title: "TextUserInputType" }),
     }).annotate({ title: "TextUserInput" }),
-    Schema.Struct({
-      detail: Schema.optionalKey(
-        Schema.Union([V2ThreadMetadataUpdateResponse__ImageDetail, Schema.Null]),
-      ),
-      type: Schema.Literal("image").annotate({ title: "ImageUserInputType" }),
-      url: Schema.String,
-    }).annotate({ title: "ImageUserInput" }),
+    Schema.Union([
+      Schema.Struct({
+        detail: Schema.optionalKey(
+          Schema.Union([V2ThreadMetadataUpdateResponse__ImageDetail, Schema.Null]),
+        ),
+        type: Schema.Literal("image").annotate({ title: "ImageUserInputType" }),
+        url: Schema.String,
+      }).annotate({ title: "UrlUserInput" }),
+      Schema.Struct({
+        detail: Schema.optionalKey(
+          Schema.Union([V2ThreadMetadataUpdateResponse__ImageDetail, Schema.Null]),
+        ),
+        type: Schema.Literal("image").annotate({ title: "ImageUserInputType" }),
+        fileId: Schema.String,
+      }).annotate({ title: "FileIdUserInput" }),
+    ]),
     Schema.Struct({
       detail: Schema.optionalKey(
         Schema.Union([V2ThreadMetadataUpdateResponse__ImageDetail, Schema.Null]),
@@ -38100,6 +38597,11 @@ export type V2ThreadQueueAddParams__UserInput =
     }
   | {
       readonly detail?: V2ThreadQueueAddParams__ImageDetail | null;
+      readonly type: "image";
+      readonly fileId: string;
+    }
+  | {
+      readonly detail?: V2ThreadQueueAddParams__ImageDetail | null;
       readonly path: string;
       readonly type: "localImage";
     }
@@ -38119,11 +38621,22 @@ export const V2ThreadQueueAddParams__UserInput = Schema.Union(
       ),
       type: Schema.Literal("text").annotate({ title: "TextUserInputType" }),
     }).annotate({ title: "TextUserInput" }),
-    Schema.Struct({
-      detail: Schema.optionalKey(Schema.Union([V2ThreadQueueAddParams__ImageDetail, Schema.Null])),
-      type: Schema.Literal("image").annotate({ title: "ImageUserInputType" }),
-      url: Schema.String,
-    }).annotate({ title: "ImageUserInput" }),
+    Schema.Union([
+      Schema.Struct({
+        detail: Schema.optionalKey(
+          Schema.Union([V2ThreadQueueAddParams__ImageDetail, Schema.Null]),
+        ),
+        type: Schema.Literal("image").annotate({ title: "ImageUserInputType" }),
+        url: Schema.String,
+      }).annotate({ title: "UrlUserInput" }),
+      Schema.Struct({
+        detail: Schema.optionalKey(
+          Schema.Union([V2ThreadQueueAddParams__ImageDetail, Schema.Null]),
+        ),
+        type: Schema.Literal("image").annotate({ title: "ImageUserInputType" }),
+        fileId: Schema.String,
+      }).annotate({ title: "FileIdUserInput" }),
+    ]),
     Schema.Struct({
       detail: Schema.optionalKey(Schema.Union([V2ThreadQueueAddParams__ImageDetail, Schema.Null])),
       path: Schema.String,
@@ -38164,6 +38677,11 @@ export type V2ThreadQueueAddResponse__UserInput =
     }
   | {
       readonly detail?: V2ThreadQueueAddResponse__ImageDetail | null;
+      readonly type: "image";
+      readonly fileId: string;
+    }
+  | {
+      readonly detail?: V2ThreadQueueAddResponse__ImageDetail | null;
       readonly path: string;
       readonly type: "localImage";
     }
@@ -38183,13 +38701,22 @@ export const V2ThreadQueueAddResponse__UserInput = Schema.Union(
       ),
       type: Schema.Literal("text").annotate({ title: "TextUserInputType" }),
     }).annotate({ title: "TextUserInput" }),
-    Schema.Struct({
-      detail: Schema.optionalKey(
-        Schema.Union([V2ThreadQueueAddResponse__ImageDetail, Schema.Null]),
-      ),
-      type: Schema.Literal("image").annotate({ title: "ImageUserInputType" }),
-      url: Schema.String,
-    }).annotate({ title: "ImageUserInput" }),
+    Schema.Union([
+      Schema.Struct({
+        detail: Schema.optionalKey(
+          Schema.Union([V2ThreadQueueAddResponse__ImageDetail, Schema.Null]),
+        ),
+        type: Schema.Literal("image").annotate({ title: "ImageUserInputType" }),
+        url: Schema.String,
+      }).annotate({ title: "UrlUserInput" }),
+      Schema.Struct({
+        detail: Schema.optionalKey(
+          Schema.Union([V2ThreadQueueAddResponse__ImageDetail, Schema.Null]),
+        ),
+        type: Schema.Literal("image").annotate({ title: "ImageUserInputType" }),
+        fileId: Schema.String,
+      }).annotate({ title: "FileIdUserInput" }),
+    ]),
     Schema.Struct({
       detail: Schema.optionalKey(
         Schema.Union([V2ThreadQueueAddResponse__ImageDetail, Schema.Null]),
@@ -38232,6 +38759,11 @@ export type V2ThreadQueueListResponse__UserInput =
     }
   | {
       readonly detail?: V2ThreadQueueListResponse__ImageDetail | null;
+      readonly type: "image";
+      readonly fileId: string;
+    }
+  | {
+      readonly detail?: V2ThreadQueueListResponse__ImageDetail | null;
       readonly path: string;
       readonly type: "localImage";
     }
@@ -38251,13 +38783,22 @@ export const V2ThreadQueueListResponse__UserInput = Schema.Union(
       ),
       type: Schema.Literal("text").annotate({ title: "TextUserInputType" }),
     }).annotate({ title: "TextUserInput" }),
-    Schema.Struct({
-      detail: Schema.optionalKey(
-        Schema.Union([V2ThreadQueueListResponse__ImageDetail, Schema.Null]),
-      ),
-      type: Schema.Literal("image").annotate({ title: "ImageUserInputType" }),
-      url: Schema.String,
-    }).annotate({ title: "ImageUserInput" }),
+    Schema.Union([
+      Schema.Struct({
+        detail: Schema.optionalKey(
+          Schema.Union([V2ThreadQueueListResponse__ImageDetail, Schema.Null]),
+        ),
+        type: Schema.Literal("image").annotate({ title: "ImageUserInputType" }),
+        url: Schema.String,
+      }).annotate({ title: "UrlUserInput" }),
+      Schema.Struct({
+        detail: Schema.optionalKey(
+          Schema.Union([V2ThreadQueueListResponse__ImageDetail, Schema.Null]),
+        ),
+        type: Schema.Literal("image").annotate({ title: "ImageUserInputType" }),
+        fileId: Schema.String,
+      }).annotate({ title: "FileIdUserInput" }),
+    ]),
     Schema.Struct({
       detail: Schema.optionalKey(
         Schema.Union([V2ThreadQueueListResponse__ImageDetail, Schema.Null]),
@@ -38320,6 +38861,11 @@ export type V2ThreadQueueStartResponse__UserInput =
     }
   | {
       readonly detail?: V2ThreadQueueStartResponse__ImageDetail | null;
+      readonly type: "image";
+      readonly fileId: string;
+    }
+  | {
+      readonly detail?: V2ThreadQueueStartResponse__ImageDetail | null;
       readonly path: string;
       readonly type: "localImage";
     }
@@ -38339,13 +38885,22 @@ export const V2ThreadQueueStartResponse__UserInput = Schema.Union(
       ),
       type: Schema.Literal("text").annotate({ title: "TextUserInputType" }),
     }).annotate({ title: "TextUserInput" }),
-    Schema.Struct({
-      detail: Schema.optionalKey(
-        Schema.Union([V2ThreadQueueStartResponse__ImageDetail, Schema.Null]),
-      ),
-      type: Schema.Literal("image").annotate({ title: "ImageUserInputType" }),
-      url: Schema.String,
-    }).annotate({ title: "ImageUserInput" }),
+    Schema.Union([
+      Schema.Struct({
+        detail: Schema.optionalKey(
+          Schema.Union([V2ThreadQueueStartResponse__ImageDetail, Schema.Null]),
+        ),
+        type: Schema.Literal("image").annotate({ title: "ImageUserInputType" }),
+        url: Schema.String,
+      }).annotate({ title: "UrlUserInput" }),
+      Schema.Struct({
+        detail: Schema.optionalKey(
+          Schema.Union([V2ThreadQueueStartResponse__ImageDetail, Schema.Null]),
+        ),
+        type: Schema.Literal("image").annotate({ title: "ImageUserInputType" }),
+        fileId: Schema.String,
+      }).annotate({ title: "FileIdUserInput" }),
+    ]),
     Schema.Struct({
       detail: Schema.optionalKey(
         Schema.Union([V2ThreadQueueStartResponse__ImageDetail, Schema.Null]),
@@ -38396,6 +38951,11 @@ export type V2ThreadQueueUpdateParams__UserInput =
     }
   | {
       readonly detail?: V2ThreadQueueUpdateParams__ImageDetail | null;
+      readonly type: "image";
+      readonly fileId: string;
+    }
+  | {
+      readonly detail?: V2ThreadQueueUpdateParams__ImageDetail | null;
       readonly path: string;
       readonly type: "localImage";
     }
@@ -38415,13 +38975,22 @@ export const V2ThreadQueueUpdateParams__UserInput = Schema.Union(
       ),
       type: Schema.Literal("text").annotate({ title: "TextUserInputType" }),
     }).annotate({ title: "TextUserInput" }),
-    Schema.Struct({
-      detail: Schema.optionalKey(
-        Schema.Union([V2ThreadQueueUpdateParams__ImageDetail, Schema.Null]),
-      ),
-      type: Schema.Literal("image").annotate({ title: "ImageUserInputType" }),
-      url: Schema.String,
-    }).annotate({ title: "ImageUserInput" }),
+    Schema.Union([
+      Schema.Struct({
+        detail: Schema.optionalKey(
+          Schema.Union([V2ThreadQueueUpdateParams__ImageDetail, Schema.Null]),
+        ),
+        type: Schema.Literal("image").annotate({ title: "ImageUserInputType" }),
+        url: Schema.String,
+      }).annotate({ title: "UrlUserInput" }),
+      Schema.Struct({
+        detail: Schema.optionalKey(
+          Schema.Union([V2ThreadQueueUpdateParams__ImageDetail, Schema.Null]),
+        ),
+        type: Schema.Literal("image").annotate({ title: "ImageUserInputType" }),
+        fileId: Schema.String,
+      }).annotate({ title: "FileIdUserInput" }),
+    ]),
     Schema.Struct({
       detail: Schema.optionalKey(
         Schema.Union([V2ThreadQueueUpdateParams__ImageDetail, Schema.Null]),
@@ -38464,6 +39033,11 @@ export type V2ThreadQueueUpdateResponse__UserInput =
     }
   | {
       readonly detail?: V2ThreadQueueUpdateResponse__ImageDetail | null;
+      readonly type: "image";
+      readonly fileId: string;
+    }
+  | {
+      readonly detail?: V2ThreadQueueUpdateResponse__ImageDetail | null;
       readonly path: string;
       readonly type: "localImage";
     }
@@ -38483,13 +39057,22 @@ export const V2ThreadQueueUpdateResponse__UserInput = Schema.Union(
       ),
       type: Schema.Literal("text").annotate({ title: "TextUserInputType" }),
     }).annotate({ title: "TextUserInput" }),
-    Schema.Struct({
-      detail: Schema.optionalKey(
-        Schema.Union([V2ThreadQueueUpdateResponse__ImageDetail, Schema.Null]),
-      ),
-      type: Schema.Literal("image").annotate({ title: "ImageUserInputType" }),
-      url: Schema.String,
-    }).annotate({ title: "ImageUserInput" }),
+    Schema.Union([
+      Schema.Struct({
+        detail: Schema.optionalKey(
+          Schema.Union([V2ThreadQueueUpdateResponse__ImageDetail, Schema.Null]),
+        ),
+        type: Schema.Literal("image").annotate({ title: "ImageUserInputType" }),
+        url: Schema.String,
+      }).annotate({ title: "UrlUserInput" }),
+      Schema.Struct({
+        detail: Schema.optionalKey(
+          Schema.Union([V2ThreadQueueUpdateResponse__ImageDetail, Schema.Null]),
+        ),
+        type: Schema.Literal("image").annotate({ title: "ImageUserInputType" }),
+        fileId: Schema.String,
+      }).annotate({ title: "FileIdUserInput" }),
+    ]),
     Schema.Struct({
       detail: Schema.optionalKey(
         Schema.Union([V2ThreadQueueUpdateResponse__ImageDetail, Schema.Null]),
@@ -38571,6 +39154,11 @@ export type V2ThreadReadResponse__UserInput =
     }
   | {
       readonly detail?: V2ThreadReadResponse__ImageDetail | null;
+      readonly type: "image";
+      readonly fileId: string;
+    }
+  | {
+      readonly detail?: V2ThreadReadResponse__ImageDetail | null;
       readonly path: string;
       readonly type: "localImage";
     }
@@ -38590,11 +39178,18 @@ export const V2ThreadReadResponse__UserInput = Schema.Union(
       ),
       type: Schema.Literal("text").annotate({ title: "TextUserInputType" }),
     }).annotate({ title: "TextUserInput" }),
-    Schema.Struct({
-      detail: Schema.optionalKey(Schema.Union([V2ThreadReadResponse__ImageDetail, Schema.Null])),
-      type: Schema.Literal("image").annotate({ title: "ImageUserInputType" }),
-      url: Schema.String,
-    }).annotate({ title: "ImageUserInput" }),
+    Schema.Union([
+      Schema.Struct({
+        detail: Schema.optionalKey(Schema.Union([V2ThreadReadResponse__ImageDetail, Schema.Null])),
+        type: Schema.Literal("image").annotate({ title: "ImageUserInputType" }),
+        url: Schema.String,
+      }).annotate({ title: "UrlUserInput" }),
+      Schema.Struct({
+        detail: Schema.optionalKey(Schema.Union([V2ThreadReadResponse__ImageDetail, Schema.Null])),
+        type: Schema.Literal("image").annotate({ title: "ImageUserInputType" }),
+        fileId: Schema.String,
+      }).annotate({ title: "FileIdUserInput" }),
+    ]),
     Schema.Struct({
       detail: Schema.optionalKey(Schema.Union([V2ThreadReadResponse__ImageDetail, Schema.Null])),
       path: Schema.String,
@@ -38638,6 +39233,18 @@ export const V2ThreadResumeParams__FunctionCallOutputBody = Schema.Union([
   Schema.Array(V2ThreadResumeParams__FunctionCallOutputContentItem),
 ]).annotate({ identifier: "V2ThreadResumeParams__FunctionCallOutputBody" });
 
+export type V2ThreadResumeResponse__CollaborationMode = {
+  readonly mode: V2ThreadResumeResponse__ModeKind;
+  readonly settings: V2ThreadResumeResponse__Settings;
+};
+export const V2ThreadResumeResponse__CollaborationMode = Schema.Struct({
+  mode: V2ThreadResumeResponse__ModeKind,
+  settings: V2ThreadResumeResponse__Settings,
+}).annotate({
+  description: "Collaboration mode for a Codex session.",
+  identifier: "V2ThreadResumeResponse__CollaborationMode",
+});
+
 export type V2ThreadResumeResponse__TurnError = {
   readonly additionalDetails?: string | null;
   readonly codexErrorInfo?: V2ThreadResumeResponse__CodexErrorInfo | null;
@@ -38671,6 +39278,11 @@ export type V2ThreadResumeResponse__UserInput =
     }
   | {
       readonly detail?: V2ThreadResumeResponse__ImageDetail | null;
+      readonly type: "image";
+      readonly fileId: string;
+    }
+  | {
+      readonly detail?: V2ThreadResumeResponse__ImageDetail | null;
       readonly path: string;
       readonly type: "localImage";
     }
@@ -38690,11 +39302,22 @@ export const V2ThreadResumeResponse__UserInput = Schema.Union(
       ),
       type: Schema.Literal("text").annotate({ title: "TextUserInputType" }),
     }).annotate({ title: "TextUserInput" }),
-    Schema.Struct({
-      detail: Schema.optionalKey(Schema.Union([V2ThreadResumeResponse__ImageDetail, Schema.Null])),
-      type: Schema.Literal("image").annotate({ title: "ImageUserInputType" }),
-      url: Schema.String,
-    }).annotate({ title: "ImageUserInput" }),
+    Schema.Union([
+      Schema.Struct({
+        detail: Schema.optionalKey(
+          Schema.Union([V2ThreadResumeResponse__ImageDetail, Schema.Null]),
+        ),
+        type: Schema.Literal("image").annotate({ title: "ImageUserInputType" }),
+        url: Schema.String,
+      }).annotate({ title: "UrlUserInput" }),
+      Schema.Struct({
+        detail: Schema.optionalKey(
+          Schema.Union([V2ThreadResumeResponse__ImageDetail, Schema.Null]),
+        ),
+        type: Schema.Literal("image").annotate({ title: "ImageUserInputType" }),
+        fileId: Schema.String,
+      }).annotate({ title: "FileIdUserInput" }),
+    ]),
     Schema.Struct({
       detail: Schema.optionalKey(Schema.Union([V2ThreadResumeResponse__ImageDetail, Schema.Null])),
       path: Schema.String,
@@ -38801,6 +39424,11 @@ export type V2ThreadRevertResponse__UserInput =
     }
   | {
       readonly detail?: V2ThreadRevertResponse__ImageDetail | null;
+      readonly type: "image";
+      readonly fileId: string;
+    }
+  | {
+      readonly detail?: V2ThreadRevertResponse__ImageDetail | null;
       readonly path: string;
       readonly type: "localImage";
     }
@@ -38820,11 +39448,22 @@ export const V2ThreadRevertResponse__UserInput = Schema.Union(
       ),
       type: Schema.Literal("text").annotate({ title: "TextUserInputType" }),
     }).annotate({ title: "TextUserInput" }),
-    Schema.Struct({
-      detail: Schema.optionalKey(Schema.Union([V2ThreadRevertResponse__ImageDetail, Schema.Null])),
-      type: Schema.Literal("image").annotate({ title: "ImageUserInputType" }),
-      url: Schema.String,
-    }).annotate({ title: "ImageUserInput" }),
+    Schema.Union([
+      Schema.Struct({
+        detail: Schema.optionalKey(
+          Schema.Union([V2ThreadRevertResponse__ImageDetail, Schema.Null]),
+        ),
+        type: Schema.Literal("image").annotate({ title: "ImageUserInputType" }),
+        url: Schema.String,
+      }).annotate({ title: "UrlUserInput" }),
+      Schema.Struct({
+        detail: Schema.optionalKey(
+          Schema.Union([V2ThreadRevertResponse__ImageDetail, Schema.Null]),
+        ),
+        type: Schema.Literal("image").annotate({ title: "ImageUserInputType" }),
+        fileId: Schema.String,
+      }).annotate({ title: "FileIdUserInput" }),
+    ]),
     Schema.Struct({
       detail: Schema.optionalKey(Schema.Union([V2ThreadRevertResponse__ImageDetail, Schema.Null])),
       path: Schema.String,
@@ -38859,121 +39498,6 @@ export const V2ThreadRevertResponse__FunctionCallOutputBody = Schema.Union([
   Schema.String,
   Schema.Array(V2ThreadRevertResponse__FunctionCallOutputContentItem),
 ]).annotate({ identifier: "V2ThreadRevertResponse__FunctionCallOutputBody" });
-
-export type V2ThreadRollbackResponse__SessionSource =
-  | "cli"
-  | "vscode"
-  | "exec"
-  | "appServer"
-  | "unknown"
-  | { readonly custom: string }
-  | { readonly subAgent: V2ThreadRollbackResponse__SubAgentSource };
-export const V2ThreadRollbackResponse__SessionSource = Schema.Union(
-  [
-    Schema.Literals(["cli", "vscode", "exec", "appServer", "unknown"]),
-    Schema.Struct({ custom: Schema.String }).annotate({ title: "CustomSessionSource" }),
-    Schema.Struct({ subAgent: V2ThreadRollbackResponse__SubAgentSource }).annotate({
-      title: "SubAgentSessionSource",
-    }),
-  ],
-  { mode: "oneOf" },
-).annotate({ identifier: "V2ThreadRollbackResponse__SessionSource" });
-
-export type V2ThreadRollbackResponse__TurnError = {
-  readonly additionalDetails?: string | null;
-  readonly codexErrorInfo?: V2ThreadRollbackResponse__CodexErrorInfo | null;
-  readonly message: string;
-  readonly misalignment?: V2ThreadRollbackResponse__MisalignmentErrorDetails | null;
-};
-export const V2ThreadRollbackResponse__TurnError = Schema.Struct({
-  additionalDetails: Schema.optionalKey(Schema.Union([Schema.String, Schema.Null])),
-  codexErrorInfo: Schema.optionalKey(
-    Schema.Union([V2ThreadRollbackResponse__CodexErrorInfo, Schema.Null]),
-  ),
-  message: Schema.String,
-  misalignment: Schema.optionalKey(
-    Schema.Union([V2ThreadRollbackResponse__MisalignmentErrorDetails, Schema.Null]).annotate({
-      description:
-        "Optional public explanation and continuation instruction for a misalignment block.",
-    }),
-  ),
-}).annotate({ identifier: "V2ThreadRollbackResponse__TurnError" });
-
-export type V2ThreadRollbackResponse__UserInput =
-  | {
-      readonly text: string;
-      readonly text_elements?: ReadonlyArray<V2ThreadRollbackResponse__TextElement>;
-      readonly type: "text";
-    }
-  | {
-      readonly detail?: V2ThreadRollbackResponse__ImageDetail | null;
-      readonly type: "image";
-      readonly url: string;
-    }
-  | {
-      readonly detail?: V2ThreadRollbackResponse__ImageDetail | null;
-      readonly path: string;
-      readonly type: "localImage";
-    }
-  | { readonly type: "audio"; readonly url: string }
-  | { readonly path: string; readonly type: "localAudio" }
-  | { readonly name: string; readonly path: string; readonly type: "skill" }
-  | { readonly name: string; readonly path: string; readonly type: "mention" };
-export const V2ThreadRollbackResponse__UserInput = Schema.Union(
-  [
-    Schema.Struct({
-      text: Schema.String,
-      text_elements: Schema.optionalKey(
-        Schema.Array(V2ThreadRollbackResponse__TextElement).annotate({
-          description: "UI-defined spans within `text` used to render or persist special elements.",
-          default: [],
-        }),
-      ),
-      type: Schema.Literal("text").annotate({ title: "TextUserInputType" }),
-    }).annotate({ title: "TextUserInput" }),
-    Schema.Struct({
-      detail: Schema.optionalKey(
-        Schema.Union([V2ThreadRollbackResponse__ImageDetail, Schema.Null]),
-      ),
-      type: Schema.Literal("image").annotate({ title: "ImageUserInputType" }),
-      url: Schema.String,
-    }).annotate({ title: "ImageUserInput" }),
-    Schema.Struct({
-      detail: Schema.optionalKey(
-        Schema.Union([V2ThreadRollbackResponse__ImageDetail, Schema.Null]),
-      ),
-      path: Schema.String,
-      type: Schema.Literal("localImage").annotate({ title: "LocalImageUserInputType" }),
-    }).annotate({ title: "LocalImageUserInput" }),
-    Schema.Struct({
-      type: Schema.Literal("audio").annotate({ title: "AudioUserInputType" }),
-      url: Schema.String,
-    }).annotate({ title: "AudioUserInput" }),
-    Schema.Struct({
-      path: Schema.String,
-      type: Schema.Literal("localAudio").annotate({ title: "LocalAudioUserInputType" }),
-    }).annotate({ title: "LocalAudioUserInput" }),
-    Schema.Struct({
-      name: Schema.String,
-      path: Schema.String,
-      type: Schema.Literal("skill").annotate({ title: "SkillUserInputType" }),
-    }).annotate({ title: "SkillUserInput" }),
-    Schema.Struct({
-      name: Schema.String,
-      path: Schema.String,
-      type: Schema.Literal("mention").annotate({ title: "MentionUserInputType" }),
-    }).annotate({ title: "MentionUserInput" }),
-  ],
-  { mode: "oneOf" },
-).annotate({ identifier: "V2ThreadRollbackResponse__UserInput" });
-
-export type V2ThreadRollbackResponse__FunctionCallOutputBody =
-  | string
-  | ReadonlyArray<V2ThreadRollbackResponse__FunctionCallOutputContentItem>;
-export const V2ThreadRollbackResponse__FunctionCallOutputBody = Schema.Union([
-  Schema.String,
-  Schema.Array(V2ThreadRollbackResponse__FunctionCallOutputContentItem),
-]).annotate({ identifier: "V2ThreadRollbackResponse__FunctionCallOutputBody" });
 
 export type V2ThreadSearchResponse__SessionSource =
   | "cli"
@@ -39027,6 +39551,11 @@ export type V2ThreadSearchResponse__UserInput =
     }
   | {
       readonly detail?: V2ThreadSearchResponse__ImageDetail | null;
+      readonly type: "image";
+      readonly fileId: string;
+    }
+  | {
+      readonly detail?: V2ThreadSearchResponse__ImageDetail | null;
       readonly path: string;
       readonly type: "localImage";
     }
@@ -39046,11 +39575,22 @@ export const V2ThreadSearchResponse__UserInput = Schema.Union(
       ),
       type: Schema.Literal("text").annotate({ title: "TextUserInputType" }),
     }).annotate({ title: "TextUserInput" }),
-    Schema.Struct({
-      detail: Schema.optionalKey(Schema.Union([V2ThreadSearchResponse__ImageDetail, Schema.Null])),
-      type: Schema.Literal("image").annotate({ title: "ImageUserInputType" }),
-      url: Schema.String,
-    }).annotate({ title: "ImageUserInput" }),
+    Schema.Union([
+      Schema.Struct({
+        detail: Schema.optionalKey(
+          Schema.Union([V2ThreadSearchResponse__ImageDetail, Schema.Null]),
+        ),
+        type: Schema.Literal("image").annotate({ title: "ImageUserInputType" }),
+        url: Schema.String,
+      }).annotate({ title: "UrlUserInput" }),
+      Schema.Struct({
+        detail: Schema.optionalKey(
+          Schema.Union([V2ThreadSearchResponse__ImageDetail, Schema.Null]),
+        ),
+        type: Schema.Literal("image").annotate({ title: "ImageUserInputType" }),
+        fileId: Schema.String,
+      }).annotate({ title: "FileIdUserInput" }),
+    ]),
     Schema.Struct({
       detail: Schema.optionalKey(Schema.Union([V2ThreadSearchResponse__ImageDetail, Schema.Null])),
       path: Schema.String,
@@ -39162,6 +39702,11 @@ export type V2ThreadStartedNotification__UserInput =
     }
   | {
       readonly detail?: V2ThreadStartedNotification__ImageDetail | null;
+      readonly type: "image";
+      readonly fileId: string;
+    }
+  | {
+      readonly detail?: V2ThreadStartedNotification__ImageDetail | null;
       readonly path: string;
       readonly type: "localImage";
     }
@@ -39181,13 +39726,22 @@ export const V2ThreadStartedNotification__UserInput = Schema.Union(
       ),
       type: Schema.Literal("text").annotate({ title: "TextUserInputType" }),
     }).annotate({ title: "TextUserInput" }),
-    Schema.Struct({
-      detail: Schema.optionalKey(
-        Schema.Union([V2ThreadStartedNotification__ImageDetail, Schema.Null]),
-      ),
-      type: Schema.Literal("image").annotate({ title: "ImageUserInputType" }),
-      url: Schema.String,
-    }).annotate({ title: "ImageUserInput" }),
+    Schema.Union([
+      Schema.Struct({
+        detail: Schema.optionalKey(
+          Schema.Union([V2ThreadStartedNotification__ImageDetail, Schema.Null]),
+        ),
+        type: Schema.Literal("image").annotate({ title: "ImageUserInputType" }),
+        url: Schema.String,
+      }).annotate({ title: "UrlUserInput" }),
+      Schema.Struct({
+        detail: Schema.optionalKey(
+          Schema.Union([V2ThreadStartedNotification__ImageDetail, Schema.Null]),
+        ),
+        type: Schema.Literal("image").annotate({ title: "ImageUserInputType" }),
+        fileId: Schema.String,
+      }).annotate({ title: "FileIdUserInput" }),
+    ]),
     Schema.Struct({
       detail: Schema.optionalKey(
         Schema.Union([V2ThreadStartedNotification__ImageDetail, Schema.Null]),
@@ -39277,6 +39831,11 @@ export type V2ThreadStartResponse__UserInput =
     }
   | {
       readonly detail?: V2ThreadStartResponse__ImageDetail | null;
+      readonly type: "image";
+      readonly fileId: string;
+    }
+  | {
+      readonly detail?: V2ThreadStartResponse__ImageDetail | null;
       readonly path: string;
       readonly type: "localImage";
     }
@@ -39296,11 +39855,18 @@ export const V2ThreadStartResponse__UserInput = Schema.Union(
       ),
       type: Schema.Literal("text").annotate({ title: "TextUserInputType" }),
     }).annotate({ title: "TextUserInput" }),
-    Schema.Struct({
-      detail: Schema.optionalKey(Schema.Union([V2ThreadStartResponse__ImageDetail, Schema.Null])),
-      type: Schema.Literal("image").annotate({ title: "ImageUserInputType" }),
-      url: Schema.String,
-    }).annotate({ title: "ImageUserInput" }),
+    Schema.Union([
+      Schema.Struct({
+        detail: Schema.optionalKey(Schema.Union([V2ThreadStartResponse__ImageDetail, Schema.Null])),
+        type: Schema.Literal("image").annotate({ title: "ImageUserInputType" }),
+        url: Schema.String,
+      }).annotate({ title: "UrlUserInput" }),
+      Schema.Struct({
+        detail: Schema.optionalKey(Schema.Union([V2ThreadStartResponse__ImageDetail, Schema.Null])),
+        type: Schema.Literal("image").annotate({ title: "ImageUserInputType" }),
+        fileId: Schema.String,
+      }).annotate({ title: "FileIdUserInput" }),
+    ]),
     Schema.Struct({
       detail: Schema.optionalKey(Schema.Union([V2ThreadStartResponse__ImageDetail, Schema.Null])),
       path: Schema.String,
@@ -39349,6 +39915,11 @@ export type V2ThreadTimelineListResponse__UserInput =
     }
   | {
       readonly detail?: V2ThreadTimelineListResponse__ImageDetail | null;
+      readonly type: "image";
+      readonly fileId: string;
+    }
+  | {
+      readonly detail?: V2ThreadTimelineListResponse__ImageDetail | null;
       readonly path: string;
       readonly type: "localImage";
     }
@@ -39368,13 +39939,22 @@ export const V2ThreadTimelineListResponse__UserInput = Schema.Union(
       ),
       type: Schema.Literal("text").annotate({ title: "TextUserInputType" }),
     }).annotate({ title: "TextUserInput" }),
-    Schema.Struct({
-      detail: Schema.optionalKey(
-        Schema.Union([V2ThreadTimelineListResponse__ImageDetail, Schema.Null]),
-      ),
-      type: Schema.Literal("image").annotate({ title: "ImageUserInputType" }),
-      url: Schema.String,
-    }).annotate({ title: "ImageUserInput" }),
+    Schema.Union([
+      Schema.Struct({
+        detail: Schema.optionalKey(
+          Schema.Union([V2ThreadTimelineListResponse__ImageDetail, Schema.Null]),
+        ),
+        type: Schema.Literal("image").annotate({ title: "ImageUserInputType" }),
+        url: Schema.String,
+      }).annotate({ title: "UrlUserInput" }),
+      Schema.Struct({
+        detail: Schema.optionalKey(
+          Schema.Union([V2ThreadTimelineListResponse__ImageDetail, Schema.Null]),
+        ),
+        type: Schema.Literal("image").annotate({ title: "ImageUserInputType" }),
+        fileId: Schema.String,
+      }).annotate({ title: "FileIdUserInput" }),
+    ]),
     Schema.Struct({
       detail: Schema.optionalKey(
         Schema.Union([V2ThreadTimelineListResponse__ImageDetail, Schema.Null]),
@@ -39465,6 +40045,11 @@ export type V2ThreadTurnsListResponse__UserInput =
     }
   | {
       readonly detail?: V2ThreadTurnsListResponse__ImageDetail | null;
+      readonly type: "image";
+      readonly fileId: string;
+    }
+  | {
+      readonly detail?: V2ThreadTurnsListResponse__ImageDetail | null;
       readonly path: string;
       readonly type: "localImage";
     }
@@ -39484,13 +40069,22 @@ export const V2ThreadTurnsListResponse__UserInput = Schema.Union(
       ),
       type: Schema.Literal("text").annotate({ title: "TextUserInputType" }),
     }).annotate({ title: "TextUserInput" }),
-    Schema.Struct({
-      detail: Schema.optionalKey(
-        Schema.Union([V2ThreadTurnsListResponse__ImageDetail, Schema.Null]),
-      ),
-      type: Schema.Literal("image").annotate({ title: "ImageUserInputType" }),
-      url: Schema.String,
-    }).annotate({ title: "ImageUserInput" }),
+    Schema.Union([
+      Schema.Struct({
+        detail: Schema.optionalKey(
+          Schema.Union([V2ThreadTurnsListResponse__ImageDetail, Schema.Null]),
+        ),
+        type: Schema.Literal("image").annotate({ title: "ImageUserInputType" }),
+        url: Schema.String,
+      }).annotate({ title: "UrlUserInput" }),
+      Schema.Struct({
+        detail: Schema.optionalKey(
+          Schema.Union([V2ThreadTurnsListResponse__ImageDetail, Schema.Null]),
+        ),
+        type: Schema.Literal("image").annotate({ title: "ImageUserInputType" }),
+        fileId: Schema.String,
+      }).annotate({ title: "FileIdUserInput" }),
+    ]),
     Schema.Struct({
       detail: Schema.optionalKey(
         Schema.Union([V2ThreadTurnsListResponse__ImageDetail, Schema.Null]),
@@ -39580,6 +40174,11 @@ export type V2ThreadUnarchiveResponse__UserInput =
     }
   | {
       readonly detail?: V2ThreadUnarchiveResponse__ImageDetail | null;
+      readonly type: "image";
+      readonly fileId: string;
+    }
+  | {
+      readonly detail?: V2ThreadUnarchiveResponse__ImageDetail | null;
       readonly path: string;
       readonly type: "localImage";
     }
@@ -39599,13 +40198,22 @@ export const V2ThreadUnarchiveResponse__UserInput = Schema.Union(
       ),
       type: Schema.Literal("text").annotate({ title: "TextUserInputType" }),
     }).annotate({ title: "TextUserInput" }),
-    Schema.Struct({
-      detail: Schema.optionalKey(
-        Schema.Union([V2ThreadUnarchiveResponse__ImageDetail, Schema.Null]),
-      ),
-      type: Schema.Literal("image").annotate({ title: "ImageUserInputType" }),
-      url: Schema.String,
-    }).annotate({ title: "ImageUserInput" }),
+    Schema.Union([
+      Schema.Struct({
+        detail: Schema.optionalKey(
+          Schema.Union([V2ThreadUnarchiveResponse__ImageDetail, Schema.Null]),
+        ),
+        type: Schema.Literal("image").annotate({ title: "ImageUserInputType" }),
+        url: Schema.String,
+      }).annotate({ title: "UrlUserInput" }),
+      Schema.Struct({
+        detail: Schema.optionalKey(
+          Schema.Union([V2ThreadUnarchiveResponse__ImageDetail, Schema.Null]),
+        ),
+        type: Schema.Literal("image").annotate({ title: "ImageUserInputType" }),
+        fileId: Schema.String,
+      }).annotate({ title: "FileIdUserInput" }),
+    ]),
     Schema.Struct({
       detail: Schema.optionalKey(
         Schema.Union([V2ThreadUnarchiveResponse__ImageDetail, Schema.Null]),
@@ -39676,6 +40284,11 @@ export type V2TurnCompletedNotification__UserInput =
     }
   | {
       readonly detail?: V2TurnCompletedNotification__ImageDetail | null;
+      readonly type: "image";
+      readonly fileId: string;
+    }
+  | {
+      readonly detail?: V2TurnCompletedNotification__ImageDetail | null;
       readonly path: string;
       readonly type: "localImage";
     }
@@ -39695,13 +40308,22 @@ export const V2TurnCompletedNotification__UserInput = Schema.Union(
       ),
       type: Schema.Literal("text").annotate({ title: "TextUserInputType" }),
     }).annotate({ title: "TextUserInput" }),
-    Schema.Struct({
-      detail: Schema.optionalKey(
-        Schema.Union([V2TurnCompletedNotification__ImageDetail, Schema.Null]),
-      ),
-      type: Schema.Literal("image").annotate({ title: "ImageUserInputType" }),
-      url: Schema.String,
-    }).annotate({ title: "ImageUserInput" }),
+    Schema.Union([
+      Schema.Struct({
+        detail: Schema.optionalKey(
+          Schema.Union([V2TurnCompletedNotification__ImageDetail, Schema.Null]),
+        ),
+        type: Schema.Literal("image").annotate({ title: "ImageUserInputType" }),
+        url: Schema.String,
+      }).annotate({ title: "UrlUserInput" }),
+      Schema.Struct({
+        detail: Schema.optionalKey(
+          Schema.Union([V2TurnCompletedNotification__ImageDetail, Schema.Null]),
+        ),
+        type: Schema.Literal("image").annotate({ title: "ImageUserInputType" }),
+        fileId: Schema.String,
+      }).annotate({ title: "FileIdUserInput" }),
+    ]),
     Schema.Struct({
       detail: Schema.optionalKey(
         Schema.Union([V2TurnCompletedNotification__ImageDetail, Schema.Null]),
@@ -39772,6 +40394,11 @@ export type V2TurnStartedNotification__UserInput =
     }
   | {
       readonly detail?: V2TurnStartedNotification__ImageDetail | null;
+      readonly type: "image";
+      readonly fileId: string;
+    }
+  | {
+      readonly detail?: V2TurnStartedNotification__ImageDetail | null;
       readonly path: string;
       readonly type: "localImage";
     }
@@ -39791,13 +40418,22 @@ export const V2TurnStartedNotification__UserInput = Schema.Union(
       ),
       type: Schema.Literal("text").annotate({ title: "TextUserInputType" }),
     }).annotate({ title: "TextUserInput" }),
-    Schema.Struct({
-      detail: Schema.optionalKey(
-        Schema.Union([V2TurnStartedNotification__ImageDetail, Schema.Null]),
-      ),
-      type: Schema.Literal("image").annotate({ title: "ImageUserInputType" }),
-      url: Schema.String,
-    }).annotate({ title: "ImageUserInput" }),
+    Schema.Union([
+      Schema.Struct({
+        detail: Schema.optionalKey(
+          Schema.Union([V2TurnStartedNotification__ImageDetail, Schema.Null]),
+        ),
+        type: Schema.Literal("image").annotate({ title: "ImageUserInputType" }),
+        url: Schema.String,
+      }).annotate({ title: "UrlUserInput" }),
+      Schema.Struct({
+        detail: Schema.optionalKey(
+          Schema.Union([V2TurnStartedNotification__ImageDetail, Schema.Null]),
+        ),
+        type: Schema.Literal("image").annotate({ title: "ImageUserInputType" }),
+        fileId: Schema.String,
+      }).annotate({ title: "FileIdUserInput" }),
+    ]),
     Schema.Struct({
       detail: Schema.optionalKey(
         Schema.Union([V2TurnStartedNotification__ImageDetail, Schema.Null]),
@@ -39860,6 +40496,11 @@ export type V2TurnStartParams__UserInput =
     }
   | {
       readonly detail?: V2TurnStartParams__ImageDetail | null;
+      readonly type: "image";
+      readonly fileId: string;
+    }
+  | {
+      readonly detail?: V2TurnStartParams__ImageDetail | null;
       readonly path: string;
       readonly type: "localImage";
     }
@@ -39879,11 +40520,18 @@ export const V2TurnStartParams__UserInput = Schema.Union(
       ),
       type: Schema.Literal("text").annotate({ title: "TextUserInputType" }),
     }).annotate({ title: "TextUserInput" }),
-    Schema.Struct({
-      detail: Schema.optionalKey(Schema.Union([V2TurnStartParams__ImageDetail, Schema.Null])),
-      type: Schema.Literal("image").annotate({ title: "ImageUserInputType" }),
-      url: Schema.String,
-    }).annotate({ title: "ImageUserInput" }),
+    Schema.Union([
+      Schema.Struct({
+        detail: Schema.optionalKey(Schema.Union([V2TurnStartParams__ImageDetail, Schema.Null])),
+        type: Schema.Literal("image").annotate({ title: "ImageUserInputType" }),
+        url: Schema.String,
+      }).annotate({ title: "UrlUserInput" }),
+      Schema.Struct({
+        detail: Schema.optionalKey(Schema.Union([V2TurnStartParams__ImageDetail, Schema.Null])),
+        type: Schema.Literal("image").annotate({ title: "ImageUserInputType" }),
+        fileId: Schema.String,
+      }).annotate({ title: "FileIdUserInput" }),
+    ]),
     Schema.Struct({
       detail: Schema.optionalKey(Schema.Union([V2TurnStartParams__ImageDetail, Schema.Null])),
       path: Schema.String,
@@ -39952,6 +40600,11 @@ export type V2TurnStartResponse__UserInput =
     }
   | {
       readonly detail?: V2TurnStartResponse__ImageDetail | null;
+      readonly type: "image";
+      readonly fileId: string;
+    }
+  | {
+      readonly detail?: V2TurnStartResponse__ImageDetail | null;
       readonly path: string;
       readonly type: "localImage";
     }
@@ -39971,11 +40624,18 @@ export const V2TurnStartResponse__UserInput = Schema.Union(
       ),
       type: Schema.Literal("text").annotate({ title: "TextUserInputType" }),
     }).annotate({ title: "TextUserInput" }),
-    Schema.Struct({
-      detail: Schema.optionalKey(Schema.Union([V2TurnStartResponse__ImageDetail, Schema.Null])),
-      type: Schema.Literal("image").annotate({ title: "ImageUserInputType" }),
-      url: Schema.String,
-    }).annotate({ title: "ImageUserInput" }),
+    Schema.Union([
+      Schema.Struct({
+        detail: Schema.optionalKey(Schema.Union([V2TurnStartResponse__ImageDetail, Schema.Null])),
+        type: Schema.Literal("image").annotate({ title: "ImageUserInputType" }),
+        url: Schema.String,
+      }).annotate({ title: "UrlUserInput" }),
+      Schema.Struct({
+        detail: Schema.optionalKey(Schema.Union([V2TurnStartResponse__ImageDetail, Schema.Null])),
+        type: Schema.Literal("image").annotate({ title: "ImageUserInputType" }),
+        fileId: Schema.String,
+      }).annotate({ title: "FileIdUserInput" }),
+    ]),
     Schema.Struct({
       detail: Schema.optionalKey(Schema.Union([V2TurnStartResponse__ImageDetail, Schema.Null])),
       path: Schema.String,
@@ -40024,6 +40684,11 @@ export type V2TurnSteerParams__UserInput =
     }
   | {
       readonly detail?: V2TurnSteerParams__ImageDetail | null;
+      readonly type: "image";
+      readonly fileId: string;
+    }
+  | {
+      readonly detail?: V2TurnSteerParams__ImageDetail | null;
       readonly path: string;
       readonly type: "localImage";
     }
@@ -40043,11 +40708,18 @@ export const V2TurnSteerParams__UserInput = Schema.Union(
       ),
       type: Schema.Literal("text").annotate({ title: "TextUserInputType" }),
     }).annotate({ title: "TextUserInput" }),
-    Schema.Struct({
-      detail: Schema.optionalKey(Schema.Union([V2TurnSteerParams__ImageDetail, Schema.Null])),
-      type: Schema.Literal("image").annotate({ title: "ImageUserInputType" }),
-      url: Schema.String,
-    }).annotate({ title: "ImageUserInput" }),
+    Schema.Union([
+      Schema.Struct({
+        detail: Schema.optionalKey(Schema.Union([V2TurnSteerParams__ImageDetail, Schema.Null])),
+        type: Schema.Literal("image").annotate({ title: "ImageUserInputType" }),
+        url: Schema.String,
+      }).annotate({ title: "UrlUserInput" }),
+      Schema.Struct({
+        detail: Schema.optionalKey(Schema.Union([V2TurnSteerParams__ImageDetail, Schema.Null])),
+        type: Schema.Literal("image").annotate({ title: "ImageUserInputType" }),
+        fileId: Schema.String,
+      }).annotate({ title: "FileIdUserInput" }),
+    ]),
     Schema.Struct({
       detail: Schema.optionalKey(Schema.Union([V2TurnSteerParams__ImageDetail, Schema.Null])),
       path: Schema.String,
@@ -40411,6 +41083,7 @@ export type ClientRequest__ThreadSettingsUpdateParams = {
   readonly approvalsReviewer?: ClientRequest__ApprovalsReviewer | null;
   readonly collaborationMode?: ClientRequest__CollaborationMode | null;
   readonly cwd?: string | null;
+  readonly disabledPluginIds?: ReadonlyArray<string> | null;
   readonly effort?: ClientRequest__ReasoningEffort | null;
   readonly model?: string | null;
   readonly multiAgentMode?: ClientRequest__MultiAgentMode | null;
@@ -40446,6 +41119,15 @@ export const ClientRequest__ThreadSettingsUpdateParams = Schema.Struct({
       Schema.Null,
     ]),
   ),
+  disabledPluginIds: Schema.optionalKey(
+    Schema.Union([
+      Schema.Array(Schema.String).annotate({
+        description:
+          "Replace this thread's disabled plugin IDs. Omitted/null preserves the list; [] clears it.",
+      }),
+      Schema.Null,
+    ]),
+  ),
   effort: Schema.optionalKey(
     Schema.Union([ClientRequest__ReasoningEffort, Schema.Null]).annotate({
       description: "Override the reasoning effort for subsequent turns.",
@@ -40473,7 +41155,8 @@ export const ClientRequest__ThreadSettingsUpdateParams = Schema.Struct({
   ),
   personality: Schema.optionalKey(
     Schema.Union([ClientRequest__Personality, Schema.Null]).annotate({
-      description: "Override the personality for subsequent turns.",
+      description:
+        "@deprecated `friendly` and `pragmatic` no longer select a style. Changing this does not rewrite the thread's existing instructions.",
     }),
   ),
   sandboxPolicy: Schema.optionalKey(
@@ -40672,6 +41355,7 @@ export type ServerNotification__ThreadSettings = {
   readonly approvalsReviewer: ServerNotification__ApprovalsReviewer;
   readonly collaborationMode: ServerNotification__CollaborationMode;
   readonly cwd: ServerNotification__AbsolutePathBuf;
+  readonly disabledPluginIds?: ReadonlyArray<string>;
   readonly effort?: ServerNotification__ReasoningEffort | null;
   readonly model: string;
   readonly modelProvider: string;
@@ -40689,6 +41373,12 @@ export const ServerNotification__ThreadSettings = Schema.Struct({
   approvalsReviewer: ServerNotification__ApprovalsReviewer,
   collaborationMode: ServerNotification__CollaborationMode,
   cwd: ServerNotification__AbsolutePathBuf,
+  disabledPluginIds: Schema.optionalKey(
+    Schema.Array(Schema.String).annotate({
+      description: "Saved list of disabled plugin IDs. Does not yet filter plugin capabilities.",
+      default: [],
+    }),
+  ),
   effort: Schema.optionalKey(Schema.Union([ServerNotification__ReasoningEffort, Schema.Null])),
   model: Schema.String,
   modelProvider: Schema.String,
@@ -40700,7 +41390,12 @@ export const ServerNotification__ThreadSettings = Schema.Struct({
       default: "explicitRequestOnly",
     }),
   ),
-  personality: Schema.optionalKey(Schema.Union([ServerNotification__Personality, Schema.Null])),
+  personality: Schema.optionalKey(
+    Schema.Union([ServerNotification__Personality, Schema.Null]).annotate({
+      description:
+        "@deprecated Reports the saved setting; `friendly` and `pragmatic` no longer select a style.",
+    }),
+  ),
   sandboxPolicy: ServerNotification__SandboxPolicy,
   serviceTier: Schema.optionalKey(Schema.Union([Schema.String, Schema.Null])),
   summary: Schema.optionalKey(Schema.Union([ServerNotification__ReasoningSummary, Schema.Null])),
@@ -40769,6 +41464,7 @@ export type ServerNotification__ThreadItem =
       readonly error?: ServerNotification__McpToolCallError | null;
       readonly id: string;
       readonly mcpAppResourceUri?: string | null;
+      readonly mcpAppUi?: ServerNotification__McpAppUi | null;
       readonly pluginId?: string | null;
       readonly readOnlyHint?: boolean | null;
       readonly result?: ServerNotification__McpToolCallResult | null;
@@ -40984,10 +41680,17 @@ export const ServerNotification__ThreadItem = Schema.Union(
       mcpAppResourceUri: Schema.optionalKey(
         Schema.Union([
           Schema.String.annotate({
-            description: "Deprecated: use `appContext.resourceUri` instead.",
+            description:
+              "Legacy compatibility field; prefer `mcpAppUi.resourceUri` when available.",
           }),
           Schema.Null,
         ]),
+      ),
+      mcpAppUi: Schema.optionalKey(
+        Schema.Union([ServerNotification__McpAppUi, Schema.Null]).annotate({
+          description:
+            "Presentation captured from the invoked descriptor; absent in older history.",
+        }),
       ),
       pluginId: Schema.optionalKey(Schema.Union([Schema.String, Schema.Null])),
       readOnlyHint: Schema.optionalKey(Schema.Union([Schema.Boolean, Schema.Null])),
@@ -41328,6 +42031,7 @@ export type V2ItemCompletedNotification__ThreadItem =
       readonly error?: V2ItemCompletedNotification__McpToolCallError | null;
       readonly id: string;
       readonly mcpAppResourceUri?: string | null;
+      readonly mcpAppUi?: V2ItemCompletedNotification__McpAppUi | null;
       readonly pluginId?: string | null;
       readonly readOnlyHint?: boolean | null;
       readonly result?: V2ItemCompletedNotification__McpToolCallResult | null;
@@ -41552,10 +42256,17 @@ export const V2ItemCompletedNotification__ThreadItem = Schema.Union(
       mcpAppResourceUri: Schema.optionalKey(
         Schema.Union([
           Schema.String.annotate({
-            description: "Deprecated: use `appContext.resourceUri` instead.",
+            description:
+              "Legacy compatibility field; prefer `mcpAppUi.resourceUri` when available.",
           }),
           Schema.Null,
         ]),
+      ),
+      mcpAppUi: Schema.optionalKey(
+        Schema.Union([V2ItemCompletedNotification__McpAppUi, Schema.Null]).annotate({
+          description:
+            "Presentation captured from the invoked descriptor; absent in older history.",
+        }),
       ),
       pluginId: Schema.optionalKey(Schema.Union([Schema.String, Schema.Null])),
       readOnlyHint: Schema.optionalKey(Schema.Union([Schema.Boolean, Schema.Null])),
@@ -41807,6 +42518,7 @@ export type V2ItemStartedNotification__ThreadItem =
       readonly error?: V2ItemStartedNotification__McpToolCallError | null;
       readonly id: string;
       readonly mcpAppResourceUri?: string | null;
+      readonly mcpAppUi?: V2ItemStartedNotification__McpAppUi | null;
       readonly pluginId?: string | null;
       readonly readOnlyHint?: boolean | null;
       readonly result?: V2ItemStartedNotification__McpToolCallResult | null;
@@ -42029,10 +42741,17 @@ export const V2ItemStartedNotification__ThreadItem = Schema.Union(
       mcpAppResourceUri: Schema.optionalKey(
         Schema.Union([
           Schema.String.annotate({
-            description: "Deprecated: use `appContext.resourceUri` instead.",
+            description:
+              "Legacy compatibility field; prefer `mcpAppUi.resourceUri` when available.",
           }),
           Schema.Null,
         ]),
+      ),
+      mcpAppUi: Schema.optionalKey(
+        Schema.Union([V2ItemStartedNotification__McpAppUi, Schema.Null]).annotate({
+          description:
+            "Presentation captured from the invoked descriptor; absent in older history.",
+        }),
       ),
       pluginId: Schema.optionalKey(Schema.Union([Schema.String, Schema.Null])),
       readOnlyHint: Schema.optionalKey(Schema.Union([Schema.Boolean, Schema.Null])),
@@ -43116,6 +43835,7 @@ export type V2ReviewStartResponse__ThreadItem =
       readonly error?: V2ReviewStartResponse__McpToolCallError | null;
       readonly id: string;
       readonly mcpAppResourceUri?: string | null;
+      readonly mcpAppUi?: V2ReviewStartResponse__McpAppUi | null;
       readonly pluginId?: string | null;
       readonly readOnlyHint?: boolean | null;
       readonly result?: V2ReviewStartResponse__McpToolCallResult | null;
@@ -43333,10 +44053,17 @@ export const V2ReviewStartResponse__ThreadItem = Schema.Union(
       mcpAppResourceUri: Schema.optionalKey(
         Schema.Union([
           Schema.String.annotate({
-            description: "Deprecated: use `appContext.resourceUri` instead.",
+            description:
+              "Legacy compatibility field; prefer `mcpAppUi.resourceUri` when available.",
           }),
           Schema.Null,
         ]),
+      ),
+      mcpAppUi: Schema.optionalKey(
+        Schema.Union([V2ReviewStartResponse__McpAppUi, Schema.Null]).annotate({
+          description:
+            "Presentation captured from the invoked descriptor; absent in older history.",
+        }),
       ),
       pluginId: Schema.optionalKey(Schema.Union([Schema.String, Schema.Null])),
       readOnlyHint: Schema.optionalKey(Schema.Union([Schema.Boolean, Schema.Null])),
@@ -43574,6 +44301,7 @@ export type V2ThreadForkResponse__ThreadItem =
       readonly error?: V2ThreadForkResponse__McpToolCallError | null;
       readonly id: string;
       readonly mcpAppResourceUri?: string | null;
+      readonly mcpAppUi?: V2ThreadForkResponse__McpAppUi | null;
       readonly pluginId?: string | null;
       readonly readOnlyHint?: boolean | null;
       readonly result?: V2ThreadForkResponse__McpToolCallResult | null;
@@ -43791,10 +44519,17 @@ export const V2ThreadForkResponse__ThreadItem = Schema.Union(
       mcpAppResourceUri: Schema.optionalKey(
         Schema.Union([
           Schema.String.annotate({
-            description: "Deprecated: use `appContext.resourceUri` instead.",
+            description:
+              "Legacy compatibility field; prefer `mcpAppUi.resourceUri` when available.",
           }),
           Schema.Null,
         ]),
+      ),
+      mcpAppUi: Schema.optionalKey(
+        Schema.Union([V2ThreadForkResponse__McpAppUi, Schema.Null]).annotate({
+          description:
+            "Presentation captured from the invoked descriptor; absent in older history.",
+        }),
       ),
       pluginId: Schema.optionalKey(Schema.Union([Schema.String, Schema.Null])),
       readOnlyHint: Schema.optionalKey(Schema.Union([Schema.Boolean, Schema.Null])),
@@ -44021,6 +44756,7 @@ export type V2ThreadItemsListResponse__ThreadItem =
       readonly error?: V2ThreadItemsListResponse__McpToolCallError | null;
       readonly id: string;
       readonly mcpAppResourceUri?: string | null;
+      readonly mcpAppUi?: V2ThreadItemsListResponse__McpAppUi | null;
       readonly pluginId?: string | null;
       readonly readOnlyHint?: boolean | null;
       readonly result?: V2ThreadItemsListResponse__McpToolCallResult | null;
@@ -44243,10 +44979,17 @@ export const V2ThreadItemsListResponse__ThreadItem = Schema.Union(
       mcpAppResourceUri: Schema.optionalKey(
         Schema.Union([
           Schema.String.annotate({
-            description: "Deprecated: use `appContext.resourceUri` instead.",
+            description:
+              "Legacy compatibility field; prefer `mcpAppUi.resourceUri` when available.",
           }),
           Schema.Null,
         ]),
+      ),
+      mcpAppUi: Schema.optionalKey(
+        Schema.Union([V2ThreadItemsListResponse__McpAppUi, Schema.Null]).annotate({
+          description:
+            "Presentation captured from the invoked descriptor; absent in older history.",
+        }),
       ),
       pluginId: Schema.optionalKey(Schema.Union([Schema.String, Schema.Null])),
       readOnlyHint: Schema.optionalKey(Schema.Union([Schema.Boolean, Schema.Null])),
@@ -44474,6 +45217,7 @@ export type V2ThreadListResponse__ThreadItem =
       readonly error?: V2ThreadListResponse__McpToolCallError | null;
       readonly id: string;
       readonly mcpAppResourceUri?: string | null;
+      readonly mcpAppUi?: V2ThreadListResponse__McpAppUi | null;
       readonly pluginId?: string | null;
       readonly readOnlyHint?: boolean | null;
       readonly result?: V2ThreadListResponse__McpToolCallResult | null;
@@ -44691,10 +45435,17 @@ export const V2ThreadListResponse__ThreadItem = Schema.Union(
       mcpAppResourceUri: Schema.optionalKey(
         Schema.Union([
           Schema.String.annotate({
-            description: "Deprecated: use `appContext.resourceUri` instead.",
+            description:
+              "Legacy compatibility field; prefer `mcpAppUi.resourceUri` when available.",
           }),
           Schema.Null,
         ]),
+      ),
+      mcpAppUi: Schema.optionalKey(
+        Schema.Union([V2ThreadListResponse__McpAppUi, Schema.Null]).annotate({
+          description:
+            "Presentation captured from the invoked descriptor; absent in older history.",
+        }),
       ),
       pluginId: Schema.optionalKey(Schema.Union([Schema.String, Schema.Null])),
       readOnlyHint: Schema.optionalKey(Schema.Union([Schema.Boolean, Schema.Null])),
@@ -44921,6 +45672,7 @@ export type V2ThreadMetadataUpdateResponse__ThreadItem =
       readonly error?: V2ThreadMetadataUpdateResponse__McpToolCallError | null;
       readonly id: string;
       readonly mcpAppResourceUri?: string | null;
+      readonly mcpAppUi?: V2ThreadMetadataUpdateResponse__McpAppUi | null;
       readonly pluginId?: string | null;
       readonly readOnlyHint?: boolean | null;
       readonly result?: V2ThreadMetadataUpdateResponse__McpToolCallResult | null;
@@ -45145,10 +45897,17 @@ export const V2ThreadMetadataUpdateResponse__ThreadItem = Schema.Union(
       mcpAppResourceUri: Schema.optionalKey(
         Schema.Union([
           Schema.String.annotate({
-            description: "Deprecated: use `appContext.resourceUri` instead.",
+            description:
+              "Legacy compatibility field; prefer `mcpAppUi.resourceUri` when available.",
           }),
           Schema.Null,
         ]),
+      ),
+      mcpAppUi: Schema.optionalKey(
+        Schema.Union([V2ThreadMetadataUpdateResponse__McpAppUi, Schema.Null]).annotate({
+          description:
+            "Presentation captured from the invoked descriptor; absent in older history.",
+        }),
       ),
       pluginId: Schema.optionalKey(Schema.Union([Schema.String, Schema.Null])),
       readOnlyHint: Schema.optionalKey(Schema.Union([Schema.Boolean, Schema.Null])),
@@ -45398,6 +46157,7 @@ export type V2ThreadQueueStartResponse__ThreadItem =
       readonly error?: V2ThreadQueueStartResponse__McpToolCallError | null;
       readonly id: string;
       readonly mcpAppResourceUri?: string | null;
+      readonly mcpAppUi?: V2ThreadQueueStartResponse__McpAppUi | null;
       readonly pluginId?: string | null;
       readonly readOnlyHint?: boolean | null;
       readonly result?: V2ThreadQueueStartResponse__McpToolCallResult | null;
@@ -45620,10 +46380,17 @@ export const V2ThreadQueueStartResponse__ThreadItem = Schema.Union(
       mcpAppResourceUri: Schema.optionalKey(
         Schema.Union([
           Schema.String.annotate({
-            description: "Deprecated: use `appContext.resourceUri` instead.",
+            description:
+              "Legacy compatibility field; prefer `mcpAppUi.resourceUri` when available.",
           }),
           Schema.Null,
         ]),
+      ),
+      mcpAppUi: Schema.optionalKey(
+        Schema.Union([V2ThreadQueueStartResponse__McpAppUi, Schema.Null]).annotate({
+          description:
+            "Presentation captured from the invoked descriptor; absent in older history.",
+        }),
       ),
       pluginId: Schema.optionalKey(Schema.Union([Schema.String, Schema.Null])),
       readOnlyHint: Schema.optionalKey(Schema.Union([Schema.Boolean, Schema.Null])),
@@ -45862,6 +46629,7 @@ export type V2ThreadReadResponse__ThreadItem =
       readonly error?: V2ThreadReadResponse__McpToolCallError | null;
       readonly id: string;
       readonly mcpAppResourceUri?: string | null;
+      readonly mcpAppUi?: V2ThreadReadResponse__McpAppUi | null;
       readonly pluginId?: string | null;
       readonly readOnlyHint?: boolean | null;
       readonly result?: V2ThreadReadResponse__McpToolCallResult | null;
@@ -46079,10 +46847,17 @@ export const V2ThreadReadResponse__ThreadItem = Schema.Union(
       mcpAppResourceUri: Schema.optionalKey(
         Schema.Union([
           Schema.String.annotate({
-            description: "Deprecated: use `appContext.resourceUri` instead.",
+            description:
+              "Legacy compatibility field; prefer `mcpAppUi.resourceUri` when available.",
           }),
           Schema.Null,
         ]),
+      ),
+      mcpAppUi: Schema.optionalKey(
+        Schema.Union([V2ThreadReadResponse__McpAppUi, Schema.Null]).annotate({
+          description:
+            "Presentation captured from the invoked descriptor; absent in older history.",
+        }),
       ),
       pluginId: Schema.optionalKey(Schema.Union([Schema.String, Schema.Null])),
       readOnlyHint: Schema.optionalKey(Schema.Union([Schema.Boolean, Schema.Null])),
@@ -46629,6 +47404,7 @@ export type V2ThreadResumeResponse__ThreadItem =
       readonly error?: V2ThreadResumeResponse__McpToolCallError | null;
       readonly id: string;
       readonly mcpAppResourceUri?: string | null;
+      readonly mcpAppUi?: V2ThreadResumeResponse__McpAppUi | null;
       readonly pluginId?: string | null;
       readonly readOnlyHint?: boolean | null;
       readonly result?: V2ThreadResumeResponse__McpToolCallResult | null;
@@ -46846,10 +47622,17 @@ export const V2ThreadResumeResponse__ThreadItem = Schema.Union(
       mcpAppResourceUri: Schema.optionalKey(
         Schema.Union([
           Schema.String.annotate({
-            description: "Deprecated: use `appContext.resourceUri` instead.",
+            description:
+              "Legacy compatibility field; prefer `mcpAppUi.resourceUri` when available.",
           }),
           Schema.Null,
         ]),
+      ),
+      mcpAppUi: Schema.optionalKey(
+        Schema.Union([V2ThreadResumeResponse__McpAppUi, Schema.Null]).annotate({
+          description:
+            "Presentation captured from the invoked descriptor; absent in older history.",
+        }),
       ),
       pluginId: Schema.optionalKey(Schema.Union([Schema.String, Schema.Null])),
       readOnlyHint: Schema.optionalKey(Schema.Union([Schema.Boolean, Schema.Null])),
@@ -47076,6 +47859,7 @@ export type V2ThreadRevertResponse__ThreadItem =
       readonly error?: V2ThreadRevertResponse__McpToolCallError | null;
       readonly id: string;
       readonly mcpAppResourceUri?: string | null;
+      readonly mcpAppUi?: V2ThreadRevertResponse__McpAppUi | null;
       readonly pluginId?: string | null;
       readonly readOnlyHint?: boolean | null;
       readonly result?: V2ThreadRevertResponse__McpToolCallResult | null;
@@ -47293,10 +48077,17 @@ export const V2ThreadRevertResponse__ThreadItem = Schema.Union(
       mcpAppResourceUri: Schema.optionalKey(
         Schema.Union([
           Schema.String.annotate({
-            description: "Deprecated: use `appContext.resourceUri` instead.",
+            description:
+              "Legacy compatibility field; prefer `mcpAppUi.resourceUri` when available.",
           }),
           Schema.Null,
         ]),
+      ),
+      mcpAppUi: Schema.optionalKey(
+        Schema.Union([V2ThreadRevertResponse__McpAppUi, Schema.Null]).annotate({
+          description:
+            "Presentation captured from the invoked descriptor; absent in older history.",
+        }),
       ),
       pluginId: Schema.optionalKey(Schema.Union([Schema.String, Schema.Null])),
       readOnlyHint: Schema.optionalKey(Schema.Union([Schema.Boolean, Schema.Null])),
@@ -47460,456 +48251,6 @@ export const V2ThreadRevertResponse__ThreadItem = Schema.Union(
   { mode: "oneOf" },
 ).annotate({ identifier: "V2ThreadRevertResponse__ThreadItem" });
 
-export type V2ThreadRollbackResponse__ThreadItem =
-  | {
-      readonly clientId?: string | null;
-      readonly content: ReadonlyArray<V2ThreadRollbackResponse__UserInput>;
-      readonly id: string;
-      readonly type: "userMessage";
-    }
-  | {
-      readonly fragments: ReadonlyArray<V2ThreadRollbackResponse__HookPromptFragment>;
-      readonly id: string;
-      readonly type: "hookPrompt";
-    }
-  | {
-      readonly delivery?: V2ThreadRollbackResponse__AgentMessageDelivery | null;
-      readonly id: string;
-      readonly memoryCitation?: V2ThreadRollbackResponse__MemoryCitation | null;
-      readonly phase?: V2ThreadRollbackResponse__MessagePhase | null;
-      readonly questions?: ReadonlyArray<V2ThreadRollbackResponse__AsyncUserInputQuestion> | null;
-      readonly text: string;
-      readonly type: "agentMessage";
-    }
-  | {
-      readonly id: string;
-      readonly name: string;
-      readonly namespace?: string | null;
-      readonly output: V2ThreadRollbackResponse__FunctionCallOutputBody;
-      readonly type: "functionCallOutput";
-    }
-  | { readonly id: string; readonly text: string; readonly type: "plan" }
-  | {
-      readonly content?: ReadonlyArray<string>;
-      readonly id: string;
-      readonly summary?: ReadonlyArray<string>;
-      readonly type: "reasoning";
-    }
-  | {
-      readonly aggregatedOutput?: string | null;
-      readonly command: string;
-      readonly commandActions: ReadonlyArray<V2ThreadRollbackResponse__CommandAction>;
-      readonly cwd: V2ThreadRollbackResponse__LegacyAppPathString;
-      readonly durationMs?: number | null;
-      readonly exitCode?: number | null;
-      readonly id: string;
-      readonly pluginId?: string | null;
-      readonly processId?: string | null;
-      readonly scriptPath?: string | null;
-      readonly source?: V2ThreadRollbackResponse__CommandExecutionSource;
-      readonly status: V2ThreadRollbackResponse__CommandExecutionStatus;
-      readonly type: "commandExecution";
-    }
-  | {
-      readonly changes: ReadonlyArray<V2ThreadRollbackResponse__FileUpdateChange>;
-      readonly id: string;
-      readonly status: V2ThreadRollbackResponse__PatchApplyStatus;
-      readonly type: "fileChange";
-    }
-  | {
-      readonly appContext?: V2ThreadRollbackResponse__McpToolCallAppContext | null;
-      readonly arguments: Schema.Json;
-      readonly durationMs?: number | null;
-      readonly error?: V2ThreadRollbackResponse__McpToolCallError | null;
-      readonly id: string;
-      readonly mcpAppResourceUri?: string | null;
-      readonly pluginId?: string | null;
-      readonly readOnlyHint?: boolean | null;
-      readonly result?: V2ThreadRollbackResponse__McpToolCallResult | null;
-      readonly server: string;
-      readonly status: V2ThreadRollbackResponse__McpToolCallStatus;
-      readonly tool: string;
-      readonly type: "mcpToolCall";
-    }
-  | {
-      readonly arguments: Schema.Json;
-      readonly contentItems?: ReadonlyArray<V2ThreadRollbackResponse__DynamicToolCallOutputContentItem> | null;
-      readonly durationMs?: number | null;
-      readonly id: string;
-      readonly namespace?: string | null;
-      readonly status: V2ThreadRollbackResponse__DynamicToolCallStatus;
-      readonly success?: boolean | null;
-      readonly tool: string;
-      readonly type: "dynamicToolCall";
-    }
-  | {
-      readonly agentsStates: { readonly [x: string]: V2ThreadRollbackResponse__CollabAgentState };
-      readonly id: string;
-      readonly model?: string | null;
-      readonly prompt?: string | null;
-      readonly reasoningEffort?: V2ThreadRollbackResponse__ReasoningEffort | null;
-      readonly receiverThreadIds: ReadonlyArray<string>;
-      readonly senderThreadId: string;
-      readonly status: V2ThreadRollbackResponse__CollabAgentToolCallStatus;
-      readonly tool: V2ThreadRollbackResponse__CollabAgentTool;
-      readonly type: "collabAgentToolCall";
-    }
-  | {
-      readonly agentPath: string;
-      readonly agentThreadId: string;
-      readonly id: string;
-      readonly kind: V2ThreadRollbackResponse__SubAgentActivityKind;
-      readonly type: "subAgentActivity";
-    }
-  | {
-      readonly action?: V2ThreadRollbackResponse__WebSearchAction | null;
-      readonly id: string;
-      readonly query: string;
-      readonly results?: ReadonlyArray<Schema.Json> | null;
-      readonly type: "webSearch";
-    }
-  | {
-      readonly id: string;
-      readonly path: V2ThreadRollbackResponse__LegacyAppPathString;
-      readonly type: "imageView";
-    }
-  | { readonly durationMs: number; readonly id: string; readonly type: "sleep" }
-  | {
-      readonly failure?: V2ThreadRollbackResponse__ImageGenerationFailure | null;
-      readonly id: string;
-      readonly result: string;
-      readonly revisedPrompt?: string | null;
-      readonly savedPath?: V2ThreadRollbackResponse__AbsolutePathBuf | null;
-      readonly status: string;
-      readonly transparentBackground?: boolean | null;
-      readonly type: "imageGeneration";
-    }
-  | { readonly id: string; readonly review: string; readonly type: "enteredReviewMode" }
-  | { readonly id: string; readonly review: string; readonly type: "exitedReviewMode" }
-  | { readonly id: string; readonly type: "contextCompaction" };
-export const V2ThreadRollbackResponse__ThreadItem = Schema.Union(
-  [
-    Schema.Struct({
-      clientId: Schema.optionalKey(Schema.Union([Schema.String, Schema.Null])),
-      content: Schema.Array(V2ThreadRollbackResponse__UserInput),
-      id: Schema.String,
-      type: Schema.Literal("userMessage").annotate({ title: "UserMessageThreadItemType" }),
-    }).annotate({ title: "UserMessageThreadItem" }),
-    Schema.Struct({
-      fragments: Schema.Array(V2ThreadRollbackResponse__HookPromptFragment),
-      id: Schema.String,
-      type: Schema.Literal("hookPrompt").annotate({ title: "HookPromptThreadItemType" }),
-    }).annotate({ title: "HookPromptThreadItem" }),
-    Schema.Struct({
-      delivery: Schema.optionalKey(
-        Schema.Union([V2ThreadRollbackResponse__AgentMessageDelivery, Schema.Null]),
-      ),
-      id: Schema.String,
-      memoryCitation: Schema.optionalKey(
-        Schema.Union([V2ThreadRollbackResponse__MemoryCitation, Schema.Null]),
-      ),
-      phase: Schema.optionalKey(
-        Schema.Union([V2ThreadRollbackResponse__MessagePhase, Schema.Null]),
-      ),
-      questions: Schema.optionalKey(
-        Schema.Union([Schema.Array(V2ThreadRollbackResponse__AsyncUserInputQuestion), Schema.Null]),
-      ),
-      text: Schema.String,
-      type: Schema.Literal("agentMessage").annotate({ title: "AgentMessageThreadItemType" }),
-    }).annotate({ title: "AgentMessageThreadItem" }),
-    Schema.Struct({
-      id: Schema.String,
-      name: Schema.String,
-      namespace: Schema.optionalKey(Schema.Union([Schema.String, Schema.Null])),
-      output: V2ThreadRollbackResponse__FunctionCallOutputBody,
-      type: Schema.Literal("functionCallOutput").annotate({
-        title: "FunctionCallOutputThreadItemType",
-      }),
-    }).annotate({ title: "FunctionCallOutputThreadItem" }),
-    Schema.Struct({
-      id: Schema.String,
-      text: Schema.String,
-      type: Schema.Literal("plan").annotate({ title: "PlanThreadItemType" }),
-    }).annotate({
-      title: "PlanThreadItem",
-      description:
-        "EXPERIMENTAL - proposed plan item content. The completed plan item is authoritative and may not match the concatenation of `PlanDelta` text.",
-    }),
-    Schema.Struct({
-      content: Schema.optionalKey(Schema.Array(Schema.String).annotate({ default: [] })),
-      id: Schema.String,
-      summary: Schema.optionalKey(Schema.Array(Schema.String).annotate({ default: [] })),
-      type: Schema.Literal("reasoning").annotate({ title: "ReasoningThreadItemType" }),
-    }).annotate({ title: "ReasoningThreadItem" }),
-    Schema.Struct({
-      aggregatedOutput: Schema.optionalKey(
-        Schema.Union([
-          Schema.String.annotate({
-            description: "The command's output, aggregated from stdout and stderr.",
-          }),
-          Schema.Null,
-        ]),
-      ),
-      command: Schema.String.annotate({ description: "The command to be executed." }),
-      commandActions: Schema.Array(V2ThreadRollbackResponse__CommandAction).annotate({
-        description:
-          "A best-effort parsing of the command to understand the action(s) it will perform. This returns a list of CommandAction objects because a single shell command may be composed of many commands piped together.",
-      }),
-      cwd: Schema.suspend(
-        (): Schema.Codec<V2ThreadRollbackResponse__LegacyAppPathString> =>
-          V2ThreadRollbackResponse__LegacyAppPathString,
-      ).annotate({ description: "The command's working directory." }),
-      durationMs: Schema.optionalKey(
-        Schema.Union([
-          Schema.Number.annotate({
-            description: "The duration of the command execution in milliseconds.",
-            format: "int64",
-          }).check(Schema.isInt().annotate({ expected: "an integer" })),
-          Schema.Null,
-        ]),
-      ),
-      exitCode: Schema.optionalKey(
-        Schema.Union([
-          Schema.Number.annotate({
-            description: "The command's exit code.",
-            format: "int32",
-          }).check(Schema.isInt().annotate({ expected: "an integer" })),
-          Schema.Null,
-        ]),
-      ),
-      id: Schema.String,
-      pluginId: Schema.optionalKey(
-        Schema.Union([
-          Schema.String.annotate({
-            description:
-              "Trusted first-party plugin id when this command resolves to one plugin script.",
-          }),
-          Schema.Null,
-        ]),
-      ),
-      processId: Schema.optionalKey(
-        Schema.Union([
-          Schema.String.annotate({
-            description: "Identifier for the underlying PTY process (when available).",
-          }),
-          Schema.Null,
-        ]),
-      ),
-      scriptPath: Schema.optionalKey(
-        Schema.Union([
-          Schema.String.annotate({
-            description:
-              "Safe plugin-relative path when this command resolves to one plugin script.",
-          }),
-          Schema.Null,
-        ]),
-      ),
-      source: Schema.optionalKey(
-        Schema.suspend(
-          (): Schema.Codec<V2ThreadRollbackResponse__CommandExecutionSource> =>
-            V2ThreadRollbackResponse__CommandExecutionSource,
-        ).annotate({ default: "agent" }),
-      ),
-      status: V2ThreadRollbackResponse__CommandExecutionStatus,
-      type: Schema.Literal("commandExecution").annotate({
-        title: "CommandExecutionThreadItemType",
-      }),
-    }).annotate({ title: "CommandExecutionThreadItem" }),
-    Schema.Struct({
-      changes: Schema.Array(V2ThreadRollbackResponse__FileUpdateChange),
-      id: Schema.String,
-      status: V2ThreadRollbackResponse__PatchApplyStatus,
-      type: Schema.Literal("fileChange").annotate({ title: "FileChangeThreadItemType" }),
-    }).annotate({ title: "FileChangeThreadItem" }),
-    Schema.Struct({
-      appContext: Schema.optionalKey(
-        Schema.Union([V2ThreadRollbackResponse__McpToolCallAppContext, Schema.Null]),
-      ),
-      arguments: Schema.Json.annotate({ expected: "JSON value" }),
-      durationMs: Schema.optionalKey(
-        Schema.Union([
-          Schema.Number.annotate({
-            description: "The duration of the MCP tool call in milliseconds.",
-            format: "int64",
-          }).check(Schema.isInt().annotate({ expected: "an integer" })),
-          Schema.Null,
-        ]),
-      ),
-      error: Schema.optionalKey(
-        Schema.Union([V2ThreadRollbackResponse__McpToolCallError, Schema.Null]),
-      ),
-      id: Schema.String,
-      mcpAppResourceUri: Schema.optionalKey(
-        Schema.Union([
-          Schema.String.annotate({
-            description: "Deprecated: use `appContext.resourceUri` instead.",
-          }),
-          Schema.Null,
-        ]),
-      ),
-      pluginId: Schema.optionalKey(Schema.Union([Schema.String, Schema.Null])),
-      readOnlyHint: Schema.optionalKey(Schema.Union([Schema.Boolean, Schema.Null])),
-      result: Schema.optionalKey(
-        Schema.Union([V2ThreadRollbackResponse__McpToolCallResult, Schema.Null]),
-      ),
-      server: Schema.String,
-      status: V2ThreadRollbackResponse__McpToolCallStatus,
-      tool: Schema.String,
-      type: Schema.Literal("mcpToolCall").annotate({ title: "McpToolCallThreadItemType" }),
-    }).annotate({ title: "McpToolCallThreadItem" }),
-    Schema.Struct({
-      arguments: Schema.Json.annotate({ expected: "JSON value" }),
-      contentItems: Schema.optionalKey(
-        Schema.Union([
-          Schema.Array(V2ThreadRollbackResponse__DynamicToolCallOutputContentItem),
-          Schema.Null,
-        ]),
-      ),
-      durationMs: Schema.optionalKey(
-        Schema.Union([
-          Schema.Number.annotate({
-            description: "The duration of the dynamic tool call in milliseconds.",
-            format: "int64",
-          }).check(Schema.isInt().annotate({ expected: "an integer" })),
-          Schema.Null,
-        ]),
-      ),
-      id: Schema.String,
-      namespace: Schema.optionalKey(Schema.Union([Schema.String, Schema.Null])),
-      status: V2ThreadRollbackResponse__DynamicToolCallStatus,
-      success: Schema.optionalKey(Schema.Union([Schema.Boolean, Schema.Null])),
-      tool: Schema.String,
-      type: Schema.Literal("dynamicToolCall").annotate({ title: "DynamicToolCallThreadItemType" }),
-    }).annotate({ title: "DynamicToolCallThreadItem" }),
-    Schema.Struct({
-      agentsStates: Schema.Record(
-        Schema.String,
-        V2ThreadRollbackResponse__CollabAgentState,
-      ).annotate({ description: "Last known status of the target agents, when available." }),
-      id: Schema.String.annotate({ description: "Unique identifier for this collab tool call." }),
-      model: Schema.optionalKey(
-        Schema.Union([
-          Schema.String.annotate({
-            description: "Model requested for the spawned agent, when applicable.",
-          }),
-          Schema.Null,
-        ]),
-      ),
-      prompt: Schema.optionalKey(
-        Schema.Union([
-          Schema.String.annotate({
-            description: "Prompt text sent as part of the collab tool call, when available.",
-          }),
-          Schema.Null,
-        ]),
-      ),
-      reasoningEffort: Schema.optionalKey(
-        Schema.Union([V2ThreadRollbackResponse__ReasoningEffort, Schema.Null]).annotate({
-          description: "Reasoning effort requested for the spawned agent, when applicable.",
-        }),
-      ),
-      receiverThreadIds: Schema.Array(Schema.String).annotate({
-        description:
-          "Thread ID of the receiving agent, when applicable. In case of spawn operation, this corresponds to the newly spawned agent.",
-      }),
-      senderThreadId: Schema.String.annotate({
-        description: "Thread ID of the agent issuing the collab request.",
-      }),
-      status: Schema.suspend(
-        (): Schema.Codec<V2ThreadRollbackResponse__CollabAgentToolCallStatus> =>
-          V2ThreadRollbackResponse__CollabAgentToolCallStatus,
-      ).annotate({ description: "Current status of the collab tool call." }),
-      tool: Schema.suspend(
-        (): Schema.Codec<V2ThreadRollbackResponse__CollabAgentTool> =>
-          V2ThreadRollbackResponse__CollabAgentTool,
-      ).annotate({ description: "Name of the collab tool that was invoked." }),
-      type: Schema.Literal("collabAgentToolCall").annotate({
-        title: "CollabAgentToolCallThreadItemType",
-      }),
-    }).annotate({ title: "CollabAgentToolCallThreadItem" }),
-    Schema.Struct({
-      agentPath: Schema.String,
-      agentThreadId: Schema.String,
-      id: Schema.String,
-      kind: V2ThreadRollbackResponse__SubAgentActivityKind,
-      type: Schema.Literal("subAgentActivity").annotate({
-        title: "SubAgentActivityThreadItemType",
-      }),
-    }).annotate({ title: "SubAgentActivityThreadItem" }),
-    Schema.Struct({
-      action: Schema.optionalKey(
-        Schema.Union([V2ThreadRollbackResponse__WebSearchAction, Schema.Null]),
-      ),
-      id: Schema.String,
-      query: Schema.String,
-      results: Schema.optionalKey(
-        Schema.Union([
-          Schema.Array(Schema.Json.annotate({ expected: "JSON value" })).annotate({
-            description:
-              "Structured search results returned out-of-band by standalone web search.\n\nThese stay as opaque JSON at the extension/app-server boundary so new result fields and result types can pass through without a Codex release.",
-          }),
-          Schema.Null,
-        ]),
-      ),
-      type: Schema.Literal("webSearch").annotate({ title: "WebSearchThreadItemType" }),
-    }).annotate({ title: "WebSearchThreadItem" }),
-    Schema.Struct({
-      id: Schema.String,
-      path: V2ThreadRollbackResponse__LegacyAppPathString,
-      type: Schema.Literal("imageView").annotate({ title: "ImageViewThreadItemType" }),
-    }).annotate({ title: "ImageViewThreadItem" }),
-    Schema.Struct({
-      durationMs: Schema.Number.annotate({ format: "uint64" })
-        .check(Schema.isInt().annotate({ expected: "an integer" }))
-        .check(
-          Schema.isGreaterThanOrEqualTo(0).annotate({
-            expected: "a value greater than or equal to 0",
-          }),
-        ),
-      id: Schema.String,
-      type: Schema.Literal("sleep").annotate({ title: "SleepThreadItemType" }),
-    }).annotate({
-      title: "SleepThreadItem",
-      description: "Display item emitted by the interruptible `clock.sleep` tool.",
-    }),
-    Schema.Struct({
-      failure: Schema.optionalKey(
-        Schema.Union([V2ThreadRollbackResponse__ImageGenerationFailure, Schema.Null]),
-      ),
-      id: Schema.String,
-      result: Schema.String,
-      revisedPrompt: Schema.optionalKey(Schema.Union([Schema.String, Schema.Null])),
-      savedPath: Schema.optionalKey(
-        Schema.Union([V2ThreadRollbackResponse__AbsolutePathBuf, Schema.Null]),
-      ),
-      status: Schema.String,
-      transparentBackground: Schema.optionalKey(Schema.Union([Schema.Boolean, Schema.Null])),
-      type: Schema.Literal("imageGeneration").annotate({ title: "ImageGenerationThreadItemType" }),
-    }).annotate({ title: "ImageGenerationThreadItem" }),
-    Schema.Struct({
-      id: Schema.String,
-      review: Schema.String,
-      type: Schema.Literal("enteredReviewMode").annotate({
-        title: "EnteredReviewModeThreadItemType",
-      }),
-    }).annotate({ title: "EnteredReviewModeThreadItem" }),
-    Schema.Struct({
-      id: Schema.String,
-      review: Schema.String,
-      type: Schema.Literal("exitedReviewMode").annotate({
-        title: "ExitedReviewModeThreadItemType",
-      }),
-    }).annotate({ title: "ExitedReviewModeThreadItem" }),
-    Schema.Struct({
-      id: Schema.String,
-      type: Schema.Literal("contextCompaction").annotate({
-        title: "ContextCompactionThreadItemType",
-      }),
-    }).annotate({ title: "ContextCompactionThreadItem" }),
-  ],
-  { mode: "oneOf" },
-).annotate({ identifier: "V2ThreadRollbackResponse__ThreadItem" });
-
 export type V2ThreadSearchResponse__ThreadItem =
   | {
       readonly clientId?: string | null;
@@ -47973,6 +48314,7 @@ export type V2ThreadSearchResponse__ThreadItem =
       readonly error?: V2ThreadSearchResponse__McpToolCallError | null;
       readonly id: string;
       readonly mcpAppResourceUri?: string | null;
+      readonly mcpAppUi?: V2ThreadSearchResponse__McpAppUi | null;
       readonly pluginId?: string | null;
       readonly readOnlyHint?: boolean | null;
       readonly result?: V2ThreadSearchResponse__McpToolCallResult | null;
@@ -48190,10 +48532,17 @@ export const V2ThreadSearchResponse__ThreadItem = Schema.Union(
       mcpAppResourceUri: Schema.optionalKey(
         Schema.Union([
           Schema.String.annotate({
-            description: "Deprecated: use `appContext.resourceUri` instead.",
+            description:
+              "Legacy compatibility field; prefer `mcpAppUi.resourceUri` when available.",
           }),
           Schema.Null,
         ]),
+      ),
+      mcpAppUi: Schema.optionalKey(
+        Schema.Union([V2ThreadSearchResponse__McpAppUi, Schema.Null]).annotate({
+          description:
+            "Presentation captured from the invoked descriptor; absent in older history.",
+        }),
       ),
       pluginId: Schema.optionalKey(Schema.Union([Schema.String, Schema.Null])),
       readOnlyHint: Schema.optionalKey(Schema.Union([Schema.Boolean, Schema.Null])),
@@ -48363,6 +48712,7 @@ export type V2ThreadSettingsUpdatedNotification__ThreadSettings = {
   readonly approvalsReviewer: V2ThreadSettingsUpdatedNotification__ApprovalsReviewer;
   readonly collaborationMode: V2ThreadSettingsUpdatedNotification__CollaborationMode;
   readonly cwd: V2ThreadSettingsUpdatedNotification__AbsolutePathBuf;
+  readonly disabledPluginIds?: ReadonlyArray<string>;
   readonly effort?: V2ThreadSettingsUpdatedNotification__ReasoningEffort | null;
   readonly model: string;
   readonly modelProvider: string;
@@ -48380,6 +48730,12 @@ export const V2ThreadSettingsUpdatedNotification__ThreadSettings = Schema.Struct
   approvalsReviewer: V2ThreadSettingsUpdatedNotification__ApprovalsReviewer,
   collaborationMode: V2ThreadSettingsUpdatedNotification__CollaborationMode,
   cwd: V2ThreadSettingsUpdatedNotification__AbsolutePathBuf,
+  disabledPluginIds: Schema.optionalKey(
+    Schema.Array(Schema.String).annotate({
+      description: "Saved list of disabled plugin IDs. Does not yet filter plugin capabilities.",
+      default: [],
+    }),
+  ),
   effort: Schema.optionalKey(
     Schema.Union([V2ThreadSettingsUpdatedNotification__ReasoningEffort, Schema.Null]),
   ),
@@ -48395,7 +48751,10 @@ export const V2ThreadSettingsUpdatedNotification__ThreadSettings = Schema.Struct
     }),
   ),
   personality: Schema.optionalKey(
-    Schema.Union([V2ThreadSettingsUpdatedNotification__Personality, Schema.Null]),
+    Schema.Union([V2ThreadSettingsUpdatedNotification__Personality, Schema.Null]).annotate({
+      description:
+        "@deprecated Reports the saved setting; `friendly` and `pragmatic` no longer select a style.",
+    }),
   ),
   sandboxPolicy: V2ThreadSettingsUpdatedNotification__SandboxPolicy,
   serviceTier: Schema.optionalKey(Schema.Union([Schema.String, Schema.Null])),
@@ -48467,6 +48826,7 @@ export type V2ThreadStartedNotification__ThreadItem =
       readonly error?: V2ThreadStartedNotification__McpToolCallError | null;
       readonly id: string;
       readonly mcpAppResourceUri?: string | null;
+      readonly mcpAppUi?: V2ThreadStartedNotification__McpAppUi | null;
       readonly pluginId?: string | null;
       readonly readOnlyHint?: boolean | null;
       readonly result?: V2ThreadStartedNotification__McpToolCallResult | null;
@@ -48691,10 +49051,17 @@ export const V2ThreadStartedNotification__ThreadItem = Schema.Union(
       mcpAppResourceUri: Schema.optionalKey(
         Schema.Union([
           Schema.String.annotate({
-            description: "Deprecated: use `appContext.resourceUri` instead.",
+            description:
+              "Legacy compatibility field; prefer `mcpAppUi.resourceUri` when available.",
           }),
           Schema.Null,
         ]),
+      ),
+      mcpAppUi: Schema.optionalKey(
+        Schema.Union([V2ThreadStartedNotification__McpAppUi, Schema.Null]).annotate({
+          description:
+            "Presentation captured from the invoked descriptor; absent in older history.",
+        }),
       ),
       pluginId: Schema.optionalKey(Schema.Union([Schema.String, Schema.Null])),
       readOnlyHint: Schema.optionalKey(Schema.Union([Schema.Boolean, Schema.Null])),
@@ -48922,6 +49289,7 @@ export type V2ThreadStartResponse__ThreadItem =
       readonly error?: V2ThreadStartResponse__McpToolCallError | null;
       readonly id: string;
       readonly mcpAppResourceUri?: string | null;
+      readonly mcpAppUi?: V2ThreadStartResponse__McpAppUi | null;
       readonly pluginId?: string | null;
       readonly readOnlyHint?: boolean | null;
       readonly result?: V2ThreadStartResponse__McpToolCallResult | null;
@@ -49139,10 +49507,17 @@ export const V2ThreadStartResponse__ThreadItem = Schema.Union(
       mcpAppResourceUri: Schema.optionalKey(
         Schema.Union([
           Schema.String.annotate({
-            description: "Deprecated: use `appContext.resourceUri` instead.",
+            description:
+              "Legacy compatibility field; prefer `mcpAppUi.resourceUri` when available.",
           }),
           Schema.Null,
         ]),
+      ),
+      mcpAppUi: Schema.optionalKey(
+        Schema.Union([V2ThreadStartResponse__McpAppUi, Schema.Null]).annotate({
+          description:
+            "Presentation captured from the invoked descriptor; absent in older history.",
+        }),
       ),
       pluginId: Schema.optionalKey(Schema.Union([Schema.String, Schema.Null])),
       readOnlyHint: Schema.optionalKey(Schema.Union([Schema.Boolean, Schema.Null])),
@@ -49369,6 +49744,7 @@ export type V2ThreadTimelineListResponse__ThreadItem =
       readonly error?: V2ThreadTimelineListResponse__McpToolCallError | null;
       readonly id: string;
       readonly mcpAppResourceUri?: string | null;
+      readonly mcpAppUi?: V2ThreadTimelineListResponse__McpAppUi | null;
       readonly pluginId?: string | null;
       readonly readOnlyHint?: boolean | null;
       readonly result?: V2ThreadTimelineListResponse__McpToolCallResult | null;
@@ -49593,10 +49969,17 @@ export const V2ThreadTimelineListResponse__ThreadItem = Schema.Union(
       mcpAppResourceUri: Schema.optionalKey(
         Schema.Union([
           Schema.String.annotate({
-            description: "Deprecated: use `appContext.resourceUri` instead.",
+            description:
+              "Legacy compatibility field; prefer `mcpAppUi.resourceUri` when available.",
           }),
           Schema.Null,
         ]),
+      ),
+      mcpAppUi: Schema.optionalKey(
+        Schema.Union([V2ThreadTimelineListResponse__McpAppUi, Schema.Null]).annotate({
+          description:
+            "Presentation captured from the invoked descriptor; absent in older history.",
+        }),
       ),
       pluginId: Schema.optionalKey(Schema.Union([Schema.String, Schema.Null])),
       readOnlyHint: Schema.optionalKey(Schema.Union([Schema.Boolean, Schema.Null])),
@@ -49824,6 +50207,7 @@ export type V2ThreadTurnsListResponse__ThreadItem =
       readonly error?: V2ThreadTurnsListResponse__McpToolCallError | null;
       readonly id: string;
       readonly mcpAppResourceUri?: string | null;
+      readonly mcpAppUi?: V2ThreadTurnsListResponse__McpAppUi | null;
       readonly pluginId?: string | null;
       readonly readOnlyHint?: boolean | null;
       readonly result?: V2ThreadTurnsListResponse__McpToolCallResult | null;
@@ -50046,10 +50430,17 @@ export const V2ThreadTurnsListResponse__ThreadItem = Schema.Union(
       mcpAppResourceUri: Schema.optionalKey(
         Schema.Union([
           Schema.String.annotate({
-            description: "Deprecated: use `appContext.resourceUri` instead.",
+            description:
+              "Legacy compatibility field; prefer `mcpAppUi.resourceUri` when available.",
           }),
           Schema.Null,
         ]),
+      ),
+      mcpAppUi: Schema.optionalKey(
+        Schema.Union([V2ThreadTurnsListResponse__McpAppUi, Schema.Null]).annotate({
+          description:
+            "Presentation captured from the invoked descriptor; absent in older history.",
+        }),
       ),
       pluginId: Schema.optionalKey(Schema.Union([Schema.String, Schema.Null])),
       readOnlyHint: Schema.optionalKey(Schema.Union([Schema.Boolean, Schema.Null])),
@@ -50277,6 +50668,7 @@ export type V2ThreadUnarchiveResponse__ThreadItem =
       readonly error?: V2ThreadUnarchiveResponse__McpToolCallError | null;
       readonly id: string;
       readonly mcpAppResourceUri?: string | null;
+      readonly mcpAppUi?: V2ThreadUnarchiveResponse__McpAppUi | null;
       readonly pluginId?: string | null;
       readonly readOnlyHint?: boolean | null;
       readonly result?: V2ThreadUnarchiveResponse__McpToolCallResult | null;
@@ -50499,10 +50891,17 @@ export const V2ThreadUnarchiveResponse__ThreadItem = Schema.Union(
       mcpAppResourceUri: Schema.optionalKey(
         Schema.Union([
           Schema.String.annotate({
-            description: "Deprecated: use `appContext.resourceUri` instead.",
+            description:
+              "Legacy compatibility field; prefer `mcpAppUi.resourceUri` when available.",
           }),
           Schema.Null,
         ]),
+      ),
+      mcpAppUi: Schema.optionalKey(
+        Schema.Union([V2ThreadUnarchiveResponse__McpAppUi, Schema.Null]).annotate({
+          description:
+            "Presentation captured from the invoked descriptor; absent in older history.",
+        }),
       ),
       pluginId: Schema.optionalKey(Schema.Union([Schema.String, Schema.Null])),
       readOnlyHint: Schema.optionalKey(Schema.Union([Schema.Boolean, Schema.Null])),
@@ -50730,6 +51129,7 @@ export type V2TurnCompletedNotification__ThreadItem =
       readonly error?: V2TurnCompletedNotification__McpToolCallError | null;
       readonly id: string;
       readonly mcpAppResourceUri?: string | null;
+      readonly mcpAppUi?: V2TurnCompletedNotification__McpAppUi | null;
       readonly pluginId?: string | null;
       readonly readOnlyHint?: boolean | null;
       readonly result?: V2TurnCompletedNotification__McpToolCallResult | null;
@@ -50954,10 +51354,17 @@ export const V2TurnCompletedNotification__ThreadItem = Schema.Union(
       mcpAppResourceUri: Schema.optionalKey(
         Schema.Union([
           Schema.String.annotate({
-            description: "Deprecated: use `appContext.resourceUri` instead.",
+            description:
+              "Legacy compatibility field; prefer `mcpAppUi.resourceUri` when available.",
           }),
           Schema.Null,
         ]),
+      ),
+      mcpAppUi: Schema.optionalKey(
+        Schema.Union([V2TurnCompletedNotification__McpAppUi, Schema.Null]).annotate({
+          description:
+            "Presentation captured from the invoked descriptor; absent in older history.",
+        }),
       ),
       pluginId: Schema.optionalKey(Schema.Union([Schema.String, Schema.Null])),
       readOnlyHint: Schema.optionalKey(Schema.Union([Schema.Boolean, Schema.Null])),
@@ -51185,6 +51592,7 @@ export type V2TurnStartedNotification__ThreadItem =
       readonly error?: V2TurnStartedNotification__McpToolCallError | null;
       readonly id: string;
       readonly mcpAppResourceUri?: string | null;
+      readonly mcpAppUi?: V2TurnStartedNotification__McpAppUi | null;
       readonly pluginId?: string | null;
       readonly readOnlyHint?: boolean | null;
       readonly result?: V2TurnStartedNotification__McpToolCallResult | null;
@@ -51407,10 +51815,17 @@ export const V2TurnStartedNotification__ThreadItem = Schema.Union(
       mcpAppResourceUri: Schema.optionalKey(
         Schema.Union([
           Schema.String.annotate({
-            description: "Deprecated: use `appContext.resourceUri` instead.",
+            description:
+              "Legacy compatibility field; prefer `mcpAppUi.resourceUri` when available.",
           }),
           Schema.Null,
         ]),
+      ),
+      mcpAppUi: Schema.optionalKey(
+        Schema.Union([V2TurnStartedNotification__McpAppUi, Schema.Null]).annotate({
+          description:
+            "Presentation captured from the invoked descriptor; absent in older history.",
+        }),
       ),
       pluginId: Schema.optionalKey(Schema.Union([Schema.String, Schema.Null])),
       readOnlyHint: Schema.optionalKey(Schema.Union([Schema.Boolean, Schema.Null])),
@@ -51649,6 +52064,7 @@ export type V2TurnStartResponse__ThreadItem =
       readonly error?: V2TurnStartResponse__McpToolCallError | null;
       readonly id: string;
       readonly mcpAppResourceUri?: string | null;
+      readonly mcpAppUi?: V2TurnStartResponse__McpAppUi | null;
       readonly pluginId?: string | null;
       readonly readOnlyHint?: boolean | null;
       readonly result?: V2TurnStartResponse__McpToolCallResult | null;
@@ -51864,10 +52280,17 @@ export const V2TurnStartResponse__ThreadItem = Schema.Union(
       mcpAppResourceUri: Schema.optionalKey(
         Schema.Union([
           Schema.String.annotate({
-            description: "Deprecated: use `appContext.resourceUri` instead.",
+            description:
+              "Legacy compatibility field; prefer `mcpAppUi.resourceUri` when available.",
           }),
           Schema.Null,
         ]),
+      ),
+      mcpAppUi: Schema.optionalKey(
+        Schema.Union([V2TurnStartResponse__McpAppUi, Schema.Null]).annotate({
+          description:
+            "Presentation captured from the invoked descriptor; absent in older history.",
+        }),
       ),
       pluginId: Schema.optionalKey(Schema.Union([Schema.String, Schema.Null])),
       readOnlyHint: Schema.optionalKey(Schema.Union([Schema.Boolean, Schema.Null])),
@@ -52113,7 +52536,12 @@ export const ClientRequest__ThreadResumeParams = Schema.Struct({
       Schema.Null,
     ]),
   ),
-  personality: Schema.optionalKey(Schema.Union([ClientRequest__Personality, Schema.Null])),
+  personality: Schema.optionalKey(
+    Schema.Union([ClientRequest__Personality, Schema.Null]).annotate({
+      description:
+        "@deprecated `friendly` and `pragmatic` no longer select a style. Changing this does not rewrite the thread's existing instructions.",
+    }),
+  ),
   runtimeWorkspaceRoots: Schema.optionalKey(
     Schema.Union([
       Schema.Array(ClientRequest__AbsolutePathBuf).annotate({
@@ -52141,6 +52569,7 @@ export type ClientRequest__TurnStartParams = {
   readonly collaborationMode?: ClientRequest__CollaborationMode | null;
   readonly cwd?: string | null;
   readonly cyberAccessProgram?: ClientRequest__CyberAccessProgram | null;
+  readonly disabledPluginIds?: ReadonlyArray<string> | null;
   readonly effort?: ClientRequest__ReasoningEffort | null;
   readonly environments?: ReadonlyArray<ClientRequest__TurnEnvironmentParams> | null;
   readonly input: ReadonlyArray<ClientRequest__UserInput>;
@@ -52201,6 +52630,15 @@ export const ClientRequest__TurnStartParams = Schema.Struct({
         "EXPERIMENTAL - Request a workspace-authorized cyber program for this turn. Omission preserves automatic behavior. This does not grant access.",
     }),
   ),
+  disabledPluginIds: Schema.optionalKey(
+    Schema.Union([
+      Schema.Array(Schema.String).annotate({
+        description:
+          "Replace this thread's disabled plugin IDs. Omitted/null preserves the list; [] clears it.",
+      }),
+      Schema.Null,
+    ]),
+  ),
   effort: Schema.optionalKey(
     Schema.Union([ClientRequest__ReasoningEffort, Schema.Null]).annotate({
       description: "Override the reasoning effort for this turn and subsequent turns.",
@@ -52247,7 +52685,8 @@ export const ClientRequest__TurnStartParams = Schema.Struct({
   ),
   personality: Schema.optionalKey(
     Schema.Union([ClientRequest__Personality, Schema.Null]).annotate({
-      description: "Override the personality for this turn and subsequent turns.",
+      description:
+        "@deprecated `friendly` and `pragmatic` no longer select a style. Changing this does not rewrite the thread's existing instructions.",
     }),
   ),
   responsesapiClientMetadata: Schema.optionalKey(
@@ -52531,7 +52970,7 @@ export const ServerNotification__Turn = Schema.Struct({
   ),
   error: Schema.optionalKey(
     Schema.Union([ServerNotification__TurnError, Schema.Null]).annotate({
-      description: "Only populated when the Turn's status is failed.",
+      description: "Error associated with a failed or interrupted turn.",
     }),
   ),
   id: Schema.String.annotate({
@@ -52761,10 +53200,11 @@ export type V2ConfigRequirementsReadResponse__ConfigRequirements = {
   readonly allowRemoteControl?: boolean | null;
   readonly allowedApprovalPolicies?: ReadonlyArray<V2ConfigRequirementsReadResponse__AskForApproval> | null;
   readonly allowedApprovalsReviewers?: ReadonlyArray<V2ConfigRequirementsReadResponse__ApprovalsReviewer> | null;
+  readonly allowedLoginMethods?: ReadonlyArray<V2ConfigRequirementsReadResponse__ForcedLoginMethod> | null;
   readonly allowedPermissionProfiles?: { readonly [x: string]: boolean } | null;
   readonly allowedSandboxModes?: ReadonlyArray<V2ConfigRequirementsReadResponse__SandboxMode> | null;
   readonly allowedWebSearchModes?: ReadonlyArray<V2ConfigRequirementsReadResponse__WebSearchMode> | null;
-  readonly allowedWindowsSandboxImplementations?: ReadonlyArray<V2ConfigRequirementsReadResponse__WindowsSandboxSetupMode> | null;
+  readonly allowedWindowsSandboxImplementations?: ReadonlyArray<V2ConfigRequirementsReadResponse__WindowsSandboxImplementation> | null;
   readonly application?: V2ConfigRequirementsReadResponse__ApplicationRequirements | null;
   readonly autoReview?: V2ConfigRequirementsReadResponse__AutoReviewRequirements | null;
   readonly browserUse?: V2ConfigRequirementsReadResponse__BrowserUseRequirements | null;
@@ -52780,10 +53220,11 @@ export type V2ConfigRequirementsReadResponse__ConfigRequirements = {
   readonly inAppBrowser?: V2ConfigRequirementsReadResponse__InAppBrowserRequirements | null;
   readonly logDir?: string | null;
   readonly modelCatalogJson?: string | null;
+  readonly modelProvider?: string | null;
+  readonly modelProviders?: { readonly [x: string]: Schema.Json } | null;
   readonly models?: V2ConfigRequirementsReadResponse__ModelsRequirements | null;
   readonly network?: V2ConfigRequirementsReadResponse__NetworkRequirements | null;
   readonly sqliteHome?: string | null;
-  readonly windowsSandboxPrivateDesktop?: boolean | null;
 };
 export const V2ConfigRequirementsReadResponse__ConfigRequirements = Schema.Struct({
   additionalDeveloperInstructions: Schema.optionalKey(Schema.Union([Schema.String, Schema.Null])),
@@ -52798,6 +53239,15 @@ export const V2ConfigRequirementsReadResponse__ConfigRequirements = Schema.Struc
   allowedApprovalsReviewers: Schema.optionalKey(
     Schema.Union([Schema.Array(V2ConfigRequirementsReadResponse__ApprovalsReviewer), Schema.Null]),
   ),
+  allowedLoginMethods: Schema.optionalKey(
+    Schema.Union([
+      Schema.Array(V2ConfigRequirementsReadResponse__ForcedLoginMethod).annotate({
+        description:
+          "Effective login methods after managed, forced-login, and workspace restrictions. An empty list permits no login method. Older servers may omit this field.",
+      }),
+      Schema.Null,
+    ]),
+  ),
   allowedPermissionProfiles: Schema.optionalKey(
     Schema.Union([Schema.Record(Schema.String, Schema.Boolean), Schema.Null]),
   ),
@@ -52809,7 +53259,7 @@ export const V2ConfigRequirementsReadResponse__ConfigRequirements = Schema.Struc
   ),
   allowedWindowsSandboxImplementations: Schema.optionalKey(
     Schema.Union([
-      Schema.Array(V2ConfigRequirementsReadResponse__WindowsSandboxSetupMode),
+      Schema.Array(V2ConfigRequirementsReadResponse__WindowsSandboxImplementation),
       Schema.Null,
     ]),
   ),
@@ -52848,6 +53298,22 @@ export const V2ConfigRequirementsReadResponse__ConfigRequirements = Schema.Struc
   ),
   logDir: Schema.optionalKey(Schema.Union([Schema.String, Schema.Null])),
   modelCatalogJson: Schema.optionalKey(Schema.Union([Schema.String, Schema.Null])),
+  modelProvider: Schema.optionalKey(
+    Schema.Union([
+      Schema.String.annotate({
+        description: "Exact provider selection required by managed policy.",
+      }),
+      Schema.Null,
+    ]),
+  ),
+  modelProviders: Schema.optionalKey(
+    Schema.Union([
+      Schema.Record(Schema.String, Schema.Json.annotate({ expected: "JSON value" })).annotate({
+        description: "Complete required provider definitions, using config.toml field names.",
+      }),
+      Schema.Null,
+    ]),
+  ),
   models: Schema.optionalKey(
     Schema.Union([V2ConfigRequirementsReadResponse__ModelsRequirements, Schema.Null]),
   ),
@@ -52855,7 +53321,6 @@ export const V2ConfigRequirementsReadResponse__ConfigRequirements = Schema.Struc
     Schema.Union([V2ConfigRequirementsReadResponse__NetworkRequirements, Schema.Null]),
   ),
   sqliteHome: Schema.optionalKey(Schema.Union([Schema.String, Schema.Null])),
-  windowsSandboxPrivateDesktop: Schema.optionalKey(Schema.Union([Schema.Boolean, Schema.Null])),
 }).annotate({ identifier: "V2ConfigRequirementsReadResponse__ConfigRequirements" });
 
 export type V2ItemGuardianApprovalReviewCompletedNotification__AdditionalFileSystemPermissions = {
@@ -52999,6 +53464,7 @@ export type V2PluginReadResponse__PluginDetail = {
   readonly marketplaceName: string;
   readonly marketplacePath?: V2PluginReadResponse__AbsolutePathBuf | null;
   readonly mcpServers: ReadonlyArray<string>;
+  readonly onboardingSkill?: V2PluginReadResponse__SkillSummary | null;
   readonly scheduledTasks?: ReadonlyArray<V2PluginReadResponse__ScheduledTaskSummary> | null;
   readonly shareUrl?: string | null;
   readonly skills: ReadonlyArray<V2PluginReadResponse__SkillSummary>;
@@ -53014,6 +53480,11 @@ export const V2PluginReadResponse__PluginDetail = Schema.Struct({
     Schema.Union([V2PluginReadResponse__AbsolutePathBuf, Schema.Null]),
   ),
   mcpServers: Schema.Array(Schema.String),
+  onboardingSkill: Schema.optionalKey(
+    Schema.Union([V2PluginReadResponse__SkillSummary, Schema.Null]).annotate({
+      description: "The declared onboarding skill, when the plugin and visible skill are enabled.",
+    }),
+  ),
   scheduledTasks: Schema.optionalKey(
     Schema.Union([Schema.Array(V2PluginReadResponse__ScheduledTaskSummary), Schema.Null]),
   ),
@@ -53077,7 +53548,7 @@ export const V2ReviewStartResponse__Turn = Schema.Struct({
   ),
   error: Schema.optionalKey(
     Schema.Union([V2ReviewStartResponse__TurnError, Schema.Null]).annotate({
-      description: "Only populated when the Turn's status is failed.",
+      description: "Error associated with a failed or interrupted turn.",
     }),
   ),
   id: Schema.String.annotate({
@@ -53138,7 +53609,7 @@ export const V2ThreadForkResponse__Turn = Schema.Struct({
   ),
   error: Schema.optionalKey(
     Schema.Union([V2ThreadForkResponse__TurnError, Schema.Null]).annotate({
-      description: "Only populated when the Turn's status is failed.",
+      description: "Error associated with a failed or interrupted turn.",
     }),
   ),
   id: Schema.String.annotate({
@@ -53168,11 +53639,33 @@ export const V2ThreadForkResponse__Turn = Schema.Struct({
 }).annotate({ identifier: "V2ThreadForkResponse__Turn" });
 
 export type V2ThreadItemsListResponse__ThreadItemEntry = {
+  readonly completedAtMs?: number | null;
   readonly item: V2ThreadItemsListResponse__ThreadItem;
+  readonly startedAtMs?: number | null;
   readonly turnId: string;
 };
 export const V2ThreadItemsListResponse__ThreadItemEntry = Schema.Struct({
+  completedAtMs: Schema.optionalKey(
+    Schema.Union([
+      Schema.Number.annotate({
+        description:
+          "Unix timestamp (milliseconds) when the item completed, if recorded by the producer.",
+        format: "int64",
+      }).check(Schema.isInt().annotate({ expected: "an integer" })),
+      Schema.Null,
+    ]),
+  ),
   item: V2ThreadItemsListResponse__ThreadItem,
+  startedAtMs: Schema.optionalKey(
+    Schema.Union([
+      Schema.Number.annotate({
+        description:
+          "Unix timestamp (milliseconds) when the item started, if recorded by the producer.",
+        format: "int64",
+      }).check(Schema.isInt().annotate({ expected: "an integer" })),
+      Schema.Null,
+    ]),
+  ),
   turnId: Schema.String.annotate({ description: "Turn containing this item." }),
 }).annotate({ identifier: "V2ThreadItemsListResponse__ThreadItemEntry" });
 
@@ -53207,7 +53700,7 @@ export const V2ThreadListResponse__Turn = Schema.Struct({
   ),
   error: Schema.optionalKey(
     Schema.Union([V2ThreadListResponse__TurnError, Schema.Null]).annotate({
-      description: "Only populated when the Turn's status is failed.",
+      description: "Error associated with a failed or interrupted turn.",
     }),
   ),
   id: Schema.String.annotate({
@@ -53267,7 +53760,7 @@ export const V2ThreadMetadataUpdateResponse__Turn = Schema.Struct({
   ),
   error: Schema.optionalKey(
     Schema.Union([V2ThreadMetadataUpdateResponse__TurnError, Schema.Null]).annotate({
-      description: "Only populated when the Turn's status is failed.",
+      description: "Error associated with a failed or interrupted turn.",
     }),
   ),
   id: Schema.String.annotate({
@@ -53328,7 +53821,7 @@ export const V2ThreadQueueStartResponse__Turn = Schema.Struct({
   ),
   error: Schema.optionalKey(
     Schema.Union([V2ThreadQueueStartResponse__TurnError, Schema.Null]).annotate({
-      description: "Only populated when the Turn's status is failed.",
+      description: "Error associated with a failed or interrupted turn.",
     }),
   ),
   id: Schema.String.annotate({
@@ -53389,7 +53882,7 @@ export const V2ThreadReadResponse__Turn = Schema.Struct({
   ),
   error: Schema.optionalKey(
     Schema.Union([V2ThreadReadResponse__TurnError, Schema.Null]).annotate({
-      description: "Only populated when the Turn's status is failed.",
+      description: "Error associated with a failed or interrupted turn.",
     }),
   ),
   id: Schema.String.annotate({
@@ -53449,7 +53942,7 @@ export const V2ThreadResumeResponse__Turn = Schema.Struct({
   ),
   error: Schema.optionalKey(
     Schema.Union([V2ThreadResumeResponse__TurnError, Schema.Null]).annotate({
-      description: "Only populated when the Turn's status is failed.",
+      description: "Error associated with a failed or interrupted turn.",
     }),
   ),
   id: Schema.String.annotate({
@@ -53510,7 +54003,7 @@ export const V2ThreadRevertResponse__Turn = Schema.Struct({
   ),
   error: Schema.optionalKey(
     Schema.Union([V2ThreadRevertResponse__TurnError, Schema.Null]).annotate({
-      description: "Only populated when the Turn's status is failed.",
+      description: "Error associated with a failed or interrupted turn.",
     }),
   ),
   id: Schema.String.annotate({
@@ -53539,67 +54032,6 @@ export const V2ThreadRevertResponse__Turn = Schema.Struct({
   ),
   status: V2ThreadRevertResponse__TurnStatus,
 }).annotate({ identifier: "V2ThreadRevertResponse__Turn" });
-
-export type V2ThreadRollbackResponse__Turn = {
-  readonly completedAt?: number | null;
-  readonly durationMs?: number | null;
-  readonly error?: V2ThreadRollbackResponse__TurnError | null;
-  readonly id: string;
-  readonly items: ReadonlyArray<V2ThreadRollbackResponse__ThreadItem>;
-  readonly itemsView?: V2ThreadRollbackResponse__TurnItemsView;
-  readonly startedAt?: number | null;
-  readonly status: V2ThreadRollbackResponse__TurnStatus;
-};
-export const V2ThreadRollbackResponse__Turn = Schema.Struct({
-  completedAt: Schema.optionalKey(
-    Schema.Union([
-      Schema.Number.annotate({
-        description: "Unix timestamp (in seconds) when the turn completed.",
-        format: "int64",
-      }).check(Schema.isInt().annotate({ expected: "an integer" })),
-      Schema.Null,
-    ]),
-  ),
-  durationMs: Schema.optionalKey(
-    Schema.Union([
-      Schema.Number.annotate({
-        description: "Duration between turn start and completion in milliseconds, if known.",
-        format: "int64",
-      }).check(Schema.isInt().annotate({ expected: "an integer" })),
-      Schema.Null,
-    ]),
-  ),
-  error: Schema.optionalKey(
-    Schema.Union([V2ThreadRollbackResponse__TurnError, Schema.Null]).annotate({
-      description: "Only populated when the Turn's status is failed.",
-    }),
-  ),
-  id: Schema.String.annotate({
-    description: "Identifier for this turn. Codex-generated turn IDs are UUIDv7.",
-  }),
-  items: Schema.Array(V2ThreadRollbackResponse__ThreadItem).annotate({
-    description: "Thread items currently included in this turn payload.",
-  }),
-  itemsView: Schema.optionalKey(
-    Schema.suspend(
-      (): Schema.Codec<V2ThreadRollbackResponse__TurnItemsView> =>
-        V2ThreadRollbackResponse__TurnItemsView,
-    ).annotate({
-      description: "Describes how much of `items` has been loaded for this turn.",
-      default: "full",
-    }),
-  ),
-  startedAt: Schema.optionalKey(
-    Schema.Union([
-      Schema.Number.annotate({
-        description: "Unix timestamp (in seconds) when the turn started.",
-        format: "int64",
-      }).check(Schema.isInt().annotate({ expected: "an integer" })),
-      Schema.Null,
-    ]),
-  ),
-  status: V2ThreadRollbackResponse__TurnStatus,
-}).annotate({ identifier: "V2ThreadRollbackResponse__Turn" });
 
 export type V2ThreadSearchResponse__Turn = {
   readonly completedAt?: number | null;
@@ -53632,7 +54064,7 @@ export const V2ThreadSearchResponse__Turn = Schema.Struct({
   ),
   error: Schema.optionalKey(
     Schema.Union([V2ThreadSearchResponse__TurnError, Schema.Null]).annotate({
-      description: "Only populated when the Turn's status is failed.",
+      description: "Error associated with a failed or interrupted turn.",
     }),
   ),
   id: Schema.String.annotate({
@@ -53693,7 +54125,7 @@ export const V2ThreadStartedNotification__Turn = Schema.Struct({
   ),
   error: Schema.optionalKey(
     Schema.Union([V2ThreadStartedNotification__TurnError, Schema.Null]).annotate({
-      description: "Only populated when the Turn's status is failed.",
+      description: "Error associated with a failed or interrupted turn.",
     }),
   ),
   id: Schema.String.annotate({
@@ -53754,7 +54186,7 @@ export const V2ThreadStartResponse__Turn = Schema.Struct({
   ),
   error: Schema.optionalKey(
     Schema.Union([V2ThreadStartResponse__TurnError, Schema.Null]).annotate({
-      description: "Only populated when the Turn's status is failed.",
+      description: "Error associated with a failed or interrupted turn.",
     }),
   ),
   id: Schema.String.annotate({
@@ -53935,7 +54367,7 @@ export const V2ThreadTurnsListResponse__Turn = Schema.Struct({
   ),
   error: Schema.optionalKey(
     Schema.Union([V2ThreadTurnsListResponse__TurnError, Schema.Null]).annotate({
-      description: "Only populated when the Turn's status is failed.",
+      description: "Error associated with a failed or interrupted turn.",
     }),
   ),
   id: Schema.String.annotate({
@@ -53996,7 +54428,7 @@ export const V2ThreadUnarchiveResponse__Turn = Schema.Struct({
   ),
   error: Schema.optionalKey(
     Schema.Union([V2ThreadUnarchiveResponse__TurnError, Schema.Null]).annotate({
-      description: "Only populated when the Turn's status is failed.",
+      description: "Error associated with a failed or interrupted turn.",
     }),
   ),
   id: Schema.String.annotate({
@@ -54057,7 +54489,7 @@ export const V2TurnCompletedNotification__Turn = Schema.Struct({
   ),
   error: Schema.optionalKey(
     Schema.Union([V2TurnCompletedNotification__TurnError, Schema.Null]).annotate({
-      description: "Only populated when the Turn's status is failed.",
+      description: "Error associated with a failed or interrupted turn.",
     }),
   ),
   id: Schema.String.annotate({
@@ -54118,7 +54550,7 @@ export const V2TurnStartedNotification__Turn = Schema.Struct({
   ),
   error: Schema.optionalKey(
     Schema.Union([V2TurnStartedNotification__TurnError, Schema.Null]).annotate({
-      description: "Only populated when the Turn's status is failed.",
+      description: "Error associated with a failed or interrupted turn.",
     }),
   ),
   id: Schema.String.annotate({
@@ -54179,7 +54611,7 @@ export const V2TurnStartResponse__Turn = Schema.Struct({
   ),
   error: Schema.optionalKey(
     Schema.Union([V2TurnStartResponse__TurnError, Schema.Null]).annotate({
-      description: "Only populated when the Turn's status is failed.",
+      description: "Error associated with a failed or interrupted turn.",
     }),
   ),
   id: Schema.String.annotate({
@@ -54500,7 +54932,7 @@ export const ServerNotification__Thread = Schema.Struct({
   ),
   turns: Schema.Array(ServerNotification__Turn).annotate({
     description:
-      "Only populated on `thread/resume`, `thread/rollback`, `thread/fork`, and `thread/read` (when `includeTurns` is true) responses. For all other responses and notifications returning a Thread, the turns field will be an empty list.",
+      "Only populated on `thread/resume`, `thread/fork`, and `thread/read` (when `includeTurns` is true) responses. For all other responses and notifications returning a Thread, the turns field will be an empty list.",
   }),
   updatedAt: Schema.Number.annotate({
     description: "Unix timestamp (in seconds) when the thread was last updated.",
@@ -54830,7 +55262,7 @@ export const V2ThreadForkResponse__Thread = Schema.Struct({
   ),
   turns: Schema.Array(V2ThreadForkResponse__Turn).annotate({
     description:
-      "Only populated on `thread/resume`, `thread/rollback`, `thread/fork`, and `thread/read` (when `includeTurns` is true) responses. For all other responses and notifications returning a Thread, the turns field will be an empty list.",
+      "Only populated on `thread/resume`, `thread/fork`, and `thread/read` (when `includeTurns` is true) responses. For all other responses and notifications returning a Thread, the turns field will be an empty list.",
   }),
   updatedAt: Schema.Number.annotate({
     description: "Unix timestamp (in seconds) when the thread was last updated.",
@@ -55058,7 +55490,7 @@ export const V2ThreadListResponse__Thread = Schema.Struct({
   ),
   turns: Schema.Array(V2ThreadListResponse__Turn).annotate({
     description:
-      "Only populated on `thread/resume`, `thread/rollback`, `thread/fork`, and `thread/read` (when `includeTurns` is true) responses. For all other responses and notifications returning a Thread, the turns field will be an empty list.",
+      "Only populated on `thread/resume`, `thread/fork`, and `thread/read` (when `includeTurns` is true) responses. For all other responses and notifications returning a Thread, the turns field will be an empty list.",
   }),
   updatedAt: Schema.Number.annotate({
     description: "Unix timestamp (in seconds) when the thread was last updated.",
@@ -55288,7 +55720,7 @@ export const V2ThreadMetadataUpdateResponse__Thread = Schema.Struct({
   ),
   turns: Schema.Array(V2ThreadMetadataUpdateResponse__Turn).annotate({
     description:
-      "Only populated on `thread/resume`, `thread/rollback`, `thread/fork`, and `thread/read` (when `includeTurns` is true) responses. For all other responses and notifications returning a Thread, the turns field will be an empty list.",
+      "Only populated on `thread/resume`, `thread/fork`, and `thread/read` (when `includeTurns` is true) responses. For all other responses and notifications returning a Thread, the turns field will be an empty list.",
   }),
   updatedAt: Schema.Number.annotate({
     description: "Unix timestamp (in seconds) when the thread was last updated.",
@@ -55516,7 +55948,7 @@ export const V2ThreadReadResponse__Thread = Schema.Struct({
   ),
   turns: Schema.Array(V2ThreadReadResponse__Turn).annotate({
     description:
-      "Only populated on `thread/resume`, `thread/rollback`, `thread/fork`, and `thread/read` (when `includeTurns` is true) responses. For all other responses and notifications returning a Thread, the turns field will be an empty list.",
+      "Only populated on `thread/resume`, `thread/fork`, and `thread/read` (when `includeTurns` is true) responses. For all other responses and notifications returning a Thread, the turns field will be an empty list.",
   }),
   updatedAt: Schema.Number.annotate({
     description: "Unix timestamp (in seconds) when the thread was last updated.",
@@ -55756,7 +56188,7 @@ export const V2ThreadResumeResponse__Thread = Schema.Struct({
   ),
   turns: Schema.Array(V2ThreadResumeResponse__Turn).annotate({
     description:
-      "Only populated on `thread/resume`, `thread/rollback`, `thread/fork`, and `thread/read` (when `includeTurns` is true) responses. For all other responses and notifications returning a Thread, the turns field will be an empty list.",
+      "Only populated on `thread/resume`, `thread/fork`, and `thread/read` (when `includeTurns` is true) responses. For all other responses and notifications returning a Thread, the turns field will be an empty list.",
   }),
   updatedAt: Schema.Number.annotate({
     description: "Unix timestamp (in seconds) when the thread was last updated.",
@@ -55985,243 +56417,13 @@ export const V2ThreadRevertResponse__Thread = Schema.Struct({
   ),
   turns: Schema.Array(V2ThreadRevertResponse__Turn).annotate({
     description:
-      "Only populated on `thread/resume`, `thread/rollback`, `thread/fork`, and `thread/read` (when `includeTurns` is true) responses. For all other responses and notifications returning a Thread, the turns field will be an empty list.",
+      "Only populated on `thread/resume`, `thread/fork`, and `thread/read` (when `includeTurns` is true) responses. For all other responses and notifications returning a Thread, the turns field will be an empty list.",
   }),
   updatedAt: Schema.Number.annotate({
     description: "Unix timestamp (in seconds) when the thread was last updated.",
     format: "int64",
   }).check(Schema.isInt().annotate({ expected: "an integer" })),
 }).annotate({ identifier: "V2ThreadRevertResponse__Thread" });
-
-export type V2ThreadRollbackResponse__Thread = {
-  readonly agentNickname?: string | null;
-  readonly agentRole?: string | null;
-  readonly canAcceptDirectInput?: boolean | null;
-  readonly cliVersion: string;
-  readonly createdAt: number;
-  readonly cwd: V2ThreadRollbackResponse__AbsolutePathBuf;
-  readonly daybreakEnabled?: boolean | null;
-  readonly environments?: ReadonlyArray<V2ThreadRollbackResponse__ThreadEnvironment> | null;
-  readonly ephemeral: boolean;
-  readonly extra?: V2ThreadRollbackResponse__ThreadExtra | null;
-  readonly forkedFromId?: string | null;
-  readonly gitInfo?: V2ThreadRollbackResponse__GitInfo | null;
-  readonly historyMode?: V2ThreadRollbackResponse__ThreadHistoryMode;
-  readonly id: string;
-  readonly model?: string | null;
-  readonly modelProvider: string;
-  readonly name?: string | null;
-  readonly originator?: string | null;
-  readonly parentThreadId?: string | null;
-  readonly path?: string | null;
-  readonly preview: string;
-  readonly projectId: string | null;
-  readonly reasoningEffort?: V2ThreadRollbackResponse__ReasoningEffort | null;
-  readonly recencyAt?: number | null;
-  readonly section?: V2ThreadRollbackResponse__ThreadSection | null;
-  readonly sectionEnteredAt?: number | null;
-  readonly sessionId: string;
-  readonly source: V2ThreadRollbackResponse__SessionSource;
-  readonly status: V2ThreadRollbackResponse__ThreadStatus;
-  readonly threadSource?: V2ThreadRollbackResponse__ThreadSource | null;
-  readonly turns: ReadonlyArray<V2ThreadRollbackResponse__Turn>;
-  readonly updatedAt: number;
-};
-export const V2ThreadRollbackResponse__Thread = Schema.Struct({
-  agentNickname: Schema.optionalKey(
-    Schema.Union([
-      Schema.String.annotate({
-        description:
-          "Optional random unique nickname assigned to an AgentControl-spawned sub-agent.",
-      }),
-      Schema.Null,
-    ]),
-  ),
-  agentRole: Schema.optionalKey(
-    Schema.Union([
-      Schema.String.annotate({
-        description: "Optional role (agent_role) assigned to an AgentControl-spawned sub-agent.",
-      }),
-      Schema.Null,
-    ]),
-  ),
-  canAcceptDirectInput: Schema.optionalKey(
-    Schema.Union([
-      Schema.Boolean.annotate({
-        description:
-          "Whether the app server accepts direct turn input for this loaded thread. `None` means the capability is unavailable, such as for an unloaded stored thread.",
-      }),
-      Schema.Null,
-    ]),
-  ),
-  cliVersion: Schema.String.annotate({
-    description: "Version of the CLI that created the thread.",
-  }),
-  createdAt: Schema.Number.annotate({
-    description: "Unix timestamp (in seconds) when the thread was created.",
-    format: "int64",
-  }).check(Schema.isInt().annotate({ expected: "an integer" })),
-  cwd: Schema.suspend(
-    (): Schema.Codec<V2ThreadRollbackResponse__AbsolutePathBuf> =>
-      V2ThreadRollbackResponse__AbsolutePathBuf,
-  ).annotate({ description: "Working directory captured for the thread." }),
-  daybreakEnabled: Schema.optionalKey(
-    Schema.Union([
-      Schema.Boolean.annotate({
-        description: "Saved Daybreak choice, independent of turn execution. Null if unset.",
-      }),
-      Schema.Null,
-    ]),
-  ),
-  environments: Schema.optionalKey(
-    Schema.Union([
-      Schema.Array(V2ThreadRollbackResponse__ThreadEnvironment).annotate({
-        description:
-          "Current environments for a loaded thread, in priority order, primary first. `null` means the thread is not loaded or the server does not expose its selection. An empty list means no environments are selected. This does not report connection status.",
-      }),
-      Schema.Null,
-    ]),
-  ),
-  ephemeral: Schema.Boolean.annotate({
-    description: "Whether the thread is ephemeral and should not be materialized on disk.",
-  }),
-  extra: Schema.optionalKey(
-    Schema.Union([V2ThreadRollbackResponse__ThreadExtra, Schema.Null]).annotate({
-      description: "Optional implementation-specific thread data.",
-    }),
-  ),
-  forkedFromId: Schema.optionalKey(
-    Schema.Union([
-      Schema.String.annotate({
-        description: "Source thread id when this thread was created by forking another thread.",
-      }),
-      Schema.Null,
-    ]),
-  ),
-  gitInfo: Schema.optionalKey(
-    Schema.Union([V2ThreadRollbackResponse__GitInfo, Schema.Null]).annotate({
-      description: "Optional Git metadata captured when the thread was created.",
-    }),
-  ),
-  historyMode: Schema.optionalKey(
-    Schema.suspend(
-      (): Schema.Codec<V2ThreadRollbackResponse__ThreadHistoryMode> =>
-        V2ThreadRollbackResponse__ThreadHistoryMode,
-    ).annotate({
-      description: "Persisted thread history contract selected when this thread was created.",
-      default: "legacy",
-    }),
-  ),
-  id: Schema.String.annotate({
-    description: "Identifier for this thread. Codex-generated thread IDs are UUIDv7.",
-  }),
-  model: Schema.optionalKey(
-    Schema.Union([
-      Schema.String.annotate({
-        description:
-          "Current configured model when loaded, otherwise the latest persisted model. Null when unavailable. This is not per-turn execution telemetry.",
-      }),
-      Schema.Null,
-    ]),
-  ),
-  modelProvider: Schema.String.annotate({
-    description: "Model provider used for this thread (for example, 'openai').",
-  }),
-  name: Schema.optionalKey(
-    Schema.Union([
-      Schema.String.annotate({ description: "Optional user-facing thread title." }),
-      Schema.Null,
-    ]),
-  ),
-  originator: Schema.optionalKey(
-    Schema.Union([
-      Schema.String.annotate({
-        description:
-          "Originator recorded when the thread was created, independent of its current client or executor. Null when the recorded originator is unavailable.",
-      }),
-      Schema.Null,
-    ]),
-  ),
-  parentThreadId: Schema.optionalKey(
-    Schema.Union([
-      Schema.String.annotate({
-        description:
-          "The ID of the parent thread. This will only be set if this thread is a subagent.",
-      }),
-      Schema.Null,
-    ]),
-  ),
-  path: Schema.optionalKey(
-    Schema.Union([
-      Schema.String.annotate({ description: "[UNSTABLE] Path to the thread on disk." }),
-      Schema.Null,
-    ]),
-  ),
-  preview: Schema.String.annotate({
-    description: "Usually the first user message in the thread, if available.",
-  }),
-  projectId: Schema.Union([
-    Schema.String.annotate({
-      description: "Canonical project assignment owned by app-server, if any.",
-    }),
-    Schema.Null,
-  ]),
-  reasoningEffort: Schema.optionalKey(
-    Schema.Union([V2ThreadRollbackResponse__ReasoningEffort, Schema.Null]).annotate({
-      description:
-        "Current configured reasoning effort when loaded, otherwise the latest persisted effort. Null when unset or unavailable. This is not per-turn execution telemetry.",
-    }),
-  ),
-  recencyAt: Schema.optionalKey(
-    Schema.Union([
-      Schema.Number.annotate({
-        description: "Unix timestamp (in seconds) used for thread recency ordering.",
-        format: "int64",
-      }).check(Schema.isInt().annotate({ expected: "an integer" })),
-      Schema.Null,
-    ]),
-  ),
-  section: Schema.optionalKey(
-    Schema.Union([V2ThreadRollbackResponse__ThreadSection, Schema.Null]).annotate({
-      description: "The independently persisted section selected for this thread, if any.",
-    }),
-  ),
-  sectionEnteredAt: Schema.optionalKey(
-    Schema.Union([
-      Schema.Number.annotate({
-        description: "Unix timestamp in seconds when the thread entered its current section.",
-        format: "int64",
-      }).check(Schema.isInt().annotate({ expected: "an integer" })),
-      Schema.Null,
-    ]),
-  ),
-  sessionId: Schema.String.annotate({
-    description: "Session id shared by threads that belong to the same session tree.",
-  }),
-  source: Schema.suspend(
-    (): Schema.Codec<V2ThreadRollbackResponse__SessionSource> =>
-      V2ThreadRollbackResponse__SessionSource,
-  ).annotate({
-    description: "Origin of the thread (CLI, VSCode, codex exec, codex app-server, etc.).",
-  }),
-  status: Schema.suspend(
-    (): Schema.Codec<V2ThreadRollbackResponse__ThreadStatus> =>
-      V2ThreadRollbackResponse__ThreadStatus,
-  ).annotate({ description: "Current runtime status for the thread." }),
-  threadSource: Schema.optionalKey(
-    Schema.Union([V2ThreadRollbackResponse__ThreadSource, Schema.Null]).annotate({
-      description: "Optional analytics source classification for this thread.",
-    }),
-  ),
-  turns: Schema.Array(V2ThreadRollbackResponse__Turn).annotate({
-    description:
-      "Only populated on `thread/resume`, `thread/rollback`, `thread/fork`, and `thread/read` (when `includeTurns` is true) responses. For all other responses and notifications returning a Thread, the turns field will be an empty list.",
-  }),
-  updatedAt: Schema.Number.annotate({
-    description: "Unix timestamp (in seconds) when the thread was last updated.",
-    format: "int64",
-  }).check(Schema.isInt().annotate({ expected: "an integer" })),
-}).annotate({ identifier: "V2ThreadRollbackResponse__Thread" });
 
 export type V2ThreadSearchResponse__Thread = {
   readonly agentNickname?: string | null;
@@ -56444,7 +56646,7 @@ export const V2ThreadSearchResponse__Thread = Schema.Struct({
   ),
   turns: Schema.Array(V2ThreadSearchResponse__Turn).annotate({
     description:
-      "Only populated on `thread/resume`, `thread/rollback`, `thread/fork`, and `thread/read` (when `includeTurns` is true) responses. For all other responses and notifications returning a Thread, the turns field will be an empty list.",
+      "Only populated on `thread/resume`, `thread/fork`, and `thread/read` (when `includeTurns` is true) responses. For all other responses and notifications returning a Thread, the turns field will be an empty list.",
   }),
   updatedAt: Schema.Number.annotate({
     description: "Unix timestamp (in seconds) when the thread was last updated.",
@@ -56674,7 +56876,7 @@ export const V2ThreadStartedNotification__Thread = Schema.Struct({
   ),
   turns: Schema.Array(V2ThreadStartedNotification__Turn).annotate({
     description:
-      "Only populated on `thread/resume`, `thread/rollback`, `thread/fork`, and `thread/read` (when `includeTurns` is true) responses. For all other responses and notifications returning a Thread, the turns field will be an empty list.",
+      "Only populated on `thread/resume`, `thread/fork`, and `thread/read` (when `includeTurns` is true) responses. For all other responses and notifications returning a Thread, the turns field will be an empty list.",
   }),
   updatedAt: Schema.Number.annotate({
     description: "Unix timestamp (in seconds) when the thread was last updated.",
@@ -56902,7 +57104,7 @@ export const V2ThreadStartResponse__Thread = Schema.Struct({
   ),
   turns: Schema.Array(V2ThreadStartResponse__Turn).annotate({
     description:
-      "Only populated on `thread/resume`, `thread/rollback`, `thread/fork`, and `thread/read` (when `includeTurns` is true) responses. For all other responses and notifications returning a Thread, the turns field will be an empty list.",
+      "Only populated on `thread/resume`, `thread/fork`, and `thread/read` (when `includeTurns` is true) responses. For all other responses and notifications returning a Thread, the turns field will be an empty list.",
   }),
   updatedAt: Schema.Number.annotate({
     description: "Unix timestamp (in seconds) when the thread was last updated.",
@@ -57132,7 +57334,7 @@ export const V2ThreadUnarchiveResponse__Thread = Schema.Struct({
   ),
   turns: Schema.Array(V2ThreadUnarchiveResponse__Turn).annotate({
     description:
-      "Only populated on `thread/resume`, `thread/rollback`, `thread/fork`, and `thread/read` (when `includeTurns` is true) responses. For all other responses and notifications returning a Thread, the turns field will be an empty list.",
+      "Only populated on `thread/resume`, `thread/fork`, and `thread/read` (when `includeTurns` is true) responses. For all other responses and notifications returning a Thread, the turns field will be an empty list.",
   }),
   updatedAt: Schema.Number.annotate({
     description: "Unix timestamp (in seconds) when the thread was last updated.",
@@ -57778,6 +57980,7 @@ export type ServerRequest__McpServerElicitationRequestParams =
       readonly serverName: string;
       readonly threadId: string;
       readonly turnId?: string | null;
+      readonly _meta?: Schema.Json;
       readonly challenge: string;
       readonly description: string;
       readonly mode: "openai/userVerification";
@@ -57834,6 +58037,7 @@ export const ServerRequest__McpServerElicitationRequestParams = Schema.Union(
           Schema.Null,
         ]),
       ),
+      _meta: Schema.optionalKey(Schema.Json.annotate({ expected: "JSON value" })),
       challenge: Schema.String,
       description: Schema.String,
       mode: Schema.Literal("openai/userVerification"),
@@ -58176,6 +58380,11 @@ export type ClientRequest =
     }
   | {
       readonly id: ClientRequest__RequestId;
+      readonly method: "rollout/compress";
+      readonly params?: null;
+    }
+  | {
+      readonly id: ClientRequest__RequestId;
       readonly method: "thread/unarchive";
       readonly params: ClientRequest__ThreadUnarchiveParams;
     }
@@ -58208,11 +58417,6 @@ export type ClientRequest =
       readonly id: ClientRequest__RequestId;
       readonly method: "thread/backgroundTerminals/terminate";
       readonly params: ClientRequest__ThreadBackgroundTerminalsTerminateParams;
-    }
-  | {
-      readonly id: ClientRequest__RequestId;
-      readonly method: "thread/rollback";
-      readonly params: ClientRequest__ThreadRollbackParams;
     }
   | {
       readonly id: ClientRequest__RequestId;
@@ -58538,6 +58742,21 @@ export type ClientRequest =
       readonly id: ClientRequest__RequestId;
       readonly method: "model/list";
       readonly params: ClientRequest__ModelListParams;
+    }
+  | {
+      readonly id: ClientRequest__RequestId;
+      readonly method: "account/gatewayOAuth/read";
+      readonly params?: null;
+    }
+  | {
+      readonly id: ClientRequest__RequestId;
+      readonly method: "account/gatewayOAuth/login";
+      readonly params?: null;
+    }
+  | {
+      readonly id: ClientRequest__RequestId;
+      readonly method: "account/gatewayOAuth/cancel";
+      readonly params?: null;
     }
   | {
       readonly id: ClientRequest__RequestId;
@@ -59055,6 +59274,16 @@ export const ClientRequest = Schema.Union(
     }).annotate({ title: "Memory/resetRequest" }),
     Schema.Struct({
       id: ClientRequest__RequestId,
+      method: Schema.Literal("rollout/compress").annotate({
+        title: "Rollout/compressRequestMethod",
+      }),
+      params: Schema.optionalKey(Schema.Null),
+    }).annotate({
+      title: "Rollout/compressRequest",
+      description: "Start a best-effort background compression pass for cold local rollouts.",
+    }),
+    Schema.Struct({
+      id: ClientRequest__RequestId,
       method: Schema.Literal("thread/unarchive").annotate({
         title: "Thread/unarchiveRequestMethod",
       }),
@@ -59102,11 +59331,6 @@ export const ClientRequest = Schema.Union(
       }),
       params: ClientRequest__ThreadBackgroundTerminalsTerminateParams,
     }).annotate({ title: "Thread/backgroundTerminals/terminateRequest" }),
-    Schema.Struct({
-      id: ClientRequest__RequestId,
-      method: Schema.Literal("thread/rollback").annotate({ title: "Thread/rollbackRequestMethod" }),
-      params: ClientRequest__ThreadRollbackParams,
-    }).annotate({ title: "Thread/rollbackRequest" }),
     Schema.Struct({
       id: ClientRequest__RequestId,
       method: Schema.Literal("thread/revert").annotate({ title: "Thread/revertRequestMethod" }),
@@ -59500,6 +59724,27 @@ export const ClientRequest = Schema.Union(
       method: Schema.Literal("model/list").annotate({ title: "Model/listRequestMethod" }),
       params: ClientRequest__ModelListParams,
     }).annotate({ title: "Model/listRequest" }),
+    Schema.Struct({
+      id: ClientRequest__RequestId,
+      method: Schema.Literal("account/gatewayOAuth/read").annotate({
+        title: "Account/gatewayOAuth/readRequestMethod",
+      }),
+      params: Schema.optionalKey(Schema.Null),
+    }).annotate({ title: "Account/gatewayOAuth/readRequest" }),
+    Schema.Struct({
+      id: ClientRequest__RequestId,
+      method: Schema.Literal("account/gatewayOAuth/login").annotate({
+        title: "Account/gatewayOAuth/loginRequestMethod",
+      }),
+      params: Schema.optionalKey(Schema.Null),
+    }).annotate({ title: "Account/gatewayOAuth/loginRequest" }),
+    Schema.Struct({
+      id: ClientRequest__RequestId,
+      method: Schema.Literal("account/gatewayOAuth/cancel").annotate({
+        title: "Account/gatewayOAuth/cancelRequestMethod",
+      }),
+      params: Schema.optionalKey(Schema.Null),
+    }).annotate({ title: "Account/gatewayOAuth/cancelRequest" }),
     Schema.Struct({
       id: ClientRequest__RequestId,
       method: Schema.Literal("modelProvider/capabilities/read").annotate({
@@ -60380,6 +60625,7 @@ export type McpServerElicitationRequestParams =
       readonly serverName: string;
       readonly threadId: string;
       readonly turnId?: string | null;
+      readonly _meta?: Schema.Json;
       readonly challenge: string;
       readonly description: string;
       readonly mode: "openai/userVerification";
@@ -60436,6 +60682,7 @@ export const McpServerElicitationRequestParams = Schema.Union(
           Schema.Null,
         ]),
       ),
+      _meta: Schema.optionalKey(Schema.Json.annotate({ expected: "JSON value" })),
       challenge: Schema.String,
       description: Schema.String,
       mode: Schema.Literal("openai/userVerification"),
@@ -60825,6 +61072,11 @@ export type ServerNotification =
   | {
       readonly method: "account/updated";
       readonly params: ServerNotification__AccountUpdatedNotification;
+      readonly emittedAtMs?: never;
+    }
+  | {
+      readonly method: "account/gatewayOAuth/changed";
+      readonly params: ServerNotification__GatewayOAuthChangedNotification;
       readonly emittedAtMs?: never;
     }
   | {
@@ -61456,6 +61708,16 @@ export const ServerNotification = Schema.Union(
         title: "Account/updatedNotificationMethod",
       }),
       params: ServerNotification__AccountUpdatedNotification,
+      emittedAtMs: Schema.optionalKey(Schema.Never),
+    }).annotate({
+      title: "ServerNotification",
+      description: "Notification sent from the server to the client.",
+    }),
+    Schema.Struct({
+      method: Schema.Literal("account/gatewayOAuth/changed").annotate({
+        title: "Account/gatewayOAuth/changedNotificationMethod",
+      }),
+      params: ServerNotification__GatewayOAuthChangedNotification,
       emittedAtMs: Schema.optionalKey(Schema.Never),
     }).annotate({
       title: "ServerNotification",
@@ -62632,7 +62894,7 @@ export const V2ConfigBatchWriteParams = Schema.Struct({
   reloadUserConfig: Schema.optionalKey(
     Schema.Boolean.annotate({
       description:
-        "When true, hot-reload updated runtime settings into loaded threads after writing. Session-static model, reasoning-effort, Plan-mode reasoning-effort, service-tier, and personality defaults are not reloaded.",
+        "When true, hot-reload updated runtime settings into loaded threads after writing. Session-static model, reasoning-effort, Plan-mode reasoning-effort, and service-tier defaults are not reloaded. The deprecated personality setting is also not reloaded.",
     }),
   ),
 }).annotate({ title: "ConfigBatchWriteParams" });
@@ -62671,6 +62933,7 @@ export type V2ConfigReadResponse__AppConfig = {
   readonly destructive_enabled?: boolean | null;
   readonly enabled?: boolean;
   readonly links?: V2ConfigReadResponse__AppLinksConfig | null;
+  readonly omit_tools_from?: ReadonlyArray<V2ConfigReadResponse__ToolExposureSurface> | null;
   readonly open_world_enabled?: boolean | null;
   readonly tools?: V2ConfigReadResponse__AppToolsConfig | null;
 };
@@ -62688,6 +62951,14 @@ export const V2ConfigReadResponse__AppConfig = Schema.Struct({
     Schema.Union([V2ConfigReadResponse__AppLinksConfig, Schema.Null]).annotate({
       description: "Per-account approval settings keyed by link ID.",
     }),
+  ),
+  omit_tools_from: Schema.optionalKey(
+    Schema.Union([
+      Schema.Array(V2ConfigReadResponse__ToolExposureSurface).annotate({
+        description: "Additional model-facing surfaces omitted for this connector's tools.",
+      }),
+      Schema.Null,
+    ]),
   ),
   open_world_enabled: Schema.optionalKey(Schema.Union([Schema.Boolean, Schema.Null])),
   tools: Schema.optionalKey(Schema.Union([V2ConfigReadResponse__AppToolsConfig, Schema.Null])),
@@ -62852,11 +63123,21 @@ export const V2DeprecationNoticeNotification = Schema.Struct({
 }).annotate({ title: "DeprecationNoticeNotification" });
 
 export type V2EnvironmentAddParams = {
+  readonly authBearerToken?: string | null;
   readonly connectTimeoutMs?: number | null;
   readonly environmentId: string;
   readonly execServerUrl: string;
 };
 export const V2EnvironmentAddParams = Schema.Struct({
+  authBearerToken: Schema.optionalKey(
+    Schema.Union([
+      Schema.String.annotate({
+        description:
+          "Optional raw bearer token for executor authentication, including reconnects. Requires a secure transport or a loopback destination.",
+      }),
+      Schema.Null,
+    ]),
+  ),
   connectTimeoutMs: Schema.optionalKey(
     Schema.Union([
       Schema.Number.annotate({
@@ -63519,6 +63800,61 @@ export const V2FsWriteFileResponse = Schema.Record(Schema.String, Schema.Never).
   description: "Successful response for `fs/writeFile`.",
 });
 
+export type V2GatewayOAuthCancelResponse = { readonly [x: string]: never };
+export const V2GatewayOAuthCancelResponse = Schema.Record(Schema.String, Schema.Never).annotate({
+  title: "GatewayOAuthCancelResponse",
+});
+
+export type V2GatewayOAuthChangedNotification = {
+  readonly authUrl?: string | null;
+  readonly error?: string | null;
+  readonly providerId: string;
+  readonly status: V2GatewayOAuthChangedNotification__GatewayOAuthStatus;
+};
+export const V2GatewayOAuthChangedNotification = Schema.Struct({
+  authUrl: Schema.optionalKey(
+    Schema.Union([
+      Schema.String.annotate({
+        description: "Authorization handoff, sent only to the connection that started login.",
+      }),
+      Schema.Null,
+    ]),
+  ),
+  error: Schema.optionalKey(Schema.Union([Schema.String, Schema.Null])),
+  providerId: Schema.String,
+  status: V2GatewayOAuthChangedNotification__GatewayOAuthStatus,
+}).annotate({ title: "GatewayOAuthChangedNotification" });
+
+export type V2GatewayOAuthLoginResponse = { readonly [x: string]: never };
+export const V2GatewayOAuthLoginResponse = Schema.Record(Schema.String, Schema.Never).annotate({
+  title: "GatewayOAuthLoginResponse",
+});
+
+export type V2GatewayOAuthReadResponse = {
+  readonly error?: string | null;
+  readonly providerId: string;
+  readonly providerName: string;
+  readonly required: boolean;
+  readonly status?: V2GatewayOAuthReadResponse__GatewayOAuthStatus | null;
+};
+export const V2GatewayOAuthReadResponse = Schema.Struct({
+  error: Schema.optionalKey(Schema.Union([Schema.String, Schema.Null])),
+  providerId: Schema.String,
+  providerName: Schema.String,
+  required: Schema.Boolean.annotate({
+    description: "Whether the selected provider uses gateway OAuth, even when already signed in.",
+  }),
+  status: Schema.optionalKey(
+    Schema.Union([V2GatewayOAuthReadResponse__GatewayOAuthStatus, Schema.Null]).annotate({
+      description: "Null when the effective provider does not use gateway OAuth.",
+    }),
+  ),
+}).annotate({
+  title: "GatewayOAuthReadResponse",
+  description:
+    "Current effective gateway policy and credential readiness; never contains credentials.",
+});
+
 export type V2GetAccountParams = { readonly refreshToken?: boolean };
 export const V2GetAccountParams = Schema.Struct({
   refreshToken: Schema.optionalKey(
@@ -63586,10 +63922,14 @@ export const V2GetAccountRateLimitsResponse = Schema.Struct({
 export type V2GetAccountResponse = {
   readonly account?: V2GetAccountResponse__Account | null;
   readonly requiresOpenaiAuth: boolean;
+  readonly workspaceRouting?: V2GetAccountResponse__WorkspaceRouting | null;
 };
 export const V2GetAccountResponse = Schema.Struct({
   account: Schema.optionalKey(Schema.Union([V2GetAccountResponse__Account, Schema.Null])),
   requiresOpenaiAuth: Schema.Boolean,
+  workspaceRouting: Schema.optionalKey(
+    Schema.Union([V2GetAccountResponse__WorkspaceRouting, Schema.Null]),
+  ),
 }).annotate({ title: "GetAccountResponse" });
 
 export type V2GetAccountTokenUsageResponse = {
@@ -63783,6 +64123,7 @@ export type V2ListMcpServerStatusParams = {
   readonly cursor?: string | null;
   readonly detail?: V2ListMcpServerStatusParams__McpServerStatusDetail | null;
   readonly limit?: number | null;
+  readonly serverName?: string | null;
   readonly threadId?: string | null;
 };
 export const V2ListMcpServerStatusParams = Schema.Struct({
@@ -63812,6 +64153,15 @@ export const V2ListMcpServerStatusParams = Schema.Struct({
             expected: "a value greater than or equal to 0",
           }),
         ),
+      Schema.Null,
+    ]),
+  ),
+  serverName: Schema.optionalKey(
+    Schema.Union([
+      Schema.String.annotate({
+        description:
+          "Limit discovery to one server. With a thread ID, reuse that thread's MCP connection.",
+      }),
       Schema.Null,
     ]),
   ),
@@ -64041,6 +64391,7 @@ export type V2McpResourceReadParams = {
   readonly connectorId?: string | null;
   readonly originCallId?: string | null;
   readonly server: string;
+  readonly target?: V2McpResourceReadParams__McpResourceReadTarget | null;
   readonly threadId?: string | null;
   readonly uri: string;
 };
@@ -64055,6 +64406,11 @@ export const V2McpResourceReadParams = Schema.Struct({
     ]),
   ),
   server: Schema.String,
+  target: Schema.optionalKey(
+    Schema.Union([V2McpResourceReadParams__McpResourceReadTarget, Schema.Null]).annotate({
+      description: "Explicit hosted app/account. Omit to retain legacy resource discovery.",
+    }),
+  ),
   threadId: Schema.optionalKey(Schema.Union([Schema.String, Schema.Null])),
   uri: Schema.String,
 }).annotate({ title: "McpResourceReadParams" });
@@ -65449,6 +65805,13 @@ export const V2ReviewStartResponse = Schema.Struct({
   turn: V2ReviewStartResponse__Turn,
 }).annotate({ title: "ReviewStartResponse" });
 
+export type V2RolloutCompressResponse = { readonly [x: string]: never };
+export const V2RolloutCompressResponse = Schema.Record(Schema.String, Schema.Never).annotate({
+  title: "RolloutCompressResponse",
+  description:
+    "Acknowledges the compression trigger, not completion. Existing maintenance locks and cooldowns can cause the background pass to skip without doing work.",
+});
+
 export type V2SendAddCreditsNudgeEmailParams = {
   readonly creditType: V2SendAddCreditsNudgeEmailParams__AddCreditsNudgeCreditType;
 };
@@ -65972,6 +66335,7 @@ export type V2ThreadForkResponse = {
   readonly approvalPolicy: V2ThreadForkResponse__AskForApproval;
   readonly approvalsReviewer: V2ThreadForkResponse__ApprovalsReviewer;
   readonly cwd: V2ThreadForkResponse__AbsolutePathBuf;
+  readonly disabledPluginIds?: ReadonlyArray<string>;
   readonly instructionSources?: ReadonlyArray<V2ThreadForkResponse__LegacyAppPathString>;
   readonly model: string;
   readonly modelProvider: string;
@@ -65995,6 +66359,12 @@ export const V2ThreadForkResponse = Schema.Struct({
       V2ThreadForkResponse__ApprovalsReviewer,
   ).annotate({ description: "Reviewer currently used for approval requests on this thread." }),
   cwd: V2ThreadForkResponse__AbsolutePathBuf,
+  disabledPluginIds: Schema.optionalKey(
+    Schema.Array(Schema.String).annotate({
+      description: "Saved list of disabled plugin IDs. Does not yet filter plugin capabilities.",
+      default: [],
+    }),
+  ),
   instructionSources: Schema.optionalKey(
     Schema.Array(V2ThreadForkResponse__LegacyAppPathString).annotate({
       description:
@@ -66140,7 +66510,7 @@ export const V2ThreadInjectItemsResponse = Schema.Record(Schema.String, Schema.N
 });
 
 export type V2ThreadItemsListParams = {
-  readonly cursor?: string | null;
+  readonly cursor?: V2ThreadItemsListParams__ThreadItemsListCursor | null;
   readonly limit?: number | null;
   readonly sortDirection?: V2ThreadItemsListParams__SortDirection | null;
   readonly threadId: string;
@@ -66148,12 +66518,10 @@ export type V2ThreadItemsListParams = {
 };
 export const V2ThreadItemsListParams = Schema.Struct({
   cursor: Schema.optionalKey(
-    Schema.Union([
-      Schema.String.annotate({
-        description: "Opaque cursor to pass to the next call to continue after the last item.",
-      }),
-      Schema.Null,
-    ]),
+    Schema.Union([V2ThreadItemsListParams__ThreadItemsListCursor, Schema.Null]).annotate({
+      description:
+        "Opaque continuation cursor or an exclusive item anchor in the requested visible turn. An item anchor requires a non-empty `turnId`; ascending (the default) returns items after it, and descending returns items before it. Continue with the returned string cursor.",
+    }),
   ),
   limit: Schema.optionalKey(
     Schema.Union([
@@ -66853,6 +67221,7 @@ export const V2ThreadRealtimeStartedNotification = Schema.Struct({
 });
 
 export type V2ThreadRealtimeStartParams = {
+  readonly backendReasoningStatus?: boolean;
   readonly clientManagedHandoffs?: boolean | null;
   readonly codexResponseHandoffChannelPrefixes?: {
     readonly [x: string]: ReadonlyArray<string>;
@@ -66876,6 +67245,12 @@ export type V2ThreadRealtimeStartParams = {
   readonly voice?: V2ThreadRealtimeStartParams__RealtimeVoice | null;
 };
 export const V2ThreadRealtimeStartParams = Schema.Struct({
+  backendReasoningStatus: Schema.optionalKey(
+    Schema.Boolean.annotate({
+      description:
+        "Relays public reasoning summaries as quiet context for realtime V3 delegations. Defaults to false.",
+    }),
+  ),
   clientManagedHandoffs: Schema.optionalKey(
     Schema.Union([
       Schema.Boolean.annotate({
@@ -67140,7 +67515,12 @@ export const V2ThreadResumeParams = Schema.Struct({
       Schema.Null,
     ]),
   ),
-  personality: Schema.optionalKey(Schema.Union([V2ThreadResumeParams__Personality, Schema.Null])),
+  personality: Schema.optionalKey(
+    Schema.Union([V2ThreadResumeParams__Personality, Schema.Null]).annotate({
+      description:
+        "@deprecated `friendly` and `pragmatic` no longer select a style. Changing this does not rewrite the thread's existing instructions.",
+    }),
+  ),
   runtimeWorkspaceRoots: Schema.optionalKey(
     Schema.Union([
       Schema.Array(V2ThreadResumeParams__AbsolutePathBuf).annotate({
@@ -67162,7 +67542,9 @@ export type V2ThreadResumeResponse = {
   readonly activePermissionProfile?: V2ThreadResumeResponse__ActivePermissionProfile | null;
   readonly approvalPolicy: V2ThreadResumeResponse__AskForApproval;
   readonly approvalsReviewer: V2ThreadResumeResponse__ApprovalsReviewer;
+  readonly collaborationMode?: V2ThreadResumeResponse__CollaborationMode | null;
   readonly cwd: V2ThreadResumeResponse__AbsolutePathBuf;
+  readonly disabledPluginIds?: ReadonlyArray<string>;
   readonly initialTurnsPage?: V2ThreadResumeResponse__TurnsPage | null;
   readonly instructionSources?: ReadonlyArray<V2ThreadResumeResponse__LegacyAppPathString>;
   readonly itemsBackwardsCursor?: string | null;
@@ -67188,7 +67570,18 @@ export const V2ThreadResumeResponse = Schema.Struct({
     (): Schema.Codec<V2ThreadResumeResponse__ApprovalsReviewer> =>
       V2ThreadResumeResponse__ApprovalsReviewer,
   ).annotate({ description: "Reviewer currently used for approval requests on this thread." }),
+  collaborationMode: Schema.optionalKey(
+    Schema.Union([V2ThreadResumeResponse__CollaborationMode, Schema.Null]).annotate({
+      description: "Effective collaboration mode. Absent when resuming from an older server.",
+    }),
+  ),
   cwd: V2ThreadResumeResponse__AbsolutePathBuf,
+  disabledPluginIds: Schema.optionalKey(
+    Schema.Array(Schema.String).annotate({
+      description: "Saved list of disabled plugin IDs. Does not yet filter plugin capabilities.",
+      default: [],
+    }),
+  ),
   initialTurnsPage: Schema.optionalKey(
     Schema.Union([V2ThreadResumeResponse__TurnsPage, Schema.Null]).annotate({
       description: "`thread/turns/list` page returned when requested by `initialTurnsPage`.",
@@ -67299,33 +67692,6 @@ export const V2ThreadRevertResponse = Schema.Struct({
     ]),
   ),
 }).annotate({ title: "ThreadRevertResponse" });
-
-export type V2ThreadRollbackParams = { readonly numTurns: number; readonly threadId: string };
-export const V2ThreadRollbackParams = Schema.Struct({
-  numTurns: Schema.Number.annotate({
-    description:
-      "The number of turns to drop from the end of the thread. Must be >= 1.\n\nThis only modifies the thread's history and does not revert local file changes that have been made by the agent. Clients are responsible for reverting these changes.",
-    format: "uint32",
-  })
-    .check(Schema.isInt().annotate({ expected: "an integer" }))
-    .check(
-      Schema.isGreaterThanOrEqualTo(0).annotate({ expected: "a value greater than or equal to 0" }),
-    ),
-  threadId: Schema.String,
-}).annotate({
-  title: "ThreadRollbackParams",
-  description: "DEPRECATED: `thread/rollback` will be removed soon.",
-});
-
-export type V2ThreadRollbackResponse = { readonly thread: V2ThreadRollbackResponse__Thread };
-export const V2ThreadRollbackResponse = Schema.Struct({
-  thread: Schema.suspend(
-    (): Schema.Codec<V2ThreadRollbackResponse__Thread> => V2ThreadRollbackResponse__Thread,
-  ).annotate({
-    description:
-      "The updated thread after applying the rollback, with `turns` populated.\n\nThe ThreadItems stored in each Turn are lossy since we explicitly do not persist all agent interactions, such as command executions. This is the same behavior as `thread/resume`.",
-  }),
-}).annotate({ title: "ThreadRollbackResponse" });
 
 export type V2ThreadSearchOccurrencesParams = {
   readonly cursor?: string | null;
@@ -67656,6 +68022,7 @@ export type V2ThreadSettingsUpdateParams = {
   readonly approvalsReviewer?: V2ThreadSettingsUpdateParams__ApprovalsReviewer | null;
   readonly collaborationMode?: V2ThreadSettingsUpdateParams__CollaborationMode | null;
   readonly cwd?: string | null;
+  readonly disabledPluginIds?: ReadonlyArray<string> | null;
   readonly effort?: V2ThreadSettingsUpdateParams__ReasoningEffort | null;
   readonly model?: string | null;
   readonly multiAgentMode?: V2ThreadSettingsUpdateParams__MultiAgentMode | null;
@@ -67691,6 +68058,15 @@ export const V2ThreadSettingsUpdateParams = Schema.Struct({
       Schema.Null,
     ]),
   ),
+  disabledPluginIds: Schema.optionalKey(
+    Schema.Union([
+      Schema.Array(Schema.String).annotate({
+        description:
+          "Replace this thread's disabled plugin IDs. Omitted/null preserves the list; [] clears it.",
+      }),
+      Schema.Null,
+    ]),
+  ),
   effort: Schema.optionalKey(
     Schema.Union([V2ThreadSettingsUpdateParams__ReasoningEffort, Schema.Null]).annotate({
       description: "Override the reasoning effort for subsequent turns.",
@@ -67718,7 +68094,8 @@ export const V2ThreadSettingsUpdateParams = Schema.Struct({
   ),
   personality: Schema.optionalKey(
     Schema.Union([V2ThreadSettingsUpdateParams__Personality, Schema.Null]).annotate({
-      description: "Override the personality for subsequent turns.",
+      description:
+        "@deprecated `friendly` and `pragmatic` no longer select a style. Changing this does not rewrite the thread's existing instructions.",
     }),
   ),
   sandboxPolicy: Schema.optionalKey(
@@ -67788,6 +68165,7 @@ export type V2ThreadStartParams = {
   readonly baseInstructions?: string | null;
   readonly config?: { readonly [x: string]: Schema.Json } | null;
   readonly cwd?: string | null;
+  readonly daybreakEnabled?: boolean | null;
   readonly developerInstructions?: string | null;
   readonly dynamicTools?: ReadonlyArray<V2ThreadStartParams__DynamicToolSpec> | null;
   readonly environments?: ReadonlyArray<V2ThreadStartParams__TurnEnvironmentParams> | null;
@@ -67833,6 +68211,15 @@ export const V2ThreadStartParams = Schema.Struct({
     ]),
   ),
   cwd: Schema.optionalKey(Schema.Union([Schema.String, Schema.Null])),
+  daybreakEnabled: Schema.optionalKey(
+    Schema.Union([
+      Schema.Boolean.annotate({
+        description:
+          "Initial Daybreak choice for this persistent thread. Omitted or null leaves it unset. This does not select a turn's `cyberAccessProgram` or grant access. Not supported for ephemeral threads.",
+      }),
+      Schema.Null,
+    ]),
+  ),
   developerInstructions: Schema.optionalKey(Schema.Union([Schema.String, Schema.Null])),
   dynamicTools: Schema.optionalKey(
     Schema.Union([Schema.Array(V2ThreadStartParams__DynamicToolSpec), Schema.Null]),
@@ -67883,7 +68270,11 @@ export const V2ThreadStartParams = Schema.Struct({
       Schema.Null,
     ]),
   ),
-  personality: Schema.optionalKey(Schema.Union([V2ThreadStartParams__Personality, Schema.Null])),
+  personality: Schema.optionalKey(
+    Schema.Union([V2ThreadStartParams__Personality, Schema.Null]).annotate({
+      description: "@deprecated `friendly` and `pragmatic` no longer select a style.",
+    }),
+  ),
   projectId: Schema.optionalKey(
     Schema.Union([
       Schema.String.annotate({
@@ -67927,6 +68318,7 @@ export type V2ThreadStartResponse = {
   readonly approvalPolicy: V2ThreadStartResponse__AskForApproval;
   readonly approvalsReviewer: V2ThreadStartResponse__ApprovalsReviewer;
   readonly cwd: V2ThreadStartResponse__AbsolutePathBuf;
+  readonly disabledPluginIds?: ReadonlyArray<string>;
   readonly instructionSources?: ReadonlyArray<V2ThreadStartResponse__LegacyAppPathString>;
   readonly model: string;
   readonly modelProvider: string;
@@ -67950,6 +68342,12 @@ export const V2ThreadStartResponse = Schema.Struct({
       V2ThreadStartResponse__ApprovalsReviewer,
   ).annotate({ description: "Reviewer currently used for approval requests on this thread." }),
   cwd: V2ThreadStartResponse__AbsolutePathBuf,
+  disabledPluginIds: Schema.optionalKey(
+    Schema.Array(Schema.String).annotate({
+      description: "Saved list of disabled plugin IDs. Does not yet filter plugin capabilities.",
+      default: [],
+    }),
+  ),
   instructionSources: Schema.optionalKey(
     Schema.Array(V2ThreadStartResponse__LegacyAppPathString).annotate({
       description:
@@ -68275,6 +68673,7 @@ export type V2TurnStartParams = {
   readonly collaborationMode?: V2TurnStartParams__CollaborationMode | null;
   readonly cwd?: string | null;
   readonly cyberAccessProgram?: V2TurnStartParams__CyberAccessProgram | null;
+  readonly disabledPluginIds?: ReadonlyArray<string> | null;
   readonly effort?: V2TurnStartParams__ReasoningEffort | null;
   readonly environments?: ReadonlyArray<V2TurnStartParams__TurnEnvironmentParams> | null;
   readonly input: ReadonlyArray<V2TurnStartParams__UserInput>;
@@ -68335,6 +68734,15 @@ export const V2TurnStartParams = Schema.Struct({
         "EXPERIMENTAL - Request a workspace-authorized cyber program for this turn. Omission preserves automatic behavior. This does not grant access.",
     }),
   ),
+  disabledPluginIds: Schema.optionalKey(
+    Schema.Union([
+      Schema.Array(Schema.String).annotate({
+        description:
+          "Replace this thread's disabled plugin IDs. Omitted/null preserves the list; [] clears it.",
+      }),
+      Schema.Null,
+    ]),
+  ),
   effort: Schema.optionalKey(
     Schema.Union([V2TurnStartParams__ReasoningEffort, Schema.Null]).annotate({
       description: "Override the reasoning effort for this turn and subsequent turns.",
@@ -68381,7 +68789,8 @@ export const V2TurnStartParams = Schema.Struct({
   ),
   personality: Schema.optionalKey(
     Schema.Union([V2TurnStartParams__Personality, Schema.Null]).annotate({
-      description: "Override the personality for this turn and subsequent turns.",
+      description:
+        "@deprecated `friendly` and `pragmatic` no longer select a style. Changing this does not rewrite the thread's existing instructions.",
     }),
   ),
   responsesapiClientMetadata: Schema.optionalKey(
@@ -68525,10 +68934,27 @@ export const V2UserVerificationEnrollParams = Schema.Record(Schema.String, Schem
   title: "UserVerificationEnrollParams",
 });
 
-export type V2UserVerificationEnrollResponse = { readonly credentialId: string };
+export type V2UserVerificationEnrollResponse = {
+  readonly algorithm?: string | null;
+  readonly credentialId: string;
+  readonly publicKey?: string | null;
+};
 export const V2UserVerificationEnrollResponse = Schema.Struct({
+  algorithm: Schema.optionalKey(Schema.Union([Schema.String, Schema.Null])),
   credentialId: Schema.String,
-}).annotate({ title: "UserVerificationEnrollResponse" });
+  publicKey: Schema.optionalKey(
+    Schema.Union([
+      Schema.String.annotate({
+        description: "Unpadded base64url of the SubjectPublicKeyInfo DER encoding.",
+      }),
+      Schema.Null,
+    ]),
+  ),
+}).annotate({
+  title: "UserVerificationEnrollResponse",
+  description:
+    "Public metadata for a created or reused local credential. The caller completes backend registration; this response does not establish server enrollment. Older app-servers omit the metadata fields; callers must check both before registration.",
+});
 
 export type V2UserVerificationRpcError = {
   readonly code: number;

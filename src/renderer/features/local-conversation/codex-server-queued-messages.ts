@@ -5,6 +5,7 @@ import type {
 } from "@nodex/effect-codex-app-server/rpc";
 import { extractCodexCanonicalHydratedAttachments } from "../../../shared/codex-conversation-state/codex-conversation-state";
 import { CODEX_INTERRUPTED_STEER_REASON } from "../../../shared/codex-queued-follow-up-state";
+import { codexImageInputSource } from "../../../shared/codex-image-input";
 import type { CodexQueuedMessage } from "../../../shared/codex-queued-message";
 
 type ServerQueueMethod =
@@ -119,8 +120,8 @@ function serverFallbackMessage(
       ),
       commentAttachments: [],
       imageAttachments: submission.input.flatMap((entry) => {
-        if (entry.type === "image") return [{ source: entry.url }];
-        if (entry.type === "localImage") return [{ source: entry.path }];
+        if (entry.type === "image" || entry.type === "localImage")
+          return [{ source: codexImageInputSource(entry) }];
         return [];
       }),
     },
@@ -143,7 +144,7 @@ function normalizeServerInput(
   if (input.type === "image") {
     return {
       type: "image",
-      url: input.url,
+      ...("url" in input ? { url: input.url } : { fileId: input.fileId }),
       ...(input.detail == null ? {} : { detail: input.detail }),
     };
   }

@@ -108,7 +108,7 @@ describe("agent activity v2 representative payload corpus", () => {
     ))).toBe(JSON.stringify(["read", "listFiles", "search", "unknown"]));
     expect(agentActivityV2FallbackCommandItem.commandActions.length).toBe(0);
     expect(agentActivityV2MixedPatchItem.changes.length).toBe(2);
-    expect(Object.keys(agentActivityV2McpAppContextPrecedenceItem.appContext).length).toBe(6);
+    expect(Object.keys(agentActivityV2McpAppContextPrecedenceItem.appContext).length).toBe(5);
     expect(agentActivityV2McpAppContextPrecedenceItem.appContext.resourceUri).toBe(
       "ui://fixture/preferred",
     );

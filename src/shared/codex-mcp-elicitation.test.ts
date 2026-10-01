@@ -25,6 +25,7 @@ describe("isRenderableMcpServerElicitationRequest", () => {
         turnId: "turn-1",
         serverName: "codex_apps",
         mode: "openai/userVerification",
+        _meta: null,
         title: "Approve",
         description: "Verify this action",
         challenge: "AQID",

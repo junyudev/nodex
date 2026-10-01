@@ -2,6 +2,7 @@ import * as fs from "node:fs";
 import * as path from "node:path";
 import { createHash } from "node:crypto";
 import { fileURLToPath } from "node:url";
+import { codexImageFileIdFromSource } from "../../shared/codex-image-input";
 import * as Context from "effect/Context";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
@@ -120,6 +121,7 @@ function materializeSource(
 ): string {
   const normalized = source.trim();
   if (!normalized) throw new Error("Queued payload source cannot be empty");
+  if (codexImageFileIdFromSource(normalized) !== null) return normalized;
   const managed = parseAssetSource(normalized);
   if (managed) {
     const bytes = readBoundedFile(
@@ -270,6 +272,7 @@ function stagePreparedInput(
     const image = value.type === "image" || value.type === "localImage";
     const audio = value.type === "audio" || value.type === "localAudio";
     if (!image && !audio) return value;
+    if ("fileId" in value) return value;
     const source =
       "path" in value
         ? localExecution

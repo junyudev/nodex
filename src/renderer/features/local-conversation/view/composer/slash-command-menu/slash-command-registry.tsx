@@ -18,7 +18,6 @@ import {
   SlashMcpIcon,
   SlashMemoriesIcon,
   SlashModelIcon,
-  SlashPersonalityIcon,
   SlashPetIcon,
   SlashReasoningIcon,
   SlashSideIcon,
@@ -31,7 +30,7 @@ import {
 } from "@/lib/codex-thread-settings";
 import { toast } from "@/components/ui/toast";
 import { useMcpServerStatuses } from "@/lib/use-mcp-queries";
-import type { CodexPersonality, CodexReasoningEffort, CodexServiceTier } from "@/lib/types";
+import type { CodexReasoningEffort, CodexServiceTier } from "@/lib/types";
 import type { ThreadFooterModel, ThreadStageActions } from "../../../thread-stage-types";
 import { getThreadGoalMessage } from "../../../thread-goal-copy";
 import type { ComposerSlashCommand, ComposerSlashCommandContentProps } from "./slash-command-types";
@@ -194,27 +193,6 @@ export function buildComposerSlashCommands(input: BuildSlashCommandsInput): Comp
         <ModelCommandContent
           model={input.model}
           onModelChange={input.actions.onModelChange}
-          {...props}
-        />
-      ),
-    },
-    {
-      id: "personality",
-      title: "Personality",
-      description:
-        input.model.selectedPersonality === "pragmatic"
-          ? "Pragmatic"
-          : input.model.selectedPersonality === "none"
-            ? "None"
-            : "Friendly",
-      group: "Commands",
-      icon: <SlashPersonalityIcon className={iconClassName} />,
-      requiresEmptyComposer: true,
-      isVisible: Boolean(input.actions.onPersonalityChange),
-      Content: (props) => (
-        <PersonalityCommandContent
-          selectedPersonality={input.model.selectedPersonality ?? "friendly"}
-          onPersonalityChange={input.actions.onPersonalityChange}
           {...props}
         />
       ),
@@ -651,39 +629,6 @@ function FeedbackCommandContent({
         </button>
       </div>
     </div>
-  );
-}
-
-function PersonalityCommandContent({
-  close,
-  selectedPersonality,
-  onPersonalityChange,
-}: ComposerSlashCommandContentProps & {
-  selectedPersonality: CodexPersonality;
-  onPersonalityChange?: (personality: CodexPersonality) => void | Promise<void>;
-}) {
-  const selectPersonality = async (personality: CodexPersonality) => {
-    if (!onPersonalityChange) return;
-    await runCommand("Failed to change personality", async () => {
-      await onPersonalityChange(personality);
-      close();
-    });
-  };
-  return (
-    <CommandPanel>
-      <CommandPanelRow
-        title="Friendly"
-        description="Warm, collaborative, and helpful"
-        selected={selectedPersonality === "friendly"}
-        onClick={() => void selectPersonality("friendly")}
-      />
-      <CommandPanelRow
-        title="Pragmatic"
-        description="Concise, task-focused, and direct"
-        selected={selectedPersonality === "pragmatic"}
-        onClick={() => void selectPersonality("pragmatic")}
-      />
-    </CommandPanel>
   );
 }
 

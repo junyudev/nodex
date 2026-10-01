@@ -34,6 +34,49 @@ const decodeConsumeRateLimitResetCreditParams = Schema.decodeUnknownEffect(
 const decodeConsumeRateLimitResetCreditResponse = Schema.decodeUnknownEffect(
   CodexRpc.CLIENT_REQUEST_RESPONSES["account/rateLimitResetCredit/consume"],
 );
+const decodeThreadItems = Schema.decodeUnknownEffect(
+  CodexRpc.CLIENT_REQUEST_RESPONSES["thread/items/list"],
+);
+
+it.effect("preserves each image source and item timing in paginated history", () =>
+  Effect.gen(function* () {
+    for (const source of [{ url: "https://example.com/image.png" }, { fileId: "file_123" }]) {
+      const response = {
+        data: [
+          {
+            turnId: "turn-1",
+            startedAtMs: 1_000,
+            completedAtMs: 2_000,
+            item: {
+              type: "userMessage",
+              id: "user-1",
+              clientId: null,
+              content: [{ type: "image", detail: "original", ...source }],
+            },
+          },
+        ],
+        nextCursor: null,
+      } as const;
+      assert.deepStrictEqual(yield* decodeThreadItems(response), response);
+    }
+
+    const invalidImage = yield* decodeThreadItems({
+      data: [
+        {
+          turnId: "turn-1",
+          item: {
+            type: "userMessage",
+            id: "user-1",
+            clientId: null,
+            content: [{ type: "image", detail: "original" }],
+          },
+        },
+      ],
+      nextCursor: null,
+    }).pipe(Effect.exit);
+    assert.isTrue(Exit.isFailure(invalidImage));
+  }),
+);
 
 it.layer(NodeServices.layer)("effect-codex-app-server protocol", (it) => {
   it.effect(

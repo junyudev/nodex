@@ -81,6 +81,8 @@ const projectCapabilityFlags = (
     ...conversation.capabilityFlags,
     canEditLastUserTurn: Boolean(
       actionable &&
+      conversation.canonicalState?.historyMode === "paginated" &&
+      !conversation.canonicalState.ephemeral &&
       latestTurn &&
       latestTurn.status !== "inProgress" &&
       latestTurnHasUserMessage &&

@@ -1,10 +1,6 @@
 import * as Context from "effect/Context";
 import * as Effect from "effect/Effect";
-import type {
-  ThreadRevertResponse,
-  ThreadRollbackResponse,
-  ConfigReadResponse,
-} from "@nodex/codex-app-server-protocol/v2";
+import type { ThreadRevertResponse, ConfigReadResponse } from "@nodex/codex-app-server-protocol/v2";
 import { ScopedCallbackRuntime } from "../app/ScopedCallbackRuntime";
 import { CodexGateway } from "../codex-runtime/CodexGateway";
 import { CodexAppServerCapabilities } from "../codex-runtime/CodexAppServerCapabilities";
@@ -23,10 +19,7 @@ import {
   canonicalPermissionsForMode,
   nativePermissionRequestFields,
 } from "../../shared/codex-conversation-state/codex-native-permissions";
-import {
-  mutateCodexCanonicalRevert,
-  mutateCodexCanonicalRollbackThread,
-} from "../../shared/codex-conversation-state/codex-rollback-state";
+import { mutateCodexCanonicalRevert } from "../../shared/codex-conversation-state/codex-revert-state";
 
 export class CodexMainConversationEdit extends Context.Service<
   CodexMainConversationEdit,
@@ -111,20 +104,6 @@ export const make = Effect.gen(function* () {
                       assertOwner();
                       return response as ThreadRevertResponse;
                     }),
-                rollback: (_id, numTurns) =>
-                  callbacks
-                    .runPromise(
-                      gateway.requestOnHost(
-                        hostId,
-                        "thread/rollback",
-                        { threadId: id, numTurns },
-                        nativeOptions,
-                      ),
-                    )
-                    .then((response) => {
-                      assertOwner();
-                      return response as ThreadRollbackResponse;
-                    }),
                 applyRevert: (_id, response, removed) => {
                   assertOwner();
                   entities
@@ -138,13 +117,6 @@ export const make = Effect.gen(function* () {
                         ),
                       Date.now(),
                     );
-                },
-                applyRollback: (_id, _before, response) => {
-                  assertOwner();
-                  entities.current(id)?.mutateCanonicalState((draft) => {
-                    if (!mutateCodexCanonicalRollbackThread(draft, response.thread))
-                      throw new Error("Rollback could not hydrate retained turns");
-                  }, Date.now());
                 },
                 start: (request, original, inheritPermissionDefaults) =>
                   callbacks.runPromise(

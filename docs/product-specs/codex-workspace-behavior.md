@@ -220,7 +220,7 @@ working directory; Stop acts on the exact live process or Terminal session.
 ## Intelligence and account state
 
 A new Codex Chat selects a model, reasoning effort, service tier,
-collaboration mode, and personality from current app-server catalogs. Existing
+and collaboration mode from current app-server catalogs. Existing
 Chats allow only catalog-approved same-Thread changes to mutable intelligence
 settings. Fork creation leaves the execution profile to app-server unless the
 specific caller supplies an explicit override. Persistent and Side Chat forks

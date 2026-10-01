@@ -1,3 +1,4 @@
+import { buildCodexUserAttachmentsFromContent } from "../../../../../shared/codex-user-attachment-projection";
 import { buildAgentHistoryImageSource } from "../../../../../shared/agent-history-images";
 import { act } from "react";
 import { fireEvent, waitFor } from "@testing-library/react";
@@ -13,6 +14,33 @@ import {
 } from "@/features/user-attachment-image-editor";
 
 describe("UserAttachmentStrip", () => {
+  test("resolves native file-ID images through the hosted-image boundary", async () => {
+    const invoke = vi.fn(async () => ({
+      ok: true,
+      dataBase64: "aW1hZ2U=",
+      mimeType: "image/png",
+    }));
+    installWindowApi({ invoke, on: () => () => {} });
+    const view = render(
+      <TestQueryProvider>
+        <ConversationImageAssetProvider conversationId="thread" hostId="local">
+          <UserAttachmentStrip
+            attachments={buildCodexUserAttachmentsFromContent(
+              [{ type: "image", fileId: "asset-native" }],
+              "native-user-message",
+            )}
+          />
+        </ConversationImageAssetProvider>
+      </TestQueryProvider>,
+    );
+
+    await view.findByRole("button", { name: "Open image preview" });
+    expect(invoke).toHaveBeenCalledExactlyOnceWith("codex:conversation-image-asset:resolve", {
+      hostId: "local",
+      pointer: "file-service://asset-native",
+    });
+  });
+
   test("resolves native history image descriptors through their owning session without arbitrary file reads", async () => {
     const invoke = vi.fn(async () => {
       throw new Error("Unexpected file read");

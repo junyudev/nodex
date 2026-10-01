@@ -298,7 +298,9 @@ runtime status survive rejection. Previous permission presence and value are res
 from Turn matching. Optimistic activity belongs to the canonical document; native notifications
 project durable status, and accepting a response never forces a newer idle state back to active.
 
-Personality resolves from the explicit request, defined next-Turn setting, latest assigned Turn,
+Saved personality metadata remains readable, while current native models provide no personality
+style selection and the Composer exposes no Personality command.
+Retained personality resolves from the explicit request, defined next-Turn setting, latest assigned Turn,
 then configuration for the prepared working directory. Configuration reads use critical priority;
 an unavailable or unsupported configured personality falls back to the application preference.
 An explicit null request or next-Turn setting suppresses that fallback. The selected personality
@@ -436,16 +438,16 @@ failure. Follower results preserve both the interrupted Turn identity and any go
 Unlike steering and compaction, interruption may recover an unavailable owner after a timeout
 or request-version mismatch as well as a missing client.
 
-## Edit and rollback
+## Edit and revert
 
 Editing preserves the original turn's non-text inputs and context. Only its first text input
 is rewritten, retaining the prefix before the last user-request marker and clearing that
 text input's text elements. An edit waits for pending settings first.
 
 The target must be the most recent user-input turn, but empty-input automatic turns may
-follow it. None of the reverted suffix may be in progress. Paginated history uses
-identity-based `thread/revert` when supported; legacy history uses `thread/rollback` with the
-number of native turns in that suffix.
+follow it. None of the reverted suffix may be in progress. Editing requires persistent
+paginated history and native identity-based `thread/revert` support. Legacy and ephemeral
+history do not offer message editing.
 
 Identity-based revert deletes only reverted resident entities and advances history
 generation. Retained entities are not refetched. An emptied tail receives the returned older

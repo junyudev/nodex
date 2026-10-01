@@ -3301,6 +3301,7 @@ export interface CodexMcpToolCallView {
   pluginId: ProtocolMcpToolCallItem["pluginId"];
   readOnlyHint: ProtocolMcpToolCallItem["readOnlyHint"];
   mcpAppResourceUri: ProtocolMcpToolCallItem["mcpAppResourceUri"];
+  mcpAppUi?: ProtocolMcpToolCallItem["mcpAppUi"];
   source: CodexMcpToolCallSource | null;
   invocation: CodexMcpToolCallInvocation;
   result: CodexMcpToolCallNormalizedResult;

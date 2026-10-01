@@ -13,6 +13,7 @@ import {
 import path from "node:path";
 
 import { signAsync } from "@electron/osx-sign";
+import { BROWSER_RUNTIME_SCHEMA_VERSION } from "../src/shared/browser-runtime-schema.mjs";
 import { parseCodexAppServerReleaseLock } from "../src/shared/codex-app-server-release-lock.mjs";
 import { writePackagedBuildProvenance } from "./package-provenance.mjs";
 
@@ -41,9 +42,6 @@ const sparkleCodeObjectRelativePaths = [
   "Contents/Frameworks/Sparkle.framework/Versions/B/Updater.app",
   "Contents/Frameworks/Sparkle.framework",
 ];
-// Keep this release boundary exact. The signing tests construct their fixture from the canonical
-// TypeScript manifest version, so any future schema bump fails closed until resealing is audited.
-const browserRuntimeSchemaVersion = 6;
 const expectedBinaryPaths = new Map([
   ["nodex", "Resources/bin/nodex"],
   ["nodex-appshot-helper", "Resources/bin/nodex-appshot-helper"],
@@ -311,7 +309,7 @@ export const refreshSignedBrowserRuntimeManifest = (appPath, options = {}) => {
     throw error;
   }
   if (
-    manifest.schemaVersion !== browserRuntimeSchemaVersion ||
+    manifest.schemaVersion !== BROWSER_RUNTIME_SCHEMA_VERSION ||
     !Array.isArray(manifest.artifacts)
   ) {
     throw new Error(`Unsupported Browser runtime manifest: ${manifestPath}`);

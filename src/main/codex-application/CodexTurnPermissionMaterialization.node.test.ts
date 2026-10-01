@@ -68,6 +68,9 @@ const permissionState: CodexPermissionState = {
 
 const disabledFastMode: ConfigRequirementsReadResponse = {
   requirements: {
+    modelProvider: null,
+    modelProviders: null,
+    allowedLoginMethods: null,
     cliAuthCredentialsStore: null,
     chatgptBaseUrl: null,
     additionalDeveloperInstructions: null,
@@ -98,7 +101,6 @@ const disabledFastMode: ConfigRequirementsReadResponse = {
     checkForUpdateOnStartup: null,
     allowLoginShell: null,
     feedback: null,
-    windowsSandboxPrivateDesktop: null,
   },
 };
 

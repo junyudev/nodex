@@ -129,6 +129,8 @@ function buildMcpStatuses(resourceUri: string): ProtocolListMcpServerStatusRespo
       {
         name: "docs",
         pluginId: null,
+        httpOrigin: null,
+        serverCapabilities: null,
         serverInfo: null,
         toolsError: null,
         tools: {

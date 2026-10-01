@@ -41,6 +41,9 @@ function buildConfig(
 
 function buildRequirements(overrides?: Partial<ConfigRequirements>): ConfigRequirements {
   return {
+    modelProvider: null,
+    modelProviders: null,
+    allowedLoginMethods: null,
     cliAuthCredentialsStore: null,
     chatgptBaseUrl: null,
     additionalDeveloperInstructions: null,
@@ -71,7 +74,6 @@ function buildRequirements(overrides?: Partial<ConfigRequirements>): ConfigRequi
     logDir: null,
     modelCatalogJson: null,
     allowLoginShell: null,
-    windowsSandboxPrivateDesktop: null,
     ...overrides,
   };
 }

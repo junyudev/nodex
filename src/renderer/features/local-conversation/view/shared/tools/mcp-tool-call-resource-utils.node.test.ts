@@ -54,6 +54,8 @@ describe("mcp-tool-call-resource-utils", () => {
         {
           name: "docs",
           pluginId: null,
+          httpOrigin: null,
+          serverCapabilities: null,
           serverInfo: null,
           toolsError: null,
           tools: {
@@ -89,6 +91,8 @@ describe("mcp-tool-call-resource-utils", () => {
         {
           name: "docs",
           pluginId: null,
+          httpOrigin: null,
+          serverCapabilities: null,
           serverInfo: null,
           toolsError: null,
           tools: {

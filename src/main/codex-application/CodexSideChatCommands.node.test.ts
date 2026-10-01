@@ -322,7 +322,6 @@ const makeHarness = (scope: Scope.Scope, options: SideChatHarnessOptions = {}) =
           Effect.andThen(conversations.runCommand(parentThreadId, Effect.succeed(directoryEntry))),
         );
       },
-      acceptRollbackResult: () => Effect.die("unused"),
       acceptImportResult: () => Effect.die("unused"),
       acceptForkResult: () => Effect.die("unused"),
       observeMetadata: () => Effect.die("unused"),

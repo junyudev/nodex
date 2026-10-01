@@ -383,6 +383,8 @@ async function connectedManagers(
     activePermissionProfile: null,
     reasoningEffort: "high",
     multiAgentMode: "explicitRequestOnly",
+    disabledPluginIds: [],
+    collaborationMode: null,
     initialTurnsPage: { data: thread.turns, nextCursor: null, backwardsCursor: null },
     turnsBackwardsCursor: "resume-tail",
     itemsBackwardsCursor: null,

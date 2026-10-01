@@ -1,4 +1,5 @@
 import { useConversationRuntimeOverride, type ConversationRuntime } from "./conversation-runtime";
+import { codexImageInputSource } from "../../../shared/codex-image-input";
 import {
   buildCodexCommandApprovalRequest,
   buildCodexFileApprovalRequest,
@@ -17,6 +18,7 @@ import { receiveConversationStreamServiceEvent } from "../../../shared/codex-str
 import {
   allowsAutomaticResumeHistoryDrain,
   refreshResumedConversationTurnParams,
+  resumedConversationCollaborationMode,
 } from "../../../shared/codex-conversation-state/codex-history-resume";
 import type {
   CodexNativeAutoResponseInput,
@@ -100,10 +102,7 @@ import {
   canonicalPermissionsForMode,
   nativePermissionRequestFields,
 } from "../../../shared/codex-conversation-state/codex-native-permissions";
-import {
-  mutateCodexCanonicalRevert,
-  mutateCodexCanonicalRollbackThread,
-} from "../../../shared/codex-conversation-state/codex-rollback-state";
+import { mutateCodexCanonicalRevert } from "../../../shared/codex-conversation-state/codex-revert-state";
 import { isCodexNativeMethodUnsupported } from "../../../shared/codex-native-request-outcome";
 import {
   runCanonicalOwnerSteer,
@@ -1046,7 +1045,10 @@ function deriveConversationCapabilityFlags(
     !conversation.archived && conversation.statusType !== "systemError";
   return {
     canEditLastUserTurn: Boolean(
-      isConversationActionable && resolveLatestEditableUserTurnId(conversation),
+      isConversationActionable &&
+      conversation.canonicalState?.historyMode === "paginated" &&
+      !conversation.canonicalState.ephemeral &&
+      resolveLatestEditableUserTurnId(conversation),
     ),
     canForkFromTurn: Boolean(isConversationActionable && conversation.turns.length > 0),
     canSearch: true,
@@ -1266,7 +1268,9 @@ async function compileServerQueuedMessageInput(
       if (entry.type === "image")
         return (
           previous.input.find(
-            (candidate) => candidate.type === "image" && candidate.url === entry.url,
+            (candidate) =>
+              candidate.type === "image" &&
+              codexImageInputSource(candidate) === codexImageInputSource(entry),
           ) ?? entry
         );
       if (entry.type === "localImage")
@@ -3984,7 +3988,11 @@ export class CodexAppServerManager {
       this.registerThreadMetadata({ ...response.thread, cwd });
       const thread = { ...response.thread, cwd, turns: [] };
       const permissions = resolveConversationResumePermissions(response, permissionContext);
-      const canonicalBase = createCodexCanonicalHydratedConversationState(thread, {
+      const collaborationMode = resumedConversationCollaborationMode(
+        response,
+        options.collaborationMode,
+      );
+      const canonical = createCodexCanonicalHydratedConversationState(thread, {
         hostId: this.hostId,
         model: response.model,
         reasoningEffort: response.reasoningEffort,
@@ -3997,6 +4005,7 @@ export class CodexAppServerManager {
           effort: response.reasoningEffort,
           serviceTier: response.serviceTier,
           multiAgentMode: response.multiAgentMode,
+          ...(collaborationMode === undefined ? {} : { collaborationMode }),
           approvalPolicy: permissions.approvalPolicy,
           approvalsReviewer: permissions.approvalsReviewer,
           activePermissionProfile: permissions.activePermissionProfile,
@@ -4005,35 +4014,9 @@ export class CodexAppServerManager {
         hasUnreadTurn:
           this.savedReadState?.has(threadId) ?? prepared.summary.hasUnreadTurn ?? false,
       });
-      const canonical =
-        options.collaborationMode == null
-          ? canonicalBase
-          : {
-              ...canonicalBase,
-              latestCollaborationMode: {
-                mode: "default" as const,
-                settings: {
-                  ...options.collaborationMode.settings,
-                  model: canonicalBase.latestModel,
-                  reasoning_effort: canonicalBase.latestReasoningEffort,
-                },
-              },
-            };
       const resumeSettingsPatch: CanonicalThreadSettingsPatch = {
         ...(canonical.hydrationContext?.latestThreadSettings ?? {}),
         permissions: permissions.activePermissionProfile?.id ?? null,
-        ...(options.collaborationMode == null
-          ? {}
-          : {
-              collaborationMode: {
-                mode: "default" as const,
-                settings: {
-                  ...options.collaborationMode.settings,
-                  model: canonical.latestModel,
-                  reasoning_effort: canonical.latestReasoningEffort,
-                },
-              },
-            }),
       };
       const retained = reconcileCodexResumedConversationState({
         existing: previous ?? null,
@@ -6091,14 +6074,6 @@ export class CodexAppServerManager {
           this.assertOwnerForConversation(id);
           return response as import("@nodex/codex-app-server-protocol/v2/ThreadRevertResponse").ThreadRevertResponse;
         },
-        rollback: async (_id, numTurns) => {
-          const response = await this.nativeAppServer.request("thread/rollback", {
-            threadId: id,
-            numTurns,
-          });
-          this.assertOwnerForConversation(id);
-          return response as import("@nodex/codex-app-server-protocol/v2/ThreadRollbackResponse").ThreadRollbackResponse;
-        },
         applyRevert: (_id, response, removed) =>
           this.historyClient.updateConversation(id, (draft) =>
             mutateCodexCanonicalRevert(
@@ -6107,11 +6082,6 @@ export class CodexAppServerManager {
               new Set(removed.map((turn) => turn.turnId)),
             ),
           ),
-        applyRollback: (_id, _before, response) =>
-          this.historyClient.updateConversation(id, (draft) => {
-            if (!mutateCodexCanonicalRollbackThread(draft, response.thread))
-              throw new Error("Rollback could not hydrate retained turns");
-          }),
         start: async (request, original, inheritPermissionDefaults) => {
           const clientUserMessageId = createOwnerClientUserMessageId();
           const prompt = await prepareCodexPrompt(options.message, undefined, {
