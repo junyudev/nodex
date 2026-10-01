@@ -153,13 +153,18 @@ paginated histories. Credentials, configuration, operational queues, and process
 locks are excluded. Capture uses native writer and SQLite read coordination;
 source history and published Store backups are never rewritten.
 
+Native index paths through an account directory's session aliases must resolve to
+regular files in the exact captured physical history tree. Capture verifies their
+file identities under the source leases and normalizes only the copied index;
+outside paths, symlinked artifacts, and uncaptured files remain invalid.
+
 Required local Codex Threads must resolve through their entire inherited rollout
 chain, with valid byte/ordinal cutoffs. Missing chains prevent publication unless
 `--allow-missing-conversations` explicitly requests incomplete diagnostic state.
 The receipt records missing IDs separately from Threads on remote hosts or other
-backends. Unsupported native storage layouts, symlinks, paths outside the source
-Agent home, and source mutation fail capture. This Adapter's storage contract
-must be reviewed alongside Codex runtime upgrades.
+backends. Unsupported native storage layouts, symlinked artifacts, paths outside
+the physical source Agent home, and source mutation fail capture. This Adapter's
+storage contract must be reviewed alongside Codex runtime upgrades.
 
 The Store backup and native capture are independently timestamped inputs. A
 selected older backup does not imply a matching historical native capture, and

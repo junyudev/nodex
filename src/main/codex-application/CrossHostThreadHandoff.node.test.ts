@@ -1,5 +1,5 @@
 import { execFile } from "node:child_process";
-import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, rm, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { promisify } from "node:util";
@@ -73,7 +73,7 @@ const makeHost = (input: {
   const port = new CodexLocalExecutionHostFileTransfer({
     hostId: input.id,
     stagingRoot,
-    allowedReadRoots: [input.root, input.relayBaseRoot],
+    allowedReadRoots: [input.codexHome, input.relayBaseRoot],
   });
   const transferError = (operation: string, cause: unknown) =>
     new ExecutionHostRuntimeError({ operation, hostId: input.id, cause });
@@ -116,7 +116,7 @@ const makeHost = (input: {
   };
 };
 
-it.effect("atomically relays verified Git and rollout state and releases newborn protection", () =>
+const relaySelectedRollout = (selection: "shared-home" | "account-home") =>
   Effect.gen(function* () {
     const root = yield* Effect.tryPromise(() =>
       mkdtemp(path.join(tmpdir(), "nodex-cross-host-capability-")),
@@ -160,6 +160,15 @@ it.effect("atomically relays verified Git and rollout state and releases newborn
     yield* Effect.tryPromise(() =>
       writeFile(sourceRolloutPath, '{"type":"session_meta","id":"thread"}\n'),
     );
+    const accountHome = path.join(root, "source", "account-home");
+    yield* Effect.tryPromise(() => mkdir(accountHome, { recursive: true }));
+    yield* Effect.tryPromise(() =>
+      symlink(path.join(sourceCodexHome, "sessions"), path.join(accountHome, "sessions"), "dir"),
+    );
+    const selectedRolloutPath =
+      selection === "shared-home"
+        ? sourceRolloutPath
+        : path.join(accountHome, path.relative(sourceCodexHome, sourceRolloutPath));
 
     const hosts = [
       makeHost({
@@ -240,7 +249,7 @@ it.effect("atomically relays verified Git and rollout state and releases newborn
       scope,
     );
     const handoff = Context.get(context, CrossHostThreadHandoff);
-    const prepared = yield* handoff.prepare({
+    const input = {
       operationId: "transfer-1",
       threadId: "thread",
       threadTitle: "Cross host",
@@ -250,9 +259,50 @@ it.effect("atomically relays verified Git and rollout state and releases newborn
       sourceCwd: source,
       sourceWorkspaceRoot: source,
       sourceManagedWorktreePath: null,
-      sourceRolloutPath,
+      sourceRolloutPath: selectedRolloutPath,
       destinationRepositoryPaths: [destination],
-    });
+    };
+    if (selection === "account-home") {
+      const outside = path.join(root, "outside");
+      yield* Effect.tryPromise(() => mkdir(outside));
+      yield* Effect.tryPromise(() => writeFile(path.join(outside, "escape.jsonl"), "outside\n"));
+      yield* Effect.tryPromise(() => symlink(outside, path.join(accountHome, "escaped"), "dir"));
+      const escaped = yield* Effect.flip(
+        handoff.prepare({
+          ...input,
+          operationId: "transfer-directory-escape",
+          sourceRolloutPath: path.join(accountHome, "escaped", "escape.jsonl"),
+        }),
+      );
+      assert.strictEqual(escaped.operation, "resolve-rollout");
+      const traversed = yield* Effect.flip(
+        handoff.prepare({
+          ...input,
+          operationId: "transfer-parent-traversal",
+          sourceRolloutPath: `${sourceCodexHome}/../../outside/escape.jsonl`,
+        }),
+      );
+      assert.strictEqual(traversed.operation, "resolve-rollout");
+
+      const leafLink = path.join(path.dirname(selectedRolloutPath), "leaf-link.jsonl");
+      yield* Effect.tryPromise(() => symlink(sourceRolloutPath, leafLink));
+      const linked = yield* Effect.flip(
+        handoff.prepare({
+          ...input,
+          operationId: "transfer-file-symlink",
+          sourceRolloutPath: leafLink,
+        }),
+      );
+      assert.strictEqual(linked.operation, "describe-rollout");
+      assert.isFalse(newborns.size > 0);
+    }
+    const prepared = yield* handoff.prepare(input);
+
+    assert.strictEqual(prepared.sourceRollout.path, sourceRolloutPath);
+    assert.strictEqual(
+      prepared.destinationRollout.path,
+      path.join(destinationCodexHome, path.relative(sourceCodexHome, sourceRolloutPath)),
+    );
 
     assert.isTrue(newborns.has(`destination\0${prepared.managedWorktreePath}`));
     assert.strictEqual(
@@ -283,5 +333,9 @@ it.effect("atomically relays verified Git and rollout state and releases newborn
       ),
     );
     yield* Scope.close(scope, Exit.void);
-  }),
+  });
+
+it.effect.each(["shared-home", "account-home"] as const)(
+  "atomically relays %s rollout state and releases newborn protection",
+  relaySelectedRollout,
 );
