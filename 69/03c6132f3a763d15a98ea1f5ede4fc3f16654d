@@ -1,0 +1,54 @@
+tests/e2e/dictation-global-availability.spec.ts
+  s_e226c998562446::t_ad02a57aa5d06d 76-79,81-89,109-111,127-132,134-137,141-162,165-172,180-183
+  s_e226c998562446::t_371693f94f3835 1-75,80,90-108,112-126,133,138-140,163-164,173-179,184-188
+src/renderer/features/dictation/global-dictation-page.tsx
+  s_e226c998562446::t_146b209306e530 511-512
+src/main/codex-application/CodexMedia.node.test.ts
+  s_e226c998562446::t_9d95f7da9e4638 40,93,248,250,262,288
+  s_e226c998562446::t_8f4c2f9773ee53 25-28,69-80,243-247,249,251-261,263-287
+  s_e226c998562446::t_7dd18ca9bd4f53 289
+src/renderer/features/dictation/voice-settings-page.test.tsx
+  s_e226c998562446::t_82175ff4e09be9 5,12,80,175,224,231,235-293,298-310,314,675,686
+  s_e226c998562446::t_20b4c39f6b57d2 232-234,294-297,683-685
+src/renderer/features/dictation/global-dictation-page.test.tsx
+  s_e226c998562446::t_146b209306e530 4-7,15-18,91-187,189-195
+  s_e226c998562446::t_83f9dec8cfa65f 188
+tests/e2e/fixtures/dictation-policy-http.ts
+  s_e226c998562446::t_371693f94f3835 16,85
+docs/product-specs/dictation-behavior.md
+  s_e226c998562446::t_e876f5f331c8f7 61,102
+  s_e226c998562446::t_203d2b71b66a4a 5
+  s_e226c998562446::t_834c11ce9688b0 15,65
+src/main/dictation/DictationPolicyState.ts
+  s_e226c998562446::t_3324d8f448b64a 17,89-90,92-93
+CHANGELOG.md
+  s_e226c998562446::t_d10ec0c251ff0a 24
+src/main/dictation/DictationPolicyState.node.test.ts
+  s_e226c998562446::t_2f7f30634f1637 7,40-41,49-51
+  s_e226c998562446::t_8f4c2f9773ee53 56-67,95-97
+src/main/dictation/DictationPolicy.node.test.ts
+  s_e226c998562446::t_fb0c0769d50b68 55-60,150,234,252,257,260,264-265
+  s_e226c998562446::t_8f4c2f9773ee53 202-230
+src/renderer/features/dictation/voice-settings-page.tsx
+  s_e226c998562446::t_82175ff4e09be9 178
+  s_e226c998562446::t_20b4c39f6b57d2 181
+  s_e226c998562446::t_c53d75009b61c0 179-180,182-186,566,581-582,645
+src/main/platform/electron/DictationPolicyClient.node.test.ts
+  s_e226c998562446::t_8a2a01522ac836 53,96,100,108,116,152,160-161,220,226,234,243
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "6903c6132f3a763d15a98ea1f5ede4fc3f16654d",
+  "prompts": {},
+  "sessions": {
+    "s_e226c998562446": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a0f5f4-b242-7d00-bc82-f6354923bf6e",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    }
+  }
+}
