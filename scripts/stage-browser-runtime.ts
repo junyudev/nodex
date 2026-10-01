@@ -161,12 +161,12 @@ function serializedActiveManifest(sourceRoot: string, manifest: BrowserRuntimeMa
     };
     const nodeModuleDirs = sourceValue.browserPlugin?.nodeModuleDirs;
     if (
-      sourceValue.schemaVersion === 5 &&
+      (sourceValue.schemaVersion === 5 || sourceValue.schemaVersion === 6) &&
       Array.isArray(nodeModuleDirs) &&
       !nodeModuleDirs.includes(LEGACY_BROWSER_PLUGIN_NODE_MODULE_DIR)
     ) {
-      // Published v5 archives retain their signed exact-pair identity while the
-      // compatibility decoder projects the in-memory schema-v6 contract.
+      // Published archives retain their exact-pair identity while the
+      // compatibility decoder projects the current in-memory contract.
       return sourceBytes;
     }
   } catch {

@@ -70,7 +70,7 @@ describe("materializeBundledDesktopToolMarketplace", () => {
     expect(isForeignDesktopToolPlugin("browser@external-tools", runtimeStateHome)).toBe(false);
   });
 
-  test("atomically materializes Browser, Chrome, and the Computer Use Node REPL variant", async () => {
+  test("atomically materializes desktop tools while preserving the verified Computer Use plugin", async () => {
     const fixture = makeRuntime();
     const sourceSkill = path.join(
       fixture.bundle.paths.computerUsePluginRoot!,
@@ -105,15 +105,13 @@ describe("materializeBundledDesktopToolMarketplace", () => {
         path.join(result.computerUsePluginRoot!, "skills", "computer-use", "SKILL.md"),
         "utf8",
       ),
-    ).toContain("Node REPL variant");
+    ).toBe(originalSkill);
     expect(
-      JSON.parse(
-        fs.readFileSync(
-          path.join(result.computerUsePluginRoot!, ".codex-plugin", "plugin.json"),
-          "utf8",
-        ),
+      fs.readFileSync(
+        path.join(result.computerUsePluginRoot!, ".codex-plugin", "plugin.json"),
+        "utf8",
       ),
-    ).toMatchObject({ bundledContentVariant: "node-repl" });
+    ).toBe(originalManifest);
     const marketplace = JSON.parse(
       fs.readFileSync(path.join(result.rootPath, ".agents", "plugins", "marketplace.json"), "utf8"),
     ) as { name: string; plugins: Array<{ name: string; source: unknown }> };
@@ -149,7 +147,7 @@ describe("materializeBundledDesktopToolMarketplace", () => {
         expect.objectContaining({ relativePath: "scripts/installManifest.mjs" }),
       ]),
       chromePluginVersion: "1.0.0-test",
-      schemaVersion: 3,
+      schemaVersion: 4,
     });
     expect(fs.readFileSync(sourceSkill, "utf8")).toBe(originalSkill);
     expect(fs.readFileSync(sourceManifest, "utf8")).toBe(originalManifest);

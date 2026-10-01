@@ -11,6 +11,7 @@ import {
   spawnComputerUseServiceInContext,
 } from "./ComputerUseHostPlatform";
 import type { ScopedCallbackRuntime } from "../../app/ScopedCallbackRuntime";
+import { computerUseNativePipePath } from "../../codex/computer-use-runtime-config";
 
 const temporaryRoots: string[] = [];
 
@@ -181,6 +182,7 @@ const path = require("node:path");
 module.exports.spawnComputerUseService = async (executable) => {
   fs.writeFileSync(path.join(process.env.CODEX_HOME, "observed.json"), JSON.stringify({
     home: process.env.CODEX_HOME, codex: process.env.CODEX_CLI_PATH, executable,
+    nativePipe: process.env.SKY_CUA_SERVICE_NATIVE_PIPE_PATH,
   }));
   return 8123;
 };
@@ -188,6 +190,7 @@ module.exports.spawnComputerUseService = async (executable) => {
   );
   const inheritedHome = process.env.CODEX_HOME;
   const inheritedCli = process.env.CODEX_CLI_PATH;
+  const inheritedNativePipe = process.env.SKY_CUA_SERVICE_NATIVE_PIPE_PATH;
   await Promise.all(
     ["first", "second"].map(async (name) => {
       const home = path.join(root, name);
@@ -205,12 +208,14 @@ module.exports.spawnComputerUseService = async (executable) => {
         home,
         codex: context.codexCliPath,
         executable: "/canonical/helper",
+        nativePipe: computerUseNativePipePath(home),
       });
       assert.deepEqual(fs.readdirSync(home), ["observed.json"]);
     }),
   );
   assert.strictEqual(process.env.CODEX_HOME, inheritedHome);
   assert.strictEqual(process.env.CODEX_CLI_PATH, inheritedCli);
+  assert.strictEqual(process.env.SKY_CUA_SERVICE_NATIVE_PIPE_PATH, inheritedNativePipe);
 });
 
 /* oxlint-enable effecttsgo/async-function, effecttsgo/process-env */

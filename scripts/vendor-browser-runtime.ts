@@ -410,7 +410,9 @@ export function vendorBrowserRuntime(options: VendorBrowserRuntimeOptions): Brow
 
   const resourcesPath = path.join(appPath, "Contents", "Resources");
   const plistPath = path.join(appPath, "Contents", "Info.plist");
-  const codexPath = path.join(resourcesPath, "codex");
+  const codexPackagePath = path.join(resourcesPath, "codex-cli");
+  const codexExecutableRelativePath = "codex-cli/CodexCLI.app/Contents/MacOS/codex";
+  const codexPath = path.join(resourcesPath, ...codexExecutableRelativePath.split("/"));
   const cuaRoot = path.join(resourcesPath, "cua_node");
   const nodePath = path.join(cuaRoot, "bin", "node");
   const nodeReplPath = path.join(cuaRoot, "bin", "node_repl");
@@ -441,7 +443,6 @@ export function vendorBrowserRuntime(options: VendorBrowserRuntimeOptions): Brow
   );
   const computerUseAvailable =
     options.targetArch === "arm64" && fs.existsSync(computerUsePluginRoot);
-  const computerUseClientRelativePath = "bin/computer-use-client-launcher";
   const computerUseAppPath = path.join(
     cuaRoot,
     "lib",
@@ -485,14 +486,6 @@ export function vendorBrowserRuntime(options: VendorBrowserRuntimeOptions): Brow
   }
   assertArchitecture(chromeNativeHostPath, options.targetArch);
   if (computerUseAvailable) assertArchitecture(computerUseServicePath, options.targetArch);
-  if (
-    computerUseAvailable &&
-    !fs.existsSync(path.join(computerUsePluginRoot, ...computerUseClientRelativePath.split("/")))
-  ) {
-    throw new Error(
-      `Computer Use plugin is missing its launcher: ${computerUseClientRelativePath}`,
-    );
-  }
   assertPeerAddonLoads(nodePath, peerAddonPath);
   const skyNativeExports = readSkyNativeExports(nodePath, skyAddonPath);
   const chromeNativeHostMinimumMacos = readMachOMinimumMacosVersion(
@@ -550,7 +543,7 @@ export function vendorBrowserRuntime(options: VendorBrowserRuntimeOptions): Brow
   const preparedRoot = path.join(temporaryParent, path.basename(outputPath));
   fs.mkdirSync(preparedRoot);
   try {
-    copyTree(codexPath, path.join(preparedRoot, "bin", "codex"));
+    copyTree(codexPackagePath, path.join(preparedRoot, "codex-cli"));
     copyTree(nodePath, path.join(preparedRoot, "bin", "node"));
     copyTree(nodeReplPath, path.join(preparedRoot, "bin", "node_repl"));
     copyTree(
@@ -632,7 +625,6 @@ export function vendorBrowserRuntime(options: VendorBrowserRuntimeOptions): Brow
                 "CFBundleIdentifier",
               ),
               artifactMinimumMacOSVersion: "14.4",
-              client: `marketplace/plugins/computer-use/${computerUseClientRelativePath}`,
               ipcProtocol: "CodexComputerUseIPC-5",
               plugin: {
                 docs: "marketplace/plugins/computer-use/skills/computer-use/SKILL.md",
@@ -680,7 +672,7 @@ export function vendorBrowserRuntime(options: VendorBrowserRuntimeOptions): Brow
       desktopBuild,
       desktopBuildNumber,
       entrypoints: {
-        codexCli: "bin/codex",
+        codexCli: codexExecutableRelativePath,
         node: "bin/node",
         nodeRepl: "bin/node_repl",
         peerAuthorization: "native/browser-use-peer-authorization.node",

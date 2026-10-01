@@ -7,6 +7,7 @@ import {
   BROWSER_PLUGIN_NODE_MODULE_DIR,
   BROWSER_RUNTIME_BUNDLE_DIRECTORY,
   BROWSER_RUNTIME_MANIFEST_FILENAME,
+  BROWSER_RUNTIME_SCHEMA_VERSION,
 } from "../src/shared/browser-runtime-metadata";
 import { writeBrowserRuntimeFixture } from "../src/main/codex/browser-runtime-test-fixture";
 import { resolveBrowserRuntimeBundle } from "../src/main/codex/browser-runtime-bundle";
@@ -54,7 +55,7 @@ function testedPairsForSource(sourceRoot: string): readonly TestedBrowserAppServ
       }
     : sourceManifest;
   const manifestBytes =
-    sourceValue.schemaVersion === 5
+    sourceValue.schemaVersion === 5 || sourceValue.schemaVersion === 6
       ? sourceBytes
       : Buffer.from(`${JSON.stringify(manifest, null, 2)}\n`, "utf8");
   return [
@@ -130,7 +131,7 @@ describe("stageBrowserRuntime", () => {
     );
   });
 
-  test("preserves a published schema-v5 manifest identity while projecting schema v6", () => {
+  test.each([5, 6])("preserves a published schema-v%i manifest identity", (schemaVersion) => {
     const sourceRoot = makeRoot("nodex-browser-source-");
     const runtimeRoot = makeRoot("nodex-browser-destination-");
     writeBrowserRuntimeFixture(sourceRoot);
@@ -145,21 +146,23 @@ describe("stageBrowserRuntime", () => {
       supportedBackends: string[];
     };
     const computerUse = current.capabilities.computerUse;
-    current.schemaVersion = 5;
-    current.supportedBackends = ["iab"];
-    delete current.capabilities.browserUse;
-    current.capabilities.computerUse = {
-      ...computerUse,
-      ipcProtocol: "CodexComputerUseIPC-2",
-      minimumMacOSVersion: computerUse.artifactMinimumMacOSVersion,
-    };
-    delete current.capabilities.computerUse.artifactMinimumMacOSVersion;
-    delete current.capabilities.computerUse.productMinimumMacOSVersion;
-    current.capabilities.nativePip = {
-      addon: current.capabilities.nativePip.addon,
-      controlAssets: current.capabilities.nativePip.controlAssets,
-      minimumMacOSVersion: current.capabilities.nativePip.artifactMinimumMacOSVersion,
-    };
+    current.schemaVersion = schemaVersion;
+    if (schemaVersion === 5) {
+      current.supportedBackends = ["iab"];
+      delete current.capabilities.browserUse;
+      current.capabilities.computerUse = {
+        ...computerUse,
+        ipcProtocol: "CodexComputerUseIPC-2",
+        minimumMacOSVersion: computerUse.artifactMinimumMacOSVersion,
+      };
+      delete current.capabilities.computerUse.artifactMinimumMacOSVersion;
+      delete current.capabilities.computerUse.productMinimumMacOSVersion;
+      current.capabilities.nativePip = {
+        addon: current.capabilities.nativePip.addon,
+        controlAssets: current.capabilities.nativePip.controlAssets,
+        minimumMacOSVersion: current.capabilities.nativePip.artifactMinimumMacOSVersion,
+      };
+    }
     fs.writeFileSync(manifestPath, `${JSON.stringify(current, null, 2)}\n`);
     const sourceBytes = fs.readFileSync(manifestPath);
 
@@ -169,7 +172,7 @@ describe("stageBrowserRuntime", () => {
     );
 
     expect(activeBytes).toEqual(sourceBytes);
-    expect(staged.schemaVersion).toBe(6);
+    expect(staged.schemaVersion).toBe(BROWSER_RUNTIME_SCHEMA_VERSION);
     expect(staged.capabilities.computerUse).toMatchObject({
       ipcProtocol: "CodexComputerUseIPC-5",
       productMinimumMacOSVersion: "15.0",
