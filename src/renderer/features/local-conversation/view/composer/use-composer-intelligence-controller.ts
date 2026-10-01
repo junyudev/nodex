@@ -64,7 +64,7 @@ export function useComposerIntelligenceController(
   const [isOpen, setOpen] = useState(false);
   const [isPending, setPending] = useState(false);
   const desiredRef = useRef<ComposerIntelligenceSelection | null>(null);
-  const displayedSelectionRef = useRef(authoritativeSelection);
+  const selectedIntentRef = useRef(authoritativeSelection);
   const triggerElementRef = useRef<HTMLButtonElement | null>(null);
   const drainRef = useRef<Promise<void> | null>(null);
   const lastFailureRef = useRef<Error | null>(null);
@@ -105,7 +105,7 @@ export function useComposerIntelligenceController(
             if (scope !== scopeRef.current) return;
             if (desiredRef.current) continue;
             lastFailureRef.current = toError(error);
-            displayedSelectionRef.current = authoritativeRef.current;
+            selectedIntentRef.current = authoritativeRef.current;
             setOptimisticSelection(null);
             toast.danger(lastFailureRef.current.message);
             return;
@@ -128,7 +128,7 @@ export function useComposerIntelligenceController(
 
       lastFailureRef.current = null;
       desiredRef.current = selection;
-      displayedSelectionRef.current = selection;
+      selectedIntentRef.current = selection;
       setOptimisticSelection(selection);
       void drain();
     },
@@ -148,11 +148,15 @@ export function useComposerIntelligenceController(
     triggerElementRef.current = element;
   }, []);
 
-  const selection =
+  const selectedIntent =
     optimisticSelection?.kind === authoritativeSelection.kind
       ? optimisticSelection
       : authoritativeSelection;
-  displayedSelectionRef.current = selection;
+  selectedIntentRef.current = selectedIntent;
+  // Native controls and model capabilities arrive with the committed selection. Mixing them
+  // with a queued model can move open flyouts when that model's controls arrive later.
+  const selection =
+    authoritativeSelection.kind === "codex" ? selectedIntent : authoritativeSelection;
   useEffect(() => {
     if (!optimisticSelection || isPending) return;
     if (!areComposerIntelligenceSelectionsEqual(optimisticSelection, authoritativeSelection))
@@ -182,8 +186,8 @@ export function useComposerIntelligenceController(
     setOpen,
     open,
     flush,
-    getSelection: () => displayedSelectionRef.current,
-    turnOverrides: buildComposerIntelligenceTurnOverrides(selection),
+    getSelection: () => selectedIntentRef.current,
+    turnOverrides: buildComposerIntelligenceTurnOverrides(selectedIntent),
     triggerRef,
   };
 }

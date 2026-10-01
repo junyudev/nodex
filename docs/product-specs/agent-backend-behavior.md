@@ -111,7 +111,9 @@ the initial model; discovery identifies its concrete value before the first prom
 reports the failure without inventing model choices. Project or instance changes cannot reuse another
 scope's catalog. Live metadata distinguishes requested preferences from applied native settings.
 The menu shows the resolved model, effort and Speed state without inherited-default choices; an
-unobserved value remains unresolved. Profile custom models specify a concrete ID and explicit effort,
+unobserved value remains unresolved. Attached native model changes appear with their committed
+capabilities; queued selection intent remains available to the next prompt after its change completes.
+Profile custom models specify a concrete ID and explicit effort,
 Fast, adaptive thinking, thinking-disable and context traits. Nodex does not guess gateway capabilities
 from a model name.
 
