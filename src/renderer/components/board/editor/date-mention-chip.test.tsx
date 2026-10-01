@@ -108,6 +108,32 @@ describe("DateMentionInlineContentView", () => {
     expect(updateCount).toBe(0);
   });
 
+  test("restores the date on a time chip after local midnight without mutating payload", async () => {
+    const clock = installDateMentionClock("2026-10-01T16:53:00");
+    const onUpdate = vi.fn();
+    const view = renderDateMentionChip({
+      props: dateMentionPayloadToProps({
+        type: "dateMention",
+        start: "2026-10-01T16:53:00+08:00",
+        format: "relative",
+        timeFormat: "12h",
+      }),
+      onUpdate,
+    });
+
+    const chip = view.getByRole("button", { name: "@Oct 1, 2026 4:53 PM" });
+    expect(chip.textContent).toBe("@4:53 PM");
+
+    await act(async () => {
+      clock.setNow("2026-10-02T00:00:02");
+      clock.store.refresh();
+      await Promise.resolve();
+    });
+
+    expect(chip.textContent).toBe("@Yesterday 4:53 PM");
+    expect(onUpdate).not.toHaveBeenCalled();
+  });
+
   test("opens the date popover and updates payload when Include time is toggled", async () => {
     let update: DateMentionInlineContentUpdate | null = null;
     const view = renderDateMentionChip({
