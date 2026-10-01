@@ -9,8 +9,12 @@ const macOS = process.platform === "darwin";
 
 beforeAll(() => {
   if (!macOS) return;
-  execFileSync("vp", ["run", "dictation-helper:build:dev"], { stdio: "pipe" });
-});
+  // A cold Swift build needs its own preparation budget, separate from RPC deadlines.
+  execFileSync("vp", ["run", "dictation-helper:build:dev"], {
+    stdio: "pipe",
+    timeout: 55_000,
+  });
+}, 60_000);
 
 test.skipIf(!macOS)("replies to newline commands while its stdin pipe remains open", async () => {
   const child = spawn(helper, [], { stdio: ["pipe", "pipe", "pipe"] });

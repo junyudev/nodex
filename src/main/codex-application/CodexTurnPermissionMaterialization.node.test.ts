@@ -316,7 +316,7 @@ for (const [config, expected] of [
         {
           threadId,
           method: "config/read",
-          params: { cwd: "/workspace/selected", includeLayers: false },
+          params: { cwd: "/workspace/project", includeLayers: false },
           options: { priority: "critical" },
         },
       ]);
@@ -583,7 +583,7 @@ it.effect("does not turn a custom Project mode into permission-default intent", 
   }),
 );
 
-it.effect("retains captured cwd and roots while removing roots from another path family", () =>
+it.effect("uses the committed cwd and retains requested roots from the same path family", () =>
   Effect.gen(function* () {
     const plan = yield* prepare({
       originalRequest: {
@@ -594,8 +594,8 @@ it.effect("retains captured cwd and roots while removing roots from another path
         runtimeWorkspaceRoots: ["/workspace/captured", "C:\\unrelated"],
       },
     });
-    assert.strictEqual(plan.request.cwd, "/workspace/captured");
-    assert.strictEqual(plan.canonicalParams?.cwd, "/workspace/captured");
+    assert.strictEqual(plan.request.cwd, "/workspace/project");
+    assert.strictEqual(plan.canonicalParams?.cwd, "/workspace/project");
     assert.deepEqual(plan.request.runtimeWorkspaceRoots, [
       "/workspace/captured",
       "/workspace/project",
