@@ -183,6 +183,45 @@ describe("useComposerIntelligenceController", () => {
     expect(mocks.toastDanger).not.toHaveBeenCalled();
   });
 
+  test("presents native selection with committed controls while preserving queued submission intent", async () => {
+    const pending = deferred();
+    const nativeSelection = { ...AUTHORITATIVE_SELECTION, kind: "claude" as const, model: "opus" };
+    const nextSelection = { ...nativeSelection, model: "sonnet" };
+    const nativeModel = {
+      ...buildModel(),
+      selectedModel: nativeSelection.model,
+      provider: {
+        kind: "claude",
+        selection: "claude:local",
+        label: "Claude Code",
+        options: [],
+        select: () => {},
+        commands: [],
+        error: null,
+      },
+    } satisfies ThreadFooterModel;
+    const actions = {
+      onIntelligenceSelectionChange: vi.fn(() => pending.promise),
+    } as unknown as ThreadStageActions;
+    const hook = renderHook(({ model }) => useComposerIntelligenceController(model, actions), {
+      wrapper: provider,
+      initialProps: { model: nativeModel },
+    });
+
+    await act(async () => hook.result.current.select(nextSelection));
+    expect(hook.result.current.selection).toEqual(nativeSelection);
+    expect(hook.result.current.getSelection()).toEqual(nextSelection);
+    expect(hook.result.current.turnOverrides.model).toBe("sonnet");
+
+    hook.rerender({ model: { ...nativeModel, selectedModel: "sonnet" } });
+    await act(async () => {
+      pending.resolve();
+      await hook.result.current.flush();
+    });
+    expect(hook.result.current.selection).toEqual(nextSelection);
+    expect(hook.result.current.isPending).toBe(false);
+  });
+
   test("rolls back the final failed selection and makes flush report the failure", async () => {
     const actions = {
       onIntelligenceSelectionChange: vi.fn(async () => {
