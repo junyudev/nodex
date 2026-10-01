@@ -1,0 +1,21 @@
+tests/e2e/claude-thread-handoff.spec.ts
+  s_42d4908e8724c1::t_2e665c835696d9 189-209,389-395,397,399
+  s_42d4908e8724c1::t_2bdf895a1f37d6 400-401
+  s_42d4908e8724c1::t_95cf373b2a8a84 396,398
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "b651ca683bf7510b99dcb420ec42366f5449ccd3",
+  "prompts": {},
+  "sessions": {
+    "s_42d4908e8724c1": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a0f7ce-30b7-7042-a099-99c4199381ae",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    }
+  }
+}
