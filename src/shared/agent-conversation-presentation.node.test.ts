@@ -575,6 +575,76 @@ test("projects native image descriptors into opaque shared attachments while ret
   ]);
 });
 
+test.each(["running", "idle"] as const)(
+  "retains an image-only native user message while the session is %s",
+  (status) => {
+    const source = presentation("claude");
+    const snapshot = {
+      ...source.snapshot,
+      status,
+      turns: source.snapshot.turns.map((turn) => ({
+        ...turn,
+        promptText: "",
+        promptImages: [{ nativeMessageId: "native-image", index: 0, mediaType: "image/png" }],
+        updates: [],
+        stopReason: status === "idle" ? "end_turn" : null,
+      })),
+    };
+    const conversation = projectAgentConversation({ ...source, snapshot }, summary);
+
+    expect(conversation.turns).toHaveLength(1);
+    expect(conversation.turns[0]?.items).toHaveLength(1);
+    expect(conversation.turns[0]?.items[0]).toMatchObject({
+      kind: "userMessage",
+      markdownText: "",
+      userAttachments: [
+        {
+          type: "image",
+          source: "nodex-native-image:native-session/native-image/0",
+        },
+      ],
+    });
+  },
+);
+
+test("renders accepted native steering images as lazy attachments on the exact user record", () => {
+  const source = presentation("claude");
+  const steering = {
+    kind: "message" as const,
+    key: "input:steer",
+    role: "user" as const,
+    messageId: "steer",
+    text: "Follow up",
+    promptImages: [{ nativeMessageId: "steer", index: 0, mediaType: "image/png" }],
+  };
+  const rendered = projectAgentConversation(
+    {
+      ...source,
+      snapshot: {
+        ...source.snapshot,
+        turns: source.snapshot.turns.map((turn) => ({
+          ...turn,
+          updates: [...turn.updates, steering],
+        })),
+      },
+    },
+    summary,
+  );
+  const item = rendered.turns[0]?.items.find((value) => value.itemId === steering.key);
+  expect(item).toMatchObject({
+    role: "user",
+    markdownText: "Follow up",
+    status: "completed",
+    userAttachments: [
+      {
+        type: "image",
+        source: "nodex-native-image:native-session/steer/0",
+        sourceKind: "remote-pointer",
+      },
+    ],
+  });
+});
+
 test("keeps rendered turn identity stable when the native user UUID arrives", () => {
   const source = presentation("claude");
   const before = projectAgentConversation(source, summary);

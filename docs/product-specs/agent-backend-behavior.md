@@ -81,15 +81,21 @@ inputs; Nodex never imports existing Claude credentials into this store.
 
 User, project, and local settings, `CLAUDE.md`, skills, subagents, hooks, and configured MCP servers
 are loaded by Claude Code. The composer exposes the commands and skills advertised by the SDK.
+The skill picker includes inherited repository skills for nested execution directories and stops
+at the repository or worktree boundary. Claude's advertised commands decide which skills can run.
 Before the first prompt, Nodex discovers models from the selected instance's executable in the
-selected Project, with the same configuration directory, environment and native settings sources
+draft's selected Project. Attached chats discover from their saved Claude instance and execution
+directory, including connected native directories and managed worktrees. Main resolves those
+coordinates from the Thread; renderer requests cannot supply an execution directory. Discovery
+uses the same configuration directory, environment and native settings sources
 used for execution. Discovery sends no prompt, saves no Claude session, suppresses hooks, MCP and IDE
 integration, and releases its process after initialization. Its bounded cache includes the resolved
-profile configuration and Project. Profile, configuration and Project changes refresh it
+profile configuration and execution directory. Profile, configuration and scope changes refresh it
 automatically. Visible catalogs revalidate on expiry; returning to the app revalidates an expired
 catalog, and transient failures use bounded retry backoff. A failed refresh retains the previous
 catalog for that same scope. The model menu has no manual refresh action. Changing scope or closing
-the consumer cancels its request and releases its process. At most two discovery processes run
+the consumer cancels its request and releases its process. Execution moves refresh the attached
+catalog, and results from a changed or unavailable Thread are discarded. At most two discovery processes run
 concurrently. An executable/version check does not claim authentication succeeded.
 
 `Force reload skills` refreshes the selected conversation provider's advertised
@@ -188,7 +194,11 @@ guard. Fork creates a separate native conversation and Nodex task in the source 
 retaining its managed worktree and allowed workspace roots; native UUID remapping preserves
 matching terminal facts. Editing the last user turn rolls it back before submitting its replacement;
 editing the only turn starts a fresh unsaved native identity. Steering and compaction use native
-controls. Read-only task details remain observations rather than durable Codex Threads.
+controls. Every accepted steering message remains visible, including images, whether Claude folds
+it into the running Turn or consumes it in a later Turn. Native echoes reconcile the same user
+record. Turn settlement always revokes its admitted application authority independently of the
+native result's consumed-message echoes. Read-only task details remain observations rather than
+durable Codex Threads.
 
 Diagnostics expose native health, account, agents and MCP status. An explicit title action uses a
 bounded auxiliary Query with tools, hooks, MCP and persistence disabled; ordinary sends do not run a

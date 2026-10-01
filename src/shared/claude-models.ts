@@ -139,6 +139,21 @@ export interface ClaudeModelCatalogInput {
   readonly projectId: string | null;
 }
 
+/** Drafts discover their selected Project; attached chats discover their saved execution location. */
+export type ClaudeDiscoveryScope =
+  | {
+      readonly kind: "project";
+      readonly instanceConfigId: string;
+      readonly projectId: string | null;
+    }
+  | { readonly kind: "thread"; readonly threadId: string };
+
+export interface ClaudeDiscoveryInput {
+  readonly scope: ClaudeDiscoveryScope;
+  readonly requestId?: string;
+  readonly forceReload?: boolean;
+}
+
 /** Versioned Claude IDs have a readable label; gateway IDs remain opaque. */
 export function claudeModelName(id: string): string {
   const match = /^claude-([a-z]+)-(\d+)(?:-(\d{1,2}))?(?:-\d{8})?(\[.*\])?$/u.exec(id);

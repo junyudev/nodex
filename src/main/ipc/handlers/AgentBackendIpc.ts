@@ -52,6 +52,18 @@ const ClaudeModelsInput = z
     forceReload: z.boolean().optional(),
   })
   .strict();
+const ClaudeDiscoveryInput = z
+  .object({
+    scope: z.discriminatedUnion("kind", [
+      z
+        .object({ kind: z.literal("project"), instanceConfigId: id, projectId: id.nullable() })
+        .strict(),
+      z.object({ kind: z.literal("thread"), threadId: id }).strict(),
+    ]),
+    requestId: z.string().refine(isUuidV7).optional(),
+    forceReload: z.boolean().optional(),
+  })
+  .strict();
 const Selection = z
   .object({
     model: id,
@@ -328,7 +340,7 @@ export const live: Layer.Layer<
       ),
     );
     yield* ipc.handleQuery("agent-backend:claude:discover", (event, input) =>
-      handle(event, "claude.discover", ClaudeModelsInput, input, (parsed) =>
+      handle(event, "claude.discover", ClaudeDiscoveryInput, input, (parsed) =>
         discoveryRequests.run(
           event.sender.id,
           parsed.requestId ?? createUuidV7(),

@@ -60,8 +60,9 @@ export function AutomationIntelligenceDropdown({
   const selectedInstance =
     draft.backendBinding.kind === "claude" ? draft.backendBinding.instanceConfigId : null;
   const catalog = useClaudeModelCatalog(
-    draft.kind === "cron" ? selectedInstance : null,
-    draft.projectId,
+    draft.kind === "cron" && selectedInstance
+      ? { kind: "project", instanceConfigId: selectedInstance, projectId: draft.projectId }
+      : null,
   );
   const intelligence = resolveNativeIntelligenceSelection(
     {

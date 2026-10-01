@@ -11,6 +11,8 @@ import {
 } from "../AgentConversationProjection";
 import {
   createClaudeMessageProjection,
+  beginClaudeAcceptedInputTurn,
+  projectClaudeAcceptedInput,
   prependAgentHistory,
   projectClaudeHistory,
 } from "./ClaudeConversationProjection";
@@ -43,6 +45,99 @@ const toolResult = (id: string, content: unknown, output?: unknown) =>
     message: { content: [{ type: "tool_result", tool_use_id: id, content }] },
     tool_use_result: output,
   });
+
+it("moves each queued steering record into its consumed Turn without merging or duplicating inputs", () => {
+  const inputs = [
+    { messageId: "steer-a", text: "First steering" },
+    {
+      messageId: "steer-b",
+      text: "Second steering",
+      images: [{ nativeMessageId: "steer-b", index: 0, mediaType: "image/png" }],
+    },
+  ];
+  const accepted = inputs.reduce(
+    (snapshot, input) => projectClaudeAcceptedInput(snapshot, 1, input),
+    initial(),
+  );
+  const continued = beginClaudeAcceptedInputTurn(accepted, 2, inputs);
+  expect(continued.turns[0]?.updates).toEqual([]);
+  expect(continued.turns[1]).toMatchObject({
+    clientUserMessageId: "steer-a",
+    promptText: "First steering",
+    updates: [
+      {
+        role: "user",
+        messageId: "steer-b",
+        text: "Second steering",
+      },
+    ],
+  });
+});
+
+it("retains an already acknowledged steering image when its queued input becomes a Turn", () => {
+  const input = {
+    messageId: "image-steer",
+    text: "",
+    images: [{ nativeMessageId: "image-steer", index: 0, mediaType: "image/png" }],
+  };
+  const accepted = projectClaudeAcceptedInput(initial(), 1, input);
+  const echoed = createClaudeMessageProjection()(
+    accepted,
+    event({
+      type: "user",
+      uuid: input.messageId,
+      isReplay: true,
+      parent_tool_use_id: null,
+      message: {
+        content: [{ type: "image", source: { type: "base64", media_type: "image/png" } }],
+      },
+    }),
+    1,
+  );
+  const continued = beginClaudeAcceptedInputTurn(echoed, 2, [input]);
+  expect(continued.turns[0]?.updates).toEqual([]);
+  expect(continued.turns[1]).toMatchObject({
+    clientUserMessageId: input.messageId,
+    nativeUserMessageId: input.messageId,
+    promptImages: input.images,
+  });
+});
+
+it("reconciles a later replay echo in its steering record's owning Turn", () => {
+  const accepted = projectClaudeAcceptedInput(initial(), 1, {
+    messageId: "steer",
+    text: "Follow up",
+    images: [{ nativeMessageId: "steer", index: 0, mediaType: "image/png" }],
+  });
+  const later = beginAgentConversationTurn(accepted, 2, "Later prompt", "later");
+  const project = createClaudeMessageProjection();
+  const echoed = project(
+    later,
+    event({
+      type: "user",
+      uuid: "steer",
+      isReplay: true,
+      parent_tool_use_id: null,
+      message: {
+        content: [
+          { type: "image", source: { type: "base64", media_type: "image/png" } },
+          { type: "text", text: "Follow up" },
+        ],
+      },
+    }),
+    2,
+  );
+  expect(echoed.turns[0]?.updates).toEqual([
+    expect.objectContaining({
+      key: "input:steer",
+      role: "user",
+      text: "Follow up",
+      recordIds: ["steer"],
+      promptImages: [{ nativeMessageId: "steer", index: 0, mediaType: "image/png" }],
+    }),
+  ]);
+  expect(echoed.turns[1]).toEqual(later.turns[1]);
+});
 
 it("joins per-block final records to their stream indexes without overwriting thinking or duplicating text", () => {
   const project = createClaudeMessageProjection();

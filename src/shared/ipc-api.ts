@@ -29,7 +29,7 @@ import type {
   WorkbenchWindowReference,
 } from "./nodex-app-tools/workbench";
 import type { DictationTextResult } from "./dictation-diagnostics";
-import type { ClaudeModelCatalogInput } from "./claude-models";
+import type { ClaudeDiscoveryInput, ClaudeModelCatalogInput } from "./claude-models";
 import type { AgentSessionConfigSelectOption } from "./agent-conversation";
 import type { ReadFileBytesInput, SaveFileInput } from "./library-files";
 import type { ThreadBackgroundTerminal } from "@nodex/codex-app-server-protocol/v2/ThreadBackgroundTerminal";
@@ -1311,7 +1311,7 @@ export interface IpcApi {
     result: readonly AgentSessionConfigSelectOption[];
   };
   "agent-backend:claude:discover": {
-    args: [input: ClaudeModelCatalogInput];
+    args: [input: ClaudeDiscoveryInput];
     result: import("./claude-models").ClaudeDiscovery;
   };
   "agent-backend:permission-mode:get": {

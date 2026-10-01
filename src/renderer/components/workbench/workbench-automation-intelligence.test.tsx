@@ -80,7 +80,11 @@ test("scheduled tasks select the exact enabled Claude profile, concrete model an
     serviceTier: "",
     localEnvironmentConfigPath: "",
   });
-  expect(discovery).toHaveBeenLastCalledWith("gateway", "project");
+  expect(discovery).toHaveBeenLastCalledWith({
+    kind: "project",
+    instanceConfigId: "gateway",
+    projectId: "project",
+  });
   expect(body.queryByLabelText(/Speed /u)).toBeNull();
   await click(await body.findByLabelText("Model Gateway Sonnet"));
   await click(await body.findByRole("menuitem", { name: /Gateway Sonnet\s*vendor-sonnet/u }));

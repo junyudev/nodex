@@ -764,12 +764,13 @@ function ConnectedSessionThread(props: ConnectedSessionThreadProps) {
   const [selectedNewThreadProjectId, setSelectedNewThreadProjectId] = useState<string | null>(
     props.session.projectId,
   );
-  const modelProjectId =
+  const draftModelProjectId =
     selectedNewThreadProjectId === null
       ? null
       : (props.projects.find(({ id }) => id === selectedNewThreadProjectId)?.id ??
         props.project?.id ??
         null);
+  const modelProjectId = thread ? props.session.projectId : draftModelProjectId;
   const adapter = useAgentConversationAdapter({
     binding,
     summary: thread ? projectSessionThreadLinkToSummary(thread) : null,

@@ -132,6 +132,7 @@ export type AgentCanonicalSessionUpdate = AgentCanonicalUpdateIdentity &
         readonly role: "user" | "agent" | "thought" | "compaction";
         readonly messageId: string | null;
         readonly text: string;
+        readonly promptImages?: readonly import("./agent-history-images").AgentPromptImageDescriptor[];
       }
     | {
         readonly kind: "tool-call";

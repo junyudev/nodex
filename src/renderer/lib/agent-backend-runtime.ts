@@ -13,7 +13,7 @@ import type {
   NativePermissionMode,
 } from "../../shared/agent-backend-api";
 import type { IpcApi } from "../../shared/ipc-api";
-import type { ClaudeModelCatalogInput } from "../../shared/claude-models";
+import type { ClaudeDiscoveryInput, ClaudeModelCatalogInput } from "../../shared/claude-models";
 import { createUuidV7 } from "../../shared/uuid-v7";
 import {
   defineRendererCommand,
@@ -150,7 +150,7 @@ export interface AgentBackendRuntime {
     mode: NativePermissionMode,
   ) => Promise<NativePermissionMode>;
   readonly claudeDiscovery: (
-    input: ClaudeModelCatalogInput,
+    input: ClaudeDiscoveryInput,
     signal?: AbortSignal,
   ) => Promise<IpcApi["agent-backend:claude:discover"]["result"]>;
   readonly inspect: (

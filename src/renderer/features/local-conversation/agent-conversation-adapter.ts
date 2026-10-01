@@ -252,9 +252,18 @@ export function useAgentConversationAdapter(input: {
     binding?.kind,
     binding?.instanceConfigId,
   ]);
+  const claudeInstanceConfigId = binding?.kind === "claude" ? binding.instanceConfigId : null;
   const claudeCatalog = useClaudeModelCatalog(
-    binding?.kind === "claude" ? binding.instanceConfigId : null,
-    input.modelProjectId,
+    binding?.kind === "claude" && summary
+      ? { kind: "thread", threadId: summary.threadId }
+      : claudeInstanceConfigId
+        ? {
+            kind: "project",
+            instanceConfigId: claudeInstanceConfigId,
+            projectId: input.modelProjectId,
+          }
+        : null,
+    { observedExecutionLocation: summary?.cwd ?? null },
   );
   const draft = useSyncExternalStore(
     (listener) => nativeAgentDraftOwner.subscribe(draftKey, listener),
