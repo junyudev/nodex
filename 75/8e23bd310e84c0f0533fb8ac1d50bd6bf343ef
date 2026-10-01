@@ -1,0 +1,77 @@
+src/renderer/features/dictation/dictation-session-controller.test.tsx
+  s_e226c998562446::t_a7eac477ed4f3f 685-688,702-729
+  s_e226c998562446::t_f0e29d2f3de0ae 730
+tests/fixtures/dictation-streaming/electron-main.ts
+  s_e226c998562446::t_c1c7db8bad513f 51-52,54-55,58-66
+docs/product-specs/dictation-behavior.md
+  s_e226c998562446::t_91e08ae2fa0225 50,90,93
+tests/fixtures/dictation-streaming/renderer.ts
+  s_e226c998562446::t_c1c7db8bad513f 8-16
+src/shared/dictation-diagnostics.ts
+  s_e226c998562446::t_4511a655080ef1 26,52
+src/shared/dictation-diagnostics.test.ts
+  s_e226c998562446::t_a7eac477ed4f3f 44-47,65
+  s_e226c998562446::t_f2b2ce63801ae7 48-64
+  s_e226c998562446::t_6f885d33a4916f 43
+src/renderer/features/local-conversation/view/composer/use-composer-dictation.ts
+  s_e226c998562446::t_4511a655080ef1 9,73,172,274,298,377
+src/renderer/features/dictation/dictation-performance-details.tsx
+  s_e226c998562446::t_4511a655080ef1 198-200
+src/main/dictation/global-dictation-manager.ts
+  s_e226c998562446::t_4867b1793ef325 376-379
+  s_e226c998562446::t_82569b8c554041 128-132,374-375,380,513-517,792-793,796-799,960-971,984-985,991-992,1035,1037,1045-1050
+src/renderer/features/dictation/dictation-performance-details.test.tsx
+  s_e226c998562446::t_f2b2ce63801ae7 75-79,88-90
+  s_e226c998562446::t_a7eac477ed4f3f 5,72-74,80-87,91
+  s_e226c998562446::t_3494672038de2d 92
+src/main/dictation/dictation-streaming.integration.ts
+  s_e226c998562446::t_cc299d7656e81e 232-236,344-346
+  s_e226c998562446::t_c1c7db8bad513f 212,216-231,264
+  s_e226c998562446::t_dc54040cbed421 213-215
+src/renderer/features/dictation/dictation-stream-connection.ts
+  s_e226c998562446::t_86d34053dd5423 16-24,195-198
+  s_e226c998562446::t_0aa53b4838c19e 102,146-148,188-194,199-207
+  s_e226c998562446::t_a9ed8f439c8ad6 208-209
+src/renderer/features/dictation/dictation-session-controller.ts
+  s_e226c998562446::t_f2b2ce63801ae7 246
+  s_e226c998562446::t_4511a655080ef1 9,27,201,236-245,247-249,298,319,392,505,961
+src/renderer/features/dictation/dictation-stream-connection.test.ts
+  s_e226c998562446::t_1a0812046fd0f0 109-121
+  s_e226c998562446::t_91d65d29cf4195 2,10,17,173-206,209-242,304,326,346,361
+  s_e226c998562446::t_86d34053dd5423 207-208,305-307,345,390-391
+  s_e226c998562446::t_0913acc4da4021 308-325,327-344,347-360,362-389
+  s_e226c998562446::t_ab65af04532ddd 104-108,122
+src/renderer/features/local-conversation/view/composer/local-conversation-thread-composer.tsx
+  s_e226c998562446::t_4511a655080ef1 2553
+src/preload/global-dictation.ts
+  s_e226c998562446::t_c34b3f79d00d01 8,23-24,39
+src/renderer/features/dictation/global-dictation-page.tsx
+  s_e226c998562446::t_4511a655080ef1 518
+src/main/dictation/global-dictation-manager.test.ts
+  s_e226c998562446::t_1e3d00826c377d 10-14,62-67,76-77,132-135
+  s_e226c998562446::t_91aeb6b6bd7afa 193-205,1142-1145,1150-1156,1158-1159,1164-1184,1188-1189,1196,1200-1208,1213-1220,1234-1242,1248-1250
+  s_e226c998562446::t_4867b1793ef325 78-80,1146-1149,1160-1163,1185-1187,1190-1195,1197-1199,1209-1212,1221-1233,1243-1247
+  s_e226c998562446::t_6bea7ef6ea99b2 1157
+  s_e226c998562446::t_497c7c948547c7 1251
+src/renderer/features/dictation/global-dictation-page.test.tsx
+  s_e226c998562446::t_114c7351945c6b 2,6-14,16-17,102-170,185-249,255-286
+  s_e226c998562446::t_2a973c5625ff8f 171-184,250-254
+src/renderer/features/dictation/dictation-websocket-client.ts
+  s_e226c998562446::t_86d34053dd5423 11,115
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "758e23bd310e84c0f0533fb8ac1d50bd6bf343ef",
+  "prompts": {},
+  "sessions": {
+    "s_e226c998562446": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a0f5f4-b242-7d00-bc82-f6354923bf6e",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    }
+  }
+}
