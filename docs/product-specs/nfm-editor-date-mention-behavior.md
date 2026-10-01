@@ -1,7 +1,7 @@
 # NFM Editor Date Mention Behavior
 
 Status: Active
-Last Updated: 2026-07-02
+Last Updated: 2026-10-01
 
 ## Summary
 
@@ -33,6 +33,7 @@ Date mentions are inline rich-editor tokens for planning text. They are stored i
 - Editable Card Stage, Toggle List, projected inline editors, read-only NFM previews, and static NFM renderers all understand `dateMention` inline content.
 - The inline token is atomic and `contentEditable=false`.
 - The chip is text-level, not a filled pill: it inherits body text color, renders a muted `@` prefix, the formatted label, and an optional reminder icon.
+- Relative datetime labels omit `Today` when their date is the current local date, displaying `@4:53 PM` or `@16:53` according to the time format. Date-only labels keep `@Today`; other dates and explicit date formats retain their date labels. The same rule applies to each endpoint of a datetime range.
 - Pending inline reminders use the blue chart token; overdue inline reminders use the red/error token.
 - Relative date labels and inline reminder tones are renderer-time display state. Mounted editor, preview, and static renderer surfaces refresh them as local time crosses date/minute boundaries without changing the underlying NFM payload.
 - Plain-text serialization emits deterministic labels such as `@Jun 28, 2026`, never time-dependent labels such as `@Today`.

@@ -329,30 +329,21 @@ export function formatDateMentionLabel(
   input: NfmDateMentionInlineContent,
   options: DateMentionFormatOptions = {},
 ): string {
-  const locale = options.locale ?? "en-US";
   const normalized = normalizeDateMention(input);
   if (!normalized) return "Date";
 
   const startParts = parseDateMentionValue(normalized.start);
   if (!startParts) return "Date";
 
-  const startDate = formatDatePart(startParts.date, normalized.format, options);
-  const startTime = startParts.time
-    ? formatTimePart(startParts.time, normalized.timeFormat, locale)
-    : "";
-
-  if (!normalized.end) {
-    return [startDate, startTime].filter(Boolean).join(" ");
-  }
+  const formatOptions = { ...options, now: options.now ?? new Date() };
+  const startLabel = formatDateMentionEndpoint(startParts, normalized, formatOptions);
+  if (!normalized.end) return startLabel;
 
   const endParts = parseDateMentionValue(normalized.end);
-  if (!endParts) return [startDate, startTime].filter(Boolean).join(" ");
+  if (!endParts) return startLabel;
 
-  const endDate = formatDatePart(endParts.date, normalized.format, options);
-  const endTime = endParts.time ? formatTimePart(endParts.time, normalized.timeFormat, locale) : "";
-  const startLabel = [startDate, startTime].filter(Boolean).join(" ");
-  const endLabel = [endDate, endTime].filter(Boolean).join(" ");
-  return [startLabel, endLabel].filter(Boolean).join(" → ");
+  const endLabel = formatDateMentionEndpoint(endParts, normalized, formatOptions);
+  return `${startLabel} → ${endLabel}`;
 }
 
 export function buildDateMentionQueryMatches(
@@ -525,6 +516,22 @@ function parseIsoDate(value: string | undefined): Date | null {
     return null;
   }
   return date;
+}
+
+function formatDateMentionEndpoint(
+  value: ParsedDateMentionValue,
+  payload: NfmDateMentionInlineContent,
+  options: DateMentionFormatOptions,
+): string {
+  const dateLabel = formatDatePart(value.date, payload.format, options);
+  if (!value.time) return dateLabel;
+
+  const timeLabel = formatTimePart(value.time, payload.timeFormat, options.locale ?? "en-US");
+  const isRelative =
+    (!payload.format || payload.format === "relative") && options.relative !== false;
+  if (isRelative && value.date === todayIsoDate(options.now)) return timeLabel;
+
+  return `${dateLabel} ${timeLabel}`;
 }
 
 function formatDatePart(
