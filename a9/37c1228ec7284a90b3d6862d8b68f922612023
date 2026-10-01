@@ -1,0 +1,57 @@
+src/main/codex/computer-use-runtime-config.ts
+  s_cd600c040dad22::t_8e2cf69f370ef4 1,38-42
+  s_cd600c040dad22::t_7b5cc5c06aea7b 43
+src/main/codex/browser-use-thread-config.test.ts
+  s_cd600c040dad22::t_8e2cf69f370ef4 17,219
+src/main/platform/electron/ComputerUseHostPlatform.test.ts
+  s_cd600c040dad22::t_8e2cf69f370ef4 14,185,193,211,218
+resources/browser-runtime/README.md
+  s_cd600c040dad22::t_9b6ccbf9d08f6c 20-23,26
+  s_cd600c040dad22::t_8e2cf69f370ef4 24-25
+src/main/codex/computer-use-runtime-config.test.ts
+  s_cd600c040dad22::t_8e2cf69f370ef4 7,26-31,35-36
+  s_cd600c040dad22::t_37740755dfe44c 32-34
+src/shared/browser-runtime-metadata.test.ts
+  s_cd600c040dad22::t_58bcd9f15c4d95 292,297-299,304,329
+src/main/codex/bundled-desktop-tool-marketplace.test.ts
+  s_cd600c040dad22::t_48e5b04e569352 73,108,110-112,114,150
+scripts/vendor-browser-runtime.ts
+  s_cd600c040dad22::t_9ab1983bfbfe90 413-415,546,675
+scripts/probe-browser-runtime.ts
+  s_cd600c040dad22::t_58bcd9f15c4d95 231,248,250,530,546
+  s_cd600c040dad22::t_8e2cf69f370ef4 559-565
+scripts/stage-browser-runtime.ts
+  s_cd600c040dad22::t_9ab1983bfbfe90 164,168-169
+src/main/codex/browser-runtime-test-fixture.ts
+  s_cd600c040dad22::t_48e5b04e569352 297
+src/main/codex/browser-use-thread-config.ts
+  s_cd600c040dad22::t_8e2cf69f370ef4 12,131
+src/main/codex/bundled-desktop-tool-marketplace.ts
+  s_cd600c040dad22::t_48e5b04e569352 8
+scripts/stage-browser-runtime.test.ts
+  s_cd600c040dad22::t_7f55083a5ee3a8 58
+  s_cd600c040dad22::t_9b6ccbf9d08f6c 10,134,149-165,175
+src/main/platform/electron/ComputerUseHostPlatform.ts
+  s_cd600c040dad22::t_8e2cf69f370ef4 15,347-348,373
+src/shared/browser-runtime-metadata.ts
+  s_cd600c040dad22::t_9ab1983bfbfe90 3,5,479,637-638,762-763
+scripts/audit-version-surfaces.ts
+  s_cd600c040dad22::t_9b6ccbf9d08f6c 528-532
+  s_cd600c040dad22::t_0f6f2183dece2f 527
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "a937c1228ec7284a90b3d6862d8b68f922612023",
+  "prompts": {},
+  "sessions": {
+    "s_cd600c040dad22": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a0f7d2-94af-73b3-ba71-015f432e0fc0",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    }
+  }
+}
