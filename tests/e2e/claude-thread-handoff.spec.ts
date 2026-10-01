@@ -186,24 +186,27 @@ test("moves an attached Claude chat with its uncommitted files and native histor
       });
       await dialog.getByRole("button", { name: title, exact: true }).click();
       await expect
-        .poll(async () => {
-          const snapshot = (await invokeIpc(
-            page,
-            "codex:thread-handoffs:list",
-          )) as CodexThreadHandoffSnapshot;
-          const operation = snapshot.operations
-            .filter(
-              (entry) =>
-                entry.sourceThreadId === threadId && !previousOperations.has(entry.operationId),
-            )
-            .at(-1);
-          if (operation?.status === "error" && !rejected)
-            throw new Error(operation.message ?? "Thread handoff failed");
-          return operation?.direction ===
-            (destination === "worktree" ? "local-to-worktree" : "worktree-to-local")
-            ? operation.status
-            : null;
-        })
+        .poll(
+          async () => {
+            const snapshot = (await invokeIpc(
+              page,
+              "codex:thread-handoffs:list",
+            )) as CodexThreadHandoffSnapshot;
+            const operation = snapshot.operations
+              .filter(
+                (entry) =>
+                  entry.sourceThreadId === threadId && !previousOperations.has(entry.operationId),
+              )
+              .at(-1);
+            if (operation?.status === "error" && !rejected)
+              throw new Error(operation.message ?? "Thread handoff failed");
+            return operation?.direction ===
+              (destination === "worktree" ? "local-to-worktree" : "worktree-to-local")
+              ? operation.status
+              : null;
+          },
+          { timeout: 30_000, intervals: [100, 250, 500], message: `${title} terminal state` },
+        )
         .toBe(rejected ? "error" : "success");
       if (rejected) {
         const operation = (
@@ -383,6 +386,19 @@ test("moves an attached Claude chat with its uncommitted files and native histor
       contentType: "text/plain",
     });
     if (threadId) {
+      const handoffs = await invokeIpc(harness.page, "codex:thread-handoffs:list").catch(
+        (cause: unknown) => String(cause),
+      );
+      await test.info().attach("handoff-operation", {
+        body: JSON.stringify(
+          typeof handoffs === "string"
+            ? handoffs
+            : ((handoffs as CodexThreadHandoffSnapshot).operations
+                .filter((operation) => operation.sourceThreadId === threadId)
+                .at(-1) ?? null),
+        ),
+        contentType: "application/json",
+      });
       const diagnostic = await invokeIpc(
         harness.page,
         "agent-backend:session:read",
