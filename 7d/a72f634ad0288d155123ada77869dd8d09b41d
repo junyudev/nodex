@@ -1,0 +1,19 @@
+src/main/codex-runtime/CodexEndpoint.ts
+  s_42d4908e8724c1::t_00e2efa49ea25e 177-179
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "7da72f634ad0288d155123ada77869dd8d09b41d",
+  "prompts": {},
+  "sessions": {
+    "s_42d4908e8724c1": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a0f7ce-30b7-7042-a099-99c4199381ae",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    }
+  }
+}
