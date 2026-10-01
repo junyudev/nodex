@@ -1,0 +1,97 @@
+src/main/dictation-transcription-input.test.ts
+  s_e226c998562446::t_58c85b4a410c4a 43-54
+src/renderer/features/dictation/dictation-performance-details.test.tsx
+  s_e226c998562446::t_3ceb114f7c718a 62-70
+src/main/dictation-transcription-input.ts
+  s_e226c998562446::t_58c85b4a410c4a 1,11-12,16
+src/shared/ipc-endpoint-policy.ts
+  s_e226c998562446::t_b010edbe941462 479
+src/shared/dictation-history.test.ts
+  s_e226c998562446::t_928e7d02b78475 82-88
+  s_e226c998562446::t_b010edbe941462 71-81,89-93
+src/main/dictation/dictation-recording-store.test.ts
+  s_e226c998562446::t_625041d4d4301b 102-104,106-108,115-117,121-124,139-143,148-154
+  s_e226c998562446::t_cc2f6f73740314 7,27,80-95,99-101,105,109-113,118-120,125-138,144-147,155-157
+  s_e226c998562446::t_cff8e73f927289 3,21-25,114
+  s_e226c998562446::t_147d0dbceafcce 96-98
+src/main/dictation/dictation-file-import.test.ts
+  s_e226c998562446::t_cc78f7a6e15da9 1-9,12-45,50-64,68,72-82,86-87
+  s_e226c998562446::t_625041d4d4301b 10-11,46-49,65-67,69-71,83-85
+docs/product-specs/dictation-behavior.md
+  s_e226c998562446::t_3ceb114f7c718a 85
+  s_e226c998562446::t_58c85b4a410c4a 5,65,77
+  s_e226c998562446::t_58242398f3c74f 78
+src/renderer/lib/api.ts
+  s_e226c998562446::t_b010edbe941462 242-249,440-441
+  s_e226c998562446::t_f14b85a2582fba 442-443
+src/main/host-runtime/DictationRuntime.ts
+  s_e226c998562446::t_ffda686e4e10d8 29,131-133,426-427
+src/main/dictation/dictation-file-import.ts
+  s_e226c998562446::t_191602c8639f0d 1-65,70-89,92-112
+  s_e226c998562446::t_625041d4d4301b 66-69,90-91
+tests/e2e/fixtures/dictation-policy-http.ts
+  s_e226c998562446::t_0546e0b5422003 13,15-19,100-102,105
+  s_e226c998562446::t_0d9ac9ebae1671 14,80
+src/shared/ipc-api.ts
+  s_e226c998562446::t_b010edbe941462 1964-1967
+src/shared/dictation-diagnostics.ts
+  s_e226c998562446::t_3ceb114f7c718a 102
+CHANGELOG.md
+  s_e226c998562446::t_58c85b4a410c4a 13
+src/main/dictation/dictation-recording-store.ts
+  s_e226c998562446::t_f99cdadd5691d0 19,30,55,215-251,257-285,435-441
+  s_e226c998562446::t_625041d4d4301b 252-256
+tests/e2e/dictation-file-transcription.spec.ts
+  s_e226c998562446::t_b259c7d4cbee74 154-158,165-167
+  s_e226c998562446::t_3e2c7916c2eeb7 180-181
+  s_e226c998562446::t_0d9ac9ebae1671 9-12,29-32,70,92-95,142,229
+  s_e226c998562446::t_2bc60984d12986 3,47-51,67,72,173-178,182,192,212,228
+  s_e226c998562446::t_be6c34bb7e62da 23-24,197-205,214-217,224-227,230-236,255-258
+  s_e226c998562446::t_0546e0b5422003 1-2,4-8,13-22,25-28,33-37,42-46,52-57,68-69,71,73-91,96-131,133-141,143-153,159-164,168-170,172,179,185,188-191,193-196,206-211,213,218-223,237-254,259-263
+  s_e226c998562446::t_634e571eaa8500 58-66,132,171,186-187
+  s_e226c998562446::t_cbd841adc2cc90 38-41,183-184
+src/renderer/features/dictation/voice-settings-page.tsx
+  s_e226c998562446::t_d48b22555e0437 397
+  s_e226c998562446::t_041e16038777e2 741-747
+  s_e226c998562446::t_58a1e137748983 35,46-47,178-179,216,231,239-240,340-361,367,377,380,384,387,391,394,399-400,407-430,432-435,440-441,447,452-453,460,735,771-780,796
+  s_e226c998562446::t_27746d3c4e6f9b 14,748-756
+  s_e226c998562446::t_e02a0449b69cd1 224,406,781
+  s_e226c998562446::t_3ceb114f7c718a 362-366,374,431
+src/main/ipc/handlers/DictationIpc.ts
+  s_e226c998562446::t_14611bc1af1098 11,34,137,462-483,489-499
+  s_e226c998562446::t_625041d4d4301b 484-488
+  s_e226c998562446::t_37936a0a6495f1 500
+src/renderer/features/dictation/voice-settings-page.test.tsx
+  s_e226c998562446::t_4ec6afe0a96ea4 147-156,399-446,448-451,458-461,463-464,469-474,490-506,508-518,524-591
+  s_e226c998562446::t_486668e440581f 289-290,323-325
+  s_e226c998562446::t_e8bc065da4053a 2,4,16,22-27,85,129-145,170-172,177-178,180-191,279-288,291-293,313-322,326-328,373,376-377
+  s_e226c998562446::t_3ceb114f7c718a 447,507,519-523
+  s_e226c998562446::t_d48b22555e0437 452-457,462,465-468,475-489
+  s_e226c998562446::t_b52f422dd452f3 146
+src/main/ipc/handlers/DictationIpc.test.ts
+  s_e226c998562446::t_6affe046c990c3 15-18,108-109,148
+  s_e226c998562446::t_db9a9e7bd63e0e 83,100
+  s_e226c998562446::t_147d0dbceafcce 9-14,57-59
+  s_e226c998562446::t_625041d4d4301b 19-22,41-56,60-82,84-99,101-107,110-147
+  s_e226c998562446::t_05ef852f07cdd3 149
+src/renderer/features/dictation/dictation-performance-details.tsx
+  s_e226c998562446::t_3ceb114f7c718a 36-42,174-178
+src/shared/dictation-history.ts
+  s_e226c998562446::t_b010edbe941462 25-31,57,63-69,80,86-92
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "0a642443137be7240d8401f3fef83fcf800045e4",
+  "prompts": {},
+  "sessions": {
+    "s_e226c998562446": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a0f5f4-b242-7d00-bc82-f6354923bf6e",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    }
+  }
+}
