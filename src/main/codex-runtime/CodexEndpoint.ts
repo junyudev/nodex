@@ -174,7 +174,9 @@ export const live = (
       const generation = yield* Ref.make(0);
       const admissionState = yield* SubscriptionRef.make<number | null>(null);
       const active = yield* Ref.make<Option.Option<ActiveSession>>(Option.none());
-      const restartWake = yield* Queue.unbounded<SnapshotPause | undefined>();
+      // Backpressure preserves snapshot leases while bounding queued restart commands.
+      const restartWake = yield* Queue.bounded<SnapshotPause | undefined>(1);
+      yield* Effect.addFinalizer(() => Queue.shutdown(restartWake));
       const snapshotAdmission = yield* makeCodexSnapshotAdmission();
       const supervisorStopped = yield* Deferred.make<void>();
       const endpointScope = yield* Effect.scope;
