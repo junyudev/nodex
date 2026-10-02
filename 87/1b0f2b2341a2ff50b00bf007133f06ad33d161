@@ -1,0 +1,867 @@
+src/shared/schemas/projects.test.ts
+  s_4e6817f2f1ffe7::t_4bda3980e16ff2 11-15,17-23
+  s_4e6817f2f1ffe7::t_e63b01fd2a96b8 10,16
+src/shared/schemas/workbench-layout.test.ts
+  s_4e6817f2f1ffe7::t_206c4cd3adbebd 417-423,428,449,474-476
+  s_4e6817f2f1ffe7::t_a6612498469fb4 18,437
+  s_4e6817f2f1ffe7::t_67fbd04cdb0d8b 27-33,35-49,52-62,64-67,453-455
+  s_a9e380c5124138::t_3677538e6d0f59 5-7,26,34,50-51,63,68-69
+src/shared/library.ts
+  s_4e6817f2f1ffe7::t_96f38fb93c557b 12
+crates/nodex-cli/src/view.rs
+  s_4e6817f2f1ffe7::t_c4bb049ad50157 24
+src/renderer/components/workbench/project-edit-dialog.tsx
+  s_4e6817f2f1ffe7::t_867349256fee65 238
+  s_4e6817f2f1ffe7::t_76d030c77865d4 336-338
+  s_4e6817f2f1ffe7::t_fe22a239e9c74d 447,456,468,478,505
+  s_4e6817f2f1ffe7::t_75dc4a575a81ce 10,29,39-41,52
+  s_a9e380c5124138::t_1aa2745344c5b5 219-232,234-237,239-290,299,303,312,316,322,324,328,330,332-335,339,343,353-365,368-379,381-385,387-396,415
+  s_4e6817f2f1ffe7::t_56cdea48ab69d2 233
+tests/e2e/support/editor-scenario.ts
+  s_4e6817f2f1ffe7::t_68c0e2212ea26b 25,257-263,271
+  s_4e6817f2f1ffe7::t_48dc257ddc6f19 12,171-175
+scripts/scenarios/scenarios/document-sync-recovery.ts
+  s_4e6817f2f1ffe7::t_82f1b97c8d9a63 17-21
+tests/e2e/database-settings.spec.ts
+  s_4e6817f2f1ffe7::t_892b67055cd0d7 31
+src/renderer/components/workbench/workbench-scene-panels.tsx
+  s_4e6817f2f1ffe7::t_abb9bf9223f241 100
+  s_4e6817f2f1ffe7::t_7974b7c377f0df 89
+tests/e2e/structural-interaction-latency.spec.ts
+  s_4e6817f2f1ffe7::t_892b67055cd0d7 372
+src/main/window-runtime/WindowRuntime.ts
+  s_4e6817f2f1ffe7::t_67fbd04cdb0d8b 186-188,642-644
+  s_4e6817f2f1ffe7::t_f20b6356d8993a 185
+CONTEXT.md
+  s_4e6817f2f1ffe7::t_071e1390a76048 18-20,23,215,265,411-421,425,473-477,495-496,591,608,683-685
+  s_4e6817f2f1ffe7::t_7567ceb03f9a7a 216-217,798-801
+  s_4e6817f2f1ffe7::t_76545666c3c943 658
+crates/nodex-core/src/library/resource_access.rs
+  s_4e6817f2f1ffe7::t_a1e940dd18ff6f 40,51
+  s_4e6817f2f1ffe7::t_75924cc1a71416 65,86,133-135,350,357,366
+src/main/project-application/ProjectLifecycleCommands.test.ts
+  s_4e6817f2f1ffe7::t_a1e940dd18ff6f 23
+src/renderer/features/local-conversation/view/connected-thread-stage.tsx
+  s_4e6817f2f1ffe7::t_512033122ae066 1148-1154
+  s_4e6817f2f1ffe7::t_67fbd04cdb0d8b 1161
+  s_4e6817f2f1ffe7::t_71bba62656b0b0 1006,1021,1129-1147,1155-1158
+tests/e2e/project-empty-scene.spec.ts
+  s_4e6817f2f1ffe7::t_4d8fc61ce75ac7 6,12-16,18-19,52,90-91
+  s_4e6817f2f1ffe7::t_21769c856316f4 38-39,48
+  s_4e6817f2f1ffe7::t_05f046efc42a9f 41-45
+  s_4e6817f2f1ffe7::t_016aeff55cf984 35
+  s_4e6817f2f1ffe7::t_9fe4e5e9e489f6 1-5,7-11,17,20-34,36-37,47,53-87,92-98,102-109
+  s_4e6817f2f1ffe7::t_951c85c7deb778 40,46,49-51,88-89,99-101
+src/main/project-application/ProjectWorkspace.node.test.ts
+  s_4e6817f2f1ffe7::t_2d0dda88617234 239,351,360
+  s_4e6817f2f1ffe7::t_358d8bec16ba8e 286-322
+  s_4e6817f2f1ffe7::t_ab018c53934729 34
+src/renderer/components/ui/menu-keyboard.browser.test.tsx
+  s_4e6817f2f1ffe7::t_c96c5b58e67785 35
+tests/e2e/page-relocation.spec.ts
+  s_4e6817f2f1ffe7::t_892b67055cd0d7 13
+src/renderer/components/board/page-create-destination-dialog.tsx
+  s_4e6817f2f1ffe7::t_3d470ea4c06e32 9,18,34-37,39-40,57,61-65
+  s_4e6817f2f1ffe7::t_e12ceabd9fee2a 80-81,83-84,86
+  s_4e6817f2f1ffe7::t_25db6aad314280 68,76,85,101
+  s_4e6817f2f1ffe7::t_2f0ed441e9b8e4 45-50,96-100,119-122,126-130
+  s_4e6817f2f1ffe7::t_5e829d18b49aea 53-55
+  s_4e6817f2f1ffe7::t_68c0e2212ea26b 3-8
+  s_4e6817f2f1ffe7::t_ea16bb5226df7c 70-75,82
+  s_4e6817f2f1ffe7::t_9520b0d9af63f1 1-2,10-17,20-23,25-33,41-42,44,51-52,56,58-60,66-67,69,77-79,87-95,102-118,123-125,131-133
+  s_4e6817f2f1ffe7::t_ecdeb3e2bfbc5d 38
+scripts/scenarios/scenarios/database-settings-configuration.ts
+  s_4e6817f2f1ffe7::t_82f1b97c8d9a63 644-648
+crates/nodex-core/src/library/agent_authorization.rs
+  s_4e6817f2f1ffe7::t_9e60b0f5d09353 1120,1134,1149-1159,1161,1415,1434-1438
+  s_4e6817f2f1ffe7::t_cc15ac92c6a986 1375-1380,1439,1457
+  s_a9e380c5124138::t_cbb94d34a2033e 809
+  s_a9e380c5124138::t_93949405f73054 1100-1102
+  s_4e6817f2f1ffe7::t_b8733429e983af 583-587,687,1085-1086,1106,1286,1440-1441,1443-1448,1453-1456
+src/main/window-session-state.test.ts
+  s_a9e380c5124138::t_3677538e6d0f59 539-540,548-551,578-584,590-591,595-598,639,687
+  s_4e6817f2f1ffe7::t_67fbd04cdb0d8b 541-547,552-577,585-589,592-594
+  s_4e6817f2f1ffe7::t_206c4cd3adbebd 92,125,127
+src/renderer/components/workbench/project-remove-dialog.test.tsx
+  s_4e6817f2f1ffe7::t_68c0e2212ea26b 10
+src/main/nodex-agent-application/NodexAgentApplication.ts
+  s_4e6817f2f1ffe7::t_8801aa80539cfe 292-297,299-312,314-325,327-328,388,390,405-420
+  s_4e6817f2f1ffe7::t_76d030c77865d4 35,313
+  s_4e6817f2f1ffe7::t_82f1b97c8d9a63 33-34,36-37,298
+  s_4e6817f2f1ffe7::t_91c64aa2f7be91 326,329,380-381,383,393-394,396,400-404,421,434
+src/renderer/components/board/editor/nfm-structural-editing-extension.node.test.ts
+  s_4e6817f2f1ffe7::t_2f0ed441e9b8e4 406-412
+src/main/ipc/handlers/ProjectWorkspaceIpc.test.ts
+  s_a9e380c5124138::t_0dd77444515ab2 45
+docs/adr/0043-database-scoped-page-keys.md
+  s_4e6817f2f1ffe7::t_d349666d73b4fa 4
+  s_4e6817f2f1ffe7::t_29ecb6e8a0ffa5 3
+src/renderer/lib/use-workbench-panel-command-router.ts
+  s_a9e380c5124138::t_3677538e6d0f59 553-554,559,572-573
+  s_4e6817f2f1ffe7::t_a6612498469fb4 424,440
+  s_4e6817f2f1ffe7::t_f2783a05213e8d 320,340,434
+  s_4e6817f2f1ffe7::t_67fbd04cdb0d8b 425,427-429,555-558
+  s_4e6817f2f1ffe7::t_a50e383be78544 314-318
+  s_4e6817f2f1ffe7::t_ce93eb5f936287 433,435-436
+crates/nodex-core/schema/migrations/v174_to_v175.sql
+  s_4e6817f2f1ffe7::t_dc1282f18ba6fc 1-213
+src/renderer/components/workbench/project-edit-dialog.test.tsx
+  s_4e6817f2f1ffe7::t_ab018c53934729 6,24,44-50,61,70,165,268,270-275,277,281,284,290-295,297,336-340,342,345-349,357-360,364,409,416-419
+  s_4e6817f2f1ffe7::t_4a6b04ef8f8604 52
+  s_4e6817f2f1ffe7::t_76d030c77865d4 301,315-323
+  s_4e6817f2f1ffe7::t_3976622005cb54 307-312,326-332
+  s_4e6817f2f1ffe7::t_22c75b9347ccf2 296,334
+src/renderer/components/library/library-resource-access-dialog.test.tsx
+  s_4e6817f2f1ffe7::t_2f0ed441e9b8e4 30-33
+  s_4e6817f2f1ffe7::t_227812b921754e 29,34-40
+  s_4e6817f2f1ffe7::t_8d2f6492480b49 104,120
+crates/nodex-core/src/query/mod.rs
+  s_4e6817f2f1ffe7::t_9a1d1531244966 132
+src/shared/schemas/window-session.ts
+  s_4e6817f2f1ffe7::t_67fbd04cdb0d8b 12-15
+  s_4e6817f2f1ffe7::t_544d6108ff43e6 64,81,105
+scripts/scenarios/scenarios/library-files.ts
+  s_4e6817f2f1ffe7::t_82f1b97c8d9a63 74-78
+src/renderer/lib/project-default-database.node.test.ts
+  s_4e6817f2f1ffe7::t_4a6b04ef8f8604 15-16,31-32
+  s_4e6817f2f1ffe7::t_251342e55ea3ba 1,3-4,6,8,10-14,17-19,21-22,24,27-30,33-42,44-51,53-56
+  s_4e6817f2f1ffe7::t_c5e9945b5fd071 20
+src/renderer/components/workbench/workbench-shell.panel-commands.test.tsx
+  s_4e6817f2f1ffe7::t_bbd19dfaebc649 79,88-100,107
+src/renderer/components/workbench/panel-destination-picker.test.tsx
+  s_a9e380c5124138::t_d1ef8a59547208 9-33,35-62,64-79,81-102,108-116
+  s_4e6817f2f1ffe7::t_f31ee28e9a33cb 1-4,8,130
+docs/FRONTEND.md
+  s_4e6817f2f1ffe7::t_a6dfa5224fe1f3 270
+src/shared/page-lifecycle-v2-runtime.test.ts
+  s_4e6817f2f1ffe7::t_03209fe47e15d5 207-209,216-217,223-229,250-251,266-267
+  s_4e6817f2f1ffe7::t_2f0ed441e9b8e4 210-215,218-222,230-249,252-265,272,300,313,437,480
+  s_4e6817f2f1ffe7::t_88fcf9ba400211 83,161
+crates/nodex-core/src/library/agent_page_create.rs
+  s_4e6817f2f1ffe7::t_3c22ff7ae3dd36 751
+src/renderer/components/library/library-resource-access-dialog.stories.tsx
+  s_4e6817f2f1ffe7::t_8d2f6492480b49 52,77
+src/main/rust-data-authority.integration.ts
+  s_4e6817f2f1ffe7::t_91c64aa2f7be91 1040
+  s_4e6817f2f1ffe7::t_7b3dd19ff7877d 1076,1088
+src/renderer/components/board/editor/nfm-text-action-menu.stories.tsx
+  s_4e6817f2f1ffe7::t_a1e940dd18ff6f 33
+src/renderer/components/workbench/removed-projects-dialog.test.tsx
+  s_4e6817f2f1ffe7::t_68c0e2212ea26b 13
+src/renderer/components/workbench/workbench-session-shell.stories.tsx
+  s_4e6817f2f1ffe7::t_b4d2e67d4f98a1 159,176
+src/shared/nodex-app-tools/workbench-commands.ts
+  s_4e6817f2f1ffe7::t_512033122ae066 21-25,27-28
+  s_4e6817f2f1ffe7::t_fa587fa00bb70f 19-20,26
+crates/nodex-cli/tests/data_primitives.rs
+  s_4e6817f2f1ffe7::t_84089bf563b21f 548-570,572-581,583-587,590-591
+  s_4e6817f2f1ffe7::t_b7d7c683b1b7bc 582,588-589
+  s_4e6817f2f1ffe7::t_0f8f76196c20c2 571,592-593
+src/main/core-client/core-client.node.test.ts
+  s_4e6817f2f1ffe7::t_ca4e9818d3306a 603
+tests/e2e/library-files.spec.ts
+  s_4e6817f2f1ffe7::t_79b4d54891181e 15,98,254
+src/renderer/lib/use-sidebar-thread-sync-model.test.tsx
+  s_4e6817f2f1ffe7::t_a1e940dd18ff6f 36
+src/main/app/MainApplicationLive.ts
+  s_4e6817f2f1ffe7::t_a6612498469fb4 256-260,267-272
+  s_4e6817f2f1ffe7::t_67fbd04cdb0d8b 261-266
+scripts/scenarios/scenarios/structural-interactions.ts
+  s_4e6817f2f1ffe7::t_82f1b97c8d9a63 63
+docs/product-specs/canvas-behavior.md
+  s_4e6817f2f1ffe7::t_28ffc7ac61ed44 10-11
+  s_4e6817f2f1ffe7::t_f338fa13249cab 7-9
+crates/nodex-store-format/src/lib.rs
+  s_a9e380c5124138::t_5419fcf332a51c 169-172
+CHANGELOG.md
+  s_4e6817f2f1ffe7::t_071e1390a76048 9-10
+tests/e2e/content-interaction-history.spec.ts
+  s_4e6817f2f1ffe7::t_892b67055cd0d7 34
+docs/product-specs/product-foundations.md
+  s_4e6817f2f1ffe7::t_3c5c01e6d39c15 68-72
+  s_4e6817f2f1ffe7::t_e5bb2c1dfcab94 8-9,29-30,33-34,46,48-50,62-67,73-78,84-85
+src/renderer/lib/project-content-picker.node.test.ts
+  s_4e6817f2f1ffe7::t_34a391d8067804 55,58
+  s_4e6817f2f1ffe7::t_68b5cfbe575e27 1-10,64,70,82-90,114-117,132,146
+  s_a9e380c5124138::t_50497e51d192ae 93-94,96-98,107-113,120-121,123-125
+  s_a9e380c5124138::t_d1ef8a59547208 11-14,17-36,38-39,41,44-54,56-57,59-63,65-69,71-81,91-92,99-106,118-119,126-131,133-145
+  s_4e6817f2f1ffe7::t_4a6b04ef8f8604 15-16,37,40,42-43,95,122
+src/shared/library-module-transport.test.ts
+  s_4e6817f2f1ffe7::t_227812b921754e 34-40,42,59-60
+  s_4e6817f2f1ffe7::t_7567ceb03f9a7a 41
+  s_4e6817f2f1ffe7::t_2f0ed441e9b8e4 43-58
+  s_4e6817f2f1ffe7::t_9138676aeeb775 916
+src/renderer/components/workbench/workbench-settings-overlay.backups.test.tsx
+  s_4e6817f2f1ffe7::t_a1e940dd18ff6f 19
+crates/nodex-core/src/library/structural_edit.rs
+  s_a9e380c5124138::t_5419fcf332a51c 3573
+src/shared/page-lifecycle-v2-runtime.ts
+  s_4e6817f2f1ffe7::t_2f0ed441e9b8e4 483-487,491,502,563,578,614,625,783-787
+  s_4e6817f2f1ffe7::t_17646aca5e7f6b 51,64,253,347-348,390,447,476,481-482
+tests/e2e/database-context-menu-performance.spec.ts
+  s_4e6817f2f1ffe7::t_79b4d54891181e 17,186
+  s_4e6817f2f1ffe7::t_892b67055cd0d7 26
+src/shared/schemas/workbench-layout.ts
+  s_4e6817f2f1ffe7::t_8bc172e13fceed 32,950
+  s_4e6817f2f1ffe7::t_67fbd04cdb0d8b 965-979,982
+  s_a9e380c5124138::t_7798654fd43d50 7,812,902,907,915,917,936,944,947,963
+  s_4e6817f2f1ffe7::t_8b08946cb3d651 943,964
+src/renderer/lib/workbench-presentation-lifecycle.test.tsx
+  s_4e6817f2f1ffe7::t_67fbd04cdb0d8b 39-41,54-56,96-98
+  s_4e6817f2f1ffe7::t_206c4cd3adbebd 57,68,99
+agent-skills/nodex/references/project-database-views.md
+  s_4e6817f2f1ffe7::t_9ea95d65d180d1 9-14
+src/main/window-session-state.ts
+  s_4e6817f2f1ffe7::t_67fbd04cdb0d8b 26-28,77,175-195,615-642
+  s_4e6817f2f1ffe7::t_4d70faafed7389 13-14,25,643-644
+scripts/scenarios/adapters/renderer-ipc-seed-adapter.ts
+  s_4e6817f2f1ffe7::t_e610ac6285829e 23,32,62,86-87,94,103,125-128,132-133,146
+  s_4e6817f2f1ffe7::t_82f1b97c8d9a63 95-102,104-124,135-140
+crates/nodex-core/src/library/canvas_mutation.rs
+  s_4e6817f2f1ffe7::t_3c22ff7ae3dd36 439,622,1197
+  s_4e6817f2f1ffe7::t_fc386918460d61 676
+src/shared/workbench-scene.ts
+  s_4e6817f2f1ffe7::t_67fbd04cdb0d8b 399-403,996-1004,1006-1009,1011-1014,1262
+  s_4e6817f2f1ffe7::t_7974b7c377f0df 48,383-385,387,389-390,392,395,397,404-412,416,419,421,423,428,750,753-769,789,859,871-872
+  s_4e6817f2f1ffe7::t_c5ae09a966f553 990-995,1005,1010,1015-1019
+src/shared/types.ts
+  s_4e6817f2f1ffe7::t_d94d14de0621a7 594,596-597,630
+src/renderer/lib/workbench-scene-commands.node.test.ts
+  s_4e6817f2f1ffe7::t_206c4cd3adbebd 474,481,495,504
+  s_4e6817f2f1ffe7::t_67fbd04cdb0d8b 492,496-503
+  s_4e6817f2f1ffe7::t_512033122ae066 297-312,318-320,342,345
+  s_4e6817f2f1ffe7::t_934c3ee05b2992 313-317
+docs/product-specs/nfm-editor-move-to-popover-behavior.md
+  s_4e6817f2f1ffe7::t_a6dfa5224fe1f3 4,8,22,26-27,47,51
+tests/e2e/document-sync-recovery.spec.ts
+  s_4e6817f2f1ffe7::t_892b67055cd0d7 53,299,372
+src/renderer/lib/workbench-scene-navigator.node.test.ts
+  s_4e6817f2f1ffe7::t_67fbd04cdb0d8b 336-338
+  s_4e6817f2f1ffe7::t_206c4cd3adbebd 152,321,327,339-340
+src/renderer/lib/library-operations.ts
+  s_4e6817f2f1ffe7::t_7e8eb84c889db0 3,45
+crates/nodex-core/src/library/authorization.rs
+  s_4e6817f2f1ffe7::t_356e0923b0fd85 6-30,34-41
+  s_4e6817f2f1ffe7::t_a48bc0cee99fb3 31-33
+  s_4e6817f2f1ffe7::t_78166e34c420c7 239-248,250-257,259-260,262-266
+  s_4e6817f2f1ffe7::t_288bec7d25ea5a 202-238,249,258,261,267-270
+src/renderer/lib/workbench-view-content.node.test.ts
+  s_4e6817f2f1ffe7::t_206c4cd3adbebd 79,83,92-93,135
+  s_4e6817f2f1ffe7::t_67fbd04cdb0d8b 80-82
+src/shared/schemas/window-session.test.ts
+  s_4e6817f2f1ffe7::t_206c4cd3adbebd 47,162
+tests/e2e/large-content-fixture/main.tsx
+  s_4e6817f2f1ffe7::t_a1e940dd18ff6f 29
+src/renderer/components/workbench/workbench-shell.layout-panel-actions.test.tsx
+  s_4e6817f2f1ffe7::t_fada799a76cdd6 12
+  s_4e6817f2f1ffe7::t_05afa562da1bf6 2291,2306-2309,2325,2332,2334-2335,2348,2435,2444,2449,2456-2457,2466-2467,2491,2527,2542
+  s_4e6817f2f1ffe7::t_afdb05eae4fccc 2355,2503,2509
+  s_4e6817f2f1ffe7::t_b96466932eae50 2336-2347,2554-2577,2612-2613
+  s_4e6817f2f1ffe7::t_34d8e92bd253e2 2545,2553,2578,2596,2598-2602,2611
+crates/nodex-core/src/library/block_transfer.rs
+  s_4e6817f2f1ffe7::t_3c22ff7ae3dd36 4942
+src/renderer/features/local-conversation/view/connected-thread-stage.test.tsx
+  s_4e6817f2f1ffe7::t_0c82d7a265d15c 811-816
+  s_4e6817f2f1ffe7::t_34e38e07b31990 690,694-696,807-810,817-818,2048-2055,2057
+  s_4e6817f2f1ffe7::t_281a7596e73d4d 2056,2058-2059
+src/main/nodex-agent-application/NodexAgentApplication.node.test.ts
+  s_4e6817f2f1ffe7::t_8801aa80539cfe 23-29,42-43,60-63,65-81,87-98,101-108,119-124,259-302,306-332
+  s_4e6817f2f1ffe7::t_91c64aa2f7be91 202,209,221
+  s_4e6817f2f1ffe7::t_bd3c7b121f07e9 31,58-59,84-86,99-100,109-110,114-118,125-127,232,258,303-305,333
+  s_4e6817f2f1ffe7::t_8eeb0502f04aed 128-129,334
+src/renderer/components/board/editor/nfm-slash-menu.test.tsx
+  s_4e6817f2f1ffe7::t_a1e940dd18ff6f 310
+crates/nodex-core/src/database/mod.rs
+  s_4e6817f2f1ffe7::t_d27e7d9bac938f 480,884,2861
+crates/nodex-core/src/database/authorization.rs
+  s_4e6817f2f1ffe7::t_d27e7d9bac938f 15
+  s_4e6817f2f1ffe7::t_46a3d108059610 38
+  s_4e6817f2f1ffe7::t_9a1d1531244966 8
+  s_4e6817f2f1ffe7::t_ffb4a74de460f8 27,49,69
+crates/nodex-core/src/read_budget_gate.rs
+  s_4e6817f2f1ffe7::t_d27e7d9bac938f 213
+crates/nodex-core/src/document/module.rs
+  s_4e6817f2f1ffe7::t_1c7a739113f0a2 6482-6484
+  s_4e6817f2f1ffe7::t_d27e7d9bac938f 6477
+  s_4e6817f2f1ffe7::t_33165f22a9434a 6481
+src/renderer/components/board/editor/nfm-move-to-menu.tsx
+  s_4e6817f2f1ffe7::t_e2073e514a34d1 15,31,59-61,108,169,316-320,337-339,432,443,462,475
+  s_4e6817f2f1ffe7::t_2f0ed441e9b8e4 287-293,295-305,604-612
+  s_4e6817f2f1ffe7::t_ecdeb3e2bfbc5d 294
+scripts/scenarios/scenarios/board-dense.ts
+  s_4e6817f2f1ffe7::t_82f1b97c8d9a63 215
+packages/core-protocol/openapi.json
+  s_a9e380c5124138::t_f8a7d38849c5f1 22660,22788-22790,23221-23222,29307-29312,33979-33984
+  s_4e6817f2f1ffe7::t_83f3c9e3a4d9db 2248-2249,7183-7187,7194,16460-16461,37433-37438,39564-39568,39575
+src/shared/page-lifecycle-v2-transport.test.ts
+  s_4e6817f2f1ffe7::t_2f0ed441e9b8e4 46
+  s_4e6817f2f1ffe7::t_19b827e8338c2b 16
+src/main/core-client/database-history-scenario.node.test.ts
+  s_4e6817f2f1ffe7::t_9c197ec327d6b3 209
+src/renderer/components/workbench/local-environments-settings-page.test.tsx
+  s_4e6817f2f1ffe7::t_a1e940dd18ff6f 25
+docs/product-specs/page-relocation-behavior.md
+  s_4e6817f2f1ffe7::t_a6dfa5224fe1f3 38
+  s_30a10426266bd5::t_58661f30ed67aa 14
+crates/nodex-core/src/library/mutation.rs
+  s_4e6817f2f1ffe7::t_3c22ff7ae3dd36 965,2475-2481,2682,3273
+  s_4e6817f2f1ffe7::t_d27e7d9bac938f 6069
+  s_4e6817f2f1ffe7::t_9e2b4152d64292 3294,3296,3303
+  s_a9e380c5124138::t_cbb94d34a2033e 1574,1576,1579
+  s_4e6817f2f1ffe7::t_7f367f9ff0abc0 6076,6088-6089,6091,6098,6102,6104-6105,6117,6121-6123,6139-6140
+  s_a9e380c5124138::t_5419fcf332a51c 3309-3311
+  s_4e6817f2f1ffe7::t_c2c08e27eda20e 6141-6157
+  s_4e6817f2f1ffe7::t_f1bcb5faef48a1 2474,2482,3287
+  s_4e6817f2f1ffe7::t_1c079955a3f6de 1621-1622,1711,3292,6885
+docs/adr/0005-canvas-scene-native-sync-engine.md
+  s_4e6817f2f1ffe7::t_d349666d73b4fa 4
+  s_4e6817f2f1ffe7::t_23a758237976cd 3
+src/renderer/components/workbench/left-sidebar.stories.tsx
+  s_4e6817f2f1ffe7::t_a1e940dd18ff6f 69,86,108,125,148
+src/renderer/lib/use-board.test.tsx
+  s_4e6817f2f1ffe7::t_baff249b5c8851 128-130,217-219
+  s_4e6817f2f1ffe7::t_f952d682ce3c46 74-78,120,216
+crates/nodex-core/src/infrastructure/resource_authorization.rs
+  s_4e6817f2f1ffe7::t_46a3d108059610 491,499
+  s_4e6817f2f1ffe7::t_872b4a1826ea38 496
+scripts/scenarios/scenarios/agent-cli-workflow.ts
+  s_4e6817f2f1ffe7::t_82f1b97c8d9a63 19-23
+scripts/scenarios/scenarios/database-context-menu-performance.ts
+  s_4e6817f2f1ffe7::t_82f1b97c8d9a63 46
+docs/product-specs/library-move-destination-picker-behavior.md
+  s_4e6817f2f1ffe7::t_a1e4d9c9345091 15
+src/shared/page-lifecycle-v2.test.ts
+  s_4e6817f2f1ffe7::t_2f0ed441e9b8e4 88
+  s_4e6817f2f1ffe7::t_b0019a3ac78c71 23,59
+crates/nodex-core/src/infrastructure/migration.rs
+  s_4e6817f2f1ffe7::t_aaa7920b06298a 6420-6423,6425-6437,6439-6440,6464-6474,6476-6484,6486-6525,6531-6547
+  s_4e6817f2f1ffe7::t_fee3489ba9c49f 6442,6444-6445,6526,6528-6529
+  s_a9e380c5124138::t_93949405f73054 284-286,288,2285-2286,2288-2290
+  s_4e6817f2f1ffe7::t_9a6c160a0fde40 6414-6419,6424,6438,6441,6446-6463,6475,6485,6530,6548-6549
+  s_4e6817f2f1ffe7::t_f4c90ab5f75545 287,2287,2291-2294,6413,6443,6527
+crates/nodex-core/src/database/projection_delta.rs
+  s_4e6817f2f1ffe7::t_9e60b0f5d09353 828,845
+src/renderer/components/workbench/panel-destination-picker-model.node.test.ts
+  s_4e6817f2f1ffe7::t_05afa562da1bf6 59-60,99
+  s_a9e380c5124138::t_d1ef8a59547208 12-29,32,34-38,40-48,64,70-71,73,76-77,79-85,87-92,94-98,100-104,106-109
+  s_4e6817f2f1ffe7::t_1c9df2114cb3ec 1-3,11,51,54-58,61-63,65,67-68,110-113
+crates/nodex-core/src/workspace/read.rs
+  s_4e6817f2f1ffe7::t_d27e7d9bac938f 455,463,527
+  s_4e6817f2f1ffe7::t_01ece9e25a5192 727
+  s_4e6817f2f1ffe7::t_af050c6b84ecbc 19,480,499
+  s_a9e380c5124138::t_5419fcf332a51c 895-898
+src/shared/schemas/projects.ts
+  s_4e6817f2f1ffe7::t_d94d14de0621a7 33,103
+src/renderer/features/local-conversation/view/local-conversation-footer.tsx
+  s_4e6817f2f1ffe7::t_71bba62656b0b0 408
+crates/nodex-cli/src/runtime.rs
+  s_4e6817f2f1ffe7::t_0ca109b8d5b8bf 621-624
+  s_4e6817f2f1ffe7::t_c4bb049ad50157 470,518-519,522,672,889,1472,1474,1477,1479,1482,1484,1487,1498,1905-1906,1958
+  s_4e6817f2f1ffe7::t_871f9d9d6bd2de 534,694,989
+  s_4e6817f2f1ffe7::t_d88556b5087980 1486
+tests/e2e/nfm-code-block-actions.spec.ts
+  s_4e6817f2f1ffe7::t_892b67055cd0d7 34
+crates/nodex-cli/src/data_source.rs
+  s_4e6817f2f1ffe7::t_c4bb049ad50157 150-161,168,201,241,245,256,350
+src/shared/library-module.ts
+  s_4e6817f2f1ffe7::t_d49e987e1b853f 9,588
+  s_4e6817f2f1ffe7::t_7e8eb84c889db0 584,587
+src/renderer/lib/workbench-scene-preview.node.test.ts
+  s_4e6817f2f1ffe7::t_af630f89935cc5 2-5
+  s_4e6817f2f1ffe7::t_c85c911f678320 20
+crates/nodex-core/src/library/page_lifecycle.rs
+  s_4e6817f2f1ffe7::t_af050c6b84ecbc 86,89-90
+  s_4e6817f2f1ffe7::t_9e60b0f5d09353 46-47,49,51
+  s_4e6817f2f1ffe7::t_c7ff3015541d1c 37,45,48,50,52-56,59,67,78,85,93-102,106,116,123-124,131
+scripts/scenarios/scenarios/page-related-chat-activity.ts
+  s_4e6817f2f1ffe7::t_82f1b97c8d9a63 80
+scripts/scenarios/scenarios/sidebar-custom-sections.ts
+  s_4e6817f2f1ffe7::t_82f1b97c8d9a63 63
+tests/e2e/local-recovery-removal.spec.ts
+  s_4e6817f2f1ffe7::t_892b67055cd0d7 16,91
+scripts/scenarios/adapters/core-client-seed-adapter.ts
+  s_4e6817f2f1ffe7::t_e610ac6285829e 32,35,64,70,78-79,102-105,110-111,113,119
+  s_4e6817f2f1ffe7::t_82f1b97c8d9a63 80-101
+crates/nodex-core/src/database/window.rs
+  s_4e6817f2f1ffe7::t_d27e7d9bac938f 2095,2115,2165
+  s_4e6817f2f1ffe7::t_c7829b9f266610 2279
+  s_4e6817f2f1ffe7::t_9a1d1531244966 30
+  s_4e6817f2f1ffe7::t_629f8c0b90b1f6 2280
+src/renderer/components/board/page-create-destination-dialog.test.tsx
+  s_4e6817f2f1ffe7::t_4cce5bd024ab45 1-143,145-150
+  s_4e6817f2f1ffe7::t_ea16bb5226df7c 144
+scripts/scenarios/contracts.ts
+  s_4e6817f2f1ffe7::t_73344f82857541 128,174-176
+  s_4e6817f2f1ffe7::t_8e71ec98dce403 177-178
+src/renderer/lib/workbench-agent-context.node.test.ts
+  s_4e6817f2f1ffe7::t_5523896c514fcb 110-112
+  s_4e6817f2f1ffe7::t_ef7dcfb7b80f23 107,109,113,141-144,151
+crates/nodex-core/src/workspace/project_window.rs
+  s_4e6817f2f1ffe7::t_d27e7d9bac938f 74,84
+  s_4e6817f2f1ffe7::t_de6b50e0f4b0d8 171-178
+src/renderer/lib/workbench-window-state.ts
+  s_a9e380c5124138::t_7798654fd43d50 349
+src/renderer/components/board/editor/nfm-side-menu.stories.tsx
+  s_4e6817f2f1ffe7::t_a1e940dd18ff6f 21
+tests/e2e/database-board-mount-motion.spec.ts
+  s_4e6817f2f1ffe7::t_79b4d54891181e 4,12
+src/main/core-client/library-module-adapter.node.test.ts
+  s_4e6817f2f1ffe7::t_2f0ed441e9b8e4 1172
+  s_4e6817f2f1ffe7::t_9138676aeeb775 2045
+  s_4e6817f2f1ffe7::t_a4627bb3555926 451,1219
+crates/nodex-core/src/document/primary_canvas.rs
+  s_4e6817f2f1ffe7::t_fc386918460d61 50,124,127
+src/renderer/components/workbench/workbench-session-thread-route.tsx
+  s_4e6817f2f1ffe7::t_71bba62656b0b0 220,666
+src/renderer/components/workbench/workbench-settings-overlay.licenses.test.tsx
+  s_4e6817f2f1ffe7::t_a1e940dd18ff6f 16
+src/renderer/components/workbench/workbench-automations-overlay.stories.tsx
+  s_4e6817f2f1ffe7::t_a1e940dd18ff6f 170,187
+src/renderer/components/board/editor/nfm-side-menu.test.tsx
+  s_4e6817f2f1ffe7::t_ccd6d6ff91aa9c 64,688-689,753-754
+src/renderer/components/board/editor/nfm-text-action-menu.test.tsx
+  s_4e6817f2f1ffe7::t_ccd6d6ff91aa9c 33,840-841
+src/renderer/components/workbench/panel-destination-picker.stories.tsx
+  s_a9e380c5124138::t_d1ef8a59547208 7-23,25-26,28-32,34-45,48-56,58,62-65,67
+  s_4e6817f2f1ffe7::t_25de8f7a6f66e2 2-3,6,69
+src/renderer/lib/project-content-picker.ts
+  s_4e6817f2f1ffe7::t_34a391d8067804 125-126
+  s_4e6817f2f1ffe7::t_34544d3f405f2a 37-38,94,107,121,145,150-151
+  s_4e6817f2f1ffe7::t_2f0ed441e9b8e4 136-141
+  s_a9e380c5124138::t_50497e51d192ae 117-120
+  s_4e6817f2f1ffe7::t_406e7cd1d4da44 1-19,22-26,28-32,34-36,39-64,66-89,92-93,95-102,105-106,108-112,114-116,122-124,127-134,142-144,146,148-149,152-155,157-171,173-181,183-186,188-190,192-194,196-202,204-220,222-225
+  s_4e6817f2f1ffe7::t_ecdeb3e2bfbc5d 20,135
+  s_4e6817f2f1ffe7::t_aeebc54610c98f 21,27,33,65,90-91,103-104,113,147,156,172,182,187,191,195,203,221
+src/renderer/components/workbench/workbench-shell.sidebar-projects.test.tsx
+  s_4e6817f2f1ffe7::t_f4e87d09830633 237,256,273,275-281
+  s_4e6817f2f1ffe7::t_67fbd04cdb0d8b 282-283
+  s_4e6817f2f1ffe7::t_c2e8cf625490ed 423,443
+  s_a9e380c5124138::t_3677538e6d0f59 187,250,253,257,294,318,331,345,390
+  s_4e6817f2f1ffe7::t_1816533989e4f0 455
+  s_4e6817f2f1ffe7::t_951c85c7deb778 452-454,456-461
+  s_4e6817f2f1ffe7::t_f2783a05213e8d 462
+config/test-suites.test.ts
+  s_4e6817f2f1ffe7::t_c90b3ebb40229c 6,51-54
+tests/e2e/database-surface-history.spec.ts
+  s_4e6817f2f1ffe7::t_892b67055cd0d7 92
+packages/core-protocol/src/generated.ts
+  s_a9e380c5124138::t_f8a7d38849c5f1 5556,5655-5656,7083,8137
+  s_4e6817f2f1ffe7::t_785b0880e0b10c 556,1713-1714,4061,9024,9495-9496
+src/renderer/lib/nfm-block-move-runtime.node.test.ts
+  s_4e6817f2f1ffe7::t_55cc282f3cabba 136-153
+  s_4e6817f2f1ffe7::t_2f0ed441e9b8e4 169-175,225-231
+  s_4e6817f2f1ffe7::t_c0cfbd2ec5a56e 135,154-167,252-253
+  s_4e6817f2f1ffe7::t_227812b921754e 168,176-180
+  s_4e6817f2f1ffe7::t_1657b66d4b4ddf 188-189,201
+crates/nodex-core-contracts/src/library.rs
+  s_4e6817f2f1ffe7::t_d27e7d9bac938f 3155
+  s_4e6817f2f1ffe7::t_d7f502965e5153 984-985,1353-1354,1420
+src/renderer/features/workspace-files/workspace-files-panel.test.tsx
+  s_4e6817f2f1ffe7::t_a1e940dd18ff6f 557
+src/renderer/components/library/library-resource-action-modals.tsx
+  s_4e6817f2f1ffe7::t_96f38fb93c557b 98,169-170,177-179
+  s_4e6817f2f1ffe7::t_581f3530431528 61
+  s_4e6817f2f1ffe7::t_2f0ed441e9b8e4 132,171-176
+src/shared/workbench-layout.ts
+  s_4e6817f2f1ffe7::t_c5ae09a966f553 1
+  s_a9e380c5124138::t_7798654fd43d50 224-225,232,318,320,328,356,385
+  s_4e6817f2f1ffe7::t_67fbd04cdb0d8b 394-418
+  s_4e6817f2f1ffe7::t_529039d7739a3e 391-393,419-420
+docs/product-specs/nfm-editor-structural-editing-behavior.md
+  s_4e6817f2f1ffe7::t_a1e4d9c9345091 340-345
+  s_4e6817f2f1ffe7::t_6c18d741bdeb85 34
+crates/nodex-core-contracts/src/agent.rs
+  s_4e6817f2f1ffe7::t_d27e7d9bac938f 46
+src/main/core-client/library-module-adapter.ts
+  s_4e6817f2f1ffe7::t_9138676aeeb775 128,763,1660-1661,2505,2510
+src/main/core-client/agent-eval-desktop-environment.node.test.ts
+  s_4e6817f2f1ffe7::t_c5a2b40d32c31b 43
+  s_4e6817f2f1ffe7::t_c90b3ebb40229c 11,28
+tests/e2e/nfm-editor-history.spec.ts
+  s_4e6817f2f1ffe7::t_892b67055cd0d7 48
+src/shared/library-module-transport.ts
+  s_4e6817f2f1ffe7::t_ade8bf412d4638 31,1205-1208,1216-1217,1223,1239-1241,1263,2177-2178,2273
+crates/nodex-core/src/library/projection_authorization.rs
+  s_4e6817f2f1ffe7::t_b45bbffe6dbc88 25,40,47,65,84,137,179
+  s_4e6817f2f1ffe7::t_9a1d1531244966 8,253,300-301
+src/renderer/components/workbench/project-lifecycle-dialogs.stories.tsx
+  s_4e6817f2f1ffe7::t_ab018c53934729 2,10-11,18,85-88,91,165,173,186,204,218
+  s_4e6817f2f1ffe7::t_4a6b04ef8f8604 89-90
+docs/adr/0017-library-pages-data-sources-and-project-resource-grants.md
+  s_4e6817f2f1ffe7::t_76545666c3c943 4
+  s_4e6817f2f1ffe7::t_11009f92aac58e 3
+crates/nodex-cli/src/page_lifecycle.rs
+  s_4e6817f2f1ffe7::t_c4bb049ad50157 479,481,618,622,627,633,636
+  s_4e6817f2f1ffe7::t_871f9d9d6bd2de 507
+src/renderer/lib/project-catalog-store.node.test.ts
+  s_4e6817f2f1ffe7::t_4bda3980e16ff2 107-139,141-148
+  s_4e6817f2f1ffe7::t_ab018c53934729 36
+  s_4e6817f2f1ffe7::t_c7f8f6366b78aa 140
+crates/nodex-core/src/library/query.rs
+  s_a9e380c5124138::t_6f5636f3204ab8 443
+  s_4e6817f2f1ffe7::t_ec6a82d790d64b 448
+src/renderer/components/workbench/workbench-shell.owner-panel-commands.test.tsx
+  s_4e6817f2f1ffe7::t_206c4cd3adbebd 80,104
+src/renderer/components/workbench/panel-destination-picker-model.ts
+  s_4e6817f2f1ffe7::t_d3854371b7dafe 12-15,78-83
+  s_a9e380c5124138::t_9ba7550d8d17cf 1,3-4,6,8,18-20,22-26,30-38,42-44,48-52,55-77,84-89,91-92,96,102-106,109,111-120,122-128
+  s_4e6817f2f1ffe7::t_6f0167702eb70b 5,21,27,90,107,110
+docs/adr/0035-project-focused-scenes-and-agent-dock.md
+  s_4e6817f2f1ffe7::t_c548c2a7175af5 3-4
+crates/nodex-core/src/library/page_copy.rs
+  s_4e6817f2f1ffe7::t_3c22ff7ae3dd36 474
+  s_4e6817f2f1ffe7::t_d27e7d9bac938f 3161,3308,3747,4089
+  s_4e6817f2f1ffe7::t_d81f266196eca6 4149
+src/renderer/components/library/library-resource-access-dialog.tsx
+  s_4e6817f2f1ffe7::t_2f0ed441e9b8e4 112-115,155
+  s_4e6817f2f1ffe7::t_581f3530431528 20,29,33,94,110,117,129,140,187,201,207,262,287
+  s_4e6817f2f1ffe7::t_de4e90b81ccc03 111
+tests/e2e/nfm-editor-history-multiwindow.spec.ts
+  s_4e6817f2f1ffe7::t_892b67055cd0d7 52,201
+crates/nodex-core/src/administration/tests.rs
+  s_4e6817f2f1ffe7::t_01ece9e25a5192 88
+crates/nodex-core/src/database/relation.rs
+  s_4e6817f2f1ffe7::t_ab2ec3882a9a12 1381,1384
+crates/nodex-core-contracts/src/workspace.rs
+  s_4e6817f2f1ffe7::t_d27e7d9bac938f 973-974,1269
+  s_a9e380c5124138::t_5419fcf332a51c 1264-1268
+docs/adr/0066-project-execution-context-and-explicit-content-access.md
+  s_4e6817f2f1ffe7::t_718333a744f5d2 1-5,7-56
+  s_4e6817f2f1ffe7::t_c548c2a7175af5 6
+crates/nodex-core/src/database/mutation.rs
+  s_a9e380c5124138::t_cbb94d34a2033e 8222,8224,8228
+  s_4e6817f2f1ffe7::t_9a1d1531244966 48
+  s_4e6817f2f1ffe7::t_c7829b9f266610 3478,6575-6578,8153
+  s_4e6817f2f1ffe7::t_e147ee88fd091f 4950-4956
+  s_4e6817f2f1ffe7::t_71178303719f78 8474-8475,8477-8496,8498-8517,8519-8524,8526-8532,8534-8549
+  s_4e6817f2f1ffe7::t_7a67982c7d0abe 3479,8154,8231-8235,8240,8243,8277,8473,8476,8497,8518,8525,8533
+scripts/scenarios/scenarios/page-relocation.ts
+  s_4e6817f2f1ffe7::t_e610ac6285829e 56-57
+src/renderer/components/workbench/workbench-runtime.tsx
+  s_4e6817f2f1ffe7::t_67fbd04cdb0d8b 613-615,618-624,628-629,3383-3385,3869-3872,3989-3990,4013-4018
+  s_4e6817f2f1ffe7::t_71bba62656b0b0 608-612,616-617,626,630-632,3835-3868,3873-3953,4164,4192
+  s_4e6817f2f1ffe7::t_f2783a05213e8d 4046
+  s_4e6817f2f1ffe7::t_a6612498469fb4 137,4012,4019-4020
+  s_4e6817f2f1ffe7::t_c5ae09a966f553 625
+crates/nodex-core/src/document/mod.rs
+  s_4e6817f2f1ffe7::t_fc386918460d61 121-122
+crates/nodex-core/src/infrastructure/visibility_delta_journal.rs
+  s_4e6817f2f1ffe7::t_9a1d1531244966 1534,1546,1577
+  s_4e6817f2f1ffe7::t_cc15ac92c6a986 998
+src/main/codex/codex-sidebar-thread-move.test.ts
+  s_4e6817f2f1ffe7::t_b4d2e67d4f98a1 15
+scripts/scenarios/scenarios/nfm-code-block-actions.ts
+  s_4e6817f2f1ffe7::t_82f1b97c8d9a63 66
+crates/nodex-core/src/library/navigation.rs
+  s_4e6817f2f1ffe7::t_9c69e9bd41f91c 3622-3629,3663-3668,3687-3688,3749-3751
+  s_4e6817f2f1ffe7::t_15daea86ec0edc 3669
+  s_4e6817f2f1ffe7::t_d50b2e6085020c 1876,1942,2072,2200,2239,2262-2264,2266-2267,2269-2270
+  s_4e6817f2f1ffe7::t_4af594c3e61a56 2413-2423
+  s_4e6817f2f1ffe7::t_356e0923b0fd85 18,227,3613,3620-3621,3630-3635,3712,3727,3744-3748,3755-3758,3763-3774,3827-3828,3832-3840
+  s_4e6817f2f1ffe7::t_cc15ac92c6a986 1925
+  s_4e6817f2f1ffe7::t_e771fd98e4cac4 1537-1538
+src/renderer/components/workbench/panel-destination-picker.tsx
+  s_4e6817f2f1ffe7::t_25db6aad314280 38-39,310,312
+  s_4e6817f2f1ffe7::t_b4ca326658558f 136-138,142
+  s_a9e380c5124138::t_50497e51d192ae 139-141
+  s_4e6817f2f1ffe7::t_53fd015e9753c8 10-16,19,21-23,48,52-54,88,98,126-135,143-147,190,210-214,219-224,237,241-243,246,280-281,284-286,288,292-293,409,447-456
+src/renderer/components/workbench/workbench-shell.project-agent-dock.test.tsx
+  s_4e6817f2f1ffe7::t_d365a87c7b2724 89,102-108,114-115,119-124,128-132,179
+  s_4e6817f2f1ffe7::t_f4e87d09830633 73-76,79-84
+  s_a9e380c5124138::t_3677538e6d0f59 164,224
+  s_4e6817f2f1ffe7::t_67fbd04cdb0d8b 98-101,109-113,116-118,125-127
+src/renderer/features/workspace-files/workspace-files-panel.stories.tsx
+  s_4e6817f2f1ffe7::t_a1e940dd18ff6f 22
+src/renderer/components/workbench/workbench-panel-controls.tsx
+  s_4e6817f2f1ffe7::t_aab4b80425a54f 3,11,70,92
+src/shared/initial-project-welcome.ts
+  s_4e6817f2f1ffe7::t_e611cafab5d57f 69,73
+scripts/scenarios/scenarios/board-dense-ui.ts
+  s_4e6817f2f1ffe7::t_79b4d54891181e 14,41
+  s_4e6817f2f1ffe7::t_892b67055cd0d7 28
+tests/e2e/electron-smoke.spec.ts
+  s_4e6817f2f1ffe7::t_892b67055cd0d7 1118,1271,1492,1621,1745,1837,2188,2345,2425,2667,2759,2897,3030,3126,3223,3324,3593,3743,4078,4510,4827,4859,5286
+src/renderer/components/workbench/local-environments-settings-page.stories.tsx
+  s_4e6817f2f1ffe7::t_a1e940dd18ff6f 19,36
+crates/nodex-core/src/library/tests/effective_view_query.rs
+  s_4e6817f2f1ffe7::t_5e829d18b49aea 1017-1026
+  s_4e6817f2f1ffe7::t_6d7fb4e13d9b8e 1008
+src/renderer/components/workbench/workbench-testkit/workbench-shell-harness.tsx
+  s_a9e380c5124138::t_50497e51d192ae 2440-2472,2709-2737,2762-2763,2766-2780
+  s_4e6817f2f1ffe7::t_ded4870111457b 47,1061,2508,2697-2698,2708,2738,2760
+  s_4e6817f2f1ffe7::t_27eb179029b41c 48,947,954
+  s_4e6817f2f1ffe7::t_a6612498469fb4 4326
+src/renderer/components/board/editor/nfm-move-to-menu-model.test.ts
+  s_4e6817f2f1ffe7::t_35ab9bb74537d3 17,42,48,60-61
+  s_4e6817f2f1ffe7::t_2f0ed441e9b8e4 18-41,43-47,49-59
+  s_4e6817f2f1ffe7::t_08be30440c774d 66
+crates/nodex-core/src/automation/mutation.rs
+  s_a9e380c5124138::t_93949405f73054 2118,2977
+  s_4e6817f2f1ffe7::t_9a1d1531244966 2681-2682
+crates/nodex-core/src/database/read.rs
+  s_4e6817f2f1ffe7::t_9a1d1531244966 28,416-417,431,438,440,443,454,485,513,526,536,553,567,576,589,595,605,623,658,693,729,767,769-770,774,785,798,893,911,954,960,1206,1211
+  s_4e6817f2f1ffe7::t_46a3d108059610 961,965,969,976,993,1241
+config/test-suites.ts
+  s_4e6817f2f1ffe7::t_c90b3ebb40229c 17-18,202-207
+src/renderer/components/workbench/workbench-panel-new-tab-button.tsx
+  s_4e6817f2f1ffe7::t_aab4b80425a54f 12,21,82,90
+src/renderer/lib/workbench-scene-tab-presentation.node.test.ts
+  s_4e6817f2f1ffe7::t_aba367fc617252 21-22
+  s_4e6817f2f1ffe7::t_512033122ae066 13
+crates/nodex-core/src/library/mod.rs
+  s_4e6817f2f1ffe7::t_71178303719f78 3526
+  s_4e6817f2f1ffe7::t_1abdfebd68bad1 2341,8462
+  s_4e6817f2f1ffe7::t_3ed82eb777b2d5 3535-3538
+  s_4e6817f2f1ffe7::t_43316bb7eb080d 2901-2903
+  s_4e6817f2f1ffe7::t_d27e7d9bac938f 2295,2897,5892,7626,7643,8418
+  s_4e6817f2f1ffe7::t_b96466932eae50 3071,3073-3076
+  s_4e6817f2f1ffe7::t_6d97ddef5c25c5 505,512,760,2597,2900,3585,3642
+tests/e2e/page-related-chat-activity.spec.ts
+  s_4e6817f2f1ffe7::t_892b67055cd0d7 30
+  s_4e6817f2f1ffe7::t_79b4d54891181e 23,95,129,141,185
+src/renderer/lib/nfm-block-move-runtime.ts
+  s_4e6817f2f1ffe7::t_c0cfbd2ec5a56e 115,226
+  s_4e6817f2f1ffe7::t_45c47940848e57 13,156
+  s_4e6817f2f1ffe7::t_1849e827184a66 21-22,105,114,120,147,149,177-179,208,210,222
+src/renderer/components/board/editor/nfm-move-to-menu-model.ts
+  s_4e6817f2f1ffe7::t_e2073e514a34d1 23-24,56-62,65,86,91-92,199-201,220,227-228,238-239
+  s_4e6817f2f1ffe7::t_2f0ed441e9b8e4 78-83,166-177,202-209
+scripts/scenarios/seed/project-database.ts
+  s_4e6817f2f1ffe7::t_82f1b97c8d9a63 1-4,6-10,14-21,24-29
+  s_4e6817f2f1ffe7::t_73344f82857541 5,11-13,22-23,30-33
+src/renderer/lib/use-project-board-windows.ts
+  s_4e6817f2f1ffe7::t_2f0ed441e9b8e4 28-30,34-39
+  s_4e6817f2f1ffe7::t_1bab241d4d806b 21,47,58,67,71,76,78,90,132
+src/shared/workbench-scene.test.ts
+  s_4e6817f2f1ffe7::t_d365a87c7b2724 181-185,190-191
+  s_4e6817f2f1ffe7::t_2b16b419503005 28
+  s_4e6817f2f1ffe7::t_8bc172e13fceed 611,618,623
+  s_4e6817f2f1ffe7::t_aba367fc617252 56,77,81-82,93,131,141-142,146,157-158,192,202,213,215,224,398,467,529-530,566,571-572,586,599-600,604-610,617,683,720,743,748,757-758,786,880
+  s_4e6817f2f1ffe7::t_67fbd04cdb0d8b 78-80,95-97,186-189,575-576,578-584,587-593,595-598,601-603,612-616,624-626,722-724,781-783,879
+  s_4e6817f2f1ffe7::t_0c3c3c9baa44c7 619-620,622,630,633
+  s_4e6817f2f1ffe7::t_70234d65745b57 621,627,631-632
+  s_4e6817f2f1ffe7::t_ce2eabee389b8b 2-5
+  s_4e6817f2f1ffe7::t_cae35f9213effe 594,628-629,881
+scripts/scenarios/scenarios/landing-showcase.ts
+  s_4e6817f2f1ffe7::t_82f1b97c8d9a63 30-34
+docs/adr/0019-project-agent-resource-consent.md
+  s_4e6817f2f1ffe7::t_d349666d73b4fa 4
+  s_4e6817f2f1ffe7::t_ac809895abaa2e 3
+docs/adr/0037-pages-navigation-and-resource-scenes.md
+  s_4e6817f2f1ffe7::t_d349666d73b4fa 4
+  s_4e6817f2f1ffe7::t_dbf54a17a7154e 3
+src/main/core-client/editor-history-library-access-scenario.node.test.ts
+  s_4e6817f2f1ffe7::t_9c197ec327d6b3 14
+tests/e2e/board-dense.spec.ts
+  s_4e6817f2f1ffe7::t_892b67055cd0d7 350,421
+  s_4e6817f2f1ffe7::t_79b4d54891181e 5,623,922,998,1583
+scripts/scenarios/scenarios/library-files-ui.ts
+  s_4e6817f2f1ffe7::t_892b67055cd0d7 17
+  s_4e6817f2f1ffe7::t_79b4d54891181e 6,36
+tests/e2e/nfm-equation-and-mermaid.spec.ts
+  s_4e6817f2f1ffe7::t_892b67055cd0d7 31,174
+src/renderer/components/workbench/database-view-surface.test.tsx
+  s_4e6817f2f1ffe7::t_7c857edaaaef17 776,785,789,800
+  s_4e6817f2f1ffe7::t_1dd4046a38edba 770-775
+src/shared/nodex-agent-tools/v3-read-schemas.ts
+  s_4e6817f2f1ffe7::t_91c64aa2f7be91 26,61
+src/renderer/lib/board-page-create-command.ts
+  s_4e6817f2f1ffe7::t_2f0ed441e9b8e4 92-94,128
+src/renderer/lib/project-catalog-store.ts
+  s_4e6817f2f1ffe7::t_4adef1636420f9 116-121,209-217,222-223,254-256,264,276-277,344
+src/renderer/lib/workbench-panel-tab-shortcut.node.test.ts
+  s_4e6817f2f1ffe7::t_206c4cd3adbebd 57-58
+docs/product-specs/workbench-shell.md
+  s_4e6817f2f1ffe7::t_5b58216d8080cb 143
+  s_4e6817f2f1ffe7::t_8556065919cc3a 5,17,108-109,142,154,163,185,222
+src/renderer/lib/page-create-workflow.tsx
+  s_4e6817f2f1ffe7::t_3ed82eb777b2d5 2,90,95-102
+  s_4e6817f2f1ffe7::t_2f0ed441e9b8e4 91-94
+src/main/project-application/ProjectWorkspace.ts
+  s_4e6817f2f1ffe7::t_d94d14de0621a7 1589-1590
+  s_4e6817f2f1ffe7::t_886dc4f7792daf 1591
+crates/nodex-core/src/workspace/mutation.rs
+  s_a9e380c5124138::t_93949405f73054 3250,3291,3315,3340,3941,3971,3990,4128
+  s_4e6817f2f1ffe7::t_9c69e9bd41f91c 3408,3410-3412,3415,3417,3433,3439-3441,3444,3448,3458-3459,3476,3480,3483,3487,3489-3490,3493,3496,3501-3504,3515-3517,3519-3524,3530-3536,3538-3543,3545-3546,3548-3550,3553,3555,3559-3575,3577-3586,3588-3602,3604-3615,3619-3630,3637-3641
+  s_4e6817f2f1ffe7::t_97e77127612d80 297
+  s_4e6817f2f1ffe7::t_459a545ee3b33d 3866,3890,5193
+  s_4e6817f2f1ffe7::t_5ff635b7a936e6 3162
+  s_4e6817f2f1ffe7::t_4af594c3e61a56 3170-3174,3176
+  s_4e6817f2f1ffe7::t_4400bf45f7559a 3400,3402,3405-3406,3409,3421,3435,3443,3445-3447,3450,3455,3460,3463,3477,3479,3482,3491,3511,3513,3646-3648,3650-3655,3657-3672,3674,3676-3686,3688-3696,3699-3709,3712,3714-3724,3726-3739,3742,3745-3749,3752-3755,3758-3761,3764-3775,3777,3779-3786,3788-3789,3791-3792,3794-3795,3799-3803,3805-3806,3810-3823,3825,3827-3844,3862-3864
+  s_a9e380c5124138::t_5419fcf332a51c 1278-1281,1283-1294,1644-1648,1664-1667,2287-2292,3457,3488,3500,3868,3870-3875,3877,5211-5222
+  s_4e6817f2f1ffe7::t_6531ae556abfcd 3845,3848-3857,3861
+  s_4e6817f2f1ffe7::t_725aad948a0732 3869,3876
+  s_4e6817f2f1ffe7::t_9e60b0f5d09353 1637-1641,1643
+  s_4e6817f2f1ffe7::t_d3d4216719647b 3697-3698
+  s_4e6817f2f1ffe7::t_f1bcb5faef48a1 2293-2294,2341
+  s_4e6817f2f1ffe7::t_de6b50e0f4b0d8 3175
+  s_4e6817f2f1ffe7::t_15daea86ec0edc 3514,3518,3525-3529,3537,3544,3576,3587,3603,3616-3618,3631-3635,3643-3645
+  s_4e6817f2f1ffe7::t_7fcb60da20507f 3090-3091,3094-3095,3107,3115,3131,3133,3143,3151,3161,3163-3169
+  s_4e6817f2f1ffe7::t_d27e7d9bac938f 379,393,1271-1277,1282,1295,1606,1636,1649,1676,1689-1690,2237
+  s_30a10426266bd5::t_1fea611c66bf87 367,1642,3399,3401,3404,3407,3422-3432,3437-3438,3449,3451-3454,3456,3461-3462,3465-3466,3468-3475,3478,3481,3484-3486,3492,3494-3495,3497-3499,3506,3508-3510,3649,3656,3673,3675,3687,3710-3711,3713,3725,3740-3741,3743,3750,3756-3757,3762-3763,3776,3778,3787,3790,3793,3796-3798,3804,3807-3809,3824,3826,3858-3859,3865,3867,3878-3889,4232,4243,5210
+src/renderer/components/workbench/codex-sidebar.tsx
+  s_4e6817f2f1ffe7::t_fe22a239e9c74d 518,524,884,890
+src/renderer/lib/workbench-panel-actions.ts
+  s_4e6817f2f1ffe7::t_aab4b80425a54f 110,124,171,173,177-183,185-188
+  s_4e6817f2f1ffe7::t_d039ccd3d6c859 172,174,184,189
+docs/ARCHITECTURE.md
+  s_4e6817f2f1ffe7::t_071e1390a76048 84,602
+  s_4e6817f2f1ffe7::t_7567ceb03f9a7a 966
+src/renderer/lib/workbench-scene-tab-presentation.ts
+  s_4e6817f2f1ffe7::t_7974b7c377f0df 24
+src/renderer/components/workbench/workbench-settings-overlay.service-tier.test.tsx
+  s_4e6817f2f1ffe7::t_a1e940dd18ff6f 15
+src/renderer/lib/use-workbench-session-catalog.test.tsx
+  s_4e6817f2f1ffe7::t_a1e940dd18ff6f 38
+src/shared/page-lifecycle-v2-transport.ts
+  s_4e6817f2f1ffe7::t_0f17c2187ff10f 136-160
+  s_4e6817f2f1ffe7::t_b123378130081a 116,121-135,161-163
+src/shared/nodex-agent-resource-access.ts
+  s_4e6817f2f1ffe7::t_2f0ed441e9b8e4 110-114
+  s_4e6817f2f1ffe7::t_7dd97e6adbc456 1,30,104-106
+src/main/core-client/project-workspace-adapter.ts
+  s_4e6817f2f1ffe7::t_d94d14de0621a7 436,446
+crates/nodex-core/src/database/relation_projection.rs
+  s_4e6817f2f1ffe7::t_ab2ec3882a9a12 110
+src/renderer/lib/page-lifecycle-renderer-transport.node.test.ts
+  s_4e6817f2f1ffe7::t_3ed82eb777b2d5 77
+src/renderer/components/workbench/session-context-menu-model.test.ts
+  s_4e6817f2f1ffe7::t_512033122ae066 58
+tests/e2e/nfm-page-mention-entrypoints.spec.ts
+  s_4e6817f2f1ffe7::t_79b4d54891181e 111-113
+docs/product-specs/nodex-product-spec.md
+  s_4e6817f2f1ffe7::t_7567ceb03f9a7a 59-61
+  s_4e6817f2f1ffe7::t_a1e4d9c9345091 68-69
+  s_4e6817f2f1ffe7::t_d6d12e1a44133a 39
+scripts/scenarios/scenarios/nfm-equation-and-mermaid.ts
+  s_4e6817f2f1ffe7::t_82f1b97c8d9a63 110
+src/renderer/components/workbench/workbench-db-view-panel.tsx
+  s_4e6817f2f1ffe7::t_ffc7b923689ef9 1
+crates/nodex-core/src/library/history.rs
+  s_4e6817f2f1ffe7::t_1c7a739113f0a2 231,233,235,238,1473-1474
+  s_4e6817f2f1ffe7::t_d27e7d9bac938f 1445,1469
+  s_4e6817f2f1ffe7::t_a88283808850cd 267,273,284,1475-1476
+src/renderer/lib/project-default-database.ts
+  s_4e6817f2f1ffe7::t_2d0dda88617234 77-78
+  s_4e6817f2f1ffe7::t_c59dd89d53131a 1-16,19-47,50-65,67-73,76,79-88
+  s_4e6817f2f1ffe7::t_34544d3f405f2a 17-18,48-49
+  s_4e6817f2f1ffe7::t_f59a6bc296cfda 74-75
+  s_4e6817f2f1ffe7::t_826896c8e1df68 66
+src/renderer/lib/workbench-scene-navigator.ts
+  s_4e6817f2f1ffe7::t_512033122ae066 445-447
+crates/nodex-core/src/library/agent_surface.rs
+  s_4e6817f2f1ffe7::t_d27e7d9bac938f 173
+crates/nodex-core/src/library/page_lifecycle_mutation.rs
+  s_4e6817f2f1ffe7::t_7f367f9ff0abc0 3392,3408,3424-3425
+  s_4e6817f2f1ffe7::t_9a6c160a0fde40 748,752,755
+  s_4e6817f2f1ffe7::t_9e60b0f5d09353 3090,3093,3095
+  s_4e6817f2f1ffe7::t_3b376d17a25b05 332,357,723,731,736,3449
+crates/nodex-core/schema/current.sql
+  s_4e6817f2f1ffe7::t_cc15ac92c6a986 13,2290-2291,3205-3206,4931
+  s_4e6817f2f1ffe7::t_3385f99a9eda6d 2276,3201,3215,3229
+src/renderer/components/workbench/sidebar-thread-reorder.browser.test.tsx
+  s_4e6817f2f1ffe7::t_a1e940dd18ff6f 27
+src/shared/schemas/workbench-scene.ts
+  s_4e6817f2f1ffe7::t_3c22ff7ae3dd36 154-158
+  s_4e6817f2f1ffe7::t_8bc172e13fceed 787,950-961
+  s_4e6817f2f1ffe7::t_312f36a0d37a4b 151-153,159
+  s_a9e380c5124138::t_7798654fd43d50 14,747-748,761,850,854
+  s_4e6817f2f1ffe7::t_67fbd04cdb0d8b 752-760
+  s_4e6817f2f1ffe7::t_eb7d4d0f9c6123 962
+src/renderer/components/workbench/workbench-settings-overlay.stories.tsx
+  s_4e6817f2f1ffe7::t_a1e940dd18ff6f 34
+crates/nodex-core/src/automation/occurrence_mutation.rs
+  s_4e6817f2f1ffe7::t_eba2082f89e04b 725
+crates/nodex-core/src/infrastructure/schema.rs
+  s_4e6817f2f1ffe7::t_4a3e40762ca2fe 222
+docs/CLI.md
+  s_4e6817f2f1ffe7::t_5c8cab29c88540 133-139
+docs/product-specs/agent-interface-behavior.md
+  s_4e6817f2f1ffe7::t_d4d2f0170de1c6 159
+docs/product-specs/database-pages-and-views-behavior.md
+  s_4e6817f2f1ffe7::t_f65ac9fbe8f281 22-26,28-31
+packages/core-protocol/src/compatibility.generated.ts
+  s_4e6817f2f1ffe7::t_019631f5d4da98 42-43
+src/main/codex-application/CodexSidebarCapabilities.node.test.ts
+  s_a9e380c5124138::t_b2f1be2f6bf7ba 51
+src/main/codex-application/CodexThreadCatalog.node.test.ts
+  s_a9e380c5124138::t_2dac4ffba093f2 18
+src/main/codex-application/CodexThreadCatalogProjection.ts
+  s_a9e380c5124138::t_9f49c36b926fbd 205
+src/main/initial-project/InitialProjectBootstrapRuntime.node.test.ts
+  s_a9e380c5124138::t_810e42ba0d83b2 124
+src/main/ipc/handlers/CoreMutationIpc.ts
+  s_4e6817f2f1ffe7::t_9e4ec0126700e2 501,512
+src/main/library-application/LibraryModule.ts
+  s_4e6817f2f1ffe7::t_a05aadedf69fde 126,271,273
+src/renderer/components/workbench/codex-project-row.browser.test.tsx
+  s_a9e380c5124138::t_09f37f85844b0d 16
+src/renderer/components/workbench/left-sidebar-projects-section.test.tsx
+  s_a9e380c5124138::t_5c99ee85feb8fd 82,99
+src/renderer/components/workbench/project-hover-card.stories.tsx
+  s_a9e380c5124138::t_76b45ff1c92252 12
+src/renderer/components/workbench/project-hover-card.test.tsx
+  s_a9e380c5124138::t_f34a731e27379d 13
+src/renderer/components/workbench/sidebar-project-group-dnd.browser.test.tsx
+  s_a9e380c5124138::t_7c6a82d33ebe9b 35,52
+src/renderer/components/workbench/workbench-automation-project-options.node.test.ts
+  s_a9e380c5124138::t_63c00d1ef6508a 21
+src/renderer/components/workbench/workbench-testkit/workbench-shell-fixtures.ts
+  s_4e6817f2f1ffe7::t_27bfe1178b6cc3 71
+src/renderer/lib/api.ts
+  s_4e6817f2f1ffe7::t_b1deb9010e2429 738,740
+src/renderer/lib/electron-renderer-transport.ts
+  s_4e6817f2f1ffe7::t_d2a639f5a1a975 205,210
+src/renderer/lib/new-chat-project-selector.node.test.ts
+  s_a9e380c5124138::t_32ab64e32f4cd9 19
+src/renderer/lib/renderer-transport.ts
+  s_4e6817f2f1ffe7::t_1fd9e8aa7254a4 23
+src/renderer/lib/use-project-appearance-mutation.jsdom.test.ts
+  s_a9e380c5124138::t_9ad26551013dd8 41
+src/renderer/lib/use-project-page-create-target.node.test.ts
+  s_4e6817f2f1ffe7::t_71c772b2ec0146 9,50
+src/renderer/lib/use-project-page-create-target.ts
+  s_4e6817f2f1ffe7::t_28fd7c86afbbbc 28,31
+src/renderer/lib/use-project-page-destination-search.node.test.ts
+  s_a9e380c5124138::t_414d874f0f35c9 15
+src/renderer/lib/use-project-page-destination-search.test.tsx
+  s_a9e380c5124138::t_4957a45928b4b1 16
+src/renderer/lib/use-projects.test.tsx
+  s_a9e380c5124138::t_055244abf7d8c4 14
+src/shared/ipc-api.ts
+  s_4e6817f2f1ffe7::t_95e5778e370644 825
+src/shared/page-lifecycle-v2.ts
+  s_4e6817f2f1ffe7::t_9364eed8251fc1 58,134,736
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "871b0f2b2341a2ff50b00bf007133f06ad33d161",
+  "prompts": {},
+  "sessions": {
+    "s_30a10426266bd5": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a0fd41-2bba-7563-8147-cdc96cd290e9",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    },
+    "s_4e6817f2f1ffe7": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a0fd53-6363-7810-9d4d-80200b47c005",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    },
+    "s_a9e380c5124138": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a0fd54-bba4-7be1-a5e5-607570473557",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    }
+  }
+}
