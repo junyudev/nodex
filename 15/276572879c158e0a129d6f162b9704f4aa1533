@@ -1,0 +1,44 @@
+src/shared/browser-runtime-schema.mjs
+  s_c6dd7881b52d19::t_0cf6e861582f42 1-2
+src/shared/browser-runtime-metadata.ts
+  s_c6dd7881b52d19::t_0cf6e861582f42 1-2,5
+src/shared/browser-runtime-schema.d.mts
+  s_c6dd7881b52d19::t_0cf6e861582f42 1
+resources/browser-runtime/README.md
+  s_c6dd7881b52d19::t_0cf6e861582f42 14-18
+scripts/audit-version-surfaces.ts
+  s_c6dd7881b52d19::t_0cf6e861582f42 579
+scripts/sign-macos-runtime.mjs
+  s_c6dd7881b52d19::t_0cf6e861582f42 16,312
+scripts/sign-macos-runtime.test.ts
+  s_c6dd7881b52d19::t_894158e21c462a 290-308
+scripts/restore-packaged-runtime-closure.mjs
+  s_c6dd7881b52d19::t_0cf6e861582f42 5-6,77
+scripts/restore-packaged-runtime-closure.test.ts
+  s_c6dd7881b52d19::t_894158e21c462a 16,42,69-79
+  s_f223b0cf976d68::t_c6ff654dd8244e 80
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "15276572879c158e0a129d6f162b9704f4aa1533",
+  "prompts": {},
+  "sessions": {
+    "s_c6dd7881b52d19": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a0fd35-1c8f-79c0-b1f5-2077038dff12",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    },
+    "s_f223b0cf976d68": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a0fd1c-cdeb-7662-bba5-e59fa2a97b80",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    }
+  }
+}
