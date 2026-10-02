@@ -234,17 +234,26 @@ describe("prepared Electron build", () => {
     expect(() => verifyPreparedElectronBuild(fixture)).toThrow("outputs are stale or damaged");
   });
 
-  test("rejects source-only workspace dependencies left external in Electron Main", () => {
-    const fixture = makeFixture();
-    fs.writeFileSync(
-      path.join(fixture.repositoryRoot, "out/main/bootstrap.js"),
-      'require("@nodex/effect-codex-app-server/client");\n',
-    );
+  test.each([
+    {
+      dependency: "@nodex/effect-codex-app-server",
+      specifier: "@nodex/effect-codex-app-server/client",
+    },
+    { dependency: "@opencode-ai/sdk", specifier: "@opencode-ai/sdk/v2" },
+  ])(
+    "rejects external runtime loading of $specifier in Electron Main",
+    ({ dependency, specifier }) => {
+      const fixture = makeFixture();
+      fs.writeFileSync(
+        path.join(fixture.repositoryRoot, "out/main/bootstrap.js"),
+        `require(${JSON.stringify(specifier)});\n`,
+      );
 
-    expect(() => recordPreparedElectronBuild(fixture)).toThrow(
-      "externalizes source-only workspace dependency @nodex/effect-codex-app-server",
-    );
-  });
+      expect(() => recordPreparedElectronBuild(fixture)).toThrow(
+        `externalizes required bundled dependency ${dependency}`,
+      );
+    },
+  );
 
   test("binds the exact generated Agent Skills artifact", () => {
     const fixture = makeFixture();

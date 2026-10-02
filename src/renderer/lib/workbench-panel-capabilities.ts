@@ -37,7 +37,7 @@ export interface ResolveWorkbenchPanelCapabilitiesInput {
       }
     | {
         readonly kind: "session";
-        readonly backendKind: "codex" | "acp" | "claude";
+        readonly backendKind: "codex" | "acp" | "claude" | "opencode";
         readonly projectId: string | null;
         readonly hasAttachedThread: boolean;
         readonly cwd: string | null | undefined;

@@ -13,6 +13,8 @@ import { coreRuntimeError } from "../core-runtime/CoreRuntimeError";
 import type { AppToolInvocation } from "./AppToolInvocationInbox";
 import { make } from "./SessionMessageAppTools";
 import { NativeConversationExtension } from "./NativeConversationExtension";
+import type { NativeAgentBackendKind } from "../../shared/agent-backend";
+import { createNativeAppToolClaimIssuer } from "./AppToolCaller";
 
 const authority: FrozenNodexAgentTurnAuthority = {
   threadId: "caller",
@@ -47,7 +49,7 @@ const setup = (
     threadId?: string | null;
     archived?: boolean;
     afterAdmission?: () => void;
-    native?: boolean;
+    native?: NativeAgentBackendKind;
     busy?: boolean;
   } = {},
 ) => {
@@ -64,7 +66,7 @@ const setup = (
             threadId: "target-thread",
             busy: options.busy ?? false,
             archived: false,
-            backendBinding: { kind: "claude", instanceConfigId: "work" },
+            backendBinding: { kind: options.native ?? "claude", instanceConfigId: "work" },
           }),
         submit: ({
           threadId,
@@ -103,7 +105,7 @@ const setup = (
                     : {
                         thread_id: options.threadId ?? "target-thread",
                         backend_binding: {
-                          kind: options.native ? "claude" : (options.backend ?? "codex"),
+                          kind: options.native ?? options.backend ?? "codex",
                         },
                       },
               },
@@ -172,26 +174,39 @@ it.effect(
   "cross-Session dispatch uses native admission and rejects a busy native target before reservation",
   () =>
     Effect.gen(function* () {
-      const fixture = setup({ native: true });
-      const execute = yield* fixture.execute;
-      const first = yield* execute({ ...input, arguments: { ...input.arguments, model: "opus" } });
-      assert.equal(first.structuredContent?.turnId, "native-accepted");
-      assert.equal(fixture.starts[0]?.overrides?.model, "opus");
-      yield* execute({
-        ...input,
-        arguments: {
-          ...input.arguments,
-          model: "opus",
-          operationId: first.structuredContent?.operationId,
-        },
-      });
-      assert.lengthOf(fixture.starts, 1);
-      const busy = setup({ native: true, busy: true });
-      const send = yield* busy.execute;
-      const rejected = yield* send(input);
-      assert.deepEqual(rejected.structuredContent, { error: { code: "session_busy" } });
-      assert.lengthOf(busy.admitted, 0);
-      assert.lengthOf(busy.starts, 0);
+      for (const backend of ["claude", "opencode"] as const) {
+        const fixture = setup({ native: backend });
+        const execute = yield* fixture.execute;
+        const issuer = createNativeAppToolClaimIssuer({
+          backend,
+          threadId: "caller",
+          hostId: "local",
+          generation: 1,
+          capture: () => Effect.succeed(true),
+        });
+        issuer.beginTurn(authority);
+        const nativeInput = { ...input, caller: issuer.claim()! };
+        const model = backend === "opencode" ? "moonshot/kimi-k3" : "opus";
+        const first = yield* execute({ ...nativeInput, arguments: { ...input.arguments, model } });
+        assert.equal(first.structuredContent?.turnId, "native-accepted");
+        assert.equal(fixture.starts[0]?.overrides?.model, model);
+        yield* execute({
+          ...nativeInput,
+          arguments: {
+            ...input.arguments,
+            model,
+            operationId: first.structuredContent?.operationId,
+          },
+        });
+        assert.lengthOf(fixture.starts, 1);
+        const busy = setup({ native: backend, busy: true });
+        const send = yield* busy.execute;
+        const rejected = yield* send(input);
+        assert.deepEqual(rejected.structuredContent, { error: { code: "session_busy" } });
+        assert.lengthOf(busy.admitted, 0);
+        assert.lengthOf(busy.starts, 0);
+        issuer.close();
+      }
     }),
 );
 

@@ -15,7 +15,7 @@ authority.
 Nodex is a local-first workspace for durable content and agent work. A local
 Profile owns one Library containing Pages, Databases, Blocks, Documents, and
 their durable history. A Project is an execution context: it owns filesystem
-roots, sessions, terminals, Codex Threads, and approval policy, binds one
+roots, sessions, terminals, Threads, and approval policy, binds one
 primary Database, and receives grants to Library resources. Project lifecycle
 never owns or deletes Library content.
 
@@ -25,12 +25,21 @@ Accepted system-wide decisions live in `docs/adr/`.
 
 ### Agent Backend
 
-An Agent Backend is the runtime and protocol family that executes a Thread or Scheduled
-Automation. Every durable execution owner has an explicit Backend Binding: native Codex, native Claude Code with one enabled Profile instance, or ACP
-with one supported Agent Definition and one enabled Profile instance. The binding selects runtime
-configuration; a Claude Code or ACP backend session ID is a separate durable resume coordinate and is cleared
-when the Thread changes bindings. A model provider is backend diagnostic data, not user-owned
-configuration.
+An Agent Backend is the runtime and protocol family that executes a Thread or supported Scheduled
+Automation: native Codex, native Claude Code, native OpenCode, or ACP. A Backend Binding identifies
+that family and, when required, its Agent Instance and ACP Agent Definition, independently of the
+native session's resume identity.
+
+### Agent Instance
+
+An Agent Instance is a named, Profile-local configuration for one external Agent Backend and its
+native configuration and authentication environment. It is distinct from a connected conversation.
+
+### Model Selection
+
+A Model Selection combines a Backend Binding, an exact backend-owned model identifier, and the
+backend's supported model options and mode. A provider may form part of the model identifier, but never replaces
+the runtime instance that owns the conversation.
 
 ### Profile
 

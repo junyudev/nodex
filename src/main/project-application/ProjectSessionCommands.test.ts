@@ -1,3 +1,4 @@
+import { inactiveOpenCodeSessions } from "../agent-backend/opencode/OpenCodeSessionManager.test-fixtures";
 import { inactiveClaudeSessions } from "../agent-backend/claude/ClaudeSessionManager.test-fixtures";
 import { assert, it } from "@effect/vitest";
 import * as Deferred from "effect/Deferred";
@@ -22,7 +23,10 @@ import {
   type ProjectWorkspaceService,
 } from "./ProjectWorkspace";
 
-const live = productionLive.pipe(Layer.provide(inactiveClaudeSessions));
+const live = productionLive.pipe(
+  Layer.provide(inactiveClaudeSessions),
+  Layer.provide(inactiveOpenCodeSessions),
+);
 
 const session: ProjectSession = {
   id: "session:one",

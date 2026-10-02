@@ -458,6 +458,10 @@ export interface components {
             /** @enum {string} */
             readonly kind: "claude";
         } | {
+            readonly instance_config_id: string;
+            /** @enum {string} */
+            readonly kind: "opencode";
+        } | {
             readonly agent_definition_id: string;
             readonly instance_config_id?: string | null;
             /** @enum {string} */
@@ -7292,6 +7296,7 @@ export interface components {
                 readonly kind: "bind_thread_backend_session";
                 readonly native_home?: string | null;
                 readonly native_state?: null | components["schemas"]["ProjectWorkspaceNativeAgentState"];
+                readonly runtime_options?: null | components["schemas"]["ProjectWorkspaceAgentRuntimeOptions"];
                 readonly thread_id: string;
             } | {
                 readonly backend_binding: components["schemas"]["AgentBackendBinding"];
@@ -8931,6 +8936,16 @@ export interface components {
             readonly order: number;
             readonly root: string;
         };
+        readonly ProjectWorkspaceAgentConfigOption: {
+            readonly id: string;
+            readonly value: components["schemas"]["ProjectWorkspaceAgentConfigValue"];
+        };
+        readonly ProjectWorkspaceAgentConfigValue: string | boolean;
+        readonly ProjectWorkspaceAgentRuntimeOptions: {
+            readonly config_options: readonly components["schemas"]["ProjectWorkspaceAgentConfigOption"][];
+            readonly mode_id?: string | null;
+            readonly model?: string | null;
+        };
         readonly ProjectWorkspaceApplyRequest: components["schemas"]["ModuleApplyRequest_ProjectWorkspaceIntent"];
         readonly ProjectWorkspaceApplyResponse: components["schemas"]["ResponseEnvelope_ApplyResponse_ProjectWorkspaceCommitValue_ProjectWorkspaceReceipt"];
         readonly ProjectWorkspaceBackgroundProcess: {
@@ -9232,6 +9247,7 @@ export interface components {
             readonly kind: "bind_thread_backend_session";
             readonly native_home?: string | null;
             readonly native_state?: null | components["schemas"]["ProjectWorkspaceNativeAgentState"];
+            readonly runtime_options?: null | components["schemas"]["ProjectWorkspaceAgentRuntimeOptions"];
             readonly thread_id: string;
         } | {
             readonly backend_binding: components["schemas"]["AgentBackendBinding"];
@@ -9414,7 +9430,7 @@ export interface components {
         };
         readonly ProjectWorkspaceNativeAgentState: {
             readonly ever_saved?: boolean;
-            readonly preferences: components["schemas"]["ProjectWorkspaceNativeAgentPreferences"];
+            readonly preferences?: null | components["schemas"]["ProjectWorkspaceNativeAgentPreferences"];
             readonly turns?: readonly components["schemas"]["ProjectWorkspaceNativeTurnFact"][];
         };
         readonly ProjectWorkspaceNativeArtifactFact: {
@@ -9753,15 +9769,16 @@ export interface components {
             readonly writable_roots: readonly string[];
         };
         /**
-         * @description Durable protocol-session identity for a non-native Agent Backend. It is
-         *     separate from backend instance configuration and may be cleared when a
-         *     backend can no longer resume the remote session.
+         * @description Durable Agent session identity, separate from backend instance settings.
+         *     Transcript content remains owned by the Agent runtime.
          */
         readonly ProjectWorkspaceThreadBackendSession: {
             readonly backend_binding: components["schemas"]["AgentBackendBinding"];
             readonly backend_session_id: string;
+            /** @description Runtime-owned history scope: a native Profile or an external server identity. */
             readonly native_home?: string | null;
             readonly native_state?: null | components["schemas"]["ProjectWorkspaceNativeAgentState"];
+            readonly runtime_options?: null | components["schemas"]["ProjectWorkspaceAgentRuntimeOptions"];
             readonly thread_id: string;
             /** Format: int64 */
             readonly updated_at: number;

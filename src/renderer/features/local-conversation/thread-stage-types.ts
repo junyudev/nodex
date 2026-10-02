@@ -219,6 +219,7 @@ export interface ThreadOpenThreadContext {
 
 /** Capabilities vary by provider; the stage, timeline, editor and request UI are shared. */
 export interface ConversationProviderPresentation {
+  readonly modelCatalog?: import("@/components/shared/agent-runtime/agent-model-picker").AgentModelCatalogPresentation;
   readonly nativeIntelligence?: import("@/components/shared/agent-runtime/agent-intelligence-dropdown").AgentNativeIntelligencePresentation;
   readonly diagnostics?: () => Promise<
     import("../../../shared/claude-models").ClaudeRuntimeDiagnostics
@@ -247,7 +248,7 @@ export interface ConversationProviderPresentation {
   readonly skills?: readonly CodexComposerSkill[];
   readonly refreshSkills?: () => Promise<void>;
   readonly stopTask?: (taskId: string) => Promise<void>;
-  readonly kind: "codex" | "claude" | "acp";
+  readonly kind: "codex" | "claude" | "acp" | "opencode";
   readonly label: string;
   readonly selection: string;
   readonly options: readonly { value: string; label: string }[];

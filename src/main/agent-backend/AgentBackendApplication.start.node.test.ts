@@ -1,3 +1,6 @@
+import { ApplicationSettings } from "../settings/ApplicationSettings";
+import { makeTestApplicationSettings } from "../settings/ApplicationSettings.test-support";
+import { inactiveOpenCodeSessions } from "./opencode/OpenCodeSessionManager.test-fixtures";
 // @effect-diagnostics strictEffectProvide:off
 import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
@@ -27,7 +30,15 @@ import {
   NativeConversationBinding,
   NativeConversationExtension,
 } from "../app-tools/NativeConversationExtension";
-import { make, AgentBackendApplicationError } from "./AgentBackendApplication";
+import {
+  make as makeProductionApplication,
+  AgentBackendApplicationError,
+} from "./AgentBackendApplication";
+const makeApplication = makeProductionApplication.pipe(
+  Effect.provide(inactiveOpenCodeSessions),
+  Effect.provideService(ApplicationSettings, makeTestApplicationSettings()),
+);
+
 import { emptyAgentConversationSnapshot } from "./AgentConversationProjection";
 import type { AgentSessionHandle } from "./AgentSessionHandle";
 import { NativeSessionWorkspace, type NativeSessionWorkspaceInput } from "./NativeSessionWorkspace";
@@ -76,7 +87,7 @@ const fixture = (environmentPath: string) =>
     } | null = null;
     const sourceRoots = ["/source", "/additional"];
     const worktreeRoots = ["/managed/work", "/additional", "/source/.git"];
-    const application = yield* make.pipe(
+    const application = yield* makeApplication.pipe(
       Effect.provideService(NativeSessionWorkspace, {
         prepare: (input) =>
           Effect.gen(function* () {

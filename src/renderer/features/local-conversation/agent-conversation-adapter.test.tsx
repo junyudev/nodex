@@ -401,3 +401,235 @@ test("live native presentation shows applied choices while preserving requested 
   expect(control).toHaveBeenLastCalledWith({ kind: "permission-mode", mode: "auto" });
   expect(result.current.permissionMode).toBe("full-access");
 });
+
+test("generic drafts send advertised per-model controls and native mode IDs with the first prompt", async () => {
+  configureCatalog();
+  const { modelCatalog } = await import("../../lib/agent-model-catalog.test-fixtures");
+  const binding = { kind: "opencode", instanceConfigId: "local" } as const;
+  const catalog = modelCatalog({
+    modelConfigOptions: {
+      "moonshot/kimi-k3": [
+        {
+          type: "select",
+          id: "variant",
+          name: "Variant",
+          category: "thought_level",
+          description: null,
+          currentValue: "balanced",
+          options: [
+            { value: "balanced", name: "Balanced", description: null },
+            { value: "deep", name: "Deep", description: null },
+          ],
+        },
+        {
+          type: "boolean",
+          id: "memory",
+          name: "Memory",
+          category: null,
+          description: null,
+          currentValue: false,
+        },
+      ],
+      "local/small": [],
+    },
+    modes: {
+      currentModeId: "build",
+      availableModes: [
+        { id: "build", name: "Build", description: null },
+        { id: "review", name: "Review", description: null },
+      ],
+    },
+  });
+  mocks.startThread.mockResolvedValueOnce({ thread: { threadId: "opencode-first" } });
+  const input = { ...hookInput("generic-first"), binding, catalog };
+  const { result } = renderHook(() => useAgentConversationAdapter(input));
+  expect(result.current.selectedModel).toBe("moonshot/kimi-k3");
+  expect(result.current.reasoningEffortOptions).toEqual([]);
+  await act(async () => {
+    await result.current.genericIntelligence?.changeConfig("variant", "deep");
+    await result.current.genericIntelligence?.changeMode("review");
+  });
+  await act(async () => {
+    await result.current.genericIntelligence?.changeConfig("memory", true);
+  });
+  await act(async () => {
+    await result.current.actions.onStartThreadForSession?.({
+      projectId: "project",
+      sessionId: "generic-first",
+      prompt: "Check this",
+      runInTarget: "localProject",
+    });
+  });
+  expect(mocks.startThread).toHaveBeenLastCalledWith(
+    expect.objectContaining({
+      backendKind: "opencode",
+      instanceConfigId: "local",
+      model: "moonshot/kimi-k3",
+      modeId: "review",
+      configOptions: [
+        { id: "variant", value: "deep" },
+        { id: "memory", value: true },
+      ],
+    }),
+  );
+});
+
+test("generic draft model changes remove stale controls and gate image input by advertised modalities", async () => {
+  configureCatalog();
+  const { modelCatalog, catalogModel } =
+    await import("../../lib/agent-model-catalog.test-fixtures");
+  const catalog = modelCatalog({
+    models: [
+      { ...catalogModel("moonshot/kimi-k3"), inputModalities: ["text", "image"] },
+      catalogModel("local/small"),
+    ],
+    modelConfigOptions: {
+      "moonshot/kimi-k3": [
+        {
+          type: "boolean",
+          id: "memory",
+          name: "Memory",
+          category: null,
+          description: null,
+          currentValue: true,
+        },
+      ],
+      "local/small": [],
+    },
+  });
+  const { result } = renderHook(() =>
+    useAgentConversationAdapter({
+      ...hookInput("generic-modality"),
+      binding: { kind: "opencode", instanceConfigId: "local" },
+      catalog,
+    }),
+  );
+  expect(result.current.controls.images).toBe(true);
+  await act(async () => {
+    await result.current.actions.onModelChange?.("local/small");
+  });
+  expect(result.current.controls.images).toBe(false);
+  expect(result.current.genericIntelligence?.configOptions).toEqual([]);
+});
+
+test("ACP negotiates its first session without inventing a pre-session model", async () => {
+  configureCatalog();
+  const { modelCatalog } = await import("../../lib/agent-model-catalog.test-fixtures");
+  const binding = {
+    kind: "acp",
+    instanceConfigId: "acp-local",
+    agentDefinitionId: "custom-agent",
+  } as const;
+  const catalog = modelCatalog({
+    binding,
+    models: [],
+    defaultModel: null,
+    health: { status: "unavailable", error: "Models are available after connecting" },
+  });
+  mocks.startThread.mockResolvedValueOnce({ thread: { threadId: "acp-first" } });
+  const { result } = renderHook(() =>
+    useAgentConversationAdapter({ ...hookInput("acp-first"), binding, catalog }),
+  );
+  expect(result.current.models).toEqual([]);
+  expect(result.current.selectedModel).toBe("");
+  await act(async () => {
+    await result.current.actions.onStartThreadForSession?.({
+      projectId: "project",
+      sessionId: "acp-first",
+      prompt: "Connect and inspect",
+      runInTarget: "localProject",
+    });
+  });
+  const request = mocks.startThread.mock.lastCall?.[0];
+  expect(request).toMatchObject({ backendKind: "acp", instanceConfigId: "acp-local" });
+  expect(request).not.toHaveProperty("model");
+});
+
+test("attached ACP model controls come from its live descriptors while pre-session discovery is unavailable", async () => {
+  configureCatalog();
+  const { modelCatalog } = await import("../../lib/agent-model-catalog.test-fixtures");
+  const binding = {
+    kind: "acp",
+    instanceConfigId: "local",
+    agentDefinitionId: "custom-agent",
+  } as const;
+  const state: AgentConversationOwnerSnapshot = {
+    connection: "ready",
+    promptPending: false,
+    controlPending: null,
+    error: null,
+    presentation: {
+      ...presentation,
+      snapshot: { ...presentation.snapshot, backend: "acp" },
+      configOptions: [
+        {
+          type: "select",
+          id: "native-model-setting",
+          name: "Model",
+          category: "model",
+          description: null,
+          currentValue: "native/first",
+          options: [
+            { value: "native/first", name: "First", description: null },
+            { value: "native/next", name: "Next", description: null },
+          ],
+        },
+      ],
+    },
+  };
+  const setConfigOption = vi.fn(async () => true);
+  const owner = {
+    getSnapshot: () => state,
+    subscribe: () => () => {},
+    setConfigOption,
+  } as unknown as AgentConversationOwnerPort;
+  mocks.acquire.mockReturnValue({ owner, retain: () => () => {} });
+  const { result } = renderHook(() =>
+    useAgentConversationAdapter({
+      ...hookInput("acp-live", summary),
+      binding,
+      catalog: modelCatalog({
+        binding,
+        models: [],
+        defaultModel: null,
+        health: { status: "unavailable", error: null },
+      }),
+    }),
+  );
+  expect(result.current.models.map(({ id }) => id)).toEqual(["native/first", "native/next"]);
+  expect(result.current.selectedModel).toBe("native/first");
+  await act(async () => {
+    await result.current.actions.onModelChange?.("native/next");
+  });
+  expect(setConfigOption).toHaveBeenCalledWith("native-model-setting", "native/next");
+});
+
+test("an unavailable draft profile preserves its model but blocks native startup before creating a thread", async () => {
+  configureCatalog();
+  const { nativeAgentDraftKey } = await import("../../lib/native-agent-draft-owner");
+  const binding = { kind: "opencode", instanceConfigId: "disabled" } as const;
+  const key = nativeAgentDraftKey("unavailable-draft", "project", binding);
+  nativeAgentDraftOwner.write(key, { selection: { model: "moonshot/kimi-k3", effort: "default" } });
+  mocks.startThread.mockClear();
+  const { result } = renderHook(() =>
+    useAgentConversationAdapter({
+      ...hookInput("unavailable-draft"),
+      binding,
+      catalog: null,
+      draftUnavailableReason: "This Agent profile is disabled.",
+    }),
+  );
+  expect(result.current.selectedModel).toBe("moonshot/kimi-k3");
+  await act(async () => {
+    await expect(
+      result.current.actions.onStartThreadForSession?.({
+        projectId: "project",
+        sessionId: "unavailable-draft",
+        prompt: "Keep this draft",
+        runInTarget: "localProject",
+      }),
+    ).rejects.toThrow("This Agent profile is disabled.");
+  });
+  expect(mocks.startThread).not.toHaveBeenCalled();
+  expect(nativeAgentDraftOwner.read(key).selection.model).toBe("moonshot/kimi-k3");
+});

@@ -15,7 +15,6 @@ import {
 } from "@/components/ui/dropdown";
 import {
   formatCodexModelLabel,
-  formatCodexReasoningEffortLabel,
   resolveCodexReasoningEffortOptions,
 } from "@/lib/codex-thread-settings";
 import type { CodexExecutionProfileChange } from "../../../../shared/codex-execution-profile";
@@ -31,9 +30,14 @@ import {
   type IntelligenceSelectorLabelCandidate,
   useIntelligenceSelectorTriggerGeometry,
 } from "./intelligence-selector-trigger";
+import {
+  AgentModelPicker,
+  agentEffortLabel as effortLabel,
+  type AgentModelCatalogPresentation,
+} from "./agent-model-picker";
 
 export interface AgentIntelligenceSelection {
-  readonly kind: "codex" | "claude" | "acp";
+  readonly kind: "codex" | "claude" | "acp" | "opencode";
   readonly model: string;
   readonly reasoningEffort: CodexReasoningEffort;
   readonly serviceTier: CodexServiceTier;
@@ -71,6 +75,7 @@ export interface AgentIntelligenceDropdownProps {
     readonly options: readonly { value: string; label: string }[];
     readonly select: (value: string) => void;
     readonly nativeIntelligence?: AgentNativeIntelligencePresentation;
+    readonly modelCatalog?: AgentModelCatalogPresentation;
   };
   readonly models: readonly AgentModelOption[];
   readonly disabled?: boolean;
@@ -93,9 +98,6 @@ const SPEED_OPTIONS = [
   { fast: false, label: "Standard", codexDescription: "Default speed, normal usage" },
   { fast: true, label: "Fast", codexDescription: "1.5x speed · More usage" },
 ] as const;
-
-const effortLabel = (kind: AgentIntelligenceSelection["kind"], effort: string) =>
-  kind === "claude" && effort === "low" ? "Low" : formatCodexReasoningEffortLabel(effort);
 
 export function resolveReasoningEffortForModelChange(input: {
   currentReasoningEffort: CodexReasoningEffort;
@@ -134,7 +136,14 @@ function ModelLabel({
   );
 }
 
-export function AgentIntelligenceDropdown({
+export function AgentIntelligenceDropdown({ ...props }: AgentIntelligenceDropdownProps) {
+  if (props.provider?.modelCatalog) {
+    return <AgentModelPicker {...props} catalog={props.provider.modelCatalog} />;
+  }
+  return <LegacyAgentIntelligenceDropdown {...props} />;
+}
+
+function LegacyAgentIntelligenceDropdown({
   models,
   disabled = false,
   provider,

@@ -7,6 +7,9 @@ const variants = {
   claude: z
     .object({ kind: z.literal("claude"), instanceConfigId: z.string().trim().min(1).max(512) })
     .strict(),
+  opencode: z
+    .object({ kind: z.literal("opencode"), instanceConfigId: z.string().trim().min(1).max(128) })
+    .strict(),
   acp: z
     .object({
       kind: z.literal("acp"),

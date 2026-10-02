@@ -5,13 +5,13 @@ import * as Effect from "effect/Effect";
 import * as Exit from "effect/Exit";
 import * as Fiber from "effect/Fiber";
 import * as Scope from "effect/Scope";
-import { makeClaudeDiscoveryRequests } from "./ClaudeDiscoveryRequests";
+import { makeAgentDiscoveryRequests } from "./AgentDiscoveryRequests";
 
 it.effect(
   "cancellation belongs to the requesting viewer and closes acquisition before acknowledging",
   () =>
     Effect.gen(function* () {
-      const requests = yield* makeClaudeDiscoveryRequests;
+      const requests = yield* makeAgentDiscoveryRequests;
       const admitted = yield* Deferred.make<void>();
       let released = false;
       const query = yield* Effect.forkChild(
@@ -43,7 +43,7 @@ it.effect(
 it.effect("early cancellation and scope shutdown do not leak pending requests", () =>
   Effect.gen(function* () {
     const scope = yield* Scope.make();
-    const requests = yield* makeClaudeDiscoveryRequests.pipe(
+    const requests = yield* makeAgentDiscoveryRequests.pipe(
       Effect.provideService(Scope.Scope, scope),
     );
     let evaluated = false;

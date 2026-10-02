@@ -1,3 +1,4 @@
+import { OpenCodeAgentSettingsUpdateSchema } from "../../../shared/opencode-agent-settings";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 import * as Schema from "effect/Schema";
@@ -55,6 +56,7 @@ type SettingsReadChannel =
   | "codex-command-keymap-state"
   | "settings:acp-agents:get"
   | "settings:claude-agents:get"
+  | "settings:opencode-agents:get"
   | "settings:codex-home:get"
   | "settings:backup:get"
   | "settings:codex-developer:get"
@@ -320,6 +322,32 @@ export const live: Layer.Layer<
       ),
     );
     yield* handleRead(
+      "settings:opencode-agents:get",
+      "OpenCode settings",
+      (value) => value.openCodeAgents,
+    );
+    yield* ipc.handlePlainCommand("settings:opencode-agents:update", (event, input: unknown) =>
+      authorize(event, "OpenCode settings").pipe(
+        Effect.andThen(
+          parse("parse-opencode-agent-settings", () =>
+            OpenCodeAgentSettingsUpdateSchema.parse(input),
+          ),
+        ),
+        Effect.flatMap((parsed) =>
+          update(
+            "update-opencode-agent-settings",
+            { type: "update-opencode-agents", input: parsed },
+            (value) => value.openCodeAgents,
+          ),
+        ),
+        Effect.tap(() =>
+          Effect.sync(() =>
+            safeBroadcastToWindows(windows.all(), "agent-settings-changed", [undefined]),
+          ),
+        ),
+      ),
+    );
+    yield* handleRead(
       "settings:claude-agents:get",
       "Claude Code settings",
       (value) => value.claudeAgents,
@@ -340,9 +368,10 @@ export const live: Layer.Layer<
             (value) => value.claudeAgents,
           ).pipe(
             Effect.tap(() =>
-              Effect.sync(() =>
-                safeBroadcastToWindows(windows.all(), "claude-agent-settings-changed", [undefined]),
-              ),
+              Effect.sync(() => {
+                safeBroadcastToWindows(windows.all(), "claude-agent-settings-changed", [undefined]);
+                safeBroadcastToWindows(windows.all(), "agent-settings-changed", [undefined]);
+              }),
             ),
           ),
         ),
@@ -405,6 +434,12 @@ export const live: Layer.Layer<
             "update-acp-agent-settings",
             { type: "update-acp-agents", input: parsed },
             (value) => value.acpAgents,
+          ).pipe(
+            Effect.tap(() =>
+              Effect.sync(() =>
+                safeBroadcastToWindows(windows.all(), "agent-settings-changed", [undefined]),
+              ),
+            ),
           ),
         ),
       ),

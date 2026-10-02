@@ -3,16 +3,18 @@
 ## Scope
 
 Every Agent Thread has one explicit backend binding. Codex is the default native backend. An
-enabled Profile-local Claude Code or ACP Agent instance can be selected when starting a new task in a local
+enabled Profile-local Claude Code, OpenCode or ACP Agent instance can be selected when starting a new task in a local
 Project. A Thread never changes backend implicitly and never falls back to another backend when its
 configured runtime is unavailable.
 
 ## Shared conversation surface
 
 Every backend uses the same conversation page, rich prompt editor, Markdown timeline, activity
-expansion, model menu and request cards. The model menu's Agent selector chooses a backend before
-starting a task; changing it preserves the draft. An attached task retains its backend. Model and
+expansion, model menu and request cards. The model menu searches exact model IDs and names across enabled runtime instances. Selecting a model
+atomically chooses its instance, model and supported options while preserving the draft. An attached task retains its backend. Model and
 Code/Plan selections are applied before the first prompt, and subsequent changes use the same menu.
+Refresh rereads configured Agent instances and their model inventory. Unavailable selected instances
+retain the draft choice and block sending until the instance is enabled or another model is selected.
 
 Text, pasted text, file references and review/browser context reach native and ACP prompts. Claude
 also accepts attached PNG, JPEG, GIF and WebP images, including browser evidence and app snapshots,
@@ -31,12 +33,14 @@ native subtasks retain their own activity and can be opened from the shared Task
 
 ## Starting and reopening tasks
 
-- The model menu lists Codex and enabled Claude Code and ACP Agent instances. Codex remains selected by
-  default.
-- Interactive Claude Code and ACP tasks require an active local Project with a primary workspace.
+- The model menu lists models advertised by Codex and enabled Claude Code and OpenCode instances.
+  Each model retains its instance identity, including when two instances advertise the same model.
+  Enabled ACP instances can start a conversation before negotiated models become available. Codex
+  remains selected by default.
+- Interactive Claude Code, OpenCode and ACP tasks require an active local Project with a primary workspace.
   Scheduled Claude tasks can also create a disposable projectless workspace. Remote-host execution
   is unavailable and is not silently redirected to Codex.
-- Starting a Claude Code or ACP task creates the durable Thread with its explicit backend binding before the first
+- Starting a Claude Code, OpenCode or ACP task creates the durable Thread with its explicit backend binding before the first
   prompt. Main derives the workspace and permission mode from that durable authority; renderer does
   not submit either value.
 - After the Agent opens and its protocol session identity is bound, starting returns the durable
@@ -48,9 +52,55 @@ native subtasks retain their own activity and can be opened from the shared Task
 - If an ACP Agent no longer has the stored session, Nodex clears the stale protocol identity and reports
   that a new task is required. It does not create a replacement conversation with ambiguous history.
 - Rename, pin, unread, archive, restore, and delete use the durable Session authority. Codex-owned
-  refinements are invoked only for Codex Threads. Archiving or deleting a Claude Code or ACP task closes its live
+  refinements are invoked only for Codex Threads. Archiving or deleting a Claude Code, OpenCode or ACP task closes its live
   Agent process; archiving a Project is blocked by an active Agent turn and otherwise closes every
   Project-owned Agent process after the durable archive commit.
+
+## Native OpenCode
+
+OpenCode uses its installed executable and native HTTP/SSE protocol through the pinned SDK. Agent
+settings can add, name, enable and remove independent instances. Each local instance has an
+executable, an optional profile directory and explicit environment rows. An empty profile directory
+uses the Profile-owned `agents/opencode/<instance-id>` directory. Native configuration, provider
+credentials, transcripts, state and cache remain isolated together under that directory. Profile
+paths accept absolute paths or `~/`. Environment rows cannot override managed native path variables;
+API keys and server passwords use the same encrypted storage and redacted settings contract as
+Claude environment values. Repository configuration and plugins retain their native precedence.
+
+Discovery reads providers, exact model identifiers, native agents and commands in the draft's
+Project folder or attached chat's saved execution directory. It creates no chat and sends no prompt.
+Connected provider metadata indicates configuration, rather than guaranteeing access to every model.
+Only models from connected providers are offered. Model identifiers preserve provider/model pairs,
+including model IDs containing additional slashes. Variant controls use that model's advertised
+native variants; models without variants expose no invented presets. The native agent
+selector uses actual primary agents, including custom agents. Model changes drop unsupported variant
+values. Closing a consumer cancels its request; settings, Project and execution changes fence stale
+responses. Discovery helpers and unused local chat servers belong to bounded Main scopes.
+
+The model and its current native options apply before the first prompt. Core saves model, options and
+mode independently of native transcript history. Reopening validates the same configured native
+owner and exact session ID, loads a bounded native transcript and sends no prompt. Changing the
+profile directory or external endpoint, or losing the native session, requires restoring that owner
+or starting a new chat. Nodex never substitutes a fresh conversation. Close releases the server
+without deleting native history. Fork creates a separate native session and Nodex chat, preserving
+source model/options and execution location.
+
+Creating a native session and changing its permission policy verify the effective rules retained
+by OpenCode. A successful HTTP response that leaves the requested policy unapplied is a protocol
+error; Nodex reports the native version and an upgrade hint before using that policy.
+
+The shared timeline displays native text, reasoning, tool activity and usage. Approvals offer only
+supported one-use decisions, and native questions accept choices and free text. Requests are scoped
+to this chat or its native descendants; unrelated sessions on a shared endpoint cannot solicit
+approvals here. Stop aborts the exact native turn. Images are accepted only for models advertising
+image input. Native compaction and earlier-history controls remain capability-driven.
+
+An instance may specify an external HTTP(S) server. Authentication uses only its explicit
+`OPENCODE_SERVER_PASSWORD` and optional `OPENCODE_SERVER_USERNAME` environment values; Nodex neither inherits an ambient server password nor
+owns the external process. External connections do not publish chat-scoped Nodex application tools
+because shared directory-wide MCP configuration cannot isolate those claims. Locally owned servers
+receive a separate application-tool connection for the exact admitted chat and turn. OpenCode does
+not gain Codex desktop, review or computer-control authority.
 
 ## Native Claude Code
 
@@ -91,9 +141,8 @@ uses the same configuration directory, environment and native settings sources
 used for execution. Discovery sends no prompt, saves no Claude session, suppresses hooks, MCP and IDE
 integration, and releases its process after initialization. Its bounded cache includes the resolved
 profile configuration and execution directory. Profile, configuration and scope changes refresh it
-automatically. Visible catalogs revalidate on expiry; returning to the app revalidates an expired
-catalog, and transient failures use bounded retry backoff. A failed refresh retains the previous
-catalog for that same scope. The model menu has no manual refresh action. Changing scope or closing
+automatically. Expired cache entries are revalidated on the next read. The shared model menu's Refresh
+action bypasses the discovery cache; in a draft it also rereads enabled instances. Changing scope or closing
 the consumer cancels its request and releases its process. Execution moves refresh the attached
 catalog, and results from a changed or unavailable Thread are discarded. At most two discovery processes run
 concurrently. An executable/version check does not claim authentication succeeded.
@@ -211,12 +260,12 @@ desktop/review controls remain outside the native backend's current capability c
 
 ## Native application tools
 
-Local Claude tasks use a scoped `nodex_app` connection for authorized Page and Data Source
+Local Claude and locally owned OpenCode tasks use a scoped `nodex_app` connection for authorized Page and Data Source
 operations, Project SQL queries, Project and Session metadata, native conversation history,
 Session messaging, scheduling, terminal observation and workspace dependencies. Discovery and
 auxiliary title queries receive no Nodex tool connection. The capability response lists the
 connection's real catalog; live Workbench controls and pull-request attachment are unavailable
-for Claude.
+for these native connections.
 
 Main grants the bridge authority only after accepting the exact foreground Turn and freezing
 its current Core policy. Plan mode remains read-only. Tool arguments cannot select the calling
@@ -225,11 +274,14 @@ execution location and rechecks the frozen authority, including receipt replay. 
 settlement, process closure and stale binding revoke access. An accepted input identity cannot be
 reused for another prompt; operation retries retain their original admission.
 
-All Claude application calls pause while any native background task or ambient watcher is
-live. The shared native transport does not identify every caller reliably, so a child cannot
-inherit a later foreground Turn's authority. Once background work ends, a still-running
-foreground Turn can issue fresh calls; revoked calls never become valid again. Native background
-application tools are an explicit unavailable capability.
+The shared native transport does not reliably identify the calling actor. Claude application
+calls pause while its native background tasks or ambient watchers are live. OpenCode calls pause
+for pending or running native task tools, verified descendant sessions from creation until idle
+or deletion, busy or retrying descendants, and parent execution that Nodex did not admit.
+OpenCode also checks native session status when opening a runtime and before each new admission.
+These pauses prevent native work from inheriting a later foreground Turn's authority. After the
+observed work ends, a still-running foreground Turn can issue fresh calls; revoked claims never
+become valid again. Native background application tools are an explicit unavailable capability.
 
 ## Claude automations
 
@@ -323,9 +375,9 @@ turn, with Plan requests read-only.
 
 - Each live Agent process belongs to the Main application Scope and is terminated on Thread close,
   fatal transport failure, or application shutdown.
-- Live Claude Code and ACP processes have a fixed pressure bound. Once reached, a new session fails explicitly until
+- Live Claude Code, OpenCode and ACP processes have a fixed pressure bound. Once reached, a new session fails explicitly until
   another session closes or completes idle eviction; Nodex does not silently evict an observed task.
-- Both conversation projections bound turns, updates per turn, and projected bytes. Claude Code
+- Conversation projections bound turns, updates per turn, and projected bytes. Claude Code
   bounds pending decisions and history-worker memory; the SDK owns its wire transport. ACP also
   bounds NDJSON records, callback concurrency, ingress, and stderr diagnostics.
 - Closing or failing a session invalidates stale in-memory handles. Independent Threads do not share

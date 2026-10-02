@@ -1,3 +1,6 @@
+import { ApplicationSettings } from "../settings/ApplicationSettings";
+import { makeTestApplicationSettings } from "../settings/ApplicationSettings.test-support";
+import { inactiveOpenCodeSessions } from "./opencode/OpenCodeSessionManager.test-fixtures";
 // @effect-diagnostics strictEffectProvide:off
 import { assert, it } from "@effect/vitest";
 import * as Effect from "effect/Effect";
@@ -33,9 +36,14 @@ import type { DesktopProjectWorkspaceNativeAgentState } from "../core-client/pro
 import { ProjectWorkspace } from "../project-application/ProjectWorkspace";
 import { AgentBackendRegistry } from "./AgentBackendRegistry";
 import {
-  make as makeApplication,
+  make as makeProductionApplication,
   type AgentBackendApplicationError,
 } from "./AgentBackendApplication";
+const makeApplication = makeProductionApplication.pipe(
+  Effect.provide(inactiveOpenCodeSessions),
+  Effect.provideService(ApplicationSettings, makeTestApplicationSettings()),
+);
+
 import {
   emptyAgentConversationSnapshot,
   beginAgentConversationTurn,
@@ -498,7 +506,7 @@ const makeFixtureWithInitialBinding = (initiallyBound: boolean) =>
               });
             currentId = input.backendSessionId;
             if (input.nativeState) nativeState = input.nativeState;
-            if (pauseAfterModel && nativeState.preferences.model === pauseAfterModel) {
+            if (pauseAfterModel && nativeState.preferences?.model === pauseAfterModel) {
               pauseAfterModel = null;
               pauseNextRead = true;
             }

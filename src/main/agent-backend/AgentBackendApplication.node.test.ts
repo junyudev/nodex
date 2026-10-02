@@ -1,3 +1,6 @@
+import { ApplicationSettings } from "../settings/ApplicationSettings";
+import { makeTestApplicationSettings } from "../settings/ApplicationSettings.test-support";
+import { inactiveOpenCodeSessions } from "./opencode/OpenCodeSessionManager.test-fixtures";
 // @effect-diagnostics strictEffectProvide:off
 import { inactiveClaudeSessions } from "./claude/ClaudeSessionManager.test-fixtures";
 import { it } from "@effect/vitest";
@@ -21,10 +24,15 @@ import {
 } from "./acp/AcpBackendSessionManager";
 import { emptyAgentConversationSnapshot } from "./AgentConversationProjection";
 import {
-  make as makeApplication,
+  make as makeProductionApplication,
   resolveAcpPermissionPolicy,
   resolveClaudePermissionPolicy,
 } from "./AgentBackendApplication";
+const makeApplication = makeProductionApplication.pipe(
+  Effect.provide(inactiveOpenCodeSessions),
+  Effect.provideService(ApplicationSettings, makeTestApplicationSettings()),
+);
+
 import { NativeSessionWorkspace } from "./NativeSessionWorkspace";
 
 import {

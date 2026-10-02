@@ -333,6 +333,8 @@ const buildHarness = (input: {
             Layer.succeed(
               ApplicationSettings,
               ApplicationSettings.of({
+                openCodeLaunchConfiguration: () =>
+                  Effect.die("Unused OpenCode launch configuration"),
                 claudeLaunchConfiguration: () => Effect.die("Unused Claude launch configuration"),
                 snapshot: () =>
                   Effect.succeed({

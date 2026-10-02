@@ -12,7 +12,7 @@ import * as Exit from "effect/Exit";
 import * as Schema from "effect/Schema";
 import { ClaudeSdk, live } from "./ClaudeSdk";
 import { defaultClaudeInstance } from "../../../shared/claude-agent-settings";
-import { makeClaudeDiscoveryRequests } from "../../ipc/handlers/ClaudeDiscoveryRequests";
+import { makeAgentDiscoveryRequests } from "../../ipc/handlers/AgentDiscoveryRequests";
 
 it.effect(
   "installed SDK serializes isolated launch, atomic intelligence and native image steering",
@@ -318,7 +318,7 @@ it.effect("consumer interruption kills a real SDK child still waiting for initia
       ),
     );
     const sdk = yield* ClaudeSdk;
-    const requests = yield* makeClaudeDiscoveryRequests;
+    const requests = yield* makeAgentDiscoveryRequests;
     const request = yield* Effect.forkChild(
       requests.run(
         1,

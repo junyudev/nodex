@@ -236,7 +236,7 @@ export const boundAgentConversationTurns = (
 export const emptyAgentConversationSnapshot = (input: {
   readonly threadId: string;
   readonly sessionId: string;
-  readonly backend?: "acp" | "claude";
+  readonly backend?: "acp" | "claude" | "opencode";
 }): AgentConversationSnapshot => ({
   backend: input.backend ?? "acp",
   threadId: input.threadId,

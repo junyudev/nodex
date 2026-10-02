@@ -18,7 +18,11 @@ describe("AgentBackendRegistry", () => {
     expect(
       resolveAgentBackendBinding(
         { kind: "codex" },
-        { claudeAgents: { instances: [] }, acpAgents: { instances: [] } },
+        {
+          openCodeAgents: { instances: [] },
+          claudeAgents: { instances: [] },
+          acpAgents: { instances: [] },
+        },
       ),
     ).toEqual({
       kind: "codex",
@@ -34,7 +38,11 @@ describe("AgentBackendRegistry", () => {
         agentDefinitionId: "claude-agent-acp",
         instanceConfigId: "claude-work",
       },
-      { claudeAgents: { instances: [] }, acpAgents: { instances: [instance()] } },
+      {
+        openCodeAgents: { instances: [] },
+        claudeAgents: { instances: [] },
+        acpAgents: { instances: [instance()] },
+      },
     );
 
     expect(resolved).toMatchObject({
@@ -87,6 +95,7 @@ describe("AgentBackendRegistry", () => {
     },
   ] as const)("fails closed for $label", ({ binding, instances, reason }) => {
     const result = resolveAgentBackendBinding(binding, {
+      openCodeAgents: { instances: [] },
       claudeAgents: { instances: [] },
       acpAgents: { instances: [...instances] },
     });

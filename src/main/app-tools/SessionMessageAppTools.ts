@@ -15,6 +15,7 @@ import { createStableOperationId } from "../core-runtime/operation-identity";
 import type { AppToolInvocation } from "./AppToolInvocationInbox";
 import { toolFailure, toolSuccess } from "./app-tool-result";
 import { NativeConversationExtension } from "./NativeConversationExtension";
+import { isNativeAgentBackendKind } from "../../shared/agent-backend";
 
 export const make = Effect.gen(function* () {
   const turns = yield* CodexTurnAuthority;
@@ -54,14 +55,15 @@ export const make = Effect.gen(function* () {
     if (session.archived) return toolFailure("session_archived");
     if (
       !thread ||
-      (thread.backend_binding.kind !== "codex" && thread.backend_binding.kind !== "claude")
+      (thread.backend_binding.kind !== "codex" &&
+        !isNativeAgentBackendKind(thread.backend_binding.kind))
     )
       return toolFailure("session_backend_unavailable");
-    if (thread.backend_binding.kind === "claude" && Option.isNone(native))
-      return toolFailure("session_backend_unavailable");
+    const nativeTarget = isNativeAgentBackendKind(thread.backend_binding.kind);
+    if (nativeTarget && Option.isNone(native)) return toolFailure("session_backend_unavailable");
     if (thread.thread_id === input.caller.threadId)
       return toolFailure("cannot_message_calling_session");
-    if (thread.backend_binding.kind === "claude" && Option.isSome(native)) {
+    if (nativeTarget && Option.isSome(native)) {
       const target = yield* native.value
         .read(thread.thread_id)
         .pipe(Effect.catch(() => Effect.succeed(null)));
@@ -102,7 +104,7 @@ export const make = Effect.gen(function* () {
       { readonly turnId: string | null } | null,
       Error | CodexTurnCommandsError
     > =
-      thread.backend_binding.kind === "claude" && Option.isSome(native)
+      nativeTarget && Option.isSome(native)
         ? native.value.submit({
             threadId: thread.thread_id,
             prompt: request.prompt,

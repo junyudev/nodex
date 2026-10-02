@@ -1,15 +1,19 @@
-import {
-  CLAUDE_ENVIRONMENT_LIMIT,
-  ClaudeEnvironmentInputSchema,
-  claudeEnvironmentNameError,
-  type ClaudeEnvironmentInput,
-} from "../../shared/claude-agent-settings";
+import type { AgentEnvironmentInput } from "../../shared/agent-environment";
 
-export interface ClaudeEnvironmentDraft {
+export interface AgentEnvironmentDraft {
   readonly id: string;
   readonly name: string;
   readonly value: string | null;
   readonly sensitive: boolean;
+}
+
+export interface AgentEnvironmentPolicy {
+  readonly limit: number;
+  readonly nameError: (name: string) => string | null;
+  readonly inputSchema: {
+    readonly parse: (input: unknown) => AgentEnvironmentInput;
+    readonly safeParse: (input: unknown) => { readonly success: boolean };
+  };
 }
 
 export const environmentIsSensitive = (name: string): boolean =>
@@ -23,8 +27,9 @@ export const environmentAssignmentPaste = (text: string, allowBareAssignment = t
 /** Parse literal .env/export assignments without shell evaluation or expansion. */
 export function parseEnvironmentAssignments(
   text: string,
-): { variables: ClaudeEnvironmentInput[]; error?: never } | { error: string; variables?: never } {
-  const variables: ClaudeEnvironmentInput[] = [];
+  policy: AgentEnvironmentPolicy,
+): { variables: AgentEnvironmentInput[]; error?: never } | { error: string; variables?: never } {
+  const variables: AgentEnvironmentInput[] = [];
   const lines = text.split(/\r?\n/u);
   for (const [index, raw] of lines.entries()) {
     const line = raw.trim();
@@ -32,21 +37,20 @@ export function parseEnvironmentAssignments(
     const match = /^(?:export[ \t]+)?([A-Za-z_][A-Za-z0-9_]*)[ \t]*=[ \t]*(.*)$/u.exec(line);
     if (!match) return { error: `Line ${index + 1}: use KEY=value or export KEY="value".` };
     const name = match[1]!;
-    const nameError = claudeEnvironmentNameError(name);
+    const nameError = policy.nameError(name);
     if (nameError) return { error: `Line ${index + 1}: ${nameError}` };
     const value = parseLiteral(match[2]!);
     if (value === null)
       return { error: `Line ${index + 1}: use a literal value without shell expressions.` };
     const variable = { name, value, sensitive: environmentIsSensitive(name) };
-    if (!ClaudeEnvironmentInputSchema.safeParse(variable).success)
+    if (!policy.inputSchema.safeParse(variable).success)
       return { error: `Line ${index + 1}: the value is too long or contains a null character.` };
     if (variables.some((entry) => entry.name === name))
       return { error: `Line ${index + 1}: duplicate variable name.` };
     variables.push(variable);
   }
   if (!variables.length) return { error: "Paste at least one environment variable." };
-  if (variables.length > CLAUDE_ENVIRONMENT_LIMIT)
-    return { error: `Use at most ${CLAUDE_ENVIRONMENT_LIMIT} variables.` };
+  if (variables.length > policy.limit) return { error: `Use at most ${policy.limit} variables.` };
   return { variables };
 }
 
@@ -76,33 +80,33 @@ function parseLiteral(source: string): string | null {
   return null;
 }
 
-export function validateEnvironmentDraft(rows: readonly ClaudeEnvironmentDraft[]): string | null {
-  if (rows.length > CLAUDE_ENVIRONMENT_LIMIT)
-    return `Use at most ${CLAUDE_ENVIRONMENT_LIMIT} variables.`;
+export function validateEnvironmentDraft(
+  rows: readonly AgentEnvironmentDraft[],
+  policy: AgentEnvironmentPolicy,
+): string | null {
+  if (rows.length > policy.limit) return `Use at most ${policy.limit} variables.`;
   const names = new Set<string>();
   for (const row of rows) {
     const name = row.name.trim();
     if (!name && row.value === "") continue;
-    const error = claudeEnvironmentNameError(name);
+    const error = policy.nameError(name);
     if (error) return error;
     if (names.has(name)) return "Each environment variable name must be unique.";
     names.add(name);
-    if (
-      !ClaudeEnvironmentInputSchema.safeParse({ name, value: row.value, sensitive: row.sensitive })
-        .success
-    )
+    if (!policy.inputSchema.safeParse({ name, value: row.value, sensitive: row.sensitive }).success)
       return "Enter a valid value for each variable.";
   }
   return null;
 }
 
 export function environmentDraftInput(
-  rows: readonly ClaudeEnvironmentDraft[],
-): ClaudeEnvironmentInput[] {
+  rows: readonly AgentEnvironmentDraft[],
+  policy: AgentEnvironmentPolicy,
+): AgentEnvironmentInput[] {
   return rows
     .filter((row) => row.name.trim() || row.value !== "")
     .map((row) =>
-      ClaudeEnvironmentInputSchema.parse({
+      policy.inputSchema.parse({
         name: row.name.trim(),
         value: row.value,
         sensitive: row.sensitive,
@@ -111,9 +115,9 @@ export function environmentDraftInput(
 }
 
 export function mergeEnvironmentPaste(
-  rows: readonly ClaudeEnvironmentDraft[],
-  variables: readonly ClaudeEnvironmentInput[],
-): ClaudeEnvironmentDraft[] {
+  rows: readonly AgentEnvironmentDraft[],
+  variables: readonly AgentEnvironmentInput[],
+): AgentEnvironmentDraft[] {
   const remaining = rows.filter((row) => row.name.trim() || row.value !== "");
   const incoming = new Map(variables.map((variable) => [variable.name, variable]));
   const next = remaining.map((row) => {

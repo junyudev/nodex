@@ -1,3 +1,4 @@
+import { OpenCodeSessionManager } from "./opencode/OpenCodeSessionManager";
 import * as Effect from "effect/Effect";
 import * as Stream from "effect/Stream";
 import type { AgentBackendSessionChangedEvent } from "../../shared/agent-backend-api";
@@ -76,9 +77,10 @@ export interface AgentSessionDirectory extends SessionFamily {
   readonly adaptAcp: (handle: AcpBackendSessionHandle) => AgentSessionHandle;
 }
 
-/** Routes only the two native conversation families. Core admission and launch ownership stay outside. */
+/** Routes the configured external conversation families. Core admission and launch ownership stay outside. */
 export const make = Effect.gen(function* () {
   const native = yield* ClaudeSessionManager;
+  const openCode = yield* OpenCodeSessionManager;
   const acp = yield* AcpBackendSessionManager;
   const adapted = new WeakMap<AcpBackendSessionHandle, AgentSessionHandle>();
   const adaptAcp = (handle: AcpBackendSessionHandle): AgentSessionHandle => {
@@ -104,6 +106,7 @@ export const make = Effect.gen(function* () {
   };
   const families: readonly SessionFamily[] = [
     native,
+    openCode,
     {
       ...acp,
       get: (threadId) =>

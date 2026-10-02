@@ -1,4 +1,14 @@
 import {
+  presentOpenCodeInstances,
+  readStoredOpenCodeInstances,
+  resolveOpenCodeLaunchConfiguration,
+  writeOpenCodeInstances,
+} from "./opencode-agent-environment";
+import type {
+  OpenCodeAgentSettings,
+  UpdateOpenCodeAgentSettingsInput,
+} from "../../shared/opencode-agent-settings";
+import {
   presentClaudeInstances,
   readStoredClaudeInstances,
   resolveClaudeLaunchConfiguration,
@@ -109,6 +119,7 @@ interface ServerTomlConfig {
   execution_hosts?: unknown[];
   acp_agent_instances?: unknown[];
   claude_agent_instances?: unknown[];
+  opencode_agent_instances?: unknown[];
 }
 
 interface RootTomlConfig extends Record<string, unknown> {
@@ -1043,6 +1054,38 @@ export function updateClaudeAgentSettings(
     },
   );
   return getClaudeAgentSettings(source);
+}
+
+export function getOpenCodeAgentSettings(
+  source: ApplicationSettingsDocumentSource,
+): OpenCodeAgentSettings {
+  return presentOpenCodeInstances(
+    readStoredOpenCodeInstances(loadProfileServerTomlConfig(source).opencode_agent_instances),
+  );
+}
+export function getOpenCodeLaunchConfiguration(
+  source: ApplicationSettingsDocumentSource,
+  instanceId: string,
+) {
+  return resolveOpenCodeLaunchConfiguration(
+    source,
+    readStoredOpenCodeInstances(loadProfileServerTomlConfig(source).opencode_agent_instances),
+    instanceId,
+  );
+}
+export function updateOpenCodeAgentSettings(
+  input: UpdateOpenCodeAgentSettingsInput,
+  source: ApplicationSettingsDocumentSource,
+): OpenCodeAgentSettings {
+  const previous = loadProfileServerTomlConfig(source);
+  writeOpenCodeInstances(
+    source,
+    input,
+    readStoredOpenCodeInstances(previous.opencode_agent_instances),
+    (instances) =>
+      writeProfileServerTomlConfig(source, { ...previous, opencode_agent_instances: instances }),
+  );
+  return getOpenCodeAgentSettings(source);
 }
 
 function normalizeAcpAgentInstanceConfig(value: unknown): AcpAgentInstanceConfig {

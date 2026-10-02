@@ -104,6 +104,7 @@ const buildHarness = (input: {
     } as unknown as ElectronWindowHost["Service"]);
     const scope = yield* Scope.make();
     const settings = ApplicationSettings.of({
+      openCodeLaunchConfiguration: () => Effect.die("Unused OpenCode launch configuration"),
       claudeLaunchConfiguration: () => Effect.die("Unused Claude launch configuration"),
       snapshot: () =>
         Effect.succeed({ appUpdate: persistedSettings } as ApplicationSettingsSnapshot),

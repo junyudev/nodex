@@ -1,10 +1,11 @@
-import { expect, type Locator, type Page } from "@playwright/test";
+import { expect, type Page } from "@playwright/test";
 import { randomUUID } from "node:crypto";
 import type {
   ThreadReadResponse,
   ThreadTurnsListResponse,
 } from "@nodex/codex-app-server-protocol/v2";
-import { formatCodexModelLabel } from "../../../src/renderer/lib/codex-thread-settings";
+import { formatCodexReasoningEffortLabel } from "../../../src/renderer/lib/codex-thread-settings";
+import { chooseComposerModel, openComposerOptionControl } from "./composer-model-picker";
 
 import {
   classifyAgentSmokeTurnSnapshot,
@@ -178,47 +179,20 @@ export const setAgentExecutionProfile = async (
   return profile;
 };
 
-const exactMenuItem = (page: Page, text: string): Locator =>
-  page.getByRole("menuitem").filter({ hasText: text }).last();
-
-const openFlyoutSubmenu = async (
-  page: Page,
-  trigger: Locator,
-  expectedItem: Locator,
-): Promise<void> => {
-  await expect(trigger).toBeVisible();
-  await trigger.hover();
-  if (await expectedItem.isVisible().catch(() => false)) return;
-  await trigger.focus();
-  await page.keyboard.press("ArrowRight");
-  await expect(expectedItem).toBeVisible();
-};
-
 export const selectCodexExecutionProfile = async (
   page: Page,
   model: CodexModelOption,
   profile: CodexExecutionProfile,
 ): Promise<void> => {
-  const trigger = page.getByRole("button", { name: "Select model" });
-  const openRootMenu = async (): Promise<void> => {
-    const modelSummary = page.locator('[aria-label^="Model "]').last();
-    if (await modelSummary.isVisible().catch(() => false)) return;
-    await expect(trigger).toBeVisible();
-    await trigger.click();
-    await expect(modelSummary).toBeVisible();
-  };
-  await openRootMenu();
-  const modelItem = exactMenuItem(page, formatCodexModelLabel(model.id, [model]));
-  await openFlyoutSubmenu(page, page.locator('[aria-label^="Model "]').last(), modelItem);
-  // Keep selection in the focused submenu; a diagonal pointer move can close its flyout.
-  await modelItem.focus();
-  await modelItem.press("Enter");
-  await openRootMenu();
+  await chooseComposerModel(page, `${model.id} Codex`);
   if (profile.reasoningEffort) {
-    const effortItem = page.locator(`[data-intelligence-option="${profile.reasoningEffort}"]`);
-    await openFlyoutSubmenu(page, page.locator('[aria-label^="Effort "]').last(), effortItem);
-    await effortItem.focus();
-    await effortItem.press("Enter");
+    await openComposerOptionControl(page, "Effort");
+    await page
+      .getByRole("menuitem", {
+        name: formatCodexReasoningEffortLabel(profile.reasoningEffort),
+        exact: true,
+      })
+      .click();
   }
   await page.keyboard.press("Escape");
 };

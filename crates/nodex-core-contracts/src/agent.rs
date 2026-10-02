@@ -14,6 +14,10 @@ pub enum AgentBackendBinding {
     Claude {
         instance_config_id: String,
     },
+    #[serde(rename = "opencode")]
+    OpenCode {
+        instance_config_id: String,
+    },
     Acp {
         agent_definition_id: String,
         instance_config_id: Option<String>,

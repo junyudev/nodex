@@ -372,6 +372,9 @@ export function createElectronRendererTransport(bridge: ElectronRendererBridge):
         callback(payload);
       });
     },
+    subscribeAgentSettingsChanges(callback) {
+      return bridge.on("agent-settings-changed", callback);
+    },
     subscribeClaudeAgentSettingsChanges(callback) {
       return bridge.on("claude-agent-settings-changed", callback);
     },

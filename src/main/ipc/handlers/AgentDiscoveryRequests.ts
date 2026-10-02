@@ -3,13 +3,13 @@ import * as Deferred from "effect/Deferred";
 import * as Effect from "effect/Effect";
 import * as Schema from "effect/Schema";
 
-export class ClaudeDiscoveryRequestError extends Schema.TaggedError<ClaudeDiscoveryRequestError>()(
-  "ClaudeDiscoveryRequestError",
+export class AgentDiscoveryRequestError extends Schema.TaggedError<AgentDiscoveryRequestError>()(
+  "AgentDiscoveryRequestError",
   { message: Schema.String },
 ) {}
 
 /** Each viewer owns its requests, including cancellation that arrives before query registration. */
-export const makeClaudeDiscoveryRequests = Effect.gen(function* () {
+export const makeAgentDiscoveryRequests = Effect.gen(function* () {
   const pending = new Map<
     string,
     { ownerId: number; cancel: Deferred.Deferred<void>; done: Deferred.Deferred<void> }
@@ -40,22 +40,22 @@ export const makeClaudeDiscoveryRequests = Effect.gen(function* () {
           const requestKey = key(ownerId, requestId);
           purge(yield* Clock.currentTimeMillis);
           if (closed)
-            return yield* new ClaudeDiscoveryRequestError({
-              message: "Claude discovery is closing",
+            return yield* new AgentDiscoveryRequestError({
+              message: "Agent discovery is closing",
             });
           if (cancelled.delete(requestKey)) return yield* Effect.interrupt;
           const cancel = yield* Deferred.make<void>();
           const done = yield* Deferred.make<void>();
           if (pending.has(requestKey))
-            return yield* new ClaudeDiscoveryRequestError({
+            return yield* new AgentDiscoveryRequestError({
               message: "This discovery request is already running",
             });
           if (
             pending.size >= 32 ||
             [...pending.values()].filter((entry) => entry.ownerId === ownerId).length >= 8
           )
-            return yield* new ClaudeDiscoveryRequestError({
-              message: "Too many Claude discovery requests",
+            return yield* new AgentDiscoveryRequestError({
+              message: "Too many Agent discovery requests",
             });
           const entry = { ownerId, cancel, done };
           pending.set(requestKey, entry);

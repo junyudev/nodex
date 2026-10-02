@@ -40,6 +40,9 @@ describe("workbench settings search catalog", () => {
     expect(hasSectionResult("browsing history", "browser")).toBe(true);
     expect(hasSectionResult("force fixed theme", "appearance")).toBe(true);
     expect(hasSectionResult("danger-full-access", "agent")).toBe(true);
+    expect(hasSectionResult("OpenCode", "agent")).toBe(true);
+    expect(hasSectionResult("Kimi", "agent")).toBe(true);
+    expect(hasSectionResult("Agent Client Protocol", "agent")).toBe(true);
     expect(hasSectionResult("materialize inflating note", "general-settings")).toBe(true);
     expect(hasSectionResult("task shorthand", "page")).toBe(true);
     expect(hasSectionResult("auto-create branch detached", "worktrees")).toBe(true);

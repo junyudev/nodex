@@ -4,12 +4,17 @@ import { CoreModules } from "../core-runtime/CoreModules";
 import { ProjectWorkspace } from "../project-application/ProjectWorkspace";
 import type { ProjectWorkspaceApplyInput } from "../core-client/types";
 import { make } from "./NativeTurnAuthority";
+import type { AgentBackendBinding } from "../../shared/agent-backend";
 import {
   isBoundedOperationId,
   OPERATION_IDENTITY_WINDOW_MS,
 } from "../../shared/operation-identity";
 
-const setup = (projectId: string | null, mode: string | null) => {
+const setup = (
+  projectId: string | null,
+  mode: string | null,
+  backend: AgentBackendBinding["kind"] = "claude",
+) => {
   const applies: ProjectWorkspaceApplyInput[] = [];
   let frozen = false;
   let currentMode = mode;
@@ -28,7 +33,7 @@ const setup = (projectId: string | null, mode: string | null) => {
           Effect.succeed({
             threadId: "native",
             projectId,
-            backendBinding: { kind: "claude", instanceConfigId: "work" },
+            backendBinding: { kind: backend, instanceConfigId: "work" },
             archived: false,
             parentThreadId: null,
           }),
@@ -117,6 +122,35 @@ it.effect(
         }),
       );
       assert.lengthOf(projectless.applies, 0);
+    }),
+);
+
+it.effect(
+  "OpenCode freezes exact foreground authority while other backend owners cannot enter",
+  () =>
+    Effect.gen(function* () {
+      const input = {
+        threadId: "native",
+        turnId: "accepted",
+        projectId: "project",
+        readOnly: false,
+      };
+      const fixture = setup("project", "auto", "opencode");
+      const owner = yield* fixture.owner;
+      assert.deepInclude(yield* owner.freeze(input), {
+        threadId: "native",
+        turnId: "accepted",
+        actorProjectId: "project",
+        scope: "project",
+        readOnly: false,
+      });
+      assert.lengthOf(fixture.applies, 1);
+      for (const backend of ["codex", "acp"] as const) {
+        const rejected = setup("project", "auto", backend);
+        const otherOwner = yield* rejected.owner;
+        assert.equal((yield* Effect.flip(otherOwner.freeze(input))).operation, "freeze");
+        assert.lengthOf(rejected.applies, 0);
+      }
     }),
 );
 

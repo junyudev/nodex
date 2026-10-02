@@ -1,6 +1,27 @@
-export type NewThreadBackendSelection =
-  | "codex"
-  | { readonly instanceConfigId: string; readonly kind: "acp" | "claude" };
+import type { ExternalAgentBinding } from "../../shared/agent-model-catalog";
+import { agentBindingKey } from "./agent-model-selection";
+
+export type NewThreadBackendSelection = "codex" | ExternalAgentBinding;
+
+/** Availability changes block submission without replacing the Session's chosen runtime. */
+export function resolveNewThreadBackendUnavailableReason(
+  selection: NewThreadBackendSelection,
+  settings: {
+    readonly instances: readonly { binding: ExternalAgentBinding; enabled: boolean }[];
+    readonly loading: boolean;
+    readonly error: string | null;
+  },
+): string | null {
+  if (selection === "codex") return null;
+  if (settings.loading) return "Wait for Agent profiles to finish loading.";
+  if (settings.error) return settings.error;
+  const instance = settings.instances.find(
+    (entry) => agentBindingKey(entry.binding) === agentBindingKey(selection),
+  );
+  if (!instance) return "This Agent profile is no longer configured.";
+  if (!instance.enabled) return "This Agent profile is disabled.";
+  return null;
+}
 
 const sameSelection = (
   left: NewThreadBackendSelection,
@@ -10,7 +31,10 @@ const sameSelection = (
   (typeof left === "object" &&
     typeof right === "object" &&
     left.instanceConfigId === right.instanceConfigId &&
-    left.kind === right.kind);
+    left.kind === right.kind &&
+    (left.kind !== "acp" ||
+      right.kind !== "acp" ||
+      left.agentDefinitionId === right.agentDefinitionId));
 
 /**
  * Shares the ephemeral backend choice between a Session's primary page and its composer dock.

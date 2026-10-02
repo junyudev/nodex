@@ -2,19 +2,42 @@ import "./workbench-testkit/workbench-shell-harness";
 import { act, fireEvent, waitFor, within } from "@testing-library/react";
 import { expect, test, vi } from "vite-plus/test";
 import { agentBackendRuntime } from "@/lib/agent-backend-runtime";
+import { modelCatalog } from "@/lib/agent-model-catalog.test-fixtures";
 import { settleAsyncRender } from "../../test/dom";
 import { makeAttachedSession, makeProject } from "./workbench-testkit/workbench-shell-fixtures";
-import { renderWorkbench } from "./workbench-testkit/workbench-shell-harness";
+import { mockCodexControl, renderWorkbench } from "./workbench-testkit/workbench-shell-harness";
+
+test("loads an attached Codex chat catalog once across settled shell updates", async () => {
+  const loadModels = vi.spyOn(mockCodexControl, "loadModels");
+  const modes = vi.spyOn(mockCodexControl, "listCollaborationModes");
+  const project = makeProject("alpha", "Alpha", "/tmp/alpha");
+  const session = makeAttachedSession({ tabs: [] });
+  const screen = renderWorkbench({
+    projects: [project],
+    sessionsByProject: { alpha: [session] },
+    initialSelectedSessionId: session.id,
+  });
+  await settleAsyncRender();
+  await screen.findByText("Thread:thread-alpha");
+  expect(loadModels).toHaveBeenCalledOnce();
+  expect(modes).toHaveBeenCalledOnce();
+  await act(async () => {
+    screen.replaceProjects([{ ...project, name: "Updated Alpha" }]);
+    await Promise.resolve();
+  });
+  await settleAsyncRender();
+  expect(await screen.findByText("Thread:thread-alpha")).not.toBeNull();
+  expect(loadModels).toHaveBeenCalledOnce();
+  expect(modes).toHaveBeenCalledOnce();
+});
 
 test("native discovery and permission reads follow the attached chat when switching Projects", async () => {
-  const discovery = vi.spyOn(agentBackendRuntime, "claudeDiscovery").mockResolvedValue({
-    models: [],
-    intelligence: { model: null, effort: null, fast: null, thinking: null },
-    commands: [],
-    skills: [],
-    health: { status: "unknown", executable: null, version: null, account: null, error: null },
-    revision: "test",
-  });
+  const discovery = vi.spyOn(agentBackendRuntime, "modelCatalog").mockResolvedValue(
+    modelCatalog({
+      binding: { kind: "claude", instanceConfigId: "work" },
+      models: [],
+    }),
+  );
   const permission = vi.spyOn(agentBackendRuntime, "readPermissionMode").mockResolvedValue("auto");
   vi.spyOn(agentBackendRuntime, "subscribe").mockResolvedValue(() => {});
   vi.spyOn(agentBackendRuntime, "open").mockRejectedValue(new Error("Test backend unavailable"));

@@ -1,3 +1,5 @@
+// @effect-diagnostics strictEffectProvide:off
+import { inactiveOpenCodeSessions } from "./opencode/OpenCodeSessionManager.test-fixtures";
 import { assert, it } from "@effect/vitest";
 import * as Effect from "effect/Effect";
 import * as Stream from "effect/Stream";
@@ -60,6 +62,7 @@ const fixture = () => {
       acpId = "acp-authenticated";
     },
     owner: make.pipe(
+      Effect.provide(inactiveOpenCodeSessions),
       Effect.provideService(ClaudeSessionManager, {
         ...controls("native"),
         get: (id: string) => Effect.succeed(id === "native" ? native : null),

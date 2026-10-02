@@ -1,3 +1,8 @@
+import type { ClaudeLaunchContext } from "../platform/node/ClaudeSdk";
+import { OpenCodeSessionManager } from "./opencode/OpenCodeSessionManager";
+import type { AgentModelCatalog, AgentModelCatalogInput } from "../../shared/agent-model-catalog";
+import { projectNativeModelOption } from "../../shared/native-model-option";
+import { ApplicationSettings } from "../settings/ApplicationSettings";
 import { nativeSessionCatalogTitle } from "../../shared/native-session-catalog";
 import { ClaudeSessionManager } from "./claude/ClaudeSessionManager";
 import type {
@@ -51,7 +56,7 @@ import type {
   AgentBackendToolOutputInput,
 } from "../../shared/agent-backend-api";
 import type { AgentBackendSessionPresentation } from "../../shared/agent-conversation";
-import type { AgentBackendBinding } from "../../shared/agent-backend";
+import { isNativeAgentBackendKind, type AgentBackendBinding } from "../../shared/agent-backend";
 import { createUuidV7 } from "../../shared/uuid-v7";
 import type {
   CodexPermissionMode,
@@ -129,6 +134,9 @@ export class AgentBackendApplication extends Context.Service<
       projectId: string | null,
       mode: NativePermissionMode,
     ) => Effect.Effect<NativePermissionMode, AgentBackendApplicationError>;
+    readonly modelCatalog: (
+      input: AgentModelCatalogInput,
+    ) => Effect.Effect<AgentModelCatalog, AgentBackendApplicationError>;
     readonly claudeModels: (
       input: ClaudeModelCatalogInput,
     ) => Effect.Effect<readonly AgentSessionConfigSelectOption[], AgentBackendApplicationError>;
@@ -214,7 +222,7 @@ export class AgentBackendApplication extends Context.Service<
 const sameBinding = (left: ExternalBinding, right: ExternalBinding): boolean =>
   left.kind === right.kind &&
   left.instanceConfigId === right.instanceConfigId &&
-  (left.kind === "claude" ||
+  (left.kind !== "acp" ||
     (right.kind === "acp" && left.agentDefinitionId === right.agentDefinitionId));
 
 const ACP_PERMISSION_POLICY_BY_MODE = {
@@ -238,9 +246,7 @@ const resolveAgentPermissionPolicy = (
   binding: ExternalBinding,
   mode: CodexPermissionMode | null,
 ): AgentSessionPermissionPolicy =>
-  binding.kind === "claude"
-    ? resolveClaudePermissionPolicy(mode)
-    : resolveAcpPermissionPolicy(mode);
+  binding.kind !== "acp" ? resolveClaudePermissionPolicy(mode) : resolveAcpPermissionPolicy(mode);
 
 const titleFromPrompt = (prompt: string): string => {
   const firstLine = prompt.trim().split(/\r?\n/u)[0]?.trim() ?? "";
@@ -277,6 +283,8 @@ export const make = Effect.gen(function* () {
   const backends = yield* AgentBackendRegistry;
   const acpSessions = yield* AcpBackendSessionManager;
   const claudeSessions = yield* ClaudeSessionManager;
+  const openCodeSessions = yield* OpenCodeSessionManager;
+  const applicationSettings = yield* ApplicationSettings;
   const sessions = yield* makeSessionDirectory;
   const workspace = yield* ProjectWorkspace;
   const ownerScope = yield* Scope.Scope;
@@ -475,7 +483,7 @@ export const make = Effect.gen(function* () {
       const project = thread.projectId ? yield* workspace.getProject(thread.projectId) : null;
       if (
         (thread.projectId !== null && (!project || project.lifecycle !== "active")) ||
-        (thread.projectId === null && resolution.kind !== "claude") ||
+        (thread.projectId === null && resolution.kind === "acp") ||
         thread.archived ||
         (thread.executionHostId && thread.executionHostId !== "local")
       ) {
@@ -552,15 +560,17 @@ export const make = Effect.gen(function* () {
   )(function* (handle: AgentSessionHandle, allowRecovery = true) {
     const durable = yield* workspace.readThreadBackendSession(handle.threadId);
     if (
-      durable?.backendBinding.kind === "claude" &&
+      durable &&
+      durable.backendBinding.kind !== "acp" &&
       durable.nativeHome &&
-      (yield* claudeSessions.nativeHome(durable.backendBinding.instanceConfigId)) !==
-        durable.nativeHome
+      (yield* (
+        durable.backendBinding.kind === "claude" ? claudeSessions : openCodeSessions
+      ).nativeHome(durable.backendBinding.instanceConfigId)) !== durable.nativeHome
     ) {
       yield* sessions.close(handle.threadId);
       return yield* fail(
         "session.profile",
-        new Error("The Claude profile changed. Restore this conversation's original profile."),
+        new Error("The Agent profile changed. Restore this conversation's original profile."),
       );
     }
     const transition = nativeIdentityTransitions.get(handle);
@@ -636,11 +646,13 @@ export const make = Effect.gen(function* () {
     const nativeHome =
       authority.binding.kind === "claude"
         ? yield* claudeSessions.nativeHome(authority.binding.instanceConfigId)
-        : null;
+        : authority.binding.kind === "opencode"
+          ? yield* openCodeSessions.nativeHome(authority.binding.instanceConfigId)
+          : null;
     if (durable?.nativeHome && durable.nativeHome !== nativeHome)
       return yield* fail(
         "session.profile",
-        new Error("The Claude profile changed. Restore this conversation's original profile."),
+        new Error("The Agent profile changed. Restore this conversation's original profile."),
       );
     if (durable && !sameBinding(durable.backendBinding, authority.binding)) {
       return yield* fail(
@@ -649,13 +661,12 @@ export const make = Effect.gen(function* () {
         { threadId: input.threadId },
       );
     }
+    const binding = authority.binding;
     const selection = nativeSelectionFromState(durable?.nativeState ?? null);
     const initialContext =
-      authority.binding.kind === "claude"
-        ? yield* workspace.readThreadExecutionContext(input.threadId)
-        : null;
+      binding.kind !== "acp" ? yield* workspace.readThreadExecutionContext(input.threadId) : null;
     if (
-      authority.binding.kind === "claude" &&
+      binding.kind !== "acp" &&
       (!initialContext || initialContext.projectId !== authority.thread.projectId)
     )
       return yield* fail(
@@ -666,7 +677,7 @@ export const make = Effect.gen(function* () {
       ? nativeExecutionLocation(authority.thread, authority.workspaceRoot, initialContext)
       : undefined;
     const workspaceEnvironment =
-      authority.binding.kind === "claude"
+      binding.kind !== "acp"
         ? yield* worktreeEnvironment(authority.workspaceRoot, authority.thread.managedWorktreePath)
         : null;
     let lease: NativeAppToolSessionLease | null = null;
@@ -676,7 +687,7 @@ export const make = Effect.gen(function* () {
       effect.pipe(
         Effect.mapError((cause) =>
           agentRuntimeError({
-            operation: "Claude durable lifecycle",
+            operation: "Agent durable lifecycle",
             reason: "authorization",
             retryable: false,
             cause,
@@ -688,7 +699,9 @@ export const make = Effect.gen(function* () {
         Effect.map((current) => current.permissionPolicy),
       ),
     );
-    const acquireLaunchContext = (workspaceRoot: string) =>
+    const acquireLaunchContext = (
+      workspaceRoot: string,
+    ): Effect.Effect<ClaudeLaunchContext, AgentRuntimeError, Scope.Scope> =>
       Effect.gen(function* () {
         const transition = nativeHandle ? nativeExecutionTransitions.get(nativeHandle) : undefined;
         const provisional = transition
@@ -700,14 +713,14 @@ export const make = Effect.gen(function* () {
           : undefined;
         if (transition && !provisional)
           return yield* agentRuntimeError({
-            operation: "Claude execution location",
+            operation: "Agent execution location",
             reason: "authorization",
             retryable: false,
             cause: new Error("The native Query requested an unrelated working directory"),
           });
         if (provisional) nativeLocation = provisional;
         const browser = platform?.runtime.browserRuntime;
-        if (!nativeTools || !nativeAuthority || !config) return {};
+        if (!nativeTools || !nativeAuthority || !config || binding.kind === "acp") return {};
         const context = yield* runtimeHook(workspace.readThreadExecutionContext(input.threadId));
         const additionalDirectories =
           provisional?.workspaceRoots ??
@@ -716,18 +729,19 @@ export const make = Effect.gen(function* () {
           [];
         if (browser?.status !== "available")
           return yield* agentRuntimeError({
-            operation: "Claude app tools",
+            operation: "Agent app tools",
             reason: "capability",
             retryable: false,
             cause: new Error("The bundled Nodex tool runtime is unavailable"),
           });
         lease = yield* runtimeHook(
           nativeTools.acquire({
+            backend: binding.kind,
             threadId: input.threadId,
             hostId: "local",
             generation: ++leaseGeneration,
             isCurrent: Effect.gen(function* () {
-              if (!nativeHandle || (yield* claudeSessions.get(input.threadId)) !== nativeHandle)
+              if (!nativeHandle || (yield* sessions.get(input.threadId)) !== nativeHandle)
                 return false;
               const current = yield* resolveThreadAuthority(input.threadId);
               const currentSession = yield* workspace.readThreadBackendSession(input.threadId);
@@ -740,8 +754,8 @@ export const make = Effect.gen(function* () {
                 currentSession &&
                 executionContext &&
                 currentSession.backendSessionId === nativeHandle.sessionId &&
-                sameBinding(currentSession.backendBinding, authority.binding) &&
-                sameBinding(current.binding, authority.binding) &&
+                sameBinding(currentSession.backendBinding, binding) &&
+                sameBinding(current.binding, binding) &&
                 current.thread.projectId === authority.thread.projectId &&
                 executionContext.projectId === current.thread.projectId &&
                 nativeLocation &&
@@ -762,7 +776,7 @@ export const make = Effect.gen(function* () {
       onBackgroundTasksChanged: (liveTaskIds: readonly string[]) =>
         Effect.sync(() => lease?.setBackgroundTasks(liveTaskIds)),
       isUnattended: Effect.gen(function* () {
-        const handle = yield* claudeSessions.get(input.threadId);
+        const handle = yield* sessions.get(input.threadId);
         const snapshot = handle ? yield* SubscriptionRef.get(handle.snapshot) : null;
         const turnId = snapshot?.turns.findLast((turn) => !turn.stopReason)?.clientUserMessageId;
         return Boolean(turnId && unattendedTurns.has(turnId));
@@ -771,7 +785,7 @@ export const make = Effect.gen(function* () {
         runtimeHook(
           Effect.gen(function* () {
             const current = yield* resolveThreadAuthority(input.threadId);
-            const handle = yield* claudeSessions.get(input.threadId);
+            const handle = yield* sessions.get(input.threadId);
             if (!handle || handle !== nativeHandle)
               return yield* fail("turn.identity", new Error("The native session owner changed"));
             yield* assertNativeSessionIdentity(handle);
@@ -781,7 +795,9 @@ export const make = Effect.gen(function* () {
                 threadId: input.threadId,
                 turnId: admitted.clientUserMessageId,
                 projectId: current.thread.projectId,
-                readOnly: snapshot?.metadata?.requestedMode === "plan",
+                readOnly:
+                  snapshot?.metadata?.requestedMode === "plan" ||
+                  (snapshot?.backend === "opencode" && handle.modes?.currentModeId === "plan"),
               });
               yield* assertNativeSessionIdentity(handle);
               if (frozen && !(yield* lease.beginTurn(frozen)))
@@ -814,12 +830,12 @@ export const make = Effect.gen(function* () {
         runtimeHook(
           Effect.gen(function* () {
             for (const id of settled.clientUserMessageIds) lease?.endTurn(id);
-            const currentHandle = yield* claudeSessions.get(input.threadId);
+            const currentHandle = yield* sessions.get(input.threadId);
             if (!nativeHandle || (currentHandle && currentHandle !== nativeHandle))
               return yield* fail("turn.identity", new Error("The native session owner changed"));
             const handle = nativeHandle;
             yield* assertNativeSessionIdentity(handle);
-            yield* persistClaudeIntelligence(handle, settled.everSaved);
+            yield* persistAgentSelection(handle, settled.everSaved);
             yield* setThreadStatus(
               input.threadId,
               settled.status === "failed" ? "systemError" : "idle",
@@ -874,7 +890,7 @@ export const make = Effect.gen(function* () {
             yield* workspace
               .bindThreadBackendSession({
                 threadId: input.threadId,
-                backendBinding: authority.binding,
+                backendBinding: binding,
                 backendSessionId: changed.sessionId,
                 expectedBackendSessionId: changed.previousSessionId,
                 ...(current?.nativeState
@@ -893,34 +909,89 @@ export const make = Effect.gen(function* () {
         ),
     };
     const handle = yield* (
-      authority.binding.kind === "claude"
+      binding.kind === "claude"
         ? claudeSessions.open({
             threadId: input.threadId,
-            instanceConfigId: authority.binding.instanceConfigId,
+            instanceConfigId: binding.instanceConfigId,
             ...(nativeHome ? { expectedHome: nativeHome } : {}),
             workspaceRoot: authority.workspaceRoot,
             workspaceEnvironment,
             permissionPolicy: authority.permissionPolicy,
             ...selection,
-            interactionMode: durable?.nativeState?.preferences.interaction_mode ?? "default",
+            interactionMode: durable?.nativeState?.preferences?.interaction_mode ?? "default",
             everSaved: durable?.nativeState?.ever_saved ?? Boolean(durable),
             executionRecoveryRequired: nativeExecutionRecoveryRequired.has(input.threadId),
             historyFacts: nativeHistoryFacts(durable?.nativeState ?? null),
             ...nativeHooks,
             ...(durable ? { sessionId: durable.backendSessionId } : {}),
           })
-        : acpSessions
-            .open({
+        : binding.kind === "opencode"
+          ? openCodeSessions.open({
               threadId: input.threadId,
-              agentDefinitionId: authority.binding.agentDefinitionId,
-              instanceConfigId: authority.binding.instanceConfigId!,
+              instanceConfigId: binding.instanceConfigId,
               workspaceRoot: authority.workspaceRoot,
-              permissionPolicy: resolveAcpPermissionPolicy(authority.permissionMode),
-              open: durable
-                ? { kind: "load", sessionId: durable.backendSessionId }
-                : { kind: "new" },
+              permissionPolicy: authority.permissionPolicy,
+              ...(nativeHome ? { expectedHome: nativeHome } : {}),
+              ...(durable ? { resumeSessionId: durable.backendSessionId } : {}),
+              ...(durable?.runtimeOptions?.model ? { model: durable.runtimeOptions.model } : {}),
+              ...(durable?.runtimeOptions?.mode_id
+                ? { modeId: durable.runtimeOptions.mode_id }
+                : {}),
+              ...(durable?.runtimeOptions
+                ? { configOptions: durable.runtimeOptions.config_options }
+                : {}),
+              workspaceEnvironment,
+              historyFacts: nativeHistoryFacts(durable?.nativeState ?? null),
+              acquireLaunchContext: (root) =>
+                Effect.gen(function* () {
+                  const launch = yield* applicationSettings.openCodeLaunchConfiguration(
+                    binding.instanceConfigId,
+                  );
+                  if (launch.instance.serverUrl) return {};
+                  const context = yield* acquireLaunchContext(root);
+                  const servers = Object.fromEntries(
+                    Object.entries(context.mcpServers ?? {}).flatMap(([name, server]) =>
+                      "command" in server
+                        ? [
+                            [
+                              name,
+                              {
+                                command: server.command,
+                                ...(server.args ? { args: server.args } : {}),
+                                ...(server.env ? { environment: server.env } : {}),
+                              },
+                            ],
+                          ]
+                        : [],
+                    ),
+                  );
+                  return { systemPromptAppend: context.systemPromptAppend, servers };
+                }).pipe(
+                  Effect.mapError((cause) =>
+                    agentRuntimeError({
+                      operation: "OpenCode app tools",
+                      reason: "authorization",
+                      retryable: false,
+                      cause,
+                    }),
+                  ),
+                ),
+              onTurnAdmitted: nativeHooks.onTurnAdmitted,
+              onTurnSettled: nativeHooks.onTurnSettled,
+              onBackgroundTasksChanged: nativeHooks.onBackgroundTasksChanged,
             })
-            .pipe(Effect.map(sessions.adaptAcp))
+          : acpSessions
+              .open({
+                threadId: input.threadId,
+                agentDefinitionId: binding.agentDefinitionId,
+                instanceConfigId: binding.instanceConfigId!,
+                workspaceRoot: authority.workspaceRoot,
+                permissionPolicy: resolveAcpPermissionPolicy(authority.permissionMode),
+                open: durable
+                  ? { kind: "load", sessionId: durable.backendSessionId }
+                  : { kind: "new" },
+              })
+              .pipe(Effect.map(sessions.adaptAcp))
     ).pipe(
       Effect.catch(
         (cause): Effect.Effect<never, AgentRuntimeError | AgentBackendApplicationError> => {
@@ -929,7 +1000,7 @@ export const make = Effect.gen(function* () {
             "session.restore.clear",
             workspace.clearThreadBackendSession({
               threadId: input.threadId,
-              backendBinding: authority.binding,
+              backendBinding: binding,
             }),
             { threadId: input.threadId },
           ).pipe(
@@ -949,13 +1020,13 @@ export const make = Effect.gen(function* () {
         },
       ),
     );
-    if (authority.binding.kind === "claude") nativeHandle = handle;
-    if (authority.binding.kind === "claude") {
+    if (binding.kind !== "acp") nativeHandle = handle;
+    if (binding.kind !== "acp") {
       const current = yield* resolveThreadAuthority(input.threadId);
       const currentDurable = yield* workspace.readThreadBackendSession(input.threadId);
       const currentContext = yield* workspace.readThreadExecutionContext(input.threadId);
       if (
-        !sameBinding(current.binding, authority.binding) ||
+        !sameBinding(current.binding, binding) ||
         current.thread.projectId !== authority.thread.projectId ||
         current.workspaceRoot !== authority.workspaceRoot ||
         (currentDurable?.backendSessionId ?? null) !== (durable?.backendSessionId ?? null) ||
@@ -974,7 +1045,7 @@ export const make = Effect.gen(function* () {
       }
     }
     launchAuthorities.set(handle, {
-      binding: authority.binding,
+      binding: binding,
       workspaceRoot: authority.workspaceRoot,
       projectId: authority.thread.projectId,
       ...(nativeLocation ? { nativeLocation } : {}),
@@ -988,17 +1059,22 @@ export const make = Effect.gen(function* () {
         { threadId: input.threadId },
       );
     }
-    if (
-      (!durable || (authority.binding.kind === "claude" && !durable.nativeHome)) &&
-      openedSessionId !== null
-    ) {
+    if (binding.kind === "acp" && durable?.runtimeOptions) {
+      const saved = durable.runtimeOptions;
+      const modelControl = handle.configOptions.find((option) => option.category === "model");
+      if (saved.model && modelControl) yield* handle.setConfigOption(modelControl.id, saved.model);
+      for (const option of saved.config_options)
+        yield* handle.setConfigOption(option.id, option.value);
+      if (saved.mode_id) yield* handle.setMode(saved.mode_id);
+    }
+    if ((!durable || (binding.kind !== "acp" && !durable.nativeHome)) && openedSessionId !== null) {
       yield* workspace.bindThreadBackendSession({
         threadId: input.threadId,
-        backendBinding: authority.binding,
+        backendBinding: binding,
         backendSessionId: openedSessionId,
         ...(durable ? { expectedBackendSessionId: durable.backendSessionId } : {}),
         ...(nativeHome ? { nativeHome } : {}),
-        ...(authority.binding.kind === "claude"
+        ...(binding.kind !== "acp"
           ? {
               nativeState: nativeStateFromSnapshot(
                 yield* SubscriptionRef.get(handle.snapshot),
@@ -1010,7 +1086,7 @@ export const make = Effect.gen(function* () {
       });
     }
     if (
-      authority.binding.kind === "claude" &&
+      binding.kind !== "acp" &&
       authority.thread.statusType === "active" &&
       (yield* SubscriptionRef.get(handle.snapshot)).status !== "running"
     )
@@ -1027,7 +1103,7 @@ export const make = Effect.gen(function* () {
       const launched = launchAuthorities.get(existing);
       const snapshot = yield* SubscriptionRef.get(existing.snapshot);
       const durable =
-        snapshot.backend === "claude"
+        snapshot.backend !== "acp"
           ? yield* assertNativeSessionIdentity(existing)
           : yield* workspace.readThreadBackendSession(threadId);
       if (
@@ -1112,15 +1188,17 @@ export const make = Effect.gen(function* () {
     return yield* requireOpenedHandle(threadId);
   });
 
-  const persistClaudeIntelligence = Effect.fn("AgentBackendApplication.persistClaudeIntelligence")(
+  const persistAgentSelection = Effect.fn("AgentBackendApplication.persistAgentSelection")(
     function* (handle: AgentSessionHandle, everSaved?: boolean) {
       const snapshot = yield* SubscriptionRef.get(handle.snapshot);
-      if (snapshot.backend !== "claude" || !handle.sessionId) return;
+      if (!handle.sessionId) return;
       const authority = yield* resolveThreadAuthority(handle.threadId);
-      const durable = yield* assertNativeSessionIdentity(handle);
+      const durable =
+        snapshot.backend === "acp"
+          ? yield* workspace.readThreadBackendSession(handle.threadId)
+          : yield* assertNativeSessionIdentity(handle);
       const launched = launchAuthorities.get(handle);
       if (
-        authority.binding.kind !== "claude" ||
         (durable && !sameBinding(durable.backendBinding, authority.binding)) ||
         (launched &&
           (launched.projectId !== authority.thread.projectId ||
@@ -1132,13 +1210,29 @@ export const make = Effect.gen(function* () {
           threadId: handle.threadId,
         });
       }
+      const modelControl = handle.configOptions.find((option) => option.category === "model");
       yield* workspace
         .bindThreadBackendSession({
           threadId: handle.threadId,
           backendBinding: authority.binding,
           backendSessionId: handle.sessionId,
           expectedBackendSessionId: handle.sessionId,
-          nativeState: nativeStateFromSnapshot(snapshot, durable?.nativeState ?? null, everSaved),
+          ...(snapshot.backend !== "acp"
+            ? {
+                nativeState: nativeStateFromSnapshot(
+                  snapshot,
+                  durable?.nativeState ?? null,
+                  everSaved,
+                ),
+              }
+            : {}),
+          runtimeOptions: {
+            model: modelControl?.type === "select" ? modelControl.currentValue : null,
+            mode_id: handle.modes?.currentModeId ?? null,
+            config_options: handle.configOptions
+              .filter((option) => option.category !== "model")
+              .map((option) => ({ id: option.id, value: option.currentValue })),
+          },
         })
         .pipe(Effect.tapError(() => sessions.close(handle.threadId)));
     },
@@ -1163,7 +1257,7 @@ export const make = Effect.gen(function* () {
       });
     yield* requireExecutionAdmission(input.threadId);
     const handle = yield* requireHandle(input.threadId);
-    if ((yield* SubscriptionRef.get(handle.snapshot)).backend === "claude") {
+    if ((yield* SubscriptionRef.get(handle.snapshot)).backend !== "acp") {
       const images =
         input.preparedImages ??
         (input.images?.length && nativeImages ? yield* nativeImages.prepare(input.images) : []);
@@ -1301,7 +1395,7 @@ export const make = Effect.gen(function* () {
       );
     if (!input.prompt.trim() && !input.images?.length)
       return yield* fail("thread.start.validate", new Error("Attach an image or enter a message"));
-    if (input.images?.length && (input.backendKind !== "claude" || !nativeImages))
+    if (input.images?.length && (input.backendKind === "acp" || !nativeImages))
       return yield* fail("thread.images", new Error("This Agent cannot accept image input"));
     const images =
       input.images?.length && nativeImages ? yield* nativeImages.prepare(input.images) : undefined;
@@ -1329,9 +1423,9 @@ export const make = Effect.gen(function* () {
         { sessionId: input.sessionId },
       );
     }
-    const resolution = yield* input.backendKind === "claude"
-      ? backends.resolve({ kind: "claude", instanceConfigId: input.instanceConfigId })
-      : backends.resolveAcpInstance(input.instanceConfigId);
+    const resolution = yield* input.backendKind === "acp"
+      ? backends.resolveAcpInstance(input.instanceConfigId)
+      : backends.resolve({ kind: input.backendKind, instanceConfigId: input.instanceConfigId });
     const threadId = createUuidV7();
     const now = Date.now();
     const linked = yield* Effect.scoped(
@@ -1407,23 +1501,32 @@ export const make = Effect.gen(function* () {
         input.selection ?? { model: input.model ?? "default", effort: input.effort ?? "default" },
       );
     }
-    if (
-      input.backendKind !== "claude" &&
-      input.model &&
-      modelConfig &&
-      modelConfig.type === "select" &&
-      modelConfig.currentValue !== input.model
-    ) {
-      yield* handle.setConfigOption(modelConfig.id, input.model);
+    if (input.backendKind !== "claude" && input.model) {
+      if (!modelConfig || modelConfig.type !== "select")
+        return yield* fail(
+          "thread.model",
+          new Error("This Agent does not advertise model selection"),
+        );
+      if (modelConfig.currentValue !== input.model)
+        yield* handle.setConfigOption(modelConfig.id, input.model);
     }
+    for (const option of input.configOptions ?? []) {
+      if (option.id === modelConfig?.id)
+        return yield* fail(
+          "thread.options",
+          new Error("Select the model through its model control"),
+        );
+      yield* handle.setConfigOption(option.id, option.value);
+    }
+    if (input.modeId) yield* handle.setMode(input.modeId);
     const mode = handle.modes?.availableModes.find((candidate) =>
       input.mode === "plan"
         ? candidate.id === "plan"
         : candidate.id === "code" || candidate.id === "default",
     );
-    if (input.mode && mode && handle.modes?.currentModeId !== mode.id)
+    if (!input.modeId && input.mode && mode && handle.modes?.currentModeId !== mode.id)
       yield* handle.setMode(mode.id);
-    yield* persistClaudeIntelligence(handle);
+    yield* persistAgentSelection(handle);
     const result = { thread, presentation: yield* presentation(handle) };
     // The first prompt remains process-owned and single-consume. Interactive authentication may
     // defer its first submission, but a Main restart never replays it and risks a duplicate.
@@ -1703,7 +1806,7 @@ export const make = Effect.gen(function* () {
         input.threadId,
       );
       yield* apply(input.selection);
-      yield* persistClaudeIntelligence(handle);
+      yield* persistAgentSelection(handle);
       return yield* presentation(handle);
     });
   const setAgentIntelligence = (input: AgentBackendIntelligenceInput) =>
@@ -1753,7 +1856,7 @@ export const make = Effect.gen(function* () {
                 yield* (yield* requireControl(handle.rollback, "rollback", input.threadId))(
                   input.numTurns,
                 );
-                yield* persistClaudeIntelligence(handle);
+                yield* persistAgentSelection(handle);
                 break;
               case "compact":
                 yield* yield* requireControl(handle.compact, "compaction", input.threadId);
@@ -1761,7 +1864,7 @@ export const make = Effect.gen(function* () {
               case "permission-mode": {
                 const authority = yield* resolveThreadAuthority(input.threadId);
                 const requestedMode = input.mode;
-                if (authority.binding.kind !== "claude" || requestedMode === "custom")
+                if (authority.binding.kind === "acp" || requestedMode === "custom")
                   return yield* fail(
                     "permission.mode",
                     new Error("This native permission mode is unavailable"),
@@ -1938,14 +2041,19 @@ export const make = Effect.gen(function* () {
       backendBinding: authority.binding,
       backendSessionId: forked.sessionId,
       ...(durable?.nativeHome ? { nativeHome: durable.nativeHome } : {}),
-      nativeState: remapNativeState(
-        nativeStateFromSnapshot(
-          yield* SubscriptionRef.get(handle.snapshot),
-          durable?.nativeState ?? null,
-          true,
-        ),
-        forked.messageIdMap ?? {},
-      ),
+      ...(authority.binding.kind !== "acp"
+        ? {
+            nativeState: remapNativeState(
+              nativeStateFromSnapshot(
+                yield* SubscriptionRef.get(handle.snapshot),
+                durable?.nativeState ?? null,
+                true,
+              ),
+              forked.messageIdMap ?? {},
+            ),
+          }
+        : {}),
+      ...(durable?.runtimeOptions ? { runtimeOptions: durable.runtimeOptions } : {}),
     });
     return { thread, presentation: yield* openAgentSession({ threadId: thread.threadId }) };
   });
@@ -1966,8 +2074,8 @@ export const make = Effect.gen(function* () {
     read: (threadId) =>
       Effect.gen(function* () {
         const thread = yield* workspace.getThread(threadId);
-        if (!thread || thread.backendBinding.kind !== "claude") return null;
-        const handle = yield* claudeSessions.get(threadId);
+        if (!thread || !isNativeAgentBackendKind(thread.backendBinding.kind)) return null;
+        const handle = yield* sessions.get(threadId);
         if (handle) yield* assertNativeSessionIdentity(handle);
         const snapshot = handle ? yield* SubscriptionRef.get(handle.snapshot) : null;
         return {
@@ -2023,15 +2131,32 @@ export const make = Effect.gen(function* () {
           Effect.gen(function* () {
             yield* requireExecutionAdmission(input.threadId);
             const handle = yield* requireHandle(input.threadId);
-            if (!handle.setIntelligence)
-              return yield* fail("native.submit", new Error("Native execution is unavailable"));
             const snapshot = yield* SubscriptionRef.get(handle.snapshot);
+            if (!isNativeAgentBackendKind(snapshot.backend))
+              return yield* fail("native.submit", new Error("Native execution is unavailable"));
             if (snapshot.status !== "idle" || snapshot.requests?.length)
               return yield* fail(
                 "native.submit",
                 new Error("The native task is busy or unavailable"),
               );
-            if (input.model || input.effort) {
+            if (snapshot.backend === "opencode" && (input.effort || input.unattended))
+              return yield* fail(
+                "native.submit",
+                new Error("OpenCode does not support this execution option"),
+              );
+            if (snapshot.backend === "opencode" && input.model) {
+              const modelControl = handle.configOptions.find(
+                (option) => option.category === "model",
+              );
+              if (!modelControl || modelControl.type !== "select")
+                return yield* fail(
+                  "native.submit",
+                  new Error("Native model selection is unavailable"),
+                );
+              yield* handle.setConfigOption(modelControl.id, input.model);
+              yield* persistAgentSelection(handle);
+            }
+            if (snapshot.backend === "claude" && (input.model || input.effort)) {
               const durable = yield* workspace.readThreadBackendSession(input.threadId);
               const selection = nativeSelectionFromState(durable?.nativeState ?? null);
               if (input.effort && input.effort !== "default" && !isClaudeEffortLevel(input.effort))
@@ -2111,9 +2236,10 @@ export const make = Effect.gen(function* () {
       }).pipe(Effect.mapError((cause) => fail("native.wait", cause))),
     cancel: (threadId, turnId) =>
       Effect.gen(function* () {
-        const handle = yield* claudeSessions.get(threadId);
+        const handle = yield* sessions.get(threadId);
         if (!handle) return;
         const snapshot = yield* SubscriptionRef.get(handle.snapshot);
+        if (!isNativeAgentBackendKind(snapshot.backend)) return;
         if (!snapshot.turns.some((turn) => turn.clientUserMessageId === turnId && !turn.stopReason))
           return;
         yield* handle.cancel;
@@ -2310,6 +2436,137 @@ export const make = Effect.gen(function* () {
           return output;
         }),
       ),
+    modelCatalog: (input) =>
+      ownFailure(
+        "model-catalog.read",
+        Effect.gen(function* () {
+          const scope = input.scope;
+          const settingsRevision = (yield* applicationSettings.snapshot()).revision;
+          const authority =
+            scope.kind === "thread" ? yield* resolveThreadAuthority(scope.threadId) : null;
+          if (scope.kind === "thread") yield* requireExecutionAdmission(scope.threadId);
+          const project =
+            scope.kind === "project" && scope.projectId
+              ? yield* workspace.getProject(scope.projectId)
+              : null;
+          if (
+            scope.kind === "project" &&
+            scope.projectId &&
+            (!project || project.lifecycle !== "active" || !project.primaryWorkspaceRoot)
+          )
+            return yield* fail("model-catalog.scope", new Error("Choose an active local Project"));
+          const binding = authority?.binding ?? (scope.kind === "project" ? scope.binding : null);
+          const root =
+            authority?.workspaceRoot ?? project?.primaryWorkspaceRoot ?? config?.homeDirectory;
+          if (!binding || !root)
+            return yield* fail(
+              "model-catalog.scope",
+              new Error("The execution scope is unavailable"),
+            );
+          yield* backends.resolve(binding);
+          let catalog: AgentModelCatalog;
+          if (binding.kind === "opencode") {
+            catalog = yield* openCodeSessions.discover({
+              instanceConfigId: binding.instanceConfigId,
+              workspaceRoot: root,
+              workspaceEnvironment: authority
+                ? yield* worktreeEnvironment(root, authority.thread.managedWorktreePath)
+                : null,
+              forceReload: input.forceReload,
+            });
+          } else if (binding.kind === "claude") {
+            const workspaceEnvironment = authority
+              ? yield* worktreeEnvironment(root, authority.thread.managedWorktreePath)
+              : null;
+            const discovery = yield* claudeSessions.discover(
+              binding.instanceConfigId,
+              { workspaceRoot: root, workspaceEnvironment },
+              input.forceReload,
+            );
+            catalog = {
+              binding,
+              models: discovery.models.map((option) =>
+                projectNativeModelOption(
+                  option,
+                  option.value === discovery.intelligence.model,
+                  true,
+                ),
+              ),
+              configOptions: [],
+              modes: null,
+              defaultModel: discovery.intelligence.model,
+              claudeDiscovery: discovery,
+              health: {
+                status: discovery.health.error ? "unavailable" : "ready",
+                error: discovery.health.error,
+              },
+            };
+          } else {
+            const handle = scope.kind === "thread" ? yield* requireHandle(scope.threadId) : null;
+            const snapshot = handle ? yield* SubscriptionRef.get(handle.snapshot) : null;
+            const configOptions = snapshot?.metadata?.configOptions ?? handle?.configOptions ?? [];
+            const model = configOptions.find((option) => option.category === "model");
+            const candidates =
+              model?.type === "select"
+                ? model.options.flatMap((option) => ("group" in option ? option.options : [option]))
+                : [];
+            catalog = {
+              binding,
+              models: candidates.map((option) =>
+                projectNativeModelOption(
+                  option,
+                  option.value === model?.currentValue,
+                  Boolean(snapshot?.metadata?.capabilities.prompt.image),
+                ),
+              ),
+              configOptions,
+              modes: snapshot?.metadata?.modes ?? handle?.modes ?? null,
+              defaultModel: typeof model?.currentValue === "string" ? model.currentValue : null,
+              health: {
+                status: !handle
+                  ? "unavailable"
+                  : snapshot?.status === "authentication-required"
+                    ? "authentication-required"
+                    : "ready",
+                error: !handle
+                  ? "Models become available when this Agent opens a conversation."
+                  : null,
+              },
+            };
+          }
+          if ((yield* applicationSettings.snapshot()).revision !== settingsRevision)
+            return yield* fail(
+              "model-catalog.scope",
+              new Error("Agent settings changed while loading models"),
+            );
+          if (authority && scope.kind === "thread") {
+            yield* requireExecutionAdmission(scope.threadId);
+            const current = yield* resolveThreadAuthority(scope.threadId);
+            if (
+              !sameBinding(current.binding, authority.binding) ||
+              current.workspaceRoot !== authority.workspaceRoot ||
+              current.thread.projectId !== authority.thread.projectId ||
+              current.thread.managedWorktreePath !== authority.thread.managedWorktreePath
+            )
+              return yield* fail(
+                "model-catalog.scope",
+                new Error("The task's execution location changed while loading models"),
+              );
+          } else if (project) {
+            const current = yield* workspace.getProject(project.id);
+            if (
+              !current ||
+              current.lifecycle !== "active" ||
+              current.primaryWorkspaceRoot !== project.primaryWorkspaceRoot
+            )
+              return yield* fail(
+                "model-catalog.scope",
+                new Error("The Project changed while loading models"),
+              );
+          }
+          return catalog;
+        }),
+      ),
     claudeDiscovery: (input) =>
       ownFailure(
         "claude.discover",
@@ -2460,7 +2717,7 @@ export const make = Effect.gen(function* () {
             yield* requireExecutionAdmission(input.threadId);
             const handle = yield* requireHandle(input.threadId);
             yield* handle.setMode(input.modeId);
-            yield* persistClaudeIntelligence(handle);
+            yield* persistAgentSelection(handle);
             return yield* SubscriptionRef.get(handle.snapshot);
           }),
         ),
@@ -2475,7 +2732,7 @@ export const make = Effect.gen(function* () {
             yield* requireExecutionAdmission(input.threadId);
             const handle = yield* requireHandle(input.threadId);
             const configOptions = yield* handle.setConfigOption(input.configId, input.value);
-            yield* persistClaudeIntelligence(handle);
+            yield* persistAgentSelection(handle);
             return {
               configOptions,
               snapshot: yield* SubscriptionRef.get(handle.snapshot),
@@ -2491,10 +2748,10 @@ export const make = Effect.gen(function* () {
           yield* requireExecutionAdmission(input.threadId);
           const handle = yield* requireHandle(input.threadId);
           if (
-            (yield* SubscriptionRef.get(handle.snapshot)).backend === "claude" &&
+            (yield* SubscriptionRef.get(handle.snapshot)).backend !== "acp" &&
             input.methodId === "reconnect"
           ) {
-            yield* claudeSessions.close(input.threadId);
+            yield* sessions.close(input.threadId);
             const reopened = yield* openAgentSession({ threadId: input.threadId });
             return { snapshot: reopened.snapshot };
           }
@@ -2572,5 +2829,10 @@ export const make = Effect.gen(function* () {
 export const live: Layer.Layer<
   AgentBackendApplication,
   never,
-  AgentBackendRegistry | AcpBackendSessionManager | ClaudeSessionManager | ProjectWorkspace
+  | AgentBackendRegistry
+  | AcpBackendSessionManager
+  | ClaudeSessionManager
+  | OpenCodeSessionManager
+  | ApplicationSettings
+  | ProjectWorkspace
 > = Layer.effect(AgentBackendApplication, make);

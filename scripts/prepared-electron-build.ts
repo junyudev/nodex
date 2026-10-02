@@ -17,7 +17,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 
 import { inspectOfficialAgentSkillsArtifact } from "./official-agent-skills-artifact.mjs";
-import { SOURCE_ONLY_ELECTRON_MAIN_DEPENDENCIES } from "../config/electron-main-runtime-closure";
+import { BUNDLED_ELECTRON_MAIN_DEPENDENCIES } from "../config/electron-main-runtime-closure";
 import { parseReleaseIdentity, type ReleaseIdentity } from "./release/model";
 
 const MANIFEST_SCHEMA_VERSION = 4;
@@ -117,7 +117,7 @@ const assertMainDependenciesAreBundled = (root: string, outputs: readonly FileDi
     ({ path: outputPath }) =>
       outputPath.startsWith("out/main/") && /\.(?:c|m)?js$/u.test(outputPath),
   );
-  for (const dependency of SOURCE_ONLY_ELECTRON_MAIN_DEPENDENCIES) {
+  for (const dependency of BUNDLED_ELECTRON_MAIN_DEPENDENCIES) {
     const escapedDependency = escapeRegularExpression(dependency);
     const runtimeLoad = new RegExp(
       String.raw`\brequire\s*\(\s*["']${escapedDependency}(?:/[^"']*)?["']\s*\)`,
@@ -127,7 +127,7 @@ const assertMainDependenciesAreBundled = (root: string, outputs: readonly FileDi
       const source = readFileSync(path.join(root, output.path), "utf8");
       if (!runtimeLoad.test(source)) continue;
       throw new Error(
-        `Prepared Electron Main output externalizes source-only workspace dependency ${dependency}; bundle it before packaging.`,
+        `Prepared Electron Main output externalizes required bundled dependency ${dependency}; bundle it before packaging.`,
       );
     }
   }

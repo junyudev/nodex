@@ -6,9 +6,9 @@ import path from "node:path";
 import { StringDecoder } from "node:string_decoder";
 import { z } from "zod";
 import {
-  ClaudeEnvironmentValueSchema,
+  AgentEnvironmentValueSchema,
   ENVIRONMENT_NAME_PATTERN,
-} from "../../shared/claude-agent-settings";
+} from "../../shared/agent-environment";
 import { killChildProcessTree } from "../process-tree";
 
 export interface CodexStoredShellEnvironment {
@@ -21,7 +21,7 @@ const storedEnvironmentNameSchema = z.string().max(128).regex(ENVIRONMENT_NAME_P
 const storedShellEnvironmentSchema = z
   .object({
     version: z.literal(1),
-    set: z.record(storedEnvironmentNameSchema, ClaudeEnvironmentValueSchema),
+    set: z.record(storedEnvironmentNameSchema, AgentEnvironmentValueSchema),
     exclude: z.array(storedEnvironmentNameSchema),
   })
   .strict();

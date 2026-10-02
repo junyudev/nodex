@@ -1,3 +1,4 @@
+import { OpenCodeSessionManager } from "../agent-backend/opencode/OpenCodeSessionManager";
 import { ClaudeSessionManager } from "../agent-backend/claude/ClaudeSessionManager";
 import * as Cause from "effect/Cause";
 import * as Context from "effect/Context";
@@ -76,6 +77,7 @@ export const live: Layer.Layer<
   | ConversationCommands
   | AcpBackendSessionManager
   | ClaudeSessionManager
+  | OpenCodeSessionManager
   | ProjectWorkspace
 > = Layer.effect(
   ProjectSessionCommands,
@@ -83,6 +85,7 @@ export const live: Layer.Layer<
     const browser = yield* BrowserApplication;
     const acpSessions = yield* AcpBackendSessionManager;
     const claudeSessions = yield* ClaudeSessionManager;
+    const openCodeSessions = yield* OpenCodeSessionManager;
     const conversation = yield* ConversationCommands;
     const sections = yield* CodexSidebarSectionSync;
     const threadTitles = yield* CodexThreadTitlePersistence;
@@ -170,7 +173,10 @@ export const live: Layer.Layer<
           "close-backend-session",
           acpSessions
             .close(existing.thread.threadId)
-            .pipe(Effect.andThen(claudeSessions.close(existing.thread.threadId))),
+            .pipe(
+              Effect.andThen(claudeSessions.close(existing.thread.threadId)),
+              Effect.andThen(openCodeSessions.close(existing.thread.threadId)),
+            ),
         );
       }
       const result = yield* attempt("delete-session", workspace.deleteProjectSession(command));
@@ -216,7 +222,10 @@ export const live: Layer.Layer<
               "close-backend-session",
               acpSessions
                 .close(thread.threadId)
-                .pipe(Effect.andThen(claudeSessions.close(thread.threadId))),
+                .pipe(
+                  Effect.andThen(claudeSessions.close(thread.threadId)),
+                  Effect.andThen(openCodeSessions.close(thread.threadId)),
+                ),
             );
           }
         }).pipe(Effect.provideService(CoreApplicationAgent, null)),

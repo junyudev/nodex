@@ -1655,6 +1655,12 @@ export interface UpdateCodexExecutionHostSettingsInput {
 }
 
 export type {
+  OpenCodeAgentInstanceConfig,
+  OpenCodeAgentSettings,
+  UpdateOpenCodeAgentSettingsInput,
+} from "./opencode-agent-settings";
+
+export type {
   ClaudeAgentInstanceConfig,
   ClaudeAgentSettings,
   UpdateClaudeAgentSettingsInput,

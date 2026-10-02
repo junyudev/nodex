@@ -31,13 +31,24 @@ import type {
   ThreadSummaryPanelScheduledAutomationRow,
 } from "@/features/local-conversation/thread-stage-types";
 import { getGitWorkerClient } from "@/lib/api";
-import { readAcpAgentSettings, readClaudeAgentSettings } from "@/lib/workbench-settings-runtime";
-import { resolveRendererTransport } from "@/lib/renderer-transport";
+import { useAgentInstances } from "@/features/local-conversation/use-agent-instances";
+import { useAgentModelCatalogs } from "@/features/local-conversation/use-agent-model-catalog";
+import { agentBindingKey, selectAgentCatalogModel } from "@/lib/agent-model-selection";
+import { nativeAgentDraftKey, nativeAgentDraftOwner } from "@/lib/native-agent-draft-owner";
+import { selectNativeModel } from "@/lib/native-intelligence-selection";
+import { useWorkbenchWindowOwner } from "@/lib/use-workbench-window-state";
+import { buildSettingsPath } from "./workbench-settings-routes";
+import { resolveReasoningEffortForModelChange } from "@/components/shared/agent-runtime/agent-intelligence-dropdown";
+import type { AgentModelPickerEntry } from "@/components/shared/agent-runtime/agent-model-picker";
+import type {
+  AgentModelSelection,
+  ExternalAgentBinding,
+} from "../../../shared/agent-model-catalog";
 import {
   newThreadBackendSelectionOwner,
+  resolveNewThreadBackendUnavailableReason,
   type NewThreadBackendSelection,
 } from "@/lib/new-thread-backend-selection";
-import type { AcpAgentInstanceConfig } from "../../../shared/types";
 import { useLocalEnvironmentConfigs } from "@/lib/use-local-environment-queries";
 import {
   createCommandKeymapState,
@@ -246,6 +257,7 @@ function SharedConnectedSessionThread({
     : (selectedNewThreadProject?.id ?? null);
   const threadStartProgress = useCodexThreadStartProgress(progressProjectId, session.id);
   const summary = attachedSummary;
+  const hasAttachedSummary = summary !== null;
   const executionHandoff = useThreadExecutionHandoff(summary?.threadId ?? null);
   const executionHandoffCompletion =
     executionHandoff && executionHandoff.status !== "running"
@@ -367,12 +379,12 @@ function SharedConnectedSessionThread({
   }, [projects, selectedNewThreadProjectId, session.projectId, setSelectedNewThreadProjectId]);
 
   useEffect(() => {
-    if (usesExternalAgent) return;
+    if (usesExternalAgent && hasAttachedSummary) return;
     void loadModels().catch(() => undefined);
     void listCollaborationModes()
       .then(setCollaborationModes)
       .catch(() => setCollaborationModes([]));
-  }, [usesExternalAgent, listCollaborationModes, loadModels]);
+  }, [usesExternalAgent, hasAttachedSummary, listCollaborationModes, loadModels]);
 
   useEffect(() => {
     const cwd = summary?.cwd?.trim();
@@ -593,8 +605,52 @@ function SharedConnectedSessionThread({
       })
     : codexActions;
 
+  const externalCatalog = provider?.modelCatalog;
+  const codexEntries: readonly AgentModelPickerEntry[] =
+    !agent || !summary
+      ? codexControl.availableModels
+          .filter((model) => !model.hidden)
+          .map((model) => ({
+            binding: { kind: "codex" },
+            label: "Codex",
+            model,
+            selection: { binding: { kind: "codex" }, model: model.id },
+          }))
+      : [];
+  const presentedProvider =
+    provider && externalCatalog
+      ? {
+          ...provider,
+          modelCatalog: {
+            ...externalCatalog,
+            entries: [...codexEntries, ...externalCatalog.entries],
+            selected: agent
+              ? externalCatalog.selected
+              : {
+                  binding: { kind: "codex" as const },
+                  model: codexControl.threadSettings.model ?? "",
+                },
+            refresh: () => {
+              externalCatalog.refresh();
+              void loadModels().catch(() => undefined);
+            },
+            choose: async (selection: AgentModelSelection) => {
+              if (selection.binding.kind !== "codex") return externalCatalog.choose(selection);
+              const effort = resolveReasoningEffortForModelChange({
+                models: codexControl.availableModels,
+                nextModelId: selection.model,
+                currentReasoningEffort: codexControl.threadSettings.reasoningEffort ?? "medium",
+              });
+              await codexActions.onModelChange(selection.model);
+              if (effort) await codexActions.onReasoningEffortChange(effort);
+              if (!summary) provider.select?.("codex");
+            },
+          },
+        }
+      : provider;
+
   const connectedStageProps = {
-    provider,
+    provider: presentedProvider,
     projectWorkspaceRoots:
       (summary ? project : selectedNewThreadProject)?.sources.map((source) => source.root) ?? [],
     projectId: effectiveProjectId,
@@ -696,81 +752,58 @@ type ConnectedSessionThreadProps = Omit<
   "agent" | "provider" | "selectedNewThreadProjectId" | "setSelectedNewThreadProjectId"
 >;
 
-function formatAcpAgentInstanceLabel(
-  instance: AcpAgentInstanceConfig,
-  instanceCount: number,
-): string {
-  const definitionLabel =
-    instance.agentDefinitionId === "claude-agent-acp" ? "Claude Agent" : instance.agentDefinitionId;
-  return instanceCount > 1 ? `${definitionLabel} · ${instance.id}` : definitionLabel;
-}
-
-/**
- * Backend selection changes the runtime Adapter, never the conversation surface or draft owner.
- */
+/** Runtime choices are scoped to the Project until the first submission fixes the Thread binding. */
 function ConnectedSessionThread(props: ConnectedSessionThreadProps) {
   const thread = props.session.thread;
-  const canChooseBackend = thread === null;
-  const [instances, setInstances] = useState<
-    readonly { id: string; kind: "acp" | "claude"; label: string; enabled: boolean }[]
-  >([]);
+  const instanceSettings = useAgentInstances();
+  const { instances } = instanceSettings;
+  const windowOwner = useWorkbenchWindowOwner();
   const selection = useSyncExternalStore(
     (listener) => newThreadBackendSelectionOwner.subscribe(props.session.id, listener),
     () => newThreadBackendSelectionOwner.read(props.session.id),
     (): NewThreadBackendSelection => "codex",
   );
-
-  useEffect(() => {
-    let disposed = false;
-    let generation = 0;
-    const reload = () => {
-      const requestGeneration = ++generation;
-      void Promise.all([readAcpAgentSettings(), readClaudeAgentSettings()])
-        .then(([acp, claude]) => {
-          if (disposed || requestGeneration !== generation) return;
-          setInstances([
-            ...claude.instances.map((instance) => ({
-              id: instance.id,
-              kind: "claude" as const,
-              label: instance.displayName,
-              enabled: instance.enabled,
-            })),
-            ...acp.instances.map((instance) => ({
-              id: instance.id,
-              kind: "acp" as const,
-              label: formatAcpAgentInstanceLabel(instance, acp.instances.length),
-              enabled: instance.enabled,
-            })),
-          ]);
-        })
-        .catch(() => {
-          if (!disposed && requestGeneration === generation) setInstances([]);
-        });
-    };
-    const release = resolveRendererTransport().subscribeClaudeAgentSettingsChanges(reload);
-    reload();
-    return () => {
-      disposed = true;
-      release();
-    };
-  }, [props.session.id]);
-
-  const binding =
-    thread?.backendBinding.kind === "claude" || thread?.backendBinding.kind === "acp"
-      ? thread.backendBinding
-      : !thread && selection !== "codex"
-        ? selection
-        : null;
+  const binding: ExternalAgentBinding | null = thread
+    ? thread.backendBinding.kind === "codex"
+      ? null
+      : thread.backendBinding
+    : selection === "codex"
+      ? null
+      : selection;
+  const draftUnavailableReason = thread
+    ? null
+    : resolveNewThreadBackendUnavailableReason(selection, instanceSettings);
+  const draftUnavailableError = instanceSettings.loading ? null : draftUnavailableReason;
   const [selectedNewThreadProjectId, setSelectedNewThreadProjectId] = useState<string | null>(
     props.session.projectId,
   );
-  const draftModelProjectId =
-    selectedNewThreadProjectId === null
-      ? null
-      : (props.projects.find(({ id }) => id === selectedNewThreadProjectId)?.id ??
-        props.project?.id ??
-        null);
-  const modelProjectId = thread ? props.session.projectId : draftModelProjectId;
+  const modelProjectId = thread ? props.session.projectId : selectedNewThreadProjectId;
+  const boundInstance = binding
+    ? {
+        binding,
+        label:
+          instances.find(
+            (instance) => agentBindingKey(instance.binding) === agentBindingKey(binding),
+          )?.label ??
+          (binding.kind === "claude"
+            ? "Claude Code"
+            : binding.kind === "opencode"
+              ? "OpenCode"
+              : binding.agentDefinitionId),
+        enabled: true,
+      }
+    : null;
+  const catalogs = useAgentModelCatalogs({
+    instances: thread ? (boundInstance ? [boundInstance] : []) : instances,
+    projectId: modelProjectId,
+    threadId: binding ? thread?.threadId : null,
+    observedExecutionLocation: thread?.cwd,
+  });
+  const activeCatalog = binding
+    ? (catalogs.entries.find(
+        (entry) => agentBindingKey(entry.instance.binding) === agentBindingKey(binding),
+      )?.catalog ?? null)
+    : null;
   const adapter = useAgentConversationAdapter({
     binding,
     summary: thread ? projectSessionThreadLinkToSummary(thread) : null,
@@ -782,36 +815,132 @@ function ConnectedSessionThread(props: ConnectedSessionThreadProps) {
     ensureDraft: props.onEnsureDefaultDraftSessionForProject,
     materializeDraft: props.onMaterializeProjectDraft,
     commitDraft: props.onCommitMaterializedProjectDraft,
+    catalog: activeCatalog,
+    refreshCatalog: catalogs.refresh,
+    draftUnavailableReason,
   });
+  const current: AgentModelSelection = {
+    binding: binding ?? { kind: "codex" },
+    model: adapter.selectedModel,
+    options: adapter.genericIntelligence?.configOptions
+      .filter((option) => option.category !== "model")
+      .map((option) => ({ id: option.id, value: option.currentValue })),
+    modeId: adapter.genericIntelligence?.modes?.currentModeId,
+  };
+  const entries: readonly AgentModelPickerEntry[] = catalogs.entries.flatMap((entry) => {
+    if (!entry.catalog || entry.catalog.health.status !== "ready") return [];
+    const catalog = entry.catalog;
+    const saved = nativeAgentDraftOwner.read(
+      nativeAgentDraftKey(props.session.id, modelProjectId, catalog.binding),
+    );
+    const previous =
+      agentBindingKey(current.binding) === agentBindingKey(catalog.binding)
+        ? current
+        : {
+            binding: catalog.binding,
+            model: saved.selection.model,
+            options: saved.options,
+            modeId: saved.modeId,
+          };
+    return catalog.models
+      .filter((model) => !model.hidden)
+      .flatMap((model) => {
+        const chosen = selectAgentCatalogModel(catalog, model.id, previous);
+        return chosen
+          ? [
+              {
+                binding: catalog.binding,
+                label:
+                  catalog.binding.kind === "opencode"
+                    ? `${entry.instance.label} · ${model.description}`
+                    : entry.instance.label,
+                model,
+                selection: chosen,
+              },
+            ]
+          : [];
+      });
+  });
+  const chooseModel = async (chosen: AgentModelSelection) => {
+    if (chosen.binding.kind === "codex") return;
+    const unavailable = thread
+      ? null
+      : resolveNewThreadBackendUnavailableReason(chosen.binding, instanceSettings);
+    if (unavailable) throw new Error(unavailable);
+    const target = catalogs.entries.find(
+      (entry) => agentBindingKey(entry.instance.binding) === agentBindingKey(chosen.binding),
+    );
+    if (!target?.catalog || !selectAgentCatalogModel(target.catalog, chosen.model, current))
+      throw new Error("Refresh models and choose an available model");
+    if (thread) {
+      if (!binding || agentBindingKey(chosen.binding) !== agentBindingKey(binding))
+        throw new Error("Start a new conversation to change runtime");
+      await adapter.actions.onModelChange?.(chosen.model);
+      return;
+    }
+    const draftKey = nativeAgentDraftKey(props.session.id, modelProjectId, chosen.binding);
+    const draft = nativeAgentDraftOwner.read(draftKey);
+    nativeAgentDraftOwner.write(draftKey, {
+      selection:
+        chosen.binding.kind === "claude"
+          ? selectNativeModel(
+              draft.selection,
+              chosen.model,
+              "default",
+              target.catalog.claudeDiscovery?.models ?? [],
+            )
+          : { model: chosen.model, effort: "default" },
+      options: chosen.options,
+      modeId: chosen.modeId,
+    });
+    if (!chosen.binding.instanceConfigId) throw new Error("Choose a configured Agent instance");
+    newThreadBackendSelectionOwner.write(props.session.id, chosen.binding);
+  };
   const provider: ConversationProviderPresentation = {
     kind: binding?.kind ?? "codex",
-    label: binding
-      ? (instances.find(
-          (instance) => instance.id === binding.instanceConfigId && instance.kind === binding.kind,
-        )?.label ?? (binding.kind === "claude" ? "Claude Code" : "Agent"))
-      : "Codex",
-    selection: binding ? `${binding.kind}:${binding.instanceConfigId}` : "codex",
-    options: canChooseBackend
-      ? [
-          { value: "codex", label: "Codex" },
-          ...instances
-            .filter((instance) => instance.enabled)
-            .map((instance) => ({
-              value: `${instance.kind}:${instance.id}`,
-              label: instance.label,
-            })),
-        ]
-      : [],
-    select: (value) =>
-      newThreadBackendSelectionOwner.write(
-        props.session.id,
-        value === "codex"
-          ? "codex"
-          : {
-              kind: value.startsWith("claude:") ? "claude" : "acp",
-              instanceConfigId: value.slice(value.indexOf(":") + 1),
-            },
-      ),
+    label: boundInstance?.label ?? "Codex",
+    selection: binding ? agentBindingKey(binding) : "codex",
+    options: [],
+    select: (value) => {
+      if (!thread && value === "codex")
+        newThreadBackendSelectionOwner.write(props.session.id, "codex");
+    },
+    modelCatalog: {
+      entries,
+      selected: current,
+      loading:
+        (!thread && instanceSettings.loading) || catalogs.entries.some((entry) => entry.loading),
+      error:
+        (!thread ? instanceSettings.error : null) ??
+        draftUnavailableError ??
+        (binding
+          ? catalogs.entries.find(
+              (entry) => agentBindingKey(entry.instance.binding) === agentBindingKey(binding),
+            )?.error
+          : null),
+      choose: chooseModel,
+      runtimeOptions:
+        thread || instanceSettings.loading || instanceSettings.error
+          ? []
+          : instances
+              .filter((instance) => instance.enabled && instance.binding.kind === "acp")
+              .map((instance) => ({ binding: instance.binding, label: instance.label })),
+      chooseRuntime: (chosen) => {
+        if (thread || chosen.kind !== "acp") return;
+        nativeAgentDraftOwner.write(nativeAgentDraftKey(props.session.id, modelProjectId, chosen), {
+          selection: { model: "", effort: "default" },
+          options: undefined,
+          modeId: undefined,
+        });
+        newThreadBackendSelectionOwner.write(props.session.id, chosen);
+      },
+      refresh: () => {
+        instanceSettings.refresh();
+        catalogs.refresh();
+      },
+      manage: () => windowOwner.openRoute({ kind: "settings", path: buildSettingsPath("agent") }),
+      ...adapter.genericIntelligence,
+    },
     commands: adapter.commands,
     controls: adapter.controls,
     skills: adapter.skills,
@@ -831,16 +960,19 @@ function ConnectedSessionThread(props: ConnectedSessionThreadProps) {
             signIn: adapter.authenticate,
           }
         : undefined,
-    error: binding
-      ? (adapter.state.error ??
-        adapter.state.presentation?.snapshot.error ??
-        adapter.modelCatalogError)
-      : null,
+    error:
+      draftUnavailableError ??
+      (binding
+        ? (adapter.state.error ??
+          adapter.state.presentation?.snapshot.error ??
+          adapter.modelCatalogError)
+        : null),
   };
   return (
     <ConversationRuntimeContext value={adapter.runtime}>
       <SharedConnectedSessionThread
         {...props}
+        newThreadStartBlockedReason={props.newThreadStartBlockedReason ?? draftUnavailableReason}
         agent={binding ? adapter : undefined}
         selectedNewThreadProjectId={selectedNewThreadProjectId}
         setSelectedNewThreadProjectId={setSelectedNewThreadProjectId}

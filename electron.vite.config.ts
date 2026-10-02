@@ -4,7 +4,7 @@ import { sentryVitePlugin } from "@sentry/vite-plugin";
 import type { Plugin, Rollup } from "vite";
 import { createExcalidrawFontAssetPlugins } from "./config/excalidraw-font-assets";
 import { createStartupShellHtmlPlugin } from "./config/startup-shell-html";
-import { SOURCE_ONLY_ELECTRON_MAIN_DEPENDENCIES } from "./config/electron-main-runtime-closure";
+import { BUNDLED_ELECTRON_MAIN_DEPENDENCIES } from "./config/electron-main-runtime-closure";
 import { resolveRendererManualChunk } from "./config/renderer-manual-chunks";
 import {
   createRendererVitePlugins,
@@ -127,7 +127,7 @@ export default defineConfig({
     plugins: createSentryPlugins(),
     build: {
       externalizeDeps: {
-        exclude: [...SOURCE_ONLY_ELECTRON_MAIN_DEPENDENCIES],
+        exclude: [...BUNDLED_ELECTRON_MAIN_DEPENDENCIES],
       },
       sourcemap: sentrySourcemapSetting,
       rollupOptions: {

@@ -5,7 +5,8 @@ use nodex_core_contracts::BoundModuleContext;
 use nodex_core_contracts::agent::AgentBackendBinding;
 use nodex_core_contracts::workspace::{
     CodexPermissionMode, CodexThreadActiveFlag, CodexThreadStatusType,
-    ProjectSessionInvalidationScope, ProjectWorkspaceDynamicToolCatalog,
+    ProjectSessionInvalidationScope, ProjectWorkspaceAgentConfigValue,
+    ProjectWorkspaceAgentRuntimeOptions, ProjectWorkspaceDynamicToolCatalog,
     ProjectWorkspaceNativeAgentState, ProjectWorkspaceNativeTurnFact, ProjectWorkspaceThread,
     ProjectWorkspaceThreadBackendSession, ProjectWorkspaceThreadExecutionLocation,
     ProjectWorkspaceThreadPatch, ProjectWorkspaceThreadPlacement, ProjectWorkspaceThreadStatus,
@@ -134,7 +135,7 @@ pub(super) fn read_thread_backend_session(
     let stored = connection
         .query_row(
             "SELECT backend_kind, agent_definition_id, instance_config_id, \
-                    backend_session_id, updated_at, native_state_json, native_home \
+                    backend_session_id, updated_at, native_state_json, native_home, runtime_options_json \
              FROM thread_backend_sessions WHERE thread_id = ?1",
             [thread_id],
             |row| {
@@ -153,6 +154,12 @@ pub(super) fn read_thread_backend_session(
                             serde_json::from_str(&json).map_err(|_| rusqlite::Error::InvalidQuery)
                         })
                         .transpose()?,
+                    runtime_options: row
+                        .get::<_, Option<String>>(7)?
+                        .map(|json| {
+                            serde_json::from_str(&json).map_err(|_| rusqlite::Error::InvalidQuery)
+                        })
+                        .transpose()?,
                 })
             },
         )
@@ -165,6 +172,20 @@ pub(super) fn read_thread_backend_session(
         return Err(corrupt(
             "Stored Thread backend session does not match its backend binding",
         ));
+    }
+    if let Some(options) = stored
+        .as_ref()
+        .and_then(|session| session.runtime_options.as_ref())
+    {
+        validate_runtime_options(options)
+            .map_err(|_| corrupt("Stored Agent runtime options are invalid"))?;
+    }
+    if let Some(session) = &stored
+        && let Some(state) = &session.native_state
+    {
+        let storage = binding_storage(&session.backend_binding).map_err(corrupt)?;
+        validate_native_agent_state(state, storage.kind)
+            .map_err(|_| corrupt("Stored native conversation state is invalid"))?;
     }
     Ok(stored)
 }
@@ -183,6 +204,7 @@ pub(super) fn bind_thread_backend_session(
     expected_backend_session_id: Option<&str>,
     native_home: Option<&str>,
     native_state: Option<&ProjectWorkspaceNativeAgentState>,
+    runtime_options: Option<&ProjectWorkspaceAgentRuntimeOptions>,
 ) -> Result<ProjectWorkspaceApplyOutcome, StoreError> {
     validate_id("thread_id", thread_id)?;
     validate_id("backend_session_id", backend_session_id)?;
@@ -212,7 +234,7 @@ pub(super) fn bind_thread_backend_session(
         }
     }
     let previous = read_thread_backend_session(connection, library_id, thread_id)?;
-    if storage.kind == "claude"
+    if matches!(storage.kind, "claude" | "opencode")
         && expected_backend_session_id.is_none()
         && previous
             .as_ref()
@@ -223,9 +245,14 @@ pub(super) fn bind_thread_backend_session(
         ));
     }
     if let Some(native_home) = native_home {
-        validate_native_home(native_home)?;
-        if storage.kind != "claude" {
-            return Err(invalid("Native history scope requires the Claude backend"));
+        validate_runtime_home(native_home)?;
+        if storage.kind == "claude" {
+            validate_native_home(native_home)?;
+        }
+        if !matches!(storage.kind, "claude" | "opencode") {
+            return Err(invalid(
+                "Native history scope requires a native Agent backend",
+            ));
         }
         if previous
             .as_ref()
@@ -241,8 +268,14 @@ pub(super) fn bind_thread_backend_session(
             .and_then(|session| session.native_home.as_deref())
     });
     if let Some(home) = native_home
-        && native_binding(connection, library_id, home, backend_session_id)?
-            .is_some_and(|binding| binding.thread_id != thread_id)
+        && native_binding(
+            connection,
+            library_id,
+            storage.kind,
+            home,
+            backend_session_id,
+        )?
+        .is_some_and(|binding| binding.thread_id != thread_id)
     {
         return Err(conflict(
             "This native conversation is already attached to another Thread",
@@ -251,12 +284,13 @@ pub(super) fn bind_thread_backend_session(
     let native_state_json = native_state
         .map(|state| validate_native_agent_state(state, storage.kind))
         .transpose()?;
+    let runtime_options_json = runtime_options.map(validate_runtime_options).transpose()?;
     let now = unix_time_millis()?;
     connection.execute(
         "INSERT INTO thread_backend_sessions(\
            thread_id, backend_kind, agent_definition_id, instance_config_id, \
-           backend_session_id, updated_at, native_state_json, native_home\
-         ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8) \
+           backend_session_id, updated_at, native_state_json, native_home, runtime_options_json\
+         ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9) \
          ON CONFLICT(thread_id) DO UPDATE SET \
            backend_kind = excluded.backend_kind, \
            agent_definition_id = excluded.agent_definition_id, \
@@ -264,7 +298,8 @@ pub(super) fn bind_thread_backend_session(
            backend_session_id = excluded.backend_session_id, \
            updated_at = excluded.updated_at, \
            native_state_json = COALESCE(excluded.native_state_json, thread_backend_sessions.native_state_json), \
-           native_home = COALESCE(excluded.native_home, thread_backend_sessions.native_home)",
+           native_home = COALESCE(excluded.native_home, thread_backend_sessions.native_home), \
+           runtime_options_json = COALESCE(excluded.runtime_options_json, thread_backend_sessions.runtime_options_json)",
         params![
             thread_id,
             storage.kind,
@@ -274,6 +309,7 @@ pub(super) fn bind_thread_backend_session(
             now,
             native_state_json,
             native_home,
+            runtime_options_json,
         ],
     )?;
     let session_ids = linked_session_ids(
@@ -299,9 +335,50 @@ pub(super) fn bind_thread_backend_session(
     )
 }
 
-fn validate_native_home(home: &str) -> Result<(), StoreError> {
+fn validate_runtime_options(
+    options: &ProjectWorkspaceAgentRuntimeOptions,
+) -> Result<String, StoreError> {
+    for (field, value) in [("model", &options.model), ("mode_id", &options.mode_id)] {
+        if let Some(value) = value {
+            validate_id(field, value)?;
+        }
+    }
+    if options.config_options.len() > 64 {
+        return Err(invalid("Agent runtime options exceed their retained bound"));
+    }
+    let mut identities = BTreeSet::new();
+    for option in &options.config_options {
+        validate_id("config_option_id", &option.id)?;
+        if !identities.insert(&option.id) {
+            return Err(invalid(
+                "Agent runtime options contain duplicate identities",
+            ));
+        }
+        if let ProjectWorkspaceAgentConfigValue::String(value) = &option.value
+            && value.len() > MAX_PATH_BYTES
+        {
+            return Err(invalid("Agent runtime option value exceeds its bound"));
+        }
+    }
+    let json =
+        serde_json::to_string(options).map_err(|_| invalid("Agent runtime options are invalid"))?;
+    if json.len() > 262_144 {
+        return Err(invalid("Agent runtime options exceed their byte budget"));
+    }
+    Ok(json)
+}
+
+fn validate_runtime_home(home: &str) -> Result<(), StoreError> {
     validate_text("native_home", home, MAX_PATH_BYTES)?;
-    if home.trim() != home || !std::path::Path::new(home).is_absolute() {
+    if home.trim() != home || home.is_empty() {
+        return Err(invalid("Native history scope is invalid"));
+    }
+    Ok(())
+}
+
+fn validate_native_home(home: &str) -> Result<(), StoreError> {
+    validate_runtime_home(home)?;
+    if !std::path::Path::new(home).is_absolute() {
         return Err(invalid(
             "Native history scope must be an absolute directory",
         ));
@@ -312,13 +389,14 @@ fn validate_native_home(home: &str) -> Result<(), StoreError> {
 fn native_binding(
     connection: &Connection,
     library_id: &str,
+    backend_kind: &str,
     native_home: &str,
     native_session_id: &str,
 ) -> Result<Option<nodex_core_contracts::workspace::ProjectWorkspaceNativeSessionBinding>, StoreError>
 {
     let thread_id = connection.query_row(
-        "SELECT thread_id FROM thread_backend_sessions WHERE backend_kind='claude' AND native_home=?1 AND backend_session_id=?2",
-        params![native_home, native_session_id], |row| row.get::<_, String>(0),
+        "SELECT thread_id FROM thread_backend_sessions WHERE backend_kind=?1 AND native_home=?2 AND backend_session_id=?3",
+        params![backend_kind, native_home, native_session_id], |row| row.get::<_, String>(0),
     ).optional()?;
     thread_id
         .map(|thread_id| {
@@ -353,9 +431,13 @@ pub(super) fn read_native_session_bindings(
         validate_id("native_session_id", native_session_id)?;
         match backend_kind {
             nodex_core_contracts::workspace::ProjectWorkspaceNativeBackendKind::Claude => {
-                if let Some(binding) =
-                    native_binding(connection, library_id, native_home, native_session_id)?
-                {
+                if let Some(binding) = native_binding(
+                    connection,
+                    library_id,
+                    "claude",
+                    native_home,
+                    native_session_id,
+                )? {
                     bindings.push(binding);
                 }
             }
@@ -414,7 +496,13 @@ pub(super) fn attach_native_session(
     let mut legacy_home_claim = false;
     let existing = match backend_binding {
         AgentBackendBinding::Claude { instance_config_id } => {
-            let bound = native_binding(connection, library_id, native_home, native_session_id)?;
+            let bound = native_binding(
+                connection,
+                library_id,
+                "claude",
+                native_home,
+                native_session_id,
+            )?;
             if bound.is_some() {
                 bound
             } else {
@@ -460,7 +548,7 @@ pub(super) fn attach_native_session(
                 }
             })
         }
-        AgentBackendBinding::Acp { .. } => {
+        AgentBackendBinding::Acp { .. } | AgentBackendBinding::OpenCode { .. } => {
             return Err(invalid("Only native Agent conversations can be attached"));
         }
     };
@@ -584,6 +672,7 @@ pub(super) fn attach_native_session(
             None,
             Some(native_home),
             Some(&native_state),
+            None,
         );
     }
     finish_thread_mutation(
@@ -605,28 +694,20 @@ fn validate_native_agent_state(
     state: &ProjectWorkspaceNativeAgentState,
     backend_kind: &str,
 ) -> Result<String, StoreError> {
-    if backend_kind != "claude" {
+    if !matches!(backend_kind, "claude" | "opencode") {
         return Err(invalid(
-            "Native conversation state requires the Claude backend",
+            "Native conversation state requires a native Agent backend",
         ));
     }
-    validate_id("model", &state.preferences.model)?;
-    if !["default", "low", "medium", "high", "xhigh", "max"]
-        .contains(&state.preferences.effort.as_str())
-    {
-        return Err(invalid("Unsupported native reasoning effort"));
+    if backend_kind == "opencode" && state.preferences.is_some() {
+        return Err(invalid("OpenCode options do not use Claude preferences"));
     }
-    if let Some(context) = &state.preferences.context {
-        validate_id("context", context)?;
-        let Some(digits) = context
-            .strip_suffix('k')
-            .or_else(|| context.strip_suffix('m'))
-        else {
-            return Err(invalid("Native context window must use a k or m suffix"));
-        };
-        if digits.is_empty() || !digits.bytes().all(|digit| digit.is_ascii_digit()) {
-            return Err(invalid("Native context window is invalid"));
-        }
+    if backend_kind == "claude" {
+        let preferences = state
+            .preferences
+            .as_ref()
+            .ok_or_else(|| invalid("Claude native state requires preferences"))?;
+        validate_claude_preferences(preferences)?;
     }
     if state.turns.len() > 64 {
         return Err(invalid("Native turn facts exceed the retained window"));
@@ -657,6 +738,30 @@ fn validate_native_agent_state(
         return Err(invalid("Native conversation state exceeds its byte budget"));
     }
     Ok(json)
+}
+
+fn validate_claude_preferences(
+    preferences: &nodex_core_contracts::workspace::ProjectWorkspaceNativeAgentPreferences,
+) -> Result<(), StoreError> {
+    validate_id("model", &preferences.model)?;
+    if !["default", "low", "medium", "high", "xhigh", "max"].contains(&preferences.effort.as_str())
+    {
+        return Err(invalid("Unsupported native reasoning effort"));
+    }
+    let Some(context) = &preferences.context else {
+        return Ok(());
+    };
+    validate_id("context", context)?;
+    let Some(digits) = context
+        .strip_suffix('k')
+        .or_else(|| context.strip_suffix('m'))
+    else {
+        return Err(invalid("Native context window must use a k or m suffix"));
+    };
+    if digits.is_empty() || !digits.bytes().all(|digit| digit.is_ascii_digit()) {
+        return Err(invalid("Native context window is invalid"));
+    }
+    Ok(())
 }
 
 fn validate_native_turn_metadata(turn: &ProjectWorkspaceNativeTurnFact) -> Result<(), StoreError> {
@@ -2974,10 +3079,11 @@ mod tests {
     use nodex_core_contracts::collection::CollectionWindowRequest;
     use nodex_core_contracts::workspace::{
         CodexPermissionMode, CodexThreadActiveFlag, CodexThreadStatusType, ProjectSessionIntent,
-        ProjectWorkspaceBackgroundProcess, ProjectWorkspaceBackgroundProcessSource,
-        ProjectWorkspaceDynamicToolCatalog, ProjectWorkspaceIntent, ProjectWorkspaceRead,
-        ProjectWorkspaceReadValue, ProjectWorkspaceThreadExecutionLocation,
-        ProjectWorkspaceThreadPatch, ProjectWorkspaceThreadPlacement, ProjectWorkspaceThreadStatus,
+        ProjectWorkspaceAgentRuntimeOptions, ProjectWorkspaceBackgroundProcess,
+        ProjectWorkspaceBackgroundProcessSource, ProjectWorkspaceDynamicToolCatalog,
+        ProjectWorkspaceIntent, ProjectWorkspaceRead, ProjectWorkspaceReadValue,
+        ProjectWorkspaceThreadExecutionLocation, ProjectWorkspaceThreadPatch,
+        ProjectWorkspaceThreadPlacement, ProjectWorkspaceThreadStatus,
         ProjectWorkspaceTurnAuthorityScope, ProjectWorkspaceTurnAuthoritySource,
         ProjectWorkspaceTurnCoordinate,
     };
@@ -2987,6 +3093,7 @@ mod tests {
     };
     use tempfile::{TempDir, tempdir};
 
+    use super::{MAX_PATH_BYTES, validate_runtime_options};
     use crate::infrastructure::sqlite::with_immediate_transaction;
     use crate::infrastructure::store::SqliteStoreKernel;
     use crate::workspace::ProjectWorkspaceModule;
@@ -3377,6 +3484,7 @@ mod tests {
                 expected_backend_session_id: Some("native-uuid".to_owned()),
                 native_home: home,
                 native_state: None,
+                runtime_options: None,
             };
         assert!(
             module
@@ -3476,6 +3584,64 @@ mod tests {
         assert_backend_identity_survives_restart(AgentBackendBinding::Claude {
             instance_config_id: "claude-work".to_owned(),
         });
+    }
+
+    #[test]
+    fn persists_opencode_owner_and_runtime_options_across_restart() {
+        assert_backend_identity_survives_restart(AgentBackendBinding::OpenCode {
+            instance_config_id: "open-work".to_owned(),
+        });
+    }
+
+    #[test]
+    fn runtime_options_reject_ambiguous_or_unbounded_values() {
+        let fixture = serde_json::json!({"model":"moonshot/kimi-k3","mode_id":null,"config_options":[{"id":"thinking","value":true}]});
+        let parse = |value| serde_json::from_value::<ProjectWorkspaceAgentRuntimeOptions>(value);
+        assert!(validate_runtime_options(&parse(fixture.clone()).unwrap()).is_ok());
+        let mut duplicate = fixture.clone();
+        duplicate["config_options"]
+            .as_array_mut()
+            .unwrap()
+            .push(serde_json::json!({"id":"thinking","value":"enabled"}));
+        assert!(validate_runtime_options(&parse(duplicate).unwrap()).is_err());
+        for field in ["model", "mode_id"] {
+            let mut value = fixture.clone();
+            value[field] = serde_json::json!(" untrimmed");
+            assert!(validate_runtime_options(&parse(value).unwrap()).is_err());
+        }
+        let mut oversized = fixture.clone();
+        oversized["config_options"][0]["value"] = serde_json::json!("a".repeat(MAX_PATH_BYTES + 1));
+        assert!(validate_runtime_options(&parse(oversized).unwrap()).is_err());
+        let mut numeric = fixture;
+        numeric["config_options"][0]["value"] = serde_json::json!(1);
+        assert!(
+            parse(numeric).is_err(),
+            "runtime config values must use supported protocol scalars"
+        );
+    }
+
+    #[test]
+    fn native_state_retains_common_facts_without_claude_preferences() {
+        let mut value = native_metadata_fixture();
+        value.as_object_mut().unwrap().remove("preferences");
+        let state = serde_json::from_value::<
+            nodex_core_contracts::workspace::ProjectWorkspaceNativeAgentState,
+        >(value)
+        .unwrap();
+        assert!(state.preferences.is_none());
+        assert!(super::validate_native_agent_state(&state, "opencode").is_ok());
+        assert!(super::validate_native_agent_state(&state, "claude").is_err());
+        assert!(
+            serde_json::to_value(&state)
+                .unwrap()
+                .get("preferences")
+                .is_none()
+        );
+        let claude = serde_json::from_value(native_metadata_fixture()).unwrap();
+        assert!(super::validate_native_agent_state(&claude, "opencode").is_err());
+        let mut duplicate = state;
+        duplicate.turns.push(duplicate.turns[0].clone());
+        assert!(super::validate_native_agent_state(&duplicate, "opencode").is_err());
     }
 
     fn native_metadata_fixture() -> serde_json::Value {
@@ -3668,12 +3834,34 @@ mod tests {
         };
         assert_eq!(thread.backend_binding, AgentBackendBinding::Codex);
 
-        let native_state = matches!(&binding, AgentBackendBinding::Claude { .. }).then(|| {
+        let native_state = matches!(
+            &binding,
+            AgentBackendBinding::Claude { .. } | AgentBackendBinding::OpenCode { .. }
+        )
+        .then(|| {
+            let mut value = native_metadata_fixture();
+            if matches!(&binding, AgentBackendBinding::OpenCode { .. }) {
+                value.as_object_mut().unwrap().remove("preferences");
+            }
             serde_json::from_value::<
                 nodex_core_contracts::workspace::ProjectWorkspaceNativeAgentState,
-            >(native_metadata_fixture())
+            >(value)
             .expect("native fixture")
         });
+        let runtime_options = matches!(
+            &binding,
+            AgentBackendBinding::Acp { .. } | AgentBackendBinding::OpenCode { .. }
+        )
+        .then(|| {
+            serde_json::from_value::<ProjectWorkspaceAgentRuntimeOptions>(serde_json::json!({
+                "model":"moonshot/kimi-k3",
+                "mode_id":"build",
+                "config_options":[{"id":"thinking","value":true},{"id":"effort","value":"high"}]
+            }))
+            .expect("runtime options")
+        });
+        let native_home = matches!(&binding, AgentBackendBinding::OpenCode { .. })
+            .then(|| "https://opencode.example.test".to_owned());
         module
             .apply(
                 &context(),
@@ -3695,12 +3883,13 @@ mod tests {
                 request(
                     "thread-backend-bind-session",
                     ProjectWorkspaceIntent::BindThreadBackendSession {
-                        native_home: None,
+                        native_home: native_home.clone(),
                         thread_id: "thread-backend".to_owned(),
                         backend_binding: binding.clone(),
                         backend_session_id: "native-session-1".to_owned(),
                         expected_backend_session_id: None,
                         native_state: native_state.clone(),
+                        runtime_options: runtime_options.clone(),
                     },
                 ),
             )
@@ -3717,6 +3906,7 @@ mod tests {
                     backend_session_id: "wrong-session".to_owned(),
                     expected_backend_session_id: Some("stale-session".to_owned()),
                     native_state: None,
+                    runtime_options: None,
                 },
             ),
         );
@@ -3724,6 +3914,58 @@ mod tests {
             stale.is_err(),
             "stale identity cannot overwrite a confirmed session"
         );
+        if native_home.is_some() {
+            for (operation, home, session_id) in [
+                (
+                    "thread-backend-home-changed",
+                    Some("/another/profile".to_owned()),
+                    "native-session-1",
+                ),
+                (
+                    "thread-backend-unguarded-replacement",
+                    None,
+                    "native-session-2",
+                ),
+            ] {
+                assert!(
+                    module
+                        .apply(
+                            &context(),
+                            request(
+                                operation,
+                                ProjectWorkspaceIntent::BindThreadBackendSession {
+                                    thread_id: "thread-backend".to_owned(),
+                                    backend_binding: binding.clone(),
+                                    backend_session_id: session_id.to_owned(),
+                                    expected_backend_session_id: None,
+                                    native_home: home,
+                                    native_state: None,
+                                    runtime_options: None,
+                                }
+                            )
+                        )
+                        .is_err(),
+                    "OpenCode owner and session identity must remain stable"
+                );
+            }
+        }
+        module
+            .apply(
+                &context(),
+                request(
+                    "thread-backend-save-identity",
+                    ProjectWorkspaceIntent::BindThreadBackendSession {
+                        thread_id: "thread-backend".to_owned(),
+                        backend_binding: binding.clone(),
+                        backend_session_id: "native-session-1".to_owned(),
+                        expected_backend_session_id: None,
+                        native_home: None,
+                        native_state: None,
+                        runtime_options: None,
+                    },
+                ),
+            )
+            .expect("omitted runtime options preserve confirmed preferences");
 
         drop(module);
         drop(kernel);
@@ -3743,6 +3985,8 @@ mod tests {
         assert_eq!(session.backend_binding, binding);
         assert_eq!(session.backend_session_id, "native-session-1");
         assert_eq!(session.native_state, native_state);
+        assert_eq!(session.runtime_options, runtime_options);
+        assert_eq!(session.native_home, native_home);
 
         reopened
             .apply(

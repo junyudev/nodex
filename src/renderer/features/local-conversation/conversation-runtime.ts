@@ -9,7 +9,7 @@ import type { LocalConversationAttachmentState } from "./conversation-attachment
 
 /** Product conversation reads and lifecycle; protocol ownership stays in each Adapter. */
 export interface ConversationRuntime {
-  readonly kind: "codex" | "claude" | "acp";
+  readonly kind: "codex" | "claude" | "acp" | "opencode";
   readonly hostId: string;
   readonly subscribe: (threadId: string | null, listener: () => void) => () => void;
   readonly read: (threadId: string | null) => CodexConversationSnapshot | null;

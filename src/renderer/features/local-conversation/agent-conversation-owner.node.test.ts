@@ -117,6 +117,9 @@ const createRuntime = () => {
     }),
     generateTitle: vi.fn(async () => null),
     claudeModels: async () => [],
+    modelCatalog: vi.fn(async () => {
+      throw new Error("not used by an attached conversation owner");
+    }),
     respond: vi.fn(async () => {}),
     startThread: vi.fn(async () => {
       throw new Error("not used by an attached conversation owner");

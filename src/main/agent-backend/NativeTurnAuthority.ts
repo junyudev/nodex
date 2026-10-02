@@ -7,6 +7,7 @@ import type { ProjectWorkspaceReadSnapshot } from "../core-client/types";
 import { CoreModules } from "../core-runtime/CoreModules";
 import { createBoundedOperationId } from "../../shared/operation-identity";
 import { ProjectWorkspace } from "../project-application/ProjectWorkspace";
+import { isNativeAgentBackendKind } from "../../shared/agent-backend";
 
 export class NativeTurnAuthorityError extends Schema.TaggedError<NativeTurnAuthorityError>()(
   "NativeTurnAuthorityError",
@@ -66,7 +67,7 @@ export const make = Effect.gen(function* () {
           !context ||
           !thread ||
           thread.archived ||
-          thread.backendBinding.kind !== "claude" ||
+          !isNativeAgentBackendKind(thread.backendBinding.kind) ||
           context.projectId !== input.projectId
         )
           return yield* new NativeTurnAuthorityError({

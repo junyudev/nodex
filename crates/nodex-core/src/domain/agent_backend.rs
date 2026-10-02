@@ -32,6 +32,16 @@ pub(crate) fn binding_storage(
                 instance_config_id: Some(instance_config_id),
             })
         }
+        AgentBackendBinding::OpenCode { instance_config_id } => {
+            if !validate_id(instance_config_id) {
+                return Err("OpenCode backend binding identity is invalid");
+            }
+            Ok(AgentBackendStorage {
+                kind: "opencode",
+                agent_definition_id: None,
+                instance_config_id: Some(instance_config_id),
+            })
+        }
         AgentBackendBinding::Acp {
             agent_definition_id,
             instance_config_id,
@@ -64,6 +74,10 @@ pub(crate) fn binding_from_storage(
         "claude" if agent_definition_id.is_none() => AgentBackendBinding::Claude {
             instance_config_id: instance_config_id
                 .ok_or("Claude backend binding requires an instance")?,
+        },
+        "opencode" if agent_definition_id.is_none() => AgentBackendBinding::OpenCode {
+            instance_config_id: instance_config_id
+                .ok_or("OpenCode backend binding requires an instance")?,
         },
         "acp" => AgentBackendBinding::Acp {
             agent_definition_id: agent_definition_id
@@ -103,11 +117,33 @@ mod tests {
             binding_from_storage("codex", None, None).expect("Codex binding"),
             AgentBackendBinding::Codex
         );
+        let opencode = AgentBackendBinding::OpenCode {
+            instance_config_id: "open-work".to_owned(),
+        };
+        let stored = binding_storage(&opencode).expect("OpenCode binding");
+        assert_eq!(stored.kind, "opencode");
+        assert_eq!(
+            binding_from_storage(stored.kind, None, Some("open-work".to_owned())).unwrap(),
+            opencode,
+        );
+        assert_eq!(
+            serde_json::to_value(opencode).unwrap(),
+            serde_json::json!({"kind":"opencode","instance_config_id":"open-work"}),
+        );
     }
 
     #[test]
     fn rejects_partial_or_ambiguous_bindings() {
         assert!(binding_from_storage("acp", None, None).is_err());
+        assert!(binding_from_storage("opencode", None, None).is_err());
+        assert!(
+            binding_from_storage(
+                "opencode",
+                Some("extra".to_owned()),
+                Some("work".to_owned())
+            )
+            .is_err()
+        );
         assert!(binding_from_storage("codex", Some("extra".to_owned()), None).is_err());
         assert!(
             binding_storage(&AgentBackendBinding::Acp {

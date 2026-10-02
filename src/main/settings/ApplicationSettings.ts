@@ -1,3 +1,7 @@
+import type {
+  OpenCodeAgentSettings,
+  UpdateOpenCodeAgentSettingsInput,
+} from "../../shared/opencode-agent-settings";
 import { createHash } from "node:crypto";
 import { dirname } from "node:path";
 import * as Context from "effect/Context";
@@ -47,6 +51,9 @@ import { MainConfig } from "../app/MainConfig";
 import { initializeCodexHomeContinuity } from "../platform/node/CodexHomeContinuity";
 import { SecretEncryption, type SecretEncryptionAdapter } from "../platform/SecretEncryption";
 import {
+  getOpenCodeAgentSettings,
+  getOpenCodeLaunchConfiguration,
+  updateOpenCodeAgentSettings,
   getAcpAgentSettings,
   getClaudeAgentSettings,
   getClaudeLaunchConfiguration,
@@ -97,6 +104,7 @@ export interface ApplicationSettingsSnapshot {
   readonly executionHosts: CodexExecutionHostSettings;
   readonly acpAgents: AcpAgentSettings;
   readonly claudeAgents: ClaudeAgentSettings;
+  readonly openCodeAgents: OpenCodeAgentSettings;
   readonly commandKeymap: CommandKeymapState;
   readonly appUpdate: AppUpdateSettings;
   readonly windowRestore: WindowRestoreSettings;
@@ -126,6 +134,7 @@ export type ApplicationSettingsCommand =
       readonly input: UpdateCodexExecutionHostSettingsInput;
     }
   | { readonly type: "update-acp-agents"; readonly input: UpdateAcpAgentSettingsInput }
+  | { readonly type: "update-opencode-agents"; readonly input: UpdateOpenCodeAgentSettingsInput }
   | { readonly type: "update-claude-agents"; readonly input: UpdateClaudeAgentSettingsInput }
   | {
       readonly type: "update-command-keybinding";
@@ -149,6 +158,9 @@ export class ApplicationSettingsConflictError extends Schema.TaggedError<Applica
 export class ApplicationSettings extends Context.Service<
   ApplicationSettings,
   {
+    readonly openCodeLaunchConfiguration: (
+      instanceId: string,
+    ) => Effect.Effect<ReturnType<typeof getOpenCodeLaunchConfiguration>, ApplicationSettingsError>;
     readonly claudeLaunchConfiguration: (
       instanceId: string,
     ) => Effect.Effect<ReturnType<typeof getClaudeLaunchConfiguration>, ApplicationSettingsError>;
@@ -238,6 +250,7 @@ function makeSnapshot(
     executionHosts: getCodexExecutionHostSettings(snapshotSource),
     acpAgents: getAcpAgentSettings(snapshotSource),
     claudeAgents: getClaudeAgentSettings(snapshotSource),
+    openCodeAgents: getOpenCodeAgentSettings(snapshotSource),
     commandKeymap: getCommandKeymapState(snapshotSource),
     appUpdate: getAppUpdateSettings(snapshotSource, buildDefaultChannel),
     windowRestore: getWindowRestoreSettings(snapshotSource),
@@ -279,6 +292,9 @@ function applyCommand(
       return;
     case "update-execution-hosts":
       updateCodexExecutionHostSettings(command.input, source);
+      return;
+    case "update-opencode-agents":
+      updateOpenCodeAgentSettings(command.input, source);
       return;
     case "update-claude-agents":
       updateClaudeAgentSettings(command.input, source);
@@ -370,6 +386,12 @@ export const make = Effect.fn("ApplicationSettings.make")(function* (input: {
   });
 
   return ApplicationSettings.of({
+    openCodeLaunchConfiguration: (instanceId) =>
+      writes.withPermits(1)(
+        attempt("opencode-launch-configuration", () =>
+          getOpenCodeLaunchConfiguration(source, instanceId),
+        ),
+      ),
     claudeLaunchConfiguration: (instanceId) =>
       writes.withPermits(1)(
         attempt("claude-launch-configuration", () =>

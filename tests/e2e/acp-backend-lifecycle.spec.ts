@@ -3,6 +3,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { pathToFileURL } from "node:url";
 
+import { openComposerModelPicker } from "./support/composer-model-picker";
 import { ElectronScenarioHarness } from "../../scripts/scenarios/harness/electron-e2e-harness";
 import { createBoundedOperationId } from "../../src/shared/operation-identity";
 import { createUuidV7 } from "../../src/shared/uuid-v7";
@@ -169,9 +170,8 @@ test("persists an ACP backend and resumes its protocol session after restart", a
       .locator('[data-codex-composer="true"][contenteditable="true"]:visible')
       .first();
     await composer.fill("Start the ACP lifecycle scenario");
-    await page.getByRole("button", { name: "Select model", exact: true }).click();
-    await page.getByRole("menuitem", { name: "Agent Codex", exact: true }).hover();
-    await page.getByRole("menuitem", { name: "Claude Agent", exact: true }).click();
+    await openComposerModelPicker(page);
+    await page.getByRole("button", { name: "Start with Claude Agent", exact: true }).click();
     await page.keyboard.press("Escape");
     await page.keyboard.press("Escape");
     await expect(composer).toHaveText("Start the ACP lifecycle scenario");

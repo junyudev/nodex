@@ -1,0 +1,245 @@
+import { act, fireEvent, waitFor, within } from "@testing-library/react";
+import { useState } from "react";
+import { expect, test, vi } from "vite-plus/test";
+import { NodexTooltipProvider } from "@/components/ui/tooltip";
+import { renderWithMaitai } from "@/test/thread-maitai";
+import { catalogModel } from "@/lib/agent-model-catalog.test-fixtures";
+import { AgentIntelligenceDropdown } from "./agent-intelligence-dropdown";
+import type { AgentModelCatalogPresentation } from "./agent-model-picker";
+
+const model = catalogModel("moonshot/kimi-k3", "Kimi K3");
+const selected = {
+  binding: { kind: "opencode", instanceConfigId: "local" },
+  model: model.id,
+} as const;
+function Picker({ catalog }: { readonly catalog: AgentModelCatalogPresentation }) {
+  return (
+    <NodexTooltipProvider delay={0}>
+      <AgentIntelligenceDropdown
+        models={[model]}
+        triggerStyle="settings"
+        open
+        selection={{
+          kind: catalog.selected.binding.kind,
+          model: catalog.selected.model,
+          reasoningEffort: "none",
+          serviceTier: null,
+        }}
+        onSelectionChange={() => {}}
+        provider={{
+          label: "Local",
+          selection: "local",
+          options: [],
+          select: () => {},
+          modelCatalog: catalog,
+        }}
+      />
+    </NodexTooltipProvider>
+  );
+}
+function renderPicker(catalog: AgentModelCatalogPresentation) {
+  return renderWithMaitai(<Picker catalog={catalog} />);
+}
+const presentation = (
+  patch: Partial<AgentModelCatalogPresentation> = {},
+): AgentModelCatalogPresentation => ({
+  selected,
+  entries: [{ binding: selected.binding, label: "Local", model, selection: selected }],
+  loading: false,
+  choose: vi.fn(),
+  refresh: vi.fn(),
+  manage: vi.fn(),
+  ...patch,
+});
+const click = async (element: HTMLElement) =>
+  act(async () => {
+    fireEvent.pointerDown(element, { button: 0, ctrlKey: false });
+    fireEvent.click(element);
+    await Promise.resolve();
+  });
+const pendingWrite = () => {
+  let resolve!: () => void;
+  const promise = new Promise<void>((complete) => {
+    resolve = complete;
+  });
+  return { promise, resolve };
+};
+
+test("searching by runtime chooses the exact instance, model and advertised options", async () => {
+  const choose = vi.fn();
+  const work = {
+    binding: { kind: "opencode", instanceConfigId: "work" },
+    model: model.id,
+    options: [{ id: "variant", value: "deep" }],
+    modeId: "build",
+  } as const;
+  const view = renderPicker(
+    presentation({
+      choose,
+      entries: [
+        { binding: selected.binding, label: "Local", model, selection: selected },
+        { binding: work.binding, label: "Work", model, selection: work },
+      ],
+    }),
+  );
+  await act(async () => {
+    fireEvent.change(await view.findByRole("combobox", { name: "Search models" }), {
+      target: { value: "work" },
+    });
+  });
+  const rows = within(view.getByRole("listbox")).getAllByRole("option");
+  expect(rows).toHaveLength(1);
+  await click(rows[0]!);
+  await waitFor(() => expect(choose).toHaveBeenCalledWith(work));
+});
+
+test("exposes boolean and native mode controls plus provider setup with a single model", async () => {
+  const changeConfig = vi.fn(async () => {});
+  const changeMode = vi.fn(async () => {});
+  const manage = vi.fn();
+  const view = renderPicker(
+    presentation({
+      changeConfig,
+      changeMode,
+      manage,
+      configOptions: [
+        {
+          type: "boolean",
+          id: "retain",
+          name: "Memory",
+          category: null,
+          description: null,
+          currentValue: true,
+        },
+      ],
+      modes: {
+        currentModeId: "build",
+        availableModes: [
+          { id: "build", name: "Build", description: null },
+          { id: "review-native", name: "Review", description: null },
+        ],
+      },
+    }),
+  );
+  expect(view.queryByRole("button", { name: /^Effort/ })).toBeNull();
+  await click(await view.findByRole("button", { name: "Memory On" }));
+  await click(await view.findByRole("menuitem", { name: "Off" }));
+  await waitFor(() => expect(changeConfig).toHaveBeenCalledWith("retain", false));
+  await click(await view.findByRole("button", { name: "Mode Build" }));
+  await click(await view.findByRole("menuitem", { name: "Review" }));
+  await waitFor(() => expect(changeMode).toHaveBeenCalledWith("review-native"));
+  await click(await view.findByRole("button", { name: "Connect providers…" }));
+  expect(manage).toHaveBeenCalledOnce();
+});
+
+test("dismisses option menus before asynchronous writes and keeps them closed after settlement", async () => {
+  const variantWrite = pendingWrite();
+  const modeWrite = pendingWrite();
+  const changeConfig = vi.fn();
+  const changeMode = vi.fn();
+  function DeferredPicker() {
+    const [variant, setVariant] = useState("low");
+    const [mode, setMode] = useState("build");
+    return (
+      <Picker
+        catalog={presentation({
+          configOptions: [
+            {
+              type: "select",
+              id: "variant",
+              name: "Variant",
+              category: "thought_level",
+              description: null,
+              currentValue: variant,
+              options: [
+                { value: "low", name: "low", description: null },
+                { value: "high", name: "high", description: null },
+              ],
+            },
+          ],
+          changeConfig: async (id, value) => {
+            changeConfig(id, value);
+            await variantWrite.promise;
+            setVariant(String(value));
+          },
+          modes: {
+            currentModeId: mode,
+            availableModes: [
+              { id: "build", name: "build", description: null },
+              { id: "plan", name: "plan", description: null },
+            ],
+          },
+          changeMode: async (value) => {
+            changeMode(value);
+            await modeWrite.promise;
+            setMode(value);
+          },
+        })}
+      />
+    );
+  }
+  const view = renderWithMaitai(<DeferredPicker />);
+  await click(await view.findByRole("button", { name: "Variant low" }));
+  await click(await view.findByRole("menuitem", { name: "high" }));
+  await waitFor(() => expect(changeConfig).toHaveBeenCalledWith("variant", "high"));
+  await waitFor(() => expect(view.queryByRole("menuitem", { name: "high" })).toBeNull());
+  expect(view.getByRole("button", { name: "Variant low" }).hasAttribute("disabled")).toBe(true);
+  await act(async () => {
+    variantWrite.resolve();
+    await variantWrite.promise;
+  });
+  await view.findByRole("button", { name: "Variant high" });
+  await waitFor(() => expect(view.queryByRole("menuitem", { name: "high" })).toBeNull());
+  await click(await view.findByRole("button", { name: "Mode build" }));
+  await click(await view.findByRole("menuitem", { name: "plan" }));
+  await waitFor(() => expect(changeMode).toHaveBeenCalledWith("plan"));
+  await waitFor(() => expect(view.queryByRole("menuitem", { name: "plan" })).toBeNull());
+  await act(async () => {
+    modeWrite.resolve();
+    await modeWrite.promise;
+  });
+  await view.findByRole("button", { name: "Mode plan" });
+  await waitFor(() => expect(view.queryByRole("menuitem", { name: "plan" })).toBeNull());
+});
+
+test("starts an ACP runtime before model negotiation without offering a fabricated model", async () => {
+  const binding = {
+    kind: "acp",
+    instanceConfigId: "local",
+    agentDefinitionId: "custom-agent",
+  } as const;
+  const chooseRuntime = vi.fn();
+  const view = renderPicker(
+    presentation({
+      entries: [],
+      selected: { binding, model: "" },
+      runtimeOptions: [{ binding, label: "Local agent" }],
+      chooseRuntime,
+    }),
+  );
+  expect(view.queryAllByRole("option")).toEqual([]);
+  await click(await view.findByRole("button", { name: "Start with Local agent" }));
+  expect(chooseRuntime).toHaveBeenCalledWith(binding);
+});
+
+test("keeps Codex selectable and exposes Refresh when external inventory fails", async () => {
+  const binding = { kind: "codex" } as const;
+  const codex = catalogModel("gpt-codex", "Codex model");
+  const choice = { binding, model: codex.id };
+  const refresh = vi.fn();
+  const choose = vi.fn();
+  const view = renderPicker(
+    presentation({
+      selected: choice,
+      entries: [{ binding, label: "Codex", model: codex, selection: choice }],
+      error: "Could not read Agent profiles",
+      refresh,
+      choose,
+    }),
+  );
+  expect(await view.findByText("Could not read Agent profiles")).not.toBeNull();
+  expect(within(view.getByRole("listbox")).getAllByRole("option")).toHaveLength(1);
+  await click(await view.findByRole("button", { name: "Refresh models" }));
+  expect(refresh).toHaveBeenCalledOnce();
+  expect(choose).not.toHaveBeenCalled();
+});

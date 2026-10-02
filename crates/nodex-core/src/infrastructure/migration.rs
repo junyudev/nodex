@@ -281,6 +281,11 @@ const MIGRATION_STEPS: &[MigrationStep] = &[
         to_revision: 174,
         apply: migrate_v173_to_v174,
     },
+    MigrationStep {
+        from_revision: 174,
+        to_revision: 175,
+        apply: migrate_v174_to_v175,
+    },
 ];
 
 fn resolve_migration_path(
@@ -2272,6 +2277,21 @@ fn migrate_v171_to_v172(
         params![context.source_revision, context.target_revision, context.source_schema_fingerprint,
             context.target_schema_fingerprint, context.backup_name, context.completed_at_unix_ms,
             r#"{"native_claude_backend":true}"#],
+    )?;
+    connection.pragma_update(None, "user_version", context.target_revision)?;
+    Ok(())
+}
+
+fn migrate_v174_to_v175(
+    connection: &Connection,
+    context: &MigrationContext,
+) -> Result<(), StoreError> {
+    connection.execute_batch(include_str!("../../schema/migrations/v174_to_v175.sql"))?;
+    connection.execute(
+        "INSERT INTO core_store_migration_history(source_revision,target_revision,source_schema_fingerprint,target_schema_fingerprint,backup_name,completed_at_unix_ms,evidence_json) VALUES (?1,?2,?3,?4,?5,?6,?7)",
+        params![context.source_revision, context.target_revision, context.source_schema_fingerprint,
+            context.target_schema_fingerprint, context.backup_name, context.completed_at_unix_ms,
+            r#"{"opencode_backend":true,"runtime_options":true}"#],
     )?;
     connection.pragma_update(None, "user_version", context.target_revision)?;
     Ok(())
@@ -6393,6 +6413,68 @@ mod tests {
         connection.execute("UPDATE thread_backend_sessions SET native_home='/native/home' WHERE thread_id='codex'",[]).expect("claim native home");
         connection.execute_batch("INSERT INTO codex_threads(thread_id,created_at,updated_at,linked_at,agent_backend_kind,agent_backend_instance_config_id) VALUES ('duplicate',1,1,'today','claude','native-work');").expect("second metadata identity");
         assert!(connection.execute("INSERT INTO thread_backend_sessions(thread_id,backend_kind,instance_config_id,backend_session_id,updated_at,native_home) VALUES ('duplicate','claude','native-work','native-session',2,'/native/home')",[]).is_err());
+    }
+
+    #[test]
+    fn opencode_migration_preserves_sessions_and_reopens_once() {
+        let directory = tempdir().expect("Profile");
+        let path = directory.path().join("nodex.db");
+        fs::write(&path, include_bytes!("../../tests/fixtures/store-v174.db"))
+            .expect("frozen v174 Store");
+        let mut connection = open_writer(&path).expect("writer");
+        validate_schema_identity(&connection, 174).expect("exact predecessor");
+        let prior: Vec<(String, String, Option<String>, Option<String>)> = connection
+            .prepare("SELECT thread_id,backend_session_id,native_home,native_state_json FROM thread_backend_sessions ORDER BY thread_id")
+            .unwrap().query_map([], |row| Ok((row.get(0)?,row.get(1)?,row.get(2)?,row.get(3)?)))
+            .unwrap().collect::<rusqlite::Result<_>>().unwrap();
+        assert_eq!(prior.len(), 2);
+        let preparation =
+            prepare_profile_store(&mut connection, directory.path()).expect("upgrade");
+        assert_eq!(preparation.migrated_from_version, Some(174));
+        validate_schema_identity(&connection, CURRENT_STORE_REVISION)
+            .expect("exact current schema");
+        let preserved: Vec<(String, String, Option<String>, Option<String>)> = connection
+            .prepare("SELECT thread_id,backend_session_id,native_home,native_state_json FROM thread_backend_sessions ORDER BY thread_id")
+            .unwrap().query_map([], |row| Ok((row.get(0)?,row.get(1)?,row.get(2)?,row.get(3)?)))
+            .unwrap().collect::<rusqlite::Result<_>>().unwrap();
+        assert_eq!(preserved, prior);
+        assert_eq!(connection.query_row("SELECT count(*) FROM thread_backend_sessions WHERE runtime_options_json IS NOT NULL", [], |row| row.get::<_, i64>(0)).unwrap(), 0);
+        assert!(connection.execute("UPDATE codex_threads SET agent_backend_kind='opencode',agent_backend_definition_id=NULL,agent_backend_instance_config_id=NULL WHERE thread_id='fixture-acp'", []).is_err());
+        connection.execute_batch("INSERT INTO codex_threads(thread_id,created_at,updated_at,linked_at,agent_backend_kind,agent_backend_instance_config_id,recency_at) VALUES ('open',1,1,'2026-10-03T00:00:00.000Z','opencode','open-work',1),('open-duplicate',1,1,'2026-10-03T00:00:00.000Z','opencode','another-work',1); INSERT INTO thread_backend_sessions(thread_id,backend_kind,instance_config_id,backend_session_id,updated_at,native_home,runtime_options_json) VALUES ('open','opencode','open-work','open-session',2,'https://open.example.test','{\"model\":\"moonshot/kimi-k3\",\"mode_id\":\"build\",\"config_options\":[{\"id\":\"thinking\",\"value\":true}]}');").expect("new OpenCode session");
+        assert!(connection.execute("INSERT INTO thread_backend_sessions(thread_id,backend_kind,instance_config_id,backend_session_id,updated_at,native_home) VALUES ('open-duplicate','opencode','another-work','open-session',2,'https://open.example.test')", []).is_err());
+        assert!(connection.execute("UPDATE thread_backend_sessions SET runtime_options_json='invalid' WHERE thread_id='open'", []).is_err());
+        drop(connection);
+        let mut reopened = open_writer(&path).expect("reopen");
+        let preparation =
+            prepare_profile_store(&mut reopened, directory.path()).expect("current reopen");
+        assert_eq!(preparation.migrated_from_version, None);
+        assert_eq!(
+            reopened
+                .query_row(
+                    "SELECT count(*) FROM core_store_migration_history",
+                    [],
+                    |row| row.get::<_, i64>(0)
+                )
+                .unwrap(),
+            1
+        );
+        assert_eq!(
+            fs::read_dir(directory.path().join("backups/core-migrations"))
+                .unwrap()
+                .count(),
+            1
+        );
+        let options: String = reopened
+            .query_row(
+                "SELECT runtime_options_json FROM thread_backend_sessions WHERE thread_id='open'",
+                [],
+                |row| row.get(0),
+            )
+            .unwrap();
+        assert_eq!(
+            serde_json::from_str::<serde_json::Value>(&options).unwrap()["model"],
+            "moonshot/kimi-k3"
+        );
     }
 
     #[test]

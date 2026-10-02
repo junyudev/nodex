@@ -1,7 +1,7 @@
 import type { CodexConversationTurn, CodexPromptInput, CodexUserAttachment } from "../../lib/types";
 import { createUuidV7 } from "../../../shared/uuid-v7";
 
-export type FirstSubmissionBackend = "codex" | "acp" | "claude";
+export type FirstSubmissionBackend = "codex" | "acp" | "claude" | "opencode";
 
 export type FirstSubmissionPhase =
   | "accepted"

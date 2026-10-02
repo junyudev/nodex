@@ -21,10 +21,16 @@ import {
   filterAgentConversationForTask,
   projectAgentConversation,
 } from "../../../shared/agent-conversation-presentation";
-import { nativeAgentDraftOwner } from "../../lib/native-agent-draft-owner";
+import { nativeAgentDraftKey, nativeAgentDraftOwner } from "../../lib/native-agent-draft-owner";
 import { createUuidV7 } from "../../../shared/uuid-v7";
 import { isAgentConversationTaskLiveInSnapshot } from "../../../shared/agent-conversation";
 import type { AgentBackendBinding } from "../../../shared/agent-backend";
+import type { AgentModelCatalog } from "../../../shared/agent-model-catalog";
+import {
+  agentModelConfigOptions,
+  flattenAgentConfigOptions,
+  resolveAgentConfigSelections,
+} from "../../lib/agent-model-selection";
 import type {
   CodexConversationSnapshot,
   CodexConversationChildMembership,
@@ -49,7 +55,7 @@ import {
 } from "../../lib/native-intelligence-selection";
 
 export type ExternalAgentBinding = Exclude<AgentBackendBinding, { kind: "codex" }>;
-type AgentSelection = Pick<ExternalAgentBinding, "kind" | "instanceConfigId">;
+type AgentSelection = ExternalAgentBinding;
 const connected = { status: "connected", retries: 0 } as const;
 const idle = { status: "idle" } as const;
 const emptyChildren: readonly CodexConversationChildMembership[] = [];
@@ -208,6 +214,9 @@ export function useAgentConversationAdapter(input: {
   materializeDraft?: ThreadActionControllerInput["onMaterializeProjectDraft"];
   commitDraft?: ThreadActionControllerInput["onCommitMaterializedProjectDraft"];
   ensureDraft: ThreadActionControllerInput["onEnsureDefaultDraftSessionForProject"];
+  catalog?: AgentModelCatalog | null;
+  refreshCatalog?: () => void;
+  draftUnavailableReason?: string | null;
 }) {
   const { binding, summary, sessionId } = input;
   const threadId = binding ? (summary?.threadId ?? null) : null;
@@ -246,25 +255,31 @@ export function useAgentConversationAdapter(input: {
     () => (kind ? createAgentConversationRuntime(kind, summary, owner, sessionId) : null),
     [kind, summary, owner, sessionId],
   );
-  const draftKey = JSON.stringify([
-    sessionId,
-    input.modelProjectId,
-    binding?.kind,
-    binding?.instanceConfigId,
-  ]);
+  const draftKey = nativeAgentDraftKey(sessionId, input.modelProjectId, binding);
   const claudeInstanceConfigId = binding?.kind === "claude" ? binding.instanceConfigId : null;
-  const claudeCatalog = useClaudeModelCatalog(
-    binding?.kind === "claude" && summary
-      ? { kind: "thread", threadId: summary.threadId }
-      : claudeInstanceConfigId
-        ? {
-            kind: "project",
-            instanceConfigId: claudeInstanceConfigId,
-            projectId: input.modelProjectId,
-          }
-        : null,
+  const nativeClaudeCatalog = useClaudeModelCatalog(
+    input.catalog !== undefined
+      ? null
+      : binding?.kind === "claude" && summary
+        ? { kind: "thread", threadId: summary.threadId }
+        : claudeInstanceConfigId
+          ? {
+              kind: "project",
+              instanceConfigId: claudeInstanceConfigId,
+              projectId: input.modelProjectId,
+            }
+          : null,
     { observedExecutionLocation: summary?.cwd ?? null },
   );
+  const claudeCatalog =
+    input.catalog !== undefined
+      ? {
+          options: input.catalog?.claudeDiscovery?.models ?? [],
+          discovery: input.catalog?.claudeDiscovery ?? null,
+          error: input.catalog?.health.error ?? null,
+          refresh: input.refreshCatalog ? async () => input.refreshCatalog?.() : undefined,
+        }
+      : nativeClaudeCatalog;
   const draft = useSyncExternalStore(
     (listener) => nativeAgentDraftOwner.subscribe(draftKey, listener),
     () => nativeAgentDraftOwner.read(draftKey),
@@ -274,22 +289,33 @@ export function useAgentConversationAdapter(input: {
   const draftEffort = draft.selection.effort;
   const setDraftModel = (model: string, effort: ClaudeEffortSelection = "default") => {
     const selection = { ...selectNativeModel(draft.selection, model, effort, options) };
-    const target = options.find((option) => option.value === model);
-    if (selection.thinking === false && !target?.disableThinking) delete selection.thinking;
-    if (selection.fast === true && target?.fastMode === false) selection.fast = false;
-    nativeAgentDraftOwner.write(draftKey, { selection });
+    nativeAgentDraftOwner.write(draftKey, {
+      selection,
+      ...(binding?.kind !== "claude" && input.catalog
+        ? {
+            options: resolveAgentConfigSelections(
+              agentModelConfigOptions(input.catalog, model),
+              draft.options,
+            ),
+          }
+        : {}),
+    });
   };
   const setDraftMode = (mode: "default" | "plan") =>
     nativeAgentDraftOwner.write(draftKey, { mode });
   const modelConfig = state.presentation?.configOptions.find(
     (option) => option.category === "model",
   );
-  const options =
+  const options: readonly import("../../../shared/agent-conversation").AgentSessionConfigSelectOption[] =
     modelConfig?.type === "select"
       ? modelConfig.options.flatMap((option) => ("group" in option ? option.options : [option]))
       : binding?.kind === "claude"
         ? claudeCatalog.options
-        : [{ value: "default", name: "Default", description: null }];
+        : (input.catalog?.models.map((model) => ({
+            value: model.id,
+            name: model.displayName,
+            description: model.description,
+          })) ?? []);
   const selected = state.presentation?.snapshot.metadata?.requestedSelection;
   const requested: ClaudeModelSelection = selected
     ? { ...selected, effort: isClaudeEffortLevel(selected.effort) ? selected.effort : "default" }
@@ -303,15 +329,46 @@ export function useAgentConversationAdapter(input: {
       ? intelligence.model
       : modelConfig?.type === "select"
         ? modelConfig.currentValue
-        : draftModel;
-  const models = options.map((option, index) =>
-    projectNativeModelOption(
-      option,
-      binding?.kind === "claude" ? option.value === effective?.model : index === 0,
-      binding?.kind === "claude",
-    ),
+        : draftModel !== "default"
+          ? draftModel
+          : (input.catalog?.defaultModel ?? "");
+  const models =
+    binding?.kind !== "claude" &&
+    input.catalog?.health.status === "ready" &&
+    !(binding?.kind === "acp" && modelConfig?.type === "select")
+      ? [...input.catalog.models]
+      : options.map((option) =>
+          projectNativeModelOption(
+            option,
+            binding?.kind === "claude"
+              ? option.value === effective?.model
+              : option.value === selectedModel,
+            binding?.kind === "claude",
+          ),
+        );
+  const supportsImageInput =
+    binding?.kind === "claude" ||
+    (binding?.kind === "opencode" &&
+      models.find((model) => model.id === selectedModel)?.inputModalities.includes("image") ===
+        true);
+  const configOptions =
+    state.presentation?.configOptions ??
+    (input.catalog ? agentModelConfigOptions(input.catalog, selectedModel) : []);
+  const draftOptions = resolveAgentConfigSelections(configOptions, draft.options);
+  const presentedConfigOptions = owner
+    ? configOptions
+    : configOptions.map((option) => {
+        const value = draftOptions.find((entry) => entry.id === option.id)?.value;
+        if (option.type === "boolean")
+          return {
+            ...option,
+            currentValue: typeof value === "boolean" ? value : option.currentValue,
+          };
+        return { ...option, currentValue: typeof value === "string" ? value : option.currentValue };
+      });
+  const effortConfig = presentedConfigOptions.find(
+    (option) => option.category === "thought_level" || option.id === "effort",
   );
-  const effortConfig = state.presentation?.configOptions.find((option) => option.id === "effort");
   const selectedEffort =
     binding?.kind === "claude"
       ? intelligence.effort
@@ -337,12 +394,12 @@ export function useAgentConversationAdapter(input: {
             ]
           : [],
       )
-    : [
-        { name: "Code", mode: "default" as const, model: null },
-        ...(binding?.kind === "claude"
-          ? [{ name: "Plan", mode: "plan" as const, model: null }]
-          : []),
-      ];
+    : binding?.kind === "claude"
+      ? [
+          { name: "Code", mode: "default" as const, model: null },
+          { name: "Plan", mode: "plan" as const, model: null },
+        ]
+      : [];
   const commands =
     state.presentation?.snapshot.turns
       .flatMap((turn) => turn.updates)
@@ -371,6 +428,29 @@ export function useAgentConversationAdapter(input: {
     }
     await requireSuccess(owner.setConfigOption(modelConfig.id, model));
   };
+  const modeState = state.presentation?.modes ?? input.catalog?.modes ?? null;
+  const changeNativeMode = async (modeId: string) => {
+    if (!modeState?.availableModes.some((mode) => mode.id === modeId))
+      throw new Error("This Agent does not expose this mode");
+    if (owner) return requireSuccess(owner.setMode(modeId));
+    nativeAgentDraftOwner.write(draftKey, { modeId });
+  };
+  const changeConfig = async (configId: string, value: string | boolean) => {
+    const option = presentedConfigOptions.find((entry) => entry.id === configId);
+    if (!option || option.category === "model")
+      throw new Error("This Agent does not expose this option");
+    if (option.type === "boolean" && typeof value !== "boolean")
+      throw new Error("Choose On or Off");
+    if (
+      option.type === "select" &&
+      !flattenAgentConfigOptions(option).some((entry) => entry.value === value)
+    )
+      throw new Error("This option is unavailable");
+    if (owner) return requireSuccess(owner.setConfigOption(configId, value));
+    nativeAgentDraftOwner.write(draftKey, {
+      options: [...draftOptions.filter((entry) => entry.id !== configId), { id: configId, value }],
+    });
+  };
   const changeMode = async (mode: "default" | "plan") => {
     if (!owner) {
       setDraftMode(mode);
@@ -385,6 +465,10 @@ export function useAgentConversationAdapter(input: {
     await requireSuccess(owner.setMode(nativeMode.id));
   };
   const changeEffort = async (value: string) => {
+    if (binding?.kind !== "claude") {
+      if (!effortConfig) throw new Error("This Agent does not expose this effort level");
+      return changeConfig(effortConfig.id, value);
+    }
     if (binding?.kind !== "claude" || (value !== "default" && !isClaudeEffortLevel(value)))
       throw new Error("This Agent does not expose this effort level");
     if (!owner) {
@@ -433,15 +517,20 @@ export function useAgentConversationAdapter(input: {
           );
         },
         onStartThreadForSession: async (request) => {
+          if (input.draftUnavailableReason) throw new Error(input.draftUnavailableReason);
           if (!binding.instanceConfigId)
             throw new Error("Select an Agent instance before starting");
           if (request.runInTarget === "cloud")
             throw new Error("This Agent requires a local workspace");
+          if (binding.kind === "opencode" && !selectedModel)
+            throw new Error("Connect this Agent and choose a model before starting");
+          if (binding.kind !== "acp" && input.catalog && input.catalog.health.status !== "ready")
+            throw new Error(input.catalog.health.error ?? "Connect this Agent before starting");
           const prompt = await prepareAgentPrompt(
             request.prompt,
             request.promptInput,
             (file) => readPastedTextAttachment({ file }),
-            { images: binding.kind === "claude", nativeSkills: binding.kind === "claude" },
+            { images: supportsImageInput, nativeSkills: binding.kind === "claude" },
           );
           const submission = sessionFirstSubmissionOwner.begin({
             backend: binding.kind,
@@ -475,10 +564,17 @@ export function useAgentConversationAdapter(input: {
               runInEnvironmentPath: request.runInEnvironmentPath,
               worktreeStartingState: request.worktreeStartingState,
               prompt,
-              ...(binding.kind === "claude"
-                ? { images: agentPromptImages(request.promptInput) }
-                : {}),
+              ...(supportsImageInput ? { images: agentPromptImages(request.promptInput) } : {}),
               ...(binding.kind === "claude" ? { selection: draft.selection, mode: draftMode } : {}),
+              ...(binding.kind !== "claude"
+                ? {
+                    ...(selectedModel ? { model: selectedModel } : {}),
+                    configOptions: draftOptions,
+                    ...((draft.modeId ?? modeState?.currentModeId)
+                      ? { modeId: draft.modeId ?? modeState?.currentModeId }
+                      : {}),
+                  }
+                : {}),
               firstSubmission: {
                 launchId: submission.launchId,
                 clientUserMessageId: submission.clientUserMessageId,
@@ -510,12 +606,12 @@ export function useAgentConversationAdapter(input: {
             prompt,
             options?.promptInput,
             (file) => readPastedTextAttachment({ file }),
-            { images: binding.kind === "claude", nativeSkills: binding.kind === "claude" },
+            { images: supportsImageInput, nativeSkills: binding.kind === "claude" },
           );
           await requireSuccess(
             owner.submit(
               prepared,
-              binding.kind === "claude" ? agentPromptImages(options?.promptInput) : undefined,
+              supportsImageInput ? agentPromptImages(options?.promptInput) : undefined,
             ),
           );
         },
@@ -776,6 +872,22 @@ export function useAgentConversationAdapter(input: {
             })
         : undefined,
     nativeIntelligence,
+    genericIntelligence:
+      binding && binding.kind !== "claude"
+        ? {
+            configOptions: presentedConfigOptions,
+            changeConfig,
+            modes: modeState
+              ? {
+                  ...modeState,
+                  currentModeId: owner
+                    ? modeState.currentModeId
+                    : (draft.modeId ?? modeState.currentModeId),
+                }
+              : null,
+            changeMode: changeNativeMode,
+          }
+        : undefined,
     diagnostics:
       binding?.kind === "claude" && threadId
         ? () => agentBackendRuntime.inspect(threadId)
@@ -798,7 +910,8 @@ export function useAgentConversationAdapter(input: {
     commands,
     actions,
     authenticate,
-    modelCatalogError: claudeCatalog.error,
+    modelCatalogError:
+      binding?.kind === "claude" ? claudeCatalog.error : (input.catalog?.health.error ?? null),
     refreshSkills: binding?.kind === "claude" ? claudeCatalog.refresh : undefined,
     skills:
       claudeCatalog.discovery?.skills
@@ -813,7 +926,7 @@ export function useAgentConversationAdapter(input: {
           brandColor: null,
         })) ?? [],
     controls: {
-      images: binding?.kind === "claude",
+      images: supportsImageInput,
       steer: state.presentation?.capabilities.controls?.steer === true,
       permissionMode:
         binding?.kind === "claude" &&

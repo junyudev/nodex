@@ -1,3 +1,4 @@
+import { inactiveOpenCodeSessions } from "../agent-backend/opencode/OpenCodeSessionManager.test-fixtures";
 import { inactiveClaudeSessions } from "../agent-backend/claude/ClaudeSessionManager.test-fixtures";
 import { assert, it } from "@effect/vitest";
 import * as Effect from "effect/Effect";
@@ -15,7 +16,10 @@ import { ProjectArchiveBlockers } from "./ProjectArchiveBlockers";
 import { ProjectLifecycleCommands, live as productionLive } from "./ProjectLifecycleCommands";
 import { ProjectWorkspace, type ProjectWorkspaceService } from "./ProjectWorkspace";
 
-const live = productionLive.pipe(Layer.provide(inactiveClaudeSessions));
+const live = productionLive.pipe(
+  Layer.provide(inactiveClaudeSessions),
+  Layer.provide(inactiveOpenCodeSessions),
+);
 
 const makeProject = (lifecycle: Project["lifecycle"] = "active"): Project => ({
   id: "project-1",

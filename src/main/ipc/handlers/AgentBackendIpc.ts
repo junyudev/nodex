@@ -18,7 +18,7 @@ import {
   AcpRendererObservationRegistry,
   type AcpRendererObservationChanges,
 } from "./AcpRendererObservationRegistry";
-import { makeClaudeDiscoveryRequests } from "./ClaudeDiscoveryRequests";
+import { makeAgentDiscoveryRequests } from "./AgentDiscoveryRequests";
 
 const id = z.string().trim().min(1).max(512);
 const prompt = z
@@ -57,6 +57,32 @@ const ClaudeDiscoveryInput = z
     scope: z.discriminatedUnion("kind", [
       z
         .object({ kind: z.literal("project"), instanceConfigId: id, projectId: id.nullable() })
+        .strict(),
+      z.object({ kind: z.literal("thread"), threadId: id }).strict(),
+    ]),
+    requestId: z.string().refine(isUuidV7).optional(),
+    forceReload: z.boolean().optional(),
+  })
+  .strict();
+const CatalogInput = z
+  .object({
+    scope: z.discriminatedUnion("kind", [
+      z
+        .object({
+          kind: z.literal("project"),
+          projectId: id.nullable(),
+          binding: z.discriminatedUnion("kind", [
+            z.object({ kind: z.literal("claude"), instanceConfigId: id }).strict(),
+            z.object({ kind: z.literal("opencode"), instanceConfigId: id }).strict(),
+            z
+              .object({
+                kind: z.literal("acp"),
+                agentDefinitionId: id,
+                instanceConfigId: id.nullable(),
+              })
+              .strict(),
+          ]),
+        })
         .strict(),
       z.object({ kind: z.literal("thread"), threadId: id }).strict(),
     ]),
@@ -136,7 +162,13 @@ const StartInput = z
   .object({
     sessionId: id,
     instanceConfigId: id,
-    backendKind: z.enum(["acp", "claude"]),
+    backendKind: z.enum(["acp", "claude", "opencode"]),
+    modeId: id.optional(),
+    configOptions: z
+      .array(z.object({ id, value: z.union([z.string().max(16384), z.boolean()]) }).strict())
+      .max(64)
+      .refine((options) => new Set(options.map((option) => option.id)).size === options.length)
+      .optional(),
     model: id.optional(),
     effort: z.enum(["default", ...CLAUDE_EFFORT_LEVELS]).optional(),
     selection: Selection.optional(),
@@ -223,7 +255,7 @@ export const live: Layer.Layer<
     const config = yield* MainConfig;
     const ipc = yield* ElectronIpc;
     const windows = yield* WindowRuntime;
-    const discoveryRequests = yield* makeClaudeDiscoveryRequests;
+    const discoveryRequests = yield* makeAgentDiscoveryRequests;
     const observers = new AcpRendererObservationRegistry<IpcMainInvokeEvent["sender"]>();
     const runObservationLifecycle = yield* FiberSet.makeRuntime<never, void, never>();
     const applyObservationChanges = (changes: AcpRendererObservationChanges) =>
@@ -329,6 +361,20 @@ export const live: Layer.Layer<
     );
     yield* ipc.handleQuery("agent-backend:session:read", (event, value) =>
       threadId(event, "session.read", value).pipe(Effect.flatMap(application.readAgentSession)),
+    );
+    yield* ipc.handleQuery("agent-backend:model-catalog:read", (event, input) =>
+      handle(event, "model-catalog.read", CatalogInput, input, (parsed) =>
+        discoveryRequests.run(
+          event.sender.id,
+          parsed.requestId ?? createUuidV7(),
+          interruptWhenRendererIsDestroyed(event, application.modelCatalog(parsed)),
+        ),
+      ),
+    );
+    yield* ipc.handleControl("agent-backend:model-catalog:cancel", (event, input) =>
+      handle(event, "model-catalog.cancel", CancelDiscoveryInput, input, (parsed) =>
+        discoveryRequests.cancel(event.sender.id, parsed.requestId),
+      ),
     );
     yield* ipc.handleQuery("agent-backend:claude:models", (event, input) =>
       handle(event, "claude.models", ClaudeModelsInput, input, (parsed) =>

@@ -16,50 +16,57 @@ const authority: FrozenNodexAgentTurnAuthority = {
   source: "project_turn",
 };
 
-it.effect(
-  "native authority requires a host-issued object and the exact current accepted lifetime",
-  () =>
-    Effect.gen(function* () {
-      let coreCurrent = true;
-      let captures = 0;
-      const issuer = createNativeAppToolClaimIssuer({
-        threadId: "native",
-        hostId: "local",
-        generation: 4,
-        capture: () =>
-          Effect.sync(() => {
-            captures += 1;
-            return coreCurrent;
-          }),
-      });
-      const codex = { capture: () => Effect.die("Native callers must not enter Codex admission") };
-      assert.isNull(issuer.claim());
-      assert.isFalse(issuer.beginTurn({ ...authority, threadId: "forged" }));
-      assert.isTrue(issuer.beginTurn(authority));
-      const caller = issuer.claim()!;
-      assert.deepEqual(yield* captureAppToolAuthority(caller, codex), authority);
-      assert.isNull(yield* captureAppToolAuthority({ ...caller }, codex));
-      coreCurrent = false;
-      assert.isNull(yield* captureAppToolAuthority(caller, codex));
-      coreCurrent = true;
-      issuer.endTurn("wrong-turn");
-      assert.isTrue(caller.isActive());
-      issuer.endTurn(authority.turnId);
-      assert.isFalse(caller.isActive());
-      assert.isTrue(issuer.beginTurn({ ...authority, turnId: "turn:b" }));
-      assert.isNull(yield* captureAppToolAuthority(caller, codex));
-      const next = issuer.claim()!;
-      issuer.close();
-      assert.isFalse(next.isActive());
-      assert.isNull(issuer.claim());
-      assert.equal(captures, 2);
-    }),
-);
+for (const backend of ["claude", "opencode"] as const) {
+  it.effect(
+    `${backend} authority requires a host-issued object and the exact current accepted lifetime`,
+    () =>
+      Effect.gen(function* () {
+        let coreCurrent = true;
+        let captures = 0;
+        const issuer = createNativeAppToolClaimIssuer({
+          backend,
+          threadId: "native",
+          hostId: "local",
+          generation: 4,
+          capture: () =>
+            Effect.sync(() => {
+              captures += 1;
+              return coreCurrent;
+            }),
+        });
+        const codex = {
+          capture: () => Effect.die("Native callers must not enter Codex admission"),
+        };
+        assert.isNull(issuer.claim());
+        assert.isFalse(issuer.beginTurn({ ...authority, threadId: "forged" }));
+        assert.isTrue(issuer.beginTurn(authority));
+        const caller = issuer.claim()!;
+        assert.equal(caller.backend, backend);
+        assert.deepEqual(yield* captureAppToolAuthority(caller, codex), authority);
+        assert.isNull(yield* captureAppToolAuthority({ ...caller }, codex));
+        coreCurrent = false;
+        assert.isNull(yield* captureAppToolAuthority(caller, codex));
+        coreCurrent = true;
+        issuer.endTurn("wrong-turn");
+        assert.isTrue(caller.isActive());
+        issuer.endTurn(authority.turnId);
+        assert.isFalse(caller.isActive());
+        assert.isTrue(issuer.beginTurn({ ...authority, turnId: "turn:b" }));
+        assert.isNull(yield* captureAppToolAuthority(caller, codex));
+        const next = issuer.claim()!;
+        issuer.close();
+        assert.isFalse(next.isActive());
+        assert.isNull(issuer.claim());
+        assert.equal(captures, 2);
+      }),
+  );
+}
 
 it.effect("different native queries cannot share caller credentials or frozen coordinates", () =>
   Effect.sync(() => {
     const makeIssuer = (threadId: string) =>
       createNativeAppToolClaimIssuer({
+        backend: "claude",
         threadId,
         hostId: "local",
         generation: 1,
@@ -82,6 +89,7 @@ it.effect("different native queries cannot share caller credentials or frozen co
 it.effect("background activity suspends every native claim without reviving old credentials", () =>
   Effect.gen(function* () {
     const issuer = createNativeAppToolClaimIssuer({
+      backend: "opencode",
       threadId: "native",
       hostId: "local",
       generation: 1,

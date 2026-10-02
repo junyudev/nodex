@@ -73,8 +73,8 @@ export const projectAgentBackendBindingFromCore = (
 ): AgentBackendBinding =>
   binding.kind === "codex"
     ? { kind: "codex" }
-    : binding.kind === "claude"
-      ? { kind: "claude", instanceConfigId: binding.instance_config_id }
+    : binding.kind === "claude" || binding.kind === "opencode"
+      ? { kind: binding.kind, instanceConfigId: binding.instance_config_id }
       : {
           kind: "acp",
           agentDefinitionId: binding.agent_definition_id,
@@ -84,8 +84,8 @@ export const projectAgentBackendBindingFromCore = (
 export const projectAgentBackendBindingToCore = (binding: AgentBackendBinding) =>
   binding.kind === "codex"
     ? { kind: "codex" as const }
-    : binding.kind === "claude"
-      ? { kind: "claude" as const, instance_config_id: binding.instanceConfigId }
+    : binding.kind === "claude" || binding.kind === "opencode"
+      ? { kind: binding.kind, instance_config_id: binding.instanceConfigId }
       : {
           kind: "acp" as const,
           agent_definition_id: binding.agentDefinitionId,
@@ -284,6 +284,7 @@ export interface DesktopProjectWorkspaceThreadBackendSession {
   readonly nativeHome: string | null;
   readonly updatedAt: number;
   readonly nativeState: DesktopProjectWorkspaceNativeAgentState | null;
+  readonly runtimeOptions: NonNullable<CoreThreadBackendSession>["runtime_options"] | null;
 }
 
 export const projectWorkspaceThreadBackendSessionFromCore = (
@@ -300,6 +301,7 @@ export const projectWorkspaceThreadBackendSessionFromCore = (
     nativeHome: session.native_home ?? null,
     updatedAt: session.updated_at,
     nativeState: session.native_state ?? null,
+    runtimeOptions: session.runtime_options ?? null,
   };
 };
 
@@ -315,6 +317,9 @@ export const projectWorkspaceBindThreadBackendSessionIntent = (input: {
   readonly expectedBackendSessionId?: string;
   readonly nativeHome?: string;
   readonly nativeState?: DesktopProjectWorkspaceNativeAgentState;
+  readonly runtimeOptions?: NonNullable<
+    DesktopProjectWorkspaceThreadBackendSession["runtimeOptions"]
+  >;
 }) => ({
   kind: "bind_thread_backend_session" as const,
   thread_id: input.threadId,
@@ -324,6 +329,7 @@ export const projectWorkspaceBindThreadBackendSessionIntent = (input: {
     ? { expected_backend_session_id: input.expectedBackendSessionId }
     : {}),
   ...(input.nativeState ? { native_state: input.nativeState } : {}),
+  ...(input.runtimeOptions ? { runtime_options: input.runtimeOptions } : {}),
   ...(input.nativeHome ? { native_home: input.nativeHome } : {}),
 });
 

@@ -1,3 +1,8 @@
+import type { AgentModelCatalog, AgentModelCatalogInput } from "./agent-model-catalog";
+import type {
+  OpenCodeAgentSettings,
+  UpdateOpenCodeAgentSettingsInput,
+} from "./opencode-agent-settings";
 import type { AgentInteractionResponse } from "./agent-conversation";
 import type {
   CodexHomeSettingsSnapshot,
@@ -1280,6 +1285,11 @@ export interface IpcApi {
     args: [input: CodexHomeSettingsUpdateInput];
     result: CodexHomeSettingsSnapshot;
   };
+  "settings:opencode-agents:get": { args: []; result: OpenCodeAgentSettings };
+  "settings:opencode-agents:update": {
+    args: [input: UpdateOpenCodeAgentSettingsInput];
+    result: OpenCodeAgentSettings;
+  };
   "settings:claude-agents:get": { args: []; result: ClaudeAgentSettings };
   "settings:claude-agents:update": {
     args: [input: UpdateClaudeAgentSettingsInput];
@@ -1305,6 +1315,14 @@ export interface IpcApi {
   "agent-backend:session:read": {
     args: [threadId: string];
     result: AgentBackendSessionPresentation | null;
+  };
+  "agent-backend:model-catalog:read": {
+    args: [input: AgentModelCatalogInput];
+    result: AgentModelCatalog;
+  };
+  "agent-backend:model-catalog:cancel": {
+    args: [input: { readonly requestId: string }];
+    result: void;
   };
   "agent-backend:claude:models": {
     args: [input: ClaudeModelCatalogInput];
@@ -2898,6 +2916,7 @@ export interface IpcEvents {
   "remote-hosted-pip:revision": RemoteHostedPipRevisionEvent;
   "chrome-control-settings-changed": ChromeControlRuntimeSnapshot;
   "claude-agent-settings-changed": void;
+  "agent-settings-changed": void;
   "desktop-notification:action": DesktopNotificationActionInvocation;
   "electron-window:focus-changed": { isFocused: boolean };
   "electron-window-opaque-surface-changed": {

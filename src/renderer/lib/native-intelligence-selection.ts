@@ -39,7 +39,7 @@ export function resolveNativeIntelligenceSelection(
   };
 }
 
-/** A model change keeps an explicit context only when the destination advertises it. */
+/** Model changes retain independent preferences only when the destination supports them. */
 export function selectNativeModel(
   selection: ClaudeModelSelection,
   model: string,
@@ -48,6 +48,10 @@ export function selectNativeModel(
 ): ClaudeModelSelection {
   const next = { ...selection, model, effort };
   const target = options.find((option) => option.value === model);
+  if (model !== selection.model && model !== "default") {
+    if (next.thinking === false && !target?.disableThinking) delete next.thinking;
+    if (next.fast === true && target?.fastMode === false) next.fast = false;
+  }
   if (
     model !== selection.model &&
     model !== "default" &&

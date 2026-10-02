@@ -278,9 +278,33 @@ const SETTINGS_SEARCH_PANELS = {
     ],
   },
   agent: {
-    title: "Agent",
-    subtitle: "Configuration and raw config.toml settings.",
+    title: "Agents",
     groups: [
+      {
+        title: "OpenCode",
+        entries: [
+          entry("Profile", "Configure an OpenCode runtime instance.", [
+            "Enabled",
+            "Name",
+            "Executable",
+            "opencode",
+          ]),
+          entry("Profile directory", "Select isolated OpenCode configuration and data.", [
+            "Managed profile",
+            "account",
+            "configuration",
+          ]),
+          entry("Server URL", "Connect to an external OpenCode server.", [
+            "Local server",
+            "OPENCODE_SERVER_PASSWORD",
+          ]),
+          entry(
+            "Environment variables",
+            "Configure provider credentials for this OpenCode profile.",
+            ["API key", "Moonshot", "Kimi", "DeepSeek", "OpenRouter", "Secret", "export"],
+          ),
+        ],
+      },
       {
         title: "Claude Code",
         entries: [
@@ -296,6 +320,20 @@ const SETTINGS_SEARCH_PANELS = {
         ],
       },
       {
+        title: "ACP",
+        entries: [
+          entry("Package root", "Configure a local ACP agent.", [
+            "Agent Client Protocol",
+            "Claude Agent",
+            "Node executable",
+            "Credentials",
+            "Isolated home",
+            "System proxy",
+            "Save Agent",
+          ]),
+        ],
+      },
+      {
         title: "Agent",
         messages: [
           "Open a project workspace to edit agent permissions.",
@@ -305,7 +343,7 @@ const SETTINGS_SEARCH_PANELS = {
         ],
       },
       {
-        title: "Custom config.toml settings",
+        title: "Codex",
         entries: [
           entry("Codex home", "Select the Codex configuration and account directory.", [
             "CODEX_HOME",

@@ -2,9 +2,10 @@ import { randomUUID } from "node:crypto";
 import * as Effect from "effect/Effect";
 import type { FrozenNodexAgentTurnAuthority } from "../../shared/nodex-agent-authority";
 import type { CodexTurnAuthority } from "../codex-application/CodexTurnAuthority";
+import { isNativeAgentBackendKind, type NativeAgentBackendKind } from "../../shared/agent-backend";
 
 export interface AppToolCaller {
-  readonly backend?: "codex" | "claudeCode";
+  readonly backend?: "codex" | NativeAgentBackendKind;
   readonly threadId: string;
   readonly turnId: string;
   readonly callId: string;
@@ -21,6 +22,7 @@ interface NativeClaim {
 const nativeClaims = new WeakMap<AppToolCaller, NativeClaim>();
 
 export function createNativeAppToolClaimIssuer(input: {
+  readonly backend: NativeAgentBackendKind;
   readonly threadId: string;
   readonly hostId: string;
   readonly generation: number;
@@ -59,7 +61,7 @@ export function createNativeAppToolClaimIssuer(input: {
       const isActive = () =>
         open && !backgroundTasksPresent && epoch === claimEpoch && active === admitted;
       const caller: AppToolCaller = {
-        backend: "claudeCode",
+        backend: input.backend,
         threadId: input.threadId,
         turnId: admitted.authority.turnId,
         callId: randomUUID(),
@@ -85,7 +87,7 @@ export const captureAppToolAuthority = (
   codex: Pick<CodexTurnAuthority["Service"], "capture">,
 ): Effect.Effect<FrozenNodexAgentTurnAuthority | null> => {
   if (!caller.isActive()) return Effect.succeed(null);
-  if (caller.backend === "claudeCode")
+  if (isNativeAgentBackendKind(caller.backend))
     return nativeClaims.get(caller)?.capture ?? Effect.succeed(null);
   return codex
     .capture(caller.threadId, caller.turnId)

@@ -1868,6 +1868,24 @@
           {
             "type": "object",
             "required": [
+              "instance_config_id",
+              "kind"
+            ],
+            "properties": {
+              "instance_config_id": {
+                "type": "string"
+              },
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "opencode"
+                ]
+              }
+            }
+          },
+          {
+            "type": "object",
+            "required": [
               "agent_definition_id",
               "kind"
             ],
@@ -30266,6 +30284,16 @@
                       }
                     ]
                   },
+                  "runtime_options": {
+                    "oneOf": [
+                      {
+                        "type": "null"
+                      },
+                      {
+                        "$ref": "#/components/schemas/ProjectWorkspaceAgentRuntimeOptions"
+                      }
+                    ]
+                  },
                   "thread_id": {
                     "type": "string"
                   }
@@ -36980,6 +37008,57 @@
           }
         }
       },
+      "ProjectWorkspaceAgentConfigOption": {
+        "type": "object",
+        "required": [
+          "id",
+          "value"
+        ],
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "value": {
+            "$ref": "#/components/schemas/ProjectWorkspaceAgentConfigValue"
+          }
+        }
+      },
+      "ProjectWorkspaceAgentConfigValue": {
+        "oneOf": [
+          {
+            "type": "string"
+          },
+          {
+            "type": "boolean"
+          }
+        ]
+      },
+      "ProjectWorkspaceAgentRuntimeOptions": {
+        "type": "object",
+        "required": [
+          "config_options"
+        ],
+        "properties": {
+          "config_options": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ProjectWorkspaceAgentConfigOption"
+            }
+          },
+          "mode_id": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "model": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        }
+      },
       "ProjectWorkspaceApplyRequest": {
         "$ref": "#/components/schemas/ModuleApplyRequest_ProjectWorkspaceIntent"
       },
@@ -38386,6 +38465,16 @@
                   }
                 ]
               },
+              "runtime_options": {
+                "oneOf": [
+                  {
+                    "type": "null"
+                  },
+                  {
+                    "$ref": "#/components/schemas/ProjectWorkspaceAgentRuntimeOptions"
+                  }
+                ]
+              },
               "thread_id": {
                 "type": "string"
               }
@@ -39210,15 +39299,20 @@
       },
       "ProjectWorkspaceNativeAgentState": {
         "type": "object",
-        "required": [
-          "preferences"
-        ],
         "properties": {
           "ever_saved": {
             "type": "boolean"
           },
           "preferences": {
-            "$ref": "#/components/schemas/ProjectWorkspaceNativeAgentPreferences"
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/ProjectWorkspaceNativeAgentPreferences",
+                "description": "Claude preferences; other native runtimes retain their options separately."
+              }
+            ]
           },
           "turns": {
             "type": "array",
@@ -40597,7 +40691,7 @@
       },
       "ProjectWorkspaceThreadBackendSession": {
         "type": "object",
-        "description": "Durable protocol-session identity for a non-native Agent Backend. It is\nseparate from backend instance configuration and may be cleared when a\nbackend can no longer resume the remote session.",
+        "description": "Durable Agent session identity, separate from backend instance settings.\nTranscript content remains owned by the Agent runtime.",
         "required": [
           "thread_id",
           "backend_binding",
@@ -40615,7 +40709,8 @@
             "type": [
               "string",
               "null"
-            ]
+            ],
+            "description": "Runtime-owned history scope: a native Profile or an external server identity."
           },
           "native_state": {
             "oneOf": [
@@ -40625,6 +40720,16 @@
               {
                 "$ref": "#/components/schemas/ProjectWorkspaceNativeAgentState",
                 "description": "Host-observed native facts; transcript content remains owned by the Agent."
+              }
+            ]
+          },
+          "runtime_options": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/ProjectWorkspaceAgentRuntimeOptions"
               }
             ]
           },

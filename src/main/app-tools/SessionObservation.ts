@@ -45,7 +45,7 @@ export interface SessionObservationResult {
   readonly projectId: string | null;
   readonly threadId: string | null;
   readonly title: string;
-  readonly backend: "codex" | "acp" | "claude" | null;
+  readonly backend: "codex" | "acp" | "claude" | "opencode" | null;
   readonly archived: boolean;
   readonly pinned: boolean;
   readonly status: { readonly type: string; readonly activeFlags: readonly string[] };
@@ -105,7 +105,7 @@ type SessionListResult = {
 export interface SessionInspection {
   readonly sessionId: string;
   readonly title: string;
-  readonly backend: "codex" | "acp" | "claude" | null;
+  readonly backend: "codex" | "acp" | "claude" | "opencode" | null;
   readonly status: string;
   readonly activeFlags: readonly string[];
   readonly disposition: "running" | "complete" | "needs_attention" | "unavailable";

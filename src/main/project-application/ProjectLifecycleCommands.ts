@@ -1,3 +1,4 @@
+import { OpenCodeSessionManager } from "../agent-backend/opencode/OpenCodeSessionManager";
 import { ClaudeSessionManager } from "../agent-backend/claude/ClaudeSessionManager";
 import * as Cause from "effect/Cause";
 import * as Context from "effect/Context";
@@ -62,6 +63,7 @@ export const live: Layer.Layer<
   | BrowserApplication
   | AcpBackendSessionManager
   | ClaudeSessionManager
+  | OpenCodeSessionManager
   | ProjectArchiveBlockers
   | ProjectRuntimeLifecycleRuntime
   | ProjectWorkspace
@@ -72,6 +74,7 @@ export const live: Layer.Layer<
     const blockers = yield* ProjectArchiveBlockers;
     const acpSessions = yield* AcpBackendSessionManager;
     const claudeSessions = yield* ClaudeSessionManager;
+    const openCodeSessions = yield* OpenCodeSessionManager;
     const browser = yield* BrowserApplication;
     const lifecycleRuntime = yield* ProjectRuntimeLifecycleRuntime;
     const workspace = yield* ProjectWorkspace;
@@ -132,7 +135,10 @@ export const live: Layer.Layer<
                   label: `acp-session:${session.thread.threadId}`,
                   effect: acpSessions
                     .close(session.thread.threadId)
-                    .pipe(Effect.andThen(claudeSessions.close(session.thread.threadId))),
+                    .pipe(
+                      Effect.andThen(claudeSessions.close(session.thread.threadId)),
+                      Effect.andThen(openCodeSessions.close(session.thread.threadId)),
+                    ),
                 },
               ]
             : [],

@@ -108,6 +108,27 @@ The executable and configuration select trusted user-managed code; enabling an i
 attest executable or configuration bytes.
 Disabling it prevents new connections and leaves existing durable task bindings explicit.
 
+## OpenCode instances
+
+Use **Agent > OpenCode** to enable an installed `opencode` executable and configure an instance.
+Choose its profile directory or leave it empty for Nodex's isolated
+`<Profile>/agents/opencode/<instance-id>` directory. Native provider configuration belongs under
+`config/opencode` and authentication/history under `data/opencode` within that directory. Add provider
+keys such as `MOONSHOT_API_KEY` or `OPENROUTER_API_KEY` as sensitive environment rows. Nodex stores
+explicit secrets through system secure storage; it does not import another OpenCode account.
+Native project configuration remains active in the selected execution folder.
+
+OpenCode 1.15.13 is the tested native release. Nodex verifies the native model metadata and
+persisted session permission rules it requires. If the executable or server ignores a requested
+policy or returns unsupported metadata, the connection reports its version and an upgrade hint.
+
+The composer's model menu searches models from every enabled instance. Selecting a model selects
+its instance and exposes only its native variants and primary agents. An optional Server
+URL connects an externally managed OpenCode HTTP(S) endpoint; configure
+`OPENCODE_SERVER_PASSWORD` as a sensitive environment row and optional `OPENCODE_SERVER_USERNAME` when needed. External servers retain their
+own account, configuration and history and do not receive Nodex application tools.
+See [Agent Backend Behavior](product-specs/agent-backend-behavior.md#native-opencode).
+
 ## ACP Agent instances
 
 ACP Agent instances are Profile-local, explicit local-code authorizations. The current Claude

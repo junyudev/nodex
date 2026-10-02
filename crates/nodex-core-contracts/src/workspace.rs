@@ -493,20 +493,42 @@ pub struct ProjectWorkspaceThread {
     pub linked_at: String,
 }
 
-/// Durable protocol-session identity for a non-native Agent Backend. It is
-/// separate from backend instance configuration and may be cleared when a
-/// backend can no longer resume the remote session.
+/// Durable Agent session identity, separate from backend instance settings.
+/// Transcript content remains owned by the Agent runtime.
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize, ToSchema)]
 pub struct ProjectWorkspaceThreadBackendSession {
     pub thread_id: String,
     pub backend_binding: AgentBackendBinding,
     pub backend_session_id: String,
+    /// Runtime-owned history scope: a native Profile or an external server identity.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub native_home: Option<String>,
     pub updated_at: i64,
     /// Host-observed native facts; transcript content remains owned by the Agent.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub native_state: Option<ProjectWorkspaceNativeAgentState>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub runtime_options: Option<ProjectWorkspaceAgentRuntimeOptions>,
+}
+
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize, ToSchema)]
+pub struct ProjectWorkspaceAgentRuntimeOptions {
+    pub model: Option<String>,
+    pub mode_id: Option<String>,
+    pub config_options: Vec<ProjectWorkspaceAgentConfigOption>,
+}
+
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize, ToSchema)]
+pub struct ProjectWorkspaceAgentConfigOption {
+    pub id: String,
+    pub value: ProjectWorkspaceAgentConfigValue,
+}
+
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize, ToSchema)]
+#[serde(untagged)]
+pub enum ProjectWorkspaceAgentConfigValue {
+    String(String),
+    Boolean(bool),
 }
 
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize, ToSchema)]
@@ -546,7 +568,9 @@ pub enum ProjectWorkspaceNativeInteractionMode {
 
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize, ToSchema)]
 pub struct ProjectWorkspaceNativeAgentState {
-    pub preferences: ProjectWorkspaceNativeAgentPreferences,
+    /// Claude preferences; other native runtimes retain their options separately.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub preferences: Option<ProjectWorkspaceNativeAgentPreferences>,
     #[serde(default)]
     pub ever_saved: bool,
     #[serde(default)]
@@ -1431,6 +1455,8 @@ pub enum ProjectWorkspaceIntent {
         expected_backend_session_id: Option<String>,
         #[serde(default, skip_serializing_if = "Option::is_none")]
         native_state: Option<ProjectWorkspaceNativeAgentState>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        runtime_options: Option<ProjectWorkspaceAgentRuntimeOptions>,
     },
     ClearThreadBackendSession {
         thread_id: String,

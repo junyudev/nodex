@@ -292,7 +292,7 @@ export interface AgentHistoryFact {
 }
 
 export interface AgentConversationSnapshot {
-  readonly backend: "acp" | "claude";
+  readonly backend: "acp" | "claude" | "opencode";
   readonly threadId: string;
   readonly sessionId: string;
   readonly status: AgentConversationStatus;
@@ -352,7 +352,7 @@ export type AgentConversationUpdateDelta =
 export interface AgentConversationDelta {
   /** Explicit invalidation: query the exact snapshot rather than apply a partial oversized delta. */
   readonly resync?: true;
-  readonly backend: "acp" | "claude";
+  readonly backend: "acp" | "claude" | "opencode";
   readonly threadId: string;
   readonly sessionId: string;
   readonly baseRevision: number;

@@ -361,6 +361,9 @@ export interface ProjectWorkspaceService {
     readonly nativeHome?: string;
     readonly expectedBackendSessionId?: string;
     readonly nativeState?: NonNullable<DesktopProjectWorkspaceThreadBackendSession["nativeState"]>;
+    readonly runtimeOptions?: NonNullable<
+      DesktopProjectWorkspaceThreadBackendSession["runtimeOptions"]
+    >;
   }) => ProjectWorkspaceEffect<DesktopProjectWorkspaceThreadBackendSession>;
   readonly clearThreadBackendSession: (input: {
     readonly threadId: string;

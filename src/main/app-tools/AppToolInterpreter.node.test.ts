@@ -29,6 +29,7 @@ import { NodexAppToolAuthority } from "./NodexAppToolAuthority";
 import { WorkbenchAgentBridge } from "./WorkbenchAgentBridge";
 import { WorkbenchObservation } from "./WorkbenchObservation";
 import { WorkbenchContentAccess } from "./WorkbenchContentAccess";
+import { createNativeAppToolClaimIssuer } from "./AppToolCaller";
 
 const input: AppToolInvocation = {
   name: "get_session_context",
@@ -162,5 +163,60 @@ it.effect(
           },
         ],
       });
+    }),
+);
+
+it.effect(
+  "native capability reporting retains each backend and accepts only host-issued claims",
+  () =>
+    Effect.gen(function* () {
+      const execute = yield* interpreter();
+      for (const backend of ["claude", "opencode"] as const) {
+        const issuer = createNativeAppToolClaimIssuer({
+          backend,
+          threadId: "thread",
+          hostId: "local",
+          generation: 1,
+          capture: () => Effect.succeed(true),
+        });
+        issuer.beginTurn({
+          threadId: "thread",
+          turnId: "turn",
+          rootThreadId: "thread",
+          actorProjectId: "project",
+          libraryId: "library",
+          storeEpoch: "epoch",
+          frozenAtMs: 1,
+          readOnly: false,
+          scope: "project",
+          source: "project_turn",
+        });
+        const caller = issuer.claim()!;
+        const capabilityCall = { ...input, caller, name: "get_app_capabilities" };
+        const result = yield* execute(capabilityCall);
+        assert.deepInclude(result.structuredContent, {
+          backend,
+          sessionContext: "authorized_session_history",
+          workbenchControl: "unavailable",
+          applicationToolLifetime: "foreground_without_background_tasks",
+          backgroundApplicationTools: "unavailable",
+        });
+        const tools = result.structuredContent?.tools as string[];
+        assert.include(tools, "query_content");
+        assert.include(tools, "send_message_to_session");
+        assert.notInclude(tools, "consume_usage_reset");
+        assert.deepEqual(
+          (yield* execute({ ...capabilityCall, name: "consume_usage_reset" })).structuredContent,
+          { error: { code: "tool_unavailable" } },
+        );
+        assert.deepEqual(
+          (yield* execute({ ...capabilityCall, caller: { ...caller } })).structuredContent,
+          { error: { code: "authority_unavailable" } },
+        );
+        issuer.close();
+        assert.deepEqual((yield* execute(capabilityCall)).structuredContent, {
+          error: { code: "call_withdrawn" },
+        });
+      }
     }),
 );

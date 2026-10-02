@@ -115,14 +115,14 @@ const turnObservations = (turn: AgentConversationTurn, previous?: NativeTurnFact
 export const nativeSelectionFromState = (
   state: DesktopProjectWorkspaceNativeAgentState | null,
 ): ClaudeModelSelection => ({
-  model: state?.preferences.model ?? "default",
-  effort: isClaudeEffortLevel(state?.preferences.effort) ? state.preferences.effort : "default",
-  ...(state?.preferences.fast == null ? {} : { fast: state.preferences.fast }),
-  ...(state?.preferences.thinking == null ? {} : { thinking: state.preferences.thinking }),
-  ...(state?.preferences.context == null ? {} : { context: state.preferences.context }),
+  model: state?.preferences?.model ?? "default",
+  effort: isClaudeEffortLevel(state?.preferences?.effort) ? state.preferences.effort : "default",
+  ...(state?.preferences?.fast == null ? {} : { fast: state.preferences.fast }),
+  ...(state?.preferences?.thinking == null ? {} : { thinking: state.preferences.thinking }),
+  ...(state?.preferences?.context == null ? {} : { context: state.preferences.context }),
 });
 
-/** Persist user choices and outcome facts only; native Claude remains the content authority. */
+/** Persist user choices and outcome facts only; the native runtime remains the content authority. */
 export const nativeStateFromSnapshot = (
   snapshot: AgentConversationSnapshot,
   previous: DesktopProjectWorkspaceNativeAgentState | null,
@@ -147,15 +147,21 @@ export const nativeStateFromSnapshot = (
     });
   }
   const state: DesktopProjectWorkspaceNativeAgentState = {
-    preferences: {
-      model: selected.model,
-      effort: selected.effort,
-      interaction_mode:
-        snapshot.metadata?.requestedMode ?? previous?.preferences.interaction_mode ?? "default",
-      ...(selected.fast === undefined ? {} : { fast: selected.fast }),
-      ...(selected.thinking === undefined ? {} : { thinking: selected.thinking }),
-      ...(selected.context === undefined ? {} : { context: selected.context }),
-    },
+    ...(snapshot.backend === "claude"
+      ? {
+          preferences: {
+            model: selected.model,
+            effort: selected.effort,
+            interaction_mode:
+              snapshot.metadata?.requestedMode ??
+              previous?.preferences?.interaction_mode ??
+              "default",
+            ...(selected.fast === undefined ? {} : { fast: selected.fast }),
+            ...(selected.thinking === undefined ? {} : { thinking: selected.thinking }),
+            ...(selected.context === undefined ? {} : { context: selected.context }),
+          },
+        }
+      : {}),
     ever_saved: everSaved,
     turns: [...facts.values()].slice(-64),
   };

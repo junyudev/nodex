@@ -24,7 +24,7 @@ export interface NativeAgentExecutionLocation {
     | null;
 }
 
-/** Conversation controls shared by native Claude and ACP, independent of either wire protocol. */
+/** Conversation controls shared by native runtimes and ACP, independent of their wire protocols. */
 export interface AgentSessionHandle {
   readonly threadId: string;
   readonly sessionId: string | null;

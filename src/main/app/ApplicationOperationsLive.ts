@@ -1,3 +1,5 @@
+import { nodeLive as openCodeSdkLive } from "../platform/node/OpenCodeSdk";
+import { live as openCodeSessionManagerLive } from "../agent-backend/opencode/OpenCodeSessionManager";
 import { live as claudeSdkLive } from "../platform/node/ClaudeSdk";
 import { live as claudeSessionManagerLive } from "../agent-backend/claude/ClaudeSessionManager";
 import * as Effect from "effect/Effect";
@@ -85,9 +87,10 @@ const projectArchiveBlockers = projectArchiveBlockersLive.pipe(
   Layer.provideMerge(backgroundProcesses),
 );
 const acpPlatform = Layer.merge(acpAgentLaunchProbeLive, acpSessionTransportLive);
-const agentSessions = Layer.merge(
+const agentSessions = Layer.mergeAll(
   acpBackendSessionManagerLive.pipe(Layer.provideMerge(acpPlatform)),
   claudeSessionManagerLive.pipe(Layer.provideMerge(claudeSdkLive)),
+  openCodeSessionManagerLive.pipe(Layer.provideMerge(openCodeSdkLive)),
 );
 const projectLifecycle = projectLifecycleCommandsLive.pipe(
   Layer.provideMerge(Layer.merge(projectArchiveBlockers, agentSessions)),

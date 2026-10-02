@@ -1,5 +1,4 @@
 import { isDeepStrictEqual } from "node:util";
-import type { Options } from "@anthropic-ai/claude-agent-sdk";
 import * as Context from "effect/Context";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
@@ -18,6 +17,7 @@ import { acquireAppToolPipe, type AppToolPipeError } from "../platform/node/Node
 import { AppToolInvocationInbox } from "./AppToolInvocationInbox";
 import { createNativeAppToolClaimIssuer } from "./AppToolCaller";
 import { toolFailure } from "./app-tool-result";
+import type { NativeAgentBackendKind } from "../../shared/agent-backend";
 
 const commonNames = new Set([
   "load_workspace_dependencies",
@@ -44,7 +44,17 @@ export const isNativeAppTool = (name: string): boolean => nativeNames.has(name);
 export interface NativeAppToolSessionLease {
   readonly launchContext: {
     readonly systemPromptAppend: string;
-    readonly mcpServers: Options["mcpServers"];
+    readonly mcpServers: Readonly<
+      Record<
+        string,
+        {
+          readonly type: "stdio";
+          readonly command: string;
+          readonly args: string[];
+          readonly env: Record<string, string>;
+        }
+      >
+    >;
   };
   readonly beginTurn: (authority: FrozenNodexAgentTurnAuthority) => Effect.Effect<boolean>;
   readonly endTurn: (turnId: string) => void;
@@ -56,6 +66,7 @@ export class NativeAppToolSession extends Context.Service<
   NativeAppToolSession,
   {
     readonly acquire: (input: {
+      readonly backend: NativeAgentBackendKind;
       readonly threadId: string;
       readonly hostId: string;
       readonly generation: number;

@@ -1,3 +1,4 @@
+import type { AgentModelCatalog, AgentModelCatalogInput } from "../../shared/agent-model-catalog";
 import type { AgentInteractionResponse } from "../../shared/agent-conversation";
 import type {
   AgentBackendAuthenticateInput,
@@ -144,6 +145,10 @@ const nativeTitleCommand = defineRendererCommand({
 });
 
 export interface AgentBackendRuntime {
+  readonly modelCatalog: (
+    input: AgentModelCatalogInput,
+    signal?: AbortSignal,
+  ) => Promise<AgentModelCatalog>;
   readonly readPermissionMode: (projectId: string | null) => Promise<NativePermissionMode>;
   readonly setPermissionMode: (
     projectId: string | null,
@@ -213,6 +218,29 @@ export const agentBackendRuntime: AgentBackendRuntime = {
     invokeRendererQuery("agent-backend:permission-mode:get", projectId),
   setPermissionMode: (projectId, mode) =>
     invokePlainCommand(nativePermissionCommand, projectId, mode),
+  modelCatalog: async (input, signal) => {
+    if (signal?.aborted) throw new DOMException("Model discovery cancelled", "AbortError");
+    const requestId = createUuidV7();
+    let rejectCancellation: ((reason: unknown) => void) | undefined;
+    const cancellation = new Promise<never>((_resolve, reject) => {
+      rejectCancellation = reject;
+    });
+    const cancel = () => {
+      void invokeRendererControl("agent-backend:model-catalog:cancel", { requestId }).catch(
+        () => {},
+      );
+      rejectCancellation?.(new DOMException("Model discovery cancelled", "AbortError"));
+    };
+    signal?.addEventListener("abort", cancel, { once: true });
+    try {
+      return await Promise.race([
+        invokeRendererQuery("agent-backend:model-catalog:read", { ...input, requestId }),
+        cancellation,
+      ]);
+    } finally {
+      signal?.removeEventListener("abort", cancel);
+    }
+  },
   claudeDiscovery: async (input, signal) => {
     if (signal?.aborted) throw new DOMException("Claude discovery cancelled", "AbortError");
     const requestId = createUuidV7();

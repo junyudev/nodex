@@ -2136,6 +2136,7 @@ it.effect(
     Effect.gen(function* () {
       const f = yield* fixture();
       const issuer = createNativeAppToolClaimIssuer({
+        backend: "claude",
         threadId: "thread-1",
         hostId: "local",
         generation: 1,

@@ -62,3 +62,27 @@ test("changing a model retains advertised Context and clears an incompatible ove
   expect(selectNativeModel(selection, "source", "high", options).context).toBe("1m");
   expect(selectNativeModel(selection, "default", "default", options).context).toBe("1m");
 });
+
+test("model changes preserve native Fast and Thinking only where the selected model supports them", () => {
+  const selection = { model: "source", effort: "high", fast: true, thinking: false } as const;
+  const options = [
+    {
+      value: "supported",
+      name: "Supported",
+      description: null,
+      fastMode: true,
+      disableThinking: true,
+    },
+    { value: "limited", name: "Limited", description: null, fastMode: false },
+  ];
+  expect(selectNativeModel(selection, "supported", "default", options)).toEqual({
+    ...selection,
+    model: "supported",
+    effort: "default",
+  });
+  expect(selectNativeModel(selection, "limited", "default", options)).toEqual({
+    model: "limited",
+    effort: "default",
+    fast: false,
+  });
+});

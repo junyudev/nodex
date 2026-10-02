@@ -34,6 +34,7 @@ import { sessionPresentationSchemas } from "../../shared/nodex-app-tools/session
 import { isNativeAppTool, nativeAppToolCatalog } from "./NativeAppToolSession";
 import { captureAppToolAuthority } from "./AppToolCaller";
 import { CodexTurnAuthority } from "../codex-application/CodexTurnAuthority";
+import { isNativeAgentBackendKind } from "../../shared/agent-backend";
 
 export const make = Effect.gen(function* () {
   const workspace = yield* ProjectWorkspace;
@@ -58,12 +59,9 @@ export const make = Effect.gen(function* () {
     input: AppToolInvocation,
   ): Effect.fn.Return<CallToolResult> {
     if (!input.caller.isActive()) return failure("call_withdrawn");
-    if (input.caller.backend === "claudeCode" && !isNativeAppTool(input.name))
-      return failure("tool_unavailable");
-    if (
-      input.caller.backend === "claudeCode" &&
-      !(yield* captureAppToolAuthority(input.caller, turns))
-    )
+    const native = isNativeAgentBackendKind(input.caller.backend);
+    if (native && !isNativeAppTool(input.name)) return failure("tool_unavailable");
+    if (native && !(yield* captureAppToolAuthority(input.caller, turns)))
       return failure("authority_unavailable");
     if (!appToolCatalog.some((tool) => tool.name === input.name)) return failure("unknown_tool");
     if (input.name === "load_workspace_dependencies") return yield* dependencyTools(input);
@@ -116,22 +114,16 @@ export const make = Effect.gen(function* () {
     if (input.name === "send_message_to_session") return yield* sessionMessageTools(input);
     if (input.name === "get_app_capabilities")
       return success({
-        backend: input.caller.backend === "claudeCode" ? "claude" : "codex",
+        backend: input.caller.backend ?? "codex",
         transport: "native_mcp",
         hostId: input.caller.hostId,
-        tools: (input.caller.backend === "claudeCode" ? nativeAppToolCatalog : appToolCatalog).map(
-          (tool) => tool.name,
-        ),
-        sessionContext:
-          input.caller.backend === "claudeCode"
-            ? "authorized_session_history"
-            : "authorized_workbench_observation",
+        tools: (native ? nativeAppToolCatalog : appToolCatalog).map((tool) => tool.name),
+        sessionContext: native ? "authorized_session_history" : "authorized_workbench_observation",
         contentAccess: "project_sql",
-        workbenchControl:
-          input.caller.backend === "claudeCode" ? "unavailable" : "revision_fenced_commands",
+        workbenchControl: native ? "unavailable" : "revision_fenced_commands",
         publicSharing: "unavailable",
         pullRequestAttachment: "unavailable",
-        ...(input.caller.backend === "claudeCode"
+        ...(native
           ? {
               applicationToolLifetime: "foreground_without_background_tasks",
               backgroundApplicationTools: "unavailable",

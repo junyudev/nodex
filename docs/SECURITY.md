@@ -202,6 +202,18 @@ CI` push run. The privileged release `workflow_run` additionally validates the
   on completion, stop, or close; renderer input cannot name an arbitrary tool or replace its input.
   Native tools do not inherit Codex-only Nodex application/desktop capabilities.
 
+- Native OpenCode instances use a user-managed executable and the pinned SDK transport.
+  Each local connection has an isolated native profile and Thread-scoped server; provider
+  credentials and history stay in that profile. Profile-owned environment variables are
+  launcher-controlled, inherited OpenCode configuration and authentication overrides are removed,
+  and explicit environment secrets follow the same encrypted-reference contract as Claude.
+  Native repository configuration and plugins execute inside the local-code trust boundary.
+  External HTTP(S) servers are explicit instance configuration, receive only explicit server
+  credentials, and never receive Nodex application-tool leases. Native permission and question
+  replies authorize only a pending request in the owning session or its verified descendants.
+  Discovery and session restoration resolve the exact Core workspace and native owner in Main;
+  a missing session or changed profile cannot silently create a replacement conversation.
+
 - ACP Agent definitions are compatibility allowlists, not supply-chain attestations. The current
   Claude Agent integration launches only an explicitly enabled, user-managed absolute package root
   and Node executable after canonical path, entry containment, package/version, executable-version,

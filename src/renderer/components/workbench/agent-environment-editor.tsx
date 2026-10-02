@@ -1,31 +1,35 @@
 import { useId, useState, type ClipboardEvent } from "react";
-import {
-  CLAUDE_ENVIRONMENT_LIMIT,
-  ENVIRONMENT_VALUE_LIMIT,
-} from "../../../shared/claude-agent-settings";
+import { ENVIRONMENT_VALUE_LIMIT } from "../../../shared/agent-environment";
 import {
   environmentAssignmentPaste,
   environmentIsSensitive,
   mergeEnvironmentPaste,
   parseEnvironmentAssignments,
-  type ClaudeEnvironmentDraft,
-} from "../../lib/claude-environment-editor";
+  type AgentEnvironmentDraft,
+  type AgentEnvironmentPolicy,
+} from "../../lib/agent-environment-editor";
 import { Input } from "../ui/input";
 import { NodexButton } from "../ui/button";
 import { NodexCheckbox, NodexSettingsRow } from "../ui/settings";
 
-export function ClaudeEnvironmentEditor({
+const emptySuggestedNames: readonly string[] = [];
+
+export function AgentEnvironmentEditor({
   rows,
   disabled,
   onChange,
+  policy,
+  suggestedNames = emptySuggestedNames,
 }: {
-  readonly rows: readonly ClaudeEnvironmentDraft[];
+  readonly rows: readonly AgentEnvironmentDraft[];
   readonly disabled: boolean;
-  readonly onChange: (rows: ClaudeEnvironmentDraft[]) => void;
+  readonly onChange: (rows: AgentEnvironmentDraft[]) => void;
+  readonly policy: AgentEnvironmentPolicy;
+  readonly suggestedNames?: readonly string[];
 }) {
   const namesId = useId();
   const [error, setError] = useState<string | null>(null);
-  const update = (id: string, patch: Partial<ClaudeEnvironmentDraft>) => {
+  const update = (id: string, patch: Partial<AgentEnvironmentDraft>) => {
     setError(null);
     onChange(rows.map((row) => (row.id === id ? { ...row, ...patch } : row)));
   };
@@ -33,14 +37,14 @@ export function ClaudeEnvironmentEditor({
     const text = event.clipboardData.getData("text/plain");
     if (!environmentAssignmentPaste(text, allowBareAssignment)) return;
     event.preventDefault();
-    const parsed = parseEnvironmentAssignments(text);
+    const parsed = parseEnvironmentAssignments(text, policy);
     if (parsed.error !== undefined) {
       setError(parsed.error);
       return;
     }
     const next = mergeEnvironmentPaste(rows, parsed.variables);
-    if (next.length > CLAUDE_ENVIRONMENT_LIMIT) {
-      setError(`Use at most ${CLAUDE_ENVIRONMENT_LIMIT} variables.`);
+    if (next.length > policy.limit) {
+      setError(`Use at most ${policy.limit} variables.`);
       return;
     }
     setError(null);
@@ -48,14 +52,11 @@ export function ClaudeEnvironmentEditor({
   };
   return (
     <div>
-      <NodexSettingsRow
-        label="Environment variables"
-        description="Paste KEY=value or export lines. Applies when Claude next connects."
-      >
+      <NodexSettingsRow label="Environment variables">
         <NodexButton
           size="sm"
           variant="secondary"
-          disabled={disabled || rows.length >= CLAUDE_ENVIRONMENT_LIMIT}
+          disabled={disabled || rows.length >= policy.limit}
           onClick={() =>
             onChange([...rows, { id: crypto.randomUUID(), name: "", value: "", sensitive: true }])
           }
@@ -64,15 +65,7 @@ export function ClaudeEnvironmentEditor({
         </NodexButton>
       </NodexSettingsRow>
       <datalist id={namesId}>
-        {[
-          "ANTHROPIC_BASE_URL",
-          "ANTHROPIC_AUTH_TOKEN",
-          "ANTHROPIC_API_KEY",
-          "ANTHROPIC_MODEL",
-          "ANTHROPIC_DEFAULT_SONNET_MODEL",
-          "ANTHROPIC_DEFAULT_OPUS_MODEL",
-          "ANTHROPIC_DEFAULT_HAIKU_MODEL",
-        ].map((name) => (
+        {suggestedNames.map((name) => (
           <option key={name} value={name} />
         ))}
       </datalist>

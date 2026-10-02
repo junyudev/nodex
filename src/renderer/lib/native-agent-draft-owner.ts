@@ -1,8 +1,25 @@
 import type { ClaudeModelSelection } from "../../shared/claude-models";
+import type { AgentModelSelection } from "../../shared/agent-model-catalog";
+import type { AgentBackendBinding } from "../../shared/agent-backend";
+
+export const nativeAgentDraftKey = (
+  sessionId: string,
+  projectId: string | null,
+  binding: Exclude<AgentBackendBinding, { kind: "codex" }> | null,
+): string =>
+  JSON.stringify([
+    sessionId,
+    projectId,
+    binding?.kind,
+    binding?.instanceConfigId,
+    ...(binding?.kind === "acp" ? [binding.agentDefinitionId] : []),
+  ]);
 
 export interface NativeAgentDraft {
   readonly selection: ClaudeModelSelection;
   readonly mode: "default" | "plan";
+  readonly options?: AgentModelSelection["options"];
+  readonly modeId?: string;
 }
 const defaultDraft: NativeAgentDraft = {
   selection: { model: "default", effort: "default" },

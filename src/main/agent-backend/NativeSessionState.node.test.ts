@@ -51,7 +51,7 @@ it("retains inherited intent instead of persisting a native effective model", ()
     effort: "high",
     fast: false,
   });
-  expect(state.preferences.interaction_mode).toBe("plan");
+  expect(state.preferences?.interaction_mode).toBe("plan");
   expect(state.ever_saved).toBe(false);
 });
 
@@ -244,4 +244,40 @@ it("retains the newest facts within Core's total serialized byte budget", () => 
   expect(Buffer.byteLength(JSON.stringify(state), "utf8")).toBeLessThanOrEqual(262144);
   expect(state.turns?.at(-1)?.client_user_message_id).toBe("client-63");
   expect(state.turns?.length).toBeLessThan(64);
+});
+
+it("keeps OpenCode terminal facts without Claude preferences or transcript content", () => {
+  const snapshot = emptyAgentConversationSnapshot({
+    backend: "opencode",
+    threadId: "task",
+    sessionId: "session",
+  });
+  const state = nativeStateFromSnapshot(
+    {
+      ...snapshot,
+      turns: [
+        {
+          sequence: 1,
+          clientUserMessageId: "client",
+          nativeUserMessageId: "native",
+          promptText: "Private prompt",
+          updates: [],
+          stopReason: "cancelled",
+        },
+      ],
+    },
+    null,
+    true,
+  );
+  expect(state.preferences).toBeUndefined();
+  expect(state.ever_saved).toBe(true);
+  expect(nativeHistoryFacts(state)).toEqual([
+    {
+      clientUserMessageId: "client",
+      nativeUserMessageId: "native",
+      stopReason: "cancelled",
+      error: undefined,
+    },
+  ]);
+  expect(state.turns?.[0]).not.toHaveProperty("promptText");
 });

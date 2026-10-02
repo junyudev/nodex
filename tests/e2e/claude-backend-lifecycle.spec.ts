@@ -1,4 +1,9 @@
 import { expect, test, type Locator, type Page } from "@playwright/test";
+import {
+  chooseComposerModel,
+  openComposerModelPicker,
+  openComposerOptionControl,
+} from "./support/composer-model-picker";
 import { execFileSync } from "node:child_process";
 import { existsSync, mkdirSync, readFileSync, realpathSync, writeFileSync } from "node:fs";
 import path from "node:path";
@@ -49,7 +54,8 @@ const chevronGeometry = async (trigger: Locator) =>
     });
 
 test("runs Claude in the selected worktree environment and restores its native conversation and controls after restart", async () => {
-  test.setTimeout(120_000);
+  // Two isolated cold startups have their own 60s readiness deadline, in addition to the workflow.
+  test.setTimeout(180_000);
   const harness = await ElectronScenarioHarness.create({
     label: "claude-backend-lifecycle",
     environment: {
@@ -143,8 +149,9 @@ test("runs Claude in the selected worktree environment and restores its native c
     });
     await page.getByRole("button", { name: "Settings", exact: true }).click();
     await page.getByRole("link", { name: "Agent", exact: true }).click();
-    await page.getByRole("button", { name: "Add variable", exact: true }).click();
-    await page.getByLabel("Variable name 1").evaluate((element) => {
+    const claudeSettings = page.getByRole("region", { name: "Claude Code", exact: true });
+    await claudeSettings.getByRole("button", { name: "Add variable", exact: true }).click();
+    await claudeSettings.getByLabel("Variable name 1").evaluate((element) => {
       const clipboardData = new DataTransfer();
       clipboardData.setData(
         "text/plain",
@@ -154,14 +161,13 @@ test("runs Claude in the selected worktree environment and restores its native c
         new ClipboardEvent("paste", { clipboardData, bubbles: true, cancelable: true }),
       );
     });
-    await expect(page.getByLabel("Variable value 1")).toHaveValue("https://router.example/");
-    await expect(page.getByLabel("Variable value 2")).toHaveAttribute("type", "password");
-    await page
-      .getByLabel("Agent backends", { exact: true })
-      .getByRole("button", { name: "Save", exact: true })
-      .click();
-    await expect(page.getByLabel("Variable value 2")).toHaveValue("");
-    await expect(page.getByLabel("Variable value 2")).toHaveAttribute(
+    await expect(claudeSettings.getByLabel("Variable value 1")).toHaveValue(
+      "https://router.example/",
+    );
+    await expect(claudeSettings.getByLabel("Variable value 2")).toHaveAttribute("type", "password");
+    await claudeSettings.getByRole("button", { name: "Save", exact: true }).click();
+    await expect(claudeSettings.getByLabel("Variable value 2")).toHaveValue("");
+    await expect(claudeSettings.getByLabel("Variable value 2")).toHaveAttribute(
       "placeholder",
       "Saved secret — enter to replace",
     );
@@ -204,9 +210,7 @@ test("runs Claude in the selected worktree environment and restores its native c
     const startIn = page.getByRole("button", { name: "Start in", exact: true });
     await expect(startIn).toHaveText("Work locally");
     const codexChevron = await chevronGeometry(startIn);
-    await page.getByRole("button", { name: "Select model", exact: true }).click();
-    await page.getByRole("menuitem", { name: "Agent Codex", exact: true }).hover();
-    await page.getByRole("menuitem", { name: "Claude Code", exact: true }).click();
+    await chooseComposerModel(page, "claude-opus-5 Claude Code");
     await page.keyboard.press("Escape");
     await page.keyboard.press("Escape");
     await expect(startIn).toBeEnabled();
@@ -225,35 +229,31 @@ test("runs Claude in the selected worktree environment and restores its native c
       contentType: "application/json",
     });
     await expect(composer).toHaveText("Native Claude lifecycle");
-    await page.getByRole("button", { name: "Select model", exact: true }).click();
-    await page.getByRole("menuitem", { name: "Model Claude Opus 5", exact: true }).hover();
-    const sonnet = page.getByRole("menuitem", {
-      name: /Claude Sonnet 5\.5\s*claude-sonnet-5-5/u,
-      exact: true,
-    });
+    await openComposerModelPicker(page);
+    const sonnet = page.getByRole("option", { name: /Claude Sonnet 5\.5.*Claude Code/u });
     await expect(sonnet).toBeVisible();
-    await expect(page.getByRole("menuitem", { name: "Default", exact: true })).toHaveCount(0);
+    await expect(page.getByRole("option", { name: "Default", exact: true })).toHaveCount(0);
     await page.screenshot({ path: test.info().outputPath("claude-model-picker.png") });
     await page.keyboard.press("Escape");
-    await page.getByRole("menuitem", { name: "Effort High", exact: true }).hover();
+    await openComposerOptionControl(page, "Effort");
     await expect(page.getByRole("menuitem", { name: "Max", exact: true })).toBeVisible();
     await expect(page.getByRole("menuitem", { name: "Default", exact: true })).toHaveCount(0);
     await page.screenshot({ path: test.info().outputPath("claude-effort-picker.png") });
     await page.getByRole("menuitem", { name: "Max", exact: true }).click();
-    await expect(page.getByRole("menuitem", { name: "Effort Max", exact: true })).toBeVisible();
+    await expect(page.getByRole("button", { name: "Effort Max", exact: true })).toBeVisible();
     await page.keyboard.press("Escape");
-    await page.getByRole("menuitem", { name: "Speed Standard", exact: true }).hover();
+    await openComposerOptionControl(page, "Speed");
     await expect(page.getByRole("menuitem", { name: "Standard", exact: true })).toBeVisible();
     await page.screenshot({
       animations: "disabled",
       path: test.info().outputPath("claude-speed-picker.png"),
     });
     await page.getByRole("menuitem", { name: "Fast", exact: true }).click();
-    await expect(page.getByRole("menuitem", { name: "Speed Fast", exact: true })).toBeVisible();
+    await expect(page.getByRole("button", { name: "Speed Fast", exact: true })).toBeVisible();
     await expect(page.getByRole("menuitem", { name: "Default", exact: true })).toHaveCount(0);
     await page.keyboard.press("Escape");
     await page.keyboard.press("Escape");
-    await expect(page.getByRole("menuitem", { name: "Speed Fast", exact: true })).toHaveCount(0);
+    await expect(page.getByRole("button", { name: "Speed Fast", exact: true })).toHaveCount(0);
     await expect(startIn).toHaveText("Work locally");
     await expect(startIn).toBeEnabled();
     await startIn.click();
@@ -438,14 +438,13 @@ test("runs Claude in the selected worktree environment and restores its native c
           .at(-1),
       )
       .toMatchObject({ permissionMode: "default" });
-    await page.getByRole("button", { name: "Select model", exact: true }).click();
-    await page.getByRole("menuitem", { name: "Effort Max", exact: true }).hover();
+    await openComposerOptionControl(page, "Effort");
     await page.getByRole("menuitem", { name: "Off", exact: true }).click();
-    await expect(page.getByRole("menuitem", { name: "Effort Off", exact: true })).toBeVisible();
+    await expect(page.getByRole("button", { name: "Effort Off", exact: true })).toBeVisible();
     await page.keyboard.press("Escape");
-    await page.getByRole("menuitem", { name: "Speed Fast", exact: true }).hover();
+    await openComposerOptionControl(page, "Speed");
     await page.getByRole("menuitem", { name: "Standard", exact: true }).click();
-    await expect(page.getByRole("menuitem", { name: "Speed Standard", exact: true })).toBeVisible();
+    await expect(page.getByRole("button", { name: "Speed Standard", exact: true })).toBeVisible();
     await page.keyboard.press("Escape");
     await page.keyboard.press("Escape");
     await composer.fill("Verify thinking disabled");
@@ -465,10 +464,9 @@ test("runs Claude in the selected worktree environment and restores its native c
       thinking: false,
       fast: false,
     });
-    await page.getByRole("button", { name: "Select model", exact: true }).click();
-    await page.getByRole("menuitem", { name: "Effort Off", exact: true }).hover();
+    await openComposerOptionControl(page, "Effort");
     await page.getByRole("menuitem", { name: "Medium", exact: true }).click();
-    await expect(page.getByRole("menuitem", { name: "Effort Medium", exact: true })).toBeVisible();
+    await expect(page.getByRole("button", { name: "Effort Medium", exact: true })).toBeVisible();
     await page.keyboard.press("Escape");
     await page.keyboard.press("Escape");
     await composer.fill("Verify thinking enabled");
@@ -484,14 +482,13 @@ test("runs Claude in the selected worktree environment and restores its native c
       thinking: true,
       permissionMode: "default",
     });
-    await page.getByRole("button", { name: "Select model", exact: true }).click();
-    await page.getByRole("menuitem", { name: "Model Claude Opus 5", exact: true }).hover();
+    await openComposerModelPicker(page);
     await sonnet.click();
-    await expect(
-      page.getByRole("menuitem", { name: "Model Claude Sonnet 5.5", exact: true }),
-    ).toBeVisible();
+    await expect(page.getByRole("button", { name: "Select model", exact: true })).toContainText(
+      "Claude Sonnet 5.5",
+    );
     await page.keyboard.press("Escape");
-    await page.getByRole("menuitem", { name: "Effort Medium", exact: true }).hover();
+    await openComposerOptionControl(page, "Effort");
     await expect(page.getByRole("menuitem", { name: "Off", exact: true })).toHaveCount(0);
     await expect(page.getByRole("menuitem", { name: "Max", exact: true })).toHaveCount(0);
     await expect(page.getByRole("menuitem", { name: "Extra High", exact: true })).toHaveCount(0);

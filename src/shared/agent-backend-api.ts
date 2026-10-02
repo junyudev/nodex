@@ -19,11 +19,13 @@ export interface AgentBackendSessionOpenInput {
 export interface AgentBackendThreadStartInput {
   readonly sessionId: string;
   readonly instanceConfigId: string;
-  readonly backendKind: "acp" | "claude";
+  readonly backendKind: "acp" | "claude" | "opencode";
   readonly model?: string;
   readonly effort?: ClaudeEffortSelection;
   readonly selection?: ClaudeModelSelection;
   readonly mode?: "default" | "plan";
+  readonly modeId?: string;
+  readonly configOptions?: readonly { readonly id: string; readonly value: string | boolean }[];
   readonly runInTarget?: Exclude<PageRunInTarget, "cloud">;
   readonly runInEnvironmentPath?: string | null;
   readonly worktreeStartingState?: CodexPendingWorktreeStartingState;

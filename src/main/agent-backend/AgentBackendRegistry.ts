@@ -1,3 +1,4 @@
+import type { OpenCodeAgentInstanceConfig } from "../../shared/opencode-agent-settings";
 import * as Context from "effect/Context";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
@@ -16,6 +17,12 @@ import {
 type SupportedAcpAgentDefinition = (typeof ACP_AGENT_DEFINITIONS)[number];
 
 export type AgentBackendResolution =
+  | {
+      readonly kind: "opencode";
+      readonly binding: Extract<AgentBackendBinding, { kind: "opencode" }>;
+      readonly displayName: string;
+      readonly instance: OpenCodeAgentInstanceConfig;
+    }
   | {
       readonly kind: "claude";
       readonly binding: Extract<AgentBackendBinding, { kind: "claude" }>;
@@ -55,7 +62,7 @@ export class AgentBackendRegistryError extends Schema.TaggedError<AgentBackendRe
   {
     message: Schema.String,
     reason: AgentBackendRegistryFailureReason,
-    backendKind: Schema.Literals(["codex", "acp", "claude"]),
+    backendKind: Schema.Literals(["codex", "acp", "claude", "opencode"]),
     agentDefinitionId: Schema.optionalKey(Schema.String),
     instanceConfigId: Schema.optionalKey(Schema.String),
     cause: Schema.optionalKey(Schema.Defect()),
@@ -84,7 +91,7 @@ const unavailable = (
 /** Resolves supported metadata and explicit Profile configuration; it never starts a process. */
 export const resolveAgentBackendBinding = (
   binding: AgentBackendBinding,
-  settings: Pick<ApplicationSettingsSnapshot, "acpAgents" | "claudeAgents">,
+  settings: Pick<ApplicationSettingsSnapshot, "acpAgents" | "claudeAgents" | "openCodeAgents">,
 ): AgentBackendResolution | AgentBackendRegistryError => {
   if (binding.kind === "codex") {
     return { kind: "codex", binding, displayName: "Codex" };
@@ -98,6 +105,16 @@ export const resolveAgentBackendBinding = (
     if (!instance.enabled)
       return unavailable(binding, "instance-disabled", "Claude instance is disabled");
     return { kind: "claude", binding, displayName: instance.displayName, instance };
+  }
+  if (binding.kind === "opencode") {
+    const instance = settings.openCodeAgents.instances.find(
+      ({ id }) => id === binding.instanceConfigId,
+    );
+    if (!instance)
+      return unavailable(binding, "instance-unavailable", "OpenCode instance is unavailable");
+    if (!instance.enabled)
+      return unavailable(binding, "instance-disabled", "OpenCode instance is disabled");
+    return { kind: "opencode", binding, displayName: instance.displayName, instance };
   }
   const definition = ACP_AGENT_DEFINITIONS.find(({ id }) => id === binding.agentDefinitionId);
   if (definition === undefined) {

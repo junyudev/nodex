@@ -1,4 +1,5 @@
 import { ClaudeAgentSettingsControl } from "./claude-agent-settings-control";
+import { OpenCodeAgentSettingsControl } from "./opencode-agent-settings-control";
 import { CodexHomeSettingsControl } from "./codex-home-settings-control";
 import { RecoveryEntry } from "@/features/document-recovery/recovery-entry";
 import { useLibraryMetadata } from "@/lib/use-library-navigation";
@@ -367,8 +368,20 @@ export function AgentSettingsPage({ activeProjectId, open }: SettingsSectionPage
       : false;
 
   return (
-    <SettingsPageSurface title="Agent" subtitle="Configuration and raw config.toml settings.">
-      <SectionBlock title="Configuration">
+    <SettingsPageSurface title="Agents">
+      <SectionBlock title="OpenCode">
+        <OpenCodeAgentSettingsControl open={open} />
+      </SectionBlock>
+
+      <SectionBlock title="Claude Code">
+        <ClaudeAgentSettingsControl open={open} />
+      </SectionBlock>
+
+      <SectionBlock title="ACP">
+        <AcpAgentSettingsControl open={open} />
+      </SectionBlock>
+
+      <SectionBlock title="Codex">
         <CodexHomeSettingsControl open={open} />
         <SettingRow
           label="Approval policy"
@@ -433,11 +446,6 @@ export function AgentSettingsPage({ activeProjectId, open }: SettingsSectionPage
             Reveal
           </NodexButton>
         </SettingRow>
-      </SectionBlock>
-
-      <SectionBlock title="Agent backends">
-        <ClaudeAgentSettingsControl open={open} />
-        <AcpAgentSettingsControl open={open} />
       </SectionBlock>
 
       {error ? <div className="text-sm text-[var(--red-text)]">{error}</div> : null}

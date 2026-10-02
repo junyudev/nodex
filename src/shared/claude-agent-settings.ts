@@ -1,9 +1,16 @@
 import { z } from "zod";
 import { CLAUDE_EFFORT_LEVELS } from "./claude-models";
 
-export const CLAUDE_ENVIRONMENT_LIMIT = 64;
-export const ENVIRONMENT_VALUE_LIMIT = 32_768;
-export const ENVIRONMENT_NAME_PATTERN = /^[A-Za-z_][A-Za-z0-9_]*$/u;
+import {
+  AGENT_ENVIRONMENT_LIMIT,
+  ENVIRONMENT_NAME_PATTERN,
+  createAgentEnvironmentInputSchema,
+  AgentEnvironmentValueSchema,
+  type AgentEnvironmentInput,
+  type AgentEnvironmentVariable,
+} from "./agent-environment";
+export { ENVIRONMENT_VALUE_LIMIT, ENVIRONMENT_NAME_PATTERN } from "./agent-environment";
+export const CLAUDE_ENVIRONMENT_LIMIT = AGENT_ENVIRONMENT_LIMIT;
 
 // Account location has one authority; nested-session markers belong to the launcher.
 const RESERVED_ENVIRONMENT_NAMES = new Set([
@@ -30,31 +37,12 @@ export const ClaudeEnvironmentNameSchema = z
     const message = claudeEnvironmentNameError(name);
     if (message) context.addIssue({ code: "custom", message });
   });
-export const ClaudeEnvironmentValueSchema = z
-  .string()
-  .max(ENVIRONMENT_VALUE_LIMIT)
-  .refine((value) => !value.includes("\0"), "Environment values cannot contain a null character.");
-export const ClaudeEnvironmentInputSchema = z.discriminatedUnion("sensitive", [
-  z
-    .object({
-      name: ClaudeEnvironmentNameSchema,
-      sensitive: z.literal(false),
-      value: ClaudeEnvironmentValueSchema,
-    })
-    .strict(),
-  z
-    .object({
-      name: ClaudeEnvironmentNameSchema,
-      sensitive: z.literal(true),
-      value: ClaudeEnvironmentValueSchema.nullable(),
-    })
-    .strict(),
-]);
-export type ClaudeEnvironmentInput = z.infer<typeof ClaudeEnvironmentInputSchema>;
-/** Null means retain the saved secret on update. Plaintext secrets never appear in reads. */
-export type ClaudeEnvironmentVariable =
-  | { name: string; sensitive: false; value: string }
-  | { name: string; sensitive: true; value: null };
+export const ClaudeEnvironmentValueSchema = AgentEnvironmentValueSchema;
+export const ClaudeEnvironmentInputSchema = createAgentEnvironmentInputSchema(
+  claudeEnvironmentNameError,
+);
+export type ClaudeEnvironmentInput = AgentEnvironmentInput;
+export type ClaudeEnvironmentVariable = AgentEnvironmentVariable;
 
 export const ClaudeModelTraitsSchema = z
   .object({

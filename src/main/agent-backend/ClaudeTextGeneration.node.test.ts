@@ -20,6 +20,7 @@ const setup = (output: unknown) => {
     service: make.pipe(
       Effect.provideService(MainConfig, { environment: { HOME: "/user", PATH: "/bin" } } as never),
       Effect.provideService(ApplicationSettings, {
+        openCodeLaunchConfiguration: () => Effect.die("Unused OpenCode launch configuration"),
         claudeLaunchConfiguration: (instanceId: string) =>
           Effect.sync(() => {
             instances.push(instanceId);

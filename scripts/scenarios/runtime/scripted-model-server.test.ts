@@ -3,6 +3,10 @@ import { zstdCompressSync } from "node:zlib";
 import { WebSocket } from "ws";
 
 import { describe, expect, test } from "vite-plus/test";
+import {
+  CODEX_THREAD_TITLE_OUTPUT_SCHEMA,
+  parseGeneratedThreadMetadataResponse,
+} from "../../../src/main/codex/thread-title-generator";
 
 import {
   responses,
@@ -325,7 +329,7 @@ describe("ScriptedModelServer", () => {
         ).status;
 
       expect(
-        await request("system", [
+        await request("thread_title", [
           {
             type: "message",
             role: "user",
@@ -334,6 +338,50 @@ describe("ScriptedModelServer", () => {
         ]),
       ).toBe(200);
       expect(await request("guardian_review", [], "guardian")).toBe(200);
+    });
+  });
+
+  test("returns valid structured metadata for a native WebSocket title request", async () => {
+    await withScriptedModelServer({ exchanges: [] }, async (server) => {
+      const webSocket = new WebSocket(`${server.baseUrl.replace("http", "ws")}/v1/responses`);
+      try {
+        await new Promise<void>((resolve) => webSocket.once("open", resolve));
+        const events = await sendWebSocketRequest(webSocket, {
+          type: "response.create",
+          model: "gpt-5.6-luna",
+          client_metadata: {
+            "x-codex-turn-metadata": JSON.stringify({
+              thread_source: "thread_title",
+              turn_trigger: "thread_title",
+            }),
+          },
+          text: {
+            format: {
+              type: "json_schema",
+              name: "codex_output_schema",
+              strict: true,
+              schema: CODEX_THREAD_TITLE_OUTPUT_SCHEMA,
+            },
+          },
+          input: [
+            {
+              type: "message",
+              role: "user",
+              content: "Generate a concise UI title for this task",
+            },
+          ],
+        });
+        const item = events.find((event) => event.type === "response.output_item.done")?.item as
+          | { content?: readonly { text?: string }[] }
+          | undefined;
+        const text = item?.content?.map((part) => part.text ?? "").join("");
+        expect(parseGeneratedThreadMetadataResponse(text)).toEqual({
+          title: "Scripted task",
+          description: "Complete the scripted task",
+        });
+      } finally {
+        webSocket.close();
+      }
     });
   });
 
@@ -365,7 +413,7 @@ describe("ScriptedModelServer", () => {
 
         expect(
           await request(
-            "system",
+            "thread_title",
             "Generate a concise UI title for this task whose prompt contains USER_MARKER",
           ),
         ).toContain("Scripted task");
@@ -570,6 +618,18 @@ describe("ScriptedModelServer", () => {
         input: ["unexpected"],
       });
       expect(response.status).toBe(500);
+      for (const [source, prompt] of [
+        ["user", "Generate a concise UI title for this task"],
+        ["thread_title", "Complete an unrelated task"],
+      ]) {
+        const rejected = await postJson(`${server.baseUrl}/v1/responses`, {
+          client_metadata: {
+            "x-codex-turn-metadata": JSON.stringify({ thread_source: source }),
+          },
+          input: [{ type: "message", role: "user", content: prompt }],
+        });
+        expect(rejected.status).toBe(500);
+      }
       expect(() => server.verify()).toThrow(/Unexpected model request.*required request/su);
       expect(server.transcript().length).toBeLessThanOrEqual(2_000);
     } finally {

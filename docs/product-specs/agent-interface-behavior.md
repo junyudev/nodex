@@ -44,8 +44,8 @@ CLI access remains checked by Core for every operation.
 
 ## Native application MCP
 
-Native application MCP supports local Codex and Claude Code execution through
-backend-specific catalogs. ACP and remote
+Native application MCP supports local Codex, Claude Code and locally owned OpenCode execution
+through backend-specific catalogs. ACP, external OpenCode endpoints and remote
 execution integration, sharing and publishing services, Cloud task destinations,
 realtime voice, and `fire_confetti` remain unsupported application-tool capabilities.
 Voice-session screen capture and ending a realtime voice call are also unavailable.
@@ -65,15 +65,15 @@ no dynamic tools. Internal title generation has no application tools. An executi
 without the native bridge receives no application catalog or private connection configuration.
 Tool visibility never substitutes for the calling Turn's authority.
 
-Claude connections issue claims only for a Main-admitted foreground Turn with exact
+Claude and locally owned OpenCode connections issue claims only for a Main-admitted foreground Turn with exact
 persisted Core authority. Native stdio metadata cannot supply that identity. Every call
 rechecks the frozen authority; settlement, failed admission and connection closure revoke
-it. While a native background task or ambient watcher is live, all Claude application calls
+it. While a native background task or ambient watcher is live, native application calls
 are suspended because the shared transport does not establish trusted actor identity for
 each invocation. Clearing the roster enables fresh calls only for a still-active foreground
 Turn and never restores old claims. `get_app_capabilities` reports this foreground lifetime
 and explicitly marks background application tools, live Workbench controls and pull-request
-attachment unavailable. Claude's catalog includes content operations, Project SQL, Project
+attachment unavailable. Their catalog includes content operations, Project SQL, Project
 and Session metadata/history, messaging, scheduling, terminal observation and workspace
 dependencies; Codex-only execution and account tools are not exposed.
 
@@ -243,7 +243,7 @@ The same caller Thread can reuse an operation ID and unchanged launch arguments 
 Turn, including after restart. Every retry revalidates the current Turn's authority; read-only
 or out-of-scope callers cannot replay a write receipt.
 
-`send_message_to_session` starts a follow-up Turn in an existing, unarchived Codex or Claude Session.
+`send_message_to_session` starts a follow-up Turn in an existing, unarchived Codex, Claude or OpenCode Session.
 It retains the destination's settings unless a model is explicitly supplied. Threadless and
 ACP Sessions are unavailable for this command, and a caller cannot message its own Session.
 Core checks the caller's current writable authority, target Project access, and exact active

@@ -744,6 +744,8 @@ export interface NodexOptionPickerProps {
   readonly searchPlaceholder?: string;
   readonly searchAriaLabel?: string;
   readonly title?: ReactNode;
+  /** Scoped option controls and management actions share the picker's floating surface. */
+  readonly footer?: ReactNode;
   readonly emptyMessage?: ReactNode;
   readonly noResultsMessage?: ReactNode;
   readonly disabled?: boolean;
@@ -765,6 +767,7 @@ function NodexStaticOptionPicker({
   options,
   onValueChange,
   title,
+  footer,
   emptyMessage,
   triggerButton,
   disabled,
@@ -815,6 +818,7 @@ function NodexStaticOptionPicker({
           </NodexDropdownItem>
         ))
       )}
+      {footer}
     </NodexDropdownMenu>
   );
 }
@@ -928,6 +932,7 @@ function NodexFilterOptionPicker({
   searchPlaceholder = "Search options…",
   searchAriaLabel,
   title,
+  footer,
   emptyMessage,
   noResultsMessage,
   disabled = false,
@@ -1083,6 +1088,7 @@ function NodexFilterOptionPicker({
               ))
             )}
           </div>
+          {footer}
         </NodexPopoverContent>
       )}
     </NodexPopover>

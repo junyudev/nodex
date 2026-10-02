@@ -23,6 +23,7 @@ flowchart LR
     Main --> Codex["Pinned native Codex app-server"]
     Main --> ACP["Capability-negotiated ACP Agents"]
     Main --> Claude["Native Claude Code via Agent SDK"]
+    Main --> OpenCode["Native OpenCode via HTTP/SSE SDK"]
     Main --> Host["OS, filesystem, Browser, Terminal, Git"]
     Renderer --> Scene["Renderer-owned live Scenes"]
     Scene --> Catalog["Main-persisted Window Session catalog"]
@@ -157,7 +158,7 @@ nor content-retention roots. See [ADR 0059](adr/0059-complete-view-order-and-sem
 | Backups, restore, bounded operational journals, Store maintenance                                                                      | Rust Core Administration Module                                              | Electron administration adapter, background backup jobs, and controlled relaunch                                                                   |
 | Active Codex conversation document                                                                                                     | Current conversation owner peer, seeded from app-server state                | Main and window managers are ordinary peers; followers apply canonical snapshots and patches                                                       |
 | Codex wire protocol and remote Thread observations                                                                                     | Pinned Codex-compatible app-server                                           | Main validates and routes generated protocol envelopes                                                                                             |
-| Live Claude Code/ACP processes, capabilities, prompt/cancel/interaction lifecycle, and bounded transcripts                             | Electron Main backend Modules                                                | Core supplies durable Thread/workspace authority; renderer invokes Thread-scoped lifecycle APIs                                                    |
+| Live Claude Code/OpenCode/ACP processes, capabilities, prompt/cancel/interaction lifecycle, and bounded transcripts                    | Electron Main backend Modules                                                | Core supplies durable Thread/workspace authority; renderer invokes Thread-scoped lifecycle APIs                                                    |
 | Codex subagent observed descendant identity, status evidence and discovery facts                                                       | Rust Core Workspace Module                                                   | Main `CodexSubagentDirectory` reconciles observations; shared pure rows drive all presentations; app-server owns the execution graph and lifecycle |
 | Managed worktree creation and lifecycle                                                                                                | Electron Main lifecycle coordinator and the worktree's execution-host worker | Renderer projects typed pending/availability/inventory state; Core persists only durable execution location and Session/Thread/worktree metadata   |
 | Window layout, owner-scoped Scenes, surface placement                                                                                  | Renderer Window Session App aggregate                                        | Main persists the revisioned Window Session catalog                                                                                                |
@@ -219,10 +220,10 @@ Store formats and migration sequences are implementation/recovery contracts, not
 - Core transport selection, authenticated connection, and compatibility checks through [`src/main/core-client`](../src/main/core-client); process-lifetime supervision and recovery through Effect [`CoreAuthority`](../src/main/core-runtime/CoreAuthority.ts).
 - Trusted identity binding and strict mapping between renderer/Host contracts and Core Module contracts.
 - BrowserWindow, preload, IPC, application menus, deep links, clipboard, notifications, temporary media capture, logs, and platform integration.
-- Native Codex app-server and Claude Code SDK lifecycles, plus capability-negotiated ACP Agent
+- Native Codex app-server, Claude Code SDK and OpenCode server lifecycles, plus capability-negotiated ACP Agent
   processes. Each backend owns its session and callback lifecycle; shared projections carry only
   transport-neutral conversation data. See [Agent Backend Behavior](product-specs/agent-backend-behavior.md)
-  and [ADR 0065](adr/0065-native-claude-code-backend.md).
+  and [ADR 0065](adr/0065-native-claude-code-backend.md) / [ADR 0066](adr/0066-native-model-selection-and-opencode.md).
 - Native Agent homes own their account, configuration, and conversation persistence independently
   of the Nodex Profile. Profile-owned runtime resources and desktop plugin identities remain
   separate. Core Thread bindings admit native conversations into Nodex; a shared account home
@@ -232,7 +233,7 @@ Store formats and migration sequences are implementation/recovery contracts, not
 
 Main is an Adapter, coordinator, and runtime host. It may bind Profile/Library/Project/Session identity, perform host preflight, and coordinate external effects around a Core command. It must not open Nodex's SQLite, reconstruct a semantic transaction, infer authorization from renderer state, or provide a fallback data authority when Core is unavailable. Read-only native Agent format inspection belongs to a version-bound platform Adapter and never substitutes for Core-owned Thread bindings.
 
-Electron Main is one Effect 4 application kernel. [`MainEntry`](../src/main/app/MainEntry.ts) is the Main-process Node runtime root; [`MainApp`](../src/main/app/MainApp.ts) owns ready, bootstrap handoff, shutdown admission, and the process Scope; [`MainApplicationLive`](../src/main/app/MainApplicationLive.ts) declaratively composes the pre-Core window state, Core, native Codex, Claude Code and ACP backend operations, post-Core Window activation, renderer-ingress, and host Layer clusters. Pre-Core state creates the canonical BrowserWindow and Window Session, installs only bootstrap IPC and deny-by-default navigation/guest guards, and keeps that outer Scope alive while the full authority graph acquires. Post-Core activation attaches capabilities to the same WebContents and opens its renderer gate; it never replaces the physical window. `MainApp` acquires that graph with one `Effect.provide`, so startup rollback and every normal or authority-driven quit close the same Scope. The acquired application owns an inner consumer Scope that completes bounded renderer persistence and window closure before its provided IPC and persistence Layers release; window cleanup remains one shared scoped operation. Physical Core generations, Codex app-server sessions, Claude Code SDK sessions, ACP Agent sessions, windows, workers, PTYs, file watchers, and callback fibers are subordinate scoped resources rather than parallel lifecycle owners. Worker and standalone script processes have their own explicitly allowlisted `NodeRuntime.runMain` entries and never share Main's runtime.
+Electron Main is one Effect 4 application kernel. [`MainEntry`](../src/main/app/MainEntry.ts) is the Main-process Node runtime root; [`MainApp`](../src/main/app/MainApp.ts) owns ready, bootstrap handoff, shutdown admission, and the process Scope; [`MainApplicationLive`](../src/main/app/MainApplicationLive.ts) declaratively composes the pre-Core window state, Core, native Codex, Claude Code, OpenCode and ACP backend operations, post-Core Window activation, renderer-ingress, and host Layer clusters. Pre-Core state creates the canonical BrowserWindow and Window Session, installs only bootstrap IPC and deny-by-default navigation/guest guards, and keeps that outer Scope alive while the full authority graph acquires. Post-Core activation attaches capabilities to the same WebContents and opens its renderer gate; it never replaces the physical window. `MainApp` acquires that graph with one `Effect.provide`, so startup rollback and every normal or authority-driven quit close the same Scope. The acquired application owns an inner consumer Scope that completes bounded renderer persistence and window closure before its provided IPC and persistence Layers release; window cleanup remains one shared scoped operation. Physical Core generations, Codex app-server sessions, Claude Code SDK sessions, OpenCode server connections, ACP Agent sessions, windows, workers, PTYs, file watchers, and callback fibers are subordinate scoped resources rather than parallel lifecycle owners. Worker and standalone script processes have their own explicitly allowlisted `NodeRuntime.runMain` entries and never share Main's runtime.
 
 Structural clipboard coordination belongs to one application-scoped Main
 runtime because native clipboard ownership and cross-window rendezvous outlive
@@ -711,10 +712,18 @@ Document identity, owner shells, relocation, history, and Canvas decisions are r
 
 A renderer conversation runtime Interface connects backend-owned snapshots, subscriptions and
 lifecycle operations to one shared conversation presentation. Codex adapts its owner/follower
-manager; Claude Code and ACP adapt Main-owned, revision-fenced projections. Semantic command
+manager; Claude Code, OpenCode and ACP adapt Main-owned, revision-fenced projections. Semantic command
 Adapters retain backend identity and capability boundaries. Presentation reuse never creates
 Codex protocol authority for another backend. Product capabilities belong to
 [Agent Backend Behavior](product-specs/agent-backend-behavior.md).
+
+Model discovery belongs to the Main backend catalog, scoped by configured runtime identity and
+Core-derived execution location. A renderer model choice carries the complete runtime/model/options
+value; attached Thread routing remains immutable. Core stores generic runtime preferences separately
+from native transcript ownership. Local OpenCode processes share an isolated instance profile for
+native configuration, authentication and history, while each live chat owns its server and
+application-tool claims. External endpoint connections retain no local process or application-tool
+configuration authority.
 
 Native conversation discovery belongs to Main's backend-neutral catalog. Provider Adapters read
 native metadata; Core atomically owns connection to a Nodex Session, destination and immutable
@@ -989,7 +998,7 @@ an atomic rename. Each snapshot parses one bounded document generation, so its
 revision and every projected setting share the same byte identity. Profile
 assets, logs, databases, and credentials receive their roots separately from
 the same immutable Profile identity rather than borrowing Settings discovery.
-Claude instance environment secrets are a Main-owned Profile capability: Application Settings
+Agent instance environment secrets are a Main-owned Profile capability: Application Settings
 publishes redacted metadata, while a separate launch read resolves OS-encrypted values for the
 scoped runtime. Core and renderer read models never own the secret material. See
 [Agent Backend Behavior](product-specs/agent-backend-behavior.md#native-claude-code).
