@@ -5,6 +5,7 @@ import { serializeNfmTablePlainText } from "../../../shared/nfm/table";
 import { formatDateMentionPlainText } from "../../../shared/nfm/date-mention";
 import { serializeNfm } from "../../../shared/nfm/serializer";
 import { serializeInlineContent } from "../../../shared/nfm/serializer-inline";
+import { serializeAttachmentClipboardText } from "../../../shared/nfm/clipboard-attachment";
 
 /**
  * Serialize NFM blocks into structure-preserving plain text for clipboard
@@ -201,8 +202,7 @@ function serializeInlinePlainText(items: NfmInlineContent[]): string {
     .map((item) => {
       if (item.type === "linebreak") return "\n";
       if (item.type === "attachment") {
-        const label = item.name.trim() || "Untitled attachment";
-        return `[Attachment: ${label}]`;
+        return serializeAttachmentClipboardText(item);
       }
       if (item.type === "agentConfig") {
         const attrs: string[] = [];

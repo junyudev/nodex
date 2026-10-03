@@ -3,9 +3,11 @@ import { blockNoteToNfm, serializeClipboardText } from "../../../lib/nfm";
 import { decodeXmlCharacterReferences } from "../../../../shared/xml-character-references";
 import { TextSelection } from "@tiptap/pm/state";
 import { attachNodexClipboardFragment } from "../../../../shared/clipboard-paste";
-
-const NODEX_FILE_REFERENCE_SOURCE_PATTERN =
-  /nodex:\/\/(?:assets\/[A-Za-z0-9._%-]+|files\/[A-Za-z0-9._~-]+)/g;
+import {
+  clipboardFileReferenceSources,
+  replaceClipboardFileReferences,
+} from "../../../../shared/clipboard-file-references";
+import { formatClipboardMarkdownDestination } from "../../../../shared/clipboard-markdown";
 const NFM_IMAGE_LINE_PATTERN = /^([ \t]*)<image(?:\s+([^>]*))?>([\s\S]*?)<\/image>$/;
 const NFM_IMAGE_SOURCE_ATTRIBUTE_PATTERN = /\bsource="([^"]*)"/;
 
@@ -86,21 +88,6 @@ function getClipboardItemCtor(clipboardItemCtor?: ClipboardItemCtor): ClipboardI
   return ClipboardItem;
 }
 
-function collectFileReferenceSources(value: string): string[] {
-  const matches = value.match(NODEX_FILE_REFERENCE_SOURCE_PATTERN);
-  if (!matches) return [];
-  return Array.from(new Set(matches));
-}
-
-function applySourceReplacements(value: string, replacements: Map<string, string>): string {
-  let next = value;
-  for (const [source, replacement] of replacements) {
-    if (source === replacement) continue;
-    next = next.split(source).join(replacement);
-  }
-  return next;
-}
-
 async function resolveFileReferenceReplacements(
   sources: readonly string[],
   resolveSource: (source: string) => Promise<string | null>,
@@ -129,11 +116,7 @@ function toMarkdownImageDestination(source: string): string {
   const normalized = source.trim();
   if (normalized.length === 0) return "";
 
-  if (/\s/.test(normalized)) {
-    return `<${normalized.replaceAll(">", "\\>")}>`;
-  }
-
-  return normalized.replaceAll("\\", "\\\\").replaceAll("(", "\\(").replaceAll(")", "\\)");
+  return formatClipboardMarkdownDestination(normalized);
 }
 
 function resolveMarkdownImageAltText(caption: string): string {
@@ -173,17 +156,17 @@ export async function rewriteFileReferences(
   value: string,
   resolveSource: (source: string) => Promise<string | null>,
 ): Promise<string> {
-  const sources = collectFileReferenceSources(value);
+  const sources = clipboardFileReferenceSources(value);
   if (sources.length === 0) return value;
 
   const replacements = await resolveFileReferenceReplacements(sources, resolveSource);
   if (!replacements) return value;
 
-  return applySourceReplacements(value, replacements);
+  return replaceClipboardFileReferences(value, replacements);
 }
 
 export function copiedSelectionHasFileReferences(payload: CopiedSelectionPayload): boolean {
-  return collectFileReferenceSources(payload.structuredText).length > 0;
+  return clipboardFileReferenceSources(payload.structuredText).length > 0;
 }
 
 export function preparePortableCopiedSelectionPayload(
@@ -201,16 +184,14 @@ export async function rewriteCopiedSelectionFileReferences(
   resolveSource: (source: string) => Promise<string | null>,
 ): Promise<CopiedSelectionPayload> {
   const portable = preparePortableCopiedSelectionPayload(payload);
-  const sources = collectFileReferenceSources(payload.structuredText);
+  const sources = clipboardFileReferenceSources(portable.structuredText);
   const replacements = await resolveFileReferenceReplacements(sources, resolveSource);
   if (!replacements) return portable;
 
   return {
     clipboardHTML: portable.clipboardHTML,
     externalHTML: portable.externalHTML,
-    structuredText: convertNfmImageTagsToMarkdown(
-      applySourceReplacements(payload.structuredText, replacements),
-    ),
+    structuredText: replaceClipboardFileReferences(portable.structuredText, replacements),
   };
 }
 

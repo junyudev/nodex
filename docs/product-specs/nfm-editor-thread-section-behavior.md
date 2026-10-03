@@ -351,6 +351,7 @@ Serialization rules:
 
 - preserve the existing sibling-block order inside the section
 - preserve nested children under those sibling body blocks
+- preserve attachment names and current targets as Markdown links, using the portable copy presentation; clipboard local-path preferences do not materialize saved Files during prompt construction
 - strip nested `threadSection` markers and their scoped body blocks from descendant subtrees so parent sends do not duplicate child-section prompts
 - preserve toggle open/closed state through the same DOM-backed toggle-state extraction used by normal description save
 - strip projected runtime-only inline rows before prompt serialization

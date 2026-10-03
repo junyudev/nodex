@@ -16,10 +16,12 @@ import { describe, expect, test, vi } from "vite-plus/test";
 
 import {
   attachNodexClipboardFragment,
+  readNodexClipboardFragment,
   NODEX_STRUCTURAL_CLIPBOARD_MIME,
 } from "../../../../shared/clipboard-paste";
 import { createNfmPasteHandler, NfmStructuredClipboardExtension } from "./nfm-editor-extensions";
 import { nfmSchema } from "./nfm-schema";
+import { blockNoteToNfm } from "../../../lib/nfm";
 
 const typedOwnerConfig = {
   type: "page",
@@ -119,6 +121,68 @@ function renderClipboardEditor(editor: AnyBlockNoteEditor) {
 }
 
 describe("current Block clipboard behavior in Chromium", () => {
+  test.each([
+    { selection: "range", mode: "link", source: "/Users/example/my files/setup.html" },
+    { selection: "caret", mode: "link", source: "/Users/example/my files/setup.html" },
+    {
+      selection: "range",
+      mode: "materialized",
+      source: "nodex://files/0199134e-cbb0-7000-8000-000000000006",
+    },
+    {
+      selection: "caret",
+      mode: "materialized",
+      source: "nodex://files/0199134e-cbb0-7000-8000-000000000006",
+    },
+  ] as const)(
+    "copies $mode attachments from a $selection and preserves their rich identity",
+    async ({ selection, mode, source }) => {
+      const props = { kind: "file", mode, source, name: "setup.html" } as const;
+      const editor = BlockNoteEditor.create({
+        schema: nfmSchema,
+        initialContent: [
+          {
+            id: "attachment",
+            type: "paragraph",
+            content: [
+              { type: "text", text: "Read ", styles: {} },
+              { type: "attachment", props },
+              { type: "text", text: " now", styles: {} },
+            ],
+          },
+        ],
+        extensions: [NfmStructuredClipboardExtension()],
+      });
+      const rendered = renderClipboardEditor(editor);
+      try {
+        await act(settleEditor);
+        await setTextSelection(editor, "attachment", 0, selection === "range" ? 6 : 0);
+        const copied = await dispatchClipboardEvent(requireView(editor), "copy");
+        const destination = mode === "link" ? `<${source}>` : source;
+        expect(copied.data.getData("text/plain")).toBe(
+          `Read [setup.html](${destination})${selection === "caret" ? " now" : ""}`,
+        );
+        const recovered = readNodexClipboardFragment(copied.data.getData("text/html"));
+        expect(recovered).toBe(copied.data.getData("blocknote/html"));
+        for (const html of [copied.data.getData("blocknote/html"), recovered!]) {
+          let blocks: ReturnType<typeof blockNoteToNfm> = [];
+          await act(async () => {
+            blocks = blockNoteToNfm(editor.tryParseHTMLToBlocks(html));
+            await settleEditor();
+          });
+          const block = blocks[0];
+          if (block?.type !== "paragraph") throw new Error("Expected the copied paragraph");
+          expect(block.content.find((item) => item.type === "attachment")).toEqual(
+            expect.objectContaining({ type: "attachment", ...props }),
+          );
+        }
+      } finally {
+        rendered.unmount();
+        editor._tiptapEditor.destroy();
+      }
+    },
+  );
+
   test("routes a clicked atomic image Block through structural cut", async () => {
     const onStructuralClipboard = vi.fn(() => true);
     const editor = BlockNoteEditor.create({

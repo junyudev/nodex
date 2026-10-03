@@ -1,7 +1,13 @@
 import { parseFileSource } from "./file-resources";
+import { formatClipboardMarkdownDestination } from "./clipboard-markdown";
 
 export const MAX_CLIPBOARD_EXPORT_FILES = 128;
 const FILE_LOCATOR = /nodex:\/\/files\/[A-Za-z0-9._~-]+/gu;
+const FILE_REFERENCE = /nodex:\/\/(?:assets\/[A-Za-z0-9._%-]+|files\/[A-Za-z0-9._~-]+)/gu;
+
+export const clipboardFileReferenceSources = (text: string): readonly string[] => [
+  ...new Set(text.match(FILE_REFERENCE) ?? []),
+];
 
 /** Candidates narrow a capture; only Core's selected occurrences authorize bytes. */
 export const clipboardFileReferences = (
@@ -22,4 +28,13 @@ export const clipboardFileReferences = (
 export const replaceClipboardFileReferences = (
   text: string,
   paths: ReadonlyMap<string, string>,
-): string => text.replace(FILE_LOCATOR, (source) => paths.get(source) ?? source);
+): string =>
+  text.replace(FILE_REFERENCE, (source: string, offset: number) => {
+    const path = paths.get(source);
+    if (!path) return source;
+    // Portable attachments and images already carry bare Markdown destinations.
+    if (text.slice(offset - 2, offset) === "](" && text[offset + source.length] === ")") {
+      return formatClipboardMarkdownDestination(path);
+    }
+    return path;
+  });

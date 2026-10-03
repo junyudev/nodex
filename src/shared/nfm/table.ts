@@ -12,6 +12,7 @@ import { formatDateMentionPlainText } from "./date-mention";
 import { parseInlineContent } from "./parser-inline";
 import { serializeInlineContent } from "./serializer-inline";
 import { getXmlAttr } from "./xml-attributes";
+import { serializeAttachmentClipboardText } from "./clipboard-attachment";
 
 export interface ParsedNfmTable {
   block: NfmTable;
@@ -465,19 +466,28 @@ function serializeXmlTable(block: NfmTable, indent: number): string[] {
 }
 
 function serializeInlinePlainText(items: NfmInlineContent[]): string {
-  return items
-    .map((item) => {
-      if (item.type === "linebreak") return " ";
-      if (item.type === "attachment") return item.name.trim() || "Attachment";
-      if (item.type === "agentConfig") return "<agent-config />";
-      if (item.type === "threadMention") return `[Thread: ${item.uuid}]`;
-      if (item.type === "pageMention") return `[Page: ${item.targetPageId}]`;
-      if (item.type === "dateMention") return formatDateMentionPlainText(item);
-      if (item.type === "math") return item.source;
-      if (item.type === "link") return item.text;
-      return item.text;
-    })
-    .join("")
-    .replace(/\s+/g, " ")
-    .trim();
+  const parts: string[] = [];
+  let text = "";
+  for (const item of items) {
+    if (item.type !== "attachment") {
+      text += serializeTableInlineText(item);
+      continue;
+    }
+    // Collapse table text across mark boundaries without changing literal file paths.
+    parts.push(text.replace(/\s+/gu, " "), serializeAttachmentClipboardText(item));
+    text = "";
+  }
+  parts.push(text.replace(/\s+/gu, " "));
+  return parts.join("").trim();
+}
+
+function serializeTableInlineText(item: Exclude<NfmInlineContent, { type: "attachment" }>): string {
+  if (item.type === "linebreak") return " ";
+  if (item.type === "agentConfig") return "<agent-config />";
+  if (item.type === "threadMention") return `[Thread: ${item.uuid}]`;
+  if (item.type === "pageMention") return `[Page: ${item.targetPageId}]`;
+  if (item.type === "dateMention") return formatDateMentionPlainText(item);
+  if (item.type === "math") return item.source;
+  if (item.type === "link") return item.text;
+  return item.text;
 }

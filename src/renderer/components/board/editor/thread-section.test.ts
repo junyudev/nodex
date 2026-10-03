@@ -200,7 +200,7 @@ describe("thread-section helpers", () => {
     const promptBlocks = section ? deriveThreadSectionPromptBlocks(section) : [];
 
     expect(serializeThreadSectionPrompt(promptBlocks)).toBe(
-      "before [Attachment: report.txt] after",
+      "before [report.txt](/tmp/report.txt) after",
     );
   });
 

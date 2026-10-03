@@ -448,13 +448,24 @@ When serialized back to NFM:
 
 ### Plain-text clipboard output
 
-For `text/plain` structure-preserving clipboard payloads, attachments are rendered as readable placeholders:
+For `text/plain` structure-preserving clipboard payloads, attachments copy as
+Markdown links containing their current target:
 
 ```text
-[Attachment: report.txt]
+[report.txt](/absolute/path/report.txt)
+[saved.txt](nodex://files/0199134e-cbb0-7000-8000-000000000006)
 ```
 
-This avoids leaking raw XML into plain-text copy while keeping the presence of the attachment visible.
+Linked files and folders retain their existing absolute paths regardless of the
+`Copy file references as local paths` preference. Saved attachments retain
+their Nodex locator by default; enabling the preference resolves that locator
+through the existing authorized File export flow. Copy always uses `source`,
+never the attachment's import `origin`. Paragraphs, nested Blocks, table cells,
+and image captions use the same attachment presentation, with literal filename
+and destination escaping. A missing target retains `[Attachment: name]`.
+
+The complete plain-text export and clipboard ownership rules live in
+[NFM Editor Copy Behavior](nfm-editor-copy-behavior.md#plain-text-file-references).
 
 ### HTML / internal clipboard output
 

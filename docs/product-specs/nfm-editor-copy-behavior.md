@@ -137,6 +137,14 @@ The fallback serializer is evaluated only if the normal selection serializer is 
 
 ### Plain-text File references
 
+Inline attachments copy as Markdown links, `[name](source)`, in paragraphs,
+nested Blocks, table cells, and image captions. Linked files and folders retain
+their existing absolute paths even when local-path copy is disabled. Saved
+attachments retain their current Nodex locator by default; the original import
+location never substitutes for the saved content. Missing targets retain a
+readable attachment label. Rich fragments and canonical NFM retain attachment
+identity rather than replacing the occurrence with a text link.
+
 Standard copy/cut keeps `nodex://assets/...` and `nodex://files/...` locators
 portable by default. The `Copy file references as local paths` setting is off
 by default. When enabled, ordinary selections resolve both locator families to
@@ -188,14 +196,17 @@ Local-path rewriting is all-or-nothing for one copied payload. If any Nodex File
 reference cannot be resolved, every reference remains portable instead of
 producing mixed local and portable locators.
 
-After replacement, `text/plain` additionally converts `<image ...>caption</image>` lines into Markdown image syntax:
+The portable `text/plain` presentation converts `<image ...>caption</image>`
+lines into Markdown image syntax before optional local-path resolution:
 
 - indentation before the image line is preserved
 - the `source="..."` attribute becomes the Markdown destination
 - captions become Markdown alt text
 - alt text escapes only `\`, `[` and `]`
-- destinations escape `\`, `(`, `)`, and `>` as needed
+- attachment labels escape Markdown formatting; image alt text retains inline markers
+- attachment and image destinations escape literal `\`, `<`, `>`, `&`, `(`, and `)` as needed
 - destinations containing whitespace are wrapped in `<...>`
+- local-path replacement uses the same destination escaping as direct linked paths
 
 If an image tag line does not match the expected pattern or has no usable source, it is left unchanged.
 
@@ -552,7 +563,7 @@ On success, the editor is focused again.
 - preserves `blocknote/html` and `text/html` exactly as serialized for portable standard copy
 - preserves the serialized `text/html` presentation when opt-in local-path resolution completes
 - keeps Nodex File locators portable by default and optionally resolves both Library Files and legacy managed assets only in `text/plain`
-- rewrites image lines in `text/plain` to Markdown image syntax after plain-text asset resolution
+- presents attachments as Markdown links and image lines as Markdown images, with optional local-path resolution
 - cut deletes the resolved range or current Block only after successful copy handling
 
 ### Image toolbar copy

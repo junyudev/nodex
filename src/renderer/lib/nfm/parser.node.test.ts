@@ -236,7 +236,9 @@ describe("NFM code fences", () => {
 
     expect(attachmentBlocks[0]?.type).toBe("paragraph");
     expect(serializeNfm(attachmentBlocks)).toBe(attachmentNfm);
-    expect(serializeClipboardText(attachmentBlocks)).toBe("before [Attachment: report.txt] after");
+    expect(serializeClipboardText(attachmentBlocks)).toBe(
+      "before [report.txt](/tmp/report.txt) after",
+    );
 
     const legacyBlocks = parseNfm(
       '<resource kind="file" mode="link" source="/tmp/report.txt" name="report.txt" />',

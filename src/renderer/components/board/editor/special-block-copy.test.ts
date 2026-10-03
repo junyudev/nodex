@@ -7,6 +7,7 @@ import {
 } from "../../../../shared/clipboard-paste";
 import {
   createCopiedBlockPayload,
+  copiedSelectionHasFileReferences,
   createCopiedSelectionPayloadFromSelection,
   createStructuredPlainTextPayload,
   preparePortableCopiedSelectionPayload,
@@ -1162,6 +1163,38 @@ describe("special block copy", () => {
     const output = await rewriteFileReferences(input, async () => resolved);
 
     expect(output).toBe(`before ${resolved} middle ${resolved} after`);
+  });
+
+  test("exports saved attachments with images while keeping linked paths and rich identity", async () => {
+    const file = "nodex://files/0199134e-cbb0-7000-8000-000000000006";
+    const asset = "nodex://assets/diagram.png";
+    const payload: CopiedSelectionPayload = {
+      clipboardHTML: `<span data-source="${file}">setup.html</span>`,
+      externalHTML: "<p>setup.html</p>",
+      structuredText: `[setup.html](${file}) [local](/tmp/local.html)\n<image source="${asset}">diagram</image>`,
+    };
+    expect(copiedSelectionHasFileReferences(payload)).toBe(true);
+    const portable = preparePortableCopiedSelectionPayload(payload);
+    expect(portable.structuredText).toBe(
+      `[setup.html](${file}) [local](/tmp/local.html)\n![diagram](${asset})`,
+    );
+
+    const calls: string[] = [];
+    const rewritten = await rewriteCopiedSelectionFileReferences(payload, async (source) => {
+      calls.push(source);
+      return source === file ? "/my files/setup (v2).html" : "/my files/diagram.png";
+    });
+    expect(calls).toEqual([file, asset]);
+    expect(rewritten.structuredText).toBe(
+      "[setup.html](</my files/setup (v2).html>) [local](/tmp/local.html)\n![diagram](</my files/diagram.png>)",
+    );
+    expect(rewritten.clipboardHTML).toBe(payload.clipboardHTML);
+    expect(readNodexClipboardFragment(rewritten.externalHTML)).toBe(payload.clipboardHTML);
+
+    const unresolved = await rewriteCopiedSelectionFileReferences(payload, async (source) =>
+      source === file ? "/tmp/setup.html" : null,
+    );
+    expect(unresolved).toEqual(portable);
   });
 
   test("rewriteCopiedSelectionFileReferences resolves unique asset and File URLs once", async () => {
