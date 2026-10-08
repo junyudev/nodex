@@ -104,9 +104,12 @@ not gain Codex desktop, review or computer-control authority.
 
 ## Native Claude Code
 
-Claude Code uses the installed executable and official Agent SDK. The default instance runs `claude`
-from the desktop process PATH. Agent settings can add, name, enable or remove independent profiles,
-each with its own executable, config directory, environment and custom models. An account path must
+Claude Code uses the installed executable and official Agent SDK. The default instance resolves `claude`
+from the Desktop PATH, then the login-shell PATH and native `~/.local/bin` installation when needed.
+Discovery recovers only PATH; shell credentials and account variables are not imported. Explicit
+executable paths and instance or worktree PATH overrides remain authoritative and fail explicitly
+when no matching executable exists. Agent settings can add, name, enable or remove independent
+profiles, each with its own executable, config directory, environment and custom models. An account path must
 be absolute or start with `~/`, which Nodex resolves against the host home before saving it.
 Authentication stays in Claude Code: use `claude auth login` in a terminal
 for the selected account, then reconnect the task. Reconnection reads the latest profile without
@@ -130,9 +133,19 @@ to save or launch with secrets. Plain values remain in Profile settings. These a
 inputs; Nodex never imports existing Claude credentials into this store.
 
 User, project, and local settings, `CLAUDE.md`, skills, subagents, hooks, and configured MCP servers
-are loaded by Claude Code. The composer exposes the commands and skills advertised by the SDK.
-The skill picker includes inherited repository skills for nested execution directories and stops
-at the repository or worktree boundary. Claude's advertised commands decide which skills can run.
+are loaded by Claude Code. The composer exposes SDK-advertised commands and a filesystem skill
+picker covering native user and repository skill directories. Nested execution directories inherit
+repository skills up to the repository or worktree boundary. Claude's advertised commands decide
+which picker entries can run.
+
+Claude configuration and instruction loading remain native: Nodex does not append Codex's
+instruction files or discover skills from Codex or shared `.agents` directories. A repository's
+`CLAUDE.md` may import or link to `AGENTS.md`, and the installed Claude Code version may load
+`AGENTS.md` directly according to its native settings. An empty personal skills directory does not
+exclude repository, plugin or bundled Claude skills; native commands and filesystem skill entries
+remain distinct catalogs. Nodex appends only its Session application-tool guidance when connecting
+the scoped `nodex_app` server.
+
 Before the first prompt, Nodex discovers models from the selected instance's executable in the
 draft's selected Project. Attached chats discover from their saved Claude instance and execution
 directory, including connected native directories and managed worktrees. Main resolves those

@@ -80,9 +80,10 @@ in the Nodex Profile.
 ## Claude Code instances
 
 Agent settings expose Claude Code with an enabled default instance, executable `claude`, and the
-normal Claude configuration directory. Select an explicit executable when the desktop PATH does
-not include the installation. Add separate profiles for independent accounts or gateways. An optional
-absolute or `~/` config directory sets `CLAUDE_CONFIG_DIR` for
+normal Claude configuration directory. Nodex searches the Desktop PATH, then the login-shell PATH
+and the native `~/.local/bin/claude` installation when needed. Explicit executable paths and
+instance or worktree PATH overrides remain authoritative. Add separate profiles for independent
+accounts or gateways. An optional absolute or `~/` config directory sets `CLAUDE_CONFIG_DIR` for
 that instance without changing HOME or copying credentials. Run `claude auth login` with the same
 config directory to sign in. Restart the task connection after changing executable or account paths.
 

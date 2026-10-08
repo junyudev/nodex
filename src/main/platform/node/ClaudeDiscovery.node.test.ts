@@ -60,6 +60,39 @@ it.effect("skill paths follow native user precedence and init commands decide in
   }).pipe(Effect.scoped),
 );
 
+it.effect("Claude filesystem skills never fall back to other providers' skill roots", () =>
+  Effect.gen(function* () {
+    const root = yield* Effect.acquireRelease(
+      Effect.promise(() => mkdtemp(join(tmpdir(), "nodex-claude-skill-scope-"))),
+      (root) => Effect.promise(() => rm(root, { recursive: true, force: true })),
+    );
+    const home = join(root, "home");
+    const cwd = join(root, "workspace");
+    yield* Effect.promise(() => mkdir(join(cwd, ".git"), { recursive: true }));
+    for (const directory of [
+      join(home, ".codex", "skills", "other-provider"),
+      join(home, ".agents", "skills", "shared-agent"),
+      join(cwd, ".agents", "skills", "repository-agent"),
+    ]) {
+      yield* Effect.promise(() => mkdir(directory, { recursive: true }));
+      yield* Effect.promise(() => writeFile(join(directory, "SKILL.md"), "Skill instructions"));
+    }
+    const commands = ["other-provider", "shared-agent", "repository-agent", "native-project"].map(
+      (name) => ({ name }),
+    );
+    expect(yield* discoverClaudeSkills({ HOME: home }, cwd, commands)).toEqual([]);
+
+    const nativeDirectory = join(cwd, ".claude", "skills", "native-project");
+    yield* Effect.promise(() => mkdir(nativeDirectory, { recursive: true }));
+    yield* Effect.promise(() =>
+      writeFile(join(nativeDirectory, "SKILL.md"), "Project skill instructions"),
+    );
+    const skills = yield* discoverClaudeSkills({ HOME: home }, cwd, commands);
+    expect(skills.map(({ name }) => name)).toEqual(["native-project"]);
+    expect(skills[0]?.userInvocable).toBe(true);
+  }).pipe(Effect.scoped),
+);
+
 for (const gitMarker of ["directory", "file"] as const)
   it.effect(
     `nested skills inherit through the repository root with a .git ${gitMarker} boundary`,

@@ -68,11 +68,23 @@ import { TemporaryAssets } from "../local-store/TemporaryAssets";
 import * as CodexConversationPeerRuntime from "../platform/node/CodexConversationPeerRuntime";
 import { serveProfileSnapshotControl } from "../platform/node/ProfileSnapshotControl";
 import { CodexEndpointMap } from "../codex-runtime/CodexEndpointMap";
+import { live as shellEnvironmentLive } from "../host-runtime/WorktreeShellEnvironmentRuntime";
 
 const runtimeError = (operation: string, cause: unknown) =>
   new MainApplicationError({ phase: "startup", operation, cause });
 
 const applicationLogger = getLogger({ subsystem: "app" });
+const shellEnvironment = Layer.unwrap(
+  Effect.gen(function* () {
+    const config = yield* MainConfig;
+    return shellEnvironmentLive({
+      baseEnvironment: config.environment,
+      platform: config.platform as NodeJS.Platform,
+      onError: (error) =>
+        applicationLogger.warn("Failed to discover the login shell environment", { error }),
+    });
+  }),
+);
 
 const applicationGraph = RendererIngressLive.live.pipe(
   Layer.provideMerge(
@@ -95,6 +107,7 @@ const applicationGraph = RendererIngressLive.live.pipe(
     ),
   ),
   Layer.provide(CodexConversationPeerRuntime.live),
+  Layer.provideMerge(shellEnvironment),
 );
 
 /** Fully acquired production desktop application graph. */

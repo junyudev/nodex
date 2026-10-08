@@ -2,6 +2,14 @@
 import { access, realpath, stat } from "node:fs/promises";
 import { constants } from "node:fs";
 import { delimiter, posix, win32 } from "node:path";
+import * as Effect from "effect/Effect";
+import * as Schema from "effect/Schema";
+import type { CodexLocalShellEnvironmentRuntimeError } from "../../codex/CodexLocalShellEnvironmentRuntime";
+
+export class ClaudeExecutableError extends Schema.TaggedError<ClaudeExecutableError>()(
+  "ClaudeExecutableError",
+  { message: Schema.String, cause: Schema.Defect() },
+) {}
 
 export const claudeHostEnvironmentValue = (
   environment: Readonly<Record<string, string | undefined>>,
@@ -82,3 +90,55 @@ export async function resolveClaudeExecutable(
     `Claude Code executable was not found: ${binary}. Install Claude Code or choose its executable in Agent settings.`,
   );
 }
+
+/** Recover only executable search paths; shell credentials and account selection stay native. */
+export const resolveClaudeLaunch = Effect.fn("ClaudeExecutable.resolveLaunch")(function* (
+  input: {
+    readonly binary: string;
+    readonly environment: Readonly<Record<string, string | undefined>>;
+    readonly platform: string;
+    readonly cwd: string;
+    readonly allowPathDiscovery: boolean;
+  },
+  loadShellEnvironment: Effect.Effect<NodeJS.ProcessEnv, CodexLocalShellEnvironmentRuntimeError>,
+) {
+  const resolve = (environment: Readonly<Record<string, string | undefined>>) =>
+    Effect.tryPromise({
+      try: () => resolveClaudeExecutable(input.binary, environment, input.platform, input.cwd),
+      catch: (cause) =>
+        new ClaudeExecutableError({
+          message: cause instanceof Error ? cause.message : String(cause),
+          cause,
+        }),
+    }).pipe(Effect.map((executable) => ({ executable, environment })));
+  return yield* resolve(input.environment).pipe(
+    Effect.catch((cause) =>
+      Effect.gen(function* () {
+        if (!input.allowPathDiscovery || /[/\\]/u.test(input.binary)) return yield* cause;
+        const shellEnvironment = yield* loadShellEnvironment.pipe(
+          Effect.timeout("5 seconds"),
+          Effect.orElseSucceed(() => input.environment),
+        );
+        const windows = input.platform === "win32";
+        const path = windows ? win32 : posix;
+        const home = claudeNativeHome(input.environment, input.platform);
+        const searchPath = [
+          claudeHostEnvironmentValue(shellEnvironment, "PATH", input.platform) ??
+            claudeHostEnvironmentValue(input.environment, "PATH", input.platform),
+          ...(input.binary === "claude" && home ? [path.join(home, ".local", "bin")] : []),
+        ]
+          .filter((entry): entry is string => entry !== undefined && entry !== "")
+          .join(windows ? ";" : delimiter);
+        const environment = {
+          ...Object.fromEntries(
+            Object.entries(input.environment).filter(([name]) =>
+              windows ? name.toUpperCase() !== "PATH" : name !== "PATH",
+            ),
+          ),
+          PATH: searchPath,
+        };
+        return yield* resolve(environment);
+      }),
+    ),
+  );
+});

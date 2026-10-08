@@ -10,9 +10,23 @@ import * as Effect from "effect/Effect";
 import * as Fiber from "effect/Fiber";
 import * as Exit from "effect/Exit";
 import * as Schema from "effect/Schema";
+import * as Layer from "effect/Layer";
 import { ClaudeSdk, live } from "./ClaudeSdk";
 import { defaultClaudeInstance } from "../../../shared/claude-agent-settings";
 import { makeAgentDiscoveryRequests } from "../../ipc/handlers/AgentDiscoveryRequests";
+import { testLayer as mainConfigLayer } from "../../app/MainConfig";
+import { live as shellEnvironmentLive } from "../../host-runtime/WorktreeShellEnvironmentRuntime";
+
+const sdkLayer = live.pipe(
+  Layer.provide(mainConfigLayer()),
+  Layer.provide(
+    shellEnvironmentLive({
+      baseEnvironment: { PATH: "/usr/bin:/bin" },
+      platform: "darwin",
+      loadInteractiveEnvironment: async () => ({ PATH: "/usr/bin:/bin" }),
+    }),
+  ),
+);
 
 it.effect(
   "installed SDK serializes isolated launch, atomic intelligence and native image steering",
@@ -27,7 +41,9 @@ it.effect(
       );
       const cwd = join(root, "workspace");
       yield* Effect.promise(() => mkdir(cwd));
-      const executable = join(root, "fake-claude");
+      const nativeBin = join(root, ".local", "bin");
+      yield* Effect.promise(() => mkdir(nativeBin, { recursive: true }));
+      const executable = join(nativeBin, "claude");
       const script = join(root, "fake-claude.mjs");
       const invocation = join(root, "invocation.json");
       const messages = join(root, "messages.jsonl");
@@ -63,7 +79,6 @@ it.effect(
           const session = yield* sdk.open({
             instance: {
               ...defaultClaudeInstance(),
-              binaryPath: executable,
               customModels: [
                 {
                   id: "gateway/private[1m]",
@@ -162,6 +177,27 @@ it.effect(
       expect(launch.connector).toBe("false");
       expect(launch.ide).toBe("0");
       expect(launch.forceTerminal).toBeUndefined();
+      yield* Effect.scoped(
+        Effect.gen(function* () {
+          const sdk = yield* ClaudeSdk;
+          const unavailable = yield* Effect.result(
+            sdk.open({
+              instance: {
+                ...defaultClaudeInstance(),
+                environment: [{ name: "PATH", value: "", sensitive: false }],
+              },
+              environment: { HOME: root, PATH: "" },
+              cwd,
+              sessionId: "01991e60-b800-7000-8000-000000000022",
+              resume: false,
+              purpose: "discovery",
+              permissionMode: "dontAsk",
+              canUseTool: () => Effect.succeed({ behavior: "deny", message: "No tools" }),
+            }),
+          );
+          expect(unavailable._tag).toBe("Failure");
+        }),
+      );
       yield* Effect.scoped(
         Effect.gen(function* () {
           const sdk = yield* ClaudeSdk;
@@ -292,7 +328,7 @@ it.effect(
       expect(
         afterUnresolved.filter((entry) => entry.request?.subtype === "apply_flag_settings"),
       ).toHaveLength(5);
-    }).pipe(Effect.scoped, Effect.provide(live)),
+    }).pipe(Effect.scoped, Effect.provide(sdkLayer)),
 );
 
 it.effect("consumer interruption kills a real SDK child still waiting for initialization", () =>
@@ -365,5 +401,5 @@ it.effect("consumer interruption kills a real SDK child still waiting for initia
       }
       throw new Error("SDK cancellation leaked its initializing child");
     });
-  }).pipe(Effect.scoped, Effect.provide(live)),
+  }).pipe(Effect.scoped, Effect.provide(sdkLayer)),
 );

@@ -6,6 +6,9 @@ import { join } from "node:path";
 import { it } from "@effect/vitest";
 import { expect } from "vite-plus/test";
 import * as Effect from "effect/Effect";
+import * as Layer from "effect/Layer";
+import { testLayer as mainConfigLayer } from "../../app/MainConfig";
+import { WorktreeShellEnvironmentRuntime } from "../../host-runtime/WorktreeShellEnvironmentRuntime";
 import {
   ClaudeSdk,
   live,
@@ -17,6 +20,14 @@ import {
 import { defaultClaudeInstance } from "../../../shared/claude-agent-settings";
 import type { SessionMessage } from "@anthropic-ai/claude-agent-sdk";
 const ambientNativeConfiguration = () => process.env.CLAUDE_CONFIG_DIR;
+const sdkLayer = live.pipe(
+  Layer.provide(mainConfigLayer()),
+  Layer.provide(
+    Layer.succeed(WorktreeShellEnvironmentRuntime, {
+      load: Effect.die("History reads must not discover the executable PATH"),
+    }),
+  ),
+);
 const id = "01991e60-b800-7000-8000-000000000012";
 const user = "01991e60-b800-7000-8000-000000000014";
 const assistant = "01991e60-b800-7000-8000-000000000016";
@@ -47,7 +58,7 @@ it.effect("native home identity survives creating its missing directory under a 
     );
     expect(before).toBe(expected);
     expect(after).toBe(before);
-  }).pipe(Effect.scoped, Effect.provide(live)),
+  }).pipe(Effect.scoped, Effect.provide(sdkLayer)),
 );
 
 it.effect("native home rejects relative paths and non-directory ancestors", () =>
@@ -75,7 +86,7 @@ it.effect("native home rejects relative paths and non-directory ancestors", () =
       }),
     );
     expect(relative._tag).toBe("Failure");
-  }).pipe(Effect.scoped, Effect.provide(live)),
+  }).pipe(Effect.scoped, Effect.provide(sdkLayer)),
 );
 
 it.effect(
@@ -228,7 +239,7 @@ it.effect(
           .historyPage({ ...first, sessionId: "01991e60-b800-7000-8000-000000000020" })
           .pipe(Effect.flip),
       ).toMatchObject({ reason: "resource-not-found" });
-    }).pipe(Effect.scoped, Effect.provide(live)),
+    }).pipe(Effect.scoped, Effect.provide(sdkLayer)),
 );
 
 const entry = (

@@ -48,8 +48,10 @@ import type {
 import { claudeModelWithContext } from "../../../shared/claude-models";
 import { agentRuntimeError, AgentRuntimeError } from "../../agent-backend/AgentRuntimeError";
 import { isClaudeHistoryPrompt } from "../../../shared/claude-history";
-import { claudeNativeHome, resolveClaudeExecutable } from "./ClaudeExecutable";
+import { claudeNativeHome, resolveClaudeLaunch } from "./ClaudeExecutable";
 import { resolveClaudeIntelligence } from "./ClaudeIntelligence";
+import { WorktreeShellEnvironmentRuntime } from "../../host-runtime/WorktreeShellEnvironmentRuntime";
+import { MainConfig } from "../../app/MainConfig";
 
 export interface ClaudeToolRequest {
   readonly name: string;
@@ -102,6 +104,7 @@ export interface ClaudeSdkSession {
 export interface ClaudeSdkOpenInput {
   readonly instance: ClaudeAgentInstanceConfig;
   readonly environment: Readonly<Record<string, string | undefined>>;
+  readonly allowPathDiscovery?: boolean;
   readonly cwd: string;
   readonly sessionId: string;
   readonly resume: boolean;
@@ -280,17 +283,7 @@ export const claudeQueryOptions = (input: ClaudeSdkOpenInput, executable: string
     ...(input.resume ? { resume: input.sessionId } : { sessionId: input.sessionId }),
   };
 };
-const open = Effect.fn("ClaudeSdk.open")(function* (input: ClaudeSdkOpenInput) {
-  const executable = yield* Effect.tryPromise({
-    try: () =>
-      resolveClaudeExecutable(
-        input.instance.binaryPath,
-        claudeEnvironment(input.environment, input.instance),
-        process.platform,
-        input.cwd,
-      ),
-    catch: (cause) => failure("launch", cause),
-  });
+const open = Effect.fn("ClaudeSdk.open")(function* (input: ClaudeSdkOpenInput, executable: string) {
   const runPermission = yield* FiberSet.makeRuntimePromise<
     never,
     PermissionResult,
@@ -819,19 +812,39 @@ const listSessions: ClaudeSdk["Service"]["listSessions"] = (input, offset) =>
   nativeOperation(input, "catalog", { offset });
 const sessionInfo: ClaudeSdk["Service"]["sessionInfo"] = (input, sessionId) =>
   nativeOperation({ ...input, sessionId }, "session-info");
-export const live = Layer.succeed(
+export const live = Layer.effect(
   ClaudeSdk,
-  ClaudeSdk.of({
-    nativeHome,
-    listSessions,
-    sessionInfo,
-    open,
-    history,
-    historyPage,
-    fork,
-    configuration,
-    historyImage,
-    historyToolOutput,
-    hasSession,
+  Effect.gen(function* () {
+    const config = yield* MainConfig;
+    const shellEnvironment = yield* WorktreeShellEnvironmentRuntime;
+    const openSession = Effect.fn("ClaudeSdk.openSession")(function* (input: ClaudeSdkOpenInput) {
+      const explicitPath = input.instance.environment.some(({ name }) =>
+        config.platform === "win32" ? name.toUpperCase() === "PATH" : name === "PATH",
+      );
+      const launch = yield* resolveClaudeLaunch(
+        {
+          binary: input.instance.binaryPath,
+          environment: claudeEnvironment(input.environment, input.instance),
+          platform: config.platform,
+          cwd: input.cwd,
+          allowPathDiscovery: !explicitPath && input.allowPathDiscovery !== false,
+        },
+        shellEnvironment.load,
+      ).pipe(Effect.mapError((cause) => failure("launch", cause)));
+      return yield* open({ ...input, environment: launch.environment }, launch.executable);
+    });
+    return ClaudeSdk.of({
+      nativeHome,
+      listSessions,
+      sessionInfo,
+      open: openSession,
+      history,
+      historyPage,
+      fork,
+      configuration,
+      historyImage,
+      historyToolOutput,
+      hasSession,
+    });
   }),
 );

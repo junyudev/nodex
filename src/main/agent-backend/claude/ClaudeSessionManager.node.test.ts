@@ -819,6 +819,7 @@ it.effect(
         HOME: f.root,
       });
       expect(f.sdkInput().environment.PATH).toBeUndefined();
+      expect(f.sdkInput().allowPathDiscovery).toBe(false);
       expect(f.sdkInput().environment.CLAUDE_CONFIG_DIR).toBeUndefined();
       expect(f.sdkInput().environment.USERPROFILE).toBeUndefined();
       expect(
@@ -830,6 +831,7 @@ it.effect(
       yield* f.open(id, { workspaceEnvironment: yield* load });
       expect(f.sdkInput()).toMatchObject({ sessionId: id, resume: true });
       expect(f.sdkInput().environment.WORKTREE_SETUP).toBe("reopened");
+      expect(f.sdkInput().allowPathDiscovery).toBe(false);
       expect(f.historyEnvironment()).toEqual(f.sdkInput().environment);
       expect(f.sentInputs).toHaveLength(0);
     }).pipe(Effect.scoped),

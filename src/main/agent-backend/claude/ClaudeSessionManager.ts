@@ -255,6 +255,13 @@ const inputImageDescriptors = (messageId: string, images: readonly AgentPromptIm
     mediaType: image.mediaType,
   }));
 const CLAUDE_ACCOUNT_ENVIRONMENT_NAMES = new Set(["HOME", "USERPROFILE", "CLAUDE_CONFIG_DIR"]);
+const claudeWorkspaceInheritsPath = (
+  environment: CodexStoredShellEnvironment | null | undefined,
+  platform: string,
+) =>
+  ![...Object.keys(environment?.set ?? {}), ...(environment?.exclude ?? [])].some((name) =>
+    platform === "win32" ? name.toUpperCase() === "PATH" : name === "PATH",
+  );
 /** Worktree setup cannot select a different Claude account; explicit profile values win. */
 const claudeLaunchEnvironment = (
   config: Pick<MainConfig["Service"], "environment" | "platform">,
@@ -302,6 +309,7 @@ const makeSession = Effect.fn("ClaudeSessionManager.session")(function* (
   let everSaved = Boolean(input.sessionId && input.everSaved !== false);
   const executionInput = (location: NativeAgentExecutionLocation) => ({
     instance,
+    allowPathDiscovery: claudeWorkspaceInheritsPath(location.workspaceEnvironment, config.platform),
     environment: claudeLaunchEnvironment(
       config,
       location.workspaceEnvironment,
@@ -1868,6 +1876,10 @@ export const make = Effect.gen(function* () {
               Effect.gen(function* () {
                 const session = yield* sdk.open({
                   instance,
+                  allowPathDiscovery: claudeWorkspaceInheritsPath(
+                    workspaceEnvironment,
+                    config.platform,
+                  ),
                   environment: launchEnvironment,
                   cwd: workspaceRoot,
                   sessionId: createUuidV7(),
