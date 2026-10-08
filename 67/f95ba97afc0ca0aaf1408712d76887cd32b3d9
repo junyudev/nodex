@@ -1,0 +1,54 @@
+src/main/platform/node/ClaudeSdkBoundary.node.test.ts
+  s_ab40e4a5315f81::t_a425584dda65a3 13,17-29,44-46,331,404
+  s_ab40e4a5315f81::t_080a561cf0baf9 183-200
+  s_ab40e4a5315f81::t_35abfa609a9926 180-182
+src/main/platform/node/ClaudeDiscovery.node.test.ts
+  s_ab40e4a5315f81::t_556d081c0ef34a 63-95
+src/main/platform/node/ClaudeSdk.ts
+  s_ab40e4a5315f81::t_38a25d61291517 286
+  s_ab40e4a5315f81::t_0948710680d9de 51,53-54,107,815,817-848
+docs/CONFIGURATION.md
+  s_ab40e4a5315f81::t_5163058352b647 83-84
+  s_ab40e4a5315f81::t_7b73548f09ad69 85-86
+src/main/agent-backend/claude/ClaudeSessionManager.node.test.ts
+  s_ab40e4a5315f81::t_5163058352b647 822,834
+src/main/platform/node/ClaudeExecutable.ts
+  s_ab40e4a5315f81::t_0948710680d9de 5,93-102,104-107,113-116,118-119,121-144
+  s_ab40e4a5315f81::t_23fcde4f5ca34d 117
+  s_ab40e4a5315f81::t_b572ffff553355 6-12,103,108-112,120
+src/main/platform/node/ClaudeExecutable.node.test.ts
+  s_ab40e4a5315f81::t_5163058352b647 4-7,9,16,44-51,94,117,137
+  s_ab40e4a5315f81::t_080a561cf0baf9 2
+  s_ab40e4a5315f81::t_b572ffff553355 8,10,52-56,93,116,136,162
+  s_ab40e4a5315f81::t_d66343383fa2f4 57-92,95-115,118-135,138-161
+  s_ab40e4a5315f81::t_a1f01cfae10f04 163
+src/main/agent-backend/claude/ClaudeSessionManager.ts
+  s_ab40e4a5315f81::t_0948710680d9de 258-264,312
+  s_ab40e4a5315f81::t_38a25d61291517 1879-1882
+src/main/platform/node/ClaudeNativeHistory.node.test.ts
+  s_ab40e4a5315f81::t_a425584dda65a3 9-11,23-30,61,89,242
+src/main/app/MainApplicationLive.ts
+  s_ab40e4a5315f81::t_38a25d61291517 83-84
+  s_ab40e4a5315f81::t_0948710680d9de 71,77-82,85-87,110
+docs/product-specs/agent-backend-behavior.md
+  s_ab40e4a5315f81::t_7b73548f09ad69 111-112,140,148
+  s_ab40e4a5315f81::t_687f5044df80de 136-139
+  s_ab40e4a5315f81::t_5163058352b647 107-110
+  s_ab40e4a5315f81::t_556d081c0ef34a 141-147
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "67f95ba97afc0ca0aaf1408712d76887cd32b3d9",
+  "prompts": {},
+  "sessions": {
+    "s_ab40e4a5315f81": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a11ca9-0e4e-7be1-87b9-67d252f9ab1e",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    }
+  }
+}
