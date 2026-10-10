@@ -1,0 +1,47 @@
+examples/voice-orb/src/shaders.js
+  s_82534825c650e2::t_941b5e1bc26d61 1-490
+examples/voice-orb/src/assets.d.ts
+  s_82534825c650e2::t_a5b528afa81fd7 1-4
+examples/voice-orb/index.template.html
+  s_82534825c650e2::t_3eb060ad2d5db8 16-20,29-116
+  s_82534825c650e2::t_a5b528afa81fd7 1-15,21-28,117-134
+examples/voice-orb/serve.mjs
+  s_82534825c650e2::t_a5b528afa81fd7 1-12,17-21
+  s_82534825c650e2::t_3eb060ad2d5db8 13-16
+examples/voice-orb/src/orb-renderer.js
+  s_82534825c650e2::t_b49f8c6edb1cc8 1,7,143,159,174,194-195,198,211,221,237,254-256,261,267,270-276,280,310,339,376,378,385-386,416-417,461-462,467-468
+  s_82534825c650e2::t_86013ab84143e2 2-6,8-20,119-142,144-158,160-173,175-193,196-197,199-210,212-220,222-236,238-253,257-260,262-266,268-269,277-279,281-309,311-338,340-375,377,379-384,387-392,395-414,418-420,430-433,437-438,442-445,447-458,460,463-466,469-470
+  s_82534825c650e2::t_ae019d53524036 21-118,393-394,415,421-429,434-436,439-441,446,459
+examples/voice-orb/src/app.ts
+  s_82534825c650e2::t_a5b528afa81fd7 1-40,42-75,80-99,104-110,116-117
+  s_82534825c650e2::t_526918e024660a 41
+  s_82534825c650e2::t_3eb060ad2d5db8 76-79,100-103,111-115
+examples/voice-orb/.gitignore
+  s_82534825c650e2::t_47a386f03ba36c 1
+examples/voice-orb/build.mjs
+  s_82534825c650e2::t_a5b528afa81fd7 1-17,22
+  s_82534825c650e2::t_3eb060ad2d5db8 18-21
+examples/voice-orb/tsconfig.json
+  s_82534825c650e2::t_a5b528afa81fd7 1-12
+examples/voice-orb/README.md
+  s_82534825c650e2::t_d5befbf8649a61 26-27
+  s_82534825c650e2::t_47a386f03ba36c 1-25,28-34
+examples/voice-orb/src/orb-renderer.d.ts
+  s_82534825c650e2::t_86013ab84143e2 1-11
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "8afe78c8127903e1b32131f3d2ca34fd450c9801",
+  "prompts": {},
+  "sessions": {
+    "s_82534825c650e2": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a12477-692e-75f2-b575-32a47d77f878",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    }
+  }
+}
