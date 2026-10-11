@@ -1,0 +1,93 @@
+crates/nodex-cli/src/agent_interface.rs
+  s_bd811abbf24a41::t_fdcb377f15489a 387,393-394
+crates/nodex-cli/src/cli.rs
+  s_bd811abbf24a41::t_fdcb377f15489a 844,847-849
+docs/CLI.md
+  s_bd811abbf24a41::t_62b3a799a9e751 134-135
+crates/nodex-core/src/workspace/inbox_read.rs
+  s_bd811abbf24a41::t_a898d9f481c436 195,219-220,237,258,583-584
+docs/product-specs/inbox-behavior.md
+  s_bd811abbf24a41::t_62b3a799a9e751 20-27,39-41,81-86,147-148,153-156,182-183
+crates/nodex-store-format/src/lib.rs
+  s_bd811abbf24a41::t_fdcb377f15489a 175
+src/main/inbox-application/InboxDispatchRuntime.ts
+  s_bd811abbf24a41::t_ed5a9cc13201d0 9,95
+src/main/app-tools/InboxAppTools.ts
+  s_bd811abbf24a41::t_ed5a9cc13201d0 60
+src/main/inbox-application/InboxApplication.ts
+  s_bd811abbf24a41::t_abbd84f0542252 31,72-76,98-102,281-331,374
+crates/nodex-core/schema/current.sql
+  s_bd811abbf24a41::t_55df41d58b1329 5030
+src/main/inbox-application/inbox-suggestions.ts
+  s_bd811abbf24a41::t_72df68ccd4dbac 15,25-36,65,80-83,150-151,174,202-203,206-222,278-287,293
+crates/nodex-core/schema/migrations/v175_to_v176.sql
+  s_bd811abbf24a41::t_55df41d58b1329 24
+crates/nodex-core-contracts/src/workspace.rs
+  s_bd811abbf24a41::t_55df41d58b1329 1619-1620,1625-1626
+packages/core-protocol/openapi.json
+  s_bd811abbf24a41::t_677b35eca111d2 31056,31078-31083,38509-38510,38546-38549,40456,40478-40483
+CONTEXT.md
+  s_bd811abbf24a41::t_62b3a799a9e751 469-472
+src/main/inbox-application/inbox-naming.node.test.ts
+  s_bd811abbf24a41::t_4c2fab1e05a124 1-115
+src/renderer/features/inbox/inbox-presentation.node.test.ts
+  s_bd811abbf24a41::t_56848fc1a82d2e 14
+crates/nodex-core/src/workspace/inbox_tests.rs
+  s_bd811abbf24a41::t_7a422049d4bd1d 75,180,194-198,227,566,584-590,643,744-757,759
+  s_bd811abbf24a41::t_109b3f70cdbdd6 758
+  s_bd811abbf24a41::t_fdcb377f15489a 181-184
+  s_bd811abbf24a41::t_a5b35b83c3ff89 760
+src/main/inbox-application/inbox-suggestions.node.test.ts
+  s_bd811abbf24a41::t_9450d567ddcb42 14,17,23,59,91,113,120-141,164,171,176-178
+  s_bd811abbf24a41::t_2bd6845514c552 179-181
+crates/nodex-core-contracts/src/inbox.rs
+  s_bd811abbf24a41::t_55df41d58b1329 199-200
+src/main/inbox-application/InboxDispatcher.ts
+  s_bd811abbf24a41::t_abbd84f0542252 126-139
+src/renderer/features/inbox/inbox-reply.test.tsx
+  s_bd811abbf24a41::t_56848fc1a82d2e 35-36
+src/main/core-client/inbox-workspace.node.test.ts
+  s_bd811abbf24a41::t_ecde8e275a5455 39
+docs/adr/0067-inbox-entries-and-dispatch-proposals.md
+  s_bd811abbf24a41::t_62b3a799a9e751 20-24
+crates/nodex-cli/src/inbox.rs
+  s_bd811abbf24a41::t_fdcb377f15489a 71
+crates/nodex-core/src/workspace/inbox.rs
+  s_bd811abbf24a41::t_55df41d58b1329 37-38,216-218,222-223,226,235-242,244,246-259,261,270,282,286-332,491,495,539-541,553
+  s_bd811abbf24a41::t_fdcb377f15489a 233-234
+src/renderer/features/inbox/inbox-message.tsx
+  s_bd811abbf24a41::t_ed5a9cc13201d0 2,11,120-129,194
+src/renderer/features/inbox/inbox-route.tsx
+  s_bd811abbf24a41::t_ed5a9cc13201d0 225,285
+src/shared/nodex-app-tools/inbox-schema.ts
+  s_bd811abbf24a41::t_ed5a9cc13201d0 8,15
+packages/core-protocol/src/generated.ts
+  s_bd811abbf24a41::t_677b35eca111d2 7468,9275-9276,9692
+docs/product-specs/agent-interface-behavior.md
+  s_bd811abbf24a41::t_62b3a799a9e751 257-259
+src/renderer/features/inbox/inbox-reply.tsx
+  s_bd811abbf24a41::t_ed5a9cc13201d0 174
+crates/nodex-core/src/workspace/mutation.rs
+  s_bd811abbf24a41::t_55df41d58b1329 314
+  s_bd811abbf24a41::t_6ad537dc652956 326
+crates/nodex-cli/tests/inbox.rs
+  s_bd811abbf24a41::t_fdcb377f15489a 110-111,151,158,165
+packages/core-protocol/src/compatibility.generated.ts
+  s_bd811abbf24a41::t_35b8a62fdc629d 43
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "2a16637ec4b9bafa7aa647fa03f5130b758a79d7",
+  "prompts": {},
+  "sessions": {
+    "s_bd811abbf24a41": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "d475c410-7aa3-406e-a6d6-6873f7b30325",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    }
+  }
+}
