@@ -1,0 +1,91 @@
+src/renderer/features/inbox/use-inbox-actions.ts
+  s_bd811abbf24a41::t_55a8cc407ed922 59,62-84,109,123-127,131-132,134
+  s_bd811abbf24a41::t_68a3b6e0c7eb1d 37-41,60-61,108,119,128,133
+  s_bd811abbf24a41::t_c4d3bb2822bd5a 85-87
+packages/core-protocol/src/generated.ts
+  s_bd811abbf24a41::t_fdf7b85a179c95 9286-9290,9298
+src/main/inbox-application/inbox-naming.node.test.ts
+  s_bd811abbf24a41::t_302f7bdbfba988 99
+scripts/scenarios/scenarios/inbox-triage.ts
+  s_bd811abbf24a41::t_302f7bdbfba988 26,41,101-102,176-177,182,192
+src/renderer/components/workbench/workbench-session-sidebar.tsx
+  s_bd811abbf24a41::t_3dd3187c3fa65b 1844,1928,2325
+src/renderer/features/inbox/inbox-history.tsx
+  s_bd811abbf24a41::t_1010103c8770c3 1-42,44-113
+  s_bd811abbf24a41::t_90bd2b109eeaaa 43
+src/renderer/features/inbox/inbox-outcome.tsx
+  s_bd811abbf24a41::t_90bd2b109eeaaa 46,50-51,61
+  s_bd811abbf24a41::t_8898b5067df1b1 1-45,47-49,52-60,62-75
+src/renderer/features/inbox/inbox-presentation.ts
+  s_bd811abbf24a41::t_fd91ed0c185645 99-100,117-123
+  s_bd811abbf24a41::t_c5d8c91e7848e2 10-11,14,16-19,24-76,79-84,86-98,101-103,109-113,116,125,127-131,134-137,208-210,235
+src/main/core-client/inbox-adapter.ts
+  s_bd811abbf24a41::t_3dd3187c3fa65b 142
+crates/nodex-core/src/workspace/inbox_tests.rs
+  s_bd811abbf24a41::t_d04a65d2625d90 171,179,202,268,316-318,328,389-390,392,407-408,427-428,469,590,632,664
+src/shared/inbox.ts
+  s_bd811abbf24a41::t_3dd3187c3fa65b 15-16,119-120
+src/renderer/features/inbox/inbox-route.tsx
+  s_bd811abbf24a41::t_fd91ed0c185645 18,291-295
+  s_bd811abbf24a41::t_4b888ffc1b12c0 345-346,356,369
+  s_bd811abbf24a41::t_a436e27c61d18e 2,5,9,16,19,29,41-42,44,48-49,51,57-79,109-131,136-164,168,179-198,208,214,221-224,226,228,230-231,235,244,246-252,266,276-277,281-290,296-297,304-305,307,317,319,327-341,348-355,357-368,370,372-373,377,380,382,385,387,390,392-394,396-417
+crates/nodex-cli/tests/inbox.rs
+  s_bd811abbf24a41::t_d04a65d2625d90 134
+src/renderer/components/workbench/workbench-runtime.tsx
+  s_bd811abbf24a41::t_3dd3187c3fa65b 4483
+src/shared/schemas/inbox.ts
+  s_bd811abbf24a41::t_3dd3187c3fa65b 42
+src/renderer/features/inbox/inbox-presentation.node.test.ts
+  s_bd811abbf24a41::t_342597a0b28ca2 6,8-9,49-60,63-64,67-77,79,81-87,89-146,188
+src/renderer/features/inbox/inbox-triage.tsx
+  s_bd811abbf24a41::t_fd91ed0c185645 39-45,135-137,275
+  s_bd811abbf24a41::t_c43a96e15f8a52 2-37,46-133,138-274,276-308
+src/renderer/features/inbox/inbox-triage.test.tsx
+  s_bd811abbf24a41::t_fd91ed0c185645 172-175
+  s_bd811abbf24a41::t_342597a0b28ca2 1-171,176-198
+crates/nodex-core-contracts/src/inbox.rs
+  s_bd811abbf24a41::t_cdad022135bb86 120-123,182-183
+src/renderer/features/inbox/use-inbox.ts
+  s_bd811abbf24a41::t_46812f8ad02398 71,82
+src/renderer/features/inbox/inbox-dispatch-editor.tsx
+  s_bd811abbf24a41::t_3b8656c77af0b8 111,116-117,154-157
+src/renderer/features/inbox/inbox-message.tsx
+  s_bd811abbf24a41::t_4b888ffc1b12c0 98
+  s_bd811abbf24a41::t_a5f7b650dfeb69 162,167
+  s_bd811abbf24a41::t_aedaa2b8cc4326 76-78,86,94-95,102,114,132,151,153-161,163-166,168-178,180,182-184,189,191-192,197-199,202
+CHANGELOG.md
+  s_bd811abbf24a41::t_5f7c41072b1bfa 9
+docs/product-specs/workbench-shell.md
+  s_bd811abbf24a41::t_5f7c41072b1bfa 15
+CONTEXT.md
+  s_bd811abbf24a41::t_5f7c41072b1bfa 483-486
+src/main/core-client/inbox-workspace.node.test.ts
+  s_bd811abbf24a41::t_302f7bdbfba988 31,88
+src/renderer/components/workbench/sidebar-new-chat-controls.tsx
+  s_bd811abbf24a41::t_dd247c07b3f316 173,191
+docs/product-specs/inbox-behavior.md
+  s_bd811abbf24a41::t_5f7c41072b1bfa 43-56,64-70,72-73,75-78,80-84,111-130,142-143,146,153-154,192
+src/main/core-client/inbox-triage-scenario.node.test.ts
+  s_bd811abbf24a41::t_5ddefae329d5e4 10,14
+  s_bd811abbf24a41::t_302f7bdbfba988 20
+crates/nodex-core/src/workspace/inbox_read.rs
+  s_bd811abbf24a41::t_cdad022135bb86 51-73,85,92-105,107-108
+packages/core-protocol/openapi.json
+  s_bd811abbf24a41::t_fdf7b85a179c95 38565,38587-38592,38614-38615
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "b36dbf850a19e1145d88825e38b721cea631ac1a",
+  "prompts": {},
+  "sessions": {
+    "s_bd811abbf24a41": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "d475c410-7aa3-406e-a6d6-6873f7b30325",
+        "model": "unknown"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    }
+  }
+}
