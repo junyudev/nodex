@@ -35,8 +35,9 @@ use serde_json::{Value, json};
 
 use crate::cli::{
     BackupCommand, BlockArgs, BlockCommand, Cli, Command, DraftArgs, DraftCommand, HistoryArgs,
-    OpenArgs, OpenCommand, PageArgs, PageCommand, PagePrepareArgs, PrepareOperation, ProfileArgs,
-    ProfileCloneArgs, ProfileCommand, ReadArgs, RgArgs, SedArgs, ServiceArgs,
+    InboxArgs, InboxCommand, OpenArgs, OpenCommand, PageArgs, PageCommand, PagePrepareArgs,
+    PrepareOperation, ProfileArgs, ProfileCloneArgs, ProfileCommand, ReadArgs, RgArgs, SedArgs,
+    ServiceArgs,
 };
 use crate::error::{CliError, CliErrorCode};
 
@@ -267,6 +268,9 @@ pub(crate) fn execute_with_presentation(
             arguments,
         ),
         Command::History(arguments) => history(&client, cli.project.as_deref(), &cwd, arguments),
+        Command::Inbox(InboxArgs {
+            command: InboxCommand::Send(arguments),
+        }) => crate::inbox::send(&client, cli.project.as_deref(), &cwd, arguments),
         Command::Patch(arguments) => {
             crate::page_mutation::patch_page(&client, cli.project.as_deref(), &cwd, arguments)
         }

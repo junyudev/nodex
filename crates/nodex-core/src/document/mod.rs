@@ -32,6 +32,7 @@ mod realtime;
 mod recovery;
 mod recovery_files;
 mod retention;
+pub(crate) use retention::{erase_document_history, request_block_erasure};
 mod runtime;
 mod schema_compatibility;
 mod schema_migration;

@@ -212,6 +212,7 @@ pub mod database;
 pub mod database_configuration;
 pub mod document;
 pub mod events;
+pub mod inbox;
 pub mod library;
 pub mod query;
 pub mod sql;

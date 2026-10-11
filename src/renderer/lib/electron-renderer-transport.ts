@@ -358,6 +358,13 @@ export function createElectronRendererTransport(bridge: ElectronRendererBridge):
         callback(payload);
       });
     },
+    subscribeInboxChanges(callback) {
+      return bridge.on("inbox-changed", (...args: unknown[]) => {
+        const payload = args[0] as import("../../shared/inbox").InboxChangedEvent | undefined;
+        if (!payload) return;
+        callback(payload);
+      });
+    },
     subscribeProjectSessionChanges(callback: (event: ProjectSessionsChangeEvent) => void) {
       return bridge.on("project-sessions-changed", (...args: unknown[]) => {
         const payload = args[0] as ProjectSessionsChangeEvent | undefined;

@@ -545,6 +545,9 @@ export const CODEX_COMMAND_REGISTRY = [
       allowsMultiple: true,
     },
   ),
+  command("openInbox", "Open Inbox", "Open the Inbox and focus its composer", 25, "app", [
+    "CmdOrCtrl+Shift+D",
+  ]),
   command("openSideChat", "Open side chat", "Open a side chat for the current chat", 30, "app", [
     "CmdOrCtrl+Alt+S",
   ]),

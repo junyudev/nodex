@@ -23,6 +23,7 @@ import {
   CodexSidebarThreadRow,
   CodexSidebarTopActionButton,
   resolveCodexNewChatShortcutLabel,
+  resolveCodexInboxShortcutLabel,
   resolveCodexPageSearchShortcutLabel,
   type CodexProjectRowDndCapability,
 } from "./codex-sidebar";
@@ -1824,6 +1825,7 @@ export interface ProjectSessionSidebarProps {
   onOpenCommandPalette: () => void;
   onShowUnavailableProduct: (label: string) => void;
   onOpenAutomations: () => void;
+  onOpenInbox: () => void;
   onOpenResourceTarget: (target: LibraryPlacedResourceTarget) => void;
   onOpenResourceTargetInProject?: (
     projectId: string,
@@ -1832,6 +1834,9 @@ export interface ProjectSessionSidebarProps {
   ) => void | Promise<void>;
   activeResourceTarget: LibraryPlacedResourceTarget | null;
   automationsActive: boolean;
+  inboxActive: boolean;
+  /** Suggestions waiting for the user's decision. */
+  inboxCount: number;
   projectPickerOpenTick?: number;
   onCreateProject: (input: ProjectCreateInput) => Promise<Project | null>;
   onUpdateProject: (projectId: string, updates: ProjectUpdateInput) => Promise<Project | null>;
@@ -1913,6 +1918,9 @@ export function ProjectSessionSidebar({
   onOpenCommandPalette,
   onShowUnavailableProduct,
   onOpenAutomations,
+  onOpenInbox,
+  inboxActive,
+  inboxCount,
   onOpenResourceTarget,
   onOpenResourceTargetInProject,
   activeResourceTarget,
@@ -2307,6 +2315,12 @@ export function ProjectSessionSidebar({
               scrolledContentUnderHeader={sidebarScrollChrome.scrolledContentUnderHeader}
               onSearch={onOpenCommandPalette}
               onNewChat={() => void onStartNewChatInProject(activeProjectId)}
+              inbox={{
+                active: inboxActive,
+                count: inboxCount,
+                shortcutLabel: resolveCodexInboxShortcutLabel(),
+                onOpen: onOpenInbox,
+              }}
             />
 
             <div

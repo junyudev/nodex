@@ -196,6 +196,7 @@ export function openWorkbenchRoute(
   route:
     | { readonly kind: "settings"; readonly path: string }
     | { readonly kind: "automations"; readonly path: string }
+    | { readonly kind: "inbox" }
     | {
         readonly kind: "pending-worktree";
         readonly clientThreadId: string;

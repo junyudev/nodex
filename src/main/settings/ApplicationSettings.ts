@@ -2,6 +2,7 @@ import type {
   OpenCodeAgentSettings,
   UpdateOpenCodeAgentSettingsInput,
 } from "../../shared/opencode-agent-settings";
+import type { InboxSettings, UpdateInboxSettingsInput } from "../../shared/inbox";
 import { createHash } from "node:crypto";
 import { dirname } from "node:path";
 import * as Context from "effect/Context";
@@ -70,6 +71,7 @@ import {
   getTelemetrySettings,
   getThreadNotificationSettings,
   getWindowRestoreSettings,
+  getInboxSettings,
   resetCommandKeybindings,
   updateAppUpdateSettings,
   updateAcpAgentSettings,
@@ -86,6 +88,7 @@ import {
   updateTelemetrySettings,
   updateThreadNotificationSettings,
   updateWindowRestoreSettings,
+  updateInboxSettings,
   type ApplicationSettingsDocumentSource,
 } from "./application-settings-persistence";
 import { readSettingsTomlDocumentSnapshot } from "./settings-document";
@@ -108,6 +111,7 @@ export interface ApplicationSettingsSnapshot {
   readonly commandKeymap: CommandKeymapState;
   readonly appUpdate: AppUpdateSettings;
   readonly windowRestore: WindowRestoreSettings;
+  readonly inbox: InboxSettings;
 }
 
 export type ApplicationSettingsCommand =
@@ -143,7 +147,8 @@ export type ApplicationSettingsCommand =
     }
   | { readonly type: "reset-command-keybindings" }
   | { readonly type: "update-app-update"; readonly input: UpdateAppUpdateSettingsInput }
-  | { readonly type: "update-window-restore"; readonly input: UpdateWindowRestoreSettingsInput };
+  | { readonly type: "update-window-restore"; readonly input: UpdateWindowRestoreSettingsInput }
+  | { readonly type: "update-inbox"; readonly input: UpdateInboxSettingsInput };
 
 export class ApplicationSettingsError extends Schema.TaggedError<ApplicationSettingsError>()(
   "ApplicationSettingsError",
@@ -254,6 +259,7 @@ function makeSnapshot(
     commandKeymap: getCommandKeymapState(snapshotSource),
     appUpdate: getAppUpdateSettings(snapshotSource, buildDefaultChannel),
     windowRestore: getWindowRestoreSettings(snapshotSource),
+    inbox: getInboxSettings(snapshotSource),
   };
 }
 
@@ -313,6 +319,9 @@ function applyCommand(
       return;
     case "update-window-restore":
       updateWindowRestoreSettings(command.input, source);
+      return;
+    case "update-inbox":
+      updateInboxSettings(command.input, source);
       return;
   }
 }

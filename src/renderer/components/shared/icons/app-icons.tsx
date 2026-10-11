@@ -1091,6 +1091,28 @@ export function AutomationsIcon({ className }: IconProps) {
   );
 }
 
+/** A tray whose lip dips in the middle: things arrive here before they go anywhere. */
+export function InboxIcon({ className }: IconProps) {
+  return (
+    <svg
+      width="16"
+      height="16"
+      viewBox="0 0 16 16"
+      className={cn("icon-sm", className)}
+      fill="none"
+      xmlns="http://www.w3.org/2000/svg"
+      aria-hidden="true"
+    >
+      <path
+        d="M2.33 9.33V4.67c0-1.29 1.05-2.34 2.34-2.34h6.66c1.29 0 2.34 1.05 2.34 2.34v6.66c0 1.29-1.05 2.34-2.34 2.34H4.67c-1.29 0-2.34-1.05-2.34-2.34V9.33Zm0 0h2.86c.26 0 .5.15.6.39l.33.76c.11.24.34.39.6.39h2.56c.26 0 .5-.15.6-.39l.33-.76c.11-.24.34-.39.6-.39h2.86"
+        stroke="currentColor"
+        strokeWidth="0.9"
+        strokeLinejoin="round"
+      />
+    </svg>
+  );
+}
+
 export function CompactChevronDownIcon({ className }: IconProps) {
   return (
     <svg
@@ -1920,6 +1942,14 @@ export function NodexLogoMarkIcon({
       />
     </svg>
   );
+}
+
+/**
+ * The AI, on actions that ask it for something: the Nodex mark in one color. Reserved for those
+ * actions; it never decorates what the AI produced.
+ */
+export function AskAiIcon({ className, ...props }: IconProps) {
+  return <NodexLogoMarkIcon {...props} monochrome className={className ?? "icon-xs shrink-0"} />;
 }
 
 export function UpArrowIcon({ className }: IconProps) {
@@ -3714,20 +3744,6 @@ export function NfmSideMenuPlayIcon({ className }: IconProps) {
     >
       <path d="M7.814 12.407c0 .295.323.479.58.33l4.165-2.407a.38.38 0 0 0 0-.66L8.394 7.263a.385.385 0 0 0-.58.33z" />
       <path d="M4.5 4.125A2.125 2.125 0 0 0 2.375 6.25v7.5c0 1.174.951 2.125 2.125 2.125h11a2.125 2.125 0 0 0 2.125-2.125v-7.5A2.125 2.125 0 0 0 15.5 4.125zM3.625 6.25c0-.483.392-.875.875-.875h11c.483 0 .875.392.875.875v7.5a.875.875 0 0 1-.875.875h-11a.875.875 0 0 1-.875-.875z" />
-    </svg>
-  );
-}
-
-export function NfmSideMenuAiFaceIcon({ className }: IconProps) {
-  return (
-    <svg
-      viewBox="0 0 20 20"
-      className={cn("size-5 shrink-0", className)}
-      fill="currentColor"
-      aria-hidden="true"
-    >
-      <path d="M12.758 9.976a1.178 1.178 0 1 0 .377-2.326 1.178 1.178 0 0 0-.377 2.326M6.547 8.97a1.178 1.178 0 1 0 .377-2.327 1.178 1.178 0 0 0-.377 2.326" />
-      <path d="M10.573 5.554a3.917 3.917 0 0 1 6.743.035.625.625 0 1 1-1.08.63 2.667 2.667 0 0 0-4.591-.023l-5.398 9.015 4.192.68a.625.625 0 0 1-.2 1.233l-5.102-.827a.625.625 0 0 1-.436-.938zM4.36 3.517a3.92 3.92 0 0 1 5.572.356.625.625 0 1 1-.945.818 2.67 2.67 0 0 0-3.795-.243.625.625 0 1 1-.833-.931" />
     </svg>
   );
 }

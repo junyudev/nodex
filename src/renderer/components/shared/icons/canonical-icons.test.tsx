@@ -5,6 +5,7 @@ import {
   ConversationIcon,
   CopyIcon,
   DatabaseLabelIcon,
+  DispatchIcon,
   FilterIcon,
   FullWidthIcon,
   ImageIcon,
@@ -13,14 +14,18 @@ import {
   LoadingIcon,
   MoveDownIcon,
   MoveUpIcon,
+  NoteIcon,
   PageHistoryIcon,
   PauseIcon,
   PlayIcon,
+  QuestionIcon,
   ResetIcon,
   RetryIcon,
+  SendToChatIcon,
   SortAscendingIcon,
   SortDescendingIcon,
   TerminalIcon,
+  TodoIcon,
   VisibilityIcon,
   VisibilityOffIcon,
 } from "./canonical-icons";
@@ -136,6 +141,26 @@ describe("canonical shared icons", () => {
 
     expect(pathSignature(visibility.container)).not.toEqual(pathSignature(visibilityOff.container));
     expect(pathSignature(play.container)).not.toEqual(pathSignature(pause.container));
+  });
+
+  test("draws line glyphs at the house weight so they sit beside outlined icons", () => {
+    const glyphs = [NoteIcon, TodoIcon, QuestionIcon, SendToChatIcon, DispatchIcon];
+    const signatures = glyphs.map((Icon) => {
+      const view = render(<Icon />);
+      const svg = view.container.querySelector("svg");
+      const strokes = [...view.container.querySelectorAll("path[stroke]")];
+
+      expect(svg?.getAttribute("viewBox")).toBe("0 0 20 20");
+      expect(strokes.length).toBeGreaterThan(0);
+      for (const path of strokes) {
+        expect(path.getAttribute("fill")).toBe("none");
+        expect(path.getAttribute("stroke-width")).toBe("1.33");
+        expect(path.getAttribute("stroke-linecap")).toBe("round");
+      }
+      return pathSignature(view.container).join(" ");
+    });
+
+    expect(new Set(signatures).size).toBe(glyphs.length);
   });
 
   test("preserves the faded loading track", () => {

@@ -1,0 +1,933 @@
+use nodex_core_contracts::agent::AgentTurnProvenance;
+use nodex_core_contracts::collection::CollectionWindowRequest;
+use nodex_core_contracts::inbox::{
+    ProjectWorkspaceInboxDispatchAction, ProjectWorkspaceInboxEntryKind,
+    ProjectWorkspaceInboxEntryState, ProjectWorkspaceInboxItem, ProjectWorkspaceInboxLocation,
+    ProjectWorkspaceInboxProposalOrigin, ProjectWorkspaceInboxProposalState,
+    ProjectWorkspaceInboxSource, ProjectWorkspaceInboxSuggestionInput,
+    ProjectWorkspaceInboxSuggestionState, ProjectWorkspaceInboxSummary,
+    ProjectWorkspaceInboxWindowFilter,
+};
+use nodex_core_contracts::workspace::{
+    ProjectWorkspaceIntent, ProjectWorkspaceRead, ProjectWorkspaceReadValue,
+    ProjectWorkspaceTurnAuthority, ProjectWorkspaceTurnAuthorityScope,
+    ProjectWorkspaceTurnAuthoritySource,
+};
+use nodex_core_contracts::{
+    AdapterKind, BoundModuleContext, CoreErrorCode, ModuleReadRequest,
+    PROJECT_WORKSPACE_CONTRACT_VERSION,
+};
+
+use super::ProjectWorkspaceModule;
+use super::test_support::{
+    TestWorkspace, context, create_session_thread, request, seeded_workspace,
+};
+
+fn host() -> BoundModuleContext {
+    BoundModuleContext {
+        project_id: None,
+        adapter: AdapterKind::ElectronHost,
+        ..context()
+    }
+}
+
+fn apply_host(module: &ProjectWorkspaceModule, operation_id: &str, intent: ProjectWorkspaceIntent) {
+    module
+        .apply(&host(), request(operation_id, intent))
+        .unwrap_or_else(|error| panic!("{operation_id}: {}", error.message));
+}
+
+fn apply_host_error(
+    module: &ProjectWorkspaceModule,
+    operation_id: &str,
+    intent: ProjectWorkspaceIntent,
+) -> CoreErrorCode {
+    module
+        .apply(&host(), request(operation_id, intent))
+        .expect_err(operation_id)
+        .code
+}
+
+fn read_host(
+    module: &ProjectWorkspaceModule,
+    read: ProjectWorkspaceRead,
+) -> ProjectWorkspaceReadValue {
+    module
+        .read(
+            &host(),
+            ModuleReadRequest {
+                contract_version: PROJECT_WORKSPACE_CONTRACT_VERSION,
+                read,
+            },
+        )
+        .expect("Inbox read")
+        .value
+}
+
+fn send(module: &ProjectWorkspaceModule, id: &str, text: &str) {
+    apply_host(
+        module,
+        &format!("send:{id}"),
+        ProjectWorkspaceIntent::SendInboxMessage {
+            page_id: format!("page:{id}"),
+            document_id: format!("document:{id}"),
+            text: text.to_owned(),
+            title: None,
+        },
+    );
+}
+
+fn window(
+    module: &ProjectWorkspaceModule,
+    filter: ProjectWorkspaceInboxWindowFilter,
+) -> Vec<ProjectWorkspaceInboxItem> {
+    let ProjectWorkspaceReadValue::InboxWindow { items } = read_host(
+        module,
+        ProjectWorkspaceRead::InboxWindow {
+            filter,
+            window: CollectionWindowRequest {
+                after: None,
+                first: Some(50),
+            },
+        },
+    ) else {
+        panic!("Inbox window");
+    };
+    items.items
+}
+
+fn summary(module: &ProjectWorkspaceModule) -> ProjectWorkspaceInboxSummary {
+    let ProjectWorkspaceReadValue::InboxSummary { summary } =
+        read_host(module, ProjectWorkspaceRead::InboxSummary)
+    else {
+        panic!("Inbox summary");
+    };
+    summary
+}
+
+fn pending(module: &ProjectWorkspaceModule) -> Vec<ProjectWorkspaceInboxSuggestionInput> {
+    let ProjectWorkspaceReadValue::InboxPendingSuggestions { entries } = read_host(
+        module,
+        ProjectWorkspaceRead::InboxPendingSuggestions { limit: 16 },
+    ) else {
+        panic!("pending suggestions");
+    };
+    entries
+}
+
+fn propose(
+    module: &ProjectWorkspaceModule,
+    proposal_id: &str,
+    entry: &ProjectWorkspaceInboxSuggestionInput,
+    action: ProjectWorkspaceInboxDispatchAction,
+) {
+    apply_host(
+        module,
+        &format!("propose:{proposal_id}"),
+        ProjectWorkspaceIntent::ProposeInboxDispatch {
+            proposal_id: proposal_id.to_owned(),
+            page_ids: vec![entry.page_id.clone()],
+            basis: vec![entry.basis.clone()],
+            action,
+            entry_kind: Some(ProjectWorkspaceInboxEntryKind::Question),
+            summary: "Compare both positions".to_owned(),
+            rationale: Some("This is still an open question".to_owned()),
+            produced_by: Some("Test".to_owned()),
+        },
+    );
+}
+
+fn count(workspace: &TestWorkspace, sql: &'static str) -> i64 {
+    workspace
+        .kernel
+        .readers()
+        .read_default(move |connection| Ok(connection.query_row(sql, [], |row| row.get(0))?))
+        .expect("count")
+}
+
+#[test]
+fn sending_creates_one_hidden_inbox_and_streams_messages_newest_first() {
+    let workspace = seeded_workspace();
+    let module = &workspace.module;
+    send(
+        module,
+        "one",
+        "Maybe the homepage should feel like an assistant",
+    );
+    send(
+        module,
+        "two",
+        "Fix the sidebar flicker\n\nIt happens on hover.\n",
+    );
+
+    assert_eq!(count(&workspace, "SELECT count(*) FROM inbox_registry"), 1);
+    assert_eq!(
+        count(
+            &workspace,
+            "SELECT count(*) FROM database_containers WHERE name = 'Inbox'"
+        ),
+        1
+    );
+    let items = window(module, ProjectWorkspaceInboxWindowFilter::Inbox);
+    assert_eq!(
+        items
+            .iter()
+            .map(|item| item.page_id.as_str())
+            .collect::<Vec<_>>(),
+        vec!["page:two", "page:one"]
+    );
+    assert!(window(module, ProjectWorkspaceInboxWindowFilter::Processed).is_empty());
+    let newest = &items[0];
+    // The whole message is the body, including its own blank line; the title only labels it.
+    assert_eq!(
+        newest.body,
+        "Fix the sidebar flicker\n\nIt happens on hover."
+    );
+    assert_eq!(newest.title, "Fix the sidebar flicker");
+    assert_eq!(newest.source, ProjectWorkspaceInboxSource::User);
+    assert_eq!(newest.location, ProjectWorkspaceInboxLocation::Inbox);
+    assert_eq!(newest.state, ProjectWorkspaceInboxEntryState::Open);
+    assert_eq!(
+        newest.suggestion_state,
+        ProjectWorkspaceInboxSuggestionState::Pending
+    );
+    assert!(newest.page_key.as_deref().is_some_and(|key| key == "IN-2"));
+    assert_eq!(
+        items[1].body,
+        "Maybe the homepage should feel like an assistant"
+    );
+    assert!(pending(module).iter().all(|entry| entry.title_provisional));
+    let summary = summary(module);
+    assert_eq!(summary.entry_count, 2);
+    assert_eq!(summary.inbox_count, 2);
+    assert_eq!(summary.pending_suggestion_count, 2);
+    assert!(summary.database_id.is_some());
+    // The Inbox has its own entry point and never appears as a standalone Library root.
+    assert_eq!(
+        count(
+            &workspace,
+            "SELECT count(*) FROM library_block_placements placement \
+             WHERE placement.block_id IN (SELECT database_block_id FROM inbox_registry)"
+        ),
+        1
+    );
+}
+
+#[test]
+fn inbox_requires_trusted_local_authority() {
+    let workspace = seeded_workspace();
+    let project_scoped = workspace
+        .module
+        .apply(
+            &context(),
+            request(
+                "project-send",
+                ProjectWorkspaceIntent::SendInboxMessage {
+                    page_id: "page:x".into(),
+                    document_id: "document:x".into(),
+                    text: "hello".into(),
+                    title: None,
+                },
+            ),
+        )
+        .expect_err("Project-scoped connections cannot write the Inbox");
+    assert_eq!(project_scoped.code, CoreErrorCode::Unauthorized);
+    let read = workspace
+        .module
+        .read(
+            &context(),
+            ModuleReadRequest {
+                contract_version: PROJECT_WORKSPACE_CONTRACT_VERSION,
+                read: ProjectWorkspaceRead::InboxSummary,
+            },
+        )
+        .expect_err("Project-scoped connections cannot read the Inbox");
+    assert_eq!(read.code, CoreErrorCode::Unauthorized);
+}
+
+#[test]
+fn confirmed_new_chat_creates_one_session_and_enters_the_outbox() {
+    let workspace = seeded_workspace();
+    let module = &workspace.module;
+    send(
+        module,
+        "idea",
+        "Research how other assistants onboard users",
+    );
+    let entry = pending(module).remove(0);
+    propose(
+        module,
+        "proposal:1",
+        &entry,
+        ProjectWorkspaceInboxDispatchAction::NewChat {
+            project_id: Some("project:default".into()),
+            prompt: "Survey three assistant onboarding flows; do not change code.".into(),
+        },
+    );
+    assert!(pending(module).is_empty());
+    let item = window(module, ProjectWorkspaceInboxWindowFilter::Inbox).remove(0);
+    let proposal = item.proposal.expect("suggestion");
+    assert_eq!(proposal.state, ProjectWorkspaceInboxProposalState::Open);
+    assert_eq!(proposal.origin, ProjectWorkspaceInboxProposalOrigin::Agent);
+    assert_eq!(proposal.target_project_name.as_deref(), Some("Nodex"));
+    assert_eq!(item.kind, Some(ProjectWorkspaceInboxEntryKind::Question));
+    assert_eq!(summary(module).needs_decision_count, 1);
+
+    let confirm = ProjectWorkspaceIntent::ConfirmInboxDispatch {
+        proposal_id: "proposal:1".into(),
+        expected_revision: proposal.revision,
+        action: None,
+        session_id: Some("session:dispatched".into()),
+    };
+    let first = module
+        .apply(&host(), request("confirm:1", confirm.clone()))
+        .expect("confirm");
+    assert_eq!(
+        first.committed.value.affected_session_ids,
+        vec!["session:dispatched"]
+    );
+    let replay = module
+        .apply(&host(), request("confirm:1", confirm.clone()))
+        .expect("idempotent confirm");
+    assert!(replay.committed.receipt.mutation.duplicate);
+    assert_eq!(
+        apply_host_error(module, "confirm:again", confirm),
+        CoreErrorCode::Conflict
+    );
+    assert_eq!(
+        count(
+            &workspace,
+            "SELECT count(*) FROM project_sessions WHERE id = 'session:dispatched'"
+        ),
+        1
+    );
+
+    let ProjectWorkspaceReadValue::InboxDispatchOutbox { dispatches } = read_host(
+        module,
+        ProjectWorkspaceRead::InboxDispatchOutbox { limit: 16 },
+    ) else {
+        panic!("outbox");
+    };
+    assert_eq!(dispatches.len(), 1);
+    assert_eq!(dispatches[0].session_id, "session:dispatched");
+    assert_eq!(dispatches[0].project_id.as_deref(), Some("project:default"));
+    assert_eq!(dispatches[0].page_ids, vec!["page:idea"]);
+    assert_eq!(summary(module).dispatching_count, 1);
+    // A confirmed dispatch is handled: it leaves the Inbox while it is delivered.
+    assert!(window(module, ProjectWorkspaceInboxWindowFilter::Inbox).is_empty());
+    assert_eq!(summary(module).inbox_count, 0);
+
+    apply_host(
+        module,
+        "complete:1",
+        ProjectWorkspaceIntent::CompleteInboxDispatch {
+            proposal_id: "proposal:1".into(),
+            dispatched_thread_id: Some("thread:dispatched".into()),
+        },
+    );
+    let item = window(module, ProjectWorkspaceInboxWindowFilter::Processed).remove(0);
+    let proposal = item.proposal.expect("completed suggestion");
+    assert_eq!(
+        proposal.state,
+        ProjectWorkspaceInboxProposalState::Completed
+    );
+    assert_eq!(
+        proposal.chat.as_ref().map(|chat| chat.session_id.as_str()),
+        Some("session:dispatched")
+    );
+    assert_eq!(summary(module).dispatching_count, 0);
+}
+
+#[test]
+fn edited_messages_invalidate_unedited_suggestions() {
+    let workspace = seeded_workspace();
+    let module = &workspace.module;
+    send(module, "stale", "Tighten the onboarding copy");
+    let mut entry = pending(module).remove(0);
+    entry.basis.head_seq += 7;
+    assert_eq!(
+        apply_host_error(
+            module,
+            "propose:stale",
+            ProjectWorkspaceIntent::ProposeInboxDispatch {
+                proposal_id: "proposal:stale".into(),
+                page_ids: vec![entry.page_id.clone()],
+                basis: vec![entry.basis],
+                action: ProjectWorkspaceInboxDispatchAction::Keep,
+                entry_kind: None,
+                summary: "Keep".into(),
+                rationale: None,
+                produced_by: None,
+            },
+        ),
+        CoreErrorCode::Conflict
+    );
+}
+
+#[test]
+fn keep_dismisses_suggestions_and_states_filter_the_stream() {
+    let workspace = seeded_workspace();
+    let module = &workspace.module;
+    send(module, "note", "The Linear changelog layout is nice");
+    let entry = pending(module).remove(0);
+    propose(
+        module,
+        "proposal:note",
+        &entry,
+        ProjectWorkspaceInboxDispatchAction::NewChat {
+            project_id: None,
+            prompt: "Study it".into(),
+        },
+    );
+    apply_host(
+        module,
+        "keep:note",
+        ProjectWorkspaceIntent::KeepInboxEntries {
+            page_ids: vec!["page:note".into()],
+        },
+    );
+    assert!(window(module, ProjectWorkspaceInboxWindowFilter::Inbox).is_empty());
+    let kept = window(module, ProjectWorkspaceInboxWindowFilter::Processed);
+    assert_eq!(kept.len(), 1);
+    assert_eq!(kept[0].state, ProjectWorkspaceInboxEntryState::Kept);
+    assert_eq!(
+        kept[0].proposal.as_ref().map(|proposal| proposal.state),
+        Some(ProjectWorkspaceInboxProposalState::Dismissed)
+    );
+    assert_eq!(summary(module).needs_decision_count, 0);
+    apply_host(
+        module,
+        "done:note",
+        ProjectWorkspaceIntent::SetInboxEntryState {
+            page_ids: vec!["page:note".into()],
+            state: ProjectWorkspaceInboxEntryState::Done,
+        },
+    );
+    assert_eq!(
+        window(module, ProjectWorkspaceInboxWindowFilter::Processed)[0].state,
+        ProjectWorkspaceInboxEntryState::Done
+    );
+
+    apply_host(
+        module,
+        "resuggest:note",
+        ProjectWorkspaceIntent::RequestInboxSuggestion {
+            page_ids: vec!["page:note".into()],
+        },
+    );
+    assert_eq!(pending(module).len(), 1);
+    apply_host(
+        module,
+        "fail:note",
+        ProjectWorkspaceIntent::RecordInboxSuggestionFailure {
+            page_ids: vec!["page:note".into()],
+            message: "Model unavailable".into(),
+        },
+    );
+    // Asking again reopens it, so it is back in the Inbox even though its suggestion failed.
+    let item = window(module, ProjectWorkspaceInboxWindowFilter::Inbox).remove(0);
+    assert_eq!(
+        item.suggestion_state,
+        ProjectWorkspaceInboxSuggestionState::Failed
+    );
+    assert_eq!(item.suggestion_error.as_deref(), Some("Model unavailable"));
+}
+
+#[test]
+fn user_dispatch_to_a_started_chat_carries_its_thread() {
+    let workspace = seeded_workspace();
+    let module = &workspace.module;
+    create_session_thread(
+        module,
+        "target",
+        "session:target",
+        "thread:target",
+        Some("project:default"),
+        1,
+    );
+    send(module, "follow-up", "Also cover the empty state");
+    apply_host(
+        module,
+        "dispatch:follow-up",
+        ProjectWorkspaceIntent::DispatchInboxEntries {
+            proposal_id: "proposal:manual".into(),
+            page_ids: vec!["page:follow-up".into()],
+            action: ProjectWorkspaceInboxDispatchAction::SendToChat {
+                session_id: "session:target".into(),
+                prompt: "Also cover the empty state".into(),
+            },
+            session_id: None,
+        },
+    );
+    let ProjectWorkspaceReadValue::InboxDispatchOutbox { dispatches } = read_host(
+        module,
+        ProjectWorkspaceRead::InboxDispatchOutbox { limit: 16 },
+    ) else {
+        panic!("outbox");
+    };
+    assert_eq!(dispatches[0].thread_id.as_deref(), Some("thread:target"));
+    let item = window(module, ProjectWorkspaceInboxWindowFilter::Processed).remove(0);
+    let proposal = item.proposal.expect("manual dispatch");
+    assert_eq!(proposal.origin, ProjectWorkspaceInboxProposalOrigin::User);
+    assert_eq!(
+        proposal.state,
+        ProjectWorkspaceInboxProposalState::Dispatching
+    );
+    assert_eq!(
+        proposal.chat.map(|chat| chat.display_title),
+        Some("thread:target".to_owned())
+    );
+
+    apply_host(
+        module,
+        "fail:follow-up",
+        ProjectWorkspaceIntent::FailInboxDispatch {
+            proposal_id: "proposal:manual".into(),
+            message: "Chat is busy".into(),
+        },
+    );
+    apply_host(
+        module,
+        "retry:follow-up",
+        ProjectWorkspaceIntent::RetryInboxDispatch {
+            proposal_id: "proposal:manual".into(),
+        },
+    );
+    assert_eq!(summary(module).dispatching_count, 1);
+}
+
+#[test]
+fn move_suggestions_complete_only_after_the_page_moves() {
+    let workspace = seeded_workspace();
+    let module = &workspace.module;
+    send(module, "task", "Add keyboard shortcuts to the Board");
+    let entry = pending(module).remove(0);
+    propose(
+        module,
+        "proposal:move",
+        &entry,
+        ProjectWorkspaceInboxDispatchAction::MoveToProject {
+            project_id: "project:default".into(),
+        },
+    );
+    assert_eq!(
+        apply_host_error(
+            module,
+            "confirm:move",
+            ProjectWorkspaceIntent::ConfirmInboxDispatch {
+                proposal_id: "proposal:move".into(),
+                expected_revision: 1,
+                action: None,
+                session_id: None,
+            },
+        ),
+        CoreErrorCode::Conflict
+    );
+}
+
+#[test]
+fn agents_append_with_provenance_and_read_only_turns_cannot() {
+    let workspace = seeded_workspace();
+    let module = &workspace.module;
+    create_session_thread(
+        module,
+        "source",
+        "session:source",
+        "thread:source",
+        Some("project:default"),
+        1,
+    );
+    for (turn, read_only) in [("write", false), ("read", true)] {
+        super::test_support::apply(
+            module,
+            &format!("freeze:{turn}"),
+            ProjectWorkspaceIntent::FreezeTurnAuthority {
+                thread_id: "thread:source".into(),
+                turn_id: turn.into(),
+                root_thread_id: "thread:source".into(),
+                actor_project_id: Some("project:default".into()),
+                source: ProjectWorkspaceTurnAuthoritySource::ProjectTurn,
+                read_only,
+                inherited_from: None,
+            },
+        );
+    }
+    let command = |turn: &str, id: &str| ProjectWorkspaceIntent::AgentCommand {
+        provenance: Box::new(AgentTurnProvenance {
+            profile_id: "profile-1".into(),
+            authority: ProjectWorkspaceTurnAuthority {
+                thread_id: "thread:source".into(),
+                turn_id: turn.into(),
+                root_thread_id: "thread:source".into(),
+                actor_project_id: Some("project:default".into()),
+                library_id: "library-1".into(),
+                store_epoch: "epoch-1".into(),
+                scope: ProjectWorkspaceTurnAuthorityScope::Project,
+                source: ProjectWorkspaceTurnAuthoritySource::ProjectTurn,
+            },
+        }),
+        intent: Box::new(ProjectWorkspaceIntent::SendInboxMessage {
+            page_id: format!("page:{id}"),
+            document_id: format!("document:{id}"),
+            text: "The settings buttons are missing accessible labels".into(),
+            title: Some("Label the  settings buttons".into()),
+        }),
+    };
+    let agent = BoundModuleContext {
+        adapter: AdapterKind::Agent,
+        ..context()
+    };
+    assert_eq!(
+        module
+            .apply(&agent, request("agent:read", command("read", "denied")))
+            .expect_err("read-only Turn")
+            .code,
+        CoreErrorCode::Unauthorized
+    );
+    module
+        .apply(&agent, request("agent:write", command("write", "agent")))
+        .expect("Agent Inbox drop");
+    let item = window(module, ProjectWorkspaceInboxWindowFilter::Inbox).remove(0);
+    // A sender's own title is final; only Core's provisional title is open to naming.
+    assert_eq!(item.title, "Label the settings buttons");
+    assert_eq!(
+        item.body,
+        "The settings buttons are missing accessible labels"
+    );
+    assert!(!pending(module)[0].title_provisional);
+    assert_eq!(
+        item.source,
+        ProjectWorkspaceInboxSource::Agent {
+            session_id: Some("session:source".into()),
+            thread_id: Some("thread:source".into()),
+            project_id: Some("project:default".into()),
+            label: "thread:source".into(),
+        }
+    );
+
+    let cap = super::inbox::MAX_AGENT_MESSAGES_PER_TURN;
+    for index in 1..cap {
+        module
+            .apply(
+                &agent,
+                request(
+                    &format!("agent:write:{index}"),
+                    command("write", &format!("agent-{index}")),
+                ),
+            )
+            .expect("Agent Inbox drop within the Turn cap");
+    }
+    assert_eq!(
+        module
+            .apply(&agent, request("agent:over", command("write", "over")))
+            .expect_err("Turn cap")
+            .code,
+        CoreErrorCode::ResourceExhausted
+    );
+    let replay = module
+        .apply(&agent, request("agent:write", command("write", "agent")))
+        .expect("an idempotent replay is not a new message");
+    assert!(replay.committed.receipt.mutation.duplicate);
+    assert_eq!(
+        window(module, ProjectWorkspaceInboxWindowFilter::Inbox).len(),
+        usize::try_from(cap).expect("cap")
+    );
+}
+
+#[test]
+fn command_line_sends_are_labeled_with_their_project() {
+    let workspace = seeded_workspace();
+    let module = &workspace.module;
+    let command_line = |project: bool| BoundModuleContext {
+        adapter: AdapterKind::NativeCli,
+        project_id: if project { context().project_id } else { None },
+        ..context()
+    };
+    let intent = |id: &str| ProjectWorkspaceIntent::SendInboxMessage {
+        page_id: format!("page:{id}"),
+        document_id: format!("document:{id}"),
+        text: "Benchmark search on the large fixture".into(),
+        title: None,
+    };
+    module
+        .apply(
+            &command_line(false),
+            request("cli:library", intent("library")),
+        )
+        .expect("Library-wide command line send");
+    module
+        .apply(
+            &command_line(true),
+            request("cli:project", intent("project")),
+        )
+        .expect("Project-scoped command line send");
+    let items = window(module, ProjectWorkspaceInboxWindowFilter::Inbox);
+    let sources = items
+        .iter()
+        .map(|item| item.source.clone())
+        .collect::<Vec<_>>();
+    let ProjectWorkspaceInboxSource::CommandLine {
+        project_id: Some(project_id),
+        label,
+    } = &sources[0]
+    else {
+        panic!("Project-scoped source: {:?}", sources[0]);
+    };
+    assert_eq!(project_id, "project:default");
+    assert!(label.starts_with("Command line · "), "{label}");
+    assert_eq!(
+        sources[1],
+        ProjectWorkspaceInboxSource::CommandLine {
+            project_id: None,
+            label: "Command line".into(),
+        }
+    );
+
+    // Project-scoped command line connections may only append.
+    assert_eq!(
+        module
+            .read(
+                &command_line(true),
+                ModuleReadRequest {
+                    contract_version: PROJECT_WORKSPACE_CONTRACT_VERSION,
+                    read: ProjectWorkspaceRead::InboxSummary,
+                },
+            )
+            .expect_err("Project-scoped Inbox read")
+            .code,
+        CoreErrorCode::Unauthorized
+    );
+    assert_eq!(
+        module
+            .apply(
+                &command_line(true),
+                request(
+                    "cli:keep",
+                    ProjectWorkspaceIntent::SetInboxEntryState {
+                        page_ids: vec!["page:project".into()],
+                        state: ProjectWorkspaceInboxEntryState::Kept,
+                    },
+                ),
+            )
+            .expect_err("Project-scoped Inbox triage")
+            .code,
+        CoreErrorCode::Unauthorized
+    );
+}
+
+#[test]
+fn routing_context_is_bounded_to_active_targets() {
+    let workspace = seeded_workspace();
+    let module = &workspace.module;
+    create_session_thread(
+        module,
+        "recent",
+        "session:recent",
+        "thread:recent",
+        Some("project:default"),
+        5,
+    );
+    send(module, "ctx", "Where should this go?");
+    let ProjectWorkspaceReadValue::InboxDispatchContext { context } = read_host(
+        module,
+        ProjectWorkspaceRead::InboxDispatchContext {
+            page_ids: vec!["page:ctx".into()],
+        },
+    ) else {
+        panic!("context");
+    };
+    assert_eq!(context.entries.len(), 1);
+    assert_eq!(context.entries[0].title, "Where should this go?");
+    assert_eq!(
+        context
+            .projects
+            .iter()
+            .map(|project| project.project_id.as_str())
+            .collect::<Vec<_>>(),
+        vec!["project:default"]
+    );
+    assert_eq!(context.sessions[0].session_id, "session:recent");
+}
+
+#[test]
+fn provisional_titles_are_short_labels_of_the_opening_words() {
+    use super::inbox::provisional_title;
+    assert_eq!(provisional_title("  Fix   the flicker "), "Fix the flicker");
+    assert_eq!(
+        provisional_title(
+            "Compare how three assistants onboard new users and write a one-page summary"
+        ),
+        "Compare how three assistants onboard new users…"
+    );
+    // Wide characters count twice, so a Chinese label stays about as wide as an English one.
+    assert_eq!(
+        provisional_title("首页现在看起来像开发者工具，也许应该更像一个个人助理，你觉得呢"),
+        "首页现在看起来像开发者工具，也许应该更像一个个人…"
+    );
+}
+
+#[test]
+fn deleting_a_message_erases_it_and_every_suggestion_that_names_it() {
+    let workspace = seeded_workspace();
+    let module = &workspace.module;
+    send(
+        module,
+        "secret",
+        "Use the key sk-live-0123456789 for staging",
+    );
+    send(module, "sibling", "Also rotate the staging credentials");
+    let entries = pending(module);
+    // One grouped suggestion covers both messages and quotes the secret.
+    apply_host(
+        module,
+        "propose:group",
+        ProjectWorkspaceIntent::ProposeInboxDispatch {
+            proposal_id: "proposal:group".into(),
+            page_ids: entries.iter().map(|entry| entry.page_id.clone()).collect(),
+            basis: entries.iter().map(|entry| entry.basis.clone()).collect(),
+            action: ProjectWorkspaceInboxDispatchAction::NewChat {
+                project_id: None,
+                prompt: "Configure staging with sk-live-0123456789".into(),
+            },
+            entry_kind: Some(ProjectWorkspaceInboxEntryKind::Todo),
+            summary: "Set up staging with the key".into(),
+            rationale: None,
+            produced_by: Some("Test".into()),
+        },
+    );
+    // An edit burst that has not become a revision yet must not outlive the erasure either.
+    workspace
+        .kernel
+        .writer()
+        .call(|connection| {
+            connection.execute(
+                "INSERT INTO document_revision_sessions( \
+                   document_id, generation, dirty_head_seq, burst_started_at, last_edit_at, \
+                   client_session_id \
+                 ) VALUES ('document:secret', 1, 1, ?1, ?1, 'renderer:editor')",
+                [super::test_support::NOW],
+            )?;
+            Ok(())
+        })
+        .expect("open edit burst");
+    apply_host(
+        module,
+        "delete:secret",
+        ProjectWorkspaceIntent::DeleteInboxMessages {
+            page_ids: vec!["page:secret".into()],
+        },
+    );
+
+    let items = window(module, ProjectWorkspaceInboxWindowFilter::Inbox);
+    assert_eq!(
+        items
+            .iter()
+            .map(|item| item.page_id.as_str())
+            .collect::<Vec<_>>(),
+        vec!["page:sibling"]
+    );
+    // The sibling loses the suggestion that quoted the secret and waits for a new one.
+    assert!(items[0].proposal.is_none());
+    assert_eq!(
+        items[0].suggestion_state,
+        ProjectWorkspaceInboxSuggestionState::Pending
+    );
+    assert!(window(module, ProjectWorkspaceInboxWindowFilter::Processed).is_empty());
+    assert_eq!(count(&workspace, "SELECT count(*) FROM inbox_proposals"), 0);
+    assert_eq!(
+        count(
+            &workspace,
+            "SELECT count(*) FROM blocks WHERE id = 'page:secret' AND lifecycle = 'deleted'"
+        ),
+        1
+    );
+    assert_eq!(
+        count(
+            &workspace,
+            "SELECT count(*) FROM document_versions WHERE document_id = 'document:secret'"
+        ),
+        0
+    );
+    assert_eq!(
+        count(
+            &workspace,
+            "SELECT count(*) FROM block_erasure_requests WHERE root_block_id = 'page:secret'"
+        ),
+        1
+    );
+
+    // Store maintenance collects it at once, however much trash retention would keep, and
+    // without the test Store's standing maintenance visibility context.
+    workspace
+        .kernel
+        .writer()
+        .call(|connection| {
+            connection.execute(
+                "DELETE FROM local_commit_visibility_context WHERE mode = 'maintenance'",
+                [],
+            )?;
+            crate::document::run_block_retention_pass(connection, 10_000)?;
+            Ok(())
+        })
+        .expect("block retention");
+    for sql in [
+        "SELECT count(*) FROM blocks WHERE id = 'page:secret'",
+        "SELECT count(*) FROM documents WHERE id = 'document:secret'",
+        "SELECT count(*) FROM document_updates WHERE document_id = 'document:secret'",
+        "SELECT count(*) FROM document_materializations WHERE document_id = 'document:secret'",
+        "SELECT count(*) FROM block_erasure_requests",
+    ] {
+        assert_eq!(count(&workspace, sql), 0, "{sql}");
+    }
+    assert_eq!(
+        count(
+            &workspace,
+            "SELECT count(*) FROM blocks WHERE id = 'page:sibling'"
+        ),
+        1
+    );
+}
+
+#[test]
+fn deleting_keeps_handled_neighbours_handled_and_refuses_filed_pages() {
+    let workspace = seeded_workspace();
+    let module = &workspace.module;
+    send(module, "a", "Survey onboarding flows");
+    send(module, "b", "Include the empty states");
+    apply_host(
+        module,
+        "dispatch:ab",
+        ProjectWorkspaceIntent::DispatchInboxEntries {
+            proposal_id: "proposal:ab".into(),
+            page_ids: vec!["page:a".into(), "page:b".into()],
+            action: ProjectWorkspaceInboxDispatchAction::NewChat {
+                project_id: None,
+                prompt: "Survey onboarding flows and their empty states".into(),
+            },
+            session_id: Some("session:ab".into()),
+        },
+    );
+    apply_host(
+        module,
+        "delete:a",
+        ProjectWorkspaceIntent::DeleteInboxMessages {
+            page_ids: vec!["page:a".into()],
+        },
+    );
+    // The other message was already dispatched, so it stays handled rather than resurfacing.
+    let processed = window(module, ProjectWorkspaceInboxWindowFilter::Processed);
+    assert_eq!(processed.len(), 1);
+    assert_eq!(processed[0].page_id, "page:b");
+    assert_eq!(processed[0].state, ProjectWorkspaceInboxEntryState::Done);
+    assert!(window(module, ProjectWorkspaceInboxWindowFilter::Inbox).is_empty());
+    assert_eq!(
+        apply_host_error(
+            module,
+            "delete:missing",
+            ProjectWorkspaceIntent::DeleteInboxMessages {
+                page_ids: vec!["page:a".into()],
+            },
+        ),
+        CoreErrorCode::NotFound
+    );
+}

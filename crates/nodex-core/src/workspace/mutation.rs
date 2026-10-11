@@ -310,7 +310,195 @@ pub(super) fn apply(
                 ));
             }
 
+            let agent_provenance = match &request.intent {
+                ProjectWorkspaceIntent::AgentCommand { provenance, .. } => Some(provenance.as_ref()),
+                _ => None,
+            };
             match admitted_intent {
+                ProjectWorkspaceIntent::SendInboxMessage {
+                    page_id,
+                    document_id,
+                    text,
+                    title,
+                } => super::inbox::send_message(
+                    transaction,
+                    &library_id,
+                    &context,
+                    &store_epoch,
+                    &request.operation_id,
+                    &request_hash,
+                    agent_provenance,
+                    page_id,
+                    document_id,
+                    text,
+                    title.as_deref(),
+                ),
+                ProjectWorkspaceIntent::ProposeInboxDispatch {
+                    proposal_id,
+                    page_ids,
+                    basis,
+                    action,
+                    entry_kind,
+                    summary,
+                    rationale,
+                    produced_by,
+                } => super::inbox::propose(
+                    transaction,
+                    &library_id,
+                    &context,
+                    &store_epoch,
+                    &request.operation_id,
+                    &request_hash,
+                    super::inbox::ProposalInput {
+                        proposal_id,
+                        page_ids,
+                        basis,
+                        action,
+                        entry_kind: *entry_kind,
+                        summary,
+                        rationale: rationale.as_deref(),
+                        produced_by: produced_by.as_deref(),
+                    },
+                ),
+                ProjectWorkspaceIntent::ConfirmInboxDispatch {
+                    proposal_id,
+                    expected_revision,
+                    action,
+                    session_id,
+                } => super::inbox::confirm(
+                    transaction,
+                    &library_id,
+                    &context,
+                    &store_epoch,
+                    &request.operation_id,
+                    &request_hash,
+                    proposal_id,
+                    *expected_revision,
+                    action.as_ref(),
+                    session_id.as_deref(),
+                ),
+                ProjectWorkspaceIntent::DispatchInboxEntries {
+                    proposal_id,
+                    page_ids,
+                    action,
+                    session_id,
+                } => super::inbox::dispatch_entries(
+                    transaction,
+                    &library_id,
+                    &context,
+                    &store_epoch,
+                    &request.operation_id,
+                    &request_hash,
+                    proposal_id,
+                    page_ids,
+                    action,
+                    session_id.as_deref(),
+                ),
+                ProjectWorkspaceIntent::KeepInboxEntries { page_ids } => super::inbox::keep_entries(
+                    transaction,
+                    &library_id,
+                    &context,
+                    &store_epoch,
+                    &request.operation_id,
+                    &request_hash,
+                    page_ids,
+                ),
+                ProjectWorkspaceIntent::DeleteInboxMessages { page_ids } => {
+                    super::inbox::delete_messages(
+                        transaction,
+                        &library_id,
+                        &context,
+                        &store_epoch,
+                        &request.operation_id,
+                        &request_hash,
+                        page_ids,
+                    )
+                }
+                ProjectWorkspaceIntent::SetInboxEntryState { page_ids, state } => {
+                    super::inbox::set_state(
+                        transaction,
+                        &library_id,
+                        &context,
+                        &store_epoch,
+                        &request.operation_id,
+                        &request_hash,
+                        page_ids,
+                        *state,
+                    )
+                }
+                ProjectWorkspaceIntent::SetInboxEntryKind {
+                    page_id,
+                    entry_kind,
+                } => super::inbox::set_kind(
+                    transaction,
+                    &library_id,
+                    &context,
+                    &store_epoch,
+                    &request.operation_id,
+                    &request_hash,
+                    page_id,
+                    *entry_kind,
+                ),
+                ProjectWorkspaceIntent::RequestInboxSuggestion { page_ids } => {
+                    super::inbox::request_suggestion(
+                        transaction,
+                        &library_id,
+                        &context,
+                        &store_epoch,
+                        &request.operation_id,
+                        &request_hash,
+                        page_ids,
+                    )
+                }
+                ProjectWorkspaceIntent::RecordInboxSuggestionFailure { page_ids, message } => {
+                    super::inbox::record_suggestion_failure(
+                        transaction,
+                        &library_id,
+                        &context,
+                        &store_epoch,
+                        &request.operation_id,
+                        &request_hash,
+                        page_ids,
+                        message,
+                    )
+                }
+                ProjectWorkspaceIntent::CompleteInboxDispatch {
+                    proposal_id,
+                    dispatched_thread_id,
+                } => super::inbox::complete_dispatch(
+                    transaction,
+                    &library_id,
+                    &context,
+                    &store_epoch,
+                    &request.operation_id,
+                    &request_hash,
+                    proposal_id,
+                    dispatched_thread_id.as_deref(),
+                ),
+                ProjectWorkspaceIntent::FailInboxDispatch {
+                    proposal_id,
+                    message,
+                } => super::inbox::fail_dispatch(
+                    transaction,
+                    &library_id,
+                    &context,
+                    &store_epoch,
+                    &request.operation_id,
+                    &request_hash,
+                    proposal_id,
+                    message,
+                ),
+                ProjectWorkspaceIntent::RetryInboxDispatch { proposal_id } => {
+                    super::inbox::retry_dispatch(
+                        transaction,
+                        &library_id,
+                        &context,
+                        &store_epoch,
+                        &request.operation_id,
+                        &request_hash,
+                        proposal_id,
+                    )
+                }
                 ProjectWorkspaceIntent::ReorderBuiltinSidebarItems { lane, expected_order_revision, item_ids } => {
                     super::sidebar_builtin::reorder(
                         transaction, &library_id, &context, &store_epoch,
@@ -1528,6 +1716,7 @@ fn seal_mutation(
         "threadIds": effects.thread_ids,
         "sessionSummaryScopes": effects.session_summary_scopes,
         "sessionDetailIds": effects.session_detail_ids,
+        "inboxChanged": effects.operation_kind.starts_with("inbox_"),
     });
     let projection_impact = expand_database_coordinates(
         connection,

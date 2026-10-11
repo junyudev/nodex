@@ -1043,6 +1043,26 @@ export interface IpcApi {
     args: [sessionId: string, input: PageChatLinkInput];
     result: void;
   };
+  "inbox:summary": { args: []; result: import("./inbox").InboxSummary };
+  "inbox:window": {
+    args: [input: import("./inbox").InboxWindowInput];
+    result: import("./inbox").InboxWindow;
+  };
+  "inbox:send": {
+    args: [input: import("./inbox").InboxSendInput];
+    result: import("./inbox").InboxSendResult;
+  };
+  "inbox:confirm": { args: [input: import("./inbox").InboxConfirmInput]; result: void };
+  "inbox:dispatch": { args: [input: import("./inbox").InboxDispatchInput]; result: void };
+  "inbox:keep": { args: [input: import("./inbox").InboxPageIdsInput]; result: void };
+  "inbox:delete": { args: [input: import("./inbox").InboxPageIdsInput]; result: void };
+  "inbox:set-state": { args: [input: import("./inbox").InboxSetStateInput]; result: void };
+  "inbox:set-kind": { args: [input: import("./inbox").InboxSetKindInput]; result: void };
+  "inbox:request-suggestion": {
+    args: [input: import("./inbox").InboxPageIdsInput];
+    result: void;
+  };
+  "inbox:retry-dispatch": { args: [input: import("./inbox").InboxProposalInput]; result: void };
   "projects:create": {
     args: [command: ProjectCreateCommandInput];
     result: CoreLocalCommitResult<Project>;
@@ -1454,6 +1474,11 @@ export interface IpcApi {
     result: AppUpdateSettings;
   };
   "settings:window-restore:get": { args: []; result: WindowRestoreSettings };
+  "settings:inbox:get": { args: []; result: import("./inbox").InboxSettings };
+  "settings:inbox:update": {
+    args: [input: import("./inbox").UpdateInboxSettingsInput];
+    result: import("./inbox").InboxSettings;
+  };
   "settings:window-restore:update": {
     args: [input: UpdateWindowRestoreSettingsInput];
     result: WindowRestoreSettings;
@@ -3000,6 +3025,7 @@ export interface IpcEvents {
   "library-navigation-changed": import("./library-events").LibraryNavigationChangedEvent;
   "projects-changed": ProjectsChangeEvent;
   "project-sessions-changed": ProjectSessionsChangeEvent;
+  "inbox-changed": import("./inbox").InboxChangedEvent;
   "reminder:open": {
     projectId: string;
     pageId: string;

@@ -15,6 +15,7 @@ import { nfmEquationAndMermaidScenario } from "./scenarios/nfm-equation-and-merm
 import { pageRelatedChatActivityScenario } from "./scenarios/page-related-chat-activity";
 import { sidebarCustomSectionsScenario } from "./scenarios/sidebar-custom-sections";
 import { libraryFilesScenario } from "./scenarios/library-files";
+import { inboxTriageScenario } from "./scenarios/inbox-triage";
 
 const scenarios = new Map<string, ScenarioDomainRecipe>([
   [structuralInteractionsScenario.id, structuralInteractionsScenario],
@@ -32,6 +33,7 @@ const scenarios = new Map<string, ScenarioDomainRecipe>([
   [nfmEquationAndMermaidScenario.id, nfmEquationAndMermaidScenario],
   [sidebarCustomSectionsScenario.id, sidebarCustomSectionsScenario],
   [libraryFilesScenario.id, libraryFilesScenario],
+  [inboxTriageScenario.id, inboxTriageScenario],
 ]);
 
 export const listScenarioIds = (): readonly string[] => [...scenarios.keys()];

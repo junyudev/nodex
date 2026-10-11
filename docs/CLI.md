@@ -130,6 +130,14 @@ content and SQL for additional metadata. `context`, `ls`, `tree`,
 `sed`, `history` and `rg` retain their focused terminal workflows. `open page`
 and `open view` produce validated Nodex deep links.
 
+`inbox send [TEXT]` appends one message to the user's Inbox from TEXT or
+redirected stdin and starts no work. The text is kept whole as the Page body;
+`--title` names it, otherwise Nodex labels it and names it later. Inside a Project's source or managed
+worktree, or with `--project`, the message is labeled with that Project.
+Anywhere else it is labeled only as coming from the command line. The command
+cannot read or triage the Inbox. `--idempotency-key` makes a retry return the
+original receipt.
+
 Resource selectors accept bare IDs directly; no `@` prefix is required.
 Page selectors resolve a stable `pageId` first, then an authorized current or
 historical Page key, then an explicitly unique supported title path. Key input

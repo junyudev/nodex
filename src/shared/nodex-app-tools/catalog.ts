@@ -11,6 +11,7 @@ import { sessionObservationToolCatalog } from "./session-observation-schemas";
 import { createSessionTool } from "./session-launch-schema";
 import { sessionForkTool } from "./session-fork-schema";
 import { sessionMessageTool } from "./session-message-schema";
+import { sendToInboxTool } from "./inbox-schema";
 import { automationTool } from "./automation-schema";
 import { workbenchObservationToolCatalog } from "./workbench-observation-schemas";
 import { workbenchControlToolCatalog } from "./workbench-control-schemas";
@@ -31,6 +32,7 @@ export const appToolCatalog: readonly Tool[] = [
   ...sessionHandoffTools,
   createSessionTool,
   sessionMessageTool,
+  sendToInboxTool,
   sessionForkTool,
   automationTool,
   ...sidebarToolCatalog,

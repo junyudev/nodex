@@ -35,7 +35,9 @@ it.effect(
           Effect.sync(() => {
             sessionEvents.push(event);
           }),
+        notifyInboxChanged: () => Effect.void,
         projectSessionInvalidations: Stream.empty,
+        inboxInvalidations: Stream.empty,
       });
       const automationRouting = AutomationRoutingIndex.of({
         activeHeartbeatAutomationId: () => null,

@@ -31,7 +31,7 @@ export interface ThreadScopeDescriptor {
 
 export interface RouteScopeDescriptor {
   readonly routeKey: string;
-  readonly kind: "thread" | "automations" | "settings" | "pages" | "pending-worktree";
+  readonly kind: "thread" | "automations" | "inbox" | "settings" | "pages" | "pending-worktree";
 }
 
 export interface ComposerScopeDescriptor {

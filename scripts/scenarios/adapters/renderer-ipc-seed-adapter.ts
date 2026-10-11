@@ -1,4 +1,5 @@
 import type { Page } from "playwright";
+import type { InboxDispatchInput, InboxWindow, InboxWindowFilter } from "../../../src/shared/inbox";
 
 import type { CoreResult } from "../../../src/shared/core-result";
 import type { IpcApi } from "../../../src/shared/ipc-api";
@@ -422,6 +423,34 @@ export class RendererIpcSeedAdapter implements ScenarioSeedPort {
     );
     const groups = normalizeScenarioBoardGroups(snapshot);
     return { totalRows: snapshot.totalRows, commitSeq: snapshot.commitSeq, groups };
+  }
+
+  async sendInboxMessage(text: string): Promise<{ readonly pageId: string }> {
+    return await this.#invoke("inbox:send", { text });
+  }
+
+  async proposeInboxDispatch(): Promise<void> {
+    throw new Error("Inbox suggestions are seeded only through Core; renderers cannot propose");
+  }
+
+  async dispatchInboxEntries(input: InboxDispatchInput): Promise<void> {
+    await this.#invoke("inbox:dispatch", input);
+  }
+
+  async keepInboxEntries(pageIds: readonly string[]): Promise<void> {
+    await this.#invoke("inbox:keep", { pageIds });
+  }
+
+  async recordInboxSuggestionFailure(): Promise<void> {
+    throw new Error("Inbox suggestion failures are seeded only through Core");
+  }
+
+  async completeInboxDispatch(): Promise<void> {
+    throw new Error("Inbox delivery is seeded only through Core");
+  }
+
+  async readInbox(filter: InboxWindowFilter): Promise<InboxWindow> {
+    return await this.#invoke("inbox:window", { filter, first: 200 });
   }
 
   async createRelatedChat(input: ScenarioRelatedChatSeed): Promise<ScenarioRelatedChatSeedResult> {

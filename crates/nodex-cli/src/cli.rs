@@ -120,6 +120,8 @@ pub enum Command {
     Patch(PatchArgs),
     /// Open a Page or saved View in the desktop app.
     Open(OpenArgs),
+    /// Leave messages in the Inbox for the user to route later.
+    Inbox(InboxArgs),
     /// Create, edit and organize Pages, Property values and Page attachments.
     Page(PageArgs),
     /// Manage shared Library Files and their content versions.
@@ -823,6 +825,31 @@ pub struct BlockDeleteArgs {
     pub if_match: String,
     #[command(flatten)]
     pub mutation: MutationArgs,
+}
+
+#[derive(Clone, Debug, Args, PartialEq)]
+pub struct InboxArgs {
+    #[command(subcommand)]
+    pub command: InboxCommand,
+}
+
+#[derive(Clone, Debug, PartialEq, Subcommand)]
+pub enum InboxCommand {
+    /// Append one message to the Inbox; it starts no work and cannot read other messages.
+    Send(InboxSendArgs),
+}
+
+#[derive(Clone, Debug, Args, PartialEq)]
+pub struct InboxSendArgs {
+    /// Message text, kept whole as the Page body. Omitted or - reads redirected stdin.
+    #[arg(value_name = "TEXT")]
+    pub text: Option<String>,
+    /// Page title; omitted lets Nodex label the message and name it later.
+    #[arg(long)]
+    pub title: Option<String>,
+    /// Stable key for this write; reuse it with identical input after an uncertain result.
+    #[arg(long)]
+    pub idempotency_key: Option<String>,
 }
 
 #[derive(Clone, Debug, Args, PartialEq)]

@@ -26,6 +26,7 @@ const commonNames = new Set([
   "list_projects",
   "get_app_capabilities",
   "send_message_to_session",
+  "send_to_inbox",
   "automation_update",
   "read_session_terminal",
 ]);

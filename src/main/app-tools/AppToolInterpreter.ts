@@ -26,6 +26,7 @@ import { make as makeSessionTools } from "./SessionAppTools";
 import { make as makeSessionLaunchTools } from "./SessionLaunchAppTools";
 import { make as makeSessionForkTools } from "./SessionForkAppTools";
 import { make as makeSessionMessageTools } from "./SessionMessageAppTools";
+import { make as makeInboxTools } from "./InboxAppTools";
 import { make as makeAutomationTools } from "./AutomationAppTools";
 import { make as makeWorkbenchTools } from "./WorkbenchAppTools";
 import { workbenchObservationSchemas } from "../../shared/nodex-app-tools/workbench-observation-schemas";
@@ -50,6 +51,7 @@ export const make = Effect.gen(function* () {
   const sessionTools = yield* makeSessionTools;
   const sessionLaunchTools = yield* makeSessionLaunchTools;
   const sessionMessageTools = yield* makeSessionMessageTools;
+  const inboxTools = yield* makeInboxTools;
   const sessionForkTools = yield* makeSessionForkTools;
   const sessionHandoffTools = yield* makeSessionHandoffTools;
   const handoffStatusTools = yield* makeHandoffStatusTools;
@@ -83,6 +85,7 @@ export const make = Effect.gen(function* () {
       !isWorkbenchTool &&
       input.name !== "create_session" &&
       input.name !== "send_message_to_session" &&
+      input.name !== "send_to_inbox" &&
       input.name !== "fork_session" &&
       input.name !== "handoff_session" &&
       input.name !== "get_handoff_status" &&
@@ -112,6 +115,7 @@ export const make = Effect.gen(function* () {
     if (input.name === "create_session") return yield* sessionLaunchTools(input);
     if (input.name === "fork_session") return yield* sessionForkTools(input);
     if (input.name === "send_message_to_session") return yield* sessionMessageTools(input);
+    if (input.name === "send_to_inbox") return yield* inboxTools(input);
     if (input.name === "get_app_capabilities")
       return success({
         backend: input.caller.backend ?? "codex",

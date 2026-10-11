@@ -41,7 +41,7 @@ import {
   DownloadIcon,
   DragHandleDotsIcon,
   ExpandPanelIcon,
-  NfmSideMenuAiFaceIcon,
+  AskAiIcon,
   NfmSideMenuChevronRightIcon,
   NfmSideMenuColorIcon,
   NfmSideMenuCommentIcon,
@@ -598,7 +598,7 @@ function getActionIcon(key: NfmSideMenuActionKey) {
   if (key === "comment") return <NfmSideMenuCommentIcon />;
   if (key === "suggest-edits") return <NfmSideMenuSuggestEditsIcon />;
   if (key === "present-from-here") return <NfmSideMenuPlayIcon />;
-  if (key === "ask-ai") return <NfmSideMenuAiFaceIcon />;
+  if (key === "ask-ai") return <AskAiIcon className="size-5 shrink-0" />;
   if (key === "convert-divider-to-thread-section") return <CodeIcon />;
   return <NfmSideMenuTableHeaderIcon />;
 }

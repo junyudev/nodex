@@ -227,6 +227,27 @@ Active/selected items must be **unmistakable** without being garish:
 | Primary (send)  | `bg-token-foreground`    | —                    | `rounded-full` |
 | Disabled        | same + `opacity-40`      | —                    | —              |
 
+### Action rows: label the decision, iconify the rest
+
+- A row of text buttons reads as clutter. Keep a text label only on the one
+  decision the row asks for, and pair it with its action's glyph. Familiar
+  secondary actions are icon-only ghost buttons. Give each one a tooltip that is
+  also its accessible name, and gather them at the row's trailing edge.
+- Reuse one glyph per action kind everywhere that action is offered, chosen, or
+  reported, so icons teach themselves.
+
+### Selection and transient bars must not move content
+
+- A bar that appears on selection floats over the scroll surface, positioned
+  absolutely above the composer or footer. It never takes layout height from the
+  scroll container: that changes overflow, toggles the scrollbar, and shifts the
+  whole surface sideways.
+- Centered scroll surfaces reserve gutters with
+  `[scrollbar-gutter:stable_both-edges]`.
+- Draw selection inside the element, for example
+  `outline-2 -outline-offset-1`, rather than with an outer ring. An ancestor that
+  uses `overflow-hidden` for collapse animations will clip an outer ring.
+
 ### Chips and compact tokens
 
 - Use outline for neutral references and resources whose object boundary helps
@@ -429,6 +450,7 @@ border-top: 0.5px solid var(--border-token);
 - Use semantic app-owned icons from `@/components/shared/icons` for app-shell chrome, compact menus, sidebars, activities, file types, and resource identity. Component names describe meaning, never provenance.
 - Use the shared app-owned `FileIcon` / `PageIcon` geometry for generic resource identity in attachments, menus, breadcrumbs, and Page rows. Preserve extension/MIME-specific artwork in format-sensitive file trees and file tabs; keep folders and file-related actions distinct.
 - Search the semantic app-owned icon modules first. `generic-icons` and Lucide fallbacks are last resorts; if needed, import them only through `@/components/shared/icons/generic-icons`.
+- When no app-owned icon fits a product concept, draw one before falling back to Lucide. Lucide's 2px stroke on a 24px grid reads heavier and busier than app icons. Draw on the 20px grid with the house weight, using `lineGlyphPaths` in `canonical-icons.tsx` (a 1.33 stroke with round caps and joins). Keep one idea per glyph, with symmetric or evenly spaced strokes, and judge it at 16px beside its neighbors in the real surface.
 - Keep reusable custom SVGs in `src/renderer/components/shared/icons/`. Feature-local SVGs are limited to diagrams, data marks, and composite artwork covered by the icon-boundary audit.
 - Standard compact shell/resource-action menu icon: `icon-xs` (16px). Reserve `icon-2xs` (14px) for denser secondary controls and indicators.
 - Standard sidebar/toolbar icon: `icon-sm` (18px). Use `icon-base` only where the 20px visual weight is intentional.

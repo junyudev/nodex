@@ -7,6 +7,7 @@ import {
 describe("Core Workspace notification planning", () => {
   test("preserves every old and new Session scope across a move", () => {
     const plan = planCoreWorkspaceNotifications({
+      inboxChanged: false,
       projectIds: ["project:a", "project:b"],
       sessionIds: ["session:one"],
       threadIds: ["thread:one"],
@@ -33,6 +34,7 @@ describe("Core Workspace notification planning", () => {
   test("maps catalog semantics without collapsing them to a generic update", () => {
     const plan = planCoreWorkspaceNotifications({
       projectCatalogChange: "sources_updated",
+      inboxChanged: false,
       projectIds: ["project:a"],
       sessionIds: [],
       threadIds: [],
@@ -51,6 +53,7 @@ describe("Core Workspace notification planning", () => {
     (projectCatalogChange) => {
       const plan = planCoreWorkspaceNotifications({
         projectCatalogChange,
+        inboxChanged: false,
         projectIds: ["project:a"],
         sessionIds: [],
         threadIds: [],

@@ -72,6 +72,7 @@ interface WorkbenchCommandPaletteHostProps {
   readonly toggleSidebar: () => void;
   readonly toggleSidePanel: () => void;
   readonly openAutomations: () => void;
+  readonly openInbox: () => void;
   readonly openLibraryFiles: () => void;
   readonly openProcessManager: () => void;
   readonly openSettings: () => void;
@@ -100,6 +101,7 @@ export function WorkbenchCommandPaletteHost({
   toggleSidebar,
   toggleSidePanel,
   openAutomations,
+  openInbox,
   openLibraryFiles,
   openProcessManager,
   openSettings,
@@ -226,6 +228,7 @@ export function WorkbenchCommandPaletteHost({
       });
     },
     manageTasks: openAutomations,
+    openInbox,
     openLibraryFiles,
     openProcessManager,
     settings: openSettings,

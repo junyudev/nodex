@@ -307,6 +307,34 @@ class RecordingSeedPort implements ScenarioSeedPort {
   async listSidebarSectionItems(): Promise<never> {
     throw new Error("Sidebar item inspection is not part of this scenario");
   }
+
+  async sendInboxMessage(): Promise<never> {
+    throw new Error("Inbox seeding is not part of this scenario");
+  }
+
+  async proposeInboxDispatch(): Promise<never> {
+    throw new Error("Inbox seeding is not part of this scenario");
+  }
+
+  async dispatchInboxEntries(): Promise<never> {
+    throw new Error("Inbox seeding is not part of this scenario");
+  }
+
+  async keepInboxEntries(): Promise<never> {
+    throw new Error("Inbox seeding is not part of this scenario");
+  }
+
+  async recordInboxSuggestionFailure(): Promise<never> {
+    throw new Error("Inbox seeding is not part of this scenario");
+  }
+
+  async completeInboxDispatch(): Promise<never> {
+    throw new Error("Inbox seeding is not part of this scenario");
+  }
+
+  async readInbox(): Promise<never> {
+    throw new Error("Inbox inspection is not part of this scenario");
+  }
 }
 
 describe("board/dense authoritative scenario", () => {

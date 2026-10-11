@@ -1,5 +1,12 @@
 import type { LibraryResourceTarget, LibraryAccess } from "../../src/shared/library-module";
 import type {
+  InboxDispatchAction,
+  InboxDispatchInput,
+  InboxEntryKind,
+  InboxWindow,
+  InboxWindowFilter,
+} from "../../src/shared/inbox";
+import type {
   CodexThreadActiveFlag,
   CodexThreadStatusType,
   PageChatActivitySummaryResult,
@@ -114,6 +121,14 @@ export interface ScenarioRelatedChatSeed {
   };
 }
 
+export interface ScenarioInboxProposalSeed {
+  readonly pageIds: readonly string[];
+  readonly action: InboxDispatchAction;
+  readonly kind: InboxEntryKind | null;
+  readonly summary: string;
+  readonly rationale: string | null;
+}
+
 export interface ScenarioRelatedChatSeedResult {
   readonly sessionId: string;
   readonly threadId: string | null;
@@ -169,6 +184,15 @@ export interface ScenarioSeedPort {
   moveSidebarSectionItem(input: SidebarSectionMoveItemInput): Promise<void>;
   listSidebarSections(): Promise<readonly SidebarSectionSummary[]>;
   listSidebarSectionItems(sectionId: string): Promise<SidebarSectionItemWindow>;
+  sendInboxMessage(text: string): Promise<{ readonly pageId: string }>;
+  /** Records an Agent-shaped suggestion for current message content. Core seeding only. */
+  proposeInboxDispatch(input: ScenarioInboxProposalSeed): Promise<void>;
+  dispatchInboxEntries(input: InboxDispatchInput): Promise<void>;
+  keepInboxEntries(pageIds: readonly string[]): Promise<void>;
+  recordInboxSuggestionFailure(pageIds: readonly string[], message: string): Promise<void>;
+  /** Marks a confirmed chat dispatch delivered without launching a runtime. Core seeding only. */
+  completeInboxDispatch(proposalId: string, threadId: string | null): Promise<void>;
+  readInbox(filter: InboxWindowFilter): Promise<InboxWindow>;
 }
 
 export interface ScenarioManifest {

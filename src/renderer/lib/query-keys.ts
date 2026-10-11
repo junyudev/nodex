@@ -155,6 +155,12 @@ export const queryKeys = {
     summaries: (projectIds: readonly string[]) =>
       ["projectActivity", "summaries", ...[...projectIds].sort()] as const,
   },
+  inbox: {
+    all: () => ["inbox"] as const,
+    summary: () => ["inbox", "summary"] as const,
+    window: (filter: string) => ["inbox", "window", filter] as const,
+    settings: () => ["inbox", "settings"] as const,
+  },
   pageChats: {
     all: () => ["pageChats"] as const,
     activity: (pageAccessProjectId: string, pageIds: readonly string[]) =>

@@ -949,6 +949,12 @@ export function subscribeProjectSessionChanges(
   return resolveRendererTransport().subscribeProjectSessionChanges(callback);
 }
 
+export function subscribeInboxChanges(
+  callback: (event: import("../../shared/inbox").InboxChangedEvent) => void,
+): () => void {
+  return resolveRendererTransport().subscribeInboxChanges?.(callback) ?? (() => {});
+}
+
 export function subscribeProjectChanges(
   callback: (event: import("../../shared/ipc-api").ProjectsChangeEvent) => void,
 ): () => void {

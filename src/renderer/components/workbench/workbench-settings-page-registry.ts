@@ -14,6 +14,7 @@ export type SettingsPageKey =
   | "agent"
   | "import"
   | "keyboard-shortcuts"
+  | "inbox"
   | "browser"
   | "computer-use"
   | "page"

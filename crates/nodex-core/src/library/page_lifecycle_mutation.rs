@@ -1577,97 +1577,21 @@ fn delete_page(
             context,
         },
         |scope| {
-            database::forget_page_view_order(connection, page_id)?;
-            let relation_outcomes = membership
-                .as_ref()
-                .map(|membership| {
-                    crate::database::remove_membership_task_parent_edges(
-                        connection,
-                        &membership.data_source_id,
-                        &membership.membership_id,
-                        &now,
-                    )
-                })
-                .transpose()?
-                .unwrap_or_default();
-            let relation_metadata_revisions =
-                crate::database::synchronize_relation_value_projections(
-                    connection,
-                    &relation_outcomes,
-                    Some(page_id),
-                    &now,
-                )?;
-            if let Some(membership) = &membership {
-                let changed = connection.execute(
-            "UPDATE data_source_page_memberships SET removed_at = ?1, revision = revision + 1 \
-             WHERE id = ?2 AND data_source_id = ?3 AND page_block_id = ?4 \
-               AND removed_at IS NULL AND revision = ?5",
-            params![
-                now,
-                membership.membership_id,
-                membership.data_source_id,
-                page_id,
-                membership.membership_revision
-            ],
-        )?;
-                if changed != 1 {
-                    return Err(conflict("Page membership changed during delete"));
-                }
-            }
-            connection.execute(
-                "DELETE FROM library_block_placements WHERE block_id = ?1 AND library_id = ?2",
-                params![page_id, library_id],
+            let PageTombstone {
+                metadata_revision,
+                parent_revision,
+                tombstoned_blocks,
+                relation_outcomes,
+                relation_metadata_revisions,
+            } = tombstone_page_closure(
+                connection,
+                &page,
+                membership.as_ref(),
+                &closure,
+                expected_metadata_revision,
+                expected_parent_revision,
+                &now,
             )?;
-            let metadata_revision = expected_metadata_revision + 1;
-            let parent_revision = expected_parent_revision + 1;
-            let changed = connection.execute(
-                "UPDATE blocks SET lifecycle = 'deleted', metadata_revision = ?1, \
-           placement_revision = ?2, updated_at = ?3 \
-         WHERE id = ?4 AND library_id = ?5 AND type = 'page' AND lifecycle = ?6 \
-           AND metadata_revision = ?7 AND placement_revision = ?8",
-                params![
-                    metadata_revision,
-                    parent_revision,
-                    now,
-                    page_id,
-                    page.library_id,
-                    page.lifecycle,
-                    expected_metadata_revision,
-                    expected_parent_revision
-                ],
-            )?;
-            if changed != 1 {
-                return Err(conflict("Page changed during delete"));
-            }
-            let mut tombstoned_blocks = Vec::with_capacity(closure.blocks.len());
-            for block in &closure.blocks {
-                let committed_revision = block.metadata_revision + 1;
-                let changed = connection.execute(
-            "UPDATE blocks SET lifecycle = 'deleted', metadata_revision = ?1, updated_at = ?2 \
-             WHERE id = ?3 AND library_id = ?4 AND lifecycle = 'active' \
-               AND metadata_revision = ?5",
-            params![
-                committed_revision,
-                now,
-                block.block_id,
-                page.library_id,
-                block.metadata_revision
-            ],
-        )?;
-                if changed != 1 {
-                    return Err(conflict("Indexed Block changed during Page delete"));
-                }
-                tombstoned_blocks.push(LibraryPageLifecycleDeletedBlock {
-                    block_id: block.block_id.clone(),
-                    metadata_revision: committed_revision,
-                    resource_metadata_revision: (block.block_type == "database")
-                        .then_some(block.resource_metadata_revision)
-                        .flatten()
-                        .map(|revision| revision + 1),
-                });
-            }
-            synchronize_deleted_page(connection, &page, metadata_revision, parent_revision, &now)?;
-            synchronize_deleted_indexed_owners(connection, &page, &closure, &now)?;
             let parent_commit = parent_document
                 .as_ref()
                 .map(|parent| {
@@ -1813,6 +1737,181 @@ fn delete_page(
         },
     )?;
     library_commit_result(connection, commit_result)
+}
+
+struct PageTombstone {
+    metadata_revision: i64,
+    parent_revision: i64,
+    tombstoned_blocks: Vec<LibraryPageLifecycleDeletedBlock>,
+    relation_outcomes: Vec<crate::database::RelationValueRevision>,
+    relation_metadata_revisions: BTreeMap<String, i64>,
+}
+
+/// Tombstones a Page and every Block its Documents index: the Page leaves its Data Source,
+/// Library placement, View order, and task relations, and every projection marks it deleted.
+#[allow(clippy::too_many_arguments)]
+fn tombstone_page_closure(
+    connection: &Connection,
+    page: &PageAuthority,
+    membership: Option<&MembershipCoordinates>,
+    closure: &IndexedClosure,
+    expected_metadata_revision: i64,
+    expected_parent_revision: i64,
+    now: &str,
+) -> Result<PageTombstone, StoreError> {
+    database::forget_page_view_order(connection, page.page_id.as_str())?;
+    let relation_outcomes = membership
+        .as_ref()
+        .map(|membership| {
+            crate::database::remove_membership_task_parent_edges(
+                connection,
+                &membership.data_source_id,
+                &membership.membership_id,
+                now,
+            )
+        })
+        .transpose()?
+        .unwrap_or_default();
+    let relation_metadata_revisions = crate::database::synchronize_relation_value_projections(
+        connection,
+        &relation_outcomes,
+        Some(page.page_id.as_str()),
+        now,
+    )?;
+    if let Some(membership) = &membership {
+        let changed = connection.execute(
+            "UPDATE data_source_page_memberships SET removed_at = ?1, revision = revision + 1 \
+     WHERE id = ?2 AND data_source_id = ?3 AND page_block_id = ?4 \
+       AND removed_at IS NULL AND revision = ?5",
+            params![
+                now,
+                membership.membership_id,
+                membership.data_source_id,
+                page.page_id.as_str(),
+                membership.membership_revision
+            ],
+        )?;
+        if changed != 1 {
+            return Err(conflict("Page membership changed during delete"));
+        }
+    }
+    connection.execute(
+        "DELETE FROM library_block_placements WHERE block_id = ?1 AND library_id = ?2",
+        params![page.page_id.as_str(), page.library_id],
+    )?;
+    let metadata_revision = expected_metadata_revision + 1;
+    let parent_revision = expected_parent_revision + 1;
+    let changed = connection.execute(
+        "UPDATE blocks SET lifecycle = 'deleted', metadata_revision = ?1, \
+           placement_revision = ?2, updated_at = ?3 \
+         WHERE id = ?4 AND library_id = ?5 AND type = 'page' AND lifecycle = ?6 \
+           AND metadata_revision = ?7 AND placement_revision = ?8",
+        params![
+            metadata_revision,
+            parent_revision,
+            now,
+            page.page_id.as_str(),
+            page.library_id,
+            page.lifecycle,
+            expected_metadata_revision,
+            expected_parent_revision
+        ],
+    )?;
+    if changed != 1 {
+        return Err(conflict("Page changed during delete"));
+    }
+    let mut tombstoned_blocks = Vec::with_capacity(closure.blocks.len());
+    for block in &closure.blocks {
+        let committed_revision = block.metadata_revision + 1;
+        let changed = connection.execute(
+            "UPDATE blocks SET lifecycle = 'deleted', metadata_revision = ?1, updated_at = ?2 \
+     WHERE id = ?3 AND library_id = ?4 AND lifecycle = 'active' \
+       AND metadata_revision = ?5",
+            params![
+                committed_revision,
+                now,
+                block.block_id,
+                page.library_id,
+                block.metadata_revision
+            ],
+        )?;
+        if changed != 1 {
+            return Err(conflict("Indexed Block changed during Page delete"));
+        }
+        tombstoned_blocks.push(LibraryPageLifecycleDeletedBlock {
+            block_id: block.block_id.clone(),
+            metadata_revision: committed_revision,
+            resource_metadata_revision: (block.block_type == "database")
+                .then_some(block.resource_metadata_revision)
+                .flatten()
+                .map(|revision| revision + 1),
+        });
+    }
+    synchronize_deleted_page(connection, page, metadata_revision, parent_revision, now)?;
+    synchronize_deleted_indexed_owners(connection, page, closure, now)?;
+    Ok(PageTombstone {
+        metadata_revision,
+        parent_revision,
+        tombstoned_blocks,
+        relation_outcomes,
+        relation_metadata_revisions,
+    })
+}
+
+/// A Page tombstoned for immediate erasure: what callers must report as changed.
+pub(crate) struct ErasedPageTombstone {
+    pub(crate) block_ids: Vec<String>,
+    pub(crate) document_ids: Vec<String>,
+    pub(crate) data_source_id: Option<String>,
+    pub(crate) view_id: Option<String>,
+}
+
+/// Tombstones a Page owned by a trusted host feature so Store maintenance can erase it.
+/// Unlike a user Page delete it records no restore evidence: the content is meant to go.
+pub(crate) fn tombstone_page_for_erasure(
+    connection: &Connection,
+    library_id: &str,
+    page_id: &str,
+    now: &str,
+) -> Result<ErasedPageTombstone, StoreError> {
+    let page = read_page(connection, library_id, page_id)?;
+    if page.lifecycle == "deleted" {
+        return Err(conflict("Page is already deleted"));
+    }
+    if page.parent_kind == "page" {
+        return Err(conflict("A nested Page cannot be erased on its own"));
+    }
+    let membership = read_active_membership(connection, page_id)?;
+    validate_parent_membership(&page, membership.as_ref())?;
+    let closure = read_indexed_closure(connection, &page)?;
+    if closure
+        .blocks
+        .iter()
+        .any(|block| block.lifecycle != "active")
+    {
+        return Err(corrupt(
+            "Page Document closure contains a non-active indexed Block",
+        ));
+    }
+    tombstone_page_closure(
+        connection,
+        &page,
+        membership.as_ref(),
+        &closure,
+        page.metadata_revision,
+        page.parent_revision,
+        now,
+    )?;
+    let mut block_ids = vec![page.page_id.clone()];
+    block_ids.extend(closure.blocks.iter().map(|block| block.block_id.clone()));
+    Ok(ErasedPageTombstone {
+        block_ids,
+        document_ids: closure.document_ids.clone(),
+        data_source_id: membership
+            .as_ref()
+            .map(|membership| membership.data_source_id.clone()),
+        view_id: membership.and_then(|membership| membership.view_id),
+    })
 }
 
 #[allow(clippy::too_many_arguments)]

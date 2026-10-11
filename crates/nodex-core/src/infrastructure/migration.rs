@@ -286,6 +286,16 @@ const MIGRATION_STEPS: &[MigrationStep] = &[
         to_revision: 175,
         apply: migrate_v174_to_v175,
     },
+    MigrationStep {
+        from_revision: 175,
+        to_revision: 176,
+        apply: migrate_v175_to_v176,
+    },
+    MigrationStep {
+        from_revision: 176,
+        to_revision: 177,
+        apply: migrate_v176_to_v177,
+    },
 ];
 
 fn resolve_migration_path(
@@ -2277,6 +2287,36 @@ fn migrate_v171_to_v172(
         params![context.source_revision, context.target_revision, context.source_schema_fingerprint,
             context.target_schema_fingerprint, context.backup_name, context.completed_at_unix_ms,
             r#"{"native_claude_backend":true}"#],
+    )?;
+    connection.pragma_update(None, "user_version", context.target_revision)?;
+    Ok(())
+}
+
+fn migrate_v176_to_v177(
+    connection: &Connection,
+    context: &MigrationContext,
+) -> Result<(), StoreError> {
+    connection.execute_batch(include_str!("../../schema/migrations/v176_to_v177.sql"))?;
+    connection.execute(
+        "INSERT INTO core_store_migration_history(source_revision,target_revision,source_schema_fingerprint,target_schema_fingerprint,backup_name,completed_at_unix_ms,evidence_json) VALUES (?1,?2,?3,?4,?5,?6,?7)",
+        params![context.source_revision, context.target_revision, context.source_schema_fingerprint,
+            context.target_schema_fingerprint, context.backup_name, context.completed_at_unix_ms,
+            r#"{"block_erasure":true}"#],
+    )?;
+    connection.pragma_update(None, "user_version", context.target_revision)?;
+    Ok(())
+}
+
+fn migrate_v175_to_v176(
+    connection: &Connection,
+    context: &MigrationContext,
+) -> Result<(), StoreError> {
+    connection.execute_batch(include_str!("../../schema/migrations/v175_to_v176.sql"))?;
+    connection.execute(
+        "INSERT INTO core_store_migration_history(source_revision,target_revision,source_schema_fingerprint,target_schema_fingerprint,backup_name,completed_at_unix_ms,evidence_json) VALUES (?1,?2,?3,?4,?5,?6,?7)",
+        params![context.source_revision, context.target_revision, context.source_schema_fingerprint,
+            context.target_schema_fingerprint, context.backup_name, context.completed_at_unix_ms,
+            r#"{"inbox":true}"#],
     )?;
     connection.pragma_update(None, "user_version", context.target_revision)?;
     Ok(())
@@ -6456,7 +6496,7 @@ mod tests {
                     |row| row.get::<_, i64>(0)
                 )
                 .unwrap(),
-            1
+            CURRENT_STORE_REVISION - 174
         );
         assert_eq!(
             fs::read_dir(directory.path().join("backups/core-migrations"))

@@ -100,6 +100,7 @@ pub(super) fn result(path: &[&str]) -> Value {
         }
         ["file", _] | ["page", "file", _] => document::<crate::files::FileMutationResult>(),
         ["history"] => document::<LibraryPageHistoryPage>(),
+        ["inbox", "send"] => document::<crate::inbox::InboxSendResult>(),
         ["backup", "list"] => document::<crate::runtime::BackupListOutput>(),
         ["backup", "create"] => combine(
             document::<

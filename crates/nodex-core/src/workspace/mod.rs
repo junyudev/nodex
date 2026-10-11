@@ -2,6 +2,10 @@ mod agent_command;
 mod child_thread_window;
 mod codex_thread_navigation;
 mod execution;
+mod inbox;
+mod inbox_read;
+#[cfg(test)]
+mod inbox_tests;
 mod local_codex_thread_ids;
 mod managed_worktree_lifecycle;
 mod managed_worktree_window;

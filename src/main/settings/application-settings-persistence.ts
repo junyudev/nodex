@@ -73,6 +73,14 @@ import type {
 } from "../../shared/types";
 import { normalizeCodexSshExecutionHostConfig } from "../codex/codex-ssh-execution-host";
 import {
+  DEFAULT_INBOX_SETTINGS,
+  MAX_INBOX_INSTRUCTIONS_CHARS,
+  decodeInboxAgentBinding,
+  encodeInboxAgentBinding,
+  type InboxSettings,
+  type UpdateInboxSettingsInput,
+} from "../../shared/inbox";
+import {
   readSettingsTomlDocument,
   SETTINGS_DOCUMENT_MAX_BYTES,
   type SettingsTomlDocument,
@@ -95,6 +103,11 @@ interface ServerTomlConfig {
   app_updates_auto_check_enabled?: boolean;
   app_updates_channel?: "stable" | "nightly";
   window_restore_policy?: WindowRestorePolicy;
+  inbox_suggestions_enabled?: boolean;
+  inbox_suggestion_agent?: string;
+  inbox_suggestion_model?: string;
+  inbox_instructions?: string;
+  inbox_chat_agent?: string;
   diagnostics_enabled?: boolean;
   diagnostics_dsn?: string;
   diagnostics_environment?: string;
@@ -1345,6 +1358,53 @@ export function updateAppUpdateSettings(
 
   writeTomlConfig(profileSettingsPath, nextToml);
   return getAppUpdateSettings(source, buildDefaultChannel);
+}
+
+function inboxSettingsFromConfig(config: ServerTomlConfig): InboxSettings {
+  const model =
+    typeof config.inbox_suggestion_model === "string" ? config.inbox_suggestion_model.trim() : "";
+  return {
+    suggestionsEnabled:
+      typeof config.inbox_suggestions_enabled === "boolean"
+        ? config.inbox_suggestions_enabled
+        : DEFAULT_INBOX_SETTINGS.suggestionsEnabled,
+    suggestionAgent:
+      decodeInboxAgentBinding(config.inbox_suggestion_agent) ??
+      DEFAULT_INBOX_SETTINGS.suggestionAgent,
+    suggestionModel: model || null,
+    instructions:
+      typeof config.inbox_instructions === "string"
+        ? config.inbox_instructions.slice(0, MAX_INBOX_INSTRUCTIONS_CHARS)
+        : DEFAULT_INBOX_SETTINGS.instructions,
+    chatAgent: decodeInboxAgentBinding(config.inbox_chat_agent) ?? DEFAULT_INBOX_SETTINGS.chatAgent,
+  };
+}
+
+export function getInboxSettings(source: ApplicationSettingsDocumentSource): InboxSettings {
+  return inboxSettingsFromConfig(loadProfileServerTomlConfig(source));
+}
+
+export function updateInboxSettings(
+  input: UpdateInboxSettingsInput,
+  source: ApplicationSettingsDocumentSource,
+): InboxSettings {
+  const current = getInboxSettings(source);
+  const next: InboxSettings = { ...current, ...input };
+  if (next.instructions.length > MAX_INBOX_INSTRUCTIONS_CHARS) {
+    throw new Error(`Inbox instructions are limited to ${MAX_INBOX_INSTRUCTIONS_CHARS} characters`);
+  }
+  const server: ServerTomlConfig = {
+    ...loadProfileServerTomlConfig(source),
+    inbox_suggestions_enabled: next.suggestionsEnabled,
+    inbox_suggestion_agent: encodeInboxAgentBinding(next.suggestionAgent),
+    inbox_instructions: next.instructions,
+    inbox_chat_agent: encodeInboxAgentBinding(next.chatAgent),
+  };
+  const model = next.suggestionModel?.trim();
+  if (model) server.inbox_suggestion_model = model;
+  else delete server.inbox_suggestion_model;
+  writeProfileServerTomlConfig(source, server);
+  return getInboxSettings(source);
 }
 
 export function getWindowRestoreSettings(

@@ -73,7 +73,8 @@ pub(super) fn admit<'a>(
     }
     if !matches!(
         intent.as_ref(),
-        ProjectWorkspaceIntent::CreateSidebarSection { .. }
+        ProjectWorkspaceIntent::SendInboxMessage { .. }
+            | ProjectWorkspaceIntent::CreateSidebarSection { .. }
             | ProjectWorkspaceIntent::RenameSidebarSection { .. }
             | ProjectWorkspaceIntent::DeleteSidebarSection { .. }
             | ProjectWorkspaceIntent::RestoreSidebarSection { .. }

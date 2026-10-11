@@ -94,6 +94,19 @@ pub(crate) fn enter_migration_maintenance_context(
     }
 }
 
+/// Runs Store maintenance that removes only rows no reader can see any more, such as the
+/// collection of tombstoned Blocks. Authority guards admit the writes and no visibility delta
+/// is recorded, because nothing visible changes.
+pub(crate) fn with_maintenance_context<T>(
+    connection: &Connection,
+    work: impl FnOnce() -> Result<T, StoreError>,
+) -> Result<T, StoreError> {
+    let owned = enter_migration_maintenance_context(connection)?;
+    let result = work()?;
+    leave_migration_maintenance_context(connection, owned)?;
+    Ok(result)
+}
+
 pub(crate) fn leave_migration_maintenance_context(
     connection: &Connection,
     owned: bool,

@@ -11,6 +11,11 @@ import {
 } from "../../../src/main/core-runtime/CoreAuthority";
 import { CoreModules, live as coreModulesLive } from "../../../src/main/core-runtime/CoreModules";
 import {
+  InboxApplication,
+  live as inboxApplicationLive,
+} from "../../../src/main/inbox-application/InboxApplication";
+import { live as storeAdministrationLive } from "../../../src/main/core-runtime/StoreAdministration";
+import {
   DatabaseModule,
   live as databaseModuleLive,
 } from "../../../src/main/database-application/DatabaseModule";
@@ -93,6 +98,25 @@ export const runScenarioLibrary = <A, E>(
   );
 
 /** Uses the production Project Workspace capability rather than a scenario-only Promise facade. */
+export const runScenarioInbox = <A, E>(
+  runtime: RustDataAuthorityRuntime,
+  use: (inbox: InboxApplication["Service"]) => Effect.Effect<A, E>,
+): Promise<A> =>
+  runWithScenarioCore(
+    runtime,
+    Effect.gen(function* () {
+      const coreContext = yield* Layer.build(coreModulesLive);
+      const core = Context.get(coreContext, CoreModules);
+      const coreLayer = Layer.succeed(CoreModules, core);
+      const inboxContext = yield* Layer.build(
+        inboxApplicationLive.pipe(
+          Layer.provide(storeAdministrationLive.pipe(Layer.provideMerge(coreLayer))),
+        ),
+      );
+      return yield* use(Context.get(inboxContext, InboxApplication));
+    }),
+  );
+
 export const runScenarioProjectWorkspace = <A, E>(
   runtime: RustDataAuthorityRuntime,
   use: (workspace: ProjectWorkspace["Service"]) => Effect.Effect<A, E>,

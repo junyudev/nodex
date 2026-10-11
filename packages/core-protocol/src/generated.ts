@@ -1675,6 +1675,27 @@ export interface components {
             }[];
             readonly next_cursor?: string | null;
         };
+        readonly CollectionWindow_ProjectWorkspaceInboxItem: {
+            readonly authority: components["schemas"]["CollectionWindowAuthority"];
+            readonly items: readonly {
+                readonly body: string;
+                readonly body_truncated: boolean;
+                readonly kind?: null | components["schemas"]["ProjectWorkspaceInboxEntryKind"];
+                readonly location: components["schemas"]["ProjectWorkspaceInboxLocation"];
+                readonly page_id: string;
+                readonly page_key?: string | null;
+                readonly proposal?: null | components["schemas"]["ProjectWorkspaceInboxProposal"];
+                /** Format: int64 */
+                readonly revision: number;
+                readonly source: components["schemas"]["ProjectWorkspaceInboxSource"];
+                readonly state: components["schemas"]["ProjectWorkspaceInboxEntryState"];
+                readonly submitted_at: string;
+                readonly suggestion_error?: string | null;
+                readonly suggestion_state: components["schemas"]["ProjectWorkspaceInboxSuggestionState"];
+                readonly title: string;
+            }[];
+            readonly next_cursor?: string | null;
+        };
         readonly CollectionWindow_ProjectWorkspaceManagedWorktreeSummary: {
             readonly authority: components["schemas"]["CollectionWindowAuthority"];
             readonly items: readonly {
@@ -7455,6 +7476,80 @@ export interface components {
                 /** @enum {string} */
                 readonly kind: "mutate_session";
                 readonly session_id: string;
+            } | {
+                readonly document_id: string;
+                /** @enum {string} */
+                readonly kind: "send_inbox_message";
+                readonly page_id: string;
+                readonly text: string;
+                readonly title?: string | null;
+            } | {
+                /** @enum {string} */
+                readonly kind: "delete_inbox_messages";
+                readonly page_ids: readonly string[];
+            } | {
+                readonly action: components["schemas"]["ProjectWorkspaceInboxDispatchAction"];
+                readonly basis: readonly components["schemas"]["ProjectWorkspaceInboxPageBasis"][];
+                readonly entry_kind?: null | components["schemas"]["ProjectWorkspaceInboxEntryKind"];
+                /** @enum {string} */
+                readonly kind: "propose_inbox_dispatch";
+                readonly page_ids: readonly string[];
+                readonly produced_by?: string | null;
+                readonly proposal_id: string;
+                readonly rationale?: string | null;
+                readonly summary: string;
+            } | {
+                readonly action?: null | components["schemas"]["ProjectWorkspaceInboxDispatchAction"];
+                /** Format: int64 */
+                readonly expected_revision: number;
+                /** @enum {string} */
+                readonly kind: "confirm_inbox_dispatch";
+                readonly proposal_id: string;
+                readonly session_id?: string | null;
+            } | {
+                readonly action: components["schemas"]["ProjectWorkspaceInboxDispatchAction"];
+                /** @enum {string} */
+                readonly kind: "dispatch_inbox_entries";
+                readonly page_ids: readonly string[];
+                readonly proposal_id: string;
+                readonly session_id?: string | null;
+            } | {
+                /** @enum {string} */
+                readonly kind: "keep_inbox_entries";
+                readonly page_ids: readonly string[];
+            } | {
+                /** @enum {string} */
+                readonly kind: "set_inbox_entry_state";
+                readonly page_ids: readonly string[];
+                readonly state: components["schemas"]["ProjectWorkspaceInboxEntryState"];
+            } | {
+                readonly entry_kind?: null | components["schemas"]["ProjectWorkspaceInboxEntryKind"];
+                /** @enum {string} */
+                readonly kind: "set_inbox_entry_kind";
+                readonly page_id: string;
+            } | {
+                /** @enum {string} */
+                readonly kind: "request_inbox_suggestion";
+                readonly page_ids: readonly string[];
+            } | {
+                /** @enum {string} */
+                readonly kind: "record_inbox_suggestion_failure";
+                readonly message: string;
+                readonly page_ids: readonly string[];
+            } | {
+                readonly dispatched_thread_id?: string | null;
+                /** @enum {string} */
+                readonly kind: "complete_inbox_dispatch";
+                readonly proposal_id: string;
+            } | {
+                /** @enum {string} */
+                readonly kind: "fail_inbox_dispatch";
+                readonly message: string;
+                readonly proposal_id: string;
+            } | {
+                /** @enum {string} */
+                readonly kind: "retry_inbox_dispatch";
+                readonly proposal_id: string;
             };
             readonly operation_id: string;
             readonly store_epoch: components["schemas"]["StoreEpoch"];
@@ -8481,6 +8576,28 @@ export interface components {
             } | {
                 /** @enum {string} */
                 readonly kind: "managed_worktree_lifecycle_snapshot";
+            } | {
+                /** @enum {string} */
+                readonly kind: "inbox_summary";
+            } | {
+                readonly filter: components["schemas"]["ProjectWorkspaceInboxWindowFilter"];
+                /** @enum {string} */
+                readonly kind: "inbox_window";
+                readonly window: components["schemas"]["CollectionWindowRequest"];
+            } | {
+                /** @enum {string} */
+                readonly kind: "inbox_pending_suggestions";
+                /** Format: int32 */
+                readonly limit: number;
+            } | {
+                /** @enum {string} */
+                readonly kind: "inbox_dispatch_context";
+                readonly page_ids: readonly string[];
+            } | {
+                /** @enum {string} */
+                readonly kind: "inbox_dispatch_outbox";
+                /** Format: int32 */
+                readonly limit: number;
             };
         };
         readonly ModuleReadRequest_QueryRead: {
@@ -9027,6 +9144,8 @@ export interface components {
             readonly toolset_revision: number;
         };
         readonly ProjectWorkspaceEvent: {
+            /** @description The committed mutation changed Inbox entries or dispatch proposals. */
+            readonly inbox_changed?: boolean;
             readonly kind: components["schemas"]["ProjectWorkspaceEventKind"];
             readonly project_catalog_change?: null | components["schemas"]["ProjectCatalogChangeKind"];
             readonly project_ids: readonly string[];
@@ -9043,6 +9162,190 @@ export interface components {
             readonly thread: components["schemas"]["ProjectWorkspaceThread"];
             readonly workspace_state?: null | components["schemas"]["ProjectWorkspaceThreadWorkspaceState"];
         };
+        readonly ProjectWorkspaceInboxChat: {
+            readonly archived: boolean;
+            readonly display_title: string;
+            readonly project_id?: string | null;
+            readonly project_name?: string | null;
+            readonly session_id: string;
+            readonly status?: null | components["schemas"]["ProjectWorkspaceThreadStatus"];
+            readonly thread_id?: string | null;
+            readonly unread: boolean;
+        };
+        readonly ProjectWorkspaceInboxContextProject: {
+            readonly description: string;
+            readonly name: string;
+            readonly project_id: string;
+        };
+        readonly ProjectWorkspaceInboxContextProposal: {
+            readonly action: components["schemas"]["ProjectWorkspaceInboxDispatchAction"];
+            readonly page_ids: readonly string[];
+            readonly page_keys: readonly string[];
+            readonly proposal_id: string;
+            readonly summary: string;
+        };
+        readonly ProjectWorkspaceInboxContextSession: {
+            readonly preview: string;
+            readonly project_id?: string | null;
+            /** Format: int64 */
+            readonly recency_at?: number | null;
+            readonly session_id: string;
+            readonly status?: null | components["schemas"]["ProjectWorkspaceThreadStatus"];
+            readonly title: string;
+        };
+        /** @description The exact action a proposal asks the user to authorize. */
+        readonly ProjectWorkspaceInboxDispatchAction: {
+            /** @enum {string} */
+            readonly type: "keep";
+        } | {
+            readonly project_id?: string | null;
+            readonly prompt: string;
+            /** @enum {string} */
+            readonly type: "new_chat";
+        } | {
+            readonly prompt: string;
+            readonly session_id: string;
+            /** @enum {string} */
+            readonly type: "send_to_chat";
+        } | {
+            readonly project_id: string;
+            /** @enum {string} */
+            readonly type: "move_to_project";
+        };
+        /**
+         * @description Bounded routing context for the suggestion Agent. It intentionally carries
+         *     no transcripts or Page bodies other than the entries being considered.
+         */
+        readonly ProjectWorkspaceInboxDispatchContext: {
+            readonly entries: readonly components["schemas"]["ProjectWorkspaceInboxSuggestionInput"][];
+            readonly open_proposals: readonly components["schemas"]["ProjectWorkspaceInboxContextProposal"][];
+            readonly projects: readonly components["schemas"]["ProjectWorkspaceInboxContextProject"][];
+            readonly sessions: readonly components["schemas"]["ProjectWorkspaceInboxContextSession"][];
+        };
+        /** @description A confirmed dispatch that the Desktop Host must deliver. */
+        readonly ProjectWorkspaceInboxDispatchWork: {
+            readonly action: components["schemas"]["ProjectWorkspaceInboxDispatchAction"];
+            /** Format: int64 */
+            readonly attempt: number;
+            readonly confirmed_at: string;
+            readonly page_ids: readonly string[];
+            readonly page_keys: readonly string[];
+            readonly project_id?: string | null;
+            readonly proposal_id: string;
+            /** Format: int64 */
+            readonly revision: number;
+            readonly session_id: string;
+            /** @description Runtime family of the target chat's Thread: codex, claude, opencode, or acp. */
+            readonly thread_backend_kind?: string | null;
+            readonly thread_id?: string | null;
+            readonly thread_status?: null | components["schemas"]["ProjectWorkspaceThreadStatus"];
+        };
+        /**
+         * @description User-editable classification of what an Inbox entry is. It never implies
+         *     that work is authorized.
+         * @enum {string}
+         */
+        readonly ProjectWorkspaceInboxEntryKind: "note" | "todo" | "question";
+        /**
+         * @description Triage state chosen by the user. Execution state lives on proposals.
+         * @enum {string}
+         */
+        readonly ProjectWorkspaceInboxEntryState: "open" | "kept" | "done";
+        readonly ProjectWorkspaceInboxLocation: {
+            /** @enum {string} */
+            readonly kind: "inbox";
+        } | {
+            readonly database_id: string;
+            readonly database_name: string;
+            /** @enum {string} */
+            readonly kind: "database";
+            readonly project_id?: string | null;
+            readonly project_name?: string | null;
+        } | {
+            /** @enum {string} */
+            readonly kind: "other";
+        };
+        /** @description Causal evidence that a proposal was made for the current message content. */
+        readonly ProjectWorkspaceInboxPageBasis: {
+            /** Format: int64 */
+            readonly generation: number;
+            /** Format: int64 */
+            readonly head_seq: number;
+            readonly page_id: string;
+        };
+        readonly ProjectWorkspaceInboxProposal: {
+            readonly action: components["schemas"]["ProjectWorkspaceInboxDispatchAction"];
+            readonly chat?: null | components["schemas"]["ProjectWorkspaceInboxChat"];
+            readonly created_at: string;
+            readonly failure_message?: string | null;
+            readonly kind?: null | components["schemas"]["ProjectWorkspaceInboxEntryKind"];
+            readonly origin: components["schemas"]["ProjectWorkspaceInboxProposalOrigin"];
+            readonly page_ids: readonly string[];
+            readonly produced_by?: string | null;
+            readonly proposal_id: string;
+            readonly rationale?: string | null;
+            /** Format: int64 */
+            readonly revision: number;
+            readonly state: components["schemas"]["ProjectWorkspaceInboxProposalState"];
+            readonly summary: string;
+            /** @description Display context for the action's target Project. */
+            readonly target_project_name?: string | null;
+            readonly updated_at: string;
+        };
+        /** @enum {string} */
+        readonly ProjectWorkspaceInboxProposalOrigin: "agent" | "user";
+        /** @enum {string} */
+        readonly ProjectWorkspaceInboxProposalState: "open" | "superseded" | "dismissed" | "dispatching" | "completed" | "failed";
+        readonly ProjectWorkspaceInboxSource: {
+            /** @enum {string} */
+            readonly kind: "user";
+        } | {
+            /** @enum {string} */
+            readonly kind: "agent";
+            readonly label: string;
+            readonly project_id?: string | null;
+            readonly session_id?: string | null;
+            readonly thread_id?: string | null;
+        } | {
+            /** @enum {string} */
+            readonly kind: "command_line";
+            readonly label: string;
+            readonly project_id?: string | null;
+        };
+        /** @description One entry the suggestion Agent should consider, with bounded content. */
+        readonly ProjectWorkspaceInboxSuggestionInput: {
+            readonly basis: components["schemas"]["ProjectWorkspaceInboxPageBasis"];
+            readonly body: string;
+            readonly kind?: null | components["schemas"]["ProjectWorkspaceInboxEntryKind"];
+            readonly page_id: string;
+            readonly page_key?: string | null;
+            readonly source: components["schemas"]["ProjectWorkspaceInboxSource"];
+            readonly submitted_at: string;
+            readonly title: string;
+            /** @description The Page still has Core's provisional title, so the suggestion Agent may name it. */
+            readonly title_provisional: boolean;
+        };
+        /** @enum {string} */
+        readonly ProjectWorkspaceInboxSuggestionState: "pending" | "settled" | "failed";
+        readonly ProjectWorkspaceInboxSummary: {
+            readonly database_id?: string | null;
+            /** Format: int32 */
+            readonly dispatching_count: number;
+            /** Format: int32 */
+            readonly entry_count: number;
+            /**
+             * Format: int32
+             * @description Messages still in the Inbox; the user's goal is to bring this to zero.
+             */
+            readonly inbox_count: number;
+            /** Format: int32 */
+            readonly needs_decision_count: number;
+            /** Format: int32 */
+            readonly pending_suggestion_count: number;
+            readonly view_id?: string | null;
+        };
+        /** @enum {string} */
+        readonly ProjectWorkspaceInboxWindowFilter: "inbox" | "processed";
         readonly ProjectWorkspaceIntent: {
             /** @enum {string} */
             readonly kind: "set_queued_message_state";
@@ -9452,6 +9755,80 @@ export interface components {
             /** @enum {string} */
             readonly kind: "mutate_session";
             readonly session_id: string;
+        } | {
+            readonly document_id: string;
+            /** @enum {string} */
+            readonly kind: "send_inbox_message";
+            readonly page_id: string;
+            readonly text: string;
+            readonly title?: string | null;
+        } | {
+            /** @enum {string} */
+            readonly kind: "delete_inbox_messages";
+            readonly page_ids: readonly string[];
+        } | {
+            readonly action: components["schemas"]["ProjectWorkspaceInboxDispatchAction"];
+            readonly basis: readonly components["schemas"]["ProjectWorkspaceInboxPageBasis"][];
+            readonly entry_kind?: null | components["schemas"]["ProjectWorkspaceInboxEntryKind"];
+            /** @enum {string} */
+            readonly kind: "propose_inbox_dispatch";
+            readonly page_ids: readonly string[];
+            readonly produced_by?: string | null;
+            readonly proposal_id: string;
+            readonly rationale?: string | null;
+            readonly summary: string;
+        } | {
+            readonly action?: null | components["schemas"]["ProjectWorkspaceInboxDispatchAction"];
+            /** Format: int64 */
+            readonly expected_revision: number;
+            /** @enum {string} */
+            readonly kind: "confirm_inbox_dispatch";
+            readonly proposal_id: string;
+            readonly session_id?: string | null;
+        } | {
+            readonly action: components["schemas"]["ProjectWorkspaceInboxDispatchAction"];
+            /** @enum {string} */
+            readonly kind: "dispatch_inbox_entries";
+            readonly page_ids: readonly string[];
+            readonly proposal_id: string;
+            readonly session_id?: string | null;
+        } | {
+            /** @enum {string} */
+            readonly kind: "keep_inbox_entries";
+            readonly page_ids: readonly string[];
+        } | {
+            /** @enum {string} */
+            readonly kind: "set_inbox_entry_state";
+            readonly page_ids: readonly string[];
+            readonly state: components["schemas"]["ProjectWorkspaceInboxEntryState"];
+        } | {
+            readonly entry_kind?: null | components["schemas"]["ProjectWorkspaceInboxEntryKind"];
+            /** @enum {string} */
+            readonly kind: "set_inbox_entry_kind";
+            readonly page_id: string;
+        } | {
+            /** @enum {string} */
+            readonly kind: "request_inbox_suggestion";
+            readonly page_ids: readonly string[];
+        } | {
+            /** @enum {string} */
+            readonly kind: "record_inbox_suggestion_failure";
+            readonly message: string;
+            readonly page_ids: readonly string[];
+        } | {
+            readonly dispatched_thread_id?: string | null;
+            /** @enum {string} */
+            readonly kind: "complete_inbox_dispatch";
+            readonly proposal_id: string;
+        } | {
+            /** @enum {string} */
+            readonly kind: "fail_inbox_dispatch";
+            readonly message: string;
+            readonly proposal_id: string;
+        } | {
+            /** @enum {string} */
+            readonly kind: "retry_inbox_dispatch";
+            readonly proposal_id: string;
         };
         readonly ProjectWorkspaceManagedWorktreeConsumer: {
             readonly archived: boolean;
@@ -11363,6 +11740,26 @@ export interface components {
                     /** @enum {string} */
                     readonly kind: "managed_worktree_lifecycle_snapshot";
                     readonly snapshot: components["schemas"]["ProjectWorkspaceManagedWorktreeLifecycleSnapshot"];
+                } | {
+                    /** @enum {string} */
+                    readonly kind: "inbox_summary";
+                    readonly summary: components["schemas"]["ProjectWorkspaceInboxSummary"];
+                } | {
+                    readonly items: components["schemas"]["CollectionWindow_ProjectWorkspaceInboxItem"];
+                    /** @enum {string} */
+                    readonly kind: "inbox_window";
+                } | {
+                    readonly entries: readonly components["schemas"]["ProjectWorkspaceInboxSuggestionInput"][];
+                    /** @enum {string} */
+                    readonly kind: "inbox_pending_suggestions";
+                } | {
+                    readonly context: components["schemas"]["ProjectWorkspaceInboxDispatchContext"];
+                    /** @enum {string} */
+                    readonly kind: "inbox_dispatch_context";
+                } | {
+                    readonly dispatches: readonly components["schemas"]["ProjectWorkspaceInboxDispatchWork"][];
+                    /** @enum {string} */
+                    readonly kind: "inbox_dispatch_outbox";
                 };
             };
             /** @enum {string} */

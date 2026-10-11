@@ -1,4 +1,5 @@
 import { OpenCodeAgentSettingsUpdateSchema } from "../../../shared/opencode-agent-settings";
+import { UpdateInboxSettingsInputSchema } from "../../../shared/schemas/inbox";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 import * as Schema from "effect/Schema";
@@ -65,7 +66,8 @@ type SettingsReadChannel =
   | "settings:history:get"
   | "settings:telemetry:get"
   | "settings:thread-notifications:get"
-  | "settings:window-restore:get";
+  | "settings:window-restore:get"
+  | "settings:inbox:get";
 
 const BackupUpdate = z
   .object({
@@ -555,6 +557,21 @@ export const live: Layer.Layer<
             "update-window-restore-settings",
             { type: "update-window-restore", input: parsed },
             (value) => value.windowRestore,
+          ),
+        ),
+      ),
+    );
+    yield* handleRead("settings:inbox:get", "Inbox settings", (value) => value.inbox);
+    yield* ipc.handlePlainCommand("settings:inbox:update", (event, input: unknown) =>
+      authorize(event, "Inbox settings").pipe(
+        Effect.andThen(
+          parse("parse-inbox-settings", () => UpdateInboxSettingsInputSchema.parse(input)),
+        ),
+        Effect.flatMap((parsed) =>
+          update(
+            "update-inbox-settings",
+            { type: "update-inbox", input: parsed },
+            (value) => value.inbox,
           ),
         ),
       ),

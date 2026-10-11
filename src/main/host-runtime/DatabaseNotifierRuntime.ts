@@ -5,6 +5,7 @@ import * as PubSub from "effect/PubSub";
 import * as Stream from "effect/Stream";
 import type { DatabaseChangeEvent } from "../../shared/database-events";
 import { parseDatabaseId, parseDatabaseViewId } from "../../shared/database-identities";
+import type { InboxChangedEvent } from "../../shared/inbox";
 import type { ProjectSessionsChangeEvent } from "../../shared/ipc-api";
 import {
   LIBRARY_NAVIGATION_EVENT_VERSION,
@@ -42,12 +43,14 @@ export interface DatabaseNotificationPublisher {
   readonly notifyProjectSessionInvalidation: (
     event: ProjectSessionsChangeEvent,
   ) => Effect.Effect<void>;
+  readonly notifyInboxChanged: (event: InboxChangedEvent) => Effect.Effect<void>;
 }
 
 export class DatabaseNotifierRuntime extends Context.Service<
   DatabaseNotifierRuntime,
   DatabaseNotificationPublisher & {
     readonly projectSessionInvalidations: Stream.Stream<ProjectSessionsChangeEvent>;
+    readonly inboxInvalidations: Stream.Stream<InboxChangedEvent>;
   }
 >()("nodex/main/host-runtime/DatabaseNotifierRuntime") {}
 
@@ -59,11 +62,17 @@ export const live: Layer.Layer<DatabaseNotifierRuntime, never, WindowRuntime> = 
     const projectSessionInvalidations = yield* PubSub.sliding<ProjectSessionsChangeEvent>(
       MAIN_OBSERVATION_EVENT_CAPACITY,
     );
+    const inboxInvalidations = yield* PubSub.sliding<InboxChangedEvent>(
+      MAIN_OBSERVATION_EVENT_CAPACITY,
+    );
     let accepting = true;
     yield* Effect.addFinalizer(() =>
       Effect.sync(() => {
         accepting = false;
-      }).pipe(Effect.andThen(PubSub.shutdown(projectSessionInvalidations))),
+      }).pipe(
+        Effect.andThen(PubSub.shutdown(projectSessionInvalidations)),
+        Effect.andThen(PubSub.shutdown(inboxInvalidations)),
+      ),
     );
 
     const broadcast = Effect.fn("DatabaseNotifierRuntime.broadcast")(function* (
@@ -109,6 +118,13 @@ export const live: Layer.Layer<DatabaseNotifierRuntime, never, WindowRuntime> = 
       yield* broadcast("project-sessions-changed", event);
       yield* PubSub.publish(projectSessionInvalidations, event);
     });
+    const notifyInboxChanged = Effect.fn("DatabaseNotifierRuntime.notifyInboxChanged")(function* (
+      event: InboxChangedEvent,
+    ) {
+      if (!accepting) return;
+      yield* broadcast("inbox-changed", event);
+      yield* PubSub.publish(inboxInvalidations, event);
+    });
     const notifyDatabaseChanged = Effect.fn("DatabaseNotifierRuntime.notifyDatabaseChanged")(
       function* (event: DatabaseChangeEvent) {
         yield* broadcast("database-changed", event);
@@ -144,7 +160,9 @@ export const live: Layer.Layer<DatabaseNotifierRuntime, never, WindowRuntime> = 
       notifyLibraryNavigationChanged,
       notifyProjectsChanged,
       notifyProjectSessionInvalidation,
+      notifyInboxChanged,
       projectSessionInvalidations: Stream.fromPubSub(projectSessionInvalidations),
+      inboxInvalidations: Stream.fromPubSub(inboxInvalidations),
     });
   }),
 );

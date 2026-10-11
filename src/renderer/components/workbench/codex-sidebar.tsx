@@ -2031,6 +2031,10 @@ export function resolveCodexNewChatShortcutLabel() {
   return isMacPlatform() ? "⌘N" : "Ctrl+N";
 }
 
+export function resolveCodexInboxShortcutLabel() {
+  return isMacPlatform() ? "⇧⌘D" : "Ctrl+Shift+D";
+}
+
 export function resolveCodexCommandPaletteShortcutLabel() {
   return isMacPlatform() ? "⌘K" : "Ctrl+K";
 }

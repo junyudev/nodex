@@ -764,6 +764,12 @@ export const WorkbenchLocationV7Schema = z.discriminatedUnion("kind", [
     .strict(),
   z
     .object({
+      kind: z.literal("inbox"),
+      returnTo: WorkbenchSceneLocationSchema,
+    })
+    .strict(),
+  z
+    .object({
       kind: z.literal("pending-worktree"),
       clientThreadId: z.string().min(1),
       expectedHostId: z.string().min(1).optional(),
@@ -785,6 +791,12 @@ const PersistedWorkbenchLocationV7Schema = z.discriminatedUnion("kind", [
     .object({
       kind: z.literal("automations"),
       path: z.string().min(1),
+      returnTo: WorkbenchSceneLocationSchema,
+    })
+    .strict(),
+  z
+    .object({
+      kind: z.literal("inbox"),
       returnTo: WorkbenchSceneLocationSchema,
     })
     .strict(),

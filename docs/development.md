@@ -188,6 +188,13 @@ same seed is a no-op and prints its provenance. A different seed, or a seed for
 a home already initialized without one, fails. Later manual edits belong to the
 environment and are not reset or compared with the original recipe.
 
+A home keeps the Store it was created with. A branch may still be changing its own
+unreleased Store revision. In that case, a home created by an earlier build of the
+branch fails Core startup with a `physical schema fingerprint` mismatch. Reopening
+it with the same seed does not repair it. Start a new home with the seed. To remove
+the old home, reopen it with `--delete`; the launcher deletes it after you quit
+the app.
+
 `landing/showcase` supplies three Tinyboard Pages with an unfinished brief.
 `landing/shared-pages` supplies the complete brief, an empty Implementation notes
 section, and one linked Chat without a Thread or fabricated transcript. Use a fresh

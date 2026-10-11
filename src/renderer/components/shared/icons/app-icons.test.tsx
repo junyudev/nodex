@@ -1,6 +1,7 @@
 import { describe, expect, test } from "vite-plus/test";
 import { render } from "@/test/dom";
 import {
+  AskAiIcon,
   AutomationMoreIcon,
   BoardIcon,
   CalendarIcon,
@@ -143,6 +144,17 @@ describe("Nodex mark identity", () => {
     expect(paths?.[0]?.getAttribute("fill")).toBe("none");
     expect(paths?.[1]?.getAttribute("stroke")).toBe("currentColor");
     expect(paths?.[3]?.getAttribute("fill")).toBe("currentColor");
+  });
+
+  test("stands for the AI wherever an action asks it for something", () => {
+    const ask = render(<AskAiIcon />).container.querySelector("svg");
+    const mark = render(<NodexLogoMarkIcon monochrome />).container.querySelector("svg");
+    const geometry = (svg: SVGSVGElement | null) =>
+      [...(svg?.querySelectorAll("path") ?? [])].map((path) => path.getAttribute("d"));
+
+    expect(ask?.getAttribute("data-nodex-logo-mark")).toBe("monochrome");
+    expect(geometry(ask)).toEqual(geometry(mark));
+    expect(ask?.getAttribute("class")).toBe("icon-xs shrink-0");
   });
 });
 

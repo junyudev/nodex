@@ -6,6 +6,8 @@ import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 import { live as appToolInterpreterLive } from "../app-tools/AppToolInterpreter";
 import { live as sessionWaiterLive } from "../app-tools/SessionWaiter";
+import { live as inboxDispatcherLive } from "../inbox-application/InboxDispatcher";
+import { live as inboxDispatchRuntimeLive } from "../inbox-application/InboxDispatchRuntime";
 import { live as sessionObservationLive } from "../app-tools/SessionObservation";
 import { live as workbenchObservationLive } from "../app-tools/WorkbenchObservation";
 import {
@@ -155,7 +157,7 @@ export const live = appToolInterpreterLive.pipe(
     ),
   ),
   Layer.provideMerge(
-    sessionWaiterLive.pipe(
+    Layer.mergeAll(sessionWaiterLive, inboxDispatcherLive, inboxDispatchRuntimeLive).pipe(
       Layer.provideMerge(sessionObservationLive.pipe(Layer.provideMerge(agentBackends))),
     ),
   ),

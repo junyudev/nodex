@@ -371,6 +371,32 @@ const COMMANDS: &[CommandMetadata] = &[
         example_argv: &["--json", "open", "view", "view-id", "--print"],
     },
     CommandMetadata {
+        path: &["inbox", "send"],
+        capability: "inbox",
+        effect: CommandEffect::Write,
+        validators: IDEMPOTENCY_VALIDATOR,
+        result: "inbox_send_receipt",
+        errors: &[
+            "PROJECT_AMBIGUOUS",
+            "PROFILE_MISMATCH",
+            "INVALID_INPUT",
+            "IDEMPOTENCY_KEY_REUSED",
+            "CORE_UNAVAILABLE",
+            "PROTOCOL_INCOMPATIBLE",
+        ],
+        example: "nodex --json inbox send 'Benchmark search on the large fixture' --title 'Search benchmark' --idempotency-key inbox-1",
+        example_argv: &[
+            "--json",
+            "inbox",
+            "send",
+            "Benchmark search on the large fixture",
+            "--title",
+            "Search benchmark",
+            "--idempotency-key",
+            "inbox-1",
+        ],
+    },
+    CommandMetadata {
         path: &["patch"],
         capability: "pageWrite",
         effect: CommandEffect::Write,
@@ -1614,7 +1640,7 @@ fn command_category(name: &str) -> &'static str {
             "Read and query"
         }
         "page" | "data-source" | "patch" | "block" | "draft" => "Edit and configure",
-        "file" | "open" => "Files and desktop",
+        "file" | "open" | "inbox" => "Files and desktop",
         _ => "Setup and maintenance",
     }
 }

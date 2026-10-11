@@ -45,6 +45,7 @@ import * as NativeShellIpc from "../ipc/handlers/NativeShellIpc";
 import * as PageSearchIpc from "../ipc/handlers/PageSearchIpc";
 import * as FilesIpc from "../ipc/handlers/FilesIpc";
 import * as ProjectWorkspaceIpc from "../ipc/handlers/ProjectWorkspaceIpc";
+import * as InboxIpc from "../ipc/handlers/InboxIpc";
 import * as ProjectionDeliveryIpc from "../ipc/handlers/ProjectionDeliveryIpc";
 import * as StoreAdministrationIpc from "../ipc/handlers/StoreAdministrationIpc";
 import * as TerminalIpc from "../ipc/handlers/TerminalIpc";
@@ -109,6 +110,7 @@ export const live = Layer.mergeAll(
   PageSearchIpc.live({}),
   FilesIpc.live,
   ProjectWorkspaceIpc.live,
+  InboxIpc.live,
   ProjectionDeliveryIpc.live,
   StoreAdministrationIpc.live,
   WorktreeEnvironmentIpc.live,

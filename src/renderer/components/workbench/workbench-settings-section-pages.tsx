@@ -16,6 +16,7 @@ import { ManagedWorktreesSettingControl } from "./managed-worktrees-settings-con
 import { WorkbenchHooksSettingsPage } from "./workbench-hooks-settings-page";
 import { BrowserSettingsPage } from "@/features/browser-sidebar/browser-settings-pages";
 import { VoiceSettingsPage } from "@/features/dictation/voice-settings-page";
+import { InboxSettingsPage } from "@/features/inbox/inbox-settings-page";
 import { CodexRequestDiagnostics } from "@/features/local-conversation/codex-request-diagnostics";
 import {
   FULL_ACCESS_PERMISSION_DESCRIPTION,
@@ -718,6 +719,7 @@ export const SETTINGS_PAGE_COMPONENTS: SettingsPageComponentRegistry = {
   browser: BrowserSettingsPage,
   "computer-use": ComputerUseSettingsPage,
   "keyboard-shortcuts": KeyboardShortcutsSettingsPage,
+  inbox: InboxSettingsPage,
   agent: AgentSettingsPage,
   import: NativeSessionSettingsPage,
   page: PageSettingsPage,

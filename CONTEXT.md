@@ -462,6 +462,41 @@ Project Sessions, and optional Threads. Execution and unread are orthogonal
 signals. Database Page rows do not store or project Chat state; renderer
 surfaces join the independent bounded projections for presentation.
 
+### Inbox
+
+The Inbox is the Profile's single capture surface. It is backed by one
+Library-owned Inbox Database, created on the first message. Each message is an
+ordinary Page in that Database, and the whole message is its body. The title is
+a label: the sender's own, or a provisional excerpt that the suggestion Agent
+may replace with a name once. The Inbox Database is never a standalone Library
+or sidebar root.
+
+### Inbox entry
+
+An Inbox entry is the Workspace-owned record beside a message Page. It holds:
+
+- the message's immutable source: the user, an Agent Turn's chat and Project, or
+  the command line with an optional Project;
+- a user-editable kind: note, todo, or question;
+- a triage state: open, kept, or done.
+
+An entry is in the Inbox while it still needs the user. A confirmed chat
+dispatch, a move out of the Inbox Database, Keep, or Done hands it to History.
+Deleting a message erases it: the entry, every suggestion naming it, the Page,
+and its revisions go, with no restore path.
+The entry survives relocation, so History still shows where a message filed into
+a Project went, while the Project's own Properties apply to the Page.
+
+### Dispatch proposal
+
+A Dispatch proposal is one typed action for one or more Inbox entries: keep,
+new chat, send to chat, or move to Project. It is versioned and fenced by the
+message revisions it was computed from. A proposal is advice. Only the user's
+confirmation, or a user-written dispatch, makes it Dispatch work. Confirmed chat
+work stays in the `dispatching` state until the Desktop Host delivers it.
+
+_Avoid_: task, job, routing rule.
+
 ### Conversation recency
 
 Conversation recency is the time of a Thread's latest meaningful conversation
@@ -666,6 +701,7 @@ state is rejected rather than replayed.
 | Restorable Document states                                                 | immutable semantic Document revisions                                    |
 | Presence, cursor, selection, leases                                        | ephemeral collaboration state                                            |
 | Project Sessions, Thread links, and Linked chats                           | Project execution domain                                                 |
+| Inbox entries and Dispatch proposals                                       | Project execution domain beside Inbox Database Pages                     |
 | Per-window Project/Session Scene surfaces, panels, selection, and geometry | Window Session view                                                      |
 | Browser guests and Terminal PTYs                                           | Main-process runtime Modules                                             |
 
@@ -717,6 +753,9 @@ state is rejected rather than replayed.
 27. A Page File placement references stable File identity, remains non-owning,
     and may occur in any Page Document in the same Library. The containing Page
     may resolve only the File's current presentation metadata and bytes.
+28. A Dispatch proposal never starts work, sends a prompt, or moves content by
+    itself. Agents and the command line may only append Inbox entries, and Core,
+    not the caller, records each entry's source.
 
 ## Operation semantics
 

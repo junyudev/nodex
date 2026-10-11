@@ -4,7 +4,9 @@ import * as Deferred from "effect/Deferred";
 import * as Effect from "effect/Effect";
 import * as FiberHandle from "effect/FiberHandle";
 import * as Layer from "effect/Layer";
+import * as Queue from "effect/Queue";
 import * as Semaphore from "effect/Semaphore";
+import * as Stream from "effect/Stream";
 import * as SubscriptionRef from "effect/SubscriptionRef";
 import { CoreModuleResponseError } from "../core-client/core-client";
 import { CoreAuthority } from "../core-runtime/CoreAuthority";
@@ -190,15 +192,26 @@ export const live = (
           ),
         );
 
+      // Erasure cannot wait for the Block lane's idle clock: a requested erasure wakes it.
+      const blockWake = yield* Queue.sliding<void>(1);
+      yield* administration.erasureRequests.pipe(
+        Stream.runForEach(() => Queue.offer(blockWake, undefined)),
+        Effect.forkScoped,
+      );
+      const pause = (lane: StoreMaintenanceLane, delay: number): Effect.Effect<void> => {
+        const sleep = Effect.sleep(Math.max(0, delay));
+        return lane === "block"
+          ? Effect.raceFirst(sleep, Queue.take(blockWake).pipe(Effect.asVoid))
+          : sleep;
+      };
+
       for (const lane of ["revision", "operational", "document", "block"] as const) {
         const schedule = options.timing?.maintenance?.[lane] ?? STORE_MAINTENANCE_SCHEDULES[lane];
         yield* Deferred.await(activation).pipe(
-          Effect.andThen(Effect.sleep(Math.max(0, schedule.initial))),
+          Effect.andThen(pause(lane, schedule.initial)),
           Effect.andThen(
             Effect.forever(
-              runMaintenance(lane, schedule).pipe(
-                Effect.flatMap((delay) => Effect.sleep(Math.max(0, delay))),
-              ),
+              runMaintenance(lane, schedule).pipe(Effect.flatMap((delay) => pause(lane, delay))),
             ),
           ),
           Effect.forkScoped,

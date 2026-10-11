@@ -219,7 +219,7 @@ mod tests {
 
     #[test]
     fn current_schema_artifact_matches_catalog() {
-        assert_eq!(CURRENT_STORE_REVISION, 175);
+        assert_eq!(CURRENT_STORE_REVISION, 177);
         let mut artifact = Connection::open_in_memory().expect("artifact Store");
         install_current_schema(&mut artifact).expect("current schema artifact");
         let artifact_inventory = read_schema_inventory(&artifact).expect("artifact inventory");
@@ -230,6 +230,11 @@ mod tests {
         for table in [
             "codex_queued_message_state",
             "project_session_pages",
+            "inbox_registry",
+            "inbox_entries",
+            "inbox_proposals",
+            "inbox_proposal_pages",
+            "block_erasure_requests",
             "workspace_sidebar_sections",
             "workspace_sidebar_section_items",
             "workspace_sidebar_section_host_links",

@@ -136,8 +136,29 @@ export class CodexStructuredThreadTitle extends Context.Service<
     readonly reconsiderTitle: (
       input: CodexStructuredThreadTitleReconsiderationInput,
     ) => Effect.Effect<CodexGeneratedThreadMetadata | null, CodexStructuredThreadTitleError>;
+    /**
+     * Runs one bounded, read-only, tool-free helper Turn whose final message must satisfy
+     * `outputSchema`. Callers own prompt construction and result validation.
+     */
+    readonly generateStructured: <T>(
+      input: CodexStructuredGenerationInput<T>,
+    ) => Effect.Effect<T | null, CodexStructuredThreadTitleError>;
   }
 >()("nodex/main/codex-application/CodexStructuredThreadTitle") {}
+
+export interface CodexStructuredGenerationInput<T> {
+  readonly hostId: string;
+  readonly prompt: string;
+  readonly cwd: string | null;
+  /** Identifies the helper's purpose on the app-server Thread. */
+  readonly threadSource: string;
+  readonly outputSchema: TurnStartParams["outputSchema"];
+  readonly parseResult: (raw: string | null | undefined) => T | null;
+  readonly model?: string;
+  readonly reasoningEffort?: string;
+  readonly maxOutputBytes?: number;
+  readonly timeoutMs?: number;
+}
 
 /** The structured result is a title, not a general-purpose transcript. */
 export const CODEX_STRUCTURED_THREAD_TITLE_MAX_OUTPUT_BYTES = 16 * 1024;
@@ -236,21 +257,22 @@ const requestError = (operation: string, cause: unknown, threadId?: string) =>
 const notificationOverflowError = (
   threadId: string,
   turnId: string,
-  observedBytes: number,
+  observed: number,
   limit: number,
+  unit: "byte" | "notification",
 ) =>
   new CodexStructuredThreadTitleError({
     reason: "notification-overflow",
-    message: `Structured title notification exceeded its ${limit}-byte admission budget.`,
+    message: `Structured result notifications exceeded their ${limit}-${unit} admission budget.`,
     threadId,
     turnId,
-    cause: { observedBytes, limit },
+    cause: { observed, limit, unit },
   });
 
-const outputOverflowError = (threadId: string, turnId: string) =>
+const outputOverflowError = (threadId: string, turnId: string, limit: number) =>
   new CodexStructuredThreadTitleError({
     reason: "output-overflow",
-    message: `Structured title output exceeded its ${CODEX_STRUCTURED_THREAD_TITLE_MAX_OUTPUT_BYTES}-byte budget.`,
+    message: `Structured output exceeded its ${limit}-byte budget.`,
     threadId,
     turnId,
   });
@@ -306,16 +328,18 @@ const makeTitleNotificationInbox = (threadId: string): Effect.Effect<TitleNotifi
     const overflowed = (
       current: TitleNotificationBufferState,
       notification: TitleNotification,
-      observedBytes: number,
+      observed: number,
       limit: number,
+      unit: "byte" | "notification" = "byte",
     ): Effect.Effect<readonly [undefined, TitleNotificationBufferState]> =>
       Deferred.fail(
         overflow,
         notificationOverflowError(
           threadId,
           titleNotificationTurnId(notification),
-          observedBytes,
+          observed,
           limit,
+          unit,
         ),
       ).pipe(
         Effect.as([
@@ -366,8 +390,9 @@ const makeTitleNotificationInbox = (threadId: string): Effect.Effect<TitleNotifi
               : overflowed(
                   current,
                   notification,
-                  current.bufferedBytes + approximateBytes,
+                  CODEX_STRUCTURED_THREAD_TITLE_NOTIFICATION_QUEUE_CAPACITY + 1,
                   CODEX_STRUCTURED_THREAD_TITLE_NOTIFICATION_QUEUE_CAPACITY,
+                  "notification",
                 ),
           ),
         );
@@ -405,12 +430,13 @@ export const make = (
     const closed = yield* Latch.make();
     yield* Effect.addFinalizer(() => closed.open);
 
-    const awaitTitle = (
+    const awaitTitle = <T>(
       threadId: string,
       turnId: string,
       notifications: TitleNotificationInbox,
-      parseResult: (raw: string | null | undefined) => CodexGeneratedThreadMetadata | null,
-    ): Effect.Effect<CodexGeneratedThreadMetadata | null, CodexStructuredThreadTitleError> =>
+      parseResult: (raw: string | null | undefined) => T | null,
+      maxOutputBytes: number,
+    ): Effect.Effect<T | null, CodexStructuredThreadTitleError> =>
       Effect.gen(function* () {
         const chunks: string[] = [];
         let outputBytes = 0;
@@ -443,19 +469,10 @@ export const make = (
             completedText ?? (notification._tag === "Delta" ? notification.params.delta : null);
           if (text === null) continue;
 
-          const textBytes = cappedUtf8Bytes(
-            text,
-            completedText === null
-              ? CODEX_STRUCTURED_THREAD_TITLE_MAX_OUTPUT_BYTES - outputBytes
-              : CODEX_STRUCTURED_THREAD_TITLE_MAX_OUTPUT_BYTES,
-          );
-          if (
-            textBytes >
-            (completedText === null
-              ? CODEX_STRUCTURED_THREAD_TITLE_MAX_OUTPUT_BYTES - outputBytes
-              : CODEX_STRUCTURED_THREAD_TITLE_MAX_OUTPUT_BYTES)
-          ) {
-            return yield* Effect.fail(outputOverflowError(threadId, turnId));
+          const budget = completedText === null ? maxOutputBytes - outputBytes : maxOutputBytes;
+          const textBytes = cappedUtf8Bytes(text, budget);
+          if (textBytes > budget) {
+            return yield* Effect.fail(outputOverflowError(threadId, turnId, maxOutputBytes));
           }
           if (completedText !== null) {
             chunks.length = 0;
@@ -466,7 +483,7 @@ export const make = (
         }
       });
 
-    const run = (input: {
+    const run = <T>(input: {
       readonly hostId: string;
       readonly prompt: string;
       readonly cwd: string | null;
@@ -474,10 +491,19 @@ export const make = (
       readonly readOnlyAppToolAllowlist?: readonly CodexThreadTitleReadOnlyAppTool[];
       readonly sourceThreadId?: string;
       readonly fallbackToFreshThread?: boolean;
-      readonly threadSource: "thread_title" | "thread_title_reconsideration";
+      readonly threadSource: string;
       readonly outputSchema: TurnStartParams["outputSchema"];
-      readonly parseResult: (raw: string | null | undefined) => CodexGeneratedThreadMetadata | null;
-    }) =>
+      readonly parseResult: (raw: string | null | undefined) => T | null;
+      readonly model?: string;
+      readonly reasoningEffort?: string;
+      readonly maxOutputBytes?: number;
+      readonly timeoutMs?: number;
+      /**
+       * Larger structured results stream far more deltas than the small pre-response inbox
+       * admits; their completed message carries the whole result, so deltas are skipped.
+       */
+      readonly completedMessageOnly?: boolean;
+    }): Effect.Effect<T | null, CodexStructuredThreadTitleError> =>
       Effect.scoped(
         Effect.gen(function* () {
           const prompt = input.prompt.trim();
@@ -485,9 +511,10 @@ export const make = (
           const hostId = input.hostId.trim();
           if (!hostId) return null;
           const generation = yield* options.generation(hostId);
-          const config = buildCodexThreadTitleThreadConfig(
-            input.readOnlyAppToolAllowlist ?? [],
-          ) as ThreadStartParams["config"];
+          const config = {
+            ...buildCodexThreadTitleThreadConfig(input.readOnlyAppToolAllowlist ?? []),
+            ...(input.reasoningEffort ? { model_reasoning_effort: input.reasoningEffort } : {}),
+          } as ThreadStartParams["config"];
 
           const releaseThread = (response: ThreadStartResponse | ThreadForkResponse) =>
             options.unsubscribeThread(hostId, response.thread.id, generation).pipe(Effect.ignore);
@@ -516,7 +543,7 @@ export const make = (
               options.startThread(
                 hostId,
                 {
-                  model: CODEX_THREAD_TITLE_MODEL,
+                  model: input.model ?? CODEX_THREAD_TITLE_MODEL,
                   modelProvider: null,
                   allowProviderModelFallback: true,
                   cwd: input.cwd,
@@ -549,7 +576,7 @@ export const make = (
                       {
                         threadId: input.sourceThreadId,
                         path: null,
-                        model: CODEX_THREAD_TITLE_MODEL,
+                        model: input.model ?? CODEX_THREAD_TITLE_MODEL,
                         modelProvider: null,
                         serviceTier: null,
                         cwd: input.cwd,
@@ -602,6 +629,7 @@ export const make = (
               if (notification === null || titleNotificationThreadId(notification) !== threadId) {
                 return Effect.void;
               }
+              if (input.completedMessageOnly && notification._tag === "Delta") return Effect.void;
               return Ref.get(targetTurnId).pipe(
                 Effect.flatMap((expectedTurnId) =>
                   expectedTurnId !== null &&
@@ -639,7 +667,14 @@ export const make = (
                 generation,
               )
               .pipe(Effect.tap((response) => Ref.set(targetTurnId, response.turn.id))),
-            (response) => awaitTitle(threadId, response.turn.id, notifications, input.parseResult),
+            (response) =>
+              awaitTitle(
+                threadId,
+                response.turn.id,
+                notifications,
+                input.parseResult,
+                input.maxOutputBytes ?? CODEX_STRUCTURED_THREAD_TITLE_MAX_OUTPUT_BYTES,
+              ),
             (response, exit) =>
               Exit.isSuccess(exit)
                 ? Effect.void
@@ -649,7 +684,7 @@ export const make = (
           );
           return yield* Effect.raceFirst(
             waitForTurn,
-            Effect.sleep(options.timeout ?? CODEX_THREAD_TITLE_TIMEOUT_MS).pipe(
+            Effect.sleep(input.timeoutMs ?? options.timeout ?? CODEX_THREAD_TITLE_TIMEOUT_MS).pipe(
               Effect.andThen(
                 Effect.fail(
                   new CodexStructuredThreadTitleError({
@@ -664,11 +699,8 @@ export const make = (
         }),
       );
 
-    const protectRuntime = (
-      operation: Effect.Effect<
-        CodexGeneratedThreadMetadata | null,
-        CodexStructuredThreadTitleError
-      >,
+    const protectRuntime = <T>(
+      operation: Effect.Effect<T | null, CodexStructuredThreadTitleError>,
     ) =>
       Effect.raceFirst(
         operation,
@@ -717,9 +749,15 @@ export const make = (
       );
     };
 
+    const generateStructured = <T>(input: CodexStructuredGenerationInput<T>) => {
+      if (!input.prompt.trim()) return Effect.succeed(null);
+      return protectRuntime(run({ ...input, completedMessageOnly: true }));
+    };
+
     return CodexStructuredThreadTitle.of({
       generateMetadata,
       reconsiderTitle,
+      generateStructured,
       generate: (input) =>
         generateMetadata(input).pipe(Effect.map((metadata) => metadata?.title ?? null)),
     });

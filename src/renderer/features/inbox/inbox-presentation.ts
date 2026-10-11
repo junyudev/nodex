@@ -1,0 +1,283 @@
+import type {
+  InboxChat,
+  InboxDispatchAction,
+  InboxEntryKind,
+  InboxItem,
+  InboxProposal,
+  InboxWindowFilter,
+} from "../../../shared/inbox";
+import { USER_TURN_TIMESTAMP_GAP_MS } from "../local-conversation/projection/conversation-turn-timestamps";
+
+/** What the strip attached to a message in the Inbox shows: what Nodex made of it. */
+export type InboxTriageModel =
+  | { readonly kind: "suggesting" }
+  | { readonly kind: "suggestion"; readonly proposal: InboxProposal }
+  | { readonly kind: "suggestion-failed"; readonly message: string }
+  | { readonly kind: "dispatch-failed"; readonly proposal: InboxProposal; readonly message: string }
+  /** Nothing to confirm: the user decides by hand. */
+  | { readonly kind: "undecided" }
+  /** Handled; the message is on its way to History. */
+  | { readonly kind: "handled" };
+
+const isChatAction = (action: InboxDispatchAction) =>
+  action.type === "new_chat" || action.type === "send_to_chat";
+
+/**
+ * Mirrors Core's Inbox membership: a message is handled once a chat dispatch is confirmed,
+ * its Page leaves the Inbox Database, or it is kept or done. A failed dispatch is not.
+ */
+export function isInboxItemHandled(item: InboxItem): boolean {
+  if (item.state !== "open" || item.location.kind !== "inbox") return true;
+  const proposal = item.proposal;
+  return Boolean(
+    proposal &&
+    isChatAction(proposal.action) &&
+    (proposal.state === "dispatching" || proposal.state === "completed"),
+  );
+}
+
+export function inboxTriageModel(item: InboxItem, suggestionsEnabled: boolean): InboxTriageModel {
+  const proposal = item.proposal;
+  if (proposal?.state === "failed" && isChatAction(proposal.action)) {
+    return {
+      kind: "dispatch-failed",
+      proposal,
+      message: proposal.failureMessage ?? "The chat could not be started",
+    };
+  }
+  if (isInboxItemHandled(item)) return { kind: "handled" };
+  if (proposal?.state === "open") return { kind: "suggestion", proposal };
+  if (item.suggestionState === "pending" && suggestionsEnabled) return { kind: "suggesting" };
+  if (item.suggestionState === "failed") {
+    return {
+      kind: "suggestion-failed",
+      message: item.suggestionError ?? "No suggestion was produced",
+    };
+  }
+  return { kind: "undecided" };
+}
+
+export type InboxOutcomeIcon = "chat" | "pending" | "move" | "keep" | "done" | "inbox";
+
+export type InboxOutcomeTarget =
+  | { readonly kind: "thread"; readonly threadId: string }
+  | { readonly kind: "database"; readonly databaseId: string };
+
+/** How a handled message was handled, as one History line. */
+export interface InboxOutcome {
+  readonly icon: InboxOutcomeIcon;
+  readonly label: string;
+  /** Live state of the chat that received it. */
+  readonly status: InboxChatStatusPresentation | null;
+  readonly open: InboxOutcomeTarget | null;
+  /** Kept and done messages can go back to the Inbox; dispatched work cannot be recalled. */
+  readonly canReturn: boolean;
+}
+
+export function describeInboxOutcome(item: InboxItem): InboxOutcome {
+  const proposal = item.proposal;
+  if (proposal && isChatAction(proposal.action)) {
+    const chat = proposal.chat;
+    const title = chat?.displayTitle ?? "chat";
+    const open: InboxOutcomeTarget | null = chat?.threadId
+      ? { kind: "thread", threadId: chat.threadId }
+      : null;
+    if (proposal.state === "dispatching") {
+      return {
+        icon: "pending",
+        label:
+          proposal.action.type === "send_to_chat"
+            ? `Queued for “${title}”`
+            : `Starting a chat in ${proposal.targetProjectName ?? "no Project"}`,
+        status: null,
+        open,
+        canReturn: false,
+      };
+    }
+    if (proposal.state === "completed") {
+      return {
+        icon: "chat",
+        label:
+          proposal.action.type === "send_to_chat" ? `Sent to “${title}”` : `Started “${title}”`,
+        status: describeInboxChatStatus(chat),
+        open,
+        canReturn: false,
+      };
+    }
+  }
+  if (item.location.kind === "database") {
+    return {
+      icon: "move",
+      label: `Moved to ${item.location.projectName ?? item.location.databaseName}`,
+      status: null,
+      open: { kind: "database", databaseId: item.location.databaseId },
+      canReturn: false,
+    };
+  }
+  if (item.location.kind === "other") {
+    return {
+      icon: "move",
+      label: "Moved out of the Inbox",
+      status: null,
+      open: null,
+      canReturn: false,
+    };
+  }
+  if (item.state === "kept") {
+    return {
+      icon: "keep",
+      label: item.kind ? `Kept as ${INBOX_KIND_LABELS[item.kind].toLowerCase()}` : "Kept",
+      status: null,
+      open: null,
+      canReturn: true,
+    };
+  }
+  if (item.state === "done") {
+    return { icon: "done", label: "Done", status: null, open: null, canReturn: true };
+  }
+  return { icon: "inbox", label: "In the Inbox", status: null, open: null, canReturn: false };
+}
+
+export interface InboxActionPresentation {
+  /** The confirming button's verb. */
+  readonly verb: string;
+  /** Where the work goes, in one short phrase. */
+  readonly target: string;
+}
+
+export function describeInboxAction(
+  action: InboxDispatchAction,
+  context: {
+    readonly targetProjectName: string | null;
+    readonly chat: InboxChat | null;
+  },
+): InboxActionPresentation {
+  switch (action.type) {
+    case "keep":
+      return { verb: "Keep", target: "Keep in Inbox" };
+    case "new_chat":
+      return {
+        verb: "Start chat",
+        target: action.projectId
+          ? `New chat in ${context.targetProjectName ?? "Project"}`
+          : "New projectless chat",
+      };
+    case "send_to_chat": {
+      const title = context.chat?.displayTitle ?? "chat";
+      return {
+        verb: context.chat?.status?.statusType === "active" ? "Queue" : "Send",
+        target:
+          context.chat?.status?.statusType === "active"
+            ? `Send to “${title}” after it finishes`
+            : `Send to “${title}”`,
+      };
+    }
+    case "move_to_project":
+      return { verb: "Move", target: `Move to ${context.targetProjectName ?? "Project"}` };
+  }
+}
+
+export type InboxChatTone = "working" | "attention" | "error" | "quiet";
+
+export interface InboxChatStatusPresentation {
+  readonly label: string;
+  readonly tone: InboxChatTone;
+}
+
+export function describeInboxChatStatus(chat: InboxChat | null): InboxChatStatusPresentation {
+  if (!chat) return { label: "Chat unavailable", tone: "error" };
+  if (chat.archived) return { label: "Archived", tone: "quiet" };
+  const status = chat.status;
+  if (!status) return { label: "Starting", tone: "working" };
+  if (status.activeFlags.includes("waitingOnApproval")) {
+    return { label: "Needs approval", tone: "attention" };
+  }
+  if (status.activeFlags.includes("waitingOnUserInput")) {
+    return { label: "Needs input", tone: "attention" };
+  }
+  if (status.statusType === "active") return { label: "Working", tone: "working" };
+  if (status.statusType === "systemError") return { label: "Error", tone: "error" };
+  return chat.unread ? { label: "New reply", tone: "attention" } : { label: "Idle", tone: "quiet" };
+}
+
+export const INBOX_KIND_LABELS: Readonly<Record<InboxEntryKind, string>> = {
+  note: "Note",
+  todo: "Todo",
+  question: "Question",
+};
+
+export const INBOX_VIEW_LABELS: Readonly<Record<InboxWindowFilter, string>> = {
+  inbox: "Inbox",
+  processed: "History",
+};
+
+export interface InboxDaySection {
+  readonly key: string;
+  readonly label: string;
+  readonly items: readonly InboxItem[];
+}
+
+const startOfDay = (date: Date) => new Date(date.getFullYear(), date.getMonth(), date.getDate());
+
+export function inboxDayLabel(date: Date, now: Date): string {
+  const days = Math.round((startOfDay(now).getTime() - startOfDay(date).getTime()) / 86_400_000);
+  if (days === 0) return "Today";
+  if (days === 1) return "Yesterday";
+  if (days > 1 && days < 7) {
+    return date.toLocaleDateString(undefined, { weekday: "long" });
+  }
+  return date.toLocaleDateString(undefined, {
+    month: "short",
+    day: "numeric",
+    ...(date.getFullYear() === now.getFullYear() ? {} : { year: "numeric" }),
+  });
+}
+
+/** Groups ordered items into local-day sections, keeping the given order. */
+export function groupInboxItemsByDay(
+  items: readonly InboxItem[],
+  now: Date,
+): readonly InboxDaySection[] {
+  const sections: { key: string; label: string; items: InboxItem[] }[] = [];
+  for (const item of items) {
+    const date = new Date(item.submittedAt);
+    const key = startOfDay(date).toISOString();
+    const current = sections.at(-1);
+    if (current?.key === key) {
+      current.items.push(item);
+    } else {
+      sections.push({ key, label: inboxDayLabel(date, now), items: [item] });
+    }
+  }
+  return sections;
+}
+
+const REMOTE_METHOD_PREFIX = /^Error invoking remote method '[^']+': (?:[A-Za-z]*Error: )?/;
+
+/** Electron prefixes rejected IPC calls; the Core reason after it is the useful part. */
+export function readableInboxError(error: unknown, fallback: string): string {
+  const message = error instanceof Error ? error.message : typeof error === "string" ? error : "";
+  const readable = message.replace(REMOTE_METHOD_PREFIX, "").trim();
+  return readable || fallback;
+}
+
+/**
+ * Where the oldest-first Inbox stream shows a centered time, as a conversation does: above
+ * the first message once it is over an hour old, and above any message sent over an hour
+ * after the one before it. Each message's own time waits for a hover.
+ */
+export function inboxTimestampSeparators(
+  items: readonly InboxItem[],
+  nowMs: number,
+): Array<number | null> {
+  return items.map((item, index) => {
+    const sentAtMs = Date.parse(item.submittedAt);
+    if (!Number.isFinite(sentAtMs)) return null;
+    const previous = items[index - 1];
+    const sinceMs = previous ? sentAtMs - Date.parse(previous.submittedAt) : nowMs - sentAtMs;
+    return sinceMs > USER_TURN_TIMESTAMP_GAP_MS ? sentAtMs : null;
+  });
+}
+
+export const formatInboxTime = (submittedAt: string): string =>
+  new Date(submittedAt).toLocaleTimeString(undefined, { hour: "numeric", minute: "2-digit" });

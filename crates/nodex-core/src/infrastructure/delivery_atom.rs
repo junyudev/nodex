@@ -820,6 +820,7 @@ fn compile_workspace(
                 library_id: library_id.to_owned(),
                 event: ProjectWorkspaceEvent {
                     kind: event.kind,
+                    inbox_changed: false,
                     project_catalog_change: event.project_catalog_change,
                     project_ids: vec![project_id.clone()],
                     session_ids: Vec::new(),
@@ -830,7 +831,8 @@ fn compile_workspace(
             },
         ));
     }
-    let has_project_payload = !event.session_ids.is_empty()
+    let has_project_payload = event.inbox_changed
+        || !event.session_ids.is_empty()
         || !event.thread_ids.is_empty()
         || !event.session_summary_scopes.is_empty()
         || !event.session_detail_ids.is_empty();
@@ -846,6 +848,7 @@ fn compile_workspace(
                 library_id: library_id.to_owned(),
                 event: ProjectWorkspaceEvent {
                     kind: event.kind,
+                    inbox_changed: event.inbox_changed,
                     project_catalog_change: None,
                     project_ids: physical_project_id.map(str::to_owned).into_iter().collect(),
                     session_ids: event.session_ids,

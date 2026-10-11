@@ -41,6 +41,7 @@ export type CommandPaletteShellCommandId =
   | "findInThread"
   | "forceReloadSkills"
   | "manageTasks"
+  | "openInbox"
   | "openLibraryFiles"
   | "openProcessManager"
   | "settings"
@@ -95,6 +96,7 @@ export function isCommandPaletteShellCommandId(id: string): id is CommandPalette
     id === "findInThread" ||
     id === "forceReloadSkills" ||
     id === "manageTasks" ||
+    id === "openInbox" ||
     id === "openLibraryFiles" ||
     id === "openProcessManager" ||
     id === "settings" ||
@@ -642,6 +644,15 @@ export function buildCommandPaletteCommands(
           ),
         ]
       : []),
+    command(
+      "openInbox",
+      "App",
+      "Open Inbox",
+      "Capture a thought and review dispatch suggestions",
+      ["inbox", "capture", "message", "note", "todo", "dispatch"],
+      640,
+      { shortcut: shortcutLabel("openInbox", "CmdOrCtrl+Shift+D") },
+    ),
     command(
       "manageTasks",
       "App",

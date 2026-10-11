@@ -3,9 +3,16 @@ use utoipa::ToSchema;
 
 use crate::agent::AgentBackendBinding;
 use crate::collection::{CollectionWindow, CollectionWindowRequest};
+use crate::inbox::{
+    ProjectWorkspaceInboxDispatchAction, ProjectWorkspaceInboxDispatchContext,
+    ProjectWorkspaceInboxDispatchWork, ProjectWorkspaceInboxEntryKind,
+    ProjectWorkspaceInboxEntryState, ProjectWorkspaceInboxItem, ProjectWorkspaceInboxPageBasis,
+    ProjectWorkspaceInboxSuggestionInput, ProjectWorkspaceInboxSummary,
+    ProjectWorkspaceInboxWindowFilter,
+};
 use crate::{ModuleMutationReceipt, ModuleName, VersionedModuleContract};
 
-pub const PROJECT_WORKSPACE_CONTRACT_VERSION: u32 = 34;
+pub const PROJECT_WORKSPACE_CONTRACT_VERSION: u32 = 35;
 
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize, ToSchema)]
 #[serde(tag = "kind", rename_all = "snake_case")]
@@ -131,6 +138,23 @@ pub enum ProjectWorkspaceRead {
         window: CollectionWindowRequest,
     },
     ManagedWorktreeLifecycleSnapshot,
+    InboxSummary,
+    InboxWindow {
+        filter: ProjectWorkspaceInboxWindowFilter,
+        window: CollectionWindowRequest,
+    },
+    /// Entries the suggestion Agent should consider, oldest first.
+    InboxPendingSuggestions {
+        limit: u32,
+    },
+    /// Bounded routing context for exactly these entries.
+    InboxDispatchContext {
+        page_ids: Vec<String>,
+    },
+    /// Confirmed dispatches that still need host delivery, oldest first.
+    InboxDispatchOutbox {
+        limit: u32,
+    },
 }
 
 #[derive(Clone, Debug, Deserialize, PartialEq, Serialize, ToSchema)]
@@ -240,6 +264,21 @@ pub enum ProjectWorkspaceReadValue {
     },
     ManagedWorktreeLifecycleSnapshot {
         snapshot: ProjectWorkspaceManagedWorktreeLifecycleSnapshot,
+    },
+    InboxSummary {
+        summary: ProjectWorkspaceInboxSummary,
+    },
+    InboxWindow {
+        items: CollectionWindow<ProjectWorkspaceInboxItem>,
+    },
+    InboxPendingSuggestions {
+        entries: Vec<ProjectWorkspaceInboxSuggestionInput>,
+    },
+    InboxDispatchContext {
+        context: ProjectWorkspaceInboxDispatchContext,
+    },
+    InboxDispatchOutbox {
+        dispatches: Vec<ProjectWorkspaceInboxDispatchWork>,
     },
 }
 
@@ -1601,6 +1640,80 @@ pub enum ProjectWorkspaceIntent {
         session_id: String,
         intent: ProjectSessionIntent,
     },
+    /// Captures one message as a Page in the Inbox Database. The Inbox Database is
+    /// created on first use. Agent provenance, when present, becomes immutable source.
+    /// The whole text becomes the Page body. Without a sender title, Core gives the
+    /// Page a provisional title that the suggestion Agent may later replace.
+    SendInboxMessage {
+        page_id: String,
+        document_id: String,
+        text: String,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        title: Option<String>,
+    },
+    /// Erases messages the user wants gone. Their entries and every suggestion naming them
+    /// leave now; each Page is tombstoned with all its revisions so Store maintenance
+    /// collects what remains. Only Pages still in the Inbox Database qualify.
+    DeleteInboxMessages {
+        page_ids: Vec<String>,
+    },
+    /// Records one suggestion for current entry content. It never authorizes work.
+    ProposeInboxDispatch {
+        proposal_id: String,
+        page_ids: Vec<String>,
+        basis: Vec<ProjectWorkspaceInboxPageBasis>,
+        action: ProjectWorkspaceInboxDispatchAction,
+        entry_kind: Option<ProjectWorkspaceInboxEntryKind>,
+        summary: String,
+        rationale: Option<String>,
+        produced_by: Option<String>,
+    },
+    /// The user authorizes one exact proposal revision, optionally with edits.
+    ConfirmInboxDispatch {
+        proposal_id: String,
+        expected_revision: i64,
+        action: Option<ProjectWorkspaceInboxDispatchAction>,
+        session_id: Option<String>,
+    },
+    /// The user authors and authorizes a dispatch without a suggestion.
+    DispatchInboxEntries {
+        proposal_id: String,
+        page_ids: Vec<String>,
+        action: ProjectWorkspaceInboxDispatchAction,
+        session_id: Option<String>,
+    },
+    /// Keeps entries open without acting on their current suggestions.
+    KeepInboxEntries {
+        page_ids: Vec<String>,
+    },
+    SetInboxEntryState {
+        page_ids: Vec<String>,
+        state: ProjectWorkspaceInboxEntryState,
+    },
+    SetInboxEntryKind {
+        page_id: String,
+        entry_kind: Option<ProjectWorkspaceInboxEntryKind>,
+    },
+    /// Supersedes current open suggestions and asks for a new one.
+    RequestInboxSuggestion {
+        page_ids: Vec<String>,
+    },
+    RecordInboxSuggestionFailure {
+        page_ids: Vec<String>,
+        message: String,
+    },
+    /// Records successful host delivery of a confirmed chat dispatch.
+    CompleteInboxDispatch {
+        proposal_id: String,
+        dispatched_thread_id: Option<String>,
+    },
+    FailInboxDispatch {
+        proposal_id: String,
+        message: String,
+    },
+    RetryInboxDispatch {
+        proposal_id: String,
+    },
 }
 
 #[derive(Clone, Debug, Deserialize, PartialEq, Serialize, ToSchema)]
@@ -1685,6 +1798,9 @@ pub struct ProjectWorkspaceReceipt {
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize, ToSchema)]
 pub struct ProjectWorkspaceEvent {
     pub kind: ProjectWorkspaceEventKind,
+    /// The committed mutation changed Inbox entries or dispatch proposals.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub inbox_changed: bool,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub project_catalog_change: Option<ProjectCatalogChangeKind>,
     pub project_ids: Vec<String>,

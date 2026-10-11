@@ -36,7 +36,7 @@ keyed by page key rather than by route slug.
 
 The desktop groups are:
 
-- Personal: General, Appearance, Agent, Keyboard shortcuts.
+- Personal: General, Appearance, Agent, Keyboard shortcuts, Inbox.
 - Integrations: Browser, Computer use.
 - Coding: Conversations, Hooks, Git, Environments, Worktrees.
 - Workspace: Pages.

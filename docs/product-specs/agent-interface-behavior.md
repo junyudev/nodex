@@ -253,6 +253,14 @@ and restarts, but a retry never resends. A fresh successful response includes th
 ID; failed dispatch and replay report unconfirmed delivery. Use `read_session` or `wait_sessions`
 to inspect progress; a reservation alone does not establish that the message was delivered.
 
+`send_to_inbox` leaves a self-contained message in the user's Inbox for work outside the
+caller's task, such as a follow-up, an idea, or a question for later. The text becomes the
+body of an Inbox Page, and an optional title names it. Core records the message's source
+from the frozen Turn authority as the caller's chat and Project. The tool starts no work and cannot read, triage, or dispatch other messages.
+Read-only Turns are refused, and one Turn can send at most five messages. A retry with the
+same operation ID returns the original receipt without a second message. Its default
+approval mode is automatic. See [Inbox Behavior](./inbox-behavior.md).
+
 `fork_session` copies completed Codex conversation history into a separate visible Session.
 Omitting the source selects the caller's Session. Same-directory forks attach immediately;
 worktree forks return pending work and a client Thread identity. Core first reserves the

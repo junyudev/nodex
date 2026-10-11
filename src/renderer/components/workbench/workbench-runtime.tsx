@@ -17,6 +17,9 @@ import { useResolvedReducedMotion } from "@/lib/use-reduced-motion";
 import { PanelTabPresentationRegistry } from "./panel-tab-presentation-registry";
 import { WorkbenchSidebar, type WorkbenchSidebarBodyProps } from "./workbench-sidebar";
 import { WorkbenchEmptyRoute, WorkbenchRouteHost } from "./workbench-route-host";
+import { InboxRoute } from "@/features/inbox/inbox-route";
+import { parseDatabaseId } from "../../../shared/database-identities";
+import { useInboxInvalidation, useInboxSummary } from "@/features/inbox/use-inbox";
 import { WorkbenchAutomationDetailRail } from "./workbench-automation-detail-rail";
 import { WorkbenchThreadSummaryHeader } from "./workbench-thread-summary-header";
 import { ToolbarIconButton, WindowNavigationToolbarButton } from "./workbench-panel-controls";
@@ -308,7 +311,11 @@ import {
   TOGGLE_BOTTOM_PANEL_COMMAND_ID,
   type WorkbenchCommandInvocation,
 } from "../../../shared/workbench-commands";
-import { type CommandKeymapState } from "../../../shared/command-keybindings";
+import {
+  createCommandKeymapState,
+  matchesKeyboardEventToCommand,
+  type CommandKeymapState,
+} from "../../../shared/command-keybindings";
 import { KeyboardShortcutHelpDialog } from "./keyboard-shortcut-help-dialog";
 import type { CommandMenuMode } from "@/lib/command-palette";
 import type { CodexBackgroundTerminalProcessThreadRef } from "@/lib/codex-background-terminal-processes";
@@ -1720,6 +1727,18 @@ export function WorkbenchRuntime({
     [closePendingWorktreeRoute, setAutomationsPath, setSettingsPath],
   );
 
+  const openSettingsAt = useCallback(
+    (sectionId: Parameters<typeof buildSettingsPath>[0]) => {
+      closePendingWorktreeRoute();
+      setAutomationsPath(null);
+      setReopenStableWorktreeAfterSettingsId(null);
+      setReopenPendingWorktreeAfterSettingsClientThreadId(null);
+      setLocalEnvironmentSettingsInitial(null);
+      setSettingsPath(buildSettingsPath(sectionId));
+    },
+    [closePendingWorktreeRoute, setAutomationsPath, setSettingsPath],
+  );
+
   const openKeyboardShortcutsSettings = useCallback(() => {
     closePendingWorktreeRoute();
     setAutomationsPath(null);
@@ -1881,6 +1900,26 @@ export function WorkbenchRuntime({
     setPendingWorktreeClientThreadId,
     setSettingsPath,
   ]);
+
+  const [inboxFocusToken, setInboxFocusToken] = useState(0);
+  const openInbox = useCallback(() => {
+    closePendingWorktreeRoute();
+    setInboxFocusToken((current) => current + 1);
+    if (workbenchWindow.location.kind !== "inbox") workbenchWindow.openRoute({ kind: "inbox" });
+  }, [closePendingWorktreeRoute, workbenchWindow]);
+  const inboxSummaryQuery = useInboxSummary();
+  useInboxInvalidation();
+  useEffect(() => {
+    const keymap =
+      commandKeymapState ?? createCommandKeymapState({}, isMacPlatform ? "macOS" : "windows");
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (!matchesKeyboardEventToCommand(event, keymap, "openInbox")) return;
+      event.preventDefault();
+      openInbox();
+    };
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, [commandKeymapState, isMacPlatform, openInbox]);
 
   const openAutomations = useCallback(
     (path = buildAutomationsPath()) => {
@@ -3250,16 +3289,18 @@ export function WorkbenchRuntime({
         },
       },
     });
+  const inboxRouteOpen = workbenchWindow.location.kind === "inbox";
   const appShellHeaderCenterVisible =
     settingsRouteShell == null &&
     (activePanelOwnerKey != null ||
       automationsRouteShell != null ||
-      pendingWorktreeRouteShell != null);
+      pendingWorktreeRouteShell != null ||
+      inboxRouteOpen);
   const appShellHeaderActions = settingsPath
     ? null
     : pendingWorktreeRouteShell
       ? null
-      : automationsPath || sceneLocation.kind === "pages"
+      : automationsPath || inboxRouteOpen || sceneLocation.kind === "pages"
         ? sidebarHeaderActions
         : headerActions;
   const automationsDetailRailMounted = Boolean(automationsRouteShell && automationsDetailRailOpen);
@@ -3293,6 +3334,7 @@ export function WorkbenchRuntime({
       executeWorkbenchCommand={executeWorkbenchCommand}
       toggleSidebar={toggleSidebarCollapsed}
       toggleSidePanel={toggleActiveSidePanel}
+      openInbox={openInbox}
       openAutomations={openAutomations}
       openLibraryFiles={() => {
         const projectId = activeProject?.id ?? activeProjectId;
@@ -4462,10 +4504,13 @@ export function WorkbenchRuntime({
     onOpenCommandPalette: openSidebarCommandPalette,
     onShowUnavailableProduct: showSidebarUnavailableProduct,
     onOpenAutomations: openAutomations,
+    onOpenInbox: openInbox,
     onOpenResourceTarget: openResourceTarget,
     onOpenResourceTargetInProject: openResourceTargetInProject,
     activeResourceTarget: pagesSceneNavigation.activeRoot,
     automationsActive: Boolean(automationsPath),
+    inboxActive: workbenchWindow.location.kind === "inbox",
+    inboxCount: inboxSummaryQuery.data?.inboxCount ?? 0,
     projectPickerOpenTick,
     onCreateProject: async (input) => await onCreateProject(input),
     onUpdateProject: onUpdateProject ?? (async () => null),
@@ -4684,6 +4729,33 @@ export function WorkbenchRuntime({
                           selected
                         >
                           {pendingWorktreeRouteShell}
+                        </WorkbenchSessionScopePath>
+                      ),
+                    }}
+                    inbox={{
+                      content: () => (
+                        <WorkbenchSessionScopePath
+                          thread={APP_SHELL_ROUTE_THREAD_SCOPE_DESCRIPTOR}
+                          route={{ routeKey: "/inbox", kind: "inbox" }}
+                          selected
+                        >
+                          <InboxRoute
+                            projects={projects}
+                            focusComposerToken={inboxFocusToken}
+                            onOpenThread={(threadId) =>
+                              void openAttachedThreadSessionById(threadId)
+                            }
+                            onOpenPage={(pageId) =>
+                              void openResourceTarget({ kind: "page", pageId })
+                            }
+                            onOpenDatabase={(databaseId) =>
+                              void openResourceTarget({
+                                kind: "database",
+                                databaseId: parseDatabaseId(databaseId),
+                              })
+                            }
+                            onOpenSettings={() => openSettingsAt("inbox-settings")}
+                          />
                         </WorkbenchSessionScopePath>
                       ),
                     }}

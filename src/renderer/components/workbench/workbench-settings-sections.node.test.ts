@@ -5,10 +5,13 @@ describe("settings section catalog", () => {
   test("keeps one page owner per visible top-level entry", () => {
     const pageKeys = SETTINGS_SECTIONS.map((section) => section.pageKey);
 
-    expect(SETTINGS_SECTIONS).toHaveLength(15);
+    expect(SETTINGS_SECTIONS).toHaveLength(16);
     expect(new Set(pageKeys).size).toBe(SETTINGS_SECTIONS.length);
     expect(SETTINGS_SECTIONS.find((section) => section.id === "voice")?.pageKey).toBe("voice");
     expect(SETTINGS_SECTIONS.find((section) => section.id === "browser")?.pageKey).toBe("browser");
+    expect(SETTINGS_SECTIONS.find((section) => section.id === "inbox-settings")?.pageKey).toBe(
+      "inbox",
+    );
     expect(SETTINGS_SECTIONS.find((section) => section.id === "agent-import")?.pageKey).toBe(
       "import",
     );

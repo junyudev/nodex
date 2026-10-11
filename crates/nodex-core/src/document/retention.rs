@@ -11,6 +11,7 @@ use crate::infrastructure::document_repository::{
 };
 use crate::infrastructure::request_execution::check_request_interruption;
 use crate::infrastructure::sqlite::{StoreError, StoreErrorCode};
+use crate::infrastructure::visibility_delta_journal::with_maintenance_context;
 
 use super::canvas_scene::{CANVAS_OWNER_TYPE, CANVAS_SCHEMA_KEY, CANVAS_SCHEMA_VERSION};
 use super::history::{
@@ -25,6 +26,8 @@ use super::{
 
 const MAX_CANDIDATES_PER_PASS: usize = 100;
 const RETAINED_CANDIDATE_RETRY_MS: i64 = 15 * 60 * 1_000;
+/// Erasure is privacy work, so a candidate still held by a reference is rechecked sooner.
+const RETAINED_ERASURE_RETRY_MS: i64 = 30 * 1_000;
 
 const DOCUMENT_BEARING_BLOCK_TYPES: [&str; 4] = [
     "page",
@@ -1042,14 +1045,16 @@ fn read_candidate_roots(
                WHERE lifecycle = 'deleted' \
              ) \
              SELECT ranked.library_id, ranked.id FROM ranked_deleted ranked \
-             WHERE ranked.recency_rank > ?1 \
+             LEFT JOIN block_erasure_requests erasure ON erasure.root_block_id = ranked.id \
+             WHERE (ranked.recency_rank > ?1 OR erasure.root_block_id IS NOT NULL) \
                AND NOT EXISTS ( \
                  SELECT 1 FROM block_retention_deferrals deferral \
                  WHERE deferral.root_block_id = ranked.id \
                    AND deferral.retry_after_ms > \
                      CAST(unixepoch('subsec') * 1000 AS INTEGER) \
                ) \
-             ORDER BY updated_at, library_id, id LIMIT ?2",
+             ORDER BY erasure.root_block_id IS NULL, ranked.updated_at, ranked.library_id, \
+               ranked.id LIMIT ?2",
         )?
         .query_map(params![retain_count, candidate_count], |row| {
             Ok(BlockRetentionCandidate {
@@ -1110,7 +1115,7 @@ fn maintain_dormant_document_candidate(
     document_id: &str,
 ) -> Result<CandidateOutcome, StoreError> {
     let transaction = connection.transaction_with_behavior(TransactionBehavior::Immediate)?;
-    let outcome = (|| -> Result<CandidateOutcome, StoreError> {
+    let outcome = with_maintenance_context(&transaction, || {
         let Some(closure) = build_dormant_document_closure(
             &transaction,
             library_id,
@@ -1152,7 +1157,7 @@ fn maintain_dormant_document_candidate(
         }
         collect_dormant_document_closure(&transaction, &replanned, &now)?;
         Ok(CandidateOutcome::Collected(replanned.block_ids))
-    })()?;
+    })?;
     settle_dormant_source(&transaction, library_id, document_id, placeholder_block_id)?;
     transaction.commit()?;
     Ok(outcome)
@@ -1355,7 +1360,7 @@ fn maintain_candidate(
     commit_head: i64,
 ) -> Result<CandidateOutcome, StoreError> {
     let transaction = connection.transaction_with_behavior(TransactionBehavior::Immediate)?;
-    let outcome = (|| -> Result<CandidateOutcome, StoreError> {
+    let outcome = with_maintenance_context(&transaction, || {
         let Some(root) = read_block(&transaction, root_block_id)? else {
             return Ok(CandidateOutcome::Covered);
         };
@@ -1366,12 +1371,19 @@ fn maintain_candidate(
         else {
             return Ok(CandidateOutcome::Retained);
         };
-        if evidence.intersects_newest_deleted_blocks(&closure) {
+        // An erasure request asks for the content to be gone now: trash recency and
+        // revision retention do not apply to it.
+        let erasure = is_erasure_requested(&transaction, root_block_id)?;
+        if !erasure && evidence.intersects_newest_deleted_blocks(&closure) {
             return Ok(CandidateOutcome::Retained);
         }
         let now = sqlite_now(&transaction)?;
         for document_id in &closure.document_ids {
-            prune_document_history(&transaction, document_id, &now)?;
+            if erasure {
+                erase_document_history(&transaction, document_id)?;
+            } else {
+                prune_document_history(&transaction, document_id, &now)?;
+            }
         }
         let analysis = analyze_candidate(&transaction, evidence, &closure, &BTreeSet::new())?;
         if !analysis.collectible {
@@ -1398,25 +1410,72 @@ fn maintain_candidate(
         }
         let collected = collect_candidate_closure(&transaction, &replanned, &now)?;
         Ok(CandidateOutcome::Collected(collected))
-    })()?;
+    })?;
     if matches!(outcome, CandidateOutcome::Covered) {
         return Ok(outcome);
     }
     if matches!(outcome, CandidateOutcome::Retained) {
-        record_retained_candidate_deferral(&transaction, root_block_id, commit_head)?;
+        let retry_ms = if is_erasure_requested(&transaction, root_block_id)? {
+            RETAINED_ERASURE_RETRY_MS
+        } else {
+            RETAINED_CANDIDATE_RETRY_MS
+        };
+        record_retained_candidate_deferral(&transaction, root_block_id, commit_head, retry_ms)?;
     }
     transaction.commit()?;
     Ok(outcome)
+}
+
+fn is_erasure_requested(connection: &Connection, root_block_id: &str) -> Result<bool, StoreError> {
+    Ok(connection.query_row(
+        "SELECT EXISTS(SELECT 1 FROM block_erasure_requests WHERE root_block_id = ?1)",
+        [root_block_id],
+        |row| row.get::<_, bool>(0),
+    )?)
+}
+
+/// Every revision of an erased Document goes, pinned ones included, along with any open
+/// edit burst that would otherwise be finalized into a new revision.
+pub(crate) fn erase_document_history(
+    connection: &Connection,
+    document_id: &str,
+) -> Result<(), StoreError> {
+    connection.execute(
+        "DELETE FROM document_versions WHERE document_id = ?1",
+        [document_id],
+    )?;
+    connection.execute(
+        "DELETE FROM document_revision_sessions WHERE document_id = ?1",
+        [document_id],
+    )?;
+    Ok(())
+}
+
+/// Asks Store maintenance to collect a tombstoned root and everything it owns as soon as
+/// nothing else refers to it, ahead of ordinary trash retention.
+pub(crate) fn request_block_erasure(
+    connection: &Connection,
+    library_id: &str,
+    root_block_id: &str,
+    requested_at: &str,
+) -> Result<(), StoreError> {
+    connection.execute(
+        "INSERT INTO block_erasure_requests(root_block_id, library_id, requested_at) \
+         VALUES (?1, ?2, ?3) ON CONFLICT(root_block_id) DO NOTHING",
+        params![root_block_id, library_id, requested_at],
+    )?;
+    advance_block_retention_work(connection)
 }
 
 fn record_retained_candidate_deferral(
     connection: &Connection,
     root_block_id: &str,
     commit_head: i64,
+    retry_ms: i64,
 ) -> Result<(), StoreError> {
     let now_ms = sqlite_now_ms(connection)?;
     let retry_after_ms = now_ms
-        .checked_add(RETAINED_CANDIDATE_RETRY_MS)
+        .checked_add(retry_ms)
         .ok_or_else(|| corrupt("Block retention retry time overflowed"))?;
     connection.execute(
         "INSERT INTO block_retention_deferrals( \
@@ -1861,6 +1920,11 @@ fn collect_candidate_closure(
     if deleted_blocks != closure.block_ids.len() {
         return Err(conflict("Block closure changed during retention"));
     }
+    connection.execute(
+        "DELETE FROM block_erasure_requests \
+         WHERE root_block_id IN (SELECT value FROM json_each(?1))",
+        [&block_ids_json],
+    )?;
     if !closure.document_ids.is_empty() {
         let deleted_documents = connection.execute(
             "DELETE FROM documents WHERE library_id = ?1 \

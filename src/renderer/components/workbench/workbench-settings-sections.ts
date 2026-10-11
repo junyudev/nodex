@@ -3,6 +3,7 @@ import type { SettingsSearchContext } from "@/lib/settings-search";
 import {
   ArchiveIcon,
   HooksIcon,
+  InboxIcon,
   KeyboardShortcutsIcon,
   MicIcon,
   PageIcon,
@@ -26,6 +27,7 @@ export type SettingsSectionId =
   | "voice"
   | "agent"
   | "keyboard-shortcuts"
+  | "inbox-settings"
   | "browser"
   | "computer-use"
   | "hooks-settings"
@@ -117,6 +119,14 @@ export const SETTINGS_SECTIONS: SettingsSectionDefinition[] = [
     icon: KeyboardShortcutsIcon,
     groupKey: "personal",
     searchMessages: SETTINGS_SEARCH_CATALOG["keyboard-shortcuts"].messages,
+  },
+  {
+    id: "inbox-settings",
+    label: "Inbox",
+    pageKey: "inbox",
+    icon: InboxIcon,
+    groupKey: "personal",
+    searchMessages: SETTINGS_SEARCH_CATALOG["inbox-settings"].messages,
   },
   {
     id: "browser",

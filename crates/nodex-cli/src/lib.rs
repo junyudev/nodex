@@ -15,6 +15,7 @@ pub mod deeplink;
 mod draft;
 pub mod error;
 mod files;
+mod inbox;
 mod input;
 mod input_document;
 pub mod meta_yaml;

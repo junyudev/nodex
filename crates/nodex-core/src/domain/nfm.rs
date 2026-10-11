@@ -308,6 +308,74 @@ pub fn extract_plain_text(blocks: &[NfmBlock]) -> String {
         .join(" ")
 }
 
+/// Line-preserving plain text: one line per Block in document order. Explicit
+/// inline line breaks remain line breaks. Used where message shape matters.
+pub fn extract_block_lines(blocks: &[NfmBlock]) -> String {
+    let mut lines = Vec::new();
+    collect_block_lines(blocks, &mut lines);
+    lines.join("\n")
+}
+
+fn collect_block_lines(blocks: &[NfmBlock], lines: &mut Vec<String>) {
+    for block in blocks {
+        match block {
+            NfmBlock::Paragraph {
+                content, children, ..
+            }
+            | NfmBlock::Heading {
+                content, children, ..
+            }
+            | NfmBlock::BulletListItem {
+                content, children, ..
+            }
+            | NfmBlock::NumberedListItem {
+                content, children, ..
+            }
+            | NfmBlock::CheckListItem {
+                content, children, ..
+            }
+            | NfmBlock::Toggle {
+                content, children, ..
+            }
+            | NfmBlock::Blockquote {
+                content, children, ..
+            }
+            | NfmBlock::Callout {
+                content, children, ..
+            } => {
+                let mut text = String::new();
+                for item in content {
+                    if matches!(item, NfmInlineContent::LineBreak) {
+                        text.push('\n');
+                        continue;
+                    }
+                    let mut parts = Vec::new();
+                    collect_inline_text(std::slice::from_ref(item), &mut parts);
+                    text.push_str(&parts.concat());
+                }
+                lines.push(text);
+                collect_block_lines(children, lines);
+            }
+            NfmBlock::EmptyBlock { children } => {
+                lines.push(String::new());
+                collect_block_lines(children, lines);
+            }
+            NfmBlock::CodeBlock { code, children, .. } => {
+                lines.extend(code.lines().map(str::to_owned));
+                collect_block_lines(children, lines);
+            }
+            other => {
+                let mut parts = Vec::new();
+                collect_block_text(std::slice::from_ref(other), &mut parts);
+                let text = parts.join(" ");
+                if !text.trim().is_empty() {
+                    lines.push(text);
+                }
+            }
+        }
+    }
+}
+
 pub fn build_preview(plain_text: &str) -> String {
     if plain_text.encode_utf16().count() <= 240 {
         return plain_text.to_owned();

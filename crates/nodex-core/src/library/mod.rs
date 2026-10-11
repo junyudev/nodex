@@ -9315,7 +9315,7 @@ mod navigation;
 mod page_copy;
 pub(crate) mod page_genesis;
 mod page_lifecycle;
-mod page_lifecycle_mutation;
+pub(crate) mod page_lifecycle_mutation;
 mod page_property_mutation;
 mod page_write_semantic;
 mod structural_edit;

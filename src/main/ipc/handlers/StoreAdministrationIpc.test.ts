@@ -1,4 +1,5 @@
 import * as Effect from "effect/Effect";
+import * as Stream from "effect/Stream";
 import * as Deferred from "effect/Deferred";
 import * as Exit from "effect/Exit";
 import * as Fiber from "effect/Fiber";
@@ -83,6 +84,8 @@ it.effect("owns Store administration ingress and commits restore shutdown atomic
       pruneBackups: () => Effect.die("unused"),
       planMaintenance: () => Effect.die("unused"),
       runMaintenance: () => Effect.die("unused"),
+      requestErasure: Effect.void,
+      erasureRequests: Stream.empty,
     });
     const scope = yield* Scope.make();
     yield* Layer.buildWithScope(

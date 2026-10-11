@@ -126,6 +126,12 @@ export const live: Layer.Layer<
       if (planned.sessions) {
         yield* notifications.notifyProjectSessionInvalidation(planned.sessions);
       }
+      if (workspaceEvent.inboxChanged) {
+        yield* notifications.notifyInboxChanged({ reason: "inbox" });
+      } else if (planned.sessions) {
+        // Dispatched chats render their live status in the Inbox stream.
+        yield* notifications.notifyInboxChanged({ reason: "sessions" });
+      }
     });
 
     const publishResync = Effect.fn("CoreApplicationProjectionRuntime.publishResync")(
@@ -147,6 +153,7 @@ export const live: Layer.Layer<
         });
         yield* notifications.notifyProjectsChanged("update");
         yield* notifications.notifyProjectSessionInvalidation(allProjectSessionInvalidation());
+        yield* notifications.notifyInboxChanged({ reason: "inbox" });
       },
     );
 

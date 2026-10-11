@@ -49,9 +49,12 @@ fn workspace_policy(read: &ProjectWorkspaceRead) -> ReadBudgetPolicy {
         | ProjectWorkspaceRead::SidebarSectionWindow { .. }
         | ProjectWorkspaceRead::SidebarSectionItemWindow { .. }
         | ProjectWorkspaceRead::BuiltinSidebarOrder { .. }
-        | ProjectWorkspaceRead::SidebarSectionHostLinkWindow { .. } => {
-            ReadBudgetPolicy::CollectionWindow
-        }
+        | ProjectWorkspaceRead::SidebarSectionHostLinkWindow { .. }
+        | ProjectWorkspaceRead::InboxWindow { .. } => ReadBudgetPolicy::CollectionWindow,
+        // Caller limits are clamped to a small fixed batch with bounded content per entry.
+        ProjectWorkspaceRead::InboxPendingSuggestions { .. }
+        | ProjectWorkspaceRead::InboxDispatchContext { .. }
+        | ProjectWorkspaceRead::InboxDispatchOutbox { .. } => ReadBudgetPolicy::BoundedBatch,
         ProjectWorkspaceRead::NativeSessionBindings { .. }
         | ProjectWorkspaceRead::ProjectActivitySummaries { .. }
         | ProjectWorkspaceRead::PageChatActivitySummaries { .. } => ReadBudgetPolicy::BoundedBatch,
@@ -68,7 +71,8 @@ fn workspace_policy(read: &ProjectWorkspaceRead) -> ReadBudgetPolicy {
         | ProjectWorkspaceRead::SubagentOverviewItem { .. }
         | ProjectWorkspaceRead::ExecutionContext { .. }
         | ProjectWorkspaceRead::TurnAuthority { .. }
-        | ProjectWorkspaceRead::SidebarSectionPlacement { .. } => ReadBudgetPolicy::Identity,
+        | ProjectWorkspaceRead::SidebarSectionPlacement { .. }
+        | ProjectWorkspaceRead::InboxSummary => ReadBudgetPolicy::Identity,
     }
 }
 

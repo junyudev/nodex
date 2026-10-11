@@ -1,6 +1,8 @@
 import * as Clock from "effect/Clock";
 import * as Context from "effect/Context";
 import * as Effect from "effect/Effect";
+import * as PubSub from "effect/PubSub";
+import * as Stream from "effect/Stream";
 import * as FiberMap from "effect/FiberMap";
 import * as Layer from "effect/Layer";
 import * as Ref from "effect/Ref";
@@ -138,6 +140,9 @@ export class StoreAdministration extends Context.Service<
     readonly runMaintenance: (
       input: StoreMaintenanceInput,
     ) => Effect.Effect<void, StoreAdministrationError>;
+    /** Content was tombstoned for erasure; Block retention should run now, not on its idle clock. */
+    readonly requestErasure: Effect.Effect<void>;
+    readonly erasureRequests: Stream.Stream<void>;
   }
 >()("nodex/main/core-runtime/StoreAdministration") {}
 
@@ -204,6 +209,7 @@ export const live: Layer.Layer<StoreAdministration, never, CoreModules> = Layer.
   StoreAdministration,
   Effect.gen(function* () {
     const core = yield* CoreModules;
+    const erasures = yield* PubSub.sliding<void>(1);
     const backupJobs = yield* Ref.make<ReadonlyMap<string, BackupJobStatus>>(new Map());
     const backupCoalescences = yield* Ref.make<ReadonlyMap<string, string>>(new Map());
     const latestBackupJobId = yield* Ref.make<string | null>(null);
@@ -763,6 +769,8 @@ export const live: Layer.Layer<StoreAdministration, never, CoreModules> = Layer.
       pruneBackups,
       planMaintenance,
       runMaintenance,
+      requestErasure: PubSub.publish(erasures, undefined).pipe(Effect.asVoid),
+      erasureRequests: Stream.fromPubSub(erasures),
     });
   }),
 );

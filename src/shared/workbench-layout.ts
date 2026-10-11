@@ -215,6 +215,10 @@ export type WorkbenchLocationV7 =
       readonly returnTo: WorkbenchSceneLocation;
     }
   | {
+      readonly kind: "inbox";
+      readonly returnTo: WorkbenchSceneLocation;
+    }
+  | {
       readonly kind: "pending-worktree";
       readonly clientThreadId: string;
       readonly expectedHostId?: string;

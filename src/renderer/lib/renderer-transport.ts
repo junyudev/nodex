@@ -108,6 +108,9 @@ export interface RendererTransport {
   subscribeProjectSessionChanges: (
     callback: (event: import("../../shared/ipc-api").ProjectSessionsChangeEvent) => void,
   ) => () => void;
+  subscribeInboxChanges?: (
+    callback: (event: import("../../shared/inbox").InboxChangedEvent) => void,
+  ) => () => void;
   subscribeProjectChanges: (
     callback: (event: import("../../shared/ipc-api").ProjectsChangeEvent) => void,
   ) => () => void;

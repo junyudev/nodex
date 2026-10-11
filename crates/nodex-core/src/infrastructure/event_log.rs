@@ -630,6 +630,8 @@ struct WorkspaceMetadata {
     session_summary_scopes: Option<Vec<ProjectSessionInvalidationScope>>,
     #[serde(default)]
     session_detail_ids: Option<Vec<String>>,
+    #[serde(default)]
+    inbox_changed: bool,
 }
 
 #[derive(Deserialize)]
@@ -1171,6 +1173,7 @@ fn reconstruct_event(
             validate_strings(&session_detail_ids, "Project Workspace Session detail")?;
             CoreModuleEventPayload::ProjectWorkspace(ProjectWorkspaceEvent {
                 kind: ProjectWorkspaceEventKind::WorkspaceChanged,
+                inbox_changed: metadata.inbox_changed,
                 project_catalog_change,
                 project_ids: metadata.project_ids,
                 session_ids: metadata.session_ids,

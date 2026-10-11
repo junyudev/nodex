@@ -6,6 +6,8 @@ All notable changes to this project will be documented in this file.
 
 ### Added
 
+- An Inbox above New chat captures thoughts, todos and questions as Pages without first choosing a Project. A suggestion Agent names each message and proposes a new chat, an existing chat, a Project, or keeping it, right on the message; nothing runs until you confirm. Handled messages leave for History, so the Inbox can reach zero, and a message sent by mistake can be deleted for good. Agents and `nodex inbox send` can leave messages there too.
+
 - Appearance settings can choose UI, content and code fonts separately for light and dark themes, with independent UI, code and Page text sizes that stay consistent across windows and restart.
 
 - Chats can use configured OpenCode models, including Kimi and OpenRouter providers, through the shared searchable model menu, with native options and approvals. Independent profiles preserve model choices, and conversation history restores each prompt with its replies across restart and pagination.
@@ -36,6 +38,7 @@ All notable changes to this project will be documented in this file.
 ### Fixed
 
 - Terminals retain startup events and release processes that exit before attachment completes.
+- Deleted Pages are cleared from local storage once their retention period ends instead of being kept indefinitely.
 - Retained edits that cannot be received can now be removed from this device after confirmation, clearing their warning without changing current documents.
 - Dictation recovers incomplete streams without duplicating completed segments, respects account availability and language settings, and preserves newer clipboard contents during global paste recovery.
 - Global dictation no longer disappears with service rollout changes. Voice retains global shortcut and dictionary settings, and its sound preference applies to both capture surfaces.

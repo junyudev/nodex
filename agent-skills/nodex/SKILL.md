@@ -21,6 +21,7 @@ and Profile/Project context supplied by the host when present.
 | Other value types or several Pages/fields     | `page properties apply`; for SQL-selected targets use SQL → `prepare-batch` → `apply` |
 | Change Property definitions or saved Views    | `data-source configure`; combine related changes in one script                        |
 | Substantial rewrite or local diff             | `draft`                                                                               |
+| Leave an out-of-scope follow-up for the user  | `inbox send`; it starts no work, and the user decides where it goes                   |
 
 ## Discover only what you need
 

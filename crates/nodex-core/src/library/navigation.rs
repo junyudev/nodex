@@ -1942,6 +1942,10 @@ fn standalone_root_node_window(
             AND binding.library_id = placement.library_id \
             AND binding.lifecycle = 'active' \
             AND project.lifecycle <> 'archived' \
+        )) AND NOT (block.type = 'database' AND EXISTS( \
+          SELECT 1 FROM inbox_registry inbox \
+          WHERE inbox.database_block_id = block.id \
+            AND inbox.library_id = placement.library_id \
         )) AND NOT (block.type = 'canvas' AND EXISTS( \
           SELECT 1 FROM projects project \
           WHERE project.library_id = placement.library_id \
@@ -2037,6 +2041,11 @@ fn standalone_root_is_eligible(
                      AND binding.library_id = placement.library_id \
                      AND binding.lifecycle = 'active' \
                      AND project.lifecycle <> 'archived' \
+                 )) \
+                 AND NOT (block.type = 'database' AND EXISTS( \
+                   SELECT 1 FROM inbox_registry inbox \
+                   WHERE inbox.database_block_id = block.id \
+                     AND inbox.library_id = placement.library_id \
                  )) \
                  AND NOT (block.type = 'canvas' AND EXISTS( \
                    SELECT 1 FROM projects project \

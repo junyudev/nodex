@@ -28,6 +28,7 @@ const structuredTitleService = (
   generateMetadata: CodexStructuredThreadTitle["Service"]["generateMetadata"],
 ) =>
   CodexStructuredThreadTitle.of({
+    generateStructured: () => Effect.succeed(null),
     generateMetadata,
     generate: (input) =>
       generateMetadata(input).pipe(Effect.map((metadata) => metadata?.title ?? null)),

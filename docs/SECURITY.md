@@ -659,6 +659,7 @@ authority. A known hash or a local cache hit never grants access to Core bytes.
 - `full-access` is intentionally high authority: it removes Nodex approval prompts for the exact Turn and permits every read/write/destructive action currently exposed by `nodex_app@6` across the current Library, in addition to unrestricted Codex filesystem and network access.
 - Workspace-write sandbox roots are derived from user-configured project sources. Additional allow-listing beyond those local source roots remains future hardening work.
 - A compromised trusted top-level renderer can request exact local file reads through the workspace-file bridge. Webviews, subframes, and unowned renderer contents are rejected, but process-level renderer isolation is still the confidentiality boundary for these reads.
+- Erasure removes content from the live Store; it does not rewrite existing backups, and freed SQLite pages may keep fragments until they are reused or vacuumed. Text already sent to a model runtime cannot be recalled.
 - Dynamic-tool receipts are an idempotency and recovery ledger, not an audit-grade record of human intent. They intentionally exclude raw Nested Markdown/body content; the authorization preview is not retained as a second document history.
 
 ## Safe Operating Practices

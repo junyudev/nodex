@@ -63,7 +63,9 @@ pub(crate) use projection_delta::{
     record_local_projection_delta, record_page_detail_projection_delta,
     record_page_document_projection_delta,
 };
-pub(crate) use relation::{copy_relation_edges, remove_membership_task_parent_edges};
+pub(crate) use relation::{
+    RelationValueRevision, copy_relation_edges, remove_membership_task_parent_edges,
+};
 pub(crate) use view_contract::is_exact_primary_board_config;
 pub(crate) use window::{
     default_page_move_view_id, mint_page_move_etag, mint_page_move_etag_prevalidated,

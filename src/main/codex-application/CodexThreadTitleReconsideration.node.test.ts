@@ -41,6 +41,7 @@ const makeHarness = (state: { title: string; generatedTitle: string | null }) =>
       Effect.provideService(
         CodexStructuredThreadTitle,
         CodexStructuredThreadTitle.of({
+          generateStructured: () => Effect.succeed(null),
           generate: () => Effect.succeed(null),
           generateMetadata: () => Effect.succeed(null),
           reconsiderTitle: (input) =>

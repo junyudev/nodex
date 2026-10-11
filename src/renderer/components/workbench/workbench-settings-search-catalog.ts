@@ -428,6 +428,40 @@ const SETTINGS_SEARCH_PANELS = {
       },
     ],
   },
+  "inbox-settings": {
+    title: "Inbox",
+    subtitle: "How messages you capture are suggested and dispatched.",
+    groups: [
+      {
+        title: "Suggestions",
+        entries: [
+          entry(
+            "Suggest where messages go",
+            "An Agent reads new messages and proposes a chat, a Project, or keeping them.",
+            ["inbox", "suggestions", "dispatch", "agent", "capture"],
+          ),
+          entry("Suggestion agent", "The runtime that writes suggestions.", [
+            "codex",
+            "claude",
+            "model",
+          ]),
+          entry("Routing preferences", "Standing guidance the suggestion agent follows.", [
+            "instructions",
+            "routing",
+          ]),
+        ],
+      },
+      {
+        title: "Dispatch",
+        entries: [
+          entry("New chats run on", "The runtime for chats the Inbox starts.", [
+            "dispatch",
+            "runtime",
+          ]),
+        ],
+      },
+    ],
+  },
   "keyboard-shortcuts": {
     title: "Keyboard shortcuts",
     groups: [
@@ -750,6 +784,9 @@ export const SETTINGS_SEARCH_CATALOG = {
   },
   "keyboard-shortcuts": {
     messages: materializePanelSearchMessages(SETTINGS_SEARCH_PANELS["keyboard-shortcuts"]),
+  },
+  "inbox-settings": {
+    messages: materializePanelSearchMessages(SETTINGS_SEARCH_PANELS["inbox-settings"]),
   },
   page: {
     messages: materializePanelSearchMessages(SETTINGS_SEARCH_PANELS.page),

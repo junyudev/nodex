@@ -628,3 +628,64 @@ it.effect("does not create a fresh helper when the reconsideration source fork f
     assert.deepEqual(lifecycle, []);
   }),
 );
+
+it.effect(
+  "reads a long structured result from its completed message, however many deltas stream",
+  () =>
+    Effect.gen(function* () {
+      const events = yield* PubSub.unbounded<CodexEndpointEvent>();
+      const result = JSON.stringify({ suggestions: [{ summary: "x".repeat(2_000) }] });
+      const { lifecycle, options } = makeOptions(events, {
+        startTurn: () =>
+          Effect.forEach(
+            // A real suggestion streams hundreds of small deltas before the response settles.
+            Array.from({ length: CODEX_STRUCTURED_THREAD_TITLE_NOTIFICATION_QUEUE_CAPACITY * 4 }),
+            (_, index) =>
+              PubSub.publish(
+                events,
+                notification("item/agentMessage/delta", {
+                  threadId: "thread-title",
+                  turnId: "turn-structured",
+                  itemId: "message-1",
+                  delta: result.slice(index * 16, index * 16 + 16),
+                }),
+              ),
+            { discard: true },
+          ).pipe(
+            Effect.andThen(
+              PubSub.publish(
+                events,
+                notification("item/completed", {
+                  threadId: "thread-title",
+                  turnId: "turn-structured",
+                  completedAtMs: 1,
+                  item: { id: "message-1", type: "agentMessage", text: result },
+                }),
+              ),
+            ),
+            Effect.andThen(
+              PubSub.publish(
+                events,
+                notification("turn/completed", {
+                  threadId: "thread-title",
+                  turn: { id: "turn-structured", status: "completed" },
+                }),
+              ),
+            ),
+            Effect.as(turnStarted("turn-structured")),
+          ),
+      });
+      const runtime = yield* makeRuntime(options, lifecycle);
+      const parsed = yield* runtime.generateStructured({
+        hostId: "local",
+        prompt: "Suggest where these messages go",
+        cwd: null,
+        threadSource: "inbox_dispatch_suggestion",
+        outputSchema: { type: "object" } as never,
+        parseResult: (raw) => (raw ? (JSON.parse(raw) as unknown) : null),
+        maxOutputBytes: 48 * 1024,
+      });
+      assert.strictEqual(JSON.stringify(parsed), result);
+      assert.notInclude(lifecycle, "interrupt:turn-structured");
+    }),
+);

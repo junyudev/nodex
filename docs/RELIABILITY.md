@@ -265,7 +265,13 @@ backup and GC therefore cannot race a reachable blob out of the closure.
 
 Maintenance has one canonical coordinator for integrity, compaction, retention,
 collection, and vacuum. It never rewrites immutable receipts/history or removes
-pinned revisions. Block collection uses version-fenced current projections and
+pinned revisions, except for content the user asked to erase. An erasure request
+tombstones its root, drops every revision of the owned Documents and any open edit
+burst in the same transaction, and is collected ahead of trash recency once
+nothing outside the closure refers to it; a still-referenced erasure is
+rechecked within seconds. Collection runs in the maintenance visibility mode:
+it removes only rows no reader can see, so authority guards admit it without
+recording a visibility delta. Block collection uses version-fenced current projections and
 a commit-fenced WAL reader snapshot rather than reconstructing retained
 Document checkpoints for every candidate. Retained tombstones carry bounded,
 commit-fenced reevaluation times so candidate scans advance instead of spinning
@@ -287,7 +293,8 @@ modes are preserved without an implicit full rewrite.
 The Main application scope owns the automatic backup and maintenance lanes.
 Changing backup interval or retention replaces only the backup lane; it must not
 stop maintenance. Maintenance lanes share a fair FIFO permit with at most one
-queued pass per lane; only Core's due-work result may select an idle interval.
+queued pass per lane; only Core's due-work result may select an idle interval,
+and an erasure request wakes the Block lane at once.
 Core authority recovery wakes deferred lanes, and process scope close removes
 their timers and power-resume listener together.
 

@@ -22,6 +22,7 @@ export interface CoreAutomationInvalidation {
 
 export interface CoreProjectWorkspaceInvalidation {
   readonly projectCatalogChange?: ProjectCatalogChangeKind;
+  readonly inboxChanged: boolean;
   readonly projectIds: readonly string[];
   readonly sessionIds: readonly string[];
   readonly threadIds: readonly string[];
@@ -179,6 +180,7 @@ export const projectCoreProjectWorkspaceEvent = (
   if (payload.module !== "project_workspace") return null;
   return {
     projectCatalogChange: payload.event.project_catalog_change ?? undefined,
+    inboxChanged: payload.event.inbox_changed ?? false,
     projectIds: payload.event.project_ids,
     sessionIds: payload.event.session_ids,
     threadIds: payload.event.thread_ids,

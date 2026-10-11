@@ -4,6 +4,7 @@ import * as Deferred from "effect/Deferred";
 import * as Effect from "effect/Effect";
 import * as Exit from "effect/Exit";
 import * as Layer from "effect/Layer";
+import * as PubSub from "effect/PubSub";
 import * as Scope from "effect/Scope";
 import * as Stream from "effect/Stream";
 import * as SubscriptionRef from "effect/SubscriptionRef";
@@ -206,6 +207,8 @@ const defaultAdministration = (): StoreAdministration["Service"] =>
         workToken: `maintenance:${input.tasks.join(",")}`,
       }),
     runMaintenance: () => Effect.void,
+    requestErasure: Effect.void,
+    erasureRequests: Stream.empty,
   });
 
 const waitUntil = (label: string, predicate: () => boolean): Effect.Effect<void> =>
@@ -916,6 +919,44 @@ it.effect("replans maintenance at its active cadence after stale Core evidence",
     yield* waitUntil("maintenance replan", () => operationalRuns === 2);
     yield* TestClock.adjust(250);
     yield* waitUntil("maintenance evidence replan", () => operationalRuns === 3);
+
+    yield* Scope.close(harness.scope, Exit.void);
+  }),
+);
+
+it.effect("an erasure request wakes Block retention instead of waiting for its idle clock", () =>
+  Effect.gen(function* () {
+    const erasures = yield* PubSub.unbounded<void>();
+    let blockPlans = 0;
+    const administration = {
+      ...defaultAdministration(),
+      planMaintenance: (input: StoreMaintenanceInput) =>
+        Effect.sync(() => {
+          if (input.tasks.includes("block_retention")) blockPlans += 1;
+          return { dueTasks: [], nextWakeAt: null, workToken: null };
+        }),
+      erasureRequests: Stream.fromPubSub(erasures),
+    } satisfies StoreAdministration["Service"];
+    const harness = yield* buildHarness({
+      administration,
+      storeTiming: {
+        maintenance: {
+          revision: { initial: 60_000, interval: 60_000 },
+          operational: { initial: 60_000, interval: 60_000 },
+          document: { initial: 60_000, interval: 60_000 },
+          block: { initial: 1, interval: 250, idleInterval: 15 * 60_000 },
+        },
+      },
+    });
+    yield* harness.store.activate;
+    yield* TestClock.adjust(1);
+    yield* waitUntil("first Block retention plan", () => blockPlans === 1);
+    yield* TestClock.adjust(1_000);
+    yield* Effect.yieldNow;
+    assert.strictEqual(blockPlans, 1);
+
+    yield* PubSub.publish(erasures, undefined);
+    yield* waitUntil("Block retention woken by erasure", () => blockPlans === 2);
 
     yield* Scope.close(harness.scope, Exit.void);
   }),

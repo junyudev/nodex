@@ -40,9 +40,12 @@ import {
 } from "../seed/primary-data-source-properties";
 import {
   runScenarioDatabase,
+  runScenarioInbox,
   runScenarioLibrary,
   runScenarioProjectWorkspace,
 } from "./core-client-seed-runtime";
+import type { InboxDispatchInput, InboxWindow, InboxWindowFilter } from "../../../src/shared/inbox";
+import type { ScenarioInboxProposalSeed } from "../contracts";
 
 const requireSuccess = <Value>(
   result:
@@ -437,6 +440,51 @@ export class CoreClientSeedAdapter implements ScenarioSeedPort {
         return { sessionId: session.id, threadId: input.thread.threadId };
       }),
     );
+  }
+
+  async sendInboxMessage(text: string): Promise<{ readonly pageId: string }> {
+    return await runScenarioInbox(this.#runtime, (inbox) => inbox.send({ text }));
+  }
+
+  async proposeInboxDispatch(input: ScenarioInboxProposalSeed): Promise<void> {
+    await runScenarioInbox(
+      this.#runtime,
+      Effect.fn("CoreClientSeedAdapter.proposeInboxDispatch")(function* (inbox) {
+        const context = yield* inbox.dispatchContext(input.pageIds);
+        yield* inbox.propose({
+          proposalId: createUuidV7(),
+          pageIds: input.pageIds,
+          basis: context.entries.map((entry) => entry.basis),
+          action: input.action,
+          kind: input.kind,
+          summary: input.summary,
+          rationale: input.rationale,
+          producedBy: "Scenario",
+        });
+      }),
+    );
+  }
+
+  async dispatchInboxEntries(input: InboxDispatchInput): Promise<void> {
+    await runScenarioInbox(this.#runtime, (inbox) => inbox.dispatch(input));
+  }
+
+  async keepInboxEntries(pageIds: readonly string[]): Promise<void> {
+    await runScenarioInbox(this.#runtime, (inbox) => inbox.keep({ pageIds }));
+  }
+
+  async recordInboxSuggestionFailure(pageIds: readonly string[], message: string): Promise<void> {
+    await runScenarioInbox(this.#runtime, (inbox) =>
+      inbox.recordSuggestionFailure(pageIds, message),
+    );
+  }
+
+  async completeInboxDispatch(proposalId: string, threadId: string | null): Promise<void> {
+    await runScenarioInbox(this.#runtime, (inbox) => inbox.completeDispatch(proposalId, threadId));
+  }
+
+  async readInbox(filter: InboxWindowFilter): Promise<InboxWindow> {
+    return await runScenarioInbox(this.#runtime, (inbox) => inbox.window({ filter, first: 200 }));
   }
 
   async readPageChatActivity(

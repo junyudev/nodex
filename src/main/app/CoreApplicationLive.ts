@@ -66,6 +66,10 @@ import {
   ProjectWorkspace,
   live as projectWorkspaceLive,
 } from "../project-application/ProjectWorkspace";
+import {
+  InboxApplication,
+  live as inboxApplicationLive,
+} from "../inbox-application/InboxApplication";
 import { MainConfig } from "./MainConfig";
 import { MainShutdown } from "./MainShutdown";
 import { ScopedCallbackRuntime } from "./ScopedCallbackRuntime";
@@ -106,6 +110,7 @@ const fileExports = fileExportRuntimeLive.pipe(Layer.provideMerge(applicationDat
 const automationRouting = automationRoutingIndexLive.pipe(Layer.provideMerge(core));
 const automation = automationApplicationLive.pipe(Layer.provideMerge(automationRouting));
 const storeAdministration = storeAdministrationLive.pipe(Layer.provideMerge(core));
+const inbox = inboxApplicationLive.pipe(Layer.provideMerge(storeAdministration));
 const worktreeEnvironment = worktreeEnvironmentRuntimeLive.pipe(Layer.provideMerge(core));
 const canvasPresence = canvasPresenceRuntimeLive();
 const documentLive = documentLiveRuntimeLive;
@@ -132,6 +137,7 @@ export const live: Layer.Layer<
   | CoreSessionAccess
   | CoreModules
   | ProjectWorkspace
+  | InboxApplication
   | ProjectRuntimeLifecycleRuntime
   | CodexEphemeralThreadRouting
   | CodexThreadHostResolver
@@ -153,6 +159,7 @@ export const live: Layer.Layer<
 > = Layer.mergeAll(
   fileExports,
   workspace,
+  inbox,
   hostResolver,
   projectRuntimeLifecycleLive,
   automation,

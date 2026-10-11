@@ -7006,6 +7006,107 @@
           }
         }
       },
+      "CollectionWindow_ProjectWorkspaceInboxItem": {
+        "type": "object",
+        "required": [
+          "items",
+          "authority"
+        ],
+        "properties": {
+          "authority": {
+            "$ref": "#/components/schemas/CollectionWindowAuthority"
+          },
+          "items": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "required": [
+                "page_id",
+                "title",
+                "body",
+                "body_truncated",
+                "submitted_at",
+                "source",
+                "state",
+                "suggestion_state",
+                "location",
+                "revision"
+              ],
+              "properties": {
+                "body": {
+                  "type": "string"
+                },
+                "body_truncated": {
+                  "type": "boolean"
+                },
+                "kind": {
+                  "oneOf": [
+                    {
+                      "type": "null"
+                    },
+                    {
+                      "$ref": "#/components/schemas/ProjectWorkspaceInboxEntryKind"
+                    }
+                  ]
+                },
+                "location": {
+                  "$ref": "#/components/schemas/ProjectWorkspaceInboxLocation"
+                },
+                "page_id": {
+                  "type": "string"
+                },
+                "page_key": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "proposal": {
+                  "oneOf": [
+                    {
+                      "type": "null"
+                    },
+                    {
+                      "$ref": "#/components/schemas/ProjectWorkspaceInboxProposal"
+                    }
+                  ]
+                },
+                "revision": {
+                  "type": "integer",
+                  "format": "int64"
+                },
+                "source": {
+                  "$ref": "#/components/schemas/ProjectWorkspaceInboxSource"
+                },
+                "state": {
+                  "$ref": "#/components/schemas/ProjectWorkspaceInboxEntryState"
+                },
+                "submitted_at": {
+                  "type": "string"
+                },
+                "suggestion_error": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "suggestion_state": {
+                  "$ref": "#/components/schemas/ProjectWorkspaceInboxSuggestionState"
+                },
+                "title": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "next_cursor": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        }
+      },
       "CollectionWindow_ProjectWorkspaceManagedWorktreeSummary": {
         "type": "object",
         "required": [
@@ -31031,6 +31132,387 @@
                     "type": "string"
                   }
                 }
+              },
+              {
+                "type": "object",
+                "description": "Captures one message as a Page in the Inbox Database. The Inbox Database is\ncreated on first use. Agent provenance, when present, becomes immutable source.\nThe whole text becomes the Page body. Without a sender title, Core gives the\nPage a provisional title that the suggestion Agent may later replace.",
+                "required": [
+                  "page_id",
+                  "document_id",
+                  "text",
+                  "kind"
+                ],
+                "properties": {
+                  "document_id": {
+                    "type": "string"
+                  },
+                  "kind": {
+                    "type": "string",
+                    "enum": [
+                      "send_inbox_message"
+                    ]
+                  },
+                  "page_id": {
+                    "type": "string"
+                  },
+                  "text": {
+                    "type": "string"
+                  },
+                  "title": {
+                    "type": [
+                      "string",
+                      "null"
+                    ]
+                  }
+                }
+              },
+              {
+                "type": "object",
+                "description": "Erases messages the user wants gone. Their entries and every suggestion naming them\nleave now; each Page is tombstoned with all its revisions so Store maintenance\ncollects what remains. Only Pages still in the Inbox Database qualify.",
+                "required": [
+                  "page_ids",
+                  "kind"
+                ],
+                "properties": {
+                  "kind": {
+                    "type": "string",
+                    "enum": [
+                      "delete_inbox_messages"
+                    ]
+                  },
+                  "page_ids": {
+                    "type": "array",
+                    "items": {
+                      "type": "string"
+                    }
+                  }
+                }
+              },
+              {
+                "type": "object",
+                "description": "Records one suggestion for current entry content. It never authorizes work.",
+                "required": [
+                  "proposal_id",
+                  "page_ids",
+                  "basis",
+                  "action",
+                  "summary",
+                  "kind"
+                ],
+                "properties": {
+                  "action": {
+                    "$ref": "#/components/schemas/ProjectWorkspaceInboxDispatchAction"
+                  },
+                  "basis": {
+                    "type": "array",
+                    "items": {
+                      "$ref": "#/components/schemas/ProjectWorkspaceInboxPageBasis"
+                    }
+                  },
+                  "entry_kind": {
+                    "oneOf": [
+                      {
+                        "type": "null"
+                      },
+                      {
+                        "$ref": "#/components/schemas/ProjectWorkspaceInboxEntryKind"
+                      }
+                    ]
+                  },
+                  "kind": {
+                    "type": "string",
+                    "enum": [
+                      "propose_inbox_dispatch"
+                    ]
+                  },
+                  "page_ids": {
+                    "type": "array",
+                    "items": {
+                      "type": "string"
+                    }
+                  },
+                  "produced_by": {
+                    "type": [
+                      "string",
+                      "null"
+                    ]
+                  },
+                  "proposal_id": {
+                    "type": "string"
+                  },
+                  "rationale": {
+                    "type": [
+                      "string",
+                      "null"
+                    ]
+                  },
+                  "summary": {
+                    "type": "string"
+                  }
+                }
+              },
+              {
+                "type": "object",
+                "description": "The user authorizes one exact proposal revision, optionally with edits.",
+                "required": [
+                  "proposal_id",
+                  "expected_revision",
+                  "kind"
+                ],
+                "properties": {
+                  "action": {
+                    "oneOf": [
+                      {
+                        "type": "null"
+                      },
+                      {
+                        "$ref": "#/components/schemas/ProjectWorkspaceInboxDispatchAction"
+                      }
+                    ]
+                  },
+                  "expected_revision": {
+                    "type": "integer",
+                    "format": "int64"
+                  },
+                  "kind": {
+                    "type": "string",
+                    "enum": [
+                      "confirm_inbox_dispatch"
+                    ]
+                  },
+                  "proposal_id": {
+                    "type": "string"
+                  },
+                  "session_id": {
+                    "type": [
+                      "string",
+                      "null"
+                    ]
+                  }
+                }
+              },
+              {
+                "type": "object",
+                "description": "The user authors and authorizes a dispatch without a suggestion.",
+                "required": [
+                  "proposal_id",
+                  "page_ids",
+                  "action",
+                  "kind"
+                ],
+                "properties": {
+                  "action": {
+                    "$ref": "#/components/schemas/ProjectWorkspaceInboxDispatchAction"
+                  },
+                  "kind": {
+                    "type": "string",
+                    "enum": [
+                      "dispatch_inbox_entries"
+                    ]
+                  },
+                  "page_ids": {
+                    "type": "array",
+                    "items": {
+                      "type": "string"
+                    }
+                  },
+                  "proposal_id": {
+                    "type": "string"
+                  },
+                  "session_id": {
+                    "type": [
+                      "string",
+                      "null"
+                    ]
+                  }
+                }
+              },
+              {
+                "type": "object",
+                "description": "Keeps entries open without acting on their current suggestions.",
+                "required": [
+                  "page_ids",
+                  "kind"
+                ],
+                "properties": {
+                  "kind": {
+                    "type": "string",
+                    "enum": [
+                      "keep_inbox_entries"
+                    ]
+                  },
+                  "page_ids": {
+                    "type": "array",
+                    "items": {
+                      "type": "string"
+                    }
+                  }
+                }
+              },
+              {
+                "type": "object",
+                "required": [
+                  "page_ids",
+                  "state",
+                  "kind"
+                ],
+                "properties": {
+                  "kind": {
+                    "type": "string",
+                    "enum": [
+                      "set_inbox_entry_state"
+                    ]
+                  },
+                  "page_ids": {
+                    "type": "array",
+                    "items": {
+                      "type": "string"
+                    }
+                  },
+                  "state": {
+                    "$ref": "#/components/schemas/ProjectWorkspaceInboxEntryState"
+                  }
+                }
+              },
+              {
+                "type": "object",
+                "required": [
+                  "page_id",
+                  "kind"
+                ],
+                "properties": {
+                  "entry_kind": {
+                    "oneOf": [
+                      {
+                        "type": "null"
+                      },
+                      {
+                        "$ref": "#/components/schemas/ProjectWorkspaceInboxEntryKind"
+                      }
+                    ]
+                  },
+                  "kind": {
+                    "type": "string",
+                    "enum": [
+                      "set_inbox_entry_kind"
+                    ]
+                  },
+                  "page_id": {
+                    "type": "string"
+                  }
+                }
+              },
+              {
+                "type": "object",
+                "description": "Supersedes current open suggestions and asks for a new one.",
+                "required": [
+                  "page_ids",
+                  "kind"
+                ],
+                "properties": {
+                  "kind": {
+                    "type": "string",
+                    "enum": [
+                      "request_inbox_suggestion"
+                    ]
+                  },
+                  "page_ids": {
+                    "type": "array",
+                    "items": {
+                      "type": "string"
+                    }
+                  }
+                }
+              },
+              {
+                "type": "object",
+                "required": [
+                  "page_ids",
+                  "message",
+                  "kind"
+                ],
+                "properties": {
+                  "kind": {
+                    "type": "string",
+                    "enum": [
+                      "record_inbox_suggestion_failure"
+                    ]
+                  },
+                  "message": {
+                    "type": "string"
+                  },
+                  "page_ids": {
+                    "type": "array",
+                    "items": {
+                      "type": "string"
+                    }
+                  }
+                }
+              },
+              {
+                "type": "object",
+                "description": "Records successful host delivery of a confirmed chat dispatch.",
+                "required": [
+                  "proposal_id",
+                  "kind"
+                ],
+                "properties": {
+                  "dispatched_thread_id": {
+                    "type": [
+                      "string",
+                      "null"
+                    ]
+                  },
+                  "kind": {
+                    "type": "string",
+                    "enum": [
+                      "complete_inbox_dispatch"
+                    ]
+                  },
+                  "proposal_id": {
+                    "type": "string"
+                  }
+                }
+              },
+              {
+                "type": "object",
+                "required": [
+                  "proposal_id",
+                  "message",
+                  "kind"
+                ],
+                "properties": {
+                  "kind": {
+                    "type": "string",
+                    "enum": [
+                      "fail_inbox_dispatch"
+                    ]
+                  },
+                  "message": {
+                    "type": "string"
+                  },
+                  "proposal_id": {
+                    "type": "string"
+                  }
+                }
+              },
+              {
+                "type": "object",
+                "required": [
+                  "proposal_id",
+                  "kind"
+                ],
+                "properties": {
+                  "kind": {
+                    "type": "string",
+                    "enum": [
+                      "retry_inbox_dispatch"
+                    ]
+                  },
+                  "proposal_id": {
+                    "type": "string"
+                  }
+                }
               }
             ]
           },
@@ -35575,6 +36057,106 @@
                     ]
                   }
                 }
+              },
+              {
+                "type": "object",
+                "required": [
+                  "kind"
+                ],
+                "properties": {
+                  "kind": {
+                    "type": "string",
+                    "enum": [
+                      "inbox_summary"
+                    ]
+                  }
+                }
+              },
+              {
+                "type": "object",
+                "required": [
+                  "filter",
+                  "window",
+                  "kind"
+                ],
+                "properties": {
+                  "filter": {
+                    "$ref": "#/components/schemas/ProjectWorkspaceInboxWindowFilter"
+                  },
+                  "kind": {
+                    "type": "string",
+                    "enum": [
+                      "inbox_window"
+                    ]
+                  },
+                  "window": {
+                    "$ref": "#/components/schemas/CollectionWindowRequest"
+                  }
+                }
+              },
+              {
+                "type": "object",
+                "description": "Entries the suggestion Agent should consider, oldest first.",
+                "required": [
+                  "limit",
+                  "kind"
+                ],
+                "properties": {
+                  "kind": {
+                    "type": "string",
+                    "enum": [
+                      "inbox_pending_suggestions"
+                    ]
+                  },
+                  "limit": {
+                    "type": "integer",
+                    "format": "int32",
+                    "minimum": 0
+                  }
+                }
+              },
+              {
+                "type": "object",
+                "description": "Bounded routing context for exactly these entries.",
+                "required": [
+                  "page_ids",
+                  "kind"
+                ],
+                "properties": {
+                  "kind": {
+                    "type": "string",
+                    "enum": [
+                      "inbox_dispatch_context"
+                    ]
+                  },
+                  "page_ids": {
+                    "type": "array",
+                    "items": {
+                      "type": "string"
+                    }
+                  }
+                }
+              },
+              {
+                "type": "object",
+                "description": "Confirmed dispatches that still need host delivery, oldest first.",
+                "required": [
+                  "limit",
+                  "kind"
+                ],
+                "properties": {
+                  "kind": {
+                    "type": "string",
+                    "enum": [
+                      "inbox_dispatch_outbox"
+                    ]
+                  },
+                  "limit": {
+                    "type": "integer",
+                    "format": "int32",
+                    "minimum": 0
+                  }
+                }
               }
             ]
           }
@@ -37404,6 +37986,10 @@
           "session_detail_ids"
         ],
         "properties": {
+          "inbox_changed": {
+            "type": "boolean",
+            "description": "The committed mutation changed Inbox entries or dispatch proposals."
+          },
           "kind": {
             "$ref": "#/components/schemas/ProjectWorkspaceEventKind"
           },
@@ -37495,6 +38081,766 @@
             ]
           }
         }
+      },
+      "ProjectWorkspaceInboxChat": {
+        "type": "object",
+        "required": [
+          "session_id",
+          "display_title",
+          "unread",
+          "archived"
+        ],
+        "properties": {
+          "archived": {
+            "type": "boolean"
+          },
+          "display_title": {
+            "type": "string"
+          },
+          "project_id": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "project_name": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "session_id": {
+            "type": "string"
+          },
+          "status": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/ProjectWorkspaceThreadStatus"
+              }
+            ]
+          },
+          "thread_id": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "unread": {
+            "type": "boolean"
+          }
+        }
+      },
+      "ProjectWorkspaceInboxContextProject": {
+        "type": "object",
+        "required": [
+          "project_id",
+          "name",
+          "description"
+        ],
+        "properties": {
+          "description": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "project_id": {
+            "type": "string"
+          }
+        }
+      },
+      "ProjectWorkspaceInboxContextProposal": {
+        "type": "object",
+        "required": [
+          "proposal_id",
+          "page_ids",
+          "page_keys",
+          "action",
+          "summary"
+        ],
+        "properties": {
+          "action": {
+            "$ref": "#/components/schemas/ProjectWorkspaceInboxDispatchAction"
+          },
+          "page_ids": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "page_keys": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "proposal_id": {
+            "type": "string"
+          },
+          "summary": {
+            "type": "string"
+          }
+        }
+      },
+      "ProjectWorkspaceInboxContextSession": {
+        "type": "object",
+        "required": [
+          "session_id",
+          "title",
+          "preview"
+        ],
+        "properties": {
+          "preview": {
+            "type": "string"
+          },
+          "project_id": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "recency_at": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int64"
+          },
+          "session_id": {
+            "type": "string"
+          },
+          "status": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/ProjectWorkspaceThreadStatus"
+              }
+            ]
+          },
+          "title": {
+            "type": "string"
+          }
+        }
+      },
+      "ProjectWorkspaceInboxDispatchAction": {
+        "oneOf": [
+          {
+            "type": "object",
+            "description": "Keep the entries open as notes, todos, or questions.",
+            "required": [
+              "type"
+            ],
+            "properties": {
+              "type": {
+                "type": "string",
+                "enum": [
+                  "keep"
+                ]
+              }
+            }
+          },
+          {
+            "type": "object",
+            "description": "Start a new chat in one active Project, or a projectless chat.",
+            "required": [
+              "prompt",
+              "type"
+            ],
+            "properties": {
+              "project_id": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "prompt": {
+                "type": "string"
+              },
+              "type": {
+                "type": "string",
+                "enum": [
+                  "new_chat"
+                ]
+              }
+            }
+          },
+          {
+            "type": "object",
+            "description": "Send a follow-up to one existing chat. Delivery waits until it is idle.",
+            "required": [
+              "session_id",
+              "prompt",
+              "type"
+            ],
+            "properties": {
+              "prompt": {
+                "type": "string"
+              },
+              "session_id": {
+                "type": "string"
+              },
+              "type": {
+                "type": "string",
+                "enum": [
+                  "send_to_chat"
+                ]
+              }
+            }
+          },
+          {
+            "type": "object",
+            "description": "Move the entries' Pages into one active Project's primary Database.",
+            "required": [
+              "project_id",
+              "type"
+            ],
+            "properties": {
+              "project_id": {
+                "type": "string"
+              },
+              "type": {
+                "type": "string",
+                "enum": [
+                  "move_to_project"
+                ]
+              }
+            }
+          }
+        ],
+        "description": "The exact action a proposal asks the user to authorize."
+      },
+      "ProjectWorkspaceInboxDispatchContext": {
+        "type": "object",
+        "description": "Bounded routing context for the suggestion Agent. It intentionally carries\nno transcripts or Page bodies other than the entries being considered.",
+        "required": [
+          "entries",
+          "projects",
+          "sessions",
+          "open_proposals"
+        ],
+        "properties": {
+          "entries": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ProjectWorkspaceInboxSuggestionInput"
+            }
+          },
+          "open_proposals": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ProjectWorkspaceInboxContextProposal"
+            }
+          },
+          "projects": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ProjectWorkspaceInboxContextProject"
+            }
+          },
+          "sessions": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ProjectWorkspaceInboxContextSession"
+            }
+          }
+        }
+      },
+      "ProjectWorkspaceInboxDispatchWork": {
+        "type": "object",
+        "description": "A confirmed dispatch that the Desktop Host must deliver.",
+        "required": [
+          "proposal_id",
+          "revision",
+          "action",
+          "session_id",
+          "page_ids",
+          "page_keys",
+          "attempt",
+          "confirmed_at"
+        ],
+        "properties": {
+          "action": {
+            "$ref": "#/components/schemas/ProjectWorkspaceInboxDispatchAction"
+          },
+          "attempt": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "confirmed_at": {
+            "type": "string"
+          },
+          "page_ids": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "page_keys": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "project_id": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "proposal_id": {
+            "type": "string"
+          },
+          "revision": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "session_id": {
+            "type": "string"
+          },
+          "thread_backend_kind": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Runtime family of the target chat's Thread: codex, claude, opencode, or acp."
+          },
+          "thread_id": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "thread_status": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/ProjectWorkspaceThreadStatus",
+                "description": "Current status of the target chat's Thread, used to wait until it is idle."
+              }
+            ]
+          }
+        }
+      },
+      "ProjectWorkspaceInboxEntryKind": {
+        "type": "string",
+        "description": "User-editable classification of what an Inbox entry is. It never implies\nthat work is authorized.",
+        "enum": [
+          "note",
+          "todo",
+          "question"
+        ]
+      },
+      "ProjectWorkspaceInboxEntryState": {
+        "type": "string",
+        "description": "Triage state chosen by the user. Execution state lives on proposals.",
+        "enum": [
+          "open",
+          "kept",
+          "done"
+        ]
+      },
+      "ProjectWorkspaceInboxLocation": {
+        "oneOf": [
+          {
+            "type": "object",
+            "required": [
+              "kind"
+            ],
+            "properties": {
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "inbox"
+                ]
+              }
+            }
+          },
+          {
+            "type": "object",
+            "required": [
+              "database_id",
+              "database_name",
+              "kind"
+            ],
+            "properties": {
+              "database_id": {
+                "type": "string"
+              },
+              "database_name": {
+                "type": "string"
+              },
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "database"
+                ]
+              },
+              "project_id": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "project_name": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              }
+            }
+          },
+          {
+            "type": "object",
+            "required": [
+              "kind"
+            ],
+            "properties": {
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "other"
+                ]
+              }
+            }
+          }
+        ]
+      },
+      "ProjectWorkspaceInboxPageBasis": {
+        "type": "object",
+        "description": "Causal evidence that a proposal was made for the current message content.",
+        "required": [
+          "page_id",
+          "generation",
+          "head_seq"
+        ],
+        "properties": {
+          "generation": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "head_seq": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "page_id": {
+            "type": "string"
+          }
+        }
+      },
+      "ProjectWorkspaceInboxProposal": {
+        "type": "object",
+        "required": [
+          "proposal_id",
+          "revision",
+          "origin",
+          "state",
+          "page_ids",
+          "action",
+          "summary",
+          "created_at",
+          "updated_at"
+        ],
+        "properties": {
+          "action": {
+            "$ref": "#/components/schemas/ProjectWorkspaceInboxDispatchAction"
+          },
+          "chat": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/ProjectWorkspaceInboxChat",
+                "description": "Current state of the chat named by `send_to_chat`, or the dispatched chat."
+              }
+            ]
+          },
+          "created_at": {
+            "type": "string"
+          },
+          "failure_message": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "kind": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/ProjectWorkspaceInboxEntryKind"
+              }
+            ]
+          },
+          "origin": {
+            "$ref": "#/components/schemas/ProjectWorkspaceInboxProposalOrigin"
+          },
+          "page_ids": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "produced_by": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "proposal_id": {
+            "type": "string"
+          },
+          "rationale": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "revision": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "state": {
+            "$ref": "#/components/schemas/ProjectWorkspaceInboxProposalState"
+          },
+          "summary": {
+            "type": "string"
+          },
+          "target_project_name": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Display context for the action's target Project."
+          },
+          "updated_at": {
+            "type": "string"
+          }
+        }
+      },
+      "ProjectWorkspaceInboxProposalOrigin": {
+        "type": "string",
+        "enum": [
+          "agent",
+          "user"
+        ]
+      },
+      "ProjectWorkspaceInboxProposalState": {
+        "type": "string",
+        "enum": [
+          "open",
+          "superseded",
+          "dismissed",
+          "dispatching",
+          "completed",
+          "failed"
+        ]
+      },
+      "ProjectWorkspaceInboxSource": {
+        "oneOf": [
+          {
+            "type": "object",
+            "required": [
+              "kind"
+            ],
+            "properties": {
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "user"
+                ]
+              }
+            }
+          },
+          {
+            "type": "object",
+            "required": [
+              "label",
+              "kind"
+            ],
+            "properties": {
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "agent"
+                ]
+              },
+              "label": {
+                "type": "string"
+              },
+              "project_id": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "session_id": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "thread_id": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              }
+            }
+          },
+          {
+            "type": "object",
+            "description": "Sent through the `nodex` command line, optionally from inside a Project.",
+            "required": [
+              "label",
+              "kind"
+            ],
+            "properties": {
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "command_line"
+                ]
+              },
+              "label": {
+                "type": "string"
+              },
+              "project_id": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              }
+            }
+          }
+        ]
+      },
+      "ProjectWorkspaceInboxSuggestionInput": {
+        "type": "object",
+        "description": "One entry the suggestion Agent should consider, with bounded content.",
+        "required": [
+          "page_id",
+          "title",
+          "body",
+          "source",
+          "submitted_at",
+          "basis",
+          "title_provisional"
+        ],
+        "properties": {
+          "basis": {
+            "$ref": "#/components/schemas/ProjectWorkspaceInboxPageBasis"
+          },
+          "body": {
+            "type": "string"
+          },
+          "kind": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/ProjectWorkspaceInboxEntryKind"
+              }
+            ]
+          },
+          "page_id": {
+            "type": "string"
+          },
+          "page_key": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "source": {
+            "$ref": "#/components/schemas/ProjectWorkspaceInboxSource"
+          },
+          "submitted_at": {
+            "type": "string"
+          },
+          "title": {
+            "type": "string"
+          },
+          "title_provisional": {
+            "type": "boolean",
+            "description": "The Page still has Core's provisional title, so the suggestion Agent may name it."
+          }
+        }
+      },
+      "ProjectWorkspaceInboxSuggestionState": {
+        "type": "string",
+        "enum": [
+          "pending",
+          "settled",
+          "failed"
+        ]
+      },
+      "ProjectWorkspaceInboxSummary": {
+        "type": "object",
+        "required": [
+          "entry_count",
+          "inbox_count",
+          "needs_decision_count",
+          "pending_suggestion_count",
+          "dispatching_count"
+        ],
+        "properties": {
+          "database_id": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "dispatching_count": {
+            "type": "integer",
+            "format": "int32",
+            "minimum": 0
+          },
+          "entry_count": {
+            "type": "integer",
+            "format": "int32",
+            "minimum": 0
+          },
+          "inbox_count": {
+            "type": "integer",
+            "format": "int32",
+            "description": "Messages still in the Inbox; the user's goal is to bring this to zero.",
+            "minimum": 0
+          },
+          "needs_decision_count": {
+            "type": "integer",
+            "format": "int32",
+            "minimum": 0
+          },
+          "pending_suggestion_count": {
+            "type": "integer",
+            "format": "int32",
+            "minimum": 0
+          },
+          "view_id": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        }
+      },
+      "ProjectWorkspaceInboxWindowFilter": {
+        "type": "string",
+        "enum": [
+          "inbox",
+          "processed"
+        ]
       },
       "ProjectWorkspaceIntent": {
         "oneOf": [
@@ -39414,6 +40760,387 @@
                 ]
               },
               "session_id": {
+                "type": "string"
+              }
+            }
+          },
+          {
+            "type": "object",
+            "description": "Captures one message as a Page in the Inbox Database. The Inbox Database is\ncreated on first use. Agent provenance, when present, becomes immutable source.\nThe whole text becomes the Page body. Without a sender title, Core gives the\nPage a provisional title that the suggestion Agent may later replace.",
+            "required": [
+              "page_id",
+              "document_id",
+              "text",
+              "kind"
+            ],
+            "properties": {
+              "document_id": {
+                "type": "string"
+              },
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "send_inbox_message"
+                ]
+              },
+              "page_id": {
+                "type": "string"
+              },
+              "text": {
+                "type": "string"
+              },
+              "title": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              }
+            }
+          },
+          {
+            "type": "object",
+            "description": "Erases messages the user wants gone. Their entries and every suggestion naming them\nleave now; each Page is tombstoned with all its revisions so Store maintenance\ncollects what remains. Only Pages still in the Inbox Database qualify.",
+            "required": [
+              "page_ids",
+              "kind"
+            ],
+            "properties": {
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "delete_inbox_messages"
+                ]
+              },
+              "page_ids": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          {
+            "type": "object",
+            "description": "Records one suggestion for current entry content. It never authorizes work.",
+            "required": [
+              "proposal_id",
+              "page_ids",
+              "basis",
+              "action",
+              "summary",
+              "kind"
+            ],
+            "properties": {
+              "action": {
+                "$ref": "#/components/schemas/ProjectWorkspaceInboxDispatchAction"
+              },
+              "basis": {
+                "type": "array",
+                "items": {
+                  "$ref": "#/components/schemas/ProjectWorkspaceInboxPageBasis"
+                }
+              },
+              "entry_kind": {
+                "oneOf": [
+                  {
+                    "type": "null"
+                  },
+                  {
+                    "$ref": "#/components/schemas/ProjectWorkspaceInboxEntryKind"
+                  }
+                ]
+              },
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "propose_inbox_dispatch"
+                ]
+              },
+              "page_ids": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              },
+              "produced_by": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "proposal_id": {
+                "type": "string"
+              },
+              "rationale": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "summary": {
+                "type": "string"
+              }
+            }
+          },
+          {
+            "type": "object",
+            "description": "The user authorizes one exact proposal revision, optionally with edits.",
+            "required": [
+              "proposal_id",
+              "expected_revision",
+              "kind"
+            ],
+            "properties": {
+              "action": {
+                "oneOf": [
+                  {
+                    "type": "null"
+                  },
+                  {
+                    "$ref": "#/components/schemas/ProjectWorkspaceInboxDispatchAction"
+                  }
+                ]
+              },
+              "expected_revision": {
+                "type": "integer",
+                "format": "int64"
+              },
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "confirm_inbox_dispatch"
+                ]
+              },
+              "proposal_id": {
+                "type": "string"
+              },
+              "session_id": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              }
+            }
+          },
+          {
+            "type": "object",
+            "description": "The user authors and authorizes a dispatch without a suggestion.",
+            "required": [
+              "proposal_id",
+              "page_ids",
+              "action",
+              "kind"
+            ],
+            "properties": {
+              "action": {
+                "$ref": "#/components/schemas/ProjectWorkspaceInboxDispatchAction"
+              },
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "dispatch_inbox_entries"
+                ]
+              },
+              "page_ids": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              },
+              "proposal_id": {
+                "type": "string"
+              },
+              "session_id": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              }
+            }
+          },
+          {
+            "type": "object",
+            "description": "Keeps entries open without acting on their current suggestions.",
+            "required": [
+              "page_ids",
+              "kind"
+            ],
+            "properties": {
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "keep_inbox_entries"
+                ]
+              },
+              "page_ids": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          {
+            "type": "object",
+            "required": [
+              "page_ids",
+              "state",
+              "kind"
+            ],
+            "properties": {
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "set_inbox_entry_state"
+                ]
+              },
+              "page_ids": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              },
+              "state": {
+                "$ref": "#/components/schemas/ProjectWorkspaceInboxEntryState"
+              }
+            }
+          },
+          {
+            "type": "object",
+            "required": [
+              "page_id",
+              "kind"
+            ],
+            "properties": {
+              "entry_kind": {
+                "oneOf": [
+                  {
+                    "type": "null"
+                  },
+                  {
+                    "$ref": "#/components/schemas/ProjectWorkspaceInboxEntryKind"
+                  }
+                ]
+              },
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "set_inbox_entry_kind"
+                ]
+              },
+              "page_id": {
+                "type": "string"
+              }
+            }
+          },
+          {
+            "type": "object",
+            "description": "Supersedes current open suggestions and asks for a new one.",
+            "required": [
+              "page_ids",
+              "kind"
+            ],
+            "properties": {
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "request_inbox_suggestion"
+                ]
+              },
+              "page_ids": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          {
+            "type": "object",
+            "required": [
+              "page_ids",
+              "message",
+              "kind"
+            ],
+            "properties": {
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "record_inbox_suggestion_failure"
+                ]
+              },
+              "message": {
+                "type": "string"
+              },
+              "page_ids": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          {
+            "type": "object",
+            "description": "Records successful host delivery of a confirmed chat dispatch.",
+            "required": [
+              "proposal_id",
+              "kind"
+            ],
+            "properties": {
+              "dispatched_thread_id": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "complete_inbox_dispatch"
+                ]
+              },
+              "proposal_id": {
+                "type": "string"
+              }
+            }
+          },
+          {
+            "type": "object",
+            "required": [
+              "proposal_id",
+              "message",
+              "kind"
+            ],
+            "properties": {
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "fail_inbox_dispatch"
+                ]
+              },
+              "message": {
+                "type": "string"
+              },
+              "proposal_id": {
+                "type": "string"
+              }
+            }
+          },
+          {
+            "type": "object",
+            "required": [
+              "proposal_id",
+              "kind"
+            ],
+            "properties": {
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "retry_inbox_dispatch"
+                ]
+              },
+              "proposal_id": {
                 "type": "string"
               }
             }
@@ -48565,6 +50292,102 @@
                           },
                           "snapshot": {
                             "$ref": "#/components/schemas/ProjectWorkspaceManagedWorktreeLifecycleSnapshot"
+                          }
+                        }
+                      },
+                      {
+                        "type": "object",
+                        "required": [
+                          "summary",
+                          "kind"
+                        ],
+                        "properties": {
+                          "kind": {
+                            "type": "string",
+                            "enum": [
+                              "inbox_summary"
+                            ]
+                          },
+                          "summary": {
+                            "$ref": "#/components/schemas/ProjectWorkspaceInboxSummary"
+                          }
+                        }
+                      },
+                      {
+                        "type": "object",
+                        "required": [
+                          "items",
+                          "kind"
+                        ],
+                        "properties": {
+                          "items": {
+                            "$ref": "#/components/schemas/CollectionWindow_ProjectWorkspaceInboxItem"
+                          },
+                          "kind": {
+                            "type": "string",
+                            "enum": [
+                              "inbox_window"
+                            ]
+                          }
+                        }
+                      },
+                      {
+                        "type": "object",
+                        "required": [
+                          "entries",
+                          "kind"
+                        ],
+                        "properties": {
+                          "entries": {
+                            "type": "array",
+                            "items": {
+                              "$ref": "#/components/schemas/ProjectWorkspaceInboxSuggestionInput"
+                            }
+                          },
+                          "kind": {
+                            "type": "string",
+                            "enum": [
+                              "inbox_pending_suggestions"
+                            ]
+                          }
+                        }
+                      },
+                      {
+                        "type": "object",
+                        "required": [
+                          "context",
+                          "kind"
+                        ],
+                        "properties": {
+                          "context": {
+                            "$ref": "#/components/schemas/ProjectWorkspaceInboxDispatchContext"
+                          },
+                          "kind": {
+                            "type": "string",
+                            "enum": [
+                              "inbox_dispatch_context"
+                            ]
+                          }
+                        }
+                      },
+                      {
+                        "type": "object",
+                        "required": [
+                          "dispatches",
+                          "kind"
+                        ],
+                        "properties": {
+                          "dispatches": {
+                            "type": "array",
+                            "items": {
+                              "$ref": "#/components/schemas/ProjectWorkspaceInboxDispatchWork"
+                            }
+                          },
+                          "kind": {
+                            "type": "string",
+                            "enum": [
+                              "inbox_dispatch_outbox"
+                            ]
                           }
                         }
                       }

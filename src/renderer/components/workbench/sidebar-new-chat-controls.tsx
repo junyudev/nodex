@@ -8,7 +8,12 @@ import {
   type MouseEvent,
   type PointerEvent,
 } from "react";
-import { NewChatIcon, SettingsSearchIcon, TitlebarNewChatIcon } from "@/components/shared/icons";
+import {
+  InboxIcon,
+  NewChatIcon,
+  SettingsSearchIcon,
+  TitlebarNewChatIcon,
+} from "@/components/shared/icons";
 import { NodexTooltip } from "@/components/ui/tooltip";
 import { ShortcutKeycaps } from "@/components/ui/shortcut-keycaps";
 import { cn } from "@/lib/utils";
@@ -97,6 +102,13 @@ export function useSidebarScrollChrome() {
   };
 }
 
+export interface SidebarInboxEntry {
+  readonly active: boolean;
+  readonly count: number;
+  readonly shortcutLabel: string;
+  readonly onOpen: () => void;
+}
+
 export function SidebarExpandedHeader({
   productName,
   productStatusLabel,
@@ -105,6 +117,7 @@ export function SidebarExpandedHeader({
   scrolledContentUnderHeader,
   onSearch,
   onNewChat,
+  inbox,
 }: {
   productName: string;
   productStatusLabel?: string;
@@ -113,6 +126,7 @@ export function SidebarExpandedHeader({
   scrolledContentUnderHeader: boolean;
   onSearch: () => void;
   onNewChat: () => void;
+  inbox?: SidebarInboxEntry;
 }) {
   return (
     <div
@@ -146,7 +160,44 @@ export function SidebarExpandedHeader({
           </button>
         </NodexTooltip>
       </div>
-      <SidebarNewChatButton shortcutLabel={newChatShortcutLabel} onClick={onNewChat} />
+      <div className="flex flex-col gap-px">
+        {inbox ? <SidebarInboxButton entry={inbox} /> : null}
+        <SidebarNewChatButton shortcutLabel={newChatShortcutLabel} onClick={onNewChat} />
+      </div>
+    </div>
+  );
+}
+
+/**
+ * The Inbox is the first place a new intention goes, so it sits above New chat. Its count is
+ * the messages still in the Inbox; handling them brings it to zero.
+ */
+export function SidebarInboxButton({ entry }: { entry: SidebarInboxEntry }) {
+  return (
+    <div className="shrink-0" data-testid="sidebar-inbox-row-wrapper">
+      <button
+        type="button"
+        data-active={entry.active ? "true" : undefined}
+        aria-current={entry.active ? "page" : undefined}
+        className={cn(SIDEBAR_NEW_CHAT_ROW_CLASS, entry.active && "bg-token-list-hover-background")}
+        onClick={entry.onOpen}
+      >
+        <div className="flex min-w-0 flex-1 items-center gap-2 text-base text-token-foreground">
+          <InboxIcon className="icon-xs" />
+          <span className="truncate">Inbox</span>
+        </div>
+        {entry.count > 0 ? (
+          <span
+            aria-label={`${entry.count} in Inbox`}
+            className="text-xs text-token-description-foreground tabular-nums group-hover:hidden group-focus-visible:hidden"
+          >
+            {entry.count}
+          </span>
+        ) : null}
+        <span aria-hidden="true" className="hidden group-hover:inline group-focus-visible:inline">
+          <ShortcutKeycaps keys={[entry.shortcutLabel]} tone="current" />
+        </span>
+      </button>
     </div>
   );
 }
