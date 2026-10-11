@@ -1,0 +1,30 @@
+docs/PLANS.md
+  s_523779a39fa40d::t_5e0bb98db8113b 7-9
+docs/development.md
+  s_523779a39fa40d::t_5a01d86e8ad807 114
+  s_523779a39fa40d::t_e823cebdfe44a5 78-81
+  s_523779a39fa40d::t_17aff4a3e9412b 32-35,38,47-48,51,55-56,59-70,77,92-103,160,174,191-192,196
+AGENTS.md
+  s_523779a39fa40d::t_e823cebdfe44a5 35
+  s_523779a39fa40d::t_f4ee3bdaf23311 19-25,34,36-38,54,121,203
+  s_523779a39fa40d::t_6ccd120746c271 26-33
+docs/CONFIGURATION.md
+  s_523779a39fa40d::t_5e0bb98db8113b 179-180,182
+  s_523779a39fa40d::t_ae32a374ccbeb6 175-178,181
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "b842a4b8884b2cca6edef626111735567ca946f6",
+  "prompts": {},
+  "sessions": {
+    "s_523779a39fa40d": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a128b3-7b38-7743-a1c7-f736d5e80687",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    }
+  }
+}
