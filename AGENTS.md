@@ -16,6 +16,26 @@
 - Treat every already-running Nodex window as the user's production app unless its current-worktree, disposable development Profile is proven; its title, bundle identifier, or running state is not proof.
 - `computer-use` is opt-in: use it only when the user explicitly requests it for the current task, or approves a proposal that names the target instance and purpose. Inspection, testing, and screenshot requests are not implicit permission, and approval does not carry between tasks.
 
+### Worktrees and local artifacts
+
+- When creating a new worktree, default to `~/repo/nodex-wt/<slug>/`. Use a short, task-descriptive lowercase hyphenated slug and default to branch `codex/<slug>`. Use a creation command that accepts the target directory, such as `git worktree add`. This convention does not require a new worktree for every task.
+- Reuse the new worktree's slug for its local artifacts. When working in an existing checkout, choose a task-specific slug. Add a short suffix when a new worktree or independent instance would collide with an existing path.
+- Run commands and edit source in the task's current worktree. Writing the task's local artifacts to the primary checkout's directories below is allowed from any worktree; it does not authorize source edits in another checkout.
+- Use these primary-checkout paths even when working in a linked worktree:
+
+  | Artifact                                                                 | Default location                                  |
+  | ------------------------------------------------------------------------ | ------------------------------------------------- |
+  | Manual development environment, seeded Profile, or real-Profile snapshot | `~/repo/nodex/runs.local/<slug>/`                 |
+  | Instance diagnostics and debug exports                                   | The environment's `artifacts/` directory          |
+  | Review recordings, screenshots, and verification reports                 | `~/repo/nodex/notes.local/artifacts/<slug>/`      |
+  | Living plan / ExecPlan                                                   | `~/repo/nodex/notes.local/living-plans/<slug>.md` |
+  | Brief plan                                                               | `~/repo/nodex/notes.local/brief-plans/<slug>.md`  |
+  | Shared verified runtime download cache                                   | `~/repo/nodex/cache.local/`                       |
+
+- Agent launches must pass an absolute `--home`: use the shared `runs.local` directory for new environments and the current path when reopening an existing one. The launcher's no-argument default remains worktree-local. Each writable development home belongs to one worktree; use a separate home for an independent instance or snapshot. See `docs/development.md` for launch commands and Profile ownership.
+- Keep `node_modules`, `.generated`, Rust `target`, build outputs, and source-derived tool caches isolated per worktree. Link only the verified runtime download cache as described in `docs/development.md`. Automatic scenario tests retain their harness-managed temporary Profiles.
+- Keep `runs.local`, `notes.local`, and `cache.local` out of commits. Apply this layout to new worktrees and artifacts; leave existing worktrees and historical artifacts in place unless migration is explicitly requested.
+
 ## Agent skills
 
 ### Domain docs
@@ -31,7 +51,7 @@ It ships as an Electron desktop app plus a CLI/HTTP API backed by SQLite.
 ## Setup Commands
 
 - Install deps: `vp install`
-- Dev app: `vp run dev`
+- Dev app: `vp run dev --home <absolute-task-home>`
 - Dev Storybook: `vp run dev:storybook` (defaults to port 6006; override an occupied port with `STORYBOOK_PORT=6007 vp run dev:storybook`)
 - Build: `vp run build`
 - Package installers: `vp run package`
@@ -98,7 +118,7 @@ Read `docs/ARCHITECTURE.md` first for system boundaries and dependency flow, the
 Use these docs as the source of truth:
 
 - System ownership, dependency directions, critical cross-runtime flows, and system-wide invariants: `docs/ARCHITECTURE.md`
-- Plans: default to `notes.local/living-plans/`; keep plan artifacts local rather than recreating `docs/plans/`. Read `docs/PLANS.md` for execution-plan format and requirements.
+- Plans: use the primary-checkout paths in [Worktrees and local artifacts](#worktrees-and-local-artifacts). Read `docs/PLANS.md` for execution-plan format and requirements; keep `docs/plans/` absent.
 - Cross-feature renderer construction, state-owner selection, shared UI/editor primitives, and Storybook conventions: `docs/FRONTEND.md`
 - UI design guidance for agent-built surfaces: `.agents/skills/general-design-guidelines/SKILL.md`
 - Product principles and tradeoffs: `docs/PRODUCT_SENSE.md`
@@ -180,7 +200,7 @@ Treat `CHANGELOG.md` as a required deliverable only for **release-note-worthy** 
   - Use `withElectronScenario` or `ElectronScenarioHarness` for production Electron/preload/Main/Core workflows, window lifecycle, restart, and native gestures.
   - Reopen a seeded home with `vp run dev --home <dir>` for a persistent integrated UI environment with HMR; run the scenario's dedicated Electron E2E spec for deterministic UI verification.
   - Keep historical/corrupt storage and pressure fixtures visibly separate from authoritative public-operation scenarios. Direct SQL is allowed only when storage shape or scale is the explicit subject, and pressure evidence must retain a smaller authoritative path test.
-- When behavior plausibly depends on a user's real data shape, history length, asset closure, migration history, or production scale, prefer an additional local pass against a disposable Profile snapshot under `runs.local/`. Create it with `vp run dev --home runs.local/<name> --from-profile <profile-home>`; never point development Core at the live Profile, copy `nodex.db`/WAL files by hand, or symlink Profile data. Real-Profile passes supplement focused deterministic coverage and never replace a regression test that can be distilled into an authoritative scenario.
+- When behavior plausibly depends on a user's real data shape, history length, asset closure, migration history, or production scale, prefer an additional local pass against a disposable Profile snapshot in the primary checkout's `runs.local/`. Create it with `vp run dev --home <absolute-snapshot-home> --from-profile <profile-home>` using the path convention above; never point development Core at the live Profile, copy `nodex.db`/WAL files by hand, or symlink Profile data. Real-Profile passes supplement focused deterministic coverage and never replace a regression test that can be distilled into an authoritative scenario.
 - Treat Profile snapshots as local evidence: do not use them in CI, commit them, upload their databases/assets/logs, or attach screenshots/traces containing user content. The snapshot excludes Agent credentials; import authentication only through the launcher's explicit private-file flags when the test actually needs Agent execution.
 - Every scenario-backed correctness test gets a fresh writable Profile. A generated current-schema snapshot may be copied as an immutable source only after measured seed cost justifies it; never share a live writable Store across tests.
 - Choose final checks from the actual risk and changed runtime rather than from a fixed command list:

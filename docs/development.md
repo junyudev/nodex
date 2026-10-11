@@ -29,11 +29,13 @@ verified before use, and published atomically under a cross-process download
 lock. Extracted runtimes, native builds, and other source-derived outputs remain
 isolated under each worktree's `.generated/` directory.
 
-Developers with several local worktrees should keep the real cache in the
-primary checkout and link every other worktree to it:
+For the shared cache location and task slug, follow
+[Worktrees and local artifacts](../AGENTS.md#worktrees-and-local-artifacts).
+Keep the real cache in the primary checkout. From a new task worktree whose
+`cache.local` does not already exist, link it to that shared cache:
 
 ```bash
-ln -s /absolute/path/to/primary/cache.local /absolute/path/to/worktree/cache.local
+ln -s "$HOME/repo/nodex/cache.local" cache.local
 ```
 
 The `*.local` ignore rule excludes both the real directory and these links from
@@ -42,36 +44,41 @@ any time; the next materialization verifies or downloads the required archives
 again. Do not place `.generated` outputs, test Profiles, logs, or release
 artifacts in `cache.local`.
 
-Start the desktop app in development mode:
+Start the desktop app from the task's worktree with an absolute home in the
+primary checkout. For example, a `board-drag` task can use:
 
 ```bash
-vp run dev
+vp run dev --home "$HOME/repo/nodex/runs.local/board-drag" --seed board/dense
 ```
 
 `vp run dev` is the single manual real-app launcher. It starts the HMR app by
-default and accepts options directly, without an intermediate `--`:
+default and accepts options directly, without an intermediate `--`. Other
+option examples use an absolute task home:
 
 ```bash
-vp run dev --home runs.local/perf
-vp run dev --seed board/dense
-vp run dev --home runs.local/perf --build
-vp run dev --home runs.local/ephemeral --delete
-vp run dev --auth-json /path/to/auth.json
-vp run dev --agent-config-toml /path/to/config.toml
-vp run dev --remote-debugging-port 9229
-vp run dev --cdp 9229
-vp run dev --enable runtime-metrics
-vp run dev --enable database-page-reorder-menu
-vp run dev --enable agentation
-vp run dev --enable query-devtools
+task_home="$HOME/repo/nodex/runs.local/perf"
+vp run dev --home "$task_home"
+vp run dev --home "$task_home" --build
+vp run dev --home "$HOME/repo/nodex/runs.local/perf-ephemeral" --delete
+vp run dev --home "$task_home" --auth-json /path/to/auth.json
+vp run dev --home "$task_home" --agent-config-toml /path/to/config.toml
+vp run dev --home "$task_home" --remote-debugging-port 9229
+vp run dev --home "$task_home" --cdp 9229
+vp run dev --home "$task_home" --enable runtime-metrics
+vp run dev --home "$task_home" --enable database-page-reorder-menu
+vp run dev --home "$task_home" --enable agentation
+vp run dev --home "$task_home" --enable query-devtools
 ```
 
 Unpackaged Desktop startup fails when `NODEX_HOME` is absent. Do not invoke the
 underlying Electron or electron-vite entrypoints directly; the launcher owns
 Profile isolation and supplies the required environment.
 
-The default environment root is `<worktree>/runs.local/default`. Relative
-`--home` paths resolve from the worktree root. Each environment has this layout:
+The launcher's no-argument default remains `<worktree>/runs.local/default`, and
+relative `--home` paths resolve from the worktree root. Agent launches pass an
+absolute `--home`, using the shared-directory convention for new environments
+and the current path to reopen an existing one. Executables and source-derived
+outputs still come from the task's worktree. Each environment has this layout:
 
 ```text
 <home>/
@@ -82,10 +89,18 @@ The default environment root is `<worktree>/runs.local/default`. Relative
 └── artifacts/
 ```
 
-The manifest binds the environment to this repository with a canonical UUID.
-The launcher rejects a directory without that ownership manifest, another
-repository's environment, a symlinked root, a concurrent launcher lease, or a
-Core socket path that exceeds the macOS Unix-domain socket budget.
+The manifest records a canonical environment UUID and the creating worktree's
+real path. The launcher rejects a directory without that ownership manifest,
+another worktree's environment, a symlinked root, a concurrent launcher lease,
+or a Core socket path that exceeds the macOS Unix-domain socket budget. Central
+storage does not permit writable Profile reuse across worktrees. Use a short
+slug and a distinct home suffix for an independent instance or Profile snapshot.
+
+Instance diagnostics and debug exports belong in that home's `artifacts/`.
+Review recordings, screenshots, and verification reports use the primary
+checkout's review-artifact directory defined in `AGENTS.md`. These local
+directories remain uncommitted. Automatic scenario tests continue to create and
+clean up their own fresh temporary Profiles through the test harness.
 
 `--auth-json` atomically installs only the named authentication file with mode
 `0600`. `--agent-config-toml` passes the named file through the portable agent
@@ -96,7 +111,7 @@ the environment's existing files.
 invocation. Unknown slugs fail and list the catalog. Agentation and TanStack
 Query Devtools are hidden by default and loaded only when `--enable agentation`
 or `--enable query-devtools` is passed, respectively. Enable both with
-`vp run dev --enable agentation --enable query-devtools`. These overlays are
+`vp run dev --home "$task_home" --enable agentation --enable query-devtools`. These overlays are
 development-only and remain absent from built production renderers. Currently
 `runtime-metrics` enables structured development runtime metrics.
 `database-page-reorder-menu` shows the position-only `Reorder` submenu in a
@@ -142,7 +157,7 @@ environment and before Electron starts. `board/dense` creates a Project with
 five workflow columns, ten Pages, and structured NFM content:
 
 ```bash
-vp run dev --home runs.local/board-dense --seed board/dense
+vp run dev --home "$HOME/repo/nodex/runs.local/board-dense" --seed board/dense
 ```
 
 The manifest records the seed id and revision. Reopening the same home with the
@@ -156,7 +171,7 @@ section, and one linked Chat without a Thread or fabricated transcript. Use a fr
 home for each take, and `--build` for optimized Core and renderer execution:
 
 ```bash
-vp run dev --home runs.local/shared-pages-take-01 --seed landing/shared-pages --build
+vp run dev --home "$HOME/repo/nodex/runs.local/shared-pages-take-01" --seed landing/shared-pages --build
 ```
 
 Neither recipe implements a task-list repository or claims verification results.
@@ -173,11 +188,12 @@ Playwright, focuses a Page, or performs assertions.
 
 Some defects and performance cliffs only appear with real document shapes,
 long histories, managed assets, or a production-sized Store. For that evidence,
-clone a published backup and local conversation history into a dedicated `runs.local` environment:
+clone a published backup and local conversation history into a dedicated
+environment in the primary checkout's shared run directory:
 
 ```bash
 nodex backup create --label "before local validation"
-vp run dev --home runs.local/real-profile --from-profile ~/.nodex
+vp run dev --home "$HOME/repo/nodex/runs.local/real-profile" --from-profile ~/.nodex
 ```
 
 `--from-profile` never starts Core against the source Profile and never copies a

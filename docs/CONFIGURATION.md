@@ -172,8 +172,14 @@ Git, worktree, execution-host, keyboard, update, or window settings.
 
 An unpackaged Desktop process requires an explicit nonblank `NODEX_HOME` and
 does not fall back to project or user configuration. The supported `vp run dev`
-launcher supplies an isolated Profile under `runs.local/`; this prevents a
-direct low-level development launch from opening the user's default Profile.
+launcher supplies an isolated Profile, defaulting to `<worktree>/runs.local/default`
+when `--home` is omitted; this prevents a direct low-level development launch
+from opening the user's default Profile. Agent-created manual development
+instances and Profile snapshots use an explicit absolute `--home` under the
+primary repository's `runs.local/<slug>/`, following
+[AGENTS.md](../AGENTS.md#worktrees-and-local-artifacts).
+Automatic test harnesses retain their fresh temporary Profiles. See
+[Development](development.md) for launch commands.
 
 The development launcher persists each home's renderer origin in
 `renderer-origin.json` and starts Vite with `strictPort`. An occupied saved port
