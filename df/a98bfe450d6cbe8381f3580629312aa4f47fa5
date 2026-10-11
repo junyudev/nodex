@@ -1,0 +1,311 @@
+package.json
+  s_30f9741785498a::t_b0ee3f80b895a7 270-272,318
+pnpm-workspace.yaml
+  s_30f9741785498a::t_f459a858070f19 34-37
+src/renderer/components/board/editor/blocknote-view-lifecycle.browser.test.tsx
+  s_f05dea28d21868::t_4832bcd41bbc41 10-15,60-88,355-357,442,471-474
+src/renderer/components/board/editor/nfm-file-action-menu.tsx
+  s_f05dea28d21868::t_f173488e7ab42d 220
+src/renderer/components/board/editor/nfm-formatting-toolbar-controller.tsx
+  s_2c7db7011d6607::t_1e248be0207324 6,329-337
+src/renderer/components/board/editor/nfm-formatting-toolbar.browser.test.tsx
+  s_2c7db7011d6607::t_2f5ae691f0de1c 4-6,9,11-13,19-25,32-88,130,150-154,158-164,166-169,173-177,182-185,187-229,231-234,237-240,247,256-426
+src/renderer/components/board/editor/nfm-formatting-toolbar.tsx
+  s_2c7db7011d6607::t_967fff200cbbce 5,8-9,58,191-192,218,259-260,262-264,273-275,277,333-334,336-340,352-354,357,374-386,401-402,404,406-407,419,433,505-506,509,536
+src/renderer/components/board/editor/nfm-link-element.jsdom.test.ts
+  s_2c7db7011d6607::t_44ae8d2f4ac8f0 1-3,6-30,32-84,87,91-93
+src/renderer/components/board/editor/nfm-link-element.ts
+  s_f05dea28d21868::t_22ba089be124b8 20
+src/renderer/components/board/editor/nfm-link-toolbar-controller.test.tsx
+  s_f05dea28d21868::t_22d942e5948777 94
+src/renderer/components/board/editor/nfm-link-toolbar-deps.ts
+  s_2c7db7011d6607::t_741ba8be643a97 1-7,35
+src/renderer/components/board/editor/nfm-link-toolbar-live-editing.test.tsx
+  s_2c7db7011d6607::t_1d1ff27b654c63 64
+src/renderer/components/board/editor/nfm-link-toolbar.test.tsx
+  s_2c7db7011d6607::t_c3ec3c46f7fcd6 41
+src/renderer/components/board/editor/nfm-link-toolbar.tsx
+  s_2c7db7011d6607::t_77c655c2e1fd5c 27,235,310
+src/renderer/components/board/editor/nfm-table-handles.tsx
+  s_f05dea28d21868::t_0ef9607297ed03 17,263,268
+src/renderer/components/board/editor/nfm-text-action-menu.tsx
+  s_2c7db7011d6607::t_a5bd1f001c108d 4-9,197,549,555,558,738,748,809,893,900,929,1165,1174,1230,1246,1256,1314,1330,1345,1428,1445,1526,1653,1664,1776,1799,1936
+src/renderer/index.html
+  s_2c7db7011d6607::t_31a237e1072784 5-8
+third_party/blocknote/ORIGIN.md
+  s_f05dea28d21868::t_847cb6603766cc 8-9,29-31,37-38,40,57,71,80,89-91,135,163
+third_party/blocknote/packages/core/package.json
+  s_30f9741785498a::t_2964de5eceb3e9 14,101-109,117-118
+third_party/blocknote/packages/core/src/comments/CommentEditorSubmitExtension.test.ts
+  s_f05dea28d21868::t_aaeaf9aefb3a52 1-141
+third_party/blocknote/packages/core/src/comments/CommentEditorSubmitExtension.ts
+  s_f05dea28d21868::t_f7a1be13e4c86d 1-56
+third_party/blocknote/packages/core/src/comments/extension.ts
+  s_f05dea28d21868::t_8f6c6b588a204c 67,97-102,420
+third_party/blocknote/packages/core/src/comments/index.ts
+  s_f05dea28d21868::t_c45b8e1cd21d1b 1
+third_party/blocknote/packages/core/src/editor/BlockNoteEditor.ts
+  s_f05dea28d21868::t_7bd97bc153e799 58,746-749,753,809-815,827-833,835-855,857-860,862,882,886-892,1250-1251,1463-1484
+third_party/blocknote/packages/core/src/editor/BlockNoteExtension.ts
+  s_f05dea28d21868::t_cf9fcb8deff281 81-82,105-108
+third_party/blocknote/packages/core/src/editor/managers/EventManager.browser.test.ts
+  s_f05dea28d21868::t_12e66915293492 1-332
+third_party/blocknote/packages/core/src/editor/managers/EventManager.ts
+  s_f05dea28d21868::t_68eff859040dd7 19-36,55-68,86-91,98-107,111-162,179,192,205,208,214-215,217-236,245,254
+third_party/blocknote/packages/core/src/editor/managers/ExtensionManager/ExtensionManager.test.ts
+  s_f05dea28d21868::t_b5917825257e61 5,18-104
+third_party/blocknote/packages/core/src/editor/managers/ExtensionManager/index.ts
+  s_f05dea28d21868::t_045013ccb695db 5,604-608,610-618,622-636
+third_party/blocknote/packages/core/src/editor/managers/StyleManager.browser.test.ts
+  s_f05dea28d21868::t_0c823e6fd3aee1 1-122
+third_party/blocknote/packages/core/src/editor/managers/StyleManager.test.ts
+  s_f05dea28d21868::t_3af543b535c9c2 1-98
+third_party/blocknote/packages/core/src/editor/managers/StyleManager.ts
+  s_f05dea28d21868::t_b7839bfee33429 58-61,153-154,159-166,169-172,186-187,191-199,241,265
+third_party/blocknote/packages/core/src/editor/managers/index.ts
+  s_f05dea28d21868::t_b96ad604b73d2a 3
+third_party/blocknote/packages/core/src/extensions/FormattingToolbar/FormattingToolbar.ts
+  s_f05dea28d21868::t_fb6a83236ebaad 74-95,185
+third_party/blocknote/packages/core/src/extensions/TableHandles/TableHandles.browser.test.ts
+  s_f05dea28d21868::t_7a020aa4fe8229 63-65
+third_party/blocknote/packages/core/src/i18n/locales/ar.ts
+  s_f05dea28d21868::t_8f03a249e181ff 409
+third_party/blocknote/packages/core/src/i18n/locales/de.ts
+  s_f05dea28d21868::t_6ca118e8ee3bc6 443
+third_party/blocknote/packages/core/src/i18n/locales/en.ts
+  s_f05dea28d21868::t_ac35450587b2ba 424
+third_party/blocknote/packages/core/src/i18n/locales/es.ts
+  s_f05dea28d21868::t_3009a9127ea649 422
+third_party/blocknote/packages/core/src/i18n/locales/fa.ts
+  s_f05dea28d21868::t_f31d7f8d5e03cc 393
+third_party/blocknote/packages/core/src/i18n/locales/fr.ts
+  s_f05dea28d21868::t_944b8fb3385821 470
+third_party/blocknote/packages/core/src/i18n/locales/he.ts
+  s_f05dea28d21868::t_17c98e2ff2166a 424
+third_party/blocknote/packages/core/src/i18n/locales/hr.ts
+  s_f05dea28d21868::t_85316df1368dcc 438
+third_party/blocknote/packages/core/src/i18n/locales/is.ts
+  s_f05dea28d21868::t_bb2f267d6c4dc7 438
+third_party/blocknote/packages/core/src/i18n/locales/it.ts
+  s_f05dea28d21868::t_c31d90177772b3 446
+third_party/blocknote/packages/core/src/i18n/locales/ja.ts
+  s_f05dea28d21868::t_fc7a23c3897e1c 464
+third_party/blocknote/packages/core/src/i18n/locales/ko.ts
+  s_f05dea28d21868::t_905f3b498fa73c 437
+third_party/blocknote/packages/core/src/i18n/locales/nl.ts
+  s_f05dea28d21868::t_70b8d8e446e4a7 425
+third_party/blocknote/packages/core/src/i18n/locales/no.ts
+  s_f05dea28d21868::t_3bd1d4b67bbd2c 442
+third_party/blocknote/packages/core/src/i18n/locales/pl.ts
+  s_f05dea28d21868::t_fd31c231d5d43c 415
+third_party/blocknote/packages/core/src/i18n/locales/pt.ts
+  s_f05dea28d21868::t_ad59c76278bc67 417
+third_party/blocknote/packages/core/src/i18n/locales/ru.ts
+  s_f05dea28d21868::t_f2ebe9f524c3e6 468
+third_party/blocknote/packages/core/src/i18n/locales/sk.ts
+  s_f05dea28d21868::t_30cb0b7e975333 422
+third_party/blocknote/packages/core/src/i18n/locales/uk.ts
+  s_f05dea28d21868::t_f1a13184cbf697 448
+third_party/blocknote/packages/core/src/i18n/locales/uz.ts
+  s_f05dea28d21868::t_be06e67d544bdd 458
+third_party/blocknote/packages/core/src/i18n/locales/vi.ts
+  s_f05dea28d21868::t_c716c6253d7d2e 423
+third_party/blocknote/packages/core/src/i18n/locales/zh-tw.ts
+  s_f05dea28d21868::t_735792dfcdbcd0 465
+third_party/blocknote/packages/core/src/i18n/locales/zh.ts
+  s_f05dea28d21868::t_ff8795d22cf278 465
+third_party/blocknote/packages/core/src/index.ts
+  s_f05dea28d21868::t_b08e3cc7bedc6d 14
+third_party/blocknote/packages/core/src/util/browser.ts
+  s_f05dea28d21868::t_2d30573a6f53b1 31-54
+third_party/blocknote/packages/diagram-block/package.json
+  s_30f9741785498a::t_167237bcbc0ec6 5-7,14-19
+third_party/blocknote/packages/math-block/package.json
+  s_30f9741785498a::t_1145feeccfd971 5-7,14-19,59
+third_party/blocknote/packages/react/package.json
+  s_30f9741785498a::t_52700bf95fdfba 14,63-65
+third_party/blocknote/packages/react/src/components/AttributionTooltip/AttributionTooltipController.tsx
+  s_f05dea28d21868::t_e0cc0fafe3d023 6,35,37,118-122
+third_party/blocknote/packages/react/src/components/Comments/Comment.tsx
+  s_f05dea28d21868::t_2c5a6cafb0c57d 4-7,10,24,41,155-156,167-179,183,186,199-201,301-305,355
+third_party/blocknote/packages/react/src/components/Comments/EmojiPicker.tsx
+  s_f05dea28d21868::t_3bcc5a35220099 5,17,20
+third_party/blocknote/packages/react/src/components/Comments/FloatingComposer.tsx
+  s_f05dea28d21868::t_e83fef79a4ac94 1-3,43,47-48,57-65
+third_party/blocknote/packages/react/src/components/Comments/FloatingComposerController.tsx
+  s_f05dea28d21868::t_647c3f6932286b 9-12,14,21,38,41,67-81,154-158
+third_party/blocknote/packages/react/src/components/Comments/FloatingThreadController.tsx
+  s_f05dea28d21868::t_2de278952b7607 1-4,11,29,32,64-78,150-163
+third_party/blocknote/packages/react/src/components/Comments/Thread.tsx
+  s_f05dea28d21868::t_9e51bb886fc02c 2-5,7,96,124-125,136-147,155-163
+third_party/blocknote/packages/react/src/components/FilePanel/DefaultTabs/EmbedTab.tsx
+  s_f05dea28d21868::t_498aeafa75df58 10,40,58-75,77-84
+third_party/blocknote/packages/react/src/components/FilePanel/FilePanelController.tsx
+  s_f05dea28d21868::t_a3ca159c41d39f 7,18,21,64-68
+third_party/blocknote/packages/react/src/components/Form/ScreenReaderOnlySubmit.tsx
+  s_f05dea28d21868::t_b82763f742855d 1-22
+third_party/blocknote/packages/react/src/components/FormattingToolbar/DefaultButtons/AddCommentButton.tsx
+  s_f05dea28d21868::t_f31feef914f357 9,17-18,24-30,36-39
+third_party/blocknote/packages/react/src/components/FormattingToolbar/DefaultButtons/AddTiptapCommentButton.tsx
+  s_f05dea28d21868::t_7ed9c8cf89d706 7,23-29,38-40
+third_party/blocknote/packages/react/src/components/FormattingToolbar/DefaultButtons/ColorStyleButton.tsx
+  s_f05dea28d21868::t_81b8d70fdf6669 10-11,48-49,108,127,137-147
+third_party/blocknote/packages/react/src/components/FormattingToolbar/DefaultButtons/CreateLinkButton.tsx
+  s_f05dea28d21868::t_473d023138c285 1,17,49,61-71,79-80,132-135,149,161-163
+third_party/blocknote/packages/react/src/components/FormattingToolbar/DefaultButtons/FileCaptionButton.tsx
+  s_f05dea28d21868::t_b9b0d04a463247 8,12-13,21,59-72,100-102,110,117-120
+third_party/blocknote/packages/react/src/components/FormattingToolbar/DefaultButtons/FileRenameButton.tsx
+  s_f05dea28d21868::t_be7dbe35f044c8 8,12-13,21,59-72,100-102,116,123-126
+third_party/blocknote/packages/react/src/components/FormattingToolbar/DefaultButtons/FileReplaceButton.tsx
+  s_f05dea28d21868::t_685469cb3ccfb7 10,19,61-73
+third_party/blocknote/packages/react/src/components/FormattingToolbar/DefaultSelects/BlockTypeSelect.tsx
+  s_f05dea28d21868::t_cb20d129cc44fa 29-30,132-133,219-224
+third_party/blocknote/packages/react/src/components/FormattingToolbar/DesktopFormattingToolbarController.tsx
+  s_f05dea28d21868::t_33c36d14d96b0b 1-8,10-11,14-18,22-37,39-45,52-54,59-68,70-73,76-78,80-82,84-85,87-117,122-126
+third_party/blocknote/packages/react/src/components/FormattingToolbar/FormattingToolbarController.tsx
+  s_f05dea28d21868::t_e24496137ff3a2 1-2,5,7-8,15,18,20-30,32
+third_party/blocknote/packages/react/src/components/FormattingToolbar/MobileFormattingToolbarController.tsx
+  s_f05dea28d21868::t_3b445094aabc2c 1-89
+third_party/blocknote/packages/react/src/components/FormattingToolbar/useVirtualKeyboard.ts
+  s_f05dea28d21868::t_f600dc6caa0567 1-172
+third_party/blocknote/packages/react/src/components/FormattingToolbar/viewportMeta.ts
+  s_f05dea28d21868::t_47713cb6d6f9fe 1-45
+third_party/blocknote/packages/react/src/components/LinkToolbar/DefaultButtons/EditLinkButton.tsx
+  s_f05dea28d21868::t_92f9d2c12266b7 2,14,20
+third_party/blocknote/packages/react/src/components/LinkToolbar/EditLinkMenuItems.tsx
+  s_f05dea28d21868::t_168b895ddc3ead 6,9,67-70
+third_party/blocknote/packages/react/src/components/LinkToolbar/LinkToolbarController.tsx
+  s_f05dea28d21868::t_4dc26502b2377d 9,23,26,207-219
+third_party/blocknote/packages/react/src/components/Popovers/BlockPopover.tsx
+  s_f05dea28d21868::t_746ac2bb0effbe 15,48
+third_party/blocknote/packages/react/src/components/Popovers/GenericPopover.tsx
+  s_f05dea28d21868::t_525d0448b48d2f 5,24-28,134-152,212,259-272,274,280,285,290,302-304,321-325,329-336,339,352
+third_party/blocknote/packages/react/src/components/Popovers/PositionPopover.tsx
+  s_f05dea28d21868::t_d563ad784c9e65 15,38
+third_party/blocknote/packages/react/src/components/SideMenu/DefaultButtons/DragHandleButton.tsx
+  s_f05dea28d21868::t_a8fb9b887c633e 5,20,44
+third_party/blocknote/packages/react/src/components/SideMenu/DragHandleMenu/DefaultItems/BlockColorsItem.tsx
+  s_f05dea28d21868::t_a347dfb63a988a 6,13,35-39
+third_party/blocknote/packages/react/src/components/SideMenu/SideMenuController.tsx
+  s_f05dea28d21868::t_7f0ae990c83399 8,65,68,153-160
+third_party/blocknote/packages/react/src/components/SuggestionMenu/GridSuggestionMenu/GridSuggestionMenuController.tsx
+  s_f05dea28d21868::t_0b7162368f8396 16,51,54,206-225
+third_party/blocknote/packages/react/src/components/SuggestionMenu/SuggestionMenuController.tsx
+  s_f05dea28d21868::t_920f21b36e0e76 14,69,72,254-281
+third_party/blocknote/packages/react/src/components/TableHandles/TableCellButton.tsx
+  s_f05dea28d21868::t_c7fe791c95b115 6,20,50
+third_party/blocknote/packages/react/src/components/TableHandles/TableCellMenu/DefaultButtons/ColorPicker.tsx
+  s_f05dea28d21868::t_6c64d9481b293b 6,14,79-83
+third_party/blocknote/packages/react/src/components/TableHandles/TableHandle.tsx
+  s_f05dea28d21868::t_716ccdc5351337 7,24,71
+third_party/blocknote/packages/react/src/components/TableHandles/TableHandleMenu/DefaultButtons/ColorPicker.tsx
+  s_f05dea28d21868::t_842934bc61c904 13,31,109-113
+third_party/blocknote/packages/react/src/components/TableHandles/TableHandlesController.tsx
+  s_f05dea28d21868::t_9859678092691f 16,38,41,321,397
+third_party/blocknote/packages/react/src/components/Versioning/CurrentSnapshot.tsx
+  s_f05dea28d21868::t_84a3b2704dc598 9,35,77-80
+third_party/blocknote/packages/react/src/components/Versioning/Snapshot.tsx
+  s_f05dea28d21868::t_f55c4de61a7f49 15,29,115-118
+third_party/blocknote/packages/react/src/editor/BlockNoteDefaultUI.tsx
+  s_f05dea28d21868::t_c1e33e695b865d 21,88-91,106-116
+third_party/blocknote/packages/react/src/editor/BlockNoteView.tsx
+  s_f05dea28d21868::t_5199fadada4f6b 19,33-37,107-114,120,153,159-162,217-231,256,263,276,296,302-304,306-336,370-375,397,405
+third_party/blocknote/packages/react/src/editor/BlockNoteViewContext.ts
+  s_f05dea28d21868::t_e42afc05c15393 13-23
+third_party/blocknote/packages/react/src/editor/ComponentsContext.tsx
+  s_f05dea28d21868::t_12ff4bc9a1f7a4 3,53-60,114-122,143,327-340,353,370-372,413
+third_party/blocknote/packages/react/src/editor/PortalElementOverride.tsx
+  s_f05dea28d21868::t_cd6b039faafc8e 1-250
+third_party/blocknote/packages/react/src/editor/UIModeContext.ts
+  s_f05dea28d21868::t_7f61f09c9e34bc 1-21
+third_party/blocknote/packages/react/src/editor/focus-management.md
+  s_f05dea28d21868::t_b45919a1309a44 1-71
+third_party/blocknote/packages/react/src/editor/portalElements.ts
+  s_f05dea28d21868::t_f9cc9d2dd4a138 7,13-15,18-27,32-33,38
+third_party/blocknote/packages/react/src/editor/styles.css
+  s_f05dea28d21868::t_7452a3cecd3624 514,516,518,520-540,542-559,561-576,583-610
+third_party/blocknote/packages/react/src/hooks/useAutoFocus.ts
+  s_f05dea28d21868::t_05f611388a3266 1-42
+third_party/blocknote/packages/react/src/hooks/useEditorChange.ts
+  s_f05dea28d21868::t_136aece8ecf067 2-3,9-10,25-34,42-45
+third_party/blocknote/packages/react/src/hooks/useEditorFocus.ts
+  s_f05dea28d21868::t_c5c1ab0895df09 1-100
+third_party/blocknote/packages/react/src/hooks/useEditorSelectionChange.ts
+  s_f05dea28d21868::t_7870cf5a13025f 2-3,9-10,28-37,44-52
+third_party/blocknote/packages/react/src/hooks/useEditorState.ts
+  s_f05dea28d21868::t_7acb870c0773f8 3,6
+third_party/blocknote/packages/react/src/index.ts
+  s_f05dea28d21868::t_09beb7d6e65976 34,46,48-54,143-144,168
+third_party/blocknote/packages/react/src/util/mergeRefs.ts
+  s_f05dea28d21868::t_847f34a80eee17 1-2,19-40
+third_party/blocknote/packages/react/src/util/mouseDownFocus.ts
+  s_f05dea28d21868::t_2fd0e1cb3e907c 1-36
+third_party/blocknote/packages/react/src/util/useIsomorphicLayoutEffect.ts
+  s_f05dea28d21868::t_f63cba66442f3c 1-12
+third_party/blocknote/packages/react/src/vite-env.d.ts
+  s_f05dea28d21868::t_710d426505d6df 2-10
+third_party/blocknote/packages/shadcn/package.json
+  s_30f9741785498a::t_24a88e1bc749fe 14
+third_party/blocknote/packages/shadcn/src/badge/Badge.tsx
+  s_f05dea28d21868::t_0496a1f7a1f03d 2,28-35,61
+third_party/blocknote/packages/shadcn/src/form/Form.tsx
+  s_f05dea28d21868::t_9829d6b450cd99 5,9-21
+third_party/blocknote/packages/shadcn/src/form/TextInput.tsx
+  s_f05dea28d21868::t_dd755ad1fbd9c5 2,32-36,63
+third_party/blocknote/packages/shadcn/src/lib/preventFocusOnOpen.ts
+  s_f05dea28d21868::t_af58dede3de9fc 1-36
+third_party/blocknote/packages/shadcn/src/menu/Menu.tsx
+  s_f05dea28d21868::t_cba3e41ddca0ec 2,5,9,11,15-21,40-42,51-55,61-63,72-74,116-121,139-140,177-178,194
+third_party/blocknote/packages/shadcn/src/panel/PanelButton.tsx
+  s_f05dea28d21868::t_ff44715d5efc13 11,19
+third_party/blocknote/packages/shadcn/src/popover/popover.tsx
+  s_f05dea28d21868::t_22702d61b94894 2,8-10,20,30,32,64-69,74-81
+third_party/blocknote/packages/shadcn/src/toolbar/Toolbar.tsx
+  s_f05dea28d21868::t_ddec0b2409ac91 2-9,49-54,69,73-79,83-96,112,131,142,157-165,193-197,202,208-209,216-217
+CHANGELOG.md
+  s_bd811abbf24a41::t_5cdeafea9223b4 7-10
+docs/SECURITY.md
+  s_bd811abbf24a41::t_a252562564519a 322-325
+third_party/blocknote/packages/react/src/hooks/useEditorFocus.browser.test.tsx
+  s_bd811abbf24a41::t_47735f88cc57d9 1-285
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "dfa98bfe450d6cbe8381f3580629312aa4f47fa5",
+  "prompts": {},
+  "sessions": {
+    "s_2c7db7011d6607": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "93694b8a-d047-40af-9b2e-1c1a85fab200",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    },
+    "s_30f9741785498a": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a12901-6148-7740-91f2-262e971353b8",
+        "model": "gpt-6-luna"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    },
+    "s_bd811abbf24a41": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "d475c410-7aa3-406e-a6d6-6873f7b30325",
+        "model": "unknown"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    },
+    "s_f05dea28d21868": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a10576-cbf5-7cd2-a16e-0420e593ce1e",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    }
+  }
+}
