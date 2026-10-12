@@ -1,3 +1,8 @@
+import {
+  codexTranscriptMutationItemKey,
+  type CodexTranscriptAcceptedMutationContext,
+  type CodexTranscriptTextEdit,
+} from "../codex-transcript-projection";
 import { produce, type Draft } from "immer";
 import {
   residentConversationTurnEntries,
@@ -96,16 +101,22 @@ function readAggregatedOutput(item: CodexRawCommandExecution): string {
 function appendRawCommandOutput(
   item: CodexRawCommandExecution,
   delta: string,
+  onAcceptedEdits?: (edits: readonly CodexTranscriptTextEdit[]) => void,
 ): CodexRawCommandExecution {
   const { text: currentPayload, hadPrefix: hadTruncationPrefix } =
     stripCodexCommandOutputTruncationPrefix(readAggregatedOutput(item));
-  const { next, didTruncate } = appendCodexCommandOutputTail({
+  const { next, didTruncate, retainedLength, appended } = appendCodexCommandOutputTail({
     current: currentPayload,
     delta,
   });
   const aggregatedOutput =
     didTruncate || hadTruncationPrefix ? `${CODEX_COMMAND_OUTPUT_TRUNCATION_PREFIX}${next}` : next;
   if (item.aggregatedOutput === aggregatedOutput) return item;
+  const prefix = didTruncate || hadTruncationPrefix ? CODEX_COMMAND_OUTPUT_TRUNCATION_PREFIX : "";
+  onAcceptedEdits?.([
+    { at: 0, deleteCount: readAggregatedOutput(item).length - retainedLength, insert: prefix },
+    { at: prefix.length + retainedLength, deleteCount: 0, insert: appended },
+  ]);
   return { ...item, aggregatedOutput };
 }
 
@@ -165,9 +176,10 @@ function reduceRawCommandExecution(
 export function reduceCodexCommandOutputRawTurns(
   turns: readonly CodexCommandExecutionRawTurn[],
   update: CodexCommandOutputUpdate,
+  onAcceptedEdits?: (edits: readonly CodexTranscriptTextEdit[]) => void,
 ): CodexCommandExecutionRawMutationResult {
   return reduceRawCommandExecution(turns, update.itemId, (item) =>
-    appendRawCommandOutput(item, update.delta),
+    appendRawCommandOutput(item, update.delta, onAcceptedEdits),
   );
 }
 
@@ -185,6 +197,7 @@ type CommandMutation = Omit<CodexCommandExecutionCanonicalMutationResult, "state
 export function mutateCodexConversationCommandOutput(
   state: Draft<CodexCanonicalConversationState>,
   update: CodexCommandOutputUpdate,
+  context: CodexTranscriptAcceptedMutationContext = {},
 ): CommandMutation {
   if (state.id !== update.conversationId)
     return {
@@ -193,11 +206,26 @@ export function mutateCodexConversationCommandOutput(
       itemIndex: -1,
       stateChanged: false,
     };
-  const result = reduceCodexCommandOutputRawTurns(residentConversationTurns(state), update);
+  let acceptedEdits: readonly CodexTranscriptTextEdit[] | undefined;
+  const result = reduceCodexCommandOutputRawTurns(
+    residentConversationTurns(state),
+    update,
+    (edits) => {
+      acceptedEdits = edits;
+    },
+  );
   const entry = residentConversationTurnEntries(state)[result.turnIndex];
   const item = entry ? conversationTurnDraft(state, entry.address)?.items[result.itemIndex] : null;
-  if (result.stateChanged && result.rawItem && item?.type === "commandExecution")
+  if (result.stateChanged && result.rawItem && item?.type === "commandExecution" && entry) {
     item.aggregatedOutput = result.rawItem.aggregatedOutput;
+    if (acceptedEdits)
+      context.onAcceptedText?.({
+        type: "text",
+        key: codexTranscriptMutationItemKey(state, entry.address, item.id),
+        target: { field: "aggregatedOutput" },
+        edits: acceptedEdits,
+      });
+  }
   return {
     disposition: result.disposition,
     turnIndex: result.turnIndex,

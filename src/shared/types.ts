@@ -3319,7 +3319,7 @@ export interface CodexItemView extends CodexCommandExecutionAttachmentFields {
   threadId: string;
   turnId: string | null;
   itemId: string;
-  /** Canonical raw owner; absent for app-owned params, request, hook, and diff overlays. */
+  /** Canonical raw owner or proven native opening alias; absent for uncorrelated app-owned overlays. */
   rawItemId?: string;
   /** Canonical raw discriminant used to stabilize aliased display rows without reparsing raw payloads. */
   rawItemType?: string;
@@ -3372,7 +3372,7 @@ export interface CodexTranscriptEntry extends CodexCommandExecutionAttachmentFie
   turnId: string | null;
   entryId?: string;
   itemId: string;
-  /** Canonical raw owner; absent for app-owned params, request, hook, and diff overlays. */
+  /** Canonical raw owner or proven native opening alias; absent for uncorrelated app-owned overlays. */
   rawItemId?: string;
   /** Canonical raw discriminant used to stabilize aliased display rows without reparsing raw payloads. */
   rawItemType?: string;
@@ -3438,6 +3438,7 @@ export interface CodexConversationTurn extends CodexTurnSummary {
 }
 
 export interface CodexConversationTurnPagination {
+  source?: NonNullable<CodexCanonicalConversationState["turnsPagination"]>["source"];
   olderCursor: string | null;
   backwardsCursor: string | null;
   oldestLoadedTurnId: string | null;

@@ -1,4 +1,5 @@
 import { useCallback } from "react";
+import { scheduleAfterPaint } from "../../lib/schedule-after-paint";
 
 import { codexTurnFirstResponseTracker } from "./codex-turn-first-response";
 
@@ -6,29 +7,7 @@ export function CodexAfterPaintMarker({ onPaint }: { onPaint: () => void }) {
   const ref = useCallback(
     (element: HTMLSpanElement | null) => {
       if (element === null) return;
-      let firstFrame: number | null = null;
-      let secondFrame: number | null = null;
-      const paint = () => {
-        if (document.visibilityState !== "visible" || firstFrame !== null) return;
-        firstFrame = window.requestAnimationFrame(() => {
-          secondFrame = window.requestAnimationFrame(() => {
-            if (document.visibilityState !== "visible") {
-              firstFrame = null;
-              secondFrame = null;
-              return;
-            }
-            document.removeEventListener("visibilitychange", paint);
-            onPaint();
-          });
-        });
-      };
-      document.addEventListener("visibilitychange", paint);
-      paint();
-      return () => {
-        document.removeEventListener("visibilitychange", paint);
-        if (firstFrame !== null) window.cancelAnimationFrame(firstFrame);
-        if (secondFrame !== null) window.cancelAnimationFrame(secondFrame);
-      };
+      return scheduleAfterPaint(onPaint, { requireVisibleAtPaint: true });
     },
     [onPaint],
   );

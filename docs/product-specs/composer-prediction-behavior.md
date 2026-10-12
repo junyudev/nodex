@@ -1,0 +1,59 @@
+# Composer prediction behavior
+
+Composer predictions suggest a next user message for a ready root Codex Thread. Generation
+requires an enabled host-scoped assignment; absence is unknown/off. The configuration
+boundary and sampling fields are documented in [Configuration](../CONFIGURATION.md#composer-prediction-assignments).
+
+## Generation and lifetime
+
+A successful latest Turn completion can request a live prediction from the current root
+Conversation owner. A ready, connected, idle Composer can request the same latest Turn
+through catch-up. Background generation does not require an empty editor. Side Chats,
+ephemeral Threads and unsupported conversation modes do not generate predictions.
+
+The Main owner caches one request per host, Thread and latest Turn. Shared callers reuse
+that request and its successful result; failures do not retry automatically, but a later
+explicit request can try again. Changing the latest Turn
+removes the old request. A new parent Turn, host generation retirement, account mutation,
+logout, authentication failure or explicit clear cancels pending work and invalidates
+cached results. Configuration availability is local and does not start a connection.
+Cancellation also covers configuration and authentication waits before a request enters
+the cache, so disabling predictions or replacing an account cannot create a late helper.
+Unrelated host or Thread clears preserve an admitted request.
+
+Generation first resumes the parent to obtain its effective model, provider, effort,
+service tier and collaboration mode. Plan mode, non-OpenAI providers, excluded models and
+unsupported native prediction forks return no suggestion. Eligible generation creates a
+single ephemeral prediction fork, inheriting the parent's effective configuration, tools,
+environments and persisted history. It does not override permissions or replace a failed
+fork with a fresh Thread. Its Turn supplies only the prediction prompt, configured effort,
+trigger and client message identity. The helper is hidden from normal Thread catalogs.
+
+The response must contain a nullable `suggestion` string. Completed message text replaces
+partial deltas, and the returned text is trimmed. Malformed output fails the prediction
+without changing accepted Composer content. Completion can settle before the Turn-start
+acknowledgement. Timeout, cancellation or failure interrupts an active helper Turn; every
+terminal path unsubscribes the temporary Thread and releases its internal classification.
+
+## Composer interaction
+
+A prediction appears as an inert ghost document only when the Composer has one empty
+paragraph, no active mention suggestion, no input-method composition, and no conflicting
+pending request, attachments or voice input. Existing text is never overwritten.
+
+Unmodified Tab, ArrowRight or Enter accepts the ghost into the ordinary Composer document
+and moves selection to its end. Acceptance does not send a Turn; ordinary submission still
+owns sending. Clicking the ghost focuses the editor. Input-method composition hides the
+ghost until composition has settled. Thread, controller and latest-Turn changes discard
+stale responses and release the decoration and mention resources.
+
+Submitting suppresses catch-up for that source Turn in the current Composer.
+Accepted text remains ordinary editable content. A subsequent successful submission records
+whether that accepted text was edited or replaced; failed or queued sends do not become a
+successful submission outcome.
+
+The local prediction preference defaults enabled; host assignment availability still defaults
+off. Changing the local preference clears every host's prediction cache even when no Composer
+is mounted. Disabling it also hides its ghost without changing Composer text. Host- and
+Thread-scoped clear operations remain available. Same-text result metadata updates preserve
+the existing decoration, and mention metadata uses the ordinary Composer mention pipeline.

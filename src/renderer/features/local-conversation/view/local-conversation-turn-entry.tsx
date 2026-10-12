@@ -3,7 +3,15 @@ import { memo, useMemo } from "react";
 import type { CodexConversationChildMembership } from "../../../lib/types";
 import type { ReviewOpenIntent } from "@/features/review/model/review-view-state";
 import { selectTurnRenderModel } from "../projection/build-turn-render-model";
-import type { VisibleConversationTurnEntry } from "../selectors";
+import {
+  isNormalizedConversationTurnEntry,
+  type ConversationTurnListEntry,
+  type VisibleConversationTurnEntry,
+} from "../selectors";
+import {
+  CodexTranscriptTurnEntityContext,
+  useCodexTranscriptTurn,
+} from "../normalized-transcript-hooks";
 import type {
   ThreadComposerShellBackgroundAgentRowModel,
   ThreadPlanSidePanelState,
@@ -20,7 +28,7 @@ interface LocalConversationTurnEntryProps {
   childMemberships?: readonly CodexConversationChildMembership[];
   parentModel?: string | null;
   backgroundAgentRows?: readonly ThreadComposerShellBackgroundAgentRowModel[];
-  entry: VisibleConversationTurnEntry;
+  entry: ConversationTurnListEntry;
   cwd: string | null;
   persistedCollapsed?: boolean;
   onSetCollapsed?: (collapsed: boolean) => void;
@@ -82,10 +90,17 @@ function LocalConversationTurnEntryComponent({
   onRendered,
   latestTurnFollowContentRef,
 }: LocalConversationTurnEntryProps) {
-  const turn = entry.turn;
+  const entityKey = isNormalizedConversationTurnEntry(entry) ? entry.historyEntityKey : null;
+  const turn = useCodexTranscriptTurn(
+    entityKey,
+    isNormalizedConversationTurnEntry(entry) ? null : entry.turn,
+  );
+  const materializedEntry = useMemo<VisibleConversationTurnEntry | null>(
+    () => (turn ? { ...entry, turn } : null),
+    [entry, turn],
+  );
   const goalTimeUsedSeconds = useCodexConversationValue(conversationId, (conversation) =>
-    conversation?.canonicalState?.completedThreadGoalTurnId === entry.turn.turnId &&
-    entry.turn.turnId != null
+    conversation?.canonicalState?.completedThreadGoalTurnId === entry.turnId && entry.turnId != null
       ? conversation.completedThreadGoal?.timeUsedSeconds
       : undefined,
   );
@@ -98,19 +113,21 @@ function LocalConversationTurnEntryComponent({
   const { data: mcpServerStatuses } = useMcpServerStatuses();
   const turnModel = useMemo(
     () =>
-      selectTurnRenderModel({
-        entry,
-        goalTimeUsedSeconds,
-        hostId,
-        canEditTurnUserPrefix,
-        canForkTurn,
-        canOpenSubagents: Boolean(onOpenThread),
-        backgroundAgents: backgroundAgentRows,
-        cwd: threadCwd,
-        projectlessOutputDirectory,
-        mcpApps: mcpApps ?? [],
-        mcpServerStatuses: mcpServerStatuses ?? null,
-      }),
+      materializedEntry
+        ? selectTurnRenderModel({
+            entry: materializedEntry,
+            goalTimeUsedSeconds,
+            hostId,
+            canEditTurnUserPrefix,
+            canForkTurn,
+            canOpenSubagents: Boolean(onOpenThread),
+            backgroundAgents: backgroundAgentRows,
+            cwd: threadCwd,
+            projectlessOutputDirectory,
+            mcpApps: mcpApps ?? [],
+            mcpServerStatuses: mcpServerStatuses ?? null,
+          })
+        : null,
     [
       goalTimeUsedSeconds,
       hostId,
@@ -118,7 +135,7 @@ function LocalConversationTurnEntryComponent({
       canForkTurn,
       onOpenThread,
       backgroundAgentRows,
-      entry,
+      materializedEntry,
       mcpApps,
       mcpServerStatuses,
       projectlessOutputDirectory,
@@ -126,8 +143,10 @@ function LocalConversationTurnEntryComponent({
     ],
   );
 
+  if (!turn || !turnModel) return null;
+
   return (
-    <>
+    <CodexTranscriptTurnEntityContext.Provider value={entityKey}>
       <LocalConversationAboveComposerPortal
         blocks={turnModel.aboveComposerBlocks ?? []}
         conversationId={conversationId}
@@ -179,7 +198,7 @@ function LocalConversationTurnEntryComponent({
           latestTurnFollowContentRef={latestTurnFollowContentRef}
         />
       </div>
-    </>
+    </CodexTranscriptTurnEntityContext.Provider>
   );
 }
 
@@ -190,7 +209,9 @@ export const LocalConversationTurnEntry = memo(
     left.childMemberships === right.childMemberships &&
     left.parentModel === right.parentModel &&
     left.backgroundAgentRows === right.backgroundAgentRows &&
-    left.entry.turn === right.entry.turn &&
+    (isNormalizedConversationTurnEntry(left.entry)
+      ? left.entry === right.entry
+      : !isNormalizedConversationTurnEntry(right.entry) && left.entry.turn === right.entry.turn) &&
     left.entry.requests === right.entry.requests &&
     left.entry.turnKey === right.entry.turnKey &&
     left.entry.turnSearchKey === right.entry.turnSearchKey &&

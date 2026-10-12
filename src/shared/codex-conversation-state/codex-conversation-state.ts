@@ -31,6 +31,8 @@ import type {
   Thread,
   ThreadGoal,
   ThreadItem,
+  ThreadTimelineEntry,
+  ThreadRealtimeItem,
   ThreadSettings,
   ThreadSettingsUpdateParams,
   ThreadResumeResponse,
@@ -51,7 +53,6 @@ import type {
   CodexCanonicalHistoryTopology,
   CodexHistoryTurnItemsPagination,
 } from "./codex-history-topology";
-import { boundCodexReasoningParts } from "./codex-reasoning-parts";
 import {
   mergeCodexThreadEnvironmentSelection,
   type CodexEnvironmentSelectionEvidence,
@@ -724,6 +725,8 @@ export interface CodexCanonicalTurnState
   readonly localMetadata?: unknown;
   readonly mcpAppModelContextAttachments?: unknown;
   readonly items: readonly CodexCanonicalItem[];
+  /** Completion evidence for statusless items, including items in a running Turn. */
+  readonly completedItemIds?: Readonly<Record<string, boolean>>;
   readonly itemsPagination?: CodexHistoryTurnItemsPagination;
 }
 
@@ -739,9 +742,12 @@ export interface CodexCanonicalConversationState
   extends CodexCanonicalConversationContext, CodexCanonicalConversationMetadata {
   readonly workspaceKind?: "project" | "projectless" | null;
   readonly workspaceBrowserRoot?: string | null;
+  readonly canonicalVoiceHistory?: boolean;
+  readonly itemTimeline?: CodexCanonicalItemTimeline;
+  readonly realtimeItems?: Readonly<Record<string, CodexCanonicalRealtimeItem>>;
   readonly unconfirmedTurnSubmissions?: readonly CodexCanonicalUnconfirmedTurnSubmission[];
   readonly turnsPagination?: {
-    readonly source?: "ordinary" | "compact";
+    readonly source?: "ordinary" | "compact" | "timeline";
     readonly olderCursor: string | null;
     readonly oldestLoadedTurnId: string | null;
     readonly isLoadingOlder: boolean;
@@ -755,6 +761,21 @@ export interface CodexCanonicalConversationState
   };
   readonly turns: readonly CodexCanonicalTurnState[];
   readonly requests: readonly CodexCanonicalServerRequest[];
+}
+
+/** Timeline items retain identity; their payloads remain in the canonical Turn item map. */
+export type CodexCanonicalTimelineEntry =
+  | Exclude<ThreadTimelineEntry, { type: "item" }>
+  | (Omit<Extract<ThreadTimelineEntry, { type: "item" }>, "item"> & {
+      readonly item: Pick<CodexCanonicalItem, "id" | "type"> & { readonly completed: boolean };
+    });
+export interface CodexCanonicalItemTimeline {
+  readonly entries: readonly CodexCanonicalTimelineEntry[];
+  readonly activeRealtimeSessionAtPageStart: string | null;
+}
+export interface CodexCanonicalRealtimeItem {
+  readonly item: ThreadRealtimeItem;
+  readonly completed: boolean;
 }
 
 /** Reconstructs the loaded generated-protocol Thread without app-only placeholder occurrences. */
@@ -1086,13 +1107,6 @@ export function materializeCodexCanonicalProtocolItem(
   item: ThreadItem,
   resolveCollabReceiverThread?: (threadId: string) => Thread | null,
 ): CodexCanonicalItem {
-  if (item.type === "reasoning") {
-    const summary = boundCodexReasoningParts(item.summary);
-    const content = boundCodexReasoningParts(item.content);
-    if (summary === item.summary && content === item.content) return item;
-    return { ...item, summary, content };
-  }
-
   if (item.type === "imageGeneration") {
     const savedSource =
       typeof item.savedPath === "string" ? normalizeCodexImageSource(item.savedPath) : null;
@@ -1402,6 +1416,10 @@ export function mergeCodexCanonicalTurnState(
       terminalRegression && options.preserveExistingTerminalState ? existing.error : incoming.error,
     durationMs: existing.durationMs ?? incoming.durationMs,
     items,
+    completedItemIds:
+      incoming.completedItemIds === undefined && existing.completedItemIds === undefined
+        ? undefined
+        : { ...incoming.completedItemIds, ...existing.completedItemIds },
     entityKey: existing.entityKey ?? incoming.entityKey,
     params: mergeCodexCanonicalTurnParams(existing.params, incoming.params),
     permissionParamsSource: existing.permissionParamsSource,

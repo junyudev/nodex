@@ -19,6 +19,7 @@ import { ThreadBlockRenderer } from "./blocks/local-conversation-block-renderer"
 import { ThreadMcpAppsProvider } from "./shared/tools/mcp-apps-context";
 import { projectAgentBodyCollapsePresentation } from "../projection/agent-body-collapse-presentation";
 import { CodexFirstResponseVisibilityMarker } from "../codex-turn-first-response-view";
+import { CodexTranscriptReasoningSummary } from "../normalized-transcript-hooks";
 
 const EMPTY_THREAD_LIVE_ACTIVITY: ThreadTurnModel["liveActivity"] = {
   global: {
@@ -166,8 +167,31 @@ function renderAgentUnits(
 
 function ThreadLiveActivityFallbackForTurn({ turn }: { turn: ThreadTurnModel }) {
   if (turn.liveActivity.fallback.owner !== "standalone") return null;
-
-  return <ThreadLiveActivityFallback message={turn.liveActivity.fallback.message} />;
+  const reasoning = turn.turn?.items.findLast(
+    (item) => item.kind === "reasoning" || item.semanticKind === "reasoning",
+  );
+  return (
+    <ThreadLiveActivityFallback
+      message={
+        <CodexTranscriptReasoningSummary
+          item={
+            reasoning
+              ? {
+                  id: reasoning.itemId,
+                  turnId: reasoning.turnId,
+                  createdAt: reasoning.createdAt,
+                  updatedAt: reasoning.updatedAt,
+                  searchableText: "",
+                  type: "reasoning",
+                  entry: reasoning,
+                }
+              : null
+          }
+          fallback={turn.liveActivity.fallback.message}
+        />
+      }
+    />
+  );
 }
 
 export function resolveThreadBlockRenderKey(block: { id: string; renderKey?: unknown }): string {
@@ -364,7 +388,7 @@ function ThreadTurnBody({
   );
 }
 
-export function ThreadLiveActivityFallback({ message }: { message?: string | null }) {
+export function ThreadLiveActivityFallback({ message }: { message?: ReactNode }) {
   return (
     <div className="min-w-0 py-0">
       <CodexShimmerText className="text-size-chat truncate text-token-foreground/30">

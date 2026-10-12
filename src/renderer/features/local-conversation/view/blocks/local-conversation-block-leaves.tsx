@@ -90,6 +90,10 @@ import type {
 } from "../../thread-stage-types";
 import { THREAD_VISUAL_TOKENS } from "./local-conversation-visual-tokens";
 import { useHookFeedbackSettingsNavigation } from "../hook-feedback-settings-navigation";
+import {
+  useCodexTranscriptBlock,
+  CodexTranscriptReasoningSummary,
+} from "../../normalized-transcript-hooks";
 
 export interface ThreadLeafBlockProps {
   block: ThreadTranscriptBlockModel;
@@ -416,7 +420,12 @@ export function ThreadAgentActivityGroupBlock({
     ) : block.header.kind === "active" ? (
       <ActiveActivitySummaryText header={block.header} />
     ) : (
-      <CodexShimmerText>{block.header.message ?? "Thinking"}</CodexShimmerText>
+      <CodexShimmerText>
+        <CodexTranscriptReasoningSummary
+          item={block.entries.findLast((entry) => entry.type === "reasoning") ?? null}
+          fallback={block.header.message}
+        />
+      </CodexShimmerText>
     );
   const summary = (
     <span className="inline-flex max-w-full min-w-0 items-center gap-1.5 overflow-hidden">
@@ -483,7 +492,7 @@ export function ThreadAgentActivityGroupBlock({
 }
 
 export function ThreadToolSurfaceBlock({
-  block,
+  block: inputBlock,
   isStreamingTurn,
   projectWorkspacePath,
   threadCwd,
@@ -492,6 +501,7 @@ export function ThreadToolSurfaceBlock({
   onOpenSummaryScheduledAutomation,
   onOpenMcpAppSidePanel,
 }: ThreadLeafBlockProps) {
+  const block = useCodexTranscriptBlock(inputBlock);
   const { settings } = useCodexThreadSettings();
   const item = block.entry;
   const threadDetailLevel = resolveCodexThreadDetailLevel(settings.detailLevel);
@@ -1042,12 +1052,13 @@ export function ThreadUserBubbleBlock(props: ThreadLeafBlockProps) {
 }
 
 export function ThreadReasoningBlock({
-  block,
+  block: inputBlock,
   isLatestTurn,
   isStreamingTurn,
   projectWorkspacePath,
   threadCwd,
 }: ThreadLeafBlockProps) {
+  const block = useCodexTranscriptBlock(inputBlock);
   const item = block.entry;
 
   return (
@@ -1061,7 +1072,7 @@ export function ThreadReasoningBlock({
 }
 
 export function ThreadPlanCardBlock({
-  block,
+  block: inputBlock,
   isLatestTurn,
   isStreamingTurn,
   projectWorkspacePath,
@@ -1070,6 +1081,7 @@ export function ThreadPlanCardBlock({
   onClosePlanSidePanel,
   planSidePanelState,
 }: ThreadLeafBlockProps) {
+  const block = useCodexTranscriptBlock(inputBlock);
   const item = block.entry;
   const isInProgress = item.status === "inProgress";
   const shouldParseIncompleteMarkdown = isStreamingTurn && (isInProgress || isLatestTurn);
@@ -1148,7 +1160,7 @@ export function ThreadWorkedForBlock({ block }: { block: ThreadWorkedForBlockMod
 }
 
 export function ThreadAssistantBodyBlock({
-  block,
+  block: inputBlock,
   isLatestTurn,
   isStreamingTurn,
   isSearchMatch = false,
@@ -1159,6 +1171,7 @@ export function ThreadAssistantBodyBlock({
   assistantAfter,
   alwaysShowAssistantMessageActions = false,
 }: ThreadLeafBlockProps) {
+  const block = useCodexTranscriptBlock(inputBlock);
   const markdownText = stripCodexRemarkDirectiveLines(block.entry.markdownText);
   const isAssistantItemStreaming = isStreamingTurn && block.entry.status === "inProgress";
   const assistantActions = block.assistantMessageActions;

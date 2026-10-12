@@ -727,6 +727,8 @@ describe("projectCodexCanonicalTurnViews", () => {
     });
 
     expect(views[0]?.itemId).toBe(`${TURN_ID}:input`);
+    expect(views[0]?.rawItemId).toBe("server-user");
+    expect(views[0]?.rawItemType).toBe("userMessage");
     expect(views.some((view) => view.itemId === "server-user")).toBe(false);
     expect(views.at(-1)?.itemId).toBe("assistant");
   });
@@ -776,6 +778,9 @@ describe("projectCodexCanonicalTurnViews", () => {
     });
 
     expect(equalViews.map((view) => view.itemId)).toEqual([`${TURN_ID}:input`]);
+    expect(equalViews[0]?.rawItemId).toBe("equal-user");
+    expect(activityViews[0]?.rawItemId).toBeUndefined();
+    expect(structuralActivityViews[0]?.rawItemId).toBeUndefined();
     expect(activityViews.map((view) => view.itemId)).toEqual([
       `${TURN_ID}:input`,
       "hook",
@@ -796,6 +801,87 @@ describe("projectCodexCanonicalTurnViews", () => {
       "userMessage",
       "steered",
     ]);
+  });
+
+  test("retains the explicit native opening identity before its raw item becomes resident", () => {
+    const turn: CodexCanonicalTurnState = {
+      ...buildCanonicalTurn({ items: [] }),
+      itemsView: "summary",
+      itemsPagination: {
+        itemsView: "summary",
+        olderCursor: "older-items",
+        isLoadingOlder: false,
+        hasLoadedOldest: false,
+        oldestUserInput: buildTurnParams().input,
+        openingUserMessageId: "native-opening",
+        openingUserMessageClientId: "client-prompt",
+      },
+    };
+    const [opening] = projectCodexCanonicalTurnViews({
+      threadId: THREAD_ID,
+      turn,
+      turnKey: "local-occurrence",
+      observedAtMs: 1000,
+    });
+    expect(opening).toMatchObject({
+      itemId: "local-occurrence:input",
+      rawItemId: "native-opening",
+      rawItemType: "userMessage",
+      markdownText: "Prompt",
+      rawItem: { id: "local-occurrence:input", clientId: "client-prompt" },
+    });
+  });
+
+  test.each([
+    { openingUserMessageId: undefined, clientId: null, expectedNativeId: undefined },
+    { openingUserMessageId: null, clientId: "client-prompt", expectedNativeId: undefined },
+    { openingUserMessageId: undefined, clientId: "client-prompt", expectedNativeId: "suffix-user" },
+    { openingUserMessageId: "native-opening", clientId: null, expectedNativeId: "native-opening" },
+  ])("resolves only proven opening identities in a partial suffix: %o", (fixture) => {
+    const turn: CodexCanonicalTurnState = {
+      ...buildCanonicalTurn({
+        items: [
+          materializeCodexCanonicalProtocolItem({
+            type: "userMessage",
+            id: "suffix-user",
+            clientId: fixture.clientId,
+            content: [{ type: "text", text: "Prompt", text_elements: [] }],
+          }),
+        ],
+      }),
+      itemsView: "summary",
+      itemsPagination: {
+        itemsView: "summary",
+        olderCursor: "older-items",
+        isLoadingOlder: false,
+        hasLoadedOldest: false,
+        openingUserMessageId: fixture.openingUserMessageId,
+      },
+    };
+    const [opening] = projectCodexCanonicalTurnViews({
+      threadId: THREAD_ID,
+      turn,
+      observedAtMs: 1000,
+    });
+    expect(opening?.itemId).toBe(`${TURN_ID}:input`);
+    expect(opening?.rawItemId).toBe(fixture.expectedNativeId);
+  });
+
+  test("does not infer opening identity across a missing raw prefix", () => {
+    const items: CodexCanonicalItem[] = [];
+    items[2] = materializeCodexCanonicalProtocolItem({
+      type: "userMessage",
+      id: "user-after-gap",
+      clientId: "client-prompt",
+      content: [{ type: "text", text: "Prompt", text_elements: [] }],
+    });
+    const views = projectCodexCanonicalTurnViews({
+      threadId: THREAD_ID,
+      turn: buildCanonicalTurn({ items }),
+      observedAtMs: 1000,
+    });
+    expect(views[0]?.rawItemId).toBeUndefined();
+    expect(views.map((view) => view.itemId)).toEqual([`${TURN_ID}:input`, "user-after-gap"]);
   });
 
   test("keeps the server user message when no params-owned user row is visible", () => {

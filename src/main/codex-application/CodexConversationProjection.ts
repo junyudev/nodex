@@ -148,6 +148,22 @@ export class CodexConversationProjection extends Context.Service<
   CodexConversationProjectionService
 >()("nodex/main/codex-application/CodexConversationProjection") {}
 
+/** Canonical native identities override older legacy copies; unadmitted local Turns still count. */
+export function codexCanonicalConversationActivityStatus(
+  state: CodexCanonicalConversationState | null | undefined,
+): CodexThreadStatusType {
+  if (!state) return "idle";
+  const canonical = state.turnHistory?.history.entitiesByKey;
+  const canonicalTurns = canonical ? Object.values(canonical) : [];
+  if (canonicalTurns.some((turn) => turn.status === "inProgress")) return "active";
+  const nativeIds = new Set(canonicalTurns.map((turn) => turn.turnId));
+  return state.turns.some(
+    (turn) => turn.status === "inProgress" && (turn.turnId === null || !nativeIds.has(turn.turnId)),
+  )
+    ? "active"
+    : "idle";
+}
+
 /**
  * The canonical application projection for one Profile. Commands name semantic outcomes;
  * the Module keeps canonical mutation and dormant accepted-replica revisioning coherent. A live
@@ -228,11 +244,7 @@ export const make: Effect.Effect<
     });
 
   const canonicalStatus = (threadId: string): CodexThreadStatusType =>
-    aggregate(threadId)
-      ?.readCanonicalState()
-      ?.turns.some((turn) => turn.status === "inProgress")
-      ? "active"
-      : "idle";
+    codexCanonicalConversationActivityStatus(aggregate(threadId)?.readCanonicalState());
 
   const required = (operation: string, threadId: string) =>
     Effect.suspend(() => {

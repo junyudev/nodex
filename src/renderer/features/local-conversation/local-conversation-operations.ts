@@ -14,6 +14,7 @@ import {
 const queryChannels = [
   "asset:resolve-path",
   "codex:account:read",
+  "codex:composer-prediction:availability",
   "codex:connection:status",
   "codex:dictation:state:read",
   "codex:permission:state:get",
@@ -28,6 +29,8 @@ const queryChannels = [
 
 const controlChannels = [
   "codex:approval:respond",
+  "codex:composer-prediction:request",
+  "codex:composer-prediction:clear",
   "codex:dynamic-tool-call:respond",
   "codex:mcp-elicitation:respond",
   "codex:option-picker:respond",

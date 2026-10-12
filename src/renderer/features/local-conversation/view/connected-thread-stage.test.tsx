@@ -216,6 +216,8 @@ vi.mock("../local-conversation-deps", () => ({
         sourceEpoch: "stage-fixture",
         supportsPaginatedHistory: true,
         supportsTurnApprovalsReviewer: false,
+        supportsSearchOccurrences: false,
+        appServerVersion: null,
         supportsThreadRevert: false,
         accountContext: { identity: { kind: "loggedOut" }, executionHostKey: "local" },
       };
@@ -285,7 +287,7 @@ vi.mock("../local-conversation-deps", () => ({
 
     if (channel === "codex:app-server:request") {
       const { method, params } = (
-        args[0] as { request: { method: string; params: { threadId?: string } } }
+        args[0] as { request: { method: string; params: { threadId?: string; turnId?: string } } }
       ).request;
       if (method === "model/list")
         return { type: "result", result: { data: [], nextCursor: null } };
@@ -316,6 +318,30 @@ vi.mock("../local-conversation-deps", () => ({
         };
       if (method === "thread/read")
         return { type: "result", result: { thread: buildResumeResponse(params.threadId!).thread } };
+      if (method === "thread/items/list")
+        return {
+          type: "result",
+          result: {
+            data: [
+              {
+                turnId: params.turnId,
+                startedAtMs: 1,
+                completedAtMs: 2,
+                item: {
+                  type: "agentMessage",
+                  id: "history-message",
+                  text: `History for ${params.threadId}`,
+                  phase: "final_answer",
+                  memoryCitation: null,
+                  delivery: null,
+                  questions: null,
+                },
+              },
+            ],
+            nextCursor: null,
+            backwardsCursor: null,
+          },
+        };
       if (method === "thread/resume")
         return { type: "result", result: buildResumeResponse(params.threadId!) };
       if (method === "thread/goal/get") return { type: "result", result: { goal: null } };
@@ -1984,9 +2010,11 @@ describe("ConnectedThreadStage new-chat home", () => {
       });
 
       expect(view.container.querySelectorAll('[data-user-message-bubble="true"]')).toHaveLength(1);
-      expect(
-        view.container.querySelector('[data-user-message-bubble="true"]')?.textContent,
-      ).toContain("Canonical first submission is visible.");
+      await waitFor(() =>
+        expect(
+          view.container.querySelector('[data-user-message-bubble="true"]')?.textContent,
+        ).toContain("Canonical first submission is visible."),
+      );
       expect(sessionFirstSubmissionOwner.getSnapshot().submissions).toHaveLength(1);
       await advancePresentationFrame();
       expect(sessionFirstSubmissionOwner.getSnapshot().submissions).toHaveLength(1);
@@ -2131,6 +2159,7 @@ describe("ConnectedThreadStage new-chat home", () => {
       await settleAsyncRender();
     });
 
+    await view.findByText("Remove the redundant transitions.");
     const renderedText = textContent(view.container);
     const home = view.container.querySelector<HTMLElement>("[data-new-thread-home-main='true']");
 

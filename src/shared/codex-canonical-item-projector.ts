@@ -327,7 +327,11 @@ function isDuplicateServerUserMessage(input: {
   const matchesInput = areStructurallyEqual(input.item.content, input.params.input);
   if (!matchesClientId && !matchesInput) return false;
 
-  return input.items.slice(0, input.itemIndex).every(isUserMessageDuplicatePreludeItem);
+  for (let index = 0; index < input.itemIndex; index += 1) {
+    const precedingItem = input.items[index];
+    if (!precedingItem || !isUserMessageDuplicatePreludeItem(precedingItem)) return false;
+  }
+  return true;
 }
 
 function collectCodexCanonicalDuplicateUserMessageIds(
@@ -341,6 +345,29 @@ function collectCodexCanonicalDuplicateUserMessageIds(
     duplicateIds.add(item.id);
   });
   return duplicateIds;
+}
+
+/** The params-owned row keeps its display key while retaining its proven native opening identity. */
+function resolveTurnParamsRawItemId(turn: CodexCanonicalTurnState): string | undefined {
+  const openingId = turn.itemsPagination?.openingUserMessageId;
+  if (openingId !== undefined) return openingId ?? undefined;
+
+  const item = turn.items.find((candidate, itemIndex) => {
+    if (candidate?.type !== "userMessage") return false;
+    if (
+      turn.itemsPagination?.hasLoadedOldest === false &&
+      (candidate.clientId === null || candidate.clientId !== turn.params.clientUserMessageId)
+    ) {
+      return false;
+    }
+    return isDuplicateServerUserMessage({
+      items: turn.items,
+      itemIndex,
+      item: candidate,
+      params: turn.params,
+    });
+  });
+  return item?.id;
 }
 
 function projectServerUserMessageAsSteered(view: CodexItemView): CodexItemView {
@@ -407,6 +434,7 @@ function projectTurnParamsUserView(input: {
   readonly turnId: string | null;
   readonly turnKey: string;
   readonly params: CodexCanonicalTurnParams;
+  readonly rawItemId?: string;
   readonly blocked: boolean;
   readonly observedAtMs: number;
   readonly goalProjection: ReturnType<typeof readCodexCanonicalThreadGoalTranscriptProjection>;
@@ -437,6 +465,7 @@ function projectTurnParamsUserView(input: {
     threadId: input.threadId,
     turnId: input.turnId,
     itemId,
+    ...(input.rawItemId ? { rawItemId: input.rawItemId, rawItemType: "userMessage" } : {}),
     type: "userMessage",
     normalizedKind: "userMessage",
     semanticKind: "userMessage",
@@ -1327,6 +1356,10 @@ export function projectCodexCanonicalTurnViews(
     turnId,
     turnKey,
     params: input.turn.params,
+    rawItemId:
+      input.preserveServerUserMessages === true
+        ? undefined
+        : resolveTurnParamsRawItemId(input.turn),
     blocked,
     observedAtMs: input.observedAtMs,
     goalProjection: readCodexCanonicalThreadGoalTranscriptProjection(input.turn),

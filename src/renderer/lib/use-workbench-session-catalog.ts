@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef } from "react";
+import { dispatchWorkbenchCodexNavigation } from "../features/local-conversation/use-workbench-codex-navigation";
 import { useQueries, useQuery, useQueryClient } from "@tanstack/react-query";
 import type {
   Project,
@@ -616,6 +617,8 @@ export function useWorkbenchSessionCatalog({
   const select = useCallback(
     (session: ProjectSession | WorkbenchSessionPresentation) => {
       const domain = "domain" in session ? session.domain : session;
+      if (window.location.kind !== "session" || window.location.sessionId !== domain.id)
+        dispatchWorkbenchCodexNavigation(domain.thread);
       window.selectSession({
         id: domain.id,
         projectId: domain.projectId,

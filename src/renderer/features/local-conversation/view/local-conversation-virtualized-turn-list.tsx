@@ -1,7 +1,17 @@
-import { memo, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import {
+  memo,
+  useCallback,
+  useEffect,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  useState,
+  useSyncExternalStore,
+} from "react";
 import { flushSync } from "react-dom";
 import { animate, motion, useMotionValue, type MotionValue } from "motion/react";
 import { useResolvedReducedMotion } from "@/lib/use-reduced-motion";
+import { scheduleAfterPaint } from "@/lib/schedule-after-paint";
 import type { CodexConversationChildMembership } from "../../../lib/types";
 import type { ReviewOpenIntent } from "@/features/review/model/review-view-state";
 import { cn } from "../../../lib/utils";
@@ -9,8 +19,20 @@ import type {
   CodexHistoryBoundaryRef,
   CodexHistoryRow,
 } from "../../../../shared/codex-conversation-state/codex-history-topology";
-import type { CodexConversationHistoryTurnItemsRef } from "../../../../shared/codex-conversation-history-page";
-import type { VisibleConversationTurnEntry } from "../selectors";
+import {
+  codexConversationHistoryTurnItemsRefKey,
+  type CodexConversationHistoryTurnItemsRef,
+} from "../../../../shared/codex-conversation-history-page";
+import {
+  isNormalizedConversationTurnEntry,
+  readConversationTurnListEntry,
+  readConversationTurnListEntryStatus,
+  type ConversationTurnListEntry,
+} from "../selectors";
+import {
+  projectCodexHistoryViewportBoundary,
+  type CodexHistoryViewportBoundary,
+} from "../../../../shared/codex-history-policy";
 import type {
   ThreadComposerShellBackgroundAgentRowModel,
   ThreadPlanSidePanelState,
@@ -32,6 +54,7 @@ import {
   resolveThreadLatestTurnPhase,
   resolveTurnCenterDistanceFromBottom,
   resolveVirtualizedTurnViewportState,
+  resolveVisibleTurnRangeFromBottomDistance,
   shouldAllowResponseSpacerGrowth,
   THREAD_NEAR_BOTTOM_THRESHOLD_PX,
   type ThreadLatestTurnFollowState,
@@ -53,6 +76,7 @@ import {
   LocalConversationHistoryGap,
   type LocalConversationHistoryGapLayout,
   type LocalConversationHistoryGapRow,
+  type LocalConversationHistoryGapRequestState,
 } from "./local-conversation-history-gap";
 
 const TURN_GAP_PX = 12;
@@ -84,22 +108,28 @@ function readMeasuredBlockSizePx(entry: ResizeObserverEntry): number {
   const borderBoxSize = entry.borderBoxSize;
   const size = Array.isArray(borderBoxSize) ? borderBoxSize[0] : borderBoxSize;
   const blockSize = size?.blockSize;
-  if (typeof blockSize === "number" && Number.isFinite(blockSize) && blockSize > 0) {
+  if (typeof blockSize === "number" && Number.isFinite(blockSize) && blockSize >= 0) {
     return blockSize;
   }
   const rectHeight = entry.contentRect.height;
-  if (Number.isFinite(rectHeight) && rectHeight > 0) return rectHeight;
+  if (Number.isFinite(rectHeight) && rectHeight >= 0) return rectHeight;
   return readElementBlockSizePx(entry.target as HTMLElement);
 }
 
 function readElementBlockSizePx(element: HTMLElement): number {
   const rectHeight = element.getBoundingClientRect().height;
-  if (Number.isFinite(rectHeight) && rectHeight > 0) return rectHeight;
+  if (Number.isFinite(rectHeight) && rectHeight >= 0)
+    return rectHeight / readCodexWindowZoom(element);
   return element.offsetHeight;
 }
 
 function normalizeMeasuredHeightPx(heightPx: number): number {
-  return Math.max(1, Math.round(heightPx));
+  return Math.max(1, heightPx);
+}
+
+function readPhysicalPixelScale(element: HTMLElement | null): number {
+  const ratio = window.devicePixelRatio;
+  return readCodexWindowZoom(element) * (Number.isFinite(ratio) && ratio > 0 ? ratio : 1);
 }
 
 function getBottomViewportOverflowPx(input: {
@@ -143,7 +173,7 @@ export type LocalConversationVirtualizedTurnTargetResolver = (
   turnElement: HTMLElement,
 ) => HTMLElement | null;
 
-export type LocalConversationVirtualizedTurnListEntry = VisibleConversationTurnEntry;
+export type LocalConversationVirtualizedTurnListEntry = ConversationTurnListEntry;
 
 type LocalConversationVirtualizedHistoryRow =
   | {
@@ -193,6 +223,7 @@ export interface LocalConversationVirtualizedTurnListApi {
   scrollToKey: (
     turnKey: string,
     getTargetElement?: LocalConversationVirtualizedTurnTargetResolver,
+    options?: { readonly signal?: AbortSignal },
   ) => Promise<void>;
   setScrollMode: ReturnType<typeof useLocalConversationThreadScrollController>["setScrollMode"];
   getScrollMode: ReturnType<typeof useLocalConversationThreadScrollController>["getScrollMode"];
@@ -243,6 +274,9 @@ interface LocalConversationVirtualizedTurnListProps {
   onVisibleContentReady?: () => void;
   historyRows?: readonly CodexHistoryRow[];
   onLoadHistoryBoundary?: (boundary: CodexHistoryBoundaryRef) => Promise<unknown>;
+  onHistoryRetentionBoundaryChange?: (
+    boundary: CodexHistoryViewportBoundary | null | undefined,
+  ) => void;
   historyTurnItemsRefs?: Readonly<
     Record<
       string,
@@ -287,7 +321,6 @@ interface PendingVirtualizedTurnScrollTarget {
 
 interface TurnMeasurement {
   element: HTMLElement;
-  firstHeightPx: number;
   heightPx: number;
 }
 
@@ -313,6 +346,8 @@ interface CoreProps extends Omit<
   | "onLoadHistoryTurnItems"
   | "scrollElement"
 > {
+  historyGapState: LocalConversationHistoryGapRequestState;
+  retryHistoryBoundary: (boundary: CodexHistoryBoundaryRef) => void;
   historyRows?: readonly CodexHistoryRow[];
   initialScrollOffset: number;
   latestTurnYMotion: MotionValue<number>;
@@ -529,6 +564,9 @@ function LocalConversationVirtualizedTurnListCore({
   latestTurnYMotion,
   onLatestTurnHeightChange,
   onViewportChange,
+  onHistoryRetentionBoundaryChange,
+  historyGapState,
+  retryHistoryBoundary,
   preserveMeasuredTurnViewport = false,
   scrollController,
   getPendingRestoreScrollDistanceFromBottomPx,
@@ -538,6 +576,11 @@ function LocalConversationVirtualizedTurnListCore({
     () => initialRestoreState?.turnHeightsByKey ?? {},
   );
   const [listRoot, setListRoot] = useState<HTMLDivElement | null>(null);
+  const [pixelScale, setPixelScale] = useState(() =>
+    readPhysicalPixelScale(scrollController.getScrollElement()),
+  );
+  const pixelScaleRef = useRef(pixelScale);
+  pixelScaleRef.current = pixelScale;
   const rows = useMemo(
     () => buildLocalConversationVirtualizedHistoryRows({ entries, historyRows }),
     [entries, historyRows],
@@ -548,11 +591,13 @@ function LocalConversationVirtualizedTurnListCore({
         entries: rows.map((row) => ({
           turnKey: row.layoutKey,
           estimatedHeightPx: row.kind === "gap" ? row.row.estimatedHeightPx : null,
+          type: row.kind,
         })),
         gapPx: TURN_GAP_PX,
         measuredHeightsByKey: measuredHeights,
+        pixelScale,
       }),
-    [measuredHeights, rows],
+    [measuredHeights, pixelScale, rows],
   );
   const [virtualViewportState, setVirtualViewportState] = useState<VirtualizedTurnViewportState>(
     () =>
@@ -605,13 +650,39 @@ function LocalConversationVirtualizedTurnListCore({
       viewportHeightPx: number,
       previousDistanceFromBottomPx?: number,
     ) => {
-      if (!onViewportChange) return;
+      if (!onViewportChange && !onHistoryRetentionBoundaryChange) return;
       const currentLayout = layoutRef.current;
       const viewportEndPx = Math.max(
         0,
         Math.min(currentLayout.totalHeightPx, currentLayout.totalHeightPx - distanceFromBottomPx),
       );
       const viewportStartPx = Math.max(0, viewportEndPx - viewportHeightPx);
+      const range = resolveVisibleTurnRangeFromBottomDistance({
+        distanceFromBottomPx,
+        layout: currentLayout,
+        overscanCount: 0,
+        viewportHeightPx,
+      });
+      onHistoryRetentionBoundaryChange?.(
+        projectCodexHistoryViewportBoundary({
+          distanceFromBottom: distanceFromBottomPx,
+          hasPendingScrollTarget:
+            activePendingTargetRef.current !== null ||
+            getPendingRestoreScrollDistanceFromBottomPx() !== null,
+          viewportRows: rowsRef.current.slice(range.startIndex, range.endIndex).map((row) =>
+            row.kind === "gap"
+              ? { kind: "gap" }
+              : {
+                  kind: "content",
+                  turnId: row.entry.turnId,
+                  status: readConversationTurnListEntryStatus(row.entry),
+                  turnItemIds: isNormalizedConversationTurnEntry(row.entry)
+                    ? row.entry.turnItemIds
+                    : row.entry.turn.itemIds,
+                },
+          ),
+        }),
+      );
       const previousViewportEndPx =
         previousDistanceFromBottomPx == null
           ? viewportEndPx
@@ -645,7 +716,7 @@ function LocalConversationVirtualizedTurnListCore({
             : viewportEndPx > previousViewportEndPx
               ? { originPx: previousViewportEndPx, targetPx: viewportEndPx }
               : null;
-      onViewportChange({
+      onViewportChange?.({
         distanceFromBottomPx,
         gaps,
         turns,
@@ -657,7 +728,11 @@ function LocalConversationVirtualizedTurnListCore({
         viewportStartPx,
       });
     },
-    [onViewportChange],
+    [
+      getPendingRestoreScrollDistanceFromBottomPx,
+      onHistoryRetentionBoundaryChange,
+      onViewportChange,
+    ],
   );
 
   const updateViewportState = useCallback(
@@ -727,13 +802,8 @@ function LocalConversationVirtualizedTurnListCore({
         : getPendingRestoreScrollDistanceFromBottomPx();
 
       for (const [turnKey, measurement] of measurements) {
-        if (!Number.isFinite(measurement.heightPx) || measurement.heightPx <= 0) continue;
+        if (!Number.isFinite(measurement.heightPx) || measurement.heightPx < 0) continue;
         const nextHeightPx = normalizeMeasuredHeightPx(measurement.heightPx);
-        const firstHeightPx =
-          Number.isFinite(measurement.firstHeightPx) && measurement.firstHeightPx > 0
-            ? normalizeMeasuredHeightPx(measurement.firstHeightPx)
-            : nextHeightPx;
-        const previousMeasuredHeightPx = currentHeights[turnKey] ?? firstHeightPx;
         if (currentHeights[turnKey] === nextHeightPx) continue;
         if (nextHeights === currentHeights) {
           nextHeights = { ...currentHeights };
@@ -743,13 +813,14 @@ function LocalConversationVirtualizedTurnListCore({
 
         const turnIndex = currentLayout.turnIndexByKey.get(turnKey);
         if (turnIndex == null) continue;
+        const roundedHeightPx =
+          Math.round(nextHeightPx * pixelScaleRef.current) / pixelScaleRef.current;
+        const layoutHeightPx = currentLayout.heightsPx[turnIndex] ?? roundedHeightPx;
+        const layoutDeltaPx = roundedHeightPx - layoutHeightPx;
         if (turnKey === latestTurnKey) {
-          latestTurnHeightDeltaPx += nextHeightPx - previousMeasuredHeightPx;
+          latestTurnHeightDeltaPx += currentHeights[turnKey] === undefined ? 0 : layoutDeltaPx;
           latestTurnElement = measurement.element;
         }
-
-        const layoutHeightPx = currentLayout.heightsPx[turnIndex] ?? nextHeightPx;
-        const layoutDeltaPx = nextHeightPx - layoutHeightPx;
         const bottomOffsetPx = currentLayout.bottomOffsetsPx[turnIndex] ?? 0;
         const isLatestTurn = turnKey === latestTurnKey;
         if (
@@ -769,9 +840,11 @@ function LocalConversationVirtualizedTurnListCore({
         entries: rowsRef.current.map((row) => ({
           turnKey: row.layoutKey,
           estimatedHeightPx: row.kind === "gap" ? row.row.estimatedHeightPx : null,
+          type: row.kind,
         })),
         gapPx: TURN_GAP_PX,
         measuredHeightsByKey: nextHeights,
+        pixelScale: pixelScaleRef.current,
       });
       let nextDistanceFromBottomPx = currentViewport.distanceFromBottomPx;
       let scrollDistanceFromBottomPx: number | null = null;
@@ -884,16 +957,17 @@ function LocalConversationVirtualizedTurnListCore({
         const metadata = observedElementMetadataRef.current.get(entry.target);
         if (!metadata) continue;
         const measuredBlockSizePx = readMeasuredBlockSizePx(entry);
-        if (measuredBlockSizePx <= 0) continue;
-        const heightPx = normalizeMeasuredHeightPx(measuredBlockSizePx);
+        if (measuredBlockSizePx < 0) continue;
+        const heightPx =
+          metadata.kind === "turn"
+            ? normalizeMeasuredHeightPx(measuredBlockSizePx)
+            : measuredBlockSizePx;
         if (metadata.kind === "turn") {
           const turnKey = metadata.turnKey;
           if (!turnKey) continue;
           const element = entry.target as HTMLElement;
-          const previous = pendingTurnMeasurementsRef.current.get(turnKey);
           pendingTurnMeasurementsRef.current.set(turnKey, {
             element,
-            firstHeightPx: previous?.firstHeightPx ?? heightPx,
             heightPx,
           });
           continue;
@@ -919,7 +993,6 @@ function LocalConversationVirtualizedTurnListCore({
         const heightPx = normalizeMeasuredHeightPx(measuredHeightPx);
         pendingTurnMeasurementsRef.current.set(turnKey, {
           element,
-          firstHeightPx: heightPx,
           heightPx,
         });
         scheduleMeasurementFlush(false);
@@ -946,7 +1019,7 @@ function LocalConversationVirtualizedTurnListCore({
       observedElementMetadataRef.current.set(element, { kind: "latest-turn-follow-content" });
       const measuredHeightPx = readElementBlockSizePx(element);
       if (measuredHeightPx > 0) {
-        followContentHeightsRef.current.set(element, normalizeMeasuredHeightPx(measuredHeightPx));
+        followContentHeightsRef.current.set(element, measuredHeightPx);
         reportLatestTurnFollowContentHeight();
       }
       const observer = getResizeObserver();
@@ -971,23 +1044,56 @@ function LocalConversationVirtualizedTurnListCore({
   }, []);
 
   const scrollToKey = useCallback(
-    (turnKey: string, getTargetElement?: LocalConversationVirtualizedTurnTargetResolver) => {
+    (
+      turnKey: string,
+      getTargetElement?: LocalConversationVirtualizedTurnTargetResolver,
+      options?: { readonly signal?: AbortSignal },
+    ) => {
+      if (options?.signal?.aborted) return Promise.resolve();
+      onHistoryRetentionBoundaryChange?.(null);
       activePendingTargetRef.current?.complete();
       requestIdRef.current += 1;
       const requestId = requestIdRef.current;
       return new Promise<void>((resolve) => {
         const target: PendingVirtualizedTurnScrollTarget = {
-          complete: resolve,
+          complete: () => {
+            options?.signal?.removeEventListener("abort", abort);
+            resolve();
+          },
           getTargetElement,
           requestId,
           turnKey,
         };
+        const abort = () => {
+          if (activePendingTargetRef.current === target) activePendingTargetRef.current = null;
+          setPendingScrollTarget((current) => (current === target ? null : current));
+          target.complete();
+        };
+        options?.signal?.addEventListener("abort", abort, { once: true });
         activePendingTargetRef.current = target;
         scrollController.setScrollMode("programmaticFind");
         setPendingScrollTarget(target);
       });
     },
-    [scrollController],
+    [onHistoryRetentionBoundaryChange, scrollController],
+  );
+
+  useLayoutEffect(() => {
+    emitViewportChange(
+      virtualViewportState.distanceFromBottomPx,
+      virtualViewportState.viewportHeightPx,
+    );
+  }, [
+    emitViewportChange,
+    layout,
+    pendingScrollTarget,
+    virtualViewportState.distanceFromBottomPx,
+    virtualViewportState.viewportHeightPx,
+  ]);
+
+  useEffect(
+    () => () => onHistoryRetentionBoundaryChange?.(undefined),
+    [onHistoryRetentionBoundaryChange],
   );
 
   useEffect(() => {
@@ -1038,6 +1144,7 @@ function LocalConversationVirtualizedTurnListCore({
       previousDistanceFromBottomPx?: number,
       advanceViewportRevision = false,
     ) => {
+      setPixelScale(readPhysicalPixelScale(scrollElement));
       updateViewportState(
         distanceFromBottomPx,
         getViewportHeightPx(),
@@ -1046,6 +1153,8 @@ function LocalConversationVirtualizedTurnListCore({
       );
     };
     syncViewportState();
+    const handleWindowResize = () => syncViewportState();
+    window.addEventListener("resize", handleWindowResize);
     const removeScrollListener = scrollController.addScrollListener((distanceFromBottomPx) => {
       syncViewportState(distanceFromBottomPx);
     });
@@ -1067,6 +1176,7 @@ function LocalConversationVirtualizedTurnListCore({
           });
     observer?.observe(scrollElement);
     return () => {
+      window.removeEventListener("resize", handleWindowResize);
       removeScrollListener();
       removeUserScrollListener();
       observer?.disconnect();
@@ -1182,7 +1292,6 @@ function LocalConversationVirtualizedTurnListCore({
       const heightPx = normalizeMeasuredHeightPx(measuredHeightPx);
       mountedMeasurements.set(turnKey, {
         element,
-        firstHeightPx: measuredHeightsRef.current[turnKey] ?? heightPx,
         heightPx,
       });
     }
@@ -1280,7 +1389,6 @@ function LocalConversationVirtualizedTurnListCore({
           latestTurnKey,
           {
             element: latestTurnElement,
-            firstHeightPx: measuredHeightsRef.current[latestTurnKey] ?? heightPx,
             heightPx,
           },
         ],
@@ -1292,23 +1400,14 @@ function LocalConversationVirtualizedTurnListCore({
   useLayoutEffect(() => {
     if (!onVisibleContentReady || visibleContentReadyRef.current || listRoot === null) return;
     if (entries.length > 0 && turnElementsByKeyRef.current.size === 0) return;
-    let cancelled = false;
-    let secondFrame: number | null = null;
-    const firstFrame = window.requestAnimationFrame(() => {
-      secondFrame = window.requestAnimationFrame(() => {
-        if (cancelled) return;
+    return scheduleAfterPaint(
+      () => {
         visibleContentReadyRef.current = true;
         restoreScrollDistanceFromBottomPx();
         onVisibleContentReady();
-      });
-    });
-    return () => {
-      cancelled = true;
-      window.cancelAnimationFrame(firstFrame);
-      if (secondFrame !== null) {
-        window.cancelAnimationFrame(secondFrame);
-      }
-    };
+      },
+      { requireVisibleAtPaint: true },
+    );
   }, [
     entries.length,
     listRoot,
@@ -1350,11 +1449,21 @@ function LocalConversationVirtualizedTurnListCore({
     >
       <div
         className="flex flex-col"
-        style={{ gap: `${TURN_GAP_PX}px`, marginTop: `${topSpacerHeightPx}px` }}
+        style={{
+          gap: `${Math.round(TURN_GAP_PX * pixelScale) / pixelScale}px`,
+          marginTop: `${topSpacerHeightPx}px`,
+        }}
       >
         {visibleRows.map((row) => {
           if (row.kind === "gap") {
-            return <LocalConversationHistoryGap key={row.layoutKey} row={row.row} />;
+            return (
+              <LocalConversationHistoryGap
+                key={row.layoutKey}
+                row={row.row}
+                state={historyGapState}
+                onRetry={retryHistoryBoundary}
+              />
+            );
           }
           const entry = row.entry;
           const isLatestTurn = entry.turnKey === entries.at(-1)?.turnKey;
@@ -1373,7 +1482,9 @@ function LocalConversationVirtualizedTurnListCore({
                 initialCollapsedAgentBodyByTurnSearchKey?.[entry.turnSearchKey]
               }
               canEditTurnUserPrefix={entry.turnId !== null && editableTurnId === entry.turnId}
-              canForkTurn={canForkFromTurn && entry.turn.status !== "inProgress"}
+              canForkTurn={
+                canForkFromTurn && readConversationTurnListEntryStatus(entry) !== "inProgress"
+              }
               onEditLastTurnMessage={onEditLastTurnMessage}
               onForkTurnMessage={onForkTurnMessage}
               onOpenTurnDiffReview={onOpenTurnDiffReview}
@@ -1418,8 +1529,16 @@ export function LocalConversationVirtualizedTurnList({
   const lastTurnItemViewportRevisionRef = useRef<number | null>(null);
   const latestTurnEntry = entries.at(-1) ?? null;
   const latestTurnKey = latestTurnEntry?.turnKey ?? null;
-  const latestTurnPhase = resolveThreadLatestTurnPhase(latestTurnEntry?.turn ?? null);
-  const isLatestTurnInProgress = latestTurnEntry?.turn.status === "inProgress";
+  const latestTurnPhase = useMemo(
+    () =>
+      resolveThreadLatestTurnPhase(
+        latestTurnEntry ? readConversationTurnListEntry(latestTurnEntry) : null,
+      ),
+    [latestTurnEntry],
+  );
+  const isLatestTurnInProgress = latestTurnEntry
+    ? readConversationTurnListEntryStatus(latestTurnEntry) === "inProgress"
+    : false;
   const initialLatestTurnKey = entries.at(-1)?.turnKey ?? null;
   const [responseSpacerHeightPx, setResponseSpacerHeightPxState] = useState(0);
   const [latestTurnFollowState, setLatestTurnFollowState] = useState<ThreadLatestTurnFollowState>(
@@ -1459,6 +1578,13 @@ export function LocalConversationVirtualizedTurnList({
   const historyGapRequestCoordinatorRef = useRef(
     createLocalConversationHistoryGapRequestCoordinator(),
   );
+  const historyGapState = useSyncExternalStore(
+    historyGapRequestCoordinatorRef.current.subscribe,
+    historyGapRequestCoordinatorRef.current.readState,
+  );
+  const retryHistoryBoundary = useCallback((boundary: CodexHistoryBoundaryRef) => {
+    void historyGapRequestCoordinatorRef.current.retryBoundary(boundary);
+  }, []);
 
   useEffect(() => {
     const coordinator = historyGapRequestCoordinatorRef.current;
@@ -2058,7 +2184,7 @@ export function LocalConversationVirtualizedTurnList({
         new Set(
           Object.values(historyTurnItemsRefs ?? {}).flatMap((refs) =>
             [refs.older, refs.newer].flatMap((ref) =>
-              ref ? [`${ref.turnId}:${ref.progressKey}`] : [],
+              ref ? [codexConversationHistoryTurnItemsRefKey(ref)] : [],
             ),
           ),
         ),
@@ -2085,7 +2211,7 @@ export function LocalConversationVirtualizedTurnList({
         })
         .toSorted((left, right) => left.distance - right.distance)[0];
       if (partial) {
-        const progressKey = `${partial.ref.turnId}:${partial.ref.progressKey}`;
+        const progressKey = codexConversationHistoryTurnItemsRefKey(partial.ref);
         if (
           turnItemRequestGateRef.current.unavailableKeys().has(progressKey) ||
           (lastTurnItemViewportRevisionRef.current !== null &&
@@ -2158,6 +2284,8 @@ export function LocalConversationVirtualizedTurnList({
         latestTurnYMotion={latestTurnYMotion}
         onLatestTurnHeightChange={handleLatestTurnHeightChange}
         onViewportChange={handleViewportChange}
+        historyGapState={historyGapState}
+        retryHistoryBoundary={retryHistoryBoundary}
         preserveMeasuredTurnViewport={historyRows !== undefined}
         scrollController={wrappedScrollController}
         getPendingRestoreScrollDistanceFromBottomPx={getPendingRestoreScrollDistanceFromBottomPx}

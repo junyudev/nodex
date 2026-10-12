@@ -11,6 +11,12 @@ export interface CodexPersistedHistorySearchPage {
   readonly capped: boolean;
 }
 
+/** Native occurrence reads carry transport evidence; topology belongs to the viewing manager. */
+export type CodexPersistedHistorySearchReadPage = Omit<
+  CodexPersistedHistorySearchPage,
+  "topologyGeneration"
+>;
+
 export type CodexPersistedHistorySearchResult =
   | {
       readonly status: "completed";

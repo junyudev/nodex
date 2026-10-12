@@ -1,6 +1,7 @@
 import { isAbsoluteSearchPath } from "../../../shared/file-search-paths";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
+import * as Predicate from "effect/Predicate";
 import * as Schema from "effect/Schema";
 import * as Stream from "effect/Stream";
 import * as SubscriptionRef from "effect/SubscriptionRef";
@@ -119,6 +120,7 @@ function normalizeReviewStartResponse(
     reviewThreadId: response.reviewThreadId,
     turn: {
       id: response.turn.id,
+      rootTurnId: response.turn.rootTurnId ?? null,
       itemsView: response.turn.itemsView ?? "full",
       status: response.turn.status,
       error: normalizeReviewTurnError(response.turn.error),

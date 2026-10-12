@@ -15,6 +15,17 @@ import type {
 import type { ThreadBodySurfaceModel, ThreadStageActions } from "../thread-stage-types";
 import { buildThreadBodyModel } from "../projection/build-thread-body-model";
 import { LocalConversationTestQueryProvider } from "./local-conversation-test-query.test-fixtures";
+import { CodexTranscriptReadOwnerContext } from "../normalized-transcript-hooks";
+import { CodexTranscriptReadOwner } from "../normalized-transcript-read-owner";
+import { createCodexCanonicalHydratedConversationState } from "../../../../shared/codex-conversation-state/codex-conversation-state";
+import { buildAgentActivityV2CorpusThread } from "../../../../shared/codex-conversation-state/test-fixtures/agent-activity-v2-corpus-provenance";
+import { projectCodexTranscript } from "../../../../shared/codex-transcript-projection";
+import { EMPTY_LOCAL_CONVERSATION_THREAD_RESTORE_SNAPSHOT } from "./local-conversation-thread-view-state";
+import { LocalConversationThreadBodyOwner } from "./local-conversation-thread-body-owner";
+import {
+  EnsureLocalConversationThreadScrollController,
+  LocalConversationThreadScrollLayout,
+} from "./local-conversation-thread-scroll-controller";
 
 let idleCallbacks: IdleRequestCallback[] = [];
 const originalOffsetWidthDescriptor = Object.getOwnPropertyDescriptor(
@@ -398,6 +409,133 @@ describe("LocalConversationThreadBody", () => {
     document.getSelection()?.removeAllRanges();
     restoreSelectedTextRangeGeometry();
     restoreThreadRailLayoutGeometry();
+  });
+
+  test("keeps first-submission presentation visible through normalized initial and multipart reset", async () => {
+    const clientId = "first-submission-client";
+    const prompt = "Keep the submitted message visible.";
+    const owner = new CodexTranscriptReadOwner({ hostId: "local", threadId: "thread_1" });
+    const overlay = buildTurn({
+      entityKey: `turn-local:${clientId}`,
+      turnId: null,
+      status: "inProgress",
+      items: [
+        buildUserEntry({
+          turnId: null,
+          markdownText: prompt,
+          rawItem: { type: "userMessage", id: "overlay", clientId, content: [] },
+        }),
+      ],
+      itemIds: ["overlay"],
+    });
+    const model = buildModel({
+      conversation: buildConversation({ turns: [] }),
+      body: buildThreadBodyModel({
+        activeThreadId: "thread_1",
+        conversation: buildConversation({ turns: [], resumeState: "needs_resume" }),
+        firstSubmissionActive: true,
+        activeThreadArchived: false,
+        parentTurns: [],
+        isNewThreadTab: false,
+        newThreadTarget: null,
+        isCloudNewThreadTarget: false,
+        threadStartProgress: null,
+      }),
+    });
+    const renderOwner = (presentationTurn: CodexConversationTurn | null) => (
+      <TooltipProvider>
+        <CodexTranscriptReadOwnerContext.Provider value={owner}>
+          <EnsureLocalConversationThreadScrollController>
+            <LocalConversationThreadScrollLayout>
+              <LocalConversationThreadBodyOwner
+                {...model}
+                firstSubmissionTurn={presentationTurn}
+                turnPagination={null}
+                canonicalRequests={[]}
+                backgroundAgentRows={[]}
+                actions={buildActions()}
+                onErrorMessage={() => {}}
+                initialRestoreSnapshot={EMPTY_LOCAL_CONVERSATION_THREAD_RESTORE_SNAPSHOT}
+                onRestoreSnapshotChange={() => {}}
+              />
+            </LocalConversationThreadScrollLayout>
+          </EnsureLocalConversationThreadScrollController>
+        </CodexTranscriptReadOwnerContext.Provider>
+      </TooltipProvider>
+    );
+    const view = render(renderOwner(overlay));
+    await waitFor(() => expect(view.getAllByText(prompt)).toHaveLength(1));
+    const hydration: Parameters<typeof createCodexCanonicalHydratedConversationState>[1] = {
+      hostId: "local",
+      model: "model",
+      reasoningEffort: null,
+      cwd: "/workspace",
+      approvalPolicy: "on-request",
+      approvalsReviewer: "user",
+      sandboxPolicy: { type: "readOnly", networkAccess: false },
+      activePermissionProfile: null,
+      runtimeWorkspaceRoots: ["/workspace"],
+    };
+    const state = createCodexCanonicalHydratedConversationState(
+      { ...buildAgentActivityV2CorpusThread([]), id: "thread_1", turns: [] },
+      hydration,
+    );
+    await act(async () => {
+      owner.applyEvent({ type: "reset", value: projectCodexTranscript(state) });
+      await Promise.resolve();
+    });
+    expect(view.getAllByText(prompt)).toHaveLength(1);
+    const populated = createCodexCanonicalHydratedConversationState(
+      {
+        ...buildAgentActivityV2CorpusThread([]),
+        id: "thread_1",
+        turns: [
+          {
+            id: "turn_1",
+            rootTurnId: null,
+            itemsView: "full",
+            status: "inProgress",
+            error: null,
+            startedAt: 1,
+            completedAt: null,
+            durationMs: null,
+            items: [
+              {
+                type: "userMessage",
+                id: "canonical-user",
+                clientId,
+                content: [{ type: "text", text: prompt, text_elements: [] }],
+              },
+            ],
+          },
+        ],
+      },
+      hydration,
+    );
+    populated.turns[0]!.params.clientUserMessageId = clientId;
+    const snapshot = projectCodexTranscript(populated);
+    await act(async () => {
+      owner.applyEvent({ type: "reset-start", value: snapshot });
+      owner.applyEvent({
+        type: "reset-part",
+        turnsByKey: snapshot.turnsByKey,
+        itemsByKey: snapshot.itemsByKey,
+        realtimeItems: snapshot.realtimeItems,
+      });
+      await Promise.resolve();
+    });
+    expect(view.getAllByText(prompt)).toHaveLength(1);
+    // The launch owner can already acknowledge its canonical write while the
+    // independent read subscription still owns an uncommitted multipart reset.
+    view.rerender(renderOwner(null));
+    await waitFor(() => expect(view.getAllByText(prompt)).toHaveLength(1));
+    await act(async () => {
+      owner.applyEvent({ type: "reset-commit" });
+      await Promise.resolve();
+    });
+    await waitFor(() => expect(view.getAllByText(prompt)).toHaveLength(1));
+    expect(view.container.querySelectorAll('[data-user-message-bubble="true"]')).toHaveLength(1);
+    view.unmount();
   });
 
   test("opens a side chat draft from selected transcript text", async () => {

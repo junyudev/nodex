@@ -42,13 +42,27 @@ import {
   projectCodexCatalogDisplayTitle,
   projectCoreWorkspaceTask,
 } from "./CodexThreadCatalogProjection";
-import { CodexThreadDirectory, type CodexThreadDirectoryEntry } from "./CodexThreadDirectory";
+import {
+  CodexThreadDirectory,
+  type CodexThreadDirectoryEntry,
+  type CodexThreadDirectoryError,
+} from "./CodexThreadDirectory";
+import type { CodexRuntimeError } from "../codex-runtime/CodexRuntimeError";
+import {
+  codexCatalogAnchors,
+  codexCatalogWatermark,
+  codexCatalogCrossesWatermark,
+  codexCatalogOverlaps,
+  codexCatalogWindowIsSpent,
+  type CodexCatalogAnchors,
+} from "./CodexCatalogScanPolicy";
 
 export const DEFAULT_CODEX_SIDEBAR_SYNC_STALE_AFTER = "1 minute";
 export const DEFAULT_CODEX_SIDEBAR_SYNC_BACKOFF_INITIAL = "2 seconds";
 export const DEFAULT_CODEX_SIDEBAR_SYNC_BACKOFF_MAX = "1 minute";
 export const DEFAULT_CODEX_SIDEBAR_NOTIFICATION_SYNC_DEBOUNCE = "300 millis";
 export const CODEX_SIDEBAR_SYNC_THREAD_PAGE_SIZE = 100;
+export const CODEX_SIDEBAR_SYNC_BACKGROUND_PAGE_INTERVAL = "1 second";
 export const CODEX_SIDEBAR_SYNC_PINNED_PAGE_SIZE = 200;
 export const CODEX_SIDEBAR_SYNC_MAX_SWEEP_PAGES = 10;
 export const CODEX_SIDEBAR_SYNC_MAX_SWEEP_RESULTS = 1_000;
@@ -102,6 +116,7 @@ export interface CodexSidebarSyncRuntimeOptions {
   readonly sweepMaxBytes?: number;
   readonly sweepPageDeadline?: Duration.Input;
   readonly sweepDeadline?: Duration.Input;
+  readonly backgroundPageInterval?: Duration.Input;
 }
 
 export class CodexSidebarSyncRuntime extends Context.Service<
@@ -142,7 +157,14 @@ interface MutableSyncMetadata {
 }
 
 interface SweepState {
-  readonly phase: "scan" | "reconcile";
+  readonly phase: "scan" | "reconcile-head" | "reconcile";
+  readonly mode: "full" | "incremental";
+  readonly sourceWatermark: number | null;
+  readonly notificationRevision: number;
+  readonly nextWatermark: number | null;
+  readonly headAnchors: CodexCatalogAnchors;
+  readonly overlapAnchors: CodexCatalogAnchors;
+  readonly windowStartedAtMs: number;
   readonly sweepId: string;
   readonly cursor: string | null;
   readonly archived: boolean;
@@ -286,6 +308,28 @@ export const make = (
     let invalidationRevision = 0;
     let generation = 0;
     let useStateDbOnly = true;
+    let sourceUpdatedAtWatermark: number | null = null;
+    let fullReconciliationDue = true;
+    let catalogNotificationRevision = 0;
+    let foregroundRequests = 0;
+    const pageInterval =
+      options.backgroundPageInterval ?? CODEX_SIDEBAR_SYNC_BACKGROUND_PAGE_INTERVAL;
+    const sweepDeadlineMs = Duration.toMillis(sweepDeadline);
+    const withForegroundCatalog = <A>(operation: Effect.Effect<A, CodexSidebarSyncError>) =>
+      Effect.acquireUseRelease(
+        gateway.promoteQueuedCatalogPage.pipe(
+          Effect.andThen(
+            Effect.sync(() => {
+              foregroundRequests += 1;
+            }),
+          ),
+        ),
+        () => operation,
+        () =>
+          Effect.sync(() => {
+            foregroundRequests -= 1;
+          }),
+      );
 
     const fail = (cause: unknown): CodexSidebarSyncError =>
       cause instanceof CodexSidebarSyncError ? cause : new CodexSidebarSyncError({ cause });
@@ -467,18 +511,22 @@ export const make = (
       threadId: string,
     ): Effect.Effect<ProjectSession | null, CodexSidebarSyncError> =>
       runOwned(
-        mutations.withPermit(
-          directory
-            .resolve({
-              threadId: threadId.trim(),
-              fidelity: "durable",
-              hostId: gateway.localHostId,
-            })
-            .pipe(
-              Effect.mapError(fail),
-              Effect.flatMap((entry) => (entry ? ensureEntrySession(entry) : Effect.succeed(null))),
-              Effect.mapError(fail),
-            ),
+        withForegroundCatalog(
+          mutations.withPermit(
+            directory
+              .resolve({
+                threadId: threadId.trim(),
+                fidelity: "durable",
+                hostId: gateway.localHostId,
+              })
+              .pipe(
+                Effect.mapError(fail),
+                Effect.flatMap((entry) =>
+                  entry ? ensureEntrySession(entry) : Effect.succeed(null),
+                ),
+                Effect.mapError(fail),
+              ),
+          ),
         ),
       );
 
@@ -650,6 +698,7 @@ export const make = (
     const requestPage = Effect.fn("CodexSidebarSync.requestPage")(function* (input: {
       readonly cursor: string | null;
       readonly archived: boolean;
+      readonly foreground?: boolean;
     }) {
       const params = (stateDbOnly: boolean) => ({
         cursor: input.cursor,
@@ -664,8 +713,8 @@ export const make = (
       const request = (stateDbOnly: boolean) =>
         gateway
           .requestLocal("thread/list", params(stateDbOnly), {
-            priority: "background",
-            source: "thread_list",
+            priority: input.foreground || foregroundRequests > 0 ? "interactive" : "background",
+            source: "thread_catalog",
             timeoutMs: sweepPageDeadlineMs,
           })
           .pipe(Effect.timeoutOption(sweepPageDeadline));
@@ -756,7 +805,28 @@ export const make = (
       state: Pick<SweepState, "includeArchived" | "metadata" | "pendingThreads">,
     ) {
       const observedThreadIds: string[] = [];
-      for (const thread of response.data) state.pendingThreads.set(thread.id, thread as Thread);
+      const pending = new Map(state.pendingThreads);
+      for (const thread of response.data) {
+        if (!thread.parentThreadId) {
+          const owner = yield* directory.resolve({ threadId: thread.id, fidelity: "durable" });
+          if (
+            !owner ||
+            owner.durable.executionHostId !== gateway.localHostId ||
+            !isCodexAgentBackendBinding(owner.durable.backendBinding)
+          )
+            continue;
+        }
+        pending.set(thread.id, thread as Thread);
+      }
+      if (
+        pending.size > sweepMaxResults ||
+        cappedApproximateValueBytes([...pending.values()], sweepMaxBytes) > sweepMaxBytes
+      ) {
+        return yield* fail(
+          new Error("Pending sidebar parent metadata exceeded its bounded admission budget"),
+        );
+      }
+      for (const [id, thread] of pending) state.pendingThreads.set(id, thread);
       // A shared Codex home contains other clients' history. Only Profile-owned roots and their
       // descendants may acquire Nodex metadata; cwd proximity is not an admission grant.
       let admitted = true;
@@ -833,6 +903,12 @@ export const make = (
       return {
         ...state,
         cursor: next,
+        nextWatermark:
+          Math.max(state.nextWatermark ?? 0, codexCatalogWatermark(response.data) ?? 0) || null,
+        headAnchors:
+          state.phase === "scan" && state.headAnchors.size === 0
+            ? codexCatalogAnchors(response.data)
+            : state.headAnchors,
         pages: state.pages + 1,
         results: state.results + response.data.length,
         processedBytes: state.processedBytes + pageBytes,
@@ -855,86 +931,156 @@ export const make = (
         Effect.as(null),
       );
 
-    const advanceSweep = (
+    const advanceSweep = Effect.fn("CodexSidebarSync.advanceSweep")(function* (
       state: SweepState,
-    ): Effect.Effect<SweepState | null, CodexSidebarSyncError> =>
-      Effect.gen(function* () {
-        if (state.phase === "reconcile") {
-          if (state.reconcilePages >= sweepMaxPages) {
-            return yield* stopSweep(state, "reconcile page budget exhausted");
-          }
-          const loaded = yield* core.workspace
-            .apply({
-              operationId: createOperationId("sidebar.sweep-reconcile"),
-              intent: {
-                kind: "reconcile_app_server_thread_sweep",
-                sweep_id: state.sweepId,
-                limit: CODEX_SIDEBAR_SYNC_THREAD_PAGE_SIZE,
-              },
-            })
-            .pipe(Effect.timeoutOption(sweepPageDeadline));
-          if (Option.isNone(loaded)) {
-            return yield* stopSweep(state, "reconcile page exceeded its bounded deadline");
-          }
-          const result = loaded.value;
-          const affectedThreadIds = result.outcome.affected_thread_ids;
-          const affectedProjectIds = result.outcome.affected_project_ids;
-          const outcomeBytes = cappedApproximateValueBytes(result.outcome, sweepMaxPageBytes);
-          const outcomeResults = affectedThreadIds.length + affectedProjectIds.length;
-          if (
-            affectedThreadIds.length > CODEX_SIDEBAR_SYNC_THREAD_PAGE_SIZE ||
-            affectedProjectIds.length > CODEX_SIDEBAR_SYNC_THREAD_PAGE_SIZE ||
-            outcomeBytes > sweepMaxPageBytes ||
-            state.reconciledResults > sweepMaxResults - outcomeResults ||
-            state.processedBytes > sweepMaxBytes - outcomeBytes
-          ) {
-            return yield* stopSweep(
-              state,
-              "reconcile result exceeded its bounded admission budget",
-            );
-          }
-          for (const projectId of result.outcome.affected_project_ids) {
-            state.metadata.changedProjectIds.add(projectId);
-          }
-          if (affectedThreadIds.length > 0) {
-            state.metadata.projectlessChanged = true;
-          }
-          const reconciled = {
-            ...state,
-            reconcilePages: state.reconcilePages + 1,
-            reconciledResults: state.reconciledResults + outcomeResults,
-            processedBytes: state.processedBytes + outcomeBytes,
-          };
-          if (affectedThreadIds.length === CODEX_SIDEBAR_SYNC_THREAD_PAGE_SIZE) return reconciled;
-          const refreshedAt = yield* Clock.currentTimeMillis;
-          yield* project({
-            includeArchived: reconciled.includeArchived,
-            source: "app-server",
-            refreshed: true,
-            refreshedAt,
-            metadata: projectMetadata(reconciled.metadata),
-            reason: reconciled.reason,
-          });
-          return null;
+    ): Effect.fn.Return<
+      SweepState | null,
+      CodexSidebarSyncError | CodexRuntimeError | CoreRuntimeError | CodexThreadDirectoryError
+    > {
+      if (state.phase === "reconcile") {
+        if (state.reconcilePages >= sweepMaxPages) {
+          return yield* stopSweep(state, "reconcile page budget exhausted");
         }
+        const loaded = yield* core.workspace
+          .apply({
+            operationId: createOperationId("sidebar.sweep-reconcile"),
+            intent: {
+              kind: "reconcile_app_server_thread_sweep",
+              sweep_id: state.sweepId,
+              limit: CODEX_SIDEBAR_SYNC_THREAD_PAGE_SIZE,
+            },
+          })
+          .pipe(Effect.timeoutOption(sweepPageDeadline));
+        if (Option.isNone(loaded)) {
+          return yield* stopSweep(state, "reconcile page exceeded its bounded deadline");
+        }
+        const result = loaded.value;
+        const affectedThreadIds = result.outcome.affected_thread_ids;
+        const affectedProjectIds = result.outcome.affected_project_ids;
+        const outcomeBytes = cappedApproximateValueBytes(result.outcome, sweepMaxPageBytes);
+        const outcomeResults = affectedThreadIds.length + affectedProjectIds.length;
+        if (
+          affectedThreadIds.length > CODEX_SIDEBAR_SYNC_THREAD_PAGE_SIZE ||
+          affectedProjectIds.length > CODEX_SIDEBAR_SYNC_THREAD_PAGE_SIZE ||
+          outcomeBytes > sweepMaxPageBytes ||
+          state.reconciledResults > sweepMaxResults - outcomeResults ||
+          state.processedBytes > sweepMaxBytes - outcomeBytes
+        ) {
+          return yield* stopSweep(state, "reconcile result exceeded its bounded admission budget");
+        }
+        for (const projectId of result.outcome.affected_project_ids) {
+          state.metadata.changedProjectIds.add(projectId);
+        }
+        if (affectedThreadIds.length > 0) {
+          state.metadata.projectlessChanged = true;
+        }
+        const reconciled = {
+          ...state,
+          reconcilePages: state.reconcilePages + 1,
+          reconciledResults: state.reconciledResults + outcomeResults,
+          processedBytes: state.processedBytes + outcomeBytes,
+        };
+        if (affectedThreadIds.length === CODEX_SIDEBAR_SYNC_THREAD_PAGE_SIZE) return reconciled;
+        sourceUpdatedAtWatermark = reconciled.nextWatermark;
+        fullReconciliationDue = reconciled.notificationRevision !== catalogNotificationRevision;
+        const refreshedAt = yield* Clock.currentTimeMillis;
+        yield* project({
+          includeArchived: reconciled.includeArchived,
+          source: "app-server",
+          refreshed: true,
+          refreshedAt,
+          metadata: projectMetadata(reconciled.metadata),
+          reason: reconciled.reason,
+        });
+        return null;
+      }
 
-        if (state.pages >= sweepMaxPages) {
-          return yield* stopSweep(state, "page budget exhausted");
-        }
-        const response = yield* requestPage({ cursor: state.cursor, archived: state.archived });
-        const violation = scanPageAdmissionFailure(state, response);
-        if (violation) return yield* stopSweep(state, violation);
-        const scanned = advanceScanState(state, response);
-        const observed = yield* materializePage(response, scanned);
-        yield* observeSweepWindow(scanned.sweepId, observed);
-        if (scanned.cursor !== null) return scanned;
-        if (!scanned.archived) return { ...scanned, cursor: null, archived: true };
-        return { ...scanned, phase: "reconcile" as const, cursor: null };
-      }).pipe(Effect.mapError(fail));
+      const response = yield* requestPage({ cursor: state.cursor, archived: state.archived });
+      const violation = scanPageAdmissionFailure(state, response);
+      if (violation) return yield* stopSweep(state, violation);
+      const scanned = advanceScanState(state, response);
+      const observed = yield* materializePage(response, scanned);
+      if (scanned.mode === "full") yield* observeSweepWindow(scanned.sweepId, observed);
+      const crossed =
+        scanned.mode === "incremental" &&
+        codexCatalogCrossesWatermark(response.data, scanned.sourceWatermark);
+      if (scanned.phase === "scan") {
+        if (scanned.cursor !== null && !crossed) return scanned;
+        const anchors =
+          scanned.mode === "full"
+            ? scanned.headAnchors
+            : new Map(
+                [...codexCatalogAnchors(response.data)].filter(
+                  ([, updatedAt]) => !crossed || updatedAt < scanned.sourceWatermark!,
+                ),
+              );
+        if (anchors.size > 0)
+          return {
+            ...scanned,
+            phase: "reconcile-head",
+            cursor: null,
+            overlapAnchors: anchors,
+            seenCursors: new Set(),
+          };
+      } else if (
+        scanned.cursor !== null &&
+        !codexCatalogOverlaps(response.data, scanned.overlapAnchors)
+      )
+        return scanned;
+      if (!scanned.archived)
+        return {
+          ...scanned,
+          phase: "scan",
+          cursor: null,
+          archived: true,
+          headAnchors: new Map(),
+          overlapAnchors: new Map(),
+          seenCursors: new Set(),
+        };
+      if (scanned.mode === "full") return { ...scanned, phase: "reconcile", cursor: null };
+      sourceUpdatedAtWatermark = scanned.nextWatermark;
+      const refreshedAt = yield* Clock.currentTimeMillis;
+      yield* project({
+        includeArchived: scanned.includeArchived,
+        source: "app-server",
+        refreshed: true,
+        refreshedAt,
+        metadata: projectMetadata(scanned.metadata),
+        reason: scanned.reason,
+      });
+      return null;
+    }, Effect.mapError(fail));
 
     const continueSweep = (initial: SweepState): Effect.Effect<void> => {
-      const loop = (state: SweepState): Effect.Effect<void, CodexSidebarSyncError> =>
-        mutations.withPermit(advanceSweep(state)).pipe(
+      const loop = Effect.fn("CodexSidebarSync.continueSweep")(function* (
+        previous: SweepState,
+      ): Effect.fn.Return<void, CodexSidebarSyncError> {
+        if (foregroundRequests === 0) yield* Effect.sleep(pageInterval);
+        const now = yield* Clock.currentTimeMillis;
+        const spent = codexCatalogWindowIsSpent({
+          pages: previous.pages + previous.reconcilePages,
+          results: previous.results + previous.reconciledResults,
+          processedBytes: previous.processedBytes,
+          elapsedMs: now - previous.windowStartedAtMs,
+          maxPages: sweepMaxPages,
+          maxResults: sweepMaxResults,
+          maxBytes: sweepMaxBytes,
+          maxPageBytes: sweepMaxPageBytes,
+          pageSize: CODEX_SIDEBAR_SYNC_THREAD_PAGE_SIZE,
+          deadlineMs: sweepDeadlineMs,
+        });
+        const state = spent
+          ? {
+              ...previous,
+              pages: 0,
+              results: 0,
+              processedBytes: 0,
+              reconcilePages: 0,
+              reconciledResults: 0,
+              windowStartedAtMs: now,
+            }
+          : previous;
+        const next = yield* mutations.withPermit(advanceSweep(state)).pipe(
           Effect.tapCause((cause) =>
             Effect.logWarning("Could not continue background sidebar reconciliation").pipe(
               Effect.annotateLogs({
@@ -946,8 +1092,9 @@ export const make = (
             ),
           ),
           Effect.retry(sweepSchedule),
-          Effect.flatMap((next) => (next ? loop(next) : Effect.void)),
         );
+        if (next) return yield* loop(next);
+      });
       return loop(initial).pipe(Effect.catchCause(() => Effect.void));
     };
 
@@ -956,11 +1103,22 @@ export const make = (
       readonly reason: CodexSidebarRefreshReason;
     }) {
       yield* FiberHandle.clear(activeSweep);
+      if (input.reason === "app-server-reconnect") fullReconciliationDue = true;
       const metadata = emptyMetadata();
       const sweepId = randomUUID();
+      const mode =
+        fullReconciliationDue || sourceUpdatedAtWatermark === null ? "full" : "incremental";
+      const notificationRevision = catalogNotificationRevision;
       const response = yield* requestPage({ cursor: null, archived: false });
       const initial: SweepState = {
         phase: "scan",
+        mode,
+        sourceWatermark: sourceUpdatedAtWatermark,
+        notificationRevision,
+        nextWatermark: null,
+        headAnchors: new Map(),
+        overlapAnchors: new Map(),
+        windowStartedAtMs: yield* Clock.currentTimeMillis,
         sweepId,
         cursor: null,
         archived: false,
@@ -981,26 +1139,31 @@ export const make = (
       }
       const scanned = advanceScanState(initial, response);
       const observed = yield* materializePage(response, scanned);
-      yield* observeSweepWindow(sweepId, observed);
-      const following = scanned.cursor === null ? { ...scanned, archived: true } : scanned;
-      runSweep(
-        continueSweep(following).pipe(
-          Effect.timeoutOption(sweepDeadline),
-          Effect.flatMap((result) =>
-            Option.isSome(result)
-              ? Effect.void
-              : Effect.logWarning(
-                  "Sidebar background reconciliation exceeded its bounded deadline",
-                ).pipe(
-                  Effect.annotateLogs({
-                    pages: following.pages,
-                    results: following.results,
-                    processedBytes: following.processedBytes,
-                  }),
-                ),
-          ),
-        ),
-      );
+      if (scanned.mode === "full") yield* observeSweepWindow(sweepId, observed);
+      const crossed =
+        scanned.mode === "incremental" &&
+        codexCatalogCrossesWatermark(response.data, scanned.sourceWatermark);
+      const initialAnchors =
+        scanned.mode === "full"
+          ? scanned.headAnchors
+          : new Map(
+              [...codexCatalogAnchors(response.data)].filter(
+                ([, updatedAt]) => !crossed || updatedAt < scanned.sourceWatermark!,
+              ),
+            );
+      const following =
+        scanned.cursor === null || crossed
+          ? initialAnchors.size > 0
+            ? {
+                ...scanned,
+                phase: "reconcile-head" as const,
+                cursor: null,
+                overlapAnchors: initialAnchors,
+                seenCursors: new Set<string>(),
+              }
+            : { ...scanned, archived: true }
+          : scanned;
+      runSweep(continueSweep(following));
       return projectMetadata(metadata);
     });
 
@@ -1089,44 +1252,50 @@ export const make = (
       input: CodexSidebarSyncInput = {},
     ): Effect.Effect<CodexSidebarSyncResult, CodexSidebarSyncError> =>
       runOwned(
-        Effect.gen(function* () {
-          const includeArchived = input.includeArchived === true;
-          const policy = input.policy ?? "stale";
-          const reason = input.reason ?? "manual";
-          const state = stateFor(includeArchived);
-          if (policy === "read") {
-            return yield* project({
-              includeArchived,
-              source: "core",
-              refreshed: false,
-              refreshedAt: state.lastSuccessfulRefreshAt,
-              metadata: projectMetadata(emptyMetadata()),
-              reason,
-            }).pipe(Effect.mapError(fail));
-          }
-          const now = yield* Clock.currentTimeMillis;
-          const fresh =
-            state.lastSuccessfulGeneration > 0 &&
-            now - state.lastSuccessfulRefreshAt < staleAfterMs;
-          if (policy === "stale" && fresh && state.failureBackoffUntil <= now) {
-            const cached = cachedResult({
-              includeArchived,
-              requireCurrentRevision: true,
-              source: "core",
-            });
-            if (cached) return cached;
-          }
-          if (policy === "stale" && state.failureBackoffUntil > now) {
-            const cached = cachedResult({
-              includeArchived,
-              requireCurrentRevision: false,
-              source: "stale-last-known",
-            });
-            if (cached) return cached;
-            return yield* state.lastFailure ?? fail(new Error("Sidebar sync is backing off"));
-          }
-          return yield* Fiber.join(yield* acquireRefresh({ includeArchived, reason }));
-        }),
+        (input.reason === "heartbeat" ||
+          input.reason === "host-message" ||
+          input.reason === "app-server-reconnect"
+          ? <A>(operation: Effect.Effect<A, CodexSidebarSyncError>) => operation
+          : withForegroundCatalog)(
+          Effect.gen(function* () {
+            const includeArchived = input.includeArchived === true;
+            const policy = input.policy ?? "stale";
+            const reason = input.reason ?? "manual";
+            const state = stateFor(includeArchived);
+            if (policy === "read") {
+              return yield* project({
+                includeArchived,
+                source: "core",
+                refreshed: false,
+                refreshedAt: state.lastSuccessfulRefreshAt,
+                metadata: projectMetadata(emptyMetadata()),
+                reason,
+              }).pipe(Effect.mapError(fail));
+            }
+            const now = yield* Clock.currentTimeMillis;
+            const fresh =
+              state.lastSuccessfulGeneration > 0 &&
+              now - state.lastSuccessfulRefreshAt < staleAfterMs;
+            if (policy === "stale" && fresh && state.failureBackoffUntil <= now) {
+              const cached = cachedResult({
+                includeArchived,
+                requireCurrentRevision: true,
+                source: "core",
+              });
+              if (cached) return cached;
+            }
+            if (policy === "stale" && state.failureBackoffUntil > now) {
+              const cached = cachedResult({
+                includeArchived,
+                requireCurrentRevision: false,
+                source: "stale-last-known",
+              });
+              if (cached) return cached;
+              return yield* state.lastFailure ?? fail(new Error("Sidebar sync is backing off"));
+            }
+            return yield* Fiber.join(yield* acquireRefresh({ includeArchived, reason }));
+          }),
+        ),
       );
 
     const changed = (input: CodexSidebarCatalogChange) => {
@@ -1165,6 +1334,14 @@ export const make = (
       });
 
     const scheduleNotification = (request: CodexSidebarSyncNotification): void => {
+      if (
+        request.notificationMethod === "thread/archived" ||
+        request.notificationMethod === "thread/unarchived" ||
+        request.notificationMethod === "thread/deleted"
+      ) {
+        fullReconciliationDue = true;
+        catalogNotificationRevision += 1;
+      }
       const minimumGeneration = generation + 1;
       runNotificationRepair(
         Effect.sleep(

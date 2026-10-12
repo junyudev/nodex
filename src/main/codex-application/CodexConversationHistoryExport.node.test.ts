@@ -1,4 +1,9 @@
-import type { Thread, ThreadItem, Turn } from "@nodex/codex-app-server-protocol/v2";
+import type {
+  Thread,
+  ThreadItem,
+  ThreadItemsListCursor,
+  Turn,
+} from "@nodex/codex-app-server-protocol/v2";
 import { assert, it } from "@effect/vitest";
 import * as Deferred from "effect/Deferred";
 import * as Effect from "effect/Effect";
@@ -22,6 +27,7 @@ const turn = (
   items: ThreadItem[] = [],
   itemsView: Turn["itemsView"] = "full",
 ): Turn => ({
+  rootTurnId: null,
   id,
   items,
   itemsView,
@@ -94,6 +100,10 @@ const capability: CodexAppServerCapabilitySnapshot = {
     searchOccurrences: true,
     ephemeralFork: true,
     multiAgentV2Protocol: false,
+    threadTimeline: false,
+    threadItemAnchors: false,
+    experimentalPredictionForkMode: false,
+    mcpApplicationNetworkPolicy: false,
     sideConversation: true,
     subagentAncestorFilter: false,
     threadRevert: true,
@@ -405,7 +415,7 @@ it.effect("streams complete Turns oldest-first without installing them in reside
       delivery: null,
     } satisfies ThreadItem;
     const pageRequests: Array<{ cursor: string | null; purpose?: string }> = [];
-    const itemRequests: Array<{ cursor: string | null; purpose?: string }> = [];
+    const itemRequests: Array<{ cursor: ThreadItemsListCursor | null; purpose?: string }> = [];
     const pages = CodexHistoryPageAdapter.of({
       loadTurnPage: (input) => {
         pageRequests.push({ cursor: input.cursor, purpose: input.purpose });

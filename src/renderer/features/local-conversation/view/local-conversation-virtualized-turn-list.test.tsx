@@ -1,4 +1,5 @@
 import { afterEach, describe, expect, test } from "vite-plus/test";
+import { act } from "@testing-library/react";
 import { useState, type ReactNode } from "react";
 import { NodexTooltipProvider } from "../../../components/ui/tooltip";
 import { createMaitaiStore, MaitaiProvider } from "../../../lib/maitai";
@@ -9,7 +10,10 @@ import { EnsureLocalConversationThreadScrollController } from "./local-conversat
 import {
   LocalConversationVirtualizedTurnList,
   type LocalConversationVirtualizedTurnListEntry,
+  type LocalConversationVirtualizedTurnListApi,
 } from "./local-conversation-virtualized-turn-list";
+import type { VisibleConversationTurnEntry } from "../selectors";
+import type { CodexHistoryViewportBoundary } from "../../../../shared/codex-history-policy";
 import type {
   VirtualizedLatestTurnRestoreState,
   VirtualizedTurnListRestoreState,
@@ -164,7 +168,7 @@ function buildTurnEntry(input: {
   assistantText: string;
   index: number;
   isMostRecentTurn: boolean;
-}): LocalConversationVirtualizedTurnListEntry {
+}): VisibleConversationTurnEntry {
   const turnId = `turn_${input.index}`;
   const userItemId = `user_${input.index}`;
   const assistantItemId = `assistant_${input.index}`;
@@ -196,7 +200,7 @@ function buildTurnEntry(input: {
   };
 }
 
-function buildTurnEntries(texts: readonly string[]): LocalConversationVirtualizedTurnListEntry[] {
+function buildTurnEntries(texts: readonly string[]): VisibleConversationTurnEntry[] {
   return texts.map((assistantText, index) =>
     buildTurnEntry({
       assistantText,
@@ -215,6 +219,10 @@ function renderVirtualizedTurnList(input: {
     distanceFromBottomPx: number,
   ) => void;
   onRestoreStateChange?: (state: VirtualizedTurnListRestoreState | null) => void;
+  onApiChange?: (api: LocalConversationVirtualizedTurnListApi | null) => void;
+  onHistoryRetentionBoundaryChange?: (
+    boundary: CodexHistoryViewportBoundary | null | undefined,
+  ) => void;
 }) {
   return render(
     <TooltipProvider>
@@ -229,6 +237,8 @@ function renderVirtualizedTurnList(input: {
           initialLatestTurnRestoreState={input.initialLatestTurnRestoreState}
           onLatestTurnRestoreStateChange={input.onLatestTurnRestoreStateChange}
           onRestoreStateChange={input.onRestoreStateChange}
+          onApiChange={input.onApiChange}
+          onHistoryRetentionBoundaryChange={input.onHistoryRetentionBoundaryChange}
           scrollElement={null}
         />
       </EnsureLocalConversationThreadScrollController>
@@ -252,6 +262,34 @@ function hasFixedHeightClippingAncestor(element: Element): boolean {
 }
 
 describe("LocalConversationVirtualizedTurnList", () => {
+  test("cancels pending navigation without waiting for a frame and releases viewer protection", async () => {
+    installQueuedRequestAnimationFrame();
+    installTurnBlockSizes({ turn_1: 300 });
+    let api: LocalConversationVirtualizedTurnListApi | null = null;
+    const boundaries: Array<CodexHistoryViewportBoundary | null | undefined> = [];
+    const view = renderVirtualizedTurnList({
+      entries: buildTurnEntries(["Answer"]),
+      onApiChange: (value) => {
+        api = value;
+      },
+      onHistoryRetentionBoundaryChange: (boundary) => boundaries.push(boundary),
+    });
+    const currentApi = api as LocalConversationVirtualizedTurnListApi | null;
+    if (!currentApi) throw new Error("missing virtualizer API");
+    const alreadyCancelled = new AbortController();
+    alreadyCancelled.abort();
+    await currentApi.scrollToKey("turn_1", undefined, { signal: alreadyCancelled.signal });
+    const controller = new AbortController();
+    await act(async () => {
+      const pending = currentApi.scrollToKey("turn_1", undefined, { signal: controller.signal });
+      controller.abort();
+      await pending;
+      await Promise.resolve();
+    });
+    expect(boundaries).toContain(null);
+    view.unmount();
+    expect(boundaries.at(-1)).toBeUndefined();
+  });
   afterEach(() => {
     restoreBrowserGeometry();
   });

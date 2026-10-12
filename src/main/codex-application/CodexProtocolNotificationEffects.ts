@@ -404,10 +404,9 @@ export const make: Effect.Effect<
       });
     }
     if (notification.method === "turn/completed") {
-      const turn = conversations
-        .current(threadId)
-        ?.readCanonicalState()
-        ?.turns.findLast((candidate) => candidate.turnId === notification.params.turn.id);
+      const turn = residentConversationTurns(
+        conversations.current(threadId)?.readCanonicalState(),
+      ).findLast((candidate) => candidate.turnId === notification.params.turn.id);
       terminalInputBuffers.clearItems(
         threadId,
         turn?.items.filter((item) => item.type === "commandExecution").map((item) => item.id) ?? [],

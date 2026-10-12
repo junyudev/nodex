@@ -21,6 +21,15 @@ export interface CodexRendererHostContext {
   readonly sourceEpoch: string;
   readonly supportsPaginatedHistory: boolean;
   readonly supportsTurnApprovalsReviewer: boolean;
+  readonly supportsSearchOccurrences: boolean;
+  readonly appServerVersion: string | null;
+  readonly supportsThreadTimeline?: boolean;
+  readonly supportsThreadItemAnchors?: boolean;
+  readonly historyPolicy?: {
+    readonly source: string;
+    readonly timeline: boolean | null;
+    readonly activeEviction: boolean | null;
+  };
   readonly supportsThreadRevert: boolean;
   readonly supportsThreadQueue: boolean;
 }

@@ -31,6 +31,7 @@ import {
   type LocalConversationThreadRestoreSnapshot,
 } from "./local-conversation-thread-view-state";
 import { resolveImageEditComposerTarget } from "../image-edit-composer-target";
+import { CodexTranscriptReadOwnerProvider } from "../normalized-transcript-hooks";
 
 interface LocalConversationThreadBodyProps {
   model: ThreadBodySurfaceModel;
@@ -98,6 +99,7 @@ function LocalConversationThreadBodyLayout({
               isSideChat={model.isSideChat}
               cwd={model.cwd}
               turns={model.turns}
+              firstSubmissionTurn={model.firstSubmissionTurn}
               turnPagination={model.turnPagination ?? null}
               historyRows={model.historyRows}
               conversationEntityGeneration={model.conversationEntityGeneration}
@@ -181,39 +183,41 @@ function LocalConversationThreadBodyScopedRoot(props: LocalConversationThreadBod
     threadScopePath,
   });
   return (
-    <HookFeedbackSettingsNavigationProvider
-      hostId={model.hostId}
-      onOpenHooksSettings={props.actions.onOpenHooksSettings}
-    >
-      <ConversationImageAssetProvider
-        composerTarget={composerTarget}
+    <CodexTranscriptReadOwnerProvider conversationId={model.threadId} hostId={model.hostId}>
+      <HookFeedbackSettingsNavigationProvider
         hostId={model.hostId}
-        conversationId={model.threadId}
-        resolveHistoryImage={props.resolveHistoryImage}
+        onOpenHooksSettings={props.actions.onOpenHooksSettings}
       >
-        <ConversationToolOutputProvider
-          readToolOutput={props.readToolOutput}
+        <ConversationImageAssetProvider
+          composerTarget={composerTarget}
+          hostId={model.hostId}
           conversationId={model.threadId}
+          resolveHistoryImage={props.resolveHistoryImage}
         >
-          <EnsureLocalConversationThreadScrollController>
-            {model.threadId ? (
-              <AttachedLocalConversationThreadBody
-                key={model.threadId}
-                {...props}
-                conversationId={model.threadId}
-                resolveHistoryImage={props.resolveHistoryImage}
-              />
-            ) : (
-              <LocalConversationThreadBodyLayout
-                {...props}
-                initialRestoreSnapshot={EMPTY_LOCAL_CONVERSATION_THREAD_RESTORE_SNAPSHOT}
-                onRestoreSnapshotChange={ignoreRestoreSnapshotUpdate}
-              />
-            )}
-          </EnsureLocalConversationThreadScrollController>
-        </ConversationToolOutputProvider>
-      </ConversationImageAssetProvider>
-    </HookFeedbackSettingsNavigationProvider>
+          <ConversationToolOutputProvider
+            readToolOutput={props.readToolOutput}
+            conversationId={model.threadId}
+          >
+            <EnsureLocalConversationThreadScrollController>
+              {model.threadId ? (
+                <AttachedLocalConversationThreadBody
+                  key={model.threadId}
+                  {...props}
+                  conversationId={model.threadId}
+                  resolveHistoryImage={props.resolveHistoryImage}
+                />
+              ) : (
+                <LocalConversationThreadBodyLayout
+                  {...props}
+                  initialRestoreSnapshot={EMPTY_LOCAL_CONVERSATION_THREAD_RESTORE_SNAPSHOT}
+                  onRestoreSnapshotChange={ignoreRestoreSnapshotUpdate}
+                />
+              )}
+            </EnsureLocalConversationThreadScrollController>
+          </ConversationToolOutputProvider>
+        </ConversationImageAssetProvider>
+      </HookFeedbackSettingsNavigationProvider>
+    </CodexTranscriptReadOwnerProvider>
   );
 }
 
@@ -261,6 +265,7 @@ export const LocalConversationThreadBody = memo(
     left.model.statusType === right.model.statusType &&
     left.model.parentTurns === right.model.parentTurns &&
     left.model.turns === right.model.turns &&
+    left.model.firstSubmissionTurn === right.model.firstSubmissionTurn &&
     left.model.turnPagination === right.model.turnPagination &&
     left.model.historyRows === right.model.historyRows &&
     left.model.conversationEntityGeneration === right.model.conversationEntityGeneration &&

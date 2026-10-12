@@ -91,6 +91,7 @@ export class CodexGateway extends Context.Service<
   {
     readonly localHostId: string;
     readonly events: Stream.Stream<CodexEndpointEvent>;
+    readonly promoteQueuedCatalogPage: Effect.Effect<boolean>;
     readonly requestLocal: <M extends ClientRequestMethod>(
       method: M,
       params: ClientRequestParamsByMethod[M],
@@ -582,6 +583,7 @@ export const live = (
       );
 
       return CodexGateway.of({
+        promoteQueuedCatalogPage: scheduler.promoteQueuedCatalogPage(endpoints.localHostId),
         localHostId: endpoints.localHostId,
         events,
         requestLocal: (method, params, scheduling) =>

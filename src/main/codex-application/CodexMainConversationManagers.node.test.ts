@@ -235,7 +235,9 @@ it.effect(
         });
       }, 2);
       resolvePage({
-        data: [{ id: "older", items: [], itemsView: "full", status: "completed" }],
+        data: [
+          { rootTurnId: null, id: "older", items: [], itemsView: "full", status: "completed" },
+        ],
         nextCursor: null,
         backwardsCursor: null,
       });

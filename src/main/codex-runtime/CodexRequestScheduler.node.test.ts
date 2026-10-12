@@ -865,3 +865,48 @@ it.effect("detaches a coalesced plugin follower without redispatching the live l
     }),
   ),
 );
+
+it.effect(
+  "promotes one waiting catalog page without duplicating or cancelling its native request",
+  () =>
+    withOpenScheduler((scheduler) =>
+      Effect.gen(function* () {
+        const blocked = yield* Deferred.make<string>();
+        const release = yield* Deferred.make<string>();
+        const first = yield* request(scheduler, "thread/list", Deferred.await(blocked), {
+          requestId: "thread/list:background",
+          priority: "background",
+          source: "thread_catalog",
+          coalesce: false,
+        }).pipe(Effect.forkScoped);
+        let dispatched = 0;
+        const queued = yield* request(
+          scheduler,
+          "thread/list",
+          Effect.sync(() => {
+            dispatched++;
+          }).pipe(Effect.andThen(Deferred.await(release))),
+          {
+            requestId: "thread/list:foreground",
+            priority: "background",
+            source: "thread_catalog",
+            coalesce: false,
+          },
+        ).pipe(Effect.forkScoped);
+        yield* Effect.yieldNow;
+        assert.strictEqual(dispatched, 0);
+        assert.strictEqual((yield* scheduler.snapshot).current.queuedByPriority.background, 1);
+        assert.isTrue(yield* scheduler.promoteQueuedCatalogPage("local"));
+        yield* Effect.yieldNow;
+        assert.strictEqual(dispatched, 1);
+        const snapshot = yield* scheduler.snapshot;
+        assert.strictEqual(snapshot.current.queuedByPriority.background, 0);
+        assert.strictEqual(snapshot.current.inFlightByPriority.interactive, 1);
+        assert.isFalse(yield* scheduler.promoteQueuedCatalogPage("local"));
+        yield* Deferred.succeed(release, "accepted");
+        assert.strictEqual(yield* Fiber.join(queued), "accepted");
+        yield* Deferred.succeed(blocked, "background");
+        yield* Fiber.join(first);
+      }),
+    ),
+);

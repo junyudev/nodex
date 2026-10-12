@@ -1,4 +1,9 @@
 import {
+  buildCodexTranscriptAcceptedMutation,
+  type CodexTranscriptProjectionEvidence,
+  type CodexTranscriptTextChange,
+} from "../../../shared/codex-transcript-projection";
+import {
   mutateCodexTurnStartRejection,
   type CodexPreparedTurnExecution,
   type CodexTurnStartRejection,
@@ -152,6 +157,7 @@ export interface ConversationCanonicalMutation {
   readonly before: CodexCanonicalConversationState | null;
   readonly after: CodexCanonicalConversationState | null;
   readonly patches?: readonly Patch[];
+  readonly acceptedTranscriptText?: CodexTranscriptProjectionEvidence["acceptedTranscriptText"];
   readonly origin: "local" | "follower";
   readonly broadcast: boolean;
 }
@@ -162,11 +168,14 @@ class MutableConversationEntityState {
   onCanonicalChange?: (change: Omit<ConversationCanonicalMutation, "threadId">) => void;
   mutationOrigin: "local" | "follower" = "local";
   mutationBroadcast = true;
+  nextAcceptedTranscriptText: CodexTranscriptProjectionEvidence["acceptedTranscriptText"];
   get document(): CodexConversationEntityDocument {
     return this.currentDocument;
   }
   set document(document: CodexConversationEntityDocument) {
     const before = this.currentDocument?.canonicalState ?? null;
+    const acceptedTranscriptText = this.nextAcceptedTranscriptText;
+    this.nextAcceptedTranscriptText = undefined;
     this.currentDocument = document;
     const after = document.canonicalState;
     if (before === after) return;
@@ -174,6 +183,7 @@ class MutableConversationEntityState {
       before,
       after,
       patches: document.patchesFrom(before),
+      ...(acceptedTranscriptText ? { acceptedTranscriptText } : {}),
       origin: this.mutationOrigin,
       broadcast: this.mutationBroadcast,
     });
@@ -540,6 +550,7 @@ const rebuildHistoryTopology = (input: {
       input.pagination.olderCursor === null
         ? exhaustedCodexHistoryBoundary(`older:${input.generation}`)
         : availableCodexHistoryBoundary(`older:${input.generation}`, {
+            ...(input.pagination.source ? { source: input.pagination.source } : {}),
             cursor: input.pagination.olderCursor,
             oldestLoadedTurnId: input.pagination.oldestLoadedTurnId,
           }),
@@ -740,9 +751,11 @@ export function makeConversationEntityStateRegistry(): ConversationEntityStateRe
       state: CodexCanonicalConversationState,
       observedAtMs: number,
       document?: CodexConversationEntityDocument,
+      acceptedTranscriptText?: CodexTranscriptProjectionEvidence["acceptedTranscriptText"],
     ): boolean => {
       const before = aggregate.document.canonicalState;
       if (!before || state === before) return false;
+      aggregate.nextAcceptedTranscriptText = acceptedTranscriptText;
       aggregate.document = document ?? aggregate.document.withCanonicalState(state);
       if (aggregate.snapshot) {
         aggregate.snapshot = projectCodexConversationSnapshot({
@@ -998,20 +1011,56 @@ export function makeConversationEntityStateRegistry(): ConversationEntityStateRe
       },
       commitFrameTextDeltas: ({ updates, observedAtMs }) => {
         if (updates.length === 0) return [];
+        const changes: CodexTranscriptTextChange[] = [];
         const mutation = aggregate.document.mutate((draft) =>
-          mutateCodexConversationFrameTextDeltas(draft, updates, { now: () => observedAtMs }),
+          mutateCodexConversationFrameTextDeltas(draft, updates, {
+            now: () => observedAtMs,
+            onAcceptedText: (change) => changes.push(change),
+          }),
         );
         if (!mutation) return [];
-        projectCanonicalState(mutation.after, observedAtMs, mutation.document);
+        projectCanonicalState(
+          mutation.after,
+          observedAtMs,
+          mutation.document,
+          buildCodexTranscriptAcceptedMutation(
+            mutation.before,
+            mutation.after,
+            mutation.patches,
+            changes,
+          ),
+        );
         return mutation.result;
       },
       commitCommandOutputDeltas: ({ updates, observedAtMs }) => {
         if (updates.length === 0) return [];
+        const changes: CodexTranscriptTextChange[] = [];
         const mutation = aggregate.document.mutate((draft) =>
-          updates.map((update) => mutateCodexConversationCommandOutput(draft, update).disposition),
+          updates.map(
+            (update) =>
+              mutateCodexConversationCommandOutput(draft, update, {
+                onAcceptedText: (change) => changes.push(change),
+              }).disposition,
+          ),
         );
         if (!mutation) return [];
-        projectCanonicalState(mutation.after, observedAtMs, mutation.document);
+        const previous = aggregate.mutationBroadcast;
+        aggregate.mutationBroadcast = false;
+        try {
+          projectCanonicalState(
+            mutation.after,
+            observedAtMs,
+            mutation.document,
+            buildCodexTranscriptAcceptedMutation(
+              mutation.before,
+              mutation.after,
+              mutation.patches,
+              changes,
+            ),
+          );
+        } finally {
+          aggregate.mutationBroadcast = previous;
+        }
         return mutation.result;
       },
       commitTerminalCommands: ({ update, observedAtMs }) => {
@@ -1019,7 +1068,13 @@ export function makeConversationEntityStateRegistry(): ConversationEntityStateRe
           mutateCodexConversationTerminalCommands(draft, update),
         );
         if (!mutation) return "noTurns";
-        projectCanonicalState(mutation.after, observedAtMs, mutation.document);
+        const previous = aggregate.mutationBroadcast;
+        aggregate.mutationBroadcast = false;
+        try {
+          projectCanonicalState(mutation.after, observedAtMs, mutation.document);
+        } finally {
+          aggregate.mutationBroadcast = previous;
+        }
         return mutation.result.disposition;
       },
       readServerRequestState: () => {

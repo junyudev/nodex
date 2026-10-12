@@ -12,6 +12,7 @@ const automaticCompletionDelayMs = Number.parseInt(
 );
 const injectionReleasePath = process.env.NODEX_FAKE_CODEX_INJECTION_RELEASE_PATH;
 const threadReadReleasePath = process.env.NODEX_FAKE_CODEX_THREAD_READ_RELEASE_PATH;
+const pressurePageReleasePath = process.env.NODEX_FAKE_CODEX_PRESSURE_PAGE_RELEASE_PATH;
 // Individual scenarios can opt into newer contracts after enabling their matching fixture paths.
 const appServerVersion = process.env.NODEX_FAKE_CODEX_APP_SERVER_VERSION ?? "0.145.0-alpha.15";
 
@@ -66,6 +67,7 @@ record("launch", { args: process.argv.slice(2), pid: process.pid });
 
 const turn = (id, status, timestamps = {}, items = []) => ({
   id,
+  rootTurnId: null,
   items,
   itemsView: "full",
   status,
@@ -76,6 +78,7 @@ const turn = (id, status, timestamps = {}, items = []) => ({
 });
 
 const thread = (includeTurns = false) => ({
+  environments: null,
   model: null,
   reasoningEffort: null,
   id: state.thread?.id ?? (process.env.NODEX_FAKE_CODEX_THREAD_ID ?? "01900000-0000-7000-8000-000000000001"),
@@ -96,9 +99,10 @@ const thread = (includeTurns = false) => ({
   status: state.turns.some((entry) => entry.status === "inProgress")
     ? { type: "active", activeFlags: [] }
     : { type: "idle" },
-  path: null,
+  path: process.env.NODEX_FAKE_CODEX_ROLLOUT_PATH ?? null,
   cwd: state.thread?.cwd ?? process.cwd(),
   cliVersion: appServerVersion,
+  originator: null,
   source: { custom: "nodex-e2e" },
   canAcceptDirectInput: true,
   threadSource: "user",
@@ -106,6 +110,7 @@ const thread = (includeTurns = false) => ({
   agentRole: null,
   gitInfo: null,
   name: "Queue parity scenario",
+  daybreakEnabled: null,
   turns: includeTurns ? state.turns : [],
 });
 
@@ -596,14 +601,49 @@ const handle = (message) => {
     case "thread/items/list": {
       const selectedTurn = state.turns.find((entry) => entry.id === params.turnId);
       const items = selectedTurn?.items ?? [];
-      respond(id, {
-        data: (params.sortDirection === "desc" ? [...items].reverse() : items).map((item) => ({
+      const ordered = params.sortDirection === "desc" ? [...items].reverse() : items;
+      const anchor = typeof params.cursor === "object" && params.cursor?.type === "item";
+      const cursorId = anchor ? params.cursor.itemId : params.cursor;
+      const cursorIndex = cursorId == null ? 0 : ordered.findIndex((item) => item.id === cursorId);
+      const start = cursorIndex + (anchor ? 1 : 0);
+      if (cursorIndex < 0) throw new Error(`Unknown item cursor: ${cursorId}`);
+      const page = ordered.slice(start, start + (params.limit ?? ordered.length));
+      const result = {
+        data: page.map((item) => ({
           turnId: params.turnId,
           item,
+          startedAtMs: (selectedTurn?.startedAt ?? 0) * 1000,
+          completedAtMs: selectedTurn?.status === "completed" ? (selectedTurn.completedAt ?? 0) * 1000 : null,
         })),
-        nextCursor: null,
-        backwardsCursor: null,
-      });
+        nextCursor: ordered[start + page.length]?.id ?? null,
+        backwardsCursor: ordered[start - 1]?.id ?? null,
+      };
+      if (pressurePageReleasePath && params.turnId === "pressure-turn" && params.cursor === "pressure-command-0401" && !fs.existsSync(pressurePageReleasePath)) {
+        record("pressure-page-held", { requestId: id, ...params });
+        const release = setInterval(() => {
+          if (!fs.existsSync(pressurePageReleasePath)) return;
+          clearInterval(release);
+          record("pressure-page-released", { requestId: id, ...params });
+          respond(id, result);
+        }, 10);
+        release.unref();
+        return;
+      }
+      respond(id, result);
+      return;
+    }
+    case "thread/searchOccurrences": {
+      const query = params.searchTerm.toLowerCase();
+      const matches = state.turns.flatMap((entry) => entry.items.flatMap((item) => {
+        const text = item.type === "agentMessage" ? item.text : item.type === "userMessage" ? item.content.filter((part) => part.type === "text").map((part) => part.text).join("\n") : null;
+        if (text == null) return [];
+        const start = text.toLowerCase().indexOf(query);
+        if (start < 0) return [];
+        return [{ turnId: entry.id, itemId: item.id, snippet: text, snippetMatchRange: { start, end: start + query.length }, turnCursor: entry.id }];
+      }));
+      const start = params.cursor == null ? 0 : Number(params.cursor);
+      const data = matches.slice(start, start + (params.limit ?? 100));
+      respond(id, { data, nextCursor: start + data.length < matches.length ? String(start + data.length) : null });
       return;
     }
     case "thread/queue/list":

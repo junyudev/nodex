@@ -3,6 +3,8 @@ import { act, renderHook, waitFor } from "@testing-library/react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { beforeEach, describe, expect, test, vi } from "vite-plus/test";
 import { installWindowApi } from "@/test/browser-globals";
+import * as codexNavigation from "../features/local-conversation/use-workbench-codex-navigation";
+import { makeAttachedSession } from "../components/workbench/workbench-testkit/workbench-shell-fixtures";
 import type {
   Project,
   ProjectSession,
@@ -814,6 +816,35 @@ describe("useWorkbenchSessionCatalog", () => {
       id: "session:projectless",
       projectId: null,
     });
+  });
+
+  test("dispatches a newly resolved Thread before committing its Session route", async () => {
+    invokeMock.mockImplementation(() => Promise.resolve(makeWindow([])));
+    const window = makeWindowPort({ kind: "pages" });
+    const { hook } = createHarness(window);
+    const order: string[] = [];
+    const session = makeAttachedSession({
+      id: "session:newly-resolved",
+      threadId: "thread:resolved",
+    });
+    const dispatch = vi
+      .spyOn(codexNavigation, "dispatchWorkbenchCodexNavigation")
+      .mockImplementation(() => {
+        order.push("dispatch");
+      });
+    vi.mocked(window.selectSession).mockImplementation(() => {
+      order.push("route");
+    });
+    try {
+      await act(async () => {
+        hook.result.current.select(session);
+        await Promise.resolve();
+      });
+      expect(order).toEqual(["dispatch", "route"]);
+      expect(dispatch).toHaveBeenCalledWith(session.thread);
+    } finally {
+      dispatch.mockRestore();
+    }
   });
 
   test("ensures the Core-owned default draft without scanning ordinary threadless Sessions", async () => {

@@ -174,6 +174,7 @@ function installComposerWindowApi(testInvoke?: TestInvoke): void {
 
 function buildModel(overrides?: Partial<ThreadFooterModel>): ThreadFooterModel {
   return {
+    connectionStatus: "connected",
     workspaceSearchContext: {
       hostId: "local",
       roots: ["/tmp/project"],

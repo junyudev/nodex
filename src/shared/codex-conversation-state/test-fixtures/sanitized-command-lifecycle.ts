@@ -69,7 +69,7 @@ export const sanitizedCommandLifecycleFixture = {
     gitInfo: null,
     daybreakEnabled: null,
     name: "Sanitized replay fixture",
-    turns: [{
+    turns: [{ rootTurnId: null,
       id: TURN_ID,
       items: [],
       itemsView: "full",

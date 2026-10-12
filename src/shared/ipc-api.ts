@@ -54,7 +54,7 @@ import type {
   AgentBackendSessionPresentation,
   AgentConversationSnapshot,
 } from "./agent-conversation";
-import type { CodexPersistedHistorySearchResult } from "./codex-persisted-history-search";
+import type { CodexPersistedHistorySearchReadPage } from "./codex-persisted-history-search";
 
 import type { GitRepositoryIdentity } from "./git-repository-identity";
 import type { ContentAccessContext } from "./content-access-context";
@@ -2235,6 +2235,18 @@ export interface IpcApi {
       context: import("./codex-conversation-state/codex-conversation-state").CreateCodexCanonicalHydratedConversationStateOptions;
     };
   };
+  "codex:composer-prediction:availability": {
+    args: [hostId: string];
+    result: import("./codex-composer-prediction").CodexComposerPredictionAvailability;
+  };
+  "codex:composer-prediction:request": {
+    args: [input: import("./codex-composer-prediction").CodexComposerPredictionInput];
+    result: import("./codex-composer-prediction").CodexComposerPredictionResult | null;
+  };
+  "codex:composer-prediction:clear": {
+    args: [input?: import("./codex-composer-prediction").CodexComposerPredictionClearInput];
+    result: void;
+  };
   "codex:app-server:host-context": {
     args: [hostId: string];
     result: import("./codex-renderer-resume").CodexRendererHostContext;
@@ -2556,7 +2568,7 @@ export interface IpcApi {
   };
   "codex:thread:history-search": {
     args: [threadId: string, query: string];
-    result: CodexPersistedHistorySearchResult;
+    result: CodexPersistedHistorySearchReadPage;
   };
   "codex:thread:history-export:start": {
     args: [threadId: string];

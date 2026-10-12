@@ -14,6 +14,8 @@ export class CodexExecutionHostAuthState extends Context.Service<
     readonly changes: Stream.Stream<ReadonlySet<string>>;
     readonly markLoginRequired: (hostId: string) => Effect.Effect<void>;
     readonly clearLoginRequired: (hostId: string) => Effect.Effect<void>;
+    /** Captures the current lifetime immediately, including while an account mutation is pending. */
+    readonly captureBackendLease: (hostId: string) => Effect.Effect<AbortSignal>;
     readonly backendLease: (hostId: string) => Effect.Effect<AbortSignal>;
     readonly withAccountMutation: <A, E, R>(
       hostId: string,
@@ -55,6 +57,18 @@ export const live: Layer.Layer<CodexExecutionHostAuthState> = Layer.effect(
           });
         }),
       );
+    const captureBackendLease = (hostId: string) =>
+      Effect.gen(function* () {
+        yield* SubscriptionRef.updateEffect(backendHosts, (hosts) =>
+          Effect.gen(function* () {
+            if (hosts.has(hostId)) return hosts;
+            const lifetime = yield* makeBackendLifetime;
+            return new Map(hosts).set(hostId, { pending: 0, ...lifetime });
+          }),
+        );
+        const hosts = yield* SubscriptionRef.get(backendHosts);
+        return hosts.get(hostId)!.signal;
+      });
 
     const setLoginRequired = Effect.fn("CodexExecutionHostAuthState.setLoginRequired")(function* (
       hostId: string,
@@ -80,15 +94,10 @@ export const live: Layer.Layer<CodexExecutionHostAuthState> = Layer.effect(
       changes: SubscriptionRef.changes(loginRequiredHosts).pipe(Stream.changes),
       markLoginRequired: (hostId) => setLoginRequired(hostId, true),
       clearLoginRequired: (hostId) => setLoginRequired(hostId, false),
+      captureBackendLease,
       backendLease: (hostId) =>
         Effect.gen(function* () {
-          yield* SubscriptionRef.updateEffect(backendHosts, (hosts) =>
-            Effect.gen(function* () {
-              if (hosts.has(hostId)) return hosts;
-              const lifetime = yield* makeBackendLifetime;
-              return new Map(hosts).set(hostId, { pending: 0, ...lifetime });
-            }),
-          );
+          yield* captureBackendLease(hostId);
           const ready = yield* SubscriptionRef.changes(backendHosts).pipe(
             Stream.map((hosts) => hosts.get(hostId)),
             Stream.filter((host) => host !== undefined && host.pending === 0),

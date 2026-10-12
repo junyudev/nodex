@@ -8,7 +8,6 @@ import {
 import {
   buildCodexDesktopThreadFeatureConfig,
   buildCodexThreadConfig,
-  CODEX_DESKTOP_THREAD_FEATURE_CONFIG,
 } from "../codex/codex-thread-config";
 import type {
   Thread,
@@ -259,6 +258,7 @@ const makeGateway = (
 ): CodexGateway["Service"] => {
   const unsupported = () => Effect.die(new Error("Unsupported Gateway operation"));
   return CodexGateway.of({
+    promoteQueuedCatalogPage: Effect.succeed(false),
     localHostId,
     requestRawOnHost: unsupported,
     requestRawForThread: unsupported,
@@ -551,6 +551,7 @@ it.effect("accepts a concrete paginated start contract without trusting the vers
         Effect.provideService(CoreModules, core),
       );
       const poisonTurn: Turn = {
+        rootTurnId: null,
         id: "turn-poison",
         items: Array.from({ length: 1000 }, (_, index) => ({
           questions: null,
@@ -679,6 +680,7 @@ it.effect("rejects inline history from metadata observations before durable pers
         Effect.provideService(CoreModules, makeCore(threads)),
       );
       const poisonTurn: Turn = {
+        rootTurnId: null,
         id: "turn-inline",
         items: [],
         itemsView: "full",
@@ -724,6 +726,7 @@ it.effect("accepts a metadata-only import shell and hydrates only a bounded tail
         readonly params: unknown;
       }> = [];
       const tailTurn: Turn = {
+        rootTurnId: null,
         id: "turn-tail",
         items: [],
         itemsView: "notLoaded",
@@ -870,6 +873,7 @@ it.effect("rejects inline history from an import before it persists or pages", (
         Effect.provideService(CoreModules, core),
       );
       const inlineTurn: Turn = {
+        rootTurnId: null,
         id: "turn-inline",
         items: [],
         itemsView: "full",
@@ -1249,6 +1253,7 @@ it.effect("hydrates an inactive paginated Thread from a bounded tail without res
         return Effect.succeed({ thread: appThread("thread-a") });
       }) as RequestOnHost);
       const tailTurn: Turn = {
+        rootTurnId: null,
         id: "turn-tail",
         items: [],
         itemsView: "full",
@@ -1516,6 +1521,7 @@ it.effect.each([
         );
         const pageInputs: unknown[] = [];
         const tailTurn: Turn = {
+          rootTurnId: null,
           id: "turn-tail",
           items: [],
           itemsView: "summary",
@@ -1752,6 +1758,7 @@ it.effect("reads authoritative history when an unversioned resume omits its page
         Effect.provideService(CoreModules, core),
       );
       const residentTurn: Turn = {
+        rootTurnId: null,
         id: "turn-resident",
         items: [
           {
@@ -1808,7 +1815,7 @@ it.effect("reads authoritative history when an unversioned resume omits its page
         model: null,
         cwd: "/repo",
         personality: null,
-        config: CODEX_DESKTOP_THREAD_FEATURE_CONFIG,
+        config: buildCodexDesktopThreadFeatureConfig(unversionedCapability.version),
       });
       assert.deepEqual(resumeRequest.scheduling, {
         expectedHostId: "remote-a",
@@ -1858,7 +1865,7 @@ it.effect.each([false, true])(
         const capability = createCodexAppServerCapabilitySnapshot({
           hostId: "durable",
           generation: 2,
-          userAgent: supportsPagination ? "nodex/0.148.0" : "nodex/0.0.0",
+          userAgent: supportsPagination ? "nodex/0.148.0" : "nodex/0.144.0",
         });
         const item = (id: string) => ({
           type: "agentMessage" as const,
@@ -1870,6 +1877,7 @@ it.effect.each([false, true])(
           questions: null,
         });
         const turn = (id: string): Turn => ({
+          rootTurnId: null,
           id,
           items: [item(id)],
           itemsView: "full",
@@ -2055,7 +2063,7 @@ it.effect.each([false, true])(
         const capability = createCodexAppServerCapabilitySnapshot({
           hostId: "remote-a",
           generation: 2,
-          userAgent: supportsPagination ? "nodex/0.148.0" : "nodex/0.0.0",
+          userAgent: supportsPagination ? "nodex/0.148.0" : "nodex/0.144.0",
         });
         const historyReads: unknown[] = [];
         let readMode: "success" | "wrong-thread" | "stale" | "failure" = "success";
@@ -2130,6 +2138,7 @@ it.effect.each([false, true])(
         assert.strictEqual(fallback.snapshot?.turnPagination?.hasLoadedOldest, true);
 
         const turn = (id: string): Turn => ({
+          rootTurnId: null,
           id,
           items: [
             {
@@ -2220,11 +2229,13 @@ it.effect.each([false, true])(
           });
           assert.deepEqual<unknown>(
             accepted.canonical?.turns.map((value) => ({
+              rootTurnId: null,
               id: value.turnId,
               itemsView: value.itemsView,
               items: value.items,
             })),
             expectedTurns.map(({ id, itemsView, items }) => ({
+              rootTurnId: null,
               id,
               itemsView,
               items,
@@ -2480,6 +2491,7 @@ it.effect.each(mainResumeScenarios)(
           current: () => manager,
         } as unknown as CodexMainConversationManagers["Service"];
         const turn = (id: string): Turn => ({
+          rootTurnId: null,
           id,
           items: [],
           itemsView: "full",

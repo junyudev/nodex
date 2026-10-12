@@ -115,6 +115,7 @@ const makeHarness = (
   const failedHosts = new Set(failedHostId ? [failedHostId] : []);
   const unsupported = () => Effect.die(new Error("Unsupported test operation"));
   const gateway = CodexGateway.of({
+    promoteQueuedCatalogPage: Effect.succeed(false),
     localHostId: "local",
     requestRawOnHost: () => Effect.die(new Error("Unsupported raw host request")),
     requestRawForThread: () => Effect.die(new Error("Unsupported raw request")),

@@ -746,7 +746,7 @@ Codex has four distinct authorities that must not collapse into one another:
   receive its actual Immer draft patches and snapshots. Main's Conversation Entity belongs to
   that Main manager, not to a second authority over window-owned documents. Canonical history,
   requests, local context and unread state belong to that document independently of loaded Turns.
-- Renderer presentation derives from its manager's canonical state. Asynchronous question drafts
+- Renderer presentation consumes a manager-derived normalized transcript read capability. The local manager supplies it through MessageChannel; the read owner stages atomic resets and independently subscribes to Turn details, sparse item slots and keyed item values. This projection accepts no canonical writes. Business reads materialize a Turn only when they request its content. Asynchronous question drafts
   and panel selection remain local to that manager; accepted canonical messages remain the answer
   authority. Questions steer the existing Turn without acquiring a blocking request or durable
   follow-up lifecycle. See [Request User Input](product-specs/codex-thread-transcript-behavior.md#request-user-input).
@@ -1094,7 +1094,7 @@ These invariants cross subsystem boundaries. Narrower domain and feature invaria
 8. Page ID remains canonical. A Page key is a Database-scoped, authorized secondary locator; candidate ambiguity is evaluated only after lifecycle and access filtering, and the alias never becomes a Block, Document, cursor, reference, View-position, or mutation identity.
 9. Authorization is evaluated by Core from explicit trusted access context. Renderer presentation and Codex operation approval are not resource authorization.
 10. Runtime validation occurs at transport, persistence, and external-data boundaries. Normalized in-memory domain state remains typed without repeated permissive parsing.
-11. Every user-growing collection is count- and byte-bounded and uses stable keyset pagination. List and Board reads never hydrate full Page Documents.
+11. Core query collections use bounded count and byte windows with stable keyset pagination. Native conversation history follows its explicit paging and resource-lifetime contract; it does not inherit a universal resident-content byte cap. List and Board reads never hydrate full Page Documents.
 12. A durable mutation has one semantic intent, exact-retry receipt, atomic LocalCommit evidence, and Core-authored projection impact. Response and replay deliveries represent the same committed fact; local presentation settles only from the proof required by its owning visibility protocol.
 13. Projection authority is scope-specific. A LocalCommit sequence is durable replay progress and cannot substitute for a projection revision.
 14. Structural mutations that consume collaborative shape fence every affected Document at an exact durable head before commit.

@@ -100,7 +100,7 @@ function isStalePhase(
   return PHASE_ORDER[next] < PHASE_ORDER[current];
 }
 
-function readCanonicalClientUserMessageId(turn: CodexConversationTurn): string | null {
+export function readCanonicalClientUserMessageId(turn: CodexConversationTurn): string | null {
   if (turn.clientUserMessageId) return turn.clientUserMessageId;
   for (const item of turn.items) {
     if (item.semanticKind !== "userMessage" && item.kind !== "userMessage") continue;
@@ -190,14 +190,21 @@ function buildUserAttachments(submission: SessionFirstSubmission): CodexUserAtta
   return [...files, ...images];
 }
 
-function buildPresentationTurn(submission: SessionFirstSubmission): CodexConversationTurn {
+const presentationTurns = new WeakMap<SessionFirstSubmission, CodexConversationTurn>();
+export function buildFirstSubmissionPresentationTurn(
+  submission: SessionFirstSubmission,
+): CodexConversationTurn {
+  const cached = presentationTurns.get(submission);
+  if (cached) return cached;
   const itemId = `first-submission:${submission.clientUserMessageId}`;
   const threadId = submission.threadId ?? `launch:${submission.launchId}`;
   const userAttachments = buildUserAttachments(submission);
   const failed = submission.phase === "failed";
-  return {
+  const turn: CodexConversationTurn = {
     threadId,
     turnId: null,
+    entityKey: `turn-local:${submission.clientUserMessageId}`,
+    clientUserMessageId: submission.clientUserMessageId,
     status: failed ? "failed" : "inProgress",
     ...(failed && submission.failure ? { errorMessage: submission.failure.message } : {}),
     itemIds: [itemId],
@@ -231,6 +238,8 @@ function buildPresentationTurn(submission: SessionFirstSubmission): CodexConvers
       },
     ],
   };
+  presentationTurns.set(submission, turn);
+  return turn;
 }
 
 function matchesPresentationTarget(
@@ -263,7 +272,7 @@ export function projectSessionFirstSubmissionTurns(
   if (!submission || hasCanonicalFirstSubmission(canonicalTurns, submission.clientUserMessageId)) {
     return canonicalTurns as CodexConversationTurn[];
   }
-  return [...canonicalTurns, buildPresentationTurn(submission)];
+  return [...canonicalTurns, buildFirstSubmissionPresentationTurn(submission)];
 }
 
 export interface SessionFirstSubmissionOwner {

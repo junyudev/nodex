@@ -2,11 +2,19 @@ import { codexRuntimeError } from "../codex-runtime/CodexRuntimeError";
 import { assert, it } from "@effect/vitest";
 import type { ThreadItem, Turn } from "@nodex/codex-app-server-protocol/v2";
 import * as Effect from "effect/Effect";
+import * as Stream from "effect/Stream";
 import * as Deferred from "effect/Deferred";
 import * as Fiber from "effect/Fiber";
 import * as Result from "effect/Result";
 import { createCodexAppServerCapabilitySnapshot } from "../codex-runtime/CodexAppServerCapabilities";
 import { CodexGateway } from "../codex-runtime/CodexGateway";
+import type { CodexGatewayRequestOptions } from "../codex-runtime/CodexGateway";
+import type { CodexRuntimeError } from "../codex-runtime/CodexRuntimeError";
+import type {
+  ClientRequestMethod,
+  ClientRequestResponsesByMethod,
+} from "@nodex/effect-codex-app-server/rpc";
+import { layer as scopedCallbackRuntimeLayer } from "../app/ScopedCallbackRuntime";
 import {
   CODEX_HISTORY_ITEM_PAGE_SIZE,
   CODEX_HISTORY_INITIAL_BYTE_BUDGET,
@@ -21,6 +29,7 @@ const CAPABILITY = createCodexAppServerCapabilitySnapshot({
 });
 
 const completedTurn = (id: string): Turn => ({
+  rootTurnId: null,
   id,
   items: [],
   itemsView: "notLoaded",
@@ -47,6 +56,129 @@ const userItem = (id: string, text: string): ThreadItem => ({
   clientId: null,
   content: [{ type: "text", text, text_elements: [] }],
 });
+
+function historyGatewayFixture(
+  request: (
+    method: ClientRequestMethod,
+    params: Record<string, unknown>,
+    options?: CodexGatewayRequestOptions,
+  ) => Effect.Effect<unknown, CodexRuntimeError>,
+): CodexGateway["Service"] {
+  const requestForThread: CodexGateway["Service"]["requestForThread"] = (
+    _threadId,
+    method,
+    params,
+    options,
+  ) =>
+    request(method, params as Record<string, unknown>, options).pipe(
+      Effect.map((response) => response as ClientRequestResponsesByMethod[typeof method]),
+    );
+  const unused = () => Effect.die(new Error("Unexpected history test request"));
+  return CodexGateway.of({
+    localHostId: "local",
+    events: Stream.empty,
+    promoteQueuedCatalogPage: Effect.succeed(false),
+    requestForThread,
+    requestLocal: unused,
+    requestOnHost: unused,
+    requestRawOnHost: unused,
+    requestRawForThread: unused,
+    notifyLocal: unused,
+    connection: unused,
+    connectionChanges: () => Stream.empty,
+    awaitReady: unused,
+    reconcileHost: unused,
+    removeHost: unused,
+    restartHost: unused,
+  });
+}
+
+it.effect("Main timeline history uses the shared reader and keeps its source-bound cursor", () =>
+  Effect.gen(function* () {
+    const calls: { method: string; params: Record<string, unknown> }[] = [];
+    const capability = createCodexAppServerCapabilitySnapshot({
+      hostId: "local",
+      generation: 3,
+      userAgent: "nodex/0.162.0-alpha.17.2",
+    });
+    const gateway = historyGatewayFixture((method, params, options) =>
+      Effect.sync(() => {
+        calls.push({ method, params });
+        assert.strictEqual(options?.expectedGeneration, 3);
+        if (method === "thread/timeline/list")
+          return {
+            data: [
+              { type: "turnStarted", position: 0, turnId: "turn", startedAt: 1 },
+              { type: "item", position: 1, turnId: "turn", item: agentItem("item") },
+            ],
+            nextCursor: "timeline:older",
+            activeRealtimeSessionAtPageStart: null,
+          };
+        return { data: [completedTurn("turn")], nextCursor: null, backwardsCursor: null };
+      }),
+    );
+    const adapter = yield* make.pipe(Effect.provideService(CodexGateway, gateway));
+    const page = yield* adapter.loadTurnPage({
+      capability,
+      threadId: "thread",
+      cursor: null,
+      initialItemsCursor: null,
+      readThreadTimelineEnabled: () => true,
+    });
+    assert.strictEqual(page.source, "timeline");
+    assert.strictEqual(page.nextCursor, "timeline:older");
+    assert.strictEqual(page.turns[0]!.items[0]!.id, "item");
+    assert.strictEqual(page.completedItemIdsByTurnId?.turn?.item, true);
+    assert.deepEqual(
+      calls.map(({ method, params }) => [method, params.limit, params.itemsView]),
+      [
+        ["thread/timeline/list", 500, undefined],
+        ["thread/turns/list", 5, "notLoaded"],
+      ],
+    );
+    // oxlint-disable-next-line effecttsgo/strict-effect-provide -- This test entry point owns and releases the callback Scope.
+  }).pipe(Effect.provide(scopedCallbackRuntimeLayer), Effect.scoped),
+);
+
+it.effect(
+  "ordinary item reads halve decoder limits, preserve item anchors and completion wrappers",
+  () =>
+    Effect.gen(function* () {
+      const limits: number[] = [];
+      const cursor = { type: "item" as const, itemId: "anchor" };
+      const gateway = historyGatewayFixture((_method, params) => {
+        const limit = Number(params.limit);
+        limits.push(limit);
+        assert.deepEqual(params.cursor, cursor);
+        if (limit > 25)
+          return Effect.fail(
+            codexRuntimeError({
+              operation: "items",
+              reason: "request",
+              retryable: false,
+              cause: new Error("decoded message length too large"),
+            }),
+          );
+        return Effect.succeed({
+          data: [{ turnId: "turn", item: agentItem("done"), startedAtMs: 1, completedAtMs: 2 }],
+          nextCursor: null,
+          backwardsCursor: "newer",
+        });
+      });
+      const adapter = yield* make.pipe(Effect.provideService(CodexGateway, gateway));
+      const page = yield* adapter.loadTurnItemsPage({
+        capability: CAPABILITY,
+        threadId: "thread",
+        turnId: "turn",
+        cursor,
+      });
+      assert.deepEqual(limits, [100, 50, 25]);
+      assert.strictEqual(page.pageSize, 25);
+      assert.strictEqual(page.entries?.[0]?.completedAtMs, 2);
+      assert.strictEqual(page.entries?.[0]?.startedAtMs, 1);
+      assert.strictEqual(page.backwardsCursor, "newer");
+    }),
+);
 
 it.effect(
   "durable history drains ascending items beyond a shared budget and shrinks oversized requests",

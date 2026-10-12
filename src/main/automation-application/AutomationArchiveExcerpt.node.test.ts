@@ -18,6 +18,7 @@ import {
 } from "./AutomationArchiveExcerpt";
 
 const completedTurn = (id: string): Turn => ({
+  rootTurnId: null,
   id,
   items: [],
   itemsView: "notLoaded",
@@ -68,6 +69,10 @@ const capability = {
     searchOccurrences: true,
     ephemeralFork: false,
     multiAgentV2Protocol: false,
+    threadTimeline: false,
+    threadItemAnchors: false,
+    experimentalPredictionForkMode: false,
+    mcpApplicationNetworkPolicy: false,
     sideConversation: false,
     subagentAncestorFilter: false,
     threadRevert: false,

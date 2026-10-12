@@ -32,6 +32,53 @@ function buildLayout(heightsPx: number[]) {
 }
 
 describe("buildVirtualizedTurnLayout", () => {
+  test("preserves measured zero, minimum height and per-row gaps with physical-pixel rounding", () => {
+    const layout = buildVirtualizedTurnLayout({
+      entries: [
+        { turnKey: "empty", estimatedHeightPx: 200 },
+        { turnKey: "second", estimatedHeightPx: 10.2, minHeightPx: 10.4, gapBeforePx: 4.2 },
+        { turnKey: "gap", type: "gap", estimatedHeightPx: 3.3 },
+      ],
+      gapPx: 12,
+      pixelScale: 1.6,
+      measuredHeightsByKey: { empty: 0 },
+      collapseEmptyRows: true,
+    });
+    expect(layout.heightsPx).toEqual([0, 10.625, 3.125]);
+    expect(layout.gapsBeforePx).toEqual([0, 0, 11.875]);
+    expect(layout.topOffsetsPx).toEqual([0, 0, 22.5]);
+    expect(layout.totalHeightPx).toBe(25.625);
+    expect(layout.gapKeys.has("gap")).toBe(true);
+    expect(
+      resolveVisibleTurnRangeFromBottomDistance({
+        layout,
+        distanceFromBottomPx: 0,
+        viewportHeightPx: 100,
+        overscanCount: 0,
+      }),
+    ).toEqual({ startIndex: 0, endIndex: 3 });
+  });
+
+  test("rounds height and gap to the same pixel grid across zoom and DPR", () => {
+    for (const zoom of [0.8, 1, 1.25, 1.5])
+      for (const ratio of [1, 2]) {
+        const scale = zoom * ratio;
+        const layout = buildVirtualizedTurnLayout({
+          entries: [
+            { turnKey: "one", estimatedHeightPx: 10.3 },
+            { turnKey: "two", estimatedHeightPx: 11.3, gapBeforePx: 4.7 },
+          ],
+          gapPx: 12,
+          pixelScale: scale,
+        });
+        expect(layout.heightsPx.map((value) => value * scale)).toEqual([
+          Math.round(10.3 * scale),
+          Math.round(11.3 * scale),
+        ]);
+        expect(layout.gapsBeforePx[1]! * scale).toBeCloseTo(Math.round(4.7 * scale));
+        expect(layout.topOffsetsPx[1]).toBeCloseTo(layout.heightsPx[0]! + layout.gapsBeforePx[1]!);
+      }
+  });
   test("matches Codex spacer layout offsets, total height, and turn key index map", () => {
     const layout = buildLayout([100, 120, 80]);
 

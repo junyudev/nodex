@@ -15,6 +15,9 @@ import type {
   Turn,
   TurnItemsView,
   ThreadTurnsListResponse,
+  ThreadItemsListCursor,
+  ThreadTimelineListParams,
+  ThreadTimelineListResponse,
 } from "@nodex/codex-app-server-protocol/v2";
 import {
   materializeCodexCanonicalProtocolItem,
@@ -41,6 +44,10 @@ import {
   type CodexHistoryIsland,
   type CodexHistoryTurnItemsPagination,
 } from "./codex-history-topology";
+import {
+  readCanonicalHistoryTimeline,
+  applyCanonicalHistoryTimelineDraft,
+} from "./codex-canonical-history-timeline";
 
 const nativeTurnSchema = createGeneratedCodexSchema<Turn>({
   $schema: notificationSchema.$schema,
@@ -50,6 +57,7 @@ const nativeTurnSchema = createGeneratedCodexSchema<Turn>({
 
 type HistoryMethod = "thread/turns/list" | "thread/items/list";
 export interface CanonicalHistoryRequestOptions {
+  readonly trace?: import("../codex-request-lifecycle").CodexRequestTraceContext | null;
   readonly timeoutMs?: number;
   readonly priority?: "background" | "interactive" | "critical";
   readonly source?: string;
@@ -57,6 +65,11 @@ export interface CanonicalHistoryRequestOptions {
 export interface CanonicalHistoryClient {
   readonly hostId: string;
   supportsPaginatedHistory(): boolean;
+  supportsThreadTimeline?(): boolean;
+  sendTimelineRequest?(
+    params: ThreadTimelineListParams,
+    options?: CanonicalHistoryRequestOptions,
+  ): Promise<ClientRequestResponsesByMethod["thread/timeline/list"]>;
   getConversation(conversationId: string): CodexCanonicalConversationState | null | undefined;
   sendRequest<M extends HistoryMethod>(
     method: M,
@@ -76,8 +89,29 @@ export interface CanonicalHistoryClient {
   ): readonly CodexCanonicalTurnState[];
 }
 export interface CanonicalHistoryTurnPage {
+  readonly source?: "ordinary" | "timeline";
+  readonly timeline?: ThreadTimelineListResponse;
   readonly response: ThreadTurnsListResponse;
   readonly itemsPaginationByTurnId: Readonly<Record<string, CodexHistoryTurnItemsPagination>>;
+  readonly completedItemIdsByTurnId?: Readonly<Record<string, Readonly<Record<string, boolean>>>>;
+}
+
+/** A late history page cannot overwrite a more recent live lifecycle observation. */
+export function withCanonicalHistoryItemCompletion(
+  turns: readonly CodexCanonicalTurnState[],
+  page: {
+    readonly response?: unknown;
+    readonly completedItemIdsByTurnId?: CanonicalHistoryTurnPage["completedItemIdsByTurnId"];
+  } | null,
+): readonly CodexCanonicalTurnState[] {
+  if (!page?.completedItemIdsByTurnId) return turns;
+  return turns.map((turn) => {
+    const incoming =
+      turn.turnId === null ? undefined : page.completedItemIdsByTurnId?.[turn.turnId];
+    return incoming
+      ? { ...turn, completedItemIds: { ...incoming, ...turn.completedItemIds } }
+      : turn;
+  });
 }
 export interface CanonicalHistoryPageOptions {
   readonly cursor?: string | null;
@@ -85,7 +119,30 @@ export interface CanonicalHistoryPageOptions {
   readonly sortDirection?: "asc" | "desc" | null;
   readonly itemsView?: TurnItemsView | null;
   readonly requestOptions?: CanonicalHistoryRequestOptions;
-  readonly source?: "ordinary" | "compact";
+  readonly source?: "ordinary" | "compact" | "timeline";
+}
+
+export function normalizeCanonicalHistoryTurn(
+  turn: ClientRequestResponsesByMethod["thread/turns/list"]["data"][number] | Turn,
+): Turn {
+  return nativeTurnSchema.parse({
+    ...turn,
+    rootTurnId: turn.rootTurnId ?? null,
+    itemsView: turn.itemsView ?? "full",
+    items: turn.items.map((item) => CodexProtocolThreadItemSchema.parse(item)),
+    error:
+      turn.error == null
+        ? null
+        : {
+            ...turn.error,
+            codexErrorInfo: turn.error.codexErrorInfo ?? null,
+            additionalDetails: turn.error.additionalDetails ?? null,
+            misalignment: turn.error.misalignment ?? null,
+          },
+    startedAt: turn.startedAt ?? null,
+    completedAt: turn.completedAt ?? null,
+    durationMs: turn.durationMs ?? null,
+  });
 }
 
 /** The physical item request validates its Turn identity and retains chronological item order. */
@@ -93,26 +150,48 @@ export async function readCanonicalHistoryItems(
   client: CanonicalHistoryClient,
   conversationId: string,
   turnId: string,
-  cursor: string | null,
+  cursor: ThreadItemsListCursor | null,
   options?: CanonicalHistoryRequestOptions,
   limit = 100,
   sortDirection: "asc" | "desc" = "desc",
 ) {
-  const response = await client.sendRequest(
-    "thread/items/list",
-    { threadId: conversationId, turnId, cursor, limit, sortDirection },
-    options,
-  );
+  let pageSize = Math.max(1, limit);
+  const read = async (): Promise<ClientRequestResponsesByMethod["thread/items/list"]> => {
+    try {
+      return await client.sendRequest(
+        "thread/items/list",
+        { threadId: conversationId, turnId, cursor, limit: pageSize, sortDirection },
+        options,
+      );
+    } catch (error) {
+      if (
+        !(error instanceof Error) ||
+        !error.message.includes("decoded message length too large") ||
+        pageSize === 1
+      )
+        throw error;
+      pageSize = Math.max(1, Math.floor(pageSize / 2));
+      return read();
+    }
+  };
+  const response = await read();
   if (response.nextCursor !== null && response.nextCursor === cursor)
     throw new Error(`thread/items/list returned unchanged cursor for turn ${turnId}`);
   const items = response.data.map((entry) => {
-    if (entry.turnId !== turnId)
+    if (client.hostId === "durable" && !("item" in entry))
+      return CodexProtocolThreadItemSchema.parse(entry);
+    if (entry.turnId !== turnId && !(client.hostId === "durable" && entry.turnId === undefined))
       throw new Error(`thread/items/list returned item for unexpected turn ${entry.turnId}`);
     return CodexProtocolThreadItemSchema.parse(entry.item);
   });
   return {
     items: sortDirection === "desc" ? items.reverse() : items,
     nextCursor: response.nextCursor ?? null,
+    backwardsCursor: response.backwardsCursor ?? null,
+    pageSize,
+    entries: (sortDirection === "desc" ? [...response.data].reverse() : response.data).filter(
+      (entry) => "item" in entry,
+    ),
   };
 }
 
@@ -121,35 +200,27 @@ async function readDurableTurnItems(
   conversationId: string,
   turnId: string,
   options: CanonicalHistoryRequestOptions,
-): Promise<ThreadItem[]> {
+): Promise<{ readonly items: ThreadItem[]; readonly completedItemIds: Record<string, boolean> }> {
   const items: ThreadItem[] = [];
+  const completedItemIds: Record<string, boolean> = {};
   const cursors = new Set<string>();
   let cursor: string | null = null;
   let limit = 500;
   for (;;) {
-    let response: ClientRequestResponsesByMethod["thread/items/list"];
-    try {
-      response = await client.sendRequest(
-        "thread/items/list",
-        { threadId: conversationId, turnId, cursor, limit, sortDirection: "asc" },
-        options,
-      );
-    } catch (error) {
-      if (
-        !(error instanceof Error) ||
-        !error.message.includes("decoded message length too large") ||
-        limit <= 1
-      )
-        throw error;
-      limit = Math.floor(limit / 2);
-      continue;
-    }
-    items.push(
-      ...response.data.map((entry) =>
-        CodexProtocolThreadItemSchema.parse("item" in entry ? entry.item : entry),
-      ),
+    const response = await readCanonicalHistoryItems(
+      client,
+      conversationId,
+      turnId,
+      cursor,
+      options,
+      limit,
+      "asc",
     );
-    if (response.nextCursor == null) return items;
+    limit = response.pageSize;
+    items.push(...response.items);
+    for (const entry of response.entries)
+      if ("completedAtMs" in entry) completedItemIds[entry.item.id] = entry.completedAtMs !== null;
+    if (response.nextCursor == null) return { items, completedItemIds };
     if (cursors.has(response.nextCursor))
       throw new Error(`thread/items/list returned a repeated cursor for turn ${turnId}`);
     cursors.add(response.nextCursor);
@@ -165,6 +236,23 @@ export async function listCanonicalHistoryTurns(
 ): Promise<CanonicalHistoryTurnPage> {
   if (options.source === "compact")
     throw new Error("Compact history is unsupported for this thread");
+  const timeline =
+    options.source === "timeline" ||
+    (options.source === undefined && client.supportsThreadTimeline?.() === true);
+  if (timeline) {
+    if (
+      client.hostId === "durable" ||
+      client.supportsThreadTimeline?.() !== true ||
+      !client.sendTimelineRequest
+    )
+      throw new Error("Timeline history is unsupported for this thread");
+    return readCanonicalHistoryTimeline(
+      client,
+      conversationId,
+      options.cursor ?? null,
+      options.requestOptions,
+    );
+  }
   const conversation = client.getConversation(conversationId);
   const durable = client.hostId === "durable";
   const paginated =
@@ -190,25 +278,7 @@ export async function listCanonicalHistoryTurns(
     ...rawResponse,
     nextCursor: rawResponse.nextCursor ?? null,
     backwardsCursor: rawResponse.backwardsCursor ?? null,
-    data: rawResponse.data.map((turn) =>
-      nativeTurnSchema.parse({
-        ...turn,
-        itemsView: turn.itemsView ?? "full",
-        items: turn.items.map((item) => CodexProtocolThreadItemSchema.parse(item)),
-        error:
-          turn.error == null
-            ? null
-            : {
-                ...turn.error,
-                codexErrorInfo: turn.error.codexErrorInfo ?? null,
-                additionalDetails: turn.error.additionalDetails ?? null,
-                misalignment: turn.error.misalignment ?? null,
-              },
-        startedAt: turn.startedAt ?? null,
-        completedAt: turn.completedAt ?? null,
-        durationMs: turn.durationMs ?? null,
-      }),
-    ),
+    data: rawResponse.data.map(normalizeCanonicalHistoryTurn),
   };
   if (
     (!durable && !paginated) ||
@@ -218,23 +288,31 @@ export async function listCanonicalHistoryTurns(
     return { response, itemsPaginationByTurnId: {} };
   if (durable) {
     const data = new Array<Turn>(response.data.length);
+    const completedItemIdsByTurnId: Record<string, Record<string, boolean>> = {};
     const worker = async (index: number): Promise<void> => {
       const turn = response.data[index];
       if (!turn) return;
+      const page = await readDurableTurnItems(client, conversationId, turn.id, requestOptions!);
       data[index] = {
         ...turn,
-        items: await readDurableTurnItems(client, conversationId, turn.id, requestOptions!),
+        items: page.items,
         itemsView: "full",
       };
+      completedItemIdsByTurnId[turn.id] = page.completedItemIds;
       await worker(index + 5);
     };
     await Promise.all(
       Array.from({ length: Math.min(response.data.length, 5) }, (_, index) => worker(index)),
     );
-    return { response: { ...response, data }, itemsPaginationByTurnId: {} };
+    return {
+      response: { ...response, data },
+      itemsPaginationByTurnId: {},
+      completedItemIdsByTurnId,
+    };
   }
   const data: Turn[] = [];
   const itemsPaginationByTurnId: Record<string, CodexHistoryTurnItemsPagination> = {};
+  const completedItemIdsByTurnId: Record<string, Record<string, boolean>> = {};
   const openingLookups: Promise<void>[] = [];
   const openingConversation = client.getConversation(conversationId);
   const resident = openingConversation
@@ -263,6 +341,10 @@ export async function listCanonicalHistoryTurns(
         Math.min(100, budget),
       );
       requested = true;
+      for (const entry of page.entries) {
+        if (!("completedAtMs" in entry)) continue;
+        (completedItemIdsByTurnId[raw.id] ??= {})[entry.item.id] = entry.completedAtMs !== null;
+      }
       const items = page.items.filter((item) =>
         seenItems.has(item.id) ? false : (seenItems.add(item.id), true),
       );
@@ -316,7 +398,7 @@ export async function listCanonicalHistoryTurns(
     itemsPaginationByTurnId[raw.id] = pagination;
   }
   await Promise.all(openingLookups);
-  return { response: { ...response, data }, itemsPaginationByTurnId };
+  return { response: { ...response, data }, itemsPaginationByTurnId, completedItemIdsByTurnId };
 }
 
 /** Installs fetched history once; local overlays do not survive history replacement. */
@@ -463,10 +545,13 @@ export async function loadCanonicalHistoryBoundaryPage(
   });
   if (page.response.nextCursor === boundary.handle.cursor)
     throw new Error("thread/turns/list returned an unchanged cursor");
-  const turns = client.mapTurns(
-    conversationId,
-    ref.edge === "older" ? page.response.data.slice().reverse() : page.response.data,
-    page.itemsPaginationByTurnId,
+  const turns = withCanonicalHistoryItemCompletion(
+    client.mapTurns(
+      conversationId,
+      ref.edge === "older" ? page.response.data.slice().reverse() : page.response.data,
+      page.itemsPaginationByTurnId,
+    ),
+    page,
   );
   let applied = false;
   client.updateConversation(
@@ -493,7 +578,7 @@ export async function loadCanonicalHistoryBoundaryPage(
         return { key, value: key };
       });
       const oldestLoadedTurnId =
-        options.itemsView === "summary" && ref.edge === "older"
+        (options.itemsView === "summary" || page.source === "timeline") && ref.edge === "older"
           ? (turns.find((turn) => turn.turnId !== null)?.turnId ??
             boundary.handle.oldestLoadedTurnId)
           : boundary.handle.oldestLoadedTurnId;
@@ -522,7 +607,8 @@ export async function loadCanonicalHistoryBoundaryPage(
         islands.length === 1 &&
         islands[0]?.olderBoundary.status === "exhausted" &&
         islands[0].newerBoundary.status === "exhausted";
-      if (options.itemsView === "summary" && ref.edge === "older")
+      applyCanonicalHistoryTimelineDraft(draft, page.timeline, "prepend");
+      if ((options.itemsView === "summary" || page.source === "timeline") && ref.edge === "older")
         draft.turnsPagination = {
           source: before.turnsPagination?.source,
           olderCursor: page.response.nextCursor,
@@ -554,6 +640,8 @@ interface ItemLoad {
   pagination: CodexHistoryTurnItemsPagination | undefined;
   cancelled: boolean;
   promise: Promise<void>;
+  readonly background: boolean;
+  previewSlot?: boolean;
 }
 
 /** Item loads belong to the exact pagination object, not a second request/revision authority. */
@@ -570,6 +658,7 @@ export class CanonicalHistoryItemLoader implements Disposable {
       load.cancelled = true;
       this.queuedPreviews.get(load)?.(false);
       this.queuedPreviews.delete(load);
+      this.releasePreview(load);
       if (!this.disposed) this.updateLoading(load, false);
       this.inFlight.delete(key);
     }
@@ -594,7 +683,10 @@ export class CanonicalHistoryItemLoader implements Disposable {
     await Promise.all(selected.map((id) => this.loadTurnItems(conversationId, id, false, options)));
     return true;
   }
-  async loadRemainingTurnItems(conversationId: string): Promise<void> {
+  async loadRemainingTurnItems(
+    conversationId: string,
+    options: { readonly includeEvicted?: boolean } = {},
+  ): Promise<void> {
     const initial = this.client.getConversation(conversationId);
     const generation = initial?.turnHistory?.history.generation ?? null;
     while (!this.disposed) {
@@ -606,7 +698,9 @@ export class CanonicalHistoryItemLoader implements Disposable {
         return;
       const turn = residentConversationTurns(current).find(
         (candidate) =>
-          candidate.turnId !== null && candidate.itemsPagination?.hasLoadedOldest === false,
+          candidate.turnId !== null &&
+          candidate.itemsPagination?.hasLoadedOldest === false &&
+          (options.includeEvicted === true || candidate.itemsPagination.evicted !== true),
       );
       if (turn?.turnId == null) return;
       await this.loadTurnItems(conversationId, turn.turnId, true);
@@ -621,7 +715,8 @@ export class CanonicalHistoryItemLoader implements Disposable {
     if (this.disposed) return;
     const key = `${conversationId}:${turnId}`;
     const existing = this.inFlight.get(key);
-    if (existing && this.owns(existing)) {
+    const prioritized = options?.priority === "interactive" || options?.priority === "critical";
+    if (existing && this.owns(existing) && !(existing.background && prioritized)) {
       await existing.promise;
       if (all && this.owns(existing))
         await this.loadTurnItems(conversationId, turnId, true, options);
@@ -631,6 +726,8 @@ export class CanonicalHistoryItemLoader implements Disposable {
       existing.cancelled = true;
       this.queuedPreviews.get(existing)?.(false);
       this.queuedPreviews.delete(existing);
+      this.releasePreview(existing);
+      this.updateLoading(existing, false);
     }
     const conversation = this.client.getConversation(conversationId);
     const load: ItemLoad = {
@@ -640,6 +737,10 @@ export class CanonicalHistoryItemLoader implements Disposable {
       pagination: this.pagination(conversationId, turnId),
       cancelled: false,
       promise: Promise.resolve(),
+      background:
+        options?.priority === "background" ||
+        (options?.priority === undefined &&
+          (all || this.pagination(conversationId, turnId)?.summaryItemIds != null)),
     };
     this.inFlight.set(key, load);
     load.promise = this.loadInner(load, all, options);
@@ -668,6 +769,7 @@ export class CanonicalHistoryItemLoader implements Disposable {
     );
   }
   private updateLoading(load: ItemLoad, loading: boolean): void {
+    if (this.inFlight.get(`${load.conversationId}:${load.turnId}`) !== load) return;
     const pagination = this.pagination(load.conversationId, load.turnId);
     if (!pagination || pagination !== load.pagination || pagination.isLoadingOlder === loading)
       return;
@@ -692,7 +794,9 @@ export class CanonicalHistoryItemLoader implements Disposable {
       );
       const pagination = turn?.itemsPagination;
       if (!this.owns(load) || !turn || !pagination || pagination.hasLoadedOldest) return;
-      const cursor = pagination.olderCursor;
+      const cursor = pagination.olderItemId
+        ? { type: "item" as const, itemId: pagination.olderItemId }
+        : pagination.olderCursor;
       const summaryIds = pagination.summaryItemIds;
       const beforeItems = new Map(turn.items.map((item) => [item.id, item]));
       const preview = !all && summaryIds != null;
@@ -703,7 +807,10 @@ export class CanonicalHistoryItemLoader implements Disposable {
           }))
         )
           return;
-      } else if (preview) this.activePreviews += 1;
+      } else if (preview) {
+        this.activePreviews += 1;
+        load.previewSlot = true;
+      }
       try {
         if (!this.owns(load)) return;
         this.updateLoading(load, true);
@@ -771,8 +878,19 @@ export class CanonicalHistoryItemLoader implements Disposable {
               ({ turn }) => turn.turnId === turnId,
             );
             const target = entry ? conversationTurnDraft(draft, entry.address) : undefined;
-            if (!target?.itemsPagination || target.itemsPagination.olderCursor !== cursor) return;
+            if (
+              !target?.itemsPagination ||
+              target.itemsPagination.olderCursor !== pagination.olderCursor ||
+              target.itemsPagination.olderItemId !== pagination.olderItemId
+            )
+              return;
             target.items = merged as Draft<CodexCanonicalTurnState["items"]>;
+            for (const itemEntry of page.entries) {
+              if (!("completedAtMs" in itemEntry) || liveItems.has(itemEntry.item.id)) continue;
+              const completed = (target.completedItemIds ??= {});
+              if (completed[itemEntry.item.id] === undefined)
+                completed[itemEntry.item.id] = itemEntry.completedAtMs !== null;
+            }
             if (summaryIds != null && opening?.type === "userMessage") {
               applyOpeningUserInput(target, opening);
               target.itemsPagination.oldestUserInput = opening.content;
@@ -793,6 +911,8 @@ export class CanonicalHistoryItemLoader implements Disposable {
               ...target.itemsPagination,
               summaryItemIds: undefined,
               olderCursor: nextCursor,
+              olderItemId: undefined,
+              evicted: nextCursor === null ? false : target.itemsPagination.evicted,
               isLoadingOlder: false,
               hasLoadedOldest: nextCursor === null,
               newestSnapshotItemId:
@@ -812,16 +932,22 @@ export class CanonicalHistoryItemLoader implements Disposable {
         if (!this.owns(load)) return;
         throw error;
       } finally {
-        if (preview) {
-          const next = this.queuedPreviews.entries().next().value;
-          if (!next) this.activePreviews -= 1;
-          else {
-            this.queuedPreviews.delete(next[0]);
-            next[1](true);
-          }
-        }
+        this.releasePreview(load);
       }
     }
+  }
+
+  private releasePreview(load: ItemLoad): void {
+    if (!load.previewSlot) return;
+    load.previewSlot = false;
+    const next = this.queuedPreviews.entries().next().value;
+    if (!next) {
+      this.activePreviews -= 1;
+      return;
+    }
+    this.queuedPreviews.delete(next[0]);
+    next[0].previewSlot = true;
+    next[1](true);
   }
 }
 

@@ -201,7 +201,11 @@ import {
   presentWorkbenchSession,
   type WorkbenchSessionRenderProjection,
 } from "@/lib/workbench-session-presentation";
-import { projectSessionToSummary } from "@/lib/project-session-query-cache";
+import {
+  getCachedProjectSessionDetail,
+  projectSessionToSummary,
+} from "@/lib/project-session-query-cache";
+import { useWorkbenchCodexNavigation } from "@/features/local-conversation/use-workbench-codex-navigation";
 import { presentPageStageRelatedChatCandidates } from "@/lib/page-stage-related-chat-candidates";
 import {
   buildProjectAgentDockPendingWorktreeModel,
@@ -572,6 +576,12 @@ export function WorkbenchRuntime({
     expandedProjectIds,
     window: workbenchWindow,
   });
+  useWorkbenchCodexNavigation(
+    workbenchWindow.owner,
+    (sessionId) =>
+      sessionCatalog.findById(sessionId)?.domain ??
+      getCachedProjectSessionDetail(queryClient, sessionId),
+  );
   const selectedProjectSceneId = sceneLocation.kind === "project" ? sceneLocation.projectId : null;
   const selectedProjectQuery = useQuery({
     ...projectDetailQueryOptions(selectedProjectSceneId ?? ""),

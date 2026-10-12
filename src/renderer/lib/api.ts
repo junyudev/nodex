@@ -361,10 +361,6 @@ export function getGitWorkerClient(): GitWorkerClient {
   return gitWorkerClient;
 }
 
-export function searchCodexPersistedHistory(threadId: string, query: string) {
-  return invokeRendererQuery("codex:thread:history-search", threadId, query);
-}
-
 export function readMicrophoneAccess(): Promise<MicrophoneAccessStatus> {
   return invokeRendererQuery("codex:dictation:microphone-access:read");
 }

@@ -82,6 +82,10 @@ const capability = {
     searchOccurrences: true,
     ephemeralFork: false,
     multiAgentV2Protocol: false,
+    threadTimeline: false,
+    threadItemAnchors: false,
+    experimentalPredictionForkMode: false,
+    mcpApplicationNetworkPolicy: false,
     sideConversation: false,
     subagentAncestorFilter: false,
     threadRevert: false,
@@ -117,6 +121,7 @@ const makeArchive = (input: {
   const unsupported = () => Effect.die(new Error("unused"));
   let archivedPage = 0;
   const gateway = CodexGateway.of({
+    promoteQueuedCatalogPage: Effect.succeed(false),
     localHostId: "local",
     events: Stream.empty,
     requestForThread: (_threadId: string, method: string, params: unknown) =>
@@ -693,6 +698,7 @@ it.effect("fills a missing local archive side from bounded history without repla
           return {
             turns: [
               {
+                rootTurnId: null,
                 id: "turn-latest",
                 items: [],
                 itemsView: "notLoaded",

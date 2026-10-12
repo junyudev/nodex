@@ -156,6 +156,7 @@ it.effect.each([
             return {};
           }) as never;
         const gateway = CodexGateway.of({
+          promoteQueuedCatalogPage: Effect.succeed(false),
           localHostId: "local",
           events: Stream.empty,
           requestLocal: (method: string, params: unknown, scheduling: unknown) =>

@@ -1,5 +1,6 @@
 import * as Context from "effect/Context";
 import * as Effect from "effect/Effect";
+import * as Option from "effect/Option";
 import * as Semaphore from "effect/Semaphore";
 import type { ConversationStreamRole } from "../../shared/codex-conversation-stream";
 import {
@@ -13,6 +14,8 @@ import {
 import type { CanonicalHistoryClient } from "../../shared/codex-conversation-state/codex-canonical-history-loader";
 import { residentConversationTurns } from "../../shared/codex-conversation-state/codex-turn-mutation";
 import { ScopedCallbackRuntime } from "../app/ScopedCallbackRuntime";
+import { MainConfig } from "../app/MainConfig";
+import { isDevelopmentFeatureEnabled } from "../../shared/development-features";
 import { CodexGateway } from "../codex-runtime/CodexGateway";
 import { CodexAppServerCapabilities } from "../codex-runtime/CodexAppServerCapabilities";
 import {
@@ -53,6 +56,7 @@ export const make = Effect.gen(function* () {
   const gateway = yield* CodexGateway;
   const capabilities = yield* CodexAppServerCapabilities;
   const callbacks = yield* ScopedCallbackRuntime;
+  const config = Option.getOrNull(yield* Effect.serviceOption(MainConfig));
   const loaders = new Map<MainConversationManager, Map<string, HistoryLoaderEntry>>();
   const assertLifetime = ({ manager, entity, owner, generation }: HistoryLifetime): void => {
     manager.assertCurrent(generation);
@@ -92,6 +96,32 @@ export const make = Effect.gen(function* () {
       const client: CanonicalHistoryClient = {
         hostId: manager.hostId,
         supportsPaginatedHistory: () => capability.flags.paginatedHistory,
+        supportsThreadTimeline: () =>
+          capability.hostId !== "durable" &&
+          capability.flags.threadTimeline &&
+          config !== null &&
+          isDevelopmentFeatureEnabled("thread-timeline-history", config.environment),
+        sendTimelineRequest: (params, options) => {
+          assertLifetime(lifetime);
+          return callbacks
+            .runPromise(
+              checkLifetime(lifetime).pipe(
+                Effect.andThen(
+                  gateway.requestOnHost(manager.hostId, "thread/timeline/list", params, {
+                    priority: options?.priority,
+                    timeoutMs: options?.timeoutMs,
+                    source: options?.source,
+                    expectedHostId: manager.hostId,
+                    expectedGeneration: nativeGeneration,
+                  }),
+                ),
+              ),
+            )
+            .then((response) => {
+              assertLifetime(lifetime);
+              return response;
+            });
+        },
         getConversation: readConversation,
         sendRequest: (method, params, options) => {
           assertLifetime(lifetime);

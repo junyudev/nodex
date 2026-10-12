@@ -39,6 +39,7 @@ const normalizeThreadId = (threadId: string): string | null => {
 const classifyStartedThread = (thread: Thread): CodexInternalThreadKind | null => {
   const threadSource = parseThreadSourceValue(thread.threadSource);
   if (thread.ephemeral && threadSource === "system") return "structured-title";
+  if (thread.ephemeral && threadSource === "composer_predictions") return "non-sidebar";
 
   const subagent = extractCodexThreadSubagentMetadata(thread);
   if (subagent.parentThreadId) return null;

@@ -50,6 +50,10 @@ const capability: CodexAppServerCapabilitySnapshot = {
     threadQueue: true,
     subagentAncestorFilter: true,
     multiAgentV2Protocol: true,
+    threadTimeline: false,
+    threadItemAnchors: false,
+    experimentalPredictionForkMode: false,
+    mcpApplicationNetworkPolicy: false,
   },
 };
 
@@ -261,6 +265,7 @@ const buildDirectory = (input: {
     Effect.provideService(
       CodexGateway,
       CodexGateway.of({
+        promoteQueuedCatalogPage: Effect.succeed(false),
         localHostId: "local",
         events: Stream.empty,
         requestOnHost: input.requestOnHost,
@@ -764,6 +769,7 @@ it.effect(
             return {
               data: [
                 {
+                  rootTurnId: null,
                   id: "turn-child-a",
                   items: [],
                   itemsView: "notLoaded",
@@ -2075,6 +2081,7 @@ it.effect(
             return {
               data: [
                 {
+                  rootTurnId: null,
                   id: "turn-spawn-nested",
                   status: "completed",
                   itemsView: "full",

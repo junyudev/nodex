@@ -6,6 +6,11 @@ import {
   resolveThreadStartProgressPresentation,
   type ThreadBodyModelInput,
 } from "./build-thread-body-model";
+import { withCanonicalState } from "../../../test/canonical-conversation-fixture";
+import {
+  createCodexHistoryIslandTopology,
+  exhaustedCodexHistoryBoundary,
+} from "../../../../shared/codex-conversation-state/codex-history-topology";
 
 function buildThreadBodyModel(
   input: Omit<ThreadBodyModelInput, "activeThreadArchived"> & {
@@ -98,6 +103,259 @@ function buildConversation(
 }
 
 describe("buildThreadBodyModel", () => {
+  test("keeps an evicted empty Turn readable until its items recover", () => {
+    const conversation = withCanonicalState(buildConversation(), "legacy");
+    const state = conversation.canonicalState!;
+    const turn = {
+      ...state.turns[0]!,
+      items: [],
+      status: "completed" as const,
+      params: { ...state.turns[0]!.params, input: [] },
+      itemsPagination: {
+        itemsView: "full" as const,
+        olderCursor: null,
+        isLoadingOlder: false,
+        hasLoadedOldest: false,
+        evicted: true,
+      },
+    };
+    const input = {
+      activeThreadId: conversation.threadId,
+      conversation: { ...conversation, turns: [], canonicalState: { ...state, turns: [turn] } },
+      parentTurns: [],
+      isNewThreadTab: false,
+      newThreadTarget: null,
+      isCloudNewThreadTarget: false,
+      threadStartProgress: null,
+    };
+    expect(buildThreadBodyModel(input)).toMatchObject({
+      turnCount: 1,
+      emptyState: { type: "none" },
+    });
+    expect(
+      buildThreadBodyModel({
+        ...input,
+        conversation: {
+          ...input.conversation,
+          canonicalState: {
+            ...state,
+            turns: [
+              {
+                ...turn,
+                itemsPagination: { ...turn.itemsPagination, evicted: false, hasLoadedOldest: true },
+              },
+            ],
+          },
+        },
+      }),
+    ).toMatchObject({ turnCount: 0, emptyState: { type: "emptyThread" } });
+  });
+
+  test("keeps ordinary empty history shells restoring until content arrives, while evicted rows can recover", () => {
+    const conversation = withCanonicalState(
+      buildConversation({ resumeState: "resuming" }),
+      "paginated",
+    );
+    const state = conversation.canonicalState!;
+    const turn = {
+      ...state.turns[0]!,
+      items: [],
+      params: { ...state.turns[0]!.params, input: [] },
+      itemsPagination: {
+        itemsView: "notLoaded" as const,
+        olderCursor: null,
+        isLoadingOlder: false,
+        hasLoadedOldest: false,
+      },
+    };
+    const topology = createCodexHistoryIslandTopology({
+      generation: 1,
+      islandId: "pending-tail",
+      isComplete: false,
+      entries: [{ key: "entry", value: "entity" }],
+      entities: [{ key: "entity", turn }],
+      olderBoundary: exhaustedCodexHistoryBoundary("older"),
+      newerBoundary: exhaustedCodexHistoryBoundary("newer"),
+    });
+    if (!topology.ok) throw new Error(topology.error.code);
+    const pending = {
+      ...conversation,
+      turns: [],
+      canonicalState: {
+        ...state,
+        turns: [],
+        turnHistory: { kind: "canonical" as const, history: topology.topology },
+      },
+    };
+    const input = {
+      activeThreadId: pending.threadId,
+      conversation: pending,
+      attachmentState: { status: "attaching" as const },
+      parentTurns: [],
+      isNewThreadTab: false,
+      newThreadTarget: null,
+      isCloudNewThreadTarget: false,
+      threadStartProgress: null,
+    };
+    expect(buildThreadBodyModel(input).emptyState.type).toBe("resumingThread");
+    expect(
+      buildThreadBodyModel({
+        ...input,
+        conversation: {
+          ...pending,
+          canonicalState: {
+            ...pending.canonicalState,
+            turnHistory: {
+              ...pending.canonicalState.turnHistory,
+              history: {
+                ...topology.topology,
+                entitiesByKey: {
+                  entity: {
+                    ...turn,
+                    itemsPagination: {
+                      ...turn.itemsPagination,
+                      itemsView: "full" as const,
+                      evicted: true,
+                    },
+                  },
+                },
+              },
+            },
+          },
+        },
+      }),
+    ).toMatchObject({ turnCount: 1, emptyState: { type: "none" } });
+    expect(pending.resumeState).toBe("resuming");
+  });
+
+  test("reads legacy canonical structure when the compact header carries no Turn projections", () => {
+    const canonical = withCanonicalState(buildConversation(), "legacy");
+    const model = buildThreadBodyModel({
+      activeThreadId: canonical.threadId,
+      conversation: { ...canonical, turns: [] },
+      parentTurns: [],
+      isNewThreadTab: false,
+      newThreadTarget: null,
+      isCloudNewThreadTarget: false,
+      threadStartProgress: null,
+    });
+    expect(model.emptyState.type).toBe("none");
+    expect(model.turnCount).toBe(1);
+    expect(model.latestTurnId).toBe(canonical.canonicalState?.turns[0]?.turnId);
+  });
+  test.each([false, true])(
+    "canonical history owns an overlapping native Turn while preserving a separate live overlay (%s)",
+    (hasSeparateLiveTurn) => {
+      const conversation = withCanonicalState(buildConversation({ statusType: "idle" }));
+      const canonical = conversation.canonicalState!;
+      const stale = canonical.turns[0]!;
+      const topology = createCodexHistoryIslandTopology({
+        generation: 1,
+        islandId: "tail",
+        isComplete: true,
+        entries: [{ key: "entry", value: "canonical" }],
+        entities: [{ key: "canonical", turn: { ...stale, status: "completed" as const } }],
+        olderBoundary: exhaustedCodexHistoryBoundary("older"),
+        newerBoundary: exhaustedCodexHistoryBoundary("newer"),
+      });
+      if (!topology.ok) throw new Error(topology.error.code);
+      const overlay = hasSeparateLiveTurn
+        ? [stale, { ...stale, turnId: "separate-live" }]
+        : [stale];
+      const model = buildThreadBodyModel({
+        activeThreadId: conversation.threadId,
+        conversation: {
+          ...conversation,
+          turns: [],
+          canonicalState: {
+            ...canonical,
+            historyMode: "paginated",
+            turns: overlay,
+            turnHistory: { kind: "canonical", history: topology.topology },
+          },
+        },
+        parentTurns: [],
+        isNewThreadTab: false,
+        newThreadTarget: null,
+        isCloudNewThreadTarget: false,
+        threadStartProgress: null,
+      });
+      expect(model).toMatchObject({
+        turnCount: hasSeparateLiveTurn ? 2 : 1,
+        activeTurnId: hasSeparateLiveTurn ? "separate-live" : null,
+        latestTurnId: hasSeparateLiveTurn ? "separate-live" : stale.turnId,
+        isThreadRunning: hasSeparateLiveTurn,
+      });
+    },
+  );
+  test("shows installed paginated history while execution attachment remains pending", () => {
+    const conversation = withCanonicalState(
+      buildConversation({ resumeState: "resuming" }),
+      "paginated",
+    );
+    const canonical = conversation.canonicalState!;
+    const topology = createCodexHistoryIslandTopology({
+      generation: 1,
+      islandId: "cold-tail",
+      isComplete: false,
+      entries: canonical.turns.map((turn, index) => ({
+        key: `entry-${index}`,
+        value: `entity-${index}`,
+      })),
+      entities: canonical.turns.map((turn, index) => ({ key: `entity-${index}`, turn })),
+      olderBoundary: exhaustedCodexHistoryBoundary("older"),
+      newerBoundary: exhaustedCodexHistoryBoundary("newer"),
+    });
+    if (!topology.ok) throw new Error(topology.error.code);
+    const pending = {
+      ...conversation,
+      resumeState: "resuming" as const,
+      canonicalState: {
+        ...canonical,
+        historyMode: "paginated" as const,
+        resumeState: "resuming" as const,
+        turns: [],
+        turnHistory: { kind: "canonical" as const, history: topology.topology },
+      },
+    };
+    const input = {
+      activeThreadId: pending.threadId,
+      conversation: pending,
+      attachmentState: { status: "attaching" as const },
+      parentTurns: [],
+      isNewThreadTab: false,
+      newThreadTarget: null,
+      isCloudNewThreadTarget: false,
+      threadStartProgress: null,
+    };
+    expect(buildThreadBodyModel(input)).toMatchObject({
+      turnCount: 1,
+      emptyState: { type: "none" },
+    });
+    expect(pending.resumeState).toBe("resuming");
+    expect(pending.canonicalState.resumeState).toBe("resuming");
+    const shells = {
+      ...pending,
+      canonicalState: {
+        ...pending.canonicalState,
+        turnHistory: {
+          kind: "canonical" as const,
+          history: {
+            ...topology.topology,
+            entitiesByKey: Object.fromEntries(
+              Object.entries(topology.topology.entitiesByKey).map(([key, turn]) => [
+                key,
+                { ...turn, items: [], params: { ...turn.params, input: [] } },
+              ]),
+            ),
+          },
+        },
+      },
+    };
+    expect(buildThreadBodyModel({ ...input, conversation: shells }).emptyState.type).toBe(
+      "resumingThread",
+    );
+  });
   test("returns shell state without eagerly projecting all turn models", () => {
     const model = buildThreadBodyModel({
       activeThreadId: "thread_1",

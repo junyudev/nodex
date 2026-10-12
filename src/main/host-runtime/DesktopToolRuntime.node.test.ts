@@ -90,7 +90,10 @@ it.effect("owns desktop plugin readiness and derives one coherent snapshot", () 
             }),
             result: Effect.sync(() => pluginResult),
           }),
-        readConfigRequirements: Effect.succeed({ requirements: null }),
+        readConfigRequirements: Effect.succeed({
+          requirements: null,
+          supportsIndependentSpeedModes: false,
+        }),
         listPlugins: (cwd) => {
           listedCwd = cwd;
           return Effect.succeed({
@@ -196,7 +199,10 @@ it.effect("builds the gated artifact template picker from cwd-scoped app-server 
             ],
           });
         },
-        readConfigRequirements: Effect.succeed({ requirements: null }),
+        readConfigRequirements: Effect.succeed({
+          requirements: null,
+          supportsIndependentSpeedModes: false,
+        }),
         codexHome: "/tmp/native-codex-home",
         runtimeStateHome: "/tmp/nodex-desktop-tools-test",
       }),

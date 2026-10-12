@@ -19,6 +19,7 @@ const makeGateway = (
 ): CodexGateway["Service"] => {
   const unsupported = () => Effect.die(new Error("Unsupported test operation"));
   return CodexGateway.of({
+    promoteQueuedCatalogPage: Effect.succeed(false),
     localHostId: "local",
     requestRawOnHost: () => Effect.die(new Error("Unsupported raw host request")),
     requestRawForThread: () => Effect.die(new Error("Unsupported raw request")),

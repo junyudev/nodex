@@ -11,7 +11,7 @@ export function makeCanonicalHistoryPressureFixture(turnCount: number, itemCount
   const state = createCodexCanonicalHydratedConversationState(thread, { hostId: "local", model: "model", reasoningEffort: null, cwd: "/workspace", approvalPolicy: "on-request", approvalsReviewer: "user", sandboxPolicy: { type: "readOnly", networkAccess: false }, activePermissionProfile: null, runtimeWorkspaceRoots: ["/workspace"] });
   const conversation = { ...state, historyMode: "paginated" as const, paginatedHistory: { turnsBackwardsCursor: null, itemsBackwardsCursor: null } };
   const calls: Array<{method: Method; params: ClientRequestParamsByMethod[Method]}> = [];
-  const makeTurn = (id: number): HistoryTurn => ({ id: String(id), items: [], itemsView: "notLoaded", status: "completed", error: null, startedAt: id, completedAt: id + 1, durationMs: 1 });
+  const makeTurn = (id: number): HistoryTurn => ({ rootTurnId: null, id: String(id), items: [], itemsView: "notLoaded", status: "completed", error: null, startedAt: id, completedAt: id + 1, durationMs: 1 });
   const makeItem = (id: number): HistoryItem => ({type: "plan", id: String(id), text: "x".repeat(textBytes)});
   const handlers: {
     [M in Method]: (params: ClientRequestParamsByMethod[M]) => ClientRequestResponsesByMethod[M];

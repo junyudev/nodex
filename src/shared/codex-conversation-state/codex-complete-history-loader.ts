@@ -9,8 +9,11 @@ import {
   listCanonicalHistoryTurns,
   loadCanonicalHistoryBoundaryPage,
   replaceCanonicalHistoryDraft,
+  withCanonicalHistoryItemCompletion,
   type CanonicalHistoryClient,
 } from "./codex-canonical-history-loader";
+import { applyCanonicalHistoryTimelineDraft } from "./codex-canonical-history-timeline";
+import type { ThreadTimelineListResponse } from "@nodex/codex-app-server-protocol/v2";
 import {
   createCodexHistoryBoundaryRef,
   readCurrentCodexHistoryBoundary,
@@ -147,7 +150,7 @@ export class CanonicalCompleteHistoryLoader implements Disposable {
       });
     }
     if (!this.disposed && generation === this.generation)
-      await this.items.loadRemainingTurnItems(id);
+      await this.items.loadRemainingTurnItems(id, { includeEvicted: true });
   }
   private async loadTail(
     id: string,
@@ -216,19 +219,24 @@ export class CanonicalCompleteHistoryLoader implements Disposable {
       return current;
     };
     const pages: (readonly CodexCanonicalTurnState[])[] = [];
+    const timelinePages: ThreadTimelineListResponse[] = [];
     let cursor: string | null = startCursor;
     while (cursor !== null) {
       const page = await listCanonicalHistoryTurns(this.client, id, {
         cursor,
         limit: 5,
         ...(ref ? { sortDirection: "desc" } : {}),
-        source: pagination?.source === "compact" ? "compact" : "ordinary",
+        source: pagination?.source ?? "ordinary",
         requestOptions: { priority: "background", source: "tail_history" },
       });
       if (!valid()) return;
       pages.push(
-        this.client.mapTurns(id, [...page.response.data].reverse(), page.itemsPaginationByTurnId),
+        withCanonicalHistoryItemCompletion(
+          this.client.mapTurns(id, [...page.response.data].reverse(), page.itemsPaginationByTurnId),
+          page,
+        ),
       );
+      if (page.timeline) timelinePages.push(page.timeline);
       if (page.response.nextCursor === cursor)
         throw new Error("Failed to load remaining conversation turns");
       cursor = page.response.nextCursor;
@@ -282,6 +290,8 @@ export class CanonicalCompleteHistoryLoader implements Disposable {
           history.isComplete = true;
           draft.turns = [];
         } else replaceCanonicalHistoryDraft(draft, merged, pagination?.source !== "compact");
+        for (const page of timelinePages)
+          applyCanonicalHistoryTimelineDraft(draft, page, "prepend");
         draft.turnsPagination = {
           ...(pagination?.source ? { source: pagination.source } : {}),
           olderCursor: null,

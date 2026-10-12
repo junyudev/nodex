@@ -3,7 +3,7 @@ import type { TurnItemsView, UserInput } from "@nodex/codex-app-server-protocol/
 export const CODEX_HISTORY_GAP_ESTIMATED_HEIGHT_PX = 144;
 
 export interface CodexHistoryBoundaryHandle {
-  readonly source?: "ordinary" | "compact";
+  readonly source?: "ordinary" | "compact" | "timeline";
   readonly cursor: string;
   readonly oldestLoadedTurnId: string | null;
 }
@@ -31,6 +31,9 @@ export type CodexHistoryBoundary =
     };
 
 export interface CodexHistoryTurnItemsPagination {
+  readonly source?: "ordinary" | "timeline";
+  readonly olderItemId?: string;
+  readonly evicted?: boolean;
   readonly newestSnapshotItemId?: string;
   readonly summaryItemIds?: readonly string[];
   readonly reconnect?: {

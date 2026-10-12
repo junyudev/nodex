@@ -1142,6 +1142,8 @@ export interface ThreadBodySurfaceModel {
   isSideChat: boolean;
   cwd: string | null;
   turns: CodexConversationTurn[];
+  /** One launch presentation row survives until the normalized read owner observes its identity. */
+  firstSubmissionTurn?: CodexConversationTurn | null;
   turnPagination?: CodexConversationTurnPagination | null;
   historyRows?: readonly import("../../../shared/codex-conversation-state/codex-history-topology").CodexHistoryRow[];
   conversationEntityGeneration?: number;
@@ -1178,6 +1180,7 @@ export interface ThreadBodySurfaceModel {
 }
 
 export interface ThreadFooterModel {
+  readonly connectionStatus: CodexConnectionState["status"];
   provider?: ConversationProviderPresentation;
   readonly workspaceSearchContext: WorkspaceSearchContext | null;
   projectId: string | null;

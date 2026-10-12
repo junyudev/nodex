@@ -13,6 +13,7 @@ import { CoreRuntimeError } from "../core-runtime/CoreRuntimeError";
 import { AutomationRoutingIndex } from "../core-runtime/AutomationRoutingIndex";
 import { ProjectionDeliveryRuntime } from "../core-runtime/ProjectionDeliveryRuntime";
 import { ProjectWorkspace } from "../project-application/ProjectWorkspace";
+import { CodexComposerPredictionError } from "../codex-application/CodexComposerPrediction";
 import { CodexSidebarSyncRuntime } from "../codex-application/CodexSidebarSyncRuntime";
 import { CodexThreadHandoffRuntime } from "../codex-application/CodexThreadHandoffRuntime";
 import {
@@ -119,6 +120,7 @@ export const live: Layer.Layer<
   | BrowserUseRuntimeError
   | CoreRuntimeError
   | ExecutionHostRuntimeError
+  | CodexComposerPredictionError
   | MainApplicationError,
   | ElectronApp
   | ApplicationSettings
@@ -360,6 +362,7 @@ const startupFailureLive = (
     | BrowserUseRuntimeError
     | CoreRuntimeError
     | ExecutionHostRuntimeError
+    | CodexComposerPredictionError
     | MainApplicationError,
 ): Layer.Layer<
   MainApplication,

@@ -235,6 +235,7 @@ const sidebarHarness = (input: {
       }),
   };
   const gateway = CodexGateway.of({
+    promoteQueuedCatalogPage: Effect.succeed(false),
     localHostId: "local",
     events: Stream.empty,
     requestLocal: (method: string, params: { readonly archived: boolean }) => {
@@ -317,35 +318,42 @@ it.effect("coalesces physical refreshes and crosses the Core invalidation fence"
   ),
 );
 
-it.effect("stops a capped background sweep before it can reconcile unseen Threads", () =>
-  Effect.scoped(
-    Effect.gen(function* () {
-      const requests: Array<{ readonly archived: boolean; readonly cursor: string | null }> = [];
-      const harness = sidebarHarness({
-        runtimeOptions: { sweepMaxPages: 1 },
-        requestList: ({ archived, cursor = null }) =>
-          Effect.sync(() => {
-            requests.push({ archived, cursor });
-            return { data: [], nextCursor: "unseen-page" };
-          }),
-      });
-      const internalThreads = yield* makeInternalThreadRegistry;
-      const runtime = yield* harness.runtime.pipe(
-        Effect.provideService(CodexInternalThreadRegistry, internalThreads),
-      );
+it.effect(
+  "pauses a capped background sweep and rejects a cursor cycle before reconciling unseen Threads",
+  () =>
+    Effect.scoped(
+      Effect.gen(function* () {
+        const requests: Array<{ readonly archived: boolean; readonly cursor: string | null }> = [];
+        const harness = sidebarHarness({
+          runtimeOptions: { sweepMaxPages: 1 },
+          requestList: ({ archived, cursor = null }) =>
+            Effect.sync(() => {
+              requests.push({ archived, cursor });
+              return { data: [], nextCursor: "unseen-page" };
+            }),
+        });
+        const internalThreads = yield* makeInternalThreadRegistry;
+        const runtime = yield* harness.runtime.pipe(
+          Effect.provideService(CodexInternalThreadRegistry, internalThreads),
+        );
 
-      yield* runtime.sync({ policy: "force" });
-      for (let attempt = 0; attempt < 8; attempt += 1) yield* Effect.yieldNow;
+        yield* runtime.sync({ policy: "force", reason: "host-message" });
+        for (let attempt = 0; attempt < 8; attempt += 1) yield* Effect.yieldNow;
 
-      assert.deepEqual(requests, [{ archived: false, cursor: null }]);
-      assert.strictEqual(
-        harness.applied.filter(
-          (request) => request.intent.kind === "reconcile_app_server_thread_sweep",
-        ).length,
-        0,
-      );
-    }),
-  ),
+        assert.deepEqual(requests, [{ archived: false, cursor: null }]);
+        yield* TestClock.adjust("1 second");
+        assert.deepEqual(requests, [
+          { archived: false, cursor: null },
+          { archived: false, cursor: "unseen-page" },
+        ]);
+        assert.strictEqual(
+          harness.applied.filter(
+            (request) => request.intent.kind === "reconcile_app_server_thread_sweep",
+          ).length,
+          0,
+        );
+      }),
+    ),
 );
 
 it.effect("serves the Core snapshot without retrying during Effect-clock backoff", () =>
@@ -732,3 +740,86 @@ it("projects execution authority from the Core task window without follow-up rea
   assert.strictEqual(projected.thread?.projectlessOutputDirectory, "/workspace/output");
   assert.strictEqual(projected.thread?.projectlessWorkspaceBrowserRoot, "/workspace/browser");
 });
+
+it.effect(
+  "continues a catalog beyond 1000 entries and then scans only the changed head plus overlap",
+  () =>
+    Effect.scoped(
+      Effect.gen(function* () {
+        const catalog = Array.from({ length: 1100 }, (_, index) => ({
+          id: `unowned-${index}`,
+          updatedAt: 10000 - index,
+          parentThreadId: null,
+        }));
+        const requests: Array<{ archived: boolean; cursor: string | null }> = [];
+        const harness = sidebarHarness({
+          runtimeOptions: { sweepMaxPages: 2 },
+          requestList: ({ archived, cursor = null }) =>
+            Effect.sync(() => {
+              requests.push({ archived, cursor });
+              if (archived) return { data: [], nextCursor: null };
+              const offset = cursor === null ? 0 : Number(cursor);
+              return {
+                data: catalog.slice(offset, offset + 100),
+                nextCursor: offset + 100 < catalog.length ? String(offset + 100) : null,
+              };
+            }),
+        });
+        const internal = yield* makeInternalThreadRegistry;
+        const runtime = yield* harness.runtime.pipe(
+          Effect.provideService(CodexInternalThreadRegistry, internal),
+        );
+        yield* runtime.sync({ policy: "force", reason: "manual" });
+        yield* TestClock.adjust("30 seconds");
+        assert.isTrue(requests.some((request) => request.cursor === "1000"));
+        const completedReconciles = harness.applied.filter(
+          (request) => request.intent.kind === "reconcile_app_server_thread_sweep",
+        ).length;
+        assert.strictEqual(completedReconciles, 1);
+        const before = requests.length;
+        catalog.unshift({ id: "new-head", updatedAt: 20000, parentThreadId: null });
+        yield* runtime.sync({ policy: "force", reason: "manual" });
+        yield* TestClock.adjust("10 seconds");
+        assert.deepEqual(requests.slice(before), [
+          { archived: false, cursor: null },
+          { archived: false, cursor: null },
+          { archived: true, cursor: null },
+        ]);
+        assert.strictEqual(
+          harness.applied.filter(
+            (request) => request.intent.kind === "reconcile_app_server_thread_sweep",
+          ).length,
+          completedReconciles,
+        );
+      }),
+    ),
+);
+
+it.effect(
+  "paces background catalog pages by one second and resumes an opaque cursor at a window boundary",
+  () =>
+    Effect.scoped(
+      Effect.gen(function* () {
+        const requests: Array<string | null> = [];
+        const harness = sidebarHarness({
+          runtimeOptions: { sweepMaxPages: 1 },
+          requestList: ({ archived, cursor = null }) =>
+            Effect.sync(() => {
+              if (archived) return { data: [], nextCursor: null };
+              requests.push(cursor);
+              return { data: [], nextCursor: cursor === null ? "page-two" : null };
+            }),
+        });
+        const internal = yield* makeInternalThreadRegistry;
+        const runtime = yield* harness.runtime.pipe(
+          Effect.provideService(CodexInternalThreadRegistry, internal),
+        );
+        yield* runtime.sync({ policy: "force", reason: "host-message" });
+        assert.deepEqual(requests, [null]);
+        yield* TestClock.adjust(999);
+        assert.deepEqual(requests, [null]);
+        yield* TestClock.adjust(1);
+        assert.deepEqual(requests, [null, "page-two"]);
+      }),
+    ),
+);

@@ -174,7 +174,7 @@ interface PhysicalRequest {
   readonly responseTimeoutOwner: "main" | "caller";
   readonly retainResponse: boolean;
   readonly responseDeadlineAtMs: number | null;
-  readonly descriptor: CodexScheduledRequestDescriptor;
+  descriptor: CodexScheduledRequestDescriptor;
   readonly dispatch: Effect.Effect<unknown, CodexRuntimeError>;
   readonly coalescingKey: string | null;
   readonly expiresAfterMs: number | null;
@@ -213,6 +213,7 @@ export class CodexRequestScheduler extends Context.Service<
       input: CodexRequestScheduleInput<A>,
     ) => Effect.Effect<A, CodexRuntimeError>;
     readonly retireGeneration: (hostId: string, generation: number) => Effect.Effect<void>;
+    readonly promoteQueuedCatalogPage: (hostId: string) => Effect.Effect<boolean>;
     /** Includes physical requests whose logical callers timed out or detached. */
     readonly awaitIdle: (
       hostId: string,
@@ -1239,10 +1240,40 @@ export const live: Layer.Layer<CodexRequestScheduler> = Layer.effect(
       }
     });
 
+    const promoteQueuedCatalogPage = Effect.fn("CodexRequestScheduler.promoteQueuedCatalogPage")(
+      (hostId: string) =>
+        mutationLock.withPermit(
+          Effect.gen(function* () {
+            for (const state of generations.values()) {
+              if (state.retired || state.hostId !== hostId) continue;
+              const request = state.queued.find(
+                (request) =>
+                  request.descriptor.priority === "background" &&
+                  request.descriptor.source === "thread_catalog" &&
+                  request.descriptor.method === "thread/list",
+              );
+              if (!request) continue;
+              request.descriptor = {
+                ...request.descriptor,
+                priority: "interactive",
+                backgroundLane: null,
+              };
+              for (const waiter of request.waiters) waiter.descriptor = request.descriptor;
+              metrics.queuedByPriority.background -= 1;
+              metrics.queuedByPriority.interactive += 1;
+              yield* pumpLocked(state);
+              return true;
+            }
+            return false;
+          }),
+        ),
+    );
+
     return CodexRequestScheduler.of({
       openGeneration,
       schedule,
       retireGeneration,
+      promoteQueuedCatalogPage,
       snapshot,
       awaitIdle,
     });

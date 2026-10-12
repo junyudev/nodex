@@ -44,6 +44,7 @@ it.effect("commits interruption without waking queued work before terminal compl
         return Effect.succeed({}) as never;
       };
       const gateway = CodexGateway.of({
+        promoteQueuedCatalogPage: Effect.succeed(false),
         localHostId: "local",
         requestRawOnHost: unsupported,
         requestRawForThread: unsupported,
@@ -210,6 +211,7 @@ it.effect(
                 Layer.succeed(
                   CodexGateway,
                   CodexGateway.of({
+                    promoteQueuedCatalogPage: Effect.succeed(false),
                     localHostId: "local",
                     requestRawOnHost: unsupported,
                     requestRawForThread: unsupported,

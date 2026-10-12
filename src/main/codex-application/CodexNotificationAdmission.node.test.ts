@@ -20,6 +20,10 @@ import { make } from "./CodexNotificationAdmission";
 import { CodexSubagentDirectory } from "./CodexSubagentDirectory";
 import { CodexTurnAuthority } from "./CodexTurnAuthority";
 import { ConversationEntityMap } from "./internal/ConversationEntityMap";
+import { createCodexCanonicalHydratedConversationState } from "../../shared/codex-conversation-state/codex-conversation-state";
+import { replaceCanonicalHistoryDraft } from "../../shared/codex-conversation-state/codex-canonical-history-loader";
+import { buildAgentActivityV2CorpusThread } from "../../shared/codex-conversation-state/test-fixtures/agent-activity-v2-corpus-provenance";
+import { produce } from "immer";
 
 const thread = (input: {
   readonly id: string;
@@ -68,7 +72,7 @@ const parentAuthority: FrozenNodexAgentTurnAuthority = {
   source: "builtin_full_access",
 };
 
-const makeHarness = (trace: string[]) =>
+const makeHarness = (trace: string[], parentState?: CodexCanonicalConversationState) =>
   Effect.gen(function* () {
     const internalThreads = yield* makeInternalThreads;
     const knownSubagents = new Set<string>();
@@ -130,6 +134,7 @@ const makeHarness = (trace: string[]) =>
         threadId === "parent"
           ? ({
               readCanonicalState: () =>
+                parentState ??
                 ({
                   turns: [
                     {
@@ -139,7 +144,7 @@ const makeHarness = (trace: string[]) =>
                       >),
                     },
                   ],
-                }) as unknown as CodexCanonicalConversationState,
+                } as unknown as CodexCanonicalConversationState),
             } as unknown as ReturnType<ConversationEntityMap["Service"]["entity"]>)
           : null,
     } as unknown as ConversationEntityMap["Service"]);
@@ -153,6 +158,64 @@ const makeHarness = (trace: string[]) =>
     );
     return { admission, internalThreads, subagents, presentation };
   });
+
+it.effect.each(["inProgress", "completed"] as const)(
+  "subagent authority follows canonical parent status %s despite a stale legacy copy",
+  (status) =>
+    Effect.scoped(
+      Effect.gen(function* () {
+        const metadata = buildAgentActivityV2CorpusThread();
+        const legacy = createCodexCanonicalHydratedConversationState(
+          {
+            ...metadata,
+            id: "parent",
+            turns: metadata.turns.map((turn) => ({ ...turn, id: "parent-turn", status })),
+          },
+          {
+            hostId: "local",
+            model: "fixture-model",
+            reasoningEffort: null,
+            cwd: "/work",
+            approvalPolicy: "on-request",
+            approvalsReviewer: "user",
+            sandboxPolicy: { type: "readOnly", networkAccess: false },
+            activePermissionProfile: null,
+            runtimeWorkspaceRoots: ["/work"],
+          },
+        );
+        const canonical = produce(legacy, (draft) => {
+          replaceCanonicalHistoryDraft(draft, legacy.turns, true);
+        });
+        const state = {
+          ...canonical,
+          turns:
+            status === "completed"
+              ? legacy.turns.map((turn) => ({ ...turn, status: "inProgress" as const }))
+              : [],
+        };
+        const trace: string[] = [];
+        const { admission } = yield* makeHarness(trace, state);
+        yield* admission.decide({
+          notification: startedThread(thread({ id: "child", parentThreadId: "parent" })),
+          threadId: "child",
+        });
+        yield* admission.decide({
+          notification: startedTurn("child", "child-turn"),
+          threadId: "child",
+        });
+        assert.deepStrictEqual(
+          trace,
+          status === "inProgress"
+            ? [
+                "subagent:observe:child",
+                "authority:capture:parent:parent-turn",
+                "authority:inherit:child:child-turn:parent-turn",
+              ]
+            : ["subagent:observe:child", "authority:observe:child:child-turn"],
+        );
+      }),
+    ),
+);
 
 it.effect("suppresses structured-title and non-sidebar helpers before visible projection", () =>
   Effect.scoped(

@@ -73,9 +73,12 @@ import { materializeCodexThreadRequestSettings } from "./CodexThreadRequestSetti
 import { ApplicationSettings } from "../settings/ApplicationSettings";
 import {
   CodexHistoryPageAdapter,
+  type CodexHydratedHistoryTurnPage,
   type CodexHydratedHistoryItemSegment,
   type CodexHistoryRequestOptions,
 } from "./CodexHistoryPageAdapter";
+import { withCanonicalHistoryItemCompletion } from "../../shared/codex-conversation-state/codex-canonical-history-loader";
+import { applyCanonicalHistoryTimelineDraft } from "../../shared/codex-conversation-state/codex-canonical-history-timeline";
 import { ConversationEntityMap } from "./internal/ConversationEntityMap";
 import {
   buildWorkspaceThreadSummary,
@@ -594,6 +597,8 @@ export const make: Effect.Effect<
     readonly resumeTurns?: readonly Turn[];
     readonly pagination: CodexConversationTurnPagination;
     readonly itemsPaginationByTurnId?: Readonly<Record<string, CodexHistoryTurnItemsPagination>>;
+    readonly completedItemIdsByTurnId?: CodexHydratedHistoryTurnPage["completedItemIdsByTurnId"];
+    readonly timeline?: CodexHydratedHistoryTurnPage["timeline"];
     readonly itemSegmentsByTurnId?: Readonly<
       Record<string, readonly CodexHydratedHistoryItemSegment[]>
     >;
@@ -653,7 +658,14 @@ export const make: Effect.Effect<
           hasUnreadTurn: input.hasUnreadTurn ?? input.durable.thread.hasUnreadTurn,
           turnItemsPaginationById: input.itemsPaginationByTurnId,
         };
-        const historyState = createCodexCanonicalHydratedConversationState(input.thread, hydration);
+        const rawHistoryState = createCodexCanonicalHydratedConversationState(
+          input.thread,
+          hydration,
+        );
+        const historyState = {
+          ...rawHistoryState,
+          turns: withCanonicalHistoryItemCompletion(rawHistoryState.turns, input),
+        };
         let hydrated = {
           ...historyState,
           currentPermissions: permissions,
@@ -756,29 +768,35 @@ export const make: Effect.Effect<
             currentGoalState ?? history.canonical,
             "stored",
           );
-    const canonical = {
-      ...(input.resumeResponse
-        ? produce(resumedCanonical, (draft) =>
-            refreshResumedConversationTurnParams(
-              draft,
-              input.resumeResponse!,
-              input.context?.cwd ?? input.thread.cwd,
-            ),
-          )
-        : resumedCanonical),
-      ...environmentSelection,
-      workspaceKind:
-        input.durable.thread.projectId === null ? ("projectless" as const) : ("project" as const),
-      workspaceBrowserRoot: input.durable.thread.projectlessWorkspaceBrowserRoot ?? null,
-      ...(input.mode !== undefined ? { mode: input.mode } : {}),
-      ...(input.threadStartKind !== undefined ? { threadStartKind: input.threadStartKind } : {}),
-      turnsPagination: {
-        olderCursor: history.turnPagination.olderCursor,
-        oldestLoadedTurnId: history.turnPagination.oldestLoadedTurnId,
-        isLoadingOlder: history.turnPagination.isLoadingOlder,
-        hasLoadedOldest: history.turnPagination.hasLoadedOldest,
+    const canonical = produce(
+      {
+        ...(input.resumeResponse
+          ? produce(resumedCanonical, (draft) =>
+              refreshResumedConversationTurnParams(
+                draft,
+                input.resumeResponse!,
+                input.context?.cwd ?? input.thread.cwd,
+              ),
+            )
+          : resumedCanonical),
+        ...environmentSelection,
+        workspaceKind:
+          input.durable.thread.projectId === null ? ("projectless" as const) : ("project" as const),
+        workspaceBrowserRoot: input.durable.thread.projectlessWorkspaceBrowserRoot ?? null,
+        ...(input.mode !== undefined ? { mode: input.mode } : {}),
+        ...(input.threadStartKind !== undefined ? { threadStartKind: input.threadStartKind } : {}),
+        turnsPagination: {
+          ...(history.turnPagination.source ? { source: history.turnPagination.source } : {}),
+          olderCursor: history.turnPagination.olderCursor,
+          oldestLoadedTurnId: history.turnPagination.oldestLoadedTurnId,
+          isLoadingOlder: history.turnPagination.isLoadingOlder,
+          hasLoadedOldest: history.turnPagination.hasLoadedOldest,
+        },
       },
-    };
+      (draft) => {
+        applyCanonicalHistoryTimelineDraft(draft, input.timeline, "replace");
+      },
+    );
     const observedAtMs = yield* Clock.currentTimeMillis;
     const snapshot = yield* projection
       .hydrate({
@@ -906,6 +924,7 @@ export const make: Effect.Effect<
             olderCursor: page.nextCursor,
             hasLoadedOldest: page.nextCursor === null,
           },
+          completedItemIdsByTurnId: page.completedItemIdsByTurnId,
         });
       }
 
@@ -989,6 +1008,7 @@ export const make: Effect.Effect<
         turns: [...paginatedPage.turns],
       });
       const pagination: CodexConversationTurnPagination = {
+        ...(paginatedPage.source ? { source: paginatedPage.source } : {}),
         olderCursor: paginatedPage.nextCursor,
         backwardsCursor: paginatedPage.backwardsCursor,
         oldestLoadedTurnId: thread.turns[0]?.id ?? null,
@@ -1011,6 +1031,8 @@ export const make: Effect.Effect<
         mergeResidentTurns: true,
         pagination,
         itemsPaginationByTurnId: paginatedPage.itemsPaginationByTurnId,
+        completedItemIdsByTurnId: paginatedPage.completedItemIdsByTurnId,
+        timeline: paginatedPage.timeline,
         itemSegmentsByTurnId: paginatedPage.itemSegmentsByTurnId,
       });
     },
@@ -1259,6 +1281,7 @@ export const make: Effect.Effect<
           thread,
           fidelity: "tail",
           pagination: {
+            ...(page.source ? { source: page.source } : {}),
             olderCursor: page.nextCursor,
             backwardsCursor: page.backwardsCursor,
             oldestLoadedTurnId: thread.turns[0]?.id ?? null,
@@ -1272,6 +1295,8 @@ export const make: Effect.Effect<
               : "summary",
           },
           itemsPaginationByTurnId: page.itemsPaginationByTurnId,
+          completedItemIdsByTurnId: page.completedItemIdsByTurnId,
+          timeline: page.timeline,
           itemSegmentsByTurnId: page.itemSegmentsByTurnId,
         });
       }
@@ -1554,6 +1579,7 @@ export const make: Effect.Effect<
         thread,
         fidelity: "tail",
         pagination: {
+          ...(page.source ? { source: page.source } : {}),
           olderCursor: page.nextCursor,
           backwardsCursor: page.backwardsCursor,
           oldestLoadedTurnId: thread.turns[0]?.id ?? null,
@@ -1567,6 +1593,8 @@ export const make: Effect.Effect<
             : "summary",
         },
         itemsPaginationByTurnId: page.itemsPaginationByTurnId,
+        completedItemIdsByTurnId: page.completedItemIdsByTurnId,
+        timeline: page.timeline,
         itemSegmentsByTurnId: page.itemSegmentsByTurnId,
         pendingRequests: [],
         hasUnreadTurn: false,

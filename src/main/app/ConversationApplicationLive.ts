@@ -1,5 +1,10 @@
 import { randomUUID } from "node:crypto";
 import {
+  CodexComposerPrediction,
+  make as makeCodexComposerPrediction,
+  readCodexComposerPredictionEnvironment,
+} from "../codex-application/CodexComposerPrediction";
+import {
   CodexRendererSessionLaunch,
   make as makeRendererSessionLaunch,
 } from "../codex-application/CodexRendererSessionLaunch";
@@ -108,10 +113,6 @@ import {
 } from "../codex-application/CodexThreadTitleReconsideration";
 
 import {
-  CodexThreadHistoryFeatures,
-  make as makeCodexThreadHistoryFeatures,
-} from "../codex-application/CodexThreadHistoryFeatures";
-import {
   CodexConversationHistoryExport,
   make as makeCodexConversationHistoryExport,
 } from "../codex-application/CodexConversationHistoryExport";
@@ -127,10 +128,6 @@ import {
   CodexReadThreadHistory,
   make as makeCodexReadThreadHistory,
 } from "../codex-application/CodexReadThreadHistory";
-import {
-  CodexPersistedHistorySearchRuntime,
-  make as makeCodexPersistedHistorySearchRuntime,
-} from "../codex-application/CodexPersistedHistorySearchRuntime";
 import {
   CodexSubagentDirectory,
   make as makeCodexSubagentDirectory,
@@ -474,6 +471,21 @@ const structuredThreadTitle = Layer.unwrap(
   }),
 ).pipe(Layer.provideMerge(Layer.merge(internalThreadRegistry, threadStartNotifications)));
 
+const composerPrediction = Layer.unwrap(
+  Effect.gen(function* () {
+    const config = yield* MainConfig;
+    const hosts = yield* readCodexComposerPredictionEnvironment(config.environment);
+    return Layer.effect(
+      CodexComposerPrediction,
+      makeCodexComposerPrediction({
+        configurationForHost: (hostId) =>
+          Effect.succeed(Object.hasOwn(hosts, hostId) ? hosts[hostId]! : null),
+        configurationSource: "environment",
+      }),
+    );
+  }),
+).pipe(Layer.provideMerge(Layer.merge(internalThreadRegistry, threadStartNotifications)));
+
 const threadSettings = Layer.effect(
   CodexThreadSettingsRuntime,
   makeCodexThreadSettingsRuntime,
@@ -490,6 +502,7 @@ const foundations = Layer.mergeAll(
   historySearchAdapter,
   sidebarSync,
   structuredThreadTitle,
+  composerPrediction,
   threadGoals,
   threadStartNotifications,
 );
@@ -511,20 +524,12 @@ const threadTitleAppTools = Layer.effect(CodexThreadTitleAppTools, makeCodexThre
 const autoThreadTitle = Layer.effect(CodexAutoThreadTitle, makeCodexAutoThreadTitle).pipe(
   Layer.provideMerge(Layer.mergeAll(titlePersistence, threadDescriptions, threadTitleAppTools)),
 );
-const threadHistoryFeatures = Layer.effect(
-  CodexThreadHistoryFeatures,
-  makeCodexThreadHistoryFeatures,
-).pipe(Layer.provideMerge(titlePersistence));
 const historyExport = Layer.effect(
   CodexConversationHistoryExport,
   makeCodexConversationHistoryExport,
-).pipe(Layer.provideMerge(threadHistoryFeatures));
-const persistedHistorySearch = Layer.effect(
-  CodexPersistedHistorySearchRuntime,
-  makeCodexPersistedHistorySearchRuntime,
-).pipe(Layer.provideMerge(historyExport));
+).pipe(Layer.provideMerge(titlePersistence));
 const subagents = Layer.effect(CodexSubagentDirectory, makeCodexSubagentDirectory).pipe(
-  Layer.provideMerge(persistedHistorySearch),
+  Layer.provideMerge(historyExport),
 );
 const materialization = Layer.effect(
   CodexConversationMaterialization,

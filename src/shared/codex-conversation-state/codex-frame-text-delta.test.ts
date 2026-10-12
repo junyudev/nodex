@@ -14,10 +14,7 @@ import {
   toCodexFrameTextDelta,
 } from "./codex-frame-text-delta";
 import type { CodexFrameTextDeltaUpdate } from "./codex-frame-text-delta-queue";
-import {
-  CODEX_REASONING_MAX_PARTS,
-  CODEX_REASONING_PARTS_TRUNCATION_MARKER,
-} from "./codex-reasoning-parts";
+import { canAppendCodexReasoningPartDelta } from "./codex-reasoning-parts";
 import { replayCodexConversationEvents } from "./codex-conversation-replay";
 
 const THREAD_ID = "thread_c04";
@@ -224,7 +221,7 @@ describe("canonical frame-text delta reduction", () => {
     ).toBe("last");
   });
 
-  test("accepts only dense reasoning indexes and rejects gaps before allocating", () => {
+  test("accepts safe non-negative reasoning indexes and densely fills omitted slots", () => {
     const reasoning: ThreadItem = {
       type: "reasoning",
       id: "shared-item",
@@ -246,7 +243,6 @@ describe("canonical frame-text delta reduction", () => {
       0.5,
       Number.NaN,
       Number.POSITIVE_INFINITY,
-      Number.MAX_SAFE_INTEGER,
       Number.MAX_SAFE_INTEGER + 1,
     ];
 
@@ -256,8 +252,14 @@ describe("canonical frame-text delta reduction", () => {
       gapInput,
       update({ type: "reasoningSummary", summaryIndex: 3 }, "three"),
     );
-    expect(gap.disposition).toBe("invalidReasoningIndex");
-    expect(gap.items === gapInput).toBe(true);
+    expect(gap.disposition).toBe("applied");
+    expect((gap.items[0] as Extract<ThreadItem, { type: "reasoning" }>).summary).toEqual([
+      "zero",
+      "",
+      "",
+      "three",
+    ]);
+    expect(canAppendCodexReasoningPartDelta([], Number.MAX_SAFE_INTEGER)).toBe(true);
     for (const index of invalidIndexes) {
       const invalidInput = [reasoning];
       const invalid = reduceCodexFrameTextDeltaItems(
@@ -452,89 +454,55 @@ describe("canonical frame-text delta reduction", () => {
     expect(turn.finalAssistantStartedAtMs).toBe(30);
   });
 
-  test("uses summaryPartAdded for one bounded dense summary append", () => {
-    const initial = buildState([
-      {
-        type: "reasoning",
-        id: "reasoning",
-        summary: [],
-        content: [],
-      },
-    ]);
-    const next = reduceCodexConversationEvent(
+  test("part announcements are observational and a later text delta materializes dense parts", () => {
+    const initial = buildState([{ type: "reasoning", id: "reasoning", summary: [], content: [] }]);
+    const announced = reduceCodexConversationEvent(
       initial,
       notificationEvent({
         method: "item/reasoning/summaryPartAdded",
-        params: {
-          threadId: THREAD_ID,
-          turnId: TURN_ID,
-          itemId: "reasoning",
-          summaryIndex: 0,
-        },
+        params: { threadId: THREAD_ID, turnId: TURN_ID, itemId: "reasoning", summaryIndex: 2 },
       }),
       { now: () => 1 },
     );
-    const reasoning = next.turns[0]?.items[0] as Extract<
-      ThreadItem,
-      {
-        type: "reasoning";
-      }
-    >;
-    expect(reasoning.summary).toEqual([""]);
-
-    const gap = reduceCodexConversationEvent(
-      next,
+    expect(announced).toBe(initial);
+    const text = reduceCodexConversationEvent(
+      announced,
       notificationEvent({
-        method: "item/reasoning/summaryPartAdded",
+        method: "item/reasoning/summaryTextDelta",
         params: {
           threadId: THREAD_ID,
           turnId: TURN_ID,
           itemId: "reasoning",
           summaryIndex: 2,
+          delta: "third",
         },
       }),
-      { now: () => 1 },
+      { now: () => 2 },
     );
-    expect(gap === next).toBe(true);
+    expect((text.turns[0]!.items[0] as Extract<ThreadItem, { type: "reasoning" }>).summary).toEqual(
+      ["", "", "third"],
+    );
   });
 
-  test("bounds terminal reasoning arrays and replay rejects a giant sparse index", () => {
-    const oversizedParts = Array.from(
-      { length: CODEX_REASONING_MAX_PARTS + 1 },
-      (_, index) => `part-${index}`,
-    );
-    const started = buildState([
-      { type: "reasoning", id: "reasoning-terminal", summary: [], content: [] },
-    ]);
+  test("completion and replay retain a legitimate 257th reasoning part", () => {
+    const parts = Array.from({ length: 257 }, (_, index) => `part-${index}`);
+    const initial = buildState([{ type: "reasoning", id: "reasoning", summary: [], content: [] }]);
     const completed = reduceCodexConversationEvent(
-      started,
+      initial,
       notificationEvent({
         method: "item/completed",
         params: {
           threadId: THREAD_ID,
           turnId: TURN_ID,
           completedAtMs: 2000,
-          item: {
-            type: "reasoning",
-            id: "reasoning-terminal",
-            summary: oversizedParts,
-            content: oversizedParts,
-          },
+          item: { type: "reasoning", id: "reasoning", summary: parts, content: parts },
         },
       }),
       { now: () => 3000 },
     );
-    const terminal = completed.turns[0]?.items[0] as Extract<
-      ThreadItem,
-      {
-        type: "reasoning";
-      }
-    >;
-    expect(terminal.summary.length).toBe(CODEX_REASONING_MAX_PARTS);
-    expect(terminal.content.length).toBe(CODEX_REASONING_MAX_PARTS);
-    expect(terminal.summary.at(-1)).toBe(CODEX_REASONING_PARTS_TRUNCATION_MARKER);
-
-    const initial = buildState([{ type: "reasoning", id: "reasoning", summary: [], content: [] }]);
+    const terminal = completed.turns[0]!.items[0] as Extract<ThreadItem, { type: "reasoning" }>;
+    expect(terminal.summary).toEqual(parts);
+    expect(terminal.content).toEqual(parts);
     const replayed = replayCodexConversationEvents({
       threadId: THREAD_ID,
       initialState: initial,
@@ -546,14 +514,18 @@ describe("canonical frame-text delta reduction", () => {
             threadId: THREAD_ID,
             turnId: TURN_ID,
             itemId: "reasoning",
-            contentIndex: Number.MAX_SAFE_INTEGER,
-            delta: "must not allocate",
+            contentIndex: 256,
+            delta: "257th",
           },
         }),
       ],
       reduce: (state, event) => reduceCodexConversationEvent(state, event, { now: () => 4000 }),
     });
-    expect(replayed).toBe(initial);
+    const content = (replayed.turns[0]!.items[0] as Extract<ThreadItem, { type: "reasoning" }>)
+      .content;
+    expect(content.length).toBe(257);
+    expect(content.slice(0, 256)).toEqual(Array(256).fill(""));
+    expect(content[256]).toBe("257th");
   });
 
   test("lets authoritative completion replace provisional delta text", () => {

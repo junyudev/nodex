@@ -22,14 +22,38 @@ import {
 } from "./codex-history-topology";
 import {
   CanonicalHistoryItemLoader,
+  readCanonicalHistoryItems,
   listCanonicalHistoryTurns,
   loadCanonicalHistoryBoundaryPage,
   replaceCanonicalHistoryDraft,
+  withCanonicalHistoryItemCompletion,
   type CanonicalHistoryClient,
   type CanonicalHistoryRequestOptions,
 } from "./codex-canonical-history-loader";
 
 type Method = "thread/turns/list" | "thread/items/list";
+
+test("late history completion evidence preserves newer live item lifecycle observations", () => {
+  const state = createCodexCanonicalHydratedConversationState(
+    { ...buildAgentActivityV2CorpusThread([]), turns: [rawTurn("turn")] },
+    {
+      hostId: "local",
+      model: "model",
+      reasoningEffort: null,
+      cwd: "/workspace",
+      approvalPolicy: "on-request",
+      approvalsReviewer: "user",
+      sandboxPolicy: { type: "readOnly", networkAccess: false },
+      activePermissionProfile: null,
+      runtimeWorkspaceRoots: ["/workspace"],
+    },
+  );
+  const live = { ...state.turns[0]!, completedItemIds: { finished: true, started: false } };
+  const [result] = withCanonicalHistoryItemCompletion([live], {
+    completedItemIdsByTurnId: { turn: { finished: false, started: true, historyOnly: true } },
+  });
+  expect(result!.completedItemIds).toEqual({ finished: true, started: false, historyOnly: true });
+});
 type Request = {
   method: Method;
   params: ClientRequestParamsByMethod[Method];
@@ -46,6 +70,7 @@ const tick = async () => {
   for (let i = 0; i < 10; i += 1) await Promise.resolve();
 };
 const rawTurn = (id: string): Turn => ({
+  rootTurnId: null,
   id,
   items: [],
   itemsView: "notLoaded",
@@ -139,6 +164,92 @@ function harness(ids = ["turn"], hostId = "local") {
 }
 
 describe("canonical history operation ownership", () => {
+  test("retries the same item anchor with smaller pages and preserves wrapper evidence", async () => {
+    const f = harness();
+    const anchor = { type: "item" as const, itemId: "anchor" };
+    f.handle(async ({ params }) => {
+      if (params.limit! > 2) throw new Error("decoded message length too large");
+      return {
+        data: [{ turnId: "turn", item: item("a"), startedAtMs: 12, completedAtMs: 15 }],
+        nextCursor: "older",
+        backwardsCursor: "newer",
+      };
+    });
+    const page = await readCanonicalHistoryItems(
+      f.client,
+      "conversation",
+      "turn",
+      anchor,
+      undefined,
+      9,
+    );
+    expect(f.calls.map(({ params }) => params.limit)).toEqual([9, 4, 2]);
+    expect(f.calls.every(({ params }) => params.cursor === anchor)).toBe(true);
+    expect(page).toMatchObject({
+      pageSize: 2,
+      nextCursor: "older",
+      backwardsCursor: "newer",
+      entries: [{ startedAtMs: 12, completedAtMs: 15 }],
+    });
+  });
+
+  test("stops oversize retry at one item and propagates other failures", async () => {
+    const f = harness();
+    f.handle(async () => {
+      throw new Error("decoded message length too large");
+    });
+    await expect(
+      readCanonicalHistoryItems(f.client, "conversation", "turn", null, undefined, 4),
+    ).rejects.toThrow("decoded message length");
+    expect(f.calls.map(({ params }) => params.limit)).toEqual([4, 2, 1]);
+  });
+
+  test("foreground item loading supersedes a suspended background preview", async () => {
+    const f = harness();
+    const background = deferred<unknown>();
+    f.handle(({ options }) =>
+      options?.priority === "background"
+        ? background.promise
+        : Promise.resolve(itemsPage("turn", [item("foreground")])),
+    );
+    using loader = new CanonicalHistoryItemLoader(f.client);
+    const preview = loader.loadTurnItems("conversation", "turn", false, { priority: "background" });
+    await loader.loadTurnItems("conversation", "turn", false, { priority: "interactive" });
+    expect(f.calls).toHaveLength(2);
+    expect(residentConversationTurns(f.read())[0]?.items.map(({ id }) => id)).toEqual([
+      "foreground",
+    ]);
+    background.resolve(itemsPage("turn", [item("retired")]));
+    await preview;
+    expect(residentConversationTurns(f.read())[0]?.items.map(({ id }) => id)).toEqual([
+      "foreground",
+    ]);
+    expect(residentConversationTurns(f.read())[0]?.itemsPagination?.isLoadingOlder).toBe(false);
+  });
+
+  test("evicted prefixes are restored explicitly and ordinary background completion leaves them evicted", async () => {
+    const f = harness();
+    f.mutate((draft) => {
+      const turn = conversationTurnDraft(
+        draft,
+        residentConversationTurnEntries(draft)[0]!.address,
+      )!;
+      turn.itemsPagination = {
+        ...turn.itemsPagination!,
+        evicted: true,
+        olderItemId: "retained",
+        olderCursor: null,
+      };
+    });
+    f.handle(async () => itemsPage("turn", [item("restored")]));
+    using loader = new CanonicalHistoryItemLoader(f.client);
+    await loader.loadRemainingTurnItems("conversation");
+    expect(f.calls).toHaveLength(0);
+    await loader.loadTurnItems("conversation", "turn", false, { priority: "interactive" });
+    expect(f.calls[0]?.params.cursor).toEqual({ type: "item", itemId: "retained" });
+    expect(residentConversationTurns(f.read())[0]?.itemsPagination?.evicted).toBe(false);
+  });
+
   test("retires an item response when its pagination object changes during I/O", async () => {
     const f = harness();
     const response = deferred<unknown>();

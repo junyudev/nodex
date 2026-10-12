@@ -310,6 +310,7 @@ function ConnectedThreadStageBody({
   transcriptVisible = true,
   turnDiffHoverPreviewDisabled = false,
   presentedTurns,
+  firstSubmissionTurn,
   firstSubmissionActive = false,
   readOnly = false,
 }: {
@@ -327,6 +328,7 @@ function ConnectedThreadStageBody({
   transcriptVisible?: boolean;
   turnDiffHoverPreviewDisabled?: boolean;
   presentedTurns?: CodexConversationTurn[];
+  firstSubmissionTurn?: CodexConversationTurn | null;
   firstSubmissionActive?: boolean;
   readOnly?: boolean;
 }) {
@@ -422,6 +424,7 @@ function ConnectedThreadStageBody({
       isSideChat: Boolean(input.sideChatContext),
       cwd,
       turns,
+      firstSubmissionTurn,
       turnPagination: conversationSnapshot?.turnPagination ?? null,
       historyRows: conversationSnapshot?.historyRows,
       conversationEntityGeneration: conversationSnapshot?.conversationEntityGeneration,
@@ -478,6 +481,7 @@ function ConnectedThreadStageBody({
       attachmentState,
       statusType,
       turns,
+      firstSubmissionTurn,
     ],
   );
 
@@ -564,6 +568,7 @@ export function ConnectedThreadStageFooter({
 }) {
   const preferredHostId = input.activeThreadSummary?.executionHostId ?? null;
   const runtime = useConversationRuntime(activeThreadId, preferredHostId);
+  const connection = useLocalConversationConnection(activeThreadId);
   const hostId = useCodexAppServerManagerForConversationId(
     activeThreadId,
     preferredHostId,
@@ -789,6 +794,7 @@ export function ConnectedThreadStageFooter({
   );
   const model = useMemo<ThreadFooterModel>(
     () => ({
+      connectionStatus: connection.status,
       provider: input.provider,
       workspaceSearchContext,
       projectId: input.projectId,
@@ -912,6 +918,7 @@ export function ConnectedThreadStageFooter({
       conversationSnapshot,
       composerIntent,
       composerScopeIdentity,
+      connection.status,
       composerAppsQuery.data,
       composerAppsQuery.isPending,
       composerPluginsQuery.data,
@@ -1650,6 +1657,7 @@ export function ConnectedThreadStage({
             transcriptVisible={threadBodyVisible}
             turnDiffHoverPreviewDisabled={turnDiffHoverPreviewDisabled}
             presentedTurns={presentedTurns}
+            firstSubmissionTurn={firstSubmissionProjection.presentationTurn}
             firstSubmissionActive={hasFirstSubmission}
             readOnly={subagentReadOnly || writerConflict}
           />

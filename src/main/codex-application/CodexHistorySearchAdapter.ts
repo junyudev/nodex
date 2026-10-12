@@ -13,6 +13,7 @@ import * as Context from "effect/Context";
 import * as Effect from "effect/Effect";
 import * as Schema from "effect/Schema";
 import { cappedApproximateValueBytes } from "../../shared/codex-bounded-value-size";
+import { encodeCodexNativeRequestFailure } from "../../shared/codex-native-request-outcome";
 import {
   availableCodexHistoryBoundary,
   exhaustedCodexHistoryBoundary,
@@ -46,13 +47,8 @@ export interface CodexHistorySearchAdapterOptions {
   readonly directionItemLimit?: number;
 }
 
-export interface CodexHistorySearchPage {
-  readonly threadId: string;
-  readonly hostId: string;
-  readonly generation: number;
-  readonly occurrences: readonly ThreadSearchOccurrence[];
-  readonly isCapped: boolean;
-}
+export type CodexHistorySearchPage =
+  import("../../shared/codex-persisted-history-search").CodexPersistedHistorySearchReadPage;
 
 export interface CodexHistorySearchInput {
   readonly threadId: string;
@@ -83,6 +79,7 @@ export interface CodexHistoryOccurrenceHydration {
   readonly occurrence: ThreadSearchOccurrence;
   readonly turns: readonly Turn[];
   readonly itemsPaginationByTurnId: Readonly<Record<string, CodexHistoryTurnItemsPagination>>;
+  readonly completedItemIdsByTurnId?: Readonly<Record<string, Readonly<Record<string, boolean>>>>;
   readonly selection: CodexHistorySelectedItemResolution;
   /** Can be passed directly to `insertCodexHistoryIsland` after choosing an insertion index. */
   readonly island: CodexHistorySearchIslandInput;
@@ -126,6 +123,7 @@ interface HydratedTurnPage {
   readonly turns: readonly Turn[];
   readonly nextCursor: string | null;
   readonly itemsPaginationByTurnId: Readonly<Record<string, CodexHistoryTurnItemsPagination>>;
+  readonly completedItemIdsByTurnId: Readonly<Record<string, Readonly<Record<string, boolean>>>>;
 }
 
 interface LoadedItemPage {
@@ -133,6 +131,7 @@ interface LoadedItemPage {
   readonly nextCursor: string | null;
   readonly rawItemCount: number;
   readonly approximateBytes: number;
+  readonly completedItemIds: Readonly<Record<string, boolean>>;
 }
 
 const approximateValueBytes = (value: unknown, limit = Number.MAX_SAFE_INTEGER): number =>
@@ -320,21 +319,36 @@ export const make = (
       readonly sortDirection: SortDirection;
       readonly operation?: "items" | "opening-user";
     }) {
-      const response = yield* fencedRequest({
-        snapshot: input.snapshot,
-        threadId: input.threadId,
-        method: "thread/items/list",
-        params: {
+      let limit = Math.max(1, input.limit);
+      const request = () =>
+        fencedRequest({
+          snapshot: input.snapshot,
           threadId: input.threadId,
+          method: "thread/items/list",
+          params: {
+            threadId: input.threadId,
+            turnId: input.turnId,
+            cursor: input.cursor,
+            limit,
+            sortDirection: input.sortDirection,
+          },
+          operation: input.operation ?? "items",
           turnId: input.turnId,
-          cursor: input.cursor,
-          limit: input.limit,
-          sortDirection: input.sortDirection,
-        },
-        operation: input.operation ?? "items",
-        turnId: input.turnId,
-        scheduling: HYDRATION_SCHEDULING,
-      });
+          scheduling: HYDRATION_SCHEDULING,
+        });
+      let result = yield* request().pipe(Effect.result);
+      while (
+        result._tag === "Failure" &&
+        limit > 1 &&
+        encodeCodexNativeRequestFailure(result.failure).message.includes(
+          "decoded message length too large",
+        )
+      ) {
+        limit = Math.max(1, Math.floor(limit / 2));
+        result = yield* request().pipe(Effect.result);
+      }
+      if (result._tag === "Failure") return yield* result.failure;
+      const response = result.success;
       if (response.nextCursor !== null && response.nextCursor === input.cursor) {
         return yield* adapterError({
           operation: input.operation ?? "items",
@@ -364,6 +378,11 @@ export const make = (
         nextCursor: response.nextCursor ?? null,
         rawItemCount: response.data.length,
         approximateBytes: approximateValueBytes(response.data),
+        completedItemIds: Object.fromEntries(
+          response.data
+            .filter((entry) => "completedAtMs" in entry)
+            .map((entry) => [entry.item.id, entry.completedAtMs !== null]),
+        ),
       } satisfies LoadedItemPage;
     });
 
@@ -427,6 +446,7 @@ export const make = (
         let remainingItems = directionItemLimit;
         const turns: Turn[] = [];
         const itemsPaginationByTurnId: Record<string, CodexHistoryTurnItemsPagination> = {};
+        const completedItemIdsByTurnId: Record<string, Record<string, boolean>> = {};
         for (const turn of response.data) {
           let itemCursor: string | null = null;
           let requested = false;
@@ -453,6 +473,10 @@ export const make = (
               sortDirection: "desc",
             });
             const existingIds = new Set(items.map((item) => item.id));
+            completedItemIdsByTurnId[turn.id] = {
+              ...completedItemIdsByTurnId[turn.id],
+              ...page.completedItemIds,
+            };
             const unique = dedupeItems(page.items).filter((item) => !existingIds.has(item.id));
             items = [...unique, ...items];
             remainingItems -= unique.length;
@@ -482,6 +506,7 @@ export const make = (
           turns,
           nextCursor: response.nextCursor ?? null,
           itemsPaginationByTurnId,
+          completedItemIdsByTurnId,
         } satisfies HydratedTurnPage;
       },
     );
@@ -498,6 +523,7 @@ export const make = (
         let inspectedBytes = approximateValueBytes(turn.items);
         let currentTurn = turn;
         let currentPagination = { ...pagination };
+        let completedItemIds: Readonly<Record<string, boolean>> = {};
         let found = selectedItem(currentTurn, itemId);
         const seenCursors = new Set<string | null>();
 
@@ -522,6 +548,7 @@ export const make = (
             sortDirection: "desc",
           });
           const existingIds = new Set(currentTurn.items.map((item) => item.id));
+          completedItemIds = { ...completedItemIds, ...page.completedItemIds };
           const unique = dedupeItems(page.items).filter((item) => !existingIds.has(item.id));
           const items = [...unique, ...currentTurn.items];
           inspectedItemCount += page.rawItemCount;
@@ -554,6 +581,7 @@ export const make = (
         return {
           turn: currentTurn,
           pagination: currentPagination,
+          completedItemIds,
           selection: {
             status: "found",
             item: found,
@@ -595,10 +623,11 @@ export const make = (
       }
       return {
         threadId: input.threadId,
+        query: input.searchTerm,
         hostId: snapshot.hostId,
-        generation: snapshot.generation,
+        hostGeneration: snapshot.generation,
         occurrences: [...response.data],
-        isCapped: response.nextCursor !== null,
+        capped: response.nextCursor !== null,
       } satisfies CodexHistorySearchPage;
     });
 
@@ -656,6 +685,10 @@ export const make = (
         ...ascending.itemsPaginationByTurnId,
         ...descending.itemsPaginationByTurnId,
       };
+      const completedItemIdsByTurnId = {
+        ...ascending.completedItemIdsByTurnId,
+        ...descending.completedItemIdsByTurnId,
+      };
       const anchorIndex = turns.findIndex((turn) => turn.id === input.occurrence.turnId);
       const anchor = turns[anchorIndex];
       const anchorPagination = itemsPaginationByTurnId[input.occurrence.turnId];
@@ -678,6 +711,10 @@ export const make = (
       );
       turns = turns.map((turn, index) => (index === anchorIndex ? selected.turn : turn));
       itemsPaginationByTurnId[input.occurrence.turnId] = selected.pagination;
+      completedItemIdsByTurnId[input.occurrence.turnId] = {
+        ...completedItemIdsByTurnId[input.occurrence.turnId],
+        ...selected.completedItemIds,
+      };
       yield* failIfStale(snapshot, input.threadId);
 
       const sequence = nextIslandSequence++;
@@ -712,6 +749,7 @@ export const make = (
         occurrence: input.occurrence,
         turns,
         itemsPaginationByTurnId,
+        completedItemIdsByTurnId,
         selection: selected.selection,
         island,
       } satisfies CodexHistoryOccurrenceHydration;

@@ -1,3 +1,4 @@
+import { ActivitySpinnerIcon } from "@/components/shared/icons";
 import {
   CODEX_HISTORY_GAP_ESTIMATED_HEIGHT_PX,
   type CodexHistoryBoundaryRef,
@@ -25,6 +26,9 @@ type HistoryBoundaryLoader = (boundary: CodexHistoryBoundaryRef) => Promise<unkn
 
 export interface LocalConversationHistoryGapRequestCoordinator {
   readonly allowNextFetch: () => void;
+  readonly retryBoundary: (boundary: CodexHistoryBoundaryRef) => Promise<void>;
+  readonly subscribe: (listener: () => void) => () => void;
+  readonly readState: () => LocalConversationHistoryGapRequestState;
   readonly observeViewport: (
     input: HistoryViewport | null,
     request?: HistoryBoundaryLoader,
@@ -60,54 +64,137 @@ export function createLocalConversationHistoryRequestGate() {
   };
 }
 
-/** Serializes loads against the latest viewport without permanently suppressing failed pages. */
+export interface LocalConversationHistoryGapRequestState {
+  readonly failed: readonly CodexHistoryBoundaryRef[];
+  readonly loading: CodexHistoryBoundaryRef | null;
+}
+
+/** Serializes automatic loads and explicit retries against the current gap topology. */
 export function createLocalConversationHistoryGapRequestCoordinator({
   requireUserScroll = false,
 }: { readonly requireUserScroll?: boolean } = {}): LocalConversationHistoryGapRequestCoordinator {
   let viewport: HistoryViewport | null = null;
   let request: HistoryBoundaryLoader | undefined;
   let version = 0;
+  let epoch = 0;
   let allowed = !requireUserScroll;
   let pending: Promise<void> | null = null;
+  let state: LocalConversationHistoryGapRequestState = { failed: [], loading: null };
+  const retries: CodexHistoryBoundaryRef[] = [];
+  const listeners = new Set<() => void>();
+  const publish = (next: LocalConversationHistoryGapRequestState) => {
+    state = next;
+    for (const listener of listeners) listener();
+  };
+  const isCurrent = (boundary: CodexHistoryBoundaryRef): boolean =>
+    viewport?.gaps.some(
+      ({ row }) =>
+        sameHistoryBoundary(boundary, row.olderBoundary) ||
+        sameHistoryBoundary(boundary, row.newerBoundary),
+    ) === true;
   const run = async () => {
     let applied: CodexHistoryBoundaryRef | null = null;
     while (true) {
-      if (viewport === null || !allowed || !request) return;
+      if (viewport === null || !request) return;
       const observedVersion = version;
-      const boundary = selectLocalConversationHistoryGapBoundary(viewport);
-      if (!boundary || sameHistoryBoundary(boundary, applied)) return;
-      allowed = !requireUserScroll;
+      const observedEpoch = epoch;
+      let boundary: CodexHistoryBoundaryRef | undefined;
+      while (retries.length > 0 && !boundary) {
+        const candidate = retries.shift()!;
+        if (isCurrent(candidate)) boundary = candidate;
+      }
+      if (!boundary) {
+        if (!allowed) return;
+        boundary =
+          selectLocalConversationHistoryGapBoundary({
+            ...viewport,
+            gaps: viewport.gaps.map((gap) => ({
+              ...gap,
+              row: {
+                ...gap.row,
+                olderBoundary: state.failed.some((failed) =>
+                  sameHistoryBoundary(failed, gap.row.olderBoundary),
+                )
+                  ? null
+                  : gap.row.olderBoundary,
+                newerBoundary: state.failed.some((failed) =>
+                  sameHistoryBoundary(failed, gap.row.newerBoundary),
+                )
+                  ? null
+                  : gap.row.newerBoundary,
+              },
+            })),
+          }) ?? undefined;
+        if (!boundary || sameHistoryBoundary(boundary, applied)) return;
+        allowed = !requireUserScroll;
+      }
+      publish({ ...state, loading: boundary });
       try {
         if ((await request(boundary)) === "applied") applied = boundary;
       } catch {
-        // A later viewport observation can retry a transient page failure.
+        if (
+          observedEpoch === epoch &&
+          isCurrent(boundary) &&
+          !state.failed.some((failed) => sameHistoryBoundary(boundary!, failed))
+        )
+          publish({ ...state, failed: [...state.failed, boundary] });
+      } finally {
+        if (observedEpoch === epoch) publish({ ...state, loading: null });
       }
-      if (observedVersion === version) return;
+      if (observedVersion === version && retries.length === 0) return;
     }
+  };
+  const schedule = () => {
+    pending ??= Promise.resolve()
+      .then(run)
+      .finally(() => {
+        pending = null;
+      });
+    return pending;
   };
   return {
     allowNextFetch: () => {
       allowed = true;
     },
+    subscribe: (listener) => {
+      listeners.add(listener);
+      return () => listeners.delete(listener);
+    },
+    readState: () => state,
+    retryBoundary: (boundary) => {
+      if (!isCurrent(boundary)) return Promise.resolve();
+      publish({
+        ...state,
+        failed: state.failed.filter((failed) => !sameHistoryBoundary(boundary, failed)),
+      });
+      retries.push(boundary);
+      version += 1;
+      return schedule();
+    },
     observeViewport: (input, load) => {
       viewport = input;
       if (load) request = load;
       version += 1;
-      pending ??= Promise.resolve()
-        .then(run)
-        .finally(() => {
-          pending = null;
-        });
-      return pending;
+      if (!input) {
+        epoch += 1;
+        retries.length = 0;
+        if (state.failed.length > 0 || state.loading !== null)
+          publish({ failed: [], loading: null });
+      } else {
+        const failed = state.failed.filter(isCurrent);
+        if (failed.length !== state.failed.length) publish({ ...state, failed });
+      }
+      return schedule();
     },
   };
 }
 
-function sameHistoryBoundary(
-  left: CodexHistoryBoundaryRef,
+export function sameHistoryBoundary(
+  left: CodexHistoryBoundaryRef | null,
   right: CodexHistoryBoundaryRef | null,
 ): boolean {
   return (
+    left !== null &&
     right !== null &&
     left.generation === right.generation &&
     left.islandId === right.islandId &&
@@ -192,17 +279,46 @@ export function selectLocalConversationHistoryGapBoundary(
   return selected;
 }
 
-/** An unloaded history region is intentionally silent and visually inert. */
+/** Failures belong to their gap, so retry does not replace the rest of the transcript. */
 export function LocalConversationHistoryGap({
   row,
+  state,
+  onRetry,
 }: {
   readonly row: LocalConversationHistoryGapRow;
+  readonly state?: LocalConversationHistoryGapRequestState;
+  readonly onRetry?: (boundary: CodexHistoryBoundaryRef) => void;
 }) {
+  const failure = state?.failed.find(
+    (boundary) =>
+      sameHistoryBoundary(boundary, row.olderBoundary) ||
+      sameHistoryBoundary(boundary, row.newerBoundary),
+  );
+  const loading =
+    state?.loading &&
+    (sameHistoryBoundary(state.loading, row.olderBoundary) ||
+      sameHistoryBoundary(state.loading, row.newerBoundary));
   return (
     <div
-      aria-hidden="true"
+      aria-hidden={!failure && !loading ? true : undefined}
       data-virtualized-turn-content
       style={{ height: row.estimatedHeightPx }}
-    />
+      className="flex items-center justify-center"
+    >
+      {failure ? (
+        <button
+          type="button"
+          onClick={() => onRetry?.(failure)}
+          className="text-size-chat-sm text-token-text-secondary hover:text-token-foreground"
+        >
+          Try again
+        </button>
+      ) : loading ? (
+        <span role="status" className="text-token-text-secondary">
+          <ActivitySpinnerIcon className="icon-xs" />
+          <span className="sr-only">Loading history</span>
+        </span>
+      ) : null}
+    </div>
   );
 }

@@ -2,6 +2,7 @@ import type { Draft } from "immer";
 import {
   listCanonicalHistoryTurns,
   readCanonicalHistoryItems,
+  withCanonicalHistoryItemCompletion,
   type CanonicalHistoryClient,
 } from "./codex-canonical-history-loader";
 import {
@@ -194,6 +195,7 @@ export async function hydrateCanonicalHistorySearchMatch(
     ["desc", "asc"].map((sortDirection) =>
       listCanonicalHistoryTurns(client, input.conversationId, {
         cursor: input.turnCursor,
+        source: "ordinary",
         limit: 5,
         sortDirection: sortDirection as "desc" | "asc",
         requestOptions: options,
@@ -204,6 +206,10 @@ export async function hydrateCanonicalHistorySearchMatch(
     throw new Error("Conversation disappeared while hydrating a search match");
   const turns = [...older!.response.data.slice().reverse(), ...newer!.response.data.slice(1)];
   const pagination = { ...newer!.itemsPaginationByTurnId, ...older!.itemsPaginationByTurnId };
+  const completedItemIdsByTurnId: Record<string, Record<string, boolean>> = {};
+  for (const page of [newer!, older!])
+    for (const [turnId, completed] of Object.entries(page.completedItemIdsByTurnId ?? {}))
+      completedItemIdsByTurnId[turnId] = { ...completedItemIdsByTurnId[turnId], ...completed };
   const match = turns.find((turn) => turn.id === input.turnId);
   const items = match?.items.slice().reverse() ?? [];
   const seen = new Set(items.map((item) => item.id));
@@ -219,6 +225,10 @@ export async function hydrateCanonicalHistorySearchMatch(
       progress.olderCursor,
       options,
     );
+    for (const entry of page.entries)
+      if ("completedAtMs" in entry)
+        (completedItemIdsByTurnId[input.turnId] ??= {})[entry.item.id] =
+          entry.completedAtMs !== null;
     for (const item of page.items.filter((item) => !seen.has(item.id)).reverse()) {
       seen.add(item.id);
       items.push(item);
@@ -232,7 +242,10 @@ export async function hydrateCanonicalHistorySearchMatch(
   if (!match || !seen.has(input.itemId))
     throw new Error("Persisted conversation search match is no longer available");
   if (items.length !== match.items.length) match.items = items.reverse();
-  const mapped = client.mapTurns(input.conversationId, turns, pagination);
+  const mapped = withCanonicalHistoryItemCompletion(
+    client.mapTurns(input.conversationId, turns, pagination),
+    { completedItemIdsByTurnId },
+  );
   let applied = false;
   client.updateConversation(input.conversationId, (draft) => {
     applied = insertCanonicalHistorySearchDraft(draft, createSearchIslandId, {

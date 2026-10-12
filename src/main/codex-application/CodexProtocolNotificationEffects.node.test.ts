@@ -24,6 +24,12 @@ import { CodexThreadGoalRuntime } from "./CodexThreadGoalRuntime";
 import { CodexThreadTitleReconsideration } from "./CodexThreadTitleReconsideration";
 import { CodexUserInputAutoResolution } from "./CodexUserInputAutoResolution";
 import { ConversationEntityMap } from "./internal/ConversationEntityMap";
+import { makeConversationEntityStateRegistry } from "./internal/ConversationEntityState";
+import { createCodexCanonicalHydratedConversationState } from "../../shared/codex-conversation-state/codex-conversation-state";
+import { replaceCanonicalHistoryDraft } from "../../shared/codex-conversation-state/codex-canonical-history-loader";
+import { residentConversationTurns } from "../../shared/codex-conversation-state/codex-turn-mutation";
+import { buildAgentActivityV2CorpusThread } from "../../shared/codex-conversation-state/test-fixtures/agent-activity-v2-corpus-provenance";
+import { produce } from "immer";
 
 it.effect("drains only Main-owned prose before applying terminal product consequences", () =>
   Effect.gen(function* () {
@@ -32,6 +38,7 @@ it.effect("drains only Main-owned prose before applying terminal product consequ
     let streamRole: ConversationStreamRole = { role: "owner" };
     const deliveredDecisions: Array<CodexHeartbeatDecision | null> = [];
     const deliveredHosts: string[] = [];
+    const conversations = makeConversationEntityStateRegistry();
     const service = yield* make.pipe(
       Effect.provideService(
         CodexApplicationEventHub,
@@ -144,7 +151,7 @@ it.effect("drains only Main-owned prose before applying terminal product consequ
         ConversationEntityMap.of({
           registerThreadMetadata: () => {},
           readThreadMetadata: () => null,
-          current: () => null,
+          current: conversations.current,
         } as unknown as ConversationEntityMap["Service"]),
       ),
       Effect.provideService(
@@ -262,5 +269,77 @@ it.effect("drains only Main-owned prose before applying terminal product consequ
     });
     assert.strictEqual(deletedDisposition, "retire");
     assert.deepEqual(trace, ["durable:remote-a:7", "close", "pip"]);
+
+    streamRole = { role: "owner" };
+    const entity = conversations.acquire("thread-a");
+    for (const mode of ["legacy", "canonical"] as const) {
+      const metadata = buildAgentActivityV2CorpusThread([
+        {
+          type: "commandExecution",
+          id: "command-a",
+          pluginId: null,
+          scriptPath: null,
+          command: "cat",
+          cwd: "/work",
+          processId: "process-a",
+          source: "agent",
+          status: "inProgress",
+          commandActions: [],
+          aggregatedOutput: null,
+          exitCode: null,
+          durationMs: null,
+        },
+      ]);
+      const state = createCodexCanonicalHydratedConversationState(
+        {
+          ...metadata,
+          id: "thread-a",
+          turns: metadata.turns.map((turn) => ({ ...turn, id: "turn-a", status: "inProgress" })),
+        },
+        {
+          hostId: "remote-a",
+          model: "fixture-model",
+          reasoningEffort: null,
+          cwd: "/work",
+          approvalPolicy: "on-request",
+          approvalsReviewer: "user",
+          sandboxPolicy: { type: "readOnly", networkAccess: false },
+          activePermissionProfile: null,
+          runtimeWorkspaceRoots: ["/work"],
+        },
+      );
+      entity.acceptCanonicalState(
+        mode === "canonical"
+          ? produce(state, (draft) => replaceCanonicalHistoryDraft(draft, state.turns, true))
+          : state,
+      );
+      const input = (stdin: string): CodexServerNotification => ({
+        method: "item/commandExecution/terminalInteraction",
+        params: {
+          threadId: "thread-a",
+          turnId: "turn-a",
+          itemId: "command-a",
+          processId: "process-a",
+          stdin,
+        },
+      });
+      const apply = (next: CodexServerNotification) =>
+        service.apply({
+          hostId: "remote-a",
+          generation: 7,
+          notification: next,
+          occurrenceId: "remote-a:7:inbox-a:96",
+          occurrenceToken: 96,
+        });
+      yield* apply(input("discarded-prefix"));
+      yield* apply(notification);
+      yield* apply(input("fresh\n"));
+      const command = residentConversationTurns(entity.readCanonicalState())[0]!.items.find(
+        (item) => item.id === "command-a",
+      );
+      assert.equal(command?.type, "commandExecution");
+      if (command?.type !== "commandExecution") return;
+      assert.deepStrictEqual(command.commandActions, [{ type: "unknown", command: "fresh" }]);
+    }
   }),
 );

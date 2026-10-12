@@ -1,12 +1,18 @@
 import { describe, expect, test } from "vite-plus/test";
 import { render } from "../../../test/dom";
+import { act, fireEvent } from "@testing-library/react";
 import type {
   CodexHistoryBoundaryRef,
   CodexHistoryRow,
 } from "../../../../shared/codex-conversation-state/codex-history-topology";
 import {
+  codexConversationHistoryTurnItemsRefKey,
+  createCodexConversationHistoryTurnItemsRef,
+} from "../../../../shared/codex-conversation-history-page";
+import {
   CODEX_HISTORY_GAP_LOAD_PROXIMITY_PX,
   createLocalConversationHistoryGapRequestCoordinator,
+  createLocalConversationHistoryRequestGate,
   LocalConversationHistoryGap,
   projectLocalConversationLegacyHistoryRows,
   selectLocalConversationHistoryGapBoundary,
@@ -60,6 +66,56 @@ function select(input: {
 }
 
 describe("local conversation history gap controller", () => {
+  test("a late stale item page cannot stop the same cursor in a new topology", async () => {
+    const pagination = {
+      source: "ordinary" as const,
+      olderCursor: "same-opaque-cursor",
+      hasLoadedOldest: false,
+      isLoadingOlder: false,
+      itemsView: "summary" as const,
+    };
+    const oldRef = createCodexConversationHistoryTurnItemsRef({
+      turnId: "same-turn",
+      expectedTopologyGeneration: 3,
+      pagination,
+    })!;
+    const currentRef = createCodexConversationHistoryTurnItemsRef({
+      turnId: oldRef.turnId,
+      expectedTopologyGeneration: 4,
+      pagination,
+    })!;
+    const gate = createLocalConversationHistoryRequestGate();
+    const oldKey = codexConversationHistoryTurnItemsRefKey(oldRef);
+    const currentKey = codexConversationHistoryTurnItemsRefKey(currentRef);
+    const requested: number[] = [];
+    let completeOld!: (result: "stale") => void;
+    const oldPage = new Promise<"stale">((resolve) => {
+      completeOld = resolve;
+    });
+    expect(
+      gate.request(oldKey, () => {
+        requested.push(oldRef.expectedTopologyGeneration);
+        return oldPage;
+      }),
+    ).toBe(true);
+    // Re-observing one boundary still coalesces while its physical read is pending.
+    expect(gate.request(oldKey, () => Promise.resolve("applied"))).toBe(false);
+    gate.retain(new Set([currentKey]));
+    completeOld("stale");
+    await oldPage;
+    expect(gate.unavailableKeys().has(oldKey)).toBe(true);
+    gate.retain(new Set([currentKey]));
+    expect(
+      gate.request(currentKey, () => {
+        requested.push(currentRef.expectedTopologyGeneration);
+        return Promise.resolve("applied");
+      }),
+    ).toBe(true);
+    await Promise.resolve();
+    expect(requested).toEqual([3, 4]);
+    expect(gate.unavailableKeys().size).toBe(0);
+  });
+
   test("selects a boundary at the inclusive 800px proximity edge", () => {
     const newer = boundary("older", "progress:near");
     const row = gapRow({ newerBoundary: newer });
@@ -134,7 +190,7 @@ describe("local conversation history gap controller", () => {
     expect(requests).toEqual([first, second]);
   });
 
-  test("retries a failed boundary on a later observation even with unchanged bounds", async () => {
+  test("keeps a failed boundary stopped until explicit retry", async () => {
     const coordinator = createLocalConversationHistoryGapRequestCoordinator();
     const view = {
       viewportStartPx: 900,
@@ -148,6 +204,9 @@ describe("local conversation history gap controller", () => {
     };
     await coordinator.observeViewport(view, load);
     await coordinator.observeViewport(view, load);
+    expect(calls).toBe(1);
+    expect(coordinator.readState().failed).toHaveLength(1);
+    await coordinator.retryBoundary(view.gaps[0]!.row.newerBoundary!);
     expect(calls).toBe(2);
   });
 
@@ -206,6 +265,35 @@ describe("local conversation history gap controller", () => {
     await coordinator.observeViewport(view, load);
     await coordinator.observeViewport(view, load);
     expect(calls).toBe(1);
+  });
+
+  test("retry FIFO discards replaced boundaries and leaving clears failure state", async () => {
+    const coordinator = createLocalConversationHistoryGapRequestCoordinator();
+    const first = boundary("older", "failed");
+    const replacement = boundary("older", "replacement");
+    const viewport = (target: CodexHistoryBoundaryRef) => ({
+      viewportStartPx: 900,
+      viewportEndPx: 1200,
+      gaps: [gapLayout(1000, gapRow({ newerBoundary: target }))],
+    });
+    const loaded: CodexHistoryBoundaryRef[] = [];
+    await coordinator.observeViewport(viewport(first), async (target) => {
+      loaded.push(target);
+      throw new Error("failed");
+    });
+    await coordinator.observeViewport(viewport(replacement), async (target) => {
+      loaded.push(target);
+      return "applied";
+    });
+    await coordinator.retryBoundary(first);
+    expect(loaded).toEqual([first, replacement]);
+    expect(coordinator.readState().failed).toEqual([]);
+    await coordinator.observeViewport(viewport(replacement), async () => {
+      throw new Error("failed again");
+    });
+    expect(coordinator.readState().failed).toEqual([replacement]);
+    await coordinator.observeViewport(null);
+    expect(coordinator.readState()).toEqual({ failed: [], loading: null });
   });
 
   test("does not request after the history gap is exhausted", async () => {
@@ -270,16 +358,35 @@ describe("legacy local conversation history row projection", () => {
 });
 
 describe("LocalConversationHistoryGap", () => {
-  test("renders an exact silent 144px virtualized row", () => {
-    const view = render(<LocalConversationHistoryGap row={gapRow({})} />);
-    const element = view.container.firstElementChild as HTMLElement | null;
-
-    expect(element?.tagName).toBe("DIV");
-    expect(element?.getAttribute("aria-hidden")).toBe("true");
-    expect(element?.hasAttribute("data-virtualized-turn-content")).toBe(true);
-    expect(element?.style.height).toBe("144px");
-    expect(element?.textContent).toBe("");
-    expect(element?.childElementCount).toBe(0);
-    expect(element?.getAttribute("class")).toBeNull();
+  test("shows loading and retries only the failed current boundary", async () => {
+    const newer = boundary("older", "retry-ui");
+    const retry: CodexHistoryBoundaryRef[] = [];
+    const view = render(
+      <LocalConversationHistoryGap
+        row={gapRow({ newerBoundary: newer })}
+        state={{ failed: [], loading: newer }}
+      />,
+    );
+    expect(view.getByRole("status").textContent).toBe("Loading history");
+    view.rerender(
+      <LocalConversationHistoryGap
+        row={gapRow({ newerBoundary: newer })}
+        state={{ failed: [newer], loading: null }}
+        onRetry={(value) => retry.push(value)}
+      />,
+    );
+    await act(async () => {
+      fireEvent.click(view.getByRole("button", { name: "Try again" }));
+      await Promise.resolve();
+    });
+    expect(retry).toEqual([newer]);
+    const replacement = boundary("older", "replacement");
+    view.rerender(
+      <LocalConversationHistoryGap
+        row={gapRow({ newerBoundary: replacement })}
+        state={{ failed: [newer], loading: null }}
+      />,
+    );
+    expect(view.queryByRole("button", { name: "Try again" })).toBeNull();
   });
 });

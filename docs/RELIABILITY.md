@@ -418,10 +418,10 @@ Thread's queued entries.
 
 History fan-out passes through one host scheduler with global, priority, background-lane,
 per-conversation, count and expiry rules. Request origin determines coalescing policy. Tail and search pages
-are generation-fenced and make cursor progress or fail closed. The resident Entity enforces active
-Turn-count and byte budgets across every object graph; passive owner cleanup retires the complete
-Entity generation. Complete export has its own bounded one-Turn working set, progress,
+are generation-fenced and make cursor progress or fail closed. Active transcript retention is a separately configured safe-prefix policy: eligible owners may release completed items above 1,000 resident items toward 500 while every mounted view protects its reading boundary. Pending work, followers, multiple islands and timeline history veto that release; it is not a global byte or item hard cap. Passive owner cleanup retains at most ten inactive owners and releases inactive history after three hours. Complete export has its own bounded one-Turn working set, progress,
 cancellation, and idle-job retention, and never mutates the resident snapshot.
+Normalized read subscriptions await one callback at a time. Resets with at least 256 map entries are staged in parts and become visible only at commit. Pending changes above 262,144 serialized JavaScript code units, a pending reset or a failed changes callback force a fresh reset after the current callback; a failed reset ends the subscription. Closing the capability releases its retained RPC callback, viewport declarations and cached content. These limits are independent of native transport byte admission.
+
 Scheduler admission uses queued request counts, not retained-byte ceilings. Critical work can
 enter a full queue while any of the eight physical execution slots is available. Up to five
 noncritical requests and three background requests may execute at once. Noncritical work other
@@ -491,8 +491,10 @@ cannot release the slot again. Other dispatched requests retain their slot until
 their caller detaches.
 
 Thread catalogs and Subagent discovery are metadata projections with independent page, result,
-byte, cursor-progress, and total-deadline budgets. Sidebar refresh and fork-title selection publish
-only a complete admitted result. Subagent discovery may durably admit a verified positive page while
+byte, cursor-progress, and total-deadline budgets. Sidebar scan windows preserve their cursor
+at budget boundaries and pace background reads. An incremental watermark and head overlap
+bound later refresh work; only a completed full scan authorizes absence reconciliation in Core.
+Fork-title selection publishes only a complete admitted result. Subagent discovery may durably admit a verified positive page while
 keeping the root universe explicitly incomplete; truncation, cursor cycles, generation replacement,
 or timeout can therefore preserve known children and a continuation but can never infer absence or
 completion. A complete marker is accepted only for a reachable descendant closure. Neither path

@@ -14,6 +14,9 @@ export const LATEST_TURN_SUBMIT_PLACEMENT_THRESHOLD_PX = 300;
 export interface VirtualizedTurnLayoutEntry {
   turnKey: string;
   estimatedHeightPx?: number | null;
+  minHeightPx?: number | null;
+  gapBeforePx?: number | null;
+  type?: "content" | "gap";
 }
 
 export interface VirtualizedTurnLayoutInput {
@@ -21,9 +24,14 @@ export interface VirtualizedTurnLayoutInput {
   gapPx: number;
   heightsPx?: readonly number[];
   measuredHeightsByKey?: Readonly<Record<string, number>>;
+  pixelScale?: number;
+  collapseEmptyRows?: boolean;
 }
 
 export interface VirtualizedTurnLayout {
+  collapseEmptyRows: boolean;
+  gapKeys: Set<string>;
+  gapsBeforePx: number[];
   bottomOffsetsPx: number[];
   heightsPx: number[];
   topOffsetsPx: number[];
@@ -186,54 +194,60 @@ function finitePositiveOrNull(value: number | null | undefined): number | null {
   return typeof value === "number" && Number.isFinite(value) && value > 0 ? value : null;
 }
 
-function resolveLayoutEntries(input: VirtualizedTurnLayoutInput): {
-  heightsPx: number[];
-  turnKeys: string[];
-} {
-  if (input.entries) {
-    const measuredHeightsByKey = input.measuredHeightsByKey ?? {};
-    return {
-      heightsPx: input.entries.map(
-        (entry) =>
-          finitePositiveOrNull(measuredHeightsByKey[entry.turnKey]) ??
-          finitePositiveOrNull(entry.estimatedHeightPx) ??
-          DEFAULT_VIRTUALIZED_TURN_HEIGHT_PX,
-      ),
-      turnKeys: input.entries.map((entry) => entry.turnKey),
-    };
-  }
-
-  const heightsPx = (input.heightsPx ?? []).map(
-    (heightPx) => finitePositiveOrNull(heightPx) ?? DEFAULT_VIRTUALIZED_TURN_HEIGHT_PX,
-  );
-  return {
-    heightsPx,
-    turnKeys: heightsPx.map((_, index) => String(index)),
-  };
+function finiteNonNegativeOrNull(value: number | null | undefined): number | null {
+  return typeof value === "number" && Number.isFinite(value) && value >= 0 ? value : null;
 }
 
+/** Heights and gaps share physical-pixel rounding; a measured zero remains meaningful. */
 export function buildVirtualizedTurnLayout(
   input: VirtualizedTurnLayoutInput,
 ): VirtualizedTurnLayout {
-  const { heightsPx, turnKeys } = resolveLayoutEntries(input);
+  const entries: readonly VirtualizedTurnLayoutEntry[] =
+    input.entries ??
+    (input.heightsPx ?? []).map((estimatedHeightPx, index) => ({
+      turnKey: String(index),
+      estimatedHeightPx,
+    }));
+  const measured = input.measuredHeightsByKey ?? {};
+  const pixelScale = finitePositiveOrNull(input.pixelScale);
+  const round = (value: number) =>
+    pixelScale === null ? value : Math.round(value * pixelScale) / pixelScale;
   const turnIndexByKey = new Map<string, number>();
+  const gapKeys = new Set<string>();
   const topOffsetsPx: number[] = [];
+  const heightsPx: number[] = [];
+  const gapsBeforePx: number[] = [];
+  const turnKeys: string[] = [];
   let totalHeightPx = 0;
-
-  for (let index = 0; index < heightsPx.length; index += 1) {
-    const turnKey = turnKeys[index] ?? String(index);
-    turnIndexByKey.set(turnKey, index);
+  for (const [index, entry] of entries.entries()) {
+    const heightPx = round(
+      Math.max(
+        finiteNonNegativeOrNull(entry.minHeightPx) ?? 0,
+        finiteNonNegativeOrNull(measured[entry.turnKey]) ??
+          finiteNonNegativeOrNull(entry.estimatedHeightPx) ??
+          DEFAULT_VIRTUALIZED_TURN_HEIGHT_PX,
+      ),
+    );
+    const hasGap = input.collapseEmptyRows ? totalHeightPx > 0 && heightPx > 0 : index > 0;
+    const gapBeforePx = hasGap
+      ? round(finiteNonNegativeOrNull(entry.gapBeforePx) ?? input.gapPx)
+      : 0;
+    totalHeightPx += gapBeforePx;
+    gapsBeforePx.push(gapBeforePx);
+    if (entry.type === "gap") gapKeys.add(entry.turnKey);
+    turnIndexByKey.set(entry.turnKey, index);
+    turnKeys.push(entry.turnKey);
     topOffsetsPx.push(totalHeightPx);
-    totalHeightPx += heightsPx[index] ?? DEFAULT_VIRTUALIZED_TURN_HEIGHT_PX;
-    if (index < heightsPx.length - 1) {
-      totalHeightPx += input.gapPx;
-    }
+    heightsPx.push(heightPx);
+    totalHeightPx += heightPx;
   }
-
   return {
     bottomOffsetsPx: topOffsetsPx.map(
       (topOffsetPx, index) => totalHeightPx - topOffsetPx - (heightsPx[index] ?? 0),
     ),
+    collapseEmptyRows: input.collapseEmptyRows ?? false,
+    gapKeys,
+    gapsBeforePx,
     heightsPx,
     topOffsetsPx,
     totalHeightPx,
@@ -307,15 +321,21 @@ export function resolveVisibleTurnRangeFromBottomDistance({
     viewportBottomDistancePx + Math.max(0, viewportHeightPx),
     layout.totalHeightPx,
   );
-  const firstVisibleIndex = findStartIndexFromBottomDistance({
-    bottomOffsetsPx: layout.bottomOffsetsPx,
-    targetPx: viewportTopDistancePx,
-  });
-  const endIndex = findEndIndexFromBottomDistance({
-    bottomOffsetsPx: layout.bottomOffsetsPx,
-    heightsPx: layout.heightsPx,
-    targetPx: viewportBottomDistancePx,
-  });
+  const firstVisibleIndex =
+    layout.collapseEmptyRows && viewportTopDistancePx === layout.totalHeightPx
+      ? 0
+      : findStartIndexFromBottomDistance({
+          bottomOffsetsPx: layout.bottomOffsetsPx,
+          targetPx: viewportTopDistancePx,
+        });
+  const endIndex =
+    layout.collapseEmptyRows && viewportBottomDistancePx === 0
+      ? layout.turnKeys.length
+      : findEndIndexFromBottomDistance({
+          bottomOffsetsPx: layout.bottomOffsetsPx,
+          heightsPx: layout.heightsPx,
+          targetPx: viewportBottomDistancePx,
+        });
 
   return {
     startIndex: Math.max(0, firstVisibleIndex - overscanCount),

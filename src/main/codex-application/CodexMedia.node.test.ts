@@ -126,6 +126,7 @@ const desktop = (options: Partial<ChatGptDesktop["Service"]>): ChatGptDesktop["S
   });
 
 const gateway = CodexGateway.of({
+  promoteQueuedCatalogPage: Effect.succeed(false),
   localHostId: "local",
   requestRawOnHost: () => Effect.die(new Error("Unsupported raw host request")),
   requestRawForThread: () => Effect.die(new Error("Unsupported raw request")),

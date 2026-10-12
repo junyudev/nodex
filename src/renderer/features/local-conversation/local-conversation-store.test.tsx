@@ -5,6 +5,7 @@ import {
   withPaginatedCanonicalState,
   ensureCanonicalResumeFixture,
 } from "../../test/canonical-conversation-fixture";
+import { MessageChannel } from "node:worker_threads";
 import { mutateCodexConversationEvent } from "../../../shared/codex-conversation-state/codex-conversation-reducer";
 import type { CodexPreparedTurnExecution } from "../../../shared/codex-conversation-state/codex-turn-execution";
 import { encodeCodexNativeRequestFailure } from "../../../shared/codex-native-request-outcome";
@@ -21,7 +22,7 @@ import type { ConversationCoordinationBroadcast } from "../../../shared/codex-co
 import { buildAgentActivityV2CorpusThread } from "../../../shared/codex-conversation-state/test-fixtures/agent-activity-v2-corpus-provenance";
 import { describe, expect, vi, test } from "vite-plus/test";
 import { createElement, useLayoutEffect, useMemo, useSyncExternalStore } from "react";
-import { act } from "@testing-library/react";
+import { act, waitFor } from "@testing-library/react";
 import { createCodexQueuedFollowUp } from "../../../shared/codex-queued-follow-up-state";
 import { createCodexFirstSubmissionIdentity } from "../../../shared/codex-first-submission";
 import type {
@@ -80,8 +81,20 @@ function recordedNativeRequests(): typeof invokeRecords {
 let queuedMessageFixtureState: import("../../../shared/codex-queued-message").CodexQueuedMessageState =
   {};
 let nativeResumeResponseGate: Promise<void> | null = null;
+let nativeThreadMetadataResult: Thread | null = null;
+let composerPredictionEnabled = false;
 let nativeResumeAcceptanceGate: Promise<void> | null = null;
 let nativeSupportsPaginatedHistory = true;
+let nativeSupportsSearchOccurrences = true;
+let nativeAppServerVersion: string | null = "0.162.0-alpha.17.2";
+let nativeHistorySearchHandler:
+  | ((
+      threadId: string,
+      query: string,
+    ) => Promise<
+      import("../../../shared/codex-persisted-history-search").CodexPersistedHistorySearchReadPage
+    >)
+  | null = null;
 let nativeSupportsThreadQueue = false;
 let nativeResumeHistoryModeOverride: Thread["historyMode"] | null = null;
 let nativeGoalHydrationGate: Promise<void> | null = null;
@@ -111,6 +124,7 @@ let ownerEditRevertResult: ThreadRevertResponse | null = null;
 let nativeTurnsListResult:
   | import("@nodex/codex-app-server-protocol/v2").ThreadTurnsListResponse
   | null = null;
+let nativeTurnsReadGate: Promise<void> | null = null;
 let ownerTurnStartResult: TurnStartResponse | null = null;
 let ownerTurnStartError: Error | null = null;
 let ownerTurnStartHandler: (() => void) | null = null;
@@ -442,11 +456,18 @@ vi.mock("./local-conversation-deps", () => ({
           generation: resumeThreadGeneration,
           sourceEpoch: "test-native",
           supportsPaginatedHistory: nativeSupportsPaginatedHistory,
+          supportsSearchOccurrences: nativeSupportsSearchOccurrences,
+          appServerVersion: nativeAppServerVersion,
           supportsTurnApprovalsReviewer: false,
           supportsThreadRevert: true,
           supportsThreadQueue: nativeSupportsThreadQueue,
           accountContext: { hostId: args[0], accountId: null, userId: null },
         };
+      if (channel === "codex:thread:history-search") {
+        if (!nativeHistorySearchHandler)
+          throw new Error("Native history search fixture unavailable");
+        return nativeHistorySearchHandler(String(args[0]), String(args[1]));
+      }
       if (channel === "codex:thread:history-hydration:prepare") {
         const pending = resumeThreadResult instanceof Promise ? null : resumeThreadResult;
         const summary =
@@ -626,6 +647,14 @@ vi.mock("./local-conversation-deps", () => ({
         };
       }
 
+      if (channel === "codex:composer-prediction:availability")
+        return {
+          enabled: composerPredictionEnabled,
+          source: composerPredictionEnabled ? "environment" : null,
+          scope: "local",
+        };
+      if (channel === "codex:composer-prediction:request") return null;
+
       if (channel === "codex:permission:state:get") {
         return {
           mode: "custom",
@@ -759,10 +788,20 @@ vi.mock("./local-conversation-deps", () => ({
             params?: {
               expectedTurnId?: string;
               turnId?: string;
+              includeTurns?: boolean;
             };
           };
         };
+        if (input.request?.method === "thread/read" && nativeThreadMetadataResult) {
+          return {
+            thread: {
+              ...nativeThreadMetadataResult,
+              turns: input.request.params?.includeTurns ? nativeThreadMetadataResult.turns : [],
+            },
+          };
+        }
         if (input.request?.method === "thread/turns/list") {
+          if (nativeTurnsReadGate) await nativeTurnsReadGate;
           if (nativeTurnsListResult) return nativeTurnsListResult;
           const conversation = await Promise.resolve(resumeThreadResult);
           return {
@@ -815,6 +854,7 @@ vi.mock("./local-conversation-deps", () => ({
           const turnId = "turn-owner-start";
           return {
             turn: {
+              rootTurnId: null,
               id: turnId,
               items: [],
               itemsView: "full",
@@ -1171,8 +1211,14 @@ function resetLocalConversationStoreTestHarness(reset: () => void): void {
   delete ownerTurnExecutionOverride.value;
   ownerSettingsGate = null;
   nativeSupportsPaginatedHistory = true;
+  nativeSupportsSearchOccurrences = true;
+  nativeAppServerVersion = "0.162.0-alpha.17.2";
+  nativeHistorySearchHandler = null;
+  nativeTurnsReadGate = null;
   nativeSupportsThreadQueue = false;
   nativeResumeHistoryModeOverride = null;
+  nativeThreadMetadataResult = null;
+  composerPredictionEnabled = false;
   nativeGoalHydrationGate = null;
   testFollowers.clear();
   nativeTestManagers.clear();
@@ -1383,6 +1429,7 @@ function buildAssistantMessage(
 
 function buildProtocolTurn(overrides: Pick<Turn, "id"> & Partial<Turn>): Turn {
   return {
+    rootTurnId: null,
     items: [],
     itemsView: "full",
     status: "inProgress",
@@ -1610,6 +1657,248 @@ describe("local-conversation-store", () => {
     } finally {
       manager.destroy();
       resetLocalConversationStoreTestHarness(__resetLocalConversationStoreForTests);
+    }
+  });
+
+  test("compatibility Turns keep native identity when older history is inserted before live completion", async () => {
+    const { CodexAppServerManager, __resetLocalConversationStoreForTests } =
+      await import("./local-conversation-store");
+    const { createCodexHistoryIslandTopology, exhaustedCodexHistoryBoundary } =
+      await import("../../../shared/codex-conversation-state/codex-history-topology");
+    resetLocalConversationStoreTestHarness(__resetLocalConversationStoreForTests);
+    const manager = trackNativeTestManager(new CodexAppServerManager("local"));
+    const threadId = "projection-order";
+    const canonical = withCanonicalState({
+      ...buildConversation(threadId, "project-1"),
+      turns: ["history-1", "history-2", "history-3", "live"].map((turnId) => ({
+        threadId,
+        turnId,
+        status: turnId === "live" ? ("inProgress" as const) : ("completed" as const),
+        itemIds: [],
+        items: [],
+      })),
+    }).canonicalState!;
+    const initialTurns = canonical.turns;
+    const older = ["older-1", "older-2"].map((turnId) => ({ ...initialTurns[0]!, turnId }));
+    const snapshot = (rows: readonly (typeof initialTurns)[number][], idle = false) => {
+      const topology = createCodexHistoryIslandTopology({
+        generation: 1,
+        islandId: "tail",
+        isComplete: true,
+        entries: rows.map((turn) => ({
+          key: `entry:${turn.turnId}`,
+          value: `entity:${turn.turnId}`,
+        })),
+        entities: rows.map((turn) => ({ key: `entity:${turn.turnId}`, turn })),
+        olderBoundary: exhaustedCodexHistoryBoundary("older"),
+        newerBoundary: exhaustedCodexHistoryBoundary("newer"),
+      });
+      if (!topology.ok) throw new Error(topology.error.code);
+      return {
+        ...canonical,
+        turns: [],
+        historyMode: "paginated" as const,
+        threadRuntimeStatus: idle ? { type: "idle" as const } : canonical.threadRuntimeStatus,
+        turnHistory: { kind: "canonical" as const, history: topology.topology },
+      };
+    };
+    const receive = async (state: ReturnType<typeof snapshot>, revision: number) => {
+      await act(async () => {
+        dispatchTestThreadStreamStateChanged(manager, {
+          hostId: "local",
+          conversationId: threadId,
+          sourceClientId: "owner",
+          change: { type: "snapshot", revision, conversationState: state },
+        });
+        await Promise.resolve();
+      });
+    };
+    try {
+      await receive(snapshot(initialTurns), 1);
+      await receive(snapshot([...older, ...initialTurns]), 2);
+      expect(manager.readConversation(threadId)?.turns.map(({ turnId }) => turnId)).toEqual([
+        "older-1",
+        "older-2",
+        "history-1",
+        "history-2",
+        "history-3",
+        "live",
+      ]);
+      await receive(
+        snapshot(
+          [
+            ...older,
+            ...initialTurns.slice(0, -1),
+            { ...initialTurns.at(-1)!, status: "completed" },
+          ],
+          true,
+        ),
+        3,
+      );
+      const conversation = manager.readConversation(threadId)!;
+      expect(conversation.statusType).toBe("idle");
+      expect(conversation.turns.filter(({ status }) => status === "inProgress")).toEqual([]);
+      expect(conversation.turns.map(({ turnId }) => turnId)).toEqual([
+        "older-1",
+        "older-2",
+        "history-1",
+        "history-2",
+        "history-3",
+        "live",
+      ]);
+    } finally {
+      manager.destroy();
+    }
+  });
+
+  test("cold paginated history and normalized RPC items are readable before execution resumes", async () => {
+    const { CodexAppServerManager, __resetLocalConversationStoreForTests } =
+      await import("./local-conversation-store");
+    const { dispatchCodexAppServerMessage } = await import("./app-server-message-bus");
+    resetLocalConversationStoreTestHarness(__resetLocalConversationStoreForTests);
+    vi.stubGlobal("MessageChannel", MessageChannel);
+    nativeSupportsPaginatedHistory = true;
+    resumeThreadRole = "owner";
+    let release!: () => void;
+    nativeResumeResponseGate = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    resumeThreadResult = withPaginatedCanonicalState({
+      ...buildConversation("early-history", "project-1"),
+      turns: [
+        {
+          threadId: "early-history",
+          turnId: "turn",
+          status: "inProgress",
+          itemIds: ["user", "command"],
+          items: [
+            buildUserMessage("early-history", "turn", "user", "Read first"),
+            buildCommandExecutionItem("early-history", "turn", "command", "Before"),
+          ],
+        },
+      ],
+    });
+    nativeThreadMetadataResult = buildThreadFromConversation(resumeThreadResult);
+    const manager = trackNativeTestManager(new CodexAppServerManager("local"));
+    const owner = manager.getTranscriptReadOwner("early-history");
+    const unsubscribe = owner.subscribeStructure(() => {});
+    const resume = manager.requestThreadStreamResume("early-history");
+    try {
+      await waitFor(() =>
+        expect(
+          residentConversationTurns(manager.readConversation("early-history")?.canonicalState)[0]
+            ?.items.length,
+        ).toBe(2),
+      );
+      expect(manager.readConversation("early-history")?.resumeState).toBe("resuming");
+      expect(manager.readConversationAttachmentState("early-history").status).toBe("attaching");
+      await waitFor(() => expect(owner.readStructure()?.turns.length).toBe(1));
+      const entityKey = owner.readStructure()!.turns[0]!.entityKey;
+      expect(owner.readItem(entityKey, "command")).toMatchObject({ aggregatedOutput: "Before" });
+      const slots = owner.readItemSlots(entityKey);
+      release();
+      await resume;
+      await waitFor(() => expect(owner.readStructure()?.resumeState).toBe("resumed"));
+      const originalStructure = owner.readStructure();
+      const originalSlots = owner.readItemSlots(entityKey);
+      dispatchCodexAppServerMessage("native-notification", {
+        type: "nativeNotification",
+        hostId: "local",
+        generation: resumeThreadGeneration,
+        occurrenceId: "stream-command",
+        occurrenceToken: 1,
+        notification: {
+          method: "item/commandExecution/outputDelta",
+          params: { threadId: "early-history", turnId: "turn", itemId: "command", delta: " after" },
+        },
+      });
+      await waitFor(() =>
+        expect(owner.readItem(entityKey, "command")).toMatchObject({
+          aggregatedOutput: "Before after",
+        }),
+      );
+      expect(owner.readStructure()).toBe(originalStructure);
+      expect(owner.readItemSlots(entityKey)).toBe(originalSlots);
+      expect(slots?.length).toBe(2);
+      const reads = recordedNativeRequests().filter(
+        (record) =>
+          (record.args[0] as { request?: { method?: string } }).request?.method ===
+          "thread/turns/list",
+      );
+      expect(reads).toHaveLength(1);
+      composerPredictionEnabled = true;
+      dispatchCodexAppServerMessage("native-notification", {
+        type: "nativeNotification",
+        hostId: "local",
+        generation: resumeThreadGeneration,
+        occurrenceId: "stream-completed",
+        occurrenceToken: 2,
+        notification: {
+          method: "turn/completed",
+          params: {
+            threadId: "early-history",
+            turn: {
+              ...buildThreadFromConversation(resumeThreadResult).turns[0]!,
+              status: "completed",
+            },
+          },
+        },
+      });
+      await waitFor(() =>
+        expect(
+          invokeRecords.find((record) => record.channel === "codex:composer-prediction:request")
+            ?.args[0],
+        ).toEqual({
+          hostId: "local",
+          threadId: "early-history",
+          latestTurnId: "turn",
+          generationTrigger: "live",
+        }),
+      );
+      const { writeComposerPredictionsEnabled } = await import("./composer-prediction-settings");
+      writeComposerPredictionsEnabled(false);
+      const disabledTurn = {
+        ...buildThreadFromConversation(resumeThreadResult).turns[0]!,
+        id: "disabled-turn",
+        items: [],
+        status: "inProgress" as const,
+      };
+      for (const method of ["turn/started", "turn/completed"] as const) {
+        dispatchCodexAppServerMessage("native-notification", {
+          type: "nativeNotification",
+          hostId: "local",
+          generation: resumeThreadGeneration,
+          occurrenceId: method,
+          occurrenceToken: 3,
+          notification: {
+            method,
+            params: {
+              threadId: "early-history",
+              turn: {
+                ...disabledTurn,
+                status: method === "turn/started" ? "inProgress" : "completed",
+              },
+            },
+          },
+        });
+      }
+      await Promise.resolve();
+      expect(
+        invokeRecords.filter((record) => record.channel === "codex:composer-prediction:request"),
+      ).toHaveLength(1);
+      writeComposerPredictionsEnabled(true);
+    } finally {
+      const { writeComposerPredictionsEnabled } = await import("./composer-prediction-settings");
+      writeComposerPredictionsEnabled(true);
+      composerPredictionEnabled = false;
+      release();
+      await resume.catch(() => {});
+      nativeResumeResponseGate = null;
+      nativeThreadMetadataResult = null;
+      resumeThreadResult = null;
+      unsubscribe();
+      manager.destroy();
+      vi.unstubAllGlobals();
     }
   });
 
@@ -3848,6 +4137,7 @@ describe("local-conversation-store", () => {
       ownerEditRevertResult = buildRevertResponseFromConversation(revertConversation);
       ownerTurnStartResult = {
         turn: {
+          rootTurnId: null,
           id: "turn-replacement",
           items: [],
           itemsView: "full",
@@ -4086,6 +4376,7 @@ describe("local-conversation-store", () => {
       }
       ownerTurnStartResult = {
         turn: {
+          rootTurnId: null,
           id: "turn-normal",
           items: [],
           itemsView: "full",
@@ -5523,6 +5814,121 @@ describe("local-conversation-store", () => {
       ).toEqual([]);
     } finally {
       nativeResumeResponseGate = null;
+      resumeThreadResult = null;
+      manager.destroy();
+    }
+  });
+
+  test("paginated native Turn start binds the first-response span through visible completion", async () => {
+    const { CodexAppServerManager, __resetLocalConversationStoreForTests } =
+      await import("./local-conversation-store");
+    const { dispatchCodexAppServerMessage } = await import("./app-server-message-bus");
+    const { codexTurnFirstResponseTracker } = await import("./codex-turn-first-response");
+    const performanceSpans = await import("../../lib/codex-performance-span");
+    resetLocalConversationStoreTestHarness(__resetLocalConversationStoreForTests);
+    const threadId = "paginated-first-response";
+    const clientUserMessageId = "01991e60-b800-7000-8000-000000000012";
+    const nativeTurn: Turn = {
+      rootTurnId: null,
+      id: "turn-first-response",
+      items: [],
+      itemsView: "full",
+      status: "inProgress",
+      error: null,
+      startedAt: 1,
+      completedAt: null,
+      durationMs: null,
+    };
+    resumeThreadResult = withPaginatedCanonicalState(buildConversation(threadId, "project-1"));
+    ownerTurnStartResult = { turn: nativeTurn };
+    const manager = trackNativeTestManager(new CodexAppServerManager("local"));
+    const mark = vi.fn();
+    const end = vi.fn();
+    let onTerminal = () => {};
+    const spanFactory = vi.spyOn(performanceSpans, "startCodexPerformanceSpan");
+    try {
+      await act(async () => {
+        await manager.requestThreadStreamResume(threadId);
+      });
+      spanFactory.mockImplementation((_name, _attributes, options) => {
+        onTerminal = options.onTerminal;
+        return {
+          trace: null,
+          abort: () => onTerminal(),
+          end: () => {
+            end();
+            onTerminal();
+          },
+          fail: () => onTerminal(),
+          isRecording: () => true,
+          mark,
+          measure: () => ({ end: () => {} }),
+          recordAnalyticsSuccess: () => true,
+        };
+      });
+      codexTurnFirstResponseTracker.start(
+        clientUserMessageId,
+        "existing_thread",
+        threadId,
+        threadId,
+        1000,
+      );
+      ownerTurnStartHandler = () => {
+        dispatchCodexAppServerMessage("native-notification", {
+          type: "nativeNotification",
+          hostId: "local",
+          generation: resumeThreadGeneration,
+          occurrenceId: "first-response-started",
+          occurrenceToken: 1,
+          notification: { method: "turn/started", params: { threadId, turn: nativeTurn } },
+        });
+        dispatchCodexAppServerMessage("native-notification", {
+          type: "nativeNotification",
+          hostId: "local",
+          generation: resumeThreadGeneration,
+          occurrenceId: "first-response-data",
+          occurrenceToken: 2,
+          notification: {
+            method: "item/started",
+            params: {
+              threadId,
+              turnId: nativeTurn.id,
+              startedAtMs: 1000,
+              item: {
+                type: "agentMessage",
+                id: "answer",
+                text: "Ready",
+                phase: null,
+                memoryCitation: null,
+                delivery: null,
+                questions: null,
+              },
+            },
+          },
+        });
+      };
+      await act(async () => {
+        await manager.startTurn(threadId, "Start", undefined, undefined, {
+          clientUserMessageId,
+          startedAtMs: 1000,
+        });
+        codexTurnFirstResponseTracker.markFirstResponseVisible(clientUserMessageId);
+      });
+      const canonical = manager.readConversation(threadId)?.canonicalState;
+      expect(canonical?.turns).toEqual([]);
+      expect(residentConversationTurns(canonical).at(-1)?.params.clientUserMessageId).toBe(
+        clientUserMessageId,
+      );
+      expect(mark.mock.calls.map(([name]) => name)).toEqual(
+        expect.arrayContaining(["turn_started", "first_data_received", "first_response_visible"]),
+      );
+      expect(end).toHaveBeenCalledTimes(1);
+      expect(codexTurnFirstResponseTracker.getTrace(clientUserMessageId)).toBeUndefined();
+    } finally {
+      codexTurnFirstResponseTracker.abort(clientUserMessageId, "test_cleanup");
+      spanFactory.mockRestore();
+      ownerTurnStartHandler = null;
+      ownerTurnStartResult = null;
       resumeThreadResult = null;
       manager.destroy();
     }
@@ -19558,6 +19964,307 @@ describe("local-conversation-store", () => {
     });
     resumeThreadResult = null;
   });
+
+  test("persisted search reads through the viewing follower and retains its local topology", async () => {
+    const { CodexAppServerManager, __resetLocalConversationStoreForTests } =
+      await import("./local-conversation-store");
+    const { createEmptyCodexHistoryTopology } =
+      await import("../../../shared/codex-conversation-state/codex-history-topology");
+    resetLocalConversationStoreTestHarness(__resetLocalConversationStoreForTests);
+    invokeRecords = [];
+    nativeSupportsPaginatedHistory = false;
+    nativeAppServerVersion = "0.0.0";
+    const canonical = {
+      ...canonicalFixture(buildConversation("thread-search", "project-1")),
+      historyMode: "paginated" as const,
+      turnHistory: {
+        kind: "canonical" as const,
+        history:
+          createEmptyCodexHistoryTopology<import("../../../shared/types").CodexCanonicalTurnState>(
+            11,
+          ),
+      },
+    };
+    const occurrences = [
+      {
+        turnId: "turn-older",
+        itemId: "item-selected",
+        snippet: "needle",
+        snippetMatchRange: { start: 0, end: 6 },
+        turnCursor: "cursor-turn-older",
+      },
+    ];
+    nativeHistorySearchHandler = async (threadId, query) => ({
+      threadId,
+      query,
+      hostId: "local",
+      hostGeneration: resumeThreadGeneration,
+      occurrences,
+      capped: false,
+    });
+    const manager = trackNativeTestManager(new CodexAppServerManager("local"));
+    try {
+      dispatchTestThreadStreamStateChanged(undefined, {
+        hostId: "local",
+        conversationId: "thread-search",
+        sourceClientId: "owner-a",
+        change: { type: "snapshot", revision: 1, conversationState: canonical },
+      });
+      await expect(manager.searchPersistedHistory("thread-search", "needle")).resolves.toEqual({
+        status: "completed",
+        page: {
+          threadId: "thread-search",
+          query: "needle",
+          hostId: "local",
+          hostGeneration: resumeThreadGeneration,
+          topologyGeneration: 11,
+          occurrences,
+          capped: false,
+        },
+      });
+      expect(
+        invokeRecords.filter((record) => record.channel === "codex:thread:history-search"),
+      ).toEqual([{ channel: "codex:thread:history-search", args: ["thread-search", "needle"] }]);
+      expect(
+        invokeRecords.some(
+          (record) =>
+            record.channel === "peer:requestThreadFollower" ||
+            record.channel === "codex:thread:resume:prepare",
+        ),
+      ).toBe(false);
+      expect(manager.readConversationStreamRole("thread-search")).toBe("follower");
+    } finally {
+      manager.destroy();
+    }
+  });
+
+  test.each([
+    {
+      mode: "legacy" as const,
+      supported: true,
+      version: "0.162.0-alpha.17.2",
+      reason: "thread-history-legacy",
+    },
+    { mode: "paginated" as const, supported: false, version: "0.99.0", reason: "host-unsupported" },
+    { mode: "paginated" as const, supported: false, version: null, reason: "capability-unproven" },
+  ])(
+    "persisted search declines $reason before a native read",
+    async ({ mode, supported, version, reason }) => {
+      const { CodexAppServerManager, __resetLocalConversationStoreForTests } =
+        await import("./local-conversation-store");
+      resetLocalConversationStoreTestHarness(__resetLocalConversationStoreForTests);
+      invokeRecords = [];
+      nativeSupportsSearchOccurrences = supported;
+      nativeAppServerVersion = version;
+      const manager = trackNativeTestManager(new CodexAppServerManager("local"));
+      try {
+        dispatchTestThreadStreamStateChanged(undefined, {
+          hostId: "local",
+          conversationId: "thread-search",
+          sourceClientId: "owner-a",
+          change: {
+            type: "snapshot",
+            revision: 1,
+            conversationState: {
+              ...canonicalFixture(buildConversation("thread-search", "project-1")),
+              historyMode: mode,
+            },
+          },
+        });
+        await expect(
+          manager.searchPersistedHistory("thread-search", "needle"),
+        ).resolves.toMatchObject({
+          status: "unavailable",
+          feature: "persisted-search",
+          reason,
+          threadId: "thread-search",
+        });
+        expect(
+          invokeRecords.some((record) => record.channel === "codex:thread:history-search"),
+        ).toBe(false);
+      } finally {
+        manager.destroy();
+      }
+    },
+  );
+
+  test.each(["disposed", "wrong-host", "wrong-generation"] as const)(
+    "persisted search rejects a %s native result",
+    async (retirement) => {
+      const { CodexAppServerManager, __resetLocalConversationStoreForTests } =
+        await import("./local-conversation-store");
+      resetLocalConversationStoreTestHarness(__resetLocalConversationStoreForTests);
+      invokeRecords = [];
+      let resolve = () => {};
+      const promise = new Promise<void>((accept) => {
+        resolve = accept;
+      });
+      nativeHistorySearchHandler = async (threadId, query) => {
+        await promise;
+        return {
+          threadId,
+          query,
+          hostId: retirement === "wrong-host" ? "another-host" : "local",
+          hostGeneration: resumeThreadGeneration + (retirement === "wrong-generation" ? 1 : 0),
+          occurrences: [],
+          capped: false,
+        };
+      };
+      const manager = trackNativeTestManager(new CodexAppServerManager("local"));
+      try {
+        dispatchTestThreadStreamStateChanged(undefined, {
+          hostId: "local",
+          conversationId: "thread-search",
+          sourceClientId: "owner-a",
+          change: {
+            type: "snapshot",
+            revision: 1,
+            conversationState: {
+              ...canonicalFixture(buildConversation("thread-search", "project-1")),
+              historyMode: "paginated" as const,
+            },
+          },
+        });
+        const pending = manager.searchPersistedHistory("thread-search", "needle");
+        const rejected = expect(pending).rejects.toThrow(
+          retirement === "disposed" ? "Conversation changed" : "unavailable host generation",
+        );
+        await waitForCondition(
+          () => invokeRecords.some((record) => record.channel === "codex:thread:history-search"),
+          1000,
+        );
+        if (retirement === "disposed") manager.destroy();
+        resolve();
+        await rejected;
+      } finally {
+        resolve();
+        manager.destroy();
+      }
+    },
+  );
+
+  test.each(["stale-topology", "replaced-during-read"] as const)(
+    "persisted search hydration rejects %s without installing its match",
+    async (retirement) => {
+      const { CodexAppServerManager, __resetLocalConversationStoreForTests } =
+        await import("./local-conversation-store");
+      const { createEmptyCodexHistoryTopology } =
+        await import("../../../shared/codex-conversation-state/codex-history-topology");
+      resetLocalConversationStoreTestHarness(__resetLocalConversationStoreForTests);
+      invokeRecords = [];
+      const canonical = {
+        ...canonicalFixture(buildConversation("thread-search", "project-1")),
+        historyMode: "paginated" as const,
+        turnHistory: {
+          kind: "canonical" as const,
+          history:
+            createEmptyCodexHistoryTopology<
+              import("../../../shared/types").CodexCanonicalTurnState
+            >(11),
+        },
+      };
+      let resolveGate = () => {};
+      const gatePromise = new Promise<void>((accept) => {
+        resolveGate = accept;
+      });
+      if (retirement === "replaced-during-read") nativeTurnsReadGate = gatePromise;
+      nativeTurnsListResult = {
+        data: [
+          buildProtocolTurn({
+            id: "turn-older",
+            status: "completed",
+            startedAt: 1,
+            items: [
+              {
+                id: "item-selected",
+                type: "agentMessage",
+                text: "needle",
+                phase: null,
+                memoryCitation: null,
+                questions: null,
+                delivery: null,
+              },
+            ],
+          }),
+        ],
+        nextCursor: null,
+        backwardsCursor: null,
+      };
+      const manager = trackNativeTestManager(new CodexAppServerManager("local"));
+      try {
+        dispatchTestThreadStreamStateChanged(undefined, {
+          hostId: "local",
+          conversationId: "thread-search",
+          sourceClientId: "owner-a",
+          change: { type: "snapshot", revision: 1, conversationState: canonical },
+        });
+        const pending = manager.hydratePersistedHistoryOccurrence({
+          threadId: "thread-search",
+          hostId: "local",
+          hostGeneration: resumeThreadGeneration,
+          topologyGeneration: retirement === "stale-topology" ? 12 : 11,
+          occurrence: {
+            turnId: "turn-older",
+            itemId: "item-selected",
+            snippet: "needle",
+            snippetMatchRange: { start: 0, end: 6 },
+            turnCursor: "cursor-turn-older",
+          },
+        });
+        const rejected = expect(pending).rejects.toThrow(
+          retirement === "stale-topology"
+            ? "unavailable topology generation"
+            : "Conversation changed",
+        );
+        if (retirement === "replaced-during-read") {
+          await waitForCondition(
+            () =>
+              recordedNativeRequests().filter(
+                (record) =>
+                  record.channel === "codex:app-server:request" &&
+                  (record.args[0] as { request: { method: string } }).request.method ===
+                    "thread/turns/list",
+              ).length === 2,
+            1000,
+          );
+          dispatchTestThreadStreamStateChanged(undefined, {
+            hostId: "local",
+            conversationId: "thread-search",
+            sourceClientId: "owner-a",
+            change: {
+              type: "snapshot",
+              revision: 2,
+              conversationState: {
+                ...canonical,
+                turnHistory: {
+                  kind: "canonical" as const,
+                  history:
+                    createEmptyCodexHistoryTopology<
+                      import("../../../shared/types").CodexCanonicalTurnState
+                    >(12),
+                },
+              },
+            },
+          });
+        }
+        resolveGate();
+        await rejected;
+        expect(canonical.turnHistory.history.islands).toHaveLength(0);
+        expect(
+          manager.readConversation("thread-search")?.canonicalState?.turnHistory?.history.islands,
+        ).toHaveLength(0);
+        if (retirement === "stale-topology")
+          expect(
+            invokeRecords.some((record) => record.channel === "codex:app-server:request"),
+          ).toBe(false);
+      } finally {
+        resolveGate();
+        nativeTurnsListResult = null;
+        nativeTurnsReadGate = null;
+        manager.destroy();
+      }
+    },
+  );
 
   test("follower persisted search hydrates its local canonical island with native reads", async () => {
     const { CodexAppServerManager, __resetLocalConversationStoreForTests } =

@@ -13,6 +13,8 @@ import {
   type CodexTurnScopedConversationRequest,
 } from "./conversation-request-helpers";
 import { buildCodexTurnOccurrenceKey } from "../../../shared/codex-turn-identity";
+import { residentConversationTurns } from "../../../shared/codex-conversation-state/codex-turn-mutation";
+import type { CodexCanonicalTurnState } from "../../../shared/codex-conversation-state/codex-conversation-state";
 
 export {
   selectConversationLiveRequests,
@@ -45,6 +47,53 @@ export interface VisibleConversationTurnEntry {
    * serializing the complete item payload.
    */
   readonly renderRevision?: VisibleConversationTurnRenderRevision;
+}
+
+/** Ordinary canonical rows carry addresses and structure, never the resident Turn payload. */
+export interface NormalizedConversationTurnEntry extends Omit<
+  VisibleConversationTurnEntry,
+  "turn" | "renderRevision"
+> {
+  readonly historyEntityKey: string;
+  readonly turnItemIds: readonly (string | undefined)[];
+  readonly turnStatus: CodexConversationTurn["status"];
+  readonly turnStartedAtMs: number | null;
+  readonly finalAssistantStartedAtMs: number | null;
+  readonly hasUserMessage: boolean;
+  readonly hasAssistantMessage: boolean;
+  readonly hasMcpApp: boolean;
+  readonly readTurn: () => CodexConversationTurn | null;
+}
+
+export type ConversationTurnListEntry =
+  | VisibleConversationTurnEntry
+  | NormalizedConversationTurnEntry;
+
+export function isNormalizedConversationTurnEntry(
+  entry: ConversationTurnListEntry,
+): entry is NormalizedConversationTurnEntry {
+  return "historyEntityKey" in entry;
+}
+
+export function readConversationTurnListEntry(
+  entry: ConversationTurnListEntry,
+): CodexConversationTurn | null {
+  return isNormalizedConversationTurnEntry(entry) ? entry.readTurn() : entry.turn;
+}
+
+export function materializeConversationTurnListEntry(
+  entry: ConversationTurnListEntry,
+): VisibleConversationTurnEntry | null {
+  if (!isNormalizedConversationTurnEntry(entry)) return entry;
+  const turn = entry.readTurn();
+  if (!turn) return null;
+  return { ...entry, turn };
+}
+
+export function readConversationTurnListEntryStatus(
+  entry: ConversationTurnListEntry,
+): CodexConversationTurn["status"] {
+  return isNormalizedConversationTurnEntry(entry) ? entry.turnStatus : entry.turn.status;
 }
 
 interface VisibleConversationTurnItemRevision {
@@ -244,6 +293,74 @@ function isRenderableConversationTurn(
   return turn.items.length > 0 || requests.length > 0 || (turn.diff?.trim().length ?? 0) > 0;
 }
 
+/** Body chrome needs visibility/status only; it must not snapshot every resident item's revision. */
+export function hasRecoverableCanonicalTurnItems(
+  turn: Pick<CodexCanonicalTurnState, "itemsPagination">,
+): boolean {
+  const pagination = turn.itemsPagination;
+  return (
+    pagination?.hasLoadedOldest === false &&
+    (pagination.itemsView !== "full" || pagination.evicted === true)
+  );
+}
+
+export function selectVisibleConversationTurnStructure(input: {
+  conversation: VisibleConversationContext | null;
+  parentTurns?: readonly CodexConversationTurn[] | null;
+}): Array<Pick<CodexConversationTurn, "turnId" | "status">> {
+  const conversation = input.conversation;
+  if (!conversation) return [];
+  const requestsByTurnId = selectConversationTurnRequestsByTurnId(conversation);
+  if (conversation.canonicalState && (input.parentTurns?.length ?? 0) === 0) {
+    const state = conversation.canonicalState;
+    const resident = residentConversationTurns(state);
+    const nativeIds = new Set(
+      resident.flatMap((turn) => (turn.turnId === null ? [] : [turn.turnId])),
+    );
+    // Canonical history owns a native Turn once loaded; only distinct live overlays supplement it.
+    const turns = state.turnHistory
+      ? [
+          ...resident,
+          ...state.turns.filter((turn) => turn.turnId === null || !nativeIds.has(turn.turnId)),
+        ]
+      : resident;
+    return turns
+      .filter((turn) => {
+        const promptInput = turn.params.input;
+        const opening = turn.items[0];
+        if (
+          promptInput.some(
+            (part) => part.type === "text" && part.text.startsWith("<startup_tool_prewarm>"),
+          ) ||
+          (opening?.type === "userMessage" &&
+            opening.content.some(
+              (part) => part.type === "text" && part.text.startsWith("<startup_tool_prewarm>"),
+            ))
+        )
+          return false;
+        return (
+          turn.items.length > 0 ||
+          hasRecoverableCanonicalTurnItems(turn) ||
+          promptInput.length > 0 ||
+          Boolean(turn.diff?.trim()) ||
+          (turn.turnId !== null &&
+            selectTurnScopedConversationRequests(requestsByTurnId, turn.turnId).length > 0)
+        );
+      })
+      .map(({ turnId, status }) => ({ turnId, status }));
+  }
+  return selectOwnConversationTurns(conversation.turns, input.parentTurns ?? EMPTY_PARENT_TURNS)
+    .filter((turn) =>
+      isRenderableConversationTurn(
+        turn,
+        turn.turnId === null
+          ? []
+          : selectTurnScopedConversationRequests(requestsByTurnId, turn.turnId),
+      ),
+    )
+    .map(({ turnId, status }) => ({ turnId, status }));
+}
+
 function createVisibleConversationTurnEntry(input: {
   turn: CodexConversationTurn;
   index: number;
@@ -302,6 +419,7 @@ export function selectVisibleConversationTurns(
 }
 
 export type VisibleConversationContext = CodexConversationRequestContext &
+  Pick<CodexConversationSnapshot, "canonicalState"> &
   Pick<CodexConversationSnapshot, "resumeState">;
 
 export function selectVisibleConversationTurnEntries(input: {

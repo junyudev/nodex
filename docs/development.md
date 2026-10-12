@@ -124,6 +124,11 @@ or `--enable query-devtools` is passed, respectively. Enable both with
 development-only and remain absent from built production renderers. Currently
 `runtime-metrics` enables structured development runtime metrics, including numeric peer socket
 frame, decode, pressure and pending-write snapshots for client and router connections.
+Thread navigation timing is owned by the ordinary Codex Thread surface. It measures navigation
+and render waits until ready content has painted, including an empty Thread or readable history
+that appears before execution attachment finishes. Hidden windows resume paint measurement when
+visible; Side Chat and provider override surfaces do not claim this measurement. It follows the
+existing performance telemetry preference and omits Thread identifiers from analytics attributes.
 `database-page-reorder-menu` shows the position-only `Reorder` submenu in a
 Database Page context menu; it does not gate `Move to`, drag ordering, keyboard
 ordering, or bulk ordering. These features default off. Agent/app-server

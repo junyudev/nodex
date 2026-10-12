@@ -7,6 +7,7 @@ import {
   type CodexAppServerCapabilitySnapshot,
 } from "../codex-runtime/CodexAppServerCapabilities";
 import { CodexGateway } from "../codex-runtime/CodexGateway";
+import { CodexRuntimeError } from "../codex-runtime/CodexRuntimeError";
 import { make } from "./CodexHistorySearchAdapter";
 
 const occurrence: ThreadSearchOccurrence = {
@@ -18,6 +19,7 @@ const occurrence: ThreadSearchOccurrence = {
 };
 
 const completedTurn = (id: string): Turn => ({
+  rootTurnId: null,
   id,
   items: [],
   itemsView: "notLoaded",
@@ -64,6 +66,10 @@ const capabilitySnapshot = (
     searchOccurrences,
     ephemeralFork: true,
     multiAgentV2Protocol: false,
+    threadTimeline: false,
+    threadItemAnchors: false,
+    experimentalPredictionForkMode: false,
+    mcpApplicationNetworkPolicy: false,
     sideConversation: true,
     subagentAncestorFilter: false,
     threadRevert: false,
@@ -94,51 +100,95 @@ const provideAdapter = <A, E>(
     Effect.provideService(CodexAppServerCapabilities, capabilities),
   );
 
-it.effect("searches one literal 250-occurrence page and reports a capped result", () =>
+it.effect(
+  "reads 250 native occurrences without a Main replica and reports only transport evidence",
+  () =>
+    Effect.gen(function* () {
+      const requests: Array<{
+        readonly method: string;
+        readonly params: unknown;
+        readonly scheduling: unknown;
+      }> = [];
+      const gateway = CodexGateway.of({
+        requestForThread: (
+          _threadId: string,
+          method: string,
+          params: unknown,
+          scheduling: unknown,
+        ) =>
+          Effect.sync(() => {
+            requests.push({ method, params, scheduling });
+            return { data: [occurrence], nextCursor: "occurrences:next" };
+          }) as never,
+      } as unknown as CodexGateway["Service"]);
+      const adapter = yield* provideAdapter(make(), gateway);
+
+      const page = yield* adapter.search({
+        threadId: "thread-a",
+        searchTerm: "  exact literal  ",
+      });
+
+      assert.deepStrictEqual(page, {
+        threadId: "thread-a",
+        query: "  exact literal  ",
+        hostId: "remote-a",
+        hostGeneration: 7,
+        occurrences: [occurrence],
+        capped: true,
+      });
+      assert.deepStrictEqual(requests, [
+        {
+          method: "thread/searchOccurrences",
+          params: {
+            threadId: "thread-a",
+            searchTerm: "  exact literal  ",
+            cursor: null,
+            limit: 250,
+          },
+          scheduling: {
+            priority: "interactive",
+            source: "thread",
+            expectedHostId: "remote-a",
+            expectedGeneration: 7,
+          },
+        },
+      ]);
+    }),
+);
+
+it.effect("a scoped Thread routing refusal cannot fall back to a raw host occurrence read", () =>
   Effect.gen(function* () {
-    const requests: Array<{
-      readonly method: string;
-      readonly params: unknown;
-      readonly scheduling: unknown;
-    }> = [];
+    let physicalRequests = 0;
     const gateway = CodexGateway.of({
-      requestForThread: (_threadId: string, method: string, params: unknown, scheduling: unknown) =>
+      requestForThread: () =>
         Effect.sync(() => {
-          requests.push({ method, params, scheduling });
-          return { data: [occurrence], nextCursor: "occurrences:next" };
+          physicalRequests += 1;
+          return { data: [occurrence], nextCursor: null };
         }) as never,
+      requestRawOnHost: () => Effect.die("Scoped search must not bypass Thread routing"),
     } as unknown as CodexGateway["Service"]);
-    const adapter = yield* provideAdapter(make(), gateway);
-
-    const page = yield* adapter.search({
-      threadId: "thread-a",
-      searchTerm: "  exact literal  ",
+    const refusal = new CodexRuntimeError({
+      operation: "thread-host.resolve",
+      reason: "host-unavailable",
+      message: "Thread is unavailable in the active Library",
+      retryable: false,
     });
-
-    assert.deepStrictEqual(page, {
-      threadId: "thread-a",
-      hostId: "remote-a",
-      generation: 7,
-      occurrences: [occurrence],
-      isCapped: true,
-    });
-    assert.deepStrictEqual(requests, [
-      {
-        method: "thread/searchOccurrences",
-        params: {
-          threadId: "thread-a",
-          searchTerm: "  exact literal  ",
-          cursor: null,
-          limit: 250,
-        },
-        scheduling: {
-          priority: "interactive",
-          source: "thread",
-          expectedHostId: "remote-a",
-          expectedGeneration: 7,
-        },
-      },
-    ]);
+    const snapshot = capabilitySnapshot();
+    const adapter = yield* provideAdapter(
+      make(),
+      gateway,
+      CodexAppServerCapabilities.of({
+        forThread: () => Effect.fail(refusal),
+        forHost: () => Effect.succeed(snapshot),
+        isCurrent: () => Effect.succeed(true),
+      }),
+    );
+    const failure = yield* adapter
+      .search({ threadId: "thread-outside-library", searchTerm: "match" })
+      .pipe(Effect.flip);
+    assert.strictEqual(failure.reason, "request-failed");
+    assert.strictEqual(failure.cause, refusal);
+    assert.strictEqual(physicalRequests, 0);
   }),
 );
 

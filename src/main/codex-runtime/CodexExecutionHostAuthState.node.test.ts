@@ -60,6 +60,9 @@ it.effect(
         )
         .pipe(Effect.forkScoped);
       yield* Deferred.await(secondStarted);
+      const pendingLease = yield* state.captureBackendLease("local");
+      assert.isFalse(pendingLease.aborted);
+      assert.notStrictEqual(pendingLease, previous);
       let admitted = false;
       const waiting = yield* state.backendLease("local").pipe(
         Effect.tap(() =>
@@ -77,5 +80,7 @@ it.effect(
       const next = yield* Fiber.join(waiting);
       assert.isTrue(admitted);
       assert.isFalse(next.aborted);
+      assert.isTrue(pendingLease.aborted);
+      assert.notStrictEqual(next, pendingLease);
     }).pipe(Effect.scoped),
 );

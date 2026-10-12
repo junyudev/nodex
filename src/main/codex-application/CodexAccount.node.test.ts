@@ -52,6 +52,7 @@ it.effect("owns account, login, rate-limit, and notification state behind one in
     }) as CodexGateway["Service"]["requestLocal"];
     const unsupported = () => Effect.die(new Error("Unsupported test operation"));
     const gateway = CodexGateway.of({
+      promoteQueuedCatalogPage: Effect.succeed(false),
       localHostId: "local",
       requestRawOnHost: () => Effect.die(new Error("Unsupported raw host request")),
       requestRawForThread: () => Effect.die(new Error("Unsupported raw request")),
@@ -172,6 +173,7 @@ it.effect("keeps invalidated auth signed out when an older refresh completes", (
     }) as CodexGateway["Service"]["requestLocal"];
     const unsupported = () => Effect.die(new Error("Unsupported test operation"));
     const gateway = CodexGateway.of({
+      promoteQueuedCatalogPage: Effect.succeed(false),
       localHostId: "local",
       requestRawOnHost: () => unsupported(),
       requestRawForThread: () => unsupported(),

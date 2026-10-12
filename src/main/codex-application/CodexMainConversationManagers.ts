@@ -1,3 +1,4 @@
+import type { CodexTranscriptTextChange } from "../../shared/codex-transcript-projection";
 import { parseCodexAppServerMessage } from "../codex/codex-app-server-message-parser";
 import {
   CanonicalConversationRetention,
@@ -43,7 +44,11 @@ export interface MainConversationManager {
   readonly hostId: string;
   readonly context: ThreadReadStateContext;
   readonly generation: number;
-  readonly stream: ConversationStream<CodexCanonicalConversationState, Patch>;
+  readonly stream: ConversationStream<
+    CodexCanonicalConversationState,
+    Patch,
+    CodexTranscriptTextChange
+  >;
   readonly assertCurrent: (nativeGeneration?: number) => void;
   readonly onDispose: (callback: () => void) => Disposable;
   readonly onConnectionReset: (callback: () => void) => Disposable;
@@ -234,7 +239,11 @@ export const make = Effect.gen(function* () {
               if (fiber) callbacks.fork(Fiber.interrupt(fiber));
             };
           };
-          const stream = new ConversationStream<CodexCanonicalConversationState, Patch>({
+          const stream = new ConversationStream<
+            CodexCanonicalConversationState,
+            Patch,
+            CodexTranscriptTextChange
+          >({
             hostId,
             isLocalHost: hostId === gateway.localHostId,
             canHandleOwnerlessDynamicTool: () => false,
@@ -438,7 +447,12 @@ export const make = Effect.gen(function* () {
       manager.stream.getRole(event.threadId)?.role !== "owner"
     )
       return;
-    if (event.patches) manager.stream.broadcastPatches(event.threadId, event.patches);
+    if (event.patches)
+      manager.stream.broadcastPatches(
+        event.threadId,
+        event.patches,
+        event.acceptedTranscriptText?.changes,
+      );
     else manager.stream.broadcastSnapshot(event.threadId);
   });
   yield* Effect.addFinalizer(() =>

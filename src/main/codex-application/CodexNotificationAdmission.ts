@@ -2,6 +2,7 @@ import * as Context from "effect/Context";
 import * as Effect from "effect/Effect";
 import type * as Scope from "effect/Scope";
 import type { FrozenNodexAgentTurnAuthority } from "../../shared/nodex-agent-authority";
+import { residentConversationTurns } from "../../shared/codex-conversation-state/codex-turn-mutation";
 import {
   extractCodexThreadSubagentMetadata,
   hasCodexSubagentSource,
@@ -42,7 +43,7 @@ const latestInProgressTurnId = (
   conversations: ConversationEntityMap["Service"],
   threadId: string,
 ): string | null => {
-  const turns = conversations.current(threadId)?.readCanonicalState()?.turns ?? [];
+  const turns = residentConversationTurns(conversations.current(threadId)?.readCanonicalState());
   for (let index = turns.length - 1; index >= 0; index -= 1) {
     const turn = turns[index];
     if (turn?.status === "inProgress" && turn.turnId) return turn.turnId;

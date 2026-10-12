@@ -82,13 +82,19 @@ test("searching by runtime chooses the exact instance, model and advertised opti
       ],
     }),
   );
+  // Async queries manage their own act environment; resolve before entering the interaction.
+  const search = await view.findByRole("combobox", { name: "Search models" });
   await act(async () => {
-    fireEvent.change(await view.findByRole("combobox", { name: "Search models" }), {
+    fireEvent.change(search, {
       target: { value: "work" },
     });
+    await Promise.resolve();
   });
-  const rows = within(view.getByRole("listbox")).getAllByRole("option");
-  expect(rows).toHaveLength(1);
+  const rows = await waitFor(() => {
+    const matching = within(view.getByRole("listbox")).getAllByRole("option");
+    expect(matching).toHaveLength(1);
+    return matching;
+  });
   await click(rows[0]!);
   await waitFor(() => expect(choose).toHaveBeenCalledWith(work));
 });

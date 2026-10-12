@@ -16,6 +16,8 @@ All notable changes to this project will be documented in this file.
 
 ### Changed
 
+- Long chats display bounded history while restoring execution, update streamed items independently, and give foreground history requests dedicated capacity.
+
 - New Profiles reuse native Codex login, settings and skills by default, with safe directory switching, a shared native conversation chooser, and desktop tools scoped to each Nodex Profile. An independent account directory can change the active login after restart while retaining the same conversation history.
 - Nodex is now distributed under the Apache License 2.0.
 

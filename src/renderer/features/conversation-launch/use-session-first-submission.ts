@@ -6,6 +6,7 @@ import {
   projectSessionFirstSubmissionTurns,
   selectSessionFirstSubmission,
   sessionFirstSubmissionOwner,
+  buildFirstSubmissionPresentationTurn,
   type FirstSubmissionPresentationTarget,
   type SessionFirstSubmission,
 } from "./session-first-submission-owner";
@@ -31,12 +32,14 @@ export function useSessionFirstSubmissionTurns(
 ): {
   readonly submission: SessionFirstSubmission | null;
   readonly turns: CodexConversationTurn[];
+  readonly presentationTurn: CodexConversationTurn | null;
 } {
   const snapshot = useFirstSubmissionSnapshot();
   const submission = selectSessionFirstSubmission(snapshot, target);
   return {
     submission,
     turns: projectSessionFirstSubmissionTurns(snapshot, target, canonicalTurns),
+    presentationTurn: submission ? buildFirstSubmissionPresentationTurn(submission) : null,
   };
 }
 

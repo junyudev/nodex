@@ -18,6 +18,38 @@ Profile home resolves in this order:
 3. `server.home` in `~/.nodex/config.toml`;
 4. the default `~/.nodex` home.
 
+## Composer prediction assignments
+
+Composer predictions are off until a host has an explicit assignment. The Main startup
+boundary reads `NODEX_COMPOSER_PREDICTION_CONFIG` from its captured environment as a JSON
+object with a `hosts` map. Keys are exact Codex host IDs; an unlisted host has no assignment.
+This value belongs to the selected Desktop process and is not a TOML or renderer setting.
+Restart Desktop after changing it. Invalid JSON, missing required fields, or sampling rates
+outside `[0, 1]` fail startup rather than enabling an incomplete configuration.
+
+For example, a disabled local assignment has this shape:
+
+```json
+{
+  "hosts": {
+    "local": {
+      "is_enabled": false,
+      "prompt": "Suggest the next useful user message.",
+      "prompt_version": "local-1",
+      "prediction_reasoning_effort": ""
+    }
+  }
+}
+```
+
+`unsupported_models` optionally excludes model names. `live_sample_rate` and
+`catch_up_sample_rate` override `sample_rate` for their respective triggers; the effective
+rate defaults to `1`. An empty `prediction_reasoning_effort` keeps the parent's effort.
+An enabled assignment still requires native prediction-fork support and an eligible,
+persisted OpenAI Thread outside plan mode. Availability queries reveal the enabled state
+and host scope without exposing the prompt or starting a native connection. See
+[Composer prediction behavior](product-specs/composer-prediction-behavior.md).
+
 ## Workspace document dependencies
 
 Packaged macOS builds include managed document dependencies; no Profile setting or system

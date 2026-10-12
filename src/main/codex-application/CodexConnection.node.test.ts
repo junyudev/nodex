@@ -45,6 +45,7 @@ it.effect("projects the authoritative endpoint state without losing retry histor
         ? Effect.succeed({ authMethod: "chatgpt", authToken: null, requiresOpenaiAuth: true })
         : unsupported()) as CodexGateway["Service"]["requestOnHost"];
     const gateway = CodexGateway.of({
+      promoteQueuedCatalogPage: Effect.succeed(false),
       localHostId: "local",
       requestRawOnHost: () => Effect.die(new Error("Unsupported raw host request")),
       requestRawForThread: () => Effect.die(new Error("Unsupported raw request")),

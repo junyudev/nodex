@@ -1,10 +1,9 @@
-import { startInactiveSpan, withActiveSpan } from "@sentry/react";
+import { startCodexPerformanceSpan } from "../../lib/codex-performance-span";
 
 import type {
   CodexRequestLifecycleEvent,
   CodexRequestTraceContext,
 } from "../../../shared/codex-request-lifecycle";
-import { logTelemetryEvent } from "../../lib/statsig-telemetry";
 
 export type CodexTurnSubmissionKind = "existing_thread" | "new_thread";
 
@@ -63,118 +62,20 @@ export function codexTurnFirstResponseNow(): number {
   return Date.now();
 }
 
-function spanTraceContext(
-  span: ReturnType<typeof startInactiveSpan>,
-): CodexRequestTraceContext | null {
-  if (!span.isRecording()) return null;
-  const context = span.spanContext();
-  const traceFlags = (context.traceFlags & 1).toString(16).padStart(2, "0");
-  const tracestate = context.traceState?.serialize();
-  return {
-    traceparent: `00-${context.traceId}-${context.spanId}-${traceFlags}`,
-    ...(tracestate ? { tracestate } : {}),
-  };
-}
-
-/**
- * CodexElectron models performance marks as zero-duration child spans. Sentry's tracing API gives
- * Nodex the same W3C parent/child relationship while keeping the transport context backend-neutral.
- */
 export function startCodexTurnFirstResponseSpan(
   _name: "turn_first_response_visible",
   attributes: Record<string, string>,
   options: CodexTurnFirstResponseSpanStartOptions,
 ): CodexTurnFirstResponseSpan {
-  const root = startInactiveSpan({
-    name: "desktop.turn_submit",
-    startTime: new Date(options.startedAtMs),
-    attributes: options.traceAttributes,
-  });
-  let terminal = false;
-  let analyticsRecorded = false;
-  const marks: Record<string, number> = {};
-
-  const mark = (
-    name: string,
-    input?: {
-      readonly atMs?: number;
-      readonly traceAttributes?: Readonly<Record<string, string>>;
-    },
-  ) => {
-    if (terminal || marks[name] !== undefined) return;
-    const atMs = input?.atMs ?? codexTurnFirstResponseNow();
-    marks[name] = Math.round(Math.max(0, atMs - options.startedAtMs) * 10) / 10;
-    withActiveSpan(root, () => {
-      const child = startInactiveSpan({
-        name,
-        startTime: new Date(atMs),
-        attributes: input?.traceAttributes,
-      });
-      child.end(new Date(atMs));
-    });
-  };
-
-  const emitAnalytics = (outcome: "success" | "failure" | "aborted", reason: string | null) => {
-    if (analyticsRecorded) return;
-    analyticsRecorded = true;
-    logTelemetryEvent("desktop.turn_submit", codexTurnFirstResponseNow() - options.startedAtMs, {
-      outcome,
-      reason: reason ?? undefined,
+  return startCodexPerformanceSpan(
+    "desktop.turn_submit",
+    {
       submissionKind: attributes.submissionKind,
       responseRuntime: attributes.responseRuntime,
       threadKind: attributes.threadKind,
-      ...Object.fromEntries(Object.entries(marks).map(([key, value]) => [`mark.${key}`, value])),
-    });
-  };
-
-  const finish = (outcome: "success" | "failure" | "aborted", reason: string | null) => {
-    if (terminal) return;
-    terminal = true;
-    root.setAttribute("codex.outcome", outcome);
-    if (reason !== null) root.setAttribute("codex.reason", reason);
-    if (outcome === "failure") {
-      root.setAttribute("error.category", reason === "timeout" ? "timeout" : "operation");
-      root.setAttribute("error.type", "operation_failed");
-      root.setStatus({ code: 2 });
-    }
-    emitAnalytics(outcome, reason);
-    root.end();
-    options.onTerminal();
-  };
-
-  return {
-    get trace() {
-      return spanTraceContext(root);
     },
-    abort: (reason) => finish("aborted", reason),
-    end: () => finish("success", null),
-    fail: (reason) => finish("failure", reason),
-    isRecording: () => !terminal && root.isRecording(),
-    mark,
-    measure: (name, input) => {
-      if (terminal) return { end: () => {} };
-      const child = withActiveSpan(root, () =>
-        startInactiveSpan({
-          name,
-          startTime: input?.startedAtMs === undefined ? undefined : new Date(input.startedAtMs),
-          attributes: input?.attributes,
-        }),
-      );
-      let ended = false;
-      return {
-        end: () => {
-          if (ended) return;
-          ended = true;
-          child.end();
-        },
-      };
-    },
-    recordAnalyticsSuccess: () => {
-      if (terminal) return false;
-      emitAnalytics("success", null);
-      return root.isRecording();
-    },
-  };
+    options,
+  );
 }
 
 export function scheduleCodexAfterFourPaints(callback: () => void): void {

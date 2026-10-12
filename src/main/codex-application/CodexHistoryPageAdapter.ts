@@ -1,9 +1,15 @@
 import { residentConversationTurns } from "../../shared/codex-conversation-state/codex-turn-mutation";
-import type { SortDirection, ThreadItem, Turn } from "@nodex/codex-app-server-protocol/v2";
+import type {
+  SortDirection,
+  ThreadItem,
+  Turn,
+  ThreadItemsListCursor,
+  ThreadTimelineListResponse,
+} from "@nodex/codex-app-server-protocol/v2";
 import * as Context from "effect/Context";
 import * as Effect from "effect/Effect";
+import * as Option from "effect/Option";
 import * as Fiber from "effect/Fiber";
-import type * as Result from "effect/Result";
 import * as Schema from "effect/Schema";
 import type { ClientRequestResponsesByMethod } from "@nodex/effect-codex-app-server/rpc";
 import { cappedApproximateValueBytes } from "../../shared/codex-bounded-value-size";
@@ -16,6 +22,11 @@ import {
   codexGatewayGenerationFence,
   type CodexGatewayRequestOptions,
 } from "../codex-runtime/CodexGateway";
+import { MainConfig } from "../app/MainConfig";
+import { ScopedCallbackRuntime } from "../app/ScopedCallbackRuntime";
+import { isDevelopmentFeatureEnabled } from "../../shared/development-features";
+import { readCanonicalHistoryTimeline } from "../../shared/codex-conversation-state/codex-canonical-history-timeline";
+import type { CanonicalHistoryClient } from "../../shared/codex-conversation-state/codex-canonical-history-loader";
 
 export const CODEX_HISTORY_TURN_PAGE_SIZE = 5;
 export const CODEX_HISTORY_ITEM_PAGE_SIZE = 100;
@@ -29,6 +40,8 @@ export type CodexHistoryRequestOptions = Pick<
 >;
 
 export interface CodexHydratedHistoryTurnPage {
+  readonly source?: "ordinary" | "timeline";
+  readonly timeline?: ThreadTimelineListResponse;
   readonly turns: readonly Turn[];
   readonly nextCursor: string | null;
   readonly backwardsCursor: string | null;
@@ -38,6 +51,7 @@ export interface CodexHydratedHistoryTurnPage {
     Record<string, readonly CodexHydratedHistoryItemSegment[]>
   >;
   readonly loadedItemCount: number;
+  readonly completedItemIdsByTurnId?: Readonly<Record<string, Readonly<Record<string, boolean>>>>;
 }
 
 export interface CodexHydratedHistoryItemSegment {
@@ -60,6 +74,8 @@ export interface CodexResidentHistory {
 }
 
 export interface CodexHistoryTurnPageInput {
+  readonly source?: "ordinary" | "timeline";
+  readonly readThreadTimelineEnabled?: () => boolean | null | undefined;
   readonly capability: CodexAppServerCapabilitySnapshot;
   readonly threadId: string;
   readonly cursor: string | null;
@@ -79,7 +95,7 @@ export interface CodexHistoryItemPageInput {
   readonly capability: CodexAppServerCapabilitySnapshot;
   readonly threadId: string;
   readonly turnId: string;
-  readonly cursor: string | null;
+  readonly cursor: ThreadItemsListCursor | null;
   readonly limit?: number;
   readonly sortDirection?: SortDirection;
   readonly purpose?: CodexHistoryPagePurpose;
@@ -88,11 +104,13 @@ export interface CodexHistoryItemPageInput {
 }
 
 export interface CodexHydratedHistoryItemPage {
+  readonly pageSize?: number;
   readonly items: readonly ThreadItem[];
   readonly nextCursor: string | null;
   /** Exact cursor for reversing this physical page's direction. */
   readonly backwardsCursor: string | null;
   readonly approximateBytes: number;
+  readonly entries?: ClientRequestResponsesByMethod["thread/items/list"]["data"];
 }
 
 export class CodexHistoryPageAdapterError extends Schema.TaggedError<CodexHistoryPageAdapterError>()(
@@ -192,46 +210,128 @@ const schedulingForPurpose = (purpose: CodexHistoryPagePurpose) =>
 export const make: Effect.Effect<CodexHistoryPageAdapter["Service"], never, CodexGateway> =
   Effect.gen(function* () {
     const gateway = yield* CodexGateway;
+    const config = Option.getOrNull(yield* Effect.serviceOption(MainConfig));
+    const callbacks = Option.getOrNull(yield* Effect.serviceOption(ScopedCallbackRuntime));
+
+    const loadTimelinePage = Effect.fn("CodexHistoryPageAdapter.loadTimelinePage")(function* (
+      input: CodexHistoryTurnPageInput,
+    ) {
+      if (!callbacks)
+        return yield* error({
+          operation: "turns",
+          threadId: input.threadId,
+          reason: "request-failed",
+          cause: new Error("Timeline scoped request Adapter is unavailable"),
+        });
+      return yield* Effect.tryPromise({
+        try: async (signal) => {
+          const requestOptions = {
+            ...schedulingForPurpose(input.purpose ?? "initial"),
+            ...input.requestOptions,
+            ...codexGatewayGenerationFence(input.capability),
+          };
+          const client: CanonicalHistoryClient = {
+            hostId: input.capability.hostId,
+            supportsPaginatedHistory: () => input.capability.flags.paginatedHistory,
+            getConversation: () => input.readResidentHistory?.()?.canonicalState,
+            sendTimelineRequest: (params) =>
+              callbacks.runPromise(
+                gateway.requestForThread(
+                  input.threadId,
+                  "thread/timeline/list",
+                  params,
+                  requestOptions,
+                ),
+                { signal },
+              ),
+            sendRequest: (method, params) =>
+              callbacks.runPromise(
+                gateway.requestForThread(input.threadId, method, params, requestOptions),
+                { signal },
+              ),
+            updateConversation: () => {
+              throw new Error("Timeline raw reader cannot mutate canonical state");
+            },
+            broadcastSnapshot: () => {
+              throw new Error("Timeline raw reader cannot publish state");
+            },
+            mapTurns: () => {
+              throw new Error("Timeline raw reader cannot materialize renderer Turns");
+            },
+          };
+          const page = await readCanonicalHistoryTimeline(client, input.threadId, input.cursor);
+          const turns = [...page.response.data].reverse();
+          return {
+            source: "timeline" as const,
+            timeline: page.timeline,
+            turns,
+            nextCursor: page.response.nextCursor,
+            backwardsCursor: null,
+            itemsPaginationByTurnId: page.itemsPaginationByTurnId,
+            completedItemIdsByTurnId: page.completedItemIdsByTurnId,
+            itemSegmentsByTurnId: {},
+            loadedItemCount: turns.reduce((count, turn) => count + turn.items.length, 0),
+          } satisfies CodexHydratedHistoryTurnPage;
+        },
+        catch: (cause) =>
+          error({ operation: "turns", threadId: input.threadId, reason: "request-failed", cause }),
+      });
+    });
 
     const loadItemsPage = Effect.fn("CodexHistoryPageAdapter.loadItemsPage")(function* (input: {
       readonly capability: CodexAppServerCapabilitySnapshot;
       readonly threadId: string;
       readonly turnId: string;
-      readonly cursor: string | null;
+      readonly cursor: ThreadItemsListCursor | null;
       readonly limit: number;
       readonly sortDirection: SortDirection;
       readonly operation: CodexHistoryPageAdapterError["operation"];
       readonly purpose: CodexHistoryPagePurpose;
       readonly requestOptions?: CodexHistoryRequestOptions;
     }) {
-      const response = yield* gateway
-        .requestForThread(
-          input.threadId,
-          "thread/items/list",
-          {
-            threadId: input.threadId,
-            turnId: input.turnId,
-            cursor: input.cursor,
-            limit: input.limit,
-            sortDirection: input.sortDirection,
-          },
-          {
-            ...schedulingForPurpose(input.purpose),
-            ...input.requestOptions,
-            ...codexGatewayGenerationFence(input.capability),
-          },
-        )
-        .pipe(
-          Effect.mapError((cause) =>
-            error({
-              operation: input.operation,
+      let limit = Math.max(1, input.limit);
+      const request = () =>
+        gateway
+          .requestForThread(
+            input.threadId,
+            "thread/items/list",
+            {
               threadId: input.threadId,
               turnId: input.turnId,
-              reason: "request-failed",
-              cause,
-            }),
-          ),
-        );
+              cursor: input.cursor,
+              limit,
+              sortDirection: input.sortDirection,
+            },
+            {
+              ...schedulingForPurpose(input.purpose),
+              ...input.requestOptions,
+              ...codexGatewayGenerationFence(input.capability),
+            },
+          )
+          .pipe(
+            Effect.mapError((cause) =>
+              error({
+                operation: input.operation,
+                threadId: input.threadId,
+                turnId: input.turnId,
+                reason: "request-failed",
+                cause,
+              }),
+            ),
+          );
+      let result = yield* request().pipe(Effect.result);
+      while (
+        result._tag === "Failure" &&
+        limit > 1 &&
+        encodeCodexNativeRequestFailure(result.failure).message.includes(
+          "decoded message length too large",
+        )
+      ) {
+        limit = Math.max(1, Math.floor(limit / 2));
+        result = yield* request().pipe(Effect.result);
+      }
+      if (result._tag === "Failure") return yield* result.failure;
+      const response = result.success;
       if (response.nextCursor !== null && response.nextCursor === input.cursor) {
         return yield* error({
           operation: input.operation,
@@ -261,6 +361,8 @@ export const make: Effect.Effect<CodexHistoryPageAdapter["Service"], never, Code
         nextCursor: response.nextCursor ?? null,
         backwardsCursor: response.backwardsCursor ?? null,
         approximateBytes: cappedValueBytes(items),
+        entries: input.sortDirection === "desc" ? response.data.slice().reverse() : response.data,
+        pageSize: limit,
       };
     });
 
@@ -311,38 +413,28 @@ export const make: Effect.Effect<CodexHistoryPageAdapter["Service"], never, Code
         requestOptions: CodexHistoryRequestOptions,
       ) {
         const items: ThreadItem[] = [];
+        const completedItemIds: Record<string, boolean> = {};
         const seenCursors = new Set<string>();
         let cursor: string | null = null;
         let limit = 500;
         for (;;) {
-          const result: Result.Result<CodexHydratedHistoryItemPage, CodexHistoryPageAdapterError> =
-            yield* loadItemsPage({
-              capability: input.capability,
-              threadId: input.threadId,
-              turnId,
-              cursor,
-              limit,
-              sortDirection: "asc",
-              operation: "items",
-              purpose: input.purpose ?? "initial",
-              requestOptions,
-            }).pipe(Effect.result);
-          if (result._tag === "Failure") {
-            const failure = result.failure;
-            if (
-              failure.reason !== "request-failed" ||
-              limit <= 1 ||
-              !encodeCodexNativeRequestFailure(failure).message.includes(
-                "decoded message length too large",
-              )
-            )
-              return yield* Effect.fail(failure);
-            limit = Math.floor(limit / 2);
-            continue;
-          }
-          const page: CodexHydratedHistoryItemPage = result.success;
+          const page: CodexHydratedHistoryItemPage = yield* loadItemsPage({
+            capability: input.capability,
+            threadId: input.threadId,
+            turnId,
+            cursor,
+            limit,
+            sortDirection: "asc",
+            operation: "items",
+            purpose: input.purpose ?? "initial",
+            requestOptions,
+          });
+          limit = page.pageSize ?? limit;
           items.push(...page.items);
-          if (page.nextCursor === null) return items;
+          for (const entry of page.entries ?? [])
+            if ("completedAtMs" in entry)
+              completedItemIds[entry.item.id] = entry.completedAtMs !== null;
+          if (page.nextCursor === null) return { items, completedItemIds };
           if (seenCursors.has(page.nextCursor))
             return yield* error({
               operation: "items",
@@ -375,6 +467,23 @@ export const make: Effect.Effect<CodexHistoryPageAdapter["Service"], never, Code
       const byteBudgetLimit = Math.max(0, input.byteBudget ?? Number.MAX_SAFE_INTEGER);
       const sortDirection = input.sortDirection ?? "desc";
       const purpose = input.purpose ?? "initial";
+      const enabled =
+        input.readThreadTimelineEnabled?.() ??
+        (config !== null &&
+          isDevelopmentFeatureEnabled("thread-timeline-history", config.environment));
+      const timeline = !durable && input.capability.flags.threadTimeline && enabled === true;
+      if (input.source === "timeline" && !timeline)
+        return yield* error({
+          operation: "turns",
+          threadId: input.threadId,
+          reason: "request-failed",
+          cause: new Error("Timeline history is unsupported or disabled for this host"),
+        });
+      if (
+        input.source === "timeline" ||
+        (input.source === undefined && timeline && (purpose === "initial" || purpose === "older"))
+      )
+        return yield* loadTimelinePage(input);
       const response = yield* gateway
         .requestForThread(
           input.threadId,
@@ -412,14 +521,16 @@ export const make: Effect.Effect<CodexHistoryPageAdapter["Service"], never, Code
       }
       if (durable) {
         const turns = new Array<Turn>(response.data.length);
+        const completedItemIdsByTurnId: Record<string, Record<string, boolean>> = {};
         // Each worker retains its stride, so a slow Turn cannot reassign another worker's tail.
         const worker = Effect.fn("CodexHistoryPageAdapter.hydrateDurableWorker")(function* (
           start: number,
         ) {
           for (let index = start; index < response.data.length; index += 5) {
             const turn = response.data[index]!;
-            const items = yield* loadDurableTurnItems(input, turn.id, requestOptions!);
-            turns[index] = normalizeTurn(turn, items, "full");
+            const page = yield* loadDurableTurnItems(input, turn.id, requestOptions!);
+            turns[index] = normalizeTurn(turn, page.items, "full");
+            completedItemIdsByTurnId[turn.id] = page.completedItemIds;
           }
         });
         yield* Effect.forEach(
@@ -434,6 +545,7 @@ export const make: Effect.Effect<CodexHistoryPageAdapter["Service"], never, Code
           itemsPaginationByTurnId: {},
           itemSegmentsByTurnId: {},
           loadedItemCount: turns.reduce((count, turn) => count + turn.items.length, 0),
+          completedItemIdsByTurnId,
         } satisfies CodexHydratedHistoryTurnPage;
       }
       const resident = input.readResidentHistory?.();
@@ -442,6 +554,7 @@ export const make: Effect.Effect<CodexHistoryPageAdapter["Service"], never, Code
       let loadedItemCount = 0;
       const hydrated: Turn[] = [];
       const itemsPaginationByTurnId: Record<string, CodexHistoryTurnItemsPagination> = {};
+      const completedItemIdsByTurnId: Record<string, Record<string, boolean>> = {};
       const itemSegmentsByTurnId: Record<string, readonly CodexHydratedHistoryItemSegment[]> = {};
       const openingProbes: Array<{
         turnId: string;
@@ -526,6 +639,10 @@ export const make: Effect.Effect<CodexHistoryPageAdapter["Service"], never, Code
             break;
           }
           items = [...unique, ...items];
+          for (const entry of itemPage.entries ?? [])
+            if ("completedAtMs" in entry)
+              (completedItemIdsByTurnId[turn.id] ??= {})[entry.item.id] =
+                entry.completedAtMs !== null;
           if (unique.length > 0) {
             itemSegments.unshift({
               itemIds: unique.map((item) => item.id),
@@ -616,6 +733,7 @@ export const make: Effect.Effect<CodexHistoryPageAdapter["Service"], never, Code
         itemsPaginationByTurnId,
         itemSegmentsByTurnId,
         loadedItemCount,
+        completedItemIdsByTurnId,
       } satisfies CodexHydratedHistoryTurnPage;
     }, Effect.scoped);
 

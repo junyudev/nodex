@@ -1,4 +1,5 @@
 import { supportsConversationProviderControl } from "../../conversation-provider-controls";
+import { useComposerPrediction } from "./use-composer-prediction";
 import {
   useCallback,
   useEffect,
@@ -1487,6 +1488,24 @@ function HydratedThreadComposer({
     (attachment) => attachment.status === "pending",
   );
   const latestTurnStatus = model.conversation?.turns.at(-1)?.status ?? null;
+  const composerPrediction = useComposerPrediction({
+    hostId: model.hostId,
+    threadId: composerThreadId,
+    latestTurnId: model.body.latestTurnId ?? model.conversation?.turns.at(-1)?.turnId ?? null,
+    connected: model.connectionStatus === "connected",
+    eligible:
+      (model.provider?.kind ?? "codex") === "codex" &&
+      model.composerShell.showComposer &&
+      model.conversation !== null &&
+      model.conversation.source?.sideConversation !== true &&
+      model.conversation.ephemeral !== true &&
+      !model.conversation.archived &&
+      !model.isThreadRunning &&
+      latestTurnStatus !== "inProgress" &&
+      model.conversation.statusType !== "active" &&
+      !model.body.showThreadStartProgressPanel &&
+      (model.body.emptyState.type === "none" || model.body.emptyState.type === "emptyThread"),
+  });
   const hasResumeInterruptedTurnCapability = Boolean(
     actions.onResumeInterruptedTurn && model.conversation && !hasPendingPastedTextAttachments,
   );
@@ -2183,12 +2202,14 @@ function HydratedThreadComposer({
               : null;
           const submittedPresentation = actions.onCaptureSubmissionPresentation?.();
           await intelligenceController.flush();
+          const predictionSubmission = composerPrediction.beforeSubmit();
           await actions.onSendPrompt(nextPrompt, {
             submittedPresentation,
             collaborationMode: model.selectedCollaborationMode,
             promptInput,
             ...intelligenceController.turnOverrides,
           });
+          composerPrediction.recordSubmitted(predictionSubmission, nextPrompt);
           if (queuedFollowUpResolution) {
             try {
               await queuedFollowUpResolution.resolve(
@@ -2259,6 +2280,7 @@ function HydratedThreadComposer({
     },
     [
       actions,
+      composerPrediction,
       attachmentState,
       canStartNewThread,
       clearAdmittedSubmission,
@@ -3690,6 +3712,19 @@ function HydratedThreadComposer({
       placeholder={promptPlaceholder}
       disabled={isPromptEditorDisabled}
       singleLine={singleLine}
+      prediction={
+        !isPromptEditorDisabled &&
+        model.composerShell.activeRequest === null &&
+        !hasAttachments &&
+        imageEditDraft.mode === null &&
+        !isStarting &&
+        !isDictating &&
+        !isTranscribing &&
+        !isRealtimeVoiceActive
+          ? composerPrediction.prediction
+          : null
+      }
+      onPredictionInteraction={composerPrediction.onInteraction}
       onChange={(nextPrompt) => {
         setPrompt(nextPrompt);
       }}

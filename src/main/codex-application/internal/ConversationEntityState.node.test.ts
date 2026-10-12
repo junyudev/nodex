@@ -23,7 +23,10 @@ import {
   opaqueCodexHistoryBoundary,
 } from "../../../shared/codex-conversation-state/codex-history-topology";
 import { createCodexQueuedFollowUp } from "../../../shared/codex-queued-follow-up-state";
-import { makeConversationEntityStateRegistry } from "./ConversationEntityState";
+import {
+  makeConversationEntityStateRegistry,
+  type ConversationCanonicalMutation,
+} from "./ConversationEntityState";
 import { projectCodexConversationSnapshot } from "../CodexConversationSnapshotProjection";
 import {
   codexHostMessageParts,
@@ -1160,4 +1163,79 @@ it("accepted Main turns preserve an environment selection that changed after dis
     source: "live",
     updatedAt: 12,
   });
+});
+
+it("Main successful text commits carry accepted edits, and command output keeps its local broadcast policy", () => {
+  const registry = makeConversationEntityStateRegistry();
+  const aggregate = registry.acquire(threadId);
+  const turn = {
+    ...completedTurn("accepted-text"),
+    status: "inProgress" as const,
+    items: [{ type: "plan" as const, id: "plan", text: "old" }, commandItem("command")],
+  };
+  aggregate.acceptCanonicalState(hydratedState([turn]));
+  const changes: ConversationCanonicalMutation[] = [];
+  const subscription = registry.subscribeCanonicalMutations((change) => {
+    changes.push(change);
+    if (change.acceptedTranscriptText)
+      aggregate.mutateCanonicalState((draft) => {
+        draft.title = "Updated after accepted text";
+      }, 12);
+  });
+  try {
+    aggregate.commitFrameTextDeltas({
+      updates: [
+        {
+          conversationId: threadId,
+          turnId: turn.id,
+          itemId: "plan",
+          target: { type: "plan" },
+          delta: " next",
+        },
+      ],
+      observedAtMs: 10,
+    });
+    assert.strictEqual(changes[0]?.broadcast, true);
+    assert.deepEqual(
+      changes[0]?.acceptedTranscriptText?.changes.map((change) =>
+        change.type === "text" ? change.edits : [],
+      ),
+      [[{ at: 3, deleteCount: 0, insert: " next" }]],
+    );
+    assert.strictEqual(changes[1]?.acceptedTranscriptText, undefined);
+    changes.length = 0;
+    aggregate.commitCommandOutputDeltas({
+      updates: [{ conversationId: threadId, turnId: turn.id, itemId: "command", delta: "line" }],
+      observedAtMs: 11,
+    });
+    assert.strictEqual(changes[0]?.broadcast, false);
+    assert.deepEqual(
+      changes[0]?.acceptedTranscriptText?.changes.map((change) =>
+        change.type === "text" ? change.edits : [],
+      ),
+      [
+        [
+          { at: 0, deleteCount: 0, insert: "" },
+          { at: 0, deleteCount: 0, insert: "line" },
+        ],
+      ],
+    );
+    assert.strictEqual(changes[1]?.acceptedTranscriptText, undefined);
+    changes.length = 0;
+    aggregate.commitFrameTextDeltas({
+      updates: [
+        {
+          conversationId: threadId,
+          turnId: turn.id,
+          itemId: "missing",
+          target: { type: "plan" },
+          delta: "ignored",
+        },
+      ],
+      observedAtMs: 12,
+    });
+    assert.strictEqual(changes.length, 0);
+  } finally {
+    subscription[Symbol.dispose]();
+  }
 });

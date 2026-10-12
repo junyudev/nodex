@@ -6,7 +6,10 @@ import type {
 } from "../../../lib/types";
 import type { ThreadBodyModel } from "../thread-stage-types";
 import type { LocalConversationAttachmentState } from "../conversation-attachment-state";
-import { selectVisibleConversationTurnEntries } from "../selectors";
+import {
+  hasRecoverableCanonicalTurnItems,
+  selectVisibleConversationTurnStructure,
+} from "../selectors";
 
 export interface ThreadBodyModelInput {
   activeThreadId: string | null;
@@ -228,10 +231,28 @@ export function buildThreadBodyModel(input: ThreadBodyModelInput): ThreadBodyMod
   }
 
   const canReadAttachedHistory = input.readOnly === true && attachmentState.status === "attached";
+  const history = conversation.canonicalState?.turnHistory?.history;
+  const canReadBoundedHistory =
+    conversation.canonicalState?.historyMode === "paginated" &&
+    history !== undefined &&
+    history.islands.some((island) =>
+      island.entries.some((entry) => {
+        const turn = history.entitiesByKey[entry.value];
+        return (
+          turn !== undefined &&
+          (turn.items.length > 0 ||
+            turn.params.input.length > 0 ||
+            Boolean(turn.diff?.trim()) ||
+            (turn.itemsPagination?.evicted === true && hasRecoverableCanonicalTurnItems(turn)))
+        );
+      }),
+    );
   if (
     conversation.resumeState !== "resumed" &&
     attachmentState.status !== "failed" &&
-    !canReadAttachedHistory
+    !canReadAttachedHistory &&
+    !canReadBoundedHistory &&
+    !input.firstSubmissionActive
   ) {
     if (hasThreadStartProgress) {
       return {
@@ -264,13 +285,12 @@ export function buildThreadBodyModel(input: ThreadBodyModelInput): ThreadBodyMod
     };
   }
 
-  const visibleEntries = selectVisibleConversationTurnEntries({
+  const visibleEntries = selectVisibleConversationTurnStructure({
     conversation,
     parentTurns: input.parentTurns,
   });
   const activeTurnId =
-    [...visibleEntries].reverse().find((entry) => entry.turn.status === "inProgress")?.turnId ??
-    null;
+    [...visibleEntries].reverse().find((entry) => entry.status === "inProgress")?.turnId ?? null;
   const latestTurnId = visibleEntries[visibleEntries.length - 1]?.turnId ?? null;
   const visibleTurnCount = visibleEntries.length;
   const isThreadRunning = conversation.statusType === "active" || activeTurnId !== null;
@@ -296,11 +316,11 @@ export function buildThreadBodyModel(input: ThreadBodyModelInput): ThreadBodyMod
   }
 
   if (visibleTurnCount === 0) {
-    if (hasThreadStartProgress) {
+    if (hasThreadStartProgress || input.firstSubmissionActive) {
       return {
         threadId: conversation.threadId,
-        turnCount: 0,
-        isThreadRunning,
+        turnCount: input.firstSubmissionActive ? 1 : 0,
+        isThreadRunning: input.firstSubmissionActive || isThreadRunning,
         activeTurnId,
         latestTurnId,
         showThreadStartProgressPanel,

@@ -34,6 +34,9 @@ import {
   prepareConversationResumePermissionContext,
   type ConversationResumePreparationOptions,
 } from "../../../shared/codex-conversation-state/codex-resume-request";
+import { codexThreadNavigation } from "./codex-thread-navigation";
+import { readComposerPredictionsEnabled } from "./composer-prediction-settings";
+import { projectCanonicalHistoryPresentation } from "./canonical-history-presentation";
 import { conversationResumeRequestOptions } from "../../../shared/codex-conversation-resume-retry";
 import type { CodexRendererNativeRequestOptions } from "../../../shared/codex-renderer-request";
 import {
@@ -150,11 +153,38 @@ type LocalHistoryPageResult = { readonly status: "applied" | "stale" };
 import {
   CanonicalHistoryItemLoader,
   listCanonicalHistoryTurns,
+  withCanonicalHistoryItemCompletion,
   replaceCanonicalHistoryDraft,
   loadCanonicalHistoryBoundaryPage,
   type CanonicalHistoryClient,
+  type CanonicalHistoryTurnPage,
 } from "../../../shared/codex-conversation-state/codex-canonical-history-loader";
+import { applyCanonicalHistoryTimelineDraft } from "../../../shared/codex-conversation-state/codex-canonical-history-timeline";
 import { CodexConversationEntityDocument } from "../../../shared/codex-conversation-entity-document";
+import {
+  buildCodexTranscriptAcceptedMutation,
+  projectCodexTranscript,
+  projectCodexTranscriptUpdate,
+  type CodexTranscriptEvent,
+  type CodexTranscriptTextChange,
+  type CodexTranscriptProjectionEvidence,
+  type CodexTranscriptUpdate,
+} from "../../../shared/codex-transcript-projection";
+import {
+  createCodexTranscriptSubscription,
+  type CodexTranscriptSubscription,
+} from "../../../shared/codex-transcript-subscription";
+import { CodexTranscriptReadService } from "../../../shared/codex-transcript-read-service";
+import { CodexTranscriptReadOwner } from "./normalized-transcript-read-owner";
+import {
+  connectLocalTranscript,
+  type LocalTranscriptConnection,
+} from "./transcript/local-transcript-connection";
+import {
+  CodexHistoryPolicy,
+  CodexHistoryViewportRegistry,
+} from "../../../shared/codex-history-policy";
+import { mutateCodexActiveHistoryEviction } from "../../../shared/codex-conversation-state/codex-active-history-eviction";
 import type {
   CodexNativeNotificationMessage,
   CodexNativeRequestMessage,
@@ -243,6 +273,7 @@ import { parseAssetSource } from "../../../shared/assets";
 import type {
   CodexPersistedHistoryOccurrenceHydrateInput,
   CodexPersistedHistoryOccurrenceResolution,
+  CodexPersistedHistorySearchResult,
 } from "../../../shared/codex-persisted-history-search";
 import {
   prepareCodexPrompt,
@@ -343,6 +374,7 @@ import {
 } from "./conversation-attachment-state";
 import {
   codexConversationHistoryPageRequestKey,
+  isCodexConversationHistoryTurnItemsRefCurrent,
   type CodexConversationHistoryPageRequest,
 } from "../../../shared/codex-conversation-history-page";
 import { applyCodexLifecycleProjectionDiff } from "../../../shared/codex-conversation-state/codex-lifecycle-projection-diff";
@@ -1437,28 +1469,99 @@ function materializeOwnerCanonicalConversationSnapshot(
   const canonicalState = conversation.canonicalState;
   if (!canonicalState) return conversation;
 
+  const previousTurns = residentConversationTurns(previousCanonicalState);
+  const previousById = new Map(
+    previousTurns.filter((turn) => turn.turnId !== null).map((turn) => [turn.turnId, turn]),
+  );
+  const currentById = new Map(
+    conversation.turns.flatMap((turn) =>
+      turn.turnId === null ? [] : [[turn.turnId, turn] as const],
+    ),
+  );
+  const { turns: ignoredTurns, canonicalState: ignoredState, ...metadata } = conversation;
+  void ignoredTurns;
+  void ignoredState;
+  const requests = canonicalState.requests;
   const turns = residentConversationTurns(canonicalState).map((canonicalTurn, turnIndex) => {
-    const currentTurn =
-      conversation.turns[turnIndex] ??
-      buildOwnerCanonicalTurnPlaceholder(conversation.threadId, canonicalTurn);
-    const observedAtMs =
-      canonicalTurn.turnStartedAtMs ?? currentTurn.startedAt ?? conversation.updatedAt;
-    const indexedPrevious = residentConversationTurns(previousCanonicalState)[turnIndex] ?? null;
+    const indexedPrevious = previousTurns[turnIndex] ?? null;
     const previousCanonicalTurn =
       indexedPrevious?.turnId === canonicalTurn.turnId
         ? indexedPrevious
-        : canonicalTurn.turnId === null
-          ? null
-          : (residentConversationTurns(previousCanonicalState).findLast(
-              (turn) => turn.turnId === canonicalTurn.turnId,
-            ) ?? null);
-    return materializeOwnerCanonicalTurn(
-      currentTurn,
-      previousCanonicalTurn,
-      canonicalTurn,
-      observedAtMs,
-      turnIndex,
-    );
+        : (previousById.get(canonicalTurn.turnId) ?? null);
+    // History insertion moves rows; compatibility identity follows the native Turn, not its index.
+    const currentTurn =
+      canonicalTurn.turnId === null
+        ? conversation.turns[turnIndex]?.turnId === null
+          ? conversation.turns[turnIndex]
+          : undefined
+        : currentById.get(canonicalTurn.turnId);
+    if (
+      currentTurn &&
+      currentTurn.status === canonicalTurn.status &&
+      previousCanonicalTurn === canonicalTurn
+    )
+      return currentTurn;
+    const unchangedItems =
+      currentTurn &&
+      currentTurn.status === canonicalTurn.status &&
+      previousCanonicalTurn?.items === canonicalTurn.items &&
+      previousCanonicalTurn.status === canonicalTurn.status &&
+      previousCanonicalTurn.params === canonicalTurn.params &&
+      previousCanonicalTurn.lifecycleStatusByItemId === canonicalTurn.lifecycleStatusByItemId &&
+      (previousCanonicalTurn.hookRuns?.length ?? 0) === 0 &&
+      (canonicalTurn.hookRuns?.length ?? 0) === 0
+        ? { items: currentTurn.items, itemIds: currentTurn.itemIds }
+        : null;
+    const descriptors: PropertyDescriptorMap = currentTurn
+      ? Object.getOwnPropertyDescriptors(currentTurn)
+      : {};
+    delete descriptors.items;
+    delete descriptors.itemIds;
+    const seed = Object.assign(
+      Object.defineProperties({}, descriptors),
+      buildOwnerCanonicalTurnPlaceholder(conversation.threadId, canonicalTurn),
+      {
+        diff: canonicalTurn.diff ?? undefined,
+        commandExecutionStartedAtMsById: canonicalTurn.commandExecutionStartedAtMsById,
+        interruptedCommandExecutionItemIds: canonicalTurn.interruptedCommandExecutionItemIds,
+        hookRuns: canonicalTurn.hookRuns,
+        safetyBuffering: canonicalTurn.safetyBuffering,
+      },
+    ) as CodexConversationTurn;
+    const observedAtMs = canonicalTurn.turnStartedAtMs ?? seed.startedAt ?? conversation.updatedAt;
+    let materialized: CodexConversationTurn | undefined;
+    // Ordinary transcript rows consume the normalized capability. Other semantic reads request
+    // this Turn on demand, without eagerly projecting every resident item on a text receipt.
+    const read = (): CodexConversationTurn => {
+      if (materialized) return materialized;
+      if (unchangedItems) {
+        materialized = { ...seed, ...unchangedItems };
+        return materialized;
+      }
+      materialized = materializeOwnerCanonicalTurn(
+        seed,
+        null,
+        canonicalTurn,
+        observedAtMs,
+        turnIndex,
+      );
+      for (const request of requests) {
+        const projected = projectOwnerServerRequestToConversation(
+          { ...metadata, turns: [materialized] },
+          request,
+          true,
+        );
+        materialized = projected.turns[0] ?? materialized;
+      }
+      return materialized;
+    };
+    return Object.defineProperties(
+      { ...seed },
+      {
+        items: { enumerable: true, get: () => read().items },
+        itemIds: { enumerable: true, get: () => read().itemIds },
+      },
+    ) as CodexConversationTurn;
   });
 
   return {
@@ -1511,6 +1614,7 @@ function parseOwnerTurnStartResult(
     summary,
     protocol: {
       id: turnId,
+      rootTurnId: null,
       itemsView: "full",
       status,
       error: null,
@@ -1832,8 +1936,12 @@ function ownerRawServerRequestState(
 function projectOwnerServerRequestToConversation(
   conversation: CodexConversationSnapshot,
   request: import("../../../shared/codex-conversation-state/codex-conversation-state").CodexCanonicalServerRequest,
+  retainedByDocument = false,
 ): CodexConversationSnapshot {
-  if (!conversation.canonicalState?.requests.some((pending) => pending.id === request.id))
+  if (
+    !retainedByDocument &&
+    !conversation.canonicalState?.requests.some((pending) => pending.id === request.id)
+  )
     return conversation;
   const viewRequestId = request.id;
   const withCanonicalState = conversation;
@@ -2027,6 +2135,15 @@ export class CodexAppServerManager {
   >();
   private savedReadState: Set<string> | null = null;
   private readonly conversationsById = new Map<string, CodexConversationSnapshot>();
+  private readonly transcriptReadOwners = new Map<string, CodexTranscriptReadOwner>();
+  private readonly transcriptUpdates = new Map<
+    string,
+    Set<(update: CodexTranscriptUpdate) => void>
+  >();
+  private readonly transcriptDisconnects = new Set<() => void>();
+  private readonly historyViewports = new Map<string, CodexHistoryViewportRegistry>();
+  private readonly evictionPending = new Set<string>();
+  private readonly historyPolicy: CodexHistoryPolicy;
   private readonly threadsById = new Map<string, Thread>();
   private readonly childMembershipsByParentThreadId = new Map<
     string,
@@ -2058,7 +2175,11 @@ export class CodexAppServerManager {
     CodexConversationLiveRequest | null
   >();
   private readonly conversationVersionById = new Map<string, number>();
-  private readonly streamState: ConversationStream<CodexCanonicalConversationState, Patch>;
+  private readonly streamState: ConversationStream<
+    CodexCanonicalConversationState,
+    Patch,
+    CodexTranscriptTextChange
+  >;
   private readonly streamRecovery: ConversationStreamRecovery<CodexCanonicalConversationState>;
   private readonly activeStreamingIds = new Set<string>();
   private readonly goalHydrationTokens = new Map<string, symbol>();
@@ -2107,8 +2228,8 @@ export class CodexAppServerManager {
     onFlush: (updates) => {
       for (const [id, deltas] of groupCodexFrameTextDeltasByConversation(updates)) {
         if (this.streamState.getRole(id)?.role !== "owner") continue;
-        this.historyClient.updateConversation(id, (draft) => {
-          mutateCodexConversationFrameTextDeltas(draft, deltas, { now: Date.now });
+        this.mutateCanonicalDocument(id, (draft, onAcceptedText) => {
+          mutateCodexConversationFrameTextDeltas(draft, deltas, { now: Date.now, onAcceptedText });
         });
       }
     },
@@ -2118,10 +2239,11 @@ export class CodexAppServerManager {
     onFlush: (updates) => {
       for (const [id, deltas] of groupCodexCommandOutputUpdatesByConversation(updates)) {
         if (this.streamState.getRole(id)?.role !== "owner") continue;
-        this.historyClient.updateConversation(
+        this.mutateCanonicalDocument(
           id,
-          (draft) => {
-            for (const delta of deltas) mutateCodexConversationCommandOutput(draft, delta);
+          (draft, onAcceptedText) => {
+            for (const delta of deltas)
+              mutateCodexConversationCommandOutput(draft, delta, { onAcceptedText });
           },
           false,
         );
@@ -2177,6 +2299,12 @@ export class CodexAppServerManager {
     } = {},
   ) {
     this.nativeAppServer = new RendererNativeAppServer(hostId);
+    this.historyPolicy = new CodexHistoryPolicy({
+      source: "endpoint-history-policy",
+      scope: hostId,
+      readThreadTimelineEnabled: () => this.nativeHostContext?.historyPolicy?.timeline,
+      readActiveHistoryEvictionEnabled: () => this.nativeHostContext?.historyPolicy?.activeEviction,
+    });
     this.streamState = new ConversationStream({
       hostId,
       isLocalHost: hostId === DEFAULT_CODEX_HOST_ID,
@@ -2186,7 +2314,7 @@ export class CodexAppServerManager {
       applyPatches: (state, patches) => applyPatches(state, patches as Patch[]),
       setConversation: (state, details) => {
         const before = this.conversationsById.get(state.id)?.canonicalState;
-        this.applyCanonicalDocument(state);
+        this.applyCanonicalDocument(state, details);
         if (!details || !before) return;
         const existing = new Set(
           mergeCodexCanonicalTurnStates(residentConversationTurns(before), before.turns)
@@ -2249,18 +2377,17 @@ export class CodexAppServerManager {
     this.historyClient = {
       hostId,
       supportsPaginatedHistory: () => this.supportsPaginatedHistory,
+      supportsThreadTimeline: () =>
+        hostId !== "durable" &&
+        this.nativeHostContext?.supportsThreadTimeline === true &&
+        this.historyPolicy.readThreadTimelineEnabled(),
+      sendTimelineRequest: (params, options) =>
+        this.nativeAppServer.request("thread/timeline/list", params, options),
       getConversation: (id) => this.conversationsById.get(id)?.canonicalState,
       sendRequest: (method, params, options) =>
         this.nativeAppServer.request(method, params, options),
       updateConversation: (id, recipe, broadcast = true) => {
-        const before = this.conversationsById.get(id)?.canonicalState;
-        if (!before) return;
-        const receipt = new CodexConversationEntityDocument()
-          .withCanonicalState(before)
-          .mutate(recipe);
-        if (!receipt) return;
-        this.applyCanonicalDocument(receipt.after);
-        if (broadcast) this.streamState.broadcastPatches(id, receipt.patches);
+        this.mutateCanonicalDocument(id, recipe, broadcast);
       },
       broadcastSnapshot: (id) => {
         this.streamState.broadcastSnapshot(id);
@@ -2683,12 +2810,15 @@ export class CodexAppServerManager {
         ),
       );
     if (!receipt) return;
-    if (receipt.after !== before) this.applyCanonicalDocument(receipt.after);
+    if (receipt.after !== before)
+      this.applyCanonicalDocument(receipt.after, { patches: receipt.patches });
     if (event.notification.method === "item/started")
       this.asyncQuestions.receive(threadId, event.notification.params.item.id);
     if (event.notification.method === "turn/started") {
       const turnId = event.notification.params.turn.id;
-      const turn = receipt.after.turns.find((candidate) => candidate.turnId === turnId);
+      const turn = residentConversationTurns(receipt.after).find(
+        (candidate) => candidate.turnId === turnId,
+      );
       const clientUserMessageId = turn?.params.clientUserMessageId;
       if (clientUserMessageId) {
         codexTurnFirstResponseTracker.markTurnStarted(clientUserMessageId, threadId, turnId);
@@ -2718,9 +2848,41 @@ export class CodexAppServerManager {
         threadId,
         event.notification.params.turn.status === "interrupted",
       );
+      this.requestLiveComposerPrediction(threadId, event.notification.params.turn.id);
     }
     if (!before.hasUnreadTurn && receipt.after.hasUnreadTurn)
       void this.saveReadState(threadId, true, "turn");
+  }
+
+  private requestLiveComposerPrediction(threadId: string, turnId: string): void {
+    const eligible = () => {
+      const conversation = this.conversationsById.get(threadId);
+      return (
+        !this.destroyed &&
+        readComposerPredictionsEnabled() &&
+        this.hostId !== "durable" &&
+        this.streamState.getRole(threadId)?.role === "owner" &&
+        conversation !== undefined &&
+        !conversation.ephemeral &&
+        conversation.source?.sideConversation !== true &&
+        residentConversationTurns(conversation.canonicalState).at(-1)?.turnId === turnId
+      );
+    };
+    if (!eligible()) return;
+    const context = this.nativeHostContext;
+    void runConversationOperation("codex:composer-prediction:availability", this.hostId)
+      .then((availability) => {
+        if (!availability?.enabled || !eligible() || this.nativeHostContext !== context) return;
+        return runConversationOperation("codex:composer-prediction:request", {
+          hostId: this.hostId,
+          threadId,
+          latestTurnId: turnId,
+          generationTrigger: "live",
+        });
+      })
+      .catch((error: unknown) =>
+        console.debug("Background composer prediction did not finish", error),
+      );
   }
 
   private receiveNativeRequest(event: CodexNativeRequestMessage): void {
@@ -2772,7 +2934,7 @@ export class CodexAppServerManager {
         ),
       );
     if (!receipt) return;
-    this.applyCanonicalDocument(receipt.after);
+    this.applyCanonicalDocument(receipt.after, { patches: receipt.patches });
     this.streamState.broadcastPatches(threadId, receipt.patches);
     for (const effect of receipt.result) {
       if (effect.type === "respond")
@@ -3049,7 +3211,39 @@ export class CodexAppServerManager {
     this.applyCanonicalDocument({ ...canonical, workspaceKind, resumeState });
   }
 
-  private applyCanonicalDocument(state: CodexCanonicalConversationState): void {
+  private mutateCanonicalDocument(
+    threadId: string,
+    recipe: (
+      draft: Draft<CodexCanonicalConversationState>,
+      onAcceptedText: (change: CodexTranscriptTextChange) => void,
+    ) => void,
+    broadcast = true,
+  ): void {
+    const before = this.conversationsById.get(threadId)?.canonicalState;
+    if (!before) return;
+    const accepted: CodexTranscriptTextChange[] = [];
+    const receipt = new CodexConversationEntityDocument()
+      .withCanonicalState(before)
+      .mutate((draft) => recipe(draft, (change) => accepted.push(change)));
+    if (!receipt || receipt.after === before) return;
+    const acceptedTranscriptText = buildCodexTranscriptAcceptedMutation(
+      before,
+      receipt.after,
+      receipt.patches,
+      accepted,
+    );
+    this.applyCanonicalDocument(receipt.after, {
+      patches: receipt.patches,
+      acceptedTranscriptText,
+    });
+    if (broadcast)
+      this.streamState.broadcastPatches(threadId, receipt.patches, acceptedTranscriptText?.changes);
+  }
+
+  private applyCanonicalDocument(
+    state: CodexCanonicalConversationState,
+    evidence?: CodexTranscriptProjectionEvidence,
+  ): void {
     const current = this.conversationsById.get(state.id);
     const interruptionChanged =
       (latestResidentConversationTurn(current?.canonicalState)?.status === "interrupted") !==
@@ -3089,6 +3283,7 @@ export class CodexAppServerManager {
     const conversation: CodexConversationSnapshot = {
       ...base,
       ...current,
+      ...projectCanonicalHistoryPresentation(state, current, evidence?.patches),
       canonicalState: state,
       threadName: state.title,
       cwd: state.cwd,
@@ -3141,6 +3336,9 @@ export class CodexAppServerManager {
         projectOwnerThreadSettingsToConversation(projected, state),
         current?.canonicalState,
       ),
+      undefined,
+      "default",
+      evidence,
     );
     if (interruptionChanged && this.isServerQueueSelected(state.id)) {
       this.refreshQueuedMessageProjection(state.id);
@@ -3149,6 +3347,91 @@ export class CodexAppServerManager {
 
   getHostId(): string {
     return this.hostId;
+  }
+
+  getTranscriptReadOwner(threadId: string): CodexTranscriptReadOwner {
+    const cached = this.transcriptReadOwners.get(threadId);
+    if (cached) return cached;
+    const owner = new CodexTranscriptReadOwner({
+      hostId: this.hostId,
+      threadId,
+      connect: (listener) => this.subscribeTranscript(threadId, listener),
+    });
+    this.transcriptReadOwners.set(threadId, owner);
+    return owner;
+  }
+
+  subscribeTranscript(
+    threadId: string,
+    listener: (event: CodexTranscriptEvent) => Promise<void>,
+  ): LocalTranscriptConnection {
+    if (this.destroyed) throw new Error("Conversation manager disposed");
+    let alive = true;
+    let source: CodexTranscriptSubscription | undefined;
+    const service = new CodexTranscriptReadService(
+      (_id, callback) => {
+        if (!alive || this.destroyed || _id !== threadId)
+          throw new Error("Transcript read capability retired");
+        source = createCodexTranscriptSubscription({
+          getSnapshot: () => {
+            const state = this.conversationsById.get(threadId)?.canonicalState;
+            return state ? projectCodexTranscript(state) : null;
+          },
+          subscribe: (receive) => {
+            const listeners = this.transcriptUpdates.get(threadId) ?? new Set();
+            this.transcriptUpdates.set(threadId, listeners);
+            listeners.add(receive);
+            const state = this.conversationsById.get(threadId)?.canonicalState;
+            receive({ type: "reset", value: state ? projectCodexTranscript(state) : null });
+            return () => {
+              listeners.delete(receive);
+              if (listeners.size === 0 && this.transcriptUpdates.get(threadId) === listeners)
+                this.transcriptUpdates.delete(threadId);
+            };
+          },
+          listener: callback,
+        });
+        return source;
+      },
+      (id, viewer, boundaries) => {
+        if (!alive && boundaries !== undefined) return;
+        let registry = this.historyViewports.get(id);
+        if (!registry && boundaries !== undefined) {
+          registry = new CodexHistoryViewportRegistry(() => this.scheduleActiveHistoryEviction(id));
+          this.historyViewports.set(id, registry);
+        }
+        registry?.set(viewer, boundaries);
+      },
+    );
+    const disconnect = connectLocalTranscript(service, threadId, listener);
+    const release = () => {
+      if (!alive) return;
+      alive = false;
+      this.transcriptDisconnects.delete(release);
+      source?.dispose();
+      disconnect();
+    };
+    this.transcriptDisconnects.add(release);
+    return Object.assign(release, { setHistoryViewport: disconnect.setHistoryViewport });
+  }
+
+  private scheduleActiveHistoryEviction(threadId: string): void {
+    if (this.destroyed || this.evictionPending.has(threadId)) return;
+    this.evictionPending.add(threadId);
+    queueMicrotask(() => {
+      this.evictionPending.delete(threadId);
+      if (this.destroyed || this.hostId === "durable") return;
+      this.historyClient.updateConversation(threadId, (draft) => {
+        mutateCodexActiveHistoryEviction(draft, {
+          viewports: this.historyViewports.get(threadId)?.getBoundaries() ?? [],
+          supportsPaginatedThreadHistory: this.supportsPaginatedHistory,
+          supportsThreadItemAnchors: this.nativeHostContext?.supportsThreadItemAnchors === true,
+          isFollower: this.streamState.getRole(threadId)?.role === "follower",
+          hasFollowersOrPendingReconnect: this.streamState.hasFollowersOrPendingReconnect(threadId),
+          readEnabled: () => this.historyPolicy.readActiveHistoryEvictionEnabled(),
+        });
+      });
+    });
   }
 
   start(): void {
@@ -3174,6 +3457,12 @@ export class CodexAppServerManager {
     this.serverQueuedMessages[Symbol.dispose]();
     if (this.destroyed) return;
     this.destroyed = true;
+    for (const owner of this.transcriptReadOwners.values()) owner.dispose();
+    this.transcriptReadOwners.clear();
+    for (const release of this.transcriptDisconnects) release();
+    this.transcriptUpdates.clear();
+    this.historyViewports.clear();
+    this.evictionPending.clear();
     this.streamRecovery.dispose();
     for (const callback of this.disposalCallbacks) callback();
     this.disposalCallbacks.clear();
@@ -3553,10 +3842,11 @@ export class CodexAppServerManager {
       : null;
     if (!isCurrent() || this.destroyed || this.nativeHostContext !== hostContext) return;
     const rawTurns = page ? [...page.response.data].reverse() : response.thread.turns;
-    const canonical = createCodexCanonicalHydratedConversationState(
+    let canonical = createCodexCanonicalHydratedConversationState(
       { ...response.thread, turns: rawTurns },
       { ...prepared.context, turnItemsPaginationById: page?.itemsPaginationByTurnId },
     );
+    canonical = { ...canonical, turns: withCanonicalHistoryItemCompletion(canonical.turns, page) };
     const receipt = new CodexConversationEntityDocument()
       .withCanonicalState(canonical)
       .mutate((draft) => {
@@ -3566,8 +3856,12 @@ export class CodexAppServerManager {
           draft,
           turns,
           cursor === null,
-          cursor === null ? null : { cursor, oldestLoadedTurnId: turns[0]?.turnId ?? null },
+          cursor === null
+            ? null
+            : { cursor, source: page?.source, oldestLoadedTurnId: turns[0]?.turnId ?? null },
         );
+        applyCanonicalHistoryTimelineDraft(draft, page?.timeline, "replace");
+        if (draft.turnsPagination) draft.turnsPagination.source = page?.source;
         draft.resumeState = "needs_resume";
       });
     this.applyThreadSummary(prepared.summary);
@@ -3636,6 +3930,7 @@ export class CodexAppServerManager {
       }
     }
 
+    const navigationTraceAtDispatch = codexThreadNavigation.getTrace(threadId);
     let retryCleanup: (() => void) | undefined;
     let result: CodexConversationSnapshot | null = null;
     let failure: unknown;
@@ -3671,6 +3966,12 @@ export class CodexAppServerManager {
         .catch((error: unknown) => {
           failure = error;
           if (isCurrent()) {
+            if (
+              navigationTraceAtDispatch !== null &&
+              codexThreadNavigation.getTrace(threadId)?.traceparent ===
+                navigationTraceAtDispatch.traceparent
+            )
+              codexThreadNavigation.hydrationFailed(threadId, error);
             this.markConversationResumeState(threadId, "needs_resume");
             this.setConversationAttachmentState(
               threadId,
@@ -3855,11 +4156,24 @@ export class CodexAppServerManager {
     const isReconnectRecovery = options.isReconnectRecovery === true;
     const cannotAcquire = () => !this.streamState.getRole(threadId) && !canAcquireOwnership();
     if (cannotAcquire()) return null;
+    codexThreadNavigation.hydrationStarted(threadId);
     await this.refreshNativeHostContext();
     if (!lifetime.isCurrent()) return null;
     if (cannotAcquire()) return null;
+    const navigationTrace = codexThreadNavigation.getTrace(threadId);
+    const navigationIsCurrent = () =>
+      navigationTrace !== null &&
+      codexThreadNavigation.getTrace(threadId)?.traceparent === navigationTrace.traceparent;
+    const markHistoryReady = () => {
+      if (!navigationIsCurrent()) return;
+      codexThreadNavigation.historyReady(threadId);
+      codexThreadNavigation.hydrationFinished(threadId);
+    };
     const metadataHostContext = this.nativeHostContext;
-    const requestOptions = conversationResumeRequestOptions(isReconnectRecovery, options.timeoutMs);
+    const requestOptions = {
+      ...conversationResumeRequestOptions(isReconnectRecovery, options.timeoutMs),
+      trace: navigationTrace,
+    };
     const { priority } = requestOptions;
     const goalRequestOptions =
       showGoalConfirmation || isReconnectRecovery
@@ -3878,7 +4192,7 @@ export class CodexAppServerManager {
         .request(
           "thread/read",
           { threadId, includeTurns: false },
-          { source: "thread_hydration", priority, timeoutMs: 30_000 },
+          { source: "thread_hydration", priority, timeoutMs: 30_000, trace: navigationTrace },
         )
         .then((result) => result.thread)
         .catch(() => null),
@@ -3901,7 +4215,7 @@ export class CodexAppServerManager {
         runtimeWorkspaceRoots: workspace.context.runtimeWorkspaceRoots,
       },
     });
-    const prepared = await runConversationOperation(
+    const preparationPromise = runConversationOperation(
       "codex:thread:resume:prepare",
       threadId,
       metadata,
@@ -3915,6 +4229,81 @@ export class CodexAppServerManager {
         collaborationMode: options.collaborationMode,
       },
     );
+    let earlyHistory: Promise<CanonicalHistoryTurnPage | null> | null = null;
+    if (
+      metadata?.historyMode === "paginated" &&
+      this.supportsPaginatedHistory &&
+      this.hostId !== "durable" &&
+      this.streamState.getRole(threadId)?.role !== "follower" &&
+      residentConversationTurns(existing).length === 0
+    ) {
+      const seeded = {
+        ...createCodexCanonicalHydratedConversationState(
+          { ...metadata, turns: [] },
+          workspace.context,
+        ),
+        resumeState: "resuming" as const,
+        paginatedHistory: { turnsBackwardsCursor: null, itemsBackwardsCursor: null },
+      };
+      this.applyCanonicalDocument(seeded);
+      const currentSeed = this.historyClient.getConversation(threadId);
+      const history = currentSeed?.turnHistory;
+      const pagination = currentSeed?.paginatedHistory;
+      earlyHistory = listCanonicalHistoryTurns(this.historyClient, threadId, {
+        cursor: null,
+        limit: 5,
+        itemsView: "full",
+        sortDirection: "desc",
+        requestOptions: { source: "thread_hydration", priority, trace: navigationTrace },
+      })
+        .then((page) => {
+          const current = this.historyClient.getConversation(threadId);
+          if (
+            !lifetime.isCurrent() ||
+            this.destroyed ||
+            this.nativeHostContext !== metadataHostContext ||
+            this.streamState.getRole(threadId)?.role === "follower" ||
+            current?.turnHistory !== history ||
+            current?.paginatedHistory !== pagination
+          )
+            return null;
+          const turns = withCanonicalHistoryItemCompletion(
+            this.historyClient.mapTurns(
+              threadId,
+              [...page.response.data].reverse(),
+              page.itemsPaginationByTurnId,
+            ),
+            page,
+          );
+          const cursor = page.response.nextCursor;
+          this.historyClient.updateConversation(
+            threadId,
+            (draft) => {
+              replaceCanonicalHistoryDraft(
+                draft,
+                turns,
+                cursor === null,
+                cursor === null
+                  ? null
+                  : { cursor, source: page.source, oldestLoadedTurnId: turns[0]?.turnId ?? null },
+              );
+              applyCanonicalHistoryTimelineDraft(draft, page.timeline, "replace");
+              draft.turnsPagination = {
+                source: page.source,
+                olderCursor: cursor,
+                oldestLoadedTurnId: turns[0]?.turnId ?? null,
+                isLoadingOlder: false,
+                hasLoadedOldest: cursor === null,
+              };
+            },
+            false,
+          );
+          markHistoryReady();
+          return page;
+        })
+        .catch(() => null);
+    }
+    const prepared = await preparationPromise;
     const permissionContext = prepareConversationResumePermissionContext({
       preparation,
       request: prepared.params,
@@ -3977,6 +4366,13 @@ export class CodexAppServerManager {
         ? await this.readResumedThreadGoal(threadId, goalRequestOptions)
         : { ok: false as const };
       if (!lifetime.isCurrent() || !isCurrent()) throw new Error("Resume goal hydration retired");
+      const durableHost = prepared.hostId === "durable";
+      const paginated =
+        !durableHost &&
+        prepared.supportsPaginatedHistory &&
+        prepared.params.initialTurnsPage == null;
+      const earlyPage = paginated ? await earlyHistory : null;
+      if (!lifetime.isCurrent() || !isCurrent()) throw new Error("Resume early history retired");
       const previous = this.historyClient.getConversation(threadId);
       const cwd =
         resolveCodexCanonicalHydratedCwd({
@@ -4032,11 +4428,6 @@ export class CodexAppServerManager {
         environmentSelectionEvidenceAtDispatch,
       );
       // Host and preparation select history before response metadata can change it.
-      const durableHost = prepared.hostId === "durable";
-      const paginated =
-        !durableHost &&
-        prepared.supportsPaginatedHistory &&
-        prepared.params.initialTurnsPage == null;
       this.applyCanonicalDocument({
         ...retained,
         ...acceptedEnvironmentSelection,
@@ -4058,27 +4449,39 @@ export class CodexAppServerManager {
       });
       // Preparation selects the history contract. New response metadata must not
       // discard a requested legacy page or reinterpret its remaining cursor.
-      const page = durableHost
-        ? await listCanonicalHistoryTurns(this.historyClient, threadId, {
-            cursor: null,
-            limit: 5,
-            sortDirection: "desc",
-            itemsView: "full",
-            requestOptions: { source: "thread_hydration", priority },
-          })
-        : paginated
-          ? response.turnsBackwardsCursor == null
-            ? { response: { data: [], nextCursor: null }, itemsPaginationByTurnId: {} }
-            : await listCanonicalHistoryTurns(this.historyClient, threadId, {
-                cursor: response.turnsBackwardsCursor,
-                limit: 5,
-                sortDirection: "desc",
-                itemsView: "full",
-                requestOptions: { source: "thread_hydration", priority },
-              })
-          : response.initialTurnsPage
-            ? { response: response.initialTurnsPage, itemsPaginationByTurnId: {} }
-            : null;
+      const page =
+        earlyPage ??
+        (durableHost
+          ? await listCanonicalHistoryTurns(this.historyClient, threadId, {
+              cursor: null,
+              limit: 5,
+              sortDirection: "desc",
+              itemsView: "full",
+              requestOptions: { source: "thread_hydration", priority, trace: navigationTrace },
+            })
+          : paginated
+            ? response.turnsBackwardsCursor == null
+              ? {
+                  response: { data: [], nextCursor: null },
+                  itemsPaginationByTurnId: {},
+                  source: undefined,
+                  timeline: undefined,
+                }
+              : await listCanonicalHistoryTurns(this.historyClient, threadId, {
+                  cursor: response.turnsBackwardsCursor,
+                  limit: 5,
+                  sortDirection: "desc",
+                  itemsView: "full",
+                  requestOptions: { source: "thread_hydration", priority, trace: navigationTrace },
+                })
+            : response.initialTurnsPage
+              ? {
+                  response: response.initialTurnsPage,
+                  itemsPaginationByTurnId: {},
+                  source: undefined,
+                  timeline: undefined,
+                }
+              : null);
       const legacy =
         page === null
           ? await this.nativeAppServer.request(
@@ -4097,10 +4500,9 @@ export class CodexAppServerManager {
       const rawTurns = page
         ? ([...page.response.data].reverse() as Thread["turns"])
         : (legacy?.thread.turns ?? []);
-      const pageTurns = this.historyClient.mapTurns(
-        threadId,
-        rawTurns,
-        page?.itemsPaginationByTurnId ?? {},
+      const pageTurns = withCanonicalHistoryItemCompletion(
+        this.historyClient.mapTurns(threadId, rawTurns, page?.itemsPaginationByTurnId ?? {}),
+        page,
       );
       const turns = durableHost
         ? mergeCodexCanonicalTurnStates(
@@ -4125,10 +4527,14 @@ export class CodexAppServerManager {
             draft,
             merged,
             olderCursor === null,
-            olderCursor === null ? null : { cursor: olderCursor, oldestLoadedTurnId },
+            olderCursor === null
+              ? null
+              : { cursor: olderCursor, source: page?.source, oldestLoadedTurnId },
           );
+          applyCanonicalHistoryTimelineDraft(draft, page?.timeline, "replace");
           refreshResumedConversationTurnParams(draft, response, cwd);
           draft.turnsPagination = {
+            source: page?.source,
             olderCursor,
             oldestLoadedTurnId,
             isLoadingOlder: false,
@@ -4138,6 +4544,7 @@ export class CodexAppServerManager {
         },
         false,
       );
+      markHistoryReady();
       this.streamState.setRole(threadId, { role: "owner" });
       let goalHydration: Promise<void> | null = null;
       if (!showGoalConfirmation) {
@@ -4537,21 +4944,148 @@ export class CodexAppServerManager {
     request: CodexConversationHistoryPageRequest,
   ): Promise<LocalHistoryPageResult> {
     const { threadId, target } = request;
+    const snapshot = this.conversationsById.get(threadId);
+    const before = snapshot?.canonicalState;
+    if (
+      this.destroyed ||
+      !before ||
+      request.expectedConversationGeneration !== (snapshot.conversationEntityGeneration ?? 0)
+    )
+      return { status: "stale" };
+    const hostContext = this.nativeHostContext;
     if (target.kind === "turnBoundary") {
       const status = await loadCanonicalHistoryBoundaryPage(
         this.historyClient,
         threadId,
         target.boundary,
       );
-      return { status };
+      return {
+        status: this.destroyed || this.nativeHostContext !== hostContext ? "stale" : status,
+      };
     }
-    const before = this.historyClient.getConversation(threadId);
-    const turn = residentConversationTurns(before).find(
-      (entry) => entry.turnId === target.items.turnId,
-    );
-    if (!turn?.itemsPagination) return { status: "stale" };
-    await this.historyItemLoader.loadTurnItems(threadId, target.items.turnId);
+    if (!isCodexConversationHistoryTurnItemsRefCurrent(before, target.items))
+      return { status: "stale" };
+    await this.historyItemLoader.loadTurnItems(threadId, target.items.turnId, false, {
+      priority: "interactive",
+    });
+    if (
+      this.destroyed ||
+      this.nativeHostContext !== hostContext ||
+      (this.historyClient.getConversation(threadId)?.turnHistory?.history.generation ?? 0) !==
+        target.items.expectedTopologyGeneration
+    )
+      return { status: "stale" };
     return { status: "applied" };
+  }
+
+  /** Search qualifies against the viewing manager; Main only routes the native read. */
+  async searchPersistedHistory(
+    threadId: string,
+    query: string,
+  ): Promise<CodexPersistedHistorySearchResult> {
+    await this.refreshNativeHostContext();
+    const canonical = this.historyClient.getConversation(threadId);
+    if (!canonical)
+      return {
+        status: "unavailable",
+        feature: "persisted-search",
+        reason: "resident-only",
+        threadId,
+      };
+    const context = this.nativeHostContext;
+    if (!context) throw new Error("History search host context is unavailable");
+    const reason =
+      canonical.historyMode !== "paginated"
+        ? "thread-history-legacy"
+        : context.supportsSearchOccurrences !== true
+          ? context.appServerVersion === null
+            ? "capability-unproven"
+            : "host-unsupported"
+          : null;
+    if (reason)
+      return {
+        status: "unavailable",
+        feature: "persisted-search",
+        reason,
+        threadId,
+        hostId: this.hostId,
+        hostGeneration: context.generation,
+        sourceEpoch: context.sourceEpoch,
+        appServerVersion: context.appServerVersion,
+        historyMode: canonical.historyMode,
+      };
+    using lifetime = this.observeHistoryReadLifetime(threadId);
+    const page = await runConversationOperation("codex:thread:history-search", threadId, query);
+    lifetime.assertCurrent();
+    if (
+      page.threadId !== threadId ||
+      page.query !== query ||
+      page.hostId !== this.hostId ||
+      page.hostGeneration !== context.generation
+    )
+      throw new Error("History search belongs to an unavailable host generation");
+    return {
+      status: "completed",
+      page: { ...page, topologyGeneration: canonical.turnHistory?.history.generation ?? 0 },
+    };
+  }
+
+  /** Native reads may hydrate a follower locally without claiming the conversation writer. */
+  private observeHistoryReadLifetime(threadId: string) {
+    const context = this.nativeHostContext;
+    const role = this.streamState.getRole(threadId);
+    const snapshot = this.conversationsById.get(threadId);
+    const generation = snapshot?.conversationEntityGeneration ?? 0;
+    const topologyGeneration = snapshot?.canonicalState?.turnHistory?.history.generation ?? 0;
+    let removed = false;
+    const onRemoved = (id: string) => {
+      if (id === threadId) removed = true;
+    };
+    const assertCurrent = () => {
+      const current = this.conversationsById.get(threadId);
+      if (
+        removed ||
+        this.destroyed ||
+        this.nativeHostContext !== context ||
+        this.streamState.getRole(threadId) !== role ||
+        !current?.canonicalState ||
+        (current.conversationEntityGeneration ?? 0) !== generation ||
+        (current.canonicalState.turnHistory?.history.generation ?? 0) !== topologyGeneration
+      )
+        throw new Error("Conversation changed during history search");
+    };
+    assertCurrent();
+    this.conversationRemovedCallbacks.add(onRemoved);
+    const client: typeof this.historyClient = {
+      ...this.historyClient,
+      getConversation: (id) => {
+        assertCurrent();
+        return this.historyClient.getConversation(id);
+      },
+      sendRequest: async (method, params, options) => {
+        assertCurrent();
+        const result = await this.historyClient.sendRequest(method, params, options);
+        assertCurrent();
+        return result;
+      },
+      updateConversation: (id, recipe, broadcast) => {
+        assertCurrent();
+        this.historyClient.updateConversation(id, recipe, broadcast);
+      },
+      mapTurns: (id, turns, pagination) => {
+        assertCurrent();
+        return this.historyClient.mapTurns(id, turns, pagination);
+      },
+      broadcastSnapshot: (id) => {
+        assertCurrent();
+        this.historyClient.broadcastSnapshot(id);
+      },
+    };
+    return {
+      assertCurrent,
+      client,
+      [Symbol.dispose]: () => this.conversationRemovedCallbacks.delete(onRemoved),
+    };
   }
 
   async hydratePersistedHistoryOccurrence(
@@ -4564,8 +5098,12 @@ export class CodexAppServerManager {
     ) {
       throw new Error("History search belongs to an unavailable host generation");
     }
+    const canonical = this.historyClient.getConversation(input.threadId);
+    if ((canonical?.turnHistory?.history.generation ?? 0) !== input.topologyGeneration)
+      throw new Error("History search belongs to an unavailable topology generation");
+    using lifetime = this.observeHistoryReadLifetime(input.threadId);
     await hydrateCanonicalHistorySearchMatch(
-      this.historyClient,
+      lifetime.client,
       {
         conversationId: input.threadId,
         itemId: input.occurrence.itemId,
@@ -4574,6 +5112,7 @@ export class CodexAppServerManager {
       },
       () => crypto.randomUUID(),
     );
+    lifetime.assertCurrent();
     return {
       status: "found",
       threadId: input.threadId,
@@ -6870,7 +7409,8 @@ export class CodexAppServerManager {
       ...response,
     } satisfies CodexNativeUserResponseInput);
     this.nativeRequestOccurrences.delete(key);
-    if (receipt.after !== before) this.applyCanonicalDocument(receipt.after);
+    if (receipt.after !== before)
+      this.applyCanonicalDocument(receipt.after, { patches: receipt.patches });
     if (receipt.patches.length) this.streamState.broadcastPatches(conversationId, receipt.patches);
     return { accepted: await result };
   }
@@ -6909,7 +7449,8 @@ export class CodexAppServerManager {
       },
     } satisfies CodexNativeAutoResponseInput);
     this.nativeRequestOccurrences.delete(key);
-    if (receipt.after !== before) this.applyCanonicalDocument(receipt.after);
+    if (receipt.after !== before)
+      this.applyCanonicalDocument(receipt.after, { patches: receipt.patches });
     if (receipt.patches.length) this.streamState.broadcastPatches(conversationId, receipt.patches);
     return { accepted: await result };
   }
@@ -7370,6 +7911,12 @@ export class CodexAppServerManager {
     this.attachmentStateByThreadId.clear();
     this.interruptedTurnResumesInFlightByThreadId.clear();
     this.conversationsById.clear();
+    for (const owner of this.transcriptReadOwners.values()) owner.dispose();
+    this.transcriptReadOwners.clear();
+    for (const release of this.transcriptDisconnects) release();
+    this.transcriptUpdates.clear();
+    this.historyViewports.clear();
+    this.evictionPending.clear();
     this.asyncQuestions.clear();
     this.ownerHiddenLifecycleItemTypesByConversationId.clear();
     this.conversationVersionById.clear();
@@ -7666,7 +8213,7 @@ export class CodexAppServerManager {
           ),
         );
       if (!receipt || receipt.after === before) continue;
-      this.applyCanonicalDocument(receipt.after);
+      this.applyCanonicalDocument(receipt.after, { patches: receipt.patches });
       if (this.streamState.getRole(id)?.role === "owner")
         this.streamState.broadcastPatches(id, receipt.patches);
     }
@@ -7936,6 +8483,11 @@ export class CodexAppServerManager {
 
     this.threadSummariesById.delete(normalizedThreadId);
     this.conversationsById.delete(normalizedThreadId);
+    this.transcriptReadOwners.get(normalizedThreadId)?.dispose();
+    this.transcriptReadOwners.delete(normalizedThreadId);
+    this.transcriptUpdates.delete(normalizedThreadId);
+    this.historyViewports.delete(normalizedThreadId);
+    this.evictionPending.delete(normalizedThreadId);
     this.conversationActivity.remove(normalizedThreadId);
     this.retention.remove(normalizedThreadId);
     this.asyncQuestions.clear(normalizedThreadId);
@@ -8018,6 +8570,7 @@ export class CodexAppServerManager {
     conversation: CodexConversationSnapshot,
     version?: number,
     notifyMode: ConversationNotifyMode = "default",
+    evidence?: CodexTranscriptProjectionEvidence,
   ): void {
     if (typeof version === "number" && this.conversationVersionById.get(threadId) === version) {
       return;
@@ -8064,6 +8617,22 @@ export class CodexAppServerManager {
     }
 
     this.conversationsById.set(threadId, nextConversation);
+    this.scheduleActiveHistoryEviction(threadId);
+    const transcriptListeners = this.transcriptUpdates.get(threadId);
+    if (
+      transcriptListeners?.size &&
+      currentConversation?.canonicalState !== nextConversation.canonicalState
+    ) {
+      const before = currentConversation?.canonicalState ?? null;
+      const after = nextConversation.canonicalState ?? null;
+      const update = projectCodexTranscriptUpdate(
+        { hostId: this.hostId, threadId },
+        before,
+        after,
+        evidence,
+      );
+      if (update) for (const receive of transcriptListeners) receive(update);
+    }
     if (
       currentConversation?.turnPagination?.isLoadingOlder &&
       !nextConversation.turnPagination?.isLoadingOlder
@@ -8793,6 +9362,17 @@ export function hydrateLocalPersistedHistoryOccurrence(
   input: CodexPersistedHistoryOccurrenceHydrateInput,
 ): Promise<CodexPersistedHistoryOccurrenceResolution> {
   return codexAppServerRegistry.getForHostId(input.hostId).hydratePersistedHistoryOccurrence(input);
+}
+
+export function searchLocalPersistedHistory(
+  threadId: string,
+  query: string,
+  hostId?: string | null,
+): Promise<CodexPersistedHistorySearchResult> {
+  return getLocalConversationManagerForConversation(threadId, hostId).searchPersistedHistory(
+    threadId,
+    query,
+  );
 }
 
 export function setLocalConversationComposerIntent(

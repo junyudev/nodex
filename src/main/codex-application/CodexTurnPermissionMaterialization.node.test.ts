@@ -67,6 +67,7 @@ const permissionState: CodexPermissionState = {
 };
 
 const disabledFastMode: ConfigRequirementsReadResponse = {
+  supportsIndependentSpeedModes: false,
   requirements: {
     modelProvider: null,
     modelProviders: null,

@@ -1,3 +1,7 @@
+import {
+  codexTranscriptMutationItemKey,
+  type CodexTranscriptAcceptedMutationContext,
+} from "../codex-transcript-projection";
 import { produce, type Draft } from "immer";
 import {
   residentConversationTurnEntries,
@@ -24,13 +28,6 @@ export type CodexFrameTextDeltaNotification = Extract<
       | "item/plan/delta"
       | "item/reasoning/summaryTextDelta"
       | "item/reasoning/textDelta";
-  }
->;
-
-export type CodexReasoningSummaryPartAddedNotification = Extract<
-  ServerNotification,
-  {
-    method: "item/reasoning/summaryPartAdded";
   }
 >;
 
@@ -154,12 +151,6 @@ export function isCodexFrameTextDeltaNotification(
   );
 }
 
-export function isCodexReasoningSummaryPartAddedNotification(
-  notification: ServerNotification,
-): notification is CodexReasoningSummaryPartAddedNotification {
-  return notification.method === "item/reasoning/summaryPartAdded";
-}
-
 export function toCodexFrameTextDelta(
   notification: CodexFrameTextDeltaNotification,
   turnIdOverride?: string | null,
@@ -190,25 +181,6 @@ export function toCodexFrameTextDelta(
     itemId: notification.params.itemId,
     target,
     delta: notification.params.delta,
-  };
-}
-
-/**
- * The protocol announces a new reasoning-summary part before its text delta. Represent that
- * announcement as an empty dense append so subsequent text cannot require sparse padding.
- */
-export function toCodexReasoningSummaryPartAddedDelta(
-  notification: CodexReasoningSummaryPartAddedNotification,
-): CodexFrameTextDeltaUpdate {
-  return {
-    conversationId: notification.params.threadId,
-    turnId: notification.params.turnId,
-    itemId: notification.params.itemId,
-    target: {
-      type: "reasoningSummary",
-      summaryIndex: notification.params.summaryIndex,
-    },
-    delta: "",
   };
 }
 
@@ -296,7 +268,7 @@ export function reduceCodexFrameTextDeltaItems(
 export function mutateCodexConversationFrameTextDeltas(
   state: Draft<CodexCanonicalConversationState>,
   updates: readonly CodexFrameTextDeltaUpdate[],
-  context: { readonly now: () => number },
+  context: { readonly now: () => number } & CodexTranscriptAcceptedMutationContext,
 ): readonly CodexFrameTextDeltaOutcome[] {
   const outcomes: CodexFrameTextDeltaOutcome[] = [];
   for (const update of updates) {
@@ -340,16 +312,41 @@ export function mutateCodexConversationFrameTextDeltas(
     const result = reduceCodexFrameTextDeltaItems(turn.items, update);
     const item = turn.items[result.itemIndex];
     if (result.items !== turn.items && item) {
+      const key = codexTranscriptMutationItemKey(state, entry.address, item.id);
       if (item.type === "agentMessage" || item.type === "plan") {
+        const at = item.text?.length ?? 0;
         item.text = `${typeof item.text === "string" ? item.text : ""}${update.delta}`;
+        context.onAcceptedText?.({
+          type: "text",
+          key,
+          target: { field: "text" },
+          edits: [{ at, deleteCount: 0, insert: update.delta }],
+        });
       } else if (item.type === "reasoning") {
         const target = update.target;
         if (target.type === "reasoningSummary" || target.type === "reasoningContent") {
           const parts = target.type === "reasoningSummary" ? item.summary : item.content;
           const index =
             target.type === "reasoningSummary" ? target.summaryIndex : target.contentIndex;
+          const previousLength = parts.length;
+          const at = parts[index]?.length ?? 0;
           while (parts.length <= index) parts.push("");
           parts[index] = `${parts[index] ?? ""}${update.delta}`;
+          const field = target.type === "reasoningSummary" ? "summary" : "content";
+          if (parts.length > previousLength)
+            context.onAcceptedText?.({
+              type: "text-parts",
+              key,
+              field,
+              at: previousLength,
+              values: Array(parts.length - previousLength).fill(""),
+            });
+          context.onAcceptedText?.({
+            type: "text",
+            key,
+            target: { field, index },
+            edits: [{ at, deleteCount: 0, insert: update.delta }],
+          });
         }
       }
       changed = true;

@@ -4,9 +4,19 @@ import {
   useEffect,
   useImperativeHandle,
   useLayoutEffect,
+  useMemo,
   useRef,
 } from "react";
 import { baseKeymap } from "@tiptap/pm/commands";
+import type { CodexComposerPredictionResult } from "../../../../../shared/codex-composer-prediction";
+import {
+  acceptComposerPrediction,
+  composerPredictionPluginKey,
+  createComposerPredictionPlugin,
+  setComposerPrediction,
+  setComposerPredictionDocument,
+  type ComposerPredictionInteraction,
+} from "./composer-prediction-plugin";
 import {
   composerDictationPlugin,
   createComposerDictationEditor,
@@ -666,6 +676,8 @@ interface ComposerPromptEditorProps {
   onSuggestionStateChange?: (state: ComposerSuggestionState) => void;
   onSuggestionAction?: (action: ComposerSuggestionAction) => boolean;
   onIntrinsicContentWidthChange?: (widthPx: number) => void;
+  prediction?: CodexComposerPredictionResult | null;
+  onPredictionInteraction?: (interaction: ComposerPredictionInteraction) => void;
   "data-composer-prompt-frame"?: "true";
   className?: string;
 }
@@ -843,10 +855,10 @@ function getPromptDocEndSelection(doc: ProseMirrorNode) {
   return TextSelection.atEnd(doc);
 }
 
-function syncPromptMentionMetadata(
-  view: EditorView,
+function projectPromptMentionMetadata(
+  document: ProseMirrorNode,
   inventory: ComposerPromptMentionMetadataInventory,
-): void {
+): ProseMirrorNode {
   const skillsByPath = new Map(inventory.skills.map((skill) => [skill.path, skill] as const));
   const skillsByName = new Map(
     inventory.skills.map((skill) => [skill.name.toLocaleLowerCase(), skill] as const),
@@ -867,10 +879,10 @@ function syncPromptMentionMetadata(
       [plugin.displayName.toLocaleLowerCase(), plugin] as const,
     ]),
   );
-  let transaction = view.state.tr;
+  let transaction = EditorState.create({ doc: document }).tr;
   let changed = false;
 
-  view.state.doc.descendants((node, position) => {
+  document.descendants((node, position) => {
     if (node.type.name !== "mention") return true;
     const attrs = node.attrs as ComposerPromptMentionAttrs;
     let next: ComposerPromptMentionAttrs | null = null;
@@ -933,14 +945,25 @@ function syncPromptMentionMetadata(
     return true;
   });
 
-  if (changed) view.dispatch(transaction);
+  return changed ? transaction.doc : document;
 }
 
-function createPromptPlaceholderPlugin(placeholderRef: { current: string }): Plugin {
+function createPromptPlaceholderPlugin(
+  placeholderRef: { current: string },
+  disabled: () => boolean,
+): Plugin {
   return new Plugin({
     props: {
       decorations(state) {
         if (!isPromptDocEmpty(state.doc)) return null;
+        const prediction = composerPredictionPluginKey.getState(state);
+        if (
+          prediction &&
+          !prediction.hiddenForComposition &&
+          !disabled() &&
+          !readComposerSuggestionState(state).active
+        )
+          return null;
 
         const firstParagraph = state.doc.firstChild;
         if (!firstParagraph) return null;
@@ -960,6 +983,7 @@ function createPromptEditorState(
   value: string,
   placeholderRef: { current: string },
   allowSlashCommands = true,
+  predictionOptions: Parameters<typeof createComposerPredictionPlugin>[0],
 ): EditorState {
   const doc = buildPromptDoc(value);
   return EditorState.create({
@@ -973,9 +997,10 @@ function createPromptEditorState(
       history(),
       keymap({ "Mod-z": undo, "Shift-Mod-z": redo, "Mod-y": redo }),
       createComposerSuggestionPlugin({ allowSlashCommands }),
+      createComposerPredictionPlugin(predictionOptions),
       promptEditingKeymapPlugin,
       promptClipboardPlugin,
-      createPromptPlaceholderPlugin(placeholderRef),
+      createPromptPlaceholderPlugin(placeholderRef, predictionOptions.disabled),
     ],
   });
 }
@@ -998,6 +1023,8 @@ export const ComposerPromptEditor = forwardRef<
     onSuggestionStateChange,
     onSuggestionAction,
     onIntrinsicContentWidthChange,
+    prediction = null,
+    onPredictionInteraction,
     "data-composer-prompt-frame": dataComposerPromptFrame,
     className,
   },
@@ -1019,6 +1046,9 @@ export const ComposerPromptEditor = forwardRef<
   const compactRef = useRef(compact);
   const allowSlashCommandsRef = useRef(allowSlashCommands);
   const disabledRef = useRef(disabled);
+  const predictionRef = useRef(prediction);
+  const onPredictionInteractionRef = useRef(onPredictionInteraction);
+  const mentionInventoryRef = useRef<ComposerPromptMentionMetadataInventory | null>(null);
   valueRef.current = value;
   onChangeRef.current = onChange;
   onKeyDownRef.current = onKeyDown;
@@ -1032,6 +1062,25 @@ export const ComposerPromptEditor = forwardRef<
   compactRef.current = compact;
   allowSlashCommandsRef.current = allowSlashCommands;
   disabledRef.current = disabled;
+  predictionRef.current = prediction;
+  onPredictionInteractionRef.current = onPredictionInteraction;
+
+  const predictionOptions = useMemo(
+    () => ({
+      initialPrediction: () => predictionRef.current,
+      parsePromptText: (text: string) => {
+        const doc = buildPromptDoc(text);
+        return mentionInventoryRef.current
+          ? projectPromptMentionMetadata(doc, mentionInventoryRef.current)
+          : doc;
+      },
+      getText: readPromptDocText,
+      disabled: () => disabledRef.current,
+      onInteraction: (interaction: ComposerPredictionInteraction) =>
+        onPredictionInteractionRef.current?.(interaction),
+    }),
+    [],
+  );
 
   const emitSuggestionState = useCallback((view: EditorView | null) => {
     onSuggestionStateChangeRef.current?.(
@@ -1380,9 +1429,23 @@ export const ComposerPromptEditor = forwardRef<
         }
       },
       syncMentionMetadata: (inventory) => {
+        mentionInventoryRef.current = inventory;
         const view = viewRef.current;
         if (!view) return;
-        syncPromptMentionMetadata(view, inventory);
+        const doc = projectPromptMentionMetadata(view.state.doc, inventory);
+        const transaction = view.state.tr;
+        doc.descendants((node, position) => {
+          const previous = view.state.doc.nodeAt(position);
+          if (node.type.name === "mention" && previous && !node.sameMarkup(previous))
+            transaction.setNodeMarkup(position, undefined, node.attrs);
+        });
+        if (transaction.docChanged) view.dispatch(transaction);
+        const predictionState = composerPredictionPluginKey.getState(view.state);
+        if (predictionState)
+          setComposerPredictionDocument(
+            view,
+            projectPromptMentionMetadata(predictionState.doc, inventory),
+          );
       },
     }),
     [dispatchSuggestionMeta, replaceTextRange, setText],
@@ -1397,6 +1460,7 @@ export const ComposerPromptEditor = forwardRef<
         valueRef.current,
         placeholderRef,
         allowSlashCommandsRef.current,
+        predictionOptions,
       ),
       editable: () => !disabledRef.current,
       attributes: buildPromptEditorAttributes({
@@ -1405,7 +1469,9 @@ export const ComposerPromptEditor = forwardRef<
         compact: compactRef.current,
       }),
       handleKeyDown: (currentView, event) =>
-        handleSuggestionKeyDown(currentView, event) || onKeyDownRef.current(event),
+        handleSuggestionKeyDown(currentView, event) ||
+        acceptComposerPrediction(currentView, event) ||
+        onKeyDownRef.current(event),
       handlePaste: (_view, event) =>
         handleComposerPaste(event, onPasteFilesRef.current, onLargeTextPasteRef.current),
       dispatchTransaction(transaction) {
@@ -1438,6 +1504,7 @@ export const ComposerPromptEditor = forwardRef<
     dispatchSuggestionMeta,
     emitSuggestionState,
     handleSuggestionKeyDown,
+    predictionOptions,
     reportIntrinsicContentWidth,
   ]);
 
@@ -1448,7 +1515,9 @@ export const ComposerPromptEditor = forwardRef<
       editable: () => !disabled,
       attributes: buildPromptEditorAttributes({ placeholder, singleLine, compact }),
       handleKeyDown: (currentView, event) =>
-        handleSuggestionKeyDown(currentView, event) || onKeyDownRef.current(event),
+        handleSuggestionKeyDown(currentView, event) ||
+        acceptComposerPrediction(currentView, event) ||
+        onKeyDownRef.current(event),
       handlePaste: (_currentView, event) =>
         handleComposerPaste(event, onPasteFilesRef.current, onLargeTextPasteRef.current),
     });
@@ -1461,7 +1530,12 @@ export const ComposerPromptEditor = forwardRef<
     const currentValue = readPromptDocText(view.state.doc);
     if (currentValue !== value) {
       view.updateState(
-        createPromptEditorState(value, placeholderRef, allowSlashCommandsRef.current),
+        createPromptEditorState(
+          value,
+          placeholderRef,
+          allowSlashCommandsRef.current,
+          predictionOptions,
+        ),
       );
       emitSuggestionState(view);
       reportIntrinsicContentWidth();
@@ -1469,7 +1543,12 @@ export const ComposerPromptEditor = forwardRef<
     }
 
     view.dispatch(view.state.tr.setMeta("prompt-placeholder", placeholder));
-  }, [emitSuggestionState, placeholder, reportIntrinsicContentWidth, value]);
+  }, [emitSuggestionState, placeholder, predictionOptions, reportIntrinsicContentWidth, value]);
+
+  useLayoutEffect(() => {
+    const view = viewRef.current;
+    if (view) setComposerPrediction(view, prediction);
+  }, [prediction]);
 
   useEffect(() => {
     let active = true;

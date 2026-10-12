@@ -1,3 +1,9 @@
+import {
+  CodexComposerPrediction,
+  CodexComposerPredictionRequest,
+  CodexComposerPredictionClear,
+  CodexComposerPredictionHost,
+} from "../../codex-application/CodexComposerPrediction";
 import { CodexRendererSessionLaunch } from "../../codex-application/CodexRendererSessionLaunch";
 import { CodexConversationFork } from "../../codex-application/CodexConversationFork";
 import { encodeCodexNativeRequestFailure } from "../../../shared/codex-native-request-outcome";
@@ -52,9 +58,10 @@ import {
   type OpenDialogOptions,
 } from "electron";
 import { MainConfig } from "../../app/MainConfig";
+import { isDevelopmentFeatureEnabled } from "../../../shared/development-features";
 import { AgentImportRuntime } from "../../codex-application/AgentImportRuntime";
 import { CodexBackgroundProcesses } from "../../codex-application/CodexBackgroundProcesses";
-import { CodexPersistedHistorySearchRuntime } from "../../codex-application/CodexPersistedHistorySearchRuntime";
+import { CodexHistorySearchAdapter } from "../../codex-application/CodexHistorySearchAdapter";
 import { CodexConversationHistoryExport } from "../../codex-application/CodexConversationHistoryExport";
 import { CodexConversationResumeRuntime } from "../../codex-application/CodexConversationResumeRuntime";
 import { CodexFreshThreadLaunchRuntime } from "../../codex-application/CodexFreshThreadLaunchRuntime";
@@ -239,13 +246,14 @@ export const live = Layer.effectDiscard(
     const sidebarSync = yield* CodexSidebarSyncRuntime;
     const threadReadState = yield* CodexThreadReadState;
     const agentImport = yield* AgentImportRuntime;
-    const persistedHistorySearch = yield* CodexPersistedHistorySearchRuntime;
+    const historySearch = yield* CodexHistorySearchAdapter;
     const conversationHistoryExport = yield* CodexConversationHistoryExport;
     const conversationResume = yield* CodexConversationResumeRuntime;
     const nativeFork = yield* CodexConversationFork;
     const queuedFollowUps = yield* CodexQueuedFollowUps;
     const freshThreadLaunch = yield* CodexFreshThreadLaunchRuntime;
     const structuredThreadTitle = yield* CodexStructuredThreadTitle;
+    const composerPrediction = yield* CodexComposerPrediction;
     const backgroundProcesses = yield* CodexBackgroundProcesses;
     const subagentDirectory = yield* CodexSubagentDirectory;
     const serverRequestResponses = yield* CodexServerRequestResponses;
@@ -1437,6 +1445,30 @@ export const live = Layer.effectDiscard(
           ),
         ),
     );
+    registerEffectQuery("codex:composer-prediction:availability", (_event, hostId) =>
+      Schema.decodeUnknownEffect(CodexComposerPredictionHost)(hostId).pipe(
+        Effect.flatMap(composerPrediction.availability),
+        Effect.mapError(
+          (cause) => new CodexIpcError({ operation: "composer-prediction-availability", cause }),
+        ),
+      ),
+    );
+    registerEffectControl("codex:composer-prediction:request", (_event, input) =>
+      Schema.decodeUnknownEffect(CodexComposerPredictionRequest)(input).pipe(
+        Effect.flatMap(composerPrediction.request),
+        Effect.mapError(
+          (cause) => new CodexIpcError({ operation: "composer-prediction-request", cause }),
+        ),
+      ),
+    );
+    registerEffectControl("codex:composer-prediction:clear", (_event, input) =>
+      Schema.decodeUnknownEffect(CodexComposerPredictionClear)(input).pipe(
+        Effect.flatMap(composerPrediction.clear),
+        Effect.mapError(
+          (cause) => new CodexIpcError({ operation: "composer-prediction-clear", cause }),
+        ),
+      ),
+    );
     registerEffectControl("codex:app-server:host-context", (_event, hostId) =>
       Effect.gen(function* () {
         const manager = yield* nativeManagers.get(hostId);
@@ -1458,6 +1490,18 @@ export const live = Layer.effectDiscard(
           sourceEpoch: capability.sourceEpoch,
           supportsPaginatedHistory: capability.flags.paginatedHistory,
           supportsTurnApprovalsReviewer: capability.flags.turnApprovalsReviewer,
+          supportsSearchOccurrences: capability.flags.searchOccurrences,
+          appServerVersion: capability.version,
+          supportsThreadTimeline: capability.flags.threadTimeline,
+          supportsThreadItemAnchors: capability.flags.threadItemAnchors,
+          historyPolicy: {
+            source: "development-features",
+            timeline: isDevelopmentFeatureEnabled("thread-timeline-history", config.environment),
+            activeEviction: isDevelopmentFeatureEnabled(
+              "active-history-eviction",
+              config.environment,
+            ),
+          },
           supportsThreadRevert: capability.flags.threadRevert,
           supportsThreadQueue: capability.flags.threadQueue,
           accountContext: manager.context,
@@ -2064,8 +2108,8 @@ export const live = Layer.effectDiscard(
     );
 
     registerEffectQuery("codex:thread:history-search", (_, threadId, query) =>
-      persistedHistorySearch
-        .search(threadId, query)
+      historySearch
+        .search({ threadId, searchTerm: query })
         .pipe(
           Effect.mapError(
             (cause) => new CodexIpcError({ operation: "codex:thread:history-search", cause }),

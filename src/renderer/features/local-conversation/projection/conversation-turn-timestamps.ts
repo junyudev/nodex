@@ -102,7 +102,9 @@ function turnHasAssistantMessage(turn: CodexConversationTurn): boolean {
   );
 }
 
-function buildTurnTimestampMarkers(turn: CodexConversationTurn): ConversationTimestampMarker[] {
+export function buildTurnTimestampMarkers(
+  turn: CodexConversationTurn,
+): ConversationTimestampMarker[] {
   const markers: ConversationTimestampMarker[] = [];
   if (turnHasPrimaryUserMessage(turn)) {
     markers.push({ role: "user", sentAtMs: turn.turnStartedAtMs });

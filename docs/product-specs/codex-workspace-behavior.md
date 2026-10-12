@@ -165,6 +165,15 @@ next refresh remains eligible to reconcile canonical state. On a cold start,
 where no successful snapshot exists yet, a Core failure stays an explicit
 retryable failure; it is never converted into a successful empty sidebar.
 
+Native catalog synchronization reads metadata pages independently of resident transcripts.
+Background pages wait one second; a foreground catalog caller can promote a queued page
+without issuing it again. Bounded scan windows retain their opaque cursor when page, result,
+byte or elapsed-time budgets are spent. After a complete scan, refreshes stop below the saved
+source-update watermark and recheck the moving head against stable ID/timestamp overlap.
+Only a completed full scan can reconcile absent Core Chats; incremental reads do not infer
+deletion. Archive, restore, deletion and reconnection request full reconciliation. Temporary
+descendant metadata remains bounded while its Profile-owned ancestry is established.
+
 ## Browser, Computer Use, Files, and Terminal
 
 Browser pages, Computer Use, filesystem reads, and PTYs are Main-owned runtimes

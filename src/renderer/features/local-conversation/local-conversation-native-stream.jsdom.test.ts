@@ -1,5 +1,6 @@
 import { conversationFollowerRequest } from "../../../shared/codex-thread-follower-request";
-import { produce } from "immer";
+import { produce, produceWithPatches } from "immer";
+import { createCodexConversationHistoryTurnItemsRef } from "../../../shared/codex-conversation-history-page";
 import { replaceCanonicalHistoryDraft } from "../../../shared/codex-conversation-state/codex-canonical-history-loader";
 import { createCodexHistoryBoundaryRef } from "../../../shared/codex-conversation-state/codex-history-topology";
 import { afterEach, expect, test, vi } from "vite-plus/test";
@@ -55,6 +56,8 @@ vi.mock("./local-conversation-deps", () => ({
   subscribeCodexHostMessages: () => () => {},
   subscribeCodexRendererClientRequests: () => () => {},
   runConversationOperation: async (channel: string, ...args: unknown[]) => {
+    if (channel === "codex:composer-prediction:availability")
+      return { enabled: false, source: null, scope: fixture.hostId };
     if (channel === "codex:thread:native-fork:prepare")
       return {
         receiptId: "fork",
@@ -147,6 +150,8 @@ vi.mock("./local-conversation-deps", () => ({
         sourceEpoch: fixture.sourceEpoch ?? `native-${fixture.generation}`,
         supportsPaginatedHistory: true,
         supportsTurnApprovalsReviewer: false,
+        supportsSearchOccurrences: false,
+        appServerVersion: null,
         accountContext: {
           identity: { kind: "chatgpt", accountId: fixture.accountId, userId: "user" },
           executionHostKey: fixture.hostId,
@@ -810,6 +815,138 @@ test("a followed snapshot arriving during preparation avoids a second native res
   }
 });
 
+test("compact history metadata survives text changes and item-ref admission rejects retired topology", async () => {
+  const message = {
+    type: "agentMessage" as const,
+    id: "retained",
+    text: "answer",
+    phase: null,
+    memoryCitation: null,
+    delivery: null,
+    questions: null,
+  };
+  const { owner, follower, threadId, turnId } = await connectedManagers([message]);
+  const canonical = owner.readConversation(threadId)!.canonicalState!;
+  const released = produce(canonical, (draft) => {
+    replaceCanonicalHistoryDraft(
+      draft,
+      residentConversationTurns(canonical).map((turn) => ({
+        ...turn,
+        itemsPagination: {
+          itemsView: "full" as const,
+          source: "ordinary" as const,
+          olderCursor: null,
+          olderItemId: message.id,
+          evicted: true,
+          isLoadingOlder: false,
+          hasLoadedOldest: false,
+        },
+      })),
+      true,
+    );
+  });
+  const snapshot = (state: typeof canonical, revision: number) =>
+    follower.receiveCoordination("threadStreamStateChanged", {
+      sourceClientId: "owner",
+      params: {
+        hostId: "local",
+        conversationId: threadId,
+        change: { type: "snapshot", revision, conversationState: state },
+      },
+    });
+  await act(async () => {
+    snapshot(released, 10);
+    await Promise.resolve();
+  });
+  const before = follower.readConversation(threadId)!;
+  expect(before.conversationEntityGeneration).toBe(0);
+  expect(before.historyTopologyGeneration).toBe(released.turnHistory!.history.generation);
+  expect(before.historyRows?.some((row) => row.kind === "content")).toBe(true);
+  expect(before.turnPagination?.loadedTurnCount).toBe(1);
+  const pagination = before.turnItemsPaginationById![turnId]!;
+  const ref = createCodexConversationHistoryTurnItemsRef({
+    turnId,
+    expectedTopologyGeneration: before.historyTopologyGeneration!,
+    pagination,
+  })!;
+  const request = {
+    threadId,
+    expectedConversationGeneration: before.conversationEntityGeneration!,
+    expectedHistoryMutationRevision: before.historyMutationRevision!,
+    target: { kind: "turnItems" as const, items: ref },
+  };
+  const [textState, patches] = produceWithPatches(released, (draft) => {
+    const turn =
+      draft.turnHistory!.history.entitiesByKey[
+        Object.keys(draft.turnHistory!.history.entitiesByKey)[0]!
+      ]!;
+    const item = turn.items.find((item) => item.id === message.id);
+    if (item?.type === "agentMessage") item.text += " updated";
+  });
+  await act(async () => {
+    follower.receiveCoordination("threadStreamStateChanged", {
+      sourceClientId: "owner",
+      params: {
+        hostId: "local",
+        conversationId: threadId,
+        change: { type: "patches", revision: 11, patches },
+      },
+    });
+    await Promise.resolve();
+  });
+  const text = follower.readConversation(threadId)!;
+  expect(text.historyRows).toBe(before.historyRows);
+  expect(text.turnPagination).toBe(before.turnPagination);
+  expect(text.turnItemsPaginationById).toBe(before.turnItemsPaginationById);
+  expect(text.historyMutationRevision).toBe(before.historyMutationRevision);
+  const retired = produce(textState, (draft) => {
+    draft.turnHistory!.history.generation += 1;
+  });
+  await act(async () => {
+    snapshot(retired, 20);
+    await Promise.resolve();
+  });
+  const readsBefore = fixture.calls.filter((call) => call.method === "thread/items/list").length;
+  expect(await follower.requestHistoryPage(request)).toEqual({ status: "stale" });
+  expect(fixture.calls.filter((call) => call.method === "thread/items/list")).toHaveLength(
+    readsBefore,
+  );
+  const current = follower.readConversation(threadId)!;
+  const currentRef = createCodexConversationHistoryTurnItemsRef({
+    turnId,
+    expectedTopologyGeneration: current.historyTopologyGeneration!,
+    pagination: current.turnItemsPaginationById![turnId]!,
+  })!;
+  fixture.nativeRequest = async (method) => {
+    if (method !== "thread/items/list") throw new Error("Unexpected recovery method " + method);
+    return {
+      data: [
+        {
+          turnId,
+          item: { ...message, id: "restored", text: "prefix" },
+          startedAtMs: 1,
+          completedAtMs: 2,
+        },
+      ],
+      nextCursor: null,
+      backwardsCursor: null,
+    };
+  };
+  expect(
+    await follower.requestHistoryPage({
+      ...request,
+      target: { kind: "turnItems", items: currentRef },
+    }),
+  ).toEqual({ status: "applied" });
+  expect(fixture.calls.at(-1)?.params).toMatchObject({
+    cursor: { type: "item", itemId: message.id },
+  });
+  expect(follower.readConversation(threadId)!.turnItemsPaginationById![turnId]).toMatchObject({
+    evicted: false,
+    hasLoadedOldest: true,
+  });
+});
+
 test("a follower loads and coalesces its resident history page without changing its owner", async () => {
   const { owner, follower, threadId } = await connectedManagers();
   const ownerState = owner.readConversation(threadId)!.canonicalState!;
@@ -833,8 +970,9 @@ test("a follower loads and coalesces its resident history page without changing 
     throw new Error("Expected an older history boundary");
   const request = {
     threadId,
-    expectedConversationGeneration: 1,
-    expectedHistoryMutationRevision: 0,
+    expectedConversationGeneration:
+      follower.readConversation(threadId)!.conversationEntityGeneration!,
+    expectedHistoryMutationRevision: follower.readConversation(threadId)!.historyMutationRevision!,
     target: {
       kind: "turnBoundary" as const,
       boundary: createCodexHistoryBoundaryRef(
@@ -1496,15 +1634,16 @@ test.each(["ancestor", "different root"])(
   },
 );
 
-test("paginated resume uses its returned cursor and a later empty tail preserves resident history", async () => {
+test("successful early tail hydration supersedes the resume cursor and a later empty tail preserves resident history", async () => {
   const { owner, threadId } = await connectedManagers();
   expect(fixture.calls.find((call) => call.method === "thread/turns/list")?.params).toMatchObject({
     threadId,
-    cursor: "resume-tail",
+    cursor: null,
     limit: 5,
     sortDirection: "desc",
     itemsView: "notLoaded",
   });
+  expect(fixture.calls.filter((call) => call.method === "thread/turns/list")).toHaveLength(1);
   const before = residentConversationTurns(owner.readConversation(threadId)!.canonicalState!);
   expect(before.length).toBeGreaterThan(0);
   fixture.response = { ...fixture.response!, turnsBackwardsCursor: null };
@@ -1518,6 +1657,53 @@ test("paginated resume uses its returned cursor and a later empty tail preserves
       (turn) => turn.turnId,
     ),
   ).toEqual(before.map((turn) => turn.turnId));
+});
+
+test("failed early hydration falls back to the formal resume pagination cursor", async () => {
+  const { owner, follower, threadId } = await connectedManagers();
+  owner.destroy();
+  follower.destroy();
+  fixture.ownerId = null;
+  fixture.follower = null;
+  const manager = (fixture.owner = new Manager("local"));
+  fixture.calls.length = 0;
+  fixture.nativeRequest = async (method, params) => {
+    if (method === "thread/read") return { thread: { ...fixture.response!.thread, turns: [] } };
+    if (method === "thread/resume") return fixture.response;
+    if (method === "thread/goal/get") return { goal: null };
+    if (method === "thread/turns/list") {
+      const { cursor } = params as { cursor: string | null };
+      if (cursor === null) throw new Error("Early history unavailable");
+      return {
+        data: [...fixture.response!.thread.turns].reverse(),
+        nextCursor: null,
+        backwardsCursor: null,
+      };
+    }
+    if (method === "thread/items/list") {
+      const { turnId } = params as { turnId: string };
+      return {
+        data: [...(fixture.response!.thread.turns.find((turn) => turn.id === turnId)?.items ?? [])]
+          .reverse()
+          .map((item) => ({ turnId, item })),
+        nextCursor: null,
+        backwardsCursor: null,
+      };
+    }
+    throw new Error("Unexpected resume request " + method);
+  };
+  await manager.requestThreadStreamResume(threadId);
+  expect(
+    fixture.calls
+      .filter((call) => call.method === "thread/turns/list")
+      .map((call) => (call.params as { cursor: string | null }).cursor),
+  ).toEqual([null, "resume-tail"]);
+  expect(manager.readConversation(threadId)?.resumeState).toBe("resumed");
+  expect(
+    residentConversationTurns(manager.readConversation(threadId)?.canonicalState).map(
+      (turn) => turn.turnId,
+    ),
+  ).toEqual(fixture.response!.thread.turns.map((turn) => turn.id));
 });
 
 test("durable resume merges a complete page with inline turns without reopening completed work", async () => {

@@ -10,10 +10,8 @@ import type { CodexConversationReplayEvent } from "./codex-conversation-replay";
 import type { CodexItemStatus } from "../types";
 import {
   isCodexFrameTextDeltaNotification,
-  isCodexReasoningSummaryPartAddedNotification,
   mutateCodexConversationFrameTextDeltas,
   toCodexFrameTextDelta,
-  toCodexReasoningSummaryPartAddedDelta,
 } from "./codex-frame-text-delta";
 import {
   isCodexCommandOutputNotification,
@@ -569,6 +567,7 @@ function mutateItemStarted(
   if (state.id !== threadId) return;
   const turn = resolveLifecycleTurnDraft(state, notification, context);
   if (!turn) return;
+  (turn.completedItemIds ??= {})[item.id] = false;
   turn.hookRuns ??= [];
   const hasMatchingPendingSteer =
     item.type === "userMessage" &&
@@ -632,6 +631,7 @@ function mutateItemCompleted(
   if (state.id !== threadId) return;
   const turn = resolveLifecycleTurnDraft(state, notification, context);
   if (!turn) return;
+  (turn.completedItemIds ??= {})[item.id] = true;
   turn.hookRuns ??= [];
   enqueueCollabHydrationEffect(item, effects);
   const completedItem =
@@ -685,14 +685,8 @@ export function mutateCodexConversationEvent(
     return effects;
   }
 
-  if (isCodexReasoningSummaryPartAddedNotification(event.notification)) {
-    mutateCodexConversationFrameTextDeltas(
-      state,
-      [toCodexReasoningSummaryPartAddedDelta(event.notification)],
-      context,
-    );
-    return effects;
-  }
+  // Part announcements carry no text; the following text delta materializes indexed slots.
+  if (event.notification.method === "item/reasoning/summaryPartAdded") return effects;
 
   if (isCodexCommandOutputNotification(event.notification)) {
     mutateCodexConversationCommandOutput(state, toCodexCommandOutputUpdate(event.notification));

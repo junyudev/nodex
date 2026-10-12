@@ -77,7 +77,7 @@ export function buildAgentActivityV2CorpusThread(
     agentRole: null,
     gitInfo: null,
     name: "Agent activity v2 protocol payload corpus",
-    turns: [{
+    turns: [{ rootTurnId: null,
       id: AGENT_ACTIVITY_V2_CORPUS_TURN_ID,
       items: [...items],
       itemsView: "full",

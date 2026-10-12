@@ -76,6 +76,10 @@ const capability = {
     searchOccurrences: true,
     ephemeralFork: false,
     multiAgentV2Protocol: false,
+    threadTimeline: false,
+    threadItemAnchors: false,
+    experimentalPredictionForkMode: false,
+    mcpApplicationNetworkPolicy: false,
     sideConversation: false,
     subagentAncestorFilter: false,
     threadRevert: false,
@@ -734,6 +738,7 @@ it.effect("fills a missing local Automation archive side through bounded history
           Effect.succeed({
             turns: [
               {
+                rootTurnId: null,
                 id: "turn-latest",
                 items: [],
                 itemsView: "notLoaded",
