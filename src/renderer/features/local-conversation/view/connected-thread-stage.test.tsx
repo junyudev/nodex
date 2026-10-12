@@ -4,7 +4,7 @@ import { buildAgentActivityV2CorpusThread } from "../../../../shared/codex-conve
 import { createCommandKeymapState } from "../../../../shared/command-keybindings";
 import { useState, type ReactNode } from "react";
 import { beforeEach, describe, expect, vi, test } from "vite-plus/test";
-import { act, fireEvent, waitFor } from "@testing-library/react";
+import { act, fireEvent, waitFor, within } from "@testing-library/react";
 import { NodexTooltipProvider as TooltipProvider } from "../../../components/ui/tooltip";
 import { installAsyncRequestAnimationFrame, installWindowApi } from "../../../test/browser-globals";
 import { render, settleAsyncRender, textContent } from "../../../test/dom";
@@ -34,6 +34,10 @@ import type {
 import { ConversationRuntimeContext, type ConversationRuntime } from "../conversation-runtime";
 import type { RightPanelComposerOverlayVisibility } from "./right-panel-composer-overlay";
 import { sessionFirstSubmissionOwner } from "../../conversation-launch/session-first-submission-owner";
+import { CodexConversationEntityDocument } from "../../../../shared/codex-conversation-entity-document";
+import { createCodexCanonicalHydratedConversationState } from "../../../../shared/codex-conversation-state/codex-conversation-state";
+import { mutateCodexConversationFrameTextDeltas } from "../../../../shared/codex-conversation-state/codex-frame-text-delta";
+import type { CodexTranscriptTextChange } from "../../../../shared/codex-transcript-projection";
 
 let invokeCalls: Array<{
   channel: string;
@@ -537,6 +541,7 @@ async function renderStage(
     backgroundAgentDetail?: boolean;
     routeActive?: boolean;
     rightPanelComposerOverlayEnabled?: boolean;
+    rightPanelComposerOverlayTarget?: HTMLElement;
     rightPanelComposerOverlayVisibility?: RightPanelComposerOverlayVisibility;
     threadBodyVisible?: boolean;
     runtime?: ConversationRuntime;
@@ -581,6 +586,7 @@ async function renderStage(
                 backgroundAgentDetail={options.backgroundAgentDetail === true}
                 routeActive={options.routeActive}
                 rightPanelComposerOverlayEnabled={options.rightPanelComposerOverlayEnabled}
+                rightPanelComposerOverlayTarget={options.rightPanelComposerOverlayTarget}
                 rightPanelComposerOverlayVisibility={options.rightPanelComposerOverlayVisibility}
                 threadBodyVisible={options.threadBodyVisible}
                 provider={options.provider}
@@ -913,6 +919,160 @@ async function renderNewThreadHome(overrides?: {
 }
 
 describe("ConnectedThreadStage archived resume behavior", () => {
+  test("a steady text stream does not rebuild body chrome across 5000 resident Turns", async () => {
+    installAsyncRequestAnimationFrame();
+    const bodyModule = await import("../projection/build-thread-body-model");
+    const buildBody = vi.spyOn(bodyModule, "buildThreadBodyModel");
+    const normalizedModule = await import("../normalized-transcript-selectors");
+    const timelineModule = await import("../projection/normalized-timeline-entries");
+    const renderModelModule = await import("../projection/build-turn-render-model");
+    const selectEntries = vi.spyOn(normalizedModule, "selectNormalizedConversationTurnEntries");
+    const projectTimeline = vi.spyOn(timelineModule, "projectNormalizedTimelineEntries");
+    const selectRenderModel = vi.spyOn(renderModelModule, "selectTurnRenderModel");
+    const view = await renderStage(buildThreadSummary(false), {
+      rightPanelComposerOverlayEnabled: true,
+      rightPanelComposerOverlayTarget: document.body,
+    });
+    const manager = coordination.getManager!("local");
+    const nativeThread = {
+      ...buildAgentActivityV2CorpusThread([]),
+      id: "thread_active",
+      cwd: "/tmp/project",
+      historyMode: "paginated" as const,
+      cliVersion: "0.162.0-alpha.17.2",
+      turns: Array.from({ length: 5000 }, (_, index) => ({
+        id: `resident-${index}`,
+        rootTurnId: null,
+        items: [{ type: "plan" as const, id: `plan-${index}`, text: `Plan ${index}` }],
+        itemsView: "full" as const,
+        status: index === 4999 ? ("inProgress" as const) : ("completed" as const),
+        error: null,
+        startedAt: index + 1,
+        completedAt: index === 4999 ? null : index + 2,
+        durationMs: index === 4999 ? null : 1000,
+      })),
+    };
+    const canonical = createCodexCanonicalHydratedConversationState(nativeThread, {
+      hostId: "local",
+      model: "gpt-test-fixture",
+      reasoningEffort: "high",
+      cwd: "/tmp/project",
+      approvalPolicy: "on-request",
+      approvalsReviewer: "user",
+      sandboxPolicy: { type: "readOnly", networkAccess: false },
+      activePermissionProfile: null,
+      runtimeWorkspaceRoots: ["/tmp/project"],
+    });
+    try {
+      await act(async () => {
+        manager.receiveCoordination("threadStreamStateChanged", {
+          sourceClientId: "performance-owner",
+          params: {
+            hostId: "local",
+            conversationId: "thread_active",
+            change: { type: "snapshot", revision: 100, conversationState: canonical },
+          },
+        });
+        await Promise.resolve();
+      });
+      await waitFor(() =>
+        expect(
+          manager
+            .getTranscriptReadOwner("thread_active")
+            .readItem("turn:resident-4999", "plan-4999"),
+        ).toMatchObject({ text: "Plan 4999" }),
+      );
+      const preview = await waitFor(() => {
+        const node = document.querySelector<HTMLElement>("[data-right-panel-latest-turn-preview]");
+        expect(node).not.toBeNull();
+        return node!;
+      });
+      await act(async () => {
+        fireEvent.click(within(preview).getByRole("button"));
+        await Promise.resolve();
+      });
+      await waitFor(() => expect(within(preview).getByText("Plan 4999")).toBeDefined());
+      const planLeaf = within(preview).getByText("Plan 4999");
+      const probeOwner = manager.getTranscriptReadOwner("thread_active");
+      const originalReadTurn = probeOwner.readTurn.bind(probeOwner);
+      let firstFullReadStack: string | undefined;
+      const readTurn = vi.spyOn(probeOwner, "readTurn").mockImplementation((entity) => {
+        firstFullReadStack ??= new Error("First full Turn read").stack;
+        return originalReadTurn(entity);
+      });
+      buildBody.mockClear();
+      selectEntries.mockClear();
+      projectTimeline.mockClear();
+      selectRenderModel.mockClear();
+      for (let index = 0; index < 3; index += 1) {
+        const before = manager.readConversation("thread_active")?.canonicalState;
+        if (!before) throw new Error("Expected the seeded canonical document");
+        const acceptedTextChanges: CodexTranscriptTextChange[] = [];
+        const mutation = new CodexConversationEntityDocument()
+          .withCanonicalState(before)
+          .mutate((draft) => {
+            mutateCodexConversationFrameTextDeltas(
+              draft,
+              [
+                {
+                  conversationId: "thread_active",
+                  turnId: "resident-4999",
+                  itemId: "plan-4999",
+                  target: { type: "plan" },
+                  delta: " next",
+                },
+              ],
+              { now: () => 1, onAcceptedText: (change) => acceptedTextChanges.push(change) },
+            );
+          });
+        if (!mutation) throw new Error("Expected an accepted text mutation");
+        await act(async () => {
+          manager.receiveCoordination("threadStreamStateChanged", {
+            sourceClientId: "performance-owner",
+            params: {
+              hostId: "local",
+              conversationId: "thread_active",
+              change: {
+                type: "patch",
+                baseRevision: 100 + index,
+                revision: 101 + index,
+                patches: mutation.patches,
+                acceptedTextChanges,
+              },
+            },
+          });
+          await Promise.resolve();
+        });
+        await waitFor(() =>
+          expect(
+            manager
+              .getTranscriptReadOwner("thread_active")
+              .readItem("turn:resident-4999", "plan-4999"),
+          ).toMatchObject({ text: `Plan 4999${" next".repeat(index + 1)}` }),
+        );
+      }
+      await waitFor(() =>
+        expect(within(preview).getByText("Plan 4999 next next next")).toBeDefined(),
+      );
+      expect(buildBody).not.toHaveBeenCalled();
+      expect(selectEntries).not.toHaveBeenCalled();
+      expect(projectTimeline).not.toHaveBeenCalled();
+      expect(selectRenderModel).not.toHaveBeenCalled();
+      expect(readTurn.mock.calls.length, firstFullReadStack).toBe(0);
+      expect(within(preview).getByText("Plan 4999 next next next")).toBe(planLeaf);
+      readTurn.mockRestore();
+    } finally {
+      await act(async () => {
+        view.unmount();
+        await Promise.resolve();
+      });
+      buildBody.mockRestore();
+      selectEntries.mockRestore();
+      projectTimeline.mockRestore();
+      selectRenderModel.mockRestore();
+    }
+  });
+
   test.each(["project_1", null])(
     "native task summary opens the selected observation without Codex hydration (project=%s)",
     async (projectId) => {

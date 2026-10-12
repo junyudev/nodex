@@ -35,31 +35,76 @@ export interface LocalConversationHistoryGapRequestCoordinator {
   ) => Promise<void>;
 }
 
-/** Failed or stale cursors stay stopped until the owning boundary changes or the view reopens. */
+export interface LocalConversationHistoryRequestGateState {
+  readonly failed: ReadonlySet<string>;
+  readonly loading: ReadonlySet<string>;
+}
+
+/** A current failed item boundary retries explicitly; obsolete or exhausted cursors remain stopped. */
 export function createLocalConversationHistoryRequestGate() {
   const active = new Set<string>();
   const stopped = new Set<string>();
+  const failed = new Set<string>();
+  const listeners = new Set<() => void>();
+  let retained: ReadonlySet<string> | null = null;
+  let state: LocalConversationHistoryRequestGateState = { failed: new Set(), loading: new Set() };
+  const isCurrent = (key: string) => retained === null || retained.has(key);
+  const publish = () => {
+    const loading = new Set([...active].filter(isCurrent));
+    if (
+      loading.size === state.loading.size &&
+      [...loading].every((key) => state.loading.has(key)) &&
+      failed.size === state.failed.size &&
+      [...failed].every((key) => state.failed.has(key))
+    )
+      return;
+    state = { failed: new Set(failed), loading };
+    for (const listener of listeners) listener();
+  };
+  const request = (key: string, load: () => Promise<unknown>) => {
+    if (!isCurrent(key) || active.has(key) || stopped.has(key)) return false;
+    active.add(key);
+    publish();
+    const fail = () => {
+      active.delete(key);
+      if (isCurrent(key)) {
+        stopped.add(key);
+        failed.add(key);
+      }
+      publish();
+    };
+    try {
+      void load().then((result) => {
+        active.delete(key);
+        if (result === "stale" || result === "stop") stopped.add(key);
+        publish();
+      }, fail);
+    } catch {
+      fail();
+    }
+    return true;
+  };
   return {
     unavailableKeys: () => new Set([...active, ...stopped]),
-    retain: (keys: ReadonlySet<string>) => {
-      for (const key of stopped) if (!keys.has(key)) stopped.delete(key);
-    },
-    request: (key: string, load: () => Promise<unknown>) => {
-      if (active.has(key) || stopped.has(key)) return false;
-      active.add(key);
-      const fail = () => {
-        active.delete(key);
-        stopped.add(key);
+    subscribe: (listener: () => void) => {
+      listeners.add(listener);
+      return () => {
+        listeners.delete(listener);
       };
-      try {
-        void load().then((result) => {
-          active.delete(key);
-          if (result === "stale" || result === "stop") stopped.add(key);
-        }, fail);
-      } catch {
-        fail();
-      }
-      return true;
+    },
+    readState: () => state,
+    retain: (keys: ReadonlySet<string>) => {
+      retained = new Set(keys);
+      for (const key of stopped) if (!keys.has(key)) stopped.delete(key);
+      for (const key of failed) if (!keys.has(key)) failed.delete(key);
+      publish();
+    },
+    request,
+    retry: (key: string, load: () => Promise<unknown>) => {
+      if (!isCurrent(key) || !failed.has(key)) return false;
+      failed.delete(key);
+      stopped.delete(key);
+      return request(key, load);
     },
   };
 }

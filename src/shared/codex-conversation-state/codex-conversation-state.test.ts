@@ -1389,6 +1389,59 @@ test("resume overlap closes reconnect using the resident Turn pagination anchor"
   expect(merged.items.map((item) => item.id)).toEqual(["snapshot-stop", "latest"]);
 });
 
+describe.each(["ordinary", "timeline"] as const)(
+  "incoming timeline pagination after %s history",
+  (source) => {
+    test.each([
+      { existingComplete: false, resume: false, complete: false },
+      { existingComplete: true, resume: false, complete: true },
+      { existingComplete: false, resume: true, complete: false },
+      { existingComplete: true, resume: true, complete: false },
+    ])(
+      "keeps completeness=$complete for existing=$existingComplete and resume=$resume",
+      ({ existingComplete, resume, complete }) => {
+        const template = buildAgentActivityV2CorpusThread([]).turns[0]!;
+        const base = hydrateCanonicalFixtureTurns([template]).turns[0]!;
+        const existing = {
+          ...base,
+          itemsPagination: {
+            source,
+            olderCursor: "ordinary-item-cursor",
+            isLoadingOlder: false,
+            hasLoadedOldest: existingComplete,
+            itemsView: "summary" as const,
+            newestSnapshotItemId: "resident",
+            reconnect: {
+              beforeItemId: "resident",
+              stopItemId: "stop",
+              olderCursorAfterReconnect: "old-item-cursor",
+            },
+          },
+        };
+        const incoming = {
+          ...base,
+          itemsPagination: {
+            source: "timeline" as const,
+            olderCursor: null,
+            isLoadingOlder: false,
+            hasLoadedOldest: false,
+            itemsView: "summary" as const,
+            newestSnapshotItemId: "timeline-item",
+          },
+        };
+        const result = mergeCodexCanonicalTurnState(existing, incoming, {
+          isResumeSnapshot: resume,
+        });
+        expect(result.itemsPagination).toEqual({
+          ...incoming.itemsPagination,
+          hasLoadedOldest: complete,
+          reconnect: undefined,
+        });
+      },
+    );
+  },
+);
+
 test("merges per-assistant starts without substituting a turn completion time", () => {
   const template = buildAgentActivityV2CorpusThread([]).turns[0]!;
   const existing = hydrateCanonicalFixtureTurns([{ ...template, startedAt: 1, completedAt: 9 }])

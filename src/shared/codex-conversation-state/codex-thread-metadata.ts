@@ -12,10 +12,11 @@ import type {
   ThreadStatus,
   ThreadTokenUsage,
 } from "@nodex/codex-app-server-protocol/v2";
-import type {
-  CodexCanonicalConversationState,
-  CodexCanonicalHydratedThreadSettings,
-  CodexCanonicalThreadSettings,
+import {
+  usesCodexCanonicalVoiceHistory,
+  type CodexCanonicalConversationState,
+  type CodexCanonicalHydratedThreadSettings,
+  type CodexCanonicalThreadSettings,
 } from "./codex-conversation-state";
 import { normalizeCodexServiceTier } from "../codex-service-tier";
 import { projectCodexMarkdownLabel } from "../codex-markdown-text";
@@ -61,6 +62,7 @@ export function mutateCodexConversationThreadStarted(
     source: thread.source,
     agentNickname: thread.agentNickname,
     historyMode: thread.historyMode,
+    canonicalVoiceHistory: usesCodexCanonicalVoiceHistory(thread),
     threadRuntimeStatus: thread.status,
     forkedFromId: thread.forkedFromId,
     modelProvider: thread.modelProvider,
@@ -413,7 +415,10 @@ export function mutateCodexConversationThreadMetadata(
   readMetadata: (threadId: string) => Thread | null,
 ): void {
   const metadata = readMetadata(threadId);
-  if (state.id === threadId && metadata !== null) state.agentNickname = metadata.agentNickname;
+  if (state.id === threadId && metadata !== null) {
+    state.agentNickname = metadata.agentNickname;
+    state.canonicalVoiceHistory = usesCodexCanonicalVoiceHistory(metadata);
+  }
   for (const { address } of residentConversationTurnEntries(state)) {
     const turn = conversationTurnDraft(state, address);
     if (!turn) continue;

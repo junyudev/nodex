@@ -112,6 +112,56 @@ function fixture(
 }
 
 describe("canonical timeline history page", () => {
+  test("a qualified native root retains and installs a realtime-only history page", async () => {
+    const qualified = createCodexCanonicalHydratedConversationState(
+      {
+        ...buildAgentActivityV2CorpusThread([]),
+        id: "thread",
+        turns: [],
+        cliVersion: "0.162.0-alpha.17.2",
+        historyMode: "paginated",
+        forkedFromId: null,
+      },
+      {
+        hostId: "local",
+        model: "model",
+        reasoningEffort: null,
+        cwd: "/workspace",
+        approvalPolicy: "on-request",
+        approvalsReviewer: "user",
+        sandboxPolicy: { type: "readOnly", networkAccess: false },
+        activePermissionProfile: null,
+        runtimeWorkspaceRoots: ["/workspace"],
+      },
+    );
+    const realtime: ThreadTimelineListResponse = {
+      data: [
+        {
+          type: "realtime",
+          position: 0,
+          item: { type: "realtimeSessionStarted", id: "rt", realtimeSessionId: "session" },
+        },
+      ],
+      nextCursor: "older",
+      activeRealtimeSessionAtPageStart: "session",
+    };
+    const f = fixture([realtime], false, [[]]);
+    const page = await listCanonicalHistoryTurns(
+      { ...f.client, getConversation: () => qualified },
+      "thread",
+    );
+    expect(page.timeline).toEqual(realtime);
+    expect(page.response.data).toEqual([]);
+    const installed = produce(qualified, (draft) => {
+      applyCanonicalHistoryTimelineDraft(draft, page.timeline, "replace");
+    });
+    expect(installed.itemTimeline?.entries).toEqual(realtime.data);
+    expect(installed.realtimeItems?.rt?.completed).toBe(true);
+    expect(f.calls.map(({ method }) => method)).toEqual([
+      "thread/timeline/list",
+      "thread/turns/list",
+    ]);
+  });
   test("native decoded timeline values cross one generated validation boundary", () => {
     const decode = (response: unknown) =>
       normalizeCanonicalHistoryTimelinePage(

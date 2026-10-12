@@ -746,7 +746,7 @@ Codex has four distinct authorities that must not collapse into one another:
   receive its actual Immer draft patches and snapshots. Main's Conversation Entity belongs to
   that Main manager, not to a second authority over window-owned documents. Canonical history,
   requests, local context and unread state belong to that document independently of loaded Turns.
-- Renderer presentation consumes a manager-derived normalized transcript read capability. The local manager supplies it through MessageChannel; the read owner stages atomic resets and independently subscribes to Turn details, sparse item slots and keyed item values. This projection accepts no canonical writes. Business reads materialize a Turn only when they request its content. Asynchronous question drafts
+- Renderer presentation consumes a manager-derived normalized transcript read capability. The local manager supplies it through MessageChannel; the read owner stages atomic resets and independently subscribes to structure, Turn details, sparse item slots and keyed ordinary or realtime item values. Body composition consumes stable structure and presentation metadata; content readers subscribe to addressed leaves or fragments. Native mixed-history order is a derived presentation over the same document, never a second Turn authority. This projection accepts no canonical writes. Business reads materialize a Turn only when they request its content. Asynchronous question drafts
   and panel selection remain local to that manager; accepted canonical messages remain the answer
   authority. Questions steer the existing Turn without acquiring a blocking request or durable
   follow-up lifecycle. See [Request User Input](product-specs/codex-thread-transcript-behavior.md#request-user-input).

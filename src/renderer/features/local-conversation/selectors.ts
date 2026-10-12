@@ -1,4 +1,5 @@
 import { selectOwnConversationTurns } from "../../../shared/codex-inherited-history";
+import { isCodexStartupToolPrewarmText } from "../../../shared/codex-canonical-item-projector";
 import type { CodexConversationRequestContext } from "../../../shared/codex-conversation-request-context";
 import type {
   CodexConversationResumeState,
@@ -285,7 +286,7 @@ function isRenderableConversationTurn(
         (content) =>
           content.type === "text" &&
           typeof content.text === "string" &&
-          content.text.startsWith("<startup_tool_prewarm>"),
+          isCodexStartupToolPrewarmText(content.text),
       ) === true
     );
   });
@@ -330,11 +331,11 @@ export function selectVisibleConversationTurnStructure(input: {
         const opening = turn.items[0];
         if (
           promptInput.some(
-            (part) => part.type === "text" && part.text.startsWith("<startup_tool_prewarm>"),
+            (part) => part.type === "text" && isCodexStartupToolPrewarmText(part.text),
           ) ||
           (opening?.type === "userMessage" &&
             opening.content.some(
-              (part) => part.type === "text" && part.text.startsWith("<startup_tool_prewarm>"),
+              (part) => part.type === "text" && isCodexStartupToolPrewarmText(part.text),
             ))
         )
           return false;

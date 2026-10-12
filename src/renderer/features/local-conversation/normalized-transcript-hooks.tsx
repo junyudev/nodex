@@ -13,11 +13,16 @@ import {
 import { useConversationRuntimeOverride } from "./conversation-runtime";
 import type { CodexConversationTurn } from "../../../shared/types";
 import type { ThreadTranscriptBlockModel } from "./thread-stage-types";
-import { CodexTranscriptReadOwner } from "./normalized-transcript-read-owner";
+import {
+  CodexTranscriptReadOwner,
+  type CodexTranscriptTurnSlice,
+} from "./normalized-transcript-read-owner";
 import { resolveCodexReasoningSummaryPresentation } from "../../../shared/codex-reasoning-presentation";
 
 export const CodexTranscriptReadOwnerContext = createContext<CodexTranscriptReadOwner | null>(null);
 export const CodexTranscriptTurnEntityContext = createContext<string | null>(null);
+export const CodexTranscriptTurnStatusContext =
+  createContext<CodexTranscriptTurnSlice["presentationStatus"]>(undefined);
 const subscribeNothing = () => () => {};
 const readEmptyStructure = () => null;
 
@@ -30,24 +35,37 @@ export function CodexTranscriptReadOwnerProvider({
   readonly hostId: string;
   readonly children: ReactNode;
 }) {
+  const owner = useCodexTranscriptReadOwner(conversationId, hostId);
+  return (
+    <CodexTranscriptReadOwnerContext.Provider value={owner}>
+      {children}
+    </CodexTranscriptReadOwnerContext.Provider>
+  );
+}
+
+export function useCodexTranscriptReadOwner(conversationId: string | null, hostId?: string) {
   const override = useConversationRuntimeOverride();
   const manager = useCodexAppServerManagerForConversationId(conversationId, hostId);
   const hasCanonicalState = useCodexConversationValue(
     conversationId,
     (conversation) => conversation?.canonicalState != null,
   );
-  const owner = useMemo(
+  return useMemo(
     () =>
       !override && hasCanonicalState && conversationId
         ? manager.getTranscriptReadOwner(conversationId)
         : null,
     [conversationId, hasCanonicalState, manager, override],
   );
-  return (
-    <CodexTranscriptReadOwnerContext.Provider value={owner}>
-      {children}
-    </CodexTranscriptReadOwnerContext.Provider>
+}
+
+export function useCodexConversationTranscriptStructure(conversationId: string | null) {
+  const owner = useCodexTranscriptReadOwner(conversationId);
+  const structure = useSyncExternalStore(
+    owner?.subscribeStructure ?? subscribeNothing,
+    owner?.readStructure ?? readEmptyStructure,
   );
+  return { owner, structure };
 }
 
 export function useCodexTranscriptStructure() {
@@ -63,8 +81,18 @@ export function useCodexTranscriptStructure() {
 export function useCodexTranscriptTurn(
   entityKey: string | null,
   fallback: CodexConversationTurn | null,
+  slice?: CodexTranscriptTurnSlice,
 ): CodexConversationTurn | null {
   const owner = useContext(CodexTranscriptReadOwnerContext);
+  return useCodexTranscriptTurnFromOwner(owner, entityKey, fallback, slice);
+}
+
+export function useCodexTranscriptTurnFromOwner(
+  owner: CodexTranscriptReadOwner | null,
+  entityKey: string | null,
+  fallback: CodexConversationTurn | null,
+  slice?: CodexTranscriptTurnSlice,
+): CodexConversationTurn | null {
   const subscribe = useCallback(
     (listener: () => void) =>
       owner && entityKey ? owner.subscribeTurn(entityKey, listener) : () => {},
@@ -76,8 +104,8 @@ export function useCodexTranscriptTurn(
   return useMemo(() => {
     if (!owner || !entityKey) return fallback;
     if (owner.readTurnVersion(entityKey) !== version) return null;
-    return owner.readTurn(entityKey);
-  }, [entityKey, fallback, owner, version]);
+    return slice ? owner.readTurnSlice(entityKey, slice) : owner.readTurn(entityKey);
+  }, [entityKey, fallback, owner, slice, version]);
 }
 
 /** Canonical text leaves retain their display identity while reading only their raw owner. */
@@ -86,6 +114,7 @@ export function useCodexTranscriptBlock(
 ): ThreadTranscriptBlockModel {
   const owner = useContext(CodexTranscriptReadOwnerContext);
   const entityKey = useContext(CodexTranscriptTurnEntityContext);
+  const presentationStatus = useContext(CodexTranscriptTurnStatusContext);
   const itemId =
     block.type === "assistantMessage" ||
     block.type === "reasoning" ||
@@ -100,7 +129,7 @@ export function useCodexTranscriptBlock(
   );
   const item = useSyncExternalStore(subscribe, () =>
     owner && entityKey && itemId
-      ? owner.readProjectedItem(entityKey, itemId, block.entry.itemId)
+      ? owner.readProjectedItem(entityKey, itemId, block.entry.itemId, presentationStatus)
       : null,
   );
   if (!item) return block;

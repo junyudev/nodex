@@ -9,6 +9,10 @@ import {
 import { areStructurallyEqual } from "../structural-equality";
 import { mergeCodexCanonicalHistoryItems } from "./codex-history-item-merge";
 import {
+  CODEX_THREAD_TIMELINE_MINIMUM_VERSION,
+  isCodexAppServerVersionAtLeast,
+} from "../codex-app-server-version";
+import {
   reconcileCodexHydratedSteering,
   relocateCodexHydratedSteering,
 } from "./codex-steering-reconciliation";
@@ -541,6 +545,7 @@ export interface CodexCanonicalConversationMetadata {
   readonly threadSource: Thread["threadSource"];
   readonly agentNickname: Thread["agentNickname"];
   readonly historyMode: Thread["historyMode"];
+  readonly canonicalVoiceHistory?: boolean;
   readonly modelProvider: Thread["modelProvider"];
   readonly createdAt: number;
   readonly updatedAt: number;
@@ -559,6 +564,18 @@ export interface CodexCanonicalConversationMetadata {
   readonly cwd: Thread["cwd"];
   readonly gitInfo: Thread["gitInfo"];
   readonly resumeState: "needs_resume" | "resuming" | "resumed";
+}
+
+/** Canonical interleaved history depends on the native Thread's format, not account assignment. */
+export function usesCodexCanonicalVoiceHistory(
+  thread: Pick<Thread, "forkedFromId" | "historyMode" | "cliVersion">,
+): boolean {
+  return (
+    thread.forkedFromId === null &&
+    thread.historyMode === "paginated" &&
+    thread.cliVersion !== "0.0.0" &&
+    isCodexAppServerVersionAtLeast(thread.cliVersion, CODEX_THREAD_TIMELINE_MINIMUM_VERSION)
+  );
 }
 
 /** Converts generated seconds once, before metadata enters a manager document. */
@@ -581,6 +598,7 @@ export function createCodexCanonicalConversationMetadata(
     threadSource: thread.threadSource,
     agentNickname: thread.agentNickname,
     historyMode: thread.historyMode,
+    canonicalVoiceHistory: usesCodexCanonicalVoiceHistory(thread),
     modelProvider: thread.modelProvider,
     createdAt,
     updatedAt,
@@ -742,7 +760,6 @@ export interface CodexCanonicalConversationState
   extends CodexCanonicalConversationContext, CodexCanonicalConversationMetadata {
   readonly workspaceKind?: "project" | "projectless" | null;
   readonly workspaceBrowserRoot?: string | null;
-  readonly canonicalVoiceHistory?: boolean;
   readonly itemTimeline?: CodexCanonicalItemTimeline;
   readonly realtimeItems?: Readonly<Record<string, CodexCanonicalRealtimeItem>>;
   readonly unconfirmedTurnSubmissions?: readonly CodexCanonicalUnconfirmedTurnSubmission[];
@@ -1347,8 +1364,24 @@ function isCodexCanonicalArchivedHeartbeatTurn(turn: CodexCanonicalTurnState): b
 
 export interface CodexCanonicalTurnMergeOptions {
   readonly itemsPagination?: CodexHistoryTurnItemsPagination;
+  readonly itemMergeMode?: "append" | "prepend";
   readonly isResumeSnapshot?: boolean;
   readonly preserveExistingTerminalState?: boolean;
+}
+
+/** Timeline pages own their boundary; ordinary item cursors cannot bridge that source. */
+export function mergeCodexTimelineItemsPagination(
+  existing: CodexHistoryTurnItemsPagination | undefined,
+  incoming: CodexHistoryTurnItemsPagination,
+  isResumeSnapshot: boolean,
+): CodexHistoryTurnItemsPagination {
+  return {
+    ...existing,
+    ...incoming,
+    hasLoadedOldest:
+      incoming.hasLoadedOldest || (!isResumeSnapshot && existing?.hasLoadedOldest === true),
+    reconnect: undefined,
+  };
 }
 
 /** Merges matching hydrated/live Turns while retaining local work and correlated input. */
@@ -1363,7 +1396,14 @@ export function mergeCodexCanonicalTurnState(
     existing.itemsPagination == null
       ? incomingPagination
       : { ...incomingPagination, ...existing.itemsPagination };
-  if (options.isResumeSnapshot && incomingPagination != null) {
+  const timeline = incomingPagination?.source === "timeline";
+  if (timeline)
+    itemsPagination = mergeCodexTimelineItemsPagination(
+      existing.itemsPagination,
+      incomingPagination,
+      options.isResumeSnapshot === true,
+    );
+  if (options.isResumeSnapshot && !timeline && incomingPagination != null) {
     const previous = existing.itemsPagination;
     const stopItemId =
       previous?.reconnect == null ? previous?.newestSnapshotItemId : previous.reconnect.stopItemId;
@@ -1400,7 +1440,9 @@ export function mergeCodexCanonicalTurnState(
       ? mergeCodexCanonicalHistoryItems(
           existing.items,
           incoming.items,
-          options.isResumeSnapshot ? { snapshotBeforeItemId: null } : "append",
+          options.isResumeSnapshot
+            ? { snapshotBeforeItemId: null }
+            : (options.itemMergeMode ?? "append"),
         ).items
       : options.preserveExistingTerminalState && terminalRegression
         ? existing.items

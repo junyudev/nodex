@@ -1,4 +1,4 @@
-import { describe, expect, test } from "vite-plus/test";
+import { describe, expect, test, vi } from "vite-plus/test";
 import type { ThreadItem } from "@nodex/codex-app-server-protocol/v2";
 import { createCodexCanonicalHydratedConversationState } from "../../../shared/codex-conversation-state/codex-conversation-state";
 import { buildAgentActivityV2CorpusThread } from "../../../shared/codex-conversation-state/test-fixtures/agent-activity-v2-corpus-provenance";
@@ -76,6 +76,521 @@ function insertText(text: string): CodexTranscriptEvent {
 }
 
 describe("normalized transcript read owner", () => {
+  test("an addressed text replacement preserves another slice in the same Turn", () => {
+    const owner = new CodexTranscriptReadOwner(key);
+    owner.applyEvent({
+      type: "reset",
+      value: fixture([
+        { type: "plan", id: "first", text: "hello" },
+        { type: "plan", id: "sibling", text: "Stable" },
+      ]),
+    });
+    const firstSlice = { itemIds: ["first"], includeInput: false, includeTurnExtras: false };
+    const siblingSlice = { itemIds: ["sibling"], includeInput: false, includeTurnExtras: false };
+    const beforeFirst = owner.readTurnSlice("turn:one", firstSlice);
+    const beforeSibling = owner.readTurnSlice("turn:one", siblingSlice);
+    owner.applyEvent({
+      type: "changes",
+      changes: [
+        {
+          type: "item",
+          key: itemKey,
+          value: { type: "plan", id: "first", text: "" },
+        },
+      ],
+    });
+    expect(owner.readTurnSlice("turn:one", firstSlice)).not.toBe(beforeFirst);
+    expect(owner.readTurnSlice("turn:one", firstSlice)?.items[0]?.markdownText).toBe("");
+    expect(owner.readTurnSlice("turn:one", siblingSlice)).toBe(beforeSibling);
+    owner.applyEvent({
+      type: "changes",
+      changes: [
+        { type: "remove-turn", key: { ...key, entityKey: "turn:one" } },
+        { type: "structure", turnEntityKeys: ["turn:two"], timeline: null },
+      ],
+    });
+    expect(owner.readTurnSlice("turn:one", siblingSlice)).toBeNull();
+  });
+
+  test("a Turn append or history update keeps another Turn's stable slice identity", () => {
+    const owner = new CodexTranscriptReadOwner(key);
+    owner.applyEvent({ type: "reset", value: fixture() });
+    const slice = { itemIds: ["first"], includeInput: false, includeTurnExtras: false };
+    const before = owner.readTurnSlice("turn:two", slice);
+    owner.applyEvent({
+      type: "changes",
+      changes: [
+        {
+          type: "item-slots-append",
+          key: { ...key, entityKey: "turn:one" },
+          previousLength: 1,
+          length: 2,
+          entries: [{ index: 1, itemId: "appended" }],
+        },
+        {
+          type: "item",
+          key: { ...key, entityKey: "turn:one", itemId: "appended" },
+          value: { type: "plan", id: "appended", text: "New" },
+        },
+      ],
+    });
+    expect(owner.readTurnSlice("turn:two", slice)).toBe(before);
+    owner.applyEvent({
+      type: "changes",
+      changes: [
+        {
+          type: "turn",
+          key: { ...key, entityKey: "turn:one" },
+          hasSubagentActivity: false,
+          details: {
+            ...structuredClone(owner.readTurnDetails("turn:one")!),
+            itemsPagination: {
+              itemsView: "summary",
+              olderCursor: "older",
+              hasLoadedOldest: false,
+              isLoadingOlder: true,
+            },
+          },
+        },
+      ],
+    });
+    expect(owner.readTurnSlice("turn:two", slice)).toBe(before);
+    owner.applyEvent({
+      type: "changes",
+      changes: [
+        { type: "remove-turn", key: { ...key, entityKey: "turn:one" } },
+        { type: "structure", turnEntityKeys: ["turn:two"], timeline: null },
+      ],
+    });
+    expect(owner.readTurnSlice("turn:one", slice)).toBeNull();
+    expect(owner.readTurnSlice("turn:two", slice)).toBe(before);
+    owner.applyEvent({ type: "reset", value: null });
+    expect(owner.readTurnSlice("turn:two", slice)).toBeNull();
+  });
+
+  test("stable timeline slices and completed projections stay separate from the native active Turn", () => {
+    const owner = new CodexTranscriptReadOwner(key);
+    owner.applyEvent({ type: "reset", value: fixture() });
+    const slice = {
+      itemIds: ["first"],
+      includeInput: false,
+      includeTurnExtras: false,
+      presentationStatus: "completed" as const,
+    };
+    const native = owner.readProjectedItem("turn:one", "first", "first");
+    const completed = owner.readProjectedItem("turn:one", "first", "first", "completed");
+    const initial = owner.readTurnSlice("turn:one", slice);
+    expect(owner.readTurnSlice("turn:one", slice)).toBe(initial);
+    expect(initial?.status).toBe("completed");
+    expect(completed?.status).toBe("completed");
+    expect(owner.readProjectedItem("turn:one", "first", "first", "completed")).toBe(completed);
+    expect(owner.readTurn("turn:one")?.status).toBe("inProgress");
+    expect(owner.readProjectedItem("turn:one", "first", "first")).toBe(native);
+    owner.applyEvent(insertText(" next"));
+    const updated = owner.readTurnSlice("turn:one", slice);
+    expect(updated).not.toBe(initial);
+    expect(updated?.items[0]?.markdownText).toBe("hello next");
+    expect(owner.readProjectedItem("turn:one", "first", "first", "completed")).not.toBe(completed);
+    expect(owner.readProjectedItem("turn:one", "first", "first", "completed")).toMatchObject({
+      markdownText: "hello next",
+      status: "completed",
+    });
+    expect(owner.readTurn("turn:one")?.status).toBe("inProgress");
+  });
+
+  test("a partial suffix keeps a later matching user when the proven opening is not resident", () => {
+    const owner = new CodexTranscriptReadOwner(key);
+    const snapshot = fixture([
+      {
+        type: "userMessage",
+        id: "later",
+        clientId: null,
+        content: [{ type: "text", text: "Prompt", text_elements: [] }],
+      },
+    ]);
+    const turn = snapshot.turnsByKey["turn:one"]!;
+    owner.applyEvent({
+      type: "reset",
+      value: {
+        ...snapshot,
+        turnsByKey: {
+          ...snapshot.turnsByKey,
+          "turn:one": {
+            ...turn,
+            details: {
+              ...turn.details,
+              itemsPagination: {
+                itemsView: "summary",
+                olderCursor: "opening-page",
+                hasLoadedOldest: false,
+                isLoadingOlder: false,
+                openingUserMessageId: "opening",
+              },
+            },
+          },
+        },
+      },
+    });
+    const full = owner.readTurn("turn:one");
+    expect(full?.items[0]?.rawItemId).toBe("opening");
+    expect(full?.items.find((item) => item.rawItemId === "later")?.semanticKind).toBe("steered");
+  });
+
+  test("a later matching user message stays steered when its opening and work precede the fragment", () => {
+    const owner = new CodexTranscriptReadOwner(key);
+    owner.applyEvent({
+      type: "reset",
+      value: fixture([
+        {
+          type: "userMessage",
+          id: "opening",
+          clientId: "client",
+          content: [{ type: "text", text: "Prompt", text_elements: [] }],
+        },
+        { type: "plan", id: "work", text: "Work" },
+        {
+          type: "userMessage",
+          id: "later",
+          clientId: null,
+          content: [{ type: "text", text: "Prompt", text_elements: [] }],
+        },
+      ]),
+    });
+    const full = owner.readTurn("turn:one")?.items.find((item) => item.rawItemId === "later");
+    const slice = owner.readTurnSlice("turn:one", {
+      itemIds: ["later"],
+      includeInput: false,
+      includeTurnExtras: false,
+    });
+    expect(full?.semanticKind).toBe("steered");
+    expect(slice?.items[0]?.semanticKind).toBe("steered");
+    expect(owner.readOpeningUserMessageId("turn:one")).toBe("opening");
+    const voice = owner.readTurnSlice("turn:one", {
+      itemIds: ["later"],
+      includeInput: false,
+      includeTurnExtras: false,
+      preserveServerUserMessages: true,
+    });
+    expect(voice?.items[0]).toMatchObject({
+      semanticKind: "userMessage",
+      markdownText: "Prompt",
+      rawItemId: "later",
+    });
+  });
+
+  test("a timeline fragment does not reopen a search followed by work in another fragment", () => {
+    const owner = new CodexTranscriptReadOwner(key);
+    owner.applyEvent({
+      type: "reset",
+      value: fixture([
+        {
+          type: "webSearch",
+          id: "search",
+          query: "needle",
+          action: { type: "search", query: "needle", queries: null },
+          results: null,
+        },
+        { type: "plan", id: "later-work", text: "Next" },
+      ]),
+    });
+    const full = owner.readTurn("turn:one")?.items.find((item) => item.rawItemId === "search");
+    const slice = owner.readTurnSlice("turn:one", {
+      itemIds: ["search"],
+      includeInput: false,
+      includeTurnExtras: false,
+    });
+    expect(full?.webSearch?.completed).toBe(true);
+    expect(slice?.items[0]?.webSearch?.completed).toBe(true);
+  });
+
+  test("timeline slices read selected addresses and retain one prompt and tail extras without changing sparse slots", () => {
+    const owner = new CodexTranscriptReadOwner(key);
+    const snapshot = fixture([
+      {
+        type: "agentMessage",
+        id: "first",
+        text: "First",
+        phase: "commentary",
+        memoryCitation: null,
+        delivery: null,
+        questions: null,
+      },
+      {
+        type: "agentMessage",
+        id: "second",
+        text: "Second",
+        phase: "final_answer",
+        memoryCitation: null,
+        delivery: null,
+        questions: null,
+      },
+    ]);
+    const turn = snapshot.turnsByKey["turn:one"]!;
+    const slots = {
+      length: 1_000,
+      entries: [
+        { index: 499, itemId: "first" },
+        { index: 999, itemId: "second" },
+      ],
+    };
+    owner.applyEvent({
+      type: "reset",
+      value: {
+        ...snapshot,
+        turnsByKey: {
+          ...snapshot.turnsByKey,
+          "turn:one": {
+            ...turn,
+            itemSlots: slots,
+            details: {
+              ...turn.details,
+              status: "completed",
+              params: {
+                ...turn.details.params,
+                input: [{ type: "text", text: "Prompt", text_elements: [] }],
+                clientUserMessageId: "client",
+              },
+              itemsPagination: {
+                itemsView: "summary",
+                olderCursor: "older",
+                hasLoadedOldest: false,
+                isLoadingOlder: false,
+                openingUserMessageId: "native-opening",
+              },
+              diff: "Diff",
+              completedAtMs: 2_000,
+              durationMs: 1_000,
+              firstTurnWorkItemStartedAtMs: 1_100,
+              finalAssistantStartedAtMs: 1_500,
+              safetyBuffering: {
+                useCases: ["slow"],
+                reasons: ["waiting"],
+                showBufferingUi: true,
+                fasterModel: null,
+              },
+            },
+          },
+        },
+      },
+    });
+    const canonicalRead = vi.spyOn(owner, "readCanonicalTurn");
+    const fullRead = vi.spyOn(owner, "readTurn");
+    const itemRead = vi.spyOn(owner, "readItem");
+    const head = owner.readTurnSlice("turn:one", {
+      itemIds: ["first"],
+      includeInput: true,
+      includeTurnExtras: false,
+    });
+    const tail = owner.readTurnSlice("turn:one", {
+      itemIds: ["second"],
+      includeInput: false,
+      includeTurnExtras: true,
+    });
+    expect(head?.items.map((item) => item.markdownText)).toEqual(["Prompt", "First"]);
+    expect(head?.items[0]?.rawItemId).toBe("native-opening");
+    expect(head).toMatchObject({
+      itemIds: ["first"],
+      completedAt: null,
+      durationMs: null,
+      finalAssistantStartedAtMs: null,
+    });
+    expect(head?.diff).toBeUndefined();
+    expect(head?.safetyBuffering).toBeUndefined();
+    expect(tail?.items.map((item) => item.markdownText)).toEqual(["Second"]);
+    expect(tail).toMatchObject({
+      itemIds: ["second"],
+      diff: "Diff",
+      completedAt: 2_000,
+      durationMs: 1_000,
+      finalAssistantStartedAtMs: 1_500,
+      safetyBuffering: { showBufferingUi: true },
+    });
+    expect(itemRead.mock.calls).toEqual([
+      ["turn:one", "first"],
+      ["turn:one", "second"],
+    ]);
+    expect(canonicalRead).not.toHaveBeenCalled();
+    expect(fullRead).not.toHaveBeenCalled();
+    expect(owner.readItemSlots("turn:one")).toBe(slots);
+    expect(owner.readItemSlots("turn:one")?.entries.map((slot) => slot.index)).toEqual([499, 999]);
+  });
+
+  test.each([false, true])(
+    "hides a retained prewarm prompt with nonresident opening items (evicted=%s)",
+    (evicted) => {
+      const owner = new CodexTranscriptReadOwner(key);
+      const snapshot = fixture([]);
+      const turn = snapshot.turnsByKey["turn:one"]!;
+      owner.applyEvent({
+        type: "reset",
+        value: {
+          ...snapshot,
+          turnsByKey: {
+            ...snapshot.turnsByKey,
+            "turn:one": {
+              ...turn,
+              details: {
+                ...turn.details,
+                params: {
+                  ...turn.details.params,
+                  input: [
+                    { type: "text", text: "<startup_tool_prewarm>browser", text_elements: [] },
+                  ],
+                },
+                itemsPagination: {
+                  itemsView: evicted ? "full" : "summary",
+                  olderCursor: "opening-page",
+                  hasLoadedOldest: false,
+                  isLoadingOlder: false,
+                  evicted,
+                },
+              },
+            },
+          },
+        },
+      });
+      expect(
+        selectNormalizedConversationTurnEntries({
+          owner,
+          structure: owner.readStructure()!,
+          conversation: null,
+        }).map((entry) => entry.turnId),
+      ).toEqual(["two"]);
+    },
+  );
+
+  test("slot append and history metadata preserve existing item projections and subscriptions", () => {
+    const owner = new CodexTranscriptReadOwner(key);
+    const snapshot = fixture();
+    owner.applyEvent({
+      type: "reset",
+      value: {
+        ...snapshot,
+        turnsByKey: {
+          ...snapshot.turnsByKey,
+          "turn:one": {
+            ...snapshot.turnsByKey["turn:one"]!,
+            details: {
+              ...snapshot.turnsByKey["turn:one"]!.details,
+              lifecycleStatusByItemId: { first: "inProgress" },
+              commandExecutionStartedAtMsById: { unrelated: 1_000 },
+            },
+          },
+        },
+      },
+    });
+    const first = owner.readProjectedItem("turn:one", "first", "first");
+    const raw = owner.readItem("turn:one", "first");
+    let leafCalls = 0;
+    const release = owner.subscribeItem("turn:one", "first", () => leafCalls++);
+    owner.applyEvent({
+      type: "changes",
+      changes: [
+        {
+          type: "item-slots-append",
+          key: { ...key, entityKey: "turn:one" },
+          previousLength: 1,
+          length: 2,
+          entries: [{ index: 1, itemId: "second" }],
+        },
+        {
+          type: "item",
+          key: { ...key, entityKey: "turn:one", itemId: "second" },
+          value: { type: "plan", id: "second", text: "Second" },
+        },
+      ],
+    });
+    owner.applyEvent({
+      type: "changes",
+      changes: [
+        {
+          type: "turn",
+          key: { ...key, entityKey: "turn:one" },
+          details: {
+            ...structuredClone(owner.readTurnDetails("turn:one")!),
+            itemsPagination: {
+              itemsView: "summary",
+              olderCursor: "older",
+              hasLoadedOldest: false,
+              isLoadingOlder: true,
+            },
+          },
+          hasSubagentActivity: false,
+        },
+      ],
+    });
+    expect(owner.readItem("turn:one", "first")).toBe(raw);
+    expect(owner.readProjectedItem("turn:one", "first", "first")).toBe(first);
+    expect(leafCalls).toBe(0);
+    release();
+  });
+
+  test("real lifecycle and command context changes update the addressed projection", () => {
+    const owner = new CodexTranscriptReadOwner(key);
+    owner.applyEvent({
+      type: "reset",
+      value: fixture([
+        {
+          type: "agentMessage",
+          id: "first",
+          text: "Answer",
+          phase: "final_answer",
+          memoryCitation: null,
+          delivery: null,
+          questions: null,
+        },
+        {
+          type: "commandExecution",
+          id: "exec",
+          pluginId: null,
+          scriptPath: null,
+          source: "agent",
+          command: "echo",
+          cwd: "/workspace",
+          processId: null,
+          status: "inProgress",
+          commandActions: [],
+          aggregatedOutput: "Output",
+          exitCode: null,
+          durationMs: null,
+        },
+      ]),
+    });
+    const first = owner.readProjectedItem("turn:one", "first", "first");
+    const command = owner.readProjectedItem("turn:one", "exec", "exec");
+    let firstCalls = 0;
+    let commandCalls = 0;
+    const releases = [
+      owner.subscribeItem("turn:one", "first", () => firstCalls++),
+      owner.subscribeItem("turn:one", "exec", () => commandCalls++),
+    ];
+    owner.applyEvent({
+      type: "changes",
+      changes: [
+        {
+          type: "turn",
+          key: { ...key, entityKey: "turn:one" },
+          details: {
+            ...owner.readTurnDetails("turn:one")!,
+            status: "interrupted",
+            lifecycleStatusByItemId: { first: "completed" },
+            commandExecutionStartedAtMsById: { exec: 2_000 },
+          },
+          hasSubagentActivity: false,
+        },
+      ],
+    });
+    expect(owner.readProjectedItem("turn:one", "first", "first")).not.toBe(first);
+    expect(owner.readProjectedItem("turn:one", "first", "first")?.status).toBe("completed");
+    expect(owner.readProjectedItem("turn:one", "exec", "exec")).not.toBe(command);
+    expect(owner.readProjectedItem("turn:one", "exec", "exec")).toMatchObject({
+      status: "interrupted",
+      startedAtMs: 2_000,
+    });
+    expect([firstCalls, commandCalls]).toEqual([1, 1]);
+    releases.forEach((release) => release());
+  });
+
   test("resolves a native opening-message search occurrence through its visible input row", () => {
     const owner = new CodexTranscriptReadOwner(key);
     owner.applyEvent({

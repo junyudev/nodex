@@ -7,6 +7,7 @@ import {
   type ThreadBodyModelInput,
 } from "./build-thread-body-model";
 import { withCanonicalState } from "../../../test/canonical-conversation-fixture";
+import { timelineOwnerFixture } from "./normalized-timeline.test-fixtures";
 import {
   createCodexHistoryIslandTopology,
   exhaustedCodexHistoryBoundary,
@@ -103,6 +104,117 @@ function buildConversation(
 }
 
 describe("buildThreadBodyModel", () => {
+  test.each(["resumed", "resuming"] as const)(
+    "keeps realtime-only history readable while execution is %s",
+    (resumeState) => {
+      const { state } = timelineOwnerFixture({
+        data: [
+          {
+            type: "realtime",
+            position: 1,
+            item: {
+              type: "transcriptSegment",
+              id: "voice",
+              realtimeSessionId: "session",
+              role: "assistant",
+              text: "Existing voice answer",
+            },
+          },
+        ],
+        nextCursor: null,
+        activeRealtimeSessionAtPageStart: "session",
+      });
+      const conversation = buildConversation({
+        threadId: "thread",
+        resumeState,
+        turns: [],
+        canonicalState: { ...state, resumeState },
+      });
+      const model = buildThreadBodyModel({
+        activeThreadId: "thread",
+        conversation,
+        parentTurns: [],
+        isNewThreadTab: false,
+        newThreadTarget: null,
+        isCloudNewThreadTarget: false,
+        threadStartProgress: null,
+      });
+      expect(model.emptyState).toEqual({ type: "none" });
+      expect(model.turnCount).toBe(0);
+    },
+  );
+  test.each([
+    {
+      type: "realtimeSessionClosed" as const,
+      id: "closed",
+      realtimeSessionId: "session",
+      outcome: "ended" as const,
+    },
+    {
+      type: "bemItemPromoted" as const,
+      id: "promotion",
+      realtimeSessionId: "session",
+      turnId: "not-resident",
+      itemId: "artifact",
+      presentation: { type: "wholeItem" as const },
+    },
+  ])("keeps $type-only timeline rows readable without a native Turn", (item) => {
+    const { state } = timelineOwnerFixture({
+      data: [{ type: "realtime", position: 1, item }],
+      nextCursor: null,
+      activeRealtimeSessionAtPageStart: "session",
+    });
+    const conversation = buildConversation({
+      threadId: "thread",
+      resumeState: "resuming",
+      turns: [],
+      canonicalState: { ...state, resumeState: "resuming" },
+    });
+    expect(
+      buildThreadBodyModel({
+        activeThreadId: "thread",
+        conversation,
+        attachmentState: { status: "attaching" },
+        activeThreadArchived: false,
+        parentTurns: [],
+        isNewThreadTab: false,
+        newThreadTarget: null,
+        isCloudNewThreadTarget: false,
+        threadStartProgress: null,
+      }),
+    ).toMatchObject({ turnCount: 0, emptyState: { type: "none" } });
+  });
+
+  test("builds body chrome from bounded presentation metadata without a full snapshot", () => {
+    const body = buildThreadBodyModel({
+      activeThreadId: "thread",
+      conversation: null,
+      conversationPresentation: {
+        threadId: "thread",
+        resumeState: "resuming",
+        archived: false,
+        statusType: "idle",
+        visibleEntries: [{ turnId: "loaded", status: "completed" }],
+        canReadBoundedHistory: true,
+        hasRealtimeHistory: false,
+      },
+      attachmentState: { status: "attaching" },
+      activeThreadArchived: false,
+      parentTurns: [],
+      isNewThreadTab: false,
+      newThreadTarget: null,
+      isCloudNewThreadTarget: false,
+      threadStartProgress: null,
+    });
+    expect(body).toMatchObject({
+      turnCount: 1,
+      latestTurnId: "loaded",
+      activeTurnId: null,
+      isThreadRunning: false,
+      emptyState: { type: "none" },
+    });
+  });
+
   test("keeps an evicted empty Turn readable until its items recover", () => {
     const conversation = withCanonicalState(buildConversation(), "legacy");
     const state = conversation.canonicalState!;

@@ -13,6 +13,8 @@ import {
   loadCanonicalPromptRailIndex,
   previewCanonicalPromptRailTurn,
 } from "./codex-canonical-prompt-rail";
+import { createCodexCanonicalHydratedConversationState } from "./codex-conversation-state";
+import { buildAgentActivityV2CorpusThread } from "./test-fixtures/agent-activity-v2-corpus-provenance";
 
 type Method = "thread/turns/list" | "thread/items/list";
 const turn = (id: string, status: Turn["status"] = "completed"): Turn => ({
@@ -168,6 +170,94 @@ test("empty in-progress previews remain unavailable while a completed empty Turn
       descendingOffset: 0,
     }),
   ).toEqual({ turnCursor: "anchor", previews: [] });
+});
+
+test("a rail preview keeps its ordinary cursor and 30-item budget while timeline is enabled", async () => {
+  const state = createCodexCanonicalHydratedConversationState(
+    { ...buildAgentActivityV2CorpusThread([]), id: "thread", turns: [] },
+    {
+      hostId: "local",
+      model: "model",
+      reasoningEffort: null,
+      cwd: "/workspace",
+      approvalPolicy: "on-request",
+      approvalsReviewer: "user",
+      sandboxPolicy: { type: "readOnly", networkAccess: false },
+      activePermissionProfile: null,
+      runtimeWorkspaceRoots: ["/workspace"],
+    },
+  );
+  const opening = {
+    type: "userMessage" as const,
+    id: "opening",
+    clientId: null,
+    content: [{ type: "text" as const, text: "hello", text_elements: [] }],
+  };
+  const f = client((method, params) => {
+    if (method === "thread/turns/list")
+      return {
+        data: [{ ...turn("target"), itemsView: "notLoaded" }],
+        backwardsCursor: "anchor",
+        nextCursor: null,
+      };
+    if (params.sortDirection === "asc")
+      return { data: [{ turnId: "target", item: opening }], nextCursor: null };
+    return {
+      data: [
+        ...Array.from({ length: 29 }, (_, index) => ({
+          turnId: "target",
+          item: { type: "plan", id: String(index), text: "work" },
+        })),
+        {
+          turnId: "target",
+          item: {
+            type: "agentMessage",
+            id: "answer",
+            text: "answer",
+            phase: "final_answer",
+            memoryCitation: null,
+            delivery: null,
+            questions: null,
+          },
+        },
+      ],
+      nextCursor: "older-items",
+    };
+  });
+  const timeline = vi.fn(async () => {
+    throw new Error("Ordinary cursor cannot address timeline");
+  });
+  const actual: CanonicalHistoryClient = {
+    ...f.value,
+    getConversation: () => ({
+      ...state,
+      historyMode: "paginated",
+      paginatedHistory: { turnsBackwardsCursor: null, itemsBackwardsCursor: null },
+    }),
+    supportsThreadTimeline: () => true,
+    sendTimelineRequest: timeline,
+  };
+  const preview = await previewCanonicalPromptRailTurn(actual, "thread", {
+    turnId: "target",
+    pageBackwardsCursor: "rail-cursor",
+    descendingOffset: 0,
+  });
+  expect(preview).toEqual({
+    turnCursor: "anchor",
+    previews: [
+      { itemId: "opening", promptPreview: "hello", responsePreview: "answer", isHeartbeat: false },
+    ],
+  });
+  expect(timeline).not.toHaveBeenCalled();
+  expect(f.requests.map(({ method, params }) => [method, params.limit])).toEqual([
+    ["thread/turns/list", 1],
+    ["thread/items/list", 30],
+    ["thread/items/list", 2],
+  ]);
+  expect(f.requests[0]?.params.cursor).toBe("rail-cursor");
+  expect(f.requests.every(({ options }) => options?.priority === "interactive")).toBe(true);
+  expect(f.updateConversation).not.toHaveBeenCalled();
+  expect(f.broadcastSnapshot).not.toHaveBeenCalled();
 });
 
 test("preview carries an opening prompt omitted from partial items and pairs its response", () => {

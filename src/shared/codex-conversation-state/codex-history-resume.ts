@@ -8,6 +8,7 @@ import type { ThreadResumeResponse } from "@nodex/codex-app-server-protocol/v2/T
 import { areStructurallyEqual } from "../structural-equality";
 import {
   mergeCodexCanonicalTurnStates,
+  mergeCodexTimelineItemsPagination,
   type CodexCanonicalConversationState,
   type CodexCanonicalItem,
 } from "./codex-conversation-state";
@@ -86,6 +87,8 @@ export function mergeCodexResumedItemsPagination(
   incoming: CodexHistoryTurnItemsPagination,
   items: readonly CodexCanonicalItem[],
 ): CodexHistoryTurnItemsPagination {
+  if (incoming.source === "timeline")
+    return mergeCodexTimelineItemsPagination(existing, incoming, true);
   const stopItemId =
     existing?.reconnect == null ? existing?.newestSnapshotItemId : existing.reconnect.stopItemId;
   const previousCursor =

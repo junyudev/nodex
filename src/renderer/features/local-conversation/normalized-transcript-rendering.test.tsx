@@ -1,10 +1,11 @@
 import { describe, expect, test, vi } from "vite-plus/test";
-import { act } from "@testing-library/react";
+import { act, waitFor } from "@testing-library/react";
 import type { ThreadItem } from "@nodex/codex-app-server-protocol/v2";
 import { createCodexCanonicalHydratedConversationState } from "../../../shared/codex-conversation-state/codex-conversation-state";
 import { buildAgentActivityV2CorpusThread } from "../../../shared/codex-conversation-state/test-fixtures/agent-activity-v2-corpus-provenance";
 import { projectCodexTranscript } from "../../../shared/codex-transcript-projection";
 import { createCodexConversationHistoryTurnItemsRef } from "../../../shared/codex-conversation-history-page";
+import { buildConversationPresentationTurns } from "./use-conversation-body-presentation";
 import { CodexTranscriptReadOwner } from "./normalized-transcript-read-owner";
 import { CodexTranscriptReadOwnerContext } from "./normalized-transcript-hooks";
 import { selectNormalizedConversationTurnEntries } from "./normalized-transcript-selectors";
@@ -87,6 +88,92 @@ function render(ui: React.ReactElement) {
 }
 
 describe("normalized production transcript rendering", () => {
+  test("presentation facades read current addressed content and release it with the owner", () => {
+    const owner = ownerWithTurns([
+      [{ type: "plan", id: "first", text: "Initial" }],
+      [{ type: "plan", id: "other", text: "Other" }],
+    ]);
+    const release = owner.subscribeStructure(() => {});
+    const readTurn = vi.spyOn(owner, "readTurn");
+    const facades = buildConversationPresentationTurns(owner, owner.readStructure()!);
+    expect(readTurn).not.toHaveBeenCalled();
+    expect(facades[0]?.status).toBe("inProgress");
+    expect(facades[0]?.items[0]?.markdownText).toBe("Initial");
+    expect(readTurn).toHaveBeenCalledExactlyOnceWith("turn:turn-0");
+    owner.applyEvent({
+      type: "changes",
+      changes: [
+        {
+          type: "text",
+          key: { ...key, entityKey: "turn:turn-0", itemId: "first" },
+          target: { field: "text" },
+          edits: [{ at: 7, deleteCount: 0, insert: " next" }],
+        },
+      ],
+    });
+    expect(facades[0]?.items[0]?.markdownText).toBe("Initial next");
+    expect(readTurn.mock.calls.every(([entity]) => entity === "turn:turn-0")).toBe(true);
+    release();
+    expect(owner.readStructure()).toBeNull();
+    expect(facades[0]?.items).toEqual([]);
+    readTurn.mockRestore();
+  });
+
+  test("reveals an assistant leaf after a hidden streaming prefix without committing its neighbor", async () => {
+    const owner = ownerWithTurns([[agent("answer", "<")], [agent("neighbor", "Neighbor")]]);
+    owner.applyEvent({
+      type: "changes",
+      changes: [
+        {
+          type: "turn",
+          key: { ...key, entityKey: "turn:turn-0" },
+          details: {
+            ...owner.readTurnDetails("turn:turn-0")!,
+            lifecycleStatusByItemId: { answer: "inProgress" },
+          },
+          hasSubagentActivity: false,
+        },
+      ],
+    });
+    const rendered = vi.fn();
+    const view = render(rows(owner, rendered));
+    await settleAsyncRender();
+    const neighborCommits = rendered.mock.calls.filter(([turnKey]) => turnKey === "turn-1").length;
+    expect(neighborCommits).toBeGreaterThan(0);
+    expect(view.queryByText("Visible answer")).toBeNull();
+    await act(async () => {
+      owner.applyEvent({
+        type: "changes",
+        changes: [
+          {
+            type: "text",
+            key: { ...key, entityKey: "turn:turn-0", itemId: "answer" },
+            target: { field: "text" },
+            edits: [
+              {
+                at: 1,
+                deleteCount: 0,
+                insert: "oai-mem-citation>internal</oai-mem-citation>Visible answer",
+              },
+            ],
+          },
+        ],
+      });
+      await Promise.resolve();
+    });
+    await settleAsyncRender();
+    await waitFor(() => {
+      const answer = view.container.querySelector(
+        `[data-message-copy-root='${JSON.stringify(["thread", "turn-0", "answer"])}'] [data-thread-selected-text-target]`,
+      );
+      expect(answer?.textContent).toBe("Visible answer");
+    });
+    expect(rendered.mock.calls.filter(([turnKey]) => turnKey === "turn-1").length).toBe(
+      neighborCommits,
+    );
+    view.unmount();
+  });
+
   test("keeps a fully evicted empty Turn address available until its tail reloads", async () => {
     const owner = ownerWithTurns([[]]);
     const entityKey = "turn:turn-0";
@@ -192,6 +279,35 @@ describe("normalized production transcript rendering", () => {
       expect(view.getByText("Answer updated")).toBeDefined();
       expect(rendered.mock.calls.length).toBe(initialRowCommits);
       expect(readTurn).not.toHaveBeenCalled();
+      const answer = view.getByText("Answer updated");
+      const projection = owner.readProjectedItem("turn:turn-0", "answer", "answer");
+      let existingLeafCalls = 0;
+      const release = owner.subscribeItem("turn:turn-0", "answer", () => existingLeafCalls++);
+      await act(async () => {
+        owner.applyEvent({
+          type: "changes",
+          changes: [
+            {
+              type: "item-slots-append",
+              key: { ...key, entityKey: "turn:turn-0" },
+              previousLength: itemCount + 1,
+              length: itemCount + 2,
+              entries: [{ index: itemCount + 1, itemId: "appended" }],
+            },
+            {
+              type: "item",
+              key: { ...key, entityKey: "turn:turn-0", itemId: "appended" },
+              value: { type: "plan", id: "appended", text: "Latest plan" },
+            },
+          ],
+        });
+        await Promise.resolve();
+      });
+      await settleAsyncRender();
+      expect(view.getByText("Answer updated")).toBe(answer);
+      expect(owner.readProjectedItem("turn:turn-0", "answer", "answer")).toBe(projection);
+      expect(existingLeafCalls).toBe(0);
+      release();
       view.unmount();
       expect(owner.readStructure()).toBeNull();
     },

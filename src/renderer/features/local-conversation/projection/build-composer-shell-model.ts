@@ -159,14 +159,15 @@ export function buildComposerShellModel(
   }
 
   const activeRequest =
-    normalized.primaryRequest ??
-    selectPrimaryConversationRequest({
-      threadId: normalized.threadId,
-      projectId: null,
-      turns: normalized.turns,
-      canonicalRequests: normalized.canonicalRequests,
-      requests: normalized.requests,
-    });
+    normalized.primaryRequest !== undefined
+      ? normalized.primaryRequest
+      : selectPrimaryConversationRequest({
+          threadId: normalized.threadId,
+          projectId: null,
+          turns: normalized.turns,
+          canonicalRequests: normalized.canonicalRequests,
+          requests: normalized.requests,
+        });
   const backgroundAgentRows =
     normalized.backgroundAgentRows ??
     buildBackgroundSubagentRows({

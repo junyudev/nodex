@@ -17,6 +17,7 @@ import {
   reduceCodexConversationThreadStarted,
   reduceCodexConversationThreadStatus,
   reduceCodexConversationThreadTokenUsage,
+  refreshCodexConversationThreadMetadata,
 } from "./codex-thread-metadata";
 
 const usage = {
@@ -116,6 +117,62 @@ const settings: ThreadSettings = {
 };
 
 describe("Codex 30751 thread metadata", () => {
+  test.each([
+    { version: "0.150.0-alpha.8", mode: "paginated" as const, fork: null, enabled: false },
+    { version: "0.150.0-alpha.9", mode: "paginated" as const, fork: null, enabled: true },
+    { version: "0.162.0-alpha.17.2", mode: "paginated" as const, fork: null, enabled: true },
+    { version: "0.0.0", mode: "paginated" as const, fork: null, enabled: false },
+    { version: "unknown", mode: "paginated" as const, fork: null, enabled: false },
+    { version: "0.162.0-alpha.17.2", mode: "legacy" as const, fork: null, enabled: false },
+    { version: "0.162.0-alpha.17.2", mode: "paginated" as const, fork: "parent", enabled: false },
+  ])(
+    "canonical mixed history qualification: $version / $mode / fork=$fork",
+    ({ version, mode, fork, enabled }) => {
+      const thread = {
+        ...buildThread("Mixed"),
+        cliVersion: version,
+        historyMode: mode,
+        forkedFromId: fork,
+      };
+      expect(createCodexCanonicalConversationMetadata(thread, "local").canonicalVoiceHistory).toBe(
+        enabled,
+      );
+    },
+  );
+
+  test("native start, metadata refresh and resume keep mixed-history qualification current", () => {
+    const native: Thread = {
+      ...buildThread("Mixed"),
+      cliVersion: "0.162.0-alpha.17.2",
+      historyMode: "paginated",
+      forkedFromId: null,
+      turns: [],
+    };
+    const started = reduceCodexConversationThreadStarted(buildState(), native);
+    expect(started.canonicalVoiceHistory).toBe(true);
+    const refreshed = refreshCodexConversationThreadMetadata(buildState(), native.id, () => native);
+    expect(refreshed.canonicalVoiceHistory).toBe(true);
+    const forked = { ...native, forkedFromId: "parent" };
+    expect(
+      refreshCodexConversationThreadMetadata(refreshed, native.id, () => forked)
+        .canonicalVoiceHistory,
+    ).toBe(false);
+    const resumed = {
+      ...buildState(),
+      ...createCodexCanonicalConversationMetadata(native, "local"),
+    };
+    expect(
+      reconcileCodexResumedConversationState({ existing: buildState(), resumed, thread: native })
+        .canonicalVoiceHistory,
+    ).toBe(true);
+    expect(
+      reconcileCodexResumedConversationState({
+        existing: resumed,
+        resumed: { ...resumed, ...createCodexCanonicalConversationMetadata(forked, "local") },
+        thread: forked,
+      }).canonicalVoiceHistory,
+    ).toBe(false);
+  });
   test("replaces conversation token usage without touching requests or unread", () => {
     const before = buildState();
     const after = reduceCodexConversationThreadTokenUsage(before, {

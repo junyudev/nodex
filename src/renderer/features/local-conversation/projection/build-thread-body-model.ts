@@ -14,6 +14,7 @@ import {
 export interface ThreadBodyModelInput {
   activeThreadId: string | null;
   conversation: CodexConversationSnapshot | null;
+  conversationPresentation?: ThreadBodyConversationPresentation | null;
   attachmentState?: LocalConversationAttachmentState;
   activeThreadArchived: boolean;
   parentTurns: readonly CodexConversationTurn[];
@@ -36,6 +37,15 @@ export interface ThreadBodyModelInput {
   } | null;
   firstSubmissionActive?: boolean;
   readOnly?: boolean;
+}
+
+export interface ThreadBodyConversationPresentation extends Pick<
+  CodexConversationSnapshot,
+  "threadId" | "resumeState" | "archived" | "statusType"
+> {
+  readonly visibleEntries: readonly Pick<CodexConversationTurn, "turnId" | "status">[];
+  readonly canReadBoundedHistory: boolean;
+  readonly hasRealtimeHistory: boolean;
 }
 
 export type ThreadStartProgressPresentation = "hidden" | "panel";
@@ -68,8 +78,13 @@ export function resolveThreadStartProgressPresentation(
 }
 
 export function buildThreadBodyModel(input: ThreadBodyModelInput): ThreadBodyModel {
-  const conversation =
+  const presentation =
+    input.conversationPresentation?.threadId === input.activeThreadId
+      ? input.conversationPresentation
+      : null;
+  const snapshot =
     input.conversation?.threadId === input.activeThreadId ? input.conversation : null;
+  const conversation = presentation ?? snapshot;
   const resumeState = conversation?.resumeState ?? (input.activeThreadId ? "needs_resume" : null);
   const attachmentState: LocalConversationAttachmentState =
     input.attachmentState ??
@@ -231,27 +246,38 @@ export function buildThreadBodyModel(input: ThreadBodyModelInput): ThreadBodyMod
   }
 
   const canReadAttachedHistory = input.readOnly === true && attachmentState.status === "attached";
-  const history = conversation.canonicalState?.turnHistory?.history;
+  const history = snapshot?.canonicalState?.turnHistory?.history;
   const canReadBoundedHistory =
-    conversation.canonicalState?.historyMode === "paginated" &&
-    history !== undefined &&
-    history.islands.some((island) =>
-      island.entries.some((entry) => {
-        const turn = history.entitiesByKey[entry.value];
-        return (
-          turn !== undefined &&
-          (turn.items.length > 0 ||
-            turn.params.input.length > 0 ||
-            Boolean(turn.diff?.trim()) ||
-            (turn.itemsPagination?.evicted === true && hasRecoverableCanonicalTurnItems(turn)))
-        );
-      }),
-    );
+    presentation?.canReadBoundedHistory ??
+    (snapshot?.canonicalState?.historyMode === "paginated" &&
+      history !== undefined &&
+      history.islands.some((island) =>
+        island.entries.some((entry) => {
+          const turn = history.entitiesByKey[entry.value];
+          return (
+            turn !== undefined &&
+            (turn.items.length > 0 ||
+              turn.params.input.length > 0 ||
+              Boolean(turn.diff?.trim()) ||
+              (turn.itemsPagination?.evicted === true && hasRecoverableCanonicalTurnItems(turn)))
+          );
+        }),
+      ));
+  const hasRealtimeHistory =
+    presentation?.hasRealtimeHistory ??
+    snapshot?.canonicalState?.itemTimeline?.entries.some(
+      (entry) =>
+        entry.type === "realtime" &&
+        (entry.item.type === "transcriptSegment" ||
+          entry.item.type === "bemItemPromoted" ||
+          entry.item.type === "realtimeSessionClosed"),
+    ) === true;
   if (
     conversation.resumeState !== "resumed" &&
     attachmentState.status !== "failed" &&
     !canReadAttachedHistory &&
     !canReadBoundedHistory &&
+    !hasRealtimeHistory &&
     !input.firstSubmissionActive
   ) {
     if (hasThreadStartProgress) {
@@ -285,10 +311,12 @@ export function buildThreadBodyModel(input: ThreadBodyModelInput): ThreadBodyMod
     };
   }
 
-  const visibleEntries = selectVisibleConversationTurnStructure({
-    conversation,
-    parentTurns: input.parentTurns,
-  });
+  const visibleEntries =
+    presentation?.visibleEntries ??
+    selectVisibleConversationTurnStructure({
+      conversation: snapshot,
+      parentTurns: input.parentTurns,
+    });
   const activeTurnId =
     [...visibleEntries].reverse().find((entry) => entry.status === "inProgress")?.turnId ?? null;
   const latestTurnId = visibleEntries[visibleEntries.length - 1]?.turnId ?? null;
@@ -297,6 +325,7 @@ export function buildThreadBodyModel(input: ThreadBodyModelInput): ThreadBodyMod
 
   if (
     visibleTurnCount === 0 &&
+    !hasRealtimeHistory &&
     attachmentState.status === "failed" &&
     !isLocalConversationWriterConflict(attachmentState)
   ) {
@@ -315,7 +344,7 @@ export function buildThreadBodyModel(input: ThreadBodyModelInput): ThreadBodyMod
     };
   }
 
-  if (visibleTurnCount === 0) {
+  if (visibleTurnCount === 0 && !hasRealtimeHistory) {
     if (hasThreadStartProgress || input.firstSubmissionActive) {
       return {
         threadId: conversation.threadId,

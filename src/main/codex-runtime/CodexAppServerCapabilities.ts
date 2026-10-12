@@ -5,29 +5,15 @@ import { CodexEndpointMap } from "./CodexEndpointMap";
 import { CodexThreadHostResolver } from "./CodexGateway";
 import type { CodexRuntimeError } from "./CodexRuntimeError";
 
-const NUMERIC_IDENTIFIER = "(?:0|[1-9]\\d*)";
-const NON_NUMERIC_IDENTIFIER = "(?:\\d*[A-Za-z-][0-9A-Za-z-]*)";
-const PRERELEASE_IDENTIFIER = `(?:${NUMERIC_IDENTIFIER}|${NON_NUMERIC_IDENTIFIER})`;
-const PRERELEASE = `${PRERELEASE_IDENTIFIER}(?:\\.${PRERELEASE_IDENTIFIER})*`;
-const BUILD = "[0-9A-Za-z-]+(?:\\.[0-9A-Za-z-]+)*";
-const SEMANTIC_VERSION_PATTERN_SOURCE = `${NUMERIC_IDENTIFIER}\\.${NUMERIC_IDENTIFIER}\\.${NUMERIC_IDENTIFIER}(?:-${PRERELEASE})?(?:\\+${BUILD})?`;
-
-const EXACT_SEMANTIC_VERSION_PATTERN = new RegExp(`^(${SEMANTIC_VERSION_PATTERN_SOURCE})$`, "u");
-// initialize.userAgent is generated as originator/server-version, where originator is the
-// client's name, not a fixed Codex product name. Only inspect its leading product token.
-const ORIGINATOR_USER_AGENT_VERSION_PATTERN = new RegExp(
-  `^[^/();\\r\\n]+/v?(${SEMANTIC_VERSION_PATTERN_SOURCE})(?=$|[\\s;)])`,
-  "u",
-);
-const CODEX_USER_AGENT_VERSION_PATTERN = new RegExp(
-  `(?:^|[\\s;(])(?:Codex Desktop|codex-cli|codex_cli_rs|codex-app-server)[/\\s]+v?(${SEMANTIC_VERSION_PATTERN_SOURCE})(?=$|[\\s;)])`,
-  "iu",
-);
-
-interface ParsedSemanticVersion {
-  readonly core: readonly [string, string, string];
-  readonly prerelease: readonly string[] | null;
-}
+import {
+  CODEX_THREAD_TIMELINE_MINIMUM_VERSION,
+  extractCodexAppServerVersion,
+  isCodexAppServerVersionAtLeast,
+} from "../../shared/codex-app-server-version";
+export {
+  extractCodexAppServerVersion,
+  isCodexAppServerVersionAtLeast,
+} from "../../shared/codex-app-server-version";
 
 export const CODEX_APP_SERVER_CAPABILITY_MINIMUM_VERSIONS = Object.freeze({
   turnApprovalsReviewer: "0.153.0-alpha.4",
@@ -42,7 +28,7 @@ export const CODEX_APP_SERVER_CAPABILITY_MINIMUM_VERSIONS = Object.freeze({
   threadQueue: "0.148.0-alpha.14",
   subagentAncestorFilter: "0.143.0-alpha.16",
   multiAgentV2Protocol: "0.150.0-alpha.12.2",
-  threadTimeline: "0.150.0-alpha.9",
+  threadTimeline: CODEX_THREAD_TIMELINE_MINIMUM_VERSION,
   threadItemAnchors: "0.159.0-alpha.2",
   experimentalPredictionForkMode: "0.162.0-alpha.20",
   mcpApplicationNetworkPolicy: "0.157.0-alpha.11",
@@ -131,112 +117,14 @@ export class CodexAppServerCapabilities extends Context.Service<
   }
 >()("nodex/main/codex-runtime/CodexAppServerCapabilities") {}
 
-const parseSemanticVersion = (value: string): ParsedSemanticVersion | null => {
-  const match = EXACT_SEMANTIC_VERSION_PATTERN.exec(value);
-  if (!match) return null;
-
-  const coreAndPrerelease = value.split("+", 1)[0]!;
-  const prereleaseSeparator = coreAndPrerelease.indexOf("-");
-  const core = (
-    prereleaseSeparator === -1 ? coreAndPrerelease : coreAndPrerelease.slice(0, prereleaseSeparator)
-  ).split(".");
-  if (core.length !== 3) return null;
-
-  const prerelease =
-    prereleaseSeparator === -1 ? null : coreAndPrerelease.slice(prereleaseSeparator + 1).split(".");
-  return {
-    core: core as [string, string, string],
-    prerelease,
-  };
-};
-
-const compareNumericIdentifiers = (left: string, right: string): -1 | 0 | 1 => {
-  if (left.length < right.length) return -1;
-  if (left.length > right.length) return 1;
-  if (left < right) return -1;
-  if (left > right) return 1;
-  return 0;
-};
-
-const comparePrereleaseIdentifiers = (left: string, right: string): -1 | 0 | 1 => {
-  const leftIsNumeric = /^\d+$/u.test(left);
-  const rightIsNumeric = /^\d+$/u.test(right);
-  if (leftIsNumeric && rightIsNumeric) return compareNumericIdentifiers(left, right);
-  if (leftIsNumeric) return -1;
-  if (rightIsNumeric) return 1;
-  if (left < right) return -1;
-  if (left > right) return 1;
-  return 0;
-};
-
-const compareSemanticVersions = (
-  left: ParsedSemanticVersion,
-  right: ParsedSemanticVersion,
-): -1 | 0 | 1 => {
-  for (let index = 0; index < left.core.length; index += 1) {
-    const comparison = compareNumericIdentifiers(left.core[index]!, right.core[index]!);
-    if (comparison !== 0) return comparison;
-  }
-
-  if (left.prerelease === null && right.prerelease === null) return 0;
-  if (left.prerelease === null) return 1;
-  if (right.prerelease === null) return -1;
-
-  const sharedLength = Math.min(left.prerelease.length, right.prerelease.length);
-  for (let index = 0; index < sharedLength; index += 1) {
-    const comparison = comparePrereleaseIdentifiers(
-      left.prerelease[index]!,
-      right.prerelease[index]!,
-    );
-    if (comparison !== 0) return comparison;
-  }
-
-  if (left.prerelease.length < right.prerelease.length) return -1;
-  if (left.prerelease.length > right.prerelease.length) return 1;
-  return 0;
-};
-
-/** Compares two exact app-server SemVer strings without inferring support for unknown versions. */
-export function isCodexAppServerVersionAtLeast(
-  version: string | null | undefined,
-  minimumVersion: string,
-): boolean {
-  if (!version) return false;
-  const parsedVersion = parseSemanticVersion(version);
-  const parsedMinimum = parseSemanticVersion(minimumVersion);
-  return (
-    parsedVersion !== null &&
-    parsedMinimum !== null &&
-    compareSemanticVersions(parsedVersion, parsedMinimum) >= 0
-  );
-}
-
-/** Extracts only an app-server product version, never an unrelated OS/browser version. */
-export function extractCodexAppServerVersion(userAgent: string | null | undefined): string | null {
-  const normalized = userAgent?.trim();
-  if (!normalized) return null;
-
-  const exact = EXACT_SEMANTIC_VERSION_PATTERN.exec(normalized);
-  if (exact?.[1]) return exact[1];
-
-  return (
-    ORIGINATOR_USER_AGENT_VERSION_PATTERN.exec(normalized)?.[1] ??
-    CODEX_USER_AGENT_VERSION_PATTERN.exec(normalized)?.[1] ??
-    null
-  );
-}
-
 const capabilityFlagsForVersion = (version: string | null): CodexAppServerCapabilityFlags => {
   if (version === null) return FAIL_CLOSED_CAPABILITY_FLAGS;
   if (version === "0.0.0") return CODEX_APP_SERVER_DEVELOPMENT_CAPABILITY_FLAGS;
 
-  const parsedVersion = parseSemanticVersion(version);
-  if (!parsedVersion) return FAIL_CLOSED_CAPABILITY_FLAGS;
+  if (!isCodexAppServerVersionAtLeast(version, "0.0.0")) return FAIL_CLOSED_CAPABILITY_FLAGS;
 
-  const supports = (minimumVersion: string): boolean => {
-    const parsedMinimum = parseSemanticVersion(minimumVersion);
-    return parsedMinimum !== null && compareSemanticVersions(parsedVersion, parsedMinimum) >= 0;
-  };
+  const supports = (minimumVersion: string): boolean =>
+    isCodexAppServerVersionAtLeast(version, minimumVersion);
   return Object.freeze({
     turnToolOutput: supports(CODEX_APP_SERVER_CAPABILITY_MINIMUM_VERSIONS.turnToolOutput),
     turnApprovalsReviewer: supports(

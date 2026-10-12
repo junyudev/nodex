@@ -3,6 +3,12 @@ import { DownArrowIcon } from "@/components/shared/icons";
 import { AnimatePresence, motion } from "motion/react";
 import { selectTurnRenderModel } from "../projection/build-turn-render-model";
 import { selectVisibleConversationTurnEntries } from "../selectors";
+import {
+  CodexTranscriptReadOwnerContext,
+  CodexTranscriptTurnEntityContext,
+  useCodexTranscriptTurnFromOwner,
+} from "../normalized-transcript-hooks";
+import type { ConversationLatestTurnPreview } from "../use-conversation-body-presentation";
 import type {
   ThreadFooterModel,
   ThreadPlanSidePanelState,
@@ -40,6 +46,7 @@ interface LocalConversationFooterProps {
   planSidePanelState?: ThreadPlanSidePanelState | null;
   turnDiffHoverPreviewDisabled?: boolean;
   worktreeRuntimeAvailable?: boolean;
+  normalizedPreview?: ConversationLatestTurnPreview | null;
 }
 
 function LocalConversationFooterChrome({
@@ -105,6 +112,7 @@ function LocalConversationFooterComponent({
   planSidePanelState,
   turnDiffHoverPreviewDisabled = false,
   worktreeRuntimeAvailable = true,
+  normalizedPreview = null,
 }: LocalConversationFooterProps) {
   const {
     addScrollListener,
@@ -130,13 +138,31 @@ function LocalConversationFooterComponent({
   const controlledOverlay = rightPanelComposerOverlay?.visibility?.kind === "controlled";
   const rightPanelOverlayEnabled =
     rightPanelComposerOverlay?.enabled === true && (!isResumingActiveThread || controlledOverlay);
+  const previewEntry = rightPanelOverlayEnabled ? normalizedPreview?.entry : null;
+  const normalizedTurn = useCodexTranscriptTurnFromOwner(
+    rightPanelOverlayEnabled ? (normalizedPreview?.owner ?? null) : null,
+    previewEntry?.historyEntityKey ?? null,
+    null,
+  );
+  const legacyPreviewConversation = normalizedPreview ? null : model.conversation;
+  const previewConversationAvailable = model.conversation !== null;
+  const completedGoalTurnId = model.conversation?.canonicalState?.completedThreadGoalTurnId;
+  const completedGoalTimeUsedSeconds = model.conversation?.completedThreadGoal?.timeUsedSeconds;
+  const previewCwd = model.conversation?.cwd;
+  const previewOutputDirectory = model.conversation?.projectlessOutputDirectory;
   const latestTurn = useMemo(() => {
-    if (!rightPanelOverlayEnabled || !model.conversation) return null;
+    if (!rightPanelOverlayEnabled || !previewConversationAvailable) return null;
 
-    const visibleTurns = selectVisibleConversationTurnEntries({
-      conversation: model.conversation,
-    });
-    const latestVisibleTurn = visibleTurns[visibleTurns.length - 1] ?? null;
+    const visibleTurns = normalizedPreview
+      ? []
+      : selectVisibleConversationTurnEntries({
+          conversation: legacyPreviewConversation,
+        });
+    const latestVisibleTurn = normalizedPreview
+      ? previewEntry && normalizedTurn
+        ? { ...previewEntry, turn: normalizedTurn }
+        : null
+      : (visibleTurns[visibleTurns.length - 1] ?? null);
     if (!latestVisibleTurn) return null;
 
     return selectTurnRenderModel({
@@ -144,16 +170,27 @@ function LocalConversationFooterComponent({
       surface: "preview",
       hostId: model.hostId,
       goalTimeUsedSeconds:
-        model.conversation.canonicalState?.completedThreadGoalTurnId ===
-        latestVisibleTurn.turn.turnId
-          ? model.conversation.completedThreadGoal?.timeUsedSeconds
+        completedGoalTurnId === latestVisibleTurn.turn.turnId
+          ? completedGoalTimeUsedSeconds
           : undefined,
       canEditTurnUserPrefix: false,
       canForkTurn: false,
-      cwd: model.conversation.cwd,
-      projectlessOutputDirectory: model.conversation.projectlessOutputDirectory,
+      cwd: previewCwd,
+      projectlessOutputDirectory: previewOutputDirectory,
     });
-  }, [model.conversation, model.hostId, rightPanelOverlayEnabled]);
+  }, [
+    normalizedPreview,
+    normalizedTurn,
+    previewEntry,
+    legacyPreviewConversation,
+    completedGoalTurnId,
+    completedGoalTimeUsedSeconds,
+    previewCwd,
+    previewOutputDirectory,
+    model.hostId,
+    rightPanelOverlayEnabled,
+    previewConversationAvailable,
+  ]);
   const latestTurnKey = latestTurn?.turnKey ?? null;
   const latestTurnOwnerKey = model.composerScopeIdentity?.trim() || model.threadId;
   const latestTurnExpanded = Boolean(
@@ -315,26 +352,30 @@ function LocalConversationFooterComponent({
   );
   const latestTurnPreview =
     showLatestTurnPreview && latestTurn ? (
-      <RightPanelComposerLatestTurnPreview
-        key={latestTurnOwnerKey ?? "right-panel-latest-turn"}
-        turn={latestTurn}
-        expanded={latestTurnExpanded}
-        contextRailLeadingContent={contextRailLeadingContent}
-        projectWorkspacePath={model.projectWorkspacePath}
-        threadCwd={model.cwd}
-        onExpandedChange={handleLatestTurnExpandedChange}
-        onEditLastUserTurn={actions.onEditLastUserTurn}
-        onForkFromTurn={actions.onForkFromTurn}
-        onOpenTurnDiffReview={actions.onOpenTurnDiffReview}
-        onOpenTurnDiffFileInSidePanel={actions.onOpenTurnDiffFileInSidePanel}
-        onOpenSideChat={actions.onOpenSideChat}
-        onOpenThread={actions.onOpenThread}
-        onOpenMcpAppSidePanel={actions.onOpenMcpAppSidePanel}
-        onOpenPlanInSidePanel={actions.onOpenPlanInSidePanel}
-        onClosePlanSidePanel={actions.onClosePlanSidePanel}
-        planSidePanelState={planSidePanelState}
-        turnDiffHoverPreviewDisabled={rightPanelOverlayEnabled || turnDiffHoverPreviewDisabled}
-      />
+      <CodexTranscriptReadOwnerContext.Provider value={normalizedPreview?.owner ?? null}>
+        <CodexTranscriptTurnEntityContext.Provider value={previewEntry?.historyEntityKey ?? null}>
+          <RightPanelComposerLatestTurnPreview
+            key={latestTurnOwnerKey ?? "right-panel-latest-turn"}
+            turn={latestTurn}
+            expanded={latestTurnExpanded}
+            contextRailLeadingContent={contextRailLeadingContent}
+            projectWorkspacePath={model.projectWorkspacePath}
+            threadCwd={model.cwd}
+            onExpandedChange={handleLatestTurnExpandedChange}
+            onEditLastUserTurn={actions.onEditLastUserTurn}
+            onForkFromTurn={actions.onForkFromTurn}
+            onOpenTurnDiffReview={actions.onOpenTurnDiffReview}
+            onOpenTurnDiffFileInSidePanel={actions.onOpenTurnDiffFileInSidePanel}
+            onOpenSideChat={actions.onOpenSideChat}
+            onOpenThread={actions.onOpenThread}
+            onOpenMcpAppSidePanel={actions.onOpenMcpAppSidePanel}
+            onOpenPlanInSidePanel={actions.onOpenPlanInSidePanel}
+            onClosePlanSidePanel={actions.onClosePlanSidePanel}
+            planSidePanelState={planSidePanelState}
+            turnDiffHoverPreviewDisabled={rightPanelOverlayEnabled || turnDiffHoverPreviewDisabled}
+          />
+        </CodexTranscriptTurnEntityContext.Provider>
+      </CodexTranscriptReadOwnerContext.Provider>
     ) : null;
 
   if (rightPanelOverlayEnabled) {

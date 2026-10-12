@@ -53,6 +53,8 @@ export interface ProjectCodexCanonicalItemViewsOptions {
   readonly commandExecutionStartedAtMsById?: Readonly<Record<string, number>>;
   readonly interruptedCommandExecutionItemIds?: readonly string[];
   readonly isBackgroundSubagentsEnabled?: boolean;
+  /** A fragment keeps its parent Turn's positional work boundary. */
+  readonly lastNonUserWorkItemId?: string | null;
 }
 
 export interface ProjectCodexCanonicalTurnItemViewsInput extends ProjectCodexCanonicalItemViewsOptions {
@@ -65,6 +67,8 @@ export interface ProjectCodexCanonicalVisibleTurnItemViewsInput extends ProjectC
   readonly hasVisibleTurnParamsUserMessage?: boolean;
   readonly params: CodexCanonicalTurnParams;
   readonly preserveServerUserMessages?: boolean;
+  /** A fragment may suppress only its parent's proven opening echo; null forbids inference. */
+  readonly openingUserMessageId?: string | null;
 }
 
 export interface ProjectCodexCanonicalTurnViewsInput {
@@ -74,6 +78,8 @@ export interface ProjectCodexCanonicalTurnViewsInput {
   readonly observedAtMs: number;
   readonly isBackgroundSubagentsEnabled?: boolean;
   readonly preserveServerUserMessages?: boolean;
+  readonly lastNonUserWorkItemId?: string | null;
+  readonly openingUserMessageId?: string | null;
 }
 
 /** A complete turn view can include app-owned params fields absent from ThreadItem. */
@@ -232,6 +238,10 @@ function stripUnclosedMemoryCitation(text: string): string {
   return citation < 0 ? text : text.slice(0, citation);
 }
 
+export function isCodexStartupToolPrewarmText(text: string): boolean {
+  return text.startsWith("<startup_tool_prewarm>");
+}
+
 export function projectAssistantText(text: string, streaming: boolean): string | null {
   const withoutMemoryCitations = stripUnclosedMemoryCitation(
     text.replace(
@@ -348,7 +358,9 @@ function collectCodexCanonicalDuplicateUserMessageIds(
 }
 
 /** The params-owned row keeps its display key while retaining its proven native opening identity. */
-function resolveTurnParamsRawItemId(turn: CodexCanonicalTurnState): string | undefined {
+export function resolveCodexCanonicalTurnOpeningUserMessageId(
+  turn: Pick<CodexCanonicalTurnState, "items" | "itemsPagination" | "params">,
+): string | undefined {
   const openingId = turn.itemsPagination?.openingUserMessageId;
   if (openingId !== undefined) return openingId ?? undefined;
 
@@ -831,7 +843,7 @@ function shouldHidePolicyError(
   }
 }
 
-function isNonUserWorkItem(item: CodexCanonicalItem): boolean {
+export function isCodexCanonicalWorkItem(item: CodexCanonicalItem): boolean {
   return (
     item.type !== "userMessage" &&
     item.type !== "hookPrompt" &&
@@ -843,7 +855,7 @@ function isNonUserWorkItem(item: CodexCanonicalItem): boolean {
 function resolveLastNonUserWorkItemIndex(items: readonly CodexCanonicalItem[]): number {
   for (let index = items.length - 1; index >= 0; index -= 1) {
     const item = items[index];
-    if (item && isNonUserWorkItem(item)) return index;
+    if (item && isCodexCanonicalWorkItem(item)) return index;
   }
   return -1;
 }
@@ -1253,7 +1265,10 @@ export function projectCodexCanonicalTurnItemViews(
 ): CodexItemView[] {
   const views: CodexItemView[] = [];
   let previousRawItemWasImageView = false;
-  const lastNonUserWorkItemIndex = resolveLastNonUserWorkItemIndex(input.items);
+  const lastNonUserWorkItemIndex =
+    input.lastNonUserWorkItemId === undefined
+      ? resolveLastNonUserWorkItemIndex(input.items)
+      : input.items.findIndex((item) => item?.id === input.lastNonUserWorkItemId);
 
   input.items.forEach((item, rawItemIndex) => {
     const projected = projectCanonicalItemViews(item, {
@@ -1293,10 +1308,10 @@ export function projectCodexCanonicalTurnItemViews(
 export function projectCodexCanonicalVisibleTurnItemViews(
   input: ProjectCodexCanonicalVisibleTurnItemViewsInput,
 ): CodexItemView[] {
-  const duplicateUserMessageIds = collectCodexCanonicalDuplicateUserMessageIds(
-    input.items,
-    input.params,
-  );
+  const duplicateUserMessageIds =
+    input.openingUserMessageId === undefined
+      ? collectCodexCanonicalDuplicateUserMessageIds(input.items, input.params)
+      : new Set(input.openingUserMessageId === null ? [] : [input.openingUserMessageId]);
   const hasVisibleTurnParamsUserMessage =
     input.hasVisibleTurnParamsUserMessage ??
     projectTurnParamsUserView({
@@ -1351,15 +1366,17 @@ export function projectCodexCanonicalTurnViews(
   }
 
   const blocked = isCodexCanonicalTurnPromptBlocked(input.turn);
+  const openingUserMessageId =
+    input.openingUserMessageId !== undefined
+      ? input.openingUserMessageId
+      : resolveCodexCanonicalTurnOpeningUserMessageId(input.turn);
   const paramsView = projectTurnParamsUserView({
     threadId: input.threadId,
     turnId,
     turnKey,
     params: input.turn.params,
     rawItemId:
-      input.preserveServerUserMessages === true
-        ? undefined
-        : resolveTurnParamsRawItemId(input.turn),
+      input.preserveServerUserMessages === true ? undefined : (openingUserMessageId ?? undefined),
     blocked,
     observedAtMs: input.observedAtMs,
     goalProjection: readCodexCanonicalThreadGoalTranscriptProjection(input.turn),
@@ -1377,6 +1394,8 @@ export function projectCodexCanonicalTurnViews(
     lifecycleStatusByItemId: input.turn.lifecycleStatusByItemId,
     interruptedCommandExecutionItemIds: input.turn.interruptedCommandExecutionItemIds,
     isBackgroundSubagentsEnabled: input.isBackgroundSubagentsEnabled,
+    lastNonUserWorkItemId: input.lastNonUserWorkItemId,
+    openingUserMessageId: openingUserMessageId ?? null,
   });
 
   return paramsView ? [paramsView, ...rawViews] : rawViews;

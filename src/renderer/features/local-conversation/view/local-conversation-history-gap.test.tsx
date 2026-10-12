@@ -66,6 +66,76 @@ function select(input: {
 }
 
 describe("local conversation history gap controller", () => {
+  test("retries one failed item boundary explicitly without restarting a neighboring request", async () => {
+    const gate = createLocalConversationHistoryRequestGate();
+    const updates: unknown[] = [];
+    const unsubscribe = gate.subscribe(() => updates.push(gate.readState()));
+    gate.retain(new Set(["failed-page", "neighbor"]));
+    let resolveNeighbor!: (value: string) => void;
+    const neighbor = new Promise<string>((resolve) => {
+      resolveNeighbor = resolve;
+    });
+    expect(gate.request("neighbor", () => neighbor)).toBe(true);
+    expect(gate.request("failed-page", () => Promise.reject(new Error("read failed")))).toBe(true);
+    await Promise.resolve();
+    expect(gate.readState().failed.has("failed-page")).toBe(true);
+    expect(gate.readState().loading.has("neighbor")).toBe(true);
+    expect(gate.request("failed-page", () => Promise.resolve("applied"))).toBe(false);
+    let attempts = 0;
+    expect(
+      gate.retry("failed-page", async () => {
+        attempts += 1;
+        return "applied";
+      }),
+    ).toBe(true);
+    expect(
+      gate.retry("failed-page", async () => {
+        attempts += 1;
+        return "applied";
+      }),
+    ).toBe(false);
+    await Promise.resolve();
+    expect(attempts).toBe(1);
+    expect(gate.readState().failed.size).toBe(0);
+    expect(gate.readState().loading.has("neighbor")).toBe(true);
+    resolveNeighbor("applied");
+    await neighbor;
+    expect(gate.readState().loading.size).toBe(0);
+    expect(updates.length).toBeGreaterThan(0);
+    unsubscribe();
+  });
+
+  test("retired item failures cannot publish retry state or be retried after their ref leaves", async () => {
+    const gate = createLocalConversationHistoryRequestGate();
+    let reject!: (reason: Error) => void;
+    const page = new Promise<unknown>((_, fail) => {
+      reject = fail;
+    });
+    gate.retain(new Set(["old-generation"]));
+    gate.request("old-generation", () => page);
+    gate.retain(new Set(["current-generation"]));
+    reject(new Error("late old page"));
+    await page.catch(() => {});
+    expect(gate.readState().failed.size).toBe(0);
+    expect(gate.retry("old-generation", () => Promise.resolve("applied"))).toBe(false);
+    expect(gate.request("current-generation", () => Promise.resolve("applied"))).toBe(true);
+    await Promise.resolve();
+    expect(gate.readState().loading.size).toBe(0);
+  });
+
+  test("synchronous item read failures and a failed explicit retry remain observable and stopped", async () => {
+    const gate = createLocalConversationHistoryRequestGate();
+    gate.retain(new Set(["page"]));
+    gate.request("page", () => {
+      throw new Error("synchronous");
+    });
+    expect(gate.readState().failed.has("page")).toBe(true);
+    expect(gate.retry("page", () => Promise.reject(new Error("retry failed")))).toBe(true);
+    await Promise.resolve();
+    expect(gate.readState().failed.has("page")).toBe(true);
+    expect(gate.request("page", () => Promise.resolve("applied"))).toBe(false);
+  });
+
   test("a late stale item page cannot stop the same cursor in a new topology", async () => {
     const pagination = {
       source: "ordinary" as const,

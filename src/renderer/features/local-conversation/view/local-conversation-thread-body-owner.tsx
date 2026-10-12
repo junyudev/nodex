@@ -41,10 +41,15 @@ import {
   selectVisibleConversationTurnEntries,
   isNormalizedConversationTurnEntry,
   materializeConversationTurnListEntry,
+  type ConversationTurnListEntry,
   type VisibleConversationContext,
 } from "../selectors";
 import { useCodexTranscriptStructure } from "../normalized-transcript-hooks";
 import { selectNormalizedConversationEntriesWithFirstSubmission } from "../normalized-transcript-selectors";
+import {
+  isCodexRealtimeTimelineEntry,
+  projectNormalizedTimelineEntries,
+} from "../projection/normalized-timeline-entries";
 import { readCanonicalClientUserMessageId } from "../../conversation-launch/session-first-submission-owner";
 import type {
   ThreadBodyModel,
@@ -120,6 +125,7 @@ function turnHasUserMessage(turn: CodexConversationTurn): boolean {
 }
 
 function turnEntryHasMcpApp(entry: LocalConversationVirtualizedTurnListEntry | undefined): boolean {
+  if (entry && isCodexRealtimeTimelineEntry(entry)) return false;
   if (entry && isNormalizedConversationTurnEntry(entry)) return entry.hasMcpApp;
   return entry?.turn.items.some((item) => item.mcpToolCall?.mcpAppResourceUri != null) === true;
 }
@@ -532,18 +538,38 @@ export function LocalConversationThreadBodyOwner({
           }),
     [conversation, parentTurns, transcriptOwner, transcriptStructure, retainedFirstSubmission],
   );
+  const timelineProjection = useMemo(
+    () =>
+      transcriptOwner && parentTurns.length === 0
+        ? projectNormalizedTimelineEntries({
+            owner: transcriptOwner,
+            structure: transcriptStructure,
+            entries: turnEntries,
+          })
+        : { entries: turnEntries, historyRows: null },
+    [parentTurns.length, transcriptOwner, transcriptStructure, turnEntries],
+  );
+  const displayedTurnEntries = useMemo(
+    () =>
+      timelineProjection.entries.filter(
+        (entry): entry is ConversationTurnListEntry => !isCodexRealtimeTimelineEntry(entry),
+      ),
+    [timelineProjection.entries],
+  );
   const virtualizedEntries = useMemo<LocalConversationVirtualizedTurnListEntry[]>(() => {
-    const groups = turnEntries.map((entry) =>
-      isNormalizedConversationTurnEntry(entry)
-        ? [
-            ...(entry.hasUserMessage
-              ? [{ role: "user" as const, sentAtMs: entry.turnStartedAtMs }]
-              : []),
-            ...(entry.hasAssistantMessage
-              ? [{ role: "assistant" as const, sentAtMs: entry.finalAssistantStartedAtMs }]
-              : []),
-          ]
-        : buildTurnTimestampMarkers(entry.turn),
+    const groups = timelineProjection.entries.map((entry) =>
+      isCodexRealtimeTimelineEntry(entry)
+        ? []
+        : isNormalizedConversationTurnEntry(entry)
+          ? [
+              ...(entry.hasUserMessage
+                ? [{ role: "user" as const, sentAtMs: entry.turnStartedAtMs }]
+                : []),
+              ...(entry.hasAssistantMessage
+                ? [{ role: "assistant" as const, sentAtMs: entry.finalAssistantStartedAtMs }]
+                : []),
+            ]
+          : buildTurnTimestampMarkers(entry.turn),
     );
     const timestamps = resolveConversationTimestampSeparators(
       turnPagination?.hasLoadedOldest === false || parentTurns.length > 0
@@ -551,14 +577,14 @@ export function LocalConversationThreadBodyOwner({
         : groups,
     );
     if (turnPagination?.hasLoadedOldest === false || parentTurns.length > 0) timestamps.shift();
-    return turnEntries.map((entry, index) => ({
+    return timelineProjection.entries.map((entry, index) => ({
       ...entry,
       timestampSeparatorAtMs: timestamps[index] ?? null,
     }));
-  }, [parentTurns.length, turnEntries, turnPagination?.hasLoadedOldest]);
+  }, [parentTurns.length, timelineProjection.entries, turnPagination?.hasLoadedOldest]);
   const historyRows = useMemo(
     () =>
-      (transcriptOwner && parentTurns.length === 0 ? transcriptStructure?.timeline : null) ??
+      timelineProjection.historyRows ??
       canonicalHistoryRows ??
       projectLocalConversationLegacyHistoryRows({
         conversationId: conversation?.threadId ?? body.threadId ?? "unattached",
@@ -571,9 +597,7 @@ export function LocalConversationThreadBodyOwner({
       conversation?.threadId,
       turnPagination,
       virtualizedEntries,
-      transcriptOwner,
-      transcriptStructure?.timeline,
-      parentTurns.length,
+      timelineProjection.historyRows,
     ],
   );
 
@@ -613,8 +637,8 @@ export function LocalConversationThreadBodyOwner({
   );
   const userMessageNavigationItemsRef = useRef(userMessageNavigationItems);
   userMessageNavigationItemsRef.current = userMessageNavigationItems;
-  const currentTurnEntriesRef = useRef(turnEntries);
-  currentTurnEntriesRef.current = turnEntries;
+  const currentTurnEntriesRef = useRef(displayedTurnEntries);
+  currentTurnEntriesRef.current = displayedTurnEntries;
   const persistedSearchSessionRef = useRef<{
     threadId: string;
     hostId: string;
@@ -915,19 +939,20 @@ export function LocalConversationThreadBodyOwner({
           signal,
           waitForRender: nextAnimationFrame,
           readTarget: () => {
-            const entry = currentTurnEntriesRef.current.find(
-              (candidate) => candidate.turnId === meta.occurrence.turnId,
-            );
-            const materialized = entry ? materializeConversationTurnListEntry(entry) : null;
-            return materialized
-              ? resolveLocalConversationPersistedSearchTarget({
-                  entry: materialized,
-                  occurrence: meta.occurrence,
-                  itemOccurrenceIndex: meta.itemOccurrenceIndex,
-                  query: meta.query,
-                  units: searchSource.getUnitsForTurn(materialized),
-                })
-              : null;
+            for (const entry of currentTurnEntriesRef.current) {
+              if (entry.turnId !== meta.occurrence.turnId) continue;
+              const materialized = materializeConversationTurnListEntry(entry);
+              if (!materialized) continue;
+              const target = resolveLocalConversationPersistedSearchTarget({
+                entry: materialized,
+                occurrence: meta.occurrence,
+                itemOccurrenceIndex: meta.itemOccurrenceIndex,
+                query: meta.query,
+                units: searchSource.getUnitsForTurn(materialized),
+              });
+              if (target) return target;
+            }
+            return null;
           },
         });
         if (signal.aborted) return;

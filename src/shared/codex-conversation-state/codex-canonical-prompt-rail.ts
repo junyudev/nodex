@@ -51,6 +51,7 @@ export async function previewCanonicalPromptRailTurn(
   const requestOptions = { priority: "interactive", source: "thread_hydration" } as const;
   if (item.descendingOffset > 0) {
     const page = await listCanonicalHistoryTurns(client, conversationId, {
+      source: "ordinary",
       cursor,
       limit: item.descendingOffset,
       itemsView: "notLoaded",
@@ -61,9 +62,11 @@ export async function previewCanonicalPromptRailTurn(
     if (cursor === null) return null;
   }
   const page = await listCanonicalHistoryTurns(client, conversationId, {
+    source: "ordinary",
     cursor,
     limit: 1,
     itemsView: "full",
+    itemLimit: 30,
     sortDirection: "desc",
     requestOptions,
   });

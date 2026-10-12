@@ -184,6 +184,31 @@ function row(
 }
 
 describe("buildComposerShellModel", () => {
+  test("an explicit empty primary request avoids reading transcript content", () => {
+    const conversation = buildConversationSnapshot({
+      turns: [
+        {
+          threadId: "thread_1",
+          turnId: "one",
+          status: "inProgress",
+          itemIds: [],
+          get items(): CodexConversationSnapshot["turns"][number]["items"] {
+            throw new Error("No transcript read is needed when the request owner selected none");
+          },
+        },
+      ],
+    });
+    const shell = buildComposerShellModel({
+      conversation,
+      primaryRequest: null,
+      backgroundAgentRows: [],
+      knownConversationsById: {},
+    });
+    expect(shell.activeRequest).toBeNull();
+    expect(shell.showComposer).toBe(true);
+    expect(shell.showRequestCards).toBe(false);
+  });
+
   test("uses authoritative descendant pending requests without loading child history", () => {
     const membership = (threadId: string, parentThreadId: string) =>
       ({

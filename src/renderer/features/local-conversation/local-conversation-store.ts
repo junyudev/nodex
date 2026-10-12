@@ -2206,7 +2206,14 @@ export class CodexAppServerManager {
   private nativeHostContextRevision = 0;
   private readonly historyClient: CanonicalHistoryClient;
   private readonly historyItemLoader: CanonicalHistoryItemLoader;
-  private readonly completeHistoryLoader: CanonicalCompleteHistoryLoader;
+  private readonly completeHistoryLoads = new Map<
+    string,
+    {
+      readonly isCurrent: () => boolean;
+      readonly dispose: () => void;
+      readonly promise: Promise<readonly CodexCanonicalTurnState[]>;
+    }
+  >();
   private readonly followerMembershipByConversationId = new Map<
     string,
     {
@@ -2333,6 +2340,8 @@ export class CodexAppServerManager {
       },
       notifyConversation: (id) => this.notifyConversationCallbacks(id),
       onRoleChanged: (id) => {
+        const history = this.completeHistoryLoads.get(id);
+        if (history && !history.isCurrent()) history.dispose();
         this.manualCompactions.clear(id);
         this.wakeQueuedMessages(id);
         this.notifyConversationCallbacks(id);
@@ -2423,10 +2432,6 @@ export class CodexAppServerManager {
     };
 
     this.historyItemLoader = new CanonicalHistoryItemLoader(this.historyClient);
-    this.completeHistoryLoader = new CanonicalCompleteHistoryLoader(
-      this.historyClient,
-      this.historyItemLoader,
-    );
     this.streamRecovery = new ConversationStreamRecovery<CodexCanonicalConversationState>({
       conversations: () =>
         [...this.conversationsById.values()].flatMap((value) =>
@@ -3112,11 +3117,12 @@ export class CodexAppServerManager {
     }
     if (request.method === "thread-follower-load-complete-history") {
       const params = request.params as { conversationId: string };
-      this.assertOwnerForConversation(params.conversationId);
+      using lifetime = this.observeOwnerActionLifetime(params.conversationId, "complete history");
       const before = this.conversationsById.get(params.conversationId)?.canonicalState ?? null;
       const complete = before ? hasCompleteCanonicalConversationHistory(before) : false;
       const beforeRevision = this.streamState.getRevision(params.conversationId);
-      await this.completeHistoryLoader.load(params.conversationId);
+      await this.loadCompleteHistory(params.conversationId);
+      lifetime.assertCurrent();
       const afterRevision = this.streamState.getRevision(params.conversationId);
       const revision =
         !complete && afterRevision !== null && afterRevision > (beforeRevision ?? 0)
@@ -3471,7 +3477,7 @@ export class CodexAppServerManager {
     this.retention.dispose();
     this.nativeAppServer[Symbol.dispose]();
     this.archiveState.clear();
-    this.completeHistoryLoader[Symbol.dispose]();
+    this.disposeCompleteHistoryLoads();
     this.historyItemLoader[Symbol.dispose]();
     this.streamState.dispose();
     this.nativeResumeBuffers.clear();
@@ -4038,7 +4044,7 @@ export class CodexAppServerManager {
 
   private resetConversationHistoryAfterReconnect(): void {
     this.historyItemLoader.cancelLoads();
-    this.completeHistoryLoader.resetAfterReconnect();
+    this.disposeCompleteHistoryLoads();
     this.historyPageLoadsInFlightByTarget.clear();
     this.threadsById.clear();
     for (const id of this.conversationsById.keys()) {
@@ -4070,6 +4076,7 @@ export class CodexAppServerManager {
   private invalidateNativeRequests(options?: { readonly preserveHostContextLoad?: boolean }): void {
     this.nativeHostContextRevision += 1;
     this.nativeHostContext = null;
+    this.disposeCompleteHistoryLoads();
     if (options?.preserveHostContextLoad !== true) this.nativeHostContextLoad = null;
     this.nativeAppServer.retire();
     this.cancelPendingConversationResumes();
@@ -4317,10 +4324,13 @@ export class CodexAppServerManager {
       generation: prepared.generation,
       notifications: [] as (CodexNativeNotificationMessage | CodexNativeRequestMessage)[],
     };
+    // Resume can yield during durable acceptance; subsequent goal/history work belongs to its final owner.
+    let settledOwner: LocalConversationStreamRole | null = null;
     const isCurrent = () =>
       !this.destroyed &&
       this.nativeHostContext === hostContext &&
-      this.goalHydrationTokens.get(threadId) === goalToken;
+      this.goalHydrationTokens.get(threadId) === goalToken &&
+      (settledOwner === null || this.streamState.getRole(threadId) === settledOwner);
     try {
       if (
         !lifetime.isCurrent() ||
@@ -4546,6 +4556,7 @@ export class CodexAppServerManager {
       );
       markHistoryReady();
       this.streamState.setRole(threadId, { role: "owner" });
+      settledOwner = this.streamState.getRole(threadId);
       let goalHydration: Promise<void> | null = null;
       if (!showGoalConfirmation) {
         const previousGoal = this.historyClient.getConversation(threadId)?.threadGoal;
@@ -4582,7 +4593,7 @@ export class CodexAppServerManager {
         if (!isCurrent()) return;
         this.goalHydrationTokens.delete(threadId);
         if (!drainRemainingHistory) return;
-        void this.completeHistoryLoader.load(threadId).catch((error: unknown) => {
+        void this.loadCompleteHistory(threadId).catch((error: unknown) => {
           console.warn("Failed to load remaining thread turns after resume", { threadId, error });
         });
       };
@@ -5031,7 +5042,10 @@ export class CodexAppServerManager {
   }
 
   /** Native reads may hydrate a follower locally without claiming the conversation writer. */
-  private observeHistoryReadLifetime(threadId: string) {
+  private observeHistoryReadLifetime(
+    threadId: string,
+    options: { readonly allowTopologyChanges?: boolean } = {},
+  ) {
     const context = this.nativeHostContext;
     const role = this.streamState.getRole(threadId);
     const snapshot = this.conversationsById.get(threadId);
@@ -5050,9 +5064,10 @@ export class CodexAppServerManager {
         this.streamState.getRole(threadId) !== role ||
         !current?.canonicalState ||
         (current.conversationEntityGeneration ?? 0) !== generation ||
-        (current.canonicalState.turnHistory?.history.generation ?? 0) !== topologyGeneration
+        (!options.allowTopologyChanges &&
+          (current.canonicalState.turnHistory?.history.generation ?? 0) !== topologyGeneration)
       )
-        throw new Error("Conversation changed during history search");
+        throw new Error("Conversation changed during history read");
     };
     assertCurrent();
     this.conversationRemovedCallbacks.add(onRemoved);
@@ -5065,6 +5080,14 @@ export class CodexAppServerManager {
       sendRequest: async (method, params, options) => {
         assertCurrent();
         const result = await this.historyClient.sendRequest(method, params, options);
+        assertCurrent();
+        return result;
+      },
+      sendTimelineRequest: async (params, options) => {
+        assertCurrent();
+        if (!this.historyClient.sendTimelineRequest)
+          throw new Error("Timeline request Adapter is unavailable");
+        const result = await this.historyClient.sendTimelineRequest(params, options);
         assertCurrent();
         return result;
       },
@@ -5083,9 +5106,50 @@ export class CodexAppServerManager {
     };
     return {
       assertCurrent,
+      isCurrent: () => {
+        try {
+          assertCurrent();
+          return true;
+        } catch {
+          return false;
+        }
+      },
       client,
       [Symbol.dispose]: () => this.conversationRemovedCallbacks.delete(onRemoved),
     };
+  }
+
+  /** Complete demand coalesces only while its admitted peer, entity and native context survive. */
+  private loadCompleteHistory(threadId: string): Promise<readonly CodexCanonicalTurnState[]> {
+    const previous = this.completeHistoryLoads.get(threadId);
+    if (previous?.isCurrent()) return previous.promise;
+    previous?.dispose();
+    const lifetime = this.observeHistoryReadLifetime(threadId, { allowTopologyChanges: true });
+    const loader = new CanonicalCompleteHistoryLoader(lifetime.client);
+    let disposed = false;
+    const dispose = () => {
+      if (disposed) return;
+      disposed = true;
+      loader[Symbol.dispose]();
+      lifetime[Symbol.dispose]();
+      if (this.completeHistoryLoads.get(threadId) === entry)
+        this.completeHistoryLoads.delete(threadId);
+    };
+    const promise = loader
+      .load(threadId)
+      .then((turns) => {
+        lifetime.assertCurrent();
+        return turns;
+      })
+      .finally(dispose);
+    const entry = { promise, dispose, isCurrent: () => !disposed && lifetime.isCurrent() };
+    this.completeHistoryLoads.set(threadId, entry);
+    return promise;
+  }
+
+  private disposeCompleteHistoryLoads(): void {
+    for (const entry of this.completeHistoryLoads.values()) entry.dispose();
+    this.completeHistoryLoads.clear();
   }
 
   async hydratePersistedHistoryOccurrence(
@@ -5461,6 +5525,8 @@ export class CodexAppServerManager {
     this.assertOwnerForConversation(threadId);
     const owner = this.streamState.getRole(threadId);
     const nativeRevision = this.nativeHostContextRevision;
+    const entityGeneration =
+      this.conversationsById.get(threadId)?.conversationEntityGeneration ?? 0;
     let removed = false;
     const onRemoved = (id: string) => {
       if (id === threadId) removed = true;
@@ -5470,6 +5536,8 @@ export class CodexAppServerManager {
         removed ||
         this.destroyed ||
         this.nativeHostContextRevision !== nativeRevision ||
+        (this.conversationsById.get(threadId)?.conversationEntityGeneration ?? 0) !==
+          entityGeneration ||
         this.streamState.getRole(threadId) !== owner
       )
         throw new Error(`Conversation owner changed during ${action}`);
@@ -6674,7 +6742,7 @@ export class CodexAppServerManager {
     const hostContext = this.nativeHostContext;
     const source = this.historyClient.getConversation(threadId);
     if (!source) throw new Error("Source conversation not found");
-    if (source.historyMode !== "paginated") await this.completeHistoryLoader.load(threadId);
+    if (source.historyMode !== "paginated") await this.loadCompleteHistory(threadId);
     const forkTrace = startCodexRequestInteractionTrace({
       attributes: {
         "thread.ephemeral": false,

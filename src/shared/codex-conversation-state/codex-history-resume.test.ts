@@ -26,6 +26,32 @@ const pagination: CodexHistoryTurnItemsPagination = {
 };
 
 describe("resumed item history", () => {
+  it.each([false, true])(
+    "a timeline resume retires ordinary reconnect even when the previous prefix is complete=%s",
+    (complete) => {
+      const incoming = {
+        ...pagination,
+        source: "timeline" as const,
+        olderCursor: null,
+        hasLoadedOldest: false,
+        newestSnapshotItemId: "timeline",
+      };
+      const result = mergeCodexResumedItemsPagination(
+        {
+          ...pagination,
+          hasLoadedOldest: complete,
+          reconnect: {
+            beforeItemId: "previous",
+            stopItemId: "resident-last",
+            olderCursorAfterReconnect: "ordinary-cursor",
+          },
+        },
+        incoming,
+        [item("timeline")],
+      );
+      expect(result).toEqual({ ...incoming, reconnect: undefined });
+    },
+  );
   it("reuses the previous older cursor when the new snapshot overlaps its resident anchor", () => {
     const result = mergeCodexResumedItemsPagination(
       pagination,

@@ -227,6 +227,62 @@ describe("canonical history operation ownership", () => {
     expect(residentConversationTurns(f.read())[0]?.itemsPagination?.isLoadingOlder).toBe(false);
   });
 
+  test.each(["interactive", "critical"] as const)(
+    "%s item recovery bypasses saturated preview slots and keeps opening reads foreground",
+    async (priority) => {
+      const f = harness(["a", "b", "foreground"]);
+      f.mutate((draft) => {
+        for (const entry of residentConversationTurnEntries(draft))
+          conversationTurnDraft(draft, entry.address)!.itemsPagination!.summaryItemIds = [];
+      });
+      const background = deferred<unknown>();
+      f.handle(({ params, options }) => {
+        if (options?.priority === "background") return background.promise;
+        return Promise.resolve(
+          itemsPage(
+            "foreground",
+            [item(params.sortDirection === "asc" ? "opening" : "visible")],
+            "older-foreground",
+          ),
+        );
+      });
+      using loader = new CanonicalHistoryItemLoader(f.client);
+      const previews = ["a", "b"].map((turnId) =>
+        loader.loadTurnItems("conversation", turnId, false, { priority: "background" }),
+      );
+      const foreground = loader.loadTurnItems("conversation", "foreground", false, { priority });
+      try {
+        await tick();
+        expect(f.calls.map(({ params }) => ("turnId" in params ? params.turnId : ""))).toEqual([
+          "a",
+          "b",
+          "foreground",
+          "foreground",
+        ]);
+        expect(
+          f.calls.slice(2).map(({ params, options }) => [params.limit, options?.priority]),
+        ).toEqual([
+          [98, priority],
+          [2, priority],
+        ]);
+        await foreground;
+        const turns = residentConversationTurns(f.read());
+        expect(
+          turns.find((turn) => turn.turnId === "foreground")?.items.map(({ id }) => id),
+        ).toEqual(["visible"]);
+        expect(
+          turns
+            .filter((turn) => turn.turnId !== "foreground")
+            .every((turn) => turn.itemsPagination?.isLoadingOlder),
+        ).toBe(true);
+      } finally {
+        loader.cancelLoads();
+        background.resolve(itemsPage("a", []));
+        await Promise.all([...previews, foreground]);
+      }
+    },
+  );
+
   test("evicted prefixes are restored explicitly and ordinary background completion leaves them evicted", async () => {
     const f = harness();
     f.mutate((draft) => {
@@ -345,6 +401,112 @@ describe("canonical history operation ownership", () => {
     expect(await pending).toBe("stale");
     expect(residentConversationTurns(f.read()).map((turn) => turn.turnId)).toEqual(["turn"]);
     expect(f.broadcasts()).toBe(0);
+  });
+
+  test("an older timeline boundary prepends missing items and retires ordinary item recovery", async () => {
+    const f = harness();
+    const residentItem = { type: "plan" as const, id: "resident", text: "latest" };
+    f.mutate((draft) => {
+      const entry = residentConversationTurnEntries(draft)[0]!;
+      const turn = conversationTurnDraft(draft, entry.address)!;
+      turn.items = [residentItem];
+      turn.itemsPagination!.reconnect = {
+        beforeItemId: "resident",
+        stopItemId: "older-anchor",
+        olderCursorAfterReconnect: "ordinary-older",
+      };
+      draft.turnHistory!.history.islands[0]!.olderBoundary = availableCodexHistoryBoundary(
+        "timeline-boundary",
+        { source: "timeline", cursor: "timeline-page", oldestLoadedTurnId: "turn" },
+      );
+      draft.turnsPagination = {
+        source: "timeline",
+        olderCursor: "timeline-page",
+        oldestLoadedTurnId: "turn",
+        isLoadingOlder: false,
+        hasLoadedOldest: false,
+      };
+    });
+    const history = f.read().turnHistory!.history;
+    const boundary = history.islands[0]!.olderBoundary;
+    if (boundary.status !== "available") throw new Error("Expected timeline boundary");
+    const ref = createCodexHistoryBoundaryRef(
+      history.generation,
+      history.islands[0]!.id,
+      "older",
+      boundary,
+    );
+    const client: CanonicalHistoryClient = {
+      ...f.client,
+      supportsThreadTimeline: () => true,
+      sendTimelineRequest: async (params) => {
+        expect(params.cursor).toBe("timeline-page");
+        return {
+          data: [
+            { type: "turnStarted", position: 0, turnId: "turn", startedAt: 1 },
+            { type: "item", position: 1, turnId: "turn", item: item("older") },
+          ],
+          nextCursor: "timeline-next",
+          activeRealtimeSessionAtPageStart: null,
+        } as ClientRequestResponsesByMethod["thread/timeline/list"];
+      },
+    };
+    await expect(loadCanonicalHistoryBoundaryPage(client, "conversation", ref)).resolves.toBe(
+      "applied",
+    );
+    const turn = residentConversationTurns(f.read())[0]!;
+    expect(turn.items.map(({ id }) => id)).toEqual(["older", "resident"]);
+    expect(turn.items[1]).toBe(residentItem);
+    expect(turn.itemsPagination).toMatchObject({
+      source: "timeline",
+      olderCursor: null,
+      hasLoadedOldest: true,
+    });
+    expect(turn.itemsPagination?.reconnect).toBeUndefined();
+    expect(f.read().turnsPagination).toMatchObject({
+      source: "timeline",
+      olderCursor: "timeline-next",
+    });
+    expect(f.broadcasts()).toBe(1);
+  });
+
+  test("an admitted ordinary boundary retains its cursor source when timeline becomes enabled", async () => {
+    const f = harness();
+    f.mutate((draft) => {
+      draft.historyMode = "legacy";
+      draft.turnHistory!.history.islands[0]!.olderBoundary = availableCodexHistoryBoundary(
+        "ordinary-boundary",
+        { cursor: "ordinary-page", oldestLoadedTurnId: "turn" },
+      );
+    });
+    f.handle(async ({ params }) => {
+      expect(params.cursor).toBe("ordinary-page");
+      return { data: [rawTurn("older")], nextCursor: null };
+    });
+    const history = f.read().turnHistory!.history;
+    const boundary = history.islands[0]!.olderBoundary;
+    if (boundary.status !== "available") throw new Error("Expected ordinary boundary");
+    const ref = createCodexHistoryBoundaryRef(
+      history.generation,
+      history.islands[0]!.id,
+      "older",
+      boundary,
+    );
+    const client: CanonicalHistoryClient = {
+      ...f.client,
+      supportsThreadTimeline: () => true,
+      sendTimelineRequest: async () => {
+        throw new Error("Ordinary cursor cannot address timeline");
+      },
+    };
+    await expect(loadCanonicalHistoryBoundaryPage(client, "conversation", ref)).resolves.toBe(
+      "applied",
+    );
+    expect(residentConversationTurns(f.read()).map((turn) => turn.turnId)).toEqual([
+      "older",
+      "turn",
+    ]);
+    expect(f.calls).toHaveLength(1);
   });
 
   test("rejects a boundary page when its original island disappears during I/O", async () => {
@@ -515,5 +677,52 @@ describe("canonical history operation ownership", () => {
       "after",
     ]);
     expect(f.broadcasts()).toBe(1);
+  });
+
+  test("search navigation uses an exact resident item without depending on another native read", async () => {
+    const f = harness();
+    f.mutate((draft) => {
+      const entry = residentConversationTurnEntries(draft)[0]!;
+      conversationTurnDraft(draft, entry.address)!.items = [
+        { type: "plan", id: "match", text: "visible" },
+      ];
+    });
+    f.handle(async () => {
+      throw new Error("Native history temporarily unavailable");
+    });
+    const before = f.read();
+    await hydrateCanonicalHistorySearchMatch(
+      f.client,
+      { conversationId: "conversation", turnId: "turn", itemId: "match", turnCursor: "cursor" },
+      () => "unused",
+    );
+    expect(f.calls).toEqual([]);
+    expect(f.read()).toBe(before);
+    expect(f.broadcasts()).toBe(0);
+  });
+
+  test("search navigation still hydrates a resident summary placeholder with the same item identity", async () => {
+    const f = harness();
+    f.mutate((draft) => {
+      draft.historyMode = "legacy";
+      const entry = residentConversationTurnEntries(draft)[0]!;
+      const turn = conversationTurnDraft(draft, entry.address)!;
+      turn.items = [{ type: "plan", id: "match", text: "placeholder" }];
+      turn.itemsPagination!.summaryItemIds = ["match"];
+    });
+    f.handle(async () => ({
+      data: [
+        { ...rawTurn("turn"), items: [{ ...item("match"), text: "hydrated" }], itemsView: "full" },
+      ],
+      nextCursor: null,
+    }));
+    await hydrateCanonicalHistorySearchMatch(
+      f.client,
+      { conversationId: "conversation", turnId: "turn", itemId: "match", turnCursor: "cursor" },
+      () => "selected",
+    );
+    expect(f.calls.map(({ params }) => params.sortDirection)).toEqual(["desc", "asc"]);
+    expect(f.broadcasts()).toBe(1);
+    expect(residentConversationTurns(f.read())[0]?.items[0]?.id).toBe("match");
   });
 });

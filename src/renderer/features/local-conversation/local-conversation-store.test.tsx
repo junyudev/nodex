@@ -1611,6 +1611,270 @@ async function dispatchQueueOwnerProjection(
   await flushAsyncWork();
 }
 
+describe("complete-history admission lifetime", () => {
+  const historyReads = () =>
+    recordedNativeRequests().filter(
+      (record) =>
+        (record.args[0] as { request?: { method?: string } })?.request?.method ===
+        "thread/turns/list",
+    );
+  async function fixture() {
+    const { CodexAppServerManager, __resetLocalConversationStoreForTests } =
+      await import("./local-conversation-store");
+    resetLocalConversationStoreTestHarness(__resetLocalConversationStoreForTests);
+    nativeSupportsPaginatedHistory = false;
+    let releaseGoal = () => {};
+    nativeGoalHydrationGate = new Promise<void>((accept) => {
+      releaseGoal = accept;
+    });
+    resumeThreadRole = "owner";
+    resumeThreadResult = {
+      ...buildConversation("complete-lifetime", "project-1"),
+      turnPagination: {
+        olderCursor: "older-tail",
+        backwardsCursor: null,
+        oldestLoadedTurnId: null,
+        isLoadingOlder: false,
+        hasLoadedOldest: false,
+        loadedTurnCount: 0,
+        itemsView: "full",
+      },
+    };
+    const manager = trackNativeTestManager(new CodexAppServerManager("local"));
+    const activity = manager.retainActiveConversation("complete-lifetime");
+    await manager.requestThreadStreamResume("complete-lifetime");
+    invokeRecords = [];
+    let releasePage = () => {};
+    nativeTurnsReadGate = new Promise<void>((accept) => {
+      releasePage = accept;
+    });
+    nativeTurnsListResult = {
+      data: [buildProtocolTurn({ id: "older", status: "completed", startedAt: 1 })],
+      nextCursor: null,
+      backwardsCursor: null,
+    };
+    const request = () =>
+      manager.handleThreadFollowerRequest({
+        method: "thread-follower-load-complete-history",
+        params: { conversationId: "complete-lifetime" },
+      });
+    const loseOwner = () =>
+      dispatchTestThreadStreamStateChanged(manager, {
+        hostId: "local",
+        conversationId: "complete-lifetime",
+        sourceClientId: "new-owner",
+        change: {
+          type: "snapshot",
+          revision: 999,
+          conversationState: manager.readConversation("complete-lifetime")!.canonicalState!,
+        },
+      });
+    return {
+      manager,
+      request,
+      loseOwner,
+      releaseGoal,
+      releasePage,
+      dispose: async () => {
+        releasePage();
+        releaseGoal();
+        await act(async () => {
+          await flushAsyncWork();
+        });
+        activity[Symbol.dispose]();
+        manager.destroy();
+        nativeTurnsReadGate = null;
+        nativeTurnsListResult = null;
+        resumeThreadResult = null;
+      },
+    };
+  }
+
+  test("coalesces a current owner's complete demand across its legitimate topology installation", async () => {
+    const f = await fixture();
+    try {
+      const first = f.request();
+      const second = f.request();
+      await waitForCondition(() => historyReads().length === 1, 1000);
+      const islands =
+        f.manager.readConversation("complete-lifetime")?.canonicalState?.turnHistory?.history
+          .islands;
+      f.releasePage();
+      const [left, right] = await Promise.all([first, second]);
+      expect(left).toEqual(right);
+      expect(historyReads()).toHaveLength(1);
+      expect(
+        residentConversationTurns(
+          f.manager.readConversation("complete-lifetime")?.canonicalState,
+        ).map((turn) => turn.turnId),
+      ).toEqual(["older"]);
+      expect(
+        f.manager.readConversation("complete-lifetime")?.canonicalState?.turnHistory?.history
+          .isComplete,
+      ).toBe(true);
+      expect(
+        f.manager.readConversation("complete-lifetime")?.canonicalState?.turnHistory?.history
+          .islands,
+      ).not.toBe(islands);
+      expect(
+        invokeRecords.filter((record) => record.channel === "peer:threadStreamStateChanged"),
+      ).toHaveLength(1);
+    } finally {
+      await f.dispose();
+    }
+  });
+
+  test.each(["owner-loss", "native-retirement", "entity-retirement"] as const)(
+    "a complete command cannot accept or acknowledge a late page after %s",
+    async (retirement) => {
+      const f = await fixture();
+      try {
+        const pending = f.request().then(
+          (value) => ({ accepted: true, value }),
+          (error) => ({ accepted: false, error }),
+        );
+        await waitForCondition(() => historyReads().length === 1, 1000);
+        if (retirement === "owner-loss") f.loseOwner();
+        else if (retirement === "native-retirement") f.manager.retireNativeHostContext();
+        else {
+          const { dispatchCodexAppServerMessage } = await import("./app-server-message-bus");
+          dispatchCodexAppServerMessage("thread-deleted", {
+            hostId: "local",
+            threadId: "complete-lifetime",
+          });
+        }
+        await act(async () => {
+          await flushAsyncWork();
+        });
+        const before = f.manager.readConversation("complete-lifetime")?.canonicalState;
+        const publications = invokeRecords.filter(
+          (record) => record.channel === "peer:threadStreamStateChanged",
+        ).length;
+        f.releasePage();
+        expect(await pending).toMatchObject({ accepted: false });
+        expect(f.manager.readConversation("complete-lifetime")?.canonicalState).toBe(before);
+        expect(
+          invokeRecords.filter((record) => record.channel === "peer:threadStreamStateChanged"),
+        ).toHaveLength(publications);
+      } finally {
+        await f.dispose();
+      }
+    },
+  );
+
+  test("regaining ownership admits a new demand independently and cannot revive an old page", async () => {
+    const f = await fixture();
+    let releaseCurrent = () => {};
+    try {
+      const old = f.request().then(
+        (value) => ({ accepted: true, value }),
+        (error) => ({ accepted: false, error }),
+      );
+      await waitForCondition(() => historyReads().length === 1, 1000);
+      f.loseOwner();
+      disconnectFixtureOwner(f.manager, "complete-lifetime");
+      await f.manager.requestThreadStreamResume("complete-lifetime");
+      expect(f.manager.readConversationStreamRole("complete-lifetime")).toBe("owner");
+      invokeRecords = [];
+      nativeTurnsReadGate = new Promise<void>((accept) => {
+        releaseCurrent = accept;
+      });
+      nativeTurnsListResult = {
+        data: [buildProtocolTurn({ id: "current", status: "completed", startedAt: 1 })],
+        nextCursor: null,
+        backwardsCursor: null,
+      };
+      const current = f.request();
+      await waitForCondition(() => historyReads().length === 1, 1000);
+      releaseCurrent();
+      await current;
+      const accepted = f.manager.readConversation("complete-lifetime")?.canonicalState;
+      const publications = invokeRecords.filter(
+        (record) => record.channel === "peer:threadStreamStateChanged",
+      ).length;
+      f.releasePage();
+      expect(await old).toMatchObject({ accepted: false });
+      expect(f.manager.readConversation("complete-lifetime")?.canonicalState).toBe(accepted);
+      expect(residentConversationTurns(accepted).map((turn) => turn.turnId)).toEqual(["current"]);
+      expect(
+        invokeRecords.filter((record) => record.channel === "peer:threadStreamStateChanged"),
+      ).toHaveLength(publications);
+    } finally {
+      releaseCurrent();
+      await f.dispose();
+    }
+  });
+
+  test("a pending goal cannot begin an automatic complete demand after its owner is replaced", async () => {
+    const f = await fixture();
+    try {
+      f.loseOwner();
+      const before = f.manager.readConversation("complete-lifetime")?.canonicalState;
+      f.releaseGoal();
+      await act(async () => {
+        await flushAsyncWork();
+      });
+      expect(historyReads()).toHaveLength(0);
+      expect(f.manager.readConversation("complete-lifetime")?.canonicalState).toBe(before);
+    } finally {
+      await f.dispose();
+    }
+  });
+
+  test("a legacy follower may hydrate its fork source locally without acquiring parent ownership", async () => {
+    const f = await fixture();
+    try {
+      f.loseOwner();
+      const fork = f.manager.forkConversationFromTurn("complete-lifetime", "older", "Continue");
+      await waitForCondition(() => historyReads().length === 1, 1000);
+      f.releasePage();
+      expect((await fork).threadId).toBe("thread-forked");
+      expect(f.manager.readConversationStreamRole("complete-lifetime")).toBe("follower");
+      expect(invokeRecords.some((record) => record.channel === "peer:requestThreadFollower")).toBe(
+        false,
+      );
+      expect(
+        invokeRecords.find((record) => record.channel === "codex:thread:native-fork:prepare")?.args,
+      ).toEqual(["complete-lifetime", "older"]);
+    } finally {
+      await f.dispose();
+    }
+  });
+
+  test("a legacy follower's fork cannot continue a complete read admitted under another peer role", async () => {
+    const f = await fixture();
+    try {
+      f.loseOwner();
+      const fork = f.manager
+        .forkConversationFromTurn("complete-lifetime", "older", "Continue")
+        .then(
+          (value) => ({ accepted: true, value }),
+          (error) => ({ accepted: false, error }),
+        );
+      await waitForCondition(() => historyReads().length === 1, 1000);
+      dispatchTestThreadStreamStateChanged(f.manager, {
+        hostId: "local",
+        conversationId: "complete-lifetime",
+        sourceClientId: "another-owner",
+        change: {
+          type: "snapshot",
+          revision: 1000,
+          conversationState: f.manager.readConversation("complete-lifetime")!.canonicalState!,
+        },
+      });
+      const before = f.manager.readConversation("complete-lifetime")?.canonicalState;
+      f.releasePage();
+      expect(await fork).toMatchObject({ accepted: false });
+      expect(f.manager.readConversation("complete-lifetime")?.canonicalState).toBe(before);
+      expect(
+        invokeRecords.some((record) => record.channel === "codex:thread:native-fork:prepare"),
+      ).toBe(false);
+    } finally {
+      await f.dispose();
+    }
+  });
+});
+
 describe("local-conversation-store", () => {
   test("answers current-time server requests through the renderer without response tracing", async () => {
     invokeCalls = [];

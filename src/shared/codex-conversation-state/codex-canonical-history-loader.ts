@@ -118,6 +118,7 @@ export interface CanonicalHistoryPageOptions {
   readonly limit?: number | null;
   readonly sortDirection?: "asc" | "desc" | null;
   readonly itemsView?: TurnItemsView | null;
+  readonly itemLimit?: number;
   readonly requestOptions?: CanonicalHistoryRequestOptions;
   readonly source?: "ordinary" | "compact" | "timeline";
 }
@@ -328,7 +329,8 @@ export async function listCanonicalHistoryTurns(
     const seenCursors = new Set<string | null>();
     const seenItems = new Set<string>();
     const descendingItems: ThreadItem[] = [];
-    while ((!requested || cursor !== null) && budget > 0) {
+    const itemLimit = options.itemLimit ?? Infinity;
+    while ((!requested || cursor !== null) && budget > 0 && descendingItems.length < itemLimit) {
       if (seenCursors.has(cursor))
         throw new Error(`thread/items/list repeated cursor ${cursor} for turn ${raw.id}`);
       seenCursors.add(cursor);
@@ -338,7 +340,7 @@ export async function listCanonicalHistoryTurns(
         raw.id,
         cursor,
         requestOptions,
-        Math.min(100, budget),
+        Math.min(100, budget, itemLimit - descendingItems.length),
       );
       requested = true;
       for (const entry of page.entries) {
@@ -539,7 +541,7 @@ export async function loadCanonicalHistoryBoundaryPage(
   const page = await listCanonicalHistoryTurns(client, conversationId, {
     ...options,
     cursor: boundary.handle.cursor,
-    source: boundary.handle.source,
+    source: boundary.handle.source ?? "ordinary",
     limit: options.limit ?? 5,
     sortDirection: ref.edge === "older" ? "desc" : "asc",
   });
@@ -574,7 +576,11 @@ export async function loadCanonicalHistoryBoundaryPage(
             ? `${ref.boundaryId}:${ref.progressKey}:local:${index}`
             : `turn:${turn.turnId}`;
         const resident = lookup(key);
-        installed[key] = resident ? mergeCodexCanonicalTurnState(resident, turn) : turn;
+        installed[key] = resident
+          ? mergeCodexCanonicalTurnState(resident, turn, {
+              itemMergeMode: boundary.handle.source === "timeline" ? "prepend" : "append",
+            })
+          : turn;
         return { key, value: key };
       });
       const oldestLoadedTurnId =
@@ -799,7 +805,7 @@ export class CanonicalHistoryItemLoader implements Disposable {
         : pagination.olderCursor;
       const summaryIds = pagination.summaryItemIds;
       const beforeItems = new Map(turn.items.map((item) => [item.id, item]));
-      const preview = !all && summaryIds != null;
+      const preview = !all && summaryIds != null && load.background;
       if (preview && this.activePreviews >= 2) {
         if (
           !(await new Promise<boolean>((resolve) => {
@@ -844,7 +850,7 @@ export class CanonicalHistoryItemLoader implements Disposable {
               conversationId,
               turnId,
               null,
-              { priority: "background", source: "tail_history" },
+              load.background ? { priority: "background", source: "tail_history" } : options,
               2,
               "asc",
             )

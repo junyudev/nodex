@@ -1,3 +1,4 @@
+import { useConversationBodyPresentation } from "../use-conversation-body-presentation";
 import { ConversationTaskDialog } from "./conversation-task-dialog";
 import { ConversationRuntimeContext } from "../conversation-runtime";
 import { appScope, useScopeHandle } from "@/lib/maitai";
@@ -332,7 +333,10 @@ function ConnectedThreadStageBody({
   firstSubmissionActive?: boolean;
   readOnly?: boolean;
 }) {
-  const canonicalTurns = useConversationTurns(activeThreadId);
+  const parentThreadId = useConversationParentThreadId(activeThreadId);
+  const parentTurns = useConversationTurns(parentThreadId);
+  const bodyPresentation = useConversationBodyPresentation(activeThreadId, parentTurns);
+  const canonicalTurns = bodyPresentation.turns;
   const turns = presentedTurns ?? canonicalTurns;
   useAcknowledgeSessionFirstSubmission(
     {
@@ -348,7 +352,7 @@ function ConnectedThreadStageBody({
   const manager = useCodexAppServerManagerForConversationId(activeThreadId, preferredHostId);
   const hostId = manager.getHostId();
   const conversationSnapshot = useConversation(activeThreadId);
-  const requests = useConversationRequests(activeThreadId);
+  const requests = bodyPresentation.requests;
   const cwd = useConversationCwd(activeThreadId);
   const resumeState = useConversationResumeState(activeThreadId);
   const attachmentState = useConversationAttachmentState(activeThreadId);
@@ -363,8 +367,6 @@ function ConnectedThreadStageBody({
         : liveCapabilityFlags,
     [liveCapabilityFlags, readOnly],
   );
-  const parentThreadId = useConversationParentThreadId(activeThreadId);
-  const parentTurns = useConversationTurns(parentThreadId);
   const childMemberships = useConversationChildMemberships(activeThreadId);
   const backgroundAgentRows = useBackgroundSubagentRows(activeThreadId, preferredHostId);
   const actionsWithAttachmentRetry = useMemo<ThreadStageActions>(
@@ -387,7 +389,8 @@ function ConnectedThreadStageBody({
     () =>
       buildThreadBodyModel({
         activeThreadId,
-        conversation: conversationSnapshot,
+        conversation: bodyPresentation.fallbackConversation,
+        conversationPresentation: bodyPresentation.presentation,
         attachmentState,
         activeThreadArchived: archived,
         parentTurns,
@@ -404,7 +407,8 @@ function ConnectedThreadStageBody({
       activeThreadId,
       attachmentState,
       archived,
-      conversationSnapshot,
+      bodyPresentation.fallbackConversation,
+      bodyPresentation.presentation,
       input.isNewThreadTab,
       input.newThreadTarget,
       input.threadStartProgress,
@@ -432,7 +436,7 @@ function ConnectedThreadStageBody({
       historyMutationRevision: conversationSnapshot?.historyMutationRevision,
       turnItemsPaginationById: conversationSnapshot?.turnItemsPaginationById,
       requests,
-      canonicalRequests: conversationSnapshot?.canonicalRequests ?? [],
+      canonicalRequests: bodyPresentation.canonicalRequests,
       resumeState,
       attachmentState,
       statusType,
@@ -465,7 +469,7 @@ function ConnectedThreadStageBody({
       conversationSnapshot?.historyTopologyGeneration,
       conversationSnapshot?.historyMutationRevision,
       conversationSnapshot?.turnItemsPaginationById,
-      conversationSnapshot?.canonicalRequests,
+      bodyPresentation.canonicalRequests,
       cwd,
       input.projectId,
       input.sessionId,
@@ -573,9 +577,10 @@ export function ConnectedThreadStageFooter({
     activeThreadId,
     preferredHostId,
   ).getHostId();
-  const turns = useConversationTurns(activeThreadId);
+  const bodyPresentation = useConversationBodyPresentation(activeThreadId);
+  const turns = bodyPresentation.turns;
   const conversationSnapshot = useConversation(activeThreadId);
-  const requests = useConversationRequests(activeThreadId);
+  const requests = bodyPresentation.requests;
   const cwd = useConversationCwd(activeThreadId);
   const resumeState = useConversationResumeState(activeThreadId);
   const attachmentState = useConversationAttachmentState(activeThreadId);
@@ -708,7 +713,7 @@ export function ConnectedThreadStageFooter({
         threadId: activeThreadId,
         turns,
         requests,
-        canonicalRequests: conversationSnapshot?.canonicalRequests ?? [],
+        canonicalRequests: bodyPresentation.canonicalRequests,
         pendingSteers,
         queuedFollowUps: [...queuedFollowUps],
         backgroundTerminalRows,
@@ -724,7 +729,7 @@ export function ConnectedThreadStageFooter({
       backgroundTerminalRows,
       backgroundAgentRows,
       childMemberships,
-      conversationSnapshot?.canonicalRequests,
+      bodyPresentation.canonicalRequests,
       knownConversationsById,
       pendingSteers,
       primaryRequest,
@@ -771,7 +776,8 @@ export function ConnectedThreadStageFooter({
     () =>
       buildThreadBodyModel({
         activeThreadId,
-        conversation: conversationSnapshot,
+        conversation: bodyPresentation.fallbackConversation,
+        conversationPresentation: bodyPresentation.presentation,
         attachmentState,
         activeThreadArchived: archived,
         parentTurns: [],
@@ -786,7 +792,8 @@ export function ConnectedThreadStageFooter({
       activeThreadId,
       attachmentState,
       archived,
-      conversationSnapshot,
+      bodyPresentation.fallbackConversation,
+      bodyPresentation.presentation,
       input.isNewThreadTab,
       input.newThreadTarget,
       input.threadStartProgress,
@@ -981,6 +988,7 @@ export function ConnectedThreadStageFooter({
       ) : null}
       <LocalConversationFooter
         model={model}
+        normalizedPreview={bodyPresentation.preview}
         actions={actionsWithComposerCapabilityRefresh}
         worktreeRuntimeAvailable={worktreeRuntimeAvailable}
         errorMessage={errorMessage ?? input.provider?.error ?? null}
@@ -1241,7 +1249,7 @@ export function ConnectedThreadStage({
   const statusType = useConversationStatusType(activeThreadId);
   const statusActiveFlags = useConversationStatusActiveFlags(activeThreadId);
   const primaryRequest = useConversationPrimaryRequest(activeThreadId);
-  const turns = useConversationTurns(activeThreadId);
+  const { turns } = useConversationBodyPresentation(activeThreadId);
   const firstSubmissionProjection = useSessionFirstSubmissionTurns(
     {
       projectId: input.projectId,

@@ -190,6 +190,14 @@ export async function hydrateCanonicalHistorySearchMatch(
   input: CanonicalHistorySearchMatch,
   createSearchIslandId: () => string,
 ): Promise<void> {
+  const resident = residentConversationTurns(client.getConversation(input.conversationId)).find(
+    (turn) => turn.turnId === input.turnId,
+  );
+  if (
+    resident?.items.some((item) => item.id === input.itemId) &&
+    !resident.itemsPagination?.summaryItemIds?.includes(input.itemId)
+  )
+    return;
   const options = { priority: "interactive", source: "thread_hydration" } as const;
   const [older, newer] = await Promise.all(
     ["desc", "asc"].map((sortDirection) =>

@@ -15,12 +15,18 @@ import {
   type CodexTranscriptSnapshot,
   type CodexTranscriptRealtimeItem,
   type CodexTranscriptTurn,
+  type CodexTranscriptTurnDetails,
 } from "../../../shared/codex-transcript-projection";
 import {
+  isCodexCanonicalWorkItem,
+  isCodexStartupToolPrewarmText,
   projectCodexCanonicalTurnItemViews,
   projectCodexCanonicalTurnViews,
+  resolveCodexCanonicalTurnOpeningUserMessageId,
+  type ProjectCodexCanonicalTurnViewsInput,
 } from "../../../shared/codex-canonical-item-projector";
 import { projectCodexItemViewToTranscriptEntry } from "../../../shared/codex-transcript-entry-projection";
+import { areStructurallyEqual } from "../../../shared/structural-equality";
 import {
   CodexHistoryViewportRegistry,
   type CodexHistoryViewportBoundary,
@@ -44,7 +50,22 @@ export interface CodexTranscriptStructure extends CodexTranscriptMetadata {
   }[];
 }
 
+export interface CodexTranscriptTurnSlice {
+  readonly itemIds: readonly string[];
+  readonly includeInput: boolean;
+  readonly includeTurnExtras: boolean;
+  readonly preserveServerUserMessages?: boolean;
+  readonly presentationStatus?: CodexCanonicalTurnState["status"];
+}
+
 type Listener = () => void;
+interface CachedTurnSlice {
+  readonly details: CodexTranscriptTurnDetails;
+  readonly items: readonly CodexCanonicalItem[];
+  readonly lastWorkItemId: string | null;
+  readonly openingUserMessageId: string | null | undefined;
+  readonly value: CodexConversationTurn;
+}
 const EMPTY_SLOTS: CodexTranscriptItemSlots = { length: 0, entries: [] };
 
 function transcriptMetadata(value: CodexTranscriptMetadata): CodexTranscriptMetadata {
@@ -77,10 +98,13 @@ function validateSlots(slots: CodexTranscriptItemSlots): void {
 }
 
 /** These are content-independent bucket/visibility boundaries, not text revisions. */
-function itemShape(item: CodexCanonicalItem | undefined | null): string {
+function itemShape(
+  item: CodexCanonicalItem | undefined | null,
+  assistantVisible?: boolean,
+): string {
   if (!item) return "absent";
   if (item.type === "agentMessage" || item.type === "plan")
-    return `${item.type}:${"phase" in item ? item.phase : ""}:${item.text.trim().length > 0}`;
+    return `${item.type}:${"phase" in item ? item.phase : ""}:${assistantVisible ?? item.text.trim().length > 0}`;
   if (item.type === "reasoning")
     return `${item.type}:${item.summary.some((part) => part.trim().length > 0)}`;
   if (item.type === "commandExecution") return `${item.type}:${item.status}`;
@@ -126,6 +150,16 @@ export class CodexTranscriptReadOwner {
   private readonly materializedTurns = new Map<string, CodexConversationTurn>();
   private readonly canonicalTurns = new Map<string, CodexCanonicalTurnState>();
   private readonly projectedItems = new Map<string, readonly CodexConversationItem[]>();
+  private readonly projectedItemsByStatus = new Map<
+    string,
+    Map<CodexCanonicalTurnState["status"], readonly CodexConversationItem[]>
+  >();
+  private readonly turnSlices = new Map<
+    string,
+    WeakMap<CodexTranscriptTurnSlice, CachedTurnSlice>
+  >();
+  private readonly lastWorkItemIds = new Map<string, string | null>();
+  private readonly openingUserMessageIds = new Map<string, string | null | undefined>();
   private readonly structureRows = new Map<
     string,
     { readonly version: number; readonly row: CodexTranscriptStructure["turns"][number] }
@@ -225,6 +259,8 @@ export class CodexTranscriptReadOwner {
     this.turns.get(entityKey)?.itemSlots ?? null;
   readItem = (entityKey: string, itemId: string): CodexCanonicalItem | null =>
     this.items.get(codexTranscriptItemAddress(entityKey, itemId)) ?? null;
+  readOpeningUserMessageId = (entityKey: string): string | null | undefined =>
+    this.openingUserMessageIds.get(entityKey);
 
   setHistoryViewport(
     viewer: symbol,
@@ -255,27 +291,58 @@ export class CodexTranscriptReadOwner {
     entityKey: string,
     itemId: string,
     displayItemId: string,
+    presentationStatus?: CodexCanonicalTurnState["status"],
   ): CodexConversationItem | null {
     const address = codexTranscriptItemAddress(entityKey, itemId);
+    if (
+      presentationStatus !== undefined &&
+      presentationStatus !== this.readTurnDetails(entityKey)?.status
+    ) {
+      const variants =
+        this.projectedItemsByStatus.get(address) ??
+        new Map<CodexCanonicalTurnState["status"], readonly CodexConversationItem[]>();
+      let entries = variants.get(presentationStatus);
+      if (!entries) {
+        const item = this.readItem(entityKey, itemId);
+        if (!item) return null;
+        const projected = this.projectItem(entityKey, item, presentationStatus);
+        if (!projected) return null;
+        entries = projected;
+        variants.set(presentationStatus, entries);
+        this.projectedItemsByStatus.set(address, variants);
+      }
+      return entries.find((entry) => entry.itemId === displayItemId) ?? null;
+    }
     let entries = this.projectedItems.get(address);
     if (!entries) {
       const item = this.readItem(entityKey, itemId);
-      const details = this.readTurnDetails(entityKey);
-      if (!item || !details) return null;
-      entries = projectCodexCanonicalTurnItemViews({
-        threadId: this.options.threadId,
-        turnId: details.turnId,
-        items: [item],
-        observedAtMs: details.turnStartedAtMs ?? 0,
-        turnStatus: details.status,
-        commandExecutionStartedAtMsById: details.commandExecutionStartedAtMsById,
-        lifecycleStatusByItemId: details.lifecycleStatusByItemId,
-        interruptedCommandExecutionItemIds: details.interruptedCommandExecutionItemIds,
-        isBackgroundSubagentsEnabled: true,
-      }).map((view, sequence) => projectCodexItemViewToTranscriptEntry(view, "live", sequence));
+      if (!item) return null;
+      const projected = this.projectItem(entityKey, item);
+      if (!projected) return null;
+      entries = projected;
       this.projectedItems.set(address, entries);
     }
     return entries.find((entry) => entry.itemId === displayItemId) ?? null;
+  }
+
+  private projectItem(
+    entityKey: string,
+    item: CodexCanonicalItem,
+    presentationStatus?: CodexCanonicalTurnState["status"],
+  ): readonly CodexConversationItem[] | null {
+    const details = this.readTurnDetails(entityKey);
+    if (!details) return null;
+    return projectCodexCanonicalTurnItemViews({
+      threadId: this.options.threadId,
+      turnId: details.turnId,
+      items: [item],
+      observedAtMs: details.turnStartedAtMs ?? 0,
+      turnStatus: presentationStatus ?? details.status,
+      commandExecutionStartedAtMsById: details.commandExecutionStartedAtMsById,
+      lifecycleStatusByItemId: details.lifecycleStatusByItemId,
+      interruptedCommandExecutionItemIds: details.interruptedCommandExecutionItemIds,
+      isBackgroundSubagentsEnabled: true,
+    }).map((view, sequence) => projectCodexItemViewToTranscriptEntry(view, "live", sequence));
   }
 
   /** Full reads are explicit (row construction, search, export), never a text-subscription snapshot. */
@@ -284,14 +351,106 @@ export class CodexTranscriptReadOwner {
     if (cached) return cached;
     const canonical = this.readCanonicalTurn(entityKey);
     if (!canonical) return null;
+    const value = this.materializeTurn(entityKey, canonical, { includeInput: true });
+    this.materializedTurns.set(entityKey, value);
+    return value;
+  }
+
+  /** Timeline fragments borrow only addressed items; canonical sparse slots stay untouched. */
+  readTurnSlice(entityKey: string, slice: CodexTranscriptTurnSlice): CodexConversationTurn | null {
+    const details = this.readTurnDetails(entityKey);
+    if (!details) return null;
+    const items = slice.itemIds.flatMap((itemId) => {
+      const item = this.readItem(entityKey, itemId);
+      return item ? [item] : [];
+    });
+    const lastWorkItemId = this.lastWorkItemIds.get(entityKey) ?? null;
+    const openingUserMessageId = this.openingUserMessageIds.get(entityKey);
+    const slices =
+      this.turnSlices.get(entityKey) ?? new WeakMap<CodexTranscriptTurnSlice, CachedTurnSlice>();
+    const cached = slices.get(slice);
+    if (
+      cached?.details === details &&
+      cached.lastWorkItemId === lastWorkItemId &&
+      cached.openingUserMessageId === openingUserMessageId &&
+      cached.items.length === items.length &&
+      cached.items.every((item, index) => item === items[index])
+    )
+      return cached.value;
+    const canonical: CodexCanonicalTurnState = {
+      ...details,
+      items,
+      status: slice.presentationStatus ?? details.status,
+      ...(slice.includeTurnExtras
+        ? {}
+        : {
+            diff: null,
+            error: null,
+            hookRuns: undefined,
+            safetyBuffering: undefined,
+            durationMs: null,
+            completedAtMs: null,
+            firstTurnWorkItemStartedAtMs: null,
+            finalAssistantStartedAtMs: null,
+          }),
+    };
+    const value = this.materializeTurn(entityKey, canonical, {
+      includeInput: slice.includeInput,
+      lastNonUserWorkItemId: lastWorkItemId,
+      openingUserMessageId: openingUserMessageId ?? null,
+      preserveServerUserMessages: slice.preserveServerUserMessages,
+    });
+    slices.set(slice, {
+      details,
+      items,
+      lastWorkItemId,
+      openingUserMessageId,
+      value,
+    });
+    this.turnSlices.set(entityKey, slices);
+    return value;
+  }
+
+  private materializeTurn(
+    entityKey: string,
+    canonical: CodexCanonicalTurnState,
+    options: Pick<
+      ProjectCodexCanonicalTurnViewsInput,
+      "lastNonUserWorkItemId" | "openingUserMessageId" | "preserveServerUserMessages"
+    > & { readonly includeInput: boolean },
+  ): CodexConversationTurn {
+    const turnKey = canonical.entityKey ?? canonical.turnId ?? entityKey;
     const items = projectCodexCanonicalTurnViews({
       threadId: this.options.threadId,
       turn: canonical,
-      turnKey: canonical.entityKey ?? canonical.turnId ?? entityKey,
+      turnKey,
       observedAtMs: canonical.turnStartedAtMs ?? 0,
       isBackgroundSubagentsEnabled: true,
-    }).map((view, sequence) => projectCodexItemViewToTranscriptEntry(view, "live", sequence));
-    const value: CodexConversationTurn = {
+      lastNonUserWorkItemId: options.lastNonUserWorkItemId,
+      openingUserMessageId: options.openingUserMessageId,
+      preserveServerUserMessages: options.preserveServerUserMessages,
+    })
+      .filter((view) => options.includeInput || view.itemId !== `${turnKey}:input`)
+      .map((view, sequence) => projectCodexItemViewToTranscriptEntry(view, "live", sequence));
+    // Hidden assistant prefixes have no leaf subscriber. Reuse the row's actual projection so
+    // their first visible content can wake the row without parsing ordinary stream text twice.
+    const assistantViews = new Map<string, CodexConversationItem[]>();
+    for (const item of items) {
+      if (item.rawItemType !== "agentMessage" || !item.rawItemId) continue;
+      const views = assistantViews.get(item.rawItemId) ?? [];
+      views.push(item);
+      assistantViews.set(item.rawItemId, views);
+    }
+    for (const item of canonical.items) {
+      if (item?.type !== "agentMessage") continue;
+      const address = codexTranscriptItemAddress(entityKey, item.id);
+      if (
+        !this.projectedItems.has(address) &&
+        canonical.status === this.readTurnDetails(entityKey)?.status
+      )
+        this.projectedItems.set(address, assistantViews.get(item.id) ?? []);
+    }
+    return {
       threadId: this.options.threadId,
       entityKey,
       turnId: canonical.turnId,
@@ -321,8 +480,6 @@ export class CodexTranscriptReadOwner {
       completedAt: canonical.completedAtMs ?? null,
       durationMs: canonical.durationMs,
     };
-    this.materializedTurns.set(entityKey, value);
-    return value;
   }
 
   applyEvent(event: CodexTranscriptEvent): void {
@@ -404,8 +561,10 @@ export class CodexTranscriptReadOwner {
     const previousTurns = new Map<string, CodexTranscriptTurn | undefined>();
     const previousItems = new Map<string, CodexCanonicalItem | undefined>();
     const changedTurns = new Set<string>();
+    const changedProjectionContext = new Set<string>();
     const changedItems = new Set<string>();
     const changedRealtime = new Set<string>();
+    const projectedUpdates = new Map<string, readonly CodexConversationItem[]>();
     let structureChanged = false;
     const rememberTurn = (key: string) => {
       if (!previousTurns.has(key)) previousTurns.set(key, this.turns.get(key));
@@ -504,6 +663,26 @@ export class CodexTranscriptReadOwner {
         }
         if (change.type === "turn") {
           const previous = this.turns.get(entityKey);
+          const previousDetails = previous?.details;
+          if (
+            !previousDetails ||
+            previousDetails.turnId !== change.details.turnId ||
+            previousDetails.turnStartedAtMs !== change.details.turnStartedAtMs ||
+            previousDetails.status !== change.details.status ||
+            !areStructurallyEqual(
+              previousDetails.commandExecutionStartedAtMsById,
+              change.details.commandExecutionStartedAtMsById,
+            ) ||
+            !areStructurallyEqual(
+              previousDetails.lifecycleStatusByItemId,
+              change.details.lifecycleStatusByItemId,
+            ) ||
+            !areStructurallyEqual(
+              previousDetails.interruptedCommandExecutionItemIds,
+              change.details.interruptedCommandExecutionItemIds,
+            )
+          )
+            changedProjectionContext.add(entityKey);
           this.turns.set(entityKey, {
             details: change.details,
             hasSubagentActivity: change.hasSubagentActivity,
@@ -545,9 +724,26 @@ export class CodexTranscriptReadOwner {
         rememberItem(address);
         if (next) this.items.set(address, next);
         else this.items.delete(address);
+        let previousAssistantVisible: boolean | undefined;
+        let nextAssistantVisible: boolean | undefined;
+        if (
+          previous?.type === "agentMessage" &&
+          next?.type === "agentMessage" &&
+          this.turnListeners.get(entityKey)?.size &&
+          !changedTurns.has(entityKey)
+        ) {
+          const previousViews =
+            projectedUpdates.get(address) ??
+            this.projectedItems.get(address) ??
+            this.projectItem(entityKey, previous);
+          const nextViews = this.projectItem(entityKey, next);
+          previousAssistantVisible = previousViews?.some((view) => !!view.markdownText?.trim());
+          nextAssistantVisible = nextViews?.some((view) => !!view.markdownText?.trim());
+          if (nextViews) projectedUpdates.set(address, nextViews);
+        }
         if (
           (change.type === "item" && (!next || !isTextOnlyReplacement(previous, next))) ||
-          itemShape(previous) !== itemShape(next)
+          itemShape(previous, previousAssistantVisible) !== itemShape(next, nextAssistantVisible)
         ) {
           changedTurns.add(entityKey);
           structureChanged = true;
@@ -574,12 +770,23 @@ export class CodexTranscriptReadOwner {
       this.canonicalTurns.delete(entityKey);
       this.materializedTurns.delete(entityKey);
     }
-    for (const address of changedItems) this.projectedItems.delete(address);
+    for (const address of changedItems) {
+      this.projectedItems.delete(address);
+      this.projectedItemsByStatus.delete(address);
+    }
+    for (const [address, views] of projectedUpdates) this.projectedItems.set(address, views);
     for (const entityKey of changedTurns) {
       this.turnVersions.set(entityKey, this.readTurnVersion(entityKey) + 1);
+      if (!this.turns.has(entityKey)) {
+        this.turnSlices.delete(entityKey);
+        this.lastWorkItemIds.delete(entityKey);
+        this.openingUserMessageIds.delete(entityKey);
+      }
+      if (!changedProjectionContext.has(entityKey)) continue;
       for (const { itemId } of this.turns.get(entityKey)?.itemSlots.entries ?? []) {
         const address = codexTranscriptItemAddress(entityKey, itemId);
         this.projectedItems.delete(address);
+        this.projectedItemsByStatus.delete(address);
         changedItems.add(address);
       }
     }
@@ -607,10 +814,20 @@ export class CodexTranscriptReadOwner {
       let hasUserMessage = value.details.params.input.length > 0;
       let hasAssistantMessage = false;
       let hasMcpApp = false;
-      let isStartupPrewarm = false;
+      let isStartupPrewarm = value.details.params.input.some(
+        (input) => input.type === "text" && isCodexStartupToolPrewarmText(input.text),
+      );
+      let lastWorkItemId: string | null = null;
+      let lastWorkItemIndex = -1;
+      const rawItems = Array<CodexCanonicalItem>(value.itemSlots.length);
       for (const { index, itemId } of value.itemSlots.entries) {
         itemIds[index] = itemId;
         const item = this.readItem(entityKey, itemId);
+        if (item) rawItems[index] = item;
+        if (item && index > lastWorkItemIndex && isCodexCanonicalWorkItem(item)) {
+          lastWorkItemId = item.id;
+          lastWorkItemIndex = index;
+        }
         hasUserMessage ||= item?.type === "userMessage";
         hasAssistantMessage ||= item?.type === "agentMessage";
         hasMcpApp ||=
@@ -619,8 +836,7 @@ export class CodexTranscriptReadOwner {
         isStartupPrewarm ||=
           item?.type === "userMessage" &&
           item.content.some(
-            (content) =>
-              content.type === "text" && content.text.startsWith("<startup_tool_prewarm>"),
+            (content) => content.type === "text" && isCodexStartupToolPrewarmText(content.text),
           );
       }
       const row = {
@@ -633,6 +849,15 @@ export class CodexTranscriptReadOwner {
         isStartupPrewarm,
       };
       this.structureRows.set(entityKey, { version, row });
+      this.lastWorkItemIds.set(entityKey, lastWorkItemId);
+      const openingId = value.details.itemsPagination?.openingUserMessageId;
+      this.openingUserMessageIds.set(
+        entityKey,
+        openingId !== undefined
+          ? openingId
+          : (resolveCodexCanonicalTurnOpeningUserMessageId({ ...value.details, items: rawItems }) ??
+              (value.details.itemsPagination?.hasLoadedOldest === false ? undefined : null)),
+      );
       return [row];
     });
     this.structure = { ...this.metadata, turns };
@@ -652,6 +877,10 @@ export class CodexTranscriptReadOwner {
     this.canonicalTurns.clear();
     this.materializedTurns.clear();
     this.projectedItems.clear();
+    this.projectedItemsByStatus.clear();
+    this.turnSlices.clear();
+    this.lastWorkItemIds.clear();
+    this.openingUserMessageIds.clear();
     this.structureRows.clear();
     this.turnVersions.clear();
   }

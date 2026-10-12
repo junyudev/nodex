@@ -431,6 +431,52 @@ describe("LocalConversationVirtualizedTurnList", () => {
     });
   });
 
+  test("restores running native follow state when a realtime row remains at the list tail", () => {
+    installQueuedRequestAnimationFrame();
+    installTurnBlockSizes({ turn_1: 480, "realtime:closed": 80 });
+    const native = buildTurnEntries(["Working on the task."])[0]!;
+    native.turn = {
+      ...native.turn,
+      status: "inProgress",
+      firstTurnWorkItemStartedAtMs: 10,
+      items: native.turn.items.map((item) =>
+        item.kind === "assistantMessage" ? { ...item, assistantPhase: "commentary" } : item,
+      ),
+    };
+    let captured: VirtualizedLatestTurnRestoreState | null = null;
+    const view = renderVirtualizedTurnList({
+      entries: [
+        native,
+        {
+          type: "realtime",
+          itemId: "closed",
+          itemType: "realtimeSessionClosed",
+          turnKey: "realtime:closed",
+          turnSearchKey: "realtime:closed",
+          turnId: null,
+        },
+      ],
+      initialLatestTurnRestoreState: {
+        followMode: "prework_watch",
+        isLatestTurnInProgress: true,
+        latestTurnFollowContentHeightPx: 320,
+        latestTurnHeightPx: 480,
+        latestTurnPhase: "prework",
+        turnKey: "turn_1",
+      },
+      onLatestTurnRestoreStateChange: (state) => {
+        captured = state;
+      },
+    });
+    view.unmount();
+    expect(captured).toMatchObject({
+      turnKey: "turn_1",
+      isLatestTurnInProgress: true,
+      latestTurnPhase: "prework",
+      followMode: "prework_watch",
+    });
+  });
+
   test("ignores zero-height initial mounted measurements", () => {
     installQueuedRequestAnimationFrame();
     installTurnBlockSizes({

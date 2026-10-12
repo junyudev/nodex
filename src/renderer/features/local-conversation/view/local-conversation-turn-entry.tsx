@@ -10,8 +10,11 @@ import {
 } from "../selectors";
 import {
   CodexTranscriptTurnEntityContext,
+  CodexTranscriptTurnStatusContext,
   useCodexTranscriptTurn,
 } from "../normalized-transcript-hooks";
+import { isCodexTimelineTurnEntry } from "../projection/normalized-timeline-entries";
+import { LocalConversationTimelinePromotion } from "./local-conversation-timeline-promotion";
 import type {
   ThreadComposerShellBackgroundAgentRowModel,
   ThreadPlanSidePanelState,
@@ -94,13 +97,19 @@ function LocalConversationTurnEntryComponent({
   const turn = useCodexTranscriptTurn(
     entityKey,
     isNormalizedConversationTurnEntry(entry) ? null : entry.turn,
+    isCodexTimelineTurnEntry(entry) ? entry.timelineSlice : undefined,
   );
   const materializedEntry = useMemo<VisibleConversationTurnEntry | null>(
     () => (turn ? { ...entry, turn } : null),
     [entry, turn],
   );
+  const isTimelineEntry = isCodexTimelineTurnEntry(entry);
+  const allowUserActions = !isTimelineEntry || entry.timelineUserActions;
+  const includeTurnExtras = !isTimelineEntry || entry.timelineSlice.includeTurnExtras;
   const goalTimeUsedSeconds = useCodexConversationValue(conversationId, (conversation) =>
-    conversation?.canonicalState?.completedThreadGoalTurnId === entry.turnId && entry.turnId != null
+    includeTurnExtras &&
+    conversation?.canonicalState?.completedThreadGoalTurnId === entry.turnId &&
+    entry.turnId != null
       ? conversation.completedThreadGoal?.timeUsedSeconds
       : undefined,
   );
@@ -118,8 +127,8 @@ function LocalConversationTurnEntryComponent({
             entry: materializedEntry,
             goalTimeUsedSeconds,
             hostId,
-            canEditTurnUserPrefix,
-            canForkTurn,
+            canEditTurnUserPrefix: allowUserActions && canEditTurnUserPrefix,
+            canForkTurn: allowUserActions && canForkTurn,
             canOpenSubagents: Boolean(onOpenThread),
             backgroundAgents: backgroundAgentRows,
             cwd: threadCwd,
@@ -131,6 +140,7 @@ function LocalConversationTurnEntryComponent({
     [
       goalTimeUsedSeconds,
       hostId,
+      allowUserActions,
       canEditTurnUserPrefix,
       canForkTurn,
       onOpenThread,
@@ -144,47 +154,26 @@ function LocalConversationTurnEntryComponent({
   );
 
   if (!turn || !turnModel) return null;
+  if (
+    isCodexTimelineTurnEntry(entry) &&
+    entry.timelinePresentation &&
+    entry.timelinePresentation.type !== "wholeItem"
+  )
+    return <LocalConversationTimelinePromotion entry={entry} cwd={threadCwd ?? null} />;
 
   return (
     <CodexTranscriptTurnEntityContext.Provider value={entityKey}>
-      <LocalConversationAboveComposerPortal
-        blocks={turnModel.aboveComposerBlocks ?? []}
-        conversationId={conversationId}
-        isLatestTurn={entry.isMostRecentTurn}
-        isStreamingTurn={turn.status === "inProgress"}
-        projectWorkspacePath={projectWorkspacePath}
-        projectlessOutputDirectory={projectlessOutputDirectory}
-        threadCwd={threadCwd}
-        onOpenTurnDiffReview={onOpenTurnDiffReview}
-        onOpenTurnDiffFileInSidePanel={onOpenTurnDiffFileInSidePanel}
-        onOpenSideChat={onOpenSideChat}
-        onOpenThread={onOpenThread}
-        onOpenSummaryScheduledAutomation={onOpenSummaryScheduledAutomation}
-        onOpenMcpAppSidePanel={onOpenMcpAppSidePanel}
-        onOpenPlanInSidePanel={onOpenPlanInSidePanel}
-        onClosePlanSidePanel={onClosePlanSidePanel}
-        planSidePanelState={planSidePanelState}
-        turnDiffHoverPreviewDisabled={turnDiffHoverPreviewDisabled}
-      />
-      {entry.timestampSeparatorAtMs == null ? null : (
-        <ThreadTimestampSeparator sentAtMs={entry.timestampSeparatorAtMs} />
-      )}
-      <div data-content-search-turn-key={entry.turnSearchKey} data-virtualized-turn-content="true">
-        <ThreadTurn
-          turn={turnModel}
-          mcpApps={mcpApps ?? []}
-          agentBodyCollapsed={persistedCollapsed ?? turnModel.defaultAgentBodyCollapsed}
-          onAgentBodyCollapsedChange={(turnKey, collapsed) => {
-            if (turnKey !== entry.turnKey) return;
-            onSetCollapsed?.(collapsed);
-          }}
+      <CodexTranscriptTurnStatusContext.Provider
+        value={isCodexTimelineTurnEntry(entry) ? entry.timelineSlice.presentationStatus : undefined}
+      >
+        <LocalConversationAboveComposerPortal
+          blocks={turnModel.aboveComposerBlocks ?? []}
+          conversationId={conversationId}
+          isLatestTurn={entry.isMostRecentTurn}
+          isStreamingTurn={turn.status === "inProgress"}
           projectWorkspacePath={projectWorkspacePath}
           projectlessOutputDirectory={projectlessOutputDirectory}
-          childMemberships={childMemberships}
-          parentModel={parentModel}
           threadCwd={threadCwd}
-          onEditLastUserTurn={onEditLastTurnMessage}
-          onForkFromTurn={onForkTurnMessage}
           onOpenTurnDiffReview={onOpenTurnDiffReview}
           onOpenTurnDiffFileInSidePanel={onOpenTurnDiffFileInSidePanel}
           onOpenSideChat={onOpenSideChat}
@@ -195,9 +184,43 @@ function LocalConversationTurnEntryComponent({
           onClosePlanSidePanel={onClosePlanSidePanel}
           planSidePanelState={planSidePanelState}
           turnDiffHoverPreviewDisabled={turnDiffHoverPreviewDisabled}
-          latestTurnFollowContentRef={latestTurnFollowContentRef}
         />
-      </div>
+        {entry.timestampSeparatorAtMs == null ? null : (
+          <ThreadTimestampSeparator sentAtMs={entry.timestampSeparatorAtMs} />
+        )}
+        <div
+          data-content-search-turn-key={entry.turnSearchKey}
+          data-virtualized-turn-content="true"
+        >
+          <ThreadTurn
+            turn={turnModel}
+            mcpApps={mcpApps ?? []}
+            agentBodyCollapsed={persistedCollapsed ?? turnModel.defaultAgentBodyCollapsed}
+            onAgentBodyCollapsedChange={(turnKey, collapsed) => {
+              if (turnKey !== entry.turnKey) return;
+              onSetCollapsed?.(collapsed);
+            }}
+            projectWorkspacePath={projectWorkspacePath}
+            projectlessOutputDirectory={projectlessOutputDirectory}
+            childMemberships={childMemberships}
+            parentModel={parentModel}
+            threadCwd={threadCwd}
+            onEditLastUserTurn={onEditLastTurnMessage}
+            onForkFromTurn={onForkTurnMessage}
+            onOpenTurnDiffReview={onOpenTurnDiffReview}
+            onOpenTurnDiffFileInSidePanel={onOpenTurnDiffFileInSidePanel}
+            onOpenSideChat={onOpenSideChat}
+            onOpenThread={onOpenThread}
+            onOpenSummaryScheduledAutomation={onOpenSummaryScheduledAutomation}
+            onOpenMcpAppSidePanel={onOpenMcpAppSidePanel}
+            onOpenPlanInSidePanel={onOpenPlanInSidePanel}
+            onClosePlanSidePanel={onClosePlanSidePanel}
+            planSidePanelState={planSidePanelState}
+            turnDiffHoverPreviewDisabled={turnDiffHoverPreviewDisabled}
+            latestTurnFollowContentRef={latestTurnFollowContentRef}
+          />
+        </div>
+      </CodexTranscriptTurnStatusContext.Provider>
     </CodexTranscriptTurnEntityContext.Provider>
   );
 }
