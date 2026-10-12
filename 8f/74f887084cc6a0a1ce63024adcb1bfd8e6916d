@@ -1,0 +1,999 @@
+src/main/codex-application/ExecutionHostRuntime.test-support.ts
+  s_3fb2929dbd24d7::t_06f7e6995c035b 21-36
+  s_3fb2929dbd24d7::t_fb7ec6fc387105 1-20,37
+src/main/platform/node/RemoteWorkspaceFileOperation.ts
+  s_3fb2929dbd24d7::t_217870d0aa48de 1-10,12-25,27-34,37-39
+  s_3fb2929dbd24d7::t_30b5a56ab77818 35-36
+src/main/codex-application/ExecutionHostDirectories.ts
+  s_3fb2929dbd24d7::t_06f7e6995c035b 36-43,63-73,76-94,97-102,105-111,116-119,123-129,132-142,144-169,171-176,184-209
+  s_3fb2929dbd24d7::t_cd6425f37b0225 1-35,44-62,74-75,95-96,103-104,112-115,120-122,130-131,143,170,177-183,210-213
+src/main/codex-application/CodexAgentConfigRuntime.ts
+  s_3fb2929dbd24d7::t_49717c84447617 252-255
+  s_3fb2929dbd24d7::t_803ffcf18930b4 35,272
+src/renderer/features/local-conversation/thread-action-controller.ts
+  s_3fb2929dbd24d7::t_a506fade2ae1f9 41,302
+  s_3fb2929dbd24d7::t_ec4949a1bb4d74 247
+src/main/github-pr-service.ts
+  s_3fb2929dbd24d7::t_9eb4cd1750ba7c 67,82-87,98
+  s_3fb2929dbd24d7::t_be3aa98c35077c 1,36-40,42-43,47,77
+  s_3fb2929dbd24d7::t_2886a440bea6af 41
+src/renderer/lib/use-project-appearance-mutation.jsdom.test.ts
+  s_3fb2929dbd24d7::t_3cf76cd8a99c9f 44
+  s_3fb2929dbd24d7::t_efa85e47c74375 241,258
+src/renderer/features/local-conversation/thread-summary-git-operations.ts
+  s_3fb2929dbd24d7::t_e7ca6f9eabb4d9 63-64,66,73
+  s_3fb2929dbd24d7::t_bb7743551b5e5e 67-71,74-78,80-81
+src/main/platform/node/CodexSshSession.ts
+  s_3fb2929dbd24d7::t_ebb57c7c05da2e 93
+  s_3fb2929dbd24d7::t_cfb8d1dd72df0b 8-9,58-65,79,158,259,261-265
+  s_3fb2929dbd24d7::t_572d4b6da6d71c 66-67,73-76,78
+  s_3fb2929dbd24d7::t_be9c5960ccc5d7 68-72,77
+src/shared/execution-host.ts
+  s_3fb2929dbd24d7::t_cfe326dae5659a 1-90
+  s_3fb2929dbd24d7::t_06f7e6995c035b 91-133
+src/renderer/components/workbench/workbench-automations-overlay.tsx
+  s_3fb2929dbd24d7::t_bb7743551b5e5e 2702-2704,3037,3040-3041
+  s_3fb2929dbd24d7::t_89ddd4c530811e 2699,3042
+src/shared/workbench-scene.ts
+  s_3fb2929dbd24d7::t_0dd7f508b94b8e 164
+src/renderer/components/board/editor/nfm-side-menu.stories.tsx
+  s_3fb2929dbd24d7::t_efa85e47c74375 24
+src/main/codex-application/CodexThreadHandoffRuntime.node.test.ts
+  s_3fb2929dbd24d7::t_4d22d0362ccfd0 1,112
+src/renderer/features/workspace-files/workspace-files-panel.tsx
+  s_3fb2929dbd24d7::t_1ed19225e061f9 435-436,438,927-928,936
+  s_3fb2929dbd24d7::t_bb7743551b5e5e 437,1123-1139,1142-1144,1146-1147,1150-1159,1162-1256,1258-1288,1292-1301,1303-1367
+  s_3fb2929dbd24d7::t_ab7b59162be840 120-122,929
+  s_3fb2929dbd24d7::t_78f0b9e4142386 146-147
+  s_3fb2929dbd24d7::t_9905e981324ce7 1122
+  s_3fb2929dbd24d7::t_4918b125393741 1368
+  s_3fb2929dbd24d7::t_b02988ad4f8de8 42,963,979,994
+src/renderer/components/workbench/workbench-settings-sections.node.test.ts
+  s_3fb2929dbd24d7::t_71b61a0b17d150 8-11
+src/renderer/lib/git-worker-client.ts
+  s_3fb2929dbd24d7::t_66d4d942286f58 16,54,69,88,96,139
+src/renderer/components/workbench/file-tree-context-menu.tsx
+  s_3fb2929dbd24d7::t_bb7743551b5e5e 42-45,98-102,119-135,137-138
+  s_3fb2929dbd24d7::t_ae548998f477ee 39
+src/renderer/features/local-conversation/view/shared/worktree-starting-state-popover.test.tsx
+  s_3fb2929dbd24d7::t_bb7743551b5e5e 7-14,38-51,54-58
+  s_3fb2929dbd24d7::t_b3a0473468cc27 1,15-19,37,52-53,59
+src/main/platform/node/GitWorkerStdio.ts
+  s_3fb2929dbd24d7::t_5d1165b4ac168b 9
+  s_3fb2929dbd24d7::t_e7ca6f9eabb4d9 59
+  s_3fb2929dbd24d7::t_a4586228445ce8 1-8,10-29,31-58,60-100
+  s_3fb2929dbd24d7::t_f7bb2802d7fe41 30
+src/renderer/components/workbench/project-hover-card-model.test.ts
+  s_3fb2929dbd24d7::t_bb7743551b5e5e 39,62
+docs/ARCHITECTURE.md
+  s_3fb2929dbd24d7::t_74efeee7d5f9aa 934-936,942-943
+src/renderer/features/workspace-files/workspace-file-tab-model.node.test.ts
+  s_3fb2929dbd24d7::t_bb7743551b5e5e 25-34
+  s_3fb2929dbd24d7::t_c8ecba39fe719e 24,35
+src/main/host-runtime/GitWorkerRuntime.ts
+  s_3fb2929dbd24d7::t_a56374902b9384 442-451,457-481,483-494,497-498
+  s_3fb2929dbd24d7::t_a4586228445ce8 114,124-126,204-205,207,216-217,219,347-350,352-353,456
+  s_3fb2929dbd24d7::t_c377f9f2bc5df0 206,218,351,452-455
+src/renderer/components/workbench/panel-destination-picker.stories.tsx
+  s_3fb2929dbd24d7::t_efa85e47c74375 24
+src/renderer/components/workbench/workbench-runtime.tsx
+  s_3fb2929dbd24d7::t_9dc50b706accc3 2353
+  s_3fb2929dbd24d7::t_ab7b59162be840 3591-3605,3710-3711,3741
+  s_3fb2929dbd24d7::t_e3198cc3aca236 168,458
+  s_3fb2929dbd24d7::t_705f5da4acb7a8 2223
+  s_3fb2929dbd24d7::t_d606655f190b16 169-172,271-275,2345-2352,2354-2399,2402-2409
+  s_3fb2929dbd24d7::t_a506fade2ae1f9 1409
+  s_3fb2929dbd24d7::t_5a0c3c02deaa27 4551
+  s_3fb2929dbd24d7::t_df43d9926b8a05 3970
+  s_3fb2929dbd24d7::t_bb7743551b5e5e 4544-4548,4552-4555
+src/renderer/components/workbench/panel-destination-picker-model.node.test.ts
+  s_3fb2929dbd24d7::t_efa85e47c74375 31
+src/renderer/features/review/data/git-query.ts
+  s_3fb2929dbd24d7::t_ccb6e6f5586e63 218-223,335-336,340
+  s_3fb2929dbd24d7::t_bb7743551b5e5e 32-35,138-139,145-150,337-339
+  s_3fb2929dbd24d7::t_d4c0e50ff66352 31,36-41
+  s_3fb2929dbd24d7::t_7be9fb5d40e337 16,23,43,54,64,78,93,104,113,168,197,211,227,247,261,270,300
+  s_3fb2929dbd24d7::t_68a04e59ad611f 341
+src/main/workspace-files/RemoteWorkspaceFiles.ts
+  s_3fb2929dbd24d7::t_96e2d3f6f3cb30 282,291,306-314,317
+  s_3fb2929dbd24d7::t_06f7e6995c035b 10-13,15-21,27-31,35-53,58-71,77-103,105-245,265-266,268,270-281,283-288,290,292-305,315-316,318-336,339-360
+  s_3fb2929dbd24d7::t_30b5a56ab77818 1-9,14,22-23,26,32-34,54-55,57,72-76,361
+  s_3fb2929dbd24d7::t_e2b18a315adb78 257-260
+  s_3fb2929dbd24d7::t_e88e975cb2b4c4 289
+  s_3fb2929dbd24d7::t_7d832bb712d42c 24,246-256,261-264,267,269
+  s_3fb2929dbd24d7::t_32d8cd8a4c15cd 25
+src/main/ipc/handlers/WorkspaceFileIpc.ts
+  s_3fb2929dbd24d7::t_bb9c30cf3fb2d6 356
+  s_3fb2929dbd24d7::t_06f7e6995c035b 30-35,78,83-86,91-93,104-108,115-117,129-154,206-212,214-223,227-236,240-249,253-262,266-275,279-299,313-316,340,349-352
+  s_3fb2929dbd24d7::t_280e05524d44b1 15-19
+src/main/codex-application/CodexSessionThreadLaunch.node.test.ts
+  s_3fb2929dbd24d7::t_ec4949a1bb4d74 164-168,753,821-829
+  s_3fb2929dbd24d7::t_f1a81e091db6cc 83,107,114,121,830-835
+scripts/ci/effect-boundaries.ts
+  s_3fb2929dbd24d7::t_e093b9158f4ad4 160
+src/main/codex-runtime/CodexRuntime.node.test.ts
+  s_3fb2929dbd24d7::t_095775dc4e3cdf 860-905,907-919
+  s_3fb2929dbd24d7::t_6d301334fd13b3 906
+  s_3fb2929dbd24d7::t_340cfd5013a632 920-921
+src/main/ipc/handlers/ProjectWorkspaceIpc.ts
+  s_3fb2929dbd24d7::t_ec4949a1bb4d74 175-190,231-232,234-248,263-275
+  s_3fb2929dbd24d7::t_1272c007472c53 14,20-21,69,85,174,228-230,233
+  s_3fb2929dbd24d7::t_2f785fbdef9bb2 276-277
+src/main/ipc/handlers/ProjectWorkspaceIpc.test.ts
+  s_3fb2929dbd24d7::t_ec4949a1bb4d74 102-108,136-142,234-237,241-253,257-259,263-269,272-279
+  s_3fb2929dbd24d7::t_1272c007472c53 9-11,51,98-100,135,143,232-233,238-240,254-256,260-262,270-271,280
+  s_3fb2929dbd24d7::t_ddb1b8cd7c89d5 281
+src/shared/ipc-endpoint-policy.ts
+  s_3fb2929dbd24d7::t_257d154fd73c5b 236-239,616-623
+src/main/host-runtime/WorktreeWorkerRuntime.test.ts
+  s_3fb2929dbd24d7::t_4e1e95d0b6bc71 16-21,147-171,175-185,189-191
+  s_3fb2929dbd24d7::t_29271cb4cf2c12 141-142,146
+  s_3fb2929dbd24d7::t_1e5cfe838fcd65 137-140,143-145,172-174,186-188,192-199
+  s_3fb2929dbd24d7::t_bbcf21d8b6d1a7 200
+src/renderer/components/workbench/codex-project-row.browser.test.tsx
+  s_3fb2929dbd24d7::t_efa85e47c74375 19
+src/renderer/components/workbench/workbench-automation-project-options.node.test.ts
+  s_3fb2929dbd24d7::t_efa85e47c74375 24
+src/renderer/components/workbench/project-lifecycle-dialogs.stories.tsx
+  s_3fb2929dbd24d7::t_efa85e47c74375 24,43
+src/main/git-worker/repository-identity.test.ts
+  s_3fb2929dbd24d7::t_5ce867e97e1e4d 7-9,15-16,20-28,31-37,39-40,43-45,47-52,54,56-62,64-72,74-78,80-82,84-92,94-95,97
+  s_3fb2929dbd24d7::t_497b511900e5aa 1-6,10-14,17-19,41-42,46,98
+  s_3fb2929dbd24d7::t_07e3f5c50e5784 29,38,53,55,63,73,79,83,93,96
+src/renderer/features/local-conversation/view/shared/turn-diff-surface.tsx
+  s_3fb2929dbd24d7::t_206008b7ccc8e6 579,592,700
+  s_3fb2929dbd24d7::t_99df9ba2d345f7 661
+src/main/codex-application/ExecutionHostConnectionFailure.node.test.ts
+  s_3fb2929dbd24d7::t_a7d837f3fa1b74 4,66-69
+  s_3fb2929dbd24d7::t_decf8aa2d18601 53-61,63-64
+  s_3fb2929dbd24d7::t_55421c683f86c0 17-23,32-37
+  s_3fb2929dbd24d7::t_86b5a789542abc 1-2,5-14,16,24-31,38-49,70
+  s_3fb2929dbd24d7::t_27e23b6c11b34d 15
+  s_3fb2929dbd24d7::t_f3dc7149d050d2 3,50-52,62,65
+src/main/codex-application/CodexProjectSessionFork.ts
+  s_3fb2929dbd24d7::t_803ffcf18930b4 177-178,265
+src/renderer/components/board/editor/nfm-text-action-menu.test.tsx
+  s_3fb2929dbd24d7::t_efa85e47c74375 36
+  s_3fb2929dbd24d7::t_40c2fd5b57cff9 564
+src/renderer/features/local-conversation/view/summary-panel/thread-summary-panel-header-action.tsx
+  s_3fb2929dbd24d7::t_e7ca6f9eabb4d9 60,84
+src/renderer/components/workbench/session-context-menu-model.test.ts
+  s_3fb2929dbd24d7::t_efa85e47c74375 61
+src/main/ipc/handlers/ExecutionHostIpc.ts
+  s_3fb2929dbd24d7::t_06f7e6995c035b 53-56,60-106
+  s_3fb2929dbd24d7::t_257d154fd73c5b 4-12,52,57-59
+  s_3fb2929dbd24d7::t_d0b51089b990a4 107
+scripts/prepared-electron-build.ts
+  s_3fb2929dbd24d7::t_bb7743551b5e5e 530-543
+src/renderer/components/workbench/sidebar-project-group-dnd.browser.test.tsx
+  s_3fb2929dbd24d7::t_efa85e47c74375 38,56
+src/main/codex/codex-permission-resolver.ts
+  s_3fb2929dbd24d7::t_1c028b48423268 307,346
+src/renderer/features/review/data/use-review-path-diffs.ts
+  s_3fb2929dbd24d7::t_835a7c731bad1f 25,70,80,165
+src/renderer/components/workbench/local-environments-settings-page.stories.tsx
+  s_3fb2929dbd24d7::t_efa85e47c74375 22,40
+src/renderer/lib/use-terminal.ts
+  s_3fb2929dbd24d7::t_3e2bfdc4ace0a0 264,291,319,327,349,528
+  s_3fb2929dbd24d7::t_bb7743551b5e5e 579-588
+  s_3fb2929dbd24d7::t_7e19e396ab8748 346,481
+  s_3fb2929dbd24d7::t_e7ca6f9eabb4d9 263,290,318,326,348,527
+src/renderer/features/local-conversation/view/local-conversation-thread-turn.tsx
+  s_3fb2929dbd24d7::t_206008b7ccc8e6 51,180,239,265
+src/renderer/features/local-conversation/view/shared/branch-selector-state.node.test.ts
+  s_3fb2929dbd24d7::t_609f40e2ccf1bd 59,64-65,75-76,86-87,92-99
+  s_3fb2929dbd24d7::t_bf600f2a66be3c 100-102
+src/main/codex-application/CodexAppProtocolTools.ts
+  s_3fb2929dbd24d7::t_803ffcf18930b4 708,711-715
+  s_3fb2929dbd24d7::t_d8335552441a6a 808
+src/main/platform/node/CodexSshSession.node.test.ts
+  s_3fb2929dbd24d7::t_0fc717117eba19 7,66,69,113-121,124-131,134,136-149,151-155,157-158
+  s_3fb2929dbd24d7::t_d41c3bf6214793 5,37-45,67,72-73,122-123,135,156
+  s_3fb2929dbd24d7::t_7e42be64dd7ffa 6,8-9,14-18,35-36,46-56,70-71,74-81,84-90,92-93,95-109,111-112,159-160
+  s_3fb2929dbd24d7::t_531ac53a718a0c 57-63,65
+  s_3fb2929dbd24d7::t_918b3623298ef0 1,64,68,82-83,91,94,110,132-133,150
+src/renderer/components/workbench/workbench-settings-overlay.service-tier.test.tsx
+  s_3fb2929dbd24d7::t_efa85e47c74375 18
+src/main/git-worker/git-command-runner.ts
+  s_3fb2929dbd24d7::t_66d4d942286f58 25
+src/renderer/features/local-conversation/view/summary-panel/thread-floating-summary-panel.tsx
+  s_3fb2929dbd24d7::t_609f40e2ccf1bd 813,821-822,827-828,833-837,862-863,902-903
+  s_3fb2929dbd24d7::t_bb7743551b5e5e 871-875,986-991
+  s_3fb2929dbd24d7::t_e7ca6f9eabb4d9 139,696,713,726,735,752,765,772,777,785-786,795,889,911,925,941,985,1000,1060,1862,1872
+src/renderer/components/workbench/project-edit-dialog.tsx
+  s_3fb2929dbd24d7::t_8e6a3410bbbd10 567,572-573
+  s_3fb2929dbd24d7::t_88f04300379a31 20-23,29,76,463-464,479-480,494,564-566,574,576,774-782,840,850,870-871,911,915,927
+  s_3fb2929dbd24d7::t_d3b7894620f91c 902
+  s_3fb2929dbd24d7::t_66ba2dff9ff9ff 172,176,266,273-288,294-299,303,324
+  s_3fb2929dbd24d7::t_bb7743551b5e5e 24-28,245-260,267-272,289-293,300-302,304-323,325-384,386-443,445-450,495-497,568-571
+  s_3fb2929dbd24d7::t_ec83f8371f80bb 451-452
+src/renderer/components/ui/dropdown.tsx
+  s_3fb2929dbd24d7::t_b871e35931c0aa 739,767,790,931,1038
+src/renderer/lib/project-sources.node.test.ts
+  s_3fb2929dbd24d7::t_d3b7894620f91c 22,27
+  s_3fb2929dbd24d7::t_bb7743551b5e5e 23-26
+src/main/workspace-files-service.ts
+  s_3fb2929dbd24d7::t_217870d0aa48de 3,286,310,404-408,413-419,422
+  s_3fb2929dbd24d7::t_06f7e6995c035b 409-412,420-421,423-425
+src/renderer/components/workbench/left-sidebar.stories.tsx
+  s_3fb2929dbd24d7::t_efa85e47c74375 72,90,113,131,155
+src/renderer/features/workspace-files/workspace-file-tab-model.ts
+  s_3fb2929dbd24d7::t_705f5da4acb7a8 5,24
+src/main/git-worker/entry.ts
+  s_3fb2929dbd24d7::t_9635c816627d85 6,8-28,33,38
+src/main/ipc/handlers/GitApplicationIpc.ts
+  s_3fb2929dbd24d7::t_be3aa98c35077c 13,27,32,63-65,75,77-78,80-81,83-84,86-87,89-90,92-93,95-96,98-99,101
+  s_3fb2929dbd24d7::t_a7d13d644454aa 12,76,79,82,85,88,91,94,97,100
+src/renderer/components/workbench/panel-destination-picker.test.tsx
+  s_3fb2929dbd24d7::t_efa85e47c74375 19
+src/renderer/components/workbench/workbench-shell.panel-commands.test.tsx
+  s_3fb2929dbd24d7::t_3c5913d7eb0b21 37-55
+src/main/terminal-runtime/TerminalSessions.ts
+  s_3fb2929dbd24d7::t_37b6d0dcfe8244 767-768
+  s_3fb2929dbd24d7::t_457845399218d9 265-266,269,353,355-363
+  s_3fb2929dbd24d7::t_7e19e396ab8748 475-480,482,488-491,503-504,514,515-518,531-541,542-543,546-547,619-622,626,706-716,718,720,724,769
+  s_3fb2929dbd24d7::t_3e2bfdc4ace0a0 137,142,147,591,604-606,822
+  s_3fb2929dbd24d7::t_4891bb2b255a99 481,607,717,719,721-723,773,788-794
+src/main/terminal-runtime/CodexTerminalPty.ts
+  s_3fb2929dbd24d7::t_794de550a65db3 1-5,12-17,19-20,23-34,50-58,60-79,81-84,94,109-111,113-115,117,119-134,136-147,149-156,158-166
+  s_3fb2929dbd24d7::t_5d1165b4ac168b 6-9,11,35-37,39-42,44-47,49,85-86,88-91,93,95-96,98-102,104,106,118
+  s_3fb2929dbd24d7::t_5ce867e97e1e4d 21-22
+  s_3fb2929dbd24d7::t_16a6b41120b37a 10,18,38,43,48,59,80,87,92,97,103,105,107-108,112,116,135,148,157
+src/renderer/features/workspace-files/workspace-file-navigation-state.ts
+  s_3fb2929dbd24d7::t_705f5da4acb7a8 4
+src/main/codex-application/ComposerCatalog.node.test.ts
+  s_3fb2929dbd24d7::t_aa761a065b08fe 448-464,466-468,470-473
+  s_3fb2929dbd24d7::t_6d0659d30f98c3 465,469
+src/main/ipc/handlers/WorkspaceFileIpc.test.ts
+  s_3fb2929dbd24d7::t_c11ba2727ecc48 1-3,81
+  s_3fb2929dbd24d7::t_06f7e6995c035b 82-85
+src/renderer/lib/new-chat-project-selector.node.test.ts
+  s_3fb2929dbd24d7::t_efa85e47c74375 22
+src/renderer/lib/file-reference-router.node.test.ts
+  s_3fb2929dbd24d7::t_c8ecba39fe719e 5-6,12,16-18
+  s_3fb2929dbd24d7::t_bb7743551b5e5e 7-11,13-15
+src/renderer/lib/workbench-agent-context.node.test.ts
+  s_3fb2929dbd24d7::t_7002076c76410e 498
+src/renderer/lib/use-projects.test.tsx
+  s_3fb2929dbd24d7::t_efa85e47c74375 17
+src/renderer/components/board/editor/nfm-side-menu.test.tsx
+  s_3fb2929dbd24d7::t_efa85e47c74375 67
+src/main/codex-application/ManagedWorktreeCatalog.ts
+  s_3fb2929dbd24d7::t_ec4949a1bb4d74 147-151,161,164-165,224-231,233,237-238,254-258
+  s_3fb2929dbd24d7::t_7cf699f66936fc 1,80-84,385,389,404
+src/renderer/components/workbench/review-diff-panel.tsx
+  s_3fb2929dbd24d7::t_31da6c25b07168 3232,3245
+  s_3fb2929dbd24d7::t_8e6a3410bbbd10 3392
+  s_3fb2929dbd24d7::t_d4c0e50ff66352 229,2283,2301,2312,2505,2508,2552,2556,2772
+  s_3fb2929dbd24d7::t_bb7743551b5e5e 2302-2311,2313-2316
+  s_3fb2929dbd24d7::t_ccb6e6f5586e63 2809,2844
+  s_3fb2929dbd24d7::t_835a7c731bad1f 199,2700,2832
+src/main/codex-application/ExecutionHostRuntime.node.test.ts
+  s_3fb2929dbd24d7::t_8271c4bcadb377 1-2,134-135,137,147,154,169-170
+  s_3fb2929dbd24d7::t_c26f8c1abde641 33-43
+  s_3fb2929dbd24d7::t_bc186741f115d2 580-584,587-597,599-617,656,659-664,668,670-671,676-682
+  s_3fb2929dbd24d7::t_2f0b852cd939a5 578
+  s_3fb2929dbd24d7::t_635a14e4eaa234 11,173,235,310,316,321,466
+  s_3fb2929dbd24d7::t_06f7e6995c035b 117-120,126,138-146,150-151,155-168,176-189,207-210,257-260,262-272,288,299,305,312,317-320,324,329-347,349-377,379-398,401,403-415,417-419,421,423,425-426,430-465
+  s_3fb2929dbd24d7::t_cc197217cdfacd 539-577
+  s_3fb2929dbd24d7::t_cb310dbf57b2eb 585-586,598,655,657,669
+  s_3fb2929dbd24d7::t_d23198fefec01d 24,124-125,212,252,276-285,512-522,524-537,620-654,658,665-667,672-675,683-689
+  s_3fb2929dbd24d7::t_5f2e1321380273 121-123,174-175,306-309,467-511,618
+  s_3fb2929dbd24d7::t_ba776a2f109bd4 130,193,619
+src/main/ipc/handlers/CodexPermissionsIpc.ts
+  s_3fb2929dbd24d7::t_a506fade2ae1f9 43-44,46-47,49-50,52-55
+src/renderer/features/local-conversation/view/summary-panel/thread-summary-create-pull-request-dialog.tsx
+  s_3fb2929dbd24d7::t_e7ca6f9eabb4d9 163,169,182,295,305,315,351
+src/main/host-runtime/GitWorkerRuntime.test.ts
+  s_3fb2929dbd24d7::t_a56374902b9384 3,29,37,197-211,215-220,222-225,227-235
+  s_3fb2929dbd24d7::t_881685f8ba6d6e 226
+  s_3fb2929dbd24d7::t_dd424e55de4224 212-214,221,236-238
+src/renderer/components/workbench/workbench-shell.owner-panel-commands.test.tsx
+  s_3fb2929dbd24d7::t_81927c8371b520 17,20,99-129
+  s_3fb2929dbd24d7::t_5849d035d4a81e 163-168,187-197,208-209
+  s_3fb2929dbd24d7::t_bb7743551b5e5e 16,18-19,21-22,169-186,198-207
+  s_3fb2929dbd24d7::t_bc3bca9e6a1211 130-162
+src/renderer/components/workbench/project-edit-dialog.test.tsx
+  s_3fb2929dbd24d7::t_aad4bb64e160bf 8
+  s_3fb2929dbd24d7::t_8f72a10df19365 174,419
+  s_3fb2929dbd24d7::t_769ac6638df53b 9-11,458-459,488,504,510,514,527,531-532,545-548,552-553,573-574,593-594
+  s_3fb2929dbd24d7::t_efa85e47c74375 30
+  s_3fb2929dbd24d7::t_bb7743551b5e5e 460-487,489-503,506-509,511-513,516-526,528-530,533-544,549-551,554-572,575-592
+  s_3fb2929dbd24d7::t_af57f55f291d5b 505,515
+src/renderer/lib/use-project-page-destination-search.node.test.ts
+  s_3fb2929dbd24d7::t_efa85e47c74375 18
+src/renderer/components/board/editor/nfm-text-action-menu.stories.tsx
+  s_3fb2929dbd24d7::t_efa85e47c74375 36
+src/renderer/lib/use-workbench-session-catalog.test.tsx
+  s_3fb2929dbd24d7::t_efa85e47c74375 41
+src/main/codex-application/ComposerCatalog.ts
+  s_3fb2929dbd24d7::t_ec4949a1bb4d74 80-82,215-217
+  s_3fb2929dbd24d7::t_49717c84447617 218,225,308
+src/renderer/features/local-conversation/view/composer/local-conversation-thread-composer-status-strip.tsx
+  s_3fb2929dbd24d7::t_609f40e2ccf1bd 82,85,114,121-122,127-128,140,161-162,201-202
+  s_3fb2929dbd24d7::t_6002c1bbc05779 286
+  s_3fb2929dbd24d7::t_b960950bc386ae 78,171,188,211,228
+src/main/codex-application/CodexPermissions.ts
+  s_3fb2929dbd24d7::t_a506fade2ae1f9 83,89,408-409,415,421-422,429,440
+  s_3fb2929dbd24d7::t_c709ec588eec76 190,199,211,325-326,335-336,341,344,357,446-448,457
+  s_3fb2929dbd24d7::t_1c028b48423268 68,72,78-79,95,102,166,264-265,271-272,277,284,350-354,358,360,363,400,430-431,460-461,472
+  s_3fb2929dbd24d7::t_ec4949a1bb4d74 189,260-263,266-270,273-276,280-283,303-305,310-312,366-372,376-394,465-468,473-476
+src/renderer/lib/workbench-panel-tab-model.ts
+  s_3fb2929dbd24d7::t_0dd7f508b94b8e 21
+src/renderer/lib/codex-background-terminal-processes.node.test.ts
+  s_3fb2929dbd24d7::t_3e2bfdc4ace0a0 71
+  s_3fb2929dbd24d7::t_756afc1c8726ad 70
+src/main/app/MainApplicationLive.ts
+  s_3fb2929dbd24d7::t_3524475bec152b 302-303
+src/renderer/features/local-conversation/view/shared/turn-diff-surface.test.tsx
+  s_3fb2929dbd24d7::t_368d76481a76ef 2,574-578,591-592,610-611
+  s_3fb2929dbd24d7::t_bb7743551b5e5e 579-590,593-609,612-621
+  s_3fb2929dbd24d7::t_36b92ea1236654 622-623
+src/renderer/components/workbench/remote-connections.test.tsx
+  s_3fb2929dbd24d7::t_bb7743551b5e5e 7-10,14-17,19-31,34-35,39-52,55-58,61-69,71-75,83-94,96-104,113-129,139-146,149-153,155-165,170-184,186-188,204-205,207-216,218-229,233-239,241-244
+  s_3fb2929dbd24d7::t_0034c637461c42 202-203,206,217,230-232,240,245-246
+  s_3fb2929dbd24d7::t_63f03918f48872 1-3,5-6,11-13,18,32-33,36-38,53-54,59-60,70,76-82,95,105-112,130-138,147-148,154,166-169,185,189-193,195-197,199-201
+  s_3fb2929dbd24d7::t_48dca7228b4dba 194,198
+  s_3fb2929dbd24d7::t_8f72a10df19365 4
+src/main/host-runtime/WorktreeEnvironmentRuntime.ts
+  s_3fb2929dbd24d7::t_3e2bfdc4ace0a0 18,56,70,75,153-154,156-157,215,269,287
+  s_3fb2929dbd24d7::t_ec4949a1bb4d74 126-132,140-143,158-161,178-188,197-207,216,218,226-236,245-265,279-283,296-297
+  s_3fb2929dbd24d7::t_aa761a065b08fe 151,155
+src/main/git-worker/stdio-entry.ts
+  s_3fb2929dbd24d7::t_a4586228445ce8 1-6,8-57,59-61
+  s_3fb2929dbd24d7::t_29daf084688701 7,58
+src/main/git-worker/worktree-repository.ts
+  s_3fb2929dbd24d7::t_66d4d942286f58 62,122
+src/renderer/features/local-conversation/view/connected-review-diff-panel.tsx
+  s_3fb2929dbd24d7::t_bb7743551b5e5e 179,181-191
+  s_3fb2929dbd24d7::t_b02988ad4f8de8 28,192
+  s_3fb2929dbd24d7::t_d4c0e50ff66352 180
+src/renderer/components/workbench/workbench-settings-overlay.backups.test.tsx
+  s_3fb2929dbd24d7::t_efa85e47c74375 22
+src/renderer/lib/workbench-scene-commands.node.test.ts
+  s_3fb2929dbd24d7::t_7002076c76410e 823
+docs/product-specs/review-right-panel-behavior.md
+  s_3fb2929dbd24d7::t_e6ee3a861b9c05 108-112
+src/renderer/features/local-conversation/data/use-summary-git-state.ts
+  s_3fb2929dbd24d7::t_bb7743551b5e5e 54-58,103-105
+  s_3fb2929dbd24d7::t_e7ca6f9eabb4d9 63,67,78,82,85,93,117,126,134,143,151,159
+src/shared/nodex-app-tools/workbench.ts
+  s_3fb2929dbd24d7::t_3cf76cd8a99c9f 107
+src/main/terminal-runtime/TerminalSessions.node.test.ts
+  s_3fb2929dbd24d7::t_497b511900e5aa 76-77,338-340,342-346,348-356,358-362,364-369,371-373,383-387,401
+  s_3fb2929dbd24d7::t_37b6d0dcfe8244 374-378,380-382,389-399
+  s_3fb2929dbd24d7::t_7e19e396ab8748 402-408,410,412-414,417-419,421-423,427,436,444,495,498
+  s_3fb2929dbd24d7::t_0a1faff341e506 32,40,341,347,357,363,370,379,388,400,411,420,497
+src/main/codex/codex-ssh-execution-host.ts
+  s_3fb2929dbd24d7::t_635a14e4eaa234 249,273,289-291,372,416,480,511
+  s_3fb2929dbd24d7::t_06f7e6995c035b 93-97,110-112,255-258,264-267,270-271,275-283,287-288,308-312,316-335,518-522
+  s_3fb2929dbd24d7::t_94dc4b69512a4a 251,260,301-305,338-341
+  s_3fb2929dbd24d7::t_3524475bec152b 23-29,141,157,159,252-254,261,268-269,272,274,284-286,292
+  s_3fb2929dbd24d7::t_5f2e1321380273 526-532
+  s_3fb2929dbd24d7::t_b2c5fa8de5ac2d 113
+  s_3fb2929dbd24d7::t_938eb8d292b30e 160
+  s_3fb2929dbd24d7::t_52f92359040ccc 259
+  s_3fb2929dbd24d7::t_63ce5dd21573d5 262-263
+  s_3fb2929dbd24d7::t_29fcb80d928c86 306-307
+  s_3fb2929dbd24d7::t_4f5381453cc977 336-337
+  s_3fb2929dbd24d7::t_20fd5f142f8a72 342
+  s_9a8ad3393eeca6::t_23f616defad9ff 2-4,8
+docs/FRONTEND.md
+  s_3fb2929dbd24d7::t_af57f55f291d5b 413
+  s_3fb2929dbd24d7::t_bb7743551b5e5e 407-412,414-423
+tests/e2e/remote-projects.spec.ts
+  s_3fb2929dbd24d7::t_032a761f33359b 105-107,143
+  s_3fb2929dbd24d7::t_a4470e446bea8a 703-707
+  s_3fb2929dbd24d7::t_7d76c606b44668 578-581
+  s_3fb2929dbd24d7::t_4677bbaebafd60 89,91-94,231,294
+  s_3fb2929dbd24d7::t_d31acc8c3523ce 269,666
+  s_3fb2929dbd24d7::t_2c36b4985229c1 331,335
+  s_3fb2929dbd24d7::t_5889500ffa54b1 322-324,326-330
+  s_3fb2929dbd24d7::t_28517bf11a2a8a 137-142
+  s_3fb2929dbd24d7::t_d30f87d4708efc 692-695
+  s_3fb2929dbd24d7::t_23399cf4ef3ffd 265
+  s_3fb2929dbd24d7::t_a2613056411b9a 548-554
+  s_3fb2929dbd24d7::t_d24cafcbbb3f8f 79-80,82
+  s_3fb2929dbd24d7::t_1ecd1129f5bad0 2,401-404,566
+  s_3fb2929dbd24d7::t_019f839c1183ab 90
+  s_3fb2929dbd24d7::t_1539561eec738f 181
+  s_3fb2929dbd24d7::t_04a80ce5abd1c2 696
+  s_3fb2929dbd24d7::t_b40b4846a18a5e 332
+  s_3fb2929dbd24d7::t_b031716ec82f3c 333-334
+  s_3fb2929dbd24d7::t_6cad281d0d8dd5 27-28,519-535,630-639
+  s_3fb2929dbd24d7::t_4feef0fe8c22ca 287-290
+  s_3fb2929dbd24d7::t_70834225a13ac2 477-480
+  s_3fb2929dbd24d7::t_f3bd752d681935 699
+  s_3fb2929dbd24d7::t_02eae1d7b3ae57 336-338,386-388
+  s_3fb2929dbd24d7::t_c7c93dcada2405 1,3-12,23-26,77-78,81,83-88,97-100,102-103,108-136,144-180,182-214,216-217,219-230,232-248,250-252,254-256,258-260,262-264,266,539-547,555,644-648,650-652,655-661,663,665,667-671,674-676,678-679,683-691,697-698,700-701,708-709,711-714,720-722
+  s_3fb2929dbd24d7::t_62c5197c74ee10 13-22,29-32,38-43,45-57,59-76,95-96,101,104,267-268,270-286,291-293,295-319,339-385,392-400,405-438,442-447,459-476,481-483,509-518,536-538,556-563,565,567-577,582,629,640-643,680-682,702,715-719
+  s_3fb2929dbd24d7::t_2c9da56822fa4c 389-391,564
+  s_3fb2929dbd24d7::t_3612d76abcfc99 320-321
+  s_3fb2929dbd24d7::t_991ba677dbc1a7 325
+  s_3fb2929dbd24d7::t_df2950b4e3fbc8 33-37,44,58,215,218,249,253,257,261,649,653-654,662,664,672-673,710
+src/renderer/components/workbench/local-environments-settings-page.test.tsx
+  s_3fb2929dbd24d7::t_efa85e47c74375 28
+src/main/git-worker/GitWorkerApplication.ts
+  s_3fb2929dbd24d7::t_9635c816627d85 1-35,37-39,41-48,50-73,75-79,81,84-105,108,112,114,120-123
+  s_3fb2929dbd24d7::t_57ca88dd1ac41e 36,40,49,74,80,82-83,106-107,109-111,113,115-119
+src/renderer/components/workbench/workbench-settings-sections.ts
+  s_3fb2929dbd24d7::t_71b61a0b17d150 91-97
+  s_3fb2929dbd24d7::t_43388a7a35c5c6 18,36
+  s_3fb2929dbd24d7::t_2ecf051f2c72b2 90
+src/shared/schemas/workbench-session-view.ts
+  s_3fb2929dbd24d7::t_705f5da4acb7a8 160
+src/main/codex-application/ManagedWorktreeRuntime.node.test.ts
+  s_3fb2929dbd24d7::t_4d22d0362ccfd0 1,52
+src/renderer/components/workbench/project-hover-card.stories.tsx
+  s_3fb2929dbd24d7::t_bb7743551b5e5e 81,118
+  s_3fb2929dbd24d7::t_efa85e47c74375 15
+src/main/codex-runtime/CodexEndpoint.ts
+  s_3fb2929dbd24d7::t_cd6425f37b0225 525
+src/renderer/components/workbench/workbench-settings-section-pages.tsx
+  s_3fb2929dbd24d7::t_43388a7a35c5c6 16
+  s_3fb2929dbd24d7::t_d3b7894620f91c 721
+crates/nodex-core/src/workspace/mutation.rs
+  s_3fb2929dbd24d7::t_c709ec588eec76 1265,1633,1645,2109-2117,2461,2471,2476,2485,2495,2512,2516,2521
+  s_3fb2929dbd24d7::t_359839773b41b3 155,325,345,352,371,1231,1257-1264,1300,1629-1632,1634-1644,2196,2238-2239,2249-2250,2456-2460,2462-2470,2472-2475,2477-2484,2486-2494,2496-2511,2513-2515,2517-2520,2522-2524,2807,2890,2925,2949,2967,3117,3170
+docs/product-specs/index.md
+  s_3fb2929dbd24d7::t_a87e3643719a48 21
+src/main/platform/node/TerminalEnvironment.ts
+  s_3fb2929dbd24d7::t_457845399218d9 13,89
+  s_3fb2929dbd24d7::t_1abb54b66a1799 9,26,28
+  s_3fb2929dbd24d7::t_3e2bfdc4ace0a0 14,90
+  s_3fb2929dbd24d7::t_6141afca2a897e 27
+src/renderer/features/local-conversation/local-conversation-store.ts
+  s_3fb2929dbd24d7::t_a506fade2ae1f9 7263,7466
+src/main/terminal-runtime/TerminalRuntimeMap.node.test.ts
+  s_3fb2929dbd24d7::t_9f035eba6e1429 5,28,36,44,134,196-236
+  s_4e6817f2f1ffe7::t_23e6695306e0ab 237-238
+src/main/ipc/handlers/ExecutionHostIpc.test.ts
+  s_3fb2929dbd24d7::t_51a7b18502b866 65
+  s_3fb2929dbd24d7::t_4d22d0362ccfd0 1,33,61-64,66-72
+src/renderer/components/workbench/workbench-command-palette-host.test.tsx
+  s_3fb2929dbd24d7::t_435f03401b5c39 60,71,88
+  s_3fb2929dbd24d7::t_c8c0001e8d6836 1-59,61-70,72-87,89-102
+tests/e2e/large-content-fixture/main.tsx
+  s_3fb2929dbd24d7::t_efa85e47c74375 32
+src/main/codex-application/ExecutionHostConnectionFailure.ts
+  s_3fb2929dbd24d7::t_f3dc7149d050d2 17-18
+  s_3fb2929dbd24d7::t_86b5a789542abc 1-5,10-14,20-38,44-45,50,64-66,76-78,83-84
+  s_3fb2929dbd24d7::t_0c5605a3d0d629 19
+  s_3fb2929dbd24d7::t_55421c683f86c0 6-9,15-16,39-43,46-49,51-63,67-70,79-82
+  s_3fb2929dbd24d7::t_12cb9db90e6505 71-75
+src/main/platform/node/SshHostDiscovery.node.test.ts
+  s_3fb2929dbd24d7::t_51a7b18502b866 2-8,12-18,38-39,47-48,59-65
+  s_3fb2929dbd24d7::t_abfd3d97add8a9 36,40-46,49-58
+  s_3fb2929dbd24d7::t_06f7e6995c035b 1,9-11,19-35,37
+src/renderer/components/shared/file-link-anchor.tsx
+  s_3fb2929dbd24d7::t_b960950bc386ae 74,83,145,289,311
+  s_3fb2929dbd24d7::t_bb7743551b5e5e 97-107,119-128
+src/renderer/components/workbench/workbench-settings-overlay.stories.tsx
+  s_3fb2929dbd24d7::t_efa85e47c74375 37
+src/renderer/lib/query-options.ts
+  s_3fb2929dbd24d7::t_ec4949a1bb4d74 300-301
+  s_3fb2929dbd24d7::t_a506fade2ae1f9 203,205-206
+  s_3fb2929dbd24d7::t_705f5da4acb7a8 297,299
+src/main/codex/background-process-rows.test.ts
+  s_3fb2929dbd24d7::t_5ce867e97e1e4d 45-46
+src/main/terminal-runtime/TerminalProjectAdmission.node.test.ts
+  s_3fb2929dbd24d7::t_497b511900e5aa 16-17,21,47-49,51,118-125,129-133,135-144,146
+  s_3fb2929dbd24d7::t_ee50b0dd2f6f91 18,50,126-128,134,145
+docs/product-specs/settings-route-behavior.md
+  s_3fb2929dbd24d7::t_e6ee3a861b9c05 41,56-57
+  s_3fb2929dbd24d7::t_d1311ce0ce7589 58
+src/main/settings/application-settings-persistence.ts
+  s_3fb2929dbd24d7::t_1539561eec738f 981-992
+src/main/terminal-runtime/TerminalRuntimeLive.ts
+  s_3fb2929dbd24d7::t_1abb54b66a1799 6-8,17,24-31,34
+src/renderer/components/workbench/project-hover-card.test.tsx
+  s_3fb2929dbd24d7::t_efa85e47c74375 16
+  s_3fb2929dbd24d7::t_bb7743551b5e5e 47
+src/main/codex-application/ExecutionHostRuntime.ts
+  s_3fb2929dbd24d7::t_abfd3d97add8a9 621-628,637-644
+  s_3fb2929dbd24d7::t_2f0b852cd939a5 1002-1007
+  s_3fb2929dbd24d7::t_d6af79a86e39d6 63,263,722,793
+  s_3fb2929dbd24d7::t_b612d766d88d21 6-7,15-28,54-55,69-72,102,123-124,182-183,255
+  s_3fb2929dbd24d7::t_f383b12890a1de 73,433,451,457,867,1049,1053
+  s_3fb2929dbd24d7::t_06f7e6995c035b 184-222,317-319,321-331,334-344,350-366,369-374,377-379,382-387,389-399,401-402,406-407,411-432,434-436,438-444,449-450,452,454-456,458-465,739-748,750-754,756,758-761,763-792,795-816,823-843,846-847,853-854,860-866,868-872,885-895,900,907,909,913-920,922,930,933-935,937-943,946-950,953,959-962,977-980,983-988,992-1001,1008-1010,1012-1014,1028-1030,1045,1047,1051-1052,1056,1070-1081,1085-1096,1098-1101
+  s_3fb2929dbd24d7::t_d23198fefec01d 400,1123
+  s_3fb2929dbd24d7::t_dd00f7c9a23c91 857
+  s_3fb2929dbd24d7::t_81c6e5a1c9486b 954,1018,1032
+  s_3fb2929dbd24d7::t_729b8df8db6ffd 307,320,332-333,345-349,367-368,375-376,380-381,388,403-405,408-410,437,445-446,466-467,757,762,873,912,944-945,955,957-958,963-966,969-971,975-976,981-982,990-991,1011,1015-1017,1019-1020,1022-1027,1031,1033,1037-1039,1065-1069,1082-1084,1097,1102-1104,1107-1108,1137,1167
+  s_3fb2929dbd24d7::t_94dc4b69512a4a 1105-1106,1109-1122,1124-1136
+  s_3fb2929dbd24d7::t_5f2e1321380273 48-50,259-262,316,598-620,629-636,645-718,794,817-822,952
+  s_3fb2929dbd24d7::t_7dd2afede5f19b 4,447-448,453,855-856,858-859
+  s_30a10426266bd5::t_5ac0e41596f8fc 47,308-315,719,851-852,876-877,882-883,896-897,902-906,911,931-932,936,951,956,967-968,989,1021,1034-1036,1040-1044,1046,1048,1050,1054-1055,1057-1064
+src/main/codex-application/ExecutionHostDirectories.node.test.ts
+  s_3fb2929dbd24d7::t_afa7c4a118bb37 1-5,10,24-25,55-56
+  s_3fb2929dbd24d7::t_06f7e6995c035b 6-9,11-23,26-54,57-109
+src/main/terminal-runtime/TerminalHostEnvironment.ts
+  s_3fb2929dbd24d7::t_3e2bfdc4ace0a0 57-68
+  s_3fb2929dbd24d7::t_5d1165b4ac168b 21-23,25-28,30-33,35
+  s_3fb2929dbd24d7::t_1abb54b66a1799 1-20,36-41,43-52,54-56,73,75
+  s_3fb2929dbd24d7::t_c61ec66a98893e 24,29,34,42,53,69-72,74
+src/main/git-worker/repository-registry.ts
+  s_3fb2929dbd24d7::t_66d4d942286f58 16,39,56,71,94,117
+tests/e2e/support/localhost-ssh-fixture.ts
+  s_3fb2929dbd24d7::t_2a61b4e95cd0bb 1,3-38,44-81,83,85-139,164-166,168-170,172-185,187-189,191-193,195-196,198-206,251-257,259-264,266-274,276-288,290-291,293-303,305-322
+  s_3fb2929dbd24d7::t_9bffe1c6442d2a 2,140-161,163
+  s_3fb2929dbd24d7::t_46e2d1c87afa4e 237-249
+  s_3fb2929dbd24d7::t_3b6616fa8ff83a 39-40,42-43
+  s_3fb2929dbd24d7::t_48c609062719e7 41,82,84,162,167,171,186,190,194,197,207-236,250,258,265,275,289,292,304
+src/renderer/lib/execution-host-runtime.ts
+  s_3fb2929dbd24d7::t_b866436236efb0 1,6,13-17,23-24,30-31,37-38,44-45,51-52,73-81,89,94-103,106-112,117-118,120,124,135,146-148,151-155
+  s_3fb2929dbd24d7::t_88f04300379a31 119,136
+  s_3fb2929dbd24d7::t_bb7743551b5e5e 7-12,18-22,25-29,32-36,39-43,46-50,53-72,84-88,90-93,113-116,121-123,126-133,139-145,149-150
+  s_3fb2929dbd24d7::t_ccb6e6f5586e63 3,125,134,137-138
+  s_3fb2929dbd24d7::t_e3198cc3aca236 2
+  s_3fb2929dbd24d7::t_e8188fee096306 4-5,82-83,104-105
+src/main/codex-application/CodexThreadCatalog.ts
+  s_3fb2929dbd24d7::t_ec4949a1bb4d74 328-332,413-416,418-423,684-735,738,741,743-747,751,754-826,828-837
+  s_3fb2929dbd24d7::t_1c028b48423268 417
+  s_3fb2929dbd24d7::t_fc7661a88d0567 19,285
+crates/nodex-core/src/workspace/remote_projects.rs
+  s_3fb2929dbd24d7::t_aa761a065b08fe 3,5-68,70-281,283,285-287,289-302
+  s_3fb2929dbd24d7::t_c709ec588eec76 4,69
+  s_3fb2929dbd24d7::t_a55377c2ced8b5 1-2,282,284,288,303-304
+src/renderer/features/review/data/git-query.node.test.ts
+  s_3fb2929dbd24d7::t_c8ecba39fe719e 16,22,25,70-73,82-84,88-90,113-120,124-125,130
+  s_3fb2929dbd24d7::t_bb7743551b5e5e 74-81,85-87,91-112,121-123,126-129
+src/renderer/components/board/editor/nfm-move-to-menu-model.test.ts
+  s_3fb2929dbd24d7::t_efa85e47c74375 24
+src/main/host-runtime/WorktreeEnvironmentRuntime.test.ts
+  s_3fb2929dbd24d7::t_ec4949a1bb4d74 45-54,155-164,219-257,259-268,274-299
+  s_3fb2929dbd24d7::t_aa761a065b08fe 213-218,258,269-273,300-302
+  s_3fb2929dbd24d7::t_3e2bfdc4ace0a0 12,36,137
+src/main/codex-application/CodexThreadCatalogProjection.ts
+  s_3fb2929dbd24d7::t_c709ec588eec76 55-56,84
+  s_3fb2929dbd24d7::t_ec4949a1bb4d74 49-53,57-62,69,71-75
+  s_3fb2929dbd24d7::t_51a595e1d4de89 76,81,83,220
+src/renderer/components/workbench/removed-projects-dialog.test.tsx
+  s_3fb2929dbd24d7::t_efa85e47c74375 16
+src/main/terminal-runtime/CodexTerminalPty.node.test.ts
+  s_3fb2929dbd24d7::t_5ce867e97e1e4d 84-86,102-106,108-139,141-151,154
+  s_3fb2929dbd24d7::t_cd23d8d55d02b5 1-14,50,152-153,155-183
+src/main/codex-runtime/CodexEventHub.ts
+  s_3fb2929dbd24d7::t_3524475bec152b 7,25-26
+src/shared/codex-ssh-connection.ts
+  s_3fb2929dbd24d7::t_3524475bec152b 12,15,18
+src/renderer/components/workbench/workbench-panel-surface.tsx
+  s_3fb2929dbd24d7::t_ab7b59162be840 114-116
+src/main/project-application/ProjectArchiveBlockers.ts
+  s_3fb2929dbd24d7::t_3e2bfdc4ace0a0 15,88-91,94
+  s_3fb2929dbd24d7::t_7be8cd5f8834bb 92-93
+src/renderer/lib/workbench-panel-preview.node.test.ts
+  s_3fb2929dbd24d7::t_7002076c76410e 71,74-76,82,88,96,172
+  s_3fb2929dbd24d7::t_3c5913d7eb0b21 13,38,43-61
+  s_3fb2929dbd24d7::t_adfa656e618f8a 39-42
+src/renderer/lib/use-project-page-create-target.node.test.ts
+  s_3fb2929dbd24d7::t_efa85e47c74375 12
+src/main/github-pr-service.test.ts
+  s_3fb2929dbd24d7::t_558c572aed7f11 1,10,73,79-86,88-98
+  s_3fb2929dbd24d7::t_8e4ff2e06ecb55 87,99-100
+src/main/platform/node/RemoteWorkspaceFileOperation.node.test.ts
+  s_3fb2929dbd24d7::t_06f7e6995c035b 1,10-12,14-18,21-25,35-46,55-58,60-63,66-72
+  s_3fb2929dbd24d7::t_c11ba2727ecc48 2-9,13,19-20,26-34,47-54,59,64-65,73
+src/renderer/components/workbench/workbench-settings-search-catalog.ts
+  s_3fb2929dbd24d7::t_bb7743551b5e5e 516-529
+  s_3fb2929dbd24d7::t_43388a7a35c5c6 514-515,530,772-774
+crates/nodex-core/src/workspace/sidebar.rs
+  s_3fb2929dbd24d7::t_c709ec588eec76 22,83-95,97-101,332,345,358
+  s_3fb2929dbd24d7::t_fe26403844ffb7 96
+CHANGELOG.md
+  s_3fb2929dbd24d7::t_74efeee7d5f9aa 11-12
+src/main/terminal-runtime/TerminalRuntimeMap.ts
+  s_3fb2929dbd24d7::t_3e2bfdc4ace0a0 33,104
+  s_3fb2929dbd24d7::t_457845399218d9 103,113
+  s_3fb2929dbd24d7::t_0bd17dfd9b9183 244,246-248,253,258,260-264,266,277,279
+  s_3fb2929dbd24d7::t_9f035eba6e1429 278
+src/main/codex-application/ManagedWorktreeRetentionRuntime.ts
+  s_3fb2929dbd24d7::t_c709ec588eec76 1
+  s_3fb2929dbd24d7::t_1c028b48423268 187,203-204
+  s_3fb2929dbd24d7::t_ec4949a1bb4d74 155-157,188-202
+src/shared/workbench-session-view.ts
+  s_3fb2929dbd24d7::t_0dd7f508b94b8e 100
+src/renderer/lib/use-git-branch-state.ts
+  s_3fb2929dbd24d7::t_0dd7f508b94b8e 11,21,27,32,42,46,49,54
+src/renderer/components/workbench/sidebar-thread-reorder.browser.test.tsx
+  s_3fb2929dbd24d7::t_efa85e47c74375 30
+src/main/platform/node/CodexRemoteInstallation.ts
+  s_3fb2929dbd24d7::t_81c6e5a1c9486b 1
+  s_3fb2929dbd24d7::t_cd6425f37b0225 2-12,14-23,48
+  s_3fb2929dbd24d7::t_06f7e6995c035b 13,25-47
+  s_3fb2929dbd24d7::t_b612d766d88d21 24
+src/main/terminal-runtime/TerminalProjectAdmission.ts
+  s_3fb2929dbd24d7::t_e9177e96eea8e0 31,33,41-45,48,61,64-65,68,91-94,96,124-131,133-138,141-142,147-153,155
+  s_3fb2929dbd24d7::t_3e2bfdc4ace0a0 113-120,122-123,156-165,170
+  s_3fb2929dbd24d7::t_2ab7867183c1a2 32,66-67,121,132,139-140,154,169
+src/renderer/features/local-conversation/view/shared/branch-selector-state.ts
+  s_3fb2929dbd24d7::t_609f40e2ccf1bd 89-90,98-100
+src/renderer/lib/renderer-transport.ts
+  s_3fb2929dbd24d7::t_b866436236efb0 14-16
+src/renderer/lib/use-workbench-session-commands.ts
+  s_3fb2929dbd24d7::t_95c79376581e43 687-688,707-713
+  s_3fb2929dbd24d7::t_1f6660dfb0737f 689
+src/main/codex-application/CrossHostThreadHandoff.node.test.ts
+  s_3fb2929dbd24d7::t_4d22d0362ccfd0 1,195
+src/renderer/lib/workbench-panel-preview.ts
+  s_3fb2929dbd24d7::t_95c79376581e43 111
+  s_3fb2929dbd24d7::t_1f6660dfb0737f 10,22-25,70,107-110,117,119
+  s_3fb2929dbd24d7::t_bb7743551b5e5e 276-280
+  s_3fb2929dbd24d7::t_3cf76cd8a99c9f 264,290
+src/renderer/components/workbench/workbench-settings-overlay.licenses.test.tsx
+  s_3fb2929dbd24d7::t_efa85e47c74375 19
+src/renderer/components/workbench/workbench-testkit/workbench-shell-fixtures.ts
+  s_3fb2929dbd24d7::t_efa85e47c74375 74
+src/main/codex-application/CodexSessionThreadLaunch.ts
+  s_3fb2929dbd24d7::t_1c028b48423268 341,347,674,680,694,709
+  s_3fb2929dbd24d7::t_ec4949a1bb4d74 342-346,387-392,628-632,672-673,675-679,682-685,695-708
+src/main/automation-application/AutomationExecution.ts
+  s_3fb2929dbd24d7::t_803ffcf18930b4 715,774,808,816,818,837,850,866,919,956-957,1053-1054,1104,1120,1195,1288
+  s_3fb2929dbd24d7::t_49717c84447617 1065-1066,1213-1214,1217-1219,1224-1225
+  s_3fb2929dbd24d7::t_ec4949a1bb4d74 412-417,571-574,638-641,644-647,804-807,855-862,876-883,921-922,951-955,983-988,993-1002,1023-1026,1210-1212,1215-1216,1237-1239
+  s_3fb2929dbd24d7::t_87656f1a492d0a 339,396,398,407
+src/main/codex-application/CodexThreadSettingsRuntime.ts
+  s_3fb2929dbd24d7::t_a506fade2ae1f9 203-206
+  s_3fb2929dbd24d7::t_49f7ce4d9b3f67 207
+src/renderer/components/workbench/codex-sidebar.test.tsx
+  s_3fb2929dbd24d7::t_a2ff4e1eb8aa5e 1,10-17,91-116
+src/main/automation-application/AutomationExecution.node.test.ts
+  s_3fb2929dbd24d7::t_ec4949a1bb4d74 188-189,195,317-392,394-402,404-407,409-417,989-1025
+  s_3fb2929dbd24d7::t_6ab828fbce31aa 1026-1030
+src/renderer/lib/project-sources.ts
+  s_3fb2929dbd24d7::t_88f04300379a31 15-16,20,26
+src/renderer/components/workbench/remote-connections.tsx
+  s_3fb2929dbd24d7::t_ccb6e6f5586e63 180-181,394-395
+  s_3fb2929dbd24d7::t_50233d68ff4fd6 403-404
+  s_3fb2929dbd24d7::t_31da6c25b07168 1,356,363-365,372-374,381-382,440
+  s_3fb2929dbd24d7::t_e8188fee096306 2,34,55,60-63,83-88,143-144,178
+  s_3fb2929dbd24d7::t_237a4e796cbdc1 35,405-410,415,507-508,516-517,525-526,528
+  s_3fb2929dbd24d7::t_1ed19225e061f9 203
+  s_3fb2929dbd24d7::t_5982208fbcb198 4-9,19-20,31-33,36,39-40,45,145-146,159-164,169-177,179,182-183,186-202,204-233,240-244,254-258,265-266,270-273,288-290,293,299-300,341-342,349-355,389-393,396-398,401-402,425,431-433,436-439,441-442,450-451,458-459,463-466,485-486,506,527,537,604,615-616,620,629,638-645,651-657,667-671,688-689,698,761-763,769-771
+  s_3fb2929dbd24d7::t_d4c0e50ff66352 3
+  s_3fb2929dbd24d7::t_bb7743551b5e5e 10-18,21-30,37-38,41-44,46-54,56-59,64-82,89-128,130-142,147-158,165-168,184-185,234-239,245-253,259-264,267-269,274-287,291-292,294-298,301-309,311-340,343-348,357-362,366-371,375-380,383-388,399-400,411-414,416-424,426-430,434-435,443-449,452-457,460-462,467-484,487-505,509-515,518-524,529-536,538-573,575-603,605,607-610,612-614,617-619,621-628,630-637,646-650,658-666,672-687,690-697,699-760,764,766-768
+src/renderer/components/workbench/workbench-automations-overlay.stories.tsx
+  s_3fb2929dbd24d7::t_efa85e47c74375 173,191
+src/renderer/lib/project-catalog-store.node.test.ts
+  s_3fb2929dbd24d7::t_3cf76cd8a99c9f 39
+  s_3fb2929dbd24d7::t_efa85e47c74375 515
+src/renderer/lib/terminal-session-store.jsdom.test.ts
+  s_3fb2929dbd24d7::t_3e2bfdc4ace0a0 18
+  s_3fb2929dbd24d7::t_4f2ef389b69706 17
+src/main/project-application/ProjectLifecycleCommands.ts
+  s_3fb2929dbd24d7::t_3e2bfdc4ace0a0 157
+src/shared/schemas/workbench-scene.ts
+  s_3fb2929dbd24d7::t_705f5da4acb7a8 213
+src/main/git-worker/git-review-operations.ts
+  s_3fb2929dbd24d7::t_66d4d942286f58 157,166-167,217,296,397,451,457
+src/renderer/features/workspace-files/workspace-file-types.ts
+  s_3fb2929dbd24d7::t_705f5da4acb7a8 85
+src/renderer/lib/electron-renderer-transport.ts
+  s_3fb2929dbd24d7::t_b866436236efb0 450-454
+src/main/host-runtime/GitWorkerHostsRuntime.ts
+  s_3fb2929dbd24d7::t_12c2fc5499d6c7 1-14,16-19,21-55,71-74,89,91-95,97-98,100
+  s_3fb2929dbd24d7::t_794de550a65db3 75-76
+  s_3fb2929dbd24d7::t_f1318e8b2fd335 15,20,56-70,77-88,90,96,99
+src/renderer/components/workbench/sidebar-project-add-button.tsx
+  s_3fb2929dbd24d7::t_c7c93dcada2405 26-27
+src/main/codex-application/CodexTurnPreparation.ts
+  s_3fb2929dbd24d7::t_803ffcf18930b4 383
+  s_3fb2929dbd24d7::t_1c028b48423268 400
+src/main/codex-application/CodexSidebarCapabilities.node.test.ts
+  s_3fb2929dbd24d7::t_4d22d0362ccfd0 1,55,278
+src/renderer/lib/query-keys.ts
+  s_3fb2929dbd24d7::t_ec4949a1bb4d74 175-176
+  s_3fb2929dbd24d7::t_a506fade2ae1f9 211
+src/renderer/components/workbench/workbench-settings-page-registry.ts
+  s_3fb2929dbd24d7::t_43388a7a35c5c6 22
+src/main/ipc/handlers/TerminalIpc.ts
+  s_3fb2929dbd24d7::t_e9177e96eea8e0 181,183,194,196,230,232
+  s_3fb2929dbd24d7::t_cdd8ecb0b506bc 182,195,231
+src/main/app/HostApplicationLive.ts
+  s_3fb2929dbd24d7::t_12c2fc5499d6c7 87-88,252,262,267
+  s_3fb2929dbd24d7::t_1abb54b66a1799 106-108,296-298,326
+  s_3fb2929dbd24d7::t_3e2bfdc4ace0a0 82,263,293,303,325
+  s_3fb2929dbd24d7::t_ec4949a1bb4d74 83-86
+src/renderer/features/local-conversation/thread-action-controller.test.ts
+  s_3fb2929dbd24d7::t_bb7743551b5e5e 1035-1051
+  s_3fb2929dbd24d7::t_ee65445857cf12 1032-1034,1052-1054
+src/main/codex-application/CodexThreadCatalog.node.test.ts
+  s_3fb2929dbd24d7::t_ec4949a1bb4d74 135-140,153-162,178,536-613
+  s_3fb2929dbd24d7::t_48986d65e7126e 15,21,134,614
+src/renderer/lib/terminal-session-store.ts
+  s_3fb2929dbd24d7::t_bb7743551b5e5e 233-238,244-245,258-263,288-293
+  s_3fb2929dbd24d7::t_3e2bfdc4ace0a0 100,239,264,294
+  s_3fb2929dbd24d7::t_ca66f6884db228 67,99
+src/renderer/features/workspace-files/workspace-files-panel.test.tsx
+  s_3fb2929dbd24d7::t_c38eaa8dd23e8a 320-335,541-546,551
+  s_3fb2929dbd24d7::t_ab7b59162be840 17-19,289-291,301-319
+  s_3fb2929dbd24d7::t_efa85e47c74375 606
+src/main/platform/node/SshHostDiscovery.ts
+  s_3fb2929dbd24d7::t_cfe326dae5659a 2,4-55,64-75,78,90-99,101-102,105-111,117-138,145-154
+  s_3fb2929dbd24d7::t_81c6e5a1c9486b 1
+  s_3fb2929dbd24d7::t_abfd3d97add8a9 3,79-84,86-89,100,112-116,139
+  s_3fb2929dbd24d7::t_06f7e6995c035b 56-63,76-77,103-104,140-144
+  s_3fb2929dbd24d7::t_bc186741f115d2 85
+src/main/codex-application/CodexAttachments.node.test.ts
+  s_3fb2929dbd24d7::t_4d22d0362ccfd0 1,75
+src/main/host-runtime/WorktreeWorkerRuntime.ts
+  s_3fb2929dbd24d7::t_4e1e95d0b6bc71 352-365,367-424,428-437,439-440
+src/main/platform/node/TerminalPty.ts
+  s_3fb2929dbd24d7::t_457845399218d9 22,32,38
+src/main/codex-application/CodexSidebarSectionSync.node.test.ts
+  s_3fb2929dbd24d7::t_4d22d0362ccfd0 1,320
+src/renderer/features/local-conversation/thread-stage-types.ts
+  s_3fb2929dbd24d7::t_a506fade2ae1f9 266-267
+src/main/git-worker/git-worker-module.ts
+  s_3fb2929dbd24d7::t_8a432871c8663d 13-16,18,183-184,186-188,190-194
+  s_3fb2929dbd24d7::t_be3aa98c35077c 1-10,12,195-196,198-200,202-204,206-208,210-212,214-216,218-220,222-224,226-228,230-231
+  s_3fb2929dbd24d7::t_66d4d942286f58 136,1023-1024
+  s_3fb2929dbd24d7::t_a8ba83d830ccdf 11,17,22,185,189,197,201,205,209,213,217,221,225,229,234-249
+src/renderer/lib/use-workbench-panel-openers.ts
+  s_3fb2929dbd24d7::t_35037dd76e0889 975
+  s_3fb2929dbd24d7::t_1f6660dfb0737f 738-739,750
+  s_3fb2929dbd24d7::t_bb7743551b5e5e 772-776
+  s_3fb2929dbd24d7::t_31da6c25b07168 779-781
+  s_3fb2929dbd24d7::t_0dd7f508b94b8e 756,786,807,823,838,848,855
+src/main/git-application/GitActions.ts
+  s_3fb2929dbd24d7::t_12c2fc5499d6c7 265-266,268,275,289,307,312,360,385-388,390,412,420,443-446,448,469,496-499,501,518,575-578,580
+  s_3fb2929dbd24d7::t_8d61cc0e6ac8dd 267,389,447,500,579
+src/renderer/components/board/terminal-panel.tsx
+  s_3fb2929dbd24d7::t_3e2bfdc4ace0a0 7,22,43,55,65
+  s_3fb2929dbd24d7::t_e7ca6f9eabb4d9 6,21,42,54,64
+src/shared/ipc-api.ts
+  s_3fb2929dbd24d7::t_be3aa98c35077c 1835
+  s_3fb2929dbd24d7::t_257d154fd73c5b 6-17,2415-2416,2421-2425,2898
+  s_3fb2929dbd24d7::t_a506fade2ae1f9 2877,2881,2885,2889
+  s_3fb2929dbd24d7::t_bb7743551b5e5e 2417-2420,2426-2441
+  s_3fb2929dbd24d7::t_1ddf58ff1e1897 1809
+src/renderer/components/workbench/codex-sidebar.tsx
+  s_3fb2929dbd24d7::t_bb7743551b5e5e 622-624,712-714,907,1088-1090
+  s_3fb2929dbd24d7::t_b6fc7c357428df 1647,1665
+  s_3fb2929dbd24d7::t_d3b7894620f91c 497,826,917,1103,1120
+docs/product-specs/codex-thread-owner-follower-streaming.md
+  s_3fb2929dbd24d7::t_6bcf0f87624986 563-564
+  s_3fb2929dbd24d7::t_88c19632e7a39c 565
+src/renderer/lib/use-project-page-destination-search.test.tsx
+  s_3fb2929dbd24d7::t_efa85e47c74375 19
+src/renderer/components/workbench/project-hover-card.tsx
+  s_3fb2929dbd24d7::t_bb7743551b5e5e 281-283
+  s_3fb2929dbd24d7::t_835a7c731bad1f 50
+src/renderer/features/workspace-files/workspace-files-panel.stories.tsx
+  s_3fb2929dbd24d7::t_efa85e47c74375 25
+src/main/project-application/ProjectArchiveBlockers.node.test.ts
+  s_3fb2929dbd24d7::t_497b511900e5aa 98-103,106-112,115-118,121-124,127,130-133,135-139
+  s_3fb2929dbd24d7::t_de879b7bc76918 104-105,113-114,119-120,125-126,128-129,134
+src/main/codex-application/ManagedWorktreeHandoff.node.test.ts
+  s_3fb2929dbd24d7::t_81c6e5a1c9486b 1,148
+src/renderer/features/local-conversation/view/shared/worktree-starting-state-popover.tsx
+  s_3fb2929dbd24d7::t_6002c1bbc05779 43,56,104,120
+src/renderer/components/workbench/left-sidebar-projects-section.test.tsx
+  s_3fb2929dbd24d7::t_efa85e47c74375 85,103
+  s_3fb2929dbd24d7::t_282c6981603c02 274,309,318
+  s_3fb2929dbd24d7::t_fe3738cae5b87b 226
+  s_3fb2929dbd24d7::t_4af34013701d8a 290,292
+CONTEXT.md
+  s_3fb2929dbd24d7::t_74efeee7d5f9aa 416-420
+  s_3fb2929dbd24d7::t_31da6c25b07168 421
+src/main/settings/ApplicationSettings.test.ts
+  s_3fb2929dbd24d7::t_1539561eec738f 38-62
+  s_3fb2929dbd24d7::t_89f3d3b843baa6 63-84
+src/renderer/features/local-conversation/view/summary-panel/thread-floating-summary-panel.test.tsx
+  s_3fb2929dbd24d7::t_17687aaa456795 1409,1466,1507
+  s_3fb2929dbd24d7::t_5ce867e97e1e4d 1903
+docs/product-specs/workbench-shell.md
+  s_3fb2929dbd24d7::t_78f0b9e4142386 225-226,231-237
+  s_3fb2929dbd24d7::t_9dc50b706accc3 227-230
+src/shared/types.ts
+  s_3fb2929dbd24d7::t_705f5da4acb7a8 966
+  s_3fb2929dbd24d7::t_be3aa98c35077c 4307,4333,4361,4375,4389,4428,4435,4443
+  s_3fb2929dbd24d7::t_5d1165b4ac168b 4144
+  s_3fb2929dbd24d7::t_3524475bec152b 1659
+  s_3fb2929dbd24d7::t_7e19e396ab8748 809
+  s_3fb2929dbd24d7::t_66d4d942286f58 927
+  s_3fb2929dbd24d7::t_457845399218d9 802,815,825,837,916
+  s_3fb2929dbd24d7::t_8f72a10df19365 803,816,826,838,1035
+  s_3fb2929dbd24d7::t_ff88f0cc51da81 532,593,616-617
+src/renderer/components/workbench/workbench-session-thread-route.tsx
+  s_3fb2929dbd24d7::t_b6fc7c357428df 403,419
+src/renderer/components/workbench/workbench-session-shell.stories.tsx
+  s_3fb2929dbd24d7::t_efa85e47c74375 162,180
+src/renderer/lib/use-sidebar-thread-sync-model.test.tsx
+  s_3fb2929dbd24d7::t_efa85e47c74375 39
+src/renderer/features/local-conversation/view/local-conversation-turn-entry.tsx
+  s_3fb2929dbd24d7::t_206008b7ccc8e6 155
+src/renderer/components/workbench/workbench-command-palette-host.tsx
+  s_3fb2929dbd24d7::t_d7cd829a064793 114,241,243,245-246
+src/renderer/components/board/editor/nfm-slash-menu.test.tsx
+  s_3fb2929dbd24d7::t_efa85e47c74375 313
+src/main/codex-application/CodexPermissions.node.test.ts
+  s_3fb2929dbd24d7::t_ec4949a1bb4d74 95-98,114,175,406-467
+  s_3fb2929dbd24d7::t_fe71f28f736dac 19,48,468-471
+src/shared/git-worker-protocol.ts
+  s_3fb2929dbd24d7::t_bb7743551b5e5e 10-69,204,237,244,281,293,301,437-464,466-467,470-477,479-480,485-492,661-673,754-758,781-785
+  s_3fb2929dbd24d7::t_66d4d942286f58 191,219
+  s_3fb2929dbd24d7::t_8a432871c8663d 481-484,493,816-819
+  s_3fb2929dbd24d7::t_be3aa98c35077c 435-436,465,468-469,820-829
+  s_3fb2929dbd24d7::t_a4850998332d46 496,830
+src/main/workspace-files/RemoteWorkspaceFiles.node.test.ts
+  s_3fb2929dbd24d7::t_96e2d3f6f3cb30 12-14,46
+  s_3fb2929dbd24d7::t_75717a4c6e2f3c 207-215,218-221,230-233,237-240,269,279
+  s_3fb2929dbd24d7::t_06f7e6995c035b 17-19,21-45,47-85,95-104,106-140,142-146,148-184,206
+  s_3fb2929dbd24d7::t_e88e975cb2b4c4 216-217,222-229,234-236,241-268,270-278
+  s_3fb2929dbd24d7::t_7d832bb712d42c 16,20,86-91,94,147,185-189,191-195,197-201,203-205
+  s_3fb2929dbd24d7::t_1fe6f61dc32795 105,141,190
+  s_3fb2929dbd24d7::t_e2b18a315adb78 196
+  s_3fb2929dbd24d7::t_18d925d420644a 1-11,15,92-93,202
+src/shared/schemas/workspace-files.ts
+  s_3fb2929dbd24d7::t_705f5da4acb7a8 2,12
+docs/product-specs/remote-projects-and-ssh-behavior.md
+  s_3fb2929dbd24d7::t_0fa6ca87c39b5b 29-30,33-35,91,103-104
+  s_3fb2929dbd24d7::t_78f0b9e4142386 105-106
+  s_3fb2929dbd24d7::t_3aec01f7b44598 101-102
+  s_3fb2929dbd24d7::t_8e6a3410bbbd10 14-16,71-73
+  s_3fb2929dbd24d7::t_74efeee7d5f9aa 1-13,17-22,25-28,31-32,36-70,89-90,92-100,110-118,125-154
+  s_3fb2929dbd24d7::t_1cc9165b67deaa 107-109
+src/main/codex/codex-ssh-execution-host.test.ts
+  s_3fb2929dbd24d7::t_27e23b6c11b34d 3,123,169-196
+  s_3fb2929dbd24d7::t_06f7e6995c035b 125-164
+  s_3fb2929dbd24d7::t_32633d7cd60daa 1,120-122,124,165-168
+src/renderer/features/local-conversation/view/summary-panel/thread-summary-git-action-dialog.tsx
+  s_3fb2929dbd24d7::t_609f40e2ccf1bd 327,339-346,348
+  s_3fb2929dbd24d7::t_e7ca6f9eabb4d9 167,184,281
+  s_3fb2929dbd24d7::t_e48c1ae61d8bc0 347
+src/main/codex-runtime/CodexEndpointMap.ts
+  s_3fb2929dbd24d7::t_340cfd5013a632 109,111,114,118-121,141,146,181
+  s_3fb2929dbd24d7::t_095775dc4e3cdf 113
+src/renderer/features/local-conversation/view/blocks/local-conversation-block-renderer.tsx
+  s_3fb2929dbd24d7::t_206008b7ccc8e6 36,76,201,273
+src/renderer/features/local-conversation/view/connected-thread-stage.tsx
+  s_3fb2929dbd24d7::t_ec4949a1bb4d74 261-267,351-352,573-574,609,1034-1035,1180-1181
+  s_3fb2929dbd24d7::t_a506fade2ae1f9 257,623
+  s_3fb2929dbd24d7::t_5a0c3c02deaa27 6,1581,1596,1695
+  s_3fb2929dbd24d7::t_bb7743551b5e5e 1526-1531
+src/shared/schemas/projects.ts
+  s_3fb2929dbd24d7::t_bb7743551b5e5e 125-130
+  s_3fb2929dbd24d7::t_224269520073bb 33
+src/renderer/components/workbench/project-remove-dialog.test.tsx
+  s_3fb2929dbd24d7::t_efa85e47c74375 13
+src/renderer/lib/git-worker-client.node.test.ts
+  s_3fb2929dbd24d7::t_bb7743551b5e5e 162-186
+  s_3fb2929dbd24d7::t_d79ba657785905 121,157-161,187-188
+src/renderer/lib/file-reference-router.tsx
+  s_3fb2929dbd24d7::t_bb7743551b5e5e 138-141,145,166-174,176-201
+  s_3fb2929dbd24d7::t_b02988ad4f8de8 165,175
+  s_3fb2929dbd24d7::t_50ca3d6689aea3 14,27,45,83,87,91,96,116,125,130,148,162-164
+src/renderer/lib/remote-folder-browser.ts
+  s_3fb2929dbd24d7::t_237a4e796cbdc1 1,5-8
+  s_3fb2929dbd24d7::t_bb7743551b5e5e 2-4
+src/renderer/lib/use-workbench-panel-command-router.ts
+  s_3fb2929dbd24d7::t_c762738f2e2716 57-63,93-100,163,453-461,463-465,485,551,556-558,601,737
+  s_3fb2929dbd24d7::t_d606655f190b16 462
+src/renderer/lib/remote-folder-browser.node.test.ts
+  s_3fb2929dbd24d7::t_237a4e796cbdc1 1-4,13-16,19
+  s_3fb2929dbd24d7::t_bb7743551b5e5e 5-12,17-18
+src/renderer/features/local-conversation/view/blocks/local-conversation-block-leaves.tsx
+  s_3fb2929dbd24d7::t_206008b7ccc8e6 536,555
+  s_3fb2929dbd24d7::t_368d76481a76ef 95
+crates/nodex-cli/tests/data_primitives.rs
+  s_3fb2929dbd24d7::t_b3f2083d113e98 172,513
+crates/nodex-cli/tests/library_files.rs
+  s_3fb2929dbd24d7::t_9a32b13aabb7ac 105
+crates/nodex-core-contracts/src/workspace.rs
+  s_3fb2929dbd24d7::t_0a89bc8b16925f 8,869,996,1269-1270,1281-1282
+crates/nodex-core-server/tests/native_cli_client.rs
+  s_3fb2929dbd24d7::t_9bdd14c0bc2d3f 86
+crates/nodex-core/schema/current.sql
+  s_3fb2929dbd24d7::t_8120b4255c2943 32,5344
+crates/nodex-core/src/infrastructure/migration.rs
+  s_3fb2929dbd24d7::t_8474f1c27b7af6 284-288,2290-2296,2315-2319
+crates/nodex-core/src/library/tests/effective_view_query.rs
+  s_3fb2929dbd24d7::t_f3d13b8c78c1d2 47
+crates/nodex-core/src/workspace/execution.rs
+  s_3fb2929dbd24d7::t_04d84ed1b8fbda 196,198
+crates/nodex-core/src/workspace/managed_worktree_lifecycle.rs
+  s_3fb2929dbd24d7::t_c1f2d47c660f35 106,118-124,134,154
+crates/nodex-core/src/workspace/mod.rs
+  s_3fb2929dbd24d7::t_b040cf6c97a3d5 292-294
+crates/nodex-core/src/workspace/project_window.rs
+  s_3fb2929dbd24d7::t_f6eb1d1eb5ef6b 78,95
+crates/nodex-core/src/workspace/read.rs
+  s_3fb2929dbd24d7::t_fdb1bcf02237ec 17,460,493,529
+crates/nodex-core/src/workspace/test_support.rs
+  s_3fb2929dbd24d7::t_e344f38d233b35 126
+crates/nodex-store-format/src/lib.rs
+  s_3fb2929dbd24d7::t_6072e0225b96e0 169-170,176
+docs/product-specs/codex-workspace-behavior.md
+  s_3fb2929dbd24d7::t_a3e4354163541e 200-208
+docs/product-specs/thread-summary-panel-behavior.md
+  s_3fb2929dbd24d7::t_8d2f9ddf36b427 60-66
+packages/core-protocol/openapi.json
+  s_3fb2929dbd24d7::t_d6143b8ff692fb 7177,7215-7217,29269-29274,29327-29332,37462-37467,37520-37525,39266,39272-39274,39691,39729-39731
+packages/core-protocol/src/compatibility.generated.ts
+  s_3fb2929dbd24d7::t_fa4788c3af68fe 24
+packages/core-protocol/src/generated.ts
+  s_3fb2929dbd24d7::t_b4e551bed7d048 1725,7082,7093,9035,9046,9423,9535
+src/main/codex-application/CodexGitMessageGeneration.node.test.ts
+  s_3fb2929dbd24d7::t_64d9986deaedc1 13,17-19,21,45-51
+src/main/codex-application/CodexGitMessageGeneration.ts
+  s_3fb2929dbd24d7::t_a1618e90d57975 6-7,52-65,70,72,74-81,97,99,101-108
+src/main/codex-application/CodexThreadCatalogProjection.node.test.ts
+  s_3fb2929dbd24d7::t_e7548ba500beb5 1,5,55-67
+src/main/codex-application/ManagedWorktreeCatalog.node.test.ts
+  s_3fb2929dbd24d7::t_ea9ae579f5e955 286,429
+src/main/codex/codex-sidebar-thread-move.test.ts
+  s_3fb2929dbd24d7::t_1cfbd4b7c43a94 18
+src/main/core-client/project-workspace-adapter.ts
+  s_3fb2929dbd24d7::t_3898a07156215c 410,450
+src/main/default-project-source.ts
+  s_3fb2929dbd24d7::t_17b96080312772 104-106
+src/main/host-runtime/GitWorkerHostsRuntime.test.ts
+  s_3fb2929dbd24d7::t_546ef3554ee740 1-95
+src/main/initial-project/InitialProjectBootstrapRuntime.node.test.ts
+  s_3fb2929dbd24d7::t_ce369dba7b0711 127
+src/main/ipc/handlers/CodexApplicationIpc.node.test.ts
+  s_3fb2929dbd24d7::t_fc9a2b91d2c70e 54
+src/main/ipc/handlers/GitApplicationIpc.test.ts
+  s_3fb2929dbd24d7::t_40beb9e7bc1f16 7,34
+src/main/nodex-agent-application/NodexAgentApplication.node.test.ts
+  s_3fb2929dbd24d7::t_d40eb12e0db864 37
+src/main/platform/node/GitWorkerStdio.node.test.ts
+  s_3fb2929dbd24d7::t_15173625c86c2f 1-19
+src/main/project-application/ProjectLifecycleCommands.test.ts
+  s_3fb2929dbd24d7::t_bd7c792eab2915 30
+src/main/project-application/ProjectWorkspace.node.test.ts
+  s_3fb2929dbd24d7::t_7bd50a11090355 37,243,301
+src/main/project-application/ProjectWorkspace.ts
+  s_3fb2929dbd24d7::t_1527b8837e70de 1251,1293-1295,1562-1564
+src/renderer/components/board/editor/nfm-send-to-thread-menu-model.test.ts
+  s_3fb2929dbd24d7::t_4dc962beca3789 147,190
+src/renderer/components/workbench/command-palette.stories.tsx
+  s_3fb2929dbd24d7::t_4e07dbb0a04973 302
+src/renderer/lib/command-palette-chat-search.node.test.ts
+  s_3fb2929dbd24d7::t_ea50b738a306b4 38
+src/shared/git-repository-identity.ts
+  s_3fb2929dbd24d7::t_86bf7ba7a13984 7
+src/shared/nodex-app-tools/catalog.ts
+  s_3fb2929dbd24d7::t_f8db88b377b157 59
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "8f74f887084cc6a0a1ce63024adcb1bfd8e6916d",
+  "prompts": {},
+  "sessions": {
+    "s_30a10426266bd5": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a0fd41-2bba-7563-8147-cdc96cd290e9",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    },
+    "s_3fb2929dbd24d7": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a0fd49-691b-7e60-9952-d8183355d4d7",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    },
+    "s_4e6817f2f1ffe7": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a0fd53-6363-7810-9d4d-80200b47c005",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    },
+    "s_9a8ad3393eeca6": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a0fd4a-20b8-7e91-ba96-57412f5f15e1",
+        "model": "unknown"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    }
+  }
+}
