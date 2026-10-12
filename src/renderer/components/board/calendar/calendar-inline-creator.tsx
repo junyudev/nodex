@@ -65,11 +65,11 @@ export function CalendarInlineCreator({
 
   return (
     <form
-      className="absolute inset-x-1 z-20 overflow-hidden rounded-sm border-l-[calc(var(--spacing)*0.75)] border-l-(--accent-blue)"
+      className="absolute inset-x-1 z-20 overflow-hidden rounded-sm border-l-[calc(var(--spacing)*0.75)] border-l-(--color-text-info)"
       style={{
         top,
         height: Math.max(height, 30),
-        backgroundColor: "color-mix(in srgb, var(--accent-blue) 14%, var(--background))",
+        backgroundColor: "color-mix(in srgb, var(--color-text-info) 14%, var(--background))",
       }}
       onSubmit={(event) => handleFormSubmit(event, form.handleSubmit)}
     >
@@ -87,7 +87,7 @@ export function CalendarInlineCreator({
             }
           }}
           placeholder="New task..."
-          className="w-full bg-transparent text-xs font-medium text-(--accent-blue) outline-none placeholder:text-(--accent-blue)/50"
+          className="w-full bg-transparent text-xs font-medium text-info outline-none placeholder:text-(--color-text-info)/50"
         />
         <span className="text-xs/tight text-(--foreground-tertiary)">
           {formatTimeRange(start, end)}

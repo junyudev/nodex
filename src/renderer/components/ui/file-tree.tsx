@@ -221,7 +221,7 @@ function FileTreeContent({
       model={model}
       aria-label={ariaLabel}
       className={cn(
-        "block h-full min-h-0 w-full bg-token-main-surface-primary text-default",
+        "block h-full min-h-0 w-full bg-token-main-surface-primary text-(--color-text)",
         className,
       )}
       data-tab-preview-pin-exempt="true"

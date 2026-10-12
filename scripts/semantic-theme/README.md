@@ -6,7 +6,9 @@ This module owns the build-time contract between extracted theme facts and Nodex
 
 Use a temporary, read-only stylesheet from any location. The module does not copy, cache, modify, or identify that input. Only a neutral `refVersion`, the profile identity, and output hashes are committed.
 
-For Codex Electron references, use the stylesheet loaded by the startup document as the semantic contract source. In current bundles this is the global `app-initial-*.css` stylesheet. Do not merge declarations from lazy component chunks such as `app-primary-*.css` into the source contract just because they contain additional theme-like variables; those chunks are loaded by component routes and do not define the global startup theme.
+For Codex Electron references, follow the startup document's stylesheet links and verify where the global theme is defined before selecting the source. The current global contract is in `app-shared-*.css`; a chunk name is not a stable contract. The startup JavaScript also loads `app-initial-*.css`, but that chunk now contains component styles. Do not merge lazy component chunks into the theme source merely because they contain additional theme-like variables.
+
+The extractor recognizes global `:root`/`:host` and `:where` theme scopes, preserves window and appearance overrides, and includes the transitive palette and typography providers needed by exported roles. `data-theme="light"` or `data-theme="dark"` selects the stylesheet's appearance variables, including inherited theme containers. Negated window selectors must retain their original coverage; an extension-only declaration cannot provide an Electron role.
 
 This stylesheet establishes the static contract, not the final preset values.
 For effective color parity, resolve the selected preset, its chrome overrides,
@@ -39,6 +41,7 @@ This checks provenance, artifact hashes, required semantic utilities, and the sc
 - Generated files are outputs, never hand-edited.
 - `theme-token-bridge.css` owns product compatibility aliases while consumers migrate.
 - `theme-source.css` owns product foundation values such as radius scale. Generated values may consume those foundations but must not silently replace them.
+- `--app-color-*` values feed the shared semantic roles. Extension `--vscode-*` inputs remain scoped to the extension; product aliases needed by Electron must resolve through its semantic providers.
 - Components should express shared text, status, border, background, icon, and motion roles with semantic utilities. Feature-native visual concepts remain feature-owned.
 
 Required roles declare their actual consumer targets. A task-only role may be Electron-only; a geometry foundation used by every shell must cover every supported target. Do not widen a runtime-provider exemption to silence a missing CSS provider. Add an explicit fallback or repair the scoped bridge instead.

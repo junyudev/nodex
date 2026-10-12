@@ -92,7 +92,7 @@ Thread state in the Database row model. A shared activity control sits at the
 end of the Board title lane and after the List title, without changing Card
 height, List density, selection, drag, or title truncation. Working uses the
 shared spinner, waiting for approval or user input uses an attention glyph,
-system error uses an error glyph, and unread uses an independent 6px blue dot,
+system error uses an error glyph, and unread uses an independent 6px accent dot,
 so execution and unread can appear together. Board and List keep the control
 visible whenever a Page has an available linked Chat, including a muted Chat
 glyph for idle/read relationships, without requiring hover or focus. The control
@@ -364,7 +364,7 @@ icons share the primary foreground; trailing values, chevrons, section labels,
 meta actions, and disabled states provide the quieter hierarchy instead of
 globally muting action icons. The rail inherits Nodex's semantic main-surface and
 foreground tokens rather than maintaining a private light/dark palette. The
-application blue accent is reserved for compact actionable or selected states:
+selected application accent is reserved for compact actionable or selected states:
 Property visibility's **Hide all** / **Show all** actions, the active Layout tile,
 enabled switches and selection checkmarks, and keyboard focus outlines. Ordinary
 labels and leading icons remain primary foreground.

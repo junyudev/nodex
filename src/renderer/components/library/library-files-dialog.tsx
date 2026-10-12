@@ -376,7 +376,7 @@ function LibraryFilesDialogContent({
                 onChange={(event) => setQuery(event.target.value)}
                 aria-label="Search Library files"
                 placeholder="Search files"
-                className="h-8 rounded-lg bg-token-foreground/4 px-2.5 text-sm outline-none ring-[0.5px] ring-inset ring-token-border focus:ring-1 focus:ring-token-focus"
+                className="h-8 rounded-lg bg-token-foreground/4 px-2.5 text-sm outline-none ring-[0.5px] ring-inset ring-token-border focus:ring-1 focus:ring-token-focus-border"
               />
               <div className="mt-2 flex gap-1" aria-label="File filters">
                 {(["all", "unused", "trash"] as const)
@@ -420,7 +420,7 @@ function LibraryFilesDialogContent({
                     key={file.file_id}
                     type="button"
                     className={cn(
-                      "flex w-full items-center gap-2 rounded-lg px-2 py-2 text-left outline-none hover:bg-token-foreground/4 focus-visible:ring-2 focus-visible:ring-token-focus",
+                      "flex w-full items-center gap-2 rounded-lg px-2 py-2 text-left outline-none hover:bg-token-foreground/4 focus-visible:ring-2 focus-visible:ring-token-focus-border",
                       file.file_id === selectedFileId && "bg-token-foreground/7",
                     )}
                     onClick={() => setSelectedFileId(file.file_id)}
@@ -481,7 +481,7 @@ function LibraryFilesDialogContent({
                               if (event.key === "Enter") void renameSelected();
                               if (event.key === "Escape") setEditingName(false);
                             }}
-                            className="h-8 min-w-0 flex-1 rounded-md bg-token-foreground/4 px-2 text-sm outline-none ring-1 ring-token-focus"
+                            className="h-8 min-w-0 flex-1 rounded-md bg-token-foreground/4 px-2 text-sm outline-none ring-1 ring-token-focus-border"
                           />
                           <NodexDialogAction size="compact" onClick={() => void renameSelected()}>
                             Save

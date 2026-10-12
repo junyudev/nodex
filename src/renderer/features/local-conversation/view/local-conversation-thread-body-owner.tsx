@@ -245,7 +245,7 @@ export function ThreadStartProgressPanel({
               !
             </span>
           ) : progress.phase === "ready" ? (
-            <CheckmarkIcon className="size-3.5 shrink-0 text-(--accent-blue)" />
+            <CheckmarkIcon className="size-3.5 shrink-0 text-info" />
           ) : (
             <ActivitySpinnerIcon className="size-3.5 shrink-0 text-(--foreground-tertiary)" />
           )}
@@ -281,19 +281,16 @@ export function ThreadStartProgressPanel({
             <div key={phase.key} className="flex items-center gap-1">
               {index > 0 ? (
                 <div
-                  className={cn(
-                    "mx-1 h-px w-4",
-                    isComplete ? "bg-(--accent-blue)" : "bg-(--border)",
-                  )}
+                  className={cn("mx-1 h-px w-4", isComplete ? "bg-chart-blue" : "bg-(--border)")}
                 />
               ) : null}
               <div className="flex items-center gap-1.5">
                 <div
                   className={cn(
                     "flex size-4 items-center justify-center rounded-full text-[10px] font-medium transition-colors duration-200",
-                    isComplete && "bg-(--accent-blue) text-white",
+                    isComplete && "bg-chart-blue text-(--app-color-text-on-accent)",
                     isActive &&
-                      "bg-(--accent-blue)/20 text-(--accent-blue) ring-1 ring-(--accent-blue)/40",
+                      "bg-(--color-background-info-soft) text-info ring-1 ring-token-focus-border/40",
                     !isComplete &&
                       !isActive &&
                       "bg-(--background-tertiary) text-(--foreground-tertiary)",

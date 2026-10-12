@@ -61,7 +61,7 @@ function PageStageBreadcrumbAncestor({
           onClick={() => onOpenAncestor(entry.item, entry.index)}
           className={cn(
             "min-w-0 max-w-36 truncate rounded-md px-1 py-0.5 text-token-text-secondary outline-hidden",
-            "hover:bg-token-foreground/5 hover:text-token-text-primary focus-visible:ring-token-focus focus-visible:ring-2",
+            "hover:bg-token-foreground/5 hover:text-token-text-primary focus-visible:ring-token-focus-border focus-visible:ring-2",
             itemDisabled &&
               "cursor-not-allowed opacity-40 hover:bg-transparent hover:text-token-text-secondary",
           )}
@@ -120,7 +120,7 @@ export function PageStageBreadcrumb({
                   aria-label="More ancestor pages"
                   className={cn(
                     "inline-flex size-6 items-center justify-center rounded-md text-token-description-foreground outline-hidden",
-                    "hover:bg-token-foreground/5 hover:text-token-text-primary focus-visible:ring-token-focus focus-visible:ring-2",
+                    "hover:bg-token-foreground/5 hover:text-token-text-primary focus-visible:ring-token-focus-border focus-visible:ring-2",
                     disabled &&
                       "cursor-not-allowed opacity-40 hover:bg-transparent hover:text-token-description-foreground",
                   )}

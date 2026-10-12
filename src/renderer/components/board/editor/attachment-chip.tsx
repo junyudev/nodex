@@ -271,7 +271,7 @@ function AttachmentActionButton({
   return (
     <button
       type="button"
-      className="inline-flex h-7 items-center gap-1.5 rounded-md bg-transparent px-2 text-xs text-token-text-secondary ring-[0.5px] ring-inset ring-token-border hover:bg-token-foreground/5 hover:text-token-text-primary focus-visible:ring-2 focus-visible:ring-token-focus"
+      className="inline-flex h-7 items-center gap-1.5 rounded-md bg-transparent px-2 text-xs text-token-text-secondary ring-[0.5px] ring-inset ring-token-border hover:bg-token-foreground/5 hover:text-token-text-primary focus-visible:ring-2 focus-visible:ring-token-focus-border"
       onClick={(event) => {
         event.preventDefault();
         event.stopPropagation();

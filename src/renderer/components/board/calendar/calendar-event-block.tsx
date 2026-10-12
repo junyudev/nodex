@@ -59,7 +59,7 @@ const RECURRING_BADGE = cn(
 );
 const RECURRING_BADGE_ORIGIN = cn(
   RECURRING_BADGE_BASE,
-  "border border-(--accent-blue)/25 bg-(--accent-blue)/10 text-(--accent-blue)",
+  "border border-(--blue-300)/25 bg-(--blue-300)/10 text-(--blue-300)",
 );
 
 function CalendarEventTitle({
@@ -199,11 +199,11 @@ export const CalendarEventBlock = memo(function CalendarEventBlock({
         "border-l-[calc(var(--spacing)*0.75)]",
         "group text-left outline-none select-none",
         interactive && "cursor-default active:cursor-grabbing",
-        isActive || isInteracting ? "shadow-md ring-2 ring-(--accent-blue)" : undefined,
-        interactive && "focus-visible:ring-2 focus-visible:ring-(--accent-blue)",
+        isActive || isInteracting ? "shadow-md ring-2 ring-token-focus-border" : undefined,
+        interactive && "focus-visible:ring-2 focus-visible:ring-token-focus-border",
         muted && "opacity-60",
         isSourceGhost && "opacity-35 saturate-75",
-        isOverlayGhost && "opacity-80 shadow-lg ring-2 ring-(--accent-blue)/45",
+        isOverlayGhost && "opacity-80 shadow-lg ring-2 ring-token-focus-border/45",
       )}
       style={{
         top,
@@ -278,7 +278,7 @@ export const CalendarEventBlock = memo(function CalendarEventBlock({
               className={cn(
                 "inline-flex h-3.5 shrink-0 items-center justify-center rounded-sm border px-[calc(var(--spacing)*1)]",
                 isSeriesStartIndicator
-                  ? "border-(--accent-blue)/25 bg-(--accent-blue)/10 text-(--accent-blue)"
+                  ? "border-(--blue-300)/25 bg-(--blue-300)/10 text-(--blue-300)"
                   : "border-(--border)/70 bg-(--background)/70 text-(--foreground-secondary)",
               )}
             >

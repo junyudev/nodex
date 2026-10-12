@@ -198,7 +198,7 @@ function SegmentedControl<T extends string>({
             aria-pressed={isActive}
             className={cn(
               "flex items-center gap-1 rounded-full border border-transparent px-2 py-0.5 text-sm/4.5 transition-colors",
-              "outline-none focus-visible:ring-2 focus-visible:ring-(--accent-blue)/30",
+              "outline-none focus-visible:ring-2 focus-visible:ring-token-focus-border/30",
               isActive
                 ? "bg-foreground-5 text-(--foreground)"
                 : "text-(--foreground-secondary) hover:bg-foreground-5",
@@ -1888,7 +1888,7 @@ function SettingsMobileHeader({
       <button
         type="button"
         onClick={onBack}
-        className="cursor-interaction rounded-lg px-2 py-1 text-sm text-token-text-secondary hover:bg-token-list-hover-background hover:text-token-text-primary focus-visible:ring-token-focus focus-visible:ring-1 focus-visible:outline-none"
+        className="cursor-interaction rounded-lg px-2 py-1 text-sm text-token-text-secondary hover:bg-token-list-hover-background hover:text-token-text-primary focus-visible:ring-token-focus-border focus-visible:ring-1 focus-visible:outline-none"
       >
         Back
       </button>

@@ -162,7 +162,7 @@ ${NODEX_DIFF_ROOT_SELECTOR} [data-line-type="change-addition"][data-column-numbe
 }
 
 mark.codex-thread-find-match {
-  background-color: var(--vscode-charts-yellow);
+  background-color: var(--content-search-match-background);
   color: var(--color-token-foreground);
   border-radius: var(--radius-2xs);
   padding: 0;
@@ -176,7 +176,7 @@ mark.codex-thread-find-match {
 }
 
 mark.codex-thread-find-active {
-  background-color: var(--vscode-charts-orange);
+  background-color: var(--content-search-active-match-background);
 }
 
 :host(.${NODEX_DIFF_HOST_CLASS}) [data-separator]:empty {

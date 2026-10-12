@@ -75,8 +75,8 @@ export function NodexCheckbox({
       onClick={() => onCheckedChange(!checked)}
       className={cn(
         "peer inline-flex items-center justify-center border-token-border bg-transparent",
-        "data-[state=checked]:border-token-foreground data-[state=checked]:bg-token-foreground data-[state=checked]:text-token-dropdown-background",
-        "focus-visible:border-token-foreground focus-visible:ring-token-foreground/30 focus-visible:ring-1",
+        "data-[state=checked]:border-transparent data-[state=checked]:bg-(--color-background-primary-solid) data-[state=checked]:text-(--color-text-primary-solid)",
+        "focus-visible:border-token-focus-border focus-visible:ring-token-focus-border/30 focus-visible:ring-1",
         "aria-invalid:ring-2 aria-invalid:ring-token-error-foreground/20 aria-invalid:border-token-error-foreground",
         "icon-2xs shrink-0 rounded-[3px] border shadow-none outline-none transition-all duration-[80ms] ease-out",
         "disabled:cursor-not-allowed",

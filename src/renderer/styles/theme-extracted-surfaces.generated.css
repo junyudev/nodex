@@ -1,7 +1,7 @@
 /*
- * Generated semantic theme contract (refVersion 26.903.71938).
+ * Generated semantic theme contract (refVersion 26.1007.30912).
  * Do not edit by hand. Run:
- *   pnpm run semantic-theme:sync -- --source /temporary/reference.css --ref-version 26.903.71938
+ *   vp run semantic-theme:sync -- --source /temporary/reference.css --ref-version 26.1007.30912
  */
 
 @layer components {
@@ -29,9 +29,15 @@
     }
   }
 
+  :where(.loading-shimmer-pure-text, .loading-shimmer, .loading-shimmer-dot-grid) {
+    --loading-shimmer-foreground: initial;
+    --loading-shimmer-base: initial;
+    --loading-shimmer-highlight: initial;
+    --loading-shimmer-duration: initial;
+  }
+
   .loading-shimmer-pure-text, .loading-shimmer {
-    --loading-shimmer-default-duration: 2s;
-    --text-primary: var(--loading-shimmer-foreground, var(--color-token-description-foreground));
+    --text-primary: var(--loading-shimmer-foreground, var(--color-codex-description));
     --text-secondary: var(--text-primary);
   }
 
@@ -66,31 +72,54 @@
     --shimmer-contrast: var(--loading-shimmer-highlight, #ffffffbf);
   }
 
-  .dark .loading-shimmer-pure-text, .dark .loading-shimmer {
+  :is(.loading-shimmer-pure-text, .loading-shimmer):where([data-theme="dark"]) {
     --shimmer-text-secondary: var(--loading-shimmer-base, var(--text-primary));
   }
 
   @supports (color: color-mix(in lab, red, red)) {
-    .dark .loading-shimmer-pure-text, .dark .loading-shimmer {
+    :is(.loading-shimmer-pure-text, .loading-shimmer):where([data-theme="dark"]) {
       --shimmer-text-secondary: var(--loading-shimmer-base, color-mix(in srgb, var(--text-primary) 45%, transparent));
     }
   }
 
-  .dark .loading-shimmer-pure-text, .dark .loading-shimmer {
+  :is(.loading-shimmer-pure-text, .loading-shimmer):where([data-theme="dark"]) {
     --shimmer-contrast: var(--loading-shimmer-highlight, #0009);
   }
 
-  .loading-shimmer-pure-text, .loading-shimmer {
+  @container style(--theme-variant: dark) {
+    :is(.loading-shimmer-pure-text, .loading-shimmer):where(:not([data-theme])) {
+      --shimmer-text-secondary: var(--loading-shimmer-base, var(--text-primary));
+    }
+
+    @supports (color: color-mix(in lab, red, red)) {
+      :is(.loading-shimmer-pure-text, .loading-shimmer):where(:not([data-theme])) {
+        --shimmer-text-secondary: var(--loading-shimmer-base, color-mix(in srgb, var(--text-primary) 45%, transparent));
+      }
+    }
+
+    :is(.loading-shimmer-pure-text, .loading-shimmer):where(:not([data-theme])) {
+      --shimmer-contrast: var(--loading-shimmer-highlight, #0009);
+    }
+  }
+
+  .loading-shimmer-working {
+    --loading-shimmer-base: var(--color-text-secondary);
+    --loading-shimmer-highlight: var(--color-text);
+  }
+
+  .loading-shimmer-on-color {
+    --loading-shimmer-foreground: var(--color-avatar-foreground);
+    --loading-shimmer-highlight: var(--color-avatar-foreground);
+  }
+
+  .loading-shimmer-pure-text, .loading-shimmer, .loading-shimmer-dot-grid {
+    --loading-shimmer-default-duration: 2s;
     background: var(--shimmer-text-secondary) linear-gradient(to right, transparent 0%, var(--shimmer-contrast) 40%, var(--shimmer-contrast) 60%, transparent 100%);
     background: var(--shimmer-text-secondary) -webkit-gradient(linear, 100% 0, 0 0, from(transparent), color-stop(.4, var(--shimmer-contrast)), color-stop(.6, var(--shimmer-contrast)), to(transparent));
-    text-fill-color: transparent;
-    -webkit-text-fill-color: transparent;
     animation-duration: var(--loading-shimmer-duration, var(--loading-shimmer-default-duration));
     background-position: -100% 0;
     background-repeat: no-repeat;
     background-size: 50% 200%;
-    -webkit-background-clip: text;
-    background-clip: text;
     animation-name: loading-shimmer;
     animation-timing-function: steps(48, end);
     animation-iteration-count: infinite;
@@ -99,9 +128,16 @@
   }
 
   @media (prefers-reduced-motion: reduce) {
-    .loading-shimmer-pure-text, .loading-shimmer {
+    .loading-shimmer-pure-text, .loading-shimmer, .loading-shimmer-dot-grid {
       animation: none;
     }
+  }
+
+  .loading-shimmer-pure-text, .loading-shimmer {
+    text-fill-color: transparent;
+    -webkit-text-fill-color: transparent;
+    -webkit-background-clip: text;
+    background-clip: text;
   }
 
   .loading-shimmer:hover {
@@ -109,6 +145,43 @@
     background: none;
     animation: none;
   }
+}
+
+[data-codex-window-type="electron"]:not([data-codex-window-chrome="application-menu"]) :is([data-app-shell-frame][data-app-shell-workspace-tab-chrome], [data-app-shell-page-surface="true"], .app-shell-left-panel:not([data-app-shell-left-panel-appearance="content-surface"])) {
+  background: var(--color-surface-tertiary);
+}
+
+@supports (color: color-mix(in lab, red, red)) {
+  [data-codex-window-type="electron"]:not([data-codex-window-chrome="application-menu"]) :is([data-app-shell-frame][data-app-shell-workspace-tab-chrome], [data-app-shell-page-surface="true"], .app-shell-left-panel:not([data-app-shell-left-panel-appearance="content-surface"])) {
+    background: color-mix(in srgb, var(--color-surface-tertiary) 70%, transparent);
+  }
+}
+
+[data-codex-window-type="electron"]:not([data-codex-window-chrome="application-menu"]) :is([data-app-shell-frame][data-app-shell-workspace-tab-chrome], [data-app-shell-page-surface="true"], .app-shell-left-panel:not([data-app-shell-left-panel-appearance="content-surface"])) {
+  overflow: visible;
+}
+
+[data-codex-window-type="electron"]:not([data-codex-window-chrome="application-menu"]) :is([data-app-shell-frame][data-app-shell-workspace-tab-chrome], [data-app-shell-page-surface="true"], .app-shell-left-panel:not([data-app-shell-left-panel-appearance="content-surface"]))[data-app-shell-page-surface="true"] {
+  background: var(--lightningcss-light, var(--color-surface-secondary))var(--lightningcss-dark, var(--color-surface-tertiary));
+}
+
+@supports (color: color-mix(in lab, red, red)) {
+  [data-codex-window-type="electron"]:not([data-codex-window-chrome="application-menu"]) :is([data-app-shell-frame][data-app-shell-workspace-tab-chrome], [data-app-shell-page-surface="true"], .app-shell-left-panel:not([data-app-shell-left-panel-appearance="content-surface"]))[data-app-shell-page-surface="true"] {
+    background: var(--lightningcss-light, color-mix(in srgb, var(--color-surface-secondary) 85%, transparent))var(--lightningcss-dark, color-mix(in srgb, var(--color-surface-tertiary) 80%, transparent));
+  }
+}
+
+[data-codex-window-type="electron"]:not([data-codex-window-chrome="application-menu"]) :is([data-app-shell-frame][data-app-shell-workspace-tab-chrome], [data-app-shell-page-surface="true"]) .app-shell-left-panel:not([data-app-shell-left-panel-appearance="content-surface"]) {
+  background: none;
+}
+
+[data-codex-window-type="electron"]:not([data-codex-window-chrome="application-menu"]) .app-shell-left-panel:not([data-app-shell-left-panel-appearance="content-surface"]):after {
+  inset: 0 calc(-1 * var(--radius-2xl)) 0 auto;
+  width: var(--radius-2xl);
+  background: inherit;
+  content: "";
+  pointer-events: none;
+  position: absolute;
 }
 
 @keyframes loading-shimmer {
@@ -119,24 +192,4 @@
   to {
     background-position: 250% 0;
   }
-}
-
-[data-codex-window-type="electron"]:not([data-codex-window-chrome="application-menu"]) .app-shell-left-panel {
-  background: var(--color-token-editor-background);
-  overflow: visible;
-}
-
-@supports (color: color-mix(in lab, red, red)) {
-  [data-codex-window-type="electron"]:not([data-codex-window-chrome="application-menu"]) .app-shell-left-panel {
-    background: color-mix(in srgb, var(--color-token-editor-background) 55%, transparent);
-  }
-}
-
-[data-codex-window-type="electron"]:not([data-codex-window-chrome="application-menu"]) .app-shell-left-panel::after {
-  inset: 0 calc(-1 * var(--radius-2xl)) 0 auto;
-  width: var(--radius-2xl);
-  background: inherit;
-  content: "";
-  pointer-events: none;
-  position: absolute;
 }

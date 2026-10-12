@@ -93,7 +93,7 @@ function ImageCommentMarker({
   onClick?: (event: MouseEvent<HTMLButtonElement>) => void;
 }) {
   const markerStyle: CSSProperties = {
-    color: "var(--color-token-charts-blue)",
+    color: "var(--image-comment-marker-color)",
     height: IMAGE_COMMENT_MARKER_DIAMETER_PX,
     left: `${point.x * 100}%`,
     top: `${point.y * 100}%`,

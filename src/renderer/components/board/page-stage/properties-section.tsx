@@ -75,7 +75,7 @@ export function RelatedChatPropertyChip({
         aria-current={current ? "true" : undefined}
         disabled={!onOpen}
         onClick={() => void onOpen?.()}
-        className="flex h-full min-w-0 flex-1 items-center gap-1 px-1.5 text-left outline-none focus-visible:rounded-md focus-visible:ring-2 focus-visible:ring-token-focus disabled:opacity-60"
+        className="flex h-full min-w-0 flex-1 items-center gap-1 px-1.5 text-left outline-none focus-visible:rounded-md focus-visible:ring-2 focus-visible:ring-token-focus-border disabled:opacity-60"
       >
         <PageChatActivityGlyph
           activity={activity}
@@ -89,7 +89,7 @@ export function RelatedChatPropertyChip({
           type="button"
           aria-label={`Remove relation to ${chat.displayTitle}`}
           disabled={saving}
-          className="pointer-events-none absolute right-0.5 top-1/2 z-10 flex size-5 -translate-y-1/2 shrink-0 items-center justify-center rounded-sm bg-[color-mix(in_srgb,var(--color-token-foreground)_5%,var(--color-token-main-surface-primary))] text-token-description-foreground opacity-0 hover:bg-[color-mix(in_srgb,var(--color-token-foreground)_10%,var(--color-token-main-surface-primary))] hover:text-token-text-primary focus-visible:ring-2 focus-visible:ring-token-focus focus-visible:text-token-text-primary group-hover/related-chat:pointer-events-auto group-hover/related-chat:opacity-100 group-focus-within/related-chat:pointer-events-auto group-focus-within/related-chat:opacity-100 disabled:pointer-events-none disabled:opacity-40"
+          className="pointer-events-none absolute right-0.5 top-1/2 z-10 flex size-5 -translate-y-1/2 shrink-0 items-center justify-center rounded-sm bg-[color-mix(in_srgb,var(--color-token-foreground)_5%,var(--color-token-main-surface-primary))] text-token-description-foreground opacity-0 hover:bg-[color-mix(in_srgb,var(--color-token-foreground)_10%,var(--color-token-main-surface-primary))] hover:text-token-text-primary focus-visible:ring-2 focus-visible:ring-token-focus-border focus-visible:text-token-text-primary group-hover/related-chat:pointer-events-auto group-hover/related-chat:opacity-100 group-focus-within/related-chat:pointer-events-auto group-focus-within/related-chat:opacity-100 disabled:pointer-events-none disabled:opacity-40"
           onClick={() => void onRemove()}
         >
           <CloseIcon className="size-3" />
@@ -132,7 +132,7 @@ function RelatedChatAddControl({
       aria-label="Add chat"
       disabled={saving}
       className={cn(
-        "flex min-h-6 min-w-0 items-center text-left text-sm focus-visible:outline-2 focus-visible:outline-offset-[-2px] focus-visible:outline-token-focus disabled:opacity-40",
+        "flex min-h-6 min-w-0 items-center text-left text-sm focus-visible:outline-2 focus-visible:outline-offset-[-2px] focus-visible:outline-token-focus-border disabled:opacity-40",
         DATABASE_PAGE_PROPERTY_EMPTY_TRIGGER_CLASS_NAME,
       )}
     >

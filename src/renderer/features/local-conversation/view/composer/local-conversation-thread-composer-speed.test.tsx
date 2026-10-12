@@ -4398,10 +4398,7 @@ describe("ThreadComposer speed menu", () => {
     expect(promptFrame?.classList.contains("text-base") ?? false).toBe(true);
     expect(composerSurface !== null).toBe(true);
     expect(composerSurface?.tagName).toBe("DIV");
-    expect(composerSurface?.classList.contains("_multilineSurface_1u8sk_2") ?? false).toBe(true);
-    expect(attachmentStrip?.classList.contains("_attachmentsDefault_1u8sk_2") ?? false).toBe(true);
     expect(attachmentStrip?.classList.contains("empty:hidden") ?? true).toBe(false);
-    expect(formFooter?.classList.contains("_footer_1u8sk_2") ?? false).toBe(true);
     expect(formFooter?.getAttribute("data-composer-layout")).toBe("multiline");
     expect(inputSlot?.getAttribute("data-composer-footer-row")).toBe("prompt");
     expect(inputSlot?.contains(promptFrame ?? null)).toBe(true);

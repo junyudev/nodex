@@ -207,7 +207,7 @@ function SettingsSearchResults({
               aria-label={`${result.label}, ${result.panelLabel}`}
               onClick={() => onSelectResult(result)}
               className={cn(
-                "focus-visible:ring-token-focus flex cursor-interaction items-center rounded-lg py-1.5 pe-2 ps-8.5 text-left text-base text-token-foreground hover:bg-token-list-hover-background focus-visible:ring-1 focus-visible:outline-none",
+                "focus-visible:ring-token-focus-border flex cursor-interaction items-center rounded-lg py-1.5 pe-2 ps-8.5 text-left text-base text-token-foreground hover:bg-token-list-hover-background focus-visible:ring-1 focus-visible:outline-none",
                 highlightedIndex === index ? "bg-token-list-hover-background" : undefined,
               )}
             >
@@ -268,7 +268,7 @@ export function SettingsSidebar({
           <button
             type="button"
             onClick={onBack}
-            className="group relative mb-2 flex w-full shrink-0 cursor-interaction items-center gap-2 rounded-lg px-row-x py-row-y text-left text-base text-token-text-secondary outline-none hover:bg-token-list-hover-background focus-visible:ring-1 focus-visible:ring-token-focus electron:opacity-75"
+            className="group relative mb-2 flex w-full shrink-0 cursor-interaction items-center gap-2 rounded-lg px-row-x py-row-y text-left text-base text-token-text-secondary outline-none hover:bg-token-list-hover-background focus-visible:ring-1 focus-visible:ring-token-focus-border electron:opacity-75"
           >
             <BrowserBackIcon />
             Back to app

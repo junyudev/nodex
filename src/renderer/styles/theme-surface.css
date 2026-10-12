@@ -2,25 +2,6 @@
   display: none;
 }
 
-@supports (color: color-mix(in lab, red, red)) {
-  :root,
-  :host {
-    --color-text-foreground-secondary: color-mix(in oklab, var(--gray-1000) 70%, transparent);
-    --color-text-foreground-tertiary: color-mix(in oklab, var(--gray-1000) 50%, transparent);
-    --color-icon-secondary: color-mix(in oklab, var(--gray-1000) 70%, transparent);
-    --color-icon-tertiary: color-mix(in oklab, var(--gray-1000) 50%, transparent);
-  }
-
-  :root.dark,
-  .dark {
-    --color-text-foreground-secondary: color-mix(in oklab, var(--gray-0) 70%, transparent);
-    --color-text-foreground-tertiary: color-mix(in oklab, var(--gray-0) 50%, transparent);
-    --color-icon-primary: color-mix(in oklab, var(--white) 90%, transparent);
-    --color-icon-secondary: color-mix(in oklab, var(--white) 70%, transparent);
-    --color-icon-tertiary: color-mix(in oklab, var(--white) 50%, transparent);
-  }
-}
-
 @supports (corner-shape: superellipse(1.5)) {
   :root,
   :host {
@@ -75,7 +56,7 @@
 }
 
 mark.codex-thread-find-match {
-  background-color: var(--vscode-charts-yellow);
+  background-color: var(--content-search-match-background);
   color: var(--color-token-foreground);
   border-radius: var(--radius-2xs);
   font: inherit;
@@ -89,7 +70,7 @@ mark.codex-thread-find-match {
 }
 
 mark.codex-thread-find-active {
-  background-color: var(--vscode-charts-orange);
+  background-color: var(--content-search-active-match-background);
 }
 
 #root {
@@ -170,12 +151,12 @@ mark.codex-thread-find-active {
 }
 
 .sidebar-foreground-muted {
-  --color-token-foreground: var(--vscode-foreground);
+  --color-token-foreground: var(--color-text);
 }
 
 @supports (color: color-mix(in lab, red, red)) {
   .sidebar-foreground-muted {
-    --color-token-foreground: color-mix(in oklab, var(--vscode-foreground) 85%, transparent);
+    --color-token-foreground: color-mix(in oklab, var(--color-text) 85%, transparent);
   }
 }
 
@@ -246,11 +227,11 @@ mark.codex-thread-find-active {
   }
 }
 
-._multilineSurface_1u8sk_2 {
+.composer-multiline-surface {
   border-radius: var(--composer-border-radius);
 }
 
-._attachmentsDefault_1u8sk_2[data-composer-spacing="default"] {
+.composer-attachments[data-composer-spacing="default"] {
   --composer-attachment-inset: calc(var(--spacing) * 2);
   --composer-attachment-border-radius: max(
     0px,
@@ -260,41 +241,22 @@ mark.codex-thread-find-active {
   padding-bottom: calc(var(--spacing) * 1.5);
 }
 
-._attachmentsDefault_1u8sk_2[data-composer-spacing="flush"][data-visible-attachments] {
+.composer-attachments[data-composer-spacing="flush"][data-visible-attachments] {
   margin-bottom: 5px;
 }
 
-._attachmentsDefault_1u8sk_2[data-composer-spacing="default"] .composer-attachment-surface {
+.composer-attachments[data-composer-spacing="default"] .composer-attachment-surface {
   border-radius: var(--composer-attachment-border-radius);
 }
 
-._footer_1u8sk_2 {
+.composer-footer {
   container: composer-footer / inline-size;
 }
 
 @supports (corner-shape: superellipse(1.5)) {
-  ._multilineSurface_1u8sk_2,
-  ._attachmentsDefault_1u8sk_2[data-composer-spacing="default"] .composer-attachment-surface {
+  .composer-multiline-surface,
+  .composer-attachments[data-composer-spacing="default"] .composer-attachment-surface {
     corner-shape: var(--codex-corner-shape);
-  }
-}
-
-@container composer-footer (width <= 440px) {
-  ._labelSm_z984f_2 {
-    display: none;
-  }
-}
-
-@container composer-footer (width <= 300px) {
-  ._labelXs_z984f_2 {
-    display: none;
-  }
-}
-
-@container composer-footer (width <= 475px) {
-  [data-codex-window-type="electron"] ._labelSm_z984f_2,
-  [data-codex-window-type="electron"] ._labelXs_z984f_2 {
-    display: none;
   }
 }
 

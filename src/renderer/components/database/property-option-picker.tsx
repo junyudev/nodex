@@ -465,7 +465,7 @@ export function PropertyOptionPicker({
       aria-label={closedTriggerLabel}
       className={cn(
         "inline-flex min-h-6 min-w-0 max-w-full items-center text-left outline-hidden",
-        "hover:bg-token-foreground/5 focus-visible:ring-2 focus-visible:ring-token-focus disabled:opacity-50",
+        "hover:bg-token-foreground/5 focus-visible:ring-2 focus-visible:ring-token-focus-border disabled:opacity-50",
         presentation === "page"
           ? cn(
               "text-sm",

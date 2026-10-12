@@ -28,12 +28,11 @@ const SECTION_LABEL =
 const ROW_LABEL = "w-18 shrink-0 pt-0.75 text-xs text-token-description-foreground select-none";
 const CHIP_BASE =
   "inline-flex h-6 items-center rounded-md px-2 text-xs font-medium text-token-description-foreground hover:bg-token-foreground/5 hover:text-token-foreground";
-const CHIP_ACTIVE =
-  "bg-[color-mix(in_srgb,var(--accent-blue)_18%,transparent)] text-(--accent-blue) hover:bg-[color-mix(in_srgb,var(--accent-blue)_22%,transparent)] hover:text-(--accent-blue)";
+const CHIP_ACTIVE = "bg-text-info/18 text-info hover:bg-text-info/22 hover:text-info";
 const TEXT_BTN =
   "inline-flex items-center gap-1 text-xs font-medium text-token-description-foreground hover:text-token-foreground";
 const SUMMARY_CHIP =
-  "inline-flex h-6 items-center gap-0.5 rounded-full bg-[color-mix(in_srgb,var(--accent-blue)_14%,transparent)] px-2 text-xs font-medium text-(--accent-blue) hover:bg-[color-mix(in_srgb,var(--accent-blue)_18%,transparent)]";
+  "inline-flex h-6 items-center gap-0.5 rounded-full bg-text-info/14 px-2 text-xs font-medium text-info hover:bg-text-info/18";
 export interface CommandPaletteProjectFilterOption {
   id: string;
   label: string;

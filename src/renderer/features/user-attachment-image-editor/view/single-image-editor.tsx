@@ -136,7 +136,7 @@ function LocalImageOpenControl({
         className="flex min-w-0 cursor-interaction items-center gap-1.5 px-2 text-base hover:bg-token-list-hover-background focus-visible:ring-1 focus-visible:ring-inset focus-visible:ring-token-focus-border focus-visible:outline-none disabled:cursor-not-allowed disabled:opacity-50"
         onClick={() => void openPath("default")}
       >
-        <span className="flex size-4 items-center justify-center rounded-sm bg-token-charts-blue text-white">
+        <span className="flex size-4 items-center justify-center rounded-sm bg-chart-blue text-(--app-color-text-on-accent)">
           <ImageEditorTabIcon aria-hidden="true" className="size-3" />
         </span>
         <span className="whitespace-nowrap">Open</span>

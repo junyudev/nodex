@@ -259,7 +259,7 @@ export function ThreadCommandShellBlock({
             >
               <code
                 className={cn(
-                  "text-size-chat-sm text-token-description-foreground whitespace-pre-wrap break-words font-vscode-editor",
+                  "text-size-chat-sm text-token-description-foreground whitespace-pre-wrap break-words font-code",
                   !isCommandExpanded && "line-clamp-2",
                 )}
                 data-command-shell-line
@@ -282,7 +282,7 @@ export function ThreadCommandShellBlock({
         <div
           ref={scrollRef}
           className={cn(
-            "vertical-scroll-fade-mask max-h-36 [--edge-fade-distance:2rem] box-border flex flex-col-reverse overflow-x-auto overflow-y-auto whitespace-pre font-vscode-editor font-medium [animation-direction:reverse]",
+            "vertical-scroll-fade-mask max-h-36 [--edge-fade-distance:2rem] box-border flex flex-col-reverse overflow-x-auto overflow-y-auto whitespace-pre font-code font-medium [animation-direction:reverse]",
             isPlainEmbedded ? "text-token-foreground" : "text-token-description-foreground",
             variant === "embedded" ? "text-size-chat-sm" : "text-size-code-sm",
           )}

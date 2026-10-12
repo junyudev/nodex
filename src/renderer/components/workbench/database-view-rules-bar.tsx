@@ -100,9 +100,9 @@ interface DatabaseViewRuleToolbarControlsProps {
 const EMPTY_OPTIONS: Readonly<Record<string, readonly DatabasePropertyOption[]>> = {};
 const TOKEN_CLASS = cn(
   "group/rule inline-flex h-6 shrink-0 items-center gap-1 rounded-full px-2 text-xs font-medium",
-  "bg-[color-mix(in_srgb,var(--accent-blue)_14%,transparent)] text-(--accent-blue)",
-  "hover:bg-[color-mix(in_srgb,var(--accent-blue)_19%,transparent)]",
-  "focus-visible:ring-2 focus-visible:ring-token-focus focus-visible:outline-none",
+  "bg-text-info/14 text-info",
+  "hover:bg-text-info/19",
+  "focus-visible:ring-2 focus-visible:ring-token-focus-border focus-visible:outline-none",
 );
 
 const MENU_ROW = cn(
@@ -114,10 +114,7 @@ type PersonalRuleActionKind = "reset" | "publish";
 type PersonalRulePreviewSource = "pointer" | "focus";
 
 const RULE_ACTION_PREVIEW_CLASS: Record<PersonalRuleActionKind, string> = {
-  publish: cn(
-    "bg-[color-mix(in_srgb,var(--accent-blue)_22%,transparent)]",
-    "ring-1 ring-inset ring-[color-mix(in_srgb,var(--accent-blue)_55%,transparent)]",
-  ),
+  publish: cn("bg-text-info/22", "ring-1 ring-inset ring-token-focus-border/55"),
   reset: cn(
     "bg-token-foreground/8 text-token-foreground",
     "ring-1 ring-inset ring-token-foreground/20",
@@ -1044,7 +1041,7 @@ export function DatabaseViewRulesBar({
         <span
           key={controller.pulse}
           aria-hidden="true"
-          className="pointer-events-none absolute inset-0 animate-[pulse_1.2s_ease-in-out_1] bg-[color-mix(in_srgb,var(--accent-blue)_6%,transparent)]"
+          className="pointer-events-none absolute inset-0 animate-[pulse_1.2s_ease-in-out_1] bg-text-info/6"
         />
       ) : null}
       <div className="flex min-h-8 items-center gap-1.5 px-3 pb-1">

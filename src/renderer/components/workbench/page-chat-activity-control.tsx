@@ -57,7 +57,7 @@ function RelatedChatRow({
     >
       <button
         type="button"
-        className="flex min-w-0 flex-1 items-center gap-2 text-left outline-none focus-visible:rounded focus-visible:ring-2 focus-visible:ring-token-focus"
+        className="flex min-w-0 flex-1 items-center gap-2 text-left outline-none focus-visible:rounded focus-visible:ring-2 focus-visible:ring-token-focus-border"
         onClick={onOpen}
       >
         <PageChatActivityGlyph
@@ -183,7 +183,7 @@ export function PageChatActivityControl({
             type="button"
             aria-label={activity.accessibleLabel}
             data-page-chat-activity-control="true"
-            className="relative flex size-5 shrink-0 items-center justify-center rounded outline-none focus-visible:ring-2 focus-visible:ring-token-focus"
+            className="relative flex size-5 shrink-0 items-center justify-center rounded outline-none focus-visible:ring-2 focus-visible:ring-token-focus-border"
             onPointerDown={(event) => event.stopPropagation()}
             onClick={handleTriggerClick}
             onDoubleClick={(event) => event.stopPropagation()}

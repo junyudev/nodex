@@ -367,7 +367,7 @@ function PageCreateDialogContent({
                 aria-label={expanded ? "Collapse Page composer" : "Expand Page composer"}
                 aria-expanded={expanded}
                 onClick={() => setExpanded((current) => !current)}
-                className="grid size-7 place-items-center rounded-full text-token-description-foreground outline-none hover:bg-token-foreground/5 hover:text-token-foreground focus-visible:ring-2 focus-visible:ring-token-focus disabled:cursor-not-allowed disabled:opacity-40"
+                className="grid size-7 place-items-center rounded-full text-token-description-foreground outline-none hover:bg-token-foreground/5 hover:text-token-foreground focus-visible:ring-2 focus-visible:ring-token-focus-border disabled:cursor-not-allowed disabled:opacity-40"
               >
                 {expanded ? (
                   <RestorePanelIcon className="icon-xs" />
@@ -380,7 +380,7 @@ function PageCreateDialogContent({
                   type="button"
                   disabled={saving}
                   aria-label="Close Page creation"
-                  className="grid size-7 place-items-center rounded-full text-token-description-foreground outline-none hover:bg-token-foreground/5 hover:text-token-foreground focus-visible:ring-2 focus-visible:ring-token-focus disabled:cursor-not-allowed disabled:opacity-40"
+                  className="grid size-7 place-items-center rounded-full text-token-description-foreground outline-none hover:bg-token-foreground/5 hover:text-token-foreground focus-visible:ring-2 focus-visible:ring-token-focus-border disabled:cursor-not-allowed disabled:opacity-40"
                 >
                   <CloseIcon className="icon-xs" />
                 </button>

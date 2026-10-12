@@ -31,7 +31,7 @@ function resolveLineTone(thread: ThreadSectionLinkedThreadState | null): string 
   if (!thread) return "bg-(--border)";
   if (thread.statusType === "systemError") return "bg-(--red-text)";
   if (thread.statusActiveFlags.length > 0) return "bg-(--orange-text)";
-  if (thread.statusType === "active") return "bg-(--accent-blue)";
+  if (thread.statusType === "active") return "bg-(--blue-300)";
   return "bg-(--border)";
 }
 
@@ -40,7 +40,7 @@ function resolveTextTone(thread: ThreadSectionLinkedThreadState | null): string 
   if (thread.archived) return "text-(--foreground-tertiary)";
   if (thread.statusType === "systemError") return "text-(--red-text)";
   if (thread.statusActiveFlags.length > 0) return "text-(--orange-text)";
-  if (thread.statusType === "active") return "text-(--accent-blue)";
+  if (thread.statusType === "active") return "text-(--blue-300)";
   return "text-(--foreground-secondary)";
 }
 

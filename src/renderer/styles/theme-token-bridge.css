@@ -1,11 +1,5 @@
 @theme static {
-  /*
-   * Product-owned Tailwind aliases that are intentionally outside the
-   * generated semantic theme contract.
-   *
-   * Keep compatibility aliases here until their consumers migrate to semantic
-   * roles. The reference extraction source is never required at build time.
-   */
+  /* Product utilities adapt established surfaces to shared semantic roles. */
   --color-background: var(--background);
   --color-foreground: var(--foreground);
   --color-sidebar-ring: var(--sidebar-ring);
@@ -37,117 +31,50 @@
   --color-popover: var(--popover);
   --color-card-foreground: var(--card-foreground);
   --color-card: var(--card);
-  --color-background-tip-badge: var(--vscode-editor-selectionBackground);
-  --color-text-on-accent: var(--vscode-button-foreground);
-  --color-text-tip-badge: var(--vscode-charts-blue);
-  --color-token-badge-background: var(--vscode-badge-background);
-  --color-token-badge-foreground: var(--vscode-badge-foreground);
-  --color-token-button-background: var(--vscode-button-background);
-  --color-token-button-border: var(--vscode-button-border);
-  --color-token-button-foreground: var(--vscode-button-foreground);
-  --color-token-button-secondary-hover-background: var(--vscode-button-secondaryHoverBackground);
-  --color-token-charts-green: var(--vscode-charts-green);
-  --color-token-charts-orange: var(--vscode-charts-orange);
-  --color-token-charts-purple: var(--vscode-charts-purple);
-  --color-token-charts-red: var(--vscode-charts-red);
-  --color-token-charts-yellow: var(--vscode-charts-yellow);
+  --color-token-editor-background: var(--color-surface);
   --color-token-image-remove-brush: #6192f6;
-  --color-token-checkbox-background: var(--vscode-checkbox-background);
-  --color-token-checkbox-border: var(--vscode-checkbox-border);
-  --color-token-checkbox-foreground: var(--vscode-checkbox-foreground);
-  --color-token-conversation-body: color-mix(
-    in oklab,
-    var(--color-token-foreground) 60%,
-    transparent
-  );
-  --color-token-conversation-header: color-mix(
-    in oklab,
-    var(--color-token-foreground) 30%,
-    transparent
-  );
-  --color-token-conversation-summary-leading: color-mix(
-    in oklab,
-    var(--color-token-description-foreground) 90%,
-    transparent
-  );
-  --color-token-conversation-summary-trailing: color-mix(
-    in oklab,
-    var(--color-token-foreground) 40%,
-    transparent
-  );
-  --color-token-disabled-foreground: var(--vscode-disabledForeground);
-  --color-token-editor-background: var(--vscode-editor-background);
-  --color-token-editor-error-foreground: var(--vscode-editorError-foreground);
-  --color-token-editor-foreground: var(--vscode-editor-foreground);
-  --color-token-editor-group-drop-background: var(--vscode-editorGroup-dropBackground);
-  --color-token-editor-group-drop-into-prompt-background: var(
-    --vscode-editorGroup-dropIntoPromptBackground
-  );
-  --color-token-editor-group-drop-into-prompt-foreground: var(
-    --vscode-editorGroup-dropIntoPromptForeground
-  );
-  --color-token-error-foreground: var(--vscode-errorForeground);
-  --color-token-git-decoration-added-resource-foreground: var(
-    --vscode-gitDecoration-addedResourceForeground
-  );
-  --color-token-git-decoration-deleted-resource-foreground: var(
-    --vscode-gitDecoration-deletedResourceForeground
-  );
-  --color-token-input-background: var(--vscode-input-background);
-  --color-token-input-foreground: var(--vscode-input-foreground);
-  --color-token-input-placeholder-foreground: var(--vscode-input-placeholderForeground);
-  --color-token-input-validation-error-background: var(--vscode-inputValidation-errorBackground);
-  --color-token-input-validation-error-border: var(--vscode-inputValidation-errorBorder);
-  --color-token-input-validation-info-background: var(--vscode-inputValidation-infoBackground);
-  --color-token-input-validation-warning-background: var(
-    --vscode-inputValidation-warningBackground
-  );
-  --color-token-input-validation-warning-border: var(--vscode-inputValidation-warningBorder);
   --color-token-link: var(--color-token-text-link-foreground);
-  --color-token-list-active-selection-background: var(--vscode-list-activeSelectionBackground);
-  --color-token-list-active-selection-foreground: var(--vscode-list-activeSelectionForeground);
-  --color-token-list-active-selection-icon-foreground: var(
-    --vscode-list-activeSelectionIconForeground
-  );
-  --color-token-menu-background: var(--vscode-menu-background);
-  --color-token-menu-border: var(--vscode-menu-border);
-  --color-token-menubar-selection-background: var(--vscode-menubar-selectionBackground);
-  --color-token-menubar-selection-foreground: var(--vscode-menubar-selectionForeground);
-  --color-token-non-assistant-body-descendant: color-mix(
-    in oklab,
-    var(--color-token-foreground) 50%,
-    transparent
-  );
-  --color-token-radio-active-foreground: var(--vscode-radio-activeForeground);
-  --color-token-scrollbar-slider-active-background: var(--vscode-scrollbarSlider-activeBackground);
-  --color-token-scrollbar-slider-background: var(--vscode-scrollbarSlider-background);
-  --color-token-terminal-ansi-black: var(--vscode-terminal-ansiBlack);
-  --color-token-terminal-ansi-blue: var(--vscode-terminal-ansiBlue);
-  --color-token-terminal-ansi-bright-black: var(--vscode-terminal-ansiBrightBlack);
-  --color-token-terminal-ansi-bright-blue: var(--vscode-terminal-ansiBrightBlue);
-  --color-token-terminal-ansi-bright-cyan: var(--vscode-terminal-ansiBrightCyan);
-  --color-token-terminal-ansi-bright-green: var(--vscode-terminal-ansiBrightGreen);
-  --color-token-terminal-ansi-bright-magenta: var(--vscode-terminal-ansiBrightMagenta);
-  --color-token-terminal-ansi-bright-red: var(--vscode-terminal-ansiBrightRed);
-  --color-token-terminal-ansi-bright-white: var(--vscode-terminal-ansiBrightWhite);
-  --color-token-terminal-ansi-bright-yellow: var(--vscode-terminal-ansiBrightYellow);
-  --color-token-terminal-ansi-cyan: var(--vscode-terminal-ansiCyan);
-  --color-token-terminal-ansi-green: var(--vscode-terminal-ansiGreen);
-  --color-token-terminal-ansi-magenta: var(--vscode-terminal-ansiMagenta);
-  --color-token-terminal-ansi-red: var(--vscode-terminal-ansiRed);
-  --color-token-terminal-ansi-white: var(--vscode-terminal-ansiWhite);
-  --color-token-terminal-ansi-yellow: var(--vscode-terminal-ansiYellow);
   --color-token-terminal-background: var(--color-token-main-surface-primary);
-  --color-token-terminal-border: var(--vscode-terminal-border);
-  --color-token-terminal-foreground: var(--vscode-terminal-foreground);
-  --color-token-terminal-inactive-selection-background: var(
-    --vscode-terminal-inactiveSelectionBackground
-  );
-  --color-token-terminal-selection-background: var(--vscode-terminal-selectionBackground);
-  --color-token-text-code-block-background: var(--vscode-textCodeBlock-background);
-  --color-token-text-link-active-foreground: var(--vscode-textLink-activeForeground);
-  --color-token-toolbar-hover-background: var(--vscode-toolbar-hoverBackground);
-  --color-token-icon-foreground: var(--vscode-icon-foreground);
-  --color-token-background: var(--color-background-elevated-primary);
-  --color-token-bg-subtle: var(--color-background-elevated-secondary);
+  --color-token-background: var(--color-surface-elevated);
+  --color-token-bg-subtle: var(--color-background-secondary-soft);
+  --color-token-button-foreground: var(--color-text-primary-solid);
+  --color-token-charts-green: var(--color-text-success);
+  --color-token-charts-orange: var(--color-text-warning);
+  --color-token-charts-purple: var(--color-text-discovery);
+  --color-token-charts-red: var(--color-text-danger);
+  --color-token-charts-yellow: var(--color-text-caution);
+  --color-token-editor-error-foreground: var(--color-text-danger);
+  --color-token-editor-foreground: var(--color-text);
+  --color-token-error-foreground: var(--color-text-danger);
+  --color-token-git-decoration-added-resource-foreground: var(--color-codex-git-added);
+  --color-token-git-decoration-deleted-resource-foreground: var(--color-codex-git-deleted);
+  --color-token-icon-foreground: var(--color-codex-icon);
+  --color-token-input-background: var(--color-surface-elevated-secondary);
+  --color-token-input-foreground: var(--color-text);
+  --color-token-input-placeholder-foreground: var(--color-text-tertiary);
+  --color-token-list-active-selection-background: var(--color-background-primary-soft-active);
+  --color-token-list-active-selection-foreground: var(--color-text-emphasis);
+  --color-token-list-active-selection-icon-foreground: var(--color-codex-icon-active);
+  --color-token-menu-background: var(--color-surface-elevated-secondary);
+  --color-token-menu-border: var(--color-border);
+  --color-token-scrollbar-slider-active-background: var(--color-border-strong);
+  --color-token-scrollbar-slider-background: var(--color-border-subtle);
+  --color-token-terminal-ansi-black: var(--color-codex-terminal-ansi-black);
+  --color-token-terminal-ansi-blue: var(--color-codex-terminal-ansi-blue);
+  --color-token-terminal-ansi-bright-black: var(--color-codex-terminal-ansi-bright-black);
+  --color-token-terminal-ansi-bright-blue: var(--color-codex-terminal-ansi-bright-blue);
+  --color-token-terminal-ansi-bright-cyan: var(--color-codex-terminal-ansi-bright-cyan);
+  --color-token-terminal-ansi-bright-green: var(--color-codex-terminal-ansi-bright-green);
+  --color-token-terminal-ansi-bright-magenta: var(--color-codex-terminal-ansi-bright-magenta);
+  --color-token-terminal-ansi-bright-red: var(--color-codex-terminal-ansi-bright-red);
+  --color-token-terminal-ansi-bright-white: var(--color-codex-terminal-ansi-bright-white);
+  --color-token-terminal-ansi-bright-yellow: var(--color-codex-terminal-ansi-bright-yellow);
+  --color-token-terminal-ansi-cyan: var(--color-codex-terminal-ansi-cyan);
+  --color-token-terminal-ansi-green: var(--color-codex-terminal-ansi-green);
+  --color-token-terminal-ansi-magenta: var(--color-codex-terminal-ansi-magenta);
+  --color-token-terminal-ansi-red: var(--color-codex-terminal-ansi-red);
+  --color-token-terminal-ansi-white: var(--color-codex-terminal-ansi-white);
+  --color-token-terminal-ansi-yellow: var(--color-codex-terminal-ansi-yellow);
+  --color-token-terminal-foreground: var(--color-codex-terminal-foreground);
+  --color-token-toolbar-hover-background: var(--color-background-primary-ghost-hover);
 }

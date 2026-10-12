@@ -241,7 +241,7 @@ interface ReviewDiffPanelDeps {
   parsePatchFiles: typeof defaultParsePatchFiles;
   readWorkspaceFileMetadata: typeof defaultReadWorkspaceFileMetadata;
   readWorkspaceFileText: typeof defaultReadWorkspaceFileText;
-  useTheme: typeof defaultUseTheme;
+  useTheme: () => Pick<ReturnType<typeof defaultUseTheme>, "resolved">;
   FileDiff: typeof defaultFileDiff;
   gitWorkerClient?: GitWorkerQueryClient;
   initialSummaryQuery?: boolean;

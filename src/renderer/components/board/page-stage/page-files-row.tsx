@@ -428,7 +428,7 @@ function PageFilesDialogContent({
                 onChange={(event) => setQuery(event.target.value)}
                 placeholder="Search paths and names"
                 aria-label="Search Page Files"
-                className="h-8 rounded-lg bg-token-foreground/4 px-2.5 text-sm outline-none ring-[0.5px] ring-inset ring-token-border focus:ring-1 focus:ring-token-focus"
+                className="h-8 rounded-lg bg-token-foreground/4 px-2.5 text-sm outline-none ring-[0.5px] ring-inset ring-token-border focus:ring-1 focus:ring-token-focus-border"
               />
               <div className="mt-2 min-h-0 flex-1 overflow-auto">
                 {inventory.loading ? (
@@ -461,7 +461,7 @@ function PageFilesDialogContent({
                         aria-label={`Preview ${rowLabel(item)}`}
                         aria-pressed={selectedFileId === item.file.file_id}
                         className={cn(
-                          "flex w-full items-center gap-2 rounded-lg px-2 py-2 text-left outline-none hover:bg-token-foreground/4 focus-visible:ring-2 focus-visible:ring-token-focus",
+                          "flex w-full items-center gap-2 rounded-lg px-2 py-2 text-left outline-none hover:bg-token-foreground/4 focus-visible:ring-2 focus-visible:ring-token-focus-border",
                           selectedFileId === item.file.file_id && "bg-token-foreground/7",
                         )}
                         onClick={() => setSelectedFileId(item.file.file_id)}
@@ -607,7 +607,7 @@ function PageFilesDialogContent({
                               if (event.key === "Enter") void savePath();
                               if (event.key === "Escape") setEditingPath(false);
                             }}
-                            className="h-8 min-w-0 flex-1 rounded-md bg-token-foreground/4 px-2 text-sm outline-none ring-1 ring-token-focus"
+                            className="h-8 min-w-0 flex-1 rounded-md bg-token-foreground/4 px-2 text-sm outline-none ring-1 ring-token-focus-border"
                           />
                           <NodexDialogAction size="compact" onClick={() => void savePath()}>
                             Save
@@ -700,7 +700,7 @@ export function PageFilesRow({ baseFiles, controller, hidden = false }: PageFile
           <button
             type="button"
             className={cn(
-              "flex min-h-6 min-w-0 items-center text-left text-sm focus-visible:outline-2 focus-visible:outline-offset-[-2px] focus-visible:outline-token-focus",
+              "flex min-h-6 min-w-0 items-center text-left text-sm focus-visible:outline-2 focus-visible:outline-offset-[-2px] focus-visible:outline-token-focus-border",
               DATABASE_PAGE_PROPERTY_EMPTY_TRIGGER_CLASS_NAME,
             )}
             onClick={() => openFiles()}
@@ -720,7 +720,7 @@ export function PageFilesRow({ baseFiles, controller, hidden = false }: PageFile
                 aria-label={`Open ${rowLabel(item)}`}
                 className={cn(
                   DATABASE_PAGE_PROPERTY_OUTLINED_TOKEN_CLASS_NAME,
-                  "max-w-64 gap-1 text-token-text-secondary outline-none hover:bg-token-foreground/5 focus-visible:ring-2 focus-visible:ring-token-focus",
+                  "max-w-64 gap-1 text-token-text-secondary outline-none hover:bg-token-foreground/5 focus-visible:ring-2 focus-visible:ring-token-focus-border",
                 )}
                 onClick={() => openFiles(item.file.file_id)}
               >

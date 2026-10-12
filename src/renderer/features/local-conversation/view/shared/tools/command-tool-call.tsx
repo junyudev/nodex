@@ -661,7 +661,7 @@ export function CommandToolCall({
         {commandActions.map((action, index) => (
           <div
             key={`${action.type}:${index}`}
-            className="flex min-w-0 items-start font-vscode-editor whitespace-pre-wrap break-words"
+            className="flex min-w-0 items-start font-code whitespace-pre-wrap break-words"
           >
             <span className="min-w-0 flex-1">{renderExplorationLine(action)}</span>
           </div>

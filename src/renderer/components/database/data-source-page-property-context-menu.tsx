@@ -35,7 +35,7 @@ const ITEM_CLASS_NAME = cn(
 
 const INPUT_CLASS_NAME = cn(
   "h-8 w-full rounded-lg border border-token-border bg-token-input-background px-2 text-sm",
-  "text-token-text-primary outline-none placeholder:text-token-description-foreground focus-visible:ring-1 focus-visible:ring-token-focus",
+  "text-token-text-primary outline-none placeholder:text-token-description-foreground focus-visible:ring-1 focus-visible:ring-token-focus-border",
 );
 
 const PropertyMenuTrigger = forwardRef<

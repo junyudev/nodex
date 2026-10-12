@@ -26,6 +26,7 @@ const mountRole = (className: string): HTMLDivElement => {
 const setWindowTheme = (windowType: "browser" | "electron", scheme: "light" | "dark") => {
   const root = document.documentElement;
   root.dataset.codexWindowType = windowType;
+  root.dataset.theme = scheme;
   root.classList.toggle("dark", scheme === "dark");
   root.classList.toggle("electron-dark", windowType === "electron" && scheme === "dark");
   root.classList.toggle("electron-light", windowType === "electron" && scheme === "light");
@@ -37,6 +38,7 @@ afterEach(() => {
   document.body.removeAttribute("style");
   document.documentElement.removeAttribute("style");
   document.documentElement.removeAttribute("data-codex-window-type");
+  document.documentElement.removeAttribute("data-theme");
   document.documentElement.classList.remove("dark", "electron-dark", "electron-light");
 });
 
@@ -94,25 +96,68 @@ describe("semantic theme contract in the renderer build", () => {
     ).toBe("56px");
   });
 
+  test("resolves both icon dimensions and heading sizes through the extracted utility cascade", () => {
+    setWindowTheme("electron", "light");
+    for (const [className, size] of [
+      ["icon-xxs", "12px"],
+      ["icon-2xs", "14px"],
+      ["icon-xs", "16px"],
+      ["icon-sm", "18px"],
+      ["icon-base", "20px"],
+    ]) {
+      const style = getComputedStyle(mountRole(className));
+      expect(style.width, className).toBe(size);
+      expect(style.height, className).toBe(size);
+    }
+    expect(getComputedStyle(mountRole("heading-lg")).fontSize).toBe("24px");
+  });
+
   test("uses the dark primary foreground without weakening secondary text roles", () => {
     setWindowTheme("electron", "dark");
     const rootStyle = getComputedStyle(document.documentElement);
 
-    expect(rootStyle.getPropertyValue("--color-text-foreground").trim()).toBe("#fcfcfc");
+    expect(rootStyle.getPropertyValue("--app-color-text-foreground").trim()).toBe("#fcfcfc");
     expect(getComputedStyle(mountRole("text-token-foreground")).color).toBe("rgb(252, 252, 252)");
-    expect(rootStyle.getPropertyValue("--color-text-foreground-secondary").trim()).toBe(
+    expect(rootStyle.getPropertyValue("--app-color-text-foreground-secondary").trim()).toBe(
       "rgba(252, 252, 252, 0.71)",
     );
-    expect(rootStyle.getPropertyValue("--color-text-foreground-tertiary").trim()).toBe(
+    expect(rootStyle.getPropertyValue("--app-color-text-foreground-tertiary").trim()).toBe(
       "rgba(252, 252, 252, 0.498)",
     );
   });
 
+  test.each([
+    {
+      outer: "light",
+      inner: "dark",
+      danger: "rgb(255, 103, 100)",
+      surface: "rgb(24, 24, 24)",
+    },
+    {
+      outer: "dark",
+      inner: "light",
+      danger: "rgb(224, 46, 42)",
+      surface: "rgb(255, 255, 255)",
+    },
+  ] as const)(
+    "resolves an $inner inspection surface inside an $outer window",
+    ({ outer, inner, danger, surface }) => {
+      setWindowTheme("electron", outer);
+      const inspection = mountRole("");
+      inspection.dataset.theme = inner;
+      const status = mountRole("text-danger bg-surface");
+      inspection.append(status);
+
+      expect(getComputedStyle(status).color).toBe(danger);
+      expect(getComputedStyle(status).backgroundColor).toBe(surface);
+    },
+  );
+
   test("keeps main content, legacy content, and conversation roles aligned across theme changes", () => {
     const main = mountRole("main-surface text-token-foreground");
     const legacy = mountRole("bg-background text-foreground");
-    const bubble = mountRole("bg-background-user-message text-text-user-message");
-    const composer = mountRole("bg-background-composer-primary text-text-composer-primary");
+    const bubble = mountRole("bg-user-message text-user-message");
+    const composer = mountRole("bg-composer-primary text-composer-primary");
 
     for (const scheme of ["dark", "light", "dark"] as const) {
       setWindowTheme("electron", scheme);
@@ -149,11 +194,29 @@ describe("semantic theme contract in the renderer build", () => {
         JSON.stringify({
           token: sidebarStyle.getPropertyValue("--color-token-editor-background"),
           vscode: sidebarStyle.getPropertyValue("--vscode-editor-background"),
-          editor: sidebarStyle.getPropertyValue("--color-background-editor-opaque"),
+          surface: sidebarStyle.getPropertyValue("--color-surface-tertiary"),
         }),
       ).not.toBe("rgba(0, 0, 0, 0)");
       shimmer.remove();
       sidebar.remove();
+    }
+  });
+
+  test("keeps search matches visible and distinguishes the active match in both schemes", () => {
+    const match = document.createElement("mark");
+    match.className = "codex-thread-find-match";
+    const active = document.createElement("mark");
+    active.className = "codex-thread-find-match codex-thread-find-active";
+    document.body.append(match, active);
+
+    for (const scheme of ["light", "dark"] as const) {
+      setWindowTheme("electron", scheme);
+      const matchBackground = getComputedStyle(match).backgroundColor;
+      const activeBackground = getComputedStyle(active).backgroundColor;
+
+      expect(matchBackground).not.toBe("rgba(0, 0, 0, 0)");
+      expect(activeBackground).not.toBe("rgba(0, 0, 0, 0)");
+      expect(activeBackground).not.toBe(matchBackground);
     }
   });
 

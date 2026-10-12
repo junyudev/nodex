@@ -154,7 +154,7 @@ export function MermaidCodePreview({
         <button
           type="button"
           aria-label="Click diagram to expand in fullscreen"
-          className="flex min-h-12 w-full cursor-zoom-in items-center justify-center rounded-md outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent-blue)] [&_svg]:max-w-full"
+          className="flex min-h-12 w-full cursor-zoom-in items-center justify-center rounded-md outline-none focus-visible:ring-2 focus-visible:ring-token-focus-border [&_svg]:max-w-full"
           onClick={(event) => expand(event.currentTarget)}
         >
           <span

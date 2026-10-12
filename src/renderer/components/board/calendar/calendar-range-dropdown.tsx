@@ -39,7 +39,7 @@ const RANGE_OPTIONS: CalendarRangeOption[] = [
 export function CalendarRangeDropdown({ range, onRangeChange }: CalendarRangeDropdownProps) {
   const trigger = (
     <NodexDropdownButtonTrigger
-      className="h-8 min-w-24 justify-center border-(--accent-blue) bg-[color-mix(in_srgb,var(--accent-blue)_10%,transparent)] px-3 text-sm font-medium text-(--accent-blue) hover:bg-[color-mix(in_srgb,var(--accent-blue)_14%,transparent)] [&_svg]:text-(--accent-blue)"
+      className="h-8 min-w-24 justify-center border-(--color-text-info) bg-text-info/10 px-3 text-sm font-medium text-info hover:bg-text-info/14 [&_svg]:text-(--color-text-info)"
       shape="pill"
       aria-label="Calendar range"
     >
@@ -71,7 +71,7 @@ export function CalendarRangeDropdown({ range, onRangeChange }: CalendarRangeDro
               onSelect={() => onRangeChange({ ...range, mode: option.mode })}
               leftSlot={<SelectionSlot selected={selected} />}
               keyboardShortcut={option.shortcut}
-              className={cn(selected && "text-(--accent-blue)")}
+              className={cn(selected && "text-info")}
             >
               {option.label}
             </NodexDropdownItem>
@@ -181,7 +181,7 @@ function CalendarRangeEditableRow({
           </span>
         </span>
       }
-      className={cn("group/dropdown-range", selected && "text-(--accent-blue)")}
+      className={cn("group/dropdown-range", selected && "text-info")}
     >
       {option.label}
     </NodexDropdownItem>

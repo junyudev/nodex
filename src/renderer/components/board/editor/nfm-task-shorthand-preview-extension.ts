@@ -51,7 +51,7 @@ const blockDecoration = (node: ProsemirrorNode, position: number): Decoration | 
     from + preview.consumedCharacters,
     {
       class:
-        "rounded-[2px] bg-token-accent/8 underline decoration-token-accent/45 decoration-dotted underline-offset-[3px]",
+        "rounded-[2px] bg-text-info/8 underline decoration-text-info/45 decoration-dotted underline-offset-[3px]",
       "data-task-shorthand-preview": preview.compactLabel,
     },
     { preview: preview.compactLabel },

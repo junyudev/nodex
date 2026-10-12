@@ -224,7 +224,7 @@ export function DatePropertyEditor({
             }}
             className={cn(
               "inline-flex min-h-6 min-w-0 items-center gap-1.5 rounded-md px-1 text-left outline-hidden",
-              "text-token-text-secondary hover:bg-token-foreground/5 focus-visible:ring-2 focus-visible:ring-token-focus disabled:opacity-50",
+              "text-token-text-secondary hover:bg-token-foreground/5 focus-visible:ring-2 focus-visible:ring-token-focus-border disabled:opacity-50",
               presentation === "page"
                 ? cn("text-sm", !selected && DATABASE_PAGE_PROPERTY_EMPTY_TRIGGER_CLASS_NAME)
                 : presentation === "list" || presentation === "board"

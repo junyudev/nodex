@@ -125,8 +125,8 @@ function TerminalSurface({ terminalId, children }: { terminalId: string; childre
       data-codex-xterm="true"
       className="app-theme relative flex h-full w-full flex-col"
       style={{
-        backgroundColor: "var(--vscode-terminal-background)",
-        color: "var(--vscode-terminal-foreground)",
+        backgroundColor: "var(--color-codex-terminal-background)",
+        color: "var(--color-codex-terminal-foreground)",
       }}
     >
       <div className="flex-1 overflow-hidden">{children}</div>

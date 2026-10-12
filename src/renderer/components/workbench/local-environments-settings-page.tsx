@@ -118,7 +118,7 @@ function WorkspaceProjectEnvironmentGroup({
             <button
               key={config.configPath}
               type="button"
-              className="flex min-h-12 w-full items-center gap-3 px-4 py-2.5 text-left hover:bg-token-list-hover-background focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-token-focus"
+              className="flex min-h-12 w-full items-center gap-3 px-4 py-2.5 text-left hover:bg-token-list-hover-background focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-token-focus-border"
               onClick={() => onSelect(project.id, config.configPath)}
             >
               <div className="flex min-w-0 flex-1 flex-col gap-0.5">
@@ -162,7 +162,7 @@ function EnvironmentBreadcrumb({
     >
       <button
         type="button"
-        className="rounded-md outline-hidden hover:text-token-text-primary focus-visible:ring-2 focus-visible:ring-token-focus"
+        className="rounded-md outline-hidden hover:text-token-text-primary focus-visible:ring-2 focus-visible:ring-token-focus-border"
         onClick={onWorkspace}
       >
         Environments
@@ -170,7 +170,7 @@ function EnvironmentBreadcrumb({
       <ChevronRightIcon className="icon-2xs shrink-0" />
       <button
         type="button"
-        className="truncate rounded-md text-token-text-primary outline-hidden hover:underline focus-visible:ring-2 focus-visible:ring-token-focus"
+        className="truncate rounded-md text-token-text-primary outline-hidden hover:underline focus-visible:ring-2 focus-visible:ring-token-focus-border"
         onClick={mode === "edit" ? onSummary : undefined}
       >
         {projectName}

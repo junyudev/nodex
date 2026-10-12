@@ -64,7 +64,7 @@ function StaticColorRow({
         data-nfm-table-color-selected={selected ? "true" : undefined}
         style={{
           backgroundColor: color,
-          boxShadow: `inset 0 0 0 ${selected ? 2 : 1}px ${selected ? "var(--color-token-charts-blue)" : "var(--color-token-border)"}`,
+          boxShadow: `inset 0 0 0 ${selected ? 2 : 1}px ${selected ? "var(--color-token-focus-border)" : "var(--color-token-border)"}`,
         }}
       />
       <span className="bn-table-menu-item-label">{children}</span>
@@ -105,10 +105,7 @@ function TableHandleMenuStory() {
         <StaticColorRow color="color-mix(in srgb, var(--color-token-foreground) 12%, transparent)">
           Gray
         </StaticColorRow>
-        <StaticColorRow
-          color="color-mix(in srgb, var(--color-token-charts-blue) 22%, transparent)"
-          selected
-        >
+        <StaticColorRow color="color-mix(in srgb, var(--blue-300) 22%, transparent)" selected>
           Blue
         </StaticColorRow>
         <StaticColorRow color="color-mix(in srgb, var(--color-token-charts-red) 24%, transparent)">

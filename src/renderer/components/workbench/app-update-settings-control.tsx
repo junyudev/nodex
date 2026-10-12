@@ -173,7 +173,7 @@ export function AppUpdateSettingsControlView({
           <NodexButton
             variant="secondary"
             size="xs"
-            className="border-(--accent-blue)/30 bg-(--accent-blue)/10 text-(--accent-blue) hover:bg-(--accent-blue)/15 hover:text-(--accent-blue)"
+            className="border-token-focus-border/30 bg-text-info/10 text-info hover:bg-text-info/15 hover:text-info"
             disabled={busy}
             onClick={onInstall}
           >

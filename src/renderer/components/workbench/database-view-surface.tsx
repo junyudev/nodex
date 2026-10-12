@@ -1893,7 +1893,7 @@ function BoardDatabaseViewSurface({
                                 className={cn(
                                   "flex min-h-32 w-full flex-1 flex-col items-center rounded-b-lg px-1 pb-3 outline-none",
                                   collapsedColumnInteractive &&
-                                    "cursor-pointer focus-visible:ring-2 focus-visible:ring-token-focus",
+                                    "cursor-pointer focus-visible:ring-2 focus-visible:ring-token-focus-border",
                                 )}
                                 initial={reducedMotion ? false : { opacity: 0, x: -4 }}
                                 animate={{ opacity: 1, x: 0 }}
@@ -2009,7 +2009,7 @@ function BoardDatabaseViewSurface({
                                     type="button"
                                     data-page-create-trigger="footer"
                                     data-page-create-column-id={column.groupKey}
-                                    className="flex w-full items-center gap-2.25 rounded-md border-[0.5px] px-2.5 py-2.5 text-sm outline-none hover:bg-[color-mix(in_srgb,var(--column-accent,#888)_15%,var(--card))] focus-visible:ring-2 focus-visible:ring-token-focus"
+                                    className="flex w-full items-center gap-2.25 rounded-md border-[0.5px] px-2.5 py-2.5 text-sm outline-none hover:bg-[color-mix(in_srgb,var(--column-accent,#888)_15%,var(--card))] focus-visible:ring-2 focus-visible:ring-token-focus-border"
                                     style={{
                                       color: group.accentColor,
                                       borderColor:

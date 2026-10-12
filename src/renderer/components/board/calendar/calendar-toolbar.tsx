@@ -32,9 +32,9 @@ export function CalendarToolbarControls({
   onNext,
 }: CalendarToolbarControlsProps) {
   const iconButton =
-    "flex size-8 items-center justify-center rounded-full text-token-description-foreground hover:bg-token-foreground/5 hover:text-token-foreground focus-visible:ring-token-focus focus-visible:ring-2 focus-visible:outline-hidden";
+    "flex size-8 items-center justify-center rounded-full text-token-description-foreground hover:bg-token-foreground/5 hover:text-token-foreground focus-visible:ring-token-focus-border focus-visible:ring-2 focus-visible:outline-hidden";
   const groupedButton =
-    "flex h-8 items-center justify-center border-l border-token-border px-3 text-sm font-medium text-token-foreground first:border-l-0 hover:bg-token-foreground/5 focus-visible:ring-token-focus focus-visible:ring-2 focus-visible:outline-hidden";
+    "flex h-8 items-center justify-center border-l border-token-border px-3 text-sm font-medium text-token-foreground first:border-l-0 hover:bg-token-foreground/5 focus-visible:ring-token-focus-border focus-visible:ring-2 focus-visible:outline-hidden";
 
   return (
     <div className="flex shrink-0 items-center gap-2">

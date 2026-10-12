@@ -3612,7 +3612,7 @@ function HydratedThreadComposer({
       <button
         type="button"
         className={cn(
-          "focus-visible:outline-background-composer-primary cursor-interaction flex h-token-button-composer aspect-square items-center justify-center rounded-full bg-background-composer-primary p-0.5 text-text-composer-primary transition-opacity focus-visible:outline-2",
+          "focus-visible:outline-background-composer-primary cursor-interaction flex h-token-button-composer aspect-square items-center justify-center rounded-full bg-composer-primary p-0.5 text-composer-primary transition-opacity focus-visible:outline-2",
           (composerActionState.disabled ||
             (composerActionState.action === "send" && !canRunPrimaryAction)) &&
             !isPrimaryActionPending &&
@@ -3654,7 +3654,7 @@ function HydratedThreadComposer({
       <NodexTooltip tooltipContent="Send" side="top">
         <button
           type="button"
-          className="flex h-token-button-composer aspect-square items-center justify-center rounded-full bg-background-composer-primary p-0.5 text-text-composer-primary disabled:opacity-50"
+          className="flex h-token-button-composer aspect-square items-center justify-center rounded-full bg-composer-primary p-0.5 text-composer-primary disabled:opacity-50"
           aria-label="Send"
           aria-busy={transcriptionAction === "send"}
           disabled={transcriptionAction === "send"}
@@ -3826,7 +3826,7 @@ function HydratedThreadComposer({
         <button
           type="button"
           className={cn(
-            "inline-flex size-7 items-center justify-center rounded-full bg-background-composer-primary p-0.5 text-text-composer-primary focus-visible:outline-2 focus-visible:outline-background-composer-primary",
+            "inline-flex size-7 items-center justify-center rounded-full bg-composer-primary p-0.5 text-composer-primary focus-visible:outline-2 focus-visible:outline-background-composer-primary",
             isTranscribing && "opacity-50",
           )}
           aria-label="Transcribe and send"
@@ -3948,14 +3948,14 @@ function HydratedThreadComposer({
             "composer-surface-chrome relative flex flex-col bg-token-input-background/90 backdrop-blur-lg electron:dark:bg-token-dropdown-background",
             floatingComposerSingleLine
               ? "overflow-visible rounded-full"
-              : "overflow-y-auto _multilineSurface_1u8sk_2",
+              : "overflow-y-auto composer-multiline-surface",
             showExternalFooter && "z-10",
           )}
         >
           <div className="relative z-10 flex min-h-0 flex-1 flex-col">
             {!floatingComposerSingleLine ? (
               <div
-                className="_attachmentsDefault_1u8sk_2"
+                className="composer-attachments"
                 data-composer-attachments="true"
                 data-composer-spacing="default"
                 data-visible-attachments={hasAttachments ? "true" : undefined}

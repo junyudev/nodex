@@ -493,7 +493,7 @@ function McpResultBody({
           preview={buildTextPreview(displayStructuredContentJson, INLINE_TEXT_PREVIEW_MAX_CHARS)}
           getCopyText={() => displayStructuredContentJson}
           getFullText={() => displayStructuredContentJson}
-          preClassName="font-vscode-editor text-size-chat text-token-description-foreground/80"
+          preClassName="font-code text-size-chat text-token-description-foreground/80"
         />
       ) : null}
       {shouldShowRawDialog ? (

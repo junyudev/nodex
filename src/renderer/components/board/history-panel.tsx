@@ -483,7 +483,7 @@ export function HistoryPanel({
                 aria-pressed={filter === item.value}
                 onClick={() => setFilter(item.value)}
                 className={cn(
-                  "relative flex h-8 items-center px-0.5 text-xs outline-none focus-visible:ring-2 focus-visible:ring-token-focus",
+                  "relative flex h-8 items-center px-0.5 text-xs outline-none focus-visible:ring-2 focus-visible:ring-token-focus-border",
                   filter === item.value
                     ? "text-token-text-primary after:absolute after:inset-x-0 after:bottom-0 after:h-px after:bg-token-text-primary"
                     : "text-token-description-foreground hover:text-token-text-secondary",
@@ -887,7 +887,7 @@ function CurrentHistoryEntryRow({
 
 const historyEntryRowClassName = (selected: boolean): string =>
   cn(
-    "flex w-full items-start gap-2 rounded-md bg-transparent px-2.5 py-2 text-left outline-none focus-visible:ring-2 focus-visible:ring-token-focus",
+    "flex w-full items-start gap-2 rounded-md bg-transparent px-2.5 py-2 text-left outline-none focus-visible:ring-2 focus-visible:ring-token-focus-border",
     selected ? "bg-token-foreground/10" : "hover:bg-token-foreground/5",
   );
 

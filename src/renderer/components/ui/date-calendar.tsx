@@ -19,20 +19,20 @@ export const NODEX_DAY_PICKER_CLASS_NAMES = {
   [UI.Day]: "rdp-day flex size-8 items-center justify-center p-0 text-center text-sm leading-none",
   [UI.DayButton]: cn(
     "flex size-7 items-center justify-center rounded-md text-sm leading-none outline-hidden",
-    "hover:bg-token-list-hover-background focus-visible:ring-token-focus focus-visible:ring-2",
+    "hover:bg-token-list-hover-background focus-visible:ring-token-focus-border focus-visible:ring-2",
   ),
   [DayFlag.outside]: "rdp-day_outside [&>button]:text-token-description-foreground/55",
   [DayFlag.today]:
     "rdp-day_today [&>button]:font-medium [&>button]:ring-[0.5px] [&>button]:ring-token-border",
   [DayFlag.focused]: "rdp-day_focused",
   [SelectionState.selected]:
-    "rdp-day_selected [&>button]:bg-token-charts-blue [&>button]:text-white [&>button]:ring-0",
+    "rdp-day_selected [&>button]:bg-chart-blue [&>button]:text-(--app-color-text-on-accent) [&>button]:ring-0",
   [SelectionState.range_start]:
-    "rdp-day_start [&>button]:bg-token-charts-blue [&>button]:text-white [&>button]:ring-0",
+    "rdp-day_start [&>button]:bg-chart-blue [&>button]:text-(--app-color-text-on-accent) [&>button]:ring-0",
   [SelectionState.range_middle]:
-    "rdp-day_range_middle [&>button]:bg-token-charts-blue/10 [&>button]:text-token-charts-blue [&>button]:ring-0",
+    "rdp-day_range_middle [&>button]:bg-(--color-background-info-soft) [&>button]:text-info [&>button]:ring-0",
   [SelectionState.range_end]:
-    "rdp-day_end [&>button]:bg-token-charts-blue [&>button]:text-white [&>button]:ring-0",
+    "rdp-day_end [&>button]:bg-chart-blue [&>button]:text-(--app-color-text-on-accent) [&>button]:ring-0",
 } as const;
 
 export function NodexDateCalendar({

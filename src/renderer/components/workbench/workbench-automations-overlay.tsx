@@ -992,7 +992,7 @@ function AutomationRowAction({
         onClick={onClick}
         className={cn(
           "flex cursor-interaction items-center justify-center text-token-description-foreground outline-none disabled:cursor-default disabled:opacity-50",
-          "focus-visible:ring-token-focus focus-visible:ring-2",
+          "focus-visible:ring-token-focus-border focus-visible:ring-2",
           danger ? "hover:text-token-error-foreground" : "hover:text-token-foreground",
         )}
       >
@@ -1189,7 +1189,7 @@ function AutomationPreviousRunRow({
         className={cn(
           "flex min-h-11 min-w-0 items-center gap-2 rounded-md py-2 pr-3 pl-1 text-base outline-none",
           canOpen
-            ? "cursor-interaction hover:bg-token-list-hover-background focus-visible:ring-token-focus focus-visible:ring-2"
+            ? "cursor-interaction hover:bg-token-list-hover-background focus-visible:ring-token-focus-border focus-visible:ring-2"
             : "cursor-default",
           row.isArchived && "opacity-65 hover:opacity-100 focus-within:opacity-100",
         )}
@@ -1221,7 +1221,7 @@ function AutomationPreviousRunRow({
                 event.stopPropagation();
                 onUnarchive(row);
               }}
-              className="pointer-events-none absolute top-1/2 right-2 -translate-y-1/2 rounded-md px-2 py-1 text-sm text-token-foreground opacity-0 outline-none hover:bg-token-list-hover-background focus:pointer-events-auto focus:opacity-100 focus-visible:ring-token-focus focus-visible:ring-2 group-focus-within:pointer-events-auto group-focus-within:opacity-100 group-hover:pointer-events-auto group-hover:opacity-100 disabled:cursor-default disabled:opacity-40"
+              className="pointer-events-none absolute top-1/2 right-2 -translate-y-1/2 rounded-md px-2 py-1 text-sm text-token-foreground opacity-0 outline-none hover:bg-token-list-hover-background focus:pointer-events-auto focus:opacity-100 focus-visible:ring-token-focus-border focus-visible:ring-2 group-focus-within:pointer-events-auto group-focus-within:opacity-100 group-hover:pointer-events-auto group-hover:opacity-100 disabled:cursor-default disabled:opacity-40"
             >
               Unarchive
             </button>
@@ -1301,7 +1301,7 @@ function AutomationPreviousRunsSection({
         <button
           type="button"
           aria-label="Previous runs actions"
-          className="flex size-7 cursor-interaction items-center justify-center rounded-md text-token-description-foreground outline-none hover:bg-token-list-hover-background hover:text-token-foreground focus-visible:ring-token-focus focus-visible:ring-2"
+          className="flex size-7 cursor-interaction items-center justify-center rounded-md text-token-description-foreground outline-none hover:bg-token-list-hover-background hover:text-token-foreground focus-visible:ring-token-focus-border focus-visible:ring-2"
         >
           <AutomationMoreIcon className="icon-xs" />
         </button>
@@ -1462,7 +1462,7 @@ function AutomationListRow({
       onKeyDown={handleRowKeyDown}
       className={cn(
         "automation-row group relative flex min-h-10 w-full cursor-interaction items-center gap-2 rounded-lg px-3 py-3 text-left text-base outline-none",
-        "hover:bg-token-list-active-selection-background focus-visible:ring-token-focus focus-visible:ring-2",
+        "hover:bg-token-list-active-selection-background focus-visible:ring-token-focus-border focus-visible:ring-2",
         active &&
           "bg-token-list-active-selection-background text-token-list-active-selection-foreground",
         row.isPaused && !active && "opacity-60 hover:opacity-100 focus-within:opacity-100",
@@ -2079,7 +2079,7 @@ function AutomationTemplateCard({
       type="button"
       data-testid={`automation-template-${template.id}`}
       onClick={() => onSelectTemplate(template)}
-      className="group flex min-h-28 w-full cursor-interaction flex-col items-start gap-2 rounded-lg border border-token-border/50 bg-token-input-background/70 px-3 py-3 text-left text-base outline-none hover:border-token-border hover:bg-token-list-hover-background focus-visible:ring-token-focus focus-visible:ring-2"
+      className="group flex min-h-28 w-full cursor-interaction flex-col items-start gap-2 rounded-lg border border-token-border/50 bg-token-input-background/70 px-3 py-3 text-left text-base outline-none hover:border-token-border hover:bg-token-list-hover-background focus-visible:ring-token-focus-border focus-visible:ring-2"
     >
       <span className="flex size-8 shrink-0 items-center justify-center rounded-lg bg-token-bg-secondary text-token-text-secondary group-hover:text-token-foreground">
         <AutomationTemplateIcon iconName={template.iconName} />

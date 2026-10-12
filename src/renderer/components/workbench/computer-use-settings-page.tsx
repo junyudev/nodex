@@ -63,7 +63,7 @@ function AvailabilityStatus({ snapshot }: { snapshot: ComputerUseSettingsSnapsho
       <span
         className={
           snapshot.available
-            ? "size-2 rounded-full bg-[var(--color-icon-success)]"
+            ? "size-2 rounded-full bg-(--color-background-success-indicator)"
             : "size-2 rounded-full bg-token-error-foreground"
         }
       />

@@ -1,5 +1,140 @@
 type ThemeVariant = "light" | "dark";
 
+export const CODEX_ACCENT_PRESETS = [
+  "default",
+  "blue",
+  "green",
+  "yellow",
+  "pink",
+  "orange",
+  "purple",
+  "black",
+] as const;
+
+export type CodexAccentPreset = (typeof CODEX_ACCENT_PRESETS)[number];
+export type CodexAccent =
+  | { readonly kind: "preset"; readonly name: CodexAccentPreset }
+  | { readonly kind: "custom"; readonly color: string };
+
+export const DEFAULT_CODEX_ACCENT = {
+  kind: "preset",
+  name: "default",
+} as const satisfies CodexAccent;
+
+type AccentColor = Exclude<CodexAccentPreset, "default" | "black">;
+type AccentScale = Record<25 | 50 | 200 | 300 | 400 | 500 | 600 | 700 | 800 | 900, string>;
+
+const ACCENT_COLORS: Record<AccentColor, AccentScale> = {
+  blue: {
+    25: "#f6fafe",
+    50: "#e8f3fe",
+    200: "#63a8f8",
+    300: "#539af8",
+    400: "#3a83f7",
+    500: "#2c67c5",
+    600: "#1f4e94",
+    700: "#173e76",
+    800: "#133463",
+    900: "#0c274a",
+  },
+  green: {
+    25: "#effaf3",
+    50: "#def3e5",
+    200: "#83d197",
+    300: "#6bc67f",
+    400: "#53b559",
+    500: "#48a04c",
+    600: "#3a843f",
+    700: "#2c6732",
+    800: "#1f4e25",
+    900: "#14361a",
+  },
+  yellow: {
+    25: "#fefbee",
+    50: "#fdf6dc",
+    200: "#f9dc78",
+    300: "#f8d45d",
+    400: "#f6c543",
+    500: "#d9a337",
+    600: "#b8802b",
+    700: "#95611f",
+    800: "#734615",
+    900: "#51300c",
+  },
+  pink: {
+    25: "#fef8fb",
+    50: "#fdedf4",
+    200: "#f8a6c8",
+    300: "#f68ebc",
+    400: "#f077af",
+    500: "#cf6194",
+    600: "#ab4f7a",
+    700: "#873e60",
+    800: "#663049",
+    900: "#462132",
+  },
+  orange: {
+    25: "#fdf5f1",
+    50: "#fbe8db",
+    200: "#f1a275",
+    300: "#ef8b57",
+    400: "#ee7c37",
+    500: "#d25e28",
+    600: "#ac4f23",
+    700: "#87401d",
+    800: "#653218",
+    900: "#45240d",
+  },
+  purple: {
+    25: "#f8f5fd",
+    50: "#ede5fc",
+    200: "#b897f4",
+    300: "#a67df2",
+    400: "#8952ee",
+    500: "#7849d1",
+    600: "#643cae",
+    700: "#4e2f88",
+    800: "#3b2366",
+    900: "#291947",
+  },
+};
+
+export function normalizeCodexAccentColor(value: unknown): string | null {
+  if (typeof value !== "string") return null;
+  const color = value.trim();
+  return /^#[0-9a-fA-F]{6}$/.test(color) ? color.toLowerCase() : null;
+}
+
+/** Validates persisted appearance preferences at their input boundary. */
+export function parseCodexAccent(value: unknown): CodexAccent {
+  if (typeof value !== "object" || value === null) return DEFAULT_CODEX_ACCENT;
+  if (!("kind" in value)) return DEFAULT_CODEX_ACCENT;
+  if (value.kind === "custom" && "color" in value) {
+    const color = normalizeCodexAccentColor(value.color);
+    return color === null ? DEFAULT_CODEX_ACCENT : { kind: "custom", color };
+  }
+  if (value.kind !== "preset" || !("name" in value)) return DEFAULT_CODEX_ACCENT;
+  const name = CODEX_ACCENT_PRESETS.find((preset) => preset === value.name);
+  return name === undefined ? DEFAULT_CODEX_ACCENT : { kind: "preset", name };
+}
+
+/** Default follows the current blue palette while explicit presets retain their identity. */
+export function resolveEffectiveCodexAccent(
+  accent: CodexAccent = DEFAULT_CODEX_ACCENT,
+): CodexAccent {
+  const selected = parseCodexAccent(accent);
+  if (selected.kind === "preset" && selected.name === "default")
+    return { kind: "preset", name: "blue" };
+  return selected;
+}
+
+function accentColor(accent: CodexAccent): string {
+  if (accent.kind === "custom") return accent.color;
+  const color =
+    ACCENT_COLORS[accent.name === "default" || accent.name === "black" ? "blue" : accent.name];
+  return color[accent.name === "purple" ? 300 : 400];
+}
+
 interface Rgb {
   blue: number;
   green: number;
@@ -8,17 +143,10 @@ interface Rgb {
 
 interface BaseTheme {
   accent: string;
-  accentColors: {
-    green: string;
-    orange: string;
-    red: string;
-    yellow: string;
-  };
   contrast: number;
   ink: string;
   semanticColors: {
     diffAdded: string;
-    diffModified: string;
     diffRemoved: string;
     skill: string;
   };
@@ -82,17 +210,10 @@ const WHITE: Rgb = { blue: 255, green: 255, red: 255 };
 const DEFAULT_THEMES: Record<ThemeVariant, BaseTheme> = {
   dark: {
     accent: "#3a83f7",
-    accentColors: {
-      green: "#40c977",
-      orange: "#fb6a22",
-      red: "#ff6764",
-      yellow: "#ffd240",
-    },
     contrast: 60,
     ink: "#fcfcfc",
     semanticColors: {
       diffAdded: "#00a240",
-      diffModified: "#ff8549",
       diffRemoved: "#e02e2a",
       skill: "#b06dff",
     },
@@ -100,17 +221,10 @@ const DEFAULT_THEMES: Record<ThemeVariant, BaseTheme> = {
   },
   light: {
     accent: "#3a83f7",
-    accentColors: {
-      green: "#00a240",
-      orange: "#e25507",
-      red: "#e02e2a",
-      yellow: "#ffc300",
-    },
     contrast: 45,
     ink: "#0d0d0d",
     semanticColors: {
       diffAdded: "#00a240",
-      diffModified: "#923b0f",
       diffRemoved: "#e02e2a",
       skill: "#751ed9",
     },
@@ -146,8 +260,14 @@ const CODEX_RUNTIME_DOCUMENT_STYLE = {
   "--cursor-interaction": "pointer",
 } as const;
 
-export function getCodexThemeVariantStyle(variant: ThemeVariant): Record<string, string> {
-  const base = DEFAULT_THEMES[variant];
+/** Projects a raw palette. Resolve selected preferences first; applyCodexThemeVariant does this. */
+export function getCodexThemeVariantStyle(
+  variant: ThemeVariant,
+  accent: CodexAccent = DEFAULT_CODEX_ACCENT,
+  coloredUserMessages = true,
+): Record<string, string> {
+  const resolvedAccent = parseCodexAccent(accent);
+  const base = { ...DEFAULT_THEMES[variant], accent: accentColor(resolvedAccent) };
   const prepared = prepareTheme(base, variant);
   const derived = variant === "light" ? deriveLightTheme(prepared) : deriveDarkTheme(prepared);
   const applicationMenu = mixRgb(prepared.surface, prepared.ink, 0.02 + prepared.contrast * 0.02);
@@ -155,45 +275,41 @@ export function getCodexThemeVariantStyle(variant: ThemeVariant): Record<string,
   return {
     ...CODEX_RUNTIME_DOCUMENT_STYLE,
     // Legacy content consumers share the same surface and text hierarchy.
-    "--background": base.surface,
-    "--foreground": derived.textForeground,
-    "--foreground-secondary": derived.textForegroundSecondary,
-    "--foreground-tertiary": derived.textForegroundTertiary,
+    "--background": "var(--app-color-background-surface)",
+    "--foreground": "var(--app-color-text-foreground)",
+    "--foreground-secondary": "var(--app-color-text-foreground-secondary)",
+    "--foreground-tertiary": "var(--app-color-text-foreground-tertiary)",
     "--codex-base-accent": prepared.theme.accent,
     "--codex-base-contrast": String(prepared.theme.contrast),
     "--codex-base-ink": prepared.theme.ink,
     "--codex-base-surface": prepared.theme.surface,
-    "--color-accent-blue": prepared.theme.accent,
-    "--color-accent-green": prepared.theme.accentColors.green,
-    "--color-accent-orange": prepared.theme.accentColors.orange,
-    "--color-accent-purple": prepared.theme.semanticColors.skill,
-    "--color-accent-red": prepared.theme.accentColors.red,
-    "--color-accent-yellow": prepared.theme.accentColors.yellow,
-    "--color-background-accent": derived.accentBackground,
-    "--color-background-accent-active": derived.accentBackgroundActive,
-    "--color-background-accent-hover": derived.accentBackgroundHover,
-    "--color-background-application-menu": toHex(applicationMenu),
-    "--color-background-button-primary": derived.buttonPrimaryBackground,
-    "--color-background-button-primary-active": derived.buttonPrimaryBackgroundActive,
-    "--color-background-button-primary-hover": derived.buttonPrimaryBackgroundHover,
-    "--color-background-button-primary-inactive": derived.buttonPrimaryBackgroundInactive,
-    "--color-background-button-secondary": derived.buttonSecondaryBackground,
-    "--color-background-button-secondary-active": derived.buttonSecondaryBackgroundActive,
-    "--color-background-button-secondary-hover": derived.buttonSecondaryBackgroundHover,
-    "--color-background-button-secondary-inactive": derived.buttonSecondaryBackgroundInactive,
-    "--color-background-button-tertiary": derived.buttonTertiaryBackground,
-    "--color-background-button-tertiary-active": derived.buttonTertiaryBackgroundActive,
-    "--color-background-button-tertiary-hover": derived.buttonTertiaryBackgroundHover,
+    "--app-color-accent-blue": prepared.theme.accent,
+    "--app-color-accent-purple": prepared.theme.semanticColors.skill,
+    "--app-color-background-accent": derived.accentBackground,
+    "--app-color-background-accent-active": derived.accentBackgroundActive,
+    "--app-color-background-accent-hover": derived.accentBackgroundHover,
+    "--app-color-background-application-menu": toHex(applicationMenu),
+    "--app-color-background-button-primary": derived.buttonPrimaryBackground,
+    "--app-color-background-button-primary-active": derived.buttonPrimaryBackgroundActive,
+    "--app-color-background-button-primary-hover": derived.buttonPrimaryBackgroundHover,
+    "--app-color-background-button-primary-inactive": derived.buttonPrimaryBackgroundInactive,
+    "--app-color-background-button-secondary": derived.buttonSecondaryBackground,
+    "--app-color-background-button-secondary-active": derived.buttonSecondaryBackgroundActive,
+    "--app-color-background-button-secondary-hover": derived.buttonSecondaryBackgroundHover,
+    "--app-color-background-button-secondary-inactive": derived.buttonSecondaryBackgroundInactive,
+    "--app-color-background-button-tertiary": derived.buttonTertiaryBackground,
+    "--app-color-background-button-tertiary-active": derived.buttonTertiaryBackgroundActive,
+    "--app-color-background-button-tertiary-hover": derived.buttonTertiaryBackgroundHover,
     "--color-background-callout-surface": derived.elevatedPrimary,
     "--color-background-composer-action-bar":
-      variant === "light" ? prepared.surfaceUnder : derived.elevatedSecondary,
-    "--color-background-control": derived.controlBackground,
+      variant === "light" ? prepared.surfaceUnder : derived.elevatedSecondaryOpaque,
+    "--app-color-background-control": derived.controlBackground,
     "--color-background-control-opaque": derived.controlBackgroundOpaque,
-    "--color-background-editor-opaque": toRgb(prepared.editorBackground),
-    "--color-background-elevated-primary": derived.elevatedPrimary,
-    "--color-background-elevated-primary-opaque": derived.elevatedPrimaryOpaque,
-    "--color-background-elevated-secondary": derived.elevatedSecondary,
-    "--color-background-elevated-secondary-opaque": derived.elevatedSecondaryOpaque,
+    "--app-color-background-editor-opaque": toRgb(prepared.editorBackground),
+    "--app-color-background-elevated-primary": derived.elevatedPrimary,
+    "--app-color-background-elevated-primary-opaque": derived.elevatedPrimaryOpaque,
+    "--app-color-background-elevated-secondary": derived.elevatedSecondary,
+    "--app-color-background-elevated-secondary-opaque": derived.elevatedSecondaryOpaque,
     "--color-background-mode-toggle-track":
       variant === "light" ? prepared.surfaceUnder : derived.buttonTertiaryBackgroundHover,
     "--color-background-mode-toggle-selected":
@@ -201,77 +317,266 @@ export function getCodexThemeVariantStyle(variant: ThemeVariant): Record<string,
         ? derived.controlBackgroundOpaque
         : `color-mix(in oklab, ${derived.controlBackground} 90%, transparent)`,
     "--color-background-panel": computePanelBackground(prepared),
-    "--color-background-surface": prepared.theme.surface,
-    "--color-background-surface-under": prepared.surfaceUnder,
-    "--color-border": derived.border,
-    "--color-border-application-menu-separator":
+    "--app-color-background-surface": prepared.theme.surface,
+    "--app-color-background-surface-under": prepared.surfaceUnder,
+    "--app-color-border": derived.border,
+    "--app-color-border-application-menu-separator":
       variant === "dark" ? mixHex(applicationMenu, prepared.ink, 0.28) : derived.borderHeavy,
-    "--color-border-focus": derived.borderFocus,
-    "--color-border-heavy": derived.borderHeavy,
-    "--color-border-light": derived.borderLight,
+    "--app-color-border-focus": derived.borderFocus,
+    "--app-color-border-heavy": derived.borderHeavy,
+    "--app-color-border-light": derived.borderLight,
     "--color-border-mode-toggle-selected": derived.border,
-    "--color-decoration-added": prepared.theme.semanticColors.diffAdded,
-    "--color-decoration-modified": prepared.theme.semanticColors.diffModified,
-    "--color-decoration-deleted": prepared.theme.semanticColors.diffRemoved,
-    "--color-editor-added": toRgba(
+    "--app-color-decoration-added": prepared.theme.semanticColors.diffAdded,
+    "--app-color-decoration-deleted": prepared.theme.semanticColors.diffRemoved,
+    "--app-color-editor-added": toRgba(
       parseHex(prepared.theme.semanticColors.diffAdded),
       variant === "light" ? 0.15 : 0.23,
     ),
-    "--color-editor-deleted": toRgba(
+    "--app-color-editor-deleted": toRgba(
       parseHex(prepared.theme.semanticColors.diffRemoved),
       variant === "light" ? 0.15 : 0.23,
     ),
-    "--color-icon-accent": derived.iconAccent,
-    "--color-icon-error": prepared.theme.accentColors.red,
-    "--color-icon-primary": derived.iconPrimary,
-    "--color-icon-secondary": derived.iconSecondary,
-    "--color-icon-tertiary": derived.iconTertiary,
-    "--color-foreground-application-menu":
+    "--app-color-icon-accent": derived.iconAccent,
+    "--app-color-icon-primary": derived.iconPrimary,
+    "--app-color-icon-secondary": derived.iconSecondary,
+    "--app-color-icon-tertiary": derived.iconTertiary,
+    "--app-color-foreground-application-menu":
       variant === "dark" ? mixHex(applicationMenu, prepared.ink, 0.875) : derived.textForeground,
-    "--color-simple-scrim": derived.simpleScrim,
-    "--color-text-accent": derived.textAccent,
-    // The default accent's luminance selects black in both appearances.
-    "--color-text-on-accent": toRgb(BLACK),
-    "--color-text-button-primary": derived.textButtonPrimary,
-    "--color-text-button-secondary": derived.textButtonSecondary,
-    "--color-text-button-tertiary": derived.textButtonTertiary,
-    "--color-text-error": prepared.theme.accentColors.red,
-    "--color-text-foreground": derived.textForeground,
-    "--color-text-foreground-secondary": derived.textForegroundSecondary,
-    "--color-text-foreground-tertiary": derived.textForegroundTertiary,
+    "--app-color-simple-scrim": derived.simpleScrim,
+    "--app-color-text-accent": derived.textAccent,
+    "--app-color-text-on-accent": toRgb(contrastingInk(prepared.accent)),
+    "--app-color-text-button-primary": derived.textButtonPrimary,
+    "--app-color-text-button-secondary": derived.textButtonSecondary,
+    "--app-color-text-button-tertiary": derived.textButtonTertiary,
+    "--app-color-text-foreground": derived.textForeground,
+    "--app-color-text-foreground-secondary": derived.textForegroundSecondary,
+    "--app-color-text-foreground-tertiary": derived.textForegroundTertiary,
+    "--app-color-text-secondary": "initial",
+    "--app-color-text-primary-solid": "initial",
+    "--app-color-background-card": "initial",
+    "--color-image-generation-accent": prepared.theme.accent,
+    "--color-image-generation-text": "var(--color-text-accent)",
+    "--color-image-generation-foreground": "var(--app-color-text-on-accent)",
     "--color-text-mode-toggle-inactive": `color-mix(in oklab, ${derived.textForeground} 80%, transparent)`,
-    "--color-text-warning": prepared.theme.accentColors.orange,
     "--shadow-mode-toggle-selected": "var(--shadow-md)",
-    ...getDefaultAccentStyle(variant),
+    ...deriveAccentStyle(variant, resolvedAccent, prepared, derived, coloredUserMessages),
   };
 }
 
-/** The default accent also owns conversation, selection, and focus roles. */
-function getDefaultAccentStyle(variant: ThemeVariant): Record<string, string> {
+/** Projects a raw accent palette. Preview callers must resolve selected preferences first. */
+export function getCodexAccentStyle(
+  variant: ThemeVariant,
+  accent: CodexAccent = DEFAULT_CODEX_ACCENT,
+  coloredUserMessages = true,
+): Record<string, string> {
+  const resolved = parseCodexAccent(accent);
+  const base = { ...DEFAULT_THEMES[variant], accent: accentColor(resolved) };
+  const prepared = prepareTheme(base, variant);
+  const derived = variant === "light" ? deriveLightTheme(prepared) : deriveDarkTheme(prepared);
+  return deriveAccentStyle(variant, resolved, prepared, derived, coloredUserMessages);
+}
+
+function deriveAccentStyle(
+  variant: ThemeVariant,
+  accent: CodexAccent,
+  prepared: PreparedTheme,
+  derived: DerivedTheme,
+  coloredUserMessages: boolean,
+): Record<string, string> {
   const isDark = variant === "dark";
-  const soft = isDark ? "#133463" : "#e8f3fe";
-  return {
-    "--color-background-accent": soft,
-    "--color-background-accent-active": soft,
-    "--color-background-accent-hover": soft,
-    "--color-border-focus": DEFAULT_THEMES[variant].accent,
-    "--color-icon-accent": "#2c67c5",
-    "--color-text-accent": "#2c67c5",
-    "--color-background-composer-primary": isDark ? "#ffffff" : "#000000",
-    "--color-text-composer-primary": isDark ? "#000000" : "#ffffff",
-    "--color-background-user-message": isDark ? "rgb(50 50 50 / 85%)" : "rgb(233 233 233 / 50%)",
-    "--color-text-user-message": isDark ? "#ffffff" : "#0d0d0d",
-    "--color-background-text-selection": isDark ? "#63a8f866" : "#539af859",
-    "--color-background-attribution-highlight": isDark ? "#734615" : "#fcefbe",
+  const preset = accent.kind === "preset" ? accent.name : closestCodexAccentPreset(accent.color);
+  const colorName = preset === null || preset === "default" || preset === "black" ? "blue" : preset;
+  const onAccent = toRgb(contrastingInk(prepared.accent));
+  const shared = {
+    "--codex-base-accent": prepared.theme.accent,
+    "--app-color-accent-blue": prepared.theme.accent,
+    "--app-color-text-on-accent": onAccent,
+    "--app-color-text-unread-badge":
+      accent.kind === "custom"
+        ? onAccent
+        : preset === "yellow"
+          ? "var(--gray-fixed-1000)"
+          : "var(--white)",
+    "--color-chart-sequential-1": `var(--${colorName}-${isDark ? 800 : 75})`,
+    "--color-chart-sequential-2": `var(--${colorName}-${isDark ? 600 : 200})`,
+    "--color-chart-sequential-3": `var(--${colorName}-400)`,
+    "--color-chart-sequential-4": `var(--${colorName}-${isDark ? 200 : 600})`,
+    "--color-image-generation-accent":
+      accent.kind === "preset" && preset === "black" ? "var(--color-text)" : prepared.theme.accent,
+    "--color-image-generation-text":
+      accent.kind === "preset" && preset === "black"
+        ? "var(--color-text)"
+        : "var(--color-text-accent)",
+    "--color-image-generation-foreground":
+      accent.kind === "preset" && preset === "black"
+        ? "var(--app-color-background-surface)"
+        : "var(--app-color-text-on-accent)",
   };
+  if (accent.kind === "custom")
+    return {
+      ...shared,
+      "--app-color-background-accent": derived.accentBackground,
+      "--app-color-background-accent-active": derived.accentBackgroundActive,
+      "--app-color-background-accent-hover": derived.accentBackgroundHover,
+      "--app-color-border-focus": derived.borderFocus,
+      "--app-color-icon-accent": derived.iconAccent,
+      "--app-color-text-accent": derived.textAccent,
+      "--color-background-composer-primary": "var(--color-background-primary-solid)",
+      "--color-text-composer-primary": "var(--color-text-primary-solid)",
+      "--color-background-user-message": "color-mix(in oklab, var(--color-text) 5%, transparent)",
+      "--color-text-user-message": "var(--color-text)",
+      "--color-background-text-selection": "var(--color-background-info-soft)",
+      "--color-background-attribution-highlight": "var(--color-background-info-soft)",
+    };
+
+  const palette = ACCENT_COLORS[colorName];
+  const monochrome = preset === "default" || preset === "black";
+  const textTone =
+    preset === "yellow"
+      ? isDark
+        ? 400
+        : 600
+      : isDark && (preset === "pink" || preset === "orange")
+        ? 400
+        : 500;
+  const selection =
+    preset === "default"
+      ? isDark
+        ? `${palette[200]}66`
+        : `${palette[300]}59`
+      : preset === "black"
+        ? isDark
+          ? "#78787866"
+          : "#afafaf66"
+        : isDark
+          ? `${palette[400]}${preset === "yellow" ? "80" : "99"}`
+          : `${palette[300]}59`;
+  const useNeutralMessage = monochrome || !coloredUserMessages;
+  const messageBackground = useNeutralMessage
+    ? isDark
+      ? "rgb(50 50 50 / 85%)"
+      : "rgb(233 233 233 / 50%)"
+    : palette[isDark ? 700 : 50];
+  const messageText = useNeutralMessage
+    ? isDark
+      ? "#ffffff"
+      : "#0d0d0d"
+    : palette[isDark ? 25 : 900];
+  const soft = palette[isDark ? 800 : 50];
+  return {
+    ...shared,
+    "--app-color-background-accent": soft,
+    "--app-color-background-accent-active": soft,
+    "--app-color-background-accent-hover": soft,
+    "--app-color-border-focus": prepared.theme.accent,
+    "--app-color-icon-accent": palette[textTone],
+    "--app-color-text-accent": palette[textTone],
+    "--color-background-composer-primary": monochrome
+      ? isDark
+        ? "#ffffff"
+        : "#000000"
+      : palette[isDark && preset !== "pink" ? 500 : 400],
+    "--color-text-composer-primary": monochrome && isDark ? "#000000" : "#ffffff",
+    "--color-background-user-message":
+      preset === "black" && !isDark ? "#000000" : messageBackground,
+    "--color-text-user-message": preset === "black" && !isDark ? "#ffffff" : messageText,
+    "--color-background-text-selection": selection,
+    "--color-background-attribution-highlight":
+      preset === "default" ? (isDark ? "#734615" : "#fcefbe") : selection,
+  };
+}
+
+/** Matches an exact custom color to a chart family without changing its selected hue. */
+export function closestCodexAccentPreset(value: string): CodexAccentPreset | null {
+  const normalized = normalizeCodexAccentColor(value);
+  if (normalized === null) return null;
+  const color = parseHex(normalized);
+  const average = (color.red + color.green + color.blue) / 3;
+  const neutralDistance = colorDistance(color, { red: average, green: average, blue: average });
+  let closest: CodexAccentPreset | null = null;
+  let closestDistance = Number.POSITIVE_INFINITY;
+  for (const preset of CODEX_ACCENT_PRESETS) {
+    const name = preset === "default" ? "blue" : preset;
+    const distance =
+      name === "black" ? neutralDistance : distanceToPalette(color, ACCENT_COLORS[name]);
+    if (distance > closestDistance || (distance === closestDistance && closest !== "default"))
+      continue;
+    closest = preset;
+    closestDistance = distance;
+  }
+  return closest;
+}
+
+function distanceToPalette(color: Rgb, palette: AccentScale): number {
+  const shades = Object.values(palette).map(parseHex);
+  return Math.min(
+    ...shades.slice(1).map((shade, index) => {
+      const start = shades[index]!;
+      const delta = {
+        red: shade.red - start.red,
+        green: shade.green - start.green,
+        blue: shade.blue - start.blue,
+      };
+      const length = delta.red ** 2 + delta.green ** 2 + delta.blue ** 2;
+      const ratio = Math.min(
+        1,
+        Math.max(
+          0,
+          ((color.red - start.red) * delta.red +
+            (color.green - start.green) * delta.green +
+            (color.blue - start.blue) * delta.blue) /
+            length,
+        ),
+      );
+      return colorDistance(color, {
+        red: start.red + delta.red * ratio,
+        green: start.green + delta.green * ratio,
+        blue: start.blue + delta.blue * ratio,
+      });
+    }),
+  );
+}
+
+function colorDistance(from: Rgb, to: Rgb): number {
+  return (from.red - to.red) ** 2 + (from.green - to.green) ** 2 + (from.blue - to.blue) ** 2;
+}
+
+function contrastingInk(color: Rgb): Rgb {
+  const luminance = relativeLuminance(color);
+  if (color.blue > color.red && color.blue > color.green) {
+    const range = color.blue - Math.min(color.red, color.green);
+    const hue = ((color.red - color.green) / range + 4) * 60;
+    const saturation = range / color.blue;
+    if (
+      (saturation >= 0.8 && hue >= 205 && hue <= 212) ||
+      (saturation >= 0.6 && hue >= 218 && hue <= 233 && luminance <= 0.21)
+    )
+      return WHITE;
+  }
+  return luminance > 0.179 ? BLACK : WHITE;
+}
+
+function relativeLuminance(color: Rgb): number {
+  const linear = (channel: number) => {
+    const value = channel / 255;
+    return value <= 0.04045 ? value / 12.92 : ((value + 0.055) / 1.055) ** 2.4;
+  };
+  return linear(color.red) * 0.2126 + linear(color.green) * 0.7152 + linear(color.blue) * 0.0722;
 }
 
 export function applyCodexThemeVariant(
   root: HTMLElement,
   variant: ThemeVariant,
   body?: HTMLElement,
+  accent: CodexAccent = DEFAULT_CODEX_ACCENT,
+  coloredUserMessages = true,
 ): void {
-  const styles = getCodexThemeVariantStyle(variant);
+  root.dataset.theme = variant;
+  const styles = getCodexThemeVariantStyle(
+    variant,
+    resolveEffectiveCodexAccent(accent),
+    coloredUserMessages,
+  );
   for (const [name, value] of Object.entries(styles)) {
     root.style.setProperty(name, value);
   }

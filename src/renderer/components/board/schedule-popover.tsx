@@ -106,7 +106,7 @@ export function SchedulePopover({ schedule, page }: SchedulePopoverProps) {
                   className={cn(
                     "h-6 rounded-sm px-2 text-xs font-medium transition-colors",
                     schedule.isAllDay
-                      ? "bg-(--blue-bg) text-(--blue-text)"
+                      ? "bg-text-info/10 text-info"
                       : "bg-(--background-tertiary) text-(--foreground-secondary) hover:bg-(--gray-bg)",
                   )}
                 >
@@ -272,7 +272,7 @@ export function SchedulePopover({ schedule, page }: SchedulePopoverProps) {
                                 className={cn(
                                   "h-6 rounded-sm px-2 text-xs font-medium",
                                   selected
-                                    ? "bg-(--accent-blue) text-white"
+                                    ? "bg-chart-blue text-(--app-color-text-on-accent)"
                                     : "bg-(--gray-bg) text-(--foreground-secondary)",
                                 )}
                               >
@@ -371,7 +371,7 @@ export function SchedulePopover({ schedule, page }: SchedulePopoverProps) {
                           className={cn(
                             "h-6 rounded-sm px-2 text-xs font-medium",
                             selected
-                              ? "bg-(--accent-blue) text-white"
+                              ? "bg-chart-blue text-(--app-color-text-on-accent)"
                               : "bg-(--gray-bg) text-(--foreground-secondary)",
                           )}
                         >
@@ -449,7 +449,7 @@ export function SchedulePopover({ schedule, page }: SchedulePopoverProps) {
                     type="button"
                     disabled={schedule.occurrenceBusy}
                     onClick={() => void schedule.handleCompleteThisOccurrence()}
-                    className="h-7 rounded-sm bg-(--accent-blue) px-3 text-sm font-medium text-white transition-opacity disabled:opacity-50"
+                    className="h-7 rounded-sm bg-primary-solid px-3 text-sm font-medium text-primary-solid transition-opacity disabled:opacity-50"
                   >
                     Mark done
                   </button>

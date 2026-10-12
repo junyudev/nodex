@@ -117,7 +117,7 @@ function NewChatProjectSelectorStory(args: StoryArgs) {
               />
             </ComposerContextRail>
           </ComposerContextRailSlot>
-          <div className="composer-surface-chrome relative z-10 flex flex-col bg-token-input-background/90 backdrop-blur-lg electron:dark:bg-token-dropdown-background _multilineSurface_1u8sk_2">
+          <div className="composer-surface-chrome relative z-10 flex flex-col bg-token-input-background/90 backdrop-blur-lg electron:dark:bg-token-dropdown-background composer-multiline-surface">
             <div className="relative z-10 flex min-h-0 flex-1 flex-col">
               <div className="mb-1 min-h-16 px-3 pt-3 text-sm text-token-input-placeholder-foreground">
                 Do anything

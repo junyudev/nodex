@@ -45,7 +45,7 @@ const QUESTION_STAGGER: Variants = {
 };
 const QUESTION_EXIT: Variants = { exit: { pointerEvents: "none" } };
 const QUESTION_CONTROL =
-  "flex shrink-0 items-center justify-center rounded-md border border-transparent p-1 text-token-description-foreground hover:bg-text/5 focus:outline-none focus-visible:ring-2 focus-visible:ring-token-focus disabled:cursor-default disabled:opacity-40";
+  "flex shrink-0 items-center justify-center rounded-md border border-transparent p-1 text-token-description-foreground hover:bg-text/5 focus:outline-none focus-visible:ring-2 focus-visible:ring-token-focus-border disabled:cursor-default disabled:opacity-40";
 
 export function AsyncQuestionPanel({
   threadId,

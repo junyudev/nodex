@@ -7,19 +7,19 @@ const maskUrl = (svg: string) => `url("data:image/svg+xml,${encodeURIComponent(s
 /** Shared shadow-root styling; the tree owns layout, interaction, and status aggregation. */
 export const FILE_TREE_CSS = `
 :host {
-  --trees-bg-override: var(--color-background-surface);
+  --trees-bg-override: var(--color-surface);
   --trees-bg-muted-override: var(--color-background-primary-ghost-hover);
   --trees-border-color-override: var(--color-border);
   --trees-fg-override: var(--color-text);
   --trees-font-size-override: 13px;
   --trees-focus-ring-color-override: var(--color-ring);
-  --trees-git-added-color-override: var(--color-decoration-added);
-  --trees-git-deleted-color-override: var(--color-decoration-deleted);
-  --trees-git-ignored-color-override: var(--color-decoration-modified);
+  --trees-git-added-color-override: var(--color-codex-git-added);
+  --trees-git-deleted-color-override: var(--color-codex-git-deleted);
+  --trees-git-ignored-color-override: var(--color-codex-git-ignored);
   --trees-git-lane-width-override: 20px;
-  --trees-git-modified-color-override: var(--color-decoration-modified);
-  --trees-git-renamed-color-override: var(--color-decoration-modified);
-  --trees-git-untracked-color-override: var(--color-decoration-added);
+  --trees-git-modified-color-override: var(--color-codex-git-modified);
+  --trees-git-renamed-color-override: var(--color-codex-git-modified);
+  --trees-git-untracked-color-override: var(--color-codex-git-added);
   --trees-item-padding-x-override: 6px;
   --trees-item-margin-x-override: 0px;
   --trees-level-gap-override: 0px;
@@ -31,7 +31,7 @@ export const FILE_TREE_CSS = `
   --trees-item-row-gap-override: 10px;
 }
 [data-file-tree-sticky-overlay-content='true'],
-[data-file-tree-sticky-row='true'] { background-color: var(--color-background-surface); }
+[data-file-tree-sticky-row='true'] { background-color: var(--color-surface); }
 [data-file-tree-virtualized-scroll='true'] { scrollbar-gutter: auto; }
 [role='treeitem'], [role='treeitem'] * { cursor: var(--cursor-interaction) !important; }
 [data-item-type='file'][data-item-path$='/']:has([data-item-section='content']:empty) { display: none; }

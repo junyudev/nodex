@@ -41,7 +41,7 @@ export function createStartupShellCriticalCss(): string {
   --startup-logo-base: #26272c;
   --startup-logo-highlight: rgba(255, 255, 255, 0.92);
   --startup-text: rgba(38, 39, 44, 0.58);
-  --startup-surface: var(--color-background-surface-under);
+  --startup-surface: var(--app-color-background-surface-under);
   color-scheme: light;
 }
 :root.dark {

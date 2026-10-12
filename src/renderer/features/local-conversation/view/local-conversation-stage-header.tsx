@@ -132,7 +132,7 @@ function ThreadStageHeaderComponent({
                   type="button"
                   className={cn(
                     "no-drag inline-flex size-7 items-center justify-center rounded-lg border border-transparent p-1 text-token-text-tertiary outline-hidden",
-                    "hover:bg-token-list-hover-background hover:text-token-text-primary focus-visible:ring-token-focus focus-visible:ring-2",
+                    "hover:bg-token-list-hover-background hover:text-token-text-primary focus-visible:ring-token-focus-border focus-visible:ring-2",
                     menuOpen && "bg-token-list-hover-background text-token-text-primary",
                   )}
                   aria-label="Task actions"

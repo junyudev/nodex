@@ -109,13 +109,16 @@ function DateMentionSwitch({
       aria-label={label}
       className={cn(
         "flex h-4 w-7 items-center rounded-full p-0.5 outline-hidden",
-        "focus-visible:ring-token-focus focus-visible:ring-2",
-        checked ? "bg-token-charts-blue" : "bg-token-foreground/10",
+        "focus-visible:ring-token-focus-border focus-visible:ring-2",
+        checked ? "bg-chart-blue" : "bg-text/10",
       )}
       onClick={() => onCheckedChange(!checked)}
     >
       <span
-        className={cn("size-3 rounded-full bg-token-bg shadow-sm", checked && "translate-x-3")}
+        className={cn(
+          "size-3 rounded-full border border-control-thumb-on-accent bg-control-thumb-on-accent shadow-sm",
+          checked && "translate-x-3",
+        )}
       />
     </button>
   );
@@ -138,7 +141,7 @@ function DateMentionControlRow({
 }) {
   const className = cn(
     "flex min-h-8 w-full items-center gap-2 rounded-lg px-2 text-left text-sm outline-hidden",
-    "focus-visible:ring-token-focus focus-visible:ring-2",
+    "focus-visible:ring-token-focus-border focus-visible:ring-2",
     disabled
       ? "cursor-default text-token-description-foreground opacity-55"
       : "text-token-foreground",

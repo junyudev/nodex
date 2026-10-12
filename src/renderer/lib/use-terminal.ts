@@ -39,41 +39,42 @@ function readCssVar(styles: CSSStyleDeclaration, name: string, fallback: string)
   return value.length > 0 ? value : fallback;
 }
 
-function readTerminalTheme(element: HTMLElement): ITheme & TerminalCssVars {
+/** Resolves the active semantic palette for xterm's canvas renderer. */
+export function readTerminalTheme(element: HTMLElement): ITheme & TerminalCssVars {
   const styles = getComputedStyle(element);
-  const background = readCssVar(styles, "--vscode-terminal-background", "transparent");
-  const foreground = readCssVar(styles, "--vscode-terminal-foreground", "#f0efed");
+  const background = readCssVar(styles, "--color-codex-terminal-background", "transparent");
+  const foreground = readCssVar(styles, "--color-codex-terminal-foreground", "#f0efed");
 
   return {
     background,
     foreground,
-    cursor: readCssVar(styles, "--vscode-terminalCursor-foreground", foreground),
+    cursor: foreground,
     selectionBackground: readCssVar(
       styles,
-      "--vscode-terminal-selectionBackground",
+      "--color-codex-terminal-selection",
       "rgba(94, 159, 232, 0.35)",
     ),
     selectionInactiveBackground: readCssVar(
       styles,
-      "--vscode-terminal-inactiveSelectionBackground",
+      "--color-codex-terminal-selection-inactive",
       "rgba(94, 159, 232, 0.2)",
     ),
-    black: readCssVar(styles, "--vscode-terminal-ansiBlack", "#181818"),
-    red: readCssVar(styles, "--vscode-terminal-ansiRed", "#ff6b6b"),
-    green: readCssVar(styles, "--vscode-terminal-ansiGreen", "#46a171"),
-    yellow: readCssVar(styles, "--vscode-terminal-ansiYellow", "#e5a942"),
-    blue: readCssVar(styles, "--vscode-terminal-ansiBlue", "#5e9fe8"),
-    magenta: readCssVar(styles, "--vscode-terminal-ansiMagenta", "#b577d6"),
-    cyan: readCssVar(styles, "--vscode-terminal-ansiCyan", "#56b6c2"),
-    white: readCssVar(styles, "--vscode-terminal-ansiWhite", "#f0efed"),
-    brightBlack: readCssVar(styles, "--vscode-terminal-ansiBrightBlack", "#555555"),
-    brightRed: readCssVar(styles, "--vscode-terminal-ansiBrightRed", "#ff8787"),
-    brightGreen: readCssVar(styles, "--vscode-terminal-ansiBrightGreen", "#5fd7a3"),
-    brightYellow: readCssVar(styles, "--vscode-terminal-ansiBrightYellow", "#ffd75f"),
-    brightBlue: readCssVar(styles, "--vscode-terminal-ansiBrightBlue", "#87afff"),
-    brightMagenta: readCssVar(styles, "--vscode-terminal-ansiBrightMagenta", "#d7afff"),
-    brightCyan: readCssVar(styles, "--vscode-terminal-ansiBrightCyan", "#87d7ff"),
-    brightWhite: readCssVar(styles, "--vscode-terminal-ansiBrightWhite", "#ffffff"),
+    black: readCssVar(styles, "--color-codex-terminal-ansi-black", "#181818"),
+    red: readCssVar(styles, "--color-codex-terminal-ansi-red", "#ff6b6b"),
+    green: readCssVar(styles, "--color-codex-terminal-ansi-green", "#46a171"),
+    yellow: readCssVar(styles, "--color-codex-terminal-ansi-yellow", "#e5a942"),
+    blue: readCssVar(styles, "--color-codex-terminal-ansi-blue", "#5e9fe8"),
+    magenta: readCssVar(styles, "--color-codex-terminal-ansi-magenta", "#b577d6"),
+    cyan: readCssVar(styles, "--color-codex-terminal-ansi-cyan", "#56b6c2"),
+    white: readCssVar(styles, "--color-codex-terminal-ansi-white", "#f0efed"),
+    brightBlack: readCssVar(styles, "--color-codex-terminal-ansi-bright-black", "#555555"),
+    brightRed: readCssVar(styles, "--color-codex-terminal-ansi-bright-red", "#ff8787"),
+    brightGreen: readCssVar(styles, "--color-codex-terminal-ansi-bright-green", "#5fd7a3"),
+    brightYellow: readCssVar(styles, "--color-codex-terminal-ansi-bright-yellow", "#ffd75f"),
+    brightBlue: readCssVar(styles, "--color-codex-terminal-ansi-bright-blue", "#87afff"),
+    brightMagenta: readCssVar(styles, "--color-codex-terminal-ansi-bright-magenta", "#d7afff"),
+    brightCyan: readCssVar(styles, "--color-codex-terminal-ansi-bright-cyan", "#87d7ff"),
+    brightWhite: readCssVar(styles, "--color-codex-terminal-ansi-bright-white", "#ffffff"),
   };
 }
 

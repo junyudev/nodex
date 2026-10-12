@@ -103,6 +103,30 @@ Switching appearance updates these roles together, including content that uses
 the shared legacy background and foreground aliases. Native sidebar material
 and typography preferences remain independent of the palette.
 
+Appearance includes an `Accent color` picker with Default, Blue, Green, Yellow,
+Pink, Orange, Purple, and Black presets; Black is labeled White in dark mode.
+Named presets apply one coordinated palette to conversation send/stop actions,
+user message bubbles, links, focus rings, text selection, switches, and charts.
+Lifecycle, destructive, and categorical colors retain their own semantic roles.
+Default resolves to the Blue palette while retaining its Default label and
+saved preference. The picker trigger reflects that effective palette. Black
+provides neutral conversation actions, with a solid dark bubble in light mode
+and a neutral bubble in dark mode.
+
+`Custom` uses a six-digit Hex field and continuous color picker. It starts from
+the active accent color, commits complete colors immediately, and discards an
+incomplete draft on blur or appearance change. Custom colors are independent for
+light and dark appearances. Selecting a named preset updates the shared preset
+and clears only the current appearance's custom override. Custom colors drive
+the accent-derived palette while conversation send/stop actions and bubbles
+use their neutral semantic surfaces. Foreground contrast is resolved with the
+same palette, including saturated blue colors.
+
+Appearance and accent preferences persist in the renderer's browser storage
+and synchronize between windows sharing that storage. Renderer initialization
+applies the saved accent before application content mounts; switching appearance
+or accent updates all coordinated roles before the next paint.
+
 Sans font size defaults to 15px and scales the renderer's shared sans typography
 tokens. Code font size defaults to 14px and scales the shared code/editor token.
 Both are Profile preferences, not Window Session layout.

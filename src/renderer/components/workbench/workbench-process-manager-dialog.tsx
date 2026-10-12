@@ -144,7 +144,7 @@ function ProcessStatusDot({
   return (
     <span
       aria-label="Running"
-      className="inline-flex size-2.5 rounded-full bg-[var(--color-accent-green)]"
+      className="inline-flex size-2.5 rounded-full bg-(--color-background-success-indicator)"
     />
   );
 }
@@ -258,7 +258,7 @@ function ProcessManagerRow({
       tabIndex={0}
       className={cn(
         "group h-10 cursor-default border-b border-token-border/60 odd:bg-token-foreground/[0.025] outline-hidden transition-colors",
-        "hover:bg-token-list-hover-background focus-visible:bg-token-list-hover-background focus-visible:ring-token-focus focus-visible:ring-2",
+        "hover:bg-token-list-hover-background focus-visible:bg-token-list-hover-background focus-visible:ring-token-focus-border focus-visible:ring-2",
         active && "bg-token-list-hover-background",
       )}
       onClick={() => onOpenOutput(row)}

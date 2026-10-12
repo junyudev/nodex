@@ -75,7 +75,7 @@ export function AsyncQuestionChoices({
               onPointerEnter={() => onHover(index)}
               onClick={() => onChoose(index)}
               className={cn(
-                "group flex min-h-8 w-full cursor-interaction items-center gap-2 rounded-xl px-2 py-1.5 text-start text-sm focus:outline-none focus-visible:ring-2 focus-visible:ring-token-focus disabled:cursor-default disabled:opacity-40",
+                "group flex min-h-8 w-full cursor-interaction items-center gap-2 rounded-xl px-2 py-1.5 text-start text-sm focus:outline-none focus-visible:ring-2 focus-visible:ring-token-focus-border disabled:cursor-default disabled:opacity-40",
                 highlighted ? "bg-text/5" : "hover:bg-text/5",
               )}
             >

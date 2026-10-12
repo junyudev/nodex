@@ -1,28 +1,28 @@
 {
   "schemaVersion": 1,
-  "refVersion": "26.903.71938",
-  "profileSha256": "c7ca992b0d6867cb6f960d69faac77e5833559eb51c6aba55685ad5e008faa3a",
-  "generatorVersion": 2,
+  "refVersion": "26.1007.30912",
+  "profileSha256": "2f2f3629d8ce4172566c73e9151df2a967f1810ff921bd6cf835027c32128f88",
+  "generatorVersion": 3,
   "artifacts": [
     {
       "path": "src/renderer/styles/semantic-theme-contract.generated.json",
-      "sha256": "afe06beab8aec43db7f3a19dad582473540a9d72627178d732180cb0cc308de2"
+      "sha256": "6216a1008b55bd905f996222495f7341e5e22855b5fd8e959d40229205a3c7e0"
     },
     {
       "path": "src/renderer/styles/theme-extracted-foundation.generated.css",
-      "sha256": "4bcf5be2033e532aff7c0bd582327670e1b54c3553f4e710434c39c88d75fe04"
+      "sha256": "1a2060ef6bc1f721cf0be880a0eaa52d344c8ebb2a1843d67f1e264c3b016bf9"
     },
     {
       "path": "src/renderer/styles/theme-extracted-surfaces.generated.css",
-      "sha256": "46493699c7d221a7e3d99eae9680c329ac23cd2af725e9e815cc6f5106d1feff"
+      "sha256": "612a7a1bb3fbb416f0f5a6fd4614ea16ec4b8696ae59afd6871d4d8927459235"
     },
     {
       "path": "src/renderer/styles/theme-semantic-contract.generated.css",
-      "sha256": "1817dad64709ce3d4bd5b37c17fa53fb995349f4991423a2e59a1830df070e89"
+      "sha256": "c82471b0c1f07cebe4edaf766b38fe56530b6b4fc3f522e6a3beb7204eb9528e"
     },
     {
       "path": "src/renderer/styles/theme-semantic-utilities.generated.css",
-      "sha256": "b26120b2b68a8b84dc1590b5b01fe474f69bf6384b7e8b3e492f607d9a2816e4"
+      "sha256": "3a467281940b2f2a77799847cfa593d13da75c18a0e14e0495da78540f449c94"
     }
   ]
 }

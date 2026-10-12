@@ -11,6 +11,7 @@ import {
 import type { ProtocolListMcpServerStatusResponse } from "../../../shared/types";
 import { invokeRendererQuery as invoke } from "../renderer-command";
 import { McpAppHostDispatcher } from "./mcp-app-host-dispatcher";
+import { readMcpAppHostStyleVariables } from "./mcp-app-host-styles";
 import type { McpAppFollowUpHandler } from "./mcp-app-follow-up-context";
 import { connectMcpAppSandbox, type ConnectedMcpAppSandbox } from "./mcp-app-port-rpc";
 
@@ -110,7 +111,7 @@ function hostContext(element: HTMLElement, mode: McpAppDisplayMode) {
     locale: navigator.language,
     platform: "desktop",
     safeAreaInsets: { bottom: 0, left: 0, right: 0, top: 0 },
-    styles: { variables: {} },
+    styles: { variables: readMcpAppHostStyleVariables() },
     theme: resolveTheme(),
     timeZone: Intl.DateTimeFormat().resolvedOptions().timeZone,
     userAgent: "nodex",
@@ -459,7 +460,7 @@ export class McpAppRuntime {
         notify();
       });
       this.#themeObserver.observe(document.documentElement, {
-        attributeFilter: ["class", "data-theme"],
+        attributeFilter: ["class", "data-theme", "style"],
         attributes: true,
       });
     }

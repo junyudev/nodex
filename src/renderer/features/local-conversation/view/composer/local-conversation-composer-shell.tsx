@@ -126,7 +126,7 @@ function TerminalIcon() {
 }
 
 const QUEUE_GHOST_BUTTON_CLASS_NAME =
-  "no-drag cursor-interaction inline-flex items-center gap-1 whitespace-nowrap rounded-full border border-transparent text-token-text-tertiary select-none electron:rounded-md enabled:hover:bg-token-list-hover-background data-[state=open]:bg-token-list-hover-background focus:outline-none focus-visible:ring-2 focus-visible:ring-token-focus focus-visible:ring-offset-0 disabled:cursor-default disabled:opacity-40";
+  "no-drag cursor-interaction inline-flex items-center gap-1 whitespace-nowrap rounded-full border border-transparent text-token-text-tertiary select-none electron:rounded-md enabled:hover:bg-token-list-hover-background data-[state=open]:bg-token-list-hover-background focus:outline-none focus-visible:ring-2 focus-visible:ring-token-focus-border focus-visible:ring-offset-0 disabled:cursor-default disabled:opacity-40";
 const QUEUE_MENU_ICON_CLASS_NAME =
   "icon-xs text-token-foreground opacity-75 group-focus:opacity-100 group-hover:opacity-100";
 

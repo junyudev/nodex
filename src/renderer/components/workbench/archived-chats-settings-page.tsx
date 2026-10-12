@@ -323,7 +323,7 @@ export function ArchivedChatsSettingsPage({
                   value={query}
                   onChange={(event) => setQuery(event.currentTarget.value)}
                   placeholder="Search archived chats"
-                  className="h-8 w-full rounded-lg border border-token-border bg-token-input-background pr-3 pl-8 text-sm text-token-text-primary outline-none focus-visible:ring-2 focus-visible:ring-token-focus"
+                  className="h-8 w-full rounded-lg border border-token-border bg-token-input-background pr-3 pl-8 text-sm text-token-text-primary outline-none focus-visible:ring-2 focus-visible:ring-token-focus-border"
                 />
               </label>
               <label className="flex items-center gap-2 text-xs text-token-text-secondary">
@@ -334,7 +334,7 @@ export function ArchivedChatsSettingsPage({
                   onChange={(event) =>
                     setGrouping(event.currentTarget.value as ArchivedChatGrouping)
                   }
-                  className="h-8 rounded-lg border border-token-border bg-token-input-background px-2 text-sm text-token-text-primary outline-none focus-visible:ring-2 focus-visible:ring-token-focus"
+                  className="h-8 rounded-lg border border-token-border bg-token-input-background px-2 text-sm text-token-text-primary outline-none focus-visible:ring-2 focus-visible:ring-token-focus-border"
                 >
                   <option value="project">Project</option>
                   <option value="none">None</option>
@@ -346,7 +346,7 @@ export function ArchivedChatsSettingsPage({
                   aria-label="Sort archived chats"
                   value={sort}
                   onChange={(event) => setSort(event.currentTarget.value as ArchivedChatSort)}
-                  className="h-8 rounded-lg border border-token-border bg-token-input-background px-2 text-sm text-token-text-primary outline-none focus-visible:ring-2 focus-visible:ring-token-focus"
+                  className="h-8 rounded-lg border border-token-border bg-token-input-background px-2 text-sm text-token-text-primary outline-none focus-visible:ring-2 focus-visible:ring-token-focus-border"
                 >
                   <option value="updated">Updated</option>
                   <option value="created">Created</option>

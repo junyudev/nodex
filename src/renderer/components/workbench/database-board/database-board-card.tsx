@@ -309,9 +309,9 @@ export function DatabaseBoardCard(props: DatabaseBoardCardProps) {
   const propertyBinding = (property: DataSourcePropertyRecordV2) =>
     createDatabaseBoardPropertyEditorBinding(props, authority, property);
   const ringShadow = selected
-    ? "0 0 0 1.5px color-mix(in srgb, var(--accent-blue) 72%, transparent)"
+    ? "0 0 0 1.5px color-mix(in srgb, var(--color-token-focus-border) 72%, transparent)"
     : highlighted
-      ? "0 0 0 1.5px color-mix(in srgb, var(--accent-blue) 50%, transparent)"
+      ? "0 0 0 1.5px color-mix(in srgb, var(--color-token-focus-border) 50%, transparent)"
       : "0 0 0 1px color-mix(in srgb, var(--column-accent, var(--foreground-tertiary)) 17%, transparent)";
   const elevationShadow = dragging
     ? "0 8px 16px color-mix(in srgb, var(--foreground) 12%, transparent)"
@@ -388,7 +388,7 @@ export function DatabaseBoardCard(props: DatabaseBoardCardProps) {
         "hover:bg-[color-mix(in_srgb,var(--column-accent,var(--foreground-tertiary))_8%,var(--database-board-card-surface))]",
         !previewRect &&
           selected &&
-          "bg-[color-mix(in_srgb,var(--accent-blue)_6%,var(--database-board-card-surface))]",
+          "bg-[color-mix(in_srgb,var(--color-text-info)_6%,var(--database-board-card-surface))]",
         !previewRect && dragging && "opacity-45",
       )}
       style={

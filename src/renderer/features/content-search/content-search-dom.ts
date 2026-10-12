@@ -5,7 +5,7 @@ export const CONTENT_SEARCH_SHADOW_STYLE_ID = "codex-thread-find-shadow-style";
 
 const CONTENT_SEARCH_SHADOW_STYLE = `
 mark.codex-thread-find-match {
-  background-color: var(--vscode-charts-yellow);
+  background-color: var(--content-search-match-background);
   color: var(--color-token-foreground);
   border-radius: var(--radius-2xs);
   padding: 0;
@@ -19,7 +19,7 @@ mark.codex-thread-find-match {
 }
 
 mark.codex-thread-find-active {
-  background-color: var(--vscode-charts-orange);
+  background-color: var(--content-search-active-match-background);
 }
 `;
 

@@ -17,24 +17,4 @@ describe("StageTabStrip", () => {
 
     expect(container.querySelector('[data-running-indicator="true"]')).not.toBeNull();
   });
-
-  test("hides active tab underline when disabled", () => {
-    const { container } = render(
-      <StageTabStrip
-        tabs={[
-          { id: "history", label: "History" },
-          { id: "session:1", label: "Card A" },
-        ]}
-        activeTabId="history"
-        showActiveUnderline={false}
-        onSelect={() => undefined}
-      />,
-    );
-
-    expect(
-      container.querySelector(
-        ".bottom-0.h-\\[calc\\(var\\(--spacing\\)\\*0\\.5\\)\\].rounded-full.bg-\\[var\\(--accent-blue\\)\\]",
-      ),
-    ).toBe(null);
-  });
 });

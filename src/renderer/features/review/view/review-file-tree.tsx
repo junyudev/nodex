@@ -96,7 +96,7 @@ export function ReviewFileTree({
                 type="button"
                 aria-label="Filter options"
                 aria-pressed={filterGeneratedFiles}
-                className="flex size-7 shrink-0 items-center justify-center rounded-md text-tertiary hover:bg-primary-ghost-hover aria-pressed:text-default"
+                className="flex size-7 shrink-0 items-center justify-center rounded-md text-tertiary hover:bg-(--color-background-primary-ghost-hover) aria-pressed:text-(--color-text)"
               >
                 <FilterIcon className="icon-sm" />
               </button>

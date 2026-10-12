@@ -2825,7 +2825,7 @@ function NfmEditorInstance({
                     type="button"
                     className={cn(
                       "inline-flex h-6.5 w-6.5 shrink-0 cursor-pointer items-center justify-center rounded-sm border-none bg-transparent text-(--foreground-secondary) hover:bg-(--background-tertiary) hover:text-(--foreground)",
-                      replaceOpen && "text-(--accent-blue)",
+                      replaceOpen && "text-info",
                     )}
                     onClick={() => setReplaceOpen((prev) => !prev)}
                     aria-label={replaceOpen ? "Hide replace controls" : "Show replace controls"}
@@ -2879,7 +2879,7 @@ function NfmEditorInstance({
                     <NodexTooltip tooltipContent="Replace current match">
                       <button
                         type="button"
-                        className="inline-flex h-6.5 cursor-pointer items-center gap-1 rounded-sm border-none bg-(--accent-blue) px-2.5 text-xs font-medium whitespace-nowrap text-white transition-filter duration-swift ease-out hover:brightness-110"
+                        className="inline-flex h-6.5 cursor-pointer items-center gap-1 rounded-sm border-none bg-primary-solid px-2.5 text-xs font-medium whitespace-nowrap text-primary-solid transition-filter duration-swift ease-out hover:brightness-110"
                         onClick={replaceCurrentMatch}
                         aria-label="Replace current match"
                       >

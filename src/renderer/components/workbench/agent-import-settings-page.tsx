@@ -81,7 +81,7 @@ function ImportItemCheckbox({
       aria-label={`Import ${label}`}
       className={cn(
         "flex size-5 shrink-0 items-center justify-center rounded border-[0.5px] outline-hidden",
-        "focus-visible:ring-token-focus focus-visible:ring-2",
+        "focus-visible:ring-token-focus-border focus-visible:ring-2",
         checked
           ? "border-transparent bg-token-foreground text-token-background"
           : "border-token-border bg-token-foreground/5 text-transparent",

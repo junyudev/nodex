@@ -121,7 +121,7 @@ export function PendingWorktreeProgress({
                 <button
                   type="button"
                   aria-controls={detailsId}
-                  className="flex cursor-interaction items-center gap-2 text-size-chat text-tertiary select-none focus-visible:ring-2 focus-visible:ring-token-focus focus-visible:outline-none"
+                  className="flex cursor-interaction items-center gap-2 text-size-chat text-tertiary select-none focus-visible:ring-2 focus-visible:ring-token-focus-border focus-visible:outline-none"
                   aria-expanded={detailsExpanded}
                   onClick={() => setDetailsExpanded((current) => !current)}
                 >

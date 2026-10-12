@@ -215,7 +215,7 @@ function DatabaseListAssigneeEditor({
             setDraft(value);
             setOpen(false);
           }}
-          className="h-8 w-full rounded-lg border border-token-border bg-token-input-background px-2 text-sm text-token-text-primary outline-none focus-visible:ring-1 focus-visible:ring-token-focus"
+          className="h-8 w-full rounded-lg border border-token-border bg-token-input-background px-2 text-sm text-token-text-primary outline-none focus-visible:ring-1 focus-visible:ring-token-focus-border"
         />
       </NodexPopoverContent>
     </NodexPopover>

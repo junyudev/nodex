@@ -8,7 +8,7 @@ const nodexButtonVariants = cva(
   [
     "inline-flex shrink-0 items-center justify-center gap-2 whitespace-nowrap",
     "outline-hidden transition-colors disabled:pointer-events-none disabled:opacity-50",
-    "focus-visible:ring-token-focus focus-visible:ring-2",
+    "focus-visible:ring-token-focus-border focus-visible:ring-2",
     "cursor-interaction",
     "[&_svg]:pointer-events-none [&_svg]:shrink-0",
     "[&_svg:not([class*='size-']):not([class*='icon-'])]:size-4",
@@ -16,15 +16,15 @@ const nodexButtonVariants = cva(
   {
     variants: {
       variant: {
-        default: "bg-token-foreground text-token-background hover:bg-token-foreground/90",
-        primary: "bg-token-foreground text-token-background hover:bg-token-foreground/90",
+        default: "bg-primary-solid text-primary-solid hover:bg-text/80",
+        primary: "bg-primary-solid text-primary-solid hover:bg-text/80",
         secondary: "bg-token-foreground/6 text-token-foreground hover:bg-token-foreground/10",
         outline:
           "border border-token-border bg-token-main-surface-primary text-token-foreground hover:bg-token-list-hover-background",
         ghost: "text-token-foreground hover:bg-token-list-hover-background",
-        destructive: "bg-token-error-background text-token-error-foreground hover:opacity-90",
+        destructive: "bg-(--color-background-danger-surface) text-danger hover:opacity-90",
         accentAction:
-          "border border-transparent bg-token-charts-blue text-white hover:bg-token-charts-blue/90",
+          "border border-transparent bg-chart-blue text-(--app-color-text-on-accent) hover:bg-chart-blue/90",
       },
       size: {
         default: "h-9 rounded-xl px-4 text-sm",
@@ -105,16 +105,16 @@ export const NodexIconButton = React.forwardRef<HTMLButtonElement, NodexIconButt
           data-active={active ? "true" : undefined}
           className={cn(
             "inline-flex items-center justify-center rounded-md outline-hidden",
-            "focus-visible:ring-token-focus focus-visible:ring-2",
+            "focus-visible:ring-token-focus-border focus-visible:ring-2",
             size === "xs" && "size-6",
             size === "sm" && "size-7",
             size === "default" && "size-8",
             tone === "danger"
               ? active
-                ? "text-token-error-foreground hover:bg-token-error-background/10"
-                : "text-token-error-foreground/70 hover:bg-token-error-background/10 hover:text-token-error-foreground"
+                ? "text-danger hover:bg-text-danger/10"
+                : "text-danger/70 hover:bg-text-danger/10 hover:text-(--color-text-danger)"
               : active
-                ? "text-(--accent-blue) hover:bg-[color-mix(in_srgb,var(--accent-blue)_12%,transparent)]"
+                ? "text-info hover:bg-text-info/12"
                 : "text-[color-mix(in_srgb,var(--foreground)_62%,transparent)] hover:bg-[color-mix(in_srgb,var(--foreground)_5%,transparent)] hover:text-(--foreground)",
             disabled && "cursor-not-allowed opacity-40 hover:bg-transparent",
             className,
@@ -164,13 +164,13 @@ export function NodexSwitch({
         className={cn(
           "relative inline-flex shrink-0 items-center rounded-full transition-colors duration-200 ease-out",
           size === "compact" ? "h-3.5 w-[22px]" : "h-5 w-8",
-          checked ? "bg-token-charts-blue" : "bg-token-foreground/10",
+          checked ? "bg-chart-blue" : "bg-text/10",
         )}
         data-state={checked ? "checked" : "unchecked"}
       >
         <span
           className={cn(
-            "rounded-full border border-[color:var(--gray-0)] bg-[color:var(--gray-0)] shadow-sm transition-transform duration-200 ease-out",
+            "rounded-full border border-control-thumb-on-accent bg-control-thumb-on-accent shadow-sm transition-transform duration-200 ease-out",
             size === "compact" ? "size-3" : "size-4",
             checked
               ? size === "compact"

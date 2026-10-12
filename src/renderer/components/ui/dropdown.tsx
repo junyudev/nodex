@@ -487,7 +487,7 @@ export const NodexDropdownButtonTrigger = forwardRef<
             : chrome === "filled"
               ? "border-transparent bg-token-foreground/5 hover:bg-token-foreground/10"
               : "border-transparent bg-transparent hover:bg-token-foreground/5",
-        "focus-visible:ring-token-focus focus-visible:ring-2",
+        "focus-visible:ring-token-focus-border focus-visible:ring-2",
         muted ? "text-token-description-foreground" : "text-token-foreground",
         "[&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg]:text-token-description-foreground",
         size === "xs"

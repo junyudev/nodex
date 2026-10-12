@@ -147,7 +147,7 @@ export function ComposerAdaptiveFooter({
       data-composer-form-footer="true"
       data-composer-layout={layout}
       className={cn(
-        "_footer_1u8sk_2 grid items-center select-none",
+        "composer-footer grid items-center select-none",
         multiline
           ? "mb-2 grid-cols-[minmax(0,auto)_auto_minmax(0,1fr)] gap-x-[5px] px-2"
           : "grid-cols-[auto_minmax(0,1fr)_auto] gap-2 px-2 py-1",

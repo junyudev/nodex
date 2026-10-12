@@ -53,7 +53,7 @@ export function StageTabStrip({
               >
                 {tab.running && (
                   <ActivitySpinnerIcon
-                    className="size-2.5 text-(--accent-blue)"
+                    className="size-2.5 text-info"
                     containerClassName="shrink-0"
                   />
                 )}
@@ -78,7 +78,7 @@ export function StageTabStrip({
                 {isActive && showActiveUnderline && (
                   <span
                     aria-hidden
-                    className="absolute inset-x-1.5 bottom-0 h-0.5 rounded-full bg-(--accent-blue)"
+                    className="absolute inset-x-1.5 bottom-0 h-0.5 rounded-full bg-text-info"
                   />
                 )}
               </button>

@@ -196,13 +196,13 @@ function BlockComponent({
               className={cn(
                 "mt-0.75 inline-block h-4 w-4 min-w-4 shrink-0 rounded-sm border-[calc(var(--spacing)*0.375)]",
                 block.checked
-                  ? "border-(--accent-blue) bg-(--accent-blue)"
+                  ? "border-transparent bg-primary-solid text-primary-solid"
                   : "border-(--foreground-tertiary) bg-transparent",
               )}
               style={block.checked ? { position: "relative" } : undefined}
             >
               {block.checked && (
-                <svg viewBox="0 0 14 14" fill="none" className="h-full w-full text-white">
+                <svg viewBox="0 0 14 14" fill="none" className="h-full w-full">
                   <path
                     d="M3 7.5L5.5 10L11 4"
                     stroke="currentColor"

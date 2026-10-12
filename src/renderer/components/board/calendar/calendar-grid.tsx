@@ -1532,7 +1532,7 @@ export function CalendarGrid({
                     <span
                       className={
                         isToday
-                          ? "text-xs font-semibold tracking-wider text-(--accent-blue) uppercase"
+                          ? "text-xs font-semibold tracking-wider text-info uppercase"
                           : "text-xs font-medium tracking-wider text-(--foreground-secondary) uppercase"
                       }
                     >
@@ -1541,13 +1541,13 @@ export function CalendarGrid({
                     <span
                       className={
                         isToday
-                          ? "relative text-base font-bold text-(--accent-blue)"
+                          ? "relative text-base font-bold text-info"
                           : "text-base font-semibold text-(--foreground)"
                       }
                     >
                       {dayNum}
                       {isToday && (
-                        <span className="absolute -bottom-0.5 left-1/2 h-0.5 w-3.5 -translate-x-1/2 rounded-full bg-(--accent-blue)" />
+                        <span className="absolute -bottom-0.5 left-1/2 h-0.5 w-3.5 -translate-x-1/2 rounded-full bg-text-info" />
                       )}
                     </span>
                   </div>
@@ -1613,7 +1613,7 @@ export function CalendarGrid({
                         type="button"
                         draggable
                         data-calendar-event-block=""
-                        className="absolute h-[calc(var(--spacing)*6)] cursor-default truncate rounded-xs border-l-[calc(var(--spacing)*0.75)] px-2 text-left text-xs/6 font-medium shadow-sm focus-visible:ring-2 focus-visible:ring-(--accent-blue) focus-visible:outline-none active:cursor-grabbing"
+                        className="absolute h-[calc(var(--spacing)*6)] cursor-default truncate rounded-xs border-l-[calc(var(--spacing)*0.75)] px-2 text-left text-xs/6 font-medium shadow-sm focus-visible:ring-2 focus-visible:ring-token-focus-border focus-visible:outline-none active:cursor-grabbing"
                         style={{
                           top,
                           left: `calc(${leftPct}% + 2px)`,
@@ -1640,7 +1640,7 @@ export function CalendarGrid({
                   })}
                   {allDayMoveOverlay && (
                     <div
-                      className="pointer-events-none absolute z-30 h-[calc(var(--spacing)*6)] truncate rounded-xs border-l-[calc(var(--spacing)*0.75)] px-2 text-left text-xs/6 font-medium shadow-lg ring-2 ring-(--accent-blue)/45"
+                      className="pointer-events-none absolute z-30 h-[calc(var(--spacing)*6)] truncate rounded-xs border-l-[calc(var(--spacing)*0.75)] px-2 text-left text-xs/6 font-medium shadow-lg ring-2 ring-token-focus-border/45"
                       style={{
                         top: 4,
                         left: `calc(${(allDayMoveOverlay.startDayIndex / renderDays.length) * 100}% + 2px)`,
@@ -1673,7 +1673,7 @@ export function CalendarGrid({
           aria-valuemin={ALL_DAY_LANE_MIN_HEIGHT}
           aria-valuemax={ALL_DAY_LANE_MAX_HEIGHT}
           aria-valuenow={allDayLaneHeight}
-          className="relative h-px cursor-row-resize bg-(--border)/60 after:absolute after:inset-x-0 after:-top-2 after:h-5 after:content-[''] hover:bg-(--accent-blue)/70 focus-visible:ring-2 focus-visible:ring-(--accent-blue) focus-visible:outline-none"
+          className="relative h-px cursor-row-resize bg-(--border)/60 after:absolute after:inset-x-0 after:-top-2 after:h-5 after:content-[''] hover:bg-text-info/70 focus-visible:ring-2 focus-visible:ring-token-focus-border focus-visible:outline-none"
           style={{
             width: calendarContentWidth,
             minWidth: "100%",
@@ -1900,7 +1900,7 @@ export function CalendarGrid({
                     {/* Drag overlay */}
                     {!isBuffer && dragState && dragState.dayIndex === visibleIdx && (
                       <div
-                        className="pointer-events-none absolute inset-x-1 z-10 rounded-sm border-2 border-(--accent-blue)/40 bg-(--accent-blue)/10"
+                        className="pointer-events-none absolute inset-x-1 z-10 rounded-sm border-2 border-token-focus-border/40 bg-text-info/10"
                         style={{
                           top: Math.min(dragState.startSlot, dragState.endSlot) * slotHeight,
                           height:

@@ -367,7 +367,7 @@ function ChromeControlReadiness({
           aria-hidden="true"
           className={
             ready
-              ? "size-2 rounded-full bg-[var(--color-icon-success)]"
+              ? "size-2 rounded-full bg-(--color-background-success-indicator)"
               : "size-2 rounded-full bg-token-text-tertiary"
           }
         />
@@ -446,7 +446,7 @@ function BrowserSettingsBreadcrumb({ label, onBack }: { label: string; onBack: (
       </span>
       <button
         type="button"
-        className="max-w-40 truncate rounded-md px-1 py-0.5 text-token-text-secondary hover:bg-token-list-hover-background hover:text-token-text-primary focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-token-focus"
+        className="max-w-40 truncate rounded-md px-1 py-0.5 text-token-text-secondary hover:bg-token-list-hover-background hover:text-token-text-primary focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-token-focus-border"
         onClick={onBack}
       >
         Browser
@@ -676,7 +676,7 @@ function BrowserUsePolicySettings({
       <NodexSettingsSection id="site-permissions" title="Site permissions">
         <div className="flex flex-wrap items-center gap-2 p-3">
           <input
-            className="h-8 min-w-48 flex-1 rounded-lg border border-token-border bg-token-main-surface-primary px-2 text-sm outline-none focus-visible:ring-1 focus-visible:ring-token-focus"
+            className="h-8 min-w-48 flex-1 rounded-lg border border-token-border bg-token-main-surface-primary px-2 text-sm outline-none focus-visible:ring-1 focus-visible:ring-token-focus-border"
             value={origin}
             placeholder="example.com"
             onChange={(event) => setOrigin(event.target.value)}
@@ -1308,7 +1308,7 @@ function ContactInfoEditor({
       {fields.map(({ field, label, placeholder }) => (
         <NodexSettingsRow key={field} label={label}>
           <input
-            className="h-8 w-64 max-w-[45vw] rounded-lg border border-token-border bg-token-main-surface-primary px-2 text-sm outline-none focus-visible:ring-1 focus-visible:ring-token-focus"
+            className="h-8 w-64 max-w-[45vw] rounded-lg border border-token-border bg-token-main-surface-primary px-2 text-sm outline-none focus-visible:ring-1 focus-visible:ring-token-focus-border"
             value={draft[field]}
             placeholder={placeholder}
             onChange={(event) => setField(field, event.target.value)}

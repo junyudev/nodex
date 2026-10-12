@@ -22,14 +22,14 @@ export function AppUpdateRestartNotice({
     <div
       className={cn(
         "inline-flex items-center gap-2 rounded-full border px-2 py-1",
-        "border-(--accent-blue)/25 bg-(--accent-blue)/10 text-(--foreground)",
+        "border-token-focus-border/25 bg-text-info/10 text-(--foreground)",
       )}
     >
       <span className="text-xs font-medium">{versionLabel} is ready.</span>
       <button
         type="button"
         onClick={onRestart}
-        className="rounded-full bg-(--accent-blue) px-2 py-0.5 text-xs font-medium text-white transition-opacity hover:opacity-90"
+        className="rounded-full bg-chart-blue px-2 py-0.5 text-xs font-medium text-(--app-color-text-on-accent) transition-opacity hover:opacity-90 focus-visible:ring-2 focus-visible:ring-token-focus-border focus-visible:outline-none"
       >
         Restart to Update
       </button>

@@ -22,13 +22,13 @@ export function FileTreeFilter({
         value={value}
         onChange={(event) => onChange(event.target.value)}
         placeholder="Filter files…"
-        className="w-full min-w-0 appearance-none border-none bg-transparent py-0 ps-0 pe-1.5 text-default ring-0 outline-none select-text placeholder:text-tertiary focus:border-none focus:ring-0 focus:outline-none [&::placeholder]:select-none"
+        className="w-full min-w-0 appearance-none border-none bg-transparent py-0 ps-0 pe-1.5 text-(--color-text) ring-0 outline-none select-text placeholder:text-(--color-text-tertiary) focus:border-none focus:ring-0 focus:outline-none [&::placeholder]:select-none"
       />
       {value.length > 0 ? (
         <button
           type="button"
           aria-label="Clear file filter"
-          className="flex size-7 shrink-0 cursor-interaction items-center justify-center rounded-md text-tertiary hover:text-default"
+          className="flex size-7 shrink-0 cursor-interaction items-center justify-center rounded-md text-tertiary hover:text-(--color-text)"
           onClick={() => onChange("")}
         >
           <CloseIcon className="icon-2xs" />

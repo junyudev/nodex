@@ -71,4 +71,36 @@ describe("semantic theme CSS parser", () => {
     ]);
     expect(definitions.get("--web-windows")?.scopeKind).toBe("scoped");
   });
+
+  test("resolves nested window negations and data-theme appearance scopes", () => {
+    const facts = collectSemanticThemeCssFacts(
+      `
+        :where(:root:not([data-codex-window-type="extension"])) { --native-color: white; }
+        :is(:where(:root), :where([data-theme])):where(:root[data-codex-window-type="browser"], :root[data-codex-window-type="browser"] *) { --browser-color: blue; }
+        :where(:root:not([data-codex-window-type="extension"])[data-theme="dark"]) { --native-dark-color: black; }
+        :where([data-theme="light"]) { --light-color: white; }
+      `,
+      "fixture.css",
+    );
+    const definitions = new Map(
+      facts.definitions.map((definition) => [definition.name, definition]),
+    );
+
+    expect(definitions.get("--native-color")?.targets).toEqual([
+      "browser-dark",
+      "browser-light",
+      "electron-dark",
+      "electron-light",
+    ]);
+    expect(definitions.get("--browser-color")?.targets).toEqual(["browser-dark", "browser-light"]);
+    expect(definitions.get("--native-dark-color")?.targets).toEqual([
+      "browser-dark",
+      "electron-dark",
+    ]);
+    expect(definitions.get("--light-color")?.targets).toEqual([
+      "browser-light",
+      "electron-light",
+      "extension-light",
+    ]);
+  });
 });

@@ -109,7 +109,7 @@ function PendingWorktreeActionButton({
       aria-busy={loading || undefined}
       disabled={disabled || loading}
       className={cn(
-        "no-drag flex h-6 cursor-interaction items-center gap-1 rounded-full border border-transparent px-2 py-0.5 text-sm leading-[18px] whitespace-nowrap select-none focus:outline-none focus-visible:ring-2 focus-visible:ring-token-focus disabled:cursor-not-allowed disabled:opacity-40",
+        "no-drag flex h-6 cursor-interaction items-center gap-1 rounded-full border border-transparent px-2 py-0.5 text-sm leading-[18px] whitespace-nowrap select-none focus:outline-none focus-visible:ring-2 focus-visible:ring-token-focus-border disabled:cursor-not-allowed disabled:opacity-40",
         tone === "secondary" &&
           "bg-token-foreground/5 text-token-foreground enabled:hover:bg-token-foreground/10",
         tone === "ghost" && "text-token-text-tertiary enabled:hover:bg-token-list-hover-background",

@@ -226,6 +226,19 @@ const SETTINGS_SEARCH_PANELS = {
         title: "Theme",
         entries: [
           entry("Theme", "Match system mode or force a fixed theme.", ["System", "Light", "Dark"]),
+          entry("Accent color", "", [
+            "Default",
+            "Blue",
+            "Green",
+            "Yellow",
+            "Pink",
+            "Orange",
+            "Purple",
+            "Black",
+            "White",
+            "Custom",
+            "hex color",
+          ]),
           entry(
             "Reduced motion",
             "Follow the system setting, reduce interface motion, or allow full motion.",

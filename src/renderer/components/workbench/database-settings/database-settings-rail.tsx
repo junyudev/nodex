@@ -1524,7 +1524,7 @@ function ConditionalColorPicker({
           type="button"
           aria-label={`Background color for ${property.name}`}
           disabled={disabled}
-          className="inline-flex h-6 min-w-0 max-w-[164px] shrink-0 items-center gap-1 rounded-md px-1 text-sm text-token-text-primary outline-hidden hover:bg-token-foreground/5 focus-visible:ring-2 focus-visible:ring-token-focus disabled:opacity-40"
+          className="inline-flex h-6 min-w-0 max-w-[164px] shrink-0 items-center gap-1 rounded-md px-1 text-sm text-token-text-primary outline-hidden hover:bg-token-foreground/5 focus-visible:ring-2 focus-visible:ring-token-focus-border disabled:opacity-40"
         >
           {matchingOption ? null : (
             <span
@@ -1572,7 +1572,7 @@ function ConditionalColorPicker({
               aria-label={`Use ${CONDITIONAL_COLOR_LABELS[color]} background`}
               aria-pressed={!matchingOption && rule.color === color}
               disabled={disabled}
-              className="relative grid size-[26px] place-items-center rounded-md outline-hidden hover:ring-2 hover:ring-token-border focus-visible:ring-2 focus-visible:ring-token-focus"
+              className="relative grid size-[26px] place-items-center rounded-md outline-hidden hover:ring-2 hover:ring-token-border focus-visible:ring-2 focus-visible:ring-token-focus-border"
               style={{
                 backgroundColor: databaseViewConditionalColorBackground(color),
                 boxShadow: `inset 0 0 0 1px ${databaseViewConditionalColorBorder(color)}`,
@@ -1634,7 +1634,7 @@ function SortableConditionalColorRule({
         disabled={disabled}
         {...sortable.attributes}
         {...sortable.listeners}
-        className="absolute -left-2.5 top-1 z-10 inline-flex size-5 touch-none cursor-grab items-center justify-center rounded-md bg-token-main-surface-secondary text-token-description-foreground opacity-0 outline-hidden transition-opacity hover:text-token-text-primary focus-visible:opacity-100 focus-visible:ring-2 focus-visible:ring-token-focus group-hover:opacity-100 active:cursor-grabbing disabled:cursor-not-allowed"
+        className="absolute -left-2.5 top-1 z-10 inline-flex size-5 touch-none cursor-grab items-center justify-center rounded-md bg-token-main-surface-secondary text-token-description-foreground opacity-0 outline-hidden transition-opacity hover:text-token-text-primary focus-visible:opacity-100 focus-visible:ring-2 focus-visible:ring-token-focus-border group-hover:opacity-100 active:cursor-grabbing disabled:cursor-not-allowed"
       >
         <DragHandleDotsIcon className="size-3" />
       </button>
@@ -1950,7 +1950,7 @@ function ViewConditionalColorRoute({
             className={cn(
               "h-8 px-2 text-sm",
               rules.length === 0 &&
-                "bg-(--accent-blue) text-white hover:bg-(--accent-blue-hover) [&_svg]:text-white",
+                "bg-chart-blue text-(--app-color-text-on-accent) hover:bg-chart-blue/90 [&_svg]:text-(--app-color-text-on-accent)",
             )}
             options={eligibleProperties.map((property) => ({
               value: property.propertyId,

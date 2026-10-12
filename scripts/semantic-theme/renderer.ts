@@ -1,7 +1,7 @@
 import {
   CONTRACT_NODEX_OWNED_PROPERTIES,
-  CONTRACT_VALUE_NORMALIZATIONS,
   CONTRACT_DECLARATION_PREFIXES,
+  CONTRACT_SOURCE_SELECTORS,
   ELECTRON_BODY_PROPERTIES,
   FOUNDATION_BROWSER_OVERRIDES,
   FOUNDATION_ELECTRON_OVERRIDES,
@@ -12,21 +12,20 @@ import {
   LEGACY_UTILITY_SELECTORS,
   ROOT_FOUNDATION_PROPERTIES,
   SEMANTIC_THEME_ARTIFACT_PATHS,
+  SEMANTIC_THEME_RUNTIME_VARIABLES,
   SEMANTIC_UTILITY_PROFILE,
-  SURFACE_VALUE_REPLACEMENTS,
   SURFACE_SELECTORS,
-  UTILITY_VALUE_REPLACEMENTS,
 } from "./profile";
 import {
   assertExportSafeCss,
   collectSemanticThemeCssFacts,
   collectSelectorFingerprints,
   contextWithoutConditions,
-  contextWithinSupports,
   customPropertyName,
   extractCustomPropertyMap,
   extractDeclarations,
   extractDeclarationsByPrefix,
+  extractVarReferences,
   filterCss,
 } from "./parser";
 import type {
@@ -35,17 +34,8 @@ import type {
   SemanticThemeTarget,
 } from "./types";
 
-const RUNTIME_VSCODE_OVERRIDES = new Map<string, string>([
-  ["--vscode-font-weight", "445"],
-  ["--vscode-errorForeground", "var(--destructive)"],
-  ["--vscode-textCodeBlock-background", "var(--color-background-button-secondary)"],
-]);
-
 const RUNTIME_TOKEN_AUGMENTATIONS = new Map<string, string>([
-  [
-    "--color-token-border-heavy",
-    "var(--color-border-heavy, color-mix(in oklab, var(--vscode-foreground) 12%, transparent))",
-  ],
+  ["--color-token-border-heavy", "var(--color-border-strong)"],
   [
     "--color-token-conversation-header",
     "color-mix(in oklab, var(--color-token-foreground) 30%, transparent)",
@@ -71,7 +61,7 @@ const RUNTIME_TOKEN_AUGMENTATIONS = new Map<string, string>([
 const HEADER = (refVersion: string): string => `/*
  * Generated semantic theme contract (refVersion ${refVersion}).
  * Do not edit by hand. Run:
- *   pnpm run semantic-theme:sync -- --source /temporary/reference.css --ref-version ${refVersion}
+ *   vp run semantic-theme:sync -- --source /temporary/reference.css --ref-version ${refVersion}
  */`;
 
 const formatDeclarations = (declarations: ReadonlyMap<string, string>): string =>
@@ -156,66 +146,95 @@ const renderFoundation = (sourceCss: string, refVersion: string): string => {
     .concat("\n");
 };
 
-const renderContract = (sourceCss: string, refVersion: string): string => {
-  const rootVscode = extractDeclarationsByPrefix(
-    sourceCss,
-    [":root, :host"],
-    ["--vscode-"],
-    contextWithoutConditions,
-  );
-  const electronVscode = mergeMaps(
-    extractDeclarationsByPrefix(sourceCss, [".app-theme"], ["--vscode-"], contextWithoutConditions),
-    extractDeclarationsByPrefix(
-      sourceCss,
-      ['[data-codex-window-type="electron"]'],
-      ["--vscode-"],
-      contextWithoutConditions,
-    ),
-  );
-  for (const [name, value] of RUNTIME_VSCODE_OVERRIDES) electronVscode.set(name, value);
-
+const renderContract = (
+  sourceCss: string,
+  refVersion: string,
+  consumerCss: readonly string[],
+): string => {
   const theme = extractDeclarationsByPrefix(
     sourceCss,
-    [":root, :host"],
+    CONTRACT_SOURCE_SELECTORS.base,
     CONTRACT_DECLARATION_PREFIXES,
     contextWithoutConditions,
   );
   for (const name of CONTRACT_NODEX_OWNED_PROPERTIES) theme.delete(name);
-  applyValues(theme, CONTRACT_VALUE_NORMALIZATIONS);
   for (const [name, value] of RUNTIME_TOKEN_AUGMENTATIONS) theme.set(name, value);
 
-  const conditional = filterCss(sourceCss, {
-    selectorFingerprints: collectSelectorFingerprints([":root, :host"]),
-    styleContextPredicate: contextWithinSupports,
-    declarationPredicate: (declaration) => {
-      const name = customPropertyName(declaration);
-      return (
-        name !== null &&
-        CONTRACT_DECLARATION_PREFIXES.some((prefix) => name.startsWith(prefix)) &&
-        !CONTRACT_NODEX_OWNED_PROPERTIES.has(name)
-      );
-    },
-  });
-  const lightDarkControls = filterCss(sourceCss, {
+  const sourceDeclarations = filterCss(sourceCss, {
     selectorFingerprints: collectSelectorFingerprints([
-      ".electron-dark",
-      ".electron-light",
-      ".\\[color-scheme\\:light\\]",
+      ...CONTRACT_SOURCE_SELECTORS.base,
+      ...CONTRACT_SOURCE_SELECTORS.scoped,
+    ]),
+    declarationPredicate: (declaration) => customPropertyName(declaration) !== null,
+  });
+  const facts = collectSemanticThemeCssFacts(sourceDeclarations, "source");
+  const propertyNames = new Set([
+    ...theme.keys(),
+    ...SEMANTIC_THEME_RUNTIME_VARIABLES,
+    ...facts.definitions
+      .filter(({ name }) => CONTRACT_DECLARATION_PREFIXES.some((prefix) => name.startsWith(prefix)))
+      .map(({ name }) => name),
+    ...consumerCss.flatMap((css) => [...extractVarReferences(css)]),
+  ]);
+  const productFoundationNames = new Set<string>([
+    ...FOUNDATION_THEME_PROPERTIES,
+    ...ROOT_FOUNDATION_PROPERTIES,
+    ...CONTRACT_NODEX_OWNED_PROPERTIES,
+    "--corner-radius-scale",
+    "--spacing",
+    "--text-base",
+    "--text-sm",
+    "--text-xs",
+    "--text-xl",
+    "--text-2xl",
+    "--text-3xl",
+    "--text-4xl",
+    "--text-heading-lg",
+    "--radius-2xs-base",
+    "--radius-xs-base",
+    "--radius-sm-base",
+    "--radius-md-base",
+    "--radius-lg-base",
+    "--radius-xl-base",
+    "--radius-2xl-base",
+    "--radius-3xl-base",
+    "--radius-4xl-base",
+    "--font-weight-normal",
+    "--font-weight-medium",
+    "--font-weight-semibold",
+    "--font-weight-bold",
+  ]);
+  for (const name of productFoundationNames) propertyNames.delete(name);
+
+  // Retain only providers reachable from exported roles, in their original scopes.
+  let previousSize = -1;
+  while (propertyNames.size !== previousSize) {
+    previousSize = propertyNames.size;
+    for (const definition of facts.definitions) {
+      if (!propertyNames.has(definition.name)) continue;
+      for (const reference of definition.references) {
+        if (!productFoundationNames.has(reference.name)) propertyNames.add(reference.name);
+      }
+    }
+  }
+  const appearanceNames = new Set([
+    "--theme-variant",
+    "--lightningcss-light",
+    "--lightningcss-dark",
+  ]);
+  const declarations = filterCss(sourceCss, {
+    selectorFingerprints: collectSelectorFingerprints([
+      ...CONTRACT_SOURCE_SELECTORS.base,
+      ...CONTRACT_SOURCE_SELECTORS.scoped,
+      ...CONTRACT_SOURCE_SELECTORS.appearance,
     ]),
     declarationPredicate: (declaration) => {
       const name = customPropertyName(declaration);
-      return name === "--lightningcss-light" || name === "--lightningcss-dark";
+      return name !== null && (propertyNames.has(name) || appearanceNames.has(name));
     },
   });
 
-  return [
-    HEADER(refVersion),
-    formatBlock(":root, :host", rootVscode),
-    formatBlock('[data-codex-window-type="electron"]', electronVscode),
-    formatThemeBlock(theme),
-    lightDarkControls,
-    conditional,
-  ]
+  return [HEADER(refVersion), formatThemeBlock(theme), declarations]
     .filter(Boolean)
     .join("\n\n")
     .concat("\n");
@@ -251,46 +270,15 @@ const renderUtilities = (sourceCss: string, refVersion: string): string => {
     if (!utility.outputSelector) continue;
     css = css.split(utility.selector).join(utility.outputSelector);
   }
-  for (const [source, replacement] of Object.entries(UTILITY_VALUE_REPLACEMENTS)) {
-    css = css.split(source).join(replacement);
-  }
-
-  if (!css.includes(".px-toolbar")) {
-    css += `\n\n.px-toolbar {\n  padding-inline: var(--padding-toolbar);\n}`;
-  }
-
   return `${HEADER(refVersion)}\n\n${css.trim()}\n`;
 };
 
-const SIDEBAR_SURFACE = `[data-codex-window-type="electron"]:not([data-codex-window-chrome="application-menu"]) .app-shell-left-panel {
-  background: var(--color-token-editor-background);
-  overflow: visible;
-}
-
-@supports (color: color-mix(in lab, red, red)) {
-  [data-codex-window-type="electron"]:not([data-codex-window-chrome="application-menu"]) .app-shell-left-panel {
-    background: color-mix(in srgb, var(--color-token-editor-background) 55%, transparent);
-  }
-}
-
-[data-codex-window-type="electron"]:not([data-codex-window-chrome="application-menu"]) .app-shell-left-panel::after {
-  inset: 0 calc(-1 * var(--radius-2xl)) 0 auto;
-  width: var(--radius-2xl);
-  background: inherit;
-  content: "";
-  pointer-events: none;
-  position: absolute;
-}`;
-
 const renderSurfaces = (sourceCss: string, refVersion: string): string => {
-  let extracted = filterCss(sourceCss, {
+  const extracted = filterCss(sourceCss, {
     selectorFingerprints: collectSelectorFingerprints(SURFACE_SELECTORS),
     keepKeyframes: new Set(["loading-shimmer"]),
   });
-  for (const [source, replacement] of Object.entries(SURFACE_VALUE_REPLACEMENTS)) {
-    extracted = extracted.split(source).join(replacement);
-  }
-  return `${HEADER(refVersion)}\n\n${extracted.trim()}\n\n${SIDEBAR_SURFACE}\n`;
+  return `${HEADER(refVersion)}\n\n${extracted.trim()}\n`;
 };
 
 const countPrefixDeclarations = (css: string, prefix: string): number =>
@@ -360,22 +348,25 @@ export const renderSemanticThemeArtifacts = (
   sourceCss: string,
   refVersion: string,
 ): readonly SemanticThemeArtifact[] => {
+  const foundation = renderFoundation(sourceCss, refVersion);
+  const utilities = renderUtilities(sourceCss, refVersion);
+  const surfaces = renderSurfaces(sourceCss, refVersion);
   const cssArtifacts: SemanticThemeArtifact[] = [
     {
       path: SEMANTIC_THEME_ARTIFACT_PATHS.foundation,
-      content: renderFoundation(sourceCss, refVersion),
+      content: foundation,
     },
     {
       path: SEMANTIC_THEME_ARTIFACT_PATHS.contract,
-      content: renderContract(sourceCss, refVersion),
+      content: renderContract(sourceCss, refVersion, [foundation, utilities, surfaces]),
     },
     {
       path: SEMANTIC_THEME_ARTIFACT_PATHS.utilities,
-      content: renderUtilities(sourceCss, refVersion),
+      content: utilities,
     },
     {
       path: SEMANTIC_THEME_ARTIFACT_PATHS.surfaces,
-      content: renderSurfaces(sourceCss, refVersion),
+      content: surfaces,
     },
   ];
 

@@ -133,7 +133,7 @@ function ThreadMentionPopoverBody({
               ? "bg-token-foreground/8 text-token-description-foreground"
               : chip.tone === "muted"
                 ? "bg-token-foreground/5 text-token-description-foreground"
-                : "bg-token-charts-blue/10 text-token-charts-blue",
+                : "bg-(--blue-300)/10 text-(--blue-300)",
           )}
         >
           <ThreadMentionStateIcon thread={thread} resolving={resolving} missing={missing} />

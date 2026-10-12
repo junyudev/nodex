@@ -1,14 +1,14 @@
 /*
- * Generated semantic theme contract (refVersion 26.903.71938).
+ * Generated semantic theme contract (refVersion 26.1007.30912).
  * Do not edit by hand. Run:
- *   pnpm run semantic-theme:sync -- --source /temporary/reference.css --ref-version 26.903.71938
+ *   vp run semantic-theme:sync -- --source /temporary/reference.css --ref-version 26.1007.30912
  */
 
 @theme static {
   --cursor-interaction: pointer;
-  --diffs-font-size: var(--vscode-editor-font-size, 12px);
-  --font-mono: var(--vscode-editor-font-family, var(--font-mono-default));
-  --font-sans: var(--vscode-font-family, var(--font-sans-default));
+  --diffs-font-size: var(--font-code-size, 12px);
+  --font-mono: var(--font-code-family, var(--font-mono-default));
+  --font-sans: var(--font-ui-family, var(--font-sans-default));
   --h-token-button-composer-gap: var(--spacing-token-button-composer-gap);
   --height-toolbar: 46px;
   --height-toolbar-sm: 36px;
@@ -34,6 +34,7 @@
   --spacing-token-safe-header-left: 0px;
   --spacing-token-safe-header-right: 0px;
   --spacing-token-sidebar: clamp(240px, 300px, min(520px, calc(100vw - 320px)));
+  --text-heading-lg: 24px;
   --text-heading-md: 20px;
   --thread-content-max-width: none;
 }
@@ -61,11 +62,6 @@
   --text-heading-md: 18px;
   --thread-composer-max-width: calc(var(--thread-content-max-width) + 1rem);
   --thread-content-max-width: 48rem;
-  --vscode-chat-editor-font-size: var(--vscode-editor-font-size);
-  --vscode-chat-font-size: var(--vscode-font-size);
-  --vscode-editor-font-family: ui-monospace, "SFMono-Regular", "SF Mono", Menlo, Consolas, "Liberation Mono", monospace;
-  --vscode-editor-font-size: var(--text-sm);
-  --vscode-font-size: var(--text-base);
 }
 
 [data-codex-window-type="browser"] {

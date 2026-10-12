@@ -31,6 +31,11 @@
 
 /* fix button pointer */
 @layer base {
+  ::selection {
+    background-color: var(--color-background-text-selection);
+    color: var(--color-text);
+  }
+
   button {
     @apply cursor-pointer;
   }
@@ -202,8 +207,8 @@
 }
 
 [data-nodex-editor-selection-surface] {
-  --nfm-native-selection-background: var(--color-background-editor-text-selection);
-  --nfm-retained-inline-selection-background: var(--color-background-editor-text-selection);
+  --nfm-native-selection-background: var(--color-background-text-selection);
+  --nfm-retained-inline-selection-background: var(--color-background-text-selection);
   --nfm-retained-inline-selection-padding: 2px 0;
   --nfm-block-selection-opacity: 0;
 }
@@ -277,11 +282,11 @@
 
 /* Search match highlights (applied by ProseMirror extension) */
 .nfm-search-match {
-  background: color-mix(in srgb, var(--yellow-bg) 78%, transparent);
+  background: var(--content-search-match-background);
   border-radius: 2px;
 }
 .nfm-search-match-active {
-  background: color-mix(in srgb, var(--accent-blue) 28%, transparent);
+  background: var(--content-search-active-match-background);
 }
 
 .nfm-editor [class*="bn-"] {
@@ -496,13 +501,13 @@
 }
 
 .nfm-editor .bn-code-block-source-popup-ok-button {
-  background-color: var(--accent-blue);
-  color: var(--white);
+  background-color: var(--color-chart-blue);
+  color: var(--app-color-text-on-accent);
 }
 
 .nfm-editor .bn-code-block-source-popup-ok-button:disabled {
-  background-color: color-mix(in srgb, var(--accent-blue) 36%, transparent);
-  color: color-mix(in srgb, var(--white) 55%, transparent);
+  background-color: color-mix(in srgb, var(--color-chart-blue) 36%, transparent);
+  color: color-mix(in srgb, var(--app-color-text-on-accent) 55%, transparent);
   opacity: 1;
 }
 
@@ -714,8 +719,8 @@
   position: relative;
 }
 .nfm-editor .bn-block-content[data-content-type="checkListItem"] > div > input:checked {
-  background: var(--accent-blue);
-  border-color: var(--accent-blue);
+  background: var(--color-background-primary-solid);
+  border-color: var(--color-background-primary-solid);
 }
 .nfm-editor .bn-block-content[data-content-type="checkListItem"] > div > input:checked::after {
   content: "";
@@ -724,7 +729,7 @@
   top: 1px;
   width: 5px;
   height: 9px;
-  border: solid white;
+  border: solid var(--color-text-primary-solid);
   border-width: 0 2px 2px 0;
   transform: rotate(45deg);
 }
@@ -783,7 +788,7 @@
 .nfm-editor .bn-block-content[data-content-type="table"] {
   --nfm-table-border: color-mix(in srgb, var(--foreground) 13%, transparent);
   --nfm-table-hover: color-mix(in srgb, var(--foreground) 5%, transparent);
-  --nfm-table-selection: var(--accent-blue);
+  --nfm-table-selection: var(--color-token-focus-border);
   --nfm-table-cell-min-width: 120px;
   --nfm-table-cell-max-width: 240px;
   width: fit-content;
@@ -863,7 +868,7 @@
 .nfm-editor
   .bn-block-content[data-content-type="table"]
   :where(th, td)[data-background-color="blue"] {
-  background-color: color-mix(in srgb, var(--color-token-charts-blue) 22%, transparent);
+  background-color: color-mix(in srgb, var(--blue-300) 22%, transparent);
 }
 
 .nfm-editor
@@ -913,7 +918,7 @@
 }
 
 .nfm-editor .bn-block-content[data-content-type="table"] :where(th, td)[data-text-color="blue"] {
-  color: var(--color-token-charts-blue);
+  color: var(--blue-300);
 }
 
 .nfm-editor .bn-block-content[data-content-type="table"] :where(th, td)[data-text-color="purple"] {
@@ -938,7 +943,7 @@
 }
 
 .nfm-editor .bn-block-content[data-content-type="table"] .selectedCell {
-  background: color-mix(in srgb, var(--accent-blue) 10%, transparent);
+  background: var(--color-background-text-selection);
 }
 
 .nfm-editor .bn-block-content[data-content-type="table"] .selectedCell::after {
@@ -951,7 +956,7 @@
 }
 
 .nfm-editor .bn-block-content[data-content-type="table"] .column-resize-handle:hover {
-  background: color-mix(in srgb, var(--accent-blue) 65%, transparent);
+  background: color-mix(in srgb, var(--color-token-focus-border) 65%, transparent);
 }
 
 .nfm-editor .table-widgets-container {
@@ -1189,16 +1194,13 @@
 /* ===== ProseMirror / DnD Overrides ===== */
 
 .prosemirror-dropcursor-block {
-  background-color: #a0caf2 !important;
+  background-color: var(--color-token-focus-border) !important;
   height: 3.5px !important;
-}
-.dark .prosemirror-dropcursor-block {
-  background-color: #1d4b77 !important;
 }
 
 /*
  * Whole-Block selection and embedded-context focus are separate layers:
- * authoritative Block selection uses a blue wash over its visual scope, while
+ * authoritative Block selection uses the selection fill over its visual scope, while
  * Page contexts use a quiet halo only while they own the active selection.
  */
 [data-nodex-block-selection-presentation]
@@ -1234,7 +1236,7 @@
   inset: 2px;
   z-index: 81;
   pointer-events: none;
-  background: rgba(35, 131, 226, 0.14);
+  background: var(--color-background-text-selection);
   border-radius: 4px;
   opacity: var(--nfm-block-selection-opacity);
 }
@@ -1259,7 +1261,7 @@
   inset: 2px;
   z-index: 81;
   pointer-events: none;
-  background: rgba(35, 131, 226, 0.14);
+  background: var(--color-background-text-selection);
   border-radius: 4px;
   opacity: var(--nfm-block-selection-opacity);
 }
@@ -1288,7 +1290,7 @@
   inset: 0;
   z-index: 81;
   pointer-events: none;
-  background: rgba(35, 131, 226, 0.14);
+  background: var(--color-background-text-selection);
   border-radius: 4px;
   opacity: var(--nfm-block-selection-opacity);
 }
@@ -1340,7 +1342,7 @@
   position: absolute;
   pointer-events: none;
   z-index: 88;
-  background: rgba(35, 131, 226, 0.14);
+  background: var(--color-background-text-selection);
   border-radius: 4px;
 }
 
@@ -1379,22 +1381,11 @@
 
 /* ===== Terminal Panel ===== */
 
-[data-codex-terminal] {
-  --vscode-terminal-background: var(
-    --color-token-terminal-background,
-    var(--color-token-main-surface-primary)
-  );
-  --vscode-terminal-foreground: var(
-    --color-token-terminal-foreground,
-    var(--color-token-text-primary)
-  );
-}
-
 [data-codex-xterm] .xterm {
   background-color: transparent !important;
   height: 100% !important;
   padding: 0;
-  color: var(--vscode-terminal-foreground);
+  color: var(--color-codex-terminal-foreground);
   letter-spacing: 0;
 }
 
@@ -1449,8 +1440,8 @@
 }
 
 .terminal-fallback-surface {
-  background: var(--vscode-terminal-background);
-  color: var(--vscode-terminal-foreground);
+  background: var(--color-codex-terminal-background);
+  color: var(--color-codex-terminal-foreground);
 }
 
 /* ===== Page outliner Blocks ===== */

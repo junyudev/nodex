@@ -145,7 +145,7 @@ function LifecycleEditor({
         className={cn(
           "w-full resize-y rounded-lg border-[0.5px] border-token-border bg-token-input-background px-3 py-2.5",
           "font-mono text-sm text-token-text-primary outline-hidden placeholder:text-token-text-secondary/60",
-          "focus-visible:ring-2 focus-visible:ring-token-focus",
+          "focus-visible:ring-2 focus-visible:ring-token-focus-border",
         )}
       />
     </section>
@@ -252,7 +252,7 @@ function ActionEditor({
           className={cn(
             "w-full resize-y rounded-lg border-[0.5px] border-token-border bg-token-input-background px-3 py-2.5",
             "font-mono text-sm text-token-text-primary outline-hidden placeholder:text-token-text-secondary/60",
-            "focus-visible:ring-2 focus-visible:ring-token-focus",
+            "focus-visible:ring-2 focus-visible:ring-token-focus-border",
           )}
         />
         {error?.command ? (
@@ -531,7 +531,7 @@ export function LocalEnvironmentEditor({
             <span
               tabIndex={0}
               aria-label={LOCAL_ENVIRONMENT_SAVE_DISABLED_COPY[disabledReason]}
-              className="inline-flex rounded-lg focus-visible:ring-2 focus-visible:ring-token-focus"
+              className="inline-flex rounded-lg focus-visible:ring-2 focus-visible:ring-token-focus-border"
             >
               {saveButton}
             </span>

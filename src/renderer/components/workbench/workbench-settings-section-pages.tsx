@@ -1,4 +1,5 @@
 import { ClaudeAgentSettingsControl } from "./claude-agent-settings-control";
+import { AccentColorSettingControl } from "./accent-color-setting-control";
 import { OpenCodeAgentSettingsControl } from "./opencode-agent-settings-control";
 import { CodexHomeSettingsControl } from "./codex-home-settings-control";
 import { RecoveryEntry } from "@/features/document-recovery/recovery-entry";
@@ -314,13 +315,13 @@ export function GeneralSettingsPage({
 
 export function AppearanceSettingsPage() {
   return (
-    <SettingsPageSurface
-      title="Appearance"
-      subtitle="Theme and typography tokens used across the app."
-    >
-      <SectionBlock title="Theme">
-        <SettingRow label="Theme" description="Match system mode or force a fixed theme.">
+    <SettingsPageSurface title="Appearance">
+      <SectionBlock>
+        <SettingRow label="Theme">
           <ThemeSettingControl />
+        </SettingRow>
+        <SettingRow label="Accent color">
+          <AccentColorSettingControl />
         </SettingRow>
         <SettingRow
           label="Reduced motion"
@@ -328,16 +329,10 @@ export function AppearanceSettingsPage() {
         >
           <ReducedMotionSettingControl />
         </SettingRow>
-        <SettingRow
-          label="Sans font size"
-          description="Scales shared sans typography tokens and chat body text across the app."
-        >
+        <SettingRow label="Sans font size">
           <SansFontSizeSettingControl />
         </SettingRow>
-        <SettingRow
-          label="Code font size"
-          description="Sets editor/code typography globally via --vscode-editor-font-size."
-        >
+        <SettingRow label="Code font size">
           <CodeFontSizeSettingControl />
         </SettingRow>
       </SectionBlock>

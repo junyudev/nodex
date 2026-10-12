@@ -385,58 +385,63 @@ const collectObjectVariableReferences = (
   return references;
 };
 
-const selectorTargets = (selector: Selector): ReadonlySet<SemanticThemeTarget> => {
-  const windows = new Set<"electron" | "browser" | "extension">();
-  const schemes = new Set<"light" | "dark">();
-  let hasWindowConstraint = false;
-  let hasSchemeConstraint = false;
+interface SelectorTargetMatch {
+  readonly constrained: boolean;
+  readonly matches: boolean;
+}
 
-  const visit = (value: unknown): void => {
-    if (!value || typeof value !== "object") return;
-    if (Array.isArray(value)) {
-      for (const item of value) visit(item);
-      return;
-    }
-    const record = value as Readonly<Record<string, unknown>>;
-    if (record.type === "attribute" && record.name === "data-codex-window-type") {
-      const operation = record.operation as Readonly<Record<string, unknown>> | undefined;
-      const windowType = operation?.value === "chrome-extension" ? "extension" : operation?.value;
-      if (windowType === "electron" || windowType === "browser" || windowType === "extension") {
-        hasWindowConstraint = true;
-        windows.add(windowType);
-      }
-    }
-    if (record.type === "class" && typeof record.name === "string") {
-      if (record.name === "electron-dark" || record.name === "electron-light") {
-        hasWindowConstraint = true;
-        windows.add("electron");
-      }
-      if (record.name === "electron-dark" || record.name === "dark") {
-        hasSchemeConstraint = true;
-        schemes.add("dark");
-      }
-      if (record.name === "electron-light" || record.name.includes("color-scheme:light")) {
-        hasSchemeConstraint = true;
-        schemes.add("light");
-      }
-    }
-    for (const child of Object.values(record)) visit(child);
-  };
-  visit(selector);
+const UNCONSTRAINED_TARGET: SelectorTargetMatch = { constrained: false, matches: true };
 
-  return new Set(
-    SEMANTIC_THEME_TARGETS.filter((target) => {
-      const [windowType, scheme] = target.split("-") as [
-        "electron" | "browser" | "extension",
-        "light" | "dark",
-      ];
-      return (
-        (!hasWindowConstraint || windows.has(windowType)) &&
-        (!hasSchemeConstraint || schemes.has(scheme))
-      );
-    }),
-  );
+/** Preserve selector unions, negations, and nested appearance scopes in the finite target graph. */
+const selectorTargetMatch = (value: unknown, target: SemanticThemeTarget): SelectorTargetMatch => {
+  if (!value || typeof value !== "object") return UNCONSTRAINED_TARGET;
+  if (Array.isArray(value)) {
+    const parts = value.map((part) => selectorTargetMatch(part, target));
+    return {
+      constrained: parts.some((part) => part.constrained),
+      matches: parts.every((part) => part.matches),
+    };
+  }
+
+  const [windowType, scheme] = target.split("-");
+  const record = value as Readonly<Record<string, unknown>>;
+  if (record.type === "attribute") {
+    const operation = record.operation as Readonly<Record<string, unknown>> | undefined;
+    if (record.name === "data-codex-window-type" && typeof operation?.value === "string") {
+      const requested = operation.value === "chrome-extension" ? "extension" : operation.value;
+      return { constrained: true, matches: requested === windowType };
+    }
+    if (
+      record.name === "data-theme" &&
+      (operation?.value === "light" || operation?.value === "dark")
+    ) {
+      return { constrained: true, matches: operation.value === scheme };
+    }
+    return UNCONSTRAINED_TARGET;
+  }
+  if (record.type === "class") {
+    if (record.name === "electron-light" || record.name === "electron-dark") {
+      return { constrained: true, matches: record.name === target };
+    }
+    if (record.name === "dark") return { constrained: true, matches: scheme === "dark" };
+    if (typeof record.name === "string" && record.name.includes("color-scheme:light")) {
+      return { constrained: true, matches: scheme === "light" };
+    }
+    return UNCONSTRAINED_TARGET;
+  }
+  if (record.type !== "pseudo-class" || !Array.isArray(record.selectors)) {
+    return UNCONSTRAINED_TARGET;
+  }
+
+  const branches = record.selectors.map((branch) => selectorTargetMatch(branch, target));
+  const constrained = branches.some((branch) => branch.constrained);
+  if (!constrained) return UNCONSTRAINED_TARGET;
+  const matches = branches.some((branch) => branch.matches);
+  return { constrained, matches: record.kind === "not" ? !matches : matches };
 };
+
+const selectorTargets = (selector: Selector): ReadonlySet<SemanticThemeTarget> =>
+  new Set(SEMANTIC_THEME_TARGETS.filter((target) => selectorTargetMatch(selector, target).matches));
 
 const selectorsContainRoot = (selectors: readonly Selector[]): boolean => {
   let containsRoot = false;

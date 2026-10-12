@@ -189,7 +189,7 @@ export function createBrowserAgentCursorController(
   host: HTMLElement,
   {
     dataTestId = "browser-agent-cursor",
-    glowColor = "var(--color-accent-blue)",
+    glowColor = "var(--color-text-info)",
     onArrived,
   }: {
     dataTestId?: string;

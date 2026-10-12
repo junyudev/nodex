@@ -3,14 +3,8 @@
 @custom-variant extension (&:is([data-codex-window-type="extension"] *));
 
 /*
- * Authoritative design-token layer for the renderer.
- *
- * This is the maintained source equivalent of the relevant token sections from
- * design.local/tokens.css:
- * - Tailwind namespace values and utility-connected theme vars
- * - Nodex semantic light/dark tokens
- * - runtime surface tokens and color-mix() progressive enhancements
- * - custom utilities and runtime-scoped variants
+ * Product-owned foundations, feature colors, and renderer-shell behavior.
+ * Shared palette and semantic roles come from the generated theme contract.
  */
 
 @theme static {
@@ -106,7 +100,7 @@
   --shadow-overlay-2xl: 0px 10px 24px rgba(0, 0, 0, 0.28);
   --shadow-lg: 0px 8px 24px rgba(0, 0, 0, 0.12);
   --shadow-xl-spread: 0px 8px 24px rgba(0, 0, 0, 0.12);
-  --shadow-focus-glow: 0px 0px 6px var(--accent-blue);
+  --shadow-focus-glow: 0px 0px 6px var(--color-token-focus-border);
   --inset-shadow-field: inset 0px 1px 2px rgba(0, 0, 0, 0.04);
   --shadow-2xl: 0px 16px 32px -8px #00000030;
   --ease-standard: cubic-bezier(0.25, 0.1, 0.25, 1);
@@ -123,53 +117,15 @@
   --default-transition-timing-function: cubic-bezier(0.4, 0, 0.2, 1);
   --default-font-family: var(--font-sans);
   --default-mono-font-family: var(--font-mono);
-  --text-heading-lg: 28px;
 }
 
 :root {
-  --gray-0: #ffffff;
-  --gray-50: #f9f9f9;
-  --gray-100: #ededed;
-  --gray-150: #dfdfdf;
-  --gray-300: #afafaf;
-  --gray-500: #5d5d5d;
-  --gray-600: #414141;
-  --gray-750: #282828;
-  --gray-800: #212121;
-  --gray-900: #181818;
-  --gray-1000: #0d0d0d;
-  --white: #ffffff;
-  --black: #000000;
-  --red-50: var(--color-red-50);
-  --red-300: var(--color-red-300);
-  --red-400: var(--color-red-400);
-  --red-500: var(--color-red-500);
-  --red-600: var(--color-red-600);
-  --red-900: var(--color-red-900);
-  --pink-400: var(--color-pink-400);
-  --orange-50: var(--color-orange-50);
-  --orange-300: var(--color-orange-300);
-  --orange-400: var(--color-orange-400);
-  --orange-500: var(--color-orange-500);
-  --orange-700: var(--color-orange-700);
-  --orange-900: var(--color-orange-900);
-  --yellow-300: var(--color-yellow-300);
-  --yellow-400: var(--color-yellow-400);
-  --green-300: var(--color-green-300);
-  --green-400: var(--color-green-400);
-  --green-500: var(--color-green-500);
-  --blue-50: var(--color-blue-50);
-  --blue-100: var(--color-blue-100);
-  --blue-300: var(--color-blue-300);
-  --blue-400: var(--color-blue-400);
-  --blue-900: var(--color-blue-900);
-  --purple-300: var(--color-purple-300);
-  --purple-400: var(--color-purple-400);
+  --image-comment-marker-color: #2563eb;
+  --content-search-match-background: var(--app-color-accent-yellow);
+  --content-search-active-match-background: var(--app-color-accent-orange);
   --font-system: -apple-system, "system-ui", "Segoe UI", sans-serif;
-  --font-sans-default: var(--font-system);
   --font-mono-stack:
     ui-monospace, "SFMono-Regular", "SF Mono", Menlo, Consolas, "Liberation Mono", monospace;
-  --font-mono-default: var(--font-mono-stack);
   --sans-font-size-default: 15px;
   --sans-font-size: var(--vscode-font-size, var(--sans-font-size-default));
   --sans-font-scale: calc(var(--sans-font-size) / var(--sans-font-size-default));
@@ -187,10 +143,7 @@
   --cubic-enter: cubic-bezier(0.19, 1, 0.22, 1);
   --transition-duration-swift: 0.12s;
   --transition-duration-relaxed: 0.3s;
-  --transition-ease-basic: ease;
   --spacing-panel: 1.5rem;
-  --color-background-surface: var(--gray-0);
-  --color-background-elevated-primary-opaque: var(--gray-0);
   --page-stage-body-gutter-inline: calc(var(--spacing) * 18);
   --page-stage-body-content-max-width: 48rem;
   --page-stage-body-max-width: calc(
@@ -198,7 +151,6 @@
   );
   --pane-content-max-width: var(--page-stage-body-content-max-width);
   --diffs-font-family: var(--font-mono);
-  --diffs-font-size: var(--vscode-editor-font-size, 14px);
   --diffs-line-height: calc(var(--diffs-font-size, 14px) * 1.8);
   --diffs-deletion-color-override: var(--color-token-git-decoration-deleted-resource-foreground);
   --diffs-addition-color-override: var(--color-token-git-decoration-added-resource-foreground);
@@ -206,11 +158,6 @@
   --diffs-min-number-column-width: 4ch;
   --safe-area-left: 0px;
   --safe-area-right: 0px;
-  --codex-chat-font-size: var(--vscode-chat-font-size, var(--vscode-font-size, 15px));
-  --codex-chat-code-font-size: var(
-    --vscode-chat-editor-font-size,
-    var(--vscode-editor-font-size, 14px)
-  );
   --conversation-block-gap: 12px;
   --conversation-item-gap: 16px;
   --conversation-grouped-item-gap: 4px;
@@ -241,20 +188,12 @@
   --muted-foreground: #7d7a75;
   --accent: #f0efed;
   --accent-foreground: #2c2c2b;
-  --accent-blue: var(--blue-300);
+  --accent-blue: var(--color-chart-blue);
   --accent-blue-hover: color-mix(in srgb, var(--accent-blue) 88%, var(--black));
   --accent-blue-pressed: color-mix(in srgb, var(--accent-blue) 78%, var(--black));
-  --color-background-editor-text-selection: rgba(35, 131, 226, 0.28);
-  --color-text-foreground: var(--gray-1000);
-  --color-text-foreground-secondary: #0d0d0db3;
-  --color-text-foreground-tertiary: #0d0d0d80;
-  --color-text-accent: var(--accent-blue);
-  --color-icon-primary: var(--gray-1000);
-  --color-icon-secondary: #0d0d0db3;
-  --color-icon-tertiary: #0d0d0d80;
   --destructive: #e56458;
   --input: #e6e5e3;
-  --ring: var(--accent-blue);
+  --ring: var(--color-token-focus-border);
   --sidebar-header-padding-x: 0.5rem;
   --sidebar-row-padding-x: 0.5rem;
   --sidebar-row-padding-y: 0.3125rem;
@@ -265,12 +204,12 @@
   --sidebar-foreground: #0d0d0d;
   --sidebar-foreground-secondary: rgba(13, 13, 13, 0.75);
   --sidebar-foreground-tertiary: rgba(13, 13, 13, 0.5);
-  --sidebar-primary: #0d0d0d;
-  --sidebar-primary-foreground: #ffffff;
+  --sidebar-primary: var(--color-chart-blue);
+  --sidebar-primary-foreground: var(--app-color-text-on-accent);
   --sidebar-accent: rgba(13, 13, 13, 0.06);
   --sidebar-accent-foreground: #0d0d0d;
   --sidebar-border: rgba(230, 229, 227, 0.6);
-  --sidebar-ring: var(--accent-blue);
+  --sidebar-ring: var(--color-token-focus-border);
   --priority-critical-bg: rgba(206, 24, 0, 0.17);
   --priority-critical-text: #6d3531;
   --priority-high-bg: rgba(196, 88, 0, 0.2);
@@ -366,7 +305,7 @@
   --status-ship-text: #1a7f37;
   --chart-1: #e56458;
   --chart-2: #46a171;
-  --chart-3: var(--accent-blue);
+  --chart-3: var(--color-chart-blue);
   --chart-4: #d8a32f;
   --chart-5: #b577d6;
   --inline-code-bg: rgba(135, 131, 120, 0.15);
@@ -384,8 +323,6 @@
 }
 
 .dark {
-  --color-background-surface: var(--gray-900);
-  --color-background-elevated-primary-opaque: var(--gray-750);
   --background: #181818;
   --background-secondary: #202020;
   --background-tertiary: #383836;
@@ -411,26 +348,19 @@
   --muted-foreground: #ada9a3;
   --accent: #383836;
   --accent-foreground: #f0efed;
-  --color-text-foreground: var(--gray-150);
-  --color-text-foreground-secondary: #ffffffb3;
-  --color-text-foreground-tertiary: #ffffff80;
-  --color-text-accent: var(--accent-blue);
-  --color-icon-primary: #ffffffe6;
-  --color-icon-secondary: #ffffffb3;
-  --color-icon-tertiary: #ffffff80;
   --destructive: #e97366;
   --input: #383836;
-  --ring: var(--accent-blue);
+  --ring: var(--color-token-focus-border);
   --sidebar: rgba(25, 25, 25, 0.65);
   --sidebar-foreground: #ffffff;
   --sidebar-foreground-secondary: rgba(255, 255, 255, 0.75);
   --sidebar-foreground-tertiary: rgba(255, 255, 255, 0.5);
-  --sidebar-primary: var(--accent-blue);
-  --sidebar-primary-foreground: #ffffff;
+  --sidebar-primary: var(--color-chart-blue);
+  --sidebar-primary-foreground: var(--app-color-text-on-accent);
   --sidebar-accent: rgba(255, 255, 255, 0.1);
   --sidebar-accent-foreground: #ffffff;
   --sidebar-border: rgba(56, 56, 54, 0.5);
-  --sidebar-ring: var(--accent-blue);
+  --sidebar-ring: var(--color-token-focus-border);
   --priority-critical-bg: rgba(255, 94, 87, 0.526);
   --priority-critical-text: #e97366;
   --priority-high-bg: rgba(255, 143, 71, 0.482);
@@ -522,18 +452,14 @@
 }
 
 :root {
-  --color-background-editor-opaque: var(
-    --color-background-elevated-secondary-opaque,
-    var(--color-background-surface)
-  );
-  --color-background-control: var(--color-background-elevated-primary);
-  --color-background-control-opaque: var(--color-background-elevated-primary-opaque);
-  --color-token-bg-fog: var(--color-background-elevated-secondary);
+  --color-background-control: var(--app-color-background-elevated-primary);
+  --color-background-control-opaque: var(--app-color-background-elevated-primary-opaque);
+  --color-token-bg-fog: var(--color-background-secondary-soft);
   overscroll-behavior: none;
 }
 
 [data-codex-window-type="browser"] {
-  --color-token-bg-primary: var(--vscode-editor-background);
+  --color-token-bg-primary: var(--color-surface);
 }
 
 [data-codex-window-type="electron"] {
@@ -552,14 +478,14 @@
 }
 
 [data-codex-window-type="electron"].electron-opaque {
-  background-color: var(--color-background-surface-under);
+  background-color: var(--app-color-background-surface-under);
   background-image: none;
 }
 
 [data-codex-window-type="electron"].electron-opaque body {
-  background-color: var(--color-background-surface-under);
-  --color-background-elevated-primary: var(--color-background-elevated-primary-opaque);
-  --color-background-elevated-secondary: var(--color-background-elevated-secondary-opaque);
+  background-color: var(--app-color-background-surface-under);
+  --app-color-background-elevated-primary: var(--app-color-background-elevated-primary-opaque);
+  --app-color-background-elevated-secondary: var(--app-color-background-elevated-secondary-opaque);
   background-image: none;
 }
 
@@ -575,293 +501,4 @@
 
 [data-codex-window-type="electron"] .blend {
   mix-blend-mode: normal;
-}
-
-[data-codex-window-type="browser"] {
-  color-scheme: light;
-  --color-background-surface: var(--gray-0);
-  --color-background-surface-under: var(--gray-50);
-  --color-background-elevated-primary: #ffffffb3;
-  --color-background-elevated-primary-opaque: var(--gray-0);
-  --color-background-elevated-secondary: #0d0d0d05;
-  --color-background-elevated-secondary-opaque: #ededed66;
-  --color-background-button-primary: var(--gray-1000);
-  --color-background-button-primary-hover: #0d0d0d14;
-  --color-background-button-primary-active: #0d0d0d29;
-  --color-background-button-primary-inactive: #0d0d0d3d;
-  --color-background-button-secondary: #0d0d0d0d;
-  --color-background-button-secondary-hover: #0d0d0d12;
-  --color-background-button-secondary-active: #0d0d0d0a;
-  --color-background-button-secondary-inactive: #0d0d0d05;
-  --color-background-button-tertiary: transparent;
-  --color-background-button-tertiary-hover: #0d0d0d1a;
-  --color-background-button-tertiary-active: #0d0d0d33;
-  --color-background-accent: var(--blue-50);
-  --color-background-accent-hover: var(--blue-50);
-  --color-background-accent-active: var(--blue-50);
-  --color-background-status-success: #00a24012;
-  --color-background-status-warning: var(--orange-50);
-  --color-background-status-error: var(--red-50);
-  --color-background-danger: transparent;
-  --color-background-danger-hover: #e02e2acc;
-  --color-background-danger-active: #e02e2ae6;
-  --color-background-danger-inactive: #e02e2a80;
-  --color-text-foreground: var(--gray-1000);
-  --color-text-foreground-secondary: #0d0d0db3;
-  --color-text-foreground-tertiary: #0d0d0d80;
-  --color-text-button-primary: var(--gray-0);
-  --color-text-button-secondary: var(--gray-1000);
-  --color-text-button-tertiary: var(--gray-500);
-  --color-text-accent: var(--accent-blue);
-  --color-text-success: var(--green-500);
-  --color-text-warning: var(--orange-500);
-  --color-text-error: var(--red-500);
-  --color-icon-primary: var(--gray-1000);
-  --color-icon-secondary: #0d0d0db3;
-  --color-icon-tertiary: #0d0d0d80;
-  --color-icon-inverted: var(--gray-0);
-  --color-icon-accent: var(--accent-blue);
-  --color-icon-success: var(--green-500);
-  --color-icon-warning: var(--orange-500);
-  --color-icon-error: var(--red-500);
-  --color-accent-red: var(--red-500);
-  --color-accent-blue: var(--accent-blue);
-  --color-accent-yellow: var(--yellow-400);
-  --color-accent-orange: var(--orange-500);
-  --color-accent-green: var(--green-500);
-  --color-accent-purple: var(--purple-400);
-  --color-border: #0d0d0d14;
-  --color-border-heavy: #0d0d0d1f;
-  --color-border-light: #0d0d0d0d;
-  --color-border-warning: #e2550726;
-  --color-border-error: #e02e2a26;
-  --color-border-focus: var(--accent-blue);
-  --color-decoration-added: var(--green-500);
-  --color-decoration-modified: var(--orange-700);
-  --color-decoration-deleted: var(--red-600);
-  --color-decoration-unchanged: var(--gray-300);
-  --color-editor-added: #00a24026;
-  --color-editor-modified: #923b0f26;
-  --color-editor-deleted: #ba262326;
-  --color-editor-unchanged: #afafaf26;
-  --vscode-terminal-ansiBlack: #000;
-  --vscode-terminal-ansiRed: #d53538;
-  --vscode-terminal-ansiGreen: #008809;
-  --vscode-terminal-ansiYellow: #bd5800;
-  --vscode-terminal-ansiBlue: #001bcb;
-  --vscode-terminal-ansiMagenta: #751ed9;
-  --vscode-terminal-ansiCyan: #0071ea;
-  --vscode-terminal-ansiWhite: #666;
-  --vscode-terminal-ansiBrightBlack: #000;
-  --vscode-terminal-ansiBrightRed: #f44a4c;
-  --vscode-terminal-ansiBrightGreen: #59d24e;
-  --vscode-terminal-ansiBrightYellow: #f87915;
-  --vscode-terminal-ansiBrightBlue: #006aff;
-  --vscode-terminal-ansiBrightMagenta: #9840ff;
-  --vscode-terminal-ansiBrightCyan: #20b8ff;
-  --vscode-terminal-ansiBrightWhite: #828282;
-  --color-simple-scrim: #0000001a;
-}
-
-@supports (color: color-mix(in lab, red, red)) {
-  [data-codex-window-type="browser"] {
-    --color-background-elevated-primary: color-mix(in oklab, var(--gray-0) 70%, transparent);
-    --color-background-elevated-secondary: color-mix(in oklab, var(--gray-1000) 2%, transparent);
-    --color-background-elevated-secondary-opaque: color-mix(
-      in oklab,
-      var(--gray-100) 40%,
-      transparent
-    );
-    --color-background-button-primary-hover: color-mix(in oklab, var(--gray-1000) 8%, transparent);
-    --color-background-button-primary-active: color-mix(
-      in oklab,
-      var(--gray-1000) 16%,
-      transparent
-    );
-    --color-background-button-primary-inactive: color-mix(
-      in oklab,
-      var(--gray-1000) 24%,
-      transparent
-    );
-    --color-background-button-secondary: color-mix(in oklab, var(--gray-1000) 5%, transparent);
-    --color-background-button-secondary-hover: color-mix(
-      in oklab,
-      var(--gray-1000) 7%,
-      transparent
-    );
-    --color-background-button-secondary-active: color-mix(
-      in oklab,
-      var(--gray-1000) 4%,
-      transparent
-    );
-    --color-background-button-secondary-inactive: color-mix(
-      in oklab,
-      var(--gray-1000) 2%,
-      transparent
-    );
-    --color-background-button-tertiary: color-mix(in oklab, var(--gray-1000) 0%, transparent);
-    --color-background-button-tertiary-hover: color-mix(
-      in oklab,
-      var(--gray-1000) 10%,
-      transparent
-    );
-    --color-background-button-tertiary-active: color-mix(
-      in oklab,
-      var(--gray-1000) 20%,
-      transparent
-    );
-    --color-background-status-success: color-mix(in oklab, var(--green-500) 7%, transparent);
-    --color-background-danger: color-mix(in oklab, var(--red-500) 0%, transparent);
-    --color-background-danger-hover: color-mix(in oklab, var(--red-500) 80%, transparent);
-    --color-background-danger-active: color-mix(in oklab, var(--red-500) 90%, transparent);
-    --color-background-danger-inactive: color-mix(in oklab, var(--red-500) 50%, transparent);
-    --color-text-foreground-secondary: color-mix(in oklab, var(--gray-1000) 70%, transparent);
-    --color-text-foreground-tertiary: color-mix(in oklab, var(--gray-1000) 50%, transparent);
-    --color-icon-secondary: color-mix(in oklab, var(--gray-1000) 70%, transparent);
-    --color-icon-tertiary: color-mix(in oklab, var(--gray-1000) 50%, transparent);
-    --color-border: color-mix(in oklab, var(--gray-1000) 8%, transparent);
-    --color-border-heavy: color-mix(in oklab, var(--gray-1000) 12%, transparent);
-    --color-border-light: color-mix(in oklab, var(--gray-1000) 5%, transparent);
-    --color-border-warning: color-mix(in oklab, var(--orange-500) 15%, transparent);
-    --color-border-error: color-mix(in oklab, var(--red-500) 15%, transparent);
-    --color-editor-added: color-mix(in oklab, var(--green-500) 15%, transparent);
-    --color-editor-modified: color-mix(in oklab, var(--orange-700) 15%, transparent);
-    --color-editor-deleted: color-mix(in oklab, var(--red-600) 15%, transparent);
-    --color-editor-unchanged: color-mix(in oklab, var(--gray-300) 15%, transparent);
-  }
-}
-
-:root.dark[data-codex-window-type="browser"] {
-  color-scheme: dark;
-  --color-background-surface: var(--gray-900);
-  --color-background-surface-under: #000000;
-  --color-background-elevated-primary: #212121f5;
-  --color-background-elevated-primary-opaque: var(--gray-750);
-  --color-background-elevated-secondary: #ffffff08;
-  --color-background-elevated-secondary-opaque: var(--gray-800);
-  --color-background-button-primary: var(--gray-1000);
-  --color-background-button-primary-hover: #0d0d0d0f;
-  --color-background-button-primary-active: #0d0d0d1a;
-  --color-background-button-primary-inactive: #0d0d0d08;
-  --color-background-button-secondary: #ffffff0d;
-  --color-background-button-secondary-hover: #ffffff14;
-  --color-background-button-secondary-active: #ffffff1f;
-  --color-background-button-secondary-inactive: #ffffff0a;
-  --color-background-button-tertiary: #ffffff08;
-  --color-background-button-tertiary-hover: #ffffff12;
-  --color-background-button-tertiary-active: #ffffff1a;
-  --color-background-accent: var(--blue-900);
-  --color-background-accent-hover: var(--blue-900);
-  --color-background-accent-active: var(--blue-900);
-  --color-background-status-success: #04b84c29;
-  --color-background-status-warning: var(--orange-900);
-  --color-background-status-error: var(--red-900);
-  --color-background-danger: #fa423e24;
-  --color-background-danger-hover: #fa423e47;
-  --color-background-danger-active: #fa423e5c;
-  --color-background-danger-inactive: #fa423e33;
-  --color-text-foreground: var(--gray-150);
-  --color-text-foreground-secondary: #ffffffb3;
-  --color-text-foreground-tertiary: #ffffff80;
-  --color-text-button-primary: var(--gray-1000);
-  --color-text-button-secondary: var(--gray-300);
-  --color-text-button-tertiary: var(--gray-500);
-  --color-text-accent: var(--accent-blue);
-  --color-text-success: var(--green-300);
-  --color-text-warning: var(--orange-300);
-  --color-text-error: var(--red-300);
-  --color-icon-primary: #ffffffe6;
-  --color-icon-secondary: #ffffffb3;
-  --color-icon-tertiary: #ffffff80;
-  --color-icon-inverted: var(--black);
-  --color-icon-accent: var(--accent-blue);
-  --color-icon-success: var(--green-300);
-  --color-icon-warning: var(--orange-300);
-  --color-icon-error: var(--red-300);
-  --color-accent-red: var(--red-300);
-  --color-accent-blue: var(--accent-blue);
-  --color-accent-yellow: var(--yellow-300);
-  --color-accent-orange: var(--orange-400);
-  --color-accent-green: var(--green-300);
-  --color-accent-purple: var(--purple-300);
-  --color-border: #ffffff14;
-  --color-border-heavy: #ffffff29;
-  --color-border-light: #ffffff0a;
-  --color-border-warning: #ff854966;
-  --color-border-error: #fa423e66;
-  --color-border-focus: #339cffb3;
-  --color-decoration-added: var(--green-300);
-  --color-decoration-modified: var(--orange-300);
-  --color-decoration-deleted: var(--red-400);
-  --color-decoration-unchanged: var(--gray-600);
-  --color-editor-added: #40c9773b;
-  --color-editor-modified: #ff85493b;
-  --color-editor-deleted: #fa423e3b;
-  --color-editor-unchanged: #41414133;
-  --vscode-terminal-ansiBlack: #ffffff;
-  --vscode-terminal-ansiRed: #f67576;
-  --vscode-terminal-ansiGreen: #85df7b;
-  --vscode-terminal-ansiYellow: #fa994c;
-  --vscode-terminal-ansiBlue: #3d8dff;
-  --vscode-terminal-ansiMagenta: #b06dff;
-  --vscode-terminal-ansiCyan: #6dcbf4;
-  --vscode-terminal-ansiWhite: #999999;
-  --vscode-terminal-ansiBrightBlack: #000000;
-  --vscode-terminal-ansiBrightRed: #f44a4c;
-  --vscode-terminal-ansiBrightGreen: #59d24e;
-  --vscode-terminal-ansiBrightYellow: #f87915;
-  --vscode-terminal-ansiBrightBlue: #006aff;
-  --vscode-terminal-ansiBrightMagenta: #9840ff;
-  --vscode-terminal-ansiBrightCyan: #20b8ff;
-  --vscode-terminal-ansiBrightWhite: #828282;
-  --color-simple-scrim: #ffffff1a;
-}
-
-@supports (color: color-mix(in lab, red, red)) {
-  :root.dark[data-codex-window-type="browser"] {
-    --color-background-elevated-primary: color-mix(in oklab, var(--gray-800) 96%, transparent);
-    --color-background-elevated-secondary: color-mix(in oklab, var(--gray-0) 3%, transparent);
-    --color-background-button-primary-hover: color-mix(in oklab, var(--gray-1000) 6%, transparent);
-    --color-background-button-primary-active: color-mix(
-      in oklab,
-      var(--gray-1000) 10%,
-      transparent
-    );
-    --color-background-button-primary-inactive: color-mix(
-      in oklab,
-      var(--gray-1000) 3%,
-      transparent
-    );
-    --color-background-button-secondary: color-mix(in oklab, var(--gray-0) 5%, transparent);
-    --color-background-button-secondary-hover: color-mix(in oklab, var(--gray-0) 8%, transparent);
-    --color-background-button-secondary-active: color-mix(in oklab, var(--gray-0) 12%, transparent);
-    --color-background-button-secondary-inactive: color-mix(
-      in oklab,
-      var(--gray-0) 4%,
-      transparent
-    );
-    --color-background-button-tertiary: color-mix(in oklab, var(--gray-0) 3%, transparent);
-    --color-background-button-tertiary-hover: color-mix(in oklab, var(--gray-0) 7%, transparent);
-    --color-background-button-tertiary-active: color-mix(in oklab, var(--gray-0) 10%, transparent);
-    --color-background-status-success: color-mix(in oklab, var(--green-400) 16%, transparent);
-    --color-background-danger: color-mix(in oklab, var(--red-400) 14%, transparent);
-    --color-background-danger-hover: color-mix(in oklab, var(--red-400) 28%, transparent);
-    --color-background-danger-active: color-mix(in oklab, var(--red-400) 36%, transparent);
-    --color-background-danger-inactive: color-mix(in oklab, var(--red-400) 20%, transparent);
-    --color-text-foreground-secondary: color-mix(in oklab, var(--gray-0) 70%, transparent);
-    --color-text-foreground-tertiary: color-mix(in oklab, var(--gray-0) 50%, transparent);
-    --color-icon-primary: color-mix(in oklab, var(--white) 90%, transparent);
-    --color-icon-secondary: color-mix(in oklab, var(--white) 70%, transparent);
-    --color-icon-tertiary: color-mix(in oklab, var(--white) 50%, transparent);
-    --color-border: color-mix(in oklab, var(--white) 8%, transparent);
-    --color-border-heavy: color-mix(in oklab, var(--white) 16%, transparent);
-    --color-border-light: color-mix(in oklab, var(--white) 4%, transparent);
-    --color-border-warning: color-mix(in oklab, var(--orange-300) 40%, transparent);
-    --color-border-error: color-mix(in oklab, var(--red-400) 40%, transparent);
-    --color-border-focus: color-mix(in oklab, var(--accent-blue) 70%, transparent);
-    --color-editor-added: color-mix(in oklab, var(--green-300) 23%, transparent);
-    --color-editor-modified: color-mix(in oklab, var(--orange-300) 23%, transparent);
-    --color-editor-deleted: color-mix(in oklab, var(--red-400) 23%, transparent);
-    --color-editor-unchanged: color-mix(in oklab, var(--gray-600) 20%, transparent);
-  }
 }

@@ -427,7 +427,7 @@ export function RelationPropertyEditor({
             aria-label={`Edit ${label} relation`}
             className={cn(
               "inline-flex min-h-6 min-w-0 max-w-full flex-wrap items-center gap-1 rounded-md text-left outline-hidden",
-              "focus-visible:ring-2 focus-visible:ring-token-focus disabled:opacity-50",
+              "focus-visible:ring-2 focus-visible:ring-token-focus-border disabled:opacity-50",
               presentation === "page"
                 ? cn(
                     "group/relation-trigger text-sm",

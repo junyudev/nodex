@@ -40,7 +40,8 @@
 }
 
 .workspacePdfPreviewPage .textLayer ::selection {
-  background: color-mix(in srgb, AccentColor, transparent 75%);
+  background: var(--color-background-text-selection);
+  color: transparent;
 }
 
 .workspacePdfPreviewPage .textLayer br::selection {

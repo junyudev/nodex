@@ -72,9 +72,9 @@ export function DateMentionInlineVisual(props: DateMentionInlineVisualProps) {
         type={buttonProps.type ?? "button"}
         className={cn(
           "notion-reminder inline-flex max-w-full items-baseline whitespace-nowrap rounded-[2px] font-medium align-baseline outline-hidden",
-          "focus-visible:ring-token-focus focus-visible:ring-2",
+          "focus-visible:ring-token-focus-border focus-visible:ring-2",
           interactive && "cursor-interaction hover:bg-token-foreground/5",
-          reminderTone === "pending" && "text-token-charts-blue",
+          reminderTone === "pending" && "text-(--blue-300)",
           reminderTone === "overdue" && "text-token-charts-red",
           className,
         )}
@@ -107,7 +107,7 @@ export function DateMentionInlineVisual(props: DateMentionInlineVisualProps) {
       className={cn(
         "notion-reminder inline-flex max-w-full items-baseline whitespace-nowrap rounded-[2px] font-medium align-baseline text-inherit",
         interactive && "cursor-interaction hover:bg-token-foreground/5",
-        reminderTone === "pending" && "text-token-charts-blue",
+        reminderTone === "pending" && "text-(--blue-300)",
         reminderTone === "overdue" && "text-token-charts-red",
         className,
       )}

@@ -149,7 +149,7 @@ function HookSourceRow({
     <div className="group flex w-full items-center hover:bg-token-list-hover-background focus-within:bg-token-list-hover-background">
       <button
         type="button"
-        className="focus-visible:outline-token-focus flex min-w-0 flex-1 cursor-interaction items-center gap-6 px-4 py-3 text-left disabled:cursor-default disabled:opacity-60"
+        className="focus-visible:outline-token-focus-border flex min-w-0 flex-1 cursor-interaction items-center gap-6 px-4 py-3 text-left disabled:cursor-default disabled:opacity-60"
         onClick={() => onSelect(entry.selection)}
       >
         <div className="flex min-w-0 flex-1 items-center gap-3">

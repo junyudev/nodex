@@ -69,7 +69,7 @@ function RenameChatDialogContent({
               ref={inputRef}
               aria-label="Chat title"
               placeholder="Add a title…"
-              className="w-full rounded-xl border border-token-border bg-token-main-surface-primary px-3 py-2 text-base text-token-input-foreground shadow-sm outline-none focus-visible:ring-2 focus-visible:ring-token-focus"
+              className="w-full rounded-xl border border-token-border bg-token-main-surface-primary px-3 py-2 text-base text-token-input-foreground shadow-sm outline-none focus-visible:ring-2 focus-visible:ring-token-focus-border"
               value={title}
               onChange={(event) => updateTitleFromInput(event.currentTarget.value)}
               onInput={(event) => updateTitleFromInput(event.currentTarget.value)}

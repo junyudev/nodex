@@ -5,7 +5,11 @@ import { dirname, join } from "node:path";
 import { afterEach, describe, expect, test } from "vite-plus/test";
 
 import { executeSemanticThemeCommand } from "./module";
-import { MIGRATED_SURFACE_POLICIES, SEMANTIC_THEME_ARTIFACT_PATHS } from "./profile";
+import {
+  MIGRATED_SURFACE_POLICIES,
+  SEMANTIC_THEME_ARTIFACT_PATHS,
+  SEMANTIC_THEME_RUNTIME_VARIABLES,
+} from "./profile";
 
 const workspaces: string[] = [];
 
@@ -19,6 +23,7 @@ const referenceFixture = `
     --vscode-editor-selectionBackground: #d8e8ff;
   }
   :root, :host {
+    ${SEMANTIC_THEME_RUNTIME_VARIABLES.map((name) => `${name}: #0285ff;`).join("\n")}
     --font-sans: sans-serif;
     --spacing-panel: 1rem;
     --corner-radius-scale: 1.25;
@@ -47,10 +52,13 @@ const referenceFixture = `
     --color-background-tip-badge: var(--vscode-editor-selectionBackground);
     --color-background-button-secondary: var(--vscode-editor-selectionBackground);
     --color-text-primary-solid: var(--vscode-button-foreground);
+    --color-text-inverse: var(--vscode-button-foreground);
     --color-text-composer-primary: var(--color-text-primary-solid);
     --color-text-user-message: var(--color-text);
     --color-text-on-accent: var(--vscode-button-foreground);
     --color-text-tip-badge: var(--vscode-charts-blue);
+    --color-chart-blue: var(--vscode-charts-blue);
+    --color-control-thumb-on-accent: white;
   }
   .text-info { color: var(--color-text-info); }
   .text-danger { color: var(--color-text-danger); }
@@ -59,6 +67,16 @@ const referenceFixture = `
   .border-default { border-color: var(--color-border); }
   .bg-text-info { background-color: var(--color-text-info); }
   .bg-text\\/10 { background-color: color-mix(in oklab, var(--color-text) 10%, transparent); }
+  .bg-composer-primary { background-color: var(--color-background-composer-primary); }
+  .text-composer-primary { color: var(--color-text-composer-primary); }
+  .bg-user-message { background-color: var(--color-background-user-message); }
+  .text-user-message { color: var(--color-text-user-message); }
+  .bg-chart-blue { background-color: var(--color-chart-blue); }
+  .bg-control-thumb-on-accent { background-color: var(--color-control-thumb-on-accent); }
+  .border-control-thumb-on-accent { border-color: var(--color-control-thumb-on-accent); }
+  .text-inverse { color: var(--color-text-inverse); }
+  .bg-primary-solid { background-color: var(--color-background-primary-solid); }
+  .text-primary-solid { color: var(--color-text-primary-solid); }
   .loading-shimmer { color: transparent; }
 `;
 
@@ -186,7 +204,14 @@ describe("semantic theme module", () => {
       },
       { workspaceRoot: workspace },
     );
-    await writeFile(source, referenceFixture.replace("#2878d0", "#1677cc"), "utf8");
+    await writeFile(
+      source,
+      referenceFixture.replace(
+        "--color-text-info: var(--vscode-charts-blue)",
+        "--color-text-info: #1677cc",
+      ),
+      "utf8",
+    );
 
     const result = await executeSemanticThemeCommand(
       { kind: "verify", sourcePath: source },

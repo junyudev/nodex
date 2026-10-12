@@ -199,7 +199,7 @@ function ThreadGoalEditDialog({
           <NodexDialogBody>
             <textarea
               rows={3}
-              className="min-h-[240px] w-full resize-none rounded-2xl border border-token-border bg-token-input-background px-3 py-2 text-token-input-foreground shadow-sm outline-none focus:ring-1 focus:ring-token-focus"
+              className="min-h-[240px] w-full resize-none rounded-2xl border border-token-border bg-token-input-background px-3 py-2 text-token-input-foreground shadow-sm outline-none focus:ring-1 focus:ring-token-focus-border"
               autoFocus
               aria-label={getThreadGoalMessage("composer.threadGoal.editDialog.ariaLabel")}
               value={objective}

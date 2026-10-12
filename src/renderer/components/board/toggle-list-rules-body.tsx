@@ -70,16 +70,15 @@ const CHIP_BASE =
   "h-[calc(var(--spacing)*6)] rounded-md bg-[var(--background-secondary)] text-[var(--foreground-secondary)] px-2 text-xs font-medium cursor-pointer hover:text-[var(--foreground)] hover:bg-[color-mix(in_srgb,var(--foreground)_8%,var(--background-secondary))]";
 
 const CHIP_ACTIVE =
-  "bg-[color-mix(in_srgb,var(--accent-blue)_18%,var(--background))] text-[var(--accent-blue)] font-semibold hover:bg-[color-mix(in_srgb,var(--accent-blue)_24%,var(--background))] hover:text-[var(--accent-blue)]";
+  "bg-text-info/18 text-info font-semibold hover:bg-text-info/24 hover:text-(--color-text-info)";
 
 const ICON_BTN =
-  "h-5 w-5 rounded bg-transparent text-[var(--foreground-tertiary)] inline-flex items-center justify-center cursor-pointer hover:not-disabled:text-[var(--foreground)] hover:not-disabled:bg-[var(--background-secondary)] disabled:opacity-30 disabled:cursor-not-allowed focus-visible:outline-2 focus-visible:outline-[var(--accent-blue)] focus-visible:outline-offset-1";
+  "h-5 w-5 rounded bg-transparent text-[var(--foreground-tertiary)] inline-flex items-center justify-center cursor-pointer hover:not-disabled:text-[var(--foreground)] hover:not-disabled:bg-[var(--background-secondary)] disabled:opacity-30 disabled:cursor-not-allowed focus-visible:outline-2 focus-visible:outline-token-focus-border focus-visible:outline-offset-1";
 
 const GHOST_BTN =
   "inline-flex items-center gap-1 text-xs font-medium text-[var(--foreground-tertiary)] cursor-pointer hover:text-[var(--foreground-secondary)]";
 
-const SUMMARY_BADGE_PRIMARY =
-  "bg-[color-mix(in_srgb,var(--accent-blue)_12%,var(--background))] text-[var(--accent-blue)] border-[color-mix(in_srgb,var(--accent-blue)_20%,transparent)]";
+const SUMMARY_BADGE_PRIMARY = "bg-text-info/12 text-info border-(--color-text-info)/20";
 
 /* ------------------------------------------------------------------ */
 /*  Summary badges                                                     */
@@ -208,19 +207,19 @@ export function ToggleListRulesBody({
           type="button"
           role="switch"
           aria-checked={showRaw}
-          className="inline-flex cursor-pointer items-center gap-2 text-xs font-medium text-(--foreground-secondary) focus-visible:rounded-full focus-visible:ring-2 focus-visible:ring-(--accent-blue)/50 focus-visible:outline-none"
+          className="inline-flex cursor-pointer items-center gap-2 text-xs font-medium text-(--foreground-secondary) focus-visible:rounded-full focus-visible:ring-2 focus-visible:ring-token-focus-border/50 focus-visible:outline-none"
           onClick={() => setShowRaw((prev) => !prev)}
         >
           <span>Raw</span>
           <span
             className={cn(
               "relative inline-flex h-5 w-8 shrink-0 items-center rounded-full transition-colors duration-200 ease-out",
-              showRaw ? "bg-(--accent-blue)" : "bg-foreground-10",
+              showRaw ? "bg-chart-blue" : "bg-text/10",
             )}
           >
             <span
               className={cn(
-                "size-4 rounded-full border border-white bg-white shadow-sm transition-transform duration-200 ease-out",
+                "size-4 rounded-full border border-control-thumb-on-accent bg-control-thumb-on-accent shadow-sm transition-transform duration-200 ease-out",
                 showRaw ? "translate-x-3.25" : "translate-x-0.75",
               )}
             />
@@ -262,7 +261,7 @@ export function ToggleListRulesBody({
                 if (dslError) setDslError(null);
                 setDslText(event.target.value);
               }}
-              className="min-h-80 w-full rounded-md border-[0.5px] border-(--border)/50 bg-[color-mix(in_srgb,var(--foreground)_3%,var(--background))] p-2 font-mono text-xs/relaxed text-(--foreground) focus:border-(--accent-blue)/40 focus:outline-none"
+              className="min-h-80 w-full rounded-md border-[0.5px] border-(--border)/50 bg-[color-mix(in_srgb,var(--foreground)_3%,var(--background))] p-2 font-mono text-xs/relaxed text-(--foreground) focus:border-token-focus-border/40 focus:outline-none"
               spellCheck={false}
             />
             <div className="flex items-center justify-between">
@@ -285,7 +284,7 @@ export function ToggleListRulesBody({
                 </button>
                 <button
                   type="button"
-                  className={cn(GHOST_BTN, "text-(--accent-blue) hover:text-(--accent-blue)")}
+                  className={cn(GHOST_BTN, "text-info hover:text-(--color-text-info)")}
                   onClick={applyDslText}
                 >
                   Apply

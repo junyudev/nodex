@@ -1,10 +1,15 @@
 /*
- * Generated semantic theme contract (refVersion 26.903.71938).
+ * Generated semantic theme contract (refVersion 26.1007.30912).
  * Do not edit by hand. Run:
- *   pnpm run semantic-theme:sync -- --source /temporary/reference.css --ref-version 26.903.71938
+ *   vp run semantic-theme:sync -- --source /temporary/reference.css --ref-version 26.1007.30912
  */
 
 @layer components {
+  .icon-xs {
+    width: var(--control-icon-size-xs);
+    height: var(--control-icon-size-xs);
+  }
+
   @supports (animation-timeline: --scroll-fade) {
     .horizontal-scroll-fade-mask {
       -webkit-mask: linear-gradient(to right in oklch, oklch(60% 0 0 / 0), oklch(85% 0 0) var(--left-fade) calc(100% - var(--right-fade)), oklch(60% 0 0 / 0));
@@ -94,30 +99,35 @@
   .heading-4xl {
     font-size: var(--text-4xl);
     font-weight: var(--font-weight-medium);
+    letter-spacing: inherit;
     line-height: 1;
   }
 
   .heading-3xl {
     font-size: var(--text-3xl);
     font-weight: var(--font-weight-medium);
+    letter-spacing: inherit;
     line-height: 1;
   }
 
   .heading-2xl {
     font-size: var(--text-2xl);
     font-weight: var(--font-weight-medium);
+    letter-spacing: inherit;
     line-height: 1;
   }
 
   .heading-xl {
     font-size: var(--text-xl);
     font-weight: var(--font-weight-medium);
+    letter-spacing: inherit;
     line-height: 1.2;
   }
 
   .heading-lg {
     font-size: var(--text-heading-lg);
     font-weight: var(--font-weight-medium);
+    letter-spacing: inherit;
     line-height: 1.2;
   }
 
@@ -137,12 +147,14 @@
   .heading-sm {
     font-size: var(--text-sm);
     font-weight: var(--font-weight-medium);
+    letter-spacing: inherit;
     line-height: 1.4;
   }
 
   .heading-xs {
     font-size: var(--text-xs);
     font-weight: var(--font-weight-medium);
+    letter-spacing: inherit;
     line-height: 1.4;
   }
 }
@@ -172,8 +184,28 @@
     scrollbar-gutter: stable;
   }
 
+  .border-control-thumb-on-accent {
+    border-color: var(--color-control-thumb-on-accent);
+  }
+
   .border-default {
     border-color: var(--color-border);
+  }
+
+  .bg-chart-blue, .bg-chart-blue\/10 {
+    background-color: var(--color-chart-blue);
+  }
+
+  .bg-composer-primary {
+    background-color: var(--color-background-composer-primary);
+  }
+
+  .bg-control-thumb-on-accent {
+    background-color: var(--color-control-thumb-on-accent);
+  }
+
+  .bg-primary-solid {
+    background-color: var(--color-background-primary-solid);
   }
 
   .bg-text-info, .bg-text-info\/10 {
@@ -190,12 +222,16 @@
     }
   }
 
+  .bg-user-message {
+    background-color: var(--color-background-user-message);
+  }
+
   .px-toolbar {
     padding-inline: var(--padding-toolbar);
   }
 
-  .font-vscode-editor {
-    font-family: var(--vscode-editor-font-family, var(--font-mono-default));
+  .font-code {
+    font-family: var(--font-code-family, var(--font-mono-default));
   }
 
   .disambiguated-digits {
@@ -218,12 +254,24 @@
     font-size: calc(var(--codex-chat-code-font-size) - 1px);
   }
 
+  .text-composer-primary {
+    color: var(--color-text-composer-primary);
+  }
+
   .text-danger {
     color: var(--color-text-danger);
   }
 
   .text-info {
     color: var(--color-text-info);
+  }
+
+  .text-inverse {
+    color: var(--color-text-inverse);
+  }
+
+  .text-primary-solid {
+    color: var(--color-text-primary-solid);
   }
 
   .semantic-text-secondary {
@@ -234,14 +282,18 @@
     color: var(--color-text-tertiary);
   }
 
+  .text-user-message {
+    color: var(--color-text-user-message);
+  }
+
   .duration-relaxed {
     --tw-duration: var(--transition-duration-relaxed);
     transition-duration: var(--transition-duration-relaxed);
   }
 
   .ease-basic {
-    --tw-ease: var(--transition-ease-basic);
-    transition-timing-function: var(--transition-ease-basic);
+    --tw-ease: var(--ease-basic);
+    transition-timing-function: var(--ease-basic);
   }
 
   .contain-inline-size {
@@ -255,7 +307,7 @@
     user-select: none;
   }
 
-  .draggable button, .no-drag {
+  [data-app-shell-application-menu-bar="true"] .draggable, .draggable button, .no-drag {
     -webkit-app-region: no-drag;
   }
 
@@ -263,7 +315,7 @@
     contain: initial;
   }
 
-  .\[\&\>\*\+\*\]\:mt-0 > * + *, .\[\&\>\*\:first-child\]\:mt-0 > :first-child {
+  .\[\&\>\*\:first-child\]\:mt-0 > :first-child {
     margin-top: 0;
   }
 
@@ -289,18 +341,6 @@
   }
 }
 
-@property --top-fade {
-  syntax: "<length>";
-  inherits: false;
-  initial-value: 0;
-}
-
-@property --bottom-fade {
-  syntax: "<length>";
-  inherits: false;
-  initial-value: 0;
-}
-
 @property --edge-fade-distance {
   syntax: "<length>";
   inherits: false;
@@ -314,6 +354,35 @@
 }
 
 @property --right-fade {
+  syntax: "<length>";
+  inherits: false;
+  initial-value: 0;
+}
+
+@keyframes edge-fade-horizontal {
+  0% {
+    --left-fade: 0;
+    --right-fade: var(--edge-fade-distance, 1rem);
+  }
+
+  .1%, 99.9% {
+    --left-fade: var(--edge-fade-distance, 1rem);
+    --right-fade: var(--edge-fade-distance, 1rem);
+  }
+
+  to {
+    --left-fade: var(--edge-fade-distance, 1rem);
+    --right-fade: 0;
+  }
+}
+
+@property --top-fade {
+  syntax: "<length>";
+  inherits: false;
+  initial-value: 0;
+}
+
+@property --bottom-fade {
   syntax: "<length>";
   inherits: false;
   initial-value: 0;
@@ -352,22 +421,5 @@
   99%, to {
     --top-fade: 0;
     --bottom-fade: 0;
-  }
-}
-
-@keyframes edge-fade-horizontal {
-  0% {
-    --left-fade: 0;
-    --right-fade: var(--edge-fade-distance, 1rem);
-  }
-
-  .1%, 99.9% {
-    --left-fade: var(--edge-fade-distance, 1rem);
-    --right-fade: var(--edge-fade-distance, 1rem);
-  }
-
-  to {
-    --left-fade: var(--edge-fade-distance, 1rem);
-    --right-fade: 0;
   }
 }

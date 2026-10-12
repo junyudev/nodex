@@ -230,7 +230,7 @@ export function BrowserProfileImportDialog({
               <label className="flex flex-col gap-1.5 text-sm text-token-text-primary">
                 Cookie domains
                 <textarea
-                  className="min-h-20 resize-y rounded-lg border border-token-border bg-token-main-surface-primary px-3 py-2 text-sm outline-none placeholder:text-token-text-tertiary focus-visible:ring-1 focus-visible:ring-token-focus"
+                  className="min-h-20 resize-y rounded-lg border border-token-border bg-token-main-surface-primary px-3 py-2 text-sm outline-none placeholder:text-token-text-tertiary focus-visible:ring-1 focus-visible:ring-token-focus-border"
                   value={domainAllowlist}
                   placeholder="Optional. One domain per line, for example example.com"
                   onChange={(event) => setDomainAllowlist(event.target.value)}

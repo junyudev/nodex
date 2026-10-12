@@ -439,7 +439,7 @@ function RelationFilterValuePicker({
             >
               <PageIcon className="size-4 text-token-description-foreground" />
               <span className="min-w-0 flex-1 truncate">{candidate.title || "Untitled"}</span>
-              {selected ? <CheckmarkIcon className="size-4 text-(--accent-blue)" /> : null}
+              {selected ? <CheckmarkIcon className="size-4 text-info" /> : null}
             </button>
           );
         })}
@@ -456,7 +456,7 @@ function RelationFilterValuePicker({
         {nextCursor ? (
           <button
             type="button"
-            className="flex min-h-8 w-full items-center justify-center rounded-lg text-xs text-(--accent-blue) hover:bg-token-foreground/5"
+            className="flex min-h-8 w-full items-center justify-center rounded-lg text-xs text-info hover:bg-token-foreground/5"
             disabled={loading}
             onClick={loadMore}
           >
@@ -560,7 +560,7 @@ export function DatabaseViewFilterValueField({
                 className="flex min-h-8 w-full items-center justify-between rounded-lg px-2 text-left text-sm hover:bg-token-list-hover-background disabled:opacity-50"
               >
                 {option.label}
-                {selected ? <CheckmarkIcon className="size-4 text-(--accent-blue)" /> : null}
+                {selected ? <CheckmarkIcon className="size-4 text-info" /> : null}
               </button>
             );
           })}

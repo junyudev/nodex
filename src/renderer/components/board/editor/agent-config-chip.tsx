@@ -330,7 +330,7 @@ function ModeSegmentedControl({
           aria-pressed={value === option.value}
           className={cn(
             "h-6 rounded-[5px] px-2 text-xs text-token-description-foreground outline-hidden transition-colors",
-            "hover:bg-token-bg/70 hover:text-token-foreground focus-visible:ring-token-focus focus-visible:ring-2",
+            "hover:bg-token-bg/70 hover:text-token-foreground focus-visible:ring-token-focus-border focus-visible:ring-2",
             value === option.value &&
               "bg-token-bg text-token-foreground shadow-[0_1px_2px_color-mix(in_srgb,var(--foreground)_8%,transparent)]",
           )}
@@ -514,7 +514,7 @@ export function AgentConfigInlineContentView({
               contentEditable={false}
               className={cn(
                 inlineTintedChipVariants({ tone: "neutral", interactive: true }),
-                "blend max-w-[22rem] border border-token-border/55 bg-token-foreground/[0.035] shadow-none outline-hidden focus-visible:ring-token-focus focus-visible:ring-2",
+                "blend max-w-[22rem] border border-token-border/55 bg-token-foreground/[0.035] shadow-none outline-hidden focus-visible:ring-token-focus-border focus-visible:ring-2",
               )}
               onMouseDown={(event) => event.preventDefault()}
               onClick={(event) => {

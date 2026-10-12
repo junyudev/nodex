@@ -211,6 +211,7 @@
     "node-pty": "^1.1.0",
     "pdfjs-dist": "5.4.296",
     "prettier": "3.8.3",
+    "react-colorful": "5.8.1",
     "rrule": "2.8.1",
     "smol-toml": "1.6.1",
     "socks-proxy-agent": "8.0.5",

@@ -29,9 +29,9 @@ export function NodexDynamicToolChangePreview({ change }: { change: NodexMarkdow
     >
       <div className="flex items-center justify-between gap-2 border-b-[0.5px] border-token-border-light px-2 py-1 text-xs text-token-description-foreground">
         <span className="truncate font-medium">{change.label}</span>
-        {stats ? <span className="shrink-0 font-vscode-editor">{stats}</span> : null}
+        {stats ? <span className="shrink-0 font-code">{stats}</span> : null}
       </div>
-      <div className="max-h-64 overflow-auto py-0.5 font-vscode-editor text-xs" dir="ltr">
+      <div className="max-h-64 overflow-auto py-0.5 font-code text-xs" dir="ltr">
         {visibleLines.map((line, index) => {
           if (line.kind === "separator") {
             return (

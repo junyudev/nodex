@@ -61,7 +61,7 @@ export function SidebarSectionNameDialog({
               maxLength={120}
               value={name}
               onChange={(event) => setName(event.currentTarget.value)}
-              className="w-full rounded-xl border border-token-border bg-token-main-surface-primary px-3 py-2 text-base text-token-input-foreground shadow-sm outline-none focus-visible:ring-2 focus-visible:ring-token-focus"
+              className="w-full rounded-xl border border-token-border bg-token-main-surface-primary px-3 py-2 text-base text-token-input-foreground shadow-sm outline-none focus-visible:ring-2 focus-visible:ring-token-focus-border"
               placeholder="Section name"
             />
           </NodexDialogBody>

@@ -6,6 +6,7 @@ const initialRoute = parameters.get("initialRoute");
 const platform = parameters.get("platform") || navigator.platform.toLowerCase();
 const isDark = theme === "dark" || (theme !== "light" && prefersDark);
 
+root.dataset.theme = isDark ? "dark" : "light";
 root.classList.toggle("dark", isDark);
 root.classList.toggle("electron-dark", isDark);
 root.classList.toggle("electron-light", !isDark);

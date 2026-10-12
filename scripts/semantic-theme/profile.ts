@@ -5,8 +5,8 @@ import type {
   SemanticUtilityProfile,
 } from "./types";
 
-export const SEMANTIC_THEME_GENERATOR_VERSION = 2;
-export const SEMANTIC_THEME_REF_VERSION = "26.903.71938";
+export const SEMANTIC_THEME_GENERATOR_VERSION = 3;
+export const SEMANTIC_THEME_REF_VERSION = "26.1007.30912";
 
 export const SEMANTIC_THEME_TARGETS = [
   "electron-light",
@@ -31,12 +31,17 @@ export const SEMANTIC_DECLARATION_PREFIXES = [
   "--color-background-",
   "--color-border",
   "--color-icon-",
+  "--color-surface",
+  "--color-codex-",
+  "--color-chart-",
+  "--color-control-",
   "--transition-duration-",
   "--transition-ease-",
 ] as const;
 
 export const CONTRACT_DECLARATION_PREFIXES = [
   "--color-token-",
+  "--app-color-",
   ...SEMANTIC_DECLARATION_PREFIXES,
 ] as const;
 
@@ -73,6 +78,7 @@ export const FOUNDATION_THEME_PROPERTIES = [
   "--thread-composer-max-width",
   "--markdown-wide-block-max-width",
   "--text-heading-md",
+  "--text-heading-lg",
   "--diffs-font-size",
 ] as const;
 
@@ -99,28 +105,10 @@ export const FOUNDATION_BROWSER_OVERRIDES = {
 
 export const CONTRACT_NODEX_OWNED_PROPERTIES = new Set([
   "--color-border",
-  "--color-text-success",
-  "--color-text-warning",
   "--color-token-bg-fog",
   "--color-token-bg-primary",
   "--transition-duration-relaxed",
 ]);
-
-export const CONTRACT_VALUE_NORMALIZATIONS = {
-  "--color-background-danger-surface": "var(--vscode-inputValidation-errorBackground)",
-  "--color-background-success-solid": "var(--vscode-charts-green)",
-  "--color-background-success-surface":
-    "color-mix(in oklab, var(--vscode-charts-green) 12%, transparent)",
-  "--color-background-warning-surface": "var(--vscode-inputValidation-warningBackground)",
-} as const;
-
-export const UTILITY_VALUE_REPLACEMENTS = {
-  "var(--ease-basic)": "var(--transition-ease-basic)",
-} as const;
-
-export const SURFACE_VALUE_REPLACEMENTS = {
-  "var(--color-codex-description)": "var(--color-token-description-foreground)",
-} as const;
 
 export const SEMANTIC_THEME_RUNTIME_PROVIDERS = [
   {
@@ -140,6 +128,15 @@ export const SEMANTIC_THEME_EXCLUSIONS = [
 ] as const satisfies readonly SemanticThemeExclusionProfile[];
 
 const ELECTRON_TARGETS = ["electron-light", "electron-dark"] as const;
+
+// The accent overlay and its swatch controls choose these providers by preset and appearance.
+export const SEMANTIC_THEME_RUNTIME_VARIABLES = [
+  ...["blue", "green", "yellow", "pink", "orange", "purple"].flatMap((color) => [
+    ...[75, 200, 400, 600, 800].map((tone) => `--${color}-${tone}`),
+    `--brand-${color}-400`,
+  ]),
+  "--gray-fixed-1000",
+] as const;
 
 export const SEMANTIC_THEME_REQUIRED_VARIABLES = [
   ...[
@@ -168,7 +165,13 @@ export const SEMANTIC_THEME_REQUIRED_VARIABLES = [
     "--color-border",
     "--color-token-description-foreground",
     "--color-token-editor-background",
+    "--color-chart-blue",
+    "--color-control-thumb-on-accent",
+    "--color-text-inverse",
+    "--color-background-primary-solid",
+    "--color-text-primary-solid",
   ].map((name) => ({ name, targets: ELECTRON_TARGETS })),
+  ...SEMANTIC_THEME_RUNTIME_VARIABLES.map((name) => ({ name, targets: ELECTRON_TARGETS })),
 ] satisfies readonly {
   readonly name: string;
   readonly targets: readonly SemanticThemeTarget[];
@@ -218,6 +221,37 @@ export const FOUNDATION_SOURCE_SELECTORS = {
   extension: [
     ':root[data-codex-window-type="extension"]',
     ':root[data-codex-window-type="chrome-extension"]',
+  ],
+} as const;
+
+export const CONTRACT_SOURCE_SELECTORS = {
+  base: [
+    ":root, :host",
+    ":root",
+    ":where(:root), :where([data-theme])",
+    ":where(:root, [data-theme])",
+  ],
+  scoped: [
+    ':where(:root:not([data-codex-window-type="extension"])), :where(:root:not([data-codex-window-type="extension"]) [data-theme])',
+    ':is(:where(:root:not([data-codex-window-type="extension"])), :where(:root:not([data-codex-window-type="extension"]) [data-theme])):where([data-theme="dark"])',
+    ':where(:root:not([data-codex-window-type="extension"])[data-theme="light"]), :where(:root:not([data-codex-window-type="extension"]) [data-theme="light"])',
+    ':where(:root:not([data-codex-window-type="extension"]):not([data-theme]))',
+    ':is(:where(:root), :where([data-theme])):where(:root[data-codex-window-type="browser"], :root[data-codex-window-type="browser"] *)',
+    ':where(:root[data-codex-window-type="browser"], :root[data-codex-window-type="browser"] [data-theme])',
+    '[data-codex-window-type="browser"]',
+    '[data-codex-window-type="electron"]',
+    ':root[data-codex-window-type="extension"]',
+    ':root[data-codex-window-type="extension"], :root[data-codex-window-type="extension"] :where([data-theme])',
+    ':is([data-codex-window-type="browser"], [data-codex-window-type="chrome-extension"], [data-codex-window-type="electron"]) body',
+    '[data-codex-window-type="electron"].electron-opaque body',
+    '[data-codex-window-type="electron"].electron-opaque :where([data-theme])',
+  ],
+  appearance: [
+    ':where([data-theme="light"])',
+    ':where([data-theme="dark"])',
+    ".electron-dark",
+    ".electron-light",
+    ".\\[color-scheme\\:light\\]",
   ],
 } as const;
 
@@ -272,6 +306,32 @@ export const SEMANTIC_UTILITY_PROFILE: readonly SemanticUtilityProfile[] = [
     collisionStrategy: "exact",
     consumers: ["agent-task"],
   },
+  ...[
+    { id: "bg-composer-primary", dependency: "--color-background-composer-primary" },
+    { id: "text-composer-primary", dependency: "--color-text-composer-primary" },
+    { id: "bg-user-message", dependency: "--color-background-user-message" },
+    { id: "text-user-message", dependency: "--color-text-user-message" },
+  ].map(({ id, dependency }) => ({
+    id,
+    selector: `.${id}`,
+    tokenDependencies: [dependency],
+    collisionStrategy: "exact" as const,
+    consumers: ["conversation"],
+  })),
+  ...[
+    { id: "bg-chart-blue", dependency: "--color-chart-blue" },
+    { id: "bg-control-thumb-on-accent", dependency: "--color-control-thumb-on-accent" },
+    { id: "border-control-thumb-on-accent", dependency: "--color-control-thumb-on-accent" },
+    { id: "text-inverse", dependency: "--color-text-inverse" },
+    { id: "bg-primary-solid", dependency: "--color-background-primary-solid" },
+    { id: "text-primary-solid", dependency: "--color-text-primary-solid" },
+  ].map(({ id, dependency }) => ({
+    id,
+    selector: `.${id}`,
+    tokenDependencies: [dependency],
+    collisionStrategy: "exact" as const,
+    consumers: ["shared-controls"],
+  })),
 ] as const;
 
 export const LEGACY_UTILITY_SELECTORS = [
@@ -300,7 +360,7 @@ export const LEGACY_UTILITY_SELECTORS = [
   ".text-size-code",
   ".text-size-code-sm",
   ".px-toolbar",
-  ".font-vscode-editor",
+  ".font-code",
   ".cursor-interaction",
   ".h-token-button-composer, .h-token-button-composer-sm",
   ".draggable",
@@ -315,25 +375,26 @@ export const LEGACY_UTILITY_SELECTORS = [
   ".vertical-scroll-fade-mask-bottom",
   ".disambiguated-digits",
   ".disambig-digits.slashed-zero",
-  ".\\[\\&_\\.ProseMirror\\]\\:focus-visible\\:outline-none .ProseMirror:focus-visible",
-  ".\\[\\&_\\.ProseMirror\\]\\:h-auto .ProseMirror",
-  ".\\[\\&_\\.ProseMirror\\]\\:min-h-\\[2rem\\] .ProseMirror",
-  ".\\[\\&_\\.ProseMirror\\]\\:resize-none .ProseMirror",
-  ".\\[\\&_\\.ProseMirror_p\\]\\:m-0 .ProseMirror p",
   ".\\[\\&_\\.contain-inline-size\\]\\:\\[contain\\:initial\\] .contain-inline-size",
   ".\\[\\&\\>\\*\\:first-child\\]\\:mt-0 > :first-child",
   ".\\[\\&\\>\\*\\:last-child\\]\\:mb-0 > :last-child",
   ".\\[\\&\\>ol\\:first-child\\]\\:mt-0 > ol:first-child",
   ".\\[\\&\\>ul\\:first-child\\]\\:mt-0 > ul:first-child",
-  ".\\[\\&_\\*\\]\\:text-token-description-foreground\\/80 *",
-  ".\\[\\&_\\*\\]\\:text-token-foreground\\/50 *",
 ] as const;
 
 export const SURFACE_SELECTORS = [
   ".loading-shimmer-pure-text, .loading-shimmer",
-  ".dark .loading-shimmer-pure-text, .dark .loading-shimmer",
+  ":where(.loading-shimmer-pure-text, .loading-shimmer, .loading-shimmer-dot-grid)",
+  ':is(.loading-shimmer-pure-text, .loading-shimmer):where([data-theme="dark"])',
+  ":is(.loading-shimmer-pure-text, .loading-shimmer):where(:not([data-theme]))",
+  ".loading-shimmer-working",
+  ".loading-shimmer-on-color",
   ".loading-shimmer:hover",
   ".loading-shimmer-pure-text-inverted",
+  '[data-codex-window-type="electron"]:not([data-codex-window-chrome="application-menu"]) :is([data-app-shell-frame][data-app-shell-workspace-tab-chrome], [data-app-shell-page-surface="true"], .app-shell-left-panel:not([data-app-shell-left-panel-appearance="content-surface"]))',
+  '[data-codex-window-type="electron"]:not([data-codex-window-chrome="application-menu"]) :is([data-app-shell-frame][data-app-shell-workspace-tab-chrome], [data-app-shell-page-surface="true"], .app-shell-left-panel:not([data-app-shell-left-panel-appearance="content-surface"]))[data-app-shell-page-surface="true"]',
+  '[data-codex-window-type="electron"]:not([data-codex-window-chrome="application-menu"]) :is([data-app-shell-frame][data-app-shell-workspace-tab-chrome], [data-app-shell-page-surface="true"]) .app-shell-left-panel:not([data-app-shell-left-panel-appearance="content-surface"])',
+  '[data-codex-window-type="electron"]:not([data-codex-window-chrome="application-menu"]) .app-shell-left-panel:not([data-app-shell-left-panel-appearance="content-surface"])::after',
 ] as const;
 
 export const COLLISION_RESOLUTIONS = {
@@ -397,11 +458,10 @@ export const SEMANTIC_THEME_PROFILE = {
     foundationRoot: FOUNDATION_ROOT_FALLBACKS,
     foundationElectron: FOUNDATION_ELECTRON_OVERRIDES,
     foundationBrowser: FOUNDATION_BROWSER_OVERRIDES,
-    contract: CONTRACT_VALUE_NORMALIZATIONS,
-    utility: UTILITY_VALUE_REPLACEMENTS,
-    surface: SURFACE_VALUE_REPLACEMENTS,
   },
   runtimeProviders: SEMANTIC_THEME_RUNTIME_PROVIDERS,
+  runtimeVariables: SEMANTIC_THEME_RUNTIME_VARIABLES,
+  sourceSelectors: CONTRACT_SOURCE_SELECTORS,
   exclusions: SEMANTIC_THEME_EXCLUSIONS,
   requiredVariables: SEMANTIC_THEME_REQUIRED_VARIABLES,
   collisions: COLLISION_RESOLUTIONS,

@@ -39,6 +39,7 @@ describe("workbench settings search catalog", () => {
     expect(hasSectionResult("contact info", "browser")).toBe(true);
     expect(hasSectionResult("browsing history", "browser")).toBe(true);
     expect(hasSectionResult("force fixed theme", "appearance")).toBe(true);
+    expect(hasSectionResult("custom hex color", "appearance")).toBe(true);
     expect(hasSectionResult("danger-full-access", "agent")).toBe(true);
     expect(hasSectionResult("OpenCode", "agent")).toBe(true);
     expect(hasSectionResult("Kimi", "agent")).toBe(true);

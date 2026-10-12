@@ -69,8 +69,8 @@ export function CanvasCardSidebar({
               onClick={onCreateAndPlace}
               className={cn(
                 "flex w-full items-center gap-1.5 rounded-sm px-2 py-1.5 text-xs font-medium",
-                "bg-blue-50 text-blue-700 hover:bg-blue-100",
-                "dark:bg-blue-900/20 dark:text-blue-400 dark:hover:bg-blue-900/30",
+                "bg-text-info/10 text-info hover:bg-text-info/15",
+                "focus-visible:ring-token-focus-border focus-visible:ring-2 focus-visible:outline-none",
                 "transition-colors",
               )}
             >
