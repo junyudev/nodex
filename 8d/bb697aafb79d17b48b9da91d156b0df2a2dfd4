@@ -1,0 +1,19 @@
+.claude/settings.json
+  s_e7c99a6100eac5::t_6817976072f374 1-5
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "8dbb697aafb79d17b48b9da91d156b0df2a2dfd4",
+  "prompts": {},
+  "sessions": {
+    "s_e7c99a6100eac5": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a12eff-c251-7223-8d82-93ba047c4cf5",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    }
+  }
+}
