@@ -1,0 +1,49 @@
+src/renderer/lib/page-create-focus.ts
+  s_5217742584db5d::t_42962d82be68d7 1
+  s_5217742584db5d::t_d21dd094733f16 51
+tests/e2e/standalone-database-starting-point.spec.ts
+  s_5217742584db5d::t_4fd952db20baa9 16,48-59,167-184,197,247-248,250
+src/renderer/lib/page-create-focus.jsdom.test.ts
+  s_5217742584db5d::t_b57c0d591a51e0 69
+  s_5217742584db5d::t_f98b769dd2da7f 90-115
+src/renderer/components/board/column-action-popover.tsx
+  s_5217742584db5d::t_8f6ade4ead8b48 2,26-29,41,79,92-107,191,196,205-206,225-237,245-252
+tests/e2e/electron-smoke.spec.ts
+  s_5217742584db5d::t_4fd952db20baa9 2429-2430,2433-2437
+docs/product-specs/database-pages-and-views-behavior.md
+  s_5217742584db5d::t_4fd952db20baa9 196-202
+src/renderer/components/board/column-action-popover.test.tsx
+  s_5217742584db5d::t_a666aaa0ed1734 1,4,25,75-97,101-109
+  s_5217742584db5d::t_42962d82be68d7 98-100
+  s_5217742584db5d::t_287c2fb306f762 110
+src/renderer/components/workbench/database-view-surface.test.tsx
+  s_5217742584db5d::t_fe317e44f752bb 29,2723,2739-2740,2745,2750-2790
+  s_30a10426266bd5::t_9b4930543d8839 2791
+src/renderer/components/workbench/database-view-surface.tsx
+  s_5217742584db5d::t_642e02d1a5e47d 1910
+  s_5217742584db5d::t_c022794f898f01 514-518,1555-1561,1691,1754,1764,1771,1981
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "a4a7d47f9a8bb8883c27f0875a59380c0f3c2f26",
+  "prompts": {},
+  "sessions": {
+    "s_30a10426266bd5": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a0fd41-2bba-7563-8147-cdc96cd290e9",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    },
+    "s_5217742584db5d": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a0fd4b-dbd9-7dc2-81af-57a58cec74c0",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    }
+  }
+}
