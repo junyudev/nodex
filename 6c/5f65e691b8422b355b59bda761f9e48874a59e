@@ -1,0 +1,59 @@
+CHANGELOG.md
+  s_2fb519cd6a9aee::t_f97f91dd9783c1 24
+docs/product-specs/codex-workspace-behavior.md
+  s_2fb519cd6a9aee::t_84e91fe4c48471 207-214
+src/main/app/MainApplicationLive.ts
+  s_2fb519cd6a9aee::t_82e94d43604650 180-181
+docs/CI.md
+  s_2fb519cd6a9aee::t_84e91fe4c48471 124-131
+src/main/ipc/handlers/TerminalIpc.ts
+  s_2fb519cd6a9aee::t_82e94d43604650 146,148
+src/main/terminal-runtime/TerminalRuntimeLive.ts
+  s_2fb519cd6a9aee::t_82e94d43604650 8,16-18
+src/main/terminal-runtime/TerminalSessions.node.test.ts
+  s_2fb519cd6a9aee::t_afcc77dd130f4e 19-22,105-106,112-117,122-124
+  s_2fb519cd6a9aee::t_bd195527db08cf 107,263,266-267,272-273
+  s_2fb519cd6a9aee::t_84e91fe4c48471 264-265,268-271,275,280
+  s_2fb519cd6a9aee::t_df70a1d751a649 111,118-121
+  s_2fb519cd6a9aee::t_048589149947df 23,276-279
+  s_2fb519cd6a9aee::t_7e2e2354a83ba4 196-216
+  s_2fb519cd6a9aee::t_05ab2ba4c719c8 104
+  s_2fb519cd6a9aee::t_c5f3d4c45f7eca 103,108,110,125,274
+  s_2fb519cd6a9aee::t_63b756417e6faa 126-127,159,183,217-220,281-286
+src/main/terminal-runtime/TerminalRuntimeMap.ts
+  s_2fb519cd6a9aee::t_82e94d43604650 9,48,164
+src/main/terminal-runtime/TerminalRuntime.integration.ts
+  s_2fb519cd6a9aee::t_f568b2d502f328 2,7-8,11-13,18,25-63,66-71,73,75-94,98-120,127-129,131-136,138-142
+src/main/terminal-runtime/TerminalSessions.ts
+  s_2fb519cd6a9aee::t_a26b000b6a4abf 3,193
+  s_2fb519cd6a9aee::t_84e91fe4c48471 260,359
+  s_2fb519cd6a9aee::t_f3c60b9cc30b80 230,259,261-285
+  s_2fb519cd6a9aee::t_82e94d43604650 9,101,486
+src/main/terminal-runtime/TerminalRuntimeMap.node.test.ts
+  s_2fb519cd6a9aee::t_6dac9cb69d2a73 6,131-145
+  s_8496bd2fc78127::t_eab18ad5ef7818 146-148
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "6c5f65e691b8422b355b59bda761f9e48874a59e",
+  "prompts": {},
+  "sessions": {
+    "s_2fb519cd6a9aee": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a13036-a2d6-7070-8aea-792749b98349",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    },
+    "s_8496bd2fc78127": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a13082-7498-74b2-bdc7-72b09daab7a1",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    }
+  }
+}
