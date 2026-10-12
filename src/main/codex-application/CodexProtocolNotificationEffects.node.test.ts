@@ -6,6 +6,7 @@ import * as Stream from "effect/Stream";
 import type { CodexServerNotification } from "../codex-runtime/CodexApplicationProtocol";
 import { BrowserUseRuntime } from "../host-runtime/BrowserUseRuntime";
 import { RemoteHostedPipRuntime } from "../host-runtime/RemoteHostedPipRuntime";
+import { CodexAppServerCapabilities } from "../codex-runtime/CodexAppServerCapabilities";
 import { CodexApplicationEventHub } from "./CodexApplicationEventHub";
 import { CodexAutomationTurnCompletion } from "./CodexAutomationTurnCompletion";
 import { CodexConversationDeltaBufferRuntime } from "./CodexConversationDeltaBufferRuntime";
@@ -40,6 +41,10 @@ it.effect("drains only Main-owned prose before applying terminal product consequ
     const deliveredHosts: string[] = [];
     const conversations = makeConversationEntityStateRegistry();
     const service = yield* make.pipe(
+      Effect.provideService(CodexAppServerCapabilities, {
+        forHost: () =>
+          Effect.die("This legacy notification fixture must not acquire timeline capabilities"),
+      } as unknown as CodexAppServerCapabilities["Service"]),
       Effect.provideService(
         CodexApplicationEventHub,
         CodexApplicationEventHub.of({

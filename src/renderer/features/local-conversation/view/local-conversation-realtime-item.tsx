@@ -1,10 +1,10 @@
 import { useCallback, useContext, useSyncExternalStore } from "react";
-import { ActivitySpinnerIcon } from "@/components/shared/icons";
 import { CodexTranscriptReadOwnerContext } from "../normalized-transcript-hooks";
 import type { CodexRealtimeTimelineEntry } from "../projection/normalized-timeline-entries";
 import { MarkdownRenderer } from "./shared/markdown/markdown-renderer";
 import { UserMessageText } from "./shared/user-message-collapse";
 import { realtimeSearchUnitKey } from "./local-conversation-search-source";
+import { LocalConversationPendingArtifact } from "./local-conversation-pending-artifact";
 
 /** This leaf reads retained native history; it neither opens a microphone nor starts a call. */
 export function LocalConversationRealtimeItem({
@@ -23,17 +23,12 @@ export function LocalConversationRealtimeItem({
     [itemId, owner],
   );
   const value = useSyncExternalStore(subscribe, () => owner?.readRealtimeItem(itemId) ?? null);
-  if (!value) return null;
+  if (!value || !owner) return null;
   const item = value.item;
   if (item.type === "realtimeSessionClosed")
     return <div className="py-2 text-center text-xs text-token-text-tertiary">Voice ended</div>;
   if (item.type === "bemItemPromoted")
-    return (
-      <ActivitySpinnerIcon
-        className="icon-xs text-token-text-tertiary"
-        aria-label="Loading conversation item"
-      />
-    );
+    return <LocalConversationPendingArtifact ownerKey={owner.key} />;
   if (item.type !== "transcriptSegment") return null;
   return (
     <div

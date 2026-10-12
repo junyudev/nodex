@@ -19,6 +19,7 @@ import {
 import { CodexConversationPresentation } from "../CodexConversationPresentation";
 
 import { CodexConversationEntityDocument } from "../../../shared/codex-conversation-entity-document";
+import { CodexItemTimelineIndex } from "../../../shared/codex-conversation-state/codex-item-timeline-index";
 import {
   releaseCanonicalConversationHistoryDraft,
   completeCanonicalConversationUnsubscribeDraft,
@@ -359,7 +360,7 @@ export interface ConversationEntityState {
     readonly createId: () => `${string}-${string}-${string}-${string}-${string}`;
     readonly reducerContext?: Pick<
       CodexConversationReducerContext,
-      "consumeContextCompactionSource" | "resolveCollabReceiverThread"
+      "consumeContextCompactionSource" | "resolveCollabReceiverThread" | "supportsThreadTimeline"
     >;
   }) => CodexConversationProtocolEventCommitResult;
   /** Admits one optimistic Main-owned turn into canonical state and every accepted projection. */
@@ -699,6 +700,7 @@ export function makeConversationEntityStateRegistry(): ConversationEntityStateRe
   const threadsById = new Map<string, Thread>();
   const aggregates = new Map<string, MutableConversationEntityState>();
   const capabilities = new Map<string, ConversationEntityState>();
+  const timelineIndex = new CodexItemTimelineIndex();
   const mutationListeners = new Set<(mutation: ConversationCanonicalMutation) => void>();
   let nextGeneration = 1;
 
@@ -755,6 +757,7 @@ export function makeConversationEntityStateRegistry(): ConversationEntityStateRe
     ): boolean => {
       const before = aggregate.document.canonicalState;
       if (!before || state === before) return false;
+      timelineIndex.update(before.itemTimeline, state.itemTimeline, document?.patchesFrom(before));
       aggregate.nextAcceptedTranscriptText = acceptedTranscriptText;
       aggregate.document = document ?? aggregate.document.withCanonicalState(state);
       if (aggregate.snapshot) {
@@ -1147,7 +1150,13 @@ export function makeConversationEntityStateRegistry(): ConversationEntityStateRe
           mutateCodexConversationEvent(
             draft,
             { type: "notification", notification },
-            { now: () => observedAtMs, createId, ...reducerContext },
+            {
+              now: () => observedAtMs,
+              createId,
+              ...reducerContext,
+              readTimelineEntryIndex: (identity) =>
+                timelineIndex.position(before.itemTimeline, identity),
+            },
           ),
         )!;
         return {

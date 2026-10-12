@@ -3,6 +3,7 @@ import {
   defineRendererCommand,
   invokePlainCommand,
   invokeRendererControl,
+  invokeRendererQuery,
 } from "../renderer-command";
 import { parseMcpAppFollowUpMessage } from "../mcp-app/mcp-app-follow-up";
 import { readDocumentTheme } from "../use-document-theme";
@@ -10,6 +11,16 @@ import type { McpAppFollowUpHandler } from "../mcp-app/mcp-app-follow-up-context
 import type { McpAppFollowUpMessage } from "../mcp-app/mcp-app-follow-up";
 import type { InlineVisualizationFollowUpHandler } from "./inline-visualization-follow-up-context";
 import { sendInlineVisualizationFollowUp } from "./inline-visualization-follow-up";
+import { createVisualizationDownloadHandler } from "./inline-visualization-download";
+import {
+  inlineVisualizationContentBounds,
+  inlineVisualizationContentWidth,
+} from "./inline-visualization-presentation";
+import { readInlineVisualizationStyleVariables } from "./inline-visualization-style-variables";
+import {
+  createInlineVisualizationStateUpdateHandler,
+  type InlineVisualizationWidgetStateOwner,
+} from "./inline-visualization-widget-state";
 import {
   connectMcpAppSandbox,
   type ConnectedMcpAppSandbox,
@@ -30,10 +41,18 @@ const openExternalCommand = defineRendererCommand({
   owner: "InlineVisualizationRuntime",
   protocol: { kind: "pending_operation" },
 });
+const copyImageCommand = defineRendererCommand({
+  key: "inline_visualization.copy_image",
+  channel: "codex:visualization:copy-image",
+  authority: "external",
+  owner: "InlineVisualizationRuntime",
+  protocol: { kind: "pending_operation" },
+});
 
 export interface InlineVisualizationSnapshot {
   readonly status: "loading" | "ready" | "error";
   readonly height: number;
+  readonly fullscreenHeight: number | null;
   readonly displayMode: "inline" | "fullscreen";
   readonly error: Error | null;
 }
@@ -43,6 +62,8 @@ export interface InlineVisualizationRuntime {
   readonly getSnapshot: () => InlineVisualizationSnapshot;
   readonly subscribe: (listener: () => void) => () => void;
   readonly setDisplayMode: (mode: "inline" | "fullscreen") => void;
+  readonly captureImage: () => Promise<Uint8Array>;
+  readonly copyAsImage: () => Promise<void>;
   readonly dispose: () => Promise<void>;
 }
 
@@ -54,6 +75,8 @@ interface HostCallbacks {
   readonly mode: (mode: "inline" | "fullscreen") => "inline" | "fullscreen";
   readonly openExternal: (href: string) => Promise<void>;
   readonly followUp?: McpAppFollowUpHandler;
+  readonly download?: (value: unknown) => Promise<void>;
+  readonly updateWidgetState?: McpAppHostApiHandlers["updateWidgetState"];
 }
 
 const asRecord = (value: unknown): Record<string, unknown> | null =>
@@ -72,6 +95,10 @@ export function createInlineVisualizationHostHandlers(
   return {
     callMcp: deny,
     callTool: (name, args) => {
+      if (name === "__codex_inline_visualization_download__") {
+        if (!callbacks.download) return deny();
+        return callbacks.download(args);
+      }
       if (name === "__codex_inline_visualization_ready__") return callbacks.ready();
       if (name === "__codex_inline_visualization_error__") return callbacks.fail(args);
       if (name === "__codex_inline_visualization_height__") {
@@ -121,7 +148,7 @@ export function createInlineVisualizationHostHandlers(
       return callbacks.followUp(message);
     },
     sendInstrument: () => undefined,
-    updateWidgetState: () => undefined,
+    updateWidgetState: callbacks.updateWidgetState ?? (() => ({ ok: false, retryable: false })),
   };
 }
 
@@ -147,13 +174,24 @@ function theme() {
   return readDocumentTheme();
 }
 
-function styleVariables(): Record<string, string> {
-  const style = getComputedStyle(document.documentElement);
+function visualizationUserAgent() {
+  const platform = navigator.platform.toLowerCase();
   return {
-    "--color-text-primary": style.getPropertyValue("--foreground").trim(),
-    "--color-text-secondary": style.getPropertyValue("--foreground-secondary").trim(),
-    "--color-background-primary": style.getPropertyValue("--background").trim(),
-    "--color-border-primary": style.getPropertyValue("--border").trim(),
+    capabilities: {
+      hover:
+        window.matchMedia?.("(any-hover: hover)")?.matches ||
+        window.matchMedia?.("(hover: hover)")?.matches ||
+        false,
+      touch:
+        window.matchMedia?.("(any-pointer: coarse)")?.matches ||
+        window.matchMedia?.("(pointer: coarse)")?.matches ||
+        false,
+    },
+    device: {
+      os: platform.includes("mac") ? "macos" : platform.includes("win") ? "windows" : "unknown",
+      platform: "native",
+      type: "desktop",
+    },
   };
 }
 
@@ -161,6 +199,7 @@ function styleVariables(): Record<string, string> {
 export function createInlineVisualizationRuntime(input: {
   readonly scopeId: string;
   readonly html: string;
+  readonly widgetState?: InlineVisualizationWidgetStateOwner;
   readonly onInteraction?: () => void;
   readonly canExpand?: () => boolean;
   readonly followUp?: InlineVisualizationFollowUpHandler;
@@ -174,18 +213,35 @@ export function createInlineVisualizationRuntime(input: {
   let webview = document.createElement("webview");
   const controller = new AbortController();
   const listeners = new Set<() => void>();
-  const widgetId = crypto.randomUUID();
+  const widgetId = input.widgetState?.identity.path ?? crypto.randomUUID();
   const followUp = input.followUp;
   let environmentReady = false;
   let hasMeasurement = false;
   let connected: ConnectedMcpAppSandbox | null = null;
+  let activeSandboxId: string | null = null;
   let snapshot: InlineVisualizationSnapshot = {
     status: "loading",
     height: INLINE_VISUALIZATION_INITIAL_HEIGHT,
+    fullscreenHeight: null,
     displayMode: "inline",
     error: null,
   };
   let disposePromise: Promise<void> | null = null;
+  let styleSnapshot = readInlineVisualizationStyleVariables();
+  let styleTheme = theme();
+  const bodyStyleVariables = () =>
+    JSON.stringify(
+      Array.from(document.body.style)
+        .filter((name) => name.startsWith("--"))
+        .sort()
+        .map((name) => [
+          name,
+          document.body.style.getPropertyValue(name),
+          document.body.style.getPropertyPriority(name),
+        ]),
+    );
+  let bodyStyleSnapshot = bodyStyleVariables();
+  let contextWidth = inlineVisualizationContentWidth(element.clientWidth);
   const publish = (next: InlineVisualizationSnapshot) => {
     if (controller.signal.aborted) return;
     snapshot = next;
@@ -206,8 +262,9 @@ export function createInlineVisualizationRuntime(input: {
     availableDisplayModes: input.canExpand?.() ? ["inline", "fullscreen"] : ["inline"],
     containerDimensions: {
       maxHeight: INLINE_VISUALIZATION_MAX_HEIGHT,
-      maxWidth: element.clientWidth,
+      maxWidth: inlineVisualizationContentWidth(element.clientWidth),
     },
+    deviceCapabilities: visualizationUserAgent().capabilities,
     displayMode: snapshot.displayMode,
     locale: navigator.language,
     platform: "desktop",
@@ -218,15 +275,16 @@ export function createInlineVisualizationRuntime(input: {
   });
   const updateContext = async () => {
     if (!connected || controller.signal.aborted) return;
+    contextWidth = inlineVisualizationContentWidth(element.clientWidth);
     await Promise.allSettled([
       connected.api.setTheme({ theme: theme() }),
       connected.api.setAdditionalGlobals({
         additionalGlobals: {
           displayMode: snapshot.displayMode,
           maxHeight: INLINE_VISUALIZATION_MAX_HEIGHT,
-          maxWidth: element.clientWidth,
+          maxWidth: inlineVisualizationContentWidth(element.clientWidth),
           visualizationTheme: theme(),
-          visualizationStyleVariables: styleVariables(),
+          visualizationStyleVariables: styleSnapshot,
         },
       }),
       connected.api.notifyMcpAppsHostContext({ hostContext: context() }),
@@ -238,16 +296,63 @@ export function createInlineVisualizationRuntime(input: {
     void updateContext();
     return snapshot.displayMode;
   };
+  const imageCaptureInput = () => {
+    if (
+      controller.signal.aborted ||
+      snapshot.status !== "ready" ||
+      !connected?.initId ||
+      !activeSandboxId ||
+      !element.isConnected
+    )
+      throw new Error("The response image is unavailable");
+    const bounds = webview.getBoundingClientRect();
+    const captureRect = inlineVisualizationContentBounds(bounds);
+    if (!captureRect) throw new Error("The response image is empty");
+    return {
+      sandboxId: activeSandboxId,
+      initId: connected.initId,
+      captureRect,
+      viewportSize: { width: bounds.width, height: bounds.height },
+    };
+  };
   const resize = new ResizeObserver(() => {
+    if (controller.signal.aborted) return;
+    const nextWidth = inlineVisualizationContentWidth(element.clientWidth);
+    if (nextWidth === contextWidth) return;
+    contextWidth = nextWidth;
     void updateContext();
   });
   resize.observe(element);
-  const themeObserver = new MutationObserver(() => {
+  const themeObserver = new MutationObserver((records) => {
+    const nextTheme = theme();
+    const nextBodyStyle = bodyStyleVariables();
+    const bodyLayoutOnly =
+      nextBodyStyle === bodyStyleSnapshot &&
+      nextTheme === styleTheme &&
+      records.every(
+        ({ target, attributeName }) => target === document.body && attributeName === "style",
+      );
+    bodyStyleSnapshot = nextBodyStyle;
+    // Native drag cursors and selection guards do not change the widget's custom properties.
+    if (bodyLayoutOnly) return;
+    const nextStyle = readInlineVisualizationStyleVariables();
+    if (
+      nextTheme === styleTheme &&
+      Object.keys(nextStyle).length === Object.keys(styleSnapshot).length &&
+      Object.entries(nextStyle).every(([name, value]) => styleSnapshot[name] === value)
+    )
+      return;
+    styleTheme = nextTheme;
+    styleSnapshot = nextStyle;
     void updateContext();
   });
   themeObserver.observe(document.documentElement, {
     attributes: true,
-    attributeFilter: ["class", "data-theme"],
+    attributeFilter: ["class", "data-theme", "style"],
+  });
+  themeObserver.observe(document.body, {
+    attributes: true,
+    attributeFilter: ["class", "style"],
   });
   const onFailure = () => fail(new Error("This response couldn’t load"));
   const failureEvents = ["crashed", "did-fail-load", "render-process-gone"];
@@ -257,10 +362,18 @@ export function createInlineVisualizationRuntime(input: {
     webview.className = "flex h-full min-h-0 w-full border-0 bg-transparent";
     failureEvents.forEach((name) => webview.addEventListener(name, onFailure));
   };
+  const releaseConnectedGuest = () =>
+    activeSandboxId && connected?.initId
+      ? invokeRendererControl("codex:visualization:release", {
+          sandboxId: activeSandboxId,
+          initId: connected.initId,
+        }).catch(() => undefined)
+      : Promise.resolve();
   configureGuest();
   const start = async (attempt = 0): Promise<void> => {
     const attemptController = new AbortController();
     const signal = AbortSignal.any([controller.signal, attemptController.signal]);
+    const downloadCapability = crypto.randomUUID();
     try {
       const identity = await deriveMcpAppSandboxIdentity({
         locale: navigator.language,
@@ -271,10 +384,20 @@ export function createInlineVisualizationRuntime(input: {
         widgetDomain: null,
       });
       if (signal.aborted) return;
+      activeSandboxId = identity.sandboxId;
       webview.setAttribute("partition", identity.partition);
       element.append(webview);
       const handlers = fenceHostHandlers(
         createInlineVisualizationHostHandlers({
+          download: createVisualizationDownloadHandler({
+            capability: downloadCapability,
+            signal,
+            consumeGesture: () =>
+              invokeRendererControl("codex:visualization:consume-gesture", {
+                sandboxId: identity.sandboxId,
+                initId: connected?.initId,
+              }),
+          }),
           ready: () => {
             settleReady();
           },
@@ -283,11 +406,18 @@ export function createInlineVisualizationRuntime(input: {
             const height = parseInlineVisualizationHeight(value);
             if (height === null) return;
             hasMeasurement = true;
-            if (snapshot.displayMode !== "fullscreen" && height !== snapshot.height)
-              publish({ ...snapshot, height });
+            if (snapshot.displayMode === "fullscreen") {
+              if (height !== snapshot.fullscreenHeight)
+                publish({ ...snapshot, fullscreenHeight: height });
+            } else if (height !== snapshot.height) publish({ ...snapshot, height });
             settleReady();
           },
           interact: input.onInteraction ?? (() => undefined),
+          updateWidgetState: createInlineVisualizationStateUpdateHandler({
+            owner: input.widgetState,
+            widgetId,
+            signal,
+          }),
           mode: setDisplayMode,
           openExternal: async (href) => {
             await invokePlainCommand(openExternalCommand, {
@@ -327,17 +457,22 @@ export function createInlineVisualizationRuntime(input: {
         return;
       }
       await updateContext();
+      const widgetState = (await input.widgetState?.read()) ?? null;
+      if (signal.aborted) return;
       const generator = connected.api.runWidgetCode({
         csp: INLINE_VISUALIZATION_CSP,
         displayMode: "inline",
         features: [],
         hostHandlesFollowUpMessageAuthorization: true,
-        html: buildInlineVisualizationDocument(input.html),
+        html: buildInlineVisualizationDocument(input.html, {
+          statePersistence: input.widgetState ? "host" : "none",
+          downloadCapability,
+        }),
         isFirstParty: false,
         isSidebarOpen: false,
         isTombstone: false,
         maxHeight: INLINE_VISUALIZATION_MAX_HEIGHT,
-        maxWidth: element.clientWidth,
+        maxWidth: inlineVisualizationContentWidth(element.clientWidth),
         measureWidth: false,
         mcpApps: {
           hostCapabilities: {
@@ -353,9 +488,10 @@ export function createInlineVisualizationRuntime(input: {
         toolInput: null,
         toolOutput: null,
         toolResponseMetadata: null,
+        userAgent: visualizationUserAgent(),
         viewParams: null,
         widgetId,
-        widgetState: null,
+        widgetState,
       });
       for await (const status of generator) {
         if (signal.aborted) break;
@@ -368,6 +504,7 @@ export function createInlineVisualizationRuntime(input: {
     } catch (error) {
       if (signal.aborted) return;
       if (asRecord(error)?.name === "TimeoutError" && attempt === 0) {
+        const release = releaseConnectedGuest();
         attemptController.abort();
         connected?.dispose();
         connected = null;
@@ -379,10 +516,12 @@ export function createInlineVisualizationRuntime(input: {
         publish({
           ...snapshot,
           height: INLINE_VISUALIZATION_INITIAL_HEIGHT,
+          fullscreenHeight: null,
           status: "loading",
           error: null,
         });
         configureGuest();
+        await release;
         await start(1);
         return;
       }
@@ -398,26 +537,38 @@ export function createInlineVisualizationRuntime(input: {
       return () => listeners.delete(listener);
     },
     setDisplayMode,
+    captureImage: async () =>
+      await invokeRendererQuery("codex:visualization:capture-image", imageCaptureInput()),
+    copyAsImage: async () => {
+      await invokePlainCommand(copyImageCommand, imageCaptureInput());
+    },
     dispose: () => {
       disposePromise ??= (async () => {
+        const teardown = connected?.api
+          .requestMcpAppsResourceTeardown({ timeoutMs: 500 })
+          .catch(() => undefined);
+        const release = releaseConnectedGuest();
         controller.abort();
         resize.disconnect();
         themeObserver.disconnect();
         failureEvents.forEach((name) => webview.removeEventListener(name, onFailure));
-        if (connected) {
+        connected?.dispose();
+        webview.removeAttribute("src");
+        element.remove();
+        listeners.clear();
+        // Teardown is best effort; it must never retain an interactive retired document.
+        if (teardown) {
           let timer: ReturnType<typeof setTimeout> | undefined;
           await Promise.race([
-            connected.api.requestMcpAppsResourceTeardown({ timeoutMs: 500 }).catch(() => undefined),
+            Promise.allSettled([teardown, release]),
             new Promise<void>((resolve) => {
               timer = setTimeout(resolve, 500);
             }),
           ]);
           if (timer) clearTimeout(timer);
+          return;
         }
-        connected?.dispose();
-        webview.removeAttribute("src");
-        element.remove();
-        listeners.clear();
+        await release;
       })();
       return disposePromise;
     },

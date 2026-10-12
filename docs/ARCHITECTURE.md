@@ -446,6 +446,9 @@ Conversation HTML responses use that same sandbox host with a distinct origin sc
 MessagePort handlers. Their typed file query belongs to the conversation application and derives read
 roots from the source Thread's execution context; guest HTML never receives filesystem or tool authority.
 External navigation consumes a single native input gesture from the attached guest and its owning window.
+Document download capabilities belong to their execution attempt and consume that same native gesture
+authority. Image capture and guest release resolve the exact owner and init registration; release removes
+admission before closing the native guest, so an in-flight capture cannot publish a retired response.
 The protocol runtime then interrupts bounded Cache/FiberMap fetch and prewarm work and invalidates
 responses. Pending attachment expiry belongs to a scoped FiberSet rather than a controller timer. No
 protocol cache, handler, guest callback, or expiry task survives runtime replacement.
@@ -502,12 +505,14 @@ dedicated trusted IPC adapter. A caller may stop waiting after a write is admitt
 filesystem transaction remains uninterruptible and Scope-owned; release rejects all new reads and
 writes, interrupts queued mutations, and drains the active write before returning. The filesystem helper is stateless; no application service owns a Promise tail or parallel shutdown path.
 
-Renderer persisted atoms and Codex client-thread identity aliases share one
+Renderer persisted atoms, Codex client-thread identity aliases and file-widget state share one
 Main-owned `PersistedAtomStore`. The repository owns its in-memory projection
-and process-local event revision; renderer ingress and Codex application logic
+and process-local event revision under a Profile-scoped capability; renderer ingress and Codex application logic
 receive the same instance explicitly. Rebuilding the Main application owner
 reopens durable values from disk with a fresh delivery revision and never
 inherits a module cache or test path override.
+The conversation visualization-state Module performs bounded single-file mutations in that repository;
+guest documents cannot choose another file's state identity or replace a whole Thread state record.
 
 Interactive login-shell discovery is owned once per Main or worktree-worker lifetime. The Main
 bootstrap snapshots its inherited environment, process platform, and home directory into immutable
@@ -750,6 +755,9 @@ Codex has four distinct authorities that must not collapse into one another:
   receive its actual Immer draft patches and snapshots. Main's Conversation Entity belongs to
   that Main manager, not to a second authority over window-owned documents. Canonical history,
   requests, local context and unread state belong to that document independently of loaded Turns.
+  History readers and live reducers admit timeline records through the same physical-host
+  capability and policy. Native generation or document ownership changes fence suspended work;
+  sparse identity indexes derive from canonical patches and never become another content owner.
 - Renderer presentation consumes a manager-derived normalized transcript read capability. The local manager supplies it through MessageChannel; the read owner stages atomic resets and independently subscribes to structure, Turn details, sparse item slots and keyed ordinary or realtime item values. Body composition consumes stable structure and presentation metadata; content readers subscribe to addressed leaves or fragments. Native mixed-history order is a derived presentation over the same document, never a second Turn authority. This projection accepts no canonical writes. Business reads materialize a Turn only when they request its content. Asynchronous question drafts
   and panel selection remain local to that manager; accepted canonical messages remain the answer
   authority. Questions steer the existing Turn without acquiring a blocking request or durable

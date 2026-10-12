@@ -5,6 +5,76 @@ import {
 } from "./codex-app-server-message-parser";
 
 describe("Codex app-server message parser", () => {
+  it("validates native promotion wire fields and exposes the generated consumer identity", () => {
+    for (const method of ["thread/realtime/item/started", "thread/realtime/item/completed"]) {
+      const parsed = parseCodexAppServerMessage({
+        method,
+        params: {
+          threadId: "thread",
+          item: {
+            type: "bemItemPromoted",
+            id: "receipt",
+            realtimeSessionId: "session",
+            turn_id: "turn",
+            item_id: "artifact",
+            presentation: { type: "wholeItem" },
+          },
+        },
+      });
+      expect(parsed).toEqual({
+        success: true,
+        data: {
+          kind: "notification",
+          notification: {
+            method,
+            params: {
+              threadId: "thread",
+              item: {
+                type: "bemItemPromoted",
+                id: "receipt",
+                realtimeSessionId: "session",
+                turnId: "turn",
+                itemId: "artifact",
+                presentation: { type: "wholeItem" },
+              },
+            },
+          },
+        },
+      });
+      expect(
+        parseCodexAppServerMessage({
+          method,
+          params: {
+            threadId: "thread",
+            item: {
+              type: "bemItemPromoted",
+              id: "receipt",
+              realtimeSessionId: "session",
+              turn_id: "turn",
+              item_id: 3,
+              presentation: { type: "wholeItem" },
+            },
+          },
+        }).success,
+      ).toBe(false);
+    }
+    const raw = { type: "bemItemPromoted", item_id: "raw", turn_id: "turn" };
+    expect(
+      parseCodexAppServerMessage({
+        method: "thread/realtime/itemAdded",
+        params: { threadId: "thread", item: raw },
+      }),
+    ).toEqual({
+      success: true,
+      data: {
+        kind: "notification",
+        notification: {
+          method: "thread/realtime/itemAdded",
+          params: { threadId: "thread", item: raw },
+        },
+      },
+    });
+  });
   it("preserves a valid generated notification as a discriminated object", () => {
     const result = parseCodexAppServerMessage({
       method: "turn/plan/updated",

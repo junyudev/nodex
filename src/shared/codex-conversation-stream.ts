@@ -544,6 +544,9 @@ function isThreadMutation(method: string): boolean {
     method.startsWith("item/") ||
     method === "thread/started" ||
     method === "thread/realtime/itemAdded" ||
+    method === "thread/realtime/item/started" ||
+    method === "thread/realtime/item/completed" ||
+    method === "thread/realtime/item/transcript/delta" ||
     method === "thread/status/changed" ||
     method === "thread/tokenUsage/updated" ||
     method === "error"

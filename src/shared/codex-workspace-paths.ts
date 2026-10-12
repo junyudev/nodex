@@ -28,7 +28,8 @@ function windowsComparablePath(value: string): string {
   return normalized;
 }
 
-function normalizeWorkspacePath(value: string): string {
+/** Stable native path identity; it preserves POSIX case and WSL distro boundaries. */
+export function normalizeCodexPathIdentity(value: string): string {
   const normalized = stripWindowsDevicePrefix(value).replaceAll("\\", "/");
   const drivePath = /^\/[a-z]:\//i.test(normalized) ? normalized.slice(1) : normalized;
   const wsl = normalized.match(/^\/\/(?:wsl\$|wsl\.localhost)\/([^/]+)(?:\/(.*))?$/i);
@@ -53,8 +54,8 @@ function windowsComparison(value: string): { path: string; explicit: boolean } |
 
 /** Windows aliases can match WSL mounts; ordinary Linux paths retain case and distro identity. */
 export function areWorkspacePathsEquivalent(left: string, right: string): boolean {
-  const normalizedLeft = normalizeWorkspacePath(left);
-  const normalizedRight = normalizeWorkspacePath(right);
+  const normalizedLeft = normalizeCodexPathIdentity(left);
+  const normalizedRight = normalizeCodexPathIdentity(right);
   if (normalizedLeft === normalizedRight) return true;
   const windowsLeft = windowsComparison(normalizedLeft);
   const windowsRight = windowsComparison(normalizedRight);

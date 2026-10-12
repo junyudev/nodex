@@ -6,6 +6,7 @@ describe("inline visualization host boundary", () => {
   test("clamps valid heights and rejects non-finite or invalid dimensions", () => {
     expect(parseInlineVisualizationHeight({ height: 10_000.5, width: 800 })).toBe(10_000);
     expect(parseInlineVisualizationHeight(0)).toBe(0);
+    expect(parseInlineVisualizationHeight({ height: 120.25, width: 500.5 })).toBe(121);
     for (const value of [NaN, Infinity, -1, { height: 20, width: -1 }, { height: "20" }])
       expect(parseInlineVisualizationHeight(value)).toBeNull();
   });

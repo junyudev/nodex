@@ -1,5 +1,6 @@
 import notificationSchema from "@nodex/codex-app-server-protocol/runtime-schemas/ServerNotification.schema.json";
 import { createGeneratedCodexSchema } from "../generated-codex-schema";
+import { CodexHistoryCursorStalled } from "./codex-history-cursor-stalled";
 import { CodexProtocolThreadItemSchema } from "../codex-protocol-thread-item";
 import {
   reconcileCodexHydratedSteering,
@@ -88,6 +89,7 @@ export interface CanonicalHistoryClient {
     pagination: Readonly<Record<string, CodexHistoryTurnItemsPagination>>,
   ): readonly CodexCanonicalTurnState[];
 }
+
 export interface CanonicalHistoryTurnPage {
   readonly source?: "ordinary" | "timeline";
   readonly timeline?: ThreadTimelineListResponse;
@@ -546,7 +548,7 @@ export async function loadCanonicalHistoryBoundaryPage(
     sortDirection: ref.edge === "older" ? "desc" : "asc",
   });
   if (page.response.nextCursor === boundary.handle.cursor)
-    throw new Error("thread/turns/list returned an unchanged cursor");
+    throw new CodexHistoryCursorStalled("thread/turns/list returned an unchanged cursor");
   const turns = withCanonicalHistoryItemCompletion(
     client.mapTurns(
       conversationId,

@@ -25,6 +25,7 @@ import {
 } from "./CodexMainConversationManagers";
 import { ConversationEntityMap } from "./internal/ConversationEntityMap";
 import type { ConversationEntityState } from "./internal/ConversationEntityState";
+import { canUseCodexThreadTimeline } from "./CodexThreadTimelinePolicy";
 
 interface HistoryLifetime {
   readonly manager: MainConversationManager;
@@ -97,10 +98,11 @@ export const make = Effect.gen(function* () {
         hostId: manager.hostId,
         supportsPaginatedHistory: () => capability.flags.paginatedHistory,
         supportsThreadTimeline: () =>
-          capability.hostId !== "durable" &&
-          capability.flags.threadTimeline &&
-          config !== null &&
-          isDevelopmentFeatureEnabled("thread-timeline-history", config.environment),
+          canUseCodexThreadTimeline(
+            capability,
+            config !== null &&
+              isDevelopmentFeatureEnabled("thread-timeline-history", config.environment),
+          ),
         sendTimelineRequest: (params, options) => {
           assertLifetime(lifetime);
           return callbacks

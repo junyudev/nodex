@@ -4,7 +4,7 @@ import * as Exit from "effect/Exit";
 import * as Scope from "effect/Scope";
 import { assert, it } from "@effect/vitest";
 import { vi } from "vite-plus/test";
-import type { Session, WebContents, WebPreferences } from "electron";
+import type { NativeImage, Session, WebContents, WebPreferences } from "electron";
 import {
   appendMcpAppSandboxInitId,
   buildMcpAppSandboxPartition,
@@ -147,6 +147,8 @@ it.effect("owns the complete MCP App sandbox callback graph with its Scope", () 
 
     const guestEvents = new EventEmitter();
     let destroyed = false;
+    const image = {} as NativeImage;
+    const capturePage = vi.fn(async () => image);
     const guest = Object.assign(guestEvents, {
       id: 72,
       session: sandboxSession.value,
@@ -154,6 +156,7 @@ it.effect("owns the complete MCP App sandbox callback graph with its Scope", () 
       isDestroyed: () => destroyed,
       setWindowOpenHandler: () => undefined,
       focus: () => undefined,
+      capturePage,
       close: () => {
         destroyed = true;
         guestEvents.emit("destroyed");
@@ -188,6 +191,32 @@ it.effect("owns the complete MCP App sandbox callback graph with its Scope", () 
     } finally {
       now.mockRestore();
     }
+
+    assert.strictEqual(yield* controller.captureImage(owner, sandboxId, "init-fixture"), image);
+    assert.isTrue(
+      Exit.isFailure(yield* Effect.exit(controller.captureImage(owner, sandboxId, "wrong-init"))),
+    );
+    assert.isTrue(
+      Exit.isFailure(
+        yield* Effect.exit(
+          controller.captureImage(
+            { id: 999, isDestroyed: () => false } as WebContents,
+            sandboxId,
+            "init-fixture",
+          ),
+        ),
+      ),
+    );
+    assert.strictEqual(capturePage.mock.calls.length, 1);
+    capturePage.mockImplementationOnce(async () => {
+      assert.isFalse(controller.releaseGuest(owner, sandboxId, "wrong-init"));
+      assert.isTrue(controller.releaseGuest(owner, sandboxId, "init-fixture"));
+      return image;
+    });
+    assert.isTrue(
+      Exit.isFailure(yield* Effect.exit(controller.captureImage(owner, sandboxId, "init-fixture"))),
+    );
+    assert.isFalse(controller.releaseGuest(owner, sandboxId, "init-fixture"));
 
     yield* Scope.close(scope, Exit.void);
 

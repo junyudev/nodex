@@ -143,6 +143,8 @@ type QueryEndpointPolicy =
   | "codex:mcp-apps:list"
   | "codex:mcp-resource:read"
   | "codex:visualization:read"
+  | "codex:visualization:state:read"
+  | "codex:visualization:capture-image"
   | "codex:mcp-server-statuses:list"
   | "codex:pasted-text:read"
   | "codex:thread-handoffs:list"
@@ -242,6 +244,7 @@ type QueryEndpointPolicy =
 
 type ControlEndpointPolicy =
   | "codex:visualization:consume-gesture"
+  | "codex:visualization:release"
   | "editor-history:release"
   | "editor-history:abandon"
   | "editor-history:abandon-transfer"
@@ -411,7 +414,9 @@ type CoreLocalCommitCommandEndpointPolicy =
   | "sidebar-sections:sessions:create"
   | "sidebar-sections:sessions:reorder";
 
-type MainRevisionCommandEndpointPolicy = "persisted-atom:update";
+type MainRevisionCommandEndpointPolicy =
+  | "persisted-atom:update"
+  | "codex:visualization:state:write";
 
 type PlainResultCommandEndpointPolicy =
   | "agent-backend:session:authenticate"
@@ -476,6 +481,7 @@ type PlainResultCommandEndpointPolicy =
   | "codex:account:logout"
   | "codex:account:rate-limit-reset:consume"
   | "codex:visualization:open-external"
+  | "codex:visualization:copy-image"
   | "codex:composer-appshot:capture"
   | "codex:composer-plugins:activate"
   | "codex:conversation-unread:set"

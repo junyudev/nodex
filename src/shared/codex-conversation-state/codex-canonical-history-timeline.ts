@@ -2,13 +2,13 @@ import type { Draft } from "immer";
 import type {
   ThreadItem,
   ThreadTimelineListResponse,
-  ThreadRealtimeItem,
   ThreadTimelineEntry,
   Turn,
 } from "@nodex/codex-app-server-protocol/v2";
 import type { ClientRequestResponsesByMethod } from "@nodex/effect-codex-app-server/rpc";
-import notificationSchema from "@nodex/codex-app-server-protocol/runtime-schemas/ServerNotification.schema.json";
-import { createGeneratedCodexSchema } from "../generated-codex-schema";
+import { normalizeCodexRealtimeItem } from "../codex-realtime-item";
+import { CodexHistoryCursorStalled } from "./codex-history-cursor-stalled";
+import { codexTimelineEntryIdentity } from "./codex-live-item-timeline";
 import { CodexProtocolThreadItemSchema } from "../codex-protocol-thread-item";
 import {
   normalizeCanonicalHistoryTurn,
@@ -24,12 +24,6 @@ import type {
 import { residentConversationTurns } from "./codex-turn-mutation";
 import type { CodexHistoryTurnItemsPagination } from "./codex-history-topology";
 
-const realtimeItemSchema = createGeneratedCodexSchema<ThreadRealtimeItem>({
-  $schema: notificationSchema.$schema,
-  definitions: notificationSchema.definitions,
-  $ref: "#/definitions/definitions__v2__ThreadRealtimeItem",
-});
-
 /** The native library's decoded shape becomes the generated wire contract at this one seam. */
 export function normalizeCanonicalHistoryTimelinePage(
   response: ClientRequestResponsesByMethod["thread/timeline/list"],
@@ -44,7 +38,8 @@ export function normalizeCanonicalHistoryTimelinePage(
   const data = response.data.map((entry): ThreadTimelineEntry => {
     if (!Number.isSafeInteger(entry.position) || entry.position < 0)
       throw new Error("Invalid native timeline position");
-    if (entry.type === "realtime") return { ...entry, item: realtimeItemSchema.parse(entry.item) };
+    if (entry.type === "realtime")
+      return { ...entry, item: normalizeCodexRealtimeItem(entry.item) };
     if (typeof entry.turnId !== "string" || entry.turnId.length === 0)
       throw new Error("Invalid native timeline Turn identity");
     if (entry.type === "item")
@@ -119,7 +114,7 @@ export async function readCanonicalHistoryTimeline(
     ).then(normalizeCanonicalHistoryTimelinePage);
   let timeline = await read(cursor);
   if (timeline.nextCursor !== null && timeline.nextCursor === cursor)
-    throw new Error("thread/timeline/list returned a repeated cursor");
+    throw new CodexHistoryCursorStalled("thread/timeline/list returned a repeated cursor");
   let shellPage =
     cursor === null
       ? await client.sendRequest(
@@ -133,7 +128,7 @@ export async function readCanonicalHistoryTimeline(
   const timelineCursors = new Set<string | null>([cursor]);
   for (;;) {
     if (timeline.nextCursor !== null && timelineCursors.has(timeline.nextCursor))
-      throw new Error("thread/timeline/list returned a repeated cursor");
+      throw new CodexHistoryCursorStalled("thread/timeline/list returned a repeated cursor");
     if (
       conversation?.canonicalVoiceHistory ||
       timeline.nextCursor === null ||
@@ -244,12 +239,6 @@ export async function readCanonicalHistoryTimeline(
   };
 }
 
-function timelineIdentity(entry: CodexCanonicalTimelineEntry): string {
-  if (entry.type === "item") return JSON.stringify([entry.type, entry.turnId, entry.item.id]);
-  if (entry.type === "realtime") return `realtime:${entry.item.id}`;
-  return `${entry.type}:${entry.turnId}`;
-}
-
 /** Voice presentation stores interleaved order without retaining a second copy of Turn payloads. */
 export function applyCanonicalHistoryTimelineDraft(
   state: Draft<CodexCanonicalConversationState>,
@@ -263,9 +252,10 @@ export function applyCanonicalHistoryTimelineDraft(
       : entry,
   );
   const previous = state.itemTimeline;
-  const oldIds = new Set(previous?.entries.map(timelineIdentity));
-  const newIds = new Set(entries.map(timelineIdentity));
-  const overlap = previous?.entries.findIndex((entry) => newIds.has(timelineIdentity(entry))) ?? -1;
+  const oldIds = new Set(previous?.entries.map(codexTimelineEntryIdentity));
+  const newIds = new Set(entries.map(codexTimelineEntryIdentity));
+  const overlap =
+    previous?.entries.findIndex((entry) => newIds.has(codexTimelineEntryIdentity(entry))) ?? -1;
   const prefix =
     mode === "replace" && page.nextCursor !== null && overlap >= 0
       ? previous!.entries.slice(0, overlap)
@@ -276,7 +266,7 @@ export function applyCanonicalHistoryTimelineDraft(
           (entry) =>
             entry.type === "realtime" &&
             state.realtimeItems?.[entry.item.id]?.completed === false &&
-            !newIds.has(timelineIdentity(entry)),
+            !newIds.has(codexTimelineEntryIdentity(entry)),
         ) ?? [])
       : [];
   state.itemTimeline = {
@@ -285,7 +275,10 @@ export function applyCanonicalHistoryTimelineDraft(
         ? (previous?.activeRealtimeSessionAtPageStart ?? null)
         : page.activeRealtimeSessionAtPageStart,
     entries: (mode === "prepend" && previous
-      ? [...entries.filter((entry) => !oldIds.has(timelineIdentity(entry))), ...previous.entries]
+      ? [
+          ...entries.filter((entry) => !oldIds.has(codexTimelineEntryIdentity(entry))),
+          ...previous.entries,
+        ]
       : [...prefix.filter((entry) => !live.includes(entry)), ...entries, ...live]) as Draft<
       CodexCanonicalTimelineEntry[]
     >,

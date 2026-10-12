@@ -8,6 +8,8 @@ import { makeTestElectronIpc } from "../../platform/electron/ElectronIpc.test-su
 import { ElectronIpc } from "../../platform/electron/ElectronIpc";
 import { WindowRuntime } from "../../window-runtime/WindowRuntime";
 import { live } from "./ApplicationLocalStateIpc";
+import { ProfilePersistedAtoms } from "../../local-store/ProfilePersistedAtoms";
+import { makePersistedAtomStore } from "../../local-store/persisted-atoms";
 
 it.effect("owns diagnostics and persisted atom ingress with the Main Scope", () =>
   Effect.gen(function* () {
@@ -29,6 +31,7 @@ it.effect("owns diagnostics and persisted atom ingress with the Main Scope", () 
           Layer.mergeAll(
             Layer.succeed(ElectronIpc, ipc),
             mainConfigLayer(),
+            Layer.succeed(ProfilePersistedAtoms, makePersistedAtomStore("/tmp/nodex-test")),
             Layer.succeed(WindowRuntime, {
               has: () => true,
               all: () => [],

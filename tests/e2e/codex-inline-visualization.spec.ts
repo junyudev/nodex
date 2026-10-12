@@ -9,10 +9,41 @@ import {
 import { prepareScenarioCodexAppServerRuntimeSync } from "../../scripts/scenarios/runtime/agent-runtime-fixture";
 import { resolveCodexThreadVisualizationDirectory } from "../../src/main/codex/codex-dynamic-first-turn-context";
 import { createUuidV7 } from "../../src/shared/uuid-v7";
+import {
+  parseMcpAppSandboxPartition,
+  parseMcpAppSandboxSourceUrl,
+} from "../../src/shared/mcp-app/mcp-app-sandbox-contract";
 import { createAgentSmokeDraft, sendAgentPrompt } from "./support/agent-smoke-harness";
 
 const widgetDocument = (id: string) =>
   `<!doctype html><html><head><meta charset="utf-8"><style>*{box-sizing:border-box}body{margin:0;font:16px sans-serif;background:white;color:#222}.content{padding:20px;min-height:140px}button{font:inherit}section{height:540px;background:#eef2f6;margin-top:16px}</style></head><body><main class="content" id="fixture-${id}"><button id="toggle-${id}">Show details</button><button id="increment-${id}">Increment</button><button id="tool-${id}">Try tool</button><output id="counter-${id}" aria-label="Interaction count">0</output><div role="status" id="tool-result-${id}" aria-label="Tool result">Pending</div><section id="details-${id}" hidden>Expanded content</section></main><script>let count=0;document.getElementById('increment-${id}').addEventListener('click',()=>{document.getElementById('counter-${id}').textContent=String(++count)});document.getElementById('toggle-${id}').addEventListener('click',()=>{const detail=document.getElementById('details-${id}');detail.hidden=!detail.hidden});document.getElementById('tool-${id}').addEventListener('click',async()=>{const result=document.getElementById('tool-result-${id}');if(typeof window.openai?.callTool!=='function'){result.textContent='API unavailable';return}try{await window.openai.callTool('ungranted_tool',{});result.textContent='Tool accepted'}catch(error){result.textContent=String(error?.message??error)}});</script></body></html>`;
+
+function interactiveWidgetDocument(id: string): string {
+  return widgetDocument(id)
+    .replace(
+      "</main>",
+      `
+    <button id="helpers-${id}">Show interactive content</button>
+    <button id="state-${id}">Save selection</button><output id="state-result-${id}"></output>
+    <a id="download-${id}" href="data:text/plain,widget%20download%20bytes" download="widget-data.txt">Download</a>
+    <div id="helpers-content-${id}" hidden>
+      <div class="nav" role="tablist"><button role="tab" id="tab-first-${id}" aria-controls="panel-first-${id}">First</button><button role="tab" disabled>Disabled</button><button role="tab" id="tab-second-${id}" aria-controls="panel-second-${id}">Second</button></div>
+      <div id="panel-first-${id}" role="tabpanel">First panel</div><div id="panel-second-${id}" role="tabpanel">Second panel</div>
+      <div class="viz-carousel" id="carousel-${id}"><div data-variant="One">First variant</div><div data-variant="Two">Second variant</div></div>
+      <button id="tooltip-${id}" data-tooltip="Helpful detail">Tooltip</button><i data-lucide="circle-check" id="icon-${id}"></i>
+      <viz-calendar id="calendar-${id}" interactive date="2026-10-12" start="09:00" end="11:00" events='[{"title":"First event","start":"09:00","end":"10:00"},{"title":"Overlap event","start":"09:30","end":"10:30"}]'></viz-calendar><output id="calendar-result-${id}"></output>
+    </div></main>`,
+    )
+    .replace(
+      "</script>",
+      `
+      document.getElementById('state-result-${id}').textContent=JSON.stringify(window.openai.widgetState);
+      document.getElementById('state-${id}').addEventListener('click',async()=>{await window.openai.setWidgetState({selected:2,modelContent:null,privateContent:{selected:2}});document.getElementById('state-result-${id}').textContent=JSON.stringify(window.openai.widgetState)});
+      document.getElementById('helpers-${id}').addEventListener('click',()=>{document.getElementById('helpers-content-${id}').hidden=false});
+      document.getElementById('calendar-${id}').addEventListener('eventselect',event=>{document.getElementById('calendar-result-${id}').textContent=String(event.detail.index)});
+    </script>`,
+    );
+}
 
 const guestIds = async (page: Page): Promise<number[]> =>
   await page
@@ -49,7 +80,7 @@ async function readGuest<T>(
   )) as T;
 }
 
-async function findGuest(
+async function findReadyGuest(
   application: ElectronApplication,
   page: Page,
   fixtureId: string,
@@ -59,13 +90,28 @@ async function findGuest(
     .poll(
       async () => {
         for (const id of await guestIds(page)) {
-          const ready = await readGuest<boolean>(
+          const ready = await page
+            .locator('webview[title="Interactive response"]')
+            .evaluateAll(
+              (elements, guestId) =>
+                elements.some(
+                  (element) =>
+                    (element as unknown as { getWebContentsId(): number }).getWebContentsId() ===
+                      guestId &&
+                    element
+                      .closest('[data-inline-visualization="true"]')
+                      ?.getAttribute("data-visualization-status") === "ready",
+                ),
+              id,
+            );
+          if (!ready) continue;
+          const hasDocument = await readGuest<boolean>(
             application,
             id,
             fixtureId,
             "typeof window.openai?.callTool === 'function'",
           ).catch(() => false);
-          if (!ready) continue;
+          if (!hasDocument) continue;
           found = id;
           return true;
         }
@@ -84,6 +130,7 @@ async function clickGuestButton(
   guestId: number,
   fixtureId: string,
   button: string,
+  options: { click?: boolean; selector?: string; shadowSelector?: string } = {},
 ) {
   await application.evaluate(
     async ({ webContents }, input) => {
@@ -92,7 +139,7 @@ async function clickGuestButton(
       for (const frame of guest.mainFrame.framesInSubtree) {
         const point = (await frame
           .executeJavaScript(
-            `(() => { const marker = document.getElementById(${JSON.stringify(`fixture-${input.fixtureId}`)}); const button = document.getElementById(${JSON.stringify(`${input.button}-${input.fixtureId}`)}); if (!marker || !button) return null; const box = button.getBoundingClientRect(); return { x: box.left + box.width / 2, y: box.top + box.height / 2 }; })()`,
+            `(() => { const marker = document.getElementById(${JSON.stringify(`fixture-${input.fixtureId}`)}); let button = ${input.options.selector ? `document.querySelector(${JSON.stringify(input.options.selector)})` : `document.getElementById(${JSON.stringify(`${input.button}-${input.fixtureId}`)})`}; ${input.options.shadowSelector ? `button = button?.shadowRoot?.querySelector(${JSON.stringify(input.options.shadowSelector)});` : ""} if (!marker || !button) return null; const box = button.getBoundingClientRect(); return { x: box.left + box.width / 2, y: box.top + box.height / 2 }; })()`,
           )
           .catch(() => null)) as { x: number; y: number } | null;
         if (!point) continue;
@@ -115,6 +162,7 @@ async function clickGuestButton(
         point.x = Math.round(point.x);
         point.y = Math.round(point.y);
         guest.sendInputEvent({ type: "mouseMove", x: point.x, y: point.y });
+        if (input.options.click === false) return;
         guest.sendInputEvent({
           type: "mouseDown",
           x: point.x,
@@ -133,12 +181,16 @@ async function clickGuestButton(
       }
       throw new Error("Owned widget document has no requested button");
     },
-    { guestId, fixtureId, button },
+    { guestId, fixtureId, button, options },
   );
 }
 
 test("restores interactive HTML responses and retains guest state through fullscreen and release", async ({}, testInfo) => {
   test.setTimeout(180_000);
+  const artifactDirectory = path.resolve(
+    process.env.NODEX_TRANSCRIPT_REVIEW_DIR ?? testInfo.outputPath(),
+  );
+  await mkdir(artifactDirectory, { recursive: true });
   const nativeThreadId = createUuidV7();
   const harness = await ElectronScenarioHarness.create({
     label: "codex-inline-visualization",
@@ -241,8 +293,8 @@ test("restores interactive HTML responses and retains guest state through fullsc
     await expect(
       page.locator('[data-inline-visualization="true"][data-visualization-status="ready"]'),
     ).toHaveCount(2, { timeout: 60_000 });
-    const directoryGuest = await findGuest(harness.application, page, "directory");
-    const workspaceGuest = await findGuest(harness.application, page, "workspace");
+    const directoryGuest = await findReadyGuest(harness.application, page, "directory");
+    const workspaceGuest = await findReadyGuest(harness.application, page, "workspace");
     expect(directoryGuest).not.toBe(workspaceGuest);
     const idsBeforeFullscreen = await guestIds(page);
     const visualization = page
@@ -260,6 +312,22 @@ test("restores interactive HTML responses and retains guest state through fullsc
       narrowVisualization.getByRole("button", { name: "Open fullscreen", exact: true }),
     ).toHaveCount(0);
     const initialHeight = (await visualization.boundingBox())!.height;
+    const paintBounds = await readGuest<{
+      contentTop: number;
+      contentHeight: number;
+      width: number;
+      height: number;
+      maxWidth: number;
+    }>(
+      harness.application,
+      directoryGuest,
+      "directory",
+      `(() => { const box = document.getElementById('fixture-directory').getBoundingClientRect(); return { contentTop: box.top, contentHeight: box.height, width: window.innerWidth, height: window.innerHeight, maxWidth: window.openai.maxWidth }; })()`,
+    );
+    expect(paintBounds.contentTop).toBe(5);
+    expect(paintBounds.height - Math.ceil(paintBounds.contentHeight)).toBe(10);
+    expect(paintBounds.maxWidth).toBe(paintBounds.width - 10);
+    expect(Math.abs(initialHeight - Math.ceil(paintBounds.contentHeight))).toBeLessThanOrEqual(1);
     const threadViewport = page.locator(".thread-scroll-container").filter({
       has: page.locator('[data-local-conversation-transcript="true"]'),
     });
@@ -463,7 +531,7 @@ test("restores interactive HTML responses and retains guest state through fullsc
         element.style.removeProperty("transform");
       });
     }
-    await writeFile(path.join(directory, "live-widget.html"), widgetDocument("live"));
+    await writeFile(path.join(directory, "live-widget.html"), interactiveWidgetDocument("live"));
     const commandPath = path.join(stateDirectory, "commands.jsonl");
     await appendFile(commandPath, `${JSON.stringify({ type: "start" })}\n`);
     await expect(page.getByText("Stream baseline", { exact: true })).toBeVisible();
@@ -471,8 +539,32 @@ test("restores interactive HTML responses and retains guest state through fullsc
       commandPath,
       `${JSON.stringify({ type: "delta", delta: '\n\n::codex-inline-vis{file="live-widget.html"}\n\n' })}\n`,
     );
-    const liveGuest = await findGuest(harness.application, page, "live");
+    const liveGuest = await findReadyGuest(harness.application, page, "live");
     await expect(page.getByRole("button", { name: "Stop", exact: true })).toBeVisible();
+    await testInfo.attach("live-widget-before-input", {
+      body: JSON.stringify({
+        host: await page.locator('[data-inline-visualization="true"]').evaluateAll((elements) =>
+          elements.map((element) => {
+            const box = element.getBoundingClientRect();
+            const guest = element.querySelector("webview");
+            return {
+              status: element.getAttribute("data-visualization-status"),
+              bounds: { x: box.x, y: box.y, width: box.width, height: box.height },
+              guestId: guest
+                ? (guest as unknown as { getWebContentsId(): number }).getWebContentsId()
+                : null,
+            };
+          }),
+        ),
+        guest: await readGuest(
+          harness.application,
+          liveGuest,
+          "live",
+          `(() => { const button = document.getElementById('increment-live'); const box = button.getBoundingClientRect(); return { button: {x:box.x,y:box.y,width:box.width,height:box.height},width:innerWidth,height:innerHeight,pointTarget:document.elementFromPoint(box.x+box.width/2,box.y+box.height/2)?.id,readyState:document.readyState }; })()`,
+        ),
+      }),
+      contentType: "application/json",
+    });
     await clickGuestButton(harness.application, liveGuest, "live", "increment");
     await expect
       .poll(() =>
@@ -497,6 +589,151 @@ test("restores interactive HTML responses and retains guest state through fullsc
         ),
       )
       .toBe("1");
+    await clickGuestButton(harness.application, liveGuest, "live", "helpers");
+    const readLive = <T>(expression: string) =>
+      readGuest<T>(harness.application, liveGuest, "live", expression);
+    await expect
+      .poll(() =>
+        readLive<boolean>(
+          "document.getElementById('calendar-live').shadowRoot?.querySelectorAll('button[data-event-index]').length === 2",
+        ),
+      )
+      .toBe(true);
+    await expect
+      .poll(() => readLive<boolean>("document.getElementById('panel-second-live').hidden"))
+      .toBe(true);
+    await clickGuestButton(harness.application, liveGuest, "live", "tab-second");
+    expect(
+      await readLive<boolean>(
+        "document.getElementById('panel-first-live').hidden && !document.getElementById('panel-second-live').hidden",
+      ),
+    ).toBe(true);
+    await clickGuestButton(harness.application, liveGuest, "live", "carousel", {
+      selector: '#carousel-live button[aria-label="Next variant"]',
+    });
+    expect(
+      await readLive<boolean>(
+        "document.querySelector('#carousel-live > [data-variant=One]').hidden && !document.querySelector('#carousel-live > [data-variant=Two]').hidden",
+      ),
+    ).toBe(true);
+    await clickGuestButton(harness.application, liveGuest, "live", "calendar", {
+      shadowSelector: 'button[data-event-index="0"]',
+    });
+    await expect
+      .poll(() => readLive<string>("document.getElementById('calendar-result-live').textContent"))
+      .toBe("0");
+    await expect
+      .poll(
+        () =>
+          readLive<boolean>(
+            "document.getElementById('icon-live')?.tagName.toLowerCase() === 'svg'",
+          ),
+        { timeout: 20_000 },
+      )
+      .toBe(true);
+    await clickGuestButton(harness.application, liveGuest, "live", "tooltip", { click: false });
+    await expect
+      .poll(() => readLive<string>("document.querySelector('[role=tooltip]')?.textContent ?? ''"))
+      .toBe("Helpful detail");
+    await clickGuestButton(harness.application, liveGuest, "live", "state");
+    await expect
+      .poll(() =>
+        readLive<boolean>(
+          "JSON.parse(document.getElementById('state-result-live').textContent)?.selected === 2",
+        ),
+      )
+      .toBe(true);
+
+    const downloadPath = path.join(harness.profile.runRoot, "artifacts", "widget-data.txt");
+    await mkdir(path.dirname(downloadPath), { recursive: true });
+    await harness.application.evaluate(({ session }, filename) => {
+      session.defaultSession.on("will-download", (_event, item) => {
+        if (item.getFilename() === "widget-data.txt") item.setSavePath(filename);
+      });
+    }, downloadPath);
+    await clickGuestButton(harness.application, liveGuest, "live", "download");
+    await expect
+      .poll(async () => await readFile(downloadPath, "utf8").catch(() => ""), { timeout: 20_000 })
+      .toBe("widget download bytes");
+
+    const descriptor = await page
+      .locator('webview[title="Interactive response"]')
+      .evaluateAll((elements, id) => {
+        const element = elements.find(
+          (candidate) =>
+            (candidate as unknown as { getWebContentsId(): number }).getWebContentsId() === id,
+        );
+        if (!element) throw new Error("Native response surface was released");
+        const box = element.getBoundingClientRect();
+        return {
+          partition: element.getAttribute("partition") ?? "",
+          src: element.getAttribute("src") ?? "",
+          width: box.width,
+          height: box.height,
+        };
+      }, liveGuest);
+    const sandboxId = parseMcpAppSandboxPartition(descriptor.partition);
+    const initId = parseMcpAppSandboxSourceUrl(descriptor.src)?.initId;
+    if (!sandboxId || !initId) throw new Error("Native response has no capture identity");
+    const capture = await page.evaluate(
+      async (input) => {
+        const bytes = await window.api?.invoke("codex:visualization:capture-image", input);
+        if (!(bytes instanceof Uint8Array)) throw new Error("Invalid native response image");
+        const data = new Uint8Array(bytes);
+        const view = new DataView(data.buffer, data.byteOffset, data.byteLength);
+        return {
+          signature: Array.from(data.subarray(0, 8)),
+          width: view.getUint32(16),
+          height: view.getUint32(20),
+          byteLength: data.byteLength,
+        };
+      },
+      {
+        sandboxId,
+        initId,
+        captureRect: { x: 5, y: 5, width: descriptor.width - 10, height: descriptor.height - 10 },
+        viewportSize: { width: descriptor.width, height: descriptor.height },
+      },
+    );
+    expect(capture.signature).toEqual([137, 80, 78, 71, 13, 10, 26, 10]);
+    expect(capture.width).toBeGreaterThan(0);
+    expect(capture.height).toBeGreaterThan(0);
+    expect(capture.byteLength).toBeGreaterThan(1000);
+    await testInfo.attach("native-response-capture", {
+      body: JSON.stringify(capture),
+      contentType: "application/json",
+    });
+    expect(await guestIds(page)).toContain(liveGuest);
+
+    await page.reload();
+    await page.evaluate(() => window.api?.awaitInitialization?.());
+    const restoredGuest = await findReadyGuest(harness.application, page, "live");
+    expect(restoredGuest).not.toBe(liveGuest);
+    expect(
+      await harness.application.evaluate(
+        ({ webContents }, id) => !webContents.fromId(id) || webContents.fromId(id)!.isDestroyed(),
+        liveGuest,
+      ),
+    ).toBe(true);
+    await expect
+      .poll(() =>
+        readGuest<boolean>(
+          harness.application,
+          restoredGuest,
+          "live",
+          "window.openai.widgetState?.selected === 2 && window.openai.statePersistence === 'host' && window.openai.stateModelContext === 'untrusted'",
+        ),
+      )
+      .toBe(true);
+    expect(
+      await readGuest<string>(
+        harness.application,
+        restoredGuest,
+        "live",
+        "document.getElementById('counter-live').textContent",
+      ),
+    ).toBe("0");
+    const idsBeforeRelease = await guestIds(page);
     await page
       .getByRole("button", { name: "Start new chat in Interactive responses", exact: true })
       .click();
@@ -509,10 +746,33 @@ test("restores interactive HTML responses and retains guest state through fullsc
               const guest = webContents.fromId(id);
               return !guest || guest.isDestroyed();
             }),
-          [directoryGuest, workspaceGuest, liveGuest],
+          [...idsBeforeRelease, directoryGuest, workspaceGuest, liveGuest],
         ),
       )
       .toBe(true);
+    await writeFile(
+      path.join(artifactDirectory, "widget-native-result.json"),
+      `${JSON.stringify(
+        {
+          runId: process.env.NODEX_TRANSCRIPT_REVIEW_RUN_ID ?? null,
+          paintBounds,
+          beforeExpansion,
+          afterExpansion,
+          capture,
+          download: { name: "widget-data.txt", contents: "widget download bytes" },
+          state: { selected: 2, persistence: "host", modelContext: "untrusted" },
+          originalGuestId: liveGuest,
+          restoredGuestId: restoredGuest,
+          releasedGuestIds: [
+            ...new Set([...idsBeforeRelease, directoryGuest, workspaceGuest, liveGuest]),
+          ],
+          sameGuestFullscreenAndCompletion: true,
+          defaultHelpers: ["calendar", "tabs", "carousel", "tooltip", "icons"],
+        },
+        null,
+        2,
+      )}\n`,
+    );
   } catch (error) {
     failed = true;
     await testInfo.attach("desktop-runtime", {

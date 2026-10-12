@@ -277,7 +277,7 @@ import {
   CodexThreadHostResolver,
   codexGatewayGenerationFence,
 } from "../codex-runtime/CodexGateway";
-import { makePersistedAtomStore } from "../local-store/persisted-atoms";
+import { ProfilePersistedAtoms } from "../local-store/ProfilePersistedAtoms";
 import { resolveCodexThreadHandoffJournalPath } from "../codex/codex-thread-handoff-journal";
 import { makeCodexThreadHandoffJournalStorage } from "../platform/CodexThreadHandoffJournalStorage";
 import { CodexPlatform } from "./CodexApplicationLive";
@@ -519,10 +519,10 @@ const titlePersistence = Layer.effect(
 ).pipe(Layer.provideMerge(foundations));
 const threadDescriptions = Layer.unwrap(
   Effect.gen(function* () {
-    const config = yield* MainConfig;
+    const persistedAtoms = yield* ProfilePersistedAtoms;
     return Layer.succeed(
       CodexThreadDescriptionPersistence,
-      makeCodexThreadDescriptionPersistence(makePersistedAtomStore(config.nodexHome)),
+      makeCodexThreadDescriptionPersistence(persistedAtoms),
     );
   }),
 );
@@ -609,11 +609,8 @@ const sidebarSectionSync = Layer.effect(CodexSidebarSectionSync, makeCodexSideba
 );
 const clientThreadIdentity = Layer.unwrap(
   Effect.gen(function* () {
-    const config = yield* MainConfig;
-    return Layer.effect(
-      CodexClientThreadIdentity,
-      makeCodexClientThreadIdentity(makePersistedAtomStore(config.nodexHome)),
-    );
+    const persistedAtoms = yield* ProfilePersistedAtoms;
+    return Layer.effect(CodexClientThreadIdentity, makeCodexClientThreadIdentity(persistedAtoms));
   }),
 ).pipe(Layer.provideMerge(sidebarSectionSync));
 const forkSidePanelTransfer = Layer.effect(

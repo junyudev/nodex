@@ -1,21 +1,32 @@
 import { describe, expect, test } from "vite-plus/test";
 import {
-  canExpandInlineVisualization,
-  resolveInlineVisualizationMode,
+  inlineVisualizationContentBounds,
+  inlineVisualizationContentWidth,
 } from "./inline-visualization-presentation";
+import { resolveVisualizationImageCrop } from "../../../shared/visualization-image-capture";
 
-describe("inline visualization preview eligibility", () => {
-  test.each([
-    ["narrow", false, false],
-    ["narrow", true, false],
-    ["wide", false, true],
-    ["wide", true, false],
-  ] as const)("mode %s with streaming %s admits preview %s", (mode, isStreaming, expected) => {
-    expect(canExpandInlineVisualization({ mode, isStreaming })).toBe(expected);
+describe("visualization content and paint bounds", () => {
+  test("keeps paint overflow outside measured content and includes it in native image capture", () => {
+    const viewport = { width: 500.5, height: 151 };
+    const content = inlineVisualizationContentBounds(viewport)!;
+    expect(inlineVisualizationContentWidth(viewport.width)).toBe(490.5);
+    expect(content).toEqual({ x: 5, y: 5, width: 490.5, height: 141 });
+    expect(resolveVisualizationImageCrop({ width: 1001, height: 302 }, content, viewport)).toEqual({
+      x: 0,
+      y: 0,
+      width: 1001,
+      height: 302,
+    });
   });
-  test("only the explicit wide attribute enables the wide presentation", () => {
-    expect(resolveInlineVisualizationMode("wide")).toBe("wide");
-    for (const value of [undefined, null, "narrow", "Wide", "wide ", true])
-      expect(resolveInlineVisualizationMode(value)).toBe("narrow");
+
+  test("rejects native viewports without a content area", () => {
+    expect(inlineVisualizationContentWidth(8)).toBe(0);
+    for (const viewport of [
+      { width: 10, height: 50 },
+      { width: 50, height: 10 },
+      { width: NaN, height: 50 },
+      { width: 50, height: Infinity },
+    ])
+      expect(inlineVisualizationContentBounds(viewport)).toBeNull();
   });
 });

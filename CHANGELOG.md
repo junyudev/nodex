@@ -13,11 +13,11 @@ All notable changes to this project will be documented in this file.
 - Dictation streams into your draft by default, preserves edits when the cursor moves, and offers captured speech for recovery after an interruption. Streaming uses authenticated desktop connections with workspace and system-proxy routing, and performance details identify handshake rejections and timeouts.
 - Voice settings can manage an account dictionary when available.
 - Voice settings can transcribe a selected WebM file and retain its audio and text with recent recordings for copying or retrying.
-- Chats render interactive HTML responses in isolated widgets, with fullscreen viewing that preserves their state.
+- Chats render interactive HTML responses with calendars, tooltips, tabs, carousels and icons in isolated widgets. Fullscreen viewing preserves the live document; saved selections recover when it is rebuilt, and authorized downloads and image copying are available.
 
 ### Changed
 
-- Long chats display bounded history while restoring execution, update streamed items independently, and give foreground history requests dedicated capacity. Persisted voice segments keep their native order alongside text, and failed item-history pages can be retried in place. Sending, expanding tools, and resizing the composer preserve the reading position; Find includes all assistant messages and retained voice text.
+- Long chats display bounded history while restoring execution, update streamed items independently, and give foreground history requests dedicated capacity. Persisted and live voice segments keep their native order alongside text; missing promoted content and failed item-history pages can be restored in place. Sending, expanding tools, and resizing the composer preserve the reading position; Find includes all assistant messages and retained voice text.
 
 - New Profiles reuse native Codex login, settings and skills by default, with safe directory switching, a shared native conversation chooser, and desktop tools scoped to each Nodex Profile. An independent account directory can change the active login after restart while retaining the same conversation history.
 - Nodex is now distributed under the Apache License 2.0.

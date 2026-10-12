@@ -6,11 +6,13 @@ import {
   useRef,
   useState,
   useSyncExternalStore,
+  type CSSProperties,
 } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { NodexRetainedModalFocusBoundary } from "@/components/ui/retained-modal-focus-boundary";
 import { Maximize2 } from "@/components/shared/icons/generic-icons";
-import { CloseIcon } from "@/components/shared/icons";
+import { CloseIcon, CopyIcon } from "@/components/shared/icons";
+import { toast } from "@/components/ui/toast";
 import { codexVisualizationQueryOptions } from "../../../lib/codex-visualizations";
 import {
   createInlineVisualizationRuntime,
@@ -20,6 +22,7 @@ import { INLINE_VISUALIZATION_INITIAL_HEIGHT } from "../../../lib/inline-visuali
 import { resolveInlineVisualizationSourceThreadId } from "../../../lib/inline-visualization/inline-visualization-directives";
 import {
   canExpandInlineVisualization,
+  INLINE_VISUALIZATION_PAINT_GUTTER,
   type InlineVisualizationMode,
 } from "../../../lib/inline-visualization/inline-visualization-presentation";
 import {
@@ -31,26 +34,37 @@ import {
   useInlineVisualizationFollowUpReview,
 } from "./inline-visualization-follow-up-review";
 import { ConversationVisualizationContext } from "./inline-visualization-context";
+import type { CodexVisualizationStateIdentity } from "../../../../shared/codex-visualization-state";
+import {
+  createInlineVisualizationWidgetStateOwner,
+  resolveInlineVisualizationStateIdentity,
+} from "../../../lib/inline-visualization/inline-visualization-widget-state";
 
 const INITIAL = {
   status: "loading" as const,
   height: INLINE_VISUALIZATION_INITIAL_HEIGHT,
+  fullscreenHeight: null,
   displayMode: "inline" as const,
   error: null,
 };
 const subscribeNothing = () => () => {};
 const readInitial = () => INITIAL;
+const PAINT_STYLE: CSSProperties = {
+  "--visualize-paint-gutter": `${INLINE_VISUALIZATION_PAINT_GUTTER / 2}px`,
+} as CSSProperties;
 
 function VisualizationFrame({
   html,
   scopeId,
   retry,
   canExpand,
+  stateIdentity,
 }: {
   html: string;
   scopeId: string;
   retry: () => void;
   canExpand: boolean;
+  stateIdentity: CodexVisualizationStateIdentity | null;
 }) {
   const followUp = useInlineVisualizationFollowUpHandler();
   const followUpReview = useInlineVisualizationFollowUpReview();
@@ -66,11 +80,23 @@ function VisualizationFrame({
     callbacks.current = { followUp, reviewFollowUp, canExpand };
   });
   const canSendFollowUp = followUp !== null;
+  const stateHostId = stateIdentity?.hostId;
+  const stateThreadId = stateIdentity?.threadId;
+  const statePath = stateIdentity?.path;
   useLayoutEffect(() => {
     if (!surface) return;
     const value = createInlineVisualizationRuntime({
       scopeId,
       html,
+      ...(stateHostId && stateThreadId && statePath
+        ? {
+            widgetState: createInlineVisualizationWidgetStateOwner({
+              hostId: stateHostId,
+              threadId: stateThreadId,
+              path: statePath,
+            }),
+          }
+        : {}),
       canExpand: () => callbacks.current.canExpand,
       ...(canSendFollowUp
         ? {
@@ -88,13 +114,16 @@ function VisualizationFrame({
     return () => {
       void value.dispose();
     };
-  }, [surface, scopeId, html, canSendFollowUp]);
+  }, [surface, scopeId, html, canSendFollowUp, stateHostId, stateThreadId, statePath]);
   const snapshot = useSyncExternalStore(
     runtime?.subscribe ?? subscribeNothing,
     runtime?.getSnapshot ?? readInitial,
     readInitial,
   );
   const expanded = snapshot.displayMode === "fullscreen";
+  const nativeHeight =
+    (expanded ? (snapshot.fullscreenHeight ?? snapshot.height) : snapshot.height) +
+    INLINE_VISUALIZATION_PAINT_GUTTER;
   useLayoutEffect(() => {
     runtime?.setDisplayMode("inline");
   }, [runtime, canExpand]);
@@ -120,13 +149,22 @@ function VisualizationFrame({
   const setMode = (mode: "inline" | "fullscreen") => {
     runtime?.setDisplayMode(mode);
   };
+  const copyAsImage = async () => {
+    if (!runtime || snapshot.status !== "ready") return;
+    try {
+      await runtime.copyAsImage();
+      toast.success("Response copied as image");
+    } catch {
+      toast.danger("Unable to copy response as image");
+    }
+  };
   return (
     <div
       ref={setBoundary}
       data-inline-visualization="true"
       data-content-search-skip="true"
       data-visualization-status={snapshot.status}
-      style={{ height: snapshot.height }}
+      style={{ ...PAINT_STYLE, height: snapshot.height }}
     >
       <NodexRetainedModalFocusBoundary
         open={expanded}
@@ -172,9 +210,21 @@ function VisualizationFrame({
             }
           >
             <div
-              className="group relative w-full overflow-hidden rounded-lg"
-              style={{ height: snapshot.height }}
+              className={`group relative overflow-hidden rounded-lg ${expanded ? "w-full" : "-m-[var(--visualize-paint-gutter)] w-[calc(100%+var(--visualize-paint-gutter)*2)]"}`}
+              style={{ height: nativeHeight }}
             >
+              {snapshot.status === "ready" ? (
+                <button
+                  type="button"
+                  aria-label="Copy as image"
+                  className={`absolute ${canExpand && !expanded ? "right-12" : "right-2"} top-2 z-10 grid size-9 place-items-center rounded-md bg-token-main-surface-primary/90 text-token-text-secondary ${expanded ? "" : "opacity-0 transition-opacity group-hover:opacity-100 focus:opacity-100"}`}
+                  onClick={() => {
+                    void copyAsImage();
+                  }}
+                >
+                  <CopyIcon className="size-4" />
+                </button>
+              ) : null}
               {canExpand ? (
                 <button
                   ref={setExpandButton}
@@ -317,6 +367,12 @@ function LoadedVisualization({
         className="h-60 animate-pulse rounded-lg bg-token-foreground/5"
       />
     );
+  const stateIdentity = resolveInlineVisualizationStateIdentity({
+    hostId: context.hostId,
+    threadId: context.threadId,
+    file,
+    resolvedPath: query.data.path,
+  });
   return (
     <VisualizationFrame
       key={scopeId}
@@ -324,6 +380,7 @@ function LoadedVisualization({
       scopeId={scopeId}
       retry={retryResource}
       canExpand={canExpandInlineVisualization({ mode, isStreaming: context.live })}
+      stateIdentity={stateIdentity}
     />
   );
 }

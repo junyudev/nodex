@@ -70,6 +70,7 @@ import * as CodexConversationPeerRuntime from "../platform/node/CodexConversatio
 import { serveProfileSnapshotControl } from "../platform/node/ProfileSnapshotControl";
 import { CodexEndpointMap } from "../codex-runtime/CodexEndpointMap";
 import { live as shellEnvironmentLive } from "../host-runtime/WorktreeShellEnvironmentRuntime";
+import { live as profilePersistedAtomsLive } from "../local-store/ProfilePersistedAtoms";
 
 const runtimeError = (operation: string, cause: unknown) =>
   new MainApplicationError({ phase: "startup", operation, cause });
@@ -109,6 +110,7 @@ const applicationGraph = RendererIngressLive.live.pipe(
   ),
   Layer.provide(CodexConversationPeerRuntime.live),
   Layer.provideMerge(shellEnvironment),
+  Layer.provideMerge(profilePersistedAtomsLive),
 );
 
 /** Fully acquired production desktop application graph. */

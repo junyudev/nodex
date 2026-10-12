@@ -1,6 +1,14 @@
 import * as Effect from "effect/Effect";
 import * as Scope from "effect/Scope";
-import type { IpcMainEvent, Net, Session, WebContents, WebPreferences } from "electron";
+import * as Schema from "effect/Schema";
+import type {
+  IpcMainEvent,
+  NativeImage,
+  Net,
+  Session,
+  WebContents,
+  WebPreferences,
+} from "electron";
 import type { BackendLogger } from "../logging/logger";
 import {
   MCP_APP_SANDBOX_HOST_MESSAGE_CHANNEL,
@@ -21,6 +29,14 @@ import {
 } from "./mcp-app-webview-attachment-policy";
 
 const PENDING_ATTACHMENT_TTL_MS = 30_000;
+
+export class McpAppSandboxCaptureError extends Schema.TaggedError<McpAppSandboxCaptureError>()(
+  "McpAppSandboxCaptureError",
+  {
+    reason: Schema.Literals(["unavailable", "failed", "retired"]),
+    cause: Schema.optionalKey(Schema.Defect()),
+  },
+) {}
 
 interface OwnedMcpAppAttachment extends McpAppPendingAttachment {
   ownerWebContents: WebContents;
@@ -73,6 +89,12 @@ export interface McpAppSandboxHost {
 export interface McpAppSandboxController {
   readonly createHost: (owner: WebContents) => McpAppSandboxHost;
   readonly consumeUserGesture: (owner: WebContents, sandboxId: string, initId?: string) => boolean;
+  readonly releaseGuest: (owner: WebContents, sandboxId: string, initId: string) => boolean;
+  readonly captureImage: (
+    owner: WebContents,
+    sandboxId: string,
+    initId: string,
+  ) => Effect.Effect<NativeImage, McpAppSandboxCaptureError>;
 }
 
 export interface McpWebviewParams {
@@ -295,6 +317,28 @@ class McpAppSandboxControllerState {
     if (!this.#installed || owner.isDestroyed()) return false;
     for (const host of this.#hosts) {
       if (host.consumeUserGesture(owner, sandboxId, initId)) return true;
+    }
+    return false;
+  }
+
+  captureImage(
+    owner: WebContents,
+    sandboxId: string,
+    initId: string,
+  ): Effect.Effect<NativeImage, McpAppSandboxCaptureError> {
+    if (!this.#installed || owner.isDestroyed())
+      return Effect.fail(new McpAppSandboxCaptureError({ reason: "unavailable" }));
+    for (const host of this.#hosts) {
+      const capture = host.captureImage(owner, sandboxId, initId);
+      if (capture) return capture;
+    }
+    return Effect.fail(new McpAppSandboxCaptureError({ reason: "unavailable" }));
+  }
+
+  releaseGuest(owner: WebContents, sandboxId: string, initId: string): boolean {
+    if (!this.#installed || owner.isDestroyed()) return false;
+    for (const host of this.#hosts) {
+      if (host.releaseGuest(owner, sandboxId, initId)) return true;
     }
     return false;
   }
@@ -598,6 +642,49 @@ class McpAppSandboxHostState implements McpAppSandboxHost {
     return timestamp !== undefined && performance.now() - timestamp <= 5_000;
   }
 
+  captureImage(
+    owner: WebContents,
+    sandboxId: string,
+    initId: string,
+  ): Effect.Effect<NativeImage, McpAppSandboxCaptureError> | null {
+    if (this.#disposed || this.#owner.id !== owner.id) return null;
+    const attached = [...this.#attachedGuests.values()].find(
+      (value) => value.sandboxId === sandboxId && value.initId === initId,
+    );
+    if (!attached) return null;
+    const isCurrent = () =>
+      !this.#disposed &&
+      !owner.isDestroyed() &&
+      this.#attachedGuests.get(attached.guest.id) === attached &&
+      !attached.guest.isDestroyed();
+    return Effect.suspend(() => {
+      if (!isCurrent())
+        return Effect.fail(new McpAppSandboxCaptureError({ reason: "unavailable" }));
+      return Effect.tryPromise({
+        try: () => attached.guest.capturePage(),
+        catch: (cause) => new McpAppSandboxCaptureError({ reason: "failed", cause }),
+      }).pipe(
+        Effect.flatMap((image) =>
+          isCurrent()
+            ? Effect.succeed(image)
+            : Effect.fail(new McpAppSandboxCaptureError({ reason: "retired" })),
+        ),
+      );
+    });
+  }
+
+  releaseGuest(owner: WebContents, sandboxId: string, initId: string): boolean {
+    if (this.#disposed || this.#owner.id !== owner.id) return false;
+    const attached = [...this.#attachedGuests.values()].find(
+      (value) => value.sandboxId === sandboxId && value.initId === initId,
+    );
+    if (!attached) return false;
+    this.#attachedGuests.delete(attached.guest.id);
+    this.#coordinator.unregisterGuest(attached.guest.id);
+    if (!attached.guest.isDestroyed()) attached.guest.close();
+    return true;
+  }
+
   #installGuestPolicy(attached: AttachedMcpAppGuest): void {
     const { guest, sourceUrl } = attached;
     guest.on("before-mouse-event", (_event, input) => {
@@ -715,5 +802,7 @@ export const makeMcpAppSandboxController = (
       createHost: (owner) => state.createHost(owner),
       consumeUserGesture: (owner, sandboxId, initId) =>
         state.consumeUserGesture(owner, sandboxId, initId),
+      captureImage: (owner, sandboxId, initId) => state.captureImage(owner, sandboxId, initId),
+      releaseGuest: (owner, sandboxId, initId) => state.releaseGuest(owner, sandboxId, initId),
     };
   });

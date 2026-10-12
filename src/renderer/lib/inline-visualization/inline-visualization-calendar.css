@@ -1,0 +1,214 @@
+:host {
+  display: block;
+  min-width: 0;
+  padding: 12px;
+  font:
+    400 14px/1.5 Inter,
+    system-ui,
+    sans-serif;
+  color: var(--foreground);
+  container-type: inline-size;
+}
+* {
+  box-sizing: border-box;
+}
+.layout {
+  display: grid;
+  grid-template-columns: 88px minmax(0, 1fr);
+  gap: 24px;
+}
+.date {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding-top: 8px;
+  border-right: 1px solid var(--border);
+}
+.weekday,
+.context {
+  color: color-mix(in srgb, var(--foreground) 65%, var(--background));
+}
+.day {
+  font-size: 48px;
+  line-height: 1.1;
+  letter-spacing: -0.03em;
+}
+.context {
+  font-size: 12px;
+  line-height: 16px;
+  overflow-wrap: anywhere;
+}
+.axis {
+  --hour: max(48px, var(--minimum-hour));
+  position: relative;
+  height: calc(var(--hours)*var(--hour) + 16px);
+  margin-top: 8px;
+  min-width: 0;
+}
+.axis.compact {
+  --hour: max(32px, var(--minimum-hour));
+}
+.hour {
+  position: absolute;
+  top: calc(var(--at)*var(--hour));
+  inset-inline: 0;
+  color: var(--muted-foreground);
+}
+.hour span {
+  display: block;
+  width: 36px;
+  text-align: right;
+  transform: translateY(-50%);
+  font-variant-numeric: tabular-nums;
+}
+.hour::after {
+  content: "";
+  position: absolute;
+  top: 0;
+  left: 48px;
+  right: 0;
+  border-top: 1px solid var(--border);
+}
+.events {
+  position: absolute;
+  inset: 0 0 16px 48px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  overflow: hidden;
+}
+.event {
+  position: absolute;
+  top: calc(var(--at)*var(--hour) + 2px);
+  height: calc(var(--duration)*var(--hour) - 4px);
+  left: calc(var(--lane)*100%/var(--lanes) + var(--lane)*8px/var(--lanes));
+  width: calc((100% - (var(--lanes) - 1) *8px) /var(--lanes));
+  border-radius: 8px;
+  background: linear-gradient(
+    110deg,
+    color-mix(in srgb, var(--tone) 24%, var(--background)),
+    color-mix(in srgb, var(--tone) 32%, var(--background))
+  );
+  overflow: hidden;
+  container-type: size;
+}
+.event.past {
+  background: color-mix(in srgb, var(--tone) 12%, var(--background));
+  color: color-mix(in srgb, var(--foreground) 70%, var(--background));
+}
+.event-body {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  width: 100%;
+  height: 100%;
+  padding: 4px 12px;
+  font: inherit;
+  color: inherit;
+  text-align: left;
+}
+button.event-body {
+  appearance: none;
+  border: 0;
+  border-radius: inherit;
+  background: transparent;
+}
+.cursor-interaction {
+  cursor: var(--cursor-interaction, pointer);
+}
+button.event-body:hover {
+  background: color-mix(in srgb, var(--foreground) 2%, transparent);
+}
+button.event-body:focus-visible {
+  outline: 2px solid var(--ring);
+  outline-offset: -2px;
+}
+/* Optically center Inter's glyphs within the unchanged line boxes. */
+.event-content {
+  min-width: 0;
+  transform: translateY(-1px);
+}
+.title {
+  display: block;
+  font-weight: 500;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.detail {
+  display: block;
+  font-size: 12px;
+  line-height: 16px;
+  margin-top: 4px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+@container (max-height:48px) {
+  .detail {
+    display: none;
+  }
+  .event-body {
+    padding-block: 0;
+  }
+}
+.video {
+  width: 16px;
+  height: 16px;
+  flex: none;
+}
+.now {
+  position: absolute;
+  top: calc(var(--at)*var(--hour));
+  left: 48px;
+  right: 0;
+  border-top: 2px solid var(--red);
+  pointer-events: none;
+}
+.now::before {
+  content: "";
+  position: absolute;
+  left: -4px;
+  top: -5px;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--red);
+}
+.now span {
+  position: absolute;
+  right: calc(100% + 12px);
+  transform: translateY(-50%);
+  color: var(--red);
+  font:
+    400 12px/16px Inter,
+    system-ui,
+    sans-serif;
+  font-variant-numeric: tabular-nums;
+}
+.empty {
+  position: absolute;
+  top: 24px;
+  left: 64px;
+  color: var(--muted-foreground);
+}
+@media (pointer: coarse) {
+  :host .axis {
+    --hour: max(48px, var(--minimum-hour), var(--minimum-target-hour));
+  }
+}
+@container (max-width:520px) {
+  .layout {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .date {
+    flex-direction: row;
+    align-items: baseline;
+    border: 0;
+    padding: 0;
+  }
+  .event-body {
+    padding-inline: 8px;
+  }
+}

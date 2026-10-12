@@ -1,5 +1,11 @@
 import type { AgentModelCatalog, AgentModelCatalogInput } from "./agent-model-catalog";
 import type {
+  CodexVisualizationStateIdentity,
+  CodexVisualizationWidgetState,
+  CodexVisualizationStateWriteInput,
+  CodexVisualizationStateWriteResult,
+} from "./codex-visualization-state";
+import type {
   OpenCodeAgentSettings,
   UpdateOpenCodeAgentSettingsInput,
 } from "./opencode-agent-settings";
@@ -1890,9 +1896,25 @@ export interface IpcApi {
   // Codex
   "codex:connection:status": { args: [hostId?: string]; result: CodexConnectionState };
   "codex:account:read": { args: []; result: CodexAccountSnapshot };
+  "codex:visualization:capture-image": {
+    args: [input: import("./visualization-image-capture").VisualizationImageCaptureInput];
+    result: Uint8Array;
+  };
+  "codex:visualization:copy-image": {
+    args: [input: import("./visualization-image-capture").VisualizationImageCaptureInput];
+    result: void;
+  };
   "codex:visualization:read": {
     args: [input: CodexVisualizationReadInput];
     result: CodexVisualizationReadResult;
+  };
+  "codex:visualization:state:read": {
+    args: [identity: CodexVisualizationStateIdentity];
+    result: CodexVisualizationWidgetState | null;
+  };
+  "codex:visualization:state:write": {
+    args: [input: CodexVisualizationStateWriteInput];
+    result: CodexVisualizationStateWriteResult;
   };
   "codex:visualization:open-external": {
     args: [input: CodexVisualizationOpenExternalInput];
@@ -1900,6 +1922,10 @@ export interface IpcApi {
   };
   "codex:visualization:consume-gesture": {
     args: [input: CodexVisualizationConsumeGestureInput];
+    result: boolean;
+  };
+  "codex:visualization:release": {
+    args: [input: { readonly sandboxId: string; readonly initId: string }];
     result: boolean;
   };
   "codex:account:rate-limit-reset:consume": {

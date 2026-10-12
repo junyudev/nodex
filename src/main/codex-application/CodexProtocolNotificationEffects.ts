@@ -13,6 +13,7 @@ import * as Context from "effect/Context";
 import * as Data from "effect/Data";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
+import * as Option from "effect/Option";
 import type { CodexConversationReducerEffect } from "../../shared/codex-conversation-state/codex-conversation-reducer";
 import { extractCodexThreadSpawnMetadata } from "../../shared/codex-subagent-metadata";
 import type { CodexNotificationConversationFacts } from "../../shared/codex-thread-notification";
@@ -41,6 +42,9 @@ import {
   isCodexThreadOwnerNotification,
 } from "../../shared/types";
 import type { CodexServerNotification } from "../codex-runtime/CodexApplicationProtocol";
+import { CodexAppServerCapabilities } from "../codex-runtime/CodexAppServerCapabilities";
+import { MainConfig } from "../app/MainConfig";
+import { isDevelopmentFeatureEnabled } from "../../shared/development-features";
 import { BrowserUseRuntime } from "../host-runtime/BrowserUseRuntime";
 import { RemoteHostedPipRuntime } from "../host-runtime/RemoteHostedPipRuntime";
 import { CodexApplicationEventHub } from "./CodexApplicationEventHub";
@@ -64,6 +68,7 @@ import { CodexThreadGoalRuntime } from "./CodexThreadGoalRuntime";
 import { CodexThreadTitleReconsideration } from "./CodexThreadTitleReconsideration";
 import { CodexUserInputAutoResolution } from "./CodexUserInputAutoResolution";
 import { ConversationEntityMap } from "./internal/ConversationEntityMap";
+import { canUseCodexThreadTimeline } from "./CodexThreadTimelinePolicy";
 
 export interface CodexProtocolNotificationInput {
   readonly hostId: string;
@@ -144,6 +149,7 @@ export const make: Effect.Effect<
   | ConversationEntityMap
   | BrowserUseRuntime
   | RemoteHostedPipRuntime
+  | CodexAppServerCapabilities
 > = Effect.gen(function* () {
   const events = yield* CodexApplicationEventHub;
   const automation = yield* CodexAutomationTurnCompletion;
@@ -163,6 +169,8 @@ export const make: Effect.Effect<
   const conversations = yield* ConversationEntityMap;
   const browserUse = yield* BrowserUseRuntime;
   const remoteHostedPip = yield* RemoteHostedPipRuntime;
+  const capabilities = yield* CodexAppServerCapabilities;
+  const config = Option.getOrNull(yield* Effect.serviceOption(MainConfig));
   const terminalInputBuffers = new CodexTerminalInteractionAccumulator();
 
   const logFailure = (method: string, threadId: string, cause: unknown): Effect.Effect<void> =>
@@ -376,7 +384,8 @@ export const make: Effect.Effect<
     const threadId = codexProtocolNotificationThreadId(notification);
     if (!threadId) return;
     const manager = managers.current(input.hostId);
-    const ownerRouted = manager?.stream.getRole(threadId)?.role === "follower";
+    const role = manager?.stream.getRole(threadId);
+    const ownerRouted = role?.role === "follower";
     const projectLocal =
       manager !== null && manager.generation === input.generation && !ownerRouted;
 
@@ -418,7 +427,10 @@ export const make: Effect.Effect<
     }
 
     const observedAtMs = yield* Clock.currentTimeMillis;
-    const aggregate = projectLocal ? conversations.current(threadId) : null;
+    const candidate = projectLocal ? conversations.current(threadId) : null;
+    const candidateHostId = candidate?.readCanonicalState()?.hostId;
+    const aggregate =
+      candidateHostId === undefined || candidateHostId === input.hostId ? candidate : null;
     if (notification.method === "serverRequest/resolved") {
       if (aggregate) {
         const state = aggregate.readServerRequestState();
@@ -454,11 +466,32 @@ export const make: Effect.Effect<
     }
 
     const before = aggregate?.readCanonicalState() ?? null;
+    let supportsThreadTimeline = false;
+    if (aggregate && before?.historyMode === "paginated" && before.canonicalVoiceHistory) {
+      const capability = yield* capabilities.forHost(input.hostId);
+      // Capability acquisition can yield while the physical session or document owner changes.
+      if (
+        managers.current(input.hostId) !== manager ||
+        manager?.generation !== input.generation ||
+        manager.stream.getRole(threadId) !== role ||
+        conversations.current(threadId) !== aggregate ||
+        aggregate.readCanonicalState()?.hostId !== input.hostId ||
+        capability.hostId !== input.hostId ||
+        capability.generation !== input.generation
+      )
+        return;
+      supportsThreadTimeline = canUseCodexThreadTimeline(
+        capability,
+        config !== null &&
+          isDevelopmentFeatureEnabled("thread-timeline-history", config.environment),
+      );
+    }
     const committed = aggregate?.commitProtocolNotification({
       notification,
       observedAtMs,
       createId: () => randomUUID(),
       reducerContext: {
+        supportsThreadTimeline,
         consumeContextCompactionSource: () => manualCompaction.consumeSource(threadId),
         resolveCollabReceiverThread: (receiverThreadId) =>
           conversations.readThreadMetadata(receiverThreadId),

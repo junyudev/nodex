@@ -6,12 +6,19 @@ import { createCodexHistoryBoundaryRef } from "../../../shared/codex-conversatio
 import { afterEach, expect, test, vi } from "vite-plus/test";
 import { act, waitFor } from "@testing-library/react";
 import type { ThreadResumeResponse } from "@nodex/codex-app-server-protocol/v2";
+import type { ClientRequestResponsesByMethod } from "@nodex/effect-codex-app-server/rpc";
 import type { ConversationCoordinationHost } from "../../../shared/codex-client-coordination";
 import type { CodexThreadSummary } from "../../../shared/types";
 import { buildAgentActivityV2CorpusThread } from "../../../shared/codex-conversation-state/test-fixtures/agent-activity-v2-corpus-provenance";
 import { residentConversationTurns } from "../../../shared/codex-conversation-state/codex-turn-mutation";
 import type { CodexAppServerManager } from "./local-conversation-store";
 import type { ConversationResumePreparationOptions } from "../../../shared/codex-conversation-state/codex-resume-request";
+import {
+  projectNormalizedTimelineEntries,
+  isCodexRealtimeTimelineEntry,
+  isCodexTimelineTurnEntry,
+} from "./projection/normalized-timeline-entries";
+import { selectNormalizedConversationTurnEntries } from "./normalized-transcript-selectors";
 
 const fixture = vi.hoisted(() => ({
   owner: null as CodexAppServerManager | null,
@@ -19,6 +26,7 @@ const fixture = vi.hoisted(() => ({
   ownerId: null as string | null,
   hostId: "local",
   generation: 1,
+  timelinePage: null as ClientRequestResponsesByMethod["thread/timeline/list"] | null,
   sourceEpoch: null as string | null,
   accountId: "account",
   hostContextReady: null as Promise<void> | null,
@@ -149,6 +157,12 @@ vi.mock("./local-conversation-deps", () => ({
         generation: fixture.generation,
         sourceEpoch: fixture.sourceEpoch ?? `native-${fixture.generation}`,
         supportsPaginatedHistory: true,
+        supportsThreadTimeline: fixture.timelinePage !== null,
+        historyPolicy: {
+          source: "test",
+          timeline: fixture.timelinePage !== null,
+          activeEviction: false,
+        },
         supportsTurnApprovalsReviewer: false,
         supportsSearchOccurrences: false,
         appServerVersion: null,
@@ -279,6 +293,8 @@ vi.mock("./local-conversation-deps", () => ({
             backwardsCursor: null,
           },
         };
+      if (input.request.method === "thread/timeline/list")
+        return { type: "result", result: fixture.timelinePage };
       if (input.request.method === "thread/goal/get")
         return { type: "result", result: { goal: (await fixture.readGoal?.()) ?? null } };
       if (input.request.method === "thread/unsubscribe") return { type: "result", result: {} };
@@ -357,7 +373,11 @@ async function connectedManagers(
   hostId = "local",
 ) {
   fixture.hostId = hostId;
-  const thread = { ...buildAgentActivityV2CorpusThread(items), path: "/tmp/native-stream.jsonl" };
+  const thread = {
+    ...buildAgentActivityV2CorpusThread(items),
+    path: "/tmp/native-stream.jsonl",
+    ...(fixture.timelinePage ? { cliVersion: "0.162.0-alpha.17.2" } : {}),
+  };
   fixture.summary = {
     threadId: thread.id,
     projectId: "project",
@@ -416,6 +436,7 @@ afterEach(() => {
   fixture.ownerId = null;
   fixture.hostId = "local";
   fixture.generation = 1;
+  fixture.timelinePage = null;
   fixture.sourceEpoch = null;
   fixture.accountId = "account";
   fixture.hostContextReady = null;
@@ -436,6 +457,312 @@ afterEach(() => {
   fixture.nativeRequest = null;
   fixture.readGoal = null;
   fixture.followerRequests.length = 0;
+});
+
+test("native promotion completion enters the canonical timeline before bounded recovery restores its real item", async () => {
+  fixture.timelinePage = {
+    data: [],
+    nextCursor: "artifact-older",
+    activeRealtimeSessionAtPageStart: null,
+  };
+  const { owner, threadId, turnId } = await connectedManagers();
+  const transcript = owner.getTranscriptReadOwner(threadId);
+  const release = transcript.subscribeStructure(() => {});
+  try {
+    await waitFor(() => expect(transcript.readStructure()).not.toBeNull());
+    fixture.calls.length = 0;
+    const item = { type: "plan" as const, id: "native-artifact", text: "Restored artifact" };
+    fixture.nativeRequest = async (method) => {
+      if (method === "thread/timeline/list")
+        return {
+          data: [{ type: "item", position: 0, turnId, item }],
+          nextCursor: null,
+          activeRealtimeSessionAtPageStart: null,
+        };
+      if (method === "thread/turns/list")
+        return { data: fixture.response!.thread.turns, nextCursor: null, backwardsCursor: null };
+      throw new Error(`Unexpected artifact request ${method}`);
+    };
+    await act(async () => {
+      dispatchCodexAppServerMessage("native-notification", {
+        type: "nativeNotification",
+        hostId: "local",
+        generation: 1,
+        occurrenceToken: 700,
+        occurrenceId: "promotion-700",
+        notification: {
+          method: "thread/realtime/item/completed",
+          params: {
+            threadId,
+            item: {
+              type: "bemItemPromoted",
+              id: "receipt",
+              realtimeSessionId: "native-session",
+              turnId,
+              itemId: item.id,
+              presentation: { type: "wholeItem" },
+            },
+          },
+        },
+      });
+      await Promise.resolve();
+    });
+    await waitFor(() =>
+      expect(owner.getPendingArtifactRecovery(threadId).getStatus()).toBe("idle"),
+    );
+    await waitFor(() => expect(transcript.readRealtimeItem("receipt")?.completed).toBe(true));
+    const canonical = owner.readConversation(threadId)!.canonicalState!;
+    expect(canonical.itemTimeline?.entries.at(-1)).toMatchObject({
+      type: "realtime",
+      position: 1,
+      item: { id: "receipt", realtimeSessionId: "native-session" },
+    });
+    expect(residentConversationTurns(canonical).flatMap((turn) => turn.items)).toContainEqual(
+      expect.objectContaining({ id: item.id, type: "plan" }),
+    );
+    const structure = transcript.readStructure()!;
+    const projected = projectNormalizedTimelineEntries({
+      owner: transcript,
+      structure,
+      entries: selectNormalizedConversationTurnEntries({
+        owner: transcript,
+        structure,
+        conversation: null,
+      }),
+    });
+    expect(
+      projected.entries.some(
+        (entry) => isCodexRealtimeTimelineEntry(entry) && entry.itemType === "bemItemPromoted",
+      ),
+    ).toBe(false);
+    expect(
+      projected.entries.some(
+        (entry) =>
+          isCodexTimelineTurnEntry(entry) && entry.timelinePresentation?.type === "wholeItem",
+      ),
+    ).toBe(true);
+    expect(
+      fixture.calls
+        .filter((call) => call.method === "thread/timeline/list")
+        .map((call) => (call.params as { cursor: string }).cursor),
+    ).toEqual(["artifact-older"]);
+  } finally {
+    release();
+  }
+});
+
+test("live realtime transcripts publish through normalized leaves and completion fences late deltas", async () => {
+  fixture.timelinePage = { data: [], nextCursor: null, activeRealtimeSessionAtPageStart: null };
+  const { owner, follower, threadId } = await connectedManagers();
+  const transcript = owner.getTranscriptReadOwner(threadId);
+  const release = transcript.subscribeStructure(() => {});
+  try {
+    await waitFor(() => expect(transcript.readStructure()).not.toBeNull());
+    const item = {
+      type: "transcriptSegment" as const,
+      id: "live-segment",
+      realtimeSessionId: "native-session",
+      role: "assistant" as const,
+      text: "Hello",
+    };
+    const notification = (
+      value: import("@nodex/codex-app-server-protocol").ServerNotification,
+      token: number,
+    ) =>
+      dispatchCodexAppServerMessage("native-notification", {
+        type: "nativeNotification",
+        hostId: "local",
+        generation: 1,
+        occurrenceToken: token,
+        occurrenceId: `voice-${token}`,
+        notification: value,
+      });
+    await act(async () => {
+      notification(
+        {
+          method: "thread/realtime/item/completed",
+          params: {
+            threadId,
+            item: {
+              type: "realtimeSessionStarted",
+              id: "session-start",
+              realtimeSessionId: "native-session",
+            },
+          },
+        },
+        703,
+      );
+      notification({ method: "thread/realtime/item/started", params: { threadId, item } }, 704);
+      notification(
+        {
+          method: "thread/realtime/item/transcript/delta",
+          params: { threadId, itemId: item.id, delta: " world" },
+        },
+        705,
+      );
+      await Promise.resolve();
+    });
+    await waitFor(() =>
+      expect(transcript.readRealtimeItem(item.id)?.item).toMatchObject({ text: "Hello world" }),
+    );
+    expect(
+      follower.readConversation(threadId)?.canonicalState?.realtimeItems?.[item.id]?.item,
+    ).toMatchObject({ text: "Hello world" });
+    await act(async () => {
+      notification(
+        {
+          method: "thread/realtime/item/completed",
+          params: { threadId, item: { ...item, text: "Final" } },
+        },
+        706,
+      );
+      notification(
+        {
+          method: "thread/realtime/item/transcript/delta",
+          params: { threadId, itemId: item.id, delta: "late" },
+        },
+        707,
+      );
+      notification({ method: "thread/realtime/item/started", params: { threadId, item } }, 708);
+      await Promise.resolve();
+    });
+    await waitFor(() =>
+      expect(transcript.readRealtimeItem(item.id)).toMatchObject({
+        completed: true,
+        item: { text: "Final" },
+      }),
+    );
+    expect(
+      owner
+        .readConversation(threadId)
+        ?.canonicalState?.itemTimeline?.entries.map((entry) => entry.position),
+    ).toEqual([1, 2]);
+    expect(
+      follower.readConversation(threadId)?.canonicalState?.realtimeItems?.[item.id]?.completed,
+    ).toBe(true);
+  } finally {
+    release();
+  }
+});
+
+test("accepted timeline history automatically attempts an unresolved receipt once and explicit retry is bounded", async () => {
+  const receipt = {
+    type: "bemItemPromoted" as const,
+    id: "historical-receipt",
+    realtimeSessionId: "old-session",
+    turn_id: "missing-turn",
+    item_id: "missing-item",
+    presentation: { type: "wholeItem" as const },
+  };
+  fixture.timelinePage = {
+    data: [{ type: "realtime", position: 7, item: receipt }],
+    nextCursor: "artifact-older",
+    activeRealtimeSessionAtPageStart: null,
+  };
+  const { owner, threadId } = await connectedManagers();
+  const recovery = owner.getPendingArtifactRecovery(threadId);
+  await waitFor(() => expect(recovery.getStatus()).toBe("unresolved"));
+  fixture.calls.length = 0;
+  await recovery.hydrate();
+  expect(fixture.calls.filter((call) => call.method === "thread/timeline/list")).toHaveLength(0);
+  fixture.nativeRequest = async (method, params) => {
+    if (method === "thread/timeline/list") {
+      const cursor = (params as { cursor: string }).cursor;
+      return {
+        data: [],
+        nextCursor: cursor === "artifact-older" ? "artifact-older-2" : "artifact-older-3",
+        activeRealtimeSessionAtPageStart: null,
+      };
+    }
+    throw new Error(`Unexpected retry request ${method}`);
+  };
+  await recovery.hydrate("retry");
+  expect(recovery.getStatus()).toBe("unresolved");
+  expect(
+    fixture.calls
+      .filter((call) => call.method === "thread/timeline/list")
+      .map((call) => (call.params as { cursor: string }).cursor),
+  ).toEqual(["artifact-older", "artifact-older-2"]);
+});
+
+test("promotion recovery and live voice admission honor the native host lifetime and canonical gate", async () => {
+  fixture.timelinePage = {
+    data: [],
+    nextCursor: "artifact-older",
+    activeRealtimeSessionAtPageStart: null,
+  };
+  const { owner, threadId } = await connectedManagers();
+  const before = owner.readConversation(threadId)!.canonicalState!;
+  fixture.calls.length = 0;
+  await act(async () => {
+    for (const [hostId, generation, target] of [
+      ["remote", 1, threadId],
+      ["local", 2, threadId],
+      ["local", 1, "foreign"],
+    ] as const)
+      dispatchCodexAppServerMessage("native-notification", {
+        type: "nativeNotification",
+        hostId,
+        generation,
+        occurrenceToken: 701,
+        occurrenceId: "foreign-701",
+        notification: {
+          method: "thread/realtime/item/completed",
+          params: {
+            threadId: target,
+            item: {
+              type: "transcriptSegment",
+              id: "foreign",
+              realtimeSessionId: "session",
+              role: "assistant",
+              text: "foreign",
+            },
+          },
+        },
+      });
+  });
+  expect(owner.readConversation(threadId)!.canonicalState).toBe(before);
+  expect(fixture.calls).toEqual([]);
+  let finish: ((value: unknown) => void) | undefined;
+  fixture.nativeRequest = async () =>
+    new Promise((resolve) => {
+      finish = resolve;
+    });
+  await act(async () => {
+    dispatchCodexAppServerMessage("native-notification", {
+      type: "nativeNotification",
+      hostId: "local",
+      generation: 1,
+      occurrenceToken: 702,
+      occurrenceId: "pending-702",
+      notification: {
+        method: "thread/realtime/item/completed",
+        params: {
+          threadId,
+          item: {
+            type: "bemItemPromoted",
+            id: "pending",
+            realtimeSessionId: "session",
+            turnId: "missing",
+            itemId: "missing",
+            presentation: { type: "wholeItem" },
+          },
+        },
+      },
+    });
+    await Promise.resolve();
+  });
+  const recovery = owner.getPendingArtifactRecovery(threadId);
+  await waitFor(() => expect(recovery.getStatus()).toBe("loading"));
+  await waitFor(() => expect(finish).toBeDefined());
+  owner.destroy();
+  const disposedState = owner.readConversation(threadId)?.canonicalState;
+  await act(async () => {
+    finish?.({ data: [], nextCursor: null, activeRealtimeSessionAtPageStart: null });
+    await Promise.resolve();
+  });
+  expect(owner.readConversation(threadId)?.canonicalState).toBe(disposedState);
+  expect(recovery.getStatus()).toBe("loading");
 });
 
 test("an already attached follower stays resumed without requiring another owner snapshot", async () => {

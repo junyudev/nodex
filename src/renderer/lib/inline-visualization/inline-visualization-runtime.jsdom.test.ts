@@ -11,16 +11,26 @@ import {
 } from "./inline-visualization-runtime";
 
 type ConnectInput = Parameters<typeof connectMcpAppSandbox>[0];
+import type { InlineVisualizationWidgetStateOwner } from "./inline-visualization-widget-state";
+import type { CodexVisualizationWidgetState } from "../../../shared/codex-visualization-state";
 const boundary = vi.hoisted(() => ({
   connect: vi.fn<(input: ConnectInput) => Promise<ConnectedMcpAppSandbox>>(),
   gesture: vi.fn<(key: string, input: unknown) => Promise<boolean>>(),
   external: vi.fn<(command: unknown, input: unknown) => Promise<void>>(async () => undefined),
+  image: vi.fn<(key: string, input: unknown) => Promise<Uint8Array>>(
+    async () => new Uint8Array([1, 2]),
+  ),
+  release: vi.fn(async (_key: string, _input: unknown) => true),
 }));
 vi.mock("../mcp-app/mcp-app-port-rpc", () => ({ connectMcpAppSandbox: boundary.connect }));
 vi.mock("../renderer-command", () => ({
   defineRendererCommand: (definition: unknown) => definition,
-  invokeRendererControl: boundary.gesture,
+  invokeRendererControl: (key: string, input: unknown) =>
+    key === "codex:visualization:release"
+      ? boundary.release(key, input)
+      : boundary.gesture(key, input),
   invokePlainCommand: boundary.external,
+  invokeRendererQuery: boundary.image,
 }));
 
 function deferred<T>() {
@@ -75,7 +85,7 @@ function sandboxAttempt(input: ConnectInput) {
   const stream = statusStream();
   const control = vi.fn(async () => undefined);
   const teardown = vi.fn<(value: unknown) => Promise<unknown>>(async () => undefined);
-  const run = vi.fn(() => stream.generator);
+  const run = vi.fn<McpAppSkybridgeApi["runWidgetCode"]>(() => stream.generator);
   const api: McpAppSkybridgeApi = {
     navigate: control,
     notifyMcpAppsHostContext: control,
@@ -139,6 +149,158 @@ afterEach(async () => {
 });
 
 describe("inline visualization runtime lifecycle", () => {
+  test("reports host hover and touch capabilities independently to the authored document", async () => {
+    const media = vi.spyOn(window, "matchMedia").mockImplementation((query) => ({
+      matches: ["(any-hover: hover)", "(pointer: coarse)"].includes(query),
+      media: query,
+      onchange: null,
+      addListener: () => {},
+      removeListener: () => {},
+      addEventListener: () => {},
+      removeEventListener: () => {},
+      dispatchEvent: () => true,
+    }));
+    const platform = vi.spyOn(navigator, "platform", "get").mockReturnValue("MacIntel");
+    try {
+      mountRuntime();
+      const attempt = await readAttempt(0);
+      expect(attempt.run.mock.calls[0]?.[0]).toMatchObject({
+        mcpApps: { hostContext: { deviceCapabilities: { hover: true, touch: true } } },
+        userAgent: {
+          capabilities: { hover: true, touch: true },
+          device: { os: "macos", platform: "native", type: "desktop" },
+        },
+      });
+    } finally {
+      media.mockRestore();
+      platform.mockRestore();
+    }
+  });
+  test("measures fullscreen content independently without changing inline transcript placement", async () => {
+    const runtime = mountRuntime({ canExpand: () => true });
+    Object.defineProperty(runtime.element, "clientWidth", { value: 510 });
+    const attempt = await readAttempt(0);
+    expect(attempt.run.mock.calls[0]?.[0]).toMatchObject({
+      maxWidth: 500,
+      mcpApps: { hostContext: { containerDimensions: { maxWidth: 500 } } },
+    });
+    await act(async () => {
+      attempt.stream.status(2);
+      attempt.input.handlers.notifyIntrinsicHeight(140.2);
+    });
+    await waitFor(() => expect(runtime.getSnapshot().height).toBe(141));
+    await act(async () => {
+      runtime.setDisplayMode("fullscreen");
+      attempt.input.handlers.notifyIntrinsicHeight(350.2);
+    });
+    expect(runtime.getSnapshot()).toMatchObject({ height: 141, fullscreenHeight: 351 });
+    await act(async () => runtime.setDisplayMode("inline"));
+    expect(runtime.getSnapshot()).toMatchObject({ height: 141, displayMode: "inline" });
+    await act(async () => attempt.input.handlers.notifyIntrinsicHeight(200));
+    expect(runtime.getSnapshot()).toMatchObject({ height: 200, fullscreenHeight: 351 });
+    expect(boundary.connect).toHaveBeenCalledOnce();
+  });
+  test("captures the current attached guest and fences image operations after release", async () => {
+    const runtime = mountRuntime();
+    const attempt = await readAttempt(0);
+    const guest = runtime.element.querySelector("webview")!;
+    vi.spyOn(guest, "getBoundingClientRect").mockReturnValue(new DOMRect(50, 60, 500, 200));
+    await expect(runtime.captureImage()).rejects.toThrow("unavailable");
+    await act(async () => {
+      attempt.stream.status(2);
+      attempt.input.handlers.callTool("__codex_inline_visualization_height__", {
+        height: 200,
+        width: 500,
+      });
+    });
+    await waitFor(() => expect(runtime.getSnapshot().status).toBe("ready"));
+    expect(await runtime.captureImage()).toEqual(new Uint8Array([1, 2]));
+    const captureInput = {
+      sandboxId: attempt.input.expectedSandboxId,
+      initId: "synthetic-init",
+      captureRect: { x: 5, y: 5, width: 490, height: 190 },
+      viewportSize: { width: 500, height: 200 },
+    };
+    expect(boundary.image).toHaveBeenCalledExactlyOnceWith(
+      "codex:visualization:capture-image",
+      captureInput,
+    );
+    await runtime.copyAsImage();
+    expect(boundary.external).toHaveBeenCalledWith(
+      expect.objectContaining({ channel: "codex:visualization:copy-image" }),
+      captureInput,
+    );
+    await runtime.dispose();
+    await expect(runtime.captureImage()).rejects.toThrow("unavailable");
+    await expect(runtime.copyAsImage()).rejects.toThrow("unavailable");
+    expect(boundary.image).toHaveBeenCalledTimes(1);
+  });
+  test("reads the fixed file state on every fresh attempt and restores it after actual disposal", async () => {
+    let saved: CodexVisualizationWidgetState | null = null;
+    let revision = 0;
+    const widgetState: InlineVisualizationWidgetStateOwner = {
+      identity: { hostId: "local", threadId: "display", path: "/owned/plot.html" },
+      read: vi.fn(async () => saved),
+      write: vi.fn<InlineVisualizationWidgetStateOwner["write"]>(async (value) => {
+        saved = value;
+        return { ok: true, revision: ++revision, value };
+      }),
+    };
+    const runtime = mountRuntime({ widgetState });
+    const first = await readAttempt(0);
+    expect(first.run.mock.calls[0]?.[0]).toMatchObject({
+      widgetId: "/owned/plot.html",
+      widgetState: null,
+    });
+    await act(async () => {
+      expect(
+        await first.input.handlers.updateWidgetState("/owned/plot.html", { selected: 3 }),
+      ).toBeUndefined();
+    });
+    expect(first.run).toHaveBeenCalledOnce();
+    await act(async () => first.stream.fail(timeout()));
+    const retry = await readAttempt(1);
+    expect(widgetState.read).toHaveBeenCalledTimes(2);
+    expect(retry.run.mock.calls[0]?.[0]).toMatchObject({
+      widgetId: "/owned/plot.html",
+      widgetState: { modelContent: null, privateContent: null, selected: 3 },
+    });
+    expect(() =>
+      first.input.handlers.updateWidgetState("/owned/plot.html", { selected: 9 }),
+    ).toThrow();
+    await act(async () => runtime.dispose());
+    expect(() =>
+      retry.input.handlers.updateWidgetState("/owned/plot.html", { selected: 9 }),
+    ).toThrow();
+    const replacement = mountRuntime({ widgetState, scopeId: "replacement-widget" });
+    const restarted = await readAttempt(2);
+    expect(restarted.input.webview).not.toBe(retry.input.webview);
+    expect(restarted.run.mock.calls[0]?.[0]).toMatchObject({
+      widgetId: "/owned/plot.html",
+      widgetState: { selected: 3 },
+    });
+    expect(widgetState.read).toHaveBeenCalledTimes(3);
+    expect(widgetState.write).toHaveBeenCalledOnce();
+    expect(replacement.getSnapshot().status).toBe("loading");
+  });
+
+  test("a retired attempt cannot run HTML after its asynchronous state read completes", async () => {
+    const pending = deferred<CodexVisualizationWidgetState | null>();
+    const widgetState: InlineVisualizationWidgetStateOwner = {
+      identity: { hostId: "local", threadId: "display", path: "/owned/plot.html" },
+      read: vi.fn(() => pending.promise),
+      write: vi.fn(),
+    };
+    const runtime = mountRuntime({ widgetState });
+    await waitFor(() => expect(widgetState.read).toHaveBeenCalledOnce());
+    const first = attempts[0]!;
+    await act(async () => {
+      await runtime.dispose();
+      pending.resolve({ modelContent: null, privateContent: null });
+    });
+    expect(first.run).not.toHaveBeenCalled();
+    expect(first.input.signal?.aborted).toBe(true);
+  });
   test("admits fullscreen only while the retained document's presentation allows it", async () => {
     let canExpand = false;
     const runtime = mountRuntime({ canExpand: () => canExpand });
@@ -311,7 +473,12 @@ describe("inline visualization runtime lifecycle", () => {
     expect(review).not.toHaveBeenCalled();
     expect(onInteraction).toHaveBeenCalledTimes(interactionCount);
     expect(runtime.getSnapshot().displayMode).toBe("inline");
-    expect(attempt.dispose).not.toHaveBeenCalled();
+    expect(attempt.dispose).toHaveBeenCalledOnce();
+    expect(runtime.element.isConnected).toBe(false);
+    expect(boundary.release).toHaveBeenCalledWith("codex:visualization:release", {
+      sandboxId: attempt.input.expectedSandboxId,
+      initId: "synthetic-init",
+    });
     teardown.resolve(undefined);
     await disposing;
     expect(attempt.teardown).toHaveBeenCalledWith({ timeoutMs: 500 });

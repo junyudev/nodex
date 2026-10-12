@@ -27,6 +27,7 @@ import { ScopedCallbackRuntime } from "../app/ScopedCallbackRuntime";
 import { isDevelopmentFeatureEnabled } from "../../shared/development-features";
 import { readCanonicalHistoryTimeline } from "../../shared/codex-conversation-state/codex-canonical-history-timeline";
 import type { CanonicalHistoryClient } from "../../shared/codex-conversation-state/codex-canonical-history-loader";
+import { canUseCodexThreadTimeline } from "./CodexThreadTimelinePolicy";
 
 export const CODEX_HISTORY_TURN_PAGE_SIZE = 5;
 export const CODEX_HISTORY_ITEM_PAGE_SIZE = 100;
@@ -471,7 +472,7 @@ export const make: Effect.Effect<CodexHistoryPageAdapter["Service"], never, Code
         input.readThreadTimelineEnabled?.() ??
         (config !== null &&
           isDevelopmentFeatureEnabled("thread-timeline-history", config.environment));
-      const timeline = !durable && input.capability.flags.threadTimeline && enabled === true;
+      const timeline = canUseCodexThreadTimeline(input.capability, enabled);
       if (input.source === "timeline" && !timeline)
         return yield* error({
           operation: "turns",

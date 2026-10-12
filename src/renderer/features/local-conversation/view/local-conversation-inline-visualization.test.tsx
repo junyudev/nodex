@@ -21,7 +21,10 @@ vi.mock("../../../lib/inline-visualization/inline-visualization-runtime", () => 
 vi.mock("@tanstack/react-query", async (importOriginal) => ({
   ...(await importOriginal<typeof import("@tanstack/react-query")>()),
   useQuery: () => ({
-    data: boundary.queryPhase === "ready" ? { contents: "<p>Widget</p>" } : undefined,
+    data:
+      boundary.queryPhase === "ready"
+        ? { contents: "<p>Widget</p>", path: "/owned/widget.html" }
+        : undefined,
     isError: boundary.queryPhase === "error",
     isSuccess: boundary.queryPhase === "ready",
     refetch: vi.fn(async () => undefined),
@@ -41,12 +44,15 @@ beforeEach(() => {
     let snapshot: InlineVisualizationSnapshot = {
       status: "ready",
       height: 150,
+      fullscreenHeight: null,
       displayMode: "inline",
       error: null,
     };
     const runtime: InlineVisualizationRuntime = {
       element,
       getSnapshot: () => snapshot,
+      captureImage: vi.fn(async () => new Uint8Array()),
+      copyAsImage: vi.fn(async () => {}),
       subscribe: (listener) => {
         listeners.add(listener);
         return () => listeners.delete(listener);
@@ -67,7 +73,19 @@ beforeEach(() => {
   });
 });
 
-function Harness({ mode, live }: { mode: InlineVisualizationMode; live: boolean }) {
+function Harness({
+  mode,
+  live,
+  file = "widget.html",
+  sourceThreadId,
+  cacheKey,
+}: {
+  mode: InlineVisualizationMode;
+  live: boolean;
+  file?: string;
+  sourceThreadId?: string;
+  cacheKey?: string;
+}) {
   return (
     <ConversationVisualizationContext.Provider
       value={{
@@ -78,7 +96,12 @@ function Harness({ mode, live }: { mode: InlineVisualizationMode; live: boolean 
         readChangedFilePaths: () => [],
       }}
     >
-      <LocalConversationInlineVisualization file="widget.html" mode={mode} />
+      <LocalConversationInlineVisualization
+        file={file}
+        mode={mode}
+        sourceThreadId={sourceThreadId}
+        cacheKey={cacheKey}
+      />
     </ConversationVisualizationContext.Provider>
   );
 }
@@ -100,6 +123,38 @@ function installPopoverFor(frame: HTMLElement) {
 }
 
 describe("inline visualization preview presentation", () => {
+  test("state belongs to the displayed Thread and raw file path across source/cache/streaming changes", async () => {
+    const view = render(
+      <Harness
+        mode="narrow"
+        live
+        file="/var/widget.html"
+        sourceThreadId="source-a"
+        cacheKey="revision-a"
+      />,
+    );
+    await view.findByRole("button", { name: "Widget control" });
+    expect(instances[0]?.input.widgetState?.identity).toEqual({
+      hostId: "local",
+      threadId: "visible-thread",
+      path: "/var/widget.html",
+    });
+    view.rerender(
+      <Harness
+        mode="narrow"
+        live={false}
+        file="/var/widget.html"
+        sourceThreadId="source-b"
+        cacheKey="revision-b"
+      />,
+    );
+    await waitFor(() => expect(instances).toHaveLength(2));
+    expect(instances[1]?.input.widgetState?.identity).toEqual(
+      instances[0]?.input.widgetState?.identity,
+    );
+    expect(instances[0]?.runtime.dispose).toHaveBeenCalledOnce();
+    expect(instances[1]?.input.scopeId).not.toBe(instances[0]?.input.scopeId);
+  });
   test.each([
     ["narrow", false, false],
     ["narrow", true, false],
@@ -114,6 +169,28 @@ describe("inline visualization preview presentation", () => {
       expect(instances[0]?.input.canExpand?.()).toBe(admitted);
     },
   );
+
+  test("copies the same guest image through inline and fullscreen actions", async () => {
+    const view = render(<Harness mode="wide" live={false} />);
+    const copy = await view.findByRole("button", { name: "Copy as image" });
+    await act(async () => {
+      fireEvent.click(copy);
+      await Promise.resolve();
+    });
+    expect(instances[0]?.runtime.copyAsImage).toHaveBeenCalledOnce();
+    const frame = view.container.querySelector<HTMLElement>("[data-inline-visualization] > div");
+    if (!frame) throw new Error("Expected the retained presentation frame");
+    installPopoverFor(frame);
+    await act(async () => {
+      fireEvent.click(view.getByRole("button", { name: "Open fullscreen" }));
+      await Promise.resolve();
+    });
+    await act(async () => {
+      fireEvent.click(view.getByRole("button", { name: "Copy as image" }));
+      await Promise.resolve();
+    });
+    expect(instances[0]?.runtime.copyAsImage).toHaveBeenCalledTimes(2);
+  });
 
   test("lifecycle changes update preview eligibility without replacing the guest", async () => {
     const view = render(<Harness mode="wide" live />);

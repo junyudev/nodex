@@ -1,3 +1,6 @@
+import { buildInlineVisualizationCalendar } from "./inline-visualization-calendar";
+import { buildInlineVisualizationHelpers } from "./inline-visualization-document-helpers";
+import { buildInlineVisualizationDownloadScript } from "./inline-visualization-download";
 import documentStyles from "./inline-visualization-document.css?inline";
 
 export const INLINE_VISUALIZATION_MAX_HEIGHT = 10_000;
@@ -23,28 +26,71 @@ export const INLINE_VISUALIZATION_CSP = {
   ],
 };
 
-/** Runs inside the untrusted document, with only the Skybridge widget API. */
-function installDocumentRuntime() {
+export interface InlineVisualizationDocumentOptions {
+  readonly statePersistence?: "host" | "none";
+  readonly downloadCapability?: string;
+  readonly lockDocumentOverflow?: boolean;
+}
+
+/** The document receives API metadata, never a second copy of persisted widget state. */
+function installDocumentBridge(statePersistence: "host" | "none") {
   const widgetWindow = window as Window & {
     openai?: {
-      callTool(name: string, args: unknown): Promise<unknown>;
+      callTool?(name: string, args: unknown): Promise<unknown>;
+      statePersistence?: "host" | "none";
+      stateModelContext?: "untrusted" | "none";
       visualizationTheme?: string;
       visualizationStyleVariables?: Record<string, string>;
     };
   };
+  widgetWindow.openai ??= {};
+  widgetWindow.openai.statePersistence = statePersistence;
+  widgetWindow.openai.stateModelContext = statePersistence === "host" ? "untrusted" : "none";
+  const hostStyles = document.getElementById("nodex-visualization-host-theme") as HTMLStyleElement;
+  const hostStyle = (hostStyles.sheet?.cssRules[0] as CSSStyleRule | undefined)?.style;
+  const styleForProperty = (property: string) =>
+    /^--(?:font-|radius|corner-shape$|control-spacing$|cursor-interaction$|icon-size$|visualize-paint-gutter$)/.test(
+      property,
+    )
+      ? document.documentElement.style
+      : hostStyle;
+  let appliedProperties: string[] = [];
   const notify = (suffix: string, value: unknown) => {
     void widgetWindow.openai
-      ?.callTool(`__codex_inline_visualization_${suffix}__`, value)
+      ?.callTool?.(`__codex_inline_visualization_${suffix}__`, value)
       .catch(() => undefined);
   };
-  const syncTheme = () => {
-    const api = widgetWindow.openai;
-    const theme = api?.visualizationTheme ?? "light";
+  const syncTheme = (event?: Event) => {
+    const api =
+      event instanceof CustomEvent
+        ? (event.detail as { globals?: typeof widgetWindow.openai } | undefined)?.globals
+        : widgetWindow.openai;
+    const variables = api?.visualizationStyleVariables;
+    if (variables != null && typeof variables === "object") {
+      for (const name of appliedProperties) styleForProperty(name)?.removeProperty(name);
+      appliedProperties = [];
+      for (const [name, value] of Object.entries(variables)) {
+        if (!name.startsWith("--") || typeof value !== "string") continue;
+        styleForProperty(name)?.setProperty(name, value);
+        appliedProperties.push(name);
+      }
+    }
+    const theme = api?.visualizationTheme;
+    if (typeof theme !== "string") return;
     document.documentElement.dataset.theme = theme;
     document.documentElement.style.colorScheme = theme;
-    for (const [name, value] of Object.entries(api?.visualizationStyleVariables ?? {})) {
-      if (name.startsWith("--")) document.documentElement.style.setProperty(name, value);
+    const sandboxDocument = window.frameElement?.ownerDocument;
+    if (!sandboxDocument) return;
+    let meta = sandboxDocument.querySelector<HTMLMetaElement>('meta[name="color-scheme"]');
+    if (!meta) {
+      meta = sandboxDocument.createElement("meta");
+      meta.name = "color-scheme";
+      sandboxDocument.head.appendChild(meta);
     }
+    meta.content = theme;
+    sandboxDocument.documentElement.style.colorScheme = theme;
+    sandboxDocument.documentElement.style.backgroundColor =
+      hostStyle?.getPropertyValue("--background") ?? "";
   };
   syncTheme();
   window.addEventListener("openai:set_globals", syncTheme);
@@ -59,6 +105,26 @@ function installDocumentRuntime() {
       stack: error?.stack,
     });
   });
+  window.addEventListener(
+    "pagehide",
+    () => window.removeEventListener("openai:set_globals", syncTheme),
+    { once: true },
+  );
+}
+
+/** Installs after the authored fragment, before optional network-loaded UI helpers. */
+function installDocumentRuntime() {
+  const widgetWindow = window as Window & {
+    openai?: {
+      callTool?(name: string, args: unknown): Promise<unknown>;
+      displayMode?: string;
+    };
+  };
+  const notify = (suffix: string, value: unknown) => {
+    void widgetWindow.openai
+      ?.callTool?.(`__codex_inline_visualization_${suffix}__`, value)
+      .catch(() => undefined);
+  };
   let scheduled: ReturnType<typeof setTimeout> | null = null;
   let previous: { height: number; width: number; viewportHeight: number } | null = null;
   const measure = () => {
@@ -66,6 +132,7 @@ function installDocumentRuntime() {
     const body = document.body;
     if (!body) return;
     const bounds = body.getBoundingClientRect();
+    const style = getComputedStyle(body);
     const children = Array.from(body.children).filter(
       (element) =>
         !["SCRIPT", "STYLE"].includes(element.tagName) &&
@@ -76,7 +143,12 @@ function installDocumentRuntime() {
       const element = children[0]! as HTMLElement;
       height =
         Math.max(element.scrollHeight, element.getBoundingClientRect().height) +
-        Math.max(0, Number.parseFloat(getComputedStyle(element).marginTop) || 0);
+        Math.max(
+          0,
+          element.getBoundingClientRect().top -
+            bounds.top -
+            (Number.parseFloat(style.paddingTop) || 0),
+        );
     } else if (children.length > 1) {
       height =
         Math.max(...children.map((element) => element.getBoundingClientRect().bottom)) - bounds.top;
@@ -85,7 +157,6 @@ function installDocumentRuntime() {
       range.selectNodeContents(body);
       height = range.getBoundingClientRect().height;
     }
-    const style = getComputedStyle(body);
     const width = Math.max(
       0,
       Math.round(
@@ -94,12 +165,11 @@ function installDocumentRuntime() {
           (Number.parseFloat(style.paddingRight) || 0),
       ),
     );
-    height = Math.max(0, Math.ceil(height));
+    height = Math.max(0, height);
     const viewportHeight = window.innerHeight;
     const feedback =
       previous?.width === width &&
       height - previous.height === viewportHeight - previous.viewportHeight;
-    if (previous?.height === height && previous.width === width) return;
     previous = { height, width, viewportHeight };
     if (!feedback) notify("height", { height, width });
   };
@@ -149,12 +219,13 @@ function installDocumentRuntime() {
     (event) => {
       const elements = event
         .composedPath()
-        .filter((target): target is HTMLElement => target instanceof HTMLElement);
+        .filter((target): target is Element => target instanceof Element);
       const isInteractiveTarget =
         elements.some(
           (element) =>
             element.matches(interactiveSelector) ||
-            (element.hasAttribute("tabindex") && element.tabIndex >= 0),
+            (element.hasAttribute("tabindex") &&
+              ((element as Element & { tabIndex?: number }).tabIndex ?? -1) >= 0),
         ) || Boolean(elements[0] && getComputedStyle(elements[0]).cursor === "pointer");
       setTimeout(
         () =>
@@ -169,26 +240,48 @@ function installDocumentRuntime() {
     },
     { capture: true },
   );
-  document.addEventListener("keydown", (event) => {
+  window.addEventListener("keydown", (event) => {
     if (event.isComposing || event.altKey || event.ctrlKey || event.metaKey || event.shiftKey)
       return;
     const target = event
       .composedPath()
       .find((element): element is HTMLElement => element instanceof HTMLElement);
-    if (
-      target?.isContentEditable ||
-      target?.closest('input,textarea,select,[role="slider"],[role="spinbutton"],[role="combobox"]')
-    )
-      return;
     if (!["ArrowLeft", "ArrowRight", "Escape"].includes(event.key)) return;
-    notify("preview_key", { key: event.key });
+    const editable = target?.closest("[contenteditable]");
+    const editing =
+      target?.isContentEditable ||
+      (editable && editable.getAttribute("contenteditable") !== "false") ||
+      target?.closest(
+        'input,textarea,select,[role="slider"],[role="spinbutton"],[role="combobox"],[role="listbox"],[role="grid"],[role="tree"],[role="tablist"],[role="menu"]',
+      );
+    if (event.key !== "Escape" && editing) return;
+    // Give authored controls the same opportunity to consume a key before forwarding it.
+    setTimeout(() => {
+      if (!event.defaultPrevented && widgetWindow.openai?.displayMode === "fullscreen")
+        notify("preview_key", { key: event.key });
+    }, 0);
   });
-  document.addEventListener("pointerenter", () => notify("hover", { isHovering: true }));
-  document.addEventListener("pointerleave", () => notify("hover", { isHovering: false }));
+  let isHovering = false;
+  let isTouch = false;
+  const reportHover = (hovering: boolean, touch = false) => {
+    if (hovering === isHovering && touch === isTouch) return;
+    isHovering = hovering;
+    isTouch = touch;
+    notify("hover", touch ? { isHovering, pointerType: "touch" } : { isHovering });
+  };
+  window.addEventListener(
+    "pointerover",
+    (event) => reportHover(event.pointerType !== "touch", event.pointerType === "touch"),
+    { capture: true },
+  );
+  window.addEventListener(
+    "pointerout",
+    (event) => {
+      if (event.pointerType !== "touch" && event.relatedTarget === null) reportHover(false);
+    },
+    { capture: true },
+  );
   const ready = () => {
-    syncTheme();
-    document.documentElement.style.overflow = "hidden";
-    document.body.style.overflow = "hidden";
     const resize = new ResizeObserver(schedule);
     const observeChildren = () => {
       resize.disconnect();
@@ -212,20 +305,29 @@ function installDocumentRuntime() {
       () => {
         mutations.disconnect();
         resize.disconnect();
+        window.removeEventListener("resize", schedule);
         if (scheduled !== null) clearTimeout(scheduled);
       },
       { once: true },
     );
     notify("ready", {});
-    schedule();
+    measure();
   };
-  if (document.readyState === "loading")
-    document.addEventListener("DOMContentLoaded", ready, { once: true });
-  else ready();
+  ready();
 }
 
-export function buildInlineVisualizationDocument(fragment: string): string {
-  return `<style>${documentStyles}</style><script>(${installDocumentRuntime.toString()})();</script>${fragment}`;
+export function buildInlineVisualizationDocument(
+  fragment: string,
+  options: InlineVisualizationDocumentOptions = {},
+): string {
+  return `<style>${documentStyles}</style><style id="nodex-visualization-host-theme">:root {}</style>
+<script>(${installDocumentBridge.toString()})(${JSON.stringify(options.statePersistence ?? "none")});</script>
+${buildInlineVisualizationCalendar(fragment)}${fragment}
+<script>(${installDocumentRuntime.toString()})();</script>
+${buildInlineVisualizationHelpers()}
+${buildInlineVisualizationDownloadScript(options.downloadCapability)}
+<style>html,body{scrollbar-width:none!important}html::-webkit-scrollbar,body::-webkit-scrollbar{display:none!important}</style>
+${options.lockDocumentOverflow ? "<style>html,body{overflow-y:hidden!important}</style>" : ""}`;
 }
 
 export function parseInlineVisualizationHeight(value: unknown): number | null {

@@ -28,6 +28,7 @@ import {
   toCodexMcpToolCallProgressUpdate,
 } from "./codex-file-change-stream";
 import { materializeCodexCanonicalProtocolItem } from "./codex-conversation-state";
+import { mutateCodexLiveItemTimeline } from "./codex-live-item-timeline";
 import { findMatchingPendingSteerIndex } from "./codex-steering-reconciliation";
 import type {
   CodexCanonicalContextCompactionItem,
@@ -76,6 +77,8 @@ export type CodexItemLifecycleNotification = Extract<
 >;
 
 export interface CodexConversationReducerContext {
+  readonly supportsThreadTimeline?: boolean;
+  readonly readTimelineEntryIndex?: (identity: string) => number | undefined;
   /**
    * Injected wall clock for the exact bundle's independent `Date.now()` sites.
    * The protocol lifecycle timestamp is intentionally not a substitute.
@@ -671,6 +674,13 @@ export function mutateCodexConversationEvent(
   if (event.type === "request") {
     return mutateCodexConversationServerRequest(state, event.request, context).effects;
   }
+
+  mutateCodexLiveItemTimeline(
+    state,
+    event.notification,
+    context.supportsThreadTimeline === true,
+    context.readTimelineEntryIndex,
+  );
 
   if (event.notification.method === "serverRequest/resolved") {
     return mutateCodexConversationServerRequestResolved(state, event.notification, context).effects;

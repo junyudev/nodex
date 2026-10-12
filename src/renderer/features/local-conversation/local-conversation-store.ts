@@ -37,6 +37,12 @@ import {
 import { codexThreadNavigation } from "./codex-thread-navigation";
 import { readComposerPredictionsEnabled } from "./composer-prediction-settings";
 import { projectCanonicalHistoryPresentation } from "./canonical-history-presentation";
+import { CodexItemTimelineIndex } from "../../../shared/codex-conversation-state/codex-item-timeline-index";
+import {
+  createPendingArtifactRecovery,
+  readPendingArtifactRecovery,
+  type PendingArtifactRecovery,
+} from "./local-conversation-pending-artifact-recovery";
 import { conversationResumeRequestOptions } from "../../../shared/codex-conversation-resume-retry";
 import type { CodexRendererNativeRequestOptions } from "../../../shared/codex-renderer-request";
 import {
@@ -2170,6 +2176,8 @@ export class CodexAppServerManager {
     string,
     Promise<LocalHistoryPageResult>
   >();
+  private readonly pendingArtifactRecoveries = new Map<string, PendingArtifactRecovery>();
+  private readonly itemTimelineIndex = new CodexItemTimelineIndex();
   private readonly primaryConversationRequestByThread = new Map<
     string,
     CodexConversationLiveRequest | null
@@ -2386,10 +2394,7 @@ export class CodexAppServerManager {
     this.historyClient = {
       hostId,
       supportsPaginatedHistory: () => this.supportsPaginatedHistory,
-      supportsThreadTimeline: () =>
-        hostId !== "durable" &&
-        this.nativeHostContext?.supportsThreadTimeline === true &&
-        this.historyPolicy.readThreadTimelineEnabled(),
+      supportsThreadTimeline: () => this.canReadThreadTimeline(),
       sendTimelineRequest: (params, options) =>
         this.nativeAppServer.request("thread/timeline/list", params, options),
       getConversation: (id) => this.conversationsById.get(id)?.canonicalState,
@@ -2806,6 +2811,9 @@ export class CodexAppServerManager {
           draft,
           { type: "notification", notification: event.notification },
           {
+            supportsThreadTimeline: this.canReadThreadTimeline(),
+            readTimelineEntryIndex: (identity) =>
+              this.itemTimelineIndex.position(before.itemTimeline, identity),
             now: Date.now,
             createId: () => crypto.randomUUID(),
             consumeContextCompactionSource: () => this.manualCompactions.consumeSource(threadId),
@@ -2817,6 +2825,12 @@ export class CodexAppServerManager {
     if (!receipt) return;
     if (receipt.after !== before)
       this.applyCanonicalDocument(receipt.after, { patches: receipt.patches });
+    if (
+      this.canReadThreadTimeline() &&
+      event.notification.method === "thread/realtime/item/completed" &&
+      event.notification.params.item.type === "bemItemPromoted"
+    )
+      void this.getPendingArtifactRecovery(threadId).hydrate();
     if (event.notification.method === "item/started")
       this.asyncQuestions.receive(threadId, event.notification.params.item.id);
     if (event.notification.method === "turn/started") {
@@ -3463,6 +3477,8 @@ export class CodexAppServerManager {
     this.serverQueuedMessages[Symbol.dispose]();
     if (this.destroyed) return;
     this.destroyed = true;
+    for (const owner of this.pendingArtifactRecoveries.values()) owner.dispose();
+    this.pendingArtifactRecoveries.clear();
     for (const owner of this.transcriptReadOwners.values()) owner.dispose();
     this.transcriptReadOwners.clear();
     for (const release of this.transcriptDisconnects) release();
@@ -3873,6 +3889,7 @@ export class CodexAppServerManager {
     this.applyThreadSummary(prepared.summary);
     this.registerThreadMetadata(response.thread);
     this.applyCanonicalDocument(receipt?.after ?? canonical);
+    this.acceptPendingArtifactHistory(threadId);
   }
 
   async hydrateArchivedThreadPreview(threadId: string): Promise<boolean> {
@@ -4556,6 +4573,7 @@ export class CodexAppServerManager {
       );
       markHistoryReady();
       this.streamState.setRole(threadId, { role: "owner" });
+      this.acceptPendingArtifactHistory(threadId);
       settledOwner = this.streamState.getRole(threadId);
       let goalHydration: Promise<void> | null = null;
       if (!showGoalConfirmation) {
@@ -4949,6 +4967,36 @@ export class CodexAppServerManager {
     };
     void loadPromise.then(release, release);
     return loadPromise;
+  }
+
+  private canReadThreadTimeline(): boolean {
+    return (
+      this.hostId !== "durable" &&
+      this.nativeHostContext?.supportsThreadTimeline === true &&
+      this.historyPolicy.readThreadTimelineEnabled()
+    );
+  }
+
+  private acceptPendingArtifactHistory(threadId: string): void {
+    if (
+      !this.canReadThreadTimeline() ||
+      !this.readConversation(threadId)?.canonicalState?.itemTimeline
+    )
+      return;
+    void this.getPendingArtifactRecovery(threadId).hydrate();
+  }
+
+  getPendingArtifactRecovery(threadId: string): PendingArtifactRecovery {
+    const current = this.pendingArtifactRecoveries.get(threadId);
+    if (current) return current;
+    const owner = createPendingArtifactRecovery({
+      read: () => readPendingArtifactRecovery(this.readConversation(threadId)),
+      supportsTimeline: () => this.canReadThreadTimeline(),
+      loadOlder: (request) => this.requestHistoryPage(request),
+    });
+    if (this.destroyed) owner.dispose();
+    else this.pendingArtifactRecoveries.set(threadId, owner);
+    return owner;
   }
 
   private async loadHistoryPage(
@@ -6681,14 +6729,16 @@ export class CodexAppServerManager {
           this.assertOwnerForConversation(id);
           return response as import("@nodex/codex-app-server-protocol/v2/ThreadRevertResponse").ThreadRevertResponse;
         },
-        applyRevert: (_id, response, removed) =>
+        applyRevert: (_id, response, removed) => {
           this.historyClient.updateConversation(id, (draft) =>
             mutateCodexCanonicalRevert(
               draft,
               response,
               new Set(removed.map((turn) => turn.turnId)),
             ),
-          ),
+          );
+          this.acceptPendingArtifactHistory(id);
+        },
         start: async (request, original, inheritPermissionDefaults) => {
           const clientUserMessageId = createOwnerClientUserMessageId();
           const prompt = await prepareCodexPrompt(options.message, undefined, {
@@ -7965,6 +8015,8 @@ export class CodexAppServerManager {
   }
 
   resetForTests(): void {
+    for (const owner of this.pendingArtifactRecoveries.values()) owner.dispose();
+    this.pendingArtifactRecoveries.clear();
     this.streamRecovery.dispose();
     this.cancelPendingNodexAgentAuthorizations();
     this.connection = INITIAL_CONNECTION;
@@ -8532,6 +8584,8 @@ export class CodexAppServerManager {
       return;
     }
     for (const callback of this.conversationRemovedCallbacks) callback(normalizedThreadId);
+    this.pendingArtifactRecoveries.get(normalizedThreadId)?.dispose();
+    this.pendingArtifactRecoveries.delete(normalizedThreadId);
     const pendingResume = this.resumeInFlightByThreadId.get(normalizedThreadId);
     this.resumeInFlightByThreadId.delete(normalizedThreadId);
     pendingResume?.cancel();
@@ -8685,6 +8739,11 @@ export class CodexAppServerManager {
     }
 
     this.conversationsById.set(threadId, nextConversation);
+    this.itemTimelineIndex.update(
+      currentConversation?.canonicalState?.itemTimeline,
+      nextConversation.canonicalState?.itemTimeline,
+      evidence?.patches,
+    );
     this.scheduleActiveHistoryEviction(threadId);
     const transcriptListeners = this.transcriptUpdates.get(threadId);
     if (

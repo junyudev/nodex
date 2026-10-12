@@ -18,6 +18,7 @@ import {
   makeMcpAppSandboxController,
   type McpAppSandboxHost,
   type McpAppSandboxHostOptions,
+  type McpAppSandboxController,
 } from "../mcp-app/mcp-app-sandbox-host";
 import { makeMcpAppSandboxProtocolCache } from "../mcp-app/mcp-app-sandbox-protocol";
 import { MCP_APP_SANDBOX_GUEST_MESSAGE_CHANNEL } from "../../shared/mcp-app/mcp-app-sandbox-contract";
@@ -36,6 +37,8 @@ export class McpAppSandboxRuntime extends Context.Service<
       sandboxId: string,
       initId?: string,
     ) => boolean;
+    readonly captureImage: McpAppSandboxController["captureImage"];
+    readonly releaseGuest: McpAppSandboxController["releaseGuest"];
   }
 >()("nodex/main/host-runtime/McpAppSandboxRuntime") {}
 
@@ -90,6 +93,8 @@ export const live = (options: McpAppSandboxRuntimeOptions): Layer.Layer<McpAppSa
       return McpAppSandboxRuntime.of({
         createHost: controller.createHost,
         consumeUserGesture: controller.consumeUserGesture,
+        captureImage: controller.captureImage,
+        releaseGuest: controller.releaseGuest,
       });
     }),
   );
