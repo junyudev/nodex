@@ -12,6 +12,11 @@ export function CodexAfterPaintMarker({ onPaint }: { onPaint: () => void }) {
         if (document.visibilityState !== "visible" || firstFrame !== null) return;
         firstFrame = window.requestAnimationFrame(() => {
           secondFrame = window.requestAnimationFrame(() => {
+            if (document.visibilityState !== "visible") {
+              firstFrame = null;
+              secondFrame = null;
+              return;
+            }
             document.removeEventListener("visibilitychange", paint);
             onPaint();
           });

@@ -133,6 +133,7 @@ const REQUEST_SOURCES: Readonly<Record<string, string>> = {
   "threadSection/list": `thread`,
   "threadSection/update": `thread`,
   "turn/interrupt": `turn`,
+  "turn/addUserMessage": `turn`,
   "turn/settings/update": `turn`,
   "turn/start": `turn`,
   "turn/steer": `turn`,
@@ -149,6 +150,7 @@ const CRITICAL_METHODS = new Set([
   "thread/approveGuardianDeniedAction",
   "thread/resume",
   "thread/start",
+  "turn/addUserMessage",
   "turn/interrupt",
   "turn/start",
   "turn/steer",
@@ -158,7 +160,6 @@ const BACKGROUND_METHODS = new Set([
   "app/list",
   "app/read",
   "collaborationMode/list",
-  "config/read",
   "configRequirements/read",
   "experimentalFeature/list",
   "hooks/list",
@@ -166,6 +167,7 @@ const BACKGROUND_METHODS = new Set([
   "model/list",
   "permissionProfile/list",
   "plugin/list",
+  "plugin/installed",
   "skills/list",
 ]);
 

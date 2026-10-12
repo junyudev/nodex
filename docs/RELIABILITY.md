@@ -423,7 +423,10 @@ Turn-count and byte budgets across every object graph; passive owner cleanup ret
 Entity generation. Complete export has its own bounded one-Turn working set, progress,
 cancellation, and idle-job retention, and never mutates the resident snapshot.
 Scheduler admission uses queued request counts, not retained-byte ceilings. Critical work can
-enter a full queue while any of the six physical execution slots is available. The twenty-request
+enter a full queue while any of the eight physical execution slots is available. Up to five
+noncritical requests and three background requests may execute at once. Noncritical work other
+than foreground `thread/read`, `thread/turns/list`, and `thread/items/list` uses at most four
+slots, reserving the fifth for interactive history. The twenty-request
 group cap applies only to a conversation or its widget; unscoped work uses its priority queue cap.
 Byte counts remain diagnostic measurements. Physical transport and application Inbox limits are
 separate boundaries.
@@ -437,6 +440,12 @@ Matched response consumers publish these measurements to their request trace and
 Typed Gateway decoding preserves stdio source-line byte metadata for renderer chunk selection;
 WebSocket frame sizes remain diagnostics and do not replace structured-size chunk selection.
 These measurements do not decide admission, deadlines, or request settlement.
+
+Peer socket diagnostics increment frame, byte, decode-time and pending-write counters at the
+wire boundary. A write callback settles its pending counters once; closing or failing a socket
+records unfinished input and writes as abandoned and releases its gauges. Snapshot collection
+visits live connections and retains no conversation content. A false socket write records pressure
+but does not introduce a separate drain queue or change request delivery.
 
 Responses to app-server initiated requests preserve renderer interaction trace context through the
 Main settlement queue and emit that context on the physical JSON-RPC response. Tool calls and option
@@ -456,6 +465,9 @@ A renderer timeout and renderer destruction have distinct post-dispatch lifetime
 reached physical dispatch is cancelled. After dispatch, an ordinary timeout retains Main correlation
 until the physical reply; retained mutations can still settle the original renderer request, while a
 renderer that already rejected a non-retained request ignores its late response. A timed-out
+`thread/queue/add` or `turn/addUserMessage` has an uncertain mutation outcome after dispatch,
+just like Turn submission: it is not automatically retried, and its late result retains the
+original caller and native-generation identity. A timed-out
 coalesced follower detaches only itself. Resume and plugin catalog requests release scheduler
 ownership on timeout according to their native request lifetime. Renderer destruction always removes
 its logical destination while allowing already-dispatched native work to finish. If no coalesced

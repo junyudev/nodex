@@ -122,7 +122,8 @@ Query Devtools are hidden by default and loaded only when `--enable agentation`
 or `--enable query-devtools` is passed, respectively. Enable both with
 `vp run dev --home "$task_home" --enable agentation --enable query-devtools`. These overlays are
 development-only and remain absent from built production renderers. Currently
-`runtime-metrics` enables structured development runtime metrics.
+`runtime-metrics` enables structured development runtime metrics, including numeric peer socket
+frame, decode, pressure and pending-write snapshots for client and router connections.
 `database-page-reorder-menu` shows the position-only `Reorder` submenu in a
 Database Page context menu; it does not gate `Move to`, drag ordering, keyboard
 ordering, or bulk ordering. These features default off. Agent/app-server

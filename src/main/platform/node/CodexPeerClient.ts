@@ -1,6 +1,7 @@
 /* @effect-diagnostics asyncFunction:off globalTimers:off newPromise:off -- This Node socket adapter owns wire request deadlines and reconnect timers; its owning application Scope disposes the adapter and settles every pending request. */
 import { randomUUID } from "node:crypto";
 import { connect, type Socket } from "node:net";
+import { codexPeerMetrics, writeCodexPeerFrame } from "./CodexPeerMetrics";
 import {
   acceptsCodexPeerRequestVersion,
   codexPeerMethodVersion,
@@ -78,7 +79,7 @@ export class CodexPeerClient {
       this.onError(new Error(`Dropping broadcast: payload too large (${bytes} bytes)`));
       return;
     }
-    this.socket.write(encodeCodexPeerJson(json));
+    writeCodexPeerFrame(this.socket, encodeCodexPeerJson(json));
   }
 
   sendRequest(
@@ -105,7 +106,7 @@ export class CodexPeerClient {
         reject(new Error("timeout"));
       }, options.timeoutMs ?? 5_000);
       this.responses.set(request.requestId, { resolve, reject, timer });
-      socket.write(encodeCodexPeerFrame(request));
+      writeCodexPeerFrame(socket, encodeCodexPeerFrame(request));
     });
   }
 
@@ -184,14 +185,20 @@ export class CodexPeerClient {
         return;
       }
       this.socket = socket;
-      const read = createCodexPeerFrameReader((message) => this.receive(message));
-      socket.on("data", (data) => {
+      const metrics = codexPeerMetrics.attach(socket, "client");
+      const read = createCodexPeerFrameReader((message) => this.receive(message), metrics);
+      const receiveData = (data: Buffer) => {
         try {
           read(data);
         } catch (error) {
           this.onError(error);
           socket.destroy();
         }
+      };
+      socket.on("data", receiveData);
+      socket.once("close", () => {
+        socket.off("data", receiveData);
+        read[Symbol.dispose]();
       });
       void this.sendRequest("initialize", { clientType: this.clientType }).catch(
         (error: unknown) => {
@@ -280,7 +287,8 @@ export class CodexPeerClient {
     } catch {
       /* Discovery failure is a negative capability response. */
     }
-    socket.write(
+    writeCodexPeerFrame(
+      socket,
       encodeCodexPeerFrame({
         type: "client-discovery-response",
         requestId: message.requestId,
@@ -297,7 +305,8 @@ export class CodexPeerClient {
       const handler = this.requests.get(request.method);
       if (!handler) throw new Error("no-handler-for-request");
       const result = await handler.handle(request);
-      socket.write(
+      writeCodexPeerFrame(
+        socket,
         encodeCodexPeerFrame({
           type: "response",
           requestId: request.requestId,
@@ -308,7 +317,8 @@ export class CodexPeerClient {
         }),
       );
     } catch (error) {
-      socket.write(
+      writeCodexPeerFrame(
+        socket,
         encodeCodexPeerFrame({
           type: "response",
           requestId: request.requestId,

@@ -1,5 +1,6 @@
 import { StringDecoder } from "node:string_decoder";
 import type { CodexPeerMessage } from "../../../shared/codex-peer-protocol";
+import type { CodexPeerReceiveMetrics } from "./CodexPeerMetrics";
 
 export const CODEX_PEER_MAX_FRAME_BYTES = 256 * 1024 * 1024;
 
@@ -16,7 +17,10 @@ export function encodeCodexPeerJson(text: string): Buffer {
 }
 
 /** Incremental UTF-8 decoding avoids retaining all socket fragments alongside the parsed JSON. */
-export function createCodexPeerFrameReader(onMessage: (message: CodexPeerMessage) => void) {
+export function createCodexPeerFrameReader(
+  onMessage: (message: CodexPeerMessage) => void,
+  metrics?: CodexPeerReceiveMetrics,
+) {
   const header = Buffer.alloc(4);
   const decoder = new StringDecoder("utf8");
   let headerBytes = 0;
@@ -25,6 +29,7 @@ export function createCodexPeerFrameReader(onMessage: (message: CodexPeerMessage
   let text = "";
   let currentText = "";
   let fragments = 0;
+  let disposed = false;
   const readHeader = (chunk: Buffer, offset: number): number => {
     const count = Math.min(4 - headerBytes, chunk.length - offset);
     chunk.copy(header, headerBytes, offset, offset + count);
@@ -35,6 +40,7 @@ export function createCodexPeerFrameReader(onMessage: (message: CodexPeerMessage
     if (length === 0 || length > CODEX_PEER_MAX_FRAME_BYTES) {
       throw new Error(`Invalid frame length (${length} bytes)`);
     }
+    metrics?.begin(length);
     return offset + count;
   };
   const appendFragment = (fragment: Buffer): void => {
@@ -45,7 +51,7 @@ export function createCodexPeerFrameReader(onMessage: (message: CodexPeerMessage
     currentText = "";
     fragments = 0;
   };
-  return (chunk: Buffer): void => {
+  const read = (chunk: Buffer): void => {
     let offset = 0;
     while (offset < chunk.length) {
       if (length === 0) {
@@ -57,8 +63,10 @@ export function createCodexPeerFrameReader(onMessage: (message: CodexPeerMessage
       const fragment = chunk.subarray(offset, offset + count);
       received += count;
       offset += count;
+      metrics?.decode(count);
       if (received < length) {
         appendFragment(fragment);
+        metrics?.endDecode();
         return;
       }
       const json =
@@ -68,7 +76,28 @@ export function createCodexPeerFrameReader(onMessage: (message: CodexPeerMessage
       text = "";
       currentText = "";
       fragments = 0;
-      onMessage(JSON.parse(json) as CodexPeerMessage);
+      const message = JSON.parse(json) as CodexPeerMessage;
+      metrics?.complete(message);
+      onMessage(message);
     }
   };
+  const receive = (chunk: Buffer): void => {
+    if (disposed) return;
+    try {
+      read(chunk);
+    } catch (error) {
+      metrics?.fail();
+      throw error;
+    }
+  };
+  return Object.assign(receive, {
+    [Symbol.dispose]: () => {
+      if (disposed) return;
+      disposed = true;
+      metrics?.close();
+      decoder.end();
+      text = "";
+      currentText = "";
+    },
+  });
 }

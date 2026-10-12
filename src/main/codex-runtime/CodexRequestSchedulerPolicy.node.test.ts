@@ -9,6 +9,7 @@ import {
   codexScheduledRequestBytes,
   defaultCodexRequestPriority,
   emptyCodexRequestSelectionState,
+  isCodexForegroundHistoryRequest,
   selectNextCodexScheduledRequest,
   type CodexRequestPriority,
   type CodexRequestSchedulingSource,
@@ -31,6 +32,7 @@ const scheduledRequest = (
     priority,
     source,
     backgroundLane: codexRequestBackgroundLane(priority, source),
+    foregroundHistory: isCodexForegroundHistoryRequest(method, priority),
     conversationId: "thread-a",
     widgetId: null,
     timeoutMs: null,
@@ -57,6 +59,7 @@ describe("Codex request scheduler method policy", () => {
     "thread/approveGuardianDeniedAction",
     "thread/resume",
     "thread/start",
+    "turn/addUserMessage",
     "turn/interrupt",
     "turn/start",
     "turn/steer",
@@ -67,7 +70,6 @@ describe("Codex request scheduler method policy", () => {
   test.each([
     "app/list",
     "collaborationMode/list",
-    "config/read",
     "configRequirements/read",
     "experimentalFeature/list",
     "hooks/list",
@@ -75,6 +77,7 @@ describe("Codex request scheduler method policy", () => {
     "model/list",
     "permissionProfile/list",
     "plugin/list",
+    "plugin/installed",
     "skills/list",
   ])("defaults %s to background metadata", (method) => {
     expect(defaultCodexRequestPriority(method)).toBe("background");
@@ -82,6 +85,10 @@ describe("Codex request scheduler method policy", () => {
 
   test("keeps ordinary and caller-overridden work in the requested priority", () => {
     expect(defaultCodexRequestPriority("thread/fork")).toBe("interactive");
+    expect(defaultCodexRequestPriority("config/read")).toBe("interactive");
+    expect(
+      codexRequestCoalescingKey(scheduledRequest("config", { method: "config/read" })),
+    ).not.toBeNull();
     expect(defaultCodexRequestPriority("thread/read", "background")).toBe("background");
   });
 
@@ -171,6 +178,9 @@ describe("Codex request coalescing policy", () => {
 
   test("does not coalesce item pages or mutations and skips unsafe keys", () => {
     expect(
+      codexRequestCoalescingKey(scheduledRequest("plugins", { method: "plugin/installed" })),
+    ).toBeNull();
+    expect(
       codexRequestCoalescingKey(scheduledRequest("items", { method: "thread/items/list" })),
     ).toBeNull();
     expect(
@@ -238,7 +248,7 @@ describe("Codex request queue admission", () => {
   ] as const)("enforces the %s count cap when execution capacity is full", (priority, count) => {
     const queued = queueOf(count, priority);
     const result = admitCodexScheduledRequest({
-      inFlightCount: 6,
+      inFlightCount: CODEX_REQUEST_SCHEDULER_LIMITS.totalInFlight,
       request: scheduledRequest("candidate", {
         priority,
         conversationId: "candidate-thread",
@@ -258,7 +268,7 @@ describe("Codex request queue admission", () => {
     });
     expect(
       admitCodexScheduledRequest({
-        inFlightCount: 6,
+        inFlightCount: CODEX_REQUEST_SCHEDULER_LIMITS.totalInFlight,
         request: scheduledRequest("group-count", {
           conversationId: "thread-a",
           widgetId: "widget-a",
@@ -283,7 +293,7 @@ describe("Codex request queue admission", () => {
           queuedBytes: 100 * 1024 * 1024,
         }),
         queued,
-        inFlightCount: 6,
+        inFlightCount: CODEX_REQUEST_SCHEDULER_LIMITS.totalInFlight,
       }),
     ).toEqual({ accepted: true });
   });
@@ -294,10 +304,22 @@ describe("Codex request queue admission", () => {
       priority: "critical",
       conversationId: "thread-a",
     });
-    expect(admitCodexScheduledRequest({ request, queued, inFlightCount: 5 })).toEqual({
+    expect(
+      admitCodexScheduledRequest({
+        request,
+        queued,
+        inFlightCount: CODEX_REQUEST_SCHEDULER_LIMITS.totalInFlight - 1,
+      }),
+    ).toEqual({
       accepted: true,
     });
-    expect(admitCodexScheduledRequest({ request, queued, inFlightCount: 6 })).toMatchObject({
+    expect(
+      admitCodexScheduledRequest({
+        request,
+        queued,
+        inFlightCount: CODEX_REQUEST_SCHEDULER_LIMITS.totalInFlight,
+      }),
+    ).toMatchObject({
       accepted: false,
     });
   });
@@ -308,7 +330,7 @@ describe("Codex request queue admission", () => {
       admitCodexScheduledRequest({
         request: scheduledRequest("global", { conversationId: null }),
         queued,
-        inFlightCount: 6,
+        inFlightCount: CODEX_REQUEST_SCHEDULER_LIMITS.totalInFlight,
       }),
     ).toEqual({ accepted: true });
   });
@@ -330,7 +352,7 @@ describe("Codex request dispatch selection", () => {
     expect(
       selectNextCodexScheduledRequest({
         queued,
-        inFlight: [...fiveNonCritical, scheduledRequest("sixth", { priority: "critical" })],
+        inFlight: [...fiveNonCritical, ...queueOf(3, "critical")],
         state: emptyCodexRequestSelectionState(),
       }),
     ).toBeNull();
@@ -342,6 +364,52 @@ describe("Codex request dispatch selection", () => {
       }),
     ).toBeNull();
   });
+
+  test.each(["thread/read", "thread/turns/list", "thread/items/list"])(
+    "reserves the fifth noncritical slot for foreground %s",
+    (method) => {
+      const ordinary = queueOf(4, "interactive", {
+        method: "ordinary/read",
+        foregroundHistory: false,
+      });
+      const history = scheduledRequest("history", { method, conversationId: "history" });
+      const generic = scheduledRequest("generic", {
+        method: "ordinary/read",
+        foregroundHistory: false,
+      });
+      expect(
+        selectNextCodexScheduledRequest({
+          queued: [generic, history],
+          inFlight: ordinary,
+          state: emptyCodexRequestSelectionState(),
+        })?.request.requestId,
+      ).toBe("history");
+      for (const candidate of [
+        generic,
+        scheduledRequest("timeline", { method: "thread/timeline/list", foregroundHistory: false }),
+        scheduledRequest("background-history", {
+          method,
+          priority: "background",
+          foregroundHistory: false,
+        }),
+      ]) {
+        expect(
+          selectNextCodexScheduledRequest({
+            queued: [candidate],
+            inFlight: ordinary,
+            state: emptyCodexRequestSelectionState(),
+          }),
+        ).toBeNull();
+      }
+      expect(
+        selectNextCodexScheduledRequest({
+          queued: [generic],
+          inFlight: [...ordinary.slice(0, 3), history],
+          state: emptyCodexRequestSelectionState(),
+        })?.request.requestId,
+      ).toBe("generic");
+    },
+  );
 
   test("prefers one eligible background request after four interactive dispatches", () => {
     const queued = [
@@ -487,7 +555,7 @@ describe("Codex request dispatch selection", () => {
       }),
     ).toBeNull();
 
-    const backgroundInFlight = queueOf(4, "background", {
+    const backgroundInFlight = queueOf(3, "background", {
       source: "tail_history",
       backgroundLane: "thread",
     });

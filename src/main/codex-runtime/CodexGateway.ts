@@ -149,8 +149,10 @@ const timeoutFor = (options: CodexGatewayOptions, method: ClientRequestMethod): 
 const OUTCOME_UNKNOWN_ON_TIMEOUT = new Set<string>([
   "thread/fork",
   "thread/inject_items",
+  "thread/queue/add",
   "thread/start",
   "thread/startAeon",
+  "turn/addUserMessage",
   "turn/start",
   "turn/steer",
 ]);

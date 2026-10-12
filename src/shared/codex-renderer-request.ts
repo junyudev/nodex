@@ -12,6 +12,8 @@ export function codexRequestCanRetainOutcome(method: string): boolean {
     method === "thread/startAeon" ||
     method === "thread/fork" ||
     method === "thread/inject_items" ||
+    method === "thread/queue/add" ||
+    method === "turn/addUserMessage" ||
     method === "turn/start" ||
     method === "turn/steer"
   );

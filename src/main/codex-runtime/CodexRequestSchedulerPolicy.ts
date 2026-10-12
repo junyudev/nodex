@@ -1,7 +1,8 @@
 export const CODEX_REQUEST_SCHEDULER_LIMITS = {
-  totalInFlight: 6,
+  totalInFlight: 8,
   nonCriticalInFlight: 5,
-  backgroundInFlight: 4,
+  nonHistoryNonCriticalInFlight: 4,
+  backgroundInFlight: 3,
   nonCriticalPerConversation: 4,
   nonCriticalPerConversationWidget: 3,
   backgroundMetadataInFlight: 3,
@@ -40,6 +41,7 @@ const CRITICAL_METHODS = new Set<string>([
   "thread/approveGuardianDeniedAction",
   "thread/resume",
   "thread/start",
+  "turn/addUserMessage",
   "turn/interrupt",
   "turn/start",
   "turn/steer",
@@ -48,7 +50,6 @@ const CRITICAL_METHODS = new Set<string>([
 const BACKGROUND_METADATA_METHODS = new Set<string>([
   "app/list",
   "collaborationMode/list",
-  "config/read",
   "configRequirements/read",
   "experimentalFeature/list",
   "hooks/list",
@@ -56,11 +57,13 @@ const BACKGROUND_METADATA_METHODS = new Set<string>([
   "model/list",
   "permissionProfile/list",
   "plugin/list",
+  "plugin/installed",
   "skills/list",
 ]);
 
 const COALESCIBLE_METHODS = new Set<string>([
-  ...BACKGROUND_METADATA_METHODS,
+  ...Array.from(BACKGROUND_METADATA_METHODS).filter((method) => method !== "plugin/installed"),
+  "config/read",
   "thread/list",
   "thread/loaded/list",
   "thread/read",
@@ -98,6 +101,7 @@ export interface CodexScheduledRequestDescriptor {
   readonly priority: CodexRequestPriority;
   readonly source: CodexRequestSchedulingSource | null;
   readonly backgroundLane: CodexRequestBackgroundLane;
+  readonly foregroundHistory: boolean;
   readonly conversationId: string | null;
   readonly widgetId: string | null;
   readonly timeoutMs: number | null;
@@ -166,6 +170,14 @@ export const codexRequestBackgroundLane = (
   if (priority !== "background") return null;
   return source !== null && THREAD_BACKGROUND_SOURCES.has(source) ? "thread" : "metadata";
 };
+
+/** Interactive history can use the fifth noncritical slot while ordinary work cannot. */
+export const isCodexForegroundHistoryRequest = (
+  method: string,
+  priority: CodexRequestPriority,
+): boolean =>
+  priority !== "background" &&
+  (method === "thread/read" || method === "thread/turns/list" || method === "thread/items/list");
 
 export const codexRequestQueueExpiryMs = (input: {
   readonly priority: CodexRequestPriority;
@@ -401,6 +413,13 @@ const isEligibleNonCritical = (
   inFlight: readonly CodexScheduledRequestDescriptor[],
   laneCounts: { readonly metadata: number; readonly thread: number; readonly catalog: number },
 ): boolean => {
+  if (
+    !request.foregroundHistory &&
+    inFlight.filter((active) => active.priority !== "critical" && !active.foregroundHistory)
+      .length >= CODEX_REQUEST_SCHEDULER_LIMITS.nonHistoryNonCriticalInFlight
+  ) {
+    return false;
+  }
   const counts = nonCriticalConversationCounts(inFlight, request);
   if (counts.conversation >= CODEX_REQUEST_SCHEDULER_LIMITS.nonCriticalPerConversation) {
     return false;

@@ -299,11 +299,12 @@ export class ConversationStream<
     if (!this.followed.has(conversationId)) return;
     const role = this.getRole(conversationId);
     if (change.type === "snapshot") {
-      this.options.setConversation(this.options.normalizeSnapshot(change.conversationState));
+      const conversation = this.options.normalizeSnapshot(change.conversationState);
+      this.setRole(conversationId, { role: "follower", ownerClientId: sourceClientId });
+      this.options.setConversation(conversation);
       this.revisions.set(conversationId, change.revision);
       this.resolveWaiters(conversationId, sourceClientId, change.revision);
       this.options.notifyConversation(conversationId);
-      this.setRole(conversationId, { role: "follower", ownerClientId: sourceClientId });
       return;
     }
     if (

@@ -1,7 +1,7 @@
 # Codex Thread Owner/Follower Streaming
 
 Status: Active
-Last Updated: 2026-09-16
+Last Updated: 2026-10-12
 
 ## Intent
 
@@ -213,7 +213,9 @@ into canonical state. Owner-visible updates do not wait for Main publication acc
 
 Snapshots contain the full canonical document and an owner revision. A snapshot replaces the
 receiver's document and owner even when its revision is lower or the receiver was previously
-an owner. Ordinary patches apply only when the receiver follows the source peer and its
+an owner. Snapshot normalization precedes the follower-role transition; document installation
+and notification callbacks observe the source peer as the owner. Revision and matching history
+waiters advance before notification. Ordinary patches apply only when the receiver follows the source peer and its
 revision equals `baseRevision`. The resulting revision need not equal `baseRevision + 1`.
 Mismatched or failed patches are dropped and logged; they do not issue a hidden resync request.
 

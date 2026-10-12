@@ -1,5 +1,6 @@
 import type { CodexRendererRequestCaller } from "../../../shared/codex-renderer-request";
 import { afterEach, expect, it, vi } from "vitest";
+import { codexRendererRequestPriority } from "../../../shared/codex-request-policy";
 import { RendererAppServerRequestClient } from "./renderer-app-server-request-client";
 
 afterEach(() => vi.useRealTimers());
@@ -142,31 +143,33 @@ it("starts caller deadline before dispatch and abandons a timed out request", as
   client[Symbol.dispose]();
 });
 
-it("keeps a late result after notifying unknown outcome exactly once", async () => {
-  vi.useFakeTimers();
-  let finish!: (value: string) => void;
-  const abandon = vi.fn(async () => {});
-  const unknown = vi.fn();
-  const client = new RendererAppServerRequestClient(abandon);
-  const pending = client.send(
-    "turn/start",
-    () =>
-      new Promise<string>((resolve) => {
-        finish = resolve;
-      }),
-    {
-      timeoutMs: 20,
-      onOutcomeUnknown: unknown,
-    },
-  );
-  await vi.advanceTimersByTimeAsync(100);
-  expect(unknown).toHaveBeenCalledOnce();
-  expect(abandon).toHaveBeenCalledOnce();
-  finish("accepted");
-  await expect(pending).resolves.toBe("accepted");
-  client[Symbol.dispose]();
-  expect(abandon).toHaveBeenCalledOnce();
-});
+for (const method of ["turn/start", "turn/addUserMessage", "thread/queue/add"]) {
+  it(`keeps the late ${method} result after notifying uncertainty exactly once`, async () => {
+    vi.useFakeTimers();
+    let finish!: (value: string) => void;
+    const abandon = vi.fn(async () => {});
+    const unknown = vi.fn();
+    const client = new RendererAppServerRequestClient(abandon);
+    const pending = client.send(
+      method,
+      () =>
+        new Promise<string>((resolve) => {
+          finish = resolve;
+        }),
+      {
+        timeoutMs: 20,
+        onOutcomeUnknown: unknown,
+      },
+    );
+    await vi.advanceTimersByTimeAsync(100);
+    expect(unknown).toHaveBeenCalledOnce();
+    expect(abandon).toHaveBeenCalledOnce();
+    finish("accepted");
+    await expect(pending).resolves.toBe("accepted");
+    client[Symbol.dispose]();
+    expect(abandon).toHaveBeenCalledOnce();
+  });
+}
 
 it("rejects new requests after scope disposal", async () => {
   const dispatch = vi.fn(async () => "unexpected");
@@ -373,4 +376,11 @@ it("fallback queue pressure reports the real queued count", async () => {
 
   client[Symbol.dispose]();
   await Promise.allSettled(pending);
+});
+
+it("classifies mutation, plugin and configuration scheduling while preserving explicit priority", () => {
+  expect(codexRendererRequestPriority("turn/addUserMessage")).toBe("critical");
+  expect(codexRendererRequestPriority("plugin/installed")).toBe("background");
+  expect(codexRendererRequestPriority("config/read")).toBe("interactive");
+  expect(codexRendererRequestPriority("turn/addUserMessage", "background")).toBe("background");
 });

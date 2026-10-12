@@ -1,6 +1,7 @@
 import { performance } from "node:perf_hooks";
 import { isDevelopmentFeatureEnabled } from "../shared/development-features";
 import { getLogger } from "./logging/logger";
+import { codexPeerMetrics } from "./platform/node/CodexPeerMetrics";
 
 type DevRuntimeMetricFields = Record<string, unknown>;
 
@@ -34,5 +35,6 @@ export function logDevRuntimeMetric(metric: string, fields: DevRuntimeMetricFiel
   devRuntimeMetricLogger.info("dev runtime metric", {
     metric,
     ...fields,
+    ...codexPeerMetrics.snapshot(),
   });
 }

@@ -54,6 +54,40 @@ afterEach(() => {
 });
 
 describe("conversation stream ownership and publication", () => {
+  it("installs the follower role before snapshot callbacks and settles matching waiters", async () => {
+    const base = setup();
+    const observations: unknown[] = [];
+    const stream = new ConversationStream({
+      ...base,
+      normalizeSnapshot: (document) => {
+        observations.push(["normalize", stream.getRole(document.id)]);
+        return document;
+      },
+      setConversation: (document) => {
+        observations.push(["install", stream.getRole(document.id)]);
+        base.setConversation(document);
+      },
+      notifyConversation: (id) => {
+        observations.push(["notify", stream.getRole(id), stream.getRevision(id)]);
+      },
+    });
+    stream.setFollowing("thread", true);
+    stream.setRole("thread", { role: "owner" });
+    stream.receiveState("thread", "new-owner", snapshot(2));
+    expect(observations).toEqual([
+      ["normalize", { role: "owner" }],
+      ["install", { role: "follower", ownerClientId: "new-owner" }],
+      ["notify", { role: "follower", ownerClientId: "new-owner" }, 2],
+    ]);
+    expect(stream.ownsConversationHistoryStream("thread")).toBe(false);
+    const result = stream.waitForRevision("thread", "new-owner", 3, 100);
+    stream.receiveState("thread", "new-owner", snapshot(3));
+    await result;
+    stream.receiveState("thread", "other-owner", snapshot(1, "replacement"));
+    expect(stream.getRevision("thread")).toBe(1);
+    expect(base.documents.get("thread")?.text).toBe("replacement");
+    stream.dispose();
+  });
   it("selects the first window that can acquire a stream, otherwise the last registered activity", () => {
     const { stream } = setup();
     const changed = vi.fn();

@@ -12,6 +12,7 @@ import { CodexScheduledRequestTrace, makeCodexHostRequestMetrics } from "./Codex
 import { makeCodexRendererRequestLifetimes } from "./CodexRendererRequestLifetimes";
 import type { CodexRuntimeError } from "./CodexRuntimeError";
 import { encodeCodexNativeRequestFailure } from "../../shared/codex-native-request-outcome";
+import { CODEX_REQUEST_SCHEDULER_LIMITS } from "./CodexRequestSchedulerPolicy";
 import type { CodexTurnDelivery } from "../../shared/codex-conversation-state/codex-turn-delivery";
 
 const withOpenScheduler = <A>(
@@ -61,15 +62,14 @@ const sent = <A>(effect: Effect.Effect<A>) =>
     return yield* effect;
   });
 
-it.effect(
-  "Main retains a sent Turn past its deadline and releases admission until the real response",
-  () =>
+for (const method of ["turn/start", "turn/addUserMessage", "thread/queue/add"]) {
+  it.effect(`Main retains sent ${method} past its deadline without submitting twice`, () =>
     withOpenScheduler((scheduler) =>
       Effect.gen(function* () {
         const response = yield* Deferred.make<string>();
         const deliveries: CodexTurnDelivery[] = [];
-        const pending = yield* request(scheduler, "turn/start", sent(Deferred.await(response)), {
-          requestId: "turn/start:wire-main",
+        const pending = yield* request(scheduler, method, sent(Deferred.await(response)), {
+          requestId: `${method}:wire-main`,
           timeoutMs: 30,
           retainResponse: true,
           onOutcomeUnknown: (delivery) =>
@@ -81,7 +81,7 @@ it.effect(
         assert.strictEqual((yield* scheduler.snapshot).current.inFlight, 1);
         yield* TestClock.adjust(30);
         assert.deepEqual(deliveries, [
-          { requestId: "turn/start:wire-main", method: "turn/start", stage: "outcome-unknown" },
+          { requestId: `${method}:wire-main`, method, stage: "outcome-unknown" },
         ]);
         assert.strictEqual((yield* scheduler.snapshot).current.inFlight, 0);
         const drained = yield* Deferred.make<void>();
@@ -98,7 +98,8 @@ it.effect(
         assert.strictEqual((yield* scheduler.snapshot).totals.completed, 1);
       }),
     ),
-);
+  );
+}
 
 it.effect("a late native response waits for the already-admitted delivery callback", () =>
   withOpenScheduler((scheduler) =>
@@ -249,10 +250,12 @@ it.effect(
         );
         yield* Effect.yieldNow;
         assert.strictEqual(dispatches, 1);
-        yield* Effect.forEach(Array.from({ length: 5 }), (_, index) =>
-          Effect.forkScoped(
-            request(scheduler, `critical/${index}`, Effect.never, { priority: "critical" }),
-          ),
+        yield* Effect.forEach(
+          Array.from({ length: CODEX_REQUEST_SCHEDULER_LIMITS.totalInFlight - 1 }),
+          (_, index) =>
+            Effect.forkScoped(
+              request(scheduler, `critical/${index}`, Effect.never, { priority: "critical" }),
+            ),
         );
         let nextDispatched = false;
         yield* Effect.forkScoped(
@@ -277,7 +280,10 @@ it.effect(
         assert.strictEqual(yield* Fiber.join(pending), "accepted once");
         assert.strictEqual(dispatches, 1);
         assert.strictEqual(hostMetrics.receiveState.pendingClientRequests, 0);
-        assert.strictEqual((yield* scheduler.snapshot).current.inFlight, 6);
+        assert.strictEqual(
+          (yield* scheduler.snapshot).current.inFlight,
+          CODEX_REQUEST_SCHEDULER_LIMITS.totalInFlight,
+        );
       }),
     ),
 );
@@ -286,13 +292,18 @@ it.effect("retained callers queued before native dispatch expire without being s
   withOpenScheduler((scheduler) =>
     Effect.gen(function* () {
       const lifetimes = yield* makeCodexRendererRequestLifetimes;
-      yield* Effect.forEach(Array.from({ length: 6 }), (_, index) =>
-        Effect.forkScoped(
-          request(scheduler, `critical/${index}`, Effect.never, { priority: "critical" }),
-        ),
+      yield* Effect.forEach(
+        Array.from({ length: CODEX_REQUEST_SCHEDULER_LIMITS.totalInFlight }),
+        (_, index) =>
+          Effect.forkScoped(
+            request(scheduler, `critical/${index}`, Effect.never, { priority: "critical" }),
+          ),
       );
       yield* Effect.yieldNow;
-      assert.strictEqual((yield* scheduler.snapshot).current.inFlight, 6);
+      assert.strictEqual(
+        (yield* scheduler.snapshot).current.inFlight,
+        CODEX_REQUEST_SCHEDULER_LIMITS.totalInFlight,
+      );
       let dispatched = false;
       const pending = yield* lifetimes.start(
         "window:unsent",
@@ -405,10 +416,12 @@ for (const method of ["thread/resume", "thread/read"]) {
           request(scheduler, method, Deferred.await(response)),
         );
         yield* Effect.yieldNow;
-        yield* Effect.forEach(Array.from({ length: 5 }), (_, index) =>
-          Effect.forkScoped(
-            request(scheduler, `critical/${index}`, Effect.never, { priority: "critical" }),
-          ),
+        yield* Effect.forEach(
+          Array.from({ length: CODEX_REQUEST_SCHEDULER_LIMITS.totalInFlight - 1 }),
+          (_, index) =>
+            Effect.forkScoped(
+              request(scheduler, `critical/${index}`, Effect.never, { priority: "critical" }),
+            ),
         );
         yield* Effect.yieldNow;
         let dispatched = false;
@@ -428,13 +441,16 @@ for (const method of ["thread/resume", "thread/read"]) {
         yield* Fiber.interrupt(first);
         yield* Effect.yieldNow;
         assert.strictEqual(dispatched, method === "thread/resume");
-        assert.strictEqual((yield* scheduler.snapshot).current.inFlight, 6);
+        assert.strictEqual(
+          (yield* scheduler.snapshot).current.inFlight,
+          CODEX_REQUEST_SCHEDULER_LIMITS.totalInFlight,
+        );
 
         yield* Deferred.succeed(response, "late response");
         yield* Effect.yieldNow;
         const settled = yield* scheduler.snapshot;
         assert.strictEqual(dispatched, true);
-        assert.strictEqual(settled.current.inFlight, 6);
+        assert.strictEqual(settled.current.inFlight, CODEX_REQUEST_SCHEDULER_LIMITS.totalInFlight);
         assert.strictEqual(settled.current.queued, 0);
         assert.strictEqual(settled.totals.lateCompletions, method === "thread/resume" ? 1 : 0);
       }),
@@ -553,17 +569,19 @@ it.effect(
   () =>
     withOpenScheduler((scheduler) =>
       Effect.gen(function* () {
-        const blockers = yield* Effect.forEach(Array.from({ length: 6 }), (_, index) =>
-          Effect.forkScoped(
-            scheduler.schedule({
-              hostId: "local",
-              generation: 1,
-              method: `critical/${index}`,
-              params: { index },
-              dispatch: Effect.never,
-              options: { priority: "critical", coalesce: false },
-            }),
-          ),
+        const blockers = yield* Effect.forEach(
+          Array.from({ length: CODEX_REQUEST_SCHEDULER_LIMITS.totalInFlight }),
+          (_, index) =>
+            Effect.forkScoped(
+              scheduler.schedule({
+                hostId: "local",
+                generation: 1,
+                method: `critical/${index}`,
+                params: { index },
+                dispatch: Effect.never,
+                options: { priority: "critical", coalesce: false },
+              }),
+            ),
         );
         yield* Effect.yieldNow;
         const queued = yield* Effect.forkScoped(
@@ -590,8 +608,9 @@ it.effect(
   () =>
     withOpenScheduler((scheduler) =>
       Effect.gen(function* () {
-        const gates = yield* Effect.forEach(Array.from({ length: 6 }), () =>
-          Deferred.make<string>(),
+        const gates = yield* Effect.forEach(
+          Array.from({ length: CODEX_REQUEST_SCHEDULER_LIMITS.totalInFlight }),
+          () => Deferred.make<string>(),
         );
         const blockers = yield* Effect.forEach(gates, (gate, index) =>
           Effect.forkScoped(
@@ -620,17 +639,26 @@ it.effect(
         yield* Effect.yieldNow;
         yield* TestClock.adjust(4);
         const beforeExecutionDeadline = yield* scheduler.snapshot;
-        assert.strictEqual(beforeExecutionDeadline.current.inFlight, 6);
+        assert.strictEqual(
+          beforeExecutionDeadline.current.inFlight,
+          CODEX_REQUEST_SCHEDULER_LIMITS.totalInFlight,
+        );
         assert.strictEqual(beforeExecutionDeadline.totals.executionTimedOut, 0);
 
         yield* TestClock.adjust(1);
         const error = yield* expectFailure(Fiber.join(pending));
         assert.strictEqual(error.operation, "scheduler.execution");
         assert.strictEqual(error.reason, "timeout");
-        assert.strictEqual((yield* scheduler.snapshot).current.inFlight, 6);
+        assert.strictEqual(
+          (yield* scheduler.snapshot).current.inFlight,
+          CODEX_REQUEST_SCHEDULER_LIMITS.totalInFlight,
+        );
         yield* Deferred.succeed(response, "late native result");
         yield* Effect.yieldNow;
-        assert.strictEqual((yield* scheduler.snapshot).current.inFlight, 5);
+        assert.strictEqual(
+          (yield* scheduler.snapshot).current.inFlight,
+          CODEX_REQUEST_SCHEDULER_LIMITS.totalInFlight - 1,
+        );
 
         yield* Effect.forEach(gates.slice(1), (gate) => Deferred.succeed(gate, "released"), {
           discard: true,

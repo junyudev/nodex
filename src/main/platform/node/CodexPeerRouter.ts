@@ -1,6 +1,7 @@
 /* @effect-diagnostics asyncFunction:off globalTimers:off newPromise:off -- This Node socket adapter owns wire request deadlines and reconnect timers; its owning application Scope disposes the adapter and settles every pending request. */
 import { randomUUID } from "node:crypto";
 import type { Server, Socket } from "node:net";
+import { codexPeerMetrics, writeCodexPeerFrame } from "./CodexPeerMetrics";
 import {
   codexPeerMethodVersion,
   type CodexPeerBroadcast,
@@ -69,18 +70,22 @@ export class CodexPeerRouter {
 
   private readonly connect = (socket: Socket): void => {
     this.sockets.add(socket);
-    const read = createCodexPeerFrameReader((message) => this.receive(socket, message));
-    socket.on("data", (data) => {
+    const metrics = codexPeerMetrics.attach(socket, "router");
+    const read = createCodexPeerFrameReader((message) => this.receive(socket, message), metrics);
+    const receiveData = (data: Buffer) => {
       try {
         read(data);
       } catch (error) {
         this.onError(error);
         socket.destroy();
       }
-    });
+    };
+    socket.on("data", receiveData);
     socket.on("error", this.onError);
     socket.on("end", () => this.unregister(socket));
     socket.on("close", () => {
+      socket.off("data", receiveData);
+      read[Symbol.dispose]();
       this.sockets.delete(socket);
       this.unregister(socket);
     });
@@ -119,7 +124,7 @@ export class CodexPeerRouter {
       sourceClientId: this.clients.get(source)?.id ?? message.sourceClientId,
     });
     try {
-      for (const peer of recipients) peer.socket.write(frame);
+      for (const peer of recipients) writeCodexPeerFrame(peer.socket, frame);
     } catch (error) {
       this.onError(error);
     }
@@ -164,7 +169,8 @@ export class CodexPeerRouter {
         }, 10_000),
       });
     });
-    peer.socket.write(
+    writeCodexPeerFrame(
+      peer.socket,
       encodeCodexPeerFrame({ type: "client-discovery-request", requestId, request }),
     );
     return result;
@@ -199,7 +205,7 @@ export class CodexPeerRouter {
         this.respondError(source, request.requestId, "request-timeout");
       }, request.timeoutMs ?? 10_000),
     });
-    peer.socket.write(encodeCodexPeerFrame(request));
+    writeCodexPeerFrame(peer.socket, encodeCodexPeerFrame(request));
   }
 
   private response(response: CodexPeerResponse): void {
@@ -207,7 +213,8 @@ export class CodexPeerRouter {
     if (!request) return;
     clearTimeout(request.timeout);
     this.requests.delete(response.requestId);
-    if (request.sourceSocket.writable) request.sourceSocket.write(encodeCodexPeerFrame(response));
+    if (request.sourceSocket.writable)
+      writeCodexPeerFrame(request.sourceSocket, encodeCodexPeerFrame(response));
   }
 
   private register(socket: Socket, request: CodexPeerRequest): void {
@@ -219,7 +226,8 @@ export class CodexPeerRouter {
       this.clientsById.set(peer.id, peer);
       this.broadcastStatus(peer, "connected");
     }
-    socket.write(
+    writeCodexPeerFrame(
+      socket,
       encodeCodexPeerFrame({
         type: "response",
         requestId: request.requestId,
@@ -261,13 +269,14 @@ export class CodexPeerRouter {
       params: { clientId: peer.id, clientType: peer.type, status },
     });
     for (const recipient of this.clients.values()) {
-      if (recipient.id !== peer.id) recipient.socket.write(frame);
+      if (recipient.id !== peer.id) writeCodexPeerFrame(recipient.socket, frame);
     }
   }
 
   private respondError(socket: Socket, requestId: string, error: string): void {
     if (socket.writable)
-      socket.write(
+      writeCodexPeerFrame(
+        socket,
         encodeCodexPeerFrame({ type: "response", requestId, resultType: "error", error }),
       );
   }
