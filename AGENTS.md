@@ -18,7 +18,7 @@
 
 ### Worktrees and local artifacts
 
-- When creating a new worktree, default to `~/repo/nodex-wt/<slug>/`. Use a short, task-descriptive lowercase hyphenated slug and default to branch `codex/<slug>`. Use a creation command that accepts the target directory, such as `git worktree add`. This convention does not require a new worktree for every task.
+- Create new worktrees, including subagent worktrees, under `~/repo/nodex/.agents/worktrees/<slug>/` in the primary checkout, even when working inside another worktree. Use a short, task-descriptive lowercase hyphenated slug and default to branch `codex/<slug>`. Use a creation command that accepts the target directory, such as `git worktree add`. This convention does not require a new worktree for every task.
 - Reuse the new worktree's slug for its local artifacts. When working in an existing checkout, choose a task-specific slug. Add a short suffix when a new worktree or independent instance would collide with an existing path.
 - Run commands and edit source in the task's current worktree. Writing the task's local artifacts to the primary checkout's directories below is allowed from any worktree; it does not authorize source edits in another checkout.
 - Use these primary-checkout paths even when working in a linked worktree:

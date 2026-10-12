@@ -45,6 +45,7 @@ yarn-error.log*
 *.tsbuildinfo
 next-env.d.ts
 
+/.agents/worktrees/
 /.kanban/
 /runs.local/
 *.local

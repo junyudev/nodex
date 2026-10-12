@@ -21,6 +21,15 @@ The install lifecycle runs `electron-builder install-app-deps`, which rebuilds
 Electron-compatible binary with a host-Node binary. SQLite and collaborative
 Document authority are native Rust code and do not use a Node addon.
 
+### Worktrees
+
+Follow [Worktrees and local artifacts](../AGENTS.md#worktrees-and-local-artifacts).
+For example, create a `board-drag` task worktree from any working directory:
+
+```bash
+git -C "$HOME/repo/nodex" worktree add -b codex/board-drag "$HOME/repo/nodex/.agents/worktrees/board-drag"
+```
+
 ### Machine-local artifact cache
 
 Pinned Browser, Agent, and Sparkle archives are downloaded into
