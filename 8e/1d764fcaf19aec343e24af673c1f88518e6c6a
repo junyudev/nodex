@@ -1,0 +1,147 @@
+packages/landing/src/components/NavBar.astro
+  s_5808f0d29557e2::t_6eaf6e7d0b9c72 1-67
+packages/landing/MEDIA.md
+  s_5808f0d29557e2::t_6eaf6e7d0b9c72 1-32
+packages/landing/src/components/Footer.astro
+  s_5808f0d29557e2::t_6eaf6e7d0b9c72 1-86
+packages/landing/src/i18n/en/translation.json
+  s_5808f0d29557e2::t_6eaf6e7d0b9c72 1-104
+packages/landing/src/icons/GitHubIcon.astro
+  s_5808f0d29557e2::t_6eaf6e7d0b9c72 1-20
+packages/landing/src/icons/ArrowRightIcon.astro
+  s_5808f0d29557e2::t_6eaf6e7d0b9c72 1-17
+packages/landing/src/pages/terms/index.astro
+  s_5808f0d29557e2::t_6eaf6e7d0b9c72 1-20
+src/renderer/components/dev-story/landing-page-preview.stories.tsx
+  s_5808f0d29557e2::t_6eaf6e7d0b9c72 1-65
+packages/landing/src/font-assets.test.ts
+  s_5808f0d29557e2::t_6eaf6e7d0b9c72 1-3,6,8-11,13-15,17-18,20-22,24-26
+packages/landing/src/components/Description.astro
+  s_5808f0d29557e2::t_6eaf6e7d0b9c72 1-7
+packages/landing/ZEN_LICENSE
+  s_5808f0d29557e2::t_6eaf6e7d0b9c72 1-373
+packages/landing/public/favicon.svg
+  s_5808f0d29557e2::t_6eaf6e7d0b9c72 1-6
+packages/landing/src/media-contract.test.ts
+  s_5808f0d29557e2::t_6eaf6e7d0b9c72 1-29
+packages/landing/src/utils/release.ts
+  s_5808f0d29557e2::t_6eaf6e7d0b9c72 1-47
+packages/landing/src/icons/CheckIcon.astro
+  s_5808f0d29557e2::t_6eaf6e7d0b9c72 1-17
+packages/landing/src/components/Circles.astro
+  s_5808f0d29557e2::t_6eaf6e7d0b9c72 1-25
+packages/landing/src/constants/checksum.ts
+  s_5808f0d29557e2::t_6eaf6e7d0b9c72 1
+packages/landing/src/components/CoreValues.astro
+  s_5808f0d29557e2::t_6eaf6e7d0b9c72 1-98
+packages/landing/src/components/ThemeSwitch.astro
+  s_5808f0d29557e2::t_6eaf6e7d0b9c72 1-4,7-35,39-44,47-53,56,58-64
+packages/landing/src/components/SocialMediaStrip.astro
+  s_5808f0d29557e2::t_6eaf6e7d0b9c72 1-24
+packages/landing/src/components/Title.astro
+  s_5808f0d29557e2::t_6eaf6e7d0b9c72 1-10
+packages/landing/src/constants/routes.ts
+  s_5808f0d29557e2::t_6eaf6e7d0b9c72 1
+packages/landing/src/constants/media.ts
+  s_5808f0d29557e2::t_6eaf6e7d0b9c72 1-14
+packages/landing/src/constants/index.ts
+  s_5808f0d29557e2::t_6eaf6e7d0b9c72 1-15
+packages/landing/src/utils/merge.ts
+  s_5808f0d29557e2::t_6eaf6e7d0b9c72 1-6
+packages/landing/src/components/Logo.astro
+  s_5808f0d29557e2::t_6eaf6e7d0b9c72 1-11
+packages/landing/src/pages/index.astro
+  s_5808f0d29557e2::t_6eaf6e7d0b9c72 1-33
+packages/landing/src/icons/DownloadIcon.astro
+  s_5808f0d29557e2::t_6eaf6e7d0b9c72 1-19
+packages/landing/src/pages/download/index.astro
+  s_5808f0d29557e2::t_6eaf6e7d0b9c72 1-43
+packages/landing/src/release.test.ts
+  s_5808f0d29557e2::t_6eaf6e7d0b9c72 1-14
+packages/landing/src/components/Video.astro
+  s_5808f0d29557e2::t_6eaf6e7d0b9c72 1-29
+packages/landing/public/fonts/LICENSES.md
+  s_5808f0d29557e2::t_6eaf6e7d0b9c72 1-106
+packages/landing/src/styles/global.css
+  s_5808f0d29557e2::t_6eaf6e7d0b9c72 3-17,27-29,32,34,39-42,44-46,48-50,52-55,57-61,63-67,69-73,75-80,82-87,89-94,96-98,100-108,110-115,117-119,121-143
+packages/landing/src/components/Hero.astro
+  s_5808f0d29557e2::t_6eaf6e7d0b9c72 1-107
+packages/landing/src/pages/changelog/index.astro
+  s_5808f0d29557e2::t_6eaf6e7d0b9c72 1-62
+packages/landing/astro.config.ts
+  s_5808f0d29557e2::t_6eaf6e7d0b9c72 1,3,5,7-8,12-18,20-26
+packages/landing/src/components/Button.astro
+  s_5808f0d29557e2::t_6eaf6e7d0b9c72 1-71
+packages/landing/src/utils/i18n.ts
+  s_5808f0d29557e2::t_6eaf6e7d0b9c72 1-172
+packages/landing/src/pages/privacy/index.astro
+  s_5808f0d29557e2::t_6eaf6e7d0b9c72 1-20
+packages/landing/src/components/Features.astro
+  s_5808f0d29557e2::t_6eaf6e7d0b9c72 1-310
+packages/landing/src/env.d.ts
+  s_5808f0d29557e2::t_6eaf6e7d0b9c72 1
+docs/PRODUCT_SENSE.md
+  s_5808f0d29557e2::t_6eaf6e7d0b9c72 13
+  s_5808f0d29557e2::t_25598afb1a3f39 5-7,11-12,14-22,26-38,44-51,53,56-61,65-68
+packages/landing/src/constants/i18n.ts
+  s_5808f0d29557e2::t_6eaf6e7d0b9c72 1-15
+docs/landing-site.md
+  s_5808f0d29557e2::t_849c05ee6e8fa2 3-4,8-10,12-16,20,26,29-31,33,35-38,40-41,43,45,47-82,84,86,88-92,94-96,98-130,134-139
+  s_5808f0d29557e2::t_6eaf6e7d0b9c72 32,34,97
+packages/landing/src/layouts/Layout.astro
+  s_5808f0d29557e2::t_6eaf6e7d0b9c72 1-52,55-88,90-92,94-95,97-103,105-118
+.github/workflows/_deploy-landing-site.yml
+  s_5808f0d29557e2::t_712ef3f797bc84 39
+.github/workflows/deploy-landing-site.yml
+  s_5808f0d29557e2::t_e9b1f1f1412588 11-12
+docs/product-specs/nodex-product-spec.md
+  s_5808f0d29557e2::t_a95a5af294b7ab 5-11,23,175-181
+package.json
+  s_5808f0d29557e2::t_c1c2f98e24910a 136
+packages/landing/.gitignore
+  s_5808f0d29557e2::t_9cad651abed46f 2
+packages/landing/package.json
+  s_8496bd2fc78127::t_2f40f839567fa6 6-9,11-15,17-25
+packages/landing/public/robots.txt
+  s_5808f0d29557e2::t_177396ad336474 3
+packages/landing/src/landing-build.test.ts
+  s_5808f0d29557e2::t_f53538f0a4d4ca 1-2,5-30
+packages/landing/tsconfig.json
+  s_5808f0d29557e2::t_768eb36de129b4 2,4-6,8
+pnpm-lock.yaml
+  s_84bf5c78324d85::t_44e87d0f7e3f75 625-637,641-662,1052-1139,1279-1331,1350-1357,1543-1545,1956-1970,2010-2171,2198-2200,2345-2351,2405-2407,4490-4492,4513-4515,4919,4925,4931,4938,4945,4952,4959,4966,4973,4979,4985,4991,4997,5003,5010,5017,5024,5031,5038,5045,5051,5057,5117-5123,5140-5143,5151-5153,5180-5189,5211-5214,5432-5435,5456-5459,5482-5484,5493-5496,5526-5528,5532-5538,5547-5550,5554-5557,5777-5779,5795-5797,5808-5810,5858-5861,6092-6094,6150-6155,6159-6161,6182-6185,6197-6207,6310-6316,6351-6353,6434-6436,6534-6536,6555-6559,6971-6976,7073-7075,7335-7341,7356-7358,7388-7390,7411-7414,7454-7459,7542-7545,7550-7557,7627-7629,7715-7718,7727-7730,7863-7865,8066-8068,8077-8079,8168-8170,8175-8178,8222-8230,8294-8301,8387-8389,8447-8451,8499-8501,8508-8511,8639-8647,8669-8671,8709-8770,8855-8862,9039-9041,9084-9087,9100-9103,9217-9309,9475-9509,9529-9540,9769-9774,10071-10082,10119-10224,10259-10260,10395-10408,10460-10461,12305-12308,12331-12334,12855-12860,12871-12875,12924-12925,12950-13045,13058-13059,13283-13284,13296-13297,13310-13311,13316-13317,13348-13351,13360-13372,13380-13381,13384-13387,13630-13631,13642-13643,13651-13652,13710-13711,14029-14030,14102-14107,14110-14113,14137-14138,14151-14160,14263-14268,14324-14335,14495-14496,14588-14589,14605-14606,14917-14926,15163-15164,15541-15546,15561-15562,15605-15606,15625-15626,15673-15680,15913-15916,15921-15927,15995-15996,16077-16078,16083-16084,16216-16217,16477-16478,16490-16495,16608-16624,16627-16628,16678-16710,16807-16815,16934-16935,17010-17019,17074-17075,17080-17081,17210-17215,17236-17241,17288-17298,17484-17487,17654-17655,17684-17685,17702-17703
+src/renderer/env.d.ts
+  s_5808f0d29557e2::t_a42751f1add2f9 42
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "8e1d764fcaf19aec343e24af673c1f88518e6c6a",
+  "prompts": {},
+  "sessions": {
+    "s_5808f0d29557e2": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a0ae8c-a700-7571-a2bd-e305e9c63891",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": null
+    },
+    "s_8496bd2fc78127": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a13082-7498-74b2-bdc7-72b09daab7a1",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    },
+    "s_84bf5c78324d85": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a12db9-d235-78f1-acd4-d3520bbf1dfe",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    }
+  }
+}
