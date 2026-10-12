@@ -16,6 +16,12 @@ independent lifecycle. Cancellation originates in the caller's Scope, resource
 release is registered before admission opens, and external failures enter one
 typed Effect error channel.
 
+Effect area APIs such as `effect/process`, `effect/rpc`, `effect/http`, and
+`effect/schema` remain unstable or experimental within the stable package.
+Their barrel, deep, and type-only imports stay inside dedicated platform or
+companion-package Adapters. Application Modules use the Adapter's semantic
+capability; the package version and import spelling do not expand the frontier.
+
 Synchronous callbacks that cannot suspend may publish or offer into an already
 scoped owner. They may not allocate a second runtime, resource registry, timer,
 or detached task. Renderer, preload, shared contracts, generated protocols, and

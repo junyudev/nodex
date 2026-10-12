@@ -6,6 +6,7 @@ import * as Fiber from "effect/Fiber";
 import * as RcMap from "effect/RcMap";
 import * as Scope from "effect/Scope";
 import * as Semaphore from "effect/Semaphore";
+import type { ThreadSetNameParams } from "@nodex/codex-app-server-protocol/v2/ThreadSetNameParams";
 import { normalizeCodexManualThreadTitle } from "../../shared/codex-thread-title";
 import { CodexGateway } from "../codex-runtime/CodexGateway";
 import { CoreModules } from "../core-runtime/CoreModules";
@@ -15,10 +16,9 @@ import { CodexConversationProjection } from "./CodexConversationProjection";
 import { CodexSidebarSyncRuntime } from "./CodexSidebarSyncRuntime";
 import { buildCoreWorkspaceThreadSummary } from "./CodexThreadCatalogProjection";
 
-export interface CodexThreadTitlePersistenceInput {
-  readonly threadId: string;
-  readonly name: string;
-}
+export type CodexThreadTitlePersistenceInput = Readonly<
+  Pick<ThreadSetNameParams, "threadId" | "name">
+>;
 
 export interface CodexThreadTitleSetCommand extends CodexThreadTitlePersistenceInput {
   readonly normalization: "manual" | "trim";

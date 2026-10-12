@@ -152,7 +152,7 @@ it.effect("maps exact Turn resource planning and Core-resolved Page consent", ()
         task_access: null,
       },
     ]);
-    // oxlint-disable-next-line effecttsgo/strict-effect-provide -- this test owns the complete resource-access application layer.
+    // this test owns the complete resource-access application layer.
   }).pipe(Effect.provide(layerFor(client)));
 });
 
@@ -222,7 +222,7 @@ it.effect("persists one canonical Project grant batch through the final capabili
         },
       },
     ]);
-    // oxlint-disable-next-line effecttsgo/strict-effect-provide -- this test owns the complete resource-access application layer.
+    // this test owns the complete resource-access application layer.
   }).pipe(Effect.provide(layerFor(client)));
 });
 
@@ -264,6 +264,6 @@ it.effect("rejects a Core task overlay outside the frozen Turn boundary", () => 
       })
       .pipe(Effect.flip);
     assert.match(String(error.cause), /escaped its Turn authority/u);
-    // oxlint-disable-next-line effecttsgo/strict-effect-provide -- this test owns the complete resource-access application layer.
+    // this test owns the complete resource-access application layer.
   }).pipe(Effect.provide(layerFor(client)));
 });

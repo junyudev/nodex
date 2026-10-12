@@ -1,4 +1,4 @@
-/* oxlint-disable effecttsgo/async-function -- These Node boundary tests exercise real filesystem integrity and symlink behavior. */
+/* @effect-diagnostics asyncFunction:off -- These Node boundary tests exercise real filesystem integrity and symlink behavior. */
 import { createHash } from "node:crypto";
 import { chmodSync, mkdirSync, mkdtempSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";

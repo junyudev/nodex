@@ -220,7 +220,7 @@ test("a late clear confirmation cannot discard newer edits", async () => {
       await history.execute(2).result;
     });
     await click(view, "Clear undo history");
-    expect(await view.findByRole("alert")).toHaveTextContent("The content history changed");
+    expect(await view.findByRole("alert")).toMatchTextContent("The content history changed");
     expect(history.snapshot().undo.status).toBe("ready");
     await click(view, "Cancel");
     await waitFor(() => expect(view.queryByRole("dialog")).toBeNull());

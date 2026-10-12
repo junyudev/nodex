@@ -98,15 +98,15 @@ describe("Database List dnd-kit controller", () => {
     });
     const target = page({ key: "target", pageId: "Target", top: 44, hasChildren: true });
     const commits: DatabaseListDndCommit[] = [];
-    vi.spyOn(HTMLElement.prototype, "getBoundingClientRect").mockImplementation(
-      function (this: HTMLElement) {
-        if (this instanceof HTMLElement) {
-          if (this.dataset.testRow === "target") return rect(44);
-          if (this.dataset.testRow === "source") return rect(0);
-        }
-        return rect(0);
-      },
-    );
+    vi.spyOn(HTMLElement.prototype, "getBoundingClientRect").mockImplementation(function (
+      this: HTMLElement,
+    ) {
+      if (this instanceof HTMLElement) {
+        if (this.dataset.testRow === "target") return rect(44);
+        if (this.dataset.testRow === "source") return rect(0);
+      }
+      return rect(0);
+    });
     const scroller = document.createElement("div");
     const scrollerRef = { current: scroller };
     const view = render(
@@ -232,13 +232,13 @@ describe("Database List dnd-kit controller", () => {
     const source = page({ key: "source", pageId: "Source", top: 44 });
     const last = page({ key: "last", pageId: "Last", top: 88 });
     const commits: DatabaseListDndCommit[] = [];
-    vi.spyOn(HTMLElement.prototype, "getBoundingClientRect").mockImplementation(
-      function (this: HTMLElement) {
-        if (this.dataset.testRow === "source") return rect(44);
-        if (this.dataset.testRow === "last") return rect(88);
-        return rect(0);
-      },
-    );
+    vi.spyOn(HTMLElement.prototype, "getBoundingClientRect").mockImplementation(function (
+      this: HTMLElement,
+    ) {
+      if (this.dataset.testRow === "source") return rect(44);
+      if (this.dataset.testRow === "last") return rect(88);
+      return rect(0);
+    });
     const view = render(
       <DatabaseListDndProvider
         rows={[first, source, last]}
@@ -281,12 +281,12 @@ describe("Database List dnd-kit controller", () => {
     const source = page({ key: "source", pageId: "Source", top: 0 });
     const target = page({ key: "target", pageId: "Target", top: 44 });
     const commits: DatabaseListDndCommit[] = [];
-    vi.spyOn(HTMLElement.prototype, "getBoundingClientRect").mockImplementation(
-      function (this: HTMLElement) {
-        if (this.dataset.testRow === "target") return rect(44);
-        return rect(0);
-      },
-    );
+    vi.spyOn(HTMLElement.prototype, "getBoundingClientRect").mockImplementation(function (
+      this: HTMLElement,
+    ) {
+      if (this.dataset.testRow === "target") return rect(44);
+      return rect(0);
+    });
     const scroller = document.createElement("div");
     const view = render(
       <DatabaseListDndProvider

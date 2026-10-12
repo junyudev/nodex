@@ -6,7 +6,7 @@ import { parseTestSuite, suiteConfig } from "../../config/test-suites.ts";
 /** Discover in the suite's actual runtime without collecting or executing test modules. */
 export async function discoverTests(suite: string, args: readonly string[], related: boolean) {
   const { filter, options } = parseCLI(["vitest", related ? "related" : "run", ...args]);
-  const context = await createVitest("test", {
+  const context = await createVitest({
     ...options,
     config: suiteConfig(parseTestSuite(suite)),
     watch: false,

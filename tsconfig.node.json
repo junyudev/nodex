@@ -1,18 +1,17 @@
 {
+  "extends": ["./tsconfig.base.json", "./tsconfig.effect.json"],
   "compilerOptions": {
     "target": "ES2022",
     "module": "ES2022",
     "moduleResolution": "bundler",
     "rewriteRelativeImportExtensions": true,
     "strict": true,
-    "noEmit": true,
     "incremental": true,
     "tsBuildInfoFile": ".cache/typescript/node.tsbuildinfo",
     "esModuleInterop": true,
     "skipLibCheck": true,
     "resolveJsonModule": true,
     "isolatedModules": true,
-    "allowImportingTsExtensions": true,
     "lib": ["ES2023", "DOM", "DOM.Iterable"],
     "types": ["electron-vite/node"]
   },
@@ -27,7 +26,8 @@
     "packages/codex-app-server-protocol/**/*.ts",
     "packages/effect-codex-app-server/**/*.ts",
     "packages/core-protocol/**/*.ts",
-    "packages/nodex-app-tools-mcp/**/*.ts"
+    "packages/nodex-app-tools-mcp/**/*.ts",
+    "src/renderer/*.d.ts"
   ],
   "exclude": ["scripts/**/*.test.ts", "scripts/fixtures/**"]
 }

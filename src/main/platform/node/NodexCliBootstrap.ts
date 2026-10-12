@@ -1,4 +1,4 @@
-/* oxlint-disable effecttsgo/async-function -- Filesystem availability is checked at the Node platform boundary. */
+/* @effect-diagnostics asyncFunction:off -- Filesystem availability is checked at the Node platform boundary. */
 import { constants } from "node:fs";
 import { access, stat } from "node:fs/promises";
 import { dirname, join } from "node:path";

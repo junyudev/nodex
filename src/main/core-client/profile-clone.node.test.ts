@@ -1,4 +1,4 @@
-/* oxlint-disable nodex/no-manual-effect-runtime-in-tests, effecttsgo/strict-effect-provide -- Isolated Core and native CLI/app-server conformance cross Promise harness boundaries. */
+/* oxlint-disable nodex/no-manual-effect-runtime-in-tests -- Isolated Core and native CLI/app-server conformance cross Promise harness boundaries. */
 import { execFile } from "node:child_process";
 import { randomUUID } from "node:crypto";
 import { mkdir, readFile, readdir, rename, rm, writeFile } from "node:fs/promises";

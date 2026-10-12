@@ -34,7 +34,7 @@ it.effect("keeps temporary media outside the Core Blob namespace", () =>
         if (process.platform !== "win32")
           assert.strictEqual(fs.statSync(resolved).mode & 0o777, 0o600);
       }).pipe(
-        // oxlint-disable-next-line effecttsgo/strict-effect-provide -- this test owns the complete temporary-media application layer.
+        // this test owns the complete temporary-media application layer.
         Effect.provide(live.pipe(Layer.provide(mainConfigLayer({ nodexHome: home })))),
       );
     } finally {

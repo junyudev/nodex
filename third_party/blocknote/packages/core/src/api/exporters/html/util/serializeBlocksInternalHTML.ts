@@ -37,11 +37,17 @@ function serializeCanonicalInlineContent<
 ): HTMLElement {
   const doc = options.document ?? document;
   const spec = editor.schema.inlineContentSpecs[node.type.name];
+  if (typeof spec.config === "string") {
+    throw new Error("Canonical inline content requires a custom inline schema");
+  }
   const inlineContent = nodeToCustomInlineContent(
     node,
     editor.schema.inlineContentSchema,
     editor.schema.styleSchema,
   );
+  if (!("props" in inlineContent)) {
+    throw new Error("Canonical inline content requires custom inline properties");
+  }
   const dom = doc.createElement("span");
   dom.className = "bn-inline-content-section";
 

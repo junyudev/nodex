@@ -92,6 +92,6 @@ it.effect("uses durable ACP activity without querying Codex-only runtime owners"
     assert.deepStrictEqual(listCodexBackgroundProcesses.mock.calls, [
       [{ threadId: "thread-codex" }],
     ]);
-    // oxlint-disable-next-line effecttsgo/strict-effect-provide -- this test owns the complete blocker application layer.
+    // this test owns the complete blocker application layer.
   }).pipe(Effect.provide(layer));
 });

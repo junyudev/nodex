@@ -1,4 +1,4 @@
-/* oxlint-disable effecttsgo/async-function, effecttsgo/global-timers, effecttsgo/global-date, effecttsgo/new-promise -- Socket service callbacks bridge scoped managers and RPC calls with elapsed-time deadlines. */
+/* @effect-diagnostics asyncFunction:off globalTimers:off globalDate:off newPromise:off -- Socket service callbacks bridge scoped managers and RPC calls with elapsed-time deadlines. */
 import { RpcTarget } from "capnweb";
 import type {
   ConversationCoordinationHost,
@@ -221,7 +221,9 @@ export function connectCoordinationPeer(
         );
       },
       async (request) => {
-        const response = await readServiceResponse(
+        const response = await readServiceResponse<
+          Awaited<ReturnType<ConversationCoordinationView["requestThreadFollower"]>>
+        >(
           getView().requestThreadFollower({
             hostId: request.hostId ?? "local",
             request: { method, params: request.params },

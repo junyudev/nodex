@@ -1,4 +1,4 @@
-/* oxlint-disable effecttsgo/async-function -- Filesystem records and process ancestry are checked at the Node boundary; the application runtime owns timeout and cancellation. */
+/* @effect-diagnostics asyncFunction:off -- Filesystem records and process ancestry are checked at the Node boundary; the application runtime owns timeout and cancellation. */
 import { existsSync } from "node:fs";
 import { createRequire } from "node:module";
 import { readdir, readFile, rm } from "node:fs/promises";

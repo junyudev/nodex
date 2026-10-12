@@ -5,7 +5,7 @@ import * as Duration from "effect/Duration";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 import * as Stream from "effect/Stream";
-import { ChildProcess, ChildProcessSpawner } from "effect/unstable/process";
+import { ChildProcess, ChildProcessSpawner } from "effect/process";
 import {
   GitCommandPlatform,
   type GitCommandProcessFailureReason,

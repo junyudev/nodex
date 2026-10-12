@@ -301,7 +301,7 @@ function launchMainApplication(): void {
       yield* Effect.tryPromise(() => handleApplicationFailure(exit)).pipe(Effect.orDie);
     }
   }).pipe(
-    // oxlint-disable-next-line effecttsgo/strict-effect-provide -- this is the unique process entry that owns the foundation Layer.
+    // this is the unique process entry that owns the foundation Layer.
     Effect.provide(foundation),
   );
   MainEntry.runMain(application);

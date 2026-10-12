@@ -281,7 +281,7 @@ export const live = Layer.effectDiscard(
       (channel, listener) =>
         (event, ...args) =>
           authorize(event).pipe(
-            // oxlint-disable-next-line effecttsgo/any-unknown-in-error-context -- the IPC decorator immediately translates each handler's erased failure into the adapter error.
+            // the IPC decorator immediately translates each handler's erased failure into the adapter error.
             Effect.andThen(Effect.suspend(() => listener(event, ...args))),
             Effect.mapError((cause) =>
               cause instanceof CodexIpcError
@@ -1950,9 +1950,7 @@ export const live = Layer.effectDiscard(
         const params =
           validated.decoder === undefined
             ? undefined
-            : yield* Schema.decodeUnknownEffect(validated.decoder, {
-                onExcessProperty: "preserve",
-              })(validated.params).pipe(
+            : yield* Schema.decodeUnknownEffect(validated.decoder)(validated.params).pipe(
                 Effect.mapError(
                   (cause) => new CodexIpcError({ operation: "native-renderer-request", cause }),
                 ),

@@ -1,4 +1,5 @@
-/* oxlint-disable nodex/no-manual-effect-runtime-in-tests, effecttsgo/async-function, effecttsgo/strict-effect-provide -- This Node integration test bridges the existing Promise-based isolated Core scenario harness and real shell subprocesses. */
+/* oxlint-disable nodex/no-manual-effect-runtime-in-tests -- This Node integration test bridges the existing Promise-based isolated Core scenario harness and real shell subprocesses. */
+/* @effect-diagnostics asyncFunction:off -- This Node integration test bridges the existing Promise-based isolated Core scenario harness and real shell subprocesses. */
 import { execFile } from "node:child_process";
 import { mkdtemp, mkdir, symlink, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";

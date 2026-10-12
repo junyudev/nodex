@@ -12,7 +12,7 @@ import { live as hostAuthStateLive } from "../codex-runtime/CodexExecutionHostAu
 import { assert, it } from "@effect/vitest";
 import { CodexGateway } from "../codex-runtime/CodexGateway";
 import { DEFAULT_DICTATION_SETTINGS } from "../../shared/dictation";
-import { ElectronNet } from "../platform/electron/ElectronNet";
+import { ElectronNet, ElectronNetError } from "../platform/electron/ElectronNet";
 import { DictationNetwork } from "../platform/electron/DictationNetwork";
 import type { openDictationWebSocket } from "../platform/node/DictationWebSocket";
 import type { DictationStreamTransportEvent } from "../../shared/dictation-stream-transport";
@@ -228,9 +228,12 @@ const build = Effect.fn("CodexMediaTest.build")(function* (
                   }),
                 ),
               readBase64: (response) =>
-                Effect.tryPromise(() =>
-                  response.arrayBuffer().then((bytes) => Buffer.from(bytes).toString("base64")),
-                ),
+                Effect.tryPromise({
+                  try: () =>
+                    response.arrayBuffer().then((bytes) => Buffer.from(bytes).toString("base64")),
+                  catch: (cause) =>
+                    new ElectronNetError({ operation: "read-response-bytes", cause }),
+                }),
             }),
           ),
         ),

@@ -528,9 +528,10 @@ once at their scoped platform boundary. Operations coupled to renderer lifetime 
 shutdown cancel the admitted physical work rather than merely abandoning an IPC result.
 
 The Effect architecture gate parses production sources rather than relying on
-path conventions alone. It rejects Effect imports in frontiers, unstable APIs
-outside platform seams, runtime execution outside allowlisted entries, static-root
-Layer builds, root-wide uninterruptibility, production unbounded channels, private
+path conventions alone. It rejects Effect imports in frontiers, unstable or
+experimental area APIs outside platform seams, runtime execution outside
+allowlisted entries, static-root Layer builds, root-wide uninterruptibility,
+production unbounded channels, private
 Conversation Entity imports outside the owning application/composition seam, and
 ambient process configuration or unscoped Promise/timer/AbortController/
 EventEmitter construction inside application Module roots. The companion

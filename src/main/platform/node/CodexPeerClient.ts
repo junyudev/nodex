@@ -1,4 +1,4 @@
-/* oxlint-disable effecttsgo/async-function, effecttsgo/global-timers, effecttsgo/new-promise -- This Node socket adapter owns wire request deadlines and reconnect timers; its owning application Scope disposes the adapter and settles every pending request. */
+/* @effect-diagnostics asyncFunction:off globalTimers:off newPromise:off -- This Node socket adapter owns wire request deadlines and reconnect timers; its owning application Scope disposes the adapter and settles every pending request. */
 import { randomUUID } from "node:crypto";
 import { connect, type Socket } from "node:net";
 import {

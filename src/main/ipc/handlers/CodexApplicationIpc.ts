@@ -9,6 +9,7 @@ import type { McpResourceReadParams } from "@nodex/codex-app-server-protocol/v2/
 import type { McpServerToolCallParams } from "@nodex/codex-app-server-protocol/v2/McpServerToolCallParams";
 import type { CodexErrorInfo } from "@nodex/codex-app-server-protocol/v2/CodexErrorInfo";
 import type { ClientRequestResponsesByMethod } from "@nodex/effect-codex-app-server/rpc";
+import { V2ReviewStartResponse__NonSteerableTurnKind } from "@nodex/effect-codex-app-server/schema";
 import type {
   CodexComposerPluginActivateInput,
   CodexComposerPluginListInput,
@@ -42,40 +43,50 @@ type ReviewStartTurnError = NonNullable<
 >;
 type ReviewStartMisalignment = NonNullable<ReviewStartTurnError["misalignment"]>;
 
+const isHttpFailure = Schema.is(
+  Schema.Struct({ httpStatusCode: Schema.optionalKey(Schema.NullOr(Schema.Number)) }),
+);
+const isNonSteerableTurn = Schema.is(
+  Schema.Struct({ turnKind: V2ReviewStartResponse__NonSteerableTurnKind }),
+);
+
 function normalizeReviewCodexErrorInfo(
   value: ReviewStartCodexErrorInfo | null | undefined,
 ): CodexErrorInfo | null {
   if (value === null || value === undefined) return null;
   if (typeof value === "string") return value;
-  if ("httpConnectionFailed" in value) {
+  if (isHttpFailure(value.httpConnectionFailed)) {
     return {
       httpConnectionFailed: {
         httpStatusCode: value.httpConnectionFailed.httpStatusCode ?? null,
       },
     };
   }
-  if ("responseStreamConnectionFailed" in value) {
+  if (isHttpFailure(value.responseStreamConnectionFailed)) {
     return {
       responseStreamConnectionFailed: {
         httpStatusCode: value.responseStreamConnectionFailed.httpStatusCode ?? null,
       },
     };
   }
-  if ("responseStreamDisconnected" in value) {
+  if (isHttpFailure(value.responseStreamDisconnected)) {
     return {
       responseStreamDisconnected: {
         httpStatusCode: value.responseStreamDisconnected.httpStatusCode ?? null,
       },
     };
   }
-  if ("responseTooManyFailedAttempts" in value) {
+  if (isHttpFailure(value.responseTooManyFailedAttempts)) {
     return {
       responseTooManyFailedAttempts: {
         httpStatusCode: value.responseTooManyFailedAttempts.httpStatusCode ?? null,
       },
     };
   }
-  return value;
+  if (isNonSteerableTurn(value.activeTurnNotSteerable)) {
+    return { activeTurnNotSteerable: { turnKind: value.activeTurnNotSteerable.turnKind } };
+  }
+  return null;
 }
 
 function normalizeReviewMisalignment(

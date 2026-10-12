@@ -1,0 +1,10 @@
+{
+  "compilerOptions": {
+    "noEmit": true,
+    "allowImportingTsExtensions": true,
+    "jsx": "react-jsx",
+    "paths": {
+      "@/*": ["./src/renderer/*"]
+    }
+  }
+}

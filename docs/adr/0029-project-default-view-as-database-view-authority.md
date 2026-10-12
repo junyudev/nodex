@@ -42,7 +42,7 @@ Container"). `database:view-window:get` already resolved it server-side.
    catalog; no Session-level copy exists.
 2. Schema v93 rebuilds `project_sessions`, dropping
    `initial_database_view_id` and adding `database_starter INTEGER NOT NULL
-DEFAULT 0`, backfilled from pointer presence. The marker is an immutable
+   DEFAULT 0`, backfilled from pointer presence. The marker is an immutable
    semantic property ("this is the Project's starter Database Session") with
    no foreign key, so Session moves and View deletion cannot corrupt it; the
    two move-path `NULL`-out special cases are deleted.

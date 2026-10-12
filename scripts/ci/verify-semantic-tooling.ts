@@ -11,7 +11,9 @@ import {
 } from "node:fs";
 import os from "node:os";
 import path from "node:path";
+import { createRequire } from "node:module";
 import rootConfiguration from "../../vite.config";
+import effectConfiguration from "../../tsconfig.effect.json";
 
 const root = path.resolve(import.meta.dirname, "../..");
 const executable = process.platform === "win32" ? "vp.cmd" : "vp";
@@ -26,7 +28,7 @@ function fixtureWorkspace(run: (directory: string) => void): void {
         name: "nodex-semantic-contract",
         private: true,
         type: "module",
-        packageManager: "pnpm@11.11.0",
+        packageManager: "pnpm@12.3.4",
       }),
     );
     run(directory);
@@ -71,9 +73,11 @@ export function verifySemanticTaskCache(): void {
     );
     const shared = {
       command: "node check.cjs",
-      env: ["COUNTER", "PROBE_POLICY"],
-      input: [{ auto: true }, "!executions.log"],
-      output: [],
+      cache: {
+        env: ["COUNTER", "PROBE_POLICY"],
+        input: [{ auto: true }, "!executions.log"],
+        output: [],
+      },
     };
     writeFileSync(
       path.join(directory, "vite.config.ts"),
@@ -114,8 +118,81 @@ interface Diagnostic {
   readonly severity: string;
 }
 
-/** The real lint policy runs in a tiny typed Program; fixture mode never disables its checker. */
+/** New upstream diagnostics must not silently escape the owning runtime's scope. */
+function verifyEffectConfiguration(): void {
+  const packagePath = createRequire(import.meta.url).resolve("@effect/tsgo/package.json");
+  const schema: {
+    readonly definitions: {
+      readonly effectLanguageServicePluginDiagnosticSeverityDefinition: {
+        readonly properties: Readonly<Record<string, unknown>>;
+      };
+    };
+  } = JSON.parse(readFileSync(path.join(path.dirname(packagePath), "schema.json"), "utf8"));
+  const plugin = effectConfiguration.compilerOptions.plugins[0];
+  const upstream = Object.keys(
+    schema.definitions.effectLanguageServicePluginDiagnosticSeverityDefinition.properties,
+  ).sort();
+  const disabled = Object.keys(plugin.diagnosticSeverity).sort();
+  if (
+    JSON.stringify(upstream) !== JSON.stringify(disabled) ||
+    Object.values(plugin.diagnosticSeverity).some((severity) => severity !== "off")
+  ) {
+    throw new Error("Review the Effect diagnostic inventory against the installed schema.");
+  }
+  const scope = plugin.overrides[0];
+  const adapter = plugin.overrides[1];
+  const permittedUnstableApis = [
+    "@effect/platform-node",
+    "@effect/vitest",
+    "effect/FileSystem",
+    "effect/LayerMap",
+    "effect/Path",
+    "effect/PlatformError",
+    "effect/Stdio",
+    "effect/process",
+  ];
+  const expectedErrors = [
+    "classSelfMismatch",
+    "effectFnImplicitAny",
+    "floatingEffect",
+    "floatingEffectInVitest",
+    "missingEffectContext",
+    "missingEffectError",
+    "missingLayerContext",
+    "missingReturnYieldStar",
+    "missingStarInYieldEffectGen",
+    "nonObjectEffectServiceType",
+    "overriddenSchemaConstructor",
+    "schemaLiteralNonFinite",
+    "schemaOpaqueInstanceMember",
+  ].sort();
+  const actualErrors = Object.entries(scope.options.diagnosticSeverity)
+    .filter(([, severity]) => severity === "error")
+    .map(([rule]) => rule)
+    .sort();
+  if (
+    JSON.stringify(actualErrors) !== JSON.stringify(expectedErrors) ||
+    !scope.include.includes("src/main/app/**/*.ts") ||
+    !scope.include.includes("src/main/codex-runtime/**/*.ts") ||
+    !scope.include.includes("src/main/platform/**/*.ts") ||
+    scope.options.diagnosticSeverity.cryptoRandomUUID !== "warning" ||
+    scope.options.diagnosticSeverity.cryptoRandomUUIDInEffect !== "warning" ||
+    scope.options.diagnosticSeverity.schemaSync !== "off" ||
+    scope.options.diagnosticSeverity.schemaSyncInEffect !== "warning" ||
+    scope.options.diagnosticSeverity.unstableApiUsage !== "warning" ||
+    JSON.stringify(plugin.allowedUnstableApis) !== JSON.stringify(permittedUnstableApis) ||
+    !adapter.include.includes("src/main/platform/**/*.ts") ||
+    adapter.options.diagnosticSeverity.globalRandom !== "off" ||
+    adapter.options.diagnosticSeverity.nodeBuiltinImport !== "off" ||
+    !plugin.ignoreEffectWarningsInTscExitCode
+  ) {
+    throw new Error("Effect diagnostic scope, errors, or platform exceptions changed.");
+  }
+}
+
+/** Exercise the real compiler and typed lint policy in a small, isolated project. */
 export function verifyTypedSemanticPolicy(): void {
+  verifyEffectConfiguration();
   fixtureWorkspace((directory) => {
     const sourceDirectory = path.join(directory, "src/main/app");
     mkdirSync(sourceDirectory, { recursive: true });
@@ -129,6 +206,9 @@ export function verifyTypedSemanticPolicy(): void {
           target: "ES2022",
           module: "ESNext",
           moduleResolution: "bundler",
+          types: ["node"],
+          tsBuildInfoFile: ".cache/typescript/fixture.tsbuildinfo",
+          plugins: effectConfiguration.compilerOptions.plugins,
         },
         include: ["src/**/*.ts"],
       }),
@@ -149,6 +229,24 @@ export function verifyTypedSemanticPolicy(): void {
       "type-error.ts": 'export const answer: number = "wrong";\n',
       "promise-error.ts": "Promise.resolve(1);\nexport {};\n",
       "effect-error.ts": 'import * as Effect from "effect/Effect";\nEffect.succeed(1);\n',
+      "requirements-error.ts": [
+        'import * as Context from "effect/Context";',
+        'import * as Effect from "effect/Effect";',
+        'class Required extends Context.Service<Required, { readonly answer: number }>()("fixture/Required") {}',
+        "export const answer: Effect.Effect<number> = Effect.gen(function* () { return (yield* Required).answer; });",
+        "",
+      ].join("\n"),
+      "allowed-api.ts":
+        'import * as FileSystem from "effect/FileSystem";\nexport const filesystem = FileSystem.FileSystem;\n',
+      "unknown-api.ts":
+        'import * as HttpClient from "effect/http/HttpClient";\nexport const http = HttpClient.HttpClient;\n',
+      "schema-helper.ts": [
+        'import * as Effect from "effect/Effect";',
+        'import * as Schema from "effect/Schema";',
+        "export const decode = Schema.decodeUnknownSync(Schema.String);",
+        'export const insideEffect = Effect.gen(function* () { return Schema.decodeUnknownSync(Schema.String)("text"); });',
+        "",
+      ].join("\n"),
       "unused-disable.ts": "// oxlint-disable-next-line no-debugger\nexport const answer = 42;\n",
       "suppressed.ts":
         "// oxlint-disable-next-line typescript/no-floating-promises\nPromise.resolve(1);\nexport const answer = 1;\n",
@@ -161,6 +259,39 @@ export function verifyTypedSemanticPolicy(): void {
       path.join(directory, "src/renderer/effect-outside-policy.ts"),
       'import * as Effect from "effect/Effect";\nEffect.succeed(1);\n',
     );
+    const adapterDirectory = path.join(directory, "src/main/platform");
+    mkdirSync(adapterDirectory, { recursive: true });
+    writeFileSync(
+      path.join(adapterDirectory, "allowed-random.ts"),
+      'import { randomUUID } from "node:crypto";\nexport const createId = randomUUID;\nexport const random = Math.random();\n',
+    );
+    const compiler = command(directory, [
+      "exec",
+      "tsc-rs",
+      "--build",
+      "--noEmit",
+      "--pretty",
+      "false",
+    ]);
+    const compilerHas = (file: string, code: number) =>
+      compiler.output.split("\n").some((line) => line.includes(file) && line.includes("TS" + code));
+    if (
+      compiler.status === 0 ||
+      !compilerHas("type-error.ts", 2322) ||
+      !compilerHas("effect-error.ts", 377001) ||
+      !compilerHas("requirements-error.ts", 377004) ||
+      !compilerHas("advisory.ts", 377070) ||
+      !compilerHas("unknown-api.ts", 377136) ||
+      compilerHas("allowed-api.ts", 377136) ||
+      !compilerHas("schema-helper.ts", 377037) ||
+      compilerHas("schema-helper.ts", 377130) ||
+      compilerHas("effect-outside-policy.ts", 377001) ||
+      compiler.output.includes("allowed-random.ts")
+    ) {
+      throw new Error(
+        "Compiler policy lost required diagnostics or its scope.\n" + compiler.output,
+      );
+    }
     const result = command(directory, ["lint", "--format", "json", "src"]);
     const marker = result.stdout.indexOf('{ "diagnostics"');
     if (marker < 0) throw new Error("Typed fixture did not return diagnostics.\n" + result.output);
@@ -176,11 +307,8 @@ export function verifyTypedSemanticPolicy(): void {
       );
     if (
       result.status === 0 ||
-      !has("type-error.ts", "error", "typescript(TS2322)") ||
       !has("promise-error.ts", "error", "typescript(no-floating-promises)") ||
-      !has("effect-error.ts", "error", "effecttsgo(floating-effect)") ||
       !has("unused-disable.ts", "warning") ||
-      !has("advisory.ts", "warning") ||
       has("suppressed.ts", "error") ||
       has("effect-outside-policy.ts", "error")
     ) {
@@ -198,8 +326,22 @@ export function verifyTypedSemanticPolicy(): void {
       path.join(sourceDirectory, "promise-error.ts"),
       "void Promise.resolve(1);\nexport const answer = 1;\n",
     );
+    for (const task of ["typecheck", "lint", "check:semantic"]) {
+      const invalid = command(directory, ["run", "--no-cache", task]);
+      if (
+        invalid.status === 0 ||
+        !invalid.output.includes("TS377001") ||
+        !invalid.output.includes("TS377004")
+      ) {
+        throw new Error(task + " lost Effect error enforcement.\n" + invalid.output);
+      }
+    }
     writeFileSync(
       path.join(sourceDirectory, "effect-error.ts"),
+      'import * as Effect from "effect/Effect";\nexport const answer = Effect.succeed(1);\n',
+    );
+    writeFileSync(
+      path.join(sourceDirectory, "requirements-error.ts"),
       'import * as Effect from "effect/Effect";\nexport const answer = Effect.succeed(1);\n',
     );
     for (const task of ["typecheck", "lint", "check:semantic"]) {

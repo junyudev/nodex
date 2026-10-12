@@ -1,4 +1,3 @@
-/* oxlint-disable effecttsgo/strict-effect-provide -- This standalone runtime probe is the application entry point for its isolated configuration layer. */
 import assert from "node:assert/strict";
 import { spawn } from "node:child_process";
 import { mkdir } from "node:fs/promises";

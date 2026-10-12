@@ -150,7 +150,7 @@ authority. A known hash or a local cache hit never grants access to Core bytes.
   guard before it checks out or executes that source. The environment admits
   only protected-branch workflow definitions; the guard accepts only an
   immutable full SHA reachable from protected `main` with a successful `Main
-CI` push run. The privileged release `workflow_run` additionally validates the
+  CI` push run. The privileged release `workflow_run` additionally validates the
   originating repository, protected-main push event, and successful conclusion.
   Release and recovery also require the exact linear parent diff to be a
   metadata-only Release Identity transition.

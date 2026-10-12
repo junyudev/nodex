@@ -191,7 +191,7 @@ it.effect("blocks archive before durable mutation or runtime cleanup", () => {
     assert.strictEqual(runtime.setProjectLifecycle.mock.calls.length, 0);
     assert.strictEqual(runtime.closeBrowserConversation.mock.calls.length, 0);
     assert.strictEqual(runtime.closeBrowserProject.mock.calls.length, 0);
-    // oxlint-disable-next-line effecttsgo/strict-effect-provide -- this test owns the complete ProjectLifecycleCommands application layer.
+    // this test owns the complete ProjectLifecycleCommands application layer.
   }).pipe(Effect.provide(runtime.layer));
 });
 
@@ -210,7 +210,7 @@ it.effect("rechecks blockers under the Project gate immediately before commit", 
     assert.strictEqual(result.result.outcome.kind, "blocked");
     assert.strictEqual(runtime.blockerReads(), 2);
     assert.strictEqual(runtime.setProjectLifecycle.mock.calls.length, 0);
-    // oxlint-disable-next-line effecttsgo/strict-effect-provide -- this test owns the complete ProjectLifecycleCommands application layer.
+    // this test owns the complete ProjectLifecycleCommands application layer.
   }).pipe(Effect.provide(runtime.layer));
 });
 
@@ -251,6 +251,6 @@ it.effect("archives, cleans Project-owned runtimes, and restores through one com
     assert.strictEqual(restored.result.value.changed, true);
     assert.strictEqual(restored.result.value.project.lifecycle, "active");
     assert.strictEqual(runtime.setProjectLifecycle.mock.calls.length, 2);
-    // oxlint-disable-next-line effecttsgo/strict-effect-provide -- this test owns the complete ProjectLifecycleCommands application layer.
+    // this test owns the complete ProjectLifecycleCommands application layer.
   }).pipe(Effect.provide(runtime.layer));
 });

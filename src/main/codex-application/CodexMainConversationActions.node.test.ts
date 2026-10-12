@@ -1,4 +1,4 @@
-/* oxlint-disable effecttsgo/strict-effect-provide -- This scoped action test provides callback lifetime at its test entry point. */
+/* This scoped action test provides callback lifetime at its test entry point. */
 import { CodexQueuedFollowUps } from "./CodexQueuedFollowUps";
 import { CodexMainConversationEdit } from "./CodexMainConversationEdit";
 import { CodexApplicationEventHub } from "./CodexApplicationEventHub";

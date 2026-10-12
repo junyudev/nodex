@@ -10,7 +10,7 @@ import {
 import { createCodexHistoryBoundaryRef } from "../../shared/codex-conversation-state/codex-history-topology";
 import { residentConversationTurns } from "../../shared/codex-conversation-state/codex-turn-mutation";
 import type { ClientRequestResponsesByMethod } from "@nodex/effect-codex-app-server/rpc";
-/* oxlint-disable effecttsgo/strict-effect-provide -- Scoped test entry point composes the callback runtime. */
+/* Scoped test entry point composes the callback runtime. */
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";

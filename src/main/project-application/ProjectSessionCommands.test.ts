@@ -291,7 +291,7 @@ it.effect("owns Session title, browser, archive, and Section orchestration", () 
     });
     assert.strictEqual(superseded.value.archived, false);
     assert.strictEqual(backendCallers.length, backendCallsBeforeReplay);
-    // oxlint-disable-next-line effecttsgo/strict-effect-provide -- this test owns the complete ProjectSessionCommands layer.
+    // this test owns the complete ProjectSessionCommands layer.
   }).pipe(Effect.provide(layer));
 });
 
@@ -394,6 +394,6 @@ it.effect("keeps ACP Session lifecycle inside Core and the ACP runtime owner", (
       "delete:operation:delete",
       "sections",
     ]);
-    // oxlint-disable-next-line effecttsgo/strict-effect-provide -- this test owns the complete ProjectSessionCommands layer.
+    // this test owns the complete ProjectSessionCommands layer.
   }).pipe(Effect.provide(layer));
 });

@@ -1,4 +1,4 @@
-/* oxlint-disable effecttsgo/async-function, effecttsgo/process-env, effecttsgo/strict-effect-provide -- Native conformance uses the scoped Promise probe adapter and an explicit disposable process environment; this test is its composition root. */
+/* @effect-diagnostics asyncFunction:off processEnv:off -- Native conformance uses the scoped Promise probe adapter and an explicit disposable process environment; this test is its composition root. */
 import { randomUUID } from "node:crypto";
 import { execFile } from "node:child_process";
 import { mkdtempSync, mkdirSync, readFileSync, realpathSync, rmSync, writeFileSync } from "node:fs";

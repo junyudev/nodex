@@ -43,7 +43,7 @@ const runApplication = <R, E>(
       }).pipe(
         // Renderer flushes still need the application's IPC and persistence services.
         Effect.scoped,
-        // oxlint-disable-next-line effecttsgo/strict-effect-provide -- this is the application acquisition boundary inside the process Scope.
+        // this is the application acquisition boundary inside the process Scope.
         Effect.provide(options.applicationLayer),
         Effect.mapError((cause) =>
           Schema.is(MainApplicationError)(cause)

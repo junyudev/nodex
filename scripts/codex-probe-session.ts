@@ -1,4 +1,4 @@
-/* oxlint-disable effecttsgo/async-function -- Probe consumers are Promise/EventEmitter based external harnesses; this adapter is the one conversion seam around an Effect-owned session. */
+/* @effect-diagnostics asyncFunction:off -- Probe consumers are Promise/EventEmitter based external harnesses; this adapter is the one conversion seam around an Effect-owned session. */
 import { EventEmitter } from "node:events";
 import { delimiter as pathDelimiter } from "node:path";
 import * as Context from "effect/Context";
@@ -229,13 +229,7 @@ export const openCodexProbeSession = (
 export const runCodexProbeMain = <E>(
   program: Effect.Effect<void, E, ScopedCallbackRuntime>,
 ): void =>
-  NodeRuntime.runMain(
-    program.pipe(
-      Effect.scoped,
-      // oxlint-disable-next-line effecttsgo/strict-effect-provide -- This is the standalone probe's unique process entry.
-      Effect.provide(scopedCallbackRuntimeLive),
-    ),
-  );
+  NodeRuntime.runMain(program.pipe(Effect.scoped, Effect.provide(scopedCallbackRuntimeLive)));
 
 /** Interrupt Promise-owned harnesses cooperatively, then join their asynchronous cleanup. */
 export const withCancelableProbeOperation = <A>(run: (signal: AbortSignal) => Promise<A>) =>

@@ -26,7 +26,9 @@ export const SuggestionsExtension = createExtension(
     const userStore = normalizeToUserStore(options.resolveUsers);
 
     function getSuggestionElementAtPos(pos: number) {
-      let currentNode = editor.prosemirrorView.nodeDOM(pos);
+      const view = editor.prosemirrorView;
+      if (!view) return null;
+      let currentNode = view.nodeDOM(pos);
       while (currentNode && currentNode.parentElement) {
         if (currentNode.nodeName === "INS" || currentNode.nodeName === "DEL") {
           return currentNode as HTMLElement;
@@ -37,6 +39,8 @@ export const SuggestionsExtension = createExtension(
     }
 
     function getMarkAtPos(pos: number, markType: string) {
+      const view = editor.prosemirrorView;
+      if (!view) return;
       return editor.transact((tr) => {
         const resolvedPos = tr.doc.resolve(pos);
         const mark = resolvedPos
@@ -61,7 +65,7 @@ export const SuggestionsExtension = createExtension(
           get position() {
             // to minimize re-renders, we convert to JSON, which is the same shape anyway
             return posToDOMRect(
-              editor.prosemirrorView,
+              view,
               markRange.from,
               markRange.to,
             ).toJSON() as DOMRect;
@@ -135,8 +139,10 @@ export const SuggestionsExtension = createExtension(
       getMarkAtPos,
       getSuggestionAtSelection,
       getSuggestionAtCoords: (coords: { left: number; top: number }) => {
+        const view = editor.prosemirrorView;
+        if (!view) return;
         return editor.transact(() => {
-          const posAtCoords = editor.prosemirrorView.posAtCoords(coords);
+          const posAtCoords = view.posAtCoords(coords);
           if (posAtCoords === null || posAtCoords?.inside === -1) {
             return undefined;
           }

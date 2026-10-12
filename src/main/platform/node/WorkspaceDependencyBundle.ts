@@ -1,4 +1,4 @@
-/* oxlint-disable effecttsgo/async-function -- Bundled dependency verification owns filesystem streaming at the Node boundary. */
+/* @effect-diagnostics asyncFunction:off -- Bundled dependency verification owns filesystem streaming at the Node boundary. */
 import { createHash } from "node:crypto";
 import { createReadStream } from "node:fs";
 import { lstat, readFile } from "node:fs/promises";

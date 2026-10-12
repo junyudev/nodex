@@ -1,4 +1,4 @@
-/* oxlint-disable effecttsgo/async-function -- Cap'n Web RPC methods adapt scoped Effect operations. */
+/* @effect-diagnostics asyncFunction:off -- Cap'n Web RPC methods adapt scoped Effect operations. */
 import { RpcTarget, type RpcStub } from "capnweb";
 import * as Effect from "effect/Effect";
 import * as Exit from "effect/Exit";

@@ -48,7 +48,7 @@ const withGitWorkerModule = <A>(
 ) =>
   makeGitWorkerModule({ environment: process.env }).pipe(
     Effect.flatMap(run),
-    // oxlint-disable-next-line effecttsgo/strict-effect-provide -- the helper owns a fresh test application Scope.
+    // the helper owns a fresh test application Scope.
     Effect.provide(GitCommandPlatformNode.nodeLive),
   );
 

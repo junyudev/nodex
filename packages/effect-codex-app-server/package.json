@@ -16,12 +16,12 @@
   },
   "dependencies": {
     "@nodex/codex-app-server-protocol": "workspace:*",
-    "effect": "4.0.0-rc.111"
+    "effect": "4.0.3"
   },
   "devDependencies": {
-    "@effect/openapi-generator": "4.0.0-rc.111",
-    "@effect/platform-node": "4.0.0-rc.111",
-    "@effect/vitest": "4.0.0-rc.111",
+    "@effect/openapi-generator": "4.0.3",
+    "@effect/platform-node": "4.0.3",
+    "@effect/vitest": "4.0.3",
     "@types/node": "24.13.3"
   }
 }

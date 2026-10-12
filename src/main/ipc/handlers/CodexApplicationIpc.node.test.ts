@@ -134,6 +134,10 @@ it.effect("registers application channels directly against their owning modules"
         status: "failed",
         error: {
           message: "Request needs a narrower scope",
+          codexErrorInfo: {
+            responseStreamDisconnected: {},
+            httpConnectionFailed: 123,
+          },
           misalignment: {
             errorType: "scope",
             steer: { message: "Continue with the narrowed scope" },
@@ -274,7 +278,7 @@ it.effect("registers application channels directly against their owning modules"
         status: "failed",
         error: {
           message: "Request needs a narrower scope",
-          codexErrorInfo: null,
+          codexErrorInfo: { responseStreamDisconnected: { httpStatusCode: null } },
           additionalDetails: null,
           misalignment: {
             errorType: "scope",

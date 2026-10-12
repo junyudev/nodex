@@ -11,7 +11,7 @@ dependencies from the repository root:
 vp install --frozen-lockfile
 ```
 
-Nodex pins Node `24.15.0` in `.node-version` and pnpm `11.11.0` in
+Nodex pins Node `24.15.0` in `.node-version` and pnpm `12.3.4` in
 `package.json`; Vite+ resolves both declarations for the project. The exact
 `vite-plus` development dependency pins the project toolchain independently of
 the globally installed launcher version.
@@ -329,11 +329,16 @@ explicit full source gate, including Rust, stress, browser, and static contracts
 It is not required after every local edit.
 
 Vite+ is the repository engineering control plane. `check:semantic`, `typecheck`,
-and `lint` all execute `vp check --no-fmt`, including TypeScript 7, typed Oxlint,
-and Effect diagnostics. They share the same task-result cache. `check` composes
+and `lint` all execute `tsc-rs --build --noEmit && vp lint`. tsc-rs owns TypeScript
+and Effect diagnostics; Oxlint owns type-aware lint. They share the same task-result cache. `check` composes
 `vp fmt --check` with that same semantic command. CI uses the same entrypoint and
 policy. To measure actual analysis, use `vp run --no-cache check:semantic`; the
 run option must precede the task name.
+Keep `@effect/tsgo` aligned with the diagnostic version embedded by tsc-rs.
+`effect-tsgo patch` prepares the TypeScript editor runtime; it does not add a
+second compiler or an Effect pass to Oxlint. `tsconfig.effect.json` owns the
+Effect rule severities, control-plane scope, and platform exceptions for both
+the compiler and the editor.
 `correctness`, `suspicious`, and `perf` diagnostics are advisory warnings: keep
 them visible and improve nearby code when useful, but do not treat the warning
 count as an acceptance condition. Type errors, lint errors, and precise
@@ -452,6 +457,8 @@ The test commands follow production boundaries:
   Playwright command latency as a UI response-time contract. After changing
   `scrollTop`, await the native scroll event before testing an idle interval;
   a synthetic scroll event does not consume the browser's queued event.
+  Chromium's built-in `toHaveTextContent` checks the complete normalized text;
+  use `toMatchTextContent` for a substring or regular expression.
 - `vp run test:integration` runs integration tests in Electron's Node runtime.
 - Rust development and test profiles retain full debug information in separate
   build artifacts (`split-debuginfo = "unpacked"`) on every host. Keep these
@@ -476,7 +483,7 @@ The test commands follow production boundaries:
   performance, and reliability gate. `vp run core:test`
   remains the complete local/source-verification alias.
 - `vp run core:protocol:verify` and `vp run core:module-boundaries` verify generated contracts and the Rust-only production boundary.
-- Core protocol generation runs `openapi-typescript` inside `packages/core-protocol-codegen`, where its officially supported TypeScript 5 compiler runtime is pinned. That package is a generator implementation detail; TypeScript 7 remains the only repository source checker and semantic authority.
+- Core protocol generation runs `openapi-typescript` inside `packages/core-protocol-codegen`, where its officially supported TypeScript 5 compiler runtime is pinned. That package is a generator implementation detail; tsc-rs remains the repository source checker inside the shared semantic gate.
 - `vp run tooling:verify` also proves that Vite+ can load the complete workspace metadata graph while keeping third-party packages outside root task execution. Keep dependencies imported by workspace-local Vite configs resolvable even when those packages are not selected by `vp run`.
 - `vp run verify:effect-boundaries` keeps Effect inside the Main/script control plane, generated/shared/renderer contracts Effect-free, unstable APIs inside app-owned adapters, and runtime execution at approved composition/facade seams. Lifecycle tests use fake capabilities or `@effect/vitest` TestClock instead of real retry or escalation sleeps.
 - `vp run test:e2e` rebuilds the native Core plus Electron application, then

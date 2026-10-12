@@ -25,7 +25,7 @@ const withOpenScheduler = <A>(
       yield* scheduler.openGeneration("local", 1);
       return yield* use(scheduler);
     }),
-    // oxlint-disable-next-line effecttsgo/strict-effect-provide -- this helper owns a fresh test application Scope.
+    // this helper owns a fresh test application Scope.
   ).pipe(Effect.provide(Layer.fresh(live)));
 
 const request = <A>(

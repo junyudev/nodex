@@ -1,4 +1,4 @@
-/* oxlint-disable effecttsgo/strict-effect-provide -- The protocol test provides its complete isolated dependency layer at the test entry point. */
+/* The protocol test provides its complete isolated dependency layer at the test entry point. */
 import { it, assert } from "@effect/vitest";
 import * as Context from "effect/Context";
 import * as Effect from "effect/Effect";

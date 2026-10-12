@@ -1,3 +1,3 @@
-import * as Persistence from "effect/unstable/persistence";
+import * as Persistence from "effect/persistence";
 
 void Persistence;

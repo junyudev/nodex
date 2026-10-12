@@ -1,4 +1,4 @@
-/* oxlint-disable effecttsgo/async-function -- Local file identity is resolved at the Node filesystem boundary. */
+/* @effect-diagnostics asyncFunction:off -- Local file identity is resolved at the Node filesystem boundary. */
 import { realpath, stat } from "node:fs/promises";
 import { dirname, isAbsolute, relative, resolve, sep } from "node:path";
 

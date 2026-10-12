@@ -22,7 +22,6 @@ const decodeRequest = (body: unknown) =>
     Schema.fromJsonString(
       Schema.Struct({ responseMode: Schema.optionalKey(Schema.String), user: PolicyUser }),
     ),
-    { onExcessProperty: "preserve" },
   )(String(body));
 
 const metadata = {
@@ -61,6 +60,20 @@ const provide = (fetch: ElectronNet["Service"]["fetch"]) =>
     fetch,
     readBase64: () => Effect.die("unused"),
   });
+
+it.effect("policy bootstrap retains JSON context and validates known identity fields", () =>
+  Effect.sync(() => {
+    const decode = (nextUser: unknown) =>
+      decodePolicyBootstrap(
+        { statsigPayload: encodeJson({ user: nextUser }) },
+        { accountId: "account", userId: "user" },
+      );
+    assert.deepStrictEqual(decode(user).user, user);
+    assert.throws(() => decode({ ...user, userID: 42 }));
+    assert.throws(() => decode({ ...user, customIDs: { account_id: 42 } }));
+    assert.throws(() => decode({ ...user, userID: "another-user" }));
+  }),
+);
 
 it.effect("publishes live overlays without replacing non-live session values", () =>
   Effect.gen(function* () {

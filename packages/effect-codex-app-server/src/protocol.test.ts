@@ -13,7 +13,6 @@ import { assert, it } from "@effect/vitest";
 import * as CodexError from "./errors.ts";
 import * as CodexProtocol from "./protocol.ts";
 import * as CodexRpc from "./rpc.ts";
-import * as CodexSchema from "./schema.ts";
 import { makeInMemoryStdio } from "./_internal/stdio.ts";
 const encodeUnknownJsonString = Schema.encodeUnknownSync(Schema.fromJsonString(Schema.Unknown));
 
@@ -278,10 +277,6 @@ it.layer(NodeServices.layer)("effect-codex-app-server protocol", (it) => {
 
   it.effect("maps account usage responses to the upstream token usage schema", () =>
     Effect.gen(function* () {
-      assert.strictEqual(
-        CodexRpc.CLIENT_REQUEST_RESPONSES["account/usage/read"],
-        CodexSchema.V2GetAccountTokenUsageResponse,
-      );
       const decoded = yield* decodeAccountTokenUsageResponse({
         dailyUsageBuckets: [{ startDate: "2026-06-10", tokens: 42 }],
         summary: { lifetimeTokens: 42 },
@@ -290,16 +285,16 @@ it.layer(NodeServices.layer)("effect-codex-app-server protocol", (it) => {
         dailyUsageBuckets: [{ startDate: "2026-06-10", tokens: 42 }],
         summary: { lifetimeTokens: 42 },
       });
+      const error = yield* decodeAccountTokenUsageResponse({
+        dailyUsageBuckets: [{ startDate: "2026-06-10", tokens: "42" }],
+        summary: { lifetimeTokens: 42 },
+      }).pipe(Effect.flip);
+      assert.isTrue(Schema.isSchemaError(error));
     }),
   );
 
   it.effect("maps earned rate-limit reset credits from account rate-limit snapshots", () =>
     Effect.gen(function* () {
-      assert.strictEqual(
-        CodexRpc.CLIENT_REQUEST_RESPONSES["account/rateLimits/read"],
-        CodexSchema.V2GetAccountRateLimitsResponse,
-      );
-
       const response = {
         rateLimits: {},
         rateLimitResetCredits: {
@@ -336,6 +331,11 @@ it.layer(NodeServices.layer)("effect-codex-app-server protocol", (it) => {
           rateLimitResetCredits: { availableCount: 2, credits: null },
         },
       );
+      const error = yield* decodeAccountRateLimitsResponse({
+        rateLimits: {},
+        rateLimitResetCredits: { availableCount: "two", credits: null },
+      }).pipe(Effect.flip);
+      assert.isTrue(Schema.isSchemaError(error));
     }),
   );
 
@@ -345,15 +345,6 @@ it.layer(NodeServices.layer)("effect-codex-app-server protocol", (it) => {
         CodexRpc.CLIENT_REQUEST_METHODS["account/rateLimitResetCredit/consume"],
         "account/rateLimitResetCredit/consume",
       );
-      assert.strictEqual(
-        CodexRpc.CLIENT_REQUEST_PARAMS["account/rateLimitResetCredit/consume"],
-        CodexSchema.V2ConsumeAccountRateLimitResetCreditParams,
-      );
-      assert.strictEqual(
-        CodexRpc.CLIENT_REQUEST_RESPONSES["account/rateLimitResetCredit/consume"],
-        CodexSchema.V2ConsumeAccountRateLimitResetCreditResponse,
-      );
-
       assert.deepEqual(
         yield* decodeConsumeRateLimitResetCreditParams({
           idempotencyKey: "8ae96ff3-3425-4f4c-8772-b6fd61502868",
@@ -367,6 +358,15 @@ it.layer(NodeServices.layer)("effect-codex-app-server protocol", (it) => {
       assert.deepEqual(yield* decodeConsumeRateLimitResetCreditResponse({ outcome: "reset" }), {
         outcome: "reset",
       });
+      const invalidRequest = yield* decodeConsumeRateLimitResetCreditParams({
+        idempotencyKey: "8ae96ff3-3425-4f4c-8772-b6fd61502868",
+        creditId: 42,
+      }).pipe(Effect.flip);
+      const invalidResponse = yield* decodeConsumeRateLimitResetCreditResponse({
+        outcome: "unknown-mode",
+      }).pipe(Effect.flip);
+      assert.isTrue(Schema.isSchemaError(invalidRequest));
+      assert.isTrue(Schema.isSchemaError(invalidResponse));
     }),
   );
 

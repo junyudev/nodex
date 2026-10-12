@@ -30,7 +30,7 @@ const PositiveSpringValue = Schema.Finite.pipe(
 const SpringVelocity = Schema.Finite.pipe(
   Schema.check(Schema.isBetween({ minimum: -10_000, maximum: 10_000 })),
 );
-const BoundedIdentifier = Schema.String.pipe(Schema.check(Schema.isLengthBetween(1, 1_024)));
+const BoundedIdentifier = Schema.String.pipe(Schema.check(Schema.isBetweenLength(1, 1_024)));
 const ViewportRect = Schema.Struct({
   x: Coordinate,
   y: Coordinate,

@@ -1,4 +1,4 @@
-/* oxlint-disable effecttsgo/async-function, effecttsgo/global-timers -- Exercises the real MessagePort/socket boundary with scoped native resources. */
+/* @effect-diagnostics asyncFunction:off globalTimers:off -- Exercises the real MessagePort/socket boundary with scoped native resources. */
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -505,7 +505,7 @@ it.effect(
           remote[Symbol.dispose]();
         }
       });
-      // oxlint-disable-next-line effecttsgo/strict-effect-provide -- This test is the scoped runtime entry point.
+      // This test is the scoped runtime entry point.
     }).pipe(Effect.scoped, Effect.provide(callbackLayer)),
 );
 

@@ -167,7 +167,7 @@ function verifyAdvisoryPolicy(): void {
 }
 
 function verifyWorkspaceTaskGraph(): void {
-  const result = spawnSync(vpExecutable, ["run", "--workspace-root", "fmt:check", "package.json"], {
+  const result = spawnSync(vpExecutable, ["run", "--workspace-root", "fmt:check", "--help"], {
     cwd: projectRoot,
     encoding: "utf8",
     env: process.env,

@@ -1,4 +1,4 @@
-/* oxlint-disable effecttsgo/async-function -- Child-process command capture is the Node adapter boundary; Effect owns interruption and transport scopes. */
+/* @effect-diagnostics asyncFunction:off -- Child-process command capture is the Node adapter boundary; Effect owns interruption and transport scopes. */
 import {
   parseCodexCliVersion,
   isSupportedCodexAppServerVersion,

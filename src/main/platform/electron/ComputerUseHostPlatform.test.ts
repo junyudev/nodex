@@ -170,7 +170,7 @@ it.effect("restores the prior canonical helper when post-swap verification fails
   }),
 );
 
-/* oxlint-disable effecttsgo/async-function, effecttsgo/process-env -- This boundary test launches real child processes and verifies ambient environment isolation. */
+/* @effect-diagnostics asyncFunction:off processEnv:off -- This boundary test launches real child processes and verifies ambient environment isolation. */
 test("launches native helpers with isolated Profile and locked runtime environments", async () => {
   const root = makeTemporaryRoot();
   const addonPath = path.join(root, "addon.cjs");
@@ -218,4 +218,4 @@ module.exports.spawnComputerUseService = async (executable) => {
   assert.strictEqual(process.env.SKY_CUA_SERVICE_NATIVE_PIPE_PATH, inheritedNativePipe);
 });
 
-/* oxlint-enable effecttsgo/async-function, effecttsgo/process-env */
+/* @effect-diagnostics asyncFunction:warning processEnv:warning */

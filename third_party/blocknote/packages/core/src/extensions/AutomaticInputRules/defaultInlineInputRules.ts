@@ -41,10 +41,7 @@ function createMarkInputRule(options: {
       const contentEnd = contentStart + content.length;
       const excludedMarks = getMarksBetween(range.from, range.to, state.doc)
         .filter(({ mark }) => {
-          const excluded = mark.type.excluded as readonly MarkType[];
-          return excluded.some(
-            (type) => type === options.type && type !== mark.type,
-          );
+          return mark.type !== options.type && mark.type.excludes(options.type);
         })
         .some(({ to }) => to > contentStart);
       if (excludedMarks) return null;

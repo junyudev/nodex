@@ -6,6 +6,7 @@ import { runtimeForSuite, suiteConfig, type SuiteId } from "../../config/test-su
 import { runCommand, type Command } from "../tooling/process.ts";
 
 const require = createRequire(import.meta.url);
+const vitePlusRequire = createRequire(require.resolve("vite-plus/package.json"));
 
 export function runtimeCommand(
   suite: SuiteId,
@@ -27,7 +28,11 @@ export function vitestCommand(
   related: boolean,
   context: Pick<Command, "cwd" | "env" | "signal">,
 ): Command {
-  const entry = path.join(path.dirname(require.resolve("vitest/package.json")), "vitest.mjs");
+  // Test discovery, bindings, and execution use the same Vite+-owned runner.
+  const entry = path.join(
+    path.dirname(vitePlusRequire.resolve("vitest/package.json")),
+    "vitest.mjs",
+  );
   return runtimeCommand(
     suite,
     [

@@ -133,7 +133,7 @@ describe.skipIf(!packagedCli)("packaged native CLI and Electron authority", () =
     let eventSubscription: { close(): void } | null = null;
     let provider: NodexYProvider | null = null;
     let document: Y.Doc | null = null;
-    let documentScope: Scope.Scope | null = null;
+    let documentScope: Scope.Closeable | null = null;
     try {
       const capabilities = commandResult((await runCli<JsonObject>(home, ["capabilities"])).result);
       const bundle = commandResult(capabilities.bundle);

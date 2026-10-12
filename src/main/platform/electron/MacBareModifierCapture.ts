@@ -1,4 +1,4 @@
-/* oxlint-disable effecttsgo/async-function, effecttsgo/new-promise -- Adapts the native addon callback and disposable to the caller-owned AbortSignal boundary. */
+/* @effect-diagnostics asyncFunction:off newPromise:off -- Adapts the native addon callback and disposable to the caller-owned AbortSignal boundary. */
 import { compileMacNativeHotkey, normalizeAccelerator } from "../../../shared/command-keybindings";
 import type { BrowserRuntimeAvailability } from "../../codex/browser-runtime-bundle";
 import { loadSkyNativeAddon } from "../../sky-native";

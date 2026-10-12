@@ -1,4 +1,4 @@
-/* oxlint-disable effecttsgo/strict-effect-provide -- This test owns one isolated callback runtime and resource Scope. */
+/* This test owns one isolated callback runtime and resource Scope. */
 import { stat } from "node:fs/promises";
 import { dirname } from "node:path";
 import { it } from "@effect/vitest";

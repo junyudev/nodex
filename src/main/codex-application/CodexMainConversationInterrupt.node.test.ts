@@ -1,4 +1,4 @@
-/* oxlint-disable effecttsgo/strict-effect-provide -- The scoped test provides the real callback runtime at its entry point. */
+/* The scoped test provides the real callback runtime at its entry point. */
 import { assert, it } from "@effect/vitest";
 import * as Effect from "effect/Effect";
 import { produce, type Draft } from "immer";

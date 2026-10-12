@@ -18,7 +18,7 @@ Do not add `--max-warnings 0` or `--deny-warnings` to the canonical commands.
 # Format plus the complete semantic gate
 vp run check
 
-# Equivalent names for TypeScript 7, typed Oxlint, and Effect diagnostics
+# Equivalent names for tsc-rs, typed Oxlint, and Effect diagnostics
 vp run check:semantic
 vp run typecheck
 vp run lint
@@ -34,11 +34,15 @@ The three semantic names execute exactly the same command and share Vite Task's
 command/input/environment cache. `check` runs `vp fmt --check` followed by that
 same semantic command, so formatting does not force another semantic analysis.
 Run options such as `--no-cache` precede the task name; arguments after the name
-are forwarded to its command. `vp check --no-fmt` also executes analysis directly.
+are forwarded to its command. The canonical command is
+`tsc-rs --build --noEmit && vp lint`; `vp lint` alone is a focused lint investigation.
 A cached success and compiler incremental analysis are different measurements.
 
-`effect-tsgo patch --oxlint` runs during dependency preparation.
-`lint.options.typeAware` and `lint.options.typeCheck` remain enabled, and
+tsc-rs is the sole TypeScript and Effect diagnostic owner. Its native Effect
+rules match the pinned `@effect/tsgo` editor runtime, prepared with
+`effect-tsgo patch`. Oxlint keeps `lint.options.typeAware` enabled and
+`lint.options.typeCheck` disabled so compiler diagnostics run once. No Effect
+plugin is installed into Oxlint.
 `reportUnusedDisableDirectives: "warn"` applies uniformly to all entrypoints.
 `tooling:verify` tests actual task reuse and invalidation as well as a small typed
 Program using the real policy. Its typed fixtures prove compiler errors,
@@ -51,12 +55,13 @@ retain their runtime contracts; adding a new control-plane test requires an
 explicit type owner, not just successful Vitest transformation. Host shared tests
 remain in the Node project rather than becoming Web root files; imported
 transport-neutral dependencies may still legitimately appear in both graphs.
+Each referenced project inherits shared JSX and alias settings from
+`tsconfig.base.json`; settings on the solution root do not configure its children.
 
-The patched compiler supports incremental state, but a raw `tsc -b` is not this
-gate: it reports diagnostics across vendored and fixture dependencies that the
-owned Oxlint policy excludes, and does not provide equivalent typed lint and
-suppression behavior. There is no `types:incremental` shortcut until that
-feedback boundary can be made useful without duplicating diagnostic policy.
+The compiler checks the complete owned project references and their imported
+contracts, and stores incremental state under `.cache/typescript`. A direct
+`tsc-rs --build --noEmit` run is useful to isolate compiler failures, but it does
+not provide the typed lint and suppression policy of the complete gate.
 Use focused tests while editing and the shared complete semantic task for handoff.
 
 Keep IPC argument tuples and acknowledgement categories derived from their
@@ -164,21 +169,35 @@ isolated exception and state why.
 | `react/only-export-components`                                                                                                                                                                                             | Workbench Fast Refresh boundaries                    | Keep component exports separate from non-component values, or move shared values to an owning helper module.                                                              |
 | `better-tailwindcss/no-conflicting-classes`, `better-tailwindcss/no-unknown-classes`                                                                                                                                       | Opt-in Tailwind repair command                       | Resolve conflicting utilities or use the documented app-owned class namespace. The plugin remains opt-in because its complete analysis is materially heavier.             |
 
-The Effect recommended preset is scoped to the Main Effect control plane and
-app-owned adapters. Its error rules guard invalid Effect types and control flow:
+`tsconfig.effect.json` scopes the Effect recommended and native diagnostics to
+the Main Effect control plane and app-owned adapters. Rules outside that scope
+are disabled explicitly; renderer and shared contracts retain their own
+execution model. Its error rules guard invalid Effect types and control flow:
 `class-self-mismatch`, `effect-fn-implicit-any`, `floating-effect`,
 `floating-effect-in-vitest`, `missing-effect-context`, `missing-effect-error`,
 `missing-layer-context`, `missing-return-yield-star`,
 `missing-star-in-yield-effect-gen`, `non-object-effect-service-type`,
 `overridden-schema-constructor`, `schema-literal-non-finite`, and
-`schema-opaque-instance-member`. Follow the rule's Effect-aware diagnostic;
+`schema-opaque-instance-member`. Compiler configuration and
+`@effect-diagnostics` directives use the corresponding camelCase names.
+Follow the rule's Effect-aware diagnostic;
 Node/platform access belongs in `src/main/platform`, the companion protocol package's internal
 platform seam, or an explicitly allowlisted process entry. Only those frontiers disable the two
 intentional warnings (`global-random` and `node-builtin-import`).
 
+API stability diagnostics remain enabled. `allowedUnstableApis` names the
+admitted Node platform and test bindings, filesystem/path/stdio/platform-error
+primitives, the scoped LayerMap family, and the process Adapter APIs. This
+removes repeated notices for accepted dependencies; the Effect boundary gate
+still decides where those imports and runtime operations may appear. New area
+APIs require an explicit review instead of a blanket stability suppression.
+Pure synchronous Schema helpers retain ordinary TypeScript execution, so
+`schemaSync` is disabled. `schemaSyncInEffect` remains advisory where a decoder
+must compose failure inside an Effect workflow.
+
 ## Maintenance
 
-After upgrading Vite+, Oxlint, TypeScript, or `@effect/tsgo`:
+After upgrading Vite+, Oxlint, tsc-rs, TypeScript, or `@effect/tsgo`:
 
 1. Run `vp lint --format json` and group new
    warnings by rule and runtime.
@@ -190,3 +209,6 @@ After upgrading Vite+, Oxlint, TypeScript, or `@effect/tsgo`:
    its invariant, scope, remediation, and escape boundary.
 5. Add a focused `tooling:verify` fixture for every Nodex-owned rule or gate
    behavior. Do not create a warning-count baseline.
+6. Keep the Effect editor and compiler diagnostic generations aligned. Review
+   new upstream rules against `tsconfig.effect.json`; preserve the explicit
+   outside-scope defaults and the platform exceptions.

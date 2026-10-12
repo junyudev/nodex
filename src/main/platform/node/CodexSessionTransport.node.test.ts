@@ -1,4 +1,4 @@
-/* oxlint-disable effecttsgo/strict-effect-provide -- This scoped test is the physical transport entry point. */
+/* This scoped test is the physical transport entry point. */
 import { assert, it } from "@effect/vitest";
 import * as Effect from "effect/Effect";
 import { CodexSessionTransport, nodeLive } from "./CodexSessionTransport";

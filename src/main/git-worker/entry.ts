@@ -119,7 +119,7 @@ const program = Effect.scoped(
     yield* Deferred.await(shutdown);
   }),
 ).pipe(
-  // oxlint-disable-next-line effecttsgo/strict-effect-provide -- this is the Git worker process composition root.
+  // this is the Git worker process composition root.
   Effect.provide(GitCommandPlatformNode.nodeLive),
   Effect.catchCause((cause) =>
     Effect.sync(() => {

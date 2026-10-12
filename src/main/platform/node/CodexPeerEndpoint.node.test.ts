@@ -1,4 +1,4 @@
-/* oxlint-disable effecttsgo/async-function, effecttsgo/new-promise -- Real filesystem and socket election tests use scoped Node resources. */
+/* @effect-diagnostics asyncFunction:off newPromise:off -- Real filesystem and socket election tests use scoped Node resources. */
 import { createHash } from "node:crypto";
 import { chmod, lstat, mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { createServer } from "node:net";

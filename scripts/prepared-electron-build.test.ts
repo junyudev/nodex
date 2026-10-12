@@ -119,6 +119,8 @@ const makeFixture = (): {
     "pnpm-lock.yaml",
     "pnpm-workspace.yaml",
     "rust-toolchain.toml",
+    "tsconfig.base.json",
+    "tsconfig.effect.json",
     "tsconfig.json",
     "tsconfig.node.json",
     "tsconfig.web.json",
@@ -221,6 +223,17 @@ describe("prepared Electron build", () => {
     fs.appendFileSync(path.join(fixture.repositoryRoot, ".cargo/config.toml"), "changed = true\n");
     expect(() => verifyPreparedElectronBuild(fixture)).toThrow("inputs are stale");
   });
+
+  test.each(["tsconfig.base.json", "tsconfig.effect.json"])(
+    "invalidates prepared outputs when inherited configuration %s changes",
+    (configuration) => {
+      const fixture = makeFixture();
+      recordPreparedElectronBuild(fixture);
+
+      fs.appendFileSync(path.join(fixture.repositoryRoot, configuration), "changed\n");
+      expect(() => verifyPreparedElectronBuild(fixture)).toThrow("inputs are stale");
+    },
+  );
 
   test("rejects damaged and additional build outputs", () => {
     const fixture = makeFixture();

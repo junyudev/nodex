@@ -46,7 +46,7 @@ afterEach(async () => {
 const withRunner = <A>(run: (runner: GitCommandRunner) => Promise<A>) =>
   makeGitCommandRunner({ environment: process.env }).pipe(
     Effect.flatMap((runner) => Effect.promise(() => run(runner))),
-    // oxlint-disable-next-line effecttsgo/strict-effect-provide -- the helper owns a fresh test application Scope.
+    // the helper owns a fresh test application Scope.
     Effect.provide(GitCommandPlatformNode.nodeLive),
   );
 

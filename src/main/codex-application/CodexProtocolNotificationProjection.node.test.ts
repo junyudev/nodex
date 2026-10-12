@@ -11,7 +11,7 @@ it.effect(
     Effect.gen(function* () {
       const events: CodexApplicationEvent[] = [];
       const projection = yield* CodexProtocolNotificationProjection.pipe(
-        // oxlint-disable-next-line effecttsgo/strict-effect-provide -- This test owns the complete projection application boundary.
+        // This test owns the complete projection application boundary.
         Effect.provide(
           live({ supportsChatGptApps: false }).pipe(
             Layer.provide(

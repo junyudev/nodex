@@ -53,7 +53,7 @@ export const live = Layer.effectDiscard(
         (event, ...args) =>
           authorize(event).pipe(
             Effect.andThen(
-              // oxlint-disable-next-line effecttsgo/any-unknown-in-error-context -- Electron's erased callback failure is immediately translated to this adapter error.
+              // Electron's erased callback failure is immediately translated to this adapter error.
               handler(event, ...args).pipe(
                 Effect.mapError(
                   (cause) => new NativeSessionCatalogIpcError({ operation: "request", cause }),

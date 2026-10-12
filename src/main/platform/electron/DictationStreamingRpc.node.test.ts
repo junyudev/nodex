@@ -1,4 +1,4 @@
-/* oxlint-disable effecttsgo/async-function -- Exercises RPC over real MessagePorts with scoped Effect resources. */
+/* @effect-diagnostics asyncFunction:off -- Exercises RPC over real MessagePorts with scoped Effect resources. */
 import { MessageChannel } from "node:worker_threads";
 import { RpcSession, type RpcStub } from "capnweb";
 import { it } from "@effect/vitest";

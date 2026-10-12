@@ -1,4 +1,4 @@
-/* oxlint-disable effecttsgo/async-function -- Host-owned shell entrypoints are materialized at the Node filesystem boundary. */
+/* @effect-diagnostics asyncFunction:off -- Host-owned shell entrypoints are materialized at the Node filesystem boundary. */
 import { randomUUID } from "node:crypto";
 import { mkdir, readFile, rename, rm, writeFile } from "node:fs/promises";
 import { join } from "node:path";

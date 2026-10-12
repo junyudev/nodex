@@ -2,6 +2,7 @@ import { execFileSync } from "node:child_process";
 import { mkdir, mkdtemp, readdir, readFile, writeFile } from "node:fs/promises";
 import os from "node:os";
 import { createHash } from "node:crypto";
+import { createRequire } from "node:module";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { runTimedCommand, type TimedCommandRecord } from "../ci/run-timed";
@@ -78,7 +79,7 @@ export function benchmarkCommand(options: BenchmarkOptions): readonly string[] {
     case "static-cache-hit":
       return ["run", "typecheck"];
     case "semantic-execute":
-      return ["check", "--no-fmt"];
+      return ["run", "--no-cache", "check:semantic"];
     case "renderer-cohort":
       return [
         "test",
@@ -125,6 +126,9 @@ export async function benchmark(options: BenchmarkOptions, signal: AbortSignal):
     .sort();
   for (const file of untracked)
     fingerprint.update(file).update(await readFile(path.join(root, file)));
+  const checkerManifest: { readonly version: string } = JSON.parse(
+    await readFile(createRequire(import.meta.url).resolve("tsc-rs/package.json"), "utf8"),
+  );
   const metadata = {
     version: 2,
     changesSha256: fingerprint.digest("hex"),
@@ -147,6 +151,12 @@ export async function benchmark(options: BenchmarkOptions, signal: AbortSignal):
     versions: {
       node: process.versions.node,
       vitePlus: execFileSync(command, ["--version"], { cwd: root, encoding: "utf8" }).trim(),
+      tscRs: checkerManifest.version,
+      tscRsCompiler: execFileSync(command, ["exec", "tsc-rs", "--version"], {
+        cwd: root,
+        encoding: "utf8",
+      }).trim(),
+      // The patched TypeScript package remains the editor runtime.
       typescript: execFileSync(command, ["exec", "tsc", "--version"], {
         cwd: root,
         encoding: "utf8",

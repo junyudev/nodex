@@ -136,6 +136,7 @@ export class ExtensionManager {
     for (const inlineContent of Object.values(
       this.editor.schema.inlineContentSpecs,
     )) {
+      if (!("extensions" in inlineContent)) continue;
       for (const extension of inlineContent.extensions ?? []) {
         this.addExtension(extension);
       }

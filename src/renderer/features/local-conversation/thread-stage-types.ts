@@ -829,8 +829,9 @@ export interface ThreadAgentActivityItem<TItem = ThreadAgentItemModel> {
   grouping: ThreadAgentActivityGrouping;
 }
 
-export type ThreadAgentActivityClassification<TItem = ThreadAgentItemModel> =
-  ThreadAgentActivityItem<TItem> | null;
+export type ThreadAgentActivityClassification<
+  TItem = ThreadAgentItemModel,
+> = ThreadAgentActivityItem<TItem> | null;
 
 /** `sourceIndex` exists only between classification and final unit construction. */
 export interface ThreadIndexedAgentActivityItem<TItem = ThreadAgentItemModel> {

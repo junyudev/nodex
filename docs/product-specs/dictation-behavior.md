@@ -13,6 +13,7 @@ Dictation turns a bounded microphone recording or selected WebM file into text. 
 - Main owns microphone permission, settings, recording history, streaming credential preparation, global hotkeys, the auxiliary window, and cross-application paste.
 - Composer and the global bar use the same capture controller contract. Composer inserts or submits text; global dictation pastes into the foreground application at delivery.
 - Capture availability follows the current authentication lifetime, default-host feature, dictation admission, workspace policy, and native capabilities. Global capture and streaming are standard capabilities of admitted sessions and do not depend on remote rollout assignment. Packaged dictation sounds remain configurable independently of service policy; the account dictionary retains its service gate. Policy initializes from authenticated bootstrap when available and otherwise uses the service SDK; live evaluations update admission without restarting the app. Account mutations revoke pending requests before switching credentials, invalidate cached policy, and close account-specific editing. Missing dictation-admission or account-dictionary evaluations do not enable those capabilities.
+- Authenticated policy bootstrap validates its declared user fields and requires the current account and user identities. Additional user context remains JSON data and is forwarded unchanged to policy evaluation.
 
 ## Composer behavior
 

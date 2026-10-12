@@ -410,7 +410,7 @@ describe("NFM Equation surface in Chromium", () => {
     const previewContainer = errorPreview.closest<HTMLElement>(".bn-preview-container")!;
 
     expect(contrastRatio(previewForeground, previewBackground)).toBeGreaterThanOrEqual(4.5);
-    expect(errorPreview).toHaveTextContent("KaTeX parse error:");
+    expect(errorPreview).toMatchTextContent("KaTeX parse error:");
     expect(
       Math.abs(
         errorPreview.getBoundingClientRect().width - previewContainer.getBoundingClientRect().width,

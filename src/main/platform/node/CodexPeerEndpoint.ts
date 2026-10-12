@@ -1,4 +1,4 @@
-/* oxlint-disable effecttsgo/async-function, effecttsgo/new-promise -- Node socket election is an adapter boundary; the application Scope owns all listening resources. */
+/* @effect-diagnostics asyncFunction:off newPromise:off -- Node socket election is an adapter boundary; the application Scope owns all listening resources. */
 import { createHash } from "node:crypto";
 import { chmodSync, lstatSync, mkdirSync, unlinkSync } from "node:fs";
 import { connect, createServer, type Server } from "node:net";

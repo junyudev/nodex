@@ -27,21 +27,24 @@ const Primitive = Schema.Union([
   Schema.Boolean,
   Schema.mutable(Schema.Array(Schema.String)),
 ]);
-export const PolicyUser = Schema.Struct({
-  userID: Schema.optionalKey(Schema.String),
-  customIDs: Schema.optionalKey(Schema.Record(Schema.String, Schema.String)),
-  email: Schema.optionalKey(Schema.String),
-  ip: Schema.optionalKey(Schema.String),
-  userAgent: Schema.optionalKey(Schema.String),
-  country: Schema.optionalKey(Schema.String),
-  locale: Schema.optionalKey(Schema.String),
-  appVersion: Schema.optionalKey(Schema.String),
-  custom: Schema.optionalKey(Schema.Record(Schema.String, Primitive)),
-  privateAttributes: Schema.optionalKey(Schema.NullOr(Schema.Record(Schema.String, Primitive))),
-  analyticsOnlyMetadata: Schema.optionalKey(
-    Schema.Record(Schema.String, Schema.Union([Schema.String, Schema.Finite, Schema.Boolean])),
-  ),
-});
+export const PolicyUser = Schema.StructWithRest(
+  Schema.Struct({
+    userID: Schema.optionalKey(Schema.String),
+    customIDs: Schema.optionalKey(Schema.Record(Schema.String, Schema.String)),
+    email: Schema.optionalKey(Schema.String),
+    ip: Schema.optionalKey(Schema.String),
+    userAgent: Schema.optionalKey(Schema.String),
+    country: Schema.optionalKey(Schema.String),
+    locale: Schema.optionalKey(Schema.String),
+    appVersion: Schema.optionalKey(Schema.String),
+    custom: Schema.optionalKey(Schema.Record(Schema.String, Primitive)),
+    privateAttributes: Schema.optionalKey(Schema.NullOr(Schema.Record(Schema.String, Primitive))),
+    analyticsOnlyMetadata: Schema.optionalKey(
+      Schema.Record(Schema.String, Schema.Union([Schema.String, Schema.Finite, Schema.Boolean])),
+    ),
+  }),
+  [Schema.Record(Schema.String, Schema.Json)],
+);
 const CanonicalPayload = Schema.Struct({ user: PolicyUser });
 const FallbackClaims = Schema.Struct({
   "https://api.openai.com/profile": Schema.optionalKey(
@@ -105,9 +108,7 @@ export const decodePolicyBootstrap = (
   const { statsigPayload } = Schema.decodeUnknownSync(
     Schema.Struct({ statsigPayload: Schema.String }),
   )(response);
-  const { user } = Schema.decodeSync(Schema.fromJsonString(CanonicalPayload), {
-    onExcessProperty: "preserve",
-  })(statsigPayload);
+  const { user } = Schema.decodeSync(Schema.fromJsonString(CanonicalPayload))(statsigPayload);
   if (user.userID !== expected.userId || user.customIDs?.account_id !== expected.accountId)
     throw new Error("Authenticated policy identity changed");
   return { statsigPayload, user };

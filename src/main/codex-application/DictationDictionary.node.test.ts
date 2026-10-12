@@ -99,7 +99,7 @@ it.effect(
         new Headers(harness.state.requests[0]?.headers).get("X-OpenAI-Expected-Account-Id"),
         "account-a",
       );
-      // oxlint-disable-next-line effecttsgo/strict-effect-provide -- this test owns the complete dictionary application layer.
+      // this test owns the complete dictionary application layer.
     }).pipe(Effect.provide(harness.layer));
   },
 );
@@ -119,7 +119,7 @@ it.effect(
       harness.state.enabled = false;
       assert.isTrue(Exit.isFailure(yield* dictionary.read({ operationId }).pipe(Effect.exit)));
       assert.equal(harness.state.requests.length, 0);
-      // oxlint-disable-next-line effecttsgo/strict-effect-provide -- this test owns the complete dictionary application layer.
+      // this test owns the complete dictionary application layer.
     }).pipe(Effect.provide(harness.layer));
   },
 );
@@ -144,7 +144,7 @@ it.effect(
         [{ text: "Nodex" }, { text: "Effect" }],
       );
       assert.deepStrictEqual(harness.state.local, ["added while uploading"]);
-      // oxlint-disable-next-line effecttsgo/strict-effect-provide -- this test owns the complete dictionary application layer.
+      // this test owns the complete dictionary application layer.
     }).pipe(Effect.provide(harness.layer));
   },
 );
@@ -168,7 +168,7 @@ it.effect(
       assert.equal(error.errorCode, "account_changed");
       assert.equal(harness.state.requests.length, 2);
       assert.deepStrictEqual(harness.state.local, ["Nodex", "Effect"]);
-      // oxlint-disable-next-line effecttsgo/strict-effect-provide -- this test owns the complete dictionary application layer.
+      // this test owns the complete dictionary application layer.
     }).pipe(Effect.provide(harness.layer));
   },
 );
@@ -203,7 +203,7 @@ it.effect("aborts pending imports without clearing device words or submitting la
       assert.deepStrictEqual(harness.state.local, ["Nodex", "Effect"]);
       assert.equal(harness.state.requests.length, 1);
       assert.isFalse(yield* dictionary.cancel(operationId));
-      // oxlint-disable-next-line effecttsgo/strict-effect-provide -- this test owns the complete dictionary application layer.
+      // this test owns the complete dictionary application layer.
     }).pipe(Effect.provide(harness.layer));
   }),
 );
@@ -222,7 +222,7 @@ it.effect("rejects stale responses after account drift and escapes delete identi
       .pipe(Effect.flip);
     assert.equal(error.errorCode, "account_changed");
     assert.equal(harness.state.requests[0]?.path, "/dictation/custom_dictionary/words/a%2Fb%3F%23");
-    // oxlint-disable-next-line effecttsgo/strict-effect-provide -- this test owns the complete dictionary application layer.
+    // this test owns the complete dictionary application layer.
   }).pipe(Effect.provide(harness.layer));
 });
 
@@ -233,7 +233,7 @@ it.effect("reports an HTTP failure even when the service omits its optional erro
     const error = yield* dictionary.add({ operationId, target, text: "Nodex" }).pipe(Effect.flip);
     assert.equal(error.status, 503);
     assert.isUndefined(error.errorCode);
-    // oxlint-disable-next-line effecttsgo/strict-effect-provide -- this test owns the complete dictionary application layer.
+    // this test owns the complete dictionary application layer.
   }).pipe(Effect.provide(harness.layer));
 });
 
@@ -260,7 +260,7 @@ it.effect(
         assert.isTrue(harness.state.requests[0]!.signal!.aborted);
         assert.isFalse(yield* dictionary.cancel(operationId));
         assert.deepStrictEqual(harness.state.local, ["Nodex", "Effect"]);
-        // oxlint-disable-next-line effecttsgo/strict-effect-provide -- this test owns the complete dictionary application layer.
+        // this test owns the complete dictionary application layer.
       }).pipe(Effect.provide(harness.layer));
     }),
 );

@@ -1,3 +1,6 @@
+import { Visitor, type Expression, type SpreadElement } from "oxc-parser";
+import { parseTypeScriptSource } from "./lib/oxc-source";
+
 export interface CodexMethodEntry {
   readonly method: string;
   readonly paramsType?: string;
@@ -11,6 +14,101 @@ export type SchemaJson =
 
 function isSchemaObject(value: SchemaJson | undefined): value is Record<string, SchemaJson> {
   return value !== null && typeof value === "object" && !Array.isArray(value);
+}
+
+/** Declared wire objects retain JSON extensions; typed dictionaries retain their value contract. */
+export function allowCodexProtocolExtensions(
+  schema: Record<string, unknown>,
+): Record<string, unknown> {
+  if (schema.type !== "object") return schema;
+  if (schema.additionalProperties !== null && typeof schema.additionalProperties === "object")
+    return schema;
+  return { ...schema, additionalProperties: true };
+}
+
+function isSchemaMember(
+  expression: Expression | SpreadElement | null | undefined,
+  name: string,
+): boolean {
+  return (
+    expression?.type === "MemberExpression" &&
+    !expression.computed &&
+    expression.object.type === "Identifier" &&
+    expression.object.name === "Schema" &&
+    expression.property.type === "Identifier" &&
+    expression.property.name === name
+  );
+}
+
+function isJsonSchemaExpression(
+  expression: Expression | SpreadElement | null | undefined,
+): boolean {
+  if (isSchemaMember(expression, "Json")) return true;
+  if (expression?.type !== "CallExpression") return false;
+  const callee = expression.callee;
+  return (
+    callee.type === "MemberExpression" &&
+    callee.property.type === "Identifier" &&
+    callee.property.name === "annotate" &&
+    isSchemaMember(callee.object, "Json")
+  );
+}
+
+/** Keep extension values statically unknown without weakening their runtime JSON validation. */
+export function renderCodexProtocolExtensionViews(source: string): string {
+  const edits: Array<{ readonly start: number; readonly end: number }> = [];
+  let runtimeCount = 0;
+  let typeCount = 0;
+  new Visitor({
+    CallExpression(node) {
+      if (!isSchemaMember(node.callee, "StructWithRest")) return;
+      const rest = node.arguments[1];
+      if (rest?.type !== "ArrayExpression") return;
+      for (const record of rest.elements) {
+        if (record?.type !== "CallExpression" || !isSchemaMember(record.callee, "Record")) continue;
+        const value = record.arguments[1];
+        if (
+          !value ||
+          !isSchemaMember(record.arguments[0], "String") ||
+          !isJsonSchemaExpression(value)
+        )
+          continue;
+        edits.push({ start: value.start, end: value.end });
+        runtimeCount += 1;
+      }
+    },
+    TSIntersectionType(node) {
+      for (const type of node.types) {
+        if (type.type !== "TSTypeLiteral" || type.members.length !== 1) continue;
+        const member = type.members[0];
+        if (member?.type !== "TSIndexSignature") continue;
+        const annotation = member.typeAnnotation.typeAnnotation;
+        if (annotation.type !== "TSTypeReference") continue;
+        const name = annotation.typeName;
+        if (
+          name.type !== "TSQualifiedName" ||
+          name.left.type !== "Identifier" ||
+          name.left.name !== "Schema" ||
+          name.right.name !== "Json"
+        )
+          continue;
+        edits.push({ start: annotation.start, end: annotation.end });
+        typeCount += 1;
+      }
+    },
+  }).visit(parseTypeScriptSource("codex-generated-extensions.ts", source));
+
+  if (runtimeCount !== typeCount) {
+    throw new Error(`Unpaired Codex extension views: ${runtimeCount} codecs, ${typeCount} types`);
+  }
+  const chunks: string[] = [];
+  let cursor = 0;
+  for (const edit of edits.toSorted((left, right) => left.start - right.start)) {
+    chunks.push(source.slice(cursor, edit.start), "CodexJsonExtension");
+    cursor = edit.end;
+  }
+  chunks.push(source.slice(cursor));
+  return chunks.join("");
 }
 
 /** Parses the tagged request union emitted by codex app-server's TypeScript generator. */

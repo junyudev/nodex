@@ -1,4 +1,4 @@
-/* oxlint-disable effecttsgo/async-function -- Private socket acquisition is a Node resource boundary; application execution enters the scoped callback runtime once. */
+/* @effect-diagnostics asyncFunction:off -- Private socket acquisition is a Node resource boundary; application execution enters the scoped callback runtime once. */
 import { randomBytes, randomUUID } from "node:crypto";
 import { chmod, mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";

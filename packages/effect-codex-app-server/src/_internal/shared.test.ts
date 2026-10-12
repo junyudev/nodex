@@ -3,6 +3,7 @@ import * as Effect from "effect/Effect";
 import * as Schema from "effect/Schema";
 
 import * as CodexError from "../errors.ts";
+import * as CodexRpc from "../_generated/meta.gen.ts";
 import * as Shared from "./shared.ts";
 
 const decodeNestedNumberPayload = Schema.decodeUnknownEffect(
@@ -182,25 +183,91 @@ it.effect("retains the full notification payload decode cause chain", () =>
   }),
 );
 
-it.effect("validates known protocol fields without stripping extension fields", () =>
+it.effect(
+  "generated native request codecs retain nested extensions and validate known fields",
+  () =>
+    Effect.gen(function* () {
+      const payload = {
+        clientInfo: {
+          name: "nodex",
+          title: null,
+          version: "1",
+          metadata: { channels: ["desktop"] },
+          ["__proto__"]: { extension: true },
+        },
+        capabilities: { experimentalApi: true, serverExtension: { enabled: true } },
+        transportExtension: { version: 2 },
+        constructor: { extension: true },
+      };
+      const schema = CodexRpc.CLIENT_REQUEST_PARAMS.initialize;
+      assert.deepStrictEqual(
+        yield* Shared.decodeOptionalPayload("initialize", schema, payload),
+        payload,
+      );
+      assert.deepStrictEqual(
+        yield* Shared.encodeOptionalPayload("initialize", schema, payload),
+        payload,
+      );
+      const error = yield* Shared.decodeOptionalPayload("initialize", schema, {
+        ...payload,
+        capabilities: { experimentalApi: "yes" },
+      }).pipe(Effect.flip);
+      assert.instanceOf(error, CodexError.CodexAppServerRequestError);
+    }),
+);
+
+it.effect("wire object extensions accept JSON values and reject non-JSON values", () =>
   Effect.gen(function* () {
-    const schema = Schema.Struct({ thread: Schema.Struct({ id: Schema.String }) });
-    const payload = {
-      thread: { id: "thread", serverExtension: { value: 3 } },
-      topLevelExtension: true,
-    };
-    assert.deepStrictEqual(
-      yield* Shared.decodeOptionalPayload("thread/read", schema, payload),
-      payload,
-    );
-    assert.deepStrictEqual(
-      yield* Shared.encodeOptionalPayload("thread/read", schema, payload),
-      payload,
-    );
-    const failure = yield* Shared.decodeOptionalPayload("thread/read", schema, {
-      ...payload,
-      thread: { id: 3 },
+    const schema = CodexRpc.CLIENT_REQUEST_PARAMS.initialize;
+    const failure = yield* Shared.decodeOptionalPayload("initialize", schema, {
+      clientInfo: { name: "nodex", title: null, version: "1", extension: { value: 1n } },
+      capabilities: null,
     }).pipe(Effect.flip);
     assert.instanceOf(failure, CodexError.CodexAppServerRequestError);
+    assert.equal(failure.operation, "decode-payload");
   }),
+);
+
+it.effect(
+  "generated array and union members retain extensions without relaxing typed dictionaries",
+  () =>
+    Effect.gen(function* () {
+      const payload = {
+        threadId: "thread",
+        input: [
+          {
+            type: "text" as const,
+            text: "hello",
+            text_elements: [
+              {
+                byteRange: { start: 0, end: 5, extension: ["range"] },
+                annotation: { display: true },
+              },
+            ],
+            extension: { source: "desktop" },
+          },
+          { type: "skill" as const, name: "test", path: "/skills/test", extension: [1, null] },
+        ],
+      };
+      assert.deepStrictEqual<unknown>(
+        yield* Shared.decodeOptionalPayload(
+          "turn/start",
+          CodexRpc.CLIENT_REQUEST_PARAMS["turn/start"],
+          payload,
+        ),
+        payload,
+      );
+      const failure = yield* Shared.decodeOptionalPayload(
+        "project/create",
+        CodexRpc.CLIENT_REQUEST_PARAMS["project/create"],
+        {
+          idempotencyKey: "request",
+          name: "project",
+          roots: [],
+          metadata: { invalid: 42 },
+          extension: { valid: true },
+        },
+      ).pipe(Effect.flip);
+      assert.instanceOf(failure, CodexError.CodexAppServerRequestError);
+    }),
 );

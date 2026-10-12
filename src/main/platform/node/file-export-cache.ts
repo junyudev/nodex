@@ -1,4 +1,4 @@
-/* oxlint-disable effecttsgo/async-function -- File streaming and atomic cache publication are Node filesystem boundaries. */
+/* @effect-diagnostics asyncFunction:off -- File streaming and atomic cache publication are Node filesystem boundaries. */
 import { createHash, randomUUID } from "node:crypto";
 import { constants } from "node:fs";
 import * as fs from "node:fs/promises";

@@ -11,11 +11,13 @@ import * as Layer from "effect/Layer";
 import * as Logger from "effect/Logger";
 import * as Path from "effect/Path";
 import * as Schema from "effect/Schema";
-import { ChildProcess, ChildProcessSpawner } from "effect/unstable/process";
+import { ChildProcess, ChildProcessSpawner } from "effect/process";
 import {
+  allowCodexProtocolExtensions,
   distributeObjectUnions,
   parseCodexNotificationEntries,
   parseCodexRequestEntries,
+  renderCodexProtocolExtensionViews,
   type CodexMethodEntry,
 } from "../../../scripts/codex-schema-generator.ts";
 
@@ -305,21 +307,6 @@ function resolveSchemaTypeName(
   throw new Error(`Unable to resolve schema type name: ${rawTypeName}`);
 }
 
-function renderResolvedType(
-  rawTypeName: string,
-  generatedSchemaNames: ReadonlySet<string>,
-): string {
-  return rawTypeName
-    .split("|")
-    .map((part) => part.trim())
-    .map((part) =>
-      part === "null" || part === "undefined"
-        ? part
-        : `CodexSchema.${resolveSchemaTypeName(part, generatedSchemaNames)}`,
-    )
-    .join(" | ");
-}
-
 function renderResolvedSchema(
   rawTypeName: string,
   generatedSchemaNames: ReadonlySet<string>,
@@ -342,6 +329,21 @@ function renderResolvedSchema(
     return resolved;
   }
   throw new Error(`Unsupported protocol type union: ${rawTypeName}`);
+}
+
+function renderResolvedType(
+  rawTypeName: string,
+  generatedSchemaNames: ReadonlySet<string>,
+): string {
+  return rawTypeName
+    .split("|")
+    .map((part) => part.trim())
+    .map((part) =>
+      part === "null" || part === "undefined"
+        ? part
+        : `CodexSchema.${resolveSchemaTypeName(part, generatedSchemaNames)}`,
+    )
+    .join(" | ");
 }
 
 function resolveResponseTypeName(
@@ -420,10 +422,6 @@ function renderSchemaMap(
   ].join("\n");
 }
 
-function renderSchemaTypeReference(schemaName: string) {
-  return schemaName === "undefined" ? "undefined" : `CodexSchema.${schemaName}`;
-}
-
 function exportNameForPath(filePath: string): string {
   const relative = filePath.replace(/\.json$/, "");
   if (!relative.includes("/")) {
@@ -490,7 +488,7 @@ function rewriteExternalRefs(
         const definitionName = child.slice("#/definitions/".length);
         const localRewrite = localDefinitionNames.get(definitionName);
         if (localRewrite) {
-          return [key, `#/definitions/${localRewrite}`];
+          return [key, `#/$defs/${localRewrite}`];
         }
 
         const candidates = [
@@ -511,7 +509,7 @@ function rewriteExternalRefs(
           throw new Error(`Missing rewritten definition for ref: ${child}`);
         }
 
-        return [key, `#/definitions/${rewritten}`];
+        return [key, `#/$defs/${rewritten}`];
       }
 
       return [
@@ -599,9 +597,13 @@ const generateFiles = Effect.fn("generateFiles")(function* () {
   }
 
   const generatedEntries = new Map<string, string>();
-  const output = generator.generate("openapi-3.1", aggregateSchemas as never, false).trim();
+  const output = generator
+    .generate("openapi-3.1", aggregateSchemas as never, false, {
+      onEnter: allowCodexProtocolExtensions,
+    })
+    .trim();
   if (output.length > 0) {
-    for (const entry of collectSchemaEntries(output)) {
+    for (const entry of collectSchemaEntries(renderCodexProtocolExtensionViews(output))) {
       if (!generatedEntries.has(entry.name)) {
         generatedEntries.set(entry.name, entry.code);
       }
@@ -609,6 +611,10 @@ const generateFiles = Effect.fn("generateFiles")(function* () {
   }
 
   const generatedSchemaNames = new Set(generatedEntries.keys());
+  const renderResponseType = (entry: MethodEntry): string => {
+    const name = resolveResponseTypeName(entry.method, entry.paramsType, generatedSchemaNames);
+    return `CodexSchema.${name}`;
+  };
   const clientRequestRaw = yield* readText(join(typescriptInputPath, "ClientRequest.ts"));
   const clientNotificationRaw = yield* readText(join(typescriptInputPath, "ClientNotification.ts"));
   const serverRequestRaw = yield* readText(join(typescriptInputPath, "ServerRequest.ts"));
@@ -624,6 +630,10 @@ const generateFiles = Effect.fn("generateFiles")(function* () {
   const schemaOutput = [
     ...prelude,
     'import * as Schema from "effect/Schema";',
+    "",
+    "// Extra wire keys are unknown to callers and still validate as JSON at runtime.",
+    "type CodexJsonExtension = unknown;",
+    "const CodexJsonExtension = Schema.make<Schema.Codec<CodexJsonExtension>>(Schema.Json.ast);",
     "",
     [...generatedEntries.values()].join("\n\n"),
     "",
@@ -646,22 +656,14 @@ const generateFiles = Effect.fn("generateFiles")(function* () {
     renderTypeInterface("ClientRequestParamsByMethod", clientRequestEntries, (entry) =>
       renderResolvedType(entry.paramsType ?? "undefined", generatedSchemaNames),
     ),
-    renderTypeInterface("ClientRequestResponsesByMethod", clientRequestEntries, (entry) =>
-      renderSchemaTypeReference(
-        resolveResponseTypeName(entry.method, entry.paramsType, generatedSchemaNames),
-      ),
-    ),
+    renderTypeInterface("ClientRequestResponsesByMethod", clientRequestEntries, renderResponseType),
     renderTypeInterface("ClientNotificationParamsByMethod", clientNotificationEntries, (entry) =>
       renderResolvedType(entry.paramsType ?? "undefined", generatedSchemaNames),
     ),
     renderTypeInterface("ServerRequestParamsByMethod", serverRequestEntries, (entry) =>
       renderResolvedType(entry.paramsType ?? "undefined", generatedSchemaNames),
     ),
-    renderTypeInterface("ServerRequestResponsesByMethod", serverRequestEntries, (entry) =>
-      renderSchemaTypeReference(
-        resolveResponseTypeName(entry.method, entry.paramsType, generatedSchemaNames),
-      ),
-    ),
+    renderTypeInterface("ServerRequestResponsesByMethod", serverRequestEntries, renderResponseType),
     renderTypeInterface("ServerNotificationParamsByMethod", serverNotificationEntries, (entry) =>
       renderResolvedType(entry.paramsType ?? "undefined", generatedSchemaNames),
     ),
@@ -752,7 +754,6 @@ const generateFiles = Effect.fn("generateFiles")(function* () {
 generateFiles().pipe(
   Effect.scoped,
   // This file is a standalone schema-generator entry point; its root layer owns all resources.
-  // oxlint-disable-next-line effecttsgo/strict-effect-provide
   Effect.provide(Layer.mergeAll(Logger.layer([Logger.consolePretty()]), NodeServices.layer)),
   NodeRuntime.runMain,
 );

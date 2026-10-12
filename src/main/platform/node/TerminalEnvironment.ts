@@ -43,7 +43,7 @@ const resolveCwd = (requested: string | null | undefined): string => {
 const resolveShell = (): Effect.Effect<string> =>
   process.platform === "win32"
     ? Effect.succeed("powershell.exe")
-    : Config.string("SHELL").pipe(
+    : Config.String("SHELL").pipe(
         Config.withDefault("/bin/zsh"),
         Effect.orElseSucceed(() => "/bin/zsh"),
       );

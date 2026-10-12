@@ -1077,7 +1077,7 @@ export const make = Effect.gen(function* () {
     string,
     {
       readonly handle: AgentSessionHandle;
-      readonly scope: Scope.Scope;
+      readonly scope: Scope.Closeable;
       readonly instanceId: string;
       readonly cwd: string;
       readonly profileDirectory: string;

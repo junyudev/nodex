@@ -159,11 +159,7 @@
 
   .landing-apple-glyph {
     font-family:
-      "SF Pro Display",
-      "SF Pro Text",
-      -apple-system,
-      BlinkMacSystemFont,
-      "Helvetica Neue",
+      "SF Pro Display", "SF Pro Text", -apple-system, BlinkMacSystemFont, "Helvetica Neue",
       sans-serif;
     font-size: 1.05em;
     line-height: 1;

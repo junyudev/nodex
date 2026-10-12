@@ -9,7 +9,7 @@ import { makeElectronClipboardPort } from "./ElectronClipboard";
 const writeClaim = "0199134e-cbb0-7000-8000-000000000003";
 const pendingPromise = () => {
   let resolve!: () => void;
-  // oxlint-disable-next-line effecttsgo/new-promise -- Models Electron's native Promise so the adapter must observe its actual completion.
+  // @effect-diagnostics-next-line newPromise:off -- Models Electron's native Promise so the adapter must observe its actual completion.
   const promise = new Promise<void>((complete) => {
     resolve = complete;
   });

@@ -50,7 +50,7 @@ export const decodeOptionalPayload = <A, I>(
     );
   }
 
-  return Schema.decodeUnknownEffect(schema, { onExcessProperty: "preserve" })(raw).pipe(
+  return Schema.decodeUnknownEffect(schema)(raw).pipe(
     Effect.mapError((error) =>
       CodexError.CodexAppServerRequestError.invalidPayload(method, "decode-payload", error),
     ),
@@ -72,7 +72,7 @@ export const encodeOptionalPayload = <A, I>(
   }
 
   const wirePayload = omitUndefinedObjectProperties(payload) as A;
-  return Schema.encodeEffect(schema, { onExcessProperty: "preserve" })(wirePayload).pipe(
+  return Schema.encodeEffect(schema)(wirePayload).pipe(
     Effect.mapError((error) =>
       CodexError.CodexAppServerRequestError.invalidPayload(method, "encode-payload", error),
     ),

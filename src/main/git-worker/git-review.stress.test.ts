@@ -100,7 +100,7 @@ describe("Git review read wave stress", () => {
       expect(Math.max(...metrics.map((metric) => metric.peakConcurrency))).toBe(1);
       expect(metrics.some((metric) => metric.coalescedQueries > 0)).toBe(true);
     }).pipe(
-      // oxlint-disable-next-line effecttsgo/strict-effect-provide -- this is the stress-test application root.
+      // this is the stress-test application root.
       Effect.provide(GitCommandPlatformNode.nodeLive),
     ),
   );

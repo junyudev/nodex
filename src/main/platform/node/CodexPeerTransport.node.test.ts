@@ -1,4 +1,4 @@
-/* oxlint-disable effecttsgo/async-function, effecttsgo/new-promise -- These tests exercise real Node sockets and their native completion callbacks. */
+/* @effect-diagnostics asyncFunction:off newPromise:off -- These tests exercise real Node sockets and their native completion callbacks. */
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";

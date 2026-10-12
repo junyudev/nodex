@@ -142,11 +142,10 @@ function normalizeServerInput(
     };
   }
   if (input.type === "image") {
-    return {
-      type: "image",
-      ...("url" in input ? { url: input.url } : { fileId: input.fileId }),
-      ...(input.detail == null ? {} : { detail: input.detail }),
-    };
+    const detail = input.detail == null ? {} : { detail: input.detail };
+    if (typeof input.url === "string") return { type: "image", url: input.url, ...detail };
+    if (typeof input.fileId === "string") return { type: "image", fileId: input.fileId, ...detail };
+    throw new Error("Invalid queued image input");
   }
   if (input.type === "localImage") {
     return {

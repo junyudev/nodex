@@ -41,7 +41,7 @@ Selecting `New worktree` reveals two adjacent Composer controls:
   its display branch name and full remote ref; opening the menu never creates a
   source-repository branch.
 - The Environment control chooses one valid Environment or `Work without
-environment`. It is titled `Environment`, or `Environment · <repository>`
+  environment`. It is titled `Environment`, or `Environment · <repository>`
   when the repository name disambiguates a multi-root Project. It exposes
   loading, load-error, empty, default, selected, and needs-attention states and
   ends with `Environment settings`.

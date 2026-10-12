@@ -1,1 +1,2 @@
 resources/agent-runtime/patches/*.patch -whitespace
+patches/*.patch -whitespace

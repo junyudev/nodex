@@ -1,4 +1,4 @@
-/* oxlint-disable effecttsgo/async-function -- Exercises native callback and AbortSignal completion at the platform boundary. */
+/* @effect-diagnostics asyncFunction:off -- Exercises native callback and AbortSignal completion at the platform boundary. */
 import { beforeEach, expect, it, vi } from "vitest";
 import type { BrowserRuntimeAvailability } from "../../codex/browser-runtime-bundle";
 import { loadSkyNativeAddon, type SkyNativeAddon } from "../../sky-native";

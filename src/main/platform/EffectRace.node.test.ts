@@ -1,6 +1,7 @@
 import { assert, it } from "@effect/vitest";
 import * as Deferred from "effect/Deferred";
 import * as Effect from "effect/Effect";
+import * as Exit from "effect/Exit";
 import * as Fiber from "effect/Fiber";
 
 for (const mode of ["first", "success"] as const) {
@@ -23,6 +24,37 @@ for (const mode of ["first", "success"] as const) {
         assert.deepEqual(events, ["released"]);
       }),
     ),
+  );
+
+  it.effect(
+    `${mode} race awaits child cleanup when interrupted during synchronous settlement`,
+    () =>
+      Effect.scoped(
+        Effect.gen(function* () {
+          const winner = yield* Deferred.make<void>();
+          const release = yield* Deferred.make<void>();
+          const events: string[] = [];
+          const race = mode === "first" ? Effect.raceFirst : Effect.race;
+          const running = yield* Effect.withFiber((parent) =>
+            race(
+              Deferred.await(winner),
+              Deferred.succeed(winner, undefined).pipe(
+                Effect.andThen(Effect.sync(() => parent.interruptUnsafe())),
+                Effect.andThen(Deferred.await(release)),
+                Effect.andThen(Effect.sync(() => events.push("late action"))),
+                Effect.ensuring(Effect.sync(() => events.push("released"))),
+              ),
+            ),
+          ).pipe(Effect.forkChild);
+
+          const result = yield* Fiber.await(running);
+          assert.isTrue(Exit.hasInterrupts(result));
+          assert.deepEqual(events, ["released"]);
+          yield* Deferred.succeed(release, undefined);
+          yield* Effect.yieldNow;
+          assert.deepEqual(events, ["released"]);
+        }),
+      ),
   );
 }
 

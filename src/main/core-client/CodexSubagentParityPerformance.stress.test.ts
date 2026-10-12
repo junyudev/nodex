@@ -1254,7 +1254,7 @@ it.live(
         writeFileSync(EVIDENCE_PATH, `${JSON.stringify(evidence, null, 2)}\n`, "utf8");
       });
       assert.isTrue(existsSync(EVIDENCE_PATH));
-      // oxlint-disable-next-line effecttsgo/strict-effect-provide -- This live stress test is the Effect application entry point for its probe process tree.
+      // This live stress test is the Effect application entry point for its probe process tree.
     }).pipe(Effect.provide(scopedCallbackRuntimeLive)),
   { timeout: 300_000 },
 );

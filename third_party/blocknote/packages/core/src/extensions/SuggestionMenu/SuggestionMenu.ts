@@ -156,7 +156,9 @@ class SuggestionMenuView {
     this.pluginState = stopped ? prevSession : nextSession;
 
     if (stopped || !this.editor.isEditable) {
-      if (stopped) this.lastCloseReason = next.lastCloseReason;
+      if (stopped && next.status === "inactive") {
+        this.lastCloseReason = next.lastCloseReason;
+      }
       if (this.state) {
         this.state.show = false;
       }
@@ -263,8 +265,11 @@ class SuggestionMenuView {
     const replacementBlock = findBlock(replacementTransaction.selection);
     if (!replacementBlock) return null;
 
-    const expectedContent = nodeToBlock(sourceBlock.node, state.schema).content;
-    const replacementContent = nodeToBlock(replacementBlock.node, state.schema).content;
+    const expectedContent = nodeToBlock(sourceBlock.node, state.doc).content;
+    const replacementContent = nodeToBlock(
+      replacementBlock.node,
+      replacementTransaction.doc,
+    ).content;
     const sessionId = session.sessionId;
     const blockId = sourceBlock.node.attrs.id as string;
 

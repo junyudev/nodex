@@ -65,9 +65,13 @@ function createSurfaceUndoController(
     deleteFilter: (item) => defaultDeleteFilter(item, defaultProtectedNodes),
     captureTransaction: (transaction) => {
       if (transaction.meta.get("addToHistory") === false) return false;
+      // Parent keys are heterogeneous Yjs types; this lookup depends only on
+      // object identity, not on each parent's event subtype.
+      const changedParentTypes: ReadonlyMap<object, unknown> =
+        transaction.changedParentTypes;
       if (
         transaction.origin === transactionOrigin &&
-        transaction.changedParentTypes.has(fragment)
+        changedParentTypes.has(fragment)
       ) beforeLocalCapture();
       return true;
     },

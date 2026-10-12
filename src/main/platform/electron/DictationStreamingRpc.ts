@@ -1,4 +1,4 @@
-/* oxlint-disable effecttsgo/async-function -- Cap'n Web RPC adapts a Main-owned scoped socket. */
+/* @effect-diagnostics asyncFunction:off -- Cap'n Web RPC adapts a Main-owned scoped socket. */
 import { RpcSession, RpcTarget, type RpcStub } from "capnweb";
 import * as Effect from "effect/Effect";
 import * as Exit from "effect/Exit";

@@ -1,4 +1,4 @@
-/* oxlint-disable effecttsgo/async-function -- Filesystem records and process ancestry are checked at the Node boundary; the application runtime owns timeout and cancellation. */
+/* @effect-diagnostics asyncFunction:off -- Filesystem records and process ancestry are checked at the Node boundary; the application runtime owns timeout and cancellation. */
 import { mkdtemp, mkdir, writeFile, rm, access } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";

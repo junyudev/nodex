@@ -1,4 +1,4 @@
-/* oxlint-disable effecttsgo/async-function -- This Node boundary test exercises actual file and symlink identity. */
+/* @effect-diagnostics asyncFunction:off -- This Node boundary test exercises actual file and symlink identity. */
 import { mkdtemp, mkdir, writeFile, symlink, rm, realpath } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";

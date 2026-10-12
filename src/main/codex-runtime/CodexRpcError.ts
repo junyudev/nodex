@@ -1,5 +1,5 @@
 /** Promise-facing JSON-RPC error used only by external conformance/probe boundaries. */
-// oxlint-disable-next-line effecttsgo/extends-native-error -- External Promise callers require Error identity; this type never enters an Effect failure channel.
+// @effect-diagnostics-next-line extendsNativeError:off -- External Promise callers require Error identity; this type never enters an Effect failure channel.
 export class CodexRpcError extends Error {
   readonly code: number;
   readonly data?: unknown;

@@ -1,9 +1,5 @@
 {
-  "compilerOptions": {
-    "paths": {
-      "@/*": ["./src/renderer/*"]
-    }
-  },
+  "extends": "./tsconfig.base.json",
   "files": [],
   "references": [
     {

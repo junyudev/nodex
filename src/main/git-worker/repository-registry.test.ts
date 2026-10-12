@@ -26,7 +26,7 @@ const makeRegistry = makeGitCommandRunner({ environment: process.env }).pipe(
   Effect.flatMap((runner) =>
     makeGitRepositoryRegistry(runner, new GitReviewRuntime({ commandRunner: runner })),
   ),
-  // oxlint-disable-next-line effecttsgo/strict-effect-provide -- this is the test application composition root.
+  // this is the test application composition root.
   Effect.provide(GitCommandPlatformNode.nodeLive),
 );
 

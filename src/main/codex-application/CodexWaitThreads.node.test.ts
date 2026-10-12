@@ -1,4 +1,4 @@
-/* oxlint-disable effecttsgo/strict-effect-provide -- The test entry point owns the scoped callback runtime and native event bus. */
+/* The test entry point owns the scoped callback runtime and native event bus. */
 import { assert, it } from "@effect/vitest";
 import * as Effect from "effect/Effect";
 import * as PubSub from "effect/PubSub";

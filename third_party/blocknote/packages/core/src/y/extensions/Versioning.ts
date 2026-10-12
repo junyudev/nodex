@@ -18,7 +18,7 @@ import {
  */
 function clearDocumentForConfigure(editor: BlockNoteEditor<any, any, any>) {
   // Pause sync (ytype -> null) so the deletion below stays local.
-  editor.exec(pauseSync);
+  editor.exec((state, dispatch) => pauseSync(state, dispatch ?? null));
   editor.removeBlocks(editor.document);
 }
 

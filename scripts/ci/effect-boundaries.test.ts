@@ -41,6 +41,61 @@ describe("Effect architecture boundaries", () => {
     ]);
   });
 
+  test.each([
+    "ai",
+    "cli",
+    "cluster",
+    "devtools",
+    "encoding",
+    "eventlog",
+    "http",
+    "http-api",
+    "net",
+    "observability",
+    "persistence",
+    "process",
+    "reactivity",
+    "rpc",
+    "schema",
+    "socket",
+    "sql",
+    "workflow",
+    "workers",
+  ])("keeps effect/%s area imports behind Adapters", (area) => {
+    const sourceText = `import * as Capability from "effect/${area}";`;
+    expect(
+      analyzeEffectBoundaries({ path: "src/main/host-runtime/Host.ts", sourceText }).map(
+        (diagnostic) => diagnostic.code,
+      ),
+    ).toEqual(["unstable-outside-adapter"]);
+    expect(analyzeEffectBoundaries({ path: "src/main/platform/node/Host.ts", sourceText })).toEqual(
+      [],
+    );
+  });
+
+  test("also confines deep and type-only area imports to Adapters", () => {
+    expect(codes("src/main/codex-runtime/session.ts", "deep-area-imports.ts")).toEqual([
+      "unstable-outside-adapter",
+      "unstable-outside-adapter",
+      "unstable-outside-adapter",
+    ]);
+    expect(codes("src/main/platform/node/session.ts", "deep-area-imports.ts")).toEqual([]);
+    expect(codes("packages/effect-codex-app-server/src/client.ts", "deep-area-imports.ts")).toEqual(
+      [],
+    );
+  });
+
+  test("allows Main lifecycle primitives and the managed testing entrypoint", () => {
+    const sourceText = `
+      import * as Schema from "effect/Schema";
+      import * as LayerMap from "effect/LayerMap";
+      import * as TestClock from "effect/testing/TestClock";
+    `;
+    expect(
+      analyzeEffectBoundaries({ path: "src/main/host-runtime/Host.node.test.ts", sourceText }),
+    ).toEqual([]);
+  });
+
   test("rejects ambient configuration and unstructured async in application Modules", () => {
     expect(
       codes("src/main/host-runtime/DetachedRuntime.ts", "application-ambient-process.ts"),

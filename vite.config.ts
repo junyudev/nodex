@@ -1,5 +1,4 @@
 import { defineConfig } from "vite-plus";
-import { recommended as effectRecommended } from "@effect/tsgo/oxlint-presets";
 
 const toolingFixtureMode = process.env.NODEX_TOOLING_FIXTURE_MODE === "1";
 const generatedOrExternalPaths = [
@@ -129,16 +128,6 @@ const singleOwnerEventHandlerFiles = [
 ];
 
 const toolingFixtureIgnorePatterns = new Set(["scripts/fixtures/tooling/**", "**/fixtures/**"]);
-const effectControlPlaneFiles = [
-  "packages/effect-codex-app-server/**/*.{ts,tsx}",
-  "src/main/app/**/*.{ts,tsx}",
-  "src/main/core-runtime/**/*.{ts,tsx}",
-  "src/main/codex-runtime/**/*.{ts,tsx}",
-  "src/main/platform/**/*.{ts,tsx}",
-  "src/main/main-program*.ts",
-  "scripts/codex-probe-session.ts",
-];
-
 export default defineConfig({
   lint: {
     ignorePatterns: [
@@ -167,10 +156,11 @@ export default defineConfig({
     },
     options: {
       typeAware: !toolingFixtureMode,
-      typeCheck: !toolingFixtureMode,
+      // tsc-rs owns compiler diagnostics; Oxlint owns type-aware lint.
+      typeCheck: false,
       reportUnusedDisableDirectives: "warn",
     },
-    plugins: ["effecttsgo", "eslint", "oxc", "react", "typescript", "unicorn"],
+    plugins: ["eslint", "oxc", "react", "typescript", "unicorn"],
     rules: {
       // These broad heuristics consume the diagnostic budget without expressing
       // a stable Nodex invariant. Keep correctness rules below strict instead.
@@ -326,24 +316,6 @@ export default defineConfig({
           "unicorn/require-post-message-target-origin": "off",
         },
       },
-      {
-        files: effectControlPlaneFiles,
-        rules: effectRecommended.rules,
-      },
-      {
-        files: [
-          "packages/effect-codex-app-server/src/_internal/**/*.{ts,tsx}",
-          "packages/effect-codex-app-server/scripts/**/*.ts",
-          "src/main/platform/**/*.{ts,tsx}",
-          "scripts/codex-probe-session.ts",
-        ],
-        rules: {
-          ...effectRecommended.rules,
-          // These app-owned adapters are the intentional Node/platform frontier.
-          "effecttsgo/global-random": "off",
-          "effecttsgo/node-builtin-import": "off",
-        },
-      },
     ],
   },
   fmt: {
@@ -362,73 +334,93 @@ export default defineConfig({
     },
     tasks: {
       check: {
-        command: "vp fmt --check && vp check --no-fmt",
-        env: ["ESLINT_BETTER_TAILWIND", "NODEX_TOOLING_FIXTURE_MODE"],
-        input: [
-          { auto: true },
-          "package.json",
-          "pnpm-lock.yaml",
-          "pnpm-workspace.yaml",
-          "patches/**",
-          "!cache.local",
-          "!cache.local/**",
-        ],
-        output: [],
+        command: "vp fmt --check && tsc-rs --build --noEmit && vp lint",
+        cache: {
+          env: ["ESLINT_BETTER_TAILWIND", "NODEX_TOOLING_FIXTURE_MODE"],
+          input: [
+            { auto: true },
+            "package.json",
+            "pnpm-lock.yaml",
+            "pnpm-workspace.yaml",
+            "patches/**",
+            "!.cache/**",
+            "!**/*.tsbuildinfo",
+            "!cache.local",
+            "!cache.local/**",
+          ],
+          output: [],
+        },
       },
       "fmt:check": {
         command: "vp fmt --check",
-        input: [
-          { auto: true },
-          "package.json",
-          "pnpm-lock.yaml",
-          "pnpm-workspace.yaml",
-          "patches/**",
-          "!cache.local",
-          "!cache.local/**",
-        ],
-        output: [],
+        cache: {
+          input: [
+            { auto: true },
+            "package.json",
+            "pnpm-lock.yaml",
+            "pnpm-workspace.yaml",
+            "patches/**",
+            "!.cache/**",
+            "!**/*.tsbuildinfo",
+            "!cache.local",
+            "!cache.local/**",
+          ],
+          output: [],
+        },
       },
       lint: {
-        command: "vp check --no-fmt",
-        env: ["ESLINT_BETTER_TAILWIND", "NODEX_TOOLING_FIXTURE_MODE"],
-        input: [
-          { auto: true },
-          "package.json",
-          "pnpm-lock.yaml",
-          "pnpm-workspace.yaml",
-          "patches/**",
-          "!cache.local",
-          "!cache.local/**",
-        ],
-        output: [],
+        command: "tsc-rs --build --noEmit && vp lint",
+        cache: {
+          env: ["ESLINT_BETTER_TAILWIND", "NODEX_TOOLING_FIXTURE_MODE"],
+          input: [
+            { auto: true },
+            "package.json",
+            "pnpm-lock.yaml",
+            "pnpm-workspace.yaml",
+            "patches/**",
+            "!.cache/**",
+            "!**/*.tsbuildinfo",
+            "!cache.local",
+            "!cache.local/**",
+          ],
+          output: [],
+        },
       },
       "check:semantic": {
-        command: "vp check --no-fmt",
-        env: ["ESLINT_BETTER_TAILWIND", "NODEX_TOOLING_FIXTURE_MODE"],
-        input: [
-          { auto: true },
-          "package.json",
-          "pnpm-lock.yaml",
-          "pnpm-workspace.yaml",
-          "patches/**",
-          "!cache.local",
-          "!cache.local/**",
-        ],
-        output: [],
+        command: "tsc-rs --build --noEmit && vp lint",
+        cache: {
+          env: ["ESLINT_BETTER_TAILWIND", "NODEX_TOOLING_FIXTURE_MODE"],
+          input: [
+            { auto: true },
+            "package.json",
+            "pnpm-lock.yaml",
+            "pnpm-workspace.yaml",
+            "patches/**",
+            "!.cache/**",
+            "!**/*.tsbuildinfo",
+            "!cache.local",
+            "!cache.local/**",
+          ],
+          output: [],
+        },
       },
       typecheck: {
-        command: "vp check --no-fmt",
-        env: ["ESLINT_BETTER_TAILWIND", "NODEX_TOOLING_FIXTURE_MODE"],
-        input: [
-          { auto: true },
-          "package.json",
-          "pnpm-lock.yaml",
-          "pnpm-workspace.yaml",
-          "patches/**",
-          "!cache.local",
-          "!cache.local/**",
-        ],
-        output: [],
+        command: "tsc-rs --build --noEmit && vp lint",
+        cache: {
+          env: ["ESLINT_BETTER_TAILWIND", "NODEX_TOOLING_FIXTURE_MODE"],
+          input: [
+            { auto: true },
+            "package.json",
+            "pnpm-lock.yaml",
+            "pnpm-workspace.yaml",
+            "patches/**",
+            "!.cache/**",
+            "!**/*.tsbuildinfo",
+            "!cache.local",
+            "!cache.local/**",
+          ],
+          output: [],
+        },
       },
     },
   },

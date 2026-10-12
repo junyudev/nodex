@@ -50,8 +50,7 @@ export const FormattingToolbarExtension = createExtension(({ editor }) => {
     key: "formattingToolbar",
     store,
     mount({ dom, root, signal }) {
-      const ownerDocument =
-        root.nodeType === 9 ? (root as Document) : root.ownerDocument;
+      const ownerDocument = dom.ownerDocument;
       // Selection presentation becomes eligible only after its pointer or drag
       // gesture settles.
       let gesturePhase: "idle" | "selecting" | "dragging" = "idle";

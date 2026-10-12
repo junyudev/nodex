@@ -1,4 +1,4 @@
-/* oxlint-disable effecttsgo/async-function, effecttsgo/new-promise -- Exercises Electron Promise completion and lazy clipboard reads at the native adapter boundary. */
+/* @effect-diagnostics asyncFunction:off newPromise:off -- Exercises Electron Promise completion and lazy clipboard reads at the native adapter boundary. */
 import { EventEmitter } from "node:events";
 import type { ChildProcess } from "node:child_process";
 import type { Clipboard, ClipboardItem } from "electron";

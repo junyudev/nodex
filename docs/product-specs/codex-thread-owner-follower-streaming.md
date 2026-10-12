@@ -242,6 +242,14 @@ identity or flags. Large arrays use chunked transport values without changing
 their JSON contents; JSONC comments and path-filter extraction are not part of
 this transport.
 
+Native payload codecs validate declared fields and retain JSON extension fields at every object
+level, including objects inside arrays and unions. Extension values are JSON data; they do not
+weaken declared field types or typed dictionary values. Renderer native request admission and the
+physical transport share these generated codecs.
+Known method input and output types follow the generated wire schemas, including JSON numbers
+and optional fields. Extensions have an unknown static type; reading an undeclared field or
+distinguishing union variants by a retained field requires a value-type check.
+
 Owner action dispatch uses typed native method payloads. Followers forward the original
 request fields and context; they do not convert them to composer text and ask Main to rebuild
 an unrelated command. Settings, interrupt, start, steer, edit, compaction, complete history and

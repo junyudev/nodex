@@ -89,7 +89,7 @@ it.effect("commits through the canonical worker capability", () =>
       assert.deepStrictEqual(requests, ["action-status", "commit"]);
       assert.strictEqual(result.status, "success");
       assert.strictEqual(result.branch, "main");
-      // oxlint-disable-next-line effecttsgo/strict-effect-provide -- this test owns the complete GitActions application layer.
+      // this test owns the complete GitActions application layer.
     }).pipe(Effect.provide(layer(worker)));
   }),
 );
@@ -126,7 +126,7 @@ it.effect("cancels an in-flight canonical Git action by operation id", () =>
         assert.strictEqual(result.status, "error");
         assert.strictEqual(result.errorMessage, "Git action was canceled.");
       });
-      // oxlint-disable-next-line effecttsgo/strict-effect-provide -- this test owns the complete GitActions application layer.
+      // this test owns the complete GitActions application layer.
       yield* program.pipe(Effect.provide(layer(worker)));
     }),
   ),

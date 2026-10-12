@@ -1,4 +1,4 @@
-/* oxlint-disable effecttsgo/async-function, effecttsgo/new-promise -- Node socket acquisition is a platform boundary owned by the application Scope. */
+/* @effect-diagnostics asyncFunction:off newPromise:off -- Node socket acquisition is a platform boundary owned by the application Scope. */
 import { chmod, lstat, mkdir, unlink } from "node:fs/promises";
 import { connect, createServer, type Socket } from "node:net";
 import { join } from "node:path";

@@ -836,31 +836,32 @@ export const TableHandlesExtension = createExtension(({ editor }) => {
       dataTransfer: DataTransfer | null;
       clientX: number;
     }) {
+      const tableView = view;
+      const tableState = tableView?.state;
+      const colIndex = tableState?.colIndex;
       if (
         !event.dataTransfer ||
-        view === undefined ||
-        view.state === undefined ||
-        view.state.colIndex === undefined
+        tableView === undefined ||
+        tableState === undefined ||
+        colIndex === undefined
       ) {
         throw new Error(
           "Attempted to drag table column, but no table block was hovered prior.",
         );
       }
 
-      const tableView = view;
-      tableView.state.draggingState = {
+      tableState.draggingState = {
         draggedCellOrientation: "col",
-        originalIndex: tableView.state.colIndex,
+        originalIndex: colIndex,
         mousePos: event.clientX,
       };
       tableView.emitUpdate();
 
       editor.transact((tr) =>
         tr.setMeta(tableHandlesPluginKey, {
-          draggedCellOrientation:
-            tableView.state!.draggingState!.draggedCellOrientation,
-          originalIndex: tableView.state!.colIndex,
-          newIndex: tableView.state!.colIndex,
+          draggedCellOrientation: "col",
+          originalIndex: colIndex,
+          newIndex: colIndex,
           tablePos: tableView.tablePos,
         }),
       );
@@ -881,31 +882,32 @@ export const TableHandlesExtension = createExtension(({ editor }) => {
       dataTransfer: DataTransfer | null;
       clientY: number;
     }) {
+      const tableView = view;
+      const tableState = tableView?.state;
+      const rowIndex = tableState?.rowIndex;
       if (
         !event.dataTransfer ||
-        view === undefined ||
-        view.state === undefined ||
-        view.state.rowIndex === undefined
+        tableView === undefined ||
+        tableState === undefined ||
+        rowIndex === undefined
       ) {
         throw new Error(
           "Attempted to drag table row, but no table block was hovered prior.",
         );
       }
 
-      const tableView = view;
-      tableView.state.draggingState = {
+      tableState.draggingState = {
         draggedCellOrientation: "row",
-        originalIndex: tableView.state.rowIndex,
+        originalIndex: rowIndex,
         mousePos: event.clientY,
       };
       tableView.emitUpdate();
 
       editor.transact((tr) =>
         tr.setMeta(tableHandlesPluginKey, {
-          draggedCellOrientation:
-            tableView.state!.draggingState!.draggedCellOrientation,
-          originalIndex: tableView.state!.rowIndex,
-          newIndex: tableView.state!.rowIndex,
+          draggedCellOrientation: "row",
+          originalIndex: rowIndex,
+          newIndex: rowIndex,
           tablePos: tableView.tablePos,
         }),
       );

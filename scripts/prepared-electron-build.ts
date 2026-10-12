@@ -58,6 +58,8 @@ const REQUIRED_INPUT_PATHS = [
   "pnpm-lock.yaml",
   "pnpm-workspace.yaml",
   "rust-toolchain.toml",
+  "tsconfig.base.json",
+  "tsconfig.effect.json",
   "tsconfig.json",
   "tsconfig.node.json",
   "tsconfig.web.json",

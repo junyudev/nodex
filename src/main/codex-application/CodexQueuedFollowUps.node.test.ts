@@ -1,4 +1,4 @@
-/* oxlint-disable effecttsgo/strict-effect-provide -- Scoped queue tests provide a single boundary fixture. */
+/* Scoped queue tests provide a single boundary fixture. */
 import { assert, it } from "@effect/vitest";
 import * as Effect from "effect/Effect";
 import * as Stream from "effect/Stream";

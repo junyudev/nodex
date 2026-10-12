@@ -35,6 +35,30 @@ const effectFreeRoots = [
   "src/shared/",
 ];
 
+// Effect's area entrypoints retain unstable or experimental APIs even when the
+// package is stable. Their bare and deep imports belong to external Adapters.
+const effectAdapterAreas = new Set([
+  "ai",
+  "cli",
+  "cluster",
+  "devtools",
+  "encoding",
+  "eventlog",
+  "http",
+  "http-api",
+  "net",
+  "observability",
+  "persistence",
+  "process",
+  "reactivity",
+  "rpc",
+  "schema",
+  "socket",
+  "sql",
+  "workflow",
+  "workers",
+]);
+
 const effectApplicationRoots = [
   "src/main/app/",
   "src/main/automation-application/",
@@ -116,7 +140,9 @@ function isEffectModule(moduleName: string): boolean {
 }
 
 function isUnstableEffectModule(moduleName: string): boolean {
-  return moduleName.includes("/unstable/") || moduleName.endsWith("/unstable");
+  if (!moduleName.startsWith("effect/")) return false;
+  const [, area] = moduleName.split("/");
+  return area !== undefined && effectAdapterAreas.has(area);
 }
 
 function isEffectFreePath(path: string): boolean {

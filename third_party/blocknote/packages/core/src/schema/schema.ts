@@ -46,6 +46,12 @@ function removeUndefined<T extends Record<string, any> | undefined>(obj: T): T {
   ) as T;
 }
 
+type SchemaBlockSpecs<B extends BlockSchema> = {
+  [K in keyof B]: K extends string
+    ? LooseBlockSpec<K, B[K]["propSchema"], B[K]["content"]>
+    : never;
+};
+
 export class CustomBlockNoteSchema<
   BSchema extends BlockSchema,
   ISchema extends InlineContentSchema,
@@ -66,11 +72,7 @@ export class CustomBlockNoteSchema<
 
   public inlineContentSpecs: InlineContentSpecs;
   public styleSpecs: StyleSpecs;
-  public blockSpecs: {
-    [K in keyof BSchema]: K extends string
-      ? LooseBlockSpec<K, BSchema[K]["propSchema"], BSchema[K]["content"]>
-      : never;
-  };
+  public blockSpecs: SchemaBlockSpecs<BSchema>;
 
   public blockSchema: BSchema;
   public inlineContentSchema: ISchema;
@@ -117,7 +119,14 @@ export class CustomBlockNoteSchema<
     return this.opts.blockChildrenRules?.[blockType]?.layout ?? "indented";
   }
 
-  private init() {
+  private init(): {
+    blockSpecs: SchemaBlockSpecs<BSchema>;
+    blockSchema: BSchema;
+    inlineContentSpecs: InlineContentSpecs;
+    inlineContentSchema: ISchema;
+    styleSpecs: StyleSpecs;
+    styleSchema: SSchema;
+  } {
     const getPriority = sortByDependencies(
       Object.entries({
         ...this.opts.blockSpecs,
@@ -141,11 +150,7 @@ export class CustomBlockNoteSchema<
           ),
         ];
       }),
-    ) as {
-      [K in keyof BSchema]: K extends string
-        ? LooseBlockSpec<K, BSchema[K]["propSchema"], BSchema[K]["content"]>
-        : never;
-    };
+    ) as SchemaBlockSpecs<BSchema>;
 
     const inlineContentSpecs = Object.fromEntries(
       Object.entries(this.opts.inlineContentSpecs).map(

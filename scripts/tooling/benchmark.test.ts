@@ -26,8 +26,9 @@ test("runs exactly the selected cohort with the requested worker budget", () => 
 
 test("semantic measurements execute the checker without task result replay", () => {
   expect(benchmarkCommand(parseBenchmarkArguments(["--scenario", "semantic-execute"]))).toEqual([
-    "check",
-    "--no-fmt",
+    "run",
+    "--no-cache",
+    "check:semantic",
   ]);
 });
 
