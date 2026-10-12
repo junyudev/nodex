@@ -1,0 +1,27 @@
+src/main/codex-application/CodexStructuredThreadTitle.node.test.ts
+  s_bd811abbf24a41::t_f249db10cf2f7a 631-663,665-672,674,676-689
+  s_bd811abbf24a41::t_42208f36bdc986 630,664,673,675,690
+src/main/inbox-application/inbox-suggestions.ts
+  s_bd811abbf24a41::t_8cdc9f6375732c 311-313
+src/main/inbox-application/inbox-suggestions.node.test.ts
+  s_bd811abbf24a41::t_e7df7afc6ee233 156-159
+  s_bd811abbf24a41::t_8cdc9f6375732c 155,160
+src/main/codex-application/CodexStructuredThreadTitle.ts
+  s_bd811abbf24a41::t_ceb1aa270ca493 260,262,266,269,331,333,340,342,393,395,501-505,632,754
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "ec50da69f72023fc8f930ede286f2a5e648128c7",
+  "prompts": {},
+  "sessions": {
+    "s_bd811abbf24a41": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "d475c410-7aa3-406e-a6d6-6873f7b30325",
+        "model": "unknown"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    }
+  }
+}
