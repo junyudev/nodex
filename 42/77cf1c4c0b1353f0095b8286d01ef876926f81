@@ -1,0 +1,281 @@
+src/renderer/styles/theme-source.css
+  s_f42317a5b09cf6::t_25ac117aeeb9d0 103,123,191,196,207-208,212,308,353,358-359,363
+CHANGELOG.md
+  s_f42317a5b09cf6::t_124410dcdcc7f7 9
+  s_f42317a5b09cf6::t_d90db4b345f9d9 10
+src/renderer/components/workbench/stage-tab-strip.tsx
+  s_f42317a5b09cf6::t_418f11bdc358c1 56,81
+src/renderer/components/workbench/workbench-settings-search-catalog.node.test.ts
+  s_f42317a5b09cf6::t_da0c7c525a154e 42
+src/renderer/features/user-attachment-image-editor/view/single-image-editor.tsx
+  s_f42317a5b09cf6::t_681527ac23ba5e 139
+docs/product-specs/user-attachment-image-editor-behavior.md
+  s_f42317a5b09cf6::t_ddbd5235c6343d 58
+scripts/semantic-theme/profile.ts
+  s_f42317a5b09cf6::t_32f415e6211c53 36-37,168,321-323,327-332
+  s_f42317a5b09cf6::t_3d88a05bc94ac3 132,135
+  s_f42317a5b09cf6::t_fffbc25de12f19 133-134,136-139,334
+  s_f42317a5b09cf6::t_c3f7d926599996 169-171,324-326
+  s_f42317a5b09cf6::t_dc48e3c034bfdb 140,172,174,333,463
+scripts/semantic-theme/module.test.ts
+  s_f42317a5b09cf6::t_1802004504246e 8-12,26
+  s_f42317a5b09cf6::t_3d3c54581df1f2 55,77-79
+  s_f42317a5b09cf6::t_26cc3b95d036fd 60-61,74-76
+src/renderer/components/workbench/workbench-settings-section-pages.tsx
+  s_f42317a5b09cf6::t_93a93b7d74c289 2,323-324
+  s_f42317a5b09cf6::t_681527ac23ba5e 318-320,332,335
+  s_f42317a5b09cf6::t_2d4f00ecef8dd6 325
+src/renderer/bootstrap/renderer-document.ts
+  s_f42317a5b09cf6::t_2ad43ded1be423 7,60-66
+docs/product-specs/codex-thread-transcript-behavior.md
+  s_f42317a5b09cf6::t_a76e1df8fc4202 448
+src/renderer/lib/use-theme.tsx
+  s_f42317a5b09cf6::t_1b44111a9e4196 19,34-36,52-66,83-85
+  s_f42317a5b09cf6::t_75ec289a0bbb90 97-99
+  s_f42317a5b09cf6::t_2ad43ded1be423 1-14,25-29,37-40,68,73,88-89,94-96,100-105,110-111,113-127
+  s_f42317a5b09cf6::t_ad1fecc403a0c2 67
+src/renderer/lib/use-theme.test.tsx
+  s_f42317a5b09cf6::t_0190658c327ab4 3,14-18,20-23,29-31,33-35,39-42,48,59-62,64-70,94-103,108-114,137-140,142,146-160,162-167
+  s_f42317a5b09cf6::t_75ec289a0bbb90 12,19,26,32,115-123,125-126,128,130-136
+  s_f42317a5b09cf6::t_dcf6cdaf86f788 141,143-145,161
+  s_f42317a5b09cf6::t_ddbd5235c6343d 2,124,127,129
+  s_f42317a5b09cf6::t_ff7add3921a812 1,4-11,13,24-25,27-28,36-38,43-47,49-58,63,71-93,104-107,168-169
+src/renderer/lib/theme-preferences.node.test.ts
+  s_f42317a5b09cf6::t_ff7add3921a812 1-38
+  s_f42317a5b09cf6::t_8f7b13de088d57 39-69
+src/renderer/features/local-conversation/view/local-conversation-thread-body-owner.tsx
+  s_f42317a5b09cf6::t_681527ac23ba5e 248,284,291,293
+src/renderer/components/workbench/app-update-settings-control.tsx
+  s_f42317a5b09cf6::t_418f11bdc358c1 176
+scripts/semantic-theme/renderer.test.ts
+  s_f42317a5b09cf6::t_9de7ecae10caed 19-20,65-66
+  s_f42317a5b09cf6::t_9c0b2864f5fabb 67-76
+src/renderer/components/workbench/database-view-filter-editors.tsx
+  s_f42317a5b09cf6::t_418f11bdc358c1 442,459,563
+src/renderer/components/workbench/accent-color-setting-control.test.tsx
+  s_f42317a5b09cf6::t_436768b4bf20d3 1-93
+  s_f42317a5b09cf6::t_7419cd20467584 94-98
+src/renderer/components/workbench/database-board/database-board-card.tsx
+  s_f42317a5b09cf6::t_418f11bdc358c1 312,314,391
+src/renderer/globals.css
+  s_f42317a5b09cf6::t_25ac117aeeb9d0 34-38,210-211,285,289,504-505,509-510,722-723,732,791,871,921,946,959
+  s_f42317a5b09cf6::t_bd0b722fc0be2a 1197,1203,1239,1264,1293,1345
+docs/product-specs/settings-route-behavior.md
+  s_f42317a5b09cf6::t_d90db4b345f9d9 106-127
+src/renderer/components/workbench/workbench-settings-search-catalog.ts
+  s_f42317a5b09cf6::t_98e0d002763039 229-231
+  s_f42317a5b09cf6::t_f30e5e0a819271 232-241
+src/renderer/components/workbench/database-settings/database-settings-rail.tsx
+  s_f42317a5b09cf6::t_418f11bdc358c1 1527,1575,1637,1953
+src/renderer/lib/mcp-app/mcp-app-runtime.ts
+  s_f42317a5b09cf6::t_bf53f980479a5b 14,114,463
+docs/product-specs/database-pages-and-views-behavior.md
+  s_f42317a5b09cf6::t_ddbd5235c6343d 367
+  s_f42317a5b09cf6::t_ba6c132e55c94f 95
+src/renderer/components/workbench/app-update-restart-notice.tsx
+  s_f42317a5b09cf6::t_418f11bdc358c1 25,32
+src/renderer/components/workbench/accent-color-setting-control.tsx
+  s_f42317a5b09cf6::t_daf8c90eb576e3 31-32
+  s_f42317a5b09cf6::t_e4baf5ab9deda6 5,58-61,98,144-147
+  s_f42317a5b09cf6::t_25b659b250c9e2 1-4,6-30,33-57,62-97,99-143,148-165
+  s_f42317a5b09cf6::t_d5b871bc19c586 166-167
+src/renderer/components/workbench/review-diff-panel.tsx
+  s_f42317a5b09cf6::t_8dfef51c38d234 244
+src/renderer/lib/codex-theme-variant.node.test.ts
+  s_f42317a5b09cf6::t_4e6f88934f0c3e 97-104,108-117,139-202,206-219,230-238,249-254,256-258,263-267
+  s_f42317a5b09cf6::t_22e2289a6f9ea5 2-11,94-96,105-107,118-138,203-205,220-229,239-248,255,259-262,268-276
+src/renderer/components/workbench/database-view-rules-bar.tsx
+  s_f42317a5b09cf6::t_418f11bdc358c1 103-105,117,1044
+src/renderer/components/shared/code-block-action-chrome.ts
+  s_f42317a5b09cf6::t_681527ac23ba5e 5
+scripts/semantic-theme/renderer.ts
+  s_f42317a5b09cf6::t_988a5e9a90a2ed 15,173
+src/renderer/components/ui/date-calendar.tsx
+  s_f42317a5b09cf6::t_681527ac23ba5e 22,29,31,33,35
+src/renderer/lib/theme-preferences.ts
+  s_f42317a5b09cf6::t_2ad43ded1be423 1-58,62-63,67,69-90,94-101
+  s_f42317a5b09cf6::t_75ec289a0bbb90 59-61,64-66,68,91-93
+src/renderer/lib/mcp-app/mcp-app-host-styles.ts
+  s_f42317a5b09cf6::t_bf53f980479a5b 1-131
+  s_f42317a5b09cf6::t_2612b80c0797f1 132-139
+src/renderer/styles/accent-theme.browser.test.tsx
+  s_f42317a5b09cf6::t_bd0b722fc0be2a 14,48-53,70-132,172-174,217-260,262-265,267-271
+  s_f42317a5b09cf6::t_0aa5c74b2b6043 18-21,45-47,55-60,62-66,170-171,175,184-186,190-192,194-199,202-204,208-216,261,266,289-291,304-310
+  s_f42317a5b09cf6::t_993efd060c4e57 1-13,15-17,22-44,54,61,67-69,133-169,176-183,187-189,193,200-201,205-207,272-288,292-303,311-322
+  s_f42317a5b09cf6::t_d1fd7a01fba6d2 323-324
+src/renderer/lib/mcp-app/mcp-app-host-styles.browser.test.ts
+  s_f42317a5b09cf6::t_a76e1df8fc4202 1-57
+src/renderer/components/workbench/command-palette-filters.tsx
+  s_f42317a5b09cf6::t_418f11bdc358c1 35
+  s_f42317a5b09cf6::t_bd031c89def238 31
+src/renderer/components/workbench/workbench-settings-route-shell.tsx
+  s_f42317a5b09cf6::t_681527ac23ba5e 201,1891
+src/renderer/lib/mcp-app/mcp-app-runtime.jsdom.test.ts
+  s_f42317a5b09cf6::t_a76e1df8fc4202 1-50,67-73,78-113
+  s_f42317a5b09cf6::t_cb06d740cf717c 51-66,74-77
+  s_f42317a5b09cf6::t_aa170b70dad9c6 114-115
+docs/product-specs/nfm-editor-structural-editing-behavior.md
+  s_f42317a5b09cf6::t_cf6e8bceb22694 24,28,30,97
+docs/product-specs/workbench-shell.md
+  s_f42317a5b09cf6::t_df3ab97f0fe8a2 14,128
+package.json
+  s_f42317a5b09cf6::t_c111ee22eecab2 214
+pnpm-lock.yaml
+  s_f42317a5b09cf6::t_733e647bf3f34e 202-204,7496-7501,15486-15490
+src/renderer/components/board/calendar/calendar-event-block.tsx
+  s_f42317a5b09cf6::t_b491f10fafb38f 62,202-203,206,281
+src/renderer/components/board/calendar/calendar-grid.tsx
+  s_f42317a5b09cf6::t_9bb745f66b28ad 1535,1544,1550,1616,1643,1676,1903
+src/renderer/components/board/calendar/calendar-inline-creator.tsx
+  s_f42317a5b09cf6::t_9817587ac0a728 68,72,90
+src/renderer/components/board/calendar/calendar-range-dropdown.tsx
+  s_f42317a5b09cf6::t_ea9521cc05f940 42,74,184
+src/renderer/components/board/calendar/calendar-toolbar.tsx
+  s_f42317a5b09cf6::t_d9f536f66b8520 35,37
+src/renderer/components/board/canvas-card-sidebar.tsx
+  s_f42317a5b09cf6::t_896768721fa2bd 72-73
+src/renderer/components/board/date-mention-inline-visual.tsx
+  s_f42317a5b09cf6::t_86ec61211c00ee 75,77,110
+src/renderer/components/board/editor/agent-config-chip.tsx
+  s_f42317a5b09cf6::t_f403bfa3413d13 333,517
+src/renderer/components/board/editor/attachment-chip.tsx
+  s_f42317a5b09cf6::t_c59606e8622f73 274
+src/renderer/components/board/editor/date-mention-chip.tsx
+  s_f42317a5b09cf6::t_19716db6622c2b 112-113,118-121,144
+src/renderer/components/board/editor/mermaid-code-preview.tsx
+  s_f42317a5b09cf6::t_13cb24f6a1cd7e 157
+src/renderer/components/board/editor/nfm-editor.tsx
+  s_f42317a5b09cf6::t_d65092e267cfc3 2828,2882
+src/renderer/components/board/editor/nfm-side-menu.tsx
+  s_f42317a5b09cf6::t_58577a247e7b5f 343,356
+src/renderer/components/board/editor/nfm-table-handles.stories.tsx
+  s_f42317a5b09cf6::t_6fd75c64e95eb1 67,108
+src/renderer/components/board/editor/nfm-table-handles.tsx
+  s_f42317a5b09cf6::t_be0ee413889bbd 103,116
+src/renderer/components/board/editor/nfm-task-shorthand-preview-extension.ts
+  s_f42317a5b09cf6::t_b28a0edce1f444 54
+src/renderer/components/board/editor/nfm-text-action-menu.tsx
+  s_f42317a5b09cf6::t_e094c886cab3f0 286,299,312
+src/renderer/components/board/editor/thread-mention-chip.tsx
+  s_f42317a5b09cf6::t_d2f3051a2aa847 136
+src/renderer/components/board/editor/thread-section-row.tsx
+  s_f42317a5b09cf6::t_3623f523f7aa32 34,43
+src/renderer/components/board/history-panel.tsx
+  s_f42317a5b09cf6::t_bcc1971f40c8f9 486,890
+src/renderer/components/board/nfm-renderer.tsx
+  s_f42317a5b09cf6::t_cb9e3f16724578 199,205
+src/renderer/components/board/page-create-dialog.tsx
+  s_f42317a5b09cf6::t_9d3edd60bacf5d 370,383
+src/renderer/components/board/page-presence-rail.tsx
+  s_f42317a5b09cf6::t_8a1b1d2f929aa0 6
+src/renderer/components/board/page-stage/breadcrumb.tsx
+  s_f42317a5b09cf6::t_50a848d55c06af 64,123
+src/renderer/components/board/page-stage/page-files-row.tsx
+  s_f42317a5b09cf6::t_6ba721df0c2812 431,464,610,703,723
+src/renderer/components/board/page-stage/properties-section.tsx
+  s_f42317a5b09cf6::t_4aab371fb86d24 78,92,135
+src/renderer/components/board/page-stage/property-value-styles.ts
+  s_f42317a5b09cf6::t_f720f68e5154c2 4
+src/renderer/components/board/schedule-popover.tsx
+  s_f42317a5b09cf6::t_b54b96f83ecc52 109,275,374,452
+src/renderer/components/board/toggle-list-rules-body.tsx
+  s_f42317a5b09cf6::t_4324d4337f454c 73,76,81,210,217,222,264,287
+src/renderer/components/database/data-source-page-property-context-menu.tsx
+  s_f42317a5b09cf6::t_243c467dc4804e 38
+src/renderer/components/database/date-property-editor.tsx
+  s_f42317a5b09cf6::t_9720c02d2bf025 227
+src/renderer/components/database/property-option-picker.tsx
+  s_f42317a5b09cf6::t_c305b805d8a22b 468
+src/renderer/components/database/relation-property-editor.tsx
+  s_f42317a5b09cf6::t_91631ec20a0d66 430
+src/renderer/components/library/library-files-dialog.tsx
+  s_f42317a5b09cf6::t_1d16abb9dcc698 379,423,484
+src/renderer/components/ui/button.tsx
+  s_f42317a5b09cf6::t_ec853d607bb7b3 11,19-20,25,27,108,114-115,117,167,173
+src/renderer/components/ui/date-calendar-header.tsx
+  s_f42317a5b09cf6::t_a7f1e884aa686b 22,34,43
+src/renderer/components/ui/dropdown.tsx
+  s_f42317a5b09cf6::t_f04885eacfc8a2 490
+src/renderer/components/ui/file-tree-filter.tsx
+  s_f42317a5b09cf6::t_da4bf9a24c0c43 25,31
+src/renderer/components/ui/file-tree.tsx
+  s_f42317a5b09cf6::t_b5331ed02d5403 224
+src/renderer/components/ui/settings.tsx
+  s_f42317a5b09cf6::t_8ac8ef3c8a433c 78-79
+src/renderer/components/workbench/agent-import-settings-page.tsx
+  s_f42317a5b09cf6::t_c06636f3b070c1 84
+src/renderer/components/workbench/archived-chats-settings-page.tsx
+  s_f42317a5b09cf6::t_475b60e6b534d5 326,337,349
+src/renderer/components/workbench/database-list/database-list-property-cells.tsx
+  s_f42317a5b09cf6::t_efc82cafad839b 218
+src/renderer/components/workbench/database-view-surface.tsx
+  s_f42317a5b09cf6::t_1b776d5a6c573b 1896,2012
+src/renderer/components/workbench/local-environment-editor.tsx
+  s_f42317a5b09cf6::t_a37ed55f3e7a4b 148,255,534
+src/renderer/components/workbench/local-environments-settings-page.tsx
+  s_f42317a5b09cf6::t_33177a0b0a2b3e 121,165,173
+src/renderer/components/workbench/page-chat-activity-control.tsx
+  s_f42317a5b09cf6::t_55144cb2af5d97 60,186
+src/renderer/components/workbench/pending-worktree-progress.tsx
+  s_f42317a5b09cf6::t_fbbf99dc7f0888 124
+src/renderer/components/workbench/pending-worktree-route.tsx
+  s_f42317a5b09cf6::t_8fd5969c5c8a46 112
+src/renderer/components/workbench/rename-chat-dialog.tsx
+  s_f42317a5b09cf6::t_4890aa3eccc814 72
+src/renderer/components/workbench/sidebar-section-name-dialog.tsx
+  s_f42317a5b09cf6::t_c8da4292480e31 64
+src/renderer/components/workbench/workbench-automations-overlay.tsx
+  s_f42317a5b09cf6::t_a97d98936ae2b0 995,1192,1224,1304,1465,2082
+src/renderer/components/workbench/workbench-hooks-settings-page.tsx
+  s_f42317a5b09cf6::t_0a4d63bdea8f4a 152
+src/renderer/components/workbench/workbench-process-manager-dialog.tsx
+  s_f42317a5b09cf6::t_f0008c54eaccb7 261
+src/renderer/components/workbench/workbench-settings-sidebar.tsx
+  s_f42317a5b09cf6::t_8d35c11f6d0777 210,271
+src/renderer/features/browser-sidebar/browser-profile-import-dialog.tsx
+  s_f42317a5b09cf6::t_21e629e767ca97 233
+src/renderer/features/browser-sidebar/browser-settings-pages.tsx
+  s_f42317a5b09cf6::t_1a4a87b78039d6 449,679,1311
+src/renderer/features/local-conversation/view/composer/async-question-controls.tsx
+  s_f42317a5b09cf6::t_8592ba3528cb4c 78
+src/renderer/features/local-conversation/view/composer/async-question-panel.tsx
+  s_f42317a5b09cf6::t_730eb98cf61e67 48
+src/renderer/features/local-conversation/view/composer/local-conversation-composer-shell.tsx
+  s_f42317a5b09cf6::t_d98f86b85e3975 129
+src/renderer/features/local-conversation/view/composer/local-conversation-thread-goal-status-row.tsx
+  s_f42317a5b09cf6::t_6d7a1b0ca78502 202
+src/renderer/features/local-conversation/view/local-conversation-stage-header.tsx
+  s_f42317a5b09cf6::t_74f4a8ff1521ac 135
+src/renderer/features/review/view/review-file-tree.tsx
+  s_f42317a5b09cf6::t_26e13d1d0aecb5 99
+src/renderer/features/user-attachment-image-editor/view/image-comment-surface.tsx
+  s_f42317a5b09cf6::t_6fc36df215fce1 96
+src/renderer/features/workspace-files/workspace-pdf-preview.css
+  s_f42317a5b09cf6::t_6bb9fafeb1437c 43-44
+src/renderer/lib/codex-theme-variant.ts
+  s_f42317a5b09cf6::t_e434147dc50968 3-127,253-259,336,351,355-374,376-454,456,460-551,553,560-561,564
+src/renderer/styles/semantic-theme-contract.generated.json
+  s_f42317a5b09cf6::t_9f7ae710674bbf 41-48,135-176,1744-1758,1842-1931,4844-4861,5504-5702,6214-6322,6332-6333,6340,6350-6351,6358,6368-6369,6376,6387,6394,6405,6412,6423,6430,6441,6448,6459,6466,6477,6484,6494-6496,6503,6513-6514,6521,6531-6532,6539,6549-6550,6557,6567-6570,6577,6587,6594,6604-6605,6612,6622-6623,6630,6640-6641,6648,6658-6659,13370-13387,14231-14245,14366-14380,14685-14699,14820-14834,15001-15075,15194-15208
+src/renderer/styles/semantic-theme.provenance.json
+  s_f42317a5b09cf6::t_5c0d9099150516 4,9,21,25
+src/renderer/styles/theme-semantic-contract.generated.css
+  s_f42317a5b09cf6::t_4d0872556bade9 193-203,251-252,482-487,543,549,569-573,577,583,611,623,669-673,1133-1134,1152-1163,1676-1687
+src/renderer/styles/theme-semantic-utilities.generated.css
+  s_f42317a5b09cf6::t_9413a1fb7fc888 187-190,195-198,203-210,269-276
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "4277cf1c4c0b1353f0095b8286d01ef876926f81",
+  "prompts": {},
+  "sessions": {
+    "s_f42317a5b09cf6": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a12fa7-36e5-7643-a634-ab0703d830fa",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    }
+  }
+}
