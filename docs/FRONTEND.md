@@ -385,6 +385,10 @@ initialization consume that same pure generator before React mounts; the theme
 provider reapplies it on appearance changes. Static palette fallbacks do not
 determine the effective preset. Review computed styles with the runtime theme
 applied, including shared legacy content aliases and conversation accent roles.
+Browser product-surface tests use `src/renderer/test/renderer-theme.ts` to initialize
+and reset this document state. Switch appearance through that fixture and compare
+paint with the active semantic role; a local `.dark` class cannot replace the
+runtime palette projection.
 
 Shared activity primitives require an explicit semantic lifecycle status. The
 primitive owns the status color for its icon and summary; feature call sites

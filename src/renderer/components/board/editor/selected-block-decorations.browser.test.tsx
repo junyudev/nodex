@@ -39,6 +39,13 @@ import {
   selectedBlockDecorationsExtension,
 } from "./selected-block-decorations";
 import { nfmSchema } from "./nfm-schema";
+import {
+  applyRendererThemeForTest,
+  installRendererThemeFixture,
+  readRendererThemeColor,
+} from "@/test/renderer-theme";
+
+installRendererThemeFixture();
 
 const testPageBlockConfig = {
   type: "testPage",
@@ -203,7 +210,7 @@ describe("selected Block presentation in Chromium", () => {
       expect(pageContainer.classList.contains("nodex-selected-block")).toBe(true);
       expect(pageContainer.dataset.nodexSelectionKind).toBe("structural");
       expect(getComputedStyle(pageContent, "::after").backgroundColor).toBe(
-        "rgba(35, 131, 226, 0.14)",
+        readRendererThemeColor("--color-background-text-selection"),
       );
       expect(getComputedStyle(pageContent, "::after").opacity).toBe("1");
       expect(getComputedStyle(pageTitle).outlineStyle).toBe("none");
@@ -230,14 +237,14 @@ describe("selected Block presentation in Chromium", () => {
       ).toBe("7");
       expect(pageContainer.classList.contains("nodex-selected-block")).toBe(false);
       expect(getComputedStyle(beforeInlineContent, "::selection").backgroundColor).toBe(
-        "rgba(35, 131, 226, 0.28)",
+        readRendererThemeColor("--color-background-text-selection"),
       );
 
-      view.container.classList.add("dark");
+      applyRendererThemeForTest("dark");
       expect(getComputedStyle(beforeInlineContent, "::selection").backgroundColor).toBe(
-        "rgba(35, 131, 226, 0.28)",
+        readRendererThemeColor("--color-background-text-selection"),
       );
-      view.container.classList.remove("dark");
+      applyRendererThemeForTest("light");
 
       const showSelection = editor.getExtension(ShowSelectionExtension);
       showSelection?.showSelection(true, "inline-selection-test");
@@ -247,14 +254,14 @@ describe("selected Block presentation in Chromium", () => {
       expect(
         getComputedStyle(view.container.querySelector<HTMLElement>("[data-show-selection]")!)
           .backgroundColor,
-      ).toBe("rgba(35, 131, 226, 0.28)");
+      ).toBe(readRendererThemeColor("--color-background-text-selection"));
       expect(getComputedStyle(beforeInlineContent, "::selection").backgroundColor).toBe(
         "rgba(0, 0, 0, 0)",
       );
       showSelection?.showSelection(false, "inline-selection-test");
       await act(settleEditor);
       expect(getComputedStyle(beforeInlineContent, "::selection").backgroundColor).toBe(
-        "rgba(35, 131, 226, 0.28)",
+        readRendererThemeColor("--color-background-text-selection"),
       );
 
       pageNodeView.classList.add("ProseMirror-selectednode");
@@ -278,7 +285,7 @@ describe("selected Block presentation in Chromium", () => {
       expect(pageContainer.classList.contains("nodex-selected-block")).toBe(true);
       expect(pageContainer.dataset.nodexSelectionKind).toBe("atomic-range");
       expect(getComputedStyle(pageContent, "::after").backgroundColor).toBe(
-        "rgba(35, 131, 226, 0.14)",
+        readRendererThemeColor("--color-background-text-selection"),
       );
       expect(getComputedStyle(pageContent, "::after").opacity).toBe("1");
     } finally {
@@ -401,7 +408,7 @@ describe("selected Block presentation in Chromium", () => {
       expect(firstOuter.classList.contains("nodex-selected-block")).toBe(false);
       expect(secondOuter.classList.contains("nodex-selected-block")).toBe(false);
       expect(getComputedStyle(retainedInlineDecoration).backgroundColor).toBe(
-        "rgba(35, 131, 226, 0.28)",
+        readRendererThemeColor("--color-background-text-selection"),
       );
       expect(getComputedStyle(firstInline, "::selection").backgroundColor).toBe("rgba(0, 0, 0, 0)");
 
@@ -626,7 +633,7 @@ describe("selected Block presentation in Chromium", () => {
       expect(imageContainer.dataset.nodexSelectionKind).toBe("structural");
       expect(getComputedStyle(imageContent, "::after").content).toBe("none");
       expect(getComputedStyle(imageWrapper, "::after").backgroundColor).toBe(
-        "rgba(35, 131, 226, 0.14)",
+        readRendererThemeColor("--color-background-text-selection"),
       );
       expect(getComputedStyle(imageWrapper, "::after").opacity).toBe("1");
       expect(imageNodeView.getBoundingClientRect().width).toBeGreaterThan(
@@ -746,7 +753,7 @@ describe("selected Block presentation in Chromium", () => {
       expect(parentBlock.querySelector("[data-show-selection]")).toBeNull();
       expect(parentBlock.querySelector("[data-nodex-selected-block-content]")).toBeNull();
       expect(getComputedStyle(parentBlock, "::after").backgroundColor).toBe(
-        "rgba(35, 131, 226, 0.14)",
+        readRendererThemeColor("--color-background-text-selection"),
       );
       expect(getComputedStyle(parentBlock, "::after").opacity).toBe("1");
       expect(parentBlock.getBoundingClientRect().height).toBeGreaterThan(
@@ -894,6 +901,7 @@ describe("selected Block presentation in Chromium", () => {
   });
 
   test("gives nested editors exclusive Block highlight ownership inside a dark Page context", async () => {
+    applyRendererThemeForTest("dark");
     const innerEditor = BlockNoteEditor.create({
       schema: nfmSchema,
       initialContent: [
@@ -1037,7 +1045,7 @@ describe("selected Block presentation in Chromium", () => {
       expect(getComputedStyle(firstImageWrapper, "::after").boxShadow).toBe("none");
       expect(getComputedStyle(pageContent, "::after").opacity).toBe("0");
       expect(getComputedStyle(firstImageWrapper, "::after").backgroundColor).toBe(
-        "rgba(35, 131, 226, 0.14)",
+        readRendererThemeColor("--color-background-text-selection"),
       );
       expect(getComputedStyle(firstImageWrapper, "::after").opacity).toBe("1");
       expect(getComputedStyle(secondImageWrapper, "::after").content).toBe("none");
@@ -1075,7 +1083,7 @@ describe("selected Block presentation in Chromium", () => {
       if (!dividerContent) throw new Error("Expected the nested Divider");
       expect(innerEditor.prosemirrorState.selection).toBeInstanceOf(NodeSelection);
       expect(getComputedStyle(dividerContent, "::after").backgroundColor).toBe(
-        "rgba(35, 131, 226, 0.14)",
+        readRendererThemeColor("--color-background-text-selection"),
       );
       expect(getComputedStyle(dividerContent, "::after").boxShadow).toBe("none");
 
@@ -1094,7 +1102,7 @@ describe("selected Block presentation in Chromium", () => {
       });
       expect(outerView.dom.hasAttribute(BLOCK_ACTION_SELECTION_PRESENTATION_ATTRIBUTE)).toBe(true);
       expect(getComputedStyle(innerInline, "::selection").backgroundColor).toBe(
-        "rgba(35, 131, 226, 0.28)",
+        readRendererThemeColor("--color-background-text-selection"),
       );
       await act(async () => {
         outerBlockPresentation.showSelectionAsBlocks(false, "stale-outer-action");

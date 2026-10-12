@@ -6,6 +6,7 @@ import { afterEach, describe, expect, test, vi } from "vite-plus/test";
 import { codeBlockViewState } from "@/lib/nfm/code-block-view-state";
 import { NodexModalHost } from "@/lib/modal-registry";
 import { createMaitaiStore, MaitaiProvider } from "@/lib/maitai";
+import { applyRendererThemeForTest, installRendererThemeFixture } from "@/test/renderer-theme";
 import {
   contrastRatio,
   getPaintedBackground,
@@ -26,6 +27,8 @@ import { NfmSideMenuOpenProvider } from "./nfm-side-menu";
 import { selectCurrentBlockContent } from "./select-block-shortcut";
 import "../../../globals.css";
 
+installRendererThemeFixture();
+
 const mountedEditors: BlockNoteEditor<any, any, any>[] = [];
 const mountedViews: RenderResult[] = [];
 
@@ -34,7 +37,6 @@ afterEach(() => {
   for (const view of mountedViews.splice(0)) view.unmount();
   for (const editor of mountedEditors.splice(0)) editor._tiptapEditor.destroy();
   document.body.replaceChildren();
-  document.documentElement.classList.remove("dark");
 });
 
 async function mountCodeBlock(
@@ -44,6 +46,7 @@ async function mountCodeBlock(
   followingParagraph?: string,
   language: "typescript" | "mermaid" = "typescript",
 ) {
+  applyRendererThemeForTest(theme);
   const editor = BlockNoteEditor.create({
     schema: nfmSchema,
     extensions: createNfmEditorExtensions(),
@@ -366,7 +369,7 @@ describe("NFM Code Block surface in Chromium", () => {
   test.each(["light", "dark"] as const)(
     "paints an opaque %s surface behind an expanded Mermaid diagram",
     (theme) => {
-      document.documentElement.classList.toggle("dark", theme === "dark");
+      applyRendererThemeForTest(theme);
       mountedViews.push(
         render(
           <MermaidDiagramModal

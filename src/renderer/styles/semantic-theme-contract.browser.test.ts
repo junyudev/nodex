@@ -1,8 +1,14 @@
-import { afterEach, describe, expect, test } from "vite-plus/test";
+import { describe, expect, test } from "vite-plus/test";
 import { cdp } from "vite-plus/test/browser";
-import { applyCodexThemeVariant } from "@/lib/codex-theme-variant";
+import {
+  applyRendererThemeForTest,
+  installRendererThemeFixture,
+  readRendererThemeColor,
+} from "@/test/renderer-theme";
 
 import "@/globals.css";
+
+installRendererThemeFixture();
 
 interface ChromiumMediaEmulationSession {
   send(
@@ -24,23 +30,8 @@ const mountRole = (className: string): HTMLDivElement => {
 };
 
 const setWindowTheme = (windowType: "browser" | "electron", scheme: "light" | "dark") => {
-  const root = document.documentElement;
-  root.dataset.codexWindowType = windowType;
-  root.dataset.theme = scheme;
-  root.classList.toggle("dark", scheme === "dark");
-  root.classList.toggle("electron-dark", windowType === "electron" && scheme === "dark");
-  root.classList.toggle("electron-light", windowType === "electron" && scheme === "light");
-  if (windowType === "electron") applyCodexThemeVariant(root, scheme, document.body);
+  applyRendererThemeForTest(scheme, { windowType });
 };
-
-afterEach(() => {
-  document.body.replaceChildren();
-  document.body.removeAttribute("style");
-  document.documentElement.removeAttribute("style");
-  document.documentElement.removeAttribute("data-codex-window-type");
-  document.documentElement.removeAttribute("data-theme");
-  document.documentElement.classList.remove("dark", "electron-dark", "electron-light");
-});
 
 describe("semantic theme contract in the renderer build", () => {
   test("resolves semantic text and status roles from their canonical variables", () => {
@@ -170,12 +161,17 @@ describe("semantic theme contract in the renderer build", () => {
       expect(getComputedStyle(legacy).backgroundColor).toBe(surface);
       expect(getComputedStyle(legacy).color).toBe(ink);
       expect(getComputedStyle(bubble).backgroundColor).toBe(
-        isDark ? "rgba(50, 50, 50, 0.85)" : "rgba(233, 233, 233, 0.5)",
+        readRendererThemeColor("--color-background-user-message"),
+      );
+      expect(getComputedStyle(bubble).color).toBe(
+        readRendererThemeColor("--color-text-user-message"),
       );
       expect(getComputedStyle(composer).backgroundColor).toBe(
-        isDark ? "rgb(255, 255, 255)" : "rgb(0, 0, 0)",
+        readRendererThemeColor("--color-background-composer-primary"),
       );
-      expect(getComputedStyle(composer).color).toBe(isDark ? "rgb(0, 0, 0)" : "rgb(255, 255, 255)");
+      expect(getComputedStyle(composer).color).toBe(
+        readRendererThemeColor("--color-text-composer-primary"),
+      );
     }
   });
 

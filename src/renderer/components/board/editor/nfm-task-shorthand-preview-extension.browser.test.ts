@@ -8,6 +8,9 @@ import {
   APP_SHELL_TOOLTIP_LAYER_INDEX,
 } from "../../../lib/app-shell-layers";
 import { nfmTaskShorthandPreviewExtension } from "./nfm-task-shorthand-preview-extension";
+import { installRendererThemeFixture } from "@/test/renderer-theme";
+
+installRendererThemeFixture();
 
 const mountedEditors: BlockNoteEditor[] = [];
 
@@ -30,13 +33,11 @@ afterEach(() => {
     editor._tiptapEditor.destroy();
   }
   document.body.replaceChildren();
-  document.documentElement.removeAttribute("data-codex-window-type");
   localStorage.clear();
 });
 
 describe("task shorthand authoring feedback in Chromium", () => {
   test("is quiet, inspectable, non-persistent, and updates with typing and preference", () => {
-    document.documentElement.dataset.codexWindowType = "electron";
     writeTaskShorthandPagePromotionEnabled(true);
     const { editor, host } = mountEditor([
       {

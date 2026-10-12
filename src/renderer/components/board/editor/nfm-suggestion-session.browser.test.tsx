@@ -20,6 +20,9 @@ import {
 import { NfmSlashMenu, createNfmTypedSuggestionControllerConfig } from "./nfm-slash-menu";
 import { nfmSchema } from "./nfm-schema";
 import { TestQueryProvider } from "@/test/query";
+import { installRendererThemeFixture } from "@/test/renderer-theme";
+
+installRendererThemeFixture();
 
 const settleEditor = async (): Promise<void> => {
   await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()));
