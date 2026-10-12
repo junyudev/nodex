@@ -13,6 +13,8 @@ import {
 } from "@statsig/js-client";
 import * as Effect from "effect/Effect";
 import * as FiberSet from "effect/FiberSet";
+import * as Random from "effect/Random";
+import * as Result from "effect/Result";
 import * as Schema from "effect/Schema";
 import * as SubscriptionRef from "effect/SubscriptionRef";
 import { ElectronNet, type readDesktopBootstrapMetadata } from "./ElectronNet";
@@ -23,6 +25,10 @@ import { isDeepStrictEqual } from "node:util";
 
 const SDK_KEY = "client-sYWqzCYMRkUg4DqqiZcR5DGTNl2iD7zNJY0HoeDLzxR";
 const API = "https://ab.chatgpt.com/v1";
+const REQUEST_TIMEOUT_MS = 5_000;
+const RETRY_BASE_MS = 30_000;
+const RETRY_MAX_MS = 300_000;
+const BaselinePayload = Schema.Struct({ has_updates: Schema.Literal(true) });
 const Primitive = Schema.Union([
   Schema.String,
   Schema.Finite,
@@ -118,7 +124,10 @@ export const decodePolicyBootstrap = (
 
 export class DictationPolicyClientError extends Schema.TaggedError<DictationPolicyClientError>()(
   "DictationPolicyClientError",
-  { message: Schema.String },
+  {
+    reason: Schema.Literals(["network", "timeout", "http", "invalid-response", "aborted"]),
+    status: Schema.optionalKey(Schema.Finite),
+  },
 ) {}
 
 /** Scoped vendor adapter. Gate evaluation remains available independently of analytics consent. */
@@ -129,33 +138,15 @@ export const makeDictationPolicyClient = Effect.fn("DictationPolicyClient.make")
   readonly metadata: Effect.Success<typeof readDesktopBootstrapMetadata>;
 }) {
   const electron = yield* ElectronNet;
-  const runPromise = yield* FiberSet.makeRuntimePromise();
   const lifetime = yield* Effect.abortSignal;
   const signal = AbortSignal.any([input.signal, lifetime]);
-  const fetch = (url: string, args: RequestInit, onResponse?: (response: Response) => void) =>
-    runPromise(
-      Effect.gen(function* () {
-        if (signal.aborted)
-          return yield* new DictationPolicyClientError({ message: "Policy lifetime ended" });
-        const parsed = new URL(url);
-        if (parsed.origin !== "https://ab.chatgpt.com" || parsed.pathname !== "/v1/initialize")
-          return new Response(null, { status: 204 });
-        const headers = new Headers(args.headers);
-        headers.set("Content-Type", "application/json");
-        const response = yield* electron.fetch(url, {
-          ...args,
-          headers,
-          redirect: "error",
-          signal,
-        });
-        onResponse?.(response);
-        return response;
-      }),
-    ).catch((error: unknown) => {
-      // Prevent the vendor retry loop from outliving a revoked account or closed Scope.
-      if (signal.aborted) return new Response(null, { status: 499 });
-      throw error;
-    });
+  if (signal.aborted) return yield* new DictationPolicyClientError({ reason: "aborted" });
+  const revoked = Effect.callback<void>((resume) => {
+    const abort = () => resume(Effect.void);
+    if (signal.aborted) abort();
+    else signal.addEventListener("abort", abort, { once: true });
+    return Effect.sync(() => signal.removeEventListener("abort", abort));
+  });
   const options: StatsigOptions = {
     disableStorage: true,
     loggingEnabled: "disabled",
@@ -163,8 +154,8 @@ export const makeDictationPolicyClient = Effect.fn("DictationPolicyClient.make")
     networkConfig: {
       api: API,
       sdkExceptionUrl: `${API}/sdk_exception`,
-      preventAllNetworkTraffic: false,
-      networkOverrideFunc: fetch,
+      // The SDK evaluates supplied values; this Scope owns every network attempt.
+      preventAllNetworkTraffic: true,
     },
   };
   StatsigSession.overrideInitialSessionID(input.metadata.app_session_id, SDK_KEY);
@@ -177,29 +168,15 @@ export const makeDictationPolicyClient = Effect.fn("DictationPolicyClient.make")
   });
   const client = new StatsigClient(SDK_KEY, input.user, options);
   yield* Effect.addFinalizer(() => Effect.promise(() => client.shutdown()));
-  if (input.bootstrap !== undefined) {
-    client.dataAdapter.setData(input.bootstrap);
-    client.initializeSync();
-  } else {
-    yield* Effect.tryPromise({
-      try: () => client.initializeAsync(),
-      catch: () => new DictationPolicyClientError({ message: "Policy initialization failed" }),
-    });
-  }
-  if (signal.aborted)
-    return yield* new DictationPolicyClientError({ message: "Policy lifetime ended" });
-  const context = client.getContext();
-  const cached = client.dataAdapter.getDataSync(context.user);
-  const overlay = makeDictationLiveValues(
-    context.values,
-    cached?.fullUserHash != null && cached.fullUserHash === _getFullUserHash(context.user),
-  );
-  const evaluate = (): DictationGateValues => {
+  client.initializeSync({ disableBackgroundCacheRefresh: true });
+  let initialized = false;
+  let overlay = makeDictationLiveValues(undefined);
+  const evaluate = (live = overlay): DictationGateValues => {
     const gate = (name: string) =>
-      overlay.gate(name, client.getFeatureGate(name, { disableExposureLog: true }).value);
-    const dictionary = overlay.config(
+      live.gate(name, client.getFeatureGate(name, { disableExposureLog: true })?.value ?? false);
+    const dictionary = live.config(
       "3845962714",
-      client.getDynamicConfig("3845962714", { disableExposureLog: true }).value,
+      client.getDynamicConfig("3845962714", { disableExposureLog: true })?.value,
     );
     const parsed = Schema.decodeUnknownOption(
       Schema.Struct({ dictation_custom_dictionary_enabled: Schema.optionalKey(Schema.Boolean) }),
@@ -211,7 +188,6 @@ export const makeDictationPolicyClient = Effect.fn("DictationPolicyClient.make")
         parsed._tag === "Some" && parsed.value.dictation_custom_dictionary_enabled === true,
     };
   };
-  const values = yield* SubscriptionRef.make(evaluate());
   const evaluateRealtime = (): RealtimeVoiceGateValues => {
     const config = Schema.decodeUnknownOption(Schema.Record(Schema.String, Schema.Json))(
       overlay.config(
@@ -242,71 +218,178 @@ export const makeDictationPolicyClient = Effect.fn("DictationPolicyClient.make")
       sessionConfig: sessionConfig._tag === "Some" ? sessionConfig.value : {},
     };
   };
-  const realtimeValues = yield* SubscriptionRef.make(evaluateRealtime());
-  let liveHeader: string | null = null;
-  const network = new NetworkCore({
-    ...options,
-    networkConfig: {
-      ...options.networkConfig,
-      networkOverrideFunc: (url, args) =>
-        fetch(url, args, (response) => {
-          liveHeader = response.headers.get("x-statsig-live-overlay-lcut");
-        }),
-    },
-  });
-  const refreshLive = Effect.gen(function* () {
-    if (signal.aborted) return;
-    liveHeader = null;
-    const response = yield* Effect.tryPromise({
-      try: () =>
-        network.post({
-          sdkKey: SDK_KEY,
-          urlConfig: new UrlConfiguration(Endpoint._initialize, undefined, API, undefined),
-          data: {
-            responseMode: "live_overlay",
-            user: context.user,
-            hash: "djb2",
-            ...overlay.requestCursor(),
-          },
-          retries: 2,
-          isStatsigEncodable: true,
-          priority: "low",
-        }),
-      catch: () => new DictationPolicyClientError({ message: "Policy refresh failed" }),
+  const setBaseline = Effect.fn("DictationPolicyClient.setBaseline")(function* (
+    body: string,
+    canonical = false,
+  ) {
+    yield* Schema.decodeEffect(Schema.fromJsonString(BaselinePayload))(body).pipe(
+      Effect.mapError(() => new DictationPolicyClientError({ reason: "invalid-response" })),
+    );
+    return yield* Effect.try({
+      try: () => {
+        if (canonical) client.dataAdapter.setData(body);
+        else client.dataAdapter.setDataLegacy(body, input.user);
+        client.updateUserSync(input.user, { disableBackgroundCacheRefresh: true });
+        const context = client.getContext();
+        const cached = client.dataAdapter.getDataSync(context.user);
+        const next = makeDictationLiveValues(
+          context.values,
+          cached?.fullUserHash != null && cached.fullUserHash === _getFullUserHash(context.user),
+        );
+        const gates = evaluate(next);
+        overlay = next;
+        initialized = true;
+        return gates;
+      },
+      catch: () => new DictationPolicyClientError({ reason: "invalid-response" }),
     });
-    if (signal.aborted || response === null) return;
-    if (response.code === 204) {
-      overlay.advance(liveHeader);
+  });
+  if (input.bootstrap !== undefined)
+    yield* setBaseline(input.bootstrap, true).pipe(Effect.catch(() => Effect.void));
+  const values = yield* SubscriptionRef.make(evaluate());
+  const realtimeValues = yield* SubscriptionRef.make(evaluateRealtime());
+  // Realtime voice subscribers only hear about evaluations that actually changed.
+  const publishRealtime = Effect.gen(function* () {
+    const realtime = evaluateRealtime();
+    if (!isDeepStrictEqual(yield* SubscriptionRef.get(realtimeValues), realtime))
+      yield* SubscriptionRef.set(realtimeValues, realtime);
+  });
+  const fetch = Effect.fn("DictationPolicyClient.fetch")(function* (
+    url: string,
+    args: RequestInit,
+    attemptSignal: AbortSignal,
+  ) {
+    if (attemptSignal.aborted) return yield* new DictationPolicyClientError({ reason: "aborted" });
+    const parsed = new URL(url);
+    if (parsed.origin !== "https://ab.chatgpt.com" || parsed.pathname !== "/v1/initialize")
+      return new Response(null, { status: 204 });
+    const headers = new Headers(args.headers);
+    headers.set("Content-Type", "application/json");
+    return yield* electron.fetch(url, {
+      ...args,
+      headers,
+      redirect: "error",
+      signal: attemptSignal,
+    });
+  });
+  const request = Effect.fn("DictationPolicyClient.request")(
+    function* (data: Record<string, unknown>) {
+      const attemptSignal = AbortSignal.any([signal, yield* Effect.abortSignal]);
+      const runPromise = yield* FiberSet.makeRuntimePromise();
+      let liveHeader: string | null = null;
+      const network = new NetworkCore({
+        ...options,
+        networkConfig: {
+          ...options.networkConfig,
+          preventAllNetworkTraffic: false,
+          networkOverrideFunc: (url, args) =>
+            runPromise(fetch(url, args, attemptSignal)).then((response) => {
+              liveHeader = response.headers.get("x-statsig-live-overlay-lcut");
+              return response;
+            }),
+        },
+      });
+      const response = yield* Effect.tryPromise({
+        try: () =>
+          network.post({
+            sdkKey: SDK_KEY,
+            urlConfig: new UrlConfiguration(Endpoint._initialize, undefined, API, undefined),
+            data,
+            retries: 0,
+            preserveFailedStatusCode: true,
+            isStatsigEncodable: true,
+            priority: "low",
+          }),
+        catch: () => new DictationPolicyClientError({ reason: "network" }),
+      });
+      if (signal.aborted) return yield* new DictationPolicyClientError({ reason: "aborted" });
+      if (response === null) return yield* new DictationPolicyClientError({ reason: "network" });
+      if (response.code !== 200 && response.code !== 204)
+        return yield* new DictationPolicyClientError({ reason: "http", status: response.code });
+      return { ...response, liveHeader };
+    },
+    Effect.scoped,
+    Effect.raceFirst(
+      revoked.pipe(
+        Effect.andThen(Effect.fail(new DictationPolicyClientError({ reason: "aborted" }))),
+      ),
+    ),
+    // Closing the attempt Scope aborts fetch and body reads, including vendor Promise continuations.
+    Effect.timeoutOrElse({
+      duration: REQUEST_TIMEOUT_MS,
+      orElse: () => Effect.fail(new DictationPolicyClientError({ reason: "timeout" })),
+    }),
+  );
+  const refresh = Effect.fn("DictationPolicyClient.refresh")(function* () {
+    const context = client.getContext();
+    const response = yield* request({
+      user: context.user,
+      hash: "djb2",
+      ...(initialized
+        ? { responseMode: "live_overlay", ...overlay.requestCursor() }
+        : { deltasResponseRequested: false, full_checksum: null }),
+    });
+    if (initialized && response.code === 204) {
+      overlay.advance(response.liveHeader);
       return;
     }
-    if (response.code !== 200 || response.body === null) return;
-    const payload = yield* Schema.decodeEffect(Schema.fromJsonString(Schema.Unknown))(
-      response.body,
+    const body = response.body;
+    if (body === null || response.code !== 200)
+      return yield* new DictationPolicyClientError({ reason: "invalid-response" });
+    if (!initialized) {
+      const gates = yield* setBaseline(body);
+      yield* publishRealtime;
+      yield* SubscriptionRef.set(values, gates);
+      return;
+    }
+    const payload = yield* Schema.decodeEffect(Schema.fromJsonString(Schema.Unknown))(body).pipe(
+      Effect.mapError(() => new DictationPolicyClientError({ reason: "invalid-response" })),
     );
     const changed = yield* Effect.try({
       try: () => overlay.apply(payload),
-      catch: () => new DictationPolicyClientError({ message: "Invalid live policy" }),
+      catch: () => new DictationPolicyClientError({ reason: "invalid-response" }),
     });
-    if (changed) {
-      const realtime = evaluateRealtime();
-      if (!isDeepStrictEqual(yield* SubscriptionRef.get(realtimeValues), realtime))
-        yield* SubscriptionRef.set(realtimeValues, realtime);
-      yield* SubscriptionRef.set(values, evaluate());
+    if (!changed) return yield* new DictationPolicyClientError({ reason: "invalid-response" });
+    yield* publishRealtime;
+    yield* SubscriptionRef.set(values, evaluate());
+  });
+  let failures = 0;
+  const attempt = Effect.fn("DictationPolicyClient.attempt")(function* () {
+    const operation = initialized ? "live_overlay" : "initialize";
+    const result = yield* Effect.result(refresh());
+    if (signal.aborted) return yield* new DictationPolicyClientError({ reason: "aborted" });
+    if (Result.isSuccess(result)) {
+      if (failures > 0)
+        yield* Effect.logInfo("Dictation policy refresh recovered").pipe(
+          Effect.annotateLogs({ operation, attempts: failures + 1 }),
+        );
+      failures = 0;
+      return overlay.intervalMs;
     }
-  }).pipe(Effect.ignore);
-  // The SDK's live overlay does not replace non-live session evaluations.
+    failures += 1;
+    const jitter = yield* Random.nextBetween(0.8, 1.2);
+    const retryMs = Math.min(RETRY_MAX_MS, RETRY_BASE_MS * 2 ** Math.min(failures - 1, 4) * jitter);
+    const delayMs = initialized ? Math.max(overlay.intervalMs, retryMs) : retryMs;
+    if (failures === 1)
+      yield* Effect.logWarning("Dictation policy refresh delayed").pipe(
+        Effect.annotateLogs({
+          operation,
+          reason: result.failure.reason,
+          status: result.failure.status,
+          nextDelayMs: delayMs,
+        }),
+      );
+    return delayMs;
+  });
+  const initialDelay = initialized ? overlay.intervalMs : yield* attempt();
+  if (signal.aborted) return yield* new DictationPolicyClientError({ reason: "aborted" });
   yield* Effect.gen(function* () {
-    const now = Effect.clockWith((clock) => clock.currentTimeMillis);
-    let next = (yield* now) + overlay.intervalMs;
+    let delay = initialDelay;
     while (!signal.aborted) {
-      yield* Effect.sleep(Math.max(0, next - (yield* now)));
-      yield* refreshLive;
-      // Keep the interval cadence while skipping ticks occupied by a previous request.
-      next +=
-        (Math.floor(Math.max(0, (yield* now) - next) / overlay.intervalMs) + 1) *
-        overlay.intervalMs;
+      yield* Effect.sleep(delay);
+      delay = yield* attempt();
     }
-  }).pipe(Effect.forkScoped);
+  }).pipe(Effect.raceFirst(revoked), Effect.forkScoped);
   return {
     read: SubscriptionRef.get(values),
     changes: SubscriptionRef.changes(values),
