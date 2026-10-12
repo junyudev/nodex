@@ -1,7 +1,127 @@
+packages/landing/src/icons/ArrowRightIcon.astro
+  s_5808f0d29557e2::t_6eaf6e7d0b9c72 1-17
+packages/landing/src/components/SocialMediaStrip.astro
+  s_5808f0d29557e2::t_6eaf6e7d0b9c72 1-24
+packages/landing/src/icons/CheckIcon.astro
+  s_5808f0d29557e2::t_6eaf6e7d0b9c72 1-17
+packages/landing/src/components/Title.astro
+  s_5808f0d29557e2::t_6eaf6e7d0b9c72 1-10
+packages/landing/src/constants/routes.ts
+  s_5808f0d29557e2::t_6eaf6e7d0b9c72 1
+packages/landing/MEDIA.md
+  s_5808f0d29557e2::t_6eaf6e7d0b9c72 1-32
+packages/landing/src/constants/index.ts
+  s_5808f0d29557e2::t_6eaf6e7d0b9c72 1-15
+packages/landing/src/pages/terms/index.astro
+  s_5808f0d29557e2::t_6eaf6e7d0b9c72 1-20
+packages/landing/src/release.test.ts
+  s_5808f0d29557e2::t_6eaf6e7d0b9c72 1-14
+packages/landing/src/utils/merge.ts
+  s_5808f0d29557e2::t_6eaf6e7d0b9c72 1-6
+packages/landing/src/styles/global.css
+  s_5808f0d29557e2::t_6eaf6e7d0b9c72 1-145
+packages/landing/src/utils/release.ts
+  s_5808f0d29557e2::t_6eaf6e7d0b9c72 1-47
+packages/landing/src/icons/DownloadIcon.astro
+  s_5808f0d29557e2::t_6eaf6e7d0b9c72 1-19
+packages/landing/src/components/Button.astro
+  s_5808f0d29557e2::t_6eaf6e7d0b9c72 1-71
+packages/landing/public/favicon.svg
+  s_5808f0d29557e2::t_6eaf6e7d0b9c72 1-6
+src/renderer/components/dev-story/landing-page-preview.stories.tsx
+  s_5808f0d29557e2::t_6eaf6e7d0b9c72 1-65
+packages/landing/.gitignore
+  s_5808f0d29557e2::t_6eaf6e7d0b9c72 2
+packages/landing/src/constants/checksum.ts
+  s_5808f0d29557e2::t_6eaf6e7d0b9c72 1
+packages/landing/src/layouts/Layout.astro
+  s_5808f0d29557e2::t_6eaf6e7d0b9c72 1-120
+packages/landing/package.json
+  s_5808f0d29557e2::t_6eaf6e7d0b9c72 6-9,11-15,17-25
+docs/PRODUCT_SENSE.md
+  s_5808f0d29557e2::t_6eaf6e7d0b9c72 5-7,11-22,26-38,44-51,53,56-61,65-68
+packages/landing/src/components/Description.astro
+  s_5808f0d29557e2::t_6eaf6e7d0b9c72 1-7
+packages/landing/tsconfig.json
+  s_5808f0d29557e2::t_6eaf6e7d0b9c72 2,4-6,8
+packages/landing/ZEN_LICENSE
+  s_5808f0d29557e2::t_6eaf6e7d0b9c72 1-373
+packages/landing/src/components/Hero.astro
+  s_5808f0d29557e2::t_6eaf6e7d0b9c72 1-107
+packages/landing/src/pages/privacy/index.astro
+  s_5808f0d29557e2::t_6eaf6e7d0b9c72 1-20
+docs/landing-site.md
+  s_5808f0d29557e2::t_d163baee6df532 134-139
+  s_5808f0d29557e2::t_6eaf6e7d0b9c72 3-4,8-10,12-16,20,26,29-38,40-41,43,45,47-82,84,86,88-92,94-130
+packages/landing/src/components/Logo.astro
+  s_5808f0d29557e2::t_6eaf6e7d0b9c72 1-11
+docs/product-specs/nodex-product-spec.md
+  s_5808f0d29557e2::t_6eaf6e7d0b9c72 5-11,23,175-177
+  s_5808f0d29557e2::t_2a7e055baa8a45 178-181
+packages/landing/src/components/Circles.astro
+  s_5808f0d29557e2::t_6eaf6e7d0b9c72 1-25
+packages/landing/src/components/NavBar.astro
+  s_5808f0d29557e2::t_6eaf6e7d0b9c72 1-67
+packages/landing/src/components/CoreValues.astro
+  s_5808f0d29557e2::t_6eaf6e7d0b9c72 1-98
+packages/landing/public/robots.txt
+  s_5808f0d29557e2::t_6eaf6e7d0b9c72 3
+packages/landing/src/components/ThemeSwitch.astro
+  s_5808f0d29557e2::t_6eaf6e7d0b9c72 1-64
+packages/landing/src/i18n/en/translation.json
+  s_5808f0d29557e2::t_6eaf6e7d0b9c72 1-104
+packages/landing/src/icons/GitHubIcon.astro
+  s_5808f0d29557e2::t_6eaf6e7d0b9c72 1-20
+packages/landing/src/landing-build.test.ts
+  s_5808f0d29557e2::t_6eaf6e7d0b9c72 1-2,5-30
+packages/landing/src/pages/changelog/index.astro
+  s_5808f0d29557e2::t_6eaf6e7d0b9c72 1-62
+packages/landing/astro.config.ts
+  s_5808f0d29557e2::t_6eaf6e7d0b9c72 1-33
+packages/landing/src/media-contract.test.ts
+  s_5808f0d29557e2::t_6eaf6e7d0b9c72 1-29
+packages/landing/src/components/Footer.astro
+  s_5808f0d29557e2::t_6eaf6e7d0b9c72 1-86
+packages/landing/src/components/Video.astro
+  s_5808f0d29557e2::t_6eaf6e7d0b9c72 1-29
+packages/landing/src/env.d.ts
+  s_5808f0d29557e2::t_6eaf6e7d0b9c72 1
+packages/landing/public/fonts/LICENSES.md
+  s_5808f0d29557e2::t_6eaf6e7d0b9c72 1-106
+packages/landing/src/constants/media.ts
+  s_5808f0d29557e2::t_6eaf6e7d0b9c72 1-14
+packages/landing/src/font-assets.test.ts
+  s_5808f0d29557e2::t_6eaf6e7d0b9c72 1-27
+packages/landing/src/pages/download/index.astro
+  s_5808f0d29557e2::t_6eaf6e7d0b9c72 1-43
+.github/workflows/_deploy-landing-site.yml
+  s_5808f0d29557e2::t_6eaf6e7d0b9c72 39
+package.json
+  s_5808f0d29557e2::t_6eaf6e7d0b9c72 136
+packages/landing/src/components/Features.astro
+  s_5808f0d29557e2::t_6eaf6e7d0b9c72 1-310
+packages/landing/src/pages/index.astro
+  s_5808f0d29557e2::t_6eaf6e7d0b9c72 1-33
+.github/workflows/deploy-landing-site.yml
+  s_5808f0d29557e2::t_6eaf6e7d0b9c72 11-12
+packages/landing/src/utils/i18n.ts
+  s_5808f0d29557e2::t_6eaf6e7d0b9c72 1-172
+packages/landing/src/constants/i18n.ts
+  s_5808f0d29557e2::t_6eaf6e7d0b9c72 1-15
 ---
 {
   "schema_version": "authorship/3.0.0",
   "git_ai_version": "1.7.5",
   "base_commit_sha": "f2b65665029f0715b1c6c0f74b388188e68ae995",
-  "prompts": {}
+  "prompts": {},
+  "sessions": {
+    "s_5808f0d29557e2": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a0ae8c-a700-7571-a2bd-e305e9c63891",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    }
+  }
 }
