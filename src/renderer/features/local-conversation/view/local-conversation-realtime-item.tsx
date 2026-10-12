@@ -2,27 +2,27 @@ import { useCallback, useContext, useSyncExternalStore } from "react";
 import { ActivitySpinnerIcon } from "@/components/shared/icons";
 import { CodexTranscriptReadOwnerContext } from "../normalized-transcript-hooks";
 import type { CodexRealtimeTimelineEntry } from "../projection/normalized-timeline-entries";
-import { BudgetedMarkdownRenderer } from "./shared/markdown/budgeted-markdown-renderer";
+import { MarkdownRenderer } from "./shared/markdown/markdown-renderer";
+import { UserMessageText } from "./shared/user-message-collapse";
+import { realtimeSearchUnitKey } from "./local-conversation-search-source";
 
 /** This leaf reads retained native history; it neither opens a microphone nor starts a call. */
 export function LocalConversationRealtimeItem({
   entry,
-  conversationId,
+  itemId = entry.itemId,
   cwd,
 }: {
   readonly entry: CodexRealtimeTimelineEntry;
+  readonly itemId?: string;
   readonly conversationId: string;
   readonly cwd: string | null;
 }) {
   const owner = useContext(CodexTranscriptReadOwnerContext);
   const subscribe = useCallback(
-    (listener: () => void) => owner?.subscribeRealtimeItem(entry.itemId, listener) ?? (() => {}),
-    [entry.itemId, owner],
+    (listener: () => void) => owner?.subscribeRealtimeItem(itemId, listener) ?? (() => {}),
+    [itemId, owner],
   );
-  const value = useSyncExternalStore(
-    subscribe,
-    () => owner?.readRealtimeItem(entry.itemId) ?? null,
-  );
+  const value = useSyncExternalStore(subscribe, () => owner?.readRealtimeItem(itemId) ?? null);
   if (!value) return null;
   const item = value.item;
   if (item.type === "realtimeSessionClosed")
@@ -37,7 +37,9 @@ export function LocalConversationRealtimeItem({
   if (item.type !== "transcriptSegment") return null;
   return (
     <div
-      data-content-search-turn-key={entry.turnSearchKey}
+      data-content-search-turn-key={entry.turnKey}
+      data-content-search-unit-key={realtimeSearchUnitKey(entry, itemId)}
+      data-conversation-role={item.role}
       data-native-realtime-item-id={item.id}
       className={
         item.role === "user"
@@ -45,14 +47,16 @@ export function LocalConversationRealtimeItem({
           : "min-w-0"
       }
     >
-      <BudgetedMarkdownRenderer
-        content={item.text}
-        sourceIdentity={JSON.stringify([conversationId, item.id])}
-        sourceAriaLabel={item.role === "user" ? "User message source" : "Assistant message source"}
-        cwd={cwd}
-        parseIncompleteMarkdown={!value.completed}
-        animateStreamingText={!value.completed}
-      />
+      {item.role === "user" ? (
+        <UserMessageText text={item.text} cwd={cwd} />
+      ) : (
+        <MarkdownRenderer
+          content={item.text}
+          cwd={cwd}
+          parseIncompleteMarkdown={!value.completed}
+          animateStreamingText={!value.completed}
+        />
+      )}
     </div>
   );
 }

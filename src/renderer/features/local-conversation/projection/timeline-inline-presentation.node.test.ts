@@ -31,7 +31,11 @@ test("indexes native visualization directives while skipping literal fenced exam
     '```md\n::codex-inline-vis{file="literal.html"}\n```\n::codex-inline-vis{file="chart.html" threadId="source"}\nvisualize{"path":"/tmp/table.html"}';
   expect(
     resolveTimelineInlinePresentation(agent(text), { type: "inlineVisualization", index: 0 }),
-  ).toEqual({ type: "visualization", file: "chart.html", sourceThreadId: "source" });
+  ).toEqual({
+    type: "visualization",
+    file: "chart.html",
+    sourceThreadId: "source",
+  });
   expect(
     resolveTimelineInlinePresentation(agent(text), { type: "inlineVisualization", index: 1 }),
   ).toEqual({ type: "visualization", file: "table.html", sourceThreadId: null });
@@ -44,4 +48,15 @@ test("indexes native visualization directives while skipping literal fenced exam
       index: 0,
     }),
   ).toEqual({ type: "visualization", file: "chart.html", sourceThreadId: null });
+});
+
+test("native visualization promotions require their declared narrow directive grammar", () => {
+  for (const text of [
+    '::codex-inline-vis{file="chart.html" mode="wide"}',
+    '::codex-inline-vis{threadId="source" file="chart.html"}',
+    "::codex-inline-vis{file=chart.html}",
+  ])
+    expect(
+      resolveTimelineInlinePresentation(agent(text), { type: "inlineVisualization", index: 0 }),
+    ).toBeNull();
 });

@@ -277,6 +277,10 @@ import type {
   CodexDictationStateSnapshot,
   CodexConversationImageAssetResolveInput,
   CodexConversationImageAssetResolveResult,
+  CodexVisualizationReadInput,
+  CodexVisualizationReadResult,
+  CodexVisualizationOpenExternalInput,
+  CodexVisualizationConsumeGestureInput,
   ProtocolDynamicToolCallResponse,
   CodexCollaborationModeKind,
   CodexCollaborationModeState,
@@ -1886,6 +1890,18 @@ export interface IpcApi {
   // Codex
   "codex:connection:status": { args: [hostId?: string]; result: CodexConnectionState };
   "codex:account:read": { args: []; result: CodexAccountSnapshot };
+  "codex:visualization:read": {
+    args: [input: CodexVisualizationReadInput];
+    result: CodexVisualizationReadResult;
+  };
+  "codex:visualization:open-external": {
+    args: [input: CodexVisualizationOpenExternalInput];
+    result: boolean;
+  };
+  "codex:visualization:consume-gesture": {
+    args: [input: CodexVisualizationConsumeGestureInput];
+    result: boolean;
+  };
   "codex:account:rate-limit-reset:consume": {
     args: [input: CodexRateLimitResetInput];
     result: CodexRateLimitResetResult;

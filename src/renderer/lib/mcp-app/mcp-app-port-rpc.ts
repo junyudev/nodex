@@ -50,6 +50,7 @@ export type McpAppPortCall = (
 
 export interface ConnectedMcpAppSandbox {
   api: McpAppSkybridgeApi;
+  readonly initId?: string;
   dispose(): void;
 }
 
@@ -336,6 +337,7 @@ export async function connectMcpAppSandbox(input: {
 
   return {
     api,
+    initId: expectedInitId,
     dispose: () => {
       handshake.replyPort.close();
       for (const port of Object.values(handshake.namedPorts)) port?.close();

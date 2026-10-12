@@ -4,6 +4,7 @@ import {
   isThreadScrollNearBottom,
   resolveNativeScrollTopForDistanceFromBottomPx,
   resolveThreadScrollModeForScrollEvent,
+  resolveThreadScrollKeyDirection,
 } from "./local-conversation-thread-scroll-controller";
 
 function buildScrollElement(input: {
@@ -34,6 +35,42 @@ describe("getThreadScrollDistanceFromBottomPx", () => {
 
   test("converts negative native scrollTop into positive distance from bottom", () => {
     expect(getThreadScrollDistanceFromBottomPx({ scrollTop: -5_365 })).toBe(5_365);
+  });
+});
+
+describe("thread keyboard scroll intent", () => {
+  test("recognizes viewport paging and Shift-Space directions", () => {
+    const viewport = document.createElement("div");
+    const up = new KeyboardEvent("keydown", { key: "PageUp" });
+    viewport.dispatchEvent(up);
+    const down = new KeyboardEvent("keydown", { key: " " });
+    viewport.dispatchEvent(down);
+    const shift = new KeyboardEvent("keydown", { key: " ", shiftKey: true });
+    viewport.dispatchEvent(shift);
+    expect(resolveThreadScrollKeyDirection(up, viewport)).toBe("away");
+    expect(resolveThreadScrollKeyDirection(down, viewport)).toBe("toward");
+    expect(resolveThreadScrollKeyDirection(shift, viewport)).toBe("away");
+  });
+  test("leaves editor navigation and button activation with their own control", () => {
+    const viewport = document.createElement("div");
+    const input = document.createElement("textarea");
+    viewport.append(input);
+    const button = document.createElement("button");
+    viewport.append(button);
+    const up = new KeyboardEvent("keydown", { key: "ArrowUp" });
+    input.dispatchEvent(up);
+    const space = new KeyboardEvent("keydown", { key: " " });
+    button.dispatchEvent(space);
+    expect(resolveThreadScrollKeyDirection(up, viewport)).toBeNull();
+    expect(resolveThreadScrollKeyDirection(space, viewport)).toBeNull();
+  });
+  test("ignores repeated and already consumed keyboard events", () => {
+    const viewport = document.createElement("div");
+    const repeat = new KeyboardEvent("keydown", { key: "Home", repeat: true });
+    const consumed = new KeyboardEvent("keydown", { key: "End", cancelable: true });
+    consumed.preventDefault();
+    expect(resolveThreadScrollKeyDirection(repeat, viewport)).toBeNull();
+    expect(resolveThreadScrollKeyDirection(consumed, viewport)).toBeNull();
   });
 });
 

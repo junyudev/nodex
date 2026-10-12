@@ -261,6 +261,12 @@ uses local state and a submit-time guard.
   imports are limited to the small set of editor positioning controllers and UI
   adapters audited by `verify:renderer-ui-boundaries`. A feature that only needs
   a menu, popover, tooltip, or hover surface uses the Nodex primitive instead.
+- A modal presentation that must preserve a mounted native document uses
+  `NodexRetainedModalFocusBoundary`. Its existing content root encloses the
+  focus guards, while the app-owned adapter traps focus, restores the trigger,
+  and counts background inert claims across nested presentations. Background
+  controls remain inert even when their branch contains live announcements;
+  closing one presentation cannot release another active claim.
 - First-party and vendored editor source must not depend on Radix or its DOM/CSS
   implementation tokens. The remaining Radix lockfile graph is an explicit
   Excalidraw transitive exception and is not an app UI seam.

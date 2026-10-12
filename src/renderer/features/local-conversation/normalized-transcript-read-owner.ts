@@ -50,6 +50,16 @@ export interface CodexTranscriptStructure extends CodexTranscriptMetadata {
   }[];
 }
 
+export interface CodexTranscriptGeneratedImage {
+  readonly entityKey: string;
+  readonly item: Extract<CodexCanonicalItem, { type: "imageGeneration" }>;
+  readonly itemIndex: number;
+  readonly turnId: string | null;
+  readonly turnStartedAtMs: number | null;
+}
+
+const EMPTY_GENERATED_IMAGES: readonly CodexTranscriptGeneratedImage[] = Object.freeze([]);
+
 export interface CodexTranscriptTurnSlice {
   readonly itemIds: readonly string[];
   readonly includeInput: boolean;
@@ -143,6 +153,10 @@ export class CodexTranscriptReadOwner {
   private staged: CodexTranscriptSnapshot | null = null;
   private structure: CodexTranscriptStructure | null = null;
   private readonly structureListeners = new Set<Listener>();
+  private readonly generatedImageListeners = new Set<Listener>();
+  private readonly itemSlotIndices = new Map<string, Map<string, number>>();
+  private readonly generatedImageIndex = new Map<string, CodexTranscriptGeneratedImage>();
+  private generatedImages = EMPTY_GENERATED_IMAGES;
   private readonly turnListeners = new Map<string, Set<Listener>>();
   private readonly itemListeners = new Map<string, Set<Listener>>();
   private readonly realtimeListeners = new Map<string, Set<Listener>>();
@@ -215,6 +229,11 @@ export class CodexTranscriptReadOwner {
 
   subscribeStructure = (listener: Listener): (() => void) =>
     this.subscribe(this.structureListeners, listener);
+
+  subscribeGeneratedImages = (listener: Listener): (() => void) =>
+    this.subscribe(this.generatedImageListeners, listener);
+
+  readGeneratedImages = (): readonly CodexTranscriptGeneratedImage[] => this.generatedImages;
 
   subscribeTurn = (entityKey: string, listener: Listener): (() => void) => {
     const listeners = this.turnListeners.get(entityKey) ?? new Set<Listener>();
@@ -545,9 +564,19 @@ export class CodexTranscriptReadOwner {
       this.turns = new Map(Object.entries(snapshot.turnsByKey));
       this.items = new Map(Object.entries(snapshot.itemsByKey));
       this.realtimeItems = new Map(Object.entries(snapshot.realtimeItems));
+      for (const [entityKey, turn] of this.turns) {
+        this.itemSlotIndices.set(
+          entityKey,
+          new Map(turn.itemSlots.entries.map(({ itemId, index }) => [itemId, index])),
+        );
+        for (const { itemId } of turn.itemSlots.entries)
+          this.indexGeneratedImage(entityKey, itemId);
+      }
+      this.publishGeneratedImages();
       this.rebuildStructure();
     }
     this.notify(this.structureListeners);
+    this.notify(this.generatedImageListeners);
     for (const key of oldTurnKeys) this.notify(this.turnListeners.get(key));
     for (const key of oldItemKeys) this.notify(this.itemListeners.get(key));
     for (const key of oldRealtimeKeys) this.notify(this.realtimeListeners.get(key));
@@ -560,6 +589,10 @@ export class CodexTranscriptReadOwner {
     const previousRealtime = new Map<string, CodexTranscriptRealtimeItem | undefined>();
     const previousTurns = new Map<string, CodexTranscriptTurn | undefined>();
     const previousItems = new Map<string, CodexCanonicalItem | undefined>();
+    const changedItemEntities = new Map<string, string>();
+    const imageContextTurns = new Set<string>();
+    const replacementSlots = new Set<string>();
+    const appendedSlots = new Map<string, CodexTranscriptItemSlots["entries"]>();
     const changedTurns = new Set<string>();
     const changedProjectionContext = new Set<string>();
     const changedItems = new Set<string>();
@@ -569,7 +602,8 @@ export class CodexTranscriptReadOwner {
     const rememberTurn = (key: string) => {
       if (!previousTurns.has(key)) previousTurns.set(key, this.turns.get(key));
     };
-    const rememberItem = (key: string) => {
+    const rememberItem = (key: string, entityKey: string) => {
+      changedItemEntities.set(key, entityKey);
       if (!previousItems.has(key)) previousItems.set(key, this.items.get(key));
       changedItems.add(key);
     };
@@ -649,10 +683,11 @@ export class CodexTranscriptReadOwner {
         const entityKey = change.key.entityKey;
         rememberTurn(entityKey);
         if (change.type === "remove-turn") {
+          imageContextTurns.add(entityKey);
           const turn = this.turns.get(entityKey);
           for (const { itemId } of turn?.itemSlots.entries ?? []) {
             const address = codexTranscriptItemAddress(entityKey, itemId);
-            rememberItem(address);
+            rememberItem(address, entityKey);
             this.items.delete(address);
           }
           this.turns.delete(entityKey);
@@ -663,7 +698,13 @@ export class CodexTranscriptReadOwner {
         }
         if (change.type === "turn") {
           const previous = this.turns.get(entityKey);
+          if (!previous) replacementSlots.add(entityKey);
           const previousDetails = previous?.details;
+          if (
+            previousDetails?.turnId !== change.details.turnId ||
+            previousDetails?.turnStartedAtMs !== change.details.turnStartedAtMs
+          )
+            imageContextTurns.add(entityKey);
           if (
             !previousDetails ||
             previousDetails.turnId !== change.details.turnId ||
@@ -695,6 +736,14 @@ export class CodexTranscriptReadOwner {
         const turn = this.turns.get(entityKey);
         if (!turn) throw new Error("Transcript item update has no Turn");
         if (change.type === "item-slots" || change.type === "item-slots-append") {
+          if (change.type === "item-slots") {
+            imageContextTurns.add(entityKey);
+            replacementSlots.add(entityKey);
+          } else
+            appendedSlots.set(entityKey, [
+              ...(appendedSlots.get(entityKey) ?? []),
+              ...change.entries,
+            ]);
           const slots =
             change.type === "item-slots"
               ? change.slots
@@ -721,7 +770,7 @@ export class CodexTranscriptReadOwner {
               ? applyCodexTranscriptTextChange(previous, change)
               : null;
         if (!next && change.type !== "item") throw new Error("Transcript text update has no item");
-        rememberItem(address);
+        rememberItem(address, entityKey);
         if (next) this.items.set(address, next);
         else this.items.delete(address);
         let previousAssistantVisible: boolean | undefined;
@@ -767,6 +816,58 @@ export class CodexTranscriptReadOwner {
     }
     this.metadata = nextMetadata;
     for (const entityKey of previousTurns.keys()) {
+      if (!this.turns.has(entityKey)) this.itemSlotIndices.delete(entityKey);
+    }
+    for (const entityKey of replacementSlots) {
+      const slots = this.turns.get(entityKey)?.itemSlots;
+      if (slots)
+        this.itemSlotIndices.set(
+          entityKey,
+          new Map(slots.entries.map(({ itemId, index }) => [itemId, index])),
+        );
+    }
+    for (const [entityKey, entries] of appendedSlots) {
+      if (replacementSlots.has(entityKey) || !this.turns.has(entityKey)) continue;
+      const indices = this.itemSlotIndices.get(entityKey) ?? new Map<string, number>();
+      for (const { itemId, index } of entries) indices.set(itemId, index);
+      this.itemSlotIndices.set(entityKey, indices);
+    }
+    let imagesChanged = false;
+    for (const [address, entityKey] of changedItemEntities) {
+      const before = previousItems.get(address);
+      const after = this.items.get(address);
+      if (before?.type !== "imageGeneration" && after?.type !== "imageGeneration") continue;
+      imagesChanged = this.indexGeneratedImage(entityKey, after?.id ?? before!.id) || imagesChanged;
+    }
+    for (const [entityKey, entries] of appendedSlots) {
+      if (replacementSlots.has(entityKey)) continue;
+      for (const { itemId } of entries) {
+        const item = this.items.get(codexTranscriptItemAddress(entityKey, itemId));
+        if (item?.type === "imageGeneration")
+          imagesChanged = this.indexGeneratedImage(entityKey, itemId) || imagesChanged;
+      }
+    }
+    if (imageContextTurns.size > 0) {
+      for (const image of [...this.generatedImageIndex.values()]) {
+        if (!imageContextTurns.has(image.entityKey)) continue;
+        imagesChanged = this.indexGeneratedImage(image.entityKey, image.item.id) || imagesChanged;
+      }
+      // A newly admitted slot can refer to an image received earlier in the same reset lifetime.
+      for (const entityKey of imageContextTurns) {
+        const previousSlots = previousTurns.get(entityKey)?.itemSlots;
+        const slots = this.turns.get(entityKey)?.itemSlots;
+        if (previousSlots === slots) continue;
+        for (const { itemId } of slots?.entries ?? []) {
+          const item = this.items.get(codexTranscriptItemAddress(entityKey, itemId));
+          if (item?.type === "imageGeneration")
+            imagesChanged = this.indexGeneratedImage(entityKey, itemId) || imagesChanged;
+        }
+      }
+    }
+    if (imagesChanged || metadata.turnEntityKeys !== nextMetadata.turnEntityKeys) {
+      if (this.publishGeneratedImages()) this.notify(this.generatedImageListeners);
+    }
+    for (const entityKey of previousTurns.keys()) {
       this.canonicalTurns.delete(entityKey);
       this.materializedTurns.delete(entityKey);
     }
@@ -797,6 +898,54 @@ export class CodexTranscriptReadOwner {
     for (const entityKey of changedTurns) this.notify(this.turnListeners.get(entityKey));
     for (const address of changedItems) this.notify(this.itemListeners.get(address));
     for (const key of changedRealtime) this.notify(this.realtimeListeners.get(key));
+  }
+
+  private indexGeneratedImage(entityKey: string, itemId: string): boolean {
+    const address = codexTranscriptItemAddress(entityKey, itemId);
+    const previous = this.generatedImageIndex.get(address);
+    const item = this.items.get(address);
+    const turn = this.turns.get(entityKey);
+    const itemIndex = this.itemSlotIndices.get(entityKey)?.get(itemId);
+    if (item?.type !== "imageGeneration" || !turn || itemIndex === undefined)
+      return this.generatedImageIndex.delete(address);
+    const turnId = turn.details.turnId;
+    const turnStartedAtMs = turn.details.turnStartedAtMs ?? null;
+    if (
+      previous?.item === item &&
+      previous.itemIndex === itemIndex &&
+      previous.turnId === turnId &&
+      previous.turnStartedAtMs === turnStartedAtMs
+    )
+      return false;
+    this.generatedImageIndex.set(address, {
+      entityKey,
+      item,
+      itemIndex,
+      turnId,
+      turnStartedAtMs,
+    });
+    return true;
+  }
+
+  /** Only image changes and their native order rebuild this bounded aggregate. Text deltas never scan it. */
+  private publishGeneratedImages(): boolean {
+    const turnOrder = new Map(
+      this.metadata?.turnEntityKeys.map((key, index) => [key, index]) ?? [],
+    );
+    const next = [...this.generatedImageIndex.values()]
+      .filter((image) => turnOrder.has(image.entityKey))
+      .sort(
+        (left, right) =>
+          turnOrder.get(left.entityKey)! - turnOrder.get(right.entityKey)! ||
+          left.itemIndex - right.itemIndex,
+      );
+    if (
+      next.length === this.generatedImages.length &&
+      next.every((image, index) => image === this.generatedImages[index])
+    )
+      return false;
+    this.generatedImages = next.length ? Object.freeze(next) : EMPTY_GENERATED_IMAGES;
+    return true;
   }
 
   private rebuildStructure(): void {
@@ -871,6 +1020,9 @@ export class CodexTranscriptReadOwner {
     this.metadata = null;
     this.turns.clear();
     this.items.clear();
+    this.itemSlotIndices.clear();
+    this.generatedImageIndex.clear();
+    this.generatedImages = EMPTY_GENERATED_IMAGES;
     this.realtimeItems.clear();
     this.staged = null;
     this.structure = null;
@@ -893,10 +1045,12 @@ export class CodexTranscriptReadOwner {
     this.viewports.clear();
     this.clear();
     this.notify(this.structureListeners);
+    this.notify(this.generatedImageListeners);
     for (const listeners of this.turnListeners.values()) this.notify(listeners);
     for (const listeners of this.itemListeners.values()) this.notify(listeners);
     for (const listeners of this.realtimeListeners.values()) this.notify(listeners);
     this.structureListeners.clear();
+    this.generatedImageListeners.clear();
     this.turnListeners.clear();
     this.itemListeners.clear();
     this.realtimeListeners.clear();

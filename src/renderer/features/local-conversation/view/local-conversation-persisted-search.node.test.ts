@@ -4,6 +4,7 @@ import type { VisibleConversationTurnEntry } from "../selectors";
 import type { ThreadSearchUnitModel } from "../thread-stage-types";
 import {
   isLocalConversationPersistedSearchMatchMeta,
+  mergeLocalConversationSearchResults,
   projectLocalConversationPersistedSearchResult,
   resolveLocalConversationPersistedSearchTarget,
   waitForLocalConversationPersistedSearchTarget,
@@ -19,6 +20,125 @@ const occurrence = (overrides: Partial<ThreadSearchOccurrence> = {}): ThreadSear
 });
 
 describe("persisted conversation search projection", () => {
+  it("resolves a resident commentary occurrence to its native assistant unit rather than the final answer", () => {
+    const entry = {
+      turnKey: "turn-older",
+      turn: {
+        items: [
+          {
+            itemId: "projected-commentary",
+            rawItemId: "native-commentary",
+            kind: "assistantMessage",
+          },
+          { itemId: "final", kind: "assistantMessage" },
+        ],
+      },
+    } as unknown as VisibleConversationTurnEntry;
+    const units: ThreadSearchUnitModel[] = [
+      {
+        key: "turn-older:assistant:final",
+        itemId: "final",
+        turnKey: "turn-older",
+        turnId: "turn-older",
+        text: "final needle",
+        blockType: "assistantMessage",
+      },
+      {
+        key: "turn-older:assistant:native-commentary",
+        itemId: "native-commentary",
+        turnKey: "turn-older",
+        turnId: "turn-older",
+        text: "commentary needle",
+        blockType: "assistantMessage",
+      },
+    ];
+    expect(
+      resolveLocalConversationPersistedSearchTarget({
+        entry,
+        occurrence: occurrence({
+          itemId: "native-commentary",
+          snippet: "commentary needle",
+          snippetMatchRange: { start: 11, end: 17 },
+        }),
+        query: "needle",
+        itemOccurrenceIndex: 0,
+        units,
+      }),
+    ).toEqual({
+      turnKey: "turn-older",
+      unitKey: "turn-older:assistant:native-commentary",
+      occurrenceIndex: 0,
+    });
+  });
+  it("keeps realtime and live local matches when native search succeeds with no occurrences", () => {
+    const resident = {
+      query: "needle",
+      totalMatches: 1,
+      capped: false,
+      matches: [
+        {
+          id: "voice",
+          contextId: "thread",
+          domain: "conversation" as const,
+          ordinal: 0,
+          meta: { turnKey: "realtime:voice", unitKey: "voice-unit", occurrenceIndex: 0 },
+        },
+      ],
+    };
+    expect(
+      mergeLocalConversationSearchResults({
+        resident,
+        persisted: { ...resident, matches: [], totalMatches: 0 },
+        resolveResidentTarget: () => null,
+      }),
+    ).toEqual(resident);
+  });
+
+  it("preserves native result order, reuses resident reveal identity and deduplicates its occurrence", () => {
+    const residentTarget = {
+      turnKey: "resident",
+      unitKey: "resident:assistant",
+      occurrenceIndex: 0,
+    };
+    const local = {
+      id: "resident",
+      contextId: "thread",
+      domain: "conversation" as const,
+      ordinal: 0,
+      meta: residentTarget,
+    };
+    const voice = {
+      ...local,
+      id: "voice",
+      meta: { ...residentTarget, turnKey: "realtime:voice", unitKey: "voice-unit" },
+    };
+    const persisted = projectLocalConversationPersistedSearchResult({
+      contextId: "thread",
+      limit: 250,
+      page: {
+        threadId: "thread",
+        hostId: "local",
+        hostGeneration: 1,
+        topologyGeneration: 1,
+        query: "needle",
+        capped: false,
+        occurrences: [occurrence({ turnId: "older" }), occurrence({ turnId: "resident" })],
+      },
+    });
+    const result = mergeLocalConversationSearchResults({
+      resident: { query: "needle", totalMatches: 2, matches: [local, voice], capped: false },
+      persisted,
+      resolveResidentTarget: (meta) =>
+        meta.occurrence.turnId === "resident" ? residentTarget : null,
+    });
+    expect(result.matches.map((match) => match.id)).toEqual([
+      persisted.matches[0]!.id,
+      "resident",
+      "voice",
+    ]);
+    expect(result.totalMatches).toBe(3);
+    expect(result.matches[1]?.meta).toBe(residentTarget);
+  });
   it("preserves stable server identities and advertises a capped first page", () => {
     const projected = projectLocalConversationPersistedSearchResult({
       contextId: "conversation:thread-1",

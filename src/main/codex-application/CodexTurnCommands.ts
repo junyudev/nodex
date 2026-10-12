@@ -1505,7 +1505,7 @@ export const make: Effect.Effect<
             const input = overrides?.preparedPrompt?.inputItems ?? [
               { type: "text" as const, text: prompt, text_elements: [] },
             ];
-            const original: TurnStartParams = structuredClone(
+            let original: TurnStartParams = structuredClone(
               originalRequest ?? {
                 threadId,
                 clientUserMessageId,
@@ -1531,7 +1531,7 @@ export const make: Effect.Effect<
               throw new Error("Native preflight identity/input mismatch");
             if (nativePreparations.has(clientUserMessageId))
               throw new Error("Turn identity already prepared");
-            const context = structuredClone(
+            let context = structuredClone(
               sourceContext ??
                 (overrides?.preparedPrompt
                   ? {
@@ -1543,6 +1543,29 @@ export const make: Effect.Effect<
                     }
                   : undefined),
             );
+            let admittedOverrides = overrides;
+            const untrustedAppMessage =
+              overrides?.untrustedAppMessage ?? overrides?.promptInput?.untrustedAppMessage;
+            if (untrustedAppMessage !== undefined) {
+              const preparedPrompt = overrides?.preparedPrompt;
+              if (!preparedPrompt) throw new Error("App input requires a captured prompt");
+              if (Array.isArray(context?.responseItems) && context.responseItems.length)
+                throw new Error("App input already has a context injection");
+              const appInput = prepareUntrustedAppInput(
+                preparedPrompt.promptText,
+                { untrustedAppMessage },
+                `untrusted_input_${clientUserMessageId}`,
+              );
+              const compiled = {
+                ...preparedPrompt,
+                promptText:
+                  appInput.input.type === "text" ? appInput.input.text : preparedPrompt.promptText,
+                inputItems: [appInput.input, ...preparedPrompt.inputItems.slice(1)],
+              };
+              original = { ...original, input: compiled.inputItems };
+              context = { ...context, responseItems: appInput.responseItems };
+              admittedOverrides = { ...overrides, preparedPrompt: compiled };
+            }
             // Capture the peer wire value before retaining authority. JSON peers omit undefined
             // fields, while Electron's structured clone preserves them.
             const admitted = JSON.parse(
@@ -1556,7 +1579,7 @@ export const make: Effect.Effect<
               original: admitted.request,
               context: admitted.context,
               prompt,
-              overrides: { ...overrides, clientUserMessageId },
+              overrides: { ...admittedOverrides, clientUserMessageId },
               ...connection,
               plan: null,
               ownerId: undefined,

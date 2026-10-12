@@ -28,6 +28,13 @@ describe("compact Markdown text", () => {
       '::literal[value]{attribute="yes"}',
     );
   });
+  it("keeps inline and indented widget examples searchable without exposing real declarations", () => {
+    const literal = '::codex-inline-vis{file="literal.html"}';
+    expect(project(`\`${literal}\``)).toBe(literal);
+    expect(project(`    ${literal}`)).toBe(literal);
+    expect(project(`>     ${literal}`)).toBe(literal);
+    expect(project('   ::codex-inline-vis{file="real.html"}')).toBe("");
+  });
   it("removes private citation payloads", () => {
     expect(project("Evidence \uE200cite\uE202private\uE201 found")).toBe("Evidence found");
   });

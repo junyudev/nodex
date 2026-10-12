@@ -283,9 +283,14 @@ import { makeCodexThreadHandoffJournalStorage } from "../platform/CodexThreadHan
 import { CodexPlatform } from "./CodexApplicationLive";
 import { live as appToolAuthorityLive } from "../app-tools/NodexAppToolAuthority";
 import { MainConfig } from "./MainConfig";
+import { live as codexVisualizationsLive } from "../codex-application/CodexVisualizations";
+import { live as nodeVisualizationFilesLive } from "../platform/node/NodeVisualizationFiles";
 import { CODEX_INTEGRATION_CAPABILITIES } from "../../shared/codex-integration-capabilities";
 
 const conversationContext = Layer.effect(CodexConversationContext, makeCodexConversationContext);
+const visualizations = codexVisualizationsLive.pipe(
+  Layer.provideMerge(Layer.merge(conversationContext, nodeVisualizationFilesLive)),
+);
 const conversationProjection = Layer.effect(
   CodexConversationProjection,
   makeCodexConversationProjection,
@@ -496,6 +501,7 @@ const threadGoals = codexThreadGoalRuntimeLive.pipe(
 
 const foundations = Layer.mergeAll(
   conversationContext,
+  visualizations,
   conversationRelationships,
   externalAgentImport,
   heartbeatTurnCompletion,

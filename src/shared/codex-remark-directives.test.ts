@@ -21,4 +21,17 @@ describe("codex remark directives", () => {
       'Done. ::inbox-item{title="Inline"}',
     );
   });
+
+  test("excludes executable indented directives while preserving indented code", () => {
+    for (const indentation of ["", " ", "  ", "   "]) {
+      expect(
+        stripCodexRemarkDirectiveLines(
+          `${indentation}::codex-inline-vis{file=plot.html}\nActual response`,
+        ),
+      ).toBe("Actual response");
+    }
+    expect(
+      stripCodexRemarkDirectiveLines("    ::codex-inline-vis{file=literal.html}\nActual response"),
+    ).toBe("    ::codex-inline-vis{file=literal.html}\nActual response");
+  });
 });

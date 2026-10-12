@@ -1155,7 +1155,7 @@ describe("bucketizeTurnItems", () => {
     });
 
     expect(turn.searchUnits.map((unit) => `${unit.blockType}:${unit.key}`).join(",")).toBe(
-      "userMessage:turn_1:user:0,assistantMessage:turn_1:assistant",
+      "userMessage:turn_1:user:0,assistantMessage:turn_1:assistant:item_1",
     );
   });
 
@@ -1195,7 +1195,7 @@ describe("bucketizeTurnItems", () => {
     });
 
     expect(turn.searchUnits.map((unit) => `${unit.blockType}:${unit.key}`).join(",")).toBe(
-      "userMessage:turn_1:user:0,assistantMessage:turn_1:assistant",
+      "userMessage:turn_1:user:0,assistantMessage:turn_1:assistant:assistant",
     );
     expect(turn.agentBodyUnits.map((unit) => unit.block.type).join(",")).toBe(
       "assistantMessage,agentActivityGroup",

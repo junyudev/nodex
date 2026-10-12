@@ -6,6 +6,7 @@ import { directiveFromMarkdown } from "mdast-util-directive";
 import { directive } from "micromark-extension-directive";
 import { parse } from "node-html-parser";
 import type { Nodes } from "mdast";
+import { trimMarkdownBlankLines } from "./markdown-text-boundaries";
 
 /** Keep literal autolinks out of an unfinished Markdown link label. */
 function compactGfm() {
@@ -52,29 +53,30 @@ function compactGfm() {
   return extension;
 }
 
-/** Normalize inline directives without changing literal fenced code. */
+/** Normalize inline directives without changing any Markdown code node. */
 function normalizeDirectives(markdown: string): string {
   if (!markdown.includes("::")) return markdown;
-  let fence: { marker: string; length: number } | null = null;
-  return markdown
-    .split("\n")
-    .map((line) => {
-      const wasFenced = fence !== null;
-      const match = /^ {0,3}(`{3,}|~{3,})(.*)$/.exec(line);
-      if (match) {
-        const marker = match[1]![0]!;
-        if (fence) {
-          if (marker === fence.marker && match[1]!.length >= fence.length && !match[2]!.trim())
-            fence = null;
-        } else if (marker !== "`" || !match[2]!.includes("`")) {
-          fence = { marker, length: match[1]!.length };
-        }
-      }
-      return wasFenced || fence
-        ? line
-        : line.replace(/(^|[^:])::([A-Za-z][A-Za-z0-9_-]*)(?=[[{])/g, "$1:$2");
-    })
-    .join("\n");
+  const codeRanges: Array<{ start: number; end: number }> = [];
+  const visit = (node: Nodes): void => {
+    if (node.type === "code" || node.type === "inlineCode") {
+      const start = node.position?.start.offset;
+      const end = node.position?.end.offset;
+      if (start !== undefined && end !== undefined) codeRanges.push({ start, end });
+      return;
+    }
+    if ("children" in node) node.children.forEach(visit);
+  };
+  visit(fromMarkdown(markdown));
+  let rangeIndex = 0;
+  return markdown.replace(
+    /(^|[^:])::([A-Za-z][A-Za-z0-9_-]*)(?=[[{])/g,
+    (match, prefix: string, name: string, offset: number) => {
+      const colonOffset = offset + prefix.length;
+      while (codeRanges[rangeIndex] && codeRanges[rangeIndex]!.end <= colonOffset) rangeIndex += 1;
+      const range = codeRanges[rangeIndex];
+      return range && range.start <= colonOffset ? match : `${prefix}:${name}`;
+    },
+  );
 }
 
 function unclosedHiddenElement(value: string): string | null {
@@ -122,7 +124,9 @@ function extractMarkdownText(node: Nodes): string {
 
 /** Project rich assistant text into compact labels without hidden markup or attributes. */
 export function projectCodexMarkdownToPlainText(markdown: string): string {
-  const trimmed = normalizeDirectives(markdown.replaceAll(/\uE200[^\uE201]*\uE201/g, "")).trim();
+  const trimmed = trimMarkdownBlankLines(
+    normalizeDirectives(markdown.replaceAll(/\uE200[^\uE201]*\uE201/g, "")),
+  );
   if (!trimmed) return "";
   if (
     /^[\p{L}\p{M}\p{N} .,!?'"’()-]+$/u.test(trimmed) &&

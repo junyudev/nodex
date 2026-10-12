@@ -2067,6 +2067,27 @@ export interface CodexConversationImageAssetResolveInput {
   pointer: string;
 }
 
+export interface CodexVisualizationReadInput {
+  readonly hostId: string;
+  readonly sourceThreadId: string;
+  readonly file: string;
+  readonly turnId?: string;
+}
+
+export interface CodexVisualizationReadResult {
+  readonly contents: string | null;
+  readonly path: string | null;
+}
+
+export interface CodexVisualizationConsumeGestureInput {
+  readonly sandboxId: string;
+  readonly initId?: string;
+}
+
+export interface CodexVisualizationOpenExternalInput extends CodexVisualizationConsumeGestureInput {
+  readonly href: string;
+}
+
 export type CodexConversationImageAssetResolveResult =
   | {
       ok: true;
@@ -2571,6 +2592,7 @@ export interface CodexSideChatStartResult {
 }
 
 export interface CodexTurnStartOptions {
+  untrustedAppMessage?: import("./codex-untrusted-app-input").CodexUntrustedAppMessage;
   model?: string;
   serviceTier?: CodexServiceTier;
   reasoningEffort?: CodexReasoningEffort;
@@ -2792,6 +2814,8 @@ export interface CodexPromptAgentConfigInput {
 
 export interface CodexPromptInput {
   text: string;
+  /** Retained app provenance survives queued-message editing and recovery. */
+  untrustedAppMessage?: import("./codex-untrusted-app-input").CodexUntrustedAppMessage;
   documentItems?: CodexPromptDocumentInput[];
   textAttachments?: CodexPromptTextAttachmentInput[];
   fileAttachments?: CodexLiveFileAttachment[];

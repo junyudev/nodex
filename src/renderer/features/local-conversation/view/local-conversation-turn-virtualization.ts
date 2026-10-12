@@ -76,11 +76,16 @@ export interface MeasuredTurnHeightDeltaInput {
 export interface VirtualizedTurnRenderedWindow {
   anchorKey: string;
   count: number;
+  readonly realtimeSegmentIds?: readonly string[];
 }
 
 export interface VirtualizedTurnListRestoreState {
   renderedWindow: VirtualizedTurnRenderedWindow;
   turnHeightsByKey: Record<string, number>;
+  readonly realtimeAnchor?: {
+    readonly itemId: string;
+    readonly topWithinViewportPx: number;
+  };
 }
 
 export interface VirtualizedTurnViewportState {
@@ -159,6 +164,7 @@ export type ThreadLatestTurnFollowEvent =
       previousLatestTurnPhase: ThreadLatestTurnPhase;
     }
   | { type: "latest_turn_placed" }
+  | { type: "hold_viewport" }
   | { type: "latest_turn_removed" }
   | {
       type: "scroll_distance_changed";
@@ -666,12 +672,11 @@ export function resolveThreadLatestTurnFollowState(
   }
 
   if (event.type === "latest_turn_phase_changed") {
+    if (state.followMode === "user_follow") return state;
     let nextState = state;
     if (event.previousLatestTurnPhase !== "prework" && event.latestTurnPhase === "prework") {
       if (nextState.followMode === "static") {
         nextState = withFollowMode(nextState, "prework_watch");
-      } else if (nextState.followMode === "user_follow") {
-        nextState = withFollowMode(nextState, "prework_follow");
       }
     }
     if (event.previousLatestTurnPhase === "prework" && event.latestTurnPhase === "final_answer") {
@@ -690,7 +695,11 @@ export function resolveThreadLatestTurnFollowState(
     return nextState;
   }
 
-  if (event.type === "latest_turn_placed" || event.type === "latest_turn_removed") {
+  if (
+    event.type === "hold_viewport" ||
+    event.type === "latest_turn_placed" ||
+    event.type === "latest_turn_removed"
+  ) {
     return withFollowMode(state, "static");
   }
 
@@ -710,10 +719,7 @@ export function resolveThreadLatestTurnFollowState(
     return state;
   }
 
-  return withFollowMode(
-    state,
-    event.latestTurnPhase === "prework" ? "prework_follow" : "user_follow",
-  );
+  return withFollowMode(state, "user_follow");
 }
 
 function isAssistantLikeItem(item: ThreadLatestTurnPhaseInput["items"][number]): boolean {
@@ -795,7 +801,6 @@ export function resolveResponseSpacerHeightPx({
 
 export function resolveRestoredDistanceWithoutResponseSpacer({
   distanceFromBottomPx,
-  latestTurnPhase,
   responseSpacerHeightPx,
   scrollPaddingBottomPx,
   scrollState,
@@ -816,10 +821,7 @@ export function resolveRestoredDistanceWithoutResponseSpacer({
   }) > THREAD_NEAR_BOTTOM_THRESHOLD_PX
     ? {
         distanceFromBottomPx: 0,
-        scrollState: resolveThreadLatestTurnFollowState(scrollState, {
-          type: "scroll_to_bottom",
-          latestTurnPhase,
-        }),
+        scrollState,
       }
     : {
         distanceFromBottomPx: Math.max(0, distanceFromBottomPx - responseSpacerHeightPx),

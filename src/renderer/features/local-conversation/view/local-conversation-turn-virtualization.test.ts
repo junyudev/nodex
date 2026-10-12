@@ -424,7 +424,7 @@ describe("latest turn follow helpers", () => {
       scrollState: createThreadLatestTurnFollowState(),
     });
     expect(restored.distanceFromBottomPx).toBe(0);
-    expect(restored.scrollState.followMode).toBe("user_follow");
+    expect(restored.scrollState.followMode).toBe("static");
 
     expect(
       shouldShowThreadScrollToBottomControl({
@@ -434,5 +434,29 @@ describe("latest turn follow helpers", () => {
         scrollDistanceFromBottomPx: 130,
       }),
     ).toBe(true);
+  });
+  test("keeps explicit user follow through prework and idle, and holds it on interaction", () => {
+    const state = resolveThreadLatestTurnFollowState(createThreadLatestTurnFollowState(), {
+      type: "scroll_to_bottom",
+      latestTurnPhase: "prework",
+    });
+    expect(state.followMode).toBe("user_follow");
+    expect(
+      resolveThreadLatestTurnFollowState(state, {
+        type: "latest_turn_phase_changed",
+        previousLatestTurnPhase: "idle",
+        latestTurnPhase: "prework",
+      }),
+    ).toBe(state);
+    expect(
+      resolveThreadLatestTurnFollowState(state, {
+        type: "latest_turn_phase_changed",
+        previousLatestTurnPhase: "prework",
+        latestTurnPhase: "idle",
+      }),
+    ).toBe(state);
+    expect(resolveThreadLatestTurnFollowState(state, { type: "hold_viewport" }).followMode).toBe(
+      "static",
+    );
   });
 });

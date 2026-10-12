@@ -1123,7 +1123,7 @@ describe("LocalConversationTurnEntry", () => {
     );
 
     const assistantAfter = view.container.querySelector(
-      '[data-content-search-unit-key="turn_latest:assistant"]',
+      '[data-content-search-unit-key="turn_latest:assistant:assistant_1"]',
     );
     if (!(assistantAfter instanceof HTMLElement)) {
       throw new Error("expected assistant body after exec");
@@ -1235,7 +1235,7 @@ describe("LocalConversationTurnEntry", () => {
     );
 
     const assistantAfter = view.container.querySelector(
-      '[data-content-search-unit-key="turn_latest:assistant"]',
+      '[data-content-search-unit-key="turn_latest:assistant:assistant_1"]',
     );
     if (!(assistantAfter instanceof HTMLElement)) {
       throw new Error("expected assistant body after exploration rows");
@@ -1304,7 +1304,7 @@ describe("LocalConversationTurnEntry", () => {
     );
 
     const assistantBlock = view.container.querySelector(
-      '[data-content-search-unit-key="turn_stopped_order:assistant"]',
+      '[data-content-search-unit-key="turn_stopped_order:assistant:assistant_1"]',
     );
     const explorationLink = view.getByRole("link", { name: "read" });
     const copyButton = view.getByLabelText("Copy");

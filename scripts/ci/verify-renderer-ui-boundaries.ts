@@ -18,6 +18,7 @@ const floatingUiAllowlist = new Set([
   "src/renderer/components/board/editor/nfm-editor-floating-positioning.test.ts",
   "src/renderer/components/board/editor/nfm-side-menu.tsx",
   "src/renderer/components/ui/hover-card.tsx",
+  "src/renderer/components/ui/retained-modal-focus-boundary.tsx",
   "third_party/blocknote/packages/react/src/components/AttributionTooltip/AttributionTooltipController.tsx",
   "third_party/blocknote/packages/react/src/components/Comments/FloatingComposerController.tsx",
   "third_party/blocknote/packages/react/src/components/Comments/FloatingThreadController.tsx",

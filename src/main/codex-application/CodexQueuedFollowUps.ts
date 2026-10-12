@@ -14,6 +14,7 @@ import type {
   CodexServiceTier,
 } from "../../shared/types";
 import { CODEX_INTERRUPTED_STEER_REASON } from "../../shared/codex-queued-follow-up-state";
+import { prepareUntrustedAppInput } from "../../shared/codex-untrusted-app-input";
 import {
   QueuedMessageLocks,
   type QueuedMessageLockIdentity,
@@ -69,6 +70,7 @@ export class CodexQueuedFollowUpsError extends Schema.TaggedError<CodexQueuedFol
 ) {}
 
 export interface CodexQueuedFollowUpEnqueueInput {
+  readonly untrustedAppMessage?: import("../../shared/codex-untrusted-app-input").CodexUntrustedAppMessage;
   readonly presentationTicket?: CodexTurnPresentationTicket;
   readonly threadId: string;
   readonly prompt: string;
@@ -262,6 +264,13 @@ export const make = Effect.gen(function* () {
         id,
         input.promptInput ?? { text: input.prompt },
       );
+      const sourceMessage = input.untrustedAppMessage ?? prompt.untrustedAppMessage;
+      const untrustedAppMessage = sourceMessage
+        ? { ...sourceMessage, text: input.prompt }
+        : undefined;
+      yield* Effect.try(() =>
+        prepareUntrustedAppInput(input.prompt, { untrustedAppMessage }, `untrusted_input_${id}`),
+      );
       const { text: _text, images, textAttachments, ...context } = prompt;
       const canonical = entities.current(input.threadId)?.readCanonicalState();
       const cwd = canonical?.cwd ?? "/";
@@ -284,6 +293,9 @@ export const make = Effect.gen(function* () {
         createdAt: Date.now(),
         context: {
           ...context,
+          ...(untrustedAppMessage
+            ? { untrustedAppMessage: structuredClone(untrustedAppMessage) }
+            : {}),
           prompt: input.prompt,
           workspaceRoots: input.workspaceRoots ? [...input.workspaceRoots] : [cwd],
           fileAttachments: [...(prompt.fileAttachments ?? [])],

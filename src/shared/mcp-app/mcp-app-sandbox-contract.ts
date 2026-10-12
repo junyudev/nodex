@@ -47,6 +47,10 @@ export type McpAppSandboxOriginScope =
   | {
       kind: "mcp_server";
       server: string;
+    }
+  | {
+      kind: "inline_visualization";
+      scopeId: string;
     };
 
 export interface McpAppSandboxIdentity {
@@ -100,6 +104,9 @@ async function deriveMcpAppSandboxSubdomain(input: {
   widgetDomain: string | null;
 }): Promise<string> {
   const scope = input.originScope;
+  if (scope.kind === "inline_visualization") {
+    return `codex-inline-visualization-${fnv1a64(scope.scopeId)}`;
+  }
   if (scope.kind === "mcp_server") {
     return stableSlug({
       fallback: "server",
@@ -142,6 +149,7 @@ async function deriveMcpAppSandboxSubdomain(input: {
 }
 
 function originScopeKey(scope: McpAppSandboxOriginScope): string {
+  if (scope.kind === "inline_visualization") return `inline_visualization:${scope.scopeId}`;
   if (scope.kind === "mcp_server") return `mcp_server:${scope.server}`;
   return `codex_app:${scope.connectorId ?? `instance:${scope.instanceFallbackId}`}`;
 }

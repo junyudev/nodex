@@ -3,6 +3,7 @@ import * as Effect from "effect/Effect";
 import * as Exit from "effect/Exit";
 import * as Scope from "effect/Scope";
 import { assert, it } from "@effect/vitest";
+import { vi } from "vite-plus/test";
 import type { Session, WebContents, WebPreferences } from "electron";
 import {
   appendMcpAppSandboxInitId,
@@ -144,6 +145,50 @@ it.effect("owns the complete MCP App sandbox callback graph with its Scope", () 
     assert.isFunction(sandboxSession.state.beforeRequest);
     assert.isFunction(sandboxSession.state.beforeSendHeaders);
 
+    const guestEvents = new EventEmitter();
+    let destroyed = false;
+    const guest = Object.assign(guestEvents, {
+      id: 72,
+      session: sandboxSession.value,
+      getURL: () => source,
+      isDestroyed: () => destroyed,
+      setWindowOpenHandler: () => undefined,
+      focus: () => undefined,
+      close: () => {
+        destroyed = true;
+        guestEvents.emit("destroyed");
+      },
+    }) as unknown as WebContents;
+    assert.isTrue(host.handleDidAttach(guest));
+    assert.isFalse(controller.consumeUserGesture(owner, sandboxId, "init-fixture"));
+    guestEvents.emit("before-mouse-event", {}, { type: "mouseMove" });
+    assert.isFalse(controller.consumeUserGesture(owner, sandboxId));
+    guestEvents.emit("before-mouse-event", {}, { type: "mouseDown" });
+    assert.isFalse(
+      controller.consumeUserGesture(
+        { id: 999, isDestroyed: () => false } as WebContents,
+        sandboxId,
+      ),
+    );
+    assert.isFalse(controller.consumeUserGesture(owner, sandboxId, "wrong-init"));
+    assert.isTrue(controller.consumeUserGesture(owner, sandboxId, "init-fixture"));
+    assert.isFalse(controller.consumeUserGesture(owner, sandboxId, "init-fixture"));
+    guestEvents.emit(
+      "before-input-event",
+      {},
+      { type: "keyDown", key: "Enter", isAutoRepeat: true },
+    );
+    assert.isFalse(controller.consumeUserGesture(owner, sandboxId));
+    guestEvents.emit("before-input-event", {}, { type: "keyDown", key: " ", isAutoRepeat: false });
+    assert.isTrue(controller.consumeUserGesture(owner, sandboxId));
+    guestEvents.emit("before-mouse-event", {}, { type: "mouseDown" });
+    const now = vi.spyOn(performance, "now").mockReturnValue(performance.now() + 5_001);
+    try {
+      assert.isFalse(controller.consumeUserGesture(owner, sandboxId));
+    } finally {
+      now.mockRestore();
+    }
+
     yield* Scope.close(scope, Exit.void);
 
     assert.strictEqual(guestMessageReleases, 1);
@@ -156,5 +201,6 @@ it.effect("owns the complete MCP App sandbox callback graph with its Scope", () 
     assert.deepEqual(sandboxSession.state.unhandledSchemes, [MCP_APP_SANDBOX_SCHEME]);
     assert.strictEqual(ownerEvents.listenerCount("destroyed"), 0);
     assert.throws(() => controller.createHost(owner), /not installed/u);
+    assert.isFalse(controller.consumeUserGesture(owner, sandboxId));
   }),
 );

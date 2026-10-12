@@ -18,7 +18,8 @@ import {
   HooksIcon,
   QueuePendingInfoIcon,
 } from "@/components/shared/icons";
-import { BudgetedMarkdownRenderer } from "../shared/markdown/budgeted-markdown-renderer";
+import { MarkdownRenderer } from "../shared/markdown/markdown-renderer";
+import { useConversationVisualizationContext } from "../inline-visualization-context";
 import { AutomaticApprovalReviewSurface } from "../shared/automatic-approval-review-surface";
 import { MultiAgentActionSurface } from "../shared/multi-agent-action-surface";
 import { ImageViewSurface } from "../shared/image-view-surface";
@@ -1172,8 +1173,15 @@ export function ThreadAssistantBodyBlock({
   alwaysShowAssistantMessageActions = false,
 }: ThreadLeafBlockProps) {
   const block = useCodexTranscriptBlock(inputBlock);
-  const markdownText = stripCodexRemarkDirectiveLines(block.entry.markdownText);
+  const markdownText = stripCodexRemarkDirectiveLines(block.entry.markdownText, {
+    keepInlineVisualizations: true,
+  });
   const isAssistantItemStreaming = isStreamingTurn && block.entry.status === "inProgress";
+  const visualizationContext = useConversationVisualizationContext(
+    block.entry.threadId,
+    block.turnId,
+    isAssistantItemStreaming,
+  );
   const assistantActions = block.assistantMessageActions;
 
   useEffect(() => {
@@ -1218,14 +1226,13 @@ export function ThreadAssistantBodyBlock({
     >
       <div className="group flex min-w-0 flex-col">
         <div className={THREAD_VISUAL_TOKENS.assistantBody} data-thread-selected-text-target="true">
-          <BudgetedMarkdownRenderer
+          <MarkdownRenderer
             content={markdownText}
             parseIncompleteMarkdown={isAssistantItemStreaming}
             animateStreamingText={isAssistantItemStreaming}
-            sourceAriaLabel="Assistant message source"
-            sourceIdentity={block.entry.entryId}
             cwd={threadCwd}
             projectWorkspacePath={projectWorkspacePath}
+            visualizationContext={visualizationContext}
           />
         </div>
         {assistantAfter ? <div className="mt-3">{assistantAfter}</div> : null}

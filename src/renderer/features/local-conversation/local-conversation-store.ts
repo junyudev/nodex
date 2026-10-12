@@ -10109,6 +10109,7 @@ export function useCodexAppServerControl(
       opts?: {
         projectId?: string;
         collaborationMode?: CodexCollaborationModeKind;
+        untrustedAppMessage?: CodexTurnStartOptions["untrustedAppMessage"];
         model?: string;
         reasoningEffort?: CodexReasoningEffort;
         serviceTier?: CodexServiceTier;
@@ -10131,6 +10132,7 @@ export function useCodexAppServerControl(
       const turnOpts: CodexTurnStartOptions = {
         permissionMode: targetManager.readPermissionMode(resolvedProjectId),
         collaborationMode: opts?.collaborationMode,
+        ...(opts?.untrustedAppMessage ? { untrustedAppMessage: opts.untrustedAppMessage } : {}),
         model: opts?.model,
         reasoningEffort: opts?.reasoningEffort,
         ...(opts?.promptInput ? { promptInput: opts.promptInput } : {}),
@@ -10184,6 +10186,7 @@ export function useCodexAppServerControl(
       opts?: {
         projectId?: string;
         collaborationMode?: CodexCollaborationModeKind | null;
+        untrustedAppMessage?: CodexTurnStartOptions["untrustedAppMessage"];
         serviceTier?: CodexServiceTier;
         promptInput?: CodexTurnStartOptions["promptInput"];
       },
@@ -10203,6 +10206,7 @@ export function useCodexAppServerControl(
       const turnOpts: CodexTurnStartOptions = {
         permissionMode: targetManager.readPermissionMode(resolvedProjectId),
         collaborationMode: opts?.collaborationMode ?? undefined,
+        ...(opts?.untrustedAppMessage ? { untrustedAppMessage: opts.untrustedAppMessage } : {}),
         ...(opts?.promptInput ? { promptInput: opts.promptInput } : {}),
         ...buildCodexServiceTierRequestOverride(opts?.serviceTier ?? null),
       };

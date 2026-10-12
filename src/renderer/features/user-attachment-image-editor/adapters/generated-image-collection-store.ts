@@ -2,7 +2,10 @@ import type { GeneratedImageDescriptor } from "../model/types";
 import type { CodexConversationSnapshot } from "@/lib/types";
 import { buildCodexTurnOccurrenceKey } from "../../../../shared/codex-turn-identity";
 import { projectCodexMarkdownLabel } from "../../../../shared/codex-markdown-text";
-import { resolveGeneratedImageOutputState } from "@/features/local-conversation/projection/generated-image-output";
+import {
+  isGeneratedImagePending,
+  resolveGeneratedImageOutputState,
+} from "@/features/local-conversation/projection/generated-image-output";
 import { OPTIMISTIC_IMAGE_EDIT_PREFIX } from "../model/generated-image-collection";
 
 export interface GeneratedImageLiveGroup {
@@ -19,6 +22,9 @@ export interface GeneratedImageLiveCollectionSnapshot {
 }
 
 export interface GeneratedImageLiveGroupInput {
+  /** Native identities keep pending, ready, and repeated presentations in one asset pool. */
+  readonly nativeItemIds?: readonly string[];
+  readonly pendingImageIds?: readonly string[];
   readonly id: string;
   readonly images: readonly GeneratedImageDescriptor[];
   readonly pendingImageCount: number;
@@ -121,10 +127,29 @@ export function projectGeneratedImageCanonicalGroups(
           ];
         }),
         pendingImageCount: output.pendingImageCount,
+        pendingImageIds:
+          turn.status === "inProgress"
+            ? turn.items.flatMap((item) =>
+                item.generatedImage &&
+                isGeneratedImagePending(item.generatedImage.src, item.generatedImage.status)
+                  ? [item.itemId]
+                  : [],
+              )
+            : [],
         turnStartedAtMs,
       },
     ];
   });
+}
+
+function sameIds(
+  left: readonly string[] | undefined,
+  right: readonly string[] | undefined,
+): boolean {
+  return (
+    left === right ||
+    (left?.length === right?.length && (left?.every((id, index) => id === right?.[index]) ?? false))
+  );
 }
 
 export function areGeneratedImageLiveGroupsEqual(
@@ -139,6 +164,8 @@ export function areGeneratedImageLiveGroupsEqual(
         candidate !== undefined &&
         group.id === candidate.id &&
         group.pendingImageCount === candidate.pendingImageCount &&
+        sameIds(group.pendingImageIds, candidate.pendingImageIds) &&
+        sameIds(group.nativeItemIds, candidate.nativeItemIds) &&
         group.turnStartedAtMs === candidate.turnStartedAtMs &&
         group.images.length === candidate.images.length &&
         group.images.every((image, imageIndex) => {
@@ -183,10 +210,8 @@ function resolveCanonicalGroups(threadId: string): readonly GeneratedImageLiveGr
 
 function mergeMountedGroupWithCanonical(
   mounted: GeneratedImageLiveGroupInput,
-  canonical: GeneratedImageLiveGroupInput | undefined,
+  canonicalImagesById: ReadonlyMap<string, GeneratedImageDescriptor>,
 ): GeneratedImageLiveGroupInput {
-  if (!canonical) return mounted;
-  const canonicalImagesById = new Map(canonical.images.map((image) => [image.id, image]));
   return {
     ...mounted,
     images: mounted.images.map((image) => {
@@ -281,16 +306,31 @@ function orderMergedGroups(
 function rebuild(threadId: string): void {
   const previous = snapshotsByThreadId.get(threadId) ?? EMPTY_SNAPSHOT;
   const canonicalGroups = resolveCanonicalGroups(threadId);
-  const canonicalGroupsById = new Map(canonicalGroups.map((group) => [group.id, group]));
-  const groupsById = new Map(canonicalGroupsById);
-  const mountedGroups = mountedGroupRegistrationsByThreadId.get(threadId);
-  for (const [groupId, registrations] of mountedGroups ?? []) {
-    const mounted = latestRegistration(registrations);
-    if (!mounted) continue;
-    groupsById.set(
-      groupId,
-      mergeMountedGroupWithCanonical(mounted, canonicalGroupsById.get(groupId)),
-    );
+  const canonicalImagesById = new Map(
+    canonicalGroups.flatMap((group) => group.images).map((image) => [image.id, image]),
+  );
+  const mountedGroups = [
+    ...(mountedGroupRegistrationsByThreadId.get(threadId)?.values() ?? []),
+  ].flatMap((registrations) => latestRegistration(registrations) ?? []);
+  const mountedIds = new Set(mountedGroups.map((group) => group.id));
+  const claimedNativeIds = new Set(
+    mountedGroups.flatMap((group) => [
+      ...group.images.map((image) => image.id),
+      ...(group.pendingImageIds ?? []),
+      ...(group.nativeItemIds ?? []),
+    ]),
+  );
+  const groupsById = new Map<string, GeneratedImageLiveGroupInput>();
+  for (const group of canonicalGroups) {
+    if (mountedIds.has(group.id)) continue;
+    const images = group.images.filter((image) => !claimedNativeIds.has(image.id));
+    const pendingImageIds = group.pendingImageIds?.filter((id) => !claimedNativeIds.has(id));
+    const pendingImageCount = pendingImageIds?.length ?? group.pendingImageCount;
+    if (images.length === 0 && pendingImageCount === 0) continue;
+    groupsById.set(group.id, { ...group, images, pendingImageIds, pendingImageCount });
+  }
+  for (const mounted of mountedGroups) {
+    groupsById.set(mounted.id, mergeMountedGroupWithCanonical(mounted, canonicalImagesById));
   }
   const orderedConcreteGroups = orderMergedGroups([...groupsById.values()], canonicalGroups);
   const optimisticEdits = reconcileOptimisticEdits(threadId, orderedConcreteGroups);
@@ -303,26 +343,47 @@ function rebuild(threadId: string): void {
   }
   const groups = orderMergedGroups([...groupsById.values()], canonicalGroups);
   let ordinal = 0;
+  const readyIds = new Set(groups.flatMap((group) => group.images.map((image) => image.id)));
+  const emittedIds = new Set<string>();
   const normalizedGroups = groups.map((group) => {
-    const images = group.images.map((image) => ({
-      ...image,
-      generatedOrdinal: ++ordinal,
-      groupId: group.id,
-      turnStartedAtMs: group.turnStartedAtMs ?? image.turnStartedAtMs,
-    }));
-    const pending = Array.from({ length: group.pendingImageCount }, (_, index) => ({
-      id: `${group.id}:pending:${index}`,
-      alt: "Generating image…",
-      attachmentSrc: "",
-      generatedOrdinal: ++ordinal,
-      groupId: group.id,
-      loading: true,
-      source: "generated" as const,
-      src: "",
-      status: "loading" as const,
-      turnStartedAtMs: group.turnStartedAtMs ?? undefined,
-    }));
-    return Object.freeze({ ...group, images: Object.freeze([...images, ...pending]) });
+    const images = group.images
+      .filter((image) => {
+        if (emittedIds.has(image.id)) return false;
+        emittedIds.add(image.id);
+        return true;
+      })
+      .map((image) => ({
+        ...image,
+        generatedOrdinal: ++ordinal,
+        groupId: group.id,
+        turnStartedAtMs: group.turnStartedAtMs ?? image.turnStartedAtMs,
+      }));
+    const pending = Array.from(
+      { length: group.pendingImageCount },
+      (_, index) => group.pendingImageIds?.[index] ?? `${group.id}:pending:${index}`,
+    )
+      .filter((id) => {
+        if (readyIds.has(id) || emittedIds.has(id)) return false;
+        emittedIds.add(id);
+        return true;
+      })
+      .map((id) => ({
+        id,
+        alt: "Generating image…",
+        attachmentSrc: "",
+        generatedOrdinal: ++ordinal,
+        groupId: group.id,
+        loading: true,
+        source: "generated" as const,
+        src: "",
+        status: "loading" as const,
+        turnStartedAtMs: group.turnStartedAtMs ?? undefined,
+      }));
+    return Object.freeze({
+      ...group,
+      pendingImageCount: pending.length,
+      images: Object.freeze([...images, ...pending]),
+    });
   });
   const images = normalizedGroups.flatMap((group) => group.images);
   snapshotsByThreadId.set(

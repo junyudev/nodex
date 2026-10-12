@@ -1,4 +1,4 @@
-import { afterEach, beforeEach, describe, expect, test } from "vite-plus/test";
+import { afterEach, beforeEach, describe, expect, test, vi } from "vite-plus/test";
 import { act, fireEvent, waitFor } from "@testing-library/react";
 import { useState, type ReactNode } from "react";
 import { NodexTooltipProvider } from "../../../components/ui/tooltip";
@@ -20,6 +20,12 @@ import { CodexTranscriptReadOwner } from "../normalized-transcript-read-owner";
 import { createCodexCanonicalHydratedConversationState } from "../../../../shared/codex-conversation-state/codex-conversation-state";
 import { buildAgentActivityV2CorpusThread } from "../../../../shared/codex-conversation-state/test-fixtures/agent-activity-v2-corpus-provenance";
 import { projectCodexTranscript } from "../../../../shared/codex-transcript-projection";
+import { timelineOwnerFixture } from "../projection/normalized-timeline.test-fixtures";
+import * as localConversationStore from "../local-conversation-store";
+import {
+  ContentSearchProvider,
+  useContentSearch,
+} from "../../content-search/content-search-context";
 import { EMPTY_LOCAL_CONVERSATION_THREAD_RESTORE_SNAPSHOT } from "./local-conversation-thread-view-state";
 import { LocalConversationThreadBodyOwner } from "./local-conversation-thread-body-owner";
 import {
@@ -383,7 +389,233 @@ function buildActions(overrides?: Partial<ThreadStageActions>): ThreadStageActio
   };
 }
 
+function FindControls() {
+  const controller = useContentSearch();
+  return (
+    <>
+      <button
+        onClick={() => {
+          controller.requestOpen({ preferredDomain: "conversation" });
+          controller.setQuery("needle");
+        }}
+      >
+        Find thread text
+      </button>
+      <button onClick={controller.goNext}>Next match</button>
+      <output aria-label="Find result">{controller.resultLabel}</output>
+    </>
+  );
+}
+
 describe("LocalConversationThreadBody", () => {
+  test("finds a collapsed commentary and reveals its own native assistant unit", async () => {
+    const commentary = buildAssistantEntry({
+      itemId: "commentary",
+      entryId: "commentary",
+      markdownText: "Hidden needle commentary",
+      assistantPhase: "commentary",
+    });
+    const final = buildAssistantEntry({
+      markdownText: "Final answer",
+      assistantPhase: "final_answer",
+    });
+    const exec = buildAssistantEntry({
+      itemId: "exec",
+      type: "command_execution",
+      kind: "commandExecution",
+      semanticKind: "exec",
+      markdownText: undefined,
+      status: "completed",
+      toolCall: { subtype: "command", toolName: "exec_command", args: { cmd: "true" } },
+      exitCode: 0,
+    });
+    const turn = buildTurn({
+      itemIds: ["user_1", "commentary", "exec", "assistant_1"],
+      items: [buildUserEntry(), commentary, exec, final],
+    });
+    const search = vi
+      .spyOn(localConversationStore, "searchLocalPersistedHistory")
+      .mockResolvedValue({
+        status: "completed",
+        page: {
+          threadId: "thread_1",
+          hostId: "local",
+          hostGeneration: 1,
+          topologyGeneration: 1,
+          query: "needle",
+          occurrences: [],
+          capped: false,
+        },
+      });
+    const model = buildModel({ conversation: buildConversation({ turns: [turn] }) });
+    const view = render(
+      <TooltipProvider>
+        <ContentSearchProvider>
+          <FindControls />
+          <EnsureLocalConversationThreadScrollController>
+            <LocalConversationThreadScrollLayout>
+              <LocalConversationThreadBodyOwner
+                {...model}
+                turnPagination={null}
+                canonicalRequests={[]}
+                backgroundAgentRows={[]}
+                actions={buildActions()}
+                onErrorMessage={() => {}}
+                initialRestoreSnapshot={EMPTY_LOCAL_CONVERSATION_THREAD_RESTORE_SNAPSHOT}
+                onRestoreSnapshotChange={() => {}}
+              />
+            </LocalConversationThreadScrollLayout>
+          </EnsureLocalConversationThreadScrollController>
+        </ContentSearchProvider>
+      </TooltipProvider>,
+    );
+    try {
+      await settleAsyncRender();
+      expect(view.queryByText("Hidden needle commentary")).toBeNull();
+      await act(async () => {
+        fireEvent.click(view.getByRole("button", { name: "Find thread text" }));
+        await Promise.resolve();
+      });
+      await waitFor(() =>
+        expect(view.getByLabelText("Find result").textContent).toBe("1 / 1 results"),
+      );
+      await waitFor(() =>
+        expect(
+          view.container.querySelector(
+            '[data-content-search-unit-key="turn_1:assistant:commentary"] mark.codex-thread-find-active',
+          )?.textContent,
+        ).toBe("needle"),
+      );
+      expect(
+        view.container.querySelector(
+          '[data-content-search-unit-key="turn_1:assistant:assistant_1"] mark',
+        ),
+      ).toBeNull();
+    } finally {
+      view.unmount();
+      search.mockRestore();
+    }
+  });
+  test("finds and reveals a folded native voice tail when persisted search succeeds with an empty page", async () => {
+    const overflow = vi.spyOn(HTMLElement.prototype, "scrollHeight", "get").mockReturnValue(1_000);
+    const { owner, state } = timelineOwnerFixture({
+      data: [
+        {
+          type: "realtime",
+          position: 1,
+          item: {
+            type: "transcriptSegment",
+            id: "voice",
+            realtimeSessionId: "session",
+            role: "assistant",
+            text: "spoken needle and needle",
+          },
+        },
+        {
+          type: "realtime",
+          position: 2,
+          item: {
+            type: "transcriptSegment",
+            id: "user",
+            realtimeSessionId: "session",
+            role: "user",
+            text: "User voice row\n".repeat(5_001) + "\n[needle](https://example.com/result)",
+          },
+        },
+      ],
+      nextCursor: null,
+      activeRealtimeSessionAtPageStart: "session",
+    });
+    const search = vi
+      .spyOn(localConversationStore, "searchLocalPersistedHistory")
+      .mockResolvedValue({
+        status: "completed",
+        page: {
+          threadId: "thread",
+          hostId: "local",
+          hostGeneration: 1,
+          topologyGeneration: 1,
+          query: "needle",
+          occurrences: [],
+          capped: false,
+        },
+      });
+    const hydrate = vi.spyOn(localConversationStore, "hydrateLocalPersistedHistoryOccurrence");
+    const model = buildModel({
+      conversation: buildConversation({ threadId: "thread", turns: [], canonicalState: state }),
+    });
+    const view = render(
+      <TooltipProvider>
+        <ContentSearchProvider>
+          <FindControls />
+          <CodexTranscriptReadOwnerContext.Provider value={owner}>
+            <EnsureLocalConversationThreadScrollController>
+              <LocalConversationThreadScrollLayout>
+                <LocalConversationThreadBodyOwner
+                  {...model}
+                  turnPagination={null}
+                  canonicalRequests={[]}
+                  backgroundAgentRows={[]}
+                  actions={buildActions()}
+                  onErrorMessage={() => {}}
+                  initialRestoreSnapshot={EMPTY_LOCAL_CONVERSATION_THREAD_RESTORE_SNAPSHOT}
+                  onRestoreSnapshotChange={() => {}}
+                />
+              </LocalConversationThreadScrollLayout>
+            </EnsureLocalConversationThreadScrollController>
+          </CodexTranscriptReadOwnerContext.Provider>
+        </ContentSearchProvider>
+      </TooltipProvider>,
+    );
+    try {
+      await settleAsyncRender();
+      await view.findByRole("button", { name: "Show more" });
+      const fullTail = (await view.findByText("needle")).closest("a");
+      await act(async () => {
+        fireEvent.click(view.getByRole("button", { name: "Find thread text" }));
+        await Promise.resolve();
+      });
+      await waitFor(() =>
+        expect(view.getByLabelText("Find result").textContent).toBe("1 / 3 results"),
+      );
+      const unit = view.container.querySelector('[data-native-realtime-item-id="voice"]');
+      await waitFor(() => expect(unit?.querySelectorAll("mark")).toHaveLength(2));
+      expect(unit?.querySelector("mark.codex-thread-find-active")).toBe(
+        unit?.querySelectorAll("mark").item(0),
+      );
+      await act(async () => {
+        fireEvent.click(view.getByRole("button", { name: "Next match" }));
+        await Promise.resolve();
+      });
+      await waitFor(() =>
+        expect(unit?.querySelector("mark.codex-thread-find-active")).toBe(
+          unit?.querySelectorAll("mark").item(1),
+        ),
+      );
+      const user = view.container.querySelector('[data-native-realtime-item-id="user"]');
+      expect(user?.closest("[data-thread-turn-id]")).toBe(unit?.closest("[data-thread-turn-id]"));
+      expect(unit?.closest("[data-thread-turn-id]")?.getAttribute("data-thread-turn-id")).toBe(
+        "realtime-voice:transcript:voice",
+      );
+      await act(async () => {
+        fireEvent.click(view.getByRole("button", { name: "Next match" }));
+        await Promise.resolve();
+      });
+      await waitFor(() =>
+        expect(user?.querySelector("mark.codex-thread-find-active")?.textContent).toBe("needle"),
+      );
+      await view.findByRole("button", { name: "Show less" });
+      expect(view.getByRole("link", { name: "needle" })).toBe(fullTail);
+      expect(search).toHaveBeenCalledWith("thread", "needle");
+      expect(hydrate).not.toHaveBeenCalled();
+      expect(owner.readStructure()?.turns).toHaveLength(0);
+    } finally {
+      view.unmount();
+      search.mockRestore();
+      hydrate.mockRestore();
+      overflow.mockRestore();
+    }
+  });
   beforeEach(() => {
     installAsyncRequestAnimationFrame();
     installThreadRailWideLayoutGeometry();

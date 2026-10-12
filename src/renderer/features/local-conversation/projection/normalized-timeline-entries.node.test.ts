@@ -2,6 +2,7 @@ import { describe, expect, test } from "vite-plus/test";
 import type {
   ThreadItem,
   ThreadRealtimeBemItemPresentation,
+  ThreadTimelineListResponse,
 } from "@nodex/codex-app-server-protocol/v2";
 import { selectNormalizedConversationTurnEntries } from "../normalized-transcript-selectors";
 import {
@@ -24,7 +25,142 @@ const agent = (id: string, text: string): ThreadItem => ({
   questions: null,
 });
 
+const voiceSegment = (
+  id: string,
+  position: number,
+  role: "assistant" | "user" = "assistant",
+): Extract<ThreadTimelineListResponse["data"][number], { type: "realtime" }> => ({
+  type: "realtime",
+  position,
+  item: {
+    type: "transcriptSegment",
+    id,
+    realtimeSessionId: "session",
+    role,
+    text: `${id} spoken text`,
+  },
+});
+
 describe("normalized mixed timeline presentation", () => {
+  test("groups consecutive native voice identities while text deltas leave the row structure untouched", () => {
+    const { owner, project } = timelineOwnerFixture({
+      data: [voiceSegment("first", 1, "user"), voiceSegment("second", 2)],
+      nextCursor: null,
+      activeRealtimeSessionAtPageStart: "session",
+    });
+    const structure = owner.readStructure();
+    const rows = project();
+    expect(rows.entries).toHaveLength(1);
+    expect(rows.entries[0]).toMatchObject({
+      turnKey: "realtime-voice:transcript:first",
+      itemId: "first",
+      segmentIds: ["first", "second"],
+      estimatedHeightPx: 272,
+      turnId: null,
+    });
+    const second = owner.readRealtimeItem("second");
+    let structureNotifications = 0;
+    let secondNotifications = 0;
+    const stopStructure = owner.subscribeStructure(() => {
+      structureNotifications += 1;
+    });
+    const stopSecond = owner.subscribeRealtimeItem("second", () => {
+      secondNotifications += 1;
+    });
+    owner.applyEvent({
+      type: "changes",
+      changes: [{ type: "realtime-text", itemId: "first", delta: " more" }],
+    });
+    expect(owner.readStructure()).toBe(structure);
+    expect(owner.readRealtimeItem("second")).toBe(second);
+    expect(structureNotifications).toBe(0);
+    expect(secondNotifications).toBe(0);
+    expect(project().entries[0]).toEqual(rows.entries[0]);
+    stopStructure();
+    stopSecond();
+  });
+
+  test.each([
+    {
+      type: "realtime",
+      position: 2,
+      item: { type: "realtimeSessionStarted", id: "start", realtimeSessionId: "next" },
+    },
+    {
+      type: "realtime",
+      position: 2,
+      item: {
+        type: "realtimeSessionClosed",
+        id: "end",
+        realtimeSessionId: "session",
+        outcome: "ended",
+      },
+    },
+    {
+      type: "realtime",
+      position: 2,
+      item: {
+        type: "bemItemPromoted",
+        id: "pending",
+        realtimeSessionId: "session",
+        turnId: "one",
+        itemId: "pending-native",
+        presentation: { type: "inlineMarkdown" },
+      },
+    },
+    { type: "item", position: 2, turnId: "one", item: agent("ordinary", "Ordinary answer") },
+  ] satisfies ThreadTimelineListResponse["data"])(
+    "flushes a voice row at native boundary $type",
+    (boundary) => {
+      const { project } = timelineOwnerFixture(
+        {
+          data: [voiceSegment("before", 1), boundary, voiceSegment("after", 3)],
+          nextCursor: null,
+          activeRealtimeSessionAtPageStart: "session",
+        },
+        [agent("ordinary", "Ordinary answer")],
+      );
+      const groups = project()
+        .entries.filter(isCodexRealtimeTimelineEntry)
+        .filter((entry) => entry.itemType === "transcriptSegment");
+      expect(groups.map((entry) => entry.segmentIds)).toEqual([["before"], ["after"]]);
+    },
+  );
+
+  test("keeps an uninterrupted voice group across receipts that emit no presentation", () => {
+    const { project } = timelineOwnerFixture({
+      data: [
+        voiceSegment("first", 1),
+        {
+          type: "realtime",
+          position: 2,
+          item: {
+            type: "realtimeSessionClosed",
+            id: "wrong-session",
+            realtimeSessionId: "other",
+            outcome: "ended",
+          },
+        },
+        { type: "turnStarted", position: 3, turnId: "unloaded", startedAt: 1 },
+        {
+          type: "turnCompleted",
+          position: 4,
+          turnId: "unloaded",
+          status: "completed",
+          error: null,
+          startedAt: 1,
+          completedAt: 2,
+          durationMs: 1000,
+        },
+        voiceSegment("second", 5),
+      ],
+      nextCursor: null,
+      activeRealtimeSessionAtPageStart: "session",
+    });
+    expect(project().entries).toHaveLength(1);
+    expect(project().entries[0]).toMatchObject({ segmentIds: ["first", "second"] });
+  });
+
   test("retains a realtime-only transcript without inventing a canonical Turn", () => {
     const { owner, project } = timelineOwnerFixture({
       data: [
@@ -49,8 +185,10 @@ describe("normalized mixed timeline presentation", () => {
         type: "realtime",
         itemId: "voice",
         itemType: "transcriptSegment",
-        turnKey: "realtime:voice",
-        turnSearchKey: "realtime:voice",
+        segmentIds: ["voice"],
+        estimatedHeightPx: 144,
+        turnKey: "realtime-voice:transcript:voice",
+        turnSearchKey: "realtime-voice:transcript:voice",
         turnId: null,
       },
     ]);
@@ -605,6 +743,34 @@ describe("normalized mixed timeline presentation", () => {
     });
     expect(result.entries[0]).toBe(older);
     expect(result.historyRows?.[1]).toBe(gap);
-    expect(result.historyRows?.at(-1)).toMatchObject({ turnKey: "realtime:voice" });
+    expect(result.historyRows?.at(-1)).toMatchObject({
+      turnKey: "realtime-voice:transcript:voice",
+    });
+    const split = projectNormalizedTimelineEntries({
+      owner,
+      entries: [older, base],
+      structure: {
+        ...structure,
+        timeline: [
+          { kind: "content", key: "old", turnKey: "older", entityKey: "turn:older" },
+          gap,
+          { kind: "content", key: "new", turnKey: base.turnKey, entityKey: base.historyEntityKey },
+        ],
+        itemTimeline: {
+          activeRealtimeSessionAtPageStart: "session",
+          entries: [
+            { type: "turnStarted", position: 0, turnId: "older", startedAt: 1 },
+            voiceSegment("left", 1),
+            { type: "turnStarted", position: 2, turnId: "one", startedAt: 2 },
+            voiceSegment("right", 3),
+          ],
+        },
+      },
+    });
+    const voiceGroups = split.entries
+      .filter(isCodexRealtimeTimelineEntry)
+      .filter((entry) => entry.itemType === "transcriptSegment");
+    expect(voiceGroups.map((entry) => entry.segmentIds)).toEqual([["left"], ["right"]]);
+    expect(split.historyRows?.[1]).toBe(gap);
   });
 });

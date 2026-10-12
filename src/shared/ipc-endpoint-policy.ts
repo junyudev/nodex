@@ -142,6 +142,7 @@ type QueryEndpointPolicy =
   | "codex:hooks:list"
   | "codex:mcp-apps:list"
   | "codex:mcp-resource:read"
+  | "codex:visualization:read"
   | "codex:mcp-server-statuses:list"
   | "codex:pasted-text:read"
   | "codex:thread-handoffs:list"
@@ -240,6 +241,7 @@ type QueryEndpointPolicy =
   | "worktrees:thread:availability";
 
 type ControlEndpointPolicy =
+  | "codex:visualization:consume-gesture"
   | "editor-history:release"
   | "editor-history:abandon"
   | "editor-history:abandon-transfer"
@@ -473,6 +475,7 @@ type PlainResultCommandEndpointPolicy =
   | "codex:account:login:start"
   | "codex:account:logout"
   | "codex:account:rate-limit-reset:consume"
+  | "codex:visualization:open-external"
   | "codex:composer-appshot:capture"
   | "codex:composer-plugins:activate"
   | "codex:conversation-unread:set"

@@ -160,6 +160,7 @@ export function NodexDialogContent({
   size = "default",
   unstyledContent = false,
   style,
+  portalContainer,
   ...props
 }: DialogPrimitive.Popup.Props & {
   showCloseButton?: boolean;
@@ -169,6 +170,7 @@ export function NodexDialogContent({
   closeIconClassName?: string;
   size?: NodexDialogSize;
   unstyledContent?: boolean;
+  portalContainer?: HTMLElement | null;
 }) {
   const layerIndex = useNodexFloatingLayerIndex(undefined, APP_SHELL_MODAL_LAYER_INDEX);
   const layeredStyle =
@@ -177,7 +179,7 @@ export function NodexDialogContent({
       : { ...style, zIndex: layerIndex };
 
   return (
-    <NodexDialogPortal>
+    <NodexDialogPortal container={portalContainer}>
       <NodexDialogOverlay className={overlayClassName} />
       <DialogPrimitive.Popup
         data-slot="codex-dialog-content"

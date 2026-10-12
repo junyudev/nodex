@@ -1,5 +1,6 @@
 import { projectCodexSubagentPathDisplayName } from "./codex-subagent-display";
 import { areStructurallyEqual } from "./structural-equality";
+import { trimMarkdownBlankLines } from "./markdown-text-boundaries";
 import {
   expandCodexAsyncQuestions,
   decodeCodexAsyncQuestionReplies,
@@ -20,6 +21,7 @@ import { projectCodexParsedCommand } from "./codex-command-action-projection";
 import { projectCodexMcpToolCall } from "./codex-mcp-tool-call";
 import { projectNativeAutomationUpdate } from "./nodex-app-tools/automation-projection";
 import { parseCodexDelegationText } from "./codex-delegation";
+import { decodeUntrustedAppMessage } from "./codex-untrusted-app-input";
 import { projectCodexReasoningSummary } from "./codex-reasoning-projection";
 import {
   buildAutomaticApprovalReviewSummary,
@@ -286,15 +288,16 @@ export function projectAssistantText(text: string, streaming: boolean): string |
   }
 
   if (!removed) return text;
-  const projected = retainedLines
-    .join("\n")
-    .replace(/\n{3,}/g, "\n\n")
-    .trim();
+  const projected = trimMarkdownBlankLines(retainedLines.join("\n").replace(/\n{3,}/g, "\n\n"));
   return projected.length === 0 ? null : projected;
 }
 
 function projectUserMessageText(content: readonly CodexSteeringUserInput[]): string {
-  return content.flatMap((input) => (input.type === "text" ? [input.text] : [])).join("\n");
+  return content
+    .flatMap((input) =>
+      input.type === "text" ? [decodeUntrustedAppMessage(input)?.text ?? input.text] : [],
+    )
+    .join("\n");
 }
 
 export function areCodexCanonicalTurnParamsEqual(
@@ -455,7 +458,10 @@ function projectTurnParamsUserView(input: {
   const rawCommentAttachments = input.params.commentAttachments ?? [];
   const commentAttachments = rawCommentAttachments.filter(isReviewDiffCommentAttachment);
   const rawMarkdownText = buildCodexSteeringCompareKey(
-    input.params.input,
+    input.params.input.map((entry) => {
+      const message = decodeUntrustedAppMessage(entry);
+      return entry.type === "text" && message ? { ...entry, text: message.text } : entry;
+    }),
     rawCommentAttachments,
   ).rawText;
   const delegation = parseCodexDelegationText(rawMarkdownText);

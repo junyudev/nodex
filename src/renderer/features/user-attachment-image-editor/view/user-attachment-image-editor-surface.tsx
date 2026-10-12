@@ -1,3 +1,4 @@
+import { useGeneratedImageCollectionGroups } from "../adapters/use-generated-image-collection-groups";
 import {
   useCallback,
   useEffect,
@@ -22,13 +23,10 @@ import {
   type ImageEditComposerAttachment,
   type ImageEditComposerDraftSnapshot,
 } from "@/lib/image-edit-composer-channel";
-import { useCodexConversationValue } from "@/features/local-conversation/local-conversation-store";
 import { trackImageToolOpen, trackImageView } from "../analytics/image-editor-analytics";
 import { useImageEditSubmission } from "../adapters/use-image-edit-submission";
 import {
   getGeneratedImageLiveCollectionSnapshot,
-  areGeneratedImageLiveGroupsEqual,
-  projectGeneratedImageCanonicalGroups,
   replaceGeneratedImageCanonicalGroups,
   subscribeGeneratedImageLiveCollections,
 } from "../adapters/generated-image-collection-store";
@@ -308,11 +306,7 @@ export function UserAttachmentImageEditorSurface({
   onTitleChange,
 }: UserAttachmentImageEditorSurfaceProps) {
   const reducedMotion = Boolean(useReducedMotion());
-  const canonicalGeneratedGroups = useCodexConversationValue(
-    options.threadId,
-    projectGeneratedImageCanonicalGroups,
-    areGeneratedImageLiveGroupsEqual,
-  );
+  const canonicalGeneratedGroups = useGeneratedImageCollectionGroups(options.threadId);
   const getLiveCollectionSnapshot = useCallback(
     () => getGeneratedImageLiveCollectionSnapshot(options.threadId ?? ""),
     [options.threadId],

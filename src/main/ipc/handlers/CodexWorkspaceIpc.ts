@@ -81,6 +81,7 @@ import { CodexThreadTitlePersistence } from "../../codex-application/CodexThread
 import { CodexTurnCommands } from "../../codex-application/CodexTurnCommands";
 import { CodexTurnPresentation } from "../../codex-application/CodexTurnPresentation";
 import { createUuidV7 } from "../../../shared/uuid-v7";
+import { requireCredentialFreeHttpsUrl } from "../../../shared/external-navigation-url";
 import type { CodexTurnPresentationTicket } from "../../../shared/nodex-app-tools/turn-presentation";
 import { ConversationCommands } from "../../codex-application/ConversationCommands";
 import { ManagedWorktreeCatalog } from "../../codex-application/ManagedWorktreeCatalog";
@@ -2351,6 +2352,7 @@ export const live = Layer.effectDiscard(
             threadId,
             prompt,
             presentationTicket,
+            untrustedAppMessage: opts?.untrustedAppMessage,
             collaborationMode: opts?.collaborationMode,
             serviceTier: opts?.serviceTier,
             promptInput: opts?.promptInput,
@@ -2475,12 +2477,7 @@ export const live = Layer.effectDiscard(
 
     registerPlainCommand("mcp-app:open-external", async (event, value) => {
       requireTrustedAppRendererSender(event, "MCP external navigation");
-      if (value.length > 8_192) throw new Error("MCP external URL is too long");
-      const url = new URL(value);
-      if (url.protocol !== "https:" || url.username || url.password) {
-        throw new Error("MCP external navigation requires a credential-free HTTPS URL");
-      }
-      await shell.openExternal(url.toString());
+      await shell.openExternal(requireCredentialFreeHttpsUrl(value));
     });
 
     registerEffectControl(

@@ -28,6 +28,7 @@ interface OwnedMcpAppAttachment extends McpAppPendingAttachment {
 
 interface AttachedMcpAppGuest extends OwnedMcpAppAttachment {
   guest: WebContents;
+  lastUserGestureAt?: number;
 }
 
 interface PendingMcpAppAttachment {
@@ -71,6 +72,7 @@ export interface McpAppSandboxHost {
 
 export interface McpAppSandboxController {
   readonly createHost: (owner: WebContents) => McpAppSandboxHost;
+  readonly consumeUserGesture: (owner: WebContents, sandboxId: string, initId?: string) => boolean;
 }
 
 export interface McpWebviewParams {
@@ -287,6 +289,14 @@ class McpAppSandboxControllerState {
     );
     this.#hosts.add(host);
     return host;
+  }
+
+  consumeUserGesture(owner: WebContents, sandboxId: string, initId?: string): boolean {
+    if (!this.#installed || owner.isDestroyed()) return false;
+    for (const host of this.#hosts) {
+      if (host.consumeUserGesture(owner, sandboxId, initId)) return true;
+    }
+    return false;
   }
 
   release(): void {
@@ -577,8 +587,29 @@ class McpAppSandboxHostState implements McpAppSandboxHost {
     this.#coordinator.releaseHost(this, this.#owner);
   }
 
+  consumeUserGesture(owner: WebContents, sandboxId: string, initId?: string): boolean {
+    if (this.#disposed || this.#owner.id !== owner.id) return false;
+    const attached = [...this.#attachedGuests.values()].find(
+      (value) => value.sandboxId === sandboxId && (initId === undefined || value.initId === initId),
+    );
+    if (!attached || attached.guest.isDestroyed()) return false;
+    const timestamp = attached.lastUserGestureAt;
+    delete attached.lastUserGestureAt;
+    return timestamp !== undefined && performance.now() - timestamp <= 5_000;
+  }
+
   #installGuestPolicy(attached: AttachedMcpAppGuest): void {
     const { guest, sourceUrl } = attached;
+    guest.on("before-mouse-event", (_event, input) => {
+      if (input.type !== "mouseDown") return;
+      attached.lastUserGestureAt = performance.now();
+      guest.focus();
+    });
+    guest.on("before-input-event", (_event, input) => {
+      if (input.type !== "keyDown" || input.isAutoRepeat || !["Enter", " "].includes(input.key))
+        return;
+      attached.lastUserGestureAt = performance.now();
+    });
     guest.setWindowOpenHandler(() => ({ action: "deny" }));
     guest.on("will-navigate", (event, url) => {
       const navigation = event as Electron.Event & { url?: string };
@@ -680,5 +711,9 @@ export const makeMcpAppSandboxController = (
     const state = new McpAppSandboxControllerState(options, protocolCache, scheduler, platform);
     yield* Effect.addFinalizer(() => Effect.sync(() => state.release()));
     yield* Effect.sync(() => state.install());
-    return { createHost: (owner) => state.createHost(owner) };
+    return {
+      createHost: (owner) => state.createHost(owner),
+      consumeUserGesture: (owner, sandboxId, initId) =>
+        state.consumeUserGesture(owner, sandboxId, initId),
+    };
   });

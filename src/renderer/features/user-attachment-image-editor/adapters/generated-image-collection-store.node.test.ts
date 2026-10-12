@@ -275,3 +275,110 @@ describe("generated image live collection store", () => {
     optimistic?.rollback();
   });
 });
+
+describe("native image asset identity", () => {
+  test("shares one native asset across canonical history and independent repeated receipts", () => {
+    const threadId = "thread-native-receipts";
+    const canonicalImage = {
+      ...image("native"),
+      alt: "Generated image 4",
+      tabTitle: "Thread - Generated image 4",
+    };
+    const removeCanonical = replaceGeneratedImageCanonicalGroups(threadId, [
+      { id: "canonical", images: [canonicalImage], pendingImageCount: 0, turnStartedAtMs: 1 },
+    ]);
+    const receipt = (id: string) => ({
+      id,
+      images: [image("native")],
+      pendingImageCount: 0,
+      nativeItemIds: ["native"],
+      turnStartedAtMs: 1,
+    });
+    const removeFirst = replaceGeneratedImageLiveGroup(threadId, receipt("first"));
+    const removeSecond = replaceGeneratedImageLiveGroup(threadId, receipt("second"));
+    try {
+      expect(
+        getGeneratedImageLiveCollectionSnapshot(threadId).groups.map((group) => group.id),
+      ).toEqual(["first", "second"]);
+      expect(getGeneratedImageLiveCollectionSnapshot(threadId).images).toHaveLength(1);
+      expect(getGeneratedImageLiveCollectionSnapshot(threadId).images[0]).toMatchObject({
+        id: "native",
+        alt: canonicalImage.alt,
+        tabTitle: canonicalImage.tabTitle,
+      });
+      removeFirst();
+      expect(getGeneratedImageLiveCollectionSnapshot(threadId).images).toHaveLength(1);
+      expect(getGeneratedImageLiveCollectionSnapshot(threadId).images[0]?.groupId).toBe("second");
+      removeSecond();
+      expect(getGeneratedImageLiveCollectionSnapshot(threadId).images[0]?.groupId).toBe(
+        "canonical",
+      );
+    } finally {
+      removeFirst();
+      removeSecond();
+      removeCanonical();
+    }
+    expect(getGeneratedImageLiveCollectionSnapshot(threadId).images).toEqual([]);
+  });
+
+  test("retains pending native identity through completion and releases stale canonical pending state", () => {
+    const threadId = "thread-native-transition";
+    const removeCanonical = replaceGeneratedImageCanonicalGroups(threadId, [
+      {
+        id: "canonical",
+        images: [],
+        pendingImageCount: 1,
+        pendingImageIds: ["native"],
+        turnStartedAtMs: 1,
+      },
+    ]);
+    const pending = {
+      id: "receipt",
+      images: [],
+      pendingImageCount: 1,
+      pendingImageIds: ["native"],
+      nativeItemIds: ["native"],
+      turnStartedAtMs: 1,
+    };
+    const removePending = replaceGeneratedImageLiveGroup(threadId, pending);
+    expect(
+      getGeneratedImageLiveCollectionSnapshot(threadId).images.map((item) => [
+        item.id,
+        item.status,
+      ]),
+    ).toEqual([["native", "loading"]]);
+    const removeReady = replaceGeneratedImageLiveGroup(threadId, {
+      ...pending,
+      images: [image("native")],
+      pendingImageCount: 0,
+      pendingImageIds: [],
+    });
+    try {
+      removePending();
+      expect(
+        getGeneratedImageLiveCollectionSnapshot(threadId).images.map((item) => [
+          item.id,
+          item.status,
+        ]),
+      ).toEqual([["native", "ready"]]);
+      const failed = replaceGeneratedImageLiveGroup(threadId, {
+        ...pending,
+        images: [],
+        pendingImageCount: 0,
+        pendingImageIds: [],
+      });
+      try {
+        expect(getGeneratedImageLiveCollectionSnapshot(threadId).images).toEqual([]);
+      } finally {
+        failed();
+      }
+    } finally {
+      removeReady();
+      removePending();
+      removeCanonical();
+    }
+    expect(
+      areGeneratedImageLiveGroupsEqual([pending], [{ ...pending, pendingImageIds: ["other"] }]),
+    ).toBe(false);
+  });
+});

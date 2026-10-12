@@ -421,10 +421,10 @@ describe("LocalConversationVirtualizedTurnList", () => {
     expect(captured).toEqual({
       distanceFromBottomPx: 0,
       state: {
-        followMode: "prework_watch",
+        followMode: "prework_follow",
         isLatestTurnInProgress: true,
         latestTurnFollowContentHeightPx: 320,
-        latestTurnHeightPx: 480,
+        latestTurnHeightPx: null,
         latestTurnPhase: "prework",
         turnKey: "turn_1",
       },
@@ -473,7 +473,7 @@ describe("LocalConversationVirtualizedTurnList", () => {
       turnKey: "turn_1",
       isLatestTurnInProgress: true,
       latestTurnPhase: "prework",
-      followMode: "prework_watch",
+      followMode: "prework_follow",
     });
   });
 

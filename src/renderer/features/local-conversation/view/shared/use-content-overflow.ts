@@ -19,7 +19,7 @@ function readLineHeightPx(element: HTMLElement): number {
     return fontSize * LINE_HEIGHT_FALLBACK_MULTIPLIER;
   }
 
-  return 20;
+  return 13 * LINE_HEIGHT_FALLBACK_MULTIPLIER;
 }
 
 export function useContentOverflow(
@@ -40,8 +40,8 @@ export function useContentOverflow(
 
     const measure = () => {
       animationFrame = null;
-      const collapsedHeightPx = readLineHeightPx(element) * collapsedLineCount;
-      const isOverflowing = element.scrollHeight > collapsedHeightPx + 0.5;
+      const collapsedHeightPx = Math.ceil(readLineHeightPx(element) * collapsedLineCount);
+      const isOverflowing = Math.ceil(element.scrollHeight) > collapsedHeightPx + 1;
       setMeasurement((current) =>
         current.collapsedHeightPx === collapsedHeightPx && current.isOverflowing === isOverflowing
           ? current
@@ -64,7 +64,7 @@ export function useContentOverflow(
       characterData: true,
       subtree: true,
     });
-    scheduleMeasurement();
+    measure();
 
     return () => {
       resizeObserver?.disconnect();

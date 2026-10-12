@@ -12,6 +12,7 @@ import * as BrowserSidebarIpc from "../ipc/handlers/BrowserSidebarIpc";
 import * as ComposerAppshotIpc from "../ipc/handlers/ComposerAppshotIpc";
 import * as CodexApplicationIpc from "../ipc/handlers/CodexApplicationIpc";
 import * as CodexRendererIpc from "../ipc/handlers/CodexRendererIpc";
+import * as CodexVisualizationIpc from "../ipc/handlers/CodexVisualizationIpc";
 import * as CodexConversationServiceIpc from "../ipc/handlers/CodexConversationServiceIpc";
 import * as CodexPermissionsIpc from "../ipc/handlers/CodexPermissionsIpc";
 import * as ChromeControlSettingsIpc from "../ipc/handlers/ChromeControlSettingsIpc";
@@ -74,6 +75,7 @@ export const live = Layer.mergeAll(
   ComposerAppshotIpc.live,
   CodexApplicationIpc.live,
   CodexRendererIpc.live,
+  CodexVisualizationIpc.live,
   CodexConversationServiceIpc.live,
   CodexRendererProjectionRuntime.live,
   CodexThreadNotificationRuntime.live,

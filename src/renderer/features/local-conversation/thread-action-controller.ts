@@ -440,6 +440,7 @@ export function createThreadStageActions(input: ThreadActionControllerInput): Th
             ...(input.projectId === null ? {} : { projectId: input.projectId }),
             collaborationMode: opts?.collaborationMode,
             promptInput: opts?.promptInput,
+            untrustedAppMessage: opts?.untrustedAppMessage,
             model: opts?.model,
             reasoningEffort: opts?.reasoningEffort,
             serviceTier: opts?.serviceTier,
@@ -547,6 +548,7 @@ export function createThreadStageActions(input: ThreadActionControllerInput): Th
         ...(input.projectId === null ? {} : { projectId: input.projectId }),
         collaborationMode: opts?.collaborationMode,
         promptInput: opts?.promptInput,
+        untrustedAppMessage: opts?.untrustedAppMessage,
       });
     },
     onRemoveQueuedFollowUp: async (threadId, followUpId) => {

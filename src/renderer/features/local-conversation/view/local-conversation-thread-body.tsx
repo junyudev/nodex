@@ -32,6 +32,11 @@ import {
 } from "./local-conversation-thread-view-state";
 import { resolveImageEditComposerTarget } from "../image-edit-composer-target";
 import { CodexTranscriptReadOwnerProvider } from "../normalized-transcript-hooks";
+import {
+  InlineVisualizationFollowUpProvider,
+  type InlineVisualizationFollowUpMessage,
+} from "../../../lib/inline-visualization/inline-visualization-follow-up-context";
+import { captureInlineVisualizationFollowUp } from "../../../lib/inline-visualization/inline-visualization-follow-up-input";
 
 interface LocalConversationThreadBodyProps {
   model: ThreadBodySurfaceModel;
@@ -80,6 +85,17 @@ function LocalConversationThreadBodyLayout({
       actions.onSendPrompt(buildMcpAppFollowUpPrompt(message)),
     [actions],
   );
+  const handleVisualizationFollowUp = useCallback(
+    async (message: InlineVisualizationFollowUpMessage) => {
+      const options = { untrustedAppMessage: captureInlineVisualizationFollowUp(message) };
+      if (model.body.isThreadRunning && model.threadId) {
+        await actions.onEnqueueQueuedFollowUp(model.threadId, message.prompt, options);
+        return;
+      }
+      await actions.onSendPrompt(message.prompt, options);
+    },
+    [actions, model.body.isThreadRunning, model.threadId],
+  );
 
   return (
     <LocalConversationThreadScrollLayout
@@ -91,44 +107,46 @@ function LocalConversationThreadBodyLayout({
       {transcriptVisible ? (
         <div data-local-conversation-transcript="true" className="contents">
           <McpAppFollowUpProvider onSend={handleMcpAppFollowUp}>
-            <LocalConversationThreadBodyOwner
-              body={model.body}
-              projectId={model.projectId}
-              hostId={model.hostId}
-              threadId={model.threadId}
-              isSideChat={model.isSideChat}
-              cwd={model.cwd}
-              turns={model.turns}
-              firstSubmissionTurn={model.firstSubmissionTurn}
-              turnPagination={model.turnPagination ?? null}
-              historyRows={model.historyRows}
-              conversationEntityGeneration={model.conversationEntityGeneration}
-              historyTopologyGeneration={model.historyTopologyGeneration}
-              historyMutationRevision={model.historyMutationRevision}
-              turnItemsPaginationById={model.turnItemsPaginationById}
-              requests={model.requests}
-              canonicalRequests={model.canonicalRequests ?? []}
-              resumeState={model.resumeState}
-              attachmentState={model.attachmentState}
-              capabilityFlags={model.capabilityFlags}
-              parentTurns={model.parentTurns}
-              childMemberships={model.childMemberships}
-              parentModel={model.parentModel}
-              backgroundAgentRows={model.backgroundAgentRows ?? []}
-              projectWorkspacePath={model.projectWorkspacePath}
-              projectlessOutputDirectory={model.projectlessOutputDirectory}
-              searchOpenTick={model.searchOpenTick}
-              threadStartProgress={model.threadStartProgress}
-              actions={actions}
-              isWorktreeThread={isWorktreeThread}
-              onForkFromTurnIntoWorktree={onForkFromTurnIntoWorktree}
-              planSidePanelState={planSidePanelState}
-              onErrorMessage={onErrorMessage}
-              initialUiState={initialUiState}
-              initialRestoreSnapshot={initialRestoreSnapshot}
-              onRestoreSnapshotChange={onRestoreSnapshotChange}
-              turnDiffHoverPreviewDisabled={turnDiffHoverPreviewDisabled}
-            />
+            <InlineVisualizationFollowUpProvider onSend={handleVisualizationFollowUp}>
+              <LocalConversationThreadBodyOwner
+                body={model.body}
+                projectId={model.projectId}
+                hostId={model.hostId}
+                threadId={model.threadId}
+                isSideChat={model.isSideChat}
+                cwd={model.cwd}
+                turns={model.turns}
+                firstSubmissionTurn={model.firstSubmissionTurn}
+                turnPagination={model.turnPagination ?? null}
+                historyRows={model.historyRows}
+                conversationEntityGeneration={model.conversationEntityGeneration}
+                historyTopologyGeneration={model.historyTopologyGeneration}
+                historyMutationRevision={model.historyMutationRevision}
+                turnItemsPaginationById={model.turnItemsPaginationById}
+                requests={model.requests}
+                canonicalRequests={model.canonicalRequests ?? []}
+                resumeState={model.resumeState}
+                attachmentState={model.attachmentState}
+                capabilityFlags={model.capabilityFlags}
+                parentTurns={model.parentTurns}
+                childMemberships={model.childMemberships}
+                parentModel={model.parentModel}
+                backgroundAgentRows={model.backgroundAgentRows ?? []}
+                projectWorkspacePath={model.projectWorkspacePath}
+                projectlessOutputDirectory={model.projectlessOutputDirectory}
+                searchOpenTick={model.searchOpenTick}
+                threadStartProgress={model.threadStartProgress}
+                actions={actions}
+                isWorktreeThread={isWorktreeThread}
+                onForkFromTurnIntoWorktree={onForkFromTurnIntoWorktree}
+                planSidePanelState={planSidePanelState}
+                onErrorMessage={onErrorMessage}
+                initialUiState={initialUiState}
+                initialRestoreSnapshot={initialRestoreSnapshot}
+                onRestoreSnapshotChange={onRestoreSnapshotChange}
+                turnDiffHoverPreviewDisabled={turnDiffHoverPreviewDisabled}
+              />
+            </InlineVisualizationFollowUpProvider>
           </McpAppFollowUpProvider>
         </div>
       ) : null}

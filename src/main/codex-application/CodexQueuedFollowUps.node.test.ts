@@ -13,6 +13,8 @@ import { ConversationEntityMap } from "./internal/ConversationEntityMap";
 import { make } from "./CodexQueuedFollowUps";
 import type { CodexQueuedMessageState } from "../../shared/codex-queued-message";
 import type { QueuedMessageRole } from "../../shared/codex-queued-message-coordinator";
+import { queuedMessagePromptInput } from "../../shared/codex-queued-message";
+import { prepareUntrustedAppInput } from "../../shared/codex-untrusted-app-input";
 
 const message = (id: string) => ({
   id,
@@ -90,6 +92,71 @@ const fixture = (initial: CodexQueuedMessageState = {}) =>
       },
     };
   });
+
+it.effect(
+  "retains visualization provenance across persistence and queued editing without trusted prose",
+  () =>
+    Effect.scoped(
+      Effect.gen(function* () {
+        const f = yield* fixture();
+        const message = {
+          source: "visualization",
+          sourceId: "widget-a",
+          text: "Inspect this selection",
+          structuredContent: { selected: [1, 3] },
+        } as const;
+        const captured = yield* f.service.prepareMessage({
+          threadId: "thread",
+          prompt: message.text,
+          untrustedAppMessage: message,
+        });
+        yield* f.service.acceptFromFollower("thread", [captured]);
+        const restored = JSON.parse(JSON.stringify(f.state())) as CodexQueuedMessageState;
+        const editing = queuedMessagePromptInput(restored.thread![0]!);
+        const replacement = yield* f.service.prepareMessage({
+          threadId: "thread",
+          prompt: "Inspect the revised selection",
+          promptInput: editing,
+        });
+        const editedMessage = { ...message, text: "Inspect the revised selection" };
+        assert.deepEqual(replacement.context.untrustedAppMessage, editedMessage);
+        const compiled = prepareUntrustedAppInput(editedMessage.text, replacement.context, "call");
+        assert.strictEqual(
+          compiled.input.type === "text" && compiled.input.text,
+          "Respond to the user input in the context of our conversation.",
+        );
+        assert.deepEqual(compiled.responseItems[1], {
+          type: "function_call_output",
+          call_id: "call",
+          output: [
+            { type: "input_text", text: JSON.stringify({ kind: "message", ...editedMessage }) },
+          ],
+        });
+      }),
+    ).pipe(Effect.provide(callbackLayer)),
+);
+
+it.effect("rejects malformed visualization context before creating a queued submission", () =>
+  Effect.scoped(
+    Effect.gen(function* () {
+      const f = yield* fixture();
+      const result = yield* f.service
+        .prepareMessage({
+          threadId: "thread",
+          prompt: "inspect",
+          untrustedAppMessage: {
+            source: "visualization",
+            sourceId: "widget-a",
+            text: "inspect",
+            structuredContent: [],
+          } as never,
+        })
+        .pipe(Effect.result);
+      assert.strictEqual(result._tag, "Failure");
+      assert.deepEqual(f.state(), {});
+    }),
+  ).pipe(Effect.provide(callbackLayer)),
+);
 it.effect("persists whole captured queue messages and broadcasts only after the owner write", () =>
   Effect.scoped(
     Effect.gen(function* () {

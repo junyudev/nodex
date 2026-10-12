@@ -22,6 +22,56 @@ export interface LocalConversationSearchTarget {
   readonly occurrenceIndex: number;
 }
 
+/** Persisted order wins; resident projections keep their local reveal identity. */
+export function mergeLocalConversationSearchResults(input: {
+  readonly resident: ContentSearchLocalResult;
+  readonly persisted: ContentSearchLocalResult;
+  readonly resolveResidentTarget: (
+    meta: LocalConversationPersistedSearchMatchMeta,
+  ) => LocalConversationSearchTarget | null;
+}): ContentSearchLocalResult {
+  const byTarget = new Map(
+    input.resident.matches.flatMap((match) => {
+      const target = match.meta as LocalConversationSearchTarget | undefined;
+      return target &&
+        typeof target.unitKey === "string" &&
+        typeof target.turnKey === "string" &&
+        Number.isSafeInteger(target.occurrenceIndex)
+        ? [
+            [
+              JSON.stringify([target.turnKey, target.unitKey, target.occurrenceIndex]),
+              match,
+            ] as const,
+          ]
+        : [];
+    }),
+  );
+  const seen = new Set<string>();
+  const matches: ContentSearchLocalMatch[] = [];
+  for (const candidate of [...input.persisted.matches, ...input.resident.matches]) {
+    const target = isLocalConversationPersistedSearchMatchMeta(candidate.meta)
+      ? input.resolveResidentTarget(candidate.meta)
+      : null;
+    const match = target
+      ? (byTarget.get(JSON.stringify([target.turnKey, target.unitKey, target.occurrenceIndex])) ??
+        candidate)
+      : candidate;
+    if (seen.has(match.id)) continue;
+    seen.add(match.id);
+    matches.push({ ...match, ordinal: matches.length });
+  }
+  return {
+    ...input.resident,
+    matches,
+    totalMatches: Math.max(
+      matches.length,
+      input.resident.totalMatches,
+      input.persisted.totalMatches,
+    ),
+    capped: input.resident.capped || input.persisted.capped,
+  };
+}
+
 const isRecord = (value: unknown): value is Record<string, unknown> =>
   typeof value === "object" && value !== null;
 
@@ -190,8 +240,15 @@ export function resolveLocalConversationPersistedSearchTarget(input: {
   const blockType = isUserMessageItem(item) ? "userMessage" : "assistantMessage";
   const candidates = input.units.filter((unit) => unit.blockType === blockType);
   if (candidates.length === 0) return null;
-  let unit = candidates[0]!;
-  if (blockType === "userMessage") {
+  const nativeUnit = candidates.find((candidate) => candidate.itemId === input.occurrence.itemId);
+  if (
+    blockType === "assistantMessage" &&
+    !nativeUnit &&
+    candidates.some((candidate) => candidate.itemId !== undefined)
+  )
+    return null;
+  let unit = nativeUnit ?? candidates[0]!;
+  if (blockType === "userMessage" && !nativeUnit) {
     const userOrdinal = input.entry.turn.items.slice(0, itemIndex).filter(isUserMessageItem).length;
     unit = candidates[userOrdinal] ?? unit;
   }

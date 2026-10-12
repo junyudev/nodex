@@ -343,12 +343,6 @@ function getUserMarkdownRoot(container: ParentNode): HTMLElement {
   return element;
 }
 
-function getUserCollapseRoot(container: ParentNode): HTMLElement {
-  const element = getUserMarkdownRoot(container).parentElement;
-  if (!element) throw new Error("Expected user message collapse root to render.");
-  return element;
-}
-
 describe("UserMessageBubble collapse", () => {
   afterEach(() => {
     restoreTextCollapseMeasurement();
@@ -563,26 +557,24 @@ describe("UserMessageBubble collapse", () => {
 
     const collapsedButton = getByText("Show more").closest("button");
     expect(collapsedButton?.getAttribute("aria-expanded")).toBe("false");
+    const markdown = getUserMarkdownRoot(container);
 
-    const collapsedStyle = getUserCollapseRoot(container).getAttribute("style") ?? "";
-    expect(collapsedStyle.includes("overflow: hidden")).toBe(true);
-    expect(collapsedStyle.includes("max-height: 400px")).toBe(true);
-
-    fireEvent.click(collapsedButton as HTMLElement);
+    await act(async () => {
+      fireEvent.click(collapsedButton as HTMLElement);
+    });
     await settleAsyncRender();
 
     const expandedButton = getByText("Show less").closest("button");
     expect(expandedButton?.getAttribute("aria-expanded")).toBe("true");
-    expect(getUserCollapseRoot(container).getAttribute("style") ?? "").toBe("");
-    expect(Boolean(expandedButton?.querySelector(".rotate-180"))).toBe(true);
+    expect(getUserMarkdownRoot(container)).toBe(markdown);
 
-    fireEvent.click(expandedButton as HTMLElement);
+    await act(async () => {
+      fireEvent.click(expandedButton as HTMLElement);
+    });
     await settleAsyncRender();
 
     expect(getByText("Show more").closest("button")?.getAttribute("aria-expanded")).toBe("false");
-    expect(getUserCollapseRoot(container).getAttribute("style") ?? "").toContain(
-      "max-height: 400px",
-    );
+    expect(getUserMarkdownRoot(container)).toBe(markdown);
   });
 
   test("does not render a toggle when content fits the exact collapsed height", async () => {

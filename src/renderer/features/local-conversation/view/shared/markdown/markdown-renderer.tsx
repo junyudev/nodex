@@ -2,6 +2,7 @@ import { cn } from "../../../../../lib/utils";
 import { writeTextToClipboard } from "../../../../../lib/clipboard";
 import { MarkdownCore } from "./markdown-core";
 import type { CSSProperties, MouseEvent } from "react";
+import type { ConversationVisualizationContext } from "../../inline-visualization-context";
 
 export interface MarkdownRendererProps {
   content: string;
@@ -12,6 +13,7 @@ export interface MarkdownRendererProps {
   animateStreamingText?: boolean;
   cwd?: string | null;
   projectWorkspacePath?: string | null;
+  visualizationContext?: ConversationVisualizationContext;
 }
 
 function readStreamdownCodeLineText(line: Element): string {
@@ -56,6 +58,7 @@ export function MarkdownRenderer({
   animateStreamingText,
   cwd,
   projectWorkspacePath,
+  visualizationContext,
 }: MarkdownRendererProps) {
   return (
     <div
@@ -70,6 +73,7 @@ export function MarkdownRenderer({
         animateStreamingText={animateStreamingText}
         cwd={cwd}
         projectWorkspacePath={projectWorkspacePath}
+        visualizationContext={visualizationContext}
       />
     </div>
   );

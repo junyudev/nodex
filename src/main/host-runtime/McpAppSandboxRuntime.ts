@@ -29,7 +29,14 @@ export type McpAppSandboxRuntimeOptions = Omit<
 
 export class McpAppSandboxRuntime extends Context.Service<
   McpAppSandboxRuntime,
-  { readonly createHost: (owner: WebContents) => McpAppSandboxHost }
+  {
+    readonly createHost: (owner: WebContents) => McpAppSandboxHost;
+    readonly consumeUserGesture: (
+      owner: WebContents,
+      sandboxId: string,
+      initId?: string,
+    ) => boolean;
+  }
 >()("nodex/main/host-runtime/McpAppSandboxRuntime") {}
 
 export const live = (options: McpAppSandboxRuntimeOptions): Layer.Layer<McpAppSandboxRuntime> =>
@@ -80,6 +87,9 @@ export const live = (options: McpAppSandboxRuntimeOptions): Layer.Layer<McpAppSa
           },
         },
       );
-      return McpAppSandboxRuntime.of({ createHost: controller.createHost });
+      return McpAppSandboxRuntime.of({
+        createHost: controller.createHost,
+        consumeUserGesture: controller.consumeUserGesture,
+      });
     }),
   );

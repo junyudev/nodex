@@ -11,15 +11,14 @@ import {
 } from "@/components/shared/icons";
 import {
   useRegisterContentSearchSource,
-  type ContentSearchLocalMatch,
   type ContentSearchLocalSource,
 } from "@/features/content-search/content-search-context";
+import { clearContentSearchMarks } from "@/features/content-search/content-search-dom";
+import { applyLocalConversationSearchHighlights } from "./local-conversation-thread-search-dom-marks";
 import {
-  CONTENT_SEARCH_ACTIVE_MARK_CLASS,
-  CONTENT_SEARCH_MARK_CLASS,
-  applyContentSearchDomMarks,
-  clearContentSearchMarks,
-} from "@/features/content-search/content-search-dom";
+  scrollToLocalConversationSearchMatch,
+  waitForLocalConversationSearchLayout,
+} from "./local-conversation-search-scroll";
 import { cn } from "../../../lib/utils";
 import type {
   PageRunInTarget,
@@ -45,6 +44,7 @@ import {
   type VisibleConversationContext,
 } from "../selectors";
 import { useCodexTranscriptStructure } from "../normalized-transcript-hooks";
+import { revealContentSearchUnit } from "../../content-search/content-search-reveal-owner";
 import { selectNormalizedConversationEntriesWithFirstSubmission } from "../normalized-transcript-selectors";
 import {
   isCodexRealtimeTimelineEntry,
@@ -86,11 +86,14 @@ import type {
 } from "./local-conversation-turn-virtualization";
 import { LocalConversationResumeLoader } from "./shared/local-conversation-resume-loader";
 import { LOCAL_CONVERSATION_CONTENT_CLASS_NAME } from "./shared/local-conversation-view-constants";
-import { createLocalConversationSearchSource } from "./local-conversation-search-source";
+import {
+  createLocalConversationSearchSource,
+  projectLocalConversationResidentSearchResult,
+} from "./local-conversation-search-source";
 import {
   isLocalConversationPersistedSearchMatchMeta,
+  mergeLocalConversationSearchResults,
   projectLocalConversationPersistedSearchResult,
-  resolveLocalConversationPersistedSearchTarget,
   waitForLocalConversationPersistedSearchTarget,
   type LocalConversationSearchTarget,
 } from "./local-conversation-persisted-search";
@@ -134,20 +137,6 @@ function resolveLatestEditableTurnId(turns: CodexConversationTurn[]): string | n
   const latestTurn = turns.at(-1) ?? null;
   if (!latestTurn || latestTurn.status === "inProgress") return null;
   return turnHasUserMessage(latestTurn) ? latestTurn.turnId : null;
-}
-
-function countNeedleOccurrences(text: string, normalizedQuery: string): number {
-  if (!normalizedQuery) return 0;
-  const haystack = text.toLowerCase();
-  let count = 0;
-  let cursor = 0;
-  while (cursor < haystack.length) {
-    const index = haystack.indexOf(normalizedQuery, cursor);
-    if (index === -1) break;
-    count += 1;
-    cursor = index + normalizedQuery.length;
-  }
-  return count;
 }
 
 function escapeAttributeSelectorValue(value: string): string {
@@ -462,7 +451,10 @@ export function LocalConversationThreadBodyOwner({
     const viewer = transcriptViewer.current;
     return () => transcriptOwner?.setHistoryViewport(viewer, undefined);
   }, [transcriptOwner]);
-  const { scrollElement } = useLocalConversationThreadScrollController();
+  const threadScrollController = useLocalConversationThreadScrollController();
+  const { scrollElement } = threadScrollController;
+  const searchScrollControllerRef = useRef(threadScrollController);
+  searchScrollControllerRef.current = threadScrollController;
   const appHandle = useScopeHandle(appScope);
   const setupProgressLogRef = useRef<HTMLDivElement>(null);
   const contentRootRef = useRef<HTMLDivElement | null>(null);
@@ -639,6 +631,8 @@ export function LocalConversationThreadBodyOwner({
   userMessageNavigationItemsRef.current = userMessageNavigationItems;
   const currentTurnEntriesRef = useRef(displayedTurnEntries);
   currentTurnEntriesRef.current = displayedTurnEntries;
+  const projectedEntriesRef = useRef(timelineProjection.entries);
+  projectedEntriesRef.current = timelineProjection.entries;
   const persistedSearchSessionRef = useRef<{
     threadId: string;
     hostId: string;
@@ -754,6 +748,8 @@ export function LocalConversationThreadBodyOwner({
         routeContextId: body.threadId ? `conversation:${body.threadId}` : "unavailable",
         cwd,
         projectlessOutputDirectory,
+        getProjectedEntries: () => projectedEntriesRef.current,
+        readOwner: () => transcriptOwner,
         getTurns: () =>
           currentTurnEntriesRef.current.flatMap((entry) => {
             const materialized = materializeConversationTurnListEntry(entry);
@@ -762,10 +758,10 @@ export function LocalConversationThreadBodyOwner({
         scrollAdapter: {
           scrollToTurn: async (turnKey, options) => {
             if (options?.signal?.aborted) return;
-            const targetEntry = currentTurnEntriesRef.current.find(
+            const targetEntry = projectedEntriesRef.current.find(
               (entry) => entry.turnKey === turnKey,
             );
-            if (threadId && targetEntry) {
+            if (threadId && targetEntry && !isCodexRealtimeTimelineEntry(targetEntry)) {
               const collapseKey = {
                 conversationId: threadId,
                 turnSearchKey: targetEntry.turnSearchKey,
@@ -786,7 +782,7 @@ export function LocalConversationThreadBodyOwner({
             if (!api) return;
             await api.scrollToKey(turnKey, undefined, { signal: options?.signal });
             if (options?.signal?.aborted) return;
-            await nextAnimationFrame();
+            await waitForLocalConversationSearchLayout(options?.signal);
           },
           getTurnContainer: (turnKey) =>
             contentRootRef.current?.querySelector<HTMLElement>(
@@ -794,12 +790,12 @@ export function LocalConversationThreadBodyOwner({
             ) ?? null,
         },
       }),
-    [appHandle, body.threadId, cwd, projectlessOutputDirectory, threadId],
+    [appHandle, body.threadId, cwd, projectlessOutputDirectory, threadId, transcriptOwner],
   );
 
   useEffect(() => {
     searchSource.pruneCachedData();
-  }, [searchSource, turnEntries]);
+  }, [searchSource, timelineProjection.entries]);
 
   useEffect(() => () => searchSource.clearCachedData(), [searchSource]);
 
@@ -834,6 +830,12 @@ export function LocalConversationThreadBodyOwner({
         if (!literalQuery) {
           return { query, matches: [], totalMatches: 0, capped: false };
         }
+        const resident = projectLocalConversationResidentSearchResult({
+          units: searchSource.findMatches(literalQuery),
+          query: literalQuery,
+          contextId: searchSource.routeContextId,
+          limit,
+        });
         const persistedThreadId = threadId ?? body.threadId;
         if (persistedThreadId) {
           try {
@@ -853,10 +855,14 @@ export function LocalConversationThreadBodyOwner({
                 topologyGeneration: page.topologyGeneration,
               };
               persistedSearchTargetsRef.current.clear();
-              return projectLocalConversationPersistedSearchResult({
-                page,
-                contextId: searchSource.routeContextId,
-                limit,
+              return mergeLocalConversationSearchResults({
+                resident,
+                persisted: projectLocalConversationPersistedSearchResult({
+                  page,
+                  contextId: searchSource.routeContextId,
+                  limit,
+                }),
+                resolveResidentTarget: searchSource.findPersistedTarget,
               });
             }
           } catch {
@@ -868,38 +874,7 @@ export function LocalConversationThreadBodyOwner({
 
         persistedSearchSessionRef.current = null;
         persistedSearchTargetsRef.current.clear();
-        const normalizedQuery = query.trim().toLowerCase();
-        const matches: ContentSearchLocalMatch[] = [];
-        let capped = false;
-        for (const unit of searchSource.findMatches(normalizedQuery)) {
-          const occurrenceCount = countNeedleOccurrences(unit.text, normalizedQuery);
-          for (let occurrenceIndex = 0; occurrenceIndex < occurrenceCount; occurrenceIndex += 1) {
-            if (matches.length >= limit) {
-              capped = true;
-              break;
-            }
-            matches.push({
-              id: `conversation:${unit.key}:${occurrenceIndex}`,
-              domain: "conversation",
-              contextId: searchSource.routeContextId,
-              ordinal: matches.length,
-              label: unit.text,
-              meta: {
-                unitKey: unit.key,
-                turnKey: unit.turnKey,
-                occurrenceIndex,
-              },
-            });
-          }
-          if (capped) break;
-        }
-
-        return {
-          query,
-          matches,
-          totalMatches: matches.length,
-          capped,
-        };
+        return resident;
       },
       async ensureVisible(match, { signal }) {
         if (isConversationSearchMatchMeta(match.meta)) {
@@ -938,22 +913,7 @@ export function LocalConversationThreadBodyOwner({
         const target = await waitForLocalConversationPersistedSearchTarget({
           signal,
           waitForRender: nextAnimationFrame,
-          readTarget: () => {
-            for (const entry of currentTurnEntriesRef.current) {
-              if (entry.turnId !== meta.occurrence.turnId) continue;
-              const materialized = materializeConversationTurnListEntry(entry);
-              if (!materialized) continue;
-              const target = resolveLocalConversationPersistedSearchTarget({
-                entry: materialized,
-                occurrence: meta.occurrence,
-                itemOccurrenceIndex: meta.itemOccurrenceIndex,
-                query: meta.query,
-                units: searchSource.getUnitsForTurn(materialized),
-              });
-              if (target) return target;
-            }
-            return null;
-          },
+          readTarget: () => searchSource.findPersistedTarget(meta),
         });
         if (signal.aborted) return;
         if (target) {
@@ -963,7 +923,7 @@ export function LocalConversationThreadBodyOwner({
         }
         throw new Error("Hydrated persisted-history occurrence is not renderable");
       },
-      activate(match, query) {
+      async activate(match, query, options) {
         const target = isConversationSearchMatchMeta(match.meta)
           ? match.meta
           : isLocalConversationPersistedSearchMatchMeta(match.meta)
@@ -972,21 +932,23 @@ export function LocalConversationThreadBodyOwner({
         if (!target) return;
         const root = contentRootRef.current;
         if (!root) return;
-        const result = applyContentSearchDomMarks({
-          root,
-          query,
-          idPrefix: "content-search:conversation",
+        if (options?.signal?.aborted) return;
+        const unit = Array.from(
+          root.querySelectorAll<HTMLElement>("[data-content-search-unit-key]"),
+        ).find((unit) => unit.dataset.contentSearchUnitKey === target.unitKey);
+        if (unit && revealContentSearchUnit(unit))
+          await waitForLocalConversationSearchLayout(options?.signal);
+        if (options?.signal?.aborted) return;
+        return scrollToLocalConversationSearchMatch({
+          signal: options?.signal,
+          readMatch: () => applyLocalConversationSearchHighlights({ root, query, target }),
+          scroll: (activeElement) =>
+            searchScrollControllerRef.current.scrollElementIntoView(
+              activeElement,
+              "smooth",
+              "center",
+            ),
         });
-        const unitSelector = `[data-content-search-unit-key="${escapeAttributeSelectorValue(target.unitKey)}"]`;
-        const unitElement = root.querySelector<HTMLElement>(unitSelector);
-        const unitMarks = Array.from(
-          unitElement?.querySelectorAll<HTMLElement>(`mark.${CONTENT_SEARCH_MARK_CLASS}`) ?? [],
-        );
-        const activeElement =
-          unitMarks[target.occurrenceIndex] ?? unitMarks[0] ?? result.matches[0]?.element ?? null;
-        if (!activeElement) return;
-        activeElement.classList.add(CONTENT_SEARCH_ACTIVE_MARK_CLASS);
-        activeElement.scrollIntoView({ block: "center", inline: "nearest" });
       },
       clear() {
         clearContentSearchMarks(contentRootRef.current);

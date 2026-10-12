@@ -369,6 +369,7 @@ export interface ThreadStageActions {
   onSendPrompt: (
     prompt: string,
     opts?: {
+      untrustedAppMessage?: import("../../../shared/codex-untrusted-app-input").CodexUntrustedAppMessage;
       submittedPresentation?: WorkbenchSubmitPresentation;
       collaborationMode?: CodexCollaborationModeKind;
       promptInput?: CodexPromptInput;
@@ -443,6 +444,7 @@ export interface ThreadStageActions {
     threadId: string,
     prompt: string,
     opts?: {
+      untrustedAppMessage?: import("../../../shared/codex-untrusted-app-input").CodexUntrustedAppMessage;
       collaborationMode?: CodexCollaborationModeKind | null;
       promptInput?: CodexPromptInput;
     },
@@ -1005,6 +1007,8 @@ export interface ThreadTurnModel {
 
 export interface ThreadSearchUnitModel {
   key: string;
+  /** Native source alias, independent of grouping and timeline fragment placement. */
+  itemId?: string;
   turnId: string | null;
   turnKey: string;
   text: string;

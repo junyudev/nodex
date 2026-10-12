@@ -11,11 +11,13 @@ function getPathExtension(path: string): string {
   return extension?.toLowerCase() ?? "";
 }
 
+export function isGeneratedImagePending(src: string | null, status: string): boolean {
+  return src === null && (status === "in_progress" || status === "inProgress");
+}
+
 function isPendingGeneratedImage(item: CodexConversationItem): boolean {
-  if (item.generatedImage?.src !== null) return false;
-  return (
-    item.generatedImage.status === "in_progress" || item.generatedImage.status === "inProgress"
-  );
+  if (!item.generatedImage) return false;
+  return isGeneratedImagePending(item.generatedImage.src, item.generatedImage.status);
 }
 
 /** Exact `US`: presentation outputs suppress completed images, not pending work. */

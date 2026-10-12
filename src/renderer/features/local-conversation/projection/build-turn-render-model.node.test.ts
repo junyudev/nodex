@@ -845,7 +845,7 @@ describe("buildTurnRenderModel", () => {
 
     expect(
       model.searchUnits.map((unit) => `${unit.blockType}:${unit.key}:${unit.text}`).join(","),
-    ).toBe("userMessage:turn_1:user:0:,assistantMessage:turn_1:assistant:Done");
+    ).toBe("userMessage:turn_1:user:0:,assistantMessage:turn_1:assistant:assistant_1:Done");
     expect(
       model.searchUnits.filter((unit) => unit.text.toLowerCase().includes("missing")).length,
     ).toBe(0);
@@ -929,7 +929,7 @@ describe("buildTurnRenderModel", () => {
 
     const indexedText = model.searchUnits.map((unit) => unit.text).join("\n");
     expect(model.searchUnits.map((unit) => `${unit.blockType}:${unit.key}`).join(",")).toBe(
-      "userMessage:turn_1:user:0,assistantMessage:turn_1:assistant",
+      "userMessage:turn_1:user:0,assistantMessage:turn_1:assistant:assistant_1",
     );
     expect(indexedText.includes("Refactor the renderer")).toBe(true);
     expect(indexedText.includes("Done")).toBe(true);

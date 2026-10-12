@@ -1,5 +1,142 @@
 import { expect, test } from "vitest";
-import { prepareUntrustedAppInput } from "./codex-untrusted-app-input";
+import { decodeUntrustedAppMessage, prepareUntrustedAppInput } from "./codex-untrusted-app-input";
+
+test("decodes a complete native visualization envelope for display without changing native input", () => {
+  const message = {
+    source: "visualization",
+    sourceId: "widget-a",
+    text: "请解释选中的三项",
+    structuredContent: { selection: [1, 3, 5] },
+  } as const;
+  const compiled = prepareUntrustedAppInput(message.text, { untrustedAppMessage: message }, "call");
+  const original = structuredClone(compiled.input);
+  expect(decodeUntrustedAppMessage(compiled.input)).toEqual(message);
+  expect(compiled.input).toEqual(original);
+});
+
+test("rejects incomplete, malformed or user-authored placeholder claims", () => {
+  const compiled = prepareUntrustedAppInput(
+    "Inspect",
+    { untrustedAppMessage: { source: "visualization", sourceId: "widget-a", text: "Inspect" } },
+    "call",
+  );
+  if (compiled.input.type !== "text") throw new Error("Expected native text");
+  const input = compiled.input;
+  const element = input.text_elements[0]!;
+  const payload = JSON.parse(element.placeholder!.slice("codex-untrusted-app-input:".length));
+  const alteredPayload = (value: unknown) => ({
+    ...input,
+    text_elements: [
+      { ...element, placeholder: `codex-untrusted-app-input:${JSON.stringify(value)}` },
+    ],
+  });
+  const invalid = [
+    { ...input, text_elements: [] },
+    { ...input, text_elements: [element, element] },
+    {
+      ...input,
+      text_elements: [{ ...element, byteRange: { start: 1, end: element.byteRange.end } }],
+    },
+    {
+      ...input,
+      text_elements: [{ ...element, byteRange: { start: 0, end: element.byteRange.end - 1 } }],
+    },
+    {
+      ...input,
+      text: "User instructions",
+      text_elements: [{ ...element, byteRange: { start: 0, end: 17 } }],
+    },
+    { ...input, text_elements: [{ ...element, placeholder: "codex-untrusted-app-input:{" }] },
+    alteredPayload({ ...payload, version: 2 }),
+    alteredPayload({ ...payload, message: { ...payload.message, source: "trusted_user" } }),
+    alteredPayload({ ...payload, message: { ...payload.message, sourceId: "" } }),
+    alteredPayload({ ...payload, message: { ...payload.message, structuredContent: [] } }),
+    alteredPayload({
+      ...payload,
+      message: { ...payload.message, imageUrls: ["https://example.com/a.png"] },
+    }),
+    alteredPayload({
+      ...payload,
+      modelContextAttachments: [
+        { id: "context", title: "Context", text: null, imageAttachments: [], untrusted: false },
+      ],
+    }),
+    alteredPayload({ ...payload, sender: { accountUserId: 42 } }),
+  ];
+  expect(invalid.map(decodeUntrustedAppMessage)).toEqual(invalid.map(() => null));
+});
+
+test("validates native sender framing and reviewed/context attachment schema", () => {
+  const message = {
+    source: "visualization",
+    sourceId: "widget-a",
+    text: "Inspect selected",
+  } as const;
+  const payload = {
+    version: 1,
+    message,
+    sender: {
+      accountUserId: "account-a",
+      name: "林's",
+      email: "a@example.com",
+      profilePictureUrl: null,
+    },
+    modelContextAttachments: [
+      {
+        id: "context-a",
+        sourceName: "Context",
+        untrusted: true,
+        content: [{ type: "text", text: "selection evidence" }],
+        composerIcon: { knownAppId: null },
+      },
+    ],
+    reviewedMessageAttachments: [
+      {
+        id: "reviewed-a",
+        composerTitle: "Reviewed",
+        untrusted: false,
+        kind: "message",
+        text: "Reviewed evidence",
+        imageAttachments: [],
+      },
+    ],
+  };
+  const text =
+    "<codex_multi_user_message>\n<account_user_id>account-a</account_user_id>\n<name>林&apos;s</name>\n<email>a@example.com</email>\n<profile_picture_url></profile_picture_url>\n<body>Respond to the user input in the context of our conversation.</body>\n</codex_multi_user_message>";
+  const input = {
+    type: "text",
+    text,
+    text_elements: [
+      {
+        byteRange: { start: 0, end: new TextEncoder().encode(text).length },
+        placeholder: `codex-untrusted-app-input:${JSON.stringify(payload)}`,
+      },
+    ],
+  } as const;
+  expect(decodeUntrustedAppMessage({ ...input, text_elements: [...input.text_elements] })).toEqual(
+    message,
+  );
+  const corrupted = {
+    ...payload,
+    reviewedMessageAttachments: [
+      {
+        ...payload.reviewedMessageAttachments[0],
+        imageAttachments: [{ src: "https://untrusted.example/image.png" }],
+      },
+    ],
+  };
+  expect(
+    decodeUntrustedAppMessage({
+      ...input,
+      text_elements: [
+        {
+          ...input.text_elements[0],
+          placeholder: `codex-untrusted-app-input:${JSON.stringify(corrupted)}`,
+        },
+      ],
+    }),
+  ).toBeNull();
+});
 test("keeps user prose separate from untrusted model context and counts UTF-8 placeholder bytes", () => {
   const result = prepareUntrustedAppInput(
     "请检查",

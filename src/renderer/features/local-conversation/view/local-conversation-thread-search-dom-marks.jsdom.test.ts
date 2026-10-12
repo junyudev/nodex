@@ -1,7 +1,34 @@
 import { describe, expect, test } from "vite-plus/test";
-import { applyThreadSearchDomMarks } from "./local-conversation-thread-search-dom-marks";
+import {
+  applyThreadSearchDomMarks,
+  applyLocalConversationSearchHighlights,
+} from "./local-conversation-thread-search-dom-marks";
 
 describe("applyThreadSearchDomMarks", () => {
+  test("highlights voice units and selects the exact occurrence without touching tool output", () => {
+    const root = document.createElement("div");
+    root.innerHTML = `<div data-content-search-unit-key="voice:item">needle and needle</div><div data-content-search-unit-key="promoted:inlineMarkdown">inline needle</div><div data-tool-output>needle</div><div data-widget>needle</div>`;
+    const active = applyLocalConversationSearchHighlights({
+      root,
+      query: "needle",
+      target: { turnKey: "voice", unitKey: "voice:item", occurrenceIndex: 1 },
+    });
+    expect(root.querySelectorAll("mark")).toHaveLength(3);
+    expect(root.querySelector("[data-tool-output] mark")).toBeNull();
+    expect(root.querySelector("[data-widget] mark")).toBeNull();
+    expect(active).toBe(
+      root.querySelectorAll('[data-content-search-unit-key="voice:item"] mark').item(1),
+    );
+    expect(active?.classList.contains("codex-thread-find-active")).toBe(true);
+    expect(
+      applyLocalConversationSearchHighlights({
+        root,
+        query: "needle",
+        target: { turnKey: "removed", unitKey: "removed", occurrenceIndex: 0 },
+      }),
+    ).toBeNull();
+    expect(root.querySelector(".codex-thread-find-active")).toBeNull();
+  });
   test("adds and removes search match classes on visible search units and turn rows", () => {
     const root = document.createElement("div");
     root.innerHTML = `

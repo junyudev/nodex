@@ -10,16 +10,20 @@ function appendUniqueRoots(current: readonly string[], additions: readonly strin
   return roots;
 }
 
-/** Exact `yve`/`UGe`: UUIDv7 timestamp → UTC visualization day directory. */
+/** Native time-bearing Thread identities select their UTC visualization day directory. */
 export function resolveCodexThreadVisualizationDirectory(
   codexHome: string,
   threadId: string,
+  pathApi: Pick<typeof path, "join"> = path,
 ): string | null {
-  const timestamp = readCodexThreadUuidV7TimestampMs(threadId);
+  const timestamp =
+    /^[0-9a-f]{8}-[0-9a-f]{3}[048c]-8[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(threadId)
+      ? Number.parseInt(threadId.slice(0, 8), 16) * 1_000
+      : readCodexThreadUuidV7TimestampMs(threadId);
   if (timestamp === null) return null;
   const date = new Date(timestamp);
   if (!Number.isFinite(date.getTime())) return null;
-  return path.join(
+  return pathApi.join(
     codexHome,
     "visualizations",
     String(date.getUTCFullYear()),

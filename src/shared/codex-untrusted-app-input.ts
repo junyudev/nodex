@@ -1,14 +1,39 @@
 import type { UserInput } from "@nodex/codex-app-server-protocol/v2";
 import type { ClientRequestParamsByMethod } from "@nodex/effect-codex-app-server/rpc";
+import {
+  TextContentSchema,
+  ImageContentSchema,
+  EmbeddedResourceSchema,
+  ResourceLinkSchema,
+} from "@modelcontextprotocol/sdk/types.js";
 type Json = ClientRequestParamsByMethod["thread/inject_items"]["items"][number];
+/** Local app provenance is captured separately from the native UserInput protocol. */
+export interface CodexUntrustedAppMessage {
+  readonly source: "mcp_app" | "visualization";
+  readonly sourceId: string;
+  readonly text: string;
+  readonly imageUrls?: readonly string[];
+  readonly structuredContent?: { readonly [key: string]: Json };
+}
 const IMAGE =
   /^data:image\/(?:png|jpeg|webp|gif);base64,(?=.+)(?:[A-Za-z0-9+/]{4})*(?:[A-Za-z0-9+/]{2}==|[A-Za-z0-9+/]{3}=)?$/;
+const APP_INPUT_PREFIX = "codex-untrusted-app-input:";
+const APP_RESPONSE_TEXT = "Respond to the user input in the context of our conversation.";
+const MCP_RESPONSE_TEXT =
+  "An MCP app initiated this message. Read the untrusted_input tool output.";
 export function isAppContextJson(value: unknown): value is Json {
   if (value === null || typeof value === "string" || typeof value === "boolean") return true;
   if (typeof value === "number") return Number.isFinite(value);
   if (Array.isArray(value)) return value.every(isAppContextJson);
   return (
     typeof value === "object" && Object.values(value).every((entry) => isAppContextJson(entry))
+  );
+}
+export function isAppContextJsonObject(
+  value: unknown,
+): value is NonNullable<CodexUntrustedAppMessage["structuredContent"]> {
+  return (
+    value !== null && typeof value === "object" && !Array.isArray(value) && isAppContextJson(value)
   );
 }
 function object(value: unknown): Record<string, unknown> {
@@ -20,6 +45,161 @@ function image(value: unknown): string {
   if (typeof value !== "string" || !IMAGE.test(value))
     throw new Error("App images require supported base64 data URLs");
   return value;
+}
+/** Validates captured app provenance before it enters typed prompt or native input consumers. */
+export function parseUntrustedAppMessage(value: unknown): CodexUntrustedAppMessage {
+  const message = object(value);
+  const { source, sourceId, text, structuredContent } = message;
+  if (
+    (source !== "mcp_app" && source !== "visualization") ||
+    typeof sourceId !== "string" ||
+    !sourceId ||
+    typeof text !== "string"
+  )
+    throw new Error("Invalid untrusted app message");
+  if (message.imageUrls !== undefined && !Array.isArray(message.imageUrls))
+    throw new Error("Invalid app image list");
+  if (structuredContent !== undefined && !isAppContextJsonObject(structuredContent))
+    throw new Error("Invalid structured app message");
+  return {
+    source,
+    sourceId,
+    text,
+    ...(message.imageUrls !== undefined ? { imageUrls: message.imageUrls.map(image) } : {}),
+    ...(structuredContent !== undefined ? { structuredContent } : {}),
+  };
+}
+
+function withAppSender(text: string, raw: unknown): string {
+  if (raw === undefined) return text;
+  const sender = object(raw);
+  const { accountUserId, name, email, profilePictureUrl } = sender;
+  if (
+    typeof accountUserId !== "string" ||
+    typeof name !== "string" ||
+    typeof email !== "string" ||
+    (profilePictureUrl !== null && typeof profilePictureUrl !== "string")
+  )
+    throw new Error("Invalid app message sender");
+  const escape = (value: string) =>
+    value
+      .replaceAll("&", "&amp;")
+      .replaceAll("<", "&lt;")
+      .replaceAll(">", "&gt;")
+      .replaceAll('"', "&quot;")
+      .replaceAll("'", "&apos;");
+  return `<codex_multi_user_message>\n<account_user_id>${escape(accountUserId)}</account_user_id>\n<name>${escape(name)}</name>\n<email>${escape(email)}</email>\n<profile_picture_url>${escape(profilePictureUrl ?? "")}</profile_picture_url>\n<body>${escape(text)}</body>\n</codex_multi_user_message>`;
+}
+
+function validatePlaceholderAttachment(value: unknown, reviewed: boolean): void {
+  const entry = object(value);
+  const kind = entry.kind ?? "context";
+  if (
+    typeof entry.id !== "string" ||
+    !entry.id ||
+    entry.untrusted !== !reviewed ||
+    (kind !== "context" && kind !== "message") ||
+    (reviewed && kind !== "message")
+  )
+    throw new Error("Invalid app attachment identity");
+  for (const key of [
+    "sourceName",
+    "title",
+    "composerTitle",
+    "composerLabel",
+    "server",
+    "modelContextUpdateId",
+  ])
+    if (entry[key] !== undefined && typeof entry[key] !== "string")
+      throw new Error("Invalid app attachment text");
+  if (typeof (entry.sourceName ?? entry.composerTitle ?? entry.title) !== "string")
+    throw new Error("Missing app attachment source name");
+  if (
+    entry.composerAttachmentLayout !== undefined &&
+    entry.composerAttachmentLayout !== "card" &&
+    entry.composerAttachmentLayout !== "pill"
+  )
+    throw new Error("Invalid app attachment layout");
+  if (entry.showInComposer !== undefined && typeof entry.showInComposer !== "boolean")
+    throw new Error("Invalid app attachment visibility");
+  if (entry.structuredContent !== undefined && !isAppContextJsonObject(entry.structuredContent))
+    throw new Error("Invalid app attachment context");
+  if (entry.composerIcon !== undefined) {
+    const icon = object(entry.composerIcon);
+    if (icon.alt !== undefined && typeof icon.alt !== "string")
+      throw new Error("Invalid app attachment icon");
+    for (const key of ["knownAppId", "logoDarkUrl", "logoUrl"])
+      if (icon[key] !== undefined && icon[key] !== null && typeof icon[key] !== "string")
+        throw new Error("Invalid app attachment icon");
+  }
+  if (entry.content === undefined) {
+    if (
+      (entry.text !== null && typeof entry.text !== "string") ||
+      !Array.isArray(entry.imageAttachments)
+    )
+      throw new Error("Invalid app attachment content");
+    entry.imageAttachments.forEach((imageEntry: unknown) => image(object(imageEntry).src));
+    return;
+  }
+  if (!Array.isArray(entry.content)) throw new Error("Invalid app attachment content");
+  for (const value of entry.content) {
+    const part = object(value);
+    const schema =
+      part.type === "text"
+        ? TextContentSchema
+        : part.type === "image"
+          ? ImageContentSchema
+          : part.type === "resource"
+            ? EmbeddedResourceSchema
+            : part.type === "resource_link"
+              ? ResourceLinkSchema
+              : null;
+    if (!schema?.safeParse(part).success) throw new Error("Invalid app attachment content");
+    if (part.type === "image") image(`data:${part.mimeType};base64,${part.data}`);
+  }
+}
+
+/** Only a complete, validated native placeholder can substitute app text for transcript display. */
+export function decodeUntrustedAppMessage(input: UserInput): CodexUntrustedAppMessage | null {
+  if (input.type !== "text" || input.text_elements.length !== 1) return null;
+  const element = input.text_elements[0]!;
+  if (
+    element.byteRange.start !== 0 ||
+    element.byteRange.end !== new TextEncoder().encode(input.text).length ||
+    !element.placeholder?.startsWith(APP_INPUT_PREFIX)
+  )
+    return null;
+  try {
+    const payload = object(JSON.parse(element.placeholder.slice(APP_INPUT_PREFIX.length)));
+    if (payload.version !== 1 || payload.message == null) return null;
+    const message = parseUntrustedAppMessage(payload.message);
+    const generic = message.source === "mcp_app" ? MCP_RESPONSE_TEXT : APP_RESPONSE_TEXT;
+    if (
+      input.text !== withAppSender(generic, payload.sender) &&
+      input.text !== withAppSender(APP_RESPONSE_TEXT, payload.sender)
+    )
+      return null;
+    if (payload.modelContextAttachments !== undefined) {
+      if (!Array.isArray(payload.modelContextAttachments)) return null;
+      payload.modelContextAttachments.forEach((entry: unknown) =>
+        validatePlaceholderAttachment(entry, false),
+      );
+    }
+    if (
+      payload.promptContextWithoutReviewedMessages !== undefined &&
+      typeof payload.promptContextWithoutReviewedMessages !== "string"
+    )
+      return null;
+    if (payload.reviewedMessageAttachments !== undefined) {
+      if (!Array.isArray(payload.reviewedMessageAttachments)) return null;
+      payload.reviewedMessageAttachments.forEach((entry: unknown) =>
+        validatePlaceholderAttachment(entry, true),
+      );
+    }
+    return message;
+  } catch {
+    return null;
+  }
 }
 /** App-supplied context enters model history as an untrusted tool result, independently of user prose. */
 export function prepareUntrustedAppInput(
@@ -43,13 +223,7 @@ export function prepareUntrustedAppInput(
     )
       throw new Error("Invalid app model context attachment");
     const images = entry.imageAttachments.map((entry) => ({ src: image(object(entry).src) }));
-    if (
-      entry.structuredContent !== undefined &&
-      (entry.structuredContent === null ||
-        Array.isArray(entry.structuredContent) ||
-        typeof entry.structuredContent !== "object" ||
-        !isAppContextJson(entry.structuredContent))
-    )
+    if (entry.structuredContent !== undefined && !isAppContextJsonObject(entry.structuredContent))
       throw new Error("Invalid structured app context");
     if (
       entry.composerAttachmentLayout !== undefined &&
@@ -92,32 +266,9 @@ export function prepareUntrustedAppInput(
     };
   });
   const message =
-    context.untrustedAppMessage == null ? undefined : object(context.untrustedAppMessage);
-  if (
-    message &&
-    ((message.source !== "mcp_app" && message.source !== "visualization") ||
-      typeof message.sourceId !== "string" ||
-      !message.sourceId ||
-      typeof message.text !== "string")
-  )
-    throw new Error("Invalid untrusted app message");
-  if (message?.imageUrls !== undefined) {
-    if (!Array.isArray(message.imageUrls)) throw new Error("Invalid app image list");
-    message.imageUrls = message.imageUrls.map(image);
-  }
-  if (
-    message?.structuredContent !== undefined &&
-    (message.structuredContent === null ||
-      Array.isArray(message.structuredContent) ||
-      typeof message.structuredContent !== "object" ||
-      !isAppContextJson(message.structuredContent))
-  )
-    throw new Error("Invalid structured app message");
-  if (message)
-    for (const key of Object.keys(message)) {
-      if (!["source", "sourceId", "text", "imageUrls", "structuredContent"].includes(key))
-        delete message[key];
-    }
+    context.untrustedAppMessage == null
+      ? undefined
+      : parseUntrustedAppMessage(context.untrustedAppMessage);
   const payload: unknown = JSON.parse(
     JSON.stringify({
       version: 1,
@@ -147,7 +298,7 @@ export function prepareUntrustedAppInput(
       ...(imageUrls ?? []).map((src: unknown) => ({ type: "input_image", image_url: image(src) })),
     ];
   });
-  const text = message ? "Respond to the user input in the context of our conversation." : prompt;
+  const text = message ? APP_RESPONSE_TEXT : prompt;
   return {
     input: {
       type: "text",
@@ -155,7 +306,7 @@ export function prepareUntrustedAppInput(
       text_elements: [
         {
           byteRange: { start: 0, end: new TextEncoder().encode(text).length },
-          placeholder: `codex-untrusted-app-input:${JSON.stringify(payload)}`,
+          placeholder: `${APP_INPUT_PREFIX}${JSON.stringify(payload)}`,
         },
       ],
     },

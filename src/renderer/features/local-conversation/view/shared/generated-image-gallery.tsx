@@ -1,5 +1,6 @@
 import {
   useCallback,
+  useContext,
   useEffect,
   useMemo,
   useRef,
@@ -9,16 +10,15 @@ import {
 } from "react";
 import { ChevronLeft } from "@/components/shared/icons/generic-icons";
 import {
-  areGeneratedImageLiveGroupsEqual,
   GeneratedImagePlaceholder,
   getGeneratedImageLiveCollectionSnapshot,
   ImagePreviewDialog,
   openUserAttachmentImagePreview,
-  projectGeneratedImageCanonicalGroups,
   replaceGeneratedImageCanonicalGroups,
   replaceGeneratedImageLiveGroup,
   subscribeGeneratedImageLiveCollections,
   type GeneratedImageDescriptor,
+  useGeneratedImageCollectionGroups,
 } from "@/features/user-attachment-image-editor";
 import {
   ChevronRightIcon,
@@ -28,7 +28,7 @@ import {
 } from "@/components/shared/icons";
 import { cn } from "../../../../lib/utils";
 import type { ThreadGeneratedImageGalleryItemModel } from "../../thread-stage-types";
-import { useCodexConversationValue } from "../../local-conversation-store";
+import { CodexTranscriptReadOwnerContext } from "../../normalized-transcript-hooks";
 import { calculateGeneratedImageGalleryLayout } from "../../projection/generated-image-gallery-layout";
 import { useConversationImageAssetContext } from "../conversation-image-asset-context";
 import { useConversationImageAsset } from "./use-conversation-image-asset";
@@ -236,23 +236,27 @@ function GeneratedImagePreview({
   );
 }
 
+interface GeneratedImageGalleryProps {
+  readonly groupId?: string;
+  readonly images: readonly ThreadGeneratedImageGalleryItemModel[];
+  readonly pendingImageCount: number;
+  readonly pendingImageIds?: readonly string[];
+  readonly nativeItemIds?: readonly string[];
+  readonly turnStartedAtMs?: number | null;
+}
+
 export function GeneratedImageGallery({
   groupId = "generated-image-gallery",
   images,
   pendingImageCount,
+  pendingImageIds,
+  nativeItemIds,
   turnStartedAtMs = null,
-}: {
-  groupId?: string;
-  images: readonly ThreadGeneratedImageGalleryItemModel[];
-  pendingImageCount: number;
-  turnStartedAtMs?: number | null;
-}) {
-  const { composerTarget, conversationId } = useConversationImageAssetContext();
-  const canonicalGeneratedGroups = useCodexConversationValue(
-    conversationId,
-    projectGeneratedImageCanonicalGroups,
-    areGeneratedImageLiveGroupsEqual,
-  );
+}: GeneratedImageGalleryProps) {
+  const { composerTarget, conversationId, hostId } = useConversationImageAssetContext();
+  const contextOwner = useContext(CodexTranscriptReadOwnerContext);
+  const owner = contextOwner?.key.hostId === hostId ? contextOwner : null;
+  const canonicalGeneratedGroups = useGeneratedImageCollectionGroups(conversationId, owner);
   const containerRef = useRef<HTMLDivElement | null>(null);
   const [containerWidthPx, setContainerWidthPx] = useState<number | null>(null);
   const [aspectRatios, setAspectRatios] = useState<Readonly<Record<string, number>>>({});
@@ -302,9 +306,19 @@ export function GeneratedImageGallery({
       id: groupId,
       images: localEditorImages,
       pendingImageCount,
+      pendingImageIds,
+      nativeItemIds,
       turnStartedAtMs,
     });
-  }, [conversationId, groupId, localEditorImages, pendingImageCount, turnStartedAtMs]);
+  }, [
+    conversationId,
+    groupId,
+    localEditorImages,
+    pendingImageCount,
+    pendingImageIds,
+    nativeItemIds,
+    turnStartedAtMs,
+  ]);
 
   useEffect(() => {
     if (!conversationId) return undefined;

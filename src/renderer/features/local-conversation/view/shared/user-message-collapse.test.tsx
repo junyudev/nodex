@@ -1,26 +1,42 @@
-import { fireEvent, waitFor } from "@testing-library/react";
+import { act, fireEvent, waitFor } from "@testing-library/react";
 import { describe, expect, test, vi } from "vite-plus/test";
 import { render } from "@/test/dom";
 import { UserMessageText } from "./user-message-collapse";
 
-vi.mock("@/lib/use-theme", () => ({
-  useTheme: () => ({ resolved: "dark" }),
-}));
+vi.mock("@/lib/use-theme", () => ({ useTheme: () => ({ resolved: "dark" }) }));
 
 describe("UserMessageText", () => {
-  test("keeps a legacy 100,000-character message out of Markdown and opens a viewport reader", async () => {
-    const text = Array.from({ length: 10_000 }, (_, index) => `legacy line ${index}`).join("\n");
-    const view = render(<UserMessageText text={text} />);
-
-    expect(view.getByText(/characters omitted/)).toBeDefined();
-    expect(view.container.querySelectorAll(".codex-markdown-user").length).toBe(0);
-    fireEvent.click(view.getByRole("button", { name: "View full message" }));
-
-    await waitFor(() => {
-      expect(view.getByLabelText("Full user message")).toBeDefined();
+  test("keeps the full large prompt in its expandable chat occurrence", async () => {
+    const scrollHeight = vi
+      .spyOn(HTMLElement.prototype, "scrollHeight", "get")
+      .mockReturnValue(1_000);
+    const originalComputedStyle = window.getComputedStyle.bind(window);
+    const style = vi.spyOn(window, "getComputedStyle").mockImplementation((element, pseudo) => {
+      const result = originalComputedStyle(element, pseudo);
+      result.fontSize = "13px";
+      result.lineHeight = "20px";
+      return result;
     });
-    expect(view.getByLabelText("Full user message").getAttribute("data-source-viewer")).toBe(
-      "true",
-    );
+    const text = "A long submitted prompt: " + "bounded text ".repeat(3_000) + " END OF PROMPT";
+    try {
+      const view = render(<UserMessageText text={text} />);
+      const disclosure = await view.findByRole("button", { name: "Show more" });
+      const occurrence = view.container.querySelector(".codex-markdown-user");
+      expect(occurrence?.textContent).toBe(text);
+      await act(async () => {
+        fireEvent.click(disclosure);
+        await Promise.resolve();
+      });
+      await waitFor(() =>
+        expect(view.getByRole("button", { name: "Show less" }).getAttribute("aria-expanded")).toBe(
+          "true",
+        ),
+      );
+      expect(view.container.querySelector(".codex-markdown-user")).toBe(occurrence);
+      expect(occurrence?.parentElement?.parentElement?.style.maxHeight).toBe("");
+    } finally {
+      scrollHeight.mockRestore();
+      style.mockRestore();
+    }
   });
 });

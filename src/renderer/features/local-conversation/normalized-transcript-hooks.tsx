@@ -16,8 +16,15 @@ import type { ThreadTranscriptBlockModel } from "./thread-stage-types";
 import {
   CodexTranscriptReadOwner,
   type CodexTranscriptTurnSlice,
+  type CodexTranscriptGeneratedImage,
 } from "./normalized-transcript-read-owner";
 import { resolveCodexReasoningSummaryPresentation } from "../../../shared/codex-reasoning-presentation";
+import type { ConversationTurnListEntry } from "./selectors";
+import { isNormalizedConversationTurnEntry } from "./selectors";
+import {
+  resolveThreadLatestTurnPhase,
+  type ThreadLatestTurnPhase,
+} from "./view/local-conversation-turn-virtualization";
 
 export const CodexTranscriptReadOwnerContext = createContext<CodexTranscriptReadOwner | null>(null);
 export const CodexTranscriptTurnEntityContext = createContext<string | null>(null);
@@ -25,6 +32,8 @@ export const CodexTranscriptTurnStatusContext =
   createContext<CodexTranscriptTurnSlice["presentationStatus"]>(undefined);
 const subscribeNothing = () => () => {};
 const readEmptyStructure = () => null;
+const emptyGeneratedImages: readonly CodexTranscriptGeneratedImage[] = Object.freeze([]);
+const readEmptyGeneratedImages = () => emptyGeneratedImages;
 
 export function CodexTranscriptReadOwnerProvider({
   conversationId,
@@ -75,6 +84,82 @@ export function useCodexTranscriptStructure() {
     owner?.readStructure ?? readEmptyStructure,
   );
   return { owner, structure };
+}
+
+/** Generated image presentation shares the resident index without subscribing to unrelated transcript text. */
+export function useCodexTranscriptGeneratedImages(owner: CodexTranscriptReadOwner | null) {
+  return useSyncExternalStore(
+    owner?.subscribeGeneratedImages ?? subscribeNothing,
+    owner?.readGeneratedImages ?? readEmptyGeneratedImages,
+  );
+}
+
+/** Placement reads only latest-Turn lifecycle and keyed raw slots; stream text never projects a full Turn. */
+export function useCodexTranscriptLatestTurnMetadata(entry: ConversationTurnListEntry | null): {
+  readonly isInProgress: boolean;
+  readonly phase: ThreadLatestTurnPhase;
+  readonly latestSteeringUserMessageKey: string | null;
+} | null {
+  const owner = useContext(CodexTranscriptReadOwnerContext);
+  const entityKey =
+    entry && isNormalizedConversationTurnEntry(entry) ? entry.historyEntityKey : null;
+  const subscribe = useCallback(
+    (listener: () => void) =>
+      owner && entityKey ? owner.subscribeTurn(entityKey, listener) : () => {},
+    [entityKey, owner],
+  );
+  const version = useSyncExternalStore(subscribe, () =>
+    owner && entityKey ? owner.readTurnVersion(entityKey) : 0,
+  );
+  return useMemo(() => {
+    if (!entry) return null;
+    if (!isNormalizedConversationTurnEntry(entry) || !owner || !entityKey) {
+      const turn = isNormalizedConversationTurnEntry(entry) ? entry.readTurn() : entry.turn;
+      if (!turn) return null;
+      const steering = turn.items.findLast(
+        (item) => item.rawItemType === "steeringUserMessage" || item.type === "steeringUserMessage",
+      );
+      return {
+        isInProgress: turn.status === "inProgress",
+        phase: resolveThreadLatestTurnPhase(turn),
+        latestSteeringUserMessageKey: steering?.rawItemId ?? steering?.itemId ?? null,
+      };
+    }
+    const details = owner.readTurnDetails(entityKey);
+    if (owner.readTurnVersion(entityKey) !== version) return null;
+    if (!details) return null;
+    const items = (owner.readItemSlots(entityKey)?.entries ?? []).flatMap(({ itemId }) => {
+      const item = owner.readItem(entityKey, itemId);
+      return item ? [item] : [];
+    });
+    const steering = items.findLast((item) => item.type === "steeringUserMessage");
+    let commentary = false;
+    let phase: ThreadLatestTurnPhase = "idle";
+    if (details.status === "inProgress") {
+      for (const item of items) {
+        if (item.type !== "agentMessage") continue;
+        if (item.phase === "commentary") {
+          commentary = true;
+          continue;
+        }
+        phase = "final_answer";
+        break;
+      }
+      if (phase === "idle")
+        phase =
+          commentary || details.firstTurnWorkItemStartedAtMs != null
+            ? "prework"
+            : details.finalAssistantStartedAtMs == null
+              ? "idle"
+              : "final_answer";
+    }
+    return {
+      isInProgress: details.status === "inProgress",
+      phase,
+      latestSteeringUserMessageKey:
+        steering?.type === "steeringUserMessage" ? (steering.restoreMessage.id ?? null) : null,
+    };
+  }, [entityKey, entry, owner, version]);
 }
 
 /** Raw text is deliberately absent from this snapshot; only row topology wakes the row. */

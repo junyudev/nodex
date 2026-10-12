@@ -153,6 +153,9 @@ export class McpAppRuntimeManager {
       return;
     }
     if (entry.runtime.element.parentElement !== surface.element) {
+      // Electron destroys native webview guests when their DOM subtree moves.
+      // Element.moveBefore also disconnects this native element; retained runtime
+      // object identity alone cannot guarantee WebContents or document state.
       surface.element.append(entry.runtime.element);
     }
     entry.runtime.setDisplayMode(surface.mode);

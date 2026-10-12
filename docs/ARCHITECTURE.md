@@ -442,6 +442,10 @@ immediately binds it to owner WebContents destruction, without exposing `install
 the Window runtime. Electron globals and application/platform identity enter through one platform
 Adapter, so request-header policy is pure and does not read ambient process state. Scope release first
 closes controller admission, detaches all global/partition/owner ingress and closes attached guests.
+Conversation HTML responses use that same sandbox host with a distinct origin scope and presentation-only
+MessagePort handlers. Their typed file query belongs to the conversation application and derives read
+roots from the source Thread's execution context; guest HTML never receives filesystem or tool authority.
+External navigation consumes a single native input gesture from the attached guest and its owning window.
 The protocol runtime then interrupts bounded Cache/FiberMap fetch and prewarm work and invalidates
 responses. Pending attachment expiry belongs to a scoped FiberSet rather than a controller timer. No
 protocol cache, handler, guest callback, or expiry task survives runtime replacement.

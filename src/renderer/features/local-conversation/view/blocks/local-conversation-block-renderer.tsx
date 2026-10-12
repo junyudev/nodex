@@ -316,15 +316,17 @@ export function ThreadBlockRenderer({
         </AsyncQuestionTranscript>
       );
 
-    if (block.assistantMessageActions || assistantAfter) {
-      return (
-        <div className="flex flex-col" data-local-conversation-final-assistant="true">
-          {body}
-        </div>
-      );
-    }
-
-    return body;
+    // Completion adds actions and output without replacing the assistant document.
+    return (
+      <div
+        className="flex flex-col"
+        data-local-conversation-final-assistant={
+          block.assistantMessageActions || assistantAfter ? "true" : undefined
+        }
+      >
+        {body}
+      </div>
+    );
   }
 
   if (block.type === "assistantActions") {

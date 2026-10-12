@@ -10,6 +10,7 @@ import type {
 import type { CodexPermissionSelection } from "./codex-permission-selection";
 import { CODEX_INTERRUPTED_STEER_REASON } from "./codex-queued-follow-up-state";
 import type { QueuedMessageState } from "./codex-queued-message-coordinator";
+import { parseUntrustedAppMessage } from "./codex-untrusted-app-input";
 
 export interface CodexQueuedMessageContext {
   readonly untrustedAppMessage?: unknown;
@@ -96,7 +97,8 @@ export function parseCodexQueuedMessageState(value: unknown): CodexQueuedMessage
   return result;
 }
 export function queuedMessagePromptInput(message: CodexQueuedMessage): CodexPromptInput {
-  const { prompt, imageAttachments, pastedTextAttachments, ...context } = message.context;
+  const { prompt, imageAttachments, pastedTextAttachments, untrustedAppMessage, ...context } =
+    message.context;
   return {
     ...context,
     text: prompt,
@@ -104,6 +106,9 @@ export function queuedMessagePromptInput(message: CodexQueuedMessage): CodexProm
     addedFiles: [...message.context.addedFiles],
     commentAttachments: [...message.context.commentAttachments],
     images: [...imageAttachments],
+    ...(untrustedAppMessage == null
+      ? {}
+      : { untrustedAppMessage: parseUntrustedAppMessage(untrustedAppMessage) }),
     ...(pastedTextAttachments ? { textAttachments: [...pastedTextAttachments] } : {}),
   };
 }

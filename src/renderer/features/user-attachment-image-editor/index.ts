@@ -83,3 +83,5 @@ export {
   GeneratedImageDotField,
   GeneratedImagePlaceholder,
 } from "./view/generated-image-dot-field";
+
+export { useGeneratedImageCollectionGroups } from "./adapters/use-generated-image-collection-groups";

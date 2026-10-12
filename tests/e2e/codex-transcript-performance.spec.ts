@@ -16,6 +16,10 @@ import {
   TRANSCRIPT_PERFORMANCE_CORPORA,
 } from "./support/transcript-performance-corpus";
 import {
+  measureTranscriptFind,
+  measureTranscriptWheel,
+} from "./support/transcript-read-only-benchmark";
+import {
   installTranscriptPortProbe as instrumentTranscriptPorts,
   readTranscriptPortEvidence as readPortCounts,
   beginTranscriptReleasedIdleObservation,
@@ -443,9 +447,38 @@ for (const corpus of TRANSCRIPT_PERFORMANCE_CORPORA) {
       const searchTargetWasResident = beforeSearch.residentItemIds.includes(searchItemId);
       if (corpus.id === "long") expect(searchTargetWasResident).toBe(false);
       const searchRequestOffset = (await readRequests(logPath)).length;
+      const readOnlyWheel = await measureTranscriptWheel(second);
       await second.keyboard.press("ControlOrMeta+f");
       const query = second.getByPlaceholder("Search chat…");
       await expect(query).toBeVisible();
+      const readOnlyFind = await measureTranscriptFind(second, query, corpus.id);
+      await writeFile(
+        path.join(artifactDirectory, `${corpus.id}-read-only-benchmark.json`),
+        JSON.stringify(
+          {
+            corpus: corpus.id,
+            syntheticTurnCount: corpus.turnCount,
+            additionalBootstrapTurns: 1,
+            build: prepared,
+            geometry: await second
+              .locator("[data-local-conversation-thread-body=true]")
+              .evaluate((element) => ({
+                windowWidth: innerWidth,
+                windowHeight: innerHeight,
+                devicePixelRatio,
+                viewportWidth: element.clientWidth,
+                viewportHeight: element.clientHeight,
+                flexDirection: getComputedStyle(element).flexDirection,
+              })),
+            wheel: readOnlyWheel,
+            find: readOnlyFind,
+            boundary:
+              "Real wheel to first scroll event plus two rAF; Find fill to exact active visible mark plus two rAF. Normal product UI and history adapters. Synthetic text matches the shared corpus. This Nodex run uses the fake native history fixture; reference uses native rollout files. No streaming paint or cross-backend equality claim.",
+          },
+          null,
+          2,
+        ),
+      );
       await query.fill(searchTerm);
       const targetMark = second
         .locator("[data-content-search-turn-key] mark")

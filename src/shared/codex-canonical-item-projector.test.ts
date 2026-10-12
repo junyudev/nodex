@@ -2,6 +2,7 @@ import { describe, expect, test } from "vite-plus/test";
 import type { ThreadItem } from "@nodex/codex-app-server-protocol/v2";
 import { parseCodexProtocolThreadItem } from "./codex-protocol-thread-item";
 import { createCodexQueuedFollowUp } from "./codex-queued-follow-up-state";
+import { prepareUntrustedAppInput } from "./codex-untrusted-app-input";
 import {
   agentActivityV2DynamicGenericActiveItem,
   agentActivityV2DynamicGenericFailedItem,
@@ -597,6 +598,43 @@ describe("projectCodexCanonicalTurnItemViews", () => {
 });
 
 describe("projectCodexCanonicalTurnViews", () => {
+  test("shows visualization prompt text in resident and restored native messages while keeping model input unchanged", () => {
+    const prompt = "Explain the selected entries";
+    const compiled = prepareUntrustedAppInput(
+      prompt,
+      {
+        untrustedAppMessage: {
+          source: "visualization",
+          sourceId: "widget-a",
+          text: prompt,
+          structuredContent: { secretContext: "not visible" },
+        },
+      },
+      "call",
+    );
+    const params = buildTurnParams({ input: [compiled.input] });
+    const resident = projectCodexCanonicalTurnViews({
+      threadId: THREAD_ID,
+      turn: buildCanonicalTurn({ params }),
+      observedAtMs: 1000,
+    });
+    const restored = project([
+      materializeCodexCanonicalProtocolItem({
+        type: "userMessage",
+        id: "restored-app-message",
+        clientId: null,
+        content: [compiled.input],
+      }),
+    ]);
+    expect(resident.find((item) => item.normalizedKind === "userMessage")?.markdownText).toBe(
+      prompt,
+    );
+    expect(restored[0]?.markdownText).toBe(prompt);
+    expect(params.input).toEqual([compiled.input]);
+    expect(compiled.input.type === "text" && compiled.input.text).toBe(
+      "Respond to the user input in the context of our conversation.",
+    );
+  });
   test("projects params input first with sidecar attachments, comments, and blocked delivery", () => {
     const commentAttachments = [
       {

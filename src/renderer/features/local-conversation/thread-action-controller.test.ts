@@ -106,6 +106,43 @@ function buildInput(overrides?: Partial<ThreadActionControllerInput>): ThreadAct
 }
 
 describe("createThreadStageActions settings routing", () => {
+  test("keeps visualization input separate while dispatching idle and queued submissions", async () => {
+    const submissions: unknown[] = [];
+    const actions = createThreadStageActions(
+      buildInput({
+        codexControl: {
+          startTurn: async (_id: string, prompt: string, opts: unknown) => {
+            submissions.push({ kind: "start", prompt, opts });
+          },
+          enqueueQueuedFollowUp: async (_id: string, prompt: string, opts: unknown) => {
+            submissions.push({ kind: "queue", prompt, opts });
+          },
+        } as unknown as ThreadActionControllerInput["codexControl"],
+      }),
+    );
+    const message = {
+      source: "visualization",
+      sourceId: "widget-a",
+      text: "Inspect selection",
+      structuredContent: { selected: 7 },
+    } as const;
+    await actions.onSendPrompt(message.text, { untrustedAppMessage: message });
+    await actions.onEnqueueQueuedFollowUp("thread_1", message.text, {
+      untrustedAppMessage: message,
+    });
+    expect(submissions).toEqual([
+      {
+        kind: "start",
+        prompt: message.text,
+        opts: expect.objectContaining({ untrustedAppMessage: message }),
+      },
+      {
+        kind: "queue",
+        prompt: message.text,
+        opts: expect.objectContaining({ untrustedAppMessage: message }),
+      },
+    ]);
+  });
   test.each(["idle", "fresh"] as const)(
     "retains the submitted Scene while %s preparation awaits",
     async (kind) => {

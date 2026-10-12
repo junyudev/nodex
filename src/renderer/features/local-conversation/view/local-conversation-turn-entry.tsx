@@ -15,6 +15,7 @@ import {
 } from "../normalized-transcript-hooks";
 import { isCodexTimelineTurnEntry } from "../projection/normalized-timeline-entries";
 import { LocalConversationTimelinePromotion } from "./local-conversation-timeline-promotion";
+import { LocalConversationTimelineImage } from "./local-conversation-timeline-image";
 import type {
   ThreadComposerShellBackgroundAgentRowModel,
   ThreadPlanSidePanelState,
@@ -154,13 +155,6 @@ function LocalConversationTurnEntryComponent({
   );
 
   if (!turn || !turnModel) return null;
-  if (
-    isCodexTimelineTurnEntry(entry) &&
-    entry.timelinePresentation &&
-    entry.timelinePresentation.type !== "wholeItem"
-  )
-    return <LocalConversationTimelinePromotion entry={entry} cwd={threadCwd ?? null} />;
-
   return (
     <CodexTranscriptTurnEntityContext.Provider value={entityKey}>
       <CodexTranscriptTurnStatusContext.Provider
@@ -225,8 +219,26 @@ function LocalConversationTurnEntryComponent({
   );
 }
 
+/** Inline presentations subscribe to their native item before any Turn materialization. */
+function LocalConversationTurnEntrySurface(props: LocalConversationTurnEntryProps) {
+  const { entry } = props;
+  if (isCodexTimelineTurnEntry(entry) && entry.timelineWholeItem?.type === "generatedImage") {
+    props.onRendered?.(entry.turnKey);
+    return <LocalConversationTimelineImage entry={entry} />;
+  }
+  if (
+    isCodexTimelineTurnEntry(entry) &&
+    entry.timelinePresentation &&
+    entry.timelinePresentation.type !== "wholeItem"
+  ) {
+    props.onRendered?.(entry.turnKey);
+    return <LocalConversationTimelinePromotion entry={entry} cwd={props.threadCwd ?? props.cwd} />;
+  }
+  return <LocalConversationTurnEntryComponent {...props} />;
+}
+
 export const LocalConversationTurnEntry = memo(
-  LocalConversationTurnEntryComponent,
+  LocalConversationTurnEntrySurface,
   (left, right) =>
     left.conversationId === right.conversationId &&
     left.childMemberships === right.childMemberships &&

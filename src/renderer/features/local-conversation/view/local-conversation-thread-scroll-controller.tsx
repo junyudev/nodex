@@ -30,7 +30,6 @@ import {
 } from "./local-conversation-turn-virtualization";
 import type { LocalConversationThreadRestoreSnapshot } from "./local-conversation-thread-view-state";
 
-const USER_SCROLL_WHEEL_DELTA_THRESHOLD_PX = 12;
 const USER_SCROLL_GRACE_WINDOW_MS = 1_000;
 const PROGRAMMATIC_SCROLL_SETTLE_WINDOW_MS = 64;
 const SCROLL_TO_BOTTOM_ANIMATION_DURATION_MS = 260;
@@ -49,6 +48,7 @@ export type ThreadUserScrollListener = (
 export interface ThreadResponseSpacerState {
   getHeightPx: () => number;
   scrollToBottom: () => void;
+  holdViewport?: () => void;
 }
 
 export interface ThreadScrollModeResolutionInput {
@@ -73,6 +73,10 @@ export interface LocalConversationThreadScrollControllerValue {
   getLastScrollDistanceFromBottomPx: () => number;
   getScrollElement: () => HTMLDivElement | null;
   getScrollDistanceFromBottomPx: () => number;
+  getUnroundedScrollDistanceFromBottomPx: (fallback: number) => number;
+  compensateScrollToDistanceFromBottomPx: (distance: number) => void;
+  holdViewport: () => void;
+  shouldFollowContentGrowth: () => boolean;
   maybeStickToBottom: () => void;
   preserveScrollPositionForNextLayout: () => void;
   prepareLatestTurnSubmitPlacement: () => PendingLatestTurnSubmitPlacement | null;
@@ -87,6 +91,7 @@ export interface LocalConversationThreadScrollControllerValue {
   ) => void;
   scrollToDistanceFromBottomPx: (distanceFromBottomPx: number, behavior?: ScrollBehavior) => void;
   setFooterResizeViewportPreserveDisabled: (disabled: boolean) => void;
+  setFooterHeightPx: (height: number) => void;
   adjustForMeasuredTurnHeightDelta: (
     input: Omit<MeasuredTurnHeightDeltaInput, "currentScrollDistanceFromBottomPx" | "scrollMode">,
   ) => void;
@@ -110,7 +115,7 @@ interface LocalConversationThreadScrollControllerContextValue extends LocalConve
 }
 
 const THREAD_SCROLL_VIEWPORT_CLASS_NAME =
-  "thread-scroll-container relative h-full overflow-x-hidden overflow-y-auto [overflow-anchor:none] [scroll-padding-bottom:var(--thread-scroll-padding-bottom,0px)] electron:[scrollbar-gutter:stable_both-edges] pt-(--thread-content-top-inset) [container-name:thread-content] [container-type:inline-size] [&:has([data-thread-scroll-footer='true']:focus-within)]:[scroll-padding-bottom:0px] flex flex-col-reverse";
+  "thread-scroll-container relative h-full overflow-x-hidden overflow-y-auto overscroll-y-contain [overflow-anchor:none] [scroll-padding-bottom:var(--thread-scroll-padding-bottom,0px)] electron:[scrollbar-gutter:stable_both-edges] pt-(--thread-content-top-inset) [container-name:thread-content] [container-type:inline-size] [&:has([data-thread-scroll-footer='true']:focus-within)]:[scroll-padding-bottom:0px] flex flex-col-reverse outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-inset";
 
 const THREAD_SCROLL_CONTENT_WRAPPER_CLASS_NAME =
   "mx-auto w-full max-w-(--thread-content-max-width) px-toolbar";
@@ -177,6 +182,38 @@ function resolveWheelDeltaPx(event: WheelEvent, viewportHeightPx: number): numbe
   return event.deltaY;
 }
 
+export function resolveThreadScrollKeyDirection(
+  event: KeyboardEvent,
+  viewport: HTMLElement,
+): "away" | "toward" | null {
+  if (event.defaultPrevented || event.repeat) return null;
+  const target = event.target;
+  if (
+    target instanceof HTMLElement &&
+    target !== viewport &&
+    (target.isContentEditable ||
+      target.closest("input, select, textarea") ||
+      ((event.key === " " || event.key === "Spacebar") &&
+        target.closest("button, [role='button']")))
+  )
+    return null;
+  switch (event.key) {
+    case "ArrowUp":
+    case "Home":
+    case "PageUp":
+      return "away";
+    case "ArrowDown":
+    case "End":
+    case "PageDown":
+      return "toward";
+    case " ":
+    case "Spacebar":
+      return event.shiftKey ? "away" : "toward";
+    default:
+      return null;
+  }
+}
+
 export function useLocalConversationThreadScrollController() {
   const context = useContext(LocalConversationThreadScrollControllerContext);
   if (context === null) {
@@ -198,12 +235,17 @@ function LocalConversationThreadScrollControllerProvider({ children }: { childre
   const responseSpacerStateRef = useRef<ThreadResponseSpacerState | null>(null);
   const scrollModeRef = useRef<ThreadScrollMode>("stickToBottom");
   const lastScrollDistanceFromBottomPxRef = useRef(0);
+  const roundedScrollRequestRef = useRef<{ requested: number; actual: number } | null>(null);
   const userScrollGraceUntilRef = useRef(0);
   const programmaticScrollSettledUntilRef = useRef(0);
   const programmaticFindSettleTimeoutRef = useRef<number | null>(null);
   const scrollListenersRef = useRef(new Set<ThreadScrollListener>());
   const userScrollListenersRef = useRef(new Set<ThreadUserScrollListener>());
   const footerResizeViewportPreserveDisabledRef = useRef(false);
+  const footerHeightRef = useRef<{
+    readonly element: HTMLDivElement;
+    readonly height: number;
+  } | null>(null);
   const scrollToBottomAnimationFrameRef = useRef<number | null>(null);
   const pendingPreserveRef = useRef<{
     distanceFromBottomPx: number;
@@ -272,7 +314,15 @@ function LocalConversationThreadScrollControllerProvider({ children }: { childre
         behavior,
         top: nextDistanceFromBottomPx === 0 ? 0 : -nextDistanceFromBottomPx,
       });
-      recordScrollDistance(nextDistanceFromBottomPx);
+      const actual = getThreadScrollDistanceFromBottomPx(element);
+      roundedScrollRequestRef.current =
+        behavior === "instant" &&
+        actual !== nextDistanceFromBottomPx &&
+        nextDistanceFromBottomPx > 0 &&
+        nextDistanceFromBottomPx < element.scrollHeight - element.clientHeight
+          ? { requested: nextDistanceFromBottomPx, actual }
+          : null;
+      recordScrollDistance(actual);
     },
     [recordScrollDistance],
   );
@@ -327,6 +377,32 @@ function LocalConversationThreadScrollControllerProvider({ children }: { childre
     return distanceFromBottomPx;
   }, []);
 
+  const getUnroundedScrollDistanceFromBottomPx = useCallback((fallback: number) => {
+    const request = roundedScrollRequestRef.current;
+    return request?.actual === fallback ? request.requested : fallback;
+  }, []);
+
+  const shouldFollowContentGrowth = useCallback(
+    () => scrollModeRef.current === "stickToBottom",
+    [],
+  );
+
+  const holdViewport = useCallback(() => {
+    cancelPendingPreserve();
+    cancelScrollToBottomAnimation();
+    setScrollMode("user");
+    responseSpacerStateRef.current?.holdViewport?.();
+  }, [cancelPendingPreserve, cancelScrollToBottomAnimation, setScrollMode]);
+
+  const compensateScrollToDistanceFromBottomPx = useCallback(
+    (distance: number) => {
+      const element = scrollElementRef.current;
+      if (!element || scrollToBottomAnimationFrameRef.current !== null) return;
+      writeNativeScrollDistance(element, distance, "instant");
+    },
+    [writeNativeScrollDistance],
+  );
+
   const addScrollListener = useCallback((listener: ThreadScrollListener) => {
     scrollListenersRef.current.add(listener);
     return () => {
@@ -376,9 +452,16 @@ function LocalConversationThreadScrollControllerProvider({ children }: { childre
       cancelScrollToBottomAnimation();
       programmaticScrollSettledUntilRef.current =
         performance.now() + PROGRAMMATIC_SCROLL_SETTLE_WINDOW_MS;
+      if (distanceFromBottomPx === 0 && scrollModeRef.current !== "programmaticFind")
+        setScrollMode("stickToBottom");
       writeNativeScrollDistance(element, distanceFromBottomPx, behavior);
     },
-    [cancelPendingPreserve, cancelScrollToBottomAnimation, writeNativeScrollDistance],
+    [
+      cancelPendingPreserve,
+      cancelScrollToBottomAnimation,
+      setScrollMode,
+      writeNativeScrollDistance,
+    ],
   );
 
   const scrollElementIntoView = useCallback(
@@ -404,6 +487,28 @@ function LocalConversationThreadScrollControllerProvider({ children }: { childre
       }
     },
     [cancelPendingPreserve],
+  );
+
+  const setFooterHeightPx = useCallback(
+    (height: number) => {
+      const element = scrollElementRef.current;
+      if (!element) return;
+      const previous =
+        footerHeightRef.current?.element === element ? footerHeightRef.current.height : null;
+      if (previous === height) return;
+      element.style.setProperty("--thread-scroll-padding-bottom", `${height + 16}px`);
+      footerHeightRef.current = { element, height };
+      if (
+        previous === null ||
+        footerResizeViewportPreserveDisabledRef.current ||
+        scrollToBottomAnimationFrameRef.current !== null
+      )
+        return;
+      const distance = getThreadScrollDistanceFromBottomPx(element);
+      if (distance <= THREAD_NEAR_BOTTOM_THRESHOLD_PX) return;
+      writeNativeScrollDistance(element, distance + height - previous, "instant");
+    },
+    [writeNativeScrollDistance],
   );
 
   const preserveScrollPositionForNextLayout = useCallback(() => {
@@ -517,6 +622,9 @@ function LocalConversationThreadScrollControllerProvider({ children }: { childre
     if (scrollElement === null) return;
 
     let mounted = true;
+    let userScrollDirection: "away" | "toward" | null = null;
+    let scrollbarPointerStart: { scrollHeight: number; scrollTop: number } | null = null;
+    let touch: Touch | null = null;
     const updateScrolledFromBottom = (isNearBottom: boolean) => {
       if (!mounted) return;
       setIsScrolledFromBottom(!isNearBottom);
@@ -526,20 +634,41 @@ function LocalConversationThreadScrollControllerProvider({ children }: { childre
       const previousScrollDistanceFromBottomPx = lastScrollDistanceFromBottomPxRef.current;
       const scrollDistanceFromBottomPx = getThreadScrollDistanceFromBottomPx(scrollElement);
       const isNearBottom = isThreadScrollNearBottom({ scrollDistanceFromBottomPx });
-      const nextMode = resolveThreadScrollModeForScrollEvent({
-        currentMode: scrollModeRef.current,
-        isNearBottom,
-        nowMs: performance.now(),
-        userScrollGraceUntilMs: userScrollGraceUntilRef.current,
-        programmaticScrollSettledUntilMs: programmaticScrollSettledUntilRef.current,
-      });
-      if (nextMode !== scrollModeRef.current) {
-        scrollModeRef.current = nextMode;
+      if (scrollbarPointerStart) {
+        if (
+          scrollbarPointerStart.scrollHeight === scrollElement.scrollHeight &&
+          scrollbarPointerStart.scrollTop !== scrollElement.scrollTop
+        ) {
+          userScrollDirection =
+            scrollDistanceFromBottomPx > previousScrollDistanceFromBottomPx ? "away" : "toward";
+          userScrollGraceUntilRef.current = performance.now() + USER_SCROLL_GRACE_WINDOW_MS;
+        }
+        scrollbarPointerStart = null;
+      }
+      const direction =
+        scrollDistanceFromBottomPx > previousScrollDistanceFromBottomPx
+          ? "away"
+          : scrollDistanceFromBottomPx < previousScrollDistanceFromBottomPx
+            ? "toward"
+            : null;
+      const userInitiated =
+        direction !== null &&
+        direction === userScrollDirection &&
+        performance.now() <= userScrollGraceUntilRef.current;
+      if (userInitiated) {
+        scrollModeRef.current = isNearBottom && direction === "toward" ? "stickToBottom" : "user";
+        userScrollGraceUntilRef.current = performance.now() + USER_SCROLL_GRACE_WINDOW_MS;
+      }
+      if (roundedScrollRequestRef.current?.actual !== scrollDistanceFromBottomPx)
+        roundedScrollRequestRef.current = null;
+      if (isNearBottom) {
+        cancelScrollToBottomAnimation();
+        userScrollDirection = null;
       }
       updateScrolledFromBottom(isNearBottom);
       recordScrollDistance(scrollDistanceFromBottomPx, {
         previousScrollDistanceFromBottomPx,
-        userInitiated: performance.now() <= userScrollGraceUntilRef.current,
+        userInitiated,
       });
     };
 
@@ -556,6 +685,13 @@ function LocalConversationThreadScrollControllerProvider({ children }: { childre
     });
 
     const handleWheel = (event: WheelEvent) => {
+      if (
+        event.defaultPrevented ||
+        event.ctrlKey ||
+        event.shiftKey ||
+        Math.abs(event.deltaY) <= Math.abs(event.deltaX)
+      )
+        return;
       const pendingPreserve = pendingPreserveRef.current;
       if (pendingPreserve !== null) {
         pendingPreserve.wheelDistanceFromBottomPx -= resolveWheelDeltaPx(
@@ -563,19 +699,56 @@ function LocalConversationThreadScrollControllerProvider({ children }: { childre
           scrollElement.clientHeight,
         );
       }
-      if (event.deltaY !== 0) {
-        userScrollGraceUntilRef.current = performance.now() + USER_SCROLL_GRACE_WINDOW_MS;
-      }
-      if (event.deltaY < -USER_SCROLL_WHEEL_DELTA_THRESHOLD_PX) {
-        setScrollMode("user");
-      }
+      userScrollDirection = event.deltaY < 0 ? "away" : "toward";
+      userScrollGraceUntilRef.current = performance.now() + USER_SCROLL_GRACE_WINDOW_MS;
+      roundedScrollRequestRef.current = null;
       cancelScrollToBottomAnimation();
     };
 
-    const handlePointerDown = () => {
+    const handleKeyDown = (event: KeyboardEvent) => {
+      const direction = resolveThreadScrollKeyDirection(event, scrollElement);
+      if (!direction) return;
+      userScrollDirection = direction;
+      userScrollGraceUntilRef.current = performance.now() + USER_SCROLL_GRACE_WINDOW_MS;
+      roundedScrollRequestRef.current = null;
+      cancelScrollToBottomAnimation();
+    };
+    const handlePointerDown = (event: PointerEvent) => {
+      userScrollDirection = null;
+      scrollbarPointerStart = null;
+      if (event.pointerType !== "mouse" || event.target !== scrollElement) return;
       cancelPendingPreserve();
       cancelScrollToBottomAnimation();
+      roundedScrollRequestRef.current = null;
+      scrollbarPointerStart = {
+        scrollHeight: scrollElement.scrollHeight,
+        scrollTop: scrollElement.scrollTop,
+      };
+    };
+    const handlePointerEnd = () => {
+      scrollbarPointerStart = null;
+    };
+    const handleTouchStart = (event: TouchEvent) => {
+      touch = event.touches.length === 1 ? (event.touches[0] ?? null) : null;
+    };
+    const handleTouchMove = (event: TouchEvent) => {
+      const next = event.touches.length === 1 ? event.touches[0] : null;
+      if (!touch || !next || touch.identifier !== next.identifier) {
+        touch = null;
+        return;
+      }
+      const deltaX = next.clientX - touch.clientX;
+      const deltaY = next.clientY - touch.clientY;
+      if (Math.max(Math.abs(deltaX), Math.abs(deltaY)) < 8) return;
+      touch = null;
+      if (Math.abs(deltaY) <= Math.abs(deltaX)) return;
+      userScrollDirection = deltaY > 0 ? "away" : "toward";
       userScrollGraceUntilRef.current = performance.now() + USER_SCROLL_GRACE_WINDOW_MS;
+      roundedScrollRequestRef.current = null;
+      cancelScrollToBottomAnimation();
+    };
+    const handleTouchEnd = () => {
+      touch = null;
     };
 
     const handleScroll = () => {
@@ -584,6 +757,13 @@ function LocalConversationThreadScrollControllerProvider({ children }: { childre
 
     scrollElement.addEventListener("wheel", handleWheel, { passive: true });
     scrollElement.addEventListener("pointerdown", handlePointerDown, { passive: true });
+    scrollElement.addEventListener("pointerup", handlePointerEnd, { passive: true });
+    scrollElement.addEventListener("pointercancel", handlePointerEnd, { passive: true });
+    scrollElement.addEventListener("keydown", handleKeyDown);
+    scrollElement.addEventListener("touchstart", handleTouchStart, { passive: true });
+    scrollElement.addEventListener("touchmove", handleTouchMove, { passive: true });
+    scrollElement.addEventListener("touchend", handleTouchEnd, { passive: true });
+    scrollElement.addEventListener("touchcancel", handleTouchEnd, { passive: true });
     scrollElement.addEventListener("scroll", handleScroll, { passive: true });
 
     return () => {
@@ -591,6 +771,13 @@ function LocalConversationThreadScrollControllerProvider({ children }: { childre
       window.cancelAnimationFrame(frameId);
       scrollElement.removeEventListener("wheel", handleWheel);
       scrollElement.removeEventListener("pointerdown", handlePointerDown);
+      scrollElement.removeEventListener("pointerup", handlePointerEnd);
+      scrollElement.removeEventListener("pointercancel", handlePointerEnd);
+      scrollElement.removeEventListener("keydown", handleKeyDown);
+      scrollElement.removeEventListener("touchstart", handleTouchStart);
+      scrollElement.removeEventListener("touchmove", handleTouchMove);
+      scrollElement.removeEventListener("touchend", handleTouchEnd);
+      scrollElement.removeEventListener("touchcancel", handleTouchEnd);
       scrollElement.removeEventListener("scroll", handleScroll);
     };
   }, [
@@ -617,6 +804,10 @@ function LocalConversationThreadScrollControllerProvider({ children }: { childre
     () => ({
       addScrollListener,
       addUserScrollListener,
+      compensateScrollToDistanceFromBottomPx,
+      getUnroundedScrollDistanceFromBottomPx,
+      holdViewport,
+      shouldFollowContentGrowth,
       adjustForMeasuredTurnHeightDelta,
       clearPendingLatestTurnSubmitPlacement,
       consumePendingLatestTurnSubmitPlacement,
@@ -638,12 +829,17 @@ function LocalConversationThreadScrollControllerProvider({ children }: { childre
       scrollToBottom,
       scrollToDistanceFromBottomPx,
       setFooterResizeViewportPreserveDisabled,
+      setFooterHeightPx,
       setScrollMode,
       suppressAutoStickToBottom,
     }),
     [
       addScrollListener,
       addUserScrollListener,
+      compensateScrollToDistanceFromBottomPx,
+      getUnroundedScrollDistanceFromBottomPx,
+      holdViewport,
+      shouldFollowContentGrowth,
       adjustForMeasuredTurnHeightDelta,
       clearPendingLatestTurnSubmitPlacement,
       consumePendingLatestTurnSubmitPlacement,
@@ -664,6 +860,7 @@ function LocalConversationThreadScrollControllerProvider({ children }: { childre
       scrollToBottom,
       scrollToDistanceFromBottomPx,
       setFooterResizeViewportPreserveDisabled,
+      setFooterHeightPx,
       registerScrollElement,
       setScrollMode,
       suppressAutoStickToBottom,
@@ -708,7 +905,7 @@ export const LocalConversationThreadScrollLayout = forwardRef<
   const controller = useLocalConversationThreadScrollController();
   const reducedMotion = useResolvedReducedMotion();
   const footerRef = useRef<HTMLDivElement | null>(null);
-  const preserveScrollPositionForNextLayout = controller.preserveScrollPositionForNextLayout;
+  const setFooterHeightPx = controller.setFooterHeightPx;
   const scrollElement = controller.scrollElement;
   const restoredElementRef = useRef<HTMLDivElement | null>(null);
   useLayoutEffect(() => {
@@ -738,18 +935,24 @@ export const LocalConversationThreadScrollLayout = forwardRef<
     const footerElement = footerRef.current;
     if (!scrollElement || !footerElement) return undefined;
 
-    const syncFooterPadding = () => {
-      preserveScrollPositionForNextLayout();
-      const footerHeight = footerElement.getBoundingClientRect().height;
-      scrollElement.style.setProperty("--thread-scroll-padding-bottom", `${footerHeight + 16}px`);
+    const syncFooterPadding = (entries?: readonly ResizeObserverEntry[]) => {
+      const box = entries?.find((entry) => entry.target === footerElement)?.borderBoxSize;
+      const measured = box?.[0]?.blockSize;
+      const windowZoom =
+        Number.parseFloat(
+          getComputedStyle(footerElement).getPropertyValue("--codex-window-zoom"),
+        ) || 1;
+      const footerHeight = measured ?? footerElement.getBoundingClientRect().height / windowZoom;
+      setFooterHeightPx(footerHeight);
     };
 
     syncFooterPadding();
 
     if (typeof ResizeObserver === "undefined") {
-      window.addEventListener("resize", syncFooterPadding);
+      const handleResize = () => syncFooterPadding();
+      window.addEventListener("resize", handleResize);
       return () => {
-        window.removeEventListener("resize", syncFooterPadding);
+        window.removeEventListener("resize", handleResize);
       };
     }
 
@@ -758,7 +961,7 @@ export const LocalConversationThreadScrollLayout = forwardRef<
     return () => {
       resizeObserver.disconnect();
     };
-  }, [footer, preserveScrollPositionForNextLayout, scrollElement]);
+  }, [footer, setFooterHeightPx, scrollElement]);
 
   const motionStyle = contentX == null ? undefined : { x: contentX };
 
@@ -770,6 +973,9 @@ export const LocalConversationThreadScrollLayout = forwardRef<
       <div
         ref={controller.registerScrollElement}
         data-local-conversation-thread-body="true"
+        role="region"
+        aria-label="Conversation"
+        tabIndex={0}
         {...{
           [REMOTE_HOSTED_PIP_ANCHOR_HOST_ATTRIBUTE]: REMOTE_HOSTED_PIP_MAIN_THREAD_HOST_ID,
         }}
@@ -792,23 +998,30 @@ export const LocalConversationThreadScrollLayout = forwardRef<
           </div>
           {footer ? (
             <div
-              ref={footerRef}
-              data-thread-scroll-footer="true"
-              className="sticky bottom-0 z-10 mt-auto w-full pb-4"
-            >
-              <div className="pointer-events-none absolute inset-x-0 bottom-0 z-0 flex h-full w-full justify-center pt-4">
-                <div className="z-0 h-full w-full bg-gradient-to-t from-token-main-surface-primary via-token-main-surface-primary extension:from-token-bg-primary extension:via-token-bg-primary" />
-              </div>
-              <div
-                {...{ [REMOTE_HOSTED_PIP_OBSTACLE_ATTRIBUTE]: "thread-footer" }}
-                className="relative z-10 flex flex-col"
-              >
-                {footer}
-              </div>
-            </div>
+              aria-hidden="true"
+              className="pointer-events-none sticky bottom-0 z-10 mt-auto w-full shrink-0 h-[calc(var(--thread-scroll-padding-bottom)-16px)]"
+            />
           ) : null}
         </motion.div>
       </div>
+      {footer ? (
+        <motion.div
+          ref={footerRef}
+          data-thread-scroll-footer="true"
+          className="pointer-events-none absolute inset-x-0 bottom-0 z-20 pb-4"
+          style={motionStyle}
+        >
+          <div className="pointer-events-none absolute inset-x-0 bottom-0 z-0 flex h-full w-full justify-center pt-4">
+            <div className="z-0 h-full w-full bg-gradient-to-t from-token-main-surface-primary via-token-main-surface-primary extension:from-token-bg-primary extension:via-token-bg-primary" />
+          </div>
+          <div
+            {...{ [REMOTE_HOSTED_PIP_OBSTACLE_ATTRIBUTE]: "thread-footer" }}
+            className="relative z-10 flex flex-col *:pointer-events-auto"
+          >
+            {footer}
+          </div>
+        </motion.div>
+      ) : null}
     </div>
   );
 });
