@@ -1,0 +1,310 @@
+src/renderer/features/local-conversation/local-conversation-native-stream.jsdom.test.ts
+  s_84bf5c78324d85::t_9f94788f2135b6 479-507,592,653,673,699,704,731
+  s_84bf5c78324d85::t_c54ecc7b15a63b 9,473-474,509
+  s_84bf5c78324d85::t_c25d158744be8e 16-21,29,160-165,296-297,376-380,439,462-472,475-478,508,510-559,565,572,574,580,583,589,601,612,617,628,641,651,659,688,693-694,701,706,721,724,730,736,741,765
+  s_84bf5c78324d85::t_f4d8048a3fe570 560-564,566-571,573,575-579,581-582,584-588,590-591,593-600,602-611,613-616,618-627,629-640,642-650,652,654-658,660-672,674-687,689-692,695-698,700,702-703,705,707-720,722-723,725-729,732-735,737-740,742-764,766-767
+src/renderer/lib/inline-visualization/inline-visualization-document.jsdom.test.ts
+  s_84bf5c78324d85::t_303d73583c07f1 167-171,400-406
+  s_84bf5c78324d85::t_adaacd27186dbb 1-159,166,184-185,196-269,309-399,407-450
+  s_84bf5c78324d85::t_f20306f67005b3 270,285-289,291,296,300-308
+  s_84bf5c78324d85::t_bbc6f9b07141f1 160-165,172-183,186-195,271-284,290,292-295,297-299
+  s_84bf5c78324d85::t_35330da11710d7 451-452
+src/renderer/features/local-conversation/local-conversation-pending-artifact-recovery.ts
+  s_84bf5c78324d85::t_d73af9ea4a6e9a 5,64-69,84-91,118,129,144
+  s_84bf5c78324d85::t_9cb1db68699a80 1-4,6-21,23-63,70-83,92-117,119-128,130-143,145-156
+  s_84bf5c78324d85::t_6f5b85cbf718ed 22
+  s_84bf5c78324d85::t_bf69f09ca129b0 157-164
+src/shared/codex-visualization-state.node.test.ts
+  s_84bf5c78324d85::t_fe174463395579 1-46
+  s_84bf5c78324d85::t_b0322fe5821729 47-103
+src/main/ipc/handlers/CodexVisualizationIpc.ts
+  s_84bf5c78324d85::t_171a3478e5195d 10-11,31-33,92,94-95,97,100
+  s_84bf5c78324d85::t_5d978095f50161 20-23,28-30,34-50,59,65,73-91,93,96
+  s_84bf5c78324d85::t_68d11195e0b371 98-99,112-117
+src/shared/codex-conversation-stream.test.ts
+  s_84bf5c78324d85::t_6f5b85cbf718ed 127-129
+src/main/codex-application/CodexVisualizationState.node.test.ts
+  s_84bf5c78324d85::t_ffebf638f57d7b 17-22,28-30,34-38,41-71,74-105,108-139,142-174
+  s_84bf5c78324d85::t_33ab8f72f10e58 2
+  s_84bf5c78324d85::t_fe174463395579 1,3-16,23-27,31-33,39-40,72-73,106-107,140-141
+src/renderer/features/local-conversation/local-conversation-store.ts
+  s_84bf5c78324d85::t_2a86b27a19bfd7 40,2180,2815
+  s_84bf5c78324d85::t_91e411030ea77a 4979-4984,4996
+  s_84bf5c78324d85::t_4fd9c714e49a6a 41-45,2179,2397,2814,2828-2833,3480-3481,3892,4576,4972-4978,4985-4995
+  s_84bf5c78324d85::t_c9037c12c18bf1 2816,4997-5001,6732,6739-6741,8018-8019,8587-8588,8742-8746
+src/renderer/lib/inline-visualization/inline-visualization-runtime.test.ts
+  s_84bf5c78324d85::t_2a534a287d6eed 9
+src/renderer/features/local-conversation/view/local-conversation-pending-artifact.tsx
+  s_84bf5c78324d85::t_48a89903e1c9fa 1,3-4,7-11,14-18,27-32,40-49
+  s_84bf5c78324d85::t_6f5b85cbf718ed 2,5-6,12-13,19-26,33-39,50
+  s_84bf5c78324d85::t_d45a8e84a6a7c8 51-52
+src/main/local-store/ProfilePersistedAtoms.ts
+  s_84bf5c78324d85::t_e295054bb8b687 1-18
+  s_84bf5c78324d85::t_050350453913ea 19
+src/main/app/ConversationApplicationLive.ts
+  s_84bf5c78324d85::t_e295054bb8b687 280,522,525,612
+  s_84bf5c78324d85::t_07cd1e7f5985eb 613
+src/renderer/lib/inline-visualization/inline-visualization-widget-state.ts
+  s_84bf5c78324d85::t_c4766810bf739a 1-23,40-72
+  s_84bf5c78324d85::t_33ab8f72f10e58 24-39
+  s_84bf5c78324d85::t_5754c23fa83042 73-94
+src/renderer/lib/inline-visualization/inline-visualization-download.node.test.ts
+  s_84bf5c78324d85::t_26e36dd0fb0346 1-5,11-12,28,30,32-37,44,52-59
+  s_84bf5c78324d85::t_6a7abe41b8c615 6-10,13-27,29,31,38-43,45-51
+src/renderer/lib/inline-visualization/inline-visualization-calendar.ts
+  s_84bf5c78324d85::t_ad2a8414062a68 1-236
+src/shared/codex-conversation-state/codex-conversation-reducer.ts
+  s_84bf5c78324d85::t_2a86b27a19bfd7 81,678
+  s_84bf5c78324d85::t_dc0f5c4cbbd4bf 31,80
+  s_84bf5c78324d85::t_82d3e697858e53 679-684
+src/shared/codex-conversation-state/codex-item-timeline-index.test.ts
+  s_84bf5c78324d85::t_dd241043fb0203 1-60
+  s_84bf5c78324d85::t_a60cfccc969f9e 61-91
+docs/product-specs/codex-thread-transcript-behavior.md
+  s_84bf5c78324d85::t_a848cd52bdb471 110-113
+  s_84bf5c78324d85::t_2007ead9c6c596 109
+src/renderer/lib/inline-visualization/inline-visualization-runtime.jsdom.test.ts
+  s_84bf5c78324d85::t_ffebf638f57d7b 244,251-254,256-258,264-270,272-274,278-281
+  s_84bf5c78324d85::t_4255e30ab5beec 259,285-286,297,300,303
+  s_84bf5c78324d85::t_dc8be093c4c4d7 476-477
+  s_84bf5c78324d85::t_273b06a1c347b5 163,169-172,176
+  s_84bf5c78324d85::t_d233a1e815790b 152-162,164-168,173-175,177-178
+  s_84bf5c78324d85::t_c3035a64e3ea96 28-31,221,478-481
+  s_84bf5c78324d85::t_9dafa3c792ed11 88
+  s_84bf5c78324d85::t_a419ecae264c33 14-15,238-243,245-250,255,260-263,271,275-277,282-284,287-296,298-299,301-302
+  s_84bf5c78324d85::t_01ce2b24c31709 20-23,211-214,218-220,222-227,229-232
+  s_84bf5c78324d85::t_57a0d4bff6310a 203-210,215-217,228,233-237
+  s_84bf5c78324d85::t_b47afe462a4ba3 33
+  s_84bf5c78324d85::t_476cadb0b92c59 179-202
+docs/ARCHITECTURE.md
+  s_84bf5c78324d85::t_514aafc3926d7e 757-759
+  s_84bf5c78324d85::t_a848cd52bdb471 449-451,508,510,514-515
+src/main/host-runtime/McpAppSandboxRuntime.ts
+  s_84bf5c78324d85::t_d6f4b66d06d64a 21,40,96
+  s_84bf5c78324d85::t_5d978095f50161 41,97
+src/main/codex-application/CodexProtocolNotificationEffects.ts
+  s_84bf5c78324d85::t_033f24f7783bbb 16,45-47,71,152,172-173,387-388,430,469-477,488
+  s_84bf5c78324d85::t_18c69b96221984 494
+  s_84bf5c78324d85::t_47162a914461bd 432,478-487
+  s_84bf5c78324d85::t_f7641a36994521 431,433
+src/main/codex-application/CodexThreadTimelinePolicy.ts
+  s_84bf5c78324d85::t_9fc08f203906d9 1-8
+src/main/codex-application/CodexProtocolNotificationTimeline.node.test.ts
+  s_84bf5c78324d85::t_4c3595709fd86b 1-3,5-6,9-10,12-13,15-77,85-87,89-93,106,108,117-124,132,134,138-139,141-147,152,161-162,167-170,176,191-194,200-201,204-205,262-281,307-308,408
+  s_84bf5c78324d85::t_9d8a5c311f6719 284-305
+  s_84bf5c78324d85::t_47162a914461bd 88,125-128,133,135-137,140,172,342-345,370-374,376-378,383-403,405-407
+  s_84bf5c78324d85::t_02474470a76ddc 4,7-8,14,78-84,94-105,107,109-116,129-131,148-151,153-160,163-166,171,173-175,177-190,195-199,202-203,206-261,282-283,306,309-319
+  s_84bf5c78324d85::t_f7898eee7dd4df 11,320-341,346-369,375,379-382,404
+  s_84bf5c78324d85::t_5da7b69bd1457d 409-419
+src/renderer/features/local-conversation/view/local-conversation-inline-visualization.test.tsx
+  s_84bf5c78324d85::t_282401d1d985a0 175-179,181-187
+  s_84bf5c78324d85::t_57a0d4bff6310a 174,180,193-194
+  s_84bf5c78324d85::t_b47afe462a4ba3 24-27,54-55,76-87,99-104,127-135,137-150,152-154
+  s_84bf5c78324d85::t_6a7abe41b8c615 173,192
+  s_84bf5c78324d85::t_9dafa3c792ed11 88,126,136,151,155-157
+  s_84bf5c78324d85::t_c3035a64e3ea96 47,188-191
+src/main/ipc/handlers/CodexVisualizationIpc.node.test.ts
+  s_84bf5c78324d85::t_99309bcded9c94 199-200
+  s_84bf5c78324d85::t_35897d672a1b10 13,48-49,76-78,81-82,91-94,201-241
+  s_84bf5c78324d85::t_1242b37834c97f 4,12,36-37,44-45,47,50,90,95,101-102
+  s_84bf5c78324d85::t_dc8be093c4c4d7 38,46,72-75,79-80,103,242-253
+  s_84bf5c78324d85::t_2cdd0c72ddbca2 254-261
+src/renderer/features/local-conversation/view/local-conversation-pending-artifact.test.tsx
+  s_84bf5c78324d85::t_48a89903e1c9fa 3-11,13-14,17-26,28-42,48-58,62-70,72-75,77-84,86-88,95-99,102-104,106-116,118-120
+  s_84bf5c78324d85::t_6f1171f9fe6f9c 1-2,12,15-16,27,43-47,59-61,71,76,85,89-94,100-101,105,117,121
+  s_84bf5c78324d85::t_0458545e121497 122-156
+src/main/ipc/handlers/CodexVisualizationStateIpc.node.test.ts
+  s_84bf5c78324d85::t_9dafa3c792ed11 1-19,21-22,27-28,95
+  s_84bf5c78324d85::t_ffebf638f57d7b 20,23-26,29-94
+src/shared/codex-conversation-stream.ts
+  s_84bf5c78324d85::t_dc0f5c4cbbd4bf 547-549
+src/renderer/lib/inline-visualization/inline-visualization-style-variables.ts
+  s_84bf5c78324d85::t_a60a2ee8e1a642 1-151
+  s_84bf5c78324d85::t_e27a92b20c1cd3 152-276
+src/shared/codex-conversation-state/codex-canonical-history-loader.ts
+  s_84bf5c78324d85::t_d73af9ea4a6e9a 3,551
+  s_84bf5c78324d85::t_9cb1db68699a80 92
+src/main/mcp-app/mcp-app-sandbox-host.test.ts
+  s_84bf5c78324d85::t_1242b37834c97f 7,150-151,159,195,210-211,214-215
+  s_84bf5c78324d85::t_dc8be093c4c4d7 196-209,212-213,216-219
+  s_099f5cf47f7051::t_d68ec0cf6a28e7 220
+src/shared/codex-realtime-item.test.ts
+  s_84bf5c78324d85::t_1ac90fdf6582ee 1-23
+  s_84bf5c78324d85::t_1987adf196c982 24-68
+src/renderer/lib/inline-visualization/inline-visualization-document-helpers.ts
+  s_84bf5c78324d85::t_ad2a8414062a68 1-600
+src/shared/codex-conversation-state/codex-live-item-timeline.test.ts
+  s_84bf5c78324d85::t_b4cf73607541ac 1-68
+  s_84bf5c78324d85::t_4dc65a954c50ce 69-182
+src/main/codex-application/CodexProtocolNotificationEffects.node.test.ts
+  s_84bf5c78324d85::t_f7641a36994521 9,44-46
+  s_84bf5c78324d85::t_11fbbcec354378 47
+src/main/codex/codex-app-server-message-parser.test.ts
+  s_84bf5c78324d85::t_c54ecc7b15a63b 8-16,43,66
+  s_84bf5c78324d85::t_5364173749dc4c 17-42,44-65,67-77
+src/main/ipc/handlers/ApplicationLocalStateIpc.test.ts
+  s_84bf5c78324d85::t_fe174463395579 11-12,34
+src/main/mcp-app/mcp-app-sandbox-host.ts
+  s_84bf5c78324d85::t_35897d672a1b10 3-11,33-34,39-40,93-97,324-329,645-649,652,655-659,666-667,671-672
+  s_84bf5c78324d85::t_5d978095f50161 35-38,92,330,335,338-345,661-662,665,668-670,674-684
+  s_84bf5c78324d85::t_d6f4b66d06d64a 331-334,336-337,650-651,653-654,660,663-664,673
+  s_84bf5c78324d85::t_f35fe389b102ba 685-687,805-806
+src/shared/ipc-endpoint-policy.ts
+  s_84bf5c78324d85::t_171a3478e5195d 147,484
+  s_84bf5c78324d85::t_47bcf812d553f0 146
+  s_84bf5c78324d85::t_5d978095f50161 247,417-419
+src/renderer/lib/inline-visualization/inline-visualization-presentation.ts
+  s_84bf5c78324d85::t_ed8b764824357b 3-24
+src/shared/codex-conversation-state/codex-canonical-history-timeline.ts
+  s_84bf5c78324d85::t_dd95a4f71b4341 9,41
+  s_84bf5c78324d85::t_dc0f5c4cbbd4bf 11,255-256
+  s_84bf5c78324d85::t_d73af9ea4a6e9a 10
+  s_84bf5c78324d85::t_5ede61dd89ec25 42,117,131,257-258,269,278-281
+tests/e2e/codex-inline-visualization.spec.ts
+  s_84bf5c78324d85::t_afef20b11c0c43 21,26-34,40-43,46-47,142,165,184,534
+  s_84bf5c78324d85::t_a5e009ab2d906a 592,605,638,646-647,650-654,658,675-677,698-701,706-711
+  s_84bf5c78324d85::t_e7cb3b8662da01 736,749
+  s_84bf5c78324d85::t_282401d1d985a0 12-15,22-25,35-39,44-45,104,106,133,593-604,606-637,639-645,648-649,655-657,659-674,678-693,695-697,702-705,712-735,769,775
+  s_84bf5c78324d85::t_090127bd728bf2 544-567
+  s_84bf5c78324d85::t_bf7d87f9bb9ef3 315-330,542,694
+  s_84bf5c78324d85::t_e6d53a735f965c 190-193,753-761
+  s_84bf5c78324d85::t_a0e43136785fba 83,93-103,105,107-108,114,296-297,762-768,770-774
+src/shared/visualization-image-capture.ts
+  s_84bf5c78324d85::t_2d7dd4ef530409 1-26
+  s_84bf5c78324d85::t_f597fdd3645c84 27-36
+src/shared/codex-realtime-item.ts
+  s_84bf5c78324d85::t_dd95a4f71b4341 1,3-5,8-25
+  s_84bf5c78324d85::t_c54ecc7b15a63b 2,6-7
+  s_84bf5c78324d85::t_8cb76264177b28 26-28
+src/renderer/lib/inline-visualization/inline-visualization-presentation.node.test.ts
+  s_84bf5c78324d85::t_476cadb0b92c59 3-4,6,8-19,21-30
+src/shared/codex-workspace-paths.ts
+  s_84bf5c78324d85::t_e295054bb8b687 31-32,57-58
+src/main/app/MainApplicationLive.ts
+  s_84bf5c78324d85::t_e295054bb8b687 73,113
+src/shared/ipc-api.ts
+  s_84bf5c78324d85::t_5d978095f50161 1918,1927-1930
+  s_84bf5c78324d85::t_47bcf812d553f0 3-7,1911-1917
+  s_84bf5c78324d85::t_171a3478e5195d 1899-1906
+  s_84bf5c78324d85::t_42cc1fbd2284ce 2
+src/renderer/features/local-conversation/local-conversation-pending-artifact-recovery.node.test.ts
+  s_84bf5c78324d85::t_29b7047b84bdc0 1-174,176-184
+  s_84bf5c78324d85::t_5b1fb373bfd167 175
+  s_84bf5c78324d85::t_6db5faf0fa3457 185-248
+src/main/codex-application/CodexHistoryPageAdapter.ts
+  s_84bf5c78324d85::t_9fc08f203906d9 30,475
+src/main/app/RendererIngressLive.ts
+  s_84bf5c78324d85::t_47bcf812d553f0 16-17,81
+src/shared/codex-conversation-state/codex-item-timeline-index.ts
+  s_84bf5c78324d85::t_2a86b27a19bfd7 1-39
+  s_84bf5c78324d85::t_d85a25dedf24a9 40-47
+src/main/codex-application/internal/ConversationEntityState.ts
+  s_84bf5c78324d85::t_02474470a76ddc 22,703,1153-1159
+  s_84bf5c78324d85::t_9fc08f203906d9 363
+  s_84bf5c78324d85::t_8b076669515203 760
+src/shared/visualization-image-capture.node.test.ts
+  s_84bf5c78324d85::t_2d7dd4ef530409 1-20
+  s_84bf5c78324d85::t_0e1df597386ea4 21-39
+src/shared/codex-conversation-state/codex-live-item-timeline.ts
+  s_84bf5c78324d85::t_dc0f5c4cbbd4bf 1-18,20-83,88-100
+  s_84bf5c78324d85::t_2a86b27a19bfd7 19,84-87
+src/main/codex/codex-app-server-message-parser.ts
+  s_84bf5c78324d85::t_dd95a4f71b4341 10,195-201
+  s_84bf5c78324d85::t_95aa7bf46258f4 202-204
+src/main/ipc/handlers/ApplicationLocalStateIpc.ts
+  s_84bf5c78324d85::t_e295054bb8b687 7,20-24
+  s_84bf5c78324d85::t_2d09624729d5ef 25-41,43-48,50-69,71-74
+src/renderer/lib/inline-visualization/inline-visualization-download.ts
+  s_84bf5c78324d85::t_6a7abe41b8c615 115-117,123-124,129
+  s_84bf5c78324d85::t_26e36dd0fb0346 1-2,6-11,19,27,33-35,42-49,53,57-58,68-72,83-97,101-112,130-131
+  s_84bf5c78324d85::t_a0c4be0bae8b27 3-5,12-18,20-26,28-32,36-41,50-52,54-56,59-67,73-82,98-100,113-114,118-122,125-128
+src/renderer/features/local-conversation/view/local-conversation-realtime-item.tsx
+  s_84bf5c78324d85::t_6f5b85cbf718ed 7
+  s_84bf5c78324d85::t_48a89903e1c9fa 26,31
+src/renderer/lib/inline-visualization/inline-visualization-style-variables.jsdom.test.ts
+  s_84bf5c78324d85::t_e8f391e1193d6a 71-73,81-83,251-255,263-267,275-347
+  s_84bf5c78324d85::t_dcc6cddc601ec9 1-4,9-11,18-23,29-32,35-37,45-49,51-52,55-61,63-69,106-120,122-124,129-145,151,159-164,168,178-196,205,209,349
+  s_84bf5c78324d85::t_0af7b27794c207 5-8,12-17,24-28,39-44,62,70,74-80,84-105,125-128,146-150,152-158,165-167,197-204,206-208
+  s_84bf5c78324d85::t_2297443d5105d4 169-172
+  s_84bf5c78324d85::t_1580c87cef644f 33-34,38,50,53-54,121,173-177,210-250,256-262,268-274,348
+  s_84bf5c78324d85::t_eb3f67cc1dd1ca 350-351
+src/main/codex-application/CodexMainConversationHistory.ts
+  s_84bf5c78324d85::t_9fc08f203906d9 28,101-105
+src/shared/codex-conversation-state/codex-history-cursor-stalled.ts
+  s_84bf5c78324d85::t_d73af9ea4a6e9a 1-7
+src/main/ipc/handlers/CodexVisualizationStateIpc.ts
+  s_84bf5c78324d85::t_47bcf812d553f0 1-37
+  s_84bf5c78324d85::t_b45d41e203943e 38-50
+src/renderer/lib/inline-visualization/inline-visualization-document.ts
+  s_84bf5c78324d85::t_4d37bf63efc57a 63-67,222,227-228
+  s_84bf5c78324d85::t_ad2a8414062a68 1-3,29-31,33-36,39-41,46-57,60,82-88,90-93,108-127,135,146-151,168,243,250-262,264-283,308,314,316,319-327
+  s_84bf5c78324d85::t_bbc6f9b07141f1 68-79
+  s_84bf5c78324d85::t_303d73583c07f1 32,328-330
+CHANGELOG.md
+  s_84bf5c78324d85::t_a848cd52bdb471 16,20
+src/renderer/lib/inline-visualization/inline-visualization-runtime.ts
+  s_84bf5c78324d85::t_b07385fa7e9b29 467-468,470
+  s_84bf5c78324d85::t_2ecfd5eeae4d27 507,524,550
+  s_84bf5c78324d85::t_e8f391e1193d6a 244,278,319-322,332-334
+  s_84bf5c78324d85::t_01ce2b24c31709 300-307,315,395-399,540-541,555-560,563,569,571
+  s_84bf5c78324d85::t_c3035a64e3ea96 15-18,20,55,225,265,285,309-310,314,409-412,475,519
+  s_84bf5c78324d85::t_ce92b9b0da97af 6,14,44-50,65-66,78,98-101,221,299,308,311-313,316-317,376,387,392-394,400,469,542-544
+  s_84bf5c78324d85::t_273b06a1c347b5 177-178,180-194,267,491
+  s_84bf5c78324d85::t_a60a2ee8e1a642 19,351,365-371,547-549
+  s_84bf5c78324d85::t_2297443d5105d4 230,287,352-355
+  s_84bf5c78324d85::t_f20731dd45669c 231-243,326-331,335-346
+  s_84bf5c78324d85::t_c4766810bf739a 21-23,79,151,202,216,416-420,460-461,494
+src/main/codex-application/CodexVisualizationState.ts
+  s_84bf5c78324d85::t_47bcf812d553f0 1-76
+  s_84bf5c78324d85::t_eafabfc4dc93ef 77-112
+src/renderer/features/local-conversation/view/local-conversation-inline-visualization.tsx
+  s_84bf5c78324d85::t_c3035a64e3ea96 9,25,46,52-54,124-126,167,213-214
+  s_84bf5c78324d85::t_b47afe462a4ba3 14-15,38-41,91-99,152-159,217-219,224-227
+  s_84bf5c78324d85::t_33ab8f72f10e58 37,83-85,117,370,373-374,383
+  s_84bf5c78324d85::t_c4766810bf739a 61,67,371-372,375
+  s_84bf5c78324d85::t_6a7abe41b8c615 216,220-223
+  s_8496bd2fc78127::t_2eb4d66d06347d 160
+src/main/local-store/ProfilePersistedAtoms.node.test.ts
+  s_84bf5c78324d85::t_9dafa3c792ed11 1-31
+  s_84bf5c78324d85::t_01e5dc974a9350 32-45
+src/shared/codex-visualization-state.ts
+  s_84bf5c78324d85::t_e295054bb8b687 1-12,14-64
+  s_84bf5c78324d85::t_fe174463395579 13
+  s_84bf5c78324d85::t_f5a0de8abb1f2d 65-83
+src/renderer/lib/inline-visualization/inline-visualization-calendar.css
+  s_84bf5c78324d85::t_ed91e8282c64c5 1-214
+src/renderer/lib/inline-visualization/inline-visualization-widget-state.jsdom.test.ts
+  s_84bf5c78324d85::t_9c4e92f8c43ff4 1-86
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "9fab96dbc12d9eba0bef431eced8de019a47891d",
+  "prompts": {},
+  "sessions": {
+    "s_099f5cf47f7051": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a12e37-d292-7e03-a698-868c92b1afdb",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    },
+    "s_8496bd2fc78127": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a13082-7498-74b2-bdc7-72b09daab7a1",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    },
+    "s_84bf5c78324d85": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a12db9-d235-78f1-acd4-d3520bbf1dfe",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    }
+  }
+}
