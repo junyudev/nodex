@@ -1,0 +1,226 @@
+third_party/blocknote/packages/react/src/components/SuggestionMenu/SuggestionMenuFreshness.test.tsx
+  s_8496bd2fc78127::t_aaf8c2342d5d52 26-27,31,41,44,390,445,489
+  s_8496bd2fc78127::t_9b2dc4cd1b91f8 28-30
+scripts/build-blocknote.test.ts
+  s_8496bd2fc78127::t_f0a31fd68e3a1e 1-17,19-27
+  s_8496bd2fc78127::t_f5a331575120ea 18
+scripts/scenarios/runtime/scripted-model-server.test.ts
+  s_8496bd2fc78127::t_c270f8fa66dd93 509
+config/excalidraw-font-assets.test.ts
+  s_8496bd2fc78127::t_9440218036a0d0 74-75,77,115,117
+  s_8496bd2fc78127::t_c270f8fa66dd93 173-176
+tests/fixtures/dictation-streaming/electron-main.ts
+  s_8496bd2fc78127::t_c270f8fa66dd93 48-50
+  s_8496bd2fc78127::t_9440218036a0d0 15
+third_party/blocknote/packages/core/src/extensions/SideMenu/dragging.ts
+  s_8496bd2fc78127::t_aaf8c2342d5d52 552
+scripts/isolated-run-supervisor.test.ts
+  s_8496bd2fc78127::t_c270f8fa66dd93 62
+  s_8496bd2fc78127::t_28114f49e48fd7 63-64,219-221,250-252
+scripts/desktop-tools/probe-remote-hosted-pip-native.mjs
+  s_8496bd2fc78127::t_d4b2d291c4180d 3
+third_party/blocknote/packages/core/src/blocks/Table/TableExtension.test.ts
+  s_8496bd2fc78127::t_f1d0a4e1815c8f 23,63,88,113,188,217
+third_party/blocknote/packages/core/src/yjs/utils.test.ts
+  s_8496bd2fc78127::t_f2c724d456872c 117-118,134-135
+third_party/blocknote/packages/core/src/yjs/extensions/YUndo.ts
+  s_8496bd2fc78127::t_51e93412cb6da1 28
+third_party/blocknote/packages/react/src/components/SuggestionMenu/SuggestionMenuWrapper.test.tsx
+  s_8496bd2fc78127::t_f1d0a4e1815c8f 106,109
+  s_8496bd2fc78127::t_80fd3158b4a961 27-31,70,73,87-97
+scripts/desktop-tools/probe-remote-hosted-pip-native.test.ts
+  s_8496bd2fc78127::t_79f6a9a35ff36d 8
+  s_8496bd2fc78127::t_be7b3e7e7d599e 105,121,320
+scripts/release/github-release.test.ts
+  s_8496bd2fc78127::t_c270f8fa66dd93 38
+src/main/codex-application/CodexMediaError.ts
+  s_8496bd2fc78127::t_9440218036a0d0 1-8
+src/main/codex-application/CodexMedia.ts
+  s_8496bd2fc78127::t_9440218036a0d0 40-42
+scripts/ci/verify-semantic-tooling.ts
+  s_8496bd2fc78127::t_8ab3a5f6e5c9ae 176-177,199
+  s_8496bd2fc78127::t_973512e9650952 175,178
+  s_8496bd2fc78127::t_38568eeea55731 179
+scripts/desktop-tools/benchmark-remote-hosted-pip-real-runtime.mjs
+  s_8496bd2fc78127::t_d4b2d291c4180d 1
+scripts/desktop-tools/benchmark-remote-hosted-pip.d.mts
+  s_8496bd2fc78127::t_7d3752d1f8dafb 1-108
+scripts/desktop-tools/probe-remote-hosted-pip-native.d.mts
+  s_8496bd2fc78127::t_33add0d4e1237a 1-34,36-233,236-239,243-244,248-250
+  s_8496bd2fc78127::t_ef1ded63aec2fc 35,234-235,240-242,245-247
+third_party/blocknote/packages/core/src/blocks/Code/block.test.ts
+  s_8496bd2fc78127::t_f1d0a4e1815c8f 23,46
+scripts/desktop-tools/benchmark-remote-hosted-pip-real-runtime.d.mts
+  s_8496bd2fc78127::t_ef1ded63aec2fc 68-72,122-126
+  s_8496bd2fc78127::t_a75f6ed5a87025 230-231
+  s_8496bd2fc78127::t_7d3752d1f8dafb 1-67,73-121,127-229,232-241
+docs/LINTING.md
+  s_8496bd2fc78127::t_2e848188c84c75 67-70
+  s_8496bd2fc78127::t_0fc7f496fae673 73
+  s_8496bd2fc78127::t_4b55e2c10e03fa 55-59,62,64-66
+  s_8496bd2fc78127::t_e1fe84cfb6c8d0 29-31,71-72,74-79,82,193-194
+.gitignore
+  s_8496bd2fc78127::t_b3bfc8f4339c90 26-27
+third_party/blocknote/packages/core/src/y/utils.test.ts
+  s_8496bd2fc78127::t_f2c724d456872c 117-118,134-135
+scripts/desktop-tools/benchmark-remote-hosted-pip.mjs
+  s_8496bd2fc78127::t_d4b2d291c4180d 3
+third_party/blocknote/vite-shared.ts
+  s_8496bd2fc78127::t_1c15f838454ecf 39
+  s_8496bd2fc78127::t_f5a331575120ea 20,32
+  s_8496bd2fc78127::t_14649148237af0 1-11
+  s_8496bd2fc78127::t_1eab5837f6d812 12-19,21-31,33-38,40-46
+scripts/scenarios/scenarios/board-dense.test.ts
+  s_8496bd2fc78127::t_3ee3bcdf6f75bc 4-9,15,37-41,56-70,118-120,132,139-163,184,193,218-219,222-230,232,236-243,245,247,286-303
+  s_8496bd2fc78127::t_470e2c40add6a9 304-309
+scripts/scenarios/scenarios/database-context-menu-performance.test.ts
+  s_8496bd2fc78127::t_3ee3bcdf6f75bc 4,26-27,29-40,80,106-141
+config/startup-shell-html.test.ts
+  s_8496bd2fc78127::t_c270f8fa66dd93 21-22,24-29,31-34
+third_party/blocknote/packages/core/src/extensions/SuggestionMenu/SuggestionMenu.test.ts
+  s_8496bd2fc78127::t_aaf8c2342d5d52 3,8,38-43,646-647,655,660,681-682,688,724-725,734-735
+  s_8496bd2fc78127::t_9b2dc4cd1b91f8 60-64,467-474
+scripts/agent-runtime-release-lock.test.ts
+  s_8496bd2fc78127::t_c270f8fa66dd93 100
+third_party/blocknote/packages/core/src/exporter/Exporter.test.ts
+  s_8496bd2fc78127::t_9b2dc4cd1b91f8 38
+  s_8496bd2fc78127::t_51e93412cb6da1 69-73
+.github/workflows/_certify-release-source.yml
+  s_8496bd2fc78127::t_3d41ca13951a76 36,57
+.github/workflows/ci-nightly.yml
+  s_8496bd2fc78127::t_87f774d6ee947c 21,38
+config/test-suites.ts
+  s_8496bd2fc78127::t_1bc79f76f8bc75 145
+docs/CI.md
+  s_8496bd2fc78127::t_0686876acb90aa 68-75
+package.json
+  s_8496bd2fc78127::t_2561577acdae6d 169,276
+packages/landing/package.json
+  s_8496bd2fc78127::t_faf8b63422a116 8-9,14
+packages/landing/tsconfig.json
+  s_8496bd2fc78127::t_3f6f05382d55d3 16
+packages/storybook/package.json
+  s_8496bd2fc78127::t_211dd9f576f823 7-8,16
+packages/storybook/tsconfig.json
+  s_8496bd2fc78127::t_7ca7e8281e1d23 13-16,18-19
+pnpm-lock.yaml
+  s_8496bd2fc78127::t_a45f1797da4645 109,406-408,681,684,686-687,708,4219-4221,4260-4262,4519,8193-8194,8342,11265,11408,11420-11426,11433,11461-11463,11478,11482,15878
+pnpm-workspace.yaml
+  s_8496bd2fc78127::t_3f5e6f7c829c46 21
+scripts/build-blocknote.mts
+  s_8496bd2fc78127::t_0ece5b50832c3c 1-12,15-34
+scripts/ci/ci-gate-plan.ts
+  s_8496bd2fc78127::t_fa17eadf73fd3a 5,197-199,205-207
+scripts/ci/classify-change.test.ts
+  s_8496bd2fc78127::t_1a50ce70f13053 29,34-62,80,123,229,286
+scripts/ci/classify-change.ts
+  s_8496bd2fc78127::t_fb069659e0ac5c 21-23,25-29,363-366,381-386,436-454
+scripts/ci/verify-source-type-ownership.test.ts
+  s_8496bd2fc78127::t_91b5d58008bb43 1-4,6,8-11,13-16,18-51
+scripts/ci/verify-source-type-ownership.ts
+  s_8496bd2fc78127::t_a8a7c59f2aa477 1,3-14,16-22,24-31,33-35,38-62,64-66,69-79,81-88,90-138,141-144
+scripts/ci/verify-static.test.ts
+  s_8496bd2fc78127::t_1e7cfa721a89f8 4,26-50
+scripts/ci/verify-static.ts
+  s_8496bd2fc78127::t_932063bd671ee8 20-25
+scripts/ci/verify-tooling-contracts.ts
+  s_8496bd2fc78127::t_f6771d274e4f16 2-5,193-194
+scripts/effect-process-entry.test.ts
+  s_8496bd2fc78127::t_7dc15d63f4fff1 13
+scripts/generated-code-string.d.mts
+  s_8496bd2fc78127::t_eeb4f31d2a47f8 1-2
+scripts/generated-code-string.mjs
+  s_8496bd2fc78127::t_fe4dbb1772433a 1
+scripts/prepared-electron-build.test.ts
+  s_8496bd2fc78127::t_71ee2c6170a862 110-111,229-236,238-261
+scripts/prepared-electron-build.ts
+  s_8496bd2fc78127::t_fc11e687c65b7a 51-52,198-205
+scripts/restore-packaged-runtime-closure.d.mts
+  s_8496bd2fc78127::t_0f2df88915c138 1-2,12
+scripts/restore-packaged-runtime-closure.mjs
+  s_8496bd2fc78127::t_848e27dd87c2a6 1
+scripts/sign-macos-runtime.d.mts
+  s_8496bd2fc78127::t_4aac3ae577152b 1-38
+scripts/sign-macos-runtime.mjs
+  s_8496bd2fc78127::t_341e12e1a552af 1
+tests/fixtures/effect-process-entry/owned-signal.ts
+  s_8496bd2fc78127::t_04ad496998e3d6 3
+third_party/blocknote/packages/code-block/package.json
+  s_8496bd2fc78127::t_dcd7213d462c96 48-49
+third_party/blocknote/packages/code-block/tsconfig.build.json
+  s_8496bd2fc78127::t_c40d5f22fcc516 1-22
+third_party/blocknote/packages/code-block/tsconfig.json
+  s_8496bd2fc78127::t_a5db7b413c93b0 2,4,6-8,11-17
+third_party/blocknote/packages/code-block/vite.config.ts
+  s_8496bd2fc78127::t_2ba3edf65e1b59 2,5,12,16,44
+third_party/blocknote/packages/core/package.json
+  s_8496bd2fc78127::t_c3e3474095db40 93-94
+third_party/blocknote/packages/core/tsconfig.build.json
+  s_8496bd2fc78127::t_16f30b4c36a157 1-15
+third_party/blocknote/packages/core/tsconfig.json
+  s_8496bd2fc78127::t_69a1543b82bf20 2,4,7-13
+third_party/blocknote/packages/core/vite.config.ts
+  s_8496bd2fc78127::t_4966982812666a 2,5,10,34,41
+third_party/blocknote/packages/diagram-block/package.json
+  s_8496bd2fc78127::t_84e682d3cbe0b9 5-7,15-19,57-58
+third_party/blocknote/packages/diagram-block/src/helpers/renderDiagramToImage.browser.test.ts
+  s_8496bd2fc78127::t_a9cc9690ba275c 6-40
+third_party/blocknote/packages/diagram-block/tsconfig.build.json
+  s_8496bd2fc78127::t_b601a096b1b7f4 1-10,12-22
+third_party/blocknote/packages/diagram-block/tsconfig.json
+  s_8496bd2fc78127::t_c47f623be69ce8 2,4,6-12
+third_party/blocknote/packages/diagram-block/vite.config.ts
+  s_8496bd2fc78127::t_bd2e008c362330 2,5,11,18,48,52
+third_party/blocknote/packages/math-block/package.json
+  s_8496bd2fc78127::t_d064619774cac2 5-7,15-19,52-53
+third_party/blocknote/packages/math-block/tsconfig.build.json
+  s_8496bd2fc78127::t_de8b29ce70705a 1-22
+third_party/blocknote/packages/math-block/tsconfig.json
+  s_8496bd2fc78127::t_de402f25a70e77 2,4,6-12
+third_party/blocknote/packages/math-block/vite.config.ts
+  s_8496bd2fc78127::t_db61ee52f24ad2 2,5,11,18,48,52
+third_party/blocknote/packages/react/package.json
+  s_8496bd2fc78127::t_b533cdf73fb404 57-58
+third_party/blocknote/packages/react/tsconfig.build.json
+  s_8496bd2fc78127::t_14af2bbffe3dbf 1-19
+third_party/blocknote/packages/react/tsconfig.json
+  s_8496bd2fc78127::t_d6d7d963af1480 2,4,6-11
+third_party/blocknote/packages/react/vite.config.ts
+  s_8496bd2fc78127::t_6afb6ffb412985 3,6,13,25,51,55
+third_party/blocknote/packages/shadcn/package.json
+  s_8496bd2fc78127::t_aaf570ae93990d 55-56
+third_party/blocknote/packages/shadcn/tsconfig.build.json
+  s_8496bd2fc78127::t_e87869579dd937 1-25
+third_party/blocknote/packages/shadcn/tsconfig.json
+  s_8496bd2fc78127::t_7b2c4356ea0fbd 2,4,6-8,11-16
+third_party/blocknote/packages/shadcn/vite.config.ts
+  s_8496bd2fc78127::t_0d125a07b4c88c 3,6,13,26,52
+third_party/blocknote/tsconfig.base.json
+  s_8496bd2fc78127::t_fdaff96f73afe5 1-28
+tsconfig.e2e.json
+  s_8496bd2fc78127::t_560d7f8ee9171d 17-23
+tsconfig.effect.json
+  s_8496bd2fc78127::t_22bd087ece8a6f 135-136
+tsconfig.json
+  s_8496bd2fc78127::t_72dcdecaa7f90a 19-39
+tsconfig.node.json
+  s_8496bd2fc78127::t_1f68f0cfe76b2f 23-25,35-40
+tsconfig.tooling.json
+  s_8496bd2fc78127::t_a1338d7d4c5c4c 7-12,14,17-21
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "1730c807ac0b0d2dea1f90e9983d71d1a2235b08",
+  "prompts": {},
+  "sessions": {
+    "s_8496bd2fc78127": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a13082-7498-74b2-bdc7-72b09daab7a1",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    }
+  }
+}
