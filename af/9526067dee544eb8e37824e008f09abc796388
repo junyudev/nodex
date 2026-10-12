@@ -1,0 +1,34 @@
+docs/FRONTEND.md
+  s_2fb519cd6a9aee::t_f2e3990733f227 388-391
+src/renderer/components/board/editor/nfm-code-block.browser.test.tsx
+  s_2fb519cd6a9aee::t_38f64a542cbb36 9
+  s_2fb519cd6a9aee::t_f2e3990733f227 30-31,49,372
+src/renderer/styles/semantic-theme-contract.browser.test.ts
+  s_2fb519cd6a9aee::t_38f64a542cbb36 1
+  s_2fb519cd6a9aee::t_f2e3990733f227 3-7,11-12,33,164-167,170-173
+src/renderer/components/board/editor/selected-block-decorations.browser.test.tsx
+  s_2fb519cd6a9aee::t_f2e3990733f227 42-48,213,240,243,245,247,257,264,288,411,636,756,904
+  s_2fb519cd6a9aee::t_a259120c3d0d2b 1048,1086,1105
+src/renderer/components/board/editor/nfm-suggestion-session.browser.test.tsx
+  s_2fb519cd6a9aee::t_f2e3990733f227 23-25
+src/renderer/components/board/editor/nfm-task-shorthand-preview-extension.browser.test.ts
+  s_2fb519cd6a9aee::t_f2e3990733f227 11-13
+src/renderer/test/renderer-theme.ts
+  s_2fb519cd6a9aee::t_f2e3990733f227 1-52
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "af9526067dee544eb8e37824e008f09abc796388",
+  "prompts": {},
+  "sessions": {
+    "s_2fb519cd6a9aee": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a13036-a2d6-7070-8aea-792749b98349",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    }
+  }
+}
