@@ -7,7 +7,7 @@
     "build": "storybook build"
   },
   "devDependencies": {
-    "@storybook/addon-a11y": "10.5.9",
+    "@storybook/addon-a11y": "10.6.1",
     "@storybook/addon-docs": "10.5.9",
     "@storybook/addon-links": "10.5.9",
     "@storybook/react-vite": "10.5.9",
