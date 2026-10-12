@@ -3,6 +3,7 @@ import type { ThreadStatus, Turn } from "@nodex/codex-app-server-protocol/v2";
 import { ThreadPollCache } from "./codex-thread-poll";
 import { waitForThreads, type ThreadWaitClient, type ThreadWaitManager } from "./codex-thread-wait";
 const turn: Turn = {
+  rootTurnId: null,
   id: "turn",
   status: "completed",
   error: null,

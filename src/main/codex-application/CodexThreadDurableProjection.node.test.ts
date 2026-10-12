@@ -439,6 +439,7 @@ it.effect("never treats thread/started as a history transport", () =>
       ),
     );
     const poisonTurn: Turn = {
+      rootTurnId: null,
       id: "turn-poison",
       items: Array.from({ length: 1_000 }, (_, index) => ({
         questions: null,

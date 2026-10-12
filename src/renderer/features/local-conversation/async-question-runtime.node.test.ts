@@ -52,6 +52,7 @@ function conversation(
       ...base,
       turns: [
         {
+          rootTurnId: null,
           ...base.turns[0]!,
           turnId: "turn",
           status,

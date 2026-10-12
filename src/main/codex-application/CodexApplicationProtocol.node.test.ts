@@ -382,6 +382,7 @@ it.effect("replays bounded lifecycle metadata after its local materialization co
           params: {
             threadId: "thread-gated",
             turn: {
+              rootTurnId: null,
               id: "turn-gated",
               items: boundedTurnItems,
               itemsView: "full",

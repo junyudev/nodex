@@ -168,6 +168,7 @@ function buildCanonicalTurn(
   } = {},
 ): CodexCanonicalTurnState {
   return {
+    rootTurnId: null,
     turnId: TURN_ID,
     itemsView: "full",
     status: "inProgress",

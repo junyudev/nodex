@@ -3,6 +3,7 @@ import { ThreadPollCache, pollWake, unchangedTerminalPoll } from "./codex-thread
 import type { Turn } from "@nodex/codex-app-server-protocol/v2";
 const target = { hostId: "local", threadId: "thread" };
 const turn = (status: Turn["status"] = "completed", text = "final"): Turn => ({
+  rootTurnId: null,
   id: "turn",
   status,
   error: null,

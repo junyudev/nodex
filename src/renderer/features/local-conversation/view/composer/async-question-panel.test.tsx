@@ -43,6 +43,7 @@ function setup(questions = [{ title: "Which scope?", options: ["Local", "Global"
       ...base,
       turns: [
         {
+          rootTurnId: null,
           ...base.turns[0]!,
           turnId: "turn",
           status: "inProgress",
@@ -60,6 +61,7 @@ function setup(questions = [{ title: "Which scope?", options: ["Local", "Global"
       ...base,
       turns: [
         {
+          rootTurnId: null,
           ...base.turns[0]!,
           turnId: "turn",
           status: "inProgress",

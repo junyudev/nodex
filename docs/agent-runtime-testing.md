@@ -47,6 +47,12 @@ matcher with both complete identities: either artifact can have several tested
 partners, and matrix ordering has no meaning. These tests verify admission to
 the recorded relation; they do not replace the runtime probes that establish it.
 
+For Browser-only artifact pairing, run `tsx scripts/probe-browser-runtime.ts --conformance --browser-only`.
+It exercises the real Node REPL and Browser adapter against a disposable Profile and synthetic
+native pipe, and records Computer Use as `not-requested`. It never inspects the user's desktop.
+This establishes Browser pairing without claiming Computer Use conformance; the full Computer Use
+probe remains a separate explicitly selected check.
+
 Run all runtime probes with:
 
 ```bash

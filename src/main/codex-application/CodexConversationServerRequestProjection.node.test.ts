@@ -9,6 +9,7 @@ import {
 import { conversationFixture, turnFixture } from "./conversation-test-fixture";
 
 const terminalTurn = {
+  rootTurnId: null,
   turnId: "turn-terminal",
   itemsView: "full",
   status: "interrupted",

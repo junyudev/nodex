@@ -6,6 +6,40 @@
 export const TESTED_BROWSER_APP_SERVER_PAIRS = Object.freeze([
   Object.freeze({
     appServer: Object.freeze({
+      entrypointSha256: "9b47aa34d14c35d87fbe2702fc6c4163d965b30fd88b3defd19e80e780f40d8d",
+      protocolSchemaFingerprint: "dababf2385536c28b72fa6180b53f184c2e6d0cdcc4f4a1446399fe9300d5614",
+      runtimeVersion: "0.162.0-alpha.17.2",
+      sourceCommit: "740e5af33c71225640e0c1c1555c514c2c93ab74",
+      targetArch: "arm64",
+      targetPlatform: "darwin",
+    }),
+    browser: Object.freeze({
+      browserPluginVersion: "26.928.31416",
+      manifestSha256: "5b901379bff592263ce851c668961ed58a24e7cdae650c49100fa8709d3dcdd3",
+      peerCliVersion: "0.159.2",
+      targetArch: "arm64",
+      targetPlatform: "darwin",
+    }),
+  }),
+  Object.freeze({
+    appServer: Object.freeze({
+      entrypointSha256: "ed65a15386358011fe2e222fdec63cc9b820ed764810476e60b080c4304561dc",
+      protocolSchemaFingerprint: "dababf2385536c28b72fa6180b53f184c2e6d0cdcc4f4a1446399fe9300d5614",
+      runtimeVersion: "0.162.0-alpha.17.2",
+      sourceCommit: "740e5af33c71225640e0c1c1555c514c2c93ab74",
+      targetArch: "x64",
+      targetPlatform: "darwin",
+    }),
+    browser: Object.freeze({
+      browserPluginVersion: "26.928.31416",
+      manifestSha256: "92485503bba8f63e0f5f4ecd72bc70e532e6660fe0b36174b74aaaba8c5e083e",
+      peerCliVersion: "0.159.2",
+      targetArch: "x64",
+      targetPlatform: "darwin",
+    }),
+  }),
+  Object.freeze({
+    appServer: Object.freeze({
       entrypointSha256: "4d210f7c5a18fd0386434df23b5bdbb8c0e7257d3e8a2b30b0769c8bbe99a878",
       protocolSchemaFingerprint: "44cdb8ec9b9bb075cac1722ae53632993e599db01ee58e5ab5f7d4d0bc1052c9",
       runtimeVersion: "0.159.3",

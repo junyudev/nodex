@@ -12,6 +12,7 @@ import { CodexHeartbeatTurnCompletion } from "./CodexHeartbeatTurnCompletion";
 import { CodexAutomationTurnCompletion, live } from "./CodexAutomationTurnCompletion";
 
 const turn = (status: Turn["status"]): Turn => ({
+  rootTurnId: null,
   id: "turn",
   status,
   items: [],

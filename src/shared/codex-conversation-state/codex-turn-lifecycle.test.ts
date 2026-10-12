@@ -140,6 +140,7 @@ describe("Codex 30751 turn lifecycle", () => {
       ...placeholder,
       turns: [
         {
+          rootTurnId: null,
           turnId: "old-turn",
           itemsView: "full" as const,
           status: "completed" as const,

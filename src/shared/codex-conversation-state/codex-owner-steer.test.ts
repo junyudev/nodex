@@ -50,6 +50,7 @@ function buildState(): CodexCanonicalConversationState {
       gitInfo: null,
       turns: [
         {
+          rootTurnId: null,
           id: "turn-a",
           items: [],
           itemsView: "full",

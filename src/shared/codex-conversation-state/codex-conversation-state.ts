@@ -520,9 +520,13 @@ export type CodexCanonicalItem =
   | CodexCanonicalLifecycleSyntheticItem
   | CodexCanonicalRequestSyntheticItem;
 
-export type CodexCanonicalTurnHeader = Omit<Turn, "id" | "items" | "startedAt" | "completedAt"> & {
+export type CodexCanonicalTurnHeader = Omit<
+  Turn,
+  "id" | "items" | "startedAt" | "completedAt" | "rootTurnId"
+> & {
   /** Exact live state can carry one placeholder turn before app-server binding. */
   readonly turnId: Turn["id"] | null;
+  readonly rootTurnId?: Turn["rootTurnId"];
 };
 export interface CodexCanonicalConversationMetadata {
   readonly id: Thread["id"];
@@ -765,6 +769,7 @@ export function projectCodexCanonicalProtocolThread(
       return [
         {
           id: turn.turnId,
+          rootTurnId: turn.rootTurnId ?? null,
           itemsView: turn.itemsView,
           status: turn.status,
           error: turn.error,

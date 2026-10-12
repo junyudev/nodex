@@ -50,6 +50,7 @@ export const conversationFixture = (id: string, turns: Turn[] = []) =>
     },
   );
 export const turnFixture = (id: string, status: Turn["status"] = "completed"): Turn => ({
+  rootTurnId: null,
   id,
   status,
   items: [],

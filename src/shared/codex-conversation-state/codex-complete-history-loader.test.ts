@@ -18,6 +18,7 @@ import { residentConversationTurns } from "./codex-turn-mutation";
 import { buildAgentActivityV2CorpusThread } from "./test-fixtures/agent-activity-v2-corpus-provenance";
 
 const rawTurn = (id: string): Turn => ({
+  rootTurnId: null,
   id,
   items: [],
   itemsView: "full",

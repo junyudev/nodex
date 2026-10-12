@@ -90,6 +90,7 @@ function buildThread(items: ThreadItem[] = [], turnId = TURN_ID): Thread {
     daybreakEnabled: null,
     turns: [
       {
+        rootTurnId: null,
         id: turnId,
         items,
         itemsView: "full",

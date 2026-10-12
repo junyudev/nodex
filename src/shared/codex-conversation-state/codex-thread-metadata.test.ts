@@ -337,6 +337,7 @@ describe("Codex 30751 thread metadata", () => {
     const makeTurn = (id: string) =>
       createCodexCanonicalTurnState(
         {
+          rootTurnId: null,
           id,
           items: [],
           itemsView: "full",

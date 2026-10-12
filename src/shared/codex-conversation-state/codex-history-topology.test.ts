@@ -24,6 +24,7 @@ type Turn = ProtocolTurn & {
 
 function turn(id: string, itemsView: Turn["itemsView"] = "full"): Turn {
   return {
+    rootTurnId: null,
     id,
     itemsPagination: {
       olderCursor: itemsView === "full" ? null : `items:${id}`,

@@ -391,6 +391,7 @@ describe("Codex optimistic worktree initialization ordering", () => {
       setup: null,
     });
     const responseTurn: Turn = {
+      rootTurnId: null,
       id: "turn-server",
       items: [
         {
@@ -458,6 +459,7 @@ describe("Codex optimistic worktree initialization ordering", () => {
       ],
     };
     const rebound = bindCodexCanonicalOptimisticTurn(raced, "unrelated-client-id", {
+      rootTurnId: null,
       id: "turn-server",
       items: [],
       itemsView: "full",
@@ -512,6 +514,7 @@ describe("Codex optimistic worktree initialization ordering", () => {
     };
 
     const rebound = bindCodexCanonicalOptimisticTurn(split, "client-message", {
+      rootTurnId: null,
       id: "turn-server",
       items: [],
       itemsView: "full",

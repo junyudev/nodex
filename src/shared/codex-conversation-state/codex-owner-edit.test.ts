@@ -26,6 +26,7 @@ function harness(
   } = {},
 ) {
   const turn = (id: string): Turn => ({
+    rootTurnId: null,
     id,
     status: "completed",
     itemsView: "full",

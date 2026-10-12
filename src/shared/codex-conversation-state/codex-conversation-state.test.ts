@@ -204,6 +204,7 @@ describe("protocol-backed canonical conversation state", () => {
       const completedAt = startedAt === null ? null : startedAt + 1.25;
       let state = hydrateCanonicalFixtureTurns([
         {
+          rootTurnId: null,
           id: "timestamp-roundtrip",
           items: [],
           itemsView: "full",
@@ -223,6 +224,7 @@ describe("protocol-backed canonical conversation state", () => {
           buildAgentActivityV2CorpusThread([]),
         );
         expect(projected.turns[0]).toEqual({
+          rootTurnId: null,
           id: "timestamp-roundtrip",
           items: [],
           itemsView: "full",
@@ -258,6 +260,7 @@ describe("protocol-backed canonical conversation state", () => {
 
   test("retains partial turns without requiring a separate item pagination cursor", () => {
     const turn: Turn = {
+      rootTurnId: null,
       id: "turn-partial-history",
       items: [],
       itemsView: "summary",
@@ -277,6 +280,7 @@ describe("protocol-backed canonical conversation state", () => {
 
   test("hydrates partial turns from their stable opening user input", () => {
     const turn: Turn = {
+      rootTurnId: null,
       id: "turn-partial-history",
       items: [],
       itemsView: "summary",
@@ -312,6 +316,7 @@ describe("protocol-backed canonical conversation state", () => {
       content: [{ type: "text", text: "prompt", text_elements: [] }],
     };
     const turn: Turn = {
+      rootTurnId: null,
       id: "turn-opening",
       items: [{ type: "contextCompaction", id: "compaction" }, user],
       itemsView: "full",

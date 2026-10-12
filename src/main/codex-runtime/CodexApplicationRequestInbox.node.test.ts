@@ -479,6 +479,7 @@ it.effect(
           params: {
             threadId: "thread-1",
             turn: {
+              rootTurnId: null,
               id: "turn-1",
               items: [],
               itemsView: "full",

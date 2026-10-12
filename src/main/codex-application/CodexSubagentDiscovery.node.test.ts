@@ -55,6 +55,7 @@ const child = (id: string, parentThreadId = "root") =>
   }) satisfies Thread & GatewayThread;
 const turnFixture = (id: string) =>
   ({
+    rootTurnId: null,
     id,
     status: "completed",
     items: [],

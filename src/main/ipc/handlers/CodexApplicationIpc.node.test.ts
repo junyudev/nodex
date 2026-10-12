@@ -273,6 +273,7 @@ it.effect("registers application channels directly against their owning modules"
     assert.deepStrictEqual(review, {
       reviewThreadId: "review-thread",
       turn: {
+        rootTurnId: null,
         id: "review-turn",
         itemsView: "full",
         status: "failed",

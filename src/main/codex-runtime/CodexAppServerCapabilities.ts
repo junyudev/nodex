@@ -42,6 +42,10 @@ export const CODEX_APP_SERVER_CAPABILITY_MINIMUM_VERSIONS = Object.freeze({
   threadQueue: "0.148.0-alpha.14",
   subagentAncestorFilter: "0.143.0-alpha.16",
   multiAgentV2Protocol: "0.150.0-alpha.12.2",
+  threadTimeline: "0.150.0-alpha.9",
+  threadItemAnchors: "0.159.0-alpha.2",
+  experimentalPredictionForkMode: "0.162.0-alpha.20",
+  mcpApplicationNetworkPolicy: "0.157.0-alpha.11",
 } as const);
 
 export type CodexAppServerCapability = keyof typeof CODEX_APP_SERVER_CAPABILITY_MINIMUM_VERSIONS;
@@ -50,22 +54,26 @@ export type CodexAppServerCapabilityFlags = Readonly<Record<CodexAppServerCapabi
 
 /**
  * `0.0.0` is an unversioned development sentinel, not the oldest SemVer release.
- * Only APIs with an explicit development contract are enabled. History storage and
- * fork formats remain fail-closed because their wire shapes require version proof.
+ * Generic native capabilities exclude item anchors and MCP network policy. Paginated history
+ * has its own versioned storage predicate, which also excludes this development sentinel.
  */
 export const CODEX_APP_SERVER_DEVELOPMENT_CAPABILITY_FLAGS = Object.freeze({
   turnApprovalsReviewer: true,
   turnToolOutput: true,
-  forkLastTurnId: false,
-  paginatedFork: false,
+  forkLastTurnId: true,
+  paginatedFork: true,
   paginatedHistory: false,
   searchOccurrences: true,
-  ephemeralFork: false,
-  sideConversation: false,
+  ephemeralFork: true,
+  sideConversation: true,
   threadRevert: true,
-  threadQueue: false,
+  threadQueue: true,
   subagentAncestorFilter: true,
-  multiAgentV2Protocol: false,
+  multiAgentV2Protocol: true,
+  threadTimeline: true,
+  threadItemAnchors: false,
+  experimentalPredictionForkMode: true,
+  mcpApplicationNetworkPolicy: false,
 }) satisfies CodexAppServerCapabilityFlags;
 
 const FAIL_CLOSED_CAPABILITY_FLAGS = Object.freeze({
@@ -81,6 +89,10 @@ const FAIL_CLOSED_CAPABILITY_FLAGS = Object.freeze({
   threadQueue: false,
   subagentAncestorFilter: false,
   multiAgentV2Protocol: false,
+  threadTimeline: false,
+  threadItemAnchors: false,
+  experimentalPredictionForkMode: false,
+  mcpApplicationNetworkPolicy: false,
 }) satisfies CodexAppServerCapabilityFlags;
 
 export interface CodexAppServerCapabilitySnapshotInput {
@@ -243,6 +255,14 @@ const capabilityFlagsForVersion = (version: string | null): CodexAppServerCapabi
     ),
     multiAgentV2Protocol: supports(
       CODEX_APP_SERVER_CAPABILITY_MINIMUM_VERSIONS.multiAgentV2Protocol,
+    ),
+    threadTimeline: supports(CODEX_APP_SERVER_CAPABILITY_MINIMUM_VERSIONS.threadTimeline),
+    threadItemAnchors: supports(CODEX_APP_SERVER_CAPABILITY_MINIMUM_VERSIONS.threadItemAnchors),
+    experimentalPredictionForkMode:
+      version === "0.162.0-alpha.17.2" ||
+      supports(CODEX_APP_SERVER_CAPABILITY_MINIMUM_VERSIONS.experimentalPredictionForkMode),
+    mcpApplicationNetworkPolicy: supports(
+      CODEX_APP_SERVER_CAPABILITY_MINIMUM_VERSIONS.mcpApplicationNetworkPolicy,
     ),
   });
 };

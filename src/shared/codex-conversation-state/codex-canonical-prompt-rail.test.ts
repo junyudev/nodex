@@ -16,6 +16,7 @@ import {
 
 type Method = "thread/turns/list" | "thread/items/list";
 const turn = (id: string, status: Turn["status"] = "completed"): Turn => ({
+  rootTurnId: null,
   id,
   status,
   items: [],

@@ -19,6 +19,7 @@ type TurnStartParams = ClientRequestParamsByMethod["turn/start"];
 type TurnStatus = Turn["status"];
 
 const turn = (id: string, status: TurnStatus): Turn => ({
+  rootTurnId: null,
   id,
   status,
   items: [],

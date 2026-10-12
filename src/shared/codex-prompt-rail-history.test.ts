@@ -32,6 +32,7 @@ describe("Codex prompt rail history", () => {
 
   it("injects the bounded opening prompt and associates the following response", () => {
     const turn = {
+      rootTurnId: null,
       id: "turn-1",
       status: "completed",
       itemsView: "summary",

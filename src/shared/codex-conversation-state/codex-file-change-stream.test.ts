@@ -98,6 +98,7 @@ function buildState(items: ThreadItem[] = []): CodexCanonicalConversationState {
     daybreakEnabled: null,
     turns: [
       {
+        rootTurnId: null,
         id: TURN_ID,
         items,
         itemsView: "full",

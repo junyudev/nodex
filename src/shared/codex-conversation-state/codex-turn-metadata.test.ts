@@ -54,6 +54,7 @@ function buildState(): CodexCanonicalConversationState {
       name: null,
       turns: [
         {
+          rootTurnId: null,
           id: "turn-1",
           itemsView: "full",
           status: "inProgress",

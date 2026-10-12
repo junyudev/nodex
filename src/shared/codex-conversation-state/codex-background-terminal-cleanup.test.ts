@@ -98,6 +98,7 @@ const state = (turns: readonly Turn[]) => {
 };
 
 const turn = (id: string, status: Turn["status"]): Turn => ({
+  rootTurnId: null,
   id,
   items: [command(`command-${id}`)],
   itemsView: "full",

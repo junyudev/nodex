@@ -34,6 +34,7 @@ import { makeBrowserUseNativePipeServer } from "../src/main/browser-use/browser-
 import { createBrowserUsePeerAuthorizer } from "../src/main/browser-use/browser-use-peer-authorizer";
 import {
   ComputerUseRuntime,
+  type ComputerUseRuntimeResult,
   testLayer as computerUseRuntimeLayer,
 } from "../src/main/host-runtime/ComputerUseRuntime";
 import { makeComputerUseHostPlatform } from "../src/main/platform/electron/ComputerUseHostPlatform";
@@ -100,6 +101,8 @@ export interface BrowserRuntimeProbeOptions {
   readonly resourcesPath?: string;
   /** Explicit tooling-only artifact pair under conformance; never used for product admission. */
   readonly conformanceCandidatePair?: TestedBrowserAppServerPair;
+  /** Browser-only artifact pairing must not inspect the user's desktop implicitly. */
+  readonly computerUse?: "probe" | "skip";
   readonly scratchRoot?: string;
 }
 
@@ -410,26 +413,37 @@ async function probeBrowserRuntimePromise(
     },
     callbacks,
   );
-  const computerUseContext = await callbacks.runPromise(
-    Layer.buildWithScope(
-      computerUseRuntimeLayer(
-        {
-          browserRuntime: runtime.browserRuntime,
-          macOSRelease,
-          peerAuthorizationMode,
-          platform: process.platform,
-          runtimeStateHome: stateHome,
-          terminateManagedServiceOnDispose: true,
-        },
-        computerUseHost,
-      ),
-      computerUseScope,
-    ),
-  );
-  const computerUseRuntime = Context.get(computerUseContext, ComputerUseRuntime);
+  const computerUseContext =
+    options.computerUse === "skip"
+      ? null
+      : await callbacks.runPromise(
+          Layer.buildWithScope(
+            computerUseRuntimeLayer(
+              {
+                browserRuntime: runtime.browserRuntime,
+                macOSRelease,
+                peerAuthorizationMode,
+                platform: process.platform,
+                runtimeStateHome: stateHome,
+                terminateManagedServiceOnDispose: true,
+              },
+              computerUseHost,
+            ),
+            computerUseScope,
+          ),
+        );
+  const computerUseRuntime =
+    computerUseContext === null ? null : Context.get(computerUseContext, ComputerUseRuntime);
 
   try {
-    const computerUseRuntimeResult = await callbacks.runPromise(computerUseRuntime.ensureReady);
+    const computerUseRuntimeResult: ComputerUseRuntimeResult =
+      computerUseRuntime === null
+        ? {
+            status: "unavailable",
+            reason: "runtime-unavailable",
+            message: "Computer Use was excluded from this Browser-only probe",
+          }
+        : await callbacks.runPromise(computerUseRuntime.ensureReady);
     return await callbacks.runPromise(
       withCodexProbeSession(
         callbacks,
@@ -524,6 +538,7 @@ async function probeBrowserRuntimePromise(
 
           let computerUse: BrowserRuntimeConformanceReport["computerUse"];
           if (
+            computerUseRuntime !== null &&
             computerUseRuntimeResult.status === "available" &&
             reconciliation.computerUse.status === "ready"
           ) {
@@ -566,11 +581,13 @@ async function probeBrowserRuntimePromise(
           } else {
             computerUse = {
               reason:
-                computerUseRuntimeResult.status === "unavailable"
-                  ? computerUseRuntimeResult.reason
-                  : reconciliation.computerUse.status === "unavailable"
-                    ? reconciliation.computerUse.reason
-                    : "Computer Use probe prerequisites were not ready",
+                options.computerUse === "skip"
+                  ? "not-requested"
+                  : computerUseRuntimeResult.status === "unavailable"
+                    ? computerUseRuntimeResult.reason
+                    : reconciliation.computerUse.status === "unavailable"
+                      ? reconciliation.computerUse.reason
+                      : "Computer Use probe prerequisites were not ready",
               status: "unavailable",
             };
           }
@@ -593,7 +610,7 @@ async function probeBrowserRuntimePromise(
     // Native helper failures are otherwise reduced to a tool error after its process exits.
     // Limit diagnostics to this disposable Profile, never an installed application's logs.
     process.stderr.write(
-      `Browser runtime managed service: ${JSON.stringify(computerUseRuntime.managedServiceSnapshot())}\n`,
+      `Browser runtime managed service: ${JSON.stringify(computerUseRuntime?.managedServiceSnapshot() ?? null)}\n`,
     );
     try {
       const diagnostics = execFileSync(
@@ -666,6 +683,8 @@ if (isDirectExecution()) {
   const projectRoot = path.resolve(process.cwd());
   const arguments_ = process.argv.slice(2);
   const conformance = arguments_.includes("--conformance");
+  const browserOnly = arguments_.includes("--browser-only");
+  if (browserOnly && !conformance) throw new Error("--browser-only requires --conformance");
   const resourcesPathIndex = arguments_.indexOf("--resources-path");
   const resourcesPath = resourcesPathIndex < 0 ? undefined : arguments_[resourcesPathIndex + 1];
   if (resourcesPathIndex >= 0 && (!resourcesPath || resourcesPath.startsWith("--"))) {
@@ -674,7 +693,10 @@ if (isDirectExecution()) {
   runCodexProbeMain(
     Effect.gen(function* () {
       const report = yield* conformance
-        ? probeBrowserRuntimeConformance(projectRoot, resourcesPath ? { resourcesPath } : {})
+        ? probeBrowserRuntimeConformance(projectRoot, {
+            ...(resourcesPath ? { resourcesPath } : {}),
+            ...(browserOnly ? { computerUse: "skip" as const } : {}),
+          })
         : probeBrowserRuntimeStatic(projectRoot, resourcesPath ? { resourcesPath } : {});
       process.stdout.write(`${JSON.stringify(report, null, 2)}\n`);
     }),

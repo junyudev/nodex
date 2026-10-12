@@ -376,21 +376,24 @@ export const ClientRequest__InternalChatMessageMetadataPassthrough = Schema.Stru
   identifier: "ClientRequest__InternalChatMessageMetadataPassthrough",
 });
 
-export type ClientRequest__MessagePhase = "commentary" | "final_answer";
+export type ClientRequest__MessagePhase = "commentary" | "partial_answer" | "final_answer";
 export const ClientRequest__MessagePhase = Schema.Union(
   [
     Schema.Literal("commentary").annotate({
       description:
         "Mid-turn assistant text (for example preamble/progress narration).\n\nAdditional tool calls or assistant output may follow before turn completion.",
     }),
+    Schema.Literal("partial_answer").annotate({
+      description: "Stable answer text that may be followed by more assistant output or tools.",
+    }),
     Schema.Literal("final_answer").annotate({
-      description: "The assistant's terminal answer text for the current turn.",
+      description: "The assistant's declared terminal answer text for the current turn.",
     }),
   ],
   { mode: "oneOf" },
 ).annotate({
   description:
-    'Classifies an assistant message as interim commentary or final answer text.\n\nProviders do not emit this consistently, so callers must treat `None` as "phase unknown" and keep compatibility behavior for legacy models.',
+    'Classifies assistant text as commentary, a partial answer, or a terminal answer.\n\nProviders do not emit this consistently, so callers must treat `None` as "phase unknown" and keep compatibility behavior for legacy models.',
   identifier: "ClientRequest__MessagePhase",
 });
 
@@ -667,6 +670,24 @@ export const ClientRequest__ThreadSetNameParams = Schema.StructWithRest(
   [Schema.Record(Schema.String, CodexJsonExtension)],
 ).annotate({ identifier: "ClientRequest__ThreadSetNameParams" });
 
+export type ClientRequest__ThreadPredictionRequestParams = {
+  readonly sourceTurnId: string;
+  readonly threadId: string;
+} & { readonly [x: string]: CodexJsonExtension };
+export const ClientRequest__ThreadPredictionRequestParams = Schema.StructWithRest(
+  Schema.Struct({ sourceTurnId: Schema.String, threadId: Schema.String }),
+  [Schema.Record(Schema.String, CodexJsonExtension)],
+).annotate({ identifier: "ClientRequest__ThreadPredictionRequestParams" });
+
+export type ClientRequest__ThreadGoalMutationOrigin = "user" | "automatic";
+export const ClientRequest__ThreadGoalMutationOrigin = Schema.Literals([
+  "user",
+  "automatic",
+]).annotate({
+  description: "Distinguishes explicit user actions from automatic goal lifecycle mutations.",
+  identifier: "ClientRequest__ThreadGoalMutationOrigin",
+});
+
 export type ClientRequest__ThreadGoalStatus =
   | "active"
   | "paused"
@@ -690,14 +711,6 @@ export const ClientRequest__ThreadGoalGetParams = Schema.StructWithRest(
   Schema.Struct({ threadId: Schema.String }),
   [Schema.Record(Schema.String, CodexJsonExtension)],
 ).annotate({ identifier: "ClientRequest__ThreadGoalGetParams" });
-
-export type ClientRequest__ThreadGoalClearParams = { readonly threadId: string } & {
-  readonly [x: string]: CodexJsonExtension;
-};
-export const ClientRequest__ThreadGoalClearParams = Schema.StructWithRest(
-  Schema.Struct({ threadId: Schema.String }),
-  [Schema.Record(Schema.String, CodexJsonExtension)],
-).annotate({ identifier: "ClientRequest__ThreadGoalClearParams" });
 
 export type ClientRequest__ByteRange = { readonly end: number; readonly start: number } & {
   readonly [x: string]: CodexJsonExtension;
@@ -870,6 +883,46 @@ export const ClientRequest__ThreadAttachmentListParams = Schema.StructWithRest(
 ).annotate({
   description: "Parameters for listing attachments from one thread.",
   identifier: "ClientRequest__ThreadAttachmentListParams",
+});
+
+export type ClientRequest__ThreadAttachmentOwnerListParams = {
+  readonly archived?: boolean | null;
+  readonly attachmentType: string;
+  readonly cursor?: string | null;
+  readonly identityKey: string;
+  readonly limit?: number | null;
+} & { readonly [x: string]: CodexJsonExtension };
+export const ClientRequest__ThreadAttachmentOwnerListParams = Schema.StructWithRest(
+  Schema.Struct({
+    archived: Schema.optionalKey(
+      Schema.Union([
+        Schema.Boolean.annotate({
+          description:
+            "Omitted or null returns all matches; false returns non-archived threads only.",
+        }),
+        Schema.Null,
+      ]),
+    ),
+    attachmentType: Schema.String,
+    cursor: Schema.optionalKey(Schema.Union([Schema.String, Schema.Null])),
+    identityKey: Schema.String,
+    limit: Schema.optionalKey(
+      Schema.Union([
+        Schema.Number.annotate({ format: "uint32" })
+          .check(Schema.isInt().annotate({ expected: "an integer" }))
+          .check(
+            Schema.isGreaterThanOrEqualTo(0).annotate({
+              expected: "a value greater than or equal to 0",
+            }),
+          ),
+        Schema.Null,
+      ]),
+    ),
+  }),
+  [Schema.Record(Schema.String, CodexJsonExtension)],
+).annotate({
+  description: "Parameters for reverse lookup by attachment identity within this server's store.",
+  identifier: "ClientRequest__ThreadAttachmentOwnerListParams",
 });
 
 export type ClientRequest__ThreadAttachmentRemoveParams = {
@@ -1277,7 +1330,7 @@ export const ClientRequest__ThreadSearchOccurrencesParams = Schema.StructWithRes
     ),
     searchTerm: Schema.String.annotate({
       description:
-        "Case-insensitive literal substring to find in visible user messages and final assistant messages.",
+        "Case-insensitive literal substring to find in visible user messages and both partial and final assistant answers.",
     }),
     threadId: Schema.String,
   }),
@@ -1684,7 +1737,7 @@ export const ClientRequest__CyberAccessProgram = Schema.Literals([
   "daybreakRed",
 ]).annotate({
   description:
-    "Requested cyber treatment for a ChatGPT-authenticated Codex turn. Authorization and model-tier restrictions remain server-owned.",
+    "Requested cyber treatment for an OpenAI model turn. Authorization and model-tier restrictions remain server-owned.",
   identifier: "ClientRequest__CyberAccessProgram",
 });
 
@@ -2212,44 +2265,22 @@ export const ClientRequest__MockExperimentalMethodParams = Schema.StructWithRest
   [Schema.Record(Schema.String, CodexJsonExtension)],
 ).annotate({ identifier: "ClientRequest__MockExperimentalMethodParams" });
 
-export type ClientRequest__EnvironmentAddParams = {
-  readonly authBearerToken?: string | null;
-  readonly connectTimeoutMs?: number | null;
-  readonly environmentId: string;
-  readonly execServerUrl: string;
+export type ClientRequest__EnvironmentSkillsParams = {
+  readonly required?: ReadonlyArray<string> | null;
 } & { readonly [x: string]: CodexJsonExtension };
-export const ClientRequest__EnvironmentAddParams = Schema.StructWithRest(
+export const ClientRequest__EnvironmentSkillsParams = Schema.StructWithRest(
   Schema.Struct({
-    authBearerToken: Schema.optionalKey(
+    required: Schema.optionalKey(
       Schema.Union([
-        Schema.String.annotate({
-          description:
-            "Optional raw bearer token for executor authentication, including reconnects. Requires a secure transport or a loopback destination.",
+        Schema.Array(Schema.String).annotate({
+          description: "Exact catalog names that must be available from this environment.",
         }),
         Schema.Null,
       ]),
     ),
-    connectTimeoutMs: Schema.optionalKey(
-      Schema.Union([
-        Schema.Number.annotate({
-          description:
-            "Optional WebSocket connection timeout. The server default applies when omitted.",
-          format: "uint64",
-        })
-          .check(Schema.isInt().annotate({ expected: "an integer" }))
-          .check(
-            Schema.isGreaterThanOrEqualTo(0).annotate({
-              expected: "a value greater than or equal to 0",
-            }),
-          ),
-        Schema.Null,
-      ]),
-    ),
-    environmentId: Schema.String,
-    execServerUrl: Schema.String,
   }),
   [Schema.Record(Schema.String, CodexJsonExtension)],
-).annotate({ identifier: "ClientRequest__EnvironmentAddParams" });
+).annotate({ identifier: "ClientRequest__EnvironmentSkillsParams" });
 
 export type ClientRequest__EnvironmentInfoParams = { readonly environmentId: string } & {
   readonly [x: string]: CodexJsonExtension;
@@ -2395,6 +2426,14 @@ export const ClientRequest__BedrockSetupParams = Schema.Union(
   ],
   { mode: "oneOf" },
 ).annotate({ identifier: "ClientRequest__BedrockSetupParams" });
+
+export type ClientRequest__BedrockCheckGovCloudRequirementsParams = {
+  readonly [x: string]: Schema.Json;
+};
+export const ClientRequest__BedrockCheckGovCloudRequirementsParams = Schema.Record(
+  Schema.String,
+  Schema.Json.annotate({ expected: "JSON value" }),
+).annotate({ identifier: "ClientRequest__BedrockCheckGovCloudRequirementsParams" });
 
 export type ClientRequest__CancelLoginAccountParams = { readonly loginId: string } & {
   readonly [x: string]: CodexJsonExtension;
@@ -3485,21 +3524,24 @@ export const ServerNotification__MemoryCitationEntry = Schema.StructWithRest(
   [Schema.Record(Schema.String, CodexJsonExtension)],
 ).annotate({ identifier: "ServerNotification__MemoryCitationEntry" });
 
-export type ServerNotification__MessagePhase = "commentary" | "final_answer";
+export type ServerNotification__MessagePhase = "commentary" | "partial_answer" | "final_answer";
 export const ServerNotification__MessagePhase = Schema.Union(
   [
     Schema.Literal("commentary").annotate({
       description:
         "Mid-turn assistant text (for example preamble/progress narration).\n\nAdditional tool calls or assistant output may follow before turn completion.",
     }),
+    Schema.Literal("partial_answer").annotate({
+      description: "Stable answer text that may be followed by more assistant output or tools.",
+    }),
     Schema.Literal("final_answer").annotate({
-      description: "The assistant's terminal answer text for the current turn.",
+      description: "The assistant's declared terminal answer text for the current turn.",
     }),
   ],
   { mode: "oneOf" },
 ).annotate({
   description:
-    'Classifies an assistant message as interim commentary or final answer text.\n\nProviders do not emit this consistently, so callers must treat `None` as "phase unknown" and keep compatibility behavior for legacy models.',
+    'Classifies assistant text as commentary, a partial answer, or a terminal answer.\n\nProviders do not emit this consistently, so callers must treat `None` as "phase unknown" and keep compatibility behavior for legacy models.',
   identifier: "ServerNotification__MessagePhase",
 });
 
@@ -3936,6 +3978,32 @@ export const ServerNotification__ThreadGoalStatus = Schema.Literals([
   "budgetLimited",
   "complete",
 ]).annotate({ identifier: "ServerNotification__ThreadGoalStatus" });
+
+export type ServerNotification__ThreadPredictionResult =
+  | ({ readonly text?: string | null; readonly type: "completed" } & {
+      readonly [x: string]: CodexJsonExtension;
+    })
+  | ({ readonly type: "failed" } & { readonly [x: string]: CodexJsonExtension });
+export const ServerNotification__ThreadPredictionResult = Schema.Union(
+  [
+    Schema.StructWithRest(
+      Schema.Struct({
+        text: Schema.optionalKey(Schema.Union([Schema.String, Schema.Null])),
+        type: Schema.Literal("completed").annotate({
+          title: "CompletedThreadPredictionResultType",
+        }),
+      }),
+      [Schema.Record(Schema.String, CodexJsonExtension)],
+    ).annotate({ title: "CompletedThreadPredictionResult" }),
+    Schema.StructWithRest(
+      Schema.Struct({
+        type: Schema.Literal("failed").annotate({ title: "FailedThreadPredictionResultType" }),
+      }),
+      [Schema.Record(Schema.String, CodexJsonExtension)],
+    ).annotate({ title: "FailedThreadPredictionResult" }),
+  ],
+  { mode: "oneOf" },
+).annotate({ identifier: "ServerNotification__ThreadPredictionResult" });
 
 export type ServerNotification__ThreadGoalClearedNotification = { readonly threadId: string } & {
   readonly [x: string]: CodexJsonExtension;
@@ -4533,6 +4601,7 @@ export const ServerNotification__McpToolCallProgressNotification = Schema.Struct
 
 export type ServerNotification__McpServerOauthLoginCompletedNotification = {
   readonly error?: string | null;
+  readonly loginId?: string | null;
   readonly name: string;
   readonly success: boolean;
   readonly threadId?: string | null;
@@ -4540,6 +4609,14 @@ export type ServerNotification__McpServerOauthLoginCompletedNotification = {
 export const ServerNotification__McpServerOauthLoginCompletedNotification = Schema.StructWithRest(
   Schema.Struct({
     error: Schema.optionalKey(Schema.Union([Schema.String, Schema.Null])),
+    loginId: Schema.optionalKey(
+      Schema.Union([
+        Schema.String.annotate({
+          description: "Identifies the explicit login attempt. Older servers omit this field.",
+        }),
+        Schema.Null,
+      ]),
+    ),
     name: Schema.String,
     success: Schema.Boolean,
     threadId: Schema.optionalKey(Schema.Union([Schema.String, Schema.Null])),
@@ -6535,6 +6612,15 @@ export const V2ConfigRequirementsReadResponse__BrowserUseAccessApprovalLifetime 
   "thread",
 ]).annotate({ identifier: "V2ConfigRequirementsReadResponse__BrowserUseAccessApprovalLifetime" });
 
+export type V2ConfigRequirementsReadResponse__RequestHeader = {
+  readonly name: string;
+  readonly value: string;
+} & { readonly [x: string]: CodexJsonExtension };
+export const V2ConfigRequirementsReadResponse__RequestHeader = Schema.StructWithRest(
+  Schema.Struct({ name: Schema.String, value: Schema.String }),
+  [Schema.Record(Schema.String, CodexJsonExtension)],
+).annotate({ identifier: "V2ConfigRequirementsReadResponse__RequestHeader" });
+
 export type V2ConfigRequirementsReadResponse__CliAuthCredentialsStoreMode =
   | "file"
   | "keyring"
@@ -6757,6 +6843,23 @@ export const V2ConsumeAccountRateLimitResetCreditResponse__ConsumeAccountRateLim
     identifier:
       "V2ConsumeAccountRateLimitResetCreditResponse__ConsumeAccountRateLimitResetCreditOutcome",
   });
+
+export type V2EnvironmentAddParams__EnvironmentSkillsParams = {
+  readonly required?: ReadonlyArray<string> | null;
+} & { readonly [x: string]: CodexJsonExtension };
+export const V2EnvironmentAddParams__EnvironmentSkillsParams = Schema.StructWithRest(
+  Schema.Struct({
+    required: Schema.optionalKey(
+      Schema.Union([
+        Schema.Array(Schema.String).annotate({
+          description: "Exact catalog names that must be available from this environment.",
+        }),
+        Schema.Null,
+      ]),
+    ),
+  }),
+  [Schema.Record(Schema.String, CodexJsonExtension)],
+).annotate({ identifier: "V2EnvironmentAddParams__EnvironmentSkillsParams" });
 
 export type V2EnvironmentInfoResponse__PathUri = string;
 export const V2EnvironmentInfoResponse__PathUri = Schema.String.annotate({
@@ -8000,21 +8103,27 @@ export const V2ItemCompletedNotification__MemoryCitationEntry = Schema.StructWit
   [Schema.Record(Schema.String, CodexJsonExtension)],
 ).annotate({ identifier: "V2ItemCompletedNotification__MemoryCitationEntry" });
 
-export type V2ItemCompletedNotification__MessagePhase = "commentary" | "final_answer";
+export type V2ItemCompletedNotification__MessagePhase =
+  | "commentary"
+  | "partial_answer"
+  | "final_answer";
 export const V2ItemCompletedNotification__MessagePhase = Schema.Union(
   [
     Schema.Literal("commentary").annotate({
       description:
         "Mid-turn assistant text (for example preamble/progress narration).\n\nAdditional tool calls or assistant output may follow before turn completion.",
     }),
+    Schema.Literal("partial_answer").annotate({
+      description: "Stable answer text that may be followed by more assistant output or tools.",
+    }),
     Schema.Literal("final_answer").annotate({
-      description: "The assistant's terminal answer text for the current turn.",
+      description: "The assistant's declared terminal answer text for the current turn.",
     }),
   ],
   { mode: "oneOf" },
 ).annotate({
   description:
-    'Classifies an assistant message as interim commentary or final answer text.\n\nProviders do not emit this consistently, so callers must treat `None` as "phase unknown" and keep compatibility behavior for legacy models.',
+    'Classifies assistant text as commentary, a partial answer, or a terminal answer.\n\nProviders do not emit this consistently, so callers must treat `None` as "phase unknown" and keep compatibility behavior for legacy models.',
   identifier: "V2ItemCompletedNotification__MessagePhase",
 });
 
@@ -8623,21 +8732,27 @@ export const V2ItemStartedNotification__MemoryCitationEntry = Schema.StructWithR
   [Schema.Record(Schema.String, CodexJsonExtension)],
 ).annotate({ identifier: "V2ItemStartedNotification__MemoryCitationEntry" });
 
-export type V2ItemStartedNotification__MessagePhase = "commentary" | "final_answer";
+export type V2ItemStartedNotification__MessagePhase =
+  | "commentary"
+  | "partial_answer"
+  | "final_answer";
 export const V2ItemStartedNotification__MessagePhase = Schema.Union(
   [
     Schema.Literal("commentary").annotate({
       description:
         "Mid-turn assistant text (for example preamble/progress narration).\n\nAdditional tool calls or assistant output may follow before turn completion.",
     }),
+    Schema.Literal("partial_answer").annotate({
+      description: "Stable answer text that may be followed by more assistant output or tools.",
+    }),
     Schema.Literal("final_answer").annotate({
-      description: "The assistant's terminal answer text for the current turn.",
+      description: "The assistant's declared terminal answer text for the current turn.",
     }),
   ],
   { mode: "oneOf" },
 ).annotate({
   description:
-    'Classifies an assistant message as interim commentary or final answer text.\n\nProviders do not emit this consistently, so callers must treat `None` as "phase unknown" and keep compatibility behavior for legacy models.',
+    'Classifies assistant text as commentary, a partial answer, or a terminal answer.\n\nProviders do not emit this consistently, so callers must treat `None` as "phase unknown" and keep compatibility behavior for legacy models.',
   identifier: "V2ItemStartedNotification__MessagePhase",
 });
 
@@ -9283,7 +9398,7 @@ export const V2ModelListResponse__CyberAccessProgram = Schema.Literals([
   "daybreakRed",
 ]).annotate({
   description:
-    "Requested cyber treatment for a ChatGPT-authenticated Codex turn. Authorization and model-tier restrictions remain server-owned.",
+    "Requested cyber treatment for an OpenAI model turn. Authorization and model-tier restrictions remain server-owned.",
   identifier: "V2ModelListResponse__CyberAccessProgram",
 });
 
@@ -10364,21 +10479,27 @@ export const V2RawResponseItemCompletedNotification__InternalChatMessageMetadata
     identifier: "V2RawResponseItemCompletedNotification__InternalChatMessageMetadataPassthrough",
   });
 
-export type V2RawResponseItemCompletedNotification__MessagePhase = "commentary" | "final_answer";
+export type V2RawResponseItemCompletedNotification__MessagePhase =
+  | "commentary"
+  | "partial_answer"
+  | "final_answer";
 export const V2RawResponseItemCompletedNotification__MessagePhase = Schema.Union(
   [
     Schema.Literal("commentary").annotate({
       description:
         "Mid-turn assistant text (for example preamble/progress narration).\n\nAdditional tool calls or assistant output may follow before turn completion.",
     }),
+    Schema.Literal("partial_answer").annotate({
+      description: "Stable answer text that may be followed by more assistant output or tools.",
+    }),
     Schema.Literal("final_answer").annotate({
-      description: "The assistant's terminal answer text for the current turn.",
+      description: "The assistant's declared terminal answer text for the current turn.",
     }),
   ],
   { mode: "oneOf" },
 ).annotate({
   description:
-    'Classifies an assistant message as interim commentary or final answer text.\n\nProviders do not emit this consistently, so callers must treat `None` as "phase unknown" and keep compatibility behavior for legacy models.',
+    'Classifies assistant text as commentary, a partial answer, or a terminal answer.\n\nProviders do not emit this consistently, so callers must treat `None` as "phase unknown" and keep compatibility behavior for legacy models.',
   identifier: "V2RawResponseItemCompletedNotification__MessagePhase",
 });
 
@@ -10814,21 +10935,24 @@ export const V2ReviewStartResponse__MemoryCitationEntry = Schema.StructWithRest(
   [Schema.Record(Schema.String, CodexJsonExtension)],
 ).annotate({ identifier: "V2ReviewStartResponse__MemoryCitationEntry" });
 
-export type V2ReviewStartResponse__MessagePhase = "commentary" | "final_answer";
+export type V2ReviewStartResponse__MessagePhase = "commentary" | "partial_answer" | "final_answer";
 export const V2ReviewStartResponse__MessagePhase = Schema.Union(
   [
     Schema.Literal("commentary").annotate({
       description:
         "Mid-turn assistant text (for example preamble/progress narration).\n\nAdditional tool calls or assistant output may follow before turn completion.",
     }),
+    Schema.Literal("partial_answer").annotate({
+      description: "Stable answer text that may be followed by more assistant output or tools.",
+    }),
     Schema.Literal("final_answer").annotate({
-      description: "The assistant's terminal answer text for the current turn.",
+      description: "The assistant's declared terminal answer text for the current turn.",
     }),
   ],
   { mode: "oneOf" },
 ).annotate({
   description:
-    'Classifies an assistant message as interim commentary or final answer text.\n\nProviders do not emit this consistently, so callers must treat `None` as "phase unknown" and keep compatibility behavior for legacy models.',
+    'Classifies assistant text as commentary, a partial answer, or a terminal answer.\n\nProviders do not emit this consistently, so callers must treat `None` as "phase unknown" and keep compatibility behavior for legacy models.',
   identifier: "V2ReviewStartResponse__MessagePhase",
 });
 
@@ -11400,6 +11524,24 @@ export const V2ThreadAttachmentListResponse__ThreadAttachment = Schema.StructWit
   identifier: "V2ThreadAttachmentListResponse__ThreadAttachment",
 });
 
+export type V2ThreadAttachmentOwnerListResponse__ThreadAttachmentOwner = {
+  readonly archived: boolean;
+  readonly threadId: string;
+} & { readonly [x: string]: CodexJsonExtension };
+export const V2ThreadAttachmentOwnerListResponse__ThreadAttachmentOwner = Schema.StructWithRest(
+  Schema.Struct({
+    archived: Schema.Boolean.annotate({
+      description:
+        "Whether the owning thread is archived, not whether it is currently executing a turn.",
+    }),
+    threadId: Schema.String,
+  }),
+  [Schema.Record(Schema.String, CodexJsonExtension)],
+).annotate({
+  description: "A thread that currently owns an attachment with the requested identity.",
+  identifier: "V2ThreadAttachmentOwnerListResponse__ThreadAttachmentOwner",
+});
+
 export type V2ThreadAttachmentUpdatedNotification__ThreadAttachmentOperation =
   | "created"
   | "deleted";
@@ -11751,21 +11893,24 @@ export const V2ThreadForkResponse__MemoryCitationEntry = Schema.StructWithRest(
   [Schema.Record(Schema.String, CodexJsonExtension)],
 ).annotate({ identifier: "V2ThreadForkResponse__MemoryCitationEntry" });
 
-export type V2ThreadForkResponse__MessagePhase = "commentary" | "final_answer";
+export type V2ThreadForkResponse__MessagePhase = "commentary" | "partial_answer" | "final_answer";
 export const V2ThreadForkResponse__MessagePhase = Schema.Union(
   [
     Schema.Literal("commentary").annotate({
       description:
         "Mid-turn assistant text (for example preamble/progress narration).\n\nAdditional tool calls or assistant output may follow before turn completion.",
     }),
+    Schema.Literal("partial_answer").annotate({
+      description: "Stable answer text that may be followed by more assistant output or tools.",
+    }),
     Schema.Literal("final_answer").annotate({
-      description: "The assistant's terminal answer text for the current turn.",
+      description: "The assistant's declared terminal answer text for the current turn.",
     }),
   ],
   { mode: "oneOf" },
 ).annotate({
   description:
-    'Classifies an assistant message as interim commentary or final answer text.\n\nProviders do not emit this consistently, so callers must treat `None` as "phase unknown" and keep compatibility behavior for legacy models.',
+    'Classifies assistant text as commentary, a partial answer, or a terminal answer.\n\nProviders do not emit this consistently, so callers must treat `None` as "phase unknown" and keep compatibility behavior for legacy models.',
   identifier: "V2ThreadForkResponse__MessagePhase",
 });
 
@@ -12120,6 +12265,15 @@ export const V2ThreadForkResponse__TurnStatus = Schema.Literals([
   "inProgress",
 ]).annotate({ identifier: "V2ThreadForkResponse__TurnStatus" });
 
+export type V2ThreadGoalClearParams__ThreadGoalMutationOrigin = "user" | "automatic";
+export const V2ThreadGoalClearParams__ThreadGoalMutationOrigin = Schema.Literals([
+  "user",
+  "automatic",
+]).annotate({
+  description: "Distinguishes explicit user actions from automatic goal lifecycle mutations.",
+  identifier: "V2ThreadGoalClearParams__ThreadGoalMutationOrigin",
+});
+
 export type V2ThreadGoalGetResponse__ThreadGoalStatus =
   | "active"
   | "paused"
@@ -12135,6 +12289,15 @@ export const V2ThreadGoalGetResponse__ThreadGoalStatus = Schema.Literals([
   "budgetLimited",
   "complete",
 ]).annotate({ identifier: "V2ThreadGoalGetResponse__ThreadGoalStatus" });
+
+export type V2ThreadGoalSetParams__ThreadGoalMutationOrigin = "user" | "automatic";
+export const V2ThreadGoalSetParams__ThreadGoalMutationOrigin = Schema.Literals([
+  "user",
+  "automatic",
+]).annotate({
+  description: "Distinguishes explicit user actions from automatic goal lifecycle mutations.",
+  identifier: "V2ThreadGoalSetParams__ThreadGoalMutationOrigin",
+});
 
 export type V2ThreadGoalSetParams__ThreadGoalStatus =
   | "active"
@@ -12283,21 +12446,27 @@ export const V2ThreadItemsListResponse__MemoryCitationEntry = Schema.StructWithR
   [Schema.Record(Schema.String, CodexJsonExtension)],
 ).annotate({ identifier: "V2ThreadItemsListResponse__MemoryCitationEntry" });
 
-export type V2ThreadItemsListResponse__MessagePhase = "commentary" | "final_answer";
+export type V2ThreadItemsListResponse__MessagePhase =
+  | "commentary"
+  | "partial_answer"
+  | "final_answer";
 export const V2ThreadItemsListResponse__MessagePhase = Schema.Union(
   [
     Schema.Literal("commentary").annotate({
       description:
         "Mid-turn assistant text (for example preamble/progress narration).\n\nAdditional tool calls or assistant output may follow before turn completion.",
     }),
+    Schema.Literal("partial_answer").annotate({
+      description: "Stable answer text that may be followed by more assistant output or tools.",
+    }),
     Schema.Literal("final_answer").annotate({
-      description: "The assistant's terminal answer text for the current turn.",
+      description: "The assistant's declared terminal answer text for the current turn.",
     }),
   ],
   { mode: "oneOf" },
 ).annotate({
   description:
-    'Classifies an assistant message as interim commentary or final answer text.\n\nProviders do not emit this consistently, so callers must treat `None` as "phase unknown" and keep compatibility behavior for legacy models.',
+    'Classifies assistant text as commentary, a partial answer, or a terminal answer.\n\nProviders do not emit this consistently, so callers must treat `None` as "phase unknown" and keep compatibility behavior for legacy models.',
   identifier: "V2ThreadItemsListResponse__MessagePhase",
 });
 
@@ -12869,21 +13038,24 @@ export const V2ThreadListResponse__MemoryCitationEntry = Schema.StructWithRest(
   [Schema.Record(Schema.String, CodexJsonExtension)],
 ).annotate({ identifier: "V2ThreadListResponse__MemoryCitationEntry" });
 
-export type V2ThreadListResponse__MessagePhase = "commentary" | "final_answer";
+export type V2ThreadListResponse__MessagePhase = "commentary" | "partial_answer" | "final_answer";
 export const V2ThreadListResponse__MessagePhase = Schema.Union(
   [
     Schema.Literal("commentary").annotate({
       description:
         "Mid-turn assistant text (for example preamble/progress narration).\n\nAdditional tool calls or assistant output may follow before turn completion.",
     }),
+    Schema.Literal("partial_answer").annotate({
+      description: "Stable answer text that may be followed by more assistant output or tools.",
+    }),
     Schema.Literal("final_answer").annotate({
-      description: "The assistant's terminal answer text for the current turn.",
+      description: "The assistant's declared terminal answer text for the current turn.",
     }),
   ],
   { mode: "oneOf" },
 ).annotate({
   description:
-    'Classifies an assistant message as interim commentary or final answer text.\n\nProviders do not emit this consistently, so callers must treat `None` as "phase unknown" and keep compatibility behavior for legacy models.',
+    'Classifies assistant text as commentary, a partial answer, or a terminal answer.\n\nProviders do not emit this consistently, so callers must treat `None` as "phase unknown" and keep compatibility behavior for legacy models.',
   identifier: "V2ThreadListResponse__MessagePhase",
 });
 
@@ -13460,21 +13632,27 @@ export const V2ThreadMetadataUpdateResponse__MemoryCitationEntry = Schema.Struct
   [Schema.Record(Schema.String, CodexJsonExtension)],
 ).annotate({ identifier: "V2ThreadMetadataUpdateResponse__MemoryCitationEntry" });
 
-export type V2ThreadMetadataUpdateResponse__MessagePhase = "commentary" | "final_answer";
+export type V2ThreadMetadataUpdateResponse__MessagePhase =
+  | "commentary"
+  | "partial_answer"
+  | "final_answer";
 export const V2ThreadMetadataUpdateResponse__MessagePhase = Schema.Union(
   [
     Schema.Literal("commentary").annotate({
       description:
         "Mid-turn assistant text (for example preamble/progress narration).\n\nAdditional tool calls or assistant output may follow before turn completion.",
     }),
+    Schema.Literal("partial_answer").annotate({
+      description: "Stable answer text that may be followed by more assistant output or tools.",
+    }),
     Schema.Literal("final_answer").annotate({
-      description: "The assistant's terminal answer text for the current turn.",
+      description: "The assistant's declared terminal answer text for the current turn.",
     }),
   ],
   { mode: "oneOf" },
 ).annotate({
   description:
-    'Classifies an assistant message as interim commentary or final answer text.\n\nProviders do not emit this consistently, so callers must treat `None` as "phase unknown" and keep compatibility behavior for legacy models.',
+    'Classifies assistant text as commentary, a partial answer, or a terminal answer.\n\nProviders do not emit this consistently, so callers must treat `None` as "phase unknown" and keep compatibility behavior for legacy models.',
   identifier: "V2ThreadMetadataUpdateResponse__MessagePhase",
 });
 
@@ -13835,6 +14013,32 @@ export const V2ThreadMetadataUpdateResponse__TurnStatus = Schema.Literals([
   "inProgress",
 ]).annotate({ identifier: "V2ThreadMetadataUpdateResponse__TurnStatus" });
 
+export type V2ThreadPredictionUpdatedNotification__ThreadPredictionResult =
+  | ({ readonly text?: string | null; readonly type: "completed" } & {
+      readonly [x: string]: CodexJsonExtension;
+    })
+  | ({ readonly type: "failed" } & { readonly [x: string]: CodexJsonExtension });
+export const V2ThreadPredictionUpdatedNotification__ThreadPredictionResult = Schema.Union(
+  [
+    Schema.StructWithRest(
+      Schema.Struct({
+        text: Schema.optionalKey(Schema.Union([Schema.String, Schema.Null])),
+        type: Schema.Literal("completed").annotate({
+          title: "CompletedThreadPredictionResultType",
+        }),
+      }),
+      [Schema.Record(Schema.String, CodexJsonExtension)],
+    ).annotate({ title: "CompletedThreadPredictionResult" }),
+    Schema.StructWithRest(
+      Schema.Struct({
+        type: Schema.Literal("failed").annotate({ title: "FailedThreadPredictionResultType" }),
+      }),
+      [Schema.Record(Schema.String, CodexJsonExtension)],
+    ).annotate({ title: "FailedThreadPredictionResult" }),
+  ],
+  { mode: "oneOf" },
+).annotate({ identifier: "V2ThreadPredictionUpdatedNotification__ThreadPredictionResult" });
+
 export type V2ThreadQueueAddParams__ByteRange = { readonly end: number; readonly start: number } & {
   readonly [x: string]: CodexJsonExtension;
 };
@@ -14018,21 +14222,27 @@ export const V2ThreadQueueStartResponse__MemoryCitationEntry = Schema.StructWith
   [Schema.Record(Schema.String, CodexJsonExtension)],
 ).annotate({ identifier: "V2ThreadQueueStartResponse__MemoryCitationEntry" });
 
-export type V2ThreadQueueStartResponse__MessagePhase = "commentary" | "final_answer";
+export type V2ThreadQueueStartResponse__MessagePhase =
+  | "commentary"
+  | "partial_answer"
+  | "final_answer";
 export const V2ThreadQueueStartResponse__MessagePhase = Schema.Union(
   [
     Schema.Literal("commentary").annotate({
       description:
         "Mid-turn assistant text (for example preamble/progress narration).\n\nAdditional tool calls or assistant output may follow before turn completion.",
     }),
+    Schema.Literal("partial_answer").annotate({
+      description: "Stable answer text that may be followed by more assistant output or tools.",
+    }),
     Schema.Literal("final_answer").annotate({
-      description: "The assistant's terminal answer text for the current turn.",
+      description: "The assistant's declared terminal answer text for the current turn.",
     }),
   ],
   { mode: "oneOf" },
 ).annotate({
   description:
-    'Classifies an assistant message as interim commentary or final answer text.\n\nProviders do not emit this consistently, so callers must treat `None` as "phase unknown" and keep compatibility behavior for legacy models.',
+    'Classifies assistant text as commentary, a partial answer, or a terminal answer.\n\nProviders do not emit this consistently, so callers must treat `None` as "phase unknown" and keep compatibility behavior for legacy models.',
   identifier: "V2ThreadQueueStartResponse__MessagePhase",
 });
 
@@ -14650,21 +14860,24 @@ export const V2ThreadReadResponse__MemoryCitationEntry = Schema.StructWithRest(
   [Schema.Record(Schema.String, CodexJsonExtension)],
 ).annotate({ identifier: "V2ThreadReadResponse__MemoryCitationEntry" });
 
-export type V2ThreadReadResponse__MessagePhase = "commentary" | "final_answer";
+export type V2ThreadReadResponse__MessagePhase = "commentary" | "partial_answer" | "final_answer";
 export const V2ThreadReadResponse__MessagePhase = Schema.Union(
   [
     Schema.Literal("commentary").annotate({
       description:
         "Mid-turn assistant text (for example preamble/progress narration).\n\nAdditional tool calls or assistant output may follow before turn completion.",
     }),
+    Schema.Literal("partial_answer").annotate({
+      description: "Stable answer text that may be followed by more assistant output or tools.",
+    }),
     Schema.Literal("final_answer").annotate({
-      description: "The assistant's terminal answer text for the current turn.",
+      description: "The assistant's declared terminal answer text for the current turn.",
     }),
   ],
   { mode: "oneOf" },
 ).annotate({
   description:
-    'Classifies an assistant message as interim commentary or final answer text.\n\nProviders do not emit this consistently, so callers must treat `None` as "phase unknown" and keep compatibility behavior for legacy models.',
+    'Classifies assistant text as commentary, a partial answer, or a terminal answer.\n\nProviders do not emit this consistently, so callers must treat `None` as "phase unknown" and keep compatibility behavior for legacy models.',
   identifier: "V2ThreadReadResponse__MessagePhase",
 });
 
@@ -15480,21 +15693,24 @@ export const V2ThreadResumeParams__InternalChatMessageMetadataPassthrough = Sche
   identifier: "V2ThreadResumeParams__InternalChatMessageMetadataPassthrough",
 });
 
-export type V2ThreadResumeParams__MessagePhase = "commentary" | "final_answer";
+export type V2ThreadResumeParams__MessagePhase = "commentary" | "partial_answer" | "final_answer";
 export const V2ThreadResumeParams__MessagePhase = Schema.Union(
   [
     Schema.Literal("commentary").annotate({
       description:
         "Mid-turn assistant text (for example preamble/progress narration).\n\nAdditional tool calls or assistant output may follow before turn completion.",
     }),
+    Schema.Literal("partial_answer").annotate({
+      description: "Stable answer text that may be followed by more assistant output or tools.",
+    }),
     Schema.Literal("final_answer").annotate({
-      description: "The assistant's terminal answer text for the current turn.",
+      description: "The assistant's declared terminal answer text for the current turn.",
     }),
   ],
   { mode: "oneOf" },
 ).annotate({
   description:
-    'Classifies an assistant message as interim commentary or final answer text.\n\nProviders do not emit this consistently, so callers must treat `None` as "phase unknown" and keep compatibility behavior for legacy models.',
+    'Classifies assistant text as commentary, a partial answer, or a terminal answer.\n\nProviders do not emit this consistently, so callers must treat `None` as "phase unknown" and keep compatibility behavior for legacy models.',
   identifier: "V2ThreadResumeParams__MessagePhase",
 });
 
@@ -15917,21 +16133,24 @@ export const V2ThreadResumeResponse__MemoryCitationEntry = Schema.StructWithRest
   [Schema.Record(Schema.String, CodexJsonExtension)],
 ).annotate({ identifier: "V2ThreadResumeResponse__MemoryCitationEntry" });
 
-export type V2ThreadResumeResponse__MessagePhase = "commentary" | "final_answer";
+export type V2ThreadResumeResponse__MessagePhase = "commentary" | "partial_answer" | "final_answer";
 export const V2ThreadResumeResponse__MessagePhase = Schema.Union(
   [
     Schema.Literal("commentary").annotate({
       description:
         "Mid-turn assistant text (for example preamble/progress narration).\n\nAdditional tool calls or assistant output may follow before turn completion.",
     }),
+    Schema.Literal("partial_answer").annotate({
+      description: "Stable answer text that may be followed by more assistant output or tools.",
+    }),
     Schema.Literal("final_answer").annotate({
-      description: "The assistant's terminal answer text for the current turn.",
+      description: "The assistant's declared terminal answer text for the current turn.",
     }),
   ],
   { mode: "oneOf" },
 ).annotate({
   description:
-    'Classifies an assistant message as interim commentary or final answer text.\n\nProviders do not emit this consistently, so callers must treat `None` as "phase unknown" and keep compatibility behavior for legacy models.',
+    'Classifies assistant text as commentary, a partial answer, or a terminal answer.\n\nProviders do not emit this consistently, so callers must treat `None` as "phase unknown" and keep compatibility behavior for legacy models.',
   identifier: "V2ThreadResumeResponse__MessagePhase",
 });
 
@@ -16554,21 +16773,24 @@ export const V2ThreadRevertResponse__MemoryCitationEntry = Schema.StructWithRest
   [Schema.Record(Schema.String, CodexJsonExtension)],
 ).annotate({ identifier: "V2ThreadRevertResponse__MemoryCitationEntry" });
 
-export type V2ThreadRevertResponse__MessagePhase = "commentary" | "final_answer";
+export type V2ThreadRevertResponse__MessagePhase = "commentary" | "partial_answer" | "final_answer";
 export const V2ThreadRevertResponse__MessagePhase = Schema.Union(
   [
     Schema.Literal("commentary").annotate({
       description:
         "Mid-turn assistant text (for example preamble/progress narration).\n\nAdditional tool calls or assistant output may follow before turn completion.",
     }),
+    Schema.Literal("partial_answer").annotate({
+      description: "Stable answer text that may be followed by more assistant output or tools.",
+    }),
     Schema.Literal("final_answer").annotate({
-      description: "The assistant's terminal answer text for the current turn.",
+      description: "The assistant's declared terminal answer text for the current turn.",
     }),
   ],
   { mode: "oneOf" },
 ).annotate({
   description:
-    'Classifies an assistant message as interim commentary or final answer text.\n\nProviders do not emit this consistently, so callers must treat `None` as "phase unknown" and keep compatibility behavior for legacy models.',
+    'Classifies assistant text as commentary, a partial answer, or a terminal answer.\n\nProviders do not emit this consistently, so callers must treat `None` as "phase unknown" and keep compatibility behavior for legacy models.',
   identifier: "V2ThreadRevertResponse__MessagePhase",
 });
 
@@ -17166,21 +17388,24 @@ export const V2ThreadSearchResponse__MemoryCitationEntry = Schema.StructWithRest
   [Schema.Record(Schema.String, CodexJsonExtension)],
 ).annotate({ identifier: "V2ThreadSearchResponse__MemoryCitationEntry" });
 
-export type V2ThreadSearchResponse__MessagePhase = "commentary" | "final_answer";
+export type V2ThreadSearchResponse__MessagePhase = "commentary" | "partial_answer" | "final_answer";
 export const V2ThreadSearchResponse__MessagePhase = Schema.Union(
   [
     Schema.Literal("commentary").annotate({
       description:
         "Mid-turn assistant text (for example preamble/progress narration).\n\nAdditional tool calls or assistant output may follow before turn completion.",
     }),
+    Schema.Literal("partial_answer").annotate({
+      description: "Stable answer text that may be followed by more assistant output or tools.",
+    }),
     Schema.Literal("final_answer").annotate({
-      description: "The assistant's terminal answer text for the current turn.",
+      description: "The assistant's declared terminal answer text for the current turn.",
     }),
   ],
   { mode: "oneOf" },
 ).annotate({
   description:
-    'Classifies an assistant message as interim commentary or final answer text.\n\nProviders do not emit this consistently, so callers must treat `None` as "phase unknown" and keep compatibility behavior for legacy models.',
+    'Classifies assistant text as commentary, a partial answer, or a terminal answer.\n\nProviders do not emit this consistently, so callers must treat `None` as "phase unknown" and keep compatibility behavior for legacy models.',
   identifier: "V2ThreadSearchResponse__MessagePhase",
 });
 
@@ -18061,21 +18286,27 @@ export const V2ThreadStartedNotification__MemoryCitationEntry = Schema.StructWit
   [Schema.Record(Schema.String, CodexJsonExtension)],
 ).annotate({ identifier: "V2ThreadStartedNotification__MemoryCitationEntry" });
 
-export type V2ThreadStartedNotification__MessagePhase = "commentary" | "final_answer";
+export type V2ThreadStartedNotification__MessagePhase =
+  | "commentary"
+  | "partial_answer"
+  | "final_answer";
 export const V2ThreadStartedNotification__MessagePhase = Schema.Union(
   [
     Schema.Literal("commentary").annotate({
       description:
         "Mid-turn assistant text (for example preamble/progress narration).\n\nAdditional tool calls or assistant output may follow before turn completion.",
     }),
+    Schema.Literal("partial_answer").annotate({
+      description: "Stable answer text that may be followed by more assistant output or tools.",
+    }),
     Schema.Literal("final_answer").annotate({
-      description: "The assistant's terminal answer text for the current turn.",
+      description: "The assistant's declared terminal answer text for the current turn.",
     }),
   ],
   { mode: "oneOf" },
 ).annotate({
   description:
-    'Classifies an assistant message as interim commentary or final answer text.\n\nProviders do not emit this consistently, so callers must treat `None` as "phase unknown" and keep compatibility behavior for legacy models.',
+    'Classifies assistant text as commentary, a partial answer, or a terminal answer.\n\nProviders do not emit this consistently, so callers must treat `None` as "phase unknown" and keep compatibility behavior for legacy models.',
   identifier: "V2ThreadStartedNotification__MessagePhase",
 });
 
@@ -18867,21 +19098,24 @@ export const V2ThreadStartResponse__MemoryCitationEntry = Schema.StructWithRest(
   [Schema.Record(Schema.String, CodexJsonExtension)],
 ).annotate({ identifier: "V2ThreadStartResponse__MemoryCitationEntry" });
 
-export type V2ThreadStartResponse__MessagePhase = "commentary" | "final_answer";
+export type V2ThreadStartResponse__MessagePhase = "commentary" | "partial_answer" | "final_answer";
 export const V2ThreadStartResponse__MessagePhase = Schema.Union(
   [
     Schema.Literal("commentary").annotate({
       description:
         "Mid-turn assistant text (for example preamble/progress narration).\n\nAdditional tool calls or assistant output may follow before turn completion.",
     }),
+    Schema.Literal("partial_answer").annotate({
+      description: "Stable answer text that may be followed by more assistant output or tools.",
+    }),
     Schema.Literal("final_answer").annotate({
-      description: "The assistant's terminal answer text for the current turn.",
+      description: "The assistant's declared terminal answer text for the current turn.",
     }),
   ],
   { mode: "oneOf" },
 ).annotate({
   description:
-    'Classifies an assistant message as interim commentary or final answer text.\n\nProviders do not emit this consistently, so callers must treat `None` as "phase unknown" and keep compatibility behavior for legacy models.',
+    'Classifies assistant text as commentary, a partial answer, or a terminal answer.\n\nProviders do not emit this consistently, so callers must treat `None` as "phase unknown" and keep compatibility behavior for legacy models.',
   identifier: "V2ThreadStartResponse__MessagePhase",
 });
 
@@ -19318,21 +19552,27 @@ export const V2ThreadTimelineListResponse__MemoryCitationEntry = Schema.StructWi
   [Schema.Record(Schema.String, CodexJsonExtension)],
 ).annotate({ identifier: "V2ThreadTimelineListResponse__MemoryCitationEntry" });
 
-export type V2ThreadTimelineListResponse__MessagePhase = "commentary" | "final_answer";
+export type V2ThreadTimelineListResponse__MessagePhase =
+  | "commentary"
+  | "partial_answer"
+  | "final_answer";
 export const V2ThreadTimelineListResponse__MessagePhase = Schema.Union(
   [
     Schema.Literal("commentary").annotate({
       description:
         "Mid-turn assistant text (for example preamble/progress narration).\n\nAdditional tool calls or assistant output may follow before turn completion.",
     }),
+    Schema.Literal("partial_answer").annotate({
+      description: "Stable answer text that may be followed by more assistant output or tools.",
+    }),
     Schema.Literal("final_answer").annotate({
-      description: "The assistant's terminal answer text for the current turn.",
+      description: "The assistant's declared terminal answer text for the current turn.",
     }),
   ],
   { mode: "oneOf" },
 ).annotate({
   description:
-    'Classifies an assistant message as interim commentary or final answer text.\n\nProviders do not emit this consistently, so callers must treat `None` as "phase unknown" and keep compatibility behavior for legacy models.',
+    'Classifies assistant text as commentary, a partial answer, or a terminal answer.\n\nProviders do not emit this consistently, so callers must treat `None` as "phase unknown" and keep compatibility behavior for legacy models.',
   identifier: "V2ThreadTimelineListResponse__MessagePhase",
 });
 
@@ -19911,21 +20151,27 @@ export const V2ThreadTurnsListResponse__MemoryCitationEntry = Schema.StructWithR
   [Schema.Record(Schema.String, CodexJsonExtension)],
 ).annotate({ identifier: "V2ThreadTurnsListResponse__MemoryCitationEntry" });
 
-export type V2ThreadTurnsListResponse__MessagePhase = "commentary" | "final_answer";
+export type V2ThreadTurnsListResponse__MessagePhase =
+  | "commentary"
+  | "partial_answer"
+  | "final_answer";
 export const V2ThreadTurnsListResponse__MessagePhase = Schema.Union(
   [
     Schema.Literal("commentary").annotate({
       description:
         "Mid-turn assistant text (for example preamble/progress narration).\n\nAdditional tool calls or assistant output may follow before turn completion.",
     }),
+    Schema.Literal("partial_answer").annotate({
+      description: "Stable answer text that may be followed by more assistant output or tools.",
+    }),
     Schema.Literal("final_answer").annotate({
-      description: "The assistant's terminal answer text for the current turn.",
+      description: "The assistant's declared terminal answer text for the current turn.",
     }),
   ],
   { mode: "oneOf" },
 ).annotate({
   description:
-    'Classifies an assistant message as interim commentary or final answer text.\n\nProviders do not emit this consistently, so callers must treat `None` as "phase unknown" and keep compatibility behavior for legacy models.',
+    'Classifies assistant text as commentary, a partial answer, or a terminal answer.\n\nProviders do not emit this consistently, so callers must treat `None` as "phase unknown" and keep compatibility behavior for legacy models.',
   identifier: "V2ThreadTurnsListResponse__MessagePhase",
 });
 
@@ -20482,21 +20728,27 @@ export const V2ThreadUnarchiveResponse__MemoryCitationEntry = Schema.StructWithR
   [Schema.Record(Schema.String, CodexJsonExtension)],
 ).annotate({ identifier: "V2ThreadUnarchiveResponse__MemoryCitationEntry" });
 
-export type V2ThreadUnarchiveResponse__MessagePhase = "commentary" | "final_answer";
+export type V2ThreadUnarchiveResponse__MessagePhase =
+  | "commentary"
+  | "partial_answer"
+  | "final_answer";
 export const V2ThreadUnarchiveResponse__MessagePhase = Schema.Union(
   [
     Schema.Literal("commentary").annotate({
       description:
         "Mid-turn assistant text (for example preamble/progress narration).\n\nAdditional tool calls or assistant output may follow before turn completion.",
     }),
+    Schema.Literal("partial_answer").annotate({
+      description: "Stable answer text that may be followed by more assistant output or tools.",
+    }),
     Schema.Literal("final_answer").annotate({
-      description: "The assistant's terminal answer text for the current turn.",
+      description: "The assistant's declared terminal answer text for the current turn.",
     }),
   ],
   { mode: "oneOf" },
 ).annotate({
   description:
-    'Classifies an assistant message as interim commentary or final answer text.\n\nProviders do not emit this consistently, so callers must treat `None` as "phase unknown" and keep compatibility behavior for legacy models.',
+    'Classifies assistant text as commentary, a partial answer, or a terminal answer.\n\nProviders do not emit this consistently, so callers must treat `None` as "phase unknown" and keep compatibility behavior for legacy models.',
   identifier: "V2ThreadUnarchiveResponse__MessagePhase",
 });
 
@@ -20952,21 +21204,27 @@ export const V2TurnCompletedNotification__MemoryCitationEntry = Schema.StructWit
   [Schema.Record(Schema.String, CodexJsonExtension)],
 ).annotate({ identifier: "V2TurnCompletedNotification__MemoryCitationEntry" });
 
-export type V2TurnCompletedNotification__MessagePhase = "commentary" | "final_answer";
+export type V2TurnCompletedNotification__MessagePhase =
+  | "commentary"
+  | "partial_answer"
+  | "final_answer";
 export const V2TurnCompletedNotification__MessagePhase = Schema.Union(
   [
     Schema.Literal("commentary").annotate({
       description:
         "Mid-turn assistant text (for example preamble/progress narration).\n\nAdditional tool calls or assistant output may follow before turn completion.",
     }),
+    Schema.Literal("partial_answer").annotate({
+      description: "Stable answer text that may be followed by more assistant output or tools.",
+    }),
     Schema.Literal("final_answer").annotate({
-      description: "The assistant's terminal answer text for the current turn.",
+      description: "The assistant's declared terminal answer text for the current turn.",
     }),
   ],
   { mode: "oneOf" },
 ).annotate({
   description:
-    'Classifies an assistant message as interim commentary or final answer text.\n\nProviders do not emit this consistently, so callers must treat `None` as "phase unknown" and keep compatibility behavior for legacy models.',
+    'Classifies assistant text as commentary, a partial answer, or a terminal answer.\n\nProviders do not emit this consistently, so callers must treat `None` as "phase unknown" and keep compatibility behavior for legacy models.',
   identifier: "V2TurnCompletedNotification__MessagePhase",
 });
 
@@ -21497,21 +21755,27 @@ export const V2TurnStartedNotification__MemoryCitationEntry = Schema.StructWithR
   [Schema.Record(Schema.String, CodexJsonExtension)],
 ).annotate({ identifier: "V2TurnStartedNotification__MemoryCitationEntry" });
 
-export type V2TurnStartedNotification__MessagePhase = "commentary" | "final_answer";
+export type V2TurnStartedNotification__MessagePhase =
+  | "commentary"
+  | "partial_answer"
+  | "final_answer";
 export const V2TurnStartedNotification__MessagePhase = Schema.Union(
   [
     Schema.Literal("commentary").annotate({
       description:
         "Mid-turn assistant text (for example preamble/progress narration).\n\nAdditional tool calls or assistant output may follow before turn completion.",
     }),
+    Schema.Literal("partial_answer").annotate({
+      description: "Stable answer text that may be followed by more assistant output or tools.",
+    }),
     Schema.Literal("final_answer").annotate({
-      description: "The assistant's terminal answer text for the current turn.",
+      description: "The assistant's declared terminal answer text for the current turn.",
     }),
   ],
   { mode: "oneOf" },
 ).annotate({
   description:
-    'Classifies an assistant message as interim commentary or final answer text.\n\nProviders do not emit this consistently, so callers must treat `None` as "phase unknown" and keep compatibility behavior for legacy models.',
+    'Classifies assistant text as commentary, a partial answer, or a terminal answer.\n\nProviders do not emit this consistently, so callers must treat `None` as "phase unknown" and keep compatibility behavior for legacy models.',
   identifier: "V2TurnStartedNotification__MessagePhase",
 });
 
@@ -21966,7 +22230,7 @@ export const V2TurnStartParams__CyberAccessProgram = Schema.Literals([
   "daybreakRed",
 ]).annotate({
   description:
-    "Requested cyber treatment for a ChatGPT-authenticated Codex turn. Authorization and model-tier restrictions remain server-owned.",
+    "Requested cyber treatment for an OpenAI model turn. Authorization and model-tier restrictions remain server-owned.",
   identifier: "V2TurnStartParams__CyberAccessProgram",
 });
 
@@ -22146,21 +22410,24 @@ export const V2TurnStartResponse__MemoryCitationEntry = Schema.StructWithRest(
   [Schema.Record(Schema.String, CodexJsonExtension)],
 ).annotate({ identifier: "V2TurnStartResponse__MemoryCitationEntry" });
 
-export type V2TurnStartResponse__MessagePhase = "commentary" | "final_answer";
+export type V2TurnStartResponse__MessagePhase = "commentary" | "partial_answer" | "final_answer";
 export const V2TurnStartResponse__MessagePhase = Schema.Union(
   [
     Schema.Literal("commentary").annotate({
       description:
         "Mid-turn assistant text (for example preamble/progress narration).\n\nAdditional tool calls or assistant output may follow before turn completion.",
     }),
+    Schema.Literal("partial_answer").annotate({
+      description: "Stable answer text that may be followed by more assistant output or tools.",
+    }),
     Schema.Literal("final_answer").annotate({
-      description: "The assistant's terminal answer text for the current turn.",
+      description: "The assistant's declared terminal answer text for the current turn.",
     }),
   ],
   { mode: "oneOf" },
 ).annotate({
   description:
-    'Classifies an assistant message as interim commentary or final answer text.\n\nProviders do not emit this consistently, so callers must treat `None` as "phase unknown" and keep compatibility behavior for legacy models.',
+    'Classifies assistant text as commentary, a partial answer, or a terminal answer.\n\nProviders do not emit this consistently, so callers must treat `None` as "phase unknown" and keep compatibility behavior for legacy models.',
   identifier: "V2TurnStartResponse__MessagePhase",
 });
 
@@ -23068,6 +23335,7 @@ export type ClientRequest__ThreadForkParams = {
   readonly developerInstructions?: string | null;
   readonly ephemeral?: boolean;
   readonly excludeTurns?: boolean;
+  readonly experimentalPredictionMode?: boolean;
   readonly lastTurnId?: string | null;
   readonly model?: string | null;
   readonly modelProvider?: string | null;
@@ -23117,6 +23385,12 @@ export const ClientRequest__ThreadForkParams = Schema.StructWithRest(
       Schema.Boolean.annotate({
         description:
           "When true, return only thread metadata and live fork state without populating `thread.turns`. This is useful when the client plans to call `thread/turns/list` immediately after forking. Full-history hydration is deprecated for paginated threads; use this with `thread/turns/list` and `thread/items/list` instead.",
+      }),
+    ),
+    experimentalPredictionMode: Schema.optionalKey(
+      Schema.Boolean.annotate({
+        description:
+          "Start from the loaded parent's effective config, tools, environments, and persisted history to maximize prompt-cache reuse. Requires a loaded, persisted parent and `ephemeral: true`. Enables `features.reasoning_effort_override` on the fork. Cannot be combined with configuration overrides, `path`, `lastTurnId`, or `beforeTurnId`.",
       }),
     ),
     lastTurnId: Schema.optionalKey(
@@ -23430,8 +23704,25 @@ export const ClientRequest__ThreadTurnsListParams = Schema.StructWithRest(
   [Schema.Record(Schema.String, CodexJsonExtension)],
 ).annotate({ identifier: "ClientRequest__ThreadTurnsListParams" });
 
+export type ClientRequest__ThreadGoalClearParams = {
+  readonly origin?: ClientRequest__ThreadGoalMutationOrigin | null;
+  readonly threadId: string;
+} & { readonly [x: string]: CodexJsonExtension };
+export const ClientRequest__ThreadGoalClearParams = Schema.StructWithRest(
+  Schema.Struct({
+    origin: Schema.optionalKey(
+      Schema.Union([ClientRequest__ThreadGoalMutationOrigin, Schema.Null]).annotate({
+        description: "Missing provenance does not supply user authorization.",
+      }),
+    ),
+    threadId: Schema.String,
+  }),
+  [Schema.Record(Schema.String, CodexJsonExtension)],
+).annotate({ identifier: "ClientRequest__ThreadGoalClearParams" });
+
 export type ClientRequest__ThreadGoalSetParams = {
   readonly objective?: string | null;
+  readonly origin?: ClientRequest__ThreadGoalMutationOrigin | null;
   readonly status?: ClientRequest__ThreadGoalStatus | null;
   readonly threadId: string;
   readonly tokenBudget?: number | null;
@@ -23439,6 +23730,11 @@ export type ClientRequest__ThreadGoalSetParams = {
 export const ClientRequest__ThreadGoalSetParams = Schema.StructWithRest(
   Schema.Struct({
     objective: Schema.optionalKey(Schema.Union([Schema.String, Schema.Null])),
+    origin: Schema.optionalKey(
+      Schema.Union([ClientRequest__ThreadGoalMutationOrigin, Schema.Null]).annotate({
+        description: "Missing provenance does not supply user authorization.",
+      }),
+    ),
     status: Schema.optionalKey(Schema.Union([ClientRequest__ThreadGoalStatus, Schema.Null])),
     threadId: Schema.String,
     tokenBudget: Schema.optionalKey(
@@ -24119,6 +24415,52 @@ export const ClientRequest__RemoteControlClientsListParams = Schema.StructWithRe
   }),
   [Schema.Record(Schema.String, CodexJsonExtension)],
 ).annotate({ identifier: "ClientRequest__RemoteControlClientsListParams" });
+
+export type ClientRequest__EnvironmentAddParams = {
+  readonly authBearerToken?: string | null;
+  readonly connectTimeoutMs?: number | null;
+  readonly environmentId: string;
+  readonly execServerUrl: string;
+  readonly skills?: ClientRequest__EnvironmentSkillsParams | null;
+} & { readonly [x: string]: CodexJsonExtension };
+export const ClientRequest__EnvironmentAddParams = Schema.StructWithRest(
+  Schema.Struct({
+    authBearerToken: Schema.optionalKey(
+      Schema.Union([
+        Schema.String.annotate({
+          description:
+            "Optional raw bearer token for executor authentication, including reconnects. Requires a secure transport or a loopback destination.",
+        }),
+        Schema.Null,
+      ]),
+    ),
+    connectTimeoutMs: Schema.optionalKey(
+      Schema.Union([
+        Schema.Number.annotate({
+          description:
+            "Optional WebSocket connection timeout. The server default applies when omitted.",
+          format: "uint64",
+        })
+          .check(Schema.isInt().annotate({ expected: "an integer" }))
+          .check(
+            Schema.isGreaterThanOrEqualTo(0).annotate({
+              expected: "a value greater than or equal to 0",
+            }),
+          ),
+        Schema.Null,
+      ]),
+    ),
+    environmentId: Schema.String,
+    execServerUrl: Schema.String,
+    skills: Schema.optionalKey(
+      Schema.Union([ClientRequest__EnvironmentSkillsParams, Schema.Null]).annotate({
+        description:
+          "Required skills supplied by this environment, checked before model inference.",
+      }),
+    ),
+  }),
+  [Schema.Record(Schema.String, CodexJsonExtension)],
+).annotate({ identifier: "ClientRequest__EnvironmentAddParams" });
 
 export type ClientRequest__McpServerOauthLoginParams = {
   readonly clientRegistration?: ClientRequest__McpServerOauthClientRegistration | null;
@@ -25245,140 +25587,142 @@ export type ServerNotification__CodexErrorInfo =
       readonly activeTurnNotSteerable: {
         readonly turnKind: ServerNotification__NonSteerableTurnKind;
       } & { readonly [x: string]: CodexJsonExtension };
-    } & { readonly [x: string]: CodexJsonExtension });
-export const ServerNotification__CodexErrorInfo = Schema.Union(
-  [
-    Schema.Literals([
-      "contextWindowExceeded",
-      "sessionBudgetExceeded",
-      "usageLimitExceeded",
-      "rateLimitExceeded",
-      "flexUnavailable",
-      "serverOverloaded",
-      "cyberPolicy",
-      "misalignmentPolicyViolation",
-      "tooManyDenials",
-      "internalServerError",
-      "unauthorized",
-      "badRequest",
-      "threadRollbackFailed",
-      "sandboxError",
-      "other",
-    ]),
-    Schema.StructWithRest(
-      Schema.Struct({
-        httpConnectionFailed: Schema.StructWithRest(
-          Schema.Struct({
-            httpStatusCode: Schema.optionalKey(
-              Schema.Union([
-                Schema.Number.annotate({ format: "uint16" })
-                  .check(Schema.isInt().annotate({ expected: "an integer" }))
-                  .check(
-                    Schema.isGreaterThanOrEqualTo(0).annotate({
-                      expected: "a value greater than or equal to 0",
-                    }),
-                  ),
-                Schema.Null,
-              ]),
-            ),
-          }),
-          [Schema.Record(Schema.String, CodexJsonExtension)],
-        ),
-      }),
-      [Schema.Record(Schema.String, CodexJsonExtension)],
-    ).annotate({ title: "HttpConnectionFailedCodexErrorInfo" }),
-    Schema.StructWithRest(
-      Schema.Struct({
-        responseStreamConnectionFailed: Schema.StructWithRest(
-          Schema.Struct({
-            httpStatusCode: Schema.optionalKey(
-              Schema.Union([
-                Schema.Number.annotate({ format: "uint16" })
-                  .check(Schema.isInt().annotate({ expected: "an integer" }))
-                  .check(
-                    Schema.isGreaterThanOrEqualTo(0).annotate({
-                      expected: "a value greater than or equal to 0",
-                    }),
-                  ),
-                Schema.Null,
-              ]),
-            ),
-          }),
-          [Schema.Record(Schema.String, CodexJsonExtension)],
-        ),
-      }),
-      [Schema.Record(Schema.String, CodexJsonExtension)],
-    ).annotate({
-      title: "ResponseStreamConnectionFailedCodexErrorInfo",
-      description: "Failed to connect to the response SSE stream.",
+    } & { readonly [x: string]: CodexJsonExtension })
+  | string
+  | { readonly [x: string]: Schema.Json };
+export const ServerNotification__CodexErrorInfo = Schema.Union([
+  Schema.Literals([
+    "contextWindowExceeded",
+    "sessionBudgetExceeded",
+    "usageLimitExceeded",
+    "rateLimitExceeded",
+    "flexUnavailable",
+    "serverOverloaded",
+    "cyberPolicy",
+    "misalignmentPolicyViolation",
+    "tooManyDenials",
+    "internalServerError",
+    "unauthorized",
+    "badRequest",
+    "threadRollbackFailed",
+    "sandboxError",
+    "other",
+  ]),
+  Schema.StructWithRest(
+    Schema.Struct({
+      httpConnectionFailed: Schema.StructWithRest(
+        Schema.Struct({
+          httpStatusCode: Schema.optionalKey(
+            Schema.Union([
+              Schema.Number.annotate({ format: "uint16" })
+                .check(Schema.isInt().annotate({ expected: "an integer" }))
+                .check(
+                  Schema.isGreaterThanOrEqualTo(0).annotate({
+                    expected: "a value greater than or equal to 0",
+                  }),
+                ),
+              Schema.Null,
+            ]),
+          ),
+        }),
+        [Schema.Record(Schema.String, CodexJsonExtension)],
+      ),
     }),
-    Schema.StructWithRest(
-      Schema.Struct({
-        responseStreamDisconnected: Schema.StructWithRest(
-          Schema.Struct({
-            httpStatusCode: Schema.optionalKey(
-              Schema.Union([
-                Schema.Number.annotate({ format: "uint16" })
-                  .check(Schema.isInt().annotate({ expected: "an integer" }))
-                  .check(
-                    Schema.isGreaterThanOrEqualTo(0).annotate({
-                      expected: "a value greater than or equal to 0",
-                    }),
-                  ),
-                Schema.Null,
-              ]),
-            ),
-          }),
-          [Schema.Record(Schema.String, CodexJsonExtension)],
-        ),
-      }),
-      [Schema.Record(Schema.String, CodexJsonExtension)],
-    ).annotate({
-      title: "ResponseStreamDisconnectedCodexErrorInfo",
-      description:
-        "The response SSE stream disconnected in the middle of a turn before completion.",
+    [Schema.Record(Schema.String, CodexJsonExtension)],
+  ).annotate({ title: "HttpConnectionFailedCodexErrorInfo" }),
+  Schema.StructWithRest(
+    Schema.Struct({
+      responseStreamConnectionFailed: Schema.StructWithRest(
+        Schema.Struct({
+          httpStatusCode: Schema.optionalKey(
+            Schema.Union([
+              Schema.Number.annotate({ format: "uint16" })
+                .check(Schema.isInt().annotate({ expected: "an integer" }))
+                .check(
+                  Schema.isGreaterThanOrEqualTo(0).annotate({
+                    expected: "a value greater than or equal to 0",
+                  }),
+                ),
+              Schema.Null,
+            ]),
+          ),
+        }),
+        [Schema.Record(Schema.String, CodexJsonExtension)],
+      ),
     }),
-    Schema.StructWithRest(
-      Schema.Struct({
-        responseTooManyFailedAttempts: Schema.StructWithRest(
-          Schema.Struct({
-            httpStatusCode: Schema.optionalKey(
-              Schema.Union([
-                Schema.Number.annotate({ format: "uint16" })
-                  .check(Schema.isInt().annotate({ expected: "an integer" }))
-                  .check(
-                    Schema.isGreaterThanOrEqualTo(0).annotate({
-                      expected: "a value greater than or equal to 0",
-                    }),
-                  ),
-                Schema.Null,
-              ]),
-            ),
-          }),
-          [Schema.Record(Schema.String, CodexJsonExtension)],
-        ),
-      }),
-      [Schema.Record(Schema.String, CodexJsonExtension)],
-    ).annotate({
-      title: "ResponseTooManyFailedAttemptsCodexErrorInfo",
-      description: "Reached the retry limit for responses.",
+    [Schema.Record(Schema.String, CodexJsonExtension)],
+  ).annotate({
+    title: "ResponseStreamConnectionFailedCodexErrorInfo",
+    description: "Failed to connect to the response SSE stream.",
+  }),
+  Schema.StructWithRest(
+    Schema.Struct({
+      responseStreamDisconnected: Schema.StructWithRest(
+        Schema.Struct({
+          httpStatusCode: Schema.optionalKey(
+            Schema.Union([
+              Schema.Number.annotate({ format: "uint16" })
+                .check(Schema.isInt().annotate({ expected: "an integer" }))
+                .check(
+                  Schema.isGreaterThanOrEqualTo(0).annotate({
+                    expected: "a value greater than or equal to 0",
+                  }),
+                ),
+              Schema.Null,
+            ]),
+          ),
+        }),
+        [Schema.Record(Schema.String, CodexJsonExtension)],
+      ),
     }),
-    Schema.StructWithRest(
-      Schema.Struct({
-        activeTurnNotSteerable: Schema.StructWithRest(
-          Schema.Struct({ turnKind: ServerNotification__NonSteerableTurnKind }),
-          [Schema.Record(Schema.String, CodexJsonExtension)],
-        ),
-      }),
-      [Schema.Record(Schema.String, CodexJsonExtension)],
-    ).annotate({
-      title: "ActiveTurnNotSteerableCodexErrorInfo",
-      description:
-        "Returned when `turn/start` or `turn/steer` is submitted while the current active turn cannot accept same-turn steering, for example `/review` or manual `/compact`.",
+    [Schema.Record(Schema.String, CodexJsonExtension)],
+  ).annotate({
+    title: "ResponseStreamDisconnectedCodexErrorInfo",
+    description: "The response SSE stream disconnected in the middle of a turn before completion.",
+  }),
+  Schema.StructWithRest(
+    Schema.Struct({
+      responseTooManyFailedAttempts: Schema.StructWithRest(
+        Schema.Struct({
+          httpStatusCode: Schema.optionalKey(
+            Schema.Union([
+              Schema.Number.annotate({ format: "uint16" })
+                .check(Schema.isInt().annotate({ expected: "an integer" }))
+                .check(
+                  Schema.isGreaterThanOrEqualTo(0).annotate({
+                    expected: "a value greater than or equal to 0",
+                  }),
+                ),
+              Schema.Null,
+            ]),
+          ),
+        }),
+        [Schema.Record(Schema.String, CodexJsonExtension)],
+      ),
     }),
-  ],
-  { mode: "oneOf" },
-).annotate({
+    [Schema.Record(Schema.String, CodexJsonExtension)],
+  ).annotate({
+    title: "ResponseTooManyFailedAttemptsCodexErrorInfo",
+    description: "Reached the retry limit for responses.",
+  }),
+  Schema.StructWithRest(
+    Schema.Struct({
+      activeTurnNotSteerable: Schema.StructWithRest(
+        Schema.Struct({ turnKind: ServerNotification__NonSteerableTurnKind }),
+        [Schema.Record(Schema.String, CodexJsonExtension)],
+      ),
+    }),
+    [Schema.Record(Schema.String, CodexJsonExtension)],
+  ).annotate({
+    title: "ActiveTurnNotSteerableCodexErrorInfo",
+    description:
+      "Returned when `turn/start` or `turn/steer` is submitted while the current active turn cannot accept same-turn steering, for example `/review` or manual `/compact`.",
+  }),
+  Schema.Union([
+    Schema.String,
+    Schema.Record(Schema.String, Schema.Json.annotate({ expected: "JSON value" })),
+  ]),
+]).annotate({
   description:
     "This translation layer make sure that we expose codex error code in camel case.\n\nWhen an upstream HTTP status is available (for example, from the Responses API or a provider), it is forwarded in `httpStatusCode` on the relevant `codexErrorInfo` variant.",
   identifier: "ServerNotification__CodexErrorInfo",
@@ -25387,6 +25731,7 @@ export const ServerNotification__CodexErrorInfo = Schema.Union(
 export type ServerNotification__MisalignmentErrorDetails = {
   readonly detailedExplanation?: string | null;
   readonly errorType?: string | null;
+  readonly reviewTarget?: string | null;
   readonly steer?: ServerNotification__MisalignmentSteer | null;
 } & { readonly [x: string]: CodexJsonExtension };
 export const ServerNotification__MisalignmentErrorDetails = Schema.StructWithRest(
@@ -25405,6 +25750,15 @@ export const ServerNotification__MisalignmentErrorDetails = Schema.StructWithRes
         Schema.String.annotate({
           description:
             "Open-ended classification; clients must accept categories added by Responses.",
+        }),
+        Schema.Null,
+      ]),
+    ),
+    reviewTarget: Schema.optionalKey(
+      Schema.Union([
+        Schema.String.annotate({
+          description:
+            "Opaque server-issued block target. Presence alone does not enable target-based continuation.",
         }),
         Schema.Null,
       ]),
@@ -25901,6 +26255,20 @@ export const ServerNotification__ThreadGoal = Schema.StructWithRest(
   }),
   [Schema.Record(Schema.String, CodexJsonExtension)],
 ).annotate({ identifier: "ServerNotification__ThreadGoal" });
+
+export type ServerNotification__ThreadPredictionUpdatedNotification = {
+  readonly result: ServerNotification__ThreadPredictionResult;
+  readonly sourceTurnId: string;
+  readonly threadId: string;
+} & { readonly [x: string]: CodexJsonExtension };
+export const ServerNotification__ThreadPredictionUpdatedNotification = Schema.StructWithRest(
+  Schema.Struct({
+    result: ServerNotification__ThreadPredictionResult,
+    sourceTurnId: Schema.String,
+    threadId: Schema.String,
+  }),
+  [Schema.Record(Schema.String, CodexJsonExtension)],
+).annotate({ identifier: "ServerNotification__ThreadPredictionUpdatedNotification" });
 
 export type ServerNotification__ProjectChangedNotification = {
   readonly changeType: ServerNotification__ProjectChangeType;
@@ -27619,6 +27987,19 @@ export const V2ConfigRequirementsReadResponse__BrowserUseOriginPolicy = Schema.S
   [Schema.Record(Schema.String, CodexJsonExtension)],
 ).annotate({ identifier: "V2ConfigRequirementsReadResponse__BrowserUseOriginPolicy" });
 
+export type V2ConfigRequirementsReadResponse__BrowserUseExtensionRequirements = {
+  readonly requestHeaders?: ReadonlyArray<V2ConfigRequirementsReadResponse__RequestHeader> | null;
+} & { readonly [x: string]: CodexJsonExtension };
+export const V2ConfigRequirementsReadResponse__BrowserUseExtensionRequirements =
+  Schema.StructWithRest(
+    Schema.Struct({
+      requestHeaders: Schema.optionalKey(
+        Schema.Union([Schema.Array(V2ConfigRequirementsReadResponse__RequestHeader), Schema.Null]),
+      ),
+    }),
+    [Schema.Record(Schema.String, CodexJsonExtension)],
+  ).annotate({ identifier: "V2ConfigRequirementsReadResponse__BrowserUseExtensionRequirements" });
+
 export type V2ConfigRequirementsReadResponse__ConfiguredHookMatcherGroup = {
   readonly hooks: ReadonlyArray<V2ConfigRequirementsReadResponse__ConfiguredHookHandler>;
   readonly matcher?: string | null;
@@ -27972,140 +28353,142 @@ export type V2ErrorNotification__CodexErrorInfo =
       readonly activeTurnNotSteerable: {
         readonly turnKind: V2ErrorNotification__NonSteerableTurnKind;
       } & { readonly [x: string]: CodexJsonExtension };
-    } & { readonly [x: string]: CodexJsonExtension });
-export const V2ErrorNotification__CodexErrorInfo = Schema.Union(
-  [
-    Schema.Literals([
-      "contextWindowExceeded",
-      "sessionBudgetExceeded",
-      "usageLimitExceeded",
-      "rateLimitExceeded",
-      "flexUnavailable",
-      "serverOverloaded",
-      "cyberPolicy",
-      "misalignmentPolicyViolation",
-      "tooManyDenials",
-      "internalServerError",
-      "unauthorized",
-      "badRequest",
-      "threadRollbackFailed",
-      "sandboxError",
-      "other",
-    ]),
-    Schema.StructWithRest(
-      Schema.Struct({
-        httpConnectionFailed: Schema.StructWithRest(
-          Schema.Struct({
-            httpStatusCode: Schema.optionalKey(
-              Schema.Union([
-                Schema.Number.annotate({ format: "uint16" })
-                  .check(Schema.isInt().annotate({ expected: "an integer" }))
-                  .check(
-                    Schema.isGreaterThanOrEqualTo(0).annotate({
-                      expected: "a value greater than or equal to 0",
-                    }),
-                  ),
-                Schema.Null,
-              ]),
-            ),
-          }),
-          [Schema.Record(Schema.String, CodexJsonExtension)],
-        ),
-      }),
-      [Schema.Record(Schema.String, CodexJsonExtension)],
-    ).annotate({ title: "HttpConnectionFailedCodexErrorInfo" }),
-    Schema.StructWithRest(
-      Schema.Struct({
-        responseStreamConnectionFailed: Schema.StructWithRest(
-          Schema.Struct({
-            httpStatusCode: Schema.optionalKey(
-              Schema.Union([
-                Schema.Number.annotate({ format: "uint16" })
-                  .check(Schema.isInt().annotate({ expected: "an integer" }))
-                  .check(
-                    Schema.isGreaterThanOrEqualTo(0).annotate({
-                      expected: "a value greater than or equal to 0",
-                    }),
-                  ),
-                Schema.Null,
-              ]),
-            ),
-          }),
-          [Schema.Record(Schema.String, CodexJsonExtension)],
-        ),
-      }),
-      [Schema.Record(Schema.String, CodexJsonExtension)],
-    ).annotate({
-      title: "ResponseStreamConnectionFailedCodexErrorInfo",
-      description: "Failed to connect to the response SSE stream.",
+    } & { readonly [x: string]: CodexJsonExtension })
+  | string
+  | { readonly [x: string]: Schema.Json };
+export const V2ErrorNotification__CodexErrorInfo = Schema.Union([
+  Schema.Literals([
+    "contextWindowExceeded",
+    "sessionBudgetExceeded",
+    "usageLimitExceeded",
+    "rateLimitExceeded",
+    "flexUnavailable",
+    "serverOverloaded",
+    "cyberPolicy",
+    "misalignmentPolicyViolation",
+    "tooManyDenials",
+    "internalServerError",
+    "unauthorized",
+    "badRequest",
+    "threadRollbackFailed",
+    "sandboxError",
+    "other",
+  ]),
+  Schema.StructWithRest(
+    Schema.Struct({
+      httpConnectionFailed: Schema.StructWithRest(
+        Schema.Struct({
+          httpStatusCode: Schema.optionalKey(
+            Schema.Union([
+              Schema.Number.annotate({ format: "uint16" })
+                .check(Schema.isInt().annotate({ expected: "an integer" }))
+                .check(
+                  Schema.isGreaterThanOrEqualTo(0).annotate({
+                    expected: "a value greater than or equal to 0",
+                  }),
+                ),
+              Schema.Null,
+            ]),
+          ),
+        }),
+        [Schema.Record(Schema.String, CodexJsonExtension)],
+      ),
     }),
-    Schema.StructWithRest(
-      Schema.Struct({
-        responseStreamDisconnected: Schema.StructWithRest(
-          Schema.Struct({
-            httpStatusCode: Schema.optionalKey(
-              Schema.Union([
-                Schema.Number.annotate({ format: "uint16" })
-                  .check(Schema.isInt().annotate({ expected: "an integer" }))
-                  .check(
-                    Schema.isGreaterThanOrEqualTo(0).annotate({
-                      expected: "a value greater than or equal to 0",
-                    }),
-                  ),
-                Schema.Null,
-              ]),
-            ),
-          }),
-          [Schema.Record(Schema.String, CodexJsonExtension)],
-        ),
-      }),
-      [Schema.Record(Schema.String, CodexJsonExtension)],
-    ).annotate({
-      title: "ResponseStreamDisconnectedCodexErrorInfo",
-      description:
-        "The response SSE stream disconnected in the middle of a turn before completion.",
+    [Schema.Record(Schema.String, CodexJsonExtension)],
+  ).annotate({ title: "HttpConnectionFailedCodexErrorInfo" }),
+  Schema.StructWithRest(
+    Schema.Struct({
+      responseStreamConnectionFailed: Schema.StructWithRest(
+        Schema.Struct({
+          httpStatusCode: Schema.optionalKey(
+            Schema.Union([
+              Schema.Number.annotate({ format: "uint16" })
+                .check(Schema.isInt().annotate({ expected: "an integer" }))
+                .check(
+                  Schema.isGreaterThanOrEqualTo(0).annotate({
+                    expected: "a value greater than or equal to 0",
+                  }),
+                ),
+              Schema.Null,
+            ]),
+          ),
+        }),
+        [Schema.Record(Schema.String, CodexJsonExtension)],
+      ),
     }),
-    Schema.StructWithRest(
-      Schema.Struct({
-        responseTooManyFailedAttempts: Schema.StructWithRest(
-          Schema.Struct({
-            httpStatusCode: Schema.optionalKey(
-              Schema.Union([
-                Schema.Number.annotate({ format: "uint16" })
-                  .check(Schema.isInt().annotate({ expected: "an integer" }))
-                  .check(
-                    Schema.isGreaterThanOrEqualTo(0).annotate({
-                      expected: "a value greater than or equal to 0",
-                    }),
-                  ),
-                Schema.Null,
-              ]),
-            ),
-          }),
-          [Schema.Record(Schema.String, CodexJsonExtension)],
-        ),
-      }),
-      [Schema.Record(Schema.String, CodexJsonExtension)],
-    ).annotate({
-      title: "ResponseTooManyFailedAttemptsCodexErrorInfo",
-      description: "Reached the retry limit for responses.",
+    [Schema.Record(Schema.String, CodexJsonExtension)],
+  ).annotate({
+    title: "ResponseStreamConnectionFailedCodexErrorInfo",
+    description: "Failed to connect to the response SSE stream.",
+  }),
+  Schema.StructWithRest(
+    Schema.Struct({
+      responseStreamDisconnected: Schema.StructWithRest(
+        Schema.Struct({
+          httpStatusCode: Schema.optionalKey(
+            Schema.Union([
+              Schema.Number.annotate({ format: "uint16" })
+                .check(Schema.isInt().annotate({ expected: "an integer" }))
+                .check(
+                  Schema.isGreaterThanOrEqualTo(0).annotate({
+                    expected: "a value greater than or equal to 0",
+                  }),
+                ),
+              Schema.Null,
+            ]),
+          ),
+        }),
+        [Schema.Record(Schema.String, CodexJsonExtension)],
+      ),
     }),
-    Schema.StructWithRest(
-      Schema.Struct({
-        activeTurnNotSteerable: Schema.StructWithRest(
-          Schema.Struct({ turnKind: V2ErrorNotification__NonSteerableTurnKind }),
-          [Schema.Record(Schema.String, CodexJsonExtension)],
-        ),
-      }),
-      [Schema.Record(Schema.String, CodexJsonExtension)],
-    ).annotate({
-      title: "ActiveTurnNotSteerableCodexErrorInfo",
-      description:
-        "Returned when `turn/start` or `turn/steer` is submitted while the current active turn cannot accept same-turn steering, for example `/review` or manual `/compact`.",
+    [Schema.Record(Schema.String, CodexJsonExtension)],
+  ).annotate({
+    title: "ResponseStreamDisconnectedCodexErrorInfo",
+    description: "The response SSE stream disconnected in the middle of a turn before completion.",
+  }),
+  Schema.StructWithRest(
+    Schema.Struct({
+      responseTooManyFailedAttempts: Schema.StructWithRest(
+        Schema.Struct({
+          httpStatusCode: Schema.optionalKey(
+            Schema.Union([
+              Schema.Number.annotate({ format: "uint16" })
+                .check(Schema.isInt().annotate({ expected: "an integer" }))
+                .check(
+                  Schema.isGreaterThanOrEqualTo(0).annotate({
+                    expected: "a value greater than or equal to 0",
+                  }),
+                ),
+              Schema.Null,
+            ]),
+          ),
+        }),
+        [Schema.Record(Schema.String, CodexJsonExtension)],
+      ),
     }),
-  ],
-  { mode: "oneOf" },
-).annotate({
+    [Schema.Record(Schema.String, CodexJsonExtension)],
+  ).annotate({
+    title: "ResponseTooManyFailedAttemptsCodexErrorInfo",
+    description: "Reached the retry limit for responses.",
+  }),
+  Schema.StructWithRest(
+    Schema.Struct({
+      activeTurnNotSteerable: Schema.StructWithRest(
+        Schema.Struct({ turnKind: V2ErrorNotification__NonSteerableTurnKind }),
+        [Schema.Record(Schema.String, CodexJsonExtension)],
+      ),
+    }),
+    [Schema.Record(Schema.String, CodexJsonExtension)],
+  ).annotate({
+    title: "ActiveTurnNotSteerableCodexErrorInfo",
+    description:
+      "Returned when `turn/start` or `turn/steer` is submitted while the current active turn cannot accept same-turn steering, for example `/review` or manual `/compact`.",
+  }),
+  Schema.Union([
+    Schema.String,
+    Schema.Record(Schema.String, Schema.Json.annotate({ expected: "JSON value" })),
+  ]),
+]).annotate({
   description:
     "This translation layer make sure that we expose codex error code in camel case.\n\nWhen an upstream HTTP status is available (for example, from the Responses API or a provider), it is forwarded in `httpStatusCode` on the relevant `codexErrorInfo` variant.",
   identifier: "V2ErrorNotification__CodexErrorInfo",
@@ -28114,6 +28497,7 @@ export const V2ErrorNotification__CodexErrorInfo = Schema.Union(
 export type V2ErrorNotification__MisalignmentErrorDetails = {
   readonly detailedExplanation?: string | null;
   readonly errorType?: string | null;
+  readonly reviewTarget?: string | null;
   readonly steer?: V2ErrorNotification__MisalignmentSteer | null;
 } & { readonly [x: string]: CodexJsonExtension };
 export const V2ErrorNotification__MisalignmentErrorDetails = Schema.StructWithRest(
@@ -28132,6 +28516,15 @@ export const V2ErrorNotification__MisalignmentErrorDetails = Schema.StructWithRe
         Schema.String.annotate({
           description:
             "Open-ended classification; clients must accept categories added by Responses.",
+        }),
+        Schema.Null,
+      ]),
+    ),
+    reviewTarget: Schema.optionalKey(
+      Schema.Union([
+        Schema.String.annotate({
+          description:
+            "Opaque server-issued block target. Presence alone does not enable target-based continuation.",
         }),
         Schema.Null,
       ]),
@@ -31135,140 +31528,142 @@ export type V2ReviewStartResponse__CodexErrorInfo =
       readonly activeTurnNotSteerable: {
         readonly turnKind: V2ReviewStartResponse__NonSteerableTurnKind;
       } & { readonly [x: string]: CodexJsonExtension };
-    } & { readonly [x: string]: CodexJsonExtension });
-export const V2ReviewStartResponse__CodexErrorInfo = Schema.Union(
-  [
-    Schema.Literals([
-      "contextWindowExceeded",
-      "sessionBudgetExceeded",
-      "usageLimitExceeded",
-      "rateLimitExceeded",
-      "flexUnavailable",
-      "serverOverloaded",
-      "cyberPolicy",
-      "misalignmentPolicyViolation",
-      "tooManyDenials",
-      "internalServerError",
-      "unauthorized",
-      "badRequest",
-      "threadRollbackFailed",
-      "sandboxError",
-      "other",
-    ]),
-    Schema.StructWithRest(
-      Schema.Struct({
-        httpConnectionFailed: Schema.StructWithRest(
-          Schema.Struct({
-            httpStatusCode: Schema.optionalKey(
-              Schema.Union([
-                Schema.Number.annotate({ format: "uint16" })
-                  .check(Schema.isInt().annotate({ expected: "an integer" }))
-                  .check(
-                    Schema.isGreaterThanOrEqualTo(0).annotate({
-                      expected: "a value greater than or equal to 0",
-                    }),
-                  ),
-                Schema.Null,
-              ]),
-            ),
-          }),
-          [Schema.Record(Schema.String, CodexJsonExtension)],
-        ),
-      }),
-      [Schema.Record(Schema.String, CodexJsonExtension)],
-    ).annotate({ title: "HttpConnectionFailedCodexErrorInfo" }),
-    Schema.StructWithRest(
-      Schema.Struct({
-        responseStreamConnectionFailed: Schema.StructWithRest(
-          Schema.Struct({
-            httpStatusCode: Schema.optionalKey(
-              Schema.Union([
-                Schema.Number.annotate({ format: "uint16" })
-                  .check(Schema.isInt().annotate({ expected: "an integer" }))
-                  .check(
-                    Schema.isGreaterThanOrEqualTo(0).annotate({
-                      expected: "a value greater than or equal to 0",
-                    }),
-                  ),
-                Schema.Null,
-              ]),
-            ),
-          }),
-          [Schema.Record(Schema.String, CodexJsonExtension)],
-        ),
-      }),
-      [Schema.Record(Schema.String, CodexJsonExtension)],
-    ).annotate({
-      title: "ResponseStreamConnectionFailedCodexErrorInfo",
-      description: "Failed to connect to the response SSE stream.",
+    } & { readonly [x: string]: CodexJsonExtension })
+  | string
+  | { readonly [x: string]: Schema.Json };
+export const V2ReviewStartResponse__CodexErrorInfo = Schema.Union([
+  Schema.Literals([
+    "contextWindowExceeded",
+    "sessionBudgetExceeded",
+    "usageLimitExceeded",
+    "rateLimitExceeded",
+    "flexUnavailable",
+    "serverOverloaded",
+    "cyberPolicy",
+    "misalignmentPolicyViolation",
+    "tooManyDenials",
+    "internalServerError",
+    "unauthorized",
+    "badRequest",
+    "threadRollbackFailed",
+    "sandboxError",
+    "other",
+  ]),
+  Schema.StructWithRest(
+    Schema.Struct({
+      httpConnectionFailed: Schema.StructWithRest(
+        Schema.Struct({
+          httpStatusCode: Schema.optionalKey(
+            Schema.Union([
+              Schema.Number.annotate({ format: "uint16" })
+                .check(Schema.isInt().annotate({ expected: "an integer" }))
+                .check(
+                  Schema.isGreaterThanOrEqualTo(0).annotate({
+                    expected: "a value greater than or equal to 0",
+                  }),
+                ),
+              Schema.Null,
+            ]),
+          ),
+        }),
+        [Schema.Record(Schema.String, CodexJsonExtension)],
+      ),
     }),
-    Schema.StructWithRest(
-      Schema.Struct({
-        responseStreamDisconnected: Schema.StructWithRest(
-          Schema.Struct({
-            httpStatusCode: Schema.optionalKey(
-              Schema.Union([
-                Schema.Number.annotate({ format: "uint16" })
-                  .check(Schema.isInt().annotate({ expected: "an integer" }))
-                  .check(
-                    Schema.isGreaterThanOrEqualTo(0).annotate({
-                      expected: "a value greater than or equal to 0",
-                    }),
-                  ),
-                Schema.Null,
-              ]),
-            ),
-          }),
-          [Schema.Record(Schema.String, CodexJsonExtension)],
-        ),
-      }),
-      [Schema.Record(Schema.String, CodexJsonExtension)],
-    ).annotate({
-      title: "ResponseStreamDisconnectedCodexErrorInfo",
-      description:
-        "The response SSE stream disconnected in the middle of a turn before completion.",
+    [Schema.Record(Schema.String, CodexJsonExtension)],
+  ).annotate({ title: "HttpConnectionFailedCodexErrorInfo" }),
+  Schema.StructWithRest(
+    Schema.Struct({
+      responseStreamConnectionFailed: Schema.StructWithRest(
+        Schema.Struct({
+          httpStatusCode: Schema.optionalKey(
+            Schema.Union([
+              Schema.Number.annotate({ format: "uint16" })
+                .check(Schema.isInt().annotate({ expected: "an integer" }))
+                .check(
+                  Schema.isGreaterThanOrEqualTo(0).annotate({
+                    expected: "a value greater than or equal to 0",
+                  }),
+                ),
+              Schema.Null,
+            ]),
+          ),
+        }),
+        [Schema.Record(Schema.String, CodexJsonExtension)],
+      ),
     }),
-    Schema.StructWithRest(
-      Schema.Struct({
-        responseTooManyFailedAttempts: Schema.StructWithRest(
-          Schema.Struct({
-            httpStatusCode: Schema.optionalKey(
-              Schema.Union([
-                Schema.Number.annotate({ format: "uint16" })
-                  .check(Schema.isInt().annotate({ expected: "an integer" }))
-                  .check(
-                    Schema.isGreaterThanOrEqualTo(0).annotate({
-                      expected: "a value greater than or equal to 0",
-                    }),
-                  ),
-                Schema.Null,
-              ]),
-            ),
-          }),
-          [Schema.Record(Schema.String, CodexJsonExtension)],
-        ),
-      }),
-      [Schema.Record(Schema.String, CodexJsonExtension)],
-    ).annotate({
-      title: "ResponseTooManyFailedAttemptsCodexErrorInfo",
-      description: "Reached the retry limit for responses.",
+    [Schema.Record(Schema.String, CodexJsonExtension)],
+  ).annotate({
+    title: "ResponseStreamConnectionFailedCodexErrorInfo",
+    description: "Failed to connect to the response SSE stream.",
+  }),
+  Schema.StructWithRest(
+    Schema.Struct({
+      responseStreamDisconnected: Schema.StructWithRest(
+        Schema.Struct({
+          httpStatusCode: Schema.optionalKey(
+            Schema.Union([
+              Schema.Number.annotate({ format: "uint16" })
+                .check(Schema.isInt().annotate({ expected: "an integer" }))
+                .check(
+                  Schema.isGreaterThanOrEqualTo(0).annotate({
+                    expected: "a value greater than or equal to 0",
+                  }),
+                ),
+              Schema.Null,
+            ]),
+          ),
+        }),
+        [Schema.Record(Schema.String, CodexJsonExtension)],
+      ),
     }),
-    Schema.StructWithRest(
-      Schema.Struct({
-        activeTurnNotSteerable: Schema.StructWithRest(
-          Schema.Struct({ turnKind: V2ReviewStartResponse__NonSteerableTurnKind }),
-          [Schema.Record(Schema.String, CodexJsonExtension)],
-        ),
-      }),
-      [Schema.Record(Schema.String, CodexJsonExtension)],
-    ).annotate({
-      title: "ActiveTurnNotSteerableCodexErrorInfo",
-      description:
-        "Returned when `turn/start` or `turn/steer` is submitted while the current active turn cannot accept same-turn steering, for example `/review` or manual `/compact`.",
+    [Schema.Record(Schema.String, CodexJsonExtension)],
+  ).annotate({
+    title: "ResponseStreamDisconnectedCodexErrorInfo",
+    description: "The response SSE stream disconnected in the middle of a turn before completion.",
+  }),
+  Schema.StructWithRest(
+    Schema.Struct({
+      responseTooManyFailedAttempts: Schema.StructWithRest(
+        Schema.Struct({
+          httpStatusCode: Schema.optionalKey(
+            Schema.Union([
+              Schema.Number.annotate({ format: "uint16" })
+                .check(Schema.isInt().annotate({ expected: "an integer" }))
+                .check(
+                  Schema.isGreaterThanOrEqualTo(0).annotate({
+                    expected: "a value greater than or equal to 0",
+                  }),
+                ),
+              Schema.Null,
+            ]),
+          ),
+        }),
+        [Schema.Record(Schema.String, CodexJsonExtension)],
+      ),
     }),
-  ],
-  { mode: "oneOf" },
-).annotate({
+    [Schema.Record(Schema.String, CodexJsonExtension)],
+  ).annotate({
+    title: "ResponseTooManyFailedAttemptsCodexErrorInfo",
+    description: "Reached the retry limit for responses.",
+  }),
+  Schema.StructWithRest(
+    Schema.Struct({
+      activeTurnNotSteerable: Schema.StructWithRest(
+        Schema.Struct({ turnKind: V2ReviewStartResponse__NonSteerableTurnKind }),
+        [Schema.Record(Schema.String, CodexJsonExtension)],
+      ),
+    }),
+    [Schema.Record(Schema.String, CodexJsonExtension)],
+  ).annotate({
+    title: "ActiveTurnNotSteerableCodexErrorInfo",
+    description:
+      "Returned when `turn/start` or `turn/steer` is submitted while the current active turn cannot accept same-turn steering, for example `/review` or manual `/compact`.",
+  }),
+  Schema.Union([
+    Schema.String,
+    Schema.Record(Schema.String, Schema.Json.annotate({ expected: "JSON value" })),
+  ]),
+]).annotate({
   description:
     "This translation layer make sure that we expose codex error code in camel case.\n\nWhen an upstream HTTP status is available (for example, from the Responses API or a provider), it is forwarded in `httpStatusCode` on the relevant `codexErrorInfo` variant.",
   identifier: "V2ReviewStartResponse__CodexErrorInfo",
@@ -31277,6 +31672,7 @@ export const V2ReviewStartResponse__CodexErrorInfo = Schema.Union(
 export type V2ReviewStartResponse__MisalignmentErrorDetails = {
   readonly detailedExplanation?: string | null;
   readonly errorType?: string | null;
+  readonly reviewTarget?: string | null;
   readonly steer?: V2ReviewStartResponse__MisalignmentSteer | null;
 } & { readonly [x: string]: CodexJsonExtension };
 export const V2ReviewStartResponse__MisalignmentErrorDetails = Schema.StructWithRest(
@@ -31295,6 +31691,15 @@ export const V2ReviewStartResponse__MisalignmentErrorDetails = Schema.StructWith
         Schema.String.annotate({
           description:
             "Open-ended classification; clients must accept categories added by Responses.",
+        }),
+        Schema.Null,
+      ]),
+    ),
+    reviewTarget: Schema.optionalKey(
+      Schema.Union([
+        Schema.String.annotate({
+          description:
+            "Opaque server-issued block target. Presence alone does not enable target-based continuation.",
         }),
         Schema.Null,
       ]),
@@ -31908,140 +32313,142 @@ export type V2ThreadForkResponse__CodexErrorInfo =
       readonly activeTurnNotSteerable: {
         readonly turnKind: V2ThreadForkResponse__NonSteerableTurnKind;
       } & { readonly [x: string]: CodexJsonExtension };
-    } & { readonly [x: string]: CodexJsonExtension });
-export const V2ThreadForkResponse__CodexErrorInfo = Schema.Union(
-  [
-    Schema.Literals([
-      "contextWindowExceeded",
-      "sessionBudgetExceeded",
-      "usageLimitExceeded",
-      "rateLimitExceeded",
-      "flexUnavailable",
-      "serverOverloaded",
-      "cyberPolicy",
-      "misalignmentPolicyViolation",
-      "tooManyDenials",
-      "internalServerError",
-      "unauthorized",
-      "badRequest",
-      "threadRollbackFailed",
-      "sandboxError",
-      "other",
-    ]),
-    Schema.StructWithRest(
-      Schema.Struct({
-        httpConnectionFailed: Schema.StructWithRest(
-          Schema.Struct({
-            httpStatusCode: Schema.optionalKey(
-              Schema.Union([
-                Schema.Number.annotate({ format: "uint16" })
-                  .check(Schema.isInt().annotate({ expected: "an integer" }))
-                  .check(
-                    Schema.isGreaterThanOrEqualTo(0).annotate({
-                      expected: "a value greater than or equal to 0",
-                    }),
-                  ),
-                Schema.Null,
-              ]),
-            ),
-          }),
-          [Schema.Record(Schema.String, CodexJsonExtension)],
-        ),
-      }),
-      [Schema.Record(Schema.String, CodexJsonExtension)],
-    ).annotate({ title: "HttpConnectionFailedCodexErrorInfo" }),
-    Schema.StructWithRest(
-      Schema.Struct({
-        responseStreamConnectionFailed: Schema.StructWithRest(
-          Schema.Struct({
-            httpStatusCode: Schema.optionalKey(
-              Schema.Union([
-                Schema.Number.annotate({ format: "uint16" })
-                  .check(Schema.isInt().annotate({ expected: "an integer" }))
-                  .check(
-                    Schema.isGreaterThanOrEqualTo(0).annotate({
-                      expected: "a value greater than or equal to 0",
-                    }),
-                  ),
-                Schema.Null,
-              ]),
-            ),
-          }),
-          [Schema.Record(Schema.String, CodexJsonExtension)],
-        ),
-      }),
-      [Schema.Record(Schema.String, CodexJsonExtension)],
-    ).annotate({
-      title: "ResponseStreamConnectionFailedCodexErrorInfo",
-      description: "Failed to connect to the response SSE stream.",
+    } & { readonly [x: string]: CodexJsonExtension })
+  | string
+  | { readonly [x: string]: Schema.Json };
+export const V2ThreadForkResponse__CodexErrorInfo = Schema.Union([
+  Schema.Literals([
+    "contextWindowExceeded",
+    "sessionBudgetExceeded",
+    "usageLimitExceeded",
+    "rateLimitExceeded",
+    "flexUnavailable",
+    "serverOverloaded",
+    "cyberPolicy",
+    "misalignmentPolicyViolation",
+    "tooManyDenials",
+    "internalServerError",
+    "unauthorized",
+    "badRequest",
+    "threadRollbackFailed",
+    "sandboxError",
+    "other",
+  ]),
+  Schema.StructWithRest(
+    Schema.Struct({
+      httpConnectionFailed: Schema.StructWithRest(
+        Schema.Struct({
+          httpStatusCode: Schema.optionalKey(
+            Schema.Union([
+              Schema.Number.annotate({ format: "uint16" })
+                .check(Schema.isInt().annotate({ expected: "an integer" }))
+                .check(
+                  Schema.isGreaterThanOrEqualTo(0).annotate({
+                    expected: "a value greater than or equal to 0",
+                  }),
+                ),
+              Schema.Null,
+            ]),
+          ),
+        }),
+        [Schema.Record(Schema.String, CodexJsonExtension)],
+      ),
     }),
-    Schema.StructWithRest(
-      Schema.Struct({
-        responseStreamDisconnected: Schema.StructWithRest(
-          Schema.Struct({
-            httpStatusCode: Schema.optionalKey(
-              Schema.Union([
-                Schema.Number.annotate({ format: "uint16" })
-                  .check(Schema.isInt().annotate({ expected: "an integer" }))
-                  .check(
-                    Schema.isGreaterThanOrEqualTo(0).annotate({
-                      expected: "a value greater than or equal to 0",
-                    }),
-                  ),
-                Schema.Null,
-              ]),
-            ),
-          }),
-          [Schema.Record(Schema.String, CodexJsonExtension)],
-        ),
-      }),
-      [Schema.Record(Schema.String, CodexJsonExtension)],
-    ).annotate({
-      title: "ResponseStreamDisconnectedCodexErrorInfo",
-      description:
-        "The response SSE stream disconnected in the middle of a turn before completion.",
+    [Schema.Record(Schema.String, CodexJsonExtension)],
+  ).annotate({ title: "HttpConnectionFailedCodexErrorInfo" }),
+  Schema.StructWithRest(
+    Schema.Struct({
+      responseStreamConnectionFailed: Schema.StructWithRest(
+        Schema.Struct({
+          httpStatusCode: Schema.optionalKey(
+            Schema.Union([
+              Schema.Number.annotate({ format: "uint16" })
+                .check(Schema.isInt().annotate({ expected: "an integer" }))
+                .check(
+                  Schema.isGreaterThanOrEqualTo(0).annotate({
+                    expected: "a value greater than or equal to 0",
+                  }),
+                ),
+              Schema.Null,
+            ]),
+          ),
+        }),
+        [Schema.Record(Schema.String, CodexJsonExtension)],
+      ),
     }),
-    Schema.StructWithRest(
-      Schema.Struct({
-        responseTooManyFailedAttempts: Schema.StructWithRest(
-          Schema.Struct({
-            httpStatusCode: Schema.optionalKey(
-              Schema.Union([
-                Schema.Number.annotate({ format: "uint16" })
-                  .check(Schema.isInt().annotate({ expected: "an integer" }))
-                  .check(
-                    Schema.isGreaterThanOrEqualTo(0).annotate({
-                      expected: "a value greater than or equal to 0",
-                    }),
-                  ),
-                Schema.Null,
-              ]),
-            ),
-          }),
-          [Schema.Record(Schema.String, CodexJsonExtension)],
-        ),
-      }),
-      [Schema.Record(Schema.String, CodexJsonExtension)],
-    ).annotate({
-      title: "ResponseTooManyFailedAttemptsCodexErrorInfo",
-      description: "Reached the retry limit for responses.",
+    [Schema.Record(Schema.String, CodexJsonExtension)],
+  ).annotate({
+    title: "ResponseStreamConnectionFailedCodexErrorInfo",
+    description: "Failed to connect to the response SSE stream.",
+  }),
+  Schema.StructWithRest(
+    Schema.Struct({
+      responseStreamDisconnected: Schema.StructWithRest(
+        Schema.Struct({
+          httpStatusCode: Schema.optionalKey(
+            Schema.Union([
+              Schema.Number.annotate({ format: "uint16" })
+                .check(Schema.isInt().annotate({ expected: "an integer" }))
+                .check(
+                  Schema.isGreaterThanOrEqualTo(0).annotate({
+                    expected: "a value greater than or equal to 0",
+                  }),
+                ),
+              Schema.Null,
+            ]),
+          ),
+        }),
+        [Schema.Record(Schema.String, CodexJsonExtension)],
+      ),
     }),
-    Schema.StructWithRest(
-      Schema.Struct({
-        activeTurnNotSteerable: Schema.StructWithRest(
-          Schema.Struct({ turnKind: V2ThreadForkResponse__NonSteerableTurnKind }),
-          [Schema.Record(Schema.String, CodexJsonExtension)],
-        ),
-      }),
-      [Schema.Record(Schema.String, CodexJsonExtension)],
-    ).annotate({
-      title: "ActiveTurnNotSteerableCodexErrorInfo",
-      description:
-        "Returned when `turn/start` or `turn/steer` is submitted while the current active turn cannot accept same-turn steering, for example `/review` or manual `/compact`.",
+    [Schema.Record(Schema.String, CodexJsonExtension)],
+  ).annotate({
+    title: "ResponseStreamDisconnectedCodexErrorInfo",
+    description: "The response SSE stream disconnected in the middle of a turn before completion.",
+  }),
+  Schema.StructWithRest(
+    Schema.Struct({
+      responseTooManyFailedAttempts: Schema.StructWithRest(
+        Schema.Struct({
+          httpStatusCode: Schema.optionalKey(
+            Schema.Union([
+              Schema.Number.annotate({ format: "uint16" })
+                .check(Schema.isInt().annotate({ expected: "an integer" }))
+                .check(
+                  Schema.isGreaterThanOrEqualTo(0).annotate({
+                    expected: "a value greater than or equal to 0",
+                  }),
+                ),
+              Schema.Null,
+            ]),
+          ),
+        }),
+        [Schema.Record(Schema.String, CodexJsonExtension)],
+      ),
     }),
-  ],
-  { mode: "oneOf" },
-).annotate({
+    [Schema.Record(Schema.String, CodexJsonExtension)],
+  ).annotate({
+    title: "ResponseTooManyFailedAttemptsCodexErrorInfo",
+    description: "Reached the retry limit for responses.",
+  }),
+  Schema.StructWithRest(
+    Schema.Struct({
+      activeTurnNotSteerable: Schema.StructWithRest(
+        Schema.Struct({ turnKind: V2ThreadForkResponse__NonSteerableTurnKind }),
+        [Schema.Record(Schema.String, CodexJsonExtension)],
+      ),
+    }),
+    [Schema.Record(Schema.String, CodexJsonExtension)],
+  ).annotate({
+    title: "ActiveTurnNotSteerableCodexErrorInfo",
+    description:
+      "Returned when `turn/start` or `turn/steer` is submitted while the current active turn cannot accept same-turn steering, for example `/review` or manual `/compact`.",
+  }),
+  Schema.Union([
+    Schema.String,
+    Schema.Record(Schema.String, Schema.Json.annotate({ expected: "JSON value" })),
+  ]),
+]).annotate({
   description:
     "This translation layer make sure that we expose codex error code in camel case.\n\nWhen an upstream HTTP status is available (for example, from the Responses API or a provider), it is forwarded in `httpStatusCode` on the relevant `codexErrorInfo` variant.",
   identifier: "V2ThreadForkResponse__CodexErrorInfo",
@@ -32050,6 +32457,7 @@ export const V2ThreadForkResponse__CodexErrorInfo = Schema.Union(
 export type V2ThreadForkResponse__MisalignmentErrorDetails = {
   readonly detailedExplanation?: string | null;
   readonly errorType?: string | null;
+  readonly reviewTarget?: string | null;
   readonly steer?: V2ThreadForkResponse__MisalignmentSteer | null;
 } & { readonly [x: string]: CodexJsonExtension };
 export const V2ThreadForkResponse__MisalignmentErrorDetails = Schema.StructWithRest(
@@ -32068,6 +32476,15 @@ export const V2ThreadForkResponse__MisalignmentErrorDetails = Schema.StructWithR
         Schema.String.annotate({
           description:
             "Open-ended classification; clients must accept categories added by Responses.",
+        }),
+        Schema.Null,
+      ]),
+    ),
+    reviewTarget: Schema.optionalKey(
+      Schema.Union([
+        Schema.String.annotate({
+          description:
+            "Opaque server-issued block target. Presence alone does not enable target-based continuation.",
         }),
         Schema.Null,
       ]),
@@ -32807,140 +33224,142 @@ export type V2ThreadListResponse__CodexErrorInfo =
       readonly activeTurnNotSteerable: {
         readonly turnKind: V2ThreadListResponse__NonSteerableTurnKind;
       } & { readonly [x: string]: CodexJsonExtension };
-    } & { readonly [x: string]: CodexJsonExtension });
-export const V2ThreadListResponse__CodexErrorInfo = Schema.Union(
-  [
-    Schema.Literals([
-      "contextWindowExceeded",
-      "sessionBudgetExceeded",
-      "usageLimitExceeded",
-      "rateLimitExceeded",
-      "flexUnavailable",
-      "serverOverloaded",
-      "cyberPolicy",
-      "misalignmentPolicyViolation",
-      "tooManyDenials",
-      "internalServerError",
-      "unauthorized",
-      "badRequest",
-      "threadRollbackFailed",
-      "sandboxError",
-      "other",
-    ]),
-    Schema.StructWithRest(
-      Schema.Struct({
-        httpConnectionFailed: Schema.StructWithRest(
-          Schema.Struct({
-            httpStatusCode: Schema.optionalKey(
-              Schema.Union([
-                Schema.Number.annotate({ format: "uint16" })
-                  .check(Schema.isInt().annotate({ expected: "an integer" }))
-                  .check(
-                    Schema.isGreaterThanOrEqualTo(0).annotate({
-                      expected: "a value greater than or equal to 0",
-                    }),
-                  ),
-                Schema.Null,
-              ]),
-            ),
-          }),
-          [Schema.Record(Schema.String, CodexJsonExtension)],
-        ),
-      }),
-      [Schema.Record(Schema.String, CodexJsonExtension)],
-    ).annotate({ title: "HttpConnectionFailedCodexErrorInfo" }),
-    Schema.StructWithRest(
-      Schema.Struct({
-        responseStreamConnectionFailed: Schema.StructWithRest(
-          Schema.Struct({
-            httpStatusCode: Schema.optionalKey(
-              Schema.Union([
-                Schema.Number.annotate({ format: "uint16" })
-                  .check(Schema.isInt().annotate({ expected: "an integer" }))
-                  .check(
-                    Schema.isGreaterThanOrEqualTo(0).annotate({
-                      expected: "a value greater than or equal to 0",
-                    }),
-                  ),
-                Schema.Null,
-              ]),
-            ),
-          }),
-          [Schema.Record(Schema.String, CodexJsonExtension)],
-        ),
-      }),
-      [Schema.Record(Schema.String, CodexJsonExtension)],
-    ).annotate({
-      title: "ResponseStreamConnectionFailedCodexErrorInfo",
-      description: "Failed to connect to the response SSE stream.",
+    } & { readonly [x: string]: CodexJsonExtension })
+  | string
+  | { readonly [x: string]: Schema.Json };
+export const V2ThreadListResponse__CodexErrorInfo = Schema.Union([
+  Schema.Literals([
+    "contextWindowExceeded",
+    "sessionBudgetExceeded",
+    "usageLimitExceeded",
+    "rateLimitExceeded",
+    "flexUnavailable",
+    "serverOverloaded",
+    "cyberPolicy",
+    "misalignmentPolicyViolation",
+    "tooManyDenials",
+    "internalServerError",
+    "unauthorized",
+    "badRequest",
+    "threadRollbackFailed",
+    "sandboxError",
+    "other",
+  ]),
+  Schema.StructWithRest(
+    Schema.Struct({
+      httpConnectionFailed: Schema.StructWithRest(
+        Schema.Struct({
+          httpStatusCode: Schema.optionalKey(
+            Schema.Union([
+              Schema.Number.annotate({ format: "uint16" })
+                .check(Schema.isInt().annotate({ expected: "an integer" }))
+                .check(
+                  Schema.isGreaterThanOrEqualTo(0).annotate({
+                    expected: "a value greater than or equal to 0",
+                  }),
+                ),
+              Schema.Null,
+            ]),
+          ),
+        }),
+        [Schema.Record(Schema.String, CodexJsonExtension)],
+      ),
     }),
-    Schema.StructWithRest(
-      Schema.Struct({
-        responseStreamDisconnected: Schema.StructWithRest(
-          Schema.Struct({
-            httpStatusCode: Schema.optionalKey(
-              Schema.Union([
-                Schema.Number.annotate({ format: "uint16" })
-                  .check(Schema.isInt().annotate({ expected: "an integer" }))
-                  .check(
-                    Schema.isGreaterThanOrEqualTo(0).annotate({
-                      expected: "a value greater than or equal to 0",
-                    }),
-                  ),
-                Schema.Null,
-              ]),
-            ),
-          }),
-          [Schema.Record(Schema.String, CodexJsonExtension)],
-        ),
-      }),
-      [Schema.Record(Schema.String, CodexJsonExtension)],
-    ).annotate({
-      title: "ResponseStreamDisconnectedCodexErrorInfo",
-      description:
-        "The response SSE stream disconnected in the middle of a turn before completion.",
+    [Schema.Record(Schema.String, CodexJsonExtension)],
+  ).annotate({ title: "HttpConnectionFailedCodexErrorInfo" }),
+  Schema.StructWithRest(
+    Schema.Struct({
+      responseStreamConnectionFailed: Schema.StructWithRest(
+        Schema.Struct({
+          httpStatusCode: Schema.optionalKey(
+            Schema.Union([
+              Schema.Number.annotate({ format: "uint16" })
+                .check(Schema.isInt().annotate({ expected: "an integer" }))
+                .check(
+                  Schema.isGreaterThanOrEqualTo(0).annotate({
+                    expected: "a value greater than or equal to 0",
+                  }),
+                ),
+              Schema.Null,
+            ]),
+          ),
+        }),
+        [Schema.Record(Schema.String, CodexJsonExtension)],
+      ),
     }),
-    Schema.StructWithRest(
-      Schema.Struct({
-        responseTooManyFailedAttempts: Schema.StructWithRest(
-          Schema.Struct({
-            httpStatusCode: Schema.optionalKey(
-              Schema.Union([
-                Schema.Number.annotate({ format: "uint16" })
-                  .check(Schema.isInt().annotate({ expected: "an integer" }))
-                  .check(
-                    Schema.isGreaterThanOrEqualTo(0).annotate({
-                      expected: "a value greater than or equal to 0",
-                    }),
-                  ),
-                Schema.Null,
-              ]),
-            ),
-          }),
-          [Schema.Record(Schema.String, CodexJsonExtension)],
-        ),
-      }),
-      [Schema.Record(Schema.String, CodexJsonExtension)],
-    ).annotate({
-      title: "ResponseTooManyFailedAttemptsCodexErrorInfo",
-      description: "Reached the retry limit for responses.",
+    [Schema.Record(Schema.String, CodexJsonExtension)],
+  ).annotate({
+    title: "ResponseStreamConnectionFailedCodexErrorInfo",
+    description: "Failed to connect to the response SSE stream.",
+  }),
+  Schema.StructWithRest(
+    Schema.Struct({
+      responseStreamDisconnected: Schema.StructWithRest(
+        Schema.Struct({
+          httpStatusCode: Schema.optionalKey(
+            Schema.Union([
+              Schema.Number.annotate({ format: "uint16" })
+                .check(Schema.isInt().annotate({ expected: "an integer" }))
+                .check(
+                  Schema.isGreaterThanOrEqualTo(0).annotate({
+                    expected: "a value greater than or equal to 0",
+                  }),
+                ),
+              Schema.Null,
+            ]),
+          ),
+        }),
+        [Schema.Record(Schema.String, CodexJsonExtension)],
+      ),
     }),
-    Schema.StructWithRest(
-      Schema.Struct({
-        activeTurnNotSteerable: Schema.StructWithRest(
-          Schema.Struct({ turnKind: V2ThreadListResponse__NonSteerableTurnKind }),
-          [Schema.Record(Schema.String, CodexJsonExtension)],
-        ),
-      }),
-      [Schema.Record(Schema.String, CodexJsonExtension)],
-    ).annotate({
-      title: "ActiveTurnNotSteerableCodexErrorInfo",
-      description:
-        "Returned when `turn/start` or `turn/steer` is submitted while the current active turn cannot accept same-turn steering, for example `/review` or manual `/compact`.",
+    [Schema.Record(Schema.String, CodexJsonExtension)],
+  ).annotate({
+    title: "ResponseStreamDisconnectedCodexErrorInfo",
+    description: "The response SSE stream disconnected in the middle of a turn before completion.",
+  }),
+  Schema.StructWithRest(
+    Schema.Struct({
+      responseTooManyFailedAttempts: Schema.StructWithRest(
+        Schema.Struct({
+          httpStatusCode: Schema.optionalKey(
+            Schema.Union([
+              Schema.Number.annotate({ format: "uint16" })
+                .check(Schema.isInt().annotate({ expected: "an integer" }))
+                .check(
+                  Schema.isGreaterThanOrEqualTo(0).annotate({
+                    expected: "a value greater than or equal to 0",
+                  }),
+                ),
+              Schema.Null,
+            ]),
+          ),
+        }),
+        [Schema.Record(Schema.String, CodexJsonExtension)],
+      ),
     }),
-  ],
-  { mode: "oneOf" },
-).annotate({
+    [Schema.Record(Schema.String, CodexJsonExtension)],
+  ).annotate({
+    title: "ResponseTooManyFailedAttemptsCodexErrorInfo",
+    description: "Reached the retry limit for responses.",
+  }),
+  Schema.StructWithRest(
+    Schema.Struct({
+      activeTurnNotSteerable: Schema.StructWithRest(
+        Schema.Struct({ turnKind: V2ThreadListResponse__NonSteerableTurnKind }),
+        [Schema.Record(Schema.String, CodexJsonExtension)],
+      ),
+    }),
+    [Schema.Record(Schema.String, CodexJsonExtension)],
+  ).annotate({
+    title: "ActiveTurnNotSteerableCodexErrorInfo",
+    description:
+      "Returned when `turn/start` or `turn/steer` is submitted while the current active turn cannot accept same-turn steering, for example `/review` or manual `/compact`.",
+  }),
+  Schema.Union([
+    Schema.String,
+    Schema.Record(Schema.String, Schema.Json.annotate({ expected: "JSON value" })),
+  ]),
+]).annotate({
   description:
     "This translation layer make sure that we expose codex error code in camel case.\n\nWhen an upstream HTTP status is available (for example, from the Responses API or a provider), it is forwarded in `httpStatusCode` on the relevant `codexErrorInfo` variant.",
   identifier: "V2ThreadListResponse__CodexErrorInfo",
@@ -32949,6 +33368,7 @@ export const V2ThreadListResponse__CodexErrorInfo = Schema.Union(
 export type V2ThreadListResponse__MisalignmentErrorDetails = {
   readonly detailedExplanation?: string | null;
   readonly errorType?: string | null;
+  readonly reviewTarget?: string | null;
   readonly steer?: V2ThreadListResponse__MisalignmentSteer | null;
 } & { readonly [x: string]: CodexJsonExtension };
 export const V2ThreadListResponse__MisalignmentErrorDetails = Schema.StructWithRest(
@@ -32967,6 +33387,15 @@ export const V2ThreadListResponse__MisalignmentErrorDetails = Schema.StructWithR
         Schema.String.annotate({
           description:
             "Open-ended classification; clients must accept categories added by Responses.",
+        }),
+        Schema.Null,
+      ]),
+    ),
+    reviewTarget: Schema.optionalKey(
+      Schema.Union([
+        Schema.String.annotate({
+          description:
+            "Opaque server-issued block target. Presence alone does not enable target-based continuation.",
         }),
         Schema.Null,
       ]),
@@ -33359,140 +33788,142 @@ export type V2ThreadMetadataUpdateResponse__CodexErrorInfo =
       readonly activeTurnNotSteerable: {
         readonly turnKind: V2ThreadMetadataUpdateResponse__NonSteerableTurnKind;
       } & { readonly [x: string]: CodexJsonExtension };
-    } & { readonly [x: string]: CodexJsonExtension });
-export const V2ThreadMetadataUpdateResponse__CodexErrorInfo = Schema.Union(
-  [
-    Schema.Literals([
-      "contextWindowExceeded",
-      "sessionBudgetExceeded",
-      "usageLimitExceeded",
-      "rateLimitExceeded",
-      "flexUnavailable",
-      "serverOverloaded",
-      "cyberPolicy",
-      "misalignmentPolicyViolation",
-      "tooManyDenials",
-      "internalServerError",
-      "unauthorized",
-      "badRequest",
-      "threadRollbackFailed",
-      "sandboxError",
-      "other",
-    ]),
-    Schema.StructWithRest(
-      Schema.Struct({
-        httpConnectionFailed: Schema.StructWithRest(
-          Schema.Struct({
-            httpStatusCode: Schema.optionalKey(
-              Schema.Union([
-                Schema.Number.annotate({ format: "uint16" })
-                  .check(Schema.isInt().annotate({ expected: "an integer" }))
-                  .check(
-                    Schema.isGreaterThanOrEqualTo(0).annotate({
-                      expected: "a value greater than or equal to 0",
-                    }),
-                  ),
-                Schema.Null,
-              ]),
-            ),
-          }),
-          [Schema.Record(Schema.String, CodexJsonExtension)],
-        ),
-      }),
-      [Schema.Record(Schema.String, CodexJsonExtension)],
-    ).annotate({ title: "HttpConnectionFailedCodexErrorInfo" }),
-    Schema.StructWithRest(
-      Schema.Struct({
-        responseStreamConnectionFailed: Schema.StructWithRest(
-          Schema.Struct({
-            httpStatusCode: Schema.optionalKey(
-              Schema.Union([
-                Schema.Number.annotate({ format: "uint16" })
-                  .check(Schema.isInt().annotate({ expected: "an integer" }))
-                  .check(
-                    Schema.isGreaterThanOrEqualTo(0).annotate({
-                      expected: "a value greater than or equal to 0",
-                    }),
-                  ),
-                Schema.Null,
-              ]),
-            ),
-          }),
-          [Schema.Record(Schema.String, CodexJsonExtension)],
-        ),
-      }),
-      [Schema.Record(Schema.String, CodexJsonExtension)],
-    ).annotate({
-      title: "ResponseStreamConnectionFailedCodexErrorInfo",
-      description: "Failed to connect to the response SSE stream.",
+    } & { readonly [x: string]: CodexJsonExtension })
+  | string
+  | { readonly [x: string]: Schema.Json };
+export const V2ThreadMetadataUpdateResponse__CodexErrorInfo = Schema.Union([
+  Schema.Literals([
+    "contextWindowExceeded",
+    "sessionBudgetExceeded",
+    "usageLimitExceeded",
+    "rateLimitExceeded",
+    "flexUnavailable",
+    "serverOverloaded",
+    "cyberPolicy",
+    "misalignmentPolicyViolation",
+    "tooManyDenials",
+    "internalServerError",
+    "unauthorized",
+    "badRequest",
+    "threadRollbackFailed",
+    "sandboxError",
+    "other",
+  ]),
+  Schema.StructWithRest(
+    Schema.Struct({
+      httpConnectionFailed: Schema.StructWithRest(
+        Schema.Struct({
+          httpStatusCode: Schema.optionalKey(
+            Schema.Union([
+              Schema.Number.annotate({ format: "uint16" })
+                .check(Schema.isInt().annotate({ expected: "an integer" }))
+                .check(
+                  Schema.isGreaterThanOrEqualTo(0).annotate({
+                    expected: "a value greater than or equal to 0",
+                  }),
+                ),
+              Schema.Null,
+            ]),
+          ),
+        }),
+        [Schema.Record(Schema.String, CodexJsonExtension)],
+      ),
     }),
-    Schema.StructWithRest(
-      Schema.Struct({
-        responseStreamDisconnected: Schema.StructWithRest(
-          Schema.Struct({
-            httpStatusCode: Schema.optionalKey(
-              Schema.Union([
-                Schema.Number.annotate({ format: "uint16" })
-                  .check(Schema.isInt().annotate({ expected: "an integer" }))
-                  .check(
-                    Schema.isGreaterThanOrEqualTo(0).annotate({
-                      expected: "a value greater than or equal to 0",
-                    }),
-                  ),
-                Schema.Null,
-              ]),
-            ),
-          }),
-          [Schema.Record(Schema.String, CodexJsonExtension)],
-        ),
-      }),
-      [Schema.Record(Schema.String, CodexJsonExtension)],
-    ).annotate({
-      title: "ResponseStreamDisconnectedCodexErrorInfo",
-      description:
-        "The response SSE stream disconnected in the middle of a turn before completion.",
+    [Schema.Record(Schema.String, CodexJsonExtension)],
+  ).annotate({ title: "HttpConnectionFailedCodexErrorInfo" }),
+  Schema.StructWithRest(
+    Schema.Struct({
+      responseStreamConnectionFailed: Schema.StructWithRest(
+        Schema.Struct({
+          httpStatusCode: Schema.optionalKey(
+            Schema.Union([
+              Schema.Number.annotate({ format: "uint16" })
+                .check(Schema.isInt().annotate({ expected: "an integer" }))
+                .check(
+                  Schema.isGreaterThanOrEqualTo(0).annotate({
+                    expected: "a value greater than or equal to 0",
+                  }),
+                ),
+              Schema.Null,
+            ]),
+          ),
+        }),
+        [Schema.Record(Schema.String, CodexJsonExtension)],
+      ),
     }),
-    Schema.StructWithRest(
-      Schema.Struct({
-        responseTooManyFailedAttempts: Schema.StructWithRest(
-          Schema.Struct({
-            httpStatusCode: Schema.optionalKey(
-              Schema.Union([
-                Schema.Number.annotate({ format: "uint16" })
-                  .check(Schema.isInt().annotate({ expected: "an integer" }))
-                  .check(
-                    Schema.isGreaterThanOrEqualTo(0).annotate({
-                      expected: "a value greater than or equal to 0",
-                    }),
-                  ),
-                Schema.Null,
-              ]),
-            ),
-          }),
-          [Schema.Record(Schema.String, CodexJsonExtension)],
-        ),
-      }),
-      [Schema.Record(Schema.String, CodexJsonExtension)],
-    ).annotate({
-      title: "ResponseTooManyFailedAttemptsCodexErrorInfo",
-      description: "Reached the retry limit for responses.",
+    [Schema.Record(Schema.String, CodexJsonExtension)],
+  ).annotate({
+    title: "ResponseStreamConnectionFailedCodexErrorInfo",
+    description: "Failed to connect to the response SSE stream.",
+  }),
+  Schema.StructWithRest(
+    Schema.Struct({
+      responseStreamDisconnected: Schema.StructWithRest(
+        Schema.Struct({
+          httpStatusCode: Schema.optionalKey(
+            Schema.Union([
+              Schema.Number.annotate({ format: "uint16" })
+                .check(Schema.isInt().annotate({ expected: "an integer" }))
+                .check(
+                  Schema.isGreaterThanOrEqualTo(0).annotate({
+                    expected: "a value greater than or equal to 0",
+                  }),
+                ),
+              Schema.Null,
+            ]),
+          ),
+        }),
+        [Schema.Record(Schema.String, CodexJsonExtension)],
+      ),
     }),
-    Schema.StructWithRest(
-      Schema.Struct({
-        activeTurnNotSteerable: Schema.StructWithRest(
-          Schema.Struct({ turnKind: V2ThreadMetadataUpdateResponse__NonSteerableTurnKind }),
-          [Schema.Record(Schema.String, CodexJsonExtension)],
-        ),
-      }),
-      [Schema.Record(Schema.String, CodexJsonExtension)],
-    ).annotate({
-      title: "ActiveTurnNotSteerableCodexErrorInfo",
-      description:
-        "Returned when `turn/start` or `turn/steer` is submitted while the current active turn cannot accept same-turn steering, for example `/review` or manual `/compact`.",
+    [Schema.Record(Schema.String, CodexJsonExtension)],
+  ).annotate({
+    title: "ResponseStreamDisconnectedCodexErrorInfo",
+    description: "The response SSE stream disconnected in the middle of a turn before completion.",
+  }),
+  Schema.StructWithRest(
+    Schema.Struct({
+      responseTooManyFailedAttempts: Schema.StructWithRest(
+        Schema.Struct({
+          httpStatusCode: Schema.optionalKey(
+            Schema.Union([
+              Schema.Number.annotate({ format: "uint16" })
+                .check(Schema.isInt().annotate({ expected: "an integer" }))
+                .check(
+                  Schema.isGreaterThanOrEqualTo(0).annotate({
+                    expected: "a value greater than or equal to 0",
+                  }),
+                ),
+              Schema.Null,
+            ]),
+          ),
+        }),
+        [Schema.Record(Schema.String, CodexJsonExtension)],
+      ),
     }),
-  ],
-  { mode: "oneOf" },
-).annotate({
+    [Schema.Record(Schema.String, CodexJsonExtension)],
+  ).annotate({
+    title: "ResponseTooManyFailedAttemptsCodexErrorInfo",
+    description: "Reached the retry limit for responses.",
+  }),
+  Schema.StructWithRest(
+    Schema.Struct({
+      activeTurnNotSteerable: Schema.StructWithRest(
+        Schema.Struct({ turnKind: V2ThreadMetadataUpdateResponse__NonSteerableTurnKind }),
+        [Schema.Record(Schema.String, CodexJsonExtension)],
+      ),
+    }),
+    [Schema.Record(Schema.String, CodexJsonExtension)],
+  ).annotate({
+    title: "ActiveTurnNotSteerableCodexErrorInfo",
+    description:
+      "Returned when `turn/start` or `turn/steer` is submitted while the current active turn cannot accept same-turn steering, for example `/review` or manual `/compact`.",
+  }),
+  Schema.Union([
+    Schema.String,
+    Schema.Record(Schema.String, Schema.Json.annotate({ expected: "JSON value" })),
+  ]),
+]).annotate({
   description:
     "This translation layer make sure that we expose codex error code in camel case.\n\nWhen an upstream HTTP status is available (for example, from the Responses API or a provider), it is forwarded in `httpStatusCode` on the relevant `codexErrorInfo` variant.",
   identifier: "V2ThreadMetadataUpdateResponse__CodexErrorInfo",
@@ -33501,6 +33932,7 @@ export const V2ThreadMetadataUpdateResponse__CodexErrorInfo = Schema.Union(
 export type V2ThreadMetadataUpdateResponse__MisalignmentErrorDetails = {
   readonly detailedExplanation?: string | null;
   readonly errorType?: string | null;
+  readonly reviewTarget?: string | null;
   readonly steer?: V2ThreadMetadataUpdateResponse__MisalignmentSteer | null;
 } & { readonly [x: string]: CodexJsonExtension };
 export const V2ThreadMetadataUpdateResponse__MisalignmentErrorDetails = Schema.StructWithRest(
@@ -33519,6 +33951,15 @@ export const V2ThreadMetadataUpdateResponse__MisalignmentErrorDetails = Schema.S
         Schema.String.annotate({
           description:
             "Open-ended classification; clients must accept categories added by Responses.",
+        }),
+        Schema.Null,
+      ]),
+    ),
+    reviewTarget: Schema.optionalKey(
+      Schema.Union([
+        Schema.String.annotate({
+          description:
+            "Opaque server-issued block target. Presence alone does not enable target-based continuation.",
         }),
         Schema.Null,
       ]),
@@ -33804,140 +34245,142 @@ export type V2ThreadQueueStartResponse__CodexErrorInfo =
       readonly activeTurnNotSteerable: {
         readonly turnKind: V2ThreadQueueStartResponse__NonSteerableTurnKind;
       } & { readonly [x: string]: CodexJsonExtension };
-    } & { readonly [x: string]: CodexJsonExtension });
-export const V2ThreadQueueStartResponse__CodexErrorInfo = Schema.Union(
-  [
-    Schema.Literals([
-      "contextWindowExceeded",
-      "sessionBudgetExceeded",
-      "usageLimitExceeded",
-      "rateLimitExceeded",
-      "flexUnavailable",
-      "serverOverloaded",
-      "cyberPolicy",
-      "misalignmentPolicyViolation",
-      "tooManyDenials",
-      "internalServerError",
-      "unauthorized",
-      "badRequest",
-      "threadRollbackFailed",
-      "sandboxError",
-      "other",
-    ]),
-    Schema.StructWithRest(
-      Schema.Struct({
-        httpConnectionFailed: Schema.StructWithRest(
-          Schema.Struct({
-            httpStatusCode: Schema.optionalKey(
-              Schema.Union([
-                Schema.Number.annotate({ format: "uint16" })
-                  .check(Schema.isInt().annotate({ expected: "an integer" }))
-                  .check(
-                    Schema.isGreaterThanOrEqualTo(0).annotate({
-                      expected: "a value greater than or equal to 0",
-                    }),
-                  ),
-                Schema.Null,
-              ]),
-            ),
-          }),
-          [Schema.Record(Schema.String, CodexJsonExtension)],
-        ),
-      }),
-      [Schema.Record(Schema.String, CodexJsonExtension)],
-    ).annotate({ title: "HttpConnectionFailedCodexErrorInfo" }),
-    Schema.StructWithRest(
-      Schema.Struct({
-        responseStreamConnectionFailed: Schema.StructWithRest(
-          Schema.Struct({
-            httpStatusCode: Schema.optionalKey(
-              Schema.Union([
-                Schema.Number.annotate({ format: "uint16" })
-                  .check(Schema.isInt().annotate({ expected: "an integer" }))
-                  .check(
-                    Schema.isGreaterThanOrEqualTo(0).annotate({
-                      expected: "a value greater than or equal to 0",
-                    }),
-                  ),
-                Schema.Null,
-              ]),
-            ),
-          }),
-          [Schema.Record(Schema.String, CodexJsonExtension)],
-        ),
-      }),
-      [Schema.Record(Schema.String, CodexJsonExtension)],
-    ).annotate({
-      title: "ResponseStreamConnectionFailedCodexErrorInfo",
-      description: "Failed to connect to the response SSE stream.",
+    } & { readonly [x: string]: CodexJsonExtension })
+  | string
+  | { readonly [x: string]: Schema.Json };
+export const V2ThreadQueueStartResponse__CodexErrorInfo = Schema.Union([
+  Schema.Literals([
+    "contextWindowExceeded",
+    "sessionBudgetExceeded",
+    "usageLimitExceeded",
+    "rateLimitExceeded",
+    "flexUnavailable",
+    "serverOverloaded",
+    "cyberPolicy",
+    "misalignmentPolicyViolation",
+    "tooManyDenials",
+    "internalServerError",
+    "unauthorized",
+    "badRequest",
+    "threadRollbackFailed",
+    "sandboxError",
+    "other",
+  ]),
+  Schema.StructWithRest(
+    Schema.Struct({
+      httpConnectionFailed: Schema.StructWithRest(
+        Schema.Struct({
+          httpStatusCode: Schema.optionalKey(
+            Schema.Union([
+              Schema.Number.annotate({ format: "uint16" })
+                .check(Schema.isInt().annotate({ expected: "an integer" }))
+                .check(
+                  Schema.isGreaterThanOrEqualTo(0).annotate({
+                    expected: "a value greater than or equal to 0",
+                  }),
+                ),
+              Schema.Null,
+            ]),
+          ),
+        }),
+        [Schema.Record(Schema.String, CodexJsonExtension)],
+      ),
     }),
-    Schema.StructWithRest(
-      Schema.Struct({
-        responseStreamDisconnected: Schema.StructWithRest(
-          Schema.Struct({
-            httpStatusCode: Schema.optionalKey(
-              Schema.Union([
-                Schema.Number.annotate({ format: "uint16" })
-                  .check(Schema.isInt().annotate({ expected: "an integer" }))
-                  .check(
-                    Schema.isGreaterThanOrEqualTo(0).annotate({
-                      expected: "a value greater than or equal to 0",
-                    }),
-                  ),
-                Schema.Null,
-              ]),
-            ),
-          }),
-          [Schema.Record(Schema.String, CodexJsonExtension)],
-        ),
-      }),
-      [Schema.Record(Schema.String, CodexJsonExtension)],
-    ).annotate({
-      title: "ResponseStreamDisconnectedCodexErrorInfo",
-      description:
-        "The response SSE stream disconnected in the middle of a turn before completion.",
+    [Schema.Record(Schema.String, CodexJsonExtension)],
+  ).annotate({ title: "HttpConnectionFailedCodexErrorInfo" }),
+  Schema.StructWithRest(
+    Schema.Struct({
+      responseStreamConnectionFailed: Schema.StructWithRest(
+        Schema.Struct({
+          httpStatusCode: Schema.optionalKey(
+            Schema.Union([
+              Schema.Number.annotate({ format: "uint16" })
+                .check(Schema.isInt().annotate({ expected: "an integer" }))
+                .check(
+                  Schema.isGreaterThanOrEqualTo(0).annotate({
+                    expected: "a value greater than or equal to 0",
+                  }),
+                ),
+              Schema.Null,
+            ]),
+          ),
+        }),
+        [Schema.Record(Schema.String, CodexJsonExtension)],
+      ),
     }),
-    Schema.StructWithRest(
-      Schema.Struct({
-        responseTooManyFailedAttempts: Schema.StructWithRest(
-          Schema.Struct({
-            httpStatusCode: Schema.optionalKey(
-              Schema.Union([
-                Schema.Number.annotate({ format: "uint16" })
-                  .check(Schema.isInt().annotate({ expected: "an integer" }))
-                  .check(
-                    Schema.isGreaterThanOrEqualTo(0).annotate({
-                      expected: "a value greater than or equal to 0",
-                    }),
-                  ),
-                Schema.Null,
-              ]),
-            ),
-          }),
-          [Schema.Record(Schema.String, CodexJsonExtension)],
-        ),
-      }),
-      [Schema.Record(Schema.String, CodexJsonExtension)],
-    ).annotate({
-      title: "ResponseTooManyFailedAttemptsCodexErrorInfo",
-      description: "Reached the retry limit for responses.",
+    [Schema.Record(Schema.String, CodexJsonExtension)],
+  ).annotate({
+    title: "ResponseStreamConnectionFailedCodexErrorInfo",
+    description: "Failed to connect to the response SSE stream.",
+  }),
+  Schema.StructWithRest(
+    Schema.Struct({
+      responseStreamDisconnected: Schema.StructWithRest(
+        Schema.Struct({
+          httpStatusCode: Schema.optionalKey(
+            Schema.Union([
+              Schema.Number.annotate({ format: "uint16" })
+                .check(Schema.isInt().annotate({ expected: "an integer" }))
+                .check(
+                  Schema.isGreaterThanOrEqualTo(0).annotate({
+                    expected: "a value greater than or equal to 0",
+                  }),
+                ),
+              Schema.Null,
+            ]),
+          ),
+        }),
+        [Schema.Record(Schema.String, CodexJsonExtension)],
+      ),
     }),
-    Schema.StructWithRest(
-      Schema.Struct({
-        activeTurnNotSteerable: Schema.StructWithRest(
-          Schema.Struct({ turnKind: V2ThreadQueueStartResponse__NonSteerableTurnKind }),
-          [Schema.Record(Schema.String, CodexJsonExtension)],
-        ),
-      }),
-      [Schema.Record(Schema.String, CodexJsonExtension)],
-    ).annotate({
-      title: "ActiveTurnNotSteerableCodexErrorInfo",
-      description:
-        "Returned when `turn/start` or `turn/steer` is submitted while the current active turn cannot accept same-turn steering, for example `/review` or manual `/compact`.",
+    [Schema.Record(Schema.String, CodexJsonExtension)],
+  ).annotate({
+    title: "ResponseStreamDisconnectedCodexErrorInfo",
+    description: "The response SSE stream disconnected in the middle of a turn before completion.",
+  }),
+  Schema.StructWithRest(
+    Schema.Struct({
+      responseTooManyFailedAttempts: Schema.StructWithRest(
+        Schema.Struct({
+          httpStatusCode: Schema.optionalKey(
+            Schema.Union([
+              Schema.Number.annotate({ format: "uint16" })
+                .check(Schema.isInt().annotate({ expected: "an integer" }))
+                .check(
+                  Schema.isGreaterThanOrEqualTo(0).annotate({
+                    expected: "a value greater than or equal to 0",
+                  }),
+                ),
+              Schema.Null,
+            ]),
+          ),
+        }),
+        [Schema.Record(Schema.String, CodexJsonExtension)],
+      ),
     }),
-  ],
-  { mode: "oneOf" },
-).annotate({
+    [Schema.Record(Schema.String, CodexJsonExtension)],
+  ).annotate({
+    title: "ResponseTooManyFailedAttemptsCodexErrorInfo",
+    description: "Reached the retry limit for responses.",
+  }),
+  Schema.StructWithRest(
+    Schema.Struct({
+      activeTurnNotSteerable: Schema.StructWithRest(
+        Schema.Struct({ turnKind: V2ThreadQueueStartResponse__NonSteerableTurnKind }),
+        [Schema.Record(Schema.String, CodexJsonExtension)],
+      ),
+    }),
+    [Schema.Record(Schema.String, CodexJsonExtension)],
+  ).annotate({
+    title: "ActiveTurnNotSteerableCodexErrorInfo",
+    description:
+      "Returned when `turn/start` or `turn/steer` is submitted while the current active turn cannot accept same-turn steering, for example `/review` or manual `/compact`.",
+  }),
+  Schema.Union([
+    Schema.String,
+    Schema.Record(Schema.String, Schema.Json.annotate({ expected: "JSON value" })),
+  ]),
+]).annotate({
   description:
     "This translation layer make sure that we expose codex error code in camel case.\n\nWhen an upstream HTTP status is available (for example, from the Responses API or a provider), it is forwarded in `httpStatusCode` on the relevant `codexErrorInfo` variant.",
   identifier: "V2ThreadQueueStartResponse__CodexErrorInfo",
@@ -33946,6 +34389,7 @@ export const V2ThreadQueueStartResponse__CodexErrorInfo = Schema.Union(
 export type V2ThreadQueueStartResponse__MisalignmentErrorDetails = {
   readonly detailedExplanation?: string | null;
   readonly errorType?: string | null;
+  readonly reviewTarget?: string | null;
   readonly steer?: V2ThreadQueueStartResponse__MisalignmentSteer | null;
 } & { readonly [x: string]: CodexJsonExtension };
 export const V2ThreadQueueStartResponse__MisalignmentErrorDetails = Schema.StructWithRest(
@@ -33964,6 +34408,15 @@ export const V2ThreadQueueStartResponse__MisalignmentErrorDetails = Schema.Struc
         Schema.String.annotate({
           description:
             "Open-ended classification; clients must accept categories added by Responses.",
+        }),
+        Schema.Null,
+      ]),
+    ),
+    reviewTarget: Schema.optionalKey(
+      Schema.Union([
+        Schema.String.annotate({
+          description:
+            "Opaque server-issued block target. Presence alone does not enable target-based continuation.",
         }),
         Schema.Null,
       ]),
@@ -34463,140 +34916,142 @@ export type V2ThreadReadResponse__CodexErrorInfo =
       readonly activeTurnNotSteerable: {
         readonly turnKind: V2ThreadReadResponse__NonSteerableTurnKind;
       } & { readonly [x: string]: CodexJsonExtension };
-    } & { readonly [x: string]: CodexJsonExtension });
-export const V2ThreadReadResponse__CodexErrorInfo = Schema.Union(
-  [
-    Schema.Literals([
-      "contextWindowExceeded",
-      "sessionBudgetExceeded",
-      "usageLimitExceeded",
-      "rateLimitExceeded",
-      "flexUnavailable",
-      "serverOverloaded",
-      "cyberPolicy",
-      "misalignmentPolicyViolation",
-      "tooManyDenials",
-      "internalServerError",
-      "unauthorized",
-      "badRequest",
-      "threadRollbackFailed",
-      "sandboxError",
-      "other",
-    ]),
-    Schema.StructWithRest(
-      Schema.Struct({
-        httpConnectionFailed: Schema.StructWithRest(
-          Schema.Struct({
-            httpStatusCode: Schema.optionalKey(
-              Schema.Union([
-                Schema.Number.annotate({ format: "uint16" })
-                  .check(Schema.isInt().annotate({ expected: "an integer" }))
-                  .check(
-                    Schema.isGreaterThanOrEqualTo(0).annotate({
-                      expected: "a value greater than or equal to 0",
-                    }),
-                  ),
-                Schema.Null,
-              ]),
-            ),
-          }),
-          [Schema.Record(Schema.String, CodexJsonExtension)],
-        ),
-      }),
-      [Schema.Record(Schema.String, CodexJsonExtension)],
-    ).annotate({ title: "HttpConnectionFailedCodexErrorInfo" }),
-    Schema.StructWithRest(
-      Schema.Struct({
-        responseStreamConnectionFailed: Schema.StructWithRest(
-          Schema.Struct({
-            httpStatusCode: Schema.optionalKey(
-              Schema.Union([
-                Schema.Number.annotate({ format: "uint16" })
-                  .check(Schema.isInt().annotate({ expected: "an integer" }))
-                  .check(
-                    Schema.isGreaterThanOrEqualTo(0).annotate({
-                      expected: "a value greater than or equal to 0",
-                    }),
-                  ),
-                Schema.Null,
-              ]),
-            ),
-          }),
-          [Schema.Record(Schema.String, CodexJsonExtension)],
-        ),
-      }),
-      [Schema.Record(Schema.String, CodexJsonExtension)],
-    ).annotate({
-      title: "ResponseStreamConnectionFailedCodexErrorInfo",
-      description: "Failed to connect to the response SSE stream.",
+    } & { readonly [x: string]: CodexJsonExtension })
+  | string
+  | { readonly [x: string]: Schema.Json };
+export const V2ThreadReadResponse__CodexErrorInfo = Schema.Union([
+  Schema.Literals([
+    "contextWindowExceeded",
+    "sessionBudgetExceeded",
+    "usageLimitExceeded",
+    "rateLimitExceeded",
+    "flexUnavailable",
+    "serverOverloaded",
+    "cyberPolicy",
+    "misalignmentPolicyViolation",
+    "tooManyDenials",
+    "internalServerError",
+    "unauthorized",
+    "badRequest",
+    "threadRollbackFailed",
+    "sandboxError",
+    "other",
+  ]),
+  Schema.StructWithRest(
+    Schema.Struct({
+      httpConnectionFailed: Schema.StructWithRest(
+        Schema.Struct({
+          httpStatusCode: Schema.optionalKey(
+            Schema.Union([
+              Schema.Number.annotate({ format: "uint16" })
+                .check(Schema.isInt().annotate({ expected: "an integer" }))
+                .check(
+                  Schema.isGreaterThanOrEqualTo(0).annotate({
+                    expected: "a value greater than or equal to 0",
+                  }),
+                ),
+              Schema.Null,
+            ]),
+          ),
+        }),
+        [Schema.Record(Schema.String, CodexJsonExtension)],
+      ),
     }),
-    Schema.StructWithRest(
-      Schema.Struct({
-        responseStreamDisconnected: Schema.StructWithRest(
-          Schema.Struct({
-            httpStatusCode: Schema.optionalKey(
-              Schema.Union([
-                Schema.Number.annotate({ format: "uint16" })
-                  .check(Schema.isInt().annotate({ expected: "an integer" }))
-                  .check(
-                    Schema.isGreaterThanOrEqualTo(0).annotate({
-                      expected: "a value greater than or equal to 0",
-                    }),
-                  ),
-                Schema.Null,
-              ]),
-            ),
-          }),
-          [Schema.Record(Schema.String, CodexJsonExtension)],
-        ),
-      }),
-      [Schema.Record(Schema.String, CodexJsonExtension)],
-    ).annotate({
-      title: "ResponseStreamDisconnectedCodexErrorInfo",
-      description:
-        "The response SSE stream disconnected in the middle of a turn before completion.",
+    [Schema.Record(Schema.String, CodexJsonExtension)],
+  ).annotate({ title: "HttpConnectionFailedCodexErrorInfo" }),
+  Schema.StructWithRest(
+    Schema.Struct({
+      responseStreamConnectionFailed: Schema.StructWithRest(
+        Schema.Struct({
+          httpStatusCode: Schema.optionalKey(
+            Schema.Union([
+              Schema.Number.annotate({ format: "uint16" })
+                .check(Schema.isInt().annotate({ expected: "an integer" }))
+                .check(
+                  Schema.isGreaterThanOrEqualTo(0).annotate({
+                    expected: "a value greater than or equal to 0",
+                  }),
+                ),
+              Schema.Null,
+            ]),
+          ),
+        }),
+        [Schema.Record(Schema.String, CodexJsonExtension)],
+      ),
     }),
-    Schema.StructWithRest(
-      Schema.Struct({
-        responseTooManyFailedAttempts: Schema.StructWithRest(
-          Schema.Struct({
-            httpStatusCode: Schema.optionalKey(
-              Schema.Union([
-                Schema.Number.annotate({ format: "uint16" })
-                  .check(Schema.isInt().annotate({ expected: "an integer" }))
-                  .check(
-                    Schema.isGreaterThanOrEqualTo(0).annotate({
-                      expected: "a value greater than or equal to 0",
-                    }),
-                  ),
-                Schema.Null,
-              ]),
-            ),
-          }),
-          [Schema.Record(Schema.String, CodexJsonExtension)],
-        ),
-      }),
-      [Schema.Record(Schema.String, CodexJsonExtension)],
-    ).annotate({
-      title: "ResponseTooManyFailedAttemptsCodexErrorInfo",
-      description: "Reached the retry limit for responses.",
+    [Schema.Record(Schema.String, CodexJsonExtension)],
+  ).annotate({
+    title: "ResponseStreamConnectionFailedCodexErrorInfo",
+    description: "Failed to connect to the response SSE stream.",
+  }),
+  Schema.StructWithRest(
+    Schema.Struct({
+      responseStreamDisconnected: Schema.StructWithRest(
+        Schema.Struct({
+          httpStatusCode: Schema.optionalKey(
+            Schema.Union([
+              Schema.Number.annotate({ format: "uint16" })
+                .check(Schema.isInt().annotate({ expected: "an integer" }))
+                .check(
+                  Schema.isGreaterThanOrEqualTo(0).annotate({
+                    expected: "a value greater than or equal to 0",
+                  }),
+                ),
+              Schema.Null,
+            ]),
+          ),
+        }),
+        [Schema.Record(Schema.String, CodexJsonExtension)],
+      ),
     }),
-    Schema.StructWithRest(
-      Schema.Struct({
-        activeTurnNotSteerable: Schema.StructWithRest(
-          Schema.Struct({ turnKind: V2ThreadReadResponse__NonSteerableTurnKind }),
-          [Schema.Record(Schema.String, CodexJsonExtension)],
-        ),
-      }),
-      [Schema.Record(Schema.String, CodexJsonExtension)],
-    ).annotate({
-      title: "ActiveTurnNotSteerableCodexErrorInfo",
-      description:
-        "Returned when `turn/start` or `turn/steer` is submitted while the current active turn cannot accept same-turn steering, for example `/review` or manual `/compact`.",
+    [Schema.Record(Schema.String, CodexJsonExtension)],
+  ).annotate({
+    title: "ResponseStreamDisconnectedCodexErrorInfo",
+    description: "The response SSE stream disconnected in the middle of a turn before completion.",
+  }),
+  Schema.StructWithRest(
+    Schema.Struct({
+      responseTooManyFailedAttempts: Schema.StructWithRest(
+        Schema.Struct({
+          httpStatusCode: Schema.optionalKey(
+            Schema.Union([
+              Schema.Number.annotate({ format: "uint16" })
+                .check(Schema.isInt().annotate({ expected: "an integer" }))
+                .check(
+                  Schema.isGreaterThanOrEqualTo(0).annotate({
+                    expected: "a value greater than or equal to 0",
+                  }),
+                ),
+              Schema.Null,
+            ]),
+          ),
+        }),
+        [Schema.Record(Schema.String, CodexJsonExtension)],
+      ),
     }),
-  ],
-  { mode: "oneOf" },
-).annotate({
+    [Schema.Record(Schema.String, CodexJsonExtension)],
+  ).annotate({
+    title: "ResponseTooManyFailedAttemptsCodexErrorInfo",
+    description: "Reached the retry limit for responses.",
+  }),
+  Schema.StructWithRest(
+    Schema.Struct({
+      activeTurnNotSteerable: Schema.StructWithRest(
+        Schema.Struct({ turnKind: V2ThreadReadResponse__NonSteerableTurnKind }),
+        [Schema.Record(Schema.String, CodexJsonExtension)],
+      ),
+    }),
+    [Schema.Record(Schema.String, CodexJsonExtension)],
+  ).annotate({
+    title: "ActiveTurnNotSteerableCodexErrorInfo",
+    description:
+      "Returned when `turn/start` or `turn/steer` is submitted while the current active turn cannot accept same-turn steering, for example `/review` or manual `/compact`.",
+  }),
+  Schema.Union([
+    Schema.String,
+    Schema.Record(Schema.String, Schema.Json.annotate({ expected: "JSON value" })),
+  ]),
+]).annotate({
   description:
     "This translation layer make sure that we expose codex error code in camel case.\n\nWhen an upstream HTTP status is available (for example, from the Responses API or a provider), it is forwarded in `httpStatusCode` on the relevant `codexErrorInfo` variant.",
   identifier: "V2ThreadReadResponse__CodexErrorInfo",
@@ -34605,6 +35060,7 @@ export const V2ThreadReadResponse__CodexErrorInfo = Schema.Union(
 export type V2ThreadReadResponse__MisalignmentErrorDetails = {
   readonly detailedExplanation?: string | null;
   readonly errorType?: string | null;
+  readonly reviewTarget?: string | null;
   readonly steer?: V2ThreadReadResponse__MisalignmentSteer | null;
 } & { readonly [x: string]: CodexJsonExtension };
 export const V2ThreadReadResponse__MisalignmentErrorDetails = Schema.StructWithRest(
@@ -34623,6 +35079,15 @@ export const V2ThreadReadResponse__MisalignmentErrorDetails = Schema.StructWithR
         Schema.String.annotate({
           description:
             "Open-ended classification; clients must accept categories added by Responses.",
+        }),
+        Schema.Null,
+      ]),
+    ),
+    reviewTarget: Schema.optionalKey(
+      Schema.Union([
+        Schema.String.annotate({
+          description:
+            "Opaque server-issued block target. Presence alone does not enable target-based continuation.",
         }),
         Schema.Null,
       ]),
@@ -35262,140 +35727,142 @@ export type V2ThreadResumeResponse__CodexErrorInfo =
       readonly activeTurnNotSteerable: {
         readonly turnKind: V2ThreadResumeResponse__NonSteerableTurnKind;
       } & { readonly [x: string]: CodexJsonExtension };
-    } & { readonly [x: string]: CodexJsonExtension });
-export const V2ThreadResumeResponse__CodexErrorInfo = Schema.Union(
-  [
-    Schema.Literals([
-      "contextWindowExceeded",
-      "sessionBudgetExceeded",
-      "usageLimitExceeded",
-      "rateLimitExceeded",
-      "flexUnavailable",
-      "serverOverloaded",
-      "cyberPolicy",
-      "misalignmentPolicyViolation",
-      "tooManyDenials",
-      "internalServerError",
-      "unauthorized",
-      "badRequest",
-      "threadRollbackFailed",
-      "sandboxError",
-      "other",
-    ]),
-    Schema.StructWithRest(
-      Schema.Struct({
-        httpConnectionFailed: Schema.StructWithRest(
-          Schema.Struct({
-            httpStatusCode: Schema.optionalKey(
-              Schema.Union([
-                Schema.Number.annotate({ format: "uint16" })
-                  .check(Schema.isInt().annotate({ expected: "an integer" }))
-                  .check(
-                    Schema.isGreaterThanOrEqualTo(0).annotate({
-                      expected: "a value greater than or equal to 0",
-                    }),
-                  ),
-                Schema.Null,
-              ]),
-            ),
-          }),
-          [Schema.Record(Schema.String, CodexJsonExtension)],
-        ),
-      }),
-      [Schema.Record(Schema.String, CodexJsonExtension)],
-    ).annotate({ title: "HttpConnectionFailedCodexErrorInfo" }),
-    Schema.StructWithRest(
-      Schema.Struct({
-        responseStreamConnectionFailed: Schema.StructWithRest(
-          Schema.Struct({
-            httpStatusCode: Schema.optionalKey(
-              Schema.Union([
-                Schema.Number.annotate({ format: "uint16" })
-                  .check(Schema.isInt().annotate({ expected: "an integer" }))
-                  .check(
-                    Schema.isGreaterThanOrEqualTo(0).annotate({
-                      expected: "a value greater than or equal to 0",
-                    }),
-                  ),
-                Schema.Null,
-              ]),
-            ),
-          }),
-          [Schema.Record(Schema.String, CodexJsonExtension)],
-        ),
-      }),
-      [Schema.Record(Schema.String, CodexJsonExtension)],
-    ).annotate({
-      title: "ResponseStreamConnectionFailedCodexErrorInfo",
-      description: "Failed to connect to the response SSE stream.",
+    } & { readonly [x: string]: CodexJsonExtension })
+  | string
+  | { readonly [x: string]: Schema.Json };
+export const V2ThreadResumeResponse__CodexErrorInfo = Schema.Union([
+  Schema.Literals([
+    "contextWindowExceeded",
+    "sessionBudgetExceeded",
+    "usageLimitExceeded",
+    "rateLimitExceeded",
+    "flexUnavailable",
+    "serverOverloaded",
+    "cyberPolicy",
+    "misalignmentPolicyViolation",
+    "tooManyDenials",
+    "internalServerError",
+    "unauthorized",
+    "badRequest",
+    "threadRollbackFailed",
+    "sandboxError",
+    "other",
+  ]),
+  Schema.StructWithRest(
+    Schema.Struct({
+      httpConnectionFailed: Schema.StructWithRest(
+        Schema.Struct({
+          httpStatusCode: Schema.optionalKey(
+            Schema.Union([
+              Schema.Number.annotate({ format: "uint16" })
+                .check(Schema.isInt().annotate({ expected: "an integer" }))
+                .check(
+                  Schema.isGreaterThanOrEqualTo(0).annotate({
+                    expected: "a value greater than or equal to 0",
+                  }),
+                ),
+              Schema.Null,
+            ]),
+          ),
+        }),
+        [Schema.Record(Schema.String, CodexJsonExtension)],
+      ),
     }),
-    Schema.StructWithRest(
-      Schema.Struct({
-        responseStreamDisconnected: Schema.StructWithRest(
-          Schema.Struct({
-            httpStatusCode: Schema.optionalKey(
-              Schema.Union([
-                Schema.Number.annotate({ format: "uint16" })
-                  .check(Schema.isInt().annotate({ expected: "an integer" }))
-                  .check(
-                    Schema.isGreaterThanOrEqualTo(0).annotate({
-                      expected: "a value greater than or equal to 0",
-                    }),
-                  ),
-                Schema.Null,
-              ]),
-            ),
-          }),
-          [Schema.Record(Schema.String, CodexJsonExtension)],
-        ),
-      }),
-      [Schema.Record(Schema.String, CodexJsonExtension)],
-    ).annotate({
-      title: "ResponseStreamDisconnectedCodexErrorInfo",
-      description:
-        "The response SSE stream disconnected in the middle of a turn before completion.",
+    [Schema.Record(Schema.String, CodexJsonExtension)],
+  ).annotate({ title: "HttpConnectionFailedCodexErrorInfo" }),
+  Schema.StructWithRest(
+    Schema.Struct({
+      responseStreamConnectionFailed: Schema.StructWithRest(
+        Schema.Struct({
+          httpStatusCode: Schema.optionalKey(
+            Schema.Union([
+              Schema.Number.annotate({ format: "uint16" })
+                .check(Schema.isInt().annotate({ expected: "an integer" }))
+                .check(
+                  Schema.isGreaterThanOrEqualTo(0).annotate({
+                    expected: "a value greater than or equal to 0",
+                  }),
+                ),
+              Schema.Null,
+            ]),
+          ),
+        }),
+        [Schema.Record(Schema.String, CodexJsonExtension)],
+      ),
     }),
-    Schema.StructWithRest(
-      Schema.Struct({
-        responseTooManyFailedAttempts: Schema.StructWithRest(
-          Schema.Struct({
-            httpStatusCode: Schema.optionalKey(
-              Schema.Union([
-                Schema.Number.annotate({ format: "uint16" })
-                  .check(Schema.isInt().annotate({ expected: "an integer" }))
-                  .check(
-                    Schema.isGreaterThanOrEqualTo(0).annotate({
-                      expected: "a value greater than or equal to 0",
-                    }),
-                  ),
-                Schema.Null,
-              ]),
-            ),
-          }),
-          [Schema.Record(Schema.String, CodexJsonExtension)],
-        ),
-      }),
-      [Schema.Record(Schema.String, CodexJsonExtension)],
-    ).annotate({
-      title: "ResponseTooManyFailedAttemptsCodexErrorInfo",
-      description: "Reached the retry limit for responses.",
+    [Schema.Record(Schema.String, CodexJsonExtension)],
+  ).annotate({
+    title: "ResponseStreamConnectionFailedCodexErrorInfo",
+    description: "Failed to connect to the response SSE stream.",
+  }),
+  Schema.StructWithRest(
+    Schema.Struct({
+      responseStreamDisconnected: Schema.StructWithRest(
+        Schema.Struct({
+          httpStatusCode: Schema.optionalKey(
+            Schema.Union([
+              Schema.Number.annotate({ format: "uint16" })
+                .check(Schema.isInt().annotate({ expected: "an integer" }))
+                .check(
+                  Schema.isGreaterThanOrEqualTo(0).annotate({
+                    expected: "a value greater than or equal to 0",
+                  }),
+                ),
+              Schema.Null,
+            ]),
+          ),
+        }),
+        [Schema.Record(Schema.String, CodexJsonExtension)],
+      ),
     }),
-    Schema.StructWithRest(
-      Schema.Struct({
-        activeTurnNotSteerable: Schema.StructWithRest(
-          Schema.Struct({ turnKind: V2ThreadResumeResponse__NonSteerableTurnKind }),
-          [Schema.Record(Schema.String, CodexJsonExtension)],
-        ),
-      }),
-      [Schema.Record(Schema.String, CodexJsonExtension)],
-    ).annotate({
-      title: "ActiveTurnNotSteerableCodexErrorInfo",
-      description:
-        "Returned when `turn/start` or `turn/steer` is submitted while the current active turn cannot accept same-turn steering, for example `/review` or manual `/compact`.",
+    [Schema.Record(Schema.String, CodexJsonExtension)],
+  ).annotate({
+    title: "ResponseStreamDisconnectedCodexErrorInfo",
+    description: "The response SSE stream disconnected in the middle of a turn before completion.",
+  }),
+  Schema.StructWithRest(
+    Schema.Struct({
+      responseTooManyFailedAttempts: Schema.StructWithRest(
+        Schema.Struct({
+          httpStatusCode: Schema.optionalKey(
+            Schema.Union([
+              Schema.Number.annotate({ format: "uint16" })
+                .check(Schema.isInt().annotate({ expected: "an integer" }))
+                .check(
+                  Schema.isGreaterThanOrEqualTo(0).annotate({
+                    expected: "a value greater than or equal to 0",
+                  }),
+                ),
+              Schema.Null,
+            ]),
+          ),
+        }),
+        [Schema.Record(Schema.String, CodexJsonExtension)],
+      ),
     }),
-  ],
-  { mode: "oneOf" },
-).annotate({
+    [Schema.Record(Schema.String, CodexJsonExtension)],
+  ).annotate({
+    title: "ResponseTooManyFailedAttemptsCodexErrorInfo",
+    description: "Reached the retry limit for responses.",
+  }),
+  Schema.StructWithRest(
+    Schema.Struct({
+      activeTurnNotSteerable: Schema.StructWithRest(
+        Schema.Struct({ turnKind: V2ThreadResumeResponse__NonSteerableTurnKind }),
+        [Schema.Record(Schema.String, CodexJsonExtension)],
+      ),
+    }),
+    [Schema.Record(Schema.String, CodexJsonExtension)],
+  ).annotate({
+    title: "ActiveTurnNotSteerableCodexErrorInfo",
+    description:
+      "Returned when `turn/start` or `turn/steer` is submitted while the current active turn cannot accept same-turn steering, for example `/review` or manual `/compact`.",
+  }),
+  Schema.Union([
+    Schema.String,
+    Schema.Record(Schema.String, Schema.Json.annotate({ expected: "JSON value" })),
+  ]),
+]).annotate({
   description:
     "This translation layer make sure that we expose codex error code in camel case.\n\nWhen an upstream HTTP status is available (for example, from the Responses API or a provider), it is forwarded in `httpStatusCode` on the relevant `codexErrorInfo` variant.",
   identifier: "V2ThreadResumeResponse__CodexErrorInfo",
@@ -35404,6 +35871,7 @@ export const V2ThreadResumeResponse__CodexErrorInfo = Schema.Union(
 export type V2ThreadResumeResponse__MisalignmentErrorDetails = {
   readonly detailedExplanation?: string | null;
   readonly errorType?: string | null;
+  readonly reviewTarget?: string | null;
   readonly steer?: V2ThreadResumeResponse__MisalignmentSteer | null;
 } & { readonly [x: string]: CodexJsonExtension };
 export const V2ThreadResumeResponse__MisalignmentErrorDetails = Schema.StructWithRest(
@@ -35422,6 +35890,15 @@ export const V2ThreadResumeResponse__MisalignmentErrorDetails = Schema.StructWit
         Schema.String.annotate({
           description:
             "Open-ended classification; clients must accept categories added by Responses.",
+        }),
+        Schema.Null,
+      ]),
+    ),
+    reviewTarget: Schema.optionalKey(
+      Schema.Union([
+        Schema.String.annotate({
+          description:
+            "Opaque server-issued block target. Presence alone does not enable target-based continuation.",
         }),
         Schema.Null,
       ]),
@@ -36057,140 +36534,142 @@ export type V2ThreadRevertResponse__CodexErrorInfo =
       readonly activeTurnNotSteerable: {
         readonly turnKind: V2ThreadRevertResponse__NonSteerableTurnKind;
       } & { readonly [x: string]: CodexJsonExtension };
-    } & { readonly [x: string]: CodexJsonExtension });
-export const V2ThreadRevertResponse__CodexErrorInfo = Schema.Union(
-  [
-    Schema.Literals([
-      "contextWindowExceeded",
-      "sessionBudgetExceeded",
-      "usageLimitExceeded",
-      "rateLimitExceeded",
-      "flexUnavailable",
-      "serverOverloaded",
-      "cyberPolicy",
-      "misalignmentPolicyViolation",
-      "tooManyDenials",
-      "internalServerError",
-      "unauthorized",
-      "badRequest",
-      "threadRollbackFailed",
-      "sandboxError",
-      "other",
-    ]),
-    Schema.StructWithRest(
-      Schema.Struct({
-        httpConnectionFailed: Schema.StructWithRest(
-          Schema.Struct({
-            httpStatusCode: Schema.optionalKey(
-              Schema.Union([
-                Schema.Number.annotate({ format: "uint16" })
-                  .check(Schema.isInt().annotate({ expected: "an integer" }))
-                  .check(
-                    Schema.isGreaterThanOrEqualTo(0).annotate({
-                      expected: "a value greater than or equal to 0",
-                    }),
-                  ),
-                Schema.Null,
-              ]),
-            ),
-          }),
-          [Schema.Record(Schema.String, CodexJsonExtension)],
-        ),
-      }),
-      [Schema.Record(Schema.String, CodexJsonExtension)],
-    ).annotate({ title: "HttpConnectionFailedCodexErrorInfo" }),
-    Schema.StructWithRest(
-      Schema.Struct({
-        responseStreamConnectionFailed: Schema.StructWithRest(
-          Schema.Struct({
-            httpStatusCode: Schema.optionalKey(
-              Schema.Union([
-                Schema.Number.annotate({ format: "uint16" })
-                  .check(Schema.isInt().annotate({ expected: "an integer" }))
-                  .check(
-                    Schema.isGreaterThanOrEqualTo(0).annotate({
-                      expected: "a value greater than or equal to 0",
-                    }),
-                  ),
-                Schema.Null,
-              ]),
-            ),
-          }),
-          [Schema.Record(Schema.String, CodexJsonExtension)],
-        ),
-      }),
-      [Schema.Record(Schema.String, CodexJsonExtension)],
-    ).annotate({
-      title: "ResponseStreamConnectionFailedCodexErrorInfo",
-      description: "Failed to connect to the response SSE stream.",
+    } & { readonly [x: string]: CodexJsonExtension })
+  | string
+  | { readonly [x: string]: Schema.Json };
+export const V2ThreadRevertResponse__CodexErrorInfo = Schema.Union([
+  Schema.Literals([
+    "contextWindowExceeded",
+    "sessionBudgetExceeded",
+    "usageLimitExceeded",
+    "rateLimitExceeded",
+    "flexUnavailable",
+    "serverOverloaded",
+    "cyberPolicy",
+    "misalignmentPolicyViolation",
+    "tooManyDenials",
+    "internalServerError",
+    "unauthorized",
+    "badRequest",
+    "threadRollbackFailed",
+    "sandboxError",
+    "other",
+  ]),
+  Schema.StructWithRest(
+    Schema.Struct({
+      httpConnectionFailed: Schema.StructWithRest(
+        Schema.Struct({
+          httpStatusCode: Schema.optionalKey(
+            Schema.Union([
+              Schema.Number.annotate({ format: "uint16" })
+                .check(Schema.isInt().annotate({ expected: "an integer" }))
+                .check(
+                  Schema.isGreaterThanOrEqualTo(0).annotate({
+                    expected: "a value greater than or equal to 0",
+                  }),
+                ),
+              Schema.Null,
+            ]),
+          ),
+        }),
+        [Schema.Record(Schema.String, CodexJsonExtension)],
+      ),
     }),
-    Schema.StructWithRest(
-      Schema.Struct({
-        responseStreamDisconnected: Schema.StructWithRest(
-          Schema.Struct({
-            httpStatusCode: Schema.optionalKey(
-              Schema.Union([
-                Schema.Number.annotate({ format: "uint16" })
-                  .check(Schema.isInt().annotate({ expected: "an integer" }))
-                  .check(
-                    Schema.isGreaterThanOrEqualTo(0).annotate({
-                      expected: "a value greater than or equal to 0",
-                    }),
-                  ),
-                Schema.Null,
-              ]),
-            ),
-          }),
-          [Schema.Record(Schema.String, CodexJsonExtension)],
-        ),
-      }),
-      [Schema.Record(Schema.String, CodexJsonExtension)],
-    ).annotate({
-      title: "ResponseStreamDisconnectedCodexErrorInfo",
-      description:
-        "The response SSE stream disconnected in the middle of a turn before completion.",
+    [Schema.Record(Schema.String, CodexJsonExtension)],
+  ).annotate({ title: "HttpConnectionFailedCodexErrorInfo" }),
+  Schema.StructWithRest(
+    Schema.Struct({
+      responseStreamConnectionFailed: Schema.StructWithRest(
+        Schema.Struct({
+          httpStatusCode: Schema.optionalKey(
+            Schema.Union([
+              Schema.Number.annotate({ format: "uint16" })
+                .check(Schema.isInt().annotate({ expected: "an integer" }))
+                .check(
+                  Schema.isGreaterThanOrEqualTo(0).annotate({
+                    expected: "a value greater than or equal to 0",
+                  }),
+                ),
+              Schema.Null,
+            ]),
+          ),
+        }),
+        [Schema.Record(Schema.String, CodexJsonExtension)],
+      ),
     }),
-    Schema.StructWithRest(
-      Schema.Struct({
-        responseTooManyFailedAttempts: Schema.StructWithRest(
-          Schema.Struct({
-            httpStatusCode: Schema.optionalKey(
-              Schema.Union([
-                Schema.Number.annotate({ format: "uint16" })
-                  .check(Schema.isInt().annotate({ expected: "an integer" }))
-                  .check(
-                    Schema.isGreaterThanOrEqualTo(0).annotate({
-                      expected: "a value greater than or equal to 0",
-                    }),
-                  ),
-                Schema.Null,
-              ]),
-            ),
-          }),
-          [Schema.Record(Schema.String, CodexJsonExtension)],
-        ),
-      }),
-      [Schema.Record(Schema.String, CodexJsonExtension)],
-    ).annotate({
-      title: "ResponseTooManyFailedAttemptsCodexErrorInfo",
-      description: "Reached the retry limit for responses.",
+    [Schema.Record(Schema.String, CodexJsonExtension)],
+  ).annotate({
+    title: "ResponseStreamConnectionFailedCodexErrorInfo",
+    description: "Failed to connect to the response SSE stream.",
+  }),
+  Schema.StructWithRest(
+    Schema.Struct({
+      responseStreamDisconnected: Schema.StructWithRest(
+        Schema.Struct({
+          httpStatusCode: Schema.optionalKey(
+            Schema.Union([
+              Schema.Number.annotate({ format: "uint16" })
+                .check(Schema.isInt().annotate({ expected: "an integer" }))
+                .check(
+                  Schema.isGreaterThanOrEqualTo(0).annotate({
+                    expected: "a value greater than or equal to 0",
+                  }),
+                ),
+              Schema.Null,
+            ]),
+          ),
+        }),
+        [Schema.Record(Schema.String, CodexJsonExtension)],
+      ),
     }),
-    Schema.StructWithRest(
-      Schema.Struct({
-        activeTurnNotSteerable: Schema.StructWithRest(
-          Schema.Struct({ turnKind: V2ThreadRevertResponse__NonSteerableTurnKind }),
-          [Schema.Record(Schema.String, CodexJsonExtension)],
-        ),
-      }),
-      [Schema.Record(Schema.String, CodexJsonExtension)],
-    ).annotate({
-      title: "ActiveTurnNotSteerableCodexErrorInfo",
-      description:
-        "Returned when `turn/start` or `turn/steer` is submitted while the current active turn cannot accept same-turn steering, for example `/review` or manual `/compact`.",
+    [Schema.Record(Schema.String, CodexJsonExtension)],
+  ).annotate({
+    title: "ResponseStreamDisconnectedCodexErrorInfo",
+    description: "The response SSE stream disconnected in the middle of a turn before completion.",
+  }),
+  Schema.StructWithRest(
+    Schema.Struct({
+      responseTooManyFailedAttempts: Schema.StructWithRest(
+        Schema.Struct({
+          httpStatusCode: Schema.optionalKey(
+            Schema.Union([
+              Schema.Number.annotate({ format: "uint16" })
+                .check(Schema.isInt().annotate({ expected: "an integer" }))
+                .check(
+                  Schema.isGreaterThanOrEqualTo(0).annotate({
+                    expected: "a value greater than or equal to 0",
+                  }),
+                ),
+              Schema.Null,
+            ]),
+          ),
+        }),
+        [Schema.Record(Schema.String, CodexJsonExtension)],
+      ),
     }),
-  ],
-  { mode: "oneOf" },
-).annotate({
+    [Schema.Record(Schema.String, CodexJsonExtension)],
+  ).annotate({
+    title: "ResponseTooManyFailedAttemptsCodexErrorInfo",
+    description: "Reached the retry limit for responses.",
+  }),
+  Schema.StructWithRest(
+    Schema.Struct({
+      activeTurnNotSteerable: Schema.StructWithRest(
+        Schema.Struct({ turnKind: V2ThreadRevertResponse__NonSteerableTurnKind }),
+        [Schema.Record(Schema.String, CodexJsonExtension)],
+      ),
+    }),
+    [Schema.Record(Schema.String, CodexJsonExtension)],
+  ).annotate({
+    title: "ActiveTurnNotSteerableCodexErrorInfo",
+    description:
+      "Returned when `turn/start` or `turn/steer` is submitted while the current active turn cannot accept same-turn steering, for example `/review` or manual `/compact`.",
+  }),
+  Schema.Union([
+    Schema.String,
+    Schema.Record(Schema.String, Schema.Json.annotate({ expected: "JSON value" })),
+  ]),
+]).annotate({
   description:
     "This translation layer make sure that we expose codex error code in camel case.\n\nWhen an upstream HTTP status is available (for example, from the Responses API or a provider), it is forwarded in `httpStatusCode` on the relevant `codexErrorInfo` variant.",
   identifier: "V2ThreadRevertResponse__CodexErrorInfo",
@@ -36199,6 +36678,7 @@ export const V2ThreadRevertResponse__CodexErrorInfo = Schema.Union(
 export type V2ThreadRevertResponse__MisalignmentErrorDetails = {
   readonly detailedExplanation?: string | null;
   readonly errorType?: string | null;
+  readonly reviewTarget?: string | null;
   readonly steer?: V2ThreadRevertResponse__MisalignmentSteer | null;
 } & { readonly [x: string]: CodexJsonExtension };
 export const V2ThreadRevertResponse__MisalignmentErrorDetails = Schema.StructWithRest(
@@ -36217,6 +36697,15 @@ export const V2ThreadRevertResponse__MisalignmentErrorDetails = Schema.StructWit
         Schema.String.annotate({
           description:
             "Open-ended classification; clients must accept categories added by Responses.",
+        }),
+        Schema.Null,
+      ]),
+    ),
+    reviewTarget: Schema.optionalKey(
+      Schema.Union([
+        Schema.String.annotate({
+          description:
+            "Opaque server-issued block target. Presence alone does not enable target-based continuation.",
         }),
         Schema.Null,
       ]),
@@ -36635,140 +37124,142 @@ export type V2ThreadSearchResponse__CodexErrorInfo =
       readonly activeTurnNotSteerable: {
         readonly turnKind: V2ThreadSearchResponse__NonSteerableTurnKind;
       } & { readonly [x: string]: CodexJsonExtension };
-    } & { readonly [x: string]: CodexJsonExtension });
-export const V2ThreadSearchResponse__CodexErrorInfo = Schema.Union(
-  [
-    Schema.Literals([
-      "contextWindowExceeded",
-      "sessionBudgetExceeded",
-      "usageLimitExceeded",
-      "rateLimitExceeded",
-      "flexUnavailable",
-      "serverOverloaded",
-      "cyberPolicy",
-      "misalignmentPolicyViolation",
-      "tooManyDenials",
-      "internalServerError",
-      "unauthorized",
-      "badRequest",
-      "threadRollbackFailed",
-      "sandboxError",
-      "other",
-    ]),
-    Schema.StructWithRest(
-      Schema.Struct({
-        httpConnectionFailed: Schema.StructWithRest(
-          Schema.Struct({
-            httpStatusCode: Schema.optionalKey(
-              Schema.Union([
-                Schema.Number.annotate({ format: "uint16" })
-                  .check(Schema.isInt().annotate({ expected: "an integer" }))
-                  .check(
-                    Schema.isGreaterThanOrEqualTo(0).annotate({
-                      expected: "a value greater than or equal to 0",
-                    }),
-                  ),
-                Schema.Null,
-              ]),
-            ),
-          }),
-          [Schema.Record(Schema.String, CodexJsonExtension)],
-        ),
-      }),
-      [Schema.Record(Schema.String, CodexJsonExtension)],
-    ).annotate({ title: "HttpConnectionFailedCodexErrorInfo" }),
-    Schema.StructWithRest(
-      Schema.Struct({
-        responseStreamConnectionFailed: Schema.StructWithRest(
-          Schema.Struct({
-            httpStatusCode: Schema.optionalKey(
-              Schema.Union([
-                Schema.Number.annotate({ format: "uint16" })
-                  .check(Schema.isInt().annotate({ expected: "an integer" }))
-                  .check(
-                    Schema.isGreaterThanOrEqualTo(0).annotate({
-                      expected: "a value greater than or equal to 0",
-                    }),
-                  ),
-                Schema.Null,
-              ]),
-            ),
-          }),
-          [Schema.Record(Schema.String, CodexJsonExtension)],
-        ),
-      }),
-      [Schema.Record(Schema.String, CodexJsonExtension)],
-    ).annotate({
-      title: "ResponseStreamConnectionFailedCodexErrorInfo",
-      description: "Failed to connect to the response SSE stream.",
+    } & { readonly [x: string]: CodexJsonExtension })
+  | string
+  | { readonly [x: string]: Schema.Json };
+export const V2ThreadSearchResponse__CodexErrorInfo = Schema.Union([
+  Schema.Literals([
+    "contextWindowExceeded",
+    "sessionBudgetExceeded",
+    "usageLimitExceeded",
+    "rateLimitExceeded",
+    "flexUnavailable",
+    "serverOverloaded",
+    "cyberPolicy",
+    "misalignmentPolicyViolation",
+    "tooManyDenials",
+    "internalServerError",
+    "unauthorized",
+    "badRequest",
+    "threadRollbackFailed",
+    "sandboxError",
+    "other",
+  ]),
+  Schema.StructWithRest(
+    Schema.Struct({
+      httpConnectionFailed: Schema.StructWithRest(
+        Schema.Struct({
+          httpStatusCode: Schema.optionalKey(
+            Schema.Union([
+              Schema.Number.annotate({ format: "uint16" })
+                .check(Schema.isInt().annotate({ expected: "an integer" }))
+                .check(
+                  Schema.isGreaterThanOrEqualTo(0).annotate({
+                    expected: "a value greater than or equal to 0",
+                  }),
+                ),
+              Schema.Null,
+            ]),
+          ),
+        }),
+        [Schema.Record(Schema.String, CodexJsonExtension)],
+      ),
     }),
-    Schema.StructWithRest(
-      Schema.Struct({
-        responseStreamDisconnected: Schema.StructWithRest(
-          Schema.Struct({
-            httpStatusCode: Schema.optionalKey(
-              Schema.Union([
-                Schema.Number.annotate({ format: "uint16" })
-                  .check(Schema.isInt().annotate({ expected: "an integer" }))
-                  .check(
-                    Schema.isGreaterThanOrEqualTo(0).annotate({
-                      expected: "a value greater than or equal to 0",
-                    }),
-                  ),
-                Schema.Null,
-              ]),
-            ),
-          }),
-          [Schema.Record(Schema.String, CodexJsonExtension)],
-        ),
-      }),
-      [Schema.Record(Schema.String, CodexJsonExtension)],
-    ).annotate({
-      title: "ResponseStreamDisconnectedCodexErrorInfo",
-      description:
-        "The response SSE stream disconnected in the middle of a turn before completion.",
+    [Schema.Record(Schema.String, CodexJsonExtension)],
+  ).annotate({ title: "HttpConnectionFailedCodexErrorInfo" }),
+  Schema.StructWithRest(
+    Schema.Struct({
+      responseStreamConnectionFailed: Schema.StructWithRest(
+        Schema.Struct({
+          httpStatusCode: Schema.optionalKey(
+            Schema.Union([
+              Schema.Number.annotate({ format: "uint16" })
+                .check(Schema.isInt().annotate({ expected: "an integer" }))
+                .check(
+                  Schema.isGreaterThanOrEqualTo(0).annotate({
+                    expected: "a value greater than or equal to 0",
+                  }),
+                ),
+              Schema.Null,
+            ]),
+          ),
+        }),
+        [Schema.Record(Schema.String, CodexJsonExtension)],
+      ),
     }),
-    Schema.StructWithRest(
-      Schema.Struct({
-        responseTooManyFailedAttempts: Schema.StructWithRest(
-          Schema.Struct({
-            httpStatusCode: Schema.optionalKey(
-              Schema.Union([
-                Schema.Number.annotate({ format: "uint16" })
-                  .check(Schema.isInt().annotate({ expected: "an integer" }))
-                  .check(
-                    Schema.isGreaterThanOrEqualTo(0).annotate({
-                      expected: "a value greater than or equal to 0",
-                    }),
-                  ),
-                Schema.Null,
-              ]),
-            ),
-          }),
-          [Schema.Record(Schema.String, CodexJsonExtension)],
-        ),
-      }),
-      [Schema.Record(Schema.String, CodexJsonExtension)],
-    ).annotate({
-      title: "ResponseTooManyFailedAttemptsCodexErrorInfo",
-      description: "Reached the retry limit for responses.",
+    [Schema.Record(Schema.String, CodexJsonExtension)],
+  ).annotate({
+    title: "ResponseStreamConnectionFailedCodexErrorInfo",
+    description: "Failed to connect to the response SSE stream.",
+  }),
+  Schema.StructWithRest(
+    Schema.Struct({
+      responseStreamDisconnected: Schema.StructWithRest(
+        Schema.Struct({
+          httpStatusCode: Schema.optionalKey(
+            Schema.Union([
+              Schema.Number.annotate({ format: "uint16" })
+                .check(Schema.isInt().annotate({ expected: "an integer" }))
+                .check(
+                  Schema.isGreaterThanOrEqualTo(0).annotate({
+                    expected: "a value greater than or equal to 0",
+                  }),
+                ),
+              Schema.Null,
+            ]),
+          ),
+        }),
+        [Schema.Record(Schema.String, CodexJsonExtension)],
+      ),
     }),
-    Schema.StructWithRest(
-      Schema.Struct({
-        activeTurnNotSteerable: Schema.StructWithRest(
-          Schema.Struct({ turnKind: V2ThreadSearchResponse__NonSteerableTurnKind }),
-          [Schema.Record(Schema.String, CodexJsonExtension)],
-        ),
-      }),
-      [Schema.Record(Schema.String, CodexJsonExtension)],
-    ).annotate({
-      title: "ActiveTurnNotSteerableCodexErrorInfo",
-      description:
-        "Returned when `turn/start` or `turn/steer` is submitted while the current active turn cannot accept same-turn steering, for example `/review` or manual `/compact`.",
+    [Schema.Record(Schema.String, CodexJsonExtension)],
+  ).annotate({
+    title: "ResponseStreamDisconnectedCodexErrorInfo",
+    description: "The response SSE stream disconnected in the middle of a turn before completion.",
+  }),
+  Schema.StructWithRest(
+    Schema.Struct({
+      responseTooManyFailedAttempts: Schema.StructWithRest(
+        Schema.Struct({
+          httpStatusCode: Schema.optionalKey(
+            Schema.Union([
+              Schema.Number.annotate({ format: "uint16" })
+                .check(Schema.isInt().annotate({ expected: "an integer" }))
+                .check(
+                  Schema.isGreaterThanOrEqualTo(0).annotate({
+                    expected: "a value greater than or equal to 0",
+                  }),
+                ),
+              Schema.Null,
+            ]),
+          ),
+        }),
+        [Schema.Record(Schema.String, CodexJsonExtension)],
+      ),
     }),
-  ],
-  { mode: "oneOf" },
-).annotate({
+    [Schema.Record(Schema.String, CodexJsonExtension)],
+  ).annotate({
+    title: "ResponseTooManyFailedAttemptsCodexErrorInfo",
+    description: "Reached the retry limit for responses.",
+  }),
+  Schema.StructWithRest(
+    Schema.Struct({
+      activeTurnNotSteerable: Schema.StructWithRest(
+        Schema.Struct({ turnKind: V2ThreadSearchResponse__NonSteerableTurnKind }),
+        [Schema.Record(Schema.String, CodexJsonExtension)],
+      ),
+    }),
+    [Schema.Record(Schema.String, CodexJsonExtension)],
+  ).annotate({
+    title: "ActiveTurnNotSteerableCodexErrorInfo",
+    description:
+      "Returned when `turn/start` or `turn/steer` is submitted while the current active turn cannot accept same-turn steering, for example `/review` or manual `/compact`.",
+  }),
+  Schema.Union([
+    Schema.String,
+    Schema.Record(Schema.String, Schema.Json.annotate({ expected: "JSON value" })),
+  ]),
+]).annotate({
   description:
     "This translation layer make sure that we expose codex error code in camel case.\n\nWhen an upstream HTTP status is available (for example, from the Responses API or a provider), it is forwarded in `httpStatusCode` on the relevant `codexErrorInfo` variant.",
   identifier: "V2ThreadSearchResponse__CodexErrorInfo",
@@ -36777,6 +37268,7 @@ export const V2ThreadSearchResponse__CodexErrorInfo = Schema.Union(
 export type V2ThreadSearchResponse__MisalignmentErrorDetails = {
   readonly detailedExplanation?: string | null;
   readonly errorType?: string | null;
+  readonly reviewTarget?: string | null;
   readonly steer?: V2ThreadSearchResponse__MisalignmentSteer | null;
 } & { readonly [x: string]: CodexJsonExtension };
 export const V2ThreadSearchResponse__MisalignmentErrorDetails = Schema.StructWithRest(
@@ -36795,6 +37287,15 @@ export const V2ThreadSearchResponse__MisalignmentErrorDetails = Schema.StructWit
         Schema.String.annotate({
           description:
             "Open-ended classification; clients must accept categories added by Responses.",
+        }),
+        Schema.Null,
+      ]),
+    ),
+    reviewTarget: Schema.optionalKey(
+      Schema.Union([
+        Schema.String.annotate({
+          description:
+            "Opaque server-issued block target. Presence alone does not enable target-based continuation.",
         }),
         Schema.Null,
       ]),
@@ -37426,140 +37927,142 @@ export type V2ThreadStartedNotification__CodexErrorInfo =
       readonly activeTurnNotSteerable: {
         readonly turnKind: V2ThreadStartedNotification__NonSteerableTurnKind;
       } & { readonly [x: string]: CodexJsonExtension };
-    } & { readonly [x: string]: CodexJsonExtension });
-export const V2ThreadStartedNotification__CodexErrorInfo = Schema.Union(
-  [
-    Schema.Literals([
-      "contextWindowExceeded",
-      "sessionBudgetExceeded",
-      "usageLimitExceeded",
-      "rateLimitExceeded",
-      "flexUnavailable",
-      "serverOverloaded",
-      "cyberPolicy",
-      "misalignmentPolicyViolation",
-      "tooManyDenials",
-      "internalServerError",
-      "unauthorized",
-      "badRequest",
-      "threadRollbackFailed",
-      "sandboxError",
-      "other",
-    ]),
-    Schema.StructWithRest(
-      Schema.Struct({
-        httpConnectionFailed: Schema.StructWithRest(
-          Schema.Struct({
-            httpStatusCode: Schema.optionalKey(
-              Schema.Union([
-                Schema.Number.annotate({ format: "uint16" })
-                  .check(Schema.isInt().annotate({ expected: "an integer" }))
-                  .check(
-                    Schema.isGreaterThanOrEqualTo(0).annotate({
-                      expected: "a value greater than or equal to 0",
-                    }),
-                  ),
-                Schema.Null,
-              ]),
-            ),
-          }),
-          [Schema.Record(Schema.String, CodexJsonExtension)],
-        ),
-      }),
-      [Schema.Record(Schema.String, CodexJsonExtension)],
-    ).annotate({ title: "HttpConnectionFailedCodexErrorInfo" }),
-    Schema.StructWithRest(
-      Schema.Struct({
-        responseStreamConnectionFailed: Schema.StructWithRest(
-          Schema.Struct({
-            httpStatusCode: Schema.optionalKey(
-              Schema.Union([
-                Schema.Number.annotate({ format: "uint16" })
-                  .check(Schema.isInt().annotate({ expected: "an integer" }))
-                  .check(
-                    Schema.isGreaterThanOrEqualTo(0).annotate({
-                      expected: "a value greater than or equal to 0",
-                    }),
-                  ),
-                Schema.Null,
-              ]),
-            ),
-          }),
-          [Schema.Record(Schema.String, CodexJsonExtension)],
-        ),
-      }),
-      [Schema.Record(Schema.String, CodexJsonExtension)],
-    ).annotate({
-      title: "ResponseStreamConnectionFailedCodexErrorInfo",
-      description: "Failed to connect to the response SSE stream.",
+    } & { readonly [x: string]: CodexJsonExtension })
+  | string
+  | { readonly [x: string]: Schema.Json };
+export const V2ThreadStartedNotification__CodexErrorInfo = Schema.Union([
+  Schema.Literals([
+    "contextWindowExceeded",
+    "sessionBudgetExceeded",
+    "usageLimitExceeded",
+    "rateLimitExceeded",
+    "flexUnavailable",
+    "serverOverloaded",
+    "cyberPolicy",
+    "misalignmentPolicyViolation",
+    "tooManyDenials",
+    "internalServerError",
+    "unauthorized",
+    "badRequest",
+    "threadRollbackFailed",
+    "sandboxError",
+    "other",
+  ]),
+  Schema.StructWithRest(
+    Schema.Struct({
+      httpConnectionFailed: Schema.StructWithRest(
+        Schema.Struct({
+          httpStatusCode: Schema.optionalKey(
+            Schema.Union([
+              Schema.Number.annotate({ format: "uint16" })
+                .check(Schema.isInt().annotate({ expected: "an integer" }))
+                .check(
+                  Schema.isGreaterThanOrEqualTo(0).annotate({
+                    expected: "a value greater than or equal to 0",
+                  }),
+                ),
+              Schema.Null,
+            ]),
+          ),
+        }),
+        [Schema.Record(Schema.String, CodexJsonExtension)],
+      ),
     }),
-    Schema.StructWithRest(
-      Schema.Struct({
-        responseStreamDisconnected: Schema.StructWithRest(
-          Schema.Struct({
-            httpStatusCode: Schema.optionalKey(
-              Schema.Union([
-                Schema.Number.annotate({ format: "uint16" })
-                  .check(Schema.isInt().annotate({ expected: "an integer" }))
-                  .check(
-                    Schema.isGreaterThanOrEqualTo(0).annotate({
-                      expected: "a value greater than or equal to 0",
-                    }),
-                  ),
-                Schema.Null,
-              ]),
-            ),
-          }),
-          [Schema.Record(Schema.String, CodexJsonExtension)],
-        ),
-      }),
-      [Schema.Record(Schema.String, CodexJsonExtension)],
-    ).annotate({
-      title: "ResponseStreamDisconnectedCodexErrorInfo",
-      description:
-        "The response SSE stream disconnected in the middle of a turn before completion.",
+    [Schema.Record(Schema.String, CodexJsonExtension)],
+  ).annotate({ title: "HttpConnectionFailedCodexErrorInfo" }),
+  Schema.StructWithRest(
+    Schema.Struct({
+      responseStreamConnectionFailed: Schema.StructWithRest(
+        Schema.Struct({
+          httpStatusCode: Schema.optionalKey(
+            Schema.Union([
+              Schema.Number.annotate({ format: "uint16" })
+                .check(Schema.isInt().annotate({ expected: "an integer" }))
+                .check(
+                  Schema.isGreaterThanOrEqualTo(0).annotate({
+                    expected: "a value greater than or equal to 0",
+                  }),
+                ),
+              Schema.Null,
+            ]),
+          ),
+        }),
+        [Schema.Record(Schema.String, CodexJsonExtension)],
+      ),
     }),
-    Schema.StructWithRest(
-      Schema.Struct({
-        responseTooManyFailedAttempts: Schema.StructWithRest(
-          Schema.Struct({
-            httpStatusCode: Schema.optionalKey(
-              Schema.Union([
-                Schema.Number.annotate({ format: "uint16" })
-                  .check(Schema.isInt().annotate({ expected: "an integer" }))
-                  .check(
-                    Schema.isGreaterThanOrEqualTo(0).annotate({
-                      expected: "a value greater than or equal to 0",
-                    }),
-                  ),
-                Schema.Null,
-              ]),
-            ),
-          }),
-          [Schema.Record(Schema.String, CodexJsonExtension)],
-        ),
-      }),
-      [Schema.Record(Schema.String, CodexJsonExtension)],
-    ).annotate({
-      title: "ResponseTooManyFailedAttemptsCodexErrorInfo",
-      description: "Reached the retry limit for responses.",
+    [Schema.Record(Schema.String, CodexJsonExtension)],
+  ).annotate({
+    title: "ResponseStreamConnectionFailedCodexErrorInfo",
+    description: "Failed to connect to the response SSE stream.",
+  }),
+  Schema.StructWithRest(
+    Schema.Struct({
+      responseStreamDisconnected: Schema.StructWithRest(
+        Schema.Struct({
+          httpStatusCode: Schema.optionalKey(
+            Schema.Union([
+              Schema.Number.annotate({ format: "uint16" })
+                .check(Schema.isInt().annotate({ expected: "an integer" }))
+                .check(
+                  Schema.isGreaterThanOrEqualTo(0).annotate({
+                    expected: "a value greater than or equal to 0",
+                  }),
+                ),
+              Schema.Null,
+            ]),
+          ),
+        }),
+        [Schema.Record(Schema.String, CodexJsonExtension)],
+      ),
     }),
-    Schema.StructWithRest(
-      Schema.Struct({
-        activeTurnNotSteerable: Schema.StructWithRest(
-          Schema.Struct({ turnKind: V2ThreadStartedNotification__NonSteerableTurnKind }),
-          [Schema.Record(Schema.String, CodexJsonExtension)],
-        ),
-      }),
-      [Schema.Record(Schema.String, CodexJsonExtension)],
-    ).annotate({
-      title: "ActiveTurnNotSteerableCodexErrorInfo",
-      description:
-        "Returned when `turn/start` or `turn/steer` is submitted while the current active turn cannot accept same-turn steering, for example `/review` or manual `/compact`.",
+    [Schema.Record(Schema.String, CodexJsonExtension)],
+  ).annotate({
+    title: "ResponseStreamDisconnectedCodexErrorInfo",
+    description: "The response SSE stream disconnected in the middle of a turn before completion.",
+  }),
+  Schema.StructWithRest(
+    Schema.Struct({
+      responseTooManyFailedAttempts: Schema.StructWithRest(
+        Schema.Struct({
+          httpStatusCode: Schema.optionalKey(
+            Schema.Union([
+              Schema.Number.annotate({ format: "uint16" })
+                .check(Schema.isInt().annotate({ expected: "an integer" }))
+                .check(
+                  Schema.isGreaterThanOrEqualTo(0).annotate({
+                    expected: "a value greater than or equal to 0",
+                  }),
+                ),
+              Schema.Null,
+            ]),
+          ),
+        }),
+        [Schema.Record(Schema.String, CodexJsonExtension)],
+      ),
     }),
-  ],
-  { mode: "oneOf" },
-).annotate({
+    [Schema.Record(Schema.String, CodexJsonExtension)],
+  ).annotate({
+    title: "ResponseTooManyFailedAttemptsCodexErrorInfo",
+    description: "Reached the retry limit for responses.",
+  }),
+  Schema.StructWithRest(
+    Schema.Struct({
+      activeTurnNotSteerable: Schema.StructWithRest(
+        Schema.Struct({ turnKind: V2ThreadStartedNotification__NonSteerableTurnKind }),
+        [Schema.Record(Schema.String, CodexJsonExtension)],
+      ),
+    }),
+    [Schema.Record(Schema.String, CodexJsonExtension)],
+  ).annotate({
+    title: "ActiveTurnNotSteerableCodexErrorInfo",
+    description:
+      "Returned when `turn/start` or `turn/steer` is submitted while the current active turn cannot accept same-turn steering, for example `/review` or manual `/compact`.",
+  }),
+  Schema.Union([
+    Schema.String,
+    Schema.Record(Schema.String, Schema.Json.annotate({ expected: "JSON value" })),
+  ]),
+]).annotate({
   description:
     "This translation layer make sure that we expose codex error code in camel case.\n\nWhen an upstream HTTP status is available (for example, from the Responses API or a provider), it is forwarded in `httpStatusCode` on the relevant `codexErrorInfo` variant.",
   identifier: "V2ThreadStartedNotification__CodexErrorInfo",
@@ -37568,6 +38071,7 @@ export const V2ThreadStartedNotification__CodexErrorInfo = Schema.Union(
 export type V2ThreadStartedNotification__MisalignmentErrorDetails = {
   readonly detailedExplanation?: string | null;
   readonly errorType?: string | null;
+  readonly reviewTarget?: string | null;
   readonly steer?: V2ThreadStartedNotification__MisalignmentSteer | null;
 } & { readonly [x: string]: CodexJsonExtension };
 export const V2ThreadStartedNotification__MisalignmentErrorDetails = Schema.StructWithRest(
@@ -37586,6 +38090,15 @@ export const V2ThreadStartedNotification__MisalignmentErrorDetails = Schema.Stru
         Schema.String.annotate({
           description:
             "Open-ended classification; clients must accept categories added by Responses.",
+        }),
+        Schema.Null,
+      ]),
+    ),
+    reviewTarget: Schema.optionalKey(
+      Schema.Union([
+        Schema.String.annotate({
+          description:
+            "Opaque server-issued block target. Presence alone does not enable target-based continuation.",
         }),
         Schema.Null,
       ]),
@@ -38124,140 +38637,142 @@ export type V2ThreadStartResponse__CodexErrorInfo =
       readonly activeTurnNotSteerable: {
         readonly turnKind: V2ThreadStartResponse__NonSteerableTurnKind;
       } & { readonly [x: string]: CodexJsonExtension };
-    } & { readonly [x: string]: CodexJsonExtension });
-export const V2ThreadStartResponse__CodexErrorInfo = Schema.Union(
-  [
-    Schema.Literals([
-      "contextWindowExceeded",
-      "sessionBudgetExceeded",
-      "usageLimitExceeded",
-      "rateLimitExceeded",
-      "flexUnavailable",
-      "serverOverloaded",
-      "cyberPolicy",
-      "misalignmentPolicyViolation",
-      "tooManyDenials",
-      "internalServerError",
-      "unauthorized",
-      "badRequest",
-      "threadRollbackFailed",
-      "sandboxError",
-      "other",
-    ]),
-    Schema.StructWithRest(
-      Schema.Struct({
-        httpConnectionFailed: Schema.StructWithRest(
-          Schema.Struct({
-            httpStatusCode: Schema.optionalKey(
-              Schema.Union([
-                Schema.Number.annotate({ format: "uint16" })
-                  .check(Schema.isInt().annotate({ expected: "an integer" }))
-                  .check(
-                    Schema.isGreaterThanOrEqualTo(0).annotate({
-                      expected: "a value greater than or equal to 0",
-                    }),
-                  ),
-                Schema.Null,
-              ]),
-            ),
-          }),
-          [Schema.Record(Schema.String, CodexJsonExtension)],
-        ),
-      }),
-      [Schema.Record(Schema.String, CodexJsonExtension)],
-    ).annotate({ title: "HttpConnectionFailedCodexErrorInfo" }),
-    Schema.StructWithRest(
-      Schema.Struct({
-        responseStreamConnectionFailed: Schema.StructWithRest(
-          Schema.Struct({
-            httpStatusCode: Schema.optionalKey(
-              Schema.Union([
-                Schema.Number.annotate({ format: "uint16" })
-                  .check(Schema.isInt().annotate({ expected: "an integer" }))
-                  .check(
-                    Schema.isGreaterThanOrEqualTo(0).annotate({
-                      expected: "a value greater than or equal to 0",
-                    }),
-                  ),
-                Schema.Null,
-              ]),
-            ),
-          }),
-          [Schema.Record(Schema.String, CodexJsonExtension)],
-        ),
-      }),
-      [Schema.Record(Schema.String, CodexJsonExtension)],
-    ).annotate({
-      title: "ResponseStreamConnectionFailedCodexErrorInfo",
-      description: "Failed to connect to the response SSE stream.",
+    } & { readonly [x: string]: CodexJsonExtension })
+  | string
+  | { readonly [x: string]: Schema.Json };
+export const V2ThreadStartResponse__CodexErrorInfo = Schema.Union([
+  Schema.Literals([
+    "contextWindowExceeded",
+    "sessionBudgetExceeded",
+    "usageLimitExceeded",
+    "rateLimitExceeded",
+    "flexUnavailable",
+    "serverOverloaded",
+    "cyberPolicy",
+    "misalignmentPolicyViolation",
+    "tooManyDenials",
+    "internalServerError",
+    "unauthorized",
+    "badRequest",
+    "threadRollbackFailed",
+    "sandboxError",
+    "other",
+  ]),
+  Schema.StructWithRest(
+    Schema.Struct({
+      httpConnectionFailed: Schema.StructWithRest(
+        Schema.Struct({
+          httpStatusCode: Schema.optionalKey(
+            Schema.Union([
+              Schema.Number.annotate({ format: "uint16" })
+                .check(Schema.isInt().annotate({ expected: "an integer" }))
+                .check(
+                  Schema.isGreaterThanOrEqualTo(0).annotate({
+                    expected: "a value greater than or equal to 0",
+                  }),
+                ),
+              Schema.Null,
+            ]),
+          ),
+        }),
+        [Schema.Record(Schema.String, CodexJsonExtension)],
+      ),
     }),
-    Schema.StructWithRest(
-      Schema.Struct({
-        responseStreamDisconnected: Schema.StructWithRest(
-          Schema.Struct({
-            httpStatusCode: Schema.optionalKey(
-              Schema.Union([
-                Schema.Number.annotate({ format: "uint16" })
-                  .check(Schema.isInt().annotate({ expected: "an integer" }))
-                  .check(
-                    Schema.isGreaterThanOrEqualTo(0).annotate({
-                      expected: "a value greater than or equal to 0",
-                    }),
-                  ),
-                Schema.Null,
-              ]),
-            ),
-          }),
-          [Schema.Record(Schema.String, CodexJsonExtension)],
-        ),
-      }),
-      [Schema.Record(Schema.String, CodexJsonExtension)],
-    ).annotate({
-      title: "ResponseStreamDisconnectedCodexErrorInfo",
-      description:
-        "The response SSE stream disconnected in the middle of a turn before completion.",
+    [Schema.Record(Schema.String, CodexJsonExtension)],
+  ).annotate({ title: "HttpConnectionFailedCodexErrorInfo" }),
+  Schema.StructWithRest(
+    Schema.Struct({
+      responseStreamConnectionFailed: Schema.StructWithRest(
+        Schema.Struct({
+          httpStatusCode: Schema.optionalKey(
+            Schema.Union([
+              Schema.Number.annotate({ format: "uint16" })
+                .check(Schema.isInt().annotate({ expected: "an integer" }))
+                .check(
+                  Schema.isGreaterThanOrEqualTo(0).annotate({
+                    expected: "a value greater than or equal to 0",
+                  }),
+                ),
+              Schema.Null,
+            ]),
+          ),
+        }),
+        [Schema.Record(Schema.String, CodexJsonExtension)],
+      ),
     }),
-    Schema.StructWithRest(
-      Schema.Struct({
-        responseTooManyFailedAttempts: Schema.StructWithRest(
-          Schema.Struct({
-            httpStatusCode: Schema.optionalKey(
-              Schema.Union([
-                Schema.Number.annotate({ format: "uint16" })
-                  .check(Schema.isInt().annotate({ expected: "an integer" }))
-                  .check(
-                    Schema.isGreaterThanOrEqualTo(0).annotate({
-                      expected: "a value greater than or equal to 0",
-                    }),
-                  ),
-                Schema.Null,
-              ]),
-            ),
-          }),
-          [Schema.Record(Schema.String, CodexJsonExtension)],
-        ),
-      }),
-      [Schema.Record(Schema.String, CodexJsonExtension)],
-    ).annotate({
-      title: "ResponseTooManyFailedAttemptsCodexErrorInfo",
-      description: "Reached the retry limit for responses.",
+    [Schema.Record(Schema.String, CodexJsonExtension)],
+  ).annotate({
+    title: "ResponseStreamConnectionFailedCodexErrorInfo",
+    description: "Failed to connect to the response SSE stream.",
+  }),
+  Schema.StructWithRest(
+    Schema.Struct({
+      responseStreamDisconnected: Schema.StructWithRest(
+        Schema.Struct({
+          httpStatusCode: Schema.optionalKey(
+            Schema.Union([
+              Schema.Number.annotate({ format: "uint16" })
+                .check(Schema.isInt().annotate({ expected: "an integer" }))
+                .check(
+                  Schema.isGreaterThanOrEqualTo(0).annotate({
+                    expected: "a value greater than or equal to 0",
+                  }),
+                ),
+              Schema.Null,
+            ]),
+          ),
+        }),
+        [Schema.Record(Schema.String, CodexJsonExtension)],
+      ),
     }),
-    Schema.StructWithRest(
-      Schema.Struct({
-        activeTurnNotSteerable: Schema.StructWithRest(
-          Schema.Struct({ turnKind: V2ThreadStartResponse__NonSteerableTurnKind }),
-          [Schema.Record(Schema.String, CodexJsonExtension)],
-        ),
-      }),
-      [Schema.Record(Schema.String, CodexJsonExtension)],
-    ).annotate({
-      title: "ActiveTurnNotSteerableCodexErrorInfo",
-      description:
-        "Returned when `turn/start` or `turn/steer` is submitted while the current active turn cannot accept same-turn steering, for example `/review` or manual `/compact`.",
+    [Schema.Record(Schema.String, CodexJsonExtension)],
+  ).annotate({
+    title: "ResponseStreamDisconnectedCodexErrorInfo",
+    description: "The response SSE stream disconnected in the middle of a turn before completion.",
+  }),
+  Schema.StructWithRest(
+    Schema.Struct({
+      responseTooManyFailedAttempts: Schema.StructWithRest(
+        Schema.Struct({
+          httpStatusCode: Schema.optionalKey(
+            Schema.Union([
+              Schema.Number.annotate({ format: "uint16" })
+                .check(Schema.isInt().annotate({ expected: "an integer" }))
+                .check(
+                  Schema.isGreaterThanOrEqualTo(0).annotate({
+                    expected: "a value greater than or equal to 0",
+                  }),
+                ),
+              Schema.Null,
+            ]),
+          ),
+        }),
+        [Schema.Record(Schema.String, CodexJsonExtension)],
+      ),
     }),
-  ],
-  { mode: "oneOf" },
-).annotate({
+    [Schema.Record(Schema.String, CodexJsonExtension)],
+  ).annotate({
+    title: "ResponseTooManyFailedAttemptsCodexErrorInfo",
+    description: "Reached the retry limit for responses.",
+  }),
+  Schema.StructWithRest(
+    Schema.Struct({
+      activeTurnNotSteerable: Schema.StructWithRest(
+        Schema.Struct({ turnKind: V2ThreadStartResponse__NonSteerableTurnKind }),
+        [Schema.Record(Schema.String, CodexJsonExtension)],
+      ),
+    }),
+    [Schema.Record(Schema.String, CodexJsonExtension)],
+  ).annotate({
+    title: "ActiveTurnNotSteerableCodexErrorInfo",
+    description:
+      "Returned when `turn/start` or `turn/steer` is submitted while the current active turn cannot accept same-turn steering, for example `/review` or manual `/compact`.",
+  }),
+  Schema.Union([
+    Schema.String,
+    Schema.Record(Schema.String, Schema.Json.annotate({ expected: "JSON value" })),
+  ]),
+]).annotate({
   description:
     "This translation layer make sure that we expose codex error code in camel case.\n\nWhen an upstream HTTP status is available (for example, from the Responses API or a provider), it is forwarded in `httpStatusCode` on the relevant `codexErrorInfo` variant.",
   identifier: "V2ThreadStartResponse__CodexErrorInfo",
@@ -38266,6 +38781,7 @@ export const V2ThreadStartResponse__CodexErrorInfo = Schema.Union(
 export type V2ThreadStartResponse__MisalignmentErrorDetails = {
   readonly detailedExplanation?: string | null;
   readonly errorType?: string | null;
+  readonly reviewTarget?: string | null;
   readonly steer?: V2ThreadStartResponse__MisalignmentSteer | null;
 } & { readonly [x: string]: CodexJsonExtension };
 export const V2ThreadStartResponse__MisalignmentErrorDetails = Schema.StructWithRest(
@@ -38284,6 +38800,15 @@ export const V2ThreadStartResponse__MisalignmentErrorDetails = Schema.StructWith
         Schema.String.annotate({
           description:
             "Open-ended classification; clients must accept categories added by Responses.",
+        }),
+        Schema.Null,
+      ]),
+    ),
+    reviewTarget: Schema.optionalKey(
+      Schema.Union([
+        Schema.String.annotate({
+          description:
+            "Opaque server-issued block target. Presence alone does not enable target-based continuation.",
         }),
         Schema.Null,
       ]),
@@ -38845,140 +39370,142 @@ export type V2ThreadTimelineListResponse__CodexErrorInfo =
       readonly activeTurnNotSteerable: {
         readonly turnKind: V2ThreadTimelineListResponse__NonSteerableTurnKind;
       } & { readonly [x: string]: CodexJsonExtension };
-    } & { readonly [x: string]: CodexJsonExtension });
-export const V2ThreadTimelineListResponse__CodexErrorInfo = Schema.Union(
-  [
-    Schema.Literals([
-      "contextWindowExceeded",
-      "sessionBudgetExceeded",
-      "usageLimitExceeded",
-      "rateLimitExceeded",
-      "flexUnavailable",
-      "serverOverloaded",
-      "cyberPolicy",
-      "misalignmentPolicyViolation",
-      "tooManyDenials",
-      "internalServerError",
-      "unauthorized",
-      "badRequest",
-      "threadRollbackFailed",
-      "sandboxError",
-      "other",
-    ]),
-    Schema.StructWithRest(
-      Schema.Struct({
-        httpConnectionFailed: Schema.StructWithRest(
-          Schema.Struct({
-            httpStatusCode: Schema.optionalKey(
-              Schema.Union([
-                Schema.Number.annotate({ format: "uint16" })
-                  .check(Schema.isInt().annotate({ expected: "an integer" }))
-                  .check(
-                    Schema.isGreaterThanOrEqualTo(0).annotate({
-                      expected: "a value greater than or equal to 0",
-                    }),
-                  ),
-                Schema.Null,
-              ]),
-            ),
-          }),
-          [Schema.Record(Schema.String, CodexJsonExtension)],
-        ),
-      }),
-      [Schema.Record(Schema.String, CodexJsonExtension)],
-    ).annotate({ title: "HttpConnectionFailedCodexErrorInfo" }),
-    Schema.StructWithRest(
-      Schema.Struct({
-        responseStreamConnectionFailed: Schema.StructWithRest(
-          Schema.Struct({
-            httpStatusCode: Schema.optionalKey(
-              Schema.Union([
-                Schema.Number.annotate({ format: "uint16" })
-                  .check(Schema.isInt().annotate({ expected: "an integer" }))
-                  .check(
-                    Schema.isGreaterThanOrEqualTo(0).annotate({
-                      expected: "a value greater than or equal to 0",
-                    }),
-                  ),
-                Schema.Null,
-              ]),
-            ),
-          }),
-          [Schema.Record(Schema.String, CodexJsonExtension)],
-        ),
-      }),
-      [Schema.Record(Schema.String, CodexJsonExtension)],
-    ).annotate({
-      title: "ResponseStreamConnectionFailedCodexErrorInfo",
-      description: "Failed to connect to the response SSE stream.",
+    } & { readonly [x: string]: CodexJsonExtension })
+  | string
+  | { readonly [x: string]: Schema.Json };
+export const V2ThreadTimelineListResponse__CodexErrorInfo = Schema.Union([
+  Schema.Literals([
+    "contextWindowExceeded",
+    "sessionBudgetExceeded",
+    "usageLimitExceeded",
+    "rateLimitExceeded",
+    "flexUnavailable",
+    "serverOverloaded",
+    "cyberPolicy",
+    "misalignmentPolicyViolation",
+    "tooManyDenials",
+    "internalServerError",
+    "unauthorized",
+    "badRequest",
+    "threadRollbackFailed",
+    "sandboxError",
+    "other",
+  ]),
+  Schema.StructWithRest(
+    Schema.Struct({
+      httpConnectionFailed: Schema.StructWithRest(
+        Schema.Struct({
+          httpStatusCode: Schema.optionalKey(
+            Schema.Union([
+              Schema.Number.annotate({ format: "uint16" })
+                .check(Schema.isInt().annotate({ expected: "an integer" }))
+                .check(
+                  Schema.isGreaterThanOrEqualTo(0).annotate({
+                    expected: "a value greater than or equal to 0",
+                  }),
+                ),
+              Schema.Null,
+            ]),
+          ),
+        }),
+        [Schema.Record(Schema.String, CodexJsonExtension)],
+      ),
     }),
-    Schema.StructWithRest(
-      Schema.Struct({
-        responseStreamDisconnected: Schema.StructWithRest(
-          Schema.Struct({
-            httpStatusCode: Schema.optionalKey(
-              Schema.Union([
-                Schema.Number.annotate({ format: "uint16" })
-                  .check(Schema.isInt().annotate({ expected: "an integer" }))
-                  .check(
-                    Schema.isGreaterThanOrEqualTo(0).annotate({
-                      expected: "a value greater than or equal to 0",
-                    }),
-                  ),
-                Schema.Null,
-              ]),
-            ),
-          }),
-          [Schema.Record(Schema.String, CodexJsonExtension)],
-        ),
-      }),
-      [Schema.Record(Schema.String, CodexJsonExtension)],
-    ).annotate({
-      title: "ResponseStreamDisconnectedCodexErrorInfo",
-      description:
-        "The response SSE stream disconnected in the middle of a turn before completion.",
+    [Schema.Record(Schema.String, CodexJsonExtension)],
+  ).annotate({ title: "HttpConnectionFailedCodexErrorInfo" }),
+  Schema.StructWithRest(
+    Schema.Struct({
+      responseStreamConnectionFailed: Schema.StructWithRest(
+        Schema.Struct({
+          httpStatusCode: Schema.optionalKey(
+            Schema.Union([
+              Schema.Number.annotate({ format: "uint16" })
+                .check(Schema.isInt().annotate({ expected: "an integer" }))
+                .check(
+                  Schema.isGreaterThanOrEqualTo(0).annotate({
+                    expected: "a value greater than or equal to 0",
+                  }),
+                ),
+              Schema.Null,
+            ]),
+          ),
+        }),
+        [Schema.Record(Schema.String, CodexJsonExtension)],
+      ),
     }),
-    Schema.StructWithRest(
-      Schema.Struct({
-        responseTooManyFailedAttempts: Schema.StructWithRest(
-          Schema.Struct({
-            httpStatusCode: Schema.optionalKey(
-              Schema.Union([
-                Schema.Number.annotate({ format: "uint16" })
-                  .check(Schema.isInt().annotate({ expected: "an integer" }))
-                  .check(
-                    Schema.isGreaterThanOrEqualTo(0).annotate({
-                      expected: "a value greater than or equal to 0",
-                    }),
-                  ),
-                Schema.Null,
-              ]),
-            ),
-          }),
-          [Schema.Record(Schema.String, CodexJsonExtension)],
-        ),
-      }),
-      [Schema.Record(Schema.String, CodexJsonExtension)],
-    ).annotate({
-      title: "ResponseTooManyFailedAttemptsCodexErrorInfo",
-      description: "Reached the retry limit for responses.",
+    [Schema.Record(Schema.String, CodexJsonExtension)],
+  ).annotate({
+    title: "ResponseStreamConnectionFailedCodexErrorInfo",
+    description: "Failed to connect to the response SSE stream.",
+  }),
+  Schema.StructWithRest(
+    Schema.Struct({
+      responseStreamDisconnected: Schema.StructWithRest(
+        Schema.Struct({
+          httpStatusCode: Schema.optionalKey(
+            Schema.Union([
+              Schema.Number.annotate({ format: "uint16" })
+                .check(Schema.isInt().annotate({ expected: "an integer" }))
+                .check(
+                  Schema.isGreaterThanOrEqualTo(0).annotate({
+                    expected: "a value greater than or equal to 0",
+                  }),
+                ),
+              Schema.Null,
+            ]),
+          ),
+        }),
+        [Schema.Record(Schema.String, CodexJsonExtension)],
+      ),
     }),
-    Schema.StructWithRest(
-      Schema.Struct({
-        activeTurnNotSteerable: Schema.StructWithRest(
-          Schema.Struct({ turnKind: V2ThreadTimelineListResponse__NonSteerableTurnKind }),
-          [Schema.Record(Schema.String, CodexJsonExtension)],
-        ),
-      }),
-      [Schema.Record(Schema.String, CodexJsonExtension)],
-    ).annotate({
-      title: "ActiveTurnNotSteerableCodexErrorInfo",
-      description:
-        "Returned when `turn/start` or `turn/steer` is submitted while the current active turn cannot accept same-turn steering, for example `/review` or manual `/compact`.",
+    [Schema.Record(Schema.String, CodexJsonExtension)],
+  ).annotate({
+    title: "ResponseStreamDisconnectedCodexErrorInfo",
+    description: "The response SSE stream disconnected in the middle of a turn before completion.",
+  }),
+  Schema.StructWithRest(
+    Schema.Struct({
+      responseTooManyFailedAttempts: Schema.StructWithRest(
+        Schema.Struct({
+          httpStatusCode: Schema.optionalKey(
+            Schema.Union([
+              Schema.Number.annotate({ format: "uint16" })
+                .check(Schema.isInt().annotate({ expected: "an integer" }))
+                .check(
+                  Schema.isGreaterThanOrEqualTo(0).annotate({
+                    expected: "a value greater than or equal to 0",
+                  }),
+                ),
+              Schema.Null,
+            ]),
+          ),
+        }),
+        [Schema.Record(Schema.String, CodexJsonExtension)],
+      ),
     }),
-  ],
-  { mode: "oneOf" },
-).annotate({
+    [Schema.Record(Schema.String, CodexJsonExtension)],
+  ).annotate({
+    title: "ResponseTooManyFailedAttemptsCodexErrorInfo",
+    description: "Reached the retry limit for responses.",
+  }),
+  Schema.StructWithRest(
+    Schema.Struct({
+      activeTurnNotSteerable: Schema.StructWithRest(
+        Schema.Struct({ turnKind: V2ThreadTimelineListResponse__NonSteerableTurnKind }),
+        [Schema.Record(Schema.String, CodexJsonExtension)],
+      ),
+    }),
+    [Schema.Record(Schema.String, CodexJsonExtension)],
+  ).annotate({
+    title: "ActiveTurnNotSteerableCodexErrorInfo",
+    description:
+      "Returned when `turn/start` or `turn/steer` is submitted while the current active turn cannot accept same-turn steering, for example `/review` or manual `/compact`.",
+  }),
+  Schema.Union([
+    Schema.String,
+    Schema.Record(Schema.String, Schema.Json.annotate({ expected: "JSON value" })),
+  ]),
+]).annotate({
   description:
     "This translation layer make sure that we expose codex error code in camel case.\n\nWhen an upstream HTTP status is available (for example, from the Responses API or a provider), it is forwarded in `httpStatusCode` on the relevant `codexErrorInfo` variant.",
   identifier: "V2ThreadTimelineListResponse__CodexErrorInfo",
@@ -38987,6 +39514,7 @@ export const V2ThreadTimelineListResponse__CodexErrorInfo = Schema.Union(
 export type V2ThreadTimelineListResponse__MisalignmentErrorDetails = {
   readonly detailedExplanation?: string | null;
   readonly errorType?: string | null;
+  readonly reviewTarget?: string | null;
   readonly steer?: V2ThreadTimelineListResponse__MisalignmentSteer | null;
 } & { readonly [x: string]: CodexJsonExtension };
 export const V2ThreadTimelineListResponse__MisalignmentErrorDetails = Schema.StructWithRest(
@@ -39005,6 +39533,15 @@ export const V2ThreadTimelineListResponse__MisalignmentErrorDetails = Schema.Str
         Schema.String.annotate({
           description:
             "Open-ended classification; clients must accept categories added by Responses.",
+        }),
+        Schema.Null,
+      ]),
+    ),
+    reviewTarget: Schema.optionalKey(
+      Schema.Union([
+        Schema.String.annotate({
+          description:
+            "Opaque server-issued block target. Presence alone does not enable target-based continuation.",
         }),
         Schema.Null,
       ]),
@@ -39080,140 +39617,142 @@ export type V2ThreadTurnsListResponse__CodexErrorInfo =
       readonly activeTurnNotSteerable: {
         readonly turnKind: V2ThreadTurnsListResponse__NonSteerableTurnKind;
       } & { readonly [x: string]: CodexJsonExtension };
-    } & { readonly [x: string]: CodexJsonExtension });
-export const V2ThreadTurnsListResponse__CodexErrorInfo = Schema.Union(
-  [
-    Schema.Literals([
-      "contextWindowExceeded",
-      "sessionBudgetExceeded",
-      "usageLimitExceeded",
-      "rateLimitExceeded",
-      "flexUnavailable",
-      "serverOverloaded",
-      "cyberPolicy",
-      "misalignmentPolicyViolation",
-      "tooManyDenials",
-      "internalServerError",
-      "unauthorized",
-      "badRequest",
-      "threadRollbackFailed",
-      "sandboxError",
-      "other",
-    ]),
-    Schema.StructWithRest(
-      Schema.Struct({
-        httpConnectionFailed: Schema.StructWithRest(
-          Schema.Struct({
-            httpStatusCode: Schema.optionalKey(
-              Schema.Union([
-                Schema.Number.annotate({ format: "uint16" })
-                  .check(Schema.isInt().annotate({ expected: "an integer" }))
-                  .check(
-                    Schema.isGreaterThanOrEqualTo(0).annotate({
-                      expected: "a value greater than or equal to 0",
-                    }),
-                  ),
-                Schema.Null,
-              ]),
-            ),
-          }),
-          [Schema.Record(Schema.String, CodexJsonExtension)],
-        ),
-      }),
-      [Schema.Record(Schema.String, CodexJsonExtension)],
-    ).annotate({ title: "HttpConnectionFailedCodexErrorInfo" }),
-    Schema.StructWithRest(
-      Schema.Struct({
-        responseStreamConnectionFailed: Schema.StructWithRest(
-          Schema.Struct({
-            httpStatusCode: Schema.optionalKey(
-              Schema.Union([
-                Schema.Number.annotate({ format: "uint16" })
-                  .check(Schema.isInt().annotate({ expected: "an integer" }))
-                  .check(
-                    Schema.isGreaterThanOrEqualTo(0).annotate({
-                      expected: "a value greater than or equal to 0",
-                    }),
-                  ),
-                Schema.Null,
-              ]),
-            ),
-          }),
-          [Schema.Record(Schema.String, CodexJsonExtension)],
-        ),
-      }),
-      [Schema.Record(Schema.String, CodexJsonExtension)],
-    ).annotate({
-      title: "ResponseStreamConnectionFailedCodexErrorInfo",
-      description: "Failed to connect to the response SSE stream.",
+    } & { readonly [x: string]: CodexJsonExtension })
+  | string
+  | { readonly [x: string]: Schema.Json };
+export const V2ThreadTurnsListResponse__CodexErrorInfo = Schema.Union([
+  Schema.Literals([
+    "contextWindowExceeded",
+    "sessionBudgetExceeded",
+    "usageLimitExceeded",
+    "rateLimitExceeded",
+    "flexUnavailable",
+    "serverOverloaded",
+    "cyberPolicy",
+    "misalignmentPolicyViolation",
+    "tooManyDenials",
+    "internalServerError",
+    "unauthorized",
+    "badRequest",
+    "threadRollbackFailed",
+    "sandboxError",
+    "other",
+  ]),
+  Schema.StructWithRest(
+    Schema.Struct({
+      httpConnectionFailed: Schema.StructWithRest(
+        Schema.Struct({
+          httpStatusCode: Schema.optionalKey(
+            Schema.Union([
+              Schema.Number.annotate({ format: "uint16" })
+                .check(Schema.isInt().annotate({ expected: "an integer" }))
+                .check(
+                  Schema.isGreaterThanOrEqualTo(0).annotate({
+                    expected: "a value greater than or equal to 0",
+                  }),
+                ),
+              Schema.Null,
+            ]),
+          ),
+        }),
+        [Schema.Record(Schema.String, CodexJsonExtension)],
+      ),
     }),
-    Schema.StructWithRest(
-      Schema.Struct({
-        responseStreamDisconnected: Schema.StructWithRest(
-          Schema.Struct({
-            httpStatusCode: Schema.optionalKey(
-              Schema.Union([
-                Schema.Number.annotate({ format: "uint16" })
-                  .check(Schema.isInt().annotate({ expected: "an integer" }))
-                  .check(
-                    Schema.isGreaterThanOrEqualTo(0).annotate({
-                      expected: "a value greater than or equal to 0",
-                    }),
-                  ),
-                Schema.Null,
-              ]),
-            ),
-          }),
-          [Schema.Record(Schema.String, CodexJsonExtension)],
-        ),
-      }),
-      [Schema.Record(Schema.String, CodexJsonExtension)],
-    ).annotate({
-      title: "ResponseStreamDisconnectedCodexErrorInfo",
-      description:
-        "The response SSE stream disconnected in the middle of a turn before completion.",
+    [Schema.Record(Schema.String, CodexJsonExtension)],
+  ).annotate({ title: "HttpConnectionFailedCodexErrorInfo" }),
+  Schema.StructWithRest(
+    Schema.Struct({
+      responseStreamConnectionFailed: Schema.StructWithRest(
+        Schema.Struct({
+          httpStatusCode: Schema.optionalKey(
+            Schema.Union([
+              Schema.Number.annotate({ format: "uint16" })
+                .check(Schema.isInt().annotate({ expected: "an integer" }))
+                .check(
+                  Schema.isGreaterThanOrEqualTo(0).annotate({
+                    expected: "a value greater than or equal to 0",
+                  }),
+                ),
+              Schema.Null,
+            ]),
+          ),
+        }),
+        [Schema.Record(Schema.String, CodexJsonExtension)],
+      ),
     }),
-    Schema.StructWithRest(
-      Schema.Struct({
-        responseTooManyFailedAttempts: Schema.StructWithRest(
-          Schema.Struct({
-            httpStatusCode: Schema.optionalKey(
-              Schema.Union([
-                Schema.Number.annotate({ format: "uint16" })
-                  .check(Schema.isInt().annotate({ expected: "an integer" }))
-                  .check(
-                    Schema.isGreaterThanOrEqualTo(0).annotate({
-                      expected: "a value greater than or equal to 0",
-                    }),
-                  ),
-                Schema.Null,
-              ]),
-            ),
-          }),
-          [Schema.Record(Schema.String, CodexJsonExtension)],
-        ),
-      }),
-      [Schema.Record(Schema.String, CodexJsonExtension)],
-    ).annotate({
-      title: "ResponseTooManyFailedAttemptsCodexErrorInfo",
-      description: "Reached the retry limit for responses.",
+    [Schema.Record(Schema.String, CodexJsonExtension)],
+  ).annotate({
+    title: "ResponseStreamConnectionFailedCodexErrorInfo",
+    description: "Failed to connect to the response SSE stream.",
+  }),
+  Schema.StructWithRest(
+    Schema.Struct({
+      responseStreamDisconnected: Schema.StructWithRest(
+        Schema.Struct({
+          httpStatusCode: Schema.optionalKey(
+            Schema.Union([
+              Schema.Number.annotate({ format: "uint16" })
+                .check(Schema.isInt().annotate({ expected: "an integer" }))
+                .check(
+                  Schema.isGreaterThanOrEqualTo(0).annotate({
+                    expected: "a value greater than or equal to 0",
+                  }),
+                ),
+              Schema.Null,
+            ]),
+          ),
+        }),
+        [Schema.Record(Schema.String, CodexJsonExtension)],
+      ),
     }),
-    Schema.StructWithRest(
-      Schema.Struct({
-        activeTurnNotSteerable: Schema.StructWithRest(
-          Schema.Struct({ turnKind: V2ThreadTurnsListResponse__NonSteerableTurnKind }),
-          [Schema.Record(Schema.String, CodexJsonExtension)],
-        ),
-      }),
-      [Schema.Record(Schema.String, CodexJsonExtension)],
-    ).annotate({
-      title: "ActiveTurnNotSteerableCodexErrorInfo",
-      description:
-        "Returned when `turn/start` or `turn/steer` is submitted while the current active turn cannot accept same-turn steering, for example `/review` or manual `/compact`.",
+    [Schema.Record(Schema.String, CodexJsonExtension)],
+  ).annotate({
+    title: "ResponseStreamDisconnectedCodexErrorInfo",
+    description: "The response SSE stream disconnected in the middle of a turn before completion.",
+  }),
+  Schema.StructWithRest(
+    Schema.Struct({
+      responseTooManyFailedAttempts: Schema.StructWithRest(
+        Schema.Struct({
+          httpStatusCode: Schema.optionalKey(
+            Schema.Union([
+              Schema.Number.annotate({ format: "uint16" })
+                .check(Schema.isInt().annotate({ expected: "an integer" }))
+                .check(
+                  Schema.isGreaterThanOrEqualTo(0).annotate({
+                    expected: "a value greater than or equal to 0",
+                  }),
+                ),
+              Schema.Null,
+            ]),
+          ),
+        }),
+        [Schema.Record(Schema.String, CodexJsonExtension)],
+      ),
     }),
-  ],
-  { mode: "oneOf" },
-).annotate({
+    [Schema.Record(Schema.String, CodexJsonExtension)],
+  ).annotate({
+    title: "ResponseTooManyFailedAttemptsCodexErrorInfo",
+    description: "Reached the retry limit for responses.",
+  }),
+  Schema.StructWithRest(
+    Schema.Struct({
+      activeTurnNotSteerable: Schema.StructWithRest(
+        Schema.Struct({ turnKind: V2ThreadTurnsListResponse__NonSteerableTurnKind }),
+        [Schema.Record(Schema.String, CodexJsonExtension)],
+      ),
+    }),
+    [Schema.Record(Schema.String, CodexJsonExtension)],
+  ).annotate({
+    title: "ActiveTurnNotSteerableCodexErrorInfo",
+    description:
+      "Returned when `turn/start` or `turn/steer` is submitted while the current active turn cannot accept same-turn steering, for example `/review` or manual `/compact`.",
+  }),
+  Schema.Union([
+    Schema.String,
+    Schema.Record(Schema.String, Schema.Json.annotate({ expected: "JSON value" })),
+  ]),
+]).annotate({
   description:
     "This translation layer make sure that we expose codex error code in camel case.\n\nWhen an upstream HTTP status is available (for example, from the Responses API or a provider), it is forwarded in `httpStatusCode` on the relevant `codexErrorInfo` variant.",
   identifier: "V2ThreadTurnsListResponse__CodexErrorInfo",
@@ -39222,6 +39761,7 @@ export const V2ThreadTurnsListResponse__CodexErrorInfo = Schema.Union(
 export type V2ThreadTurnsListResponse__MisalignmentErrorDetails = {
   readonly detailedExplanation?: string | null;
   readonly errorType?: string | null;
+  readonly reviewTarget?: string | null;
   readonly steer?: V2ThreadTurnsListResponse__MisalignmentSteer | null;
 } & { readonly [x: string]: CodexJsonExtension };
 export const V2ThreadTurnsListResponse__MisalignmentErrorDetails = Schema.StructWithRest(
@@ -39240,6 +39780,15 @@ export const V2ThreadTurnsListResponse__MisalignmentErrorDetails = Schema.Struct
         Schema.String.annotate({
           description:
             "Open-ended classification; clients must accept categories added by Responses.",
+        }),
+        Schema.Null,
+      ]),
+    ),
+    reviewTarget: Schema.optionalKey(
+      Schema.Union([
+        Schema.String.annotate({
+          description:
+            "Opaque server-issued block target. Presence alone does not enable target-based continuation.",
         }),
         Schema.Null,
       ]),
@@ -39691,140 +40240,142 @@ export type V2ThreadUnarchiveResponse__CodexErrorInfo =
       readonly activeTurnNotSteerable: {
         readonly turnKind: V2ThreadUnarchiveResponse__NonSteerableTurnKind;
       } & { readonly [x: string]: CodexJsonExtension };
-    } & { readonly [x: string]: CodexJsonExtension });
-export const V2ThreadUnarchiveResponse__CodexErrorInfo = Schema.Union(
-  [
-    Schema.Literals([
-      "contextWindowExceeded",
-      "sessionBudgetExceeded",
-      "usageLimitExceeded",
-      "rateLimitExceeded",
-      "flexUnavailable",
-      "serverOverloaded",
-      "cyberPolicy",
-      "misalignmentPolicyViolation",
-      "tooManyDenials",
-      "internalServerError",
-      "unauthorized",
-      "badRequest",
-      "threadRollbackFailed",
-      "sandboxError",
-      "other",
-    ]),
-    Schema.StructWithRest(
-      Schema.Struct({
-        httpConnectionFailed: Schema.StructWithRest(
-          Schema.Struct({
-            httpStatusCode: Schema.optionalKey(
-              Schema.Union([
-                Schema.Number.annotate({ format: "uint16" })
-                  .check(Schema.isInt().annotate({ expected: "an integer" }))
-                  .check(
-                    Schema.isGreaterThanOrEqualTo(0).annotate({
-                      expected: "a value greater than or equal to 0",
-                    }),
-                  ),
-                Schema.Null,
-              ]),
-            ),
-          }),
-          [Schema.Record(Schema.String, CodexJsonExtension)],
-        ),
-      }),
-      [Schema.Record(Schema.String, CodexJsonExtension)],
-    ).annotate({ title: "HttpConnectionFailedCodexErrorInfo" }),
-    Schema.StructWithRest(
-      Schema.Struct({
-        responseStreamConnectionFailed: Schema.StructWithRest(
-          Schema.Struct({
-            httpStatusCode: Schema.optionalKey(
-              Schema.Union([
-                Schema.Number.annotate({ format: "uint16" })
-                  .check(Schema.isInt().annotate({ expected: "an integer" }))
-                  .check(
-                    Schema.isGreaterThanOrEqualTo(0).annotate({
-                      expected: "a value greater than or equal to 0",
-                    }),
-                  ),
-                Schema.Null,
-              ]),
-            ),
-          }),
-          [Schema.Record(Schema.String, CodexJsonExtension)],
-        ),
-      }),
-      [Schema.Record(Schema.String, CodexJsonExtension)],
-    ).annotate({
-      title: "ResponseStreamConnectionFailedCodexErrorInfo",
-      description: "Failed to connect to the response SSE stream.",
+    } & { readonly [x: string]: CodexJsonExtension })
+  | string
+  | { readonly [x: string]: Schema.Json };
+export const V2ThreadUnarchiveResponse__CodexErrorInfo = Schema.Union([
+  Schema.Literals([
+    "contextWindowExceeded",
+    "sessionBudgetExceeded",
+    "usageLimitExceeded",
+    "rateLimitExceeded",
+    "flexUnavailable",
+    "serverOverloaded",
+    "cyberPolicy",
+    "misalignmentPolicyViolation",
+    "tooManyDenials",
+    "internalServerError",
+    "unauthorized",
+    "badRequest",
+    "threadRollbackFailed",
+    "sandboxError",
+    "other",
+  ]),
+  Schema.StructWithRest(
+    Schema.Struct({
+      httpConnectionFailed: Schema.StructWithRest(
+        Schema.Struct({
+          httpStatusCode: Schema.optionalKey(
+            Schema.Union([
+              Schema.Number.annotate({ format: "uint16" })
+                .check(Schema.isInt().annotate({ expected: "an integer" }))
+                .check(
+                  Schema.isGreaterThanOrEqualTo(0).annotate({
+                    expected: "a value greater than or equal to 0",
+                  }),
+                ),
+              Schema.Null,
+            ]),
+          ),
+        }),
+        [Schema.Record(Schema.String, CodexJsonExtension)],
+      ),
     }),
-    Schema.StructWithRest(
-      Schema.Struct({
-        responseStreamDisconnected: Schema.StructWithRest(
-          Schema.Struct({
-            httpStatusCode: Schema.optionalKey(
-              Schema.Union([
-                Schema.Number.annotate({ format: "uint16" })
-                  .check(Schema.isInt().annotate({ expected: "an integer" }))
-                  .check(
-                    Schema.isGreaterThanOrEqualTo(0).annotate({
-                      expected: "a value greater than or equal to 0",
-                    }),
-                  ),
-                Schema.Null,
-              ]),
-            ),
-          }),
-          [Schema.Record(Schema.String, CodexJsonExtension)],
-        ),
-      }),
-      [Schema.Record(Schema.String, CodexJsonExtension)],
-    ).annotate({
-      title: "ResponseStreamDisconnectedCodexErrorInfo",
-      description:
-        "The response SSE stream disconnected in the middle of a turn before completion.",
+    [Schema.Record(Schema.String, CodexJsonExtension)],
+  ).annotate({ title: "HttpConnectionFailedCodexErrorInfo" }),
+  Schema.StructWithRest(
+    Schema.Struct({
+      responseStreamConnectionFailed: Schema.StructWithRest(
+        Schema.Struct({
+          httpStatusCode: Schema.optionalKey(
+            Schema.Union([
+              Schema.Number.annotate({ format: "uint16" })
+                .check(Schema.isInt().annotate({ expected: "an integer" }))
+                .check(
+                  Schema.isGreaterThanOrEqualTo(0).annotate({
+                    expected: "a value greater than or equal to 0",
+                  }),
+                ),
+              Schema.Null,
+            ]),
+          ),
+        }),
+        [Schema.Record(Schema.String, CodexJsonExtension)],
+      ),
     }),
-    Schema.StructWithRest(
-      Schema.Struct({
-        responseTooManyFailedAttempts: Schema.StructWithRest(
-          Schema.Struct({
-            httpStatusCode: Schema.optionalKey(
-              Schema.Union([
-                Schema.Number.annotate({ format: "uint16" })
-                  .check(Schema.isInt().annotate({ expected: "an integer" }))
-                  .check(
-                    Schema.isGreaterThanOrEqualTo(0).annotate({
-                      expected: "a value greater than or equal to 0",
-                    }),
-                  ),
-                Schema.Null,
-              ]),
-            ),
-          }),
-          [Schema.Record(Schema.String, CodexJsonExtension)],
-        ),
-      }),
-      [Schema.Record(Schema.String, CodexJsonExtension)],
-    ).annotate({
-      title: "ResponseTooManyFailedAttemptsCodexErrorInfo",
-      description: "Reached the retry limit for responses.",
+    [Schema.Record(Schema.String, CodexJsonExtension)],
+  ).annotate({
+    title: "ResponseStreamConnectionFailedCodexErrorInfo",
+    description: "Failed to connect to the response SSE stream.",
+  }),
+  Schema.StructWithRest(
+    Schema.Struct({
+      responseStreamDisconnected: Schema.StructWithRest(
+        Schema.Struct({
+          httpStatusCode: Schema.optionalKey(
+            Schema.Union([
+              Schema.Number.annotate({ format: "uint16" })
+                .check(Schema.isInt().annotate({ expected: "an integer" }))
+                .check(
+                  Schema.isGreaterThanOrEqualTo(0).annotate({
+                    expected: "a value greater than or equal to 0",
+                  }),
+                ),
+              Schema.Null,
+            ]),
+          ),
+        }),
+        [Schema.Record(Schema.String, CodexJsonExtension)],
+      ),
     }),
-    Schema.StructWithRest(
-      Schema.Struct({
-        activeTurnNotSteerable: Schema.StructWithRest(
-          Schema.Struct({ turnKind: V2ThreadUnarchiveResponse__NonSteerableTurnKind }),
-          [Schema.Record(Schema.String, CodexJsonExtension)],
-        ),
-      }),
-      [Schema.Record(Schema.String, CodexJsonExtension)],
-    ).annotate({
-      title: "ActiveTurnNotSteerableCodexErrorInfo",
-      description:
-        "Returned when `turn/start` or `turn/steer` is submitted while the current active turn cannot accept same-turn steering, for example `/review` or manual `/compact`.",
+    [Schema.Record(Schema.String, CodexJsonExtension)],
+  ).annotate({
+    title: "ResponseStreamDisconnectedCodexErrorInfo",
+    description: "The response SSE stream disconnected in the middle of a turn before completion.",
+  }),
+  Schema.StructWithRest(
+    Schema.Struct({
+      responseTooManyFailedAttempts: Schema.StructWithRest(
+        Schema.Struct({
+          httpStatusCode: Schema.optionalKey(
+            Schema.Union([
+              Schema.Number.annotate({ format: "uint16" })
+                .check(Schema.isInt().annotate({ expected: "an integer" }))
+                .check(
+                  Schema.isGreaterThanOrEqualTo(0).annotate({
+                    expected: "a value greater than or equal to 0",
+                  }),
+                ),
+              Schema.Null,
+            ]),
+          ),
+        }),
+        [Schema.Record(Schema.String, CodexJsonExtension)],
+      ),
     }),
-  ],
-  { mode: "oneOf" },
-).annotate({
+    [Schema.Record(Schema.String, CodexJsonExtension)],
+  ).annotate({
+    title: "ResponseTooManyFailedAttemptsCodexErrorInfo",
+    description: "Reached the retry limit for responses.",
+  }),
+  Schema.StructWithRest(
+    Schema.Struct({
+      activeTurnNotSteerable: Schema.StructWithRest(
+        Schema.Struct({ turnKind: V2ThreadUnarchiveResponse__NonSteerableTurnKind }),
+        [Schema.Record(Schema.String, CodexJsonExtension)],
+      ),
+    }),
+    [Schema.Record(Schema.String, CodexJsonExtension)],
+  ).annotate({
+    title: "ActiveTurnNotSteerableCodexErrorInfo",
+    description:
+      "Returned when `turn/start` or `turn/steer` is submitted while the current active turn cannot accept same-turn steering, for example `/review` or manual `/compact`.",
+  }),
+  Schema.Union([
+    Schema.String,
+    Schema.Record(Schema.String, Schema.Json.annotate({ expected: "JSON value" })),
+  ]),
+]).annotate({
   description:
     "This translation layer make sure that we expose codex error code in camel case.\n\nWhen an upstream HTTP status is available (for example, from the Responses API or a provider), it is forwarded in `httpStatusCode` on the relevant `codexErrorInfo` variant.",
   identifier: "V2ThreadUnarchiveResponse__CodexErrorInfo",
@@ -39833,6 +40384,7 @@ export const V2ThreadUnarchiveResponse__CodexErrorInfo = Schema.Union(
 export type V2ThreadUnarchiveResponse__MisalignmentErrorDetails = {
   readonly detailedExplanation?: string | null;
   readonly errorType?: string | null;
+  readonly reviewTarget?: string | null;
   readonly steer?: V2ThreadUnarchiveResponse__MisalignmentSteer | null;
 } & { readonly [x: string]: CodexJsonExtension };
 export const V2ThreadUnarchiveResponse__MisalignmentErrorDetails = Schema.StructWithRest(
@@ -39851,6 +40403,15 @@ export const V2ThreadUnarchiveResponse__MisalignmentErrorDetails = Schema.Struct
         Schema.String.annotate({
           description:
             "Open-ended classification; clients must accept categories added by Responses.",
+        }),
+        Schema.Null,
+      ]),
+    ),
+    reviewTarget: Schema.optionalKey(
+      Schema.Union([
+        Schema.String.annotate({
+          description:
+            "Opaque server-issued block target. Presence alone does not enable target-based continuation.",
         }),
         Schema.Null,
       ]),
@@ -40066,140 +40627,142 @@ export type V2TurnCompletedNotification__CodexErrorInfo =
       readonly activeTurnNotSteerable: {
         readonly turnKind: V2TurnCompletedNotification__NonSteerableTurnKind;
       } & { readonly [x: string]: CodexJsonExtension };
-    } & { readonly [x: string]: CodexJsonExtension });
-export const V2TurnCompletedNotification__CodexErrorInfo = Schema.Union(
-  [
-    Schema.Literals([
-      "contextWindowExceeded",
-      "sessionBudgetExceeded",
-      "usageLimitExceeded",
-      "rateLimitExceeded",
-      "flexUnavailable",
-      "serverOverloaded",
-      "cyberPolicy",
-      "misalignmentPolicyViolation",
-      "tooManyDenials",
-      "internalServerError",
-      "unauthorized",
-      "badRequest",
-      "threadRollbackFailed",
-      "sandboxError",
-      "other",
-    ]),
-    Schema.StructWithRest(
-      Schema.Struct({
-        httpConnectionFailed: Schema.StructWithRest(
-          Schema.Struct({
-            httpStatusCode: Schema.optionalKey(
-              Schema.Union([
-                Schema.Number.annotate({ format: "uint16" })
-                  .check(Schema.isInt().annotate({ expected: "an integer" }))
-                  .check(
-                    Schema.isGreaterThanOrEqualTo(0).annotate({
-                      expected: "a value greater than or equal to 0",
-                    }),
-                  ),
-                Schema.Null,
-              ]),
-            ),
-          }),
-          [Schema.Record(Schema.String, CodexJsonExtension)],
-        ),
-      }),
-      [Schema.Record(Schema.String, CodexJsonExtension)],
-    ).annotate({ title: "HttpConnectionFailedCodexErrorInfo" }),
-    Schema.StructWithRest(
-      Schema.Struct({
-        responseStreamConnectionFailed: Schema.StructWithRest(
-          Schema.Struct({
-            httpStatusCode: Schema.optionalKey(
-              Schema.Union([
-                Schema.Number.annotate({ format: "uint16" })
-                  .check(Schema.isInt().annotate({ expected: "an integer" }))
-                  .check(
-                    Schema.isGreaterThanOrEqualTo(0).annotate({
-                      expected: "a value greater than or equal to 0",
-                    }),
-                  ),
-                Schema.Null,
-              ]),
-            ),
-          }),
-          [Schema.Record(Schema.String, CodexJsonExtension)],
-        ),
-      }),
-      [Schema.Record(Schema.String, CodexJsonExtension)],
-    ).annotate({
-      title: "ResponseStreamConnectionFailedCodexErrorInfo",
-      description: "Failed to connect to the response SSE stream.",
+    } & { readonly [x: string]: CodexJsonExtension })
+  | string
+  | { readonly [x: string]: Schema.Json };
+export const V2TurnCompletedNotification__CodexErrorInfo = Schema.Union([
+  Schema.Literals([
+    "contextWindowExceeded",
+    "sessionBudgetExceeded",
+    "usageLimitExceeded",
+    "rateLimitExceeded",
+    "flexUnavailable",
+    "serverOverloaded",
+    "cyberPolicy",
+    "misalignmentPolicyViolation",
+    "tooManyDenials",
+    "internalServerError",
+    "unauthorized",
+    "badRequest",
+    "threadRollbackFailed",
+    "sandboxError",
+    "other",
+  ]),
+  Schema.StructWithRest(
+    Schema.Struct({
+      httpConnectionFailed: Schema.StructWithRest(
+        Schema.Struct({
+          httpStatusCode: Schema.optionalKey(
+            Schema.Union([
+              Schema.Number.annotate({ format: "uint16" })
+                .check(Schema.isInt().annotate({ expected: "an integer" }))
+                .check(
+                  Schema.isGreaterThanOrEqualTo(0).annotate({
+                    expected: "a value greater than or equal to 0",
+                  }),
+                ),
+              Schema.Null,
+            ]),
+          ),
+        }),
+        [Schema.Record(Schema.String, CodexJsonExtension)],
+      ),
     }),
-    Schema.StructWithRest(
-      Schema.Struct({
-        responseStreamDisconnected: Schema.StructWithRest(
-          Schema.Struct({
-            httpStatusCode: Schema.optionalKey(
-              Schema.Union([
-                Schema.Number.annotate({ format: "uint16" })
-                  .check(Schema.isInt().annotate({ expected: "an integer" }))
-                  .check(
-                    Schema.isGreaterThanOrEqualTo(0).annotate({
-                      expected: "a value greater than or equal to 0",
-                    }),
-                  ),
-                Schema.Null,
-              ]),
-            ),
-          }),
-          [Schema.Record(Schema.String, CodexJsonExtension)],
-        ),
-      }),
-      [Schema.Record(Schema.String, CodexJsonExtension)],
-    ).annotate({
-      title: "ResponseStreamDisconnectedCodexErrorInfo",
-      description:
-        "The response SSE stream disconnected in the middle of a turn before completion.",
+    [Schema.Record(Schema.String, CodexJsonExtension)],
+  ).annotate({ title: "HttpConnectionFailedCodexErrorInfo" }),
+  Schema.StructWithRest(
+    Schema.Struct({
+      responseStreamConnectionFailed: Schema.StructWithRest(
+        Schema.Struct({
+          httpStatusCode: Schema.optionalKey(
+            Schema.Union([
+              Schema.Number.annotate({ format: "uint16" })
+                .check(Schema.isInt().annotate({ expected: "an integer" }))
+                .check(
+                  Schema.isGreaterThanOrEqualTo(0).annotate({
+                    expected: "a value greater than or equal to 0",
+                  }),
+                ),
+              Schema.Null,
+            ]),
+          ),
+        }),
+        [Schema.Record(Schema.String, CodexJsonExtension)],
+      ),
     }),
-    Schema.StructWithRest(
-      Schema.Struct({
-        responseTooManyFailedAttempts: Schema.StructWithRest(
-          Schema.Struct({
-            httpStatusCode: Schema.optionalKey(
-              Schema.Union([
-                Schema.Number.annotate({ format: "uint16" })
-                  .check(Schema.isInt().annotate({ expected: "an integer" }))
-                  .check(
-                    Schema.isGreaterThanOrEqualTo(0).annotate({
-                      expected: "a value greater than or equal to 0",
-                    }),
-                  ),
-                Schema.Null,
-              ]),
-            ),
-          }),
-          [Schema.Record(Schema.String, CodexJsonExtension)],
-        ),
-      }),
-      [Schema.Record(Schema.String, CodexJsonExtension)],
-    ).annotate({
-      title: "ResponseTooManyFailedAttemptsCodexErrorInfo",
-      description: "Reached the retry limit for responses.",
+    [Schema.Record(Schema.String, CodexJsonExtension)],
+  ).annotate({
+    title: "ResponseStreamConnectionFailedCodexErrorInfo",
+    description: "Failed to connect to the response SSE stream.",
+  }),
+  Schema.StructWithRest(
+    Schema.Struct({
+      responseStreamDisconnected: Schema.StructWithRest(
+        Schema.Struct({
+          httpStatusCode: Schema.optionalKey(
+            Schema.Union([
+              Schema.Number.annotate({ format: "uint16" })
+                .check(Schema.isInt().annotate({ expected: "an integer" }))
+                .check(
+                  Schema.isGreaterThanOrEqualTo(0).annotate({
+                    expected: "a value greater than or equal to 0",
+                  }),
+                ),
+              Schema.Null,
+            ]),
+          ),
+        }),
+        [Schema.Record(Schema.String, CodexJsonExtension)],
+      ),
     }),
-    Schema.StructWithRest(
-      Schema.Struct({
-        activeTurnNotSteerable: Schema.StructWithRest(
-          Schema.Struct({ turnKind: V2TurnCompletedNotification__NonSteerableTurnKind }),
-          [Schema.Record(Schema.String, CodexJsonExtension)],
-        ),
-      }),
-      [Schema.Record(Schema.String, CodexJsonExtension)],
-    ).annotate({
-      title: "ActiveTurnNotSteerableCodexErrorInfo",
-      description:
-        "Returned when `turn/start` or `turn/steer` is submitted while the current active turn cannot accept same-turn steering, for example `/review` or manual `/compact`.",
+    [Schema.Record(Schema.String, CodexJsonExtension)],
+  ).annotate({
+    title: "ResponseStreamDisconnectedCodexErrorInfo",
+    description: "The response SSE stream disconnected in the middle of a turn before completion.",
+  }),
+  Schema.StructWithRest(
+    Schema.Struct({
+      responseTooManyFailedAttempts: Schema.StructWithRest(
+        Schema.Struct({
+          httpStatusCode: Schema.optionalKey(
+            Schema.Union([
+              Schema.Number.annotate({ format: "uint16" })
+                .check(Schema.isInt().annotate({ expected: "an integer" }))
+                .check(
+                  Schema.isGreaterThanOrEqualTo(0).annotate({
+                    expected: "a value greater than or equal to 0",
+                  }),
+                ),
+              Schema.Null,
+            ]),
+          ),
+        }),
+        [Schema.Record(Schema.String, CodexJsonExtension)],
+      ),
     }),
-  ],
-  { mode: "oneOf" },
-).annotate({
+    [Schema.Record(Schema.String, CodexJsonExtension)],
+  ).annotate({
+    title: "ResponseTooManyFailedAttemptsCodexErrorInfo",
+    description: "Reached the retry limit for responses.",
+  }),
+  Schema.StructWithRest(
+    Schema.Struct({
+      activeTurnNotSteerable: Schema.StructWithRest(
+        Schema.Struct({ turnKind: V2TurnCompletedNotification__NonSteerableTurnKind }),
+        [Schema.Record(Schema.String, CodexJsonExtension)],
+      ),
+    }),
+    [Schema.Record(Schema.String, CodexJsonExtension)],
+  ).annotate({
+    title: "ActiveTurnNotSteerableCodexErrorInfo",
+    description:
+      "Returned when `turn/start` or `turn/steer` is submitted while the current active turn cannot accept same-turn steering, for example `/review` or manual `/compact`.",
+  }),
+  Schema.Union([
+    Schema.String,
+    Schema.Record(Schema.String, Schema.Json.annotate({ expected: "JSON value" })),
+  ]),
+]).annotate({
   description:
     "This translation layer make sure that we expose codex error code in camel case.\n\nWhen an upstream HTTP status is available (for example, from the Responses API or a provider), it is forwarded in `httpStatusCode` on the relevant `codexErrorInfo` variant.",
   identifier: "V2TurnCompletedNotification__CodexErrorInfo",
@@ -40208,6 +40771,7 @@ export const V2TurnCompletedNotification__CodexErrorInfo = Schema.Union(
 export type V2TurnCompletedNotification__MisalignmentErrorDetails = {
   readonly detailedExplanation?: string | null;
   readonly errorType?: string | null;
+  readonly reviewTarget?: string | null;
   readonly steer?: V2TurnCompletedNotification__MisalignmentSteer | null;
 } & { readonly [x: string]: CodexJsonExtension };
 export const V2TurnCompletedNotification__MisalignmentErrorDetails = Schema.StructWithRest(
@@ -40226,6 +40790,15 @@ export const V2TurnCompletedNotification__MisalignmentErrorDetails = Schema.Stru
         Schema.String.annotate({
           description:
             "Open-ended classification; clients must accept categories added by Responses.",
+        }),
+        Schema.Null,
+      ]),
+    ),
+    reviewTarget: Schema.optionalKey(
+      Schema.Union([
+        Schema.String.annotate({
+          description:
+            "Opaque server-issued block target. Presence alone does not enable target-based continuation.",
         }),
         Schema.Null,
       ]),
@@ -40508,140 +41081,142 @@ export type V2TurnStartedNotification__CodexErrorInfo =
       readonly activeTurnNotSteerable: {
         readonly turnKind: V2TurnStartedNotification__NonSteerableTurnKind;
       } & { readonly [x: string]: CodexJsonExtension };
-    } & { readonly [x: string]: CodexJsonExtension });
-export const V2TurnStartedNotification__CodexErrorInfo = Schema.Union(
-  [
-    Schema.Literals([
-      "contextWindowExceeded",
-      "sessionBudgetExceeded",
-      "usageLimitExceeded",
-      "rateLimitExceeded",
-      "flexUnavailable",
-      "serverOverloaded",
-      "cyberPolicy",
-      "misalignmentPolicyViolation",
-      "tooManyDenials",
-      "internalServerError",
-      "unauthorized",
-      "badRequest",
-      "threadRollbackFailed",
-      "sandboxError",
-      "other",
-    ]),
-    Schema.StructWithRest(
-      Schema.Struct({
-        httpConnectionFailed: Schema.StructWithRest(
-          Schema.Struct({
-            httpStatusCode: Schema.optionalKey(
-              Schema.Union([
-                Schema.Number.annotate({ format: "uint16" })
-                  .check(Schema.isInt().annotate({ expected: "an integer" }))
-                  .check(
-                    Schema.isGreaterThanOrEqualTo(0).annotate({
-                      expected: "a value greater than or equal to 0",
-                    }),
-                  ),
-                Schema.Null,
-              ]),
-            ),
-          }),
-          [Schema.Record(Schema.String, CodexJsonExtension)],
-        ),
-      }),
-      [Schema.Record(Schema.String, CodexJsonExtension)],
-    ).annotate({ title: "HttpConnectionFailedCodexErrorInfo" }),
-    Schema.StructWithRest(
-      Schema.Struct({
-        responseStreamConnectionFailed: Schema.StructWithRest(
-          Schema.Struct({
-            httpStatusCode: Schema.optionalKey(
-              Schema.Union([
-                Schema.Number.annotate({ format: "uint16" })
-                  .check(Schema.isInt().annotate({ expected: "an integer" }))
-                  .check(
-                    Schema.isGreaterThanOrEqualTo(0).annotate({
-                      expected: "a value greater than or equal to 0",
-                    }),
-                  ),
-                Schema.Null,
-              ]),
-            ),
-          }),
-          [Schema.Record(Schema.String, CodexJsonExtension)],
-        ),
-      }),
-      [Schema.Record(Schema.String, CodexJsonExtension)],
-    ).annotate({
-      title: "ResponseStreamConnectionFailedCodexErrorInfo",
-      description: "Failed to connect to the response SSE stream.",
+    } & { readonly [x: string]: CodexJsonExtension })
+  | string
+  | { readonly [x: string]: Schema.Json };
+export const V2TurnStartedNotification__CodexErrorInfo = Schema.Union([
+  Schema.Literals([
+    "contextWindowExceeded",
+    "sessionBudgetExceeded",
+    "usageLimitExceeded",
+    "rateLimitExceeded",
+    "flexUnavailable",
+    "serverOverloaded",
+    "cyberPolicy",
+    "misalignmentPolicyViolation",
+    "tooManyDenials",
+    "internalServerError",
+    "unauthorized",
+    "badRequest",
+    "threadRollbackFailed",
+    "sandboxError",
+    "other",
+  ]),
+  Schema.StructWithRest(
+    Schema.Struct({
+      httpConnectionFailed: Schema.StructWithRest(
+        Schema.Struct({
+          httpStatusCode: Schema.optionalKey(
+            Schema.Union([
+              Schema.Number.annotate({ format: "uint16" })
+                .check(Schema.isInt().annotate({ expected: "an integer" }))
+                .check(
+                  Schema.isGreaterThanOrEqualTo(0).annotate({
+                    expected: "a value greater than or equal to 0",
+                  }),
+                ),
+              Schema.Null,
+            ]),
+          ),
+        }),
+        [Schema.Record(Schema.String, CodexJsonExtension)],
+      ),
     }),
-    Schema.StructWithRest(
-      Schema.Struct({
-        responseStreamDisconnected: Schema.StructWithRest(
-          Schema.Struct({
-            httpStatusCode: Schema.optionalKey(
-              Schema.Union([
-                Schema.Number.annotate({ format: "uint16" })
-                  .check(Schema.isInt().annotate({ expected: "an integer" }))
-                  .check(
-                    Schema.isGreaterThanOrEqualTo(0).annotate({
-                      expected: "a value greater than or equal to 0",
-                    }),
-                  ),
-                Schema.Null,
-              ]),
-            ),
-          }),
-          [Schema.Record(Schema.String, CodexJsonExtension)],
-        ),
-      }),
-      [Schema.Record(Schema.String, CodexJsonExtension)],
-    ).annotate({
-      title: "ResponseStreamDisconnectedCodexErrorInfo",
-      description:
-        "The response SSE stream disconnected in the middle of a turn before completion.",
+    [Schema.Record(Schema.String, CodexJsonExtension)],
+  ).annotate({ title: "HttpConnectionFailedCodexErrorInfo" }),
+  Schema.StructWithRest(
+    Schema.Struct({
+      responseStreamConnectionFailed: Schema.StructWithRest(
+        Schema.Struct({
+          httpStatusCode: Schema.optionalKey(
+            Schema.Union([
+              Schema.Number.annotate({ format: "uint16" })
+                .check(Schema.isInt().annotate({ expected: "an integer" }))
+                .check(
+                  Schema.isGreaterThanOrEqualTo(0).annotate({
+                    expected: "a value greater than or equal to 0",
+                  }),
+                ),
+              Schema.Null,
+            ]),
+          ),
+        }),
+        [Schema.Record(Schema.String, CodexJsonExtension)],
+      ),
     }),
-    Schema.StructWithRest(
-      Schema.Struct({
-        responseTooManyFailedAttempts: Schema.StructWithRest(
-          Schema.Struct({
-            httpStatusCode: Schema.optionalKey(
-              Schema.Union([
-                Schema.Number.annotate({ format: "uint16" })
-                  .check(Schema.isInt().annotate({ expected: "an integer" }))
-                  .check(
-                    Schema.isGreaterThanOrEqualTo(0).annotate({
-                      expected: "a value greater than or equal to 0",
-                    }),
-                  ),
-                Schema.Null,
-              ]),
-            ),
-          }),
-          [Schema.Record(Schema.String, CodexJsonExtension)],
-        ),
-      }),
-      [Schema.Record(Schema.String, CodexJsonExtension)],
-    ).annotate({
-      title: "ResponseTooManyFailedAttemptsCodexErrorInfo",
-      description: "Reached the retry limit for responses.",
+    [Schema.Record(Schema.String, CodexJsonExtension)],
+  ).annotate({
+    title: "ResponseStreamConnectionFailedCodexErrorInfo",
+    description: "Failed to connect to the response SSE stream.",
+  }),
+  Schema.StructWithRest(
+    Schema.Struct({
+      responseStreamDisconnected: Schema.StructWithRest(
+        Schema.Struct({
+          httpStatusCode: Schema.optionalKey(
+            Schema.Union([
+              Schema.Number.annotate({ format: "uint16" })
+                .check(Schema.isInt().annotate({ expected: "an integer" }))
+                .check(
+                  Schema.isGreaterThanOrEqualTo(0).annotate({
+                    expected: "a value greater than or equal to 0",
+                  }),
+                ),
+              Schema.Null,
+            ]),
+          ),
+        }),
+        [Schema.Record(Schema.String, CodexJsonExtension)],
+      ),
     }),
-    Schema.StructWithRest(
-      Schema.Struct({
-        activeTurnNotSteerable: Schema.StructWithRest(
-          Schema.Struct({ turnKind: V2TurnStartedNotification__NonSteerableTurnKind }),
-          [Schema.Record(Schema.String, CodexJsonExtension)],
-        ),
-      }),
-      [Schema.Record(Schema.String, CodexJsonExtension)],
-    ).annotate({
-      title: "ActiveTurnNotSteerableCodexErrorInfo",
-      description:
-        "Returned when `turn/start` or `turn/steer` is submitted while the current active turn cannot accept same-turn steering, for example `/review` or manual `/compact`.",
+    [Schema.Record(Schema.String, CodexJsonExtension)],
+  ).annotate({
+    title: "ResponseStreamDisconnectedCodexErrorInfo",
+    description: "The response SSE stream disconnected in the middle of a turn before completion.",
+  }),
+  Schema.StructWithRest(
+    Schema.Struct({
+      responseTooManyFailedAttempts: Schema.StructWithRest(
+        Schema.Struct({
+          httpStatusCode: Schema.optionalKey(
+            Schema.Union([
+              Schema.Number.annotate({ format: "uint16" })
+                .check(Schema.isInt().annotate({ expected: "an integer" }))
+                .check(
+                  Schema.isGreaterThanOrEqualTo(0).annotate({
+                    expected: "a value greater than or equal to 0",
+                  }),
+                ),
+              Schema.Null,
+            ]),
+          ),
+        }),
+        [Schema.Record(Schema.String, CodexJsonExtension)],
+      ),
     }),
-  ],
-  { mode: "oneOf" },
-).annotate({
+    [Schema.Record(Schema.String, CodexJsonExtension)],
+  ).annotate({
+    title: "ResponseTooManyFailedAttemptsCodexErrorInfo",
+    description: "Reached the retry limit for responses.",
+  }),
+  Schema.StructWithRest(
+    Schema.Struct({
+      activeTurnNotSteerable: Schema.StructWithRest(
+        Schema.Struct({ turnKind: V2TurnStartedNotification__NonSteerableTurnKind }),
+        [Schema.Record(Schema.String, CodexJsonExtension)],
+      ),
+    }),
+    [Schema.Record(Schema.String, CodexJsonExtension)],
+  ).annotate({
+    title: "ActiveTurnNotSteerableCodexErrorInfo",
+    description:
+      "Returned when `turn/start` or `turn/steer` is submitted while the current active turn cannot accept same-turn steering, for example `/review` or manual `/compact`.",
+  }),
+  Schema.Union([
+    Schema.String,
+    Schema.Record(Schema.String, Schema.Json.annotate({ expected: "JSON value" })),
+  ]),
+]).annotate({
   description:
     "This translation layer make sure that we expose codex error code in camel case.\n\nWhen an upstream HTTP status is available (for example, from the Responses API or a provider), it is forwarded in `httpStatusCode` on the relevant `codexErrorInfo` variant.",
   identifier: "V2TurnStartedNotification__CodexErrorInfo",
@@ -40650,6 +41225,7 @@ export const V2TurnStartedNotification__CodexErrorInfo = Schema.Union(
 export type V2TurnStartedNotification__MisalignmentErrorDetails = {
   readonly detailedExplanation?: string | null;
   readonly errorType?: string | null;
+  readonly reviewTarget?: string | null;
   readonly steer?: V2TurnStartedNotification__MisalignmentSteer | null;
 } & { readonly [x: string]: CodexJsonExtension };
 export const V2TurnStartedNotification__MisalignmentErrorDetails = Schema.StructWithRest(
@@ -40668,6 +41244,15 @@ export const V2TurnStartedNotification__MisalignmentErrorDetails = Schema.Struct
         Schema.String.annotate({
           description:
             "Open-ended classification; clients must accept categories added by Responses.",
+        }),
+        Schema.Null,
+      ]),
+    ),
+    reviewTarget: Schema.optionalKey(
+      Schema.Union([
+        Schema.String.annotate({
+          description:
+            "Opaque server-issued block target. Presence alone does not enable target-based continuation.",
         }),
         Schema.Null,
       ]),
@@ -41156,140 +41741,142 @@ export type V2TurnStartResponse__CodexErrorInfo =
       readonly activeTurnNotSteerable: {
         readonly turnKind: V2TurnStartResponse__NonSteerableTurnKind;
       } & { readonly [x: string]: CodexJsonExtension };
-    } & { readonly [x: string]: CodexJsonExtension });
-export const V2TurnStartResponse__CodexErrorInfo = Schema.Union(
-  [
-    Schema.Literals([
-      "contextWindowExceeded",
-      "sessionBudgetExceeded",
-      "usageLimitExceeded",
-      "rateLimitExceeded",
-      "flexUnavailable",
-      "serverOverloaded",
-      "cyberPolicy",
-      "misalignmentPolicyViolation",
-      "tooManyDenials",
-      "internalServerError",
-      "unauthorized",
-      "badRequest",
-      "threadRollbackFailed",
-      "sandboxError",
-      "other",
-    ]),
-    Schema.StructWithRest(
-      Schema.Struct({
-        httpConnectionFailed: Schema.StructWithRest(
-          Schema.Struct({
-            httpStatusCode: Schema.optionalKey(
-              Schema.Union([
-                Schema.Number.annotate({ format: "uint16" })
-                  .check(Schema.isInt().annotate({ expected: "an integer" }))
-                  .check(
-                    Schema.isGreaterThanOrEqualTo(0).annotate({
-                      expected: "a value greater than or equal to 0",
-                    }),
-                  ),
-                Schema.Null,
-              ]),
-            ),
-          }),
-          [Schema.Record(Schema.String, CodexJsonExtension)],
-        ),
-      }),
-      [Schema.Record(Schema.String, CodexJsonExtension)],
-    ).annotate({ title: "HttpConnectionFailedCodexErrorInfo" }),
-    Schema.StructWithRest(
-      Schema.Struct({
-        responseStreamConnectionFailed: Schema.StructWithRest(
-          Schema.Struct({
-            httpStatusCode: Schema.optionalKey(
-              Schema.Union([
-                Schema.Number.annotate({ format: "uint16" })
-                  .check(Schema.isInt().annotate({ expected: "an integer" }))
-                  .check(
-                    Schema.isGreaterThanOrEqualTo(0).annotate({
-                      expected: "a value greater than or equal to 0",
-                    }),
-                  ),
-                Schema.Null,
-              ]),
-            ),
-          }),
-          [Schema.Record(Schema.String, CodexJsonExtension)],
-        ),
-      }),
-      [Schema.Record(Schema.String, CodexJsonExtension)],
-    ).annotate({
-      title: "ResponseStreamConnectionFailedCodexErrorInfo",
-      description: "Failed to connect to the response SSE stream.",
+    } & { readonly [x: string]: CodexJsonExtension })
+  | string
+  | { readonly [x: string]: Schema.Json };
+export const V2TurnStartResponse__CodexErrorInfo = Schema.Union([
+  Schema.Literals([
+    "contextWindowExceeded",
+    "sessionBudgetExceeded",
+    "usageLimitExceeded",
+    "rateLimitExceeded",
+    "flexUnavailable",
+    "serverOverloaded",
+    "cyberPolicy",
+    "misalignmentPolicyViolation",
+    "tooManyDenials",
+    "internalServerError",
+    "unauthorized",
+    "badRequest",
+    "threadRollbackFailed",
+    "sandboxError",
+    "other",
+  ]),
+  Schema.StructWithRest(
+    Schema.Struct({
+      httpConnectionFailed: Schema.StructWithRest(
+        Schema.Struct({
+          httpStatusCode: Schema.optionalKey(
+            Schema.Union([
+              Schema.Number.annotate({ format: "uint16" })
+                .check(Schema.isInt().annotate({ expected: "an integer" }))
+                .check(
+                  Schema.isGreaterThanOrEqualTo(0).annotate({
+                    expected: "a value greater than or equal to 0",
+                  }),
+                ),
+              Schema.Null,
+            ]),
+          ),
+        }),
+        [Schema.Record(Schema.String, CodexJsonExtension)],
+      ),
     }),
-    Schema.StructWithRest(
-      Schema.Struct({
-        responseStreamDisconnected: Schema.StructWithRest(
-          Schema.Struct({
-            httpStatusCode: Schema.optionalKey(
-              Schema.Union([
-                Schema.Number.annotate({ format: "uint16" })
-                  .check(Schema.isInt().annotate({ expected: "an integer" }))
-                  .check(
-                    Schema.isGreaterThanOrEqualTo(0).annotate({
-                      expected: "a value greater than or equal to 0",
-                    }),
-                  ),
-                Schema.Null,
-              ]),
-            ),
-          }),
-          [Schema.Record(Schema.String, CodexJsonExtension)],
-        ),
-      }),
-      [Schema.Record(Schema.String, CodexJsonExtension)],
-    ).annotate({
-      title: "ResponseStreamDisconnectedCodexErrorInfo",
-      description:
-        "The response SSE stream disconnected in the middle of a turn before completion.",
+    [Schema.Record(Schema.String, CodexJsonExtension)],
+  ).annotate({ title: "HttpConnectionFailedCodexErrorInfo" }),
+  Schema.StructWithRest(
+    Schema.Struct({
+      responseStreamConnectionFailed: Schema.StructWithRest(
+        Schema.Struct({
+          httpStatusCode: Schema.optionalKey(
+            Schema.Union([
+              Schema.Number.annotate({ format: "uint16" })
+                .check(Schema.isInt().annotate({ expected: "an integer" }))
+                .check(
+                  Schema.isGreaterThanOrEqualTo(0).annotate({
+                    expected: "a value greater than or equal to 0",
+                  }),
+                ),
+              Schema.Null,
+            ]),
+          ),
+        }),
+        [Schema.Record(Schema.String, CodexJsonExtension)],
+      ),
     }),
-    Schema.StructWithRest(
-      Schema.Struct({
-        responseTooManyFailedAttempts: Schema.StructWithRest(
-          Schema.Struct({
-            httpStatusCode: Schema.optionalKey(
-              Schema.Union([
-                Schema.Number.annotate({ format: "uint16" })
-                  .check(Schema.isInt().annotate({ expected: "an integer" }))
-                  .check(
-                    Schema.isGreaterThanOrEqualTo(0).annotate({
-                      expected: "a value greater than or equal to 0",
-                    }),
-                  ),
-                Schema.Null,
-              ]),
-            ),
-          }),
-          [Schema.Record(Schema.String, CodexJsonExtension)],
-        ),
-      }),
-      [Schema.Record(Schema.String, CodexJsonExtension)],
-    ).annotate({
-      title: "ResponseTooManyFailedAttemptsCodexErrorInfo",
-      description: "Reached the retry limit for responses.",
+    [Schema.Record(Schema.String, CodexJsonExtension)],
+  ).annotate({
+    title: "ResponseStreamConnectionFailedCodexErrorInfo",
+    description: "Failed to connect to the response SSE stream.",
+  }),
+  Schema.StructWithRest(
+    Schema.Struct({
+      responseStreamDisconnected: Schema.StructWithRest(
+        Schema.Struct({
+          httpStatusCode: Schema.optionalKey(
+            Schema.Union([
+              Schema.Number.annotate({ format: "uint16" })
+                .check(Schema.isInt().annotate({ expected: "an integer" }))
+                .check(
+                  Schema.isGreaterThanOrEqualTo(0).annotate({
+                    expected: "a value greater than or equal to 0",
+                  }),
+                ),
+              Schema.Null,
+            ]),
+          ),
+        }),
+        [Schema.Record(Schema.String, CodexJsonExtension)],
+      ),
     }),
-    Schema.StructWithRest(
-      Schema.Struct({
-        activeTurnNotSteerable: Schema.StructWithRest(
-          Schema.Struct({ turnKind: V2TurnStartResponse__NonSteerableTurnKind }),
-          [Schema.Record(Schema.String, CodexJsonExtension)],
-        ),
-      }),
-      [Schema.Record(Schema.String, CodexJsonExtension)],
-    ).annotate({
-      title: "ActiveTurnNotSteerableCodexErrorInfo",
-      description:
-        "Returned when `turn/start` or `turn/steer` is submitted while the current active turn cannot accept same-turn steering, for example `/review` or manual `/compact`.",
+    [Schema.Record(Schema.String, CodexJsonExtension)],
+  ).annotate({
+    title: "ResponseStreamDisconnectedCodexErrorInfo",
+    description: "The response SSE stream disconnected in the middle of a turn before completion.",
+  }),
+  Schema.StructWithRest(
+    Schema.Struct({
+      responseTooManyFailedAttempts: Schema.StructWithRest(
+        Schema.Struct({
+          httpStatusCode: Schema.optionalKey(
+            Schema.Union([
+              Schema.Number.annotate({ format: "uint16" })
+                .check(Schema.isInt().annotate({ expected: "an integer" }))
+                .check(
+                  Schema.isGreaterThanOrEqualTo(0).annotate({
+                    expected: "a value greater than or equal to 0",
+                  }),
+                ),
+              Schema.Null,
+            ]),
+          ),
+        }),
+        [Schema.Record(Schema.String, CodexJsonExtension)],
+      ),
     }),
-  ],
-  { mode: "oneOf" },
-).annotate({
+    [Schema.Record(Schema.String, CodexJsonExtension)],
+  ).annotate({
+    title: "ResponseTooManyFailedAttemptsCodexErrorInfo",
+    description: "Reached the retry limit for responses.",
+  }),
+  Schema.StructWithRest(
+    Schema.Struct({
+      activeTurnNotSteerable: Schema.StructWithRest(
+        Schema.Struct({ turnKind: V2TurnStartResponse__NonSteerableTurnKind }),
+        [Schema.Record(Schema.String, CodexJsonExtension)],
+      ),
+    }),
+    [Schema.Record(Schema.String, CodexJsonExtension)],
+  ).annotate({
+    title: "ActiveTurnNotSteerableCodexErrorInfo",
+    description:
+      "Returned when `turn/start` or `turn/steer` is submitted while the current active turn cannot accept same-turn steering, for example `/review` or manual `/compact`.",
+  }),
+  Schema.Union([
+    Schema.String,
+    Schema.Record(Schema.String, Schema.Json.annotate({ expected: "JSON value" })),
+  ]),
+]).annotate({
   description:
     "This translation layer make sure that we expose codex error code in camel case.\n\nWhen an upstream HTTP status is available (for example, from the Responses API or a provider), it is forwarded in `httpStatusCode` on the relevant `codexErrorInfo` variant.",
   identifier: "V2TurnStartResponse__CodexErrorInfo",
@@ -41298,6 +41885,7 @@ export const V2TurnStartResponse__CodexErrorInfo = Schema.Union(
 export type V2TurnStartResponse__MisalignmentErrorDetails = {
   readonly detailedExplanation?: string | null;
   readonly errorType?: string | null;
+  readonly reviewTarget?: string | null;
   readonly steer?: V2TurnStartResponse__MisalignmentSteer | null;
 } & { readonly [x: string]: CodexJsonExtension };
 export const V2TurnStartResponse__MisalignmentErrorDetails = Schema.StructWithRest(
@@ -41316,6 +41904,15 @@ export const V2TurnStartResponse__MisalignmentErrorDetails = Schema.StructWithRe
         Schema.String.annotate({
           description:
             "Open-ended classification; clients must accept categories added by Responses.",
+        }),
+        Schema.Null,
+      ]),
+    ),
+    reviewTarget: Schema.optionalKey(
+      Schema.Union([
+        Schema.String.annotate({
+          description:
+            "Opaque server-issued block target. Presence alone does not enable target-based continuation.",
         }),
         Schema.Null,
       ]),
@@ -43905,6 +44502,7 @@ export type V2ConfigRequirementsReadResponse__BrowserUseRequirements = {
   readonly allowWebmcp?: boolean | null;
   readonly defaultOriginPolicy?: V2ConfigRequirementsReadResponse__BrowserUseOriginPolicy | null;
   readonly disableAutoReview?: boolean | null;
+  readonly extension?: V2ConfigRequirementsReadResponse__BrowserUseExtensionRequirements | null;
   readonly origins?: {
     readonly [x: string]: V2ConfigRequirementsReadResponse__BrowserUseOriginPolicy;
   } | null;
@@ -43918,6 +44516,12 @@ export const V2ConfigRequirementsReadResponse__BrowserUseRequirements = Schema.S
       Schema.Union([V2ConfigRequirementsReadResponse__BrowserUseOriginPolicy, Schema.Null]),
     ),
     disableAutoReview: Schema.optionalKey(Schema.Union([Schema.Boolean, Schema.Null])),
+    extension: Schema.optionalKey(
+      Schema.Union([
+        V2ConfigRequirementsReadResponse__BrowserUseExtensionRequirements,
+        Schema.Null,
+      ]),
+    ),
     origins: Schema.optionalKey(
       Schema.Union([
         Schema.Record(Schema.String, V2ConfigRequirementsReadResponse__BrowserUseOriginPolicy),
@@ -48883,6 +49487,12 @@ export const V2TurnSteerParams__UserInput = Schema.Union(
 
 export type ClientRequest__ResponseItem =
   | ({
+      readonly id?: string | null;
+      readonly role: string;
+      readonly tools: ReadonlyArray<Schema.Json>;
+      readonly type: "additional_tools";
+    } & { readonly [x: string]: CodexJsonExtension })
+  | ({
       readonly content: ReadonlyArray<ClientRequest__ContentItem>;
       readonly id?: string | null;
       readonly internal_chat_message_metadata_passthrough?: ClientRequest__InternalChatMessageMetadataPassthrough | null;
@@ -49004,6 +49614,17 @@ export type ClientRequest__ResponseItem =
   | ({ readonly type: "other" } & { readonly [x: string]: CodexJsonExtension });
 export const ClientRequest__ResponseItem = Schema.Union(
   [
+    Schema.StructWithRest(
+      Schema.Struct({
+        id: Schema.optionalKey(Schema.Union([Schema.String, Schema.Null])),
+        role: Schema.String,
+        tools: Schema.Array(Schema.Json.annotate({ expected: "JSON value" })),
+        type: Schema.Literal("additional_tools").annotate({
+          title: "AdditionalToolsResponseItemType",
+        }),
+      }),
+      [Schema.Record(Schema.String, CodexJsonExtension)],
+    ).annotate({ title: "AdditionalToolsResponseItem" }),
     Schema.StructWithRest(
       Schema.Struct({
         content: Schema.Array(ClientRequest__ContentItem),
@@ -51908,6 +52529,12 @@ export const V2PluginShareListResponse__PluginSummary = Schema.StructWithRest(
 
 export type V2RawResponseItemCompletedNotification__ResponseItem =
   | ({
+      readonly id?: string | null;
+      readonly role: string;
+      readonly tools: ReadonlyArray<Schema.Json>;
+      readonly type: "additional_tools";
+    } & { readonly [x: string]: CodexJsonExtension })
+  | ({
       readonly content: ReadonlyArray<V2RawResponseItemCompletedNotification__ContentItem>;
       readonly id?: string | null;
       readonly internal_chat_message_metadata_passthrough?: V2RawResponseItemCompletedNotification__InternalChatMessageMetadataPassthrough | null;
@@ -52029,6 +52656,17 @@ export type V2RawResponseItemCompletedNotification__ResponseItem =
   | ({ readonly type: "other" } & { readonly [x: string]: CodexJsonExtension });
 export const V2RawResponseItemCompletedNotification__ResponseItem = Schema.Union(
   [
+    Schema.StructWithRest(
+      Schema.Struct({
+        id: Schema.optionalKey(Schema.Union([Schema.String, Schema.Null])),
+        role: Schema.String,
+        tools: Schema.Array(Schema.Json.annotate({ expected: "JSON value" })),
+        type: Schema.Literal("additional_tools").annotate({
+          title: "AdditionalToolsResponseItemType",
+        }),
+      }),
+      [Schema.Record(Schema.String, CodexJsonExtension)],
+    ).annotate({ title: "AdditionalToolsResponseItem" }),
     Schema.StructWithRest(
       Schema.Struct({
         content: Schema.Array(V2RawResponseItemCompletedNotification__ContentItem),
@@ -56090,6 +56728,12 @@ export const V2ThreadReadResponse__ThreadItem = Schema.Union(
 
 export type V2ThreadResumeParams__ResponseItem =
   | ({
+      readonly id?: string | null;
+      readonly role: string;
+      readonly tools: ReadonlyArray<Schema.Json>;
+      readonly type: "additional_tools";
+    } & { readonly [x: string]: CodexJsonExtension })
+  | ({
       readonly content: ReadonlyArray<V2ThreadResumeParams__ContentItem>;
       readonly id?: string | null;
       readonly internal_chat_message_metadata_passthrough?: V2ThreadResumeParams__InternalChatMessageMetadataPassthrough | null;
@@ -56211,6 +56855,17 @@ export type V2ThreadResumeParams__ResponseItem =
   | ({ readonly type: "other" } & { readonly [x: string]: CodexJsonExtension });
 export const V2ThreadResumeParams__ResponseItem = Schema.Union(
   [
+    Schema.StructWithRest(
+      Schema.Struct({
+        id: Schema.optionalKey(Schema.Union([Schema.String, Schema.Null])),
+        role: Schema.String,
+        tools: Schema.Array(Schema.Json.annotate({ expected: "JSON value" })),
+        type: Schema.Literal("additional_tools").annotate({
+          title: "AdditionalToolsResponseItemType",
+        }),
+      }),
+      [Schema.Record(Schema.String, CodexJsonExtension)],
+    ).annotate({ title: "AdditionalToolsResponseItem" }),
     Schema.StructWithRest(
       Schema.Struct({
         content: Schema.Array(V2ThreadResumeParams__ContentItem),
@@ -62499,9 +63154,11 @@ export type ClientRequest__TurnStartParams = {
   readonly model?: string | null;
   readonly multiAgentMode?: ClientRequest__MultiAgentMode | null;
   readonly outputSchema?: Schema.Json;
+  readonly parentTurnId?: string | null;
   readonly permissions?: string | null;
   readonly personality?: ClientRequest__Personality | null;
   readonly responsesapiClientMetadata?: { readonly [x: string]: string } | null;
+  readonly rootTurnId?: string | null;
   readonly runtimeWorkspaceRoots?: ReadonlyArray<ClientRequest__AbsolutePathBuf> | null;
   readonly sandboxPolicy?: ClientRequest__SandboxPolicy | null;
   readonly serviceTier?: string | null;
@@ -62551,7 +63208,7 @@ export const ClientRequest__TurnStartParams = Schema.StructWithRest(
     cyberAccessProgram: Schema.optionalKey(
       Schema.Union([ClientRequest__CyberAccessProgram, Schema.Null]).annotate({
         description:
-          "EXPERIMENTAL - Request a workspace-authorized cyber program for this turn. Omission preserves automatic behavior. This does not grant access.",
+          "EXPERIMENTAL - Request an authorized cyber program for this turn. Omission preserves automatic behavior. This does not grant access.",
       }),
     ),
     disabledPluginIds: Schema.optionalKey(
@@ -62599,6 +63256,15 @@ export const ClientRequest__TurnStartParams = Schema.StructWithRest(
           "Optional JSON Schema used to constrain the final assistant message for this turn.",
       }),
     ),
+    parentTurnId: Schema.optionalKey(
+      Schema.Union([
+        Schema.String.annotate({
+          description:
+            "ID of the turn that caused this new turn to start.\n\nSet this when starting work on behalf of another turn, such as delegated work in a different thread. Leave unset for work started directly by the user. Ignored when this request adds input to an active turn.",
+        }),
+        Schema.Null,
+      ]),
+    ),
     permissions: Schema.optionalKey(
       Schema.Union([
         Schema.String.annotate({
@@ -62619,6 +63285,15 @@ export const ClientRequest__TurnStartParams = Schema.StructWithRest(
         Schema.Record(Schema.String, Schema.String).annotate({
           description:
             'Optional metadata to enrich Codex\'s ResponsesAPI turn metadata.\n\nEntries are flattened into the JSON string sent as `client_metadata["x-codex-turn-metadata"]` on ResponsesAPI HTTP and websocket requests.\n\nThey are not sent as top-level ResponsesAPI `client_metadata` keys, and reserved keys such as `session_id`, `thread_id`, `turn_id`, and `window_id` cannot be overridden.',
+        }),
+        Schema.Null,
+      ]),
+    ),
+    rootTurnId: Schema.optionalKey(
+      Schema.Union([
+        Schema.String.annotate({
+          description:
+            "ID of the first turn in the chain of work that led to this new turn.\n\nWhen setting `parentTurnId`, set this to the parent turn's `rootTurnId` when known. This keeps descendant work attributed to the original turn. If omitted, the new turn becomes its own root. Ignored when this request adds input to an active turn.",
         }),
         Schema.Null,
       ]),
@@ -62886,6 +63561,7 @@ export type ServerNotification__Turn = {
   readonly id: string;
   readonly items: ReadonlyArray<ServerNotification__ThreadItem>;
   readonly itemsView?: ServerNotification__TurnItemsView;
+  readonly rootTurnId?: string | null;
   readonly startedAt?: number | null;
   readonly status: ServerNotification__TurnStatus;
 } & { readonly [x: string]: CodexJsonExtension };
@@ -62927,6 +63603,15 @@ export const ServerNotification__Turn = Schema.StructWithRest(
         description: "Describes how much of `items` has been loaded for this turn.",
         default: "full",
       }),
+    ),
+    rootTurnId: Schema.optionalKey(
+      Schema.Union([
+        Schema.String.annotate({
+          description:
+            "ID of the first turn in the chain of work that led to this turn. Pass this as `rootTurnId` when starting work on behalf of this turn. May be null in older history or a `review/start` response.",
+        }),
+        Schema.Null,
+      ]),
     ),
     startedAt: Schema.optionalKey(
       Schema.Union([
@@ -63504,6 +64189,7 @@ export type V2ReviewStartResponse__Turn = {
   readonly id: string;
   readonly items: ReadonlyArray<V2ReviewStartResponse__ThreadItem>;
   readonly itemsView?: V2ReviewStartResponse__TurnItemsView;
+  readonly rootTurnId?: string | null;
   readonly startedAt?: number | null;
   readonly status: V2ReviewStartResponse__TurnStatus;
 } & { readonly [x: string]: CodexJsonExtension };
@@ -63547,6 +64233,15 @@ export const V2ReviewStartResponse__Turn = Schema.StructWithRest(
         default: "full",
       }),
     ),
+    rootTurnId: Schema.optionalKey(
+      Schema.Union([
+        Schema.String.annotate({
+          description:
+            "ID of the first turn in the chain of work that led to this turn. Pass this as `rootTurnId` when starting work on behalf of this turn. May be null in older history or a `review/start` response.",
+        }),
+        Schema.Null,
+      ]),
+    ),
     startedAt: Schema.optionalKey(
       Schema.Union([
         Schema.Number.annotate({
@@ -63568,6 +64263,7 @@ export type V2ThreadForkResponse__Turn = {
   readonly id: string;
   readonly items: ReadonlyArray<V2ThreadForkResponse__ThreadItem>;
   readonly itemsView?: V2ThreadForkResponse__TurnItemsView;
+  readonly rootTurnId?: string | null;
   readonly startedAt?: number | null;
   readonly status: V2ThreadForkResponse__TurnStatus;
 } & { readonly [x: string]: CodexJsonExtension };
@@ -63610,6 +64306,15 @@ export const V2ThreadForkResponse__Turn = Schema.StructWithRest(
         description: "Describes how much of `items` has been loaded for this turn.",
         default: "full",
       }),
+    ),
+    rootTurnId: Schema.optionalKey(
+      Schema.Union([
+        Schema.String.annotate({
+          description:
+            "ID of the first turn in the chain of work that led to this turn. Pass this as `rootTurnId` when starting work on behalf of this turn. May be null in older history or a `review/start` response.",
+        }),
+        Schema.Null,
+      ]),
     ),
     startedAt: Schema.optionalKey(
       Schema.Union([
@@ -63666,6 +64371,7 @@ export type V2ThreadListResponse__Turn = {
   readonly id: string;
   readonly items: ReadonlyArray<V2ThreadListResponse__ThreadItem>;
   readonly itemsView?: V2ThreadListResponse__TurnItemsView;
+  readonly rootTurnId?: string | null;
   readonly startedAt?: number | null;
   readonly status: V2ThreadListResponse__TurnStatus;
 } & { readonly [x: string]: CodexJsonExtension };
@@ -63709,6 +64415,15 @@ export const V2ThreadListResponse__Turn = Schema.StructWithRest(
         default: "full",
       }),
     ),
+    rootTurnId: Schema.optionalKey(
+      Schema.Union([
+        Schema.String.annotate({
+          description:
+            "ID of the first turn in the chain of work that led to this turn. Pass this as `rootTurnId` when starting work on behalf of this turn. May be null in older history or a `review/start` response.",
+        }),
+        Schema.Null,
+      ]),
+    ),
     startedAt: Schema.optionalKey(
       Schema.Union([
         Schema.Number.annotate({
@@ -63730,6 +64445,7 @@ export type V2ThreadMetadataUpdateResponse__Turn = {
   readonly id: string;
   readonly items: ReadonlyArray<V2ThreadMetadataUpdateResponse__ThreadItem>;
   readonly itemsView?: V2ThreadMetadataUpdateResponse__TurnItemsView;
+  readonly rootTurnId?: string | null;
   readonly startedAt?: number | null;
   readonly status: V2ThreadMetadataUpdateResponse__TurnStatus;
 } & { readonly [x: string]: CodexJsonExtension };
@@ -63773,6 +64489,15 @@ export const V2ThreadMetadataUpdateResponse__Turn = Schema.StructWithRest(
         default: "full",
       }),
     ),
+    rootTurnId: Schema.optionalKey(
+      Schema.Union([
+        Schema.String.annotate({
+          description:
+            "ID of the first turn in the chain of work that led to this turn. Pass this as `rootTurnId` when starting work on behalf of this turn. May be null in older history or a `review/start` response.",
+        }),
+        Schema.Null,
+      ]),
+    ),
     startedAt: Schema.optionalKey(
       Schema.Union([
         Schema.Number.annotate({
@@ -63794,6 +64519,7 @@ export type V2ThreadQueueStartResponse__Turn = {
   readonly id: string;
   readonly items: ReadonlyArray<V2ThreadQueueStartResponse__ThreadItem>;
   readonly itemsView?: V2ThreadQueueStartResponse__TurnItemsView;
+  readonly rootTurnId?: string | null;
   readonly startedAt?: number | null;
   readonly status: V2ThreadQueueStartResponse__TurnStatus;
 } & { readonly [x: string]: CodexJsonExtension };
@@ -63837,6 +64563,15 @@ export const V2ThreadQueueStartResponse__Turn = Schema.StructWithRest(
         default: "full",
       }),
     ),
+    rootTurnId: Schema.optionalKey(
+      Schema.Union([
+        Schema.String.annotate({
+          description:
+            "ID of the first turn in the chain of work that led to this turn. Pass this as `rootTurnId` when starting work on behalf of this turn. May be null in older history or a `review/start` response.",
+        }),
+        Schema.Null,
+      ]),
+    ),
     startedAt: Schema.optionalKey(
       Schema.Union([
         Schema.Number.annotate({
@@ -63858,6 +64593,7 @@ export type V2ThreadReadResponse__Turn = {
   readonly id: string;
   readonly items: ReadonlyArray<V2ThreadReadResponse__ThreadItem>;
   readonly itemsView?: V2ThreadReadResponse__TurnItemsView;
+  readonly rootTurnId?: string | null;
   readonly startedAt?: number | null;
   readonly status: V2ThreadReadResponse__TurnStatus;
 } & { readonly [x: string]: CodexJsonExtension };
@@ -63901,6 +64637,15 @@ export const V2ThreadReadResponse__Turn = Schema.StructWithRest(
         default: "full",
       }),
     ),
+    rootTurnId: Schema.optionalKey(
+      Schema.Union([
+        Schema.String.annotate({
+          description:
+            "ID of the first turn in the chain of work that led to this turn. Pass this as `rootTurnId` when starting work on behalf of this turn. May be null in older history or a `review/start` response.",
+        }),
+        Schema.Null,
+      ]),
+    ),
     startedAt: Schema.optionalKey(
       Schema.Union([
         Schema.Number.annotate({
@@ -63922,6 +64667,7 @@ export type V2ThreadResumeResponse__Turn = {
   readonly id: string;
   readonly items: ReadonlyArray<V2ThreadResumeResponse__ThreadItem>;
   readonly itemsView?: V2ThreadResumeResponse__TurnItemsView;
+  readonly rootTurnId?: string | null;
   readonly startedAt?: number | null;
   readonly status: V2ThreadResumeResponse__TurnStatus;
 } & { readonly [x: string]: CodexJsonExtension };
@@ -63965,6 +64711,15 @@ export const V2ThreadResumeResponse__Turn = Schema.StructWithRest(
         default: "full",
       }),
     ),
+    rootTurnId: Schema.optionalKey(
+      Schema.Union([
+        Schema.String.annotate({
+          description:
+            "ID of the first turn in the chain of work that led to this turn. Pass this as `rootTurnId` when starting work on behalf of this turn. May be null in older history or a `review/start` response.",
+        }),
+        Schema.Null,
+      ]),
+    ),
     startedAt: Schema.optionalKey(
       Schema.Union([
         Schema.Number.annotate({
@@ -63986,6 +64741,7 @@ export type V2ThreadRevertResponse__Turn = {
   readonly id: string;
   readonly items: ReadonlyArray<V2ThreadRevertResponse__ThreadItem>;
   readonly itemsView?: V2ThreadRevertResponse__TurnItemsView;
+  readonly rootTurnId?: string | null;
   readonly startedAt?: number | null;
   readonly status: V2ThreadRevertResponse__TurnStatus;
 } & { readonly [x: string]: CodexJsonExtension };
@@ -64029,6 +64785,15 @@ export const V2ThreadRevertResponse__Turn = Schema.StructWithRest(
         default: "full",
       }),
     ),
+    rootTurnId: Schema.optionalKey(
+      Schema.Union([
+        Schema.String.annotate({
+          description:
+            "ID of the first turn in the chain of work that led to this turn. Pass this as `rootTurnId` when starting work on behalf of this turn. May be null in older history or a `review/start` response.",
+        }),
+        Schema.Null,
+      ]),
+    ),
     startedAt: Schema.optionalKey(
       Schema.Union([
         Schema.Number.annotate({
@@ -64050,6 +64815,7 @@ export type V2ThreadSearchResponse__Turn = {
   readonly id: string;
   readonly items: ReadonlyArray<V2ThreadSearchResponse__ThreadItem>;
   readonly itemsView?: V2ThreadSearchResponse__TurnItemsView;
+  readonly rootTurnId?: string | null;
   readonly startedAt?: number | null;
   readonly status: V2ThreadSearchResponse__TurnStatus;
 } & { readonly [x: string]: CodexJsonExtension };
@@ -64093,6 +64859,15 @@ export const V2ThreadSearchResponse__Turn = Schema.StructWithRest(
         default: "full",
       }),
     ),
+    rootTurnId: Schema.optionalKey(
+      Schema.Union([
+        Schema.String.annotate({
+          description:
+            "ID of the first turn in the chain of work that led to this turn. Pass this as `rootTurnId` when starting work on behalf of this turn. May be null in older history or a `review/start` response.",
+        }),
+        Schema.Null,
+      ]),
+    ),
     startedAt: Schema.optionalKey(
       Schema.Union([
         Schema.Number.annotate({
@@ -64114,6 +64889,7 @@ export type V2ThreadStartedNotification__Turn = {
   readonly id: string;
   readonly items: ReadonlyArray<V2ThreadStartedNotification__ThreadItem>;
   readonly itemsView?: V2ThreadStartedNotification__TurnItemsView;
+  readonly rootTurnId?: string | null;
   readonly startedAt?: number | null;
   readonly status: V2ThreadStartedNotification__TurnStatus;
 } & { readonly [x: string]: CodexJsonExtension };
@@ -64157,6 +64933,15 @@ export const V2ThreadStartedNotification__Turn = Schema.StructWithRest(
         default: "full",
       }),
     ),
+    rootTurnId: Schema.optionalKey(
+      Schema.Union([
+        Schema.String.annotate({
+          description:
+            "ID of the first turn in the chain of work that led to this turn. Pass this as `rootTurnId` when starting work on behalf of this turn. May be null in older history or a `review/start` response.",
+        }),
+        Schema.Null,
+      ]),
+    ),
     startedAt: Schema.optionalKey(
       Schema.Union([
         Schema.Number.annotate({
@@ -64178,6 +64963,7 @@ export type V2ThreadStartResponse__Turn = {
   readonly id: string;
   readonly items: ReadonlyArray<V2ThreadStartResponse__ThreadItem>;
   readonly itemsView?: V2ThreadStartResponse__TurnItemsView;
+  readonly rootTurnId?: string | null;
   readonly startedAt?: number | null;
   readonly status: V2ThreadStartResponse__TurnStatus;
 } & { readonly [x: string]: CodexJsonExtension };
@@ -64220,6 +65006,15 @@ export const V2ThreadStartResponse__Turn = Schema.StructWithRest(
         description: "Describes how much of `items` has been loaded for this turn.",
         default: "full",
       }),
+    ),
+    rootTurnId: Schema.optionalKey(
+      Schema.Union([
+        Schema.String.annotate({
+          description:
+            "ID of the first turn in the chain of work that led to this turn. Pass this as `rootTurnId` when starting work on behalf of this turn. May be null in older history or a `review/start` response.",
+        }),
+        Schema.Null,
+      ]),
     ),
     startedAt: Schema.optionalKey(
       Schema.Union([
@@ -64376,6 +65171,7 @@ export type V2ThreadTurnsListResponse__Turn = {
   readonly id: string;
   readonly items: ReadonlyArray<V2ThreadTurnsListResponse__ThreadItem>;
   readonly itemsView?: V2ThreadTurnsListResponse__TurnItemsView;
+  readonly rootTurnId?: string | null;
   readonly startedAt?: number | null;
   readonly status: V2ThreadTurnsListResponse__TurnStatus;
 } & { readonly [x: string]: CodexJsonExtension };
@@ -64419,6 +65215,15 @@ export const V2ThreadTurnsListResponse__Turn = Schema.StructWithRest(
         default: "full",
       }),
     ),
+    rootTurnId: Schema.optionalKey(
+      Schema.Union([
+        Schema.String.annotate({
+          description:
+            "ID of the first turn in the chain of work that led to this turn. Pass this as `rootTurnId` when starting work on behalf of this turn. May be null in older history or a `review/start` response.",
+        }),
+        Schema.Null,
+      ]),
+    ),
     startedAt: Schema.optionalKey(
       Schema.Union([
         Schema.Number.annotate({
@@ -64440,6 +65245,7 @@ export type V2ThreadUnarchiveResponse__Turn = {
   readonly id: string;
   readonly items: ReadonlyArray<V2ThreadUnarchiveResponse__ThreadItem>;
   readonly itemsView?: V2ThreadUnarchiveResponse__TurnItemsView;
+  readonly rootTurnId?: string | null;
   readonly startedAt?: number | null;
   readonly status: V2ThreadUnarchiveResponse__TurnStatus;
 } & { readonly [x: string]: CodexJsonExtension };
@@ -64483,6 +65289,15 @@ export const V2ThreadUnarchiveResponse__Turn = Schema.StructWithRest(
         default: "full",
       }),
     ),
+    rootTurnId: Schema.optionalKey(
+      Schema.Union([
+        Schema.String.annotate({
+          description:
+            "ID of the first turn in the chain of work that led to this turn. Pass this as `rootTurnId` when starting work on behalf of this turn. May be null in older history or a `review/start` response.",
+        }),
+        Schema.Null,
+      ]),
+    ),
     startedAt: Schema.optionalKey(
       Schema.Union([
         Schema.Number.annotate({
@@ -64504,6 +65319,7 @@ export type V2TurnCompletedNotification__Turn = {
   readonly id: string;
   readonly items: ReadonlyArray<V2TurnCompletedNotification__ThreadItem>;
   readonly itemsView?: V2TurnCompletedNotification__TurnItemsView;
+  readonly rootTurnId?: string | null;
   readonly startedAt?: number | null;
   readonly status: V2TurnCompletedNotification__TurnStatus;
 } & { readonly [x: string]: CodexJsonExtension };
@@ -64547,6 +65363,15 @@ export const V2TurnCompletedNotification__Turn = Schema.StructWithRest(
         default: "full",
       }),
     ),
+    rootTurnId: Schema.optionalKey(
+      Schema.Union([
+        Schema.String.annotate({
+          description:
+            "ID of the first turn in the chain of work that led to this turn. Pass this as `rootTurnId` when starting work on behalf of this turn. May be null in older history or a `review/start` response.",
+        }),
+        Schema.Null,
+      ]),
+    ),
     startedAt: Schema.optionalKey(
       Schema.Union([
         Schema.Number.annotate({
@@ -64568,6 +65393,7 @@ export type V2TurnStartedNotification__Turn = {
   readonly id: string;
   readonly items: ReadonlyArray<V2TurnStartedNotification__ThreadItem>;
   readonly itemsView?: V2TurnStartedNotification__TurnItemsView;
+  readonly rootTurnId?: string | null;
   readonly startedAt?: number | null;
   readonly status: V2TurnStartedNotification__TurnStatus;
 } & { readonly [x: string]: CodexJsonExtension };
@@ -64611,6 +65437,15 @@ export const V2TurnStartedNotification__Turn = Schema.StructWithRest(
         default: "full",
       }),
     ),
+    rootTurnId: Schema.optionalKey(
+      Schema.Union([
+        Schema.String.annotate({
+          description:
+            "ID of the first turn in the chain of work that led to this turn. Pass this as `rootTurnId` when starting work on behalf of this turn. May be null in older history or a `review/start` response.",
+        }),
+        Schema.Null,
+      ]),
+    ),
     startedAt: Schema.optionalKey(
       Schema.Union([
         Schema.Number.annotate({
@@ -64632,6 +65467,7 @@ export type V2TurnStartResponse__Turn = {
   readonly id: string;
   readonly items: ReadonlyArray<V2TurnStartResponse__ThreadItem>;
   readonly itemsView?: V2TurnStartResponse__TurnItemsView;
+  readonly rootTurnId?: string | null;
   readonly startedAt?: number | null;
   readonly status: V2TurnStartResponse__TurnStatus;
 } & { readonly [x: string]: CodexJsonExtension };
@@ -64673,6 +65509,15 @@ export const V2TurnStartResponse__Turn = Schema.StructWithRest(
         description: "Describes how much of `items` has been loaded for this turn.",
         default: "full",
       }),
+    ),
+    rootTurnId: Schema.optionalKey(
+      Schema.Union([
+        Schema.String.annotate({
+          description:
+            "ID of the first turn in the chain of work that led to this turn. Pass this as `rootTurnId` when starting work on behalf of this turn. May be null in older history or a `review/start` response.",
+        }),
+        Schema.Null,
+      ]),
     ),
     startedAt: Schema.optionalKey(
       Schema.Union([
@@ -68530,6 +69375,11 @@ export type ClientRequest =
     } & { readonly [x: string]: CodexJsonExtension })
   | ({
       readonly id: ClientRequest__RequestId;
+      readonly method: "thread/prediction/request";
+      readonly params: ClientRequest__ThreadPredictionRequestParams;
+    } & { readonly [x: string]: CodexJsonExtension })
+  | ({
+      readonly id: ClientRequest__RequestId;
       readonly method: "thread/goal/set";
       readonly params: ClientRequest__ThreadGoalSetParams;
     } & { readonly [x: string]: CodexJsonExtension })
@@ -68587,6 +69437,11 @@ export type ClientRequest =
       readonly id: ClientRequest__RequestId;
       readonly method: "thread/attachment/list";
       readonly params: ClientRequest__ThreadAttachmentListParams;
+    } & { readonly [x: string]: CodexJsonExtension })
+  | ({
+      readonly id: ClientRequest__RequestId;
+      readonly method: "thread/attachmentOwner/list";
+      readonly params: ClientRequest__ThreadAttachmentOwnerListParams;
     } & { readonly [x: string]: CodexJsonExtension })
   | ({
       readonly id: ClientRequest__RequestId;
@@ -69140,6 +69995,11 @@ export type ClientRequest =
     } & { readonly [x: string]: CodexJsonExtension })
   | ({
       readonly id: ClientRequest__RequestId;
+      readonly method: "account/bedrock/checkGovCloudRequirements";
+      readonly params: ClientRequest__BedrockCheckGovCloudRequirementsParams;
+    } & { readonly [x: string]: CodexJsonExtension })
+  | ({
+      readonly id: ClientRequest__RequestId;
       readonly method: "account/login/cancel";
       readonly params: ClientRequest__CancelLoginAccountParams;
     } & { readonly [x: string]: CodexJsonExtension })
@@ -69447,6 +70307,16 @@ export const ClientRequest = Schema.Union(
     Schema.StructWithRest(
       Schema.Struct({
         id: ClientRequest__RequestId,
+        method: Schema.Literal("thread/prediction/request").annotate({
+          title: "Thread/prediction/requestRequestMethod",
+        }),
+        params: ClientRequest__ThreadPredictionRequestParams,
+      }),
+      [Schema.Record(Schema.String, CodexJsonExtension)],
+    ).annotate({ title: "Thread/prediction/requestRequest" }),
+    Schema.StructWithRest(
+      Schema.Struct({
+        id: ClientRequest__RequestId,
         method: Schema.Literal("thread/goal/set").annotate({
           title: "Thread/goal/setRequestMethod",
         }),
@@ -69564,6 +70434,16 @@ export const ClientRequest = Schema.Union(
       }),
       [Schema.Record(Schema.String, CodexJsonExtension)],
     ).annotate({ title: "Thread/attachment/listRequest" }),
+    Schema.StructWithRest(
+      Schema.Struct({
+        id: ClientRequest__RequestId,
+        method: Schema.Literal("thread/attachmentOwner/list").annotate({
+          title: "Thread/attachmentOwner/listRequestMethod",
+        }),
+        params: ClientRequest__ThreadAttachmentOwnerListParams,
+      }),
+      [Schema.Record(Schema.String, CodexJsonExtension)],
+    ).annotate({ title: "Thread/attachmentOwner/listRequest" }),
     Schema.StructWithRest(
       Schema.Struct({
         id: ClientRequest__RequestId,
@@ -70622,6 +71502,16 @@ export const ClientRequest = Schema.Union(
       }),
       [Schema.Record(Schema.String, CodexJsonExtension)],
     ).annotate({ title: "Account/bedrock/setupRequest" }),
+    Schema.StructWithRest(
+      Schema.Struct({
+        id: ClientRequest__RequestId,
+        method: Schema.Literal("account/bedrock/checkGovCloudRequirements").annotate({
+          title: "Account/bedrock/checkGovCloudRequirementsRequestMethod",
+        }),
+        params: ClientRequest__BedrockCheckGovCloudRequirementsParams,
+      }),
+      [Schema.Record(Schema.String, CodexJsonExtension)],
+    ).annotate({ title: "Account/bedrock/checkGovCloudRequirementsRequest" }),
     Schema.StructWithRest(
       Schema.Struct({
         id: ClientRequest__RequestId,
@@ -71759,6 +72649,11 @@ export type ServerNotification =
       readonly emittedAtMs?: number;
     } & { readonly [x: string]: CodexJsonExtension })
   | ({
+      readonly method: "thread/prediction/updated";
+      readonly params: ServerNotification__ThreadPredictionUpdatedNotification;
+      readonly emittedAtMs?: number;
+    } & { readonly [x: string]: CodexJsonExtension })
+  | ({
       readonly method: "thread/goal/cleared";
       readonly params: ServerNotification__ThreadGoalClearedNotification;
       readonly emittedAtMs?: number;
@@ -72305,6 +73200,22 @@ export const ServerNotification = Schema.Union(
       }),
       [Schema.Record(Schema.String, CodexJsonExtension)],
     ).annotate({ title: "Thread/goal/updatedNotification" }),
+    Schema.StructWithRest(
+      Schema.Struct({
+        method: Schema.Literal("thread/prediction/updated").annotate({
+          title: "Thread/prediction/updatedNotificationMethod",
+        }),
+        params: ServerNotification__ThreadPredictionUpdatedNotification,
+        emittedAtMs: Schema.optionalKey(
+          Schema.Number.annotate({
+            description:
+              "Unix timestamp (in milliseconds) when app-server emitted this notification.",
+            format: "int64",
+          }).check(Schema.isInt().annotate({ expected: "an integer" })),
+        ),
+      }),
+      [Schema.Record(Schema.String, CodexJsonExtension)],
+    ).annotate({ title: "Thread/prediction/updatedNotification" }),
     Schema.StructWithRest(
       Schema.Struct({
         method: Schema.Literal("thread/goal/cleared").annotate({
@@ -74009,6 +74920,32 @@ export const V2AuthRecoveryNotification = Schema.StructWithRest(
   [Schema.Record(Schema.String, CodexJsonExtension)],
 ).annotate({ title: "AuthRecoveryNotification" });
 
+export type V2BedrockCheckGovCloudRequirementsParams = { readonly [x: string]: Schema.Json };
+export const V2BedrockCheckGovCloudRequirementsParams = Schema.Record(
+  Schema.String,
+  Schema.Json.annotate({ expected: "JSON value" }),
+).annotate({ title: "BedrockCheckGovCloudRequirementsParams" });
+
+export type V2BedrockCheckGovCloudRequirementsResponse = {
+  readonly isGovCloud: boolean;
+  readonly shouldWarn: boolean;
+} & { readonly [x: string]: CodexJsonExtension };
+export const V2BedrockCheckGovCloudRequirementsResponse = Schema.StructWithRest(
+  Schema.Struct({
+    isGovCloud: Schema.Boolean.annotate({
+      description: "Whether the active Bedrock authentication resolves to a GovCloud region.",
+    }),
+    shouldWarn: Schema.Boolean.annotate({
+      description:
+        "Whether GovCloud is selected and the managed requirements miss the baseline. A false value is not a general certification of the network configuration.",
+    }),
+  }),
+  [Schema.Record(Schema.String, CodexJsonExtension)],
+).annotate({
+  title: "BedrockCheckGovCloudRequirementsResponse",
+  description: "Advisory check of the current Bedrock configuration after login or setup.",
+});
+
 export type V2BedrockDiscoverParams = { readonly [x: string]: Schema.Json };
 export const V2BedrockDiscoverParams = Schema.Record(
   Schema.String,
@@ -74530,6 +75467,7 @@ export const V2ConfigReadResponse__AppToolConfig = Schema.StructWithRest(
 
 export type V2ConfigRequirementsReadResponse = {
   readonly requirements?: V2ConfigRequirementsReadResponse__ConfigRequirements | null;
+  readonly supportsIndependentSpeedModes?: boolean | null;
 } & { readonly [x: string]: CodexJsonExtension };
 export const V2ConfigRequirementsReadResponse = Schema.StructWithRest(
   Schema.Struct({
@@ -74538,6 +75476,15 @@ export const V2ConfigRequirementsReadResponse = Schema.StructWithRest(
         description:
           "Null if no requirements are configured (e.g. no requirements.toml/MDM entries).",
       }),
+    ),
+    supportsIndependentSpeedModes: Schema.optionalKey(
+      Schema.Union([
+        Schema.Boolean.annotate({
+          description:
+            "Whether Fast and Ultra Fast requirements are enforced independently. Older servers omit this field and use Fast mode as a shared speed gate.",
+        }),
+        Schema.Null,
+      ]),
     ),
   }),
   [Schema.Record(Schema.String, CodexJsonExtension)],
@@ -74692,6 +75639,7 @@ export type V2EnvironmentAddParams = {
   readonly connectTimeoutMs?: number | null;
   readonly environmentId: string;
   readonly execServerUrl: string;
+  readonly skills?: V2EnvironmentAddParams__EnvironmentSkillsParams | null;
 } & { readonly [x: string]: CodexJsonExtension };
 export const V2EnvironmentAddParams = Schema.StructWithRest(
   Schema.Struct({
@@ -74722,6 +75670,12 @@ export const V2EnvironmentAddParams = Schema.StructWithRest(
     ),
     environmentId: Schema.String,
     execServerUrl: Schema.String,
+    skills: Schema.optionalKey(
+      Schema.Union([V2EnvironmentAddParams__EnvironmentSkillsParams, Schema.Null]).annotate({
+        description:
+          "Required skills supplied by this environment, checked before model inference.",
+      }),
+    ),
   }),
   [Schema.Record(Schema.String, CodexJsonExtension)],
 ).annotate({ title: "EnvironmentAddParams" });
@@ -76312,6 +77266,7 @@ export const V2McpServerEventStreamStopResponse = Schema.Record(
 
 export type V2McpServerOauthLoginCompletedNotification = {
   readonly error?: string | null;
+  readonly loginId?: string | null;
   readonly name: string;
   readonly success: boolean;
   readonly threadId?: string | null;
@@ -76319,6 +77274,14 @@ export type V2McpServerOauthLoginCompletedNotification = {
 export const V2McpServerOauthLoginCompletedNotification = Schema.StructWithRest(
   Schema.Struct({
     error: Schema.optionalKey(Schema.Union([Schema.String, Schema.Null])),
+    loginId: Schema.optionalKey(
+      Schema.Union([
+        Schema.String.annotate({
+          description: "Identifies the explicit login attempt. Older servers omit this field.",
+        }),
+        Schema.Null,
+      ]),
+    ),
     name: Schema.String,
     success: Schema.Boolean,
     threadId: Schema.optionalKey(Schema.Union([Schema.String, Schema.Null])),
@@ -76359,11 +77322,23 @@ export const V2McpServerOauthLoginParams = Schema.StructWithRest(
   [Schema.Record(Schema.String, CodexJsonExtension)],
 ).annotate({ title: "McpServerOauthLoginParams" });
 
-export type V2McpServerOauthLoginResponse = { readonly authorizationUrl: string } & {
-  readonly [x: string]: CodexJsonExtension;
-};
+export type V2McpServerOauthLoginResponse = {
+  readonly authorizationUrl: string;
+  readonly loginId?: string | null;
+} & { readonly [x: string]: CodexJsonExtension };
 export const V2McpServerOauthLoginResponse = Schema.StructWithRest(
-  Schema.Struct({ authorizationUrl: Schema.String }),
+  Schema.Struct({
+    authorizationUrl: Schema.String,
+    loginId: Schema.optionalKey(
+      Schema.Union([
+        Schema.String.annotate({
+          description:
+            "Identifies this login attempt across the response and completion notification. Older servers omit this field; current servers always return it.",
+        }),
+        Schema.Null,
+      ]),
+    ),
+  }),
   [Schema.Record(Schema.String, CodexJsonExtension)],
 ).annotate({ title: "McpServerOauthLoginResponse" });
 
@@ -76595,15 +77570,10 @@ export const V2ModelProviderCapabilitiesReadParams = Schema.Record(
 
 export type V2ModelProviderCapabilitiesReadResponse = {
   readonly imageGeneration: boolean;
-  readonly namespaceTools: boolean;
   readonly webSearch: boolean;
 } & { readonly [x: string]: CodexJsonExtension };
 export const V2ModelProviderCapabilitiesReadResponse = Schema.StructWithRest(
-  Schema.Struct({
-    imageGeneration: Schema.Boolean,
-    namespaceTools: Schema.Boolean,
-    webSearch: Schema.Boolean,
-  }),
+  Schema.Struct({ imageGeneration: Schema.Boolean, webSearch: Schema.Boolean }),
   [Schema.Record(Schema.String, CodexJsonExtension)],
 ).annotate({ title: "ModelProviderCapabilitiesReadResponse" });
 
@@ -78194,6 +79164,61 @@ export const V2ThreadAttachmentListResponse = Schema.StructWithRest(
   description: "One page of attachments associated with the requested thread.",
 });
 
+export type V2ThreadAttachmentOwnerListParams = {
+  readonly archived?: boolean | null;
+  readonly attachmentType: string;
+  readonly cursor?: string | null;
+  readonly identityKey: string;
+  readonly limit?: number | null;
+} & { readonly [x: string]: CodexJsonExtension };
+export const V2ThreadAttachmentOwnerListParams = Schema.StructWithRest(
+  Schema.Struct({
+    archived: Schema.optionalKey(
+      Schema.Union([
+        Schema.Boolean.annotate({
+          description:
+            "Omitted or null returns all matches; false returns non-archived threads only.",
+        }),
+        Schema.Null,
+      ]),
+    ),
+    attachmentType: Schema.String,
+    cursor: Schema.optionalKey(Schema.Union([Schema.String, Schema.Null])),
+    identityKey: Schema.String,
+    limit: Schema.optionalKey(
+      Schema.Union([
+        Schema.Number.annotate({ format: "uint32" })
+          .check(Schema.isInt().annotate({ expected: "an integer" }))
+          .check(
+            Schema.isGreaterThanOrEqualTo(0).annotate({
+              expected: "a value greater than or equal to 0",
+            }),
+          ),
+        Schema.Null,
+      ]),
+    ),
+  }),
+  [Schema.Record(Schema.String, CodexJsonExtension)],
+).annotate({
+  title: "ThreadAttachmentOwnerListParams",
+  description: "Parameters for reverse lookup by attachment identity within this server's store.",
+});
+
+export type V2ThreadAttachmentOwnerListResponse = {
+  readonly data: ReadonlyArray<V2ThreadAttachmentOwnerListResponse__ThreadAttachmentOwner>;
+  readonly nextCursor?: string | null;
+} & { readonly [x: string]: CodexJsonExtension };
+export const V2ThreadAttachmentOwnerListResponse = Schema.StructWithRest(
+  Schema.Struct({
+    data: Schema.Array(V2ThreadAttachmentOwnerListResponse__ThreadAttachmentOwner),
+    nextCursor: Schema.optionalKey(Schema.Union([Schema.String, Schema.Null])),
+  }),
+  [Schema.Record(Schema.String, CodexJsonExtension)],
+).annotate({
+  title: "ThreadAttachmentOwnerListResponse",
+  description: "One page of matching owners, including threads without their own user messages.",
+});
+
 export type V2ThreadAttachmentRemoveParams = {
   readonly attachmentType: string;
   readonly identityKey: string;
@@ -78414,6 +79439,7 @@ export type V2ThreadForkParams = {
   readonly developerInstructions?: string | null;
   readonly ephemeral?: boolean;
   readonly excludeTurns?: boolean;
+  readonly experimentalPredictionMode?: boolean;
   readonly lastTurnId?: string | null;
   readonly model?: string | null;
   readonly modelProvider?: string | null;
@@ -78465,6 +79491,12 @@ export const V2ThreadForkParams = Schema.StructWithRest(
       Schema.Boolean.annotate({
         description:
           "When true, return only thread metadata and live fork state without populating `thread.turns`. This is useful when the client plans to call `thread/turns/list` immediately after forking. Full-history hydration is deprecated for paginated threads; use this with `thread/turns/list` and `thread/items/list` instead.",
+      }),
+    ),
+    experimentalPredictionMode: Schema.optionalKey(
+      Schema.Boolean.annotate({
+        description:
+          "Start from the loaded parent's effective config, tools, environments, and persisted history to maximize prompt-cache reuse. Requires a loaded, persisted parent and `ephemeral: true`. Enables `features.reasoning_effort_override` on the fork. Cannot be combined with configuration overrides, `path`, `lastTurnId`, or `beforeTurnId`.",
       }),
     ),
     lastTurnId: Schema.optionalKey(
@@ -78612,11 +79644,19 @@ export const V2ThreadGoalClearedNotification = Schema.StructWithRest(
   [Schema.Record(Schema.String, CodexJsonExtension)],
 ).annotate({ title: "ThreadGoalClearedNotification" });
 
-export type V2ThreadGoalClearParams = { readonly threadId: string } & {
-  readonly [x: string]: CodexJsonExtension;
-};
+export type V2ThreadGoalClearParams = {
+  readonly origin?: V2ThreadGoalClearParams__ThreadGoalMutationOrigin | null;
+  readonly threadId: string;
+} & { readonly [x: string]: CodexJsonExtension };
 export const V2ThreadGoalClearParams = Schema.StructWithRest(
-  Schema.Struct({ threadId: Schema.String }),
+  Schema.Struct({
+    origin: Schema.optionalKey(
+      Schema.Union([V2ThreadGoalClearParams__ThreadGoalMutationOrigin, Schema.Null]).annotate({
+        description: "Missing provenance does not supply user authorization.",
+      }),
+    ),
+    threadId: Schema.String,
+  }),
   [Schema.Record(Schema.String, CodexJsonExtension)],
 ).annotate({ title: "ThreadGoalClearParams" });
 
@@ -78648,6 +79688,7 @@ export const V2ThreadGoalGetResponse = Schema.StructWithRest(
 
 export type V2ThreadGoalSetParams = {
   readonly objective?: string | null;
+  readonly origin?: V2ThreadGoalSetParams__ThreadGoalMutationOrigin | null;
   readonly status?: V2ThreadGoalSetParams__ThreadGoalStatus | null;
   readonly threadId: string;
   readonly tokenBudget?: number | null;
@@ -78655,6 +79696,11 @@ export type V2ThreadGoalSetParams = {
 export const V2ThreadGoalSetParams = Schema.StructWithRest(
   Schema.Struct({
     objective: Schema.optionalKey(Schema.Union([Schema.String, Schema.Null])),
+    origin: Schema.optionalKey(
+      Schema.Union([V2ThreadGoalSetParams__ThreadGoalMutationOrigin, Schema.Null]).annotate({
+        description: "Missing provenance does not supply user authorization.",
+      }),
+    ),
     status: Schema.optionalKey(
       Schema.Union([V2ThreadGoalSetParams__ThreadGoalStatus, Schema.Null]),
     ),
@@ -79131,6 +80177,35 @@ export const V2ThreadNameUpdatedNotification = Schema.StructWithRest(
   }),
   [Schema.Record(Schema.String, CodexJsonExtension)],
 ).annotate({ title: "ThreadNameUpdatedNotification" });
+
+export type V2ThreadPredictionRequestParams = {
+  readonly sourceTurnId: string;
+  readonly threadId: string;
+} & { readonly [x: string]: CodexJsonExtension };
+export const V2ThreadPredictionRequestParams = Schema.StructWithRest(
+  Schema.Struct({ sourceTurnId: Schema.String, threadId: Schema.String }),
+  [Schema.Record(Schema.String, CodexJsonExtension)],
+).annotate({ title: "ThreadPredictionRequestParams" });
+
+export type V2ThreadPredictionRequestResponse = { readonly [x: string]: Schema.Json };
+export const V2ThreadPredictionRequestResponse = Schema.Record(
+  Schema.String,
+  Schema.Json.annotate({ expected: "JSON value" }),
+).annotate({ title: "ThreadPredictionRequestResponse" });
+
+export type V2ThreadPredictionUpdatedNotification = {
+  readonly result: V2ThreadPredictionUpdatedNotification__ThreadPredictionResult;
+  readonly sourceTurnId: string;
+  readonly threadId: string;
+} & { readonly [x: string]: CodexJsonExtension };
+export const V2ThreadPredictionUpdatedNotification = Schema.StructWithRest(
+  Schema.Struct({
+    result: V2ThreadPredictionUpdatedNotification__ThreadPredictionResult,
+    sourceTurnId: Schema.String,
+    threadId: Schema.String,
+  }),
+  [Schema.Record(Schema.String, CodexJsonExtension)],
+).annotate({ title: "ThreadPredictionUpdatedNotification" });
 
 export type V2ThreadProjectUpdatedNotification = {
   readonly projectId: string | null;
@@ -80099,7 +81174,7 @@ export const V2ThreadSearchOccurrencesParams = Schema.StructWithRest(
     ),
     searchTerm: Schema.String.annotate({
       description:
-        "Case-insensitive literal substring to find in visible user messages and final assistant messages.",
+        "Case-insensitive literal substring to find in visible user messages and both partial and final assistant answers.",
     }),
     threadId: Schema.String,
   }),
@@ -81165,9 +82240,11 @@ export type V2TurnStartParams = {
   readonly model?: string | null;
   readonly multiAgentMode?: V2TurnStartParams__MultiAgentMode | null;
   readonly outputSchema?: Schema.Json;
+  readonly parentTurnId?: string | null;
   readonly permissions?: string | null;
   readonly personality?: V2TurnStartParams__Personality | null;
   readonly responsesapiClientMetadata?: { readonly [x: string]: string } | null;
+  readonly rootTurnId?: string | null;
   readonly runtimeWorkspaceRoots?: ReadonlyArray<V2TurnStartParams__AbsolutePathBuf> | null;
   readonly sandboxPolicy?: V2TurnStartParams__SandboxPolicy | null;
   readonly serviceTier?: string | null;
@@ -81217,7 +82294,7 @@ export const V2TurnStartParams = Schema.StructWithRest(
     cyberAccessProgram: Schema.optionalKey(
       Schema.Union([V2TurnStartParams__CyberAccessProgram, Schema.Null]).annotate({
         description:
-          "EXPERIMENTAL - Request a workspace-authorized cyber program for this turn. Omission preserves automatic behavior. This does not grant access.",
+          "EXPERIMENTAL - Request an authorized cyber program for this turn. Omission preserves automatic behavior. This does not grant access.",
       }),
     ),
     disabledPluginIds: Schema.optionalKey(
@@ -81265,6 +82342,15 @@ export const V2TurnStartParams = Schema.StructWithRest(
           "Optional JSON Schema used to constrain the final assistant message for this turn.",
       }),
     ),
+    parentTurnId: Schema.optionalKey(
+      Schema.Union([
+        Schema.String.annotate({
+          description:
+            "ID of the turn that caused this new turn to start.\n\nSet this when starting work on behalf of another turn, such as delegated work in a different thread. Leave unset for work started directly by the user. Ignored when this request adds input to an active turn.",
+        }),
+        Schema.Null,
+      ]),
+    ),
     permissions: Schema.optionalKey(
       Schema.Union([
         Schema.String.annotate({
@@ -81285,6 +82371,15 @@ export const V2TurnStartParams = Schema.StructWithRest(
         Schema.Record(Schema.String, Schema.String).annotate({
           description:
             'Optional metadata to enrich Codex\'s ResponsesAPI turn metadata.\n\nEntries are flattened into the JSON string sent as `client_metadata["x-codex-turn-metadata"]` on ResponsesAPI HTTP and websocket requests.\n\nThey are not sent as top-level ResponsesAPI `client_metadata` keys, and reserved keys such as `session_id`, `thread_id`, `turn_id`, and `window_id` cannot be overridden.',
+        }),
+        Schema.Null,
+      ]),
+    ),
+    rootTurnId: Schema.optionalKey(
+      Schema.Union([
+        Schema.String.annotate({
+          description:
+            "ID of the first turn in the chain of work that led to this new turn.\n\nWhen setting `parentTurnId`, set this to the parent turn's `rootTurnId` when known. This keeps descendant work attributed to the original turn. If omitted, the new turn becomes its own root. Ignored when this request adds input to an active turn.",
         }),
         Schema.Null,
       ]),

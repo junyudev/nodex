@@ -92,6 +92,18 @@ describe("Codex app-server capability policy", () => {
       below: "0.150.0-alpha.12.1",
       minimum: "0.150.0-alpha.12.2",
     },
+    { capability: "threadTimeline", below: "0.150.0-alpha.8", minimum: "0.150.0-alpha.9" },
+    { capability: "threadItemAnchors", below: "0.159.0-alpha.1", minimum: "0.159.0-alpha.2" },
+    {
+      capability: "experimentalPredictionForkMode",
+      below: "0.162.0-alpha.19",
+      minimum: "0.162.0-alpha.20",
+    },
+    {
+      capability: "mcpApplicationNetworkPolicy",
+      below: "0.157.0-alpha.10",
+      minimum: "0.157.0-alpha.11",
+    },
   ])("enables $capability exactly at its prerelease floor", ({ capability, below, minimum }) => {
     const belowSnapshot = createCodexAppServerCapabilitySnapshot({
       hostId: "local",
@@ -148,16 +160,20 @@ describe("Codex app-server capability policy", () => {
     expect(snapshot.flags).toEqual({
       turnApprovalsReviewer: true,
       turnToolOutput: true,
-      forkLastTurnId: false,
-      paginatedFork: false,
+      forkLastTurnId: true,
+      paginatedFork: true,
       paginatedHistory: false,
       searchOccurrences: true,
-      ephemeralFork: false,
-      sideConversation: false,
+      ephemeralFork: true,
+      sideConversation: true,
       threadRevert: true,
-      threadQueue: false,
+      threadQueue: true,
       subagentAncestorFilter: true,
-      multiAgentV2Protocol: false,
+      multiAgentV2Protocol: true,
+      threadTimeline: true,
+      threadItemAnchors: false,
+      experimentalPredictionForkMode: true,
+      mcpApplicationNetworkPolicy: false,
     });
   });
 
@@ -187,6 +203,10 @@ describe("Codex app-server capability policy", () => {
         threadQueue: false,
         subagentAncestorFilter: false,
         multiAgentV2Protocol: false,
+        threadTimeline: false,
+        threadItemAnchors: false,
+        experimentalPredictionForkMode: false,
+        mcpApplicationNetworkPolicy: false,
       },
     });
     expect(Object.isFrozen(snapshot)).toBe(true);
@@ -208,6 +228,21 @@ describe("Codex app-server capability policy", () => {
         userAgent: "Codex Desktop/0.148.0",
       }),
     ).toThrow(/generation/u);
+  });
+
+  test("supports the shipped prediction alpha patch without enabling neighboring prereleases", () => {
+    const flags = (version: string) =>
+      createCodexAppServerCapabilitySnapshot({
+        hostId: "local",
+        generation: 1,
+        userAgent: `nodex/${version}`,
+      }).flags;
+    expect(flags("0.162.0-alpha.17.1").experimentalPredictionForkMode).toBe(false);
+    expect(flags("0.162.0-alpha.17.2").experimentalPredictionForkMode).toBe(true);
+    expect(flags("0.162.0-alpha.17.3").experimentalPredictionForkMode).toBe(false);
+    expect(flags("0.162.0-alpha.20").experimentalPredictionForkMode).toBe(true);
+    expect(flags("0.0.0").threadItemAnchors).toBe(false);
+    expect(flags("0.0.0").mcpApplicationNetworkPolicy).toBe(false);
   });
 
   it.effect("projects and fences the exact physical session generation", () =>

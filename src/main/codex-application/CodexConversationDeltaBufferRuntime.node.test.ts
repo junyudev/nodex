@@ -170,6 +170,7 @@ it.effect("commits a large buffered delta on the explicit completion drain", () 
         daybreakEnabled: null,
         turns: [
           {
+            rootTurnId: null,
             id: "turn-1",
             status: "inProgress",
             error: null,

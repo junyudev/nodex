@@ -1127,6 +1127,7 @@ test("an inactive owner retires its native subscription after the final follower
         params: {
           threadId,
           turn: {
+            rootTurnId: null,
             id: turnId,
             items: [],
             itemsView: "full",

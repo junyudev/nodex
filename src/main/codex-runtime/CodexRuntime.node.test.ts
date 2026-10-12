@@ -1063,6 +1063,7 @@ it.effect(
         daybreakEnabled: null,
         turns: [
           {
+            rootTurnId: null,
             id: "turn-raw",
             status: "completed",
             itemsView: "full",

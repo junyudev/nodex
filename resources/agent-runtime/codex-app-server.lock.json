@@ -1,22 +1,22 @@
 {
-  "appServerRuntimeVersion": "0.159.3",
+  "appServerRuntimeVersion": "0.162.0-alpha.17.2",
   "builds": {
     "darwin-arm64": {
-      "archiveSha256": "fad57a5681cabcef21d322af5aec938975cfb711b5f25d4ce4907e6561616d07",
-      "archiveSize": 129531463,
+      "archiveSha256": "f05b8447bae71d556050fd4066ea4cd066a7b8881ca9c086b88215e7d3d76264",
+      "archiveSize": 132097637,
       "assetName": "codex-package-aarch64-apple-darwin.tar.gz",
-      "url": "https://github.com/openai/codex/releases/download/rust-v0.159.3/codex-package-aarch64-apple-darwin.tar.gz",
-      "entrypointSha256": "4d210f7c5a18fd0386434df23b5bdbb8c0e7257d3e8a2b30b0769c8bbe99a878",
-      "runtimeMetadataSha256": "70ab695570e229de54e12d45fa30657d04fd3611173cb46eecba4f0fd3dc488d",
+      "url": "https://github.com/openai/codex/releases/download/rust-v0.162.0-alpha.17.2/codex-package-aarch64-apple-darwin.tar.gz",
+      "entrypointSha256": "9b47aa34d14c35d87fbe2702fc6c4163d965b30fd88b3defd19e80e780f40d8d",
+      "runtimeMetadataSha256": "eb94bcbd1fe7a7530f2d71678d2d2aa150733b3884a0dabc624606d042159044",
       "targetTriple": "aarch64-apple-darwin"
     },
     "darwin-x64": {
-      "archiveSha256": "fe3096a62b5d8395dd25abf9fe79334cf13c1520b825d236cd2b41eb75a63201",
-      "archiveSize": 140774730,
+      "archiveSha256": "8f8671a4d0b5c3a2920357e8afba5df2dd2c97a5a83461f6b834b927fed9a738",
+      "archiveSize": 143434284,
       "assetName": "codex-package-x86_64-apple-darwin.tar.gz",
-      "url": "https://github.com/openai/codex/releases/download/rust-v0.159.3/codex-package-x86_64-apple-darwin.tar.gz",
-      "entrypointSha256": "78dc6d28fa52d0ee89205c383f2caaf596d2fb7ef2847c076c6da7cc3ac46d66",
-      "runtimeMetadataSha256": "20f53f90e1c32c14cfd3546ce93ae8ed31b7dfe2d6722ff3ff25712c34ecbe61",
+      "url": "https://github.com/openai/codex/releases/download/rust-v0.162.0-alpha.17.2/codex-package-x86_64-apple-darwin.tar.gz",
+      "entrypointSha256": "ed65a15386358011fe2e222fdec63cc9b820ed764810476e60b080c4304561dc",
+      "runtimeMetadataSha256": "7eb36bc5154200da6871ab7513433163c088f183d9e39dea768cccf74bb68ba9",
       "targetTriple": "x86_64-apple-darwin"
     }
   },
@@ -32,25 +32,25 @@
     "pathDir": "codex-path",
     "resourcesDir": "codex-resources",
     "variant": "codex",
-    "version": "0.159.3"
+    "version": "0.162.0-alpha.17.2"
   },
   "protocolSchema": {
     "experimental": true,
-    "sha256": "44cdb8ec9b9bb075cac1722ae53632993e599db01ee58e5ab5f7d4d0bc1052c9",
+    "sha256": "dababf2385536c28b72fa6180b53f184c2e6d0cdcc4f4a1446399fe9300d5614",
     "tools": {
       "darwin-arm64": {
-        "archiveSha256": "51de50a39ea592b5b0a64ae0474548c282181cb6b96d9bd08965a682ae12774c",
-        "archiveSize": 95446572,
+        "archiveSha256": "cc893d1787bedbf34001bf2d16378f479393b9e635f8dbc74e8abb7870fe3998",
+        "archiveSize": 97979963,
         "assetName": "codex-aarch64-apple-darwin.tar.gz",
-        "url": "https://github.com/openai/codex/releases/download/rust-v0.159.3/codex-aarch64-apple-darwin.tar.gz",
+        "url": "https://github.com/openai/codex/releases/download/rust-v0.162.0-alpha.17.2/codex-aarch64-apple-darwin.tar.gz",
         "entrypoint": "codex-aarch64-apple-darwin",
         "targetTriple": "aarch64-apple-darwin"
       },
       "darwin-x64": {
-        "archiveSha256": "cbaea8206d3189b8a7cd7c1b476e14a541ab22d469c37253f758ff71d4ed24b7",
-        "archiveSize": 104164148,
+        "archiveSha256": "0492672564597366731cdbfb4291a514a3c8c19aca1ccb40f1d1e1ee1b901fc5",
+        "archiveSize": 106787321,
         "assetName": "codex-x86_64-apple-darwin.tar.gz",
-        "url": "https://github.com/openai/codex/releases/download/rust-v0.159.3/codex-x86_64-apple-darwin.tar.gz",
+        "url": "https://github.com/openai/codex/releases/download/rust-v0.162.0-alpha.17.2/codex-x86_64-apple-darwin.tar.gz",
         "entrypoint": "codex-x86_64-apple-darwin",
         "targetTriple": "x86_64-apple-darwin"
       }
@@ -105,13 +105,13 @@
   "upstream": {
     "checksumManifest": {
       "assetName": "codex-package_SHA256SUMS",
-      "sha256": "ab7eb97abe3b6a6825b84d9d34af296645564e27a64bb4033ee5a8433ddc7245",
+      "sha256": "2c54865a49f768f6620a4c460995452ab96a26fc28b4826c204380189c60cda3",
       "size": 1631,
-      "url": "https://github.com/openai/codex/releases/download/rust-v0.159.3/codex-package_SHA256SUMS"
+      "url": "https://github.com/openai/codex/releases/download/rust-v0.162.0-alpha.17.2/codex-package_SHA256SUMS"
     },
-    "commit": "01fc69f4026735edfdf6789820549727a4867b11",
+    "commit": "740e5af33c71225640e0c1c1555c514c2c93ab74",
     "repository": "openai/codex",
     "signingTeamId": "2DC432GLL2",
-    "tag": "rust-v0.159.3"
+    "tag": "rust-v0.162.0-alpha.17.2"
   }
 }

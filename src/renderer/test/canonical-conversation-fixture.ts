@@ -40,6 +40,7 @@ export function buildThreadFromConversation(conversation: CodexConversationSnaps
     gitInfo: null,
     name: conversation.threadName,
     turns: conversation.turns.map((turn) => ({
+      rootTurnId: null,
       id: turn.turnId!,
       items: turn.items.map((item) => {
         if (item.rawItem && typeof item.rawItem === "object") {

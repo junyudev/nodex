@@ -79,6 +79,7 @@ import {
 const response = (): TurnStartResponse =>
   ({
     turn: {
+      rootTurnId: null,
       id: "turn-accepted",
       status: "inProgress",
       items: [{ id: "item-user", type: "userMessage", content: [] }],

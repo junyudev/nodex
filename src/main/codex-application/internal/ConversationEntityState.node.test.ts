@@ -125,6 +125,7 @@ const hydratedState = (
   );
 
 const completedTurn = (id: string): Turn => ({
+  rootTurnId: null,
   id,
   items: [],
   itemsView: "full",
@@ -583,6 +584,7 @@ it("owns a bounded sparse history topology with an explicit older gap", () => {
     ...thread,
     turns: [
       {
+        rootTurnId: null,
         id: "turn-tail",
         items: [],
         itemsView: "full",

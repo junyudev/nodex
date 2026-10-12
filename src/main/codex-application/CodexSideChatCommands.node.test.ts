@@ -757,6 +757,7 @@ it.effect("rejects stale generations and fork responses containing inline histor
           ...forkResponse.thread,
           turns: [
             {
+              rootTurnId: null,
               id: "turn-inline",
               items: [],
               itemsView: "full",

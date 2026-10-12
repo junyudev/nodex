@@ -23,6 +23,7 @@ const base = createCodexCanonicalHydratedConversationState(
     ...buildAgentActivityV2CorpusThread([]),
     turns: [
       {
+        rootTurnId: null,
         id: "turn",
         status: "completed",
         items: [],

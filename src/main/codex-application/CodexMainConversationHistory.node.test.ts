@@ -24,6 +24,7 @@ import { ConversationEntityMap } from "./internal/ConversationEntityMap";
 import { makeConversationEntityStateRegistry } from "./internal/ConversationEntityState";
 
 const turn = (id: string): Turn => ({
+  rootTurnId: null,
   id,
   items: [],
   itemsView: "full",

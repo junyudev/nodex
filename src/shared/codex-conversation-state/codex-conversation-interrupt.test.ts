@@ -13,6 +13,7 @@ function harness() {
     ...buildAgentActivityV2CorpusThread([]),
     turns: [
       {
+        rootTurnId: null,
         id: "active",
         status: "inProgress" as const,
         itemsView: "full" as const,

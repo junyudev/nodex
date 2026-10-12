@@ -20,6 +20,7 @@ export const CLIENT_REQUEST_METHODS = {
   "thread/increment_elicitation": "thread/increment_elicitation",
   "thread/decrement_elicitation": "thread/decrement_elicitation",
   "thread/name/set": "thread/name/set",
+  "thread/prediction/request": "thread/prediction/request",
   "thread/goal/set": "thread/goal/set",
   "thread/goal/get": "thread/goal/get",
   "thread/goal/clear": "thread/goal/clear",
@@ -32,6 +33,7 @@ export const CLIENT_REQUEST_METHODS = {
   "thread/metadata/update": "thread/metadata/update",
   "thread/attachment/add": "thread/attachment/add",
   "thread/attachment/list": "thread/attachment/list",
+  "thread/attachmentOwner/list": "thread/attachmentOwner/list",
   "thread/attachment/remove": "thread/attachment/remove",
   "thread/section/move": "thread/section/move",
   "thread/settings/update": "thread/settings/update",
@@ -142,6 +144,7 @@ export const CLIENT_REQUEST_METHODS = {
   "account/login/start": "account/login/start",
   "account/bedrock/discover": "account/bedrock/discover",
   "account/bedrock/setup": "account/bedrock/setup",
+  "account/bedrock/checkGovCloudRequirements": "account/bedrock/checkGovCloudRequirements",
   "account/login/cancel": "account/login/cancel",
   "account/logout": "account/logout",
   "account/rateLimits/read": "account/rateLimits/read",
@@ -207,6 +210,7 @@ export const SERVER_NOTIFICATION_METHODS = {
   "thread/name/updated": "thread/name/updated",
   "thread/attachment/updated": "thread/attachment/updated",
   "thread/goal/updated": "thread/goal/updated",
+  "thread/prediction/updated": "thread/prediction/updated",
   "thread/goal/cleared": "thread/goal/cleared",
   "thread/queue/changed": "thread/queue/changed",
   "project/changed": "project/changed",
@@ -304,6 +308,7 @@ export interface ClientRequestParamsByMethod {
   readonly "thread/increment_elicitation": CodexSchema.V2ThreadIncrementElicitationParams;
   readonly "thread/decrement_elicitation": CodexSchema.V2ThreadDecrementElicitationParams;
   readonly "thread/name/set": CodexSchema.V2ThreadSetNameParams;
+  readonly "thread/prediction/request": CodexSchema.V2ThreadPredictionRequestParams;
   readonly "thread/goal/set": CodexSchema.V2ThreadGoalSetParams;
   readonly "thread/goal/get": CodexSchema.V2ThreadGoalGetParams;
   readonly "thread/goal/clear": CodexSchema.V2ThreadGoalClearParams;
@@ -316,6 +321,7 @@ export interface ClientRequestParamsByMethod {
   readonly "thread/metadata/update": CodexSchema.V2ThreadMetadataUpdateParams;
   readonly "thread/attachment/add": CodexSchema.V2ThreadAttachmentAddParams;
   readonly "thread/attachment/list": CodexSchema.V2ThreadAttachmentListParams;
+  readonly "thread/attachmentOwner/list": CodexSchema.V2ThreadAttachmentOwnerListParams;
   readonly "thread/attachment/remove": CodexSchema.V2ThreadAttachmentRemoveParams;
   readonly "thread/section/move": CodexSchema.V2ThreadSectionMoveParams;
   readonly "thread/settings/update": CodexSchema.V2ThreadSettingsUpdateParams;
@@ -426,6 +432,7 @@ export interface ClientRequestParamsByMethod {
   readonly "account/login/start": CodexSchema.V2LoginAccountParams;
   readonly "account/bedrock/discover": CodexSchema.V2BedrockDiscoverParams;
   readonly "account/bedrock/setup": CodexSchema.V2BedrockSetupParams;
+  readonly "account/bedrock/checkGovCloudRequirements": CodexSchema.V2BedrockCheckGovCloudRequirementsParams;
   readonly "account/login/cancel": CodexSchema.V2CancelLoginAccountParams;
   readonly "account/logout": undefined;
   readonly "account/rateLimits/read":
@@ -481,6 +488,7 @@ export interface ClientRequestResponsesByMethod {
   readonly "thread/increment_elicitation": CodexSchema.V2ThreadIncrementElicitationResponse;
   readonly "thread/decrement_elicitation": CodexSchema.V2ThreadDecrementElicitationResponse;
   readonly "thread/name/set": CodexSchema.V2ThreadSetNameResponse;
+  readonly "thread/prediction/request": CodexSchema.V2ThreadPredictionRequestResponse;
   readonly "thread/goal/set": CodexSchema.V2ThreadGoalSetResponse;
   readonly "thread/goal/get": CodexSchema.V2ThreadGoalGetResponse;
   readonly "thread/goal/clear": CodexSchema.V2ThreadGoalClearResponse;
@@ -493,6 +501,7 @@ export interface ClientRequestResponsesByMethod {
   readonly "thread/metadata/update": CodexSchema.V2ThreadMetadataUpdateResponse;
   readonly "thread/attachment/add": CodexSchema.V2ThreadAttachmentAddResponse;
   readonly "thread/attachment/list": CodexSchema.V2ThreadAttachmentListResponse;
+  readonly "thread/attachmentOwner/list": CodexSchema.V2ThreadAttachmentOwnerListResponse;
   readonly "thread/attachment/remove": CodexSchema.V2ThreadAttachmentRemoveResponse;
   readonly "thread/section/move": CodexSchema.V2ThreadSectionMoveResponse;
   readonly "thread/settings/update": CodexSchema.V2ThreadSettingsUpdateResponse;
@@ -603,6 +612,7 @@ export interface ClientRequestResponsesByMethod {
   readonly "account/login/start": CodexSchema.V2LoginAccountResponse;
   readonly "account/bedrock/discover": CodexSchema.V2BedrockDiscoverResponse;
   readonly "account/bedrock/setup": CodexSchema.V2BedrockSetupResponse;
+  readonly "account/bedrock/checkGovCloudRequirements": CodexSchema.V2BedrockCheckGovCloudRequirementsResponse;
   readonly "account/login/cancel": CodexSchema.V2CancelLoginAccountResponse;
   readonly "account/logout": CodexSchema.V2LogoutAccountResponse;
   readonly "account/rateLimits/read": CodexSchema.V2GetAccountRateLimitsResponse;
@@ -682,6 +692,7 @@ export interface ServerNotificationParamsByMethod {
   readonly "thread/name/updated": CodexSchema.V2ThreadNameUpdatedNotification;
   readonly "thread/attachment/updated": CodexSchema.V2ThreadAttachmentUpdatedNotification;
   readonly "thread/goal/updated": CodexSchema.V2ThreadGoalUpdatedNotification;
+  readonly "thread/prediction/updated": CodexSchema.V2ThreadPredictionUpdatedNotification;
   readonly "thread/goal/cleared": CodexSchema.V2ThreadGoalClearedNotification;
   readonly "thread/queue/changed": CodexSchema.V2ThreadQueueChangedNotification;
   readonly "project/changed": CodexSchema.V2ProjectChangedNotification;
@@ -774,6 +785,7 @@ export const CLIENT_REQUEST_PARAMS = {
   "thread/increment_elicitation": CodexSchema.V2ThreadIncrementElicitationParams,
   "thread/decrement_elicitation": CodexSchema.V2ThreadDecrementElicitationParams,
   "thread/name/set": CodexSchema.V2ThreadSetNameParams,
+  "thread/prediction/request": CodexSchema.V2ThreadPredictionRequestParams,
   "thread/goal/set": CodexSchema.V2ThreadGoalSetParams,
   "thread/goal/get": CodexSchema.V2ThreadGoalGetParams,
   "thread/goal/clear": CodexSchema.V2ThreadGoalClearParams,
@@ -786,6 +798,7 @@ export const CLIENT_REQUEST_PARAMS = {
   "thread/metadata/update": CodexSchema.V2ThreadMetadataUpdateParams,
   "thread/attachment/add": CodexSchema.V2ThreadAttachmentAddParams,
   "thread/attachment/list": CodexSchema.V2ThreadAttachmentListParams,
+  "thread/attachmentOwner/list": CodexSchema.V2ThreadAttachmentOwnerListParams,
   "thread/attachment/remove": CodexSchema.V2ThreadAttachmentRemoveParams,
   "thread/section/move": CodexSchema.V2ThreadSectionMoveParams,
   "thread/settings/update": CodexSchema.V2ThreadSettingsUpdateParams,
@@ -900,6 +913,7 @@ export const CLIENT_REQUEST_PARAMS = {
   "account/login/start": CodexSchema.V2LoginAccountParams,
   "account/bedrock/discover": CodexSchema.V2BedrockDiscoverParams,
   "account/bedrock/setup": CodexSchema.V2BedrockSetupParams,
+  "account/bedrock/checkGovCloudRequirements": CodexSchema.V2BedrockCheckGovCloudRequirementsParams,
   "account/login/cancel": CodexSchema.V2CancelLoginAccountParams,
   "account/logout": undefined,
   "account/rateLimits/read": Schema.UndefinedOr(
@@ -956,6 +970,7 @@ export const CLIENT_REQUEST_RESPONSES = {
   "thread/increment_elicitation": CodexSchema.V2ThreadIncrementElicitationResponse,
   "thread/decrement_elicitation": CodexSchema.V2ThreadDecrementElicitationResponse,
   "thread/name/set": CodexSchema.V2ThreadSetNameResponse,
+  "thread/prediction/request": CodexSchema.V2ThreadPredictionRequestResponse,
   "thread/goal/set": CodexSchema.V2ThreadGoalSetResponse,
   "thread/goal/get": CodexSchema.V2ThreadGoalGetResponse,
   "thread/goal/clear": CodexSchema.V2ThreadGoalClearResponse,
@@ -968,6 +983,7 @@ export const CLIENT_REQUEST_RESPONSES = {
   "thread/metadata/update": CodexSchema.V2ThreadMetadataUpdateResponse,
   "thread/attachment/add": CodexSchema.V2ThreadAttachmentAddResponse,
   "thread/attachment/list": CodexSchema.V2ThreadAttachmentListResponse,
+  "thread/attachmentOwner/list": CodexSchema.V2ThreadAttachmentOwnerListResponse,
   "thread/attachment/remove": CodexSchema.V2ThreadAttachmentRemoveResponse,
   "thread/section/move": CodexSchema.V2ThreadSectionMoveResponse,
   "thread/settings/update": CodexSchema.V2ThreadSettingsUpdateResponse,
@@ -1078,6 +1094,8 @@ export const CLIENT_REQUEST_RESPONSES = {
   "account/login/start": CodexSchema.V2LoginAccountResponse,
   "account/bedrock/discover": CodexSchema.V2BedrockDiscoverResponse,
   "account/bedrock/setup": CodexSchema.V2BedrockSetupResponse,
+  "account/bedrock/checkGovCloudRequirements":
+    CodexSchema.V2BedrockCheckGovCloudRequirementsResponse,
   "account/login/cancel": CodexSchema.V2CancelLoginAccountResponse,
   "account/logout": CodexSchema.V2LogoutAccountResponse,
   "account/rateLimits/read": CodexSchema.V2GetAccountRateLimitsResponse,
@@ -1159,6 +1177,7 @@ export const SERVER_NOTIFICATION_PARAMS = {
   "thread/name/updated": CodexSchema.V2ThreadNameUpdatedNotification,
   "thread/attachment/updated": CodexSchema.V2ThreadAttachmentUpdatedNotification,
   "thread/goal/updated": CodexSchema.V2ThreadGoalUpdatedNotification,
+  "thread/prediction/updated": CodexSchema.V2ThreadPredictionUpdatedNotification,
   "thread/goal/cleared": CodexSchema.V2ThreadGoalClearedNotification,
   "thread/queue/changed": CodexSchema.V2ThreadQueueChangedNotification,
   "project/changed": CodexSchema.V2ProjectChangedNotification,
