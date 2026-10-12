@@ -18,30 +18,49 @@ supportedArchitectures:
 
 overrides:
   "@babel/core": 7.29.7
-  "@xmldom/xmldom": 0.8.13
-  dompurify: 3.4.15
+  "@xmldom/xmldom": 0.8.15
+  dompurify: 3.4.16
   flatted: 3.4.2
   form-data: 4.0.6
-  immutable: 4.3.8
+  immutable: 4.3.9
   lodash: 4.18.1
   lodash-es: 4.18.1
-  mermaid: 11.15.0
-  nanoid: 3.3.12
+  mermaid: 11.16.1
+  nanoid: 3.3.18
   node-abi: ^4.31.0
   picomatch: 4.0.4
-  postcss: 8.5.15
+  postcss: 8.5.23
   prosemirror-model: 1.25.11
   prosemirror-transform: 1.12.0
-  prosemirror-view: 1.42.2
-  "@tiptap/extension-bubble-menu": 3.29.2
-  "@tiptap/extension-floating-menu": 3.29.2
+  prosemirror-view: 1.42.3
+  "@tiptap/extension-bubble-menu": 3.31.4
+  "@tiptap/extension-floating-menu": 3.31.4
   rollup: 4.62.0
   sass: 1.101.0
-  tar: 7.5.16
+  tar: 7.5.21
+  tinypool: 2.1.2
   tmp: 0.2.7
   vite: npm:@voidzero-dev/vite-plus-core@0.2.9
-  vitest: 4.1.10
+  vitest: 4.1.11
   yaml: 2.9.0
+  "@modelcontextprotocol/sdk": 1.32.1
+  js-yaml: 4.3.2
+  katex: 0.18.2
+  # Vite+ 0.2 pins Vitest internals; keep its full test runtime on the patched release.
+  "@vitest/spy@^4.0.0": 4.1.11
+  "@vitest/utils@^4.0.0": 4.1.11
+  "@vitest/expect@^4.0.0": 4.1.11
+  "@vitest/mocker@^4.0.0": 4.1.11
+  "@vitest/runner@^4.0.0": 4.1.11
+  "@vitest/browser@^4.0.0": 4.1.11
+  "@vitest/snapshot@^4.0.0": 4.1.11
+  "@vitest/pretty-format@^4.0.0": 4.1.11
+  "@vitest/browser-preview@^4.0.0": 4.1.11
+
+audit:
+  # Packaging-only logger uses fixed format strings; see docs/SECURITY.md.
+  ignore:
+    - GHSA-hp3w-g68c-fv3c
 
 allowBuilds:
   "@parcel/watcher": true

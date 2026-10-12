@@ -138,16 +138,45 @@ it.effect(
     }),
 );
 
-it.effect("retains own prototype-named keys in both parsing paths", () =>
+it.effect("both parsing paths preserve JSON own keys without inherited authority", () =>
   Effect.gen(function* () {
-    for (const threshold of [1, 1000]) {
+    const line =
+      '{"__proto__":{"id":"forged"},"method":"notification","params":{' +
+      '"__proto__":null,"constructor":{"prototype":{"isAdmin":true}},' +
+      '"items":[{"__proto__":{"isAdmin":true}},{"__proto__":null}],' +
+      '"duplicate":{"__proto__":{"isAdmin":true},"__proto__":null}}}\n';
+    for (const threshold of [1, 1024]) {
       const result = yield* read(
-        [Buffer.from('{"id":1,"result":{"__proto__":{"safe":true}}}\n')],
+        Array.from(Buffer.from(line), (byte) => Buffer.from([byte])),
         threshold,
+        1,
       );
-      const value = materializeCodexJson(result.values[0]!.message) as { result: object };
-      expect(Object.hasOwn(value.result, "__proto__")).toBe(true);
-      expect(Object.getPrototypeOf(value.result)).toBe(Object.prototype);
+      expect(result.errors).toEqual([]);
+      expect(result.values).toHaveLength(1);
+      const message = result.values[0]!.message;
+      const params = message.params as Record<string, unknown>;
+      const items = params.items;
+      const entries = items instanceof CodexChunkedArray ? items.chunks.flat() : items;
+      expect(Array.isArray(entries)).toBe(true);
+      expect(items instanceof CodexChunkedArray).toBe(threshold === 1);
+      for (const object of [
+        message,
+        params,
+        ...(entries as Record<string, unknown>[]),
+        params.duplicate as Record<string, unknown>,
+      ]) {
+        expect(Object.getPrototypeOf(object)).toBe(Object.prototype);
+        expect(Object.getOwnPropertyDescriptor(object, "__proto__")).toMatchObject({
+          configurable: true,
+          enumerable: true,
+          writable: true,
+        });
+        expect(object.isAdmin).toBeUndefined();
+      }
+      expect(message.id).toBeUndefined();
+      expect(params["__proto__"]).toBeNull();
+      expect((params.duplicate as Record<string, unknown>)["__proto__"]).toBeNull();
+      expect(materializeCodexJson(message)).toEqual(JSON.parse(line));
     }
   }),
 );

@@ -87,8 +87,10 @@ const isRustDependencyPath = (path: string): boolean =>
   path === "Cargo.lock" || path === "Cargo.toml" || /^crates\/[^/]+\/Cargo\.toml$/u.test(path);
 
 const isJavaScriptDependencyPath = (path: string): boolean =>
+  path === ".npmrc" ||
   path === "package.json" ||
   path === "pnpm-lock.yaml" ||
+  path === "pnpm-workspace.yaml" ||
   /^(?:packages|third_party\/blocknote\/packages)\/[^/]+\/package\.json$/u.test(path);
 
 const isStressTestPath = (path: string): boolean => path.includes(".stress.");
@@ -327,6 +329,7 @@ const sourcePlan = (
   if (renderer) staticGroups.add("ui-contracts");
   if (electronMain || rust || protocol) staticGroups.add("repository-contracts");
   if (paths.some(isGeneratedResourcePath)) staticGroups.add("generated");
+  if (paths.some(isJavaScriptDependencyPath)) staticGroups.add("dependency-security");
   if (
     paths.some(
       (path) =>
@@ -364,6 +367,7 @@ export function classifyChangedPaths(
   if (paths.every(isDocumentationPath)) return createPlan({ docsOnly: true });
   const landingOnly =
     paths.some(isLandingPath) &&
+    !paths.some(isJavaScriptDependencyPath) &&
     paths.every((path) => isLandingPath(path) || isDocumentationPath(path));
   if (landingOnly)
     return createPlan({

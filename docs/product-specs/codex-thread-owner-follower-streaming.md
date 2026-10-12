@@ -235,6 +235,13 @@ parameters, host and generation intact. Metadata hydration cannot delay or resha
 ingress. The production Inbox has no per-occurrence byte quota that rejects an otherwise
 valid large notification before its owner can process it.
 
+JSONL ingress accepts one JSON object per line and continues at the next line
+after malformed input. Buffered and streamed parsing both preserve JSON own-key
+semantics: prototype-named keys remain data and cannot supply inherited request
+identity or flags. Large arrays use chunked transport values without changing
+their JSON contents; JSONC comments and path-filter extraction are not part of
+this transport.
+
 Owner action dispatch uses typed native method payloads. Followers forward the original
 request fields and context; they do not convert them to composer text and ask Main to rebuild
 an unrelated command. Settings, interrupt, start, steer, edit, compaction, complete history and

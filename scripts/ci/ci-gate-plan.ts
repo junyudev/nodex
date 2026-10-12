@@ -5,6 +5,7 @@ export const STATIC_GROUPS = [
   "ui-contracts",
   "ci-contracts",
   "repository-contracts",
+  "dependency-security",
   "generated",
   "landing",
 ] as const;

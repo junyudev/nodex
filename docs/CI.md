@@ -79,6 +79,20 @@ files remain Nightly-owned. Vitest configuration, TypeScript project
 configuration, lockfiles, CI orchestration, and deleted files promote selection
 to `full`.
 
+## Dependency security
+
+The `dependency-security` static group runs `vp pm audit --level low` through the
+repository's pinned package manager. It checks production, development, optional,
+and transitive JavaScript dependencies. Changes to a workspace manifest, lockfile,
+`pnpm-workspace.yaml`, or `.npmrc` select the required audit gate, including changes
+that accompany application edits. A landing dependency manifest receives the same
+dependency gates as the other workspace manifests.
+
+Nightly CI and release certification run the audit again to catch newly disclosed
+advisories in unchanged dependency versions. This check uses current registry data
+and is not cached as a deterministic source check. Registry failures fail closed.
+Accepted advisory policy belongs to [Security](SECURITY.md#dependency-maintenance).
+
 ## Rust lanes
 
 `_rust-checks.yml` runs formatting, Clippy, nextest/Rustdoc, protocol

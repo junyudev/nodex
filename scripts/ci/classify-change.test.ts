@@ -152,6 +152,24 @@ describe("CI change classification", () => {
     });
   });
 
+  test("audits every dependency entry point even alongside application changes", () => {
+    for (const dependencyPath of [
+      ".npmrc",
+      "package.json",
+      "pnpm-lock.yaml",
+      "pnpm-workspace.yaml",
+      "packages/landing/package.json",
+      "packages/nodex-app-tools-mcp/package.json",
+      "third_party/blocknote/packages/core/package.json",
+    ]) {
+      for (const accompanyingPaths of [[], ["src/renderer/app.tsx", "docs/SECURITY.md"]]) {
+        const plan = classifyChangedPaths([dependencyPath, ...accompanyingPaths]);
+        expect(plan.staticGroups, dependencyPath).toContain("dependency-security");
+        expect(plan.landingOnly, dependencyPath).toBe(false);
+      }
+    }
+  });
+
   test("routes CI orchestration to contracts and only exercises changed reusable owners", () => {
     expect(classifyChangedPaths([".github/workflows/ci.yml", "docs/CI.md"])).toMatchObject({
       appTestSuites: [],

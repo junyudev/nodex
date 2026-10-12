@@ -96,6 +96,12 @@ export const STATIC_CHECKS: readonly StaticCheck[] = [
     name: "version surfaces",
   },
   {
+    command: ["pm", "audit", "--level", "low"],
+    group: "dependency-security",
+    id: "dependency-security",
+    name: "known vulnerabilities in the complete JavaScript dependency graph",
+  },
+  {
     command: ["run", "build-resources:verify"],
     group: "generated",
     id: "generated-resources",

@@ -25,6 +25,10 @@ All notable changes to this project will be documented in this file.
 - Dictation recovers incomplete streams without duplicating completed segments, respects account availability and language settings, and preserves newer clipboard contents during global paste recovery.
 - Global dictation no longer disappears with service rollout changes. Voice retains global shortcut and dictionary settings, and its sound preference applies to both capture surfaces.
 
+### Security
+
+- Hardened rich-text paste, equations, diagrams, and configuration parsing against malicious input.
+
 ## [0.3.0] - 2026-09-20
 
 ### Added

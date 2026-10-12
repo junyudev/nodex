@@ -103,6 +103,37 @@ authority. A known hash or a local cache hit never grants access to Core bytes.
 
 ## Security Controls in Place
 
+### Dependency maintenance
+
+- Dependabot maintains npm, Cargo, and pinned GitHub Actions dependencies weekly.
+  npm security fixes are grouped into one reviewed pull request. Security updates
+  remain independent of the version-update schedule.
+- The `dependency-security` CI group runs `vp pm audit --level low` against the
+  complete JavaScript lockfile, including development and optional dependencies.
+  Manifest, lockfile, package-manager configuration, and override changes select
+  this required gate even when combined with application source edits. Nightly
+  CI and release certification also audit the complete graph against current
+  registry advisories. Registry failures fail the check; audits never rewrite
+  manifests or lockfiles.
+- Upgrade the owning direct dependency first. Use a scoped, compatible override
+  when its transitive dependency has a fix that upstream has not adopted yet;
+  retain the upstream contract and verify affected runtime behavior. Do not
+  force an unrelated major version solely to make an advisory disappear.
+- Any accepted advisory must be individually identified in the audit ignore
+  configuration and documented here with its dependency path, exposure rationale,
+  and reassessment trigger. Development-only status or lack of a published fix
+  alone is not sufficient grounds for an exception.
+- [GHSA-hp3w-g68c-fv3c](https://github.com/advisories/GHSA-hp3w-g68c-fv3c) is accepted
+  for `sprintf-js@1.1.3` through Electron Builder's optional
+  `@electron/get@3.1.0 → global-agent@3.0.0 → roarr@2.15.4` build dependency.
+  The advisory requires an attacker-controlled numeric precision format;
+  this proxy logger uses static message formats and serializes remote URLs,
+  response headers, and errors as context. Nodex does not ship this chain in
+  application runtime dependencies. No patched release is available. Reassess
+  and remove the exception when upstream supplies a compatible fix or removes
+  this chain; review it before changing the logger's message construction or
+  adding `sprintf-js` to runtime dependencies.
+
 ### Release supply chain
 
 - Pull-request CI has only `contents: read`, does not bind a GitHub environment,
@@ -632,8 +663,7 @@ CI` push run. The privileged release `workflow_run` additionally validates the
 
 ## Safe Operating Practices
 
-- Keep dependencies updated through reviewed pnpm, Cargo, and GitHub Actions
-  Dependabot changes.
+- Follow [Dependency maintenance](#dependency-maintenance) when updating dependencies.
 - Use manual backups before destructive operations.
 - Keep Sparkle and Developer ID private keys in separate encrypted offline
   backups. A gitignored local note is only a convenience copy, not an encrypted

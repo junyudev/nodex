@@ -75,4 +75,48 @@ describe("Mermaid runtime", () => {
       renderMermaidDiagram({ source: "definitely not Mermaid", theme: "light" }),
     ).rejects.toBeInstanceOf(MermaidRenderError);
   });
+
+  test("keeps architecture group IDs from changing object prototypes", async () => {
+    const marker = "nodexArchitecturePollutionMarker";
+    try {
+      const result = await renderMermaidDiagram({
+        source: `architecture-beta
+          group __proto__(cloud)[Prototype]
+          group ${marker}(cloud)[Group]
+          service a(server)[A] in __proto__
+          service b(server)[B] in ${marker}
+          a:R -- L:b`,
+        theme: "light",
+      });
+
+      expect(
+        new DOMParser().parseFromString(result.svg, "image/svg+xml").querySelector("svg"),
+      ).not.toBeNull();
+      expect(Object.hasOwn(Object.prototype, marker)).toBe(false);
+    } finally {
+      Reflect.deleteProperty(Object.prototype, marker);
+    }
+  });
+
+  test("bounds radar ticks requested by diagram source", async () => {
+    const result = await renderMermaidDiagram({
+      source: "radar-beta\n  axis a, b\n  curve c {1, 1}\n  ticks 1000",
+      theme: "light",
+    });
+    const svg = new DOMParser().parseFromString(result.svg, "image/svg+xml");
+
+    expect(svg.querySelectorAll("circle, polygon").length).toBeGreaterThan(0);
+    expect(svg.querySelectorAll("circle, polygon").length).toBeLessThanOrEqual(33);
+  });
+
+  test("renders an XY chart with a zero-width axis range", async () => {
+    const result = await renderMermaidDiagram({
+      source: "xychart\n  x-axis 1 --> 1\n  line [1, 2]",
+      theme: "light",
+    });
+
+    expect(result.width).toBeGreaterThan(0);
+    expect(result.height).toBeGreaterThan(0);
+    expect(document.querySelector('[id^="nodex-mermaid-"]')).toBeNull();
+  });
 });

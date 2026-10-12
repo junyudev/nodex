@@ -1,7 +1,7 @@
 import { constants } from "node:buffer";
 import { Writable, type Duplex } from "node:stream";
 import parser from "stream-json/parser.js";
-import FlexAssembler from "stream-json/utils/flex-assembler.js";
+import FlexAssembler, { arrayRule } from "stream-json/utils/flex-assembler.js";
 import type {
   CodexAppServerInboundProgress,
   CodexAppServerReceiveTiming,
@@ -224,44 +224,30 @@ export class CodexJsonLineReader extends Writable {
         streamValues: false,
       });
       line.parser = stream;
-      const assembler = FlexAssembler.connectTo(stream, {
-        objectRules: [
-          {
-            filter: () => true,
-            create: () => ({}),
-            add: (object: Record<string, unknown>, key: string, value: unknown) => {
-              Object.defineProperty(object, key, {
-                configurable: true,
-                enumerable: true,
-                writable: true,
-                value,
-              });
-            },
-          },
-        ],
+      FlexAssembler.connectTo(stream, {
         arrayRules: [
-          {
+          arrayRule<ArrayBuilder>({
             filter: () => true,
             create: () => new ArrayBuilder(this.options.arrayChunkBytes ?? 4 * 1024 * 1024),
-            add: (array: ArrayBuilder, value: unknown) => {
+            add: (array, value) => {
               array.add(value);
             },
-            finalize: (array: ArrayBuilder) => {
+            finalize: (array) => {
               const value = array.finish();
               if (value instanceof CodexChunkedArray) line.chunked = true;
               return value;
             },
-          },
+          }),
         ],
-      });
-      assembler.on("done", () => {
-        line.count += 1;
-        if (line.count > 1) {
-          line.error = new Error("App-server stdout line contained multiple JSON values");
-          line.value = null;
-          return;
-        }
-        this.acceptValue(line, assembler.current);
+        onDone: (assembler) => {
+          line.count += 1;
+          if (line.count > 1) {
+            line.error = new Error("App-server stdout line contained multiple JSON values");
+            line.value = null;
+            return;
+          }
+          this.acceptValue(line, assembler.current);
+        },
       });
       stream.on("error", (error: Error) => {
         line.error = error;
