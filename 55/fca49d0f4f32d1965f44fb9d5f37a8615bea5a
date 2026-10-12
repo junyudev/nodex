@@ -1,0 +1,19 @@
+tests/e2e/standalone-database-starting-point.spec.ts
+  s_5217742584db5d::t_5aaadb1ce5b6d8 2,17-22
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "55fca49d0f4f32d1965f44fb9d5f37a8615bea5a",
+  "prompts": {},
+  "sessions": {
+    "s_5217742584db5d": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a0fd4b-dbd9-7dc2-81af-57a58cec74c0",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    }
+  }
+}
