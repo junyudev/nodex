@@ -279,21 +279,33 @@ const makeSession = Effect.fn("OpenCodeSessionManager.makeSession")(function* (
     readonly limit: number;
   }) {
     const loaded = yield* connection.history(sessionId, page);
-    const first = loaded.messages[0]?.info;
-    if (
-      first?.role !== "assistant" ||
-      loaded.messages.some((message) => message.info.id === first.parentID)
-    )
-      return loaded;
-    const parent = yield* connection.message(sessionId, first.parentID).pipe(
-      Effect.catchIf(
-        (error) => error.reason === "resource-not-found",
-        () => Effect.succeed(null),
+    const messages = loaded.messages.filter((message) => message.info.sessionID === sessionId);
+    const knownParents = new Set(
+      messages.filter((message) => message.info.role === "user").map((message) => message.info.id),
+    );
+    const missingParents = new Set(
+      messages.flatMap((message) =>
+        message.info.role === "assistant" && !knownParents.has(message.info.parentID)
+          ? [message.info.parentID]
+          : [],
       ),
     );
-    return parent?.info.role === "user"
-      ? { ...loaded, messages: [parent, ...loaded.messages] }
-      : loaded;
+    const parents = yield* Effect.forEach(missingParents, (id) =>
+      connection.message(sessionId, id).pipe(
+        Effect.map((parent) =>
+          parent.info.role === "user" &&
+          parent.info.id === id &&
+          parent.info.sessionID === sessionId
+            ? [parent]
+            : [],
+        ),
+        Effect.catchIf(
+          (error) => error.reason === "resource-not-found",
+          () => Effect.succeed([]),
+        ),
+      ),
+    );
+    return { ...loaded, messages: [...parents.flat(), ...messages] };
   });
   const historyPage = yield* readHistory({ limit: 200 });
   const nativeHistory = historyPage.messages;

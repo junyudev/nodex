@@ -6,7 +6,7 @@ All notable changes to this project will be documented in this file.
 
 ### Added
 
-- Chats can use configured OpenCode models, including Kimi and OpenRouter providers, through the shared searchable model menu, with native options and approvals. Independent profiles preserve model choices and conversation history across restart.
+- Chats can use configured OpenCode models, including Kimi and OpenRouter providers, through the shared searchable model menu, with native options and approvals. Independent profiles preserve model choices, and conversation history restores each prompt with its replies across restart and pagination.
 
 - Local tasks can use Claude Code with its existing login, configuration, skills and tools in the shared conversation UI, including images, native model and effort choices, approvals, questions, task details, steering, compaction, forks and session recovery. Chats can start in the Project folder or a managed worktree with the selected starting state and setup environment, then move between them while retaining the same native conversation and uncommitted changes. Existing CLI conversations can be connected to a Project or projectless chat and continued with their native history. Separate profiles support environment variables, encrypted tokens and custom models. Authorized application tools and scheduled tasks use the selected native profile.
 

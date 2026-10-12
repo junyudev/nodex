@@ -32,6 +32,7 @@ import {
 import { AgentRuntimeError } from "../AgentRuntimeError";
 import { make, type OpenOpenCodeSessionInput } from "./OpenCodeSessionManager";
 import { openCodeCatalog } from "./OpenCodeModels";
+import { openCodeAssistantMessage, openCodeUserMessage } from "./OpenCodeHistory.test-fixtures";
 
 const model = (id: string, variants: Model["variants"] = {}): Model => ({
   id,
@@ -204,7 +205,7 @@ const fixture = (
     holdAbort?: boolean;
     history?: readonly OpenCodeNativeMessage[];
     pages?: readonly OpenCodeHistoryPage[];
-    parentMessage?: OpenCodeNativeMessage;
+    parentMessages?: readonly OpenCodeNativeMessage[];
     serverUrl?: string | null;
     statuses?: SessionStatusResponse;
     parentIds?: Readonly<Record<string, string>>;
@@ -224,6 +225,7 @@ const fixture = (
     let nextId = 0;
     let historyReads = 0;
     const beforeValues: (string | undefined)[] = [];
+    const messageReads: { sessionId: string; messageId: string }[] = [];
     let statuses = options.statuses ?? {};
     const connection: OpenCodeConnection = {
       nextMessageId: Effect.sync(() => `msg_${++nextId}`),
@@ -264,10 +266,20 @@ const fixture = (
             }
           );
         }),
-      message: (_sessionId, messageId) =>
-        options.parentMessage?.info.id === messageId
-          ? Effect.succeed(options.parentMessage)
-          : Effect.die("Unexpected message read"),
+      message: (sessionId, messageId) =>
+        Effect.suspend(() => {
+          messageReads.push({ sessionId, messageId });
+          const message = options.parentMessages?.find((message) => message.info.id === messageId);
+          if (message) return Effect.succeed(message);
+          return Effect.fail(
+            new AgentRuntimeError({
+              message: "Native message missing",
+              operation: "opencode.message",
+              reason: "resource-not-found",
+              retryable: false,
+            }),
+          );
+        }),
       prompt: (prompt) =>
         Queue.offer(sent, prompt).pipe(
           Effect.andThen(options.holdAdmission ? Deferred.await(admission) : Effect.void),
@@ -337,6 +349,7 @@ const fixture = (
       opened,
       replies,
       beforeValues,
+      messageReads,
       setStatuses: (next: SessionStatusResponse) => {
         statuses = next;
       },
@@ -868,53 +881,20 @@ it.effect(
   "history pages that split one native turn preserve its user identity and both response fragments",
   () =>
     Effect.gen(function* () {
-      const user: OpenCodeNativeMessage = {
-        info: {
-          id: "msg_user",
-          sessionID: "ses_native",
-          role: "user",
-          time: { created: 1 },
-          model: { providerID: "moonshot", modelID: "kimi-k3" },
-          agent: "build",
-        },
-        parts: [
-          {
-            type: "text",
-            id: "prt_user",
-            sessionID: "ses_native",
-            messageID: "msg_user",
-            text: "Original native prompt",
-          },
-        ],
-      };
-      const assistant = (id: string, text: string, created: number): OpenCodeNativeMessage => ({
-        info: {
-          id,
-          sessionID: "ses_native",
-          role: "assistant",
-          parentID: "msg_user",
-          time: { created, completed: created + 1 },
-          providerID: "moonshot",
-          modelID: "kimi-k3",
-          mode: "build",
-          agent: "build",
-          path: { cwd: "/workspace", root: "/workspace" },
-          cost: 0,
-          tokens: { input: 1, output: 1, reasoning: 0, cache: { read: 0, write: 0 } },
-          finish: "stop",
-        },
-        parts: [{ type: "text", id: `prt_${id}`, sessionID: "ses_native", messageID: id, text }],
-      });
+      const user = openCodeUserMessage("msg_zzzz", "Original native prompt");
       const test = yield* fixture({
-        parentMessage: user,
+        parentMessages: [user],
         pages: [
           {
-            messages: [assistant("msg_new", "Newest response", 5)],
+            messages: [openCodeAssistantMessage("msg_aaaa", user.info.id, "Newest response")],
             cursor: "opaque-next-token",
             hasMore: true,
           },
           {
-            messages: [user, assistant("msg_old", "Earlier response", 2)],
+            messages: [
+              openCodeAssistantMessage("msg_0000", user.info.id, "Earlier response"),
+              user,
+            ],
             cursor: null,
             hasMore: false,
           },
@@ -923,7 +903,7 @@ it.effect(
       const handle = yield* test.manager.open({ ...input, resumeSessionId: "ses_native" });
       const initial = yield* SubscriptionRef.get(handle.snapshot);
       expect(initial.turns[0]).toMatchObject({
-        nativeUserMessageId: "msg_user",
+        nativeUserMessageId: user.info.id,
         promptText: "Original native prompt",
       });
       expect(initial.history).toMatchObject({ cursor: "opaque-next-token", hasOlder: true });
@@ -937,5 +917,77 @@ it.effect(
       ).toEqual(["Earlier response", "Newest response"]);
       expect(expanded.history?.hasOlder).toBe(false);
       expect(test.beforeValues).toEqual([undefined, "opaque-next-token"]);
+    }),
+);
+
+it.effect(
+  "every history page resolves all missing parents once within its exact native session",
+  () =>
+    Effect.gen(function* () {
+      const first = openCodeUserMessage("msg_user_first", "First prompt", 1);
+      const middle = openCodeUserMessage("msg_user_middle", "Middle prompt", 2);
+      const last = openCodeUserMessage("msg_user_last", "Last prompt", 3);
+      const response = openCodeAssistantMessage("msg_a", first.info.id, "First response", 1);
+      const foreign = openCodeUserMessage("msg_foreign_parent", "Foreign prompt", 1, "ses_other");
+      const test = yield* fixture({
+        parentMessages: [first, last, foreign],
+        pages: [
+          {
+            messages: [
+              middle,
+              openCodeAssistantMessage("msg_last", last.info.id, "Last response", 3),
+              response,
+              openCodeAssistantMessage("msg_b", first.info.id, "First followup", 1),
+              openCodeAssistantMessage("msg_missing", "msg_missing_parent", "Missing response"),
+              openCodeAssistantMessage("msg_foreign", foreign.info.id, "Foreign response"),
+              openCodeUserMessage(first.info.id, "Foreign duplicate", 1, "ses_other"),
+            ],
+            cursor: "native-cursor",
+            hasMore: true,
+          },
+          {
+            messages: [
+              response,
+              openCodeAssistantMessage("msg_0", first.info.id, "Earlier response", 0),
+              first,
+            ],
+            cursor: null,
+            hasMore: false,
+          },
+        ],
+      });
+      const handle = yield* test.manager.open({ ...input, resumeSessionId: "ses_native" });
+      const restored = yield* SubscriptionRef.get(handle.snapshot);
+      expect(restored.turns.map((turn) => turn.nativeUserMessageId)).toEqual([
+        first.info.id,
+        middle.info.id,
+        last.info.id,
+      ]);
+      expect(
+        restored.turns[0]?.updates
+          .filter((update) => update.kind === "message")
+          .map((update) => update.text),
+      ).toEqual(["First response", "First followup"]);
+      expect(test.messageReads).toEqual([
+        { sessionId: "ses_native", messageId: last.info.id },
+        { sessionId: "ses_native", messageId: first.info.id },
+        { sessionId: "ses_native", messageId: "msg_missing_parent" },
+        { sessionId: "ses_native", messageId: foreign.info.id },
+      ]);
+      yield* handle.loadHistory!();
+      const expanded = yield* SubscriptionRef.get(handle.snapshot);
+      expect(expanded.turns.map((turn) => turn.nativeUserMessageId)).toEqual([
+        first.info.id,
+        middle.info.id,
+        last.info.id,
+      ]);
+      expect(
+        expanded.turns[0]?.updates
+          .filter((update) => update.kind === "message")
+          .map((update) => update.text),
+      ).toEqual(["Earlier response", "First response", "First followup"]);
+      expect(expanded.history).toMatchObject({ hasOlder: false, cursor: undefined });
+      expect(test.beforeValues).toEqual([undefined, "native-cursor"]);
+      expect(test.messageReads).toHaveLength(4);
     }),
 );

@@ -106,93 +106,111 @@ export const openCodeMessageUsage = (
     model: `${message.providerID}/${message.modelID}`,
   };
 };
+const projectOpenCodeAssistant = (
+  snapshot: AgentConversationSnapshot,
+  message: OpenCodeNativeMessage,
+  sequence: number,
+  contextSize: number,
+): AgentConversationSnapshot => {
+  const info = message.info;
+  if (info.role !== "assistant") return snapshot;
+  let next = snapshot;
+  for (const part of message.parts) {
+    const projected = openCodePartUpdate(part);
+    const update =
+      projected?.kind === "message" && info.summary
+        ? { ...projected, role: "compaction" as const }
+        : projected;
+    if (update)
+      next = reduceAgentConversationEvent(next, {
+        kind: "session_update",
+        turnSequence: sequence,
+        update,
+      });
+  }
+  const usage = openCodeMessageUsage(info, contextSize);
+  if (usage)
+    next = reduceAgentConversationEvent(next, {
+      kind: "session_update",
+      turnSequence: sequence,
+      update: usage,
+    });
+  const completedAt = info.time.completed;
+  if (completedAt === undefined) return next;
+  const error = info.error && "message" in info.error.data ? String(info.error.data.message) : null;
+  return {
+    ...next,
+    turns: next.turns.map((turn) =>
+      turn.sequence === sequence
+        ? {
+            ...turn,
+            status:
+              info.error?.name === "MessageAbortedError"
+                ? "cancelled"
+                : info.error
+                  ? "failed"
+                  : info.finish && info.finish !== "tool-calls"
+                    ? "completed"
+                    : turn.status,
+            stopReason: info.finish ?? turn.stopReason,
+            error,
+            completedAt: new Date(completedAt).toISOString(),
+          }
+        : turn,
+    ),
+  };
+};
+
 export const projectOpenCodeHistory = (
   snapshot: AgentConversationSnapshot,
   messages: readonly OpenCodeNativeMessage[],
   contextSize = 0,
 ): AgentConversationSnapshot => {
-  let next = snapshot;
-  let sequence = 0;
-  const parents = new Map<string, number>();
-  for (const message of [...messages].sort(
-    (a, b) => a.info.time.created - b.info.time.created || a.info.id.localeCompare(b.info.id),
-  )) {
-    if (message.info.role === "user") {
-      if (message.parts.some((part) => part.type === "compaction")) {
-        if (sequence > 0) parents.set(message.info.id, sequence);
-        continue;
-      }
-      sequence += 1;
-      parents.set(message.info.id, sequence);
-      next = beginAgentConversationTurn(
-        next,
-        sequence,
-        openCodePromptText(message),
-        message.info.id,
-      );
-      next = {
-        ...next,
-        turns: next.turns.map((turn) =>
-          turn.sequence === sequence
-            ? {
-                ...turn,
-                nativeUserMessageId: message.info.id,
-                promptImages: openCodePromptImages(message),
-                createdAt: new Date(message.info.time.created).toISOString(),
-                status: undefined,
-              }
-            : turn,
-        ),
-      };
+  const ordered = messages
+    .filter((message) => message.info.sessionID === snapshot.sessionId)
+    .toSorted(
+      (a, b) => a.info.time.created - b.info.time.created || a.info.id.localeCompare(b.info.id),
+    );
+  const turns: { prompt: OpenCodeNativeMessage; responses: OpenCodeNativeMessage[] }[] = [];
+  const parents = new Map<string, (typeof turns)[number]>();
+  for (const message of ordered) {
+    if (message.info.role !== "user") continue;
+    if (message.parts.some((part) => part.type === "compaction")) {
+      const turn = turns.at(-1);
+      if (turn) parents.set(message.info.id, turn);
       continue;
     }
-    const parent = parents.get(message.info.parentID);
-    if (parent === undefined) continue;
-    for (const part of message.parts) {
-      const projected = openCodePartUpdate(part);
-      const update =
-        projected?.kind === "message" && message.info.summary
-          ? { ...projected, role: "compaction" as const }
-          : projected;
-      if (update)
-        next = reduceAgentConversationEvent(next, {
-          kind: "session_update",
-          turnSequence: parent,
-          update,
-        });
-    }
-    const usage = openCodeMessageUsage(message.info, contextSize);
-    if (usage)
-      next = reduceAgentConversationEvent(next, {
-        kind: "session_update",
-        turnSequence: parent,
-        update: usage,
-      });
-    if (!message.info.time.completed) continue;
-    const info = message.info;
-    const error =
-      info.error && "message" in info.error.data ? String(info.error.data.message) : null;
+    const turn = { prompt: message, responses: [] as OpenCodeNativeMessage[] };
+    turns.push(turn);
+    parents.set(message.info.id, turn);
+  }
+  for (const message of ordered) {
+    if (message.info.role !== "assistant") continue;
+    parents.get(message.info.parentID)?.responses.push(message);
+  }
+  let next = snapshot;
+  let sequence = 0;
+  // Complete each causal turn before the shared presentation budget can evict it.
+  for (const { prompt: message, responses } of turns) {
+    sequence += 1;
+    next = beginAgentConversationTurn(next, sequence, openCodePromptText(message), message.info.id);
     next = {
       ...next,
       turns: next.turns.map((turn) =>
-        turn.sequence === parent
+        turn.sequence === sequence
           ? {
               ...turn,
-              status:
-                info.error?.name === "MessageAbortedError"
-                  ? "cancelled"
-                  : info.error
-                    ? "failed"
-                    : info.finish && info.finish !== "tool-calls"
-                      ? "completed"
-                      : turn.status,
-              stopReason: info.finish ?? turn.stopReason,
-              error,
-              completedAt: new Date(info.time.completed!).toISOString(),
+              nativeUserMessageId: message.info.id,
+              promptImages: openCodePromptImages(message),
+              createdAt: new Date(message.info.time.created).toISOString(),
+              status: undefined,
             }
           : turn,
       ),
     };
+    for (const assistant of responses) {
+      next = projectOpenCodeAssistant(next, assistant, sequence, contextSize);
+    }
   }
   return {
     ...next,

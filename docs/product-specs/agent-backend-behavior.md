@@ -85,6 +85,16 @@ or starting a new chat. Nodex never substitutes a fresh conversation. Close rele
 without deleting native history. Fork creates a separate native session and Nodex chat, preserving
 source model/options and execution location.
 
+History replies belong to the user message identified by their native parent ID
+within the same session. Equal timestamps and unordered responses cannot hide a
+reply or attach it to another prompt. A page resolves every missing parent through
+that exact session without changing the native pagination cursor. Overlapping pages
+merge response parts by native identity; an unavailable or foreign parent never
+causes its reply to be assigned to a nearby turn.
+The bounded window retains complete prompt and response identities together;
+evicted turns cannot reappear as anonymous responses when history exceeds the
+turn or byte budget.
+
 Creating a native session and changing its permission policy verify the effective rules retained
 by OpenCode. A successful HTTP response that leaves the requested policy unapplied is a protocol
 error; Nodex reports the native version and an upgrade hint before using that policy.
