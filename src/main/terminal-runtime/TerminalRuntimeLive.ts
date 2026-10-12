@@ -5,7 +5,7 @@ import * as TerminalPty from "../platform/node/TerminalPty";
 import * as TerminalRuntimeMap from "./TerminalRuntimeMap";
 import * as TerminalSessions from "./TerminalSessions";
 
-const runtimeMap = TerminalRuntimeMap.live.pipe(Layer.provide(TerminalPty.live));
+export const layer = TerminalSessions.live.pipe(Layer.provideMerge(TerminalRuntimeMap.live));
 
 /**
  * Complete process-scoped Terminal graph. ACP client callbacks and desktop Terminal sessions share
@@ -13,8 +13,8 @@ const runtimeMap = TerminalRuntimeMap.live.pipe(Layer.provide(TerminalPty.live))
  */
 export const live: Layer.Layer<
   TerminalSessions.TerminalSessions | TerminalRuntimeMap.TerminalRuntimeMap
-> = TerminalSessions.live.pipe(
-  Layer.provideMerge(
-    Layer.mergeAll(TerminalEnvironment.live, TerminalProcessMetrics.live, runtimeMap),
+> = layer.pipe(
+  Layer.provide(
+    Layer.mergeAll(TerminalEnvironment.live, TerminalProcessMetrics.live, TerminalPty.live),
   ),
 );

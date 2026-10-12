@@ -204,6 +204,14 @@ shutdown own termination. Before first send, a Session Terminal uses the real
 Project Session identity with no conversation identity; Thread attachment may
 add the real Thread association without replacing the PTY.
 
+Terminal observations are acquired in a caller Scope before create, attach,
+or write operations begin. Subscription acquisition registers the bounded
+observation immediately; starting its stream consumer later does not lose
+events produced after acquisition. A process that exits during acquisition
+is retired exactly once, retains its inspectable exit snapshot, and cannot
+receive a new input lease. Runtime observation scopes close with the process
+or their owning application Scope.
+
 The native PiP layer is Desktop-Host presentation, not transcript or Scene
 authority. It is shown only for a real active stream and is dismissed by the
 owning runtime lifecycle. Thread Summary exposes only a host-backed show/hide

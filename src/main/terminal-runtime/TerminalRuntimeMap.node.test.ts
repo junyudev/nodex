@@ -3,6 +3,7 @@ import * as Deferred from "effect/Deferred";
 import * as Effect from "effect/Effect";
 import * as Exit from "effect/Exit";
 import * as Layer from "effect/Layer";
+import * as Option from "effect/Option";
 import * as Queue from "effect/Queue";
 import * as Result from "effect/Result";
 import * as Scope from "effect/Scope";
@@ -124,6 +125,24 @@ it.effect("records process exit and rejects later terminal writes", () =>
     const result = yield* Effect.result(runtime.write("late"));
     assert.isTrue(Result.isFailure(result));
     if (Result.isFailure(result)) assert.strictEqual(result.failure.operation, "closed");
+    yield* Scope.close(scope, Exit.void);
+  }),
+);
+
+it.effect("retains output after subscription acquisition while its consumer has not started", () =>
+  Effect.gen(function* () {
+    const fake = fakePty();
+    const scope = yield* Scope.make();
+    const context = yield* Layer.buildWithScope(
+      terminalRuntimeMapLive.pipe(Layer.provide(fake.layer)),
+      scope,
+    );
+    const runtime = yield* Context.get(context, TerminalRuntimeMap).open(config);
+    const events = yield* runtime.subscribe;
+    yield* Queue.offer(fake.outputs[0]!, "first output");
+    yield* waitFor(() => SubscriptionRef.getUnsafe(runtime.snapshot).buffer === "first output");
+    const event = Option.getOrThrow(yield* Stream.runHead(events));
+    assert.deepEqual(event, { kind: "data", sessionId: config.sessionId, data: "first output" });
     yield* Scope.close(scope, Exit.void);
   }),
 );

@@ -6,6 +6,7 @@ import * as LayerMap from "effect/LayerMap";
 import * as PubSub from "effect/PubSub";
 import * as Ref from "effect/Ref";
 import * as Schema from "effect/Schema";
+import * as Scope from "effect/Scope";
 import * as Stream from "effect/Stream";
 import * as SubscriptionRef from "effect/SubscriptionRef";
 import type { TerminalSessionSnapshot, TerminalSize } from "../../shared/types";
@@ -44,7 +45,7 @@ export class TerminalRuntime extends Context.Service<
   {
     readonly sessionId: string;
     readonly snapshot: SubscriptionRef.SubscriptionRef<TerminalSessionSnapshot>;
-    readonly events: Stream.Stream<TerminalRuntimeEvent>;
+    readonly subscribe: Effect.Effect<Stream.Stream<TerminalRuntimeEvent>, never, Scope.Scope>;
     readonly exit: Effect.Effect<TerminalPtyExit>;
     readonly updateSnapshot: (
       update: (snapshot: TerminalSessionSnapshot) => TerminalSessionSnapshot,
@@ -160,7 +161,7 @@ const runtimeLayer = (
       return TerminalRuntime.of({
         sessionId: config.sessionId,
         snapshot,
-        events: Stream.fromPubSub(events),
+        subscribe: PubSub.subscribe(events).pipe(Effect.map(Stream.fromSubscription)),
         exit: handle.exit,
         updateSnapshot: (update) => SubscriptionRef.update(snapshot, update),
         write: (data) =>

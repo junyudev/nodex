@@ -143,8 +143,9 @@ export const live: Layer.Layer<
         Effect.catchTag("TerminalSessionError", (error) => reportError(sender, sessionId, error)),
       );
 
+    const terminalEvents = yield* sessions.subscribe;
     yield* Effect.forkScoped(
-      sessions.events.pipe(
+      terminalEvents.pipe(
         Stream.runForEach((event) =>
           windows.all.pipe(
             Effect.tap((all) =>

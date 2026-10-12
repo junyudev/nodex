@@ -121,6 +121,14 @@ inspect the production Electron/preload/Main/Core composition. No scheduled,
 required, nightly, performance, or release workflow invokes these commands.
 They are diagnostic evidence, not a release certificate.
 
+The native PTY integration contract runs under Electron with a test-owned shell
+home and startup file. It registers its observation before process creation,
+checks a controlled startup gate, and waits for shell readiness before writing
+commands. Output and exit are acknowledged by live events with bounded failure
+diagnostics; personal shell configuration, sleep polling, and consumer scheduling
+are not test prerequisites. Effect test clocks remain reserved for application
+timing contracts; native process readiness uses the live clock.
+
 Each scenario owns a disposable Profile with isolated Nodex/Core/Electron
 state. The local-only [`agent:smoke:paid`](paid-agent-smoke.md) runner is the
 only subscription-backed Agent E2E entry point; invoking it with one explicit

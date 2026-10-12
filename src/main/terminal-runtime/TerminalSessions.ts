@@ -1,10 +1,12 @@
 import * as Context from "effect/Context";
 import * as Effect from "effect/Effect";
+import * as Exit from "effect/Exit";
 import * as FiberSet from "effect/FiberSet";
 import * as Layer from "effect/Layer";
 import * as PubSub from "effect/PubSub";
 import * as Ref from "effect/Ref";
 import * as Schema from "effect/Schema";
+import * as Scope from "effect/Scope";
 import * as Semaphore from "effect/Semaphore";
 import * as Stream from "effect/Stream";
 import * as SubscriptionRef from "effect/SubscriptionRef";
@@ -96,7 +98,7 @@ export class TerminalSessionError extends Schema.TaggedError<TerminalSessionErro
 export class TerminalSessions extends Context.Service<
   TerminalSessions,
   {
-    readonly events: Stream.Stream<TerminalSessionEvent>;
+    readonly subscribe: Effect.Effect<Stream.Stream<TerminalSessionEvent>, never, Scope.Scope>;
     readonly create: (
       owner: TerminalOwner,
       request: TerminalCreateRequest,
@@ -188,6 +190,7 @@ export const live: Layer.Layer<
     const records = yield* Ref.make<ReadonlyMap<string, TerminalSessionRecord>>(new Map());
     const events = yield* PubSub.sliding<TerminalSessionEvent>(MAIN_OBSERVATION_EVENT_CAPACITY);
     const watchers = yield* FiberSet.make<void, never>();
+    const ownerScope = yield* Effect.scope;
     yield* Effect.addFinalizer(() => PubSub.shutdown(events));
 
     const publish = (event: TerminalSessionEvent) =>
@@ -224,7 +227,7 @@ export const live: Layer.Layer<
       event: import("./TerminalRuntimeMap").TerminalRuntimeEvent,
     ) {
       const current = yield* getRecord(sessionId);
-      if (current === null || current.generation !== generation) return;
+      if (current === null || current.generation !== generation || current.runtime === null) return;
       if (event.kind === "data") {
         if (current.lease === null) return;
         yield* publish({
@@ -253,17 +256,33 @@ export const live: Layer.Layer<
       yield* runtimes.close(sessionId);
     });
 
-    const watchRuntime = (
-      sessionId: string,
-      generation: number,
-      runtime: TerminalRuntime["Service"],
-    ) =>
-      FiberSet.run(
-        watchers,
-        runtime.events.pipe(
-          Stream.runForEach((event) => handleRuntimeEvent(sessionId, generation, event)),
-        ),
-      ).pipe(Effect.asVoid);
+    const watchRuntime = Effect.fn("TerminalSessions.watchRuntime")(
+      function* (sessionId: string, generation: number, runtime: TerminalRuntime["Service"]) {
+        const observationScope = yield* Scope.fork(ownerScope);
+        const events = yield* runtime.subscribe.pipe(Scope.provide(observationScope));
+        // The process can exit during acquisition, before a subscriber exists.
+        // Subscribe first so an exit after this read remains queued for the watcher.
+        const snapshot = yield* SubscriptionRef.get(runtime.snapshot);
+        if (snapshot.exited) {
+          yield* handleRuntimeEvent(sessionId, generation, {
+            kind: "exit",
+            sessionId,
+            exit: yield* runtime.exit,
+          });
+          yield* Scope.close(observationScope, Exit.void);
+          return;
+        }
+        yield* FiberSet.run(
+          watchers,
+          events.pipe(
+            Stream.runForEach((event) => handleRuntimeEvent(sessionId, generation, event)),
+            Effect.ensuring(Scope.close(observationScope, Exit.void)),
+          ),
+        );
+      },
+      // Registration is a synchronous handoff; interruption must not leave an ownerless child scope.
+      Effect.uninterruptible,
+    );
 
     const makeRecord = Effect.fn("TerminalSessions.makeRecord")(function* (
       config: TerminalRuntimeConfig,
@@ -337,7 +356,7 @@ export const live: Layer.Layer<
       const current = yield* getRecord(request.sessionId);
       if (current === null) return { status: "not_found" } as const;
       const snapshotBefore = yield* readSnapshot(current);
-      if (snapshotBefore === null) return { status: "not_found" } as const;
+      if (snapshotBefore === null || snapshotBefore.exited) return { status: "not_found" } as const;
       if (current.lease !== null && !isOwner(current.lease, owner)) {
         return {
           status: "conflict",
@@ -464,7 +483,7 @@ export const live: Layer.Layer<
       );
     return TerminalSessions.of({
       listSnapshotsForOwners,
-      events: Stream.fromPubSub(events),
+      subscribe: PubSub.subscribe(events).pipe(Effect.map(Stream.fromSubscription)),
       create: (owner, request) => {
         if (request.backendKind === "remote") {
           return Effect.succeed({ status: "not_found" } as const);

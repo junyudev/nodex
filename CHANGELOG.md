@@ -21,6 +21,7 @@ All notable changes to this project will be documented in this file.
 
 ### Fixed
 
+- Terminals retain startup events and release processes that exit before attachment completes.
 - Retained edits that cannot be received can now be removed from this device after confirmation, clearing their warning without changing current documents.
 - Dictation recovers incomplete streams without duplicating completed segments, respects account availability and language settings, and preserves newer clipboard contents during global paste recovery.
 - Global dictation no longer disappears with service rollout changes. Voice retains global shortcut and dictionary settings, and its sound preference applies to both capture surfaces.

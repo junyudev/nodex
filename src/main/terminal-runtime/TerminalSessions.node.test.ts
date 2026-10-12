@@ -15,12 +15,12 @@ import {
   type TerminalPtyExit,
   type TerminalPtyHandle,
 } from "../platform/node/TerminalPty";
-import { live as terminalRuntimeMapLive } from "./TerminalRuntimeMap";
 import {
-  TerminalSessions,
-  live as terminalSessionsLive,
-  type TerminalSessionEvent,
-} from "./TerminalSessions";
+  TerminalRuntime,
+  TerminalRuntimeMap,
+  live as terminalRuntimeMapLive,
+} from "./TerminalRuntimeMap";
+import { TerminalSessions, live as terminalSessionsLive } from "./TerminalSessions";
 
 interface FakePty {
   readonly layer: Layer.Layer<TerminalPty>;
@@ -100,10 +100,31 @@ const metricsLayer = Layer.succeed(
   }),
 );
 
-const makeHarness = Effect.fn("TerminalSessionsTest.makeHarness")(function* () {
-  const fake = fakePty();
+const makeHarness = Effect.fn("TerminalSessionsTest.makeHarness")(function* (
+  fake: FakePty = fakePty(),
+  prepareRuntime?: (
+    runtime: TerminalRuntime["Service"],
+  ) => Effect.Effect<TerminalRuntime["Service"], never, Scope.Scope>,
+) {
   const scope = yield* Scope.make();
-  const runtimeMap = terminalRuntimeMapLive.pipe(Layer.provide(fake.layer));
+  const originalRuntimeMap = terminalRuntimeMapLive.pipe(Layer.provide(fake.layer));
+  const runtimeMap: Layer.Layer<TerminalRuntimeMap> = prepareRuntime
+    ? Layer.effect(
+        TerminalRuntimeMap,
+        Effect.gen(function* () {
+          const original = yield* TerminalRuntimeMap;
+          return TerminalRuntimeMap.of({
+            ...original,
+            open: (config) =>
+              original
+                .open(config)
+                .pipe(
+                  Effect.flatMap((runtime) => prepareRuntime(runtime).pipe(Scope.provide(scope))),
+                ),
+          });
+        }),
+      ).pipe(Layer.provide(originalRuntimeMap))
+    : originalRuntimeMap;
   const dependencies = Layer.mergeAll(runtimeMap, environmentLayer, metricsLayer);
   const context = yield* Layer.buildWithScope(
     terminalSessionsLive.pipe(Layer.provide(dependencies)),
@@ -135,11 +156,7 @@ const waitFor = (predicate: () => boolean): Effect.Effect<void> =>
 it.effect("owns view leases atomically and fences stale takeover attempts", () =>
   Effect.gen(function* () {
     const { fake, scope, sessions } = yield* makeHarness();
-    const observed: TerminalSessionEvent[] = [];
-    yield* Effect.forkScoped(
-      sessions.events.pipe(Stream.runForEach((event) => Effect.sync(() => observed.push(event)))),
-    );
-    yield* Effect.yieldNow;
+    const events = yield* sessions.subscribe;
 
     const created = yield* sessions.create(ownerA, request);
     assert.strictEqual(created.status, "acquired");
@@ -163,6 +180,7 @@ it.effect("owns view leases atomically and fences stale takeover attempts", () =
     assert.isTrue(Result.isFailure(oldOwnerWrite));
     yield* sessions.write(ownerB, request.sessionId, "new");
     assert.deepEqual(fake.writes, ["new"]);
+    const observed = yield* events.pipe(Stream.take(4), Stream.runCollect);
     assert.isTrue(
       observed.some(
         (event) =>
@@ -173,6 +191,31 @@ it.effect("owns view leases atomically and fences stale takeover attempts", () =
     yield* Scope.close(scope, Exit.void);
     assert.deepEqual(fake.releases, [200]);
   }),
+);
+
+it.effect(
+  "registers an observation before its consumer starts and retains initial lease events",
+  () =>
+    Effect.gen(function* () {
+      const { scope, sessions } = yield* makeHarness();
+      const events = yield* sessions.subscribe;
+      yield* sessions.create(ownerA, request);
+      const initial = yield* events.pipe(Stream.take(2), Stream.runCollect);
+      assert.deepEqual(
+        initial.map((event) => event.channel),
+        ["terminal-init-log", "terminal-attached"],
+      );
+      const attached = initial[1];
+      assert.strictEqual(attached?.channel, "terminal-attached");
+      if (attached?.channel === "terminal-attached") {
+        assert.strictEqual(attached.payload.snapshot.sessionId, request.sessionId);
+        assert.strictEqual(
+          attached.payload.snapshot.viewLease?.windowSessionId,
+          ownerA.windowSessionId,
+        );
+      }
+      yield* Scope.close(scope, Exit.void);
+    }),
 );
 
 it.effect("retires the PTY on exit while retaining an inspectable terminal snapshot", () =>
@@ -213,6 +256,30 @@ it.effect("retires the PTY on exit while retaining an inspectable terminal snaps
       ["terminal-a"],
     );
     assert.isNull(yield* sessions.getSessionSnapshot(request.sessionId));
+    yield* Scope.close(scope, Exit.void);
+  }),
+);
+
+it.effect("retires a process that has already exited before session acquisition completes", () =>
+  Effect.gen(function* () {
+    const exiting = fakePty();
+    const { fake, scope, sessions } = yield* makeHarness(exiting, (runtime) =>
+      Effect.gen(function* () {
+        const events = yield* runtime.subscribe;
+        yield* Deferred.succeed(exiting.exits[0]!, { exitCode: 7, signal: null });
+        yield* events.pipe(
+          Stream.filter((event) => event.kind === "exit"),
+          Stream.runHead,
+        );
+        return runtime;
+      }),
+    );
+    assert.strictEqual((yield* sessions.create(ownerA, request)).status, "not_found");
+    const owners = { conversationIds: new Set(["thread-a"]), projectSessionIds: new Set<string>() };
+    assert.deepEqual(yield* sessions.listLiveSessionsForOwners(owners), []);
+    assert.deepEqual(fake.releases, [200]);
+    assert.strictEqual((yield* sessions.getSessionSnapshot(request.sessionId))?.exitCode, 7);
+    assert.isNull((yield* sessions.getSessionSnapshot(request.sessionId))?.viewLease);
     yield* Scope.close(scope, Exit.void);
   }),
 );

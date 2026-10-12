@@ -177,7 +177,8 @@ export const live: Layer.Layer<
             Effect.mapError((cause) => runtimeError("profile-snapshot-control", cause)),
           );
         }
-        yield* terminals.events.pipe(
+        const terminalEvents = yield* terminals.subscribe;
+        yield* terminalEvents.pipe(
           Stream.runForEach((event) => {
             if (event.channel !== "terminal-data") return Effect.void;
             const projectSessionId = projectSessionIdFromTerminalSessionId(event.payload.sessionId);
