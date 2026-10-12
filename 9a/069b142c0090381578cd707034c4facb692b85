@@ -36,6 +36,7 @@ CONTEXT.md
   s_4e6817f2f1ffe7::t_071e1390a76048 19-20,224,274,420-430,434,482-486,504-505,600,617,692-694
   s_4e6817f2f1ffe7::t_7567ceb03f9a7a 225-226,807-810
   s_4e6817f2f1ffe7::t_76545666c3c943 667
+  s_4e6817f2f1ffe7::t_76740f19f25ea5 18,23
 crates/nodex-core/src/library/resource_access.rs
   s_4e6817f2f1ffe7::t_a1e940dd18ff6f 40,51
   s_4e6817f2f1ffe7::t_75924cc1a71416 65,86,133-135,350,357,366
@@ -454,6 +455,7 @@ src/renderer/lib/nfm-block-move-runtime.node.test.ts
 crates/nodex-core-contracts/src/library.rs
   s_4e6817f2f1ffe7::t_d27e7d9bac938f 3155
   s_4e6817f2f1ffe7::t_d7f502965e5153 984-985,1353-1354,1420
+  s_4e6817f2f1ffe7::t_592648732ea898 20
 src/renderer/features/workspace-files/workspace-files-panel.test.tsx
   s_4e6817f2f1ffe7::t_a1e940dd18ff6f 557
 src/renderer/components/library/library-resource-action-modals.tsx
@@ -522,6 +524,7 @@ crates/nodex-core/src/database/relation.rs
 crates/nodex-core-contracts/src/workspace.rs
   s_4e6817f2f1ffe7::t_d27e7d9bac938f 997-998,1293
   s_a9e380c5124138::t_5419fcf332a51c 1288-1292
+  s_4e6817f2f1ffe7::t_592648732ea898 8
 docs/adr/0067-project-execution-context-and-explicit-content-access.md
   s_4e6817f2f1ffe7::t_718333a744f5d2 2-5,7-56
   s_4e6817f2f1ffe7::t_c548c2a7175af5 6
@@ -823,6 +826,9 @@ src/shared/ipc-api.ts
   s_4e6817f2f1ffe7::t_95e5778e370644 830
 src/shared/page-lifecycle-v2.ts
   s_4e6817f2f1ffe7::t_9364eed8251fc1 58,134,736
+src/renderer/components/workbench/workbench-shell.native-conversation.test.tsx
+  s_4e6817f2f1ffe7::t_b82bfd7149aace 3,19-20,59-61,79-81
+  s_4e6817f2f1ffe7::t_c5fec9196f46c7 6-9,12-18,21-58,62-78,82-121
 ---
 {
   "schema_version": "authorship/3.0.0",
