@@ -1,0 +1,23 @@
+.gitignore
+  s_c912e4a0ad06fb::t_e3c5297b580687 48
+AGENTS.md
+  s_c912e4a0ad06fb::t_e3c5297b580687 21
+docs/development.md
+  s_c912e4a0ad06fb::t_e3c5297b580687 24-32
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "98913d6643337d1330002962b038556a28c03ae5",
+  "prompts": {},
+  "sessions": {
+    "s_c912e4a0ad06fb": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a12f63-9fd2-7bb0-b149-1091c7d2e114",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    }
+  }
+}
