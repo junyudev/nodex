@@ -29,6 +29,7 @@ const CONTENT_SEARCH_SKIP_SELECTOR = [
   "textarea",
   "input",
   "[contenteditable='true']",
+  "[hidden]",
   "[data-thread-find-skip]",
   "[data-content-search-skip]",
   "[data-review-line-number]",

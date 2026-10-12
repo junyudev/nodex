@@ -1,4 +1,5 @@
 import path from "node:path";
+import { readFileSync } from "node:fs";
 import * as Context from "effect/Context";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
@@ -16,6 +17,11 @@ import {
   buildMcpAppSandboxSourceUrl,
 } from "../../../src/shared/mcp-app/mcp-app-sandbox-contract";
 
+const homeArgument = process.argv.indexOf("--home");
+const home = homeArgument >= 0 ? process.argv[homeArgument + 1] : null;
+if (!home || !path.isAbsolute(home)) throw new Error("Sandbox fixture requires an absolute home");
+app.setPath("userData", path.join(home, "user-data"));
+
 protocol.registerSchemesAsPrivileged([{
   scheme: MCP_APP_SANDBOX_SCHEME,
   privileges: {
@@ -31,18 +37,34 @@ protocol.registerSchemesAsPrivileged([{
 const SKYBRIDGE_HTML = `<!doctype html>
 <html>
   <body>
+    <button id="increment">Increment</button><output id="counter">0</output>
     <script>
+      const nonce = crypto.randomUUID();
+      let counter = 0;
+      document.getElementById("increment").addEventListener("click", () => {
+        document.getElementById("counter").textContent = String(++counter);
+      });
       const names = ${JSON.stringify(MCP_APP_REQUIRED_GUEST_PORT_NAMES)};
       const retainedPorts = [];
       const ports = {};
       const transfer = names.map((name) => {
         const channel = new MessageChannel();
         retainedPorts.push(channel.port1);
+        channel.port1.onmessage = event => {
+          if (event.data?.type !== "fixture-ping") return;
+          channel.port1.postMessage({ type: "fixture-pong", requestId: event.data.requestId, nonce, counter });
+        };
+        channel.port1.start();
         ports[name] = channel.port2;
         return channel.port2;
       });
       const reply = new MessageChannel();
       retainedPorts.push(reply.port1);
+      reply.port1.onmessage = event => {
+        if (event.data?.type !== "fixture-ping") return;
+        reply.port1.postMessage({ type: "fixture-pong", requestId: event.data.requestId, nonce, counter });
+      };
+      reply.port1.start();
       transfer.push(reply.port2);
       window.__fixturePorts = retainedPorts;
       window.postMessage({
@@ -60,11 +82,14 @@ const OWNER_HTML = `<!doctype html>
 <html>
   <head>
     <meta charset="utf-8">
-    <meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'unsafe-inline'; frame-src nodex-mcp-sandbox:; child-src nodex-mcp-sandbox:">
+    <meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; frame-src nodex-mcp-sandbox:; child-src nodex-mcp-sandbox:">
+    <style>webview{display:flex;width:600px;height:240px}#fixture-parking{display:none}</style>
     <title>MCP Sandbox Fixture</title>
   </head>
   <body>
     <main id="status">starting</main>
+    <div id="fixture-inline"></div><div id="fixture-panel"></div><div id="fixture-parking"></div>
+    <script>${readFileSync(path.join(__dirname, "owner-script.js"), "utf8")}</script>
     <script>
       window.fixtureState = {
         didAttachAccepted: null,
@@ -105,7 +130,13 @@ const OWNER_HTML = `<!doctype html>
         webview.addEventListener("preload-error", () => {
           window.fixtureState.error = "preload-error";
         });
-        document.body.append(webview);
+        if (repeated) document.body.append(webview);
+        else {
+          const frame = document.createElement("div");
+          frame.id = "fixture-frame";
+          frame.append(webview);
+          document.getElementById("fixture-inline").append(frame);
+        }
         window.fixtureState.webviewCount = document.querySelectorAll("webview").length;
         setTimeout(() => {
           if (window.fixtureState.handshake) return;

@@ -5,6 +5,7 @@ import type {
   InlineVisualizationRuntime,
   InlineVisualizationSnapshot,
 } from "../../../lib/inline-visualization/inline-visualization-runtime";
+import { createInlineVisualizationAnnotations } from "../../../lib/inline-visualization/inline-visualization-annotations";
 import { ConversationVisualizationContext } from "./inline-visualization-context";
 import { LocalConversationInlineVisualization } from "./local-conversation-inline-visualization";
 import type { InlineVisualizationMode } from "../../../lib/inline-visualization/inline-visualization-presentation";
@@ -50,6 +51,8 @@ beforeEach(() => {
     };
     const runtime: InlineVisualizationRuntime = {
       element,
+      annotations: createInlineVisualizationAnnotations({ allowed: true, globals: () => {} }),
+      setActive: vi.fn(),
       getSnapshot: () => snapshot,
       captureImage: vi.fn(async () => new Uint8Array()),
       copyAsImage: vi.fn(async () => {}),
@@ -92,7 +95,7 @@ function Harness({
         hostId: "local",
         threadId: "visible-thread",
         turnId: "turn",
-        live,
+        markdownStreaming: live,
         readChangedFilePaths: () => [],
       }}
     >
@@ -158,7 +161,7 @@ describe("inline visualization preview presentation", () => {
   test.each([
     ["narrow", false, false],
     ["narrow", true, false],
-    ["wide", true, false],
+    ["wide", true, true],
     ["wide", false, true],
   ] as const)(
     "admits the preview action for mode %s and live %s: %s",
@@ -192,10 +195,10 @@ describe("inline visualization preview presentation", () => {
     expect(instances[0]?.runtime.copyAsImage).toHaveBeenCalledTimes(2);
   });
 
-  test("lifecycle changes update preview eligibility without replacing the guest", async () => {
+  test("ordinary Markdown lifecycle preserves preview eligibility and the same guest", async () => {
     const view = render(<Harness mode="wide" live />);
     const guest = await view.findByRole("button", { name: "Widget control" });
-    expect(view.queryByRole("button", { name: "Open fullscreen" })).toBeNull();
+    expect(view.getByRole("button", { name: "Open fullscreen" })).toBeDefined();
     view.rerender(<Harness mode="wide" live={false} />);
     await view.findByRole("button", { name: "Open fullscreen" });
     expect(view.getByRole("button", { name: "Widget control" })).toBe(guest);

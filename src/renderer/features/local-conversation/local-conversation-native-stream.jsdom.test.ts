@@ -2026,7 +2026,7 @@ test.each(["ancestor", "different root"])(
   },
 );
 
-test("successful early tail hydration supersedes the resume cursor and a later empty tail preserves resident history", async () => {
+test("early tail hydration remains provisional and a later empty tail preserves resident history", async () => {
   const { owner, threadId } = await connectedManagers();
   expect(fixture.calls.find((call) => call.method === "thread/turns/list")?.params).toMatchObject({
     threadId,
@@ -2035,7 +2035,11 @@ test("successful early tail hydration supersedes the resume cursor and a later e
     sortDirection: "desc",
     itemsView: "notLoaded",
   });
-  expect(fixture.calls.filter((call) => call.method === "thread/turns/list")).toHaveLength(1);
+  expect(
+    fixture.calls
+      .filter((call) => call.method === "thread/turns/list")
+      .map((call) => (call.params as { cursor: string | null }).cursor),
+  ).toEqual([null, "resume-tail"]);
   const before = residentConversationTurns(owner.readConversation(threadId)!.canonicalState!);
   expect(before.length).toBeGreaterThan(0);
   fixture.response = { ...fixture.response!, turnsBackwardsCursor: null };
@@ -2049,6 +2053,137 @@ test("successful early tail hydration supersedes the resume cursor and a later e
       (turn) => turn.turnId,
     ),
   ).toEqual(before.map((turn) => turn.turnId));
+});
+
+test("ordinary resume rereads its adopted tail after a new Turn arrives during preparation", async () => {
+  const { owner, follower, threadId } = await connectedManagers();
+  owner.destroy();
+  follower.destroy();
+  fixture.ownerId = null;
+  fixture.follower = null;
+  const manager = (fixture.owner = new Manager("local"));
+  const original = fixture.response!;
+  const template = original.thread.turns[0]!;
+  const message = (id: string, text: string) => ({
+    type: "agentMessage" as const,
+    id,
+    text,
+    phase: "final_answer" as const,
+    memoryCitation: null,
+    delivery: null,
+    questions: null,
+  });
+  const old = {
+    ...template,
+    id: "before-prepare",
+    status: "completed" as const,
+    startedAt: 1,
+    completedAt: 2,
+    items: [message("old-answer", "Before adoption")],
+  };
+  const added = {
+    ...template,
+    id: "during-prepare",
+    status: "completed" as const,
+    startedAt: 3,
+    completedAt: 4,
+    items: [message("new-answer", "Added while preparing")],
+  };
+  const metadata = { ...original.thread, historyMode: "paginated" as const, turns: [] };
+  let resumed = false;
+  let release!: () => void;
+  fixture.resumePrepareReady = new Promise<void>((resolve) => {
+    release = resolve;
+  });
+  fixture.calls.length = 0;
+  fixture.nativeRequest = async (method, params) => {
+    if (method === "thread/read") return { thread: metadata };
+    if (method === "thread/resume") {
+      resumed = true;
+      return {
+        ...original,
+        thread: metadata,
+        initialTurnsPage: null,
+        turnsBackwardsCursor: "adopted-tail",
+      };
+    }
+    if (method === "thread/goal/get") return { goal: null };
+    if (method === "thread/turns/list") {
+      const { cursor } = params as { cursor: string | null };
+      if (cursor === null) {
+        expect(resumed).toBe(false);
+        return {
+          data: [{ ...old, items: [], itemsView: "notLoaded" }],
+          nextCursor: "provisional-older",
+          backwardsCursor: null,
+        };
+      }
+      expect(resumed).toBe(true);
+      expect(cursor).toBe("adopted-tail");
+      return {
+        data: [added, old].map((turn) => ({ ...turn, items: [], itemsView: "notLoaded" })),
+        nextCursor: "adopted-older",
+        backwardsCursor: null,
+      };
+    }
+    if (method === "thread/items/list") {
+      const { turnId } = params as { turnId: string };
+      const turn = turnId === old.id ? old : added;
+      return {
+        data: turn.items.map((item) => ({ turnId, item, completedAtMs: 4_000 })),
+        nextCursor: null,
+        backwardsCursor: null,
+      };
+    }
+    throw new Error(`Unexpected ordinary resume request ${method}`);
+  };
+  const transcript = manager.getTranscriptReadOwner(threadId);
+  const unsubscribe = transcript.subscribeStructure(() => {});
+  const pending = manager.requestThreadStreamResume(threadId);
+  try {
+    await waitFor(() =>
+      expect(transcript.readItem("turn:before-prepare", "old-answer")).toMatchObject({
+        type: "agentMessage",
+        text: "Before adoption",
+      }),
+    );
+    expect(manager.readConversation(threadId)?.resumeState).toBe("resuming");
+    expect(resumed).toBe(false);
+    release();
+    await pending;
+    await waitFor(() =>
+      expect(transcript.readItem("turn:during-prepare", "new-answer")).toMatchObject({
+        type: "agentMessage",
+        text: "Added while preparing",
+      }),
+    );
+    const canonical = manager.readConversation(threadId)!.canonicalState!;
+    expect(canonical.resumeState).toBe("resumed");
+    expect(canonical.turnsPagination?.olderCursor).toBe("adopted-older");
+    expect(residentConversationTurns(canonical).map((turn) => turn.turnId)).toEqual([
+      old.id,
+      added.id,
+    ]);
+    expect(
+      fixture.calls
+        .filter((call) => call.method === "thread/turns/list")
+        .map((call) => call.params),
+    ).toEqual([
+      { threadId, cursor: null, limit: 5, sortDirection: "desc", itemsView: "notLoaded" },
+      { threadId, cursor: "adopted-tail", limit: 5, sortDirection: "desc", itemsView: "notLoaded" },
+    ]);
+    expect(
+      fixture.calls.some(
+        (call) =>
+          call.method === "thread/read" && (call.params as { includeTurns: boolean }).includeTurns,
+      ),
+    ).toBe(false);
+    expect(fixture.timelineReads).toHaveLength(0);
+  } finally {
+    release();
+    await pending.catch(() => {});
+    unsubscribe();
+  }
 });
 
 test("failed early hydration falls back to the formal resume pagination cursor", async () => {
@@ -2599,10 +2734,13 @@ test("resume remains pending until its canonical history tail has arrived", asyn
         backwardsCursor: null,
       };
     }
-    if (method === "thread/turns/list")
+    if (method === "thread/turns/list") {
+      if ((params as { cursor: string | null }).cursor === null)
+        return { data: [], nextCursor: null, backwardsCursor: null };
       return new Promise((resolve) => {
         releaseHistory = resolve;
       });
+    }
     throw new Error(`Unexpected resume request ${method}`);
   };
   const resume = manager.requestThreadStreamResume(threadId);

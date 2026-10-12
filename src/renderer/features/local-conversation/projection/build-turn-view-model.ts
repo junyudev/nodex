@@ -34,6 +34,8 @@ import {
 import type { ThreadWorkedForTiming } from "../thread-worked-for-time";
 
 interface BuildTurnViewModelInput {
+  voiceWorkActivity?: "active" | "terminal";
+  includeGeneratedImages?: boolean;
   turnId: string | null;
   turnKey?: string;
   turn: CodexConversationTurn | null;
@@ -544,12 +546,10 @@ export function buildTurnViewModel(input: BuildTurnViewModelInput): ThreadTurnMo
   const latestAssistantId = buckets.latestAssistantMessage?.id ?? null;
   const aboveComposerBlocks = resolveAboveComposerBlocks(buckets, input);
   const turnOwnerHiddenBlockIds = resolveTurnOwnerHiddenBlockIds(buckets, input.isStreamingTurn);
-  const generatedImageGalleryBlock = buildGeneratedImageGalleryBlock(
-    input.turnId,
-    turnKey,
-    buckets,
-    input,
-  );
+  const generatedImageGalleryBlock =
+    input.includeGeneratedImages === false
+      ? null
+      : buildGeneratedImageGalleryBlock(input.turnId, turnKey, buckets, input);
   const nextAssistantItem =
     buckets.assistantItem === null
       ? null
@@ -559,7 +559,7 @@ export function buildTurnViewModel(input: BuildTurnViewModelInput): ThreadTurnMo
           assistantSearchUnitKey(turnKey, buckets.assistantItem),
           {
             ...actionInput,
-            includeActions: true,
+            includeActions: input.voiceWorkActivity === undefined,
             assistantAfterBlocks: [
               ...(generatedImageGalleryBlock ? [generatedImageGalleryBlock] : []),
               ...buckets.postAssistantItems,
@@ -602,7 +602,7 @@ export function buildTurnViewModel(input: BuildTurnViewModelInput): ThreadTurnMo
             block.type === "assistantMessage" && block.id === latestAssistantId,
         ) ?? buckets.latestAssistantMessage);
   const deferredAssistantActionsBlock =
-    nextAssistantItem === null
+    nextAssistantItem === null && input.voiceWorkActivity === undefined
       ? (buildDeferredAssistantActionsBlock(nextLatestAssistantMessage, actionInput) ??
         (generatedImageGalleryBlock
           ? buildGeneratedImageActionsBlock(buckets.toolOutputItems[0], actionInput)
@@ -652,6 +652,7 @@ export function buildTurnViewModel(input: BuildTurnViewModelInput): ThreadTurnMo
   const liveActivity: ThreadLiveActivityPresentation = activityPresentation.liveActivity;
 
   const leadingBlocks: ThreadBlockModel[] = [
+    ...(input.voiceWorkActivity && workedForItem ? [workedForItem] : []),
     ...buckets.modelChangedItems,
     ...buckets.preUserItems,
     ...expandUserBlocksWithAttachmentStrips(buckets.userItems),
@@ -688,6 +689,7 @@ export function buildTurnViewModel(input: BuildTurnViewModelInput): ThreadTurnMo
 
   return {
     turnId: input.turnId,
+    ...(input.voiceWorkActivity ? { voiceWorkActivity: input.voiceWorkActivity } : {}),
     turnKey,
     turn: input.turn,
     buckets,
@@ -707,7 +709,9 @@ export function buildTurnViewModel(input: BuildTurnViewModelInput): ThreadTurnMo
     searchUnits,
     hasRenderableAgentBodyUnits,
     defaultAgentBodyCollapsed:
-      hasRenderableAgentBodyUnits && !subagentActivityState.hasActiveActivity,
+      !input.voiceWorkActivity &&
+      hasRenderableAgentBodyUnits &&
+      !subagentActivityState.hasActiveActivity,
     collapsedMessageCount: countAgentBodyUnits(agentBodyCollapsePresentation.collapsibleUnits),
   };
 }

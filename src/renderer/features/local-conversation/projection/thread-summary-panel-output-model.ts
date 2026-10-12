@@ -6,6 +6,7 @@ import {
   normalizePathSegments,
   resolveOutputPath,
 } from "./projectless-output-scope";
+import { readTurnArtifactReferences } from "./turn-artifact-citations";
 
 type ProtocolImageGenerationItem = Extract<ThreadItem, { type: "imageGeneration" }>;
 type ProtocolImageViewItem = Extract<ThreadItem, { type: "imageView" }>;
@@ -84,6 +85,7 @@ export type ThreadSummaryPanelOutputOpenTarget =
 export interface CollectTurnEndResourcePathsOptions {
   cwd?: string | null;
   projectlessOutputDirectory?: string | null;
+  includeAppgenResources?: boolean;
 }
 
 interface MarkdownLink {
@@ -115,6 +117,7 @@ interface GoogleDriveResource {
 
 interface ThreadSummaryPanelTurnArtifacts {
   editedFilePaths: string[];
+  outputFilePaths: string[];
   referencedFilePaths: string[];
 }
 
@@ -148,6 +151,7 @@ const MARKDOWN_OUTPUT_EXTENSIONS = new Set([
   "xlsm",
   "xlsx",
 ]);
+const LINK_OUTPUT_EXTENSIONS = new Set(["docx", "pdf", "tex", "pptx", "xlsx"]);
 const OUTPUT_KIND_PRIORITY: Record<ThreadSummaryPanelPathOutputKind | "website", number> = {
   file: 0,
   image: 1,
@@ -310,7 +314,9 @@ function getGoogleDriveResource(url: URL): GoogleDriveResource | null {
   if (!kind) return null;
 
   const id =
-    url.pathname.match(/\/(?:d|folders)\/([^/]+)/u)?.[1] ?? url.searchParams.get("id") ?? url.href;
+    url.pathname.match(/\/(?:d|folders)\/(?:e\/)?([^/]+)/u)?.[1] ??
+    url.searchParams.get("id") ??
+    url.href;
   return {
     kind,
     key: `${kind}:${id}`,
@@ -335,10 +341,14 @@ function collectGoogleDriveTitleMap(turn: CodexConversationTurn): Map<string, st
     if (result?.type !== "success") continue;
 
     const structuredContent = asRecord(result.structuredContent);
-    const title = readTrimmedString(structuredContent, "title");
+    const title =
+      readTrimmedString(structuredContent, "title") ??
+      readTrimmedString(structuredContent, "display_title") ??
+      readTrimmedString(structuredContent, "name") ??
+      readTrimmedString(asRecord(structuredContent?.properties), "title");
     if (!title) continue;
 
-    for (const key of ["document_url", "presentation_url", "spreadsheet_url", "url"]) {
+    for (const key of GOOGLE_DRIVE_RESULT_URL_KEYS) {
       const url = readTrimmedString(structuredContent, key);
       if (!url) continue;
       const resource = resolveGoogleDriveResource(url);
@@ -347,6 +357,84 @@ function collectGoogleDriveTitleMap(turn: CodexConversationTurn): Map<string, st
   }
 
   return titles;
+}
+
+const GOOGLE_DRIVE_RESULT_URL_KEYS = [
+  "documentUrl",
+  "document_url",
+  "fileUrl",
+  "file_url",
+  "presentationUrl",
+  "presentation_url",
+  "spreadsheetUrl",
+  "spreadsheet_url",
+  "display_url",
+  "url",
+  "webViewLink",
+  "web_view_link",
+];
+const GOOGLE_DRIVE_READ_TOOLS = new Set(
+  "export_file.fetch.find_document_text_range.get_document.get_document_comments.get_document_paragraph_range.get_document_tables.get_document_text.get_file_metadata.get_presentation.get_presentation_comments.get_presentation_outline.get_presentation_tables.get_presentation_text.get_profile.get_slide.get_slide_thumbnail.get_spreadsheet_cells.get_spreadsheet_comments.get_spreadsheet_metadata.get_spreadsheet_range.list_drives.list_folder.recent_documents.search.search_spreadsheet_rows".split(
+    ".",
+  ),
+);
+const GOOGLE_DRIVE_WRITE_TOOLS = new Set([
+  "batch_update_document",
+  "batch_update_presentation",
+  "batch_update_spreadsheet",
+  "copy_file",
+  "create_file",
+  "create_folder",
+  "create_presentation_from_template",
+  "delete_file",
+  "duplicate_sheet_in_new_spreadsheet",
+  "import_document",
+  "import_presentation",
+  "import_spreadsheet",
+  "share_file",
+]);
+
+function collectGoogleDriveReadPolicy(turn: CodexConversationTurn): {
+  readResourceKeys: ReadonlySet<string>;
+  suppressUnmatchedReadResources: boolean;
+} {
+  const readResourceKeys = new Set<string>();
+  const writtenResourceKeys = new Set<string>();
+  let hasRead = false;
+  let hasWrite = false;
+  let hasUnknown = false;
+  const isDrive = (name: string) =>
+    name
+      .toLowerCase()
+      .replace(/[^a-z0-9]+/gu, "-")
+      .includes("google-drive");
+  for (const item of turn.items) {
+    const call = item.mcpToolCall;
+    if (call?.result?.type !== "success") continue;
+    const original = call.invocation.tool.trim();
+    const tool = original
+      .replace(/^google[\s_-]+drive(?:[\s_-]+app)?[.\s_-]+/iu, "")
+      .replace(/^(.+)\.([^.]*)$/u, (match, prefix: string, suffix: string) =>
+        isDrive(prefix) ? suffix : match,
+      );
+    if (!isDrive(call.invocation.server) && !isDrive(call.pluginId ?? "") && tool === original)
+      continue;
+    if (!GOOGLE_DRIVE_READ_TOOLS.has(tool) && !GOOGLE_DRIVE_WRITE_TOOLS.has(tool)) {
+      hasUnknown = true;
+      continue;
+    }
+    const write = GOOGLE_DRIVE_WRITE_TOOLS.has(tool) && tool !== "delete_file";
+    if (write) hasWrite = true;
+    else hasRead = true;
+    const result = asRecord(call.result.structuredContent);
+    for (const key of GOOGLE_DRIVE_RESULT_URL_KEYS) {
+      const url = readTrimmedString(result, key);
+      const resource = url ? resolveGoogleDriveResource(url) : null;
+      if (resource) (write ? writtenResourceKeys : readResourceKeys).add(resource.key);
+    }
+  }
+  for (const key of writtenResourceKeys) readResourceKeys.delete(key);
+  return { readResourceKeys, suppressUnmatchedReadResources: hasRead && !hasWrite && !hasUnknown };
 }
 
 function countRepeatedCharacter(value: string, index: number, character: string): number {
@@ -582,11 +670,24 @@ function collectMarkdownLinkedOutputs(
   cwd: string | null | undefined,
   googleDriveTitles: ReadonlyMap<string, string>,
   projectlessOutputDirectory: string | null | undefined,
+  policy?: {
+    readonly referencedPaths: readonly string[];
+    readonly hasCitations: boolean;
+    readonly readResourceKeys: ReadonlySet<string>;
+    readonly suppressUnmatchedReadResources: boolean;
+  },
 ): ThreadSummaryPanelOutputDraft[] {
   return extractMarkdownLinks(text).flatMap<ThreadSummaryPanelOutputDraft>((link) => {
     const normalizedUrl = normalizeUrl(link.destination);
     const googleDrive = resolveGoogleDriveResource(normalizedUrl);
     if (googleDrive) {
+      if (
+        policy &&
+        (policy.hasCitations ||
+          policy.suppressUnmatchedReadResources ||
+          policy.readResourceKeys.has(googleDrive.key))
+      )
+        return [];
       const title = googleDriveTitles.get(googleDrive.key) ?? link.label;
       return title.trim().length > 0
         ? [
@@ -601,7 +702,18 @@ function collectMarkdownLinkedOutputs(
     }
 
     const path = normalizeMarkdownOutputPath(link.destination, cwd);
-    if (!path || !hasMarkdownOutputExtension(path)) return [];
+    if (!path) return [];
+    if (policy) {
+      if (!LINK_OUTPUT_EXTENSIONS.has(normalizeOutputExtension(path) ?? "")) return [];
+      if (isScratchOutputPath(path, cwd)) return [];
+      if (
+        policy.referencedPaths.some(
+          (reference) =>
+            normalizeOutputIdentity(reference, cwd) === normalizeOutputIdentity(path, cwd),
+        )
+      )
+        return [];
+    } else if (!hasMarkdownOutputExtension(path)) return [];
     if (
       !isResourceInsideProjectlessOutputDirectory({
         cwd,
@@ -767,32 +879,70 @@ function collectReferencedArtifactPaths(item: CodexConversationItem): string[] {
   });
 }
 
-function collectEditedArtifactPaths(item: CodexConversationItem): string[] {
+function collectEditedArtifactPaths(item: CodexConversationItem, completedOnly: boolean): string[] {
+  if (completedOnly && (asRecord(item.rawItem)?.status ?? item.status) !== "completed") return [];
   const entries = getCodexFileChangeEntries(item.fileChange?.changes);
   return entries.flatMap(([path, patch]) => {
+    if (patch.type === "delete") return [];
     const outputPath = patch.type === "update" && patch.movePath ? patch.movePath : path;
     const normalized = normalizeArtifactPath(outputPath);
     return normalized ? [normalized] : [];
   });
 }
 
-function collectTurnArtifacts(turn: CodexConversationTurn): ThreadSummaryPanelTurnArtifacts {
+function collectTurnArtifacts(
+  turn: CodexConversationTurn,
+  completedOnly = false,
+): ThreadSummaryPanelTurnArtifacts {
   const editedFilePaths: string[] = [];
+  const outputFilePaths: string[] = [];
   const referencedFilePaths: string[] = [];
   const editedSeen = new Set<string>();
+  const outputSeen = new Set<string>();
   const referencedSeen = new Set<string>();
+  const visualizationPaths = new Set<string>();
 
   for (const item of turn.items) {
-    for (const path of collectEditedArtifactPaths(item)) {
+    for (const path of collectEditedArtifactPaths(item, completedOnly)) {
       addArtifactPath(editedSeen, editedFilePaths, path);
     }
 
     for (const path of collectReferencedArtifactPaths(item)) {
       addArtifactPath(referencedSeen, referencedFilePaths, path);
     }
+    const text = resolveAssistantText(item);
+    if (!text) continue;
+    const references = readTurnArtifactReferences(text);
+    for (const path of references.visualizationPaths) {
+      const normalized = normalizeArtifactPath(path);
+      if (normalized) visualizationPaths.add(normalized.toLowerCase());
+    }
+    for (const citation of references.citations) {
+      if (citation.mode === "live" || isHttpUrl(citation.path)) continue;
+      if ((citation.purpose ?? "output") === "output")
+        addArtifactPath(outputSeen, outputFilePaths, citation.path);
+      else if (citation.purpose === "source")
+        addArtifactPath(referencedSeen, referencedFilePaths, citation.path);
+    }
   }
 
-  return { editedFilePaths, referencedFilePaths };
+  return {
+    editedFilePaths: editedFilePaths.filter((path) => !visualizationPaths.has(path.toLowerCase())),
+    outputFilePaths: outputFilePaths.filter((path) => !visualizationPaths.has(path.toLowerCase())),
+    referencedFilePaths,
+  };
+}
+
+function normalizeOutputIdentity(path: string, cwd: string | null | undefined): string {
+  return normalizePathSegments(resolveOutputPath(path, cwd)).toLowerCase();
+}
+
+function isScratchOutputPath(path: string, cwd: string | null | undefined): boolean {
+  const identity = normalizeOutputIdentity(path, cwd);
+  return ["work", ".codex_scratch"].some((root) => {
+    const scratch = normalizeOutputIdentity(root, cwd);
+    return identity === scratch || identity.startsWith(`${scratch}/`);
+  });
 }
 
 function isMarkdownReferenceExcludedFromEndCardResource(path: string): boolean {
@@ -1026,30 +1176,101 @@ export function collectTurnEndResourcePaths(
   turn: CodexConversationTurn,
   options: CollectTurnEndResourcePathsOptions = {},
 ): string[] {
+  return getTurnEndResourcePaths(collectTurnEndResources(turn, options));
+}
+
+/** Completed response outputs; source references and edited files alone are not outputs. */
+export function collectTurnEndResources(
+  turn: CodexConversationTurn,
+  options: CollectTurnEndResourcePathsOptions = {},
+): ThreadSummaryPanelOutputRow[] {
   if (!isCompletedTurn(turn)) return [];
-
-  const assistantText = collectAssistantTextByTurn(turn);
-  const linkedOutputs = collectMarkdownLinkedOutputs(
-    assistantText,
-    options.cwd,
-    new Map(),
-    options.projectlessOutputDirectory,
-  );
-  const artifactOutputs = collectTurnArtifactFileOutputs(
-    collectTurnArtifacts(turn),
-    options.cwd,
-    options.projectlessOutputDirectory,
-  );
-  const paths = new Map<string, string>();
-
-  for (const output of [...linkedOutputs, ...artifactOutputs]) {
-    if (output.kind !== "file") continue;
-
-    const key = normalizePathSegments(output.path).toLowerCase();
-    if (!paths.has(key)) paths.set(key, output.path);
+  const cwd = options.cwd ?? null;
+  const directory = options.projectlessOutputDirectory;
+  const artifacts = collectTurnArtifacts(turn, true);
+  const assistantText = turn.items.findLast((item) => resolveAssistantText(item) !== null);
+  const text = assistantText ? resolveAssistantText(assistantText) : null;
+  const citations = readTurnArtifactReferences(text ?? "").citations;
+  const titles = collectGoogleDriveTitleMap(turn);
+  const outputs = new Map<string, ThreadSummaryPanelOutputDraft>();
+  for (const path of artifacts.outputFilePaths) {
+    if (!hasMarkdownOutputExtension(path) || isScratchOutputPath(path, cwd)) continue;
+    if (
+      !isResourceInsideProjectlessOutputDirectory({
+        cwd,
+        projectlessOutputDirectory: directory,
+        resourcePath: path,
+      })
+    )
+      continue;
+    addOutput(outputs, { kind: "file", path: resolveOutputPath(path, cwd) });
   }
+  for (const citation of citations) {
+    if ((citation.purpose ?? "output") !== "output" || citation.mode === "live") continue;
+    const drive = resolveGoogleDriveResource(citation.path);
+    if (!drive) continue;
+    addOutput(outputs, {
+      kind: "google-drive",
+      url: normalizeUrl(citation.path),
+      resourceKind: drive.kind,
+      title: titles.get(drive.key) ?? citation.label ?? citation.path,
+    });
+  }
+  for (const output of collectMarkdownLinkedOutputs(text, cwd, titles, directory, {
+    referencedPaths: artifacts.referencedFilePaths,
+    hasCitations: citations.length > 0,
+    ...collectGoogleDriveReadPolicy(turn),
+  }))
+    addOutput(outputs, output);
+  const appgenOutputs = options.includeAppgenResources ? collectAppgenArtifacts(turn) : [];
+  for (const output of appgenOutputs) addOutput(outputs, output);
+  if (
+    appgenOutputs.length === 0 &&
+    ![...outputs.values()].some((output) => output.kind === "file") &&
+    !citations.some(
+      (citation) => citation.mode === "live" && (citation.purpose ?? "output") === "output",
+    )
+  ) {
+    const website =
+      resolveSingleLocalWebsiteUrl(text) ??
+      resolveSingleEditedWebsiteTarget(
+        {
+          ...artifacts,
+          editedFilePaths: artifacts.editedFilePaths.filter(
+            (path) => !isScratchOutputPath(path, cwd),
+          ),
+        },
+        cwd,
+        directory,
+      );
+    if (website) addOutput(outputs, { kind: "website", target: website });
+  }
+  return [...outputs.values()].map((output) => buildOutputRow(output, new Map()));
+}
 
-  return [...paths.values()];
+/** Loading passes an empty set; a failed query has no set and retains candidates. */
+export function filterTurnEndResources(
+  resources: readonly ThreadSummaryPanelOutputRow[],
+  existingFilePaths: ReadonlySet<string> | undefined,
+  cwd?: string | null,
+): readonly ThreadSummaryPanelOutputRow[] {
+  if (!existingFilePaths) return resources;
+  const existing = new Set(
+    [...existingFilePaths].map((path) => normalizeOutputIdentity(path, cwd)),
+  );
+  return resources.filter(
+    (resource) =>
+      resource.kind !== "file" || existing.has(normalizeOutputIdentity(resource.path, cwd)),
+  );
+}
+
+export function getTurnEndResourcePaths(
+  resources: readonly ThreadSummaryPanelOutputRow[],
+): string[] {
+  return resources.flatMap((resource) => {
+    if (resource.kind === "file") return [resource.path];
+    return resource.kind === "website" && !isHttpUrl(resource.target) ? [resource.target] : [];
+  });
 }
 
 function buildGeneratedImageNumbers(

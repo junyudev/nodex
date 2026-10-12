@@ -3,6 +3,7 @@ import { writeTextToClipboard } from "../../../../../lib/clipboard";
 import { MarkdownCore } from "./markdown-core";
 import type { CSSProperties, MouseEvent } from "react";
 import type { ConversationVisualizationContext } from "../../inline-visualization-context";
+import type { FileMarkdownMediaScope } from "@/lib/file-markdown-media/file-markdown-media-model";
 import {
   useAdaptiveMarkdown,
   type AdaptiveMarkdownOptions,
@@ -19,6 +20,7 @@ export interface MarkdownRendererProps {
   cwd?: string | null;
   projectWorkspacePath?: string | null;
   visualizationContext?: ConversationVisualizationContext;
+  fileMediaScope?: FileMarkdownMediaScope;
 }
 
 function readStreamdownCodeLineText(line: Element): string {
@@ -65,6 +67,7 @@ export function MarkdownRenderer({
   cwd,
   projectWorkspacePath,
   visualizationContext,
+  fileMediaScope,
 }: MarkdownRendererProps) {
   return (
     <div
@@ -81,6 +84,7 @@ export function MarkdownRenderer({
           cwd={cwd}
           projectWorkspacePath={projectWorkspacePath}
           visualizationContext={visualizationContext}
+          fileMediaScope={fileMediaScope}
           buffering={adaptiveBuffering}
         />
       ) : (
@@ -92,6 +96,7 @@ export function MarkdownRenderer({
           cwd={cwd}
           projectWorkspacePath={projectWorkspacePath}
           visualizationContext={visualizationContext}
+          fileMediaScope={fileMediaScope}
         />
       )}
     </div>

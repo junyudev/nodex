@@ -14,34 +14,17 @@ import { timelineOwnerFixture } from "../../../projection/normalized-timeline.te
 import { isCodexTimelineTurnEntry } from "../../../projection/normalized-timeline-entries";
 import { CodexTranscriptReadOwnerContext } from "../../../normalized-transcript-hooks";
 import { LocalConversationTimelinePromotion } from "../../local-conversation-timeline-promotion";
-import { canExpandInlineVisualization } from "../../../../../lib/inline-visualization/inline-visualization-presentation";
-import type { ConversationVisualizationContext } from "../../inline-visualization-context";
 
 // Observe the real presentation owner independently of the rich parser's own animation timers.
 vi.mock("./markdown-core", () => ({
   MarkdownCore: ({
     content,
     animateStreamingText,
-    visualizationContext,
   }: {
     content: string;
     animateStreamingText?: boolean;
-    visualizationContext?: ConversationVisualizationContext;
   }) => (
-    <>
-      <output aria-label={animateStreamingText ? "Animated Markdown" : "Markdown"}>
-        {content}
-      </output>
-      {visualizationContext ? (
-        <button
-          disabled={
-            !canExpandInlineVisualization({ mode: "wide", isStreaming: visualizationContext.live })
-          }
-        >
-          Expand document
-        </button>
-      ) : null}
-    </>
+    <output aria-label={animateStreamingText ? "Animated Markdown" : "Markdown"}>{content}</output>
   ),
 }));
 
@@ -126,9 +109,6 @@ describe("mounted adaptive Markdown", () => {
       </CodexTranscriptReadOwnerContext.Provider>,
     );
     try {
-      expect(view.getByRole("button", { name: "Expand document" }).hasAttribute("disabled")).toBe(
-        true,
-      );
       await act(async () => {
         fixture.owner.applyEvent({
           type: "changes",
@@ -143,9 +123,6 @@ describe("mounted adaptive Markdown", () => {
         });
       });
       expect(view.getByLabelText("Markdown").textContent).toBe(source);
-      expect(view.getByRole("button", { name: "Expand document" }).hasAttribute("disabled")).toBe(
-        false,
-      );
       for (const read of wholeReads) expect(read).not.toHaveBeenCalled();
     } finally {
       view.unmount();

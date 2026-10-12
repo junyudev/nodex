@@ -28,7 +28,7 @@ describe("assistant Markdown inline visualizations", () => {
       hostId: "local",
       threadId: "visible",
       turnId: "turn",
-      live: true,
+      markdownStreaming: true,
       readChangedFilePaths: () => [],
     };
     const mounted = render(
@@ -48,7 +48,7 @@ describe("assistant Markdown inline visualizations", () => {
       <MarkdownRenderer
         content={content}
         parseIncompleteMarkdown={false}
-        visualizationContext={{ ...context, live: false }}
+        visualizationContext={{ ...context, markdownStreaming: false }}
       />,
     );
     await waitFor(() => expect(screen.getByRole("button", { name: "plot.html" })).toBe(original));
@@ -69,7 +69,7 @@ describe("assistant Markdown inline visualizations", () => {
             hostId: "local",
             threadId: "visible",
             turnId: "turn",
-            live: false,
+            markdownStreaming: false,
             readChangedFilePaths: () => [],
           }}
         />,
@@ -88,7 +88,7 @@ describe("assistant Markdown inline visualizations", () => {
           hostId: "local",
           threadId: "visible",
           turnId: "turn",
-          live: false,
+          markdownStreaming: false,
           readChangedFilePaths: () => [],
         }}
       />,

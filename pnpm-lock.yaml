@@ -397,6 +397,9 @@ importers:
       '@tiptap/pm':
         specifier: 3.31.4
         version: 3.31.4
+      '@types/hast':
+        specifier: 3.0.5
+        version: 3.0.5
       '@types/js-yaml':
         specifier: ^4.0.9
         version: 4.0.9
@@ -547,6 +550,9 @@ importers:
       react-dom:
         specifier: 19.2.7
         version: 19.2.7(react@19.2.7)
+      rehype-sanitize:
+        specifier: 6.0.0
+        version: 6.0.0
       remark-breaks:
         specifier: ^4.0.0
         version: 4.0.0

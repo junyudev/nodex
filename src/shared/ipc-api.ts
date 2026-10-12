@@ -1518,6 +1518,10 @@ export interface IpcApi {
     args: [input: WorkspaceDirectoryEntriesInput];
     result: WorkspaceDirectoryEntriesResult;
   };
+  "workspace-paths-exist": {
+    args: [import("./types").WorkspacePathsExistInput];
+    result: import("./types").WorkspacePathsExistResult;
+  };
   "file-search:start": {
     args: [input: FileSearchStartInput];
     result: void;
@@ -1915,6 +1919,10 @@ export interface IpcApi {
   "codex:visualization:state:write": {
     args: [input: CodexVisualizationStateWriteInput];
     result: CodexVisualizationStateWriteResult;
+  };
+  "codex:visualization:interaction:write": {
+    args: [input: import("./codex-visualization-state").CodexVisualizationInteractionWriteInput];
+    result: import("./codex-visualization-state").CodexVisualizationInteractionWriteResult;
   };
   "codex:visualization:open-external": {
     args: [input: CodexVisualizationOpenExternalInput];

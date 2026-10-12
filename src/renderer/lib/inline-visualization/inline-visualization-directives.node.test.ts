@@ -42,7 +42,7 @@ describe("inline visualization directives", () => {
     );
     expect(stripCodexRemarkDirectiveLines('::codex-inline-vis{file="sample.html"}')).toBe("");
   });
-  test("uses declared source, then matching native file-change ownership, then the visible Thread", () => {
+  test("accepts only declared display or matching native file ownership", () => {
     const input = {
       file: "sample.html",
       threadId: "visible",
@@ -54,7 +54,7 @@ describe("inline visualization directives", () => {
     expect(resolveInlineVisualizationSourceThreadId(input)).toBe("source-native");
     expect(
       resolveInlineVisualizationSourceThreadId({ ...input, declaredSourceThreadId: "declared" }),
-    ).toBe("declared");
+    ).toBe("source-native");
     expect(resolveInlineVisualizationSourceThreadId({ ...input, file: "different.html" })).toBe(
       "visible",
     );

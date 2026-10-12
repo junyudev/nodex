@@ -86,6 +86,21 @@ describe("project session Canvas Stage config", () => {
 });
 
 describe("project session Files config", () => {
+  test("retains a remote host and rejects missing or oversized identities", () => {
+    const config = {
+      projectId: null,
+      hostId: "remote-ssh-discovered:win",
+      workspaceRoot: null,
+      cwd: "C:/repo",
+      path: "C:/repo/file.md",
+    };
+    expect(parseWorkbenchProjectionTabConfig("files", config)).toEqual(config);
+    expect(() => parseWorkbenchProjectionTabConfig("files", { ...config, path: " \t " })).toThrow();
+    expect(() => parseWorkbenchProjectionTabConfig("files", { ...config, hostId: " " })).toThrow();
+    expect(() =>
+      parseWorkbenchProjectionTabConfig("files", { ...config, hostId: "x".repeat(513) }),
+    ).toThrow();
+  });
   test("persists projectless exact-file tabs without inventing a workspace root", () => {
     expect(
       parseWorkbenchProjectionTabConfig("files", {

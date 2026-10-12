@@ -20,6 +20,10 @@ import { ThreadMcpAppsProvider } from "./shared/tools/mcp-apps-context";
 import { projectAgentBodyCollapsePresentation } from "../projection/agent-body-collapse-presentation";
 import { CodexFirstResponseVisibilityMarker } from "../codex-turn-first-response-view";
 import { CodexTranscriptReasoningSummary } from "../normalized-transcript-hooks";
+import { LocalConversationEndResources } from "./local-conversation-end-resources";
+import type { ThreadSummaryPanelOutputRow } from "../projection/thread-summary-panel-output-model";
+
+const EMPTY_END_RESOURCES: readonly ThreadSummaryPanelOutputRow[] = [];
 
 const EMPTY_THREAD_LIVE_ACTIVITY: ThreadTurnModel["liveActivity"] = {
   global: {
@@ -49,6 +53,8 @@ function normalizeThreadLiveActivity(turn: ThreadTurnModel): ThreadTurnModel {
 }
 
 interface ThreadTurnProps {
+  hostId?: string;
+  endResources?: readonly ThreadSummaryPanelOutputRow[];
   turn: ThreadTurnModel;
   mcpApps?: readonly ProtocolAppInfo[];
   agentBodyCollapsed: boolean;
@@ -200,6 +206,8 @@ export function resolveThreadBlockRenderKey(block: { id: string; renderKey?: unk
 }
 
 function ThreadTurnBody({
+  hostId = "local",
+  endResources = EMPTY_END_RESOURCES,
   agentBodyUnits,
   turn,
   agentBodyCollapsed,
@@ -227,7 +235,9 @@ function ThreadTurnBody({
     extractWorkedFor: turn.hasRenderableAgentBodyUnits,
   });
   const shouldAllowAgentBodyCollapse =
-    turn.hasRenderableAgentBodyUnits && agentBodyCollapsePresentation.collapsibleUnits.length > 0;
+    !turn.voiceWorkActivity &&
+    turn.hasRenderableAgentBodyUnits &&
+    agentBodyCollapsePresentation.collapsibleUnits.length > 0;
   const effectiveAgentBodyCollapsed = shouldAllowAgentBodyCollapse ? agentBodyCollapsed : false;
   const reducedMotion = useResolvedReducedMotion();
   const agentBodyMotion = resolveCodexThreadAgentBodyMotion(reducedMotion);
@@ -369,6 +379,18 @@ function ThreadTurnBody({
             <div className="flex flex-col">
               {renderSpacedBlocks(turn.trailingBlocks, renderBlock)}
             </div>
+          </>
+        ) : null}
+
+        {endResources.length > 0 ? (
+          <>
+            <ThreadGap />
+            <LocalConversationEndResources
+              resources={endResources}
+              hostId={hostId}
+              cwd={threadCwd}
+              workspaceRoot={projectWorkspacePath}
+            />
           </>
         ) : null}
 

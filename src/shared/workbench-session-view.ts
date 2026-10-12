@@ -97,7 +97,7 @@ export type WorkbenchReviewTabConfig = WorkbenchReviewConfig;
 
 export interface WorkbenchFilesTabConfig {
   projectId: string | null;
-  hostId: "local";
+  hostId: string;
   workspaceRoot: string | null;
   cwd: string | null;
   path?: string;

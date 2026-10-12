@@ -9,7 +9,7 @@ export interface ConversationVisualizationContext {
   readonly hostId: string;
   readonly threadId: string;
   readonly turnId: string | null;
-  readonly live: boolean;
+  readonly markdownStreaming: boolean;
   readonly readChangedFilePaths: () => readonly string[];
 }
 
@@ -19,7 +19,7 @@ export const ConversationVisualizationContext =
 export function useConversationVisualizationContext(
   threadId: string,
   turnId: string | null,
-  live: boolean,
+  markdownStreaming: boolean,
   suppliedEntityKey?: string,
 ): ConversationVisualizationContext {
   const owner = useContext(CodexTranscriptReadOwnerContext);
@@ -42,7 +42,7 @@ export function useConversationVisualizationContext(
     hostId: owner?.key.hostId ?? DEFAULT_CODEX_HOST_ID,
     threadId,
     turnId,
-    live,
+    markdownStreaming,
     readChangedFilePaths,
   };
 }

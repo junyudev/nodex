@@ -6,10 +6,15 @@ import type {
   WorkspaceFileTextReadInput,
   WorkspaceFileWriteInput,
   WorkspaceFileWatchStopInput,
+  WorkspacePathsExistInput,
 } from "../types";
 
-const hostIdSchema = z.literal("local").optional();
+const hostIdSchema = z.string().trim().min(1).optional();
+const localHostIdSchema = z.literal("local").optional();
 const pathSchema = z.string().trim().min(1);
+const exactFilePathSchema = z.string().refine((value) => value.trim().length > 0, {
+  message: "File path is required",
+});
 const positiveByteLimitSchema = z
   .number()
   .int()
@@ -18,7 +23,7 @@ const positiveByteLimitSchema = z
 
 export const WorkspaceDirectoryEntriesInputSchema = z
   .object({
-    hostId: hostIdSchema,
+    hostId: localHostIdSchema,
     workspaceRoot: pathSchema,
     directoryPath: z.string().optional(),
     includeHidden: z.boolean().optional(),
@@ -29,9 +34,17 @@ export const WorkspaceDirectoryEntriesInputSchema = z
 export const WorkspaceFileRequestSchema = z
   .object({
     hostId: hostIdSchema,
-    path: pathSchema,
+    path: exactFilePathSchema,
   })
   .strict() satisfies z.ZodType<WorkspaceFileRequest>;
+
+export const WorkspaceLocalFileRequestSchema = WorkspaceFileRequestSchema.extend({
+  hostId: localHostIdSchema,
+}).strict();
+
+export const WorkspacePathsExistInputSchema = z
+  .object({ hostId: hostIdSchema, paths: z.array(z.string().min(1)) })
+  .strict() satisfies z.ZodType<WorkspacePathsExistInput>;
 
 export const WorkspaceFileTextReadInputSchema = WorkspaceFileRequestSchema.extend({
   maxBytes: positiveByteLimitSchema,
@@ -43,6 +56,7 @@ export const WorkspaceFileMetadataInputSchema = WorkspaceFileRequestSchema.exten
 }).strict() satisfies z.ZodType<WorkspaceFileMetadataInput>;
 
 export const WorkspaceFileWriteInputSchema = WorkspaceFileRequestSchema.extend({
+  hostId: localHostIdSchema,
   content: z.string(),
   expectedMtimeMs: z.number().finite().nonnegative().nullable(),
 }).strict() satisfies z.ZodType<WorkspaceFileWriteInput>;

@@ -491,6 +491,7 @@ const makeHarness = (input: {
       Effect.provideService(CodexVisualizationState, {
         read: () => Effect.die("unused"),
         write: () => Effect.die("unused"),
+        writeInteraction: () => Effect.die("unused"),
         clearThread: () => Effect.die("unused"),
         readPassiveContext: input.readPassiveContext ?? (() => Effect.succeed(undefined)),
       }),
@@ -908,6 +909,54 @@ it.effect(
         },
       ]);
       harness.commands.releasePreparedNativeStart(prepared.request.clientUserMessageId!);
+      yield* Scope.close(harness.scope, Exit.void);
+    }),
+);
+
+it.effect(
+  "captures host visualization annotations as explicit untrusted context before native admission",
+  () =>
+    Effect.gen(function* () {
+      const harness = yield* makeHarness({ request: () => Effect.succeed(response()) });
+      const attachment: import("../../shared/codex-untrusted-app-input").CodexAppModelContextAttachment =
+        {
+          id: "/chart.html",
+          kind: "context",
+          sourceName: "Visualization changes",
+          text: null,
+          structuredContent: {
+            edits: [
+              { target: "Chart", changes: [{ label: "Radius", reference: null, value: 40 }] },
+            ],
+          },
+          imageAttachments: [],
+          untrusted: true,
+        };
+      const promptInput = {
+        text: "Apply the changes",
+        mcpAppModelContextAttachments: [attachment],
+      };
+      const captured = yield* Effect.promise(() =>
+        prepareCodexPrompt(promptInput.text, promptInput, {
+          resolveImageInput: (url) => ({ type: "image", url }),
+        }),
+      );
+      const prepared = yield* harness.commands.prepareNativeStart("thread-a", promptInput.text, {
+        clientUserMessageId: "annotations",
+        preparedPrompt: captured,
+        promptInput,
+      });
+      assert.strictEqual(
+        prepared.request.input[0]?.type === "text" && prepared.request.input[0].text,
+        "Apply the changes",
+      );
+      assert.deepEqual(prepared.context?.mcpAppModelContextAttachments, [
+        { ...attachment, title: "Visualization changes" },
+      ]);
+      assert.isArray(prepared.context?.responseItems);
+      yield* harness.commands.inspectPreparedNativeStart(prepared);
+      yield* harness.commands.injectPreparedNativeStart(prepared);
+      assert.strictEqual(harness.events.filter((event) => event === "inject").length, 1);
       yield* Scope.close(harness.scope, Exit.void);
     }),
 );
@@ -2028,64 +2077,76 @@ it.effect(
 );
 
 for (const owner of ["main", "renderer"] as const)
-  it.effect(`${owner} queued app context is injected once inside its owner transaction`, () =>
-    Effect.gen(function* () {
-      const harness = yield* makeHarness({
-        request: () => Effect.succeed({ turn: { id: "queued-turn" } } as TurnStartResponse),
-      });
-      if (owner === "renderer") harness.changeOwner();
-      const executingPeer = owner === "renderer" ? "renderer-owner" : undefined;
-      const message = {
-        id: "captured-id",
-        cwd: "/repo",
-        context: {
-          prompt: "review",
-          fileAttachments: [],
-          addedFiles: [],
-          commentAttachments: [],
-          imageAttachments: [],
-          mcpAppModelContextAttachments: [
-            { id: "app", title: "context", text: "model context", imageAttachments: [] },
-          ],
-        },
-      };
-      const prepared = yield* harness.commands.prepareNativeQueuedMessage(
-        "thread-a",
-        message,
-        "start",
-        queuedPreparationContext,
-      );
-      assert.isTrue(prepared.requiresIdle);
-      assert.deepEqual(prepared.steer.restoreMessage, message);
-      assert.strictEqual(prepared.start?.request.clientUserMessageId, message.id);
-      assert.ok(prepared.start);
-      const materialized = yield* harness.commands.inspectPreparedNativeStart(
-        prepared.start,
-        executingPeer,
-      );
-      if (owner === "renderer") {
-        const premature = yield* harness.commands
-          .executePreparedNativeStart(materialized.request, executingPeer)
-          .pipe(Effect.result);
-        assert.strictEqual(premature._tag, "Failure");
-        yield* harness.commands.injectPreparedNativeStart(prepared.start, executingPeer);
-        const duplicate = yield* harness.commands
-          .injectPreparedNativeStart(prepared.start, executingPeer)
-          .pipe(Effect.result);
-        assert.strictEqual(duplicate._tag, "Failure");
-      }
-      yield* harness.commands.executePreparedNativeStart(materialized.request, executingPeer);
-      assert.isTrue(harness.events.indexOf("inject") < harness.events.indexOf("request:1"));
-      if (owner === "main")
-        assert.isTrue(harness.events.indexOf("admit") < harness.events.indexOf("inject"));
-      assert.strictEqual(harness.events.filter((event) => event === "inject").length, 1);
-      const repeated = yield* harness.commands
-        .executePreparedNativeStart(materialized.request, executingPeer)
-        .pipe(Effect.result);
-      assert.strictEqual(repeated._tag, "Failure");
-      yield* Scope.close(harness.scope, Exit.void);
-    }),
-  );
+  for (const attachment of [
+    { id: "app", title: "context", text: "model context", imageAttachments: [] },
+    {
+      id: "/chart.html",
+      kind: "context",
+      sourceName: "Visualization changes",
+      text: null,
+      structuredContent: { edits: [], selectedVariants: [{ carousel: 0, variant: "Dots" }] },
+      imageAttachments: [],
+      untrusted: true,
+    },
+  ])
+    it.effect(
+      `${owner} queued app context ${attachment.id} is injected once inside its owner transaction`,
+      () =>
+        Effect.gen(function* () {
+          const harness = yield* makeHarness({
+            request: () => Effect.succeed({ turn: { id: "queued-turn" } } as TurnStartResponse),
+          });
+          if (owner === "renderer") harness.changeOwner();
+          const executingPeer = owner === "renderer" ? "renderer-owner" : undefined;
+          const message = {
+            id: "captured-id",
+            cwd: "/repo",
+            context: {
+              prompt: "review",
+              fileAttachments: [],
+              addedFiles: [],
+              commentAttachments: [],
+              imageAttachments: [],
+              mcpAppModelContextAttachments: [attachment],
+            },
+          };
+          const prepared = yield* harness.commands.prepareNativeQueuedMessage(
+            "thread-a",
+            message,
+            "start",
+            queuedPreparationContext,
+          );
+          assert.isTrue(prepared.requiresIdle);
+          assert.deepEqual(prepared.steer.restoreMessage, message);
+          assert.strictEqual(prepared.start?.request.clientUserMessageId, message.id);
+          assert.ok(prepared.start);
+          const materialized = yield* harness.commands.inspectPreparedNativeStart(
+            prepared.start,
+            executingPeer,
+          );
+          if (owner === "renderer") {
+            const premature = yield* harness.commands
+              .executePreparedNativeStart(materialized.request, executingPeer)
+              .pipe(Effect.result);
+            assert.strictEqual(premature._tag, "Failure");
+            yield* harness.commands.injectPreparedNativeStart(prepared.start, executingPeer);
+            const duplicate = yield* harness.commands
+              .injectPreparedNativeStart(prepared.start, executingPeer)
+              .pipe(Effect.result);
+            assert.strictEqual(duplicate._tag, "Failure");
+          }
+          yield* harness.commands.executePreparedNativeStart(materialized.request, executingPeer);
+          assert.isTrue(harness.events.indexOf("inject") < harness.events.indexOf("request:1"));
+          if (owner === "main")
+            assert.isTrue(harness.events.indexOf("admit") < harness.events.indexOf("inject"));
+          assert.strictEqual(harness.events.filter((event) => event === "inject").length, 1);
+          const repeated = yield* harness.commands
+            .executePreparedNativeStart(materialized.request, executingPeer)
+            .pipe(Effect.result);
+          assert.strictEqual(repeated._tag, "Failure");
+          yield* Scope.close(harness.scope, Exit.void);
+        }),
+    );
 
 for (const permissionMode of ["auto", "guardian-approvals", "full-access", "custom"] as const) {
   it.effect(

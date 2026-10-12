@@ -18,7 +18,7 @@ export type ProjectSessionFilesPreviewTab = WorkspaceFilesTab & {
   readonly previewInstanceId: string;
   kind: "files";
   config: WorkspaceFilesTab["config"] & {
-    hostId: "local";
+    hostId: string;
     workspaceRoot: string | null;
     cwd: string | null;
     path: string;

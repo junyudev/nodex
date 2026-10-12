@@ -5,6 +5,7 @@ import type {
   ProtocolListMcpServerStatusResponse,
 } from "../../../lib/types";
 import type { CodexTurnScopedConversationRequest } from "../conversation-request-helpers";
+import type { CodexTranscriptWorkSlice } from "../normalized-transcript-read-owner";
 import {
   areVisibleConversationTurnRenderRevisionsEqual,
   buildVisibleConversationTurnRenderRevision,
@@ -35,6 +36,7 @@ import type {
 } from "../thread-stage-types";
 
 export interface BuildTurnRenderModelInput {
+  workSegment?: CodexTranscriptWorkSlice;
   turn: CodexConversationTurn;
   requests: CodexTurnScopedConversationRequest[];
   isLatestTurn: boolean;
@@ -53,11 +55,13 @@ export interface BuildTurnRenderModelInput {
   projectlessOutputDirectory?: string | null;
   mcpApps?: readonly ProtocolAppInfo[];
   mcpServerStatuses?: ProtocolListMcpServerStatusResponse | null;
+  endResourcePaths?: readonly string[];
 }
 
 export type TurnRenderSurface = "main" | "preview";
 
 export interface SelectTurnRenderModelInput {
+  workSegment?: CodexTranscriptWorkSlice;
   entry: VisibleConversationTurnEntry;
   surface?: TurnRenderSurface;
   canEditTurnUserPrefix?: boolean;
@@ -72,6 +76,7 @@ export interface SelectTurnRenderModelInput {
   projectlessOutputDirectory?: string | null;
   mcpApps?: readonly ProtocolAppInfo[];
   mcpServerStatuses?: ProtocolListMcpServerStatusResponse | null;
+  endResourcePaths?: readonly string[];
 }
 
 type TurnRenderModelBuilder = (input: BuildTurnRenderModelInput) => ThreadTurnModel;
@@ -331,24 +336,47 @@ export function buildTurnRenderModel(input: BuildTurnRenderModelInput): ThreadTu
     cwd: input.cwd,
     projectlessOutputDirectory: input.projectlessOutputDirectory,
   };
-  const endResourcePaths = collectTurnEndResourcePaths(input.turn, {
-    cwd: input.cwd,
-    projectlessOutputDirectory: input.projectlessOutputDirectory,
-  });
+  const endResourcePaths =
+    input.endResourcePaths ??
+    collectTurnEndResourcePaths(input.turn, {
+      cwd: input.cwd,
+      projectlessOutputDirectory: input.projectlessOutputDirectory,
+    });
   const entries = appendDerivedTurnDiffEntry(input.turn, scope, endResourcePaths);
   const rendererProjection = buildRendererItemStreamProjection({
     entries,
     requests: input.requests,
     turnStatus: input.turn.status,
     isLatestTurn: input.isLatestTurn,
-    backgroundAgents: input.backgroundAgents,
+    backgroundAgents:
+      input.workSegment?.presentation === "voice-work" ? [] : input.backgroundAgents,
     showFullTranscript: input.showFullTranscript,
     canOpenSubagents: input.canOpenSubagents,
     turnId: input.turn.turnId,
     turnKey,
   });
   const baseItems = rendererProjection.items;
-  const workedForItem = buildWorkedForItem(input.turn, baseItems, turnKey);
+  const voiceWork = input.workSegment?.presentation === "voice-work" ? input.workSegment : null;
+  const workedForItem: ThreadWorkedForBlockModel | null = voiceWork
+    ? voiceWork.state === "terminal" &&
+      voiceWork.startedAtMs !== null &&
+      voiceWork.completedAtMs !== null
+      ? {
+          id: `${turnKey}:worked-for`,
+          turnId: input.turn.turnId,
+          createdAt: voiceWork.startedAtMs,
+          updatedAt: voiceWork.completedAtMs,
+          searchableText: "",
+          type: "workedFor",
+          status:
+            input.turn.status === "interrupted" && voiceWork.terminalReason === "turn"
+              ? "stopped"
+              : "worked",
+          startedAtMs: voiceWork.startedAtMs,
+          completedAtMs: voiceWork.completedAtMs,
+        }
+      : null
+    : buildWorkedForItem(input.turn, baseItems, turnKey);
   const workedForTiming = workedForItem
     ? {
         status: workedForItem.status,
@@ -356,7 +384,12 @@ export function buildTurnRenderModel(input: BuildTurnRenderModelInput): ThreadTu
         completedAtMs: workedForItem.completedAtMs,
       }
     : null;
-  const itemsWithTurnIntro = insertWorkedForItem(input.turn, baseItems, workedForItem);
+  const itemsWithTurnIntro = voiceWork
+    ? [
+        ...(workedForItem ? [workedForItem] : []),
+        ...baseItems.filter((item) => item.type !== "workedFor"),
+      ]
+    : insertWorkedForItem(input.turn, baseItems, workedForItem);
   const items =
     input.surface === "preview" ? startAfterTurnIntro(itemsWithTurnIntro) : itemsWithTurnIntro;
   const fallbackSubagentBlocks = items.filter(
@@ -401,6 +434,10 @@ export function buildTurnRenderModel(input: BuildTurnRenderModelInput): ThreadTu
     endResourcePaths,
     mcpApps: input.mcpApps,
     mcpServerStatuses: input.mcpServerStatuses,
+    voiceWorkActivity: voiceWork?.state,
+    includeGeneratedImages:
+      !input.workSegment ||
+      (input.workSegment.presentation === "codex" && input.workSegment.terminalReason === "turn"),
   });
 }
 
@@ -448,6 +485,8 @@ export function createTurnRenderModelSelector(
       input.cwd,
       input.hostId,
       input.projectlessOutputDirectory,
+      input.endResourcePaths,
+      input.workSegment,
       resolveSelectorIdentity(input.mcpApps),
       resolveSelectorIdentity(input.mcpServerStatuses),
       input.entry.turnKey,
@@ -486,6 +525,8 @@ export function createTurnRenderModelSelector(
       projectlessOutputDirectory: input.projectlessOutputDirectory,
       mcpApps: input.mcpApps,
       mcpServerStatuses: input.mcpServerStatuses,
+      endResourcePaths: input.endResourcePaths,
+      workSegment: input.workSegment,
     });
     const nextModels = isSameRevision
       ? cachedEntry.modelsByVariant

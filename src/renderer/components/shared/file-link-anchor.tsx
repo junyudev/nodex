@@ -71,6 +71,7 @@ function isFileAction(action: ReturnType<typeof resolveNfmLinkAction>): action i
 const OPEN_WITH_PREFIX = "file-reference:open-with:";
 
 export interface FileReferenceContextMenuRequest {
+  hostId?: string;
   target: FileLinkTarget;
   label: string;
   open: ReturnType<typeof useFileReferenceRouter>["open"];
@@ -79,6 +80,7 @@ export interface FileReferenceContextMenuRequest {
 }
 
 export async function openFileReferenceContextMenu({
+  hostId = "local",
   target,
   label,
   open,
@@ -97,6 +99,7 @@ export async function openFileReferenceContextMenu({
         label: "Open with",
         iconKey: "window",
         type: "submenu",
+        enabled: hostId === "local",
         submenu: getFileReferenceOpenWithMenuItems(),
       },
       { type: "separator" },
@@ -115,6 +118,7 @@ export async function openFileReferenceContextMenu({
         id: "file-reference:reveal",
         label: "Reveal in Finder",
         iconKey: "folder",
+        enabled: hostId === "local",
       },
     ],
     { x, y },
@@ -132,7 +136,7 @@ export async function openFileReferenceContextMenu({
   if (selected === "file-reference:copy-contents") {
     try {
       const result = await readWorkspaceFileText({
-        hostId: "local",
+        hostId,
         path: target.path,
         maxBytes: 2 * 1024 * 1024,
       });
@@ -144,10 +148,12 @@ export async function openFileReferenceContextMenu({
     return;
   }
   if (selected === "file-reference:reveal") {
+    if (hostId !== "local") return;
     await open(target, { external: true, opener: "fileManager" });
     return;
   }
   if (selected.startsWith(OPEN_WITH_PREFIX)) {
+    if (hostId !== "local") return;
     const opener = parseFileReferenceOpenWithMenuId(selected);
     if (opener) await open(target, { external: true, opener });
   }
@@ -276,6 +282,7 @@ export function FileLinkAnchor({
           event.stopPropagation();
           const bounds = event.currentTarget.getBoundingClientRect();
           void openFileReferenceContextMenu({
+            hostId: router.hostId,
             target,
             label,
             open: (nextTarget, options) =>
@@ -297,6 +304,7 @@ export function FileLinkAnchor({
       }}
       onContextMenu={(event) => {
         void handleFileReferenceContextMenu(event, {
+          hostId: router.hostId,
           target,
           label,
           open: (nextTarget, options) =>

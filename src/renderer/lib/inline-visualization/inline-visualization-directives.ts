@@ -6,6 +6,7 @@ import {
   resolveInlineVisualizationMode,
   type InlineVisualizationMode,
 } from "./inline-visualization-presentation";
+import { normalizeCodexPathIdentity } from "../../../shared/codex-workspace-paths";
 
 interface InlineVisualizationDirective {
   readonly file: string;
@@ -64,13 +65,22 @@ export function resolveInlineVisualizationSourceThreadId(input: {
   readonly threadId: string;
   readonly changedFilePaths: readonly string[];
 }): string {
-  if (input.declaredSourceThreadId) return input.declaredSourceThreadId;
+  const normalized = normalizeCodexPathIdentity(input.file);
+  const absolute = /^(?:\/|[A-Za-z]:[\\/])/.test(input.file);
   const basename = input.file.replaceAll("\\", "/").split("/").at(-1);
-  const changedPath = input.changedFilePaths.find(
-    (path) => path.replaceAll("\\", "/").split("/").at(-1) === basename,
+  const changedPath = input.changedFilePaths.find((path) =>
+    absolute
+      ? normalizeCodexPathIdentity(path) === normalized
+      : path.replaceAll("\\", "/").split("/").at(-1) === basename,
   );
   const sourceThreadId = changedPath
     ?.replaceAll("\\", "/")
     .match(/\/visualizations\/\d{4}\/\d{2}\/\d{2}\/([A-Za-z0-9_-]+)\//)?.[1];
+  if (
+    input.declaredSourceThreadId &&
+    (input.declaredSourceThreadId === input.threadId ||
+      input.declaredSourceThreadId === sourceThreadId)
+  )
+    return input.declaredSourceThreadId;
   return sourceThreadId ?? input.threadId;
 }

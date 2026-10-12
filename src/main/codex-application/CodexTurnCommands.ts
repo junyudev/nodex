@@ -1603,7 +1603,11 @@ export const make: Effect.Effect<
             () =>
               prepareUntrustedAppInput(
                 prompt,
-                { mcpAppModelContextAttachments: sourceContext?.mcpAppModelContextAttachments },
+                {
+                  mcpAppModelContextAttachments:
+                    sourceContext?.mcpAppModelContextAttachments ??
+                    overrides?.promptInput?.mcpAppModelContextAttachments,
+                },
                 "passive-context-validation",
               ).modelContextAttachments,
           );
@@ -1666,14 +1670,20 @@ export const make: Effect.Effect<
             let admittedOverrides = overrides;
             const untrustedAppMessage =
               overrides?.untrustedAppMessage ?? overrides?.promptInput?.untrustedAppMessage;
-            if (untrustedAppMessage !== undefined) {
+            const mcpAppModelContextAttachments =
+              sourceContext?.mcpAppModelContextAttachments ??
+              overrides?.promptInput?.mcpAppModelContextAttachments;
+            if (
+              untrustedAppMessage !== undefined ||
+              overrides?.promptInput?.mcpAppModelContextAttachments !== undefined
+            ) {
               const preparedPrompt = overrides?.preparedPrompt;
               if (!preparedPrompt) throw new Error("App input requires a captured prompt");
               if (Array.isArray(context?.responseItems) && context.responseItems.length)
                 throw new Error("App input already has a context injection");
               const appInput = prepareUntrustedAppInput(
                 preparedPrompt.promptText,
-                { untrustedAppMessage },
+                { untrustedAppMessage, mcpAppModelContextAttachments },
                 `untrusted_input_${clientUserMessageId}`,
               );
               const compiled = {
@@ -1683,7 +1693,11 @@ export const make: Effect.Effect<
                 inputItems: [appInput.input, ...preparedPrompt.inputItems.slice(1)],
               };
               original = { ...original, input: compiled.inputItems };
-              context = { ...context, responseItems: appInput.responseItems };
+              context = {
+                ...context,
+                responseItems: appInput.responseItems,
+                mcpAppModelContextAttachments: appInput.modelContextAttachments,
+              };
               admittedOverrides = { ...overrides, preparedPrompt: compiled };
             }
             // Capture the peer wire value before retaining authority. JSON peers omit undefined

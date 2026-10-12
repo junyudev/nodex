@@ -93,6 +93,55 @@ const fixture = (initial: CodexQueuedMessageState = {}) =>
     };
   });
 
+it.effect("retains explicit visualization annotations across queue persistence and editing", () =>
+  Effect.scoped(
+    Effect.gen(function* () {
+      const f = yield* fixture();
+      const attachment: import("../../shared/codex-untrusted-app-input").CodexAppModelContextAttachment =
+        {
+          id: "/chart.html",
+          kind: "context",
+          sourceName: "Visualization changes",
+          text: null,
+          structuredContent: {
+            edits: [
+              { target: "Chart", changes: [{ label: "Radius", reference: null, value: 40 }] },
+            ],
+          },
+          imageAttachments: [],
+          untrusted: true,
+        };
+      const captured = yield* f.service.prepareMessage({
+        threadId: "thread",
+        prompt: "Apply the changes",
+        promptInput: { text: "Apply the changes", mcpAppModelContextAttachments: [attachment] },
+      });
+      yield* f.service.acceptFromFollower("thread", [captured]);
+      const restored = JSON.parse(JSON.stringify(f.state())) as CodexQueuedMessageState;
+      const editing = queuedMessagePromptInput(restored.thread![0]!);
+      const replacement = yield* f.service.prepareMessage({
+        threadId: "thread",
+        prompt: "Keep the background",
+        promptInput: editing,
+      });
+      assert.deepEqual(replacement.context.mcpAppModelContextAttachments, [
+        { ...attachment, title: attachment.sourceName },
+      ]);
+      const compiled = prepareUntrustedAppInput(
+        "Keep the background",
+        replacement.context,
+        "annotations-call",
+      );
+      assert.strictEqual(
+        compiled.input.type === "text" && compiled.input.text,
+        "Keep the background",
+      );
+      const expectedAttachments = [{ ...attachment, title: "Visualization changes" }];
+      assert.deepEqual(compiled.modelContextAttachments, expectedAttachments);
+    }),
+  ).pipe(Effect.provide(callbackLayer)),
+);
+
 it.effect(
   "retains visualization provenance across persistence and queued editing without trusted prose",
   () =>

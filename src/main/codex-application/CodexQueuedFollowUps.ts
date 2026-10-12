@@ -269,7 +269,14 @@ export const make = Effect.gen(function* () {
         ? { ...sourceMessage, text: input.prompt }
         : undefined;
       yield* Effect.try(() =>
-        prepareUntrustedAppInput(input.prompt, { untrustedAppMessage }, `untrusted_input_${id}`),
+        prepareUntrustedAppInput(
+          input.prompt,
+          {
+            untrustedAppMessage,
+            mcpAppModelContextAttachments: prompt.mcpAppModelContextAttachments,
+          },
+          `untrusted_input_${id}`,
+        ),
       );
       const { text: _text, images, textAttachments, ...context } = prompt;
       const canonical = entities.current(input.threadId)?.readCanonicalState();

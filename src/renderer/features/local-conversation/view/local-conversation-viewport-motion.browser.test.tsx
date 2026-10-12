@@ -22,12 +22,14 @@ beforeEach(() => {
   // Geometry runs real transcript components against an inert synthetic transport.
   window.api = {
     on: () => () => {},
-    invoke: async (channel) =>
+    invoke: async (channel, ...args) =>
       channel === "persisted-atom:sync-request"
         ? { revision: 0, values: {} }
         : channel === "codex:app-server:request"
           ? { type: "result", result: undefined }
-          : undefined,
+          : channel === "workspace-paths-exist"
+            ? { existingPaths: (args[0] as { paths: string[] }).paths }
+            : undefined,
   };
 });
 afterEach(() => {
@@ -174,6 +176,88 @@ async function recordGeometry(
 }
 
 describe("transcript viewport motion in Chromium", () => {
+  test("resource expansion retains bottom follow and the current history anchor", async (context) => {
+    const withResources = (index: number): VisibleConversationTurnEntry => {
+      const value = entry(index);
+      const items = value.turn.items.map((item) =>
+        item.kind === "assistantMessage"
+          ? {
+              ...item,
+              markdownText: `${item.markdownText}\n\n${Array.from({ length: 5 }, (_, number) => `[file](output-${number}.pdf)`).join(" ")}`,
+            }
+          : item,
+      );
+      return { ...value, turn: { ...value.turn, items } };
+    };
+    const bottomView = renderThread(
+      Array.from({ length: 10 }, (_, index) => (index === 9 ? withResources(index) : entry(index))),
+      true,
+    );
+    let heightGrowth = 0;
+    let bottomTopDelta = 0;
+    try {
+      await bottomView.findByRole("button", { name: "Show 2 more" });
+      await act(async () => {
+        await settleFrames(6);
+      });
+      const row = bottomView.container.querySelector<HTMLElement>(
+        '[data-turn-key="viewport-turn-9"]',
+      )!;
+      const before = row.getBoundingClientRect();
+      await act(async () => {
+        fireEvent.click(bottomView.getByRole("button", { name: "Show 2 more" }));
+        await settleFrames(6);
+      });
+      const after = row.getBoundingClientRect();
+      heightGrowth = after.height - before.height;
+      bottomTopDelta = after.top - before.top;
+      expect(heightGrowth).toBeGreaterThan(30);
+      expect(
+        Math.abs(bottomView.readController().getLastScrollDistanceFromBottomPx()),
+      ).toBeLessThanOrEqual(1);
+      expect(Math.abs(bottomTopDelta + heightGrowth)).toBeLessThanOrEqual(1);
+    } finally {
+      bottomView.dispose();
+    }
+    const historyView = renderThread(
+      Array.from({ length: 12 }, (_, index) => (index === 7 ? withResources(index) : entry(index))),
+      true,
+    );
+    try {
+      await act(async () => {
+        await settleFrames(6);
+        historyView.readController().holdViewport();
+        historyView.readController().scrollToDistanceFromBottomPx(650, "instant");
+        await settleFrames(6);
+      });
+      const button = await historyView.findByRole("button", { name: "Show 2 more" });
+      const scroll = historyView.readController().getScrollElement()!;
+      const anchor = [
+        ...historyView.container.querySelectorAll<HTMLElement>("[data-turn-key]"),
+      ].find((row) => {
+        const rectangle = row.getBoundingClientRect();
+        return (
+          rectangle.top > scroll.getBoundingClientRect().top &&
+          rectangle.bottom < scroll.getBoundingClientRect().bottom
+        );
+      })!;
+      expect(anchor).toBeDefined();
+      const before = anchor.getBoundingClientRect().top;
+      await act(async () => {
+        fireEvent.click(button);
+        await settleFrames(6);
+      });
+      const anchorError = Math.abs(anchor.getBoundingClientRect().top - before);
+      expect(anchorError).toBeLessThanOrEqual(1);
+      await recordGeometry(context, "resource expansion", {
+        heightGrowth,
+        bottomTopDelta,
+        historyAnchorError: anchorError,
+      });
+    } finally {
+      historyView.dispose();
+    }
+  });
   test("animates real viewport placement while both bubbles stay in the document flow", async (context) => {
     const turns = Array.from({ length: 10 }, (_, index) => entry(index));
     const view = renderThread(turns, false);

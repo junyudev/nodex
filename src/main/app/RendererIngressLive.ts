@@ -49,6 +49,7 @@ import * as StoreAdministrationIpc from "../ipc/handlers/StoreAdministrationIpc"
 import * as TerminalIpc from "../ipc/handlers/TerminalIpc";
 import * as WorktreeEnvironmentIpc from "../ipc/handlers/WorktreeEnvironmentIpc";
 import * as WorkspaceFileIpc from "../ipc/handlers/WorkspaceFileIpc";
+import * as WorkspaceFileQueries from "../host-runtime/WorkspaceFileQueries";
 import * as SessionPolicyRuntime from "../host-runtime/SessionPolicyRuntime";
 import * as CodexRendererProjectionRuntime from "../host-runtime/CodexRendererProjectionRuntime";
 import * as CodexThreadNotificationRuntime from "../host-runtime/CodexThreadNotificationRuntime";
@@ -69,7 +70,7 @@ export const live = Layer.mergeAll(
   DictationIpc.live(),
   DictationStreamingIpc.live(),
   ApplicationSyncIpc.live,
-  WorkspaceFileIpc.live(),
+  WorkspaceFileIpc.live().pipe(Layer.provide(WorkspaceFileQueries.live)),
   FileSearchIpc.live,
   CodexFilesystemAssetRuntime.live,
   ApplicationLifecycleIpc.live,

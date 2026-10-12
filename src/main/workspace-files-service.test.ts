@@ -119,6 +119,23 @@ describe("workspace-files-service directory browsing", () => {
 });
 
 describe("workspace-files-service exact file resources", () => {
+  test("preserves an exact trailing-space filename across reads and rejects relative paths", async () => {
+    const root = await makeTempWorkspace();
+    const plain = join(root, "report");
+    const exact = `${plain} `;
+    await writeFile(plain, "neighbour");
+    await writeFile(exact, "exact");
+    expect(await readWorkspaceFile({ path: exact, maxBytes: 100 })).toEqual({ contents: "exact" });
+    expect((await readWorkspaceFileMetadata({ path: exact })).sizeBytes).toBe(5);
+    expect((await readWorkspaceFileBinary({ path: exact })).contentsBase64).toBe(
+      Buffer.from("exact").toString("base64"),
+    );
+    await expect(readWorkspaceFile({ path: "report", maxBytes: 100 })).rejects.toMatchObject({
+      code: "invalid_path",
+    });
+    expect(await readFile(plain, "utf8")).toBe("neighbour");
+  });
+
   test.each([
     ["ENOENT", "not_found"],
     ["EACCES", "invalid_path"],

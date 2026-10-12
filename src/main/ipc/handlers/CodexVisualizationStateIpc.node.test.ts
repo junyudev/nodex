@@ -88,6 +88,28 @@ it.effect(
             retryable: false,
           });
           assert.strictEqual(published.length, 1);
+          const interactionWrite = handlers.get("codex:visualization:interaction:write")!;
+          assert.strictEqual(
+            (yield* Effect.result(
+              interactionWrite(event("webview"), {
+                identity,
+                state: { modelContent: { selected: 2 } },
+                mutationId: "guest-forgery",
+              }),
+            ))._tag,
+            "Failure",
+          );
+          const interaction = yield* interactionWrite(event(), {
+            identity,
+            state: { modelContent: { selected: 2 } },
+            mutationId: "host-adjustment",
+          });
+          assert.deepEqual(interaction, {
+            ok: true,
+            revision: 2,
+            value: { modelContent: { selected: 2 } },
+          });
+          assert.strictEqual(published.length, 2);
           registered = false;
           assert.strictEqual((yield* Effect.result(read(event(), identity)))._tag, "Failure");
         }).pipe(

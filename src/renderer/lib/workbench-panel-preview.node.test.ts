@@ -1,4 +1,11 @@
 import { describe, expect, test } from "vite-plus/test";
+import { WorkbenchSceneSnapshotSchema } from "../../shared/schemas/workbench-scene";
+import {
+  createWorkbenchSceneSurface,
+  materializeInitialWorkbenchScene,
+  cloneWorkbenchSceneLayoutForNewWindow,
+} from "../../shared/workbench-scene";
+import { parseWorkbenchProjectionTabConfig } from "../../shared/schemas/project-sessions";
 import type { ProjectSessionThreadLink } from "@/lib/types";
 import {
   isPreviewableWorkbenchTabKind,
@@ -34,6 +41,49 @@ function thread(cwd: string): ProjectSessionThreadLink {
 }
 
 describe("workbench panel preview", () => {
+  test("pins and cold-restores a host-qualified remote file with a trailing filename space", () => {
+    const session = makeTestWorkbenchSession();
+    const hostId = "remote-ssh-discovered:win";
+    const preview = makePreviewWorkspaceFileTab(session, "right", {
+      hostId,
+      cwd: "C:/repo",
+      leafId: "right-leaf",
+      path: "docs/../a.ts ",
+      title: "a.ts ",
+      workspaceRoot: "C:/repo",
+      location: { line: 8 },
+    });
+    const pinned = makePinnedPreviewTabCreateInput(session, "right", "right-leaf", preview);
+    expect(preview.id).toBe(`file:${hostId}:C:/repo/a.ts `);
+    if (pinned.kind !== "files") throw new Error("Expected Files pin");
+    const config = parseWorkbenchProjectionTabConfig("files", pinned.config);
+    expect(config).toEqual(preview.config);
+    const scene = createWorkbenchSceneSurface(
+      materializeInitialWorkbenchScene({ kind: "session", sessionId: session.id }),
+      {
+        panelId: "right",
+        surface: {
+          id: preview.id,
+          kind: "files",
+          titleSnapshot: preview.title,
+          stateKey: preview.stateKey,
+          state: preview.state,
+          config,
+        },
+      },
+    );
+    const restored = WorkbenchSceneSnapshotSchema.parse(JSON.parse(JSON.stringify(scene)));
+    expect(restored.panelSurfacesById[preview.id]).toMatchObject({
+      config: { hostId, path: "C:/repo/a.ts " },
+      state: { pendingReveal: { line: 8 } },
+    });
+    const cloned = cloneWorkbenchSceneLayoutForNewWindow({
+      scenesByOwnerKey: { [`session:${session.id}`]: restored },
+    }).scenesByOwnerKey[`session:${session.id}`]!;
+    expect(WorkbenchSceneSnapshotSchema.parse(cloned).panelSurfacesById[preview.id]).toEqual(
+      restored.panelSurfacesById[preview.id],
+    );
+  });
   test("limits generic preview replacement to browser and files", () => {
     expect(isPreviewableWorkbenchTabKind("browser")).toBe(true);
     expect(isPreviewableWorkbenchTabKind("files")).toBe(true);

@@ -14,7 +14,7 @@ import {
   type ContentSearchLocalSource,
 } from "@/features/content-search/content-search-context";
 import { clearContentSearchMarks } from "@/features/content-search/content-search-dom";
-import { applyLocalConversationSearchHighlights } from "./local-conversation-thread-search-dom-marks";
+import { createLocalConversationSearchHighlightOwner } from "./local-conversation-search-highlight-owner";
 import {
   scrollToLocalConversationSearchMatch,
   waitForLocalConversationSearchLayout,
@@ -821,10 +821,33 @@ export function LocalConversationThreadBodyOwner({
     threadStartProgress?.updatedAt,
   ]);
 
-  const contentSearchSource = useMemo<ContentSearchLocalSource>(
-    () => ({
+  const searchHighlights = useMemo(
+    () =>
+      createLocalConversationSearchHighlightOwner({
+        readRoot: () => contentRootRef.current,
+        resolveTarget: (match) => {
+          if (isConversationSearchMatchMeta(match.meta)) return match.meta;
+          if (!isLocalConversationPersistedSearchMatchMeta(match.meta)) return null;
+          return (
+            persistedSearchTargetsRef.current.get(match.id) ??
+            searchSource.findPersistedTarget(match.meta)
+          );
+        },
+      }),
+    [searchSource],
+  );
+  const setContentRoot = useCallback(
+    (element: HTMLDivElement | null) => {
+      contentRootRef.current = element;
+      searchHighlights.refresh();
+    },
+    [searchHighlights],
+  );
+  const contentSearchSource = useMemo<ContentSearchLocalSource>(() => {
+    return {
       domain: "conversation",
       contextId: searchSource.routeContextId,
+      publishResult: searchHighlights.publishResult,
       async search(query, limit, options) {
         const literalQuery = query.trim();
         if (!literalQuery) {
@@ -878,7 +901,20 @@ export function LocalConversationThreadBodyOwner({
       },
       async ensureVisible(match, { signal }) {
         if (isConversationSearchMatchMeta(match.meta)) {
-          await searchSource.scrollAdapter.scrollToTurn(match.meta.turnKey, { signal });
+          const target = match.meta;
+          const unit = Array.from(
+            contentRootRef.current?.querySelectorAll<HTMLElement>(
+              "[data-content-search-unit-key]",
+            ) ?? [],
+          ).find((unit) => unit.dataset.contentSearchUnitKey === target.unitKey);
+          if (unit && revealContentSearchUnit(unit)) {
+            await waitForLocalConversationSearchLayout(signal);
+            if (signal.aborted) return;
+            searchHighlights.refresh();
+          }
+          if (searchHighlights.readActiveMatch(match.id)) return;
+          await searchSource.scrollAdapter.scrollToTurn(target.turnKey, { signal });
+          if (!signal.aborted) searchHighlights.refresh();
           return;
         }
         if (!isLocalConversationPersistedSearchMatchMeta(match.meta)) return;
@@ -886,7 +922,6 @@ export function LocalConversationThreadBodyOwner({
         const persistedThreadId = threadId ?? body.threadId;
         if (!persistedThreadId || meta.threadId !== persistedThreadId) return;
 
-        clearContentSearchMarks(contentRootRef.current);
         persistedSearchTargetsRef.current.delete(match.id);
         const session = persistedSearchSessionRef.current;
         const topologyGeneration =
@@ -919,11 +954,12 @@ export function LocalConversationThreadBodyOwner({
         if (target) {
           persistedSearchTargetsRef.current.set(match.id, target);
           await searchSource.scrollAdapter.scrollToTurn(target.turnKey, { signal });
+          if (!signal.aborted) searchHighlights.refresh();
           return;
         }
         throw new Error("Hydrated persisted-history occurrence is not renderable");
       },
-      async activate(match, query, options) {
+      async activate(match, _query, options) {
         const target = isConversationSearchMatchMeta(match.meta)
           ? match.meta
           : isLocalConversationPersistedSearchMatchMeta(match.meta)
@@ -939,9 +975,10 @@ export function LocalConversationThreadBodyOwner({
         if (unit && revealContentSearchUnit(unit))
           await waitForLocalConversationSearchLayout(options?.signal);
         if (options?.signal?.aborted) return;
+        if (!searchHighlights.readActiveMatch(match.id)) searchHighlights.refresh();
         return scrollToLocalConversationSearchMatch({
           signal: options?.signal,
-          readMatch: () => applyLocalConversationSearchHighlights({ root, query, target }),
+          readMatch: () => searchHighlights.readActiveMatch(match.id),
           scroll: (activeElement) =>
             searchScrollControllerRef.current.scrollElementIntoView(
               activeElement,
@@ -951,11 +988,10 @@ export function LocalConversationThreadBodyOwner({
         });
       },
       clear() {
-        clearContentSearchMarks(contentRootRef.current);
+        searchHighlights.clear();
       },
-    }),
-    [body.threadId, searchSource, threadId],
-  );
+    };
+  }, [body.threadId, searchSource, threadId, searchHighlights]);
   useRegisterContentSearchSource(contentSearchSource);
 
   const handleEditLastUserTurn = useCallback(
@@ -1193,7 +1229,7 @@ export function LocalConversationThreadBodyOwner({
           />
         ) : (
           <div
-            ref={contentRootRef}
+            ref={setContentRoot}
             data-thread-find-target="conversation"
             className={LOCAL_CONVERSATION_CONTENT_CLASS_NAME}
           >

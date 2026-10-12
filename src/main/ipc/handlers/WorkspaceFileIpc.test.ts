@@ -4,6 +4,7 @@ import * as Layer from "effect/Layer";
 import * as Queue from "effect/Queue";
 import * as Scope from "effect/Scope";
 import * as Stream from "effect/Stream";
+import * as Result from "effect/Result";
 import { assert, it } from "@effect/vitest";
 import type { IpcMainInvokeEvent } from "electron";
 import { testLayer as mainConfigLayer } from "../../app/MainConfig";
@@ -13,6 +14,8 @@ import { ElectronIpc } from "../../platform/electron/ElectronIpc";
 import { ElectronDesktop } from "../../platform/electron/ElectronDesktop";
 import { WindowRuntime } from "../../window-runtime/WindowRuntime";
 import { live } from "./WorkspaceFileIpc";
+import { WorkspaceFileQueries } from "../../host-runtime/WorkspaceFileQueries";
+import { WorkspaceFileUserError } from "../../workspace-files-service";
 
 type Handler = (event: IpcMainInvokeEvent, ...args: readonly unknown[]) => Effect.Effect<unknown>;
 
@@ -31,6 +34,9 @@ it.effect("releases active file watches and renderer listeners with the Main Sco
     });
     let acquireCount = 0;
     let disposeCount = 0;
+    let authorized = true;
+    let existenceReads = 0;
+    let readPath: string | undefined;
     const fileWatchHost: FileWatchHost = {
       watch: (input) =>
         Stream.callback((events) =>
@@ -68,7 +74,7 @@ it.effect("releases active file watches and renderer listeners with the Main Sco
     const scope = yield* Scope.make();
     yield* Layer.buildWithScope(
       live({
-        authorizeSender: () => true,
+        authorizeSender: () => authorized,
         fileWatchHost,
         makeSubscriptionId: () => subscriptionIds.shift() ?? "unexpected-subscription-id",
       }).pipe(
@@ -76,6 +82,20 @@ it.effect("releases active file watches and renderer listeners with the Main Sco
           Layer.mergeAll(
             Layer.succeed(ElectronIpc, ipc),
             Layer.succeed(ElectronDesktop, {} as ElectronDesktop["Service"]),
+            Layer.succeed(WorkspaceFileQueries, {
+              pathsExist: () =>
+                Effect.sync(() => {
+                  existenceReads += 1;
+                  return { existingPaths: [] };
+                }),
+              metadata: () => Effect.die("unused"),
+              text: (input) =>
+                Effect.sync(() => {
+                  readPath = input.path;
+                  return { contents: "exact" };
+                }),
+              binary: () => Effect.die("unused"),
+            }),
             mainConfigLayer(),
             Layer.succeed(WindowRuntime, {
               has: () => true,
@@ -85,7 +105,19 @@ it.effect("releases active file watches and renderer listeners with the Main Sco
       ),
       scope,
     );
-    assert.strictEqual(handlers.size, 8);
+    assert.strictEqual(handlers.size, 9);
+
+    const text = handlers.get("read-file");
+    assert.isDefined(text);
+    assert.deepStrictEqual(
+      yield* text({ sender } as unknown as IpcMainInvokeEvent, {
+        hostId: "ssh:build",
+        path: "/workspace/report ",
+        maxBytes: 100,
+      }),
+      { contents: "exact" },
+    );
+    assert.strictEqual(readPath, "/workspace/report ");
 
     const start = handlers.get("workspace-file-watch:start");
     assert.isDefined(start);
@@ -99,6 +131,29 @@ it.effect("releases active file watches and renderer listeners with the Main Sco
     );
     assert.strictEqual(acquireCount, 1);
     assert.isTrue(listeners.has("destroyed"));
+
+    const metadata = handlers.get("read-file-metadata");
+    assert.isDefined(metadata);
+    const invalidInput = yield* Effect.result(
+      metadata({ sender } as unknown as IpcMainInvokeEvent, { path: "" }),
+    );
+    assert.isTrue(Result.isFailure(invalidInput));
+    if (Result.isFailure(invalidInput)) {
+      assert.instanceOf(invalidInput.failure, WorkspaceFileUserError);
+      assert.strictEqual((invalidInput.failure as WorkspaceFileUserError).code, "invalid_path");
+    }
+    authorized = false;
+    const exists = handlers.get("workspace-paths-exist");
+    assert.isDefined(exists);
+    const denied = yield* Effect.result(
+      exists({ sender } as unknown as IpcMainInvokeEvent, { paths: ["/tmp"] }),
+    );
+    assert.isTrue(Result.isFailure(denied));
+    if (Result.isFailure(denied)) {
+      assert.instanceOf(denied.failure, WorkspaceFileUserError);
+      assert.strictEqual((denied.failure as WorkspaceFileUserError).code, "unauthorized_sender");
+    }
+    assert.strictEqual(existenceReads, 0);
 
     yield* Scope.close(scope, Exit.void);
     assert.strictEqual(disposeCount, 1);

@@ -752,7 +752,7 @@ export function useWorkbenchPanelOpeners({
   const openWorkspaceFileTab = useCallback(
     async (input: {
       cwd?: string | null;
-      hostId?: "local";
+      hostId?: string;
       path: string;
       title: string;
       panelId: PanelId;
@@ -761,6 +761,7 @@ export function useWorkbenchPanelOpeners({
       location?: WorkspaceFileRevealLocation;
     }) => {
       if (!activeSession) return false;
+      const hostId = input.hostId ?? "local";
       const sessionProjectId = activeSession.projectId;
       const previewsAtOpen = panelControllerRef.current.previewTabsByPanel;
       const leafId = resolveSessionPanelActiveLeafId(activeSession, input.panelId);
@@ -770,13 +771,15 @@ export function useWorkbenchPanelOpeners({
           : (projects.find((candidate) => candidate.id === sessionProjectId) ?? null);
       const cwd =
         normalizeOptionalPath(input.cwd) ??
-        normalizeOptionalPath(activeSession.thread?.cwd) ??
+        (activeSession.thread?.executionHostId === hostId
+          ? normalizeOptionalPath(activeSession.thread.cwd)
+          : null) ??
         null;
       const explicitWorkspaceRoot = normalizeOptionalPath(input.workspaceRoot);
       const matchingThreadRoot =
         cwd && isWorkspacePathInsideRoot(cwd, input.path) ? cwd : undefined;
-      const matchingProjectRoot = project?.sources
-        .map((source) => normalizeOptionalPath(source.root))
+      const matchingProjectRoot = (hostId === "local" ? project?.sources : undefined)
+        ?.map((source) => normalizeOptionalPath(source.root))
         .find((root): root is string =>
           Boolean(root && isWorkspacePathInsideRoot(root, input.path)),
         );
@@ -784,7 +787,7 @@ export function useWorkbenchPanelOpeners({
         explicitWorkspaceRoot ??
         matchingThreadRoot ??
         matchingProjectRoot ??
-        (project === null
+        (project === null || hostId !== "local"
           ? normalizeOptionalPath(getWorkspaceFileParentPath(input.path))
           : undefined) ??
         null;
@@ -796,7 +799,7 @@ export function useWorkbenchPanelOpeners({
         return [
           {
             id: tab.id,
-            hostId: "local" as const,
+            hostId: tab.config.hostId,
             path:
               "path" in tab.config && typeof tab.config.path === "string" ? tab.config.path : null,
           },
@@ -812,7 +815,7 @@ export function useWorkbenchPanelOpeners({
               tab.config.hostId,
               tab.config.path,
               tab.config.cwd ?? tab.config.workspaceRoot,
-            ) !== workbenchFileResourceId(input.hostId ?? "local", canonicalPath)
+            ) !== workbenchFileResourceId(hostId, canonicalPath)
           )
             return [];
           return [{ panelId, leafId: leaf.id, tab }];
@@ -827,7 +830,7 @@ export function useWorkbenchPanelOpeners({
         renderablePreviewTab?.kind === "files"
           ? {
               id: renderablePreviewTab.id,
-              hostId: "local" as const,
+              hostId: renderablePreviewTab.config.hostId,
               path:
                 typeof renderablePreviewTab.config.path === "string"
                   ? renderablePreviewTab.config.path
@@ -837,14 +840,14 @@ export function useWorkbenchPanelOpeners({
       const decision = decideWorkspaceFileTabOpen({
         activeDurableTabId: activeTabId,
         durableTabs: durableFilesTabs,
-        hostId: input.hostId ?? "local",
+        hostId,
         mode: input.mode ?? "preview",
         path: canonicalPath,
         previewTab: filesPreviewTab,
       });
       const fileConfig = {
         projectId: activeSession.projectId,
-        hostId: input.hostId ?? "local",
+        hostId,
         cwd,
         workspaceRoot,
         path: canonicalPath,
@@ -965,6 +968,7 @@ export function useWorkbenchPanelOpeners({
         [makeWorkbenchSessionPanelSlotKey(activeSession.id, input.panelId, leafId)]:
           makePreviewWorkspaceFileTab(activeSession, input.panelId, {
             leafId,
+            hostId,
             path: input.path,
             title: input.title || getWorkspaceFileName(input.path),
             cwd,

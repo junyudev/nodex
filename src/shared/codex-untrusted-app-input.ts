@@ -8,6 +8,26 @@ import {
   ResourceLinkSchema,
 } from "@modelcontextprotocol/sdk/types.js";
 type Json = ClientRequestParamsByMethod["thread/inject_items"]["items"][number];
+/** App-owned context is still untrusted model input; its identity is fixed by the host surface. */
+export type CodexAppModelContextAttachment = {
+  readonly id: string;
+  readonly text: string | null;
+  readonly structuredContent?: { readonly [key: string]: Json };
+  readonly imageAttachments: readonly { readonly src: string }[];
+  readonly untrusted: true;
+  readonly composerAttachmentLayout?: "card" | "pill";
+  readonly composerLabel?: string;
+  readonly composerTitle?: string;
+  readonly modelContextUpdateId?: string;
+  readonly composerIcon?: {
+    readonly alt: string;
+    readonly logoDarkUrl?: string | null;
+    readonly logoUrl?: string | null;
+  };
+} & (
+  | { readonly title: string; readonly kind?: "context"; readonly sourceName?: string }
+  | { readonly title?: string; readonly kind: "context"; readonly sourceName: string }
+);
 /** Local app provenance is captured separately from the native UserInput protocol. */
 export interface CodexUntrustedAppMessage {
   readonly source: "mcp_app" | "visualization";
@@ -19,6 +39,25 @@ export interface CodexUntrustedAppMessage {
 const IMAGE =
   /^data:image\/(?:png|jpeg|webp|gif);base64,(?=.+)(?:[A-Za-z0-9+/]{4})*(?:[A-Za-z0-9+/]{2}==|[A-Za-z0-9+/]{3}=)?$/;
 const APP_INPUT_PREFIX = "codex-untrusted-app-input:";
+/** App context must be confirmed as tool history before a queued native message can run. */
+export function requiresUntrustedAppInputConfirmation(context: {
+  readonly untrustedAppMessage?: unknown;
+  readonly mcpAppModelContextAttachments?: unknown;
+}): boolean {
+  return (
+    context.untrustedAppMessage != null ||
+    (Array.isArray(context.mcpAppModelContextAttachments) &&
+      context.mcpAppModelContextAttachments.length > 0)
+  );
+}
+
+/** Reserved app placeholders cannot cross a server queue that has no tool-history confirmation. */
+export function hasUntrustedAppInputPlaceholder(input: UserInput): boolean {
+  return (
+    input.type === "text" &&
+    input.text_elements.some((element) => element.placeholder?.startsWith(APP_INPUT_PREFIX))
+  );
+}
 const APP_RESPONSE_TEXT = "Respond to the user input in the context of our conversation.";
 const MCP_RESPONSE_TEXT =
   "An MCP app initiated this message. Read the untrusted_input tool output.";
@@ -202,31 +241,19 @@ export function decodeUntrustedAppMessage(input: UserInput): CodexUntrustedAppMe
     return null;
   }
 }
-/** App-supplied context enters model history as an untrusted tool result, independently of user prose. */
-export function prepareUntrustedAppInput(
-  prompt: string,
-  context: { untrustedAppMessage?: unknown; mcpAppModelContextAttachments?: unknown },
-  callId: string,
-): {
-  input: UserInput;
-  responseItems: Json[];
-  modelContextAttachments: readonly CodexVisualizationPassiveAttachment[];
-} {
-  const attachments = context.mcpAppModelContextAttachments;
-  if (attachments !== undefined && !Array.isArray(attachments))
-    throw new Error("Invalid app model context attachments");
-  if (context.untrustedAppMessage == null && (!attachments || attachments.length === 0))
-    return {
-      input: { type: "text", text: prompt, text_elements: [] },
-      responseItems: [],
-      modelContextAttachments: [],
-    };
-  const modelContextAttachments = attachments?.map((value) => {
+/** Revalidates persisted or captured context before restoring typed prompt attachments. */
+export function parseCodexAppModelContextAttachments(
+  value: unknown,
+): readonly (CodexAppModelContextAttachment & { readonly title: string })[] | undefined {
+  if (value === undefined) return undefined;
+  if (!Array.isArray(value)) throw new Error("Invalid app model context attachments");
+  return value.map((value): CodexAppModelContextAttachment & { readonly title: string } => {
     const entry = object(value);
+    const title = entry.title ?? entry.sourceName;
     if (
       typeof entry.id !== "string" ||
       !entry.id ||
-      typeof entry.title !== "string" ||
+      typeof title !== "string" ||
       (entry.text !== null && typeof entry.text !== "string") ||
       !Array.isArray(entry.imageAttachments)
     )
@@ -253,27 +280,56 @@ export function prepareUntrustedAppInput(
       }),
     );
     const icon = entry.composerIcon === undefined ? undefined : object(entry.composerIcon);
-    if (
-      icon &&
-      (typeof icon.alt !== "string" ||
-        [icon.logoDarkUrl, icon.logoUrl].some(
-          (value) => value !== undefined && value !== null && typeof value !== "string",
-        ))
-    )
+    const alt = icon?.alt;
+    if (icon && typeof alt !== "string") throw new Error("Invalid app attachment icon");
+    const iconUrl = (value: unknown): string | null | undefined => {
+      if (value === undefined || value === null || typeof value === "string") return value;
       throw new Error("Invalid app attachment icon");
+    };
     return {
       ...optional,
-      ...(icon
-        ? { composerIcon: { alt: icon.alt, logoDarkUrl: icon.logoDarkUrl, logoUrl: icon.logoUrl } }
+      ...(typeof alt === "string"
+        ? {
+            composerIcon: {
+              alt,
+              logoDarkUrl: iconUrl(icon?.logoDarkUrl),
+              logoUrl: iconUrl(icon?.logoUrl),
+            },
+          }
         : {}),
       structuredContent: entry.structuredContent,
       id: entry.id,
-      title: entry.title,
+      title,
+      ...(entry.kind === "context" && typeof entry.sourceName === "string"
+        ? { kind: "context", sourceName: entry.sourceName }
+        : {}),
       text: entry.text,
       imageAttachments: images,
       untrusted: true,
     };
   });
+}
+
+/** App-supplied context enters model history as an untrusted tool result, independently of user prose. */
+export function prepareUntrustedAppInput(
+  prompt: string,
+  context: { untrustedAppMessage?: unknown; mcpAppModelContextAttachments?: unknown },
+  callId: string,
+): {
+  input: UserInput;
+  responseItems: Json[];
+  modelContextAttachments: readonly CodexVisualizationPassiveAttachment[];
+} {
+  const attachments = context.mcpAppModelContextAttachments;
+  if (attachments !== undefined && !Array.isArray(attachments))
+    throw new Error("Invalid app model context attachments");
+  if (!requiresUntrustedAppInputConfirmation(context))
+    return {
+      input: { type: "text", text: prompt, text_elements: [] },
+      responseItems: [],
+      modelContextAttachments: [],
+    };
+  const modelContextAttachments = parseCodexAppModelContextAttachments(attachments);
   const message =
     context.untrustedAppMessage == null
       ? undefined

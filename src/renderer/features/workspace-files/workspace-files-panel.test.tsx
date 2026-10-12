@@ -5,7 +5,8 @@ import { useState } from "react";
 import { renderWithMaitai } from "../../test/thread-maitai";
 import { settleAsyncRender } from "../../test/dom";
 import { installWindowApi } from "../../test/browser-globals";
-import { TestQueryProvider } from "../../test/query";
+import { createTestQueryClient, TestQueryProvider } from "../../test/query";
+import type { FileReferenceRouterPort } from "@/lib/file-reference-router";
 import { NodexTooltipProvider } from "@/components/ui/tooltip";
 import type { Project, ProjectSession, WorkspaceFileDirectoryEntry } from "@/lib/types";
 import { WORKSPACE_TEXT_LOAD_MAX_BYTES } from "./workspace-file-model";
@@ -29,6 +30,14 @@ const LARGE_MARKDOWN_FILE = `${WORKSPACE_ROOT}/large.md`;
 const PDF_FILE = `${WORKSPACE_ROOT}/design.pdf`;
 const LARGE_PDF_FILE = `${WORKSPACE_ROOT}/large-design.pdf`;
 const IMAGE_FILE = `${WORKSPACE_ROOT}/diagram.png`;
+const REMOTE_HOST = "remote-ssh-discovered:win";
+let remoteSizeBytes: number | null = null;
+let remoteTextRead: (() => Promise<{ contents: string }>) | null = null;
+let remoteBinaryRead: (() => Promise<{ contentsBase64: string; mimeType: string }>) | null = null;
+const remoteContents: Record<string, string> = {
+  [`${WORKSPACE_ROOT}/src/index.ts`]: "export const remote = 2;\n",
+  [`${WORKSPACE_ROOT}/README.md`]: `# Remote\n\n[Source](${WORKSPACE_ROOT}/src/index.ts#L2)`,
+};
 const CREATED_AT = "2026-06-13T00:00:00.000Z";
 const originalCreateObjectURL = URL.createObjectURL;
 const originalRevokeObjectURL = URL.revokeObjectURL;
@@ -70,22 +79,24 @@ const invoke = async (channel: string, ...args: unknown[]) => {
     };
   }
   if (channel === "read-file-metadata") {
-    const input = args[0] as { path: string };
+    const input = args[0] as { hostId?: string; path: string };
     const unsupported = input.path.endsWith(".zip");
     const pdf = input.path.endsWith(".pdf");
     const image = input.path.endsWith(".png");
     return {
       isFile: true,
       sizeBytes:
-        input.path === HUGE_FILE
-          ? WORKSPACE_TEXT_LOAD_MAX_BYTES + 1
-          : unsupported
-            ? 12_000
-            : input.path === LARGE_PDF_FILE
-              ? 25_000_001
-              : pdf || image
-                ? 8
-                : (fileContents[input.path]?.length ?? 0),
+        input.hostId === REMOTE_HOST
+          ? remoteSizeBytes
+          : input.path === HUGE_FILE
+            ? WORKSPACE_TEXT_LOAD_MAX_BYTES + 1
+            : unsupported
+              ? 12_000
+              : input.path === LARGE_PDF_FILE
+                ? 25_000_001
+                : pdf || image
+                  ? 8
+                  : (fileContents[input.path]?.length ?? 0),
       createdAtMs: Date.parse(CREATED_AT),
       mtimeMs: Date.parse(CREATED_AT),
       contentKind: unsupported || pdf || image ? "binary" : "text",
@@ -93,7 +104,8 @@ const invoke = async (channel: string, ...args: unknown[]) => {
     };
   }
   if (channel === "read-file-binary") {
-    const input = args[0] as { path: string };
+    const input = args[0] as { hostId?: string; path: string };
+    if (input.hostId === REMOTE_HOST && remoteBinaryRead) return remoteBinaryRead();
     return {
       contentsBase64: "JVBERi0xLjQ=",
       mimeType: input.path.endsWith(".png") ? "image/png" : "application/pdf",
@@ -101,8 +113,10 @@ const invoke = async (channel: string, ...args: unknown[]) => {
   }
   if (channel.startsWith("file-search:")) return fileSearch.invoke(channel, args[0]);
   if (channel === "read-file") {
-    const input = args[0] as { path: string };
-    const content = fileContents[input.path] ?? "";
+    const input = args[0] as { hostId?: string; path: string };
+    if (input.hostId === REMOTE_HOST && remoteTextRead) return remoteTextRead();
+    const content =
+      (input.hostId === REMOTE_HOST ? remoteContents : fileContents)[input.path] ?? "";
     return {
       contents: content,
     };
@@ -207,8 +221,10 @@ vi.mock("./workspace-file-tree", () => ({
 }));
 
 vi.mock("@/components/ui/lazy-source-viewer", () => ({
-  LazySourceViewer: ({ ariaLabel }: { ariaLabel: string }) => (
-    <div data-source-viewer="true" aria-label={ariaLabel} />
+  LazySourceViewer: ({ ariaLabel, value }: { ariaLabel: string; value: string }) => (
+    <pre data-source-viewer="true" aria-label={ariaLabel}>
+      {value}
+    </pre>
   ),
 }));
 
@@ -252,9 +268,260 @@ beforeEach(() => {
   pdfPreviewProps = null;
   createObjectURLMock.mockClear();
   revokeObjectURLMock.mockClear();
+  remoteSizeBytes = null;
+  remoteTextRead = null;
+  remoteBinaryRead = null;
 });
 
 describe("WorkspaceFilesPanel", () => {
+  test("previews unknown-size remote text without local editing, watching, browsing or open fallback", async () => {
+    const view = renderRemotePanel(`${WORKSPACE_ROOT}/src/index.ts`);
+    expect((await view.findByLabelText("Source preview for index.ts")).textContent).toBe(
+      remoteContents[`${WORKSPACE_ROOT}/src/index.ts`],
+    );
+    expect(view.queryByLabelText("Source editor for index.ts")).toBeNull();
+    expect(view.queryByRole("button", { name: "Open" })).toBeNull();
+    expect(view.queryByRole("tree")).toBeNull();
+    const reads = invokeCalls.filter((call) =>
+      ["read-file", "read-file-metadata"].includes(String(call[0])),
+    );
+    expect(reads).toHaveLength(2);
+    expect(reads.every((call) => (call[1] as { hostId: string }).hostId === REMOTE_HOST)).toBe(
+      true,
+    );
+    expect(
+      invokeCalls.some((call) =>
+        [
+          "workspace-file-watch:start",
+          "write-file",
+          "workspace-directory-entries",
+          "shell:open-file-link",
+        ].includes(String(call[0])),
+      ),
+    ).toBe(false);
+    view.unmount();
+    await settleAsyncRender();
+    expect(
+      invokeCalls.some(
+        (call) => call[0] === "write-file" || call[0] === "workspace-file-watch:stop",
+      ),
+    ).toBe(false);
+  });
+
+  test("keeps rendered remote Markdown links on their host and rejects modified local opens", async () => {
+    remoteSizeBytes = 64;
+    const open = vi.fn<FileReferenceRouterPort["openWorkspaceFileTab"]>(async () => true);
+    const view = renderRemotePanel(`${WORKSPACE_ROOT}/README.md`, open);
+    const source = await view.findByRole("button", { name: "Source" });
+    await act(async () => {
+      fireEvent.click(source);
+      await Promise.resolve();
+    });
+    expect(open).toHaveBeenCalledWith(
+      expect.objectContaining({
+        hostId: REMOTE_HOST,
+        path: `${WORKSPACE_ROOT}/src/index.ts`,
+        location: { line: 2 },
+      }),
+    );
+    expect(invokeCalls.some((call) => call[0] === "workspace-file-watch:start")).toBe(false);
+    open.mockClear();
+    await act(async () => {
+      fireEvent.doubleClick(source);
+      await Promise.resolve();
+    });
+    expect(open).toHaveBeenCalledWith(
+      expect.objectContaining({
+        hostId: REMOTE_HOST,
+        path: `${WORKSPACE_ROOT}/src/index.ts`,
+        mode: "durable",
+      }),
+    );
+    open.mockClear();
+    await act(async () => {
+      fireEvent.click(source, { metaKey: true });
+      await Promise.resolve();
+    });
+    expect(open).not.toHaveBeenCalled();
+    expect(invokeCalls.some((call) => call[0] === "shell:open-file-link")).toBe(false);
+  });
+
+  test("loads embedded Markdown images and picture candidates through the source host", async () => {
+    const path = `${WORKSPACE_ROOT}/README.md`;
+    const previous = remoteContents[path]!;
+    remoteContents[path] =
+      `![Embedded](./images/chart.png)\n\n<picture><source srcset="app://fs/@fs/tmp/local-sentinel.png 1x, ./wide.png 2x"><img src="/workspace/base.png" alt="Picture"></picture>`;
+    const view = renderRemotePanel(path);
+    try {
+      await waitFor(() =>
+        expect(view.getByAltText("Embedded").getAttribute("src")).toBe(
+          "blob:nodex-workspace-preview",
+        ),
+      );
+      await waitFor(() =>
+        expect(view.container.querySelector("source")?.getAttribute("srcset")).toBe(
+          "blob:nodex-workspace-preview 2x",
+        ),
+      );
+      await waitFor(() =>
+        expect(view.getByAltText("Picture").getAttribute("src")).toBe(
+          "blob:nodex-workspace-preview",
+        ),
+      );
+      expect(invokeCalls.filter(([channel]) => channel === "read-file-binary")).toEqual(
+        expect.arrayContaining([
+          ["read-file-binary", { hostId: REMOTE_HOST, path: "/workspace/images/chart.png" }],
+          ["read-file-binary", { hostId: REMOTE_HOST, path: "/workspace/wide.png" }],
+          ["read-file-binary", { hostId: REMOTE_HOST, path: "/workspace/base.png" }],
+        ]),
+      );
+      expect(
+        invokeCalls.some(
+          ([, input]) =>
+            typeof input === "object" &&
+            input !== null &&
+            "hostId" in input &&
+            input.hostId === "local",
+        ),
+      ).toBe(false);
+      for (const media of view.container.querySelectorAll("img, source")) {
+        expect(media.getAttribute("src") ?? "").not.toMatch(/app:|\/@fs|sentinel/u);
+        expect(media.getAttribute("srcset") ?? "").not.toMatch(/app:|\/@fs|sentinel/u);
+      }
+    } finally {
+      remoteContents[path] = previous;
+      view.unmount();
+      await settleAsyncRender();
+    }
+    expect(revokeObjectURLMock.mock.calls).toHaveLength(3);
+  });
+
+  test.each([`${WORKSPACE_ROOT}/src/index.ts`, IMAGE_FILE])(
+    "refreshes remote %s twice through the real query cache",
+    async (path) => {
+      let reads = 0;
+      const binary = path === IMAGE_FILE;
+      if (binary)
+        remoteBinaryRead = async () => ({
+          contentsBase64: window.btoa("x".repeat(++reads)),
+          mimeType: "image/png",
+        });
+      else remoteTextRead = async () => ({ contents: `remote version ${++reads}` });
+      const view = renderRemotePanel(path);
+      try {
+        for (let expected = 1; expected <= 3; expected += 1) {
+          await waitFor(() => expect(reads).toBe(expected));
+          if (binary)
+            await waitFor(() => expect(createObjectURLMock.mock.calls).toHaveLength(expected));
+          else
+            await waitFor(() =>
+              expect(view.getByLabelText("Source preview for index.ts").textContent).toBe(
+                `remote version ${expected}`,
+              ),
+            );
+          if (expected === 3) break;
+          await act(async () => {
+            fireEvent.click(view.getByRole("button", { name: "Refresh files" }));
+            await Promise.resolve();
+          });
+        }
+        const channel = binary ? "read-file-binary" : "read-file";
+        expect(invokeCalls.filter(([name]) => name === channel)).toHaveLength(3);
+        if (binary)
+          expect(createObjectURLMock.mock.calls.map(([blob]) => blob.size)).toEqual([1, 2, 3]);
+      } finally {
+        view.unmount();
+        await settleAsyncRender();
+      }
+      if (binary) expect(revokeObjectURLMock.mock.calls).toHaveLength(3);
+    },
+  );
+
+  test("surfaces a failed remote read without opening the same local path", async () => {
+    remoteTextRead = async () => {
+      throw new Error("Remote host disconnected");
+    };
+    const view = renderRemotePanel(`${WORKSPACE_ROOT}/src/index.ts`);
+    expect(await view.findByText("Remote host disconnected")).not.toBeNull();
+    expect(
+      invokeCalls
+        .filter((call) => String(call[0]).startsWith("read-file"))
+        .every((call) => (call[1] as { hostId: string }).hostId === REMOTE_HOST),
+    ).toBe(true);
+    expect(
+      invokeCalls.some(
+        (call) => call[0] === "shell:open-file-link" || call[0] === "workspace-file-watch:start",
+      ),
+    ).toBe(false);
+  });
+
+  test.each([PDF_FILE, IMAGE_FILE])(
+    "reads remote binary bytes with source host: %s",
+    async (path) => {
+      const view = renderRemotePanel(path);
+      await waitFor(() =>
+        expect(invokeCalls).toContainEqual(["read-file-binary", { hostId: REMOTE_HOST, path }]),
+      );
+      if (path === PDF_FILE) {
+        expect(
+          await view.findByRole("button", { name: "PDF preview for design.pdf" }),
+        ).not.toBeNull();
+      } else {
+        await waitFor(() =>
+          expect(view.container.querySelector("img")?.getAttribute("src")).toBe(
+            "blob:nodex-workspace-preview",
+          ),
+        );
+      }
+      expect(
+        invokeCalls.some(
+          (call) =>
+            call[0] === "workspace-directory-entries" || call[0] === "workspace-file-watch:start",
+        ),
+      ).toBe(false);
+      view.unmount();
+    },
+  );
+
+  test("fences a late remote read when the same path changes to a different host", async () => {
+    const pending = deferred<{ contents: string }>();
+    remoteTextRead = () => pending.promise;
+    const path = `${WORKSPACE_ROOT}/src/index.ts`;
+    const otherHost = "remote-ssh-discovered:linux";
+    const client = createTestQueryClient();
+    const body = (hostId: string) => (
+      <TestQueryProvider client={client}>
+        <NodexTooltipProvider>
+          <WorkspaceFilesPanel
+            tab={makeRemoteFilesTab(path, hostId)}
+            project={project}
+            activeSession={activeSession}
+            onOpenFileTab={async () => undefined}
+          />
+        </NodexTooltipProvider>
+      </TestQueryProvider>
+    );
+    const view = renderWithMaitai(body(REMOTE_HOST));
+    await waitFor(() =>
+      expect(invokeCalls).toContainEqual([
+        "read-file",
+        { hostId: REMOTE_HOST, path, maxBytes: WORKSPACE_TEXT_LOAD_MAX_BYTES },
+      ]),
+    );
+    view.rerender(body(otherHost));
+    const source = await view.findByLabelText("Source preview for index.ts");
+    expect(source.textContent).toBe(fileContents[path]);
+    await act(async () => {
+      pending.resolve({ contents: "stale remote bytes" });
+      await pending.promise;
+    });
+    expect(view.getByLabelText("Source preview for index.ts").textContent).toBe(fileContents[path]);
+    expect(invokeCalls).toContainEqual([
+      "read-file-metadata",
+      expect.objectContaining({ hostId: otherHost, path }),
+    ]);
+  });
+
   test("renders the tree filter and opens files through preview tabs", async () => {
     const view = renderPanel();
     await settleAsyncRender();
@@ -283,6 +550,7 @@ describe("WorkspaceFilesPanel", () => {
     expect(JSON.stringify(openFileTabCalls)).toBe(
       JSON.stringify([
         {
+          hostId: "local",
           path: `${WORKSPACE_ROOT}/README.md`,
           title: "README.md",
           panelId: "right",
@@ -508,6 +776,37 @@ function renderPanel(selectedPath?: string) {
           onOpenFileTab={async (input) => {
             openFileTabCalls.push(input);
           }}
+        />
+      </NodexTooltipProvider>
+    </TestQueryProvider>,
+  );
+}
+
+function makeRemoteFilesTab(path: string, hostId = REMOTE_HOST): WorkspaceFilesTab {
+  const tab = makeFilesTab(path);
+  return { ...tab, config: { ...tab.config, hostId, workspaceRoot: null } };
+}
+
+function deferred<Value>() {
+  let resolve!: (value: Value) => void;
+  const promise = new Promise<Value>((onResolve) => {
+    resolve = onResolve;
+  });
+  return { promise, resolve };
+}
+
+function renderRemotePanel(
+  path: string,
+  openWorkspaceFileTab: FileReferenceRouterPort["openWorkspaceFileTab"] = vi.fn(async () => true),
+) {
+  return renderWithMaitai(
+    <TestQueryProvider>
+      <NodexTooltipProvider>
+        <WorkspaceFilesPanel
+          tab={makeRemoteFilesTab(path)}
+          project={project}
+          activeSession={activeSession}
+          onOpenFileTab={openWorkspaceFileTab}
         />
       </NodexTooltipProvider>
     </TestQueryProvider>,

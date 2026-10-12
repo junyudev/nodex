@@ -35,8 +35,12 @@ import { CodexTranscriptReadOwnerProvider } from "../normalized-transcript-hooks
 import {
   InlineVisualizationFollowUpProvider,
   type InlineVisualizationFollowUpMessage,
+  type InlineVisualizationAnnotationSubmitHandler,
 } from "../../../lib/inline-visualization/inline-visualization-follow-up-context";
-import { captureInlineVisualizationFollowUp } from "../../../lib/inline-visualization/inline-visualization-follow-up-input";
+import {
+  captureInlineVisualizationFollowUp,
+  captureInlineVisualizationAnnotationInput,
+} from "../../../lib/inline-visualization/inline-visualization-follow-up-input";
 
 interface LocalConversationThreadBodyProps {
   model: ThreadBodySurfaceModel;
@@ -96,6 +100,16 @@ function LocalConversationThreadBodyLayout({
     },
     [actions, model.body.isThreadRunning, model.threadId],
   );
+  const handleVisualizationAnnotationSubmit: InlineVisualizationAnnotationSubmitHandler = async (
+    message,
+  ) => {
+    const options = { promptInput: captureInlineVisualizationAnnotationInput(message) };
+    if (model.threadId) {
+      await actions.onEnqueueQueuedFollowUp(model.threadId, message.prompt, options);
+      return;
+    }
+    await actions.onSendPrompt(message.prompt, options);
+  };
 
   return (
     <LocalConversationThreadScrollLayout
@@ -107,7 +121,10 @@ function LocalConversationThreadBodyLayout({
       {transcriptVisible ? (
         <div data-local-conversation-transcript="true" className="contents">
           <McpAppFollowUpProvider onSend={handleMcpAppFollowUp}>
-            <InlineVisualizationFollowUpProvider onSend={handleVisualizationFollowUp}>
+            <InlineVisualizationFollowUpProvider
+              onSend={handleVisualizationFollowUp}
+              onSubmitAnnotations={handleVisualizationAnnotationSubmit}
+            >
               <LocalConversationThreadBodyOwner
                 body={model.body}
                 projectId={model.projectId}

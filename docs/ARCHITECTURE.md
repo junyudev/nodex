@@ -251,6 +251,13 @@ native text enhancement never gate source LocalCommit admission.
 
 Workspace file indexing and fuzzy matching across Composer, Files, and Command Palette belong to the native Codex app-server. Main owns only renderer-scoped session controls, generation fences, and notification routing; the renderer owns current-query presentation. Skill inventory changes flow from native notifications to host-and-roots-keyed renderer cache invalidation. Host-qualified assets use a scoped reader registered by the Codex runtime with the app protocol; protocol serving never guesses a local path for a remote host. See [Composer behavior](product-specs/codex-thread-transcript-behavior.md#composer-shell).
 
+Main's Workspace File query Module owns host-qualified existence, metadata, text, and binary reads.
+Its local Adapter uses the desktop filesystem; its remote Adapter uses the selected native host and
+pins both connection generation and capability source epoch through publication. Renderer Files
+state preserves that host with the exact path across navigation and Window Session restoration.
+Remote reads never fall back to local IO; file writes, directory browsing, and watches remain local
+capabilities. See [Files behavior](product-specs/workbench-shell.md#workspace-files-search).
+
 Native filesystem watching is one scoped Stream Adapter around synchronous `fs.watch`; readiness,
 changes, and typed failure flow through the Stream, and stream finalization closes the native handle.
 Workspace-file subscriptions are owner-and-subscription-keyed fibers, while a zero-idle `LayerMap`

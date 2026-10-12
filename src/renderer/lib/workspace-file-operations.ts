@@ -8,6 +8,8 @@ import type {
   WorkspaceFileWatchStopInput,
   WorkspaceFileWriteInput,
   WorkspaceFileWriteResult,
+  WorkspacePathsExistInput,
+  WorkspacePathsExistResult,
 } from "../../shared/types";
 import {
   defineRendererCommand,
@@ -15,6 +17,12 @@ import {
   invokeRendererControl,
   invokeRendererQuery,
 } from "./renderer-command";
+
+export async function readWorkspacePathsExist(
+  input: WorkspacePathsExistInput,
+): Promise<WorkspacePathsExistResult> {
+  return await invokeRendererQuery("workspace-paths-exist", input);
+}
 
 const writeWorkspaceFileCommand = defineRendererCommand({
   key: "workspace_file.write",

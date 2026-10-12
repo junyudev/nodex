@@ -9,6 +9,7 @@ const identity = { hostId: "local", threadId: "display", path: "/raw/plot.html" 
 const owner = (): InlineVisualizationWidgetStateOwner => ({
   identity,
   read: vi.fn(async () => null),
+  writeInteraction: vi.fn(),
   write: vi.fn<InlineVisualizationWidgetStateOwner["write"]>(async (value) => ({
     ok: true,
     revision: 1,

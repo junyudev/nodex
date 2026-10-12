@@ -60,12 +60,22 @@ export interface CodexTranscriptGeneratedImage {
 
 const EMPTY_GENERATED_IMAGES: readonly CodexTranscriptGeneratedImage[] = Object.freeze([]);
 
+/** Work segments borrow native Turn content while owning only presentation lifecycle. */
+export interface CodexTranscriptWorkSlice {
+  readonly presentation: "codex" | "voice-work";
+  readonly state: "active" | "terminal";
+  readonly startedAtMs: number | null;
+  readonly completedAtMs: number | null;
+  readonly terminalReason: "turn" | null;
+}
+
 export interface CodexTranscriptTurnSlice {
   readonly itemIds: readonly string[];
   readonly includeInput: boolean;
   readonly includeTurnExtras: boolean;
   readonly preserveServerUserMessages?: boolean;
   readonly presentationStatus?: CodexCanonicalTurnState["status"];
+  readonly work?: CodexTranscriptWorkSlice;
 }
 
 type Listener = () => void;
@@ -176,7 +186,11 @@ export class CodexTranscriptReadOwner {
   private readonly openingUserMessageIds = new Map<string, string | null | undefined>();
   private readonly structureRows = new Map<
     string,
-    { readonly version: number; readonly row: CodexTranscriptStructure["turns"][number] }
+    {
+      readonly version: number;
+      readonly row: CodexTranscriptStructure["turns"][number];
+      readonly latestSteeringItemId: string | null;
+    }
   >();
   private subscriptionCount = 0;
   private disconnect: CodexTranscriptReadConnection | null = null;
@@ -280,6 +294,11 @@ export class CodexTranscriptReadOwner {
     this.items.get(codexTranscriptItemAddress(entityKey, itemId)) ?? null;
   readOpeningUserMessageId = (entityKey: string): string | null | undefined =>
     this.openingUserMessageIds.get(entityKey);
+
+  readLatestSteeringItem = (entityKey: string): CodexCanonicalItem | null => {
+    const itemId = this.structureRows.get(entityKey)?.latestSteeringItemId;
+    return itemId ? this.readItem(entityKey, itemId) : null;
+  };
 
   setHistoryViewport(
     viewer: symbol,
@@ -396,10 +415,18 @@ export class CodexTranscriptReadOwner {
       cached.items.every((item, index) => item === items[index])
     )
       return cached.value;
+    const work = slice.work;
+    const isVoice = work?.presentation === "voice-work";
+    const isActiveVoice = isVoice && work.state === "active";
     const canonical: CodexCanonicalTurnState = {
       ...details,
-      items,
+      items: items.filter(
+        (item) =>
+          (!isVoice || item.type !== "subAgentActivity") &&
+          (!isActiveVoice || item.type !== "agentMessage"),
+      ),
       status: slice.presentationStatus ?? details.status,
+      ...(work ? { params: { ...details.params, input: [], clientUserMessageId: null } } : {}),
       ...(slice.includeTurnExtras
         ? {}
         : {
@@ -412,12 +439,27 @@ export class CodexTranscriptReadOwner {
             firstTurnWorkItemStartedAtMs: null,
             finalAssistantStartedAtMs: null,
           }),
+      ...(work
+        ? {
+            turnStartedAtMs: work.startedAtMs,
+            completedAtMs: work.completedAtMs,
+            durationMs:
+              work.startedAtMs !== null && work.completedAtMs !== null
+                ? Math.max(work.completedAtMs - work.startedAtMs, 0)
+                : null,
+            firstTurnWorkItemStartedAtMs: isActiveVoice ? null : work.startedAtMs,
+            finalAssistantStartedAtMs: isVoice
+              ? work.completedAtMs
+              : details.finalAssistantStartedAtMs,
+          }
+        : {}),
     };
     const value = this.materializeTurn(entityKey, canonical, {
       includeInput: slice.includeInput,
       lastNonUserWorkItemId: lastWorkItemId,
       openingUserMessageId: openingUserMessageId ?? null,
       preserveServerUserMessages: slice.preserveServerUserMessages,
+      isBackgroundSubagentsEnabled: !isVoice,
     });
     slices.set(slice, {
       details,
@@ -436,7 +478,7 @@ export class CodexTranscriptReadOwner {
     options: Pick<
       ProjectCodexCanonicalTurnViewsInput,
       "lastNonUserWorkItemId" | "openingUserMessageId" | "preserveServerUserMessages"
-    > & { readonly includeInput: boolean },
+    > & { readonly includeInput: boolean; readonly isBackgroundSubagentsEnabled?: boolean },
   ): CodexConversationTurn {
     const turnKey = canonical.entityKey ?? canonical.turnId ?? entityKey;
     const items = projectCodexCanonicalTurnViews({
@@ -444,7 +486,7 @@ export class CodexTranscriptReadOwner {
       turn: canonical,
       turnKey,
       observedAtMs: canonical.turnStartedAtMs ?? 0,
-      isBackgroundSubagentsEnabled: true,
+      isBackgroundSubagentsEnabled: options.isBackgroundSubagentsEnabled ?? true,
       lastNonUserWorkItemId: options.lastNonUserWorkItemId,
       openingUserMessageId: options.openingUserMessageId,
       preserveServerUserMessages: options.preserveServerUserMessages,
@@ -473,7 +515,9 @@ export class CodexTranscriptReadOwner {
       threadId: this.options.threadId,
       entityKey,
       turnId: canonical.turnId,
-      clientUserMessageId: canonical.params.clientUserMessageId ?? null,
+      clientUserMessageId: options.includeInput
+        ? (canonical.params.clientUserMessageId ?? null)
+        : null,
       status: canonical.status,
       errorMessage: canonical.error?.message,
       diff: canonical.diff ?? undefined,
@@ -968,11 +1012,17 @@ export class CodexTranscriptReadOwner {
       );
       let lastWorkItemId: string | null = null;
       let lastWorkItemIndex = -1;
+      let latestSteeringItemId: string | null = null;
+      let latestSteeringItemIndex = -1;
       const rawItems = Array<CodexCanonicalItem>(value.itemSlots.length);
       for (const { index, itemId } of value.itemSlots.entries) {
         itemIds[index] = itemId;
         const item = this.readItem(entityKey, itemId);
         if (item) rawItems[index] = item;
+        if (item?.type === "steeringUserMessage" && index > latestSteeringItemIndex) {
+          latestSteeringItemId = item.id;
+          latestSteeringItemIndex = index;
+        }
         if (item && index > lastWorkItemIndex && isCodexCanonicalWorkItem(item)) {
           lastWorkItemId = item.id;
           lastWorkItemIndex = index;
@@ -997,7 +1047,7 @@ export class CodexTranscriptReadOwner {
         hasMcpApp,
         isStartupPrewarm,
       };
-      this.structureRows.set(entityKey, { version, row });
+      this.structureRows.set(entityKey, { version, row, latestSteeringItemId });
       this.lastWorkItemIds.set(entityKey, lastWorkItemId);
       const openingId = value.details.itemsPagination?.openingUserMessageId;
       this.openingUserMessageIds.set(

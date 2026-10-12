@@ -187,6 +187,7 @@ const makeArchive = (input: {
       CodexVisualizationState.of({
         read: () => Effect.succeed(null),
         write: () => Effect.die("unused"),
+        writeInteraction: () => Effect.die("unused"),
         readPassiveContext: () => Effect.succeed(undefined),
         clearThread: (scope) =>
           input.widgetClearFailure

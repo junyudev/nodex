@@ -39,7 +39,12 @@ import { cn } from "@/lib/utils";
 import { classifyContentBudget } from "@/lib/content-budget";
 import { writeTextToClipboard } from "@/lib/clipboard";
 import { FILE_LINK_OPENER_ICON_URLS } from "@/lib/file-link-opener-icons";
-import { useFileReferenceRouter } from "@/lib/file-reference-router";
+import {
+  FileReferenceHostProvider,
+  FileReferenceRouterProvider,
+  useFileReferenceRouter,
+  type FileReferenceRouterPort,
+} from "@/lib/file-reference-router";
 import { openExternalUrl as openUrlExternally } from "@/lib/file-system-operations";
 import { useScopedAtom } from "@/lib/maitai";
 import {
@@ -116,12 +121,11 @@ interface WorkspaceFilesPanelProps {
   activeSession?: ProjectSession;
   presentationOwnerId?: string;
   project: Project | null;
-  onOpenFileTab: (input: {
-    path: string;
-    title: string;
-    panelId: WorkspaceFilesTab["panelId"];
-    mode: "preview" | "durable";
-  }) => Promise<unknown>;
+  onOpenFileTab: (
+    input: Parameters<FileReferenceRouterPort["openWorkspaceFileTab"]>[0] & {
+      mode: "preview" | "durable";
+    },
+  ) => Promise<unknown>;
   onUpdateTabState?: (state: WorkspaceFilesTabState) => void;
 }
 
@@ -140,6 +144,7 @@ const EMPTY_PREVIEW_STATE: WorkspaceFilePreviewState = {
 function resolveWorkspaceRoot(tab: WorkspaceFilesTab, project: Project | null): string | null {
   const configuredRoot = tab.config.workspaceRoot?.trim();
   if (configuredRoot) return configuredRoot;
+  if (tab.config.hostId && tab.config.hostId !== "local") return null;
   return project?.primaryWorkspaceRoot?.trim() || project?.sources[0]?.root.trim() || null;
 }
 
@@ -186,6 +191,7 @@ function Breadcrumb({
 }
 
 function WorkspaceFilePreview({
+  hostId,
   state,
   presentation,
   document,
@@ -199,7 +205,9 @@ function WorkspaceFilePreview({
   markdownMode,
   wrap,
   revealLocation,
+  resourceRevision,
 }: {
+  hostId: string;
   state: WorkspaceFilePreviewState;
   presentation: WorkspaceFilePresentation | null;
   document: WorkspaceTextDocumentSnapshot | null;
@@ -213,6 +221,7 @@ function WorkspaceFilePreview({
   markdownMode: "source" | "rendered";
   wrap: boolean;
   revealLocation?: WorkspaceFilesTabState["pendingReveal"];
+  resourceRevision: number;
 }) {
   if (state.status === "idle") {
     return (
@@ -256,14 +265,16 @@ function WorkspaceFilePreview({
       <div className="flex h-full flex-col items-center justify-center gap-3 text-center text-sm text-token-text-secondary">
         <SidePanelFilesIcon className="icon-md" />
         <div>{state.message ?? "Preview is not available for this file."}</div>
-        <button
-          type="button"
-          className="border-token-border bg-token-foreground/5 hover:bg-token-foreground/10 flex h-token-button-composer items-center gap-1.5 rounded-lg border px-2 text-base leading-[18px] text-token-text-primary"
-          onClick={onOpenExternal}
-        >
-          <OpenInIcon className="icon-2xs" />
-          Open externally
-        </button>
+        {hostId === "local" ? (
+          <button
+            type="button"
+            className="border-token-border bg-token-foreground/5 hover:bg-token-foreground/10 flex h-token-button-composer items-center gap-1.5 rounded-lg border px-2 text-base leading-[18px] text-token-text-primary"
+            onClick={onOpenExternal}
+          >
+            <OpenInIcon className="icon-2xs" />
+            Open externally
+          </button>
+        ) : null}
       </div>
     );
   }
@@ -276,18 +287,20 @@ function WorkspaceFilePreview({
         <div className="flex h-full min-h-0 flex-col">
           <div className="flex h-9 shrink-0 items-center justify-between gap-2 px-3 text-xs text-token-description-foreground">
             <span className="truncate">Rich preview is unavailable for large Markdown files.</span>
-            <button
-              type="button"
-              className="shrink-0 rounded-md px-2 py-1 text-token-foreground hover:bg-token-foreground/5"
-              onClick={onOpenExternal}
-            >
-              Open
-            </button>
+            {hostId === "local" ? (
+              <button
+                type="button"
+                className="shrink-0 rounded-md px-2 py-1 text-token-foreground hover:bg-token-foreground/5"
+                onClick={onOpenExternal}
+              >
+                Open
+              </button>
+            ) : null}
           </div>
           <LazySourceViewer
             value={markdownContent}
             ariaLabel={`Markdown source for ${getWorkspaceFileName(state.path ?? "file")}`}
-            sourceIdentity={state.path ?? undefined}
+            sourceIdentity={getWorkspaceFileDomTabId(hostId, state.path ?? undefined)}
             lineNumbers
             wrap={wrap}
             revealLocation={revealLocation}
@@ -303,6 +316,11 @@ function WorkspaceFilePreview({
           content={markdownContent}
           className="max-w-3xl text-sm leading-6"
           projectWorkspacePath={workspaceRoot}
+          fileMediaScope={
+            state.path
+              ? { hostId, sourceFilePath: state.path, revision: resourceRevision }
+              : undefined
+          }
         />
       </div>
     );
@@ -406,7 +424,7 @@ function WorkspaceFilePreview({
         ariaLabel={`Source preview for ${getWorkspaceFileName(state.path ?? "file")}`}
         filename={getWorkspaceFileName(state.path ?? "file")}
         language={resolveWorkspaceSourceLanguage(state.path ?? "")}
-        sourceIdentity={state.path ?? undefined}
+        sourceIdentity={getWorkspaceFileDomTabId(hostId, state.path ?? undefined)}
         lineNumbers
         wrap={wrap}
         revealLocation={revealLocation}
@@ -427,8 +445,12 @@ export function WorkspaceFilesPanel({
   const workspaceRoot = resolveWorkspaceRoot(tab, project);
   const fileReferenceRouter = useFileReferenceRouter();
   const hostId = tab.config.hostId ?? "local";
+  const localFile = hostId === "local";
   const selectedPath = tab.config.path ?? null;
-  const cwd = tab.config.cwd?.trim() || activeSession?.thread?.cwd?.trim() || null;
+  const cwd =
+    tab.config.cwd?.trim() ||
+    (activeSession?.thread?.executionHostId === hostId ? activeSession.thread.cwd?.trim() : null) ||
+    null;
   const selectedTreePath =
     selectedPath && workspaceRoot ? getWorkspaceRelativePath(workspaceRoot, selectedPath) : null;
   const queryClient = useQueryClient();
@@ -446,7 +468,7 @@ export function WorkspaceFilesPanel({
   const initialTabStateRef = useRef(normalizeWorkspaceFilesTabState(tab.state));
   const debouncedSearchQuery = useDebouncedValue(navigationState.searchQuery.trim(), 100);
   const search = useFileSearch({
-    enabled: Boolean(workspaceRoot),
+    enabled: localFile && Boolean(workspaceRoot),
     query: debouncedSearchQuery,
     scope: workspaceRoot
       ? { hostId: hostId === "local" ? DEFAULT_CODEX_HOST_ID : hostId, roots: [workspaceRoot] }
@@ -478,6 +500,7 @@ export function WorkspaceFilesPanel({
   const [wordWrap, setWordWrap] = useState(initialTabStateRef.current.wordWrap ?? true);
   const revealLocation = initialTabStateRef.current.pendingReveal;
   const [previewState, setPreviewState] = useState<WorkspaceFilePreviewState>(EMPTY_PREVIEW_STATE);
+  const [previewRevision, setPreviewRevision] = useState(0);
   const [documentSnapshot, setDocumentSnapshot] = useState<WorkspaceTextDocumentSnapshot | null>(
     null,
   );
@@ -543,13 +566,13 @@ export function WorkspaceFilesPanel({
     [navigationState.expandedPaths],
   );
   const directoryPaths = useMemo(
-    () => (workspaceRoot ? [...expandedPaths].sort() : []),
-    [expandedPaths, workspaceRoot],
+    () => (localFile && workspaceRoot ? [...expandedPaths].sort() : []),
+    [expandedPaths, localFile, workspaceRoot],
   );
   const directoryQueries = useQueries({
     queries: directoryPaths.map((directoryPath) =>
       workspaceDirectoryQueryOptions({
-        hostId,
+        hostId: "local",
         workspaceRoot: workspaceRoot ?? "",
         directoryPath,
         includeHidden: true,
@@ -622,18 +645,23 @@ export function WorkspaceFilesPanel({
   }, [directoryError]);
 
   const refreshDirectories = useCallback(() => {
-    if (!workspaceRoot) return;
+    if (!localFile || !workspaceRoot) return;
     for (const directoryPath of directoryPaths) {
       void queryClient.invalidateQueries({
         queryKey: workspaceDirectoryQueryOptions({
-          hostId,
+          hostId: "local",
           workspaceRoot,
           directoryPath,
           includeHidden: true,
         }).queryKey,
       });
     }
-  }, [directoryPaths, hostId, queryClient, workspaceRoot]);
+  }, [directoryPaths, localFile, queryClient, workspaceRoot]);
+
+  const refreshFiles = useCallback(() => {
+    refreshDirectories();
+    if (!localFile && selectedPath) setPreviewRevision((current) => current + 1);
+  }, [localFile, refreshDirectories, selectedPath]);
 
   useEffect(() => {
     if (!selectedPath) {
@@ -659,14 +687,16 @@ export function WorkspaceFilesPanel({
 
     const loadPreview = async () => {
       try {
-        const metadata = await queryClient.fetchQuery(
-          workspaceFileMetadataQueryOptions({
+        const metadata = await queryClient.fetchQuery({
+          ...workspaceFileMetadataQueryOptions({
             hostId,
             path: selectedPath,
             contentSampleByteLimit: CONTENT_SAMPLE_BYTES,
             contentSampleMaxFileBytes: MAX_BINARY_PREVIEW_BYTES,
           }),
-        );
+          ...(!localFile ? { staleTime: 0 } : {}),
+        });
+        if (cancelled) return;
         if (!metadata.isFile) {
           if (!cancelled) {
             setPreviewState({
@@ -705,12 +735,13 @@ export function WorkspaceFilesPanel({
             }
             return;
           }
-          const binary = await queryClient.fetchQuery(
-            workspaceFileBinaryQueryOptions({
+          const binary = await queryClient.fetchQuery({
+            ...workspaceFileBinaryQueryOptions({
               hostId,
               path: selectedPath,
             }),
-          );
+            ...(!localFile ? { staleTime: 0 } : {}),
+          });
           if (!binary.contentsBase64) throw new Error("Unable to read binary file.");
           const nextBinaryUrl =
             nextPresentation === "pdf"
@@ -767,19 +798,20 @@ export function WorkspaceFilesPanel({
           return;
         }
 
-        const text = await queryClient.fetchQuery(
-          workspaceFileTextQueryOptions({
+        const text = await queryClient.fetchQuery({
+          ...workspaceFileTextQueryOptions({
             hostId,
             path: selectedPath,
             maxBytes: WORKSPACE_TEXT_MAX_BYTES,
           }),
-        );
+          ...(!localFile ? { staleTime: 0 } : {}),
+        });
         if (!cancelled) {
           const editableMarkdown =
             nextPresentation === "markdown" &&
             metadata.sizeBytes !== null &&
             metadata.sizeBytes < WORKSPACE_TEXT_EDITABLE_MAX_BYTES;
-          if (nextPresentation === "editable-text" || editableMarkdown) {
+          if (localFile && (nextPresentation === "editable-text" || editableMarkdown)) {
             loadedController = new WorkspaceTextDocumentController(
               {
                 path: selectedPath,
@@ -790,7 +822,7 @@ export function WorkspaceFilesPanel({
               {
                 write: async (path, content, expectedMtimeMs) =>
                   await writeWorkspaceFile({
-                    hostId,
+                    hostId: "local",
                     path,
                     content,
                     expectedMtimeMs,
@@ -836,7 +868,7 @@ export function WorkspaceFilesPanel({
               void loadedController?.notifyExternalChange();
             });
             void startWorkspaceFileWatch({
-              hostId,
+              hostId: "local",
               path: selectedPath,
             })
               .then((result) => {
@@ -897,7 +929,7 @@ export function WorkspaceFilesPanel({
         documentControllerRef.current = null;
       }
     };
-  }, [hostId, persistTabState, queryClient, selectedPath, tab.id]);
+  }, [hostId, localFile, persistTabState, previewRevision, queryClient, selectedPath, tab.id]);
 
   const browsePaths = useMemo(() => {
     const byPath = new Map<string, WorkspaceFileTreePath>();
@@ -917,13 +949,14 @@ export function WorkspaceFilesPanel({
     async (path: string, mode: "preview" | "durable") => {
       if (!workspaceRoot) return;
       await onOpenFileTab({
+        hostId,
         path: resolveWorkspaceTreeFilePath(workspaceRoot, path),
         title: getWorkspaceFileName(path),
         panelId: tab.panelId,
         mode,
       });
     },
-    [onOpenFileTab, tab.panelId, workspaceRoot],
+    [hostId, onOpenFileTab, tab.panelId, workspaceRoot],
   );
 
   const updateTreeState = useCallback(
@@ -950,7 +983,7 @@ export function WorkspaceFilesPanel({
 
   const openExternal = useCallback(
     (opener?: FileLinkOpenerId) => {
-      if (!selectedPath) return;
+      if (!localFile || !selectedPath) return;
       void fileReferenceRouter
         .open(
           {
@@ -966,6 +999,7 @@ export function WorkspaceFilesPanel({
           },
           {
             external: true,
+            hostId,
             opener,
             cwd,
             workspaceRoot,
@@ -980,7 +1014,7 @@ export function WorkspaceFilesPanel({
           toast.danger("Unable to open file externally");
         });
     },
-    [cwd, fileReferenceRouter, revealLocation, selectedPath, workspaceRoot],
+    [cwd, fileReferenceRouter, hostId, localFile, revealLocation, selectedPath, workspaceRoot],
   );
 
   const openExternalUrl = useCallback((url: string) => {
@@ -1098,6 +1132,11 @@ export function WorkspaceFilesPanel({
     });
   }, [documentSnapshot?.content, previewState.content]);
 
+  const openPreviewFileReference = useCallback<FileReferenceRouterPort["openWorkspaceFileTab"]>(
+    async (input) => (await onOpenFileTab({ ...input, mode: input.mode ?? "preview" })) !== false,
+    [onOpenFileTab],
+  );
+
   if (!workspaceRoot && !selectedPath) {
     return (
       <div className="flex h-full min-h-0 flex-col items-center justify-center gap-3 bg-token-main-surface-primary text-center text-sm text-token-text-secondary">
@@ -1108,246 +1147,271 @@ export function WorkspaceFilesPanel({
   }
 
   return (
-    <div
-      ref={rootRef}
-      className="flex h-full min-h-0 bg-token-main-surface-primary"
-      data-workspace-files-tab-id={getWorkspaceFileDomTabId(
-        hostId,
-        selectedPath ?? workspaceRoot ?? undefined,
-      )}
-      data-workspace-files-session-id={presentationOwnerId ?? activeSession?.id ?? "unassigned"}
+    <FileReferenceRouterProvider
+      openWorkspaceFileTab={openPreviewFileReference}
+      workspaceRoot={workspaceRoot ?? cwd}
     >
-      <div className="flex min-w-0 flex-1 flex-col">
+      <FileReferenceHostProvider hostId={hostId} workspaceRoot={workspaceRoot ?? cwd}>
         <div
-          className="flex h-toolbar-pane shrink-0 items-center gap-2 border-b-[0.5px] border-token-border px-3"
-          data-tab-preview-pin-exempt="true"
+          ref={rootRef}
+          className="flex h-full min-h-0 bg-token-main-surface-primary"
+          data-workspace-files-tab-id={getWorkspaceFileDomTabId(
+            hostId,
+            selectedPath ?? workspaceRoot ?? undefined,
+          )}
+          data-workspace-files-session-id={presentationOwnerId ?? activeSession?.id ?? "unassigned"}
         >
-          <Breadcrumb cwd={cwd} workspaceRoot={workspaceRoot} selectedPath={selectedPath} />
-          <div className="ml-auto flex items-center gap-1">
-            <button
-              type="button"
-              className="flex h-7 items-center gap-1.5 rounded-md px-2 text-xs text-token-text-secondary hover:bg-token-list-hover-background hover:text-token-text-primary disabled:opacity-40"
-              onClick={() => openExternal()}
-              disabled={!selectedPath}
+          <div className="flex min-w-0 flex-1 flex-col">
+            <div
+              className="flex h-toolbar-pane shrink-0 items-center gap-2 border-b-[0.5px] border-token-border px-3"
+              data-tab-preview-pin-exempt="true"
             >
-              <OpenInIcon className="icon-2xs" />
-              Open
-            </button>
-            <NodexDropdownMenu
-              align="end"
-              triggerButton={
-                <button
-                  type="button"
-                  aria-label="File options"
-                  className="flex aspect-square h-token-button-composer items-center justify-center rounded-lg text-token-text-tertiary hover:bg-token-list-hover-background hover:text-token-text-primary"
+              <Breadcrumb cwd={cwd} workspaceRoot={workspaceRoot} selectedPath={selectedPath} />
+              <div className="ml-auto flex items-center gap-1">
+                {localFile ? (
+                  <button
+                    type="button"
+                    className="flex h-7 items-center gap-1.5 rounded-md px-2 text-xs text-token-text-secondary hover:bg-token-list-hover-background hover:text-token-text-primary disabled:opacity-40"
+                    onClick={() => openExternal()}
+                    disabled={!selectedPath}
+                  >
+                    <OpenInIcon className="icon-2xs" />
+                    Open
+                  </button>
+                ) : null}
+                <NodexDropdownMenu
+                  align="end"
+                  triggerButton={
+                    <button
+                      type="button"
+                      aria-label="File options"
+                      className="flex aspect-square h-token-button-composer items-center justify-center rounded-lg text-token-text-tertiary hover:bg-token-list-hover-background hover:text-token-text-primary"
+                    >
+                      <ProjectActionsIcon className="icon-2xs" />
+                    </button>
+                  }
                 >
-                  <ProjectActionsIcon className="icon-2xs" />
-                </button>
-              }
-            >
-              <NodexDropdownFlyoutSubmenuItem
-                label="Open with"
-                leftSlot={<OpenInIcon className="icon-2xs" />}
-                disabled={!selectedPath}
-              >
-                {FILE_LINK_OPENER_OPTIONS.map((option) => (
+                  {localFile ? (
+                    <>
+                      <NodexDropdownFlyoutSubmenuItem
+                        label="Open with"
+                        leftSlot={<OpenInIcon className="icon-2xs" />}
+                        disabled={!selectedPath}
+                      >
+                        {FILE_LINK_OPENER_OPTIONS.map((option) => (
+                          <NodexDropdownItem
+                            key={option.id}
+                            data-tab-preview-pin-exempt="true"
+                            leftSlot={
+                              <img
+                                src={FILE_LINK_OPENER_ICON_URLS[option.id]}
+                                alt=""
+                                className="size-4 shrink-0 object-contain"
+                                aria-hidden="true"
+                              />
+                            }
+                            onSelect={() => openExternal(option.id)}
+                          >
+                            {option.label}
+                          </NodexDropdownItem>
+                        ))}
+                      </NodexDropdownFlyoutSubmenuItem>
+                      <NodexDropdownSeparator />
+                    </>
+                  ) : null}
+                  {presentation === "markdown" ? (
+                    <>
+                      <NodexDropdownItem
+                        data-tab-preview-pin-exempt="true"
+                        onSelect={() => selectMarkdownMode("source")}
+                        rightSlot={
+                          markdownMode === "source" ? <CheckmarkIcon className="icon-2xs" /> : null
+                        }
+                      >
+                        Source
+                      </NodexDropdownItem>
+                      <NodexDropdownItem
+                        data-tab-preview-pin-exempt="true"
+                        onSelect={() => selectMarkdownMode("rendered")}
+                        rightSlot={
+                          markdownMode === "rendered" ? (
+                            <CheckmarkIcon className="icon-2xs" />
+                          ) : null
+                        }
+                      >
+                        Rendered Markdown
+                      </NodexDropdownItem>
+                      <NodexDropdownSeparator />
+                    </>
+                  ) : null}
                   <NodexDropdownItem
-                    key={option.id}
                     data-tab-preview-pin-exempt="true"
-                    leftSlot={
-                      <img
-                        src={FILE_LINK_OPENER_ICON_URLS[option.id]}
-                        alt=""
-                        className="size-4 shrink-0 object-contain"
-                        aria-hidden="true"
-                      />
-                    }
-                    onSelect={() => openExternal(option.id)}
+                    onSelect={toggleWordWrap}
+                    rightSlot={wordWrap ? <CheckmarkIcon className="icon-2xs" /> : null}
+                    disabled={previewState.status !== "loaded" || previewState.binaryUrl !== null}
                   >
-                    {option.label}
-                  </NodexDropdownItem>
-                ))}
-              </NodexDropdownFlyoutSubmenuItem>
-              <NodexDropdownSeparator />
-              {presentation === "markdown" ? (
-                <>
-                  <NodexDropdownItem
-                    data-tab-preview-pin-exempt="true"
-                    onSelect={() => selectMarkdownMode("source")}
-                    rightSlot={
-                      markdownMode === "source" ? <CheckmarkIcon className="icon-2xs" /> : null
-                    }
-                  >
-                    Source
+                    Word wrap
                   </NodexDropdownItem>
                   <NodexDropdownItem
                     data-tab-preview-pin-exempt="true"
-                    onSelect={() => selectMarkdownMode("rendered")}
-                    rightSlot={
-                      markdownMode === "rendered" ? <CheckmarkIcon className="icon-2xs" /> : null
+                    leftSlot={<CopyIcon className="icon-2xs" />}
+                    onSelect={copyPath}
+                    disabled={!selectedPath}
+                  >
+                    Copy path
+                  </NodexDropdownItem>
+                  <NodexDropdownItem
+                    data-tab-preview-pin-exempt="true"
+                    leftSlot={<CopyIcon className="icon-2xs" />}
+                    onSelect={copyContents}
+                    disabled={
+                      previewState.status !== "loaded" ||
+                      previewState.binaryUrl !== null ||
+                      !(documentSnapshot?.content ?? previewState.content)
                     }
                   >
-                    Rendered Markdown
+                    Copy contents
                   </NodexDropdownItem>
-                  <NodexDropdownSeparator />
-                </>
-              ) : null}
-              <NodexDropdownItem
-                data-tab-preview-pin-exempt="true"
-                onSelect={toggleWordWrap}
-                rightSlot={wordWrap ? <CheckmarkIcon className="icon-2xs" /> : null}
-                disabled={previewState.status !== "loaded" || previewState.binaryUrl !== null}
-              >
-                Word wrap
-              </NodexDropdownItem>
-              <NodexDropdownItem
-                data-tab-preview-pin-exempt="true"
-                leftSlot={<CopyIcon className="icon-2xs" />}
-                onSelect={copyPath}
-                disabled={!selectedPath}
-              >
-                Copy path
-              </NodexDropdownItem>
-              <NodexDropdownItem
-                data-tab-preview-pin-exempt="true"
-                leftSlot={<CopyIcon className="icon-2xs" />}
-                onSelect={copyContents}
-                disabled={
-                  previewState.status !== "loaded" ||
-                  previewState.binaryUrl !== null ||
-                  !(documentSnapshot?.content ?? previewState.content)
-                }
-              >
-                Copy contents
-              </NodexDropdownItem>
-              <NodexDropdownSeparator />
-              <NodexDropdownItem data-tab-preview-pin-exempt="true" onSelect={toggleTree}>
-                {treeVisible ? "Hide file tree" : "Show file tree"}
-              </NodexDropdownItem>
-            </NodexDropdownMenu>
-            <NodexTooltip tooltipContent="Refresh files" delayOpen>
-              <button
-                type="button"
-                className="flex aspect-square h-token-button-composer items-center justify-center rounded-lg text-token-text-tertiary hover:bg-token-list-hover-background hover:text-token-text-primary"
-                onClick={refreshDirectories}
-                disabled={!workspaceRoot}
-              >
-                <RefreshIcon className="icon-2xs" />
-              </button>
-            </NodexTooltip>
-            <NodexTooltip
-              tooltipContent={treeVisible ? "Hide file tree" : "Show file tree"}
-              delayOpen
-            >
-              <button
-                type="button"
-                className="flex aspect-square h-token-button-composer items-center justify-center rounded-lg text-token-text-tertiary hover:bg-token-list-hover-background hover:text-token-text-primary"
-                onClick={toggleTree}
-                disabled={!workspaceRoot}
-              >
-                {treeVisible ? (
-                  <PanelRightHiddenIcon className="icon-2xs" />
-                ) : (
-                  <PanelRightVisibleIcon className="icon-2xs" />
-                )}
-              </button>
-            </NodexTooltip>
-          </div>
-        </div>
-        <div className="min-h-0 flex-1">
-          <WorkspaceFilePreview
-            state={previewState}
-            presentation={presentation}
-            document={documentSnapshot}
-            workspaceRoot={workspaceRoot}
-            onOpenExternal={() => openExternal()}
-            onOpenExternalLink={openExternalUrl}
-            onEdit={editDocument}
-            onUseDisk={useDiskVersion}
-            onKeepLocal={keepLocalChanges}
-            onRetrySave={retrySave}
-            markdownMode={markdownMode}
-            wrap={wordWrap}
-            revealLocation={revealLocation}
-          />
-        </div>
-      </div>
-
-      {workspaceRoot && treeVisible ? (
-        <aside
-          className="relative flex h-full min-h-0 shrink-0 flex-col border-l-[0.5px] border-token-border bg-token-main-surface-primary"
-          style={
-            {
-              width: treeWidth,
-              maxWidth: `${WORKSPACE_TREE_MAX_RATIO * 100}%`,
-            } satisfies CSSProperties
-          }
-          data-tab-preview-pin-exempt="true"
-        >
-          <div
-            role="separator"
-            aria-orientation="vertical"
-            aria-label="Resize file tree"
-            aria-valuemin={WORKSPACE_TREE_MIN_WIDTH}
-            aria-valuemax={Math.max(
-              WORKSPACE_TREE_MIN_WIDTH,
-              Math.round(
-                (rootRef.current?.getBoundingClientRect().width ?? 0) * WORKSPACE_TREE_MAX_RATIO,
-              ),
-            )}
-            aria-valuenow={Math.round(treeWidth)}
-            tabIndex={0}
-            className="absolute inset-y-0 left-0 z-10 w-4 -translate-x-2 cursor-col-resize"
-            onPointerDown={startResize}
-            onKeyDown={(event) => {
-              if (event.key === "ArrowLeft") {
-                event.preventDefault();
-                resizeTreeByKeyboard(10);
-              } else if (event.key === "ArrowRight") {
-                event.preventDefault();
-                resizeTreeByKeyboard(-10);
-              } else if (event.key === "Home") {
-                event.preventDefault();
-                resizeTreeByKeyboard(WORKSPACE_TREE_MIN_WIDTH - treeWidth);
-              }
-            }}
-          >
-            <div className="mx-auto h-full w-px bg-gradient-to-b from-transparent via-token-foreground/25 to-transparent" />
-          </div>
-          <div className="shrink-0 px-2 pt-2 pb-px">
-            <FileTreeFilter value={navigationState.searchQuery} onChange={updateFilterQuery} />
-          </div>
-          <div className="min-h-0 flex-1 px-2">
-            {treePaths.length > 0 ? (
-              <WorkspaceFileTree
-                workspaceRoot={workspaceRoot}
-                threadId={activeSession?.thread?.threadId}
-                paths={treePaths}
-                expandedPaths={expandedPaths}
-                selectedPath={selectedTreePath}
-                searchQuery={debouncedSearchQuery}
-                revealSelectedPath
-                initialScrollTop={navigationState.scrollTop}
-                onOpen={openTreeEntry}
-                onStateChange={updateTreeState}
-              />
-            ) : (
-              <div className="px-2 py-2 text-sm text-tertiary">
-                {searchError ??
-                  (searchPending
-                    ? "Searching files…"
-                    : rootDirectoryPending
-                      ? "Loading directory entries…"
-                      : directoryError
-                        ? "Unable to load files"
-                        : navigationState.searchQuery.trim()
-                          ? "No matching files"
-                          : "No files in this folder")}
+                  {localFile && workspaceRoot ? (
+                    <>
+                      <NodexDropdownSeparator />
+                      <NodexDropdownItem data-tab-preview-pin-exempt="true" onSelect={toggleTree}>
+                        {treeVisible ? "Hide file tree" : "Show file tree"}
+                      </NodexDropdownItem>
+                    </>
+                  ) : null}
+                </NodexDropdownMenu>
+                <NodexTooltip tooltipContent="Refresh files" delayOpen>
+                  <button
+                    type="button"
+                    aria-label="Refresh files"
+                    className="flex aspect-square h-token-button-composer items-center justify-center rounded-lg text-token-text-tertiary hover:bg-token-list-hover-background hover:text-token-text-primary"
+                    onClick={refreshFiles}
+                    disabled={!workspaceRoot && !selectedPath}
+                  >
+                    <RefreshIcon className="icon-2xs" />
+                  </button>
+                </NodexTooltip>
+                {localFile ? (
+                  <NodexTooltip
+                    tooltipContent={treeVisible ? "Hide file tree" : "Show file tree"}
+                    delayOpen
+                  >
+                    <button
+                      type="button"
+                      className="flex aspect-square h-token-button-composer items-center justify-center rounded-lg text-token-text-tertiary hover:bg-token-list-hover-background hover:text-token-text-primary"
+                      onClick={toggleTree}
+                      disabled={!workspaceRoot}
+                    >
+                      {treeVisible ? (
+                        <PanelRightHiddenIcon className="icon-2xs" />
+                      ) : (
+                        <PanelRightVisibleIcon className="icon-2xs" />
+                      )}
+                    </button>
+                  </NodexTooltip>
+                ) : null}
               </div>
-            )}
+            </div>
+            <div className="min-h-0 flex-1">
+              <WorkspaceFilePreview
+                hostId={hostId}
+                state={previewState}
+                presentation={presentation}
+                document={documentSnapshot}
+                workspaceRoot={workspaceRoot}
+                onOpenExternal={() => openExternal()}
+                onOpenExternalLink={openExternalUrl}
+                onEdit={editDocument}
+                onUseDisk={useDiskVersion}
+                onKeepLocal={keepLocalChanges}
+                onRetrySave={retrySave}
+                markdownMode={markdownMode}
+                wrap={wordWrap}
+                revealLocation={revealLocation}
+                resourceRevision={previewRevision}
+              />
+            </div>
           </div>
-        </aside>
-      ) : null}
-    </div>
+
+          {localFile && workspaceRoot && treeVisible ? (
+            <aside
+              className="relative flex h-full min-h-0 shrink-0 flex-col border-l-[0.5px] border-token-border bg-token-main-surface-primary"
+              style={
+                {
+                  width: treeWidth,
+                  maxWidth: `${WORKSPACE_TREE_MAX_RATIO * 100}%`,
+                } satisfies CSSProperties
+              }
+              data-tab-preview-pin-exempt="true"
+            >
+              <div
+                role="separator"
+                aria-orientation="vertical"
+                aria-label="Resize file tree"
+                aria-valuemin={WORKSPACE_TREE_MIN_WIDTH}
+                aria-valuemax={Math.max(
+                  WORKSPACE_TREE_MIN_WIDTH,
+                  Math.round(
+                    (rootRef.current?.getBoundingClientRect().width ?? 0) *
+                      WORKSPACE_TREE_MAX_RATIO,
+                  ),
+                )}
+                aria-valuenow={Math.round(treeWidth)}
+                tabIndex={0}
+                className="absolute inset-y-0 left-0 z-10 w-4 -translate-x-2 cursor-col-resize"
+                onPointerDown={startResize}
+                onKeyDown={(event) => {
+                  if (event.key === "ArrowLeft") {
+                    event.preventDefault();
+                    resizeTreeByKeyboard(10);
+                  } else if (event.key === "ArrowRight") {
+                    event.preventDefault();
+                    resizeTreeByKeyboard(-10);
+                  } else if (event.key === "Home") {
+                    event.preventDefault();
+                    resizeTreeByKeyboard(WORKSPACE_TREE_MIN_WIDTH - treeWidth);
+                  }
+                }}
+              >
+                <div className="mx-auto h-full w-px bg-gradient-to-b from-transparent via-token-foreground/25 to-transparent" />
+              </div>
+              <div className="shrink-0 px-2 pt-2 pb-px">
+                <FileTreeFilter value={navigationState.searchQuery} onChange={updateFilterQuery} />
+              </div>
+              <div className="min-h-0 flex-1 px-2">
+                {treePaths.length > 0 ? (
+                  <WorkspaceFileTree
+                    workspaceRoot={workspaceRoot}
+                    threadId={activeSession?.thread?.threadId}
+                    paths={treePaths}
+                    expandedPaths={expandedPaths}
+                    selectedPath={selectedTreePath}
+                    searchQuery={debouncedSearchQuery}
+                    revealSelectedPath
+                    initialScrollTop={navigationState.scrollTop}
+                    onOpen={openTreeEntry}
+                    onStateChange={updateTreeState}
+                  />
+                ) : (
+                  <div className="px-2 py-2 text-sm text-tertiary">
+                    {searchError ??
+                      (searchPending
+                        ? "Searching files…"
+                        : rootDirectoryPending
+                          ? "Loading directory entries…"
+                          : directoryError
+                            ? "Unable to load files"
+                            : navigationState.searchQuery.trim()
+                              ? "No matching files"
+                              : "No files in this folder")}
+                  </div>
+                )}
+              </div>
+            </aside>
+          ) : null}
+        </div>
+      </FileReferenceHostProvider>
+    </FileReferenceRouterProvider>
   );
 }

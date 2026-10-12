@@ -549,7 +549,7 @@ describe("collectTurnEndResourcePaths", () => {
     expect(paths).toEqual(["slides/final.pptx"]);
   });
 
-  test("collects edited and referenced presentation artifacts once", () => {
+  test("collects explicitly exported presentation artifacts once", () => {
     const paths = collectTurnEndResourcePaths(
       buildTurn([
         buildItem("file-change", "fileChange", {
@@ -565,7 +565,8 @@ describe("collectTurnEndResourcePaths", () => {
         buildItem("assistant-1", "agentMessage", {
           kind: "assistantMessage",
           semanticKind: "assistantMessage",
-          markdownText: "Created \u3010slides/review.pptx\u2020L1\u3011.",
+          markdownText:
+            'Created 【slides/review.pptx†L1】. :codex-file-citation{path="slides/review.pptx" purpose="output"}',
         }),
       ]),
     );

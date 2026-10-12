@@ -1,4 +1,5 @@
 import { contextBridge, ipcRenderer, webUtils } from "electron";
+import { installStatePreservingWebviewMoves } from "./state-preserving-webview-moves";
 import {
   EXECUTE_FOCUSED_HISTORY_CHANNEL,
   type SurfaceHistoryDirection,
@@ -59,6 +60,8 @@ import {
   type CodexNativeIpcChannel,
 } from "../shared/codex-native-ipc";
 import type { CodexHostMessage } from "../shared/types";
+
+contextBridge.executeInMainWorld({ func: installStatePreservingWebviewMoves });
 
 // Sandboxed Electron preloads cannot require Rollup's local shared chunks.
 // Keep the wire literal type-checked without creating a runtime dependency on

@@ -149,6 +149,7 @@ export function createLocalConversationSearchSource(input: LocalConversationSear
   };
 
   const getUnitsForProjectedEntry = (entry: CodexTimelineViewEntry): ThreadSearchUnitModel[] => {
+    if (isCodexTimelineTurnEntry(entry) && entry.timelineEndResources) return [];
     const owner = input.readOwner?.();
     if (isCodexRealtimeTimelineEntry(entry)) {
       if (entry.itemType !== "transcriptSegment" || !owner) return [];
@@ -218,7 +219,11 @@ export function createLocalConversationSearchSource(input: LocalConversationSear
     getUnitsForProjectedEntry,
     findPersistedTarget(meta: LocalConversationPersistedSearchMatchMeta) {
       for (const entry of input.getProjectedEntries?.() ?? getTurns()) {
-        if (isCodexRealtimeTimelineEntry(entry) || entry.turnId !== meta.occurrence.turnId)
+        if (
+          isCodexRealtimeTimelineEntry(entry) ||
+          (isCodexTimelineTurnEntry(entry) && entry.timelineEndResources) ||
+          entry.turnId !== meta.occurrence.turnId
+        )
           continue;
         const materialized = materializeConversationTurnListEntry(entry);
         if (!materialized) continue;

@@ -4,6 +4,7 @@ import {
   type McpAppRuntimeSnapshot,
 } from "./mcp-app-runtime";
 import { resolveMcpAppSandboxOriginScope } from "../../../shared/mcp-app/mcp-app-scope";
+import { moveNativeSubtree } from "../move-native-subtree";
 
 export type McpAppSurfaceMode = "fullscreen" | "inline" | "side-panel";
 
@@ -153,10 +154,7 @@ export class McpAppRuntimeManager {
       return;
     }
     if (entry.runtime.element.parentElement !== surface.element) {
-      // Electron destroys native webview guests when their DOM subtree moves.
-      // Element.moveBefore also disconnects this native element; retained runtime
-      // object identity alone cannot guarantee WebContents or document state.
-      surface.element.append(entry.runtime.element);
+      moveNativeSubtree(entry.runtime.element, surface.element);
     }
     entry.runtime.setDisplayMode(surface.mode);
   }

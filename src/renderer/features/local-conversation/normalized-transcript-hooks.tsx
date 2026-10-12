@@ -21,6 +21,7 @@ import {
 import { resolveCodexReasoningSummaryPresentation } from "../../../shared/codex-reasoning-presentation";
 import type { ConversationTurnListEntry } from "./selectors";
 import { isNormalizedConversationTurnEntry } from "./selectors";
+import { isCodexTimelineTurnEntry } from "./projection/normalized-timeline-entries";
 import {
   resolveThreadLatestTurnPhase,
   type ThreadLatestTurnPhase,
@@ -128,16 +129,20 @@ export function useCodexTranscriptLatestTurnMetadata(entry: ConversationTurnList
     const details = owner.readTurnDetails(entityKey);
     if (owner.readTurnVersion(entityKey) !== version) return null;
     if (!details) return null;
-    const items = (owner.readItemSlots(entityKey)?.entries ?? []).flatMap(({ itemId }) => {
+    const slice = isCodexTimelineTurnEntry(entry) ? entry.timelineSlice : undefined;
+    const itemIds =
+      slice?.itemIds ?? owner.readItemSlots(entityKey)?.entries.map(({ itemId }) => itemId) ?? [];
+    const items = itemIds.flatMap((itemId) => {
       const item = owner.readItem(entityKey, itemId);
       return item ? [item] : [];
     });
-    const steering = items.findLast((item) => item.type === "steeringUserMessage");
+    const steering = owner.readLatestSteeringItem(entityKey);
+    const activeVoice = slice?.work?.presentation === "voice-work" && slice.work.state === "active";
     let commentary = false;
     let phase: ThreadLatestTurnPhase = "idle";
-    if (details.status === "inProgress") {
+    if (entry.turnStatus === "inProgress") {
       for (const item of items) {
-        if (item.type !== "agentMessage") continue;
+        if (item.type !== "agentMessage" || activeVoice) continue;
         if (item.phase === "commentary") {
           commentary = true;
           continue;
@@ -147,14 +152,14 @@ export function useCodexTranscriptLatestTurnMetadata(entry: ConversationTurnList
       }
       if (phase === "idle")
         phase =
-          commentary || details.firstTurnWorkItemStartedAtMs != null
+          activeVoice || commentary || details.firstTurnWorkItemStartedAtMs != null
             ? "prework"
             : details.finalAssistantStartedAtMs == null
               ? "idle"
               : "final_answer";
     }
     return {
-      isInProgress: details.status === "inProgress",
+      isInProgress: entry.turnStatus === "inProgress",
       phase,
       latestSteeringUserMessageKey:
         steering?.type === "steeringUserMessage" ? (steering.restoreMessage.id ?? null) : null,

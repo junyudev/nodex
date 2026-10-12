@@ -161,7 +161,7 @@ export type WorkbenchReviewSurfaceConfig = WorkbenchReviewConfig;
 
 export interface WorkbenchFilesSurfaceConfig {
   readonly projectId: string | null;
-  readonly hostId: "local";
+  readonly hostId: string;
   readonly workspaceRoot: string | null;
   readonly cwd: string | null;
   readonly path?: string;

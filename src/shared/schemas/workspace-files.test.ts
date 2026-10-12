@@ -5,9 +5,29 @@ import {
   WorkspaceFileRequestSchema,
   WorkspaceFileTextReadInputSchema,
   WorkspaceFileWriteInputSchema,
+  WorkspaceLocalFileRequestSchema,
+  WorkspacePathsExistInputSchema,
 } from "./workspace-files";
 
 describe("workspace file IPC schemas", () => {
+  test("admits host-qualified reads while keeping writes and local watches local", () => {
+    const input = { hostId: "ssh:build", path: "/workspace/report.md " };
+    expect(WorkspaceFileMetadataInputSchema.parse(input)).toEqual(input);
+    expect(WorkspaceFileTextReadInputSchema.parse({ ...input, maxBytes: 1024 })).toEqual({
+      ...input,
+      maxBytes: 1024,
+    });
+    expect(() => WorkspaceLocalFileRequestSchema.parse(input)).toThrow();
+    expect(() =>
+      WorkspaceFileWriteInputSchema.parse({
+        ...input,
+        content: "changed",
+        expectedMtimeMs: null,
+      }),
+    ).toThrow();
+    const paths = { hostId: "ssh:build", paths: ["/workspace/report.md", "/workspace/trailing "] };
+    expect(WorkspacePathsExistInputSchema.parse(paths)).toEqual(paths);
+  });
   test("keeps workspace roots only on directory browsing", () => {
     expect(
       WorkspaceDirectoryEntriesInputSchema.parse({

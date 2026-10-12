@@ -26,6 +26,8 @@ import { LocalConversationAboveComposerPortal } from "./local-conversation-above
 import { useMcpServerStatuses } from "../../../lib/use-mcp-queries";
 import { useCodexMcpApps } from "../use-codex-mcp-apps";
 import { ThreadTimestampSeparator } from "./shared/thread-timestamp-separator";
+import { useTurnEndResources } from "../use-turn-end-resources";
+import { LocalConversationEndResources } from "./local-conversation-end-resources";
 
 interface LocalConversationTurnEntryProps {
   conversationId: string;
@@ -107,6 +109,10 @@ function LocalConversationTurnEntryComponent({
   const isTimelineEntry = isCodexTimelineTurnEntry(entry);
   const allowUserActions = !isTimelineEntry || entry.timelineUserActions;
   const includeTurnExtras = !isTimelineEntry || entry.timelineSlice.includeTurnExtras;
+  const resourceTurn = useCodexTranscriptTurn(
+    isTimelineEntry && includeTurnExtras ? entityKey : null,
+    turn,
+  );
   const goalTimeUsedSeconds = useCodexConversationValue(conversationId, (conversation) =>
     includeTurnExtras &&
     conversation?.canonicalState?.completedThreadGoalTurnId === entry.turnId &&
@@ -118,6 +124,13 @@ function LocalConversationTurnEntryComponent({
     conversationId,
     (conversation) => conversation?.canonicalState?.hostId ?? "local",
   );
+  const { resources, endResourcePaths } = useTurnEndResources({
+    turn: resourceTurn,
+    hostId,
+    cwd: threadCwd,
+    projectlessOutputDirectory,
+    includeResources: includeTurnExtras,
+  });
   onRendered?.(entry.turnKey);
   const { data: mcpApps } = useCodexMcpApps();
   const { data: mcpServerStatuses } = useMcpServerStatuses();
@@ -136,6 +149,8 @@ function LocalConversationTurnEntryComponent({
             projectlessOutputDirectory,
             mcpApps: mcpApps ?? [],
             mcpServerStatuses: mcpServerStatuses ?? null,
+            endResourcePaths,
+            workSegment: isTimelineEntry ? entry.timelineSlice.work : undefined,
           })
         : null,
     [
@@ -151,6 +166,9 @@ function LocalConversationTurnEntryComponent({
       mcpServerStatuses,
       projectlessOutputDirectory,
       threadCwd,
+      endResourcePaths,
+      isTimelineEntry,
+      entry,
     ],
   );
 
@@ -188,6 +206,8 @@ function LocalConversationTurnEntryComponent({
         >
           <ThreadTurn
             turn={turnModel}
+            endResources={isTimelineEntry ? undefined : resources}
+            hostId={hostId}
             mcpApps={mcpApps ?? []}
             agentBodyCollapsed={persistedCollapsed ?? turnModel.defaultAgentBodyCollapsed}
             onAgentBodyCollapsedChange={(turnKey, collapsed) => {
@@ -220,8 +240,40 @@ function LocalConversationTurnEntryComponent({
 }
 
 /** Inline presentations subscribe to their native item before any Turn materialization. */
+function LocalConversationEndResourcesEntry(props: LocalConversationTurnEntryProps) {
+  const { entry } = props;
+  const turn = useCodexTranscriptTurn(
+    isNormalizedConversationTurnEntry(entry) ? entry.historyEntityKey : null,
+    isNormalizedConversationTurnEntry(entry) ? null : entry.turn,
+  );
+  const hostId = useCodexConversationValue(
+    props.conversationId,
+    (conversation) => conversation?.canonicalState?.hostId ?? "local",
+  );
+  const { resources } = useTurnEndResources({
+    turn,
+    hostId,
+    cwd: props.threadCwd,
+    projectlessOutputDirectory: props.projectlessOutputDirectory,
+    includeResources: true,
+  });
+  props.onRendered?.(entry.turnKey);
+  return (
+    <div data-content-search-skip="true" data-virtualized-turn-content="true">
+      <LocalConversationEndResources
+        resources={resources}
+        hostId={hostId}
+        cwd={props.threadCwd}
+        workspaceRoot={props.projectlessOutputDirectory}
+      />
+    </div>
+  );
+}
+
 function LocalConversationTurnEntrySurface(props: LocalConversationTurnEntryProps) {
   const { entry } = props;
+  if (isCodexTimelineTurnEntry(entry) && entry.timelineEndResources)
+    return <LocalConversationEndResourcesEntry {...props} />;
   if (isCodexTimelineTurnEntry(entry) && entry.timelineWholeItem?.type === "generatedImage") {
     props.onRendered?.(entry.turnKey);
     return <LocalConversationTimelineImage entry={entry} />;

@@ -4,6 +4,7 @@ import { z } from "zod";
 export const WORKBENCH_FILE_PATH_MAX_LENGTH = 32_768;
 // A host (512), separators and a full supported path fit without encoding or truncation.
 export const WorkbenchSurfaceIdSchema = z.string().min(1).max(33_300);
+export const WorkbenchFileHostIdSchema = z.string().trim().min(1).max(512);
 
 const absolutePath = (path: string) =>
   path.startsWith("/") || /^[a-zA-Z]:[\\/]/u.test(path) || path.startsWith("\\\\");

@@ -811,9 +811,30 @@ test("restores interactive HTML responses and retains guest state through fullsc
           },
         ],
       },
+      {
+        type: "function_call",
+        name: "untrusted_input",
+        arguments: "{}",
+        call_id: expect.any(String),
+      },
+      {
+        type: "function_call_output",
+        call_id: expect.any(String),
+        output: [
+          {
+            type: "input_text",
+            text: JSON.stringify({
+              path: path.join(directory, "live-widget.html"),
+              interaction: { edits: [], selectedVariants: [{ carousel: 0, variant: "One" }] },
+            }),
+          },
+        ],
+      },
     ]);
     if (!Array.isArray(injected.items)) throw new Error("Native context has no response items");
     expect(injected.items[0].call_id).toBe(injected.items[1].call_id);
+    expect(injected.items[2].call_id).toBe(injected.items[3].call_id);
+    expect(injected.items[0].call_id).not.toBe(injected.items[2].call_id);
     expect(JSON.stringify(injected.items)).not.toContain("excluded-from-model");
     const beforeSecondFollowUp = (await readRequests()).length;
     await submitFollowUp("Keep using the saved selection");
@@ -827,6 +848,8 @@ test("restores interactive HTML responses and retains guest state through fullsc
         injectedBeforeStart: true,
         confirmedBeforeStart: true,
         savedState: { selected: 2 },
+        savedInteraction: { edits: [], selectedVariants: [{ carousel: 0, variant: "One" }] },
+        injectedPairCount: 2,
         repeatedInjectionCount: 0,
         privateStateExcluded: true,
       }),

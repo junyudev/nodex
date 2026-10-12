@@ -21,7 +21,10 @@ import {
   WorkspaceFileTextReadInputSchema,
   WorkspaceFileWatchStopInputSchema,
   WorkspaceFileWriteInputSchema,
+  WorkspaceLocalFileRequestSchema,
+  WorkspacePathsExistInputSchema,
 } from "../../../shared/schemas/workspace-files";
+import { WorkspaceFileQueries } from "../../host-runtime/WorkspaceFileQueries";
 import { MainConfig } from "../../app/MainConfig";
 import { type FileWatchError, type FileWatchHost, localFileWatchHost } from "../../file-watch-host";
 import { safeSendToWebContents } from "../../ipc-safe-send";
@@ -32,9 +35,6 @@ import { WindowRuntime } from "../../window-runtime/WindowRuntime";
 import { MAIN_OBSERVATION_EVENT_CAPACITY } from "../../runtime-limits";
 import {
   listWorkspaceDirectoryEntries,
-  readWorkspaceFile,
-  readWorkspaceFileBinary,
-  readWorkspaceFileMetadata,
   saveWorkspaceFileCopy,
   toWorkspaceFileIpcError,
   WorkspaceFileUserError,
@@ -86,13 +86,18 @@ class WorkspaceFileWatch extends Context.Service<
 
 export const live = (
   options: WorkspaceFileIpcOptions = {},
-): Layer.Layer<never, never, ElectronIpc | ElectronDesktop | MainConfig | WindowRuntime> =>
+): Layer.Layer<
+  never,
+  never,
+  ElectronIpc | ElectronDesktop | MainConfig | WindowRuntime | WorkspaceFileQueries
+> =>
   Layer.effectDiscard(
     Effect.gen(function* () {
       const config = yield* MainConfig;
       const ipc = yield* ElectronIpc;
       const desktop = yield* ElectronDesktop;
       const windows = yield* WindowRuntime;
+      const fileQueries = yield* WorkspaceFileQueries;
       const watchHost = options.fileWatchHost ?? localFileWatchHost;
       const makeSubscriptionId = options.makeSubscriptionId ?? randomUUID;
       const subscriptions = yield* FiberMap.make<string>();
@@ -181,6 +186,11 @@ export const live = (
           Effect.andThen(task),
           Effect.mapError((cause) => mapError(operation, cause)),
         );
+      const decode = <A>(schema: { parse(input: unknown): A }, input: unknown) =>
+        Effect.try({
+          try: () => schema.parse(input),
+          catch: (cause) => mapError("parse-workspace-file", cause),
+        });
 
       yield* ipc.handleQuery("workspace-directory-entries", (event, input: unknown) =>
         run("list-directory", event, () =>
@@ -188,18 +198,35 @@ export const live = (
         ),
       );
       yield* ipc.handleQuery("read-file", (event, input: unknown) =>
-        run("read-file", event, () =>
-          readWorkspaceFile(WorkspaceFileTextReadInputSchema.parse(input)),
+        runEffect(
+          "read-file",
+          event,
+          decode(WorkspaceFileTextReadInputSchema, input).pipe(Effect.flatMap(fileQueries.text)),
         ),
       );
       yield* ipc.handleQuery("read-file-metadata", (event, input: unknown) =>
-        run("read-file-metadata", event, () =>
-          readWorkspaceFileMetadata(WorkspaceFileMetadataInputSchema.parse(input)),
+        runEffect(
+          "read-file-metadata",
+          event,
+          decode(WorkspaceFileMetadataInputSchema, input).pipe(
+            Effect.flatMap(fileQueries.metadata),
+          ),
         ),
       );
       yield* ipc.handleQuery("read-file-binary", (event, input: unknown) =>
-        run("read-file-binary", event, () =>
-          readWorkspaceFileBinary(WorkspaceFileRequestSchema.parse(input)),
+        runEffect(
+          "read-file-binary",
+          event,
+          decode(WorkspaceFileRequestSchema, input).pipe(Effect.flatMap(fileQueries.binary)),
+        ),
+      );
+      yield* ipc.handleQuery("workspace-paths-exist", (event, input: unknown) =>
+        runEffect(
+          "workspace-paths-exist",
+          event,
+          decode(WorkspacePathsExistInputSchema, input).pipe(
+            Effect.flatMap(fileQueries.pathsExist),
+          ),
         ),
       );
       yield* ipc.handlePlainCommand("write-file", (event, input: unknown) =>
@@ -209,10 +236,13 @@ export const live = (
       );
       yield* ipc.handlePlainCommand("workspace-file:save-copy", (event, input: unknown) =>
         run("save-file-copy", event, () =>
-          saveWorkspaceFileCopy(WorkspaceFileRequestSchema.parse(input), async (defaultPath) => {
-            const result = await desktop.dialog.showSaveDialog({ defaultPath });
-            return result.canceled ? null : (result.filePath ?? null);
-          }),
+          saveWorkspaceFileCopy(
+            WorkspaceLocalFileRequestSchema.parse(input),
+            async (defaultPath) => {
+              const result = await desktop.dialog.showSaveDialog({ defaultPath });
+              return result.canceled ? null : (result.filePath ?? null);
+            },
+          ),
         ),
       );
       yield* ipc.handleControl("workspace-file-watch:start", (event, input: unknown) =>
@@ -221,7 +251,7 @@ export const live = (
           event,
           Effect.gen(function* () {
             const request = yield* Effect.try({
-              try: () => WorkspaceFileRequestSchema.parse(input),
+              try: () => WorkspaceLocalFileRequestSchema.parse(input),
               catch: (cause) => mapError("parse-file-watch", cause),
             });
             const owner = event.sender;

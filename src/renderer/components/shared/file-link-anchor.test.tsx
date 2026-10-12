@@ -2,16 +2,43 @@ import { beforeEach, describe, expect, test, vi } from "vite-plus/test";
 import { act, fireEvent } from "@testing-library/react";
 import { renderWithMaitai as render } from "../../test/thread-maitai";
 import { settleAsyncRender } from "../../test/dom";
-import { FileLinkAnchor } from "./file-link-anchor";
+import { FileLinkAnchor, openFileReferenceContextMenu } from "./file-link-anchor";
 import { FileReferenceRouterProvider } from "@/lib/file-reference-router";
 import { NodexTooltipProvider } from "@/components/ui/tooltip";
 import { installWindowApi } from "../../test/browser-globals";
 
-const invoke = vi.fn(async () => true);
+const invoke = vi.fn<(channel: string, ...args: unknown[]) => Promise<unknown>>(async () => true);
+const menu = vi.hoisted(() => ({
+  show: vi.fn<() => Promise<string | null>>(),
+  copy: vi.fn(async (_text: string) => true),
+}));
+vi.mock("@/lib/native-context-menu", () => ({ showNativeContextMenu: menu.show }));
+vi.mock("@/lib/clipboard", () => ({ writeTextToClipboard: menu.copy }));
 
 describe("FileLinkAnchor", () => {
   beforeEach(() => {
+    invoke.mockReset();
+    invoke.mockResolvedValue(true);
+    menu.show.mockReset();
+    menu.copy.mockClear();
     installWindowApi({ invoke, on: () => () => undefined });
+  });
+
+  test("copies remote file contents using its host and rejects disabled Finder/editor actions", async () => {
+    const hostId = "remote-ssh-discovered:win";
+    const path = "C:/repo/file.md";
+    const open = vi.fn(async () => true);
+    const request = { hostId, target: { path }, label: "File", open, x: 1, y: 2 };
+    invoke.mockResolvedValue({ contents: "remote content" });
+    menu.show.mockResolvedValue("file-reference:copy-contents");
+    await openFileReferenceContextMenu(request);
+    expect(invoke).toHaveBeenCalledWith("read-file", { hostId, path, maxBytes: 2 * 1024 * 1024 });
+    expect(menu.copy).toHaveBeenCalledWith("remote content");
+    for (const selection of ["file-reference:reveal", "file-reference:open-with:vscode"]) {
+      menu.show.mockResolvedValue(selection);
+      await openFileReferenceContextMenu(request);
+    }
+    expect(open).not.toHaveBeenCalled();
   });
 
   test("opens a local reference in the Files panel and carries its location", async () => {

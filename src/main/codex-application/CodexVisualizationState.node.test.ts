@@ -67,6 +67,78 @@ const interaction = (
   });
 
 it.effect(
+  "persists interaction context in the same Profile revision, leaves absent clears untouched and retains explicit clears",
+  () =>
+    withStore((store, file) =>
+      Effect.gen(function* () {
+        const owner = yield* CodexVisualizationState;
+        const absent = yield* owner.writeInteraction(
+          { identity, state: { modelContent: null }, mutationId: "absent-clear" },
+          "renderer-one",
+        );
+        assert.isNull(absent.event);
+        assert.strictEqual(store.readSnapshot().revision, 0);
+        const context = {
+          edits: [{ target: "Chart", changes: [{ label: "Radius", reference: null, value: 40 }] }],
+        };
+        const confirmed = yield* owner.writeInteraction(
+          { identity, state: { modelContent: context }, mutationId: "interaction" },
+          "renderer-one",
+        );
+        assert.isTrue(confirmed.result.ok);
+        assert.strictEqual(confirmed.event?.revision, 1);
+        const reopened = new PersistedAtomStore(file);
+        assert.deepEqual(reopened.readState()[codexVisualizationInteractionAtomKey(identity)], {
+          [identity.path]: { ...identity, state: { modelContent: context } },
+        });
+        const invalid = yield* owner.writeInteraction(
+          {
+            identity,
+            state: { modelContent: { body: "x".repeat(32_768) } },
+            mutationId: "oversized",
+          },
+          "renderer-one",
+        );
+        assert.isFalse(invalid.result.ok);
+        assert.strictEqual(store.readSnapshot().revision, 1);
+        const cleared = yield* owner.writeInteraction(
+          { identity, state: { modelContent: null }, mutationId: "clear" },
+          "renderer-two",
+        );
+        assert.strictEqual(cleared.event?.revision, 2);
+        assert.deepEqual(store.readState()[codexVisualizationInteractionAtomKey(identity)], {
+          [identity.path]: { ...identity, state: { modelContent: null } },
+        });
+      }),
+    ),
+);
+it.effect(
+  "failed interaction writes preserve the prior cache/revision and publish no committed event",
+  () =>
+    withStore((store, file) =>
+      Effect.gen(function* () {
+        const owner = yield* CodexVisualizationState;
+        yield* owner.writeInteraction(
+          { identity, state: { modelContent: { selected: 1 } }, mutationId: "first" },
+          "renderer-one",
+        );
+        const before = store.readSnapshot();
+        rmSync(file);
+        mkdirSync(file);
+        const result = yield* owner.writeInteraction(
+          { identity, state: { modelContent: { selected: 2 } }, mutationId: "failed" },
+          "renderer-one",
+        );
+        assert.deepEqual(result, {
+          result: { ok: false, code: "storage_unavailable", retryable: false },
+          event: null,
+        });
+        assert.deepEqual(store.readSnapshot(), before);
+      }),
+    ),
+);
+
+it.effect(
   "isolates display host/Thread/file and reloads confirmed state with a fresh Main owner",
   () =>
     withStore((_store, file) =>

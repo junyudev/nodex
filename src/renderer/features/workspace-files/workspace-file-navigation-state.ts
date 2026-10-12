@@ -1,7 +1,7 @@
 import { appScope, scopedAtom, scopedAtomFamily } from "@/lib/maitai";
 
 export interface WorkspaceFileNavigationKey {
-  readonly hostId: "local";
+  readonly hostId: string;
   readonly includeHidden: boolean;
   readonly workspaceRoot: string;
 }

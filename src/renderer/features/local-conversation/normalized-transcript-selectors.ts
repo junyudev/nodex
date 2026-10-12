@@ -95,6 +95,11 @@ export function selectNormalizedConversationTurnEntries(input: {
 }): readonly NormalizedConversationTurnEntry[] {
   const requestsByTurnId = selectConversationTurnRequestsByTurnId(input.conversation);
   const latestEntityKey = input.structure.turnEntityKeys.at(-1);
+  const pendingStartedTurnIds = new Set<string>();
+  for (const entry of input.structure.itemTimeline?.entries ?? []) {
+    if (entry.type === "turnStarted") pendingStartedTurnIds.add(entry.turnId);
+    if (entry.type === "turnCompleted") pendingStartedTurnIds.delete(entry.turnId);
+  }
   const entries = input.structure.turns.flatMap((row, index) => {
     const details = row.value.details;
     const nextRequests =
@@ -106,6 +111,7 @@ export function selectNormalizedConversationTurnEntries(input: {
       (row.value.itemSlots.entries.length === 0 &&
         !row.hasUserMessage &&
         nextRequests.length === 0 &&
+        (details.turnId === null || !pendingStartedTurnIds.has(details.turnId)) &&
         !details.diff?.trim() &&
         !hasRecoverableCanonicalTurnItems(details))
     )

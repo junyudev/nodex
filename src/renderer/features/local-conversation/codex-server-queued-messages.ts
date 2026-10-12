@@ -8,6 +8,13 @@ import { CODEX_INTERRUPTED_STEER_REASON } from "../../../shared/codex-queued-fol
 import { codexImageInputSource } from "../../../shared/codex-image-input";
 import type { CodexQueuedMessage } from "../../../shared/codex-queued-message";
 
+import { hasUntrustedAppInputPlaceholder } from "../../../shared/codex-untrusted-app-input";
+
+export interface CodexServerQueueInput {
+  readonly input: readonly UserInput[];
+  readonly responseItems: readonly ClientRequestParamsByMethod["thread/inject_items"]["items"][number][];
+}
+
 type ServerQueueMethod =
   | "thread/queue/add"
   | "thread/queue/delete"
@@ -48,7 +55,7 @@ export interface CodexServerQueuedMessagesOptions {
     message: CodexQueuedMessage,
     previous: QueuedSubmission | undefined,
     preserveGeneratedText: boolean,
-  ) => Promise<UserInput[]> | UserInput[];
+  ) => Promise<CodexServerQueueInput> | CodexServerQueueInput;
   readonly getConversationCwd: (threadId: string) => string | null;
   readonly isConversationInterrupted: (threadId: string) => boolean;
   readonly isConversationStreaming: (threadId: string) => boolean;
@@ -259,13 +266,17 @@ export class CodexServerQueuedMessages implements Disposable {
           : message.context,
       createdAt: previousMessage?.createdAt ?? message.createdAt,
     };
-    const input =
-      restore?.input ??
-      (await this.options.compileInput(
-        nextMessage,
-        previousSubmission,
-        previousSubmission !== undefined && state.messagesById[previousSubmission.id] === undefined,
-      ));
+    const prepared = restore
+      ? { input: restore.input, responseItems: [] }
+      : await this.options.compileInput(
+          nextMessage,
+          previousSubmission,
+          previousSubmission !== undefined &&
+            state.messagesById[previousSubmission.id] === undefined,
+        );
+    if (prepared.responseItems.length > 0 || prepared.input.some(hasUntrustedAppInputPlaceholder))
+      throw new Error("App input requires confirmation before queue delivery");
+    const input = [...prepared.input];
     const queuedSubmission = previousSubmission
       ? (
           await this.options.request("thread/queue/update", {

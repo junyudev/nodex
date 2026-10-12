@@ -2,6 +2,20 @@ import { describe, expect, test, vi } from "vite-plus/test";
 import { createFileReferenceRouter, openFileReferenceExternally } from "./file-reference-router";
 
 describe("file reference router", () => {
+  test("passes a remote host to Files and never falls back to a local opener", async () => {
+    const openWorkspaceFileTab = vi.fn(async () => false);
+    const router = createFileReferenceRouter({ opener: "vscode", port: { openWorkspaceFileTab } });
+    const target = { path: "C:/repo/file.md" };
+    await expect(router.open(target, { hostId: "remote-ssh-discovered:win" })).resolves.toBe(false);
+    expect(openWorkspaceFileTab).toHaveBeenCalledWith(
+      expect.objectContaining({ hostId: "remote-ssh-discovered:win", path: target.path }),
+    );
+    openWorkspaceFileTab.mockClear();
+    await expect(
+      router.open(target, { hostId: "remote-ssh-discovered:win", external: true }),
+    ).resolves.toBe(false);
+    expect(openWorkspaceFileTab).not.toHaveBeenCalled();
+  });
   test("uses the panel port for an ordinary file reference", async () => {
     const openWorkspaceFileTab = vi.fn(async () => true);
     const router = createFileReferenceRouter({

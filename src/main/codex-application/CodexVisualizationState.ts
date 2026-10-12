@@ -15,6 +15,9 @@ import {
   codexVisualizationInteractionAtomKey,
   codexVisualizationStateEntryKey,
   parseCodexVisualizationWidgetState,
+  parseCodexVisualizationInteractionState,
+  type CodexVisualizationInteractionWriteInput,
+  type CodexVisualizationInteractionWriteResult,
   type CodexVisualizationStateIdentity,
   type CodexVisualizationStateWriteInput,
   type CodexVisualizationStateWriteResult,
@@ -46,6 +49,16 @@ export class CodexVisualizationState extends Context.Service<
       input: CodexVisualizationStateWriteInput,
       originRendererId: string,
     ) => Effect.Effect<WriteCommit, CodexVisualizationStateError>;
+    readonly writeInteraction: (
+      input: CodexVisualizationInteractionWriteInput,
+      originRendererId: string,
+    ) => Effect.Effect<
+      {
+        readonly result: CodexVisualizationInteractionWriteResult;
+        readonly event: PersistedAtomEvent | null;
+      },
+      CodexVisualizationStateError
+    >;
     readonly readPassiveContext: (
       scope: CodexVisualizationStateScope,
       attachments?: readonly CodexVisualizationPassiveAttachment[],
@@ -124,6 +137,61 @@ export const live: Layer.Layer<CodexVisualizationState, never, ProfilePersistedA
             catch: (cause) => new CodexVisualizationStateError({ operation: "write", cause }),
           }),
       );
+      const writeInteraction = Effect.fn("CodexVisualizationState.writeInteraction")(
+        (input: CodexVisualizationInteractionWriteInput, originRendererId: string) =>
+          Effect.try({
+            try: (): {
+              readonly result: CodexVisualizationInteractionWriteResult;
+              readonly event: PersistedAtomEvent | null;
+            } => {
+              const identity = CodexVisualizationStateIdentitySchema.parse(input.identity);
+              const mutationId = z.string().trim().min(1).parse(input.mutationId);
+              const parsed = parseCodexVisualizationInteractionState(input.state);
+              if (!parsed.ok) return { result: parsed, event: null };
+              try {
+                const atomKey = codexVisualizationInteractionAtomKey(identity);
+                const key = codexVisualizationStateEntryKey(identity);
+                const entries = new Map(
+                  Object.entries(
+                    CodexVisualizationStateRecordSchema.parse(store.readState()[atomKey]),
+                  ),
+                );
+                if (parsed.state.modelContent === null && !entries.has(key))
+                  return {
+                    result: {
+                      ok: true,
+                      revision: store.readSnapshot().revision,
+                      value: parsed.state,
+                    },
+                    event: null,
+                  };
+                entries.delete(key);
+                entries.set(key, { ...identity, state: parsed.state });
+                const event = store.commitMutation(
+                  {
+                    key: atomKey,
+                    value: Object.fromEntries(
+                      [...entries].slice(-CODEX_VISUALIZATION_STATE_MAX_ENTRIES),
+                    ),
+                    mutationId,
+                  },
+                  originRendererId,
+                );
+                return {
+                  result: { ok: true, revision: event.revision, value: parsed.state },
+                  event,
+                };
+              } catch {
+                return {
+                  result: { ok: false, code: "storage_unavailable", retryable: false },
+                  event: null,
+                };
+              }
+            },
+            catch: (cause) =>
+              new CodexVisualizationStateError({ operation: "write-interaction", cause }),
+          }),
+      );
       const readPassiveContext = Effect.fn("CodexVisualizationState.readPassiveContext")(
         (
           raw: CodexVisualizationStateScope,
@@ -163,6 +231,12 @@ export const live: Layer.Layer<CodexVisualizationState, never, ProfilePersistedA
               new CodexVisualizationStateError({ operation: "clear-thread", cause }),
           }),
       );
-      return CodexVisualizationState.of({ read, write, readPassiveContext, clearThread });
+      return CodexVisualizationState.of({
+        read,
+        write,
+        writeInteraction,
+        readPassiveContext,
+        clearThread,
+      });
     }),
   );

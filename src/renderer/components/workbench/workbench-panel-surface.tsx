@@ -111,6 +111,9 @@ export function WorkbenchTabProjectionPanel({
     },
   ) => Promise<boolean>;
   onOpenFileTab: (input: {
+    hostId?: string;
+    cwd?: string | null;
+    workspaceRoot?: string | null;
     path: string;
     title: string;
     panelId: PanelId;

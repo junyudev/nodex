@@ -252,6 +252,7 @@ export function makePreviewWorkspaceFileTab(
   panelId: PanelId,
   input: {
     cwd: string | null;
+    hostId?: string;
     leafId: string;
     path: string;
     title: string;
@@ -262,7 +263,11 @@ export function makePreviewWorkspaceFileTab(
   const now = new Date().toISOString();
   const projectId = session.projectId;
   return {
-    id: workbenchFileResourceId("local", input.path, input.cwd ?? input.workspaceRoot),
+    id: workbenchFileResourceId(
+      input.hostId ?? "local",
+      input.path,
+      input.cwd ?? input.workspaceRoot,
+    ),
     sessionId: session.id,
     projectId,
     browserTabId: null,
@@ -272,7 +277,7 @@ export function makePreviewWorkspaceFileTab(
     order: session.tabs.filter((tab) => tab.panelId === panelId).length,
     config: {
       projectId,
-      hostId: "local",
+      hostId: input.hostId ?? "local",
       cwd: input.cwd,
       workspaceRoot: input.workspaceRoot,
       path: canonicalWorkbenchFilePath(input.path, input.cwd ?? input.workspaceRoot),

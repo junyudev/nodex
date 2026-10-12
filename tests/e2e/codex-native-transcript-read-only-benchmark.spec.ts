@@ -67,7 +67,7 @@ interface NativeAttachmentEvidence {
   classification?: "already-materialized" | "startup-sync-race" | "explicit-connection";
 }
 
-async function measureFind(page: Page, corpus: "short" | "long") {
+async function measureFind(page: Page, corpus: "short" | "long", failurePath: string) {
   await page.keyboard.press("ControlOrMeta+f");
   const input = page.getByPlaceholder("Search chat…");
   await expect(input).toBeVisible();
@@ -84,21 +84,71 @@ async function measureFind(page: Page, corpus: "short" | "long") {
     const startedAt = performance.now();
     await input.fill(term);
     const fillCompletedAtMs = performance.now();
-    await page.waitForFunction(
-      (term) =>
-        [...document.querySelectorAll("mark.codex-thread-find-active")].some((mark) => {
-          if (mark.textContent !== term) return false;
-          const rect = mark.getBoundingClientRect();
-          const viewport = mark
-            .closest("[data-local-conversation-thread-body=true]")
-            ?.getBoundingClientRect();
-          return (
-            viewport && rect.height > 0 && rect.bottom > viewport.top && rect.top < viewport.bottom
-          );
-        }),
-      term,
-      { timeout: 60_000 },
-    );
+    await page
+      .waitForFunction(
+        (term) =>
+          [...document.querySelectorAll("mark.codex-thread-find-active")].some((mark) => {
+            if (mark.textContent !== term) return false;
+            const rect = mark.getBoundingClientRect();
+            const viewport = mark
+              .closest("[data-local-conversation-thread-body=true]")
+              ?.getBoundingClientRect();
+            return (
+              viewport &&
+              rect.height > 0 &&
+              rect.bottom > viewport.top &&
+              rect.top < viewport.bottom
+            );
+          }),
+        term,
+        { timeout: 60_000 },
+      )
+      .catch(async (error: unknown) => {
+        // Collect only the owned synthetic transcript after failure, outside all latency samples.
+        const evidence = await Promise.allSettled([
+          readTranscriptPortEvidence(page),
+          page.evaluate(() => {
+            const root = document.querySelector<HTMLElement>(
+              "[data-local-conversation-thread-body=true]",
+            );
+            const bounds = (element: Element) => {
+              const rect = element.getBoundingClientRect();
+              return { top: rect.top, bottom: rect.bottom, height: rect.height };
+            };
+            return {
+              inputValue: document.querySelector<HTMLInputElement>(
+                'input[placeholder="Search chat…"]',
+              )?.value,
+              viewport: root
+                ? {
+                    ...bounds(root),
+                    scrollTop: root.scrollTop,
+                    scrollHeight: root.scrollHeight,
+                    clientHeight: root.clientHeight,
+                  }
+                : null,
+              marks: [...document.querySelectorAll("mark.codex-thread-find-active")].map(
+                (mark) => ({ text: mark.textContent, ...bounds(mark) }),
+              ),
+              units: [...(root?.querySelectorAll("[data-content-search-unit-key]") ?? [])]
+                .slice(0, 80)
+                .map((unit) => ({
+                  id: unit.getAttribute("data-content-search-unit-key"),
+                  turnKey: unit
+                    .closest("[data-content-search-turn-key]")
+                    ?.getAttribute("data-content-search-turn-key"),
+                  text: unit.textContent?.slice(0, 96),
+                  ...bounds(unit),
+                })),
+            };
+          }),
+        ]);
+        await writeFile(
+          failurePath,
+          `${JSON.stringify({ queryId, term, itemId, before, completedSamples: samples, evidence }, null, 2)}\n`,
+        );
+        throw error;
+      });
     const markObservedAtMs = performance.now();
     const rendererTwoFramesAtMs = await page.evaluate(
       () =>
@@ -204,12 +254,16 @@ test("benchmarks native paginated history without running a model Turn", async (
   if (activeEvictionSetting !== "0" && activeEvictionSetting !== "1")
     throw new Error("Native transcript active eviction must be explicitly 0 or 1");
   const activeEviction = activeEvictionSetting === "1";
+  const timelineSetting = process.env.NODEX_NATIVE_TRANSCRIPT_TIMELINE ?? "0";
+  if (timelineSetting !== "0" && timelineSetting !== "1")
+    throw new Error("Native transcript timeline history must be explicitly 0 or 1");
+  const timelineEnabled = timelineSetting === "1";
   for (const [runIndex, corpusId] of order.entries()) {
     const corpus = preflight.corpora.find((value) => value.corpus === corpusId)!;
     const resultPath = path.join(directory, `${runIndex}-${corpus.corpus}.json`);
     const enabledFeatures: readonly DevelopmentFeatureSlug[] = [
       "runtime-metrics",
-      "thread-timeline-history",
+      ...(timelineEnabled ? (["thread-timeline-history"] as const) : []),
       ...(activeEviction ? (["active-history-eviction"] as const) : []),
     ];
     const harness = await ElectronScenarioHarness.create({
@@ -380,21 +434,23 @@ test("benchmarks native paginated history without running a model Turn", async (
         "local",
       )) as CodexRendererHostContext;
       expect(hostContext.supportsThreadTimeline).toBe(true);
-      expect(hostContext.historyPolicy?.timeline).toBe(true);
+      expect(hostContext.historyPolicy?.timeline).toBe(timelineEnabled);
       expect(hostContext.historyPolicy?.activeEviction).toBe(activeEviction);
-      await expect
-        .poll(
-          async () =>
-            (await readTranscriptPortEvidence(page)).itemTimelines.some(
-              (timeline) => timeline.present && timeline.itemEntryCount > 0,
-            ),
-          { timeout: 60_000 },
-        )
-        .toBe(true);
+      if (timelineEnabled) {
+        await expect
+          .poll(
+            async () =>
+              (await readTranscriptPortEvidence(page)).itemTimelines.some(
+                (timeline) => timeline.present && timeline.itemEntryCount > 0,
+              ),
+            { timeout: 60_000 },
+          )
+          .toBe(true);
+      }
       const startedResident = await readTranscriptPortEvidence(page);
       expect(startedResident.normalizedChannels).toBeGreaterThan(0);
       const wheel = await measureTranscriptWheel(page, 30);
-      const find = await measureFind(page, corpus.corpus);
+      const find = await measureFind(page, corpus.corpus, `${resultPath}.find-failure.json`);
       const after = await processEvidence(harness);
       const electronPid = harness.application.process().pid;
       await harness.stopElectron();
@@ -493,12 +549,20 @@ test("benchmarks native paginated history without running a model Turn", async (
             effectivePolicy: {
               requestedDevelopmentFeatures: enabledFeatures,
               supportsThreadTimeline: hostContext.supportsThreadTimeline,
+              effectiveThreadTimelineReadEnabled:
+                hostContext.supportsThreadTimeline && hostContext.historyPolicy?.timeline === true,
               historyPolicy: hostContext.historyPolicy,
               normalizedItemTimelines: startedResident.itemTimelines,
               activeNormalizedViewerChannels: startedResident.normalizedChannels,
-              referenceObserved: { usesUnifiedTimeline: true, retainActiveInterest: true },
+              referenceObserved: {
+                usesUnifiedTimeline: true,
+                retainActiveInterest: true,
+                rendererNativeTimelineReadAssignment: false,
+                rendererActiveEvictionAssignment: false,
+                evidence: "reference-history-policy-20261013-d/metadata.json",
+              },
               retentionLimit:
-                "Reference active interest is the visible viewer lease, independent of eviction assignment. Nodex active eviction is explicitly configured for both corpora; the fresh reference renderer assignment was false, while its separate Main assignment remains unobserved.",
+                "Reference active interest is the visible viewer lease, independent of eviction assignment. Packaged ordinary history uses its renderer-local manager; the fresh Ready SDK assignments for native timeline reads and active eviction were both false. Nodex configures both policies explicitly for both corpora; timeline-on runs are separate conformance measurements.",
             },
             before,
             after,

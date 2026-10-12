@@ -89,10 +89,14 @@ import {
   queuedMessagePromptInput,
   type CodexQueuedMessage,
 } from "../../../shared/codex-queued-message";
-import { prepareUntrustedAppInput } from "../../../shared/codex-untrusted-app-input";
+import {
+  prepareUntrustedAppInput,
+  requiresUntrustedAppInputConfirmation,
+} from "../../../shared/codex-untrusted-app-input";
 import {
   CodexServerQueuedMessages,
   preserveGeneratedQueueText,
+  type CodexServerQueueInput,
 } from "./codex-server-queued-messages";
 import { rendererQueuedMessageStorage } from "./renderer-queued-message-storage";
 import { registerAppCloseFlushHandler } from "../../lib/app-close-flush";
@@ -1288,7 +1292,7 @@ async function compileServerQueuedMessageInput(
   message: CodexQueuedMessage,
   previous: import("@nodex/codex-app-server-protocol/v2").QueuedSubmission | undefined,
   preserveGeneratedText: boolean,
-): Promise<UserInput[]> {
+): Promise<CodexServerQueueInput> {
   const prepared = await prepareCodexPrompt(
     message.context.prompt,
     queuedMessagePromptInput(message),
@@ -1300,43 +1304,46 @@ async function compileServerQueuedMessageInput(
     `untrusted_input_${message.id}`,
   );
   const input = [appInput.input, ...prepared.inputItems.slice(1)];
-  if (!previous) return input;
+  if (!previous) return { input, responseItems: appInput.responseItems };
 
   const previousAttachments = extractCodexCanonicalHydratedAttachments(previous.input);
-  return [
-    ...input.map((entry) => {
-      if (entry.type === "text" && preserveGeneratedText) {
-        const previousText = previous.input.find((candidate) => candidate.type === "text");
-        if (previousText?.type === "text") {
-          return { ...entry, text: preserveGeneratedQueueText(previousText.text, entry.text) };
+  return {
+    responseItems: appInput.responseItems,
+    input: [
+      ...input.map((entry) => {
+        if (entry.type === "text" && preserveGeneratedText) {
+          const previousText = previous.input.find((candidate) => candidate.type === "text");
+          if (previousText?.type === "text") {
+            return { ...entry, text: preserveGeneratedQueueText(previousText.text, entry.text) };
+          }
         }
-      }
-      if (entry.type === "image")
-        return (
-          previous.input.find(
-            (candidate) =>
-              candidate.type === "image" &&
-              codexImageInputSource(candidate) === codexImageInputSource(entry),
-          ) ?? entry
-        );
-      if (entry.type === "localImage")
-        return (
-          previous.input.find(
-            (candidate) => candidate.type === "localImage" && candidate.path === entry.path,
-          ) ?? entry
-        );
-      return entry;
-    }),
-    ...previous.input.filter(
-      (entry) =>
-        entry.type !== "text" &&
-        entry.type !== "image" &&
-        entry.type !== "localImage" &&
-        (entry.type !== "mention" ||
-          !previousAttachments.some(({ path }) => path === entry.path) ||
-          message.context.fileAttachments.some(({ path }) => path === entry.path)),
-    ),
-  ];
+        if (entry.type === "image")
+          return (
+            previous.input.find(
+              (candidate) =>
+                candidate.type === "image" &&
+                codexImageInputSource(candidate) === codexImageInputSource(entry),
+            ) ?? entry
+          );
+        if (entry.type === "localImage")
+          return (
+            previous.input.find(
+              (candidate) => candidate.type === "localImage" && candidate.path === entry.path,
+            ) ?? entry
+          );
+        return entry;
+      }),
+      ...previous.input.filter(
+        (entry) =>
+          entry.type !== "text" &&
+          entry.type !== "image" &&
+          entry.type !== "localImage" &&
+          (entry.type !== "mention" ||
+            !previousAttachments.some(({ path }) => path === entry.path) ||
+            message.context.fileAttachments.some(({ path }) => path === entry.path)),
+      ),
+    ],
+  };
 }
 
 function createOwnerClientUserMessageId(): string {
@@ -4426,7 +4433,7 @@ export class CodexAppServerManager {
         !durableHost &&
         prepared.supportsPaginatedHistory &&
         prepared.params.initialTurnsPage == null;
-      const earlyPage = paginated ? await earlyHistory : null;
+      if (paginated) await earlyHistory;
       if (!lifetime.isCurrent() || !isCurrent()) throw new Error("Resume early history retired");
       const previous = this.historyClient.getConversation(threadId);
       const cwd =
@@ -4504,8 +4511,8 @@ export class CodexAppServerManager {
       });
       // Preparation selects the history contract. New response metadata must not
       // discard a requested legacy page or reinterpret its remaining cursor.
-      // Resume's Turn cursor cannot address timeline history. Re-read the timeline after
-      // native adoption: an early page can observe an index that is not populated yet.
+      // Early history supplies presentation while preparation is pending. Native adoption
+      // can advance the tail, so final history must use this resume's own source and cursor.
       const page =
         paginated && this.canReadThreadTimeline()
           ? await listCanonicalHistoryTurns(this.historyClient, threadId, {
@@ -4513,43 +4520,42 @@ export class CodexAppServerManager {
               cursor: null,
               requestOptions: { source: "thread_hydration", priority, trace: navigationTrace },
             })
-          : (earlyPage ??
-            (durableHost
-              ? await listCanonicalHistoryTurns(this.historyClient, threadId, {
-                  cursor: null,
-                  limit: 5,
-                  sortDirection: "desc",
-                  itemsView: "full",
-                  requestOptions: { source: "thread_hydration", priority, trace: navigationTrace },
-                })
-              : paginated
-                ? response.turnsBackwardsCursor == null
-                  ? {
-                      response: { data: [], nextCursor: null },
-                      itemsPaginationByTurnId: {},
-                      source: undefined,
-                      timeline: undefined,
-                    }
-                  : await listCanonicalHistoryTurns(this.historyClient, threadId, {
-                      source: "ordinary",
-                      cursor: response.turnsBackwardsCursor,
-                      limit: 5,
-                      sortDirection: "desc",
-                      itemsView: "full",
-                      requestOptions: {
-                        source: "thread_hydration",
-                        priority,
-                        trace: navigationTrace,
-                      },
-                    })
-                : response.initialTurnsPage
-                  ? {
-                      response: response.initialTurnsPage,
-                      itemsPaginationByTurnId: {},
-                      source: undefined,
-                      timeline: undefined,
-                    }
-                  : null));
+          : durableHost
+            ? await listCanonicalHistoryTurns(this.historyClient, threadId, {
+                cursor: null,
+                limit: 5,
+                sortDirection: "desc",
+                itemsView: "full",
+                requestOptions: { source: "thread_hydration", priority, trace: navigationTrace },
+              })
+            : paginated
+              ? response.turnsBackwardsCursor == null
+                ? {
+                    response: { data: [], nextCursor: null },
+                    itemsPaginationByTurnId: {},
+                    source: undefined,
+                    timeline: undefined,
+                  }
+                : await listCanonicalHistoryTurns(this.historyClient, threadId, {
+                    source: "ordinary",
+                    cursor: response.turnsBackwardsCursor,
+                    limit: 5,
+                    sortDirection: "desc",
+                    itemsView: "full",
+                    requestOptions: {
+                      source: "thread_hydration",
+                      priority,
+                      trace: navigationTrace,
+                    },
+                  })
+              : response.initialTurnsPage
+                ? {
+                    response: response.initialTurnsPage,
+                    itemsPaginationByTurnId: {},
+                    source: undefined,
+                    timeline: undefined,
+                  }
+                : null;
       const legacy =
         page === null
           ? await this.nativeAppServer.request(
@@ -6604,7 +6610,10 @@ export class CodexAppServerManager {
       presentationTicket,
     );
     await this.loadQueuedMessages(threadId);
-    if (this.isServerQueueSelected(threadId)) {
+    if (
+      this.isServerQueueSelected(threadId) &&
+      !requiresUntrustedAppInputConfirmation(message.context)
+    ) {
       await this.serverQueuedMessages.enqueue(threadId, message);
       return;
     }

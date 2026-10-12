@@ -280,7 +280,10 @@ export async function listWorkspaceDirectoryEntries(
 
 function resolveFileRequestPath(input: WorkspaceFileRequest): string {
   normalizeHostId(input.hostId);
-  return normalizeAbsolutePath(input.path, "File path");
+  if (!isAbsolute(input.path) || input.path.includes("\0")) {
+    throw new WorkspaceFileUserError("invalid_path", "File path must be absolute");
+  }
+  return resolve(input.path);
 }
 
 function isProbablyBinary(buffer: Buffer): boolean {
@@ -337,6 +340,16 @@ function detectMimeType(bytes: Buffer): string | undefined {
   return undefined;
 }
 
+export function describeWorkspaceFileBytes(
+  bytes: Buffer,
+): Pick<WorkspaceFileMetadata, "contentKind" | "mimeType"> {
+  const mimeType = detectMimeType(bytes);
+  return {
+    contentKind: isProbablyBinary(bytes) ? "binary" : "text",
+    ...(mimeType ? { mimeType } : {}),
+  };
+}
+
 export async function readWorkspaceFile(
   input: WorkspaceFileTextReadInput,
 ): Promise<WorkspaceFileReadResult> {
@@ -381,19 +394,13 @@ export async function readWorkspaceFileMetadata(
       fileStats.size <= input.contentSampleMaxFileBytes);
   const contentSampleByteLimit = input.contentSampleByteLimit ?? DEFAULT_CONTENT_SAMPLE_BYTES;
   const sample = shouldReadSample ? await readFileSample(filePath, contentSampleByteLimit) : null;
-  const mimeType = sample === null ? undefined : detectMimeType(sample);
 
   return {
     isFile,
     createdAtMs: fileStats.birthtimeMs > 0 ? fileStats.birthtimeMs : null,
     mtimeMs: Number.isFinite(fileStats.mtimeMs) ? fileStats.mtimeMs : null,
     sizeBytes: Number.isFinite(fileStats.size) ? fileStats.size : null,
-    ...(sample === null
-      ? {}
-      : {
-          contentKind: isProbablyBinary(sample) ? "binary" : "text",
-          ...(mimeType ? { mimeType } : {}),
-        }),
+    ...(sample === null ? {} : describeWorkspaceFileBytes(sample)),
   };
 }
 

@@ -52,3 +52,25 @@ export function parseCodexDelegationText(value: string): CodexDelegationPayload 
   if (sourceThreadId === null || input === null) return null;
   return { sourceThreadId, input };
 }
+
+/** Voice handoffs are a distinct complete envelope, never an ordinary user's prose. */
+export function parseCodexRealtimeDelegationText(value: string): {
+  readonly input: string;
+  readonly source: "transcript_tail_flush" | null;
+} | null {
+  const normalized = value.trim();
+  if (
+    !normalized.startsWith("<realtime_delegation>") ||
+    !normalized.endsWith("</realtime_delegation>")
+  )
+    return null;
+  const input = readCodexDelegationTag(normalized, "input");
+  if (input === null) return null;
+  return {
+    input,
+    source:
+      readCodexDelegationTag(normalized, "source") === "transcript_tail_flush"
+        ? "transcript_tail_flush"
+        : null,
+  };
+}

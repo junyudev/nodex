@@ -11,6 +11,7 @@ import { useFileLinkOpener } from "./use-file-link-opener";
 export type FileReferenceTarget = FileLinkTarget;
 
 export interface FileReferenceOpenInput {
+  readonly hostId?: string;
   readonly cwd?: string | null;
   readonly workspaceRoot?: string | null;
   readonly title?: string;
@@ -23,7 +24,7 @@ export interface FileReferenceOpenInput {
 export interface FileReferenceRouterPort {
   readonly openWorkspaceFileTab: (input: {
     cwd?: string | null;
-    hostId?: "local";
+    hostId?: string;
     path: string;
     title: string;
     panelId: PanelId;
@@ -41,6 +42,7 @@ export interface FileReferenceRouter {
 }
 
 interface FileReferenceRouterContextValue extends FileReferenceRouter {
+  readonly hostId: string;
   readonly workspaceRoot: string | null;
 }
 
@@ -84,11 +86,12 @@ export function createFileReferenceRouter({
 }): FileReferenceRouter {
   return {
     open: async (target, options) => {
+      const hostId = options?.hostId ?? "local";
       const external = options?.external === true;
       if (!external && port) {
         const openedInPanel = await port.openWorkspaceFileTab({
           cwd: options?.cwd,
-          hostId: "local",
+          hostId,
           path: target.path,
           title: getTargetTitle(target, options?.title),
           panelId: options?.panelId ?? "right",
@@ -108,6 +111,7 @@ export function createFileReferenceRouter({
         if (openedInPanel) return true;
       }
 
+      if (hostId !== "local") return false;
       return openFileReferenceExternally(target, options?.opener ?? opener);
     },
   };
@@ -131,6 +135,7 @@ export function FileReferenceRouterProvider({
   const value = useMemo<FileReferenceRouterContextValue>(
     () => ({
       ...router,
+      hostId: "local",
       workspaceRoot: workspaceRoot?.trim() || null,
     }),
     [router, workspaceRoot],
@@ -143,11 +148,38 @@ export function FileReferenceRouterProvider({
   );
 }
 
+/** File content inherits its source host while using the owning Workbench router. */
+export function FileReferenceHostProvider({
+  children,
+  hostId,
+  workspaceRoot,
+}: {
+  readonly children: ReactNode;
+  readonly hostId: string;
+  readonly workspaceRoot: string | null;
+}) {
+  const parent = useFileReferenceRouter();
+  const value = useMemo<FileReferenceRouterContextValue>(
+    () => ({
+      hostId,
+      workspaceRoot,
+      open: (target, options) =>
+        parent.open(target, { ...options, hostId: options?.hostId ?? hostId }),
+    }),
+    [hostId, parent, workspaceRoot],
+  );
+  return (
+    <FileReferenceRouterContext.Provider value={value}>
+      {children}
+    </FileReferenceRouterContext.Provider>
+  );
+}
+
 export function useFileReferenceRouter(): FileReferenceRouterContextValue {
   const context = useContext(FileReferenceRouterContext);
   const { opener } = useFileLinkOpener();
   const fallbackRouter = useMemo(() => createFileReferenceRouter({ opener }), [opener]);
-  return context ?? { ...fallbackRouter, workspaceRoot: null };
+  return context ?? { ...fallbackRouter, hostId: "local", workspaceRoot: null };
 }
 
 export function getFileReferenceOpenWithMenuItems() {

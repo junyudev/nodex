@@ -1,4 +1,5 @@
 import { expect, test, vi } from "vite-plus/test";
+import { prepareUntrustedAppInput } from "../../../shared/codex-untrusted-app-input";
 import {
   CodexServerQueuedMessages,
   type CodexServerQueuedMessagesOptions,
@@ -23,7 +24,7 @@ test("reconstructs hosted images and preserves their native details when a queue
   });
   const queue = new CodexServerQueuedMessages({
     request: request as CodexServerQueuedMessagesOptions["request"],
-    compileInput: () => [],
+    compileInput: () => ({ input: [], responseItems: [] }),
     getConversationCwd: () => "/workspace",
     isConversationInterrupted: () => false,
     isConversationStreaming: () => false,
@@ -41,3 +42,60 @@ test("reconstructs hosted images and preserves their native details when a queue
     queue[Symbol.dispose]();
   }
 });
+
+test.each(["pair", "placeholder"] as const)(
+  "refuses %s app input before server queue mutation",
+  async (form) => {
+    const compiled = prepareUntrustedAppInput(
+      "Use the selected variant",
+      {
+        mcpAppModelContextAttachments: [
+          {
+            id: "/widget.html",
+            kind: "context",
+            sourceName: "Changes",
+            text: null,
+            structuredContent: { selectedVariants: [{ carousel: 0, variant: "Dots" }] },
+            imageAttachments: [],
+            untrusted: true,
+          },
+        ],
+      },
+      "annotation-call",
+    );
+    const request = vi.fn(async (method: string) => {
+      if (method === "thread/queue/list") return { data: [], nextCursor: null };
+      throw new Error(`Unexpected native queue mutation ${method}`);
+    });
+    const queue = new CodexServerQueuedMessages({
+      request: request as CodexServerQueuedMessagesOptions["request"],
+      compileInput: () => ({
+        input: form === "pair" ? [] : [compiled.input],
+        responseItems: form === "pair" ? compiled.responseItems : [],
+      }),
+      getConversationCwd: () => "/workspace",
+      isConversationInterrupted: () => false,
+      isConversationStreaming: () => false,
+      onQueueChanged: () => {},
+    });
+    try {
+      await expect(
+        queue.enqueue("thread-1", {
+          id: "message",
+          cwd: "/workspace",
+          context: {
+            prompt: "Use the selected variant",
+            fileAttachments: [],
+            addedFiles: [],
+            commentAttachments: [],
+            imageAttachments: [],
+          },
+        }),
+      ).rejects.toThrow("requires confirmation");
+      expect(request.mock.calls.map(([method]) => method)).toEqual(["thread/queue/list"]);
+      expect(queue.read("thread-1")).toEqual([]);
+    } finally {
+      queue[Symbol.dispose]();
+    }
+  },
+);

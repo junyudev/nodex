@@ -1,4 +1,4 @@
-export type ThreadWorkedForStatus = "working" | "worked";
+export type ThreadWorkedForStatus = "working" | "worked" | "stopped";
 
 export interface ThreadWorkedForTiming {
   status: ThreadWorkedForStatus;
@@ -51,7 +51,7 @@ export function resolveWorkedForLabelText(input: {
 
     const timeLabel = formatWorkedForTimeLabel(elapsedMs);
     if (!timeLabel) return null;
-    return `Worked for ${timeLabel}`;
+    return `${input.timing.status === "stopped" ? "Stopped" : "Worked"} for ${timeLabel}`;
   }
 
   const fallbackTimeLabel = input.fallbackTimeLabel?.trim() ?? "";

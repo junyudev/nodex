@@ -908,7 +908,7 @@ export interface TerminalViewLeaseRevokedEvent {
 
 export interface WorkbenchProjectionFilesTabConfig {
   projectId: string | null;
-  hostId: "local";
+  hostId: string;
   workspaceRoot: string | null;
   cwd: string | null;
   path?: string;
@@ -947,7 +947,7 @@ export type WorkbenchProjectionTabConfiguration = {
   };
 }[WorkbenchTabKind];
 
-export type WorkspaceFileHostId = "local";
+export type WorkspaceFileHostId = string;
 
 export interface WorkspaceFileDirectoryEntry {
   name: string;
@@ -973,6 +973,15 @@ export interface WorkspaceDirectoryEntriesResult {
 export interface WorkspaceFileRequest {
   hostId?: WorkspaceFileHostId;
   path: string;
+}
+
+export interface WorkspacePathsExistInput {
+  hostId?: string;
+  paths: string[];
+}
+
+export interface WorkspacePathsExistResult {
+  existingPaths: string[];
 }
 
 export interface WorkspaceFileTextReadInput extends WorkspaceFileRequest {
@@ -2814,6 +2823,7 @@ export interface CodexPromptAgentConfigInput {
 
 export interface CodexPromptInput {
   text: string;
+  mcpAppModelContextAttachments?: readonly import("./codex-untrusted-app-input").CodexAppModelContextAttachment[];
   /** Retained app provenance survives queued-message editing and recovery. */
   untrustedAppMessage?: import("./codex-untrusted-app-input").CodexUntrustedAppMessage;
   documentItems?: CodexPromptDocumentInput[];

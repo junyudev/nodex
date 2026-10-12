@@ -241,6 +241,7 @@ describe("inline visualization runtime lifecycle", () => {
     const widgetState: InlineVisualizationWidgetStateOwner = {
       identity: { hostId: "local", threadId: "display", path: "/owned/plot.html" },
       read: vi.fn(async () => saved),
+      writeInteraction: vi.fn(),
       write: vi.fn<InlineVisualizationWidgetStateOwner["write"]>(async (value) => {
         saved = value;
         return { ok: true, revision: ++revision, value };
@@ -289,6 +290,7 @@ describe("inline visualization runtime lifecycle", () => {
     const widgetState: InlineVisualizationWidgetStateOwner = {
       identity: { hostId: "local", threadId: "display", path: "/owned/plot.html" },
       read: vi.fn(() => pending.promise),
+      writeInteraction: vi.fn(),
       write: vi.fn(),
     };
     const runtime = mountRuntime({ widgetState });

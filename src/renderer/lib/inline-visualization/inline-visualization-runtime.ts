@@ -11,6 +11,20 @@ import type { McpAppFollowUpHandler } from "../mcp-app/mcp-app-follow-up-context
 import type { McpAppFollowUpMessage } from "../mcp-app/mcp-app-follow-up";
 import type { InlineVisualizationFollowUpHandler } from "./inline-visualization-follow-up-context";
 import { sendInlineVisualizationFollowUp } from "./inline-visualization-follow-up";
+import {
+  createInlineVisualizationAnnotations,
+  type InlineVisualizationAnnotations,
+} from "./inline-visualization-annotations";
+import {
+  VISUALIZATION_ANNOTATION_TOOL,
+  type VisualizationAnnotationCommand,
+} from "../../../shared/codex-visualization-annotations";
+import {
+  parseCodexVisualizationInteractionState,
+  codexVisualizationStateEntryKey,
+} from "../../../shared/codex-visualization-state";
+import type { InlineVisualizationAnnotationSubmitHandler } from "./inline-visualization-follow-up-context";
+import type { InlineVisualizationVariant } from "./inline-visualization-presentation";
 import { createVisualizationDownloadHandler } from "./inline-visualization-download";
 import {
   inlineVisualizationContentBounds,
@@ -65,6 +79,8 @@ export interface InlineVisualizationRuntime {
   readonly captureImage: () => Promise<Uint8Array>;
   readonly copyAsImage: () => Promise<void>;
   readonly dispose: () => Promise<void>;
+  readonly annotations: InlineVisualizationAnnotations;
+  readonly setActive: (active: boolean) => void;
 }
 
 interface HostCallbacks {
@@ -77,6 +93,7 @@ interface HostCallbacks {
   readonly followUp?: McpAppFollowUpHandler;
   readonly download?: (value: unknown) => Promise<void>;
   readonly updateWidgetState?: McpAppHostApiHandlers["updateWidgetState"];
+  readonly annotations?: (value: unknown) => unknown;
 }
 
 const asRecord = (value: unknown): Record<string, unknown> | null =>
@@ -95,6 +112,10 @@ export function createInlineVisualizationHostHandlers(
   return {
     callMcp: deny,
     callTool: (name, args) => {
+      if (name === VISUALIZATION_ANNOTATION_TOOL) {
+        if (!callbacks.annotations) return deny();
+        return callbacks.annotations(args);
+      }
       if (name === "__codex_inline_visualization_download__") {
         if (!callbacks.download) return deny();
         return callbacks.download(args);
@@ -200,6 +221,10 @@ export function createInlineVisualizationRuntime(input: {
   readonly scopeId: string;
   readonly html: string;
   readonly widgetState?: InlineVisualizationWidgetStateOwner;
+  readonly variant?: InlineVisualizationVariant;
+  readonly allowInteractions?: boolean;
+  readonly annotationsEnabled?: boolean;
+  readonly onSubmitAnnotations?: InlineVisualizationAnnotationSubmitHandler;
   readonly onInteraction?: () => void;
   readonly canExpand?: () => boolean;
   readonly followUp?: InlineVisualizationFollowUpHandler;
@@ -215,6 +240,12 @@ export function createInlineVisualizationRuntime(input: {
   const listeners = new Set<() => void>();
   const widgetId = input.widgetState?.identity.path ?? crypto.randomUUID();
   const followUp = input.followUp;
+  const allowAnnotations =
+    input.allowInteractions !== false &&
+    input.annotationsEnabled !== false &&
+    input.variant !== "live";
+  let active = true;
+  let annotationCommand: VisualizationAnnotationCommand | null = null;
   let environmentReady = false;
   let hasMeasurement = false;
   let connected: ConnectedMcpAppSandbox | null = null;
@@ -245,6 +276,11 @@ export function createInlineVisualizationRuntime(input: {
   const publish = (next: InlineVisualizationSnapshot) => {
     if (controller.signal.aborted) return;
     snapshot = next;
+    annotations.setPresentation({
+      active,
+      preview: snapshot.displayMode === "fullscreen",
+      ready: snapshot.status === "ready",
+    });
     listeners.forEach((listener) => listener());
   };
   const fail = (value: unknown) => {
@@ -285,6 +321,7 @@ export function createInlineVisualizationRuntime(input: {
           maxWidth: inlineVisualizationContentWidth(element.clientWidth),
           visualizationTheme: theme(),
           visualizationStyleVariables: styleSnapshot,
+          visualizationAnnotation: annotationCommand,
         },
       }),
       connected.api.notifyMcpAppsHostContext({ hostContext: context() }),
@@ -296,6 +333,42 @@ export function createInlineVisualizationRuntime(input: {
     void updateContext();
     return snapshot.displayMode;
   };
+  const annotations = createInlineVisualizationAnnotations({
+    allowed: allowAnnotations,
+    globals: (command) => {
+      annotationCommand = command;
+      if (!connected || controller.signal.aborted) return;
+      void connected.api
+        .setAdditionalGlobals({ additionalGlobals: { visualizationAnnotation: command } })
+        .catch(() => undefined);
+    },
+    ...(input.widgetState
+      ? {
+          persist: (context) => {
+            const parsed = parseCodexVisualizationInteractionState({
+              modelContent: context ?? null,
+            });
+            return parsed.ok
+              ? input.widgetState!.writeInteraction(parsed.state)
+              : Promise.resolve(parsed);
+          },
+        }
+      : {}),
+    ...(input.onSubmitAnnotations
+      ? {
+          submit: async (message) => {
+            if (controller.signal.aborted || !active || snapshot.displayMode !== "inline")
+              throw new Error("The interactive response has ended");
+            await input.onSubmitAnnotations!({
+              ...message,
+              sourceId: input.widgetState
+                ? codexVisualizationStateEntryKey(input.widgetState.identity)
+                : input.scopeId,
+            });
+          },
+        }
+      : {}),
+  });
   const imageCaptureInput = () => {
     if (
       controller.signal.aborted ||
@@ -374,6 +447,7 @@ export function createInlineVisualizationRuntime(input: {
     const attemptController = new AbortController();
     const signal = AbortSignal.any([controller.signal, attemptController.signal]);
     const downloadCapability = crypto.randomUUID();
+    if (attempt > 0) annotations.resetDocument();
     try {
       const identity = await deriveMcpAppSandboxIdentity({
         locale: navigator.language,
@@ -389,6 +463,7 @@ export function createInlineVisualizationRuntime(input: {
       element.append(webview);
       const handlers = fenceHostHandlers(
         createInlineVisualizationHostHandlers({
+          annotations: annotations.handleMessage,
           download: createVisualizationDownloadHandler({
             capability: downloadCapability,
             signal,
@@ -467,6 +542,8 @@ export function createInlineVisualizationRuntime(input: {
         html: buildInlineVisualizationDocument(input.html, {
           statePersistence: input.widgetState ? "host" : "none",
           downloadCapability,
+          allowAnnotations,
+          lockDocumentOverflow: input.variant === "live",
         }),
         isFirstParty: false,
         isSidebarOpen: false,
@@ -537,6 +614,15 @@ export function createInlineVisualizationRuntime(input: {
       return () => listeners.delete(listener);
     },
     setDisplayMode,
+    annotations,
+    setActive: (value) => {
+      active = value;
+      annotations.setPresentation({
+        active,
+        preview: snapshot.displayMode === "fullscreen",
+        ready: snapshot.status === "ready",
+      });
+    },
     captureImage: async () =>
       await invokeRendererQuery("codex:visualization:capture-image", imageCaptureInput()),
     copyAsImage: async () => {
@@ -549,6 +635,7 @@ export function createInlineVisualizationRuntime(input: {
           .catch(() => undefined);
         const release = releaseConnectedGuest();
         controller.abort();
+        annotations.dispose();
         resize.disconnect();
         themeObserver.disconnect();
         failureEvents.forEach((name) => webview.removeEventListener(name, onFailure));

@@ -7,7 +7,11 @@ import type {
   CodexTranscriptReadOwner,
   CodexTranscriptStructure,
   CodexTranscriptTurnSlice,
+  CodexTranscriptWorkSlice,
 } from "../normalized-transcript-read-owner";
+import { parseCodexRealtimeDelegationText } from "../../../../shared/codex-delegation";
+import { collectTurnEndResources } from "./thread-summary-panel-output-model";
+import type { CodexCanonicalItem } from "../../../../shared/types";
 import type { ConversationTurnListEntry, NormalizedConversationTurnEntry } from "../selectors";
 import { isNormalizedConversationTurnEntry } from "../selectors";
 import {
@@ -22,6 +26,7 @@ export type CodexTimelineTurnEntry = NormalizedConversationTurnEntry & {
   readonly timelinePresentation?: ThreadRealtimeBemItemPresentation;
   readonly timelineWholeItem?: TimelineWholeItemPresentation;
   readonly timelineUserActions: boolean;
+  readonly timelineEndResources?: boolean;
 };
 
 interface CodexRealtimeTimelineEntryBase {
@@ -69,7 +74,8 @@ export function isCodexNativeTimelineTurnEntry(
   if (isCodexRealtimeTimelineEntry(entry)) return false;
   return (
     !isCodexTimelineTurnEntry(entry) ||
-    (!entry.timelineWholeItem &&
+    (!entry.timelineEndResources &&
+      !entry.timelineWholeItem &&
       (!entry.timelinePresentation || entry.timelinePresentation.type === "wholeItem"))
   );
 }
@@ -103,6 +109,8 @@ type Segment = {
   readonly presentation?: ThreadRealtimeBemItemPresentation;
   readonly wholeItem?: TimelineWholeItemPresentation;
   readonly userActions: boolean;
+  work?: CodexTranscriptWorkSlice;
+  readonly endResources?: boolean;
 };
 type Descriptor = Segment | CodexRealtimeTimelineEntry;
 
@@ -125,6 +133,23 @@ export function projectNormalizedTimelineEntries(input: {
         : [],
     ),
   );
+  const inputText = (content: readonly { readonly type: string; readonly text?: string }[]) =>
+    content
+      .flatMap((item) => (item.type === "text" && typeof item.text === "string" ? [item.text] : []))
+      .join("\n");
+  const isDelegation = (text: string) => parseCodexRealtimeDelegationText(text) !== null;
+  const suppressedTurnKeys = new Set<string>();
+  for (const [turnId, base] of byTurnId) {
+    const details = input.owner.readTurnDetails(base.historyEntityKey);
+    if (
+      details &&
+      parseCodexRealtimeDelegationText(inputText(details.params.input))?.source ===
+        "transcript_tail_flush"
+    ) {
+      suppressedTurnKeys.add(base.turnKey);
+      byTurnId.delete(turnId);
+    }
+  }
   const promoted = new Set(
     timeline.entries.flatMap((entry) =>
       entry.type === "realtime" && entry.item.type === "bemItemPromoted"
@@ -134,11 +159,29 @@ export function projectNormalizedTimelineEntries(input: {
   );
   const descriptors: Descriptor[] = [];
   const opened = new Set<string>();
-  const represented = new Set<string>();
+  const represented = new Set(suppressedTurnKeys);
   const active = new Map<string, Segment>();
-  const lastByTurnId = new Map<string, Segment>();
   const seenItems = new Set<string>();
   const openingByTurnId = new Map<string, Segment>();
+  const completedTurnIds = new Set(
+    timeline.entries.flatMap((entry) => (entry.type === "turnCompleted" ? [entry.turnId] : [])),
+  );
+  const observationItemsByTurn = new Map<string, Map<string, CodexCanonicalItem>>();
+  const readTimelineItem = (base: NormalizedConversationTurnEntry, itemId: string) => {
+    const direct = input.owner.readItem(base.historyEntityKey, itemId);
+    if (direct && direct.type !== "steered") return direct;
+    let aliases = observationItemsByTurn.get(base.historyEntityKey);
+    if (!aliases) {
+      aliases = new Map();
+      for (const id of base.turnItemIds) {
+        const item = id ? input.owner.readItem(base.historyEntityKey, id) : null;
+        if (item?.type === "steeringUserMessage" && item.serverUserMessageId)
+          aliases.set(item.serverUserMessageId, item);
+      }
+      observationItemsByTurn.set(base.historyEntityKey, aliases);
+    }
+    return aliases.get(itemId) ?? direct;
+  };
   const anchors = new Map<Descriptor, string | undefined>();
   let currentTurnKey: string | undefined;
   let voice:
@@ -162,7 +205,10 @@ export function projectNormalizedTimelineEntries(input: {
   let activeSession = timeline.activeRealtimeSessionAtPageStart;
   let hasSession = activeSession !== null;
   const endSegments = () => {
-    for (const segment of active.values()) segment.presentationStatus = "completed";
+    for (const segment of active.values()) {
+      segment.presentationStatus = "completed";
+      if (segment.work) segment.work = { ...segment.work, state: "terminal" };
+    }
     active.clear();
   };
 
@@ -173,7 +219,12 @@ export function projectNormalizedTimelineEntries(input: {
     if (!base) return;
     represented.add(base.turnKey);
     const details = input.owner.readTurnDetails(base.historyEntityKey);
-    if (!details || details.params.input.length === 0) return;
+    if (
+      !details ||
+      details.params.input.length === 0 ||
+      isDelegation(inputText(details.params.input))
+    )
+      return;
     const segment: Segment = {
       base,
       turnKey: base.turnKey,
@@ -186,24 +237,31 @@ export function projectNormalizedTimelineEntries(input: {
     voice = null;
     descriptors.push(segment);
     openingByTurnId.set(turnId, segment);
-    lastByTurnId.set(turnId, segment);
   };
 
   const addItem = (
     turnId: string,
     itemId: string,
-    position: number,
+    _position: number,
     promotion?: Extract<ThreadRealtimeItem, { type: "bemItemPromoted" }>,
   ): void => {
     const address = JSON.stringify([turnId, itemId]);
     if (!promotion && (seenItems.has(address) || promoted.has(address))) return;
     const base = byTurnId.get(turnId);
     if (!base) return;
-    const raw = input.owner.readItem(base.historyEntityKey, itemId);
-    const wholeItem = resolveTimelineWholeItemPresentation(raw, promotion?.presentation);
+    const raw = readTimelineItem(base, itemId);
     if (!raw) return;
+    const wholeItem = resolveTimelineWholeItemPresentation(raw, promotion?.presentation);
+    if (
+      (raw.type === "userMessage" || raw.type === "steeringUserMessage") &&
+      isDelegation(inputText(raw.type === "userMessage" ? raw.content : raw.input))
+    )
+      return;
     open(turnId);
+    itemId = raw.id;
+    if (!promotion && seenItems.has(JSON.stringify([turnId, itemId]))) return;
     seenItems.add(address);
+    seenItems.add(JSON.stringify([turnId, itemId]));
     if (promotion && wholeItem) {
       voice = null;
       descriptors.push({
@@ -230,7 +288,10 @@ export function projectNormalizedTimelineEntries(input: {
     const isUser = raw.type === "userMessage" || raw.type === "steeringUserMessage";
     if (isUser) {
       const preceding = active.get(turnId);
-      if (preceding) preceding.presentationStatus = "completed";
+      if (preceding) {
+        preceding.presentationStatus = "completed";
+        if (preceding.work) preceding.work = { ...preceding.work, state: "terminal" };
+      }
       active.delete(turnId);
     }
     const separatePresentation =
@@ -241,9 +302,7 @@ export function projectNormalizedTimelineEntries(input: {
         base,
         turnKey: separatePresentation
           ? `timeline:presentation:${promotion.id}`
-          : opened.has(turnId) && lastByTurnId.has(turnId)
-            ? `timeline:${base.historyEntityKey}:${position}:${itemId}`
-            : base.turnKey,
+          : `timeline:${base.historyEntityKey}:${isUser ? "user" : "work"}:${itemId}`,
         itemIds: [],
         includeInput: false,
         includeTurnExtras: false,
@@ -251,10 +310,20 @@ export function projectNormalizedTimelineEntries(input: {
         userActions: false,
         ...(isUser ? { preserveServerUserMessages: true } : {}),
         ...(promotion ? { presentation: promotion.presentation } : {}),
+        ...(!separatePresentation && !isUser
+          ? {
+              work: {
+                presentation: activeSession === null ? ("codex" as const) : ("voice-work" as const),
+                state: "active" as const,
+                startedAtMs: base.turnStartedAtMs ?? null,
+                completedAtMs: null,
+                terminalReason: null,
+              },
+            }
+          : {}),
       };
       voice = null;
       descriptors.push(segment);
-      lastByTurnId.set(turnId, segment);
       if (!separatePresentation && !isUser) active.set(turnId, segment);
     }
     segment.itemIds.push(itemId);
@@ -306,12 +375,34 @@ export function projectNormalizedTimelineEntries(input: {
     }
     if (entry.type === "turnCompleted") {
       setCurrentTurn(entry.turnId);
-      const segment = active.get(entry.turnId) ?? lastByTurnId.get(entry.turnId);
+      const segment = active.get(entry.turnId);
       if (segment) {
         segment.includeTurnExtras = true;
         segment.presentationStatus = segment.base.turnStatus;
+        if (segment.work)
+          segment.work = {
+            ...segment.work,
+            state: "terminal",
+            terminalReason: "turn",
+            completedAtMs: entry.completedAt === null ? null : entry.completedAt * 1000,
+          };
       }
       active.delete(entry.turnId);
+      const base = byTurnId.get(entry.turnId);
+      const turn = base ? input.owner.readTurn(base.historyEntityKey) : null;
+      if (base && turn && collectTurnEndResources(turn, {}).length > 0) {
+        voice = null;
+        descriptors.push({
+          base,
+          turnKey: `timeline:resources:${base.historyEntityKey}`,
+          itemIds: base.turnItemIds.filter((id): id is string => id !== undefined),
+          includeInput: false,
+          includeTurnExtras: true,
+          presentationStatus: base.turnStatus,
+          userActions: false,
+          endResources: true,
+        });
+      }
       continue;
     }
     if (entry.type === "item") {
@@ -332,6 +423,7 @@ export function projectNormalizedTimelineEntries(input: {
       if (hasSession) voice = null;
       endSegments();
       activeSession = entry.item.realtimeSessionId;
+      if (hasSession) addRealtime(entry.item);
       hasSession = true;
       continue;
     }
@@ -345,12 +437,42 @@ export function projectNormalizedTimelineEntries(input: {
 
   // A native live suffix may not yet have a timeline receipt. Keep those identities visible.
   for (const [turnId, base] of byTurnId) {
-    if (!opened.has(turnId)) continue;
+    if (!opened.has(turnId) || completedTurnIds.has(turnId)) continue;
     const missing = base.turnItemIds.filter(
       (itemId): itemId is string =>
         itemId !== undefined && !seenItems.has(JSON.stringify([turnId, itemId])),
     );
     for (const itemId of missing) addItem(turnId, itemId, Number.MAX_SAFE_INTEGER);
+  }
+
+  for (const entry of timeline.entries) {
+    if (
+      entry.type !== "turnStarted" ||
+      completedTurnIds.has(entry.turnId) ||
+      active.has(entry.turnId)
+    )
+      continue;
+    const base = byTurnId.get(entry.turnId);
+    if (!base || !input.owner.readTurnDetails(base.historyEntityKey)) continue;
+    const segment: Segment = {
+      base,
+      turnKey: `timeline:${base.historyEntityKey}:work:pending`,
+      itemIds: [],
+      includeInput: false,
+      includeTurnExtras: false,
+      presentationStatus: "inProgress",
+      userActions: false,
+      work: {
+        presentation: activeSession === null ? "codex" : "voice-work",
+        state: "active",
+        startedAtMs: base.turnStartedAtMs ?? null,
+        completedAtMs: null,
+        terminalReason: null,
+      },
+    };
+    active.set(entry.turnId, segment);
+    represented.add(base.turnKey);
+    descriptors.push(segment);
   }
 
   const projected = new Map<Descriptor, CodexTimelineViewEntry>();
@@ -368,6 +490,7 @@ export function projectNormalizedTimelineEntries(input: {
       includeInput: descriptor.includeInput,
       includeTurnExtras: descriptor.includeTurnExtras,
       presentationStatus: descriptor.presentationStatus,
+      ...(descriptor.work ? { work: descriptor.work } : {}),
       ...(descriptor.preserveServerUserMessages ? { preserveServerUserMessages: true } : {}),
     };
     const rawItems = itemIds.map((itemId) =>
@@ -381,6 +504,7 @@ export function projectNormalizedTimelineEntries(input: {
       timelineSlice: slice,
       timelineUserActions: descriptor.userActions,
       requests:
+        descriptor.endResources ||
         descriptor.wholeItem ||
         descriptor.includeInput ||
         descriptor.preserveServerUserMessages ||
@@ -388,19 +512,24 @@ export function projectNormalizedTimelineEntries(input: {
           ? []
           : descriptor.base.requests.filter(
               (request) =>
-                descriptor.presentationStatus === "inProgress" ||
-                ("itemId" in request && selected.has(request.itemId)) ||
-                ("callId" in request &&
-                  typeof request.callId === "string" &&
-                  selected.has(request.callId)),
+                descriptor.work?.state === "active" ||
+                ("itemId" in request && typeof request.itemId === "string"
+                  ? selected.has(request.itemId)
+                  : "callId" in request &&
+                    typeof request.callId === "string" &&
+                    selected.has(request.callId)),
             ),
       ...(descriptor.presentation ? { timelinePresentation: descriptor.presentation } : {}),
       ...(descriptor.wholeItem ? { timelineWholeItem: descriptor.wholeItem } : {}),
+      ...(descriptor.endResources ? { timelineEndResources: true } : {}),
       turnStatus: descriptor.presentationStatus,
       isMostRecentTurn: false,
       hasUserMessage:
         descriptor.includeInput || rawItems.some((item) => item?.type === "userMessage"),
-      hasAssistantMessage: rawItems.some((item) => item?.type === "agentMessage"),
+      hasAssistantMessage:
+        descriptor.work?.presentation === "voice-work" && descriptor.work.state === "active"
+          ? false
+          : rawItems.some((item) => item?.type === "agentMessage"),
       readTurn: () => input.owner.readTurnSlice(descriptor.base.historyEntityKey, slice),
     });
   }

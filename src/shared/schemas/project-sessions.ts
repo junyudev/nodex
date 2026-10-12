@@ -1,5 +1,6 @@
 import { AgentBackendBindingSchema } from "./agent-backend";
 import { z } from "zod";
+import { WorkbenchFileHostIdSchema } from "../workbench-resource-identity";
 import type {
   WorkbenchProjectionBrowserTabConfig,
   WorkbenchProjectionCanvasStageTabConfig,
@@ -76,7 +77,7 @@ export const WorkbenchProjectionReviewTabConfigSchema = WorkbenchReviewConfigSch
 export const WorkbenchProjectionFilesTabConfigSchema = z
   .object({
     projectId: z.string().min(1).nullable(),
-    hostId: z.literal("local").default("local"),
+    hostId: WorkbenchFileHostIdSchema.default("local"),
     workspaceRoot: z
       .preprocess(
         (value) => (typeof value === "string" && value.trim().length === 0 ? null : value),
@@ -89,7 +90,10 @@ export const WorkbenchProjectionFilesTabConfigSchema = z
         z.string().trim().min(1).nullable(),
       )
       .default(null),
-    path: z.string().trim().min(1).optional(),
+    path: z
+      .string()
+      .refine((value) => value.trim().length > 0, "File path must not be blank")
+      .optional(),
   })
   .strict() satisfies z.ZodType<WorkbenchProjectionFilesTabConfig>;
 

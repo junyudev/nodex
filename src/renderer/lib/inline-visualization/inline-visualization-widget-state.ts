@@ -5,6 +5,8 @@ import {
   type CodexVisualizationStateFailure,
   type CodexVisualizationStateWriteResult,
   type CodexVisualizationWidgetState,
+  type CodexVisualizationInteractionWriteResult,
+  type CodexVisualizationInteractionState,
 } from "../../../shared/codex-visualization-state";
 import {
   defineRendererCommand,
@@ -19,12 +21,22 @@ const writeStateCommand = defineRendererCommand({
   owner: "InlineVisualizationWidgetState",
   protocol: { kind: "revision_fenced_local" },
 });
+const writeInteractionCommand = defineRendererCommand({
+  key: "inline_visualization.write_interaction",
+  channel: "codex:visualization:interaction:write",
+  authority: "main",
+  owner: "InlineVisualizationWidgetState",
+  protocol: { kind: "revision_fenced_local" },
+});
 export interface InlineVisualizationWidgetStateOwner {
   readonly identity: CodexVisualizationStateIdentity;
   readonly read: () => Promise<CodexVisualizationWidgetState | null>;
   readonly write: (
     state: CodexVisualizationWidgetState,
   ) => Promise<CodexVisualizationStateWriteResult>;
+  readonly writeInteraction: (
+    state: CodexVisualizationInteractionState,
+  ) => Promise<CodexVisualizationInteractionWriteResult>;
 }
 
 export function resolveInlineVisualizationStateIdentity(input: {
@@ -57,6 +69,12 @@ export function createInlineVisualizationWidgetStateOwner(
     read: () => invokeRendererQuery("codex:visualization:state:read", stableIdentity),
     write: (state) =>
       invokeRevisionedCommand(writeStateCommand, {
+        identity: stableIdentity,
+        state,
+        mutationId: crypto.randomUUID(),
+      }),
+    writeInteraction: (state) =>
+      invokeRevisionedCommand(writeInteractionCommand, {
         identity: stableIdentity,
         state,
         mutationId: crypto.randomUUID(),

@@ -43,5 +43,11 @@ export const live: Layer.Layer<
         }),
       ),
     );
+    yield* ipc.handleRevisionedCommand("codex:visualization:interaction:write", (event, input) =>
+      authorize(event).pipe(
+        Effect.andThen(state.writeInteraction(input, String(event.sender.id))),
+        Effect.map((commit) => commit.result),
+      ),
+    );
   }),
 );

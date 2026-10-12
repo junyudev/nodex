@@ -53,6 +53,8 @@ export interface ContentSearchLocalSource {
     match: ContentSearchLocalMatch,
     options: { signal: AbortSignal },
   ) => Promise<void> | void;
+  /** Publish retained identities before navigation; DOM maintenance never starts another search. */
+  publishResult?: (result: ContentSearchLocalResult, activeMatchId: string) => void;
   activate: (
     match: ContentSearchLocalMatch,
     query: string,
@@ -450,6 +452,7 @@ export function ContentSearchProvider({
 
     void (async () => {
       try {
+        source.publishResult?.(result, match.id);
         await source.ensureVisible?.(match, { signal: controller.signal });
         if (controller.signal.aborted) return;
         await source.activate(match, result.query, {

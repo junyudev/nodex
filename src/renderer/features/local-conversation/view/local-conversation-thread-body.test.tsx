@@ -22,6 +22,7 @@ import { buildAgentActivityV2CorpusThread } from "../../../../shared/codex-conve
 import { projectCodexTranscript } from "../../../../shared/codex-transcript-projection";
 import { timelineOwnerFixture } from "../projection/normalized-timeline.test-fixtures";
 import * as localConversationStore from "../local-conversation-store";
+import * as conversationSearchSource from "./local-conversation-search-source";
 import {
   ContentSearchProvider,
   useContentSearch,
@@ -409,6 +410,22 @@ function FindControls() {
 
 describe("LocalConversationThreadBody", () => {
   test("finds a collapsed commentary and reveals its own native assistant unit", async () => {
+    const originalCreateSource = conversationSearchSource.createLocalConversationSearchSource;
+    const rowPlacements = vi.fn();
+    const createSource = vi
+      .spyOn(conversationSearchSource, "createLocalConversationSearchSource")
+      .mockImplementation((input) =>
+        originalCreateSource({
+          ...input,
+          scrollAdapter: {
+            ...input.scrollAdapter,
+            scrollToTurn: async (...args) => {
+              rowPlacements(...args);
+              await input.scrollAdapter.scrollToTurn(...args);
+            },
+          },
+        }),
+      );
     const commentary = buildAssistantEntry({
       itemId: "commentary",
       entryId: "commentary",
@@ -491,12 +508,30 @@ describe("LocalConversationThreadBody", () => {
           '[data-content-search-unit-key="turn_1:assistant:assistant_1"] mark',
         ),
       ).toBeNull();
+      expect(rowPlacements).toHaveBeenCalledOnce();
     } finally {
       view.unmount();
       search.mockRestore();
+      createSource.mockRestore();
     }
   });
   test("finds and reveals a folded native voice tail when persisted search succeeds with an empty page", async () => {
+    const originalCreateSource = conversationSearchSource.createLocalConversationSearchSource;
+    const rowPlacements = vi.fn();
+    const createSource = vi
+      .spyOn(conversationSearchSource, "createLocalConversationSearchSource")
+      .mockImplementation((input) =>
+        originalCreateSource({
+          ...input,
+          scrollAdapter: {
+            ...input.scrollAdapter,
+            scrollToTurn: async (...args) => {
+              rowPlacements(...args);
+              await input.scrollAdapter.scrollToTurn(...args);
+            },
+          },
+        }),
+      );
     const overflow = vi.spyOn(HTMLElement.prototype, "scrollHeight", "get").mockReturnValue(1_000);
     const { owner, state } = timelineOwnerFixture({
       data: [
@@ -592,6 +627,21 @@ describe("LocalConversationThreadBody", () => {
           unit?.querySelectorAll("mark").item(1),
         ),
       );
+      expect(rowPlacements).not.toHaveBeenCalled();
+      await act(async () => {
+        owner.applyEvent({
+          type: "changes",
+          changes: [{ type: "realtime-text", itemId: "voice", delta: " new ending" }],
+        });
+        await Promise.resolve();
+      });
+      await waitFor(() => {
+        expect(unit?.textContent).toBe("spoken needle and needle new ending");
+        expect(unit?.querySelectorAll("mark")).toHaveLength(2);
+        expect(unit?.querySelector("mark.codex-thread-find-active")).toBe(
+          unit?.querySelectorAll("mark").item(1),
+        );
+      });
       const user = view.container.querySelector('[data-native-realtime-item-id="user"]');
       expect(user?.closest("[data-thread-turn-id]")).toBe(unit?.closest("[data-thread-turn-id]"));
       expect(unit?.closest("[data-thread-turn-id]")?.getAttribute("data-thread-turn-id")).toBe(
@@ -607,6 +657,8 @@ describe("LocalConversationThreadBody", () => {
       await view.findByRole("button", { name: "Show less" });
       expect(view.getByRole("link", { name: "needle" })).toBe(fullTail);
       expect(search).toHaveBeenCalledWith("thread", "needle");
+      expect(search).toHaveBeenCalledOnce();
+      expect(rowPlacements).not.toHaveBeenCalled();
       expect(hydrate).not.toHaveBeenCalled();
       expect(owner.readStructure()?.turns).toHaveLength(0);
     } finally {
@@ -614,6 +666,7 @@ describe("LocalConversationThreadBody", () => {
       search.mockRestore();
       hydrate.mockRestore();
       overflow.mockRestore();
+      createSource.mockRestore();
     }
   });
   beforeEach(() => {

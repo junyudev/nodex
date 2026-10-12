@@ -1,5 +1,8 @@
 import { z } from "zod";
-import { WorkbenchSurfaceIdSchema } from "../workbench-resource-identity";
+import {
+  WorkbenchFileHostIdSchema,
+  WorkbenchSurfaceIdSchema,
+} from "../workbench-resource-identity";
 import {
   findWorkbenchPanelLeafForTab,
   flattenWorkbenchPanelTabIds,
@@ -210,7 +213,7 @@ const WorkbenchReviewSurfaceConfigSchema = WorkbenchReviewConfigSchema;
 const WorkbenchFilesSurfaceConfigSchema = z
   .object({
     projectId: idSchema.nullable(),
-    hostId: z.literal("local"),
+    hostId: WorkbenchFileHostIdSchema,
     workspaceRoot: z.string().min(1).nullable(),
     cwd: z.string().min(1).nullable(),
     path: z.string().min(1).optional(),

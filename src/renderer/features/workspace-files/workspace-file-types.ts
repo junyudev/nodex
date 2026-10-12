@@ -82,7 +82,7 @@ export type WorkspaceFilesTab = Omit<WorkbenchTabProjection, "projectId" | "conf
   state: WorkspaceFilesTabState;
   config: {
     projectId: string | null;
-    hostId?: "local";
+    hostId?: string;
     workspaceRoot?: string | null;
     cwd?: string | null;
     path?: string;

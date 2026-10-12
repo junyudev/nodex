@@ -69,6 +69,18 @@ export type CodexVisualizationStateWriteResult =
       readonly revision: number;
       readonly value: CodexVisualizationWidgetState;
     };
+export interface CodexVisualizationInteractionWriteInput {
+  readonly identity: CodexVisualizationStateIdentity;
+  readonly state: unknown;
+  readonly mutationId: string;
+}
+export type CodexVisualizationInteractionWriteResult =
+  | CodexVisualizationStateFailure
+  | {
+      readonly ok: true;
+      readonly revision: number;
+      readonly value: CodexVisualizationInteractionState;
+    };
 
 /** Budget the validated/defaulted JSON representation, not UTF-16 characters. */
 export function parseCodexVisualizationWidgetState(

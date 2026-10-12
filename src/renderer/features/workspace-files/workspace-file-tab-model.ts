@@ -2,7 +2,7 @@ import { workbenchFileResourceId } from "../../../shared/workbench-resource-iden
 export type WorkspaceFileOpenMode = "preview" | "durable";
 
 export interface WorkspaceFileTabCandidate {
-  readonly hostId: "local";
+  readonly hostId: string;
   readonly id: string;
   readonly path: string | null;
 }
@@ -21,7 +21,7 @@ export type WorkspaceFileTabOpenDecision =
 export function decideWorkspaceFileTabOpen(input: {
   readonly activeDurableTabId: string | null;
   readonly durableTabs: readonly WorkspaceFileTabCandidate[];
-  readonly hostId: "local";
+  readonly hostId: string;
   readonly mode: WorkspaceFileOpenMode;
   readonly path: string;
   readonly previewTab: WorkspaceFileTabCandidate | null;

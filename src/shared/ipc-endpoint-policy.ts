@@ -233,6 +233,7 @@ type QueryEndpointPolicy =
   | "thread-terminal-snapshot"
   | "window-sessions:bootstrap"
   | "workspace-directory-entries"
+  | "workspace-paths-exist"
   | "workspace:tasks:list"
   | "worktrees:environments:config:read"
   | "worktrees:environments:configs:list"
@@ -417,7 +418,8 @@ type CoreLocalCommitCommandEndpointPolicy =
 
 type MainRevisionCommandEndpointPolicy =
   | "persisted-atom:update"
-  | "codex:visualization:state:write";
+  | "codex:visualization:state:write"
+  | "codex:visualization:interaction:write";
 
 type PlainResultCommandEndpointPolicy =
   | "agent-backend:session:authenticate"

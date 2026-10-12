@@ -111,6 +111,7 @@ const fixture = Effect.fn("notificationTimelineTest.fixture")(function* (
         CodexVisualizationState.of({
           read: () => Effect.succeed(null),
           write: () => Effect.die("unused"),
+          writeInteraction: () => Effect.die("unused"),
           readPassiveContext: () => Effect.succeed(undefined),
           clearThread: () => Effect.succeed([]),
         }),

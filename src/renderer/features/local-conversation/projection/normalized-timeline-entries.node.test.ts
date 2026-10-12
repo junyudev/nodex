@@ -282,7 +282,7 @@ describe("normalized mixed timeline presentation", () => {
         result.entries.filter(
           (entry) => isCodexTimelineTurnEntry(entry) && entry.timelineSlice.includeTurnExtras,
         ),
-      ).toHaveLength(1);
+      ).toHaveLength(0);
     },
   );
 
@@ -356,7 +356,12 @@ describe("normalized mixed timeline presentation", () => {
     }).entries;
     expect(readLatestCodexTimelineTurnEntry(mixed)).toBe(mixed.at(-1));
     expect(mixed.at(-1)).toMatchObject({ turnKey: "live", isMostRecentTurn: true });
-    expect(mixed.find((entry) => entry.turnKey === base[0]!.turnKey)).toMatchObject({
+    expect(
+      mixed.find(
+        (entry) =>
+          isCodexTimelineTurnEntry(entry) && entry.historyEntityKey === base[0]!.historyEntityKey,
+      ),
+    ).toMatchObject({
       isMostRecentTurn: false,
     });
     const native = project().entries.find(isCodexTimelineTurnEntry)!;

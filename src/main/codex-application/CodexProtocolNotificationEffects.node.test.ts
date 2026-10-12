@@ -49,6 +49,7 @@ it.effect("drains only Main-owned prose before applying terminal product consequ
           CodexVisualizationState.of({
             read: () => Effect.succeed(null),
             write: () => Effect.die("unused"),
+            writeInteraction: () => Effect.die("unused"),
             readPassiveContext: () => Effect.succeed(undefined),
             clearThread: (scope) =>
               widgetClearFailure

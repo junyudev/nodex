@@ -16,6 +16,7 @@ import {
   type CodexVisualizationInjectionReceipt,
 } from "../../../shared/codex-visualization-passive-context";
 import { rendererQueuedMessageStorage } from "./renderer-queued-message-storage";
+import { prepareUntrustedAppInput } from "../../../shared/codex-untrusted-app-input";
 import type { ThreadRevertResponse } from "@nodex/codex-app-server-protocol/v2";
 import { useDefaultCodexAppServerManager } from "./local-conversation-store";
 import { residentConversationTurns } from "../../../shared/codex-conversation-state/codex-turn-mutation";
@@ -352,7 +353,19 @@ vi.mock("./local-conversation-deps", () => ({
           },
         };
         nativeSteerFixture = steer;
-        return { start: { request: params, context: {} }, steer, requiresIdle: false };
+        const app = prepareUntrustedAppInput(
+          message.context.prompt,
+          message.context,
+          `untrusted_input_${message.id}`,
+        );
+        return {
+          start: {
+            request: { ...params, input: [app.input, ...params.input.slice(1)] },
+            context: { responseItems: app.responseItems },
+          },
+          steer,
+          requiresIdle: false,
+        };
       }
       if (channel === "codex:queued-messages:prepare") {
         const opts = args[2] as
@@ -374,6 +387,12 @@ vi.mock("./local-conversation-deps", () => ({
             commentAttachments: input?.commentAttachments ?? [],
             imageAttachments: input?.images ?? [],
             workspaceRoots: opts?.workspaceRoots ?? [cwd],
+            ...(input?.mcpAppModelContextAttachments
+              ? { mcpAppModelContextAttachments: input.mcpAppModelContextAttachments }
+              : {}),
+            ...((opts?.untrustedAppMessage ?? input?.untrustedAppMessage)
+              ? { untrustedAppMessage: opts?.untrustedAppMessage ?? input?.untrustedAppMessage }
+              : {}),
           },
           submissionOptions: {
             serviceTier: opts?.serviceTier ?? null,
@@ -16551,6 +16570,137 @@ describe("local-conversation-store", () => {
     }
   });
 
+  test.each([
+    [false, "context"],
+    [true, "context"],
+    [false, "message"],
+    [true, "message"],
+  ] as const)(
+    "captured app input uses confirmed local queue with server gate %s and %s",
+    async (serverQueue, kind) => {
+      const { CodexAppServerManager, __resetLocalConversationStoreForTests } =
+        await import("./local-conversation-store");
+      resetLocalConversationStoreTestHarness(__resetLocalConversationStoreForTests);
+      nativeSupportsThreadQueue = serverQueue;
+      serverQueueRequestHandler = async (method) => {
+        if (method === "thread/queue/list") return { data: [], nextCursor: null };
+        throw new Error(`Captured app input reached server queue: ${method}`);
+      };
+      resumeThreadResult = withCanonicalState({
+        ...buildConversation("thread-1", "project-1"),
+        turns: [
+          {
+            threadId: "thread-1",
+            turnId: "completed-owner",
+            status: "completed",
+            itemIds: ["prior-answer"],
+            items: [
+              buildAssistantMessage(
+                "thread-1",
+                "completed-owner",
+                "prior-answer",
+                "Ready for changes",
+              ),
+            ],
+          },
+        ],
+      });
+      const manager = trackNativeTestManager(new CodexAppServerManager("local"));
+      const owner = manager.getTranscriptReadOwner("thread-1");
+      const unsubscribe = owner.subscribeStructure(() => {});
+      let release = () => {};
+      const confirmed = new Promise<void>((resolve) => {
+        release = resolve;
+      });
+      nativePassiveInjection = async (key) => {
+        await confirmed;
+        return { passiveContextKey: key };
+      };
+      const context = { edits: [], selectedVariants: [{ carousel: 0, variant: "Dots" }] };
+      try {
+        manager.start();
+        await waitFor(() => expect(manager.readConnection().status).toBe("connected"));
+        await manager.requestThreadStreamResume("thread-1");
+        await waitFor(() =>
+          expect(owner.readStructure()?.turns.some((turn) => turn.hasAssistantMessage)).toBe(true),
+        );
+        const full = vi.spyOn(owner, "readCanonicalTurn");
+        const slice = vi.spyOn(owner, "readTurnSlice");
+        invokeRecords = [];
+        await manager.enqueueQueuedFollowUp(
+          "thread-1",
+          "Use these changes",
+          kind === "context"
+            ? {
+                promptInput: {
+                  text: "Use these changes",
+                  mcpAppModelContextAttachments: [
+                    {
+                      id: "/widget.html",
+                      kind: "context",
+                      sourceName: "Visualization changes",
+                      text: null,
+                      structuredContent: context,
+                      imageAttachments: [],
+                      untrusted: true,
+                    },
+                  ],
+                },
+              }
+            : {
+                untrustedAppMessage: {
+                  source: "visualization",
+                  sourceId: "widget",
+                  text: "Use these changes",
+                  structuredContent: context,
+                },
+              },
+        );
+        await waitFor(() =>
+          expect(invokeRecords.some(({ channel }) => channel === "codex:turn:native:inject")).toBe(
+            true,
+          ),
+        );
+        expect(invokeRecords.some(({ channel }) => channel === "codex:turn:native:execute")).toBe(
+          false,
+        );
+        const pending = queuedMessageFixtureState["thread-1"]?.[0];
+        expect(pending?.context.prompt).toBe("Use these changes");
+        const injection = invokeRecords.find(
+          ({ channel }) => channel === "codex:turn:native:inject",
+        )?.args[0] as {
+          operation: { context?: { responseItems?: { type: string; call_id: string }[] } };
+        };
+        // The native executor receives the compiled untrusted pair in the captured Turn, not a detached placeholder.
+        const pair = injection.operation.context?.responseItems;
+        expect(pair?.map((item) => item.type)).toEqual(["function_call", "function_call_output"]);
+        expect(pair?.[0]?.call_id).toBe(pair?.[1]?.call_id);
+        release();
+        await waitFor(() =>
+          expect(invokeRecords.some(({ channel }) => channel === "codex:turn:native:execute")).toBe(
+            true,
+          ),
+        );
+        expect(full).not.toHaveBeenCalled();
+        expect(slice).not.toHaveBeenCalled();
+        expect(
+          recordedNativeRequests().some(
+            (record) =>
+              (record.args[0] as { request?: { method?: string } })?.request?.method ===
+              "thread/queue/add",
+          ),
+        ).toBe(false);
+      } finally {
+        release();
+        unsubscribe();
+        nativePassiveInjection = undefined;
+        nativeTurnsListResult = null;
+        resumeThreadResult = null;
+        manager.destroy();
+      }
+    },
+  );
+
   test("enabled server queue owns new follow-ups when the persisted queue is empty", async () => {
     invokeRecords = [];
     const { CodexAppServerManager, __resetLocalConversationStoreForTests } =
@@ -16591,7 +16741,10 @@ describe("local-conversation-store", () => {
       expect(queuedMessageFixtureState["thread-1"] ?? []).toEqual([]);
       expect(
         recordedNativeRequests()
-          .map((record) => (record.args[0] as { request?: { method?: string } }).request?.method)
+          .map(
+            (record) =>
+              (record.args[0] as { request?: { method?: string } } | undefined)?.request?.method,
+          )
           .filter((method) => method?.startsWith("thread/queue/")),
       ).toEqual(["thread/queue/list", "thread/queue/add"]);
       expect(
@@ -16899,7 +17052,7 @@ describe("local-conversation-store", () => {
       expect(
         recordedNativeRequests().some(
           (record) =>
-            (record.args[0] as { request?: { method?: string } }).request?.method ===
+            (record.args[0] as { request?: { method?: string } } | undefined)?.request?.method ===
             "thread/queue/start",
         ),
       ).toBe(true);

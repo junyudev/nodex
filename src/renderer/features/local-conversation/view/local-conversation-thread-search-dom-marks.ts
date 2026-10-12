@@ -7,21 +7,47 @@ import {
 } from "../../content-search/content-search-dom";
 import type { LocalConversationSearchTarget } from "./local-conversation-persisted-search";
 
+export interface LocalConversationSearchHighlight {
+  readonly id: string;
+  readonly target: LocalConversationSearchTarget;
+}
+
 /** Highlight only projected content units; tool output and widget documents are not search text. */
 export function applyLocalConversationSearchHighlights(input: {
   readonly root: HTMLElement;
   readonly query: string;
-  readonly target: LocalConversationSearchTarget;
+  readonly target: LocalConversationSearchTarget | null;
+  readonly retainedMatches?: readonly LocalConversationSearchHighlight[];
+  readonly activeMatchId?: string;
 }): HTMLElement | null {
   clearContentSearchMarks(input.root);
   let active: HTMLElement | null = null;
+  const retainedByUnit = new Map<string, LocalConversationSearchHighlight[]>();
+  for (const match of input.retainedMatches ?? []) {
+    const matches = retainedByUnit.get(match.target.unitKey) ?? [];
+    matches.push(match);
+    retainedByUnit.set(match.target.unitKey, matches);
+  }
   for (const unit of input.root.querySelectorAll<HTMLElement>("[data-content-search-unit-key]")) {
-    applyContentSearchDomMarks({
+    const retained = retainedByUnit.get(unit.dataset.contentSearchUnitKey ?? "");
+    if (input.retainedMatches && !retained) continue;
+    const applied = applyContentSearchDomMarks({
       root: unit,
       query: input.query,
       idPrefix: `content-search:conversation:${unit.dataset.contentSearchUnitKey}`,
+      ...(retained
+        ? {
+            limit: retained.length,
+            matchIds: retained.map((match) => match.id),
+            activeMatchId: input.activeMatchId,
+          }
+        : {}),
     });
-    if (unit.dataset.contentSearchUnitKey !== input.target.unitKey) continue;
+    if (retained) {
+      active ??= applied.matches.find((match) => match.id === input.activeMatchId)?.element ?? null;
+      continue;
+    }
+    if (!input.target || unit.dataset.contentSearchUnitKey !== input.target.unitKey) continue;
     active = unit
       .querySelectorAll<HTMLElement>(`mark.${CONTENT_SEARCH_MARK_CLASS}`)
       .item(input.target.occurrenceIndex);

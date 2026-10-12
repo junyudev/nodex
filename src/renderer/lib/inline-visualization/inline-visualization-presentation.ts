@@ -1,4 +1,5 @@
 export type InlineVisualizationMode = "narrow" | "wide";
+export type InlineVisualizationVariant = "inline" | "live";
 
 /** Paint overflow stays outside the content's measured size and transcript placement. */
 export const INLINE_VISUALIZATION_PAINT_GUTTER = 10;
@@ -26,10 +27,11 @@ export function resolveInlineVisualizationMode(value: unknown): InlineVisualizat
   return value === "wide" ? "wide" : "narrow";
 }
 
-/** A completed wide inline document can open a preview without replacing its guest. */
+/** HTML updates govern preview readiness independently of the surrounding Markdown Turn. */
 export function canExpandInlineVisualization(input: {
   readonly mode: InlineVisualizationMode;
-  readonly isStreaming: boolean;
+  readonly variant?: InlineVisualizationVariant;
+  readonly htmlStreaming?: boolean;
 }): boolean {
-  return input.mode === "wide" && !input.isStreaming;
+  return input.mode === "wide" && input.variant !== "live" && !input.htmlStreaming;
 }

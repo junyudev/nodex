@@ -8,6 +8,11 @@ import { MARKDOWN_CONTENT_CLASS_NAME } from "@/components/shared/inline-markdown
 import { FileLinkWorkspaceProvider } from "@/components/shared/file-link-anchor";
 import { useDocumentTheme } from "@/lib/use-document-theme";
 import {
+  FileMarkdownMediaProvider,
+  FileMarkdownMediaStreamdown,
+} from "@/lib/file-markdown-media/file-markdown-media";
+import type { FileMarkdownMediaScope } from "@/lib/file-markdown-media/file-markdown-media-model";
+import {
   StreamdownMermaidError,
   streamdownComponents,
   streamdownPlugins,
@@ -23,6 +28,7 @@ interface MarkdownCoreProps {
   cwd?: string | null;
   projectWorkspacePath?: string | null;
   visualizationContext?: ConversationVisualizationContext;
+  fileMediaScope?: FileMarkdownMediaScope;
 }
 
 const visualizationComponents: Components = {
@@ -61,63 +67,67 @@ export function MarkdownCore({
   cwd,
   projectWorkspacePath,
   visualizationContext,
+  fileMediaScope,
 }: MarkdownCoreProps) {
   const theme = useDocumentTheme();
   const normalizedContent = useMemo(() => normalizeMarkdown(content), [content]);
   const shouldAnimateStreamingText = animateStreamingText && parseIncompleteMarkdown;
+  const Document = fileMediaScope ? FileMarkdownMediaStreamdown : Streamdown;
 
   return (
     <ConversationVisualizationContext.Provider value={visualizationContext ?? null}>
       <FileLinkWorkspaceProvider cwd={cwd} workspacePath={projectWorkspacePath}>
-        <Streamdown
-          components={visualizationContext ? visualizationComponents : streamdownComponents}
-          plugins={streamdownPlugins}
-          remarkPlugins={
-            visualizationContext
-              ? preserveLineBreaks
-                ? visualizationBreakPlugins
-                : visualizationPlugins
-              : preserveLineBreaks
-                ? streamdownRemarkPluginsWithBreaks
+        <FileMarkdownMediaProvider scope={fileMediaScope}>
+          <Document
+            components={visualizationContext ? visualizationComponents : streamdownComponents}
+            plugins={streamdownPlugins}
+            remarkPlugins={
+              visualizationContext
+                ? preserveLineBreaks
+                  ? visualizationBreakPlugins
+                  : visualizationPlugins
+                : preserveLineBreaks
+                  ? streamdownRemarkPluginsWithBreaks
+                  : undefined
+            }
+            allowedTags={visualizationContext ? visualizationTags : undefined}
+            mermaid={{
+              config: { theme: theme === "dark" ? "dark" : "neutral" },
+              errorComponent: StreamdownMermaidError,
+            }}
+            parseIncompleteMarkdown={parseIncompleteMarkdown}
+            // Keep stateful document leaves mounted when a response finishes.
+            mode={visualizationContext || parseIncompleteMarkdown ? "streaming" : "static"}
+            animated={
+              shouldAnimateStreamingText
+                ? {
+                    animation: "fadeIn",
+                    sep: "word",
+                    duration: 200,
+                    ...(adaptiveStreaming ? { stagger: 0 } : {}),
+                    easing: "cubic-bezier(.37, .55, .86, .88)",
+                  }
                 : undefined
-          }
-          allowedTags={visualizationContext ? visualizationTags : undefined}
-          mermaid={{
-            config: { theme: theme === "dark" ? "dark" : "neutral" },
-            errorComponent: StreamdownMermaidError,
-          }}
-          parseIncompleteMarkdown={parseIncompleteMarkdown}
-          // Keep stateful document leaves mounted when a response finishes.
-          mode={visualizationContext || parseIncompleteMarkdown ? "streaming" : "static"}
-          animated={
-            shouldAnimateStreamingText
-              ? {
-                  animation: "fadeIn",
-                  sep: "word",
-                  duration: 200,
-                  ...(adaptiveStreaming ? { stagger: 0 } : {}),
-                  easing: "cubic-bezier(.37, .55, .86, .88)",
-                }
-              : undefined
-          }
-          isAnimating={shouldAnimateStreamingText}
-          lineNumbers={false}
-          className={`
+            }
+            isAnimating={shouldAnimateStreamingText}
+            lineNumbers={false}
+            className={`
           [&>*:first-child]:mt-0
           [&>*:last-child]:mb-0
           ${MARKDOWN_CONTENT_CLASS_NAME}
         `}
-          controls={{
-            table: false,
-            code: {
-              copy: true,
-              download: false,
-            },
-            mermaid: true,
-          }}
-        >
-          {normalizedContent}
-        </Streamdown>
+            controls={{
+              table: false,
+              code: {
+                copy: true,
+                download: false,
+              },
+              mermaid: true,
+            }}
+          >
+            {normalizedContent}
+          </Document>
+        </FileMarkdownMediaProvider>
       </FileLinkWorkspaceProvider>
     </ConversationVisualizationContext.Provider>
   );

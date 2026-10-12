@@ -1,6 +1,10 @@
 import { buildInlineVisualizationCalendar } from "./inline-visualization-calendar";
 import { buildInlineVisualizationHelpers } from "./inline-visualization-document-helpers";
 import { buildInlineVisualizationDownloadScript } from "./inline-visualization-download";
+import {
+  buildInlineVisualizationAnnotationScript,
+  buildInlineVisualizationVariantsScript,
+} from "./inline-visualization-annotations-document";
 import documentStyles from "./inline-visualization-document.css?inline";
 
 export const INLINE_VISUALIZATION_MAX_HEIGHT = 10_000;
@@ -30,6 +34,7 @@ export interface InlineVisualizationDocumentOptions {
   readonly statePersistence?: "host" | "none";
   readonly downloadCapability?: string;
   readonly lockDocumentOverflow?: boolean;
+  readonly allowAnnotations?: boolean;
 }
 
 /** The document receives API metadata, never a second copy of persisted widget state. */
@@ -322,6 +327,8 @@ export function buildInlineVisualizationDocument(
 ): string {
   return `<style>${documentStyles}</style><style id="nodex-visualization-host-theme">:root {}</style>
 <script>(${installDocumentBridge.toString()})(${JSON.stringify(options.statePersistence ?? "none")});</script>
+${buildInlineVisualizationAnnotationScript(options.allowAnnotations ?? false)}
+${buildInlineVisualizationVariantsScript()}
 ${buildInlineVisualizationCalendar(fragment)}${fragment}
 <script>(${installDocumentRuntime.toString()})();</script>
 ${buildInlineVisualizationHelpers()}

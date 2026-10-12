@@ -27,6 +27,7 @@ import {
 } from "../../../lib/inline-visualization/inline-visualization-presentation";
 import {
   useInlineVisualizationFollowUpHandler,
+  useInlineVisualizationAnnotationSubmitHandler,
   type InlineVisualizationFollowUpMessage,
 } from "../../../lib/inline-visualization/inline-visualization-follow-up-context";
 import {
@@ -39,6 +40,7 @@ import {
   createInlineVisualizationWidgetStateOwner,
   resolveInlineVisualizationStateIdentity,
 } from "../../../lib/inline-visualization/inline-visualization-widget-state";
+import { InlineVisualizationAnnotationControls } from "./inline-visualization-annotation-controls";
 
 const INITIAL = {
   status: "loading" as const,
@@ -67,6 +69,7 @@ function VisualizationFrame({
   stateIdentity: CodexVisualizationStateIdentity | null;
 }) {
   const followUp = useInlineVisualizationFollowUpHandler();
+  const annotationSubmit = useInlineVisualizationAnnotationSubmitHandler();
   const followUpReview = useInlineVisualizationFollowUpReview();
   const reviewFollowUp = followUpReview.review;
   const [surface, setSurface] = useState<HTMLDivElement | null>(null);
@@ -75,11 +78,12 @@ function VisualizationFrame({
   const [boundary, setBoundary] = useState<HTMLDivElement | null>(null);
   const [expandButton, setExpandButton] = useState<HTMLButtonElement | null>(null);
   // Conversation lifecycle changes update actions without replacing the retained document.
-  const callbacks = useRef({ followUp, reviewFollowUp, canExpand });
+  const callbacks = useRef({ followUp, reviewFollowUp, canExpand, annotationSubmit });
   useLayoutEffect(() => {
-    callbacks.current = { followUp, reviewFollowUp, canExpand };
+    callbacks.current = { followUp, reviewFollowUp, canExpand, annotationSubmit };
   });
   const canSendFollowUp = followUp !== null;
+  const canSubmitAnnotations = annotationSubmit !== null;
   const stateHostId = stateIdentity?.hostId;
   const stateThreadId = stateIdentity?.threadId;
   const statePath = stateIdentity?.path;
@@ -98,6 +102,15 @@ function VisualizationFrame({
           }
         : {}),
       canExpand: () => callbacks.current.canExpand,
+      ...(canSubmitAnnotations
+        ? {
+            onSubmitAnnotations: async (message) => {
+              const submit = callbacks.current.annotationSubmit;
+              if (!submit) throw new Error("The conversation is unavailable");
+              await submit(message);
+            },
+          }
+        : {}),
       ...(canSendFollowUp
         ? {
             followUp: async (message: InlineVisualizationFollowUpMessage) => {
@@ -114,7 +127,16 @@ function VisualizationFrame({
     return () => {
       void value.dispose();
     };
-  }, [surface, scopeId, html, canSendFollowUp, stateHostId, stateThreadId, statePath]);
+  }, [
+    surface,
+    scopeId,
+    html,
+    canSendFollowUp,
+    canSubmitAnnotations,
+    stateHostId,
+    stateThreadId,
+    statePath,
+  ]);
   const snapshot = useSyncExternalStore(
     runtime?.subscribe ?? subscribeNothing,
     runtime?.getSnapshot ?? readInitial,
@@ -256,6 +278,9 @@ function VisualizationFrame({
                 </div>
               ) : null}
               <div ref={setSurface} className="h-full w-full" />
+              {runtime ? (
+                <InlineVisualizationAnnotationControls owner={runtime.annotations} />
+              ) : null}
             </div>
           </div>
           <InlineVisualizationFollowUpReview
@@ -292,7 +317,7 @@ export function LocalConversationInlineVisualization({
         file,
         declaredSourceThreadId: sourceThreadId,
         threadId: context.threadId,
-        changedFilePaths: sourceThreadId ? [] : context.readChangedFilePaths(),
+        changedFilePaths: context.readChangedFilePaths(),
       })}
       context={context}
       cacheKey={cacheKey ?? instanceId}
@@ -329,7 +354,7 @@ function LoadedVisualization({
         ...(context.turnId ? { turnId: context.turnId } : {}),
       },
       cacheKey,
-      context.live,
+      "inline",
     ),
   );
   const scopeId = JSON.stringify([
@@ -379,7 +404,7 @@ function LoadedVisualization({
       html={query.data.contents}
       scopeId={scopeId}
       retry={retryResource}
-      canExpand={canExpandInlineVisualization({ mode, isStreaming: context.live })}
+      canExpand={canExpandInlineVisualization({ mode, variant: "inline" })}
       stateIdentity={stateIdentity}
     />
   );

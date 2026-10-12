@@ -2,6 +2,7 @@ import { contentAccessContextKey } from "../content-access-context";
 import {
   canonicalWorkbenchFilesConfig,
   WorkbenchAbsoluteFilePathSchema,
+  WorkbenchFileHostIdSchema,
   workbenchFilesResourceKey,
 } from "../workbench-resource-identity";
 import { WorkbenchSurfaceIdSchema } from "../workbench-resource-identity";
@@ -104,7 +105,7 @@ export const WorkbenchSurfaceReferenceSchema = z.discriminatedUnion("kind", [
     kind: z.literal("files"),
     config: z.strictObject({
       projectId: identity.nullable(),
-      hostId: z.literal("local"),
+      hostId: WorkbenchFileHostIdSchema,
       workspaceRoot: filePath.nullable(),
       cwd: filePath.nullable(),
       path: filePath.optional(),

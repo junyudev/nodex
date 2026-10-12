@@ -21,6 +21,39 @@ const preview: WorkspaceFileTabCandidate = {
 };
 
 describe("workspace file tab state machine", () => {
+  test("separates the same path on different hosts and pins only its own preview", () => {
+    const remote = { ...preview, hostId: "remote-ssh-discovered:win" };
+    expect(
+      decideWorkspaceFileTabOpen({
+        activeDurableTabId: durable.id,
+        durableTabs: [durable],
+        hostId: remote.hostId,
+        mode: "preview",
+        path: durable.path!,
+        previewTab: null,
+      }),
+    ).toEqual({ kind: "create-preview", replacingPreviewTabId: null });
+    expect(
+      decideWorkspaceFileTabOpen({
+        activeDurableTabId: durable.id,
+        durableTabs: [durable],
+        hostId: remote.hostId,
+        mode: "durable",
+        path: remote.path!,
+        previewTab: remote,
+      }),
+    ).toEqual({ kind: "pin-preview", tabId: remote.id });
+    expect(
+      decideWorkspaceFileTabOpen({
+        activeDurableTabId: durable.id,
+        durableTabs: [durable],
+        hostId: "local",
+        mode: "preview",
+        path: remote.path!,
+        previewTab: remote,
+      }),
+    ).toEqual({ kind: "create-preview", replacingPreviewTabId: remote.id });
+  });
   test("creates a semantic file tab before closing the active empty tab", () => {
     expect(
       decideWorkspaceFileTabOpen({

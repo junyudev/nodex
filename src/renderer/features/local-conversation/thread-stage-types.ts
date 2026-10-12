@@ -982,6 +982,7 @@ export interface ThreadTurnRenderBuckets {
 }
 
 export interface ThreadTurnModel {
+  voiceWorkActivity?: "active" | "terminal";
   turnId: string | null;
   turnKey: string;
   turn: CodexConversationTurn | null;

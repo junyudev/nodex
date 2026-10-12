@@ -2181,6 +2181,9 @@ export function WorkbenchRuntime({
         readonly targetLeafId?: string;
         readonly path?: string;
         readonly url?: string;
+        readonly hostId?: string;
+        readonly cwd?: string | null;
+        readonly workspaceRoot?: string | null;
       },
     ): Promise<boolean> => {
       const project = projects.find((candidate) => candidate.id === projectId);
@@ -2213,7 +2216,9 @@ export function WorkbenchRuntime({
           panelOptions,
         );
       }
-      const workspaceRoot = projectWorkspaceRootOrNull(project);
+      const hostId = options.hostId ?? "local";
+      const workspaceRoot =
+        options.workspaceRoot ?? (hostId === "local" ? projectWorkspaceRootOrNull(project) : null);
       return await presentProjectSceneSurface(
         projectId,
         {
@@ -2221,9 +2226,9 @@ export function WorkbenchRuntime({
           titleSnapshot: options.path?.split(/[\\/]/).pop() || "Files",
           config: {
             projectId,
-            hostId: "local",
+            hostId,
             workspaceRoot,
-            cwd: workspaceRoot,
+            cwd: options.cwd ?? workspaceRoot,
             ...(options.path ? { path: options.path } : {}),
           },
         },
@@ -3529,6 +3534,9 @@ export function WorkbenchRuntime({
               openProjectSceneManualSurface(activeProject.id, "files", {
                 panelId: input.panelId,
                 path: input.path,
+                hostId: input.hostId,
+                cwd: input.cwd ?? surface.config.cwd,
+                workspaceRoot: input.workspaceRoot ?? surface.config.workspaceRoot,
               })
             }
             onUpdateTabState={(state) => {

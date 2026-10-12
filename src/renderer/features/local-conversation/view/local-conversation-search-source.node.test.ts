@@ -1,4 +1,4 @@
-import { describe, expect, test } from "vite-plus/test";
+import { describe, expect, test, vi } from "vite-plus/test";
 import type { CodexConversationTurn } from "../../../../shared/types";
 import type { VisibleConversationTurnEntry } from "../selectors";
 import { prepareUntrustedAppInput } from "../../../../shared/codex-untrusted-app-input";
@@ -52,6 +52,95 @@ function source(read: () => VisibleConversationTurnEntry[]) {
 }
 
 describe("resident transcript search cache", () => {
+  test("does not index or materialize a voice completion resource row as duplicate Turn text", () => {
+    const item = {
+      type: "agentMessage",
+      id: "answer",
+      text: 'needle\n:codex-file-citation{path="deck.pptx" purpose="output"}',
+      phase: "final_answer",
+      memoryCitation: null,
+      delivery: null,
+      questions: null,
+    } as const;
+    const { owner, project } = timelineOwnerFixture(
+      {
+        data: [
+          { type: "turnStarted", position: 1, turnId: "one", startedAt: 1 },
+          { type: "item", position: 2, turnId: "one", item },
+          {
+            type: "realtime",
+            position: 3,
+            item: {
+              type: "transcriptSegment",
+              id: "spoken",
+              realtimeSessionId: "session",
+              role: "user",
+              text: "spoken",
+            },
+          },
+          {
+            type: "turnCompleted",
+            position: 4,
+            turnId: "one",
+            startedAt: 1,
+            completedAt: 2,
+            status: "completed",
+            error: null,
+            durationMs: 1000,
+          },
+        ],
+        nextCursor: null,
+        activeRealtimeSessionAtPageStart: "session",
+      },
+      [item],
+    );
+    const allEntries = project().entries;
+    const resource = allEntries.find(
+      (entry) => isCodexTimelineTurnEntry(entry) && entry.timelineEndResources,
+    );
+    if (!resource || !isCodexTimelineTurnEntry(resource))
+      throw new Error("Missing native completion resources");
+    const materialize = vi.spyOn(resource, "readTurn");
+    let entries = [resource];
+    const read = createLocalConversationSearchSource({
+      routeContextId: "thread",
+      getTurns: () => [],
+      getProjectedEntries: () => entries,
+      readOwner: () => owner,
+      scrollAdapter: { scrollToTurn: async () => {}, getTurnContainer: () => null },
+    });
+    const persisted = {
+      kind: "persisted" as const,
+      threadId: "thread",
+      hostId: "local",
+      hostGeneration: 1,
+      topologyGeneration: 1,
+      query: "needle",
+      itemOccurrenceIndex: 0,
+      occurrence: {
+        turnId: "one",
+        itemId: "answer",
+        snippet: "needle",
+        snippetMatchRange: { start: 0, end: 6 },
+        turnCursor: "one-cursor",
+      },
+    };
+    expect(read.getUnitsForProjectedEntry(resource)).toEqual([]);
+    expect(read.findMatches("needle")).toEqual([]);
+    expect(read.findPersistedTarget(persisted)).toBeNull();
+    expect(materialize).not.toHaveBeenCalled();
+    entries = allEntries.filter(isCodexTimelineTurnEntry);
+    const units = read.findMatches("needle");
+    const result = projectLocalConversationResidentSearchResult({
+      units,
+      query: "needle",
+      contextId: "thread",
+      limit: 250,
+    });
+    expect(result.totalMatches).toBe(1);
+    expect(read.findPersistedTarget(persisted)?.turnKey).toBe(units[0]!.turnKey);
+    expect(materialize).not.toHaveBeenCalled();
+  });
   test("finds restored visualization prompt text and excludes model instruction and app context", () => {
     const compiled = prepareUntrustedAppInput(
       "Inspect needle selection",
