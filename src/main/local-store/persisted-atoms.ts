@@ -64,6 +64,7 @@ export class PersistedAtomStore {
   readonly #atomsPath: string;
   #stateCache: PersistedAtomState | null = null;
   #revision = 0;
+  readonly #listeners = new Set<(event: PersistedAtomEvent) => void>();
 
   constructor(atomsPath: string) {
     const normalizedPath = atomsPath.trim();
@@ -83,6 +84,24 @@ export class PersistedAtomStore {
     };
   }
 
+  /** Successful durable mutations have one delivery source, including Main-owned writes. */
+  subscribe(listener: (event: PersistedAtomEvent) => void): () => void {
+    this.#listeners.add(listener);
+    return () => {
+      this.#listeners.delete(listener);
+    };
+  }
+
+  #publish(event: PersistedAtomEvent): void {
+    for (const listener of this.#listeners) {
+      try {
+        listener(event);
+      } catch {
+        // Delivery failure cannot turn an already committed mutation into a storage failure.
+      }
+    }
+  }
+
   commitMutation(
     mutation: PersistedAtomMutation,
     originRendererId: string | null,
@@ -92,20 +111,48 @@ export class PersistedAtomStore {
     if (!key) throw new Error("Persisted atom mutation key must not be empty");
     if (!mutationId) throw new Error("Persisted atom mutation id must not be empty");
 
-    const next = {
-      ...this.readState(),
-      [key]: mutation.value,
-    };
+    const next = this.readState();
+    if (mutation.value === undefined) delete next[key];
+    else next[key] = mutation.value;
     writePersistedAtomsFile(this.#atomsPath, next);
     this.#stateCache = next;
     this.#revision += 1;
-    return {
+    const event: PersistedAtomEvent = {
       key,
       value: mutation.value,
       mutationId,
       revision: this.#revision,
       originRendererId,
     };
+    this.#publish(event);
+    return event;
+  }
+
+  /** Deletes related atoms in one durable write; each event retains the global revision order. */
+  removeAtoms(
+    keys: readonly string[],
+    mutationId: string,
+    originRendererId: string | null,
+  ): readonly PersistedAtomEvent[] {
+    const normalizedId = mutationId.trim();
+    if (!normalizedId) throw new Error("Persisted atom mutation id must not be empty");
+    const normalizedKeys = [...new Set(keys.map((key) => key.trim()))];
+    if (normalizedKeys.some((key) => !key)) throw new Error("Persisted atom key must not be empty");
+    const next = this.readState();
+    const removed = normalizedKeys.filter((key) => Object.hasOwn(next, key));
+    if (removed.length === 0) return [];
+    for (const key of removed) delete next[key];
+    writePersistedAtomsFile(this.#atomsPath, next);
+    this.#stateCache = next;
+    const events = removed.map((key) => ({
+      key,
+      value: undefined,
+      mutationId: normalizedId,
+      revision: ++this.#revision,
+      originRendererId,
+    }));
+    for (const event of events) this.#publish(event);
+    return events;
   }
 
   update(update: PersistedAtomUpdate): PersistedAtomState {

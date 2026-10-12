@@ -11,6 +11,13 @@ import { encodeCodexNativeRequestFailure } from "../../shared/codex-native-reque
 import { CodexAppServerCapabilities } from "../codex-runtime/CodexAppServerCapabilities";
 import { latestConversationTurn } from "../../shared/codex-conversation-state/codex-turn-selectors";
 import { isAppContextJson, prepareUntrustedAppInput } from "../../shared/codex-untrusted-app-input";
+import { CodexVisualizationState } from "./CodexVisualizationState";
+import {
+  selectCodexVisualizationPassiveContextKey,
+  type CodexVisualizationPassiveContext,
+  type CodexVisualizationPassiveAttachment,
+  type CodexVisualizationInjectionReceipt,
+} from "../../shared/codex-visualization-passive-context";
 import {
   queuedMessagePromptInput,
   type CodexQueuedMessage,
@@ -148,7 +155,8 @@ export interface CodexTurnCommandsService {
   readonly injectPreparedNativeStart: (
     operation: ConversationFollowerTurnStart,
     executingPeerClientId?: string,
-  ) => Effect.Effect<void, CodexTurnCommandsError>;
+    passiveContextKey?: string,
+  ) => Effect.Effect<CodexVisualizationInjectionReceipt, CodexTurnCommandsError>;
   readonly prepareNativeQueuedMessage: (
     threadId: string,
     message: CodexQueuedMessage,
@@ -168,6 +176,13 @@ export interface CodexTurnCommandsService {
     overrides?: CodexTurnStartOverrides,
     originalRequest?: TurnStartParams,
     sourceContext?: ConversationFollowerTurnStart["context"],
+    passiveIntent?:
+      | { readonly kind: "ordinary" }
+      | {
+          readonly kind: "queued";
+          readonly hostId: string;
+          readonly attachments: readonly CodexVisualizationPassiveAttachment[];
+        },
   ) => Effect.Effect<ConversationFollowerTurnStart, CodexTurnCommandsError>;
   readonly inspectPreparedNativeStart: (
     operation: ConversationFollowerTurnStart,
@@ -236,6 +251,7 @@ export const make: Effect.Effect<
   | CodexAutomationRunAcceptance
   | CodexGateway
   | CodexAppServerCapabilities
+  | CodexVisualizationState
   | CodexTurnAuthority
   | CodexTurnPresentation
   | CodexTurnPreparation
@@ -251,6 +267,7 @@ export const make: Effect.Effect<
   const conversations = yield* ConversationEntityMap;
   const gateway = yield* CodexGateway;
   const capabilities = yield* CodexAppServerCapabilities;
+  const visualizationState = yield* CodexVisualizationState;
   const hosts = yield* CodexThreadHostResolver;
   const managers = yield* CodexMainConversationManagers;
   const nativePreparations = new Map<
@@ -435,6 +452,7 @@ export const make: Effect.Effect<
       readonly returnNativeResponse?: boolean;
       readonly assertCurrentOwner: () => void;
       readonly responseItems?: ClientRequestParamsByMethod["thread/inject_items"]["items"];
+      readonly passiveContext?: CodexVisualizationPassiveContext;
     },
   ) =>
     projectLifecycle.runExclusive(
@@ -443,6 +461,9 @@ export const make: Effect.Effect<
         yield* assertProjectActive(plan);
         yield* Effect.try(options.assertCurrentOwner);
         const current = conversations.current(plan.threadId)?.readCanonicalState();
+        const previousWasIdle =
+          latestConversationTurn(current)?.status !== "inProgress" &&
+          current?.threadRuntimeStatus.type !== "active";
         if (
           options.responseItems?.length &&
           (latestConversationTurn(current)?.status === "inProgress" ||
@@ -549,13 +570,33 @@ export const make: Effect.Effect<
               new Error("An earlier turn submission is not yet confirmed"),
             );
           transaction.requestDispatched = true;
-          if (options.responseItems?.length) {
+          const admitted = conversations.current(plan.threadId)?.readCanonicalState();
+          const passiveContextKey = selectCodexVisualizationPassiveContextKey({
+            context: options.passiveContext,
+            previousWasIdle,
+            clientUserMessageId: plan.clientUserMessageId,
+            latestTurn: latestConversationTurn(admitted),
+            currentRuntimeStatus: admitted?.threadRuntimeStatus,
+            admittedRuntimeStatus: transaction.admittedRuntimeStatus,
+            lastInjectedKey: admitted?.lastInjectedPassiveContextKey,
+          });
+          const items = [
+            ...(options.responseItems ?? []),
+            ...(passiveContextKey ? options.passiveContext!.items : []),
+          ];
+          if (!items.every(isAppContextJson))
+            return yield* commandError(
+              "start",
+              plan.threadId,
+              new Error("Invalid passive context response items"),
+            );
+          if (items.length > 0) {
             yield* gateway.requestForThread(
               plan.threadId,
               "thread/inject_items",
               {
                 threadId: plan.threadId,
-                items: options.responseItems,
+                items,
               },
               {
                 ...turnConnectionFence(options.connection),
@@ -565,6 +606,13 @@ export const make: Effect.Effect<
               },
             );
             yield* confirmDelivery;
+            if (passiveContextKey) {
+              yield* Effect.try(options.assertCurrentOwner);
+              const observedAtMs = yield* Clock.currentTimeMillis;
+              conversations.current(plan.threadId)?.mutateCanonicalState((draft) => {
+                draft.lastInjectedPassiveContextKey = passiveContextKey;
+              }, observedAtMs);
+            }
           }
           yield* Effect.try(options.assertCurrentOwner);
           const environmentSelectionEvidence = conversations
@@ -1102,11 +1150,18 @@ export const make: Effect.Effect<
 
       const execute = () =>
         Effect.acquireUseRelease(
-          commands.prepareNativeStart(threadId, prompt, {
-            ...nativeOverrides,
-            clientUserMessageId,
-            preparedPrompt,
-          }),
+          commands.prepareNativeStart(
+            threadId,
+            prompt,
+            {
+              ...nativeOverrides,
+              clientUserMessageId,
+              preparedPrompt,
+            },
+            undefined,
+            undefined,
+            acceptAutomationRun ? { kind: "ordinary" } : undefined,
+          ),
           (operation) =>
             Effect.gen(function* () {
               const entry = yield* readNativePreparation(operation.request, false);
@@ -1280,7 +1335,7 @@ export const make: Effect.Effect<
         );
         return { start, steer };
       }).pipe(Effect.mapError((cause) => commandError("start", threadId, cause))),
-    injectPreparedNativeStart: (operation, executingPeerClientId) =>
+    injectPreparedNativeStart: (operation, executingPeerClientId, passiveContextKey) =>
       Effect.gen(function* () {
         const entry = yield* readNativePreparation(operation.request, false);
         return yield* entry.lock
@@ -1288,6 +1343,8 @@ export const make: Effect.Effect<
             Effect.gen(function* () {
               const owner = yield* validateExecutingOwner(entry, executingPeerClientId);
               yield* assertReceipt(entry);
+              const admittedRole = entry.manager.stream.getRole(operation.request.threadId);
+              const admittedEntity = conversations.current(operation.request.threadId);
               if (
                 !entry.plan ||
                 entry.ownerId !== owner ||
@@ -1304,13 +1361,33 @@ export const make: Effect.Effect<
                   operation.request.threadId,
                   new Error("App context injection already dispatched"),
                 );
-              const items = entry.context?.responseItems;
-              if (!Array.isArray(items) || !items.every(isAppContextJson))
+              const responseItems = entry.context?.responseItems ?? [];
+              if (!Array.isArray(responseItems) || !responseItems.every(isAppContextJson))
                 return yield* commandError(
                   "start",
                   operation.request.threadId,
                   new Error("Invalid app context response items"),
                 );
+              if (
+                passiveContextKey !== undefined &&
+                passiveContextKey !== entry.context?.passiveContext?.key
+              )
+                return yield* commandError(
+                  "start",
+                  operation.request.threadId,
+                  new Error("Passive context does not match its prepared owner"),
+                );
+              const items = [
+                ...responseItems,
+                ...(passiveContextKey ? entry.context!.passiveContext!.items : []),
+              ];
+              if (!items.every(isAppContextJson))
+                return yield* commandError(
+                  "start",
+                  operation.request.threadId,
+                  new Error("Invalid passive context response items"),
+                );
+              if (items.length === 0) return {};
               entry.injection = "in-flight";
               yield* gateway.requestForThread(
                 operation.request.threadId,
@@ -1323,7 +1400,19 @@ export const make: Effect.Effect<
               );
               yield* Effect.try(() => assertTurnConnection(entry));
               yield* assertReceipt(entry);
+              const confirmedOwner = yield* validateExecutingOwner(entry, executingPeerClientId);
+              if (
+                entry.manager.stream.getRole(operation.request.threadId) !== admittedRole ||
+                conversations.current(operation.request.threadId) !== admittedEntity ||
+                confirmedOwner !== owner
+              )
+                return yield* commandError(
+                  "start",
+                  operation.request.threadId,
+                  new Error("Turn owner changed during context injection"),
+                );
               entry.injection = "complete";
+              return passiveContextKey ? { passiveContextKey } : {};
             }),
           )
           .pipe((dispatch) =>
@@ -1480,6 +1569,11 @@ export const make: Effect.Effect<
                 message.context.addedFiles.length,
             },
           },
+          {
+            kind: "queued",
+            hostId: message.submissionOptions?.executionHostId ?? hostId,
+            attachments: appInput.modelContextAttachments,
+          },
         );
         yield* Effect.try(() => assertTurnConnection(connection)).pipe(
           Effect.tapError(() => Effect.sync(() => releasePreparedNativeStart(clientUserMessageId))),
@@ -1487,7 +1581,14 @@ export const make: Effect.Effect<
         return { start, steer, requiresIdle };
       }).pipe(Effect.mapError((cause) => commandError("start", threadId, cause))),
     releasePreparedNativeStart,
-    prepareNativeStart: (threadId, prompt, overrides, originalRequest, sourceContext) =>
+    prepareNativeStart: (
+      threadId,
+      prompt,
+      overrides,
+      originalRequest,
+      sourceContext,
+      passiveIntent,
+    ) =>
       Effect.gen(function* () {
         yield* conversations.assertExecutionAvailable(threadId);
         const executionEpoch = yield* conversations.executionEpoch(threadId);
@@ -1495,6 +1596,23 @@ export const make: Effect.Effect<
         const manager = yield* managers.get(hostId);
         const connection = captureTurnConnection(manager);
         const lock = yield* Semaphore.make(1);
+        let passiveAttachments: readonly CodexVisualizationPassiveAttachment[] = [];
+        if (passiveIntent?.kind === "queued") passiveAttachments = passiveIntent.attachments;
+        else if (passiveIntent?.kind === "ordinary")
+          passiveAttachments = yield* Effect.try(
+            () =>
+              prepareUntrustedAppInput(
+                prompt,
+                { mcpAppModelContextAttachments: sourceContext?.mcpAppModelContextAttachments },
+                "passive-context-validation",
+              ).modelContextAttachments,
+          );
+        const passiveContext = passiveIntent
+          ? yield* visualizationState.readPassiveContext(
+              { hostId: passiveIntent.kind === "queued" ? passiveIntent.hostId : hostId, threadId },
+              passiveAttachments,
+            )
+          : undefined;
         return yield* Effect.try({
           try: () => {
             assertTurnConnection(connection);
@@ -1543,6 +1661,8 @@ export const make: Effect.Effect<
                     }
                   : undefined),
             );
+            if (context) delete context.passiveContext;
+            if (passiveContext) context = { ...context, passiveContext };
             let admittedOverrides = overrides;
             const untrustedAppMessage =
               overrides?.untrustedAppMessage ?? overrides?.promptInput?.untrustedAppMessage;
@@ -1747,6 +1867,10 @@ export const make: Effect.Effect<
                 returnNativeResponse: true,
                 assertCurrentOwner,
                 responseItems,
+                passiveContext:
+                  !plan.rendererOwnsState && entry.injection !== "complete"
+                    ? entry.context?.passiveContext
+                    : undefined,
               }),
             ),
           ),

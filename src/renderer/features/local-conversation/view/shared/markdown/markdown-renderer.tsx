@@ -3,6 +3,10 @@ import { writeTextToClipboard } from "../../../../../lib/clipboard";
 import { MarkdownCore } from "./markdown-core";
 import type { CSSProperties, MouseEvent } from "react";
 import type { ConversationVisualizationContext } from "../../inline-visualization-context";
+import {
+  useAdaptiveMarkdown,
+  type AdaptiveMarkdownOptions,
+} from "../../../../../lib/markdown/use-adaptive-markdown";
 
 export interface MarkdownRendererProps {
   content: string;
@@ -11,6 +15,7 @@ export interface MarkdownRendererProps {
   parseIncompleteMarkdown?: boolean;
   preserveLineBreaks?: boolean;
   animateStreamingText?: boolean;
+  adaptiveBuffering?: AdaptiveMarkdownOptions;
   cwd?: string | null;
   projectWorkspacePath?: string | null;
   visualizationContext?: ConversationVisualizationContext;
@@ -56,6 +61,7 @@ export function MarkdownRenderer({
   parseIncompleteMarkdown,
   preserveLineBreaks,
   animateStreamingText,
+  adaptiveBuffering,
   cwd,
   projectWorkspacePath,
   visualizationContext,
@@ -66,15 +72,48 @@ export function MarkdownRenderer({
       onClickCapture={handleStreamdownCodeBlockCopyClick}
       style={style}
     >
-      <MarkdownCore
-        content={content}
-        parseIncompleteMarkdown={parseIncompleteMarkdown}
-        preserveLineBreaks={preserveLineBreaks}
-        animateStreamingText={animateStreamingText}
-        cwd={cwd}
-        projectWorkspacePath={projectWorkspacePath}
-        visualizationContext={visualizationContext}
-      />
+      {adaptiveBuffering ? (
+        <BufferedMarkdown
+          content={content}
+          parseIncompleteMarkdown={parseIncompleteMarkdown}
+          preserveLineBreaks={preserveLineBreaks}
+          animateStreamingText={animateStreamingText}
+          cwd={cwd}
+          projectWorkspacePath={projectWorkspacePath}
+          visualizationContext={visualizationContext}
+          buffering={adaptiveBuffering}
+        />
+      ) : (
+        <MarkdownCore
+          content={content}
+          parseIncompleteMarkdown={parseIncompleteMarkdown}
+          preserveLineBreaks={preserveLineBreaks}
+          animateStreamingText={animateStreamingText}
+          cwd={cwd}
+          projectWorkspacePath={projectWorkspacePath}
+          visualizationContext={visualizationContext}
+        />
+      )}
     </div>
+  );
+}
+
+function BufferedMarkdown({
+  buffering,
+  ...props
+}: MarkdownRendererProps & { readonly buffering: AdaptiveMarkdownOptions }) {
+  const value = useAdaptiveMarkdown(
+    props.content,
+    buffering,
+    props.parseIncompleteMarkdown ?? false,
+    props.animateStreamingText ?? true,
+  );
+  return (
+    <MarkdownCore
+      {...props}
+      content={value.text}
+      animateStreamingText={value.animate}
+      adaptiveStreaming={value.active}
+    />
   );
 }

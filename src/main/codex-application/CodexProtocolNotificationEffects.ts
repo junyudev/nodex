@@ -48,6 +48,7 @@ import { isDevelopmentFeatureEnabled } from "../../shared/development-features";
 import { BrowserUseRuntime } from "../host-runtime/BrowserUseRuntime";
 import { RemoteHostedPipRuntime } from "../host-runtime/RemoteHostedPipRuntime";
 import { CodexApplicationEventHub } from "./CodexApplicationEventHub";
+import { CodexVisualizationState } from "./CodexVisualizationState";
 import { CodexAutomationTurnCompletion } from "./CodexAutomationTurnCompletion";
 import { CodexConversationLifecycle } from "./CodexConversationLifecycle";
 import { CodexConversationDeltaBufferRuntime } from "./CodexConversationDeltaBufferRuntime";
@@ -150,8 +151,10 @@ export const make: Effect.Effect<
   | BrowserUseRuntime
   | RemoteHostedPipRuntime
   | CodexAppServerCapabilities
+  | CodexVisualizationState
 > = Effect.gen(function* () {
   const events = yield* CodexApplicationEventHub;
+  const visualizations = yield* CodexVisualizationState;
   const automation = yield* CodexAutomationTurnCompletion;
   const deltas = yield* CodexConversationDeltaBufferRuntime;
   const lifecycle = yield* CodexConversationLifecycle;
@@ -627,6 +630,18 @@ export const make: Effect.Effect<
         `Codex Thread '${threadId}' was ${notification.method.slice("thread/".length)}`,
       );
       terminalInputBuffers.clearConversation(threadId);
+      // A confirmed deletion must retire the conversation even if auxiliary storage is unavailable.
+      if (notification.method === "thread/deleted")
+        yield* visualizations.clearThread({ hostId: input.hostId, threadId }).pipe(
+          Effect.tapError((cause) =>
+            Effect.logWarning("Could not remove widget state for a deleted chat", {
+              threadId,
+              hostId: input.hostId,
+              cause,
+            }),
+          ),
+          Effect.ignore,
+        );
       yield* durable.pipe(Effect.ensuring(lifecycle.close(threadId, reason)));
       yield* remoteHostedPip.observeCodexOccurrence({ ...input, notification });
       yield* subagents.observeNotification({

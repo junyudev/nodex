@@ -8,6 +8,7 @@ export function mutateCodexCanonicalRevert(
   revertedTurnIds: ReadonlySet<string | null>,
 ): void {
   const { thread, turnsBackwardsCursor, itemsBackwardsCursor } = response;
+  delete state.lastInjectedPassiveContextKey;
   const history = state.turnHistory?.history;
   const lastIsland = history?.islands.at(-1);
   const tail = lastIsland?.newerBoundary.status === "exhausted" ? lastIsland : undefined;

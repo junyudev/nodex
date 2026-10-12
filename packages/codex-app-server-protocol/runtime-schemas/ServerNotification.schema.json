@@ -5914,13 +5914,13 @@
         },
         {
           "properties": {
-            "item_id": {
+            "itemId": {
               "type": "string"
             },
             "presentation": {
               "$ref": "#/definitions/definitions__v2__ThreadRealtimeBemItemPresentation"
             },
-            "turn_id": {
+            "turnId": {
               "type": "string"
             },
             "type": {
@@ -5932,9 +5932,9 @@
             }
           },
           "required": [
-            "item_id",
+            "itemId",
             "presentation",
-            "turn_id",
+            "turnId",
             "type"
           ],
           "title": "BemItemPromotedThreadRealtimeItem",

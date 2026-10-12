@@ -66,6 +66,8 @@ import { CodexConversationMaterialization } from "./CodexConversationMaterializa
 import { CodexConversationProjection } from "./CodexConversationProjection";
 import { CodexTurnAuthority } from "./CodexTurnAuthority";
 import { CodexTurnCommands, make, type CodexTurnCommandsService } from "./CodexTurnCommands";
+import { CodexVisualizationState } from "./CodexVisualizationState";
+import { compileCodexVisualizationPassiveContext } from "../../shared/codex-visualization-passive-context";
 import {
   CodexTurnPreparation,
   type CodexTurnStartPlan,
@@ -141,6 +143,7 @@ const makeHarness = (input: {
   readonly initialState?: CodexCanonicalConversationState;
   readonly preparedPlan?: CodexTurnStartPlan;
   readonly inject?: Effect.Effect<unknown, ReturnType<typeof missingThread>>;
+  readonly readPassiveContext?: CodexVisualizationState["Service"]["readPassiveContext"];
   readonly ownerRecovering?: boolean;
   readonly discoveredOwner?: string;
   readonly appServerVersion?: string;
@@ -168,6 +171,7 @@ const makeHarness = (input: {
       options: CodexGatewayRequestOptions | undefined;
     }> = [];
     const configReads: Array<{ includeLayers: boolean; cwd: string | null }> = [];
+    const injectedItems: unknown[] = [];
     const preparationInputs: CodexTurnStartPreparationInput[] = [];
     const callbacks = Context.get(
       yield* Layer.buildWithScope(callbackLayer, scope),
@@ -247,6 +251,7 @@ const makeHarness = (input: {
           }
           if (method === "thread/inject_items") {
             events.push("inject");
+            injectedItems.push(params);
             return input.inject ?? Effect.succeed({});
           }
           if (method !== "turn/start") return Effect.die(`unexpected method: ${method}`);
@@ -483,6 +488,12 @@ const makeHarness = (input: {
         ]),
       );
     const commands: CodexTurnCommandsService = yield* make.pipe(
+      Effect.provideService(CodexVisualizationState, {
+        read: () => Effect.die("unused"),
+        write: () => Effect.die("unused"),
+        clearThread: () => Effect.die("unused"),
+        readPassiveContext: input.readPassiveContext ?? (() => Effect.succeed(undefined)),
+      }),
       Effect.provideService(CodexAutomationRunAcceptance, automation),
       Effect.provideService(
         CodexAutoThreadTitle,
@@ -574,6 +585,7 @@ const makeHarness = (input: {
       forwarded,
       dispatchFences,
       configReads,
+      injectedItems,
       preparationInputs,
       resetListenerCount: () => resetCallbacks.size,
       requests: () => requests,
@@ -1717,6 +1729,304 @@ const queuedPreparationContext = {
   usePermissionSelection: false,
 } as const;
 
+const passiveContextFixture = (hostId: string, threadId: string, count: number) =>
+  compileCodexVisualizationPassiveContext({
+    scope: { hostId, threadId },
+    stateRecord: {
+      "/plot.html": { hostId, threadId, path: "/plot.html", state: { modelContent: { count } } },
+    },
+    interactionRecord: {},
+    createUUID: () => "00000000-0000-4000-8000-000000000000",
+  })!;
+
+it.effect(
+  "passive state appends after explicit input, confirms its owner key, and skips unchanged state",
+  () =>
+    Effect.gen(function* () {
+      let count = 1;
+      const harness = yield* makeHarness({
+        initialState: conversationFixture("thread-a"),
+        readPassiveContext: ({ hostId, threadId }) =>
+          Effect.sync(() => passiveContextFixture(hostId, threadId, count)),
+        request: (attempt) =>
+          Effect.succeed({ turn: { ...response().turn, id: `passive-turn-${attempt}` } }),
+      });
+      const run = (id: string, explicit = false) =>
+        Effect.gen(function* () {
+          const operation = yield* harness.commands.prepareNativeStart(
+            "thread-a",
+            "send",
+            { clientUserMessageId: id },
+            undefined,
+            explicit
+              ? {
+                  responseItems: [
+                    {
+                      type: "function_call",
+                      name: "explicit",
+                      call_id: "explicit",
+                      arguments: "{}",
+                    },
+                  ],
+                }
+              : undefined,
+            { kind: "ordinary" },
+          );
+          const materialized = yield* harness.commands.inspectPreparedNativeStart(operation);
+          yield* harness.commands.executePreparedNativeStart(materialized.request);
+          return operation.context!.passiveContext!;
+        });
+      const first = yield* run("first", true);
+      assert.deepEqual(harness.injectedItems, [
+        {
+          threadId: "thread-a",
+          items: [
+            { type: "function_call", name: "explicit", call_id: "explicit", arguments: "{}" },
+            ...first.items,
+          ],
+        },
+      ]);
+      assert.strictEqual(
+        harness.aggregate.readCanonicalState()?.lastInjectedPassiveContextKey,
+        first.key,
+      );
+      const finish = () =>
+        harness.aggregate.mutateCanonicalState((draft) => {
+          draft.threadRuntimeStatus = { type: "idle" };
+          for (const turn of draft.turns) turn.status = "completed";
+        }, 10);
+      finish();
+      yield* run("second");
+      assert.strictEqual(harness.injectedItems.length, 1);
+      finish();
+      count = 2;
+      const changed = yield* run("third");
+      assert.strictEqual(harness.injectedItems.length, 2);
+      assert.strictEqual(
+        harness.aggregate.readCanonicalState()?.lastInjectedPassiveContextKey,
+        changed.key,
+      );
+      assert.notStrictEqual(changed.key, first.key);
+      yield* Scope.close(harness.scope, Exit.void);
+    }),
+);
+
+it.effect(
+  "passive state does not turn a busy submission into a context injection or an idle requirement",
+  () =>
+    Effect.gen(function* () {
+      const harness = yield* makeHarness({
+        initialState: {
+          ...conversationFixture("thread-a", [turnFixture("busy", "inProgress")]),
+          threadRuntimeStatus: { type: "active", activeFlags: [] },
+        },
+        readPassiveContext: () => Effect.succeed(passiveContextFixture("local", "thread-a", 1)),
+        request: () => Effect.succeed(response()),
+      });
+      const operation = yield* harness.commands.prepareNativeStart(
+        "thread-a",
+        "send",
+        undefined,
+        undefined,
+        undefined,
+        { kind: "ordinary" },
+      );
+      const materialized = yield* harness.commands.inspectPreparedNativeStart(operation);
+      yield* harness.commands.executePreparedNativeStart(materialized.request);
+      assert.deepEqual(harness.injectedItems, []);
+      assert.strictEqual(harness.requests(), 1);
+      assert.isUndefined(harness.aggregate.readCanonicalState()?.lastInjectedPassiveContextKey);
+      yield* Scope.close(harness.scope, Exit.void);
+    }),
+);
+
+it.effect("failed passive injection never marks model context as confirmed or starts a Turn", () =>
+  Effect.gen(function* () {
+    const harness = yield* makeHarness({
+      initialState: conversationFixture("thread-a"),
+      readPassiveContext: () => Effect.succeed(passiveContextFixture("local", "thread-a", 1)),
+      inject: Effect.fail(missingThread()),
+      request: () => Effect.succeed(response()),
+    });
+    const operation = yield* harness.commands.prepareNativeStart(
+      "thread-a",
+      "send",
+      undefined,
+      undefined,
+      undefined,
+      { kind: "ordinary" },
+    );
+    const materialized = yield* harness.commands.inspectPreparedNativeStart(operation);
+    const failure = yield* harness.commands
+      .executePreparedNativeStart(materialized.request)
+      .pipe(Effect.result);
+    assert.strictEqual(failure._tag, "Failure");
+    assert.isUndefined(harness.aggregate.readCanonicalState()?.lastInjectedPassiveContextKey);
+    assert.strictEqual(harness.requests(), 0);
+    yield* Scope.close(harness.scope, Exit.void);
+  }),
+);
+
+it.effect(
+  "a retired passive injection cannot publish confirmation into the recovered native generation",
+  () =>
+    Effect.gen(function* () {
+      const entered = yield* Deferred.make<void>();
+      const release = yield* Deferred.make<void>();
+      const harness = yield* makeHarness({
+        initialState: conversationFixture("thread-a"),
+        readPassiveContext: () => Effect.succeed(passiveContextFixture("local", "thread-a", 1)),
+        inject: Deferred.succeed(entered, undefined).pipe(
+          Effect.andThen(Deferred.await(release)),
+          Effect.as({}),
+        ),
+        request: () => Effect.succeed(response()),
+      });
+      const operation = yield* harness.commands.prepareNativeStart(
+        "thread-a",
+        "send",
+        undefined,
+        undefined,
+        undefined,
+        { kind: "ordinary" },
+      );
+      const materialized = yield* harness.commands.inspectPreparedNativeStart(operation);
+      const running = yield* Effect.forkChild(
+        harness.commands.executePreparedNativeStart(materialized.request).pipe(Effect.result),
+      );
+      yield* Deferred.await(entered);
+      harness.reconnect();
+      yield* Deferred.succeed(release, undefined);
+      const result = yield* Fiber.join(running);
+      assert.strictEqual(result._tag, "Failure");
+      assert.isUndefined(harness.aggregate.readCanonicalState()?.lastInjectedPassiveContextKey);
+      assert.strictEqual(harness.requests(), 0);
+      yield* Scope.close(harness.scope, Exit.void);
+    }),
+);
+
+it.effect(
+  "passive injection receipts admit only the exact retained context and a nonempty native request",
+  () =>
+    Effect.gen(function* () {
+      const context = passiveContextFixture("local", "thread-a", 1);
+      let next = context;
+      const harness = yield* makeHarness({
+        initialState: conversationFixture("thread-a"),
+        readPassiveContext: () => Effect.succeed(next),
+        request: () => Effect.succeed(response()),
+      });
+      harness.changeOwner();
+      const operation = yield* harness.commands.prepareNativeStart(
+        "thread-a",
+        "send",
+        undefined,
+        undefined,
+        undefined,
+        { kind: "ordinary" },
+      );
+      yield* harness.commands.inspectPreparedNativeStart(operation, "renderer-owner");
+      const forged = yield* harness.commands
+        .injectPreparedNativeStart(operation, "renderer-owner", "forged-key")
+        .pipe(Effect.result);
+      assert.strictEqual(forged._tag, "Failure");
+      assert.deepEqual(harness.injectedItems, []);
+      const confirmed = yield* harness.commands.injectPreparedNativeStart(
+        operation,
+        "renderer-owner",
+        context.key,
+      );
+      assert.deepEqual(confirmed, { passiveContextKey: context.key });
+      assert.isUndefined(harness.aggregate.readCanonicalState()?.lastInjectedPassiveContextKey);
+      assert.deepEqual(harness.injectedItems, [{ threadId: "thread-a", items: context.items }]);
+      next = { ...context, items: [] };
+      const empty = yield* harness.commands.prepareNativeStart(
+        "thread-a",
+        "send",
+        { clientUserMessageId: "empty" },
+        undefined,
+        undefined,
+        { kind: "ordinary" },
+      );
+      yield* harness.commands.inspectPreparedNativeStart(empty, "renderer-owner");
+      assert.deepEqual(
+        yield* harness.commands.injectPreparedNativeStart(empty, "renderer-owner", context.key),
+        {},
+      );
+      assert.strictEqual(harness.injectedItems.length, 1);
+      yield* Scope.close(harness.scope, Exit.void);
+    }),
+);
+
+it.effect(
+  "queued passive context is read afresh on its execution host while steering omits collection",
+  () =>
+    Effect.gen(function* () {
+      let count = 1;
+      const scopes: unknown[] = [];
+      const harness = yield* makeHarness({
+        request: () => Effect.succeed(response()),
+        readPassiveContext: (scope) =>
+          Effect.sync(() => {
+            scopes.push(scope);
+            return passiveContextFixture(scope.hostId, scope.threadId, count);
+          }),
+      });
+      const message = {
+        id: "queue",
+        cwd: "/repo",
+        submissionOptions: { executionHostId: "ssh" },
+        context: {
+          prompt: "send",
+          fileAttachments: [],
+          addedFiles: [],
+          commentAttachments: [],
+          imageAttachments: [],
+          passiveContext: { key: "forged", items: [] },
+        },
+      };
+      const first = yield* harness.commands.prepareNativeQueuedMessage(
+        "thread-a",
+        message,
+        "start",
+        queuedPreparationContext,
+      );
+      assert.isFalse(first.requiresIdle);
+      count = 2;
+      harness.commands.releasePreparedNativeStart(first.start!.request.clientUserMessageId!);
+      const second = yield* harness.commands.prepareNativeQueuedMessage(
+        "thread-a",
+        message,
+        "start",
+        queuedPreparationContext,
+      );
+      assert.notStrictEqual(
+        second.start?.context?.passiveContext?.key,
+        first.start?.context?.passiveContext?.key,
+      );
+      harness.commands.releasePreparedNativeStart(second.start!.request.clientUserMessageId!);
+      yield* harness.commands.prepareNativeQueuedMessage(
+        "thread-a",
+        message,
+        "steer",
+        queuedPreparationContext,
+      );
+      assert.deepEqual(scopes, [
+        { hostId: "ssh", threadId: "thread-a" },
+        { hostId: "ssh", threadId: "thread-a" },
+      ]);
+      const noIntent = yield* harness.commands.prepareNativeStart(
+        "thread-a",
+        "send",
+        undefined,
+        undefined,
+        { passiveContext: { key: "forged", items: [] } },
+      );
+      assert.isUndefined(noIntent.context?.passiveContext);
+      yield* Scope.close(harness.scope, Exit.void);
+    }),
+);
+
 for (const owner of ["main", "renderer"] as const)
   it.effect(`${owner} queued app context is injected once inside its owner transaction`, () =>
     Effect.gen(function* () {
@@ -2461,3 +2771,94 @@ it.effect("rejects tool-output steering prepared before a completed workspace ha
     yield* Scope.close(fixture.scope, Exit.void);
   }),
 );
+
+for (const replacement of ["role", "entity"] as const)
+  it.effect(
+    `passive confirmation rejects ${replacement} replacement while native injection is in flight`,
+    () =>
+      Effect.gen(function* () {
+        const entered = yield* Deferred.make<void>();
+        const release = yield* Deferred.make<void>();
+        const harness = yield* makeHarness({
+          initialState: conversationFixture("thread-a"),
+          readPassiveContext: () => Effect.succeed(passiveContextFixture("local", "thread-a", 1)),
+          inject: Deferred.succeed(entered, undefined).pipe(
+            Effect.andThen(Deferred.await(release)),
+            Effect.as({}),
+          ),
+          request: () => Effect.succeed(response()),
+        });
+        harness.changeOwner();
+        const operation = yield* harness.commands.prepareNativeStart(
+          "thread-a",
+          "send",
+          undefined,
+          undefined,
+          undefined,
+          { kind: "ordinary" },
+        );
+        yield* harness.commands.inspectPreparedNativeStart(operation, "renderer-owner");
+        const running = yield* Effect.forkChild(
+          harness.commands
+            .injectPreparedNativeStart(
+              operation,
+              "renderer-owner",
+              operation.context!.passiveContext!.key,
+            )
+            .pipe(Effect.result),
+        );
+        yield* Deferred.await(entered);
+        if (replacement === "role") harness.changeOwner();
+        else yield* harness.replaceEntity();
+        yield* Deferred.succeed(release, undefined);
+        const result = yield* Fiber.join(running);
+        assert.strictEqual(result._tag, "Failure");
+        assert.isUndefined(
+          harness.conversations.current("thread-a")?.readCanonicalState()
+            ?.lastInjectedPassiveContextKey,
+        );
+        assert.strictEqual(harness.requests(), 0);
+        yield* Scope.close(harness.scope, Exit.void);
+      }),
+  );
+
+for (const explicit of [false, true])
+  it.effect(
+    `deduplicated passive context ${explicit ? "confirms alongside explicit items" : "remains unconfirmed without a native injection"}`,
+    () =>
+      Effect.gen(function* () {
+        const context = { key: "deduplicated", items: [] };
+        const harness = yield* makeHarness({
+          initialState: conversationFixture("thread-a"),
+          readPassiveContext: () => Effect.succeed(context),
+          request: () => Effect.succeed(response()),
+        });
+        const operation = yield* harness.commands.prepareNativeStart(
+          "thread-a",
+          "send",
+          undefined,
+          undefined,
+          explicit
+            ? {
+                responseItems: [
+                  {
+                    type: "function_call",
+                    call_id: "explicit",
+                    name: "untrusted_input",
+                    arguments: "{}",
+                  },
+                ],
+              }
+            : undefined,
+          { kind: "ordinary" },
+        );
+        const materialized = yield* harness.commands.inspectPreparedNativeStart(operation);
+        yield* harness.commands.executePreparedNativeStart(materialized.request);
+        assert.strictEqual(harness.injectedItems.length, explicit ? 1 : 0);
+        assert.strictEqual(
+          harness.aggregate.readCanonicalState()?.lastInjectedPassiveContextKey,
+          explicit ? context.key : undefined,
+        );
+        yield* Scope.close(harness.scope, Exit.void);
+      }),
+  );

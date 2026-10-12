@@ -483,8 +483,22 @@ export const make: Effect.Effect<CodexHistoryPageAdapter["Service"], never, Code
       if (
         input.source === "timeline" ||
         (input.source === undefined && timeline && (purpose === "initial" || purpose === "older"))
-      )
-        return yield* loadTimelinePage(input);
+      ) {
+        if (input.source === undefined && purpose !== "initial" && input.cursor !== null)
+          return yield* error({
+            operation: "turns",
+            threadId: input.threadId,
+            reason: "request-failed",
+            cause: new Error("History paging cursor requires its native source"),
+          });
+        // An implicit initial page may carry Resume's ordinary Turn/item cursors.
+        // Timeline selects its own newest page; subsequent reads retain explicit source.
+        return yield* loadTimelinePage({
+          ...input,
+          cursor: input.source === undefined && purpose === "initial" ? null : input.cursor,
+          initialItemsCursor: null,
+        });
+      }
       const response = yield* gateway
         .requestForThread(
           input.threadId,

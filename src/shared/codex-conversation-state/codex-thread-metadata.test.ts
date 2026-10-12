@@ -283,6 +283,7 @@ describe("Codex 30751 thread metadata", () => {
       latestTokenUsageInfo: usage,
       threadSource: "user",
       gitInfo: { sha: "abc", branch: "main", originUrl: null },
+      lastInjectedPassiveContextKey: "confirmed-passive-context",
     };
     const resumedThread: Thread = {
       ...buildThread("Native title"),
@@ -323,6 +324,7 @@ describe("Codex 30751 thread metadata", () => {
     expect(reconciled.gitInfo).toEqual(existing.gitInfo);
     expect(reconciled.latestTokenUsageInfo).toBe(usage);
     expect(reconciled.previousTurnModel).toBe("gpt-before-resume");
+    expect(reconciled.lastInjectedPassiveContextKey).toBe("confirmed-passive-context");
     expect(reconciled.latestThreadSettings?.summary).toBe(settings.summary);
     expect(reconciled.latestThreadSettings?.personality).toBe(settings.personality);
     expect(reconciled.latestModel).toBe("gpt-resumed");

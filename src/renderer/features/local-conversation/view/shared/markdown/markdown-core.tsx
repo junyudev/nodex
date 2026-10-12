@@ -19,6 +19,7 @@ interface MarkdownCoreProps {
   parseIncompleteMarkdown?: boolean;
   preserveLineBreaks?: boolean;
   animateStreamingText?: boolean;
+  adaptiveStreaming?: boolean;
   cwd?: string | null;
   projectWorkspacePath?: string | null;
   visualizationContext?: ConversationVisualizationContext;
@@ -56,6 +57,7 @@ export function MarkdownCore({
   parseIncompleteMarkdown = false,
   preserveLineBreaks = false,
   animateStreamingText = false,
+  adaptiveStreaming = false,
   cwd,
   projectWorkspacePath,
   visualizationContext,
@@ -93,6 +95,7 @@ export function MarkdownCore({
                   animation: "fadeIn",
                   sep: "word",
                   duration: 200,
+                  ...(adaptiveStreaming ? { stagger: 0 } : {}),
                   easing: "cubic-bezier(.37, .55, .86, .88)",
                 }
               : undefined

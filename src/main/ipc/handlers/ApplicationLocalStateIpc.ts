@@ -27,6 +27,14 @@ export const live: Layer.Layer<
     const persistedAtoms = yield* ProfilePersistedAtoms;
     const ipc = yield* ElectronIpc;
     const windows = yield* WindowRuntime;
+    yield* Effect.acquireRelease(
+      Effect.sync(() =>
+        persistedAtoms.subscribe((event) => {
+          safeBroadcastToWindows(windows.all(), "persisted-atom:updated", [event]);
+        }),
+      ),
+      (unsubscribe) => Effect.sync(unsubscribe),
+    );
     const { handleControl, handleQuery, handleRevisionedCommand } = ipc;
     const authorize = (event: IpcMainInvokeEvent) =>
       Effect.try({
@@ -61,7 +69,6 @@ export const live: Layer.Layer<
                 mutation,
                 String(event.sender.id),
               );
-              safeBroadcastToWindows(windows.all(), "persisted-atom:updated", [persistedEvent]);
               return persistedEvent;
             },
             catch: (cause) =>

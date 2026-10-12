@@ -5,6 +5,7 @@ import {
   readAtom,
   subscribeAtom,
   writeAtom,
+  getPersistedAtomTransport,
 } from "./persisted-atom-store";
 
 type BridgeListener = (...args: unknown[]) => void;
@@ -21,6 +22,38 @@ describe("persisted atom renderer store", () => {
   beforeEach(() => {
     clearPersistedAtomStoreForTests();
     clearWindowApi();
+  });
+
+  test("ordered delete receipts remove both related keys and cannot be revived by stale updates", async () => {
+    let listener: BridgeListener | null = null;
+    installWindowApi({
+      invoke: async () => ({ revision: 0, values: { state: { selected: 1 }, interactions: {} } }),
+      on: (channel: string, callback: BridgeListener) => {
+        if (channel === "persisted-atom:updated") listener = callback;
+        return () => {};
+      },
+    });
+    await readAtom("state", null);
+    const seen: unknown[] = [];
+    const stop = subscribeAtom("state", (value) => seen.push(value));
+    for (const [index, key] of ["state", "interactions"].entries())
+      (listener as BridgeListener | null)?.({
+        key,
+        value: undefined,
+        revision: index + 1,
+        mutationId: "clear",
+        originRendererId: null,
+      });
+    (listener as BridgeListener | null)?.({
+      key: "state",
+      value: { selected: 9 },
+      revision: 1,
+      mutationId: "stale",
+      originRendererId: null,
+    });
+    expect(await getPersistedAtomTransport().readSnapshot()).toEqual({ revision: 2, values: {} });
+    expect(seen).toEqual([undefined]);
+    stop();
   });
 
   test("uses an in-memory fallback when the Electron bridge is unavailable", async () => {

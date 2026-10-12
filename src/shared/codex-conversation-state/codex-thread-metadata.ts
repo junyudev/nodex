@@ -158,6 +158,7 @@ export function reconcileCodexResumedConversationState(
     draft.generatedTitle = existing.generatedTitle;
     draft.mode = existing.mode;
     draft.threadStartKind = existing.threadStartKind;
+    draft.lastInjectedPassiveContextKey = existing.lastInjectedPassiveContextKey;
     draft.createdAt = existing.createdAt;
     draft.updatedAt = Math.max(existing.updatedAt, resumed.updatedAt);
     draft.recencyAt =

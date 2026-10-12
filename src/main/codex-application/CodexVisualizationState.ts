@@ -3,18 +3,29 @@ import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 import * as Schema from "effect/Schema";
 import { z } from "zod";
+import { randomUUID } from "node:crypto";
 import type { PersistedAtomEvent } from "../../shared/ipc-api";
 import {
   CODEX_VISUALIZATION_STATE_MAX_ENTRIES,
   CodexVisualizationStateIdentitySchema,
+  CodexVisualizationStateScopeSchema,
+  CodexVisualizationStateRecordSchema,
+  CodexVisualizationStateEntrySchema,
   codexVisualizationStateAtomKey,
+  codexVisualizationInteractionAtomKey,
   codexVisualizationStateEntryKey,
   parseCodexVisualizationWidgetState,
   type CodexVisualizationStateIdentity,
   type CodexVisualizationStateWriteInput,
   type CodexVisualizationStateWriteResult,
   type CodexVisualizationWidgetState,
+  type CodexVisualizationStateScope,
 } from "../../shared/codex-visualization-state";
+import {
+  compileCodexVisualizationPassiveContext,
+  type CodexVisualizationPassiveAttachment,
+  type CodexVisualizationPassiveContext,
+} from "../../shared/codex-visualization-passive-context";
 import { ProfilePersistedAtoms } from "../local-store/ProfilePersistedAtoms";
 
 export class CodexVisualizationStateError extends Schema.TaggedError<CodexVisualizationStateError>()(
@@ -35,13 +46,17 @@ export class CodexVisualizationState extends Context.Service<
       input: CodexVisualizationStateWriteInput,
       originRendererId: string,
     ) => Effect.Effect<WriteCommit, CodexVisualizationStateError>;
+    readonly readPassiveContext: (
+      scope: CodexVisualizationStateScope,
+      attachments?: readonly CodexVisualizationPassiveAttachment[],
+    ) => Effect.Effect<CodexVisualizationPassiveContext | undefined>;
+    readonly clearThread: (
+      scope: CodexVisualizationStateScope,
+    ) => Effect.Effect<readonly PersistedAtomEvent[], CodexVisualizationStateError>;
   }
 >()("nodex/main/codex-application/CodexVisualizationState") {}
 
-const recordSchema = z.record(z.string(), z.unknown()).catch({});
-const entrySchema = CodexVisualizationStateIdentitySchema.extend({ state: z.unknown() });
-
-/** Read and single-entry commit share the Profile repository's atomic transaction. */
+/** Widget state and passive context share the Profile repository's durable owner. */
 export const live: Layer.Layer<CodexVisualizationState, never, ProfilePersistedAtoms> =
   Layer.effect(
     CodexVisualizationState,
@@ -53,10 +68,10 @@ export const live: Layer.Layer<CodexVisualizationState, never, ProfilePersistedA
             try: () => {
               const identity = CodexVisualizationStateIdentitySchema.parse(raw);
               const key = codexVisualizationStateEntryKey(identity);
-              const record = recordSchema.parse(
+              const record = CodexVisualizationStateRecordSchema.parse(
                 store.readState()[codexVisualizationStateAtomKey(identity)],
               );
-              const entry = entrySchema.safeParse(record[key]);
+              const entry = CodexVisualizationStateEntrySchema.safeParse(record[key]);
               if (
                 !entry.success ||
                 entry.data.hostId !== identity.hostId ||
@@ -82,7 +97,9 @@ export const live: Layer.Layer<CodexVisualizationState, never, ProfilePersistedA
                 const atomKey = codexVisualizationStateAtomKey(identity);
                 const key = codexVisualizationStateEntryKey(identity);
                 const entries = new Map(
-                  Object.entries(recordSchema.parse(store.readState()[atomKey])),
+                  Object.entries(
+                    CodexVisualizationStateRecordSchema.parse(store.readState()[atomKey]),
+                  ),
                 );
                 entries.delete(key);
                 entries.set(key, { ...identity, state: parsed.state });
@@ -107,6 +124,45 @@ export const live: Layer.Layer<CodexVisualizationState, never, ProfilePersistedA
             catch: (cause) => new CodexVisualizationStateError({ operation: "write", cause }),
           }),
       );
-      return CodexVisualizationState.of({ read, write });
+      const readPassiveContext = Effect.fn("CodexVisualizationState.readPassiveContext")(
+        (
+          raw: CodexVisualizationStateScope,
+          attachments?: readonly CodexVisualizationPassiveAttachment[],
+        ) =>
+          Effect.sync(() => {
+            try {
+              const scope = CodexVisualizationStateScopeSchema.parse(raw);
+              const values = store.readState();
+              return compileCodexVisualizationPassiveContext({
+                scope,
+                stateRecord: values[codexVisualizationStateAtomKey(scope)],
+                interactionRecord: values[codexVisualizationInteractionAtomKey(scope)],
+                attachments,
+                createUUID: randomUUID,
+              });
+            } catch {
+              return undefined;
+            }
+          }),
+      );
+      const clearThread = Effect.fn("CodexVisualizationState.clearThread")(
+        (raw: CodexVisualizationStateScope) =>
+          Effect.try({
+            try: () => {
+              const scope = CodexVisualizationStateScopeSchema.parse(raw);
+              return store.removeAtoms(
+                [
+                  codexVisualizationStateAtomKey(scope),
+                  codexVisualizationInteractionAtomKey(scope),
+                ],
+                `visualization-clear:${randomUUID()}`,
+                null,
+              );
+            },
+            catch: (cause) =>
+              new CodexVisualizationStateError({ operation: "clear-thread", cause }),
+          }),
+      );
+      return CodexVisualizationState.of({ read, write, readPassiveContext, clearThread });
     }),
   );

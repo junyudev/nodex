@@ -112,6 +112,10 @@ import {
   nativePermissionRequestFields,
 } from "../../../shared/codex-conversation-state/codex-native-permissions";
 import { mutateCodexCanonicalRevert } from "../../../shared/codex-conversation-state/codex-revert-state";
+import {
+  selectCodexVisualizationPassiveContextKey,
+  type CodexVisualizationPassiveContext,
+} from "../../../shared/codex-visualization-passive-context";
 import { isCodexNativeMethodUnsupported } from "../../../shared/codex-native-request-outcome";
 import {
   runCanonicalOwnerSteer,
@@ -677,6 +681,10 @@ interface OwnerTurnRequestContext {
   readonly options: NativeRequestOptions;
   readonly assertCurrent: () => void;
   readonly confirmDelivery: () => void;
+  readonly selectPassiveContextKey: (
+    context: CodexVisualizationPassiveContext | undefined,
+  ) => string | undefined;
+  readonly confirmPassiveContext: (key: string) => void;
 }
 
 interface OwnerServerRequestReplyResult {
@@ -2395,8 +2403,28 @@ export class CodexAppServerManager {
       hostId,
       supportsPaginatedHistory: () => this.supportsPaginatedHistory,
       supportsThreadTimeline: () => this.canReadThreadTimeline(),
-      sendTimelineRequest: (params, options) =>
-        this.nativeAppServer.request("thread/timeline/list", params, options),
+      sendTimelineRequest: async (params, options) => {
+        const context = this.nativeHostContext;
+        if (!context || !this.canReadThreadTimeline())
+          throw new Error("Timeline history host context is unavailable");
+        const page = await runConversationOperation("codex:thread:history-timeline", {
+          params,
+          hostId: context.hostId,
+          hostGeneration: context.generation,
+          sourceEpoch: context.sourceEpoch,
+          ...(options === undefined ? {} : { options }),
+        });
+        if (
+          this.destroyed ||
+          this.nativeHostContext !== context ||
+          page.threadId !== params.threadId ||
+          page.hostId !== context.hostId ||
+          page.hostGeneration !== context.generation ||
+          page.sourceEpoch !== context.sourceEpoch
+        )
+          throw new Error("Timeline history belongs to an unavailable host generation");
+        return page.response;
+      },
       getConversation: (id) => this.conversationsById.get(id)?.canonicalState,
       sendRequest: (method, params, options) =>
         this.nativeAppServer.request(method, params, options),
@@ -4476,39 +4504,52 @@ export class CodexAppServerManager {
       });
       // Preparation selects the history contract. New response metadata must not
       // discard a requested legacy page or reinterpret its remaining cursor.
+      // Resume's Turn cursor cannot address timeline history. Re-read the timeline after
+      // native adoption: an early page can observe an index that is not populated yet.
       const page =
-        earlyPage ??
-        (durableHost
+        paginated && this.canReadThreadTimeline()
           ? await listCanonicalHistoryTurns(this.historyClient, threadId, {
+              source: "timeline",
               cursor: null,
-              limit: 5,
-              sortDirection: "desc",
-              itemsView: "full",
               requestOptions: { source: "thread_hydration", priority, trace: navigationTrace },
             })
-          : paginated
-            ? response.turnsBackwardsCursor == null
-              ? {
-                  response: { data: [], nextCursor: null },
-                  itemsPaginationByTurnId: {},
-                  source: undefined,
-                  timeline: undefined,
-                }
-              : await listCanonicalHistoryTurns(this.historyClient, threadId, {
-                  cursor: response.turnsBackwardsCursor,
+          : (earlyPage ??
+            (durableHost
+              ? await listCanonicalHistoryTurns(this.historyClient, threadId, {
+                  cursor: null,
                   limit: 5,
                   sortDirection: "desc",
                   itemsView: "full",
                   requestOptions: { source: "thread_hydration", priority, trace: navigationTrace },
                 })
-            : response.initialTurnsPage
-              ? {
-                  response: response.initialTurnsPage,
-                  itemsPaginationByTurnId: {},
-                  source: undefined,
-                  timeline: undefined,
-                }
-              : null);
+              : paginated
+                ? response.turnsBackwardsCursor == null
+                  ? {
+                      response: { data: [], nextCursor: null },
+                      itemsPaginationByTurnId: {},
+                      source: undefined,
+                      timeline: undefined,
+                    }
+                  : await listCanonicalHistoryTurns(this.historyClient, threadId, {
+                      source: "ordinary",
+                      cursor: response.turnsBackwardsCursor,
+                      limit: 5,
+                      sortDirection: "desc",
+                      itemsView: "full",
+                      requestOptions: {
+                        source: "thread_hydration",
+                        priority,
+                        trace: navigationTrace,
+                      },
+                    })
+                : response.initialTurnsPage
+                  ? {
+                      response: response.initialTurnsPage,
+                      itemsPaginationByTurnId: {},
+                      source: undefined,
+                      timeline: undefined,
+                    }
+                  : null));
       const legacy =
         page === null
           ? await this.nativeAppServer.request(
@@ -5770,6 +5811,7 @@ export class CodexAppServerManager {
         presentationTicket,
         clientUserMessageId,
         preparedPrompt,
+        passiveContextIntent: "ordinary",
         originalRequest: this.buildOriginalNativeTurnRequest(
           threadId,
           clientUserMessageId,
@@ -5948,6 +5990,7 @@ export class CodexAppServerManager {
       presentationTicket,
       clientUserMessageId,
       preparedPrompt,
+      passiveContextIntent: "ordinary",
       originalRequest: this.buildOriginalNativeTurnRequest(
         threadId,
         clientUserMessageId,
@@ -6029,6 +6072,9 @@ export class CodexAppServerManager {
     const previousRuntimeStatus =
       conversation.threadRuntimeStatus ??
       buildOwnerThreadRuntimeStatus(conversation.statusType, conversation.statusActiveFlags);
+    const previousWasIdle =
+      latestConversationTurn(conversation.canonicalState)?.status !== "inProgress" &&
+      previousRuntimeStatus.type !== "active";
     const optimisticRuntimeStatus: CodexThreadRuntimeStatus | null =
       previousRuntimeStatus.type === "active" ? null : { type: "active", activeFlags: [] };
 
@@ -6067,6 +6113,25 @@ export class CodexAppServerManager {
         options: { priority: "critical", timeoutMs: 30_000, onOutcomeUnknown },
         assertCurrent: lifetime.assertCurrent,
         confirmDelivery,
+        selectPassiveContextKey: (context) => {
+          lifetime.assertCurrent();
+          const current = this.historyClient.getConversation(threadId);
+          return selectCodexVisualizationPassiveContextKey({
+            context,
+            previousWasIdle,
+            clientUserMessageId,
+            latestTurn: latestConversationTurn(current),
+            currentRuntimeStatus: current?.threadRuntimeStatus,
+            admittedRuntimeStatus: optimisticStatus,
+            lastInjectedKey: current?.lastInjectedPassiveContextKey,
+          });
+        },
+        confirmPassiveContext: (key) => {
+          lifetime.assertCurrent();
+          this.historyClient.updateConversation(threadId, (draft) => {
+            draft.lastInjectedPassiveContextKey = key;
+          });
+        },
       });
       lifetime.assertCurrent();
       const startedTurn = parseOwnerTurnStartResult(threadId, result);
@@ -6295,9 +6360,23 @@ export class CodexAppServerManager {
   ): Promise<TurnStartResponse> {
     submission.assertCurrent();
     const responseItems = operation.context?.responseItems;
-    if (Array.isArray(responseItems) && responseItems.length) {
-      await this.nativeAppServer.injectPreparedTurn(operation, submission.options);
+    const passiveContextKey = submission.selectPassiveContextKey(operation.context?.passiveContext);
+    if (
+      (Array.isArray(responseItems) && responseItems.length) ||
+      (passiveContextKey && operation.context?.passiveContext?.items.length)
+    ) {
+      const receipt = await this.nativeAppServer.injectPreparedTurn(
+        operation,
+        submission.options,
+        passiveContextKey,
+      );
       submission.confirmDelivery();
+      submission.assertCurrent();
+      if (passiveContextKey) {
+        if (receipt.passiveContextKey !== passiveContextKey)
+          throw new Error("Passive context confirmation does not match its owner");
+        submission.confirmPassiveContext(passiveContextKey);
+      }
       if (this.historyClient.getConversation(request.threadId)?.unconfirmedTurnSubmissions?.length)
         throw new Error("An earlier turn submission is not yet confirmed");
     }

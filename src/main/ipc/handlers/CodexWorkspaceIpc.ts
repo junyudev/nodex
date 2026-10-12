@@ -62,6 +62,7 @@ import { isDevelopmentFeatureEnabled } from "../../../shared/development-feature
 import { AgentImportRuntime } from "../../codex-application/AgentImportRuntime";
 import { CodexBackgroundProcesses } from "../../codex-application/CodexBackgroundProcesses";
 import { CodexHistorySearchAdapter } from "../../codex-application/CodexHistorySearchAdapter";
+import { CodexHistoryTimelineAdapter } from "../../codex-application/CodexHistoryTimelineAdapter";
 import { CodexConversationHistoryExport } from "../../codex-application/CodexConversationHistoryExport";
 import { CodexConversationResumeRuntime } from "../../codex-application/CodexConversationResumeRuntime";
 import { CodexFreshThreadLaunchRuntime } from "../../codex-application/CodexFreshThreadLaunchRuntime";
@@ -248,6 +249,7 @@ export const live = Layer.effectDiscard(
     const threadReadState = yield* CodexThreadReadState;
     const agentImport = yield* AgentImportRuntime;
     const historySearch = yield* CodexHistorySearchAdapter;
+    const historyTimeline = yield* CodexHistoryTimelineAdapter;
     const conversationHistoryExport = yield* CodexConversationHistoryExport;
     const conversationResume = yield* CodexConversationResumeRuntime;
     const nativeFork = yield* CodexConversationFork;
@@ -1673,6 +1675,7 @@ export const live = Layer.effectDiscard(
             },
             input.originalRequest,
             input.sourceContext,
+            input.passiveContextIntent === "ordinary" ? { kind: "ordinary" } : undefined,
           )
           .pipe(
             Effect.onExit((exit) =>
@@ -1794,70 +1797,74 @@ export const live = Layer.effectDiscard(
         }),
       ),
     );
-    registerNativeControl("codex:turn:native:inject", (event, { operation, caller, trace }) =>
-      Effect.gen(function* () {
-        const id = operation.request.clientUserMessageId;
-        if (!id)
-          return yield* Effect.fail(
-            new CodexIpcError({
-              operation: "native-inject",
-              cause: new Error("Turn preparation unavailable"),
-            }),
+    registerNativeControl(
+      "codex:turn:native:inject",
+      (event, { operation, caller, trace, passiveContextKey }) =>
+        Effect.gen(function* () {
+          const id = operation.request.clientUserMessageId;
+          if (!id)
+            return yield* Effect.fail(
+              new CodexIpcError({
+                operation: "native-inject",
+                cause: new Error("Turn preparation unavailable"),
+              }),
+            );
+          const peerId = yield* Effect.tryPromise({
+            try: () => conversationPeers.resolvePeerClientId(event.sender.id),
+            catch: (cause) => new CodexIpcError({ operation: "native-inject", cause }),
+          });
+          if (
+            !peerId ||
+            !caller ||
+            typeof caller.requestId !== "string" ||
+            !caller.requestId ||
+            !Number.isFinite(caller.timeoutMs) ||
+            caller.timeoutMs < 0 ||
+            (caller.expiresAtMs !== null && !Number.isFinite(caller.expiresAtMs))
+          )
+            return yield* Effect.fail(
+              new CodexIpcError({
+                operation: "native-inject",
+                cause: new Error("Invalid native injection caller"),
+              }),
+            );
+          const key = `${event.sender.id}:${caller.requestId}`;
+          let abandonmentReason: "timeout" | "disposed" | undefined;
+          const fiber = yield* requestLifetimes.start(
+            key,
+            caller.retainResponse === true,
+            turnCommands.injectPreparedNativeStart(operation, peerId, passiveContextKey).pipe(
+              Effect.provideService(CodexRendererRequestOrigin, {
+                ...caller,
+                method: "thread/inject_items",
+                conversationId: operation.request.threadId,
+                wireTrace: trace,
+                destinationId: String(event.sender.id),
+                abandonment: () => abandonmentReason,
+              }),
+            ),
+            (reason) => {
+              abandonmentReason = reason;
+            },
           );
-        const peerId = yield* Effect.tryPromise({
-          try: () => conversationPeers.resolvePeerClientId(event.sender.id),
-          catch: (cause) => new CodexIpcError({ operation: "native-inject", cause }),
-        });
-        if (
-          !peerId ||
-          !caller ||
-          typeof caller.requestId !== "string" ||
-          !caller.requestId ||
-          !Number.isFinite(caller.timeoutMs) ||
-          caller.timeoutMs < 0 ||
-          (caller.expiresAtMs !== null && !Number.isFinite(caller.expiresAtMs))
-        )
-          return yield* Effect.fail(
-            new CodexIpcError({
-              operation: "native-inject",
-              cause: new Error("Invalid native injection caller"),
-            }),
+          const onDestroyed = () => callbacks.fork(requestLifetimes.closeRenderer(key));
+          event.sender.once("destroyed", onDestroyed);
+          if (event.sender.isDestroyed()) yield* requestLifetimes.closeRenderer(key);
+          return yield* Fiber.join(fiber).pipe(
+            Effect.ensuring(
+              Effect.sync(() => event.sender.removeListener("destroyed", onDestroyed)),
+            ),
           );
-        const key = `${event.sender.id}:${caller.requestId}`;
-        let abandonmentReason: "timeout" | "disposed" | undefined;
-        const fiber = yield* requestLifetimes.start(
-          key,
-          caller.retainResponse === true,
-          turnCommands.injectPreparedNativeStart(operation, peerId).pipe(
-            Effect.provideService(CodexRendererRequestOrigin, {
-              ...caller,
-              method: "thread/inject_items",
-              conversationId: operation.request.threadId,
-              wireTrace: trace,
-              destinationId: String(event.sender.id),
-              abandonment: () => abandonmentReason,
+        }).pipe(
+          Effect.mapError((cause) => new CodexIpcError({ operation: "native-inject", cause })),
+          Effect.match({
+            onSuccess: (result) => ({ type: "result" as const, result }),
+            onFailure: (cause) => ({
+              type: "error" as const,
+              error: encodeCodexNativeRequestFailure(cause),
             }),
-          ),
-          (reason) => {
-            abandonmentReason = reason;
-          },
-        );
-        const onDestroyed = () => callbacks.fork(requestLifetimes.closeRenderer(key));
-        event.sender.once("destroyed", onDestroyed);
-        if (event.sender.isDestroyed()) yield* requestLifetimes.closeRenderer(key);
-        return yield* Fiber.join(fiber).pipe(
-          Effect.ensuring(Effect.sync(() => event.sender.removeListener("destroyed", onDestroyed))),
-        );
-      }).pipe(
-        Effect.mapError((cause) => new CodexIpcError({ operation: "native-inject", cause })),
-        Effect.match({
-          onSuccess: (result) => ({ type: "result" as const, result }),
-          onFailure: (cause) => ({
-            type: "error" as const,
-            error: encodeCodexNativeRequestFailure(cause),
           }),
-        }),
-      ),
+        ),
     );
     registerEffectControl("codex:turn:native:release", (event, id) =>
       Effect.sync(() => {
@@ -2108,6 +2115,15 @@ export const live = Layer.effectDiscard(
       subagentDirectory.hydrateSelected(input),
     );
 
+    registerEffectQuery("codex:thread:history-timeline", (_, input) =>
+      historyTimeline
+        .read(input)
+        .pipe(
+          Effect.mapError(
+            (cause) => new CodexIpcError({ operation: "codex:thread:history-timeline", cause }),
+          ),
+        ),
+    );
     registerEffectQuery("codex:thread:history-search", (_, threadId, query) =>
       historySearch
         .search({ threadId, searchTerm: query })

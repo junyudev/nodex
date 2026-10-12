@@ -4,7 +4,6 @@ import * as Schema from "effect/Schema";
 import type { IpcMainInvokeEvent } from "electron";
 import { MainConfig } from "../../app/MainConfig";
 import { CodexVisualizationState } from "../../codex-application/CodexVisualizationState";
-import { safeBroadcastToWindows } from "../../ipc-safe-send";
 import { ElectronIpc } from "../../platform/electron/ElectronIpc";
 import { requireTrustedAppRendererSender } from "../../platform/electron/TrustedRendererSender";
 import { WindowRuntime } from "../../window-runtime/WindowRuntime";
@@ -40,8 +39,6 @@ export const live: Layer.Layer<
       authorize(event).pipe(
         Effect.andThen(state.write(input, String(event.sender.id))),
         Effect.map((commit) => {
-          if (commit.event)
-            safeBroadcastToWindows(windows.all(), "persisted-atom:updated", [commit.event]);
           return commit.result;
         }),
       ),

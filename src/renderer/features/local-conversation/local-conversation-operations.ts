@@ -21,6 +21,7 @@ const queryChannels = [
   "codex:personality:get",
   "codex:subagents:overview:read",
   "codex:thread:history-search",
+  "codex:thread:history-timeline",
   "codex:thread:background-processes:list",
   "codex:thread:background-terminals:list",
   "codex:thread:goal:get",

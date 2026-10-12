@@ -1230,6 +1230,13 @@ export function ThreadAssistantBodyBlock({
             content={markdownText}
             parseIncompleteMarkdown={isAssistantItemStreaming}
             animateStreamingText={isAssistantItemStreaming}
+            adaptiveBuffering={
+              block.entry.assistantPhase === "commentary"
+                ? undefined
+                : {
+                    streamId: `${block.entry.threadId}:${block.searchUnitKey ?? block.entry.rawItemId ?? block.entry.itemId}`,
+                  }
+            }
             cwd={threadCwd}
             projectWorkspacePath={projectWorkspacePath}
             visualizationContext={visualizationContext}

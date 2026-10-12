@@ -13,7 +13,7 @@ All notable changes to this project will be documented in this file.
 - Dictation streams into your draft by default, preserves edits when the cursor moves, and offers captured speech for recovery after an interruption. Streaming uses authenticated desktop connections with workspace and system-proxy routing, and performance details identify handshake rejections and timeouts.
 - Voice settings can manage an account dictionary when available.
 - Voice settings can transcribe a selected WebM file and retain its audio and text with recent recordings for copying or retrying.
-- Chats render interactive HTML responses with calendars, tooltips, tabs, carousels and icons in isolated widgets. Fullscreen viewing preserves the live document; saved selections recover when it is rebuilt, and authorized downloads and image copying are available.
+- Chats render interactive HTML responses with calendars, tooltips, tabs, carousels and icons in isolated widgets. Fullscreen viewing preserves the live document; saved selections recover when it is rebuilt, follow-ups can use saved model state, and authorized downloads and image copying are available.
 
 ### Changed
 

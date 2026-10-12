@@ -15,6 +15,7 @@ import { ChildProcess, ChildProcessSpawner } from "effect/process";
 import {
   allowCodexProtocolExtensions,
   distributeObjectUnions,
+  normalizeCodexRealtimeSchemaFieldNames,
   parseCodexNotificationEntries,
   parseCodexRequestEntries,
   renderCodexProtocolExtensionViews,
@@ -549,13 +550,15 @@ const generateFiles = Effect.fn("generateFiles")(function* () {
 
     for (const [definitionName, definitionSchema] of Object.entries(parsed.definitions ?? {})) {
       aggregateSchemas[localDefinitionNames.get(definitionName)!] = distributeObjectUnions(
-        stripNullDefaults(
-          normalizeNullableTypes(
-            rewriteExternalRefs(
-              definitionSchema,
-              localDefinitionNames,
-              file.namespace,
-              exportNameByQualifiedName,
+        normalizeCodexRealtimeSchemaFieldNames(
+          stripNullDefaults(
+            normalizeNullableTypes(
+              rewriteExternalRefs(
+                definitionSchema,
+                localDefinitionNames,
+                file.namespace,
+                exportNameByQualifiedName,
+              ),
             ),
           ),
         ),
@@ -570,13 +573,15 @@ const generateFiles = Effect.fn("generateFiles")(function* () {
     }
 
     aggregateSchemas[file.exportName] = distributeObjectUnions(
-      stripNullDefaults(
-        normalizeNullableTypes(
-          rewriteExternalRefs(
-            topLevelSchema,
-            localDefinitionNames,
-            file.namespace,
-            exportNameByQualifiedName,
+      normalizeCodexRealtimeSchemaFieldNames(
+        stripNullDefaults(
+          normalizeNullableTypes(
+            rewriteExternalRefs(
+              topLevelSchema,
+              localDefinitionNames,
+              file.namespace,
+              exportNameByQualifiedName,
+            ),
           ),
         ),
       ),

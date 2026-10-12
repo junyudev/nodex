@@ -9,6 +9,7 @@ import type { ThreadResumeResponse } from "@nodex/codex-app-server-protocol/v2";
 import type { ClientRequestResponsesByMethod } from "@nodex/effect-codex-app-server/rpc";
 import type { ConversationCoordinationHost } from "../../../shared/codex-client-coordination";
 import type { CodexThreadSummary } from "../../../shared/types";
+import type { CodexHistoryTimelineReadInput } from "../../../shared/codex-history-timeline-read";
 import { buildAgentActivityV2CorpusThread } from "../../../shared/codex-conversation-state/test-fixtures/agent-activity-v2-corpus-provenance";
 import { residentConversationTurns } from "../../../shared/codex-conversation-state/codex-turn-mutation";
 import type { CodexAppServerManager } from "./local-conversation-store";
@@ -41,6 +42,8 @@ const fixture = vi.hoisted(() => ({
   response: null as ThreadResumeResponse | null,
   summary: null as CodexThreadSummary | null,
   calls: [] as { method: string; params: unknown }[],
+  timelineReads: [] as CodexHistoryTimelineReadInput[],
+  genericTimelineRequests: 0,
   scheduling: [] as { method: string; priority?: string; source?: string; timeoutMs?: number }[],
   changes: [] as unknown[],
   followerRequests: [] as unknown[],
@@ -223,12 +226,32 @@ vi.mock("./local-conversation-deps", () => ({
       fixture.releasedResumes += 1;
       return;
     }
+    if (channel === "codex:thread:history-timeline") {
+      const input = args[0] as CodexHistoryTimelineReadInput;
+      fixture.timelineReads.push(input);
+      fixture.calls.push({ method: "thread/timeline/list", params: input.params });
+      fixture.scheduling.push({ method: "thread/timeline/list", ...input.options });
+      const response = fixture.nativeRequest
+        ? await fixture.nativeRequest("thread/timeline/list", input.params)
+        : fixture.timelinePage;
+      return {
+        threadId: input.params.threadId,
+        hostId: fixture.hostId,
+        hostGeneration: fixture.generation,
+        sourceEpoch: fixture.sourceEpoch ?? `native-${fixture.generation}`,
+        response,
+      };
+    }
     if (channel === "codex:app-server:request") {
       const input = args[0] as {
         request: { method: string; params: unknown };
         scheduling?: { priority?: string; source?: string };
         caller?: { timeoutMs?: number };
       };
+      if (input.request.method === "thread/timeline/list") {
+        fixture.genericTimelineRequests += 1;
+        throw new Error("Native renderer method requires an application admission capability");
+      }
       fixture.calls.push(input.request);
       fixture.scheduling.push({
         method: input.request.method,
@@ -293,8 +316,6 @@ vi.mock("./local-conversation-deps", () => ({
             backwardsCursor: null,
           },
         };
-      if (input.request.method === "thread/timeline/list")
-        return { type: "result", result: fixture.timelinePage };
       if (input.request.method === "thread/goal/get")
         return { type: "result", result: { goal: (await fixture.readGoal?.()) ?? null } };
       if (input.request.method === "thread/unsubscribe") return { type: "result", result: {} };
@@ -437,6 +458,8 @@ afterEach(() => {
   fixture.hostId = "local";
   fixture.generation = 1;
   fixture.timelinePage = null;
+  fixture.timelineReads.length = 0;
+  fixture.genericTimelineRequests = 0;
   fixture.sourceEpoch = null;
   fixture.accountId = "account";
   fixture.hostContextReady = null;
@@ -457,6 +480,48 @@ afterEach(() => {
   fixture.nativeRequest = null;
   fixture.readGoal = null;
   fixture.followerRequests.length = 0;
+});
+
+test("normal resume reads the unified timeline through semantic admission while the generic adapter denies it", async () => {
+  fixture.timelinePage = {
+    data: [
+      {
+        type: "realtime",
+        position: 0,
+        item: {
+          type: "transcriptSegment",
+          id: "native-voice",
+          role: "assistant",
+          text: "Recovered voice",
+          realtimeSessionId: "voice",
+        },
+      },
+    ],
+    nextCursor: null,
+    activeRealtimeSessionAtPageStart: "voice",
+  };
+  const { owner, threadId } = await connectedManagers();
+  const transcript = owner.getTranscriptReadOwner(threadId);
+  const release = transcript.subscribeStructure(() => {});
+  try {
+    await waitFor(() => {
+      expect(owner.readConversation(threadId)?.resumeState).toBe("resumed");
+      expect(transcript.readRealtimeItem("native-voice")).toMatchObject({
+        item: { type: "transcriptSegment", text: "Recovered voice" },
+        completed: true,
+      });
+    });
+    expect(fixture.timelineReads.length).toBeGreaterThan(0);
+    expect(fixture.timelineReads[0]).toMatchObject({
+      hostId: "local",
+      hostGeneration: 1,
+      sourceEpoch: "native-1",
+      params: { threadId, cursor: null, limit: 500 },
+    });
+    expect(fixture.genericTimelineRequests).toBe(0);
+  } finally {
+    release();
+  }
 });
 
 test("native promotion completion enters the canonical timeline before bounded recovery restores its real item", async () => {
@@ -650,8 +715,8 @@ test("accepted timeline history automatically attempts an unresolved receipt onc
     type: "bemItemPromoted" as const,
     id: "historical-receipt",
     realtimeSessionId: "old-session",
-    turn_id: "missing-turn",
-    item_id: "missing-item",
+    turnId: "missing-turn",
+    itemId: "missing-item",
     presentation: { type: "wholeItem" as const },
   };
   fixture.timelinePage = {
@@ -2032,6 +2097,81 @@ test("failed early hydration falls back to the formal resume pagination cursor",
     ),
   ).toEqual(fixture.response!.thread.turns.map((turn) => turn.id));
 });
+
+test.each(["unavailable", "empty", "no-turn-cursor"] as const)(
+  "timeline resume reads its own newest page after %s early history without importing a Turn cursor",
+  async (early) => {
+    fixture.timelinePage = { data: [], nextCursor: null, activeRealtimeSessionAtPageStart: null };
+    const { owner, follower, threadId } = await connectedManagers();
+    owner.destroy();
+    follower.destroy();
+    fixture.ownerId = null;
+    fixture.follower = null;
+    const manager = (fixture.owner = new Manager("local"));
+    const turnCursor = JSON.stringify({
+      requestedThreadId: threadId,
+      rolloutOrdinal: 37,
+      includeAnchor: true,
+      scope: { kind: "turns" },
+    });
+    fixture.response = {
+      ...fixture.response!,
+      turnsBackwardsCursor: early === "no-turn-cursor" ? null : turnCursor,
+    };
+    fixture.calls.length = 0;
+    fixture.timelineReads.length = 0;
+    let timelineReads = 0;
+    fixture.nativeRequest = async (method, params) => {
+      if (method === "thread/read") return { thread: { ...fixture.response!.thread, turns: [] } };
+      if (method === "thread/resume") return fixture.response;
+      if (method === "thread/goal/get") return { goal: null };
+      if (method === "thread/turns/list")
+        return { data: fixture.response!.thread.turns, nextCursor: null, backwardsCursor: null };
+      if (method === "thread/timeline/list") {
+        expect((params as { cursor: string | null }).cursor).toBeNull();
+        timelineReads++;
+        if (timelineReads === 1) {
+          if (early === "unavailable") throw new Error("Early history unavailable");
+          return { data: [], nextCursor: null, activeRealtimeSessionAtPageStart: null };
+        }
+        return {
+          data: [
+            {
+              type: "realtime",
+              position: 38,
+              item: {
+                type: "transcriptSegment",
+                id: "adopted-voice",
+                role: "assistant",
+                text: "Restored after native adoption",
+                realtimeSessionId: "voice",
+              },
+            },
+          ],
+          nextCursor: null,
+          activeRealtimeSessionAtPageStart: "voice",
+        };
+      }
+      throw new Error(`Unexpected cursor domain request ${method}`);
+    };
+    await manager.requestThreadStreamResume(threadId);
+    const transcript = manager.getTranscriptReadOwner(threadId);
+    const release = transcript.subscribeStructure(() => {});
+    try {
+      await waitFor(() => {
+        expect(manager.readConversation(threadId)?.resumeState).toBe("resumed");
+        expect(transcript.readRealtimeItem("adopted-voice")).toMatchObject({
+          item: { text: "Restored after native adoption" },
+          completed: true,
+        });
+      });
+      expect(fixture.timelineReads.map(({ params }) => params.cursor)).toEqual([null, null]);
+      expect(fixture.genericTimelineRequests).toBe(0);
+    } finally {
+      release();
+    }
+  },
+);
 
 test("durable resume merges a complete page with inline turns without reopening completed work", async () => {
   const { owner, follower, threadId } = await connectedManagers([], "durable");

@@ -14,7 +14,6 @@ import * as CodexApplicationIpc from "../ipc/handlers/CodexApplicationIpc";
 import * as CodexRendererIpc from "../ipc/handlers/CodexRendererIpc";
 import * as CodexVisualizationIpc from "../ipc/handlers/CodexVisualizationIpc";
 import * as CodexVisualizationStateIpc from "../ipc/handlers/CodexVisualizationStateIpc";
-import { live as codexVisualizationStateLive } from "../codex-application/CodexVisualizationState";
 import * as CodexConversationServiceIpc from "../ipc/handlers/CodexConversationServiceIpc";
 import * as CodexPermissionsIpc from "../ipc/handlers/CodexPermissionsIpc";
 import * as ChromeControlSettingsIpc from "../ipc/handlers/ChromeControlSettingsIpc";
@@ -78,7 +77,7 @@ export const live = Layer.mergeAll(
   CodexApplicationIpc.live,
   CodexRendererIpc.live,
   CodexVisualizationIpc.live,
-  CodexVisualizationStateIpc.live.pipe(Layer.provide(codexVisualizationStateLive)),
+  CodexVisualizationStateIpc.live,
   CodexConversationServiceIpc.live,
   CodexRendererProjectionRuntime.live,
   CodexThreadNotificationRuntime.live,

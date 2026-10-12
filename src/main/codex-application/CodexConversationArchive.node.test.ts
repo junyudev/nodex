@@ -1,3 +1,4 @@
+import { CodexVisualizationState, CodexVisualizationStateError } from "./CodexVisualizationState";
 import { assert, it } from "@effect/vitest";
 import { CodexAppServerRequestError } from "@nodex/effect-codex-app-server/errors";
 import * as Effect from "effect/Effect";
@@ -99,6 +100,8 @@ const makeArchive = (input: {
   readonly lifecycleConsumers: readonly ReturnType<typeof thread>[];
   readonly remove?: ManagedWorktreeRuntime["Service"]["remove"];
   readonly currentThread?: ReturnType<typeof thread>;
+  readonly widgetClears?: Array<{ readonly hostId: string; readonly threadId: string }>;
+  readonly widgetClearFailure?: boolean;
   readonly automationRun?: { readonly automationId: string } | null;
   readonly archivedMessages?: unknown[];
   readonly historyPages?: CodexHistoryPageAdapter["Service"];
@@ -179,6 +182,26 @@ const makeArchive = (input: {
   });
   const current = input.currentThread ?? thread();
   return make.pipe(
+    Effect.provideService(
+      CodexVisualizationState,
+      CodexVisualizationState.of({
+        read: () => Effect.succeed(null),
+        write: () => Effect.die("unused"),
+        readPassiveContext: () => Effect.succeed(undefined),
+        clearThread: (scope) =>
+          input.widgetClearFailure
+            ? Effect.fail(
+                new CodexVisualizationStateError({
+                  operation: "clear-thread",
+                  cause: new Error("Profile file unavailable"),
+                }),
+              )
+            : Effect.sync(() => {
+                input.widgetClears?.push(scope);
+                return [];
+              }),
+      }),
+    ),
     Effect.provideService(
       AutomationApplication,
       AutomationApplication.of({
@@ -634,6 +657,7 @@ it.effect("does not archive when required-snapshot removal fails", () =>
 it.effect("retires process-local conversation state after durable deletion", () =>
   Effect.gen(function* () {
     const events: string[] = [];
+    const widgetClears: Array<{ readonly hostId: string; readonly threadId: string }> = [];
     const lifecycleClosures: Array<{ readonly threadId: string; readonly reason: unknown }> = [];
     const currentThread = thread({
       archived: true,
@@ -642,12 +666,14 @@ it.effect("retires process-local conversation state after durable deletion", () 
     });
     const archive = yield* makeArchive({
       events,
+      widgetClears,
       currentThread,
       lifecycleConsumers: [currentThread],
       lifecycleClosures,
     });
 
     assert.isTrue(yield* archive.deleteArchived("thread-a"));
+    assert.deepEqual(widgetClears, [{ hostId: "local", threadId: "thread-a" }]);
     assert.strictEqual(lifecycleClosures.length, 1);
     assert.strictEqual(lifecycleClosures[0]?.threadId, "thread-a");
     assert.match(String(lifecycleClosures[0]?.reason), /was deleted/);
@@ -682,6 +708,33 @@ it.effect("does not retire deferred delete PiP before durable deletion succeeds"
       "revoke",
       "core:delete",
     ]);
+  }),
+);
+
+it.effect("retires a confirmed native deletion even when widget storage cannot be cleared", () =>
+  Effect.gen(function* () {
+    const events: string[] = [];
+    const closures: Array<{ readonly threadId: string; readonly reason: unknown }> = [];
+    const pipSettlements: RemoteHostedPipCodexLifecycleSettlement[] = [];
+    const applicationEvents: unknown[] = [];
+    const currentThread = thread({ archived: true });
+    const archive = yield* makeArchive({
+      events,
+      currentThread,
+      lifecycleConsumers: [currentThread],
+      lifecycleClosures: closures,
+      pipSettlements,
+      applicationEvents,
+      widgetClearFailure: true,
+    });
+    assert.isTrue(yield* archive.deleteArchived("thread-a"));
+    assert.isTrue(events.includes("core:delete"));
+    assert.deepEqual(pipSettlements, [{ action: "delete", threadIds: ["thread-a"] }]);
+    assert.strictEqual(closures[0]?.threadId, "thread-a");
+    assert.deepEqual(applicationEvents.at(-1), {
+      kind: "codex",
+      value: { type: "threadDeleted", threadId: "thread-a" },
+    });
   }),
 );
 

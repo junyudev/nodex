@@ -1,6 +1,9 @@
 import { expect, test } from "vite-plus/test";
 import { produce } from "immer";
-import { createCodexCanonicalHydratedConversationState } from "./codex-conversation-state";
+import {
+  createCodexCanonicalHydratedConversationState,
+  type CodexCanonicalConversationState,
+} from "./codex-conversation-state";
 import { buildAgentActivityV2CorpusThread } from "./test-fixtures/agent-activity-v2-corpus-provenance";
 import { replaceCanonicalHistoryDraft } from "./codex-canonical-history-loader";
 import { mutateCodexCanonicalRevert } from "./codex-revert-state";
@@ -42,17 +45,20 @@ function harness(
     ephemeral: options.ephemeral ?? false,
     turns: [turn("message"), turn("automatic")],
   };
-  let state = createCodexCanonicalHydratedConversationState(thread, {
-    hostId: "local",
-    model: "m",
-    reasoningEffort: null,
-    cwd: "/workspace",
-    approvalPolicy: "never",
-    approvalsReviewer: "user",
-    sandboxPolicy: { type: "dangerFullAccess" },
-    activePermissionProfile: null,
-    runtimeWorkspaceRoots: [],
-  });
+  let state: CodexCanonicalConversationState = {
+    ...createCodexCanonicalHydratedConversationState(thread, {
+      hostId: "local",
+      model: "m",
+      reasoningEffort: null,
+      cwd: "/workspace",
+      approvalPolicy: "never",
+      approvalsReviewer: "user",
+      sandboxPolicy: { type: "dangerFullAccess" },
+      activePermissionProfile: null,
+      runtimeWorkspaceRoots: [],
+    }),
+    lastInjectedPassiveContextKey: "confirmed-before-revert",
+  };
   state = produce(state, (draft) => {
     draft.turns[0]!.params.input = options.input ?? [
       { type: "text", text: "# Files\n## My request for Codex:\nold", text_elements: [] },
@@ -110,6 +116,7 @@ test("editing the latest message also reverts trailing automatic turns and keeps
     { type: "localImage", path: "/image.png" },
   ]);
   expect(f.starts[0]?.turnTrigger).toBe("edit_user_message");
+  expect(f.read().lastInjectedPassiveContextKey).toBeUndefined();
   expect(residentConversationTurns(f.read())).toEqual([]);
   expect(f.read().turnHistory?.history.islands.at(-1)?.olderBoundary).toMatchObject({
     status: "available",

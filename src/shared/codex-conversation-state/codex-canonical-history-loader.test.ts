@@ -164,6 +164,32 @@ function harness(ids = ["turn"], hostId = "local") {
 }
 
 describe("canonical history operation ownership", () => {
+  test("loading a completed historical compaction preserves the current passive injection key", async () => {
+    const f = harness();
+    f.mutate((draft) => {
+      draft.lastInjectedPassiveContextKey = "confirmed-live-context";
+    });
+    f.handle(async () => ({
+      data: [
+        {
+          turnId: "turn",
+          item: { type: "contextCompaction", id: "historical-compaction" },
+          startedAtMs: 10,
+          completedAtMs: 20,
+        },
+      ],
+      nextCursor: null,
+      backwardsCursor: null,
+    }));
+    using loader = new CanonicalHistoryItemLoader(f.client);
+    await loader.loadTurnItems("conversation", "turn", false, { priority: "interactive" });
+    expect(residentConversationTurns(f.read())[0]?.items[0]).toMatchObject({
+      type: "contextCompaction",
+      id: "historical-compaction",
+      completed: true,
+    });
+    expect(f.read().lastInjectedPassiveContextKey).toBe("confirmed-live-context");
+  });
   test("retries the same item anchor with smaller pages and preserves wrapper evidence", async () => {
     const f = harness();
     const anchor = { type: "item" as const, itemId: "anchor" };

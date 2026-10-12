@@ -745,6 +745,7 @@ export const make: Effect.Effect<
       : currentGoalState
         ? {
             ...history.canonical,
+            lastInjectedPassiveContextKey: currentGoalState.lastInjectedPassiveContextKey,
             connectedEnvironmentIds: currentGoalState.connectedEnvironmentIds,
             threadGoal: currentGoalState.threadGoal,
             completedThreadGoal: currentGoalState.completedThreadGoal,

@@ -56,7 +56,8 @@ function applySnapshot(next: PersistedAtomSnapshot): PersistedAtomSnapshot {
     revision: next.revision,
     values: { ...next.values },
   };
-  for (const [key, value] of Object.entries(snapshot.values)) {
+  for (const key of new Set([...Object.keys(previousValues), ...Object.keys(snapshot.values)])) {
+    const value = snapshot.values[key];
     if (Object.is(previousValues[key], value)) continue;
     emitAtomUpdate(key, value);
   }
@@ -65,12 +66,12 @@ function applySnapshot(next: PersistedAtomSnapshot): PersistedAtomSnapshot {
 
 function applyEvent(event: PersistedAtomEvent): void {
   if (snapshot && event.revision <= snapshot.revision) return;
+  const values = { ...(snapshot?.values ?? {}) };
+  if (event.value === undefined) delete values[event.key];
+  else values[event.key] = event.value;
   snapshot = {
     revision: event.revision,
-    values: {
-      ...(snapshot?.values ?? {}),
-      [event.key]: event.value,
-    },
+    values,
   };
   emitAtomUpdate(event.key, event.value);
   publishEvent(event);

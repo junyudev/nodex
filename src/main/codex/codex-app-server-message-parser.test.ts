@@ -5,7 +5,7 @@ import {
 } from "./codex-app-server-message-parser";
 
 describe("Codex app-server message parser", () => {
-  it("validates native promotion wire fields and exposes the generated consumer identity", () => {
+  it("validates native promotion identity without changing its wire fields", () => {
     for (const method of ["thread/realtime/item/started", "thread/realtime/item/completed"]) {
       const parsed = parseCodexAppServerMessage({
         method,
@@ -15,8 +15,8 @@ describe("Codex app-server message parser", () => {
             type: "bemItemPromoted",
             id: "receipt",
             realtimeSessionId: "session",
-            turn_id: "turn",
-            item_id: "artifact",
+            turnId: "turn",
+            itemId: "artifact",
             presentation: { type: "wholeItem" },
           },
         },
@@ -50,8 +50,8 @@ describe("Codex app-server message parser", () => {
               type: "bemItemPromoted",
               id: "receipt",
               realtimeSessionId: "session",
-              turn_id: "turn",
-              item_id: 3,
+              turnId: "turn",
+              itemId: 3,
               presentation: { type: "wholeItem" },
             },
           },

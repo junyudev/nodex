@@ -1,12 +1,16 @@
 /* oxlint-disable effecttsgo/strict-effect-provide -- Isolated tests provide the complete Profile repository graph. */
-import { mkdtempSync, rmSync, mkdirSync } from "node:fs";
+import { mkdtempSync, rmSync, mkdirSync, readFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { it, assert } from "@effect/vitest";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 import type { CodexVisualizationStateIdentity } from "../../shared/codex-visualization-state";
-import { codexVisualizationStateAtomKey } from "../../shared/codex-visualization-state";
+import {
+  codexVisualizationStateAtomKey,
+  codexVisualizationInteractionAtomKey,
+} from "../../shared/codex-visualization-state";
+import type { CodexVisualizationPassiveContext } from "../../shared/codex-visualization-passive-context";
 import { ProfilePersistedAtoms } from "../local-store/ProfilePersistedAtoms";
 import { PersistedAtomStore } from "../local-store/persisted-atoms";
 import { codexClientThreadIdentityAtomKey } from "../codex/codex-client-thread-identity";
@@ -34,6 +38,33 @@ const write = (
   count: number,
 ) =>
   owner.write({ identity: target, state: { count }, mutationId: `write-${count}` }, "renderer-one");
+const payloads = (context: CodexVisualizationPassiveContext | undefined) => {
+  assert.isDefined(context);
+  return context!.items
+    .filter((_, index) => index % 2 === 1)
+    .map((item) => {
+      if (!item || typeof item !== "object" || Array.isArray(item) || !Array.isArray(item.output))
+        throw new Error("Expected paired native output");
+      const output = item.output[0];
+      if (
+        !output ||
+        typeof output !== "object" ||
+        Array.isArray(output) ||
+        typeof output.text !== "string"
+      )
+        throw new Error("Expected native text output");
+      return JSON.parse(output.text) as unknown;
+    });
+};
+const interaction = (
+  store: PersistedAtomStore,
+  target: CodexVisualizationStateIdentity,
+  selected: number,
+) =>
+  store.update({
+    key: codexVisualizationInteractionAtomKey(target),
+    value: { [target.path]: { ...target, state: { modelContent: { selected } } } },
+  });
 
 it.effect(
   "isolates display host/Thread/file and reloads confirmed state with a fresh Main owner",
@@ -169,6 +200,184 @@ it.effect(
           result: { ok: false, code: "storage_unavailable", retryable: false },
         });
         assert.deepEqual(store.readSnapshot(), before);
+      }),
+    ),
+);
+
+it.effect("collects current persisted model context without requiring a mounted widget", () =>
+  withStore((store) =>
+    Effect.gen(function* () {
+      const owner = yield* CodexVisualizationState;
+      yield* owner.write(
+        {
+          identity,
+          state: { modelContent: { count: 1 }, privateContent: { token: "private" } },
+          mutationId: "first",
+        },
+        "renderer-one",
+      );
+      interaction(store, identity, 2);
+      const first = yield* owner.readPassiveContext({ hostId: "local", threadId: "display" });
+      assert.deepEqual(payloads(first), [
+        { path: "/plot.html", state: { count: 1 } },
+        { path: "/plot.html", interaction: { selected: 2 } },
+      ]);
+      assert.strictEqual(
+        yield* owner.readPassiveContext({ hostId: "ssh", threadId: "display" }),
+        undefined,
+      );
+      assert.strictEqual(
+        yield* owner.readPassiveContext({ hostId: "local", threadId: "other" }),
+        undefined,
+      );
+      const deduped = yield* owner.readPassiveContext({ hostId: "local", threadId: "display" }, [
+        { id: "/plot.html", untrusted: true, structuredContent: { selected: 2 } },
+      ]);
+      assert.deepEqual(payloads(deduped), [{ path: "/plot.html", state: { count: 1 } }]);
+      assert.strictEqual(deduped?.key, first?.key);
+      yield* owner.write(
+        { identity, state: { modelContent: { count: 3 } }, mutationId: "next" },
+        "renderer-one",
+      );
+      const next = yield* owner.readPassiveContext({ hostId: "local", threadId: "display" });
+      assert.notStrictEqual(next?.key, first?.key);
+      assert.deepEqual(payloads(next)[0], { path: "/plot.html", state: { count: 3 } });
+      assert.deepEqual(payloads(first)[0], { path: "/plot.html", state: { count: 1 } });
+    }),
+  ),
+);
+
+it.effect("uses one Profile snapshot when another state producer commits during collection", () =>
+  withStore((store) =>
+    Effect.gen(function* () {
+      const owner = yield* CodexVisualizationState;
+      yield* owner.write(
+        { identity, state: { modelContent: { count: 1 } }, mutationId: "first" },
+        "renderer-one",
+      );
+      interaction(store, identity, 1);
+      const readState = store.readState.bind(store);
+      let advance = true;
+      store.readState = () => {
+        const snapshot = readState();
+        if (advance) {
+          advance = false;
+          interaction(store, identity, 2);
+        }
+        return snapshot;
+      };
+
+      const captured = yield* owner.readPassiveContext({ hostId: "local", threadId: "display" });
+      assert.deepEqual(payloads(captured), [
+        { path: "/plot.html", state: { count: 1 } },
+        { path: "/plot.html", interaction: { selected: 1 } },
+      ]);
+      const current = yield* owner.readPassiveContext({ hostId: "local", threadId: "display" });
+      assert.deepEqual(payloads(current)[1], { path: "/plot.html", interaction: { selected: 2 } });
+      assert.notStrictEqual(captured?.key, current?.key);
+    }),
+  ),
+);
+
+it.effect("treats a failed Profile read as optional context absence", () =>
+  withStore((store) =>
+    Effect.gen(function* () {
+      const owner = yield* CodexVisualizationState;
+      interaction(store, identity, 1);
+      store.readState = () => {
+        throw new Error("Profile unavailable");
+      };
+      assert.strictEqual(
+        yield* owner.readPassiveContext({ hostId: "local", threadId: "display" }),
+        undefined,
+      );
+    }),
+  ),
+);
+
+it.effect(
+  "clears both records for only the deleted host/Thread and leaves no atom inventory entries",
+  () =>
+    withStore((store, file) =>
+      Effect.gen(function* () {
+        const owner = yield* CodexVisualizationState;
+        const otherHost = { ...identity, hostId: "ssh" };
+        const otherThread = { ...identity, threadId: "other" };
+        for (const target of [identity, otherHost, otherThread]) {
+          yield* write(owner, target, 1);
+          interaction(store, target, 2);
+        }
+        store.update({ key: "draft", value: "latest draft" });
+        const before = store.readSnapshot();
+        const scope = { hostId: "local", threadId: "display" };
+        const events = yield* owner.clearThread(scope);
+        assert.deepEqual(
+          events.map(({ key, value, revision }) => ({ key, value, revision })),
+          [
+            {
+              key: codexVisualizationStateAtomKey(scope),
+              value: undefined,
+              revision: before.revision + 1,
+            },
+            {
+              key: codexVisualizationInteractionAtomKey(scope),
+              value: undefined,
+              revision: before.revision + 2,
+            },
+          ],
+        );
+        assert.strictEqual(events[0]?.mutationId, events[1]?.mutationId);
+        assert.isTrue(events.every(({ originRendererId }) => originRendererId === null));
+        assert.strictEqual(yield* owner.readPassiveContext(scope), undefined);
+        assert.strictEqual(yield* owner.read(identity), null);
+        assert.isFalse(Object.hasOwn(store.readState(), codexVisualizationStateAtomKey(scope)));
+        assert.isFalse(
+          Object.hasOwn(store.readState(), codexVisualizationInteractionAtomKey(scope)),
+        );
+        assert.deepEqual(new PersistedAtomStore(file).readState(), store.readState());
+        assert.deepEqual(JSON.parse(readFileSync(file, "utf8")), store.readState());
+        assert.strictEqual(store.readState().draft, "latest draft");
+        for (const target of [otherHost, otherThread]) {
+          assert.deepEqual(
+            payloads(
+              yield* owner.readPassiveContext({ hostId: target.hostId, threadId: target.threadId }),
+            ),
+            [
+              { path: "/plot.html", state: null },
+              { path: "/plot.html", interaction: { selected: 2 } },
+            ],
+          );
+        }
+        assert.deepEqual(yield* owner.clearThread(scope), []);
+        assert.strictEqual(store.readSnapshot().revision, before.revision + 2);
+      }),
+    ),
+);
+
+it.effect(
+  "a failed clear preserves both records and does not publish successful deletion events",
+  () =>
+    withStore((store, file) =>
+      Effect.gen(function* () {
+        const owner = yield* CodexVisualizationState;
+        yield* write(owner, identity, 1);
+        interaction(store, identity, 2);
+        const before = store.readSnapshot();
+        rmSync(file);
+        mkdirSync(file);
+        const failure = yield* owner
+          .clearThread({ hostId: "local", threadId: "display" })
+          .pipe(Effect.result);
+        if (failure._tag !== "Failure") throw new Error("Expected failed durable deletion");
+        assert.strictEqual(failure.failure.operation, "clear-thread");
+        assert.deepEqual(store.readSnapshot(), before);
+        assert.deepEqual(
+          payloads(yield* owner.readPassiveContext({ hostId: "local", threadId: "display" })),
+          [
+            { path: "/plot.html", state: null },
+            { path: "/plot.html", interaction: { selected: 2 } },
+          ],
+        );
       }),
     ),
 );

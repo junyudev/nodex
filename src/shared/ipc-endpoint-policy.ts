@@ -158,6 +158,7 @@ type QueryEndpointPolicy =
   | "codex:sidebar:snapshot"
   | "codex:subagents:overview:read"
   | "codex:thread:history-search"
+  | "codex:thread:history-timeline"
   | "codex:thread:background-processes:list"
   | "codex:thread:background-terminals:list"
   | "codex:thread:goal:editable-objective:read"

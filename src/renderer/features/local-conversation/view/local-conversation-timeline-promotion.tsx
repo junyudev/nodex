@@ -20,12 +20,6 @@ export function LocalConversationTimelinePromotion({
   readonly cwd: string | null;
 }) {
   const owner = useContext(CodexTranscriptReadOwnerContext);
-  const visualizationContext = useConversationVisualizationContext(
-    owner?.key.threadId ?? "",
-    entry.turnId,
-    entry.turnStatus === "inProgress",
-    entry.historyEntityKey,
-  );
   const itemId = entry.timelineSlice.itemIds[0];
   const subscribe = useCallback(
     (listener: () => void) =>
@@ -34,6 +28,23 @@ export function LocalConversationTimelinePromotion({
   );
   const raw = useSyncExternalStore(subscribe, () =>
     owner && itemId ? owner.readItem(entry.historyEntityKey, itemId) : null,
+  );
+  const subscribeTurn = useCallback(
+    (listener: () => void) => owner?.subscribeTurn(entry.historyEntityKey, listener) ?? (() => {}),
+    [owner, entry.historyEntityKey],
+  );
+  const canonicalStatus = useSyncExternalStore(
+    subscribeTurn,
+    () => owner?.readTurnDetails(entry.historyEntityKey)?.status ?? null,
+  );
+  const markdownStreaming = (canonicalStatus ?? entry.turnStatus) === "inProgress";
+  const visualizationContext = useConversationVisualizationContext(
+    owner?.key.threadId ?? "",
+    entry.turnId,
+    entry.timelinePresentation?.type === "inlineMarkdown"
+      ? markdownStreaming
+      : entry.turnStatus === "inProgress",
+    entry.historyEntityKey,
   );
   if (!entry.timelinePresentation) return null;
   const presentation = resolveTimelineInlinePresentation(raw, entry.timelinePresentation);
@@ -54,8 +65,7 @@ export function LocalConversationTimelinePromotion({
         </div>
       </ConversationVisualizationContext.Provider>
     );
-  const content =
-    projectAssistantText(presentation.content, entry.turnStatus === "inProgress") ?? "";
+  const content = projectAssistantText(presentation.content, markdownStreaming) ?? "";
   return (
     <div
       data-content-search-turn-key={entry.turnKey}
@@ -65,7 +75,11 @@ export function LocalConversationTimelinePromotion({
       <MarkdownRenderer
         content={content}
         cwd={cwd}
-        parseIncompleteMarkdown={entry.turnStatus === "inProgress"}
+        parseIncompleteMarkdown={markdownStreaming}
+        animateStreamingText={markdownStreaming}
+        adaptiveBuffering={{
+          streamId: `${owner?.key.threadId ?? ""}:${inlineMarkdownSearchUnitKey(entry)}`,
+        }}
         visualizationContext={visualizationContext}
       />
     </div>

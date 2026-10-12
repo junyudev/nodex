@@ -239,6 +239,8 @@ export async function listCanonicalHistoryTurns(
 ): Promise<CanonicalHistoryTurnPage> {
   if (options.source === "compact")
     throw new Error("Compact history is unsupported for this thread");
+  if (options.cursor != null && options.source === undefined)
+    throw new Error("History paging cursor requires its native source");
   const timeline =
     options.source === "timeline" ||
     (options.source === undefined && client.supportsThreadTimeline?.() === true);

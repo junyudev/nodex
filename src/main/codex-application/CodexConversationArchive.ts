@@ -19,7 +19,7 @@ import {
   normalizeWorktreePathForIdentity,
   resolveWorktreePathComparisonKey,
 } from "../codex/codex-managed-worktree-effects";
-import { CodexGateway } from "../codex-runtime/CodexGateway";
+import { CodexGateway, codexGatewayGenerationFence } from "../codex-runtime/CodexGateway";
 import { CodexAppServerCapabilities } from "../codex-runtime/CodexAppServerCapabilities";
 import { CodexRuntimeError } from "../codex-runtime/CodexRuntimeError";
 import { AutomationRoutingIndex } from "../core-runtime/AutomationRoutingIndex";
@@ -37,6 +37,7 @@ import { ConversationEntityMap } from "./internal/ConversationEntityMap";
 import { ManagedWorktreeRuntime } from "./ManagedWorktreeRuntime";
 import { NodexAgentAuthorizationRuntime } from "./NodexAgentAuthorizationRuntime";
 import { RemoteHostedPipRuntime } from "../host-runtime/RemoteHostedPipRuntime";
+import { CodexVisualizationState } from "./CodexVisualizationState";
 
 export class CodexConversationArchiveError extends Data.TaggedError(
   "CodexConversationArchiveError",
@@ -89,6 +90,7 @@ export const make: Effect.Effect<
   | NodexAgentAuthorizationRuntime
   | ProjectWorkspace
   | RemoteHostedPipRuntime
+  | CodexVisualizationState
 > = Effect.gen(function* () {
   const automation = yield* AutomationApplication;
   const automationRouting = yield* AutomationRoutingIndex;
@@ -104,6 +106,7 @@ export const make: Effect.Effect<
   const authorizations = yield* NodexAgentAuthorizationRuntime;
   const workspace = yield* ProjectWorkspace;
   const remoteHostedPip = yield* RemoteHostedPipRuntime;
+  const visualizations = yield* CodexVisualizationState;
 
   const fail = (
     operation: ArchiveOperation,
@@ -482,10 +485,19 @@ export const make: Effect.Effect<
         } while (cursor !== null);
         if (!archivedThreadIds.has(normalizedThreadId)) return false;
 
+        const source = yield* capabilities
+          .forThread(normalizedThreadId)
+          .pipe(Effect.mapError((cause) => fail("delete", normalizedThreadId, cause)));
+
         yield* gateway
-          .requestForThread(normalizedThreadId, "thread/delete", {
-            threadId: normalizedThreadId,
-          })
+          .requestForThread(
+            normalizedThreadId,
+            "thread/delete",
+            {
+              threadId: normalizedThreadId,
+            },
+            codexGatewayGenerationFence(source),
+          )
           .pipe(
             Effect.catch((cause) => {
               const nativeCause = Schema.is(CodexRuntimeError)(cause) ? cause.cause : cause;
@@ -494,12 +506,30 @@ export const make: Effect.Effect<
                 : cause.message;
               if (message !== `no rollout found for thread id ${normalizedThreadId}`)
                 return Effect.fail(cause);
-              return gateway.requestRawForThread(normalizedThreadId, "thread/delete", {
-                threadId: normalizedThreadId,
-                missingRolloutRecovery: true,
-              });
+              return gateway.requestRawForThread(
+                normalizedThreadId,
+                "thread/delete",
+                {
+                  threadId: normalizedThreadId,
+                  missingRolloutRecovery: true,
+                },
+                codexGatewayGenerationFence(source),
+              );
             }),
             Effect.mapError((cause) => fail("delete", normalizedThreadId, cause)),
+          );
+        // Native deletion is final even when the auxiliary Profile file cannot be changed.
+        yield* visualizations
+          .clearThread({ hostId: source.hostId, threadId: normalizedThreadId })
+          .pipe(
+            Effect.tapError((cause) =>
+              Effect.logWarning("Could not remove widget state for a deleted chat", {
+                threadId: normalizedThreadId,
+                hostId: source.hostId,
+                cause,
+              }),
+            ),
+            Effect.ignore,
           );
         yield* automation.runs
           .delete(normalizedThreadId)

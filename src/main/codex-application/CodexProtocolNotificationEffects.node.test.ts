@@ -1,3 +1,4 @@
+import { CodexVisualizationState, CodexVisualizationStateError } from "./CodexVisualizationState";
 import type { CodexHeartbeatDecision } from "../../shared/codex-turn-notification";
 import type { ConversationStreamRole } from "../../shared/codex-conversation-stream";
 import { assert, it } from "@effect/vitest";
@@ -37,141 +38,167 @@ it.effect("drains only Main-owned prose before applying terminal product consequ
     const trace: string[] = [];
     let automationDecision: CodexHeartbeatDecision | null = "DONT_NOTIFY";
     let streamRole: ConversationStreamRole = { role: "owner" };
+    let widgetClearFailure = false;
     const deliveredDecisions: Array<CodexHeartbeatDecision | null> = [];
     const deliveredHosts: string[] = [];
     const conversations = makeConversationEntityStateRegistry();
-    const service = yield* make.pipe(
-      Effect.provideService(CodexAppServerCapabilities, {
-        forHost: () =>
-          Effect.die("This legacy notification fixture must not acquire timeline capabilities"),
-      } as unknown as CodexAppServerCapabilities["Service"]),
-      Effect.provideService(
-        CodexApplicationEventHub,
-        CodexApplicationEventHub.of({
-          events: Stream.empty,
-          publish: (event) => {
-            if (event.kind === "threadNotification" && event.value.type === "turn-completed") {
-              deliveredDecisions.push(event.value.automationNotificationDecision ?? null);
-              deliveredHosts.push(event.value.hostId);
-            }
-          },
-        }),
-      ),
-      Effect.provideService(
-        CodexAutomationTurnCompletion,
-        CodexAutomationTurnCompletion.of({
-          complete: () =>
-            Effect.sync(() => trace.push("automation")).pipe(Effect.map(() => automationDecision)),
-        }),
-      ),
-      Effect.provideService(
-        CodexConversationDeltaBufferRuntime,
-        CodexConversationDeltaBufferRuntime.of({
-          drainBeforeCompletion: () => {
-            trace.push("drain");
-          },
-        } as unknown as CodexConversationDeltaBufferRuntime["Service"]),
-      ),
-      Effect.provideService(
-        CodexConversationLifecycle,
-        CodexConversationLifecycle.of({
-          close: () =>
-            Effect.sync(() => {
-              trace.push("close");
-            }),
-        } as unknown as CodexConversationLifecycle["Service"]),
-      ),
-      Effect.provideService(
-        CodexConversationProjection,
-        CodexConversationProjection.of({
-          reconcileThreadStatus: () => Effect.void,
-        } as unknown as CodexConversationProjection["Service"]),
-      ),
-      Effect.provideService(
-        CodexManualCompactionRuntime,
-        CodexManualCompactionRuntime.of({} as CodexManualCompactionRuntime["Service"]),
-      ),
-      Effect.provideService(
-        CodexPendingServerRequestRuntime,
-        CodexPendingServerRequestRuntime.of({} as CodexPendingServerRequestRuntime["Service"]),
-      ),
-      Effect.provideService(
-        CodexProtocolNotificationProjection,
-        CodexProtocolNotificationProjection.of({ observe: () => Effect.succeed(false) }),
-      ),
-      Effect.provideService(
-        CodexQueuedFollowUps,
-        CodexQueuedFollowUps.of({
-          readHead: () => null,
-          acceptTerminalOutcomeInCurrentLane: (
-            input: Parameters<
-              CodexQueuedFollowUps["Service"]["acceptTerminalOutcomeInCurrentLane"]
-            >[0],
-          ) => Effect.sync(() => trace.push(`queue-terminal:${input.interrupted}:0`)),
-        } as unknown as CodexQueuedFollowUps["Service"]),
-      ),
-      Effect.provideService(CodexMainConversationManagers, {
-        current: () => ({ generation: 7, stream: { getRole: () => streamRole } }),
-      } as unknown as CodexMainConversationManagers["Service"]),
-      Effect.provideService(
-        CodexThreadDurableProjection,
-        CodexThreadDurableProjection.of({
-          observe: ({ hostId, generation }) =>
-            Effect.sync(() => trace.push(`durable:${hostId}:${generation}`)),
-        }),
-      ),
-      Effect.provideService(
-        CodexThreadDirectory,
-        CodexThreadDirectory.of({} as unknown as CodexThreadDirectory["Service"]),
-      ),
-      Effect.provideService(
-        CodexSubagentDirectory,
-        CodexSubagentDirectory.of({
-          readKnownOverview: ({ rootThreadId }: { readonly rootThreadId: string }) =>
-            Effect.succeed({
-              rootThreadId,
-              revision: 0,
-              generation: 7,
-              completeness: "complete",
-              active: { rows: [], knownCount: 0, totalCount: 0, continuation: null },
-              done: { rows: [], knownCount: 0, totalCount: 0, continuation: null },
-            }),
-          observeNotification: () => Effect.void,
-        } as unknown as CodexSubagentDirectory["Service"]),
-      ),
-      Effect.provideService(
-        CodexThreadGoalRuntime,
-        CodexThreadGoalRuntime.of({} as CodexThreadGoalRuntime["Service"]),
-      ),
-      Effect.provideService(
-        CodexThreadTitleReconsideration,
-        CodexThreadTitleReconsideration.of({ observe: () => Effect.void }),
-      ),
-      Effect.provideService(
-        CodexUserInputAutoResolution,
-        CodexUserInputAutoResolution.of({} as CodexUserInputAutoResolution["Service"]),
-      ),
-      Effect.provideService(
-        ConversationEntityMap,
-        ConversationEntityMap.of({
-          registerThreadMetadata: () => {},
-          readThreadMetadata: () => null,
-          current: conversations.current,
-        } as unknown as ConversationEntityMap["Service"]),
-      ),
-      Effect.provideService(
-        BrowserUseRuntime,
-        BrowserUseRuntime.of({
-          turnEnded: () => Effect.sync(() => trace.push("browser")),
-        } as unknown as BrowserUseRuntime["Service"]),
-      ),
-      Effect.provideService(
-        RemoteHostedPipRuntime,
-        RemoteHostedPipRuntime.of({
-          observeCodexOccurrence: () => Effect.sync(() => trace.push("pip")),
-        } as unknown as RemoteHostedPipRuntime["Service"]),
-      ),
-    );
+    const service = yield* make
+      .pipe(
+        Effect.provideService(
+          CodexVisualizationState,
+          CodexVisualizationState.of({
+            read: () => Effect.succeed(null),
+            write: () => Effect.die("unused"),
+            readPassiveContext: () => Effect.succeed(undefined),
+            clearThread: (scope) =>
+              widgetClearFailure
+                ? Effect.fail(
+                    new CodexVisualizationStateError({
+                      operation: "clear-thread",
+                      cause: new Error("Profile file unavailable"),
+                    }),
+                  )
+                : Effect.sync(() => {
+                    trace.push(`widgets:clear:${scope.hostId}:${scope.threadId}`);
+                    return [];
+                  }),
+          }),
+        ),
+      )
+      .pipe(
+        Effect.provideService(CodexAppServerCapabilities, {
+          forHost: () =>
+            Effect.die("This legacy notification fixture must not acquire timeline capabilities"),
+        } as unknown as CodexAppServerCapabilities["Service"]),
+        Effect.provideService(
+          CodexApplicationEventHub,
+          CodexApplicationEventHub.of({
+            events: Stream.empty,
+            publish: (event) => {
+              if (event.kind === "threadNotification" && event.value.type === "turn-completed") {
+                deliveredDecisions.push(event.value.automationNotificationDecision ?? null);
+                deliveredHosts.push(event.value.hostId);
+              }
+            },
+          }),
+        ),
+        Effect.provideService(
+          CodexAutomationTurnCompletion,
+          CodexAutomationTurnCompletion.of({
+            complete: () =>
+              Effect.sync(() => trace.push("automation")).pipe(
+                Effect.map(() => automationDecision),
+              ),
+          }),
+        ),
+        Effect.provideService(
+          CodexConversationDeltaBufferRuntime,
+          CodexConversationDeltaBufferRuntime.of({
+            drainBeforeCompletion: () => {
+              trace.push("drain");
+            },
+          } as unknown as CodexConversationDeltaBufferRuntime["Service"]),
+        ),
+        Effect.provideService(
+          CodexConversationLifecycle,
+          CodexConversationLifecycle.of({
+            close: () =>
+              Effect.sync(() => {
+                trace.push("close");
+              }),
+          } as unknown as CodexConversationLifecycle["Service"]),
+        ),
+        Effect.provideService(
+          CodexConversationProjection,
+          CodexConversationProjection.of({
+            reconcileThreadStatus: () => Effect.void,
+          } as unknown as CodexConversationProjection["Service"]),
+        ),
+        Effect.provideService(
+          CodexManualCompactionRuntime,
+          CodexManualCompactionRuntime.of({} as CodexManualCompactionRuntime["Service"]),
+        ),
+        Effect.provideService(
+          CodexPendingServerRequestRuntime,
+          CodexPendingServerRequestRuntime.of({} as CodexPendingServerRequestRuntime["Service"]),
+        ),
+        Effect.provideService(
+          CodexProtocolNotificationProjection,
+          CodexProtocolNotificationProjection.of({ observe: () => Effect.succeed(false) }),
+        ),
+        Effect.provideService(
+          CodexQueuedFollowUps,
+          CodexQueuedFollowUps.of({
+            readHead: () => null,
+            acceptTerminalOutcomeInCurrentLane: (
+              input: Parameters<
+                CodexQueuedFollowUps["Service"]["acceptTerminalOutcomeInCurrentLane"]
+              >[0],
+            ) => Effect.sync(() => trace.push(`queue-terminal:${input.interrupted}:0`)),
+          } as unknown as CodexQueuedFollowUps["Service"]),
+        ),
+        Effect.provideService(CodexMainConversationManagers, {
+          current: () => ({ generation: 7, stream: { getRole: () => streamRole } }),
+        } as unknown as CodexMainConversationManagers["Service"]),
+        Effect.provideService(
+          CodexThreadDurableProjection,
+          CodexThreadDurableProjection.of({
+            observe: ({ hostId, generation }) =>
+              Effect.sync(() => trace.push(`durable:${hostId}:${generation}`)),
+          }),
+        ),
+        Effect.provideService(
+          CodexThreadDirectory,
+          CodexThreadDirectory.of({} as unknown as CodexThreadDirectory["Service"]),
+        ),
+        Effect.provideService(
+          CodexSubagentDirectory,
+          CodexSubagentDirectory.of({
+            readKnownOverview: ({ rootThreadId }: { readonly rootThreadId: string }) =>
+              Effect.succeed({
+                rootThreadId,
+                revision: 0,
+                generation: 7,
+                completeness: "complete",
+                active: { rows: [], knownCount: 0, totalCount: 0, continuation: null },
+                done: { rows: [], knownCount: 0, totalCount: 0, continuation: null },
+              }),
+            observeNotification: () => Effect.void,
+          } as unknown as CodexSubagentDirectory["Service"]),
+        ),
+        Effect.provideService(
+          CodexThreadGoalRuntime,
+          CodexThreadGoalRuntime.of({} as CodexThreadGoalRuntime["Service"]),
+        ),
+        Effect.provideService(
+          CodexThreadTitleReconsideration,
+          CodexThreadTitleReconsideration.of({ observe: () => Effect.void }),
+        ),
+        Effect.provideService(
+          CodexUserInputAutoResolution,
+          CodexUserInputAutoResolution.of({} as CodexUserInputAutoResolution["Service"]),
+        ),
+        Effect.provideService(
+          ConversationEntityMap,
+          ConversationEntityMap.of({
+            registerThreadMetadata: () => {},
+            readThreadMetadata: () => null,
+            current: conversations.current,
+          } as unknown as ConversationEntityMap["Service"]),
+        ),
+        Effect.provideService(
+          BrowserUseRuntime,
+          BrowserUseRuntime.of({
+            turnEnded: () => Effect.sync(() => trace.push("browser")),
+          } as unknown as BrowserUseRuntime["Service"]),
+        ),
+        Effect.provideService(
+          RemoteHostedPipRuntime,
+          RemoteHostedPipRuntime.of({
+            observeCodexOccurrence: () => Effect.sync(() => trace.push("pip")),
+          } as unknown as RemoteHostedPipRuntime["Service"]),
+        ),
+      );
     const notification = {
       method: "turn/completed",
       params: {
@@ -273,7 +300,29 @@ it.effect("drains only Main-owned prose before applying terminal product consequ
       occurrenceToken: 95,
     });
     assert.strictEqual(deletedDisposition, "retire");
+    assert.deepEqual(trace, [
+      "widgets:clear:remote-a:thread-a",
+      "durable:remote-a:7",
+      "close",
+      "pip",
+    ]);
+    trace.length = 0;
+    widgetClearFailure = true;
+    assert.strictEqual(
+      yield* service.apply({
+        hostId: "remote-a",
+        generation: 7,
+        notification: {
+          method: "thread/deleted",
+          params: { threadId: "thread-a" },
+        } as CodexServerNotification,
+        occurrenceId: "remote-a:7:inbox-a:96",
+        occurrenceToken: 96,
+      }),
+      "retire",
+    );
     assert.deepEqual(trace, ["durable:remote-a:7", "close", "pip"]);
+    widgetClearFailure = false;
 
     streamRole = { role: "owner" };
     const entity = conversations.acquire("thread-a");

@@ -6,6 +6,7 @@ import type { ToolRequestUserInputResponse } from "@nodex/codex-app-server-proto
 import type { TurnStartParams } from "@nodex/codex-app-server-protocol/v2/TurnStartParams";
 import type { TurnSteerParams } from "@nodex/codex-app-server-protocol/v2/TurnSteerParams";
 import type { RequestId } from "@nodex/codex-app-server-protocol";
+import type { CodexVisualizationPassiveContext } from "./codex-visualization-passive-context";
 
 /** Transport carries a prepared native request; owners must not reconstruct it from composer text. */
 export interface ConversationFollowerTurnStart {
@@ -21,6 +22,7 @@ export interface ConversationFollowerTurnStart {
     threadStartKind?: unknown;
     mcpAppModelContextAttachments?: unknown;
     responseItems?: unknown;
+    passiveContext?: CodexVisualizationPassiveContext;
   };
 }
 

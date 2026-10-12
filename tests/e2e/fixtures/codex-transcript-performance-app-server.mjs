@@ -109,8 +109,9 @@ fs.watchFile(commandPath, { interval: 10 }, () => {
   const commands = fs.readFileSync(commandPath, "utf8").split("\n").filter(Boolean);
   while (consumed < commands.length) handle(JSON.parse(commands[consumed++]));
 });
-// Only the initial public draft submission completes automatically. Cold resumes
-// keep the controlled stream alive until the test explicitly completes it.
+// Cold resumes normally keep controlled streams alive; interaction scenarios
+// can opt into automatic completion for ordinary follow-up submissions.
 if (JSON.parse(fs.readFileSync(statePath, "utf8")).turnSequence > 0)
-  process.env.NODEX_FAKE_CODEX_AUTOMATIC_COMPLETION_DELAY_MS = "120000";
+  process.env.NODEX_FAKE_CODEX_AUTOMATIC_COMPLETION_DELAY_MS =
+    process.env.NODEX_FAKE_CODEX_RESUMED_COMPLETION_DELAY_MS ?? "120000";
 await import(pathToFileURL(baseFixture).href);

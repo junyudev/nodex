@@ -38,7 +38,7 @@ function interactiveWidgetDocument(id: string): string {
       "</script>",
       `
       document.getElementById('state-result-${id}').textContent=JSON.stringify(window.openai.widgetState);
-      document.getElementById('state-${id}').addEventListener('click',async()=>{await window.openai.setWidgetState({selected:2,modelContent:null,privateContent:{selected:2}});document.getElementById('state-result-${id}').textContent=JSON.stringify(window.openai.widgetState)});
+      document.getElementById('state-${id}').addEventListener('click',async()=>{await window.openai.setWidgetState({selected:2,modelContent:{selected:2},privateContent:{privateSentinel:'excluded-from-model'}});document.getElementById('state-result-${id}').textContent=JSON.stringify(window.openai.widgetState)});
       document.getElementById('helpers-${id}').addEventListener('click',()=>{document.getElementById('helpers-content-${id}').hidden=false});
       document.getElementById('calendar-${id}').addEventListener('eventselect',event=>{document.getElementById('calendar-result-${id}').textContent=String(event.detail.index)});
     </script>`,
@@ -139,7 +139,7 @@ async function clickGuestButton(
       for (const frame of guest.mainFrame.framesInSubtree) {
         const point = (await frame
           .executeJavaScript(
-            `(() => { const marker = document.getElementById(${JSON.stringify(`fixture-${input.fixtureId}`)}); let button = ${input.options.selector ? `document.querySelector(${JSON.stringify(input.options.selector)})` : `document.getElementById(${JSON.stringify(`${input.button}-${input.fixtureId}`)})`}; ${input.options.shadowSelector ? `button = button?.shadowRoot?.querySelector(${JSON.stringify(input.options.shadowSelector)});` : ""} if (!marker || !button) return null; const box = button.getBoundingClientRect(); return { x: box.left + box.width / 2, y: box.top + box.height / 2 }; })()`,
+            `(async () => { const marker = document.getElementById(${JSON.stringify(`fixture-${input.fixtureId}`)}); let button = ${input.options.selector ? `document.querySelector(${JSON.stringify(input.options.selector)})` : `document.getElementById(${JSON.stringify(`${input.button}-${input.fixtureId}`)})`}; ${input.options.shadowSelector ? `button = button?.shadowRoot?.querySelector(${JSON.stringify(input.options.shadowSelector)});` : ""} if (!marker || !button) return null; await new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve))); const box = button.getBoundingClientRect(); return { x: box.left + box.width / 2, y: box.top + box.height / 2 }; })()`,
           )
           .catch(() => null)) as { x: number; y: number } | null;
         if (!point) continue;
@@ -200,11 +200,13 @@ test("restores interactive HTML responses and retains guest state through fullsc
       NODEX_FAKE_CODEX_STATE_PATH: ".fake-codex/state.json",
       NODEX_FAKE_CODEX_COMMAND_PATH: ".fake-codex/commands.jsonl",
       NODEX_FAKE_CODEX_LOG_PATH: ".fake-codex/requests.jsonl",
+      NODEX_FAKE_CODEX_INJECTION_RELEASE_PATH: ".fake-codex/injection-release",
       NODEX_FAKE_CODEX_BASE_FIXTURE: path.resolve("tests/e2e/fixtures/codex-queue-app-server.mjs"),
       NODEX_FAKE_CODEX_THREAD_ID: nativeThreadId,
       NODEX_TEST_AGENT_RUNTIME_PROJECT_ROOT: ".",
       NODEX_FAKE_CODEX_AUTO_COMPLETE_FIRST_TURN: "1",
       NODEX_FAKE_CODEX_AUTOMATIC_COMPLETION_DELAY_MS: "120",
+      NODEX_FAKE_CODEX_RESUMED_COMPLETION_DELAY_MS: "120",
       NODEX_FAKE_CODEX_APP_SERVER_VERSION: "0.162.0-alpha.17.2",
     },
   });
@@ -216,6 +218,7 @@ test("restores interactive HTML responses and retains guest state through fullsc
   const stateDirectory = path.join(harness.profile.runRoot, ".fake-codex");
   const statePath = path.join(stateDirectory, "state.json");
   await mkdir(stateDirectory, { recursive: true });
+  await writeFile(path.join(stateDirectory, "injection-release"), "accepted");
   await writeFile(
     statePath,
     JSON.stringify({
@@ -603,19 +606,31 @@ test("restores interactive HTML responses and retains guest state through fullsc
       .poll(() => readLive<boolean>("document.getElementById('panel-second-live').hidden"))
       .toBe(true);
     await clickGuestButton(harness.application, liveGuest, "live", "tab-second");
-    expect(
-      await readLive<boolean>(
-        "document.getElementById('panel-first-live').hidden && !document.getElementById('panel-second-live').hidden",
-      ),
-    ).toBe(true);
+    await expect
+      .poll(() =>
+        readLive<boolean>(
+          "document.getElementById('panel-first-live').hidden && !document.getElementById('panel-second-live').hidden",
+        ),
+      )
+      .toBe(true);
     await clickGuestButton(harness.application, liveGuest, "live", "carousel", {
       selector: '#carousel-live button[aria-label="Next variant"]',
     });
-    expect(
-      await readLive<boolean>(
-        "document.querySelector('#carousel-live > [data-variant=One]').hidden && !document.querySelector('#carousel-live > [data-variant=Two]').hidden",
+    await testInfo.attach("carousel-native-input", {
+      body: JSON.stringify(
+        await readLive(
+          `(() => { const button = document.querySelector('#carousel-live button[aria-label="Next variant"]'); const box = button.getBoundingClientRect(); return { button: {x:box.x,y:box.y,width:box.width,height:box.height},viewport: {width:innerWidth,height:innerHeight},target:document.elementFromPoint(box.x+box.width/2,box.y+box.height/2)?.outerHTML,variants:Array.from(document.querySelectorAll('#carousel-live > [data-variant]')).map(element=>({name:element.dataset.variant,hidden:element.hidden}))}; })()`,
+        ),
       ),
-    ).toBe(true);
+      contentType: "application/json",
+    });
+    await expect
+      .poll(() =>
+        readLive<boolean>(
+          "document.querySelector('#carousel-live > [data-variant=One]').hidden && !document.querySelector('#carousel-live > [data-variant=Two]').hidden",
+        ),
+      )
+      .toBe(true);
     await clickGuestButton(harness.application, liveGuest, "live", "calendar", {
       shadowSelector: 'button[data-event-index="0"]',
     });
@@ -733,6 +748,90 @@ test("restores interactive HTML responses and retains guest state through fullsc
         "document.getElementById('counter-live').textContent",
       ),
     ).toBe("0");
+    const requestPath = path.join(stateDirectory, "requests.jsonl");
+    const readRequests = async (): Promise<{ method: string; params: Record<string, unknown> }[]> =>
+      (await readFile(requestPath, "utf8"))
+        .trim()
+        .split("\n")
+        .filter(Boolean)
+        .map((line) => JSON.parse(line));
+    const submitFollowUp = async (prompt: string) => {
+      const composer = page.locator('[data-codex-composer="true"][contenteditable="true"]').first();
+      await composer.fill(prompt);
+      await page.getByRole("button", { name: "Send prompt", exact: true }).click();
+      await expect(page.getByText(prompt, { exact: true })).toBeVisible();
+      await expect
+        .poll(async () =>
+          (await readRequests()).some(
+            (record) =>
+              record.method === "turn/start" &&
+              JSON.stringify(record.params.input).includes(prompt),
+          ),
+        )
+        .toBe(true);
+      await expect(page.getByRole("button", { name: "Stop", exact: true })).toHaveCount(0);
+    };
+    const beforeFollowUp = (await readRequests()).length;
+    await submitFollowUp("Use the saved interactive selection");
+    const afterFirstFollowUp = (await readRequests()).slice(beforeFollowUp);
+    const injectedIndex = afterFirstFollowUp.findIndex(
+      (record) => record.method === "injection-held",
+    );
+    const startIndex = afterFirstFollowUp.findIndex((record) => record.method === "turn/start");
+    expect(injectedIndex).toBeGreaterThanOrEqual(0);
+    expect(startIndex).toBeGreaterThan(injectedIndex);
+    const injected = afterFirstFollowUp[injectedIndex]!.params;
+    const releasedIndex = afterFirstFollowUp.findIndex(
+      (record) =>
+        record.method === "injection-released" && record.params.requestId === injected.requestId,
+    );
+    expect(releasedIndex).toBeGreaterThan(injectedIndex);
+    expect(startIndex).toBeGreaterThan(releasedIndex);
+    expect(afterFirstFollowUp.filter((record) => record.method === "injection-held")).toHaveLength(
+      1,
+    );
+    expect(injected.threadId).toBe(nativeThreadId);
+    expect(injected.items).toEqual([
+      {
+        type: "function_call",
+        name: "untrusted_input",
+        arguments: "{}",
+        call_id: expect.any(String),
+      },
+      {
+        type: "function_call_output",
+        call_id: expect.any(String),
+        output: [
+          {
+            type: "input_text",
+            text: JSON.stringify({
+              path: path.join(directory, "live-widget.html"),
+              state: { selected: 2 },
+            }),
+          },
+        ],
+      },
+    ]);
+    if (!Array.isArray(injected.items)) throw new Error("Native context has no response items");
+    expect(injected.items[0].call_id).toBe(injected.items[1].call_id);
+    expect(JSON.stringify(injected.items)).not.toContain("excluded-from-model");
+    const beforeSecondFollowUp = (await readRequests()).length;
+    await submitFollowUp("Keep using the saved selection");
+    expect(
+      (await readRequests())
+        .slice(beforeSecondFollowUp)
+        .filter((record) => record.method === "injection-held"),
+    ).toHaveLength(0);
+    await testInfo.attach("passive-widget-context", {
+      body: JSON.stringify({
+        injectedBeforeStart: true,
+        confirmedBeforeStart: true,
+        savedState: { selected: 2 },
+        repeatedInjectionCount: 0,
+        privateStateExcluded: true,
+      }),
+      contentType: "application/json",
+    });
     const idsBeforeRelease = await guestIds(page);
     await page
       .getByRole("button", { name: "Start new chat in Interactive responses", exact: true })
@@ -761,6 +860,12 @@ test("restores interactive HTML responses and retains guest state through fullsc
           capture,
           download: { name: "widget-data.txt", contents: "widget download bytes" },
           state: { selected: 2, persistence: "host", modelContext: "untrusted" },
+          passiveContext: {
+            injectedBeforeStart: true,
+            confirmedBeforeStart: true,
+            repeatedInjectionCount: 0,
+            privateStateExcluded: true,
+          },
           originalGuestId: liveGuest,
           restoredGuestId: restoredGuest,
           releasedGuestIds: [

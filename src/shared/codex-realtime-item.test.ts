@@ -2,14 +2,14 @@ import { describe, expect, test } from "vite-plus/test";
 import { normalizeCodexRealtimeItem } from "./codex-realtime-item";
 
 describe("native realtime item boundary", () => {
-  test("maps validated promotion identities while retaining session and presentation", () => {
+  test("retains native promotion identities, session and presentation", () => {
     expect(
       normalizeCodexRealtimeItem({
         type: "bemItemPromoted",
         id: "receipt",
         realtimeSessionId: "session",
-        turn_id: "turn",
-        item_id: "item",
+        turnId: "turn",
+        itemId: "item",
         presentation: { type: "inlineVisualization", index: 2 },
       }),
     ).toEqual({
@@ -27,24 +27,24 @@ describe("native realtime item boundary", () => {
         type: "bemItemPromoted",
         id: "receipt",
         realtimeSessionId: "session",
-        turnId: "turn",
-        itemId: "item",
-        presentation: { type: "wholeItem" },
-      },
-      {
-        type: "bemItemPromoted",
-        id: "receipt",
-        realtimeSessionId: "session",
-        turn_id: "turn",
-        item_id: 2,
-        presentation: { type: "wholeItem" },
-      },
-      {
-        type: "bemItemPromoted",
-        id: "receipt",
-        realtimeSessionId: "session",
         turn_id: "turn",
         item_id: "item",
+        presentation: { type: "wholeItem" },
+      },
+      {
+        type: "bemItemPromoted",
+        id: "receipt",
+        realtimeSessionId: "session",
+        turnId: "turn",
+        itemId: 2,
+        presentation: { type: "wholeItem" },
+      },
+      {
+        type: "bemItemPromoted",
+        id: "receipt",
+        realtimeSessionId: "session",
+        turnId: "turn",
+        itemId: "item",
         presentation: { type: "inlineVisualization", index: -1 },
       },
       { type: "transcriptSegment", id: "segment", role: "assistant", text: "text" },

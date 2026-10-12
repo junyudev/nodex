@@ -112,6 +112,43 @@ function fixture(
 }
 
 describe("canonical timeline history page", () => {
+  test("an opaque noninitial cursor needs its declared API source even when timeline policy is enabled", async () => {
+    const turnCursor = JSON.stringify({
+      requestedThreadId: "thread",
+      rolloutOrdinal: 37,
+      includeAnchor: true,
+      scope: { kind: "turns" },
+    });
+    const timelineCursor = JSON.stringify({
+      threadId: "thread",
+      position: 38,
+      kind: 1,
+      id: "item",
+    });
+    const page: ThreadTimelineListResponse = {
+      data: [{ type: "item", position: 35, turnId: "turn", item: plan("older") }],
+      nextCursor: null,
+      activeRealtimeSessionAtPageStart: null,
+    };
+    const { client, calls } = fixture([page]);
+    await expect(
+      listCanonicalHistoryTurns(client, "thread", { cursor: turnCursor }),
+    ).rejects.toThrow("native source");
+    expect(calls).toEqual([]);
+    await listCanonicalHistoryTurns(client, "thread", { source: "ordinary", cursor: turnCursor });
+    expect(calls[0]).toMatchObject({ method: "thread/turns/list", params: { cursor: turnCursor } });
+    expect(calls.some(({ method }) => method === "thread/timeline/list")).toBe(false);
+    const timeline = fixture([page]);
+    const older = await listCanonicalHistoryTurns(timeline.client, "thread", {
+      source: "timeline",
+      cursor: timelineCursor,
+    });
+    expect(timeline.calls[0]).toMatchObject({
+      method: "thread/timeline/list",
+      params: { cursor: timelineCursor },
+    });
+    expect(older.response.data[0]?.items[0]?.id).toBe("older");
+  });
   test("a qualified native root retains and installs a realtime-only history page", async () => {
     const qualified = createCodexCanonicalHydratedConversationState(
       {

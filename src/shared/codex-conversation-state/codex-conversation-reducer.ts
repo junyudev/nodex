@@ -634,6 +634,7 @@ function mutateItemCompleted(
   if (state.id !== threadId) return;
   const turn = resolveLifecycleTurnDraft(state, notification, context);
   if (!turn) return;
+  if (item.type === "contextCompaction") delete state.lastInjectedPassiveContextKey;
   (turn.completedItemIds ??= {})[item.id] = true;
   turn.hookRuns ??= [];
   enqueueCollabHydrationEffect(item, effects);

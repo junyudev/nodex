@@ -11,6 +11,7 @@ export function LocalConversationRealtimeItem({
   entry,
   itemId = entry.itemId,
   cwd,
+  conversationId,
 }: {
   readonly entry: CodexRealtimeTimelineEntry;
   readonly itemId?: string;
@@ -50,6 +51,9 @@ export function LocalConversationRealtimeItem({
           cwd={cwd}
           parseIncompleteMarkdown={!value.completed}
           animateStreamingText={!value.completed}
+          adaptiveBuffering={{
+            streamId: `${conversationId}:${realtimeSearchUnitKey(entry, itemId)}`,
+          }}
         />
       )}
     </div>

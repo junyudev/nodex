@@ -508,11 +508,16 @@ writes, interrupts queued mutations, and drains the active write before returnin
 Renderer persisted atoms, Codex client-thread identity aliases and file-widget state share one
 Main-owned `PersistedAtomStore`. The repository owns its in-memory projection
 and process-local event revision under a Profile-scoped capability; renderer ingress and Codex application logic
-receive the same instance explicitly. Rebuilding the Main application owner
+receive the same instance explicitly. Durable commits have one scoped delivery subscription,
+including Main-owned writes and batch deletions; IPC callers do not publish duplicate atom events.
+Rebuilding the Main application owner
 reopens durable values from disk with a fresh delivery revision and never
 inherits a module cache or test path override.
 The conversation visualization-state Module performs bounded single-file mutations in that repository;
 guest documents cannot choose another file's state identity or replace a whole Thread state record.
+Main owns the bounded, untrusted widget-context preparation used by ordinary and queued submissions.
+Only a confirmed injection can advance the admitted conversation owner's context fingerprint;
+renderer owners and Main owners retain the same generation and role boundaries.
 
 Interactive login-shell discovery is owned once per Main or worktree-worker lifetime. The Main
 bootstrap snapshots its inherited environment, process platform, and home directory into immutable

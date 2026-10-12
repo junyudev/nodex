@@ -1,5 +1,9 @@
 import { Visitor, type Expression, type SpreadElement } from "oxc-parser";
 import { parseTypeScriptSource } from "./lib/oxc-source";
+import type {
+  ThreadRealtimeItem,
+  ThreadTimelineEntry,
+} from "../packages/codex-app-server-protocol/src/v2";
 
 export interface CodexMethodEntry {
   readonly method: string;
@@ -109,6 +113,60 @@ export function renderCodexProtocolExtensionViews(source: string): string {
   }
   chunks.push(source.slice(cursor));
   return chunks.join("");
+}
+
+const timelineStartedFields = {
+  turn_id: "turnId",
+  started_at: "startedAt",
+} satisfies Record<string, keyof Extract<ThreadTimelineEntry, { type: "turnStarted" }>>;
+const timelineCompletedFields = {
+  turn_id: "turnId",
+  started_at: "startedAt",
+  completed_at: "completedAt",
+  duration_ms: "durationMs",
+} satisfies Record<string, keyof Extract<ThreadTimelineEntry, { type: "turnCompleted" }>>;
+const promotedItemFields = {
+  turn_id: "turnId",
+  item_id: "itemId",
+} satisfies Record<string, keyof Extract<ThreadRealtimeItem, { type: "bemItemPromoted" }>>;
+const nativeRealtimeFields: Readonly<Record<string, Readonly<Record<string, string>>>> = {
+  TurnStartedThreadTimelineEntry: timelineStartedFields,
+  TurnCompletedThreadTimelineEntry: timelineCompletedFields,
+  BemItemPromotedThreadRealtimeItem: promotedItemFields,
+};
+
+/** The pinned exporter misses serde's enum field renames; preserve its constraints under the native TypeScript names. */
+export function normalizeCodexRealtimeSchemaFieldNames(value: SchemaJson): SchemaJson {
+  if (Array.isArray(value)) return value.map(normalizeCodexRealtimeSchemaFieldNames);
+  if (!isSchemaObject(value)) return value;
+  const normalized = Object.fromEntries(
+    Object.entries(value).map(([key, child]) => [
+      key,
+      normalizeCodexRealtimeSchemaFieldNames(child),
+    ]),
+  );
+  const fields =
+    typeof value.title === "string" && Object.hasOwn(nativeRealtimeFields, value.title)
+      ? nativeRealtimeFields[value.title]
+      : undefined;
+  if (!fields || !isSchemaObject(normalized.properties)) return normalized;
+  for (const [exportedName, wireName] of Object.entries(fields)) {
+    if (exportedName in normalized.properties && wireName in normalized.properties)
+      throw new Error(`Codex schema declares conflicting ${exportedName}/${wireName} fields`);
+  }
+  return {
+    ...normalized,
+    properties: Object.fromEntries(
+      Object.entries(normalized.properties).map(([name, schema]) => [fields[name] ?? name, schema]),
+    ),
+    ...(Array.isArray(normalized.required)
+      ? {
+          required: normalized.required.map((name) =>
+            typeof name === "string" ? (fields[name] ?? name) : name,
+          ),
+        }
+      : {}),
+  };
 }
 
 /** Parses the tagged request union emitted by codex app-server's TypeScript generator. */

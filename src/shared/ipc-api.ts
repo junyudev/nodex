@@ -2361,11 +2361,14 @@ export interface IpcApi {
       input: {
         hostId: string;
         operation: import("./codex-thread-follower-request").ConversationFollowerTurnStart;
+        passiveContextKey?: string;
         caller: import("./codex-renderer-request").CodexRendererRequestCaller;
         trace?: import("./codex-request-lifecycle").CodexRequestTraceContext | null;
       },
     ];
-    result: import("./codex-native-request-outcome").CodexNativeRequestOutcome<void>;
+    result: import("./codex-native-request-outcome").CodexNativeRequestOutcome<
+      import("./codex-visualization-passive-context").CodexVisualizationInjectionReceipt
+    >;
   };
   "codex:turn:native-steer:prepare": {
     args: [input: CodexSteerTurnInput];
@@ -2399,6 +2402,7 @@ export interface IpcApi {
         presentationTicket?: CodexTurnPresentationTicket;
         clientUserMessageId: string;
         preparedPrompt: import("./types").CodexPreparedPrompt;
+        passiveContextIntent?: "ordinary";
         originalRequest?: import("@nodex/codex-app-server-protocol/v2/TurnStartParams").TurnStartParams;
         sourceContext?: import("./codex-thread-follower-request").ConversationFollowerTurnStart["context"];
       },
@@ -2611,6 +2615,10 @@ export interface IpcApi {
   "codex:thread:history-search": {
     args: [threadId: string, query: string];
     result: CodexPersistedHistorySearchReadPage;
+  };
+  "codex:thread:history-timeline": {
+    args: [input: import("./codex-history-timeline-read").CodexHistoryTimelineReadInput];
+    result: import("./codex-history-timeline-read").CodexHistoryTimelineReadPage;
   };
   "codex:thread:history-export:start": {
     args: [threadId: string];

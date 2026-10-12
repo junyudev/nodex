@@ -206,19 +206,31 @@ export class RendererNativeAppServer implements Disposable {
   injectPreparedTurn(
     operation: import("../../../shared/codex-thread-follower-request").ConversationFollowerTurnStart,
     options?: NativeRequestOptions,
-  ): Promise<void> {
+    passiveContextKey?: string,
+  ): Promise<
+    import("../../../shared/codex-visualization-passive-context").CodexVisualizationInjectionReceipt
+  > {
     return this.client.sendNative(
       "thread/inject_items",
       (caller, trace) =>
         runConversationOperation("codex:turn:native:inject", {
           hostId: this.hostId,
           operation,
+          passiveContextKey,
           caller,
           trace,
         }),
       {
         ...options,
-        params: { threadId: operation.request.threadId, items: operation.context?.responseItems },
+        params: {
+          threadId: operation.request.threadId,
+          items: [
+            ...(Array.isArray(operation.context?.responseItems)
+              ? operation.context.responseItems
+              : []),
+            ...(passiveContextKey ? (operation.context?.passiveContext?.items ?? []) : []),
+          ],
+        },
       },
     );
   }

@@ -19,6 +19,7 @@ import {
 } from "./agent-runtime-release-lock";
 import { fingerprintCodexSchemaTree } from "./codex-schema-fingerprint";
 import { withPinnedCodexSchemaTool } from "./codex-schema-tool";
+import { normalizeCodexRealtimeSchemaFieldNames } from "./codex-schema-generator";
 
 const scriptDir = dirname(fileURLToPath(import.meta.url));
 const projectRoot = resolve(scriptDir, "..");
@@ -326,7 +327,9 @@ function generateRuntimeSchemas(jsonSchemaPath: string, outputPath: string): voi
       bundles.set(root.bundleFile, bundle);
     }
 
-    const extracted = extractJsonSchemaRoot(bundle, root.rootName);
+    const extracted = normalizeCodexRealtimeSchemaFieldNames(
+      extractJsonSchemaRoot(bundle, root.rootName),
+    ) as JsonObject;
     writeFileSync(join(outputPath, root.outputFile), stableJson(extracted));
   }
 }

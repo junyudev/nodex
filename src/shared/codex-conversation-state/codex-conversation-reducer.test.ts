@@ -768,7 +768,10 @@ describe("canonical item lifecycle reducer", () => {
   });
 
   test("context compaction rebinds the in-progress placeholder and keeps manual source", () => {
-    const initial = buildState();
+    const initial = {
+      ...buildState(),
+      lastInjectedPassiveContextKey: "confirmed-before-compaction",
+    };
     const placeholder: CodexCanonicalTurnState = {
       ...initial.turns[0]!,
       turnId: null,
@@ -818,6 +821,26 @@ describe("canonical item lifecycle reducer", () => {
     expect(stored && "source" in stored ? stored.source : null).toBe("manual");
     expect(stored && "completed" in stored ? stored.completed : null).toBe(false);
     expect(consumedSourceCount).toBe(1);
+    expect(next.lastInjectedPassiveContextKey).toBe("confirmed-before-compaction");
+  });
+
+  test("rejected compaction completion cannot invalidate a confirmed passive injection", () => {
+    const initial = { ...buildState(), turns: [], lastInjectedPassiveContextKey: "confirmed" };
+    const next = reduceLifecycle(
+      initial,
+      {
+        method: "item/completed",
+        params: {
+          threadId: THREAD_ID,
+          turnId: "missing-turn",
+          item: { type: "contextCompaction", id: "old-compaction" },
+          completedAtMs: 20,
+        },
+      },
+      buildClock().context,
+    );
+    expect(next.lastInjectedPassiveContextKey).toBe("confirmed");
+    expect(next.turns).toEqual([]);
   });
 
   test("completed compaction reads only the first same-ID row before source fallback", () => {
@@ -828,6 +851,7 @@ describe("canonical item lifecycle reducer", () => {
     } satisfies ThreadItem;
     const state: CodexCanonicalConversationState = {
       ...initial,
+      lastInjectedPassiveContextKey: "confirmed-before-compaction",
       turns: [
         {
           ...initial.turns[0]!,
@@ -860,6 +884,7 @@ describe("canonical item lifecycle reducer", () => {
     expect(completed?.type).toBe("contextCompaction");
     expect(completed && "source" in completed ? completed.source : null).toBe("automatic");
     expect(completed && "completed" in completed ? completed.completed : null).toBe(true);
+    expect(next.lastInjectedPassiveContextKey).toBeUndefined();
   });
 
   test("materializes only the bundle-defined image and collaboration extensions", () => {

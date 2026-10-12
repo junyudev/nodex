@@ -26801,9 +26801,9 @@ export type ServerNotification__ThreadRealtimeItem =
   | ({
       readonly id: string;
       readonly realtimeSessionId: string;
-      readonly item_id: string;
+      readonly itemId: string;
       readonly presentation: ServerNotification__ThreadRealtimeBemItemPresentation;
-      readonly turn_id: string;
+      readonly turnId: string;
       readonly type: "bemItemPromoted";
     } & { readonly [x: string]: CodexJsonExtension })
   | ({
@@ -26846,9 +26846,9 @@ export const ServerNotification__ThreadRealtimeItem = Schema.Union(
       Schema.Struct({
         id: Schema.String,
         realtimeSessionId: Schema.String,
-        item_id: Schema.String,
+        itemId: Schema.String,
         presentation: ServerNotification__ThreadRealtimeBemItemPresentation,
-        turn_id: Schema.String,
+        turnId: Schema.String,
         type: Schema.Literal("bemItemPromoted").annotate({
           title: "BemItemPromotedThreadRealtimeItemType",
         }),
@@ -35278,9 +35278,9 @@ export type V2ThreadRealtimeItemCompletedNotification__ThreadRealtimeItem =
   | ({
       readonly id: string;
       readonly realtimeSessionId: string;
-      readonly item_id: string;
+      readonly itemId: string;
       readonly presentation: V2ThreadRealtimeItemCompletedNotification__ThreadRealtimeBemItemPresentation;
-      readonly turn_id: string;
+      readonly turnId: string;
       readonly type: "bemItemPromoted";
     } & { readonly [x: string]: CodexJsonExtension })
   | ({
@@ -35323,9 +35323,9 @@ export const V2ThreadRealtimeItemCompletedNotification__ThreadRealtimeItem = Sch
       Schema.Struct({
         id: Schema.String,
         realtimeSessionId: Schema.String,
-        item_id: Schema.String,
+        itemId: Schema.String,
         presentation: V2ThreadRealtimeItemCompletedNotification__ThreadRealtimeBemItemPresentation,
-        turn_id: Schema.String,
+        turnId: Schema.String,
         type: Schema.Literal("bemItemPromoted").annotate({
           title: "BemItemPromotedThreadRealtimeItemType",
         }),
@@ -35369,9 +35369,9 @@ export type V2ThreadRealtimeItemStartedNotification__ThreadRealtimeItem =
   | ({
       readonly id: string;
       readonly realtimeSessionId: string;
-      readonly item_id: string;
+      readonly itemId: string;
       readonly presentation: V2ThreadRealtimeItemStartedNotification__ThreadRealtimeBemItemPresentation;
-      readonly turn_id: string;
+      readonly turnId: string;
       readonly type: "bemItemPromoted";
     } & { readonly [x: string]: CodexJsonExtension })
   | ({
@@ -35414,9 +35414,9 @@ export const V2ThreadRealtimeItemStartedNotification__ThreadRealtimeItem = Schem
       Schema.Struct({
         id: Schema.String,
         realtimeSessionId: Schema.String,
-        item_id: Schema.String,
+        itemId: Schema.String,
         presentation: V2ThreadRealtimeItemStartedNotification__ThreadRealtimeBemItemPresentation,
-        turn_id: Schema.String,
+        turnId: Schema.String,
         type: Schema.Literal("bemItemPromoted").annotate({
           title: "BemItemPromotedThreadRealtimeItemType",
         }),
@@ -39255,9 +39255,9 @@ export type V2ThreadTimelineListResponse__ThreadRealtimeItem =
   | ({
       readonly id: string;
       readonly realtimeSessionId: string;
-      readonly item_id: string;
+      readonly itemId: string;
       readonly presentation: V2ThreadTimelineListResponse__ThreadRealtimeBemItemPresentation;
-      readonly turn_id: string;
+      readonly turnId: string;
       readonly type: "bemItemPromoted";
     } & { readonly [x: string]: CodexJsonExtension })
   | ({
@@ -39300,9 +39300,9 @@ export const V2ThreadTimelineListResponse__ThreadRealtimeItem = Schema.Union(
       Schema.Struct({
         id: Schema.String,
         realtimeSessionId: Schema.String,
-        item_id: Schema.String,
+        itemId: Schema.String,
         presentation: V2ThreadTimelineListResponse__ThreadRealtimeBemItemPresentation,
-        turn_id: Schema.String,
+        turnId: Schema.String,
         type: Schema.Literal("bemItemPromoted").annotate({
           title: "BemItemPromotedThreadRealtimeItemType",
         }),
@@ -65044,18 +65044,18 @@ export type V2ThreadTimelineListResponse__ThreadTimelineEntry =
     } & { readonly [x: string]: CodexJsonExtension })
   | ({
       readonly position: number;
-      readonly started_at?: number | null;
-      readonly turn_id: string;
+      readonly startedAt?: number | null;
+      readonly turnId: string;
       readonly type: "turnStarted";
     } & { readonly [x: string]: CodexJsonExtension })
   | ({
-      readonly completed_at?: number | null;
-      readonly duration_ms?: number | null;
+      readonly completedAt?: number | null;
+      readonly durationMs?: number | null;
       readonly error?: V2ThreadTimelineListResponse__TurnError | null;
       readonly position: number;
-      readonly started_at?: number | null;
+      readonly startedAt?: number | null;
       readonly status: V2ThreadTimelineListResponse__TurnStatus;
-      readonly turn_id: string;
+      readonly turnId: string;
       readonly type: "turnCompleted";
     } & { readonly [x: string]: CodexJsonExtension });
 export const V2ThreadTimelineListResponse__ThreadTimelineEntry = Schema.Union(
@@ -65098,7 +65098,7 @@ export const V2ThreadTimelineListResponse__ThreadTimelineEntry = Schema.Union(
               expected: "a value greater than or equal to 0",
             }),
           ),
-        started_at: Schema.optionalKey(
+        startedAt: Schema.optionalKey(
           Schema.Union([
             Schema.Number.annotate({ format: "int64" }).check(
               Schema.isInt().annotate({ expected: "an integer" }),
@@ -65106,7 +65106,7 @@ export const V2ThreadTimelineListResponse__ThreadTimelineEntry = Schema.Union(
             Schema.Null,
           ]),
         ),
-        turn_id: Schema.String,
+        turnId: Schema.String,
         type: Schema.Literal("turnStarted").annotate({
           title: "TurnStartedThreadTimelineEntryType",
         }),
@@ -65115,7 +65115,7 @@ export const V2ThreadTimelineListResponse__ThreadTimelineEntry = Schema.Union(
     ).annotate({ title: "TurnStartedThreadTimelineEntry" }),
     Schema.StructWithRest(
       Schema.Struct({
-        completed_at: Schema.optionalKey(
+        completedAt: Schema.optionalKey(
           Schema.Union([
             Schema.Number.annotate({ format: "int64" }).check(
               Schema.isInt().annotate({ expected: "an integer" }),
@@ -65123,7 +65123,7 @@ export const V2ThreadTimelineListResponse__ThreadTimelineEntry = Schema.Union(
             Schema.Null,
           ]),
         ),
-        duration_ms: Schema.optionalKey(
+        durationMs: Schema.optionalKey(
           Schema.Union([
             Schema.Number.annotate({ format: "int64" }).check(
               Schema.isInt().annotate({ expected: "an integer" }),
@@ -65141,7 +65141,7 @@ export const V2ThreadTimelineListResponse__ThreadTimelineEntry = Schema.Union(
               expected: "a value greater than or equal to 0",
             }),
           ),
-        started_at: Schema.optionalKey(
+        startedAt: Schema.optionalKey(
           Schema.Union([
             Schema.Number.annotate({ format: "int64" }).check(
               Schema.isInt().annotate({ expected: "an integer" }),
@@ -65150,7 +65150,7 @@ export const V2ThreadTimelineListResponse__ThreadTimelineEntry = Schema.Union(
           ]),
         ),
         status: V2ThreadTimelineListResponse__TurnStatus,
-        turn_id: Schema.String,
+        turnId: Schema.String,
         type: Schema.Literal("turnCompleted").annotate({
           title: "TurnCompletedThreadTimelineEntryType",
         }),

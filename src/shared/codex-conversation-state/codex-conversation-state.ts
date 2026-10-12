@@ -560,6 +560,7 @@ export interface CodexCanonicalConversationMetadata {
   /** App-side Thread start classification used when rematerializing desktop instructions. */
   readonly threadStartKind?: string | null;
   readonly threadRuntimeStatus: Thread["status"];
+  readonly lastInjectedPassiveContextKey?: string;
   readonly rolloutPath: string;
   readonly cwd: Thread["cwd"];
   readonly gitInfo: Thread["gitInfo"];

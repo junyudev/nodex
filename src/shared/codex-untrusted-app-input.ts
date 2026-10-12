@@ -1,5 +1,6 @@
 import type { UserInput } from "@nodex/codex-app-server-protocol/v2";
 import type { ClientRequestParamsByMethod } from "@nodex/effect-codex-app-server/rpc";
+import type { CodexVisualizationPassiveAttachment } from "./codex-visualization-passive-context";
 import {
   TextContentSchema,
   ImageContentSchema,
@@ -206,12 +207,20 @@ export function prepareUntrustedAppInput(
   prompt: string,
   context: { untrustedAppMessage?: unknown; mcpAppModelContextAttachments?: unknown },
   callId: string,
-): { input: UserInput; responseItems: Json[] } {
+): {
+  input: UserInput;
+  responseItems: Json[];
+  modelContextAttachments: readonly CodexVisualizationPassiveAttachment[];
+} {
   const attachments = context.mcpAppModelContextAttachments;
   if (attachments !== undefined && !Array.isArray(attachments))
     throw new Error("Invalid app model context attachments");
   if (context.untrustedAppMessage == null && (!attachments || attachments.length === 0))
-    return { input: { type: "text", text: prompt, text_elements: [] }, responseItems: [] };
+    return {
+      input: { type: "text", text: prompt, text_elements: [] },
+      responseItems: [],
+      modelContextAttachments: [],
+    };
   const modelContextAttachments = attachments?.map((value) => {
     const entry = object(value);
     if (
@@ -300,6 +309,7 @@ export function prepareUntrustedAppInput(
   });
   const text = message ? APP_RESPONSE_TEXT : prompt;
   return {
+    modelContextAttachments: modelContextAttachments ?? [],
     input: {
       type: "text",
       text,

@@ -96,6 +96,18 @@ function historyGatewayFixture(
 it.effect("Main timeline history uses the shared reader and keeps its source-bound cursor", () =>
   Effect.gen(function* () {
     const calls: { method: string; params: Record<string, unknown> }[] = [];
+    const resumeCursor = JSON.stringify({
+      requestedThreadId: "thread",
+      rolloutOrdinal: 37,
+      includeAnchor: true,
+      scope: { kind: "turns" },
+    });
+    const timelineCursor = JSON.stringify({
+      threadId: "thread",
+      position: 38,
+      kind: 1,
+      id: "item",
+    });
     const capability = createCodexAppServerCapabilitySnapshot({
       hostId: "local",
       generation: 3,
@@ -105,15 +117,19 @@ it.effect("Main timeline history uses the shared reader and keeps its source-bou
       Effect.sync(() => {
         calls.push({ method, params });
         assert.strictEqual(options?.expectedGeneration, 3);
-        if (method === "thread/timeline/list")
+        if (method === "thread/timeline/list") {
+          if (params.cursor === timelineCursor)
+            return { data: [], nextCursor: null, activeRealtimeSessionAtPageStart: null };
+          assert.isNull(params.cursor);
           return {
             data: [
               { type: "turnStarted", position: 0, turnId: "turn", startedAt: 1 },
               { type: "item", position: 1, turnId: "turn", item: agentItem("item") },
             ],
-            nextCursor: "timeline:older",
+            nextCursor: timelineCursor,
             activeRealtimeSessionAtPageStart: null,
           };
+        }
         return { data: [completedTurn("turn")], nextCursor: null, backwardsCursor: null };
       }),
     );
@@ -121,12 +137,13 @@ it.effect("Main timeline history uses the shared reader and keeps its source-bou
     const page = yield* adapter.loadTurnPage({
       capability,
       threadId: "thread",
-      cursor: null,
-      initialItemsCursor: null,
+      cursor: resumeCursor,
+      initialItemsCursor: "resume-item-cursor",
+      purpose: "initial",
       readThreadTimelineEnabled: () => true,
     });
     assert.strictEqual(page.source, "timeline");
-    assert.strictEqual(page.nextCursor, "timeline:older");
+    assert.strictEqual(page.nextCursor, timelineCursor);
     assert.strictEqual(page.turns[0]!.items[0]!.id, "item");
     assert.strictEqual(page.completedItemIdsByTurnId?.turn?.item, true);
     assert.deepEqual(
@@ -136,6 +153,35 @@ it.effect("Main timeline history uses the shared reader and keeps its source-bou
         ["thread/turns/list", 5, "notLoaded"],
       ],
     );
+    const older = yield* adapter.loadTurnPage({
+      capability,
+      threadId: "thread",
+      source: "timeline",
+      cursor: timelineCursor,
+      initialItemsCursor: null,
+      purpose: "older",
+      readThreadTimelineEnabled: () => true,
+    });
+    assert.strictEqual(older.nextCursor, null);
+    assert.deepEqual(
+      calls
+        .filter(({ method }) => method === "thread/timeline/list")
+        .map(({ params }) => params.cursor),
+      [null, timelineCursor],
+    );
+    const before = calls.length;
+    const unqualified = yield* adapter
+      .loadTurnPage({
+        capability,
+        threadId: "thread",
+        cursor: timelineCursor,
+        initialItemsCursor: null,
+        purpose: "older",
+        readThreadTimelineEnabled: () => true,
+      })
+      .pipe(Effect.result);
+    assert.strictEqual(unqualified._tag, "Failure");
+    assert.strictEqual(calls.length, before);
     // oxlint-disable-next-line effecttsgo/strict-effect-provide -- This test entry point owns and releases the callback Scope.
   }).pipe(Effect.provide(scopedCallbackRuntimeLayer), Effect.scoped),
 );

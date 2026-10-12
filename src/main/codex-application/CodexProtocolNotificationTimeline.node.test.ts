@@ -1,3 +1,4 @@
+import { CodexVisualizationState } from "./CodexVisualizationState";
 import { assert, it } from "@effect/vitest";
 import type { ThreadRealtimeItem } from "@nodex/codex-app-server-protocol/v2";
 import * as Deferred from "effect/Deferred";
@@ -103,78 +104,93 @@ const fixture = Effect.fn("notificationTimelineTest.fixture")(function* (
     ),
     MainConfig,
   );
-  const service = yield* make.pipe(
-    Effect.provideService(MainConfig, config),
-    Effect.provideService(CodexAppServerCapabilities, {
-      forHost: (requestedHost: string) =>
-        Effect.gen(function* () {
-          assert.strictEqual(requestedHost, hostId);
-          capabilityReads += 1;
-          yield* Deferred.succeed(requested, undefined);
-          if (options.holdCapability) yield* Deferred.await(released);
-          return capability;
+  const service = yield* make
+    .pipe(
+      Effect.provideService(
+        CodexVisualizationState,
+        CodexVisualizationState.of({
+          read: () => Effect.succeed(null),
+          write: () => Effect.die("unused"),
+          readPassiveContext: () => Effect.succeed(undefined),
+          clearThread: () => Effect.succeed([]),
         }),
-    } as unknown as CodexAppServerCapabilities["Service"]),
-    Effect.provideService(CodexMainConversationManagers, {
-      current: () => manager,
-    } as unknown as CodexMainConversationManagers["Service"]),
-    Effect.provideService(ConversationEntityMap, {
-      current: registry.current,
-      readThreadMetadata: registry.readThreadMetadata,
-    } as unknown as ConversationEntityMap["Service"]),
-    Effect.provideService(CodexApplicationEventHub, {
-      events: Stream.empty,
-      publish: (event) => consequences.push(event.kind),
-    }),
-    Effect.provideService(CodexProtocolNotificationProjection, {
-      observe: () => Effect.succeed(false),
-    }),
-    Effect.provideService(CodexSubagentDirectory, {
-      observeNotification: () =>
-        Effect.sync(() => {
-          consequences.push("subagents");
-        }),
-    } as unknown as CodexSubagentDirectory["Service"]),
-    Effect.provideService(CodexThreadDurableProjection, {
-      observe: () =>
-        Effect.sync(() => {
-          consequences.push("durable");
-        }),
-    }),
-    Effect.provideService(CodexThreadTitleReconsideration, { observe: () => Effect.void }),
-    Effect.provideService(RemoteHostedPipRuntime, {
-      observeCodexOccurrence: () =>
-        Effect.sync(() => {
-          consequences.push("pip");
-        }),
-    } as unknown as RemoteHostedPipRuntime["Service"]),
-    Effect.provideService(CodexConversationDeltaBufferRuntime, {
-      drainBeforeCompletion: () => {},
-    } as unknown as CodexConversationDeltaBufferRuntime["Service"]),
-    Effect.provideService(CodexManualCompactionRuntime, {
-      consumeSource: () => "automatic",
-    } as unknown as CodexManualCompactionRuntime["Service"]),
-    Effect.provideService(
-      CodexAutomationTurnCompletion,
-      {} as CodexAutomationTurnCompletion["Service"],
-    ),
-    Effect.provideService(CodexConversationLifecycle, {} as CodexConversationLifecycle["Service"]),
-    Effect.provideService(
-      CodexConversationProjection,
-      {} as CodexConversationProjection["Service"],
-    ),
-    Effect.provideService(
-      CodexPendingServerRequestRuntime,
-      {} as CodexPendingServerRequestRuntime["Service"],
-    ),
-    Effect.provideService(CodexQueuedFollowUps, {} as CodexQueuedFollowUps["Service"]),
-    Effect.provideService(CodexThreadGoalRuntime, {} as CodexThreadGoalRuntime["Service"]),
-    Effect.provideService(
-      CodexUserInputAutoResolution,
-      {} as CodexUserInputAutoResolution["Service"],
-    ),
-    Effect.provideService(BrowserUseRuntime, {} as BrowserUseRuntime["Service"]),
-  );
+      ),
+    )
+    .pipe(
+      Effect.provideService(MainConfig, config),
+      Effect.provideService(CodexAppServerCapabilities, {
+        forHost: (requestedHost: string) =>
+          Effect.gen(function* () {
+            assert.strictEqual(requestedHost, hostId);
+            capabilityReads += 1;
+            yield* Deferred.succeed(requested, undefined);
+            if (options.holdCapability) yield* Deferred.await(released);
+            return capability;
+          }),
+      } as unknown as CodexAppServerCapabilities["Service"]),
+      Effect.provideService(CodexMainConversationManagers, {
+        current: () => manager,
+      } as unknown as CodexMainConversationManagers["Service"]),
+      Effect.provideService(ConversationEntityMap, {
+        current: registry.current,
+        readThreadMetadata: registry.readThreadMetadata,
+      } as unknown as ConversationEntityMap["Service"]),
+      Effect.provideService(CodexApplicationEventHub, {
+        events: Stream.empty,
+        publish: (event) => consequences.push(event.kind),
+      }),
+      Effect.provideService(CodexProtocolNotificationProjection, {
+        observe: () => Effect.succeed(false),
+      }),
+      Effect.provideService(CodexSubagentDirectory, {
+        observeNotification: () =>
+          Effect.sync(() => {
+            consequences.push("subagents");
+          }),
+      } as unknown as CodexSubagentDirectory["Service"]),
+      Effect.provideService(CodexThreadDurableProjection, {
+        observe: () =>
+          Effect.sync(() => {
+            consequences.push("durable");
+          }),
+      }),
+      Effect.provideService(CodexThreadTitleReconsideration, { observe: () => Effect.void }),
+      Effect.provideService(RemoteHostedPipRuntime, {
+        observeCodexOccurrence: () =>
+          Effect.sync(() => {
+            consequences.push("pip");
+          }),
+      } as unknown as RemoteHostedPipRuntime["Service"]),
+      Effect.provideService(CodexConversationDeltaBufferRuntime, {
+        drainBeforeCompletion: () => {},
+      } as unknown as CodexConversationDeltaBufferRuntime["Service"]),
+      Effect.provideService(CodexManualCompactionRuntime, {
+        consumeSource: () => "automatic",
+      } as unknown as CodexManualCompactionRuntime["Service"]),
+      Effect.provideService(
+        CodexAutomationTurnCompletion,
+        {} as CodexAutomationTurnCompletion["Service"],
+      ),
+      Effect.provideService(
+        CodexConversationLifecycle,
+        {} as CodexConversationLifecycle["Service"],
+      ),
+      Effect.provideService(
+        CodexConversationProjection,
+        {} as CodexConversationProjection["Service"],
+      ),
+      Effect.provideService(
+        CodexPendingServerRequestRuntime,
+        {} as CodexPendingServerRequestRuntime["Service"],
+      ),
+      Effect.provideService(CodexQueuedFollowUps, {} as CodexQueuedFollowUps["Service"]),
+      Effect.provideService(CodexThreadGoalRuntime, {} as CodexThreadGoalRuntime["Service"]),
+      Effect.provideService(
+        CodexUserInputAutoResolution,
+        {} as CodexUserInputAutoResolution["Service"],
+      ),
+      Effect.provideService(BrowserUseRuntime, {} as BrowserUseRuntime["Service"]),
+    );
   yield* Effect.addFinalizer(() => Effect.sync(() => registry.releaseAll()));
   return {
     entity,

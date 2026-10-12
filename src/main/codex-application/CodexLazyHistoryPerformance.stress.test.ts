@@ -10,6 +10,7 @@ test("native cold history and one older page stay bounded as logical history gro
     expect(cold.response.data.reduce((sum, turn) => sum + turn.items.length, 0)).toBe(500);
     expect(f.calls).toHaveLength(6);
     const older = await listCanonicalHistoryTurns(f.client, "thread", {
+      source: "ordinary",
       cursor: cold.response.nextCursor,
       limit: 5,
     });

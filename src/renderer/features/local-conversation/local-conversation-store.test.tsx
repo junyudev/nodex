@@ -9,6 +9,12 @@ import { MessageChannel } from "node:worker_threads";
 import { mutateCodexConversationEvent } from "../../../shared/codex-conversation-state/codex-conversation-reducer";
 import type { CodexPreparedTurnExecution } from "../../../shared/codex-conversation-state/codex-turn-execution";
 import { encodeCodexNativeRequestFailure } from "../../../shared/codex-native-request-outcome";
+import { CodexTurnDeliveryError } from "../../../shared/codex-conversation-state/codex-turn-delivery";
+import {
+  compileCodexVisualizationPassiveContext,
+  type CodexVisualizationPassiveContext,
+  type CodexVisualizationInjectionReceipt,
+} from "../../../shared/codex-visualization-passive-context";
 import { rendererQueuedMessageStorage } from "./renderer-queued-message-storage";
 import type { ThreadRevertResponse } from "@nodex/codex-app-server-protocol/v2";
 import { useDefaultCodexAppServerManager } from "./local-conversation-store";
@@ -56,6 +62,10 @@ import { getCodexFileChangeList, getCodexFileChangePaths } from "../../../shared
 import { render, settleAsyncRender, textContent } from "../../test/dom";
 
 let invokeCalls: string[] = [];
+let nativePassiveContext: CodexVisualizationPassiveContext | undefined;
+let nativePassiveInjection:
+  | ((key: string | undefined) => Promise<CodexVisualizationInjectionReceipt>)
+  | undefined;
 let invokeRecords: Array<{
   channel: string;
   args: unknown[];
@@ -405,8 +415,22 @@ vi.mock("./local-conversation-deps", () => ({
         };
         return { request: { ...started.freshLaunch.canonicalParams, threadId }, context: {} };
       }
-      if (channel === "codex:turn:native:prepare")
-        return { request: (args[0] as { originalRequest: unknown }).originalRequest, context: {} };
+      if (channel === "codex:turn:native:prepare") {
+        const input = args[0] as { originalRequest: unknown; passiveContextIntent?: "ordinary" };
+        return {
+          request: input.originalRequest,
+          context:
+            input.passiveContextIntent === "ordinary" && nativePassiveContext
+              ? { passiveContext: nativePassiveContext }
+              : {},
+        };
+      }
+      if (channel === "codex:turn:native:inject") {
+        const input = args[0] as { passiveContextKey?: string };
+        return nativePassiveInjection
+          ? nativePassiveInjection(input.passiveContextKey)
+          : { passiveContextKey: input.passiveContextKey };
+      }
       if (channel === "codex:turn:native:inspect") {
         const request = (
           args[0] as { request: import("@nodex/codex-app-server-protocol/v2").TurnStartParams }
@@ -1056,6 +1080,7 @@ vi.mock("./local-conversation-deps", () => ({
     if (
       channel !== "codex:app-server:request" &&
       channel !== "codex:turn:native:execute" &&
+      channel !== "codex:turn:native:inject" &&
       channel !== "codex:turn:native-steer:execute" &&
       channel !== "codex:turn:native-fresh:execute" &&
       channel !== "codex:thread:native-session:execute" &&
@@ -1214,6 +1239,8 @@ function resetLocalConversationStoreTestHarness(reset: () => void): void {
   nativeSupportsSearchOccurrences = true;
   nativeAppServerVersion = "0.162.0-alpha.17.2";
   nativeHistorySearchHandler = null;
+  nativePassiveContext = undefined;
+  nativePassiveInjection = undefined;
   nativeTurnsReadGate = null;
   nativeSupportsThreadQueue = false;
   nativeResumeHistoryModeOverride = null;
@@ -23423,4 +23450,260 @@ describe("local-conversation-store", () => {
       manager.destroy();
     }
   });
+});
+
+function rendererPassiveContext(count: number): CodexVisualizationPassiveContext {
+  const hostId = "local";
+  const threadId = "thread-passive";
+  return compileCodexVisualizationPassiveContext({
+    scope: { hostId, threadId },
+    stateRecord: {
+      "/plot.html": { hostId, threadId, path: "/plot.html", state: { modelContent: { count } } },
+    },
+    interactionRecord: {},
+    createUUID: () => crypto.randomUUID(),
+  })!;
+}
+
+async function finishRendererPassiveTurn(
+  manager: CodexAppServerManagerInstance,
+  occurrence: number,
+): Promise<void> {
+  const { dispatchCodexAppServerMessage } = await import("./app-server-message-bus");
+  const conversation = manager.readConversation("thread-passive");
+  if (!conversation) throw new Error("Expected passive context conversation");
+  const turn = buildThreadFromConversation(conversation).turns.at(-1);
+  if (!turn) throw new Error("Expected accepted native Turn");
+  await act(async () => {
+    dispatchCodexAppServerMessage("native-notification", {
+      type: "nativeNotification",
+      generation: resumeThreadGeneration,
+      hostId: "local",
+      occurrenceId: `passive:${occurrence}`,
+      occurrenceToken: occurrence,
+      notification: {
+        method: "turn/completed",
+        params: { threadId: "thread-passive", turn: { ...turn, status: "completed" } },
+      },
+    });
+    dispatchCodexAppServerMessage("native-notification", {
+      type: "nativeNotification",
+      generation: resumeThreadGeneration,
+      hostId: "local",
+      occurrenceId: `passive:${occurrence + 1}`,
+      occurrenceToken: occurrence + 1,
+      notification: {
+        method: "thread/status/changed",
+        params: { threadId: "thread-passive", status: { type: "idle" } },
+      },
+    });
+    await flushAsyncWork(4);
+  });
+}
+
+describe("renderer passive widget context", () => {
+  test("confirms the key before turn/start, skips unchanged state and injects freshly changed model content", async () => {
+    const { CodexAppServerManager, __resetLocalConversationStoreForTests } =
+      await import("./local-conversation-store");
+    resetLocalConversationStoreTestHarness(__resetLocalConversationStoreForTests);
+    invokeRecords = [];
+    resumeThreadResult = buildConversation("thread-passive", "project-1");
+    const manager = trackNativeTestManager(new CodexAppServerManager("local"));
+    let releaseInjection = () => {};
+    const injectionGate = new Promise<void>((resolve) => {
+      releaseInjection = resolve;
+    });
+    try {
+      await manager.requestThreadStreamResume("thread-passive");
+      nativePassiveContext = rendererPassiveContext(1);
+      const firstKey = nativePassiveContext.key;
+      nativePassiveInjection = async (key) => {
+        await injectionGate;
+        return { passiveContextKey: key };
+      };
+      let keyAtStart: string | undefined;
+      ownerTurnStartHandler = () => {
+        keyAtStart =
+          manager.readConversation("thread-passive")?.canonicalState?.lastInjectedPassiveContextKey;
+      };
+      const first = manager.startTurn("thread-passive", "first");
+      await waitFor(() =>
+        expect(invokeRecords.some(({ channel }) => channel === "codex:turn:native:inject")).toBe(
+          true,
+        ),
+      );
+      expect(
+        manager.readConversation("thread-passive")?.canonicalState?.lastInjectedPassiveContextKey,
+      ).toBeUndefined();
+      expect(invokeRecords.some(({ channel }) => channel === "codex:turn:native:execute")).toBe(
+        false,
+      );
+      releaseInjection();
+      await first;
+      expect(keyAtStart).toBe(firstKey);
+      expect(
+        manager.readConversation("thread-passive")?.canonicalState?.lastInjectedPassiveContextKey,
+      ).toBe(firstKey);
+      expect(
+        invokeRecords.find(({ channel }) => channel === "codex:turn:native:prepare")?.args[0],
+      ).toMatchObject({ passiveContextIntent: "ordinary" });
+      await finishRendererPassiveTurn(manager, 1);
+      nativePassiveContext = rendererPassiveContext(1);
+      ownerTurnStartResult = {
+        turn: {
+          ...buildThreadFromConversation(manager.readConversation("thread-passive")!).turns.at(-1)!,
+          id: "second-passive",
+        },
+      };
+      await manager.startTurn("thread-passive", "second");
+      expect(
+        invokeRecords.filter(({ channel }) => channel === "codex:turn:native:inject"),
+      ).toHaveLength(1);
+      await finishRendererPassiveTurn(manager, 3);
+      nativePassiveContext = rendererPassiveContext(2);
+      ownerTurnStartResult = {
+        turn: {
+          ...buildThreadFromConversation(manager.readConversation("thread-passive")!).turns.at(-1)!,
+          id: "third-passive",
+        },
+      };
+      await manager.startTurn("thread-passive", "third");
+      expect(
+        invokeRecords.filter(({ channel }) => channel === "codex:turn:native:inject"),
+      ).toHaveLength(2);
+      expect(
+        manager.readConversation("thread-passive")?.canonicalState?.lastInjectedPassiveContextKey,
+      ).toBe(nativePassiveContext.key);
+      expect(nativePassiveContext.key).not.toBe(firstKey);
+    } finally {
+      releaseInjection();
+      nativePassiveContext = undefined;
+      nativePassiveInjection = undefined;
+      ownerTurnStartHandler = null;
+      ownerTurnStartResult = null;
+      resumeThreadResult = null;
+      manager.destroy();
+    }
+  });
+
+  test("a missing passive confirmation cannot start a Turn or acknowledge the fingerprint", async () => {
+    const { CodexAppServerManager, __resetLocalConversationStoreForTests } =
+      await import("./local-conversation-store");
+    resetLocalConversationStoreTestHarness(__resetLocalConversationStoreForTests);
+    invokeRecords = [];
+    resumeThreadResult = buildConversation("thread-passive", "project-1");
+    const manager = trackNativeTestManager(new CodexAppServerManager("local"));
+    try {
+      await manager.requestThreadStreamResume("thread-passive");
+      nativePassiveContext = rendererPassiveContext(1);
+      nativePassiveInjection = async () => ({});
+      await expect(manager.startTurn("thread-passive", "send")).rejects.toThrow(
+        "Passive context confirmation does not match its owner",
+      );
+      expect(
+        manager.readConversation("thread-passive")?.canonicalState?.lastInjectedPassiveContextKey,
+      ).toBeUndefined();
+      expect(invokeRecords.some(({ channel }) => channel === "codex:turn:native:execute")).toBe(
+        false,
+      );
+    } finally {
+      nativePassiveContext = undefined;
+      nativePassiveInjection = undefined;
+      resumeThreadResult = null;
+      manager.destroy();
+    }
+  });
+
+  test("unknown passive injection outcome preserves the confirmation gap and blocks replay", async () => {
+    const { CodexAppServerManager, __resetLocalConversationStoreForTests } =
+      await import("./local-conversation-store");
+    resetLocalConversationStoreTestHarness(__resetLocalConversationStoreForTests);
+    invokeRecords = [];
+    resumeThreadResult = buildConversation("thread-passive", "project-1");
+    const manager = trackNativeTestManager(new CodexAppServerManager("local"));
+    try {
+      await manager.requestThreadStreamResume("thread-passive");
+      nativePassiveContext = rendererPassiveContext(1);
+      nativePassiveInjection = async () => {
+        throw new CodexTurnDeliveryError("Passive injection timed out", {
+          stage: "outcome-unknown",
+          method: "thread/inject_items",
+          requestId: "passive-unknown",
+        });
+      };
+      await expect(manager.startTurn("thread-passive", "send")).rejects.toThrow();
+      expect(
+        manager.readConversation("thread-passive")?.canonicalState?.lastInjectedPassiveContextKey,
+      ).toBeUndefined();
+      expect(
+        manager.readConversation("thread-passive")?.canonicalState?.unconfirmedTurnSubmissions,
+      ).toMatchObject([
+        { requestId: "passive-unknown", method: "thread/inject_items", terminal: true },
+      ]);
+      await expect(manager.startTurn("thread-passive", "retry")).rejects.toThrow(
+        "previous turn submission",
+      );
+      expect(
+        invokeRecords.filter(({ channel }) => channel === "codex:turn:native:inject"),
+      ).toHaveLength(1);
+      expect(invokeRecords.some(({ channel }) => channel === "codex:turn:native:execute")).toBe(
+        false,
+      );
+    } finally {
+      nativePassiveContext = undefined;
+      nativePassiveInjection = undefined;
+      resumeThreadResult = null;
+      manager.destroy();
+    }
+  });
+});
+
+test("renderer passive context cannot acknowledge an old owner after the manager retires", async () => {
+  const { CodexAppServerManager, __resetLocalConversationStoreForTests } =
+    await import("./local-conversation-store");
+  resetLocalConversationStoreTestHarness(__resetLocalConversationStoreForTests);
+  invokeRecords = [];
+  resumeThreadResult = buildConversation("thread-passive", "project-1");
+  const manager = trackNativeTestManager(new CodexAppServerManager("local"));
+  let replacement: CodexAppServerManagerInstance | undefined;
+  let release = () => {};
+  const gate = new Promise<void>((resolve) => {
+    release = resolve;
+  });
+  try {
+    await manager.requestThreadStreamResume("thread-passive");
+    nativePassiveContext = rendererPassiveContext(1);
+    nativePassiveInjection = async (key) => {
+      await gate;
+      return { passiveContextKey: key };
+    };
+    const pending = manager.startTurn("thread-passive", "send");
+    const observed = pending.then(
+      () => undefined,
+      (error: unknown) => error,
+    );
+    await waitFor(() =>
+      expect(invokeRecords.some(({ channel }) => channel === "codex:turn:native:inject")).toBe(
+        true,
+      ),
+    );
+    manager.destroy();
+    replacement = trackNativeTestManager(new CodexAppServerManager("local"));
+    await replacement.requestThreadStreamResume("thread-passive");
+    release();
+    expect(await observed).toBeInstanceOf(Error);
+    expect(
+      replacement.readConversation("thread-passive")?.canonicalState?.lastInjectedPassiveContextKey,
+    ).toBeUndefined();
+    expect(invokeRecords.some(({ channel }) => channel === "codex:turn:native:execute")).toBe(
+      false,
+    );
+  } finally {
+    release();
+    nativePassiveContext = undefined;
+    nativePassiveInjection = undefined;
+    resumeThreadResult = null;
+    replacement?.destroy();
+    manager.destroy();
+  }
 });

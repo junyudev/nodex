@@ -7,7 +7,6 @@ import type {
   ServerRequest,
 } from "@nodex/codex-app-server-protocol";
 import { z } from "zod";
-import { normalizeCodexRealtimeItem } from "../../shared/codex-realtime-item";
 import type {
   CodexCanonicalOptionPickerRequest,
   CodexCanonicalPlanImplementationRequest,
@@ -192,16 +191,7 @@ export function parseCodexAppServerMessage(value: unknown): CodexAppServerMessag
     if (!hasId) {
       const notification = ServerNotificationSchema.safeParse(value);
       if (notification.success) {
-        const parsed = notification.data;
-        const normalized =
-          parsed.method === "thread/realtime/item/started" ||
-          parsed.method === "thread/realtime/item/completed"
-            ? {
-                ...parsed,
-                params: { ...parsed.params, item: normalizeCodexRealtimeItem(parsed.params.item) },
-              }
-            : parsed;
-        return { success: true, data: { kind: "notification", notification: normalized } };
+        return { success: true, data: { kind: "notification", notification: notification.data } };
       }
       if (generatedServerNotificationMethods.has(method)) {
         return invalid(`Invalid params for Codex server notification '${method}'.`);

@@ -15,6 +15,7 @@ import { ElectronIpc } from "../../platform/electron/ElectronIpc";
 import { makeTestElectronIpc } from "../../platform/electron/ElectronIpc.test-support";
 import { WindowRuntime } from "../../window-runtime/WindowRuntime";
 import { live } from "./CodexVisualizationStateIpc";
+import { live as localStateIpcLive } from "./ApplicationLocalStateIpc";
 
 vi.mock("electron", () => ({ BrowserWindow: { fromWebContents: () => ({}) } }));
 type Handler = (event: IpcMainInvokeEvent, ...args: unknown[]) => Effect.Effect<unknown, Error>;
@@ -37,6 +38,7 @@ it.effect(
         let registered = true;
         const store = makePersistedAtomStore(home);
         const dependencies = Layer.mergeAll(
+          Layer.succeed(ProfilePersistedAtoms, store),
           stateLive.pipe(Layer.provide(Layer.succeed(ProfilePersistedAtoms, store))),
           testLayer({ nodexHome: home, rendererUrl: "http://localhost:5173" }),
           Layer.succeed(
@@ -88,7 +90,10 @@ it.effect(
           assert.strictEqual(published.length, 1);
           registered = false;
           assert.strictEqual((yield* Effect.result(read(event(), identity)))._tag, "Failure");
-        }).pipe(Effect.provide(live.pipe(Layer.provide(dependencies))), Effect.scoped);
+        }).pipe(
+          Effect.provide(Layer.merge(live, localStateIpcLive).pipe(Layer.provide(dependencies))),
+          Effect.scoped,
+        );
       },
       (home) => Effect.sync(() => rmSync(home, { recursive: true, force: true })),
     ),

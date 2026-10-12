@@ -9,6 +9,11 @@ export interface TranscriptPortEvidence {
   readonly normalizedChannels: number;
   readonly residentItemCount: number;
   readonly residentItemIds: readonly string[];
+  readonly itemTimelines: readonly {
+    readonly present: boolean;
+    readonly entryCount: number;
+    readonly itemEntryCount: number;
+  }[];
   readonly pressureItemIds: string[];
   readonly pressureSlotItemIds: string[];
   readonly maxPressureItemCount: number;
@@ -74,6 +79,8 @@ export async function installTranscriptPortProbe(page: Page): Promise<void> {
       pressureCommitFrames: TranscriptPressureCommitFrame[];
       resumeState: string | null;
       stagedResumeState: string | null;
+      itemTimelineTypes: string[] | null;
+      stagedItemTimelineTypes: string[] | null;
     }>();
     let releasedIdleObservation: {
       maxNormalizedChannels: number;
@@ -125,6 +132,8 @@ export async function installTranscriptPortProbe(page: Page): Promise<void> {
           pressureCommitFrames: [] as TranscriptPressureCommitFrame[],
           resumeState: null as string | null,
           stagedResumeState: null as string | null,
+          itemTimelineTypes: null as string[] | null,
+          stagedItemTimelineTypes: null as string[] | null,
         };
         channels.add(channel);
         const installItems = (target: Map<string, string>, value: unknown) => {
@@ -161,11 +170,18 @@ export async function installTranscriptPortProbe(page: Page): Promise<void> {
         const observeEvent = (event: Record<string, unknown>) => {
           const type = event.type;
           const snapshot = object(event.value);
+          const timelineTypes = (value: unknown) =>
+            object(value)
+              ? unwrapArray(object(value)?.entries).flatMap((entry) =>
+                  typeof object(entry)?.type === "string" ? [object(entry)!.type as string] : [],
+                )
+              : null;
           if (type === "reset" && (event.value === null || snapshot?.itemsByKey)) {
             channel.normalized = true;
             counts.resetFrames++;
             channel.resumeState =
               typeof snapshot?.resumeState === "string" ? snapshot.resumeState : null;
+            channel.itemTimelineTypes = timelineTypes(snapshot?.itemTimeline);
             channel.items.clear();
             channel.slots.clear();
             channel.turns.clear();
@@ -177,6 +193,7 @@ export async function installTranscriptPortProbe(page: Page): Promise<void> {
             counts.resetFrames++;
             channel.stagedResumeState =
               typeof snapshot.resumeState === "string" ? snapshot.resumeState : null;
+            channel.stagedItemTimelineTypes = timelineTypes(snapshot.itemTimeline);
             channel.staged = new Map();
             channel.stagedSlots = new Map();
             channel.stagedTurns = new Map();
@@ -194,9 +211,32 @@ export async function installTranscriptPortProbe(page: Page): Promise<void> {
             channel.stagedTurns = null;
             channel.resumeState = channel.stagedResumeState;
             channel.stagedResumeState = null;
+            channel.itemTimelineTypes = channel.stagedItemTimelineTypes;
+            channel.stagedItemTimelineTypes = null;
           } else if (type === "changes") {
             for (const value of unwrapArray(event.changes)) {
               const change = object(value);
+              if (change?.type === "item-timeline") {
+                channel.itemTimelineTypes = timelineTypes(change.value);
+                continue;
+              }
+              if (change?.type === "item-timeline-prepend") {
+                channel.itemTimelineTypes = [
+                  ...unwrapArray(change.entries).flatMap((entry) =>
+                    typeof object(entry)?.type === "string" ? [object(entry)!.type as string] : [],
+                  ),
+                  ...(channel.itemTimelineTypes ?? []),
+                ];
+                continue;
+              }
+              if (change?.type === "item-timeline-entry") {
+                const entryType = object(change.entry)?.type;
+                if (typeof change.index === "number" && typeof entryType === "string") {
+                  channel.itemTimelineTypes ??= [];
+                  channel.itemTimelineTypes[change.index] = entryType;
+                }
+                continue;
+              }
               if (change?.type === "history") {
                 if (typeof change.resumeState === "string")
                   channel.resumeState = change.resumeState;
@@ -369,6 +409,11 @@ export async function installTranscriptPortProbe(page: Page): Promise<void> {
         ...counts,
         releasedIdleObservation,
         normalizedChannels: active.length,
+        itemTimelines: active.map((channel) => ({
+          present: channel.itemTimelineTypes !== null,
+          entryCount: channel.itemTimelineTypes?.length ?? 0,
+          itemEntryCount: channel.itemTimelineTypes?.filter((type) => type === "item").length ?? 0,
+        })),
         resumeStates: active.map((channel) => channel.resumeState),
         residentItemCount: active.reduce((total, channel) => total + channel.items.size, 0),
         residentItemIds: active.flatMap((channel) => [...channel.items.values()]).sort(),
