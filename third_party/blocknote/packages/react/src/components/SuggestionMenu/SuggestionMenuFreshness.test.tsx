@@ -23,7 +23,12 @@ function createDeferred<T>(): Deferred<T> {
   return { promise, resolve };
 }
 
-function createFakeEditor(domElement = document.createElement("div")): BlockNoteEditor {
+function createFakeEditor(
+  domElement = document.createElement("div"),
+  suggestionMenu?: {
+    getMenuState: () => { triggerCharacter: string; query: string; show: boolean };
+  },
+): BlockNoteEditor & { readonly domElement: HTMLElement } {
   const editor = {
     domElement,
     prosemirrorView: { dom: domElement },
@@ -33,10 +38,10 @@ function createFakeEditor(domElement = document.createElement("div")): BlockNote
     },
     onMount: () => () => undefined,
     onUnmount: () => () => undefined,
-    getExtension: () => undefined,
+    getExtension: () => suggestionMenu,
   };
 
-  return editor as unknown as BlockNoteEditor;
+  return editor as unknown as BlockNoteEditor & { readonly domElement: HTMLElement };
 }
 
 function LoadItemsHarness<T>({
@@ -382,10 +387,7 @@ describe("suggestion menu freshness", () => {
         show: true,
       }),
     };
-    const editor = {
-      ...createFakeEditor(),
-      getExtension: () => fakeSuggestionMenu,
-    };
+    const editor = createFakeEditor(document.createElement("div"), fakeSuggestionMenu);
 
     function MenuComponent({
       items,
@@ -440,10 +442,7 @@ describe("suggestion menu freshness", () => {
         show: true,
       }),
     };
-    const editor = {
-      ...createFakeEditor(),
-      getExtension: () => fakeSuggestionMenu,
-    };
+    const editor = createFakeEditor(document.createElement("div"), fakeSuggestionMenu);
 
     const view = render(
       <BlockNoteContext.Provider
@@ -487,10 +486,7 @@ describe("suggestion menu freshness", () => {
         show: true,
       }),
     };
-    const editor = {
-      ...createFakeEditor(),
-      getExtension: () => fakeSuggestionMenu,
-    };
+    const editor = createFakeEditor(document.createElement("div"), fakeSuggestionMenu);
 
     function MenuComponent({
       items,

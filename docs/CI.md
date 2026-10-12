@@ -65,8 +65,14 @@ CI implementation changes are routed by the same ownership rule. Ordinary
 workflow orchestration runs CI contracts only; changing
 `_app-tests.yml`, `_rust-checks.yml`, or `_static-checks.yml` additionally runs
 the complete reusable owner it can affect. Changes confined to `scripts/ci`
-run types, CI contracts, and the Node unit suite. Unknown paths still fail
-closed to every deterministic source gate.
+run types, source ownership, CI contracts, and the Node unit suite. Unknown paths
+still fail closed to every deterministic source gate.
+
+Every TypeScript source or project configuration change selects the lightweight
+`source-ownership` static group. It compares the actual compiler graphs with the
+owned source inventory, so independently routed Landing and Storybook changes
+cannot introduce files outside their checker projects. Landing source changes
+retain their own build and test owners alongside this check.
 
 Documentation paths do not widen an accompanying executable change. A source,
 dependency, or workflow edit with its owning documentation therefore receives

@@ -1,3 +1,4 @@
+// Keep exported API changes paired with the adjacent .d.mts contract.
 const UNSAFE_CODE_LITERAL_CHARACTER = /[<>\u2028\u2029]/gu;
 
 const CODE_LITERAL_ESCAPE = Object.freeze({

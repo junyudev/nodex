@@ -132,15 +132,8 @@
             "include": [
               "packages/effect-codex-app-server/**/*.ts",
               "packages/effect-codex-app-server/**/*.tsx",
-              "src/main/app/**/*.ts",
-              "src/main/app/**/*.tsx",
-              "src/main/core-runtime/**/*.ts",
-              "src/main/core-runtime/**/*.tsx",
-              "src/main/codex-runtime/**/*.ts",
-              "src/main/codex-runtime/**/*.tsx",
-              "src/main/platform/**/*.ts",
-              "src/main/platform/**/*.tsx",
-              "src/main/main-program*.ts",
+              "src/main/**/*.ts",
+              "src/main/**/*.tsx",
               "scripts/codex-probe-session.ts"
             ],
             "exclude": ["packages/effect-codex-app-server/src/_generated/**/*.ts"],

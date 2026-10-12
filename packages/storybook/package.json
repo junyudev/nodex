@@ -4,7 +4,8 @@
   "type": "module",
   "scripts": {
     "storybook": "storybook dev -p 6006",
-    "build": "storybook build"
+    "build": "storybook build",
+    "typecheck": "tsc-rs --project tsconfig.json --noEmit"
   },
   "devDependencies": {
     "@storybook/addon-a11y": "10.6.1",
@@ -12,7 +13,7 @@
     "@storybook/addon-links": "10.6.1",
     "@storybook/react-vite": "10.6.1",
     "@tailwindcss/vite": "4.3.1",
-    "@types/node": "25.9.3",
+    "@types/node": "24.13.3",
     "@types/react": "19.2.17",
     "@types/react-dom": "19.2.3",
     "react": "19.2.7",

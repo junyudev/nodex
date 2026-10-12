@@ -59,7 +59,9 @@ const cleanupDependencies = (
     shutdown: vi.fn(async () => ({ status: "draining" as const })),
   })),
   delay: vi.fn(async () => undefined),
-  inspectRuntimeEvidence: vi.fn(() => "none"),
+  inspectRuntimeEvidence: vi.fn<IsolatedCoreCleanupDependencies["inspectRuntimeEvidence"]>(
+    () => "none",
+  ),
   isPidAlive: vi.fn(() => false),
   now: vi.fn(() => 0),
   readRuntimeGeneration: vi.fn(() => GENERATION),
@@ -214,7 +216,9 @@ describe("isolated run supervisor", () => {
         runId: RUN_A,
         dependencies: cleanupDependencies({
           connectCore,
-          inspectRuntimeEvidence: vi.fn(() => "partial"),
+          inspectRuntimeEvidence: vi.fn<IsolatedCoreCleanupDependencies["inspectRuntimeEvidence"]>(
+            () => "partial",
+          ),
           readClaim: vi.fn(() => null),
         }),
       }),
@@ -243,7 +247,9 @@ describe("isolated run supervisor", () => {
         nodexHome,
         runId: RUN_A,
         dependencies: cleanupDependencies({
-          inspectRuntimeEvidence: vi.fn(() => "complete"),
+          inspectRuntimeEvidence: vi.fn<IsolatedCoreCleanupDependencies["inspectRuntimeEvidence"]>(
+            () => "complete",
+          ),
           isPidAlive: vi.fn(() => true),
           readRuntimeGeneration: vi.fn(() => replacement),
         }),

@@ -10,7 +10,7 @@ const waitForOwnedSignalExit = (): Promise<{
   new Promise((resolve, reject) => {
     const child = spawn(
       process.execPath,
-      ["--import", "tsx", path.resolve("scripts/fixtures/effect-process-entry-owned-signal.ts")],
+      ["--import", "tsx", path.resolve("tests/fixtures/effect-process-entry/owned-signal.ts")],
       { stdio: ["ignore", "pipe", "pipe"] },
     );
     let stdout = "";

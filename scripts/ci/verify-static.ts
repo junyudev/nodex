@@ -18,6 +18,12 @@ export const STATIC_CHECKS: readonly StaticCheck[] = [
     name: "integrated TypeScript, Effect, lint, and format diagnostics",
   },
   {
+    command: ["run", "verify:source-type-ownership"],
+    group: "source-ownership",
+    id: "source-type-ownership",
+    name: "TypeScript compiler project ownership",
+  },
+  {
     command: ["run", "semantic-theme:verify"],
     group: "ui-contracts",
     id: "semantic-theme",

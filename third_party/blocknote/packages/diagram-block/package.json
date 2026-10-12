@@ -2,7 +2,9 @@
   "name": "@blocknote/diagram-block",
   "homepage": "https://github.com/TypeCellOS/BlockNote",
   "private": true,
-  "sideEffects": ["*.css"],
+  "sideEffects": [
+    "*.css"
+  ],
   "repository": {
     "type": "git",
     "url": "git+https://github.com/TypeCellOS/BlockNote.git",
@@ -10,7 +12,11 @@
   },
   "license": "MPL-2.0",
   "version": "0.54.2",
-  "files": ["dist", "types", "src"],
+  "files": [
+    "dist",
+    "types",
+    "src"
+  ],
   "keywords": [
     "react",
     "javascript",
@@ -48,7 +54,8 @@
     "dev": "vp dev",
     "lint": "vp lint src",
     "test": "vp test --run",
-    "test-watch": "vp test watch"
+    "test-watch": "vp test watch",
+    "typecheck": "tsc-rs --project tsconfig.json --noEmit"
   },
   "dependencies": {
     "@blocknote/core": "workspace:*",

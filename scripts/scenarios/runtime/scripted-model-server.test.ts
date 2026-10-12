@@ -506,6 +506,7 @@ describe("ScriptedModelServer", () => {
             typeof warmupResponse !== "object" ||
             warmupResponse === null ||
             Array.isArray(warmupResponse) ||
+            !("id" in warmupResponse) ||
             typeof warmupResponse.id !== "string"
           ) {
             throw new Error("Automatic prewarm did not return a response id");

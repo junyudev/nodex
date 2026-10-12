@@ -26,6 +26,9 @@ vp run lint
 # Actually execute the semantic task, bypassing the task-result cache
 vp run --no-cache check:semantic
 
+# Verify every owned TypeScript file has an actual compiler project owner
+vp run verify:source-type-ownership
+
 # Compact diagnostics for a focused investigation
 vp lint --format agent
 ```
@@ -49,17 +52,34 @@ Program using the real policy. Its typed fixtures prove compiler errors,
 type-aware rules, Effect scope, suppressions, and advisory exit behavior.
 Separate syntax fixtures outside the project graph still use fixture mode.
 
-`tsconfig.tooling.json` owns the suite catalog, Vitest configuration, benchmark
-and test runners, and CI behavior tests. Existing unowned JavaScript entrypoints
-retain their runtime contracts; adding a new control-plane test requires an
-explicit type owner, not just successful Vitest transformation. Host shared tests
+`tsconfig.tooling.json` owns configuration modules, Vitest and Playwright configuration,
+benchmark and test runners, and every owned script test. Production script entrypoints
+belong to the Node project, including `.mts` and `.cts`. JavaScript entrypoints
+retain their runtime contracts; successful Vitest transformation does not replace
+a compiler project owner. Host shared tests
 remain in the Node project rather than becoming Web root files; imported
 transport-neutral dependencies may still legitimately appear in both graphs.
-Each referenced project inherits shared JSX and alias settings from
+Application projects inherit shared JSX and alias settings from
 `tsconfig.base.json`; settings on the solution root do not configure its children.
+Landing and Storybook own their source, tests, and configuration. Every BlockNote
+workspace has an independent complete checker project and a `tsconfig.build.json`
+for declaration output, both executed by tsc-rs. `verify:source-type-ownership`
+compares the compiler's actual file graphs with tracked and untracked source files.
+CI selects this independent check for every TypeScript source or project configuration
+change, including Landing and Storybook. `tooling:verify` also exercises its negative
+fixtures for unowned files, extension shadowing, and runnable test fixtures.
+Only the raw fixtures
+under `scripts/fixtures/tooling`, `scripts/fixtures/effect-boundaries`, and
+`scripts/fixtures/renderer-command-boundaries` remain outside the production
+solution; runnable test fixtures retain a compiler owner.
+
+Workspace build tasks produce dependency outputs first. Per-package declaration
+emission uses no incremental compiler state; Vite's task cache restores each
+package's `types` and `dist`, while dependency declarations and CSS remain
+fingerprinted inputs.
 
 The compiler checks the complete owned project references and their imported
-contracts, and stores incremental state under `.cache/typescript`. A direct
+contracts, and stores checker incremental state under `.cache/typescript`. A direct
 `tsc-rs --build --noEmit` run is useful to isolate compiler failures, but it does
 not provide the typed lint and suppression policy of the complete gate.
 Use focused tests while editing and the shared complete semantic task for handoff.
@@ -170,7 +190,8 @@ isolated exception and state why.
 | `better-tailwindcss/no-conflicting-classes`, `better-tailwindcss/no-unknown-classes`                                                                                                                                       | Opt-in Tailwind repair command                       | Resolve conflicting utilities or use the documented app-owned class namespace. The plugin remains opt-in because its complete analysis is materially heavier.             |
 
 `tsconfig.effect.json` scopes the Effect recommended and native diagnostics to
-the Main Effect control plane and app-owned adapters. Rules outside that scope
+all Main modules, the companion package, and explicit process entries. Generated
+companion contracts retain their exclusion. Rules outside that scope
 are disabled explicitly; renderer and shared contracts retain their own
 execution model. Its error rules guard invalid Effect types and control flow:
 `class-self-mismatch`, `effect-fn-implicit-any`, `floating-effect`,

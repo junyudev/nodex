@@ -26,8 +26,37 @@ describe("CI change classification", () => {
     expect(classifyChangedPaths(["packages/landing/src/App.tsx", "README.md"])).toMatchObject({
       appTestSuites: ["unit", "renderer"],
       landingOnly: true,
-      staticGroups: ["landing"],
+      staticGroups: ["source-ownership", "landing"],
       testMode: "related",
+    });
+  });
+
+  test("requires source ownership for every TypeScript extension and project configuration", () => {
+    for (const path of [
+      "src/renderer/components/new.tsx",
+      "src/main/new.cts",
+      "scripts/new.mts",
+      "scripts/ci/new.ts",
+      "tests/fixtures/new.ts",
+      "packages/storybook/.storybook/auxiliary.mts",
+      "packages/storybook/.storybook/auxiliary.cts",
+      "packages/landing/auxiliary.mts",
+      "third_party/blocknote/packages/core/new.config.tsx",
+      "docs/example.ts",
+      ".github/actions/run-stress-tests/helper.ts",
+      ".github/actions/setup-playwright/helper.mts",
+      ".github/actions/setup-rust-ci/helper.cts",
+      "tsconfig.node.json",
+      "packages/landing/tsconfig.json",
+    ]) {
+      expect(classifyChangedPaths([path]).staticGroups, path).toContain("source-ownership");
+    }
+  });
+
+  test("keeps non-TypeScript landing edits within the build owner", () => {
+    expect(classifyChangedPaths(["packages/landing/src/index.css"])).toMatchObject({
+      landingOnly: true,
+      staticGroups: ["landing"],
     });
   });
 
@@ -48,7 +77,7 @@ describe("CI change classification", () => {
       appTestSuites: ["unit", "renderer", "browser"],
       relatedPaths: ["src/renderer/components/app.tsx"],
       rustFast: false,
-      staticGroups: ["types", "ui-contracts"],
+      staticGroups: ["types", "source-ownership", "ui-contracts"],
       testMode: "related",
     });
   });
@@ -91,7 +120,7 @@ describe("CI change classification", () => {
   test("leaves explicit stress tests to their nightly owner", () => {
     expect(classifyChangedPaths(["src/main/git-worker/example.stress.test.ts"])).toMatchObject({
       appTestSuites: [],
-      staticGroups: ["types", "repository-contracts", "ci-contracts"],
+      staticGroups: ["types", "source-ownership", "ci-contracts", "repository-contracts"],
       testMode: "none",
     });
   });
@@ -197,7 +226,7 @@ describe("CI change classification", () => {
       allGates: false,
       appTestSuites: ["unit"],
       rustFast: false,
-      staticGroups: ["types", "ci-contracts"],
+      staticGroups: ["types", "source-ownership", "ci-contracts"],
       testMode: "full",
     });
   });
@@ -254,7 +283,7 @@ describe("CI change classification", () => {
 test("audits landing test ownership and validates the shared process adapter in real suites", () => {
   expect(classifyChangedPaths(["packages/landing/src/new.jsdom.test.ts"])).toMatchObject({
     landingOnly: true,
-    staticGroups: ["ci-contracts", "landing"],
+    staticGroups: ["source-ownership", "ci-contracts", "landing"],
     appTestSuites: ["unit", "renderer"],
   });
   expect(classifyChangedPaths(["scripts/tooling/process.ts"])).toMatchObject({

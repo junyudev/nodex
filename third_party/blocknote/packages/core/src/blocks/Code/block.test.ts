@@ -20,6 +20,7 @@ import {
  */
 function simulateTextInput(editor: BlockNoteEditor, text: string) {
   const view = editor.prosemirrorView;
+  if (!view) throw new Error("Typing requires a mounted editor");
   const { from, to } = view.state.selection;
   const deflt = () => view.state.tr.insertText(text, from, to);
   const handled = view.someProp("handleTextInput", (f) =>
@@ -42,6 +43,7 @@ function typeString(editor: BlockNoteEditor, str: string) {
  */
 function pressKey(editor: BlockNoteEditor, key: string, shiftKey = false) {
   const view = editor.prosemirrorView;
+  if (!view) throw new Error("Keyboard input requires a mounted editor");
   const event = new KeyboardEvent("keydown", { key, shiftKey });
   return view.someProp("handleKeyDown", (f) => f(view, event));
 }

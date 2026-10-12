@@ -1,30 +1,16 @@
 import react from "@vitejs/plugin-react";
 import * as path from "path";
-import { webpackStats } from "rollup-plugin-webpack-stats";
+import webpackStats from "rollup-plugin-webpack-stats";
 import { defineConfig, type UserConfig } from "vite-plus";
 import pkg from "./package.json";
+import { blocknoteBuildTask, packageDependencies } from "../../vite-shared";
 // import eslintPlugin from "vite-plugin-eslint";
 
 // https://vitejs.dev/config/
 export default defineConfig(
   (conf) =>
     ({
-      run: {
-        tasks: {
-          build: {
-            command: "tsc && vp build",
-            cache: {
-              input: [
-                { auto: true },
-                { pattern: "!**/*.tsbuildinfo", base: "workspace" },
-              ],
-              // `types/**` must be declared too: a cache replay that restores only
-              // dist/ leaves consumers without declarations (tsc is skipped).
-              output: ["dist/**", "types/**", "!dist/*.tsbuildinfo"],
-            },
-          },
-        },
-      },
+      run: { tasks: { build: blocknoteBuildTask(packageDependencies(pkg)) } },
       test: {
         environment: "jsdom",
         setupFiles: ["./vitestSetup.ts"],
@@ -37,10 +23,7 @@ export default defineConfig(
             ? ({
                 "@": path.resolve(__dirname, "./src"),
                 // Vite 8's postcss-import can't resolve bare package specifiers in CSS @import
-                "@blocknote/react/style.css": path.resolve(
-                  __dirname,
-                  "../react/dist/style.css",
-                ),
+                "@blocknote/react/style.css": path.resolve(__dirname, "../react/dist/style.css"),
               } as Record<string, string>)
             : ({
                 "@": path.resolve(__dirname, "./src"),
@@ -66,11 +49,7 @@ export default defineConfig(
           // into your library
           external: (source) => {
             if (
-              Object.keys({
-                ...pkg.dependencies,
-                ...((pkg as any).peerDependencies || {}),
-                ...pkg.devDependencies,
-              }).some((dep) => source === dep || source.startsWith(dep + "/"))
+              packageDependencies(pkg).some((dep) => source === dep || source.startsWith(dep + "/"))
             ) {
               return true;
             }

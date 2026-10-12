@@ -1,5 +1,6 @@
 #!/usr/bin/env -S node --import tsx
 
+// Keep exported API changes paired with the adjacent .d.mts contract.
 import { EventEmitter } from "node:events";
 import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import os from "node:os";

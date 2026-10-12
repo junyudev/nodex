@@ -54,7 +54,8 @@
     "lint": "vp lint src",
     "test": "vp test --run",
     "test:watch": "vp test --watch",
-    "clean": "rimraf dist && rimraf types"
+    "clean": "rimraf dist && rimraf types",
+    "typecheck": "tsc-rs --project tsconfig.json --noEmit"
   },
   "dependencies": {
     "@blocknote/core": "workspace:*",

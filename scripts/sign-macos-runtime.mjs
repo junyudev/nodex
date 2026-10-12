@@ -1,3 +1,4 @@
+// Keep exported API changes paired with the adjacent .d.mts contract.
 import { createHash } from "node:crypto";
 import { spawnSync } from "node:child_process";
 import {

@@ -35,15 +35,7 @@ class TestExporter<
     schema: BlockNoteSchema<B, I, S>,
     // NoInfer so B/I/S come from the schema only (matching the real exporters);
     // the mappings are then type-checked against it.
-    mappings: Exporter<
-      NoInfer<B>,
-      NoInfer<I>,
-      NoInfer<S>,
-      string,
-      string,
-      string,
-      string
-    >["mappings"],
+    mappings: NoInfer<Exporter<B, I, S, string, string, string, string>["mappings"]>,
   ) {
     super(schema, mappings, { colors: COLORS_DEFAULT });
   }
@@ -74,7 +66,11 @@ const styleMapping = {} as StyleMapping<
   typeof defaultSchema.styleSchema,
   string
 >;
-const defaultMappings = { blockMapping, inlineContentMapping, styleMapping };
+const defaultMappings = {
+  blockMapping: { ...blockMapping },
+  inlineContentMapping,
+  styleMapping,
+};
 
 describe("Exporter mapping typing", () => {
   it("typescript: a schema with an extra block requires a mapping for it", () => {

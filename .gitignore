@@ -23,6 +23,8 @@ node_modules
 # production
 /build
 /.generated/
+/third_party/blocknote/packages/*/dist/
+/third_party/blocknote/packages/*/types/
 
 # misc
 .DS_Store

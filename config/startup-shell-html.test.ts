@@ -18,16 +18,20 @@ describe("parser-time startup shell", () => {
   });
 
   test("keeps shimmer compositor-only and disables it for reduced motion", () => {
-    const document = new JSDOM(`<style>${createStartupShellCriticalCss()}</style>`).window.document;
+    const window = new JSDOM(`<style>${createStartupShellCriticalCss()}</style>`).window;
+    const document = window.document;
     const rules = Array.from(document.styleSheets[0]?.cssRules ?? []);
-    const keyframes = rules.find((rule) => rule.constructor.name === "CSSKeyframesRule") as
-      | CSSKeyframesRule
-      | undefined;
-    const reducedMotion = rules.find((rule) => rule.constructor.name === "CSSMediaRule") as
-      | CSSMediaRule
-      | undefined;
+    const keyframes = rules.find(
+      (rule): rule is CSSKeyframesRule => rule.type === window.CSSRule.KEYFRAMES_RULE,
+    );
+    const reducedMotion = rules.find(
+      (rule): rule is CSSMediaRule => rule.type === window.CSSRule.MEDIA_RULE,
+    );
     const animatedProperties = new Set<string>();
-    for (const frame of Array.from(keyframes?.cssRules ?? [])) {
+    const frames = Array.from(keyframes?.cssRules ?? []).filter(
+      (rule): rule is CSSKeyframeRule => rule.type === window.CSSRule.KEYFRAME_RULE,
+    );
+    for (const frame of frames) {
       for (const property of Array.from(frame.style)) animatedProperties.add(property);
     }
 

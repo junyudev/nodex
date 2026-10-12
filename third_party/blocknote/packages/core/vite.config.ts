@@ -1,27 +1,13 @@
 import * as path from "path";
-import { webpackStats } from "rollup-plugin-webpack-stats";
+import webpackStats from "rollup-plugin-webpack-stats";
 import { configDefaults, defineConfig } from "vite-plus";
 import pkg from "./package.json";
+import { blocknoteBuildTask, packageDependencies } from "../../vite-shared";
 // import eslintPlugin from "vite-plugin-eslint";
 
 // https://vitejs.dev/config/
 export default defineConfig({
-  run: {
-    tasks: {
-      build: {
-        command: "tsc && vp build",
-        cache: {
-          input: [
-            { auto: true },
-            { pattern: "!**/*.tsbuildinfo", base: "workspace" },
-          ],
-          // `types/**` must be declared too: a cache replay that restores only
-          // dist/ leaves consumers without declarations (tsc is skipped).
-          output: ["dist/**", "types/**", "!dist/*.tsbuildinfo"],
-        },
-      },
-    },
-  },
+  run: { tasks: { build: blocknoteBuildTask(packageDependencies(pkg)) } },
   test: {
     environment: "jsdom",
     setupFiles: ["./vitestSetup.ts"],
@@ -45,19 +31,14 @@ export default defineConfig({
       name: "blocknote",
       cssFileName: "style",
       formats: ["es", "cjs"],
-      fileName: (format, entryName) =>
-        format === "es" ? `${entryName}.js` : `${entryName}.cjs`,
+      fileName: (format, entryName) => (format === "es" ? `${entryName}.js` : `${entryName}.cjs`),
     },
     rollupOptions: {
       // make sure to externalize deps that shouldn't be bundled
       // into your library
       external: (source) => {
         if (
-          Object.keys({
-            ...pkg.dependencies,
-            ...((pkg as any).peerDependencies || {}),
-            ...pkg.devDependencies,
-          }).some((dep) => source === dep || source.startsWith(dep + "/"))
+          packageDependencies(pkg).some((dep) => source === dep || source.startsWith(dep + "/"))
         ) {
           return true;
         }

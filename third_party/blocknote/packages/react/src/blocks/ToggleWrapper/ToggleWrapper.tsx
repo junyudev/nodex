@@ -17,18 +17,11 @@ const showChildrenReducer = (
         type: "toggled";
       }
     | {
-        type: "childAdded";
-      }
-    | {
         type: "lastChildRemoved";
       },
 ) => {
   if (action.type === "toggled") {
     return !showChildren;
-  }
-
-  if (action.type === "childAdded") {
-    return true;
   }
 
   if (action.type === "lastChildRemoved") {
@@ -65,13 +58,6 @@ export const ToggleWrapper = (
     (toggledState || defaultToggledState).set(currentBlock, !showChildren);
     dispatch({
       type: "toggled",
-    });
-  };
-
-  const handleChildAdded = (block: Block<any, any, any>) => {
-    (toggledState || defaultToggledState).set(block, true);
-    dispatch({
-      type: "childAdded",
     });
   };
 

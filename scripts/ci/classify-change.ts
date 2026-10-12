@@ -18,8 +18,15 @@ export type { AppTestSuite, CiGatePlan, DependencyKind, StaticGroup } from "./ci
 
 const RELEASE_PATHS = new Set(["Cargo.lock", "Cargo.toml", "CHANGELOG.md", "package.json"]);
 
+const requiresSourceTypeOwnership = (path: string): boolean =>
+  /\.(?:ts|tsx|mts|cts)$/u.test(path) || /(?:^|\/)tsconfig[^/]*\.json$/u.test(path);
+
 const isDocumentationPath = (path: string): boolean =>
-  path === "AGENTS.md" || path === "CONTEXT.md" || path.endsWith(".md") || path.startsWith("docs/");
+  !requiresSourceTypeOwnership(path) &&
+  (path === "AGENTS.md" ||
+    path === "CONTEXT.md" ||
+    path.endsWith(".md") ||
+    path.startsWith("docs/"));
 
 const isLandingPath = (path: string): boolean =>
   path.startsWith("packages/landing/") || path === ".github/workflows/deploy-landing-site.yml";
@@ -353,11 +360,10 @@ const sourcePlan = (
   });
 };
 
-export function classifyChangedPaths(
-  changedPaths: readonly string[],
-  options: { readonly full?: boolean; readonly forceFullTests?: boolean } = {},
-): CiGatePlan {
-  const paths = [...new Set(changedPaths.map(normalizePath))];
+const classifyNormalizedPaths = (
+  paths: readonly string[],
+  options: { readonly full?: boolean; readonly forceFullTests?: boolean },
+): CiGatePlan => {
   if (options.full || paths.length === 0) return allGatesPlan("source");
 
   const releaseTransition =
@@ -372,9 +378,12 @@ export function classifyChangedPaths(
   if (landingOnly)
     return createPlan({
       landingOnly: true,
-      staticGroups: paths.some((path) => /\.(?:test|spec)\.[cm]?[jt]sx?$/u.test(path))
-        ? ["ci-contracts", "landing"]
-        : ["landing"],
+      staticGroups: [
+        ...(paths.some((path) => /\.(?:test|spec)\.[cm]?[jt]sx?$/u.test(path))
+          ? ["ci-contracts" as const]
+          : []),
+        "landing",
+      ],
       appTestSuites: ["unit", "renderer"],
       testMode: options.forceFullTests ? "full" : "related",
       relatedPaths: options.forceFullTests ? [] : paths.filter(isLandingPath),
@@ -424,6 +433,25 @@ export function classifyChangedPaths(
     dependencyKind,
     options.forceFullTests || requiresFullTests(executablePaths),
   );
+};
+
+export function classifyChangedPaths(
+  changedPaths: readonly string[],
+  options: { readonly full?: boolean; readonly forceFullTests?: boolean } = {},
+): CiGatePlan {
+  const paths = [...new Set(changedPaths.map(normalizePath))];
+  const plan = classifyNormalizedPaths(paths, options);
+  if (!paths.some(requiresSourceTypeOwnership) || plan.staticGroups.includes("source-ownership")) {
+    return plan;
+  }
+  const coveredPlan = {
+    ...plan,
+    staticGroups: STATIC_GROUPS.filter(
+      (group) => group === "source-ownership" || plan.staticGroups.includes(group),
+    ),
+  };
+  assertCiGatePlan(coveredPlan);
+  return coveredPlan;
 }
 
 export function buildChangeClassificationDocument(

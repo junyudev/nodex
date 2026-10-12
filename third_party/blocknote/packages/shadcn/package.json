@@ -52,7 +52,8 @@
     "dev": "vp dev",
     "preview": "vp preview",
     "lint": "vp lint src",
-    "clean": "rimraf dist && rimraf types"
+    "clean": "rimraf dist && rimraf types",
+    "typecheck": "tsc-rs --project tsconfig.json --noEmit"
   },
   "dependencies": {
     "@base-ui/react": "1.7.0",

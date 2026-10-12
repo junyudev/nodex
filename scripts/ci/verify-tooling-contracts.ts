@@ -1,4 +1,8 @@
 import { verifySemanticTaskCache, verifyTypedSemanticPolicy } from "./verify-semantic-tooling";
+import {
+  verifySourceTypeOwnership,
+  verifySourceTypeOwnershipFixtures,
+} from "./verify-source-type-ownership";
 import { spawnSync } from "node:child_process";
 import { existsSync, readFileSync, readdirSync } from "node:fs";
 import { relative, resolve } from "node:path";
@@ -186,6 +190,8 @@ function verifyWorkspaceTaskGraph(): void {
 }
 
 verifyOwnedPackageScriptControlPlane();
+verifySourceTypeOwnership();
+verifySourceTypeOwnershipFixtures();
 
 verifyInvalidFixtures([
   {

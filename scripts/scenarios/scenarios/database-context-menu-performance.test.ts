@@ -1,6 +1,7 @@
 import { describe, expect, test } from "vite-plus/test";
 
 import type { Project } from "../../../src/shared/types";
+import { DEFAULT_PROJECT_APPEARANCE } from "../../../src/shared/project-appearance";
 import type {
   ScenarioBoardObservation,
   ScenarioPageObservation,
@@ -22,8 +23,21 @@ class PerformanceSeedPort implements ScenarioSeedPort {
   async createProject(): Promise<Project> {
     return {
       id: "project:context-menu-performance",
+      libraryId: "library:test",
+      databaseId: "database:context-menu-performance",
       defaultDatabaseViewId: "view:context-menu-performance",
-    } as unknown as Project;
+      lifecycle: "active",
+      bindingRevision: 1,
+      name: "Context Menu Performance",
+      description: "",
+      appearance: DEFAULT_PROJECT_APPEARANCE,
+      sources: [],
+      primaryWorkspaceRoot: null,
+      pinned: false,
+      pinnedOrder: null,
+      created: new Date("2026-01-01T00:00:00.000Z"),
+      updated: new Date("2026-01-01T00:00:00.000Z"),
+    };
   }
 
   async createPage(input: ScenarioPageSeed): Promise<{ readonly documentId: string }> {
@@ -63,7 +77,7 @@ class PerformanceSeedPort implements ScenarioSeedPort {
     return this.ensuredPropertyCount;
   }
 
-  async replaceOwnedDocument(): Promise<{ readonly commitSeq: number }> {
+  async replaceOwnedDocument(): Promise<never> {
     throw new Error("Document replacement is not part of this scenario");
   }
 
@@ -89,6 +103,42 @@ class PerformanceSeedPort implements ScenarioSeedPort {
 
   async readPageChats(): Promise<never> {
     throw new Error("Page Chat inspection is not part of this scenario");
+  }
+
+  async setResourceProjectAccess(): Promise<never> {
+    throw new Error("Resource access changes are not part of this scenario");
+  }
+
+  async createStandaloneCanvas(): Promise<never> {
+    throw new Error("Canvas seeding is not part of this scenario");
+  }
+
+  async readDatabase(): Promise<never> {
+    throw new Error("Database detail inspection is not part of this scenario");
+  }
+
+  async applyDatabase(): Promise<never> {
+    throw new Error("Database changes are not part of this scenario");
+  }
+
+  async createSidebarSection(): Promise<never> {
+    throw new Error("Sidebar section seeding is not part of this scenario");
+  }
+
+  async createSessionInSidebarSection(): Promise<never> {
+    throw new Error("Sidebar Session seeding is not part of this scenario");
+  }
+
+  async moveSidebarSectionItem(): Promise<never> {
+    throw new Error("Sidebar item seeding is not part of this scenario");
+  }
+
+  async listSidebarSections(): Promise<never> {
+    throw new Error("Sidebar section inspection is not part of this scenario");
+  }
+
+  async listSidebarSectionItems(): Promise<never> {
+    throw new Error("Sidebar item inspection is not part of this scenario");
   }
 }
 

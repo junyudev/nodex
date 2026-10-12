@@ -48,6 +48,8 @@ const REQUIRED_INPUT_PATHS = [
   "scripts",
   "src",
   "third_party/blocknote/packages",
+  "third_party/blocknote/tsconfig.base.json",
+  "third_party/blocknote/vite-shared.ts",
   ".node-version",
   "Cargo.lock",
   "Cargo.toml",
@@ -193,9 +195,14 @@ const collectFiles = (
     throw new Error(`Prepared build encountered an unsupported filesystem entry: ${entryPath}`);
   }
   return readdirSync(entryPath, { withFileTypes: true })
-    .filter(
-      (entry) => !ignoreGeneratedInputDirectories || !IGNORED_INPUT_DIRECTORY_NAMES.has(entry.name),
-    )
+    .filter((entry) => {
+      if (!ignoreGeneratedInputDirectories) return true;
+      if (IGNORED_INPUT_DIRECTORY_NAMES.has(entry.name)) return false;
+      // Editor declarations are generated output; authored types elsewhere remain inputs.
+      return !/^third_party\/blocknote\/packages\/[^/]+\/types$/u.test(
+        normalizeRelativePath(root, path.join(entryPath, entry.name)),
+      );
+    })
     .sort((left, right) => left.name.localeCompare(right.name))
     .flatMap((entry) =>
       collectFiles(root, path.join(entryPath, entry.name), ignoreGeneratedInputDirectories),

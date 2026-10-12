@@ -25,7 +25,7 @@ export type {
 
 type RelativeSelection = ReturnType<typeof getRelativeSelection>;
 
-interface SurfaceUndoPluginState {
+export interface SurfaceUndoPluginState {
   readonly undoManager: Y.UndoManager;
   readonly prevSel: RelativeSelection | null;
   readonly hasUndoOps: boolean;

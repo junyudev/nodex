@@ -1,11 +1,18 @@
 import { describe, expect, test } from "vite-plus/test";
 
 import { emptyDatabaseViewConfig } from "../../../src/renderer/lib/database-view-authoring";
+import {
+  parseDatabaseId,
+  parseDatabaseViewId,
+  parseDataSourceId,
+} from "../../../src/shared/database-identities";
+import { DEFAULT_PROJECT_APPEARANCE } from "../../../src/shared/project-appearance";
 import type {
   DatabaseApplyResultV2,
   DatabaseApplyV2,
   DatabaseModuleReadRequestV2,
   DatabaseModuleReadResultV2,
+  DatabaseReadValueV2,
   DatabaseViewRecordV2,
 } from "../../../src/shared/database-module-v2";
 import type { Project } from "../../../src/shared/types";
@@ -27,6 +34,11 @@ import {
   requireBoardDenseScenarioFacts,
 } from "./board-dense";
 
+const DATABASE_ID = parseDatabaseId("database:board-dense");
+const BOARD_VIEW_ID = parseDatabaseViewId("view:board-dense");
+const DATA_SOURCE_ID = parseDataSourceId("source:board-dense");
+const CREATED_AT = "2026-01-01T00:00:00.000Z";
+
 class RecordingSeedPort implements ScenarioSeedPort {
   readonly pages: ScenarioPageSeed[] = [];
   readonly replacements: ScenarioDocumentReplacement[] = [];
@@ -41,8 +53,21 @@ class RecordingSeedPort implements ScenarioSeedPort {
   async createProject(): Promise<Project> {
     return {
       id: "project:board-dense",
-      defaultDatabaseViewId: "view:board-dense",
-    } as unknown as Project;
+      libraryId: "library:test",
+      databaseId: DATABASE_ID,
+      defaultDatabaseViewId: BOARD_VIEW_ID,
+      lifecycle: "active",
+      bindingRevision: 1,
+      name: "Board Dense",
+      description: "",
+      appearance: DEFAULT_PROJECT_APPEARANCE,
+      sources: [],
+      primaryWorkspaceRoot: null,
+      pinned: false,
+      pinnedOrder: null,
+      created: new Date(CREATED_AT),
+      updated: new Date(CREATED_AT),
+    };
   }
 
   async createPage(input: ScenarioPageSeed): Promise<{ readonly documentId: string }> {
@@ -90,9 +115,9 @@ class RecordingSeedPort implements ScenarioSeedPort {
 
   async readDatabase(request: DatabaseModuleReadRequestV2): Promise<DatabaseModuleReadResultV2> {
     const board = {
-      viewId: "view:board-dense",
-      databaseId: "database:board-dense",
-      dataSourceId: "source:board-dense",
+      viewId: BOARD_VIEW_ID,
+      databaseId: DATABASE_ID,
+      dataSourceId: DATA_SOURCE_ID,
       name: "Board",
       layout: "board",
       config: emptyDatabaseViewConfig(),
@@ -104,15 +129,38 @@ class RecordingSeedPort implements ScenarioSeedPort {
       updatedAt: "2026-01-01T00:00:00.000Z",
     } as const satisfies DatabaseViewRecordV2;
     const target = request.read.target;
-    const value =
+    const value: DatabaseReadValueV2 | null =
       target.kind === "view" && this.#listView?.viewId === target.viewId
         ? { kind: "view" as const, value: this.#listView }
         : target.kind === "project_default"
           ? {
               kind: "database" as const,
               value: {
-                database: {} as never,
-                dataSources: [],
+                database: {
+                  databaseId: DATABASE_ID,
+                  libraryId: "library:test",
+                  name: "Board Dense",
+                  lifecycle: "active",
+                  defaultViewId: BOARD_VIEW_ID,
+                  accessRevision: 1,
+                  metadataRevision: 1,
+                  createdAt: CREATED_AT,
+                  updatedAt: CREATED_AT,
+                },
+                dataSources: [
+                  {
+                    dataSourceId: DATA_SOURCE_ID,
+                    libraryId: "library:test",
+                    homeDatabaseId: DATABASE_ID,
+                    name: "Pages",
+                    schemaKey: "pages",
+                    schemaRevision: 1,
+                    lifecycle: "active",
+                    rankKey: "a",
+                    createdAt: CREATED_AT,
+                    updatedAt: CREATED_AT,
+                  },
+                ],
                 views: [board, ...(this.#listView ? [this.#listView] : [])],
               },
             }
@@ -133,7 +181,7 @@ class RecordingSeedPort implements ScenarioSeedPort {
         authorization: null,
         value,
       },
-    } as DatabaseModuleReadResultV2;
+    };
   }
 
   async applyDatabase(request: DatabaseApplyV2): Promise<DatabaseApplyResultV2> {
@@ -142,7 +190,7 @@ class RecordingSeedPort implements ScenarioSeedPort {
         this.#listView = {
           viewId: operation.newViewId,
           databaseId: operation.databaseId,
-          dataSourceId: "source:board-dense",
+          dataSourceId: DATA_SOURCE_ID,
           name: "Board copy",
           layout: "board",
           config: emptyDatabaseViewConfig(),
@@ -167,21 +215,36 @@ class RecordingSeedPort implements ScenarioSeedPort {
       }
     }
     this.#commitSeq += 1;
+    const view = this.#listView;
+    if (!view) throw new Error("View edits must create the scenario's List View");
     return {
       ok: true,
+      localCommit: {
+        status: "committed",
+        commit: {
+          store_epoch: "epoch:test",
+          commit_seq: this.#commitSeq,
+          manifest_hash: "a".repeat(64),
+        },
+        delivery: null,
+      },
       value: {
+        operationId: request.operationId,
         projectId: request.projectId,
         libraryId: "library:test",
         storeEpoch: "epoch:test",
+        duplicate: false,
+        operationKinds: request.operations.map((operation) => operation.kind),
+        operationOutcomes: [],
+        affectedDatabaseIds: [view.databaseId],
+        affectedDataSourceIds: [view.dataSourceId],
+        affectedPageIds: [],
+        affectedViewIds: [view.viewId],
+        committedRevisions: { [view.viewId]: view.revision },
         commitSeq: this.#commitSeq,
-        receipts: request.operations.map((_, operationIndex) => ({
-          kind: "view_edit" as const,
-          operationIndex,
-          viewId: this.#listView!.viewId,
-          revision: this.#listView!.revision,
-        })),
+        committedAt: CREATED_AT,
       },
-    } as DatabaseApplyResultV2;
+    };
   }
 
   async replaceOwnedDocument(
@@ -219,6 +282,30 @@ class RecordingSeedPort implements ScenarioSeedPort {
 
   async readPageChats(): Promise<never> {
     throw new Error("Page Chat inspection is not part of this scenario");
+  }
+
+  async setResourceProjectAccess(): Promise<never> {
+    throw new Error("Resource access changes are not part of this scenario");
+  }
+
+  async createSidebarSection(): Promise<never> {
+    throw new Error("Sidebar section seeding is not part of this scenario");
+  }
+
+  async createSessionInSidebarSection(): Promise<never> {
+    throw new Error("Sidebar Session seeding is not part of this scenario");
+  }
+
+  async moveSidebarSectionItem(): Promise<never> {
+    throw new Error("Sidebar item seeding is not part of this scenario");
+  }
+
+  async listSidebarSections(): Promise<never> {
+    throw new Error("Sidebar section inspection is not part of this scenario");
+  }
+
+  async listSidebarSectionItems(): Promise<never> {
+    throw new Error("Sidebar item inspection is not part of this scenario");
   }
 }
 

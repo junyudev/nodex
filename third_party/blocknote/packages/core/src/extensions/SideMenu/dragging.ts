@@ -549,4 +549,5 @@ export function dragStart<
       blockIds: getSideMenuDroppedBlockIdsFromSlice(selectedSlice),
     };
   }
+  return undefined;
 }

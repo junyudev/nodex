@@ -12,6 +12,7 @@ import { connectDictationStreamingRpc } from "../../../src/main/platform/electro
 import { openDictationWebSocket } from "../../../src/main/platform/node/DictationWebSocket";
 import { DICTATION_STREAM_CONNECT_CHANNEL } from "../../../src/shared/dictation-stream-transport";
 import type { CodexMedia } from "../../../src/main/codex-application/CodexMedia";
+import { CodexMediaError } from "../../../src/main/codex-application/CodexMediaError";
 
 app.setPath("userData", path.join(__dirname, "profile"));
 registerNodexPrivilegedSchemes();
@@ -44,7 +45,9 @@ void app.whenReady().then(async () => {
         authorizationPresent: true,
         accountHeaderPresent: true,
       } });
-      return yield* openDictationWebSocket({ url: socketUrl, headers, signal: yield* Effect.abortSignal, onEvent });
+      return yield* openDictationWebSocket({ url: socketUrl, headers, signal: yield* Effect.abortSignal, onEvent }).pipe(
+        Effect.mapError((cause) => new CodexMediaError({ operation: "streaming-connect", message: "Unable to connect the dictation stream", cause })),
+      );
     }),
   };
   let transferredPorts = 0;

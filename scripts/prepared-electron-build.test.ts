@@ -107,6 +107,8 @@ const makeFixture = (): {
     "src/shared/nfm/parser.ts",
     "src/shared/nfm/serializer.ts",
     "third_party/blocknote/packages/value.ts",
+    "third_party/blocknote/tsconfig.base.json",
+    "third_party/blocknote/vite-shared.ts",
     "crates/example/Cargo.toml",
     "crates/example/src/lib.rs",
     ".node-version",
@@ -224,16 +226,39 @@ describe("prepared Electron build", () => {
     expect(() => verifyPreparedElectronBuild(fixture)).toThrow("inputs are stale");
   });
 
-  test.each(["tsconfig.base.json", "tsconfig.effect.json"])(
-    "invalidates prepared outputs when inherited configuration %s changes",
-    (configuration) => {
-      const fixture = makeFixture();
-      recordPreparedElectronBuild(fixture);
+  test.each([
+    "tsconfig.base.json",
+    "tsconfig.effect.json",
+    "third_party/blocknote/tsconfig.base.json",
+    "third_party/blocknote/vite-shared.ts",
+  ])("invalidates prepared outputs when inherited configuration %s changes", (configuration) => {
+    const fixture = makeFixture();
+    recordPreparedElectronBuild(fixture);
 
-      fs.appendFileSync(path.join(fixture.repositoryRoot, configuration), "changed\n");
-      expect(() => verifyPreparedElectronBuild(fixture)).toThrow("inputs are stale");
-    },
-  );
+    fs.appendFileSync(path.join(fixture.repositoryRoot, configuration), "changed\n");
+    expect(() => verifyPreparedElectronBuild(fixture)).toThrow("inputs are stale");
+  });
+
+  test("ignores generated editor declarations while retaining authored type inputs", () => {
+    const fixture = makeFixture();
+    const authoredTypes = path.join(fixture.repositoryRoot, "src/domain/types/value.ts");
+    fs.mkdirSync(path.dirname(authoredTypes), { recursive: true });
+    fs.writeFileSync(authoredTypes, "export type Value = string;\n");
+    const recorded = recordPreparedElectronBuild(fixture);
+
+    const declaration = path.join(
+      fixture.repositoryRoot,
+      "third_party/blocknote/packages/core/types/src/index.d.ts",
+    );
+    fs.mkdirSync(path.dirname(declaration), { recursive: true });
+    fs.writeFileSync(declaration, "export declare const value: string;\n");
+    expect(verifyPreparedElectronBuild(fixture).generationId).toBe(recorded.generationId);
+    fs.writeFileSync(declaration, "export declare const value: number;\n");
+    expect(verifyPreparedElectronBuild(fixture).generationId).toBe(recorded.generationId);
+
+    fs.appendFileSync(authoredTypes, "export type UpdatedValue = number;\n");
+    expect(() => verifyPreparedElectronBuild(fixture)).toThrow("inputs are stale");
+  });
 
   test("rejects damaged and additional build outputs", () => {
     const fixture = makeFixture();

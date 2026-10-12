@@ -24,7 +24,11 @@ vi.mock("../../editor/BlockNoteContext.js", () => ({
 }));
 
 vi.mock("../../hooks/useBlockNoteEditor.js", () => ({
-  useBlockNoteEditor: () => ({}),
+  useBlockNoteEditor: () => ({
+    getExtension: () => ({
+      getMenuState: () => ({ triggerCharacter: "/", query: "", show: true }),
+    }),
+  }),
 }));
 
 vi.mock("./hooks/useLoadSuggestionMenuItems.js", () => ({
@@ -63,8 +67,10 @@ type ContentEditableProps = {
 let container: HTMLDivElement;
 let root: Root;
 let contentEditableProps: ContentEditableProps;
+const previousActEnvironment = Reflect.get(globalThis, "IS_REACT_ACT_ENVIRONMENT");
 
 beforeEach(() => {
+  Reflect.set(globalThis, "IS_REACT_ACT_ENVIRONMENT", true);
   container = document.createElement("div");
   document.body.appendChild(container);
   root = createRoot(container);
@@ -78,9 +84,17 @@ beforeEach(() => {
 });
 
 afterEach(async () => {
-  await act(async () => root.unmount());
-  document.body.removeChild(container);
-  vi.clearAllMocks();
+  try {
+    await act(async () => root.unmount());
+  } finally {
+    container.remove();
+    vi.clearAllMocks();
+    if (previousActEnvironment === undefined) {
+      Reflect.deleteProperty(globalThis, "IS_REACT_ACT_ENVIRONMENT");
+    } else {
+      Reflect.set(globalThis, "IS_REACT_ACT_ENVIRONMENT", previousActEnvironment);
+    }
+  }
 });
 
 function Menu() {
@@ -89,9 +103,10 @@ function Menu() {
 
 function renderWrapper(type: "list" | "grid") {
   const commonProps = {
+    triggerCharacter: "/",
     query: "",
     closeMenu: vi.fn(),
-    clearQuery: vi.fn(),
+    acceptMenu: vi.fn(() => true),
     getItems: async () => ["first", "second", "third"],
   };
 

@@ -1,12 +1,43 @@
 import { exportImageToDataURL } from "@blocknote/core";
-import { decodeAndSample } from "@shared/util/browserImageTestUtil.js";
 import { describe, expect, test } from "vite-plus/test";
 
 import { renderDiagramToImage } from "./renderDiagramToImage.js";
 
-// Browser unit tests for the browser-only Mermaid renderer - the
-// `RenderDiagram` implementation that the (node) unit suites replace with
-// stubs. Runs in the tests package's browser suite.
+/** Measures visible ink rather than accepting a correctly sized blank PNG. */
+async function decodeAndSample(dataURL: string) {
+  const image = new Image();
+  image.src = dataURL;
+  await image.decode();
+  const canvas = document.createElement("canvas");
+  canvas.width = image.naturalWidth;
+  canvas.height = image.naturalHeight;
+  const context = canvas.getContext("2d");
+  if (!context) throw new Error("Image sampling requires a 2D canvas");
+  context.drawImage(image, 0, 0);
+  const { data } = context.getImageData(0, 0, canvas.width, canvas.height);
+  let inkedPixels = 0;
+  let minX = canvas.width;
+  let minY = canvas.height;
+  let maxX = -1;
+  let maxY = -1;
+  for (let offset = 0; offset < data.length; offset += 4) {
+    if (data[offset + 3]! < 32 || Math.min(data[offset]!, data[offset + 1]!, data[offset + 2]!) >= 240)
+      continue;
+    const pixel = offset / 4;
+    const x = pixel % canvas.width;
+    const y = Math.floor(pixel / canvas.width);
+    inkedPixels += 1;
+    minX = Math.min(minX, x);
+    maxX = Math.max(maxX, x);
+    minY = Math.min(minY, y);
+    maxY = Math.max(maxY, y);
+  }
+  return {
+    inkedPixels,
+    inkedFractionX: inkedPixels ? (maxX - minX + 1) / canvas.width : 0,
+    inkedFractionY: inkedPixels ? (maxY - minY + 1) / canvas.height : 0,
+  };
+}
 describe("renderDiagramToImage", () => {
   test(
     "renders Mermaid source to a non-blank PNG",

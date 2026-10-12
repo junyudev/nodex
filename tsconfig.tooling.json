@@ -4,15 +4,19 @@
     "tsBuildInfoFile": ".cache/typescript/tooling.tsbuildinfo"
   },
   "include": [
-    "config/test-suites*.ts",
-    "config/vitest-*.ts",
-    "scripts/tooling/**/*.ts",
-    "scripts/testing/**/*.ts",
-    "scripts/testing/**/*.mts",
-    "scripts/ci/**/*.test.ts",
+    "config/**/*.ts",
+    "config/**/*.mts",
+    "config/**/*.cts",
+    "scripts/tooling/**/*",
+    "scripts/testing/**/*",
+    "scripts/**/*.test.*",
     "vitest.*.config.ts",
-    "config/renderer-worker-count*.ts",
+    "playwright*.config.ts",
     "src/renderer/*.d.ts"
   ],
-  "exclude": ["scripts/fixtures/**"]
+  "exclude": [
+    "scripts/fixtures/tooling/**",
+    "scripts/fixtures/effect-boundaries/**",
+    "scripts/fixtures/renderer-command-boundaries/**"
+  ]
 }

@@ -37,6 +37,9 @@ import {
   type DictationWebSocketHandle,
 } from "../platform/node/DictationWebSocket";
 import { DICTATION_VOICE_LANGUAGES } from "../../shared/dictation";
+import { CodexMediaError } from "./CodexMediaError";
+
+export { CodexMediaError } from "./CodexMediaError";
 
 const CODEX_DICTATION_SHORTCUT_LABEL = "Ctrl+M";
 const CODEX_DICTATION_BASE64_HEADER = "X-Codex-Base64";
@@ -77,13 +80,6 @@ const decodeVoiceSettings = Schema.decodeUnknownEffect(
     }),
   ),
 );
-
-export class CodexMediaError extends Schema.TaggedError<CodexMediaError>()("CodexMediaError", {
-  operation: Schema.String,
-  message: Schema.String,
-  status: Schema.optionalKey(Schema.Number),
-  cause: Schema.optionalKey(Schema.Defect()),
-}) {}
 
 export class CodexMedia extends Context.Service<
   CodexMedia,

@@ -172,9 +172,11 @@ function verifyEffectConfiguration(): void {
     .sort();
   if (
     JSON.stringify(actualErrors) !== JSON.stringify(expectedErrors) ||
-    !scope.include.includes("src/main/app/**/*.ts") ||
-    !scope.include.includes("src/main/codex-runtime/**/*.ts") ||
-    !scope.include.includes("src/main/platform/**/*.ts") ||
+    !scope.include.includes("packages/effect-codex-app-server/**/*.ts") ||
+    !scope.include.includes("src/main/**/*.ts") ||
+    !scope.include.includes("src/main/**/*.tsx") ||
+    !scope.include.includes("scripts/codex-probe-session.ts") ||
+    !scope.exclude?.includes("packages/effect-codex-app-server/src/_generated/**/*.ts") ||
     scope.options.diagnosticSeverity.cryptoRandomUUID !== "warning" ||
     scope.options.diagnosticSeverity.cryptoRandomUUIDInEffect !== "warning" ||
     scope.options.diagnosticSeverity.schemaSync !== "off" ||
@@ -194,7 +196,7 @@ function verifyEffectConfiguration(): void {
 export function verifyTypedSemanticPolicy(): void {
   verifyEffectConfiguration();
   fixtureWorkspace((directory) => {
-    const sourceDirectory = path.join(directory, "src/main/app");
+    const sourceDirectory = path.join(directory, "src/main/codex-application");
     mkdirSync(sourceDirectory, { recursive: true });
     writeFileSync(
       path.join(directory, "tsconfig.json"),

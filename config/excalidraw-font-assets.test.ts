@@ -10,7 +10,6 @@ import {
   createServer as createViteServer,
   type Logger,
   type Plugin,
-  type Rollup,
   type ViteDevServer,
 } from "vite";
 import { createExcalidrawFontAssetPlugins } from "./excalidraw-font-assets";
@@ -72,9 +71,10 @@ describe("createExcalidrawFontAssetPlugins", () => {
 
   test("prebundles Excalidraw through the native Rolldown optimizer", async () => {
     const { logger, warnings } = createWarningCapturingLogger();
-    optimizerCacheDirectory = await mkdtemp(resolve(tmpdir(), "nodex-excalidraw-font-optimizer-"));
+    const cacheDirectory = await mkdtemp(resolve(tmpdir(), "nodex-excalidraw-font-optimizer-"));
+    optimizerCacheDirectory = cacheDirectory;
     viteServer = await createViteServer({
-      cacheDir: optimizerCacheDirectory,
+      cacheDir: cacheDirectory,
       configFile: false,
       customLogger: logger,
       optimizeDeps: {
@@ -112,9 +112,9 @@ describe("createExcalidrawFontAssetPlugins", () => {
     const output = (await Promise.all(outputPaths.map((path) => readFile(path, "utf8")))).join(
       "\n",
     );
-    const sourceMapPaths = (await readdir(resolve(optimizerCacheDirectory, "deps")))
+    const sourceMapPaths = (await readdir(resolve(cacheDirectory, "deps")))
       .filter((fileName) => fileName.endsWith(".js.map"))
-      .map((fileName) => resolve(optimizerCacheDirectory, "deps", fileName));
+      .map((fileName) => resolve(cacheDirectory, "deps", fileName));
     const inputSources = (
       await Promise.all(
         sourceMapPaths.map(async (path) => {
@@ -170,9 +170,10 @@ describe("createExcalidrawFontAssetPlugins", () => {
       logLevel: "silent",
       plugins: [...createExcalidrawFontAssetPlugins(), virtualEntryPlugin],
     });
-    const outputs: Rollup.Output[] = (Array.isArray(result) ? result : [result]).flatMap(
-      (entry) => entry.output,
-    );
+    const outputs = (Array.isArray(result) ? result : [result]).flatMap((entry) => {
+      if (!("output" in entry)) throw new Error("Expected build output rather than a watcher.");
+      return entry.output;
+    });
     const fileNames = outputs.map((output) => output.fileName);
 
     expect(fileNames).toContain(`excalidraw-assets/fonts/${representativeFontPath}`);

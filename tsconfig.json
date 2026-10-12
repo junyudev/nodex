@@ -16,6 +16,27 @@
     },
     {
       "path": "./tsconfig.tooling.json"
+    },
+    {
+      "path": "./packages/storybook/tsconfig.json"
+    },
+    {
+      "path": "./third_party/blocknote/packages/core/tsconfig.json"
+    },
+    {
+      "path": "./third_party/blocknote/packages/react/tsconfig.json"
+    },
+    {
+      "path": "./third_party/blocknote/packages/shadcn/tsconfig.json"
+    },
+    {
+      "path": "./third_party/blocknote/packages/code-block/tsconfig.json"
+    },
+    {
+      "path": "./third_party/blocknote/packages/math-block/tsconfig.json"
+    },
+    {
+      "path": "./third_party/blocknote/packages/diagram-block/tsconfig.json"
     }
   ]
 }

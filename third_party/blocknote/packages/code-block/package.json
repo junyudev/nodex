@@ -45,7 +45,8 @@
     "dev": "vp dev",
     "lint": "vp lint src",
     "test": "vp test --run",
-    "test-watch": "vp test watch"
+    "test-watch": "vp test watch",
+    "typecheck": "tsc-rs --project tsconfig.json --noEmit"
   },
   "dependencies": {
     "@blocknote/core": "workspace:*",

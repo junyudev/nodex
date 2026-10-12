@@ -20,6 +20,9 @@
     "src/preload/**/*.ts",
     "src/shared/**/*.ts",
     "scripts/**/*.ts",
+    "scripts/**/*.tsx",
+    "scripts/**/*.mts",
+    "scripts/**/*.cts",
     "oxlint-plugin-nodex/**/*.ts",
     "electron.vite.config.ts",
     "vite.config.ts",
@@ -29,5 +32,10 @@
     "packages/nodex-app-tools-mcp/**/*.ts",
     "src/renderer/*.d.ts"
   ],
-  "exclude": ["scripts/**/*.test.ts", "scripts/fixtures/**"]
+  "exclude": [
+    "scripts/**/*.test.*",
+    "scripts/fixtures/tooling/**",
+    "scripts/fixtures/effect-boundaries/**",
+    "scripts/fixtures/renderer-command-boundaries/**"
+  ]
 }

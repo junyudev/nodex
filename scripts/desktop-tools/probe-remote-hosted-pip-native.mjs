@@ -1,5 +1,6 @@
 #!/usr/bin/env -S node --import tsx
 
+// Keep exported API changes paired with the adjacent .d.mts contract.
 import { spawn, spawnSync } from "node:child_process";
 import { createHash } from "node:crypto";
 import { createRequire } from "node:module";

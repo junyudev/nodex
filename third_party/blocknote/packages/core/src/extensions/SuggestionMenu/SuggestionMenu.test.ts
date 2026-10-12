@@ -1,9 +1,11 @@
 import { describe, expect, it, vi } from "vitest";
 import { TextSelection } from "prosemirror-state";
+import { DecorationSet } from "prosemirror-view";
 import * as Y from "yjs";
 
 import { BlockNoteEditor } from "../../editor/BlockNoteEditor.js";
 import { SuggestionMenu } from "./SuggestionMenu.js";
+import { withCollaboration } from "../../yjs/extensions/index.js";
 
 /**
  * @vitest-environment jsdom
@@ -33,7 +35,12 @@ function getSuggestionPluginState(editor: BlockNoteEditor) {
 
 function getSuggestionDecorations(editor: BlockNoteEditor) {
   const plugin = findSuggestionPlugin(editor);
-  return plugin.props.decorations?.(editor._tiptapEditor.state)?.find() ?? [];
+  const decorations = plugin.props.decorations?.call(plugin, editor.prosemirrorState);
+  if (!decorations) return [];
+  if (!(decorations instanceof DecorationSet)) {
+    throw new Error("SuggestionMenu must expose a DecorationSet");
+  }
+  return decorations.find();
 }
 
 /**
@@ -50,7 +57,11 @@ function simulateTextInput(editor: BlockNoteEditor, char: string): boolean {
   if (!handler) {
     throw new Error("handleTextInput not found on SuggestionMenu plugin");
   }
-  return (handler as any)(view, from, to, char) as boolean;
+  return (
+    handler.call(plugin, view, from, to, char, () =>
+      view.state.tr.insertText(char, from, to),
+    ) === true
+  );
 }
 
 function createEditor() {
@@ -453,12 +464,14 @@ describe("SuggestionMenu", () => {
 
   it("accepts a tracked query in a collaborative editor", () => {
     const doc = new Y.Doc();
-    const editor = BlockNoteEditor.create({
-      collaboration: {
-        fragment: doc.getXmlFragment("doc"),
-        user: { name: "Suggestion Test", color: "#ffffff" },
-      },
-    });
+    const editor = BlockNoteEditor.create(
+      withCollaboration({
+        collaboration: {
+          fragment: doc.getXmlFragment("doc"),
+          user: { name: "Suggestion Test", color: "#ffffff" },
+        },
+      }),
+    );
     editor.mount(document.createElement("div"));
     const suggestionMenu = editor.getExtension(SuggestionMenu)!;
     suggestionMenu.addSuggestionMenu({ triggerCharacter: ":" });
@@ -630,6 +643,8 @@ describe("SuggestionMenu", () => {
     document.body.append(host);
     const editor = BlockNoteEditor.create();
     editor.mount(host);
+    const view = editor.prosemirrorView;
+    if (!view) throw new Error("Composition requires a mounted editor");
     const suggestionMenu = editor.getExtension(SuggestionMenu)!;
     suggestionMenu.addSuggestionMenu({ triggerCharacter: "/" });
 
@@ -637,12 +652,12 @@ describe("SuggestionMenu", () => {
       expect(simulateTextInput(editor, "/")).toBe(true);
       expect(suggestionMenu.getMenuState()?.isComposing).toBe(false);
 
-      editor.prosemirrorView.dom.dispatchEvent(
+      view.dom.dispatchEvent(
         new CompositionEvent("compositionstart", { bubbles: true }),
       );
       expect(suggestionMenu.getMenuState()?.isComposing).toBe(true);
 
-      editor.prosemirrorView.dom.dispatchEvent(
+      view.dom.dispatchEvent(
         new CompositionEvent("compositionend", { bubbles: true }),
       );
       expect(suggestionMenu.getMenuState()?.isComposing).toBe(true);
@@ -663,12 +678,14 @@ describe("SuggestionMenu", () => {
     const secondEditor = BlockNoteEditor.create();
     firstEditor.mount(firstHost);
     secondEditor.mount(secondHost);
+    const secondView = secondEditor.prosemirrorView;
+    if (!secondView) throw new Error("Composition requires a mounted editor");
     const firstMenu = firstEditor.getExtension(SuggestionMenu)!;
     firstMenu.addSuggestionMenu({ triggerCharacter: "/" });
 
     try {
       expect(simulateTextInput(firstEditor, "/")).toBe(true);
-      secondEditor.prosemirrorView.dom.dispatchEvent(
+      secondView.dom.dispatchEvent(
         new CompositionEvent("compositionstart", { bubbles: true }),
       );
 
@@ -704,6 +721,8 @@ describe("SuggestionMenu", () => {
     document.body.append(host);
     const editor = BlockNoteEditor.create();
     editor.mount(host);
+    const view = editor.prosemirrorView;
+    if (!view) throw new Error("Keyboard input requires a mounted editor");
     const suggestionMenu = editor.getExtension(SuggestionMenu)!;
     suggestionMenu.addSuggestionMenu({ triggerCharacter: "/" });
 
@@ -712,8 +731,8 @@ describe("SuggestionMenu", () => {
       expect(suggestionMenu.shown()).toBe(true);
 
       const event = new KeyboardEvent("keydown", { key: "Escape" });
-      const handled = editor.prosemirrorView.someProp("handleKeyDown", (handler) =>
-        handler(editor.prosemirrorView, event),
+      const handled = view.someProp("handleKeyDown", (handler) =>
+        handler(view, event),
       );
 
       expect(handled).toBe(true);

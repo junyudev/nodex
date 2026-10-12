@@ -106,6 +106,7 @@ settings:
   excludeLinksFromLockfile: false
 
 overrides:
+  '@types/node': 24.13.3
   '@babel/core': 7.29.7
   '@xmldom/xmldom': 0.8.15
   dompurify: 3.4.16
@@ -402,6 +403,9 @@ importers:
       '@types/js-yaml':
         specifier: ^4.0.9
         version: 4.0.9
+      '@types/jsdom':
+        specifier: 30.0.0
+        version: 30.0.0
       '@types/mdast':
         specifier: 4.0.4
         version: 4.0.4
@@ -674,13 +678,13 @@ importers:
         version: 10.6.1(@types/react@19.2.17)(react@19.2.7)(storybook@10.6.1(@types/react@19.2.17)(prettier@3.8.3)(react@19.2.7)(vite-plus@1.1.0(@opentelemetry/api@1.9.1)(@types/node@24.13.3)(@vitest/browser-playwright@5.0.4)(@vitest/ui@5.0.4)(esbuild@0.28.1)(jiti@2.7.0)(jsdom@29.1.1(@noble/hashes@2.2.0))(playwright@1.61.1)(sass@1.101.0)(tsx@4.23.0)(typescript@7.0.2)(yaml@2.9.0)))
       '@storybook/react-vite':
         specifier: 10.6.1
-        version: 10.6.1(@types/react-dom@19.2.3(@types/react@19.2.17))(@types/react@19.2.17)(@voidzero-dev/vite-plus-core@1.1.0(@types/node@25.9.3)(esbuild@0.28.1)(jiti@2.7.0)(sass@1.101.0)(tsx@4.23.0)(typescript@7.0.2)(yaml@2.9.0))(react-dom@19.2.7(react@19.2.7))(react@19.2.7)(rollup@4.62.0)(storybook@10.6.1(@types/react@19.2.17)(prettier@3.8.3)(react@19.2.7)(vite-plus@1.1.0(@opentelemetry/api@1.9.1)(@types/node@24.13.3)(@vitest/browser-playwright@5.0.4)(@vitest/ui@5.0.4)(esbuild@0.28.1)(jiti@2.7.0)(jsdom@29.1.1(@noble/hashes@2.2.0))(playwright@1.61.1)(sass@1.101.0)(tsx@4.23.0)(typescript@7.0.2)(yaml@2.9.0)))(supports-color@10.2.2)(typescript@7.0.2)
+        version: 10.6.1(@types/react-dom@19.2.3(@types/react@19.2.17))(@types/react@19.2.17)(@voidzero-dev/vite-plus-core@1.1.0(@types/node@24.13.3)(esbuild@0.28.1)(jiti@2.7.0)(sass@1.101.0)(tsx@4.23.0)(typescript@7.0.2)(yaml@2.9.0))(react-dom@19.2.7(react@19.2.7))(react@19.2.7)(rollup@4.62.0)(storybook@10.6.1(@types/react@19.2.17)(prettier@3.8.3)(react@19.2.7)(vite-plus@1.1.0(@opentelemetry/api@1.9.1)(@types/node@24.13.3)(@vitest/browser-playwright@5.0.4)(@vitest/ui@5.0.4)(esbuild@0.28.1)(jiti@2.7.0)(jsdom@29.1.1(@noble/hashes@2.2.0))(playwright@1.61.1)(sass@1.101.0)(tsx@4.23.0)(typescript@7.0.2)(yaml@2.9.0)))(supports-color@10.2.2)(typescript@7.0.2)
       '@tailwindcss/vite':
         specifier: 4.3.1
-        version: 4.3.1(@voidzero-dev/vite-plus-core@1.1.0(@types/node@25.9.3)(esbuild@0.28.1)(jiti@2.7.0)(sass@1.101.0)(tsx@4.23.0)(typescript@7.0.2)(yaml@2.9.0))
+        version: 4.3.1(@voidzero-dev/vite-plus-core@1.1.0(@types/node@24.13.3)(esbuild@0.28.1)(jiti@2.7.0)(sass@1.101.0)(tsx@4.23.0)(typescript@7.0.2)(yaml@2.9.0))
       '@types/node':
-        specifier: 25.9.3
-        version: 25.9.3
+        specifier: 24.13.3
+        version: 24.13.3
       '@types/react':
         specifier: 19.2.17
         version: 19.2.17
@@ -701,7 +705,7 @@ importers:
         version: 7.0.2
       vite:
         specifier: npm:@voidzero-dev/vite-plus-core@1.1.0
-        version: '@voidzero-dev/vite-plus-core@1.1.0(@types/node@25.9.3)(esbuild@0.28.1)(jiti@2.7.0)(sass@1.101.0)(tsx@4.23.0)(typescript@7.0.2)(yaml@2.9.0)'
+        version: '@voidzero-dev/vite-plus-core@1.1.0(@types/node@24.13.3)(esbuild@0.28.1)(jiti@2.7.0)(sass@1.101.0)(tsx@4.23.0)(typescript@7.0.2)(yaml@2.9.0)'
 
   third_party/blocknote/packages/code-block:
     dependencies:
@@ -4212,6 +4216,9 @@ packages:
   '@types/js-yaml@4.0.9':
     resolution: {integrity: sha512-k4MGaQl5TGo/iipqb2UDG2UwjXziSWkh0uysQelTlJpX1qGlpUZYm8PnO4DxG1qBomtJUdYJ6qR6xdIah10JLg==}
 
+  '@types/jsdom@30.0.0':
+    resolution: {integrity: sha512-uAHGxujGE0cDaKGdK28zgDotFtNA7MKq5DXl8LrfdxdCI8VHcg15oJz+amHTChPNI5JpgEPQWc2xFdrw3em/nQ==}
+
   '@types/json-schema@7.0.15':
     resolution: {integrity: sha512-5+fP8P8MFNC+AyZCDxrB2pkZFPGzqQWUzpSeuuVLvm8VMcorNYavBqoFcxK8bQz4Qsbn4oUEEem4wDLfcysGHA==}
 
@@ -4236,9 +4243,6 @@ packages:
   '@types/node@24.13.3':
     resolution: {integrity: sha512-Dh8vAsV36ig5wa9OX4pXvMc9D3Veibfw2wix0CUwYODLD8nkj9UsLjASr49nPg+2eKzxhBV+v7L8pXvT4e639Q==}
 
-  '@types/node@25.9.3':
-    resolution: {integrity: sha512-603BddQMv3pUcr4U2dhujk83N2tTDVr/34wII2B6bJy6g+8WD6yUb11jszNs0gdi4PesVWl7ABt8nYMVpnLUcg==}
-
   '@types/react-dom@19.2.3':
     resolution: {integrity: sha512-jp2L/eY6fn+KgVVQAOqYItbF0VY/YApe5Mz2F0aykSO8gx31bYCZyvSeYxCHKvzHG5eZjc+zyaS5BrBWya2+kQ==}
     peerDependencies:
@@ -4252,6 +4256,9 @@ packages:
 
   '@types/responselike@1.0.3':
     resolution: {integrity: sha512-H/+L+UkTV33uf49PH5pCAUBVPNj2nDBXTN+qS1dOwyyg24l3CcicicCA7ca+HMvJBZcFgl5r8e+RR6elsb4Lyw==}
+
+  '@types/tough-cookie@4.0.5':
+    resolution: {integrity: sha512-/Ad8+nIOV7Rl++6f1BdKxFSMgmoqEoYbHRpPcx3JEfv8VRsQe9Z4mCXeJBzxs7mbHY/XOZZuXlRNfhpVPbs6ZA==}
 
   '@types/trusted-types@2.0.7':
     resolution: {integrity: sha512-ScaPdn1dQczgbl0QFTeTOmVHFULt394XJgOQNoyVhZ6r2vLnMLJfBPd53SB52T/3G36VI1/g2MZaX0cwDuXsfw==}
@@ -4509,7 +4516,7 @@ packages:
     engines: {node: ^20.19.0 || ^22.18.0 || >=24.11.0}
     peerDependencies:
       '@arethetypeswrong/core': ^0.18.1
-      '@types/node': ^20.19.0 || >=22.12.0
+      '@types/node': 24.13.3
       '@typescript/native-preview': '*'
       '@vitejs/devtools': ^0.7.1
       '@volar/typescript': ~2.4.0
@@ -8183,8 +8190,8 @@ packages:
   undici-types@7.18.2:
     resolution: {integrity: sha512-AsuCzffGHJybSaRrmr5eHr81mwJU3kjw6M+uprWvCXiNeN9SOGwQ3Jn8jb8m3Z6izVgknn1R0FTCEAP2QrLY/w==}
 
-  undici-types@7.24.6:
-    resolution: {integrity: sha512-WRNW+sJgj5OBN4/0JpHFqtqzhpbnV0GuB+OozA9gCL7a993SmU+1JBZCzLNxYsbMfIeDL+lTsphD5jN5N+n0zg==}
+  undici-types@8.11.2:
+    resolution: {integrity: sha512-iMVNmWZ0leK/goS6eXMizSzmm9CDWtyphwbaCms3DNLqRxDL+mMoNVcZMTyyVgXP0N+Z8neAMzDoUOUJL8veKg==}
 
   undici@6.29.0:
     resolution: {integrity: sha512-R+RODBqp6i2pPflGdq+xIOUkl+RNfGgHwoinecKu/JCuf2uO06cOKoDbI2P7Dn6KcswdKwrczbU6IYJ6K8X+wg==}
@@ -8332,7 +8339,7 @@ packages:
     peerDependencies:
       '@edge-runtime/vm': '*'
       '@opentelemetry/api': ^1.9.0
-      '@types/node': ^22.0.0 || >=24.0.0
+      '@types/node': 24.13.3
       '@vitest/browser-playwright': 5.0.4
       '@vitest/browser-preview': 5.0.4
       '@vitest/browser-webdriverio': ^5.0.0-beta.5 || >=5.0.0
@@ -9425,14 +9432,6 @@ snapshots:
       glob: 13.0.6
       react-docgen-typescript: 2.4.0(typescript@7.0.2)
       vite: '@voidzero-dev/vite-plus-core@1.1.0(@types/node@24.13.3)(esbuild@0.28.1)(jiti@2.7.0)(sass@1.101.0)(tsx@4.23.0)(typescript@7.0.2)(yaml@2.9.0)'
-    optionalDependencies:
-      typescript: 7.0.2
-
-  '@joshwooding/vite-plugin-react-docgen-typescript@0.7.0(@voidzero-dev/vite-plus-core@1.1.0(@types/node@25.9.3)(esbuild@0.28.1)(jiti@2.7.0)(sass@1.101.0)(tsx@4.23.0)(typescript@7.0.2)(yaml@2.9.0))(typescript@7.0.2)':
-    dependencies:
-      glob: 13.0.6
-      react-docgen-typescript: 2.4.0(typescript@7.0.2)
-      vite: '@voidzero-dev/vite-plus-core@1.1.0(@types/node@25.9.3)(esbuild@0.28.1)(jiti@2.7.0)(sass@1.101.0)(tsx@4.23.0)(typescript@7.0.2)(yaml@2.9.0)'
     optionalDependencies:
       typescript: 7.0.2
 
@@ -10874,12 +10873,6 @@ snapshots:
       ts-dedent: 2.3.0
       vite: '@voidzero-dev/vite-plus-core@1.1.0(@types/node@24.13.3)(esbuild@0.28.1)(jiti@2.7.0)(sass@1.101.0)(tsx@4.23.0)(typescript@7.0.2)(yaml@2.9.0)'
 
-  '@storybook/builder-vite@10.6.1(@voidzero-dev/vite-plus-core@1.1.0(@types/node@25.9.3)(esbuild@0.28.1)(jiti@2.7.0)(sass@1.101.0)(tsx@4.23.0)(typescript@7.0.2)(yaml@2.9.0))(storybook@10.6.1(@types/react@19.2.17)(prettier@3.8.3)(react@19.2.7)(vite-plus@1.1.0(@opentelemetry/api@1.9.1)(@types/node@24.13.3)(@vitest/browser-playwright@5.0.4)(@vitest/ui@5.0.4)(esbuild@0.28.1)(jiti@2.7.0)(jsdom@29.1.1(@noble/hashes@2.2.0))(playwright@1.61.1)(sass@1.101.0)(tsx@4.23.0)(typescript@7.0.2)(yaml@2.9.0)))':
-    dependencies:
-      storybook: 10.6.1(@types/react@19.2.17)(prettier@3.8.3)(react@19.2.7)(vite-plus@1.1.0(@opentelemetry/api@1.9.1)(@types/node@24.13.3)(@vitest/browser-playwright@5.0.4)(@vitest/ui@5.0.4)(esbuild@0.28.1)(jiti@2.7.0)(jsdom@29.1.1(@noble/hashes@2.2.0))(playwright@1.61.1)(sass@1.101.0)(tsx@4.23.0)(typescript@7.0.2)(yaml@2.9.0))
-      ts-dedent: 2.3.0
-      vite: '@voidzero-dev/vite-plus-core@1.1.0(@types/node@25.9.3)(esbuild@0.28.1)(jiti@2.7.0)(sass@1.101.0)(tsx@4.23.0)(typescript@7.0.2)(yaml@2.9.0)'
-
   '@storybook/global@5.0.0': {}
 
   '@storybook/icons@2.1.0(react@19.2.7)':
@@ -10910,29 +10903,6 @@ snapshots:
       storybook: 10.6.1(@types/react@19.2.17)(prettier@3.8.3)(react@19.2.7)(vite-plus@1.1.0(@opentelemetry/api@1.9.1)(@types/node@24.13.3)(@vitest/browser-playwright@5.0.4)(@vitest/ui@5.0.4)(esbuild@0.28.1)(jiti@2.7.0)(jsdom@29.1.1(@noble/hashes@2.2.0))(playwright@1.61.1)(sass@1.101.0)(tsx@4.23.0)(typescript@7.0.2)(yaml@2.9.0))
       tsconfig-paths: 4.2.0
       vite: '@voidzero-dev/vite-plus-core@1.1.0(@types/node@24.13.3)(esbuild@0.28.1)(jiti@2.7.0)(sass@1.101.0)(tsx@4.23.0)(typescript@7.0.2)(yaml@2.9.0)'
-    optionalDependencies:
-      typescript: 7.0.2
-    transitivePeerDependencies:
-      - '@types/react'
-      - '@types/react-dom'
-      - rollup
-      - supports-color
-
-  '@storybook/react-vite@10.6.1(@types/react-dom@19.2.3(@types/react@19.2.17))(@types/react@19.2.17)(@voidzero-dev/vite-plus-core@1.1.0(@types/node@25.9.3)(esbuild@0.28.1)(jiti@2.7.0)(sass@1.101.0)(tsx@4.23.0)(typescript@7.0.2)(yaml@2.9.0))(react-dom@19.2.7(react@19.2.7))(react@19.2.7)(rollup@4.62.0)(storybook@10.6.1(@types/react@19.2.17)(prettier@3.8.3)(react@19.2.7)(vite-plus@1.1.0(@opentelemetry/api@1.9.1)(@types/node@24.13.3)(@vitest/browser-playwright@5.0.4)(@vitest/ui@5.0.4)(esbuild@0.28.1)(jiti@2.7.0)(jsdom@29.1.1(@noble/hashes@2.2.0))(playwright@1.61.1)(sass@1.101.0)(tsx@4.23.0)(typescript@7.0.2)(yaml@2.9.0)))(supports-color@10.2.2)(typescript@7.0.2)':
-    dependencies:
-      '@joshwooding/vite-plugin-react-docgen-typescript': 0.7.0(@voidzero-dev/vite-plus-core@1.1.0(@types/node@25.9.3)(esbuild@0.28.1)(jiti@2.7.0)(sass@1.101.0)(tsx@4.23.0)(typescript@7.0.2)(yaml@2.9.0))(typescript@7.0.2)
-      '@rollup/pluginutils': 5.4.0(rollup@4.62.0)
-      '@storybook/builder-vite': 10.6.1(@voidzero-dev/vite-plus-core@1.1.0(@types/node@25.9.3)(esbuild@0.28.1)(jiti@2.7.0)(sass@1.101.0)(tsx@4.23.0)(typescript@7.0.2)(yaml@2.9.0))(storybook@10.6.1(@types/react@19.2.17)(prettier@3.8.3)(react@19.2.7)(vite-plus@1.1.0(@opentelemetry/api@1.9.1)(@types/node@24.13.3)(@vitest/browser-playwright@5.0.4)(@vitest/ui@5.0.4)(esbuild@0.28.1)(jiti@2.7.0)(jsdom@29.1.1(@noble/hashes@2.2.0))(playwright@1.61.1)(sass@1.101.0)(tsx@4.23.0)(typescript@7.0.2)(yaml@2.9.0)))
-      '@storybook/react': 10.6.1(@types/react-dom@19.2.3(@types/react@19.2.17))(@types/react@19.2.17)(react-dom@19.2.7(react@19.2.7))(react@19.2.7)(storybook@10.6.1(@types/react@19.2.17)(prettier@3.8.3)(react@19.2.7)(vite-plus@1.1.0(@opentelemetry/api@1.9.1)(@types/node@24.13.3)(@vitest/browser-playwright@5.0.4)(@vitest/ui@5.0.4)(esbuild@0.28.1)(jiti@2.7.0)(jsdom@29.1.1(@noble/hashes@2.2.0))(playwright@1.61.1)(sass@1.101.0)(tsx@4.23.0)(typescript@7.0.2)(yaml@2.9.0)))(supports-color@10.2.2)(typescript@7.0.2)
-      empathic: 2.0.1
-      magic-string: 1.4.3
-      react: 19.2.7
-      react-docgen: 8.0.3(supports-color@10.2.2)
-      react-dom: 19.2.7(react@19.2.7)
-      resolve: 1.22.12
-      storybook: 10.6.1(@types/react@19.2.17)(prettier@3.8.3)(react@19.2.7)(vite-plus@1.1.0(@opentelemetry/api@1.9.1)(@types/node@24.13.3)(@vitest/browser-playwright@5.0.4)(@vitest/ui@5.0.4)(esbuild@0.28.1)(jiti@2.7.0)(jsdom@29.1.1(@noble/hashes@2.2.0))(playwright@1.61.1)(sass@1.101.0)(tsx@4.23.0)(typescript@7.0.2)(yaml@2.9.0))
-      tsconfig-paths: 4.2.0
-      vite: '@voidzero-dev/vite-plus-core@1.1.0(@types/node@25.9.3)(esbuild@0.28.1)(jiti@2.7.0)(sass@1.101.0)(tsx@4.23.0)(typescript@7.0.2)(yaml@2.9.0)'
     optionalDependencies:
       typescript: 7.0.2
     transitivePeerDependencies:
@@ -11068,13 +11038,6 @@ snapshots:
       '@tailwindcss/oxide': 4.3.1
       tailwindcss: 4.3.1
       vite: '@voidzero-dev/vite-plus-core@1.1.0(@types/node@24.13.3)(esbuild@0.28.1)(jiti@2.7.0)(sass@1.101.0)(tsx@4.23.0)(typescript@7.0.2)(yaml@2.9.0)'
-
-  '@tailwindcss/vite@4.3.1(@voidzero-dev/vite-plus-core@1.1.0(@types/node@25.9.3)(esbuild@0.28.1)(jiti@2.7.0)(sass@1.101.0)(tsx@4.23.0)(typescript@7.0.2)(yaml@2.9.0))':
-    dependencies:
-      '@tailwindcss/node': 4.3.1
-      '@tailwindcss/oxide': 4.3.1
-      tailwindcss: 4.3.1
-      vite: '@voidzero-dev/vite-plus-core@1.1.0(@types/node@25.9.3)(esbuild@0.28.1)(jiti@2.7.0)(sass@1.101.0)(tsx@4.23.0)(typescript@7.0.2)(yaml@2.9.0)'
 
   '@tanstack/devtools-event-client@0.4.4': {}
 
@@ -11299,7 +11262,7 @@ snapshots:
     dependencies:
       '@types/http-cache-semantics': 4.2.0
       '@types/keyv': 3.1.4
-      '@types/node': 25.9.3
+      '@types/node': 24.13.3
       '@types/responselike': 1.0.3
 
   '@types/chai@5.2.3':
@@ -11442,7 +11405,7 @@ snapshots:
 
   '@types/fs-extra@9.0.13':
     dependencies:
-      '@types/node': 25.9.3
+      '@types/node': 24.13.3
 
   '@types/geojson@7946.0.16': {}
 
@@ -11454,13 +11417,20 @@ snapshots:
 
   '@types/js-yaml@4.0.9': {}
 
+  '@types/jsdom@30.0.0':
+    dependencies:
+      '@types/node': 24.13.3
+      '@types/tough-cookie': 4.0.5
+      parse5: 8.0.1
+      undici-types: 8.11.2
+
   '@types/json-schema@7.0.15': {}
 
   '@types/katex@0.16.8': {}
 
   '@types/keyv@3.1.4':
     dependencies:
-      '@types/node': 25.9.3
+      '@types/node': 24.13.3
 
   '@types/mdast@4.0.4':
     dependencies:
@@ -11476,10 +11446,6 @@ snapshots:
     dependencies:
       undici-types: 7.18.2
 
-  '@types/node@25.9.3':
-    dependencies:
-      undici-types: 7.24.6
-
   '@types/react-dom@19.2.3(@types/react@19.2.17)':
     dependencies:
       '@types/react': 19.2.17
@@ -11492,7 +11458,9 @@ snapshots:
 
   '@types/responselike@1.0.3':
     dependencies:
-      '@types/node': 25.9.3
+      '@types/node': 24.13.3
+
+  '@types/tough-cookie@4.0.5': {}
 
   '@types/trusted-types@2.0.7':
     optional: true
@@ -11507,11 +11475,11 @@ snapshots:
 
   '@types/ws@8.18.1':
     dependencies:
-      '@types/node': 25.9.3
+      '@types/node': 24.13.3
 
   '@types/ws@8.18.2':
     dependencies:
-      '@types/node': 25.9.3
+      '@types/node': 24.13.3
 
   '@typescript-eslint/project-service@8.63.0(supports-color@10.2.2)(typescript@7.0.2)':
     dependencies:
@@ -11760,32 +11728,6 @@ snapshots:
       yuku-parser: 0.9.5
     optionalDependencies:
       '@types/node': 24.13.3
-      '@voidzero-dev/vite-plus-darwin-arm64': 1.1.0
-      '@voidzero-dev/vite-plus-darwin-x64': 1.1.0
-      '@voidzero-dev/vite-plus-linux-arm64-gnu': 1.1.0
-      '@voidzero-dev/vite-plus-linux-arm64-musl': 1.1.0
-      '@voidzero-dev/vite-plus-linux-x64-gnu': 1.1.0
-      '@voidzero-dev/vite-plus-linux-x64-musl': 1.1.0
-      '@voidzero-dev/vite-plus-win32-arm64-msvc': 1.1.0
-      '@voidzero-dev/vite-plus-win32-x64-msvc': 1.1.0
-      esbuild: 0.28.1
-      fsevents: 2.3.3
-      jiti: 2.7.0
-      sass: 1.101.0
-      tsx: 4.23.0
-      typescript: 7.0.2
-      yaml: 2.9.0
-
-  '@voidzero-dev/vite-plus-core@1.1.0(@types/node@25.9.3)(esbuild@0.28.1)(jiti@2.7.0)(sass@1.101.0)(tsx@4.23.0)(typescript@7.0.2)(yaml@2.9.0)':
-    dependencies:
-      '@oxc-project/runtime': 0.153.0
-      '@oxc-project/types': 0.153.0
-      lightningcss: 1.33.0
-      postcss: 8.5.23
-      yuku-codegen: 0.9.5
-      yuku-parser: 0.9.5
-    optionalDependencies:
-      '@types/node': 25.9.3
       '@voidzero-dev/vite-plus-darwin-arm64': 1.1.0
       '@voidzero-dev/vite-plus-darwin-x64': 1.1.0
       '@voidzero-dev/vite-plus-linux-arm64-gnu': 1.1.0
@@ -15933,7 +15875,7 @@ snapshots:
 
   undici-types@7.18.2: {}
 
-  undici-types@7.24.6: {}
+  undici-types@8.11.2: {}
 
   undici@6.29.0: {}
 

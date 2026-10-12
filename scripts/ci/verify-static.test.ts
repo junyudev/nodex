@@ -1,6 +1,7 @@
 import { describe, expect, test, vi } from "vite-plus/test";
 
 import { STATIC_GROUPS } from "./ci-gate-plan";
+import { classifyChangedPaths } from "./classify-change";
 import {
   parseStaticArguments,
   runStaticChecks,
@@ -20,6 +21,31 @@ describe("static CI groups", () => {
       "run",
       "check",
     ]);
+  });
+
+  test("executes source ownership for independently routed Landing and Storybook changes", () => {
+    for (const path of [
+      "packages/landing/auxiliary.mts",
+      "packages/landing/tsconfig.json",
+      "packages/storybook/.storybook/auxiliary.mts",
+      "src/renderer/new.tsx",
+      "scripts/ci/new.ts",
+      "tests/fixtures/new.cts",
+      ".github/actions/run-stress-tests/helper.ts",
+    ]) {
+      const plan = classifyChangedPaths([path]);
+      const selected = selectStaticChecks(STATIC_CHECKS, plan.staticGroups);
+      const execute = vi.fn();
+      runStaticChecks(selected, execute);
+      expect(execute, path).toHaveBeenCalledWith(process.platform === "win32" ? "vp.cmd" : "vp", [
+        "run",
+        "verify:source-type-ownership",
+      ]);
+      expect(
+        selected.filter(({ id }) => id === "source-type-ownership"),
+        path,
+      ).toHaveLength(1);
+    }
   });
 
   test("parses explicit groups and rejects empty, unknown, or duplicate groups", () => {

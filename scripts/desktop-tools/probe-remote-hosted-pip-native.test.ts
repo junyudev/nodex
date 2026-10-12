@@ -5,6 +5,7 @@ import {
   inspectNativeRuntime,
   nativeProbeExitCode,
   parseProbeArguments,
+  type NativeOperationEvidence,
 } from "./probe-remote-hosted-pip-native.mjs";
 
 const verifiedProvenance = {
@@ -101,7 +102,7 @@ describe("Remote Hosted PiP native evidence probe", () => {
       "unregister-primary-host",
       "clear-active-thread",
       "stop-host",
-    ].map((name) => ({ name, status: "success", value: true }));
+    ].map<NativeOperationEvidence>((name) => ({ name, status: "success", value: true }));
     successfulOperations.push(
       {
         name: "read-has-presentation-after-invalidate",
@@ -117,7 +118,7 @@ describe("Remote Hosted PiP native evidence probe", () => {
         "read-layout-after-upsert",
         "read-layout-after-move",
         "read-layout-after-avatar-host",
-      ].map((name) => ({
+      ].map<NativeOperationEvidence>((name) => ({
         name,
         status: "success",
         value: { currentHostID: "native-evidence-primary", stackDisplayHeight: 240 },
@@ -316,7 +317,7 @@ describe("Remote Hosted PiP native evidence probe", () => {
       "unregister-primary-host",
       "clear-active-thread",
       "stop-host",
-    ].map((name) => ({ name, status: "success", value: true }));
+    ].map<NativeOperationEvidence>((name) => ({ name, status: "success", value: true }));
     operations.push({
       name: "read-has-presentation-after-invalidate",
       status: "success",

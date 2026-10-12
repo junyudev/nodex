@@ -142,6 +142,7 @@ const suites: Readonly<Record<SuiteId, TestSuite>> = {
     include: [
       "src/renderer/**/*.browser.test.{ts,tsx}",
       "third_party/blocknote/packages/core/src/extensions/TableHandles/TableHandles.browser.test.ts",
+      "third_party/blocknote/packages/diagram-block/src/helpers/renderDiagramToImage.browser.test.ts",
     ],
     exclude: [],
     stress: ["src/renderer/**/*.stress.browser.test.{ts,tsx}"],

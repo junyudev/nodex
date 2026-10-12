@@ -35,6 +35,7 @@ test("planPublication rejects mismatched assets instead of clobbering", () => {
         tag_name: "v0.2.0",
       },
       expected,
+      false,
     ),
   ).toThrow("does not match");
 });

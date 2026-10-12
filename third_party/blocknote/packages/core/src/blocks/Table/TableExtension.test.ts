@@ -20,6 +20,7 @@ import type { PartialBlock } from "../defaultBlocks.js";
 
 function pressEnter(editor: BlockNoteEditor) {
   const view = editor.prosemirrorView;
+  if (!view) throw new Error("Keyboard input requires a mounted editor");
   const event = new KeyboardEvent("keydown", { key: "Enter" });
   view.someProp("handleKeyDown", (f) => f(view, event));
 }
@@ -58,9 +59,8 @@ describe("Table Enter keyboard shortcut", () => {
   });
 
   function posInCell(cellText: string): number {
-    const view = editor.prosemirrorView;
     let pos = -1;
-    view.state.doc.descendants((node, nodePos) => {
+    editor.prosemirrorState.doc.descendants((node, nodePos) => {
       if (pos === -1 && node.isText && node.text === cellText) {
         pos = nodePos;
       }
@@ -85,7 +85,7 @@ describe("Table Enter keyboard shortcut", () => {
     pressEnter(editor);
 
     const parentText =
-      editor.prosemirrorView.state.selection.$head.parent.textContent;
+      editor.prosemirrorState.selection.$head.parent.textContent;
     expect(parentText).toBe("Cell 8");
   });
 
@@ -109,9 +109,8 @@ describe("Table Enter keyboard shortcut", () => {
   });
 
   it("does not crash with a multi-cell selection", () => {
-    const view = editor.prosemirrorView;
     const cellPositions: number[] = [];
-    view.state.doc.descendants((node, pos) => {
+    editor.prosemirrorState.doc.descendants((node, pos) => {
       if (node.type.name === "tableCell" || node.type.name === "tableHeader") {
         cellPositions.push(pos);
       }
@@ -186,7 +185,7 @@ describe("TableHandlesExtension.getCellSelection", () => {
     ]);
 
     let nestedPos = -1;
-    editor.prosemirrorView.state.doc.descendants((node, pos) => {
+    editor.prosemirrorState.doc.descendants((node, pos) => {
       if (nestedPos === -1 && node.isText && node.text === "Nested") {
         nestedPos = pos;
       }
@@ -215,7 +214,7 @@ describe("TableHandlesExtension.getCellSelection", () => {
     ]);
 
     let cellPos = -1;
-    editor.prosemirrorView.state.doc.descendants((node, pos) => {
+    editor.prosemirrorState.doc.descendants((node, pos) => {
       if (cellPos === -1 && node.isText && node.text === "Cell 4") {
         cellPos = pos;
       }

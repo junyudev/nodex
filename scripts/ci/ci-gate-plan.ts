@@ -2,6 +2,7 @@ import { APP_TEST_SUITES, type SuiteId as AppTestSuite } from "../../config/test
 
 export const STATIC_GROUPS = [
   "types",
+  "source-ownership",
   "ui-contracts",
   "ci-contracts",
   "repository-contracts",
@@ -193,13 +194,17 @@ export function assertCiGatePlan(value: unknown): asserts value is CiGatePlan {
   if (
     candidate.landingOnly &&
     (!candidate.staticGroups.includes("landing") ||
-      candidate.staticGroups.some((group) => group !== "landing" && group !== "ci-contracts") ||
+      candidate.staticGroups.some(
+        (group) => group !== "landing" && group !== "ci-contracts" && group !== "source-ownership",
+      ) ||
       candidate.appTestSuites.some((suite) => suite !== "unit" && suite !== "renderer") ||
       candidate.protocolContracts ||
       candidate.rustFast ||
       candidate.rustMigration)
   ) {
-    throw new Error("Landing-only plans may select landing/CI contracts and unit/renderer tests.");
+    throw new Error(
+      "Landing-only plans may select landing, source ownership, CI contracts, and unit/renderer tests.",
+    );
   }
 }
 
