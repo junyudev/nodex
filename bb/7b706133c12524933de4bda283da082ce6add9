@@ -1,0 +1,34 @@
+src/main/codex-application/CodexComposerPrediction.ts
+  s_84bf5c78324d85::t_d606478cfd7c3e 93,236-240,245,251-252,291-293,475-477,501-516,541-543,545,553-555,565-568
+  s_84bf5c78324d85::t_de2a3fd01dc459 317-318,328-340,449-450,474,478,481-482,484-490
+  s_84bf5c78324d85::t_3182e2b7b8e9f0 342-346
+  s_84bf5c78324d85::t_98b1ca6d4747ff 19-22,228-235,241,263,271-290,294-311,313,421-423
+  s_84bf5c78324d85::t_f8dcce8906516e 424-425,572,574,596
+docs/product-specs/composer-prediction-behavior.md
+  s_84bf5c78324d85::t_3a64fe776934cb 9
+  s_84bf5c78324d85::t_251c32f7d89055 15-17,39-43
+src/main/codex-application/CodexComposerPrediction.node.test.ts
+  s_84bf5c78324d85::t_a5ab018521f231 571-597
+  s_84bf5c78324d85::t_56f720fd14b9ae 697-729,734-738,771-800,952-955
+  s_84bf5c78324d85::t_5d871791b4baee 271-280,730-733,739-770,801-804,809-850,853-880,883-919,929-931,948-951
+  s_84bf5c78324d85::t_91e8c6cc26d82f 28,115-119,143-147,149-150,160,249-252
+  s_84bf5c78324d85::t_dad803ad9e1397 10,851-852,881-882,920-928,932-947
+  s_84bf5c78324d85::t_63db4efe4a4856 120-121,172,805-808
+  s_84bf5c78324d85::t_cfb950a5855dee 173-176
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "bb7b706133c12524933de4bda283da082ce6add9",
+  "prompts": {},
+  "sessions": {
+    "s_84bf5c78324d85": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a12db9-d235-78f1-acd4-d3520bbf1dfe",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    }
+  }
+}
