@@ -74,4 +74,19 @@ describe("applyThreadSearchDomMarks", () => {
     expect(Boolean(matchedUnit?.className.includes("bg-token-foreground/7"))).toBe(false);
     expect(Boolean(matchedTurn?.className.includes("bg-token-foreground/3"))).toBe(false);
   });
+  test("selects the second logical occurrence when each result spans formatting elements", () => {
+    const root = document.createElement("div");
+    root.innerHTML =
+      '<div data-content-search-unit-key="assistant"><span>need</span><strong>le</strong> and <span>need</span><em>le</em></div>';
+    const active = applyLocalConversationSearchHighlights({
+      root,
+      query: "needle",
+      target: { turnKey: "turn", unitKey: "assistant", occurrenceIndex: 1 },
+    });
+    const fragments = Array.from(root.querySelectorAll(".codex-thread-find-active"));
+    expect(fragments.map((fragment) => fragment.textContent).join("")).toBe("needle");
+    expect(fragments).toHaveLength(2);
+    expect(active).toBe(fragments[0]);
+    expect(active?.parentElement).toBe(root.querySelectorAll("span").item(1));
+  });
 });

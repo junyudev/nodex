@@ -52,6 +52,14 @@ function source(read: () => VisibleConversationTurnEntry[]) {
 }
 
 describe("resident transcript search cache", () => {
+  test("indexes ordinary Markdown source independently of loaded math and streamed display repair", () => {
+    const current = entry("one", ["Formula $$x^2$$ and **needle** [unfinished"]);
+    current.turn.status = "inProgress";
+    const read = source(() => [current]);
+    expect(read.getUnitsForTurn(current)[0]?.text).toBe("Formula $$x^2$$ and needle [unfinished");
+    expect(read.findMatches("$$x^2$$")).toHaveLength(1);
+    expect(read.findMatches("[unfinished")).toHaveLength(1);
+  });
   test("does not index or materialize a voice completion resource row as duplicate Turn text", () => {
     const item = {
       type: "agentMessage",
@@ -282,7 +290,7 @@ describe("resident transcript search cache", () => {
     expect(read.findMatches("Current response")).toHaveLength(1);
   });
 
-  test("indexes displayed assistant voice text and raw user text through keyed deltas", () => {
+  test("indexes raw assistant and user voice text through keyed deltas", () => {
     const { owner, project } = timelineOwnerFixture({
       data: [
         {
@@ -333,7 +341,7 @@ describe("resident transcript search cache", () => {
     const first = read.getUnitsForProjectedEntry(voice);
     expect(first[0]).toMatchObject({
       key: realtimeSearchUnitKey(voice),
-      text: "literal needle needle",
+      text: "literal **needle** needle",
       turnId: null,
     });
     expect(first[1]).toMatchObject({
@@ -351,7 +359,7 @@ describe("resident transcript search cache", () => {
       type: "changes",
       changes: [{ type: "realtime-text", itemId: "voice", delta: " latest" }],
     });
-    expect(read.findMatches("latest")[0]?.text).toBe("literal needle needle latest");
+    expect(read.findMatches("latest")[0]?.text).toBe("literal **needle** needle latest");
     expect(owner.readRealtimeItem("voice")?.item).toMatchObject({
       text: "literal **needle** needle latest",
     });

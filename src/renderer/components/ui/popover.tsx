@@ -34,8 +34,26 @@ export interface NodexPopoverProps {
   open?: boolean;
   defaultOpen?: boolean;
   modal?: boolean | "trap-focus";
-  onOpenChange?: (open: boolean) => void;
+  onOpenChange?: (open: boolean, details: NodexPopoverOpenChangeDetails) => void;
   onOpenChangeComplete?: (open: boolean) => void;
+}
+
+export interface NodexPopoverOpenChangeDetails {
+  readonly reason: "trigger" | "outside" | "escape" | "focus-out" | "close" | "imperative" | "none";
+  readonly event: Event;
+  readonly cancel: () => void;
+}
+
+function popoverChangeReason(
+  reason: PopoverPrimitive.Root.ChangeEventReason,
+): NodexPopoverOpenChangeDetails["reason"] {
+  if (reason === "outside-press") return "outside";
+  if (reason === "escape-key") return "escape";
+  if (reason === "focus-out") return "focus-out";
+  if (reason === "close-press") return "close";
+  if (reason === "imperative-action") return "imperative";
+  if (reason === "none") return "none";
+  return "trigger";
 }
 
 export function NodexPopover({ onOpenChange, ...props }: NodexPopoverProps) {
@@ -46,7 +64,16 @@ export function NodexPopover({ onOpenChange, ...props }: NodexPopoverProps) {
     <NodexPopoverAnchorContext value={anchorContext}>
       <PopoverPrimitive.Root
         {...props}
-        onOpenChange={onOpenChange ? (open) => onOpenChange(open) : undefined}
+        onOpenChange={
+          onOpenChange
+            ? (open, details) =>
+                onOpenChange(open, {
+                  reason: popoverChangeReason(details.reason),
+                  event: details.event,
+                  cancel: details.cancel,
+                })
+            : undefined
+        }
       />
     </NodexPopoverAnchorContext>
   );
@@ -101,7 +128,9 @@ export interface NodexPopoverContentProps
     Pick<
       PopoverPrimitive.Positioner.Props,
       | "align"
+      | "anchor"
       | "alignOffset"
+      | "arrowPadding"
       | "side"
       | "sideOffset"
       | "collisionBoundary"
@@ -122,7 +151,9 @@ export const NodexPopoverContent = forwardRef<HTMLDivElement, NodexPopoverConten
       children,
       className,
       align = "start",
+      anchor,
       alignOffset,
+      arrowPadding,
       side = "bottom",
       sideOffset = 4,
       style,
@@ -143,9 +174,10 @@ export const NodexPopoverContent = forwardRef<HTMLDivElement, NodexPopoverConten
     const positionedPopup = (
       <PopoverPrimitive.Positioner
         data-slot="popover-positioner"
-        anchor={anchorContext?.anchor ?? undefined}
+        anchor={anchor ?? anchorContext?.anchor ?? undefined}
         align={align}
         alignOffset={alignOffset}
+        arrowPadding={arrowPadding}
         side={side}
         sideOffset={sideOffset}
         collisionBoundary={collisionBoundary}

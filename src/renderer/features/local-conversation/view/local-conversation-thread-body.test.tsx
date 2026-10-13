@@ -390,14 +390,14 @@ function buildActions(overrides?: Partial<ThreadStageActions>): ThreadStageActio
   };
 }
 
-function FindControls() {
+function FindControls({ query = "needle" }: { query?: string } = {}) {
   const controller = useContentSearch();
   return (
     <>
       <button
         onClick={() => {
           controller.requestOpen({ preferredDomain: "conversation" });
-          controller.setQuery("needle");
+          controller.setQuery(query);
         }}
       >
         Find thread text
@@ -492,7 +492,7 @@ describe("LocalConversationThreadBody", () => {
       const view = render(
         <TooltipProvider>
           <ContentSearchProvider>
-            <FindControls />
+            <FindControls query={family === "voiceAssistant" && !literal ? "nee" : "needle"} />
             <CodexTranscriptReadOwnerContext.Provider value={owner}>
               <EnsureLocalConversationThreadScrollController>
                 <LocalConversationThreadScrollLayout>
@@ -528,13 +528,22 @@ describe("LocalConversationThreadBody", () => {
         );
         const active = await waitFor(() => {
           const mark = view.container.querySelector("mark.codex-thread-find-active");
-          expect(mark?.textContent).toBe("needle");
+          const fragments = view.container.querySelectorAll("mark.codex-thread-find-active");
+          expect(Array.from(fragments, (fragment) => fragment.textContent).join("")).toBe(
+            family === "voiceAssistant" && !literal ? "nee" : "needle",
+          );
           return mark!;
         });
         const unit = active?.closest("[data-content-search-unit-key]");
         expect(unit).not.toBeNull();
         expect(unit?.querySelector("kbd")).toBeNull();
-        expect(unit?.querySelectorAll("mark")).toHaveLength(occurrences);
+        expect(
+          new Set(
+            Array.from(unit!.querySelectorAll("mark"), (mark) =>
+              mark.getAttribute("data-content-search-match-id"),
+            ),
+          ).size,
+        ).toBe(occurrences);
         expect(view.container.querySelector("button mark")).toBeNull();
         if (family === "voiceAssistant")
           expect(unit?.getAttribute("data-native-realtime-item-id")).toBe("voice");

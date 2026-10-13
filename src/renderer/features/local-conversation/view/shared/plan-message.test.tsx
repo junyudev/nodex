@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, test } from "vite-plus/test";
-import { act, fireEvent } from "@testing-library/react";
+import { act, fireEvent, waitFor } from "@testing-library/react";
 import { NodexTooltipProvider as TooltipProvider } from "../../../../components/ui/tooltip";
 import { render, textContent } from "../../../../test/dom";
 import { PlanMessage } from "./plan-message";
@@ -110,14 +110,16 @@ describe("PlanMessage", () => {
 
   test("downloads markdown as PLAN.md", async () => {
     const originalCreateElement = document.createElement;
+    const createElement: (tagName: string, options?: ElementCreationOptions) => HTMLElement =
+      originalCreateElement;
     let downloadedName = "";
     document.createElement = ((tagName: string, options?: ElementCreationOptions) => {
-      const element = originalCreateElement.call(document, tagName, options);
-      if (tagName.toLowerCase() === "a") {
+      const element = createElement.call(document, tagName, options);
+      if (element instanceof HTMLAnchorElement) {
         Object.defineProperty(element, "click", {
           configurable: true,
           value: () => {
-            downloadedName = (element as HTMLAnchorElement).download;
+            downloadedName = element.download;
           },
         });
       }
@@ -140,14 +142,14 @@ describe("PlanMessage", () => {
     }
   });
 
-  test("renders plan markdown content", () => {
+  test("renders plan markdown content", async () => {
     const { container } = render(
       <TooltipProvider>
         <PlanMessage completed content={"## Plan heading\n\nParagraph body.\n\n- First bullet"} />
       </TooltipProvider>,
     );
 
-    expect(container.querySelector("h2")?.textContent).toBe("Plan heading");
+    await waitFor(() => expect(container.querySelector("h2")?.textContent).toBe("Plan heading"));
     expect(container.querySelector("p")?.textContent).toBe("Paragraph body.");
     expect(container.querySelector("ul")?.textContent?.trim()).toBe("First bullet");
   });

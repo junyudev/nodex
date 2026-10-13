@@ -8,12 +8,12 @@ describe("assistant display preparation", () => {
     ['::codex-inline-vis{file="/chart.html" mode="wide"}', true],
     ['::codex-inline-vis{path="/chart.html" title="" expandable="false"}', true],
     ['::codex-inline-vis{file="/chart.html"\ttitle="A } ] title"}', true],
-    ['::codex-inline-vis{mode="wide" file="/chart.html"}', false],
-    ["::codex-inline-vis{file=/chart.html}", false],
-    ['::codex-inline-vis{file=""}', false],
+    ['::codex-inline-vis{mode="wide" file="/chart.html"}', true],
+    ["::codex-inline-vis{file=/chart.html}", true],
+    ['::codex-inline-vis{file=""}', true],
     ['::codex-inline-vis{file="/chart.html" title="unterminated}', false],
-    ['::codex-inline-vis{file="/chart.html" unknown="true"}', false],
-    ['::codex-inline-vis{file="/chart.html" mode="narrow"}', false],
+    ['::codex-inline-vis{file="/chart.html" unknown="true"}', true],
+    ['::codex-inline-vis{file="/chart.html" mode="narrow"}', true],
   ] as const)("guards only the final visualization header: %s", (header, admitted) => {
     const canonical = "Complete prefix\n" + header;
     for (const streaming of [true, false]) {

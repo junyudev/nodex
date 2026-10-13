@@ -20,7 +20,7 @@ describe("MarkdownRenderer", () => {
   test("renders inline code with the shared inline-markdown span contract", async () => {
     const { container } = render(<MarkdownRenderer content={"Run `bun test` before shipping."} />);
 
-    await settleAsyncRender();
+    await waitFor(() => expect(container.querySelector("span.inline-markdown")).not.toBeNull());
 
     const inlineCode = container.querySelector("span.inline-markdown");
     expect(Boolean(inlineCode)).toBe(true);
@@ -31,7 +31,7 @@ describe("MarkdownRenderer", () => {
   test("marks heading inline code with the heading-inline-code scope", async () => {
     const { container } = render(<MarkdownRenderer content={"## Heading with `inline code`"} />);
 
-    await settleAsyncRender();
+    await waitFor(() => expect(container.querySelector("h2 span.inline-markdown")).not.toBeNull());
 
     const heading = container.querySelector("h2");
     const inlineCode = heading?.querySelector("span.inline-markdown");
@@ -61,7 +61,7 @@ describe("MarkdownRenderer", () => {
       />,
     );
 
-    await settleAsyncRender();
+    await waitFor(() => expect(container.querySelector("summary")).not.toBeNull());
 
     const paragraph = container.querySelector("p");
     const heading = container.querySelector("h1");
@@ -91,7 +91,7 @@ describe("MarkdownRenderer", () => {
       />,
     );
 
-    await settleAsyncRender();
+    await waitFor(() => expect(container.querySelectorAll("ol")).toHaveLength(2));
 
     const orderedLists = Array.from(container.querySelectorAll("ol"));
     expect(orderedLists.length).toBe(2);
@@ -106,7 +106,9 @@ describe("MarkdownRenderer", () => {
       </NodexTooltipProvider>,
     );
 
-    await settleAsyncRender();
+    await waitFor(() =>
+      expect(container.querySelector("button[data-file-reference='true']")).not.toBeNull(),
+    );
 
     const link = container.querySelector("button[data-file-reference='true']");
     expect(Boolean(link)).toBe(true);

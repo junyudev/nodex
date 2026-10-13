@@ -6,7 +6,6 @@ import { directiveFromMarkdown } from "mdast-util-directive";
 import { directive } from "micromark-extension-directive";
 import { parse } from "node-html-parser";
 import type { Nodes } from "mdast";
-import { trimMarkdownBlankLines } from "./markdown-text-boundaries";
 
 /** Keep literal autolinks out of an unfinished Markdown link label. */
 function compactGfm() {
@@ -53,30 +52,28 @@ function compactGfm() {
   return extension;
 }
 
-/** Normalize inline directives without changing any Markdown code node. */
+/** Source labels normalize directives outside top-level fences independently of body rendering. */
 function normalizeDirectives(markdown: string): string {
   if (!markdown.includes("::")) return markdown;
-  const codeRanges: Array<{ start: number; end: number }> = [];
-  const visit = (node: Nodes): void => {
-    if (node.type === "code" || node.type === "inlineCode") {
-      const start = node.position?.start.offset;
-      const end = node.position?.end.offset;
-      if (start !== undefined && end !== undefined) codeRanges.push({ start, end });
-      return;
-    }
-    if ("children" in node) node.children.forEach(visit);
-  };
-  visit(fromMarkdown(markdown));
-  let rangeIndex = 0;
-  return markdown.replace(
-    /(^|[^:])::([A-Za-z][A-Za-z0-9_-]*)(?=[[{])/g,
-    (match, prefix: string, name: string, offset: number) => {
-      const colonOffset = offset + prefix.length;
-      while (codeRanges[rangeIndex] && codeRanges[rangeIndex]!.end <= colonOffset) rangeIndex += 1;
-      const range = codeRanges[rangeIndex];
-      return range && range.start <= colonOffset ? match : `${prefix}:${name}`;
-    },
-  );
+  let fence: { marker: string; length: number } | null = null;
+  return markdown
+    .split("\n")
+    .map((line) => {
+      const fenced = fence !== null;
+      const match = /^ {0,3}(`{3,}|~{3,})(.*)$/u.exec(line);
+      if (match) {
+        const marker = match[1]![0]!;
+        const suffix = match[2]!;
+        if (!fence && !(marker === "`" && suffix.includes("`")))
+          fence = { marker, length: match[1]!.length };
+        else if (fence?.marker === marker && match[1]!.length >= fence.length && !suffix.trim())
+          fence = null;
+      }
+      return fenced || fence
+        ? line
+        : line.replace(/(^|[^:])::([A-Za-z][A-Za-z0-9_-]*)(?=[[{])/g, "$1:$2");
+    })
+    .join("\n");
 }
 
 function unclosedHiddenElement(value: string): string | null {
@@ -124,9 +121,7 @@ function extractMarkdownText(node: Nodes): string {
 
 /** Project rich assistant text into compact labels without hidden markup or attributes. */
 export function projectCodexMarkdownToPlainText(markdown: string): string {
-  const trimmed = trimMarkdownBlankLines(
-    normalizeDirectives(markdown.replaceAll(/\uE200[^\uE201]*\uE201/g, "")),
-  );
+  const trimmed = normalizeDirectives(markdown.replaceAll(/\uE200[^\uE201]*\uE201/g, "")).trim();
   if (!trimmed) return "";
   if (
     /^[\p{L}\p{M}\p{N} .,!?'"’()-]+$/u.test(trimmed) &&

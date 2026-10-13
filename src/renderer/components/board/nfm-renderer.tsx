@@ -29,7 +29,7 @@ import { formatThreadMentionShortUuid } from "@/lib/nfm/thread-mention-display";
 import { formatDateMentionPlainText } from "@/lib/nfm/date-mention";
 import { cn } from "@/lib/utils";
 import { NodexTooltip } from "@/components/ui/tooltip";
-import { streamdownCodePlugin } from "@/lib/streamdown";
+import { streamdownCodePlugin } from "@/lib/markdown/markdown-code-highlighter";
 import { DateMentionInlineVisual } from "./date-mention-inline-visual";
 import { ThreadMentionInlineVisual } from "./thread-mention-inline-visual";
 import { PageMentionInlineVisual } from "./page-mention-inline-visual";

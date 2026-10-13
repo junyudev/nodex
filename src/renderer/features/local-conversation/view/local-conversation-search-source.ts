@@ -1,7 +1,7 @@
 import type { VisibleConversationTurnEntry } from "../selectors";
 import type { ThreadSearchUnitModel } from "../thread-stage-types";
 import { selectTurnRenderModel } from "../projection/build-turn-render-model";
-import { projectConversationMarkdownDisplayText } from "../../../lib/markdown/conversation-markdown-display";
+import { projectCodexMarkdownToPlainText } from "../../../../shared/codex-markdown-text";
 import { projectAssistantText } from "../../../../shared/codex-canonical-item-projector";
 import type { CodexTranscriptReadOwner } from "../normalized-transcript-read-owner";
 import {
@@ -160,7 +160,7 @@ export function createLocalConversationSearchSource(input: LocalConversationSear
         values.every((value, index) => value === cached.realtimeItems?.[index])
       )
         return cached.units;
-      // Voice users retain literal text; assistants share the displayed Markdown grammar.
+      // Voice source indexing retains its native text independently of Markdown presentation.
       const units = values.flatMap((value): ThreadSearchUnitModel[] => {
         if (!value || value.item.type !== "transcriptSegment" || !value.item.text) return [];
         return [
@@ -169,10 +169,7 @@ export function createLocalConversationSearchSource(input: LocalConversationSear
             itemId: value.item.id,
             turnId: null,
             turnKey: entry.turnKey,
-            text:
-              value.item.role === "user"
-                ? value.item.text
-                : projectConversationMarkdownDisplayText(value.item.text, !value.completed),
+            text: value.item.text,
             blockType: value.item.role === "user" ? "userMessage" : "assistantMessage",
           },
         ];
@@ -194,9 +191,8 @@ export function createLocalConversationSearchSource(input: LocalConversationSear
       if (cached?.identity === raw && cached.status === status) return cached.units;
       const presentation = resolveTimelineInlinePresentation(raw, entry.timelinePresentation);
       if (presentation?.type !== "markdown") return [];
-      const text = projectConversationMarkdownDisplayText(
+      const text = projectCodexMarkdownToPlainText(
         projectAssistantText(presentation.content, status === "inProgress") ?? "",
-        status === "inProgress",
       );
       const units: ThreadSearchUnitModel[] = text
         ? [

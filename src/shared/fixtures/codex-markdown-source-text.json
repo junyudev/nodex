@@ -1,0 +1,166 @@
+[
+  {
+    "source": "plain repeated   spaces",
+    "text": "plain repeated spaces"
+  },
+  {
+    "source": "**hel**lo",
+    "text": "hello"
+  },
+  {
+    "source": "[a](https://example.com)bc",
+    "text": "abc"
+  },
+  {
+    "source": "**one**\n\n**two**",
+    "text": "one two"
+  },
+  {
+    "source": "> one\n>\n> two",
+    "text": "one two"
+  },
+  {
+    "source": "| one | two |\n| --- | --- |\n| three | four |",
+    "text": "one two three four"
+  },
+  {
+    "source": "::unknown{a=\"x&amp;y\"}",
+    "text": ""
+  },
+  {
+    "source": ":unknown[label]{#identity}",
+    "text": "label"
+  },
+  {
+    "source": ":::unknown\n**kept literally**\n:::",
+    "text": "kept literally"
+  },
+  {
+    "source": "before <kbd>Cmd</kbd> after",
+    "text": "before Cmd after"
+  },
+  {
+    "source": "<script>secret()</script>visible",
+    "text": "visible"
+  },
+  {
+    "source": "first<br>second",
+    "text": "firstsecond"
+  },
+  {
+    "source": "Name\n---",
+    "text": "Name"
+  },
+  {
+    "source": "~one~ and ~~two~~",
+    "text": "one and two"
+  },
+  {
+    "source": "Use $namespace:skill.",
+    "text": "Use $namespace."
+  },
+  {
+    "source": "a &amp; b `&amp;`",
+    "text": "a & b &amp;"
+  },
+  {
+    "source": "```text\n&amp;\n```",
+    "text": "&amp;"
+  },
+  {
+    "source": "# Stable\n\nHello [world",
+    "text": "Stable Hello [world"
+  },
+  {
+    "source": "$$x^2$$ and \\(y\\)",
+    "text": "$$x^2$$ and (y)"
+  },
+  {
+    "source": "\\[\nx^2\n\\]",
+    "text": "[ x^2 ]"
+  },
+  {
+    "source": "\\[\nbad\\command\n\\]",
+    "text": "[ bad\\command ]"
+  },
+  {
+    "source": "::codex-followup[Continue]{prompt=\"private\"}",
+    "text": "Continue"
+  },
+  {
+    "source": ":::writing{variant=\"email\"}\nDear reader\n:::",
+    "text": "Dear reader"
+  },
+  {
+    "source": "`::codex-inline-vis{file=\"literal.html\"}`",
+    "text": ":codex-inline-vis{file=\"literal.html\"}"
+  },
+  {
+    "source": "    ::codex-inline-vis{file=\"literal.html\"}",
+    "text": ""
+  },
+  {
+    "source": ">     ::codex-inline-vis{file=\"literal.html\"}",
+    "text": ":codex-inline-vis{file=\"literal.html\"}"
+  },
+  {
+    "source": "   ::codex-inline-vis{file=\"real.html\"}",
+    "text": ""
+  },
+  {
+    "source": "```text\n::literal[value]{attribute=\"yes\"}\n```",
+    "text": "::literal[value]{attribute=\"yes\"}"
+  },
+  {
+    "source": "~~~text\n::literal[value]\n~~~",
+    "text": "::literal[value]"
+  },
+  {
+    "source": "```text\n::literal[value]\n````\n::outside[value]",
+    "text": "::literal[value] value"
+  },
+  {
+    "source": "> ```text\n> ::literal[value]\n> ```",
+    "text": ":literal[value]"
+  },
+  {
+    "source": "Evidence citeprivate found",
+    "text": "Evidence found"
+  },
+  {
+    "source": "[unclosed www.example.com",
+    "text": "[unclosed www.example.com"
+  },
+  {
+    "source": "![unclosed http://example.com",
+    "text": "![unclosed http://example.com"
+  },
+  {
+    "source": "hello <script>secret **code**</script> world <!-- private -->",
+    "text": "hello world"
+  },
+  {
+    "source": "<div>Visible <style>body { color: red }</style> text</div>",
+    "text": "Visible text"
+  },
+  {
+    "source": "- [x] done",
+    "text": "done"
+  },
+  {
+    "source": "1. Ordered",
+    "text": "Ordered"
+  },
+  {
+    "source": "[label][ref]\n\n[ref]: https://example.com",
+    "text": "label"
+  },
+  {
+    "source": ":1x[label]{key=\"hidden\"}",
+    "text": ":1x[label]{key=\"hidden\"}"
+  },
+  {
+    "source": ":中文[label]{key=\"hidden\"}",
+    "text": ":中文[label]{key=\"hidden\"}"
+  }
+]

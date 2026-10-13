@@ -24,7 +24,7 @@ import {
 } from "./markdown-document";
 import { type MarkdownSyntaxPolicy } from "./markdown-syntax";
 import { MarkdownCodeBlock, markdownPublicLeafComponents } from "./markdown-public-leaves";
-import { streamdownPlugins } from "../streamdown";
+import { markdownDocumentPlugins } from "./markdown-document-plugins";
 import { NFM_CODE_THEME_PAIR } from "../syntax-highlighting";
 import { useResolvedReducedMotion } from "../use-reduced-motion";
 
@@ -69,7 +69,10 @@ function MarkdownFadeSegment({ children, node }: ComponentProps<"span"> & { node
         const delay = timeline.attach(element, key, document.fadeDelayMs);
         if (delay !== null) element.style.setProperty("--sd-delay", `${delay}ms`);
       }}
-      onAnimationEnd={(event) => timeline.settle(key, event.target === event.currentTarget)}
+      onAnimationEnd={(event) => {
+        if (timeline.settle(key, event.target === event.currentTarget))
+          event.currentTarget.removeAttribute("data-sd-animate");
+      }}
     >
       {children}
     </span>
@@ -248,7 +251,7 @@ function MarkdownDocumentHost({
         parseIncompleteMarkdown={false}
         animated={noAnimation}
         isAnimating={shouldAnimate}
-        plugins={streamdownPlugins}
+        plugins={markdownDocumentPlugins}
         shikiTheme={codeThemes}
         BlockComponent={TypedMarkdownBlock}
         parseMarkdownIntoBlocksFn={splitDocumentSlot}

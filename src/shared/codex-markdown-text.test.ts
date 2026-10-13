@@ -1,7 +1,11 @@
 import { describe, expect, it } from "vitest";
 import { projectCodexMarkdownToPlainText as project } from "./codex-markdown-text";
+import sourceCases from "./fixtures/codex-markdown-source-text.json";
 
 describe("compact Markdown text", () => {
+  it.each(sourceCases)("normalizes source text: $source", ({ source, text }) => {
+    expect(project(source)).toBe(text);
+  });
   it("projects GFM tables, tasks and strikethrough", () => {
     expect(project("| First | Second |\n| --- | --- |\n| ~~old~~ | new |\n\n- [x] done")).toBe(
       "First Second old new done",
@@ -28,11 +32,11 @@ describe("compact Markdown text", () => {
       '::literal[value]{attribute="yes"}',
     );
   });
-  it("keeps inline and indented widget examples searchable without exposing real declarations", () => {
+  it("keeps the source-normalization fence boundary separate from body code semantics", () => {
     const literal = '::codex-inline-vis{file="literal.html"}';
-    expect(project(`\`${literal}\``)).toBe(literal);
-    expect(project(`    ${literal}`)).toBe(literal);
-    expect(project(`>     ${literal}`)).toBe(literal);
+    expect(project(`\`${literal}\``)).toBe(literal.slice(1));
+    expect(project(`    ${literal}`)).toBe("");
+    expect(project(`>     ${literal}`)).toBe(literal.slice(1));
     expect(project('   ::codex-inline-vis{file="real.html"}')).toBe("");
   });
   it("removes private citation payloads", () => {

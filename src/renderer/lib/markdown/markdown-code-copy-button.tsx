@@ -1,9 +1,9 @@
 import { useLayoutEffect, useRef, useState } from "react";
-import { CodeBlockCopyButton } from "streamdown";
 import { CheckmarkIcon, CopyIcon } from "@/components/shared/icons";
 import { writeTextToClipboard } from "../clipboard";
 
 interface CopyLifetime {
+  readonly text: string;
   active: boolean;
   pending: boolean;
   timeout: number | null;
@@ -29,7 +29,7 @@ export function MarkdownCodeCopyButton({
   if (feedback.text !== text) setFeedback({ text, copied: false });
   const lifetimeRef = useRef<CopyLifetime | null>(null);
   useLayoutEffect(() => {
-    const lifetime: CopyLifetime = { active: true, pending: false, timeout: null };
+    const lifetime: CopyLifetime = { text, active: true, pending: false, timeout: null };
     lifetimeRef.current = lifetime;
     return () => {
       lifetime.active = false;
@@ -40,7 +40,8 @@ export function MarkdownCodeCopyButton({
   const copied = feedback.text === text && feedback.copied;
   const onCopy = async () => {
     const lifetime = lifetimeRef.current;
-    if (!lifetime?.active || lifetime.pending || disabled || copied) return;
+    if (!lifetime?.active || lifetime.text !== text || lifetime.pending || disabled || copied)
+      return;
     lifetime.pending = true;
     const accepted = await copyCode(text);
     lifetime.pending = false;
@@ -52,8 +53,10 @@ export function MarkdownCodeCopyButton({
     }, 2_000);
   };
   return (
-    <CodeBlockCopyButton
-      code={text}
+    <button
+      type="button"
+      data-streamdown="code-block-copy-button"
+      className="inline-flex size-7 items-center justify-center rounded-sm text-token-text-secondary hover:bg-token-list-hover-background disabled:opacity-50"
       disabled={disabled}
       aria-label={copied ? "Copied code" : "Copy code"}
       onClick={() => void onCopy()}
@@ -63,6 +66,6 @@ export function MarkdownCodeCopyButton({
       ) : (
         <CopyIcon className="size-3.5" aria-hidden />
       )}
-    </CodeBlockCopyButton>
+    </button>
   );
 }

@@ -94,7 +94,7 @@ export function MarkdownCodeBlock({
   );
 }
 
-function MarkdownMermaid({
+export function MarkdownMermaid({
   source,
   incomplete,
 }: {

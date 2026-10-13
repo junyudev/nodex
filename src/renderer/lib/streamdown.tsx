@@ -1,7 +1,4 @@
 import { Children, isValidElement, type ReactNode } from "react";
-import { cjk } from "@streamdown/cjk";
-import { createCodePlugin } from "@streamdown/code";
-import { createMathPlugin } from "@streamdown/math";
 import remarkBreaks from "remark-breaks";
 import { defaultRemarkPlugins, type Components, type MermaidErrorComponentProps } from "streamdown";
 import type { Pluggable } from "unified";
@@ -17,57 +14,8 @@ import {
   resolveOrderedListMargin,
   resolveOrderedListPadding,
 } from "./ordered-list-groups";
-import { NFM_CODE_THEME_PAIR } from "./syntax-highlighting";
-import { streamdownMermaidPlugin } from "./mermaid-runtime";
+export { streamdownCodePlugin } from "./markdown/markdown-code-highlighter";
 import { cn } from "./utils";
-
-const baseStreamdownCodePlugin = createCodePlugin({
-  themes: [NFM_CODE_THEME_PAIR[0], NFM_CODE_THEME_PAIR[1]],
-});
-
-type StreamdownHighlightOptions = Parameters<typeof baseStreamdownCodePlugin.highlight>[0];
-type StreamdownHighlightResult = Exclude<
-  ReturnType<typeof baseStreamdownCodePlugin.highlight>,
-  null
->;
-
-function createPlainTextHighlightResult(code: string): StreamdownHighlightResult {
-  return {
-    bg: "transparent",
-    fg: "inherit",
-    tokens: code.split("\n").map((line) => [
-      {
-        content: line,
-        color: "inherit",
-        bgColor: "transparent",
-        htmlStyle: {},
-        offset: 0,
-      },
-    ]),
-  };
-}
-
-export const streamdownCodePlugin = {
-  ...baseStreamdownCodePlugin,
-  highlight(
-    options: StreamdownHighlightOptions,
-    callback?: Parameters<typeof baseStreamdownCodePlugin.highlight>[1],
-  ) {
-    if (!baseStreamdownCodePlugin.supportsLanguage(options.language)) {
-      return createPlainTextHighlightResult(options.code);
-    }
-    return baseStreamdownCodePlugin.highlight(options, callback);
-  },
-};
-
-export const streamdownPlugins = {
-  code: streamdownCodePlugin,
-  mermaid: streamdownMermaidPlugin,
-  math: createMathPlugin({
-    errorColor: "var(--foreground-tertiary)",
-  }),
-  cjk,
-} as const;
 
 function createHeadingComponent(
   tagName: "h1" | "h2" | "h3" | "h4" | "h5" | "h6",

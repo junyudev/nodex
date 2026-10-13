@@ -46,8 +46,6 @@ export const CONVERSATION_MARKDOWN_DIRECTIVES: readonly string[] = [
 
 const hiddenNames = new Set<string>(CONVERSATION_MARKDOWN_HIDDEN_DIRECTIVES);
 const visualizationNames = ["::codex-inline-vis", "::codex-live-vis"];
-const visualizationHeader =
-  /^::codex-(?:inline-vis|live-vis)\{(?:file|path)="[^"]+"(?:\s+(?:title="[^"]*"|mode="wide"|expandable="(?:true|false)"))*\}\s*$/;
 const visualizationMarker = "\uE200visualize\uE202";
 const visualizationMarkerEnd = "\uE201";
 
@@ -121,7 +119,7 @@ function guardVisualizationTail(source: string, streaming: boolean): string {
   const incompleteHeader = visualizationNames.some(
     (name) =>
       (streaming && name.startsWith(tail)) ||
-      (tail.startsWith(name) && !visualizationHeader.test(tail)),
+      (tail.startsWith(name) && !hasCompleteDirective(tail, 0)),
   );
   const incompleteMarker =
     (streaming && visualizationMarker.startsWith(tail)) ||
@@ -224,14 +222,16 @@ function directiveAttributesStart(source: string, offset: number): number | null
 }
 
 /** A complete quoted attribute group may contain a nested directive. */
-function hasCompleteDirective(source: string, offset: number): boolean {
-  const start = directiveAttributesStart(source, offset);
-  if (start === null) return false;
+export function readConversationDirectiveAttributesEnd(
+  source: string,
+  start: number,
+): number | null {
+  if (source[start] !== "{") return null;
   let quote: string | null = null;
   const nestedQuotes: string[] = [];
   for (let index = start + 1; index < source.length; index += 1) {
     const value = source[index]!;
-    if (value === "\n") return false;
+    if (value === "\n") return null;
     if (quote === null) {
       const previous = nestedQuotes.at(-1);
       if (previous && value === "\\" && source[index + 1] === previous) {
@@ -242,7 +242,7 @@ function hasCompleteDirective(source: string, offset: number): boolean {
       if (value === '"' || value === "'") quote = value;
       else if (value === "}") {
         const previous = nestedQuotes.pop();
-        if (previous === undefined) return true;
+        if (previous === undefined) return index + 1;
         quote = previous;
       }
       continue;
@@ -258,7 +258,12 @@ function hasCompleteDirective(source: string, offset: number): boolean {
     }
     if (value === quote) quote = null;
   }
-  return false;
+  return null;
+}
+
+function hasCompleteDirective(source: string, offset: number): boolean {
+  const start = directiveAttributesStart(source, offset);
+  return start !== null && readConversationDirectiveAttributesEnd(source, start) !== null;
 }
 
 function hideIncompleteDirective(source: string, names: readonly string[]): string {

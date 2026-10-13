@@ -15,6 +15,7 @@ All notable changes to this project will be documented in this file.
 - Voice settings can transcribe a selected WebM file and retain its audio and text with recent recordings for copying or retrying.
 - Chats render interactive HTML responses with calendars, tooltips, tabs, carousels and icons in isolated widgets. Fullscreen viewing and switching chats within one window preserve the live document; saved selections recover when it is rebuilt, follow-ups can use saved model state, and authorized downloads and image copying are available. Authored adjustments can preview changes and send them with the next request.
 - Chats show created conversations as navigable results with reply previews. Opening them preserves the execution host and pending worktree identity; child conversations open in their parent context.
+- Assistant responses support expandable details and formulas written with slash delimiters or math code fences.
 - Files can preview remote text, Markdown, images and PDFs while preserving the source host when pinned or reopened.
 
 ### Changed

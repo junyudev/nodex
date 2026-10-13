@@ -47,6 +47,7 @@ type ContentSearchRoot = HTMLElement | ShadowRoot;
 export interface ContentSearchDomMatch {
   id: string;
   ordinal: number;
+  /** One logical occurrence can have several marks; navigation uses its first fragment. */
   element: HTMLElement;
 }
 
@@ -73,6 +74,11 @@ interface TextNodeOffset {
 interface TextRange {
   start: number;
   end: number;
+}
+
+interface ContentSearchText {
+  readonly text: string;
+  readonly nodes: readonly TextNodeOffset[];
 }
 
 function ensureContentSearchShadowStyle(root: ShadowRoot): void {
@@ -113,9 +119,15 @@ function collectContentSearchRoots(
   return roots;
 }
 
-function collectTextNodes(root: ContentSearchRoot): TextNodeOffset[] {
-  const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT, {
+function collectTextNodes(root: ContentSearchRoot): ContentSearchText {
+  if (isElementSkipped(root instanceof ShadowRoot ? root.host : root))
+    return { text: "", nodes: [] };
+  const walker = document.createTreeWalker(root, NodeFilter.SHOW_ELEMENT | NodeFilter.SHOW_TEXT, {
     acceptNode(node) {
+      if (node instanceof Element) {
+        if (isElementSkipped(node)) return NodeFilter.FILTER_REJECT;
+        return node instanceof HTMLBRElement ? NodeFilter.FILTER_ACCEPT : NodeFilter.FILTER_SKIP;
+      }
       if (!(node instanceof Text) || !node.nodeValue) {
         return NodeFilter.FILTER_REJECT;
       }
@@ -125,27 +137,43 @@ function collectTextNodes(root: ContentSearchRoot): TextNodeOffset[] {
     },
   });
   const nodes: TextNodeOffset[] = [];
-  let offset = 0;
+  let text = "";
+  let previousBlock: Element | null = null;
+  let lineBreak = false;
   let node = walker.nextNode();
   while (node) {
+    if (node instanceof HTMLBRElement) lineBreak = true;
     if (node instanceof Text) {
-      const text = node.nodeValue ?? "";
-      nodes.push({ node, start: offset, end: offset + text.length });
-      offset += text.length;
+      const content = node.data;
+      const block =
+        node.parentElement?.closest(
+          "p, li, td, th, pre, h1, h2, h3, h4, h5, h6, blockquote, div, fieldset",
+        ) ?? null;
+      if (
+        text &&
+        (lineBreak || block !== previousBlock) &&
+        !/\s$/u.test(text) &&
+        !/^\s/u.test(content)
+      )
+        text += " ";
+      previousBlock = block;
+      lineBreak = false;
+      const start = text.length;
+      text += content;
+      nodes.push({ node, start, end: text.length });
     }
     node = walker.nextNode();
   }
-  return nodes;
+  return { text, nodes };
 }
 
 function findTextRanges(
-  nodes: readonly TextNodeOffset[],
+  source: ContentSearchText,
   query: string,
   remaining: number,
 ): { ranges: TextRange[]; capped: boolean } {
-  if (remaining <= 0) return { ranges: [], capped: nodes.length > 0 };
-  const text = nodes.map((entry) => entry.node.nodeValue ?? "").join("");
-  const normalizedText = text.toLowerCase();
+  if (remaining <= 0) return { ranges: [], capped: source.nodes.length > 0 };
+  const normalizedText = source.text.toLowerCase();
   const normalizedQuery = query.toLowerCase();
   const ranges: TextRange[] = [];
   let cursor = 0;
@@ -161,16 +189,6 @@ function findTextRanges(
     cursor = end;
   }
   return { ranges, capped: false };
-}
-
-function findTextNodeAtOffset(
-  nodes: readonly TextNodeOffset[],
-  offset: number,
-): TextNodeOffset | null {
-  for (const entry of nodes) {
-    if (offset >= entry.start && offset < entry.end) return entry;
-  }
-  return null;
 }
 
 function escapeAttributeSelectorValue(value: string): string {
@@ -279,33 +297,36 @@ export function applyContentSearchDomMarks(input: {
   const matches: ContentSearchDomMatch[] = [];
   let capped = false;
   for (const root of collectContentSearchRoots(input.root, includeShadowRoots)) {
-    const nodes = collectTextNodes(root);
+    const source = collectTextNodes(root);
+    const nodes = source.nodes;
     if (nodes.length === 0) continue;
-    const found = findTextRanges(nodes, query, limit - matches.length);
+    const found = findTextRanges(source, query, limit - matches.length);
     capped ||= found.capped;
 
     const rootMatches: ContentSearchDomMatch[] = [];
     for (let index = found.ranges.length - 1; index >= 0; index -= 1) {
       const range = found.ranges[index];
       if (!range) continue;
-      const startNode = findTextNodeAtOffset(nodes, range.start);
-      const endNode = findTextNodeAtOffset(nodes, range.end - 1);
-      if (!startNode || !endNode) continue;
-
       const ordinal = matches.length + index;
       const id = input.matchIds?.[ordinal] ?? `${input.idPrefix}:${ordinal}`;
-      const domRange = document.createRange();
-      domRange.setStart(startNode.node, range.start - startNode.start);
-      domRange.setEnd(endNode.node, range.end - endNode.start);
-      const mark = document.createElement("mark");
-      mark.className =
-        input.activeMatchId === id
-          ? `${CONTENT_SEARCH_MARK_CLASS} ${CONTENT_SEARCH_ACTIVE_MARK_CLASS}`
-          : CONTENT_SEARCH_MARK_CLASS;
-      mark.setAttribute(CONTENT_SEARCH_MATCH_ID_ATTRIBUTE, id);
-      mark.append(domRange.extractContents());
-      domRange.insertNode(mark);
-      rootMatches.push({ id, ordinal, element: mark });
+      let firstFragment: HTMLElement | null = null;
+      // A range across elements clones partial ancestors. Mark only text fragments so
+      // the mounted renderer retains ownership of its formatting and animated spans.
+      for (const entry of nodes) {
+        if (entry.end <= range.start || entry.start >= range.end) continue;
+        const domRange = document.createRange();
+        domRange.setStart(entry.node, Math.max(0, range.start - entry.start));
+        domRange.setEnd(entry.node, Math.min(entry.node.length, range.end - entry.start));
+        const mark = document.createElement("mark");
+        mark.className =
+          input.activeMatchId === id
+            ? `${CONTENT_SEARCH_MARK_CLASS} ${CONTENT_SEARCH_ACTIVE_MARK_CLASS}`
+            : CONTENT_SEARCH_MARK_CLASS;
+        mark.setAttribute(CONTENT_SEARCH_MATCH_ID_ATTRIBUTE, id);
+        domRange.surroundContents(mark);
+        firstFragment ??= mark;
+      }
+      if (firstFragment) rootMatches.push({ id, ordinal, element: firstFragment });
     }
     rootMatches.sort((left, right) => left.ordinal - right.ordinal);
     matches.push(...rootMatches);
@@ -415,7 +436,7 @@ export function setActiveContentSearchDomMatch(
     for (const mark of marks) {
       const isActive = mark.getAttribute(CONTENT_SEARCH_MATCH_ID_ATTRIBUTE) === activeMatchId;
       mark.classList.toggle(CONTENT_SEARCH_ACTIVE_MARK_CLASS, isActive);
-      if (isActive) activeElement = mark;
+      if (isActive) activeElement ??= mark;
     }
   }
   return activeElement;

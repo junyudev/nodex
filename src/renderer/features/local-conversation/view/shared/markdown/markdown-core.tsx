@@ -1,6 +1,7 @@
 import { type Components } from "streamdown";
-import { MarkdownDocumentRenderer } from "@/lib/markdown/markdown-document-renderer";
-import { readMarkdownSyntaxPolicy } from "@/lib/markdown/markdown-policy";
+import MarkdownDocumentSurface from "./markdown-document-surface";
+import { ConversationTokenRenderer } from "@/lib/markdown/conversation-token-renderer";
+import type { ConversationDirectiveToken } from "@/lib/markdown/conversation-directives";
 import { ConversationVisualizationContext } from "../../inline-visualization-context";
 import { LocalConversationInlineVisualization } from "../../local-conversation-inline-visualization";
 import { resolveInlineVisualizationMode } from "../../../../../lib/inline-visualization/inline-visualization-presentation";
@@ -40,6 +41,21 @@ const visualizationComponents: Components = {
       />
     ) : null,
 };
+function renderVisualization(token: ConversationDirectiveToken) {
+  if (token.name === "codex-live-vis") return null;
+  if (token.name !== "codex-inline-vis" || !token.block) return undefined;
+  const file = token.attributes.file ?? token.attributes.path;
+  if (typeof file !== "string" || !file) return undefined;
+  return (
+    <LocalConversationInlineVisualization
+      file={file}
+      sourceThreadId={
+        typeof token.attributes.threadId === "string" ? token.attributes.threadId : null
+      }
+      mode={resolveInlineVisualizationMode(token.attributes.mode)}
+    />
+  );
+}
 export function MarkdownCore({
   content,
   dialect = "document",
@@ -53,35 +69,43 @@ export function MarkdownCore({
   visualizationContext,
   fileMediaScope,
 }: MarkdownCoreProps) {
-  const policy = readMarkdownSyntaxPolicy({
-    dialect,
-    preserveLineBreaks,
-    visualizations: Boolean(visualizationContext),
-    fileMedia: Boolean(fileMediaScope),
-    repairIncomplete: parseIncompleteMarkdown,
-  });
   const components = visualizationContext ? visualizationComponents : streamdownComponents;
 
   return (
     <ConversationVisualizationContext.Provider value={visualizationContext ?? null}>
       <FileLinkWorkspaceProvider cwd={cwd} workspacePath={projectWorkspacePath}>
         <FileMarkdownMediaProvider scope={fileMediaScope}>
-          <MarkdownDocumentRenderer
-            source={content}
-            sourceIdentity={sourceIdentity}
-            streaming={parseIncompleteMarkdown}
-            animate={animateStreamingText}
-            adaptive={adaptiveStreaming}
-            policy={policy}
-            components={
-              fileMediaScope ? { ...components, ...fileMarkdownMediaComponents } : components
-            }
-            className={`
+          {dialect === "conversation" ? (
+            <ConversationTokenRenderer
+              source={content}
+              sourceIdentity={sourceIdentity}
+              streaming={parseIncompleteMarkdown}
+              animate={animateStreamingText}
+              adaptive={adaptiveStreaming}
+              components={streamdownComponents}
+              renderDirective={visualizationContext ? renderVisualization : undefined}
+              className={`[&>*:first-child]:mt-0 [&>*:last-child]:mb-0 ${MARKDOWN_CONTENT_CLASS_NAME}`}
+            />
+          ) : content ? (
+            <MarkdownDocumentSurface
+              source={content}
+              sourceIdentity={sourceIdentity}
+              streaming={parseIncompleteMarkdown}
+              animate={animateStreamingText}
+              adaptive={adaptiveStreaming}
+              preserveLineBreaks={preserveLineBreaks}
+              visualizations={Boolean(visualizationContext)}
+              fileMedia={Boolean(fileMediaScope)}
+              components={
+                fileMediaScope ? { ...components, ...fileMarkdownMediaComponents } : components
+              }
+              className={`
           [&>*:first-child]:mt-0
           [&>*:last-child]:mb-0
           ${MARKDOWN_CONTENT_CLASS_NAME}
         `}
-          />
+            />
+          ) : null}
         </FileMarkdownMediaProvider>
       </FileLinkWorkspaceProvider>
     </ConversationVisualizationContext.Provider>

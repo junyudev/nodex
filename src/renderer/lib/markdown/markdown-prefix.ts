@@ -1,3 +1,5 @@
+import { readConversationMathFence } from "./conversation-math";
+
 interface Fence {
   readonly marker: string;
   readonly length: number;
@@ -18,18 +20,6 @@ function nextCodeFence(previous: Fence | null, line: string): Fence | null {
     : previous;
 }
 
-function nextMathFence(previous: Fence | null, line: string): Fence | null {
-  if (previous?.marker === "\\[") return line.trim() === "\\]" ? null : previous;
-  const trimmed = line.trim();
-  if (previous)
-    return /^\$+$/u.test(trimmed) && trimmed.length >= previous.length ? null : previous;
-  if (trimmed === "\\[") return { marker: "\\[", length: 2 };
-  const match = /^(\${2,})(.*)$/u.exec(trimmed);
-  if (!match) return null;
-  const marker = match[1]!;
-  return match[2]!.trimEnd().endsWith(marker) ? null : { marker: "$", length: marker.length };
-}
-
 function beginsIndependentBlock(line: string): boolean {
   return (
     !/^[\t ]/u.test(line) &&
@@ -45,7 +35,7 @@ export function findMarkdownStablePrefix(source: string): number {
   let stable = 0;
   let candidate: number | null = null;
   let codeFence: Fence | null = null;
-  let mathFence: Fence | null = null;
+  let mathFence: string | null = null;
   let directives = 0;
   let offset = 0;
   const newlines = /\r\n|[\r\n]/gu;
@@ -63,7 +53,7 @@ export function findMarkdownStablePrefix(source: string): number {
       candidate = null;
     }
     if (!mathFence) codeFence = nextCodeFence(codeFence, line);
-    if (!codeFence) mathFence = nextMathFence(mathFence, line);
+    if (!codeFence) mathFence = readConversationMathFence(mathFence, line);
     if (!codeFence && !mathFence) {
       if (/^:::[a-zA-Z]/u.test(trimmed)) directives += 1;
       else if (directives > 0 && /^:::[\t ]*$/u.test(trimmed)) directives -= 1;

@@ -1,5 +1,4 @@
 import { normalizeMessageCopyText } from "../message-copy-text";
-import { projectConversationMarkdownDisplayText } from "../../../lib/markdown/conversation-markdown-display";
 import { projectCodexMarkdownToPlainText } from "../../../../shared/codex-markdown-text";
 import { buildTurnFooterMetadata, type TurnFooterMetadata } from "./turn-footer-metadata";
 import { buildHookStats, type HookStats } from "./hook-stats";
@@ -416,10 +415,7 @@ function buildSearchUnits(input: {
     ...input.buckets.postAssistantItems,
   ]) {
     if (block.type !== "assistantMessage") continue;
-    const text = projectConversationMarkdownDisplayText(
-      block.entry.markdownText ?? block.searchableText,
-      input.isStreamingTurn && block.entry.status === "inProgress",
-    );
+    const text = projectCodexMarkdownToPlainText(block.entry.markdownText ?? block.searchableText);
     if (!text) continue;
     const key = assistantSearchUnitKey(input.turnSearchKey, block);
     assistantUnits.set(key, {

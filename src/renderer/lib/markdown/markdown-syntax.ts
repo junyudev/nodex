@@ -2,10 +2,6 @@ import { unified, type PluggableList } from "unified";
 import remarkParse from "remark-parse";
 import remarkRehype from "remark-rehype";
 import remend from "remend";
-import {
-  prepareConversationMarkdownDisplay,
-  type MarkdownDisplayDialect,
-} from "../../../shared/conversation-markdown-display";
 import type { Nodes, Root, RootContent } from "mdast";
 import type { Root as HtmlRoot } from "hast";
 import {
@@ -15,19 +11,14 @@ import {
   MARKDOWN_SYNTAX_CACHE_MAX_KEY_UNITS,
   MARKDOWN_SYNTAX_CACHE_MAX_SOURCE_UNITS,
   type MarkdownCache,
+  type ImmutableMarkdown,
 } from "./markdown-cache";
 import { postprocessMarkdownSyntax } from "./markdown-postprocess";
 import { findMarkdownStablePrefix } from "./markdown-prefix";
 
-export type ImmutableMarkdown<Value> = Value extends readonly (infer Item)[]
-  ? readonly ImmutableMarkdown<Item>[]
-  : Value extends object
-    ? { readonly [Key in keyof Value]: ImmutableMarkdown<Value[Key]> }
-    : Value;
+export type { ImmutableMarkdown } from "./markdown-cache";
 
 export interface MarkdownSyntaxPolicy {
-  readonly dialect?: MarkdownDisplayDialect;
-  readonly visualizationDirectives?: boolean;
   readonly family: boolean;
   readonly normalizeLists: boolean;
   readonly repairIncomplete: boolean;
@@ -80,11 +71,6 @@ function freezeTree<Value>(value: Value): ImmutableMarkdown<Value> {
 
 /** Normalization belongs to cache misses, so a raw-source hit does no second full scan. */
 function prepareMarkdownSource(source: string, policy: MarkdownSyntaxPolicy): string {
-  if (policy.dialect === "conversation")
-    return prepareConversationMarkdownDisplay(source, {
-      streaming: policy.repairIncomplete,
-      inlineVisualizations: policy.visualizationDirectives ?? false,
-    }).source;
   const normalized = source.replace(/\r\n?/g, "\n");
   return policy.repairIncomplete ? remend(normalized) : normalized;
 }

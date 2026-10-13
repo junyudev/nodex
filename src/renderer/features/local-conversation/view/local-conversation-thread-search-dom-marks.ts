@@ -2,7 +2,6 @@ import { THREAD_VISUAL_TOKENS } from "./blocks/local-conversation-visual-tokens"
 import {
   applyContentSearchDomMarks,
   clearContentSearchMarks,
-  CONTENT_SEARCH_MARK_CLASS,
   CONTENT_SEARCH_ACTIVE_MARK_CLASS,
 } from "../../content-search/content-search-dom";
 import type { LocalConversationSearchTarget } from "./local-conversation-persisted-search";
@@ -41,16 +40,19 @@ export function applyLocalConversationSearchHighlights(input: {
             matchIds: retained.map((match) => match.id),
             activeMatchId: input.activeMatchId,
           }
-        : {}),
+        : {
+            activeMatchId:
+              input.target !== null && input.target.unitKey === unit.dataset.contentSearchUnitKey
+                ? `content-search:conversation:${unit.dataset.contentSearchUnitKey}:${input.target.occurrenceIndex}`
+                : undefined,
+          }),
     });
     if (retained) {
       active ??= applied.matches.find((match) => match.id === input.activeMatchId)?.element ?? null;
       continue;
     }
     if (!input.target || unit.dataset.contentSearchUnitKey !== input.target.unitKey) continue;
-    active = unit
-      .querySelectorAll<HTMLElement>(`mark.${CONTENT_SEARCH_MARK_CLASS}`)
-      .item(input.target.occurrenceIndex);
+    active = applied.matches[input.target.occurrenceIndex]?.element ?? null;
   }
   active?.classList.add(CONTENT_SEARCH_ACTIVE_MARK_CLASS);
   return active;

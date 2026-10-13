@@ -1,0 +1,864 @@
+[
+  {
+    "source": "$single$",
+    "tokens": [
+      {
+        "type": "paragraph",
+        "raw": "$single$",
+        "text": "$single$",
+        "tokens": [
+          {
+            "type": "text",
+            "raw": "$single$",
+            "text": "$single$"
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "source": "$$double$$",
+    "tokens": [
+      {
+        "type": "paragraph",
+        "raw": "$$double$$",
+        "text": "$$double$$",
+        "tokens": [
+          {
+            "type": "math",
+            "raw": "$$double$$",
+            "text": "double",
+            "display": false
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "source": "\\(inline\\)",
+    "tokens": [
+      {
+        "type": "paragraph",
+        "raw": "\\(inline\\)",
+        "text": "\\(inline\\)",
+        "tokens": [
+          {
+            "type": "math",
+            "raw": "\\(inline\\)",
+            "text": "inline",
+            "display": false
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "source": "\\[display\\]",
+    "tokens": [
+      {
+        "type": "paragraph",
+        "raw": "\\[display\\]",
+        "text": "\\[display\\]",
+        "tokens": [
+          {
+            "type": "math",
+            "raw": "\\[display\\]",
+            "text": "display",
+            "display": false
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "source": "\\[\nx+y\n\\]",
+    "tokens": [
+      {
+        "type": "math",
+        "raw": "\\[\nx+y\n\\]",
+        "text": "x+y",
+        "display": true
+      }
+    ]
+  },
+  {
+    "source": "$$$\nx+y\n$$$$",
+    "tokens": [
+      {
+        "type": "math",
+        "raw": "$$$\nx+y\n$$$$",
+        "text": "x+y",
+        "display": true
+      }
+    ]
+  },
+  {
+    "source": "   $$\n   x+y\n   $$",
+    "tokens": [
+      {
+        "type": "math",
+        "raw": "   $$\n   x+y\n   $$",
+        "text": "x+y",
+        "display": true
+      }
+    ]
+  },
+  {
+    "source": "    $$\nx+y\n$$",
+    "tokens": [
+      {
+        "type": "code",
+        "raw": "    $$\n",
+        "text": "$$"
+      },
+      {
+        "type": "paragraph",
+        "raw": "x+y\n",
+        "text": "x+y",
+        "tokens": [
+          {
+            "type": "text",
+            "raw": "x+y",
+            "text": "x+y"
+          }
+        ]
+      },
+      {
+        "type": "math",
+        "raw": "$$",
+        "text": "",
+        "display": true
+      }
+    ]
+  },
+  {
+    "source": "$$\nunclosed",
+    "tokens": [
+      {
+        "type": "math",
+        "raw": "$$\nunclosed",
+        "text": "unclosed",
+        "display": true
+      }
+    ]
+  },
+  {
+    "source": "```math\nx+y\n```",
+    "tokens": [
+      {
+        "type": "math",
+        "raw": "```math\nx+y\n```",
+        "text": "x+y",
+        "display": true
+      }
+    ]
+  },
+  {
+    "source": "```math extra\nx+y\n```",
+    "tokens": [
+      {
+        "type": "math",
+        "raw": "```math extra\nx+y\n```",
+        "text": "x+y",
+        "display": true
+      }
+    ]
+  },
+  {
+    "source": "Name\n---",
+    "tokens": [
+      {
+        "type": "heading",
+        "raw": "Name\n---",
+        "text": "Name",
+        "depth": 2,
+        "tokens": [
+          {
+            "type": "text",
+            "raw": "Name",
+            "text": "Name"
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "source": "a ~single~ and ~~double~~",
+    "tokens": [
+      {
+        "type": "paragraph",
+        "raw": "a ~single~ and ~~double~~",
+        "text": "a ~single~ and ~~double~~",
+        "tokens": [
+          {
+            "type": "text",
+            "raw": "a ~single~ and ",
+            "text": "a ~single~ and "
+          },
+          {
+            "type": "del",
+            "raw": "~~double~~",
+            "text": "double",
+            "tokens": [
+              {
+                "type": "text",
+                "raw": "double",
+                "text": "double"
+              }
+            ]
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "source": "::codex-inline-vis{file=\"/chart.html\" mode=\"wide\"}",
+    "tokens": [
+      {
+        "type": "codexDirective",
+        "raw": "::codex-inline-vis{file=\"/chart.html\" mode=\"wide\"}",
+        "text": "",
+        "name": "codex-inline-vis",
+        "attributes": {
+          "file": "/chart.html",
+          "mode": "wide"
+        },
+        "block": true,
+        "tokens": []
+      }
+    ]
+  },
+  {
+    "source": "::codex-inline-vis{mode=wide file=\"/chart.html\"}",
+    "tokens": [
+      {
+        "type": "codexDirective",
+        "raw": "::codex-inline-vis{mode=wide file=\"/chart.html\"}",
+        "text": "",
+        "name": "codex-inline-vis",
+        "attributes": {
+          "mode": "wide",
+          "file": "/chart.html"
+        },
+        "block": true,
+        "tokens": []
+      }
+    ]
+  },
+  {
+    "source": "::unknown{file=\"/chart.html\"}",
+    "tokens": [
+      {
+        "type": "codexDirective",
+        "raw": "::unknown{file=\"/chart.html\"}",
+        "text": "",
+        "name": "unknown",
+        "attributes": {
+          "file": "/chart.html"
+        },
+        "block": true,
+        "tokens": []
+      }
+    ]
+  },
+  {
+    "source": "before :unknown[label]{key=value} after",
+    "tokens": [
+      {
+        "type": "paragraph",
+        "raw": "before :unknown[label]{key=value} after",
+        "text": "before :unknown[label]{key=value} after",
+        "tokens": [
+          {
+            "type": "text",
+            "raw": "before ",
+            "text": "before "
+          },
+          {
+            "type": "codexDirective",
+            "raw": ":unknown[label]{key=value}",
+            "text": "label",
+            "name": "unknown",
+            "attributes": {
+              "key": "value"
+            },
+            "block": false,
+            "tokens": [
+              {
+                "type": "text",
+                "raw": "label",
+                "text": "label"
+              }
+            ]
+          },
+          {
+            "type": "text",
+            "raw": " after",
+            "text": " after"
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "source": ":::github-details{summary=\"Read more\" open=true}\nBody **strong**\n:::",
+    "tokens": [
+      {
+        "type": "codexDirective",
+        "raw": ":::github-details{summary=\"Read more\" open=true}\nBody **strong**\n:::",
+        "text": "\nBody **strong**",
+        "name": "github-details",
+        "attributes": {
+          "summary": "Read more",
+          "open": "true"
+        },
+        "block": true,
+        "tokens": [
+          {
+            "type": "paragraph",
+            "raw": "Body **strong**",
+            "text": "Body **strong**",
+            "tokens": [
+              {
+                "type": "text",
+                "raw": "Body ",
+                "text": "Body "
+              },
+              {
+                "type": "strong",
+                "raw": "**strong**",
+                "text": "strong",
+                "tokens": [
+                  {
+                    "type": "text",
+                    "raw": "strong",
+                    "text": "strong"
+                  }
+                ]
+              }
+            ]
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "source": ":::github-details{summary=\"Read } ] more\"}\nBody\n  :::",
+    "tokens": [
+      {
+        "type": "codexDirective",
+        "raw": ":::github-details{summary=\"Read } ] more\"}\nBody\n:::",
+        "text": "\nBody",
+        "name": "github-details",
+        "attributes": {
+          "summary": "Read } ] more"
+        },
+        "block": true,
+        "tokens": [
+          {
+            "type": "paragraph",
+            "raw": "Body",
+            "text": "Body",
+            "tokens": [
+              {
+                "type": "text",
+                "raw": "Body",
+                "text": "Body"
+              }
+            ]
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "source": ":::github-details{summary=\"Outer :unknown[Inner]{key='value'}\"}\nBody\n:::",
+    "tokens": [
+      {
+        "type": "codexDirective",
+        "raw": ":::github-details{summary=\"Outer :unknown[Inner]{key='value'}\"}\nBody\n:::",
+        "text": "\nBody",
+        "name": "github-details",
+        "attributes": {
+          "summary": "Outer :unknown[Inner]{key='value'}"
+        },
+        "block": true,
+        "tokens": [
+          {
+            "type": "paragraph",
+            "raw": "Body",
+            "text": "Body",
+            "tokens": [
+              {
+                "type": "text",
+                "raw": "Body",
+                "text": "Body"
+              }
+            ]
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "source": "::unknown{a=\"escaped \\\"quote\\\" and \\slash\"}",
+    "tokens": [
+      {
+        "type": "codexDirective",
+        "raw": "::unknown{a=\"escaped \\\"quote\\\" and \\slash\"}",
+        "text": "",
+        "name": "unknown",
+        "attributes": {
+          "a": "escaped \"quote\" and \\slash"
+        },
+        "block": true,
+        "tokens": []
+      }
+    ]
+  },
+  {
+    "source": "::unknown{truth false=false count=12}",
+    "tokens": [
+      {
+        "type": "codexDirective",
+        "raw": "::unknown{truth false=false count=12}",
+        "text": "",
+        "name": "unknown",
+        "attributes": {
+          "truth": true,
+          "false": "false",
+          "count": "12"
+        },
+        "block": true,
+        "tokens": []
+      }
+    ]
+  },
+  {
+    "source": "```text\n::codex-inline-vis{file=\"/chart.html\"}\n```",
+    "tokens": [
+      {
+        "type": "code",
+        "raw": "```text\n::codex-inline-vis{file=\"/chart.html\"}\n```",
+        "text": "::codex-inline-vis{file=\"/chart.html\"}",
+        "lang": "text"
+      }
+    ]
+  },
+  {
+    "source": "`::unknown{file=\"/chart.html\"}`",
+    "tokens": [
+      {
+        "type": "paragraph",
+        "raw": "`",
+        "text": "`",
+        "tokens": [
+          {
+            "type": "text",
+            "raw": "`",
+            "text": "`"
+          }
+        ]
+      },
+      {
+        "type": "codexDirective",
+        "raw": "::unknown{file=\"/chart.html\"}",
+        "text": "",
+        "name": "unknown",
+        "attributes": {
+          "file": "/chart.html"
+        },
+        "block": true,
+        "tokens": []
+      },
+      {
+        "type": "paragraph",
+        "raw": "`",
+        "text": "`",
+        "tokens": [
+          {
+            "type": "text",
+            "raw": "`",
+            "text": "`"
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "source": ":::github-details{summary=\"open\"}\nBody",
+    "tokens": [
+      {
+        "type": "paragraph",
+        "raw": ":",
+        "text": ":",
+        "tokens": [
+          {
+            "type": "text",
+            "raw": ":",
+            "text": ":"
+          }
+        ]
+      },
+      {
+        "type": "codexDirective",
+        "raw": "::github-details{summary=\"open\"}\n",
+        "text": "",
+        "name": "github-details",
+        "attributes": {
+          "summary": "open"
+        },
+        "block": true,
+        "tokens": []
+      },
+      {
+        "type": "paragraph",
+        "raw": "Body",
+        "text": "Body",
+        "tokens": [
+          {
+            "type": "text",
+            "raw": "Body",
+            "text": "Body"
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "source": "::unknown{key=\"unclosed",
+    "tokens": [
+      {
+        "type": "codexDirective",
+        "raw": "::unknown",
+        "text": "",
+        "name": "unknown",
+        "attributes": {},
+        "block": true,
+        "tokens": []
+      },
+      {
+        "type": "paragraph",
+        "raw": "{key=\"unclosed",
+        "text": "{key=\"unclosed",
+        "tokens": [
+          {
+            "type": "text",
+            "raw": "{key=\"unclosed",
+            "text": "{key=\"unclosed"
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "source": ":::unknown\n```text\n:::\n```\n:::",
+    "tokens": [
+      {
+        "type": "codexDirective",
+        "raw": ":::unknown\n```text\n:::\n",
+        "text": "\n```text",
+        "name": "unknown",
+        "attributes": {},
+        "block": true,
+        "tokens": [
+          {
+            "type": "code",
+            "raw": "```text",
+            "text": "",
+            "lang": "text"
+          }
+        ]
+      },
+      {
+        "type": "code",
+        "raw": "```\n:::",
+        "text": ":::",
+        "lang": ""
+      }
+    ]
+  },
+  {
+    "source": "$$$x$$$$",
+    "tokens": [
+      {
+        "type": "paragraph",
+        "raw": "$$$x$$$$",
+        "text": "$$$x$$$$",
+        "tokens": [
+          {
+            "type": "text",
+            "raw": "$$$x$$$$",
+            "text": "$$$x$$$$"
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "source": "$$$x$$$ and $$y$$",
+    "tokens": [
+      {
+        "type": "paragraph",
+        "raw": "$$$x$$$ and $$y$$",
+        "text": "$$$x$$$ and $$y$$",
+        "tokens": [
+          {
+            "type": "math",
+            "raw": "$$$x$$$",
+            "text": "x",
+            "display": false
+          },
+          {
+            "type": "text",
+            "raw": " and ",
+            "text": " and "
+          },
+          {
+            "type": "math",
+            "raw": "$$y$$",
+            "text": "y",
+            "display": false
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "source": "$$$x$$$$ later $$$",
+    "tokens": [
+      {
+        "type": "paragraph",
+        "raw": "$$$x$$$$ later $$$",
+        "text": "$$$x$$$$ later $$$",
+        "tokens": [
+          {
+            "type": "math",
+            "raw": "$$$x$$$$ later $$$",
+            "text": "x$$$$ later",
+            "display": false
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "source": "\\( x + y \\)",
+    "tokens": [
+      {
+        "type": "paragraph",
+        "raw": "\\( x + y \\)",
+        "text": "\\( x + y \\)",
+        "tokens": [
+          {
+            "type": "math",
+            "raw": "\\( x + y \\)",
+            "text": "x + y",
+            "display": false
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "source": "\\[ x + y \\]",
+    "tokens": [
+      {
+        "type": "paragraph",
+        "raw": "\\[ x + y \\]",
+        "text": "\\[ x + y \\]",
+        "tokens": [
+          {
+            "type": "math",
+            "raw": "\\[ x + y \\]",
+            "text": "x + y",
+            "display": false
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "source": "   \\[\n   x+y\n  \\]",
+    "tokens": [
+      {
+        "type": "math",
+        "raw": "   \\[\n   x+y\n  \\]",
+        "text": "x+y",
+        "display": true
+      }
+    ]
+  },
+  {
+    "source": "    \\[\nx+y\n\\]",
+    "tokens": [
+      {
+        "type": "code",
+        "raw": "    \\[\n",
+        "text": "\\["
+      },
+      {
+        "type": "paragraph",
+        "raw": "x+y\n\\]",
+        "text": "x+y\n\\]",
+        "tokens": [
+          {
+            "type": "text",
+            "raw": "x+y",
+            "text": "x+y"
+          },
+          {
+            "type": "br",
+            "raw": "\n"
+          },
+          {
+            "type": "escape",
+            "raw": "\\]",
+            "text": "]"
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "source": "$$x\ny$$",
+    "tokens": [
+      {
+        "type": "math",
+        "raw": "$$x\ny$$",
+        "text": "y$$",
+        "display": true
+      }
+    ]
+  },
+  {
+    "source": "$$unclosed",
+    "tokens": [
+      {
+        "type": "math",
+        "raw": "$$unclosed",
+        "text": "",
+        "display": true
+      }
+    ]
+  },
+  {
+    "source": "$$ + extra\nx\n$$",
+    "tokens": [
+      {
+        "type": "math",
+        "raw": "$$ + extra\nx\n$$",
+        "text": "x",
+        "display": true
+      }
+    ]
+  },
+  {
+    "source": "$$ x $\nnext",
+    "tokens": [
+      {
+        "type": "paragraph",
+        "raw": "$$ x $\nnext",
+        "text": "$$ x $\nnext",
+        "tokens": [
+          {
+            "type": "text",
+            "raw": "$$ x $",
+            "text": "$$ x $"
+          },
+          {
+            "type": "br",
+            "raw": "\n"
+          },
+          {
+            "type": "text",
+            "raw": "next",
+            "text": "next"
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "source": "x$$$y$$",
+    "tokens": [
+      {
+        "type": "paragraph",
+        "raw": "x$$$y$$",
+        "text": "x$$$y$$",
+        "tokens": [
+          {
+            "type": "text",
+            "raw": "x$$$y$$",
+            "text": "x$$$y$$"
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "source": "`\\(x\\)`",
+    "tokens": [
+      {
+        "type": "paragraph",
+        "raw": "`\\(x\\)`",
+        "text": "`\\(x\\)`",
+        "tokens": [
+          {
+            "type": "codespan",
+            "raw": "`\\(x\\)`",
+            "text": "\\(x\\)"
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "source": "[link](https://x/\\(a\\))",
+    "tokens": [
+      {
+        "type": "paragraph",
+        "raw": "[link](https://x/\\(a\\))",
+        "text": "[link](https://x/\\(a\\))",
+        "tokens": [
+          {
+            "type": "link",
+            "raw": "[link](https://x/\\(a\\))",
+            "text": "link",
+            "href": "https://x/(a)",
+            "tokens": [
+              {
+                "type": "text",
+                "raw": "link",
+                "text": "link"
+              }
+            ]
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "source": "Heading\n$$\nx\n$$",
+    "tokens": [
+      {
+        "type": "paragraph",
+        "raw": "Heading\n",
+        "text": "Heading",
+        "tokens": [
+          {
+            "type": "text",
+            "raw": "Heading",
+            "text": "Heading"
+          }
+        ]
+      },
+      {
+        "type": "math",
+        "raw": "$$\nx\n$$",
+        "text": "x",
+        "display": true
+      }
+    ]
+  }
+]

@@ -791,10 +791,13 @@ operation-specific preconditions belong to the conversation manager; generated n
 routing does not repeat owner election. See [Owner/Followers](product-specs/codex-thread-owner-follower-streaming.md)
 and [Transcript Behavior](product-specs/codex-thread-transcript-behavior.md).
 
-Transcript Markdown consumes a shared immutable syntax projection. Each mounted document owns
+Conversation Markdown consumes a shared immutable token projection; independent document Markdown
+retains its own parsing policy. Source search derives its text projection from the canonical source,
+independently of mounted presentation and its loaded rendering dependencies. Each mounted document owns
 committed element identities, incremental presentation and animation lifetime independently of the
 canonical conversation. Preparing a render cannot mutate those committed identities. Public rendering
-leaves consume that projection without acquiring another source-text or conversation owner.
+leaves consume that projection without acquiring another source-text or conversation owner. See
+[Transcript Behavior](product-specs/codex-thread-transcript-behavior.md#message-rendering).
 
 Sidebar Sections are a Profile-wide organization projection owned by Core Workspace, independent
 of Project execution ownership. Direct placement uses stable Project or Session identities; a

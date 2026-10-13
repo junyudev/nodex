@@ -39,6 +39,7 @@ import {
   Moon as LucideMoon,
   PictureInPicture2 as LucidePictureInPicture2,
   Plug as LucidePlug,
+  Pipette as LucidePipette,
   Printer as LucidePrinter,
   Puzzle as LucidePuzzle,
   RotateCcw as LucideRotateCcw,
@@ -240,6 +241,7 @@ export const PictureInPicture2: LucideIconType = /* @__PURE__ */ createGenericIc
   LucidePictureInPicture2,
   "PictureInPicture2",
 );
+export const Pipette: LucideIconType = /* @__PURE__ */ createGenericIcon(LucidePipette, "Pipette");
 export const Plug: LucideIconType = /* @__PURE__ */ createGenericIcon(LucidePlug, "Plug");
 export const Printer: LucideIconType = /* @__PURE__ */ createGenericIcon(LucidePrinter, "Printer");
 export const Puzzle: LucideIconType = /* @__PURE__ */ createGenericIcon(LucidePuzzle, "Puzzle");

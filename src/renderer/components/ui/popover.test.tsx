@@ -1,6 +1,6 @@
 import { describe, expect, test } from "vite-plus/test";
 import { fireEvent } from "@testing-library/react";
-import { act } from "react";
+import { act, useState } from "react";
 import { render, settleAsyncRender } from "@/test/dom";
 import {
   NodexPopover,
@@ -68,4 +68,60 @@ describe("nodex popover", () => {
     expect(owner.querySelector('[data-slot="popover-content"]')).not.toBeNull();
     expect(view.getByText("Inline popover body").textContent).toBe("Inline popover body");
   });
+});
+
+function FocusStablePopover() {
+  const [open, setOpen] = useState(false);
+  return (
+    <>
+      <button type="button">Outside control</button>
+      <NodexPopover
+        open={open}
+        modal={false}
+        onOpenChange={(next, details) => {
+          if (
+            details.reason === "focus-out" ||
+            (details.event instanceof KeyboardEvent && details.event.isComposing)
+          ) {
+            details.cancel();
+            return;
+          }
+          setOpen(next);
+        }}
+      >
+        <NodexPopoverTrigger>
+          <button type="button">Edit object</button>
+        </NodexPopoverTrigger>
+        <NodexPopoverContent initialFocus={false}>
+          <input aria-label="Object value" />
+        </NodexPopoverContent>
+      </NodexPopover>
+    </>
+  );
+}
+
+test("nonmodal owners can reject focus dismissal and composing Escape while retaining ordinary Escape", async () => {
+  const view = render(<FocusStablePopover />);
+  await act(async () => {
+    fireEvent.click(view.getByRole("button", { name: "Edit object" }));
+    await settleAsyncRender();
+  });
+  const input = view.getByRole("textbox", { name: "Object value" });
+  await act(async () => {
+    input.focus();
+    view.getByRole("button", { name: "Outside control" }).focus();
+    await settleAsyncRender();
+  });
+  expect(view.getByRole("textbox", { name: "Object value" })).toBe(input);
+  await act(async () => {
+    input.focus();
+    fireEvent.keyDown(input, { key: "Escape", isComposing: true });
+    await settleAsyncRender();
+  });
+  expect(view.getByRole("textbox", { name: "Object value" })).toBe(input);
+  await act(async () => {
+    fireEvent.keyDown(input, { key: "Escape" });
+    await settleAsyncRender();
+  });
+  expect(view.queryByRole("textbox", { name: "Object value" })).toBeNull();
 });

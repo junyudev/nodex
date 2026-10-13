@@ -139,8 +139,10 @@ export function createMarkdownSegmentTimeline(now: () => number = () => performa
       attached.set(element, key);
       return value;
     },
-    settle(key: string, ownTarget: boolean): void {
-      if (active && ownTarget && current.has(key)) settled.add(key);
+    settle(key: string, ownTarget: boolean): boolean {
+      if (!active || !ownTarget || !current.has(key)) return false;
+      settled.add(key);
+      return true;
     },
     activate(): void {
       active = true;

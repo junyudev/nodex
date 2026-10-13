@@ -5,6 +5,12 @@ export const MARKDOWN_PREFIX_CACHE_MAX_KEYS = 100;
 export const MARKDOWN_SEGMENT_CACHE_MAX_KEYS = 500;
 export const MARKDOWN_SEGMENT_CACHE_MAX_TEXT_UNITS = 4_096;
 
+export type ImmutableMarkdown<Value> = Value extends readonly (infer Item)[]
+  ? readonly ImmutableMarkdown<Item>[]
+  : Value extends object
+    ? { readonly [Key in keyof Value]: ImmutableMarkdown<Value[Key]> }
+    : Value;
+
 /** Cache budgets count JavaScript string units, independently of transport byte limits. */
 export function createMarkdownCache<Value>(options: {
   readonly maxKeys: number;

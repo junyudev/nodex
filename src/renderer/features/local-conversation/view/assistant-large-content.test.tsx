@@ -113,7 +113,7 @@ function assertTailFind(
 
 describe("large assistant rich content", () => {
   test.each(["ordinary", "inlineMarkdown", "voiceAssistant"] as const)(
-    "keeps displayed and indexed partial tails in phase for %s",
+    "keeps canonical source search independent of a repaired display tail for %s",
     async (family) => {
       const content = "**Visible** [unseen";
       const item = agent(
@@ -219,7 +219,10 @@ describe("large assistant rich content", () => {
         const strong = view.container.querySelector("strong");
         expect(strong?.textContent).toBe("Visible");
         expect(view.queryByText(/\[unseen/)).toBeNull();
-        expect(source.findMatches("unseen")).toEqual([]);
+        expect(source.findMatches("unseen")).toHaveLength(1);
+        expect(source.findMatches("Visible")[0]?.text).toBe(
+          family === "voiceAssistant" ? "**Visible** [unseen" : "Visible [unseen",
+        );
         await act(async () => {
           if (voice)
             fixture.owner.applyEvent({

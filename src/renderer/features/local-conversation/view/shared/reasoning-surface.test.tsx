@@ -1,6 +1,5 @@
 import { describe, expect, test } from "vite-plus/test";
-import { fireEvent } from "@testing-library/react";
-import { settleAsyncRender } from "../../../../test/dom";
+import { act, fireEvent } from "@testing-library/react";
 import { render, textContent } from "../../../../test/dom";
 import {
   extractReasoningSections,
@@ -75,7 +74,7 @@ describe("ReasoningSurface", () => {
   });
 
   test("renders reasoning body markdown after expansion", async () => {
-    const { container, getByRole } = render(
+    const { container, getByRole, findByRole } = render(
       <ReasoningSurface
         item={{
           markdownText: "Intro paragraph.\n\n## Details\n\nParagraph body.\n\n- First bullet",
@@ -84,8 +83,11 @@ describe("ReasoningSurface", () => {
       />,
     );
 
-    fireEvent.click(getByRole("button", { name: /Thought/i }));
-    await settleAsyncRender();
+    await act(async () => {
+      fireEvent.click(getByRole("button", { name: /Thought/i }));
+      await Promise.resolve();
+    });
+    await findByRole("heading", { name: "Details" });
 
     const heading = container.querySelector("h2");
     const paragraph = container.querySelector("p");
