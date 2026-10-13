@@ -488,6 +488,7 @@ mod tests {
             "runtime-session",
             ProjectWorkspaceIntent::CreateAgentRuntimeSession {
                 session_id: "session:root".into(),
+                replacement_default_session_id: "replacement:authority".into(),
                 project_id: Some("project:default".into()),
                 title: "Task".into(),
                 initial_page_ids: Vec::new(),
@@ -1178,6 +1179,7 @@ mod tests {
             "replacement",
             ProjectWorkspaceIntent::CreateAgentRuntimeSession {
                 session_id: "session:root".into(),
+                replacement_default_session_id: "replacement:authority".into(),
                 project_id: Some("project:default".into()),
                 title: "Replacement".into(),
                 initial_page_ids: Vec::new(),

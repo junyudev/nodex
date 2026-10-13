@@ -1,3 +1,4 @@
+use super::task_window::TASK_SUMMARY_COLUMNS;
 use std::collections::{BTreeSet, HashMap};
 
 use nodex_core_contracts::BoundModuleContext;
@@ -219,20 +220,7 @@ pub(super) fn read_section_item_window(
            project.id, project.name, project.lifecycle, project.appearance_color, \
            project.appearance_marker_kind, project.appearance_marker_value, \
            pinned_project.project_id, \
-           session.id, session.project_id, session.no_thread_fallback_title, \
-           session.\"order\", session.pinned, session.pinned_order, session.archived, \
-           session.archived_at, session.unread, session.created_at, session.updated_at, \
-           thread.thread_id, thread.project_id, thread.forked_from_id, \
-           thread.parent_thread_id, thread.thread_name, thread.thread_source, \
-           thread.service_name, thread.agent_nickname, thread.agent_role, thread.agent_path, \
-           substr(thread.thread_preview, 1, 1024), thread.model_id, \
-           thread.reasoning_effort, thread.service_tier, \
-           thread.agent_backend_kind, thread.agent_backend_definition_id, \
-           thread.agent_backend_instance_config_id, \
-           thread.execution_host_id, thread.cwd, thread.managed_worktree_path, \
-           thread.projectless_output_directory, thread.projectless_workspace_browser_root, \
-           thread.status_type, thread.status_active_flags_json, thread.archived, \
-           thread.created_at, thread.updated_at, thread.recency_at, thread.linked_at \
+           {TASK_SUMMARY_COLUMNS} \
          FROM workspace_sidebar_section_items item \
          JOIN workspace_sidebar_sections section \
            ON section.library_id = item.library_id AND section.section_id = item.section_id \

@@ -1,7 +1,7 @@
 use nodex_core_contracts::workspace::{
     ProjectLifecycle, ProjectSource, ProjectWorkspaceBootstrap, ProjectWorkspaceBootstrapStatus,
     ProjectWorkspaceExecutionContext, ProjectWorkspaceProject, ProjectWorkspaceRead,
-    ProjectWorkspaceReadValue, ProjectWorkspaceSessionSummary,
+    ProjectWorkspaceReadValue, ProjectWorkspaceSessionExecutionRef, ProjectWorkspaceSessionSummary,
 };
 use rusqlite::{Connection, OptionalExtension, params};
 
@@ -45,6 +45,7 @@ struct SessionRow {
     thread_preview: Option<String>,
     created_at: String,
     updated_at: String,
+    execution_ref: Option<ProjectWorkspaceSessionExecutionRef>,
 }
 
 pub(super) fn read(
@@ -662,10 +663,12 @@ fn read_session(
                session.\"order\", session.pinned, session.pinned_order, session.archived, \
                session.archived_at, session.unread, \
                thread.thread_id, thread.thread_name, \
-               thread.thread_preview, session.created_at, session.updated_at \
+               thread.thread_preview, session.created_at, session.updated_at, \
+               execution.runtime_id, execution.runtime_thread_id \
              FROM project_sessions session \
              LEFT JOIN project_session_threads link ON link.session_id = session.id \
              LEFT JOIN codex_threads thread ON thread.thread_id = link.thread_id \
+             LEFT JOIN project_session_execution_bindings execution ON execution.session_id = session.id \
              WHERE session.id = ?1 \
                AND (session.project_id IS NULL OR EXISTS (\
                  SELECT 1 FROM projects owner \
@@ -694,6 +697,15 @@ fn session_row(row: &rusqlite::Row<'_>) -> rusqlite::Result<SessionRow> {
         thread_preview: row.get(11)?,
         created_at: row.get(12)?,
         updated_at: row.get(13)?,
+        execution_ref: row
+            .get::<_, Option<String>>(14)?
+            .zip(row.get::<_, Option<String>>(15)?)
+            .map(
+                |(runtime_id, thread_id)| ProjectWorkspaceSessionExecutionRef {
+                    runtime_id,
+                    thread_id,
+                },
+            ),
     })
 }
 
@@ -715,6 +727,7 @@ fn session_summary(row: SessionRow) -> ProjectWorkspaceSessionSummary {
         archived_at: row.archived_at,
         unread: row.unread == 1,
         thread_id: row.thread_id,
+        execution_ref: row.execution_ref,
         created_at: row.created_at,
         updated_at: row.updated_at,
     }

@@ -1226,8 +1226,17 @@ pub struct ProjectWorkspaceSessionSummary {
     pub archived_at: Option<String>,
     pub unread: bool,
     pub thread_id: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub execution_ref: Option<ProjectWorkspaceSessionExecutionRef>,
     pub created_at: String,
     pub updated_at: String,
+}
+
+/// Immutable execution coordinates; presentation and execution state come from the runtime.
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize, ToSchema)]
+pub struct ProjectWorkspaceSessionExecutionRef {
+    pub runtime_id: String,
+    pub thread_id: String,
 }
 
 /// A stable Session-to-runtime link, without provider, Run, or transcript projections.
@@ -1465,10 +1474,11 @@ pub enum ProjectWorkspaceIntent {
         title: String,
         initial_page_ids: Vec<String>,
     },
-    /// Atomically reserves the Session, authorized Linked chats, and runtime launch identity.
+    /// Atomically binds an unstarted Session (or creates one), authorized Linked chats, and runtime launch identity.
     /// Core does not execute the launch or persist the external Thread's mutable state.
     CreateAgentRuntimeSession {
         session_id: String,
+        replacement_default_session_id: String,
         project_id: Option<String>,
         title: String,
         initial_page_ids: Vec<String>,

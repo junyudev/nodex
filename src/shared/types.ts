@@ -1130,6 +1130,7 @@ export interface ProjectSession {
   archivedAt: string | null;
   unread: boolean;
   thread: ProjectSessionThreadLink | null;
+  executionRef?: { readonly runtimeId: string; readonly threadId: string } | null;
   createdAt: string;
   updatedAt: string;
 }
@@ -1146,6 +1147,7 @@ export interface ProjectSessionSummary {
   archivedAt: string | null;
   unread: boolean;
   thread: ProjectSessionThreadSummary | null;
+  executionRef?: { readonly runtimeId: string; readonly threadId: string } | null;
   createdAt: string;
   updatedAt: string;
 }

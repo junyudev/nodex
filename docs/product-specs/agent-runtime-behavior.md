@@ -8,8 +8,11 @@ The Session's Project is immutable once externally bound. Moving it to another P
 requires an explicit execution migration rather than changing the content actor while
 work remains in the old runtime context.
 
-Session creation admits the execution reference, stable launch request identity and
-requested Page Linked chats in one Core transaction. The operation checks current
+Launching promotes an unstarted Session without changing its identity or existing
+Page links. If it was the default draft, Core creates its replacement in the same
+transaction. A fresh programmatic Session can be created by the same operation.
+The transaction admits the execution reference, stable launch request identity and
+requested Page Linked chats. The operation checks current
 Project lifecycle, Page access and ambient Agent authority. Repeating the same request
 returns the original Session. Reusing its identity with different immutable launch
 content fails before native execution admission.
@@ -42,3 +45,24 @@ the same runtime. Resuming a stable Run creates a fresh lease without reviving o
 provenance; delayed completion from an old lease cannot revoke its replacement.
 Admission and revocation change permission records without publishing conversation or
 sidebar activity as if execution state had changed.
+
+## Conversation interface
+
+Page Chat and Workbench use one Session interface for Agent launch, follow-up messages,
+steering, selected-Run stop, approval responses, model selection and execution modes.
+Every command resolves the Session's immutable root before accessing an engine Thread;
+delegated targets remain inside that root. Responses carry the exact pending request
+and Run, so a stale card cannot answer a newer request.
+
+Launch returns execution identity without transcript bodies. The retained conversation
+reader opens one bounded history window and publishes canonical items into the keyed
+transcript cache. Text changes notify only the affected item. Older windows preserve
+resident items, and releasing the last reader clears body caches and the engine event
+subscription. Captured fork ancestry authorizes read-only item details; it does not
+expand the Session's execution targets.
+
+Images are materialized from explicit attachments, then persisted by the runtime under
+the admitted Thread and message before dispatch. Workspace creation and environment
+setup use the same scoped filesystem owner as other native capabilities. The workspace
+is retained when remote creation may have committed without acknowledgement, and its
+managed-worktree ownership is attached only after the durable execution is verified.

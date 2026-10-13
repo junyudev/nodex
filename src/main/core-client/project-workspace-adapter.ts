@@ -746,6 +746,9 @@ const fromCoreSessionSummary = (
   id: session.id,
   projectId: session.project_id ?? null,
   noThreadFallbackTitle: session.no_thread_fallback_title,
+  executionRef: session.execution_ref
+    ? { runtimeId: session.execution_ref.runtime_id, threadId: session.execution_ref.thread_id }
+    : null,
   displayTitle: session.display_title,
   order: session.order,
   pinned: session.pinned,

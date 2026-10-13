@@ -29944,9 +29944,10 @@
               },
               {
                 "type": "object",
-                "description": "Atomically reserves the Session, authorized Linked chats, and runtime launch identity.\nCore does not execute the launch or persist the external Thread's mutable state.",
+                "description": "Atomically binds an unstarted Session (or creates one), authorized Linked chats, and runtime launch identity.\nCore does not execute the launch or persist the external Thread's mutable state.",
                 "required": [
                   "session_id",
+                  "replacement_default_session_id",
                   "title",
                   "initial_page_ids",
                   "runtime_id",
@@ -29979,6 +29980,9 @@
                       "string",
                       "null"
                     ]
+                  },
+                  "replacement_default_session_id": {
+                    "type": "string"
                   },
                   "runtime_id": {
                     "type": "string"
@@ -39867,9 +39871,10 @@
           },
           {
             "type": "object",
-            "description": "Atomically reserves the Session, authorized Linked chats, and runtime launch identity.\nCore does not execute the launch or persist the external Thread's mutable state.",
+            "description": "Atomically binds an unstarted Session (or creates one), authorized Linked chats, and runtime launch identity.\nCore does not execute the launch or persist the external Thread's mutable state.",
             "required": [
               "session_id",
+              "replacement_default_session_id",
               "title",
               "initial_page_ids",
               "runtime_id",
@@ -39902,6 +39907,9 @@
                   "string",
                   "null"
                 ]
+              },
+              "replacement_default_session_id": {
+                "type": "string"
               },
               "runtime_id": {
                 "type": "string"
@@ -42215,6 +42223,22 @@
       "ProjectWorkspaceReadResponse": {
         "$ref": "#/components/schemas/ResponseEnvelope_ModuleReadSnapshot_ProjectWorkspaceReadValue"
       },
+      "ProjectWorkspaceSessionExecutionRef": {
+        "type": "object",
+        "description": "Immutable execution coordinates; presentation and execution state come from the runtime.",
+        "required": [
+          "runtime_id",
+          "thread_id"
+        ],
+        "properties": {
+          "runtime_id": {
+            "type": "string"
+          },
+          "thread_id": {
+            "type": "string"
+          }
+        }
+      },
       "ProjectWorkspaceSessionSummary": {
         "type": "object",
         "required": [
@@ -42243,6 +42267,16 @@
           },
           "display_title": {
             "type": "string"
+          },
+          "execution_ref": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/ProjectWorkspaceSessionExecutionRef"
+              }
+            ]
           },
           "id": {
             "type": "string"

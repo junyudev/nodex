@@ -2,8 +2,9 @@ use nodex_core_contracts::collection::{
     CollectionWindow, CollectionWindowAuthority, CollectionWindowRequest,
 };
 use nodex_core_contracts::workspace::{
-    CodexThreadActiveFlag, CodexThreadStatusType, ProjectWorkspaceSessionSummary,
-    ProjectWorkspaceTaskSummary, ProjectWorkspaceTaskThreadSummary, ProjectWorkspaceThreadStatus,
+    CodexThreadActiveFlag, CodexThreadStatusType, ProjectWorkspaceSessionExecutionRef,
+    ProjectWorkspaceSessionSummary, ProjectWorkspaceTaskSummary, ProjectWorkspaceTaskThreadSummary,
+    ProjectWorkspaceThreadStatus,
 };
 use rusqlite::types::Value as SqlValue;
 use rusqlite::{Connection, params, params_from_iter};
@@ -30,7 +31,9 @@ pub(super) const TASK_SUMMARY_COLUMNS: &str = "session.id AS session_id, session
              thread.projectless_output_directory, thread.projectless_workspace_browser_root, \
              thread.status_type, \
              thread.status_active_flags_json, thread.archived, thread.created_at, \
-             thread.updated_at, thread.recency_at, thread.linked_at";
+             thread.updated_at, thread.recency_at, thread.linked_at, \
+             (SELECT execution.runtime_id FROM project_session_execution_bindings execution WHERE execution.session_id = session.id), \
+             (SELECT execution.runtime_thread_id FROM project_session_execution_bindings execution WHERE execution.session_id = session.id)";
 
 const MAX_PREVIEW_UTF16: usize = 240;
 const MAX_PREVIEW_BYTES: usize = 1_024;
@@ -302,6 +305,15 @@ pub(super) fn task_summary_from_row(
             archived_at: row.get(offset + 7)?,
             unread: row.get::<_, i64>(offset + 8)? == 1,
             thread_id: row.get(offset + 11)?,
+            execution_ref: row
+                .get::<_, Option<String>>(offset + 40)?
+                .zip(row.get::<_, Option<String>>(offset + 41)?)
+                .map(
+                    |(runtime_id, thread_id)| ProjectWorkspaceSessionExecutionRef {
+                        runtime_id,
+                        thread_id,
+                    },
+                ),
             created_at: row.get(offset + 9)?,
             updated_at: row.get(offset + 10)?,
         },

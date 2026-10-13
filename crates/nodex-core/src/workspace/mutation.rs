@@ -892,6 +892,7 @@ pub(super) fn apply(
                 ),
                 ProjectWorkspaceIntent::CreateAgentRuntimeSession {
                     session_id,
+                    replacement_default_session_id,
                     project_id,
                     title,
                     initial_page_ids,
@@ -914,6 +915,7 @@ pub(super) fn apply(
                     runtime_thread_id,
                     launch_request_id,
                     launch_request_hash,
+                    replacement_default_session_id,
                 ),
                 ProjectWorkspaceIntent::CreateSessionInSidebarSection {
                     session_id,

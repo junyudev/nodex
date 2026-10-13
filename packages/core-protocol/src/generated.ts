@@ -7228,6 +7228,7 @@ export interface components {
                 readonly launch_request_hash: string;
                 readonly launch_request_id: string;
                 readonly project_id?: string | null;
+                readonly replacement_default_session_id: string;
                 readonly runtime_id: string;
                 readonly runtime_thread_id: string;
                 readonly session_id: string;
@@ -9576,6 +9577,7 @@ export interface components {
             readonly launch_request_hash: string;
             readonly launch_request_id: string;
             readonly project_id?: string | null;
+            readonly replacement_default_session_id: string;
             readonly runtime_id: string;
             readonly runtime_thread_id: string;
             readonly session_id: string;
@@ -10087,11 +10089,17 @@ export interface components {
         };
         readonly ProjectWorkspaceReadRequest: components["schemas"]["ModuleReadRequest_ProjectWorkspaceRead"];
         readonly ProjectWorkspaceReadResponse: components["schemas"]["ResponseEnvelope_ModuleReadSnapshot_ProjectWorkspaceReadValue"];
+        /** @description Immutable execution coordinates; presentation and execution state come from the runtime. */
+        readonly ProjectWorkspaceSessionExecutionRef: {
+            readonly runtime_id: string;
+            readonly thread_id: string;
+        };
         readonly ProjectWorkspaceSessionSummary: {
             readonly archived: boolean;
             readonly archived_at?: string | null;
             readonly created_at: string;
             readonly display_title: string;
+            readonly execution_ref?: null | components["schemas"]["ProjectWorkspaceSessionExecutionRef"];
             readonly id: string;
             readonly no_thread_fallback_title: string;
             /** Format: int64 */
